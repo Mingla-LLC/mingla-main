@@ -7,14 +7,14 @@ import { sprintLabel } from "../../lib/opsModel";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 
-export function SprintStrip({ sprint, counts, overdue, canEditGoal, online, onGoal, onWeek, onThisWeek, isThisWeek }) {
+export function SprintStrip({ sprint, counts, overdue, dueToday = 0, canEditGoal, online, onGoal, onWeek, onThisWeek, isThisWeek }) {
   // The typed goal belongs to one week and one saved goal; a new week or a
   // newly saved goal shows the saved text again.
   const goalKey = `${sprint?.starts_on || ""}|${sprint?.goal || ""}`;
   const [draft, setDraft] = useState({ key: goalKey, value: sprint?.goal || "" });
   const goal = draft.key === goalKey ? draft.value : sprint?.goal || "";
   const setGoal = (value) => setDraft({ key: goalKey, value });
-  const open = Number(counts?.todo || 0) + Number(counts?.doing || 0) + Number(counts?.person || 0);
+  const open = Number(counts?.todo || 0) + Number(counts?.doing || 0);
   const done = Number(counts?.done || 0);
   const pct = open + done > 0 ? Math.round((done / (open + done)) * 100) : 0;
   // Compact, as in the design: one strip with the week, its goal, progress
@@ -50,7 +50,8 @@ export function SprintStrip({ sprint, counts, overdue, canEditGoal, online, onGo
         </div>
         <span className="whitespace-nowrap text-[12px] text-[var(--color-text-tertiary)]">{done} of {open + done} done</span>
         <OpsChip>{open} open</OpsChip>
-        <OpsChip tone="warning">{Number(counts?.person || 0)} need a person</OpsChip>
+        {/* #4270: what is due, instead of how many cards wait on a person. */}
+        <OpsChip tone={dueToday > 0 ? "warning" : "default"}>{dueToday} due today</OpsChip>
         <OpsChip tone={overdue > 0 ? "error" : "default"}>{overdue} overdue</OpsChip>
       </div>
     </div>

@@ -594,6 +594,12 @@ export class TapToPaySaleFlow {
         this.intentClockStart = null;
       }
       if (this.closed) return false;
+      // The brand's address is incomplete: not this phone's fault. Setup says
+      // what to add (TAP_ADDRESS_MISSING_COPY), with the draft kept.
+      if (error instanceof DoorTapError && error.code === "tap_not_available" && error.detail === "address_missing") {
+        this.emit({ kind: "needs_setup" });
+        return false;
+      }
       if (error instanceof DoorTapError && error.code === "tap_not_available") {
         this.emit({ kind: "not_on_this_phone" });
         return false;

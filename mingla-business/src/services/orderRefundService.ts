@@ -50,6 +50,9 @@ export interface RefundOrderError extends Error {
     | "refund_amount_zero"
     | "missing_payment_intent"
     | "stripe_declined"
+    // issue #4271 — the refund did not go through and nothing was refunded;
+    // the next Send must start a new refund (a new idempotency key).
+    | "refund_failed"
     | "commit_failed_after_stripe_success"
     | "idempotency_key_required"
     | "refund_reconciliation_pending"
@@ -135,6 +138,7 @@ export const issueOrderRefund = async (
       buyer_refund_status?: unknown;
       application_fee_refund_status?: unknown;
       application_fee_refunded_cents?: unknown;
+      refund_outcome?: unknown;
     } | null = null;
     if (ctx && typeof ctx.text === "function") {
       try {
@@ -144,7 +148,11 @@ export const issueOrderRefund = async (
         payload = null;
       }
     }
-    const code = payload?.error ?? "internal_error";
+    // issue #4271 — a provider refusal the server committed 'failed' is final.
+    const code =
+      payload?.refund_outcome === "failed"
+        ? "refund_failed"
+        : (payload?.error ?? "internal_error");
     const detail =
       payload?.detail ?? (response.error as Error).message ?? "Refund failed";
     if (
@@ -275,6 +283,8 @@ const userMessageFor = (code: string): string => {
       return "This order has no payment record. It may be a free order.";
     case "stripe_declined":
       return "The refund was declined. Try again in a moment.";
+    case "refund_failed":
+      return "The refund didn't go through, so nothing was refunded. Tap Send to try again.";
     case "commit_failed_after_stripe_success":
       return "The refund was issued but we couldn't update the app. Refresh to confirm.";
     case "unauthenticated":

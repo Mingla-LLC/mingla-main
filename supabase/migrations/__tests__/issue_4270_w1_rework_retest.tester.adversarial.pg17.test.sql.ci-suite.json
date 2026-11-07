@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_4270_w1_rework_retest.tester.adversarial.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-4270-w1-rework-retest-pg-adversarial",
+  "profile": "psql-pg17-post-replay",
+  "database": { "database": "postgres", "user": "supabase_admin", "reset": "suite-owned" }
+}

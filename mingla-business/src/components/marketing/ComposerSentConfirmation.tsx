@@ -202,11 +202,14 @@ export const ComposerSentConfirmation: React.FC<ComposerSentConfirmationProps> =
               ? "Your campaign goes out in under a minute. Refresh Campaigns to watch the status flip to Sent."
               : "We'll fire it off at the time you picked."}
           </Text>
+          {/* #4273 — one neutral line for every recipient sealed and not sent.
+              It never says why: a reason could reveal that a contact belongs
+              to someone the host only knows as a follower. */}
           {isSendNow && skippedRecipientCount > 0 ? (
             <Text style={styles.body}>
               {`${skippedRecipientCount} ${
-                skippedRecipientCount === 1 ? "recipient was" : "recipients were"
-              } safely skipped because they could no longer receive this campaign through the selected channel after confirmation.`}
+                skippedRecipientCount === 1 ? "person" : "people"
+              } couldn't be reached.`}
             </Text>
           ) : null}
         </Animated.View>

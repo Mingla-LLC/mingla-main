@@ -80,11 +80,15 @@ test("the Intelligence run is reachable again from Place pool (the #4130 regress
   assert.equal(/Retired research|Research history|research-only/i.test(settings), false);
   const section = read("components/placePool/PipelineSection.jsx");
   assert.ok(section.includes("<ActiveRunsControlTower />"));
-  assert.ok(section.includes("<IntelligenceOverviewTab />"));
+  assert.ok(section.includes("<IntelligenceOverviewTab onCostModel={setCostModel} />"));
   const page = read("pages/PlacePoolPage.jsx");
-  assert.ok(page.indexOf("<PipelineSection />") > 0 && page.indexOf("<PipelineSection />") < page.indexOf("<Tabs "), "the pipeline sits above the tabs");
-  assert.deepEqual(PLACE_POOL_TABS.map((t) => t.id), ["overview", "cities", "browse", "map", "excluded"]);
-  assert.equal(placePoolTabFor("pipeline"), "overview");
+  // #4276 design pass: the tabs sit straight under the title and the pipeline is one of them.
+  assert.ok(page.indexOf("<Tabs ") > 0 && page.indexOf("<Tabs ") < page.indexOf("<PipelineSection"), "the tabs come first");
+  assert.ok(page.includes('tab === "pipeline" && <PipelineSection'), "the pipeline is the Pipeline tab");
+  // The approved design's tabs, in its order: Pipeline is a tab, Browse and map is one.
+  assert.deepEqual(PLACE_POOL_TABS.map((t) => t.label), ["Overview", "Cities", "Pipeline", "Browse and map", "Excluded"]);
+  assert.equal(placePoolTabFor("pipeline"), "pipeline");
+  assert.equal(placePoolTabFor("map"), "browse");
   for (const gone of ["pages/PlaceIntelligenceTrialPage.jsx", "components/placeIntelligenceTrial/TrialResultsTab.jsx"]) {
     assert.equal(existsSync(join(SRC, gone)), false, `${gone} (sample mode and the results explorer) is retired`);
   }
@@ -100,8 +104,8 @@ test("the box panel warns about places outside the box before anything changes",
 
 test("a run always has a spend limit, and a whole-city re-check asks first", () => {
   const run = read("components/placePool/CityRunPanel.jsx");
-  assert.ok(run.includes("disabled={!limitOk || starting}"));
-  assert.ok(run.includes("onClick={() => (wholeCity ? setConfirmWhole(true) : start())}"));
+  assert.ok(run.includes("disabled={!limitOk || starting || (server !== null && !plan)}"));
+  assert.ok(run.includes("onClick={() => (server ? setConfirmPlan(true) : wholeCity ? setConfirmWhole(true) : start())}"));
   assert.ok(run.includes('confirmWholeCity: wholeCity ? true : undefined'));
   assert.ok(run.includes('scope: wholeCity ? "whole_city" : "new_only"'));
 });
@@ -135,11 +139,22 @@ test("the gaps table marks only real gaps, and '?' when searches are unknown", (
   const by = Object.fromEntries(cells.map((c) => [c.id, c]));
   assert.equal(by.pre_check.text, "10");
   assert.equal(by.photos.text, "10");
-  assert.equal(by.final_check.text, "done");
+  assert.equal(by.final_check.text, "Done");
   assert.equal(by.intelligence.gap, false);
   assert.equal(by.score.text, "5");
   assert.equal(by.unsearched.text, "?");
-  assert.equal(by.box.text, "done");
+  assert.equal(by.box.text, "Done");
+  // #4276 design pass: the design's columns, in its order, each with its legend kind.
+  assert.deepEqual(cells.map((c) => c.id), ["box", "seed", "unsearched", "capped", "pre_check", "photos", "final_check", "reviews", "intelligence", "redo", "score"]);
+  assert.equal(by.box.kind, "check");
+  assert.equal(by.score.kind, "follows");
+  assert.equal(by.seed.text, "Done");
+  // A draft never seeded reads as such, not as a row of zeros.
+  const draft = Object.fromEntries(matrixCells({ active: 0, is_live: false }, { uncoveredTiles: 0, unfinishedSearches: 144, cappedOpen: 0 }, { outside_active: 0 }).map((c) => [c.id, c]));
+  assert.equal(draft.seed.text, "Never seeded");
+  assert.equal(draft.seed.gap, true);
+  assert.equal(draft.unsearched.text, "144");
+  assert.equal(draft.pre_check.text, "–");
 });
 
 test("a waiting run's approval comes from its own pause detail", () => {
@@ -228,4 +243,371 @@ test("the place list refresh line never assumes a 600-second slot", () => {
   const section = read("components/placePool/PipelineSection.jsx");
   assert.equal(section.includes("mv.interval_seconds ?? 600"), false, "no guessed slot");
   assert.ok(section.includes("its schedule couldn't be read, so its slot is unknown"));
+});
+
+// ── #4276 follow-up: the design pass and fixes d and e ──────────────────────
+import * as pipelineLib from "../cityPipeline.js";
+
+// Fix d. FAILS-ON-REVERT: drop withOneRetry from IntelligenceOverviewTab, or the
+// tableSettled gate from PipelineSection, and this fails.
+test("Intelligence coverage retries once, quietly, and loads after the gaps table", async () => {
+  let calls = 0;
+  const waits = [];
+  const flaky = async () => { calls += 1; if (calls === 1) throw new Error("statement timeout"); return "rows"; };
+  assert.equal(await pipelineLib.withOneRetry(flaky, { wait: async (ms) => { waits.push(ms); } }), "rows");
+  assert.equal(calls, 2);
+  assert.deepEqual(waits, [1500]);
+  let twice = 0;
+  await assert.rejects(pipelineLib.withOneRetry(async () => { twice += 1; throw new Error(`fail ${twice}`); }, { wait: async () => {} }), /fail 2/);
+  assert.equal(twice, 2, "a second failure is the one shown, and there is no third try");
+  const tab = read("components/placeIntelligenceTrial/IntelligenceOverviewTab.jsx");
+  assert.ok(tab.includes("await withOneRetry(() => fetchIntelligenceCoverage());"));
+  const section = read("components/placePool/PipelineSection.jsx");
+  assert.ok(section.includes("const tableSettled = (funnel !== null || funnelError !== null) && (health !== null || healthError !== null);"));
+  const gate = section.indexOf("{tableSettled ? (");
+  assert.ok(gate > 0 && gate < section.indexOf("<IntelligenceOverviewTab onCostModel={setCostModel} />"), "coverage mounts only once the table has answered");
+});
+
+test("the gaps table: All gaps totals, the Show filter and a city's status line", () => {
+  const live = { city_id: "l", is_live: true, active: 100, pre_checked: 100, pre_passed: 80, with_photos: 80, final_checked: 80, servable: 60, scored: 60, no_reviews: 50, rules_only: 0, intelligence_without_reviews: 50, held: 0 };
+  const seeded = { city_id: "s", is_live: false, active: 40, pre_checked: 0, pre_passed: 0, with_photos: 0, final_checked: 0, servable: 0, scored: 0 };
+  const draft = { city_id: "d", is_live: false, active: 0 };
+  const redo = { reviews_eligible: 50, reviews_held: 0, redo_eligible: 50, redo_held: 0 };
+  const rows = [live, seeded, draft].map((c) => matrixCells(c, { uncoveredTiles: 1, unfinishedSearches: 2, cappedOpen: 3 }, { outside_active: c === live ? 5 : 0 }, c === live ? redo : { reviews_eligible: 0, reviews_held: 0, redo_eligible: 0, redo_held: 0 }));
+  const totals = Object.fromEntries(pipelineLib.matrixTotals(rows).map((t) => [t.id, t]));
+  assert.equal(totals.unsearched.text, "48", "three rows of 1 new tile x 14 + 2 searches");
+  assert.equal(totals.capped.text, "9");
+  assert.equal(totals.box.text, "5");
+  assert.equal(totals.seed.text, "1 city");
+  assert.equal(totals.redo.text, "50");
+  // Unknown searches make the total say so.
+  assert.equal(pipelineLib.matrixTotals([matrixCells(live, null, null)]).find((t) => t.id === "unsearched").text, "?");
+  assert.equal(pipelineLib.cityStatusLine(live, rows[0]), "Live · Mostly no reviews");
+  assert.equal(pipelineLib.cityStatusLine(seeded, rows[1]), "Not started");
+  assert.equal(pipelineLib.cityStatusLine(draft, rows[2]), "Draft, never seeded");
+  assert.deepEqual([live, seeded, draft].filter((c) => pipelineLib.matrixFilter(c, "live")), [live]);
+  assert.deepEqual([live, seeded, draft].filter((c) => pipelineLib.matrixFilter(c, "seeded")), [seeded]);
+  assert.deepEqual([live, seeded, draft].filter((c) => pipelineLib.matrixFilter(c, "drafts")), [draft]);
+  assert.equal(pipelineLib.boxSizeText({ bbox_sw_lat: 51.3, bbox_sw_lng: -0.5, bbox_ne_lat: 51.7, bbox_ne_lng: 0.3 }), "55 x 44 km");
+  assert.equal(pipelineLib.boxSizeText({}), "");
+});
+
+test("Cities readiness reads in the design's words", () => {
+  const none = { missingIntelligence: 0, missingReviews: 0, unsearchedAreas: 0, unfinishedSearches: 0, searchUnknown: false, outsideBox: 0 };
+  const st = (row, g = none) => pipelineLib.cityLaunchState(row, g);
+  assert.equal(st({ is_live_for_consumers: true, is_servable_places: 1000 }).label, "Live");
+  assert.equal(st({ is_live_for_consumers: true, is_servable_places: 1000 }).why, "Nothing");
+  assert.equal(st({ is_live_for_consumers: true, is_servable_places: 1000 }, { ...none, missingReviews: 700 }).label, "Live, with gaps");
+  assert.equal(st({ is_live_for_consumers: false, is_servable_places: 10, total_active_places: 20 }).label, "Ready");
+  assert.equal(st({ is_live_for_consumers: false, is_servable_places: 10, total_active_places: 20 }, { ...none, outsideBox: 3 }).label, "Needs work");
+  assert.equal(st({ is_live_for_consumers: false, is_servable_places: 0, total_active_places: 0 }).label, "Draft");
+  assert.equal(pipelineLib.cityFilterMatch("live_gaps", "live"), true);
+  assert.equal(pipelineLib.cityFilterMatch("ready", "needs_work"), false);
+});
+
+test("recorded spend: Serper is counted, never priced at $0", () => {
+  const unpriced = pipelineLib.spendTotalsLine({ seeding_usd: 1024, photos_usd: 1311, gemini_usd: 125, serper_requests: 1200, serper_usd_per_request: null });
+  assert.match(unpriced, /Seeding \$1,024\.00 · Photos \$1,311\.00 · Gemini \$125\.00 · Serper 1,200 requests, not priced/);
+  assert.match(pipelineLib.spendTotalsLine({ seeding_usd: 0, photos_usd: 0, gemini_usd: 0, serper_requests: 1000, serper_usd_per_request: 0.001 }), /Serper \$1\.00$/);
+  const svc = read("services/cityPipelineService.js");
+  assert.ok(svc.includes('return rpc("admin_place_pipeline_spend_totals", {});'));
+});
+
+test("Excluded: the biggest single-rule loss and reasons in words", () => {
+  const cities = [
+    { city_id: "lagos", city_name: "Lagos", active: 4222, pre_check: { B4: 2888, B6: 643 } },
+    { city_id: "london", city_name: "London", active: 15551, pre_check: { B4: 2093 } },
+    { city_id: null, city_name: "No city", active: 272, pre_check: { B4: 270 } },
+  ];
+  const loss = pipelineLib.biggestRuleLoss(cities);
+  assert.deepEqual({ city: loss.city, label: loss.label, share: loss.share }, { city: "Lagos", label: "No website", share: 68 });
+  assert.equal(pipelineLib.biggestRuleLoss([{ city_id: "x", city_name: "X", active: 100, pre_check: { B4: 10 } }]), null);
+  assert.equal(pipelineLib.reasonWords("B4:no_website;B6:no_hours"), "No website, No opening hours");
+  assert.equal(pipelineLib.reasonWords(null), "No reason recorded");
+});
+
+test("needs attention links each gap to the tab that shows it", () => {
+  const items = pipelineLib.attentionItems({ rules_only: 3, held: 2, dropped_no_photos: 4 });
+  assert.equal(items.find((i) => i.head.startsWith("Explorers see")).tab, "pipeline");
+  assert.equal(items.find((i) => i.head.startsWith("Held")).tab, null);
+  assert.equal(items.find((i) => i.head.startsWith("Dropped")).tab, "excluded");
+});
+
+
+// ── #4276 rework (tester round 2) ───────────────────────────────────────────
+
+// Items 1 and 2. FAILS-ON-REVERT: give the chips the raw filterCounts again, or the
+// first tile its old `funnel ? … : "Counting…"`, and the source checks fail; break
+// either helper and the behaviour checks fail.
+test("while the pipeline loads or fails, no count reads 0 and the first tile says it failed", () => {
+  const loading = { loading: true, error: null };
+  const failed = { loading: false, error: "statement timeout" };
+  const done = { loading: false, error: null };
+  assert.equal(pipelineLib.filterChipCount(0, loading), "–");
+  assert.equal(pipelineLib.filterChipCount(0, failed), null, "no count at all on error");
+  assert.equal(pipelineLib.filterChipCount(7, done), 7);
+  assert.equal(pipelineLib.loadedCount(null, loading), "–");
+  assert.equal(pipelineLib.loadedCount(0, loading), "–");
+  assert.equal(pipelineLib.loadedCount(0, failed), "?");
+  assert.equal(pipelineLib.loadedCount(1234, done), "1,234");
+  const section = read("components/placePool/PipelineSection.jsx");
+  assert.ok(section.includes("count: filterChipCount(filterCounts[f.id], tableState)"), "chips use the loading-aware count");
+  assert.ok(section.includes("const tableState = { loading: !funnel && !funnelError, error: funnelError };"));
+  assert.ok(section.includes('value={loadedCount(funnel ? unfinishedCities : null, tableState)}'));
+  assert.ok(section.includes("note={funnelError ? `Couldn't count: ${funnelError}`"), "a failed count says so instead of Counting…");
+  assert.equal(section.includes('note={funnel ? `${count(filterCounts.drafts)} draft'), false, "the old tile that stayed on Counting… is gone");
+});
+
+test("the run rates mirror the server's own constants", () => {
+  const geo = readFileSync(join(SRC, "../../supabase/functions/_shared/seedingGeometry.ts"), "utf8");
+  const conductor = readFileSync(join(SRC, "../../supabase/functions/run-city-pipeline/conductor.ts"), "utf8");
+  const configs = readFileSync(join(SRC, "../../supabase/functions/_shared/seedingCategories.ts"), "utf8");
+  const R = pipelineLib.PIPELINE_RATES;
+  assert.match(geo, new RegExp(`COST_PER_NEARBY_SEARCH = ${R.SEARCH_USD};`));
+  assert.match(geo, new RegExp(`COST_PER_PHOTO = ${R.PHOTO_USD};`));
+  assert.match(geo, new RegExp(`PHOTOS_PER_PLACE = ${R.PHOTOS_PER_PLACE};`));
+  assert.match(geo, new RegExp(`EXPECTED_UNIQUE_PLACES_PER_TILE = ${R.EXPECTED_PLACES_PER_TILE};`));
+  // Round 5: the server's fill estimate is the shared formula the cell mirrors (the
+  // Deno test issue_4276_picked_stages compares the two numerically).
+  const search = readFileSync(join(SRC, "../../supabase/functions/admin-seed-places/searchPipeline.ts"), "utf8");
+  assert.ok(search.includes("const estimatedCostUsd = estimateFillCostUsd(batches.length, newTiles.length);"));
+  assert.match(conductor, new RegExp(`REVIEW_MAX_PAGES = ${R.REVIEW_MAX_PAGES};`));
+  assert.equal((configs.match(/^\s+id: ['"]/gm) ?? []).length, R.SEARCHES_PER_TILE);
+});
+
+test("cells cost what a run would spend, and Serper or Gemini say so until priced", () => {
+  const f = { active: 100, pre_checked: 50, pre_passed: 40, with_photos: 20, final_checked: 10, servable: 10, scored: 10, no_reviews: 6, rules_only: 4, intelligence_without_reviews: 2 };
+  const cells = matrixCells(f, { uncoveredTiles: 2, unfinishedSearches: 10, cappedOpen: 3 }, { outside_active: 0 }, { reviews_eligible: 6, reviews_held: 0, redo_eligible: 2, redo_held: 0 });
+  const by = Object.fromEntries(cells.map((c) => [c.id, c]));
+  assert.equal(pipelineLib.cellCost(by.unsearched).text, "$1.92"); // (2 x 14 + 10) x $0.032 + 2 x 10 x 5 x $0.007
+  assert.equal(pipelineLib.cellCost(by.capped).text, "$0.38"); // 3 x 4 x $0.032
+  assert.equal(pipelineLib.cellCost(by.photos).text, "$0.70"); // 20 x 5 x $0.007
+  assert.equal(pipelineLib.cellCost(by.pre_check).text, "Free");
+  assert.equal(pipelineLib.cellCost(by.reviews).text, "Serper");
+  assert.equal(pipelineLib.cellCost(by.reviews, { serperUsdPerRequest: 0.001 }).text, "$0.03");
+  assert.equal(pipelineLib.cellCost(by.intelligence).text, "Gemini");
+  assert.equal(pipelineLib.cellCost(by.intelligence, { geminiPerPlaceUsd: 0.01 }).text, "$0.04");
+  assert.equal(pipelineLib.cellCost(by.score).text, "", "a stage that follows has no cost line");
+  const totals = pipelineLib.matrixTotalCosts([cells, cells]);
+  assert.equal(totals.find((t) => t.id === "photos").text, "$1.40");
+  assert.equal(totals.find((t) => t.id === "reviews").text, "Serper");
+});
+
+test("picking a gap adds the gaps it needs first; a city name picks its whole row", () => {
+  const f = { active: 100, pre_checked: 50, pre_passed: 40, with_photos: 20, final_checked: 10, servable: 10, scored: 10, no_reviews: 6, rules_only: 4, intelligence_without_reviews: 2 };
+  const cells = matrixCells(f, { uncoveredTiles: 0, unfinishedSearches: 0, cappedOpen: 0 }, { outside_active: 5 }, { reviews_eligible: 6, reviews_held: 0, redo_eligible: 2, redo_held: 0 });
+  assert.deepEqual([...pipelineLib.neededFirst(["photos"], cells)].sort(), ["pre_check"]);
+  assert.deepEqual([...pipelineLib.neededFirst(["intelligence"], cells)].sort(), ["final_check", "photos", "pre_check"]);
+  assert.deepEqual([...pipelineLib.neededFirst(["redo"], cells)].sort(), ["final_check", "intelligence", "photos", "pre_check"]);
+  assert.deepEqual([...pipelineLib.neededFirst(["box"], cells)], [], "a box check needs nothing first");
+  assert.deepEqual(pipelineLib.wholeRow(cells), ["box", "pre_check", "photos", "final_check", "reviews", "intelligence"]);
+  const plan = pipelineLib.planLines(cells, ["photos"], {});
+  assert.deepEqual(plan.lines.map((l) => [l.id, l.needed]), [["pre_check", true], ["photos", false]]);
+  assert.equal(plan.totalText, "$0.70");
+  assert.equal(plan.searches, false);
+  assert.equal(pipelineLib.planLines(cells, ["reviews"], {}).totalText, "$0.70 + Serper + Gemini");
+  assert.equal(pipelineLib.neededFirst(["reviews"], cells).has("redo"), false, "Reviews never brings a redo");
+  const section = read("components/placePool/PipelineSection.jsx");
+  assert.ok(section.includes("onToggle={pickable(cell) ? () => toggleCell(c.city_id, cell.id) : null}"));
+  assert.ok(section.includes("onClick={() => pickCity(row)}"));
+  assert.ok(section.includes('{ kind: "picked", label: "You picked" }') && section.includes('{ kind: "needed", label: "Needed first, added for you" }'));
+  assert.ok(section.includes("Finish {selectedRow.city.city_name}"));
+  assert.ok(section.includes('className="w-full table-fixed border-collapse text-sm"'), "every column fits: no minimum table width");
+});
+
+test("Browse: sentence-case headings, the Google type under the name, and a side panel", () => {
+  const page = read("pages/PlacePoolManagementPage.jsx");
+  assert.ok(page.includes('<DataTable columns={columns} rows={places} loading={loading} headerCase="sentence"'));
+  assert.ok(read("pages/LaunchCitiesPage.jsx").includes('headerCase="sentence"'));
+  assert.equal(pipelineLib.placeTypeLabel({ primary_type: "italian_restaurant" }), "Italian restaurant");
+  assert.equal(pipelineLib.placeTypeLabel({ primary_type_display_name: "Pub", primary_type: "pub" }), "Pub");
+  assert.equal(pipelineLib.placeTypeLabel({}), "No type");
+  assert.equal(page.includes("r.primary_type_display_name || (r.mingla_category ? CATEGORY_LABELS[r.mingla_category]"), false, "the category no longer stands in for the type");
+  assert.ok(page.includes("Pick a place to see where it stands, and to change it."));
+  assert.ok(page.includes("<PlaceSidePanel place={picked} onEdit={() => setDetailPlace(picked)}"));
+  const stages = pipelineLib.placeStages({ passes_pre_photo_check: false, pre_photo_bouncer_reason: "B4:no_website", stored_photo_urls: [], is_servable: null });
+  assert.deepEqual(stages.map((x) => [x.id, x.state]), [["pre_check", "failed"], ["photos", "not_run"], ["final_check", "not_run"], ["scores", "not_run"]]);
+  assert.equal(stages[0].text, "Failed: No website");
+  assert.equal(pipelineLib.placeStages({ is_servable: false })[2].text, "Failed");
+});
+
+
+// ── #4276 round 3: what you pick is what runs ───────────────────────────────
+
+// FAILS-ON-REVERT: restore the stage-order neededFirst (every earlier stage with a gap)
+// and picking Reviews adds Unsearched and Capped again.
+test("picking Reviews adds what the data needs, never a search", () => {
+  const f = { active: 100, pre_checked: 100, pre_passed: 80, with_photos: 80, final_checked: 80, servable: 60, scored: 60, no_reviews: 50, rules_only: 0, intelligence_without_reviews: 40 };
+  const cells = matrixCells(f, { uncoveredTiles: 3, unfinishedSearches: 7, cappedOpen: 5 }, { outside_active: 2 }, { reviews_eligible: 10, reviews_held: 40, redo_eligible: 4, redo_held: 36 });
+  const needed = pipelineLib.neededFirst(["reviews"], cells);
+  for (const search of ["seed", "unsearched", "capped", "box", "redo"]) assert.equal(needed.has(search), false, `${search} was added`);
+  assert.deepEqual([...needed], [], "everything before reviews is done here");
+  const plan = pipelineLib.planLines(cells, ["reviews"], {});
+  assert.equal(plan.searches, false);
+  // Round 4: Reviews is not a redo.
+  assert.deepEqual(plan.server, { stages: ["intelligence"], redoIntelligence: false });
+  assert.deepEqual(pipelineLib.serverPlanFor(["unsearched", "capped", "photos"]), { stages: ["fill", "split", "photos"], redoIntelligence: false });
+  assert.deepEqual(pipelineLib.serverPlanFor(["seed", "unsearched"]), { stages: ["fill"], redoIntelligence: false });
+  assert.deepEqual(pipelineLib.serverPlanFor(["redo"]), { stages: ["intelligence"], redoIntelligence: true });
+  assert.deepEqual(pipelineLib.serverPlanFor(["reviews"]), { stages: ["intelligence"], redoIntelligence: false });
+});
+
+// FAILS-ON-REVERT: drop the stages and redo from the start body and this fails; the
+// tester saw a start carrying only cityId, spendLimitUsd, scope and skipSearch.
+test("the start request carries the picks, and Start waits for the server's price", () => {
+  const run = read("components/placePool/CityRunPanel.jsx");
+  assert.ok(run.includes("? { stages: server.stages, redoIntelligence: server.redoIntelligence, confirmRedo: server.redoIntelligence ? true : undefined }"));
+  assert.ok(run.includes(': { skipSearch }),'), "without picks the body is what it always was");
+  assert.ok(run.includes('pipeline("preview", { cityId: city.city_id, stages, redoIntelligence, scope: whole ? "whole_city" : "new_only" })'));
+  assert.ok(run.includes("disabled={!limitOk || starting || (server !== null && !plan)}"), "no Start before the server's price");
+  assert.ok(run.includes("onClick={() => (server ? setConfirmPlan(true) : wholeCity ? setConfirmWhole(true) : start())}"));
+  assert.ok(run.includes('confirmLabel={`Start, ${plan ? planPriceText(plan, serperRate) : ""}`}'), "the confirmation names the server's price");
+});
+
+test("the Intelligence coverage table reads in sentence case", () => {
+  const tab = read("components/placeIntelligenceTrial/IntelligenceOverviewTab.jsx");
+  assert.equal(/uppercase tracking-wide font-mono text-\[var\(--color-text-tertiary\)\]/.test(tab), false);
+  assert.equal(tab.includes('<div className="text-[10px] uppercase tracking-wide'), false);
+});
+
+
+// ── #4276 round 4: the score backlog stays held ─────────────────────────────
+
+// FAILS-ON-REVERT: count Reviews and Redo from the funnel again (no_reviews,
+// intelligence_without_reviews) and the held places become pickable gaps; map Reviews
+// to a redo again and serverPlanFor sets redoIntelligence.
+test("held backlog places are shown apart and can't be picked; Reviews is never a redo", () => {
+  const f = { active: 100, pre_checked: 100, pre_passed: 80, with_photos: 80, final_checked: 80, servable: 60, scored: 60, no_reviews: 40, rules_only: 0, intelligence_without_reviews: 36 };
+  const allHeld = Object.fromEntries(matrixCells(f, { uncoveredTiles: 0, unfinishedSearches: 0, cappedOpen: 0 }, { outside_active: 0 },
+    { reviews_eligible: 0, reviews_held: 40, redo_eligible: 0, redo_held: 36 }).map((c) => [c.id, c]));
+  assert.equal(allHeld.reviews.text, "–");
+  assert.equal(allHeld.reviews.gap, false);
+  assert.equal(pipelineLib.pickable(allHeld.reviews), false);
+  assert.equal(allHeld.reviews.heldText, "40 held");
+  assert.ok(allHeld.reviews.heldTitle.startsWith("Held: 40 (backlog paused). Held in the score backlog"));
+  assert.equal(allHeld.redo.text, "–");
+  assert.equal(pipelineLib.pickable(allHeld.redo), false);
+  assert.equal(allHeld.redo.heldText, "36 held");
+  assert.equal(pipelineLib.wholeRow(Object.values(allHeld)).includes("reviews"), false, "a whole-row pick skips held places");
+
+  const some = Object.fromEntries(matrixCells(f, { uncoveredTiles: 0, unfinishedSearches: 0, cappedOpen: 0 }, { outside_active: 0 },
+    { reviews_eligible: 3, reviews_held: 37, redo_eligible: 0, redo_held: 36 }).map((c) => [c.id, c]));
+  assert.equal(some.reviews.text, "3");
+  assert.equal(pipelineLib.pickable(some.reviews), true);
+  assert.deepEqual(pipelineLib.serverPlanFor(["reviews"]).redoIntelligence, false);
+
+  // Before the counts have answered, neither cell can be picked.
+  const unknown = Object.fromEntries(matrixCells(f, null, null).map((c) => [c.id, c]));
+  assert.equal(unknown.reviews.text, "?");
+  assert.equal(pipelineLib.pickable(unknown.reviews), false);
+
+  const section = read("components/placePool/PipelineSection.jsx");
+  assert.ok(section.includes("fetchRedoCounts(),"), "the gaps table reads the held split");
+  assert.ok(section.includes("title={cell.heldTitle || HELD_BACKLOG_NOTE}"), "held places carry a note on the hold");
+  const run = read("components/placePool/CityRunPanel.jsx");
+  assert.ok(run.includes("(never places held in the score backlog)"), "the confirmation states the scope");
+  assert.ok(run.includes("setTimeout(() => {") && run.includes("clearTimeout(timer)"), "one preview per settled plan");
+});
+
+// ── #4276 round 6: the gaps table's numbers and cells ───────────────────────
+
+// FAILS-ON-REVERT: derive Photos and Final check from pre_passed - with_photos and
+// with_photos - final_checked again. Miami showed 3,638 photos to fetch, really 3,688;
+// London, Paris and Brussels showed Done with 6, 12 and 9 places waiting.
+test("Photos and Final check count the places each stage would take, not a difference of totals", () => {
+  const miami = { active: 6111, pre_checked: 6111, pre_passed: 3721, with_photos: 83, final_checked: 11, servable: 0, scored: 0,
+    photos_needed: 3688, final_check_needed: 83 };
+  const by = Object.fromEntries(matrixCells(miami, null, null, null).map((c) => [c.id, c]));
+  assert.equal(by.photos.value, 3688);
+  assert.equal(by.final_check.value, 83);
+  const london = { active: 15551, pre_checked: 15551, pre_passed: 10711, with_photos: 11773, final_checked: 15551, servable: 10706, scored: 10706,
+    photos_needed: 6, final_check_needed: 0 };
+  const ldn = Object.fromEntries(matrixCells(london, null, null, null).map((c) => [c.id, c]));
+  assert.equal(ldn.photos.value, 6, "pre_passed - with_photos is negative here and hid six places");
+  assert.equal(ldn.photos.gap, true);
+  // An older funnel without the fields still reads as before.
+  const old = Object.fromEntries(matrixCells({ active: 10, pre_checked: 10, pre_passed: 8, with_photos: 5, final_checked: 2 }, null, null, null).map((c) => [c.id, c]));
+  assert.equal(old.photos.value, 3);
+  assert.equal(old.final_check.value, 3);
+});
+
+// FAILS-ON-REVERT: put items-start back on the cell (children shrink to their text and
+// spill into the next cell), or drop the gap between cells.
+test("gaps cells keep their padding, wrap long words and leave a gap to the next cell", () => {
+  const section = read("components/placePool/PipelineSection.jsx");
+  const gapCell = section.slice(section.indexOf("function GapCell("), section.indexOf("export function PipelineSection("));
+  assert.equal(gapCell.includes("items-start"), false, "children stretch to the cell's width");
+  assert.ok(gapCell.includes("${CELL_PAD}") && section.includes('const CELL_PAD = "px-1.5 py-1";'));
+  assert.ok(section.includes('<td key={cell.id} className="px-[3px] py-[3px] align-top">'), "a 6 px gap between cells");
+  assert.ok(section.includes("whitespace-normal break-words"), "Never seeded wraps inside its cell");
+  assert.ok(section.includes("min-[1400px]:grid-cols-[minmax(0,1fr)_300px]"), "the run plan sits beside the table only when both fit");
+  assert.ok(section.includes('Unsearched: "Un\\u00ADsearched"'), "long header words break with a hyphen");
+});
+
+
+// ── #4276 round 7 ───────────────────────────────────────────────────────────
+
+// FAILS-ON-REVERT: drop PlanJumpBar (or its render) and, below 1400 px, a pick gives no
+// sign that the run plan is under the table.
+test("below 1400 px a pick shows a bar that takes you to the run plan", async () => {
+  const section = read("components/placePool/PipelineSection.jsx");
+  assert.ok(section.includes('const PLAN_BESIDE_TABLE = "(min-width: 1400px)";'), "the bar uses the same width as the layout");
+  assert.ok(section.includes("{picks && planHidden && ("), "shown only once a cell is picked and the plan is out of sight");
+  assert.ok(section.includes("<aside ref={setPlanEl}"), "the plan is what the bar watches and scrolls to");
+  assert.ok(section.includes('planEl?.scrollIntoView({ behavior: "smooth", block: "start" })'));
+  assert.ok(section.includes("fixed inset-x-0 bottom-4 z-30"), "fixed to the window, so the city panel can't cover it");
+  assert.ok(section.includes("return createPortal(") && section.includes("document.body,"), "in a portal, so no transformed ancestor pins it");
+  assert.match(section, /\{n\} picked · \{totalText\}/);
+  assert.match(section, /Review plan <ArrowDown/);
+  assert.ok(section.includes("setInView(r.top < window.innerHeight - 48 && r.bottom > 0)"), "it goes once the plan is on screen");
+  assert.ok(section.includes('window.addEventListener("scroll", check, { capture: true, passive: true })'), "any scroller counts");
+});
+
+// FAILS-ON-REVERT: put "Held: N (backlog paused)" back under the count and the rows double in height.
+test("a held count is one short line, with the full wording in its tooltip", () => {
+  const f = { active: 10, pre_checked: 10, pre_passed: 10, with_photos: 10, final_checked: 10, servable: 10, scored: 10, no_reviews: 6585, intelligence_without_reviews: 6585 };
+  const by = Object.fromEntries(matrixCells(f, null, null, { reviews_eligible: 0, reviews_held: 6585, redo_eligible: 0, redo_held: 6585 }).map((c) => [c.id, c]));
+  assert.equal(by.reviews.heldText, "6.6k held");
+  assert.ok(by.reviews.heldText.length <= 9, "fits a 47 px column at 10 px");
+  assert.match(by.reviews.heldTitle, /^Held: 6,585 \(backlog paused\)\./);
+  const section = read("components/placePool/PipelineSection.jsx");
+  const heldLine = section.slice(section.indexOf("function HeldLine("), section.indexOf("function GapCell("));
+  assert.ok(heldLine.includes(" whitespace-nowrap ") && !heldLine.includes(" truncate "), "one line, never cut off with an ellipsis");
+});
+
+
+// ── #4276 round 8 ───────────────────────────────────────────────────────────
+
+// FAILS-ON-REVERT: put back uncoveredTiles + unfinishedSearches and London reads 781
+// "searches" when 13 new tiles x 14 configs + 768 = 950 are owed.
+test("Unsearched counts searches: each new tile owes one search per config", () => {
+  const R = pipelineLib.PIPELINE_RATES;
+  const f = { active: 15551, pre_checked: 15551, pre_passed: 1, with_photos: 1, final_checked: 15551, servable: 1, scored: 1, is_live: true };
+  const london = Object.fromEntries(matrixCells(f, { uncoveredTiles: 13, unfinishedSearches: 768, cappedOpen: 0 }, { outside_active: 0 }, null).map((c) => [c.id, c]));
+  assert.equal(london.unsearched.value, 13 * R.SEARCHES_PER_TILE + 768);
+  assert.equal(london.unsearched.text, "950");
+  assert.equal(london.unsearched.title, "950 searches, incl. 13 new tiles (14 searches each)");
+  // The cost line already priced 950 searches plus the new tiles' photos: estimateFillCostUsd(950, 13).
+  assert.equal(pipelineLib.cellCost(london.unsearched).text, "$34.95");
+  const abuja = Object.fromEntries(matrixCells({}, { uncoveredTiles: 144, unfinishedSearches: 0, cappedOpen: 0 }, null, null).map((c) => [c.id, c]));
+  assert.equal(abuja.unsearched.text, "2,016", "the server's preview_fill: 2,016 searches");
+  assert.equal(pipelineLib.cellCost(abuja.unsearched).text, "$114.91");
+  const durham = Object.fromEntries(matrixCells({ active: 1 }, { uncoveredTiles: 16, unfinishedSearches: 2306, cappedOpen: 0 }, null, null).map((c) => [c.id, c]));
+  assert.equal(durham.unsearched.value, 2530);
+  assert.equal(pipelineLib.cellCost(durham.unsearched).text, "$86.56");
+  const totals = Object.fromEntries(pipelineLib.matrixTotals([Object.values(london), Object.values(abuja), Object.values(durham)]).map((c) => [c.id, c]));
+  assert.equal(totals.unsearched.text, "5,496", "950 + 2,016 + 2,530");
+  const cols = Object.fromEntries(pipelineLib.MATRIX_COLUMNS.map((c) => [c.id, c]));
+  assert.match(cols.unsearched.sub, /searches/i);
+  const section = read("components/placePool/PipelineSection.jsx");
+  assert.ok(section.includes('label="Searches never run"'), "the tile says searches too");
+  assert.ok(section.includes("unsearchedSearches(r)"), "and counts them the same way");
+});
+
+test("compact counts fit a narrow cell", () => {
+  assert.equal(pipelineLib.compactCount(950), "950");
+  assert.equal(pipelineLib.compactCount(6585), "6.6k");
+  assert.equal(pipelineLib.compactCount(9883), "9.9k");
+  assert.equal(pipelineLib.compactCount(12345), "12k");
+  assert.equal(pipelineLib.compactCount(1000), "1k");
 });

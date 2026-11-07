@@ -76,6 +76,16 @@ const LazyBrandGroupMediaPanel = React.lazy(async () => {
   return { default: module.BrandGroupMediaPanel };
 });
 
+// The plan's module once the panel has loaded it. Only that module reads the
+// plan, so before it loads there is no plan to refresh.
+let loadedPlanModule: typeof import("../../src/components/messages/BrandPlanPanel") | null = null;
+
+const LazyBrandPlanPanel = React.lazy(async () => {
+  const module = await import("../../src/components/messages/BrandPlanPanel");
+  loadedPlanModule = module;
+  return { default: module.BrandPlanPanel };
+});
+
 const LazyMediaThumb = React.lazy(async () => {
   const module = await import("../../src/components/media/MediaThumb");
   return { default: module.MediaThumb };
@@ -130,11 +140,12 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
 }
 
 function BrandGroupThreadScreen(): React.ReactElement {
-  const params = useLocalSearchParams<{ conversationId?: string | string[]; mode?: string | string[]; focusMessageId?: string | string[]; gallery?: string | string[] }>();
+  const params = useLocalSearchParams<{ conversationId?: string | string[]; mode?: string | string[]; focusMessageId?: string | string[]; gallery?: string | string[]; plan?: string | string[] }>();
   const conversationId = first(params.conversationId);
   const requestedMode = first(params.mode);
   const requestedFocusMessageId = first(params.focusMessageId);
   const requestedGallery = first(params.gallery);
+  const requestedPlan = first(params.plan);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
@@ -148,6 +159,8 @@ function BrandGroupThreadScreen(): React.ReactElement {
   const group = groups.find((item) => item.conversation_id === conversationId) ?? null;
   const canBrand = group?.access_kind === "brand";
   const canSupport = staff.isStaff;
+  // #4270: the plan is for the brand's own team; support staff use Admin.
+  const planBrandId = canBrand && group ? group.brand_id : null;
   const [actorMode, setActorMode] = useState<"brand" | "support">(
     requestedMode === "support" ? "support" : "brand",
   );
@@ -174,9 +187,13 @@ function BrandGroupThreadScreen(): React.ReactElement {
   const [panelViewerItems, setPanelViewerItems] = useState<BrandGroupMediaRow[] | null>(null);
   const [mediaPanelOpen, setMediaPanelOpen] = useState(requestedGallery === "1");
   const [peopleSheetOpen, setPeopleSheetOpen] = useState(false);
-  const [desktopDetailTab, setDesktopDetailTab] = useState<"people" | "media">(
-    requestedGallery === "1" ? "media" : "people",
+  const [planPanelOpen, setPlanPanelOpen] = useState(requestedPlan === "1" && requestedGallery !== "1");
+  // #4270: on wide web the rail opens on the plan, unless the address asks for
+  // the gallery. A group with no plan (support access) shows People instead.
+  const [desktopDetailTab, setDesktopDetailTab] = useState<"people" | "plan" | "media">(
+    requestedGallery === "1" ? "media" : "plan",
   );
+  const detailTab = desktopDetailTab === "plan" && !planBrandId ? "people" : desktopDetailTab;
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const scrollRef = useRef<React.ElementRef<typeof ScrollView>>(null);
   const autoFollowLatest = useRef(requestedFocusMessageId === null);
@@ -308,8 +325,11 @@ function BrandGroupThreadScreen(): React.ReactElement {
     if (requestedGallery === "1") {
       setMediaPanelOpen(true);
       setDesktopDetailTab("media");
+    } else if (requestedPlan === "1") {
+      setPlanPanelOpen(true);
+      setDesktopDetailTab("plan");
     }
-  }, [requestedGallery]);
+  }, [requestedGallery, requestedPlan]);
 
   useEffect(() => {
     if (!conversationId) return;
@@ -318,7 +338,11 @@ function BrandGroupThreadScreen(): React.ReactElement {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` },
-        () => {
+        (payload: { new?: { message_type?: unknown } }) => {
+          // #4270: a quiet plan line means the plan changed.
+          if (planBrandId && payload.new?.message_type === "system" && loadedPlanModule) {
+            void loadedPlanModule.refreshBrandPlan(queryClient, planBrandId);
+          }
           void queryClient.invalidateQueries({ queryKey: ["brandGroupMedia", "list", conversationId] });
           void queryClient.invalidateQueries({ queryKey: ["brandGroupMedia", "meta", conversationId] });
           void refresh();
@@ -326,7 +350,7 @@ function BrandGroupThreadScreen(): React.ReactElement {
       )
       .subscribe();
     return () => { void supabase.removeChannel(channel); };
-  }, [conversationId, queryClient, refresh]);
+  }, [conversationId, planBrandId, queryClient, refresh]);
 
   const openMedia = useCallback(() => {
     if (!conversationId) return;
@@ -473,6 +497,22 @@ function BrandGroupThreadScreen(): React.ReactElement {
     });
   }
 
+  if (!isWideDesktop && planPanelOpen && planBrandId) {
+    return (
+      <SafeScreen edges={["top", "bottom"]} style={styles.screen}>
+        <React.Suspense fallback={<View style={styles.state}><ActivityIndicator color={accent.warm} /></View>}>
+          <LazyBrandPlanPanel
+            brandId={planBrandId}
+            onBack={() => {
+              setPlanPanelOpen(false);
+              if (requestedPlan === "1" && conversationId) router.replace({ pathname: "/messages/[conversationId]", params: { conversationId } });
+            }}
+          />
+        </React.Suspense>
+      </SafeScreen>
+    );
+  }
+
   if (!isWideDesktop && mediaPanelOpen && conversationId) {
     return (
       <SafeScreen edges={["top", "bottom"]} style={styles.screen}>
@@ -510,7 +550,7 @@ function BrandGroupThreadScreen(): React.ReactElement {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`${group?.brand_name || "Brand group"}, ${group?.member_count ?? members.length} teammates. Show people`}
-          accessibilityState={{ expanded: isWideDesktop ? desktopDetailTab === "people" : peopleSheetOpen }}
+          accessibilityState={{ expanded: isWideDesktop ? detailTab === "people" : peopleSheetOpen }}
           onPress={() => {
             if (isWideDesktop) {
               setDesktopDetailTab("people");
@@ -533,13 +573,26 @@ function BrandGroupThreadScreen(): React.ReactElement {
             <Text style={styles.subtitle} numberOfLines={1}>{group ? `${group.member_count} teammates · tap to see people` : "Official Brand group"}</Text>
           </View>
         </Pressable>
+        {!isWideDesktop && planBrandId ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t("plan.pill_a11y")}
+            hitSlop={5}
+            onPress={() => setPlanPanelOpen(true)}
+            style={styles.mediaButton}
+            testID="brand-plan-pill"
+          >
+            <Icon name="calendar" size={16} color={textTokens.primary} />
+            <Text style={styles.mediaButtonText}>{t("plan.pill")}</Text>
+          </Pressable>
+        ) : null}
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={t("chat.media_a11y")}
           accessibilityState={{ expanded: isWideDesktop ? mediaPanelOpen : undefined }}
           hitSlop={5}
           onPress={openMedia}
-          style={[styles.mediaButton, desktopDetailTab === "media" && styles.mediaButtonActive]}
+          style={[styles.mediaButton, detailTab === "media" && styles.mediaButtonActive]}
         >
           <Icon name="grid" size={16} color={textTokens.primary} />
           <Text style={styles.mediaButtonText}>{t("chat.media")}</Text>
@@ -600,6 +653,14 @@ function BrandGroupThreadScreen(): React.ReactElement {
           {messages.length === 0 ? (
             <View style={styles.empty}><Text style={styles.stateText}>This is the official Brand group. Start the first conversation here.</Text></View>
           ) : messages.map((message) => {
+            // #4270: a plan line is a quiet centred line: no bubble, no Reply, no Select.
+            if (message.message_type === "system") {
+              return (
+                <View key={message.id} onLayout={(event: LayoutChangeEvent) => messageOffsets.current.set(message.id, event.nativeEvent.layout.y)} style={styles.systemLine} testID="brand-group-system-line">
+                  <Text style={styles.systemLineText}>{message.content}</Text>
+                </View>
+              );
+            }
             // #4111 — a new customer enquiry: a card, never a chat bubble. It
             // names no guest (staff and scanners read Brand groups, D8).
             if (message.message_type === "brand_enquiry_card") {
@@ -733,7 +794,20 @@ function BrandGroupThreadScreen(): React.ReactElement {
       </View>
       {isWideDesktop && conversationId ? (
         <View style={styles.detailsRail}>
-          {desktopDetailTab === "people" ? (
+          <View style={styles.railTabs} accessibilityRole="tablist" testID="brand-group-rail-tabs">
+            <Pressable accessibilityRole="tab" accessibilityLabel="Show people" accessibilityState={{ selected: detailTab === "people" }} onPress={() => { setDesktopDetailTab("people"); setMediaPanelOpen(false); }} style={[styles.railTab, detailTab === "people" && styles.railTabActive]}>
+              <Text style={detailTab === "people" ? styles.railTabTextActive : styles.railTabText}>People · {members.length || "—"}</Text>
+            </Pressable>
+            {planBrandId ? (
+              <Pressable accessibilityRole="tab" accessibilityLabel={t("plan.pill_a11y")} accessibilityState={{ selected: detailTab === "plan" }} onPress={() => { setDesktopDetailTab("plan"); setMediaPanelOpen(false); }} style={[styles.railTab, detailTab === "plan" && styles.railTabActive]} testID="brand-plan-rail-tab">
+                <Text style={detailTab === "plan" ? styles.railTabTextActive : styles.railTabText}>{t("plan.pill")}</Text>
+              </Pressable>
+            ) : null}
+            <Pressable accessibilityRole="tab" accessibilityLabel={t("chat.media_a11y")} accessibilityState={{ selected: detailTab === "media" }} onPress={openMedia} style={[styles.railTab, detailTab === "media" && styles.railTabActive]}>
+              <Text style={detailTab === "media" ? styles.railTabTextActive : styles.railTabText}>{t("chat.media")}</Text>
+            </Pressable>
+          </View>
+          {detailTab === "people" ? (
             <BrandGroupPeoplePanel
               groupName={group?.brand_name ?? "Brand group"}
               members={members}
@@ -747,16 +821,14 @@ function BrandGroupThreadScreen(): React.ReactElement {
                 setMediaPanelOpen(true);
               }}
             />
+          ) : detailTab === "plan" && planBrandId ? (
+            <View style={styles.mediaRail}>
+              <React.Suspense fallback={<View style={styles.mediaPanelLoading}><ActivityIndicator color={accent.warm} /></View>}>
+                <LazyBrandPlanPanel compact brandId={planBrandId} />
+              </React.Suspense>
+            </View>
           ) : (
             <View style={styles.mediaRail}>
-              <View style={styles.railTabs} accessibilityRole="tablist">
-                <Pressable accessibilityRole="tab" accessibilityLabel="Show people" accessibilityState={{ selected: false }} onPress={() => { setDesktopDetailTab("people"); setMediaPanelOpen(false); }} style={styles.railTab}>
-                  <Text style={styles.railTabText}>People · {members.length || "—"}</Text>
-                </Pressable>
-                <View accessibilityRole="tab" accessibilityState={{ selected: true }} style={[styles.railTab, styles.railTabActive]}>
-                  <Text style={styles.railTabTextActive}>Media</Text>
-                </View>
-              </View>
               <React.Suspense fallback={<View style={styles.mediaPanelLoading}><ActivityIndicator color={accent.warm} /></View>}>
                 <LazyBrandGroupMediaPanel
                   compact
@@ -870,6 +942,8 @@ const styles = StyleSheet.create({
   messages: { flex: 1 },
   messagesContent: { padding: spacing.md, gap: spacing.md, paddingBottom: spacing.xl },
   empty: { padding: spacing.xl, borderRadius: radius.lg, borderWidth: 1, borderColor: glass.border.profileBase, backgroundColor: glass.tint.profileBase },
+  systemLine: { alignSelf: "center", maxWidth: "90%", paddingHorizontal: spacing.md },
+  systemLineText: { color: textTokens.tertiary, fontSize: 12, lineHeight: 17, textAlign: "center" },
   messageWrap: { maxWidth: "84%", gap: 5 },
   messageWrapMine: { alignSelf: "flex-end", alignItems: "flex-end" },
   messageWrapOther: { alignSelf: "flex-start", alignItems: "flex-start" },

@@ -40,6 +40,10 @@ import { useAgentGuide } from "../hooks/useAgentGuide";
 import { useMyAgentActivity } from "../hooks/useMyAgentActivity";
 import { agentActivityLine, routineByName } from "../lib/agentPrompts";
 import { relativeTime } from "../lib/crmModel";
+// Issue #4294 — the "Claude app" card: connections made by signing in from
+// Claude (browser, desktop, phone, Claude Code). Never a token.
+import { useClaudeConnections } from "../hooks/useMinglaConnector";
+import { disconnectConnection } from "../services/minglaConnectorService";
 import {
   AGENTS,
   AGENT_GUARDRAILS,
@@ -74,6 +78,83 @@ import {
   setupVerdict,
   shownKeyVerdict,
 } from "../lib/agentConnect";
+
+/**
+ * Issue #4294: one row per Claude app connection, with Disconnect (asks
+ * first). Loading, empty, error (Retry) and populated.
+ */
+function ClaudeAppCard() {
+  const { addToast } = useToast();
+  const connections = useClaudeConnections();
+  const [confirming, setConfirming] = useState(null);
+  const [busy, setBusy] = useState(null);
+  const disconnect = async (grantId, label) => {
+    setBusy(grantId);
+    try {
+      await disconnectConnection(grantId);
+      addToast({ variant: "success", title: `${label} is disconnected`, description: "It stops working at its next request." });
+      setConfirming(null);
+      connections.refetch();
+    } catch (err) {
+      addToast({ variant: "error", title: "That didn't disconnect", description: err?.message || "Check your connection and try again." });
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <SectionCard title="Claude app" subtitle="Signed in from Claude in the browser, the desktop app, a phone or Claude Code.">
+      {connections.loading && !connections.rows.length ? (
+        <div aria-busy="true" aria-label="Loading Claude app connections">
+          <Skeleton height={20} />
+        </div>
+      ) : connections.error ? (
+        <div role="alert" className="flex flex-wrap items-center gap-3">
+          <p className="text-[13px] text-[var(--color-text-secondary)]">Couldn&apos;t load your Claude app connections.</p>
+          <Button type="button" variant="secondary" size="sm" onClick={() => connections.refetch()} className="min-h-11 max-sm:h-11">
+            Try again
+          </Button>
+        </div>
+      ) : connections.rows.length === 0 ? (
+        <p className="text-[13px] text-[var(--color-text-secondary)]">
+          Not connected. Add the Mingla connector in Claude and sign in.
+        </p>
+      ) : (
+        <ul className="divide-y divide-[var(--gray-200)]">
+          {connections.rows.map((c) => (
+            <li key={c.grant_id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+              <div className="min-w-0 text-sm">
+                <p className="font-medium text-[var(--color-text-primary)]">{c.label}</p>
+                <p className="text-xs text-[var(--color-text-secondary)]">
+                  Connected <time dateTime={c.created_at}>{relativeTime(c.created_at)}</time>
+                  {" · "}
+                  {c.last_used_at ? (
+                    <>Last used <time dateTime={c.last_used_at}>{relativeTime(c.last_used_at)}</time></>
+                  ) : (
+                    "Not used yet"
+                  )}
+                </p>
+              </div>
+              {confirming === c.grant_id ? (
+                <div className="flex gap-2">
+                  <Button type="button" variant="danger" size="sm" loading={busy === c.grant_id} onClick={() => disconnect(c.grant_id, c.label)} className="min-h-11 max-sm:h-11">
+                    Disconnect
+                  </Button>
+                  <Button type="button" variant="secondary" size="sm" disabled={busy === c.grant_id} onClick={() => setConfirming(null)} className="min-h-11 max-sm:h-11">
+                    Keep
+                  </Button>
+                </div>
+              ) : (
+                <Button type="button" variant="secondary" size="sm" onClick={() => setConfirming(c.grant_id)} className="min-h-11 max-sm:h-11">
+                  Disconnect
+                </Button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </SectionCard>
+  );
+}
 
 /** While a key or a setup message is on screen the page checks this often. */
 const WATCH_EVERY_MS = 5_000;
@@ -836,6 +917,8 @@ export function AgentPage() {
               <AgentRoutineList routines={guideRead.data?.guide?.routines} />
             )}
           </SectionCard>
+
+          <ClaudeAppCard />
 
           <SectionCard title="What my agent did" noPadding>
             {activity.loading ? (

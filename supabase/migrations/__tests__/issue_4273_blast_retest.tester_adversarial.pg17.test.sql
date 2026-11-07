@@ -5,7 +5,7 @@
 --
 -- Every check runs and records; the suite fails at the end with the whole list.
 --
--- MINGLA-INVARIANT: I-4273-HOST-TOTALS-BLIND-TO-CONTACT-MATCH | issue #4273 | Typing a graph-only person's contact into an unlinked Book row changes no Host-readable figure about Followers or Friends of followers before the send.
+-- MINGLA-INVARIANT: I-4273-HOST-TOTALS-BLIND-TO-CONTACT-MATCH | issue #4273 | Typing a graph-only person's contact into an unlinked Book row changes no Followers or Friends-of-followers people count before the send; reach and price follow the send's own verdict (Seth chose honest counts over hiding contact-match refusals, 2026-11-06).
 \set ON_ERROR_STOP on
 BEGIN;
 
@@ -169,16 +169,19 @@ BEGIN
     AND v_after -> 'followersAlsoInBook' = v_before -> 'followersAlsoInBook'
     AND v_after -> 'peopleMinusBook' = v_before -> 'peopleMinusBook',
     v_before::text || ' -> ' || v_after::text);
-  -- The reach delta moves only by the probe rows the Book itself now reaches:
-  -- it must not differ between a probe that is a stranger and one that is muted.
-  PERFORM pg_temp.chk('R-02 SMS reach beyond the Book does not move with typed contacts',
-    v_after -> 'smsMinusBook' = v_before -> 'smsMinusBook', v_before::text || ' -> ' || v_after::text);
+  -- Seth chose honest counts over hiding contact-match refusals (#4273,
+  -- 2026-11-06): reach follows the send's verdict, so a typed number that a
+  -- follower already holds is priced once, and one the send would refuse is
+  -- not priced. Reach beyond the Book can only fall, never rise.
+  PERFORM pg_temp.chk('R-02 SMS reach beyond the Book only falls with typed contacts, as the send would',
+    (v_after ->> 'smsMinusBook')::int <= (v_before ->> 'smsMinusBook')::int, v_before::text || ' -> ' || v_after::text);
 
   v_aud := (public.biz_get_or_create_marketing_combined_audience_v1(v_owner, v_brand, v_all) ->> 'audienceId')::uuid;
   v_id := pg_temp.draft('4273b000-3000-4000-8000-000000000001', v_aud, 'sms');
   v_env := public.biz_marketing_combined_quote_candidates_v1(v_owner, v_id);
-  PERFORM pg_temp.chk('R-03 the quote shows a muted follower''s phone as allowed on its Book row, as a stranger''s would be',
-    v_env -> 'candidates' @> '[{"normalizedContact":"+12025557112","allowed":true,"targetBrandPersonId":"4273b000-2000-4000-8000-000000000003"}]'::jsonb, v_env::text);
+  PERFORM pg_temp.chk('R-03 the quote shows a muted follower''s phone on its Book row as a plain, unpriced suppression',
+    v_env -> 'candidates' @> '[{"normalizedContact":"+12025557112","allowed":false,"safeReasonCode":"suppressed","targetBrandPersonId":"4273b000-2000-4000-8000-000000000003"}]'::jsonb
+    AND v_env::text !~* 'match', v_env::text);
 
   -- ── Send: strictest per person, through the Book row ──────────────────────
   PERFORM public.biz_confirm_marketing_combined_send_v1(v_owner, v_id,
@@ -343,7 +346,7 @@ END;
 $out$;
 RESET ROLE;
 
--- ── Finalize: a withheld target reads like a sent one, a real failure stays one ──
+-- ── Finalize (#4273 honest count): a withheld target is not counted as sent ──
 CREATE FUNCTION pg_temp.fin(p_id uuid, p_group text, p_channel text, p_lead uuid DEFAULT NULL) RETURNS jsonb LANGUAGE plpgsql AS $f$
 DECLARE v_o uuid := '4273b000-0000-4000-8000-000000000001'; v_b uuid := '4273b000-0000-4000-8000-0000000000b1'; v_a uuid; v_env jsonb;
 BEGIN
@@ -353,7 +356,16 @@ BEGIN
     CASE p_channel WHEN 'sms' THEN '{"kind":"sms","body":"Doors at 9."}'::jsonb
       ELSE '{"kind":"email","subject":"Hi","body_html":"Hi","body_text":"Hi"}'::jsonb END, 'draft', p_lead);
   v_env := public.biz_marketing_combined_quote_candidates_v1(v_o, p_id);
-  PERFORM public.biz_confirm_marketing_combined_send_v1(v_o, p_id, gen_random_uuid(), pg_temp.snap(v_env), now() - interval '1 minute');
+  -- #4273 (Seth, 2026-11-06: honest counts): a list the send would refuse
+  -- entirely is refused at confirm; nothing is priced or sealed.
+  BEGIN
+    PERFORM public.biz_confirm_marketing_combined_send_v1(v_o, p_id, gen_random_uuid(), pg_temp.snap(v_env), now() - interval '1 minute');
+  EXCEPTION WHEN SQLSTATE 'PT409' THEN
+    IF SQLERRM = 'book_blast_zero_recipients' THEN
+      RETURN jsonb_build_object('refused', true, 'quote', v_env, 'rows', '[]'::jsonb);
+    END IF;
+    RAISE;
+  END;
   RETURN public.biz_marketing_combined_send_audience_v1(p_id);
 END; $f$;
 CREATE FUNCTION pg_temp.grp(p_id uuid, p_people uuid[]) RETURNS text LANGUAGE sql AS $f$
@@ -376,21 +388,14 @@ BEGIN
   -- All withheld.
   v_c := '4273b000-3000-4000-8000-0000000000a1';
   v_send := pg_temp.fin(v_c, pg_temp.grp('4273b000-6000-4000-8000-000000000001', ARRAY[v_muted, v_block]), 'sms');
-  PERFORM pg_temp.chk('F-00 fixture: everyone is withheld', jsonb_array_length(v_send -> 'rows') = 0, v_send::text);
-  v_st := public.mkt_finalize_campaign(v_c);
-  SELECT recipient_count, (SELECT reachable_count FROM public.marketing_book_send_executions e WHERE e.campaign_id = v_c) INTO v_rc, v_reach
-    FROM public.marketing_campaigns WHERE id = v_c;
-  PERFORM pg_temp.chk('F-01 all withheld finalizes as sent with the quote''s count', v_st = 'sent' AND v_rc = v_reach, v_st || ' ' || v_rc || '/' || v_reach);
-  SELECT * INTO v_ex FROM public.marketing_book_send_executions e WHERE e.campaign_id = v_c;
-  v_res := public.biz_marketing_book_existing_result_v1(v_owner, v_c, v_ex.client_request_id, v_ex.quote_hash, v_ex.quoted_at, v_ex.estimated_cost_minor, v_ex.currency, v_ex.scheduled_for);
-  PERFORM pg_temp.chk('F-02 a retry of it does not read as failed', (v_res ->> 'campaignFailed')::boolean IS NOT TRUE, COALESCE(v_res::text, 'null'));
-  UPDATE public.marketing_campaigns SET status = 'sending', updated_at = now() - interval '11 minutes' WHERE id = v_c;
-  PERFORM public.mkt_claim_campaigns(50, v_c);
-  v_send := public.biz_marketing_combined_send_audience_v1(v_c);
-  v_st := public.mkt_finalize_campaign(v_c);
-  PERFORM pg_temp.chk('F-03 reclaim of it sends nothing and finalizes the same',
-    jsonb_array_length(v_send -> 'rows') = 0 AND v_st = 'sent'
-    AND (SELECT recipient_count FROM public.marketing_campaigns WHERE id = v_c) = v_reach, v_st);
+  PERFORM pg_temp.chk('F-00 fixture: everyone on the list is refused by the send''s rule',
+    (v_send ->> 'refused')::boolean IS TRUE, v_send::text);
+  PERFORM pg_temp.chk('F-01 the quote prices none of them, each a plain suppression, so nothing is sealed',
+    NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_send -> 'quote' -> 'candidates') q WHERE (q ->> 'allowed')::boolean)
+    AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_send -> 'quote' -> 'candidates') q
+                     WHERE q ->> 'normalizedContact' IS NOT NULL AND q ->> 'safeReasonCode' <> 'suppressed')
+    AND NOT EXISTS (SELECT 1 FROM public.marketing_book_send_executions e WHERE e.campaign_id = v_c)
+    AND (SELECT status FROM public.marketing_campaigns WHERE id = v_c) = 'draft', v_send::text);
 
   -- A genuine provider failure, alone.
   v_c := '4273b000-3000-4000-8000-0000000000a2';
@@ -416,8 +421,8 @@ BEGIN
     (gen_random_uuid(), v_c, '+12025558201', 'sms', 'sent'), (gen_random_uuid(), v_c, '+12025557114', 'sms', 'sent');
   v_reach := (SELECT reachable_count FROM public.marketing_book_send_executions e WHERE e.campaign_id = v_c);
   v_st := public.mkt_finalize_campaign(v_c);
-  PERFORM pg_temp.chk('F-06 mixed: sent, count equals the quote', v_st = 'sent'
-    AND (SELECT recipient_count FROM public.marketing_campaigns WHERE id = v_c) = v_reach,
+  PERFORM pg_temp.chk('F-06 mixed: the quote priced exactly the two the send delivered', v_st = 'sent'
+    AND (SELECT recipient_count FROM public.marketing_campaigns WHERE id = v_c) = 2 AND v_reach = 2,
     v_st || ' ' || (SELECT recipient_count FROM public.marketing_campaigns WHERE id = v_c) || '/' || v_reach);
   INSERT INTO public.brand_follows(user_id, brand_id, muted_until)
   VALUES ('4273b000-0000-4000-8000-000000000014', v_brand, 'infinity');
@@ -441,15 +446,15 @@ BEGIN
   v_g := pg_temp.grp('4273b000-6000-4000-8000-000000000006', ARRAY[v_muted, '4273b000-2000-4000-8000-000000000007'::uuid]);
   v_before := public.biz_brand_blast_usage_v1(v_owner, v_brand);
   v_send := pg_temp.fin('4273b000-3000-4000-8000-0000000000a6', v_g, 'sms');
-  PERFORM pg_temp.chk('F-09a SMS method withheld', jsonb_array_length(v_send -> 'rows') = 0, v_send::text);
+  PERFORM pg_temp.chk('F-09a SMS method refused at the quote', (v_send ->> 'refused')::boolean IS TRUE, v_send::text);
   v_send := pg_temp.fin('4273b000-3000-4000-8000-0000000000a7', v_g, 'email', '4273b000-3000-4000-8000-0000000000a6');
-  PERFORM pg_temp.chk('F-09b email method withheld', jsonb_array_length(v_send -> 'rows') = 0, v_send::text);
-  PERFORM pg_temp.chk('F-09 both methods finalize as sent',
-    public.mkt_finalize_campaign('4273b000-3000-4000-8000-0000000000a6') = 'sent'
-    AND public.mkt_finalize_campaign('4273b000-3000-4000-8000-0000000000a7') = 'sent', '');
+  PERFORM pg_temp.chk('F-09b email method refused at the quote', (v_send ->> 'refused')::boolean IS TRUE, v_send::text);
+  PERFORM pg_temp.chk('F-09 neither method was sealed, so neither can be counted as sent',
+    NOT EXISTS (SELECT 1 FROM public.marketing_book_send_executions e
+                 WHERE e.campaign_id IN ('4273b000-3000-4000-8000-0000000000a6', '4273b000-3000-4000-8000-0000000000a7')), '');
   v_after := public.biz_brand_blast_usage_v1(v_owner, v_brand);
-  PERFORM pg_temp.chk('F-10 the two methods count once toward the week',
-    (v_after ->> 'blastsThisWeek')::int = (v_before ->> 'blastsThisWeek')::int + 1, v_before::text || ' -> ' || v_after::text);
+  PERFORM pg_temp.chk('F-10 two methods refused at the quote use none of the week',
+    (v_after ->> 'blastsThisWeek')::int = (v_before ->> 'blastsThisWeek')::int, v_before::text || ' -> ' || v_after::text);
 END;
 $final$;
 

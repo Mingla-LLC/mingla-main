@@ -29,6 +29,9 @@ import {
   fetchIntelligenceCoverage,
 } from "../../services/intelligenceCoverageService";
 import { timeAgo } from "../../lib/formatters";
+// #4276 (fix d): the first coverage read can time out cold and answer on a second
+// try, so it is retried once before any error shows.
+import { withOneRetry } from "../../lib/cityPipeline";
 import { RunRemainderConfirmModal } from "./RunRemainderConfirmModal";
 // ORCH-1013 Finding B — bulk launch ("Run remainder on all").
 import { RunRemainderOnAllConfirmModal } from "./RunRemainderOnAllConfirmModal";
@@ -189,7 +192,7 @@ function statusBadgeClasses(status) {
   return "bg-[var(--gray-100)] text-[var(--color-text-tertiary)]";
 }
 
-export function IntelligenceOverviewTab({ onSwitchToResults, onTabChange }) {
+export function IntelligenceOverviewTab({ onSwitchToResults, onTabChange, onCostModel }) {
   const { addToast } = useToast();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -207,9 +210,11 @@ export function IntelligenceOverviewTab({ onSwitchToResults, onTabChange }) {
     setError(null);
     try {
       const { rows: coverageRows, costModel: serverCostModel } =
-        await fetchIntelligenceCoverage();
+        await withOneRetry(() => fetchIntelligenceCoverage());
       setRows(coverageRows);
       setCostModel(serverCostModel);
+      // #4276: the Pipeline gaps table prices Intelligence cells from the same rate.
+      if (onCostModel) onCostModel(serverCostModel);
     } catch (err) {
       setError(err?.message || "Couldn't load coverage");
       if (!silent) {
@@ -222,7 +227,7 @@ export function IntelligenceOverviewTab({ onSwitchToResults, onTabChange }) {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [addToast]);
+  }, [addToast, onCostModel]);
 
   useEffect(() => {
     refresh();
@@ -438,7 +443,7 @@ export function IntelligenceOverviewTab({ onSwitchToResults, onTabChange }) {
           {/* Aggregate tiles */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             <div className="rounded-lg bg-[var(--gray-50)] border border-[var(--gray-200)] px-3 py-2">
-              <div className="text-[10px] uppercase tracking-wide text-[var(--color-text-tertiary)] font-mono">
+              <div className="text-xs text-[var(--color-text-secondary)]">
                 Cities
               </div>
               <div className="text-sm font-semibold text-[var(--color-text-primary)] tabular-nums">
@@ -446,7 +451,7 @@ export function IntelligenceOverviewTab({ onSwitchToResults, onTabChange }) {
               </div>
             </div>
             <div className="rounded-lg bg-[var(--gray-50)] border border-[var(--gray-200)] px-3 py-2">
-              <div className="text-[10px] uppercase tracking-wide text-[var(--color-text-tertiary)] font-mono">
+              <div className="text-xs text-[var(--color-text-secondary)]">
                 Servable
               </div>
               <div className="text-sm font-semibold text-[var(--color-text-primary)] tabular-nums">
@@ -454,7 +459,7 @@ export function IntelligenceOverviewTab({ onSwitchToResults, onTabChange }) {
               </div>
             </div>
             <div className="rounded-lg bg-[var(--gray-50)] border border-[var(--gray-200)] px-3 py-2">
-              <div className="text-[10px] uppercase tracking-wide text-[var(--color-text-tertiary)] font-mono">
+              <div className="text-xs text-[var(--color-text-secondary)]">
                 Evaluated
               </div>
               <div className="text-sm font-semibold text-[var(--color-success-700)] tabular-nums">
@@ -462,7 +467,7 @@ export function IntelligenceOverviewTab({ onSwitchToResults, onTabChange }) {
               </div>
             </div>
             <div className="rounded-lg bg-[var(--gray-50)] border border-[var(--gray-200)] px-3 py-2">
-              <div className="text-[10px] uppercase tracking-wide text-[var(--color-text-tertiary)] font-mono">
+              <div className="text-xs text-[var(--color-text-secondary)]">
                 Remaining
               </div>
               <div className="text-sm font-semibold text-[var(--color-warning-700)] tabular-nums">
@@ -480,7 +485,7 @@ export function IntelligenceOverviewTab({ onSwitchToResults, onTabChange }) {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-[var(--gray-50)] border-b border-[var(--gray-200)]">
-                  <tr className="text-left text-[10px] uppercase tracking-wide font-mono text-[var(--color-text-tertiary)]">
+                  <tr className="text-left text-xs text-[var(--color-text-secondary)]">
                     <th className="px-3 py-2 font-medium">City</th>
                     <th className="px-3 py-2 font-medium">Country</th>
                     {/* ORCH-1015 — Boundary + Details binary readiness columns
@@ -517,7 +522,7 @@ export function IntelligenceOverviewTab({ onSwitchToResults, onTabChange }) {
                       >
                         <td
                           colSpan={10}
-                          className="px-3 py-1.5 text-[10px] uppercase tracking-wide font-mono text-[var(--color-text-tertiary)]"
+                          className="px-3 py-1.5 text-xs font-medium text-[var(--color-text-secondary)]"
                         >
                           {BAND_LABELS.band1}
                         </td>
@@ -539,7 +544,7 @@ export function IntelligenceOverviewTab({ onSwitchToResults, onTabChange }) {
                       >
                         <td
                           colSpan={10}
-                          className="px-3 py-1.5 text-[10px] uppercase tracking-wide font-mono text-[var(--color-text-tertiary)]"
+                          className="px-3 py-1.5 text-xs font-medium text-[var(--color-text-secondary)]"
                         >
                           {BAND_LABELS.band2}
                         </td>
@@ -561,7 +566,7 @@ export function IntelligenceOverviewTab({ onSwitchToResults, onTabChange }) {
                       >
                         <td
                           colSpan={10}
-                          className="px-3 py-1.5 text-[10px] uppercase tracking-wide font-mono text-[var(--color-text-tertiary)]"
+                          className="px-3 py-1.5 text-xs font-medium text-[var(--color-text-secondary)]"
                         >
                           {BAND_LABELS.band3}
                         </td>

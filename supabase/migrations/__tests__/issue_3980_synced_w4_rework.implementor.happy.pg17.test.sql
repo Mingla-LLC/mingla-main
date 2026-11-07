@@ -40,6 +40,8 @@
 
 \set ON_ERROR_STOP on
 begin;
+-- #4270 W2 (D16): a promised event is made the way it was before; see the fixture.
+\ir issue_4270_promised_event_before_d16.fixture.sql
 
 alter table auth.users add column if not exists email_confirmed_at timestamptz;
 alter table auth.users add column if not exists phone text;
@@ -498,10 +500,10 @@ insert into public.ops_settings (key, value, updated_by) values ('auto_steps', '
 do $golive$
 declare p20 jsonb; p60 jsonb;
 begin
-  p20 := pg_temp.w4r_j(pg_temp.w4r_person('owner', format('select public.ops_expected_event_set(%L::jsonb, %L)::text',
+  p20 := pg_temp.w4r_j(pg_temp.w4r_person('owner', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text',
            jsonb_build_object('record_id', '39850000-0000-4000-c700-000000000001', 'title', 'W4R Late Night', 'event_type', 'event',
                               'expected_on', ((now() AT TIME ZONE 'UTC')::date + 20)::text), 'w4r-golive-20')));
-  p60 := pg_temp.w4r_j(pg_temp.w4r_person('owner', format('select public.ops_expected_event_set(%L::jsonb, %L)::text',
+  p60 := pg_temp.w4r_j(pg_temp.w4r_person('owner', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text',
            jsonb_build_object('record_id', '39850000-0000-4000-c700-000000000001', 'title', 'W4R Early Night', 'event_type', 'event',
                               'expected_on', ((now() AT TIME ZONE 'UTC')::date + 60)::text), 'w4r-golive-60')));
   perform pg_temp.w4r_check('W4R-GOLIVE', '20 days out (Too late for promo): no steps open, and past the go-live line',

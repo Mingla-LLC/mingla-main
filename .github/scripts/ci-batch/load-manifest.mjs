@@ -167,8 +167,19 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4271: register the Apple build PostgreSQL proof the same way.
 // #4271: register the final tester PostgreSQL proof the same way.
 // #4271: re-sealed after merging origin/main (#4261/#4273/#4275/#4276/#4283/#2830 rows kept beside the #4271 rows).
-// #3645: register the stay flat-net and unpaid-release-holds migrations the same way.
-export const BOOTSTRAP_SHA256 = "39d0044824cf2ce7135518506d766dc6abcb3e4fafd66fc9fe202093d242e2a0";
+// #3645: register the stay flat-net migration the same way.
+// #4271: register the resumable stuck-refund migration and its PostgreSQL proof.
+// #4271: register the resumable stuck-refund tester PostgreSQL proof (PR #4303).
+// #4271: PR #4303 rework renamed the migration and both proofs (failed-refund guard).
+// #4276: re-sealed after merging origin/main (#4271/#2830 rows kept beside the #4276 rows).
+// #4294: re-sealed after the Mingla connector migration entered the preserved inventories
+// and joined the pre-#1931 replay skip list by exact filename.
+// #4294: re-sealed after the connector's tester PostgreSQL proof joined the pre-#1931 template suites' inventories.
+// #4294: re-sealed after merging origin/main (#4303 and #4296 rows kept beside the #4294 rows).
+// #4273: register the buyer/follower auto opt-in, honest-quote and account-opt-out migrations and their proofs.
+// #4270: register the brand plan migrations (20280427004270-20280427024270) and their proofs the same way.
+// #3645: register the unpaid-release-holds migration and its PostgreSQL proof the same way.
+export const BOOTSTRAP_SHA256 = "2890254082e0610093e4f9c20ccbae680773c8d45e3e18d98272478e173719ce";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

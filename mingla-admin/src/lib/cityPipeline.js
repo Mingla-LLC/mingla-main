@@ -213,24 +213,45 @@ export function pipelineFunnelSteps(totals) {
   ];
 }
 
-/** The "needs attention" cards. Each one only when its count is above zero. */
+/**
+ * The "needs attention" list. Each item only when its count is above zero, with the
+ * tab that shows the gap (tab and link), when one does.
+ */
 export function attentionItems(totals) {
   if (!totals) return [];
   const items = [];
-  const add = (n, head, body) => { if ((num(n) ?? 0) > 0) items.push({ count: num(n), head, body }); };
+  const add = (n, head, body, tab = null, link = null) => {
+    if ((num(n) ?? 0) > 0) items.push({ count: num(n), head, body, tab, link });
+  };
   add(totals.rules_only, "Explorers see places on rules alone",
-    "These places passed the final check but have no Intelligence, so their score is rules only.");
+    "These places passed the final check but have no Intelligence, so their score is rules only.",
+    "pipeline", "See the gap");
   add(totals.no_reviews, "Places with no reviews on record",
-    "Intelligence for these ran, or will run, without any reviews.");
+    "Intelligence for these ran, or will run, without any reviews.",
+    "pipeline", "See the gap");
   add(totals.intelligence_without_reviews, "Intelligence that ran with no reviews",
-    "These can be redone once Serper is working again. Redoing changes live decks, so it is a separate choice.");
+    "These can be redone once Serper is working again. Redoing changes live decks, so it is a separate choice.",
+    "pipeline", "See the gap");
   add(totals.held, "Held until they finish",
     "New places stay hidden until reviews, Intelligence and the final score are done.");
   add(totals.never_checked, "Never checked",
-    "Active places neither check has looked at yet.");
+    "Active places neither check has looked at yet.",
+    "pipeline", "See the gap");
   add(totals.dropped_no_photos, "Dropped at seed for no photo",
-    "Google returned these with no photo, so they were never added. Explorer cards need photos.");
+    "Google returned these with no photo, so they were never added. Explorer cards need photos.",
+    "excluded", "See reasons");
   return items;
+}
+
+/** The recorded-spend line: each provider, Serper counted by request until priced. */
+export function spendTotalsLine(t) {
+  if (!t) return "";
+  const parts = [`Seeding ${usd(t.seeding_usd)}`, `Photos ${usd(t.photos_usd)}`, `Gemini ${usd(t.gemini_usd)}`];
+  const rate = num(t.serper_usd_per_request);
+  parts.push(rate === null
+    ? `Serper ${plural(t.serper_requests ?? 0, "request")}, not priced`
+    : `Serper ${usd((num(t.serper_requests) ?? 0) * rate)}`);
+  return parts.join(" · ");
 }
 
 // ── Readiness (Cities) ───────────────────────────────────────────────────────
@@ -295,41 +316,177 @@ export function cityReadinessWithGaps(row, gaps) {
 
 // ── The "what each city is missing" table ───────────────────────────────────
 
+// Column order and words follow the approved design. `kind` is the legend:
+//   missing  a gap to close (amber)
+//   check    the geo box needs a look: places sit outside it (red)
+//   redo     an optional redo (blue): Intelligence that ran with no reviews
+//   follows  happens on its own once the stages before it finish (dashed)
 export const MATRIX_COLUMNS = Object.freeze([
-  Object.freeze({ id: "box", label: "Geo box", sub: "Places outside it" }),
-  Object.freeze({ id: "unsearched", label: "Unsearched", sub: "Areas and searches" }),
-  Object.freeze({ id: "capped", label: "Capped", sub: "Hit 20 results" }),
-  Object.freeze({ id: "pre_check", label: "Pre-check", sub: "Not checked yet" }),
-  Object.freeze({ id: "photos", label: "Photos", sub: "Passed, no photos" }),
-  Object.freeze({ id: "final_check", label: "Final check", sub: "Have photos, not checked" }),
-  Object.freeze({ id: "reviews", label: "Reviews", sub: "Servable, none" }),
-  Object.freeze({ id: "intelligence", label: "Intelligence", sub: "Servable, rules only" }),
-  Object.freeze({ id: "score", label: "Final score", sub: "Servable, no score" }),
-  Object.freeze({ id: "held", label: "Held", sub: "Waiting to finish" }),
+  Object.freeze({ id: "box", label: "Geo box", sub: "Places outside", kind: "check" }),
+  Object.freeze({ id: "seed", label: "Seed", sub: "Find places", kind: "missing" }),
+  Object.freeze({ id: "unsearched", label: "Unsearched", sub: "Searches never run", kind: "missing" }),
+  Object.freeze({ id: "capped", label: "Capped", sub: "Hit 20, split", kind: "missing" }),
+  Object.freeze({ id: "pre_check", label: "Pre-check", sub: "Free rules", kind: "missing" }),
+  Object.freeze({ id: "photos", label: "Photos", sub: "Download", kind: "missing" }),
+  Object.freeze({ id: "final_check", label: "Final check", sub: "Servable?", kind: "missing" }),
+  Object.freeze({ id: "reviews", label: "Reviews", sub: "Serper", kind: "missing" }),
+  Object.freeze({ id: "intelligence", label: "Intelligence", sub: "Gemini", kind: "missing" }),
+  Object.freeze({ id: "redo", label: "Redo", sub: "Ran, no reviews", kind: "redo" }),
+  Object.freeze({ id: "score", label: "Final score", sub: "Follows", kind: "follows" }),
 ]);
 
-/** One row's cells. A cell is a gap when its count is above zero; null is unknown. */
-export function matrixCells(funnelRow, searchRow, outsideRow) {
+/** A city never seeded: a draft with no active places. */
+export function neverSeeded(funnelRow) {
+  return !funnelRow?.is_live && (num(funnelRow?.active) ?? 0) === 0;
+}
+
+export const HELD_BACKLOG_NOTE =
+  "Held in the score backlog: AI results from before 5 Nov 2026 stay off live decks until Seth releases them, so no run re-judges or rescores these places.";
+
+/** Searches a city still owes: uncovered tiles x configs per tile, plus unfinished ones. */
+export function unsearchedSearches(searchRow) {
+  const n = (v) => num(v) ?? 0;
+  return n(searchRow?.uncoveredTiles) * PIPELINE_RATES.SEARCHES_PER_TILE + n(searchRow?.unfinishedSearches);
+}
+
+/** 6585 -> "6.6k", 12345 -> "12k", 950 -> "950". */
+export function compactCount(v) {
+  const x = num(v) ?? 0;
+  if (Math.abs(x) < 1000) return count(x);
+  const k = x / 1000;
+  return `${k < 10 ? (Math.round(k * 10) / 10).toString() : Math.round(k).toString()}k`;
+}
+
+/**
+ * One row's cells. A cell is a gap when its count is above zero; null is unknown.
+ * redoRow (admin_place_pipeline_redo_counts) splits the no-review places: Reviews and
+ * Redo count only the places a run may reach, and the held backlog is carried as
+ * `held` on the cell, never pickable. Until it has answered those two cells are "?".
+ */
+export function matrixCells(funnelRow, searchRow, outsideRow, redoRow) {
   const n = (v) => num(v) ?? 0;
   const f = funnelRow ?? {};
   const unknownSearch = !searchRow || !!searchRow.error;
-  const unsearched = unknownSearch ? null : n(searchRow.uncoveredTiles) + n(searchRow.unfinishedSearches);
+  // Searches owed: every tile no search has reached owes one search per config, plus
+  // the searches not done on existing tiles. (Not tiles + searches: London is 13 tiles
+  // and 768 searches, 950 searches, not 781.)
+  const unsearched = unknownSearch ? null : unsearchedSearches(searchRow);
+  const fresh = neverSeeded(f);
   const values = {
     box: outsideRow ? n(outsideRow.outside_active) : null,
+    seed: fresh ? 1 : 0,
     unsearched,
     capped: unknownSearch ? null : n(searchRow.cappedOpen),
     pre_check: Math.max(0, n(f.active) - n(f.pre_checked)),
-    photos: Math.max(0, n(f.pre_passed) - n(f.with_photos)),
-    final_check: Math.max(0, n(f.with_photos) - n(f.final_checked)),
-    reviews: n(f.no_reviews),
+    // #4276 round 6: the places each stage would take, counted place by place by the
+    // funnel (photos_needed, final_check_needed). A difference of two totals hid places
+    // with photos that never passed the pre-check, or with only a failed-download marker.
+    photos: f.photos_needed != null ? n(f.photos_needed) : Math.max(0, n(f.pre_passed) - n(f.with_photos)),
+    final_check: f.final_check_needed != null ? n(f.final_check_needed) : Math.max(0, n(f.with_photos) - n(f.final_checked)),
+    reviews: redoRow ? n(redoRow.reviews_eligible) : null,
     intelligence: n(f.rules_only),
+    redo: redoRow ? n(redoRow.redo_eligible) : null,
     score: Math.max(0, n(f.servable) - n(f.scored)),
-    held: n(f.held),
+  };
+  // What a search cell is made of, for its cost: tiles never searched, searches not done.
+  const parts = {
+    unsearched: unknownSearch ? null : { tiles: n(searchRow.uncoveredTiles), searches: n(searchRow.unfinishedSearches) },
   };
   return MATRIX_COLUMNS.map((c) => {
     const v = values[c.id];
-    return { id: c.id, value: v, text: v === null ? "?" : v === 0 ? "done" : count(v), gap: v !== null && v > 0 };
+    let text = v === null ? "?" : v === 0 ? "Done" : count(v);
+    if (c.id === "seed") text = fresh ? "Never seeded" : "Done";
+    // A city never seeded has nothing for the later stages to do yet.
+    if (fresh && !["box", "seed", "unsearched"].includes(c.id) && v === 0) text = "–";
+    const held = c.id === "reviews" ? n(redoRow?.reviews_held) : c.id === "redo" ? n(redoRow?.redo_held) : 0;
+    // Nothing a run may reach, only held places: "–", not a gap and not pickable.
+    if ((c.id === "reviews" || c.id === "redo") && v === 0 && held > 0) text = "–";
+    const tiles = c.id === "unsearched" ? parts.unsearched?.tiles ?? 0 : 0;
+    return {
+      id: c.id, kind: c.kind, value: v, text, gap: v !== null && v > 0, parts: parts[c.id] ?? null,
+      title: tiles > 0 ? `${count(v)} searches, incl. ${plural(tiles, "new tile")} (${PIPELINE_RATES.SEARCHES_PER_TILE} searches each)` : "",
+      // One short line under the count; the full wording is the line's tooltip.
+      // Compact in the cell ("6.6k held") so it fits a 47 px column; exact in the tooltip.
+      held, heldText: held > 0 ? `${compactCount(held)} held` : "",
+      heldTitle: held > 0 ? `Held: ${count(held)} (backlog paused). ${HELD_BACKLOG_NOTE}` : "",
+      total: c.id === "reviews" ? n(f.no_reviews) : c.id === "redo" ? n(f.intelligence_without_reviews) : v,
+    };
   });
+}
+
+/** The "All gaps" row: each column's total over the rows shown, "?" while any is unknown. */
+export function matrixTotals(rowsOfCells) {
+  return MATRIX_COLUMNS.map((c, i) => {
+    let total = 0;
+    let unknown = false;
+    for (const cells of rowsOfCells) {
+      const v = cells[i]?.value;
+      if (v === null || v === undefined) unknown = true;
+      else total += c.id === "seed" ? (cells[i].gap ? 1 : 0) : v;
+    }
+    const text = c.id === "seed"
+      ? (total ? plural(total, "city", "cities") : "Done")
+      : total ? `${count(total)}${unknown ? "+" : ""}` : unknown ? "?" : "Done";
+    return { id: c.id, kind: c.kind, text, gap: total > 0 };
+  });
+}
+
+const STAGE_WORDS = {
+  pre_check: "Not pre-checked",
+  photos: "Stuck at photos",
+  final_check: "Final check not run",
+  reviews: "Mostly no reviews",
+  intelligence: "Rules only",
+};
+
+/**
+ * The words under a city's name: Live or not, then where it stands. "Not started" for
+ * a seeded city whose checks never ran, "Draft, never seeded" for a draft.
+ */
+export function cityStatusLine(funnelRow, cells) {
+  const f = funnelRow ?? {};
+  if (neverSeeded(f)) return "Draft, never seeded";
+  const active = num(f.active) ?? 0;
+  const servable = num(f.servable) ?? 0;
+  const by = Object.fromEntries((cells ?? []).map((c) => [c.id, c]));
+  let where;
+  if (active > 0 && (by.pre_check?.value ?? 0) >= active) where = "Not started";
+  else if (servable > 0 && (by.reviews?.total ?? by.reviews?.value ?? 0) * 2 > servable) where = STAGE_WORDS.reviews;
+  else if (servable > 0 && (by.intelligence?.value ?? 0) * 2 > servable) where = STAGE_WORDS.intelligence;
+  else {
+    const first = ["pre_check", "photos", "final_check"].find((id) => (by[id]?.value ?? 0) > active * 0.25);
+    where = first ? STAGE_WORDS[first]
+      : (cells ?? []).some((c) => c.gap && c.kind !== "follows" && c.kind !== "redo") ? "Small gaps" : "Complete";
+  }
+  const held = num(f.held) ?? 0;
+  const line = f.is_live ? `Live · ${where}` : where;
+  return held > 0 ? `${line} · ${count(held)} held` : line;
+}
+
+/** The "Show" filter on the gaps table. */
+export const MATRIX_FILTERS = Object.freeze([
+  Object.freeze({ id: "all", label: "All cities" }),
+  Object.freeze({ id: "live", label: "Live" }),
+  Object.freeze({ id: "seeded", label: "Seeded, not live" }),
+  Object.freeze({ id: "drafts", label: "Drafts" }),
+]);
+
+export function matrixFilter(funnelRow, filter) {
+  if (filter === "live") return !!funnelRow?.is_live;
+  if (filter === "seeded") return !funnelRow?.is_live && !neverSeeded(funnelRow);
+  if (filter === "drafts") return neverSeeded(funnelRow);
+  return true;
+}
+
+/** "39 x 55 km" from a box's corners, or "" when there is no box. */
+export function boxSizeText(c) {
+  const sw = [num(c?.bbox_sw_lat), num(c?.bbox_sw_lng)];
+  const ne = [num(c?.bbox_ne_lat), num(c?.bbox_ne_lng)];
+  if ([...sw, ...ne].some((v) => v === null)) return "";
+  const midLat = ((sw[0] + ne[0]) / 2) * (Math.PI / 180);
+  const w = Math.abs(ne[1] - sw[1]) * 111.32 * Math.cos(midLat);
+  const h = Math.abs(ne[0] - sw[0]) * 110.57;
+  return `${Math.round(w)} x ${Math.round(h)} km`;
 }
 
 // ── Excluded ─────────────────────────────────────────────────────────────────
@@ -379,4 +536,317 @@ export function completenessSummary(check) {
   const share = num(check.missing_share);
   const missing = share === null ? "share missing unknown" : `${Math.round(share * 100)}% missing`;
   return { state: "completed", failed: false, text: `Completeness check${date ? ` on ${date}` : ""}: ${missing}` };
+}
+
+// ── Loading ──────────────────────────────────────────────────────────────────
+
+/**
+ * Run a server read, and if it fails once, wait and run it once more before the
+ * failure counts. A cold first call (the Intelligence coverage read) can time out
+ * and then answer straight away; the second failure is the one a person sees.
+ */
+export async function withOneRetry(read, { delayMs = 1500, wait = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
+  try {
+    return await read();
+  } catch {
+    await wait(delayMs);
+    return read();
+  }
+}
+
+
+/** A place's stored check reasons ("B4:no_website;B6:no_hours") in words. */
+export function reasonWords(stored) {
+  if (!stored) return "No reason recorded";
+  const words = String(stored).split(";").map((r) => r.trim()).filter(Boolean)
+    .map((r) => { const code = r.split(":")[0]; return /^B\d+$/.test(code) ? ruleLabel(code) : r; });
+  return [...new Set(words)].join(", ");
+}
+
+/**
+ * The Cities tab's readiness, in the design's five words:
+ *   Live              live, and reviews and Intelligence cover at least 95% of what
+ *                     Explorers see
+ *   Live, with gaps   live, with more than 5% of servable places missing reviews or
+ *                     Intelligence
+ *   Ready             not live, places Explorers could see and no gap
+ *   Needs work        seeded, not live, with a gap or nothing servable yet
+ *   Draft             never seeded
+ * `why` is one sentence for "What's in the way", "Nothing" when nothing is.
+ */
+export function cityLaunchState(row, gaps) {
+  const servable = num(row?.is_servable_places) ?? 0;
+  const active = num(row?.total_active_places) ?? 0;
+  const lines = gapLines(gaps);
+  const why = lines.length ? `${lines.join(". ")}.` : "Nothing";
+  if (row?.is_live_for_consumers) {
+    const missing = Math.max(gaps?.missingIntelligence ?? 0, gaps?.missingReviews ?? 0);
+    return servable > 0 && missing / servable > 0.05
+      ? { key: "live_gaps", label: "Live, with gaps", variant: "warning", why }
+      : { key: "live", label: "Live", variant: "success", why };
+  }
+  if (active === 0) return { key: "draft", label: "Draft", variant: "default", why: lines.length ? why : "Mapped, never seeded." };
+  if (servable > 0 && lines.length === 0) return { key: "ready", label: "Ready", variant: "brand", why };
+  return { key: "needs_work", label: "Needs work", variant: "error", why: servable === 0 && !lines.length ? "Seeded. The checks have not made any place servable yet." : why };
+}
+
+export const CITY_FILTERS = Object.freeze([
+  Object.freeze({ id: "all", label: "All" }),
+  Object.freeze({ id: "live", label: "Live" }),
+  Object.freeze({ id: "ready", label: "Ready" }),
+  Object.freeze({ id: "needs_work", label: "Needs work" }),
+  Object.freeze({ id: "draft", label: "Drafts" }),
+]);
+
+export function cityFilterMatch(stateKey, filter) {
+  if (filter === "all") return true;
+  if (filter === "live") return stateKey === "live" || stateKey === "live_gaps";
+  return stateKey === filter;
+}
+
+/**
+ * The single rule that takes the biggest share of one city's active places at the
+ * pre-check, for the Excluded banner. Null below 25%, or when nothing was checked.
+ */
+export function biggestRuleLoss(cities) {
+  let best = null;
+  for (const c of Array.isArray(cities) ? cities : []) {
+    const active = num(c?.active) ?? 0;
+    if (!c?.city_id || active <= 0) continue;
+    for (const [rule, n] of Object.entries(c.pre_check ?? {})) {
+      const places = num(n) ?? 0;
+      const share = Math.round((places / active) * 100);
+      if (!best || share > best.share) best = { city: c.city_name, rule, label: ruleLabel(rule), places, active, share };
+    }
+  }
+  return best && best.share >= 25 ? best : null;
+}
+
+/** A place's Google type in words: "Pub", "Bakery", "Italian restaurant". */
+export function placeTypeLabel(place) {
+  const shown = typeof place?.primary_type_display_name === "string" ? place.primary_type_display_name.trim() : "";
+  if (shown) return shown;
+  const raw = typeof place?.primary_type === "string" ? place.primary_type.trim() : "";
+  if (!raw) return "No type";
+  const words = raw.replaceAll("_", " ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/**
+ * Where one place stands, stage by stage, for the Browse side panel. Each stage is
+ * { id, label, state: "done" | "failed" | "waiting" | "not_run", text }.
+ */
+function failedBecause(stored) {
+  return stored ? `Failed: ${reasonWords(stored)}` : "Failed";
+}
+
+export function placeStages(place) {
+  if (!place) return [];
+  const photos = Array.isArray(place.stored_photo_urls) ? place.stored_photo_urls.length : 0;
+  const stage = (id, label, state, text) => ({ id, label, state, text });
+  const pre = place.passes_pre_photo_check === true ? stage("pre_check", "Pre-check", "done", "Passed")
+    : place.passes_pre_photo_check === false ? stage("pre_check", "Pre-check", "failed", failedBecause(place.pre_photo_bouncer_reason))
+    : stage("pre_check", "Pre-check", "not_run", "Not run");
+  const pic = photos > 0 ? stage("photos", "Photos", "done", `${photos} saved`)
+    : place.passes_pre_photo_check === false ? stage("photos", "Photos", "not_run", "Not needed: failed the pre-check")
+    : stage("photos", "Photos", "not_run", "Not downloaded");
+  const fin = place.is_servable === true ? stage("final_check", "Final check", "done", "Passed: Explorers can see it")
+    : place.is_servable === false ? stage("final_check", "Final check", "failed", failedBecause(place.bouncer_reason))
+    : stage("final_check", "Final check", "not_run", "Not run");
+  const scores = place.is_servable !== true ? stage("scores", "Scores", "not_run", "Only for places that pass the final check")
+    : place.ai_signal_scores ? stage("scores", "Scores", "done", "Scored")
+    : stage("scores", "Scores", "failed", "Missing");
+  const held = place.serving_hold ? [stage("held", "Held", "waiting", "Hidden until its run finishes")] : [];
+  const active = place.is_active === false ? [stage("active", "Active pool", "failed", place.deleted_reason || "Removed")] : [];
+  return [pre, pic, fin, scores, ...held, ...active];
+}
+
+// ── Picking gaps for a city's run, and what they cost ───────────────────────
+
+// The rates a run uses. They mirror the server so a cell can show a cost before the
+// run's own preview prices it; a test reads the server files and fails if they drift.
+//   SEARCH_USD, PHOTO_USD, PHOTOS_PER_PLACE  supabase/functions/_shared/seedingGeometry.ts
+//   SEARCHES_PER_TILE                        the 14 configs in _shared/seedingCategories.ts
+//   SPLIT_SEARCHES                           a capped search repeats as 4 at half radius
+//   REVIEW_MAX_PAGES                         run-city-pipeline/conductor.ts (Serper requests)
+// Gemini's per-place rate comes from the server's cost model; Serper's from your rate.
+export const PIPELINE_RATES = Object.freeze({
+  SEARCH_USD: 0.032,
+  PHOTO_USD: 0.007,
+  PHOTOS_PER_PLACE: 5,
+  SEARCHES_PER_TILE: 14,
+  EXPECTED_PLACES_PER_TILE: 10,
+  SPLIT_SEARCHES: 4,
+  REVIEW_MAX_PAGES: 5,
+});
+
+function money(n) {
+  return `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+/**
+ * One cell's estimated cost: { usd, text }. usd is null when it can't be priced yet
+ * (Serper with no rate, Gemini before its rate is read) and text then names the provider.
+ * A free stage reads "Free". Cells with nothing to do, or that follow on their own,
+ * have no cost line ({ usd: null, text: "" }).
+ */
+export function cellCost(cell, rates = {}) {
+  const none = { usd: null, text: "" };
+  if (!cell?.gap) return none;
+  const r = PIPELINE_RATES;
+  const v = num(cell.value) ?? 0;
+  const priced = (usd) => ({ usd, text: money(usd) });
+  switch (cell.id) {
+    case "unsearched": {
+      // The server's fill estimate (estimateFillCostUsd): every search, plus the photos the
+      // new tiles are expected to bring.
+      const p = cell.parts ?? { tiles: 0, searches: v };
+      const searches = p.tiles * r.SEARCHES_PER_TILE + p.searches;
+      const photos = p.tiles * r.EXPECTED_PLACES_PER_TILE * r.PHOTOS_PER_PLACE * r.PHOTO_USD;
+      return priced(Math.round((searches * r.SEARCH_USD + photos) * 100) / 100);
+    }
+    case "capped":
+      return priced(v * r.SPLIT_SEARCHES * r.SEARCH_USD);
+    case "pre_check":
+    case "final_check":
+      return { usd: 0, text: "Free" };
+    case "photos":
+      return priced(v * r.PHOTOS_PER_PLACE * r.PHOTO_USD);
+    case "reviews": {
+      const rate = num(rates.serperUsdPerRequest);
+      return rate === null ? { usd: null, text: "Serper" } : priced(v * r.REVIEW_MAX_PAGES * rate);
+    }
+    case "intelligence":
+    case "redo": {
+      const rate = num(rates.geminiPerPlaceUsd);
+      return rate === null ? { usd: null, text: "Gemini" } : priced(v * rate);
+    }
+    default:
+      return none;
+  }
+}
+
+/** The "All gaps" row's cost per column: summed where every row could be priced. */
+export function matrixTotalCosts(rowsOfCells, rates = {}) {
+  return MATRIX_COLUMNS.map((c, i) => {
+    let usd = 0;
+    let any = false;
+    let label = "";
+    for (const cells of rowsOfCells) {
+      const cost = cellCost(cells[i], rates);
+      if (!cost.text) continue;
+      any = true;
+      if (cost.usd === null) label = cost.text;
+      else usd += cost.usd;
+    }
+    if (!any) return { id: c.id, text: "" };
+    if (label) return { id: c.id, text: usd > 0 ? `${money(usd)} + ${label}` : label };
+    return { id: c.id, text: usd === 0 ? "Free" : money(usd) };
+  });
+}
+
+// What a picked gap needs first, by what the data needs, not by stage order (the same
+// rule as supabase/functions/run-city-pipeline/plan.ts). Photos are only downloaded for
+// places that passed the pre-check; the final check needs photos; Intelligence and
+// reviews only run on places that passed the final check. A redo or a reviews pick also
+// evaluates places never evaluated, and the two are one piece of work. A search is never
+// needed first: it finds places not found yet, which none of these need.
+const NEEDS = Object.freeze({
+  photos: ["pre_check"],
+  final_check: ["photos", "pre_check"],
+  intelligence: ["final_check", "photos", "pre_check"],
+  // Reviews come with a place's first Intelligence; a redo is its own, separate choice.
+  reviews: ["final_check", "photos", "pre_check", "intelligence"],
+  redo: ["final_check", "photos", "pre_check", "intelligence"],
+});
+
+// A picked gap as the run's stage list (run-city-pipeline start and preview).
+const SERVER_STAGE = Object.freeze({
+  box: "box",
+  seed: "fill",
+  unsearched: "fill",
+  capped: "split",
+  pre_check: "pre_check",
+  photos: "photos",
+  final_check: "final_check",
+  intelligence: "intelligence",
+});
+
+/** A cell a person can pick: a gap that doesn't simply follow on its own. */
+export function pickable(cell) {
+  return !!cell?.gap && cell.kind !== "follows";
+}
+
+/** The gaps a pick needs first, which the plan adds for you. Only gaps that exist. */
+export function neededFirst(picked, cells) {
+  const set = new Set(picked);
+  const gaps = new Set((cells ?? []).filter(pickable).map((c) => c.id));
+  const needed = new Set();
+  for (const id of set) {
+    for (const n of NEEDS[id] ?? []) {
+      if (gaps.has(n) && !set.has(n)) needed.add(n);
+    }
+  }
+  return needed;
+}
+
+/**
+ * What the run is asked to do for these picks: its stage list and whether to redo
+ * Intelligence with fresh reviews. The server adds what each stage needs first.
+ */
+export function serverPlanFor(picked) {
+  const set = new Set(picked);
+  const stages = [];
+  for (const id of set) {
+    const stage = SERVER_STAGE[id];
+    if (stage && !stages.includes(stage)) stages.push(stage);
+  }
+  // Reviews are fetched with a place's first Intelligence; only Redo re-judges.
+  if (set.has("reviews") && !stages.includes("intelligence")) stages.push("intelligence");
+  const redoIntelligence = set.has("redo");
+  if (redoIntelligence && !stages.includes("intelligence")) stages.push("intelligence");
+  return { stages, redoIntelligence };
+}
+
+/** Everything a whole row picks: every gap that can be picked except optional redos. */
+export function wholeRow(cells) {
+  return (cells ?? []).filter((c) => pickable(c) && c.kind !== "redo").map((c) => c.id);
+}
+
+/** The Run plan's lines for a city's picks, in run order, with an estimated total. */
+export function planLines(cells, picked, rates = {}) {
+  const set = new Set(picked);
+  const needed = neededFirst(picked, cells);
+  const lines = [];
+  for (const c of cells ?? []) {
+    if (!set.has(c.id) && !needed.has(c.id)) continue;
+    const col = MATRIX_COLUMNS.find((m) => m.id === c.id);
+    lines.push({ id: c.id, label: col?.label ?? c.id, count: c.text, cost: cellCost(c, rates), needed: needed.has(c.id) });
+  }
+  const priced = lines.filter((l) => l.cost.usd !== null);
+  const unpriced = lines.filter((l) => l.cost.usd === null && l.cost.text).map((l) => l.cost.text);
+  const usd = priced.reduce((a, l) => a + l.cost.usd, 0);
+  return {
+    lines,
+    totalText: `${money(usd)}${unpriced.length ? ` + ${[...new Set(unpriced)].join(" + ")}` : ""}`,
+    searches: lines.some((l) => ["seed", "unsearched", "capped"].includes(l.id)),
+    server: serverPlanFor(picked),
+  };
+}
+
+/**
+ * A count that depends on the pipeline table: "–" while it loads, "?" when it failed,
+ * the number once it answered. Never 0 for a count nobody has read.
+ */
+export function loadedCount(value, { loading, error }) {
+  if (error) return "?";
+  if (loading || value === null || value === undefined) return "–";
+  return count(value);
+}
+
+/** The Show chips' counts: a placeholder while loading, none on error. */
+export function filterChipCount(n, { loading, error }) {
+  if (error) return null;
+  if (loading) return "–";
+  return n;
 }

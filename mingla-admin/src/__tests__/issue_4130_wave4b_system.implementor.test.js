@@ -98,7 +98,8 @@ describe("#4130 W4b-1, #4276: Place pool", () => {
   });
   it("going live asks first: the switch opens a confirmation, which makes the change", () => {
     const page = read("pages/LaunchCitiesPage.jsx");
-    assert.ok(page.includes("onChange={() => setConfirmCity(row)}"));
+    // #4276 design pass: the switch is a Hide / Go live button; it still only asks.
+    assert.ok(page.includes("onClick={() => setConfirmCity(row)}"));
     assert.ok(page.includes("if (row) handleToggleLive(row);"));
     assert.equal(/onChange=\{\(\) => handleToggleLive\(row\)\}/.test(page), false);
   });
@@ -235,8 +236,8 @@ describe("#4130 W4b-5: Ads", () => {
 describe("#4130 W4b-6: old addresses land on their page and tab", () => {
   it("each redirect into these pages names a tab or section that exists", () => {
     const pages = {
-      // #4276: "pipeline" is the address of the section above every tab (it opens Overview).
-      placepool: (t) => t === "pipeline" || (PLACE_POOL_TABS.some((x) => x.id === placePoolTabFor(t)) && placePoolTabFor(t) !== "overview"),
+      // #4276: "pipeline" is a tab of its own again.
+      placepool: (t) => PLACE_POOL_TABS.some((x) => x.id === placePoolTabFor(t)) && placePoolTabFor(t) !== "overview",
       "platform-health": (t) => sectionFor(PLATFORM_HEALTH_SECTIONS, t) === t,
       settings: (t) => sectionFor(SETTINGS_SECTIONS, t) === t,
       admin: (t) => tabFor(TEAM_TABS, t) === t,

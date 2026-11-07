@@ -105,10 +105,7 @@ import {
 // verbatim disclosure copy + the §2 T&C sheet.
 import { recordConsent } from "../../../src/services/consentService";
 import {
-  CHECKOUT_MARKETING_DISCLOSURE_TEXT,
-  CHECKOUT_MARKETING_DISCLOSURE_VERSION,
-  CHECKOUT_MARKETING_HELPER,
-  CHECKOUT_MARKETING_LABEL,
+  CHECKOUT_MARKETING_NOTICE,
   PURCHASE_PRIVACY_URL,
   PURCHASE_TERMS_DISCLOSURE_TEXT,
   PURCHASE_TERMS_DISCLOSURE_VERSION,
@@ -369,10 +366,6 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
     setBuyer({ termsAccepted: next });
     if (next) setConsentHintVisible(false);
   }, [authReady, buyer.termsAccepted, sessionUserId, setBuyer]);
-  const toggleMarketing = useCallback((): void => {
-    if (!authReady) return;
-    setBuyer({ marketingOptIn: !buyer.marketingOptIn });
-  }, [authReady, buyer.marketingOptIn, setBuyer]);
 
   // Touched flags — show validation errors only after first focus blur,
   // so a fresh-mount form doesn't immediately scream red.
@@ -574,24 +567,9 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
           "[checkout-buyer] consent_records write failed (proceeding; checkbox act stands)",
         );
       }
-      if (buyer.marketingOptIn) {
-        const marketingConsentResult = await recordConsent({
-          source: "checkout",
-          disclosureText: CHECKOUT_MARKETING_DISCLOSURE_TEXT,
-          disclosureVersion: CHECKOUT_MARKETING_DISCLOSURE_VERSION,
-          scopes: ["marketing"],
-          phone: buyer.phone,
-          email: buyer.email,
-          countryCode: phoneCountry,
-          userId: buyerUserId,
-          eventId,
-        });
-        if (!marketingConsentResult.ok) {
-          console.error(
-            "[checkout-buyer] marketing consent write failed (proceeding; optional checkbox act stands)",
-          );
-        }
-      }
+      // #4273: no marketing record is written here any more. Buying opts the
+      // buyer in; the order ingest records that grant (purchase_auto_optin)
+      // unless they have opted out.
     } catch (consentErr) {
       console.error("[checkout-buyer] consent write threw", consentErr);
     }
@@ -1110,39 +1088,11 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
             Please agree to continue.
           </Text>
         ) : null}
-        <Pressable
-          onPress={toggleMarketing}
-          accessibilityRole="checkbox"
-          accessibilityState={{
-            checked: buyer.marketingOptIn,
-            disabled: !authReady,
-          }}
-          aria-checked={buyer.marketingOptIn}
-          accessibilityLabel={`${CHECKOUT_MARKETING_LABEL} ${CHECKOUT_MARKETING_HELPER}`}
-          disabled={!authReady}
-          style={({ pressed }) => [
-            styles.checkboxRow,
-            pressed && styles.checkboxRowPressed,
-            !authReady && styles.checkboxRowPressed,
-          ]}
-        >
-          <View
-            style={[
-              styles.checkboxBox,
-              buyer.marketingOptIn && styles.checkboxBoxChecked,
-            ]}
-          >
-            {buyer.marketingOptIn ? (
-              <Icon name="check" size={14} color={textTokens.primary} />
-            ) : null}
-          </View>
-          <View style={styles.marketingCopy}>
-            <Text style={styles.checkboxLabel}>{CHECKOUT_MARKETING_LABEL}</Text>
-            <Text style={styles.marketingHelper}>
-              {CHECKOUT_MARKETING_HELPER}
-            </Text>
-          </View>
-        </Pressable>
+        {/* #4273: buying opts the buyer in to this brand's updates; there is
+            no box to tick, only a plain notice. */}
+        <Text style={styles.marketingHelper} testID="checkout-marketing-notice">
+          {CHECKOUT_MARKETING_NOTICE}
+        </Text>
         {submitError !== null ? (
           <Text style={styles.errorText}>{submitError}</Text>
         ) : null}
@@ -1393,7 +1343,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     textDecorationLine: "underline",
   },
-  marketingCopy: { flex: 1 },
   marketingHelper: {
     marginTop: 2,
     fontSize: 12,

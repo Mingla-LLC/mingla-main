@@ -418,9 +418,10 @@ test("#3802 P-5: a key that cannot be used gets one answer, byte for byte, whate
     1,
     "every cause gives the same status, headers and bytes",
   );
+  // #4294: the 401 says where to sign in (the harness's own address here).
   assert.equal(
     answers[0].headers["www-authenticate"],
-    'Bearer realm="mingla-team-agent"',
+    'Bearer resource_metadata="http://127.0.0.1/functions/v1/team-agent/.well-known/oauth-protected-resource", scope="mingla"',
   );
   assert.equal(/mgla_/.test(answers[0].body), false);
   // The person who left: their key was ended by that request, and giving access back does not revive it.

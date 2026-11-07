@@ -41,6 +41,8 @@
 
 \set ON_ERROR_STOP on
 begin;
+-- #4270 W2 (D16): a promised event is made the way it was before; see the fixture.
+\ir issue_4270_promised_event_before_d16.fixture.sql
 
 alter table auth.users add column if not exists email_confirmed_at timestamptz;
 alter table auth.users add column if not exists phone text;
@@ -372,7 +374,7 @@ begin
       where w.anchor_id = pg_temp.t3980_id('e_mid')::uuid and w.kit_step = -28), '1/kit:-3');
 
   -- an expected event is planned from its promised date
-  v := pg_temp.t3980_person('growth', format('select public.ops_expected_event_set(%L::jsonb, %L)::text',
+  v := pg_temp.t3980_person('growth', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text',
          jsonb_build_object('record_id', pg_temp.t3980_id('host'), 'title', 'W3980 Promised Night', 'event_type', 'event', 'expected_on', v_today + 50),
          'w3980-exp-1'));
   perform pg_temp.t3980_keep('x_exp', pg_temp.t3980_get(v, 'expected', 'id'));

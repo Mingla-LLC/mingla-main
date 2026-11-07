@@ -15,6 +15,8 @@ export function ContentCard({ item, compact = false, onOpen, onMove, onStage, st
         <span className="block break-words text-sm font-semibold text-[var(--color-text-primary)]">{item.title}</span>
         <span className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-[var(--color-text-tertiary)]">
           <Badge>{item.stage}</Badge>
+          {/* #4270 W3: the brand the post is for. */}
+          {item.brand_name && <span data-brand-chip="" className="break-words rounded-full bg-[var(--color-brand-50)] px-2 py-0.5 font-semibold text-[var(--color-brand-700)]">{item.brand_name}</span>}
           {validDate && <span className="inline-flex items-center gap-1"><CalendarClock className="h-3.5 w-3.5" aria-hidden="true" />{date.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>}
           {Number(item.comment_count || 0) > 0 && <span className="inline-flex items-center gap-1"><MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />{item.comment_count}</span>}
         </span>

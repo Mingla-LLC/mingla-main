@@ -143,6 +143,7 @@ DECLARE
   v_allowed boolean;
   v_rows jsonb;
   v_n integer;
+  v_other_grant uuid;
 BEGIN
   -- ── (1) THE CONSENT RECORD NAMES THE HOST AND THE WORDING ────────────────
   PERFORM pg_temp.c3524_ok(
@@ -264,20 +265,41 @@ BEGIN
     (SELECT state FROM public.issue_3524_grade_marketing_consent(
        'order', v_brand, 'email', 'granted@example.test')) = 'granted',
     'the grader finds the on-file grant for this brand');
-  PERFORM pg_temp.c3524_ok(
-    (SELECT state FROM public.issue_3524_grade_marketing_consent(
-       'order', v_brand, 'email', 'withheld@example.test')) = 'withheld',
-    'and grades a contact with no such row withheld — fail closed');
+  -- #4273: a buyer with no grant on file is opted in, and the automatic grant is
+  -- recorded; only a buyer who said no grades withheld.
   PERFORM pg_temp.c3524_ok(
     (SELECT state FROM public.issue_3524_grade_marketing_consent(
        'event_rsvp', v_brand, 'email', 'withheld@example.test')) = 'unknown',
     'the rsvp, reservation and stay arms are NOT graded — a different rail');
-  -- A grant to one host is not a grant to another.
+  INSERT INTO public.marketing_unsubscribes(contact_email, channel, scope, brand_id, reason)
+  VALUES ('withheld@example.test', 'email', 'brand', v_brand, 'test_opt_out');
   PERFORM pg_temp.c3524_ok(
     (SELECT state FROM public.issue_3524_grade_marketing_consent(
-       'order', pg_temp.c3524_uuid('other-brand'), 'email', 'granted@example.test'))
-      = 'withheld',
-    'a grant given to ONE host does not make the contact marketable by another');
+       'order', v_brand, 'email', 'withheld@example.test')) = 'withheld',
+    'a buyer who unsubscribed from this host grades withheld — the opt-out wins');
+  PERFORM pg_temp.c3524_ok(
+    (SELECT state FROM public.issue_3524_grade_marketing_consent(
+       'order', v_brand, 'email', 'fresh-buyer@example.test')) = 'granted',
+    '#4273: a buyer with no record and no opt-out is opted in');
+  PERFORM pg_temp.c3524_ok(
+    EXISTS (SELECT 1 FROM public.consent_records
+             WHERE contact = 'fresh-buyer@example.test' AND brand_id = v_brand
+               AND scope = 'marketing' AND action = 'granted'
+               AND source = 'purchase_auto_optin' AND brand_attribution = 'derived'),
+    '#4273: and the automatic grant is recorded as purchase_auto_optin');
+  -- A grant to one host is not a grant to another: another host's buyer gets
+  -- that host's own automatic grant, never this host's checkout row.
+  INSERT INTO public.brands(id, account_id, name, slug)
+  VALUES (pg_temp.c3524_uuid('other-brand'), pg_temp.c3524_uuid('creator'),
+          'Issue 3524 Other Host', 'issue-3524-consent-other-host');
+  SELECT g.record_id INTO v_other_grant FROM public.issue_3524_grade_marketing_consent(
+    'order', pg_temp.c3524_uuid('other-brand'), 'email', 'granted@example.test') g;
+  PERFORM pg_temp.c3524_ok(
+    v_other_grant IS DISTINCT FROM (SELECT id FROM public.consent_records
+        WHERE contact = 'granted@example.test' AND brand_id = v_brand AND scope = 'marketing')
+      AND (SELECT brand_id FROM public.consent_records WHERE id = v_other_grant)
+        = pg_temp.c3524_uuid('other-brand'),
+    'a grant given to ONE host is never reused as another host''s grant');
 
   PERFORM pg_temp.c3524_ok(
     pg_get_functiondef(
