@@ -23,5 +23,6 @@ module.exports = {
     // #4271 tester adversarial suites.
     "**/src/components/door/__tests__/issue_4271_door_pay_qr.tester.adversarial.test.ts",
     "**/src/hooks/__tests__/issue_4271_tap_to_pay_availability.tester.adversarial.test.ts",
+    "**/src/components/door/__tests__/issue_4271_door_polish.tester.adversarial.test.ts",
   ],
 };
