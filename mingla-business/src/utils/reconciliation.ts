@@ -18,7 +18,9 @@
  * D-13-10 (ORCH-0796 reframed): expectedPayoutMajor derived from real per-order Stripe
  * application-fee columns (orders.stripe_application_fee_amount_cents +
  * orders.refunded_amount_cents + refunds.application_fee_refunded_cents). Door revenue
- * contributes 1.0 (cash; card_reader/NFC fee schedules ship when Terminal SDK lands).
+ * contributes 1.0 for cash/manual. issue #4271: card door money (pay_code, tap_to_pay)
+ * is read from the door stream, the one that holds the charge and its fee through
+ * doorSaleMoney, and never double-counted from the orders stream.
  * Returns null when no payments exist so UI renders "—" instead of £0.00.
  *
  * D1/D2/D3 discrepancy detection: ADVISORY-only per D-13-4. D4 (unscanned) is informational,
@@ -31,6 +33,7 @@
 
 import { guestListTicketCount, isCompOrder } from "./compOrders";
 import type { DoorSaleRecord } from "../types/doorSales";
+import { isDoorOrder } from "./isDoorOrder";
 import type { OrderRecord } from "../store/orderStore";
 import type { ScanRecord } from "../store/scanStore";
 import { expandDoorTickets } from "./expandDoorTickets";
@@ -51,9 +54,10 @@ export type PaymentMethodKey =
   | "google_pay"
   | "free"
   | "cash"
+  | "manual"
   | "card_reader"
-  | "nfc"
-  | "manual";
+  | "pay_code"
+  | "tap_to_pay";
 
 export type DiscrepancyKind =
   | "auto_check_in_mismatch"
@@ -96,6 +100,8 @@ export interface ReconciliationSummary {
    * activity exists. ORCH-0796.
    */
   stripeFeeOnlineMajor: number | null;
+  /** issue #4271 — Mingla's fee still held on card door sales. */
+  doorCardMinglaFee: number;
   /** Online refund subtotal; for break-down rendering. */
   onlineRefunded: number;
   /** Door refund subtotal; for break-down rendering. */
@@ -139,9 +145,10 @@ const ZERO_REVENUE_BY_METHOD: Record<PaymentMethodKey, number> = {
   google_pay: 0,
   free: 0,
   cash: 0,
-  card_reader: 0,
-  nfc: 0,
   manual: 0,
+  card_reader: 0,
+  pay_code: 0,
+  tap_to_pay: 0,
 };
 
 /**
@@ -164,6 +171,7 @@ export const EMPTY_SUMMARY: ReconciliationSummary = {
   revenueByMethod: { ...ZERO_REVENUE_BY_METHOD },
   expectedPayoutMajor: null,
   stripeFeeOnlineMajor: null,
+  doorCardMinglaFee: 0,
   onlineRefunded: 0,
   doorRefunded: 0,
   currenciesPresent: [],
@@ -181,6 +189,8 @@ export const EMPTY_SUMMARY: ReconciliationSummary = {
 };
 
 // ---- Helpers ---------------------------------------------------------
+
+export { isDoorOrder };
 
 /** Round to 2 decimal places to avoid float drift in revenue arithmetic. */
 const round2 = (n: number): number => Math.round(n * 100) / 100;
@@ -228,7 +238,10 @@ export const computeReconciliation = (
   // ---- Tickets (online live, excludes cancelled — refunded-partial keeps live qty - refundedQty) ----
   const eventOrders = orderEntries.filter((o) => o.eventId === eventId);
   // issue #3827 — online "sold", revenue and fees are sales only.
-  const eventSales = eventOrders.filter((o) => !isCompOrder(o));
+  // issue #4271 — every door sale is counted from the door stream, whatever its
+  // method. It holds what the guest was charged, so a figure here equals the door
+  // screen's: the orders stream keeps a pay code's ticket base in total_cents.
+  const eventSales = eventOrders.filter((o) => !isCompOrder(o) && !isDoorOrder(o));
   const liveOrders = eventSales.filter(
     (o) => o.status === "paid" || o.status === "refunded_partial",
   );
@@ -271,6 +284,7 @@ export const computeReconciliation = (
     totalRefunded,
     expectedPayoutMajor,
     stripeFeeOnlineMajor,
+    doorCardMinglaFee,
   } = moneySummary;
 
   // ---- Scans ----
@@ -394,6 +408,7 @@ export const computeReconciliation = (
     revenueByMethod,
     expectedPayoutMajor,
     stripeFeeOnlineMajor,
+    doorCardMinglaFee,
     onlineRefunded: round2(onlineRefunded),
     doorRefunded: round2(doorRefunded),
     currenciesPresent: moneySummary.currenciesPresent,

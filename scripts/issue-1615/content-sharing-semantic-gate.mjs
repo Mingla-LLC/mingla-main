@@ -19,7 +19,7 @@ const EXCLUDED_SEGMENTS = new Set([
   'playwright', 'scripts', 'test', 'tests', '__mocks__', '__tests__', 'vendor',
   'web-build',
 ]);
-const NON_CONTENT_CLASSIFICATION = /^\s*\/\/\s*SHARE-NON-CONTENT:(?:invite|file-export)\s*$/;
+const NON_CONTENT_CLASSIFICATION = /^\s*\/\/\s*SHARE-NON-CONTENT:(?:invite|file-export|receipt)\s*$/;
 const CONTENT_CALL_CLASSIFICATION = /^\s*\/\/\s*SHARE-CONTENT-CALL:(?:adapter|transport)\s*$/;
 // #3187 — renamed from SHARE-CANONICAL-URL-BUILDER: the tagged builders emit the
 // `usemingla.com/s/<code>` interstitial link, which is not the canonical URL.

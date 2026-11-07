@@ -37,12 +37,17 @@ const BUSINESS_ROOTS = [
   "mingla-business/src/components/ticketLinks",
   "mingla-business/src/components/venue",
   "mingla-business/src/components/attendance",
+  "mingla-business/src/components/door",
 ];
 const GATE_QR_IMPORT_ALLOWLIST = new Set([
   "mingla-business/src/components/checkout/DownloadMinglaCta.tsx",
   "mingla-business/src/components/event/SeeWhosGoingGate.tsx",
   "mingla-business/src/components/attendance/ContinueOnPhoneSheet.tsx",
 ]);
+
+// #4271 — DoorPayQr encodes a /pay/door/<code> link only (a 10-minute,
+// pays-once basket built solely by makeDoorPayUrl), never a ticket credential.
+const PAY_LINK_QR_ALLOWLIST = new Set(["mingla-business/src/components/door/DoorPayQr.tsx"]);
 
 const stripComments = (source) =>
   source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
@@ -198,7 +203,7 @@ export function check(files, violations) {
         msg: "Business public surface imports TicketQrCarousel.",
       });
     }
-    if (/react-native-qrcode-svg/.test(source)) {
+    if (/react-native-qrcode-svg/.test(source) && !PAY_LINK_QR_ALLOWLIST.has(path)) {
       violations.push({
         file: path,
         msg: "Business public surface imports the pass QR renderer.",

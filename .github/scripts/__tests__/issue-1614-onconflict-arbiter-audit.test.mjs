@@ -192,9 +192,16 @@ test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", (
   //       run-place-intelligence-trial/index.ts; arbiter: `place_id uuid PRIMARY
   //       KEY` in 20280410014276_issue_4276_place_merge_and_review_state.sql.
   //
+  // #4271 Tap to Pay at the door, census +1 (109, after #4276): _shared/doorTerminal.ts
+  //   stores the brand's Stripe Terminal Location in `brand_terminal_locations`
+  //   on `(brand_id,country_code,stripe_account_id)` with
+  //   `ignoreDuplicates: true`; arbiter: the table's non-partial
+  //   `UNIQUE (brand_id, country_code, stripe_account_id)` from
+  //   `20280404004271_issue_4271_door_pay.sql`.
+  //
   // Every behavioural assertion below is untouched; only the census moves, and
   // the derivation comment above moves with it so the figure stays checkable.
-  assert.equal(sites.length, 108);
+  assert.equal(sites.length, 109);
   assert.equal(
     sites.some((site) =>
       site.table === "brand_follow_email_pending" &&

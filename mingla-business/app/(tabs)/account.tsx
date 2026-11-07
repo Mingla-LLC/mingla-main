@@ -37,6 +37,7 @@ import {
 } from "../../src/constants/designSystem";
 import { useAuth } from "../../src/context/AuthContext";
 import { useBrandListState } from "../../src/hooks/useBrandListShim";
+import { useTapToPaySettingsEntry } from "../../src/hooks/useTapToPaySettingsEntry";
 import { useBrandFollowerCounts } from "../../src/hooks/useBrandFollowerCount";
 import { formatExactFollowers } from "@mingla/offering-rendering/followerCount";
 import { hasStoredSupabaseWebSession } from "../../src/utils/storedWebSession";
@@ -55,6 +56,7 @@ import { useSupportStaff } from "../../src/hooks/useSupportStaff";
 import { useCommunityUnreadCount } from "../../src/hooks/useCommunity";
 import { isFeatureEnabled } from "../../src/config/featureFlags";
 import {
+  useCurrentBrandId,
   useCurrentBrandStore,
   type Brand,
 } from "../../src/store/currentBrandStore";
@@ -87,6 +89,7 @@ export default function AccountTab(): React.ReactElement {
   const router = useRouter();
   const { user, signOut, lastRecoveryEvent, clearLastRecoveryEvent } = useAuth();
   const brandList = useBrandListState();
+  const tapToPayEntry = useTapToPaySettingsEntry(useCurrentBrandId());
   const brands = brandList.brands;
   const followerCounts = useBrandFollowerCounts(brands.map((brand) => brand.id));
 
@@ -183,6 +186,10 @@ export default function AccountTab(): React.ReactElement {
   // the confirm-and-delete screen (the Edit-Profile delete button stays too).
   const handleDeleteAccount = useCallback((): void => {
     router.push("/account/delete" as never);
+  }, [router]);
+
+  const handleTapToPay = useCallback((): void => {
+    router.push("/account/tap-to-pay" as never);
   }, [router]);
 
   const handleNotifications = useCallback((): void => {
@@ -436,6 +443,13 @@ export default function AccountTab(): React.ReactElement {
               label="Notifications"
               onPress={handleNotifications}
             />
+            {tapToPayEntry !== null ? (
+              <SettingsNavRow
+                icon="settings"
+                label={tapToPayEntry.label}
+                onPress={handleTapToPay}
+              />
+            ) : null}
             <SettingsNavRow
               icon="chat"
               label="Help & Support"

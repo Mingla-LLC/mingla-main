@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-suite",
+  "ownerIssue": "#4271",
+  "suite": {
+    "id": "issue-4271-business-door-pay",
+    "class": "business-node22-ignore-scripts",
+    "originPaths": [
+      "mingla-business/src/**",
+      "mingla-business/app/**",
+      "mingla-business/jest.config.cjs"
+    ],
+    "steps": [
+      {
+        "name": "Business door pay contracts",
+        "cwd": "mingla-business",
+        "run": "npx jest --config src/components/door/__tests__/jest.issue4271.cjs --runInBand",
+        "commandId": "assert:issue-4271-business-door-pay:01",
+        "invocation": {
+          "kind": "raw-shell",
+          "command": "bash",
+          "argv": [
+            "-c",
+            "npx jest --config src/components/door/__tests__/jest.issue4271.cjs --runInBand"
+          ]
+        },
+        "exceptionRationale": "New self-registering execution replaces a legacy workflow registry edit."
+      }
+    ],
+    "lifecycle": "batched-active",
+    "ownerIssue": "#4271",
+    "runtime": {
+      "name": "node",
+      "version": "22"
+    },
+    "setupProfile": "business-node22-ignore-scripts",
+    "cwd": "mingla-business",
+    "envNames": [],
+    "isolation": "clean-worktree",
+    "expectedFiles": [
+      "mingla-business/src/components/door/__tests__/issue_4271_door_pay.implementor.test.ts",
+      "mingla-business/src/components/door/__tests__/issue_4271_door_pay_qr.tester.adversarial.test.ts",
+      "mingla-business/src/components/door/__tests__/jest.issue4271.cjs",
+      "mingla-business/src/hooks/__tests__/issue_4271_door_screen_awake.implementor.test.ts",
+      "mingla-business/src/hooks/__tests__/issue_4271_tap_to_pay_availability.tester.adversarial.test.ts",
+      "mingla-business/src/native/__tests__/issue_4271_android_min_sdk.implementor.test.ts",
+      "mingla-business/src/services/__tests__/doorSalesService.issue4063.test.ts",
+      "mingla-business/src/services/__tests__/issue_4271_door_pay_code_service.implementor.test.ts",
+      "mingla-business/src/services/terminal/__tests__/issue_4271_apple_requirements.implementor.test.ts",
+      "mingla-business/src/utils/__tests__/issue_4271_door_sale_money.implementor.test.ts",
+      "mingla-business/src/utils/__tests__/issue_4271_team_member_identity.implementor.test.ts"
+    ],
+    "externalReferenceFiles": [
+      "mingla-business/jest.config.cjs"
+    ],
+    "requiredContext": "CI batch: business-node22-ignore-scripts",
+    "timingSeconds": {
+      "p50": 28,
+      "p95": 40,
+      "evidence": "Local targeted run 2026-11-04"
+    },
+    "generatedPaths": [
+      "suite-results.json"
+    ],
+    "exceptionRationale": "Raw shell preserves the reviewed assertion while this self-registering suite replaces a legacy workflow registry edit.",
+    "timeoutSeconds": 180
+  }
+}

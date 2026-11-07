@@ -110,12 +110,15 @@ export type CheckoutPaymentMethod =
   | "apple_pay"
   | "google_pay"
   | "free"
-  // Door (Cycle 12 — operator route, ds_xxx sales).
+  // Door (Cycle 12 — operator route; issue #4271 method set).
   // I-29: door payment methods MUST NOT appear in /checkout buyer flow.
+  // pay_code / tap_to_pay are card money on the online rail, sold at the door.
+  // card_reader is a type only: the picker shows it disabled ("coming later").
   | "cash"
-  | "card_reader" // [TRANSITIONAL] B-cycle Stripe Terminal SDK — disabled in J-D3 picker
-  | "nfc" // [TRANSITIONAL] B-cycle platform NFC — disabled in J-D3 picker
-  | "manual";
+  | "manual"
+  | "card_reader"
+  | "pay_code"
+  | "tap_to_pay";
 
 export interface BuyerConfirmationContact {
   email: string | null;

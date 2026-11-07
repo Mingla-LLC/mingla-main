@@ -32,9 +32,11 @@ import { useEventDoorSales } from "../../../../src/hooks/useEventDoorSales";
 import { formatCurrency } from "../../../../src/utils/currency";
 import { deferAfterDismiss } from "../../../../src/utils/deferAfterDismiss";
 import { PAYMENT_METHOD_LABELS } from "../../../../src/utils/paymentMethodLabels";
+import { isCardDoorPaymentMethod } from "../../../../src/types/doorSales";
 import { expandDoorTickets } from "../../../../src/utils/expandDoorTickets";
 
-import { DoorRefundSheet } from "../../../../src/components/door/DoorRefundSheet";
+import { LazyDoorRefundSheet } from "../../../../src/components/door/LazyDoorRefundSheet";
+import { doorSaleCardLine, doorSaleMoney } from "../../../../src/utils/moneySummary";
 import { Button } from "../../../../src/components/ui/Button";
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
 import { GlassCard } from "../../../../src/components/ui/GlassCard";
@@ -148,8 +150,18 @@ export default function DoorSaleDetailRoute(): React.ReactElement {
   }, [router, eventId]);
 
   const handleRefundOpen = useCallback((): void => {
+    // issue #4271 — card money at the door is an online-rail order: it is
+    // refunded to the guest's card through the order's own refund flow
+    // (finance manager and up, provider refund). Cash/manual keep the door
+    // refund sheet.
+    if (sale !== null && isCardDoorPaymentMethod(sale.paymentMethod)) {
+      if (typeof eventId === "string") {
+        router.push(`/event/${eventId}/orders/${sale.id}` as never);
+      }
+      return;
+    }
     setRefundOpen(true);
-  }, []);
+  }, [eventId, router, sale]);
 
   const handleRefundSuccess = useCallback(
     (updated: DoorSaleRecord): void => {
@@ -244,6 +256,9 @@ export default function DoorSaleDetailRoute(): React.ReactElement {
   const statusPillSpec = doorStatusPill(sale.status);
   const paymentMethodLabel = PAYMENT_METHOD_LABELS[sale.paymentMethod];
   const refundButtonVisible = sale.status !== "refunded_full";
+  const isCardSale = isCardDoorPaymentMethod(sale.paymentMethod);
+  const money = doorSaleMoney(sale);
+  const cardLine = doorSaleCardLine(sale.cardBrand, sale.cardLast4);
   const hasBuyerDetails =
     sale.buyerEmail.length > 0 ||
     sale.buyerPhone.length > 0 ||
@@ -332,6 +347,12 @@ export default function DoorSaleDetailRoute(): React.ReactElement {
             <Text style={styles.summaryLabel}>Payment method</Text>
             <Text style={styles.summaryValue}>{paymentMethodLabel}</Text>
           </View>
+          {cardLine !== null ? (
+            <View style={styles.summaryRow} testID="door-sale-card">
+              <Text style={styles.summaryLabel}>Card</Text>
+              <Text style={styles.summaryValue}>{cardLine}</Text>
+            </View>
+          ) : null}
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Total</Text>
             <Text style={styles.summaryValue}>
@@ -346,13 +367,26 @@ export default function DoorSaleDetailRoute(): React.ReactElement {
               </Text>
             </View>
           ) : null}
+          {money.minglaFee > 0 ? (
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Mingla fee</Text>
+              <Text style={styles.summaryValueWarn}>
+                −{formatCurrency(money.minglaFee, sale.currency)}
+              </Text>
+            </View>
+          ) : null}
           <View style={styles.divider} />
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabelStrong}>Net</Text>
             <Text style={styles.summaryValueStrong}>
-              {formatCurrency(sale.totalGbpAtSale - sale.refundedAmountGbp, sale.currency)}
+              {money.net === null ? "Confirming" : formatCurrency(money.net, sale.currency)}
             </Text>
           </View>
+          {isCardSale ? (
+            <Text style={styles.cardPayoutHint}>
+              Card money is paid out with your online sales.
+            </Text>
+          ) : null}
         </GlassCard>
 
         {/* BUYER */}
@@ -426,19 +460,20 @@ export default function DoorSaleDetailRoute(): React.ReactElement {
         {refundButtonVisible ? (
           <View style={styles.ctaWrap}>
             <Button
-              label="Refund"
+              label={isCardSale ? "Refund to card" : "Refund"}
               variant="ghost"
               size="md"
               fullWidth
               onPress={handleRefundOpen}
-              accessibilityLabel="Refund door sale"
+              accessibilityLabel={isCardSale ? "Refund to the guest's card" : "Refund door sale"}
+              testID="door-sale-refund"
             />
           </View>
         ) : null}
       </ScrollView>
 
       {/* Refund sheet */}
-      <DoorRefundSheet
+      <LazyDoorRefundSheet
         visible={refundOpen}
         sale={sale}
         onClose={() => setRefundOpen(false)}
@@ -613,6 +648,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     color: textTokens.primary,
+  },
+
+  cardPayoutHint: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: textTokens.tertiary,
+    marginTop: spacing.xs,
   },
 
   // Refund history --------------------------------------------------
