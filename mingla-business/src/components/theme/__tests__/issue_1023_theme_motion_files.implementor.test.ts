@@ -19,7 +19,7 @@ import {
   getThemeMotionDevOverride,
   parseMotionQueryParam,
   resolveTextSafeZone,
-  resolveThemeMotionSlug,
+  pickThemeMotionSlug,
   setThemeMotionDevOverride,
 } from "../../../../../packages/offering-rendering/themeMotion";
 import { isThemeAnimationSlug } from "../../../../../packages/offering-rendering/themeResolver";
@@ -63,6 +63,19 @@ describe("#1023 — 29 slugs, each with an entrance and a loop", () => {
       expect(typeof THEME_LOTTIE_LOADERS[slug].loop).toBe("function");
     }
     expect(files.size).toBe(ANIMATED.length * 2);
+  });
+
+  // Executed, not read: every loader the players call resolves to the very
+  // animation file on disk for its slug and phase (a mis-wired require —
+  // intro pointing at loop, or one slug at another — fails here).
+  test("every loader resolves the matching Lottie file", async () => {
+    for (const slug of ANIMATED) {
+      for (const phase of ["intro", "loop"] as const) {
+        const load = THEME_LOTTIE_LOADERS[slug][phase];
+        const loaded = await load();
+        expect(loaded).toEqual(readJson(`${slug}.${phase}.json`));
+      }
+    }
   });
 
   test("files stay small: 150 KB or less each", () => {
@@ -434,9 +447,9 @@ describe("#1023 — the dev-only preview override is inert outside dev", () => {
   });
 
   test("an override set in dev is ignored when the build is not dev", () => {
-    expect(resolveThemeMotionSlug("confetti", "aurora", false)).toBe("confetti");
-    expect(resolveThemeMotionSlug("confetti", "aurora", true)).toBe("aurora");
-    expect(resolveThemeMotionSlug("confetti", null, true)).toBe("confetti");
+    expect(pickThemeMotionSlug("confetti", "aurora", false)).toBe("confetti");
+    expect(pickThemeMotionSlug("confetti", "aurora", true)).toBe("aurora");
+    expect(pickThemeMotionSlug("confetti", null, true)).toBe("confetti");
   });
 
   test("?motion= accepts only known slugs", () => {

@@ -26,6 +26,7 @@ import {
 
 import type { ResolvedTheme } from "./designTokens";
 import {
+  REDUCED_MOTION_PROGRESS,
   SAFE_ZONE_OPACITY,
   buildSafeZoneMaskUrl,
   resolveTextSafeZone,
@@ -111,7 +112,7 @@ export function loadWebLottiePlayer(): Promise<WebLottiePlayer> {
 }
 
 /** Mid-loop still for prefers-reduced-motion (progress 0..1). */
-export const REDUCED_MOTION_PROGRESS = 0.5;
+export { REDUCED_MOTION_PROGRESS };
 
 export const ThemeEntranceAnimation: React.FC<ThemeEntranceAnimationProps> = ({
   theme,

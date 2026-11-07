@@ -9,7 +9,7 @@ import {
   getThemeMotionDevOverride,
   getThemeMotionDevOverrideVersion,
   parseMotionQueryParam,
-  resolveThemeMotionSlug,
+  pickThemeMotionSlug,
   setThemeMotionDevOverride,
   subscribeThemeMotionDevOverride,
 } from "./themeMotion";
@@ -32,7 +32,7 @@ export function useThemeMotionSlug(themeSlug: ThemeAnimationSlug): ThemeAnimatio
     getThemeMotionDevOverride,
     getThemeMotionDevOverride,
   );
-  return resolveThemeMotionSlug(themeSlug, override, isDev());
+  return pickThemeMotionSlug(themeSlug, override, isDev());
 }
 
 /**

@@ -14,6 +14,10 @@
 import React, { useEffect, useState } from "react";
 
 import { getThemeMotionDevOverride } from "./themeMotion";
+
+// Same value export as the native twin (i-1378 web-shim parity). It lives in
+// the eager themeMotion module, so exporting it here loads no player code.
+export { REDUCED_MOTION_PROGRESS } from "./themeMotion";
 import type { ThemeEntranceAnimationProps } from "./ThemeEntranceAnimationWebImpl";
 
 export type { ThemeEntranceAnimationProps } from "./ThemeEntranceAnimationWebImpl";

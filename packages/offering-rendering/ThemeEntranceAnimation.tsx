@@ -35,6 +35,7 @@ import {
 
 import type { ResolvedTheme } from "./designTokens";
 import {
+  REDUCED_MOTION_PROGRESS,
   SAFE_ZONE_OPACITY,
   computeFollowBands,
   computeSafeZoneBands,
@@ -93,7 +94,7 @@ export interface ThemeEntranceAnimationProps {
 }
 
 /** Mid-loop still for Reduce Motion (progress 0..1). */
-export const REDUCED_MOTION_PROGRESS = 0.5;
+export { REDUCED_MOTION_PROGRESS };
 
 export const ThemeEntranceAnimation: React.FC<ThemeEntranceAnimationProps> = ({
   theme,

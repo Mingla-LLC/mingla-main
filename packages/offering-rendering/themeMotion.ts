@@ -230,7 +230,7 @@ export function subscribeThemeMotionDevOverride(listener: () => void): () => voi
  * The slug a mount actually plays. The override (sheet pick, or `?motion=` on
  * web) wins ONLY when `isDev` is true; production always plays the theme.
  */
-export function resolveThemeMotionSlug(
+export function pickThemeMotionSlug(
   themeSlug: ThemeAnimationSlug,
   override: ThemeAnimationSlug | null,
   isDev: boolean,
@@ -238,6 +238,12 @@ export function resolveThemeMotionSlug(
   if (!isDev || override === null) return themeSlug;
   return override;
 }
+
+/**
+ * The one frame Reduce Motion shows (fraction of the entrance). Owned here so
+ * the native player, the web player and the web shim export one value.
+ */
+export const REDUCED_MOTION_PROGRESS = 0.5;
 
 /* ------------------------------------------------- paused, per device ---- */
 
