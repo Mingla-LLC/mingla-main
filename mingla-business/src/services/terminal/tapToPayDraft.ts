@@ -2,9 +2,10 @@
  * #4271 — the door-sale draft handed to the Tap to Pay route.
  *
  * DoorSaleNewSheet navigates to
- *   /event/<id>/door/tap/new?draft=<base64 json {lines, eventDateId, buyerPhone?}>
+ *   /event/<id>/door/tap/new?draft=<base64 json {lines, eventDateId, buyerPhone?, buyerName?}>
  * The draft only names WHAT is being sold. The server prices it (door-tap-intent
- * create); nothing here is trusted as an amount.
+ * create); nothing here is trusted as an amount. `buyerName` is only shown on
+ * the paid screen's Guest row (door polish); it is never sent as a charge input.
  */
 
 export interface TapToPayDraftLine {
@@ -17,6 +18,8 @@ export interface TapToPayDraft {
   eventDateId: string | null;
   buyerPhone: string | null;
   phoneCountryIso: string | null;
+  /** What the host typed in the sale sheet, if anything. Display only. */
+  buyerName?: string | null;
 }
 
 const BASE64_ALPHABET =
@@ -24,6 +27,7 @@ const BASE64_ALPHABET =
 
 const MAX_LINES = 50;
 const MAX_QUANTITY = 99;
+const MAX_NAME = 120;
 
 /** UTF-8 safe base64 encode that does not depend on a global btoa. */
 export const encodeBase64Utf8 = (value: string): string => {
@@ -107,11 +111,14 @@ export const parseTapToPayDraft = (raw: string | null | undefined): TapToPayDraf
     }
     lines.push({ ticketTypeId, quantity });
   }
+  const buyerName = optionalString(parsed.buyerName)?.slice(0, MAX_NAME) ?? null;
   return {
     lines,
     eventDateId: optionalString(parsed.eventDateId),
     buyerPhone: optionalString(parsed.buyerPhone),
     phoneCountryIso: optionalString(parsed.phoneCountryIso),
+    // Only present when the host typed a name, so an older draft reads the same.
+    ...(buyerName !== null ? { buyerName } : {}),
   };
 };
 
@@ -123,5 +130,6 @@ export const encodeTapToPayDraft = (draft: TapToPayDraft): string =>
       eventDateId: draft.eventDateId,
       ...(draft.buyerPhone !== null ? { buyerPhone: draft.buyerPhone } : {}),
       ...(draft.phoneCountryIso !== null ? { phoneCountryIso: draft.phoneCountryIso } : {}),
+      ...(draft.buyerName != null ? { buyerName: draft.buyerName } : {}),
     }),
   );

@@ -295,14 +295,24 @@ describe("#4271 B8 the Tap to Pay button", () => {
     expect(String(mockPush.mock.calls[0]?.[0])).toContain("/door/tap/new");
   });
 
-  test("with cash chosen, a Tap to Pay button stays in the dock, outside the scroll list", () => {
+  // Door polish: the dock has exactly ONE button and it follows the picked row.
+  // Tap to Pay is the first row and the default pick, so it needs no second button.
+  test("with cash chosen, the one dock button completes the sale; Tap to Pay stays the top row", () => {
     const { root } = mount(openSheet({ initialMethod: "cash" }));
-    const dock = root.findAll((n) => n.props.testID === "door-sale-tap-dock");
-    expect(dock.length).toBeGreaterThan(0);
-    const scrolls = root.findAll((n) => n.type === "RCTScrollView");
-    for (const scroll of scrolls) {
-      expect(scroll.findAll((n) => n.props.testID === "door-sale-tap-dock")).toHaveLength(0);
-    }
+    expect(root.findAll((n) => n.props.testID === "door-sale-tap-dock")).toHaveLength(0);
+    const rows = root.findAll(
+      (n) => typeof n.props.testID === "string" && n.props.testID.startsWith("door-sale-method-") && typeof n.type === "string",
+    );
+    expect(rows[0]?.props.testID).toBe("door-sale-method-tap_to_pay");
+    expect(textOf(root)).toContain("Complete sale");
+    expect(root.findAll((n) => n.type === "Text" && n.children.includes("Tap to Pay on iPhone") && typeof n.props.onPress === "function")).toHaveLength(0);
+    // Picking the Tap to Pay row turns the one button into Tap to Pay.
+    const tapRow = root.findAll(
+      (n) => n.props.testID === "door-sale-method-tap_to_pay" && typeof n.props.onPress === "function",
+    )[0] as ReactTestInstance;
+    act(() => {
+      tapRow.props.onPress();
+    });
     act(() => {
       pressable(root, "Tap to Pay on iPhone").props.onPress();
     });

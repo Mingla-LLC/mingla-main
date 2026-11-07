@@ -66,9 +66,8 @@ import { randomId } from "../../utils/randomId";
 import { useRefundPreview } from "../../hooks/useRefundPreview";
 import { canSubmitRefundPreview } from "../discounts/refundDiscountContract";
 import {
-  refundReasonHelperText,
+  refundReasonHelper,
   refundReasonSendGate,
-  refundReasonTooShortMessage,
 } from "../../utils/refundReason";
 
 import { Button } from "../ui/Button";
@@ -278,6 +277,13 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
     otherwiseReady: readyApartFromReason,
   });
   const showReasonError = reasonErrorShown && trimmedLen < REASON_MIN;
+  const reasonHelper = refundReasonHelper({
+    trimmedLength: trimmedLen,
+    length: reason.length,
+    minLength: REASON_MIN,
+    maxLength: REASON_MAX,
+    pressedShort: showReasonError,
+  });
 
   const handleStepperChange = useCallback(
     (ticketTypeId: string, delta: number, max: number): void => {
@@ -542,28 +548,22 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
                 accessibilityLabel="Refund reason"
               />
             </View>
+            {/* #4271 door polish: one helper line, the same pattern as door refunds. */}
             <View style={styles.reasonMetaRow}>
               <Text
                 style={[
                   styles.reasonHelper,
-                  trimmedLen >= REASON_MIN && styles.reasonHelperOk,
+                  reasonHelper.tone === "error" && styles.reasonHelperError,
                 ]}
+                accessibilityRole={reasonHelper.tone === "error" ? "alert" : undefined}
+                testID={reasonHelper.tone === "error" ? "refund-reason-too-short" : "refund-reason-helper"}
               >
-                {refundReasonHelperText(trimmedLen, REASON_MIN)}
+                {reasonHelper.text}
               </Text>
-              <Text style={styles.reasonCount}>
-                {trimmedLen} / {REASON_MAX}
-              </Text>
+              {reasonHelper.counter !== null ? (
+                <Text style={styles.reasonCount}>{reasonHelper.counter}</Text>
+              ) : null}
             </View>
-            {showReasonError ? (
-              <Text
-                style={styles.errorCaption}
-                accessibilityRole="alert"
-                testID="refund-reason-too-short"
-              >
-                {refundReasonTooShortMessage(REASON_MIN)}
-              </Text>
-            ) : null}
           </View>
 
           {/* Notification footer note (destructive — banner + email + SMS always) */}
@@ -809,15 +809,19 @@ const styles = StyleSheet.create({
   reasonMetaRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-start",
+    gap: spacing.sm,
     marginTop: 6,
   },
   reasonHelper: {
-    fontSize: 11,
+    flex: 1,
+    minHeight: 16,
+    fontSize: 12,
+    lineHeight: 16,
     color: textTokens.tertiary,
   },
-  reasonHelperOk: {
-    color: textTokens.secondary,
+  reasonHelperError: {
+    color: semantic.errorText,
   },
   reasonCount: {
     fontSize: 11,

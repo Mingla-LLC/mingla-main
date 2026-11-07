@@ -15,12 +15,19 @@
  *
  * I-30 — door tier filter: `t.visibility !== "hidden" && t.availableAt !== "online"`.
  *
- * issue #4271 — payment methods, in order: Buyer's phone (pay code: the guest
- * scans a code and pays on their own phone), Tap to Pay (only where it works,
- * see useTapToPayAvailability), Cash, Manual, and a disabled Card reader row
- * ("Card machines are coming later."). Card money rides the online payment
- * rail; cash and manual are recorded through biz_door_sale_record. The whole
- * sheet is withheld from anyone the server says may not take door payments.
+ * issue #4271 — payment methods, in order: Tap to Pay (only where it works,
+ * see useTapToPayAvailability; first and picked by default), Buyer's phone (pay
+ * code: the guest scans a code and pays on their own phone), Cash and Manual.
+ * Card money rides the online payment rail; cash and manual are recorded
+ * through biz_door_sale_record. The whole sheet is withheld from anyone the
+ * server says may not take door payments.
+ *
+ * Door polish (#4271): a 44pt header close replaces the dock's Cancel; the dock
+ * is ONE row (total left, one button right that follows the picked payment
+ * row) with at most one message line above it (doorDockMessage priority);
+ * ticket rows wrap names to two lines, keep the stepper in a fixed 44pt
+ * column and tint rows that are in the basket; unpicked payment rows are one
+ * line; buyer details sit behind one "Add buyer details" row.
  *
  * Memory rules:
  *   - feedback_keyboard_never_blocks_input — ScrollView honors
@@ -33,6 +40,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  LayoutAnimation,
   Platform,
   Pressable,
   StyleSheet,
@@ -45,12 +53,15 @@ import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import {
   accent,
+  durations,
   glass,
   radius as radiusTokens,
   semantic,
   spacing,
   text as textTokens,
+  typography,
 } from "../../constants/designSystem";
+import { useReduceMotion } from "../../hooks/useMotionPreferences";
 import type { DoorPaymentMethod } from "../../types/doorSales";
 import type { LiveEvent } from "../../store/liveEventStore";
 import type { Brand } from "../../types/brand";
@@ -80,16 +91,22 @@ import {
 import { postHogService } from "../../services/postHogService";
 
 import { Button } from "../ui/Button";
+import { IconChrome } from "../ui/IconChrome";
 import { PhoneField, usePhoneEntry } from "../ui/PhoneField";
 import { Sheet } from "../ui/Sheet";
 import { doorTierUnitPrice } from "./doorListPrice";
 import {
   buildDoorPaymentOptions,
+  doorDockMessage,
   doorMethodCollectsBuyerDetails,
+  doorNotesCounter,
   doorPayCodeDockTotal,
   doorSaleButtonLabel,
   doorTapBlockReason,
   doorTapDockTotal,
+  doorTicketCountLabel,
+  DOOR_BUYER_DETAILS_ROW,
+  DOOR_NOTES_PLACEHOLDER,
   DOOR_PAY_CODE_BUYER_NOTE,
   DOOR_PAYMENTS_NOT_ALLOWED,
   DOOR_SALE_SUBHEAD,
@@ -191,7 +208,8 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
     useState<DoorPaymentMethod>("pay_code");
   const [buyerName, setBuyerName] = useState<string>("");
   const [buyerEmail, setBuyerEmail] = useState<string>("");
-  const [moreDetailsOpen, setMoreDetailsOpen] = useState<boolean>(false);
+  const [buyerDetailsOpen, setBuyerDetailsOpen] = useState<boolean>(false);
+  const reduceMotion = useReduceMotion();
   const [notes, setNotes] = useState<string>("");
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -249,7 +267,7 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
       setBuyerName("");
       setBuyerEmail("");
       resetBuyerPhone();
-      setMoreDetailsOpen(false);
+      setBuyerDetailsOpen(false);
       setNotes("");
       setSubmitting(false);
       setSubmitError(null);
@@ -321,8 +339,7 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
   const paymentMethodOption = paymentOptions.find(
     (p) => p.id === paymentMethod,
   );
-  const paymentMethodValid =
-    paymentMethodOption !== undefined && !paymentMethodOption.disabled;
+  const paymentMethodValid = paymentMethodOption !== undefined;
   // The server checks again on every money method; this only keeps a person
   // without permission from filling in a sale that would be refused.
   const permissionDenied = permission.data === false;
@@ -416,6 +433,8 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
         lines: lines.map((l) => ({ ticketTypeId: l.ticketTypeId, quantity: l.quantity })),
         eventDateId: doorDateId,
         buyerPhone: buyerPhone.e164,
+        // Shown on the paid screen's Guest row only when the host typed one.
+        buyerName: buyerName.trim().length > 0 ? buyerName.trim() : null,
       }) as never,
     );
   }, [
@@ -426,6 +445,7 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
     eventCurrencyCode,
     permission.data,
     buyerEmail,
+    buyerName,
     buyerPhone,
     notesValid,
     totalQty,
@@ -535,11 +555,60 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
     onClose();
   }, [submitting, onClose]);
 
+  const toggleBuyerDetails = useCallback((): void => {
+    // A 200ms reveal; instant under reduced motion.
+    if (!reduceMotion) {
+      LayoutAnimation.configureNext(
+        LayoutAnimation.create(durations.normal, LayoutAnimation.Types.easeInEaseOut, LayoutAnimation.Properties.opacity),
+      );
+    }
+    setBuyerDetailsOpen((open) => !open);
+  }, [reduceMotion]);
+
+  // Door polish: the dock says at most one thing, highest priority first.
+  const dockMessage = doorDockMessage(
+    {
+      taxRefused,
+      accessCheckFailed: permission.isError,
+      error: submitError ?? tapBlockedMessage,
+      bankMissing: eventCurrencyCode === null,
+      cardQuotePending:
+        quotesServerTotal && !taxRefused && eventCurrencyCode !== null && !quotedDock.quoted
+          ? paymentMethod === "tap_to_pay"
+            ? "tap_to_pay"
+            : "pay_code"
+          : null,
+    },
+    DOOR_CARD_TAX_REFUSAL,
+  );
+  const dockMessageTestID = taxRefused
+    ? "door-sale-tax-refusal"
+    : dockMessage !== null && submitError === null && tapBlockedMessage !== null && dockMessage.text === tapBlockedMessage
+      ? "door-sale-tap-blocked"
+      : "door-sale-dock-message";
+  const dockLabel = quotesServerTotal ? quotedDock.label : doorTicketCountLabel(totalQty);
+  const dockAmount = quotesServerTotal ? quotedDock.amount : fmtDoorMoney(total);
+  const notesCounter = doorNotesCounter(notes.length, NOTES_MAX);
+
   return (
     <Sheet visible={visible} onClose={handleClose} snapPoint="full">
       <View style={styles.body}>
-        <Text style={styles.title}>New door sale</Text>
-        <Text style={styles.subhead}>{DOOR_SALE_SUBHEAD}</Text>
+        <View style={styles.header}>
+          <View style={styles.headerText}>
+            <Text style={styles.title} accessibilityRole="header">
+              New door sale
+            </Text>
+            <Text style={styles.subhead}>{DOOR_SALE_SUBHEAD}</Text>
+          </View>
+          <IconChrome
+            icon="close"
+            size={44}
+            onPress={handleClose}
+            disabled={submitting}
+            accessibilityLabel="Close door sale"
+            testID="door-sale-close"
+          />
+        </View>
         {permissionDenied ? (
           <View style={styles.blockedWrap} testID="door-sale-not-allowed">
             <Text style={styles.blockedTitle}>{DOOR_PAYMENTS_NOT_ALLOWED}</Text>
@@ -562,8 +631,7 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
           keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
         >
-          {/* ───── Step 1: Pick tickets ───── */}
-          <Text style={styles.sectionHeader}>1. Pick tickets</Text>
+          <Text style={styles.sectionHeader}>Tickets</Text>
           {pickableTiers.length === 0 ? (
             <View style={styles.emptyTiersWrap}>
               <Text style={styles.emptyTiersTitle}>
@@ -579,6 +647,7 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
               {pickableTiers.map((tier) => {
                 const lineQty =
                   lines.find((l) => l.ticketTypeId === tier.id)?.quantity ?? 0;
+                const tierName = tier.name.length > 0 ? tier.name : "Untitled tier";
                 // #962 G5 — hide the tier price ("—") when neither the tier nor
                 // the event has an established currency; never a fabricated £.
                 const tierCode = currencyCodeOrNull(
@@ -590,10 +659,18 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
                     ? formatCurrency(tier.priceGbp, tierCode)
                     : "—";
                 return (
-                  <View key={tier.id} style={styles.tierRow}>
+                  <View
+                    key={tier.id}
+                    style={[styles.tierRow, lineQty > 0 && styles.tierRowPicked]}
+                    testID={`door-sale-tier-${tier.id}`}
+                  >
                     <View style={styles.tierCol}>
-                      <Text style={styles.tierName} numberOfLines={1}>
-                        {tier.name.length > 0 ? tier.name : "Untitled tier"}
+                      <Text
+                        style={styles.tierName}
+                        numberOfLines={2}
+                        accessibilityLabel={tierName}
+                      >
+                        {tierName}
                       </Text>
                       <Text style={styles.tierSubline}>{priceLabel}</Text>
                     </View>
@@ -602,7 +679,7 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
                         onPress={() => handleStep(tier, -1)}
                         disabled={lineQty === 0 || submitting}
                         accessibilityRole="button"
-                        accessibilityLabel={`Decrease ${tier.name} quantity`}
+                        accessibilityLabel={`Decrease ${tierName}`}
                         style={[
                           styles.stepperBtn,
                           (lineQty === 0 || submitting) &&
@@ -616,7 +693,7 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
                         onPress={() => handleStep(tier, 1)}
                         disabled={lineQty >= MAX_QTY_PER_TIER || submitting}
                         accessibilityRole="button"
-                        accessibilityLabel={`Increase ${tier.name} quantity`}
+                        accessibilityLabel={`Increase ${tierName}`}
                         style={[
                           styles.stepperBtn,
                           (lineQty >= MAX_QTY_PER_TIER || submitting) &&
@@ -632,21 +709,6 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
             </View>
           )}
 
-          {/* Cart summary (only if there are lines) */}
-          {lines.length > 0 ? (
-            <View style={styles.cartSummary}>
-              <View style={styles.cartSummaryDivider} />
-              <View style={styles.cartSummaryRow}>
-                <Text style={styles.cartSummaryLabel}>
-                  {totalQty} ticket{totalQty === 1 ? "" : "s"}
-                </Text>
-                <Text style={styles.cartSummaryValue}>
-                  {fmtDoorMoney(total)}
-                </Text>
-              </View>
-            </View>
-          ) : null}
-
           {doorDateNeeded ? (
             <View testID="issue-3281-door-date">
               <Text style={styles.sectionHeader}>Date</Text>
@@ -657,89 +719,70 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
                     : "These tickets share no date. Sell them separately."}
                 </Text>
               ) : (
-                doorDates.map(([id, key]) => {
-                  const active = id === doorDateId;
-                  // The time too: two entries can share a calendar day.
-                  const entry = event.multiDates?.find((e) => e.id === key);
-                  const label =
-                    entry !== undefined ? formatMultiDateList([entry])[0] : key;
-                  return (
-                    <Pressable
-                      key={id}
-                      onPress={() => setDoorDateId(id)}
-                      accessibilityRole="radio"
-                      accessibilityState={{ selected: active }}
-                      accessibilityLabel={label}
-                      style={[styles.paymentRow, active && styles.paymentRowActive]}
-                    >
-                      <Text style={styles.paymentLabel}>{label}</Text>
-                    </Pressable>
-                  );
-                })
+                <View style={styles.paymentList}>
+                  {doorDates.map(([id, key]) => {
+                    const active = id === doorDateId;
+                    // The time too: two entries can share a calendar day.
+                    const entry = event.multiDates?.find((e) => e.id === key);
+                    const label =
+                      entry !== undefined ? formatMultiDateList([entry])[0] : key;
+                    return (
+                      <Pressable
+                        key={id}
+                        onPress={() => setDoorDateId(id)}
+                        accessibilityRole="radio"
+                        accessibilityState={{ selected: active }}
+                        accessibilityLabel={label}
+                        style={[styles.paymentRow, active && styles.paymentRowActive]}
+                      >
+                        <Text style={styles.paymentLabel}>{label}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
               )}
             </View>
           ) : null}
 
-          {/* ───── Step 2: How they pay (issue #4271) ───── */}
-          <Text style={styles.sectionHeader}>2. How they pay</Text>
+          {/* issue #4271 — Tap to Pay first and picked by default when it works here. */}
+          <Text style={styles.sectionHeader}>How they pay</Text>
           <View style={styles.paymentList}>
             {paymentOptions.map((opt) => {
-              const active = paymentMethod === opt.id && !opt.disabled;
+              const active = paymentMethod === opt.id;
               return (
                 <Pressable
                   key={opt.id}
                   onPress={() => {
-                    if (opt.disabled || submitting) return;
+                    if (submitting) return;
                     hostChoseMethodRef.current = true;
                     setPaymentMethod(opt.id);
                     setSubmitError(null);
                     setTapBlockedMessage(null);
                   }}
                   accessibilityRole="radio"
-                  accessibilityState={{
-                    selected: active,
-                    disabled: opt.disabled,
-                  }}
+                  accessibilityState={{ selected: active }}
                   accessibilityLabel={`${opt.label}. ${opt.sub}`}
-                  disabled={opt.disabled || submitting}
+                  disabled={submitting}
                   testID={`door-sale-method-${opt.id}`}
                   style={[
                     styles.paymentRow,
                     active && styles.paymentRowActive,
-                    opt.disabled && styles.paymentRowDisabled,
                   ]}
                 >
                   <View style={styles.paymentCol}>
                     <View style={styles.paymentLabelRow}>
                       {opt.id === "tap_to_pay" ? <TapToPayIcon size={18} /> : null}
-                      <Text
-                        style={[
-                          styles.paymentLabel,
-                          opt.disabled && styles.paymentLabelDisabled,
-                        ]}
-                      >
-                        {opt.label}
-                      </Text>
-                      {opt.isNew ? (
-                        <View style={styles.newBadge}>
-                          <Text style={styles.newBadgeText}>NEW</Text>
-                        </View>
-                      ) : null}
+                      <Text style={styles.paymentLabel}>{opt.label}</Text>
                     </View>
-                    <Text
-                      style={[
-                        styles.paymentSubline,
-                        opt.disabled && styles.paymentSublineDisabled,
-                      ]}
-                    >
-                      {opt.sub}
-                    </Text>
+                    {/* Only the picked row explains itself; the rest stay one line. */}
+                    {active ? (
+                      <Text style={styles.paymentSubline}>{opt.sub}</Text>
+                    ) : null}
                   </View>
                   <View
                     style={[
                       styles.radioOuter,
                       active && styles.radioOuterActive,
-                      opt.disabled && styles.radioOuterDisabled,
                     ]}
                   >
                     {active ? <View style={styles.radioInner} /> : null}
@@ -749,16 +792,30 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
             })}
           </View>
 
-          {/* ───── Step 3: Buyer details (optional) ───── */}
+          {/* Buyer details: the guest types their own for a pay code. */}
           {!collectsBuyerDetails ? (
-            <View style={styles.payCodeNote} testID="door-sale-pay-code-note">
-              <Text style={styles.payCodeNoteTitle}>Buyer details</Text>
-              <Text style={styles.payCodeNoteBody}>{DOOR_PAY_CODE_BUYER_NOTE}</Text>
-            </View>
+            <Text style={styles.payCodeNote} testID="door-sale-pay-code-note">
+              {DOOR_PAY_CODE_BUYER_NOTE}
+            </Text>
           ) : (
           <>
-          <Text style={styles.sectionHeader}>3. Buyer details (optional)</Text>
+          <Pressable
+            onPress={toggleBuyerDetails}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: buyerDetailsOpen }}
+            accessibilityLabel={`${DOOR_BUYER_DETAILS_ROW.title}. ${DOOR_BUYER_DETAILS_ROW.sub}`}
+            style={styles.buyerDetailsRow}
+            testID="door-sale-buyer-details-toggle"
+          >
+            <View style={styles.paymentCol}>
+              <Text style={styles.buyerDetailsTitle}>{DOOR_BUYER_DETAILS_ROW.title}</Text>
+              <Text style={styles.paymentSubline}>{DOOR_BUYER_DETAILS_ROW.sub}</Text>
+            </View>
+            <Text style={styles.buyerDetailsChevron}>{buyerDetailsOpen ? "−" : "+"}</Text>
+          </Pressable>
 
+          {buyerDetailsOpen ? (
+          <View testID="door-sale-buyer-details">
           <View style={styles.fieldGroup}>
             <Text style={styles.label}>Name</Text>
             <View style={styles.inputWrap}>
@@ -789,45 +846,32 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
             </Text>
           </View>
 
-          <Pressable
-            onPress={() => setMoreDetailsOpen((open) => !open)}
-            accessibilityRole="button"
-            accessibilityState={{ expanded: moreDetailsOpen }}
-            accessibilityLabel={moreDetailsOpen ? "Hide more details" : "Show more details"}
-            style={styles.moreDetailsToggle}
-          >
-            <Text style={styles.moreDetailsLabel}>More details</Text>
-            <Text style={styles.moreDetailsChevron}>{moreDetailsOpen ? "−" : "+"}</Text>
-          </Pressable>
-
-          {moreDetailsOpen ? (
-            <View style={styles.fieldGroup}>
-              <Text style={styles.label}>Email</Text>
-              <View
-                style={[
-                  styles.inputWrap,
-                  buyerEmail.length > 0 && !emailValid && styles.inputError,
-                ]}
-              >
-                <TextInput
-                  value={buyerEmail}
-                  onChangeText={setBuyerEmail}
-                  placeholder="optional"
-                  placeholderTextColor={textTokens.quaternary}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  maxLength={EMAIL_MAX}
-                  style={styles.input}
-                  editable={!submitting}
-                  accessibilityLabel="Buyer email"
-                />
-              </View>
-              {buyerEmail.length > 0 && !emailValid ? (
-                <Text style={styles.errorText}>Enter a valid email or leave blank.</Text>
-              ) : null}
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label}>Email</Text>
+            <View
+              style={[
+                styles.inputWrap,
+                buyerEmail.length > 0 && !emailValid && styles.inputError,
+              ]}
+            >
+              <TextInput
+                value={buyerEmail}
+                onChangeText={setBuyerEmail}
+                placeholder="optional"
+                placeholderTextColor={textTokens.quaternary}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                maxLength={EMAIL_MAX}
+                style={styles.input}
+                editable={!submitting}
+                accessibilityLabel="Buyer email"
+              />
             </View>
-          ) : null}
+            {buyerEmail.length > 0 && !emailValid ? (
+              <Text style={styles.errorText}>Enter a valid email or leave blank.</Text>
+            ) : null}
+          </View>
 
           <View style={styles.fieldGroup}>
             <Text style={styles.label}>Notes</Text>
@@ -835,7 +879,7 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
               <TextInput
                 value={notes}
                 onChangeText={setNotes}
-                placeholder="e.g. John gave £50 cash, change £10"
+                placeholder={DOOR_NOTES_PLACEHOLDER}
                 placeholderTextColor={textTokens.quaternary}
                 multiline
                 numberOfLines={3}
@@ -845,105 +889,62 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
                 accessibilityLabel="Sale notes"
               />
             </View>
-            <Text style={styles.helperHint}>
-              {notes.length} / {NOTES_MAX} characters
-            </Text>
+            {notesCounter !== null ? (
+              <Text style={styles.helperHint}>{notesCounter}</Text>
+            ) : null}
           </View>
+          </View>
+          ) : null}
           </>
           )}
         </ScrollView>
 
-        {/* Sticky bottom bar — total + Record sale CTA */}
+        {/* Door polish: one row, about 76pt. Total left, one button right. */}
         <View style={styles.dock}>
-          {taxRefused ? null : (
-            <View style={styles.dockTotalRow} testID="door-sale-dock-total-row">
-              <Text style={styles.dockTotalLabel}>
-                {quotesServerTotal ? quotedDock.label : "Total"}
+          <View style={styles.dockMessageSlot} accessibilityLiveRegion="polite">
+            {dockMessage !== null ? (
+              <Text
+                style={dockMessage.tone === "error" ? styles.dockMessageError : styles.dockMessageHint}
+                accessibilityRole={dockMessage.tone === "error" ? "alert" : undefined}
+                numberOfLines={2}
+                testID={dockMessageTestID}
+              >
+                {dockMessage.text}
               </Text>
-              <Text style={styles.dockTotalValue} testID="door-sale-dock-total">
-                {quotesServerTotal ? quotedDock.amount : fmtDoorMoney(total)}
-              </Text>
-            </View>
-          )}
-          {taxRefused ? (
-            <Text style={styles.submitError} accessibilityRole="alert" testID="door-sale-tax-refusal">
-              {DOOR_CARD_TAX_REFUSAL}
-            </Text>
-          ) : null}
-          {quotesServerTotal && !taxRefused && eventCurrencyCode !== null && !quotedDock.quoted ? (
-            <Text style={styles.currencyGateHint}>
-              {paymentMethod === "tap_to_pay"
-                ? "The tap screen shows the final total, with any fees."
-                : "The pay code shows the final total, with any fees."}
-            </Text>
-          ) : null}
-          {eventCurrencyCode === null ? (
-            <Text style={styles.currencyGateHint}>
-              Add your bank to record paid sales.
-            </Text>
-          ) : null}
-          {permission.isError ? (
-            <Text style={styles.submitError} accessibilityRole="alert">
-              Couldn't check your door access. Check your connection and try again.
-            </Text>
-          ) : null}
-          {submitError !== null ? (
-            <Text style={styles.submitError} accessibilityRole="alert">
-              {submitError}
-            </Text>
-          ) : null}
-          {tapBlockedMessage !== null ? (
-            <Text style={styles.submitError} accessibilityRole="alert" testID="door-sale-tap-blocked">
-              {tapBlockedMessage}
-            </Text>
-          ) : null}
-          {tapToPay.available && paymentMethod !== "tap_to_pay" ? (
-            <View style={styles.tapDockRow}>
-              <TapToPayIcon size={22} />
-              <View style={styles.tapDockButton}>
-                <Button
-                  label={tapToPayName(Platform.OS)}
-                  onPress={() => {
-                    hostChoseMethodRef.current = true;
-                    setPaymentMethod("tap_to_pay");
-                    startTapSale();
-                  }}
-                  variant="secondary"
-                  size="lg"
-                  fullWidth
-                  disabled={submitting || taxRefused}
-                  accessibilityLabel={tapToPayName(Platform.OS)}
-                  testID="door-sale-tap-dock"
-                />
-              </View>
-            </View>
-          ) : null}
-          <View style={paymentMethod === "tap_to_pay" ? styles.tapDockRow : undefined}>
-            {paymentMethod === "tap_to_pay" ? <TapToPayIcon size={22} /> : null}
-            <View style={paymentMethod === "tap_to_pay" ? styles.tapDockButton : undefined}>
-              <Button
-                label={doorSaleButtonLabel(paymentMethod, Platform.OS)}
-                onPress={handleConfirm}
-                variant="primary"
-                size="lg"
-                fullWidth
-                loading={submitting}
-                disabled={paymentMethod === "tap_to_pay" ? submitting || taxRefused : !canSubmit}
-                accessibilityLabel={doorSaleButtonLabel(paymentMethod, Platform.OS)}
-                testID="door-sale-submit"
-              />
-            </View>
+            ) : null}
           </View>
-          <View style={styles.dockSpacer} />
-          <Button
-            label="Cancel"
-            onPress={handleClose}
-            variant="ghost"
-            size="md"
-            fullWidth
-            disabled={submitting}
-            accessibilityLabel="Cancel door sale"
-          />
+          <View style={styles.dockRow}>
+            {taxRefused ? null : (
+              <View style={styles.dockTotal} testID="door-sale-dock-total-row">
+                <Text style={styles.dockTotalLabel} numberOfLines={1}>
+                  {dockLabel}
+                </Text>
+                <Text style={styles.dockTotalValue} numberOfLines={1} testID="door-sale-dock-total">
+                  {dockAmount}
+                </Text>
+              </View>
+            )}
+            {pickableTiers.length === 0 ? null : (
+              <View style={styles.dockButtonRow}>
+                {paymentMethod === "tap_to_pay" ? <TapToPayIcon size={22} /> : null}
+                <View style={styles.dockButton}>
+                  <Button
+                    label={doorSaleButtonLabel(paymentMethod, Platform.OS)}
+                    onPress={handleConfirm}
+                    variant="primary"
+                    size="lg"
+                    fullWidth
+                    loading={submitting}
+                    // Apple: the Tap to Pay button is never greyed; a press that
+                    // can't start says why in the message line instead.
+                    disabled={paymentMethod === "tap_to_pay" ? submitting || taxRefused : !canSubmit}
+                    accessibilityLabel={doorSaleButtonLabel(paymentMethod, Platform.OS)}
+                    testID="door-sale-submit"
+                  />
+                </View>
+              </View>
+            )}
+          </View>
         </View>
         </>
         )}
@@ -954,34 +955,38 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
 
 // ---- Styles ---------------------------------------------------------
 
+const STEPPER_BUTTON = 44;
+
 const styles = StyleSheet.create({
-  tapDockRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.xs },
-  tapDockButton: { flex: 1 },
   body: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
-    paddingBottom: spacing.xl,
     flex: 1,
   },
-  title: {
-    fontSize: 22,
-    fontWeight: "700",
-    color: textTokens.primary,
-    letterSpacing: -0.2,
+  header: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.sm,
     marginBottom: spacing.xs,
   },
+  headerText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  title: {
+    ...typography.h3,
+    fontWeight: "700",
+    color: textTokens.primary,
+  },
   subhead: {
-    fontSize: 14,
+    ...typography.bodySm,
     color: textTokens.secondary,
-    lineHeight: 20,
-    marginBottom: spacing.md,
   },
   scroll: {
     flex: 1,
-    marginBottom: spacing.sm,
   },
   scrollContent: {
-    paddingBottom: spacing.sm,
+    paddingBottom: spacing.md,
   },
 
   // issue #4271 — shown instead of the sale to people without permission.
@@ -996,48 +1001,22 @@ const styles = StyleSheet.create({
     color: textTokens.primary,
   },
   payCodeNote: {
-    marginTop: spacing.md,
-    marginBottom: spacing.md,
-    padding: spacing.md,
-    borderRadius: radiusTokens.md,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    gap: 4,
-  },
-  payCodeNoteTitle: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: textTokens.primary,
-  },
-  payCodeNoteBody: {
-    fontSize: 12,
-    lineHeight: 17,
+    ...typography.bodySm,
     color: textTokens.secondary,
+    marginTop: spacing.md,
   },
   paymentLabelRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.xs,
   },
-  newBadge: {
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 5,
-    backgroundColor: accent.warm,
-  },
-  newBadgeText: {
-    fontSize: 9,
-    fontWeight: "800",
-    letterSpacing: 0.6,
-    color: textTokens.primary,
-  },
 
   // Section headers ---------------------------------------------------
   sectionHeader: {
     fontSize: 11,
+    lineHeight: 14,
     fontWeight: "700",
-    letterSpacing: 1.4,
+    letterSpacing: 1.2,
     color: textTokens.tertiary,
     marginTop: spacing.md,
     marginBottom: spacing.sm,
@@ -1070,7 +1049,7 @@ const styles = StyleSheet.create({
   tierRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: spacing.sm + 2,
+    paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     borderRadius: radiusTokens.md,
     overflow: "hidden",
@@ -1079,28 +1058,37 @@ const styles = StyleSheet.create({
     backgroundColor: glass.tint.profileBase,
     gap: spacing.sm,
   },
+  // In the basket: a soft accent wash so the picks show while scrolling.
+  tierRowPicked: {
+    borderColor: accent.border,
+    backgroundColor: accent.faint,
+  },
   tierCol: {
     flex: 1,
     minWidth: 0,
   },
   tierName: {
     fontSize: 14,
+    lineHeight: 20,
     fontWeight: "600",
     color: textTokens.primary,
   },
   tierSubline: {
     fontSize: 12,
+    lineHeight: 16,
     color: textTokens.tertiary,
     marginTop: 2,
   },
+  // A fixed right column (44 + value + 44) so every row lines up.
   stepper: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
+    width: STEPPER_BUTTON * 2 + 22 + spacing.sm * 2,
   },
   stepperBtn: {
-    width: 36,
-    height: 36,
+    width: STEPPER_BUTTON,
+    height: STEPPER_BUTTON,
     borderRadius: 999,
     overflow: "hidden",
     alignItems: "center",
@@ -1121,33 +1109,8 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
     color: textTokens.primary,
-    minWidth: 28,
+    width: 22,
     textAlign: "center",
-    fontVariant: ["tabular-nums"],
-  },
-
-  // Cart summary ------------------------------------------------------
-  cartSummary: {
-    marginTop: spacing.sm,
-  },
-  cartSummaryDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
-    marginBottom: spacing.sm,
-  },
-  cartSummaryRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "baseline",
-  },
-  cartSummaryLabel: {
-    fontSize: 13,
-    color: textTokens.secondary,
-  },
-  cartSummaryValue: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: textTokens.primary,
     fontVariant: ["tabular-nums"],
   },
 
@@ -1158,7 +1121,8 @@ const styles = StyleSheet.create({
   paymentRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: spacing.sm + 2,
+    minHeight: 44,
+    paddingVertical: 10,
     paddingHorizontal: spacing.md,
     borderRadius: radiusTokens.md,
     overflow: "hidden",
@@ -1168,11 +1132,9 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   paymentRowActive: {
+    minHeight: 56,
     borderColor: accent.border,
     backgroundColor: accent.tint,
-  },
-  paymentRowDisabled: {
-    opacity: 0.55,
   },
   paymentCol: {
     flex: 1,
@@ -1183,16 +1145,11 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: textTokens.primary,
   },
-  paymentLabelDisabled: {
-    color: textTokens.tertiary,
-  },
   paymentSubline: {
     fontSize: 12,
+    lineHeight: 16,
     color: textTokens.tertiary,
     marginTop: 2,
-  },
-  paymentSublineDisabled: {
-    color: textTokens.quaternary,
   },
   radioOuter: {
     width: 22,
@@ -1206,9 +1163,6 @@ const styles = StyleSheet.create({
   radioOuterActive: {
     borderColor: accent.warm,
   },
-  radioOuterDisabled: {
-    borderColor: "rgba(255, 255, 255, 0.10)",
-  },
   radioInner: {
     width: 10,
     height: 10,
@@ -1217,6 +1171,29 @@ const styles = StyleSheet.create({
   },
 
   // Buyer fields ------------------------------------------------------
+  buyerDetailsRow: {
+    minHeight: 56,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.md,
+    marginTop: spacing.md,
+    marginBottom: spacing.md,
+    borderRadius: radiusTokens.md,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: glass.border.profileElevated,
+  },
+  buyerDetailsTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: textTokens.primary,
+  },
+  buyerDetailsChevron: {
+    fontSize: 20,
+    color: textTokens.tertiary,
+  },
   fieldGroup: {
     marginBottom: spacing.md,
   },
@@ -1249,7 +1226,7 @@ const styles = StyleSheet.create({
   },
   errorText: {
     fontSize: 12,
-    color: semantic.error,
+    color: semantic.errorText,
     marginTop: 4,
   },
   notesWrap: {
@@ -1273,8 +1250,9 @@ const styles = StyleSheet.create({
   },
   helperHint: {
     fontSize: 11,
-    color: textTokens.quaternary,
+    color: textTokens.tertiary,
     marginTop: 4,
+    textAlign: "right",
     fontVariant: ["tabular-nums"],
   },
   phoneHelper: {
@@ -1283,76 +1261,58 @@ const styles = StyleSheet.create({
     color: textTokens.tertiary,
     marginTop: spacing.xs,
   },
-  moreDetailsToggle: {
-    minHeight: 44,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.md,
-    marginBottom: spacing.md,
-    borderRadius: radiusTokens.md,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+
+  // Sticky bottom dock: one row ---------------------------------------
+  dock: {
+    marginHorizontal: -spacing.lg,
+    paddingTop: 12,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: glass.border.profileBase,
   },
-  moreDetailsLabel: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: textTokens.secondary,
+  dockMessageSlot: {
+    marginBottom: spacing.xs,
   },
-  moreDetailsChevron: {
-    fontSize: 20,
+  dockMessageHint: {
+    fontSize: 12,
+    lineHeight: 16,
     color: textTokens.tertiary,
   },
-
-  // Sticky bottom dock -----------------------------------------------
-  dock: {
-    paddingTop: spacing.sm,
+  dockMessageError: {
+    fontSize: 12,
+    lineHeight: 16,
+    color: semantic.errorText,
   },
-  dockTotalRow: {
+  dockRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "baseline",
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.sm,
-    marginBottom: spacing.sm,
-    borderRadius: radiusTokens.md,
-    overflow: "hidden",
-    backgroundColor: glass.tint.profileElevated,
-    borderWidth: 1,
-    borderColor: glass.border.profileElevated,
+    alignItems: "center",
+    gap: spacing.md,
+  },
+  dockTotal: {
+    minWidth: 84,
   },
   dockTotalLabel: {
-    fontSize: 14,
-    fontWeight: "600",
+    fontSize: 12,
+    lineHeight: 16,
     color: textTokens.secondary,
   },
   dockTotalValue: {
-    fontSize: 22,
+    fontSize: 20,
+    lineHeight: 24,
     fontWeight: "700",
     color: textTokens.primary,
     fontVariant: ["tabular-nums"],
   },
-  dockSpacer: {
-    height: spacing.sm,
+  dockButtonRow: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
   },
-  // #962 G5 — pre-bank currency gate hint above the Record CTA.
-  currencyGateHint: {
-    fontSize: 13,
-    color: textTokens.secondary,
-    marginBottom: spacing.sm,
-    textAlign: "center",
+  dockButton: {
+    flex: 1,
   },
-  submitError: {
-    fontSize: 13,
-    lineHeight: 18,
-    color: semantic.error,
-    marginBottom: spacing.sm,
-    textAlign: "center",
-  },
-
-  // Section header reuses (deprecated)
-  field: {},
 });
 
 // ---- Default export -------------------------------------------------

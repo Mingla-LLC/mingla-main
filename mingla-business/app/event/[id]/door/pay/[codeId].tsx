@@ -13,17 +13,24 @@
  * While a code is showing the phone stays awake at full brightness, so a guest can
  * scan it (design H3); leaving restores the phone's own settings.
  *
+ * Door polish (#4271): top to bottom it reads amount, tickets, QR, code, then
+ * one status pill with the live countdown (DoorStatusPill). When the guest
+ * opens the code the QR dims to 35% and the pill says "Guest is paying…". End
+ * rings follow the door tones: expired and cancelled grey (nothing charged),
+ * failed red, checking and payment landing amber, paid green.
+ *
  * I-21: operator-side route (useAuth via the hooks below).
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Animated, Easing, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   accent,
   canvas,
+  durations,
   glass,
   radius as radiusTokens,
   semantic,
@@ -31,6 +38,9 @@ import {
   text as textTokens,
 } from "../../../../../src/constants/designSystem";
 import { DoorPayQr } from "../../../../../src/components/door/DoorPayQr";
+import { DoorStatusPill } from "../../../../../src/components/door/DoorStatusPill";
+import { doorPayHostTone, doorToneStyle } from "../../../../../src/components/door/doorTone";
+import { useReduceMotion } from "../../../../../src/hooks/useMotionPreferences";
 import { doorSellAnotherHref } from "../../../../../src/components/door/doorTapDraft";
 import { formatDoorPayCode, makeDoorPayUrl, isDoorPayCode } from "../../../../../src/components/door/doorPayUrl";
 import {
@@ -40,6 +50,10 @@ import {
   doorPayHostEndCopy,
   doorPayHostStatus,
   doorPayTextLinkErrorMessage,
+  doorPayCountdownSeconds,
+  doorPayCountdownWords,
+  doorPayWaitingPillText,
+  DOOR_PAY_URGENT_SECONDS,
   formatDoorPayCountdown,
   isDoorPayPastTime,
   openedAgoLabel,
@@ -174,6 +188,24 @@ export default function DoorPayCodeRoute(): React.ReactElement {
       ? formatCurrency(row.totalCents, row.currency, true)
       : "—";
 
+  // The QR dims to 35% while the guest is paying (still scannable, "in use").
+  const reduceMotion = useReduceMotion();
+  const qrOpacity = useRef(new Animated.Value(1)).current;
+  const qrDimmed = status === "opened";
+  useEffect(() => {
+    const target = qrDimmed ? 0.35 : 1;
+    if (reduceMotion) {
+      qrOpacity.setValue(target);
+      return;
+    }
+    Animated.timing(qrOpacity, {
+      toValue: target,
+      duration: durations.entry,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [qrDimmed, reduceMotion, qrOpacity]);
+
   // Success haptic exactly once, when the guest's payment lands.
   const celebrated = useRef<boolean>(false);
   useEffect(() => {
@@ -299,7 +331,7 @@ export default function DoorPayCodeRoute(): React.ReactElement {
 
   const chrome = (
     <View style={styles.chromeRow}>
-      <IconChrome icon="close" size={36} onPress={handleClose} accessibilityLabel="Close" />
+      <IconChrome icon="close" size={44} onPress={handleClose} accessibilityLabel="Close" />
       <Text style={styles.chromeTitle}>Scan to pay</Text>
       <View style={styles.chromeSlot} />
     </View>
@@ -324,11 +356,9 @@ export default function DoorPayCodeRoute(): React.ReactElement {
   } else if (status === "paid") {
     body = (
       <View style={styles.center} testID="door-pay-paid">
-        <View style={styles.okRing}>
-          <Icon name="check" size={32} color={semantic.success} />
-        </View>
+        <ToneRing tone="ok" />
         <Text style={styles.big}>Paid {amount}</Text>
-        <Text style={styles.muted}>Buyer's phone</Text>
+        <Text style={styles.muted}>Paid on their phone</Text>
         <View style={styles.card}>
           <View style={styles.kv}>
             <Text style={styles.kvKey}>Tickets</Text>
@@ -360,8 +390,8 @@ export default function DoorPayCodeRoute(): React.ReactElement {
     );
   } else if (status === "checking") {
     body = (
-      <View style={styles.center} testID="door-pay-checking" accessibilityLiveRegion="polite">
-        <ActivityIndicator color={accent.warm} />
+      <View style={styles.center} testID="door-pay-checking" accessibilityLiveRegion="assertive">
+        <ToneRing tone="caution" busy />
         <Text style={styles.endTitle}>Checking…</Text>
         <Text style={styles.muted}>
           We're asking the card provider whether a payment went through. Don't charge them again yet.
@@ -370,8 +400,8 @@ export default function DoorPayCodeRoute(): React.ReactElement {
     );
   } else if (status === "payment_landing") {
     body = (
-      <View style={styles.center} testID="door-pay-landing" accessibilityLiveRegion="polite">
-        <ActivityIndicator color={semantic.success} />
+      <View style={styles.center} testID="door-pay-landing" accessibilityLiveRegion="assertive">
+        <ToneRing tone="caution" busy />
         <Text style={styles.endTitle}>Their payment went through</Text>
         <Text style={styles.muted}>
           This turns green in a moment. Don't charge them again and don't take cash.
@@ -382,9 +412,7 @@ export default function DoorPayCodeRoute(): React.ReactElement {
     const copy = doorPayHostEndCopy(status);
     body = (
       <View style={styles.center} testID={`door-pay-${status}`}>
-        <View style={styles.badRing}>
-          <Icon name={status === "expired" ? "clock" : "close"} size={28} color={semantic.errorText} />
-        </View>
+        <ToneRing tone={doorPayHostTone(status)} />
         <Text style={styles.endTitle}>{copy.title}</Text>
         <Text style={styles.muted} testID="door-pay-end-body" accessibilityLiveRegion="polite">
           {doorPayHostEndBody(status, latePayment, row.provider)}
@@ -412,17 +440,21 @@ export default function DoorPayCodeRoute(): React.ReactElement {
     );
   } else {
     const paying = status === "opened";
+    const secondsLeft = doorPayCountdownSeconds(row.expiresAt, nowMs);
     body = (
       <View style={styles.live} testID={`door-pay-${status}`}>
-        {isDoorPayCode(row.code) ? (
-          <DoorPayQr url={makeDoorPayUrl(row.code)} size={QR_SIZE} testID="door-pay-qr" />
-        ) : null}
-        <Text style={styles.codeText} accessibilityLabel={`Code ${row.code.split("").join(" ")}`}>
-          {formatDoorPayCode(row.code)}
-        </Text>
+        {/* The guest sees what they're paying before they see a QR. */}
         <Text style={styles.big}>{amount}</Text>
         <Text style={styles.muted}>
           {[summarizeDoorPayLines(namedLines), routeEvent.event?.name].filter(Boolean).join(" · ")}
+        </Text>
+        {isDoorPayCode(row.code) ? (
+          <Animated.View style={[styles.qrWrap, { opacity: qrOpacity }]} testID="door-pay-qr-wrap">
+            <DoorPayQr url={makeDoorPayUrl(row.code)} size={QR_SIZE} testID="door-pay-qr" />
+          </Animated.View>
+        ) : null}
+        <Text style={styles.codeText} accessibilityLabel={`Code ${row.code.split("").join(" ")}`}>
+          {formatDoorPayCode(row.code)}
         </Text>
         {row.failureReason === "card_declined" ? (
           <Text style={styles.error} accessibilityRole="alert" testID="door-pay-declined">
@@ -430,17 +462,26 @@ export default function DoorPayCodeRoute(): React.ReactElement {
           </Text>
         ) : null}
         {paying ? (
-          <View style={[styles.card, styles.payingCard]} accessibilityLiveRegion="polite">
-            <Text style={styles.payingTitle}>Guest is paying…</Text>
+          <>
+            <DoorStatusPill
+              variant="busy"
+              text="Guest is paying…"
+              stateLabel="Guest is paying"
+              testID="door-pay-status-pill"
+            />
             <Text style={styles.faint}>
               Opened on their phone {openedAgoLabel(row.openedAt, nowMs)}. Keep this screen open.
             </Text>
-          </View>
-        ) : (
-          <>
-            <Text style={styles.muted}>Ask them to point their phone camera at the code.</Text>
-            <Text style={styles.faint}>Code expires in {formatDoorPayCountdown(row.expiresAt, nowMs)}</Text>
           </>
+        ) : (
+          <DoorStatusPill
+            variant="waiting"
+            text={doorPayWaitingPillText(formatDoorPayCountdown(row.expiresAt, nowMs))}
+            urgent={secondsLeft < DOOR_PAY_URGENT_SECONDS}
+            accessibilityLabel={`Point your camera at the code. ${doorPayCountdownWords(secondsLeft)}`}
+            stateLabel="Waiting for the guest to scan"
+            testID="door-pay-status-pill"
+          />
         )}
         <View style={styles.actions}>
           <Button
@@ -573,6 +614,32 @@ const TextLinkSheet: React.FC<TextLinkSheetProps> = ({ visible, codeId, currency
   );
 };
 
+// ---- Door polish: end-state ring in the door tones -----------------------
+
+const ToneRing: React.FC<{
+  tone: "ok" | "neutral" | "caution" | "bad";
+  icon?: React.ComponentProps<typeof Icon>["name"];
+  busy?: boolean;
+}> = ({ tone, icon, busy = false }) => {
+  const style = doorToneStyle(tone);
+  return (
+    <View
+      style={[
+        styles.ring,
+        { backgroundColor: style.ringFill },
+        style.ringBorder !== null ? { borderWidth: 1, borderColor: style.ringBorder } : null,
+      ]}
+      testID={`door-pay-tone-${tone}`}
+    >
+      {busy ? (
+        <ActivityIndicator color={style.iconColor} />
+      ) : (
+        <Icon name={icon ?? style.defaultIcon} size={style.iconSize + 2} color={style.iconColor} />
+      )}
+    </View>
+  );
+};
+
 const styles = StyleSheet.create({
   host: { flex: 1, backgroundColor: canvas.discover },
   scroll: { flex: 1 },
@@ -631,30 +698,20 @@ const styles = StyleSheet.create({
     backgroundColor: glass.tint.profileBase,
     gap: spacing.xs,
   },
-  payingCard: { borderColor: accent.border, alignItems: "center" },
-  payingTitle: { fontSize: 15, fontWeight: "700", color: textTokens.primary },
+  // DoorPayQr draws its own white card; this only carries the dim.
+  qrWrap: { alignSelf: "center" },
   sentCard: { alignItems: "center" },
   kv: { flexDirection: "row", justifyContent: "space-between", gap: spacing.sm },
   kvKey: { fontSize: 13, color: textTokens.secondary },
   kvValue: { fontSize: 13, fontWeight: "600", color: textTokens.primary },
   kvValueOk: { fontSize: 13, fontWeight: "600", color: semantic.success },
-  okRing: {
+  ring: {
     width: 72,
     height: 72,
     borderRadius: 999,
     alignSelf: "center",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: semantic.successTint,
-  },
-  badRing: {
-    width: 72,
-    height: 72,
-    borderRadius: 999,
-    alignSelf: "center",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(239, 68, 68, 0.16)",
   },
   actions: { marginTop: "auto", gap: spacing.xs, paddingBottom: spacing.md },
   error: {

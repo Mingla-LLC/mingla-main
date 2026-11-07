@@ -14,6 +14,12 @@
  * no QR (#4063): the door has already checked them in.
  *
  * Pre-purchase copy talks about the ticket, never the app (#4063).
+ *
+ * Door polish (#4271): the event name moves into the eyebrow ("PAY AT THE DOOR ·
+ * EVENT"), the brand and venue line goes (the guest is standing there), the
+ * labels drop the asterisks (one line says all three are needed), the fields
+ * carry autofill hints, the button names the amount, and the end states use
+ * the door tones (expired and cancelled grey, failed red, paid green).
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -61,6 +67,7 @@ import {
   doorPayGuestLateCopy,
   doorPayGuestReturnSettled,
 } from "../../../src/components/door/doorPayGuestState";
+import { doorPayGuestTone, doorToneStyle, type DoorTone } from "../../../src/components/door/doorTone";
 import { recordConsent } from "../../../src/services/consentService";
 import {
   createDoorCodeCheckout,
@@ -132,6 +139,14 @@ const writeContact = (code: string, contact: StoredContact): void => {
 
 const money = (cents: number, currency: string): string =>
   currency.length > 0 ? formatCurrency(cents, currency, true) : "—";
+
+/** Door polish: the button names the amount, so no separate label is needed. */
+const doorPayGuestContinueLabel = (amount: string): string => `Continue to pay ${amount}`;
+
+const doorPayGuestEyebrow = (eventName: string | null | undefined): string =>
+  typeof eventName === "string" && eventName.trim().length > 0
+    ? `PAY AT THE DOOR · ${eventName.trim().toUpperCase()}`
+    : "PAY AT THE DOOR";
 
 const assignLocation = (url: string): boolean => {
   const w = globalThis as unknown as { location?: { assign?: (u: string) => void } };
@@ -236,7 +251,7 @@ export default function DoorPayGuestPage(): React.ReactElement {
     content = page.justPaid ? (
       <PaidCard view={page.view} contact={readContact(code)} />
     ) : (
-      <StateCard {...doorPayGuestEndCopy("paid", page.view.provider)} />
+      <StateCard {...doorPayGuestEndCopy("paid", page.view.provider)} tone={doorPayGuestTone("paid")} />
     );
   } else {
     const view = page.view;
@@ -252,7 +267,7 @@ export default function DoorPayGuestPage(): React.ReactElement {
     } else if (view.status === "open" || view.status === "opened") {
       content = <PayForm code={code} view={view} />;
     } else if (view.status === "paid") {
-      content = <StateCard {...doorPayGuestEndCopy("paid", view.provider)} />;
+      content = <StateCard {...doorPayGuestEndCopy("paid", view.provider)} tone={doorPayGuestTone("paid")} />;
     } else if (view.status === "payment_landing" || view.status === "checking") {
       content = (
         <StateCard
@@ -263,7 +278,9 @@ export default function DoorPayGuestPage(): React.ReactElement {
         />
       );
     } else {
-      content = <StateCard {...doorPayGuestEndCopy(view.status, view.provider)} />;
+      content = (
+        <StateCard {...doorPayGuestEndCopy(view.status, view.provider)} tone={doorPayGuestTone(view.status)} />
+      );
     }
   }
 
@@ -376,18 +393,14 @@ const PayForm: React.FC<{ code: string; view: DoorPayCodeView }> = ({ code, view
     );
   }
   if (endStatus !== null) {
-    return <StateCard {...doorPayGuestEndCopy(endStatus, view.provider)} />;
+    return <StateCard {...doorPayGuestEndCopy(endStatus, view.provider)} tone={doorPayGuestTone(endStatus)} />;
   }
 
   return (
     <View style={styles.card} testID="door-pay-form">
-      <View>
-        <Text style={styles.eventName}>{view.eventName}</Text>
-        <Text style={styles.faint}>
-          {[view.brandName, view.venueLabel].filter((v) => typeof v === "string" && v.length > 0).join(" · ")}
-        </Text>
-      </View>
-      <Text style={styles.eyebrow}>PAY AT THE DOOR</Text>
+      <Text style={styles.eyebrow} accessibilityRole="header">
+        {doorPayGuestEyebrow(view.eventName)}
+      </Text>
       <View style={styles.basket}>
         {view.lines.map((line) => (
           <View key={line.ticketTypeId} style={styles.kv}>
@@ -409,30 +422,35 @@ const PayForm: React.FC<{ code: string; view: DoorPayCodeView }> = ({ code, view
         </View>
       </View>
 
+      <Text style={styles.faint}>All three are needed for your ticket.</Text>
       <View style={styles.field}>
-        <Text style={styles.fieldLabel}>Full name *</Text>
+        <Text style={styles.fieldLabel}>Full name</Text>
         <Input
           value={name}
           onChangeText={setName}
           variant="text"
           placeholder="Full name"
+          autoComplete="name"
+          textContentType="name"
           accessibilityLabel="Full name, required"
         />
         {showErrors && !nameValid ? <Text style={styles.errorText}>Please enter your full name</Text> : null}
       </View>
       <View style={styles.field}>
-        <Text style={styles.fieldLabel}>Email *</Text>
+        <Text style={styles.fieldLabel}>Email</Text>
         <Input
           value={email}
           onChangeText={setEmail}
           variant="email"
           placeholder="Email"
+          autoComplete="email"
+          textContentType="emailAddress"
           accessibilityLabel="Email address, required"
         />
         {showErrors && !emailValid ? <Text style={styles.errorText}>Enter a valid email</Text> : null}
       </View>
       <View style={styles.field}>
-        <Text style={styles.fieldLabel}>Mobile number *</Text>
+        <Text style={styles.fieldLabel}>Mobile number</Text>
         <PhoneField
           entry={phone}
           required
@@ -473,14 +491,13 @@ const PayForm: React.FC<{ code: string; view: DoorPayCodeView }> = ({ code, view
         </Text>
       ) : null}
       <Button
-        label="Continue to payment"
+        label={doorPayGuestContinueLabel(money(view.totalCents, view.currency))}
         onPress={() => void handleContinue()}
         variant="primary"
         size="lg"
         fullWidth
         loading={submitting}
         disabled={submitting}
-        accessibilityLabel={`Continue to payment, ${money(view.totalCents, view.currency)}`}
         testID="door-pay-continue"
       />
     </View>
@@ -532,11 +549,14 @@ interface StateCardProps {
   action?: string;
   onAction?: () => void;
   busy?: boolean;
+  /** End states: the same door tones as the host's screen. */
+  tone?: DoorTone;
 }
 
-const StateCard: React.FC<StateCardProps> = ({ title, body, action, onAction, busy }) => (
+const StateCard: React.FC<StateCardProps> = ({ title, body, action, onAction, busy, tone }) => (
   <View style={styles.card} accessibilityRole="summary">
     {busy ? <ActivityIndicator color={accent.warm} /> : null}
+    {tone !== undefined ? <GuestToneRing tone={tone} /> : null}
     <Text style={styles.title}>{title}</Text>
     {body.length > 0 ? <Text style={styles.body}>{body}</Text> : null}
     {action && onAction ? (
@@ -544,6 +564,22 @@ const StateCard: React.FC<StateCardProps> = ({ title, body, action, onAction, bu
     ) : null}
   </View>
 );
+
+const GuestToneRing: React.FC<{ tone: DoorTone }> = ({ tone }) => {
+  const style = doorToneStyle(tone);
+  return (
+    <View
+      style={[
+        styles.toneRing,
+        { backgroundColor: style.ringFill },
+        style.ringBorder !== null ? { borderWidth: 1, borderColor: style.ringBorder } : null,
+      ]}
+      testID={`door-pay-guest-tone-${tone}`}
+    >
+      <Icon name={style.defaultIcon} size={style.iconSize} color={style.iconColor} />
+    </View>
+  );
+};
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: canvas.discover },
@@ -569,7 +605,6 @@ const styles = StyleSheet.create({
   title: { ...typography.h2, color: textTokens.primary, textAlign: "center" },
   body: { ...typography.body, color: textTokens.secondary, textAlign: "center" },
   bold: { fontWeight: "700", color: textTokens.primary },
-  eventName: { fontSize: 17, fontWeight: "700", color: textTokens.primary },
   eyebrow: { fontSize: 11, fontWeight: "700", letterSpacing: 1.2, color: textTokens.tertiary },
   faint: { fontSize: 12, lineHeight: 17, color: textTokens.tertiary },
   basket: {
@@ -607,6 +642,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: glass.border.profileBase,
     backgroundColor: glass.tint.profileBase,
+  },
+  toneRing: {
+    width: 64,
+    height: 64,
+    borderRadius: 999,
+    alignSelf: "center",
+    alignItems: "center",
+    justifyContent: "center",
   },
   okRing: {
     width: 64,

@@ -48,28 +48,25 @@ const read = (relative: string): string =>
 const NO_TAP = { available: false, needsSetup: false };
 
 describe("#4271 door sale payment list", () => {
-  test("pay code first, then cash, manual and a disabled card reader; no NFC", () => {
+  // Door polish: no dead rows. The disabled Card reader row and the NEW badges went.
+  test("pay code first, then cash and manual; no card reader row, no NFC", () => {
     const options = buildDoorPaymentOptions({ eventCurrency: "GBP", tapToPay: NO_TAP, platform: "ios" });
-    expect(options.map((o) => o.id)).toEqual(["pay_code", "cash", "manual", "card_reader"]);
-    expect(options[0]).toMatchObject({
+    expect(options.map((o) => o.id)).toEqual(["pay_code", "cash", "manual"]);
+    expect(options[0]).toEqual({
+      id: "pay_code",
       label: "Buyer pays on their phone",
-      sub: "Show a code. They scan it with their camera and pay by card, Apple Pay or Google Pay.",
-      disabled: false,
+      sub: "They scan a code and pay by card, Apple Pay or Google Pay.",
     });
     expect(options.find((o) => o.id === "cash")?.sub).toBe("You collect cash at the door.");
     expect(options.find((o) => o.id === "manual")?.sub).toBe("Paid another way, like a bank transfer.");
-    expect(options.find((o) => o.id === "card_reader")).toMatchObject({
-      label: "Card reader",
-      sub: "Card machines are coming later.",
-      disabled: true,
-    });
+    expect(options.some((o) => o.id === "card_reader")).toBe(false);
     expect(options.some((o) => (o.id as string) === "nfc")).toBe(false);
   });
 
   test("Nigeria names Paystack's ways to pay", () => {
     const [payCode] = buildDoorPaymentOptions({ eventCurrency: "NGN", tapToPay: NO_TAP, platform: "android" });
     expect(payCode.sub).toBe(
-      "Show a code. They scan it with their camera and pay by card, bank transfer or USSD.",
+      "They scan a code and pay by card, bank transfer or USSD.",
     );
   });
 
@@ -79,7 +76,7 @@ describe("#4271 door sale payment list", () => {
       tapToPay: { available: true, needsSetup: false },
       platform: "ios",
     });
-    expect(ready.map((o) => o.id)).toEqual(["tap_to_pay", "pay_code", "cash", "manual", "card_reader"]);
+    expect(ready.map((o) => o.id)).toEqual(["tap_to_pay", "pay_code", "cash", "manual"]);
     expect(ready[0].sub).toBe("Take a card or phone on this iPhone.");
     const android = buildDoorPaymentOptions({
       eventCurrency: "GBP",

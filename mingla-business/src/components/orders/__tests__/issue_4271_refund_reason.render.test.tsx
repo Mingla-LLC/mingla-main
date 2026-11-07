@@ -5,19 +5,20 @@
  * characters" in grey and "Send refund" stayed disabled with no explanation.
  * Both RefundSheet (online orders) and DoorRefundSheet (door sales) are mounted
  * for real; only their data hooks and chrome are mocked.
- *   R1  the helper counts down live: empty -> "Add a reason (10+ characters)",
- *       "Add 3 more characters", "Add 1 more character", then "Looks good"; the
- *       "N / 200" counter stays.
- *   R2  tapping Send while the reason is too short shows "Your reason needs at
- *       least 10 characters." under the box, focuses the box, and sends nothing;
- *       with a valid reason the same tap sends the refund.
+ *   R1  door polish: ONE helper line counts down live: empty -> "At least 10
+ *       characters.", "2 more characters needed.", "1 more character needed.",
+ *       then quiet; no "0 / 200" counter until 180 characters.
+ *   R2  tapping Send while the reason is too short turns that same line red
+ *       ("N more characters needed. Reasons need at least 10."), focuses the
+ *       box, and sends nothing; with a valid reason the same tap sends the refund.
  *
  *   R3  (PR #4303 rework) when the server says the refund failed (code
  *       "refund_failed"), the next Send uses a NEW idempotency key, so it starts
  *       a new refund; any other error keeps the same key (same refund).
  *
- * FAILS-ON-REVERT: dropping the key reset in RefundSheet fails R3; restoring `Min ${REASON_MIN} characters` or
- * `disabled={!canSubmit}` (the silent dead button) in either sheet fails R1/R2.
+ * FAILS-ON-REVERT: dropping the key reset in RefundSheet fails R3; restoring the
+ * old helper, the always-on counter, or `disabled={!canSubmit}` (the silent dead
+ * button) in either sheet fails R1/R2.
  */
 import React from "react";
 
@@ -56,6 +57,7 @@ jest.mock("../../ui/Sheet", () => ({
     visible ? children : null,
 }));
 jest.mock("../../ui/Icon", () => ({ Icon: () => null }));
+jest.mock("../../ui/IconChrome", () => ({ IconChrome: () => null }));
 jest.mock("../../ui/Button", () => {
   const { Text } = jest.requireActual("react-native");
   return {
@@ -136,7 +138,10 @@ const texts = (tree: ReactTestRenderer): string[] =>
 
 const reasonBox = (tree: ReactTestRenderer): ReactTestInstance =>
   tree.root.findAll(
-    (node) => node.props.accessibilityLabel === "Refund reason" && typeof node.props.onChangeText === "function",
+    (node) =>
+      typeof node.props.accessibilityLabel === "string" &&
+      node.props.accessibilityLabel.startsWith("Refund reason") &&
+      typeof node.props.onChangeText === "function",
   )[0];
 
 const sendButton = (tree: ReactTestRenderer): ReactTestInstance =>
@@ -229,16 +234,18 @@ describe("#4271 refund reason countdown (rendered)", () => {
   test.each(sheets)("R1 %s counts down to the minimum and keeps the counter", (_name, element, ready) => {
     const tree = mount(element());
     ready(tree);
-    expect(texts(tree)).toContain("Add a reason (10+ characters)");
-    expect(texts(tree)).toContain("0 / 200");
+    expect(texts(tree)).toContain("At least 10 characters.");
+    expect(texts(tree).some((line) => line.includes("/ 200"))).toBe(false);
     expect(texts(tree).some((line) => line.includes("Min 10"))).toBe(false);
     type(tree, "Too late");
-    expect(texts(tree)).toContain("Add 2 more characters");
+    expect(texts(tree)).toContain("2 more characters needed.");
     type(tree, "Too late!");
-    expect(texts(tree)).toContain("Add 1 more character");
+    expect(texts(tree)).toContain("1 more character needed.");
     type(tree, "Too late!!");
-    expect(texts(tree)).toContain("Looks good");
-    expect(texts(tree)).toContain("10 / 200");
+    expect(texts(tree).some((line) => line.includes("needed"))).toBe(false);
+    expect(texts(tree).some((line) => line.includes("/ 200"))).toBe(false);
+    type(tree, "x".repeat(188));
+    expect(texts(tree)).toContain("188 / 200");
   });
 
   test.each(sheets)("R2 %s explains a short reason on Send instead of doing nothing", async (name, element, ready) => {
@@ -251,13 +258,17 @@ describe("#4271 refund reason countdown (rendered)", () => {
     await act(async () => {
       await send.props.onPress();
     });
-    expect(texts(tree)).toContain("Your reason needs at least 10 characters.");
+    expect(texts(tree)).toContain("5 more characters needed. Reasons need at least 10.");
+    const alert = tree.root.findAll(
+      (node) => typeof node.type === "string" && node.props.accessibilityRole === "alert" && textOf(node).includes("Reasons need"),
+    );
+    expect(alert.length).toBeGreaterThan(0);
     expect(MockNativeMethods.focus.mock.calls.length).toBe(focusCallsBefore + 1);
     const submit = name === "RefundSheet" ? mockRefundOrder : mockRefundDoorSale;
     expect(submit).not.toHaveBeenCalled();
 
     type(tree, "Guest could not attend");
-    expect(texts(tree)).not.toContain("Your reason needs at least 10 characters.");
+    expect(texts(tree).some((line) => line.includes("Reasons need at least"))).toBe(false);
     await act(async () => {
       await sendButton(tree).props.onPress();
     });

@@ -7,21 +7,26 @@
  * sheet with the same tickets (see doorSellAnotherHref).
  *
  * The sheet navigates to `/event/<id>/door/tap/new?draft=<base64 json>` with
- * `{lines, eventDateId, buyerPhone?}`. The tap route (owned by the Tap to Pay
- * build) decodes it with `decodeDoorTapDraft`. The payload is ASCII only
- * (uuids, integers, an E.164 number), so plain base64 is safe on every
- * runtime that ships `btoa`/`atob` (Hermes, browsers, Node 16+).
+ * `{lines, eventDateId, buyerPhone?, buyerName?}`. The tap route decodes it
+ * with `parseTapToPayDraft`. A typed buyer name can be any script, so the
+ * payload is encoded as UTF-8 base64 (encodeBase64Utf8), never `btoa`, which
+ * throws on anything outside Latin-1. An ASCII payload encodes exactly as
+ * before, so `decodeDoorTapDraft` (atob) still reads "Sell another".
  */
+
+import { encodeBase64Utf8 } from "../../services/terminal/tapToPayDraft";
 
 export interface DoorTapDraft {
   lines: { ticketTypeId: string; quantity: number }[];
   eventDateId: string | null;
   buyerPhone?: string | null;
   phoneCountryIso?: string | null;
+  /** Door polish: shown on the tap paid screen's Guest row only. */
+  buyerName?: string | null;
 }
 
 export const encodeDoorTapDraft = (draft: DoorTapDraft): string =>
-  btoa(
+  encodeBase64Utf8(
     JSON.stringify({
       lines: draft.lines.map((line) => ({
         ticketTypeId: line.ticketTypeId,
@@ -30,6 +35,7 @@ export const encodeDoorTapDraft = (draft: DoorTapDraft): string =>
       eventDateId: draft.eventDateId,
       ...(draft.buyerPhone ? { buyerPhone: draft.buyerPhone } : {}),
       ...(draft.phoneCountryIso ? { phoneCountryIso: draft.phoneCountryIso } : {}),
+      ...(draft.buyerName ? { buyerName: draft.buyerName } : {}),
     }),
   );
 
