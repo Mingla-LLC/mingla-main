@@ -65,6 +65,11 @@ import {
 import { randomId } from "../../utils/randomId";
 import { useRefundPreview } from "../../hooks/useRefundPreview";
 import { canSubmitRefundPreview } from "../discounts/refundDiscountContract";
+import {
+  refundReasonHelperText,
+  refundReasonSendGate,
+  refundReasonTooShortMessage,
+} from "../../utils/refundReason";
 
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
@@ -127,12 +132,16 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
   // ORCH-0787: idempotency key regenerated on each sheet-open. Retries within the same
   // sheet share the key so Stripe and the RPC dedupe correctly.
   const idempotencyKeyRef = useRef<string>("");
+  // #4271: tapping Send with a short reason explains it and focuses the box.
+  const reasonInputRef = useRef<TextInput>(null);
+  const [reasonErrorShown, setReasonErrorShown] = useState<boolean>(false);
 
   // Reset state on visible flip → true (defensive)
   useEffect(() => {
     if (visible) {
       setReason("");
       setErrorMessage(null);
+      setReasonErrorShown(false);
       setPartialLines(
         order.lines.map((l) => ({
           ticketTypeId: l.ticketTypeId,
@@ -248,6 +257,27 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
     previewAmountCents,
     hasSelection: mode === "full" ? fullHasAmount : partialHasSelection,
   });
+  const readyApartFromReason = canSubmitRefundPreview({
+    submitting,
+    reasonValid: true,
+    canRefund,
+    hasCurrency: moneyCurrency !== null,
+    previewPending: previewQuery.isPending,
+    previewFetching: previewQuery.isFetching,
+    previewDebouncing: previewQuery.isDebouncing,
+    previewError: previewQuery.isError,
+    previewLoaded: previewQuery.data !== undefined,
+    withinRemaining: previewQuery.data?.withinRemaining === true,
+    previewAmountCents,
+    hasSelection: mode === "full" ? fullHasAmount : partialHasSelection,
+  });
+  const sendGate = refundReasonSendGate({
+    trimmedLength: trimmedLen,
+    minLength: REASON_MIN,
+    maxLength: REASON_MAX,
+    otherwiseReady: readyApartFromReason,
+  });
+  const showReasonError = reasonErrorShown && trimmedLen < REASON_MIN;
 
   const handleStepperChange = useCallback(
     (ticketTypeId: string, delta: number, max: number): void => {
@@ -266,6 +296,11 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
   );
 
   const handleConfirm = useCallback(async (): Promise<void> => {
+    if (sendGate.onPress === "show_reason_error") {
+      setReasonErrorShown(true);
+      reasonInputRef.current?.focus();
+      return;
+    }
     if (!canSubmit) return;
     setErrorMessage(null);
 
@@ -307,6 +342,7 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
     }
   }, [
     canSubmit,
+    sendGate.onPress,
     mode,
     order,
     previewLines,
@@ -482,10 +518,13 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
             <View
               style={[
                 styles.reasonInputWrap,
-                trimmedLen > 0 && !reasonValid && styles.reasonInputError,
+                (trimmedLen > 0 || showReasonError) &&
+                  !reasonValid &&
+                  styles.reasonInputError,
               ]}
             >
               <TextInput
+                ref={reasonInputRef}
                 value={reason}
                 onChangeText={setReason}
                 placeholder="e.g. Buyer requested refund; tier oversold; venue change"
@@ -505,14 +544,21 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
                   trimmedLen >= REASON_MIN && styles.reasonHelperOk,
                 ]}
               >
-                {trimmedLen < REASON_MIN
-                  ? `Min ${REASON_MIN} characters`
-                  : "Looks good"}
+                {refundReasonHelperText(trimmedLen, REASON_MIN)}
               </Text>
               <Text style={styles.reasonCount}>
                 {trimmedLen} / {REASON_MAX}
               </Text>
             </View>
+            {showReasonError ? (
+              <Text
+                style={styles.errorCaption}
+                accessibilityRole="alert"
+                testID="refund-reason-too-short"
+              >
+                {refundReasonTooShortMessage(REASON_MIN)}
+              </Text>
+            ) : null}
           </View>
 
           {/* Notification footer note (destructive — banner + email + SMS always) */}
@@ -558,7 +604,7 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
             loading={
               submitting || previewQuery.isFetching || previewQuery.isDebouncing
             }
-            disabled={!canSubmit}
+            disabled={!sendGate.enabled}
             accessibilityLabel="Send refund"
           />
           {!canRefund ? (

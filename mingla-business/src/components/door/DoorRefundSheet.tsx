@@ -16,7 +16,13 @@
  * Per Cycle 12 SPEC §4.11 / §5/J-D4.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Platform,
   Pressable,
@@ -40,6 +46,11 @@ import {
 import type { DoorSaleRecord } from "../../types/doorSales";
 import { formatCurrency } from "../../utils/currency";
 import { useRefundDoorSale } from "../../hooks/useEventDoorSales";
+import {
+  refundReasonHelperText,
+  refundReasonSendGate,
+  refundReasonTooShortMessage,
+} from "../../utils/refundReason";
 
 import { Button } from "../ui/Button";
 import { Sheet } from "../ui/Sheet";
@@ -74,6 +85,9 @@ export const DoorRefundSheet: React.FC<DoorRefundSheetProps> = ({
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [perLineRefund, setPerLineRefund] = useState<PerLineRefundState[]>([]);
+  // #4271: tapping Send with a short reason explains it and focuses the box.
+  const reasonInputRef = useRef<TextInput>(null);
+  const [reasonErrorShown, setReasonErrorShown] = useState<boolean>(false);
   const refundSale = useRefundDoorSale(sale.eventId);
 
   // Reset on visible flip → true
@@ -82,6 +96,7 @@ export const DoorRefundSheet: React.FC<DoorRefundSheetProps> = ({
       setReason("");
       setSubmitting(false);
       setSubmitError(null);
+      setReasonErrorShown(false);
       setPerLineRefund(
         sale.lines.map((l) => ({
           ticketTypeId: l.ticketTypeId,
@@ -125,6 +140,13 @@ export const DoorRefundSheet: React.FC<DoorRefundSheetProps> = ({
   const canRefund = canPerformAction(currentRank, "REFUND_DOOR_SALE");
 
   const canSubmit = !submitting && reasonValid && hasRefundQty && canRefund;
+  const sendGate = refundReasonSendGate({
+    trimmedLength: trimmedLen,
+    minLength: REASON_MIN,
+    maxLength: REASON_MAX,
+    otherwiseReady: !submitting && hasRefundQty && canRefund,
+  });
+  const showReasonError = reasonErrorShown && trimmedLen < REASON_MIN;
 
   const handleStepperChange = useCallback(
     (ticketTypeId: string, delta: number, max: number): void => {
@@ -146,6 +168,11 @@ export const DoorRefundSheet: React.FC<DoorRefundSheetProps> = ({
   );
 
   const handleConfirm = useCallback(async (): Promise<void> => {
+    if (sendGate.onPress === "show_reason_error") {
+      setReasonErrorShown(true);
+      reasonInputRef.current?.focus();
+      return;
+    }
     if (!canSubmit) return;
     setSubmitting(true);
     setSubmitError(null);
@@ -189,6 +216,7 @@ export const DoorRefundSheet: React.FC<DoorRefundSheetProps> = ({
     }
   }, [
     canSubmit,
+    sendGate.onPress,
     sale,
     refundTotalGbp,
     reason,
@@ -322,10 +350,13 @@ export const DoorRefundSheet: React.FC<DoorRefundSheetProps> = ({
             <View
               style={[
                 styles.reasonInputWrap,
-                trimmedLen > 0 && !reasonValid && styles.reasonInputError,
+                (trimmedLen > 0 || showReasonError) &&
+                  !reasonValid &&
+                  styles.reasonInputError,
               ]}
             >
               <TextInput
+                ref={reasonInputRef}
                 value={reason}
                 onChangeText={setReason}
                 placeholder="e.g. Buyer changed their mind; venue change; double-charged"
@@ -345,14 +376,21 @@ export const DoorRefundSheet: React.FC<DoorRefundSheetProps> = ({
                   trimmedLen >= REASON_MIN && styles.reasonHelperOk,
                 ]}
               >
-                {trimmedLen < REASON_MIN
-                  ? `Min ${REASON_MIN} characters`
-                  : "Looks good"}
+                {refundReasonHelperText(trimmedLen, REASON_MIN)}
               </Text>
               <Text style={styles.reasonCount}>
                 {trimmedLen} / {REASON_MAX}
               </Text>
             </View>
+            {showReasonError ? (
+              <Text
+                style={styles.submitError}
+                accessibilityRole="alert"
+                testID="door-refund-reason-too-short"
+              >
+                {refundReasonTooShortMessage(REASON_MIN)}
+              </Text>
+            ) : null}
           </View>
 
           {/* OBS-1 footer note */}
@@ -373,7 +411,7 @@ export const DoorRefundSheet: React.FC<DoorRefundSheetProps> = ({
             size="lg"
             fullWidth
             loading={submitting}
-            disabled={!canSubmit}
+            disabled={!sendGate.enabled}
             accessibilityLabel="Send refund"
           />
           {!canRefund ? (

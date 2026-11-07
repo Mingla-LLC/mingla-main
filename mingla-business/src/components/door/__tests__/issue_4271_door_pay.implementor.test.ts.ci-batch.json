@@ -51,6 +51,7 @@
       "mingla-business/src/services/terminal/__tests__/issue_4271_tap_address.implementor.test.ts",
       "mingla-business/src/services/terminal/__tests__/issue_4271_tap_live_reader.implementor.test.ts",
       "mingla-business/src/utils/__tests__/issue_4271_door_sale_money.implementor.test.ts",
+      "mingla-business/src/utils/__tests__/issue_4271_refund_reason_hint.implementor.test.ts",
       "mingla-business/src/utils/__tests__/issue_4271_team_member_identity.implementor.test.ts"
     ],
     "externalReferenceFiles": [
