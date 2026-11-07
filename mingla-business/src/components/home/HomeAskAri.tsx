@@ -7,11 +7,11 @@
  *
  * Its own file, and rendered OUTSIDE Home's scroll containers: it is a
  * TextInput, and the ORCH-0892 / #1841 keyboard gate forbids a focusable input
- * inside a bare ScrollView/FlatList. The draft card that leads Home's content
- * is `HomeDraftLead` (no input), which does scroll.
+ * inside a bare ScrollView/FlatList. When Recent is empty, Home shows
+ * `HomeRecentAriPrompt` (no input) instead.
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import {
@@ -21,40 +21,11 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
+import { HomeAriOrb } from "./HomeAriOrb";
 
 /** The orb at rest: AriOrb's own "sm" geometry and colours (24px, 3px halo),
  *  drawn without animation. Shown while the animated orb loads, and wherever
  *  the animation runtime is unavailable (Home's render suites). */
-function StaticAriMark(): React.ReactElement {
-  return (
-    <View style={mark.host} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-      <View style={mark.outer} />
-      <View style={mark.middle} />
-      <View style={mark.core} />
-    </View>
-  );
-}
-
-type AriOrbComponent = typeof import("../ari/AriOrb").AriOrb;
-
-/** #4304 — the same animated three-ring orb as Ari's own screen, loaded after
- *  first paint so reanimated stays out of Home's boot path. Until then — or
- *  wherever its runtime cannot load (Home's render suites) — the still mark,
- *  identical at rest, stays. */
-function HomeAriOrb(): React.ReactElement {
-  const [Orb, setOrb] = useState<AriOrbComponent | null>(null);
-  useEffect(() => {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const mod = require("../ari/AriOrb") as typeof import("../ari/AriOrb");
-      setOrb(() => mod.AriOrb);
-    } catch {
-      // Keep the still mark.
-    }
-  }, []);
-  return Orb ? <Orb size="sm" decorative /> : <StaticAriMark />;
-}
-
 export interface HomeAskAriProps {
   onAskAri: (text: string) => void;
   testID?: string;
@@ -150,37 +121,4 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   pressed: { opacity: 0.72 },
-});
-
-const ORB = 24;
-const HALO = 3;
-const mark = StyleSheet.create({
-  host: { width: ORB, height: ORB, alignItems: "center", justifyContent: "center" },
-  outer: {
-    position: "absolute",
-    top: -HALO,
-    left: -HALO,
-    width: ORB + HALO * 2,
-    height: ORB + HALO * 2,
-    borderRadius: (ORB + HALO * 2) / 2,
-    borderWidth: 1.5,
-    borderColor: "#f07a3d",
-  },
-  middle: {
-    position: "absolute",
-    width: ORB,
-    height: ORB,
-    borderRadius: ORB / 2,
-    borderWidth: 2,
-    borderColor: "#f07a3d",
-  },
-  core: {
-    position: "absolute",
-    width: ORB * 0.46,
-    height: ORB * 0.46,
-    borderRadius: ORB * 0.23,
-    borderWidth: 1,
-    borderColor: "#ffb07c",
-    backgroundColor: "#f07a3d",
-  },
 });

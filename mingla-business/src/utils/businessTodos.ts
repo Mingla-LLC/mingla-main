@@ -274,6 +274,8 @@ export interface BusinessTodoInput {
   stripeRoute: string;
   /** Route to the most-recent draft, or null when there is none. */
   draftRoute: string | null;
+  /** #4304 — that draft's name, shown in the "Finish your draft" row. */
+  draftTitle?: string | null;
   /**
    * META-ORCH-1059 — the brand has a venue claim that is pending / under review
    * (claim_status='pending_review', incl. the admin-follow-up sub-state). Drives
@@ -643,7 +645,9 @@ export function buildBusinessTodos(input: BusinessTodoInput): BusinessTodo[] {
     todos.push({
       id: "finish_draft",
       label: "Finish your draft",
-      sublabel: "Publish it to go live",
+      sublabel: input.draftTitle?.trim()
+        ? `${input.draftTitle.trim()} · publish it to go live`
+        : "Publish it to go live",
       action: { kind: "route", route: input.draftRoute },
     });
   }

@@ -44,6 +44,7 @@ import {
 import {
   hasAnyDraftPaidOffering,
   mostRecentDraftRoute,
+  mostRecentDraftTitle,
 } from "../utils/homeNextAction";
 import { routeForPipelineStateFix } from "../utils/deckReadinessRoutes";
 import { venueClaimBannerVariant } from "../services/venueClaimBannerLogic";
@@ -382,6 +383,7 @@ export function useBusinessTodos(): BusinessTodo[] {
         stripeRoute:
           currentBrand !== null ? `/brand/${currentBrand.id}/payments` : "",
         draftRoute: mostRecentDraftRoute(drafts),
+        draftTitle: mostRecentDraftTitle(drafts),
         venueClaimPending: false,
         venueListingRoute:
           currentBrand !== null ? `/brand/${currentBrand.id}/listing` : "",
