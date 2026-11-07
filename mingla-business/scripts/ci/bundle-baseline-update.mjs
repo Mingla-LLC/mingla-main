@@ -32,15 +32,15 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { platform } from "node:os";
-import { measureWebBuild, fmtTriple, fmtDelta } from "./bundle-budget-lib.mjs";
+import { measureWebBuild, fmtTriple, fmtDelta, BASELINE_RECORD_FLOOR_BYTES } from "./bundle-budget-lib.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const BASELINE_PATH = join(HERE, "bundle-baseline.json");
 const WEB_BUILD = process.env.ORCH_1083_WEB_BUILD ?? "web-build";
 
-// Movements smaller than this are measurement noise (the known macOS/Linux
-// variance is ~150 B) and are not worth a pull request.
-const NOISE_FLOOR = 2_048;
+// Movements smaller than this are measurement noise and are not worth a pull
+// request. It sits below the pull-request movement threshold (#3493, #4270).
+const NOISE_FLOOR = BASELINE_RECORD_FLOOR_BYTES;
 
 const mode = process.argv.includes("--write") ? "write" : "check";
 
