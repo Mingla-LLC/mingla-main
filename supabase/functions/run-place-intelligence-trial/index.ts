@@ -41,6 +41,7 @@ import {
   MAX_PHOTOS,
 } from "../_shared/imageCollage.ts";
 import { checkStorageHeadroom } from "../_shared/storageHeadroomGuard.ts";
+import { AI_SCORE_HOLD_SINCE, aiSliceIsHeld } from "../_shared/aiScoreHold.ts"; // #4276: a redo never re-judges the held backlog
 import {
   CHILD_RECONCILE_PAGE_SIZE,
   type ChildTruthReconciliationResult,
@@ -1455,7 +1456,22 @@ export async function handleComposeCollage(
 // limit. Per-place architecture mirrors PhotoScorerPage's batch loop pattern.
 // ═══════════════════════════════════════════════════════════════════════════
 
-async function handleStartRun(
+/**
+ * #4276: the places among these rows whose AI result is held in the score backlog: any
+ * signal slice evaluated before AI_SCORE_HOLD_SINCE, or with no usable date. A redo
+ * never re-judges them.
+ */
+export function heldPlaceIds(rows: Array<{ id: string; ai_signal_scores: unknown }>): string[] {
+  return rows
+    .filter((r) => {
+      const ai = r.ai_signal_scores;
+      if (!ai || typeof ai !== "object") return false;
+      return Object.values(ai as Record<string, unknown>).some((slice) => aiSliceIsHeld(slice));
+    })
+    .map((r) => r.id);
+}
+
+export async function handleStartRun(
   db: SupabaseClient,
   body: Record<string, unknown>,
   adminId: string,
@@ -1567,7 +1583,7 @@ async function handleStartRun(
       async (from, to) =>
         await db
           .from("place_intelligence_trial_runs")
-          .select("place_pool_id")
+          .select("place_pool_id, completed_at")
           .eq("city_id", cityId)
           .eq("status", "completed")
           .order("id", { ascending: true })
@@ -1577,14 +1593,85 @@ async function handleStartRun(
     const evaluatedSet = new Set(
       completedFetch.rows.map((r) => r.place_pool_id),
     );
-    sampledIds = pool.map((p) => p.id).filter((id) => !evaluatedSet.has(id));
-    if (sampledIds.length === 0) {
-      return json({
-        error: "no_remainder",
-        message:
-          `All ${pool.length} servable places in this city are already evaluated.`,
-      }, 400);
+    let heldSkipped = 0;
+    if (body.respect_score_hold === true) {
+      // #4276: A PLANNED RUN NEVER JUDGES A PLACE HELD IN THE SCORE BACKLOG. The places
+      // come from one SQL list, place_intel_planned_place_ids, which leaves out every
+      // held place (an AI slice or a completed evaluation from before the hold) whether
+      // or not it has a trial row; the estimate the run is priced from reads the same
+      // list. Then every id is checked again here, slices and evaluation dates, before
+      // anything is queued.
+      const { data: planned, error: plannedErr } = await db.rpc(
+        "place_intel_planned_place_ids",
+        { p_city_id: cityId, p_include_redo: body.include_no_reviews === true },
+      );
+      if (plannedErr) return json({ error: plannedErr.message }, 500);
+      const allowed = new Set((planned ?? []) as string[]);
+      const candidates = pool.map((p) => p.id).filter((id) => allowed.has(id));
+      const lastEval = new Map<string, number>();
+      for (const r of completedFetch.rows as Array<{ place_pool_id: string; completed_at?: string | null }>) {
+        const ms = r.completed_at ? Date.parse(r.completed_at) : NaN;
+        if (Number.isFinite(ms) && ms > (lastEval.get(r.place_pool_id) ?? -Infinity)) lastEval.set(r.place_pool_id, ms);
+      }
+      const held = new Set<string>();
+      for (const [id, ms] of lastEval) if (ms < Date.parse(AI_SCORE_HOLD_SINCE)) held.add(id);
+      for (let i = 0; i < candidates.length; i += 200) {
+        const { data: aiRows, error: aiErr } = await db
+          .from("place_pool")
+          .select("id, ai_signal_scores")
+          .in("id", candidates.slice(i, i + 200));
+        if (aiErr) return json({ error: aiErr.message }, 500);
+        for (const id of heldPlaceIds((aiRows ?? []) as Array<{ id: string; ai_signal_scores: unknown }>)) held.add(id);
+      }
+      sampledIds = candidates.filter((id) => !held.has(id));
+      heldSkipped = candidates.length - sampledIds.length;
+      if (sampledIds.length === 0) {
+        return json({
+          error: "no_remainder",
+          message: `No places to judge in this city: the rest are already evaluated or held in the score backlog.`,
+        }, 400);
+      }
+    } else {
+      // #4276: a redo also takes places already evaluated that have no reviews on record
+      // (place_intel_places_without_reviews), so their Intelligence runs again with
+      // reviews. Only when asked: include_no_reviews:true, sent with
+      // force_refresh_reviews by the city pipeline when a person picked the redo.
+      let redoSet = new Set<string>();
+      if (body.include_no_reviews === true) {
+        const { data: noReviews, error: noReviewsErr } = await db.rpc(
+          "place_intel_places_without_reviews",
+          { p_city_id: cityId },
+        );
+        if (noReviewsErr) return json({ error: noReviewsErr.message }, 500);
+        redoSet = new Set((noReviews ?? []) as string[]);
+        // THE SCORE BACKLOG STAYS HELD. The list above already leaves out places whose AI
+        // result predates the hold; this checks the slices again here, so no caller and
+        // no later change to that list can re-judge one. A re-judged place would get a
+        // slice dated now and leave the hold place by place.
+        const evaluatedRedo = [...redoSet].filter((id) => evaluatedSet.has(id));
+        for (let i = 0; i < evaluatedRedo.length; i += 200) {
+          const { data: aiRows, error: aiErr } = await db
+            .from("place_pool")
+            .select("id, ai_signal_scores")
+            .in("id", evaluatedRedo.slice(i, i + 200));
+          if (aiErr) return json({ error: aiErr.message }, 500);
+          for (const id of heldPlaceIds((aiRows ?? []) as Array<{ id: string; ai_signal_scores: unknown }>)) {
+            redoSet.delete(id);
+          }
+        }
+      }
+      sampledIds = pool.map((p) => p.id).filter((id) =>
+        !evaluatedSet.has(id) || redoSet.has(id)
+      );
+      if (sampledIds.length === 0) {
+        return json({
+          error: "no_remainder",
+          message:
+            `All ${pool.length} servable places in this city are already evaluated.`,
+        }, 400);
+      }
     }
+    if (heldSkipped > 0) console.log(`[start_run] #4276 skipped ${heldSkipped} places held in the score backlog`);
   } else {
     // Stratified random: top half by review_count + random fill of bottom half.
     const topHalfCount = Math.ceil((sampleSize as number) / 2);

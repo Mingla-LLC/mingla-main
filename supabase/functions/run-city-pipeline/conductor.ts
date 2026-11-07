@@ -16,6 +16,7 @@ import {
   unhealthyProviders,
 } from "./gates.ts";
 import { COST_PER_GEOCODE, COST_PER_NEARBY_SEARCH, HIGH_COST_USD } from "../_shared/seedingGeometry.ts";
+import { type Plan, PlanError, planFromBody } from "./plan.ts";
 
 // deno-lint-ignore no-explicit-any
 export type Db = any;
@@ -527,13 +528,10 @@ async function stageIntelligence(ctx: Ctx): Promise<Outcome> {
     return { kind: "done", result: { succeeded: child.succeeded_count, cost_usd: child.cost_so_far_usd } };
   }
 
-  const startArgs = {
-    action: "start_run",
-    city_id: ctx.run.city_id,
-    mode: "remainder",
-    place_scope: ctx.run.scope === "new_only" ? "held" : "servable_and_held",
-    admin_id: admin,
-  };
+  const startArgs = intelligenceArgs(ctx.run.city_id, admin, ctx.run.scope, {
+    planned: ctx.stage.cursor?.plan === true,
+    redo: ctx.stage.cursor?.redo === true,
+  });
   const estimateCall = await ctx.deps.call("run-place-intelligence-trial", { ...startArgs, estimate_only: true });
   if (estimateCall.status === 400 && ["no_remainder", "No servable places in city"].includes(String(estimateCall.body.error))) {
     return { kind: "done", result: { places: 0 } };
@@ -577,6 +575,33 @@ async function stageIntelligence(ctx: Ctx): Promise<Outcome> {
   await addRef(ctx, "intel_run_ids", id);
   await setCursor(ctx, { intel_run_id: id });
   return { kind: "wait", why: "intelligence started" };
+}
+
+/**
+ * What the Intelligence stage asks run-place-intelligence-trial for. An unplanned run
+ * takes the places held for their first evaluation (new_only) or those plus every
+ * servable place (whole_city). A planned run was asked for Intelligence on the city's
+ * gaps, which are servable places, so it takes servable and held, never a place held in
+ * the score backlog. A redo adds the servable places with no reviews on record and
+ * fetches their reviews afresh.
+ */
+export function intelligenceArgs(
+  cityId: string,
+  adminId: string,
+  scope: string,
+  opts: { planned: boolean; redo: boolean },
+): Record<string, unknown> {
+  return {
+    action: "start_run",
+    city_id: cityId,
+    mode: "remainder",
+    place_scope: opts.planned || scope !== "new_only" ? "servable_and_held" : "held",
+    admin_id: adminId,
+    // #4276: a planned run never judges a place held in the score backlog, redo or not.
+    // The trial function then takes place_intel_planned_place_ids and checks every id.
+    ...(opts.planned ? { respect_score_hold: true } : {}),
+    ...(opts.redo ? { include_no_reviews: true, force_refresh_reviews: true } : {}),
+  };
 }
 
 /**
@@ -877,10 +902,102 @@ async function loadRun(db: Db, runId: unknown): Promise<Row> {
   return data;
 }
 
+function planOrRefuse(body: Row): Plan | null {
+  try {
+    return planFromBody(body);
+  } catch (err) {
+    if (err instanceof PlanError) throw new Refusal("bad_stages", err.message, 400);
+    throw err;
+  }
+}
+
+/**
+ * The price of exactly the stages a planned run will do, from the same previews and
+ * estimates each stage uses before it spends. Photos and Intelligence are priced on the
+ * places waiting now; when an earlier planned stage can add places to them the figure
+ * is a floor (atLeast), and each stage still checks its own cost again before it starts.
+ */
+export async function pricePlan(deps: Deps, cityId: string, adminId: string, scope: string, plan: Plan, gates: GateInputs) {
+  const { data: city, error } = await deps.db.from("seeding_cities").select("id, name, country").eq("id", cityId).single();
+  if (error) throw new Error(`city read failed: ${error.message}`);
+  const lines: Row[] = [];
+  let atLeast = false;
+  let serperRequests = 0;
+  for (const stage of plan.stages) {
+    switch (stage) {
+      case "box":
+        lines.push({ stage, usd: COST_PER_GEOCODE, basis: "one geocode" });
+        break;
+      case "fill": {
+        const fill = must(await deps.call("admin-seed-places", { action: "preview_fill", cityId }), "preview_fill");
+        lines.push({ stage, usd: Number(fill.estimatedCostUsd ?? 0), searches: fill.searches });
+        break;
+      }
+      case "split": {
+        const split = must(await deps.call("admin-seed-places", { action: "preview_split_level", cityId }), "preview_split_level");
+        lines.push({ stage, usd: Number(split.estimatedCostUsd ?? 0), searches: split.searches, atLeast: split.costIsFloor === true });
+        if (split.costIsFloor === true) atLeast = true;
+        break;
+      }
+      case "completeness":
+        lines.push({ stage, usd: COMPLETENESS_SEARCHES * COST_PER_NEARBY_SEARCH, searches: COMPLETENESS_SEARCHES });
+        break;
+      case "photos": {
+        const photo = must(await deps.call("backfill-place-photos", {
+          action: "preview_run", cityId, city: city.name, country: city.country, mode: "pre_photo_passed",
+        }), "preview_run");
+        const more = plan.stages.includes("pre_check");
+        if (more) atLeast = true;
+        lines.push({
+          stage,
+          usd: photo.status === "nothing_to_do" ? 0 : Number(photo.estimatedCostUsd ?? 0),
+          places: photo.status === "nothing_to_do" ? 0 : photo.totalPlaces ?? null,
+          atLeast: more,
+        });
+        break;
+      }
+      case "intelligence": {
+        const est = await deps.call("run-place-intelligence-trial", {
+          ...intelligenceArgs(cityId, adminId, scope, { planned: true, redo: plan.redo }),
+          estimate_only: true,
+        });
+        let places = 0;
+        let usd = 0;
+        if (!(est.status === 400 && ["no_remainder", "No servable places in city"].includes(String(est.body.error)))) {
+          const body = must(est, "start_run estimate");
+          places = Number(body.totalPlaces ?? 0);
+          usd = Number(body.estimatedCostUsd ?? 0);
+        }
+        const more = plan.stages.includes("final_check");
+        if (more) atLeast = true;
+        serperRequests += places * REVIEW_MAX_PAGES;
+        lines.push({ stage, usd, places, serperRequests: places * REVIEW_MAX_PAGES, redo: plan.redo, atLeast: more });
+        break;
+      }
+      default:
+        lines.push({ stage, usd: 0 });
+    }
+  }
+  const knownUsd = Math.round(lines.reduce((a, l) => a + Number(l.usd ?? 0), 0) * 100) / 100;
+  const rate = gates.settings.serper_usd_per_request;
+  const serperUsd = rate === null || rate === undefined ? null : Math.round(serperRequests * Number(rate) * 100) / 100;
+  return {
+    stages: plan.stages,
+    redo: plan.redo,
+    lines,
+    knownUsd,
+    serperRequests,
+    serperUsd,
+    totalUsd: serperUsd === null ? (serperRequests > 0 ? null : knownUsd) : Math.round((knownUsd + serperUsd) * 100) / 100,
+    atLeast,
+  };
+}
+
 /** What a run would do and what stands in its way, before any money moves. */
-export async function preview(deps: Deps, body: Row) {
+export async function preview(deps: Deps, body: Row, adminId = "") {
   const cityId = body.cityId;
   if (typeof cityId !== "string") throw new Refusal("bad_request", "cityId is required", 400);
+  const planned = planOrRefuse(body);
   const now = (deps.now ?? Date.now)();
   const gates: GateInputs = await rpc(deps.db, "city_pipeline_gate_inputs");
   const fill = must(await deps.call("admin-seed-places", { action: "preview_fill", cityId }), "preview_fill");
@@ -905,6 +1022,7 @@ export async function preview(deps: Deps, body: Row) {
     blockers: await rpc(deps.db, "city_pipeline_blockers", { p_city_id: cityId }),
     placeCounts: await rpc(deps.db, "city_pipeline_place_counts", { p_city_id: cityId }),
     highCostUsd: HIGH_COST_USD,
+    plan: planned ? await pricePlan(deps, cityId, adminId, String(body.scope ?? "new_only"), planned, gates) : null,
   };
 }
 
@@ -921,7 +1039,23 @@ export async function start(deps: Deps, body: Row, adminId: string) {
   if (scope === "whole_city" && body.confirmWholeCity !== true) {
     throw new Refusal("confirmation_required", "Re-checking a whole city needs confirmWholeCity:true.", 400);
   }
-  const { data, error } = await deps.db.rpc("city_pipeline_start", {
+  // With a stage list the run does only those stages and what each needs first. Without
+  // one it does every stage, exactly as before.
+  const plan = planOrRefuse(body);
+  if (plan?.redo && body.confirmRedo !== true) {
+    throw new Refusal("confirmation_required", "Redoing Intelligence changes live decks: it needs confirmRedo:true.", 400);
+  }
+  const { data, error } = plan
+    ? await deps.db.rpc("city_pipeline_start_plan", {
+      p_city_id: body.cityId,
+      p_started_by: adminId,
+      p_scope: scope,
+      p_spend_limit_usd: limit,
+      p_stages: plan.stages,
+      p_redo_intelligence: plan.redo,
+      p_rules_only: body.rulesOnly === true,
+    })
+    : await deps.db.rpc("city_pipeline_start", {
     p_city_id: body.cityId,
     p_started_by: adminId,
     p_scope: scope,
@@ -931,9 +1065,10 @@ export async function start(deps: Deps, body: Row, adminId: string) {
   });
   if (error) {
     if (error.code === "PT409") throw new Refusal("active_run", error.message, 409);
+    if (error.code === "22023") throw new Refusal("bad_stages", error.message, 400);
     throw new Error(error.message);
   }
-  return { runId: data };
+  return { runId: data, stages: plan?.stages ?? null, redo: plan?.redo ?? false };
 }
 
 export async function status(deps: Deps, body: Row) {

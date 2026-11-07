@@ -36,7 +36,7 @@ const PLACE_LIST_COLUMN_NAMES = [
   "good_for_children", "good_for_watching_sports", "allows_dogs", "has_restroom",
   "reservable", "menu_for_children", "dine_in", "takeout", "delivery",
   "curbside_pickup", "accessibility_options", "parking_options", "payment_options",
-  "business_status", "is_servable", "bouncer_reason", "bouncer_validated_at",
+  "business_status", "is_servable", "serving_hold", "bouncer_reason", "bouncer_validated_at",
   "passes_pre_photo_check", "pre_photo_bouncer_reason",
   "pre_photo_bouncer_validated_at", "photo_aesthetic_data", "photo_collage_url",
   "photo_collage_fingerprint", "thumbs_backfilled_at", "ai_signal_scores",

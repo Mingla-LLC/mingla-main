@@ -379,7 +379,8 @@ export function phase3dContractDigest(manifest) {
 // #3645: register the stay flat-net migration the same way.
 // #4271: register the resumable stuck-refund tester PostgreSQL proof (PR #4303).
 // #4271: PR #4303 rework renamed the migration and both proofs (failed-refund guard).
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "5cefd2ea8efb48ea2c3558e093291ffea11a6f3546e9b9d51eaabd38407ea5ff";
+// #4276: re-sealed after merging origin/main (#4271/#2830 rows kept beside the #4276 rows).
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "8ee8d97680d0078025ef59b0acd77a7376dbfcffdf482afaa2dbd22cceafad1a";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

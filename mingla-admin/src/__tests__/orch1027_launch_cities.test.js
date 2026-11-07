@@ -98,7 +98,8 @@ describe("#4276 — Cities never writes a geo box (I-LC-STATUS-ORTHOGONAL still 
   });
 
   it("readiness counts the gaps, and a failed count is said", () => {
-    assert.match(PAGE, /cityReadinessWithGaps\(row, gaps\[row\.city_id\] \?\? null\)/);
+    // #4276 design pass: the design's readiness words, from the same gap count.
+    assert.match(PAGE, /cityLaunchState\(row, gaps\[row\.city_id\] \?\? null\)/);
     assert.match(PAGE, /Gaps couldn't be counted/);
   });
 });
