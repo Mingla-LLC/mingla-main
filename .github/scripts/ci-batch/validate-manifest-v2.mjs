@@ -376,8 +376,8 @@ export function phase3dContractDigest(manifest) {
 // #4271: register the Apple build PostgreSQL proof the same way.
 // #4271: register the final tester PostgreSQL proof the same way.
 // #4271: re-sealed after merging origin/main (#4261/#4273/#4275/#4276/#4283/#2830 rows kept beside the #4271 rows).
-// #3645: register the stay flat-net migration the same way.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "efab0b5e1de459ca1c34dc7d8c6ad03369c109cc86d7b820cad99ca1192dac00";
+// #3645: register the stay flat-net and unpaid-release-holds migrations the same way.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "ea13121fb6c3d1dce58f43a97478c7af455feb180a12ce915d92fa2813d757f7";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

@@ -34,6 +34,9 @@ const BY_DATE_REEMIT =
 const STAY_NET =
   "supabase/migrations/20280407003645_issue_3645_stay_net_excludes_provider_fee.sql";
 
+const UNPAID_HOLDS =
+  "supabase/migrations/20280422003645_issue_3645_unpaid_release_holds.sql";
+
 const PS = "public.issue_3645_finalize_is_paystack(p_stripe_payment_intent_id, p_stripe_charge_id)";
 
 const PROJECTION_JOIN: Hunk = {
@@ -638,6 +641,300 @@ export const REEMITS: Reemit[] = [
       AND i.provider_fee_cents > 0
       AND NOT public.issue_3645_fee_sale_on_account(i.source_type, i.source_id, v_account)
 ` }],
+  },
+  // #3645 bundle 2a — unpaid releases hold refunds and disputes; one projection.
+  {
+    fn: "issue_1389_record_stay_dispute",
+    source: "supabase/migrations/20271231204134_issue_4134_pt409_application_conflicts.sql",
+    target: UNPAID_HOLDS,
+    hunks: [
+      { name: "unpaid stay release records a dispute hold", old: `    IF FOUND AND v_release.status <> 'released' THEN
+      UPDATE public.payout_release_items
+      SET disputed_cents = CASE WHEN v_resolved
+            THEN 0 ELSE v_line.disputed_minor END,
+          net_cents = GREATEST(
+            0,
+            gross_cents - refunded_cents
+              - CASE WHEN v_resolved THEN 0 ELSE v_line.disputed_minor END
+              - mingla_fee_cents - partner_share_cents
+              - provider_fee_cents
+          )
+      WHERE source_type = 'stay_reservation'
+        AND source_id = v_line.line_id;
+      UPDATE public.brand_payout_releases release_row
+      SET disputed_cents = totals.disputed,
+          net_release_cents = totals.net,
+          updated_at = now()
+      FROM (
+        SELECT
+          sum(item.disputed_cents)::integer AS disputed,
+          sum(item.net_cents)::integer AS net
+        FROM public.payout_release_items item
+        WHERE item.release_id = v_release.id
+      ) totals
+      WHERE release_row.id = v_release.id;
+    ELSIF FOUND AND v_release.status = 'released'
+      AND v_line.disputed_minor > 0 THEN
+`, new: `    IF FOUND AND v_release.status <> 'released' THEN
+      -- #3645: payout_release_items is append-only. An unpaid release records
+      -- the dispute as a hold and its totals are re-projected; the payout is
+      -- refused while the dispute is open (authorize_stripe_payout_execution).
+      IF v_resolved THEN
+        INSERT INTO public.stay_payout_release_holds (
+          release_id, line_id, kind, refunded_cents, disputed_cents,
+          net_hold_cents, provider_ref, idempotency_key
+        )
+        SELECT
+          opened.release_id, opened.line_id, 'dispute_won', 0,
+          -opened.disputed_cents, -opened.net_hold_cents, opened.provider_ref,
+          'stay-dispute-hold:' || p_dispute_ref || ':' || v_line.line_id || ':won'
+        FROM public.stay_payout_release_holds opened
+        WHERE opened.release_id = v_release.id
+          AND opened.line_id = v_line.line_id
+          AND opened.provider_ref = p_dispute_ref
+          AND opened.kind = 'dispute_opened'
+          AND NOT EXISTS (
+            SELECT 1 FROM public.stay_payout_release_holds closed
+            WHERE closed.release_id = opened.release_id
+              AND closed.line_id = opened.line_id
+              AND closed.provider_ref = opened.provider_ref
+              AND closed.kind IN ('dispute_won', 'dispute_lost')
+          )
+        ON CONFLICT DO NOTHING;
+      ELSE
+        INSERT INTO public.stay_payout_release_holds (
+          release_id, line_id, kind, refunded_cents, disputed_cents,
+          net_hold_cents, provider_ref, idempotency_key
+        ) VALUES (
+          v_release.id, v_line.line_id, 'dispute_opened', 0,
+          v_line.disputed_minor, v_line.disputed_minor, p_dispute_ref,
+          'stay-dispute-hold:' || p_dispute_ref || ':' || v_line.line_id || ':opened'
+        )
+        ON CONFLICT DO NOTHING;
+        IF lower(p_status) = 'lost' THEN
+          -- Lost is final: the hold stays and the release may pay the rest.
+          INSERT INTO public.stay_payout_release_holds (
+            release_id, line_id, kind, refunded_cents, disputed_cents,
+            net_hold_cents, provider_ref, idempotency_key
+          )
+          SELECT
+            v_release.id, v_line.line_id, 'dispute_lost', 0, 0, 0, p_dispute_ref,
+            'stay-dispute-hold:' || p_dispute_ref || ':' || v_line.line_id || ':lost'
+          WHERE NOT EXISTS (
+            SELECT 1 FROM public.stay_payout_release_holds closed
+            WHERE closed.release_id = v_release.id
+              AND closed.line_id = v_line.line_id
+              AND closed.provider_ref = p_dispute_ref
+              AND closed.kind IN ('dispute_won', 'dispute_lost')
+          )
+          ON CONFLICT DO NOTHING;
+        END IF;
+      END IF;
+      PERFORM public.issue_3645_refresh_stay_release_projection(
+        v_release.id, now()
+      );
+    ELSIF FOUND AND v_release.status = 'released'
+      AND v_line.disputed_minor > 0
+      -- #3645: money already held back before payout is never charged again.
+      AND NOT EXISTS (
+        SELECT 1 FROM public.stay_payout_release_holds held
+        WHERE held.release_id = v_release.id
+          AND held.line_id = v_line.line_id
+          AND held.provider_ref = p_dispute_ref
+      ) THEN
+` },
+    ],
+  },
+  {
+    fn: "issue_1389_sync_source_refund",
+    source: "supabase/migrations/20270131013814_issue_1389_stay_cancellation_refunds.sql",
+    target: UNPAID_HOLDS,
+    hunks: [
+      { name: "unpaid stay release records a refund hold", old: `      ELSIF FOUND AND v_release.status <> 'released' THEN
+        UPDATE public.payout_release_items item
+        SET refunded_cents = LEAST(
+              item.gross_cents,
+              item.refunded_cents + v_line.refund_minor::integer
+            ),
+            net_cents = GREATEST(
+              0,
+              item.net_cents - v_line.organizer_minor::integer
+            )
+        WHERE item.release_id = v_release.id
+          AND item.source_type = 'stay_reservation'
+          AND item.source_id = v_line.line_id;
+        UPDATE public.brand_payout_releases release_row
+        SET refunded_cents = totals.refunded,
+            net_release_cents = totals.net,
+            updated_at = now()
+        FROM (
+          SELECT
+            sum(item.refunded_cents)::integer AS refunded,
+            sum(item.net_cents)::integer AS net
+          FROM public.payout_release_items item
+          WHERE item.release_id = v_release.id
+        ) totals
+        WHERE release_row.id = v_release.id;
+      END IF;
+`, new: `      ELSIF FOUND AND v_release.status <> 'released' THEN
+        -- #3645: payout_release_items is append-only. The host bears only the
+        -- organiser share of the refund (Mingla returns its fee share); record
+        -- it as a hold and re-project the unpaid release.
+        INSERT INTO public.stay_payout_release_holds (
+          release_id, line_id, kind, refunded_cents, disputed_cents,
+          net_hold_cents, provider_ref, idempotency_key
+        ) VALUES (
+          v_release.id, v_line.line_id, 'refund',
+          LEAST(v_line.refund_minor, 2147483647)::integer, 0,
+          LEAST(v_line.organizer_minor, 2147483647)::integer,
+          v_refund.id::text,
+          'stay-refund-hold:' || v_refund.id || ':' || v_line.line_id
+        )
+        ON CONFLICT DO NOTHING;
+        PERFORM public.issue_3645_refresh_stay_release_projection(
+          v_release.id, now()
+        );
+      END IF;
+` },
+    ],
+  },
+  {
+    fn: "plan_pending_payout_partner_legs",
+    source: "supabase/migrations/20271208003645_issue_3645_rebuild_keeps_stored_item_net.sql",
+    target: UNPAID_HOLDS,
+    hunks: [
+      { name: "planner declares the shared projection", old: `  v_item_net integer;
+`, new: `  v_item_net integer;
+  v_projected record;  -- #3645
+` },
+      { name: "planner reads the shared projection", old: `    -- Rebuild from immutable items plus append-only corrections so retries
+`, new: `    -- #3645: refunded, disputed and net come from the shared projection, so
+    -- holds recorded while a release is unpaid survive every rebuild.
+    SELECT * INTO v_projected
+    FROM public.issue_3645_release_projected_totals(v_release.id);
+
+    -- Rebuild from immutable items plus append-only corrections so retries
+` },
+      { name: "planner writes the projected totals", old: `    SET gross_cents = v_gross,
+        refunded_cents = v_refunded,
+        disputed_cents = v_disputed,
+`, new: `    SET gross_cents = v_gross,
+        refunded_cents = v_projected.refunded_cents,
+        disputed_cents = v_projected.disputed_cents,
+` },
+      { name: "planner net is the projected net", old: `        net_release_cents = greatest(
+          0,
+          v_item_net
+          - permanent_debt_withheld_cents - temporary_debt_withheld_cents
+          + maturity_recredit_cents
+        ),
+`, new: `        -- #3645: Σ item net − holds − withheld debt + recredit, computed by
+        -- issue_3645_release_projected_totals (same terms as before plus holds).
+        net_release_cents = v_projected.net_release_cents,
+` },
+    ],
+  },
+  {
+    fn: "refresh_paystack_dispute_release_projection",
+    source: "supabase/migrations/20271214013645_issue_3645_paystack_dispute_append_only.sql",
+    target: UNPAID_HOLDS,
+    hunks: [
+      PROJECTION_JOIN,
+      { name: "release totals come from the shared projection (keeps withheld debt and stay holds)", old: `  WITH item_holds AS (
+    SELECT
+      item.id,
+      item.disputed_cents AS snapshot_disputed_cents,
+      item.net_cents AS snapshot_net_cents,
+      least(
+        item.net_cents::bigint,
+        coalesce(sum(dispute.amount_cents::bigint) FILTER (
+          WHERE dispute.id IS NOT NULL
+            AND (
+              dispute.is_resolved IS NOT TRUE
+              OR lower(coalesce(dispute.resolution, '')) IN (
+                'merchant-accepted', 'merchant_accepted', 'accepted'
+              )
+            )
+        ), 0)
+      ) AS hold_cents
+    FROM public.payout_release_items item
+    LEFT JOIN public.paystack_disputes dispute ON (
+      (item.source_type = 'order' AND dispute.order_id = item.source_id)
+      OR (
+        item.source_type = 'rsvp_contribution'
+        AND dispute.rsvp_contribution_id = item.source_id
+      )
+      OR (
+        item.source_type = 'venue_menu_order'
+        AND dispute.venue_menu_order_id = item.source_id
+      )
+      OR (  -- issue #3645
+        item.source_type = 'order_installment'
+        AND dispute.order_installment_id = item.source_id
+      )
+      OR (
+        item.source_type = 'venue_reservation'
+        AND EXISTS (
+          SELECT 1
+          FROM public.reservation_checkout_sessions checkout
+          WHERE checkout.id = item.source_id
+            AND checkout.reservation_id = dispute.venue_reservation_id
+        )
+      )
+    )
+    WHERE item.release_id = p_release_id
+    GROUP BY item.id, item.disputed_cents, item.net_cents
+  ), totals AS (
+    SELECT
+      least(
+        coalesce(sum(snapshot_disputed_cents::bigint + hold_cents), 0),
+        2147483647::bigint
+      )::integer AS disputed_cents,
+      least(
+        coalesce(sum(snapshot_net_cents::bigint - hold_cents), 0),
+        2147483647::bigint
+      )::integer AS net_release_cents
+    FROM item_holds
+  )
+  SELECT disputed_cents, net_release_cents
+  INTO v_disputed, v_net
+  FROM totals;
+`, new: `  -- #3645: one formula for every pending release (items, holds, withheld
+  -- debt, recredit), shared with plan_pending_payout_partner_legs, so the
+  -- debt recovered from this release is never paid out again.
+  SELECT projected.disputed_cents, projected.net_release_cents
+  INTO v_disputed, v_net
+  FROM public.issue_3645_release_projected_totals(p_release_id) projected;
+` },
+    ],
+  },
+  {
+    fn: "authorize_stripe_payout_execution",
+    source: "supabase/migrations/20270720003645_issue_3645_payment_plus_24h_payouts.sql",
+    target: UNPAID_HOLDS,
+    hunks: [
+      { name: "stay payout refused while a held dispute is open", old: `  IF NOT FOUND THEN
+    RAISE EXCEPTION 'stripe_release_not_found' USING ERRCODE='P0002';
+  END IF;
+`, new: `  IF NOT FOUND THEN
+    RAISE EXCEPTION 'stripe_release_not_found' USING ERRCODE='P0002';
+  END IF;
+  -- #3645: like Paystack, fail closed while a stay dispute held on this
+  -- unpaid release is open. Won returns the hold; lost keeps it and unblocks.
+  IF v_release.status='in_flight'
+     AND v_release.stripe_payout_id IS NULL
+     AND public.issue_3645_stay_release_has_open_dispute(p_release_id) THEN
+    UPDATE public.brand_payout_releases
+    SET status='pending',
+        error_message='stay_dispute_open',
+        stripe_execution_claim_id=NULL,
+        stripe_execution_claimed_at=NULL,
+        updated_at=p_now
+    WHERE id=p_release_id;
+    RETURN false;
+  END IF;
+` },
+    ],
   },
 ];
 
