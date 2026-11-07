@@ -75,9 +75,13 @@ export default function MarketingCampaignsRoute(): React.ReactElement {
       await cancelScheduled(id);
       await campaignsQuery.refetch();
     } catch (err) {
+      const message = (err as { message?: unknown } | null)?.message;
+      // #4273 extra (a): a send that is due or has started is read-only.
       Alert.alert(
         "Couldn't cancel",
-        err instanceof Error ? err.message : "Try again in a moment.",
+        typeof message === "string" && message.includes("campaign_locked")
+          ? "This send has already started, so it can't be cancelled now."
+          : err instanceof Error ? err.message : "Try again in a moment.",
       );
     }
   }, [campaignsQuery]);
