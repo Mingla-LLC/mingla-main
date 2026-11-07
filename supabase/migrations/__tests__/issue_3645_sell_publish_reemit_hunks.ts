@@ -69,7 +69,7 @@ export const SELL_PUBLISH_REEMITS: Reemit[] = [
       {
         name: "the status comment says where status is written now",
         old: "    -- BUG 5 ROOT CAUSE — the status flip to scheduled/public is DEFERRED to a\n    -- second UPDATE in step 11.5, AFTER event_dates is materialised. The\n    -- biz_enforce_event_has_master_date trigger (ORCH-0792) fires on the\n    -- status transition into scheduled/live and requires a master event_date to\n    -- ALREADY exist; flipping status here (before materialisation) raised\n    -- event_must_have_master_date on EVERY experience publish — the silent\n    -- failure the operator hit. Keep status/visibility/published_at UNCHANGED\n    -- in this UPDATE.\n",
-        new: "    -- BUG 5 ROOT CAUSE (ORCH-0792) — biz_enforce_event_has_master_date needs\n    -- a master event_date before the row leaves draft. issue #3645: dates are\n    -- now materialised above, and a publish writes currency together with\n    -- status in step 8b below. This UPDATE names neither status nor (on a\n    -- publish) currency, so a draft save fires no status-column trigger.\n",
+        new: "    -- BUG 5 ROOT CAUSE (ORCH-0792) — biz_enforce_event_has_master_date needs\n    -- a master event_date before the row leaves draft. issue #3645: dates are\n    -- now materialised above, and a publish writes currency together with\n    -- status in step 8b below. This UPDATE never names status, so a draft\n    -- save fires no status-column trigger, and on a publish it leaves the\n    -- stored currency unchanged.\n",
       },
       {
         name: "a publish writes currency in step 8b, not here",

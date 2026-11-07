@@ -7,6 +7,7 @@
 import {
   describeUnmappedPublishGuard,
   PAID_TICKET_PRICE_REQUIRED_COPY,
+  paidPriceHasMinorUnits,
 } from "../paidPublishGuards";
 import { validateStep } from "../draftEventValidation";
 import type { DraftEvent } from "../../store/draftEventStore";
@@ -38,5 +39,18 @@ describe("#3645 paid_ticket_price_required", () => {
     expect(priceErrors(0.004)).toHaveLength(1);
     expect(priceErrors(0.01)).toHaveLength(0);
     expect(priceErrors(25)).toHaveLength(0);
+  });
+
+  it("the shared rule (used by the event and experience wizards) matches the server's rounding", () => {
+    expect(paidPriceHasMinorUnits(null)).toBe(false);
+    expect(paidPriceHasMinorUnits(undefined)).toBe(false);
+    expect(paidPriceHasMinorUnits(Number.NaN)).toBe(false);
+    expect(paidPriceHasMinorUnits(0)).toBe(false);
+    expect(paidPriceHasMinorUnits(0.004)).toBe(false);
+    expect(paidPriceHasMinorUnits(0.0049)).toBe(false);
+    expect(paidPriceHasMinorUnits(-1)).toBe(false);
+    expect(paidPriceHasMinorUnits(0.005)).toBe(true);
+    expect(paidPriceHasMinorUnits(0.01)).toBe(true);
+    expect(paidPriceHasMinorUnits(250)).toBe(true);
   });
 });

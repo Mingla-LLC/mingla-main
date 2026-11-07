@@ -232,6 +232,15 @@ export const resolveProviderNeutralPaidPublishGuardCopy = (
   return reason === null ? null : PROVIDER_NEUTRAL_PAID_PUBLISH_COPY[reason];
 };
 
+/**
+ * Issue #3645 — the server's rule for "this paid price is a price": it rounds
+ * to at least one minor unit (business_publish_event_draft and
+ * biz_publish_experience compare round(price * 100) with 0). The wizards use
+ * this so they refuse exactly what the server refuses.
+ */
+export const paidPriceHasMinorUnits = (major: number | null | undefined): boolean =>
+  typeof major === "number" && Number.isFinite(major) && Math.round(major * 100) > 0;
+
 /** Issue #3645 — words for the server's paid_ticket_price_required refusal. */
 export const PAID_TICKET_PRICE_REQUIRED_COPY =
   "A paid ticket needs a price. Set a price on each paid ticket, or mark it free.";

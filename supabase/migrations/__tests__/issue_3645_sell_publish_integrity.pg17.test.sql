@@ -258,6 +258,18 @@ BEGIN
     RAISE EXCEPTION 'T4 FAIL: a second publish moved published_at or duplicated the master date';
   END IF;
 
+  -- Re-publishing a live experience with another currency: the row is no
+  -- longer a draft, so the brand-currency trigger does not stamp it, and the
+  -- event and its tickets take the sent currency together — as on main.
+  -- Pinned so step 8b keeps writing currency with status (#3645 records
+  -- whether a live experience should be allowed to change currency at all).
+  PERFORM public.biz_publish_experience(v_event, pg_temp.exp_payload(25000, 'USD'), true);
+  IF (SELECT currency FROM public.events WHERE id = v_event) IS DISTINCT FROM 'USD'
+     OR EXISTS (SELECT 1 FROM public.ticket_types WHERE event_id = v_event AND deleted_at IS NULL
+                 AND currency IS DISTINCT FROM 'USD') THEN
+    RAISE EXCEPTION 'T4 FAIL: a re-publish left the event and its tickets in different currencies';
+  END IF;
+
   -- The publish sends a currency the brand does not sell in: the row is
   -- stamped with the brand's currency, and so are its tickets.
   v_event := (public.biz_create_experience(v_brand, pg_temp.exp_payload(25000, 'NGN'), false)->'event'->>'id')::uuid;
@@ -526,6 +538,29 @@ BEGIN
       RAISE EXCEPTION 'T10 FAIL: a dateless checkout with every date cancelled (%)', coalesce(v_err, 'accepted');
     END IF;
   END LOOP;
+  -- The buyer page still says a date must be chosen (none can be), and
+  -- the single-date event whose only date is cancelled is refused too.
+  IF (public.pg_direct_event_checkout_bundle(v_rec)->>'isMultiDate')::boolean IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'T10 FAIL: the buyer bundle offers a dateless purchase';
+  END IF;
+  INSERT INTO public.events(id, brand_id, created_by, title, slug, event_type, status, visibility, timezone, currency)
+  VALUES ('36452b00-0000-4000-8000-0000000000ed', v_brand, '36452b00-0000-4000-8000-000000000001',
+    'One date', 'b2b-one-date', 'event', 'draft', 'draft', 'UTC', 'NGN');
+  INSERT INTO public.event_dates(id, event_id, start_at, end_at, timezone, is_master)
+  VALUES ('36452b00-0000-4000-8000-00000000edd1', '36452b00-0000-4000-8000-0000000000ed',
+    now() + interval '5 days', now() + interval '5 days 3 hours', 'UTC', true);
+  UPDATE public.events SET status = 'scheduled', visibility = 'public', published_at = now()
+   WHERE id = '36452b00-0000-4000-8000-0000000000ed';
+  PERFORM public.business_cancel_event_date('36452b00-0000-4000-8000-0000000000ed',
+    '36452b00-0000-4000-8000-00000000edd1', 'Venue closed for repairs', false);
+  v_err := NULL;
+  BEGIN
+    PERFORM public.issue_3872_checkout_day_context('36452b00-0000-4000-8000-0000000000ed', NULL, NULL, NULL);
+  EXCEPTION WHEN OTHERS THEN v_err := SQLERRM;
+  END;
+  IF v_err IS DISTINCT FROM 'occurrence_not_available' THEN
+    RAISE EXCEPTION 'T10 FAIL: single-date event with its date cancelled (%)', coalesce(v_err, 'accepted');
+  END IF;
   RAISE NOTICE 'ISSUE-3645-2B T10 PASS: with every upcoming date cancelled nothing can be checked out, and the buyer is told why';
 END $t10$;
 

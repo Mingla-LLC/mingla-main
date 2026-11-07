@@ -2186,8 +2186,9 @@ BEGIN
     -- BUG 5 ROOT CAUSE (ORCH-0792) — biz_enforce_event_has_master_date needs
     -- a master event_date before the row leaves draft. issue #3645: dates are
     -- now materialised above, and a publish writes currency together with
-    -- status in step 8b below. This UPDATE names neither status nor (on a
-    -- publish) currency, so a draft save fires no status-column trigger.
+    -- status in step 8b below. This UPDATE never names status, so a draft
+    -- save fires no status-column trigger, and on a publish it leaves the
+    -- stored currency unchanged.
     theme             = jsonb_set(
                           jsonb_set(
                             COALESCE(theme, '{}'::jsonb),
