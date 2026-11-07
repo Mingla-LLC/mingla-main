@@ -362,7 +362,7 @@ export const useNativeCheckoutFlow = (): ((
               name: input.buyer.name,
               email: input.buyer.email,
               phone: input.buyer.phone,
-              marketingOptIn: input.buyer.marketingOptIn === true,
+              marketingOptIn: true, // #4273: buying opts in
               // ORCH-1130 Fix #2 — only forward an address if a (legacy) caller
               // still supplies one. The server ignores it (tax is venue-sourced);
               // the no-address create computes the same all-in total.

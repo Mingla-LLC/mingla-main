@@ -17,6 +17,7 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
+import { formatSmsSendWindows } from "../../utils/marketing/smsSendWindow";
 
 export interface ComposerReviewSheetProps {
   visible: boolean;
@@ -317,7 +318,7 @@ export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
             <Text style={styles.infoTitle}>How SMS timing works</Text>
             <Text style={styles.infoBody}>
               {
-                "Texts only send during each recipient's local hours (8 AM–9 PM). Anyone outside that window right now is automatically held and sent in their next morning window — nothing is lost. You can also schedule the whole blast for "
+                `Texts only send during each recipient's local hours (${formatSmsSendWindows()}). Anyone outside that window right now is automatically held and sent in their next morning window — nothing is lost. You can also schedule the whole blast for `
               }
               {nextWindowLabel ?? ""}
               {"."}

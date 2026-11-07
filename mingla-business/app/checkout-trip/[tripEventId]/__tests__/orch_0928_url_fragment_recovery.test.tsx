@@ -74,7 +74,7 @@ describe("ORCH-0928 — trip confirm URL fragment recovery (happy path)", () => 
     expect(recoveryWindow).toMatch(/checkoutSessionId:\s*csi/);
     expect(recoveryWindow).toMatch(/buyerStatusToken:\s*bst/);
     expect(recoveryWindow).toMatch(/lines:\s*\[\]/);
-    expect(recoveryWindow).toMatch(/marketingOptIn:\s*false/);
+    expect(recoveryWindow).toMatch(/marketingOptIn:\s*true/); // #4273: buying opts in
   });
 
   it("HP-4: both csi and bst must be non-empty strings to trigger recovery (defensive guard)", () => {

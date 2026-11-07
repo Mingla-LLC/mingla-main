@@ -399,7 +399,7 @@ describe("#2227 T-13 — the free and Stripe rails are unchanged", () => {
           name: "Ada Buyer",
           email: "Ada@Example.com ",
           phone: " +2348012345678",
-          marketingOptIn: false,
+          marketingOptIn: true, // #4273: buying opts in
         },
         lines: [{ ticketTypeId: "tt-ga", quantity: 1 }],
       },
