@@ -235,7 +235,7 @@ describe("Tap setup runs Apple's terms and How to Tap before the first sale", ()
       },
     });
     const result = await runTapToPaySetup(h.deps);
-    expect(result).toEqual({ kind: "failed", message: expect.stringContaining("brand's address") });
+    expect(result).toEqual({ kind: "failed", message: expect.stringContaining("brand's full address") });
     expect(h.calls).toEqual(["support"]);
   });
 
@@ -320,7 +320,7 @@ describe("door-pay-code text_link refusals", () => {
   });
 
   test("the host screen uses that copy", () => {
-    expect(read("app/event/[id]/door/pay/[codeId].tsx")).toContain("setError(doorPayTextLinkErrorMessage(sendError));");
+    expect(read("src/components/door/DoorPayCodeScreen.tsx")).toContain("setError(doorPayTextLinkErrorMessage(sendError));");
   });
 });
 

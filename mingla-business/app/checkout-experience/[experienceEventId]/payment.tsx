@@ -480,7 +480,8 @@ function CheckoutExperiencePaymentScreenContent({
             name: buyer.name,
             email: buyer.email,
             phone: buyer.phone,
-            marketingOptIn: buyer.marketingOptIn === true,
+            // #4273: buying opts the buyer in; there is no box to untick.
+            marketingOptIn: true,
           },
           // ORCH-1246 (Apple 4.9) — experience title so the Apple Pay sheet line
           // item shows the product, not the company. Fallback "Ticket" if unloaded.

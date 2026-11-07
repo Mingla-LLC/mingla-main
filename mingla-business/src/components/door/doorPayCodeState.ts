@@ -50,6 +50,28 @@ export const formatDoorPayCountdown = (expiresAt: string, nowMs: number): string
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 };
 
+/** Whole seconds left on a code (0 once past, or for an unreadable time). */
+export const doorPayCountdownSeconds = (expiresAt: string, nowMs: number): number => {
+  const expiry = new Date(expiresAt).getTime();
+  return Number.isFinite(expiry) ? Math.max(0, Math.floor((expiry - nowMs) / 1000)) : 0;
+};
+
+/** Door polish: under a minute left, the status pill's dot turns warning. */
+export const DOOR_PAY_URGENT_SECONDS = 60;
+
+/** The waiting pill: the one live number on the screen, in tabular digits. */
+export const doorPayWaitingPillText = (countdown: string): string => `Point your camera here · ${countdown}`;
+
+/** What a screen reader hears on focus: "Code expires in 9 minutes 42 seconds". */
+export const doorPayCountdownWords = (secondsLeft: number): string => {
+  const minutes = Math.floor(secondsLeft / 60);
+  const seconds = secondsLeft % 60;
+  const parts: string[] = [];
+  if (minutes > 0) parts.push(`${minutes} minute${minutes === 1 ? "" : "s"}`);
+  if (seconds > 0 || minutes === 0) parts.push(`${seconds} second${seconds === 1 ? "" : "s"}`);
+  return `Code expires in ${parts.join(" ")}`;
+};
+
 export type DoorPayHostAction = "new_code" | "cash_instead" | "back_to_door";
 
 export interface DoorPayHostEndCopy {

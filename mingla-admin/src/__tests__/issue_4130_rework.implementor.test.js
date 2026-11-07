@@ -3,9 +3,8 @@
 //
 //   R-1  The staff/test email rule is precise (no "contest", "greatest"),
 //        the same on the server and in the browser.
-//   R-3  "Waiting on a person" has one definition: Dashboard KPI, Work menu
-//        count, Work board column and Team dashboard (the server equality is
-//        pinned in the Wave 1 pg17 suite, W1-WAIT).
+//   R-3  (#4270) the Dashboard tile and the Work menu count read one state:
+//        your own open cards due today and overdue.
 //   R-4  An announcement whose whole send failed at the queue is a failure.
 //   R-5  Settings reads config_key / config_value; a failed read is an error.
 //   R-6  Ads: failed loads are errors with Retry, never "No ... need review".
@@ -26,7 +25,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { brandInternalView, isInternalEmail } from "../lib/peopleSegments.js";
-import { columnCards, isWaitingOnPerson, planToolLabel, PLAN_TOOLS, waitingCardsState, waitingColumnCount } from "../lib/opsModel.js";
+import { dueTodayState, isTagged, planToolLabel, PLAN_TOOLS } from "../lib/opsModel.js";
 import { announcementsWithFailedPushes, failedPushTitle, pushDelivery } from "../lib/announcementDelivery.js";
 import { needsYouToday } from "../lib/dashboardToday.js";
 import { appConfigRow, opsStateWords, weeklySpendWords } from "../lib/systemPages.js";
@@ -94,35 +93,28 @@ describe("R-1 the staff/test email rule is precise", () => {
   });
 });
 
-describe("R-3 one definition of Waiting on a person", () => {
-  const cards = [
-    { id: "s1", status: "person", person_reason: "send", draft_ready: true },
-    { id: "s2", status: "person", person_reason: "send" },
-    { id: "p1", status: "person", person_reason: "spend" },
-    { id: "t1", status: "todo" },
-    { id: "x1", status: "person", person_reason: "send", archived: true },
-  ];
-  it("a send card counts whether or not its draft is ready; drafts beside it are not cards", () => {
-    assert.equal(isWaitingOnPerson(cards[0]), true);
-    assert.equal(waitingColumnCount(columnCards(cards, "person")), 3);
-  });
-  it("the server count is read as a state: never 0 when the read failed", () => {
-    assert.deepEqual(waitingCardsState({ data: { waiting_on_person_mine: 3 } }), { status: "ready", cards: 3 });
-    assert.deepEqual(waitingCardsState({ data: null, error: new Error("x") }), { status: "error", cards: null });
-    assert.deepEqual(waitingCardsState({ data: null }), { status: "loading", cards: null });
-    assert.deepEqual(waitingCardsState({ enabled: false }), { status: "ready", cards: 0 });
+// #4270: "Waiting on a person" is retired. The Dashboard tile and the Work
+// menu count read one state: your own open cards due today and overdue.
+describe("R-3 one definition of what is due for you (#4270)", () => {
+  it("the server counts are read as a state: never 0 when the read failed", () => {
+    assert.deepEqual(dueTodayState({ data: { due_today_mine: 3, overdue_mine: 1 } }), { status: "ready", dueToday: 3, overdue: 1 });
+    assert.deepEqual(dueTodayState({ data: null, error: new Error("x") }), { status: "error", dueToday: null, overdue: null });
+    assert.deepEqual(dueTodayState({ data: null }), { status: "loading", dueToday: null, overdue: null });
+    assert.deepEqual(dueTodayState({ data: { overdue_mine: 1 } }), { status: "error", dueToday: null, overdue: null }, "an old server without the key is a failed read, not 0");
+    assert.deepEqual(dueTodayState({ enabled: false }), { status: "ready", dueToday: 0, overdue: 0 });
   });
   it("every surface reads that one definition", () => {
     const hook = strip(read("hooks/useReviewCount.js"));
-    assert.match(hook, /waitingCardsState\(\{ enabled, data: counts\.data, error: counts\.error \}\)/);
-    assert.match(hook, /cards: work\.cards,/);
+    assert.match(hook, /dueTodayState\(\{ enabled, data: counts\.data, error: counts\.error \}\)/);
+    assert.match(hook, /cards: work\.status === "ready" \? work\.dueToday \+ work\.overdue : null,/);
     assert.doesNotMatch(hook, /const cards = needsPerson \+ draftNeeded \+ wording/);
-    assert.match(strip(read("components/ops/WorkColumns.jsx")), /col\.key === "person" \? waitingColumnCount\(list\) : list\.length/);
     assert.match(strip(read("components/layout/Sidebar.jsx")), /item\.id === "work-board" \? reviewCount\.cards \|\| 0 : 0/);
-    assert.match(strip(read("pages/OverviewPage.jsx")), /\{Number\(review\.cards\)\.toLocaleString\(\)\}/);
-    assert.match(strip(read("pages/TeamDashboardPage.jsx")), /waiting\.data\?\.counts\?\.person/);
-    const w1 = sql("20280110004130_issue_4130_work_views_and_team_pulse.sql");
-    assert.match(w1, /'waiting_on_person_mine', count\(\*\) FILTER \(WHERE w\.status = 'person' AND p\.role = 'owner'\)/);
+    assert.match(strip(read("pages/OverviewPage.jsx")), /\{Number\(review\.dueToday \|\| 0\)\.toLocaleString\(\)\}/);
+    assert.match(strip(read("pages/TeamDashboardPage.jsx")), /waiting\.data\?\.counts\?\.tagged/);
+    assert.equal(typeof isTagged, "function");
+    assert.equal(isTagged({ status: "todo", person_reason: "send" }), true);
+    assert.equal(isTagged({ status: "done", person_reason: "send" }), false);
+    assert.equal(isTagged({ status: "todo", person_reason: "send", archived: true }), false);
   });
 });
 
@@ -179,8 +171,8 @@ describe("R-7 the Dashboard's Work KPI and item", () => {
   });
   it("the KPI has a failed state with Retry", () => {
     const page = strip(read("pages/OverviewPage.jsx"));
-    // #4130: the tile counts only the viewer's own cards, so it says "Waiting on you".
-    assert.match(page, /work\.status === "error" \? \(\s*<KpiFailed label="Waiting on you"/);
+    // #4270: the tile counts the viewer's own cards due today.
+    assert.match(page, /work\.status === "error" \? \(\s*<KpiFailed label="Due today for you"/);
     assert.match(page, /review\.cardsError \? \{ status: "error" \}/);
   });
 });

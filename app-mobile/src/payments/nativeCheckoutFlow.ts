@@ -830,7 +830,7 @@ export const useNativeCheckoutFlow = (): ((
             name: input.buyer.name,
             email: input.buyer.email,
             phone: input.buyer.phone,
-            marketingOptIn: input.buyer.marketingOptIn === true,
+            marketingOptIn: true, // #4273: buying opts in
           },
           providerInput: { surface: "native" },
           discountCode: input.discountCode ?? null,
@@ -879,7 +879,7 @@ export const useNativeCheckoutFlow = (): ((
             name: input.buyer.name,
             email: input.buyer.email,
             phone: input.buyer.phone,
-            marketingOptIn: input.buyer.marketingOptIn === true,
+            marketingOptIn: true, // #4273: buying opts in
             // Forwarded only if a caller still supplies one (edge fn ignores it
             // — tax is venue-sourced, SPEC §B.1).
             ...(input.buyer.address ? { address: input.buyer.address } : {}),

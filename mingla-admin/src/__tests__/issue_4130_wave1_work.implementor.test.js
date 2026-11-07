@@ -7,12 +7,12 @@
 //         same days of last month
 //   W1-3  waiting drafts: a draft for a host or creator on an open send card
 //         opens from that card ("Draft ready"); every other waiting draft is
-//         listed on its own in Waiting on a person, so none is lost
+//         listed on its own at the top of To do (#4270), so none is lost
 //   W1-4  the standup rows and the plain-text standup
 //   W1-5  the words: what changed, on-time percent, deltas
-//   W1-6  rendered: the first column is "Waiting on a person", it lists the
-//         loose drafts with "Draft ready", a send card carrying a draft says
-//         so, and the column links to every draft (sent and discarded too)
+//   W1-6  rendered (#4270): the first column is "To do", it lists the loose
+//         drafts with "Draft ready", a send card carrying a draft says so,
+//         and the column links to every draft (sent and discarded too)
 //   W1-7  everything the old Needs you page did is reachable from Work:
 //         drafts (edit, copy, mark sent, discard, undo) inside the card and
 //         draft drawers, spend and publish approvals on the card, roadmap
@@ -70,8 +70,9 @@ const D1 = "41300000-0000-4000-8000-0000000000d1";
 const D2 = "41300000-0000-4000-8000-0000000000d2";
 const D3 = "41300000-0000-4000-8000-0000000000d3";
 
-const sendCard = { id: A, number: 7, title: "Send welcome to Rooftop", status: "person", person_reason: "send", links: [{ kind: "host", id: HOST1, label: "Rooftop" }], owners: [{ email: "abi@x.test", name: "Abimbola" }], proof: [] };
-const spendCard = { id: B, number: 8, title: "Approve boost", status: "person", person_reason: "spend", links: [{ kind: "host", id: HOST2, label: "Gallery" }], owners: [{ email: "seth@x.test", name: "Seth" }], proof: [] };
+// #4270: a card that needs a person is a To do card with its tag.
+const sendCard = { id: A, number: 7, title: "Send welcome to Rooftop", status: "todo", person_reason: "send", tag: "send", links: [{ kind: "host", id: HOST1, label: "Rooftop" }], owners: [{ email: "abi@x.test", name: "Abimbola" }], proof: [] };
+const spendCard = { id: B, number: 8, title: "Approve boost", status: "todo", person_reason: "spend", tag: "spend", links: [{ kind: "host", id: HOST2, label: "Gallery" }], owners: [{ email: "seth@x.test", name: "Seth" }], proof: [] };
 const drafts = [
   { id: D1, state: "waiting", record: { id: HOST1, name: "Rooftop", pipeline: "hosts" }, created_via: "claude" },
   { id: D2, state: "waiting", record: { id: HOST2, name: "Gallery", pipeline: "hosts" }, created_via: "codex" },
@@ -173,7 +174,8 @@ describe("W1-5 the words", () => {
   it("what changed", () => {
     assert.equal(eventVerb({ action: "closed" }), "closed");
     assert.equal(eventVerb({ action: "status", to_status: "doing" }), "moved to In progress");
-    assert.equal(eventVerb({ action: "status", to_status: "person" }), "moved to Waiting on a person");
+    // #4270: the retired status has no words of its own any more.
+    assert.equal(eventVerb({ action: "status", to_status: "person" }), "changed the status of");
     assert.equal(eventVerb({ action: "something_new" }), "changed");
   });
   it("feed times are local: today, yesterday, then the date", () => {
@@ -192,7 +194,7 @@ describe("W1-5 the words", () => {
   });
 });
 
-describe("W1-6 rendered: Waiting on a person", () => {
+describe("W1-6 rendered: To do with the tags and the drafts", () => {
   let render;
   before(async () => {
     let esbuild;
@@ -222,22 +224,21 @@ export function render(props) { return renderToStaticMarkup(<WorkColumns onSelec
     ({ render } = await import(pathToFileURL(file).href));
   });
 
-  // #4130 (rework): the column's number is cards only (the send card with a
-  // ready draft included), the same definition as the Dashboard, the Work
-  // menu and the Team dashboard; loose drafts get their own "+N drafts".
-  it("the first column is Waiting on a person and counts its cards; loose drafts are listed with their own count", () => {
+  // #4270: the first column is To do. Tagged cards carry their Send, Spend or
+  // Publish tag there; loose drafts sit at its top with their own "+N drafts".
+  it("the first column is To do; tagged cards carry their tag; loose drafts are listed with their own count", () => {
     const { byCard, loose } = splitDrafts(drafts, [sendCard, spendCard]);
     const html = render({ cards: [sendCard, spendCard], drafts: loose, draftsByCard: byCard, allDraftsHref: "#/work-board?drafts=all" });
-    assert.equal(WORK_COLUMNS[0].label, "Waiting on a person");
-    assert.equal(workStatusLabel("person"), "Waiting on a person");
-    const first = html.slice(0, html.indexOf('id="work-col-todo"'));
-    assert.match(first, /<span>Waiting on a person<\/span><span[^>]*><span[^>]*aria-label="2 cards"[^>]*>2<\/span><span[^>]*>\+2 drafts<\/span>/);
-    assert.ok(!/Needs you/.test(html), "the retired name is gone");
+    assert.equal(WORK_COLUMNS[0].label, "To do");
+    assert.equal(workStatusLabel("person"), "");
+    const first = html.slice(html.indexOf('id="work-col-panel-todo"'), html.indexOf('id="work-col-panel-doing"'));
+    assert.match(first, /<span[^>]*>To do<\/span><span[^>]*><span[^>]*aria-label="2 cards"[^>]*>2<\/span><span[^>]*>\+2 drafts<\/span>/);
+    assert.ok(!/Needs you|Waiting on a person/.test(html), "the retired names are gone");
     assert.match(first, /data-draft-item="41300000-0000-4000-8000-0000000000d2"[\s\S]*Send a message to Gallery/);
     assert.match(first, /data-draft-item="41300000-0000-4000-8000-0000000000d3"/);
     assert.equal((first.match(/data-draft-ready=""/g) || []).length, 1, "only the send card carrying a draft says Draft ready");
-    assert.match(first, /Sends a message[\s\S]*Draft ready/);
-    assert.match(first, /Spends money/);
+    assert.match(first, /You send[\s\S]*Draft ready/);
+    assert.match(first, /You spend/);
     assert.match(first, /href="#\/work-board\?drafts=all"[^>]*>All my message drafts, sent and discarded</);
   });
 
@@ -277,7 +278,7 @@ describe("W1-7 everything Needs you did is reachable from Work", () => {
   // it still filters the board on the server, and only while the board is on
   // screen. Today, This week and This month read their window (loadPeriod).
   it("the owner filters on the server; the views read the new functions through the one service", () => {
-    assert.match(page, /useOpsWork\(\{ who, week: query\.week, owner: ownerFilter, q: view\.q, enabled: onBoard \}\)/);
+    assert.match(page, /useOpsWork\(\{ who, week: query\.week, owner: ownerFilter, q: view\.q, limit: BOARD_LIMIT, perStatus: true, enabled: onBoard \}\)/);
     assert.match(code("hooks/useOpsWork.js"), /\.\.\.\(owner \? \{ owner \} : \{\}\)/);
     const service = read("services/opsService.js");
     assert.match(service, /supabase\.rpc\("ops_events_since", \{ p_since: since, p_owner: owner \|\| null \}\)/);

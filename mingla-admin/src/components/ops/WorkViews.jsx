@@ -1,6 +1,6 @@
 // Issue #4255 — Work's Today, This week and This month: one layout (the
 // approved PeriodView). Per person, four lists: Done (closed inside the
-// window), Doing, Blocked and Waiting on a person (open cards due by the
+// window), Doing, Blocked and Needs your OK (#4270: tagged cards due by the
 // window's end, overdue or undated). Each list shows three; "+N more" is a
 // button that shows every card. The page's one filter bar has already
 // filtered the cards (lib/workViews.js workFilter).
@@ -77,7 +77,7 @@ export function PeriodBody({ win, cards, people, onOpenCard, truncated = false }
         </span>
       </div>
       {rows.length === 0 ? (
-        <p className="px-4 py-4 text-[13px] text-[var(--color-text-secondary)]">Nothing done, in progress, blocked or waiting in this window for these filters.</p>
+        <p className="px-4 py-4 text-[13px] text-[var(--color-text-secondary)]">Nothing done, in progress, blocked or needing your OK in this window for these filters.</p>
       ) : (
         <ul className="flex min-w-0 flex-col divide-y divide-[var(--gray-100)]">
           {rows.map((r) => (

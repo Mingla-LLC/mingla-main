@@ -2,6 +2,12 @@
  * #4271 — Tap to Pay door sale (design T2 ready/reading, T3 needs PIN / declined,
  * H4 paid, T1 "not on this phone").
  *
+ * Door polish: every end state takes its tone from tapSaleTone (green paid,
+ * grey nothing charged, amber money not settled, red declined or blocked), the
+ * ready/reading/saving line sits in the shared DoorStatusPill, "Send receipt"
+ * is a quiet text link (same handler and string), and the header names Tap to
+ * Pay the way Apple asks on this device (tapToPayName).
+ *
  * On iPhone the tap prompt is Apple's own sheet; on Android it is Stripe's. This
  * screen shows the amount and tickets behind it, and every end state says
  * whether money was taken. Tickets only exist once the server records the
@@ -14,8 +20,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
 
 import {
-  accent,
   canvas,
+  glass,
   semantic,
   spacing,
   text as textTokens,
@@ -29,6 +35,7 @@ import {
   TAP_UNKNOWN_RESULT_COPY,
   TAP_TO_PAY_SHORT,
   tapPaidAfterCloseCopy,
+  tapToPayName,
   tapReaderProblemCanRetry,
   tapReaderProblemCopy,
   tapReaderProblemTitle,
@@ -47,10 +54,12 @@ import {
   completeDoorTapIntent,
   createDoorPayCodeForLines,
   createDoorTapIntent,
+  DoorTapError,
   markDoorTapOutcomeSeen,
 } from "../../../services/terminal/doorTapEdge";
 import {
   encodeTapToPayDraft,
+  sellAnotherDraft,
   parseTapToPayDraft,
   type TapToPayDraft,
 } from "../../../services/terminal/tapToPayDraft";
@@ -65,11 +74,13 @@ import { consumeDoorTapPress } from "../../../services/terminal/tapTiming";
 import { formatCurrency, majorFromMinor } from "../../../utils/currency";
 import { HapticFeedback } from "../../../utils/hapticFeedback";
 import { randomUuid } from "../../../utils/randomId";
-import { Button } from "../../ui/Button";
 import { GlassCard } from "../../ui/GlassCard";
 import { IconChrome } from "../../ui/IconChrome";
 import { Spinner } from "../../ui/Spinner";
-import { TapStatusView } from "./TapStatusView";
+import { DoorStatusPill } from "../DoorStatusPill";
+import { doorPayCodeCreateErrorCopy } from "../doorPaymentOptions";
+import { TapStatusView, type TapStatusAction } from "./TapStatusView";
+import { TAP_SAVE_FAILED_PAID_LINE, tapSaleTone } from "./tapSaleTone";
 import { useTapToPayTerminal } from "../../../services/terminal/tapToPaySession";
 import { TapConfiguringView } from "./TapConfiguringView";
 import { TapNotOnThisPhone } from "./TapNotOnThisPhone";
@@ -108,6 +119,16 @@ export const TapToPaySaleScreen = ({
   const [payCodeError, setPayCodeError] = useState<string | null>(null);
   const clientRequestIdRef = useRef<string>(randomUuid());
   const flowRef = useRef<TapToPaySaleFlow | null>(null);
+  // "Check again" on an unknown result: true only while that re-check runs.
+  const [rechecking, setRechecking] = useState<boolean>(false);
+  const checkAgain = useCallback(async (): Promise<void> => {
+    setRechecking(true);
+    try {
+      await flowRef.current?.retryConfirm();
+    } finally {
+      setRechecking(false);
+    }
+  }, []);
 
   const lineSummary = useMemo(
     () => (draft === null ? "" : summarizeTapLines(draft.lines, route.event?.tickets ?? [])),
@@ -238,10 +259,10 @@ export const TapToPaySaleScreen = ({
       });
       // orch-strict-grep-allow route-by-event-type — door Tap to Pay routes exist only under /event/[id]/door.
       router.replace(`/event/${eventId}/door/pay/${created.codeId}` as never);
-    } catch {
+    } catch (error) {
       // The tap screen stays: a tap may start again (on a fresh intent).
       flowRef.current?.reopen();
-      setPayCodeError("Couldn't make a pay code. Check your connection and try again.");
+      setPayCodeError(doorPayCodeCreateErrorCopy(error instanceof DoorTapError ? error.code : "unknown"));
     } finally {
       setPayCodeBusy(false);
     }
@@ -253,8 +274,10 @@ export const TapToPaySaleScreen = ({
       return;
     }
     // orch-strict-grep-allow route-by-event-type — door Tap to Pay routes exist only under /event/[id]/door.
+    // The next guest is someone else: keep the tickets and date, never this
+    // guest's name or phone.
     router.replace(
-      `/event/${eventId}/door?sellAnother=1&draft=${encodeURIComponent(encodeTapToPayDraft(draft))}` as never,
+      `/event/${eventId}/door?sellAnother=1&draft=${encodeURIComponent(encodeTapToPayDraft(sellAnotherDraft(draft)))}` as never,
     );
   }, [draft, eventId, router, goToDoor]);
 
@@ -282,26 +305,23 @@ export const TapToPaySaleScreen = ({
     [route.event?.name, route.brand?.displayName],
   );
 
-  const receiptButton = (
+  // Apple's receipt offer stays on every screen that had it: a quiet 44pt text link.
+  const receiptLink = (
     outcome: "approved" | "declined",
     amount: TapAmount,
     cardLabel: string | null,
-  ): React.ReactElement => (
-    <Button
-      label={TAP_SEND_RECEIPT}
-      onPress={() => void sendReceipt(outcome, amount, cardLabel)}
-      variant="ghost"
-      size="md"
-      fullWidth
-      accessibilityLabel={TAP_SEND_RECEIPT}
-      testID="tap-send-receipt"
-    />
-  );
+  ): TapStatusAction => ({
+    label: TAP_SEND_RECEIPT,
+    onPress: () => void sendReceipt(outcome, amount, cardLabel),
+    testID: "tap-send-receipt",
+  });
 
   const chrome = (
     <View style={styles.chromeRow}>
-      <IconChrome icon="close" size={36} onPress={handleClose} accessibilityLabel="Close" />
-      <Text style={styles.chromeTitle}>{TAP_TO_PAY_SHORT}</Text>
+      <IconChrome icon="close" size={44} onPress={handleClose} accessibilityLabel="Close" />
+      <Text style={styles.chromeTitle} numberOfLines={1}>
+        {tapToPayName(Platform.OS)}
+      </Text>
       <View style={styles.chromeRightSlot} />
     </View>
   );
@@ -317,8 +337,7 @@ export const TapToPaySaleScreen = ({
     if (draft === null) {
       return (
         <TapStatusView
-          tone="bad"
-          icon="close"
+          tone="neutral"
           title="This sale couldn't be opened"
           body="Nothing was charged. Start the sale again from door sales."
           primary={{ label: "Back to door sales", onPress: goToDoor }}
@@ -341,8 +360,8 @@ export const TapToPaySaleScreen = ({
       ) {
         return (
           <TapStatusView
-            tone="bad"
-            icon={Platform.OS === "ios" ? "close" : "tap"}
+            tone="neutral"
+            icon={Platform.OS === "ios" ? "globe" : "tap"}
             title={`${TAP_TO_PAY_SHORT} isn't available here`}
             body="This brand can't take taps. Use a pay code instead. It works on any phone."
             primary={{ label: "Use a pay code", onPress: () => void showPayCodeInstead(), loading: payCodeBusy }}
@@ -358,8 +377,8 @@ export const TapToPaySaleScreen = ({
     if (terminal.status === "error") {
       return (
         <TapStatusView
-          tone="bad"
-          icon={Platform.OS === "ios" ? "close" : "tap"}
+          tone="neutral"
+          icon={Platform.OS === "ios" ? "clock" : "tap"}
           title="Tap to Pay didn't start"
           body={`${terminal.errorMessage ?? "Try again."} Nothing was charged.`}
           primary={{ label: "Try again", onPress: terminal.retryInitialize }}
@@ -379,36 +398,43 @@ export const TapToPaySaleScreen = ({
             <Text style={styles.amount}>{formatAmount(state.amount)}</Text>
             <Text style={styles.lines}>{lineSummary}</Text>
             <View style={styles.statusRow}>
-              {state.kind === "ready" ? <View style={styles.pulse} /> : <Spinner size={24} />}
-              <Text style={styles.statusText}>
-                {state.kind === "ready"
-                  ? Platform.OS === "ios"
-                    ? "Hold the card near the top of the iPhone."
-                    : "Hold the card on the back of the phone."
-                  : state.kind === "reading"
-                    ? TAP_PROCESSING_TEXT
-                    : "Saving the sale…"}
-              </Text>
+              <DoorStatusPill
+                variant={state.kind === "ready" ? "waiting" : "busy"}
+                text={
+                  state.kind === "ready"
+                    ? Platform.OS === "ios"
+                      ? "Hold the card near the top of the iPhone."
+                      : "Hold the card on the back of the phone."
+                    : state.kind === "reading"
+                      ? TAP_PROCESSING_TEXT
+                      : "Saving the sale…"
+                }
+                stateLabel={state.kind === "ready" ? "Ready to tap" : state.kind === "reading" ? TAP_PROCESSING_TEXT : "Saving the sale…"}
+                testID="tap-status-pill"
+              />
             </View>
           </View>
         );
       case "approved":
         return (
           <TapStatusView
-            tone="ok"
-            icon="check"
+            tone={tapSaleTone("approved")}
             title={`Paid ${formatAmount(state.amount)}`}
             body={state.cardLabel}
             primary={{ label: "Sell another", onPress: sellAnother, testID: "tap-sell-another" }}
             secondary={{ label: "Done", onPress: goToDoor }}
             secondaryGhost
+            link={receiptLink("approved", state.amount, state.cardLabel)}
             testID="tap-state-approved"
           >
             <GlassCard variant="base" radius="md" padding={spacing.md}>
-              <View style={styles.kv}>
-                <Text style={styles.kvLabel}>Guest</Text>
-                <Text style={styles.kvValue}>Walk-up</Text>
-              </View>
+              {/* Only a name the host typed. Never a made-up "Walk-up". */}
+              {draft.buyerName != null ? (
+                <View style={styles.kv} testID="tap-guest-row">
+                  <Text style={styles.kvLabel}>Guest</Text>
+                  <Text style={styles.kvValue}>{draft.buyerName}</Text>
+                </View>
+              ) : null}
               <View style={styles.kv}>
                 <Text style={styles.kvLabel}>Tickets</Text>
                 <Text style={styles.kvValue}>{lineSummary}</Text>
@@ -418,14 +444,13 @@ export const TapToPaySaleScreen = ({
                 <Text style={styles.kvValueOk}>Checked in</Text>
               </View>
             </GlassCard>
-            {receiptButton("approved", state.amount, state.cardLabel)}
           </TapStatusView>
         );
       case "needs_pin":
         return (
           <TapStatusView
-            tone="bad"
-            icon="close"
+            tone={tapSaleTone("needs_pin")}
+            icon="keypad"
             title={TAP_CARD_NEEDS_INSERT_COPY.title}
             body={TAP_CARD_NEEDS_INSERT_COPY.body}
             primary={payCodeAction}
@@ -436,42 +461,46 @@ export const TapToPaySaleScreen = ({
       case "declined":
         return (
           <TapStatusView
-            tone="bad"
-            icon="close"
+            tone={tapSaleTone("declined")}
             title="Card declined"
             body="Their bank said no. Nothing was charged."
-            primary={payCodeAction}
-            secondary={{ label: "Try another card", onPress: () => void flowRef.current?.tryAnotherCard() }}
+            primary={{
+              label: "Try another card",
+              onPress: () => void flowRef.current?.tryAnotherCard(),
+              testID: "tap-try-another-card",
+            }}
+            secondary={payCodeAction}
+            link={receiptLink("declined", state.amount, state.cardLabel)}
             testID="tap-state-declined"
-          >
-            {receiptButton("declined", state.amount, state.cardLabel)}
-          </TapStatusView>
+          />
         );
       case "timed_out":
         return (
           <TapStatusView
-            tone="bad"
+            tone={tapSaleTone("timed_out")}
             icon="clock"
             title={TAP_TIMED_OUT_COPY.title}
             body={TAP_TIMED_OUT_COPY.body}
             primary={{ label: "Try again", onPress: () => void flowRef.current?.tryAnotherCard() }}
             secondary={payCodeAction}
+            link={receiptLink("declined", state.amount, null)}
             testID="tap-state-timed_out"
-          >
-            {receiptButton("declined", state.amount, null)}
-          </TapStatusView>
+          />
         );
       case "unknown_result":
         // Deliberately no pay code here: it could charge the guest twice.
         return (
           <TapStatusView
-            tone="bad"
-            icon="clock"
+            tone={tapSaleTone("unknown_result")}
+            // A spinner only while a re-check is running; otherwise the caution icon.
+            busy={rechecking}
             title={TAP_UNKNOWN_RESULT_COPY.title}
             body={TAP_UNKNOWN_RESULT_COPY.body}
             primary={{
-              label: "Try again",
-              onPress: () => void flowRef.current?.retryConfirm(),
+              // It re-checks the same payment; it never takes a new one.
+              label: "Check again",
+              onPress: () => void checkAgain(),
+              loading: rechecking,
               testID: "tap-unknown-retry",
             }}
             testID="tap-state-unknown_result"
@@ -480,10 +509,10 @@ export const TapToPaySaleScreen = ({
       case "cancelled":
         return (
           <TapStatusView
-            tone="bad"
-            icon="close"
+            tone={tapSaleTone("cancelled")}
             title="Tap cancelled"
             body="Nothing was charged."
+            testID="tap-state-cancelled"
             primary={{ label: "Try again", onPress: () => void flowRef.current?.tryAnotherCard() }}
             secondary={payCodeAction}
           />
@@ -500,8 +529,7 @@ export const TapToPaySaleScreen = ({
       case "reader_problem":
         return (
           <TapStatusView
-            tone="bad"
-            icon="close"
+            tone={tapSaleTone("reader_problem", state.problem)}
             title={tapReaderProblemTitle(Platform.OS)}
             body={tapReaderProblemCopy(state.problem, Platform.OS)}
             primary={
@@ -523,21 +551,38 @@ export const TapToPaySaleScreen = ({
       case "save_failed":
         return (
           <TapStatusView
-            tone="bad"
-            icon="clock"
+            tone={tapSaleTone("save_failed")}
             title="Paid, still saving"
             body={state.message}
-            primary={{ label: "Try again", onPress: () => void flowRef.current?.retrySave() }}
+            primary={{
+              label: "Save again",
+              onPress: () => void flowRef.current?.retrySave(),
+              testID: "tap-save-again",
+            }}
             testID="tap-state-save_failed"
-          />
+          >
+            <Text style={styles.paidLine} testID="tap-save-failed-paid-line">
+              {TAP_SAVE_FAILED_PAID_LINE}
+            </Text>
+          </TapStatusView>
         );
       case "failed":
-        return (
+        // Tax added at checkout refuses card AND pay code for this event: no
+        // retry and no pay code (both get the same refusal), only the way back.
+        return state.refusal === "tax_added_at_checkout" ? (
           <TapStatusView
-            tone="bad"
-            icon="close"
+            tone={tapSaleTone("failed")}
             title="Payment didn't start"
             body={state.message}
+            testID="tap-state-failed"
+            primary={{ label: "Back to door sales", onPress: handleClose, testID: "tap-back-to-door" }}
+          />
+        ) : (
+          <TapStatusView
+            tone={tapSaleTone("failed")}
+            title="Payment didn't start"
+            body={state.message}
+            testID="tap-state-failed"
             primary={{ label: "Try again", onPress: () => void flowRef.current?.start() }}
             secondary={payCodeAction}
           />
@@ -572,22 +617,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
-  chromeTitle: { ...typography.h3, color: textTokens.primary },
-  chromeRightSlot: { width: 36 },
+  chromeTitle: { ...typography.h3, color: textTokens.primary, flexShrink: 1, textAlign: "center" },
+  chromeRightSlot: { width: 44 },
   waitHost: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.sm },
   amountHost: { flex: 1, alignItems: "center", paddingTop: spacing.xxl, gap: spacing.xs },
   amount: { ...typography.display, fontSize: 44, lineHeight: 56, color: textTokens.primary },
   lines: { ...typography.body, color: textTokens.secondary, textAlign: "center", paddingHorizontal: spacing.lg },
-  statusRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.lg },
-  pulse: { width: 8, height: 8, borderRadius: 999, backgroundColor: accent.warm },
-  statusText: { ...typography.bodySm, color: textTokens.secondary },
+  statusRow: { marginTop: spacing.lg, paddingHorizontal: spacing.lg },
+  paidLine: { ...typography.bodySm, fontWeight: "600", color: textTokens.primary, textAlign: "center" },
   kv: {
     flexDirection: "row",
     justifyContent: "space-between",
     gap: spacing.sm,
     paddingVertical: spacing.xs,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "rgba(255, 255, 255, 0.08)",
+    borderBottomColor: glass.border.profileBase,
   },
   kvLast: { borderBottomWidth: 0 },
   kvLabel: { ...typography.bodySm, color: textTokens.secondary },

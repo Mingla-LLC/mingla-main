@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-suite",
+  "ownerIssue": "#4270",
+  "suite": {
+    "id": "issue-4270-business-brand-plan",
+    "class": "business-node22-ignore-scripts",
+    "originPaths": [
+      "mingla-business/src/**",
+      "mingla-business/app/**",
+      "mingla-business/jest.config.cjs",
+      "packages/offering-rendering/**"
+    ],
+    "steps": [
+      {
+        "name": "Host app brand plan",
+        "cwd": "mingla-business",
+        "run": "npx jest --config src/components/messages/__tests__/jest.issue4270.cjs --runInBand",
+        "commandId": "assert:issue-4270-business-brand-plan:01",
+        "invocation": {
+          "kind": "raw-shell",
+          "command": "bash",
+          "argv": [
+            "-c",
+            "npx jest --config src/components/messages/__tests__/jest.issue4270.cjs --runInBand"
+          ]
+        },
+        "exceptionRationale": "New self-registering execution replaces a legacy workflow registry edit."
+      }
+    ],
+    "lifecycle": "batched-active",
+    "ownerIssue": "#4270",
+    "runtime": {
+      "name": "node",
+      "version": "22"
+    },
+    "setupProfile": "business-node22-ignore-scripts",
+    "cwd": "mingla-business",
+    "envNames": [],
+    "isolation": "clean-worktree",
+    "expectedFiles": [
+      "mingla-business/src/components/messages/__tests__/issue_4270_brand_plan.test.tsx",
+      "mingla-business/src/components/messages/__tests__/jest.issue4270.cjs",
+      "mingla-business/src/i18n/__tests__/issue_3988_locale_parity.test.ts"
+    ],
+    "externalReferenceFiles": [
+      "mingla-business/jest.config.cjs"
+    ],
+    "requiredContext": "CI batch: business-node22-ignore-scripts",
+    "timingSeconds": {
+      "p50": 10,
+      "p95": 60,
+      "evidence": "Local targeted run 2026-11-05"
+    },
+    "generatedPaths": [
+      "suite-results.json"
+    ],
+    "exceptionRationale": "Raw shell preserves the reviewed assertion while this self-registering suite replaces a legacy workflow registry edit.",
+    "timeoutSeconds": 180
+  }
+}

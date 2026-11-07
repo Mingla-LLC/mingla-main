@@ -73,8 +73,13 @@
       "paths": [
         "supabase/functions/_shared/stripeWebhookRouter.ts",
         "supabase/functions/admin-refund-order/index.ts",
+        "supabase/functions/admin-reconcile-ticket-refund/index.ts",
         "supabase/functions/refund-order/index.ts",
         "supabase/migrations/20280305003281_issue_3281_webhook_fee_unknown.sql",
+        "supabase/functions/_shared/ticketRefundStripeThrow.ts",
+        "mingla-business/src/components/orders/RefundSheet.tsx",
+        "mingla-business/src/utils/refundReason.ts",
+        "supabase/migrations/20280426004271_issue_4271_failed_refund_never_reaches_stripe.sql",
         "mingla-business/src/services/orderRefundService.ts"
       ]
     },
@@ -160,7 +165,13 @@
         "app-mobile/src/components/expandedCard/ticketDayScope.ts",
         "mingla-business/src/hooks/useTicketLinkUnlock.ts",
         "mingla-business/src/services/ticketLinkPublicTypes.ts",
-        "supabase/migrations/20280406003281_issue_3281_private_link_ticket_dates.sql"
+        "supabase/migrations/20280406003281_issue_3281_private_link_ticket_dates.sql",
+        "app-mobile/src/constants/consentDisclosure.ts",
+        "mingla-business/app/checkout/[eventId]/confirm.tsx",
+        "mingla-business/src/constants/consentDisclosure.ts",
+        "mingla-business/src/payments/nativeCheckoutFlow.native.ts",
+        "supabase/migrations/20280422004273_issue_4273_buyer_and_follower_auto_optin.sql",
+        "supabase/migrations/20280424004273_issue_4273_quote_judges_everyone_and_account_optouts.sql"
       ]
     },
     {
@@ -170,7 +181,12 @@
         "mingla-business/app/checkout-trip/[tripEventId]/buyer.tsx",
         "mingla-business/src/components/experience/ExperienceStopsStep.tsx",
         "supabase/migrations/20280305003355_issue_3355_ari_trip_create_details.sql",
-        "supabase/migrations/20280312003355_issue_3355_trip_seed_truth.sql"
+        "supabase/migrations/20280312003355_issue_3355_trip_seed_truth.sql",
+        "mingla-business/app/checkout-experience/[experienceEventId]/confirm.tsx",
+        "mingla-business/app/checkout-experience/[experienceEventId]/payment.tsx",
+        "mingla-business/app/checkout-trip/[tripEventId]/confirm.tsx",
+        "mingla-business/app/checkout-trip/[tripEventId]/payment.tsx",
+        "mingla-business/src/constants/consentDisclosure.ts"
       ]
     },
     {
@@ -965,13 +981,18 @@
         "supabase/functions/marketing-send/index.ts",
         "supabase/functions/marketing-send/pushCampaign.ts",
         "supabase/migrations/20280401043682_issue_3682_push_campaigns.sql",
-        "supabase/migrations/20280405004273_issue_4273_blast_combined_audience.sql"
+        "supabase/migrations/20280405004273_issue_4273_blast_combined_audience.sql",
+        "mingla-business/src/utils/marketing/smsSendWindow.ts",
+        "supabase/migrations/20280422004273_issue_4273_buyer_and_follower_auto_optin.sql",
+        "supabase/migrations/20280422014273_issue_4273_quote_matches_send_and_honest_count.sql",
+        "supabase/migrations/20280424004273_issue_4273_quote_judges_everyone_and_account_optouts.sql"
       ]
     },
     {
       "capability_key": "staff-orders-money",
       "paths": [
-        "mingla-admin/src/pages/BusinessOrdersPage.jsx"
+        "mingla-admin/src/pages/BusinessOrdersPage.jsx",
+        "mingla-admin/src/lib/adminRefundError.js"
       ]
     },
     {
@@ -1056,10 +1077,15 @@
         "mingla-admin/src/components/ops/CardPersonPanels.jsx",
         "mingla-admin/src/components/ops/EventPanel.jsx",
         "mingla-admin/src/components/ops/EventSteps.jsx",
+        "mingla-admin/src/components/ops/MyCardsPanels.jsx",
         "mingla-admin/src/components/ops/NeedsAttention.jsx",
         "mingla-admin/src/components/ops/NoteBox.jsx",
+        "mingla-admin/src/components/ops/SprintStrip.jsx",
+        "mingla-admin/src/components/ops/TeamOpsPanels.jsx",
+        "mingla-admin/src/components/ops/WorkAddForm.jsx",
         "mingla-admin/src/components/ops/WorkColumns.jsx",
         "mingla-admin/src/components/ops/WorkDetail.jsx",
+        "mingla-admin/src/components/ops/WorkItem.jsx",
         "mingla-admin/src/components/ops/WorkViews.jsx",
         "mingla-admin/src/components/ops/workToday.js",
         "mingla-admin/src/components/panels/SidePanel.jsx",
@@ -1070,18 +1096,29 @@
         "mingla-admin/src/hooks/useOpsWork.js",
         "mingla-admin/src/hooks/usePanelDraft.js",
         "mingla-admin/src/hooks/usePanelStack.js",
+        "mingla-admin/src/hooks/useReviewCount.js",
+        "mingla-admin/src/lib/dashboardToday.js",
         "mingla-admin/src/lib/opsModel.js",
         "mingla-admin/src/lib/panelDrafts.js",
         "mingla-admin/src/lib/panelStack.js",
+        "mingla-admin/src/lib/teamPulse.js",
         "mingla-admin/src/lib/workViews.js",
+        "mingla-admin/src/pages/OverviewPage.jsx",
+        "mingla-admin/src/pages/TeamDashboardPage.jsx",
         "mingla-admin/src/pages/WorkBoardPage.jsx",
+        "mingla-admin/src/services/opsService.js",
+        "supabase/functions/_shared/teamAgentWorkTools.ts",
         "supabase/migrations/20280323004255_issue_4255_work_list_closed_range.sql",
-        "supabase/migrations/20280323004256_issue_4256_no_auto_promo_cards.sql"
+        "supabase/migrations/20280323004256_issue_4256_no_auto_promo_cards.sql",
+        "supabase/migrations/20280427004270_issue_4270_w1_work_board_three_columns.sql"
       ]
     },
     {
       "capability_key": "staff-crm",
       "paths": [
+        "mingla-admin/src/components/crm/HostPlanSection.jsx",
+        "mingla-admin/src/components/crm/HostTeamSection.jsx",
+        "mingla-admin/src/components/crm/HostToDoSection.jsx",
         "mingla-admin/src/components/crm/LogForm.jsx",
         "mingla-admin/src/components/crm/OnMinglaSection.jsx",
         "mingla-admin/src/components/crm/PipelineBoard.jsx",
@@ -1096,6 +1133,7 @@
         "mingla-admin/src/components/ui/FilterSelect.jsx",
         "mingla-admin/src/components/ui/PanelStack.jsx",
         "mingla-admin/src/components/ui/Toast.jsx",
+        "mingla-admin/src/hooks/useHostOnMingla.js",
         "mingla-admin/src/hooks/usePanelDraft.js",
         "mingla-admin/src/hooks/usePanelStack.js",
         "mingla-admin/src/lib/crmModel.js",
@@ -1103,7 +1141,8 @@
         "mingla-admin/src/lib/outreachView.js",
         "mingla-admin/src/lib/panelDrafts.js",
         "mingla-admin/src/lib/panelStack.js",
-        "mingla-admin/src/pages/HostsAndCreatorsHub.jsx"
+        "mingla-admin/src/pages/HostsAndCreatorsHub.jsx",
+        "supabase/migrations/20280427014270_issue_4270_w2_host_card.sql"
       ]
     },
     {
@@ -1115,7 +1154,9 @@
     {
       "capability_key": "staff-content-calendar",
       "paths": [
+        "mingla-admin/src/components/contentCalendar/ContentCard.jsx",
         "mingla-admin/src/components/contentCalendar/ContentDrawer.jsx",
+        "mingla-admin/src/components/contentCalendar/LinkSearchField.jsx",
         "mingla-admin/src/components/panels/SidePanel.jsx",
         "mingla-admin/src/components/ui/Drawer.jsx",
         "mingla-admin/src/components/ui/FilterSelect.jsx",
@@ -1148,8 +1189,19 @@
     {
       "capability_key": "staff-my-agent",
       "paths": [
+        "mingla-admin/public/.well-known/oauth-authorization-server",
+        "mingla-admin/src/components/ConnectScreen.jsx",
+        "mingla-admin/src/diagnostics/sentry.js",
+        "mingla-admin/src/hooks/useMinglaConnector.js",
         "mingla-admin/src/lib/agentConnect.js",
-        "supabase/functions/_shared/teamAgentTools.ts"
+        "mingla-admin/src/pages/AgentPage.jsx",
+        "mingla-admin/src/services/minglaConnectorService.js",
+        "mingla-admin/vercel.json",
+        "supabase/functions/_shared/minglaConnectorOAuth.ts",
+        "supabase/functions/_shared/teamAgentMcp.ts",
+        "supabase/functions/_shared/teamAgentTools.ts",
+        "supabase/functions/team-agent/index.ts",
+        "supabase/migrations/20280425004294_issue_4294_mingla_connector.sql"
       ]
     },
     {
@@ -1374,7 +1426,17 @@
         "supabase/migrations/20280415004276_issue_4276_pause_quarterly_all_cities_scoring.sql",
         "supabase/migrations/20280416004276_issue_4276_score_hold_and_release_only_path.sql",
         "supabase/migrations/20280417004276_issue_4276_unparseable_ai_date_is_held.sql",
-        "supabase/migrations/20280418004276_issue_4276_mv_refresh_slot_from_cron.sql"
+        "supabase/migrations/20280418004276_issue_4276_mv_refresh_slot_from_cron.sql",
+        "mingla-admin/src/components/placePool/PoolUi.jsx",
+        "mingla-admin/src/components/ui/Table.jsx",
+        "supabase/functions/run-city-pipeline/plan.ts",
+        "supabase/migrations/20280419034276_issue_4276_run_only_picked_stages.sql",
+        "supabase/migrations/20280419044276_issue_4276_gap_counts_match_the_work.sql",
+        "mingla-admin/src/components/placeIntelligenceTrial/IntelligenceOverviewTab.jsx",
+        "mingla-admin/src/pages/PlacePoolManagementPage.jsx",
+        "supabase/migrations/20280419004276_issue_4276_fast_place_category.sql",
+        "supabase/migrations/20280419014276_issue_4276_mv_refresh_slot_comma_minutes.sql",
+        "supabase/migrations/20280419024276_issue_4276_admin_spend_totals.sql"
       ]
     },
     {
@@ -1414,6 +1476,7 @@
         "mingla-business/app/_layout.tsx",
         "mingla-business/app/account/tap-to-pay.tsx",
         "mingla-business/app/brand/[id]/payments/onboard.tsx",
+        "mingla-business/app/brand/[id]/scanners.tsx",
         "mingla-business/app/event/[id]/door/[saleId].tsx",
         "mingla-business/app/event/[id]/door/index.tsx",
         "mingla-business/app/event/[id]/door/pay/[codeId].tsx",
@@ -1433,15 +1496,29 @@
         "mingla-business/plugins/withAndroidMinSdk26.js",
         "mingla-business/src/components/brand/BrandOnboardView.tsx",
         "mingla-business/src/components/brand/BrandPaymentsView.tsx",
+        "mingla-business/src/components/door/DoorPayCodeScreen.tsx",
         "mingla-business/src/components/door/DoorPayQr.tsx",
+        "mingla-business/src/components/door/DoorRefundSheet.tsx",
+        "mingla-business/src/components/door/LazyDoorRefundSheet.tsx",
+        "mingla-business/src/components/door/LazyDoorSaleScreens.tsx",
         "mingla-business/src/components/door/doorPayCodeState.ts",
+        "mingla-business/src/components/door/doorPayGuestState.ts",
+        "mingla-business/src/components/door/doorPayGuestTone.ts",
         "mingla-business/src/components/door/doorPayUrl.ts",
         "mingla-business/src/components/door/doorPaymentOptions.ts",
+        "mingla-business/src/components/door/doorSaleScreens.ts",
         "mingla-business/src/components/door/doorTapDraft.ts",
+        "mingla-business/src/components/door/doorTapDraftHref.ts",
+        "mingla-business/src/components/door/doorTone.ts",
+        "mingla-business/src/components/door/DoorStatusPill.tsx",
+        "mingla-business/src/components/door/scannerDoorPaymentsCopy.ts",
         "mingla-business/src/components/door/tap/TapConfiguringView.tsx",
+        "mingla-business/src/components/door/tap/TapFactList.tsx",
+        "mingla-business/src/components/door/tap/tapSaleTone.ts",
         "mingla-business/src/components/door/tap/TapNotOnThisPhone.tsx",
         "mingla-business/src/components/door/tap/TapStatusView.tsx",
         "mingla-business/src/components/door/tap/TapToPayAwarenessModal.tsx",
+        "mingla-business/src/components/door/tap/TapToPayAwarenessModal.web.tsx",
         "mingla-business/src/components/door/tap/TapToPayEducation.tsx",
         "mingla-business/src/components/door/tap/TapToPayIcon.tsx",
         "mingla-business/src/components/door/tap/TapToPayIcon.web.tsx",
@@ -1449,26 +1526,37 @@
         "mingla-business/src/components/door/tap/TapToPaySaleScreen.tsx",
         "mingla-business/src/components/door/tap/TapToPaySetupScreen.tsx",
         "mingla-business/src/components/door/tap/TapToPayTerminalHost.tsx",
+        "mingla-business/src/components/door/tap/TapToPayTerminalHost.web.tsx",
         "mingla-business/src/components/door/tap/TapUpdateIos.tsx",
         "mingla-business/src/components/door/tap/tapLineSummary.ts",
         "mingla-business/src/components/scanners/InviteScannerSheet.tsx",
+        "mingla-business/src/components/scanners/LazyInviteScannerSheet.tsx",
         "mingla-business/src/components/scanners/ScannerHome.tsx",
+        "mingla-business/src/components/ui/OnIntentLazySheet.tsx",
         "mingla-business/src/constants/businessNotificationTemplates.ts",
         "mingla-business/src/constants/tapToPayCopy.ts",
         "mingla-business/src/constants/tapToPayMarketing.ts",
+        "mingla-business/src/constants/tapToPayName.ts",
+        "mingla-business/src/hooks/useDoorPayCodes.ts",
         "mingla-business/src/hooks/useDoorScreenAwake.ts",
         "mingla-business/src/hooks/useEventDoorSales.ts",
         "mingla-business/src/hooks/useTapToPayAvailability.ts",
+        "mingla-business/src/hooks/useTapToPayBrandFacts.ts",
         "mingla-business/src/hooks/useTapToPayRelease.ts",
         "mingla-business/src/hooks/useTapToPaySettingsEntry.ts",
+        "mingla-business/src/hooks/useTapToPaySettingsEntry.web.ts",
         "mingla-business/src/services/businessNotificationRouting.ts",
+        "mingla-business/src/services/doorPayCodeCore.ts",
         "mingla-business/src/services/doorPayCodeService.ts",
+        "mingla-business/src/services/doorPayCodeServiceImpl.ts",
         "mingla-business/src/services/eventOrdersService.ts",
         "mingla-business/src/services/terminal/doorTapEdge.ts",
         "mingla-business/src/services/terminal/howToTap.ts",
         "mingla-business/src/services/terminal/tapReceipt.ts",
         "mingla-business/src/services/terminal/tapTiming.ts",
         "mingla-business/src/services/terminal/tapToPayAndroidLocation.ts",
+        "mingla-business/src/services/terminal/tapToPayConnectParams.ts",
+        "mingla-business/src/services/terminal/tapToPayDevice.ts",
         "mingla-business/src/services/terminal/tapToPayDraft.ts",
         "mingla-business/src/services/terminal/tapToPayFlow.ts",
         "mingla-business/src/services/terminal/tapToPaySession.ts",
@@ -1481,9 +1569,11 @@
         "mingla-business/src/store/scannerInvitationsStore.ts",
         "mingla-business/src/types/doorSales.ts",
         "mingla-business/src/utils/brandTeamMemberIdentity.ts",
+        "mingla-business/src/utils/isDoorOrder.ts",
         "mingla-business/src/utils/moneySummary.ts",
         "mingla-business/src/utils/paymentMethodLabels.ts",
         "mingla-business/src/utils/reconciliation.ts",
+        "mingla-business/src/utils/tapToPayBrandEligible.ts",
         "supabase/functions/_shared/doorPay.ts",
         "supabase/functions/_shared/doorPayServer.ts",
         "supabase/functions/_shared/doorTapWebhook.ts",
@@ -1496,26 +1586,7 @@
         "supabase/functions/terminal-connection-token/function-policy.json",
         "supabase/functions/terminal-connection-token/index.ts",
         "supabase/functions/ticket-checkout-create/doorPayCheckout.ts",
-        "supabase/migrations/20280404004271_issue_4271_door_pay.sql",
-        "mingla-business/app/brand/[id]/scanners.tsx",
-        "mingla-business/src/components/door/LazyDoorRefundSheet.tsx",
-        "mingla-business/src/components/door/LazyDoorSaleScreens.tsx",
-        "mingla-business/src/components/door/doorPayGuestState.ts",
-        "mingla-business/src/components/door/doorSaleScreens.ts",
-        "mingla-business/src/components/door/scannerDoorPaymentsCopy.ts",
-        "mingla-business/src/components/door/tap/TapToPayAwarenessModal.web.tsx",
-        "mingla-business/src/components/door/tap/TapToPayTerminalHost.web.tsx",
-        "mingla-business/src/components/scanners/LazyInviteScannerSheet.tsx",
-        "mingla-business/src/components/ui/OnIntentLazySheet.tsx",
-        "mingla-business/src/constants/tapToPayName.ts",
-        "mingla-business/src/hooks/useDoorPayCodes.ts",
-        "mingla-business/src/hooks/useTapToPaySettingsEntry.web.ts",
-        "mingla-business/src/services/doorPayCodeServiceImpl.ts",
-        "mingla-business/src/services/terminal/tapToPayDevice.ts",
-        "mingla-business/src/utils/isDoorOrder.ts",
-        "mingla-business/src/utils/tapToPayBrandEligible.ts",
-        "mingla-business/src/services/doorPayCodeCore.ts",
-        "mingla-business/src/services/terminal/tapToPayConnectParams.ts"
+        "supabase/migrations/20280404004271_issue_4271_door_pay.sql"
       ]
     },
     {
@@ -1523,6 +1594,67 @@
       "paths": [
         "supabase/functions/payout-release-sweep/partnerRelease.ts",
         "supabase/migrations/20280407003645_issue_3645_stay_net_excludes_provider_fee.sql"
+      ]
+    },
+    {
+      "capability_key": "staff-company-tools",
+      "paths": [
+        "mingla-admin/src/hooks/useMinglaConnector.js",
+        "mingla-admin/src/pages/CompanyToolsPage.jsx",
+        "mingla-admin/src/services/minglaConnectorService.js",
+        "supabase/functions/_shared/minglaConnectorMetaGraph.ts",
+        "supabase/functions/_shared/minglaConnectorProxy.ts",
+        "supabase/functions/_shared/teamAgentMcp.ts",
+        "supabase/migrations/20280425004294_issue_4294_mingla_connector.sql"
+      ]
+    },
+    {
+      "capability_key": "official-brand-groups",
+      "paths": [
+        "mingla-admin/src/components/community/BrandGroupsPanel.jsx",
+        "mingla-admin/src/lib/brandPlan.js",
+        "mingla-business/app/messages/[conversationId].tsx",
+        "mingla-business/src/components/messages/BrandPlanAddSheet.tsx",
+        "mingla-business/src/components/messages/BrandPlanPanel.tsx",
+        "mingla-business/src/components/ui/Sheet.web.tsx",
+        "mingla-business/src/components/ui/SheetMobile.tsx",
+        "mingla-business/src/components/ui/useSheetGone.ts",
+        "mingla-business/src/hooks/brandPlanKeys.ts",
+        "mingla-business/src/hooks/useBrandPlan.ts",
+        "mingla-business/src/i18n/brandPlanEnglish.ts",
+        "mingla-business/src/i18n/locales/ar/brandGroupMedia.json",
+        "mingla-business/src/i18n/locales/bin/brandGroupMedia.json",
+        "mingla-business/src/i18n/locales/bn/brandGroupMedia.json",
+        "mingla-business/src/i18n/locales/de/brandGroupMedia.json",
+        "mingla-business/src/i18n/locales/el/brandGroupMedia.json",
+        "mingla-business/src/i18n/locales/en/brandGroupMedia.json",
+        "mingla-business/src/i18n/locales/en/brandPlan.json",
+        "mingla-business/src/i18n/locales/es/brandGroupMedia.json",
+        "mingla-business/src/i18n/locales/fr/brandGroupMedia.json",
+        "mingla-business/src/i18n/locales/ha/brandGroupMedia.json",
+        "mingla-business/src/i18n/locales/he/brandGroupMedia.json",
+        "mingla-business/src/i18n/locales/hi/brandGroupMedia.json",
+        "mingla-business/src/i18n/locales/id/brandGroupMedia.json",
+        "mingla-business/src/i18n/locales/ig/brandGroupMedia.json",
+        "mingla-business/src/i18n/locales/it/brandGroupMedia.json",
+        "mingla-business/src/i18n/locales/ja/brandGroupMedia.json",
+        "mingla-business/src/i18n/locales/ko/brandGroupMedia.json",
+        "mingla-business/src/i18n/locales/ms/brandGroupMedia.json",
+        "mingla-business/src/i18n/locales/nl/brandGroupMedia.json",
+        "mingla-business/src/i18n/locales/pl/brandGroupMedia.json",
+        "mingla-business/src/i18n/locales/pt/brandGroupMedia.json",
+        "mingla-business/src/i18n/locales/ro/brandGroupMedia.json",
+        "mingla-business/src/i18n/locales/ru/brandGroupMedia.json",
+        "mingla-business/src/i18n/locales/sv/brandGroupMedia.json",
+        "mingla-business/src/i18n/locales/th/brandGroupMedia.json",
+        "mingla-business/src/i18n/locales/tr/brandGroupMedia.json",
+        "mingla-business/src/i18n/locales/uk/brandGroupMedia.json",
+        "mingla-business/src/i18n/locales/vi/brandGroupMedia.json",
+        "mingla-business/src/i18n/locales/yo/brandGroupMedia.json",
+        "mingla-business/src/i18n/locales/zh/brandGroupMedia.json",
+        "mingla-business/src/services/brandGroupsService.ts",
+        "mingla-business/src/services/brandPlanService.ts",
+        "supabase/migrations/20280427024270_issue_4270_w3_brand_plan.sql"
       ]
     }
   ]

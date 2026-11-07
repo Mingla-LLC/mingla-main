@@ -374,6 +374,11 @@ export const accent = {
   glow: "rgba(235, 120, 37, 0.35)",
   tint: "rgba(235, 120, 37, 0.28)",
   border: "rgba(235, 120, 37, 0.55)",
+  /**
+   * #4271 door polish — the faint accent wash for something picked or in use
+   * (a ticket row with a quantity, the "Guest is paying" pill).
+   */
+  faint: "rgba(235, 120, 37, 0.08)",
 } as const;
 
 // #4037 — one fixed visual language for host traffic/value analytics. These
@@ -606,6 +611,11 @@ export const semantic = {
    */
   errorText: "#f87171",
   errorTint: "rgba(239, 68, 68, 0.18)",
+  /**
+   * #4271 door polish — the status ring behind a red X (declined, blocked).
+   * Promotes the literal the Tap to Pay and pay code screens already used.
+   */
+  errorRing: "rgba(239, 68, 68, 0.16)",
   info: "#3b82f6",
   infoTint: "rgba(59, 130, 246, 0.18)",
 } as const;

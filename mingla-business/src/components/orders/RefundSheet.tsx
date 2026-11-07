@@ -65,6 +65,10 @@ import {
 import { randomId } from "../../utils/randomId";
 import { useRefundPreview } from "../../hooks/useRefundPreview";
 import { canSubmitRefundPreview } from "../discounts/refundDiscountContract";
+import {
+  refundReasonHelper,
+  refundReasonSendGate,
+} from "../../utils/refundReason";
 
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
@@ -127,12 +131,16 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
   // ORCH-0787: idempotency key regenerated on each sheet-open. Retries within the same
   // sheet share the key so Stripe and the RPC dedupe correctly.
   const idempotencyKeyRef = useRef<string>("");
+  // #4271: tapping Send with a short reason explains it and focuses the box.
+  const reasonInputRef = useRef<TextInput>(null);
+  const [reasonErrorShown, setReasonErrorShown] = useState<boolean>(false);
 
   // Reset state on visible flip → true (defensive)
   useEffect(() => {
     if (visible) {
       setReason("");
       setErrorMessage(null);
+      setReasonErrorShown(false);
       setPartialLines(
         order.lines.map((l) => ({
           ticketTypeId: l.ticketTypeId,
@@ -248,6 +256,34 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
     previewAmountCents,
     hasSelection: mode === "full" ? fullHasAmount : partialHasSelection,
   });
+  const readyApartFromReason = canSubmitRefundPreview({
+    submitting,
+    reasonValid: true,
+    canRefund,
+    hasCurrency: moneyCurrency !== null,
+    previewPending: previewQuery.isPending,
+    previewFetching: previewQuery.isFetching,
+    previewDebouncing: previewQuery.isDebouncing,
+    previewError: previewQuery.isError,
+    previewLoaded: previewQuery.data !== undefined,
+    withinRemaining: previewQuery.data?.withinRemaining === true,
+    previewAmountCents,
+    hasSelection: mode === "full" ? fullHasAmount : partialHasSelection,
+  });
+  const sendGate = refundReasonSendGate({
+    trimmedLength: trimmedLen,
+    minLength: REASON_MIN,
+    maxLength: REASON_MAX,
+    otherwiseReady: readyApartFromReason,
+  });
+  const showReasonError = reasonErrorShown && trimmedLen < REASON_MIN;
+  const reasonHelper = refundReasonHelper({
+    trimmedLength: trimmedLen,
+    length: reason.length,
+    minLength: REASON_MIN,
+    maxLength: REASON_MAX,
+    pressedShort: showReasonError,
+  });
 
   const handleStepperChange = useCallback(
     (ticketTypeId: string, delta: number, max: number): void => {
@@ -266,6 +302,11 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
   );
 
   const handleConfirm = useCallback(async (): Promise<void> => {
+    if (sendGate.onPress === "show_reason_error") {
+      setReasonErrorShown(true);
+      reasonInputRef.current?.focus();
+      return;
+    }
     if (!canSubmit) return;
     setErrorMessage(null);
 
@@ -301,12 +342,18 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
       onSuccess(result.amountCents / 100);
       return;
     } catch (err) {
+      // issue #4271 — the server committed this refund 'failed' (nothing was
+      // refunded). Its key is spent, so the next Send starts a new refund.
+      if ((err as { code?: unknown } | null)?.code === "refund_failed") {
+        idempotencyKeyRef.current = randomId();
+      }
       const message = err instanceof Error ? err.message : String(err);
       setErrorMessage(message);
       return;
     }
   }, [
     canSubmit,
+    sendGate.onPress,
     mode,
     order,
     previewLines,
@@ -482,10 +529,13 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
             <View
               style={[
                 styles.reasonInputWrap,
-                trimmedLen > 0 && !reasonValid && styles.reasonInputError,
+                (trimmedLen > 0 || showReasonError) &&
+                  !reasonValid &&
+                  styles.reasonInputError,
               ]}
             >
               <TextInput
+                ref={reasonInputRef}
                 value={reason}
                 onChangeText={setReason}
                 placeholder="e.g. Buyer requested refund; tier oversold; venue change"
@@ -495,23 +545,25 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
                 maxLength={REASON_MAX}
                 style={styles.reasonInput}
                 editable={!submitting}
-                accessibilityLabel="Refund reason"
+                // Same words as the door refund box: a screen reader hears it is required.
+                accessibilityLabel={`Refund reason, required, at least ${REASON_MIN} characters`}
               />
             </View>
+            {/* #4271 door polish: one helper line, the same pattern as door refunds. */}
             <View style={styles.reasonMetaRow}>
               <Text
                 style={[
                   styles.reasonHelper,
-                  trimmedLen >= REASON_MIN && styles.reasonHelperOk,
+                  reasonHelper.tone === "error" && styles.reasonHelperError,
                 ]}
+                accessibilityRole={reasonHelper.tone === "error" ? "alert" : undefined}
+                testID={reasonHelper.tone === "error" ? "refund-reason-too-short" : "refund-reason-helper"}
               >
-                {trimmedLen < REASON_MIN
-                  ? `Min ${REASON_MIN} characters`
-                  : "Looks good"}
+                {reasonHelper.text}
               </Text>
-              <Text style={styles.reasonCount}>
-                {trimmedLen} / {REASON_MAX}
-              </Text>
+              {reasonHelper.counter !== null ? (
+                <Text style={styles.reasonCount}>{reasonHelper.counter}</Text>
+              ) : null}
             </View>
           </View>
 
@@ -558,7 +610,7 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
             loading={
               submitting || previewQuery.isFetching || previewQuery.isDebouncing
             }
-            disabled={!canSubmit}
+            disabled={!sendGate.enabled}
             accessibilityLabel="Send refund"
           />
           {!canRefund ? (
@@ -758,15 +810,19 @@ const styles = StyleSheet.create({
   reasonMetaRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-start",
+    gap: spacing.sm,
     marginTop: 6,
   },
   reasonHelper: {
-    fontSize: 11,
+    flex: 1,
+    minHeight: 16,
+    fontSize: 12,
+    lineHeight: 16,
     color: textTokens.tertiary,
   },
-  reasonHelperOk: {
-    color: textTokens.secondary,
+  reasonHelperError: {
+    color: semantic.errorText,
   },
   reasonCount: {
     fontSize: 11,

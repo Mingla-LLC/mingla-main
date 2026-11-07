@@ -6,23 +6,25 @@
 
 // ── Tabs held in the address (#/page?tab=…) ──────────────────────────────────
 
-// #4276: the pipeline sits at the top of Place pool, above these tabs, so it is not a
-// tab. "pipeline" stays a valid address: it opens Overview and scrolls to the pipeline.
+// #4276: Place pool's tabs, in the order of the approved design: the pipeline is a tab
+// like the others, and Browse and the map are one tab with a List / Map switch.
 export const PLACE_POOL_TABS = Object.freeze([
   Object.freeze({ id: "overview", label: "Overview" }),
   Object.freeze({ id: "cities", label: "Cities" }),
-  Object.freeze({ id: "browse", label: "Browse" }),
-  Object.freeze({ id: "map", label: "Map" }),
+  Object.freeze({ id: "pipeline", label: "Pipeline" }),
+  Object.freeze({ id: "browse", label: "Browse and map" }),
   Object.freeze({ id: "excluded", label: "Excluded" }),
 ]);
 
 /** The address that names the pipeline itself (#/placepool?tab=pipeline). */
 export const PLACE_POOL_PIPELINE_ADDRESS = "pipeline";
 
-// Older tab names that still arrive in links: the Wave 0 hub's "places" tab,
-// the retired Deck tuner (now an action on a place in Browse) and the pipeline,
-// which is above every tab.
-const PLACE_POOL_TAB_ALIASES = Object.freeze({ places: "browse", "deck-tuner": "browse", pipeline: "overview" });
+/** #/placepool?tab=map opens Browse and map on the map. */
+export const PLACE_POOL_MAP_ADDRESS = "map";
+
+// Older tab names that still arrive in links: the Wave 0 hub's "places" tab, the
+// retired Deck tuner (now an action on a place in Browse) and the old Map tab.
+const PLACE_POOL_TAB_ALIASES = Object.freeze({ places: "browse", "deck-tuner": "browse", map: "browse" });
 
 export const TEAM_TABS = Object.freeze([
   Object.freeze({ id: "team", label: "People", hosts: "admin" }),

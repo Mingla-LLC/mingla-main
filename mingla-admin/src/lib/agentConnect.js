@@ -405,7 +405,7 @@ export const AGENT_WORK_ABILITIES = [
   { tool: "plan_work", group: "Work", title: "Plans a launch", detail: "Proposes the launch kit cards for an event, counted back from its start, with owners." },
   { tool: "add_work", group: "Work", title: "Adds work cards", detail: "Up to 50 at a time, straight to the Work board after the server checks each one, with GitHub links like #3980. Owners and watchers are told." },
   { tool: "start_work", group: "Work", title: "Starts a card", detail: "Moves a card you own to Doing and marks it as working on it until it closes, pushes it back or releases it. Another chat cannot take it while it posts updates." },
-  { tool: "update_work", group: "Work", title: "Updates a card", detail: "Changes it, marks plan steps it read back, links GitHub issues or pull requests, adds notes, or hands it to you as Needs a person." },
+  { tool: "update_work", group: "Work", title: "Updates a card", detail: "Changes it, marks plan steps it read back, links GitHub issues or pull requests, adds notes, or tags it Send, Spend or Publish for you." },
   { tool: "close_work", group: "Work", title: "Closes a card with proof", detail: "With at least one line of proof. A saved draft or a changed record is checked by Mingla; anything else shows on the card as the agent's word. Anyone it took off the card in the last day is told it closed." },
   { tool: "push_back", group: "Work", title: "Pushes a card back", detail: "As not needed or already done, with a reason everyone on the card sees." },
   { tool: "list_work", group: "Work", title: "Lists the Work board", detail: "By status, owner, event, host or creator, or sprint week." },

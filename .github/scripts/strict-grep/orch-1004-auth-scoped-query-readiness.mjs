@@ -64,6 +64,9 @@ const AUTH_SCOPED_HOOK_FILES = [
   "useMyBrandPlans.ts",
   // #3988 — brand-group media/list metadata RPCs are membership-gated.
   "useBrandGroupMedia.ts",
+  // #4270 W4 — the brand plan read (brand_plan_for_host, auth.uid() membership
+  // check). Folds isAuthReady into enabled.
+  "useBrandPlan.ts",
   "useBusinessRecentReader.ts",
   "useVenueListings.ts",
   "useBrandReservationSettingsList.ts",
@@ -105,6 +108,9 @@ const AUTH_SCOPED_HOOK_FILES = [
   "useBrandTeamMemberDirectory.ts",
   // #4271 — biz_tap_to_pay_release, authenticated only. Folds isAuthReady into enabled.
   "useTapToPayRelease.ts",
+  // #4271 — the brand's own record (brands, via getBrand) when an event detail
+  // hands the door a slim brand. Folds isAuthReady into enabled.
+  "useTapToPayBrandFacts.ts",
   // issue #3281 — event_dates keys for sold-date counts; folds isAuthReady.
   "useEventDateKeys.ts",
   // toward #3697 Wave 7 — Ads credit wallet via ad-credit edge (JWT + brand payments view).

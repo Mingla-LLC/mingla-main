@@ -114,7 +114,12 @@ export type TapSaleState =
   | { kind: "needs_setup" }
   | { kind: "reader_problem"; problem: TapReaderProblem }
   | { kind: "save_failed"; amount: TapAmount; message: string }
-  | { kind: "failed"; message: string };
+  /**
+   * `refusal` marks a hard server refusal for this event (tax added at
+   * checkout): retrying or a pay code gets the same answer, so the screen only
+   * offers the way back.
+   */
+  | { kind: "failed"; message: string; refusal?: "tax_added_at_checkout" };
 
 /**
  * Ends the host has actually been told about. Not unknown_result or save_failed:
@@ -594,8 +599,18 @@ export class TapToPaySaleFlow {
         this.intentClockStart = null;
       }
       if (this.closed) return false;
+      // The brand's address is incomplete: not this phone's fault. Setup says
+      // what to add (TAP_ADDRESS_MISSING_COPY), with the draft kept.
+      if (error instanceof DoorTapError && error.code === "tap_not_available" && error.detail === "address_missing") {
+        this.emit({ kind: "needs_setup" });
+        return false;
+      }
       if (error instanceof DoorTapError && error.code === "tap_not_available") {
         this.emit({ kind: "not_on_this_phone" });
+        return false;
+      }
+      if (error instanceof DoorTapError && error.code === "door_tax_added_at_checkout") {
+        this.emit({ kind: "failed", message: serverMessage(error), refusal: "tax_added_at_checkout" });
         return false;
       }
       this.emit({ kind: "failed", message: serverMessage(error) });
@@ -866,7 +881,7 @@ export class TapToPaySaleFlow {
     }
     if (confirmed.paymentIntent.status !== "succeeded") {
       // processing, requires_capture or anything else Stripe hasn't settled: the
-      // result is unknown. Keep the collected intent so "Try again" confirms it.
+      // result is unknown. Keep the collected intent so "Check again" confirms it.
       this.emit({ kind: "unknown_result", amount });
       return;
     }
@@ -883,7 +898,7 @@ export class TapToPaySaleFlow {
     await this.complete();
   }
 
-  /** "Try again" on an unknown result: confirm the SAME intent. */
+  /** "Check again" on an unknown result: confirm the SAME intent. */
   async retryConfirm(): Promise<void> {
     if (this.busy || this.state.kind !== "unknown_result") return;
     const step = this.stepContext();
@@ -928,7 +943,7 @@ export class TapToPaySaleFlow {
       this.emit({
         kind: "save_failed",
         amount,
-        message: "The card was charged, but the sale didn't save yet. Don't charge again. Tap Try again to finish.",
+        message: "The card was charged, but the sale didn't save yet. Don't charge again. Tap Save again to finish.",
       });
       if (this.hostLeft) this.input.onPaidAfterClose?.({ amount, saved: false });
     }
