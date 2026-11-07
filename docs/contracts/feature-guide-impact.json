@@ -1560,6 +1560,7 @@
         "mingla-admin/src/hooks/useMinglaConnector.js",
         "mingla-admin/src/pages/CompanyToolsPage.jsx",
         "mingla-admin/src/services/minglaConnectorService.js",
+        "supabase/functions/_shared/minglaConnectorMetaGraph.ts",
         "supabase/functions/_shared/minglaConnectorProxy.ts",
         "supabase/functions/_shared/teamAgentMcp.ts",
         "supabase/migrations/20280425004294_issue_4294_mingla_connector.sql"
