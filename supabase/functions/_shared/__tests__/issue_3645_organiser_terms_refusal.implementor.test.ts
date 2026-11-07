@@ -222,20 +222,27 @@ Deno.test("#3645 invokeFn: every other failure and every success is unchanged", 
   );
   assertEquals(typed.code, DOMAIN_REFUSED_CODE);
   assertEquals(typed.message, ARI_REFUSAL_COPY.paid_currency_not_ready.message);
-  const cases: unknown[] = [
-    httpError(409, { kind: "error", code: "stay_publish_incomplete" }),
-    httpError(500, "not json"),
-    { message: "network down" },
-    { message: "no context", context: null },
+  // #4304: an unrecognised body code stays EDGE_FAILED, with the writer's
+  // own code kept in the message for diagnosis.
+  const cases: Array<[unknown, string]> = [
+    [
+      httpError(409, { kind: "error", code: "stay_publish_incomplete" }),
+      " (stay_publish_incomplete)",
+    ],
+    [httpError(500, "not json"), ""],
+    [{ message: "network down" }, ""],
+    [{ message: "no context", context: null }, ""],
   ];
-  for (const failure of cases) {
+  for (const [failure, suffix] of cases) {
     const error = await thrown(() =>
       invokeFn(invokeClient(failure), "manage-stay-inventory", {})
     );
     assertEquals(error.code, "EDGE_FAILED");
     assertEquals(
       error.message,
-      `manage-stay-inventory: ${(failure as { message: string }).message}`,
+      `manage-stay-inventory: ${
+        (failure as { message: string }).message
+      }${suffix}`,
     );
   }
   assertEquals(

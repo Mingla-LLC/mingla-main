@@ -222,3 +222,58 @@ export function ariDomainRefusalMessage(raw: unknown): string | null {
   const code = detectAriRefusalCode(raw);
   return code === null ? null : ARI_REFUSAL_COPY[code].message;
 }
+
+/**
+ * #4304 — owner sentences for the Host discount writer's refusals.
+ *
+ * `brand-discount-upsert` answers a refused write with a stable `detail`
+ * (SQL RAISE codes and the CHECK constraints it maps). These are scoped to
+ * that one writer — never matched as global tokens, because generic words such
+ * as `window_invalid` mean something else elsewhere. Every refusal rolled the
+ * RPC transaction back, so each sentence ends "Nothing was saved."
+ */
+export const DISCOUNT_WRITE_REFUSAL_COPY: Readonly<Record<string, string>> =
+  Object.freeze({
+    code_taken:
+      "That code is already used by another live discount on this brand. Pick a different code and ask me again. Nothing was saved.",
+    code_shape_invalid:
+      "Discount codes need 4 to 16 letters or numbers, with no symbols (for example SUMMER20). Pick a code like that and ask me again. Nothing was saved.",
+    value_shape_invalid:
+      "The discount amount didn't add up. Tell me either a percentage off or a fixed amount off, and ask me again. Nothing was saved.",
+    currency_missing:
+      "A fixed amount off needs the brand's currency, and this brand doesn't have one yet. Finish payment setup in Payments, or use a percentage off instead. Nothing was saved.",
+    currency_mismatch:
+      "That amount isn't in this brand's currency. Use the brand's currency or a percentage off. Nothing was saved.",
+    target_shape_invalid:
+      "I couldn't tell which listings this discount is for. Name the event, experience or trip, or say it's for everything of one kind. Nothing was saved.",
+    target_not_discountable:
+      "That listing can't take a discount (it may be free, an RSVP, or deleted). Pick a paid listing and ask me again. Nothing was saved.",
+    target_not_in_brand:
+      "That listing belongs to a different brand. Pick one of this brand's listings and ask me again. Nothing was saved.",
+    scope_target_mismatch:
+      "A sale price works on one ticket or item at a time. Pick the single ticket or item and ask me again. Nothing was saved.",
+    set_price_needs_one_item:
+      "A sale price works on one ticket or item at a time. Pick the single ticket or item and ask me again. Nothing was saved.",
+    set_price_not_lower:
+      "A sale price has to be lower than the current price. Pick a lower price and ask me again. Nothing was saved.",
+    sale_price_overlap:
+      "That item already has a sale running in that window. End it first or pick other dates. Nothing was saved.",
+    too_many_automatics:
+      "This brand already has the most automatic discounts it can run at once. End one first, then ask me again. Nothing was saved.",
+    window_invalid:
+      "The discount has to end after it starts. Give me an end date after the start and ask me again. Nothing was saved.",
+    schedule_invalid:
+      "That schedule doesn't fit a discount. Codes run for a date window; daily hours and use-count endings are for automatic discounts. Nothing was saved.",
+    name_invalid:
+      "Discount names need 1 to 60 characters. Give me a shorter name and ask me again. Nothing was saved.",
+    kind_not_available:
+      "That kind of discount isn't available yet. Try a code or an automatic discount. Nothing was saved.",
+    insufficient_permission:
+      "Your role on this brand can't make that kind of discount. Ask a finance manager or brand admin to do it. Nothing was saved.",
+    version_conflict:
+      "This discount changed somewhere else a moment ago. Ask me to load it again, then redo the change. Nothing was saved.",
+    discount_not_found:
+      "I couldn't find that discount any more. It may have been deleted. Nothing was saved.",
+    invalid_input:
+      "Something in that discount wasn't in a form I can save (a date or listing). Tell me again and I'll redo it. Nothing was saved.",
+  });

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_4304_ari_create_discount.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-4304-01-ari-create-discount",
+  "profile": "deno-1.46-stripe"
+}
