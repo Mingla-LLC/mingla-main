@@ -4,7 +4,7 @@
 -- 20280426004271_issue_4271_failed_refund_never_reaches_stripe.sql on the
 -- replayed PG17 schema.
 --
--- MINGLA-INVARIANT: I-4271-FAILED-REFUND-NEVER-REACHES-STRIPE | issue #4271 | a ticket refund is committed failed only in one transaction that holds the refunds row lock and proves no #2097 attempt was ever permitted to call Stripe and refunds.create was not reached, closing its open attempts; prepare and pre-refund state raise PT409 for any refund that is not pending, and claim answers not-claimed for its attempts that were never permitted and hold no buyer refund, while money Stripe already moved always settles; reconcile replays a refund only under the Stripe key it was first bound to.
+-- MINGLA-INVARIANT: I-4271-FAILED-REFUND-NEVER-REACHES-STRIPE | issue #4271 | a refund is committed failed only under the refunds row lock when no attempt was ever permitted to call Stripe; a non-pending refund can never be prepared or claimed again, money Stripe already moved always settles, and reconcile replays only under the bound Stripe key.
 --
 -- Cases:
 --   C1  Live repro: nothing reached Stripe -> 'failed' in one call, the
