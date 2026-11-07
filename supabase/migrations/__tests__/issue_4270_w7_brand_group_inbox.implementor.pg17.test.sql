@@ -187,7 +187,7 @@ begin
 
   perform pg_temp.tp_msg(A, annie, 'text', null, 300, 'Hi Mingla');
   v := pg_temp.tp_inbox('sue', A);
-  perform pg_temp.tp_check('W-WAIT', 'a brand message makes the group wait', (v->>'waiting_since') is not null and (v->>'last_staff_reply_at') is null, 'true');
+  perform pg_temp.tp_check('W-WAIT', 'a brand message makes the group wait', ((v->>'waiting_since') is not null and (v->>'last_staff_reply_at') is null)::text, 'true');
 
   perform pg_temp.tp_msg(A, kunle, 'text', 'Mingla Support', 240, 'On it');
   perform pg_temp.tp_msg(A, null, 'system', null, 180, 'Gia added “Menu reveal” to the plan for Sat 7 Nov.');
