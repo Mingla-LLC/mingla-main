@@ -11,6 +11,12 @@
  *     brandless chat cannot carry it across; the State B greeting reads it
  *     back to offer the matching first draft and keep their words.
  *
+ *   - `lockedNavUserId` — NOT persisted. The tabs layout (the one owner of
+ *     the stage, via useFirstRunStage) publishes here which account it is
+ *     showing the reduced Ari + Account nav to, so a screen outside the tabs
+ *     (Help & Support's desktop rail) mirrors it without loading the gate.
+ *     Unknown (null) shows the full set, the gate's own "pending" behaviour.
+ *
  * `hasHydrated` is NOT persisted and flips true only in `onRehydrateStorage`,
  * so a cold-start read is never mistaken for "not unlocked" (Constitution
  * #14). `reset` is wired into `clearAllStores` (Constitution #6). The server
@@ -38,10 +44,12 @@ export type FirstRunStoreState = {
   unlockedUserIds: Record<string, true>;
   intents: Record<string, FirstRunRememberedIntent>;
   hasHydrated: boolean;
+  lockedNavUserId: string | null;
   markUnlocked: (userId: string) => void;
   rememberIntent: (userId: string, value: FirstRunRememberedIntent) => void;
   clearIntent: (userId: string) => void;
   setHasHydrated: (value: boolean) => void;
+  setLockedNavUserId: (userId: string | null) => void;
   reset: () => void;
 };
 
@@ -65,6 +73,7 @@ export const useFirstRunStore = create<FirstRunStoreState>()(
       unlockedUserIds: {},
       intents: {},
       hasHydrated: false,
+      lockedNavUserId: null,
       markUnlocked: (userId) =>
         set((state) =>
           state.unlockedUserIds[userId] === true
@@ -81,7 +90,9 @@ export const useFirstRunStore = create<FirstRunStoreState>()(
           return { intents: next };
         }),
       setHasHydrated: (value) => set({ hasHydrated: value }),
-      reset: () => set({ unlockedUserIds: {}, intents: {} }),
+      setLockedNavUserId: (userId) =>
+        set((state) => (state.lockedNavUserId === userId ? state : { lockedNavUserId: userId })),
+      reset: () => set({ unlockedUserIds: {}, intents: {}, lockedNavUserId: null }),
     }),
     persistOptions,
   ),

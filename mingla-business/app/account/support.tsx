@@ -21,8 +21,10 @@ import { accent, canvas, radius, spacing, text as textTokens, typography } from 
 import { DESKTOP_RAIL_WIDTH } from "../../src/constants/desktopLayout";
 import { useCommunityUnreadCount } from "../../src/hooks/useCommunity";
 import { useResponsiveLayout } from "../../src/hooks/useResponsiveLayout";
-import { useFirstRunStage } from "../../src/hooks/useFirstRunStage";
-import { isFirstRunLocked } from "../../src/utils/firstRunState";
+import { useAuth } from "../../src/context/AuthContext";
+// #4304 — the tabs layout owns the first-run gate and publishes the reduced
+// nav here; importing the gate itself would hoist it into the web boot chunk.
+import { useFirstRunStore } from "../../src/store/firstRunStore";
 import { useStickyFooterOffset } from "../../src/hooks/useStickyFooterOffset";
 import { listCommunityPosts } from "../../src/services/communityService";
 import {
@@ -65,7 +67,9 @@ export default function SupportRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { isWideDesktop } = useResponsiveLayout();
-  const firstRunLocked = isFirstRunLocked(useFirstRunStage().stage);
+  const { user } = useAuth();
+  const lockedNavUserId = useFirstRunStore((s) => s.lockedNavUserId);
+  const firstRunLocked = lockedNavUserId !== null && lockedNavUserId === (user?.id ?? null);
   const floatingBottom = useStickyFooterOffset();
   const params = useLocalSearchParams<{
     tab?: string | string[];

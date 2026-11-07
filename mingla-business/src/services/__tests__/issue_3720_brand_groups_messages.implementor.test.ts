@@ -96,7 +96,8 @@ describe("#3720 official Brand groups Host contract", () => {
 
   test("top bar opens Messages and the index separates own and Support groups", () => {
     const topBar = read("src/components/ui/TopBar.tsx");
-    const index = read("app/messages/index.tsx");
+    // #4304 — /messages loads its inbox screen lazily (bundle-baseline-movement).
+    const index = read("src/components/messages/BrandGroupInboxScreen.tsx");
     // #4304 — the inbox list (rows, filters, sections) moved into a shared
     // component used full-screen on phones and as the desktop list pane.
     const inbox = read("src/components/messages/BrandGroupInboxList.tsx");

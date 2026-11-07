@@ -86,6 +86,12 @@ import {
   type BrandGroupMenuActionKey,
 } from "../../src/utils/brandGroupThreadModel";
 
+// #4304 — /messages (app/messages/index.tsx) loads its inbox screen from THIS
+// module with import(), so on web the two Messages routes share this route's
+// lazy chunk: the inbox list, tiles, thread model and chat tokens are never
+// hoisted into the eager __common boot chunk (bundle-baseline-movement).
+export { BrandGroupInboxScreen } from "../../src/components/messages/BrandGroupInboxScreen";
+
 const LazyBrandGroupMediaPanel = React.lazy(async () => {
   const module = await import("../../src/components/messages/BrandGroupMediaPanel");
   return { default: module.BrandGroupMediaPanel };

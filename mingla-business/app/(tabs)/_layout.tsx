@@ -11,7 +11,7 @@
  * via the existing `startsWith(prefix + "/")` clause.
  */
 
-import React, { Suspense, useMemo } from "react";
+import React, { Suspense, useEffect, useMemo } from "react";
 import { ActivityIndicator, Platform, StyleSheet, View } from "react-native";
 import { Redirect, Slot, useRouter, usePathname } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -47,6 +47,7 @@ import { visibleTabsForRank } from "../../src/utils/navTabGate";
 import { useFirstRunStage } from "../../src/hooks/useFirstRunStage";
 import { useCreatorAccount } from "../../src/hooks/useCreatorAccount";
 import { FirstRunStageContext } from "../../src/context/FirstRunStageContext";
+import { useFirstRunStore } from "../../src/store/firstRunStore";
 import {
   firstRunRedirect,
   firstRunVisibleTabs,
@@ -124,6 +125,12 @@ export default function TabsLayout(): React.ReactElement {
   // never flashes while things load.
   const firstRun = useFirstRunStage();
   const firstRunLocked = isFirstRunLocked(firstRun.stage);
+  // #4304 — Help & Support (outside the tabs) mirrors the reduced nav from
+  // here instead of loading the gate a second time (bundle-baseline-movement).
+  const setLockedNavUserId = useFirstRunStore((s) => s.setLockedNavUserId);
+  useEffect(() => {
+    setLockedNavUserId(firstRunLocked ? firstRun.userId : null);
+  }, [firstRun.userId, firstRunLocked, setLockedNavUserId]);
   const creatorAccount = useCreatorAccount();
   const firstRunDisplayName = creatorAccount.data?.display_name ?? null;
   const firstRunContext = useMemo(
