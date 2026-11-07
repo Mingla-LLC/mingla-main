@@ -5,9 +5,13 @@
 //
 // MINGLA-INVARIANT: I-4276-PLACE-JUDGING-ADMIN-OR-SERVICE | issue #4276 | run-bouncer, run-pre-photo-bouncer and run-signal-scorer answer only the service role or a current admin
 //
+// The admin check is the database's is_admin_user(), asked as the caller, the same check
+// every admin surface uses (#3537); no direct admin_users query.
+//
 // FAILS-ON-REVERT: delete the authorizePlaceJudgingCaller lines from any of the three
 // functions and its "refused" test fails (the anon key reaches the body check and gets
-// 400, not 401).
+// 400, not 401). Put back the direct admin_users query and the admin test fails (the
+// admin is refused 403, and is_admin_user is never asked).
 
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
@@ -31,10 +35,14 @@ globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
     if (token === ANON) return Promise.resolve(Response.json({ msg: "invalid claim: missing sub claim" }, { status: 403 }));
     return Promise.resolve(Response.json({ msg: "invalid JWT" }, { status: 401 }));
   }
+  if (url.pathname === "/rest/v1/rpc/is_admin_user") {
+    // The database answers for the caller its token names (auth.uid()).
+    const token = request.headers.get("authorization")?.replace("Bearer ", "");
+    return Promise.resolve(Response.json(token === "admin-token"));
+  }
   if (url.pathname === "/rest/v1/admin_users") {
-    const isAdmin = url.searchParams.get("email") === "eq.admin@local.test" &&
-      url.searchParams.get("status") === "eq.active";
-    return Promise.resolve(Response.json(isAdmin ? [{ id: "admin-row" }] : []));
+    // A direct table query is not the canonical check; it never says yes here.
+    return Promise.resolve(Response.json([]));
   }
   return Promise.resolve(Response.json([]));
 }) as typeof fetch;
@@ -52,7 +60,7 @@ const post = (token: string | null, body: Record<string, unknown>) =>
 
 const opts = { sanitizeOps: false, sanitizeResources: false };
 // Anything past the auth check: place reads, scores, signal definitions.
-const pastAuth = () => seen.filter((s) => !s.includes("/auth/v1/") && !s.endsWith("/rest/v1/admin_users"));
+const pastAuth = () => seen.filter((s) => !s.includes("/auth/v1/") && !s.endsWith("/rest/v1/rpc/is_admin_user"));
 
 // An empty body: a caller who gets through is stopped by the function's own check (400),
 // so an accepted call proves the gate let it in without judging or scoring anything.
@@ -71,6 +79,8 @@ for (const [name, handler, bodyError] of FUNCTIONS) {
       assertEquals(res.status, want, `${name} with ${token ?? "no token"}`);
       await res.body?.cancel();
       assertEquals(pastAuth(), [], `${name}: nothing read or written for ${token ?? "no token"}`);
+      // A signed-in non-admin is refused because is_admin_user said no, not by accident.
+      if (token === "user-token") assert(seen.includes("POST /rest/v1/rpc/is_admin_user"), `${name}: is_admin_user asked`);
     }
   } });
 
@@ -80,6 +90,10 @@ for (const [name, handler, bodyError] of FUNCTIONS) {
       const res = await handler(post(token, {}));
       assertEquals(res.status, 400, `${name} with ${token === SERVICE ? "the service key" : "an admin"}`);
       assertEquals((await res.json()).error, bodyError);
+      if (token === "admin-token") {
+        assert(seen.includes("POST /rest/v1/rpc/is_admin_user"), `${name}: the admin passed through is_admin_user`);
+        assert(!seen.some((s) => s.includes("/rest/v1/admin_users")), `${name}: no direct admin_users query`);
+      }
     }
     // The service key needs no user lookup at all.
     seen.length = 0;

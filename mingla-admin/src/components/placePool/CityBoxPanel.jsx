@@ -12,7 +12,9 @@ import { SectionCard, AlertCard } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { Badge } from "../ui/Badge";
 import { Spinner } from "../ui/Spinner";
-import { Modal, ModalBody, ModalFooter } from "../ui/Modal";
+import { ModalBody, ModalFooter } from "../ui/Modal";
+// #4276: modals here are drawn on document.body, above the sticky table and Run plan.
+import { PortalModal as Modal } from "./PoolUi";
 import { useToast } from "../../context/ToastContext";
 import { seeding } from "../../services/cityPipelineService";
 import { completenessSummary, count, outsideBoxRow, plural, usd } from "../../lib/cityPipeline";
@@ -156,7 +158,7 @@ export function CityBoxPanel({ city, onChanged }) {
   const last = status?.last_completeness_check;
 
   return (
-    <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
       <SectionCard title="Geo box" subtitle="Google's box applies on its own unless it needs a person.">
         <div className="flex flex-col gap-3">
           {outside === undefined ? (
