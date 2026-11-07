@@ -52,9 +52,20 @@ async function markPartnerBlocked(
 
 export async function releasePartnerSplitsForOrganiserRelease(
   admin: SupabaseClient,
-  stripe: StripeClient,
+  // #3645 rail isolation: a getter lets a Paystack-only pass run without ever
+  // constructing a Stripe client (Stripe may be the thing that is down).
+  stripeOrGetter: StripeClient | (() => StripeClient),
   releaseId: string,
 ): Promise<PartnerReleaseResult> {
+  let stripeClient: StripeClient | null = null;
+  const stripeFor = (): StripeClient => {
+    if (stripeClient === null) {
+      stripeClient = typeof stripeOrGetter === "function"
+        ? (stripeOrGetter as () => StripeClient)()
+        : stripeOrGetter;
+    }
+    return stripeClient;
+  };
   const { data, error } = await admin.rpc(
     "release_partner_splits_for_organiser_release",
     { p_release_id: releaseId },
@@ -107,6 +118,9 @@ export async function releasePartnerSplitsForOrganiserRelease(
       continue;
     }
 
+    // Outside the try: a client that cannot be built is a configuration
+    // failure that must surface, not a retryable transfer outcome.
+    const stripe = stripeFor();
     try {
       // Plain platform-balance Transfer. A connected-account direct charge
       // cannot be used as source_transaction from the platform (#1029).
