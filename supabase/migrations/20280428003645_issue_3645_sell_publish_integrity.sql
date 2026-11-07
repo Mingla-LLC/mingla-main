@@ -2203,22 +2203,6 @@ BEGIN
     updated_at        = v_now
   WHERE id = p_event_id;
 
-  -- 8b. issue #3645 — PUBLISH: currency and status in ONE update, so the
-  -- status triggers (brand-currency stamp, draft-currency stop) see the
-  -- currency this publish writes. The brand-currency trigger may stamp the
-  -- brand's currency (or NULL for a free-only publish on a brand with none);
-  -- tickets follow what was stored, not what was sent.
-  IF p_publish THEN
-    UPDATE public.events
-    SET currency     = v_currency,
-        status       = 'scheduled',
-        visibility   = 'public',
-        published_at = COALESCE(published_at, v_now),
-        updated_at   = v_now
-    WHERE id = p_event_id;
-    SELECT e.currency INTO v_currency FROM public.events e WHERE e.id = p_event_id;
-  END IF;
-
   -- 9. REPLACE experience_stops ------------------------------------------
   DELETE FROM public.experience_stops WHERE event_id = p_event_id;
 
@@ -2282,6 +2266,24 @@ BEGIN
     );
     v_idx := v_idx + 1;
   END LOOP;
+
+  -- 8b. issue #3645 — PUBLISH: currency and status in ONE update, so the
+  -- status triggers (brand-currency stamp, draft-currency stop) see the
+  -- currency this publish writes. It runs after the stops are replaced (as
+  -- the old status flip did), so a first publish is never captured as a
+  -- live edit (issue_3827 edit notices), and before the tickets. The brand-currency trigger may stamp the
+  -- brand's currency (or NULL for a free-only publish on a brand with none);
+  -- tickets follow what was stored, not what was sent.
+  IF p_publish THEN
+    UPDATE public.events
+    SET currency     = v_currency,
+        status       = 'scheduled',
+        visibility   = 'public',
+        published_at = COALESCE(published_at, v_now),
+        updated_at   = v_now
+    WHERE id = p_event_id;
+    SELECT e.currency INTO v_currency FROM public.events e WHERE e.id = p_event_id;
+  END IF;
 
   -- 10. Ticket types — legacy Standard OR price_options (#3281 R2) --------
   v_ticket_id := public.issue_3281_apply_experience_price_options(

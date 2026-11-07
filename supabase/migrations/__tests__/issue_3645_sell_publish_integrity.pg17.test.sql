@@ -322,6 +322,21 @@ BEGIN
     pg_temp.exp_payload(25000, 'NGN') || jsonb_build_object('price_options',
       jsonb_build_array(jsonb_build_object('id', v_tt, 'name', 'Adult', 'price_cents', 25000))), true);
 
+  -- A first publish whose route differs from the draft's is not a live
+  -- edit: no edit notice, even once the deferred settle trigger runs.
+  v_event := (public.biz_create_experience(v_brand, pg_temp.exp_payload(25000, 'NGN'), false)->'event'->>'id')::uuid;
+  PERFORM public.biz_publish_experience(v_event,
+    jsonb_set(pg_temp.exp_payload(25000, 'NGN'), '{stops}', jsonb_build_array(
+      jsonb_build_object('place_name', 'Third', 'ai_description', 'Another stop',
+        'address', '3 Third St', 'place_id', 'b2b-place-3', 'lat', 6.7, 'lng', 3.6, 'stop_order', 0),
+      jsonb_build_object('place_name', 'Fourth', 'ai_description', 'Another stop',
+        'address', '4 Fourth St', 'place_id', 'b2b-place-4', 'lat', 6.8, 'lng', 3.7, 'stop_order', 1))), true);
+  SET CONSTRAINTS ALL IMMEDIATE;
+  SET CONSTRAINTS ALL DEFERRED;
+  IF EXISTS (SELECT 1 FROM public.event_edit_notices WHERE event_id = v_event) THEN
+    RAISE EXCEPTION 'T4 FAIL: a first publish was recorded as a live edit';
+  END IF;
+
   RAISE NOTICE 'ISSUE-3645-2B T4 PASS: one update moves currency and status; tickets follow the stored currency';
 END $t4$;
 
