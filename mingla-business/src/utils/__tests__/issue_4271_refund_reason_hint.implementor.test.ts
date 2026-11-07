@@ -9,14 +9,13 @@
  *   H2  tapping Send while too short shows "Your reason needs at least 10
  *       characters." instead of doing nothing (the button stays tappable when
  *       everything else is ready); a valid reason submits; not-ready stays off;
- *   H3  both sheets render that helper, show the error under the box, focus the
- *       box, keep the "N / 200" counter and the 10-character minimum.
  *
- * FAILS-ON-REVERT: restoring `Min ${REASON_MIN} characters` / `disabled={!canSubmit}`
- * in either sheet, or the old helper text, fails H1/H3.
+ * The rendered proof for both sheets (countdown, inline error, focus, counter)
+ * is src/components/orders/__tests__/issue_4271_refund_reason.render.test.tsx.
+ *
+ * FAILS-ON-REVERT: the old helper text or a gate that keeps a short reason's
+ * Send disabled fails H1/H2.
  */
-import fs from "fs";
-import path from "path";
 import { describe, expect, test } from "@jest/globals";
 
 import {
@@ -55,29 +54,5 @@ describe("#4271 refund reason countdown", () => {
     expect(refundReasonTooShortMessage(10)).toBe(
       "Your reason needs at least 10 characters.",
     );
-  });
-
-  test.each([
-    ["src/components/orders/RefundSheet.tsx", "refund-reason-too-short"],
-    ["src/components/door/DoorRefundSheet.tsx", "door-refund-reason-too-short"],
-  ])("H3 %s wires the countdown, the inline error and focus", (file, testId) => {
-    const source = fs.readFileSync(
-      path.resolve(__dirname, "../../..", file),
-      "utf8",
-    );
-    expect(source).toContain("refundReasonHelperText(trimmedLen, REASON_MIN)");
-    expect(source).not.toContain("`Min ${REASON_MIN} characters`");
-    expect(source).toContain("disabled={!sendGate.enabled}");
-    expect(source).not.toMatch(/disabled=\{!canSubmit\}\s*\n\s*accessibilityLabel="Send refund"/);
-    const press = source.indexOf('if (sendGate.onPress === "show_reason_error") {');
-    expect(press).toBeGreaterThan(-1);
-    expect(source.indexOf("setReasonErrorShown(true);", press)).toBeGreaterThan(press);
-    expect(source.indexOf("reasonInputRef.current?.focus();", press)).toBeGreaterThan(press);
-    expect(source).toContain("ref={reasonInputRef}");
-    expect(source).toContain(`testID="${testId}"`);
-    expect(source).toContain("refundReasonTooShortMessage(REASON_MIN)");
-    // The counter and the minimum are unchanged.
-    expect(source).toContain("{trimmedLen} / {REASON_MAX}");
-    expect(source).toContain("const REASON_MIN = 10;");
   });
 });
