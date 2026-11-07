@@ -152,6 +152,19 @@ language sql as $fn$
     'https://gqnoajqerqhnvulmnyvv.supabase.co/functions/v1/team-agent/oauth/upstream-callback'))
 $fn$;
 
+-- A server step's answer as JSON; a refusal becomes {"refused": "<text>"} so a check fails cleanly.
+create function pg_temp.tsi_sj(p_sql text) returns jsonb
+language plpgsql as $fn$
+declare
+  v text := pg_temp.tsi_as('service', p_sql);
+begin
+  if v like 'ERR:%' then
+    return jsonb_build_object('refused', v);
+  end if;
+  return v::jsonb;
+end;
+$fn$;
+
 create function pg_temp.tsi_begin_call(p_key text, p_slug text, p_tool text) returns jsonb
 language sql as $fn$
   select pg_temp.tsi_as('service', format('select public.mingla_connector_call_begin(%L, %L, %L, %L)::text',
@@ -376,7 +389,7 @@ begin
     'true|signin|Mingla Studio|["Magnific", "Freepik"]|https://mcp.magnific.com');
   perform pg_temp.tsi_check('S-7', 'the key reader never answers for a sign-in row',
     pg_temp.tsi_as('service', format('select public.mingla_connector_upstream_key(%L)::text', v_call)), '{"ok": false}');
-  v := pg_temp.tsi_as('service', format('select public.mingla_connector_signin_credential(%L)::text', v_call))::jsonb;
+  v := pg_temp.tsi_sj(format('select public.mingla_connector_signin_credential(%L)::text', v_call));
   v_gen := (v ->> 'generation')::integer;
   perform pg_temp.tsi_check('S-7', 'the running call reads the access token, never the refresh token',
     (v ->> 'ok') || ':' || ((v ->> 'access_token') = pg_temp.tsi_id('access1'))::text || ':' || (v ? 'refresh_token')::text,
@@ -385,7 +398,7 @@ begin
     pg_temp.tsi_as('service', format('select public.mingla_connector_signin_credential(%L)::text', gen_random_uuid())), '{"ok": false}');
 
   -- S-8 (I-4294-11).
-  v := pg_temp.tsi_as('service', format('select public.mingla_connector_signin_refresh_begin(%L, %s)::text', v_call, v_gen))::jsonb;
+  v := pg_temp.tsi_sj(format('select public.mingla_connector_signin_refresh_begin(%L, %s)::text', v_call, v_gen));
   v_lease := v ->> 'lease';
   perform pg_temp.tsi_check('S-8', 'the first renewer gets the lease, the refresh token and the token address',
     (v ->> 'ok') || ':' || ((v ->> 'refresh_token') = pg_temp.tsi_id('refresh1'))::text || ':' || (v ->> 'token_url') || ':' || (v ->> 'client_id'),
@@ -400,8 +413,8 @@ begin
     (select (d.decrypted_secret::jsonb ->> 'access_token') = pg_temp.tsi_id('access1')
        from vault.decrypted_secrets d join public.mingla_connector_upstreams u on u.signin_vault_id = d.id where u.slug = 'studio')::text,
     'true');
-  v := pg_temp.tsi_as('service', format('select public.mingla_connector_signin_refresh_store(%L, %L, %L, %L, %s)::text',
-         v_call, v_lease, pg_temp.tsi_id('access2'), pg_temp.tsi_id('refresh2'), 300))::jsonb;
+  v := pg_temp.tsi_sj(format('select public.mingla_connector_signin_refresh_store(%L, %L, %L, %L, %s)::text',
+         v_call, v_lease, pg_temp.tsi_id('access2'), pg_temp.tsi_id('refresh2'), 300));
   perform pg_temp.tsi_check('S-8', 'the lease holder stores and the generation moves on',
     (v ->> 'ok') || ':' || ((v ->> 'generation')::integer = v_gen + 1)::text, 'true:true');
   perform pg_temp.tsi_like('S-8', 'the same lease cannot store twice',
@@ -410,7 +423,7 @@ begin
   perform pg_temp.tsi_like('S-8', 'a renewer holding the old generation gets PT409 and reads again',
     pg_temp.tsi_as('service', format('select public.mingla_connector_signin_refresh_begin(%L, %s)::text', v_call, v_gen)),
     'ERR:PT409:renewed:%');
-  v := pg_temp.tsi_as('service', format('select public.mingla_connector_signin_credential(%L)::text', v_call))::jsonb;
+  v := pg_temp.tsi_sj(format('select public.mingla_connector_signin_credential(%L)::text', v_call));
   perform pg_temp.tsi_check('S-8', 'reading again gives the renewed access token',
     ((v ->> 'access_token') = pg_temp.tsi_id('access2'))::text || ':' || ((v ->> 'generation')::integer = v_gen + 1)::text, 'true:true');
   perform pg_temp.tsi_check('S-8', 'the lease is let go after the store',
@@ -425,7 +438,7 @@ begin
   -- An unavailable renewal lets the lease go and changes nothing else.
   v := pg_temp.tsi_begin_call(pg_temp.tsi_id('growth.key'), 'studio', 'stock_get');
   v_call := v ->> 'call_id';
-  v_lease2 := pg_temp.tsi_as('service', format('select public.mingla_connector_signin_refresh_begin(%L, %s)::text', v_call, v_gen + 1))::jsonb ->> 'lease';
+  v_lease2 := pg_temp.tsi_sj(format('select public.mingla_connector_signin_refresh_begin(%L, %s)::text', v_call, v_gen + 1)) ->> 'lease';
   perform pg_temp.tsi_check('S-8', 'an unavailable renewal lets the lease go',
     pg_temp.tsi_as('service', format('select public.mingla_connector_signin_refresh_fail(%L, %L, %L)::text', v_call, v_lease2, 'unavailable')),
     '{"ok": true, "reconnect_needed": false}');
@@ -447,8 +460,8 @@ declare
 begin
   v := pg_temp.tsi_begin_call(pg_temp.tsi_id('growth.key'), 'studio', 'stock_search');
   v_call := v ->> 'call_id';
-  v_lease := pg_temp.tsi_as('service', format('select public.mingla_connector_signin_refresh_begin(%L, %s)::text',
-               v_call, pg_temp.tsi_id('gen')))::jsonb ->> 'lease';
+  v_lease := pg_temp.tsi_sj(format('select public.mingla_connector_signin_refresh_begin(%L, %s)::text',
+               v_call, pg_temp.tsi_id('gen'))) ->> 'lease';
   perform pg_temp.tsi_check('S-9', 'invalid_grant marks Reconnect needed',
     pg_temp.tsi_as('service', format('select public.mingla_connector_signin_refresh_fail(%L, %L, %L)::text', v_call, v_lease, 'invalid_grant')),
     '{"ok": true, "reconnect_needed": true}');
@@ -467,8 +480,8 @@ begin
   -- Reconnect.
   perform pg_temp.tsi_begin('owner', 'studio', 'state-three');
   perform pg_temp.tsi_as('service', format('select public.mingla_connector_signin_claim(%L)::text', pg_temp.tsi_digest('state-three')));
-  v := pg_temp.tsi_as('service', format('select public.mingla_connector_signin_complete(%L, %L, %L, %L, %L)::text',
-         pg_temp.tsi_digest('state-three'), pg_temp.tsi_id('access3'), pg_temp.tsi_id('refresh3'), 300, 'ads@mingla.test'))::jsonb;
+  v := pg_temp.tsi_sj(format('select public.mingla_connector_signin_complete(%L, %L, %L, %L, %L)::text',
+         pg_temp.tsi_digest('state-three'), pg_temp.tsi_id('access3'), pg_temp.tsi_id('refresh3'), 300, 'ads@mingla.test'));
   perform pg_temp.tsi_check('S-9', 'Reconnect clears Reconnect needed and keeps the row on',
     (v ->> 'ok') || ':' || (select (signin_reconnect_at is null)::text || ':' || enabled::text
                               from public.mingla_connector_upstreams where slug = 'studio'), 'true:true:true');
