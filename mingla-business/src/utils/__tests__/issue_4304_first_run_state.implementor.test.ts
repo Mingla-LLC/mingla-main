@@ -32,6 +32,7 @@ import {
   firstRunRedirect,
   firstRunVisibleTabs,
   isFirstRunLocked,
+  stickyFirstRunStage,
   type FirstRunInput,
 } from "../firstRunState";
 import { visibleTabsForRank } from "../navTabGate";
@@ -129,6 +130,26 @@ describe("#4304 deriveFirstRunStage", () => {
     for (const s of ["pending", "unlocked", "not_applicable"] as const) {
       expect(isFirstRunLocked(s)).toBe(false);
     }
+  });
+});
+
+describe("#4304 the lock holds through a re-resolve (no flash of the full tabs)", () => {
+  it("A → (brand created, loading) → B keeps a locked stage throughout", () => {
+    let step = stickyFirstRunStage(null, "no_brand", "u1");
+    expect(step.stage).toBe("no_brand");
+    step = stickyFirstRunStage(step.lock, "pending", "u1");
+    expect(step.stage).toBe("no_brand");
+    step = stickyFirstRunStage(step.lock, "empty_brand", "u1");
+    expect(step.stage).toBe("empty_brand");
+  });
+  it("a resolved unlock, a sign-out or another account clears it", () => {
+    const locked = stickyFirstRunStage(null, "empty_brand", "u1").lock;
+    expect(stickyFirstRunStage(locked, "unlocked", "u1")).toEqual({ stage: "unlocked", lock: null });
+    expect(stickyFirstRunStage(locked, "pending", null)).toEqual({ stage: "pending", lock: null });
+    expect(stickyFirstRunStage(locked, "pending", "u2")).toEqual({ stage: "pending", lock: null });
+  });
+  it("a cold start with nothing remembered stays pending", () => {
+    expect(stickyFirstRunStage(null, "pending", "u1")).toEqual({ stage: "pending", lock: null });
   });
 });
 

@@ -10,7 +10,10 @@
  *   - "has anything been made?": a two-row existence probe over every brand
  *     the account can see (server truth, includes past and deleted items), OR
  *     a dirty/server event draft already in the local draft store (instant for
- *     the manual wizards), OR a venue listing already in the cache.
+ *     the manual wizards). Venue pages and server-made offerings reach the
+ *     probe: Ari's confirm invalidates it, and in State B it re-checks every
+ *     15s. (No venue-listings hook here: it would pull venue services into
+ *     the tabs layout's boot path, #3493.)
  *
  * Once content is seen the unlock is persisted for this account, so Home
  * never disappears again (Seth, 6 Nov 2026).
@@ -21,7 +24,7 @@
  * unlock after a sign-out cleared the local flag.
  */
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { useAuth } from "../context/AuthContext";
@@ -35,14 +38,15 @@ import { useFirstRunStore } from "../store/firstRunStore";
 import { isDraftDirty } from "../utils/draftDirtyCheck";
 import {
   deriveFirstRunStage,
+  stickyFirstRunStage,
   type FirstRunStage,
+  type StickyLock,
 } from "../utils/firstRunState";
 import { firstRunKeys } from "./firstRunKeys";
 import { useBrands } from "./useBrands";
 import { useCurrentBrand } from "./useCurrentBrand";
 import { useCurrentBrandRecovery } from "./useCurrentBrandRecovery";
 import { useCurrentBrandRole } from "./useCurrentBrandRole";
-import { useVenueListings } from "./useVenueListings";
 
 export { firstRunKeys };
 
@@ -114,10 +118,6 @@ export function useFirstRunStage(): FirstRunStageState {
       ),
     [brandIdSet, localDrafts],
   );
-  const venueListings = useVenueListings(
-    homeUnlocked ? null : (currentBrand?.id ?? null),
-  );
-  const venueFound = (venueListings.data ?? []).length > 0;
 
   const brandResolving =
     !brandHydrated ||
@@ -126,7 +126,7 @@ export function useFirstRunStage(): FirstRunStageState {
       currentBrandId !== null &&
       currentBrand === null);
 
-  const stage = deriveFirstRunStage({
+  const derivedStage = deriveFirstRunStage({
     signedIn: isAuthReady && userId !== null,
     storeHydrated,
     homeUnlocked,
@@ -136,10 +136,19 @@ export function useFirstRunStage(): FirstRunStageState {
     hasCurrentBrand: currentBrand !== null,
     roleLoading: role.isLoading,
     rank: role.rank,
-    contentFound: probe.data === true || localDraftFound || venueFound,
+    contentFound: probe.data === true || localDraftFound,
     contentKnown: probe.isFetched && probe.data !== undefined,
     contentError: probe.isError,
   });
+
+  // A locked host stays locked through a re-resolve (State A → B: the new
+  // brand's role and "anything made?" answer load). Without this the full tab
+  // set would flash between the two reduced ones. Only a resolved answer, a
+  // sign-out or another account moves it.
+  const lastLockedRef = useRef<StickyLock | null>(null);
+  const sticky = stickyFirstRunStage(lastLockedRef.current, derivedStage, userId);
+  lastLockedRef.current = sticky.lock;
+  const stage = sticky.stage;
 
   // Home appeared: remember it for this account so it never disappears.
   const contentSeen = stage === "unlocked" && !homeUnlocked;

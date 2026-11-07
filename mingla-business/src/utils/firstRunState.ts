@@ -75,6 +75,37 @@ export function isFirstRunLocked(stage: FirstRunStage): boolean {
   return stage === "no_brand" || stage === "empty_brand";
 }
 
+export interface StickyLock {
+  userId: string;
+  stage: "no_brand" | "empty_brand";
+}
+
+/**
+ * A locked host stays locked through a re-resolve (State A → B: the new
+ * brand's role and "anything made?" answer load). Without this the full tab
+ * set would flash between the two reduced ones. Only a resolved answer, a
+ * sign-out or another account clears it.
+ */
+export function stickyFirstRunStage(
+  previous: StickyLock | null,
+  derived: FirstRunStage,
+  userId: string | null,
+): { stage: FirstRunStage; lock: StickyLock | null } {
+  if (derived === "no_brand" || derived === "empty_brand") {
+    return {
+      stage: derived,
+      lock: userId !== null ? { userId, stage: derived } : null,
+    };
+  }
+  if (derived !== "pending" || userId === null) {
+    return { stage: derived, lock: null };
+  }
+  if (previous !== null && previous.userId === userId) {
+    return { stage: previous.stage, lock: previous };
+  }
+  return { stage: derived, lock: null };
+}
+
 /** Tabs a locked host sees, in this order. */
 export const FIRST_RUN_TAB_IDS = ["ari", "account"] as const;
 
