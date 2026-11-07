@@ -386,7 +386,8 @@ export function phase3dContractDigest(manifest) {
 // #4294: re-sealed after merging origin/main (#4303 and #4296 rows kept beside the #4294 rows).
 // #4273: register the buyer/follower auto opt-in, honest-quote and account-opt-out migrations and their proofs.
 // #4270: register the brand plan migrations (20280427004270-20280427024270) and their proofs the same way.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "3f3426158428e1991fcd094216eab8dda59134e1ed2337aa78180b6afd1991fd";
+// #4270 W7: register the admin Brand group inbox suites.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "ea0d924db69bd8c41120bcad764741402d22e7651a55b8c10c14f37f3a7c08ad";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
