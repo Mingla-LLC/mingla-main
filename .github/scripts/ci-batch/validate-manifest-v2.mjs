@@ -880,7 +880,7 @@ const PHASE3C_WRAPPER_SET = new Set(PHASE3C_WRAPPER_NAMES);
 // the door, and its lockfile entries. app-mobile is unchanged.
 // [TEST-MOD-APPROVED #4271] Re-banked after Host declared expo-brightness, so the
 // door pay code screen can reach full brightness. app-mobile is unchanged.
-// #1023 (wave 1) — re-banked after Host declared lottie-web 5.12.2 (exact pin),
+// [TEST-MOD-APPROVED #1023] Re-banked after Host declared lottie-web 5.12.2 (exact pin),
 // the web player for the theme entrance motion, and its lockfile entries.
 // app-mobile is unchanged.
 export const PACKAGE_AUTHORITY_DIGESTS = Object.freeze({
