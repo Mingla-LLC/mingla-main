@@ -39,6 +39,10 @@
 --        started. Sent, sending, failed, cancelled, already-due and partly-sent
 --        campaigns are read-only to them. The server (service_role, and the
 --        SECURITY DEFINER functions, which run as postgres) is not restricted.
+--   (Xc) issue_4273_campaign_delete_guard: an app or API caller may delete only a
+--        draft, or a failed or cancelled campaign that reached nobody (no
+--        sent-family message, no sent push, recipient_count 0). Anything that
+--        sent stays on record. The server is not restricted.
 --   (Xb) issue_3682_one_channel_per_campaign_group counts only methods that are
 --        still live: a failed or cancelled method no longer holds the slot.
 --
@@ -97,6 +101,43 @@ CREATE TRIGGER issue_4273_sent_snapshot_guard
 BEFORE INSERT OR UPDATE OF sent_snapshot ON public.marketing_campaigns
 FOR EACH ROW EXECUTE FUNCTION public.issue_4273_sent_snapshot_guard();
 
+-- ── (Xa/Xc) What a campaign has already sent ────────────────────────────────
+-- 'sent' when a message reached the provider (any sent-family email/SMS row,
+-- a sent push, or a recipient_count above 0); 'started' when any message row
+-- other than one held for quiet hours exists; else 'none'. SECURITY DEFINER
+-- because the guards below run as the caller, who may not read message rows;
+-- answers only for a campaign the caller may see (else 'none': the caller's
+-- own UPDATE/DELETE cannot reach a row it cannot see anyway).
+CREATE OR REPLACE FUNCTION public.issue_4273_campaign_send_record(p_campaign_id uuid)
+RETURNS text
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+  SELECT CASE
+    WHEN c.id IS NULL THEN 'none'
+    WHEN COALESCE(c.recipient_count, 0) > 0
+      OR EXISTS (SELECT 1 FROM public.marketing_messages m
+                  WHERE m.campaign_id = c.id
+                    AND m.status IN ('sent', 'delivered', 'opened', 'clicked', 'unsubscribed', 'bounced', 'complained'))
+      OR EXISTS (SELECT 1 FROM public.marketing_push_messages p
+                  WHERE p.campaign_id = c.id AND p.status = 'sent') THEN 'sent'
+    WHEN EXISTS (SELECT 1 FROM public.marketing_messages m
+                  WHERE m.campaign_id = c.id AND m.status <> 'deferred')
+      OR EXISTS (SELECT 1 FROM public.marketing_push_messages p
+                  WHERE p.campaign_id = c.id) THEN 'started'
+    ELSE 'none'
+  END
+  FROM (SELECT 1) one
+  LEFT JOIN public.marketing_campaigns c
+    ON c.id = p_campaign_id
+   AND (c.account_id = auth.uid() OR COALESCE(public.mkt_brand_min_rank(c.brand_id, 'brand_member'), false))
+$fn$;
+
+REVOKE ALL ON FUNCTION public.issue_4273_campaign_send_record(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.issue_4273_campaign_send_record(uuid) TO authenticated, service_role;
+
 -- ── (Xa) A campaign that has started is read-only to the app and the API ────
 -- The app's own transitions (draft edits, draft -> scheduled, rescheduling or
 -- cancelling a send that has not started) are unchanged. Everything the server
@@ -112,7 +153,10 @@ BEGIN
   END IF;
   IF OLD.status NOT IN ('draft', 'scheduled')
      OR OLD.sent_snapshot IS NOT NULL
-     OR (OLD.status = 'scheduled' AND (OLD.scheduled_for IS NULL OR OLD.scheduled_for <= now())) THEN
+     OR (OLD.status = 'scheduled' AND (OLD.scheduled_for IS NULL OR OLD.scheduled_for <= now()))
+     -- A partly sent campaign whose snapshot write failed still has message
+     -- rows: any row other than one held for quiet hours means it started.
+     OR (OLD.status = 'scheduled' AND public.issue_4273_campaign_send_record(OLD.id) <> 'none') THEN
     -- Started, finished, due, or partly sent and held for quiet hours: only a
     -- no-op touch of updated_at is accepted.
     IF (to_jsonb(NEW) - 'updated_at') IS DISTINCT FROM (to_jsonb(OLD) - 'updated_at') THEN
@@ -139,6 +183,34 @@ DROP TRIGGER IF EXISTS issue_4273_campaign_lock_guard ON public.marketing_campai
 CREATE TRIGGER issue_4273_campaign_lock_guard
 BEFORE UPDATE ON public.marketing_campaigns
 FOR EACH ROW EXECUTE FUNCTION public.issue_4273_campaign_lock_guard();
+
+-- ── (Xc) Only an unsent campaign can be deleted by the app or the API ───────
+-- A draft, or a failed or cancelled campaign that reached nobody. A campaign
+-- that sent anything is kept on record: deleting it would cascade away its
+-- message and click history. The server is not restricted.
+CREATE OR REPLACE FUNCTION public.issue_4273_campaign_delete_guard()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $fn$
+BEGIN
+  IF current_user IN ('service_role', 'postgres', 'supabase_admin') THEN
+    RETURN OLD;
+  END IF;
+  IF OLD.status NOT IN ('draft', 'failed', 'cancelled')
+     OR public.issue_4273_campaign_send_record(OLD.id) = 'sent' THEN
+    RAISE EXCEPTION 'campaign_kept_for_records' USING ERRCODE = '42501';
+  END IF;
+  RETURN OLD;
+END;
+$fn$;
+
+REVOKE ALL ON FUNCTION public.issue_4273_campaign_delete_guard() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS issue_4273_campaign_delete_guard ON public.marketing_campaigns;
+CREATE TRIGGER issue_4273_campaign_delete_guard
+BEFORE DELETE ON public.marketing_campaigns
+FOR EACH ROW EXECUTE FUNCTION public.issue_4273_campaign_delete_guard();
 
 -- ── (Xb) A failed or cancelled method no longer holds its slot ──────────────
 DROP INDEX IF EXISTS public.issue_3682_one_channel_per_campaign_group;
@@ -567,6 +639,11 @@ BEGIN
                   WHERE tgrelid = 'public.marketing_campaigns'::regclass
                     AND tgname = 'issue_4273_sent_snapshot_guard' AND NOT tgisinternal) THEN
     RAISE EXCEPTION '#4273 M8: sent_snapshot guard trigger missing';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger
+                  WHERE tgrelid = 'public.marketing_campaigns'::regclass
+                    AND tgname = 'issue_4273_campaign_delete_guard' AND NOT tgisinternal) THEN
+    RAISE EXCEPTION '#4273 M8: campaign delete trigger missing';
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_trigger
                   WHERE tgrelid = 'public.marketing_campaigns'::regclass

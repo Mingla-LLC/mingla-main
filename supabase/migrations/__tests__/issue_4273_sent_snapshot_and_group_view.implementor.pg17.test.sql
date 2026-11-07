@@ -6,7 +6,8 @@
 --
 -- MINGLA-INVARIANT: I-4273-SENT-SNAPSHOT-WRITE-ONCE | issue #4273 | marketing_campaigns.sent_snapshot is written only by the server (service_role / postgres) and never changes once set; an app or API caller can neither set it on insert nor change it.
 -- MINGLA-INVARIANT: I-4273-SENT-VIEW-NO-CONTACTS | issue #4273 | biz_marketing_campaign_group_view_v1 returns counts, saved messages and snapshots only: no key naming an email, phone, user id or contact, and no recipient value.
--- MINGLA-INVARIANT: I-4273-SENT-CAMPAIGN-READ-ONLY | issue #4273 | An app or API caller cannot change the text, status or server fields of a campaign that is sending, sent, failed, cancelled, already due, or partly sent; its own unsent edits, scheduling, rescheduling and cancelling of a send that has not started are unchanged, and the server's transitions are not restricted.
+-- MINGLA-INVARIANT: I-4273-SENT-CAMPAIGN-READ-ONLY | issue #4273 | An app or API caller cannot change the text, status or server fields of a campaign that is sending, sent, failed, cancelled, already due, or partly sent (a snapshot, or any message row other than one held for quiet hours); its own unsent edits, scheduling, rescheduling and cancelling of a send that has not started are unchanged, and the server's transitions are not restricted.
+-- MINGLA-INVARIANT: I-4273-SENT-CAMPAIGN-KEPT-ON-RECORD | issue #4273 | An app or API caller can delete only an unsent campaign row (status draft, failed or cancelled with no sent-family message, no sent push and recipient_count 0); anything that reached someone stays on record, and the server is not restricted.
 -- MINGLA-INVARIANT: I-4273-FAILED-METHOD-FREES-ITS-SLOT | issue #4273 | One live method per campaign group: a failed or cancelled method no longer blocks that method from being used again in its group.
 \set ON_ERROR_STOP on
 BEGIN;
@@ -92,6 +93,22 @@ VALUES
    '{"kind":"email","subject":"Due","body_html":"<p>Due</p>","body_text":"Due"}', 'scheduled', now() - interval '1 minute'),
   (pg_temp.u('f1'), pg_temp.u('01'), pg_temp.u('b1'), pg_temp.u('a1'), 'Failed', 'sms',
    '{"kind":"sms","body":"Failed"}', 'failed', NULL);
+
+-- P2-2 / P2-4 fixtures: a failed SMS that partly sent (f2), a failed email the
+-- server counted (f3), a plain draft (d3), a future send that already has a
+-- message row but no snapshot (s1), one held entirely for quiet hours (s2).
+INSERT INTO public.marketing_campaigns(id, account_id, brand_id, audience_id, name, channel, channel_payload, status, scheduled_for, recipient_count)
+VALUES
+  (pg_temp.u('f2'), pg_temp.u('01'), pg_temp.u('b1'), pg_temp.u('a1'), 'Partly sent', 'sms', '{"kind":"sms","body":"Partly"}', 'failed', NULL, 0),
+  (pg_temp.u('f3'), pg_temp.u('01'), pg_temp.u('b1'), pg_temp.u('a1'), 'Counted', 'email', '{"kind":"email","subject":"C","body_html":"<p>C</p>","body_text":"C"}', 'failed', NULL, 3),
+  (pg_temp.u('d3'), pg_temp.u('01'), pg_temp.u('b1'), pg_temp.u('a1'), 'Throwaway', 'push', '{"kind":"push","body":"x"}', 'draft', NULL, NULL),
+  (pg_temp.u('aa1'), pg_temp.u('01'), pg_temp.u('b1'), pg_temp.u('a1'), 'Started', 'sms', '{"kind":"sms","body":"Started"}', 'scheduled', now() + interval '2 hours', 0),
+  (pg_temp.u('aa2'), pg_temp.u('01'), pg_temp.u('b1'), pg_temp.u('a1'), 'Held', 'email', '{"kind":"email","subject":"H","body_html":"<p>H</p>","body_text":"H"}', 'scheduled', now() + interval '2 hours', 0);
+INSERT INTO public.marketing_messages(campaign_id, recipient_phone, recipient_email, channel, status, segments) VALUES
+  (pg_temp.u('f2'), '+2348031104211', NULL, 'sms', 'sent', 1),
+  (pg_temp.u('f2'), '+2348031104212', NULL, 'sms', 'failed', 1),
+  (pg_temp.u('aa1'), '+2348031104213', NULL, 'sms', 'failed', 1),
+  (pg_temp.u('aa2'), NULL, 'held@guestmail.net', 'email', 'deferred', NULL);
 
 -- ── T-6 the snapshot guard ──────────────────────────────────────────────────
 SELECT set_config('request.jwt.claim.sub', pg_temp.u('01')::text, true),
@@ -306,8 +323,66 @@ DO $xb$ BEGIN
   PERFORM pg_temp.chk('Xb-2 a failed method no longer does', pg_temp.r('xb2') = 'ok', pg_temp.r('xb2'));
   PERFORM pg_temp.chk('Xb-3 the host can delete a failed campaign with no confirmed send on record',
     pg_temp.r('xb3') = '1' AND NOT EXISTS (SELECT 1 FROM public.marketing_campaigns WHERE id = pg_temp.u('f1')), pg_temp.r('xb3'));
-  PERFORM pg_temp.chk('Xb-4 a confirmed send stays on record (the execution pins it)', pg_temp.r('xb4') = '23503', pg_temp.r('xb4'));
+  -- c3 sent pushes, so the delete guard keeps it before the execution's FK does.
+  PERFORM pg_temp.chk('Xb-4 a send that reached people stays on record', pg_temp.r('xb4') = '42501', pg_temp.r('xb4'));
 END $xb$;
+
+-- ── Xc / P2-1, P2-2: only an unsent campaign can be deleted ─────────────────
+-- ── Xa-13/14 / P2-4: message rows lock a send that started ─────────────────
+SET LOCAL ROLE authenticated;
+DO $a$ BEGIN
+  DELETE FROM public.marketing_campaigns WHERE id = pg_temp.u('c1');
+  PERFORM set_config('t4273s.xc1', 'ok', true);
+EXCEPTION WHEN OTHERS THEN PERFORM set_config('t4273s.xc1', SQLERRM, true); END $a$;
+DO $a$ BEGIN
+  DELETE FROM public.marketing_campaigns WHERE id = pg_temp.u('f2');
+  PERFORM set_config('t4273s.xc2', 'ok', true);
+EXCEPTION WHEN OTHERS THEN PERFORM set_config('t4273s.xc2', SQLERRM, true); END $a$;
+DO $a$ BEGIN
+  DELETE FROM public.marketing_campaigns WHERE id = pg_temp.u('f3');
+  PERFORM set_config('t4273s.xc3', 'ok', true);
+EXCEPTION WHEN OTHERS THEN PERFORM set_config('t4273s.xc3', SQLERRM, true); END $a$;
+DO $a$ DECLARE n integer; BEGIN
+  DELETE FROM public.marketing_campaigns WHERE id = pg_temp.u('d3');
+  GET DIAGNOSTICS n = ROW_COUNT;
+  PERFORM set_config('t4273s.xc4', n::text, true);
+EXCEPTION WHEN OTHERS THEN PERFORM set_config('t4273s.xc4', SQLERRM, true); END $a$;
+DO $a$ BEGIN
+  UPDATE public.marketing_campaigns SET channel_payload = '{"kind":"sms","body":"Edited"}' WHERE id = pg_temp.u('aa1');
+  PERFORM set_config('t4273s.xa13', 'ok', true);
+EXCEPTION WHEN OTHERS THEN PERFORM set_config('t4273s.xa13', SQLERRM, true); END $a$;
+DO $a$ BEGIN
+  UPDATE public.marketing_campaigns SET status = 'cancelled' WHERE id = pg_temp.u('aa1');
+  PERFORM set_config('t4273s.xa14', 'ok', true);
+EXCEPTION WHEN OTHERS THEN PERFORM set_config('t4273s.xa14', SQLERRM, true); END $a$;
+DO $a$ BEGIN
+  UPDATE public.marketing_campaigns SET scheduled_for = now() + interval '3 hours' WHERE id = pg_temp.u('aa2');
+  UPDATE public.marketing_campaigns SET status = 'cancelled' WHERE id = pg_temp.u('aa2');
+  PERFORM set_config('t4273s.xa15', 'ok', true);
+EXCEPTION WHEN OTHERS THEN PERFORM set_config('t4273s.xa15', SQLERRM, true); END $a$;
+RESET ROLE;
+SET LOCAL ROLE service_role;
+DO $a$ BEGIN
+  -- The server's own quiet-hours path: a held send goes back to scheduled and resumes.
+  UPDATE public.marketing_campaigns SET status = 'sending' WHERE id = pg_temp.u('aa1');
+  UPDATE public.marketing_campaigns SET status = 'scheduled', scheduled_for = now() + interval '1 hour' WHERE id = pg_temp.u('aa1');
+  DELETE FROM public.marketing_campaigns WHERE id = pg_temp.u('f3');
+  PERFORM set_config('t4273s.xc5', 'ok', true);
+EXCEPTION WHEN OTHERS THEN PERFORM set_config('t4273s.xc5', SQLERRM, true); END $a$;
+RESET ROLE;
+
+DO $xc$ BEGIN
+  PERFORM pg_temp.chk('Xc-1 (P2-1) a sent campaign cannot be deleted by the app', pg_temp.r('xc1') = 'campaign_kept_for_records'
+    AND EXISTS (SELECT 1 FROM public.marketing_campaigns WHERE id = pg_temp.u('c1')), pg_temp.r('xc1'));
+  PERFORM pg_temp.chk('Xc-2 (P2-2) a failed campaign that partly sent stays on record', pg_temp.r('xc2') = 'campaign_kept_for_records'
+    AND (SELECT count(*) FROM public.marketing_messages WHERE campaign_id = pg_temp.u('f2')) = 2, pg_temp.r('xc2'));
+  PERFORM pg_temp.chk('Xc-3 (P2-2) a failed campaign the server counted as reached stays on record', pg_temp.r('xc3') = 'campaign_kept_for_records', pg_temp.r('xc3'));
+  PERFORM pg_temp.chk('Xc-4 a draft still deletes', pg_temp.r('xc4') = '1', pg_temp.r('xc4'));
+  PERFORM pg_temp.chk('Xc-5 the server is not restricted (quiet-hours resume, delete)', pg_temp.r('xc5') = 'ok', pg_temp.r('xc5'));
+  PERFORM pg_temp.chk('Xa-13 (P2-4) a future send with a message row and no snapshot is read-only', pg_temp.r('xa13') = 'campaign_locked', pg_temp.r('xa13'));
+  PERFORM pg_temp.chk('Xa-14 (P2-4) and cannot be cancelled from the app', pg_temp.r('xa14') = 'campaign_locked', pg_temp.r('xa14'));
+  PERFORM pg_temp.chk('Xa-15 a send held entirely for quiet hours can still be moved or cancelled', pg_temp.r('xa15') = 'ok', pg_temp.r('xa15'));
+END $xc$;
 
 DO $r$ DECLARE v text; BEGIN SELECT string_agg(line, E'\n') INTO v FROM t4273s_fail;
   IF v IS NOT NULL THEN RAISE EXCEPTION E'#4273 sent snapshot / group view FAIL:\n%', v; END IF;

@@ -80,6 +80,11 @@ const SentMethodTabs = React.lazy(async () => ({ default: (await loadSentPreview
 const SentMethodPreview = React.lazy(async () => ({ default: (await loadSentPreviews()).SentMethodPreview }));
 const SentSmsCost = React.lazy(async () => ({ default: (await loadSentPreviews()).SentSmsCost }));
 
+const CAMPAIGN_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Clears the floating "New campaign" button on phones and narrow web.
+const FLOATING_ACTION_CLEARANCE = 88;
+
 // Friendly per-recipient status copy. Replaces raw DB enums in the
 // recipient detail list. Anything missing falls back to the raw value.
 const RECIPIENT_STATUS_LABEL: Record<string, string> = {
@@ -157,8 +162,9 @@ export default function CampaignReportRoute(): React.ReactElement {
   const bottomChromeInset = useStickyFooterOffset();
   const params = useLocalSearchParams<{ id: string | string[] }>();
   const idParam = Array.isArray(params.id) ? params.id[0] : params.id;
+  // #4273 — anything but a campaign id is "not found", never an endless spinner.
   const campaignId =
-    typeof idParam === "string" && idParam.length > 0 ? idParam : null;
+    typeof idParam === "string" && CAMPAIGN_ID_RE.test(idParam) ? idParam : null;
   const groupQuery = useCampaignGroupView(campaignId);
   const [activeId, setActiveId] = useState<string | null>(campaignId);
   const { isWideDesktop } = useResponsiveLayout();
@@ -316,7 +322,7 @@ export default function CampaignReportRoute(): React.ReactElement {
           // ORCH-0889: bottom inset comes from useStickyFooterOffset so the
           // last row clears the mobile BottomNav capsule on native + narrow
           // web AND avoids extra empty gutter on wide-desktop.
-          { paddingBottom: bottomChromeInset },
+          { paddingBottom: bottomChromeInset + (isWideDesktop ? 0 : FLOATING_ACTION_CLEARANCE) },
         ]}
         showsVerticalScrollIndicator={false}
       >

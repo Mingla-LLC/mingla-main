@@ -19,9 +19,10 @@ const TestRenderer = require("react-test-renderer");
 const { act } = TestRenderer;
 
 const mockPush = jest.fn();
+const mockRouteId = { current: "42730000-0000-4000-8000-0000000000c2" };
 jest.mock("expo-router", () => ({
   useRouter: () => ({ push: mockPush, back: jest.fn(), replace: jest.fn(), canGoBack: () => true }),
-  useLocalSearchParams: () => ({ id: "42730000-0000-4000-8000-0000000000c2" }),
+  useLocalSearchParams: () => ({ id: mockRouteId.current }),
 }));
 jest.mock("../../../../../src/services/supabase", () => ({ supabase: {} }));
 // The screen reaches the panes through the composer route's chunk; the test
@@ -50,7 +51,33 @@ jest.mock("../../../../../src/hooks/marketing/useCampaignReport", () => ({
   useCampaignReport: (id: string | null) => mockReportFor(id),
 }));
 
+// The campaign list's boundaries (P2-3): data, brand, delete and the dialog.
+let mockListRows: unknown[] = [];
+jest.mock("../../../../../src/hooks/marketing/useCampaigns", () => ({
+  useCampaigns: () => ({ data: mockListRows, isLoading: false, isError: false, hasResolved: true, refetch: jest.fn(async () => undefined) }),
+}));
+jest.mock("../../../../../src/hooks/useCurrentBrand", () => ({ useCurrentBrand: () => ({ id: "42730000-0000-4000-8000-0000000000b1" }) }));
+const mockDeleteCampaign = jest.fn(async () => undefined);
+jest.mock("../../../../../src/services/marketing/campaignDeleteService", () => ({
+  deleteCampaign: (...a: unknown[]) => mockDeleteCampaign(...(a as [])),
+}));
+jest.mock("../../../../../src/services/marketing/marketingCampaignService", () => ({ cancelScheduled: jest.fn() }));
+jest.mock("../../../../../src/components/ui/ConfirmDialog", () => {
+  const ReactModule = require("react");
+  const { Pressable, Text, View } = require("react-native");
+  return {
+    ConfirmDialog: (props: Record<string, unknown>) =>
+      props.visible
+        ? ReactModule.createElement(View, { testID: props.testID },
+            ReactModule.createElement(Text, null, `${props.title} ${props.description}`),
+            ReactModule.createElement(Pressable, { testID: props.confirmTestID, onPress: props.onConfirm }),
+            ReactModule.createElement(Pressable, { testID: props.cancelTestID, onPress: props.onClose }))
+        : null,
+  };
+});
+
 import CampaignReportRoute from "../[id]";
+import CampaignsListRoute from "../index";
 
 const HEAD = "42730000-0000-4000-8000-0000000000c1";
 const SMS = "42730000-0000-4000-8000-0000000000c2";
@@ -155,6 +182,7 @@ const tab = (renderer: any, label: string) =>
 
 beforeEach(() => {
   mockWide = false;
+  mockRouteId.current = SMS;
   mockPush.mockReset();
   mockReportFor.mockReset();
   mockReportFor.mockImplementation((id: string | null) => (id === null
@@ -319,5 +347,68 @@ describe("#4273 T-19 the #2262 layout doctrine on the campaign screen", () => {
     expect(compose).toContain('} from "../../../../src/components/marketing/SentCampaignPreviews";');
     // Nothing else may import the sent-view module (it would be shared by two chunks).
     expect(compose.match(/SentCampaignPreviews/g)).toHaveLength(1);
+  });
+});
+
+describe("#4273 P3-3 an id that is not a campaign id", () => {
+  it("shows Campaign not found, not a spinner", async () => {
+    mockRouteId.current = "not-a-campaign";
+    mockGroupState = { data: undefined, isLoading: false, isError: false, notFound: false, hasResolved: false, refetch: jest.fn() };
+    const text = treeText((await mount()).toJSON());
+    expect(text).toContain("Campaign not found");
+  });
+});
+
+describe("#4273 P3-4 the floating New campaign button", () => {
+  it("phones and narrow web keep room for it below the last tile", () => {
+    const screen = readFileSync(path.join(__dirname, "../[id].tsx"), "utf8");
+    expect(screen).toContain("paddingBottom: bottomChromeInset + (isWideDesktop ? 0 : FLOATING_ACTION_CLEARANCE)");
+  });
+});
+
+describe("#4273 P2-3 Delete asks first", () => {
+  const failedRow = {
+    id: "42730000-0000-4000-8000-0000000000f1", account_id: "a", brand_id: "b", audience_id: "au", template_id: null,
+    name: "Friday flop", channel: "sms", channel_payload: { kind: "sms", body: "x" }, campaign_group_id: null,
+    status: "failed", scheduled_for: null, sent_at: null, recipient_count: 0,
+    created_at: "2026-11-07T09:00:00Z", updated_at: "2026-11-07T09:00:00Z",
+  };
+  const mountList = async (): Promise<any> => {
+    let renderer: any;
+    await act(async () => { renderer = TestRenderer.create(<CampaignsListRoute />); });
+    return renderer;
+  };
+  const deleteButton = (renderer: any) =>
+    renderer.root.findAll((node: any) => node.props.accessibilityLabel === "Delete failed campaign Friday flop" && node.props.onPress)[0];
+
+  beforeEach(() => {
+    mockListRows = [failedRow];
+    mockDeleteCampaign.mockClear();
+  });
+
+  it("tapping Delete opens a dialog that names the campaign and says it can't be undone; nothing is deleted yet", async () => {
+    const renderer = await mountList();
+    expect(treeText(renderer.toJSON())).not.toContain("Delete this campaign?");
+    await act(async () => { deleteButton(renderer).props.onPress(); });
+    const text = treeText(renderer.toJSON());
+    expect(text).toContain("Delete this campaign?");
+    expect(text).toContain("Friday flop");
+    expect(text).toContain("This can't be undone.");
+    expect(mockDeleteCampaign).not.toHaveBeenCalled();
+  });
+
+  it("Keep it closes the dialog without deleting", async () => {
+    const renderer = await mountList();
+    await act(async () => { deleteButton(renderer).props.onPress(); });
+    await act(async () => { byTestId(renderer, "delete-campaign-cancel-button").find((n: any) => typeof n.props.onPress === "function").props.onPress(); });
+    expect(mockDeleteCampaign).not.toHaveBeenCalled();
+    expect(treeText(renderer.toJSON())).not.toContain("Delete this campaign?");
+  });
+
+  it("confirming deletes that campaign", async () => {
+    const renderer = await mountList();
+    await act(async () => { deleteButton(renderer).props.onPress(); });
+    await act(async () => { await byTestId(renderer, "delete-campaign-confirm-button").find((n: any) => typeof n.props.onPress === "function").props.onPress(); });
+    expect(mockDeleteCampaign).toHaveBeenCalledWith(failedRow.id);
   });
 });

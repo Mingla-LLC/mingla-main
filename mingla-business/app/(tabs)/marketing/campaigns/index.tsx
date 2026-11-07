@@ -34,10 +34,9 @@ import {
 import { useCurrentBrand } from "../../../../src/hooks/useCurrentBrand";
 import { useCampaigns } from "../../../../src/hooks/marketing/useCampaigns";
 import { useResponsiveLayout } from "../../../../src/hooks/useResponsiveLayout";
-import {
-  cancelScheduled,
-  deleteCampaign,
-} from "../../../../src/services/marketing/marketingCampaignService";
+import { cancelScheduled } from "../../../../src/services/marketing/marketingCampaignService";
+import { deleteCampaign } from "../../../../src/services/marketing/campaignDeleteService";
+import { ConfirmDialog } from "../../../../src/components/ui/ConfirmDialog";
 import {
   filterCampaignGroups,
   groupCampaignRows,
@@ -86,23 +85,43 @@ export default function MarketingCampaignsRoute(): React.ReactElement {
     }
   }, [campaignsQuery]);
 
-  const handleDelete = useCallback(async (ids: string[]) => {
-    try {
-      // #4273 extra (b) — a failed or cancelled method, not a draft.
-      for (const id of ids) await deleteCampaign(id);
-      await campaignsQuery.refetch();
-    } catch (err) {
-      Alert.alert(
-        "Couldn't delete",
-        err instanceof Error ? err.message : "Try again in a moment.",
-      );
-    }
-  }, [campaignsQuery]);
-
   const groups = useMemo(
     () => filterCampaignGroups(groupCampaignRows(campaignsQuery.data ?? []), statusFilter),
     [campaignsQuery.data, statusFilter],
   );
+
+  // #4273 — Delete asks first: it names the campaign and says it can't be undone.
+  const [pendingDelete, setPendingDelete] = useState<{ ids: string[]; name: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const handleDelete = useCallback((ids: string[]) => {
+    const group = groups.find((row) => row.members.some((member) => ids.includes(member.id)));
+    setDeleteError(null);
+    setPendingDelete({ ids, name: group?.primary.name ?? "This campaign" });
+  }, [groups]);
+
+  const closeDelete = useCallback(() => {
+    if (deleting) return;
+    setPendingDelete(null);
+    setDeleteError(null);
+  }, [deleting]);
+
+  const confirmDelete = useCallback(async () => {
+    if (pendingDelete === null) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      // #4273 extra (b) — a failed or cancelled method, not a draft.
+      for (const id of pendingDelete.ids) await deleteCampaign(id);
+      setPendingDelete(null);
+      await campaignsQuery.refetch();
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Couldn't delete. Try again in a moment.");
+    } finally {
+      setDeleting(false);
+    }
+  }, [campaignsQuery, pendingDelete]);
 
   return (
     <View style={styles.host}>
@@ -155,6 +174,28 @@ export default function MarketingCampaignsRoute(): React.ReactElement {
           </View>
         </ScrollView>
       )}
+      <ConfirmDialog
+        visible={pendingDelete !== null}
+        onClose={closeDelete}
+        onConfirm={confirmDelete}
+        title="Delete this campaign?"
+        description={
+          pendingDelete !== null
+            ? `"${pendingDelete.name}" didn't go out. Deleting removes it from Campaigns. This can't be undone.`
+            : ""
+        }
+        variant="simple"
+        confirmLabel="Delete"
+        cancelLabel="Keep it"
+        confirmLoading={deleting}
+        confirmDisabled={deleting}
+        closeDisabled={deleting}
+        errorMessage={deleteError}
+        testID="delete-campaign-confirm"
+        confirmTestID="delete-campaign-confirm-button"
+        cancelTestID="delete-campaign-cancel-button"
+        destructive
+      />
     </View>
   );
 }

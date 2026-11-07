@@ -209,16 +209,6 @@ export class DraftChangedElsewhereError extends Error {
   }
 }
 
-/** #4273 extra (b) — a confirmed send stays on record; its method is free again. */
-export class CampaignKeptForRecordsError extends Error {
-  constructor() {
-    super(
-      "Mingla keeps this send on record because it was confirmed. It no longer stops you sending by this method again.",
-    );
-    this.name = "CampaignKeptForRecordsError";
-  }
-}
-
 export async function updateDraft(input: {
   campaign_id: string;
   name?: string;
@@ -370,31 +360,6 @@ export async function deleteDraft(
     throw new Error(
       "Draft not found, already sent, or not eligible for deletion",
     );
-  }
-}
-
-/**
- * #4273 extra (b) — delete a failed or cancelled campaign (Delete on its card
- * used to call deleteDraft, which only deletes drafts, and always failed). A
- * send that was confirmed stays on record: its confirmation pins the row, and
- * the server no longer counts a failed or cancelled method against its group.
- */
-export async function deleteCampaign(campaignId: string): Promise<void> {
-  assertUuid(campaignId, "deleteCampaign.campaign_id");
-  const { data, error } = await supabase
-    .from("marketing_campaigns")
-    .delete()
-    .eq("id", campaignId)
-    .in("status", ["failed", "cancelled"])
-    .select("id");
-  if (error) {
-    if ((error as { code?: string }).code === "23503") {
-      throw new CampaignKeptForRecordsError();
-    }
-    throw error;
-  }
-  if (!data || data.length === 0) {
-    throw new Error("This campaign can't be deleted. Only a failed or cancelled send can.");
   }
 }
 

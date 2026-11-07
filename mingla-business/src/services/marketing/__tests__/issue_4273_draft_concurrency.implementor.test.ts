@@ -28,12 +28,11 @@ jest.mock("../../supabase", () => {
 });
 
 import {
-  CampaignKeptForRecordsError,
   DraftChangedElsewhereError,
-  deleteCampaign,
   deleteDraft,
   updateDraft,
 } from "../marketingCampaignService";
+import { CampaignKeptForRecordsError, deleteCampaign } from "../campaignDeleteService";
 
 const ID = "42730000-0000-4000-8000-0000000000c9";
 const T0 = "2026-11-07T10:00:00.123456+00:00";
@@ -84,11 +83,16 @@ describe("#4273 extra (b) Delete on a failed campaign works", () => {
     expect(calls.some((call) => call.method === "eq" && call.args[0] === "status")).toBe(false);
   });
 
+  it("the server's kept-on-record refusal reads in plain words", async () => {
+    result = { data: null, error: { code: "42501", message: "campaign_kept_for_records" } };
+    await expect(deleteCampaign(ID)).rejects.toBeInstanceOf(CampaignKeptForRecordsError);
+  });
+
   it("a confirmed send the database keeps on record reads in plain words", async () => {
     result = { data: null, error: { code: "23503", message: "violates foreign key constraint" } };
     await expect(deleteCampaign(ID)).rejects.toBeInstanceOf(CampaignKeptForRecordsError);
     await expect(deleteCampaign(ID)).rejects.toThrow(
-      "Mingla keeps this send on record because it was confirmed. It no longer stops you sending by this method again.",
+      "Mingla keeps this send on record because it reached people. You can still send by this method again.",
     );
   });
 
@@ -107,6 +111,7 @@ describe("#4273 extra (b) Delete on a failed campaign works", () => {
       "utf8",
     );
     expect(list).toContain("await deleteCampaign(id)");
+    expect(list).toContain("<ConfirmDialog");
     expect(list).not.toContain("deleteDraft");
   });
 });
