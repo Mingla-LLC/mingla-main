@@ -11,6 +11,10 @@
  * at exactly 90 under the unchanged 87/90 ceilings.
  *
  * [TEST-MOD-APPROVED #3645] The governed set is now 90, with an empty band.
+ *
+ * [TEST-MOD-APPROVED #4276] #4276 [secret count 91 approved by Seth]: GOOGLE_SEEDING_API_KEY is the
+ * 91st name and the absolute ceiling is 91; the band stays empty and any
+ * unknown 92nd name is still refused.
  */
 
 import assert from "node:assert/strict";
@@ -69,12 +73,12 @@ function readinessCode(code, detail = null) {
 }
 
 test("#3980 happy: the manifest declares SPRINT_ROLLOVER_TOKEN as the 89th governed name", () => {
-  assert.equal(before3980.length, 89);
-  assert.equal(declared.length, 90);
-  assert.equal(new Set(declared).size, 90);
-  assert.equal(manifest.rollout.expected_user_managed_count, 90);
+  assert.equal(before3980.length, 90);
+  assert.equal(declared.length, 91);
+  assert.equal(new Set(declared).size, 91);
+  assert.equal(manifest.rollout.expected_user_managed_count, 91);
   assert.equal(manifest.policy.normal_ceiling, 87);
-  assert.equal(manifest.policy.absolute_ceiling, 90);
+  assert.equal(manifest.policy.absolute_ceiling, 91);
 
   const record = manifest.secrets.find((entry) => entry.name === NAME);
   assert.deepEqual(record, {
@@ -104,10 +108,10 @@ test("#3980 happy: the manifest declares SPRINT_ROLLOVER_TOKEN as the 89th gover
   assert.deepEqual(policy.optional_top_level, [NAME]);
 });
 
-test("#3980 happy: normal-mode preflight accepts the 90-name live set", () => {
+test("#3980 happy: normal-mode preflight accepts the 91-name live set", () => {
   const live = [...before3980, NAME, ...contract.platform_managed];
   const result = parity(live);
-  assert.equal(result.liveUserManaged.length, 90);
+  assert.equal(result.liveUserManaged.length, 91);
   assert.ok(result.liveUserManaged.includes(NAME));
 
   // The full selected-function evaluation passes too, for the function that
@@ -120,10 +124,10 @@ test("#3980 happy: normal-mode preflight accepts the 90-name live set", () => {
     projectRef,
     mergedCommit: "0".repeat(40),
   });
-  assert.equal(readiness.live_user_managed_count, 90);
+  assert.equal(readiness.live_user_managed_count, 91);
   assert.deepEqual(readiness.selected_functions, ["product-avengers-sync"]);
 
-  // The live budget audit sees exactly the 90 declared names, inside #2830.
+  // The live budget audit sees exactly the 91 declared names, inside #2830.
   const budget = auditSecretBudget({
     manifest,
     liveNames: live,
@@ -131,24 +135,24 @@ test("#3980 happy: normal-mode preflight accepts the 90-name live set", () => {
     liveAudit: true,
   });
   assert.deepEqual(budget.failures, []);
-  assert.equal(budget.count, 90);
-  assert.equal(budget.freeSlots, 10);
+  assert.equal(budget.count, 91);
+  assert.equal(budget.freeSlots, 9);
 });
 
-test("#3980 regression: remediation is exactly the 90 declared names", () => {
+test("#3980 regression: remediation is exactly the 91 declared names", () => {
   assert.deepEqual(contract.remediation.allowed_extra_live_names, []);
   const remediationLive = [...declared, ...contract.remediation.allowed_extra_live_names];
   assert.equal(remediationLive.length, manifest.policy.absolute_ceiling);
   const result = parity(remediationLive, "issue-2241-remediation");
-  assert.equal(result.liveUserManaged.length, 90);
-  // Normal mode tolerates the band at 90 as well.
-  assert.equal(parity(remediationLive).liveUserManaged.length, 90);
-  assert.equal(parity(declared, "issue-2241-remediation").liveUserManaged.length, 90);
-  // The exact-90 literal is still in the preflight.
+  assert.equal(result.liveUserManaged.length, 91);
+  // Normal mode tolerates the band at 91 as well.
+  assert.equal(parity(remediationLive).liveUserManaged.length, 91);
+  assert.equal(parity(declared, "issue-2241-remediation").liveUserManaged.length, 91);
+  // The exact-91 literal is still in the preflight.
   const preflight = readFileSync(
     resolve(ROOT, "scripts/secrets/preflight-function-secret-readiness.mjs"),
     "utf8",
   );
-  assert.ok(preflight.includes("liveUserManaged.length !== 90"));
-  assert.ok(preflight.includes("remediation_requires_exact_90"));
+  assert.ok(preflight.includes("liveUserManaged.length !== 91"));
+  assert.ok(preflight.includes("remediation_requires_exact_91"));
 });

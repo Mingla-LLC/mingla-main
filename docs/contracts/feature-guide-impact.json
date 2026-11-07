@@ -1411,6 +1411,7 @@
         "supabase/functions/admin-seed-places/cityBox.ts",
         "supabase/functions/admin-seed-places/searchPipeline.ts",
         "supabase/functions/backfill-place-photos/index.ts",
+        "supabase/functions/_shared/seedingGoogleKey.ts",
         "supabase/functions/run-city-pipeline/conductor.ts",
         "supabase/functions/run-city-pipeline/function-policy.json",
         "supabase/functions/run-city-pipeline/gates.ts",
