@@ -560,6 +560,7 @@ BEGIN
   IF has_table_privilege('anon', 'public.stay_payout_release_holds', 'SELECT')
      OR has_table_privilege('authenticated', 'public.stay_payout_release_holds', 'SELECT')
      OR has_table_privilege('authenticated', 'public.stay_payout_release_holds', 'INSERT')
+     OR has_table_privilege('service_role', 'public.stay_payout_release_holds', 'INSERT')
      OR has_table_privilege('service_role', 'public.stay_payout_release_holds', 'UPDATE')
      OR has_table_privilege('service_role', 'public.stay_payout_release_holds', 'DELETE')
      OR NOT (SELECT relrowsecurity FROM pg_class
@@ -593,6 +594,165 @@ BEGIN
   END;
 END
 $t12$;
+
+-- T13: an event arriving while the payout is being sent fails retryably and
+-- changes nothing; once the payout is recorded the redelivered event takes
+-- the post-payout path (no hold, no lost payout record).
+DO $t13$
+DECLARE
+  v_release uuid := pg_temp.stay(8);
+  v_claim uuid := gen_random_uuid();
+  v_source uuid;
+BEGIN
+  UPDATE public.brand_payout_releases
+  SET status = 'in_flight', stripe_execution_claim_id = v_claim,
+      stripe_execution_claimed_at = now()
+  WHERE id = v_release;
+  IF NOT public.authorize_stripe_payout_execution(v_release, v_claim, 10000) THEN
+    RAISE EXCEPTION 'T13 fixture: authorize refused';
+  END IF;
+  BEGIN
+    PERFORM pg_temp.dispute(8, 'evt_3645_h8_open', 'dp_3645_h8', 2000, 'needs_response');
+    RAISE EXCEPTION 'T13 dispute accepted while the payout is in flight';
+  EXCEPTION WHEN SQLSTATE '55P03' THEN NULL;
+  END;
+  v_source := pg_temp.refund(8, 3000, 3000);
+  BEGIN
+    UPDATE public.source_refunds
+    SET buyer_state = 'processed', buyer_refund_processed_cents = 3000
+    WHERE id = v_source;
+    RAISE EXCEPTION 'T13 refund accepted while the payout is in flight';
+  EXCEPTION WHEN SQLSTATE '55P03' THEN NULL;
+  END;
+  IF EXISTS (SELECT 1 FROM public.stay_payout_release_holds WHERE release_id = v_release)
+     OR (pg_temp.rel(v_release)).status <> 'in_flight'
+     OR (pg_temp.rel(v_release)).stripe_execution_claim_id IS DISTINCT FROM v_claim
+     OR (pg_temp.rel(v_release)).net_release_cents <> 10000 THEN
+    RAISE EXCEPTION 'T13 an in-flight release moved: %', row_to_json(pg_temp.rel(v_release));
+  END IF;
+
+  PERFORM public.record_stripe_payout_execution(
+    v_release, v_claim, 'accepted', 'po_3645_h8', 10000, NULL, now()
+  );
+  IF (pg_temp.rel(v_release)).status <> 'released' THEN
+    RAISE EXCEPTION 'T13 payout not recorded: %', row_to_json(pg_temp.rel(v_release));
+  END IF;
+  PERFORM pg_temp.dispute(8, 'evt_3645_h8_open', 'dp_3645_h8', 2000, 'needs_response');
+  IF NOT EXISTS (
+    SELECT 1 FROM public.payout_ledger_adjustments
+    WHERE release_id = v_release AND kind = 'post_release_dispute' AND amount_cents = 2000
+  ) THEN
+    RAISE EXCEPTION 'T13 redelivered dispute must take the post-payout path';
+  END IF;
+END
+$t13$;
+
+-- T14: Stripe does not guarantee order. A won delivered before an older
+-- needs_response leaves nothing open; 'prevented' resolves like won.
+DO $t14$
+DECLARE
+  v_late uuid := pg_temp.stay(9);
+  v_prevented uuid := pg_temp.stay(10);
+  -- Each release's own starting net: earlier cases left brand debt that
+  -- these releases recovered at attach.
+  v_late_net integer := (pg_temp.rel(v_late)).net_release_cents;
+  v_prevented_net integer := (pg_temp.rel(v_prevented)).net_release_cents;
+BEGIN
+  PERFORM pg_temp.dispute(9, 'evt_3645_h9_won', 'dp_3645_h9', 1200, 'won');
+  PERFORM pg_temp.dispute(9, 'evt_3645_h9_old', 'dp_3645_h9', 1200, 'needs_response');
+  IF public.issue_3645_stay_release_has_open_dispute(v_late)
+     OR (pg_temp.rel(v_late)).net_release_cents <> v_late_net THEN
+    RAISE EXCEPTION 'T14 an out-of-order event reopened a won dispute: %', row_to_json(pg_temp.rel(v_late));
+  END IF;
+
+  PERFORM pg_temp.dispute(10, 'evt_3645_h10_open', 'dp_3645_h10', 800, 'needs_response');
+  PERFORM pg_temp.dispute(10, 'evt_3645_h10_prev', 'dp_3645_h10', 800, 'prevented');
+  IF public.issue_3645_stay_release_has_open_dispute(v_prevented)
+     OR (pg_temp.rel(v_prevented)).net_release_cents <> v_prevented_net THEN
+    RAISE EXCEPTION 'T14 prevented must return the hold: %', row_to_json(pg_temp.rel(v_prevented));
+  END IF;
+END
+$t14$;
+
+-- T15: the maturity recredit is paid on top of net by the claims, so no
+-- projection folds it into net (the old planner did, paying it twice).
+DO $t15$
+DECLARE
+  v_release uuid := pg_temp.stay(11);
+  v_before integer;
+BEGIN
+  v_before := (pg_temp.rel(v_release)).net_release_cents;
+  UPDATE public.brand_payout_releases SET maturity_recredit_cents = 500
+  WHERE id = v_release;
+  PERFORM pg_temp.dispute(11, 'evt_3645_h11_open', 'dp_3645_h11', 2000, 'needs_response');
+  IF (pg_temp.rel(v_release)).net_release_cents <> v_before - 2000 THEN
+    RAISE EXCEPTION 'T15 stay projection folded the recredit into net: %', row_to_json(pg_temp.rel(v_release));
+  END IF;
+  PERFORM public.plan_pending_payout_partner_legs(500);
+  IF (pg_temp.rel(v_release)).net_release_cents <> v_before - 2000 THEN
+    RAISE EXCEPTION 'T15 planner folded the recredit into net: %', row_to_json(pg_temp.rel(v_release));
+  END IF;
+
+  UPDATE public.brand_payout_releases SET maturity_recredit_cents = 500
+  WHERE id = '36450a00-0000-4000-8000-000000000105';
+  PERFORM public.refresh_paystack_dispute_release_projection(
+    '36450a00-0000-4000-8000-000000000105'
+  );
+  IF (pg_temp.rel('36450a00-0000-4000-8000-000000000105')).net_release_cents <> 8550 THEN
+    RAISE EXCEPTION 'T15 Paystack projection folded the recredit into net: %',
+      row_to_json(pg_temp.rel('36450a00-0000-4000-8000-000000000105'));
+  END IF;
+END
+$t15$;
+
+-- T16: a release held by an open dispute does not take a claim slot; the
+-- same brand's clean release is claimed.
+DO $t16$
+DECLARE
+  v_held uuid := pg_temp.stay(12);
+  v_clean uuid := pg_temp.stay(13);
+BEGIN
+  INSERT INTO public.stripe_connect_accounts(
+    brand_id, stripe_account_id, country, default_currency, payouts_enabled,
+    charges_enabled
+  ) VALUES (pg_temp.fx('brand'), 'acct_3645_holds', 'US', 'USD', true, true)
+  ON CONFLICT DO NOTHING;
+  UPDATE public.stripe_connect_accounts SET payouts_enabled = true, detached_at = NULL
+  WHERE brand_id = pg_temp.fx('brand');
+  PERFORM pg_temp.dispute(12, 'evt_3645_h12_open', 'dp_3645_h12', 500, 'needs_response');
+  PERFORM public.claim_stripe_payout_releases(100, now());
+  IF (pg_temp.rel(v_held)).status <> 'pending'
+     OR (pg_temp.rel(v_held)).stripe_execution_claim_id IS NOT NULL THEN
+    RAISE EXCEPTION 'T16 a disputed release was claimed: %', row_to_json(pg_temp.rel(v_held));
+  END IF;
+  IF (pg_temp.rel(v_clean)).status <> 'in_flight' THEN
+    RAISE EXCEPTION 'T16 the clean release was not claimed: %', row_to_json(pg_temp.rel(v_clean));
+  END IF;
+END
+$t16$;
+
+-- T17: a release with transfer legs under way is not moved either.
+DO $t17$
+DECLARE
+  v_release uuid := pg_temp.stay(14);
+  v_source uuid;
+BEGIN
+  INSERT INTO public.payout_transfer_legs(
+    release_id, kind, chunk_index, principal_cents, fee_schedule_version
+  ) VALUES (v_release, 'organiser', 0, 10000, 'issue-3645-test');
+  v_source := pg_temp.refund(14, 2000, 2000);
+  BEGIN
+    UPDATE public.source_refunds
+    SET buyer_state = 'processed', buyer_refund_processed_cents = 2000
+    WHERE id = v_source;
+    RAISE EXCEPTION 'T17 refund accepted while legs are planned';
+  EXCEPTION WHEN SQLSTATE '55P03' THEN NULL;
+  END;
+  IF EXISTS (SELECT 1 FROM public.stay_payout_release_holds WHERE release_id = v_release) THEN
+    RAISE EXCEPTION 'T17 a hold was written behind planned legs';
+  END IF;
+END
+$t17$;
 
 DO $done$ BEGIN RAISE NOTICE 'issue_3645_unpaid_release_holds_pass'; END $done$;
 

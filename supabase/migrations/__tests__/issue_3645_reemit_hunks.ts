@@ -648,6 +648,10 @@ export const REEMITS: Reemit[] = [
     source: "supabase/migrations/20271231204134_issue_4134_pt409_application_conflicts.sql",
     target: UNPAID_HOLDS,
     hunks: [
+      { name: "a prevented dispute is resolved like a won one", old: `  v_resolved boolean := lower(p_status) IN ('won', 'warning_closed');
+`, new: `  -- #3645: Stripe's 'prevented' also returns the funds.
+  v_resolved boolean := lower(p_status) IN ('won', 'warning_closed', 'prevented');
+` },
       { name: "unpaid stay release records a dispute hold", old: `    IF FOUND AND v_release.status <> 'released' THEN
       UPDATE public.payout_release_items
       SET disputed_cents = CASE WHEN v_resolved
@@ -679,6 +683,11 @@ export const REEMITS: Reemit[] = [
       -- #3645: payout_release_items is append-only. An unpaid release records
       -- the dispute as a hold and its totals are re-projected; the payout is
       -- refused while the dispute is open (authorize_stripe_payout_execution).
+      IF v_release.status = 'in_flight' THEN
+        -- A payout is being sent right now. Fail retryably: Stripe redelivers
+        -- once the release is released (post-payout path) or pending (hold).
+        RAISE EXCEPTION 'stay_release_payout_in_flight' USING ERRCODE = '55P03';
+      END IF;
       IF v_resolved THEN
         INSERT INTO public.stay_payout_release_holds (
           release_id, line_id, kind, refunded_cents, disputed_cents,
@@ -705,10 +714,17 @@ export const REEMITS: Reemit[] = [
         INSERT INTO public.stay_payout_release_holds (
           release_id, line_id, kind, refunded_cents, disputed_cents,
           net_hold_cents, provider_ref, idempotency_key
-        ) VALUES (
+        )
+        SELECT
           v_release.id, v_line.line_id, 'dispute_opened', 0,
           v_line.disputed_minor, v_line.disputed_minor, p_dispute_ref,
           'stay-dispute-hold:' || p_dispute_ref || ':' || v_line.line_id || ':opened'
+        -- An older event delivered after the dispute was already won must not
+        -- reopen it (Stripe does not guarantee delivery order).
+        WHERE NOT EXISTS (
+          SELECT 1 FROM public.stay_money_ledger resolved
+          WHERE resolved.idempotency_key =
+            'stay:dispute:' || p_dispute_ref || ':' || v_line.line_id || ':resolved'
         )
         ON CONFLICT DO NOTHING;
         IF lower(p_status) = 'lost' THEN
@@ -780,6 +796,11 @@ export const REEMITS: Reemit[] = [
         -- #3645: payout_release_items is append-only. The host bears only the
         -- organiser share of the refund (Mingla returns its fee share); record
         -- it as a hold and re-project the unpaid release.
+        IF v_release.status = 'in_flight' THEN
+          -- A payout is being sent right now: fail retryably (the refund
+          -- event is redelivered once the release settles either way).
+          RAISE EXCEPTION 'stay_release_payout_in_flight' USING ERRCODE = '55P03';
+        END IF;
         INSERT INTO public.stay_payout_release_holds (
           release_id, line_id, kind, refunded_cents, disputed_cents,
           net_hold_cents, provider_ref, idempotency_key
@@ -828,8 +849,11 @@ export const REEMITS: Reemit[] = [
           - permanent_debt_withheld_cents - temporary_debt_withheld_cents
           + maturity_recredit_cents
         ),
-`, new: `        -- #3645: Σ item net − holds − withheld debt + recredit, computed by
-        -- issue_3645_release_projected_totals (same terms as before plus holds).
+`, new: `        -- #3645: Σ item net − holds − withheld debt, computed by
+        -- issue_3645_release_projected_totals. The maturity recredit is no
+        -- longer folded in here: every claim and authorize already pays
+        -- net_release_cents + maturity_recredit_cents, so adding it to net
+        -- paid it twice.
         net_release_cents = v_projected.net_release_cents,
 ` },
     ],
@@ -913,17 +937,13 @@ export const REEMITS: Reemit[] = [
     source: "supabase/migrations/20270720003645_issue_3645_payment_plus_24h_payouts.sql",
     target: UNPAID_HOLDS,
     hunks: [
-      { name: "stay payout refused while a held dispute is open", old: `  IF NOT FOUND THEN
-    RAISE EXCEPTION 'stripe_release_not_found' USING ERRCODE='P0002';
+      { name: "stay payout refused while a held dispute is open", old: `    RAISE EXCEPTION 'stale_stripe_execution_claim' USING ERRCODE='P0001';
   END IF;
-`, new: `  IF NOT FOUND THEN
-    RAISE EXCEPTION 'stripe_release_not_found' USING ERRCODE='P0002';
+`, new: `    RAISE EXCEPTION 'stale_stripe_execution_claim' USING ERRCODE='P0001';
   END IF;
   -- #3645: like Paystack, fail closed while a stay dispute held on this
   -- unpaid release is open. Won returns the hold; lost keeps it and unblocks.
-  IF v_release.status='in_flight'
-     AND v_release.stripe_payout_id IS NULL
-     AND public.issue_3645_stay_release_has_open_dispute(p_release_id) THEN
+  IF public.issue_3645_stay_release_has_open_dispute(p_release_id) THEN
     UPDATE public.brand_payout_releases
     SET status='pending',
         error_message='stay_dispute_open',
@@ -933,6 +953,25 @@ export const REEMITS: Reemit[] = [
     WHERE id=p_release_id;
     RETURN false;
   END IF;
+` },
+    ],
+  },
+  {
+    fn: "claim_stripe_payout_releases",
+    source: "supabase/migrations/20270728003645_issue_3645_admin_payout_pause_and_debt.sql",
+    target: UNPAID_HOLDS,
+    hunks: [
+      { name: "a stay release held by an open dispute is not claimed", old: `      AND NOT EXISTS (
+        SELECT 1 FROM public.brand_payout_admin_holds h
+        WHERE h.brand_id=r.brand_id
+      )
+`, new: `      AND NOT EXISTS (
+        SELECT 1 FROM public.brand_payout_admin_holds h
+        WHERE h.brand_id=r.brand_id
+      )
+      -- #3645: a stay release held by an open dispute waits without taking
+      -- one of the claim slots, so it cannot starve newer payouts.
+      AND NOT public.issue_3645_stay_release_has_open_dispute(r.id)
 ` },
     ],
   },

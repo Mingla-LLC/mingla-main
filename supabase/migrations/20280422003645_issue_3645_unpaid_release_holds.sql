@@ -72,7 +72,9 @@ ALTER TABLE public.stay_payout_release_holds ENABLE ROW LEVEL SECURITY;
 -- #1856 grant class: tables arrive with ALL for anon/authenticated by default.
 REVOKE ALL ON public.stay_payout_release_holds FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON public.stay_payout_release_holds FROM service_role;
-GRANT SELECT, INSERT ON public.stay_payout_release_holds TO service_role;
+-- Only the SECURITY DEFINER dispute/refund paths write holds (a direct insert
+-- would skip the projection), so the service role can read but not write.
+GRANT SELECT ON public.stay_payout_release_holds TO service_role;
 
 COMMENT ON TABLE public.stay_payout_release_holds IS
   'Issue #3645: append-only refunds and disputes recorded against an unpaid stay payout release; issue_3645_release_projected_totals reads them.';
@@ -93,8 +95,7 @@ AS $fn$
   WITH rel AS (
     SELECT r.id, r.provider,
       r.permanent_debt_withheld_cents::bigint AS permanent_withheld,
-      r.temporary_debt_withheld_cents::bigint AS temporary_withheld,
-      r.maturity_recredit_cents::bigint AS recredit
+      r.temporary_debt_withheld_cents::bigint AS temporary_withheld
     FROM public.brand_payout_releases r
     WHERE r.id = p_release_id
   ), items AS (
@@ -164,14 +165,15 @@ AS $fn$
   SELECT
     least(coalesce(sum(per_item.refunded), 0), 2147483647)::integer,
     least(coalesce(sum(per_item.disputed), 0), 2147483647)::integer,
+    -- maturity_recredit_cents stays out: claims pay net + recredit.
     greatest(0, least(
       coalesce(sum(per_item.net), 0)
-        - rel.permanent_withheld - rel.temporary_withheld + rel.recredit,
+        - rel.permanent_withheld - rel.temporary_withheld,
       2147483647
     ))::integer
   FROM rel
   LEFT JOIN per_item ON true
-  GROUP BY rel.permanent_withheld, rel.temporary_withheld, rel.recredit;
+  GROUP BY rel.permanent_withheld, rel.temporary_withheld;
 $fn$;
 
 REVOKE ALL ON FUNCTION public.issue_3645_release_projected_totals(uuid)
@@ -180,7 +182,7 @@ GRANT EXECUTE ON FUNCTION public.issue_3645_release_projected_totals(uuid)
   TO service_role;
 
 COMMENT ON FUNCTION public.issue_3645_release_projected_totals(uuid) IS
-  'Issue #3645: a pending release''s refunded, disputed and net from immutable items, stay holds and Paystack dispute holds, minus withheld debt, plus recredit. The only formula the planner and projections use.';
+  'Issue #3645: a pending release''s refunded, disputed and net from immutable items, stay holds and Paystack dispute holds, minus withheld debt (the maturity recredit is paid on top by the claims). The only formula the planner and projections use.';
 
 -- §3. Is a dispute held on this stay release still open?
 CREATE OR REPLACE FUNCTION public.issue_3645_stay_release_has_open_dispute(
@@ -242,6 +244,17 @@ BEGIN
   IF v_release.status = 'released' THEN
     RETURN jsonb_build_object('release_id', p_release_id, 'projected', false);
   END IF;
+  -- Never move a release while its payout is being sent: a claimed release,
+  -- or a Paystack release whose transfer legs are planned or under way
+  -- (a re-claim reuses those legs). The caller's event fails retryably and is
+  -- redelivered once the payout settles (post-payout path) or is released.
+  IF v_release.status = 'in_flight' OR EXISTS (
+    SELECT 1 FROM public.payout_transfer_legs leg
+    WHERE leg.release_id = p_release_id
+      AND leg.status NOT IN ('failed', 'reversed')
+  ) THEN
+    RAISE EXCEPTION 'stay_release_payout_in_flight' USING ERRCODE = '55P03';
+  END IF;
 
   SELECT * INTO v_totals
   FROM public.issue_3645_release_projected_totals(p_release_id);
@@ -251,22 +264,9 @@ BEGIN
   SET refunded_cents = v_totals.refunded_cents,
       disputed_cents = v_totals.disputed_cents,
       net_release_cents = v_totals.net_release_cents,
-      -- A claimed-but-unsent payout goes back to pending so the next run
-      -- claims the new amount instead of being refused as stale.
-      status = CASE
-        WHEN status = 'in_flight' AND stripe_payout_id IS NULL THEN 'pending'
-        ELSE status
-      END,
-      stripe_execution_claim_id = CASE
-        WHEN status = 'in_flight' AND stripe_payout_id IS NULL THEN NULL
-        ELSE stripe_execution_claim_id
-      END,
-      stripe_execution_claimed_at = CASE
-        WHEN status = 'in_flight' AND stripe_payout_id IS NULL THEN NULL
-        ELSE stripe_execution_claimed_at
-      END,
+      -- Never overwrite another reason the release is waiting.
       error_message = CASE
-        WHEN v_open THEN 'stay_dispute_open'
+        WHEN v_open THEN coalesce(error_message, 'stay_dispute_open')
         WHEN error_message = 'stay_dispute_open' THEN NULL
         ELSE error_message
       END,
@@ -303,7 +303,8 @@ DECLARE
   v_group public.stay_reservation_groups%ROWTYPE;
   v_event_id uuid;
   v_line record;
-  v_resolved boolean := lower(p_status) IN ('won', 'warning_closed');
+  -- #3645: Stripe's 'prevented' also returns the funds.
+  v_resolved boolean := lower(p_status) IN ('won', 'warning_closed', 'prevented');
   v_release public.brand_payout_releases%ROWTYPE;
 BEGIN
   IF NOT public.issue_1389_service_role() THEN
@@ -444,6 +445,11 @@ BEGIN
       -- #3645: payout_release_items is append-only. An unpaid release records
       -- the dispute as a hold and its totals are re-projected; the payout is
       -- refused while the dispute is open (authorize_stripe_payout_execution).
+      IF v_release.status = 'in_flight' THEN
+        -- A payout is being sent right now. Fail retryably: Stripe redelivers
+        -- once the release is released (post-payout path) or pending (hold).
+        RAISE EXCEPTION 'stay_release_payout_in_flight' USING ERRCODE = '55P03';
+      END IF;
       IF v_resolved THEN
         INSERT INTO public.stay_payout_release_holds (
           release_id, line_id, kind, refunded_cents, disputed_cents,
@@ -470,10 +476,17 @@ BEGIN
         INSERT INTO public.stay_payout_release_holds (
           release_id, line_id, kind, refunded_cents, disputed_cents,
           net_hold_cents, provider_ref, idempotency_key
-        ) VALUES (
+        )
+        SELECT
           v_release.id, v_line.line_id, 'dispute_opened', 0,
           v_line.disputed_minor, v_line.disputed_minor, p_dispute_ref,
           'stay-dispute-hold:' || p_dispute_ref || ':' || v_line.line_id || ':opened'
+        -- An older event delivered after the dispute was already won must not
+        -- reopen it (Stripe does not guarantee delivery order).
+        WHERE NOT EXISTS (
+          SELECT 1 FROM public.stay_money_ledger resolved
+          WHERE resolved.idempotency_key =
+            'stay:dispute:' || p_dispute_ref || ':' || v_line.line_id || ':resolved'
         )
         ON CONFLICT DO NOTHING;
         IF lower(p_status) = 'lost' THEN
@@ -715,6 +728,11 @@ BEGIN
         -- #3645: payout_release_items is append-only. The host bears only the
         -- organiser share of the refund (Mingla returns its fee share); record
         -- it as a hold and re-project the unpaid release.
+        IF v_release.status = 'in_flight' THEN
+          -- A payout is being sent right now: fail retryably (the refund
+          -- event is redelivered once the release settles either way).
+          RAISE EXCEPTION 'stay_release_payout_in_flight' USING ERRCODE = '55P03';
+        END IF;
         INSERT INTO public.stay_payout_release_holds (
           release_id, line_id, kind, refunded_cents, disputed_cents,
           net_hold_cents, provider_ref, idempotency_key
@@ -940,8 +958,11 @@ BEGIN
         -- #3645 (Seth 2026-10-21): the host net is the sum of the STORED item
         -- nets, so a pre-flat-4.5% item keeps its old maths and a new-rule
         -- item keeps gross − mingla_fee. Never re-derive it from gross/fee.
-        -- #3645: Σ item net − holds − withheld debt + recredit, computed by
-        -- issue_3645_release_projected_totals (same terms as before plus holds).
+        -- #3645: Σ item net − holds − withheld debt, computed by
+        -- issue_3645_release_projected_totals. The maturity recredit is no
+        -- longer folded in here: every claim and authorize already pays
+        -- net_release_cents + maturity_recredit_cents, so adding it to net
+        -- paid it twice.
         net_release_cents = v_projected.net_release_cents,
         updated_at = now()
     WHERE id = v_release.id;
@@ -1049,11 +1070,14 @@ BEGIN
   IF NOT FOUND THEN
     RAISE EXCEPTION 'stripe_release_not_found' USING ERRCODE='P0002';
   END IF;
+  IF v_release.stripe_execution_claim_id IS DISTINCT FROM p_claim_id
+     OR v_release.status<>'in_flight'
+     OR v_release.stripe_payout_id IS NOT NULL THEN
+    RAISE EXCEPTION 'stale_stripe_execution_claim' USING ERRCODE='P0001';
+  END IF;
   -- #3645: like Paystack, fail closed while a stay dispute held on this
   -- unpaid release is open. Won returns the hold; lost keeps it and unblocks.
-  IF v_release.status='in_flight'
-     AND v_release.stripe_payout_id IS NULL
-     AND public.issue_3645_stay_release_has_open_dispute(p_release_id) THEN
+  IF public.issue_3645_stay_release_has_open_dispute(p_release_id) THEN
     UPDATE public.brand_payout_releases
     SET status='pending',
         error_message='stay_dispute_open',
@@ -1062,11 +1086,6 @@ BEGIN
         updated_at=p_now
     WHERE id=p_release_id;
     RETURN false;
-  END IF;
-  IF v_release.stripe_execution_claim_id IS DISTINCT FROM p_claim_id
-     OR v_release.status<>'in_flight'
-     OR v_release.stripe_payout_id IS NOT NULL THEN
-    RAISE EXCEPTION 'stale_stripe_execution_claim' USING ERRCODE='P0001';
   END IF;
   v_expected:=v_release.net_release_cents+v_release.maturity_recredit_cents;
   IF p_amount_cents IS DISTINCT FROM v_expected OR v_expected<=0 THEN
@@ -1121,5 +1140,111 @@ REVOKE ALL ON FUNCTION public.authorize_stripe_payout_execution(
 GRANT EXECUTE ON FUNCTION public.authorize_stripe_payout_execution(
   uuid,uuid,integer,timestamptz
 ) TO service_role;
+
+-- ---- claim_stripe_payout_releases (source and hunks: __tests__/issue_3645_reemit_hunks.ts)
+CREATE OR REPLACE FUNCTION public.claim_stripe_payout_releases(
+  p_limit integer DEFAULT 20,
+  p_now timestamptz DEFAULT now()
+) RETURNS TABLE(
+  release_id uuid,
+  brand_id uuid,
+  stripe_account_id text,
+  currency text,
+  net_release_cents integer,
+  maturity_recredit_cents integer,
+  attempt_count integer,
+  claim_id uuid
+)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+AS $fn$
+BEGIN
+  RETURN QUERY
+  WITH eligible AS (
+    SELECT
+      r.id,
+      least(coalesce((
+        SELECT sum(a.amount_cents)
+        FROM public.payout_ledger_adjustments a
+        WHERE a.release_id=r.id AND a.kind='maturity_recredit'
+      ),0), 2147483647::bigint)::integer AS recredit
+    FROM public.brand_payout_releases r
+    JOIN public.stripe_connect_accounts sca
+      ON sca.brand_id=r.brand_id
+     AND sca.detached_at IS NULL
+     AND sca.payouts_enabled IS TRUE
+    WHERE r.provider='stripe'
+      AND r.stripe_payout_id IS NULL
+      AND r.attempt_count<10
+      AND r.releasable_at<=p_now
+      -- #3645 PR9: an admin-paused brand's mature money stays pending (never
+      -- claimed); it keeps accruing and the next sweep claims it after resume.
+      AND NOT EXISTS (
+        SELECT 1 FROM public.brand_payout_admin_holds h
+        WHERE h.brand_id=r.brand_id
+      )
+      -- #3645: a stay release held by an open dispute waits without taking
+      -- one of the claim slots, so it cannot starve newer payouts.
+      AND NOT public.issue_3645_stay_release_has_open_dispute(r.id)
+      AND (
+        r.status IN ('pending','blocked_kyc','blocked_balance')
+        OR (
+          r.status='in_flight'
+          AND r.stripe_execution_claimed_at < p_now-interval '10 minutes'
+        )
+      )
+      AND (
+        r.event_id IS NULL
+        OR EXISTS (
+          SELECT 1 FROM public.events e
+          WHERE e.id=r.event_id AND e.status<>'cancelled'
+        )
+      )
+      -- Due test in bigint: net_release_cents (integer) + the already-clamped
+      -- bigint recredit must not be summed as two integers, or a combined due
+      -- over int4 max would raise integer overflow and abort the whole claim
+      -- RPC (stalling unrelated payouts in the sweep). bigint the predicate.
+      AND r.net_release_cents::bigint + least(coalesce((
+        SELECT sum(a.amount_cents)
+        FROM public.payout_ledger_adjustments a
+        WHERE a.release_id=r.id AND a.kind='maturity_recredit'
+      ),0), 2147483647::bigint) > 0
+    ORDER BY r.releasable_at,r.created_at,r.id
+    FOR UPDATE OF r SKIP LOCKED
+    LIMIT greatest(1,least(p_limit,100))
+  ),
+  claimed AS (
+    UPDATE public.brand_payout_releases r
+    SET status='in_flight',
+        maturity_recredit_cents=eligible.recredit,
+        stripe_execution_claim_id=gen_random_uuid(),
+        stripe_execution_claimed_at=p_now,
+        error_message=NULL,
+        updated_at=p_now
+    FROM eligible
+    WHERE r.id=eligible.id
+    RETURNING r.*
+  )
+  SELECT
+    c.id,
+    c.brand_id,
+    sca.stripe_account_id,
+    c.currency,
+    c.net_release_cents,
+    c.maturity_recredit_cents,
+    c.attempt_count,
+    c.stripe_execution_claim_id
+  FROM claimed c
+  JOIN public.stripe_connect_accounts sca
+    ON sca.brand_id=c.brand_id
+   AND sca.detached_at IS NULL
+   AND sca.payouts_enabled IS TRUE
+  ORDER BY c.releasable_at,c.created_at,c.id;
+END;
+$fn$;
+
+REVOKE ALL ON FUNCTION public.claim_stripe_payout_releases(integer,timestamptz)
+  FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.claim_stripe_payout_releases(integer,timestamptz)
+  TO service_role;
 
 COMMIT;
