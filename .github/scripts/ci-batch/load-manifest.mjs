@@ -176,8 +176,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // and joined the pre-#1931 replay skip list by exact filename.
 // #4294: re-sealed after the connector's tester PostgreSQL proof joined the pre-#1931 template suites' inventories.
 // #4294: re-sealed after merging origin/main (#4303 and #4296 rows kept beside the #4294 rows).
-// #4270: register the brand plan migrations (20280423004270-20280423024270) and their proofs the same way.
-export const BOOTSTRAP_SHA256 = "de4105be0997603ba40d3b55ed68c1865e9e95af570fd7d84bd7f5c959235829";
+// #4270: register the brand plan migrations (20280427004270-20280427024270) and their proofs the same way.
+export const BOOTSTRAP_SHA256 = "3cd22c87cf67613a44c4d061f383a0a059b30dbf81a7deb68b45475d971c7739";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

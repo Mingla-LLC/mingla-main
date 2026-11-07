@@ -384,8 +384,8 @@ export function phase3dContractDigest(manifest) {
 // migration joins the pre-#1931 replay's exact-file exclusion (#2492).
 // #4294: re-sealed after the connector's tester PostgreSQL proof joined the pre-#1931 template suites' inventories.
 // #4294: re-sealed after merging origin/main (#4303 and #4296 rows kept beside the #4294 rows).
-// #4270: register the brand plan migrations (20280423004270-20280423024270) and their proofs the same way.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "47926c5f6f61ebf819220100663d3f8dbe301fddef937b251f572e86840e217b";
+// #4270: register the brand plan migrations (20280427004270-20280427024270) and their proofs the same way.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "d103021ead35dd07503e7b27ae9c6ae63ea09dedd6a6294a59ae79228ae0b0f5";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

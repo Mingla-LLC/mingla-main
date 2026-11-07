@@ -42,7 +42,7 @@
 -- Static SQL only (no EXECUTE of built strings); write conflicts raise PT409,
 -- never 40001. CREATE OR REPLACE keeps every owner and grant. Do not
 -- auto-apply. Release through the governed migration lane, after
--- 20280423014270.
+-- 20280427014270.
 
 BEGIN;
 
@@ -117,7 +117,7 @@ AS $$
 $$;
 
 -- The link rule itself (brand_plan_link_host, brand_plan_link_hidden) sits with the
--- Files link in 20280423014270: a card and the plan refuse the same links.
+-- Files link in 20280427014270: a card and the plan refuse the same links.
 
 -- Rework (W4 test P3-1, D30): one label of a site name as its real address, the
 -- punycode a browser opens (RFC 3492, section 6.3), with the "xn--" a browser

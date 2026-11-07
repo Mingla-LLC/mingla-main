@@ -86,9 +86,9 @@ const hooks = require("../../../hooks/useBrandPlan") as typeof import("../../../
 const service = require("../../../services/brandPlanService") as typeof import("../../../services/brandPlanService");
 
 const ROOT = path.resolve(__dirname, "../../../../..");
-const MIGRATION = fs.readFileSync(path.join(ROOT, "supabase/migrations/20280423024270_issue_4270_w3_brand_plan.sql"), "utf8");
+const MIGRATION = fs.readFileSync(path.join(ROOT, "supabase/migrations/20280427024270_issue_4270_w3_brand_plan.sql"), "utf8");
 // W5: the link rule moved to the host card migration, where the Files link uses it too.
-const LINK_RULE_MIGRATION = fs.readFileSync(path.join(ROOT, "supabase/migrations/20280423014270_issue_4270_w2_host_card.sql"), "utf8");
+const LINK_RULE_MIGRATION = fs.readFileSync(path.join(ROOT, "supabase/migrations/20280427014270_issue_4270_w2_host_card.sql"), "utf8");
 const LOCALES = path.join(ROOT, "mingla-business/src/i18n/locales");
 // W5: the plan's English words moved to their own file, loaded with the plan.
 const en = {
