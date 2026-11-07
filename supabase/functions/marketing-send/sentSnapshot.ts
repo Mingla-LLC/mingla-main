@@ -1,18 +1,10 @@
 // #4273 polish — the send snapshot: what each method of a campaign sent,
 // written once before the first recipient so the campaign screen can show it.
 //
-// Invariants I-4273-SENT-SNAPSHOT-WRITE-ONCE and I-4273-SENT-VIEW-NO-CONTACTS
-// are declared beside their tests (issue_4273_sent_snapshot.implementor.test.ts
-// and the pg17 sent-snapshot suite).
-//
-// The builders are pure and take only per-campaign values. Everything per
-// recipient (first name, the guest's last event, the unsubscribe link, the
-// tracking ids, the reason line) stays out: the preview shows per-guest words
-// as [labels], one sample short link, and one push per reason.
-//
-// The write is best-effort: a snapshot failure is logged and never stops a
-// send. The campaign screen then rebuilds the preview from the saved message
-// and says so.
+// Invariants: I-4273-SNAPSHOT-WRITTEN-BEFORE-DELIVERY and
+// I-4273-SNAPSHOT-NO-RECIPIENT-DATA (declared in
+// issue_4273_sent_snapshot.implementor.test.ts); I-4273-SENT-SNAPSHOT-WRITE-ONCE
+// (the database guard, declared in the pg17 sent-snapshot suite).
 
 import { computeSegments } from "../_shared/adapters/smsAdapter.ts";
 import type { EmbeddedEvent } from "../_shared/marketingEmailRender.ts";

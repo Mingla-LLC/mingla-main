@@ -7,8 +7,8 @@
  * Supabase client is a recording fake, so "before the first recipient" is the
  * order of recorded writes, not an assumption.
  */
-// MINGLA-INVARIANT: I-4273-SENT-SNAPSHOT-WRITE-ONCE | issue #4273 | marketing-send writes a campaign's send snapshot once (UPDATE ... WHERE sent_snapshot IS NULL), after the empty-content guards and before the first recipient, and a failed write never stops the send.
-// MINGLA-INVARIANT: I-4273-SENT-VIEW-NO-CONTACTS | issue #4273 | The send snapshot never carries a recipient contact, name, user id, unsubscribe link, per-recipient tracking id or the brand's contact address.
+// MINGLA-INVARIANT: I-4273-SNAPSHOT-WRITTEN-BEFORE-DELIVERY | issue #4273 | marketing-send writes a campaign's send snapshot once (UPDATE ... WHERE sent_snapshot IS NULL), after the empty-content guards and before the first recipient, and a failed write never stops the send.
+// MINGLA-INVARIANT: I-4273-SNAPSHOT-NO-RECIPIENT-DATA | issue #4273 | The send snapshot never carries a recipient contact, name, user id, unsubscribe link, per-recipient tracking id or the brand's contact address.
 import {
   assert,
   assertEquals,
