@@ -1173,10 +1173,12 @@ export function liveStats(run, serperRate = null) {
       { label: "Serper", value: count(req ?? 0), note: rate === null ? "requests · not priced" : `requests · ${usd((req ?? 0) * rate)}` },
     ];
   }
+  const req = num(run?.serper_requests) ?? 0;
+  const rate = num(serperRate);
   return [
     { label: "Places held", value: count(run?.held_places) },
     { label: "Stage", value: stage ? stageLabel(stage) : "–" },
-    { label: "Spent", value: usd(run?.spent_usd) },
+    { label: "Serper", value: count(req), note: rate === null ? "requests · not priced" : `requests · ${usd(req * rate)}` },
   ];
 }
 
