@@ -29,6 +29,8 @@
 --        audit and call row; no client role reaches Vault or the reader
 --   A-11 structure: set_key never builds SQL text; only the named functions
 --        touch Vault; every internal function is closed to clients
+--   A-12 company-tool addresses written as hex or short IPv4 forms are
+--        refused by the database rule and by saving
 --
 -- One transaction, rolled back. Never run on production. Runs as the
 -- image's admin role from the repository root.
@@ -550,12 +552,15 @@ begin
   perform pg_temp.ta_check('A-6', 'adding the person back does not revive the old token', pg_temp.ta_who(pg_temp.ta_id('gl.access')), 'invalid');
   perform pg_temp.ta_check('A-6', 'or the old refresh token', pg_temp.ta_refresh('gl', pg_temp.ta_c('app'), 'x'), '{"error": "invalid_grant"}');
 
-  -- Two accounts on one address.
+  -- Two accounts on one address. A code approved while there was one
+  -- account is in hand when the second appears.
+  perform pg_temp.ta_like('A-6', 'with one account the person approves (control)',
+    pg_temp.ta_approve('twin', pg_temp.ta_c('app'), pg_temp.ta_c('app_redirect'), pg_temp.ta_c('verifier'), 't1'), '{"code": "mglo_%');
   insert into auth.users (id, email, email_confirmed_at)
   values ('4294a000-0000-4000-a000-0000000000f5', 'ISSUE4294T-TWIN@test.local', now());
-  -- Approve may still hand out a code (it checks only the phone or social
-  -- sign-in conflict); the exchange is where the one-account rule bites.
-  perform pg_temp.ta_approve('twin', pg_temp.ta_c('app'), pg_temp.ta_c('app_redirect'), pg_temp.ta_c('verifier'), 't1');
+  -- Approve applies the one-account rule up front; the exchange applies it again.
+  perform pg_temp.ta_like('A-6', 'a person with two accounts on one address cannot approve',
+    pg_temp.ta_approve('twin', pg_temp.ta_c('app'), pg_temp.ta_c('app_redirect'), pg_temp.ta_c('verifier'), 'x'), 'ERR:42501:%');
   perform pg_temp.ta_check('A-6', 'a person with two accounts on one address gets no token',
     pg_temp.ta_exchange('t1', pg_temp.ta_c('app'), pg_temp.ta_c('app_redirect'), pg_temp.ta_c('verifier'), 'gt'), '{"error": "invalid_grant"}');
   perform pg_temp.ta_check('A-6', 'and no live grant or sign-in key is left for them',
@@ -716,6 +721,10 @@ begin
       (null, 'exec'), ('p', 'exec'), ('posthog' || chr(8203), 'exec'), ('p' || chr(1086) || 'sthog', 'exec')
     ) as t(slug, tool)
   loop
+    -- Keep the owner under the per-minute limit (it now counts refused calls
+    -- too), so each answer is about the name, not the limit.
+    update public.mingla_connector_calls set started_at = started_at - interval '2 days'
+     where owner_email = 'issue4294t-owner@test.local';
     v := pg_temp.ta_as('service', format('select public.mingla_connector_call_begin(%L, %L, %L, %L)::text',
            pg_temp.ta_digest(pg_temp.ta_id('owner.personal')), r.slug, r.tool, 'tester'))::jsonb;
     perform pg_temp.ta_check('A-9', format('call %L / %L is not allowed', r.slug, r.tool), v ->> 'token', 'not_allowed');
@@ -905,6 +914,32 @@ begin
 end;
 $a11$;
 
+-- ---------------------------------------------------------------------------
+-- A-12 company-tool address forms that fetch reads as an IP address.
+-- ---------------------------------------------------------------------------
+do $a12$
+declare
+  r record;
+begin
+  for r in select * from (values
+      ('https://0x7f.0.0.1/mcp'), ('https://0x7f.1/mcp'), ('https://1.0x2/x'), ('https://0xa9.0xfe.0xa9.0xfe/latest'),
+      ('https://0x7f.0x0.0x0.0x1/mcp'), ('https://tools.0x10/mcp'), ('https://tools.0x/mcp'), ('https://tools.example.10/mcp'),
+      ('https://0177.0.0.1/mcp'), ('https://127.1/mcp')
+    ) as t(url)
+  loop
+    perform pg_temp.ta_check('A-12', format('%s is refused by the address rule', r.url),
+      public.mingla_connector_url_ok(r.url)::text, 'false');
+    perform pg_temp.ta_like('A-12', format('the owner cannot save %s', r.url),
+      pg_temp.ta_as('owner', format('select public.mingla_connector_registry_save(%L::jsonb)::text',
+        jsonb_build_object('slug', 'hexhost', 'label', 'H', 'mcp_url', r.url))), 'ERR:22023:invalid_url:%');
+  end loop;
+  perform pg_temp.ta_check('A-12', 'no row was saved with such an address',
+    (select count(*)::text from public.mingla_connector_upstreams where slug = 'hexhost'), '0');
+  perform pg_temp.ta_check('A-12', 'a name that only starts like a number is still allowed (control)',
+    public.mingla_connector_url_ok('https://0x7f.tester-tools.example/mcp')::text, 'true');
+end;
+$a12$;
+
 do $verdict$
 declare
   v_total int;
@@ -918,7 +953,7 @@ begin
   if v_failed > 0 or v_total < 200 then
     raise exception 'ISSUE-4294 TESTER FAIL: % of % checks failed (at least 200 must run)', v_failed, v_total;
   end if;
-  raise notice 'ISSUE-4294 TESTER PASS: % checks across A-1..A-11, 0 failed', v_total;
+  raise notice 'ISSUE-4294 TESTER PASS: % checks across A-1..A-12, 0 failed', v_total;
 end;
 $verdict$;
 

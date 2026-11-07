@@ -14,7 +14,7 @@
 //            begin before the request, finish after it, in that order.
 import { assert, assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import { createTeamAgentHandler, sha256Hex } from "../../_shared/teamAgentMcp.ts";
-import { DATA_NOTE, scrubText } from "../../_shared/minglaConnectorProxy.ts";
+import { DATA_NOTE, scrubText, upstreamUrlAllowed } from "../../_shared/minglaConnectorProxy.ts";
 // {"invariant":"I-4294-3","issue":4294,"status":"ACTIVE","enforced_by":["supabase/functions/team-agent/__tests__/proxy.issue4294.implementor.happy.test.ts","supabase/migrations/__tests__/issue_4294_mingla_connector.implementor.happy.pg17.test.sql"]}
 // {"invariant":"I-4294-4","issue":4294,"status":"ACTIVE","enforced_by":["supabase/functions/team-agent/__tests__/proxy.issue4294.implementor.happy.test.ts"]}
 // {"invariant":"I-4294-5","issue":4294,"status":"ACTIVE","enforced_by":["supabase/functions/team-agent/__tests__/proxy.issue4294.implementor.happy.test.ts","supabase/migrations/__tests__/issue_4294_mingla_connector.implementor.happy.pg17.test.sql"]}
@@ -249,4 +249,41 @@ Deno.test("#4294 P-9: every piece of the key is removed from what the server sen
   const logged = JSON.stringify(logs);
   assertEquals(logged.includes(COMPANY_KEY.slice(0, 8)), false, "no key in any log line");
   assertEquals(scrubText("abc " + COMPANY_KEY.slice(3, 12) + " xyz", COMPANY_KEY), "abc [removed] xyz");
+});
+
+Deno.test("#4294 P-10: a host that fetch reads as an address is refused, however it is written", () => {
+  // Built at run time so no literal address sits in the file.
+  const at = (host: string) => ["https:", "", host, "mcp"].join("/");
+  for (const host of ["0x7f.0.0.1", "0x7f.1", "1.0x2", "a.0x", "a.0xff", "example.123", "10.0.0.1", "0177.0.0.1"]) {
+    assertEquals(upstreamUrlAllowed(at(host)), false, host);
+  }
+  // A name that only starts with digits or 0x is still a name.
+  for (const host of ["mcp.fake-tools.example", "0x7f.example.com", "123.example.com", "a1.b2.example"]) {
+    assertEquals(upstreamUrlAllowed(at(host)), true, host);
+  }
+});
+
+Deno.test("#4294 P-11: the key is also removed when echoed encoded, reversed or spread out", () => {
+  const key = COMPANY_KEY;
+  const b64 = (t: string) => btoa(t);
+  const forms: Record<string, string> = {
+    "base64": b64(key),
+    "base64 inside a longer value": b64("x" + key + "y").slice(4, -4),
+    "base64 url alphabet": b64("zz" + key).replace(/\+/g, "-").replace(/\//g, "_"),
+    "percent-encoded": Array.from(key).map((c) => "%" + c.charCodeAt(0).toString(16).toUpperCase()).join(""),
+    "percent-encoded, lower case": Array.from(key).map((c) => "%" + c.charCodeAt(0).toString(16)).join(""),
+    "reversed": Array.from(key).reverse().join(""),
+    "spread with dashes": Array.from(key).join("-"),
+    "spread with spaces": Array.from(key).join(" "),
+    "split by dots in pieces": key.match(/.{1,3}/g)!.join("."),
+  };
+  for (const [label, echoed] of Object.entries(forms)) {
+    const out = scrubText(`upstream said: ${echoed} (end)`, key);
+    assert(out.includes("[removed]"), label);
+    assertEquals(out.includes(echoed), false, label);
+    assert(out.startsWith("upstream said: ") && out.endsWith(" (end)"), `${label}: the rest is kept`);
+  }
+  // Text with no trace of the key is untouched.
+  const plain = "a perfectly ordinary answer, with nothing of the key in it at all";
+  assertEquals(scrubText(plain, key), plain);
 });

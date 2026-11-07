@@ -325,7 +325,11 @@ BEGIN
     RETURN false;
   END IF;
   host := m[1];
+  -- A host whose last label is a number (decimal, or hex written 0x...) is
+  -- read by browsers and fetch as an IPv4 address (0x7f.1 is 127.0.0.1), so
+  -- it is an address literal too.
   IF host ~ '^[0-9.]+$'
+     OR host ~ '(^|\.)(0x[0-9a-f]*|[0-9]+)$'
      OR host ~ '(^|\.)(localhost|local|internal|localdomain)$'
      OR host ~ '(^|\.)supabase\.(co|in)$'
      OR host ~ '(^|\.)usemingla\.com$'
@@ -645,6 +649,19 @@ BEGIN
     RAISE EXCEPTION 'forbidden: Your account cannot connect Claude. Ask an owner.' USING ERRCODE = '42501';
   END IF;
   IF v_role <> 'owner' AND public.admin_team_invite_address_verdict(v_email) = 'conflict' THEN
+    RAISE EXCEPTION 'forbidden: Your account cannot connect Claude. Ask an owner.' USING ERRCODE = '42501';
+  END IF;
+  -- The one-account rule of team_agent_person, up front: exactly one
+  -- confirmed account with this address, and it is the one signed in, not
+  -- deleted or banned. The exchange checks it again through the new key.
+  IF NOT EXISTS (
+       SELECT 1 FROM auth.users u
+        WHERE u.id = auth.uid()
+          AND lower(btrim(u.email)) = v_email AND u.email_confirmed_at IS NOT NULL
+          AND (to_jsonb(u) ->> 'deleted_at') IS NULL
+          AND NOT COALESCE((to_jsonb(u) ->> 'banned_until')::timestamptz > now(), false))
+     OR (SELECT count(*) FROM auth.users u
+          WHERE lower(btrim(u.email)) = v_email AND u.email_confirmed_at IS NOT NULL) <> 1 THEN
     RAISE EXCEPTION 'forbidden: Your account cannot connect Claude. Ask an owner.' USING ERRCODE = '42501';
   END IF;
   IF NOT public.mingla_connector_redirect_ok(p_client_id, p_redirect_uri) THEN
@@ -1260,20 +1277,28 @@ BEGIN
     v_token := 'not_allowed';
   END IF;
 
-  -- The person's count and their row are one step.
+  -- The person's count and their row are one step. The limit counts every
+  -- call, refused or not, and is checked before anything is written: a call
+  -- over the limit is rate_limited whatever else is wrong with it.
   PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('mingla_connector_calls:' || v_email, 0));
-  IF v_token IS NULL THEN
+  SELECT count(*) INTO v_n FROM public.mingla_connector_calls c
+   WHERE c.owner_email = v_email AND c.started_at > v_now - interval '1 minute' AND c.outcome <> 'rate_limited';
+  IF v_n >= (v_lim->>'calls_per_minute')::integer THEN
+    v_token := 'rate_limited';
+  ELSE
     SELECT count(*) INTO v_n FROM public.mingla_connector_calls c
-     WHERE c.owner_email = v_email AND c.started_at > v_now - interval '1 minute' AND c.outcome <> 'rate_limited';
-    IF v_n >= (v_lim->>'calls_per_minute')::integer THEN
+     WHERE c.owner_email = v_email AND c.started_at > v_now - interval '1 day' AND c.outcome <> 'rate_limited';
+    IF v_n >= (v_lim->>'calls_per_day')::integer THEN
       v_token := 'rate_limited';
-    ELSE
-      SELECT count(*) INTO v_n FROM public.mingla_connector_calls c
-       WHERE c.owner_email = v_email AND c.started_at > v_now - interval '1 day' AND c.outcome <> 'rate_limited';
-      IF v_n >= (v_lim->>'calls_per_day')::integer THEN
-        v_token := 'rate_limited';
-      END IF;
     END IF;
+  END IF;
+
+  -- Over the limit, one rate_limited row a minute records it; the rest are
+  -- answered without a row, so refused calls cannot grow the log.
+  IF v_token = 'rate_limited' AND EXISTS (
+       SELECT 1 FROM public.mingla_connector_calls c
+        WHERE c.owner_email = v_email AND c.started_at > v_now - interval '1 minute' AND c.outcome = 'rate_limited') THEN
+    RETURN jsonb_build_object('ok', false, 'token', v_token);
   END IF;
 
   INSERT INTO public.mingla_connector_calls (owner_email, key_id, actor_role, upstream, tool, started_at, outcome,

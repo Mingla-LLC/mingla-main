@@ -758,6 +758,14 @@ Deno.test("#4294 T-P4: nothing of ours is forwarded; a replaced key never rides 
     "https://mcp.tester-tools.example:8443/mcp",
     "https://mcp.tester-tools.example/mcp?x=1",
     "https://MCP.tester-tools.example/mcp",
+    // Hex and short IPv4 forms that fetch reads as an address (0x7f.1 is 127.0.0.1).
+    "https://0x7f.0.0.1/mcp",
+    "https://0x7f.1/mcp",
+    "https://1.0x2/x",
+    "https://0xa9.0xfe.0xa9.0xfe/latest",
+    "https://0xa9fea9fe/latest",
+    "https://tools.0x10/mcp",
+    "https://tools.example.10/mcp",
   ]) {
     const t = proxySetup({ row: { url } });
     const result = (await (await t.handler(mcp(GROWTH, "tools/call", { name: "fake__read_things" }))).json()).result;

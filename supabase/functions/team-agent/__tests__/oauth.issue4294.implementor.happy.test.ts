@@ -314,3 +314,33 @@ Deno.test("#4294 O-9: the pinned redirect rules", () => {
     ]
   ) assertEquals(redirectAllowed(CODE_CLIENT, r), false, r);
 });
+
+Deno.test("#4294 O-10: Claude's own origin or none is taken at the token endpoint; another site's page is not", async () => {
+  const fields = {
+    grant_type: "authorization_code",
+    code: CODE,
+    redirect_uri: APP_REDIRECT,
+    client_id: APP,
+    code_verifier: VERIFIER,
+  };
+  for (const origin of ["https://claude.ai", "https://claude.com"]) {
+    const { handler } = await setup();
+    const res = await handler(form(fields, { origin }));
+    assertEquals(res.status, 200, origin);
+    assertEquals(res.headers.get("access-control-allow-origin"), null, `${origin}: no CORS header`);
+    assertMatch((await res.json()).access_token, KEY_PATTERN);
+  }
+  for (const origin of ["https://evil.example", "null", "https://claude.ai.evil.example", "http://claude.ai", "https://CLAUDE.AI"]) {
+    const { handler, calls } = await setup();
+    const res = await handler(form(fields, { origin }));
+    assertEquals(res.status, 400, origin);
+    assertEquals(await res.json(), { error: "invalid_request" }, origin);
+    assertEquals(res.headers.get("access-control-allow-origin"), null, `${origin}: no CORS header`);
+    assertEquals(calls.rpc.some((c) => c.fn === "mingla_connector_oauth_exchange"), false, `${origin}: never reaches the database`);
+  }
+  // Public client only: any Authorization header is still refused.
+  const { handler } = await setup();
+  const basic = await handler(form(fields, { authorization: "Basic " + btoa(`${encodeURIComponent(APP)}:`) }));
+  assertEquals(basic.status, 401);
+  assertEquals(await basic.json(), { error: "invalid_client" });
+});

@@ -85,8 +85,19 @@ export function upstreamUrlAllowed(url: string): boolean {
       .exec(url);
   if (!m) return false;
   const host = m[1];
+  // fetch reads the address the way a browser does; if that reading changes
+  // the host (0x7f.1 becomes 127.0.0.1) it is an address, not a name.
+  let parsed: string;
+  try {
+    parsed = new URL(url).hostname;
+  } catch (_err) {
+    return false;
+  }
+  if (parsed !== host) return false;
   return !(
     /^[0-9.]+$/.test(host) ||
+    // A last label that is a number (decimal or 0x hex) makes the whole host an IPv4 address.
+    /(^|\.)(0x[0-9a-f]*|[0-9]+)$/.test(host) ||
     /(^|\.)(localhost|local|internal|localdomain)$/.test(host) ||
     /(^|\.)supabase\.(co|in)$/.test(host) ||
     /(^|\.)usemingla\.com$/.test(host) ||
@@ -95,22 +106,134 @@ export function upstreamUrlAllowed(url: string): boolean {
 }
 
 /**
+ * A reading of a text: its characters `s`, and for each one the span of the
+ * original text it came from (`from` inclusive, `to` exclusive).
+ */
+type View = { s: string; from: number[]; to: number[] };
+
+/** Characters an echo may put between the key's characters. */
+const SEPARATOR = /[\s.,:;|/\\_+*=~'"`-]/;
+
+function rawView(text: string): View {
+  const from: number[] = new Array(text.length);
+  const to: number[] = new Array(text.length);
+  for (let i = 0; i < text.length; i++) {
+    from[i] = i;
+    to[i] = i + 1;
+  }
+  return { s: text, from, to };
+}
+
+/** The view with every separator left out. */
+function squeezed(v: View): View {
+  let s = "";
+  const from: number[] = [];
+  const to: number[] = [];
+  for (let i = 0; i < v.s.length; i++) {
+    if (SEPARATOR.test(v.s[i])) continue;
+    s += v.s[i];
+    from.push(v.from[i]);
+    to.push(v.to[i]);
+  }
+  return { s, from, to };
+}
+
+/** The view with every %XX escape read as its character. */
+function percentDecoded(v: View): View {
+  let s = "";
+  const from: number[] = [];
+  const to: number[] = [];
+  let i = 0;
+  while (i < v.s.length) {
+    if (v.s[i] === "%" && i + 2 < v.s.length && /^[0-9A-Fa-f]{2}$/.test(v.s.slice(i + 1, i + 3))) {
+      s += String.fromCharCode(parseInt(v.s.slice(i + 1, i + 3), 16));
+      from.push(v.from[i]);
+      to.push(v.to[i + 2]);
+      i += 3;
+    } else {
+      s += v.s[i];
+      from.push(v.from[i]);
+      to.push(v.to[i]);
+      i++;
+    }
+  }
+  return { s, from, to };
+}
+
+const reversed = (t: string): string => Array.from(t).reverse().join("");
+
+function slices(t: string, width: number, into: Set<string>): void {
+  for (let i = 0; i + width <= t.length; i++) into.add(t.slice(i, i + width));
+}
+
+/**
+ * Base64 of the key as it appears inside a longer encoded text: the three
+ * byte alignments, both alphabets, with the groups that also hold
+ * neighbouring bytes left off. 12 characters carry 9 bytes of the key.
+ */
+function base64Pieces(key: string): Set<string> {
+  const out = new Set<string>();
+  const bytes = new TextEncoder().encode(key);
+  for (let shift = 0; shift < 3; shift++) {
+    let bin = "\0".repeat(shift);
+    for (const b of bytes) bin += String.fromCharCode(b);
+    const b64 = btoa(bin).replace(/=+$/, "");
+    const core = b64.slice(shift > 0 ? 4 : 0, Math.max(0, b64.length - 4));
+    slices(core, 12, out);
+    slices(core.replace(/\+/g, "-").replace(/\//g, "_"), 12, out);
+  }
+  return out;
+}
+
+type Pieces = { plain: Set<string>; squeezed: Set<string>; base64: Set<string> };
+let piecesMemo: { key: string; pieces: Pieces } | null = null;
+
+/** Every 8-character piece of the key as written, reversed and without separators; and its base64. */
+function piecesOf(key: string): Pieces {
+  if (piecesMemo && piecesMemo.key === key) return piecesMemo.pieces;
+  const plain = new Set<string>();
+  slices(key, 8, plain);
+  slices(reversed(key), 8, plain);
+  const bare = squeezed(rawView(key)).s;
+  const sq = new Set<string>();
+  slices(bare, 8, sq);
+  slices(reversed(bare), 8, sq);
+  const pieces = { plain, squeezed: sq, base64: base64Pieces(key) };
+  piecesMemo = { key, pieces };
+  return pieces;
+}
+
+function mark(v: View, width: number, pieces: Set<string>, hit: Uint8Array): boolean {
+  if (pieces.size === 0) return false;
+  let any = false;
+  for (let j = 0; j + width <= v.s.length; j++) {
+    if (pieces.has(v.s.slice(j, j + width))) {
+      hit.fill(1, v.from[j], v.to[j + width - 1]);
+      any = true;
+    }
+  }
+  return any;
+}
+
+/**
  * Every occurrence of the key, and of any 8-character piece of it, replaced
- * with "[removed]". One pass over the text.
+ * with "[removed]". Also caught: the piece reversed, spread out with
+ * separators between its characters, percent-encoded, and the key in base64
+ * (either alphabet, any alignment).
  */
 export function scrubText(text: string, key: string): string {
   if (!key || key.length < 8 || text.length < 8) {
     return key && text.includes(key) ? text.split(key).join("[removed]") : text;
   }
-  const pieces = new Set<string>();
-  for (let i = 0; i + 8 <= key.length; i++) pieces.add(key.slice(i, i + 8));
+  const p = piecesOf(key);
   const hit = new Uint8Array(text.length);
+  const raw = rawView(text);
+  const decoded = percentDecoded(raw);
   let any = false;
-  for (let j = 0; j + 8 <= text.length; j++) {
-    if (pieces.has(text.slice(j, j + 8))) {
-      hit.fill(1, j, j + 8);
-      any = true;
-    }
+  for (const v of [raw, decoded]) {
+    any = mark(v, 8, p.plain, hit) || any;
+    any = mark(squeezed(v), 8, p.squeezed, hit) || any;
+    any = mark(v, 12, p.base64, hit) || any;
   }
   if (!any) return text;
   let out = "";

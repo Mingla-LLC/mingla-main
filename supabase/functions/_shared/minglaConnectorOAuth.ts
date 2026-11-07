@@ -259,9 +259,23 @@ function tokenError(status: number, error: string): Response {
   });
 }
 
+/** The only browser origins whose requests the token endpoint takes. */
+export const TOKEN_ORIGINS: ReadonlySet<string> = new Set(["https://claude.ai", "https://claude.com"]);
+
 /**
- * POST .../oauth/token, form-encoded only. Public clients only: a client
- * secret or an Authorization header is refused. Every refusal of a code or
+ * May a token request carrying this Origin header be answered? No header (a
+ * server or a native app) or one of Claude's own origins. Any other site's
+ * page, or an opaque "null" origin, is refused. The answer never carries
+ * CORS headers either way.
+ */
+export function tokenOriginAllowed(origin: string | null): boolean {
+  return origin === null || TOKEN_ORIGINS.has(origin);
+}
+
+/**
+ * POST .../oauth/token, form-encoded only. Public clients only (method
+ * none): a client secret or an Authorization header is refused, and so is a
+ * request from another site's page. Every refusal of a code or
  * refresh token is the same answer and takes the same minimum time.
  */
 export async function handleToken(
@@ -280,7 +294,7 @@ export async function handleToken(
   };
 
   if (req.headers.has("authorization")) return await refuse(401, "invalid_client");
-  if (req.headers.has("origin")) return await refuse(400, "invalid_request");
+  if (!tokenOriginAllowed(req.headers.get("origin"))) return await refuse(400, "invalid_request");
   if (req.url.includes("?") || req.url.includes("#")) return await refuse(400, "invalid_request");
   const type = (req.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
   if (type !== "application/x-www-form-urlencoded") return await refuse(400, "invalid_request");

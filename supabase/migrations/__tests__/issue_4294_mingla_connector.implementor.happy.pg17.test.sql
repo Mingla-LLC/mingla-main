@@ -22,6 +22,9 @@
 --   M-9  the proxy steps: which tools a role sees, begin, the one key read,
 --        finish; default deny; one call-log row per request; limits
 --   M-10 the migration's self-check passes again
+--   M-11 hardening: a host whose last label is a number is refused;
+--        approve applies the one-account rule; the per-person limit
+--        comes before a refused call is logged
 --
 -- Invariants proved here (declared in the migration header):
 --   I-4294-1 (M-1, M-3, M-4, M-5), I-4294-2 (M-8), I-4294-3 (M-9),
@@ -697,6 +700,70 @@ end;
 $m9$;
 
 -- ---------------------------------------------------------------------------
+-- M-11 hardening: numeric-host addresses, the one-account rule at approve,
+-- the limit before a refused call is logged.
+-- ---------------------------------------------------------------------------
+do $m11$
+declare
+  r record;
+  v text;
+  v_key text := pg_temp.t4294_digest(pg_temp.t4294_id('admin.personal'));
+begin
+  -- A host whose last label is a number is an address however it is written.
+  for r in select * from (values ('0x7f.0.0.1'), ('0x7f.1'), ('1.0x2'), ('a.0x'), ('a.0xff'), ('tools.example.10'),
+                                 ('0177.0.0.1')) as t(host)
+  loop
+    perform pg_temp.t4294_check('M-11', format('%s is not a saveable host', r.host),
+      public.mingla_connector_url_ok('https://' || r.host || '/mcp')::text, 'false');
+    perform pg_temp.t4294_like('M-11', format('the owner cannot save %s', r.host),
+      pg_temp.t4294_as('owner', format('select public.mingla_connector_registry_save(%L::jsonb)::text',
+        json_build_object('slug', 'hex', 'label', 'H', 'mcp_url', 'https://' || r.host || '/mcp'))), 'ERR:22023:invalid_url:%');
+  end loop;
+  for r in select * from (values ('0x7f.example.com'), ('123.example.com'), ('mcp.example.com')) as t(host)
+  loop
+    perform pg_temp.t4294_check('M-11', format('%s is still a name', r.host),
+      public.mingla_connector_url_ok('https://' || r.host || '/mcp')::text, 'true');
+  end loop;
+
+  -- Two confirmed accounts on one address: approve says no up front.
+  insert into t4294_people (who, id, email) values ('pair', '42940000-0000-4000-a000-0000000000a1', 'issue4294-pair@test.local');
+  insert into auth.users (id, email, email_confirmed_at) values ('42940000-0000-4000-a000-0000000000a1', 'issue4294-pair@test.local', now());
+  insert into public.admin_team_members (email, role, status, accepted_at) values ('issue4294-pair@test.local', 'growth', 'active', now());
+  perform pg_temp.t4294_like('M-11', 'with one account the person approves',
+    pg_temp.t4294_approve('pair', pg_temp.t4294_c('app'), pg_temp.t4294_c('app_redirect'), pg_temp.t4294_c('verifier'), 'pair1'),
+    '{"code": "mglo_%');
+  insert into auth.users (id, email, email_confirmed_at) values ('42940000-0000-4000-a000-0000000000a2', ' Issue4294-Pair@test.local', now());
+  perform pg_temp.t4294_like('M-11', 'with a second confirmed account on the address approve is refused',
+    pg_temp.t4294_approve('pair', pg_temp.t4294_c('app'), pg_temp.t4294_c('app_redirect'), pg_temp.t4294_c('verifier'), 'pair2'),
+    'ERR:42501:%');
+  perform pg_temp.t4294_check('M-11', 'and the code made before still exchanges for nothing',
+    pg_temp.t4294_exchange('pair1', pg_temp.t4294_c('app'), pg_temp.t4294_c('app_redirect'), pg_temp.t4294_c('verifier'), 'gpair'),
+    '{"error": "invalid_grant"}');
+
+  -- The limit comes before a refused call is logged.
+  update public.mingla_connector_calls set started_at = started_at - interval '2 days' where owner_email = 'issue4294-admin@test.local';
+  for i in 1..30 loop
+    perform pg_temp.t4294_as('service', format('select public.mingla_connector_call_begin(%L, %L, %L, %L)::text',
+      v_key, 'nope', 'not_a_tool', 'x'));
+  end loop;
+  perform pg_temp.t4294_check('M-11', '30 refused calls in a minute are 30 rows',
+    (select count(*)::text from public.mingla_connector_calls
+      where owner_email = 'issue4294-admin@test.local' and started_at > clock_timestamp() - interval '1 minute'), '30');
+  v := pg_temp.t4294_as('service', format('select public.mingla_connector_call_begin(%L, %L, %L, %L)::text',
+    v_key, 'nope', 'not_a_tool', 'x'));
+  perform pg_temp.t4294_check('M-11', 'the next refused call is rate_limited', v::jsonb ->> 'token', 'rate_limited');
+  for i in 1..50 loop
+    perform pg_temp.t4294_as('service', format('select public.mingla_connector_call_begin(%L, %L, %L, %L)::text',
+      v_key, 'nope', 'not_a_tool', 'x'));
+  end loop;
+  perform pg_temp.t4294_check('M-11', 'fifty more add no rows past one rate_limited row',
+    (select count(*) filter (where outcome = 'not_allowed')::text || '/' || count(*) filter (where outcome = 'rate_limited')::text
+       from public.mingla_connector_calls
+      where owner_email = 'issue4294-admin@test.local' and started_at > clock_timestamp() - interval '1 minute'), '30/1');
+end;
+$m11$;
+
+-- ---------------------------------------------------------------------------
 -- M-10 the migration's self-check passes again.
 -- ---------------------------------------------------------------------------
 do $m10$
@@ -729,7 +796,7 @@ begin
   if v_failed > 0 or v_total < 90 then
     raise exception 'ISSUE-4294 CONNECTOR FAIL: % of % checks failed (at least 90 must run)', v_failed, v_total;
   end if;
-  raise notice 'ISSUE-4294 CONNECTOR PASS: % checks across M-1..M-10, 0 failed', v_total;
+  raise notice 'ISSUE-4294 CONNECTOR PASS: % checks across M-1..M-11, 0 failed', v_total;
 end;
 $verdict$;
 
