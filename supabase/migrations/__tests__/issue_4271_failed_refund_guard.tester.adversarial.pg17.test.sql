@@ -26,6 +26,12 @@
 --       which D4 and D5 now require to settle.
 --   D3  removed: it only priced a resumable row in refund_preview; refund_preview
 --       is no longer changed by this pull request.
+--   D6  added in round 3: the narrowed claim guard itself. An attempt that was
+--       never permitted to call Stripe and holds no buyer refund is never claimed
+--       on a row that is not pending, whether another writer failed the row or our
+--       commit failed it and the attempt is later reopened. Without the guard the
+--       executor's prepare-replay-then-claim path turns that claim into a
+--       refunds.create for a row the books already call 'failed'.
 \set ON_ERROR_STOP on
 
 -- Session-scoped fixture builder (pg_temp; gone when the session ends).
@@ -345,4 +351,67 @@ BEGIN
   IF v_errors <> '' THEN RAISE EXCEPTION 'DEFECT D5: %', v_errors; END IF;
 END
 $d5$;
+ROLLBACK;
+
+-- D6. A never-permitted attempt is never claimed on a row that is not pending.
+BEGIN;
+DO $d6$
+DECLARE
+  f jsonb := pg_temp.t4303_fixture(16, 2, 1000, false);
+  v_order uuid := (f->>'order')::uuid;
+  v_lines jsonb := jsonb_build_array(jsonb_build_object('order_line_item_id', f->>'line', 'quantity', 2));
+  v_ra uuid; v_rb uuid; v_pre jsonb; v_prep jsonb; v_claim jsonb; v_out jsonb;
+  v_errors text := '';
+BEGIN
+  PERFORM pg_temp.t4303_as((f->>'owner')::uuid);
+  -- (a) Fee not visible yet: the executor records the pre-refund state (no call
+  --     permitted), then another writer (biz_refund_order_commit, the trip
+  --     rollback) marks the row failed. Later the fee is visible and the same key
+  --     replays prepare, then claim, exactly as executeTicketRefundWithFeeTruth does.
+  v_ra := (public.biz_refund_order(v_order, jsonb_build_array(jsonb_build_object(
+    'order_line_item_id', f->>'line', 'quantity', 1)), 'Guest asked', 'r3-d6a-key')->>'refund_id')::uuid;
+  v_pre := public.issue_2097_record_pre_refund_state(v_ra, 'r3-d6a-key', 'test', 'acct_4303', 'GBP',
+    'ch_4303_16', 'pi_4303_16', '30', '2000', '1000', 'awaiting_application_fee', 1, gen_random_uuid());
+  IF (v_pre->>'provider_call_permitted')::boolean THEN
+    RAISE EXCEPTION 'D6 setup: pre-refund state permitted a call, got %', v_pre;
+  END IF;
+  PERFORM public.biz_refund_order_commit(v_ra, NULL, 0, 'failed');
+  UPDATE public.ticket_refund_attempts SET next_observation_at = now() - interval '1 second'
+   WHERE id = (v_pre->>'attempt_id')::uuid;
+  v_prep := public.issue_2097_prepare_refund_attempt(v_ra, 'r3-d6a-key', 'test', 'acct_4303',
+    'GBP', 'ch_4303_16', 'pi_4303_16', 'fee_4303_16', '30', '2000', '1000', '[]'::jsonb, '0', true, 1,
+    gen_random_uuid());
+  IF (v_prep->>'provider_call_permitted')::boolean THEN
+    v_errors := v_errors || format('(a) prepare permitted a Stripe call for the failed row (%s); ', v_prep);
+  END IF;
+  v_claim := public.issue_2097_claim_refund_attempt((v_pre->>'attempt_id')::uuid, gen_random_uuid());
+  IF (v_claim->>'claimed')::boolean THEN
+    -- executeTicketRefundWithFeeTruth: claimed with no buyer refund -> refunds.create.
+    v_errors := v_errors || format('(a) the never-permitted attempt of a failed row was claimed (%s), so the executor would call refunds.create; ', v_claim);
+  END IF;
+
+  -- (b) Our own commit failed the row; its never-permitted attempt is reopened
+  --     (status back to awaiting by any future writer). Still never claimable.
+  v_rb := (public.biz_refund_order(v_order, jsonb_build_array(jsonb_build_object(
+    'order_line_item_id', f->>'line', 'quantity', 1)), 'Guest asked', 'r3-d6b-key')->>'refund_id')::uuid;
+  v_pre := public.issue_2097_record_pre_refund_state(v_rb, 'r3-d6b-key', 'test', 'acct_4303', 'GBP',
+    'ch_4303_16', 'pi_4303_16', '30', '2000', '1000', 'awaiting_application_fee', 1, gen_random_uuid());
+  v_out := public.issue_4271_commit_refund_failed(v_rb, false);
+  IF v_out->>'outcome' <> 'failed' THEN
+    RAISE EXCEPTION 'D6 setup: the commit did not fail the row, got %', v_out;
+  END IF;
+  UPDATE public.ticket_refund_attempts
+     SET status = 'awaiting_application_fee', next_observation_at = NULL,
+         lease_owner = NULL, lease_expires_at = NULL
+   WHERE id = (v_pre->>'attempt_id')::uuid;
+  v_claim := public.issue_2097_claim_refund_attempt((v_pre->>'attempt_id')::uuid, gen_random_uuid());
+  IF (v_claim->>'claimed')::boolean THEN
+    v_errors := v_errors || format('(b) a reopened attempt of a row our commit failed was claimed (%s); ', v_claim);
+  END IF;
+  IF (SELECT count(*) FROM public.refunds WHERE id IN (v_ra, v_rb) AND status = 'failed') <> 2 THEN
+    v_errors := v_errors || 'a failed row moved out of failed; ';
+  END IF;
+  IF v_errors <> '' THEN RAISE EXCEPTION 'DEFECT D6: %', v_errors; END IF;
+END
+$d6$;
 ROLLBACK;

@@ -4,9 +4,11 @@
 // Different angle from the implementor suite: it drives the REAL
 // executeTicketRefundWithFeeTruth + settleStripeRefundThrow against a fake
 // database whose lease, prepare, claim, record, finalize and failed-commit rules
-// mirror the SQL (leases that lapse; since the PR #4303 rework the #2097
-// functions refuse a refund that is not pending and the failed commit re-checks
-// every attempt in one step), and a fake Stripe that honours idempotency keys,
+// mirror the SQL (leases that lapse; prepare refuses a refund that is not
+// pending; since round 3 claim refuses a non-pending row only for an attempt
+// that was never permitted and holds no buyer refund, and record and finalize
+// are the unguarded #2097 bodies so money Stripe moved always settles; the failed
+// commit re-checks every attempt in one step), and a fake Stripe that honours idempotency keys,
 // caps refunds at the captured amount, can land a refund and still throw, and
 // can prune keys after 24 hours like Stripe does. The invariant throughout: one
 // refund row never produces two Stripe refunds, and Stripe never makes a refund
@@ -24,8 +26,11 @@
 //   A2  P1 a row committed 'failed' is retried with the same key once its lease
 //       lapses -> Stripe must not refund it. A2b: a refusal thrown BY
 //       refunds.create stays pending (unknown) and its retry makes one refund.
-//       A2c: a row failed by the old commit with a live permitted attempt is not
-//       claimable.
+//       A2c (round 3, re-aligned to the narrowed SQL): a never-permitted attempt
+//       on a row that is not pending is never claimed, so the executor's
+//       prepare-replay-then-claim path cannot reach Stripe for it.
+//       A2d (round 3): money Stripe moved under the key, then another writer
+//       failed the row: a same-key replay books that one refund, never a second.
 //   A3  P1 a concurrent request prepares between the "ever permitted" read and
 //       the 'failed' commit: the atomic commit sees it and answers unknown.
 // Removed with the resume feature (the conductor dropped it in the rework):
@@ -72,7 +77,9 @@ type RefundRow = {
 };
 
 // Fake database. prepare / claim / record / finalize follow the #2097 SQL as
-// guarded by the PR #4303 rework (a refund that is not pending is refused);
+// guarded by the PR #4303 round-3 rework (prepare refuses a refund that is not
+// pending; claim refuses it only for a never-permitted attempt with no buyer
+// refund; record and finalize are unguarded);
 // issue_4271_commit_refund_failed follows its SQL; leases last 120 s on a fake clock.
 function fakeDb(
   opts: { onPrepared?: () => void; recordThrows?: boolean } = {},
@@ -166,7 +173,9 @@ function fakeDb(
       if (
         !["awaiting_application_fee", "pending_visibility"].includes(
           a.status,
-        ) || !pending(a.refund_id)
+        ) ||
+        (!pending(a.refund_id) && !a.provider_call_permitted_at &&
+          !a.buyer_refund_id)
       ) {
         return ok({
           claimed: false,
@@ -200,7 +209,6 @@ function fakeDb(
       if (a.buyer_refund_id) {
         return ok({ status: a.status, idempotent_replay: true });
       }
-      if (!pending(a.refund_id)) return refused();
       if (
         a.lease_owner !== args.p_lease_owner || a.lease_expires_at <= clock.now
       ) {
@@ -216,7 +224,6 @@ function fakeDb(
     }
     if (name === "issue_2097_finalize_refund_attempt") {
       const a = attempts.find((x) => x.id === args.p_attempt_id)!;
-      if (!pending(a.refund_id)) return refused();
       a.status = String(args.p_status);
       a.fee_refund_amount_text = args.p_fee_refund_amount_text as string;
       if (args.p_status === "succeeded_positive") {
@@ -718,44 +725,87 @@ Deno.test("A2b [P1] a refusal thrown by refunds.create stays pending and its ret
   );
 });
 
-Deno.test("A2c [P1] a row failed by the old commit with a live permitted attempt is never claimed", async () => {
+Deno.test("A2c [P1] a never-permitted attempt on a row that is not pending is never claimed", async () => {
   const db = fakeDb();
+  // The fee was not visible yet: record_pre_refund_state left an open attempt
+  // that was never permitted to call Stripe. Then the row left 'pending'
+  // (another writer failed it, or our commit failed it and the attempt was
+  // reopened). The fee is visible now and the same key replays.
   db.refunds.set("r2d", {
-    status: "pending",
+    status: "failed",
     stripe_refund_id: null,
     quantity: 2,
   });
-  // The pre-rework shape: prepare permitted the call, refunds.create threw, and
-  // biz_refund_order_commit marked the row failed with the attempt still open.
-  const provider = fakeStripe({
-    captured: 4000,
-    createError: (n) => n === 1 ? permissionDenied() : null,
+  db.attempts.push({
+    id: "att_pre",
+    refund_id: "r2d",
+    request_fingerprint: "sheet-key-5",
+    status: "awaiting_application_fee",
+    provider_call_permitted_at: null,
+    buyer_refund_id: null,
+    baseline_fee_refund_ids: [],
+    baseline_amount_refunded_text: "0",
+    fee_refund_amount_text: null,
+    lease_owner: null,
+    lease_epoch: 0,
+    lease_expires_at: 0,
   });
-  await runArm(db, provider, {
-    refundId: "r2d",
-    fingerprint: "sheet-key-5",
-    providerKey: "ticket_refund",
-    isIdempotentReplay: false,
-  });
-  await db.rpc("biz_refund_order_commit", {
-    p_refund_id: "r2d",
-    p_stripe_refund_id: null,
-    p_application_fee_refunded_cents: 0,
-    p_status: "failed",
-  });
-  db.clock.now += 180;
+  const provider = fakeStripe({ captured: 4000 });
   await runArm(db, provider, {
     refundId: "r2d",
     fingerprint: "sheet-key-5",
     providerKey: "ticket_refund",
     isIdempotentReplay: true,
   });
-  assertEquals(
-    provider.createKeys.length,
-    1,
-    "only the original create reached Stripe",
-  );
+  assertEquals(provider.createKeys.length, 0, "Stripe is never asked");
   assertEquals(provider.made.length, 0, "no Stripe refund for the failed row");
+  assertEquals(db.refunds.get("r2d")!.status, "failed", "the row stays failed");
+});
+
+Deno.test("A2d [P0] money Stripe moved under the key still books after another writer failed the row, exactly once", async () => {
+  const db = fakeDb();
+  db.refunds.set("r2e", {
+    status: "pending",
+    stripe_refund_id: null,
+    quantity: 2,
+  });
+  // refunds.create lands at Stripe but the reply is lost: unknown, row pending.
+  const provider = fakeStripe({
+    createError: (n) => n === 1 ? stripeError("StripeConnectionError") : null,
+    createLandsDespiteError: (n) => n === 1,
+  });
+  const first = await runArm(db, provider, {
+    refundId: "r2e",
+    fingerprint: "trip-key-1",
+    providerKey: "ticket_refund",
+    isIdempotentReplay: false,
+  });
+  assertEquals(first.outcome, "unknown", "a lost reply is unknown");
+  // Another writer (cancel-trip-booking's rollback) marks the row failed.
+  await db.rpc("biz_refund_order_commit", {
+    p_refund_id: "r2e",
+    p_stripe_refund_id: null,
+    p_application_fee_refunded_cents: 0,
+    p_status: "failed",
+  });
+  db.clock.now += 180;
+  await runArm(db, provider, {
+    refundId: "r2e",
+    fingerprint: "trip-key-1",
+    providerKey: "ticket_refund",
+    isIdempotentReplay: true,
+  });
+  assertEquals(provider.made.length, 1, "exactly one Stripe refund");
+  assertEquals(
+    db.attempts.find((a) => a.refund_id === "r2e")!.buyer_refund_id,
+    "re_1",
+    "the refund Stripe made is booked on the attempt",
+  );
+  assertEquals(
+    db.refunds.get("r2e")!.stripe_refund_id,
+    "re_1",
+    "the refund row records the Stripe refund",
+  );
 });
 
 Deno.test("A3 [P1] a concurrent request cannot prepare between the permitted-read and the failed commit", async () => {
