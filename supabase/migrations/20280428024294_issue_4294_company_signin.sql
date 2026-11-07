@@ -378,6 +378,18 @@ BEGIN
     v_cap := COALESCE(old.daily_generation_cap, 40);
   END IF;
 
+  -- A company sign-in belongs to the address it was made for: its tokens are
+  -- for that tool and renew at that tool's sign-in server. A new address
+  -- needs Disconnect first, and ends any sign-in still under way.
+  IF NOT v_new AND old.mcp_url IS DISTINCT FROM v_url AND old.auth_kind = 'signin' THEN
+    IF old.signin_vault_id IS NOT NULL THEN
+      RAISE EXCEPTION 'signin_locked: Disconnect the company sign-in before changing this tool''s address.' USING ERRCODE = '22023';
+    END IF;
+    UPDATE public.mingla_connector_signin_states
+       SET voided_at = clock_timestamp()
+     WHERE slug = v_slug AND completed_at IS NULL AND voided_at IS NULL;
+  END IF;
+
   -- A new address for a tool that has a key or a sign-in: it is turned off,
   -- so an owner turns it on again on purpose.
   IF NOT v_new AND old.mcp_url IS DISTINCT FROM v_url

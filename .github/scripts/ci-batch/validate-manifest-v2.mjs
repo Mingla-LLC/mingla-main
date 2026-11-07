@@ -389,7 +389,8 @@ export function phase3dContractDigest(manifest) {
 // #3645: register the unpaid-release-holds migration and its PostgreSQL proof the same way.
 // #4294: the company sign-in migration and its proof join the preserved inventories, and the
 // migration joins the pre-#1931 replay's exact-file exclusion.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "0758e1f96cfd50a61439d05361147d9df2e3dbb2c07ff8a27490059c063d24a0";
+// #4294 (tester): the company sign-in tester proof joins the preserved inventories.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "f9c07ab1eff077a5f65a0ed91fb1e5b06ce7f84d4abf862cc2db1412fe80bf64";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

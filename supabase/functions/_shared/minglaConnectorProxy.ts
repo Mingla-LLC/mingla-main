@@ -274,6 +274,8 @@ const isObject = (v: unknown): v is Json =>
 const LINK = /\b(?:https?|wss?|ftp):\/\/[^\s"'<>()\[\]{}`]*[^\s"'<>()\[\]{}`.,;:!?]/gi;
 /** Keys whose values are addresses or raw data: never rewritten. */
 const DATA_KEYS = new Set(["uri", "url", "href", "src", "link", "download_url", "blob", "data", "mimeType"]);
+/** Characters that show nothing but could split a hidden word in a listing. */
+const INVISIBLE = /[\u00AD\u200B-\u200F\u2060-\u2064\uFEFF]/g;
 const HIDE_WORD = /^[A-Za-z0-9](?:[A-Za-z0-9 .&'-]{0,38}[A-Za-z0-9])?$/;
 
 export interface Hider {
@@ -303,11 +305,17 @@ export function createHider(words: unknown, label: string): Hider {
   const escaped = list.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/ /g, "\\s+"));
   const re = escaped.length
     ? new RegExp(
-      `(?<![\\p{L}\\p{N}_\\-/@:.])(?:${escaped.join("|")})(?![\\p{L}\\p{N}_\\-/@:]|\\.[\\p{L}\\p{N}])`,
+      `(?<![\\p{L}\\p{N}_\\-/@:.])(?:${escaped.join("|")})(?![\\p{L}\\p{N}_\\-/@]|[.:][\\p{L}\\p{N}/])`,
       "giu",
     )
     : null;
   const anywhere = escaped.length ? new RegExp(`(?:${escaped.join("|")})`, "iu") : null;
+  // Tool listings keep no hidden word at all (I-4294-13): after the whole-word
+  // pass, any word still holding one (magnific.com, @magnific, MagnificAI,
+  // Magnific-powered) is rewritten too, and invisible characters that could
+  // split a word are dropped first. Results keep the gentler pass so ids and
+  // file names still work.
+  const everywhere = escaped.length ? new RegExp(`(?:${escaped.join("|")})`, "giu") : null;
   const plain = (t: string): string => (re ? t.replace(re, () => label) : t);
   const outsideLinks = (t: string, onLink: (link: string) => string): string => {
     if (!re) return t;
@@ -322,7 +330,13 @@ export function createHider(words: unknown, label: string): Hider {
   };
   const hider: Hider = {
     text: (t) => outsideLinks(t, (link) => link),
-    listingText: (t) => outsideLinks(t, (link) => (anywhere && anywhere.test(link) ? "[link]" : link)),
+    listingText: (t) => {
+      const shown = outsideLinks(
+        re ? t.replace(INVISIBLE, "") : t,
+        (link) => (anywhere && anywhere.test(link) ? "[link]" : link),
+      );
+      return everywhere ? shown.replace(everywhere, () => label) : shown;
+    },
     value(v, depth = 0) {
       if (!re || depth > 40) return v;
       if (typeof v === "string") return hider.text(v);

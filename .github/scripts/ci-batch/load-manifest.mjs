@@ -181,7 +181,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3645: register the unpaid-release-holds migration and its PostgreSQL proof the same way.
 // #4294: re-sealed after the company sign-in migration and its PostgreSQL proof entered the preserved inventories
 // and the migration joined the pre-#1931 replay's exact-file exclusion.
-export const BOOTSTRAP_SHA256 = "baecc73de77b7f1d3780daf932c07d49033c7af07077ab777aeaee684ce4c45c";
+// #4294 (tester): re-sealed after the company sign-in tester proof entered the preserved inventories.
+export const BOOTSTRAP_SHA256 = "583464087202f777dc2d5e13af44f73867762c59064d868a2cf66a0aae5c6fb8";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

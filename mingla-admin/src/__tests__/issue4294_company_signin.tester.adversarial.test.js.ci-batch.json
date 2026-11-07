@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-suite",
+  "ownerIssue": "#4294",
+  "suite": {
+    "id": "issue-4294-admin-company-signin-tester",
+    "class": "admin-node20-install",
+    "originPaths": [
+      "mingla-admin/src/**",
+      "mingla-admin/public/oauth/**",
+      "mingla-admin/vercel.json",
+      "supabase/functions/_shared/minglaConnectorSignin.ts",
+      "supabase/migrations/20280428024294_issue_4294_company_signin.sql"
+    ],
+    "steps": [
+      {
+        "name": "Admin company sign-in tester: switch reverts on refusal, https-only Connect, box limits, no token in the status line, client document parity",
+        "cwd": "mingla-admin",
+        "run": "node --test src/__tests__/issue4294_company_signin.tester.adversarial.test.js",
+        "commandId": "assert:issue-4294-admin-company-signin-tester:01",
+        "invocation": {
+          "kind": "raw-shell",
+          "command": "bash",
+          "argv": [
+            "-c",
+            "node --test src/__tests__/issue4294_company_signin.tester.adversarial.test.js"
+          ]
+        },
+        "exceptionRationale": "New self-registering execution replaces a legacy workflow registry edit."
+      }
+    ],
+    "lifecycle": "batched-active",
+    "ownerIssue": "#4294",
+    "runtime": {
+      "name": "node",
+      "version": "20"
+    },
+    "setupProfile": "admin-node20-install",
+    "cwd": "mingla-admin",
+    "envNames": [],
+    "isolation": "clean-worktree",
+    "expectedFiles": [
+      "mingla-admin/src/__tests__/issue4294_company_signin.tester.adversarial.test.js"
+    ],
+    "externalReferenceFiles": [
+      "mingla-admin/public/oauth/mingla-connector-client.json",
+      "mingla-admin/vercel.json",
+      "supabase/functions/_shared/minglaConnectorSignin.ts",
+      "supabase/migrations/20280428024294_issue_4294_company_signin.sql"
+    ],
+    "requiredContext": "CI batch: admin-node20-install",
+    "timingSeconds": {
+      "p50": 1,
+      "p95": 2,
+      "evidence": "Local targeted run 2026-11-07 (tester)"
+    },
+    "generatedPaths": [
+      "suite-results.json"
+    ],
+    "exceptionRationale": "Raw shell preserves the reviewed assertion while this self-registering suite replaces a legacy workflow registry edit.",
+    "timeoutSeconds": 60
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/team-agent/__tests__/signin.issue4294.tester.adversarial.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-4294-company-signin-tester",
+  "profile": "deno-1.46-stripe"
+}
