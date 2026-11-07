@@ -1,8 +1,9 @@
 // #4273 polish — the send snapshot: what each method of a campaign sent,
 // written once before the first recipient so the campaign screen can show it.
 //
-// MINGLA-INVARIANT: I-4273-SENT-SNAPSHOT-WRITE-ONCE | issue #4273 | A campaign's send snapshot is written once by the server before delivery and never changes (the WHERE sent_snapshot IS NULL here, the issue_4273_sent_snapshot_guard trigger in the database).
-// MINGLA-INVARIANT: I-4273-SENT-VIEW-NO-CONTACTS | issue #4273 | The snapshot carries no recipient contact, user id, unsubscribe link, per-recipient tracking id or the brand's contact address.
+// Invariants I-4273-SENT-SNAPSHOT-WRITE-ONCE and I-4273-SENT-VIEW-NO-CONTACTS
+// are declared beside their tests (issue_4273_sent_snapshot.implementor.test.ts
+// and the pg17 sent-snapshot suite).
 //
 // The builders are pure and take only per-campaign values. Everything per
 // recipient (first name, the guest's last event, the unsubscribe link, the

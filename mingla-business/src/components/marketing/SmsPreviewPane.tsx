@@ -58,6 +58,15 @@ export interface SmsPreviewPaneProps {
    * the same tiles that will be sent.
    */
   mediaUris?: (string | null)[];
+  /**
+   * #4273 — false renders the pane as a plain View so the page's own scroll
+   * owns it (the sent-campaign screen; no nested vertical ScrollView).
+   */
+  scrollable?: boolean;
+  /** #4273 — the text exactly as sent (from the send snapshot). */
+  wireOverride?: string | null;
+  /** #4273 — the count line as sent; used with wireOverride. */
+  countLineOverride?: string | null;
 }
 
 /**
@@ -89,14 +98,20 @@ export const SmsPreviewPane: React.FC<SmsPreviewPaneProps> = ({
   reachableSms,
   hasMedia = false,
   mediaUris = [],
+  scrollable = true,
+  wireOverride = null,
+  countLineOverride = null,
 }) => {
   // Compose optional Follow then the required STOP footer — same order as edge
   // quote/dispatch. Keep `bodyWithFooter(body)` as a named intermediate so
   // #1556 ADV-7's ORCH-1281/1289 source contract still sees the footer owner.
   const bodyForWire = smsBlastBodyWithFollow(body, brandName, includeFollowCta ? brandSlug : null);
   const wire = bodyWithFooter(bodyForWire);
-  const isEmpty = body.trim().length === 0 && !hasMedia;
-  const showCount = body.trim().length > 0 || hasMedia;
+  // #4273 — the sent-campaign screen passes the text exactly as sent.
+  const shownWire = wireOverride ?? wire;
+  const asSent = wireOverride !== null;
+  const isEmpty = !asSent && body.trim().length === 0 && !hasMedia;
+  const showCount = asSent || body.trim().length > 0 || hasMedia;
   // =========================================================================
   // #1556 — AN EMPTY DRAFT IS A UI STATE, NOT A WIRE STATE.
   // =========================================================================
@@ -127,15 +142,10 @@ export const SmsPreviewPane: React.FC<SmsPreviewPaneProps> = ({
   const countUnit = est.encoding === "MMS"
     ? "1 message"
     : `${est.segmentsPerRecipient} ${est.segmentsPerRecipient === 1 ? "segment" : "segments"}`;
-  const countLine = `${est.encoding} · ${est.charCount} chars · ${countUnit}`;
+  const countLine = countLineOverride ?? `${est.encoding} · ${est.charCount} chars · ${countUnit}`;
 
-  return (
-    <ScrollView
-      style={styles.host}
-      contentContainerStyle={styles.scrollContent}
-      showsVerticalScrollIndicator={false}
-      keyboardShouldPersistTaps="handled"
-    >
+  const content = (
+    <>
       {/* Sender header — brand identity (NOT a fabricated verified number). */}
       <View style={styles.senderRow}>
         <View style={styles.avatar}>
@@ -181,14 +191,16 @@ export const SmsPreviewPane: React.FC<SmsPreviewPaneProps> = ({
             {hasTypedBody ? (
               <Text
                 style={styles.bubbleText}
-                accessibilityLabel={wire}
+                accessibilityLabel={shownWire}
               >
-                {renderWithLinks(wire)}
+                {renderWithLinks(shownWire)}
               </Text>
             ) : null}
           </View>
           <Text style={styles.linkCaption}>
-            Links become trackable Mingla links.
+            {asSent
+              ? "Each guest got their own short link."
+              : "Links become trackable Mingla links."}
           </Text>
         </>
       )}
@@ -196,9 +208,24 @@ export const SmsPreviewPane: React.FC<SmsPreviewPaneProps> = ({
       {showCount ? <Text style={styles.countLine}>{countLine}</Text> : null}
 
       <Text style={styles.footerNote}>
-        Preview only — carriers render texts slightly differently. The send loop
-        is the source of truth.
+        {asSent
+          ? "This is the text as sent. Carriers may display it slightly differently."
+          : "Preview only — carriers render texts slightly differently. The send loop is the source of truth."}
       </Text>
+    </>
+  );
+
+  if (!scrollable) {
+    return <View style={[styles.host, styles.scrollContent, styles.hostStatic]}>{content}</View>;
+  }
+  return (
+    <ScrollView
+      style={styles.host}
+      contentContainerStyle={styles.scrollContent}
+      showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+    >
+      {content}
     </ScrollView>
   );
 };
@@ -207,6 +234,9 @@ const styles = StyleSheet.create({
   host: {
     flex: 1,
     backgroundColor: PHONE_CANVAS,
+  },
+  hostStatic: {
+    flex: 0,
   },
   scrollContent: {
     padding: spacing.md,

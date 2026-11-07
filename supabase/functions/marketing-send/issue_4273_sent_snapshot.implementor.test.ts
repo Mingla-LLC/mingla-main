@@ -1,14 +1,14 @@
 /**
  * #4273 polish — the send snapshot (T-1 .. T-5 of the spec).
  *
- * MINGLA-INVARIANT: I-4273-SENT-SNAPSHOT-WRITE-ONCE | issue #4273 | marketing-send writes a campaign's send snapshot once (UPDATE ... WHERE sent_snapshot IS NULL), after the empty-content guards and before the first recipient, and a failed write never stops the send.
- * MINGLA-INVARIANT: I-4273-SENT-VIEW-NO-CONTACTS | issue #4273 | The snapshot never carries a recipient contact, name, user id, unsubscribe link, per-recipient tracking id or the brand's contact address.
  *
  * Driven through the real send paths: processClaimedCampaigns -> dispatchByKind
  * -> sendEmail / sendSms, and sendPushCampaign with a stubbed provider. The
  * Supabase client is a recording fake, so "before the first recipient" is the
  * order of recorded writes, not an assumption.
  */
+// MINGLA-INVARIANT: I-4273-SENT-SNAPSHOT-WRITE-ONCE | issue #4273 | marketing-send writes a campaign's send snapshot once (UPDATE ... WHERE sent_snapshot IS NULL), after the empty-content guards and before the first recipient, and a failed write never stops the send.
+// MINGLA-INVARIANT: I-4273-SENT-VIEW-NO-CONTACTS | issue #4273 | The send snapshot never carries a recipient contact, name, user id, unsubscribe link, per-recipient tracking id or the brand's contact address.
 import {
   assert,
   assertEquals,

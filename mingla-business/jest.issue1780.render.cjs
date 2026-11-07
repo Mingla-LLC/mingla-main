@@ -36,6 +36,8 @@ module.exports = {
     "**/__tests__/issue_4273_hidden_skip_response.tester_adversarial.test.ts",
     "**/__tests__/blastSendModel.issue4273.rework.test.ts",
     "**/__tests__/smsCost.issue4273.test.ts",
+    // #4273 polish: the campaign screen (one tab per method, as sent).
+    "**/__tests__/issue_4273_sent_report.render.test.tsx",
   ],
   transformIgnorePatterns: [
     "node_modules/(?!(jest-)?react-native|@react-native|@react-native-community|expo|@expo)",

@@ -1,18 +1,29 @@
 /**
- * Marketing → Campaigns → [id] — per-campaign report screen
- * (Sub-ORCH-0815-C-1).
+ * Marketing → Campaigns → [id] — one campaign, every method (#4273 polish;
+ * report since Sub-ORCH-0815-C-1).
  *
- * Honest about what's measurable today vs not:
- *   - Delivered counts: yes (eligible rows with delivery events)
- *   - Click data: yes (marketing_clicks rows with clicked_at)
- *   - Open rate: yes for the eligible delivered cohort; historical is unknown.
+ * One tab per method of the blast (Email · SMS · Push), each with the message
+ * that went out and its own numbers:
+ *   - Preview: the send snapshot ("Exactly as sent"); a method sent before the
+ *     snapshot existed is rebuilt from the saved message and says so; a draft
+ *     or scheduled send shows what will go.
+ *   - Email numbers: delivered, opened (an estimate), clicks, recipients.
+ *   - SMS numbers: sent, held for quiet hours, failed, link taps, segments and
+ *     the confirmed cost. No per-recipient list (it held no address to show).
+ *   - Push numbers: sent, not delivered, skipped, from the push ledger.
+ *
+ * Layout: one column on iOS, Android and narrow web; preview and numbers side
+ * by side on web at 1024px and wider. No height is derived from the window
+ * (#2262 doctrine); the panes render without their own scroll so the page
+ * scroll owns them.
  *
  * Cross-references:
- *   - Service: marketingReportService.ts (aggregates marketing_messages + marketing_clicks)
- *   - Schema: Phase A migration 20260602000003_orch_0815_marketing_hub_phase_a.sql
+ *   - Group view: marketingCampaignGroupViewService.ts (biz_marketing_campaign_group_view_v1)
+ *   - Email/SMS numbers: marketingReportService.ts (unchanged)
+ *   - Preview rules: src/features/marketing/sentPreviewModel.ts
  */
 
-import React, { useCallback } from "react";
+import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -28,6 +39,11 @@ import { useStickyFooterOffset } from "../../../../src/hooks/useStickyFooterOffs
 
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
 import { Icon } from "../../../../src/components/ui/Icon";
+import { ComposerPreviewTabs } from "../../../../src/components/marketing/ComposerPreviewTabs";
+import { EmailPreviewPane } from "../../../../src/components/marketing/EmailPreviewPane";
+import { SmsPreviewPane } from "../../../../src/components/marketing/SmsPreviewPane";
+import { PushPreview } from "../../../../src/components/marketing/PushComposeCard";
+import type { MarketingChannelKind } from "../../../../src/components/marketing/ChannelTabs";
 import {
   accent,
   androidOpaque,
@@ -40,26 +56,26 @@ import {
   typography,
 } from "../../../../src/constants/designSystem";
 import { useCampaignReport } from "../../../../src/hooks/marketing/useCampaignReport";
+import { useCampaignGroupView } from "../../../../src/hooks/marketing/useCampaignGroupView";
+import { useResponsiveLayout } from "../../../../src/hooks/useResponsiveLayout";
+import { smsCostLabel } from "../../../../src/features/marketing/blastSendModel";
+import {
+  METHOD_LABEL,
+  NUMBERS_LATER,
+  PER_GUEST_CAPTION,
+  SMS_COST_MISSING,
+  methodTabLabel,
+  previewSourceFor,
+  sendStarted,
+  tabMembers,
+  type PreviewResolution,
+} from "../../../../src/features/marketing/sentPreviewModel";
+import {
+  CampaignNotFoundError,
+  type CampaignGroupMember,
+} from "../../../../src/services/marketing/marketingCampaignGroupViewService";
+import type { CampaignReport } from "../../../../src/services/marketing/marketingReportService";
 import type { MessageStatus } from "../../../../src/types/marketing";
-
-const STATUS_GLYPH: Record<string, string> = {
-  draft: "📝",
-  scheduled: "⏰",
-  sending: "⚡",
-  sent: "✉",
-  failed: "⚠",
-  cancelled: "—",
-};
-
-// Friendly campaign-level status copy. Replaces raw DB enums in the hero.
-const STATUS_HEADLINE: Record<string, string> = {
-  draft: "Draft",
-  scheduled: "Scheduled to send",
-  sending: "Sending now",
-  sent: "Sent",
-  failed: "Send failed",
-  cancelled: "Cancelled",
-};
 
 // Friendly per-recipient status copy. Replaces raw DB enums in the
 // recipient detail list. Anything missing falls back to the raw value.
@@ -108,6 +124,39 @@ function maskEmail(email: string | null): string {
   return local.slice(0, 3) + "**" + domain;
 }
 
+/** The status line for one method (headline + detail). */
+function statusCopy(member: CampaignGroupMember): { headline: string; detail: string | null } {
+  switch (member.status) {
+    case "draft":
+      return { headline: "Draft — not sent yet", detail: null };
+    case "scheduled":
+      return {
+        headline: `Going out ${formatDateTime(member.scheduledFor)}. This is what will be sent.`,
+        detail: null,
+      };
+    case "sending":
+      return { headline: "Going out now — refresh in a moment", detail: null };
+    case "sent":
+      return { headline: `Sent ${formatDateTime(member.sentAt)}`, detail: null };
+    case "failed":
+      return { headline: "This didn't go out", detail: `Failed ${formatDateTime(member.updatedAt)}` };
+    case "cancelled":
+      return { headline: "Cancelled — nothing was sent", detail: null };
+    default: {
+      const _exhaustive: never = member.status;
+      return { headline: String(_exhaustive), detail: null };
+    }
+  }
+}
+
+/** {token} words in the subject, filled the way the send fills them. */
+function substituteSubject(subject: string, variables: Record<string, string | null>): string {
+  return subject.replace(/\{([a-z_]+)\}/g, (match, key: string) => {
+    if (!(key in variables)) return match;
+    return variables[key] ?? "";
+  });
+}
+
 export default function CampaignReportRoute(): React.ReactElement {
   const router = useRouter();
   const bottomChromeInset = useStickyFooterOffset();
@@ -115,13 +164,34 @@ export default function CampaignReportRoute(): React.ReactElement {
   const idParam = Array.isArray(params.id) ? params.id[0] : params.id;
   const campaignId =
     typeof idParam === "string" && idParam.length > 0 ? idParam : null;
-  const reportQuery = useCampaignReport(campaignId);
+  const groupQuery = useCampaignGroupView(campaignId);
+  const [activeId, setActiveId] = useState<string | null>(campaignId);
+  const { isWideDesktop } = useResponsiveLayout();
+  // Width and text size only: whether stat cells sit two to a row.
   const { width, fontScale } = useWindowDimensions();
   const statOneColumn = fontScale >= 1.6 || width - spacing.md * 2 < 320;
+
+  const view = groupQuery.data;
+  const tabs = view === undefined ? [] : tabMembers(view.members, activeId ?? view.focusCampaignId);
+  const active =
+    tabs.find((member) => member.campaignId === activeId) ??
+    tabs.find((member) => member.campaignId === view?.focusCampaignId) ??
+    tabs[0] ??
+    null;
+  // Email and SMS numbers come from the per-campaign report, once it started.
+  const reportQuery = useCampaignReport(
+    active !== null && active.channel !== "push" && sendStarted(active)
+      ? active.campaignId
+      : null,
+  );
 
   const handleBack = useCallback(() => {
     if (router.canGoBack()) router.back();
     else router.replace("/(tabs)/marketing/campaigns" as never);
+  }, [router]);
+
+  const handleKeepEditing = useCallback((id: string) => {
+    router.push(`/marketing/campaigns/compose?draft=${id}` as never);
   }, [router]);
 
   if (campaignId === null) {
@@ -141,7 +211,7 @@ export default function CampaignReportRoute(): React.ReactElement {
 
   // ORCH-0889: disabled-query + first-fetch both render the spinner.
   // Per I-DISABLED-QUERY-IS-LOADING.
-  if (!reportQuery.hasResolved && !reportQuery.isError) {
+  if (!groupQuery.hasResolved && !groupQuery.isError) {
     return (
       <View style={styles.host}>
         <Header onBack={handleBack} title="Campaign" />
@@ -152,267 +222,413 @@ export default function CampaignReportRoute(): React.ReactElement {
     );
   }
 
-  if (reportQuery.isError || reportQuery.data === undefined) {
+  if (groupQuery.isError || view === undefined || active === null) {
     return (
       <View style={styles.host}>
         <Header onBack={handleBack} title="Campaign" />
         <View style={styles.centerHost}>
           <EmptyState
             illustration="users"
-            title="Couldn't load this campaign"
-            description="Pull to retry, or come back in a moment."
+            title={groupQuery.notFound ? "Campaign not found" : "Couldn't load this campaign"}
+            description={groupQuery.notFound ? "The link may be stale." : "Pull to retry, or come back in a moment."}
           />
         </View>
       </View>
     );
   }
 
-  const { campaign, recipientStats, clickStats, recipients } = reportQuery.data;
-  const glyph = STATUS_GLYPH[campaign.status] ?? "•";
+  const primary = view.members.find((member) => member.isHead) ?? view.members[0] ?? active;
+  const resolution = previewSourceFor(active, view.brand);
+  const started = sendStarted(active);
+  const status = statusCopy(active);
+  const methodWord = METHOD_LABEL[active.channel].toLowerCase();
+  const labelFor = (kind: MarketingChannelKind): string => {
+    const member = tabs.find((row) => row.channel === kind);
+    return member === undefined ? METHOD_LABEL[kind] : methodTabLabel(member);
+  };
+
+  const body = (
+    <View style={styles.methodBody} testID="campaign-method-body">
+      <View style={styles.statusBlock}>
+        <Text style={styles.statusHeadline} accessibilityRole="header">
+          {status.headline}
+        </Text>
+        {status.detail !== null ? <Text style={styles.statusDetail}>{status.detail}</Text> : null}
+        {active.status === "draft" ? (
+          <Pressable
+            onPress={() => handleKeepEditing(active.campaignId)}
+            accessibilityRole="button"
+            accessibilityLabel={`Keep editing the ${methodWord} draft`}
+            style={({ pressed }) => [styles.keepEditing, pressed ? styles.keepEditingPressed : null]}
+          >
+            <Text style={styles.keepEditingLabel}>Keep editing</Text>
+          </Pressable>
+        ) : null}
+      </View>
+
+      <View
+        style={isWideDesktop ? styles.wideRow : styles.column}
+        testID={isWideDesktop ? "campaign-layout-wide" : "campaign-layout-narrow"}
+      >
+        <View style={isWideDesktop ? styles.previewColumn : styles.columnChild}>
+          <View
+            style={[styles.previewCard, Platform.OS === "android" ? styles.previewCardAndroid : null]}
+            accessibilityLabel={started ? `Preview of the ${methodWord} as sent` : `Preview of the ${methodWord}`}
+            testID="campaign-preview-card"
+          >
+            <MethodPreview resolution={resolution} />
+          </View>
+          {resolution.label !== null ? (
+            <Text style={styles.sourceLabel} testID="campaign-preview-source">{resolution.label}</Text>
+          ) : null}
+          {resolution.channel === "email" && resolution.source === "snapshot" && resolution.props.hasGuestWords ? (
+            <Text style={styles.sourceLabel}>{PER_GUEST_CAPTION}</Text>
+          ) : null}
+        </View>
+
+        <View style={isWideDesktop ? styles.statsColumn : styles.columnChild}>
+          {!started ? (
+            <Text style={styles.numbersLater}>{NUMBERS_LATER}</Text>
+          ) : active.channel === "push" ? (
+            <PushNumbers member={active} oneColumn={statOneColumn} />
+          ) : !reportQuery.hasResolved && !reportQuery.isError ? (
+            <View style={styles.numbersLoading}>
+              <ActivityIndicator size="small" color={textTokens.secondary} />
+            </View>
+          ) : reportQuery.isError || reportQuery.data === undefined ? (
+            <Text style={styles.numbersLater}>
+              Couldn't load the numbers for this {methodWord}. Come back in a moment.
+            </Text>
+          ) : active.channel === "sms" ? (
+            <SmsNumbers member={active} report={reportQuery.data} oneColumn={statOneColumn} />
+          ) : (
+            <EmailNumbers report={reportQuery.data} oneColumn={statOneColumn} />
+          )}
+        </View>
+      </View>
+    </View>
+  );
+
+  return (
+    <View style={styles.host}>
+      <Header onBack={handleBack} title={primary.name} />
+      <ScrollView
+        contentContainerStyle={[
+          styles.scrollContent,
+          isWideDesktop ? styles.scrollContentWide : null,
+          // ORCH-0889: bottom inset comes from useStickyFooterOffset so the
+          // last row clears the mobile BottomNav capsule on native + narrow
+          // web AND avoids extra empty gutter on wide-desktop.
+          { paddingBottom: bottomChromeInset },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
+        <ComposerPreviewTabs
+          channels={tabs.map((member) => member.channel)}
+          active={active.channel}
+          onSelect={(kind) => {
+            const next = tabs.find((member) => member.channel === kind);
+            if (next !== undefined) setActiveId(next.campaignId);
+          }}
+          labelFor={labelFor}
+          fill={false}
+          pane={body}
+        />
+      </ScrollView>
+    </View>
+  );
+}
+
+/** The composer's own panes, without their scroll, fed from the snapshot. */
+const MethodPreview: React.FC<{ resolution: PreviewResolution }> = ({ resolution }) => {
+  if (resolution.channel === "email") {
+    const p = resolution.props;
+    return (
+      <EmailPreviewPane
+        scrollable={false}
+        subject={substituteSubject(p.subject, { ...p.variables })}
+        bodyHtml={p.bodyHtml}
+        variables={p.variables}
+        brandName={p.brandName}
+        brandHeaderImageUrl={p.brandHeaderImageUrl}
+        embeddedEvents={p.embeddedEvents}
+        brandSlug={p.brandSlug}
+        fromLabel={p.fromLabel}
+      />
+    );
+  }
+  if (resolution.channel === "sms") {
+    const p = resolution.props;
+    return (
+      <SmsPreviewPane
+        scrollable={false}
+        body={p.body}
+        brandName={p.brandName}
+        brandSlug={p.brandSlug}
+        includeFollowCta={p.includeFollowCta}
+        reachableSms={null}
+        currencyCode=""
+        hasMedia={p.hasMedia}
+        mediaUris={p.mediaUris}
+        wireOverride={p.wireOverride}
+        countLineOverride={p.countLineOverride}
+      />
+    );
+  }
+  const p = resolution.props;
+  return (
+    <View style={styles.pushCanvas}>
+      {p.variants !== null
+        ? p.variants.map((variant) => (
+            <View key={variant.reason} style={styles.pushVariant}>
+              <Text style={styles.pushCaption}>{variant.caption}</Text>
+              <PushPreview
+                body={variant.body}
+                brandName={p.brandName}
+                reason={variant.reason}
+                rendered={{ title: variant.title, body: variant.body }}
+              />
+            </View>
+          ))
+        : (
+            <PushPreview
+              body={p.fallback?.body ?? ""}
+              title={p.fallback?.title ?? null}
+              brandName={p.brandName}
+              reason="follower"
+            />
+          )}
+    </View>
+  );
+};
+
+const EmailNumbers: React.FC<{ report: CampaignReport; oneColumn: boolean }> = ({ report, oneColumn }) => {
+  const { campaign, recipientStats, clickStats, recipients } = report;
   const isLivePreviewOnly =
     recipientStats.preview_skipped > 0 && recipientStats.accepted === 0;
   const openedPct =
     recipientStats.trackedDelivered > 0
       ? (recipientStats.opened / recipientStats.trackedDelivered) * 100
       : undefined;
-
   return (
-    <View style={styles.host}>
-      <Header onBack={handleBack} title={campaign.name} />
-      <ScrollView
-        contentContainerStyle={[
-          styles.scrollContent,
-          // ORCH-0889: bottom inset comes from useStickyFooterOffset so the
-          // last recipient row clears the mobile BottomNav capsule on
-          // native + narrow web AND avoids extra empty gutter on wide-
-          // desktop (where the BottomNav is replaced by the fixed-left
-          // rail and insets.bottom is 0).
-          { paddingBottom: bottomChromeInset },
-        ]}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Status hero */}
-        <View style={styles.heroCard}>
-          <Text style={styles.heroGlyph}>{glyph}</Text>
-          <Text style={styles.heroStatus}>
-            {STATUS_HEADLINE[campaign.status] ?? campaign.status}
-          </Text>
-          <Text style={styles.heroSub}>
-            {campaign.status === "scheduled"
-              ? `Going out ${formatDateTime(campaign.scheduled_for)}`
-              : campaign.status === "sent"
-                ? `Sent ${formatDateTime(campaign.sent_at)}`
-                : campaign.status === "failed"
-                  ? `Failed ${formatDateTime(campaign.updated_at)}`
-                  : campaign.status === "sending"
-                    ? "Going out now — refresh in a moment"
-                    : `Updated ${formatDateTime(campaign.updated_at)}`}
-          </Text>
-          {campaign.audience_name_snapshot ? (
-            <Text style={styles.heroSub}>
-              Audience: {campaign.audience_name_snapshot}
-            </Text>
-          ) : null}
-        </View>
+    <View style={styles.numbers}>
+      {campaign.audience_name_snapshot ? (
+        <Text style={styles.audienceLine}>
+          Audience: {campaign.audience_name_snapshot}
+        </Text>
+      ) : null}
 
-        {/* Preview-only banner — visible only while the live email gate is off. */}
-        {isLivePreviewOnly ? (
-          <View style={styles.previewBanner}>
-            <Text style={styles.previewBannerTitle}>
-              Preview mode — no real emails went out
-            </Text>
-            <Text style={styles.previewBannerText}>
-              Mingla is set up to test the whole send flow without delivering
-              real email. We'll flip the switch once production payments are
-              signed off. Counts below show who{" "}
-              <Text style={styles.previewBannerEmphasis}>would</Text> have
-              received it.
-            </Text>
-          </View>
+      {/* Preview-only banner — visible only while the live email gate is off. */}
+      {isLivePreviewOnly ? (
+        <View style={styles.previewBanner}>
+          <Text style={styles.previewBannerTitle}>
+            Preview mode — no real emails went out
+          </Text>
+          <Text style={styles.previewBannerText}>
+            Mingla is set up to test the whole send flow without delivering
+            real email. We'll flip the switch once production payments are
+            signed off. Counts below show who{" "}
+            <Text style={styles.previewBannerEmphasis}>would</Text> have
+            received it.
+          </Text>
+        </View>
+      ) : null}
+
+      {/* Recipient stats */}
+      <Text style={styles.sectionLabel}>WHO IT WENT TO</Text>
+      <View style={styles.statsGrid}>
+        {/* #2510 — one honest vocabulary. Delivered/Opened render as
+            unknown (not 0) for campaigns sent before the webhook existed,
+            because a 0% open rate reads as "nobody read it". */}
+        <StatCell label="Total audience" value={recipientStats.total} oneColumn={oneColumn} />
+        <StatCell label="Accepted by provider" value={recipientStats.accepted} tone={semantic.success} oneColumn={oneColumn} />
+        <StatCell
+          label="Delivered"
+          value={recipientStats.hasDeliveryCoverage ? recipientStats.delivered : null}
+          tone={semantic.success}
+          state={
+            !recipientStats.deliveryHealthy
+              ? "degraded"
+              : recipientStats.hasDeliveryCoverage
+                ? "measured"
+                : "notMeasured"
+          }
+          oneColumn={oneColumn}
+        />
+        <StatCell
+          label="Opened"
+          value={recipientStats.hasOpenCoverage ? recipientStats.opened : null}
+          percent={recipientStats.hasOpenCoverage ? openedPct : undefined}
+          state={
+            !recipientStats.openHealthy
+              ? "degraded"
+              : recipientStats.hasOpenCoverage
+                ? "measured"
+                : "notMeasured"
+          }
+          oneColumn={oneColumn}
+        />
+        <StatCell label="Clicked a link" value={recipientStats.clicked} oneColumn={oneColumn} />
+        <StatCell label="Bounced" value={recipientStats.bounced} tone={semantic.warning} oneColumn={oneColumn} />
+        <StatCell label="Marked as spam" value={recipientStats.complained} tone={semantic.warning} oneColumn={oneColumn} />
+        <StatCell label="Preview only" value={recipientStats.preview_skipped} tone={textTokens.tertiary} oneColumn={oneColumn} />
+        <StatCell label="Failed to send" value={recipientStats.failed} tone={semantic.warning} oneColumn={oneColumn} />
+        <StatCell label="Unsubscribed" value={recipientStats.unsubscribed} tone={semantic.warning} oneColumn={oneColumn} />
+      </View>
+
+      <LinkClicks clickStats={clickStats} oneColumn={oneColumn} totalLabel="Total taps" uniqueLabel="Unique people" />
+
+      {/* Honesty about what we can and can't measure */}
+      <View style={styles.honestyNote}>
+        <Text style={styles.honestyTitle}>What these numbers mean</Text>
+        <Text style={styles.honestyText}>
+          Opened is an estimate based on a tiny image in the email. Privacy
+          protections and image settings can hide a real open or register one
+          automatically, so use opens as a trend — not proof that a specific
+          person read it. Link clicks are a stronger signal. Emails sent
+          before open tracking was enabled show — because those opens were
+          never measured.
+        </Text>
+        {!recipientStats.deliveryHealthy || !recipientStats.openHealthy ? (
+          <Text style={styles.trackingDegraded}>
+            Tracking data is catching up. Check back in a few minutes.
+          </Text>
         ) : null}
+      </View>
 
-        {/* Recipient stats */}
-        <Text style={styles.sectionLabel}>WHO IT WENT TO</Text>
-        <View style={styles.statsGrid}>
-          {/* #2510 — one honest vocabulary. "Delivered" used to mean the
-              ACCEPTED count here and the CLICK count on the overview: one
-              word, two different wrong numbers. Delivered/Opened render as
-              unknown (not 0) for campaigns sent before the webhook existed,
-              because a 0% open rate reads as "nobody read it". */}
-          <StatCell
-            label="Total audience"
-            value={recipientStats.total}
-            oneColumn={statOneColumn}
-          />
-          <StatCell
-            label="Accepted by provider"
-            value={recipientStats.accepted}
-            tone={semantic.success}
-            oneColumn={statOneColumn}
-          />
-          <StatCell
-            label="Delivered"
-            value={
-              recipientStats.hasDeliveryCoverage
-                ? recipientStats.delivered
-                : null
-            }
-            tone={semantic.success}
-            state={
-              !recipientStats.deliveryHealthy
-                ? "degraded"
-                : recipientStats.hasDeliveryCoverage
-                  ? "measured"
-                  : "notMeasured"
-            }
-            oneColumn={statOneColumn}
-          />
-          <StatCell
-            label="Opened"
-            value={
-              recipientStats.hasOpenCoverage ? recipientStats.opened : null
-            }
-            percent={recipientStats.hasOpenCoverage ? openedPct : undefined}
-            state={
-              !recipientStats.openHealthy
-                ? "degraded"
-                : recipientStats.hasOpenCoverage
-                  ? "measured"
-                  : "notMeasured"
-            }
-            oneColumn={statOneColumn}
-          />
-          <StatCell
-            label="Clicked a link"
-            value={recipientStats.clicked}
-            oneColumn={statOneColumn}
-          />
-          <StatCell
-            label="Bounced"
-            value={recipientStats.bounced}
-            tone={semantic.warning}
-            oneColumn={statOneColumn}
-          />
-          <StatCell
-            label="Marked as spam"
-            value={recipientStats.complained}
-            tone={semantic.warning}
-            oneColumn={statOneColumn}
-          />
-          <StatCell
-            label="Preview only"
-            value={recipientStats.preview_skipped}
-            tone={textTokens.tertiary}
-            oneColumn={statOneColumn}
-          />
-          <StatCell
-            label="Failed to send"
-            value={recipientStats.failed}
-            tone={semantic.warning}
-            oneColumn={statOneColumn}
-          />
-          <StatCell
-            label="Unsubscribed"
-            value={recipientStats.unsubscribed}
-            tone={semantic.warning}
-            oneColumn={statOneColumn}
-          />
-        </View>
-
-        {/* Click stats */}
-        <Text style={styles.sectionLabel}>LINK CLICKS</Text>
-        <View style={styles.statsGrid}>
-          <StatCell
-            label="Total taps"
-            value={clickStats.total_clicks}
-            oneColumn={statOneColumn}
-          />
-          <StatCell
-            label="Unique people"
-            value={clickStats.unique_clickers}
-            oneColumn={statOneColumn}
-          />
-        </View>
-        {clickStats.top_links.length > 0 ? (
-          <View style={styles.linksCard}>
-            <Text style={styles.linksHeader}>MOST-CLICKED LINKS</Text>
-            {clickStats.top_links.map((link) => (
-              <View key={link.destination_url} style={styles.linkRow}>
-                <Text style={styles.linkUrl} numberOfLines={1}>
-                  {link.destination_url}
-                </Text>
-                <Text style={styles.linkCount}>
-                  {link.clicks} {link.clicks === 1 ? "tap" : "taps"}
-                </Text>
-              </View>
-            ))}
-          </View>
-        ) : null}
-
-        {/* Honesty about what we can and can't measure */}
-        <View style={styles.honestyNote}>
-          <Text style={styles.honestyTitle}>What these numbers mean</Text>
-          <Text style={styles.honestyText}>
-            Opened is an estimate based on a tiny image in the email. Privacy
-            protections and image settings can hide a real open or register one
-            automatically, so use opens as a trend — not proof that a specific
-            person read it. Link clicks are a stronger signal. Emails sent
-            before open tracking was enabled show — because those opens were
-            never measured.
+      {/* Per-recipient (email only: an SMS row held no address to show) */}
+      <Text style={styles.sectionLabel}>EVERY RECIPIENT</Text>
+      {recipients.length === 0 ? (
+        <View style={styles.emptyCard}>
+          <Text style={styles.emptyText}>
+            No recipients yet. Give it a minute — we process scheduled
+            campaigns in batches and your list will fill in here as the send
+            completes.
           </Text>
-          {!recipientStats.deliveryHealthy || !recipientStats.openHealthy ? (
-            <Text style={styles.trackingDegraded}>
-              Tracking data is catching up. Check back in a few minutes.
-            </Text>
-          ) : null}
         </View>
-
-        {/* Per-recipient */}
-        <Text style={styles.sectionLabel}>EVERY RECIPIENT</Text>
-        {recipients.length === 0 ? (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyText}>
-              No recipients yet. Give it a minute — we process scheduled
-              campaigns in batches and your list will fill in here as the send
-              completes.
-            </Text>
-          </View>
-        ) : (
-          <View style={styles.recipientList}>
-            {recipients.map((r) => (
-              <View key={r.id} style={styles.recipientRow}>
-                <Text style={styles.recipientEmail} numberOfLines={1}>
-                  {maskEmail(r.recipient_email)}
+      ) : (
+        <View style={styles.recipientList}>
+          {recipients.map((r) => (
+            <View key={r.id} style={styles.recipientRow}>
+              <Text style={styles.recipientEmail} numberOfLines={1}>
+                {maskEmail(r.recipient_email)}
+              </Text>
+              <View style={styles.recipientMeta}>
+                <Text style={[styles.recipientStatus, { color: statusTone(r.status) }]}>
+                  {RECIPIENT_STATUS_LABEL[r.status] ?? r.status}
                 </Text>
-                <View style={styles.recipientMeta}>
-                  <Text
-                    style={[
-                      styles.recipientStatus,
-                      { color: statusTone(r.status) },
-                    ]}
-                  >
-                    {RECIPIENT_STATUS_LABEL[r.status] ?? r.status}
-                  </Text>
-                  {r.click_count > 0 ? (
-                    <Text style={styles.recipientClicks}>
-                      · tapped {r.click_count} link
-                      {r.click_count === 1 ? "" : "s"}
-                    </Text>
-                  ) : null}
-                </View>
-                {r.failure_reason !== null ? (
-                  <Text style={styles.recipientFailure} numberOfLines={2}>
-                    Reason: {r.failure_reason}
+                {r.click_count > 0 ? (
+                  <Text style={styles.recipientClicks}>
+                    · tapped {r.click_count} link
+                    {r.click_count === 1 ? "" : "s"}
                   </Text>
                 ) : null}
               </View>
-            ))}
-          </View>
-        )}
-      </ScrollView>
+              {r.failure_reason !== null ? (
+                <Text style={styles.recipientFailure} numberOfLines={2}>
+                  Reason: {r.failure_reason}
+                </Text>
+              ) : null}
+            </View>
+          ))}
+        </View>
+      )}
     </View>
   );
-}
+};
+
+const SmsNumbers: React.FC<{ member: CampaignGroupMember; report: CampaignReport; oneColumn: boolean }> = ({
+  member,
+  report,
+  oneColumn,
+}) => {
+  const { campaign, recipientStats, clickStats } = report;
+  const isLivePreviewOnly =
+    recipientStats.preview_skipped > 0 && recipientStats.accepted === 0;
+  return (
+    <View style={styles.numbers}>
+      {campaign.audience_name_snapshot ? (
+        <Text style={styles.audienceLine}>Audience: {campaign.audience_name_snapshot}</Text>
+      ) : null}
+      {isLivePreviewOnly ? (
+        <View style={styles.previewBanner}>
+          <Text style={styles.previewBannerTitle}>Preview mode — no real texts went out</Text>
+          <Text style={styles.previewBannerText}>
+            Counts below show who would have received it.
+          </Text>
+        </View>
+      ) : null}
+      <Text style={styles.sectionLabel}>WHO IT WENT TO</Text>
+      <View style={styles.statsGrid} testID="campaign-sms-numbers">
+        <StatCell label="Sent" value={recipientStats.accepted} tone={semantic.success} oneColumn={oneColumn} />
+        <StatCell label="Held for quiet hours" value={member.sms?.deferred ?? 0} oneColumn={oneColumn} />
+        <StatCell label="Failed to send" value={recipientStats.failed} tone={semantic.warning} oneColumn={oneColumn} />
+        <StatCell label="Preview only" value={recipientStats.preview_skipped} tone={textTokens.tertiary} oneColumn={oneColumn} />
+      </View>
+      <LinkClicks clickStats={clickStats} oneColumn={oneColumn} totalLabel="Link taps" uniqueLabel="Unique people who tapped" />
+      <View style={styles.smsFacts}>
+        <Text style={styles.smsFact}>Segments sent: {member.sms?.segmentsSent ?? 0}</Text>
+        <Text style={styles.smsFact} testID="campaign-sms-cost">
+          {member.cost !== null
+            ? `Cost: ${smsCostLabel(
+                {
+                  costKind: member.cost.costKind,
+                  estimatedCostMinor: member.cost.estimatedCostMinor,
+                  currency: member.cost.currency,
+                },
+                "row",
+              )}`
+            : SMS_COST_MISSING}
+        </Text>
+      </View>
+    </View>
+  );
+};
+
+const PushNumbers: React.FC<{ member: CampaignGroupMember; oneColumn: boolean }> = ({ member, oneColumn }) => {
+  const counts = member.push ?? { queued: 0, sent: 0, failed: 0, skipped: 0 };
+  return (
+    <View style={styles.numbers}>
+      <Text style={styles.sectionLabel}>WHO IT WENT TO</Text>
+      <View style={styles.statsGrid} testID="campaign-push-numbers">
+        <StatCell label="Sent" value={counts.sent} tone={semantic.success} oneColumn={oneColumn} />
+        <StatCell label="Not delivered" value={counts.failed} tone={semantic.warning} oneColumn={oneColumn} />
+        <StatCell label="Skipped (muted or no device)" value={counts.skipped} tone={textTokens.tertiary} oneColumn={oneColumn} />
+        {counts.queued > 0 ? <StatCell label="Waiting" value={counts.queued} oneColumn={oneColumn} /> : null}
+      </View>
+    </View>
+  );
+};
+
+const LinkClicks: React.FC<{
+  clickStats: CampaignReport["clickStats"];
+  oneColumn: boolean;
+  totalLabel: string;
+  uniqueLabel: string;
+}> = ({ clickStats, oneColumn, totalLabel, uniqueLabel }) => (
+  <>
+    <Text style={styles.sectionLabel}>LINK CLICKS</Text>
+    <View style={styles.statsGrid}>
+      <StatCell label={totalLabel} value={clickStats.total_clicks} oneColumn={oneColumn} />
+      <StatCell label={uniqueLabel} value={clickStats.unique_clickers} oneColumn={oneColumn} />
+    </View>
+    {clickStats.top_links.length > 0 ? (
+      <View style={styles.linksCard}>
+        <Text style={styles.linksHeader}>MOST-CLICKED LINKS</Text>
+        {clickStats.top_links.map((link) => (
+          <View key={link.destination_url} style={styles.linkRow}>
+            <Text style={styles.linkUrl} numberOfLines={1}>
+              {link.destination_url}
+            </Text>
+            <Text style={styles.linkCount}>
+              {link.clicks} {link.clicks === 1 ? "tap" : "taps"}
+            </Text>
+          </View>
+        ))}
+      </View>
+    ) : null}
+  </>
+);
 
 const Header: React.FC<{ onBack: () => void; title: string }> = ({
   onBack,
@@ -548,29 +764,122 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: spacing.md,
     // paddingBottom is injected per-render via useStickyFooterOffset()
-    // (ORCH-0889) so the last recipient row clears the floating
-    // BottomNav on mobile and the canvas bottom on wide-desktop.
+    // (ORCH-0889).
     gap: spacing.md,
   },
-  heroCard: {
-    alignItems: "center",
-    padding: spacing.lg,
-    borderRadius: radius.xl,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileElevated,
-    backgroundColor: glass.tint.profileElevated,
+  scrollContentWide: {
+    width: "100%",
+    maxWidth: 1120,
+    alignSelf: "center",
+  },
+  methodBody: {
+    gap: spacing.md,
+  },
+  statusBlock: {
     gap: spacing.xs,
   },
-  heroGlyph: {
-    fontSize: 40,
-    color: accent.warm,
-  },
-  heroStatus: {
-    ...typography.h2,
+  statusHeadline: {
+    ...typography.h3,
     color: textTokens.primary,
-    letterSpacing: 1.4,
   },
-  heroSub: {
+  statusDetail: {
+    ...typography.bodySm,
+    color: textTokens.secondary,
+  },
+  keepEditing: {
+    alignSelf: "flex-start",
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.full,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: accent.warm,
+    backgroundColor: accent.tint,
+    marginTop: spacing.xs,
+  },
+  keepEditingPressed: {
+    opacity: 0.85,
+  },
+  keepEditingLabel: {
+    ...typography.bodySm,
+    fontWeight: "600",
+    color: textTokens.primary,
+  },
+  column: {
+    gap: spacing.md,
+  },
+  columnChild: {
+    gap: spacing.sm,
+  },
+  wideRow: {
+    flexDirection: "row",
+    gap: spacing.lg,
+    alignItems: "flex-start",
+  },
+  previewColumn: {
+    flexGrow: 5,
+    flexBasis: 0,
+    minWidth: 360,
+    maxWidth: 520,
+    gap: spacing.sm,
+  },
+  statsColumn: {
+    flexGrow: 6,
+    flexBasis: 0,
+    minWidth: 320,
+    gap: spacing.sm,
+  },
+  previewCard: {
+    borderRadius: radius.xl,
+    overflow: "hidden",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: glass.border.profileBase,
+  },
+  previewCardAndroid: {
+    // Android glass policy: an opaque backdrop, never a translucent tint.
+    backgroundColor: androidOpaque.rowFill,
+    borderColor: androidOpaque.rowBorder,
+  },
+  sourceLabel: {
+    ...typography.bodySm,
+    color: textTokens.tertiary,
+  },
+  pushCanvas: {
+    padding: spacing.md,
+    gap: spacing.md,
+    backgroundColor: canvas.discover,
+  },
+  pushVariant: {
+    gap: spacing.xs,
+  },
+  pushCaption: {
+    ...typography.labelCap,
+    color: textTokens.tertiary,
+  },
+  numbers: {
+    gap: spacing.sm,
+  },
+  numbersLater: {
+    ...typography.body,
+    color: textTokens.secondary,
+  },
+  numbersLoading: {
+    paddingVertical: spacing.lg,
+    alignItems: "center",
+  },
+  audienceLine: {
+    ...typography.bodySm,
+    color: textTokens.secondary,
+  },
+  smsFacts: {
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: glass.border.profileBase,
+  },
+  smsFact: {
     ...typography.bodySm,
     color: textTokens.secondary,
   },
@@ -578,7 +887,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: radius.md,
-    backgroundColor: "rgba(245, 158, 11, 0.12)",
+    backgroundColor: semantic.warningTint,
     borderLeftWidth: 3,
     borderLeftColor: semantic.warning,
     gap: 4,

@@ -1,15 +1,17 @@
 /**
- * CampaignCard — single row in the campaigns history list.
+ * CampaignCard — one blast in the campaigns history list (#4273: every method
+ * of a campaign is one card, with a method chip row when there are two or
+ * more).
  *
- * Renders status-specific meta + actions:
- *   - scheduled: "Scheduled for X · N recipients" + [Cancel]
- *   - sent: "Sent X · N recipients" (open/click rates TBD Phase C)
+ * Renders the blast's rolled-up status + actions:
+ *   - scheduled: "Scheduled for X" + [Cancel] when exactly one method waits
+ *   - sent: "Sent X" (recipients when it has one method)
  *   - draft: "Saved Xm ago" + [Resume]
- *   - failed: "Failed X" + [Delete]
- *   - sending / cancelled: status caption only
- *
- * Phase B does NOT show a "View report" action — that requires the campaign
- * report screen which is Sub-ORCH-0815-C scope (SPEC Hard Guard §13).
+ *   - failed / cancelled: caption + [Delete] (#4273 extra b: deletes failed or
+ *     cancelled methods; a confirmed send stays on record)
+ *   - sending: status caption only
+ * Tapping the card opens the composer when every method is a draft, else the
+ * campaign screen on the blast's first method.
  */
 
 import React from "react";
@@ -23,14 +25,18 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
-import type { MarketingCampaignRow } from "../../types/marketing";
+import {
+  METHOD_LABEL,
+  type CampaignListGroup,
+} from "../../features/marketing/sentPreviewModel";
 
 export interface CampaignCardProps {
-  campaign: MarketingCampaignRow;
+  group: CampaignListGroup;
   onResume: (id: string) => void;
   onCancel: (id: string) => void;
-  onDelete: (id: string) => void;
-  /** Navigate to the per-campaign report (Sub-ORCH-0815-C-1). */
+  /** Ids of the failed or cancelled methods to delete. */
+  onDelete: (ids: string[]) => void;
+  /** Navigate to the campaign screen (Sub-ORCH-0815-C-1, #4273). */
   onOpenReport: (id: string) => void;
 }
 
@@ -71,32 +77,37 @@ function formatDate(iso: string | null): string {
 }
 
 export const CampaignCard: React.FC<CampaignCardProps> = ({
-  campaign,
+  group,
   onResume,
   onCancel,
   onDelete,
   onOpenReport,
 }) => {
-  const icon = STATUS_ICON[campaign.status] ?? "•";
+  const campaign = group.primary;
+  const icon = STATUS_ICON[group.status] ?? "•";
+  const single = group.members.length === 1;
+  const scheduled = group.members.filter((row) => row.status === "scheduled");
+  const sent = group.members.filter((row) => row.status === "sent");
+  const allDraft = group.members.every((row) => row.status === "draft");
+  const deletable = group.members.filter((row) => row.status === "failed" || row.status === "cancelled");
+  const recipients = single && campaign.recipient_count !== null
+    ? ` · ${campaign.recipient_count} recipients`
+    : "";
 
   const renderMeta = (): React.ReactElement => {
-    switch (campaign.status) {
+    switch (group.status) {
       case "scheduled":
         return (
           <Text style={styles.metaText}>
-            Scheduled for {formatDate(campaign.scheduled_for)}
-            {campaign.recipient_count !== null
-              ? ` · ${campaign.recipient_count} recipients`
-              : ""}
+            Scheduled for {formatDate(scheduled[0]?.scheduled_for ?? campaign.scheduled_for)}
+            {recipients}
           </Text>
         );
       case "sent":
         return (
           <Text style={styles.metaText}>
-            Sent {formatDate(campaign.sent_at)}
-            {campaign.recipient_count !== null
-              ? ` · ${campaign.recipient_count} recipients`
-              : ""}
+            Sent {formatDate(sent[0]?.sent_at ?? campaign.sent_at)}
+            {recipients}
           </Text>
         );
       case "sending":
@@ -117,7 +128,7 @@ export const CampaignCard: React.FC<CampaignCardProps> = ({
   };
 
   const renderActions = (): React.ReactElement | null => {
-    if (campaign.status === "draft") {
+    if (allDraft) {
       return (
         <Pressable
           onPress={() => onResume(campaign.id)}
@@ -132,10 +143,12 @@ export const CampaignCard: React.FC<CampaignCardProps> = ({
         </Pressable>
       );
     }
-    if (campaign.status === "scheduled") {
+    // A blast with several scheduled methods is cancelled from its screen.
+    if (group.status === "scheduled" && scheduled.length === 1) {
+      const target = scheduled[0];
       return (
         <Pressable
-          onPress={() => onCancel(campaign.id)}
+          onPress={() => onCancel(target.id)}
           accessibilityRole="button"
           accessibilityLabel={`Cancel scheduled campaign ${campaign.name}`}
           style={({ pressed }) => [
@@ -147,12 +160,12 @@ export const CampaignCard: React.FC<CampaignCardProps> = ({
         </Pressable>
       );
     }
-    if (campaign.status === "failed") {
+    if ((group.status === "failed" || group.status === "cancelled") && deletable.length > 0) {
       return (
         <Pressable
-          onPress={() => onDelete(campaign.id)}
+          onPress={() => onDelete(deletable.map((row) => row.id))}
           accessibilityRole="button"
-          accessibilityLabel={`Delete failed campaign ${campaign.name}`}
+          accessibilityLabel={`Delete ${group.status} campaign ${campaign.name}`}
           style={({ pressed }) => [
             styles.actionBtn,
             pressed ? styles.actionBtnPressed : null,
@@ -166,10 +179,10 @@ export const CampaignCard: React.FC<CampaignCardProps> = ({
   };
 
   // Tap-on-row routing:
-  //   - draft → resume in composer
-  //   - everything else (scheduled / sending / sent / failed / cancelled) → report
+  //   - every method a draft → resume in composer
+  //   - anything else → the campaign screen, on the blast's first method
   const handleRowPress = (): void => {
-    if (campaign.status === "draft") {
+    if (allDraft) {
       onResume(campaign.id);
     } else {
       onOpenReport(campaign.id);
@@ -181,7 +194,7 @@ export const CampaignCard: React.FC<CampaignCardProps> = ({
       onPress={handleRowPress}
       accessibilityRole="button"
       accessibilityLabel={
-        campaign.status === "draft"
+        allDraft
           ? `Resume draft ${campaign.name}`
           : `Open report for ${campaign.name}`
       }
@@ -194,6 +207,20 @@ export const CampaignCard: React.FC<CampaignCardProps> = ({
       <View style={styles.body}>
         <Text style={styles.name} numberOfLines={1}>{campaign.name}</Text>
         {renderMeta()}
+        {group.channels.length >= 2 ? (
+          <View
+            style={styles.chipRow}
+            accessible
+            accessibilityLabel={`Sent by ${group.channels.map((channel) => METHOD_LABEL[channel]).join(", ")}`}
+            testID="campaign-card-methods"
+          >
+            {group.channels.map((channel) => (
+              <View key={channel} style={styles.chip}>
+                <Text style={styles.chipLabel}>{METHOD_LABEL[channel]}</Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
       </View>
       {renderActions()}
     </Pressable>
@@ -260,5 +287,23 @@ const styles = StyleSheet.create({
     ...typography.bodySm,
     fontWeight: "600",
     color: textTokens.primary,
+  },
+  chipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+  },
+  chip: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.full,
+    backgroundColor: glass.tint.profileBase,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: glass.border.profileBase,
+  },
+  chipLabel: {
+    ...typography.labelCap,
+    color: textTokens.secondary,
   },
 });

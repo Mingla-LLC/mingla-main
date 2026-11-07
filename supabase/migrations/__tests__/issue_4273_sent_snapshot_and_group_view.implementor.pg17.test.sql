@@ -6,7 +6,7 @@
 --
 -- MINGLA-INVARIANT: I-4273-SENT-SNAPSHOT-WRITE-ONCE | issue #4273 | marketing_campaigns.sent_snapshot is written only by the server (service_role / postgres) and never changes once set; an app or API caller can neither set it on insert nor change it.
 -- MINGLA-INVARIANT: I-4273-SENT-VIEW-NO-CONTACTS | issue #4273 | biz_marketing_campaign_group_view_v1 returns counts, saved messages and snapshots only: no key naming an email, phone, user id or contact, and no recipient value.
--- MINGLA-INVARIANT: I-4273-SENT-CAMPAIGN-READ-ONLY | issue #4273 | An app or API caller cannot change the text, status or server fields of a campaign that is sending, sent, failed, cancelled, already due, or partly sent; its own draft edits, scheduling, rescheduling and cancelling of a send that has not started are unchanged, and the server's transitions are not restricted.
+-- MINGLA-INVARIANT: I-4273-SENT-CAMPAIGN-READ-ONLY | issue #4273 | An app or API caller cannot change the text, status or server fields of a campaign that is sending, sent, failed, cancelled, already due, or partly sent; its own unsent edits, scheduling, rescheduling and cancelling of a send that has not started are unchanged, and the server's transitions are not restricted.
 -- MINGLA-INVARIANT: I-4273-FAILED-METHOD-FREES-ITS-SLOT | issue #4273 | One live method per campaign group: a failed or cancelled method no longer blocks that method from being used again in its group.
 \set ON_ERROR_STOP on
 BEGIN;

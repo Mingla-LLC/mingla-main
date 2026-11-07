@@ -5,8 +5,10 @@
  * with a filter pill row (All · Scheduled · Sent · Drafts · Failed) + an
  * FAB to open the composer.
  *
- * Per-campaign "View report" is deferred to Sub-ORCH-0815-C (campaign
- * report screen at `/marketing/campaigns/[id].tsx` — Hard Guard §13).
+ * #4273 — every method of a blast is one card (grouped by
+ * COALESCE(campaign_group_id, id)); the status filter applies after grouping,
+ * so a blast shows when any of its methods matches. Tapping a card opens the
+ * campaign screen (`/marketing/campaigns/[id].tsx`) on its first method.
  */
 
 import React, { useCallback, useMemo, useState } from "react";
@@ -34,8 +36,12 @@ import { useCampaigns } from "../../../../src/hooks/marketing/useCampaigns";
 import { useResponsiveLayout } from "../../../../src/hooks/useResponsiveLayout";
 import {
   cancelScheduled,
-  deleteDraft,
+  deleteCampaign,
 } from "../../../../src/services/marketing/marketingCampaignService";
+import {
+  filterCampaignGroups,
+  groupCampaignRows,
+} from "../../../../src/features/marketing/sentPreviewModel";
 import type { CampaignStatus } from "../../../../src/types/marketing";
 
 export default function MarketingCampaignsRoute(): React.ReactElement {
@@ -52,10 +58,9 @@ export default function MarketingCampaignsRoute(): React.ReactElement {
     return filter;
   }, [filter]);
 
-  const campaignsQuery = useCampaigns({
-    brand_id: brandId,
-    status: statusFilter,
-  });
+  // #4273 — every status is fetched; the filter applies after grouping, so a
+  // blast with a sent email and a failed SMS shows under Sent and Failed.
+  const campaignsQuery = useCampaigns({ brand_id: brandId });
 
   const handleResume = useCallback((id: string) => {
     router.push(`/marketing/campaigns/compose?draft=${id}` as never);
@@ -77,9 +82,10 @@ export default function MarketingCampaignsRoute(): React.ReactElement {
     }
   }, [campaignsQuery]);
 
-  const handleDelete = useCallback(async (id: string) => {
+  const handleDelete = useCallback(async (ids: string[]) => {
     try {
-      await deleteDraft(id);
+      // #4273 extra (b) — a failed or cancelled method, not a draft.
+      for (const id of ids) await deleteCampaign(id);
       await campaignsQuery.refetch();
     } catch (err) {
       Alert.alert(
@@ -89,11 +95,14 @@ export default function MarketingCampaignsRoute(): React.ReactElement {
     }
   }, [campaignsQuery]);
 
-  const campaigns = campaignsQuery.data ?? [];
+  const groups = useMemo(
+    () => filterCampaignGroups(groupCampaignRows(campaignsQuery.data ?? []), statusFilter),
+    [campaignsQuery.data, statusFilter],
+  );
 
   return (
     <View style={styles.host}>
-      {filter !== "all" && campaigns.length === 0 ? (
+      {filter !== "all" && groups.length === 0 ? (
         <CampaignFilterPills active={filter} onChange={setFilter} />
       ) : null}
       {/* ORCH-0889: disabled-query (auth-bootstrap) and first-fetch both
@@ -113,7 +122,7 @@ export default function MarketingCampaignsRoute(): React.ReactElement {
             description="Pull to retry, or come back in a moment."
           />
         </View>
-      ) : campaigns.length === 0 ? (
+      ) : groups.length === 0 ? (
         <View style={styles.centerHost}>
           <EmptyState
             illustration="users"
@@ -128,10 +137,10 @@ export default function MarketingCampaignsRoute(): React.ReactElement {
         >
           <CampaignFilterPills active={filter} onChange={setFilter} />
           <View style={[styles.campaignGrid, isWideDesktop && styles.campaignGridWide]}>
-            {campaigns.map((campaign) => (
-              <View key={campaign.id} style={isWideDesktop ? styles.campaignCellWide : styles.campaignCell}>
+            {groups.map((group) => (
+              <View key={group.groupId} style={isWideDesktop ? styles.campaignCellWide : styles.campaignCell}>
                 <CampaignCard
-                  campaign={campaign}
+                  group={group}
                   onResume={handleResume}
                   onCancel={handleCancel}
                   onDelete={handleDelete}

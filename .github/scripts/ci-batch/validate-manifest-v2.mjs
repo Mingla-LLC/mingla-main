@@ -385,7 +385,8 @@ export function phase3dContractDigest(manifest) {
 // #4294: re-sealed after the connector's tester PostgreSQL proof joined the pre-#1931 template suites' inventories.
 // #4294: re-sealed after merging origin/main (#4303 and #4296 rows kept beside the #4294 rows).
 // #4273: register the buyer/follower auto opt-in, honest-quote and account-opt-out migrations and their proofs.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "5a26271b06aadd9d4769ef26e9359becc092cad5687bdcd7b286eaa71b03097a";
+// #4273 polish: register the sent-previews migration, its two PostgreSQL proofs and the campaign-screen render proof.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "eb52eb625ed44a4bc111e87e7756aeec1566764de8bdab9ad544d315a7ac9763";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

@@ -92,6 +92,13 @@ export interface EmailPreviewPaneProps {
    * (mirrors marketingEmailRender brand_follow_url injection).
    */
   brandSlug?: string | null;
+  /**
+   * #4273 — false renders the pane as a plain View so the page's own scroll
+   * owns it (the sent-campaign screen; no nested vertical ScrollView).
+   */
+  scrollable?: boolean;
+  /** #4273 — the From line exactly as sent (the snapshot's display name). */
+  fromLabel?: string | null;
 }
 
 export const EmailPreviewPane: React.FC<EmailPreviewPaneProps> = ({
@@ -102,6 +109,8 @@ export const EmailPreviewPane: React.FC<EmailPreviewPaneProps> = ({
   brandHeaderImageUrl,
   embeddedEvents = [],
   brandSlug = null,
+  scrollable = true,
+  fromLabel = null,
 }) => {
   const blocks = previewBlocks(bodyHtml, variables);
   const useBrandBanner = brandHeaderImageUrl !== null &&
@@ -115,18 +124,16 @@ export const EmailPreviewPane: React.FC<EmailPreviewPaneProps> = ({
       ? brandFollowPublicUrl(brandSlug)
       : null;
 
-  return (
-    <ScrollView
-      style={styles.host}
-      contentContainerStyle={styles.scrollContent}
-      keyboardShouldPersistTaps="handled"
-      showsVerticalScrollIndicator={false}
-    >
+  // #4273 extra (c) — the From line the guest's inbox shows is the brand name
+  // alone (marketing-send: `${brandName} <slug@campaigns.usemingla.com>`).
+  const fromLine = fromLabel ?? brandName ?? "Your brand";
+  const content = (
+    <>
       {/* Email client header strip — "From / Subject" feel */}
       <View style={styles.emailHeader}>
         <Text style={styles.emailHeaderLabel}>FROM</Text>
         <Text style={styles.emailHeaderValue} numberOfLines={1}>
-          {brandName !== null ? `${brandName} via Mingla` : "Your brand via Mingla"}
+          {fromLine}
         </Text>
         <View style={styles.emailHeaderDivider} />
         <Text style={styles.emailHeaderLabel}>SUBJECT</Text>
@@ -232,6 +239,20 @@ export const EmailPreviewPane: React.FC<EmailPreviewPaneProps> = ({
         inbox (font rendering, dark-mode handling). The send loop is the
         source of truth.
       </Text>
+    </>
+  );
+
+  if (!scrollable) {
+    return <View style={[styles.host, styles.scrollContent, styles.hostStatic]}>{content}</View>;
+  }
+  return (
+    <ScrollView
+      style={styles.host}
+      contentContainerStyle={styles.scrollContent}
+      keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
+    >
+      {content}
     </ScrollView>
   );
 };
@@ -292,6 +313,9 @@ const styles = StyleSheet.create({
   host: {
     flex: 1,
     backgroundColor: INBOX_CANVAS,
+  },
+  hostStatic: {
+    flex: 0,
   },
   scrollContent: {
     paddingVertical: spacing.md,

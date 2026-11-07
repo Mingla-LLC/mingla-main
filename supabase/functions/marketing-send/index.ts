@@ -1738,8 +1738,7 @@ async function sendEmail(
 
   // #4273 — the send snapshot: write-once, best-effort, never blocks a send.
   // After every guard above (a refused campaign writes none), before the first
-  // recipient row. Per-campaign values only; MINGLA-INVARIANT:
-  // I-4273-SENT-VIEW-NO-CONTACTS.
+  // recipient row. Per-campaign values only (I-4273-SENT-VIEW-NO-CONTACTS).
   {
     const campaignVars = buildVariables(SNAPSHOT_NO_GUEST, brandName, embedded);
     await writeSentSnapshot(
@@ -2565,8 +2564,7 @@ async function sendSms(
   // #4273 — the send snapshot: write-once, best-effort, never blocks a send.
   // After the empty-body and link guards, before the first recipient row. The
   // wire text is the one the segment count below measures, with one sample
-  // short link in place of each guest's own; MINGLA-INVARIANT:
-  // I-4273-SENT-VIEW-NO-CONTACTS.
+  // short link in place of each guest's own (I-4273-SENT-VIEW-NO-CONTACTS).
   try {
     const sample = rewriteMarketingSmsLinks(
       rawBody,
