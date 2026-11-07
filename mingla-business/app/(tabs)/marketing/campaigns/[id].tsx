@@ -71,11 +71,11 @@ import {
 import type { CampaignReport } from "../../../../src/services/marketing/marketingReportService";
 import type { MessageStatus } from "../../../../src/types/marketing";
 
-// #4273 — the composer's panes load on demand, through one lazy owner. A
-// static import here would make two lazy routes share them, and Metro would
-// hoist them (and everything they import) into the boot chunk, __common.
-const loadSentPreviews = () =>
-  import("../../../../src/components/marketing/SentCampaignPreviews");
+// #4273 — the composer's panes load on demand, through their one owner: the
+// composer route's own chunk (it re-exports the sent-view wrappers). Importing
+// the panes from any other chunk would make two lazy chunks share them, and
+// Metro would hoist them (and everything they import) into __common.
+const loadSentPreviews = () => import("./compose");
 const SentMethodTabs = React.lazy(async () => ({ default: (await loadSentPreviews()).SentMethodTabs }));
 const SentMethodPreview = React.lazy(async () => ({ default: (await loadSentPreviews()).SentMethodPreview }));
 const SentSmsCost = React.lazy(async () => ({ default: (await loadSentPreviews()).SentSmsCost }));

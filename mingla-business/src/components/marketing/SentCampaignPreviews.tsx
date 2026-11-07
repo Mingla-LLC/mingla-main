@@ -3,9 +3,10 @@
  * composer's own panes (email, SMS, push, the method tabs), fed from the send
  * snapshot.
  *
- * Loaded ONLY on demand (React.lazy in campaigns/[id].tsx). The panes are also
- * imported by the composer route; a second static importer would hoist them,
- * and everything they pull in, into the boot chunk (__common).
+ * Reached ONLY through the composer route's chunk: compose.tsx re-exports these
+ * and campaigns/[id].tsx loads them with import("./compose"). Any other static
+ * importer would make two lazy chunks share the panes and hoist them, with
+ * everything they pull in, into the boot chunk (__common).
  */
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";

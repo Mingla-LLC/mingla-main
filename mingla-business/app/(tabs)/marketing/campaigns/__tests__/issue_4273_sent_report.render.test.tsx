@@ -24,6 +24,9 @@ jest.mock("expo-router", () => ({
   useLocalSearchParams: () => ({ id: "42730000-0000-4000-8000-0000000000c2" }),
 }));
 jest.mock("../../../../../src/services/supabase", () => ({ supabase: {} }));
+// The screen reaches the panes through the composer route's chunk; the test
+// stands in the module that route re-exports instead of mounting the composer.
+jest.mock("../compose", () => require("../../../../../src/components/marketing/SentCampaignPreviews"));
 // EmptyState pulls the animated Button (reanimated needs a native module).
 jest.mock("../../../../../src/components/ui/EmptyState", () => {
   const ReactModule = require("react");
@@ -310,6 +313,11 @@ describe("#4273 T-19 the #2262 layout doctrine on the campaign screen", () => {
     expect(previews).toContain("fill={false}");
     // Keep the report screen lazy: no static import of a composer pane here.
     expect(source).not.toMatch(/^import .*(EmailPreviewPane|SmsPreviewPane|PushComposeCard|ComposerPreviewTabs|blastSendModel)/m);
-    expect(source).toContain('import("../../../../src/components/marketing/SentCampaignPreviews")');
+    expect(source).toContain('import("./compose")');
+    expect(source).not.toContain('import("../../../../src/components/marketing/SentCampaignPreviews")');
+    const compose = readFileSync(path.join(__dirname, "../compose.tsx"), "utf8");
+    expect(compose).toContain('} from "../../../../src/components/marketing/SentCampaignPreviews";');
+    // Nothing else may import the sent-view module (it would be shared by two chunks).
+    expect(compose.match(/SentCampaignPreviews/g)).toHaveLength(1);
   });
 });

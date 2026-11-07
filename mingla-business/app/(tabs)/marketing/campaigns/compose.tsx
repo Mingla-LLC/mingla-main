@@ -341,6 +341,16 @@ function hasFreshCircleAvailability(
   return Number.isFinite(expiresAt) && expiresAt > Date.now();
 }
 
+// #4273 — the composer's chunk is the one on-demand owner of the preview
+// panes. The campaign screen loads its sent-view wrappers through this route's
+// own chunk (import("./compose")), so the panes and everything they import are
+// never shared by two lazy chunks, which would hoist them into __common.
+export {
+  SentMethodPreview,
+  SentMethodTabs,
+  SentSmsCost,
+} from "../../../../src/components/marketing/SentCampaignPreviews";
+
 export default function ComposeCampaignRoute(): React.ReactElement {
   const router = useRouter();
   const navigation = useNavigation();
