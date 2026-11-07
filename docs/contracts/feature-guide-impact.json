@@ -776,7 +776,19 @@
         "mingla-sites/src/lib/sharedPreviewHref.ts",
         "mingla-sites/src/lib/siteVideo.ts",
         "mingla-sites/src/proxy.ts",
-        "supabase/migrations/20280421002830_issue_2830_website_setup_takeover.sql"
+        "supabase/migrations/20280421002830_issue_2830_website_setup_takeover.sql",
+        "packages/site-contracts/src/claims.ts",
+        "mingla-site-cms/src/contracts/generated/claims.ts",
+        "mingla-sites/src/contracts/generated/claims.ts",
+        "supabase/functions/_shared/siteContracts/claims.ts",
+        "packages/site-contracts/src/publishChecks.ts",
+        "mingla-site-cms/src/contracts/generated/publishChecks.ts",
+        "mingla-sites/src/contracts/generated/publishChecks.ts",
+        "supabase/functions/_shared/siteContracts/publishChecks.ts",
+        "packages/site-contracts/src/sitePlan.ts",
+        "mingla-site-cms/src/contracts/generated/sitePlan.ts",
+        "mingla-sites/src/contracts/generated/sitePlan.ts",
+        "supabase/functions/_shared/siteContracts/sitePlan.ts"
       ]
     },
     {
