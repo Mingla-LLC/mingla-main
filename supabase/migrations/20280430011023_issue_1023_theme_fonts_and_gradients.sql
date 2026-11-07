@@ -3006,4 +3006,11 @@ $function$
 ;
 
 
+-- issue #3044: restate the RSVP draft RPC grants on this defining file (no-op on production; applied separately 7 Nov).
+REVOKE ALL ON FUNCTION public.business_create_rsvp_draft_graph(uuid,jsonb,uuid) FROM PUBLIC,anon;
+REVOKE ALL ON FUNCTION public.business_update_rsvp_graph(uuid,jsonb,text,uuid) FROM PUBLIC,anon;
+REVOKE ALL ON FUNCTION public.business_discard_rsvp_draft(uuid,uuid) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.business_create_rsvp_draft_graph(uuid,jsonb,uuid) TO authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.business_update_rsvp_graph(uuid,jsonb,text,uuid) TO authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.business_discard_rsvp_draft(uuid,uuid) TO authenticated,service_role;
 COMMIT;
