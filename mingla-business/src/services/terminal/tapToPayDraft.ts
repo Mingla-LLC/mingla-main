@@ -4,8 +4,9 @@
  * DoorSaleNewSheet navigates to
  *   /event/<id>/door/tap/new?draft=<base64 json {lines, eventDateId, buyerPhone?, buyerName?}>
  * The draft only names WHAT is being sold. The server prices it (door-tap-intent
- * create); nothing here is trusted as an amount. `buyerName` is only shown on
- * the paid screen's Guest row (door polish); it is never sent as a charge input.
+ * create); nothing here is trusted as an amount. `buyerName` is shown on the
+ * paid screen's Guest row and sent with create so the sale keeps it (stored
+ * like the buyer phone); it is never a charge input.
  */
 
 export interface TapToPayDraftLine {
@@ -18,7 +19,7 @@ export interface TapToPayDraft {
   eventDateId: string | null;
   buyerPhone: string | null;
   phoneCountryIso: string | null;
-  /** What the host typed in the sale sheet, if anything. Display only. */
+  /** What the host typed in the sale sheet, if anything. Saved on the sale. */
   buyerName?: string | null;
 }
 
@@ -111,7 +112,10 @@ export const parseTapToPayDraft = (raw: string | null | undefined): TapToPayDraf
     }
     lines.push({ ticketTypeId, quantity });
   }
-  const buyerName = optionalString(parsed.buyerName)?.slice(0, MAX_NAME) ?? null;
+  // Cut by characters, not UTF-16 units, so a name never ends in half an emoji.
+  const typedName = optionalString(parsed.buyerName);
+  const buyerName =
+    typedName === null ? null : Array.from(typedName).slice(0, MAX_NAME).join("").trim() || null;
   return {
     lines,
     eventDateId: optionalString(parsed.eventDateId),

@@ -144,6 +144,8 @@ describe("happy path", () => {
       clientRequestId: "req-1",
       buyerPhone: "+447700900123",
       phoneCountryIso: "GB",
+      // #4271: the host-typed name is sent too (none in this draft).
+      buyerName: null,
     });
   });
 });
