@@ -92,7 +92,9 @@ export function HostAvatarButton({ host, photoUrl, open, onOpen }) {
   if (!host || host.status === "none") return null;
   if (host.status === "loading") return <span data-host-avatar="loading" aria-hidden="true" className="inline-block h-9 w-9 animate-pulse rounded-full bg-[var(--gray-100)]" />;
   if (host.status === "error") {
-    return <button type="button" onClick={host.retry} className={`min-h-11 rounded-lg px-2 text-[12px] font-semibold text-[var(--color-error-700)] hover:bg-[var(--color-error-50)] ${FOCUS}`}>Couldn’t find the host card · Try again</button>;
+    // N-3: the card could not be read; that is not the same as there being none.
+    if (typeof host.retry !== "function") return <span data-host-avatar="error" className="text-[12px] font-semibold text-[var(--color-error-700)]">The host card can’t be shown right now</span>;
+    return <button type="button" data-host-avatar="error" onClick={host.retry} className={`min-h-11 rounded-lg px-2 text-[12px] font-semibold text-[var(--color-error-700)] hover:bg-[var(--color-error-50)] ${FOCUS}`}>The host card can’t be shown right now · Try again</button>;
   }
   return (
     <button
@@ -193,7 +195,12 @@ export function BrandGroupsPanel({ onCounts }) {
   const panelHistory = useRef(null);
   if (panelHistory.current === null && typeof window !== "undefined") panelHistory.current = createPanelHistory(window);
 
-  useEffect(() => () => { mounted.current = false; clearTimeout(lightTimer.current); }, []);
+  // X-1: set on mount too, so StrictMode's mount → unmount → mount in dev does
+  // not leave it false (and the page stuck on "Loading Brand groups…").
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; clearTimeout(lightTimer.current); };
+  }, []);
   useEffect(() => () => {
     if (filePreview?.objectUrl) URL.revokeObjectURL(filePreview.objectUrl);
   }, [filePreview]);
@@ -370,7 +377,8 @@ export function BrandGroupsPanel({ onCounts }) {
       setSelectedId(view.group);
     } else if (view.brand) {
       const match = groups.find((g) => g.brand_id === view.brand);
-      if (match) setSearch(brandGroupSearch(search, { group: match.conversation_id, brand: null }), { replace: true });
+      // R-1: through the panel history, so a tagged entry keeps its tag.
+      if (match) panelHistory.current.replace(() => setSearch(brandGroupSearch(search, { group: match.conversation_id, brand: null }), { replace: true }));
     }
   }, [loadedOnce, view.group, view.brand, groups]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -397,8 +405,12 @@ export function BrandGroupsPanel({ onCounts }) {
   // The panel closed (Close, the browser's Back, switching groups): forget its entries.
   useEffect(() => { if (!view.side) panelHistory.current?.reset(); }, [view.side]);
 
+  // The side in the address right now, read by callbacks a drawer kept from an
+  // earlier render (RecordDrawer's toast).
+  const sideRef = useRef(view.side);
+  sideRef.current = view.side;
   const rememberOpener = () => {
-    if (!view.side) opener.current = typeof document !== "undefined" ? document.activeElement : null;
+    if (!sideRef.current) opener.current = typeof document !== "undefined" ? document.activeElement : null;
   };
   // From outside the panel (rail, thread, header): replaces what the panel shows.
   const openFresh = useCallback((next) => {
@@ -414,10 +426,14 @@ export function BrandGroupsPanel({ onCounts }) {
     history.push(() => stack.openSide(next));
   }, [canHosts, canBrands, view.side, search, setSearch, stack]); // eslint-disable-line react-hooks/exhaustive-deps
   // From a link inside the panel: stacks, with Back.
+  // A drawer's callback can outlive the panel (RecordDrawer's "Open the card"
+  // toast after Close): then this opens the panel afresh, tagged, so its Close
+  // walks back too.
   const openInside = useCallback((next) => {
     if (!sideAllowed(next, { canHosts, canBrands })) return;
-    panelHistory.current.push(() => stack.openSide(next));
-  }, [canHosts, canBrands, stack]);
+    if (!sideRef.current) rememberOpener();
+    panelHistory.current.follow(() => stack.openSide(next), { panelOpen: !!sideRef.current });
+  }, [canHosts, canBrands, stack]); // eslint-disable-line react-hooks/exhaustive-deps
   // D-1: the opener every drawer in the panel gets, as (kind, id). `allows`
   // lets a link that this teammate could not open show as plain words
   // instead of a button that does nothing.
@@ -492,7 +508,10 @@ export function BrandGroupsPanel({ onCounts }) {
     setSearch(brandGroupSearch(search, { group: conversationId, brand: null, side: null }));
   };
   const backToList = () => setSearch(brandGroupSearch(search, { group: null, brand: null, side: null }));
-  const setRailTab = (tab) => setSearch(brandGroupSearch(search, { rail: tab }), { replace: true });
+  // R-1: at 1280 px and wider the rail sits beside the open panel; a tab
+  // rewrites the current entry through the panel history so its tag (and the
+  // exact Close) survives.
+  const setRailTab = (tab) => panelHistory.current.replace(() => setSearch(brandGroupSearch(search, { rail: tab }), { replace: true }));
   // D-11: a tab the teammate picks drops a used prefill, so the form does not
   // reopen with old words when the tab is shown again.
   const pickRailTab = (tab) => { setPlanPrefill(null); setWorkPrefill(null); setRailTab(tab); };

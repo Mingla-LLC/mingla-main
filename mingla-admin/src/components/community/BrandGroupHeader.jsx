@@ -69,43 +69,47 @@ export function BrandGroupHeader({
   const owners = Array.isArray(host?.owners) ? host.owners : null;
   const showHost = canHosts && !!host;
   return (
-    <div data-thread-header="" className="flex shrink-0 flex-wrap items-center gap-3 border-b border-[var(--gray-100)] px-4 py-3 sm:px-[18px]">
-      <GroupAvatar group={group} size="lg" />
-      <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <h2 id="brand-group-thread-title" tabIndex={-1} className="truncate text-[16px] font-bold text-[var(--color-text-primary)] outline-none">{group.brand_name}</h2>
-          {showHost && <HostChips host={host} />}
+    // N-2: the header is a container; its actions wrap on the thread column's
+    // own width (narrow with the side panel open at desktop widths), not the window's.
+    <div data-thread-header="" className="@container shrink-0 border-b border-[var(--gray-100)]">
+      <div className="flex flex-wrap items-center gap-3 px-4 py-3 sm:px-[18px]">
+        <GroupAvatar group={group} size="lg" />
+        <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <h2 id="brand-group-thread-title" tabIndex={-1} className="truncate text-[16px] font-bold text-[var(--color-text-primary)] outline-none">{group.brand_name}</h2>
+            {showHost && <HostChips host={host} />}
+          </div>
+          <p className="truncate text-[12px] text-[var(--color-text-tertiary)]">
+            {teamLine(group.member_count, people)}
+            {showHost && owners && (
+              <>
+                {" · Mingla owner: "}
+                {owners.length
+                  ? <span className="text-[var(--color-text-secondary)]">{owners.map((o) => personName(o?.name)).join(", ")}</span>
+                  : <span data-no-owner="" className="font-semibold text-[var(--color-error-700)]">No owner</span>}
+              </>
+            )}
+          </p>
         </div>
-        <p className="truncate text-[12px] text-[var(--color-text-tertiary)]">
-          {teamLine(group.member_count, people)}
-          {showHost && owners && (
-            <>
-              {" · Mingla owner: "}
-              {owners.length
-                ? <span className="text-[var(--color-text-secondary)]">{owners.map((o) => personName(o?.name)).join(", ")}</span>
-                : <span data-no-owner="" className="font-semibold text-[var(--color-error-700)]">No owner</span>}
-            </>
+        {/* D-10 / N-2: in a column narrower than @2xl (672 px) the actions take their own line and wrap, so nothing is clipped. */}
+        <div data-header-actions="" className="flex min-w-0 basis-full flex-wrap items-center justify-end gap-2 @2xl:basis-auto @2xl:shrink-0">
+          {showHost && canAssign && (
+            <button type="button" className={BUTTON} disabled={!online || assigning} onClick={onAssign}>
+              {assigning ? "Assigning…" : "Assign to me"}
+            </button>
           )}
-        </p>
-      </div>
-      {/* D-10: below sm the actions take their own line and wrap, so nothing is clipped at 375 px. */}
-      <div data-header-actions="" className="flex min-w-0 basis-full flex-wrap items-center justify-end gap-2 sm:basis-auto sm:shrink-0">
-        {showHost && canAssign && (
-          <button type="button" className={BUTTON} disabled={!online || assigning} onClick={onAssign}>
-            {assigning ? "Assigning…" : "Assign to me"}
+          {hostCard}
+          {onRailButton && (
+            <button type="button" data-rail-button="" className={BUTTON} onClick={onRailButton}>
+              <PanelRight aria-hidden="true" className="h-4 w-4" />{railButtonLabel}
+            </button>
+          )}
+          <button type="button" aria-label={group.muted ? "Unmute this Brand group" : "Mute this Brand group"} aria-pressed={group.muted ? "true" : "false"}
+            onClick={onToggleMute}
+            className={`flex h-11 w-11 items-center justify-center rounded-[10px] border border-[var(--gray-200)] bg-[var(--color-background-primary)] text-[var(--color-text-secondary)] hover:bg-[var(--gray-50)] ${FOCUS}`}>
+            {group.muted ? <BellOff aria-hidden="true" className="h-4 w-4" /> : <Bell aria-hidden="true" className="h-4 w-4" />}
           </button>
-        )}
-        {hostCard}
-        {onRailButton && (
-          <button type="button" data-rail-button="" className={BUTTON} onClick={onRailButton}>
-            <PanelRight aria-hidden="true" className="h-4 w-4" />{railButtonLabel}
-          </button>
-        )}
-        <button type="button" aria-label={group.muted ? "Unmute this Brand group" : "Mute this Brand group"} aria-pressed={group.muted ? "true" : "false"}
-          onClick={onToggleMute}
-          className={`flex h-11 w-11 items-center justify-center rounded-[10px] border border-[var(--gray-200)] bg-[var(--color-background-primary)] text-[var(--color-text-secondary)] hover:bg-[var(--gray-50)] ${FOCUS}`}>
-          {group.muted ? <BellOff aria-hidden="true" className="h-4 w-4" /> : <Bell aria-hidden="true" className="h-4 w-4" />}
-        </button>
+        </div>
       </div>
     </div>
   );

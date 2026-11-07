@@ -137,9 +137,7 @@ describe("H the panel's history tags against the rest of the page", () => {
     assert.deepEqual(ph.closeStep(), { kind: "push" }, "a bare replace wipes the tag: Close can no longer walk back");
   });
 
-  it("H-3 every replace-mode address write in BrandGroupsPanel keeps the panel's tag (rail tab while the panel is open)", {
-    todo: "#4270 W7 retest 1 R-1: setRailTab (and the brand-match effect) call setSearch(…, { replace: true }) outside panelHistory.replace(), so at 1280 px and wider picking a rail tab while the panel is open wipes the entry's tag; Close then adds a new entry instead of walking back, and Back reopens the panel",
-  }, () => {
+  it("H-3 every replace-mode address write in BrandGroupsPanel keeps the panel's tag (rail tab while the panel is open)", () => {
     const src = code("components/community/BrandGroupsPanel.jsx");
     const offenders = [];
     for (const m of src.matchAll(/setSearch\([^;\n]*\{\s*replace:\s*true\s*\}\)/g)) {

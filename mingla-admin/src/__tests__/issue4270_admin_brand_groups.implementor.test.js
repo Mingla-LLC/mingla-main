@@ -119,7 +119,9 @@ export const header = (p) => html(<BrandGroupHeader onToggleMute={() => {}} {...
 export const composer = (p) => html(<BrandGroupComposer onChange={() => {}} onSend={() => {}} onChip={() => {}} {...p} />);
 export const empty = (p) => html(<ToastProvider><HostCardEmptyState {...p} /></ToastProvider>);
 export const team = (p) => html(<HostTeamSection {...p} />);
-export const pageLink = (p) => html(<PageLink {...p} />);`,
+export const pageLink = (p) => html(<PageLink {...p} />);
+import { HostAvatarButton } from "../components/community/BrandGroupsPanel.jsx";
+export const hostAvatar = (p) => html(<HostAvatarButton onOpen={() => {}} {...p} />);`,
       resolveDir: HERE, sourcefile: "issue4270.w7.harness.jsx", loader: "jsx",
     },
     bundle: true, write: false, platform: "node", format: "esm", jsx: "automatic", logLevel: "silent",
@@ -709,15 +711,18 @@ describe("R rework 1 (test report D-1 … D-14)", () => {
     assert.equal(writes.length, 1, "no write after a failed or shapeless read");
   });
 
-  it("D-10 at 375 px the header's actions take their own line and wrap (nothing clipped)", () => {
+  it("D-10 / N-2 the header's actions wrap on the thread column's own width (nothing clipped at 375, nor at 1440 with the panel open)", () => {
     const g = { conversation_id: "c1", brand_name: "Harmattan Club", member_count: 2, unread_count: 0, muted: false };
     const html = harness.header({ group: g, host: null, canHosts: false, people: [], online: true, onRailButton: () => {}, railButtonLabel: "Plan and host" });
+    const shell = /<div data-thread-header="" class="([^"]*)"/.exec(html)?.[1] || "";
+    assert.ok(shell.split(/\s+/).includes("@container"), `the header is a size container: ${shell}`);
     const actions = /<div data-header-actions="" class="([^"]*)"/.exec(html)?.[1] || "";
     assert.ok(actions, "the actions group is marked");
     const classes = actions.split(/\s+/);
     assert.ok(classes.includes("basis-full") && classes.includes("flex-wrap") && classes.includes("min-w-0"), actions);
-    assert.ok(!classes.includes("shrink-0"), "no unprefixed shrink-0: below sm the group may narrow and wrap");
-    assert.ok(classes.includes("sm:shrink-0") && classes.includes("sm:basis-auto"), "from sm up it sits beside the name as before");
+    assert.ok(!classes.includes("shrink-0"), "no unprefixed shrink-0: in a narrow column the group may narrow and wrap");
+    assert.ok(classes.includes("@2xl:shrink-0") && classes.includes("@2xl:basis-auto"), "beside the name only when the COLUMN is wide enough");
+    assert.ok(!classes.some((c) => /^(sm|md|lg|xl):(basis|shrink)/.test(c)), "never the window's width: with the panel open at 1440 the column is narrow (N-2)");
   });
 
   it("D-11 picking a rail tab drops a used prefill; D-12 Esc in the composer lets go first; D-13 focus refresh is throttled", () => {
@@ -778,5 +783,65 @@ describe("R rework 1 (test report D-1 … D-14)", () => {
     assert.match(toast, /if \(typeof onOpenSide === "function"\) onOpenSide\(pipeline === "creators" \? "creator" : "host", recordId\);\s*else window\.location\.hash/);
     assert.match(rd, /<HostTeamSection record=\{record\} read=\{hostRead\} onOpenSide=\{onOpenSide\} \/>/);
     assert.match(code("components/ops/CardPersonPanels.jsx"), /<WordingCard card=\{wording\}[^\n]*onOpenSide=\{onOpenSide\} \/>/);
+  });
+});
+
+describe("R rework 2 (retest 1: R-1, N-2, N-3, X-1, toast reopen)", () => {
+  const BASE = "https://admin.test/#/community?tab=brand-groups&group=g1";
+  const sideHash = (side) => `#/community?tab=brand-groups&group=g1&side=${side}`;
+
+  it("R-1 a rail tab picked with the panel open keeps the entry's tag: Close lands on the start and Back does not reopen the panel", () => {
+    const win = fakeWindow(BASE);
+    const opened = win.location.href;
+    const ph = createPanelHistory(win);
+    ph.begin();
+    ph.push(() => { win.location.hash = sideHash(`host:${U1}`); });
+    ph.push(() => { win.location.hash = sideHash(`brand:${U2}`); });
+    // setRailTab: useHashQuery rewrites the entry with a null state.
+    ph.replace(() => win.history.replaceState(null, "", `https://admin.test/${sideHash(`brand:${U2}`)}&rail=media`));
+    assert.equal(ph.depth(), 2);
+    win.history.go(ph.closeStep().delta);
+    assert.equal(win.location.href, opened);
+    const panel = code("components/community/BrandGroupsPanel.jsx");
+    assert.match(panel, /const setRailTab = \(tab\) => panelHistory\.current\.replace\(\(\) => setSearch\(brandGroupSearch\(search, \{ rail: tab \}\), \{ replace: true \}\)\);/);
+    assert.match(panel, /if \(match\) panelHistory\.current\.replace\(\(\) => setSearch\(brandGroupSearch\(search, \{ group: match\.conversation_id, brand: null \}\), \{ replace: true \}\)\);/);
+  });
+
+  it("toast reopen: a panel opened from a drawer's kept callback after Close is tagged, so its Close walks back", () => {
+    const win = fakeWindow(BASE);
+    const ph = createPanelHistory(win);
+    ph.begin();
+    ph.push(() => { win.location.hash = sideHash(`host:${U1}`); });
+    win.history.go(ph.closeStep().delta);
+    ph.reset();
+    const closedAt = win.location.href;
+    // RecordDrawer's "Open the card" toast, after the panel was closed.
+    ph.follow(() => { win.location.hash = sideHash(`host:${U1}`); }, { panelOpen: false });
+    assert.equal(ph.depth(), 1);
+    assert.deepEqual(ph.closeStep(), { kind: "go", delta: -1 });
+    win.history.go(-1);
+    assert.equal(win.location.href, closedAt);
+    // With the panel open, follow is a plain push (a pasted-link panel stays untagged).
+    const pasted = fakeWindow(`https://admin.test/${sideHash(`brand:${U1}`)}`);
+    const ph2 = createPanelHistory(pasted);
+    ph2.follow(() => { pasted.location.hash = sideHash(`host:${U2}`); }, { panelOpen: true });
+    assert.deepEqual(ph2.closeStep(), { kind: "push" });
+    const panel = code("components/community/BrandGroupsPanel.jsx");
+    assert.match(panel, /sideRef\.current = view\.side;/);
+    assert.match(panel, /panelHistory\.current\.follow\(\(\) => stack\.openSide\(next\), \{ panelOpen: !!sideRef\.current \}\);/);
+  });
+
+  it("X-1 the mount effect sets mounted again (StrictMode dev mounts twice)", () => {
+    assert.match(code("components/community/BrandGroupsPanel.jsx"), /useEffect\(\(\) => \{\s*mounted\.current = true;\s*return \(\) => \{ mounted\.current = false;/);
+  });
+
+  it("N-3 a host card that cannot be read says so, with Try again when there is one", () => {
+    const withRetry = harness.hostAvatar({ host: { status: "error", retry: () => {} } });
+    assert.match(withRetry, /The host card can’t be shown right now · Try again/);
+    assert.match(withRetry, /^<button/);
+    const noRetry = harness.hostAvatar({ host: { status: "error" } });
+    assert.match(noRetry, /The host card can’t be shown right now/);
+    assert.doesNotMatch(noRetry, /Try again|<button/);
+    assert.doesNotMatch(withRetry + noRetry, /Couldn’t find/);
   });
 });

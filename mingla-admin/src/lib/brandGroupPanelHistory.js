@@ -45,6 +45,10 @@ function newToken() {
  *                 entry it opens from (distance 0)
  *   push(fn)      run fn (which may add an entry); a new entry is tagged one
  *                 further than the entry it was added from
+ *   follow(fn, { panelOpen })
+ *                 a link to open in the panel: pushed when the panel is
+ *                 open; when it is closed (a toast's link after Close), the
+ *                 panel opens afresh with begin() first, so its Close walks back
  *   replace(fn)   run fn (which may rewrite the current entry, wiping its
  *                 state); the current entry keeps its distance
  *   closeStep()   { kind: "go", delta } back to the start, or { kind: "push" }
@@ -67,6 +71,10 @@ export function createPanelHistory(win) {
       const before = win.location.href;
       fn();
       if (from !== null && win.location.href !== before) tagCurrent(win, token, from + 1);
+    },
+    follow(fn, { panelOpen } = {}) {
+      if (!panelOpen) this.begin();
+      this.push(fn);
     },
     replace(fn) {
       const at = depth();
