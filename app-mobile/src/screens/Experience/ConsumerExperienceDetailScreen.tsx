@@ -151,6 +151,8 @@ import { useRecommendations } from "../../contexts/RecommendationsContext";
 import { glass } from "../../constants/designSystem";
 import { hueFromId } from "../../utils/hueFromId";
 import type { BusinessEventCard } from "../../types/mergedDiscover";
+import { CircleAlert } from "lucide-react-native";
+import { AccentLucideIcon } from "@mingla/offering-rendering/LucideIcons";
 
 const ACCENT = "#FF6B35";
 
@@ -1352,7 +1354,7 @@ export default function ConsumerExperienceDetailScreen({
         ]}
         testID="orch-1138-consumer-experience-state-banner"
       >
-        <Icon name="alert-circle" size={16} color={palette.accent} />
+        <AccentLucideIcon Icon={CircleAlert} size={16} palette={palette} />
         <View style={styles.stateBannerTextCol}>
           <Text
             style={[styles.stateBannerTitle, { color: palette.primaryText, fontFamily: boldFamily }]}

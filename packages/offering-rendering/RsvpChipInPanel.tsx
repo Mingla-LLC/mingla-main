@@ -36,6 +36,7 @@ import { type ResolvedTheme } from "./designTokens";
 // #3372 — naira chip-ins show "₦", not "NGN", whatever the engine or locale
 // (#3341 rule). The amount-field prefix below reads the same formatter.
 import { withCurrencyGlyph } from "./currencyGlyph";
+import { accentEdgeOnFill, accentFill } from "./themeAccentStyle";
 
 const DANGER = "#ef4444";
 
@@ -222,8 +223,8 @@ export const RsvpChipInPanel: React.FC<RsvpChipInPanelProps> = ({
               style={[
                 styles.presetChip,
                 {
-                  backgroundColor: selected ? palette.accent : cardFill,
-                  borderColor: selected ? palette.accent : palette.panelBorder,
+                  ...(selected ? accentFill(palette) : { backgroundColor: cardFill }),
+                  borderColor: selected ? accentEdgeOnFill(palette) : palette.panelBorder,
                   opacity: submitting ? 0.5 : 1,
                 },
               ]}
@@ -318,7 +319,7 @@ export const RsvpChipInPanel: React.FC<RsvpChipInPanelProps> = ({
         style={[
           styles.primaryBtn,
           {
-            backgroundColor: canSubmit ? palette.accent : opaqueAccentFill(palette),
+            ...(canSubmit ? accentFill(palette) : { backgroundColor: opaqueAccentFill(palette) }),
           },
         ]}
         testID="orch-1291-rsvp-chipin-submit"

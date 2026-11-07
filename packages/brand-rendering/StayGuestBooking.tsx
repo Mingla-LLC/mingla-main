@@ -57,6 +57,8 @@ import {
   useBrandRenderingState as useState,
   type BrandRenderingReactElement,
 } from "./PublicVenueTabs";
+import { accentEdgeOnFill, accentFill, accentFillWithBorder, accentOutline } from "@mingla/offering-rendering/themeAccentStyle";
+import { opaqueAccentWashColor } from "@mingla/offering-rendering/themePalette";
 
 type Surface = ReturnType<typeof offeringSurfaceStyles>;
 
@@ -547,8 +549,7 @@ export function StayGuestBooking({
                 styles.tab,
                 surface.card,
                 selected && {
-                  backgroundColor: palette.accent,
-                  borderColor: palette.accent,
+                  ...accentFillWithBorder(palette),
                 },
               ]}
             >
@@ -803,8 +804,8 @@ function RoomPriceFilter({
               style={[
                 styles.band,
                 {
-                  borderColor: selected ? palette.accent : palette.panelBorder,
-                  backgroundColor: selected ? palette.accent : palette.card,
+                  borderColor: selected ? accentEdgeOnFill(palette) : palette.panelBorder,
+                  ...(selected ? accentFill(palette) : { backgroundColor: palette.card }),
                 },
               ]}
             >
@@ -1005,8 +1006,12 @@ function OfferingCard({
                   style={[
                     styles.window,
                     {
-                      borderColor: selected ? palette.accent : palette.panelBorder,
-                      backgroundColor: selected ? palette.accentWash : palette.card,
+                      ...(selected
+                        ? accentOutline(palette, {
+                            background: palette.accentWash,
+                            opaqueBackground: opaqueAccentWashColor(palette),
+                          })
+                        : { borderColor: palette.panelBorder, backgroundColor: palette.card }),
                     },
                   ]}
                 >
@@ -1165,7 +1170,7 @@ function ActionButton({
       onPress={onPress}
       style={[
         styles.action,
-        { backgroundColor: palette.accent },
+        accentFill(palette),
         disabled && styles.disabled,
       ]}
     >

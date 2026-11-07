@@ -123,6 +123,9 @@ import type {
   PublicBrandVenueSummary,
   PublicMediaType,
 } from "./types";
+import { accentFill, accentFillWithBorder, accentOutline } from "@mingla/offering-rendering/themeAccentStyle";
+import { opaqueAccentWashColor } from "@mingla/offering-rendering/themePalette";
+import { AccentLucideIcon } from "@mingla/offering-rendering/LucideIcons";
 
 // #3426 — "past" is the date-decided Past tab (all four kinds). Happening now is
 // NOT a tab: it is a distinct block at the top of the Upcoming tab.
@@ -847,7 +850,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   // ---- desktop sticky brand-summary panel (Share + Next-up only) ----
   const stickyPanel = isDesktop ? (
     <View style={[styles.deskPanel, surface.cardStrong]}>
-      <View style={[styles.deskAccent, { backgroundColor: palette.accent }]} />
+      <View style={[styles.deskAccent, accentFill(palette)]} />
       <View style={styles.deskInner}>
         <View style={styles.deskIdentity}>
           <Avatar brand={brand} palette={palette} theme={theme} size={60} />
@@ -948,7 +951,7 @@ const DeskShareRow = ({ palette, brandName, onShare, onMessage }: DeskShareRowPr
       style={({ pressed }) => [
         styles.deskShareBtn,
         onMessage !== undefined && styles.deskShareBtnHalf,
-        { backgroundColor: palette.accent },
+        accentFill(palette),
         pressed && styles.cardPressed,
       ]}
     >
@@ -966,7 +969,7 @@ const DeskShareRow = ({ palette, brandName, onShare, onMessage }: DeskShareRowPr
           styles.deskShareBtn,
           styles.deskShareBtnHalf,
           styles.deskMessageBtn,
-          { borderColor: palette.accent },
+          accentOutline(palette, { opaqueBackground: palette.page }),
           pressed && styles.cardPressed,
         ]}
       >
@@ -1182,7 +1185,7 @@ const SocialLinksRow: React.FC<{
             {
               width: metrics.diameter,
               height: metrics.diameter,
-              backgroundColor: palette.accent,
+              ...accentFill(palette),
             },
           ]}
         >
@@ -1376,8 +1379,7 @@ const TabBar: React.FC<TabBarProps> = ({
                 styles.tabChip,
                 surface.card,
                 active && {
-                  backgroundColor: palette.accent,
-                  borderColor: palette.accent,
+                  ...accentFillWithBorder(palette),
                 },
               ]}
             >
@@ -1536,7 +1538,7 @@ const EventMiniCard: React.FC<EventMiniCardProps> = ({
       />
       <View style={styles.oCardBody}>
         <View style={styles.eventTypeRow}>
-          <TypeIcon size={14} color={palette.accent} />
+          <AccentLucideIcon Icon={TypeIcon} size={14} palette={palette} />
           <Text style={[styles.eventTypeLabel, { color: themeTextAccent(palette) }]}>
             {isRsvp ? "RSVP" : "TICKETS"}
           </Text>
@@ -1580,7 +1582,7 @@ const EventMiniCard: React.FC<EventMiniCardProps> = ({
             ) : null}
           </View>
         ) : null}
-        <View style={[styles.buyPill, { backgroundColor: palette.accent }]}>
+        <View style={[styles.buyPill, accentFill(palette)]}>
           <ThemeAccentGradientLayer
             theme={theme}
             palette={palette}
@@ -1614,7 +1616,7 @@ const NextOfferingTeaser: React.FC<{
       accessibilityLabel={`Next offering ${item.name}`}
       style={({ pressed }) => [
         styles.nextTeaser,
-        { backgroundColor: palette.accent },
+        accentFill(palette),
         pressed && styles.cardPressed,
       ]}
     >
@@ -2088,11 +2090,11 @@ const HappeningNowBlock: React.FC<HappeningNowBlockProps> = ({
     testID="brand-happening-now"
     style={[
       styles.nowBlock,
-      { borderColor: palette.accent, backgroundColor: palette.accentWash },
+      accentOutline(palette, { background: palette.accentWash, opaqueBackground: opaqueAccentWashColor(palette) }),
     ]}
   >
     <View style={styles.nowHeadRow}>
-      <View style={[styles.nowDot, { backgroundColor: palette.accent }]} />
+      <View style={[styles.nowDot, accentFill(palette)]} />
       <Text
         accessibilityRole="header"
         style={[styles.nowHeadLabel, { color: palette.primaryText }]}
@@ -2351,7 +2353,7 @@ const ReservationsPane = ({
           onPress={onRetry}
           accessibilityRole="button"
           accessibilityLabel="Try loading venues again"
-          style={[styles.retryButton, { backgroundColor: palette.accent }]}
+          style={[styles.retryButton, accentFill(palette)]}
         >
           <Text style={[styles.retryLabel, { color: palette.accentText }]}>
             Try again

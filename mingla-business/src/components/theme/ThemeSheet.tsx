@@ -63,6 +63,7 @@ import {
   SAMPLE_THEME_PREVIEW,
   type ThemePreviewContent,
 } from "./themePreviewContent";
+import { accentFill } from "@mingla/offering-rendering/themeAccentStyle";
 
 /**
  * #1022 — the expanded Theme control.
@@ -265,7 +266,7 @@ export const ThemeSheet: React.FC<ThemeSheetProps> = ({
             >
               {previewContent.title}
             </Text>
-            <View style={[styles.previewCta, { backgroundColor: palette.accent }]}>
+            <View style={[styles.previewCta, accentFill(palette)]}>
               <ThemeAccentGradientLayer
                 theme={resolved}
                 palette={palette}

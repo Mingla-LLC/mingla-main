@@ -38,6 +38,7 @@ import {
   venueOrderHandover,
   venueOrderProgressCopy,
 } from "./venueOrderingRules";
+import { accentFill } from "@mingla/offering-rendering/themeAccentStyle";
 
 type Surface = ReturnType<typeof offeringSurfaceStyles>;
 
@@ -80,7 +81,7 @@ export const VenueOrderStatusPane: React.FC<VenueOrderStatusPaneProps> = ({
       <View style={[styles.card, surface.cardStrong, styles.hero]}>
         {handover.kind === "counter" && handover.pickupCode !== null ? (
           <View
-            style={[styles.codeBadge, { backgroundColor: palette.accent }]}
+            style={[styles.codeBadge, accentFill(palette)]}
             accessibilityLabel={`Your pickup code is ${handover.pickupCode}`}
           >
             <Text style={[styles.codeLabel, { color: palette.accentText }]}>
@@ -171,7 +172,7 @@ export const VenueOrderStatusPane: React.FC<VenueOrderStatusPaneProps> = ({
             accessibilityRole="button"
             accessibilityState={{ disabled: retryPaymentPending }}
             accessibilityLabel="Try payment again"
-            style={[styles.action, { backgroundColor: palette.accent }]}
+            style={[styles.action, accentFill(palette)]}
           >
             <Text style={[styles.actionLabel, { color: palette.accentText }]}>
               {retryPaymentPending ? "Opening payment…" : "Try payment again"}
@@ -211,7 +212,7 @@ export const VenueOrderStatusPane: React.FC<VenueOrderStatusPaneProps> = ({
             onPress={onOrderMore}
             accessibilityRole="button"
             accessibilityLabel="Order another round"
-            style={[styles.action, { backgroundColor: palette.accent }]}
+            style={[styles.action, accentFill(palette)]}
           >
             <Text style={[styles.actionLabel, { color: palette.accentText }]}>
               Order more

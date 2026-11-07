@@ -53,6 +53,7 @@ import {
   venueOrderingModifierFailure,
   venueOrderingModifierMessage,
 } from "./venueOrderingRules";
+import { accentFill, accentOutline } from "@mingla/offering-rendering/themeAccentStyle";
 
 type Surface = ReturnType<typeof offeringSurfaceStyles>;
 
@@ -230,7 +231,7 @@ const VenueOrderingMenuRow: React.FC<{
               onPress={() => onToggleItem(open ? null : item.id)}
               accessibilityRole="button"
               accessibilityLabel={`Choose options for ${item.name}`}
-              style={[styles.addBtn, { borderColor: palette.accent }]}
+              style={[styles.addBtn, accentOutline(palette, { opaqueBackground: palette.page })]}
             >
               <Text style={[styles.addLabel, { color: palette.accent }]}>
                 {open ? "Close" : "Choose"}
@@ -248,7 +249,7 @@ const VenueOrderingMenuRow: React.FC<{
                 })}
               accessibilityRole="button"
               accessibilityLabel={`Add ${item.name} to your order`}
-              style={[styles.addBtn, { backgroundColor: palette.accent }]}
+              style={[styles.addBtn, accentFill(palette)]}
             >
               <Text style={[styles.addLabel, { color: palette.accentText }]}>
                 Add
@@ -378,7 +379,9 @@ const VenueOrderItemOptions: React.FC<{
                 style={[
                   styles.optionRow,
                   {
-                    borderColor: selected ? palette.accent : palette.panelBorder,
+                    ...(selected
+                      ? accentOutline(palette, { opaqueBackground: palette.page })
+                      : { borderColor: palette.panelBorder }),
                   },
                 ]}
               >
@@ -422,11 +425,9 @@ const VenueOrderItemOptions: React.FC<{
         accessibilityLabel={`Add ${item.name} to your order`}
         style={[
           styles.optionConfirm,
-          {
-            backgroundColor: failure === null
-              ? palette.accent
-              : palette.panelBorder,
-          },
+          failure === null
+            ? accentFill(palette)
+            : { backgroundColor: palette.panelBorder },
         ]}
       >
         <Text

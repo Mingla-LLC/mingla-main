@@ -136,6 +136,7 @@ import {
   LazyOfferingRefundLadder as OfferingRefundLadder,
   LazySaleAvailabilityText,
 } from "./LazyOfferingRefundLadder";
+import { accentFill, accentIcon } from "./themeAccentStyle";
 
 const ABOUT_COLLAPSE_THRESHOLD = 160;
 
@@ -340,6 +341,8 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
   testID,
 }) => {
   const surface = offeringSurfaceStyles(palette);
+  // issue #1023 — one accent-icon prop set (gradient stroke when themed).
+  const accentIconProps = accentIcon(palette);
   const boldFamily = boldFontFamily(theme);
   const isDesktop = variant === "desktop";
   const [aboutCollapsed, setAboutCollapsed] = useState<boolean>(true);
@@ -475,7 +478,7 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
                 },
               ]}
             >
-              <Sparkles size={13} color={palette.accent} />
+              <Sparkles size={13} {...accentIconProps} />
               {/* ORCH-1186 Fix 2 — label uses primaryText (icon stays accent) to
                   byte-match the standard trip/event MetaPill (no brown-on-brown). */}
               <Text
@@ -527,7 +530,7 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
               style={[
                 styles.brandTile,
                 brand.coverMediaUrl === null
-                  ? { backgroundColor: palette.accent }
+                  ? accentFill(palette)
                   : null,
               ]}
             >
@@ -578,7 +581,7 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
                   {brand.name}
                 </Text>
                 {brand.verified ? (
-                  <BadgeCheck size={15} color={palette.accent} />
+                  <BadgeCheck size={15} {...accentIconProps} />
                 ) : null}
               </View>
               <PresentedByFollowerCount
@@ -619,7 +622,7 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
           ]}
           testID="experience-body-availability"
         >
-          <Clock size={18} color={palette.accent} />
+          <Clock size={18} {...accentIconProps} />
           <View style={styles.availabilityTextCol}>
             <Text
               style={[
@@ -789,7 +792,7 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
               resizeMode="cover"
               accessibilityLabel={`Map of ${mapStop.placeName ?? "the first stop"}`}
             />
-            <MapPin size={26} color={palette.accent} />
+            <MapPin size={26} {...accentIconProps} />
             {mapStop.placeName !== null ? (
               <View
                 style={[styles.mapCapPill, { backgroundColor: palette.page }]}
@@ -929,7 +932,7 @@ const MetaChip: React.FC<{
           : Clock;
   return (
     <View style={[styles.metaChip, surface.card]}>
-      <Glyph size={15} color={palette.accent} />
+      <Glyph size={15} {...accentIcon(palette)} />
       <Text
         style={[
           styles.metaChipText,

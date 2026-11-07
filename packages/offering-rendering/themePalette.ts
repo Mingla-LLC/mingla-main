@@ -158,7 +158,7 @@ export const createThemePalette = (theme: ResolvedTheme): ThemePalette => {
     4.5,
   );
   const primaryText = readableTextFor(page);
-  return {
+  const palette: ThemePalette = {
     page,
     accent: accentColor,
     accentText: "#ffffff",
@@ -180,7 +180,31 @@ export const createThemePalette = (theme: ResolvedTheme): ThemePalette => {
     glassTint: useDark ? "dark" : "light",
     accentWash: hexToRgba(accentColor, useDark ? 0.24 : 0.18),
   };
+  // issue #1023 — a gradient theme registers its two white-label-safe stops
+  // against this palette object, so every accent fill drawn from the palette
+  // can paint the gradient. The palette's own shape and values are untouched
+  // (RT-1 parity): a solid theme registers nothing and draws exactly as before.
+  if (typeof theme.color2 === "string" && /^#[0-9a-fA-F]{6}$/.test(theme.color2)) {
+    PALETTE_GRADIENTS.set(palette, [
+      accentColor,
+      contrastAdjustedForWhiteText(
+        contrastAdjustedAccent(theme.color2, page, 3.15),
+        4.5,
+      ),
+    ]);
+  }
+  return palette;
 };
+
+/**
+ * issue #1023 — the two gradient stops a palette was built with, or null for
+ * a solid theme (or a palette not made by createThemePalette, e.g. a spread
+ * copy, which then draws solid: never wrong, only plainer).
+ */
+const PALETTE_GRADIENTS = new WeakMap<ThemePalette, readonly [string, string]>();
+export const paletteAccentGradient = (
+  palette: ThemePalette,
+): readonly [string, string] | null => PALETTE_GRADIENTS.get(palette) ?? null;
 
 // =====================================================================
 // ORCH-1163 R4 — GENUINELY-OPAQUE surface helpers.

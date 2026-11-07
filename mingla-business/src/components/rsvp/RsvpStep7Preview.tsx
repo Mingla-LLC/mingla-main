@@ -160,7 +160,7 @@ export const RsvpStep7Preview: React.FC<RsvpStep7PreviewProps> = ({
             <View
               style={[
                 styles.ctaBtn,
-                { backgroundColor: card.goingFill, borderColor: card.goingFill },
+                card.goingFillStyle,
               ]}
             >
               <Text style={[styles.ctaGoingLabel, { color: card.goingText }]}>

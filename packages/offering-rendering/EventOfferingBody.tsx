@@ -139,6 +139,7 @@ import {
   LazySaleAvailabilityText,
 } from "./LazyOfferingRefundLadder";
 import { type RefundPolicyReadState } from "./offeringRefundPolicy";
+import { accentFill, accentIcon } from "./themeAccentStyle";
 
 // Re-export the pure totals so a single import surface stays one place.
 export { computeRunningTotal, totalSelectedQuantity } from "./eventBoxTotals";
@@ -601,7 +602,7 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
           ]}
           testID="orch-1167-date-row"
         >
-          <Calendar size={18} color={palette.accent} />
+          <Calendar size={18} {...accentIcon(palette)} />
           <View style={styles.dateTextCol}>
             {event.dateLine.length > 0 ? (
               <Text
@@ -745,7 +746,7 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
             style={styles.brandRow}
           >
             <View
-              style={[styles.brandTile, { backgroundColor: palette.accent }]}
+              style={[styles.brandTile, accentFill(palette)]}
             >
               <ThemeAccentGradientLayer
                 theme={theme}
@@ -857,7 +858,7 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
           </Text>
           <View style={[styles.venueCard, surface.card]}>
             <View
-              style={[styles.venueDisk, { backgroundColor: palette.accent }]}
+              style={[styles.venueDisk, accentFill(palette)]}
             >
               <Globe size={18} color={palette.accentText} />
             </View>
@@ -909,7 +910,7 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
             style={[styles.venueCard, surface.card]}
           >
             <View
-              style={[styles.venueDisk, { backgroundColor: palette.accent }]}
+              style={[styles.venueDisk, accentFill(palette)]}
             >
               <MapPin size={18} color={palette.accentText} />
             </View>
@@ -937,7 +938,7 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
             </View>
             {canOpenVenueMaps ? (
               <View
-                style={[styles.venuePill, { backgroundColor: palette.accent }]}
+                style={[styles.venuePill, accentFill(palette)]}
               >
                 <Text
                   style={[styles.venuePillText, { color: palette.accentText }]}
@@ -1166,7 +1167,7 @@ export const EventTicketBox: React.FC<EventTicketBoxProps> = ({
             style={[
               styles.boxProceed,
               proceedEnabled
-                ? { backgroundColor: palette.accent }
+                ? accentFill(palette)
                 : {
                     backgroundColor: palette.card,
                     borderColor: palette.panelBorder,
@@ -1297,7 +1298,7 @@ export const EventOfferingFloatingBar: React.FC<
       style={[
         styles.floatBar,
         enabled
-          ? { backgroundColor: palette.accent }
+          ? accentFill(palette)
           : {
               backgroundColor: palette.panelStrong,
               borderColor: palette.panelBorder,

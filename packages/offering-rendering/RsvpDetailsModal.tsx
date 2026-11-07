@@ -35,6 +35,7 @@ import {
 import { boldFontFamily, type ThemePalette } from "./themePalette";
 import { ThemeAccentGradientLayer } from "./ThemeAccentFill";
 import { type ResolvedTheme } from "./designTokens";
+import { accentFill } from "./themeAccentStyle";
 
 export interface RsvpDetailsModalProps {
   visible: boolean;
@@ -121,7 +122,7 @@ export const RsvpDetailsModal: React.FC<RsvpDetailsModalProps> = ({
             accessibilityLabel={continueLabel}
             style={[
               styles.primaryBtn,
-              { backgroundColor: palette.accent, opacity: disabled ? 0.5 : 1 },
+              { ...accentFill(palette), opacity: disabled ? 0.5 : 1 },
             ]}
             testID="orch-1163-rsvp-details-continue"
           >

@@ -24,5 +24,7 @@ module.exports = {
     "**/src/components/theme/__tests__/issue_1023_theme_sheet_pickers.implementor.test.tsx",
     "**/src/components/theme/__tests__/issue_1023_offering_theme_columns.implementor.test.ts",
     "**/src/components/theme/__tests__/issue_1023_catalogue_lazy.implementor.test.ts",
+    // issue #1023 — every accent element follows the gradient (text excepted).
+    "**/src/components/theme/__tests__/issue_1023_gradient_everywhere.implementor.test.ts",
   ],
 };

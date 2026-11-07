@@ -130,6 +130,7 @@ import {
 } from "@mingla/offering-rendering/priceDecimals";
 // issue #3284 — the refund ladder's chunk starts with this page's data fetch.
 import { loadOfferingRefundLadder } from "@mingla/offering-rendering/LazyOfferingRefundLadder";
+import { accentFill } from "@mingla/offering-rendering/themeAccentStyle";
 
 export default function PublicTripRoute(): React.ReactElement {
   const router = useRouter();
@@ -760,7 +761,7 @@ const ResolvedTripPage: React.FC<{
         style={[
           styles.deskReserve,
           reserveTappable
-            ? { backgroundColor: palette.accent }
+            ? accentFill(palette)
             : { backgroundColor: palette.card, borderColor: palette.panelBorder, borderWidth: 1 },
         ]}
         testID="orch-1138-trip-desk-reserve"

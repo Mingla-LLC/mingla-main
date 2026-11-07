@@ -20,6 +20,8 @@ import type { ResolvedTheme, ThemePalette } from "@mingla/offering-rendering";
 
 import type { EnquiryPhoneFieldArgs, EnquiryPhoneState } from "./BrandMessageSheet";
 import { replyTimeLabel } from "./replyTime";
+import { accentEdgeOnFill, accentFill, accentOutline } from "@mingla/offering-rendering/themeAccentStyle";
+import { AccentLucideIcon } from "@mingla/offering-rendering/LucideIcons";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -135,7 +137,7 @@ export const BrandPageFoot = forwardRef<BrandPageFootHandle, BrandPageFootProps>
           {loop.state === "sent" ? (
             <View style={styles.sentBody} testID={`${testID}-loop-sent`}>
               <View style={[styles.okIcon, { backgroundColor: palette.accentWash }]}>
-                <Check size={20} color={palette.accent} />
+                <AccentLucideIcon Icon={Check} size={20} palette={palette} />
               </View>
               <Text style={[styles.title, themedFont, { color: palette.primaryText }]} accessibilityRole="header">
                 Check your email
@@ -225,8 +227,8 @@ export const BrandPageFoot = forwardRef<BrandPageFootHandle, BrandPageFootProps>
                   <View
                     style={[
                       styles.checkBox,
-                      { borderColor: wantsSms ? palette.accent : palette.panelBorder },
-                      wantsSms && { backgroundColor: palette.accent },
+                      { borderColor: wantsSms ? accentEdgeOnFill(palette) : palette.panelBorder },
+                      wantsSms && accentFill(palette),
                     ]}
                   >
                     {wantsSms ? <Check size={14} color={palette.accentText} /> : null}
@@ -262,7 +264,7 @@ export const BrandPageFoot = forwardRef<BrandPageFootHandle, BrandPageFootProps>
                 testID={`${testID}-loop-submit`}
                 style={({ pressed }) => [
                   styles.primaryBtn,
-                  { backgroundColor: palette.accent },
+                  accentFill(palette),
                   loop.state === "sending" && styles.dim,
                   pressed && styles.pressed,
                 ]}
@@ -298,7 +300,7 @@ export const BrandPageFoot = forwardRef<BrandPageFootHandle, BrandPageFootProps>
             accessibilityRole="button"
             accessibilityLabel={`Message ${brandName}`}
             testID={`${testID}-message-button`}
-            style={({ pressed }) => [styles.lineBtn, { borderColor: palette.accent }, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.lineBtn, accentOutline(palette, { opaqueBackground: palette.page }), pressed && styles.pressed]}
           >
             <Text numberOfLines={2} style={[styles.lineLabel, { color: palette.primaryText }]}>
               {`Message ${brandName}`}

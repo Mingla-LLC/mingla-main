@@ -60,6 +60,7 @@ import * as Haptics from "expo-haptics";
 import type { CtaState, ThemePalette } from "@mingla/offering-rendering";
 import type { ResolvedTheme } from "@mingla/offering-rendering";
 import { ThemeAccentGradientLayer } from "@mingla/offering-rendering/ThemeAccentFill";
+import { accentFill, accentOutline } from "@mingla/offering-rendering/themeAccentStyle";
 
 /**
  * ORCH-1138 [trip-page-redesign] (Seth, 2026-06-15) — the SPLIT-CTA payload,
@@ -211,8 +212,10 @@ export const TripReserveBar: React.FC<TripReserveBarProps> = ({
           isPrimary ? styles.segmentPrimary : styles.segmentSecondary,
           isPrimary ? null : styles.segmentSecondaryBorder,
           {
-            backgroundColor: isPrimary ? palette.accent : SECONDARY_FILL,
-            borderColor: isPrimary ? undefined : palette.accent,
+            ...(isPrimary ? accentFill(palette) : { backgroundColor: SECONDARY_FILL }),
+            ...(isPrimary
+              ? {}
+              : accentOutline(palette, { opaqueBackground: SECONDARY_FILL })),
           },
           pressed ? styles.segmentPressed : null,
         ]}
@@ -292,7 +295,7 @@ export const TripReserveBar: React.FC<TripReserveBarProps> = ({
       }
       style={({ pressed }) => [
         styles.reserve,
-        { backgroundColor: palette.accent },
+        accentFill(palette),
         pressed ? styles.reservePressed : null,
       ]}
       testID={testID !== undefined ? `${testID}-action` : undefined}
@@ -399,7 +402,7 @@ export const TripReserveBar: React.FC<TripReserveBarProps> = ({
       }
       style={({ pressed }) => [
         styles.floatButton,
-        { backgroundColor: palette.accent },
+        accentFill(palette),
         pressed ? styles.reservePressed : null,
       ]}
       testID={testID !== undefined ? `${testID}-action` : undefined}

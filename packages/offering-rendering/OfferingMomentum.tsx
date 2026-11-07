@@ -53,6 +53,7 @@ import { deriveSocialProofMomentum } from "./socialProofMomentum";
 // ORCH-1340 — the ONE shared disk system (photo|glyph|+N|see-row) for both
 // momentum cards; the faceless PersonGlyph now lives inside it.
 import { GuestAvatarCluster } from "./GuestAvatarCluster";
+import { accentFill } from "./themeAccentStyle";
 
 // ───────────────────────────── props contract ───────────────────────────────
 
@@ -137,7 +138,7 @@ export const OfferingMomentum: React.FC<OfferingMomentumProps> = ({
           <View
             style={[
               styles.meterFill,
-              { width: `${momentum.meterPercent}%`, backgroundColor: palette.accent },
+              { width: `${momentum.meterPercent}%`, ...accentFill(palette) },
             ]}
             testID="orch-1339-momentum-meter"
           />

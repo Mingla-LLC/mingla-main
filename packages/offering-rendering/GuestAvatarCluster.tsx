@@ -49,6 +49,8 @@ import Svg, { Circle, Path } from "react-native-svg";
 import { boldFontFamily, type ThemePalette } from "./themePalette";
 import { type ResolvedTheme } from "./designTokens";
 import { type SocialProofSampleEntry } from "./socialProofTypes";
+import { useAccentStroke } from "./LucideIcons";
+import { accentFill, accentIcon } from "./themeAccentStyle";
 
 // ─────────────────────────────── glyphs (SVG) ───────────────────────────────
 
@@ -68,16 +70,23 @@ const PersonGlyph: React.FC<{ color: string }> = ({ color }) => (
 );
 
 /** See-row chevron — the accent "go" mark (≥3:1 UI component; DESIGN §1.1). */
-const ChevronGlyph: React.FC<{ color: string }> = ({ color }) => (
-  <Svg width={12} height={12} viewBox="0 0 24 24" fill="none">
-    <Path
-      d="M9 6l6 6-6 6"
-      stroke={color}
-      strokeWidth={2.4}
-      strokeLinecap="round"
-    />
-  </Svg>
-);
+const ChevronGlyph: React.FC<{
+  color: string;
+  gradient?: readonly [string, string];
+}> = ({ color, gradient }) => {
+  const { stroke, defs } = useAccentStroke(color, gradient);
+  return (
+    <Svg width={12} height={12} viewBox="0 0 24 24" fill="none">
+      {defs}
+      <Path
+        d="M9 6l6 6-6 6"
+        stroke={stroke}
+        strokeWidth={2.4}
+        strokeLinecap="round"
+      />
+    </Svg>
+  );
+};
 
 // ───────────────────────────── props contract ───────────────────────────────
 
@@ -142,7 +151,7 @@ const AvatarDisk: React.FC<{
       style={[
         styles.disk,
         {
-          backgroundColor: palette.accent,
+          ...accentFill(palette),
           borderColor: palette.page,
           marginLeft: first ? 0 : -8,
         },
@@ -249,7 +258,7 @@ export const GuestAvatarCluster: React.FC<GuestAvatarClusterProps> = ({
           >
             See who's going
           </Text>
-          <ChevronGlyph color={palette.accent} />
+          <ChevronGlyph {...accentIcon(palette)} />
         </View>
       </View>
     </Pressable>

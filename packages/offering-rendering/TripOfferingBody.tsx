@@ -103,6 +103,7 @@ import {
   type TripOfferingState,
   type TripPaymentPlanChoice,
 } from "./useTripOfferingState";
+import { accentFill, accentIcon } from "./themeAccentStyle";
 
 const ABOUT_COLLAPSE_THRESHOLD = 160;
 
@@ -207,6 +208,8 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
   testID,
 }) => {
   const surface = offeringSurfaceStyles(palette);
+  // issue #1023 — one accent-icon prop set (gradient stroke when themed).
+  const accentIconProps = accentIcon(palette);
   const boldFamily = boldFontFamily(theme);
   const isDesktop = variant === "desktop";
   const [aboutCollapsed, setAboutCollapsed] = useState<boolean>(true);
@@ -373,7 +376,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
               },
             ]}
           >
-            <Calendar size={17} color={palette.accent} />
+            <Calendar size={17} {...accentIconProps} />
             <Text
               style={[
                 styles.fullPillText,
@@ -397,7 +400,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
             ]}
             testID="trip-body-route-pill"
           >
-            <Plane size={17} color={palette.accent} />
+            <Plane size={17} {...accentIconProps} />
             <Text
               style={[
                 styles.fullPillText,
@@ -421,7 +424,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
           <MetaPill
             palette={palette}
             font={boldFamily}
-            icon={<Moon size={13} color={palette.accent} />}
+            icon={<Moon size={13} {...accentIconProps} />}
             label={data.durationLabel}
           />
         ) : null}
@@ -429,7 +432,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
           <MetaPill
             palette={palette}
             font={boldFamily}
-            icon={<Users size={13} color={palette.accent} />}
+            icon={<Users size={13} {...accentIconProps} />}
             label={data.spotsLabel}
           />
         ) : null}
@@ -473,7 +476,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
               style={[
                 styles.brandTile,
                 brand.coverMediaUrl === null
-                  ? { backgroundColor: palette.accent }
+                  ? accentFill(palette)
                   : null,
               ]}
             >
@@ -519,7 +522,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
                   {brand.name}
                 </Text>
                 {brand.verified ? (
-                  <BadgeCheck size={15} color={palette.accent} />
+                  <BadgeCheck size={15} {...accentIconProps} />
                 ) : null}
               </View>
               <PresentedByFollowerCount
@@ -594,7 +597,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
           {guide.highlights.map((highlight, index) => (
             <View key={`highlight-${index}`} style={styles.guideBulletRow}>
               <View
-                style={[styles.guideBullet, { backgroundColor: palette.accent }]}
+                style={[styles.guideBullet, accentFill(palette)]}
               />
               <Text style={[styles.guideBody, surface.secondaryText]}>
                 {highlight}
@@ -610,7 +613,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
             <MetaPill
               palette={palette}
               font={boldFamily}
-              icon={<Users size={13} color={palette.accent} />}
+              icon={<Users size={13} {...accentIconProps} />}
               label={guide.groupSizeLabel}
             />
           ) : null}
@@ -618,7 +621,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
             <MetaPill
               palette={palette}
               font={boldFamily}
-              icon={<Plane size={13} color={palette.accent} />}
+              icon={<Plane size={13} {...accentIconProps} />}
               label={`${TRIP_GUIDE_ACTIVITY_LABEL[guide.activityLevel]} activity`}
             />
           ) : null}
@@ -748,9 +751,9 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
                     {faq.question}
                   </Text>
                   {open ? (
-                    <Minus size={16} color={palette.accent} />
+                    <Minus size={16} {...accentIconProps} />
                   ) : (
-                    <Plus size={16} color={palette.accent} />
+                    <Plus size={16} {...accentIconProps} />
                   )}
                 </Pressable>
                 {open ? (
@@ -907,7 +910,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
               style={[
                 styles.boxProceed,
                 reserveTappable
-                  ? { backgroundColor: palette.accent }
+                  ? accentFill(palette)
                   : {
                       backgroundColor: palette.card,
                       borderColor: palette.panelBorder,

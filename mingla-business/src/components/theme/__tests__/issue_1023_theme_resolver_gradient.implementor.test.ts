@@ -132,18 +132,20 @@ describe("#1024 — small accent text is lightened, fills keep the colour", () =
     const palette = createThemePalette(resolveTheme({ color: "#111827" }, null));
     expect(themeTextAccent(palette)).toBe(palette.accent);
   });
-  test("the eleven small-text places use the text accent; fills still use palette.accent", async () => {
+  test("the eleven small-text places use the text accent; fills use the accent fill (gradient-aware)", async () => {
     const event = await read("packages/offering-rendering/PublicEventPage.tsx");
     for (const style of ["showAllLabel", "brandCta", "aboutToggle"]) {
       expect(event).toContain(`styles.${style}, { color: themeTextAccent(palette) }`);
     }
     expect(event).toContain("{ color: themeTextAccent(palette), fontFamily: theme.fontFamilyValue }");
-    expect(event).toContain("styles.brandTile, { backgroundColor: palette.accent }");
+    // Was `{ backgroundColor: palette.accent }`; invalidated by the #1023
+    // gradient-everywhere scope: fills now paint through accentFill(palette).
+    expect(event).toContain("styles.brandTile, accentFill(palette)");
     const brand = await read("packages/brand-rendering/PublicBrandPage.tsx");
     for (const style of ["verifiedBadge", "eventTypeLabel", "oCardDate", "readMore"]) {
       expect(brand).toContain(`styles.${style}, { color: themeTextAccent(palette) }`);
     }
-    expect(brand).toContain("styles.buyPill, { backgroundColor: palette.accent }");
+    expect(brand).toContain("styles.buyPill, accentFill(palette)");
     expect(await read("packages/offering-rendering/EventOfferingBody.tsx")).toContain(
       "styles.acquisitionEyebrow, { color: themeTextAccent(palette) }",
     );

@@ -69,6 +69,8 @@ import {
   type EnquirySendRequest,
   type TableRequestDetails,
 } from "./enquiryTopics";
+import { accentEdgeOnFill, accentFill, accentFillWithBorder, accentOutline } from "@mingla/offering-rendering/themeAccentStyle";
+import { AccentLucideIcon } from "@mingla/offering-rendering/LucideIcons";
 
 export type EnquiryViewer =
   | { kind: "signed_in"; name: string }
@@ -317,7 +319,7 @@ export const BrandMessageSheet = ({
       style={({ pressed }) => [
         styles.primaryBtn,
         opts.flex === true && styles.flexBtn,
-        { backgroundColor: palette.accent },
+        accentFill(palette),
         (opts.disabled === true || opts.busy === true) && styles.dim,
         pressed && styles.pressed,
       ]}
@@ -345,7 +347,7 @@ export const BrandMessageSheet = ({
       style={({ pressed }) => [
         opts.compact === true ? styles.compactBtn : styles.secondaryBtn,
         opts.flex === true && styles.flexBtn,
-        { borderColor: palette.accent },
+        accentOutline(palette, { opaqueBackground: palette.page }),
         pressed && styles.pressed,
       ]}
     >
@@ -374,7 +376,7 @@ export const BrandMessageSheet = ({
         ]}
       >
         <View style={[styles.pickIcon, { backgroundColor: palette.accentWash }]}>
-          <Icon size={18} color={palette.accent} />
+          <AccentLucideIcon Icon={Icon} size={18} palette={palette} />
         </View>
         <View style={styles.pickCopy}>
           <Text numberOfLines={2} style={[styles.pickTitle, { color: palette.primaryText }]}>
@@ -613,8 +615,8 @@ export const BrandMessageSheet = ({
                 <View
                   style={[
                     styles.checkBox,
-                    { borderColor: okToCall ? palette.accent : palette.panelBorder },
-                    okToCall && { backgroundColor: palette.accent },
+                    { borderColor: okToCall ? accentEdgeOnFill(palette) : palette.panelBorder },
+                    okToCall && accentFill(palette),
                   ]}
                 >
                   {okToCall ? <Check size={14} color={palette.accentText} /> : null}
@@ -690,7 +692,7 @@ export const BrandMessageSheet = ({
                   style={({ pressed }) => [
                     styles.chip,
                     on
-                      ? { backgroundColor: palette.accent, borderColor: palette.accent }
+                      ? accentFillWithBorder(palette)
                       : { backgroundColor: palette.card, borderColor: palette.panelBorder },
                     pressed && styles.pressed,
                   ]}
@@ -712,7 +714,7 @@ export const BrandMessageSheet = ({
     sent === null ? null : (
       <View style={styles.sentWrap} testID={`${testID}-sent`}>
         <View style={[styles.sentIcon, { backgroundColor: palette.accentWash }]}>
-          <Check size={26} color={palette.accent} />
+          <AccentLucideIcon Icon={Check} size={26} palette={palette} />
         </View>
         <Text style={[styles.title, styles.center, themedFont, { color: palette.primaryText }]}>
           {`Message sent to ${brandName}`}

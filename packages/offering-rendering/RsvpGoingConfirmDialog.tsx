@@ -24,6 +24,7 @@ import {
 import { boldFontFamily, type ThemePalette } from "./themePalette";
 import { ThemeAccentGradientLayer } from "./ThemeAccentFill";
 import { type ResolvedTheme } from "./designTokens";
+import { accentFill } from "./themeAccentStyle";
 
 export interface RsvpGoingConfirmDialogProps {
   visible: boolean;
@@ -115,7 +116,7 @@ export const RsvpGoingConfirmDialog: React.FC<RsvpGoingConfirmDialogProps> = ({
             accessibilityRole="button"
             accessibilityState={{ disabled: submitting }}
             accessibilityLabel={submitting ? "Confirming" : "Confirm I'm going"}
-            style={[styles.primaryBtn, { backgroundColor: palette.accent, opacity: submitting ? 0.7 : 1 }]}
+            style={[styles.primaryBtn, { ...accentFill(palette), opacity: submitting ? 0.7 : 1 }]}
             testID="orch-1163-rsvp-going-confirm-cta"
           >
             <ThemeAccentGradientLayer

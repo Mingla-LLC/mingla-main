@@ -131,6 +131,7 @@ import type {
   RsvpPassCredential,
 } from "./RsvpSuccessPopup";
 import type { ChipInPanelState } from "./RsvpChipInPanel";
+import { accentFill, accentIcon } from "./themeAccentStyle";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_RE = /^\+?[0-9\s()-]{7,20}$/;
@@ -1704,7 +1705,7 @@ export const useRsvpOfferingState = (
             ]}
             testID="orch-1157-rsvp-plus-minus"
           >
-            <Minus size={18} color={palette.accent} />
+            <Minus size={18} {...accentIcon(palette)} />
           </Pressable>
           <Text
             style={[
@@ -1728,7 +1729,7 @@ export const useRsvpOfferingState = (
             ]}
             testID="orch-1157-rsvp-plus-plus"
           >
-            <Plus size={18} color={palette.accent} />
+            <Plus size={18} {...accentIcon(palette)} />
           </Pressable>
         </View>
       </View>
@@ -2436,7 +2437,7 @@ export const RsvpOfferingBody: React.FC<
           ]}
           testID="orch-1167-date-row"
         >
-          <Calendar size={18} color={palette.accent} />
+          <Calendar size={18} {...accentIcon(palette)} />
           <View style={styles.dateTextCol}>
             {event.dateLine.length > 0 ? (
               <Text
@@ -2546,7 +2547,7 @@ export const RsvpOfferingBody: React.FC<
             testID="orch-1157-rsvp-brand"
           >
             <View
-              style={[styles.brandTile, { backgroundColor: palette.accent }]}
+              style={[styles.brandTile, accentFill(palette)]}
             >
               {brand?.photo !== undefined && brand.photo.length > 0 ? (
                 <Image
@@ -2650,7 +2651,7 @@ export const RsvpOfferingBody: React.FC<
           </Text>
           <View style={[styles.venueCard, surface.card]}>
             <View
-              style={[styles.venueDisk, { backgroundColor: palette.accent }]}
+              style={[styles.venueDisk, accentFill(palette)]}
             >
               <Globe size={18} color={palette.accentText} />
             </View>
@@ -2700,7 +2701,7 @@ export const RsvpOfferingBody: React.FC<
             style={[styles.venueCard, surface.card]}
           >
             <View
-              style={[styles.venueDisk, { backgroundColor: palette.accent }]}
+              style={[styles.venueDisk, accentFill(palette)]}
             >
               <MapPin size={18} color={palette.accentText} />
             </View>
@@ -2732,7 +2733,7 @@ export const RsvpOfferingBody: React.FC<
             </View>
             {canOpenVenueMaps ? (
               <View
-                style={[styles.venuePill, { backgroundColor: palette.accent }]}
+                style={[styles.venuePill, accentFill(palette)]}
               >
                 <Text
                   style={[styles.venuePillText, { color: palette.accentText }]}

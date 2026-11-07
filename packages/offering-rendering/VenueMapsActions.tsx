@@ -60,6 +60,7 @@ import {
   type MapsOpenTarget,
 } from "./mapsDeepLink";
 import { type ThemePalette } from "./themePalette";
+import { accentIcon } from "./themeAccentStyle";
 
 /** How long the "Copied" / "Couldn't copy" confirm holds before reverting. */
 const CONFIRM_HOLD_MS = 1600;
@@ -308,7 +309,7 @@ export const VenueCopyAddressButton = ({
         ]}
         testID={testID}
       >
-        <Glyph size={14} color={tint} />
+        <Glyph size={14} {...(state === "failed" ? { color: tint } : accentIcon(palette))} />
         <Text
           style={[
             styles.copyPillText,
@@ -417,7 +418,7 @@ export const MapsAppChooserDialog = ({
               ]}
               testID={`issue-2508-maps-app-${choice.id}`}
             >
-              <MapPin size={18} color={palette.accent} />
+              <MapPin size={18} {...accentIcon(palette)} />
               <Text
                 style={[
                   styles.chooserRowText,

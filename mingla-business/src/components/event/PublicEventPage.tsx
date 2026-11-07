@@ -220,6 +220,7 @@ import { useThemeFont } from "../../theme/useThemeFont";
 import { ShareModal } from "../ui/ShareModal";
 import { Toast } from "../ui/Toast";
 import { JoinWaitlistSheet } from "../waitlist/JoinWaitlistSheet";
+import { accentFill } from "@mingla/offering-rendering/themeAccentStyle";
 
 interface PublicEventPageAdapterProps {
   event: LiveEvent;
@@ -1557,7 +1558,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         ]}
       >
         <View
-          style={[styles.deskAccent, { backgroundColor: palette.accent }]}
+          style={[styles.deskAccent, accentFill(palette)]}
         />
         <View style={styles.deskInner}>
           <EventTicketBox

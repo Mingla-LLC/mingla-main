@@ -51,6 +51,7 @@ import type { ThemePalette } from "./themePalette";
 import type { ResolvedTheme } from "./designTokens";
 import { ThemeAccentGradientLayer } from "./ThemeAccentFill";
 import type { ReserveSplitButton, ReserveSplitCtas } from "./tripOfferingTypes";
+import { accentFill, accentOutline } from "./themeAccentStyle";
 
 export type { ReserveSplitButton, ReserveSplitCtas } from "./tripOfferingTypes";
 
@@ -161,8 +162,10 @@ export const TripReserveBar: React.FC<TripReserveBarProps> = ({
           isPrimary ? styles.segmentPrimary : styles.segmentSecondary,
           isPrimary ? null : styles.segmentSecondaryBorder,
           {
-            backgroundColor: isPrimary ? palette.accent : SECONDARY_FILL,
-            borderColor: isPrimary ? undefined : palette.accent,
+            ...(isPrimary ? accentFill(palette) : { backgroundColor: SECONDARY_FILL }),
+            ...(isPrimary
+              ? {}
+              : accentOutline(palette, { opaqueBackground: SECONDARY_FILL })),
           },
           pressed ? styles.segmentPressed : null,
         ]}
@@ -233,7 +236,7 @@ export const TripReserveBar: React.FC<TripReserveBarProps> = ({
       }
       style={({ pressed }) => [
         styles.reserve,
-        { backgroundColor: palette.accent },
+        accentFill(palette),
         pressed ? styles.reservePressed : null,
       ]}
       testID={testID !== undefined ? `${testID}-action` : undefined}
@@ -325,7 +328,7 @@ export const TripReserveBar: React.FC<TripReserveBarProps> = ({
       }
       style={({ pressed }) => [
         styles.floatButton,
-        { backgroundColor: palette.accent },
+        accentFill(palette),
         pressed ? styles.reservePressed : null,
       ]}
       testID={testID !== undefined ? `${testID}-action` : undefined}

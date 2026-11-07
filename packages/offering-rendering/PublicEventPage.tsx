@@ -101,6 +101,7 @@ import type {
 } from "./types";
 // issue #3314 — the one owner of remaining-count copy under "Hide remaining count".
 import { ticketAvailabilityCaption } from "./remainingCountVisibility";
+import { accentFill } from "./themeAccentStyle";
 
 const SHOW_INITIAL_DATES = 10;
 
@@ -699,7 +700,7 @@ const PublishedBody = ({
               />
             ) : (
               <View
-                style={[styles.brandTile, { backgroundColor: palette.accent }]}
+                style={[styles.brandTile, accentFill(palette)]}
               >
                 <ThemeAccentGradientLayer
                   theme={theme}
@@ -829,7 +830,7 @@ const PublishedBody = ({
                 <View
                   style={[
                     styles.venueIconDisk,
-                    { backgroundColor: palette.accent },
+                    accentFill(palette),
                   ]}
                 >
                   <Text
@@ -858,7 +859,7 @@ const PublishedBody = ({
                     style={[
                       styles.venueMapsPill,
                       {
-                        backgroundColor: palette.accent,
+                        ...accentFill(palette),
                         borderColor: palette.accentText,
                         shadowColor: palette.accent,
                       },
@@ -904,7 +905,7 @@ const PublishedBody = ({
                 <View
                   style={[
                     styles.venueIconDisk,
-                    { backgroundColor: palette.accent },
+                    accentFill(palette),
                   ]}
                 >
                   <Text
@@ -1155,7 +1156,7 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
     >
       <View
         pointerEvents="none"
-        style={[styles.ticketCardAccent, { backgroundColor: palette.accent }]}
+        style={[styles.ticketCardAccent, accentFill(palette)]}
       />
       <View style={styles.ticketHeaderRow}>
         <View style={styles.ticketTextCol}>
@@ -1200,7 +1201,7 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
           style={[
             styles.ticketBuyerBtn,
             {
-              backgroundColor: palette.accent,
+              ...accentFill(palette),
               borderColor: palette.accentText,
               shadowColor: palette.accent,
             },

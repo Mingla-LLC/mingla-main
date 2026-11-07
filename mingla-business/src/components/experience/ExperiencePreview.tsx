@@ -74,6 +74,7 @@ import type {
 } from "../../services/publicExperienceService";
 // #3372 — naira shows "₦", not "NGN", in the experience preview (#3341 rule).
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
+import { accentFill } from "@mingla/offering-rendering/themeAccentStyle";
 
 export interface ExperiencePreviewProps {
   experience: PublicExperience;
@@ -370,7 +371,7 @@ const FoundationExperiencePreview: React.FC<{
   // ---- desktop sticky booking panel ----
   const stickyPanel = isDesktop ? (
     <View style={[styles.deskPanel, surface.cardStrong]}>
-      <View style={[styles.deskAccent, { backgroundColor: palette.accent }]} />
+      <View style={[styles.deskAccent, accentFill(palette)]} />
       <View style={styles.deskInner}>
         {brandChip}
         <View style={styles.deskPriceRow}>

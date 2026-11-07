@@ -74,6 +74,7 @@ import {
   type Platform as GuestPlatform,
 } from "../../services/guestFunnelLink";
 import { GateQr } from "./GateQr";
+import { accentFill } from "@mingla/offering-rendering/themeAccentStyle";
 
 export interface SeeWhosGoingGateProps {
   visible: boolean;
@@ -139,7 +140,7 @@ const MiniClusterEcho: React.FC<{
           style={[
             styles.echoDisk,
             {
-              backgroundColor: palette.accent,
+              ...accentFill(palette),
               borderColor: palette.page,
               marginLeft: i === 0 ? 0 : -8,
             },
@@ -505,7 +506,7 @@ export const SeeWhosGoingGate: React.FC<SeeWhosGoingGateProps> = ({
           accessibilityLabel="Get the app"
           style={({ pressed }) => [
             styles.primaryCta,
-            { backgroundColor: palette.accent },
+            accentFill(palette),
             pressed ? styles.pressed : null,
           ]}
           testID="orch-1342-gate-get-app"

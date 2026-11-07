@@ -61,6 +61,7 @@ import {
 } from "@mingla/offering-rendering/rsvpFloatingDecision";
 import type { RsvpGuestSnapshot } from "@mingla/offering-rendering/rsvpGuestSnapshot";
 import { useOwnProfilePhoneOnFile } from "../../hooks/useOwnProfilePhoneOnFile";
+import { accentFill } from "@mingla/offering-rendering/themeAccentStyle";
 
 /** How often the inline-decision visibility is re-measured between scroll events. */
 const VISIBILITY_POLL_MS = 400;
@@ -389,7 +390,7 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (
         ]}
       >
         <View
-          style={[styles.deskAccent, { backgroundColor: palette.accent }]}
+          style={[styles.deskAccent, accentFill(palette)]}
         />
         <View style={styles.deskInner}>
           <RsvpDecisionBox

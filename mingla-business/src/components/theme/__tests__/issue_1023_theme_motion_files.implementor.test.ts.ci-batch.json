@@ -17,7 +17,9 @@
       "supabase/functions/_shared/themeFontValidation.ts",
       "supabase/functions/_shared/googleFontFamilies.json",
       ".github/scripts/strict-grep/i-1047-biz-bundle-budget-deferral.mjs",
-      "packages/brand-rendering/**"
+      "packages/brand-rendering/**",
+      "mingla-business/app/**",
+      "app-mobile/src/components/**"
     ],
     "steps": [
       {
@@ -51,6 +53,7 @@
       "mingla-business/src/components/theme/__tests__/issue_1023_event_theme_precedence.implementor.test.ts",
       "mingla-business/src/components/theme/__tests__/issue_1023_font_value_shape_parity.implementor.test.ts",
       "mingla-business/src/components/theme/__tests__/issue_1023_google_font_loader.implementor.test.ts",
+      "mingla-business/src/components/theme/__tests__/issue_1023_gradient_everywhere.implementor.test.ts",
       "mingla-business/src/components/theme/__tests__/issue_1023_motion_metro_resolver.implementor.test.ts",
       "mingla-business/src/components/theme/__tests__/issue_1023_offering_theme_columns.implementor.test.ts",
       "mingla-business/src/components/theme/__tests__/issue_1023_theme_accent_fill.implementor.test.tsx",

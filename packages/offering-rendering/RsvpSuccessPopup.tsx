@@ -24,6 +24,7 @@ import {
 
 import { boldFontFamily, type ThemePalette } from "./themePalette";
 import { type ResolvedTheme } from "./designTokens";
+import { accentFill } from "./themeAccentStyle";
 
 // Keep the sizeable SVG QR renderer out of the initial buyer-web bundle.
 // @ts-expect-error -- the host apps provide this workspace peer dependency.
@@ -265,7 +266,7 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
                     accessibilityLabel="Get my pass"
                     style={[
                       styles.claimButton,
-                      { backgroundColor: palette.accent },
+                      accentFill(palette),
                     ]}
                     testID="issue-4063-rsvp-claim-primary"
                   >
@@ -454,7 +455,7 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
                   onPress={onClose}
                   accessibilityRole="button"
                   accessibilityLabel="Done"
-                  style={[styles.doneBtn, { backgroundColor: palette.accent }]}
+                  style={[styles.doneBtn, accentFill(palette)]}
                   testID="orch-1163-rsvp-success-done"
                 >
                   <Text

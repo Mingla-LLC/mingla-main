@@ -131,6 +131,7 @@ import {
   priceDecimals,
   priceFallbackDecimals,
 } from "@mingla/offering-rendering/priceDecimals";
+import { accentFill } from "@mingla/offering-rendering/themeAccentStyle";
 
 function allDatesPast(isos: string[], nowMs: number = Date.now()): boolean {
   const valid = isos
@@ -772,7 +773,7 @@ const ResolvedExperiencePage: React.FC<{
         style={[
           styles.deskReserve,
           reserveTappable
-            ? { backgroundColor: palette.accent }
+            ? accentFill(palette)
             : { backgroundColor: palette.card, borderColor: palette.panelBorder, borderWidth: 1 },
         ]}
         testID="orch-1138-experience-desk-reserve"

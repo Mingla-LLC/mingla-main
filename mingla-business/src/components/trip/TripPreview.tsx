@@ -90,6 +90,7 @@ import type {
 import type { BrandStripeStatus } from "../../store/currentBrandStore";
 // #3372 — naira shows "₦", not "NGN", in the trip preview (#3341 rule).
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
+import { accentFill } from "@mingla/offering-rendering/themeAccentStyle";
 
 export interface TripPreviewBrand {
   id: string;
@@ -492,7 +493,7 @@ const FoundationTripPreview: React.FC<{
 
   const stickyPanel = isDesktop ? (
     <View style={[styles.deskPanel, surface.cardStrong]}>
-      <View style={[styles.deskAccent, { backgroundColor: palette.accent }]} />
+      <View style={[styles.deskAccent, accentFill(palette)]} />
       <View style={styles.deskInner}>
         {brandChip}
         {offeringState.projectedSchedule !== null ? (
