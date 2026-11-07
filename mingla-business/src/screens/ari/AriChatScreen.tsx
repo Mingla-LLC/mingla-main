@@ -103,6 +103,17 @@ import { useBrands } from "../../hooks/useBrands";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { useCurrentBrandStore } from "../../store/currentBrandStore";
 import { useAuth } from "../../context/AuthContext";
+// #4304 part 3 — First Home with Ari (greeting, chips and top bar by stage).
+import { useFirstRunStageContext } from "../../context/FirstRunStageContext";
+import { FirstRunGreeting } from "../../components/ari/FirstRunGreeting";
+import { useFirstRunStore } from "../../store/firstRunStore";
+import { useAriSeedStore } from "../../store/ariSeedStore";
+import {
+  type FirstRunChip,
+  firstRunGreeting,
+  isFirstRunLocked,
+} from "../../utils/firstRunState";
+import type { AriFirstRunHint } from "../../services/agentChatService";
 import {
   ariConversationScopeKey,
   ariWebsiteSetupConversationScopeKey,
@@ -232,6 +243,20 @@ const LazyBrandSwitcherSheet = React.lazy(async () => {
   const mod = await import("../../components/brand/BrandSwitcherSheet");
   return { default: mod.BrandSwitcherSheet };
 });
+// #4304 — the first-run top bar. Evaluated only when a first-run host is on
+// Ari: a module-scope import pulls the notifications graph (expo-constants)
+// into every render suite that mounts this screen. TopBar already ships in the
+// boot bundle (Home imports it), so a deferred require adds no chunk.
+const LazyTopBar = React.lazy(async () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const mod = require("../../components/ui/TopBar") as typeof import("../../components/ui/TopBar");
+  return { default: mod.TopBar };
+});
+// #4304 — "+ Create" on the first-run top bar opens the manual wizards.
+const LazyUniversalCreatorSheet = React.lazy(async () => {
+  const mod = await import("../../components/ui/UniversalCreatorSheet");
+  return { default: mod.UniversalCreatorSheet };
+});
 const AriFlowPlaceCard = React.lazy(() =>
   import("../../components/ari/AriFlowPlaceCard").then((module) => ({
     default: module.AriFlowPlaceCard,
@@ -348,6 +373,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     null,
   );
   const [brandSwitcherOpen, setBrandSwitcherOpen] = useState(false);
+  const [creatorOpen, setCreatorOpen] = useState(false);
   const [rateLimitUntil, setRateLimitUntil] = useState<number | null>(null);
   const [cooldownNow, setCooldownNow] = useState(() => Date.now());
   // ORCH-1101 REWORK Bug #6 — dismiss the AI-disclosure sheet the instant the
@@ -393,6 +419,19 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   }, [currentBrandId, setCurrentBrandId, sitesBrandId, websiteSplit]);
   const currentBrand = useCurrentBrand();
   const selectedBrandId = currentBrand?.id ?? null;
+  // #4304 — States A (no brand) and B (nothing made yet). Computed once by the
+  // (tabs) layout; `pending` outside it, so every other surface is unchanged.
+  const firstRunContext = useFirstRunStageContext();
+  const firstRunStage =
+    !setup && !websiteSplit && isFirstRunLocked(firstRunContext.stage)
+      ? (firstRunContext.stage as "no_brand" | "empty_brand")
+      : null;
+  const firstRunUserId = firstRunContext.userId;
+  const rememberedFirstRun = useFirstRunStore((state) =>
+    firstRunUserId !== null ? (state.intents[firstRunUserId] ?? null) : null,
+  );
+  const rememberFirstRunIntent = useFirstRunStore((state) => state.rememberIntent);
+  const clearFirstRunIntent = useFirstRunStore((state) => state.clearIntent);
   const conversations = useConversationList(selectedBrandId);
   const conversationScopeKey = websiteSetup
     ? ariWebsiteSetupConversationScopeKey(accountId, selectedBrandId)
@@ -501,6 +540,33 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   }, [currentBrand?.displayName, selectedBrandId]);
   const confirm = useConfirmPendingAction(chat.conversationId);
 
+  // #4304 — Home's "Ask Ari to do something…" hands its text over in memory.
+  // It lands in the composer once; sending stays the host's tap.
+  const ariSeed = useAriSeedStore((state) => state.seed);
+  React.useEffect(() => {
+    if (ariSeed === null) return;
+    const seed = useAriSeedStore.getState().takeSeed();
+    if (seed === null) return;
+    setDraftText(seed);
+    requestAnimationFrame(() => composerInputRef.current?.focus());
+  }, [ariSeed]);
+
+  // #4304 — State A's opening words come back in State B's composer, so the
+  // first draft is made from what the host already said.
+  const firstRunPrefilledBrandRef = useRef<string | null>(null);
+  const rememberedFirstRunText = rememberedFirstRun?.text ?? null;
+  React.useEffect(() => {
+    if (
+      firstRunStage !== "empty_brand" ||
+      selectedBrandId === null ||
+      rememberedFirstRunText === null ||
+      firstRunPrefilledBrandRef.current === selectedBrandId
+    )
+      return;
+    firstRunPrefilledBrandRef.current = selectedBrandId;
+    setDraftText(rememberedFirstRunText);
+  }, [firstRunStage, rememberedFirstRunText, selectedBrandId]);
+
   const disclosureNeeded =
     !disclosureDismissed &&
     !prefs.isLoading &&
@@ -522,7 +588,10 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     });
   };
 
-  const handleSend = (text: string): boolean => {
+  const handleSend = (
+    text: string,
+    firstRunHint?: AriFirstRunHint | null,
+  ): boolean => {
     if (!online) {
       setLocalError("You’re offline. Reconnect to send.");
       return false;
@@ -534,8 +603,32 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     // Composer ownership transfers to one local row in this synchronous event.
     setDraftText("");
     setLocalError(null);
+    // #4304 — while first-run is locked every turn carries the stage and what
+    // the host said they host, so Ari sets up the brand first and then offers
+    // the matching draft. Context only: the message stays the owner's words.
+    const hint: AriFirstRunHint | null =
+      firstRunHint !== undefined
+        ? firstRunHint
+        : firstRunStage !== null
+          ? { stage: firstRunStage, intent: rememberedFirstRun?.intent ?? null }
+          : null;
+    if (firstRunStage === "no_brand" && firstRunUserId !== null && firstRunHint === undefined) {
+      // The host's own opening words ("make me a rooftop party") are kept for
+      // the first draft once the brand exists. Only the opening message: a
+      // later reply is the brand's name, not the idea.
+      if (noMessages && text.trim() && !rememberedFirstRun?.text) {
+        rememberFirstRunIntent(firstRunUserId, {
+          intent: rememberedFirstRun?.intent ?? null,
+          text: text.trim(),
+        });
+      }
+    }
+    if (firstRunStage === "empty_brand" && firstRunUserId !== null) {
+      // State B's first message carries the remembered intent; it is spent.
+      clearFirstRunIntent(firstRunUserId);
+    }
     void chat
-      .sendMessage(text, selectedFiles)
+      .sendMessage(text, selectedFiles, { firstRun: hint })
       .then((result) => {
         if (result.kind === "error") {
           // P2-2: a stop the person asked for is represented only by its row or
@@ -614,6 +707,25 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
         setLocalError(ariChatErrorCopy("EDGE_ERROR"));
       });
     return true;
+  };
+
+  // #4304 — a greeting chip is sent as the host's own message, with the chip's
+  // intent as context. In State A a kind ("I host events") is remembered so the
+  // State B greeting can offer that draft once the brand exists.
+  const handleFirstRunChip = (chip: FirstRunChip): void => {
+    if (firstRunStage === null) return;
+    if (
+      firstRunStage === "no_brand" &&
+      firstRunUserId !== null &&
+      chip.id !== "brand" &&
+      chip.id !== "about"
+    ) {
+      rememberFirstRunIntent(firstRunUserId, {
+        intent: chip.id,
+        text: rememberedFirstRun?.text ?? null,
+      });
+    }
+    handleSend(chip.label, { stage: firstRunStage, intent: chip.id });
   };
 
   const handleChoice = async (
@@ -1070,6 +1182,152 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     }
   };
 
+  // #4304 — the composer is drawn either at the bottom (every surface) or,
+  // for a first-run host on wide desktop, centred under the greeting.
+  const firstRunCopy =
+    firstRunStage !== null
+      ? firstRunGreeting({
+          stage: firstRunStage,
+          displayName: firstRunContext.displayName,
+          brandName: currentBrand?.displayName ?? null,
+          remembered: rememberedFirstRun?.intent ?? null,
+        })
+      : null;
+  const firstRunCentred = firstRunCopy !== null && noMessages && isWideDesktop;
+  const firstRunChipsDisabled =
+    chat.isSending || rateLimited || !online || !conversationSelectionReady;
+  const composerBlock = (
+    recovery ? (
+              <RecoveryPanel recovery={recovery} onAction={handleRecovery} />
+            ) : (
+              <View
+                style={styles.composerColumn}
+                onLayout={(event) => {
+                  const next = Math.round(event.nativeEvent.layout.height);
+                  setComposerContentHeight((previous) =>
+                    previous === next ? previous : next,
+                  );
+                }}
+              >
+                {!online ? (
+                  <RecoveryPanel
+                    recovery={{
+                      code: "OFFLINE",
+                      title: "You’re offline",
+                      body: "Reconnect to send.",
+                    }}
+                    onAction={() => undefined}
+                  />
+                ) : null}
+                {rateLimited ? (
+                  <RecoveryPanel
+                    recovery={{
+                      code: "RATE_LIMITED",
+                      title: "You have reached today’s chat limit",
+                      body: `Sending is paused. Try again in ${cooldownSeconds} ${cooldownSeconds === 1 ? "second" : "seconds"}.`,
+                    }}
+                    onAction={() => undefined}
+                  />
+                ) : null}
+                {attachments.errorMessage ? (
+                  <View
+                    style={styles.attachmentError}
+                    accessibilityRole="alert"
+                  >
+                    <Text style={styles.attachmentErrorText}>
+                      {attachments.errorMessage}
+                    </Text>
+                    {attachments.photoPermissionRecovery ? (
+                      <View style={styles.attachmentRecoveryActions}>
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="Choose documents instead"
+                          onPress={() => void attachments.addFiles("documents")}
+                          style={styles.attachmentRecoveryAction}
+                        >
+                          <Text style={styles.attachmentRecoveryActionText}>
+                            Choose documents
+                          </Text>
+                        </Pressable>
+                        {attachments.photoPermissionRecovery.canOpenSettings ? (
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel="Open photo permissions in Settings"
+                            onPress={() =>
+                              void attachments.openPhotoPermissionSettings()
+                            }
+                            style={styles.attachmentRecoveryAction}
+                          >
+                            <Text style={styles.attachmentRecoveryActionText}>
+                              Open Settings
+                            </Text>
+                          </Pressable>
+                        ) : null}
+                      </View>
+                    ) : null}
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Dismiss attachment message"
+                      onPress={attachments.clearError}
+                      style={styles.attachmentErrorDismiss}
+                    >
+                      <Text style={styles.attachmentErrorDismissText}>
+                        Dismiss
+                      </Text>
+                    </Pressable>
+                  </View>
+                ) : null}
+                <AriAttachmentTray
+                  attachments={attachments.attachments}
+                  onRemove={attachments.removeAttachment}
+                  onRetry={(localId) =>
+                    void attachments.retryAttachment(localId)
+                  }
+                  onRemoveAll={attachments.removeAll}
+                />
+                {chat.isSending ? (
+                  <Text style={styles.composerHelper}>
+                    Ari is finishing your last message.
+                  </Text>
+                ) : null}
+                <InputBar
+                  onSend={handleSend}
+                  value={draftText}
+                  onChangeText={setDraftText}
+                  inputRef={composerInputRef}
+                  hasReadyAttachments={
+                    attachments.attachments.length > 0 && attachments.allReady
+                  }
+                  disabled={brands.isLoading || !conversationSelectionReady}
+                  sendDisabled={
+                    chat.isSending ||
+                    rateLimited ||
+                    !online ||
+                    !attachments.allReady
+                  }
+                  attachDisabled={!online || !attachments.canAttachMore}
+                  placeholder={
+                    !conversationSelectionReady
+                      ? "Restoring your chat…"
+                      : !online
+                        ? "Reconnect to continue…"
+                        : brands.isLoading
+                          ? "Checking brand access…"
+                          : rateLimited
+                            ? "Sending paused…"
+                            : firstRunCopy !== null && noMessages
+                              ? firstRunCopy.placeholder
+                              : "Ask Ari…"
+                  }
+                  onAttach={() => {
+                    if (Platform.OS === "web") void attachments.addFiles("all");
+                    else setAttachmentSourceOpen(true);
+                  }}
+                />
+              </View>
+            )
+  );
+
   if (legacySetupRoute) {
     return (
       <Redirect
@@ -1136,9 +1394,43 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
           websiteSplit && !websiteSetup && isWideDesktop ? styles.websiteAriPane : null,
         ]}
       >
+        {/* #4304 — the Home top bar stays on Ari while first-run is locked:
+          "Create brand" (or the brand switcher), "+ Create" for the manual
+          wizards once a brand exists, messages and notifications. */}
+        {firstRunStage !== null ? (
+          <View style={styles.firstRunBar} testID="ari-first-run-topbar">
+            <React.Suspense fallback={<View style={styles.firstRunBarFallback} />}>
+            <LazyTopBar
+              leftKind="brand"
+              onBrandTap={() => setBrandSwitcherOpen(true)}
+              extraRightSlot={
+                currentBrand !== null ? (
+                  <Pressable
+                    onPress={() => setCreatorOpen(true)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Create event, RSVP, experience, trip or venue"
+                    style={({ pressed }) => [
+                      styles.firstRunCreate,
+                      pressed && styles.pressed,
+                    ]}
+                    testID="ari-first-run-create"
+                  >
+                    <Text style={styles.firstRunCreateLabel}>+ Create</Text>
+                  </Pressable>
+                ) : undefined
+              }
+            />
+            </React.Suspense>
+          </View>
+        ) : null}
         {/* Header — the embedding host owns the page title, so it is dropped
           there rather than stacking two headers in one column. */}
-        <View style={[styles.header, embedded ? styles.headerEmbedded : null]}>
+        <View
+          style={[
+            styles.header,
+            embedded || firstRunStage !== null ? styles.headerEmbedded : null,
+          ]}
+        >
           {setup ? (
             // One thread per setup: no drawer here, and the way out instead.
             <Pressable
@@ -1201,6 +1493,40 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
             </View>
           ) : chat.conversationId && chat.isLoadingMessages ? (
             <AriThreadLoadingState />
+          ) : noMessages && firstRunCopy !== null ? (
+            firstRunCentred ? (
+              <FirstRunGreeting
+                copy={firstRunCopy}
+                onChip={handleFirstRunChip}
+                desktop
+                composer={composerBlock}
+                disabled={firstRunChipsDisabled}
+              />
+            ) : (
+              <View
+                style={[
+                  styles.firstRunOverlay,
+                  {
+                    paddingBottom:
+                      Math.max(insets.bottom, spacing.md) +
+                      BOTTOM_NAV_CLEARANCE_PX +
+                      60 +
+                      Math.max(0, composerContentHeight - 60) +
+                      // Keyboard up: lift the greeting above the risen composer.
+                      Math.max(0, composerOccupiedPx - composerRestingOccupiedPx),
+                  },
+                ]}
+              >
+                <View style={styles.firstRunOverlayInner}>
+                  <FirstRunGreeting
+                    copy={firstRunCopy}
+                    onChip={handleFirstRunChip}
+                    compact={keyboardHeight > 0}
+                    disabled={firstRunChipsDisabled}
+                  />
+                </View>
+              </View>
+            )
           ) : noMessages ? (
             <>
               {/* Hero lives in an absolute overlay so the composer rising with the
@@ -1513,6 +1839,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
             />
           )}
 
+          {firstRunCentred ? null : (
           <View
             style={[
               styles.inputWrap,
@@ -1595,134 +1922,9 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
             {/* #1890 — the measuring wrapper is gone with the double count it fed.
               `inputWrap`'s paddingBottom already positions this pill's bottom
               edge; nothing needs the pill's own height. */}
-            {recovery ? (
-              <RecoveryPanel recovery={recovery} onAction={handleRecovery} />
-            ) : (
-              <View
-                style={styles.composerColumn}
-                onLayout={(event) => {
-                  const next = Math.round(event.nativeEvent.layout.height);
-                  setComposerContentHeight((previous) =>
-                    previous === next ? previous : next,
-                  );
-                }}
-              >
-                {!online ? (
-                  <RecoveryPanel
-                    recovery={{
-                      code: "OFFLINE",
-                      title: "You’re offline",
-                      body: "Reconnect to send.",
-                    }}
-                    onAction={() => undefined}
-                  />
-                ) : null}
-                {rateLimited ? (
-                  <RecoveryPanel
-                    recovery={{
-                      code: "RATE_LIMITED",
-                      title: "You have reached today’s chat limit",
-                      body: `Sending is paused. Try again in ${cooldownSeconds} ${cooldownSeconds === 1 ? "second" : "seconds"}.`,
-                    }}
-                    onAction={() => undefined}
-                  />
-                ) : null}
-                {attachments.errorMessage ? (
-                  <View
-                    style={styles.attachmentError}
-                    accessibilityRole="alert"
-                  >
-                    <Text style={styles.attachmentErrorText}>
-                      {attachments.errorMessage}
-                    </Text>
-                    {attachments.photoPermissionRecovery ? (
-                      <View style={styles.attachmentRecoveryActions}>
-                        <Pressable
-                          accessibilityRole="button"
-                          accessibilityLabel="Choose documents instead"
-                          onPress={() => void attachments.addFiles("documents")}
-                          style={styles.attachmentRecoveryAction}
-                        >
-                          <Text style={styles.attachmentRecoveryActionText}>
-                            Choose documents
-                          </Text>
-                        </Pressable>
-                        {attachments.photoPermissionRecovery.canOpenSettings ? (
-                          <Pressable
-                            accessibilityRole="button"
-                            accessibilityLabel="Open photo permissions in Settings"
-                            onPress={() =>
-                              void attachments.openPhotoPermissionSettings()
-                            }
-                            style={styles.attachmentRecoveryAction}
-                          >
-                            <Text style={styles.attachmentRecoveryActionText}>
-                              Open Settings
-                            </Text>
-                          </Pressable>
-                        ) : null}
-                      </View>
-                    ) : null}
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="Dismiss attachment message"
-                      onPress={attachments.clearError}
-                      style={styles.attachmentErrorDismiss}
-                    >
-                      <Text style={styles.attachmentErrorDismissText}>
-                        Dismiss
-                      </Text>
-                    </Pressable>
-                  </View>
-                ) : null}
-                <AriAttachmentTray
-                  attachments={attachments.attachments}
-                  onRemove={attachments.removeAttachment}
-                  onRetry={(localId) =>
-                    void attachments.retryAttachment(localId)
-                  }
-                  onRemoveAll={attachments.removeAll}
-                />
-                {chat.isSending ? (
-                  <Text style={styles.composerHelper}>
-                    Ari is finishing your last message.
-                  </Text>
-                ) : null}
-                <InputBar
-                  onSend={handleSend}
-                  value={draftText}
-                  onChangeText={setDraftText}
-                  inputRef={composerInputRef}
-                  hasReadyAttachments={
-                    attachments.attachments.length > 0 && attachments.allReady
-                  }
-                  disabled={brands.isLoading || !conversationSelectionReady}
-                  sendDisabled={
-                    chat.isSending ||
-                    rateLimited ||
-                    !online ||
-                    !attachments.allReady
-                  }
-                  attachDisabled={!online || !attachments.canAttachMore}
-                  placeholder={
-                    !conversationSelectionReady
-                      ? "Restoring your chat…"
-                      : !online
-                        ? "Reconnect to continue…"
-                        : brands.isLoading
-                          ? "Checking brand access…"
-                          : rateLimited
-                            ? "Sending paused…"
-                            : "Ask Ari…"
-                  }
-                  onAttach={() => {
-                    if (Platform.OS === "web") void attachments.addFiles("all");
-                    else setAttachmentSourceOpen(true);
-                  }}
-                />
-              </View>
-            )}
+            {composerBlock}
           </View>
+          )}
         </View>
       </View>
 
@@ -1746,6 +1948,15 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
           <LazyBrandSwitcherSheet
             visible
             onClose={() => setBrandSwitcherOpen(false)}
+          />
+        </React.Suspense>
+      ) : null}
+
+      {creatorOpen ? (
+        <React.Suspense fallback={null}>
+          <LazyUniversalCreatorSheet
+            visible
+            onClose={() => setCreatorOpen(false)}
           />
         </React.Suspense>
       ) : null}
@@ -1824,6 +2035,33 @@ const styles = StyleSheet.create({
   },
   headerEmbedded: {
     display: "none",
+  },
+  // #4304 — first-run top bar (same insets as Home's bar).
+  firstRunBar: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+  },
+  firstRunBarFallback: { height: 56 },
+  firstRunCreate: {
+    minHeight: 36,
+    justifyContent: "center",
+    paddingHorizontal: spacing.md - 4,
+    borderRadius: 999,
+    backgroundColor: accent.warm,
+  },
+  firstRunCreateLabel: {
+    color: "#101216",
+    fontWeight: "700",
+    fontSize: 13,
+  },
+  firstRunOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+  },
+  firstRunOverlayInner: {
+    flex: 1,
+    width: "100%",
+    maxWidth: ariThread.threadMaxWidth,
   },
   header: {
     flexDirection: "row",

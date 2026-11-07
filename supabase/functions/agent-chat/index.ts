@@ -22,6 +22,7 @@ import {
   buildSystemPrompt,
   BusinessContext,
   OfferingSummary,
+  parseFirstRunHint,
   TENANT_CONTEXT_VERSION,
 } from "../_shared/agentSystemPrompt.ts";
 import { detectPromptInjection } from "../_shared/agentPromptInjection.ts";
@@ -303,6 +304,12 @@ interface RequestBody {
   attachment_ids?: string[];
   ari_ui?: unknown;
   workflow_context?: "website_setup";
+  /**
+   * #4304: First Home with Ari — context only, never the owner's words. The
+   * Host app sends it while the account has no brand (no_brand) or nothing
+   * made yet (empty_brand), with what the host said they host.
+   */
+  first_run?: unknown;
   /** #3355 P3: a structured answer bound to the run's current question. */
   flow_answer?: unknown;
   /**
@@ -1018,6 +1025,13 @@ async function handle(req: Request): Promise<Response> {
     body.workflow_context !== "website_setup"
   ) {
     return errorResponse(400, "BAD_REQUEST", "workflow_context is invalid");
+  }
+
+  const firstRun = body.first_run === undefined
+    ? null
+    : parseFirstRunHint(body.first_run);
+  if (body.first_run !== undefined && !firstRun) {
+    return errorResponse(400, "BAD_REQUEST", "first_run is invalid");
   }
 
   const choiceSubmission = body.choice_response === undefined
@@ -2278,6 +2292,11 @@ async function handle(req: Request): Promise<Response> {
     const systemPrompt = buildSystemPrompt(profile, brandsList, {
       injectStrictReminder: injection.flagged,
       business,
+      // #4304: the hint is advisory; the brand list above stays the truth (a
+      // "no_brand" hint on an account that now has brands is ignored).
+      firstRun: firstRun && (firstRun.stage === "empty_brand" || brandsList.length === 0)
+        ? firstRun
+        : null,
     });
 
     let currentAttachmentParts: GeminiContentMessage["parts"] = [];

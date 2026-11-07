@@ -347,7 +347,7 @@ Deno.test({
   sanitizeOps: false,
   sanitizeResources: false,
   fn: () => {
-    assertEquals(PROMPT_VERSION, "v27"); // #2829 W11 completes the website journey entrances
+    assertEquals(PROMPT_VERSION, "v28"); // #2829 W11 completes the website journey entrances
     const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false });
     for (
       const line of [

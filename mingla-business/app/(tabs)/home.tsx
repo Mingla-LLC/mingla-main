@@ -113,6 +113,12 @@ import {
 // the scanner shell + rank gate at the top so the early-branch reads
 // cleanly. The full HomeTab body below is unchanged for rank>=20.
 import { ScannerHome } from "../../src/components/scanners/ScannerHome";
+// #4304 part 3 — State C Home leads with the newest draft and an Ask Ari field.
+import { HomeAskAri } from "../../src/components/home/HomeAskAri";
+import { HomeDraftLead, type HomeLeadDraft } from "../../src/components/home/HomeDraftLead";
+import { useAriSeedStore } from "../../src/store/ariSeedStore";
+import { mostRecentDraftRoute } from "../../src/utils/homeNextAction";
+import type { DraftEvent } from "../../src/store/draftEventStore";
 import { isScannerOnlyRank } from "../../src/utils/navTabGate";
 import { canViewBrandPayments } from "../../src/utils/brandPaymentsPermission";
 
@@ -235,6 +241,30 @@ export default function HomeTab(): React.ReactElement {
       }),
     );
   }, [upcoming.draftsHydrated, upcoming.items]);
+  // #4304 — the newest event/RSVP draft leads Home, and "Ask Ari to do
+  // something…" hands its text to the Ari composer (in memory, never a URL).
+  const setAriSeed = useAriSeedStore((s) => s.setSeed);
+  const leadDraft = useMemo<HomeLeadDraft | null>(() => {
+    const drafts = upcoming.items
+      .filter((item) => item.kind === "draft")
+      .map((item) => item.source as DraftEvent);
+    const route = mostRecentDraftRoute(drafts);
+    if (route === null) return null;
+    const newest = drafts
+      .slice()
+      .sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""))[0];
+    return {
+      title: newest?.name?.trim() || "Untitled draft",
+      onFinish: () => router.push(route as never),
+    };
+  }, [router, upcoming.items]);
+  const handleAskAri = useCallback(
+    (text: string): void => {
+      setAriSeed(text.length > 0 ? text : null);
+      router.push("/(tabs)/ari" as never);
+    },
+    [router, setAriSeed],
+  );
   const showFullRecent = params.recent === "all";
   const [recentPageCount, setRecentPageCount] = useState(1);
   const recent = useBusinessRecent({
@@ -800,6 +830,14 @@ export default function HomeTab(): React.ReactElement {
         />
       </View>
 
+      {/* #4304 — "Ask Ari to do something…" sits under the top bar, outside
+          the scroll containers (it is a text field; ORCH-0892 / #1841). */}
+      {currentBrand !== null ? (
+        <View style={styles.todoWrap}>
+          <HomeAskAri onAskAri={handleAskAri} />
+        </View>
+      ) : null}
+
       {/* ORCH-1038 — unified smart to-do toggle, flush under the top bar, full
           top-bar width, on Home + Hub. Hides entirely when there is nothing to do. */}
       {isWideDesktop ? (
@@ -832,6 +870,7 @@ export default function HomeTab(): React.ReactElement {
             ) : null
           ) : (
             <>
+              {leadDraft !== null ? <HomeDraftLead draft={leadDraft} /> : null}
               <BusinessPulsePanel
                 brandId={currentBrand.id}
                 defaultCurrency={currentBrand.defaultCurrency ?? null}
@@ -938,6 +977,11 @@ export default function HomeTab(): React.ReactElement {
           )}
           ListHeaderComponent={
             <>
+              {leadDraft !== null ? (
+                <View style={styles.todoWrap}>
+                  <HomeDraftLead draft={leadDraft} />
+                </View>
+              ) : null}
               <View style={styles.todoWrap}>
                 <BusinessTodoToggle
                   todos={todos}
