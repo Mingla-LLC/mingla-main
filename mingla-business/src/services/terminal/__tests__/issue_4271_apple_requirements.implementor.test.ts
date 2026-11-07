@@ -421,9 +421,13 @@ describe("B4 acceptance comes from Apple, and errors say what happened", () => {
 
 describe("B5 terms are allowed in one place", () => {
   test("the connect parameter is the only tosAcceptancePermitted, and never a literal true", () => {
+    // The parameters live in tapToPayConnectParams.ts (shared with the host's web
+    // build for export parity); the host is the only caller.
     const host = fs.readFileSync(path.join(BIZ_ROOT, "src/components/door/tap/TapToPayTerminalHost.tsx"), "utf8");
-    expect(host).toContain("tosAcceptancePermitted: mayAcceptTerms");
-    expect(host).not.toMatch(/tosAcceptancePermitted:\s*true/);
+    const params = fs.readFileSync(path.join(BIZ_ROOT, "src/services/terminal/tapToPayConnectParams.ts"), "utf8");
+    expect(params).toContain("tosAcceptancePermitted: mayAcceptTerms");
+    expect(params).not.toMatch(/tosAcceptancePermitted:\s*true/);
+    expect(host).not.toMatch(/tosAcceptancePermitted/);
     expect(host).toContain('options?.mayAcceptTerms === true');
   });
 });

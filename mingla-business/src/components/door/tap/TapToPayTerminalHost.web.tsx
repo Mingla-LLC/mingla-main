@@ -6,4 +6,6 @@
  */
 import type React from "react";
 
+export { tapToPayConnectParams } from "../../../services/terminal/tapToPayConnectParams";
+
 export const TapToPayTerminalHost = (): React.ReactElement | null => null;

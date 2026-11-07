@@ -1501,7 +1501,9 @@
         "mingla-business/src/services/doorPayCodeServiceImpl.ts",
         "mingla-business/src/services/terminal/tapToPayDevice.ts",
         "mingla-business/src/utils/isDoorOrder.ts",
-        "mingla-business/src/utils/tapToPayBrandEligible.ts"
+        "mingla-business/src/utils/tapToPayBrandEligible.ts",
+        "mingla-business/src/services/doorPayCodeCore.ts",
+        "mingla-business/src/services/terminal/tapToPayConnectParams.ts"
       ]
     }
   ]

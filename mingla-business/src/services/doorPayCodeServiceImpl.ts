@@ -32,7 +32,7 @@ import {
   type DoorPayLatePayment,
   type DoorPayLiveStatus,
   type DoorPayUnsettledStatus,
-} from "./doorPayCodeService";
+} from "./doorPayCodeCore";
 
 const strOrNull = (value: unknown): string | null =>
   typeof value === "string" && value.length > 0 ? value : null;

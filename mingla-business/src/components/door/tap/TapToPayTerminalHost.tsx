@@ -43,6 +43,7 @@ import {
   type TapToPayTerminalStatus,
 } from "../../../services/terminal/tapToPaySession";
 import { loadTerminalSdk, type TerminalSdk } from "../../../services/terminal/terminalSdk";
+import { tapToPayConnectParams } from "../../../services/terminal/tapToPayConnectParams";
 import { isTerminalSimulated } from "../../../services/terminal/terminalConfig";
 import { useCurrentBrandId } from "../../../store/currentBrandStore";
 
@@ -54,20 +55,7 @@ const asTerminalError = (error: unknown): TerminalErrorLike => {
   return { message: String(error) };
 };
 
-/** The only place Apple's terms can be allowed; every caller but the setup button passes false. */
-export const tapToPayConnectParams = (
-  locationId: string,
-  merchantDisplayName: string,
-  mayAcceptTerms: boolean,
-) =>
-  ({
-    discoveryMethod: "tapToPay",
-    simulated: isTerminalSimulated(),
-    locationId,
-    merchantDisplayName,
-    autoReconnectOnUnexpectedDisconnect: true,
-    tosAcceptancePermitted: mayAcceptTerms,
-  }) as const;
+export { tapToPayConnectParams };
 
 interface BridgeProps {
   sdk: TerminalSdk;
