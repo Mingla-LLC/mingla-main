@@ -1,6 +1,7 @@
 -- Issue #3645 — payment + 24h payout-run gate, implementor happy path.
 --
 -- MINGLA-INVARIANT: I-3645-PAYOUT-SWEEP-GATE-PAYMENT-PLUS-24H | issue #3645 | Every eligible sale is attached by the payout sweep at finalized_at + 24 hours, independent of its event, reservation, or stay end date.
+-- MINGLA-INVARIANT: I-3645-STAY-NET-EXCLUDES-PROVIDER-FEE | issue #3645 | A stay payout release's host net is gross − refunded − Mingla fee; the provider processing fee is never deducted from host money, and a legacy Stripe account is made whole through the fee make-good.
 
 BEGIN;
 
@@ -215,8 +216,229 @@ BEGIN
      OR v_release.releasable_at <> v_now - interval '1 hour' THEN
     RAISE EXCEPTION 'H4: stay release did not anchor on payment: %', row_to_json(v_release);
   END IF;
+  -- #3645 A26 (flat 4.5%): host net is gross − Mingla fee; the 300 processing
+  -- fee is Mingla's cost, stored for reporting only.
+  IF v_release.net_release_cents <> 10000
+     OR v_release.provider_fee_cents <> 300
+     OR v_release.mingla_fee_cents <> 450 THEN
+    RAISE EXCEPTION 'H4: stay release net must exclude the provider fee: %',
+      row_to_json(v_release);
+  END IF;
+  IF (SELECT item.net_cents FROM public.payout_release_items item
+      WHERE item.source_type = 'stay_reservation' AND item.source_id = v_line)
+     IS DISTINCT FROM 10000 THEN
+    RAISE EXCEPTION 'H4: stay item net must exclude the provider fee';
+  END IF;
+  IF (SELECT ledger.amount_minor FROM public.stay_money_ledger ledger
+      WHERE ledger.idempotency_key = 'stay:payout_attached:' || v_line)
+     IS DISTINCT FROM 10000::bigint THEN
+    RAISE EXCEPTION 'H4: stay payout_eligible ledger amount must match the release net';
+  END IF;
 END
 $h4$;
+
+-- H6: a legacy (fees_collector = 'stripe') account already lost the stay's
+-- processing fee to Stripe, so the flat net cannot fit its balance. The fee
+-- make-good must accept a stay sale charged on the brand's current account
+-- (owed = the stored provider fee) and still refuse one charged elsewhere
+-- (H4's attempt has no connected account).
+DO $h6$
+DECLARE
+  v_now constant timestamptz := timestamptz '2026-10-21 12:00:00+00';
+  v_group constant uuid := '36452400-0000-4000-8000-000000000601';
+  v_line constant uuid := '36452400-0000-4000-8000-000000000602';
+  v_attempt constant uuid := '36452400-0000-4000-8000-000000000603';
+  v_release uuid;
+  v_h4_release uuid;
+  v_census record;
+  v_plan jsonb;
+BEGIN
+  INSERT INTO public.stripe_connect_accounts(
+    brand_id, stripe_account_id, country, default_currency, payouts_enabled
+  ) VALUES (pg_temp.fx('brand'), 'acct_3645stay', 'US', 'USD', true);
+
+  SET LOCAL session_replication_role = replica;
+  INSERT INTO public.stay_reservation_groups(
+    id, public_reference, quote_id, actor_key_hash, venue_id, brand_id,
+    currency_code, mode, state, guest_snapshot, source_subtotal_minor,
+    fee_total_minor, tax_total_minor, total_minor, idempotency_key, request_hash
+  ) VALUES (
+    v_group, 'ST-36452400000000000601', '36452400-0000-4000-8000-000000000611',
+    repeat('d', 64), pg_temp.fx('stay_venue'), pg_temp.fx('brand'), 'USD',
+    'instant', 'confirmed', '{}'::jsonb, 10000, 450, 0, 10450,
+    'issue-3645-h6-group', repeat('e', 64)
+  );
+  INSERT INTO public.stay_reservation_lines(
+    id, group_id, quote_line_id, offering_id, kind, state, room_check_in,
+    room_check_out, room_quantity, adults, children, base_minor, fee_minor,
+    tax_minor, total_minor, offering_snapshot, price_snapshot, policy_snapshot
+  ) VALUES (
+    v_line, v_group, '36452400-0000-4000-8000-000000000612',
+    '36452400-0000-4000-8000-000000000613', 'room', 'confirmed',
+    (v_now + interval '8 days')::date, (v_now + interval '10 days')::date,
+    1, 2, 0, 10000, 450, 0, 10450, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb
+  );
+  INSERT INTO public.stay_payment_attempts(
+    id, group_id, provider, attempt_ordinal, connected_account_ref,
+    amount_minor, currency_code, application_fee_minor, provider_fee_minor,
+    state, provider_payment_ref, idempotency_key, request_hash, succeeded_at
+  ) VALUES (
+    v_attempt, v_group, 'stripe', 1, 'acct_3645stay', 10450, 'USD', 450, 300,
+    'succeeded', 'pi_3645_h6', 'issue-3645-h6-attempt', repeat('f', 64),
+    v_now - interval '25 hours'
+  );
+  INSERT INTO public.stay_payout_line_snapshots(
+    reservation_line_id, payment_attempt_id, platform_fee_minor, provider_fee_minor
+  ) VALUES (v_line, v_attempt, 450, 300);
+  SET LOCAL session_replication_role = origin;
+
+  PERFORM public.run_stay_payout_release_dark_sweep(v_now);
+  SELECT item.release_id INTO v_release FROM public.payout_release_items item
+  WHERE item.source_type = 'stay_reservation' AND item.source_id = v_line;
+  SELECT item.release_id INTO v_h4_release FROM public.payout_release_items item
+  WHERE item.source_type = 'stay_reservation'
+    AND item.source_id = '36452400-0000-4000-8000-000000000202';
+  IF v_release IS NULL OR v_h4_release IS NULL THEN
+    RAISE EXCEPTION 'H6: both stay releases must exist';
+  END IF;
+
+  SELECT * INTO v_census FROM public.stripe_fee_make_good_census() c
+  WHERE c.release_id = v_release;
+  IF NOT v_census.eligible OR v_census.owed_cents <> 300
+     OR v_census.ineligible_reason IS NOT NULL THEN
+    RAISE EXCEPTION 'H6: a stay sale on the current account must be owed its fee: %',
+      row_to_json(v_census);
+  END IF;
+  v_plan := public.plan_stripe_fee_make_good(
+    v_release, 300, 'ops@example.test', 'issue 3645 H6 stay make-good');
+  IF v_plan->>'outcome' IS DISTINCT FROM 'planned'
+     OR (v_plan->>'amount_cents')::integer <> 300
+     OR v_plan->>'stripe_account_id' IS DISTINCT FROM 'acct_3645stay' THEN
+    RAISE EXCEPTION 'H6: the stay make-good plan is wrong: %', v_plan;
+  END IF;
+
+  SELECT * INTO v_census FROM public.stripe_fee_make_good_census() c
+  WHERE c.release_id = v_h4_release;
+  IF v_census.eligible
+     OR v_census.ineligible_reason IS DISTINCT FROM 'sale_not_on_current_account' THEN
+    RAISE EXCEPTION 'H6: a stay sale not on the current account must be refused: %',
+      row_to_json(v_census);
+  END IF;
+  BEGIN
+    PERFORM public.plan_stripe_fee_make_good(
+      v_h4_release, 300, 'ops@example.test', 'issue 3645 H6 wrong account');
+    RAISE EXCEPTION 'H6: plan accepted a stay sale on another account';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM <> 'sale_not_on_current_account' THEN RAISE; END IF;
+  END;
+
+  -- A stay item attached BEFORE this migration (net already 10450-450-300 =
+  -- 9700) fits the legacy balance; the census must not show it as owed, so an
+  -- operator cannot pay Mingla money on a question Seth has not ruled on.
+  SET LOCAL session_replication_role = replica;
+  INSERT INTO public.stay_reservation_lines(
+    id, group_id, quote_line_id, offering_id, kind, state, room_check_in,
+    room_check_out, room_quantity, adults, children, base_minor, fee_minor,
+    tax_minor, total_minor, offering_snapshot, price_snapshot, policy_snapshot
+  ) VALUES (
+    '36452400-0000-4000-8000-000000000622', v_group,
+    '36452400-0000-4000-8000-000000000632',
+    '36452400-0000-4000-8000-000000000613', 'room', 'confirmed',
+    (v_now + interval '8 days')::date, (v_now + interval '10 days')::date,
+    1, 2, 0, 10000, 450, 0, 10450, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb
+  );
+  INSERT INTO public.stay_payout_line_snapshots(
+    reservation_line_id, payment_attempt_id, platform_fee_minor, provider_fee_minor
+  ) VALUES ('36452400-0000-4000-8000-000000000622', v_attempt, 450, 300);
+  SET LOCAL session_replication_role = origin;
+  INSERT INTO public.brand_payout_releases(
+    id, brand_id, occurrence_key, surface, provider, currency, anchor_end_at,
+    releasable_at, gross_cents, mingla_fee_cents, partner_share_cents,
+    provider_fee_cents, net_release_cents, status
+  ) VALUES (
+    '36452400-0000-4000-8000-000000000641', pg_temp.fx('brand'),
+    'stay:h6:legacy', 'stay_reservation', 'stripe', 'usd',
+    v_now - interval '25 hours', v_now - interval '1 hour',
+    10450, 450, 0, 300, 9700, 'pending'
+  );
+  INSERT INTO public.payout_release_items(
+    release_id, source_type, source_id, gross_cents, refunded_cents,
+    disputed_cents, mingla_fee_cents, partner_share_cents, provider_fee_cents,
+    net_cents, source_finalized_at
+  ) VALUES (
+    '36452400-0000-4000-8000-000000000641', 'stay_reservation',
+    '36452400-0000-4000-8000-000000000622', 10450, 0, 0, 450, 0, 300, 9700,
+    v_now - interval '25 hours'
+  );
+  SELECT * INTO v_census FROM public.stripe_fee_make_good_census() c
+  WHERE c.release_id = '36452400-0000-4000-8000-000000000641';
+  IF v_census.eligible
+     OR v_census.ineligible_reason IS DISTINCT FROM 'sale_not_on_current_account' THEN
+    RAISE EXCEPTION 'H6: a pre-migration stay item must not be owed its fee: %',
+      row_to_json(v_census);
+  END IF;
+  BEGIN
+    PERFORM public.plan_stripe_fee_make_good(
+      '36452400-0000-4000-8000-000000000641', 300, 'ops@example.test',
+      'issue 3645 H6 legacy item');
+    RAISE EXCEPTION 'H6: plan accepted a pre-migration stay item';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM <> 'sale_not_on_current_account' THEN RAISE; END IF;
+  END;
+
+  IF has_function_privilege('anon',
+       'public.issue_3645_fee_sale_on_account(text, uuid, text)', 'EXECUTE')
+     OR has_function_privilege('authenticated',
+       'public.issue_3645_fee_sale_on_account(text, uuid, text)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'H6: app roles must not call the account predicate';
+  END IF;
+END
+$h6$;
+
+-- H7: the flat stay net at its edges, through the direct attach: Paystack NGN
+-- with a refund, a Mingla fee larger than what is left (clamps to 0), and a
+-- repeat attach that returns the same release without re-pricing it.
+DO $h7$
+DECLARE
+  v_now constant timestamptz := timestamptz '2026-10-21 12:00:00+00';
+  v_ng uuid; v_clamp uuid; v_again uuid;
+  v_row record;
+BEGIN
+  v_ng := public.issue_1389_attach_stay_payout_release(
+    '36452400-0000-4000-8000-000000000701', pg_temp.fx('brand'), 'stay:h7:ng',
+    'paystack', 'NGN', v_now - interval '25 hours', v_now + interval '5 days',
+    50000, 10000, 2250, 1500);
+  SELECT r.net_release_cents, r.provider_fee_cents, i.net_cents INTO v_row
+  FROM public.brand_payout_releases r
+  JOIN public.payout_release_items i ON i.release_id = r.id
+  WHERE r.id = v_ng;
+  IF v_row.net_release_cents <> 37750 OR v_row.net_cents <> 37750
+     OR v_row.provider_fee_cents <> 1500 THEN
+    RAISE EXCEPTION 'H7: Paystack stay net must be 50000-10000-2250 = 37750: %',
+      row_to_json(v_row);
+  END IF;
+
+  v_clamp := public.issue_1389_attach_stay_payout_release(
+    '36452400-0000-4000-8000-000000000702', pg_temp.fx('brand'), 'stay:h7:clamp',
+    'stripe', 'USD', v_now - interval '25 hours', v_now + interval '5 days',
+    1000, 500, 600, 300);
+  IF (SELECT net_release_cents FROM public.brand_payout_releases WHERE id = v_clamp) <> 0 THEN
+    RAISE EXCEPTION 'H7: a fee larger than what is left must clamp the net to 0';
+  END IF;
+
+  v_again := public.issue_1389_attach_stay_payout_release(
+    '36452400-0000-4000-8000-000000000701', pg_temp.fx('brand'), 'stay:h7:ng',
+    'paystack', 'NGN', v_now - interval '25 hours', v_now + interval '5 days',
+    99999, 0, 0, 0);
+  IF v_again IS DISTINCT FROM v_ng
+     OR (SELECT net_release_cents FROM public.brand_payout_releases WHERE id = v_ng) <> 37750
+     OR (SELECT count(*) FROM public.payout_release_items
+         WHERE source_type = 'stay_reservation'
+           AND source_id = '36452400-0000-4000-8000-000000000701') <> 1 THEN
+    RAISE EXCEPTION 'H7: a repeat attach must return the same release and never re-price it';
+  END IF;
+END
+$h7$;
 
 -- H5: the other three non-installment money surfaces all attach at payment+24h.
 DO $h5$

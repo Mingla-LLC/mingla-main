@@ -135,6 +135,19 @@ describe("#3493 every Business bundle input is measured identically", () => {
     );
     assert.doesNotMatch(budget, /RATCHET_NOTICE_THRESHOLD = 2_048/);
   });
+
+  test("the ratchet records any movement the pull-request gate would count (#4270)", async () => {
+    const lib = await import("../bundle-budget-lib.mjs");
+    assert.ok(Number.isSafeInteger(lib.BASELINE_RECORD_FLOOR_BYTES));
+    assert.ok(lib.BASELINE_RECORD_FLOOR_BYTES > 150, "floor stays above Linux measurement noise");
+    assert.ok(
+      lib.BASELINE_RECORD_FLOOR_BYTES < lib.BASELINE_MOVEMENT_THRESHOLD_BYTES,
+      "unrecorded main drift must leave room for the next pull request",
+    );
+    const update = readBusiness("scripts/ci/bundle-baseline-update.mjs");
+    assert.match(update, /const NOISE_FLOOR = BASELINE_RECORD_FLOOR_BYTES;/);
+    assert.doesNotMatch(update, /NOISE_FLOOR = \d/);
+  });
 });
 
 describe("#3493 VAT/pricing UI stays out of the eager shared chunk", () => {
