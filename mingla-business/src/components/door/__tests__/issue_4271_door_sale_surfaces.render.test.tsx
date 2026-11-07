@@ -665,3 +665,193 @@ describe("#4271 retest: every amount shown is the amount charged", () => {
     expect(textOf((tree as ReactTestRenderer).root)).not.toContain("weren't charged");
   });
 });
+
+// #4271 door polish (design items 3, 4, 5, 8, 9): the sale sheet and the guest page, rendered.
+describe("#4271 door polish: the sale sheet", () => {
+  const { StyleSheet } = jest.requireActual("react-native") as typeof import("react-native");
+  const polishSheet = (extra: Record<string, unknown> = {}, lines: unknown[] = [{ ticketTypeId: "tier-1", quantity: 2 }]) => (
+    <DoorSaleNewSheet
+      visible
+      event={{ id: "event-1", currency: "GBP", tickets: [tier, { ...tier, id: "tier-2", name: "VIP table for four, bottle included and a long name" }] } as never}
+      onClose={jest.fn()}
+      onSuccess={jest.fn()}
+      initialLines={lines as never}
+      brand={null}
+      {...extra}
+    />
+  );
+  const byLabel = (root: ReactTestInstance, label: string): ReactTestInstance[] =>
+    root.findAll((n) => n.props.accessibilityLabel === label && typeof n.props.onPress === "function");
+  const dockMessages = (root: ReactTestInstance): ReactTestInstance[] =>
+    root.findAll(
+      (n) =>
+        typeof n.type === "string" &&
+        ["door-sale-dock-message", "door-sale-tap-blocked", "door-sale-tax-refusal"].includes(n.props.testID),
+    );
+
+  beforeEach(() => {
+    mockQuote = { data: { totalCents: 3135, subtotalCents: 3000, feeCents: 135, currency: "GBP" }, isLoading: false };
+    mockPush.mockClear();
+    mockTapAvailable = true;
+  });
+  afterEach(() => {
+    mockTapAvailable = false;
+  });
+
+  test("a 44pt header close replaces Cancel; plain section names", () => {
+    const { root } = mount(polishSheet());
+    const close = root.findAll((n) => n.props.testID === "door-sale-close");
+    expect(close.length).toBeGreaterThan(0);
+    expect(close[0].props).toMatchObject({ size: 44, accessibilityLabel: "Close door sale" });
+    const text = textOf(root);
+    expect(text).not.toContain("Cancel");
+    expect(text).toContain("Tickets");
+    expect(text).toContain("How they pay");
+    expect(text).not.toMatch(/\d\. (Pick tickets|How they pay|Buyer details)/);
+  });
+
+  test("the dock has one button, no second Tap to Pay button, and Tap to Pay is the default", () => {
+    const { root } = mount(polishSheet());
+    expect(root.findAll((n) => n.props.testID === "door-sale-submit" && "label" in n.props)).toHaveLength(1);
+    expect(root.findAll((n) => n.props.testID === "door-sale-tap-dock")).toHaveLength(0);
+    expect(textOf(root)).toContain("Take £31.35");
+    // Only the picked row explains itself.
+    expect(textOf(root)).toContain("Take a card or phone on this iPhone.");
+    expect(textOf(root)).not.toContain("You collect cash at the door.");
+    expect(textOf(root)).not.toContain("Card reader");
+    expect(textOf(root)).not.toContain("NEW");
+  });
+
+  test("a blocked tap writes one alert line; the button is not greyed", () => {
+    const { root } = mount(polishSheet({}, []));
+    const submit = root.findAll((n) => n.props.testID === "door-sale-submit" && "label" in n.props)[0];
+    expect(submit.props.disabled).toBe(false);
+    act(() => {
+      submit.props.onPress();
+    });
+    const lines = dockMessages(root);
+    expect(lines).toHaveLength(1);
+    expect(lines[0].props.testID).toBe("door-sale-tap-blocked");
+    expect(lines[0].props.accessibilityRole).toBe("alert");
+    expect(textOf(lines[0])).toContain("Pick at least one ticket first.");
+  });
+
+  test("a tax refusal is the only line, even when other hints apply", () => {
+    mockQuote = { data: undefined, isLoading: false, isError: true, error: { code: "door_tax_added_at_checkout" } };
+    const { root } = mount(polishSheet());
+    const lines = dockMessages(root);
+    expect(lines).toHaveLength(1);
+    expect(lines[0].props.testID).toBe("door-sale-tax-refusal");
+  });
+
+  test("44pt steppers in a fixed column, named for the ticket; picked rows are tinted; names wrap to two lines", () => {
+    const { root } = mount(polishSheet());
+    const plus = byLabel(root, "Increase General")[0];
+    const minus = byLabel(root, "Decrease General")[0];
+    expect(StyleSheet.flatten(plus.props.style)).toMatchObject({ width: 44, height: 44 });
+    expect(StyleSheet.flatten(minus.props.style)).toMatchObject({ width: 44, height: 44 });
+    const picked = root.findAll((n) => n.props.testID === "door-sale-tier-tier-1" && typeof n.type === "string")[0];
+    const unpicked = root.findAll((n) => n.props.testID === "door-sale-tier-tier-2" && typeof n.type === "string")[0];
+    expect(StyleSheet.flatten(picked.props.style).backgroundColor).toBe("rgba(235, 120, 37, 0.08)");
+    expect(StyleSheet.flatten(unpicked.props.style).backgroundColor).not.toBe("rgba(235, 120, 37, 0.08)");
+    const longName = root.findAll(
+      (n) => n.type === "Text" && n.props.accessibilityLabel === "VIP table for four, bottle included and a long name",
+    )[0];
+    expect(longName.props.numberOfLines).toBe(2);
+  });
+
+  test("cash: buyer details sit behind one row that opens in place; the notes counter waits for 400", () => {
+    const { root } = mount(polishSheet({ initialMethod: "cash" }));
+    expect(textOf(root)).toContain("Add buyer details");
+    expect(root.findAll((n) => n.props.accessibilityLabel === "Buyer name")).toHaveLength(0);
+    const toggle = root.findAll(
+      (n) => n.props.testID === "door-sale-buyer-details-toggle" && typeof n.props.onPress === "function",
+    )[0];
+    act(() => {
+      toggle.props.onPress();
+    });
+    expect(root.findAll((n) => n.props.accessibilityLabel === "Buyer name").length).toBeGreaterThan(0);
+    const notes = root.findAll((n) => n.props.accessibilityLabel === "Sale notes" && typeof n.props.onChangeText === "function")[0];
+    expect(notes.props.placeholder).toBe("e.g. Paid by bank transfer to the venue");
+    expect(textOf(root)).not.toContain("/ 500");
+    act(() => {
+      notes.props.onChangeText("x".repeat(400));
+    });
+    expect(textOf(root)).toContain("400 / 500");
+  });
+
+  test("Tap to Pay: a typed name rides the draft to the tap screen", () => {
+    const { root } = mount(polishSheet());
+    const toggle = root.findAll(
+      (n) => n.props.testID === "door-sale-buyer-details-toggle" && typeof n.props.onPress === "function",
+    )[0];
+    act(() => {
+      toggle.props.onPress();
+    });
+    const name = root.findAll((n) => n.props.accessibilityLabel === "Buyer name" && typeof n.props.onChangeText === "function")[0];
+    act(() => {
+      name.props.onChangeText("Ada Obi");
+    });
+    act(() => {
+      root.findAll((n) => n.props.testID === "door-sale-submit" && "label" in n.props)[0].props.onPress();
+    });
+    const href = String(mockPush.mock.calls[0]?.[0]);
+    const { parseTapToPayDraft } = jest.requireActual("../../../services/terminal/tapToPayDraft") as {
+      parseTapToPayDraft: (raw: string) => { buyerName?: string } | null;
+    };
+    expect(parseTapToPayDraft(decodeURIComponent(href.split("draft=")[1] ?? ""))?.buyerName).toBe("Ada Obi");
+  });
+
+  test("pay code: one line about the guest's own details", () => {
+    const { root } = mount(polishSheet({ initialMethod: "pay_code" }));
+    expect(textOf(root)).toContain("They type their own details on their phone.");
+    expect(textOf(root)).not.toContain("Add buyer details");
+  });
+});
+
+describe("#4271 door polish: the guest pay page", () => {
+  test("eyebrow names the event, no asterisks, autofill hints, the button says the amount", async () => {
+    let tree: ReactTestRenderer | undefined;
+    mockParams = { code: "K7Q2M9XA" };
+    await act(async () => {
+      tree = renderer.create(<DoorPayGuestPage />);
+    });
+    const root = (tree as ReactTestRenderer).root;
+    const text = textOf(root);
+    expect(text).toContain("PAY AT THE DOOR · NIGHT");
+    expect(text).toContain("Continue to pay £15.70");
+    expect(text).not.toContain("Continue to payment");
+    expect(text).not.toContain("*");
+    expect(text).not.toContain("Brand");
+    const inputs = root.findAll((n) => typeof n.props.autoComplete === "string" && typeof n.props.onChangeText === "function");
+    expect([...new Set(inputs.map((n) => n.props.autoComplete as string))].sort()).toEqual(["email", "name", "tel"]);
+  });
+
+  test.each([
+    ["expired", "neutral"],
+    ["cancelled", "neutral"],
+    ["failed", "bad"],
+  ])("a %s code shows the %s tone", async (status, tone) => {
+    const service = jest.requireMock("../../../services/doorPayCodeService") as { viewDoorPayCode: jest.Mock };
+    mockParams = { code: "K7Q2M9XA" };
+    service.viewDoorPayCode.mockResolvedValueOnce({
+      status,
+      eventId: "event-1",
+      eventName: "Night",
+      eventStartsAt: null,
+      venueLabel: null,
+      brandName: "Brand",
+      lines: [],
+      subtotalCents: 3000,
+      feeCents: 135,
+      totalCents: 3135,
+      currency: "GBP",
+      expiresAt: "2099-01-01T00:00:00.000Z",
+    });
+    let tree: ReactTestRenderer | undefined;
+    await act(async () => {
+      tree = renderer.create(<DoorPayGuestPage />);
+    });
+    expect((tree as ReactTestRenderer).root.findAll((n) => n.props.testID === `door-pay-guest-tone-${tone}`).length).toBeGreaterThan(0);
+  });
+});

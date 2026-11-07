@@ -1009,3 +1009,146 @@ describe("B13 seen", () => {
     expect(edge.markDoorTapOutcomeSeen).not.toHaveBeenCalled();
   });
 });
+
+// #4271 door polish (design items 1, 2, 10, 11): tones, labels and the receipt link, rendered.
+describe("#4271 door polish: Tap to Pay states", () => {
+  const client = (overrides: Record<string, unknown> = {}) => ({
+    ensureReaderConnected: async () => ({}),
+    retrievePaymentIntent: async () => ({ paymentIntent: { id: "pi_1" } }),
+    collectPaymentMethod: async () => ({ paymentIntent: { id: "pi_1", status: "requires_confirmation" } }),
+    confirmPaymentIntent: async () => ({ paymentIntent: { id: "pi_1", status: "succeeded" } }),
+    cancelCollectPaymentMethod: async () => ({}),
+    ...overrides,
+  });
+  const sale = async (terminal: Record<string, unknown>, rawDraft: string = DRAFT): Promise<ReactTestRenderer> => {
+    resetTapToPaySessionForTests();
+    mockAvailability = { available: true, needsSetup: false, reason: "ok" };
+    updateTapToPaySession({ status: "ready", client: terminal as never });
+    const tree = mount(<TapToPaySaleScreen eventId="event-1" saleId="new" rawDraft={rawDraft} />);
+    await settleSale();
+    return tree;
+  };
+  const tone = (root: ReactTestInstance): string | undefined =>
+    root
+      .findAll((n) => typeof n.props.testID === "string" && n.props.testID.startsWith("tap-tone-") && typeof n.type === "string")
+      .map((n) => String(n.props.testID).replace("tap-tone-", ""))[0];
+  const buttonLabels = (root: ReactTestInstance): string[] =>
+    root.findAll((n) => typeof n.props.label === "string" && typeof n.props.onPress === "function").map((n) => n.props.label as string);
+
+  beforeEach(() => {
+    mockIconNames.length = 0;
+  });
+
+  test("the header names Tap to Pay the way Apple asks on iPhone", async () => {
+    const { root } = await sale(client());
+    expect(textOf(root)).toContain("Tap to Pay on iPhone");
+  });
+
+  test("paid: green, no Guest row without a typed name, Send receipt is a text link", async () => {
+    const { root } = await sale(client());
+    expect(tone(root)).toBe("ok");
+    expect(textOf(root)).not.toContain("Walk-up");
+    expect(root.findAll((n) => n.props.testID === "tap-guest-row")).toHaveLength(0);
+    const receipt = byTestId(root, "tap-send-receipt");
+    expect(receipt).toBeTruthy();
+    expect(receipt.props.accessibilityLabel).toBe("Send receipt");
+    expect(buttonLabels(root)).not.toContain("Send receipt");
+  });
+
+  test("paid: the Guest row shows the name the host typed", async () => {
+    const named = encodeTapToPayDraft({
+      lines: [{ ticketTypeId: "tier-1", quantity: 2 }],
+      eventDateId: null,
+      buyerPhone: null,
+      phoneCountryIso: null,
+      buyerName: "Ada Obi",
+    });
+    const { root } = await sale(client(), named);
+    expect(root.findAll((n) => n.props.testID === "tap-guest-row").length).toBeGreaterThan(0);
+    expect(textOf(root)).toContain("Ada Obi");
+  });
+
+  test("declined: red, Try another card first, pay code second, receipt still offered", async () => {
+    const { root } = await sale(
+      client({
+        confirmPaymentIntent: async () => ({
+          error: { code: "DECLINED_BY_STRIPE_API", paymentIntent: { id: "pi_1", status: "requires_payment_method" } },
+        }),
+      }),
+    );
+    expect(tone(root)).toBe("bad");
+    expect(buttonLabels(root).slice(0, 2)).toEqual(["Try another card", "Show a pay code instead"]);
+    expect(byTestId(root, "tap-send-receipt")).toBeTruthy();
+  });
+
+  test("timed out: grey, nothing charged, receipt still offered", async () => {
+    const { root } = await sale(client({ collectPaymentMethod: async () => ({ error: { code: "CARD_READ_TIMED_OUT" } }) }));
+    expect(tone(root)).toBe("neutral");
+    expect(byTestId(root, "tap-send-receipt")).toBeTruthy();
+  });
+
+  test("unknown result: amber, Check again, and still no pay code", async () => {
+    const { root } = await sale(client({ confirmPaymentIntent: async () => ({ error: { code: "STRIPE_API_ERROR" } }) }));
+    expect(tone(root)).toBe("caution");
+    expect(buttonLabels(root)).toEqual(["Check again"]);
+    expect(root.findAll((n) => n.props.testID === "tap-show-pay-code")).toHaveLength(0);
+  });
+
+  test("ready: the instruction sits in the shared status pill", async () => {
+    let pending: ((r: unknown) => void) | null = null;
+    const { root } = await sale(
+      client({
+        collectPaymentMethod: () =>
+          new Promise((resolve) => {
+            pending = resolve;
+          }),
+      }),
+    );
+    expect(pending).not.toBeNull();
+    expect(root.findAll((n) => n.props.testID === "tap-status-pill").length).toBeGreaterThan(0);
+    expect(textOf(root)).toContain("Hold the card near the top of the iPhone.");
+  });
+});
+
+describe("#4271 door polish: setup limits are grey, the facts are one list", () => {
+  beforeEach(() => {
+    mockIconNames.length = 0;
+    resetTapToPaySessionForTests();
+    mockRole = { rank: 60, isLoading: false };
+    updateTapToPaySession({ status: "ready", client: { checkDeviceSupport: async () => ({ supported: true }) } as never });
+  });
+  const tones = (root: ReactTestInstance): string[] =>
+    root
+      .findAll((n) => typeof n.props.testID === "string" && n.props.testID.startsWith("tap-tone-") && typeof n.type === "string")
+      .map((n) => String(n.props.testID).replace("tap-tone-", ""));
+
+  test("not on this phone and update iOS are neutral, never red", () => {
+    expect(tones(mount(<TapNotOnThisPhone onUsePayCode={jest.fn()} />).root)).toEqual(["neutral"]);
+    expect(tones(mount(<TapUpdateIos onUsePayCode={jest.fn()} />).root)).toEqual(["neutral"]);
+  });
+
+  test("a brand that can't take taps is neutral", async () => {
+    mockAvailability = { available: false, needsSetup: false, reason: "paystack" };
+    const tree = mount(<TapToPaySetupScreen eventId="event-1" rawDraft={null} />);
+    await flush();
+    expect(tones(tree.root)).toEqual(["neutral"]);
+  });
+
+  test("setup shows the three facts in one grouped list", async () => {
+    mockAvailability = { available: true, needsSetup: true, reason: "ok" };
+    mockRole = { rank: 100, isLoading: false };
+    const tree = mount(<TapToPaySetupScreen eventId="event-1" rawDraft={null} />);
+    await flush();
+    const lists = tree.root.findAll((n) => n.props.testID === "tap-setup-facts" && typeof n.type === "string");
+    expect(lists).toHaveLength(1);
+    const text = textOf(lists[0]);
+    expect(text).toContain("No card machine");
+    expect(text).toContain("Same money as online");
+    expect(text).toContain("Apple's terms");
+  });
+
+  test("the guide is one grouped list too", () => {
+    const tree = mount(<TapToPayEducation pinRow={false} />);
+    expect(tree.root.findAll((n) => n.props.testID === "tap-education-facts" && typeof n.type === "string")).toHaveLength(1);
+  });
+});

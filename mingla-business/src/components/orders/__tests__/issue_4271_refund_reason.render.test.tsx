@@ -297,3 +297,39 @@ describe("#4271 refund reason countdown (rendered)", () => {
     expect(keys[2]).not.toBe(keys[1]);
   });
 });
+
+// #4271 door polish (design items 5 and 7): the door refund sheet, rendered.
+describe("#4271 door polish: door refund sheet", () => {
+  const { StyleSheet } = jest.requireActual("react-native") as typeof import("react-native");
+  const door = (): ReactTestRenderer =>
+    mount(<DoorRefundSheet visible sale={sale} onClose={jest.fn()} onSuccess={jest.fn()} />);
+
+  test("one sentence about check-in, no footer note, no filler, no Cancel", () => {
+    const all = texts(door());
+    expect(all).toContain("The buyer stays checked in. Only the money goes back.");
+    expect(all.some((line) => line.includes("un-check-in"))).toBe(false);
+    expect(all.some((line) => line.includes("Total updates as you select."))).toBe(false);
+    expect(all).not.toContain("Cancel");
+    expect(all).toContain("Reason");
+    expect(all.some((line) => line.includes("*"))).toBe(false);
+  });
+
+  test("44pt steppers named for the ticket", () => {
+    const tree = door();
+    const more = tree.root.findAll(
+      (node) => node.props.accessibilityLabel === "Refund one more General" && typeof node.props.onPress === "function",
+    )[0];
+    const fewer = tree.root.findAll(
+      (node) => node.props.accessibilityLabel === "Refund one fewer General" && typeof node.props.onPress === "function",
+    )[0];
+    expect(StyleSheet.flatten(more.props.style)).toMatchObject({ width: 44, height: 44 });
+    expect(StyleSheet.flatten(fewer.props.style)).toMatchObject({ width: 44, height: 44 });
+    expect(texts(tree).some((line) => line.includes("2 left"))).toBe(true);
+  });
+
+  test("the reason box tells a screen reader it is required", () => {
+    const box = reasonBox(door());
+    expect(box.props.accessibilityLabel).toBe("Refund reason, required, at least 10 characters");
+    expect(box.props.placeholder).toBe("e.g. Charged twice at the door");
+  });
+});

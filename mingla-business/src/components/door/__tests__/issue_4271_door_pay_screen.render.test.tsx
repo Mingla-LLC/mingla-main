@@ -347,3 +347,68 @@ describe("#4271 host Scan to pay screen", () => {
     expect(mockReplace).toHaveBeenCalledWith("/event/event-1/door/pay/code-2");
   });
 });
+
+// #4271 door polish (design item 6): amount first, one status pill, door tones.
+describe("#4271 door polish: the host pay code screen", () => {
+  beforeEach(() => {
+    mockLate = { isSuccess: true, isError: false, data: null };
+    mockGuest = { isSuccess: true, isError: false, data: "Ada Obi" };
+    mockSettle.mockReset().mockImplementation(() => new Promise(() => undefined));
+  });
+
+  test("waiting: the amount comes before the code, the countdown sits in the pill", () => {
+    mockRow = row("open");
+    const tree = mount();
+    const text = screenText(tree);
+    expect(text.indexOf("£31.35")).toBeGreaterThanOrEqual(0);
+    expect(text.indexOf("£31.35")).toBeLessThan(text.indexOf("K7Q2-M9XA"));
+    expect(text).toMatch(/Point your camera here · \d+:\d\d/);
+    expect(text).not.toContain("Code expires in");
+    expect(text).not.toContain("Ask them to point");
+    const pill = tree.root.findAll((n) => n.props.testID === "door-pay-status-pill" && typeof n.type === "string")[0];
+    expect(String(pill.props.accessibilityLabel)).toMatch(/Code expires in \d+ minutes?/);
+    // Ten minutes left: the dot is not urgent yet.
+    expect(tree.root.findAll((n) => n.props.testID === "door-pay-status-pill-dot")).not.toHaveLength(0);
+  });
+
+  test("under a minute the dot turns warning", () => {
+    mockRow = { ...row("open"), expiresAt: new Date(Date.now() + 45_000).toISOString() };
+    const tree = mount();
+    expect(tree.root.findAll((n) => n.props.testID === "door-pay-status-pill-dot-urgent")).not.toHaveLength(0);
+  });
+
+  test("opened: the pill says the guest is paying", () => {
+    mockRow = { ...row("opened"), openedAt: new Date(Date.now() - 12_000).toISOString() };
+    const text = screenText(mount());
+    expect(text).toContain("Guest is paying…");
+    expect(text).toContain("Keep this screen open.");
+  });
+
+  test.each([
+    ["expired", "neutral"],
+    ["cancelled", "neutral"],
+    ["failed", "bad"],
+    ["paid", "ok"],
+  ])("%s ends on the %s ring", (status, tone) => {
+    mockRow = row(status);
+    const tree = mount();
+    expect(tree.root.findAll((n) => n.props.testID === `door-pay-tone-${tone}`).length).toBeGreaterThan(0);
+    for (const other of ["ok", "neutral", "caution", "bad"].filter((t) => t !== tone)) {
+      expect(tree.root.findAll((n) => n.props.testID === `door-pay-tone-${other}`)).toHaveLength(0);
+    }
+  });
+
+  test("paid reads Paid on their phone", () => {
+    mockRow = row("paid");
+    const text = screenText(mount());
+    expect(text).toContain("Paid on their phone");
+    expect(text).not.toContain("Buyer's phone");
+  });
+
+  test("checking is amber, not red", () => {
+    mockRow = { ...row("opened"), expiresAt: new Date(Date.now() - 1_000).toISOString() };
+    const tree = mount();
+    expect(screenText(tree)).toContain("Checking…");
+    expect(tree.root.findAll((n) => n.props.testID === "door-pay-tone-caution").length).toBeGreaterThan(0);
+  });
+});
