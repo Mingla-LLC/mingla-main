@@ -216,7 +216,7 @@ export const SmsPreviewPane: React.FC<SmsPreviewPaneProps> = ({
   );
 
   if (!scrollable) {
-    return <View style={[styles.host, styles.scrollContent, styles.hostStatic]}>{content}</View>;
+    return <View style={[styles.hostStatic, styles.scrollContent]}>{content}</View>;
   }
   return (
     <ScrollView
@@ -235,8 +235,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: PHONE_CANVAS,
   },
+  // #4273 — the page scroll owns the pane: no flex, its own canvas only.
   hostStatic: {
-    flex: 0,
+    backgroundColor: PHONE_CANVAS,
   },
   scrollContent: {
     padding: spacing.md,
