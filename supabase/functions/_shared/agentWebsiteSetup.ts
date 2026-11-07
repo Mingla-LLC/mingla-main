@@ -11,6 +11,7 @@ import {
   VENUE_DESCRIPTOR_CHIPS,
 } from "./siteContracts/sitePlan.ts";
 import { FORBIDDEN_TEXT } from "./siteContracts/safety.ts";
+import { storyAnswerProblem } from "./siteContracts/claims.ts";
 // The Host's own phone rules and country directory (dependency-free shared
 // owners, imported the way buyerPhone.ts does) — never a second parser.
 import {
@@ -649,6 +650,46 @@ export function websiteSetupPlanAnswer(
     default:
       return null;
   }
+}
+
+/**
+ * #2830 — a story answer becomes page copy, so the publish truth check's
+ * rules run on it now (siteContracts/claims.ts): an answer with a number,
+ * price, date or boast nothing in Mingla backs is re-asked, never saved.
+ * Null when the answer can be saved.
+ */
+export function websiteSetupPlanAnswerProblem(
+  answer: WebsiteSetupPlanAnswer,
+  plan: unknown,
+): string | null {
+  if (!answer.fieldKey.startsWith("story.")) return null;
+  const story = object(answer.answers.story);
+  const words = Object.values(story).filter((value): value is string =>
+    typeof value === "string"
+  ).join(" ");
+  const completeness = object(object(plan).completeness);
+  const fields = Array.isArray(completeness.fields)
+    ? completeness.fields.map(object)
+    : [];
+  return storyAnswerProblem(words, fields);
+}
+
+/** The re-ask for a story answer with unbacked claims; null when it can be saved. */
+export function websiteSetupPlanAnswerRetry(
+  answer: WebsiteSetupPlanAnswer,
+  plan: unknown,
+  brandId: string,
+): WebsiteSetupPresentation | null {
+  const problem = websiteSetupPlanAnswerProblem(answer, plan);
+  if (!problem) return null;
+  const completeness = object(object(plan).completeness);
+  return buildWebsiteSetupRetryPresentation({
+    fieldKey: answer.fieldKey,
+    field: findField(completeness, answer.fieldKey),
+    brandId,
+    problem,
+    completeness,
+  });
 }
 
 export function websiteSetupPlanRevision(result: unknown): number | null {

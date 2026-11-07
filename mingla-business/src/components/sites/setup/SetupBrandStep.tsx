@@ -74,6 +74,30 @@ function settledValue(field: BrandContextField): string {
   return "";
 }
 
+/** Web: scroll the field into view and put the cursor in it. */
+export function revealSetupField(key: string): void {
+  const doc = (globalThis as { document?: { querySelector?: (selector: string) => unknown } }).document;
+  const host = doc?.querySelector?.(`[data-testid="setup-field-${key}"]`) as
+    | { scrollIntoView?: (options: unknown) => void; focus?: () => void; querySelector?: (selector: string) => { focus?: () => void } | null }
+    | null
+    | undefined;
+  host?.scrollIntoView?.({ block: "center", behavior: "smooth" });
+  (host?.querySelector?.("input, textarea") ?? host)?.focus?.();
+}
+
+type SavedPlace = { city: string | undefined; countryCode: string | undefined };
+
+/** The saved City and country field, as the plan read reports it. */
+export function planPlace(plan: SitePlanState): SavedPlace {
+  const field = plan.completeness?.fields.find((row) => row.key === "city_country");
+  if (!field || field.state !== "verified") return { city: undefined, countryCode: undefined };
+  const value = (field.value ?? {}) as { city?: unknown; country_code?: unknown };
+  return {
+    city: typeof value.city === "string" && value.city ? value.city : undefined,
+    countryCode: typeof value.country_code === "string" && value.country_code ? value.country_code : undefined,
+  };
+}
+
 type FieldSave = (patch: Partial<Brand>) => Promise<boolean>;
 /** Saves what is typed but not sent. True: nothing is left, or it saved. */
 type Flush = () => Promise<boolean>;
@@ -99,12 +123,14 @@ function SavedRow({ field }: { field: BrandContextField }): React.ReactElement {
   );
 }
 
-export function SetupBrandStep({ brandId, plan, readOnly, hotField, onNext, nextStepLabel }: {
+export function SetupBrandStep({ brandId, plan, readOnly, hotField, focusRequest = null, onNext, nextStepLabel }: {
   brandId: string;
   plan: SitePlanState;
   readOnly: boolean;
   /** The field Ari is asking about right now. */
   hotField: string | null;
+  /** "Add it myself" from Ari beside this form: bring this field into view. */
+  focusRequest?: { key: string; at: number } | null;
   onNext: () => void;
   nextStepLabel: string | null;
 }): React.ReactElement {
@@ -127,6 +153,17 @@ export function SetupBrandStep({ brandId, plan, readOnly, hotField, onNext, next
     return ORDER.map((key) => byKey.get(key)).filter((field): field is BrandContextField => field !== undefined && field.requirement !== "optional");
   }, [plan.completeness]);
   const open = fields.filter((field) => field.state !== "verified" && field.state !== "not_applicable");
+  // #2830 — Ari saves City and country straight to the brand context. The
+  // plan read has it at once; the brand row this screen holds may be older.
+  const savedPlace = useMemo(() => planPlace(plan), [plan]);
+  const contextRevision = plan.completeness?.contextRevision ?? "";
+  const seenRevision = useRef(contextRevision);
+  const refetchBrand = brand.refetch;
+  useEffect(() => {
+    if (seenRevision.current === contextRevision) return;
+    seenRevision.current = contextRevision;
+    void refetchBrand?.();
+  }, [contextRevision, refetchBrand]);
   const settled = fields.filter((field) => field.state === "verified" || field.state === "not_applicable");
   const data = brand.data ?? null;
 
@@ -156,6 +193,12 @@ export function SetupBrandStep({ brandId, plan, readOnly, hotField, onNext, next
     }
   }, [save]);
 
+  useEffect(() => {
+    if (!focusRequest) return;
+    setFocused(focusRequest.key);
+    revealSetupField(focusRequest.key);
+  }, [focusRequest]);
+
   const firstOpen = open[0] ?? null;
   const currentKey = focused && open.some((field) => field.key === focused) ? focused : firstOpen?.key ?? null;
   const nextField = open.find((field) => field.key !== currentKey) ?? null;
@@ -181,6 +224,7 @@ export function SetupBrandStep({ brandId, plan, readOnly, hotField, onNext, next
           key={field.key}
           field={field}
           brand={data}
+          savedPlace={savedPlace}
           brandId={brandId}
           accountId={user?.id ?? null}
           hot={hotField === field.key || (hotField === null && currentKey === field.key)}
@@ -218,9 +262,10 @@ export function SetupBrandStep({ brandId, plan, readOnly, hotField, onNext, next
   );
 }
 
-function SetupFieldEditor({ field, brand, brandId, accountId, hot, readOnly, problem, saving, registerFlush, onFocus, onSave, onProblem }: {
+function SetupFieldEditor({ field, brand, savedPlace, brandId, accountId, hot, readOnly, problem, saving, registerFlush, onFocus, onSave, onProblem }: {
   field: BrandContextField;
   brand: Brand;
+  savedPlace: SavedPlace;
   brandId: string;
   accountId: string | null;
   hot: boolean;
@@ -247,7 +292,7 @@ function SetupFieldEditor({ field, brand, brandId, accountId, hot, readOnly, pro
       return <PhoneEditor field={field} brand={brand} readOnly={readOnly} problem={problem} registerFlush={registerFlush} onFocus={onFocus} onSave={onSave} onProblem={onProblem} />;
     case "address":
     case "city_country":
-      return <AddressEditor field={field} brand={brand} readOnly={readOnly} problem={problem} saving={saving} registerFlush={registerFlush} onSave={onSave} />;
+      return <AddressEditor field={field} brand={brand} savedPlace={savedPlace} readOnly={readOnly} problem={problem} saving={saving} registerFlush={registerFlush} onSave={onSave} />;
     case "social_links":
       return <LinksEditor field={field} brand={brand} hot={hot} readOnly={readOnly} problem={problem} registerFlush={registerFlush} onFocus={onFocus} onSave={onSave} onProblem={onProblem} />;
     case "profile_photo":
@@ -409,9 +454,11 @@ function PhoneEditor({ field, brand, readOnly, problem, registerFlush, onFocus, 
   );
 }
 
-function AddressEditor({ field, brand, readOnly, problem, saving, registerFlush, onSave }: {
+function AddressEditor({ field, brand, savedPlace, readOnly, problem, saving, registerFlush, onSave }: {
   field: BrandContextField;
   brand: Brand;
+  /** City and country as the plan read has them (what Ari just saved). */
+  savedPlace: SavedPlace;
   readOnly: boolean;
   problem: string | null;
   saving: boolean;
@@ -437,8 +484,8 @@ function AddressEditor({ field, brand, readOnly, problem, saving, registerFlush,
         <Suspense fallback={<ActivityIndicator accessibilityLabel={`Loading ${field.label}`} />}>
           <LazyAddressField
             address={pending?.address ?? brand.address}
-            city={pending?.city ?? brand.city}
-            countryCode={pending?.countryCode ?? brand.countryCode}
+            city={pending?.city ?? (brand.city || savedPlace.city)}
+            countryCode={pending?.countryCode ?? (brand.countryCode || savedPlace.countryCode)}
             lat={pending?.lat ?? brand.lat}
             lng={pending?.lng ?? brand.lng}
             onChange={(patch) => setPending((current) => ({ ...(current ?? {}), ...patch }))}

@@ -5,6 +5,7 @@ import { BrandSitesError } from "../../../services/brandSitesService";
 import { approvedPlanFrom } from "../../../sites/planScreens";
 import type { SitePlanStory } from "../../../sites/sitePlanState";
 import { mainActionChips, storyQuestions, type PlanPartKey } from "../../../../../packages/site-contracts/src/sitePlan.ts";
+import { storyAnswerProblem } from "../../../../../packages/site-contracts/src/claims.ts";
 
 /** #2829 W9a — plan parts 4 (Your story) and 5 (Approve the plan). */
 export function StoryPart({ brandId, step, onDone, readOnly = false }: {
@@ -44,6 +45,13 @@ export function StoryPart({ brandId, step, onDone, readOnly = false }: {
     for (const key of ["who", "why", "main_action"] as const) {
       const value = current[key]?.trim();
       if (value) cleaned[key] = value;
+    }
+    // #2830 — the answers become page copy: the publish truth check's rules
+    // run now (the same ones Ari uses), so nothing publish would refuse saves.
+    const problem = storyAnswerProblem(Object.values(cleaned).join(" "), plan.data.completeness?.fields ?? []);
+    if (problem) {
+      setNotice({ kind: "error", message: problem });
+      return;
     }
     save.mutate(
       { revision: plan.data.plan?.revision ?? 0, patch: { story: Object.keys(cleaned).length ? cleaned : null } },
