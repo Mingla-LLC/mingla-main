@@ -992,6 +992,7 @@
         "mingla-business/src/components/marketing/SmsPreviewPane.tsx",
         "mingla-business/src/features/marketing/sentPreviewModel.ts",
         "mingla-business/src/features/marketing/campaignListGroups.ts",
+        "mingla-business/src/services/marketing/campaignDeleteService.ts",
         "mingla-business/src/components/marketing/SentCampaignPreviews.tsx",
         "mingla-business/src/hooks/marketing/useCampaignGroupView.ts",
         "mingla-business/src/services/marketing/marketingCampaignGroupViewService.ts",
