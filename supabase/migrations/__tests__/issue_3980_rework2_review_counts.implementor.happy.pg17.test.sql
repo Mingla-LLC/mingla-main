@@ -292,7 +292,7 @@ begin
   perform pg_temp.tw_person('growth2', format($q$select public.ops_work_update(%L, '{"status":"person","person_reason":"publish"}'::jsonb, %s)::text$q$, v_d, pg_temp.tw_rev(v_d)));
   perform pg_temp.tw_person('growth2', format($q$select public.ops_work_update(%L, '{"status":"person","person_reason":"send"}'::jsonb, %s)::text$q$, v_e, pg_temp.tw_rev(v_e)));
   perform pg_temp.tw_check('R2-REVIEW', 'every card waits for a person',
-    (select string_agg(person_reason, ',' order by title) from public.ops_work_cards where title like 'V3980 %' and status = 'person'), 'send,spend,send,publish,send');
+    (select string_agg(person_reason, ',' order by title) from public.ops_work_cards where title like 'V3980 %' and status = 'todo' and person_reason is not null), 'send,spend,send,publish,send'); -- #4270: tagged in To do
 
   r := pg_temp.tw_review('growth');
   perform pg_temp.tw_check('R2-REVIEW', 'Spend or publish lists the spend card and the publish card Gia watches',

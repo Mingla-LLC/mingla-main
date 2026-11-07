@@ -322,7 +322,7 @@ begin
   -- cards used further down: C2 (agent A's person owns it), C3 (needs a person to spend), C4 (go-live gate)
   v := pg_temp.t3980_person('growth', format($q$select public.ops_work_add('[{"title":"W3980 write the first message","instructions":"Write the first message to the quiet host with save_drafts.","done_means":"A draft is waiting in To review.","owners":["ada.w3980@test.local","cy.w3980@test.local"],"watchers":["di.w3980@test.local"],"due_on":"%s"},{"title":"W3980 approve the boost","instructions":"Approve a small boost for the night.","done_means":"Spend approved by a person.","owners":["ada.w3980@test.local"],"due_on":"%s","person_reason":"spend"},{"title":"W3980 gate","instructions":"The event must be public 28 days before it starts.","done_means":"The event is public on Mingla.","owners":["ada.w3980@test.local"],"kind":"gate_live","kit_step":-28,"anchor":{"kind":"event","id":"39800000-0000-4000-b400-000000000001"}}]'::jsonb, 'w3980-add-0006')::text$q$, v_due, v_due));
   perform pg_temp.t3980_check('W1-ADD', 'three more cards are added, one waiting for a person',
-    pg_temp.t3980_get(v, 'added') || '/' || pg_temp.t3980_get(v, 'results', '1', 'card', 'status'), '3/person');
+    pg_temp.t3980_get(v, 'added') || '/' || pg_temp.t3980_get(v, 'results', '1', 'card', 'status') || ':' || pg_temp.t3980_get(v, 'results', '1', 'card', 'tag'), '3/todo:spend'); -- #4270: tagged in To do
   perform pg_temp.t3980_keep('c2', pg_temp.t3980_get(v, 'results', '0', 'card', 'id'));
   perform pg_temp.t3980_keep('c3', pg_temp.t3980_get(v, 'results', '1', 'card', 'id'));
   perform pg_temp.t3980_keep('c4', pg_temp.t3980_get(v, 'results', '2', 'card', 'id'));

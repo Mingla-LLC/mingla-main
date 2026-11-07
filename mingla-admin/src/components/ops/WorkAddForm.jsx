@@ -4,7 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import { Button } from "../ui/Button";
 import { useToast } from "../../context/ToastContext";
 import * as ops from "../../services/opsService";
-import { KIT_STEPS, dayLabel, opsErrorWords, parseGithubInput, requestKey } from "../../lib/opsModel";
+import { KIT_STEPS, dayLabel, filesUrlProblem, opsErrorWords, parseGithubInput, requestKey } from "../../lib/opsModel";
 import { FixesList } from "./FixesList";
 import { PeopleField } from "../people/PeopleField";
 import { usePeopleDirectory } from "../../hooks/usePeopleDirectory";
@@ -38,16 +38,20 @@ export function WorkAddForm({ config, online, headingRef, onAdded, onCancel, onO
   const [linking, setLinking] = useState(false);
   const [busy, setBusy] = useState(false);
   const [refused, setRefused] = useState(null);
+  // #4270: one Files link (https only), where the card's designs and uploads live.
+  const [filesUrl, setFilesUrl] = useState("");
+  const filesError = filesUrlProblem(filesUrl);
   const keyRef = useRef({ key: null, value: null });
 
   const eventLink = links.find((l) => l.kind === "event" || l.kind === "expected");
   const item = useMemo(() => {
     const out = { title, instructions, done_means: doneMeans, owners, watchers, links: links.map((l) => ({ kind: l.kind, id: l.id })) };
     if (due) out.due_on = due;
+    if (filesUrl.trim()) out.files_url = filesUrl.trim();
     if (github.length > 0) out.github = github.map((g) => g.input);
     if (kit && eventLink) { out.kit_step = Number(kit); out.anchor = { kind: eventLink.kind, id: eventLink.id }; }
     return out;
-  }, [title, instructions, doneMeans, owners, watchers, links, due, kit, eventLink, github]);
+  }, [title, instructions, doneMeans, owners, watchers, links, due, kit, eventLink, github, filesUrl]);
   const addGithub = () => {
     const parsed = parseGithubInput(ghValue);
     if (parsed.error) { setGhError(parsed.error); return; }
@@ -172,6 +176,21 @@ export function WorkAddForm({ config, online, headingRef, onAdded, onCancel, onO
           <button type="button" disabled={!ghValue.trim()} onClick={addGithub} className={`min-h-11 rounded-lg px-2 text-[13px] font-semibold text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)] disabled:opacity-50 ${FOCUS}`}>+ Link</button>
         </div>
       </div>
+      <label className="flex min-w-0 flex-col gap-1">
+        <span className={LABEL}>Files link</span>
+        <input
+          type="url"
+          inputMode="url"
+          value={filesUrl}
+          maxLength={2000}
+          placeholder="https:// where the designs and uploads live"
+          aria-invalid={filesError ? "true" : undefined}
+          aria-describedby={filesError ? "work-add-files-error" : undefined}
+          onChange={(e) => setFilesUrl(e.target.value)}
+          className={INPUT}
+        />
+        {filesError && <span id="work-add-files-error" role="alert" className="text-[12px] text-[var(--color-error-700)]">{filesError}</span>}
+      </label>
       <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
         <label className="flex min-w-0 flex-col gap-1">
           <span className={LABEL}>Due date</span>
@@ -190,7 +209,7 @@ export function WorkAddForm({ config, online, headingRef, onAdded, onCancel, onO
         )}
       </div>
       <div className="flex flex-wrap gap-2">
-        <Button type="submit" className="min-h-11" loading={busy} disabled={!online || busy}>Add card</Button>
+        <Button type="submit" className="min-h-11" loading={busy} disabled={!online || busy || !!filesError}>Add card</Button>
         <Button type="button" variant="ghost" className="min-h-11" onClick={onCancel}>Cancel</Button>
       </div>
     </form>

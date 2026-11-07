@@ -117,11 +117,11 @@ Deno.test("#3980 each work tool says what it is for, treats other people's text 
   );
   assertMatch(
     findWorkTool("close_work")!.description,
-    /never close a card that needs a person/,
+    /never close a card with a Send, Spend or Publish tag/,
   );
   assertMatch(
     findWorkTool("update_work")!.description,
-    /To hand a step to a person, set status person with the reason send, spend, publish or other, and stop\./,
+    /To hand a step to a person, set status person with the reason send, spend, publish or other, and stop: the card stays in To do/,
   );
 });
 

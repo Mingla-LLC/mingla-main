@@ -176,10 +176,10 @@ export function Sidebar({ activeTab, onTabChange, collapsed, mobileOpen, onMobil
   const renderNavItem = (item, rail) => {
     const Icon = ICON_MAP[item.icon];
     const isActive = activeTab === item.id;
-    // #4130: Needs you was retired into Work; the Work entry counts only this
-    // person's own cards waiting on them (useReviewCount().cards).
+    // #4270 (D20): the Work entry counts this person's own open cards due
+    // today or overdue (useReviewCount().cards).
     const waiting = item.id === "work-board" ? reviewCount.cards || 0 : 0;
-    const spokenLabel = waiting > 0 ? `${item.label}, ${waiting} waiting` : item.label;
+    const spokenLabel = waiting > 0 ? `${item.label}, ${waiting} due` : item.label;
 
     return (
       <li key={item.id}>

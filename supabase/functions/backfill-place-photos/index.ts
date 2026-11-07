@@ -7,6 +7,7 @@ import {
   type PhotoBackfillFailedPlace,
 } from '../_shared/photoStorageService.ts';
 import { checkStorageHeadroom } from '../_shared/storageHeadroomGuard.ts';
+import { seedingGoogleApiKey } from '../_shared/seedingGoogleKey.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -44,9 +45,10 @@ export async function handler(req: Request): Promise<Response> {
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-    const apiKey = Deno.env.get('GOOGLE_MAPS_API_KEY') ?? '';
+    // #4276: photo downloads spend GOOGLE_SEEDING_API_KEY when set, else GOOGLE_MAPS_API_KEY.
+    const apiKey = seedingGoogleApiKey();
 
-    if (!apiKey) return json({ error: 'GOOGLE_MAPS_API_KEY not configured' }, 500);
+    if (!apiKey) return json({ error: 'GOOGLE_SEEDING_API_KEY or GOOGLE_MAPS_API_KEY not configured' }, 500);
 
     const supabase = createClient(supabaseUrl, supabaseAnonKey);
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);

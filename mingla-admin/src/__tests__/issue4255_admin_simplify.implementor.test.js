@@ -179,7 +179,9 @@ describe("S-1 the side panels", () => {
       ["components/drafts/DraftCard.jsx", "kind: draft.record.pipeline"],
       ["components/ops/WorkDetail.jsx", "side={linkSide(l)}"],
       ["components/crm/RecordDrawer.jsx", 'kind: "drafts"'],
-      ["components/crm/OnMinglaSection.jsx", 'kind: "card"'],
+      // #4270 W2: the host card's cards moved from On Mingla to To do.
+      ["components/crm/HostToDoSection.jsx", 'kind: "card"'],
+      ["components/crm/OnMinglaSection.jsx", "kind: u.kind"],
     ]) {
       assert.ok(code(file).includes("<SideLink") && code(file).includes(side), `${file} opens ${side} in panel two`);
     }
@@ -342,7 +344,8 @@ function workCards() {
     { id: "1", number: 1, title: "Call Rooftop", status: "doing", owners: [{ email: ME, name: "Seth" }], watchers: [], links: [{ kind: "host", id: HOST }], due_on: "2026-11-03" },
     { id: "2", number: 2, title: "Post the recap", status: "todo", owners: [{ email: "abi@x.test", name: "Abimbola" }], watchers: [{ email: ME }], links: [], anchor: { kind: "event", id: "e" }, due_on: "2026-10-28", overdue: true },
     { id: "3", number: 3, title: "Fix the agreement", status: "doing", blocked: true, owners: [{ email: "abi@x.test", name: "Abimbola" }], watchers: [], links: [{ kind: "creator", id: HOST }], due_on: null },
-    { id: "4", number: 4, title: "Approve boost", status: "person", owners: [{ email: ME, name: "Seth" }], watchers: [], links: [], due_on: "2026-11-30" },
+    // #4270: what was status "person" is a To do card with a Spend tag.
+    { id: "4", number: 4, title: "Approve boost", status: "todo", person_reason: "spend", tag: "spend", owners: [{ email: ME, name: "Seth" }], watchers: [], links: [], due_on: "2026-11-30" },
     { id: "5", number: 5, title: "Shipped the flyer", status: "done", owners: [{ email: ME, name: "Seth" }], watchers: [], links: [], closed_at: "2026-11-03T08:00:00Z" },
     { id: "6", number: 6, title: "Old win", status: "done", owners: [{ email: ME, name: "Seth" }], watchers: [], links: [], closed_at: "2026-10-01T08:00:00Z" },
   ];
@@ -364,7 +367,10 @@ describe("S-3 Work: one filter, four tabs, one layout", () => {
     assert.deepEqual(ids({}), ["1", "2", "3", "4", "5", "6"]);
     assert.deepEqual(ids({ owner: ME }), ["1", "4", "5", "6"]);
     assert.deepEqual(ids({ show: "watch" }), ["2"]);
-    assert.deepEqual(ids({ show: "attention" }), ["2", "3", "4"], "overdue, blocked, waiting on a person");
+    assert.deepEqual(ids({ show: "attention" }), ["2", "3", "4"], "overdue, blocked, tagged for a person");
+    assert.deepEqual(ids({ show: "needs_ok" }), ["4"], "#4270: Needs your OK lists my open tagged cards");
+    assert.deepEqual(workFilter(workCards(), { me: "abi@x.test", show: "needs_ok" }).map((c) => c.id), [], "not someone else's");
+    assert.deepEqual(workFilter(workCards(), { me: "abi@x.test", show: "needs_ok", isAdmin: true }).map((c) => c.id), ["4"], "admins see every one");
     assert.deepEqual(ids({ show: "overdue" }), ["2"]);
     assert.deepEqual(ids({ show: "blocked" }), ["3"]);
     assert.deepEqual(ids({ linked: "host" }), ["1"]);
@@ -379,14 +385,14 @@ describe("S-3 Work: one filter, four tabs, one layout", () => {
     const page = code("pages/WorkBoardPage.jsx");
     assert.match(page, /const cards = useMemo\(\(\) => workFilter\(allCards, filters\)/);
     assert.match(page, /const periodCards = useMemo\(\(\) => workFilter\(period\.data\?\.cards \|\| \[\], filters\)/);
-    assert.match(page, /<WorkColumns cards=\{cards\}/);
+    assert.match(page, /<WorkColumns cards=\{cards\}/); // #4270 rework: plus each column's server count
     assert.match(page, /<PeriodView win=\{win\} read=\{period\} cards=\{periodCards\}/);
     // One filter bar above the tabs; one row of tabs.
     assert.ok(page.indexOf('data-work-filters=""') < page.indexOf("<Tabs tabs={WORK_VIEWS"));
     assert.equal((page.match(/<Tabs /g) || []).length, 1);
     assert.ok(!/NeedsAttention|AttentionChips|PersonChips|parseWorkTab|WorkToday|WorkWeek|WorkMonth/.test(page));
     // The board reads only while it is on screen; the period tabs read their window.
-    assert.match(page, /useOpsWork\(\{ who, week: query\.week, owner: ownerFilter, q: view\.q, enabled: onBoard \}\)/);
+    assert.match(page, /useOpsWork\(\{ who, week: query\.week, owner: ownerFilter, q: view\.q, limit: BOARD_LIMIT, perStatus: true, enabled: onBoard \}\)/); // #4270 rework: per column
     assert.match(page, /enabled: !onBoard,/);
     assert.ok(!fs.existsSync(path.join(SRC, "components/ops/NeedsAttention.jsx")));
     assert.ok(!/WorkGroups/.test(code("components/ops/WorkColumns.jsx")));
@@ -453,7 +459,7 @@ describe("S-3 Work: one filter, four tabs, one layout", () => {
     assert.equal(done.closed_until, win.to.toISOString());
     assert.equal(done.owner, ME);
     assert.equal(done.q, "flyer");
-    assert.deepEqual(asked.find((q) => q.status[0] !== "done").status, ["todo", "doing", "person"]);
+    assert.deepEqual(asked.find((q) => q.status[0] !== "done").status, ["todo", "doing"]);
 
     // [TRANSITIONAL] a server without the new migration: done_days, cut to the window.
     const old = await harness.loadPeriod(win, {}, async (q) => {

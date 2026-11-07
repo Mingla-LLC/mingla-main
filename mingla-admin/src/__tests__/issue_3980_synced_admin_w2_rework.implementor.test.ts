@@ -14,15 +14,16 @@ const read = (path: string) => Deno.readTextFileSync(new URL(path, SRC));
 
 Deno.test("#3980 W2 rework: Bridge D's approval card says what it asks a person for", () => {
   assertEquals(personReasonLabel({ person_reason: "publish", auto: true, auto_kind: "roadmap_shipped" }), "Approve what hosts are told");
-  assertEquals(personReasonLabel({ person_reason: "publish", auto_kind: null }), "Publishes an event", "an event card keeps its words");
+  // #4270: the tag's words.
+  assertEquals(personReasonLabel({ person_reason: "publish", auto_kind: null }), "You publish", "an event card keeps its words");
   assertEquals(personReasonLabel({ person_reason: "send" }), PERSON_REASONS.send);
-  assertEquals(personReasonLabel({ person_reason: null }), "Needs a person");
-  assertEquals(personReasonLabel(null), "Needs a person");
+  assertEquals(personReasonLabel({ person_reason: null }), "Needs your OK");
+  assertEquals(personReasonLabel(null), "Needs your OK");
   const item = read("components/ops/WorkItem.jsx");
   assertMatch(item, /\{personReasonLabel\(card\)\}/);
   assert(!/PERSON_REASONS\[card\.person_reason\]/.test(item), "the row no longer reads the bare reason");
   const detail = read("components/ops/WorkDetail.jsx");
-  assertMatch(detail, /` · \$\{personReasonLabel\(card\)\}`/);
+  assertMatch(detail, /\{tagged && <OpsChip tone="warning">\{personReasonLabel\(card\)\}<\/OpsChip>\}/);
   assert(!/PERSON_REASONS\[card\.person_reason\]/.test(detail), "the status chip no longer reads the bare reason");
 });
 

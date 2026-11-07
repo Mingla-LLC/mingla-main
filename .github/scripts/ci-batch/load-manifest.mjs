@@ -177,8 +177,10 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4294: re-sealed after the connector's tester PostgreSQL proof joined the pre-#1931 template suites' inventories.
 // #4294: re-sealed after merging origin/main (#4303 and #4296 rows kept beside the #4294 rows).
 // #4273: register the buyer/follower auto opt-in, honest-quote and account-opt-out migrations and their proofs.
-// #4273 polish: register the sent-previews migration, its two PostgreSQL proofs and the campaign-screen render proof.
-export const BOOTSTRAP_SHA256 = "7a29a6b58b9cfc402df0d7fcb5dee0a7ed5b1e04c854e37579e8fb800051406d";
+// #4270: register the brand plan migrations (20280427004270-20280427024270) and their proofs the same way.
+// #3645: register the unpaid-release-holds migration and its PostgreSQL proof the same way.
+// #4273 polish: register the sent-previews migration, its PostgreSQL proofs (implementor + tester) and the campaign-screen render proof.
+export const BOOTSTRAP_SHA256 = "d6b180c2f7afb6b93bc0790886ba1e935edfc0e554158c8f1749880f9d1ff8fa";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

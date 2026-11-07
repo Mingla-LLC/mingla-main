@@ -13,6 +13,7 @@
  */
 import {
   parseWebsitePath,
+  showsPublishStep,
   routeToRender,
   websiteNavGroups,
   websitePath,
@@ -196,4 +197,15 @@ describe("#2829 W9r copy follows the brand", () => {
   });
   // #2829 W11 — "no Website surface says restaurant" is a structural rule now
   // held by the Sites strict-grep gate (issue-2830-sites-foundation.mjs).
+});
+
+describe("#2830 setup's Check and publish step runs the draft check", () => {
+  it("counts the Publish section and setup's publish step, nothing else", () => {
+    const brand = "00000000-0000-4000-8000-000000002830";
+    expect(showsPublishStep(parseWebsitePath(brand, ["publish"], { part: null, step: null }))).toBe(true);
+    expect(showsPublishStep(parseWebsitePath(brand, ["setup"], { part: null, step: "publish" }))).toBe(true);
+    expect(showsPublishStep(parseWebsitePath(brand, ["setup"], { part: null, step: "brand" }))).toBe(false);
+    expect(showsPublishStep(parseWebsitePath(brand, ["setup"], { part: null, step: null }))).toBe(false);
+    expect(showsPublishStep(parseWebsitePath(brand, [], { part: null, step: null }))).toBe(false);
+  });
 });

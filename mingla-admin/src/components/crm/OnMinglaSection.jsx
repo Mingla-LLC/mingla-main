@@ -1,28 +1,31 @@
-// Issue #3980 — the top of a host card, in the artifact's order: what just
-// happened by itself, what needs attention (no owner, missing details) or
-// who owns it, then "On Mingla": the brand link, every upcoming dated thing
-// with its plain state (events, promised dates, repeating dates, promo
-// moments), past events, the form to add their first, next or another
-// event, and the work on this host. Steps and the Calendar fill in by
-// themselves from what is saved here.
-import { useCallback, useEffect, useRef, useState } from "react";
+// Issue #3980 — "On Mingla" on a host card: what just happened by itself,
+// then every upcoming dated thing with its plain state, and past events.
+//
+// Issue #4270 (Wave 2) — the block lists what the brand has on Mingla, read
+// by itself: events, experiences and trips, each with its kind, and a trip
+// or experience that is on right now ("Live now"). There is no form to add a
+// promised event any more (D9): hosts create events in the Host app. A
+// promised date already saved keeps Repeats and Cancel until it goes live or
+// is cancelled. Needs attention and the owner moved to Status; "Work on this
+// host" moved to To do (HostToDoSection); the brand shows once, under Brand
+// and team. useHostOnMingla reads the host card's one server read for all
+// three blocks.
+import { useState } from "react";
 import { Button } from "../ui/Button";
 import { SideLink } from "../ui/PanelStack";
-import { FixesList } from "../ops/FixesList";
 import { StatePill } from "../ops/StateDot";
 import { JustHappened } from "../ops/JustHappened";
 import { CONTROL_CLASS, Select } from "./fields";
 import { useToast } from "../../context/ToastContext";
 import * as ops from "../../services/opsService";
 import {
-  EVENT_TYPE_LABELS,
+  EVENT_KIND_WORDS,
   REPEAT_OPTIONS,
   dayLong,
   expectedCancelledWords,
   expectedSavedWords,
-  hostMissing,
+  hostPastRows,
   hostUpcomingRows,
-  isRecapWorkCard,
   opsErrorWords,
   requestKey,
   todayIso,
@@ -31,8 +34,6 @@ import {
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 const WORDS = "break-normal [overflow-wrap:normal] hyphens-none";
 const LABEL = "mb-1 block text-xs font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]";
-const EMPTY_FORM = { title: "", event_type: "event", expected_on: "", repeats: "none", city: "", note: "" };
-const VENUE_ICPS = ["restaurant_bar", "venue_gallery"];
 const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function calendarHref(kind, id, onDate) {
@@ -42,68 +43,25 @@ function calendarHref(kind, id, onDate) {
   return `#/content-calendar?${p.toString()}`;
 }
 
-function workWords(card) {
-  if (card.status === "person") return "Needs you";
-  if (card.status === "doing") return "In progress";
-  if (card.status === "done") return "Done";
-  return "To do";
-}
-
-export function OnMinglaSection({ record, online, me, ownerNames = [], onAssignMe, onFillIn }) {
+export function OnMinglaSection({ record, read, online }) {
   const { addToast } = useToast();
-  const [state, setState] = useState({ loading: true, data: null, error: null });
-  const [form, setForm] = useState(EMPTY_FORM);
-  const [fixes, setFixes] = useState([]);
   const [busy, setBusy] = useState(false);
   const [cancelling, setCancelling] = useState(null);
   const [cancelReason, setCancelReason] = useState("");
-  const seq = useRef(0);
   const id = record?.id;
-  const brandId = record?.brand_id || "";
-  const venue = VENUE_ICPS.includes(record?.icp);
-
-  const load = useCallback(async () => {
-    if (!id) return;
-    const mine = ++seq.current;
-    try {
-      const data = await ops.fetchHostOnMingla(id, todayIso());
-      if (mine === seq.current) setState({ loading: false, data, error: null });
-    } catch (error) {
-      if (mine === seq.current) setState((prev) => ({ loading: false, data: prev.data, error }));
-    }
-  }, [id]);
-  useEffect(() => { setState({ loading: true, data: null, error: null }); load(); }, [load, brandId]);
-  useEffect(() => { setForm((f) => ({ ...f, event_type: venue ? "promo_moment" : "event" })); }, [venue, id]);
+  const state = read || { loading: true, data: null, error: null };
+  const load = read?.retry || (() => {});
 
   const data = state.data;
   const today = todayIso();
-  const events = (Array.isArray(data?.events) ? data.events : []).filter((e) => e.start_on && e.start_on >= today);
+  // #4270 W2 (C-3): what is on right now stays listed, however long ago it began.
+  const events = (Array.isArray(data?.events) ? data.events : []).filter((e) => e.start_on && (e.start_on >= today || e.live));
   const expected = Array.isArray(data?.expected) ? data.expected : [];
   const open = expected.filter((x) => x.status === "open");
   const recent = expected.filter((x) => x.status === "fulfilled");
-  const past = Array.isArray(data?.past) ? data.past : [];
-  const work = Array.isArray(data?.work) ? data.work : [];
+  const past = hostPastRows(data?.past, data?.events);
   const series = open.find((x) => x.repeats && x.repeats !== "none");
   const upcoming = hostUpcomingRows(events, open, today);
-  const missing = hostMissing(record);
-  const noOwner = !(record?.owners || []).length;
-  const which = upcoming.length ? "another" : past.length || recent.length ? "their next" : "their first";
-
-  const save = async () => {
-    setBusy(true); setFixes([]);
-    const item = { record_id: id, title: form.title.trim(), event_type: form.event_type, expected_on: form.expected_on, repeats: form.repeats };
-    if (form.city.trim()) item.city = form.city.trim();
-    if (form.note.trim()) item.note = form.note.trim();
-    try {
-      const result = await ops.setExpectedEvent(item, requestKey("web_expected"));
-      addToast({ variant: "success", title: expectedSavedWords(result, "Saved. It’s on the Calendar and its steps are in Work.") });
-      setForm({ ...EMPTY_FORM, event_type: venue ? "promo_moment" : "event" });
-      await load();
-    } catch (error) {
-      if (Array.isArray(error?.fixes) && error.fixes.length) setFixes(error.fixes);
-      else addToast({ variant: "error", title: "Couldn’t save it", description: opsErrorWords(error) });
-    } finally { setBusy(false); }
-  };
   const cancel = async (x) => {
     setBusy(true);
     try {
@@ -131,41 +89,16 @@ export function OnMinglaSection({ record, online, me, ownerNames = [], onAssignM
     } finally { setBusy(false); }
   };
 
-  const field = (key) => ({ value: form[key], onChange: (e) => setForm((f) => ({ ...f, [key]: e.target.value })), disabled: busy || !online });
   const fid = (key) => `on-mingla-${id}-${key}`;
-  const canSave = online && !busy && form.title.trim().length >= 3 && /^\d{4}-\d{2}-\d{2}$/.test(form.expected_on);
-  const typeOptions = Object.entries(EVENT_TYPE_LABELS)
-    .filter(([value]) => value !== "promo_moment" || venue)
-    .map(([value, label]) => ({ value, label }));
 
   return (
-    <section aria-labelledby={`on-mingla-${id}`} className="flex min-w-0 flex-col gap-3">
+    <section aria-labelledby={`on-mingla-${id}`} data-host-section="on-mingla" className="flex min-w-0 flex-col gap-3">
       <JustHappened target={`host:${id}`} items={data?.changes} />
-
-      {noOwner || missing.length ? (
-        <div className="flex min-w-0 flex-col gap-1.5 rounded-xl bg-[var(--color-error-50)] px-3 py-2.5 text-[13px]">
-          <b className="text-[var(--color-error-700)]">Needs attention</b>
-          {noOwner && (
-            <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-              <span className="text-[var(--color-text-primary)]">No owner</span>
-              {me && <Button variant="secondary" size="sm" className="min-h-11" disabled={!online} onClick={onAssignMe}>Assign to me</Button>}
-            </div>
-          )}
-          {missing.length > 0 && (
-            <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-              <span className={`text-[var(--color-text-primary)] ${WORDS}`}>Missing {missing.join(", ")}</span>
-              <Button variant="secondary" size="sm" className="min-h-11" disabled={!online} onClick={() => onFillIn?.(missing[0])}>Fill in</Button>
-            </div>
-          )}
-        </div>
-      ) : (
-        <p className={`text-[13px] text-[var(--color-text-tertiary)] ${WORDS}`}>Owner: {ownerNames.join(", ")}</p>
-      )}
 
       <div className="flex min-w-0 flex-col gap-2 border-t border-[var(--gray-200)] pt-3">
         <h3 id={`on-mingla-${id}`} className="flex min-w-0 flex-wrap items-center justify-between gap-2 text-[14px] font-semibold text-[var(--color-text-primary)]">
           <span>On Mingla</span>
-          {!state.loading && <span className="text-[12.5px] font-medium text-[var(--color-text-tertiary)]">{data?.brand ? "Brand linked" : "Not on Mingla yet"}</span>}
+          {!state.loading && <span className="text-[12.5px] font-medium text-[var(--color-text-tertiary)]">{data?.brand ? "From the brand, automatic" : "Not on Mingla yet"}</span>}
         </h3>
         {state.loading ? (
           <div role="status" className="flex flex-col gap-2"><span className="sr-only">Loading this host’s events…</span><div className="h-3 w-2/3 animate-pulse rounded bg-[var(--gray-100)]" /><div className="h-3 w-1/2 animate-pulse rounded bg-[var(--gray-100)]" /></div>
@@ -178,7 +111,7 @@ export function OnMinglaSection({ record, online, me, ownerNames = [], onAssignM
           <>
             {!data?.brand && <p className={`rounded-xl bg-[var(--gray-100)] px-3 py-2 text-[13px] text-[var(--color-text-primary)] ${WORDS}`}>When they sign up with this email, phone or handle, Mingla links the brand by itself.</p>}
             {upcoming.length === 0 ? (
-              <p className="text-[13px] text-[var(--color-text-tertiary)]">No upcoming event.</p>
+              <p className="text-[13px] text-[var(--color-text-tertiary)]">No events, experiences or trips coming up. Hosts create them in the Host app.</p>
             ) : (
               <ul className="flex min-w-0 flex-col gap-1">
                 {upcoming.map((u) => (
@@ -186,9 +119,15 @@ export function OnMinglaSection({ record, online, me, ownerNames = [], onAssignM
                     <SideLink side={{ kind: u.kind, id: u.id }} href={calendarHref(u.kind, u.id, u.on)} className={`flex min-h-11 w-full min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-1 rounded-lg border border-[var(--gray-200)] px-3 py-2 hover:bg-[var(--gray-50)] ${FOCUS}`}>
                       <span className="min-w-0 flex-1">
                         <span className={`block text-[13px] font-semibold text-[var(--color-text-primary)] ${WORDS}`}>{u.title}</span>
-                        <span className={`block text-[12px] text-[var(--color-text-tertiary)] ${WORDS}`}>{dayLong(u.on)}{u.repeats ? " · repeats" : ""}{u.moment ? " · promo moment" : ""}</span>
+                        <span className={`block text-[12px] text-[var(--color-text-tertiary)] ${WORDS}`}>
+                          <span data-event-kind={u.eventKind || "event"} className="font-semibold text-[var(--color-text-secondary)]">{EVENT_KIND_WORDS[u.eventKind] || "Event"}</span>
+                          {" · "}{dayLong(u.on)}{u.repeats ? " · repeats" : ""}{u.moment ? " · promo moment" : ""}
+                        </span>
                       </span>
-                      <StatePill state={u.state} />
+                      <span className="flex shrink-0 items-center gap-1.5">
+                        {u.live && <span data-live-now="" className="rounded-full bg-[var(--color-success-50)] px-2 py-0.5 text-[11.5px] font-semibold text-[var(--color-success-700)]">Live now</span>}
+                        {u.state && <StatePill state={u.state} />}
+                      </span>
                     </SideLink>
                     {u.row && (cancelling === u.id ? (
                       <div className="mt-1 flex min-w-0 flex-wrap items-end gap-2">
@@ -247,57 +186,6 @@ export function OnMinglaSection({ record, online, me, ownerNames = [], onAssignM
         )}
       </div>
 
-      <div className="flex min-w-0 flex-col gap-2 border-t border-[var(--gray-200)] pt-3">
-        <h4 className="text-[13px] font-semibold text-[var(--color-text-primary)]">Add {which} {venue ? "event or promo moment" : "event"}</h4>
-        <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
-          <div>
-            <label htmlFor={fid("title")} className={LABEL}>What</label>
-            <input id={fid("title")} maxLength={160} className={`${CONTROL_CLASS} min-h-11`} placeholder={venue ? "Detty December menu" : "Name of the event"} {...field("title")} />
-          </div>
-          <div>
-            <label htmlFor={fid("date")} className={LABEL}>Date</label>
-            <input id={fid("date")} type="date" min={today} className={`${CONTROL_CLASS} min-h-11`} {...field("expected_on")} />
-          </div>
-          <div>
-            <label htmlFor={fid("repeats")} className={LABEL}>Repeats</label>
-            <Select id={fid("repeats")} className="min-h-11" options={REPEAT_OPTIONS} {...field("repeats")} />
-          </div>
-          <div>
-            <label htmlFor={fid("type")} className={LABEL}>Type</label>
-            <Select id={fid("type")} className="min-h-11" options={typeOptions} {...field("event_type")} />
-          </div>
-          <div>
-            <label htmlFor={fid("city")} className={LABEL}>City (optional)</label>
-            <input id={fid("city")} maxLength={120} className={`${CONTROL_CLASS} min-h-11`} {...field("city")} />
-          </div>
-          <div>
-            <label htmlFor={fid("note")} className={LABEL}>Note (optional)</label>
-            <input id={fid("note")} maxLength={500} className={`${CONTROL_CLASS} min-h-11`} {...field("note")} />
-          </div>
-          {fixes.length > 0 && <div className="sm:col-span-2"><FixesList title={`Not saved: ${fixes.length} ${fixes.length === 1 ? "thing" : "things"} to fix`} fixes={fixes} /></div>}
-          <div className="sm:col-span-2">
-            <Button size="sm" className="min-h-11 max-w-full whitespace-normal text-left" loading={busy} disabled={!canSave} onClick={save}>Save. Steps and Calendar fill in by themselves</Button>
-          </div>
-        </div>
-      </div>
-
-      <div className="flex min-w-0 flex-col gap-1 border-t border-[var(--gray-200)] pt-3">
-        <h4 className="text-[13px] font-semibold text-[var(--color-text-primary)]">Work on this host</h4>
-        {state.loading ? null : work.length === 0 ? (
-          <p className="text-[13px] text-[var(--color-text-tertiary)]">Nothing open.</p>
-        ) : (
-          <ul className="flex min-w-0 flex-col gap-1">
-            {work.map((c) => (
-              <li key={c.id}>
-                <SideLink side={{ kind: "card", id: c.id }} href={`#/work-board?card=${c.id}`} className={`flex min-h-11 w-full min-w-0 flex-wrap items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-[var(--gray-50)] ${FOCUS}`} aria-label={`${c.title}: ${workWords(c)}. Open the card`}>
-                  <span className={`min-w-0 flex-1 text-[13px] text-[var(--color-text-primary)] ${WORDS}`}>{c.title}{isRecapWorkCard(c) ? <span className="ml-2 inline-flex rounded-full bg-[var(--color-brand-50)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-brand-700)]">T+2 recap</span> : null}</span>
-                  <span className="whitespace-nowrap text-[12.5px] text-[var(--color-text-tertiary)]">{workWords(c)}</span>
-                </SideLink>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
     </section>
   );
 }

@@ -17,6 +17,7 @@ import {
   loadAllCoverageRows,
 } from "../_shared/placeGoogleMerge.ts";
 import { derivePoolCategory } from "../_shared/derivePoolCategory.ts";
+import { seedingGoogleApiKey } from "../_shared/seedingGoogleKey.ts";
 import {
   COST_PER_NEARBY_SEARCH,
   COST_PER_PHOTO,
@@ -68,7 +69,8 @@ import { seedCountryFields } from "./countryLogic.ts";
 //    run_completeness_check, city_search_status, plan_city_box, apply_city_box,
 //    places_outside_box, retired_tile_history
 
-const GOOGLE_API_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY")!;
+// #4276: seeding spends GOOGLE_SEEDING_API_KEY when set, else GOOGLE_MAPS_API_KEY.
+const GOOGLE_API_KEY = seedingGoogleApiKey();
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 

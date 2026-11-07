@@ -14,6 +14,11 @@
  * SPEC §3.2 OBS-1).
  *
  * Per Cycle 12 SPEC §4.11 / §5/J-D4.
+ *
+ * #4271 door polish: one subhead says the buyer stays checked in (the footer
+ * note and "Total updates as you select." are gone), a 44pt header close
+ * replaces Cancel, steppers are 44pt and name the ticket for screen readers,
+ * and the reason has one helper line (utils/refundReason.ts).
  */
 
 import React, {
@@ -46,13 +51,10 @@ import {
 import type { DoorSaleRecord } from "../../types/doorSales";
 import { formatCurrency } from "../../utils/currency";
 import { useRefundDoorSale } from "../../hooks/useEventDoorSales";
-import {
-  refundReasonHelperText,
-  refundReasonSendGate,
-  refundReasonTooShortMessage,
-} from "../../utils/refundReason";
+import { refundReasonHelper, refundReasonSendGate } from "../../utils/refundReason";
 
 import { Button } from "../ui/Button";
+import { IconChrome } from "../ui/IconChrome";
 import { Sheet } from "../ui/Sheet";
 
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
@@ -63,6 +65,7 @@ import {
 
 const REASON_MIN = 10;
 const REASON_MAX = 200;
+export const DOOR_REFUND_SUBHEAD = "The buyer stays checked in. Only the money goes back.";
 export interface DoorRefundSheetProps {
   visible: boolean;
   sale: DoorSaleRecord;
@@ -229,13 +232,35 @@ export const DoorRefundSheet: React.FC<DoorRefundSheetProps> = ({
     onClose();
   }, [submitting, onClose]);
 
+  const reasonHelper = refundReasonHelper({
+    trimmedLength: trimmedLen,
+    length: reason.length,
+    minLength: REASON_MIN,
+    maxLength: REASON_MAX,
+    pressedShort: showReasonError,
+  });
+  const fullyRefunded = refundableLines.length === 0;
+
   return (
     <Sheet visible={visible} onClose={handleClose} snapPoint="full">
       <View style={styles.body}>
-        <Text style={styles.title}>Refund door sale</Text>
-        <Text style={styles.subhead}>
-          Pick which tickets to refund. The buyer stays checked in either way.
-        </Text>
+        <View style={styles.header}>
+          <View style={styles.headerText}>
+            <Text style={styles.title} accessibilityRole="header">
+              Refund door sale
+            </Text>
+            {/* OBS-1: said once. Refunds never undo the check-in. */}
+            <Text style={styles.subhead}>{DOOR_REFUND_SUBHEAD}</Text>
+          </View>
+          <IconChrome
+            icon="close"
+            size={44}
+            onPress={handleClose}
+            disabled={submitting}
+            accessibilityLabel="Close refund"
+            testID="door-refund-close"
+          />
+        </View>
 
         <ScrollView
           style={styles.scroll}
@@ -245,16 +270,13 @@ export const DoorRefundSheet: React.FC<DoorRefundSheetProps> = ({
           showsVerticalScrollIndicator={false}
         >
           {/* Refund line picker */}
-          <View style={styles.summaryCard}>
-            {refundableLines.length === 0 ? (
-              <Text style={styles.partialHelper}>
-                Already fully refunded.
-              </Text>
-            ) : (
-              <>
-                <Text style={styles.partialHelper}>
-                  Total updates as you select.
-                </Text>
+          {fullyRefunded ? (
+            <View style={styles.lineRow}>
+              <Text style={styles.lineSubline}>Already fully refunded.</Text>
+            </View>
+          ) : (
+            <>
+              <View style={styles.linesList}>
                 {refundableLines.map((line) => {
                   const partialState = perLineRefund.find(
                     (p) => p.ticketTypeId === line.ticketTypeId,
@@ -264,14 +286,18 @@ export const DoorRefundSheet: React.FC<DoorRefundSheetProps> = ({
                   };
                   const maxRefundable =
                     line.quantity - line.refundedQuantity;
+                  const name = line.ticketNameAtSale;
                   return (
-                    <View key={line.ticketTypeId} style={styles.lineRow}>
+                    <View
+                      key={line.ticketTypeId}
+                      style={[styles.lineRow, partialState.selectedQty > 0 && styles.lineRowPicked]}
+                    >
                       <View style={styles.lineCol}>
-                        <Text style={styles.lineName} numberOfLines={1}>
-                          {line.ticketNameAtSale}
+                        <Text style={styles.lineName} numberOfLines={2} accessibilityLabel={name}>
+                          {name}
                         </Text>
                         <Text style={styles.lineSubline}>
-                          {maxRefundable} remaining ·{" "}
+                          {maxRefundable} left ·{" "}
                           {line.isFreeAtSale
                             ? "Free"
                             : formatCurrency(line.unitPriceGbpAtSale, sale.currency)}{" "}
@@ -291,7 +317,7 @@ export const DoorRefundSheet: React.FC<DoorRefundSheetProps> = ({
                             partialState.selectedQty === 0 || submitting
                           }
                           accessibilityRole="button"
-                          accessibilityLabel="Decrease refund quantity"
+                          accessibilityLabel={`Refund one fewer ${name}`}
                           style={[
                             styles.stepperBtn,
                             (partialState.selectedQty === 0 || submitting) &&
@@ -316,7 +342,7 @@ export const DoorRefundSheet: React.FC<DoorRefundSheetProps> = ({
                             submitting
                           }
                           accessibilityRole="button"
-                          accessibilityLabel="Increase refund quantity"
+                          accessibilityLabel={`Refund one more ${name}`}
                           style={[
                             styles.stepperBtn,
                             (partialState.selectedQty >= maxRefundable ||
@@ -330,115 +356,88 @@ export const DoorRefundSheet: React.FC<DoorRefundSheetProps> = ({
                     </View>
                   );
                 })}
-                <View style={styles.summaryDivider} />
-                <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>Refund total</Text>
-                  <Text style={styles.summaryValueBold}>
-                    {formatCurrency(refundTotalGbp, sale.currency)}
-                  </Text>
-                </View>
-              </>
-            )}
-          </View>
+              </View>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Refund total</Text>
+                <Text style={styles.summaryValueBold}>
+                  {formatCurrency(refundTotalGbp, sale.currency)}
+                </Text>
+              </View>
 
-          {/* Required reason input */}
-          <View style={styles.reasonSection}>
-            <Text style={styles.reasonLabel}>
-              Why are you issuing this refund?{" "}
-              <Text style={styles.required}>*</Text>
-            </Text>
-            <View
-              style={[
-                styles.reasonInputWrap,
-                (trimmedLen > 0 || showReasonError) &&
-                  !reasonValid &&
-                  styles.reasonInputError,
-              ]}
-            >
-              <TextInput
-                ref={reasonInputRef}
-                value={reason}
-                onChangeText={setReason}
-                placeholder="e.g. Buyer changed their mind; venue change; double-charged"
-                placeholderTextColor={textTokens.quaternary}
-                multiline
-                numberOfLines={4}
-                maxLength={REASON_MAX}
-                style={styles.reasonInput}
-                editable={!submitting}
-                accessibilityLabel="Refund reason"
-              />
-            </View>
-            <View style={styles.reasonMetaRow}>
-              <Text
-                style={[
-                  styles.reasonHelper,
-                  trimmedLen >= REASON_MIN && styles.reasonHelperOk,
-                ]}
-              >
-                {refundReasonHelperText(trimmedLen, REASON_MIN)}
+              {/* Required reason input: the helper line says it's required. */}
+              <View style={styles.reasonSection}>
+                <Text style={styles.reasonLabel}>Reason</Text>
+                <View
+                  style={[
+                    styles.reasonInputWrap,
+                    showReasonError && styles.reasonInputError,
+                  ]}
+                >
+                  <TextInput
+                    ref={reasonInputRef}
+                    value={reason}
+                    onChangeText={setReason}
+                    placeholder="e.g. Charged twice at the door"
+                    placeholderTextColor={textTokens.quaternary}
+                    multiline
+                    numberOfLines={4}
+                    maxLength={REASON_MAX}
+                    style={styles.reasonInput}
+                    editable={!submitting}
+                    accessibilityLabel={`Refund reason, required, at least ${REASON_MIN} characters`}
+                  />
+                </View>
+                <View style={styles.reasonMetaRow}>
+                  <Text
+                    style={[
+                      styles.reasonHelper,
+                      reasonHelper.tone === "error" && styles.reasonHelperError,
+                    ]}
+                    accessibilityRole={reasonHelper.tone === "error" ? "alert" : undefined}
+                    testID={reasonHelper.tone === "error" ? "door-refund-reason-too-short" : "door-refund-reason-helper"}
+                  >
+                    {reasonHelper.text}
+                  </Text>
+                  {reasonHelper.counter !== null ? (
+                    <Text style={styles.reasonCount}>{reasonHelper.counter}</Text>
+                  ) : null}
+                </View>
+              </View>
+            </>
+          )}
+        </ScrollView>
+
+        {/* Sticky bottom CTA. Fully refunded: nothing to send, only the close X. */}
+        {fullyRefunded ? null : (
+          <View style={styles.actions}>
+            {submitError !== null ? (
+              <Text style={styles.submitError} accessibilityRole="alert">
+                {submitError}
               </Text>
-              <Text style={styles.reasonCount}>
-                {trimmedLen} / {REASON_MAX}
-              </Text>
-            </View>
-            {showReasonError ? (
-              <Text
-                style={styles.submitError}
-                accessibilityRole="alert"
-                testID="door-refund-reason-too-short"
-              >
-                {refundReasonTooShortMessage(REASON_MIN)}
+            ) : null}
+            <Button
+              label={`Refund ${formatCurrency(refundTotalGbp, sale.currency)}`}
+              onPress={handleConfirm}
+              variant="destructive"
+              size="lg"
+              fullWidth
+              loading={submitting}
+              disabled={!sendGate.enabled}
+              accessibilityLabel="Send refund"
+            />
+            {!canRefund ? (
+              <Text style={styles.gateCaption}>
+                {gateCaptionFor("REFUND_DOOR_SALE")}
               </Text>
             ) : null}
           </View>
-
-          {/* OBS-1 footer note */}
-          <View style={styles.footerNote}>
-            <Text style={styles.footerCopy}>
-              Refunds don&apos;t un-check-in the buyer. They were physically at
-              the door — only the money is returned.
-            </Text>
-          </View>
-        </ScrollView>
-
-        {/* Sticky bottom CTAs */}
-        <View style={styles.actions}>
-          <Button
-            label={`Refund ${formatCurrency(refundTotalGbp, sale.currency)}`}
-            onPress={handleConfirm}
-            variant="destructive"
-            size="lg"
-            fullWidth
-            loading={submitting}
-            disabled={!sendGate.enabled}
-            accessibilityLabel="Send refund"
-          />
-          {!canRefund ? (
-            <Text style={styles.gateCaption}>
-              {gateCaptionFor("REFUND_DOOR_SALE")}
-            </Text>
-          ) : null}
-          {submitError !== null ? (
-            <Text style={styles.submitError} accessibilityRole="alert">
-              {submitError}
-            </Text>
-          ) : null}
-          <View style={styles.actionSpacer} />
-          <Button
-            label="Cancel"
-            onPress={handleClose}
-            variant="ghost"
-            size="md"
-            fullWidth
-            disabled={submitting}
-            accessibilityLabel="Cancel refund"
-          />
-        </View>
+        )}
       </View>
     </Sheet>
   );
 };
+
+const STEPPER_BUTTON = 44;
 
 const styles = StyleSheet.create({
   body: {
@@ -447,18 +446,24 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xl,
     flex: 1,
   },
+  header: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  headerText: {
+    flex: 1,
+    minWidth: 0,
+  },
   title: {
-    fontSize: 22,
+    ...typography.h3,
     fontWeight: "700",
     color: textTokens.primary,
-    letterSpacing: -0.2,
-    marginBottom: spacing.xs,
   },
   subhead: {
-    fontSize: 14,
+    ...typography.bodySm,
     color: textTokens.secondary,
-    lineHeight: 20,
-    marginBottom: spacing.lg,
   },
   scroll: {
     flex: 1,
@@ -467,26 +472,25 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: spacing.sm,
   },
-  summaryCard: {
-    padding: spacing.md,
+  linesList: {
+    gap: spacing.xs,
+  },
+  // Same row as the sale sheet.
+  lineRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     borderWidth: 1,
     borderColor: glass.border.profileBase,
     backgroundColor: glass.tint.profileBase,
-    marginBottom: spacing.md,
-  },
-  partialHelper: {
-    fontSize: 13,
-    color: textTokens.secondary,
-    lineHeight: 18,
-    marginBottom: spacing.sm,
-  },
-  lineRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: spacing.sm,
     gap: spacing.sm,
+  },
+  lineRowPicked: {
+    borderColor: accent.border,
+    backgroundColor: accent.faint,
   },
   lineCol: {
     flex: 1,
@@ -494,11 +498,13 @@ const styles = StyleSheet.create({
   },
   lineName: {
     fontSize: 14,
-    fontWeight: "500",
+    lineHeight: 20,
+    fontWeight: "600",
     color: textTokens.primary,
   },
   lineSubline: {
     fontSize: 12,
+    lineHeight: 16,
     color: textTokens.tertiary,
     marginTop: 2,
   },
@@ -506,10 +512,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
+    width: STEPPER_BUTTON * 2 + 22 + spacing.sm * 2,
   },
   stepperBtn: {
-    width: 32,
-    height: 32,
+    width: STEPPER_BUTTON,
+    height: STEPPER_BUTTON,
     borderRadius: 999,
     overflow: "hidden",
     alignItems: "center",
@@ -522,35 +529,33 @@ const styles = StyleSheet.create({
     opacity: 0.4,
   },
   stepperBtnText: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: "600",
     color: textTokens.primary,
   },
   stepperValue: {
     fontSize: 16,
-    fontWeight: "600",
+    fontWeight: "700",
     color: textTokens.primary,
-    minWidth: 24,
+    width: 22,
     textAlign: "center",
     fontVariant: ["tabular-nums"],
-  },
-  summaryDivider: {
-    marginVertical: spacing.sm,
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
   },
   summaryRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "baseline",
-    paddingVertical: 4,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    marginBottom: spacing.sm,
   },
   summaryLabel: {
-    fontSize: 14,
+    fontSize: 13,
     color: textTokens.secondary,
   },
   summaryValueBold: {
-    fontSize: 18,
+    fontSize: 17,
+    lineHeight: 22,
     color: textTokens.primary,
     fontWeight: "700",
     fontVariant: ["tabular-nums"],
@@ -563,9 +568,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: textTokens.primary,
     marginBottom: spacing.xs,
-  },
-  required: {
-    color: accent.warm,
   },
   reasonInputWrap: {
     borderWidth: 1,
@@ -590,41 +592,33 @@ const styles = StyleSheet.create({
       ? ({ outlineWidth: 0 } as Record<string, number>)
       : null),
   },
+  // One line, fixed height: it goes quiet when valid without the layout jumping.
   reasonMetaRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-start",
+    gap: spacing.sm,
     marginTop: 6,
   },
   reasonHelper: {
-    fontSize: 11,
+    flex: 1,
+    minHeight: 16,
+    fontSize: 12,
+    lineHeight: 16,
     color: textTokens.tertiary,
   },
-  reasonHelperOk: {
-    color: textTokens.secondary,
+  reasonHelperError: {
+    color: semantic.errorText,
   },
   reasonCount: {
-    fontSize: 11,
+    fontSize: 12,
+    lineHeight: 16,
     color: textTokens.tertiary,
     fontVariant: ["tabular-nums"],
   },
-  footerNote: {
-    padding: spacing.sm + 2,
-    borderRadius: radiusTokens.md,
-    borderWidth: 1,
-    borderColor: "rgba(59, 130, 246, 0.24)",
-    backgroundColor: "rgba(59, 130, 246, 0.10)",
-  },
-  footerCopy: {
-    fontSize: 12,
-    lineHeight: 17,
-    color: textTokens.secondary,
-  },
   actions: {
     marginTop: spacing.sm,
-  },
-  actionSpacer: {
-    height: spacing.sm,
+    gap: spacing.xs,
   },
   gateCaption: {
     fontSize: 12,
@@ -634,8 +628,8 @@ const styles = StyleSheet.create({
   },
   submitError: {
     fontSize: 12,
-    color: semantic.error,
-    marginTop: 6,
+    lineHeight: 16,
+    color: semantic.errorText,
     textAlign: "center",
   },
 });

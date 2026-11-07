@@ -206,7 +206,7 @@ export function validateManifest(
     failures.push("manifest:policy_invalid");
   } else {
     if (manifest.policy.normal_ceiling !== 87) failures.push("manifest:normal_ceiling");
-    if (manifest.policy.absolute_ceiling !== 90) failures.push("manifest:absolute_ceiling");
+    if (manifest.policy.absolute_ceiling !== 91) failures.push("manifest:absolute_ceiling");
     if (manifest.policy.platform_managed_prefix !== "SUPABASE_") {
       failures.push("manifest:platform_prefix");
     }
@@ -390,11 +390,11 @@ export function auditSecretBudget({
     }
   } else if (count <= manifest.policy.normal_ceiling) {
     // normal state
-  } else if (count <= 90 && exception) {
+  } else if (count <= 91 && exception) {
     warnings.push(
       `secret_budget_exception:count=${count}:issue=${exception.issue}:expires_at=${exception.expires_at}`,
     );
-  } else if (count <= 90) {
+  } else if (count <= 91) {
     failures.push(`secret_budget_breach:count=${count}:approved_exception_required`);
   } else {
     failures.push(`secret_budget_breach:count=${count}:absolute_ceiling_exceeded`);

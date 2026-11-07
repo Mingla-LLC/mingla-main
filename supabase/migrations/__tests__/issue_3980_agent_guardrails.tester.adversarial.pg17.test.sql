@@ -26,8 +26,9 @@
 --            set done through an update, lift a go-live block, name an owner
 --            who is not or no longer on the team, start or close a card its
 --            person does not own, or push back a card that needs a person;
---            leaving Needs a person needs a real reason, which is logged and
---            told to watchers; the browser cannot forge an agent request row
+--            (#4270: a Send, Spend or Publish tag on a To do card) taking
+--            the tag off needs a real reason, which is logged and told to
+--            watchers; the browser cannot forge an agent request row
 --   X-ROLES  owner, admin, Sales and marketing, Founding partner, a removed
 --            teammate and someone off the team against every owner/admin
 --            and owner-only work function
@@ -492,25 +493,26 @@ begin
   v := pg_temp.tx_work('GC', 'push_back', format('{"id":"%s","expected_revision":%s,"kind":"already_done","reason":"The giveaway was opened last week already.","proof":[{"kind":"text","text":"Giveaway was open"}]}', v_promo, pg_temp.tx_rev(v_promo)));
   perform pg_temp.tx_check('X-AGENT', 'or push it back as already done', pg_temp.tx_get(v, 'error', 'token'), 'blocked');
 
-  -- Needs a person, and leaving it
+  -- Needs a person (#4270: a Spend tag on a To do card), and taking the tag off
   v_person := pg_temp.tx_card('growth', 'X3980 Spend waits', '["gia.x3980@test.local"]', '["abe.x3980@test.local"]', ',"person_reason":"spend"');
-  perform pg_temp.tx_check('X-AGENT', 'a spend card waits for a person', (select status from public.ops_work_cards where id = v_person::uuid), 'person');
+  perform pg_temp.tx_check('X-AGENT', 'a spend card waits for a person in To do with its tag', (select status || '/' || person_reason from public.ops_work_cards where id = v_person::uuid), 'todo/spend');
   v := pg_temp.tx_work('GC', 'close_work', format('{"id":"%s","expected_revision":%s,"proof":[{"kind":"text","text":"Spend approved by me"}]}', v_person, pg_temp.tx_rev(v_person)));
   perform pg_temp.tx_check('X-AGENT', 'an agent cannot close it', pg_temp.tx_get(v, 'error', 'token'), 'people_only');
   v := pg_temp.tx_work('GC', 'push_back', format('{"id":"%s","expected_revision":%s,"kind":"declined","reason":"We decided the spend is not needed."}', v_person, pg_temp.tx_rev(v_person)));
   perform pg_temp.tx_check('X-AGENT', 'it cannot push that card back', pg_temp.tx_get(v, 'error', 'token'), 'people_only');
-  v := pg_temp.tx_work('GC', 'update_work', format('{"id":"%s","expected_revision":%s,"changes":{"status":"todo"}}', v_person, pg_temp.tx_rev(v_person)));
-  perform pg_temp.tx_check('X-AGENT', 'moving it back to To do without a reason is refused', pg_temp.tx_get(v, 'error', 'token'), 'reason_required');
-  v := pg_temp.tx_work('GC', 'update_work', format('{"id":"%s","expected_revision":%s,"changes":{"status":"doing","reason":"   "}}', v_person, pg_temp.tx_rev(v_person)));
+  v := pg_temp.tx_work('GC', 'update_work', format('{"id":"%s","expected_revision":%s,"changes":{"person_reason":null}}', v_person, pg_temp.tx_rev(v_person)));
+  perform pg_temp.tx_check('X-AGENT', 'taking the tag off without a reason is refused', pg_temp.tx_get(v, 'error', 'token'), 'reason_required');
+  v := pg_temp.tx_work('GC', 'update_work', format('{"id":"%s","expected_revision":%s,"changes":{"person_reason":null,"reason":"   "}}', v_person, pg_temp.tx_rev(v_person)));
   perform pg_temp.tx_check('X-AGENT', 'a reason of only spaces is no reason', pg_temp.tx_get(v, 'error', 'token'), 'reason_required');
-  perform pg_temp.tx_check('X-AGENT', 'the card still needs a person', (select status || '/' || person_reason from public.ops_work_cards where id = v_person::uuid), 'person/spend');
-  v := pg_temp.tx_work('GC', 'update_work', format('{"id":"%s","expected_revision":%s,"changes":{"status":"todo","reason":"The host is paying for the ads herself."}}', v_person, pg_temp.tx_rev(v_person)));
-  perform pg_temp.tx_check('X-AGENT', 'with a reason it moves back', pg_temp.tx_get(v, 'result', 'card', 'status'), 'todo');
+  v := pg_temp.tx_work('GC', 'update_work', format('{"id":"%s","expected_revision":%s,"changes":{"status":"doing"}}', v_person, pg_temp.tx_rev(v_person)));
+  perform pg_temp.tx_check('X-AGENT', 'the card still needs a person: moving it to In progress keeps the tag', (select status || '/' || person_reason from public.ops_work_cards where id = v_person::uuid), 'doing/spend');
+  v := pg_temp.tx_work('GC', 'update_work', format('{"id":"%s","expected_revision":%s,"changes":{"status":"todo","person_reason":null,"reason":"The host is paying for the ads herself."}}', v_person, pg_temp.tx_rev(v_person)));
+  perform pg_temp.tx_check('X-AGENT', 'with a reason the tag comes off', (select status || '/' || coalesce(person_reason, '-') from public.ops_work_cards where id = v_person::uuid), 'todo/-');
   perform pg_temp.tx_like('X-AGENT', 'the reason is in the agent log',
     (select summary from public.ops_agent_log where card_id = v_person::uuid order by id desc limit 1), '%The host is paying for the ads herself.%');
   perform pg_temp.tx_check('X-AGENT', 'and the watcher is told',
     (select count(*) from public.team_mentions m join tx_people p on p.id = m.target_user_id
-      where m.source_kind = 'work_card' and p.who = 'admin' and m.body_excerpt like '%back to To do from Needs a person%')::text, '1');
+      where m.source_kind = 'work_card' and p.who = 'admin' and m.body_excerpt like '%took the Spend tag off%')::text, '1');
 
   -- the browser cannot pretend to be an agent
   perform pg_temp.tx_like('X-AGENT', 'a signed-in person cannot write an agent request row',

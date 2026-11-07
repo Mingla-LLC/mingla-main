@@ -14,7 +14,7 @@ import { EventSteps } from "./EventSteps";
 import { JustHappened } from "./JustHappened";
 import { useOpsAnchor } from "../../hooks/useOpsCalendar";
 import { buildCrmHash } from "../../lib/crmUrl";
-import { EVENT_TYPE_LABELS, WORK_STATUSES, dayLabel, dayLong, opsErrorWords } from "../../lib/opsModel";
+import { EVENT_TYPE_LABELS, WORK_STATUSES, dayLabel, dayLong, isTagged, opsErrorWords, personReasonLabel } from "../../lib/opsModel";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 const LINK = `inline-flex min-h-11 items-center rounded-full border border-[var(--gray-300)] px-3 text-[12.5px] font-semibold text-[var(--color-text-primary)] hover:bg-[var(--gray-50)] ${FOCUS}`;
@@ -95,7 +95,7 @@ const SelectedEvent = forwardRef(function SelectedEvent({ selection, onBack, emb
                 <li key={c.id}>
                   <SideLink side={{ kind: "card", id: c.id }} href={`#/work-board?card=${c.id}`} className={`flex min-h-11 w-full min-w-0 flex-wrap items-start justify-between gap-2 rounded-lg px-1 py-1.5 hover:bg-[var(--gray-50)] ${FOCUS}`}>
                     <span className={`min-w-0 flex-1 text-[13px] text-[var(--color-text-primary)] ${WORDS}`}>Card {c.number}: {c.title}{c.due_on ? ` · due ${dayLabel(c.due_on)}` : ""}</span>
-                    <OpsChip tone={c.status === "done" ? "success" : c.blocked ? "error" : "brand"} className="shrink-0 whitespace-nowrap">{c.blocked && c.status !== "done" ? "Blocked" : WORK_STATUSES.find((s) => s.value === c.status)?.label || c.status}</OpsChip>
+                    <OpsChip tone={c.status === "done" ? "success" : c.blocked ? "error" : isTagged(c) ? "warning" : "brand"} className="shrink-0 whitespace-nowrap">{c.blocked && c.status !== "done" ? "Blocked" : isTagged(c) ? personReasonLabel(c) : WORK_STATUSES.find((s) => s.value === c.status)?.label || c.status}</OpsChip>
                   </SideLink>
                 </li>
               ))}
