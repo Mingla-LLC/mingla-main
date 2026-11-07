@@ -58,8 +58,9 @@ Deno.test("#3980 W2 the selected event lives in the address", () => {
 });
 
 Deno.test("#3980 W2 launch kit chips say what is true", () => {
-  assertEquals(kitStateChip({ state: "card", card: { status: "doing" } }), { label: "Doing", tone: "brand" });
-  assertEquals(kitStateChip({ state: "card", card: { status: "person" } }), { label: "Needs a person", tone: "warning" });
+  // #4270: In progress, and a tagged To do card is the warning tone.
+  assertEquals(kitStateChip({ state: "card", card: { status: "doing" } }), { label: "In progress", tone: "brand" });
+  assertEquals(kitStateChip({ state: "card", card: { status: "todo", person_reason: "send" } }), { label: "To do", tone: "warning" });
   assertEquals(kitStateChip({ state: "card", card: { status: "todo", blocked: true } }), { label: "Blocked", tone: "error" });
   assertEquals(kitStateChip({ state: "done", card: { status: "done" } }), { label: "Done", tone: "success" });
   assertEquals(kitStateChip({ state: "done" }), { label: "Done", tone: "success" });
@@ -131,24 +132,25 @@ Deno.test("#3980 W2 the host card's On Mingla section: hosts only, its words, no
   const section = read("components/crm/OnMinglaSection.jsx");
   // [TEST-MOD-APPROVED #3980] synced Wave 3 (R1 host card, artifact hostCard()): the brand link words, upcoming dated
   // things with their state, Add their first|next|another event, Work on this host.
+  // #4270 W2: no form to add a promised event (D9) and the work moved to To
+  // do (HostToDoSection); the brand shows once, under Brand and team.
   for (const words of [
     "On Mingla",
-    "Brand linked",
+    "From the brand, automatic",
     "Not on Mingla yet",
     "When they sign up with this email, phone or handle, Mingla links the brand by itself.",
-    "No upcoming event.",
+    "No events, experiences or trips coming up. Hosts create them in the Host app.",
     "Cancel this promised event",
-    "Save. Steps and Calendar fill in by themselves",
-    "Saved. It’s on the Calendar and its steps are in Work.",
-    "Work on this host",
-    "Nothing open.",
   ]) assert(section.includes(words), words);
+  for (const gone of ["Save. Steps and Calendar fill in by themselves", "Work on this host", "Brand linked"]) assert(!section.includes(gone), gone);
+  assert(read("components/crm/HostToDoSection.jsx").includes("Nothing open."), "To do says Nothing open.");
   for (const banned of ["Drafts to send", "Draft, not sent", "@mention", "mention", "will get an email", "Getting started"]) {
     assert(!section.includes(banned), banned);
   }
   const drawer = read("components/crm/RecordDrawer.jsx");
   // [TEST-MOD-APPROVED #3980] synced Wave 3 (artifact hostCard()): On Mingla now opens the host card,
   // above its fields, with Assign to me and Fill in; hosts only.
-  assertMatch(drawer, /\{isHosts && \(\s*<OnMinglaSection\s+key=\{`on-mingla-\$\{record\.id\}`\}\s+record=\{record\}/);
+  // #4270 W2: To do comes first, then On Mingla (hosts only).
+  assertMatch(drawer, /\{isHosts && \(\s*<>[\s\S]*?<HostToDoSection[\s\S]*?<OnMinglaSection key=\{`on-mingla-\$\{record\.id\}`\} record=\{record\}/);
   assert(drawer.indexOf("<OnMinglaSection") < drawer.indexOf("<RecentTouchNotice"), "On Mingla comes before the touch notice");
 });

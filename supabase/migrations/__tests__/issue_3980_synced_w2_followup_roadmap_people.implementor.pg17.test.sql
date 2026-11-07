@@ -340,7 +340,7 @@ begin
 
   -- P1: through the gateway.
   v_c := pg_temp.t3980w2fu_bridge_d(7961, '39884000-0000-4000-c100-000000000061', 'P1 hosts see who checked in');
-  perform pg_temp.t3980w2fu_check('P1', 'the approval card waits for a person', pg_temp.t3980w2fu_state(v_c), 'person:-:-');
+  perform pg_temp.t3980w2fu_check('P1', 'the approval card waits for a person', pg_temp.t3980w2fu_state(v_c), 'todo:-:-'); -- #4270: tagged in To do
   -- A person first gives it a known owner and watcher.
   v := pg_temp.t3980w2fu_person('owner', format($q$select public.ops_work_update(%L, %L::jsonb, %s)::text$q$, v_c,
          jsonb_build_object('owners', jsonb_build_array('oz.w2fu3980@test.local'), 'watchers', jsonb_build_array('sue.w2fu3980@test.local')),

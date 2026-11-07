@@ -160,7 +160,7 @@ Deno.test("#3980 W3 the Team dashboard and My day show the new panels and keep w
   assertMatch(home, /<AgentPromptStrip routine="my_plate" \/>\s*<MyCardsPanels \/>/);
   assertMatch(home, /label="Drafts waiting"/);
   const panels = read("components/ops/TeamOpsPanels.jsx");
-  for (const words of ["Runway", "Open calendar", "Open board", "Person", "Needs a person", "Agent closed", "Carried", "Copy prompt", "Turn next steps into cards", "Preview"]) {
+  for (const words of ["Runway", "Open calendar", "Open board", "Person", "Needs your OK", "Overdue", "Agent closed", "Carried", "Copy prompt", "Turn next steps into cards", "Preview"]) {
     assert(panels.includes(words), words);
   }
   const mine = read("components/ops/MyCardsPanels.jsx");

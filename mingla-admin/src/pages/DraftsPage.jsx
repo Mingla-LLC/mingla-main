@@ -169,8 +169,8 @@ export function DraftsPage({ embedded = null }) {
     <div className="flex min-w-0 flex-col gap-6">
       {/* #3980 W3 rework 2: the roadmap words only for the owner and admins, who have that tab; everyone else reads the design's shorter line. */}
       {!embedded && <div ref={headingRef} tabIndex={-1}>{canTell
-        ? <PageHeader title="Needs you" description="Only what needs a person: messages to send, money to spend, events to publish, and roadmap news to approve before hosts see it." meta={headerMeta} />
-        : <PageHeader title="Needs you" description="Only what needs a person: messages to send, money to spend, events to publish." meta={headerMeta} />}</div>}
+        ? <PageHeader title="Needs you" description="Only what needs your OK: messages to send, money to spend, events to publish, and roadmap news to approve before hosts see it." meta={headerMeta} />
+        : <PageHeader title="Needs you" description="Only what needs your OK: messages to send, money to spend, events to publish." meta={headerMeta} />}</div>}
       {embedded && <span ref={headingRef} tabIndex={-1} className="sr-only">Message drafts</span>}
       {/* The tabs wrap inside their bar on a phone, never clipped. */}
       {!embedded && <Segmented label="What to review" options={reviewTabs} value={review.tab} onChange={selectTab} variant="highContrast" fullWidth wrap className="sm:!w-fit" />}
@@ -191,7 +191,7 @@ export function DraftsPage({ embedded = null }) {
       ) : notFound ? (
         <SectionCard><h2 ref={emptyHeadingRef} tabIndex={-1} className="text-[15px] font-semibold text-[var(--color-text-primary)]">That draft isn’t here.</h2><p className="mt-2 text-[13px] text-[var(--color-text-secondary)]">It may have been removed, or this link is not available to you.</p>{embedded ? <Button type="button" variant="secondary" className="mt-4 min-h-11" onClick={() => setSearch("")}>Show all my drafts</Button> : <a href="#/drafts" className="mt-4 inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-semibold text-[var(--color-brand-700)]">Back to drafts</a>}</SectionCard>
       ) : queue.drafts.length === 0 && caughtUp && query.state === "waiting" && !filtered && !draftNeededShown ? (
-        <SectionCard><h2 ref={emptyHeadingRef} tabIndex={-1} className="text-[15px] font-semibold text-[var(--color-text-primary)]">You’re all caught up.</h2><p className="mt-2 text-[13px] text-[var(--color-text-secondary)]">Nothing needs a person right now: no messages to send, no money to spend, nothing to publish.</p></SectionCard>
+        <SectionCard><h2 ref={emptyHeadingRef} tabIndex={-1} className="text-[15px] font-semibold text-[var(--color-text-primary)]">You’re all caught up.</h2><p className="mt-2 text-[13px] text-[var(--color-text-secondary)]">Nothing needs your OK right now: no messages to send, no money to spend, nothing to publish.</p></SectionCard>
       ) : queue.drafts.length === 0 ? (
         <SectionCard><h2 ref={emptyHeadingRef} tabIndex={-1} className="text-[15px] font-semibold text-[var(--color-text-primary)]">{emptyTitle}</h2><p className="mt-2 text-[13px] text-[var(--color-text-secondary)]">{emptyCopy}</p>{query.state === "waiting" && !filtered ? <a href="#/agent" className="mt-4 inline-flex min-h-11 items-center rounded-lg bg-[var(--color-brand-800)] px-4 text-sm font-semibold text-white hover:bg-[var(--color-brand-900)]">Open My agent</a> : <Button type="button" variant="secondary" className="mt-4 min-h-11" onClick={() => filtered ? (() => { const p = new URLSearchParams(search); p.delete("record"); setSearch(p.toString()); })() : selectState("waiting")}>{filtered ? "Clear filter" : "Show waiting"}</Button>}</SectionCard>
       ) : (

@@ -5,7 +5,10 @@
 -- Seth's decision 6: record which brand the consent was for, fail closed for
 -- marketing, and leave attendance alone. The three rows must stay three rows.
 --
---   A. an order ingest with NO marketing consent row grades 'withheld';
+--   A. #4273: an order ingest for a buyer who OPTED OUT grades 'withheld'
+--      (Seth 2026-11-06: buyers are opted in automatically; only an explicit
+--      no withholds). A2: a buyer with no record and no opt-out grades
+--      'granted' with a recorded purchase_auto_optin grant;
 --   B. both marketing authorisers refuse it, and say consent_missing rather
 --      than channel_unavailable — a host reading the latter would go hunting
 --      for a contact that is right there;
@@ -148,13 +151,22 @@ INSERT INTO public.consent_records(
   pg_temp.c3524_uuid('brand'), pg_temp.c3524_uuid('event'),
   '2026-06-19', 'captured'
 );
--- A pre-#3524 consent row: real, but with no brand on it. It must NOT grade
--- anybody 'granted', because nobody can tell which brand it was given to.
+-- A pre-#3524 consent row: real, but with no brand on it.
 INSERT INTO public.consent_records(
   contact, channel, scope, action, source
 ) VALUES (
   'nopermission@example.test', 'email', 'marketing', 'granted', 'checkout'
 );
+
+-- #4273: the "no permission" buyer said no to this host. That, not a missing
+-- row, is what withholds marketing now.
+INSERT INTO public.marketing_unsubscribes(contact_email, channel, scope, brand_id, reason)
+VALUES ('nopermission@example.test', 'email', 'brand', pg_temp.c3524_uuid('brand'), 'test_opt_out');
+INSERT INTO public.orders(
+  id, event_id, buyer_email, buyer_name, total_cents, currency,
+  payment_status, source, confirmed_at
+) VALUES (pg_temp.c3524_uuid('order-quiet'), pg_temp.c3524_uuid('event'),
+   'saidnothing@example.test', 'Said Nothing', 1000, 'USD', 'paid', 'legacy', now());
 
 SET session_replication_role = origin;
 
@@ -189,9 +201,24 @@ BEGIN
     FROM public.brand_person_contact_methods
    WHERE brand_person_id = v_no AND channel = 'email';
   PERFORM pg_temp.c3524_expect(v_state = 'withheld',
-    'A: an order ingest with no BRAND-ATTRIBUTED consent row must grade '
-      || 'withheld — a row with brand_id NULL cannot name the brand it was '
-      || 'given to. Got ' || coalesce(v_state, '(null)'));
+    'A: an order ingest for a buyer who unsubscribed from this host must grade '
+      || 'withheld — an explicit opt-out always wins. Got ' || coalesce(v_state, '(null)'));
+
+  -- A2 (#4273): a buyer who said nothing is opted in, and the grant is recorded.
+  PERFORM public.biz_resolve_brand_person_source(
+    pg_temp.c3524_uuid('brand'), pg_temp.c3524_uuid('event'), 'order',
+    pg_temp.c3524_uuid('order-quiet'), NULL, NULL,
+    'saidnothing@example.test', NULL, now());
+  SELECT m.marketing_consent_state INTO v_state
+    FROM public.brand_person_contact_methods m
+   WHERE m.brand_id = pg_temp.c3524_uuid('brand') AND m.channel = 'email'
+     AND m.normalized_value = 'saidnothing@example.test';
+  PERFORM pg_temp.c3524_expect(v_state = 'granted'
+    AND EXISTS (SELECT 1 FROM public.consent_records c
+                 WHERE c.contact = 'saidnothing@example.test' AND c.brand_id = pg_temp.c3524_uuid('brand')
+                   AND c.scope = 'marketing' AND c.action = 'granted' AND c.source = 'purchase_auto_optin'),
+    'A2: a buyer with no record and no opt-out must grade granted with a recorded '
+      || 'purchase_auto_optin grant. Got ' || coalesce(v_state, '(null)'));
 
   SELECT marketing_consent_state INTO v_state
     FROM public.brand_person_contact_methods

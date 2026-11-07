@@ -223,7 +223,7 @@ function CheckoutConfirmScreenInner({
             name: "",
             email: "",
             phone: "",
-            marketingOptIn: false,
+            marketingOptIn: true, // #4273: buying opts in
           },
         };
       }

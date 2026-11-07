@@ -14,7 +14,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useOpsPoll } from "../../hooks/useOpsWork";
 import { usePeopleDirectory } from "../../hooks/usePeopleDirectory";
 import * as ops from "../../services/opsService";
-import { isRoadmapApproval, opsErrorWords, todayIso } from "../../lib/opsModel";
+import { isRoadmapApproval, isTagged, opsErrorWords, todayIso } from "../../lib/opsModel";
 import { cardRecordIds, isSendCard } from "../../lib/workViews";
 import { isFullAdmin } from "../../lib/access";
 import { WordingCard } from "./WordingQueue";
@@ -35,7 +35,7 @@ export function CardDrafts({ card }) {
   const records = cardRecordIds(card).slice(0, 3);
   return (
     <Block title="Message to send">
-      <p className="text-[12.5px] text-[var(--color-text-secondary)]">Send it yourself on the real channel, then mark it sent here. The card stays waiting on a person until then.</p>
+      <p className="text-[12.5px] text-[var(--color-text-secondary)]">Send it yourself on the real channel, then mark it sent here. The card keeps its You send tag until then.</p>
       {records.length === 0 ? (
         <p className="text-[13px] text-[var(--color-text-secondary)]">
           This card is not linked to a host or creator, so its draft is not shown here.{" "}
@@ -51,7 +51,7 @@ export function CardDrafts({ card }) {
 export function CardWording({ card, onChanged }) {
   const { access } = useAuth();
   const canTell = isFullAdmin(access);
-  const show = canTell && isRoadmapApproval(card) && card?.status === "person" && !card?.archived;
+  const show = canTell && isRoadmapApproval(card) && isTagged(card);
   const read = useOpsPoll(() => ops.listReview(todayIso()), { key: `${access?.email || ""}|wording-card|${card?.id || ""}`, intervalMs: 0, enabled: show });
   const people = usePeopleDirectory();
   if (!show) return null;

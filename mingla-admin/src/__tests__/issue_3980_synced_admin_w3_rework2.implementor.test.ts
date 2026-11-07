@@ -41,7 +41,8 @@ Deno.test("#3980 W3 rework 2 DEV1: the wording card is listed only on What hosts
 
 Deno.test("#3980 W3 rework 2 DEV2: the roadmap words only for the owner and admins; the design's shorter line for everyone else", () => {
   const page = code("pages/DraftsPage.jsx");
-  assertMatch(page, /\{canTell\s*\? <PageHeader title="Needs you" description="Only what needs a person: messages to send, money to spend, events to publish, and roadmap news to approve before hosts see it\." meta=\{headerMeta\} \/>\s*: <PageHeader title="Needs you" description="Only what needs a person: messages to send, money to spend, events to publish\." meta=\{headerMeta\} \/>\}/);
+  // #4270 rework (P3-4): "needs your OK", never "needs a person".
+  assertMatch(page, /\{canTell\s*\? <PageHeader title="Needs you" description="Only what needs your OK: messages to send, money to spend, events to publish, and roadmap news to approve before hosts see it\." meta=\{headerMeta\} \/>\s*: <PageHeader title="Needs you" description="Only what needs your OK: messages to send, money to spend, events to publish\." meta=\{headerMeta\} \/>\}/);
 });
 
 Deno.test("#3980 W3 rework 2 TABS: the Needs you tabs wrap inside their bar instead of clipping", () => {
@@ -62,8 +63,8 @@ Deno.test("#3980 W3 rework 2 STEPS: no steps open yet is said plainly, never 'al
 // #4255: the grouped views were dead code (nothing drew WorkGroups since
 // #4130) and are deleted; the column board says each status by its column.
 Deno.test("#3980 W3 rework 2 GROUP: the status words stay; the dead grouped view is gone", () => {
-  // #4130: Needs you is retired; the first column and the status say "Waiting on a person".
-  assertEquals(["person", "todo", "doing", "done", "x"].map(workStatusLabel), ["Waiting on a person", "To do", "In progress", "Done", ""]);
+  // #4270: three statuses; "Waiting on a person" is retired.
+  assertEquals(["person", "todo", "doing", "done", "x"].map(workStatusLabel), ["", "To do", "In progress", "Done", ""]);
   const cols = code("components/ops/WorkColumns.jsx");
   assertMatch(cols, /export function WorkColumnCard\(\{ card, selected, onSelect, draftsReady = 0 \}\)/);
   assertNotMatch(cols, /WorkGroups|showStatus|groupCards/);

@@ -31,12 +31,13 @@ describe("#3682 Wave 2.4 — checkout consent names Follow (surface b)", () => {
   // [TEST-MOD-APPROVED #3859] Checkout no longer mints Follow/marketing from
   // the required purchase box. #3682's account/follow behavior survives; only
   // its checkout bundling assertion was superseded by Seth's approved contract.
-  test("buyer checkout separates purchase acceptance from optional marketing", () => {
+  test("buyer checkout records purchase acceptance and shows the opt-in notice", () => {
     const src = read("app/checkout/[eventId]/buyer.tsx");
     expect(src).toContain("PURCHASE_TERMS_DISCLOSURE_TEXT");
     expect(src).toContain('scopes: ["transactional"]');
-    expect(src).toContain("CHECKOUT_MARKETING_DISCLOSURE_TEXT");
-    expect(src).toContain('scopes: ["marketing"]');
+    // #4273: no marketing box and no checkbox-driven marketing write.
+    expect(src).toContain("CHECKOUT_MARKETING_NOTICE");
+    expect(src).not.toContain('scopes: ["marketing"]');
     expect(src).not.toContain("CONSENT_VISIBLE_FOLLOW_BEFORE");
     expect(src).not.toContain("GUEST_CHECKOUT_CONSENT_DISCLOSURE_TEXT");
     expect(src).toContain("authReady");
@@ -50,9 +51,9 @@ describe("#3682 Wave 2.4 — checkout consent names Follow (surface b)", () => {
     ]) {
       const src = read(rel);
       expect(src).toContain("PURCHASE_TERMS_DISCLOSURE_TEXT");
-      expect(src).toContain("CHECKOUT_MARKETING_DISCLOSURE_TEXT");
+      expect(src).toContain("CHECKOUT_MARKETING_NOTICE");
       expect(src).toContain('scopes: ["transactional"]');
-      expect(src).toContain('scopes: ["marketing"]');
+      expect(src).not.toContain('scopes: ["marketing"]');
       expect(src).not.toContain("CONSENT_VISIBLE_FOLLOW_BEFORE");
       expect(src).toContain("recordConsent");
       expect(src).toContain("acceptedGrantRef");

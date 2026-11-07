@@ -15,7 +15,7 @@
 //   F-4a Ads: every parsed edge message and raw error line goes through the
 //        plain-words mapper (parseEdgeError itself, and each page/panel).
 //   F-4b Mingla money: any negative amount reads "−", the Profit row included.
-//   F-4c Dashboard: the own-cards tile says "Waiting on you".
+//   F-4c Dashboard: the own-cards tile says "Due today for you" (#4270).
 //   (F-4d app_config TRUNCATE is pinned in the Wave 2b pg17 suite, §11.)
 import { describe, it, before } from "node:test";
 import assert from "node:assert/strict";
@@ -275,10 +275,11 @@ describe("F-4b money signs", () => {
 });
 
 describe("F-4c Dashboard tile wording", () => {
-  it("the own-cards tile says Waiting on you, in both its states", () => {
+  it("the own-cards tile says Due today for you, in both its states (#4270)", () => {
     const page = strip(read("pages/OverviewPage.jsx"));
-    assert.match(page, /<KpiFailed label="Waiting on you"/);
-    assert.match(page, /<Kpi\s+label="Waiting on you"/);
+    assert.match(page, /<KpiFailed label="Due today for you"/);
+    assert.match(page, /<Kpi\s+label="Due today for you"/);
+    assert.doesNotMatch(page, /label="Waiting on you"/);
     assert.doesNotMatch(page, /label="Waiting on a person"/);
   });
 });

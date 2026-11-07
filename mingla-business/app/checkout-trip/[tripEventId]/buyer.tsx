@@ -98,10 +98,7 @@ import {
 } from "../../../src/services/ticketCheckoutService";
 import { recordConsent } from "../../../src/services/consentService";
 import {
-  CHECKOUT_MARKETING_DISCLOSURE_TEXT,
-  CHECKOUT_MARKETING_DISCLOSURE_VERSION,
-  CHECKOUT_MARKETING_HELPER,
-  CHECKOUT_MARKETING_LABEL,
+  CHECKOUT_MARKETING_NOTICE,
   PURCHASE_PRIVACY_URL,
   PURCHASE_TERMS_DISCLOSURE_TEXT,
   PURCHASE_TERMS_DISCLOSURE_VERSION,
@@ -393,10 +390,6 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
     setBuyer({ termsAccepted: next });
     if (next) setConsentHintVisible(false);
   }, [authReady, buyer.termsAccepted, sessionUserId, setBuyer]);
-  const toggleMarketing = useCallback((): void => {
-    if (!authReady) return;
-    setBuyer({ marketingOptIn: !buyer.marketingOptIn });
-  }, [authReady, buyer.marketingOptIn, setBuyer]);
 
   const [nameTouched, setNameTouched] = useState<boolean>(false);
   const [emailTouched, setEmailTouched] = useState<boolean>(false);
@@ -664,24 +657,9 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
           "[checkout-trip-buyer] consent_records write failed (proceeding; checkbox act stands)",
         );
       }
-      if (buyer.marketingOptIn) {
-        const marketingConsentResult = await recordConsent({
-          source: "checkout",
-          disclosureText: CHECKOUT_MARKETING_DISCLOSURE_TEXT,
-          disclosureVersion: CHECKOUT_MARKETING_DISCLOSURE_VERSION,
-          scopes: ["marketing"],
-          phone: buyer.phone,
-          email: buyer.email,
-          countryCode: phoneCountry,
-          userId: buyerUserId,
-          eventId: tripEventId,
-        });
-        if (!marketingConsentResult.ok) {
-          console.error(
-            "[checkout-trip-buyer] marketing consent write failed (proceeding; optional checkbox act stands)",
-          );
-        }
-      }
+      // #4273: no marketing record is written here any more. Buying opts the
+      // buyer in; the order ingest records that grant (purchase_auto_optin)
+      // unless they have opted out.
     } catch (consentErr) {
       console.error("[checkout-trip-buyer] consent write threw", consentErr);
     }
@@ -733,7 +711,6 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
     runFreeReservation,
     buyer.phone,
     buyer.email,
-    buyer.marketingOptIn,
     phoneCountry,
     quote,
     quoteStatus,
@@ -985,38 +962,11 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
             Please agree to continue.
           </Text>
         ) : null}
-        <Pressable
-          onPress={toggleMarketing}
-          accessibilityRole="checkbox"
-          accessibilityState={{
-            checked: buyer.marketingOptIn,
-            disabled: !authReady,
-          }}
-          aria-checked={buyer.marketingOptIn}
-          accessibilityLabel={`${CHECKOUT_MARKETING_LABEL} ${CHECKOUT_MARKETING_HELPER}`}
-          disabled={!authReady}
-          style={({ pressed }) => [
-            styles.checkboxRow,
-            pressed && styles.checkboxRowPressed,
-          ]}
-        >
-          <View
-            style={[
-              styles.checkboxBox,
-              buyer.marketingOptIn && styles.checkboxBoxChecked,
-            ]}
-          >
-            {buyer.marketingOptIn ? (
-              <Icon name="check" size={14} color={textTokens.primary} />
-            ) : null}
-          </View>
-          <View style={styles.marketingCopy}>
-            <Text style={styles.checkboxLabel}>{CHECKOUT_MARKETING_LABEL}</Text>
-            <Text style={styles.marketingHelper}>
-              {CHECKOUT_MARKETING_HELPER}
-            </Text>
-          </View>
-        </Pressable>
+        {/* #4273: buying opts the buyer in to this brand's updates; there is
+            no box to tick, only a plain notice. */}
+        <Text style={styles.marketingHelper} testID="checkout-marketing-notice">
+          {CHECKOUT_MARKETING_NOTICE}
+        </Text>
         {bannerMessage !== null ? (
           <Text style={styles.errorText}>{bannerMessage}</Text>
         ) : null}
@@ -1253,7 +1203,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     textDecorationLine: "underline",
   },
-  marketingCopy: { flex: 1 },
   marketingHelper: {
     marginTop: 2,
     fontSize: 12,
