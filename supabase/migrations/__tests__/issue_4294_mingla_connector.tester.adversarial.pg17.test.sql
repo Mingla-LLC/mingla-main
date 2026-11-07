@@ -40,9 +40,9 @@
 --
 -- One transaction, rolled back. Never run on production. Runs as the
 -- image's admin role from the repository root.
--- {"invariant":"I-4294-1","issue":4294,"status":"ACTIVE","enforced_by":["supabase/migrations/__tests__/issue_4294_mingla_connector.tester.adversarial.pg17.test.sql"]}
--- {"invariant":"I-4294-2","issue":4294,"status":"ACTIVE","enforced_by":["supabase/migrations/__tests__/issue_4294_mingla_connector.tester.adversarial.pg17.test.sql"]}
--- {"invariant":"I-4294-3","issue":4294,"status":"ACTIVE","enforced_by":["supabase/migrations/__tests__/issue_4294_mingla_connector.tester.adversarial.pg17.test.sql"]}
+-- Also exercises I-4294-1 (declared in supabase/functions/team-agent/__tests__/oauth.issue4294.implementor.happy.test.ts).
+-- Also exercises I-4294-2 (declared in supabase/migrations/__tests__/issue_4294_mingla_connector.implementor.happy.pg17.test.sql).
+-- Also exercises I-4294-3 (declared in supabase/functions/team-agent/__tests__/proxy.issue4294.implementor.happy.test.ts).
 
 \set ON_ERROR_STOP on
 

@@ -15,9 +15,9 @@
 import { assert, assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import { createTeamAgentHandler, sha256Hex } from "../../_shared/teamAgentMcp.ts";
 import { DATA_NOTE, scrubText, upstreamUrlAllowed } from "../../_shared/minglaConnectorProxy.ts";
-// {"invariant":"I-4294-3","issue":4294,"status":"ACTIVE","enforced_by":["supabase/functions/team-agent/__tests__/proxy.issue4294.implementor.happy.test.ts","supabase/migrations/__tests__/issue_4294_mingla_connector.implementor.happy.pg17.test.sql"]}
-// {"invariant":"I-4294-4","issue":4294,"status":"ACTIVE","enforced_by":["supabase/functions/team-agent/__tests__/proxy.issue4294.implementor.happy.test.ts"]}
-// {"invariant":"I-4294-5","issue":4294,"status":"ACTIVE","enforced_by":["supabase/functions/team-agent/__tests__/proxy.issue4294.implementor.happy.test.ts","supabase/migrations/__tests__/issue_4294_mingla_connector.implementor.happy.pg17.test.sql"]}
+// MINGLA-INVARIANT: I-4294-3 | issue #4294 | Upstream tools are default-deny: a tool is offered and callable only when the registry explicitly allows it.
+// MINGLA-INVARIANT: I-4294-4 | issue #4294 | A company server's failure is never this connector's transport 401 or 403; it reaches the caller as a tool error.
+// MINGLA-INVARIANT: I-4294-5 | issue #4294 | Every proxied upstream request has exactly one call-log row.
 
 const MCP = "https://gqnoajqerqhnvulmnyvv.supabase.co/functions/v1/team-agent";
 const UPSTREAM = "https://mcp.fake-tools.example/mcp";

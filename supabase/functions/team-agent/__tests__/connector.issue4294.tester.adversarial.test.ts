@@ -31,9 +31,9 @@
 //         Claude through a whole tool call
 //
 // Invariants exercised: I-4294-1, I-4294-3, I-4294-4, I-4294-5.
-// {"invariant":"I-4294-3","issue":4294,"status":"ACTIVE","enforced_by":["supabase/functions/team-agent/__tests__/connector.issue4294.tester.adversarial.test.ts"]}
-// {"invariant":"I-4294-4","issue":4294,"status":"ACTIVE","enforced_by":["supabase/functions/team-agent/__tests__/connector.issue4294.tester.adversarial.test.ts"]}
-// {"invariant":"I-4294-5","issue":4294,"status":"ACTIVE","enforced_by":["supabase/functions/team-agent/__tests__/connector.issue4294.tester.adversarial.test.ts"]}
+// Also exercises I-4294-3 (declared in supabase/functions/team-agent/__tests__/proxy.issue4294.implementor.happy.test.ts).
+// Also exercises I-4294-4 (declared in supabase/functions/team-agent/__tests__/proxy.issue4294.implementor.happy.test.ts).
+// Also exercises I-4294-5 (declared in supabase/functions/team-agent/__tests__/proxy.issue4294.implementor.happy.test.ts).
 import { assert, assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import { createTeamAgentHandler, sha256Hex } from "../../_shared/teamAgentMcp.ts";
 import { pkceChallenge } from "../../_shared/minglaConnectorOAuth.ts";

@@ -27,7 +27,7 @@
 //        surface frames an Admin page
 //
 // Invariant exercised: I-4294-2 (Admin side).
-// {"invariant":"I-4294-2","issue":4294,"status":"ACTIVE","enforced_by":["mingla-admin/src/__tests__/issue4294_connector.tester.adversarial.test.js"]}
+// Also exercises I-4294-2 (declared in supabase/migrations/__tests__/issue_4294_mingla_connector.implementor.happy.pg17.test.sql).
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
