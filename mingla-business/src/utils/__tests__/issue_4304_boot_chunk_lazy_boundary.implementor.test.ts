@@ -74,6 +74,13 @@ describe("#4304 — /messages shares the thread route's lazy chunk", () => {
     );
   });
 
+  test("the thread route imports MediaThumb statically, not as its own lazy chunk", () => {
+    // A lazy MediaThumb chunk shared brandGroupLocalPreviews with this route,
+    // so Metro hoisted it into __common.
+    expect(importsStatically(thread, "MediaThumb")).toBe(true);
+    expect(thread).not.toMatch(/import\(\s*["'][^"']*\/MediaThumb["']/);
+  });
+
   test("only the thread route imports BrandGroupInboxScreen statically", () => {
     const importers = [...sourceFiles("app"), ...sourceFiles("src")].filter((file) =>
       importsStatically(source(file), "BrandGroupInboxScreen"),
