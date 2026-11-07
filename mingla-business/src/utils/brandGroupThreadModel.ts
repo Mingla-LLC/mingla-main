@@ -364,3 +364,54 @@ export function brandGroupTileColours(seed: string): [string, string] {
   const hue = Math.abs(hash) % 360;
   return [`hsl(${hue}, 62%, 52%)`, `hsl(${(hue + 28) % 360}, 58%, 34%)`];
 }
+
+/** Where a Brand group opens: Support access replies as Mingla Support. */
+export function brandGroupThreadHref(group: { conversation_id: string; access_kind: "brand" | "support" }): string {
+  const mode = group.access_kind === "support" ? "support" : "brand";
+  return `/messages/${group.conversation_id}?mode=${mode}`;
+}
+
+export interface BrandGroupTextSegment {
+  text: string;
+  mention: boolean;
+}
+
+/**
+ * Splits a message into plain text and "@Name" mentions of known teammates
+ * (the composer inserts mentions as "@Display Name"). Longest names match
+ * first so "@Ada Lovelace" wins over "@Ada".
+ */
+export function splitBrandGroupMentions(
+  content: string,
+  names: readonly string[],
+): BrandGroupTextSegment[] {
+  const candidates = [...new Set(names.map((name) => name.trim()).filter(Boolean))]
+    .sort((a, b) => b.length - a.length);
+  const segments: BrandGroupTextSegment[] = [];
+  let buffer = "";
+  let index = 0;
+  while (index < content.length) {
+    if (content[index] === "@") {
+      const previous = index > 0 ? content[index - 1] : " ";
+      const rest = content.slice(index + 1);
+      const match = /\s/.test(previous) || index === 0
+        ? candidates.find((name) => {
+          if (!rest.toLowerCase().startsWith(name.toLowerCase())) return false;
+          const after = rest.charAt(name.length);
+          return after === "" || !/[\p{L}\p{N}_]/u.test(after);
+        })
+        : undefined;
+      if (match) {
+        if (buffer) segments.push({ text: buffer, mention: false });
+        buffer = "";
+        segments.push({ text: content.slice(index, index + 1 + match.length), mention: true });
+        index += 1 + match.length;
+        continue;
+      }
+    }
+    buffer += content[index];
+    index += 1;
+  }
+  if (buffer) segments.push({ text: buffer, mention: false });
+  return segments;
+}

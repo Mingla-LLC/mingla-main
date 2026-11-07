@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   Platform,
   Pressable,
   StyleSheet,
@@ -13,6 +14,8 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
   type StyleProp,
+  type TextInputContentSizeChangeEventData,
+  type TextInputKeyPressEventData,
   type TextInputSelectionChangeEventData,
   type ViewStyle,
 } from "react-native";
@@ -24,22 +27,21 @@ import { BrandGroupSignalModal } from "../../src/components/messages/BrandGroupS
 import { BrandGroupFilePreviewModal } from "../../src/components/messages/BrandGroupFilePreviewModal";
 import { BrandGroupFileUploadSheet } from "../../src/components/messages/BrandGroupFileUploadSheet";
 import { BrandGroupMediaBubble } from "../../src/components/messages/BrandGroupMediaBubble";
-import { BrandGroupPeoplePanel, BrandGroupPeopleSheet } from "../../src/components/messages/BrandGroupPeoplePanel";
+import { BrandGroupPeoplePanel, BrandGroupPeopleSheet, memberRoleLabel } from "../../src/components/messages/BrandGroupPeoplePanel";
 import { BrandEnquiryCard } from "../../src/components/messages/BrandEnquiryCard";
+import { BrandGroupInboxList } from "../../src/components/messages/BrandGroupInboxList";
+import { BrandGroupMessageMenu } from "../../src/components/messages/BrandGroupMessageMenu";
+import { BrandGroupMessageRow, BrandGroupMessageText } from "../../src/components/messages/BrandGroupMessageRow";
+import { BrandGroupTile } from "../../src/components/messages/BrandGroupTile";
 import { Button } from "../../src/components/ui/Button";
 import { Icon } from "../../src/components/ui/Icon";
 import { SafeScreen } from "../../src/components/ui/SafeScreen";
-import { Toast } from "../../src/components/ui/Toast";
-import {
-  accent,
-  canvas,
-  glass,
-  radius,
-  spacing,
-  text as textTokens,
-} from "../../src/constants/designSystem";
+import { Toast, type ToastKind } from "../../src/components/ui/Toast";
+import { brandGroupChat } from "../../src/constants/brandGroupChatTokens";
+import { accent, spacing } from "../../src/constants/designSystem";
 import { useAuth } from "../../src/context/AuthContext";
 import { useBrandGroups } from "../../src/hooks/useBrandGroups";
+import { useBrandGroupLive } from "../../src/hooks/useBrandGroupLive";
 import { brandGroupMediaKeys } from "../../src/hooks/brandGroupMediaKeys";
 import { brandEnquiryKeys } from "../../src/hooks/useBrandEnquiries";
 import { findBrandEnquiryIdForConversation } from "../../src/services/brandEnquiryList";
@@ -56,6 +58,7 @@ import {
   markBrandGroupRead,
   sendBrandGroupMessage,
   type BrandGroupMessage,
+  type BrandGroupSummary,
 } from "../../src/services/brandGroupsService";
 import { listBrandGroupMembers, listBrandGroupMentionCandidates } from "../../src/services/brandGroupRosterService";
 import { supabase } from "../../src/services/supabase";
@@ -70,6 +73,15 @@ import {
   type SelectedBrandGroupMention,
 } from "../../src/utils/brandGroupMentions";
 import { isNearLatestBrandGroupMessage } from "../../src/utils/brandGroupScroll";
+import {
+  BRAND_GROUP_HEART,
+  brandGroupHeaderSubtitle,
+  brandGroupSeenBy,
+  brandGroupTypingText,
+  buildBrandGroupMessageMenu,
+  buildBrandGroupThreadItems,
+  type BrandGroupMenuActionKey,
+} from "../../src/utils/brandGroupThreadModel";
 
 const LazyBrandGroupMediaPanel = React.lazy(async () => {
   const module = await import("../../src/components/messages/BrandGroupMediaPanel");
@@ -80,6 +92,11 @@ const LazyMediaThumb = React.lazy(async () => {
   const module = await import("../../src/components/media/MediaThumb");
   return { default: module.MediaThumb };
 });
+
+/** #4304 — the desktop details rail collapses below this width. */
+const DETAILS_RAIL_MIN_WIDTH = 1200;
+const COMPOSER_MIN = 40;
+const COMPOSER_MAX = 132;
 
 function renderMediaThumbnail(item: BrandGroupMediaRow, style?: StyleProp<ViewStyle>, bubble = false): React.ReactNode {
   return (
@@ -126,10 +143,90 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
       </SafeScreen>
     );
   }
-  return <BrandGroupThreadScreen />;
+  return <BrandGroupMessagesShell conversationId={conversationId} />;
 }
 
-function BrandGroupThreadScreen(): React.ReactElement {
+/**
+ * #4304 — on desktop web the Messages page is three panes: the group list,
+ * the thread and the details rail. Choosing another group swaps the thread in
+ * place (router.setParams), so the list keeps its scroll, search and filter.
+ * Phones keep separate screens.
+ */
+function BrandGroupMessagesShell({ conversationId }: { conversationId: string | null }): React.ReactElement {
+  const { isWideDesktop } = useResponsiveLayout();
+  const { height: windowHeight } = useWindowDimensions();
+  const router = useRouter();
+  const { user } = useAuth();
+  const staff = useSupportStaff();
+  const { groups, loading, error, refresh } = useBrandGroups();
+  if (!isWideDesktop) return <BrandGroupThreadScreen key={conversationId ?? "none"} />;
+  const openGroup = (group: BrandGroupSummary): void => {
+    if (group.conversation_id === conversationId) return;
+    router.setParams({
+      conversationId: group.conversation_id,
+      mode: group.access_kind === "support" ? "support" : "brand",
+      focusMessageId: undefined,
+      gallery: undefined,
+    } as never);
+  };
+  return (
+    <View
+      style={[
+        styles.desktopShell,
+        Platform.OS === "web" && windowHeight > 0 ? { height: windowHeight } : null,
+      ]}
+      testID="brand-group-desktop-shell"
+    >
+      <View style={styles.desktopList}>
+        <BrandGroupInboxList
+          groups={groups}
+          loading={loading}
+          error={error ?? null}
+          onRetry={() => void refresh()}
+          viewerId={user?.id ?? null}
+          isStaff={staff.isStaff}
+          selectedId={conversationId}
+          onOpen={openGroup}
+        />
+      </View>
+      <View style={styles.desktopThread}>
+        <BrandGroupThreadScreen key={conversationId ?? "none"} embedded />
+      </View>
+    </View>
+  );
+}
+
+/** One shared rail tab row: every details tab (People, Media, …) lives here. */
+function BrandGroupRailTabRow({
+  tabs,
+  active,
+}: {
+  tabs: { key: string; label: string; accessibilityLabel: string; onPress: () => void; testID?: string }[];
+  active: string;
+}): React.ReactElement {
+  return (
+    <View style={styles.railTabs} accessibilityRole="tablist" testID="brand-group-rail-tabs">
+      {tabs.map((tab) => {
+        const selected = tab.key === active;
+        return (
+          <Pressable
+            key={tab.key}
+            accessibilityRole="tab"
+            accessibilityLabel={tab.accessibilityLabel}
+            accessibilityState={{ selected }}
+            onPress={tab.onPress}
+            style={[styles.railTab, selected && styles.railTabActive]}
+            testID={tab.testID}
+          >
+            <Text style={selected ? styles.railTabTextActive : styles.railTabText}>{tab.label}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): React.ReactElement {
   const params = useLocalSearchParams<{ conversationId?: string | string[]; mode?: string | string[]; focusMessageId?: string | string[]; gallery?: string | string[] }>();
   const conversationId = first(params.conversationId);
   const requestedMode = first(params.mode);
@@ -141,7 +238,8 @@ function BrandGroupThreadScreen(): React.ReactElement {
   const keyboardHeight = useKeyboardHeight();
   const queryClient = useQueryClient();
   const { t } = useBusinessMediaTranslation();
-  const { isWideDesktop } = useResponsiveLayout();
+  const { isWideDesktop, width: layoutWidth } = useResponsiveLayout();
+  const showRail = isWideDesktop && (layoutWidth ?? 0) >= DETAILS_RAIL_MIN_WIDTH;
   const { isAuthReady, user } = useAuth();
   const staff = useSupportStaff();
   const { groups, refresh: refreshGroups, setMuted } = useBrandGroups();
@@ -155,6 +253,7 @@ function BrandGroupThreadScreen(): React.ReactElement {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [composer, setComposer] = useState("");
+  const [composerHeight, setComposerHeight] = useState(COMPOSER_MIN);
   const [composerSelection, setComposerSelection] = useState({ start: 0, end: 0 });
   const [mentionCandidates, setMentionCandidates] = useState<BrandGroupMentionCandidate[]>([]);
   const [mentionLoading, setMentionLoading] = useState(false);
@@ -163,9 +262,10 @@ function BrandGroupThreadScreen(): React.ReactElement {
   const [replyTo, setReplyTo] = useState<BrandGroupMessage | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [muteBusy, setMuteBusy] = useState(false);
-  const [toast, setToast] = useState<{ visible: boolean; message: string }>({
+  const [toast, setToast] = useState<{ visible: boolean; message: string; kind: ToastKind }>({
     visible: false,
     message: "",
+    kind: "error",
   });
   const [signalSourceId, setSignalSourceId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -174,6 +274,8 @@ function BrandGroupThreadScreen(): React.ReactElement {
   const [panelViewerItems, setPanelViewerItems] = useState<BrandGroupMediaRow[] | null>(null);
   const [mediaPanelOpen, setMediaPanelOpen] = useState(requestedGallery === "1");
   const [peopleSheetOpen, setPeopleSheetOpen] = useState(false);
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const [menuMessage, setMenuMessage] = useState<BrandGroupMessage | null>(null);
   const [desktopDetailTab, setDesktopDetailTab] = useState<"people" | "media">(
     requestedGallery === "1" ? "media" : "people",
   );
@@ -204,6 +306,12 @@ function BrandGroupThreadScreen(): React.ReactElement {
     && typeof member?.role === "string"
   );
   const memberError = memberQuery.error ? "Couldn’t load people right now. Try again." : null;
+  const memberRoles = useMemo(() => new Map(members.map((member) => [member.user_id, member.role])), [members]);
+  const mentionNames = useMemo(() => members.map((member) => member.display_name), [members]);
+  const viewerName = useMemo(
+    () => members.find((member) => member.user_id === user?.id)?.display_name ?? "A teammate",
+    [members, user?.id],
+  );
   const fileIds = useMemo(() => messages.flatMap((message) => message.file_id ? [message.file_id] : []), [messages]);
   const fileMetaEnabled = Boolean(isAuthReady && user?.id && conversationId && fileIds.length > 0);
   const fileMetaQuery = useQuery({
@@ -242,6 +350,31 @@ function BrandGroupThreadScreen(): React.ReactElement {
     () => brandGroupMentionTarget(composer, composerSelection.start),
     [composer, composerSelection.start],
   );
+
+  const showError = useCallback((message: string): void => {
+    setToast({ visible: true, message, kind: "error" });
+  }, []);
+  const liveMessageIds = useMemo(
+    () => messages.filter((message) => message.message_type !== "system" && message.message_type !== "brand_enquiry_card").map((message) => message.id),
+    [messages],
+  );
+  const live = useBrandGroupLive({
+    conversationId,
+    viewerId: user?.id ?? null,
+    viewerName,
+    messageIds: liveMessageIds,
+    onError: showError,
+  });
+  const announceRead = live.announceRead;
+  const threadItems = useMemo(
+    () => buildBrandGroupThreadItems(messages, user?.id ?? null),
+    [messages, user?.id],
+  );
+  const seenBy = useMemo(
+    () => brandGroupSeenBy(messages, live.reads, user?.id ?? null),
+    [live.reads, messages, user?.id],
+  );
+  const typingText = brandGroupTypingText(live.typingNames);
 
   useEffect(() => {
     if (!conversationId || !mentionTarget) {
@@ -285,13 +418,14 @@ function BrandGroupThreadScreen(): React.ReactElement {
       setMessages(result.messages);
       setError(null);
       await markBrandGroupRead(conversationId);
+      announceRead();
       await refreshGroups();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Couldn't load this Brand group");
     } finally {
       setLoading(false);
     }
-  }, [conversationId, refreshGroups]);
+  }, [announceRead, conversationId, refreshGroups]);
 
   useEffect(() => {
     setLoading(true);
@@ -334,6 +468,13 @@ function BrandGroupThreadScreen(): React.ReactElement {
     setMediaPanelOpen(true);
   }, [conversationId]);
 
+  const openPeople = useCallback(() => {
+    if (showRail) {
+      setDesktopDetailTab("people");
+      setMediaPanelOpen(false);
+    } else setPeopleSheetOpen(true);
+  }, [showRail]);
+
   const closeMedia = useCallback(() => {
     setMediaPanelOpen(false);
     if (requestedGallery === "1" && conversationId) {
@@ -353,7 +494,7 @@ function BrandGroupThreadScreen(): React.ReactElement {
       merged = [...byId.values()].sort((left, right) => left.created_at.localeCompare(right.created_at));
     }
     if (!merged.some((message) => message.id === messageId)) {
-      setToast({ visible: true, message: t("viewer.show_in_chat_missing") });
+      setToast({ visible: true, message: t("viewer.show_in_chat_missing"), kind: "error" });
       return;
     }
     if (merged !== messages) setMessages(merged);
@@ -408,7 +549,9 @@ function BrandGroupThreadScreen(): React.ReactElement {
         mentionedUserIds: selectedMentions.map((mention) => mention.userId),
         actorMode,
       });
+      live.stopTyping();
       setComposer("");
+      setComposerHeight(COMPOSER_MIN);
       setSelectedMentions([]);
       setMentionCandidates([]);
       setReplyTo(null);
@@ -429,12 +572,7 @@ function BrandGroupThreadScreen(): React.ReactElement {
     try {
       await setMuted(conversationId, muted);
     } catch (cause) {
-      setToast({
-        visible: true,
-        message: cause instanceof Error
-          ? cause.message
-          : "Couldn't update notifications. Try again.",
-      });
+      showError(cause instanceof Error ? cause.message : "Couldn't update notifications. Try again.");
     } finally {
       setMuteBusy(false);
     }
@@ -444,15 +582,74 @@ function BrandGroupThreadScreen(): React.ReactElement {
     setSelectedIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
   }
 
+  function startReply(message: BrandGroupMessage): void {
+    setReplyTo(message);
+    requestAnimationFrame(() => composerRef.current?.focus());
+  }
+
+  async function copyMessage(message: BrandGroupMessage): Promise<void> {
+    try {
+      const Clipboard = await import("expo-clipboard");
+      await Clipboard.setStringAsync(message.content);
+      setToast({ visible: true, message: "Message copied", kind: "success" });
+    } catch (cause) {
+      showError(cause instanceof Error ? cause.message : "Couldn't copy the message");
+    }
+  }
+
+  function runMenuAction(key: BrandGroupMenuActionKey): void {
+    const message = menuMessage;
+    setMenuMessage(null);
+    if (!message) return;
+    switch (key) {
+      case "reply":
+        startReply(message);
+        return;
+      case "copy":
+        void copyMessage(message);
+        return;
+      case "signal":
+        setSignalSourceId(message.id);
+        return;
+      case "select":
+        toggleSelected(message.id);
+        return;
+      default: {
+        const unreachable: never = key;
+        return unreachable;
+      }
+    }
+  }
+
   function updateComposer(value: string): void {
     setComposer(value);
     setSelectedMentions((current) => retainedBrandGroupMentions(value, current));
+    if (value.trim()) live.notifyTyping();
+    else live.stopTyping();
   }
 
   function updateComposerSelection(
     event: NativeSyntheticEvent<TextInputSelectionChangeEventData>,
   ): void {
     setComposerSelection(event.nativeEvent.selection);
+  }
+
+  function growComposer(event: NativeSyntheticEvent<TextInputContentSizeChangeEventData>): void {
+    const next = Math.min(COMPOSER_MAX, Math.max(COMPOSER_MIN, Math.ceil(event.nativeEvent.contentSize.height)));
+    setComposerHeight((current) => current === next ? current : next);
+  }
+
+  // Web: Enter sends, Shift+Enter starts a new line.
+  function composerKeyPress(event: NativeSyntheticEvent<TextInputKeyPressEventData>): void {
+    if (Platform.OS !== "web") return;
+    const native = event.nativeEvent as TextInputKeyPressEventData & { shiftKey?: boolean; isComposing?: boolean };
+    if (native.key !== "Enter" || native.shiftKey || native.isComposing) return;
+    event.preventDefault();
+    if (mentionTarget && mentionCandidates.length > 0) {
+      chooseMention(mentionCandidates[0]);
+      return;
+    }
+    void send();
   }
 
   function chooseMention(candidate: BrandGroupMentionCandidate): void {
@@ -473,7 +670,20 @@ function BrandGroupThreadScreen(): React.ReactElement {
     });
   }
 
-  if (!isWideDesktop && mediaPanelOpen && conversationId) {
+  const filePreview = (
+    <BrandGroupFilePreviewModal
+      items={panelViewerItems ?? viewerItems}
+      initialFileId={previewFileId}
+      renderThumbnail={renderMediaThumbnail}
+      onShowInChat={(messageId) => void showInChat(messageId)}
+      onClose={() => {
+        setPreviewFileId(null);
+        setPanelViewerItems(null);
+      }}
+    />
+  );
+
+  if (!showRail && mediaPanelOpen && conversationId) {
     return (
       <SafeScreen edges={["top", "bottom"]} style={styles.screen}>
         <React.Suspense fallback={<View style={styles.state}><ActivityIndicator color={accent.warm} /></View>}>
@@ -488,13 +698,36 @@ function BrandGroupThreadScreen(): React.ReactElement {
             }}
           />
         </React.Suspense>
+        {/* #4304 — the full-screen gallery opens its viewer too (it used to
+            set the file but render no viewer, a dead tap on phones). */}
+        {filePreview}
+        <Toast
+          visible={toast.visible}
+          kind={toast.kind}
+          message={toast.message}
+          onDismiss={() => setToast({ visible: false, message: "", kind: "error" })}
+        />
       </SafeScreen>
     );
   }
 
+  const memberCount = group?.member_count ?? members.length;
+  const subtitle = typingText ?? (brandGroupHeaderSubtitle(members, user?.id ?? null) || (group ? `${memberCount} teammates` : "Official Brand group"));
+  const menuActions = menuMessage
+    ? buildBrandGroupMessageMenu({
+      senderName: menuMessage.sender_display_name,
+      hasText: menuMessage.content.trim().length > 0 && !menuMessage.file_id,
+      canSupport,
+      selected: selectedIds.includes(menuMessage.id),
+    })
+    : [];
+  const myMenuReactions = menuMessage
+    ? (live.reactionsByMessage.get(menuMessage.id) ?? []).filter((pill) => pill.mine).map((pill) => pill.emoji)
+    : [];
+
   return (
     <SafeScreen
-      edges={["top"]}
+      edges={embedded ? [] : ["top"]}
       style={[
         styles.screen,
         Platform.OS === "web" && windowHeight > 0
@@ -504,63 +737,50 @@ function BrandGroupThreadScreen(): React.ReactElement {
       testID="brand-group-thread"
     >
       <View style={styles.header}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Back to Messages" onPress={() => router.back()} style={styles.iconButton}>
-          <Icon name="arrowL" size={18} color={textTokens.primary} />
-        </Pressable>
+        {!embedded ? (
+          <Pressable accessibilityRole="button" accessibilityLabel="Back to Messages" onPress={() => router.back()} style={styles.iconButton} hitSlop={6}>
+            <Icon name="arrowL" size={20} color={brandGroupChat.textPrimary} />
+          </Pressable>
+        ) : null}
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={`${group?.brand_name || "Brand group"}, ${group?.member_count ?? members.length} teammates. Show people`}
-          accessibilityState={{ expanded: isWideDesktop ? desktopDetailTab === "people" : peopleSheetOpen }}
-          onPress={() => {
-            if (isWideDesktop) {
-              setDesktopDetailTab("people");
-              setMediaPanelOpen(false);
-            } else setPeopleSheetOpen(true);
-          }}
+          accessibilityLabel={`${group?.brand_name || "Brand group"}, ${memberCount} teammates, tap to see people`}
+          accessibilityState={{ expanded: showRail ? desktopDetailTab === "people" : peopleSheetOpen }}
+          onPress={openPeople}
           style={styles.peopleTrigger}
         >
-          <Text style={styles.title} numberOfLines={1}>{group?.brand_name || "Brand group"}</Text>
-          <View style={styles.memberPeek}>
-            {members.length > 0 ? (
-              <View style={styles.avatarStack} accessibilityElementsHidden>
-                {members.slice(0, 3).map((member) => (
-                  <View key={member.user_id} style={styles.headerAvatar}>
-                    <Text style={styles.headerAvatarText}>{member.display_name.trim().charAt(0).toUpperCase()}</Text>
-                  </View>
-                ))}
-              </View>
-            ) : null}
-            <Text style={styles.subtitle} numberOfLines={1}>{group ? `${group.member_count} teammates · tap to see people` : "Official Brand group"}</Text>
+          <BrandGroupTile name={group?.brand_name || "Brand group"} photoUrl={group?.brand_photo_url} seed={group?.brand_id ?? conversationId ?? "brand"} size={38} />
+          <View style={styles.headerCopy}>
+            <Text style={styles.title} numberOfLines={1}>{group?.brand_name || "Brand group"}</Text>
+            <Text style={[styles.subtitle, typingText ? styles.subtitleTyping : null]} numberOfLines={1}>{subtitle}</Text>
           </View>
         </Pressable>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={t("chat.media_a11y")}
-          accessibilityState={{ expanded: isWideDesktop ? mediaPanelOpen : undefined }}
+          accessibilityState={{ expanded: showRail ? mediaPanelOpen : undefined }}
           hitSlop={5}
           onPress={openMedia}
-          style={[styles.mediaButton, desktopDetailTab === "media" && styles.mediaButtonActive]}
+          style={[styles.mediaButton, showRail && desktopDetailTab === "media" && styles.mediaButtonActive]}
         >
-          <Icon name="grid" size={16} color={textTokens.primary} />
+          <Icon name="grid" size={16} color={brandGroupChat.textPrimary} />
           <Text style={styles.mediaButtonText}>{t("chat.media")}</Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Brand group options"
+          hitSlop={5}
+          onPress={() => setOptionsOpen(true)}
+          style={styles.iconButton}
+          testID="brand-group-options"
+        >
+          <Icon name="moreH" size={20} color={brandGroupChat.textPrimary} />
         </Pressable>
       </View>
 
       {group?.muted ? (
         <View style={styles.mutedNote}>
           <Text style={styles.mutedNoteText}>{"Muted: routine push alerts are off, but direct @mentions still notify you."}</Text>
-        </View>
-      ) : null}
-
-      {canBrand && canSupport ? (
-        <View style={styles.actorBar}>
-          <Text style={styles.actorLabel}>Replying as</Text>
-          <Pressable accessibilityRole="button" accessibilityLabel="Reply as Brand team" accessibilityState={{ selected: actorMode === "brand" }} onPress={() => setActorMode("brand")} style={[styles.actorChoice, actorMode === "brand" && styles.actorChoiceActive]}>
-            <Text style={[styles.actorChoiceText, actorMode === "brand" && styles.actorChoiceTextActive]}>Brand team</Text>
-          </Pressable>
-          <Pressable accessibilityRole="button" accessibilityLabel="Reply as Mingla Support" accessibilityState={{ selected: actorMode === "support" }} onPress={() => setActorMode("support")} style={[styles.actorChoice, actorMode === "support" && styles.actorChoiceActive]}>
-            <Text style={[styles.actorChoiceText, actorMode === "support" && styles.actorChoiceTextActive]}>Mingla Support</Text>
-          </Pressable>
         </View>
       ) : null}
 
@@ -599,13 +819,33 @@ function BrandGroupThreadScreen(): React.ReactElement {
         >
           {messages.length === 0 ? (
             <View style={styles.empty}><Text style={styles.stateText}>This is the official Brand group. Start the first conversation here.</Text></View>
-          ) : messages.map((message) => {
+          ) : threadItems.map((item) => {
+            if (item.kind === "day") {
+              return (
+                <View key={item.key} style={styles.dayRow} accessibilityRole="header">
+                  <Text style={styles.dayText}>{item.label}</Text>
+                </View>
+              );
+            }
+            const message = item.message;
+            const recordOffset = (event: LayoutChangeEvent): void => {
+              messageOffsets.current.set(message.id, event.nativeEvent.layout.y);
+            };
+            // A quiet centred line: no bubble, no menu. Plan updates (#4270)
+            // and other system notes use this path.
+            if (message.message_type === "system") {
+              return (
+                <View key={message.id} onLayout={recordOffset} style={styles.systemLine} testID="brand-group-system-line">
+                  <Text style={styles.systemLineText}>{message.content}</Text>
+                </View>
+              );
+            }
             // #4111 — a new customer enquiry: a card, never a chat bubble. It
             // names no guest (staff and scanners read Brand groups, D8).
             if (message.message_type === "brand_enquiry_card") {
               const cardEnquiryId = message.card_payload?.enquiry_id ?? null;
               return (
-                <View key={message.id} onLayout={(event: LayoutChangeEvent) => messageOffsets.current.set(message.id, event.nativeEvent.layout.y)}>
+                <View key={message.id} onLayout={recordOffset} style={styles.cardRow}>
                   <BrandEnquiryCard
                     content={message.content}
                     createdAt={message.created_at}
@@ -615,25 +855,30 @@ function BrandGroupThreadScreen(): React.ReactElement {
               );
             }
             const mine = message.sender_id === user?.id;
-            const selected = selectedIds.includes(message.id);
             const supportIdentity = message.sender_role === "Mingla Support";
+            const role = message.sender_role
+              ?? (message.sender_id && memberRoles.has(message.sender_id) ? memberRoleLabel(memberRoles.get(message.sender_id) ?? "") : null);
             const mediaItem = message.file_id ? viewerItemMap.get(message.file_id) : undefined;
             const isMedia = mediaItem?.kind === "image" || mediaItem?.kind === "video";
             return (
-              <View
-                key={message.id}
-                onLayout={(event: LayoutChangeEvent) => messageOffsets.current.set(message.id, event.nativeEvent.layout.y)}
-                style={[styles.messageWrap, mine ? styles.messageWrapMine : styles.messageWrapOther]}
-              >
-                {!mine ? <Text style={styles.sender}>{message.sender_display_name}{supportIdentity ? " · Mingla Support" : ""}</Text> : null}
-                <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleOther, selected && styles.bubbleSelected, highlightedMessageId === message.id && styles.bubbleHighlighted]}>
-                  {message.reply_content ? (
-                    <View style={styles.quote}>
-                      <Text style={styles.quoteName}>{message.reply_sender_display_name || "Message"}</Text>
-                      <Text style={styles.quoteText} numberOfLines={2}>{message.reply_content}</Text>
-                    </View>
-                  ) : null}
-                  {message.file_id && message.file_name && message.file_mime ? (
+              <View key={message.id} onLayout={recordOffset}>
+                <BrandGroupMessageRow
+                  message={message}
+                  mine={mine}
+                  position={item.position}
+                  showSender={item.showSender}
+                  showAvatar={item.showAvatar}
+                  showTime={item.showTime}
+                  senderLabel={`${message.sender_display_name}${role ? ` · ${supportIdentity ? "Mingla Support" : role}` : ""}`}
+                  selected={selectedIds.includes(message.id)}
+                  highlighted={highlightedMessageId === message.id}
+                  reactions={live.reactionsByMessage.get(message.id) ?? []}
+                  seenBy={seenBy?.messageId === message.id ? seenBy.text : null}
+                  onOpenMenu={() => setMenuMessage(message)}
+                  onReply={() => startReply(message)}
+                  onHeart={() => live.toggleReaction(message.id, BRAND_GROUP_HEART)}
+                  onToggleReaction={(emoji) => live.toggleReaction(message.id, emoji)}
+                  renderBody={(openMenu) => message.file_id && message.file_name && message.file_mime ? (
                     <Pressable
                       accessibilityRole="button"
                       accessibilityLabel={isMedia ? t(mediaItem?.kind === "video" ? "chat.video_bubble_a11y" : "chat.photo_bubble_a11y", { name: message.file_name, duration: formatMediaDuration(mediaItem?.durationMs) ?? "" }) : `Open ${message.file_name}`}
@@ -641,18 +886,13 @@ function BrandGroupThreadScreen(): React.ReactElement {
                         setPanelViewerItems(null);
                         setPreviewFileId(message.file_id);
                       }}
+                      onLongPress={openMenu}
                       style={isMedia ? styles.mediaBubble : styles.fileCard}
                     >
-                      {isMedia && mediaItem ? <BrandGroupMediaBubble item={mediaItem} name={message.file_name} sizeBytes={message.file_size} mine={mine} renderThumbnail={renderMediaThumbnail} thumbStyle={styles.mediaBubbleThumb} footerStyle={styles.mediaBubbleFooter} mineFooterStyle={styles.messageTextMine} /> : <><View style={styles.fileCardIcon}><Icon name="notebook" size={20} color={mine ? "#101216" : accent.warm} /></View><View style={styles.fileCardCopy}><Text style={[styles.fileName, mine && styles.messageTextMine]} numberOfLines={2}>{message.file_name}</Text><Text style={[styles.fileMeta, mine && styles.fileMetaMine]}>{t("chat.file_meta", { size: formatFileSize(message.file_size, (key, variables) => t(key, variables)) })}</Text></View></>}
+                      {isMedia && mediaItem ? <BrandGroupMediaBubble item={mediaItem} name={message.file_name} sizeBytes={message.file_size} mine={mine} renderThumbnail={renderMediaThumbnail} thumbStyle={styles.mediaBubbleThumb} footerStyle={styles.mediaBubbleFooter} mineFooterStyle={styles.messageTextMine} /> : <><View style={[styles.fileCardIcon, mine && styles.fileCardIconMine]}><Icon name="notebook" size={20} color={mine ? brandGroupChat.mineText : accent.warm} /></View><View style={styles.fileCardCopy}><Text style={[styles.fileName, mine && styles.messageTextMine]} numberOfLines={2}>{message.file_name}</Text><Text style={[styles.fileMeta, mine && styles.fileMetaMine]}>{t("chat.file_meta", { size: formatFileSize(message.file_size, (key, variables) => t(key, variables)) })}</Text></View></>}
                     </Pressable>
-                  ) : <Text style={[styles.messageText, mine && styles.messageTextMine]}>{message.content}</Text>}
-                  <Text style={styles.time}>{new Date(message.created_at).toLocaleString()}</Text>
-                </View>
-                <View style={[styles.actions, mine && styles.actionsMine]}>
-                  <Pressable accessibilityRole="button" accessibilityLabel={`Reply to ${message.sender_display_name}`} onPress={() => setReplyTo(message)}><Text style={styles.actionText}>Reply</Text></Pressable>
-                  <Pressable accessibilityRole="button" accessibilityLabel={selected ? "Remove message from related context" : "Add message to related context"} accessibilityState={{ selected }} onPress={() => toggleSelected(message.id)}><Text style={styles.actionText}>{selected ? "Unselect" : "Select"}</Text></Pressable>
-                  {canSupport ? <Pressable accessibilityRole="button" accessibilityLabel="Create product signal from this message" onPress={() => setSignalSourceId(message.id)}><Text style={styles.actionText}>Create product signal</Text></Pressable> : null}
-                </View>
+                  ) : <BrandGroupMessageText content={message.content} mine={mine} mentionNames={mentionNames} />}
+                />
               </View>
             );
           })}
@@ -670,13 +910,37 @@ function BrandGroupThreadScreen(): React.ReactElement {
           },
         ]}
       >
-        {replyTo ? (
-          <View style={styles.composerContext}>
-            <View style={styles.headerCopy}><Text style={styles.contextTitle}>Replying to {replyTo.sender_display_name}</Text><Text style={styles.contextText} numberOfLines={1}>{replyTo.content}</Text></View>
-            <Pressable accessibilityRole="button" accessibilityLabel="Clear reply context" onPress={() => setReplyTo(null)}><Text style={styles.actionText}>Clear</Text></Pressable>
+        {canBrand && canSupport ? (
+          <View style={styles.actorBar}>
+            <Text style={styles.actorLabel}>Replying as</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel="Reply as Brand team" accessibilityState={{ selected: actorMode === "brand" }} onPress={() => setActorMode("brand")} style={[styles.actorChoice, actorMode === "brand" && styles.actorChoiceActive]}>
+              <Text style={[styles.actorChoiceText, actorMode === "brand" && styles.actorChoiceTextActive]}>Brand team</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="Reply as Mingla Support" accessibilityState={{ selected: actorMode === "support" }} onPress={() => setActorMode("support")} style={[styles.actorChoice, actorMode === "support" && styles.actorChoiceActive]}>
+              <Text style={[styles.actorChoiceText, actorMode === "support" && styles.actorChoiceTextActive]}>Mingla Support</Text>
+            </Pressable>
           </View>
         ) : null}
-        {selectedMessages.length ? <Text style={styles.selectedNote}>{selectedMessages.length} related message{selectedMessages.length === 1 ? "" : "s"} selected</Text> : null}
+        {replyTo ? (
+          <View style={styles.replyBar}>
+            <View style={styles.replyBarAccent} />
+            <View style={styles.headerCopy}>
+              <Text style={styles.contextTitle} numberOfLines={1}>Replying to {replyTo.sender_display_name}</Text>
+              <Text style={styles.contextText} numberOfLines={1}>{replyTo.file_name || replyTo.content}</Text>
+            </View>
+            <Pressable accessibilityRole="button" accessibilityLabel="Clear reply context" hitSlop={8} onPress={() => setReplyTo(null)} style={styles.contextClose}>
+              <Icon name="close" size={16} color={brandGroupChat.textSoft} />
+            </Pressable>
+          </View>
+        ) : null}
+        {selectedMessages.length ? (
+          <View style={styles.selectedBar}>
+            <Text style={styles.selectedNote}>{selectedMessages.length} related message{selectedMessages.length === 1 ? "" : "s"} selected</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel="Clear selected messages" hitSlop={8} onPress={() => setSelectedIds([])}>
+              <Text style={styles.selectedClear}>Clear</Text>
+            </Pressable>
+          </View>
+        ) : null}
         {mentionTarget ? (
           <View style={styles.mentionMenu} accessibilityLabel="Brand group mention suggestions">
             {mentionLoading ? (
@@ -690,7 +954,7 @@ function BrandGroupThreadScreen(): React.ReactElement {
                 accessibilityRole="button"
                 accessibilityLabel={`Mention ${candidate.display_name}`}
                 onPress={() => chooseMention(candidate)}
-                style={styles.mentionOption}
+                style={({ pressed }) => [styles.mentionOption, pressed && styles.mentionOptionPressed]}
               >
                 <View style={styles.mentionAvatar}>
                   <Text style={styles.mentionAvatarText}>{candidate.display_name.trim().charAt(0).toUpperCase()}</Text>
@@ -712,27 +976,50 @@ function BrandGroupThreadScreen(): React.ReactElement {
             disabled={sending || loading || Boolean(error)}
             onPress={() => setFilePickerVisible(true)}
             style={styles.attachButton}
+            hitSlop={4}
           >
-            <Icon name="upload" size={20} color={accent.warm} />
+            <Icon name="plus" size={22} color={brandGroupChat.textSecondary} />
           </Pressable>
           <TextInput
             ref={composerRef}
             value={composer}
             onChangeText={updateComposer}
             onSelectionChange={updateComposerSelection}
+            onContentSizeChange={growComposer}
+            onKeyPress={composerKeyPress}
+            onBlur={live.stopTyping}
             placeholder={actorMode === "support" ? "Reply as Mingla Support" : "Message your Brand group"}
-            placeholderTextColor={textTokens.tertiary}
-            style={styles.input}
+            placeholderTextColor={brandGroupChat.textMuted}
+            style={[styles.input, { height: composerHeight }]}
             multiline
+            blurOnSubmit={false}
             editable={!sending && !loading && !error}
             accessibilityLabel="Brand group message"
+            testID="brand-group-composer"
           />
-          <Button label="Send" leadingIcon="send" loading={sending} disabled={!composer.trim() || sending} onPress={() => void send()} />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Send"
+            accessibilityState={{ disabled: !composer.trim() || sending, busy: sending }}
+            disabled={!composer.trim() || sending}
+            onPress={() => void send()}
+            style={[styles.sendButton, (!composer.trim() || sending) && styles.sendButtonDisabled]}
+            testID="brand-group-send"
+          >
+            {sending ? <ActivityIndicator size="small" color={brandGroupChat.mineText} /> : <Icon name="send" size={18} color={brandGroupChat.mineText} />}
+          </Pressable>
         </View>
       </View>
       </View>
-      {isWideDesktop && conversationId ? (
+      {showRail && conversationId ? (
         <View style={styles.detailsRail}>
+          <BrandGroupRailTabRow
+            active={desktopDetailTab}
+            tabs={[
+              { key: "people", label: `People · ${members.length || "—"}`, accessibilityLabel: "Show people", onPress: () => { setDesktopDetailTab("people"); setMediaPanelOpen(false); } },
+              { key: "media", label: t("chat.media"), accessibilityLabel: "Show media", onPress: openMedia },
+            ]}
+          />
           {desktopDetailTab === "people" ? (
             <BrandGroupPeoplePanel
               groupName={group?.brand_name ?? "Brand group"}
@@ -742,21 +1029,9 @@ function BrandGroupThreadScreen(): React.ReactElement {
               muted={group?.muted ?? false}
               muteBusy={!group || muteBusy}
               onToggleMute={() => void toggleMute()}
-              onShowMedia={() => {
-                setDesktopDetailTab("media");
-                setMediaPanelOpen(true);
-              }}
             />
           ) : (
             <View style={styles.mediaRail}>
-              <View style={styles.railTabs} accessibilityRole="tablist">
-                <Pressable accessibilityRole="tab" accessibilityLabel="Show people" accessibilityState={{ selected: false }} onPress={() => { setDesktopDetailTab("people"); setMediaPanelOpen(false); }} style={styles.railTab}>
-                  <Text style={styles.railTabText}>People · {members.length || "—"}</Text>
-                </Pressable>
-                <View accessibilityRole="tab" accessibilityState={{ selected: true }} style={[styles.railTab, styles.railTabActive]}>
-                  <Text style={styles.railTabTextActive}>Media</Text>
-                </View>
-              </View>
               <React.Suspense fallback={<View style={styles.mediaPanelLoading}><ActivityIndicator color={accent.warm} /></View>}>
                 <LazyBrandGroupMediaPanel
                   compact
@@ -775,7 +1050,7 @@ function BrandGroupThreadScreen(): React.ReactElement {
       ) : null}
       </KeyboardAvoidingView>
 
-      {!isWideDesktop && peopleSheetOpen ? (
+      {!showRail && peopleSheetOpen ? (
         <BrandGroupPeopleSheet
           visible
           groupName={group?.brand_name ?? "Brand group"}
@@ -789,6 +1064,45 @@ function BrandGroupThreadScreen(): React.ReactElement {
         />
       ) : null}
 
+      {optionsOpen ? (
+        <Modal visible transparent animationType="fade" onRequestClose={() => setOptionsOpen(false)}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Close options" style={styles.optionsScrim} onPress={() => setOptionsOpen(false)}>
+            <View style={styles.optionsCard} testID="brand-group-options-menu">
+              <Pressable accessibilityRole="button" accessibilityLabel="Show people" onPress={() => { setOptionsOpen(false); openPeople(); }} style={({ pressed }) => [styles.optionRow, pressed && styles.optionRowPressed]}>
+                <Icon name="users" size={18} color={brandGroupChat.textSecondary} />
+                <Text style={styles.optionText}>People</Text>
+              </Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel="Show media" onPress={() => { setOptionsOpen(false); openMedia(); }} style={({ pressed }) => [styles.optionRow, pressed && styles.optionRowPressed]}>
+                <Icon name="grid" size={18} color={brandGroupChat.textSecondary} />
+                <Text style={styles.optionText}>{t("chat.media")}</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={group?.muted ? "Unmute notifications" : "Mute notifications"}
+                disabled={!group || muteBusy}
+                onPress={() => { setOptionsOpen(false); void toggleMute(); }}
+                style={({ pressed }) => [styles.optionRow, pressed && styles.optionRowPressed, (!group || muteBusy) && styles.optionRowDisabled]}
+              >
+                <Icon name={group?.muted ? "volume" : "volumeOff"} size={18} color={brandGroupChat.textSecondary} />
+                <Text style={styles.optionText}>{group?.muted ? "Unmute notifications" : "Mute notifications"}</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Modal>
+      ) : null}
+
+      <BrandGroupMessageMenu
+        message={menuMessage}
+        actions={menuActions}
+        myReactions={myMenuReactions}
+        onReact={(emoji) => {
+          const target = menuMessage;
+          setMenuMessage(null);
+          if (target) live.toggleReaction(target.id, emoji);
+        }}
+        onAction={runMenuAction}
+        onClose={() => setMenuMessage(null)}
+      />
       <BrandGroupSignalModal
         visible={signalSourceId !== null}
         brandName={group?.brand_name || "Brand group"}
@@ -810,107 +1124,100 @@ function BrandGroupThreadScreen(): React.ReactElement {
           onUploaded={refresh}
         />
       ) : null}
-      <BrandGroupFilePreviewModal
-        items={panelViewerItems ?? viewerItems}
-        initialFileId={previewFileId}
-        renderThumbnail={renderMediaThumbnail}
-        onShowInChat={(messageId) => void showInChat(messageId)}
-        onClose={() => {
-          setPreviewFileId(null);
-          setPanelViewerItems(null);
-        }}
-      />
+      {filePreview}
       <Toast
         visible={toast.visible}
-        kind="error"
+        kind={toast.kind}
         message={toast.message}
-        onDismiss={() => setToast({ visible: false, message: "" })}
+        onDismiss={() => setToast({ visible: false, message: "", kind: "error" })}
       />
     </SafeScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { backgroundColor: canvas.profile },
-  header: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.md, borderBottomWidth: 1, borderBottomColor: glass.border.profileBase },
-  iconButton: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: glass.border.profileBase, backgroundColor: glass.tint.profileBase },
+  screen: { backgroundColor: brandGroupChat.screenBg },
+  desktopShell: { flex: 1, flexDirection: "row", backgroundColor: brandGroupChat.screenBg },
+  desktopList: { width: 280, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: brandGroupChat.hairline, paddingTop: spacing.sm },
+  desktopThread: { flex: 1, minWidth: 0 },
+  header: { minHeight: 60, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.sm, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: brandGroupChat.hairline, backgroundColor: brandGroupChat.screenBg },
+  iconButton: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
   headerCopy: { flex: 1, minWidth: 0 },
-  peopleTrigger: { flex: 1, minWidth: 0, minHeight: 44, justifyContent: "center" },
-  title: { color: textTokens.primary, fontSize: 18, fontWeight: "800" },
-  memberPeek: { minWidth: 0, flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 },
-  avatarStack: { flexDirection: "row", paddingLeft: 5 },
-  headerAvatar: { width: 21, height: 21, marginLeft: -5, alignItems: "center", justifyContent: "center", borderRadius: 11, borderWidth: 2, borderColor: canvas.profile, backgroundColor: "#473c38" },
-  headerAvatarText: { color: "#ffffff", fontSize: 7, fontWeight: "900" },
-  subtitle: { flexShrink: 1, color: textTokens.tertiary, fontSize: 11 },
+  peopleTrigger: { flex: 1, minWidth: 0, minHeight: 44, flexDirection: "row", alignItems: "center", gap: 10 },
+  title: { color: brandGroupChat.textPrimary, fontSize: 17, fontWeight: "700" },
+  subtitle: { color: brandGroupChat.textSoft, fontSize: 12, marginTop: 1 },
+  subtitleTyping: { color: brandGroupChat.accent, fontWeight: "600" },
   mediaButton: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, borderRadius: 22, borderWidth: 1, borderColor: "rgba(255,255,255,0.14)", backgroundColor: "rgba(255,255,255,0.08)" },
   mediaButtonActive: { borderColor: "rgba(235,120,37,0.7)", shadowColor: accent.warm, shadowOpacity: 0.35, shadowRadius: 10 },
-  mediaButtonText: { color: textTokens.primary, fontSize: 13, fontWeight: "700" },
-  detailsRail: { width: 340, minWidth: 300, maxWidth: "36%", borderLeftWidth: 1, borderLeftColor: glass.border.profileBase, backgroundColor: canvas.profile },
+  mediaButtonText: { color: brandGroupChat.textPrimary, fontSize: 13, fontWeight: "700" },
+  detailsRail: { width: 340, minWidth: 300, maxWidth: "36%", borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: brandGroupChat.hairline, backgroundColor: brandGroupChat.surface },
   mediaRail: { flex: 1, minHeight: 0 },
-  railTabs: { minHeight: 56, flexDirection: "row", gap: 4, alignItems: "center", paddingHorizontal: spacing.sm, borderBottomWidth: 1, borderBottomColor: glass.border.profileBase },
-  railTab: { minHeight: 40, flex: 1, alignItems: "center", justifyContent: "center", borderRadius: radius.full },
+  railTabs: { minHeight: 56, flexDirection: "row", gap: 4, alignItems: "center", paddingHorizontal: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: brandGroupChat.hairline },
+  railTab: { minHeight: 40, flex: 1, alignItems: "center", justifyContent: "center", borderRadius: 999 },
   railTabActive: { borderWidth: 1, borderColor: "rgba(235,120,37,0.38)", backgroundColor: "rgba(235,120,37,0.10)" },
-  railTabText: { color: textTokens.tertiary, fontSize: 12, fontWeight: "700" },
-  railTabTextActive: { color: textTokens.primary, fontSize: 12, fontWeight: "800" },
+  railTabText: { color: brandGroupChat.textSoft, fontSize: 12, fontWeight: "700" },
+  railTabTextActive: { color: brandGroupChat.textPrimary, fontSize: 12, fontWeight: "800" },
   mediaPanelLoading: { flex: 1, alignItems: "center", justifyContent: "center" },
-  mutedNote: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, backgroundColor: "rgba(235,120,37,0.08)", borderBottomWidth: 1, borderBottomColor: "rgba(235,120,37,0.25)" },
-  mutedNoteText: { color: textTokens.secondary, fontSize: 12, textAlign: "center" },
-  actorBar: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: glass.border.profileBase },
-  actorLabel: { color: textTokens.tertiary, fontSize: 12 },
-  actorChoice: { minHeight: 36, justifyContent: "center", paddingHorizontal: spacing.md, borderRadius: 18, borderWidth: 1, borderColor: glass.border.profileElevated },
-  actorChoiceActive: { borderColor: accent.warm, backgroundColor: "rgba(235,120,37,0.1)" },
-  actorChoiceText: { color: textTokens.secondary, fontSize: 12 },
-  actorChoiceTextActive: { color: accent.warm, fontWeight: "700" },
-  notice: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, backgroundColor: "rgba(235,120,37,0.08)", borderBottomWidth: 1, borderBottomColor: "rgba(235,120,37,0.25)" },
-  noticeText: { color: textTokens.secondary, fontSize: 12, textAlign: "center" },
+  mutedNote: { paddingHorizontal: spacing.md, paddingVertical: 6, backgroundColor: brandGroupChat.accentSoft },
+  mutedNoteText: { color: brandGroupChat.textSecondary, fontSize: 12, textAlign: "center" },
+  notice: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, backgroundColor: brandGroupChat.accentSoft },
+  noticeText: { color: brandGroupChat.textSecondary, fontSize: 12, textAlign: "center" },
   workspace: { flex: 1, flexDirection: "row" },
   threadColumn: { flex: 1, minWidth: 0 },
   state: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.md, padding: spacing.lg },
-  stateText: { color: textTokens.secondary, textAlign: "center", lineHeight: 20 },
+  stateText: { color: brandGroupChat.textSecondary, textAlign: "center", lineHeight: 20 },
   messages: { flex: 1 },
-  messagesContent: { padding: spacing.md, gap: spacing.md, paddingBottom: spacing.xl },
-  empty: { padding: spacing.xl, borderRadius: radius.lg, borderWidth: 1, borderColor: glass.border.profileBase, backgroundColor: glass.tint.profileBase },
-  messageWrap: { maxWidth: "84%", gap: 5 },
-  messageWrapMine: { alignSelf: "flex-end", alignItems: "flex-end" },
-  messageWrapOther: { alignSelf: "flex-start", alignItems: "flex-start" },
-  sender: { color: textTokens.tertiary, fontSize: 11, fontWeight: "700", marginHorizontal: spacing.sm },
-  bubble: { borderRadius: radius.lg, padding: spacing.md, gap: spacing.sm, borderWidth: 1 },
-  bubbleMine: { backgroundColor: accent.warm, borderColor: accent.warm },
-  bubbleOther: { backgroundColor: glass.tint.profileElevated, borderColor: glass.border.profileElevated },
-  bubbleSelected: { borderColor: "#b995ff", borderWidth: 2 },
-  bubbleHighlighted: { borderColor: accent.warm, borderWidth: 2, shadowColor: accent.warm, shadowOpacity: 0.45, shadowRadius: 8 },
-  quote: { paddingLeft: spacing.sm, borderLeftWidth: 2, borderLeftColor: "rgba(255,255,255,0.55)", gap: 2 },
-  quoteName: { color: "rgba(255,255,255,0.85)", fontSize: 11, fontWeight: "700" },
-  quoteText: { color: "rgba(255,255,255,0.7)", fontSize: 11 },
-  messageText: { color: textTokens.primary, fontSize: 15, lineHeight: 21 },
-  messageTextMine: { color: "#101216" },
+  messagesContent: { paddingHorizontal: 12, paddingTop: spacing.md, paddingBottom: spacing.lg },
+  empty: { margin: spacing.lg, padding: spacing.xl, borderRadius: 20, backgroundColor: brandGroupChat.surface },
+  dayRow: { alignItems: "center", marginVertical: 12 },
+  dayText: { color: brandGroupChat.textSoft, fontSize: 12, fontWeight: "700", paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12, overflow: "hidden", backgroundColor: brandGroupChat.strip },
+  systemLine: { alignItems: "center", paddingHorizontal: spacing.xl, marginVertical: 8 },
+  systemLineText: { color: brandGroupChat.textMuted, fontSize: 12, lineHeight: 17, textAlign: "center" },
+  cardRow: { marginVertical: 8 },
+  messageTextMine: { color: brandGroupChat.mineText },
   fileCard: { minWidth: 220, flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  fileCardIcon: { width: 40, height: 40, borderRadius: radius.md, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.15)" },
+  fileCardIcon: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.10)" },
+  fileCardIconMine: { backgroundColor: "rgba(16,18,22,0.12)" },
   fileCardCopy: { flex: 1, minWidth: 0 },
-  fileName: { color: textTokens.primary, fontSize: 14, lineHeight: 18, fontWeight: "800" },
-  fileMeta: { color: textTokens.tertiary, fontSize: 10, marginTop: 3 },
-  fileMetaMine: { color: "rgba(16,18,22,0.65)" },
-  mediaBubble: { width: 190, borderRadius: radius.lg, overflow: "hidden" },
-  mediaBubbleThumb: { width: 190, height: 150 },
-  mediaBubbleFooter: { color: textTokens.primary, fontSize: 11, paddingHorizontal: 10, paddingVertical: 7 },
-  time: { color: textTokens.tertiary, fontSize: 10 },
-  actions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md, paddingHorizontal: spacing.sm },
-  actionsMine: { justifyContent: "flex-end" },
-  actionText: { color: accent.warm, fontSize: 12, fontWeight: "700" },
-  composer: { borderTopWidth: 1, borderTopColor: glass.border.profileBase, paddingHorizontal: spacing.md, paddingTop: spacing.sm, gap: spacing.sm, backgroundColor: "rgba(12,14,18,0.96)" },
-  composerContext: { flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.sm, borderRadius: radius.md, backgroundColor: glass.tint.profileBase },
-  contextTitle: { color: textTokens.primary, fontSize: 12, fontWeight: "700" },
-  contextText: { color: textTokens.secondary, fontSize: 11 },
-  selectedNote: { color: "#b995ff", fontSize: 12, fontWeight: "700" },
-  mentionMenu: { maxHeight: 220, overflow: "hidden", borderRadius: radius.lg, borderWidth: 1, borderColor: glass.border.profileElevated, backgroundColor: "#171a20" },
+  fileName: { color: brandGroupChat.textPrimary, fontSize: 14, lineHeight: 18, fontWeight: "800" },
+  fileMeta: { color: brandGroupChat.textMuted, fontSize: 11, marginTop: 3 },
+  fileMetaMine: { color: brandGroupChat.mineTextSecondary },
+  mediaBubble: { width: 210, marginHorizontal: -10, marginVertical: -5, borderRadius: 16, overflow: "hidden" },
+  mediaBubbleThumb: { width: 210, height: 160 },
+  mediaBubbleFooter: { color: brandGroupChat.textPrimary, fontSize: 11, paddingHorizontal: 10, paddingVertical: 7 },
+  composer: { paddingHorizontal: spacing.sm, paddingTop: 6, gap: 6, backgroundColor: brandGroupChat.screenBg },
+  actorBar: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: 4 },
+  actorLabel: { color: brandGroupChat.textMuted, fontSize: 12 },
+  actorChoice: { minHeight: 32, justifyContent: "center", paddingHorizontal: 12, borderRadius: 16, borderWidth: 1, borderColor: brandGroupChat.hairline },
+  actorChoiceActive: { borderColor: accent.warm, backgroundColor: brandGroupChat.accentSoft },
+  actorChoiceText: { color: brandGroupChat.textSecondary, fontSize: 12 },
+  actorChoiceTextActive: { color: accent.warm, fontWeight: "700" },
+  replyBar: { flexDirection: "row", alignItems: "center", gap: 10, padding: 10, borderRadius: 16, backgroundColor: brandGroupChat.surfaceRaised },
+  replyBarAccent: { width: 3, alignSelf: "stretch", borderRadius: 2, backgroundColor: brandGroupChat.quoteBar },
+  contextTitle: { color: brandGroupChat.textPrimary, fontSize: 12, fontWeight: "700" },
+  contextText: { color: brandGroupChat.textSoft, fontSize: 12, marginTop: 1 },
+  contextClose: { width: 28, height: 28, alignItems: "center", justifyContent: "center" },
+  selectedBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 6 },
+  selectedNote: { color: brandGroupChat.selected, fontSize: 12, fontWeight: "700" },
+  selectedClear: { color: brandGroupChat.accent, fontSize: 12, fontWeight: "700" },
+  mentionMenu: { maxHeight: 220, overflow: "hidden", borderRadius: 16, borderWidth: 1, borderColor: brandGroupChat.hairline, backgroundColor: brandGroupChat.surface },
   mentionState: { minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, padding: spacing.sm },
-  mentionStateText: { color: textTokens.tertiary, fontSize: 12, padding: spacing.sm },
-  mentionOption: { minHeight: 52, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: glass.border.profileBase },
-  mentionAvatar: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(235,120,37,0.18)" },
-  mentionAvatarText: { color: accent.warm, fontSize: 13, fontWeight: "800" },
-  mentionName: { color: textTokens.primary, fontSize: 13, fontWeight: "700" },
-  mentionUsername: { color: textTokens.tertiary, fontSize: 11, marginTop: 1 },
-  composerLine: { flexDirection: "row", alignItems: "flex-end", gap: spacing.sm },
-  attachButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: 22, borderWidth: 1, borderColor: glass.border.profileElevated, backgroundColor: glass.tint.profileElevated },
-  input: { flex: 1, minHeight: 44, maxHeight: 120, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.lg, borderWidth: 1, borderColor: glass.border.profileElevated, backgroundColor: glass.tint.profileElevated, color: textTokens.primary },
+  mentionStateText: { color: brandGroupChat.textMuted, fontSize: 12, padding: spacing.sm },
+  mentionOption: { minHeight: 52, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: brandGroupChat.hairline },
+  mentionOptionPressed: { backgroundColor: brandGroupChat.strip },
+  mentionAvatar: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: brandGroupChat.mentionBg },
+  mentionAvatarText: { color: brandGroupChat.mentionText, fontSize: 13, fontWeight: "800" },
+  mentionName: { color: brandGroupChat.textPrimary, fontSize: 13, fontWeight: "700" },
+  mentionUsername: { color: brandGroupChat.textMuted, fontSize: 11, marginTop: 1 },
+  composerLine: { flexDirection: "row", alignItems: "flex-end", gap: 6, padding: 4, borderRadius: brandGroupChat.composerRadius, borderWidth: 1, borderColor: brandGroupChat.hairline, backgroundColor: brandGroupChat.surfaceRaised },
+  attachButton: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
+  input: { flex: 1, minHeight: COMPOSER_MIN, maxHeight: COMPOSER_MAX, paddingHorizontal: 4, paddingTop: 10, paddingBottom: 10, color: brandGroupChat.textPrimary, fontSize: 16, lineHeight: 20 },
+  sendButton: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: brandGroupChat.accent },
+  sendButtonDisabled: { opacity: 0.4 },
+  optionsScrim: { flex: 1, alignItems: "flex-end", paddingTop: 64, paddingHorizontal: spacing.md, backgroundColor: brandGroupChat.scrim },
+  optionsCard: { width: 240, overflow: "hidden", borderRadius: 16, borderWidth: 1, borderColor: brandGroupChat.hairline, backgroundColor: brandGroupChat.surface },
+  optionRow: { minHeight: 48, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16 },
+  optionRowPressed: { backgroundColor: brandGroupChat.strip },
+  optionRowDisabled: { opacity: 0.5 },
+  optionText: { color: brandGroupChat.textPrimary, fontSize: 15, fontWeight: "600" },
 });

@@ -1,29 +1,19 @@
-import React, { useMemo } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import React from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 
 import { SafeScreen } from "../../src/components/ui/SafeScreen";
 import { TopBar } from "../../src/components/ui/TopBar";
-import { Button } from "../../src/components/ui/Button";
+import { Icon } from "../../src/components/ui/Icon";
+import { BrandGroupInboxList } from "../../src/components/messages/BrandGroupInboxList";
+import { useAuth } from "../../src/context/AuthContext";
 import { useBrandGroups } from "../../src/hooks/useBrandGroups";
+import { useResponsiveLayout } from "../../src/hooks/useResponsiveLayout";
 import { useSupportStaff } from "../../src/hooks/useSupportStaff";
 import { brandEnquiryThreadRoute } from "../../src/utils/brandEnquiryWaiting";
-import {
-  accent,
-  canvas,
-  glass,
-  radius,
-  spacing,
-  text as textTokens,
-} from "../../src/constants/designSystem";
-import type { BrandGroupSummary } from "../../src/services/brandGroupsService";
+import { brandGroupThreadHref } from "../../src/utils/brandGroupThreadModel";
+import { brandGroupChat } from "../../src/constants/brandGroupChatTokens";
+import { spacing } from "../../src/constants/designSystem";
 
 // #4111 — the enquiry list loads with this route, never in the boot chunk.
 // Same module as the enquiry route's thread, so the two share one lazy chunk.
@@ -31,127 +21,83 @@ const LazyBrandEnquiryListSection = React.lazy(async () => ({
   default: (await import("../../src/components/messages/BrandEnquiryScreens")).BrandEnquiryListSection,
 }));
 
-function GroupRow({ group, onPress }: { group: BrandGroupSummary; onPress: () => void }) {
+/** Support inbox row + customer enquiries: everything above the groups. */
+function MessagesInboxHeader({ isStaff }: { isStaff: boolean }): React.ReactElement {
+  const router = useRouter();
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`${group.brand_name} Brand group${group.unread_count ? `, ${group.unread_count} unread` : ""}`}
-      onPress={onPress}
-      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-    >
-      <View style={styles.avatar}>
-        <Text style={styles.avatarText}>{group.brand_name.trim().slice(0, 1).toUpperCase()}</Text>
-      </View>
-      <View style={styles.rowCopy}>
-        <View style={styles.rowTitleLine}>
-          <Text style={styles.rowTitle} numberOfLines={1}>{group.brand_name}</Text>
-          {group.unread_count > 0 ? (
-            <View style={styles.badge}><Text style={styles.badgeText}>{Math.min(group.unread_count, 99)}</Text></View>
-          ) : null}
-        </View>
-        <Text style={styles.preview} numberOfLines={1}>
-          {group.last_message_preview || `${group.member_count} people · Brand group`}
-        </Text>
-      </View>
-    </Pressable>
+    <View style={styles.header}>
+      {isStaff ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Open Support inbox"
+          onPress={() => router.push("/support/inbox" as never)}
+          style={({ pressed }) => [styles.supportRow, pressed && styles.supportRowPressed]}
+        >
+          <View style={styles.supportIcon}><Icon name="inbox" size={20} color={brandGroupChat.accent} /></View>
+          <View style={styles.supportCopy}>
+            <Text style={styles.supportTitle}>Support inbox</Text>
+            <Text style={styles.supportText} numberOfLines={1}>Claim, reply to and resolve customer requests</Text>
+          </View>
+          <Icon name="chevR" size={16} color={brandGroupChat.textMuted} />
+        </Pressable>
+      ) : null}
+      {/* #4111 D4 — customer enquiries sit above the Brand groups. */}
+      <React.Suspense fallback={null}>
+        <LazyBrandEnquiryListSection onOpen={(item) => router.push(brandEnquiryThreadRoute(item.id) as never)} />
+      </React.Suspense>
+    </View>
   );
 }
 
 export default function MessagesIndexRoute(): React.ReactElement {
   const router = useRouter();
+  const { user } = useAuth();
   const { groups, loading, error, refresh } = useBrandGroups();
   const staff = useSupportStaff();
-  const ownGroups = useMemo(() => groups.filter((group) => group.access_kind === "brand"), [groups]);
-  const supportGroups = useMemo(() => groups.filter((group) => group.access_kind === "support"), [groups]);
+  const { isWideDesktop } = useResponsiveLayout();
 
-  const openGroup = (group: BrandGroupSummary): void => {
-    const mode = group.access_kind === "support" ? "support" : "brand";
-    router.push(`/messages/${group.conversation_id}?mode=${mode}` as never);
-  };
+  const list = (
+    <BrandGroupInboxList
+      groups={groups}
+      loading={loading}
+      error={error}
+      onRetry={() => void refresh()}
+      viewerId={user?.id ?? null}
+      isStaff={staff.isStaff}
+      onOpen={(group) => router.push(brandGroupThreadHref(group) as never)}
+      header={<MessagesInboxHeader isStaff={staff.isStaff} />}
+    />
+  );
 
   return (
     <SafeScreen edges={["top"]} style={styles.screen} testID="brand-groups-messages-index">
       <TopBar leftKind="back" title="Messages" onBack={() => router.back()} rightSlot={null} />
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.intro}>
-          <Text style={styles.heading}>Your Mingla conversations</Text>
-          <Text style={styles.subheading}>Brand groups are created automatically and stay in sync with each brand’s active team.</Text>
+      {isWideDesktop ? (
+        <View style={styles.desktop}>
+          <View style={styles.desktopList}>{list}</View>
+          <View style={styles.desktopEmpty}>
+            <Icon name="chat" size={36} color={brandGroupChat.textMuted} />
+            <Text style={styles.desktopEmptyTitle}>Your Mingla conversations</Text>
+            <Text style={styles.desktopEmptyText}>Pick a Brand group on the left. Brand groups are created automatically and stay in sync with each brand’s active team.</Text>
+          </View>
         </View>
-
-        {staff.isStaff ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Support inbox</Text>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Open Support inbox"
-              onPress={() => router.push("/support/inbox" as never)}
-              style={({ pressed }) => [styles.supportRow, pressed && styles.rowPressed]}
-            >
-              <View style={styles.rowCopy}>
-                <Text style={styles.rowTitle}>Customer support conversations</Text>
-                <Text style={styles.preview}>Claim, reply to and resolve customer requests</Text>
-              </View>
-              <Text style={styles.openText}>Open</Text>
-            </Pressable>
-          </View>
-        ) : null}
-
-        {/* #4111 D4 — customer enquiries sit above the Brand groups. */}
-        <React.Suspense fallback={null}>
-          <LazyBrandEnquiryListSection onOpen={(item) => router.push(brandEnquiryThreadRoute(item.id) as never)} />
-        </React.Suspense>
-
-        {loading ? (
-          <View style={styles.state}><ActivityIndicator color={accent.warm} /></View>
-        ) : error ? (
-          <View style={styles.state}>
-            <Text style={styles.stateText}>{error}</Text>
-            <Button label="Retry" variant="secondary" onPress={() => void refresh()} />
-          </View>
-        ) : (
-          <>
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Your Brand groups</Text>
-              {ownGroups.length ? ownGroups.map((group) => (
-                <GroupRow key={group.conversation_id} group={group} onPress={() => openGroup(group)} />
-              )) : <Text style={styles.emptyText}>Your active brand teams will appear here automatically.</Text>}
-            </View>
-            {staff.isStaff ? (
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Brand groups you support</Text>
-                {supportGroups.length ? supportGroups.map((group) => (
-                  <GroupRow key={group.conversation_id} group={group} onPress={() => openGroup(group)} />
-                )) : <Text style={styles.emptyText}>No additional Brand groups need Support access.</Text>}
-              </View>
-            ) : null}
-          </>
-        )}
-      </ScrollView>
+      ) : list}
     </SafeScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { backgroundColor: canvas.profile },
-  content: { padding: spacing.lg, gap: spacing.xl, paddingBottom: spacing.xxl },
-  intro: { gap: spacing.xs },
-  heading: { color: textTokens.primary, fontSize: 24, fontWeight: "700" },
-  subheading: { color: textTokens.secondary, fontSize: 14, lineHeight: 20, maxWidth: 620 },
-  section: { gap: spacing.sm },
-  sectionTitle: { color: textTokens.tertiary, fontSize: 13, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.7 },
-  row: { flexDirection: "row", alignItems: "center", gap: spacing.md, minHeight: 72, padding: spacing.md, borderWidth: 1, borderColor: glass.border.profileBase, borderRadius: radius.lg, backgroundColor: glass.tint.profileBase },
-  supportRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, minHeight: 72, padding: spacing.md, borderWidth: 1, borderColor: "rgba(235,120,37,0.35)", borderRadius: radius.lg, backgroundColor: "rgba(235,120,37,0.08)" },
-  rowPressed: { opacity: 0.72 },
-  avatar: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(235,120,37,0.14)", borderWidth: 1, borderColor: "rgba(235,120,37,0.35)" },
-  avatarText: { color: accent.warm, fontSize: 17, fontWeight: "800" },
-  rowCopy: { flex: 1, minWidth: 0, gap: 4 },
-  rowTitleLine: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  rowTitle: { flex: 1, color: textTokens.primary, fontSize: 16, fontWeight: "700" },
-  preview: { color: textTokens.secondary, fontSize: 13 },
-  badge: { minWidth: 22, height: 22, paddingHorizontal: 6, borderRadius: 11, alignItems: "center", justifyContent: "center", backgroundColor: accent.warm },
-  badgeText: { color: "#101216", fontSize: 11, fontWeight: "800" },
-  openText: { color: accent.warm, fontSize: 14, fontWeight: "700" },
-  state: { minHeight: 180, alignItems: "center", justifyContent: "center", gap: spacing.md },
-  stateText: { color: textTokens.secondary, textAlign: "center" },
-  emptyText: { color: textTokens.secondary, padding: spacing.md, borderWidth: 1, borderColor: glass.border.profileBase, borderRadius: radius.lg, backgroundColor: glass.tint.profileBase },
+  screen: { backgroundColor: brandGroupChat.screenBg },
+  header: { gap: spacing.sm, paddingBottom: spacing.sm },
+  supportRow: { minHeight: 64, marginHorizontal: spacing.md, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 12, borderRadius: 16, backgroundColor: brandGroupChat.accentSoft },
+  supportRowPressed: { opacity: 0.75 },
+  supportIcon: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(235,120,37,0.18)" },
+  supportCopy: { flex: 1, minWidth: 0, gap: 2 },
+  supportTitle: { color: brandGroupChat.textPrimary, fontSize: 15, fontWeight: "700" },
+  supportText: { color: brandGroupChat.textSoft, fontSize: 13 },
+  desktop: { flex: 1, flexDirection: "row" },
+  desktopList: { width: 320, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: brandGroupChat.hairline },
+  desktopEmpty: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.sm, padding: spacing.xl },
+  desktopEmptyTitle: { color: brandGroupChat.textPrimary, fontSize: 18, fontWeight: "700" },
+  desktopEmptyText: { color: brandGroupChat.textSoft, fontSize: 14, lineHeight: 20, maxWidth: 380, textAlign: "center" },
 });

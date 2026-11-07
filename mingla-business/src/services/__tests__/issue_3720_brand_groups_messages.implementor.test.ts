@@ -97,21 +97,30 @@ describe("#3720 official Brand groups Host contract", () => {
   test("top bar opens Messages and the index separates own and Support groups", () => {
     const topBar = read("src/components/ui/TopBar.tsx");
     const index = read("app/messages/index.tsx");
+    // #4304 — the inbox list (rows, filters, sections) moved into a shared
+    // component used full-screen on phones and as the desktop list pane.
+    const inbox = read("src/components/messages/BrandGroupInboxList.tsx");
     expect(topBar).toContain('icon="chat"');
     expect(topBar).toContain('router.push("/messages"');
     expect(topBar).not.toContain('icon="search"');
-    expect(index).toContain("Your Brand groups");
-    expect(index).toContain("Brand groups you support");
+    expect(index).toContain("<BrandGroupInboxList");
+    expect(inbox).toContain("Your Brand groups");
+    expect(inbox).toContain("Brand groups you support");
     expect(index).toContain("Support inbox");
   });
 
   test("thread exposes quote, related-message, dual-role and private signal actions", () => {
     const thread = read("app/messages/[conversationId].tsx");
+    // #4304 — the per-message actions moved from always-visible links into
+    // the message menu; its action list is built by the thread model.
+    const model = read("src/utils/brandGroupThreadModel.ts");
+    const row = read("src/components/messages/BrandGroupMessageRow.tsx");
     expect(thread).toContain("Replying as");
     expect(thread).toContain("Brand team");
     expect(thread).toContain("Mingla Support");
-    expect(thread).toContain("Create product signal");
+    expect(model).toContain("Create product signal");
+    expect(thread).toContain("buildBrandGroupMessageMenu(");
     expect(thread).toContain("related message");
-    expect(thread).toContain("message.reply_content");
+    expect(row).toContain("message.reply_content");
   });
 });

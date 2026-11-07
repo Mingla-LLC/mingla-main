@@ -29,7 +29,18 @@ jest.mock("../../../hooks/useBrandGroups", () => ({
   }),
 }));
 jest.mock("../../../services/brandGroupFileMetaService", () => ({ fileMeta: async () => mockFileMeta }));
-jest.mock("../../../hooks/useResponsiveLayout", () => ({ useResponsiveLayout: () => ({ isWideDesktop: true }) }));
+// #4304 — the details rail shows from 1200px; below that the gallery is full-screen.
+jest.mock("../../../hooks/useResponsiveLayout", () => ({ useResponsiveLayout: () => ({ isWideDesktop: true, width: 1440 }) }));
+jest.mock("../../../services/brandGroupLiveService", () => ({
+  listBrandGroupReactions: jest.fn(async () => []),
+  listBrandGroupReadState: jest.fn(async () => []),
+  addBrandGroupReaction: jest.fn(),
+  removeBrandGroupReaction: jest.fn(),
+}));
+jest.mock("../../../services/brandGroupRosterService", () => ({
+  listBrandGroupMembers: jest.fn(async () => ({ members: [], error: null })),
+  listBrandGroupMentionCandidates: jest.fn(async () => ({ candidates: [], error: null })),
+}));
 jest.mock("../../../hooks/useSupportStaff", () => ({ useSupportStaff: () => ({ isStaff: false }) }));
 jest.mock("../../../services/brandGroupsService", () => ({
   listBrandGroupMessages: (...args: unknown[]) => mockListMessages(...args),

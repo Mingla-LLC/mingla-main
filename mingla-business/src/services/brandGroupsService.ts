@@ -13,6 +13,10 @@ export interface BrandGroupSummary {
   access_kind: "brand" | "support";
   push_enabled: boolean;
   muted: boolean;
+  /** #4304 — who sent the last message and its type, for "Ada: …" previews. */
+  last_message_sender_id?: string | null;
+  last_message_sender_name?: string | null;
+  last_message_type?: string | null;
 }
 
 export interface BrandGroupMessage {
@@ -27,7 +31,7 @@ export interface BrandGroupMessage {
   sender_role: string | null;
   reply_content: string | null;
   reply_sender_display_name: string | null;
-  message_type: "text" | "image" | "video" | "file" | "brand_enquiry_card";
+  message_type: "text" | "image" | "video" | "file" | "brand_enquiry_card" | "system";
   file_id: string | null;
   file_name: string | null;
   file_size: number | null;
