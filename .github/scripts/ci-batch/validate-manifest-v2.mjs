@@ -369,8 +369,15 @@ export function phase3dContractDigest(manifest) {
 // #4275: register the signal batch and cron stagger migrations and their proofs the same way.
 // #4283: register the accept single-member-row migration and its proofs
 // #4276: register the place-pipeline migrations and their proofs.
+// #4271: the door pay migration and its proof join the preserved inventories, and the
+// migration joins the pre-#1931 replay's exact-file exclusion (#2492).
+// #4271: register the tester adversarial PostgreSQL proof the same way.
+// #4271: register the rework implementor PostgreSQL proof the same way.
+// #4271: register the Apple build PostgreSQL proof the same way.
+// #4271: register the final tester PostgreSQL proof the same way.
+// #4271: re-sealed after merging origin/main (#4261/#4273/#4275/#4276/#4283/#2830 rows kept beside the #4271 rows).
 // #4273: register the buyer/follower auto opt-in, honest-quote and account-opt-out migrations and their proofs.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "19a7c630ee4aeedcaf4894dcefcfd962d79aad5624171a693d12506b6cd7c39e";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "6d29b09f6604314fc99fad9f517ac28046e932c6c8bd9e298731229080178be5";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
@@ -858,11 +865,16 @@ const PHASE3C_WRAPPER_SET = new Set(PHASE3C_WRAPPER_NAMES);
 // refresh advanced three in-range transitive/runtime packages in the lockfile.
 // [TEST-MOD-APPROVED #3872] Re-banked after the required final Creator/Local
 // Host dependency refresh advanced two in-range transitive packages.
+// [TEST-MOD-APPROVED #4271] Re-banked after Host declared the exact-pinned
+// Stripe Terminal SDK (@stripe/stripe-terminal-react-native) for Tap to Pay at
+// the door, and its lockfile entries. app-mobile is unchanged.
+// [TEST-MOD-APPROVED #4271] Re-banked after Host declared expo-brightness, so the
+// door pay code screen can reach full brightness. app-mobile is unchanged.
 export const PACKAGE_AUTHORITY_DIGESTS = Object.freeze({
   "app-mobile/package.json": "48af9d0cca47199b61b824a4fd80b87ec7e5bb12f07899994435031238834bbb",
   "app-mobile/package-lock.json": "9a7974a2de124482f7d450d46b49775126ef5206a325dcb6c7663ea3b9666065",
-  "mingla-business/package.json": "6f77fc43e63360ac45b94d11195b966433d4e6769b34a0340d88f9871b4b2315",
-  "mingla-business/package-lock.json": "77de9a72fcbf260277096d888a4bfa317cbf420e3a26c78bf7826feeacff3410",
+  "mingla-business/package.json": "908439c00e8d25bc67db9cd181cfae5848ac6b7ee6f167057304b86a6a8c561a",
+  "mingla-business/package-lock.json": "8341e8aca8d2f6b17de51e57dd837ec45ec155fb8b4a1f3177a61d19c3b6b891",
 });
 // [#2439 SC-11.5] The seven Phase 3C records that hold a provider record and
 // transition retained-live-provider -> batched-provider at cutover. The other

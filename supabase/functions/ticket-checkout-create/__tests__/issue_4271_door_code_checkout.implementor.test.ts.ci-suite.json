@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/ticket-checkout-create/__tests__/issue_4271_door_code_checkout.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4271-door-code-checkout-implementor",
+  "profile": "deno-2-unit"
+}

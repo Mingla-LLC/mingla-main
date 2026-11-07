@@ -43,6 +43,14 @@ const RENDERERS = [
 
 const FORBIDDEN = ["Mingla app", "Open in Mingla", "Get the app"];
 
+// #4271 — the guest's door pay page holds both sides of the purchase. Everything
+// is pre-purchase except its paid card, which must name the app; a new state
+// added anywhere else is scanned by default.
+const DOOR_PAY_PAGE = "mingla-business/app/pay/door/[code].tsx";
+const DOOR_PAY_PAID_START = "// ---- B4: paid";
+const DOOR_PAY_PAID_END = "// ---- Shared state card";
+const DOOR_PAY_FORBIDDEN = [...FORBIDDEN, "Mingla Explorer", "Get Mingla", "App Store", "Google Play"];
+
 function stripComments(source) {
   return source
     .replace(/\/\*[\s\S]*?\*\//g, "")
@@ -80,6 +88,24 @@ export function check({ read }) {
     for (const phrase of FORBIDDEN) {
       if (source.toLocaleLowerCase().includes(phrase.toLocaleLowerCase())) {
         violations.push(`${relative}: contains forbidden pre-purchase app copy "${phrase}"`);
+      }
+    }
+  }
+
+  const doorPage = read(DOOR_PAY_PAGE);
+  if (doorPage === null) {
+    violations.push(`${DOOR_PAY_PAGE}: missing pre-purchase surface`);
+  } else {
+    const start = doorPage.indexOf(DOOR_PAY_PAID_START);
+    const end = doorPage.indexOf(DOOR_PAY_PAID_END);
+    if (start < 0 || end <= start) {
+      violations.push(`${DOOR_PAY_PAGE}: paid card markers missing, so its pre-purchase states cannot be told apart`);
+    } else {
+      const source = stripComments(doorPage.slice(0, start) + doorPage.slice(end));
+      for (const phrase of DOOR_PAY_FORBIDDEN) {
+        if (source.toLocaleLowerCase().includes(phrase.toLocaleLowerCase())) {
+          violations.push(`${DOOR_PAY_PAGE}: contains forbidden pre-purchase app copy "${phrase}"`);
+        }
       }
     }
   }
@@ -128,6 +154,14 @@ function runSelfTest() {
     [
       "non-literal branch point is rejected",
       new Map([[FLAG, load(FLAG).replace("= true", "= Boolean(1)")]]),
+    ],
+    [
+      "app promise leaks into the door pay form",
+      new Map([[DOOR_PAY_PAGE, load(DOOR_PAY_PAGE).replace("PAY AT THE DOOR", "Get Mingla Explorer")]]),
+    ],
+    [
+      "door pay paid-card markers removed",
+      new Map([[DOOR_PAY_PAGE, load(DOOR_PAY_PAGE).replace(DOOR_PAY_PAID_START, "// paid")]]),
     ],
   ];
 

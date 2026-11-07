@@ -84,10 +84,12 @@ describe("#4063 durable door sales service", () => {
     const query = {
       select: jest.fn(),
       eq: jest.fn(),
+      not: jest.fn(),
       order: jest.fn(),
     } as Record<string, jest.Mock>;
     query.select.mockReturnValue(query);
     query.eq.mockReturnValue(query);
+    query.not.mockReturnValue(query);
     query.order.mockResolvedValue({
       data: [{
         id: "order-4063",
@@ -130,7 +132,9 @@ describe("#4063 durable door sales service", () => {
 
     expect(mockFrom).toHaveBeenCalledWith("orders");
     expect(query.eq).toHaveBeenNthCalledWith(1, "event_id", "event-4063");
-    expect(query.eq).toHaveBeenNthCalledWith(2, "source", "door_sale");
+    // #4271 — every sale taken at the door, including card money on the
+    // online rail, is read by its door payment method rather than its source.
+    expect(query.not).toHaveBeenCalledWith("door_payment_method", "is", null);
     expect(sales).toHaveLength(1);
     expect(sales[0]).toMatchObject({
       id: "order-4063",

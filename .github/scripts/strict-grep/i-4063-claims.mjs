@@ -229,20 +229,32 @@ function runSelfTest() {
   const links = realTree.issueMigrationFiles.find((relative) =>
     relative.includes("_claim_links_and_contacts.sql")
   );
-  const latestMintLink = [...realTree.migrationFiles].reverse().find(
+  // The gate checks the LATEST definition of each function, so a mutation must
+  // land in the file that holds it. Later migrations re-emit some #4063
+  // functions (#4271 re-emits claim_attendance_by_verified_identity for door
+  // card sales); mutating the shadowed original would prove nothing.
+  const latestDefining = (fnName) => [...realTree.migrationFiles].reverse().find(
     (relative) => {
       const source = realTree.read(relative);
       return source !== null && extractFunctions(source, relative).some(
-        ({ name }) => name === "mint_claim_link",
+        ({ name }) => name === fnName,
       );
     },
   );
-  if (core === undefined || links === undefined || latestMintLink === undefined) {
+  const latestMintLink = latestDefining("mint_claim_link");
+  const latestClaimByIdentity = latestDefining("claim_attendance_by_verified_identity");
+  if (
+    core === undefined ||
+    links === undefined ||
+    latestMintLink === undefined ||
+    latestClaimByIdentity === undefined
+  ) {
     throw new Error("self-test fixtures missing");
   }
   const coreSource = realTree.read(core);
   const linksSource = realTree.read(links);
   const latestMintLinkSource = realTree.read(latestMintLink);
+  const latestClaimByIdentitySource = realTree.read(latestClaimByIdentity);
 
   const cases = [
     [
@@ -270,9 +282,9 @@ function runSelfTest() {
     [
       "owner writer reads claim links",
       new Map([[
-        core,
+        latestClaimByIdentity,
         mutateFunction(
-          coreSource,
+          latestClaimByIdentitySource,
           "claim_attendance_by_verified_identity",
           "PERFORM 1 FROM public.claim_links;",
         ),
@@ -325,9 +337,9 @@ function runSelfTest() {
   }
 
   const allowed = new Map([[
-    core,
+    latestClaimByIdentity,
     mutateFunction(
-      coreSource,
+      latestClaimByIdentitySource,
       "claim_attendance_by_verified_identity",
       "PERFORM public.issue_4063_revoke_claim_links('order', gen_random_uuid());",
     ),

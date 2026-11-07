@@ -596,10 +596,12 @@ export async function runBackup({
         key: object.key,
         bytes: object.bytes,
         sha256: object.sha256,
-        site_id: object.owner.site_id,
+        // #2830 — a shared font has no owner: no site, and always kept, since
+        // any published site may use it.
+        site_id: object.owner === null ? null : object.owner.site_id,
         reference_state:
           references.get(`${object.bucket}/${object.key}`)?.state || "unreferenced",
-        protected: isProtected(
+        protected: object.owner === null || isProtected(
           object.bucket,
           object.key,
           protection.get(object.owner.site_id),

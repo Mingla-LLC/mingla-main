@@ -33,8 +33,7 @@ export type ScannerInvitationStatus = "pending" | "accepted" | "revoked";
 export interface ScannerPermissions {
   /** Always true — scanners can always scan. */
   canScan: boolean;
-  /** Cash + manual at the door. Card reader + NFC remain TRANSITIONAL until
-   * the B-cycle Stripe Terminal SDK lands. */
+  /** Takes door money: cash, manual, pay codes and Tap to Pay (issue #4271). */
   canAcceptPayments: boolean;
 }
 
