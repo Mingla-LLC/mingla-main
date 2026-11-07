@@ -1714,7 +1714,8 @@
         "mingla-business/src/utils/platformImagePicker.native.ts",
         "mingla-business/src/utils/platformImagePicker.ts",
         "mingla-business/src/utils/reapOrphanStorageKeys.ts",
-        "supabase/migrations/20280426004304_issue_4304_brand_group_live.sql"
+        "supabase/migrations/20280426004304_issue_4304_brand_group_live.sql",
+        "mingla-business/src/components/messages/BrandGroupInboxScreen.tsx"
       ]
     },
     {
@@ -1734,6 +1735,12 @@
       "capability_key": "help-support",
       "paths": [
         "mingla-business/app/account/support.tsx"
+      ]
+    },
+    {
+      "capability_key": "events-scanner-team",
+      "paths": [
+        "mingla-business/app/rsvp/[id]/scanners/index.tsx"
       ]
     }
   ]
