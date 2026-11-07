@@ -1,12 +1,13 @@
 /**
  * #4271 — the routes' only way to the door card-sale screens (doorSaleScreens.ts).
  * Every owner here resolves the same dynamic import, so the sheet, Tap to Pay
- * setup and the Tap to Pay sale share one chunk loaded on intent, and nothing they
- * share is hoisted into the eager web __common chunk.
+ * setup, the Tap to Pay sale and the pay code screen share one chunk loaded on
+ * intent, and nothing they share is hoisted into the eager web __common chunk.
  */
 import { createOnIntentLazySheet } from "../ui/OnIntentLazySheet";
 import { createRetryableLazyErrorBoundary } from "../ui/RetryableLazyBoundary";
 import type { DoorSaleNewSheetProps } from "./DoorSaleNewSheet";
+import type { DoorPayCodeScreenProps } from "./DoorPayCodeScreen";
 import type { TapToPaySaleScreenProps } from "./tap/TapToPaySaleScreen";
 import type { TapToPaySetupScreenProps } from "./tap/TapToPaySetupScreen";
 
@@ -31,6 +32,12 @@ export const LazyTapToPaySetupScreen = createRetryableLazyErrorBoundary<TapToPay
 export const LazyTapToPaySaleScreen = createRetryableLazyErrorBoundary<TapToPaySaleScreenProps>(
   async () => ({ default: (await loadDoorSaleScreens()).TapToPaySaleScreen }),
   { loadingLabel: "Loading Tap to Pay" },
+);
+
+/** "Scan to pay": the sheet preloads this chunk, so the screen usually opens at once. */
+export const LazyDoorPayCodeScreen = createRetryableLazyErrorBoundary<DoorPayCodeScreenProps>(
+  async () => ({ default: (await loadDoorSaleScreens()).DoorPayCodeScreen }),
+  { loadingLabel: "Loading the pay code" },
 );
 
 /** The door hub's sale sheet, fetched while the hub is idle so "Sell at door" opens promptly. */

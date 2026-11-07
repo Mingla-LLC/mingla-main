@@ -1,19 +1,58 @@
 // Issue #3980 — pure words and shapes for the Work board, the Agent log and
 // To review. No React and no Supabase here, so every rule is testable alone.
 
+import { planLinkProblem } from "./brandPlan.js";
+
+// #4270: three statuses. "Needs a person" is no longer a status: it is a
+// Send, Spend or Publish tag (person_reason) on a To do or In progress card.
 export const WORK_STATUSES = [
   { value: "todo", label: "To do" },
-  { value: "doing", label: "Doing" },
-  { value: "person", label: "Needs a person" },
+  { value: "doing", label: "In progress" },
   { value: "done", label: "Done" },
 ];
 
-export const PERSON_REASONS = {
-  send: "Sends a message",
-  spend: "Spends money",
-  publish: "Publishes an event",
-  other: "Needs a person",
+/** #4270: the tag's words, on the board and the card. */
+export const TAG_LABELS = {
+  send: "You send",
+  spend: "You spend",
+  publish: "You publish",
+  other: "Needs your OK",
 };
+export const PERSON_REASONS = TAG_LABELS;
+
+/** #4270: a Files link is one https link of up to 2,000 characters, on the plan link's rules. */
+export function filesUrlProblem(value) {
+  // The same rule as the plan link, so a card and the host's plan always agree.
+  return planLinkProblem(value);
+}
+
+/** The host of a Files link, for its button: "drive.google.com". */
+export function filesHost(value) {
+  try { return new URL(String(value)).host || "files"; } catch { return "files"; }
+}
+
+/** #4270: the Status dropdown's choice, as what it does. */
+export function statusChoice(card, next) {
+  if (!card || !next || next === card.status) return null;
+  if (next === "done") return "close";
+  if (next === "doing") return card.status === "todo" ? "start" : null;
+  if (next === "todo") return card.status === "doing" ? "to_todo" : null;
+  return null;
+}
+
+/** #4270: an open card that carries a Send, Spend or Publish tag (only a person does that step). */
+/**
+ * Issue #4270 W2 rework (P3-5): the work card shows "Host can see this" when
+ * the card is on a host card (linked to a host) or the host already sees it.
+ */
+export function showsHostSees(card) {
+  if (!card || typeof card !== "object") return false;
+  return !!card.on_brand_plan || (Array.isArray(card.links) && card.links.some((l) => l && l.kind === "host"));
+}
+
+export function isTagged(card) {
+  return !!card && card.status !== "done" && !card.archived && !!(card.tag || card.person_reason);
+}
 
 /**
  * #3980 W2 rework: why a card needs a person, in words. Bridge D's approval
@@ -22,7 +61,7 @@ export const PERSON_REASONS = {
  */
 export function personReasonLabel(card) {
   if (card?.auto_kind === "roadmap_shipped") return "Approve what hosts are told";
-  return PERSON_REASONS[card?.person_reason] || "Needs a person";
+  return TAG_LABELS[card?.tag || card?.person_reason] || "Needs your OK";
 }
 
 export const PERSON_ACTIONS = {
@@ -137,7 +176,7 @@ export const AGENT_RULES = [
   "After each step, reads the record back and marks the step done only if the change is really there.",
   "Never reports a step done that it could not do; it leaves it to a person with exact instructions.",
   "Closes a card only with proof of what it read back, or pushes it back as not needed or already done, with a reason.",
-  "Never sends, spends money or publishes: it sets the card to Needs a person and stops.",
+  "Never sends, spends money or publishes: it tags the card Send, Spend or Publish, leaves it in To do for a person and stops.",
   "Cannot write to someone Mingla messaged in the last 3 days, unless a person allows one more.",
   "Closing or pushing back releases its claims; it releases any other claim when it stops.",
   "Names its chat, so claims and the log show which chat did what. Two chats on one key never write over each other.",
@@ -454,7 +493,7 @@ const LOG_ACTIONS = {
   updated: "updated",
   blocked: "marked blocked",
   unblocked: "unblocked",
-  needs_person: "asked for a person",
+  needs_person: "tagged a card for your OK",
   closed: "closed",
   pushed_back: "pushed back",
   reopened: "reopened",
@@ -734,6 +773,48 @@ export function parseEventParam(value) {
 }
 
 export const EVENT_TYPE_LABELS = { event: "Event", experience: "Experience", trip: "Trip", rsvp: "RSVP", promo_moment: "Promo moment" };
+
+/**
+ * #4270 W2 (D10): what a row under On Mingla is, in words: Event,
+ * Experience, Trip or RSVP from the brand's listing, or Promised for a date a
+ * host promised before promised dates stopped being added (D9).
+ */
+export const EVENT_KIND_WORDS = Object.freeze({ event: "Event", experience: "Experience", trip: "Trip", rsvp: "RSVP", promised: "Promised" });
+
+export function eventKind(row) {
+  const k = String(row?.kind || row?.event_type || "event");
+  return Object.hasOwn(EVENT_KIND_WORDS, k) ? k : "event";
+}
+
+/** #4270 W2: the brand team's roles, in words (brand_team_members.role). */
+export const BRAND_ROLE_WORDS = Object.freeze({
+  brand_owner: "Owner", brand_admin: "Admin", event_manager: "Events", finance_manager: "Finance",
+  marketing_manager: "Marketing", scanner: "Scanner", venue_staff: "Venue staff",
+});
+
+/**
+ * #4270 W2 (D4): what is wrong with a host card's "Add work item" before it
+ * is sent, field by field, in the form's words. The server checks it again.
+ */
+export function quickAddProblems({ title = "", owners = [], due = "", filesUrl = "" } = {}, today = todayIso()) {
+  const out = [];
+  const t = String(title || "").trim();
+  if (t.length < 3 || t.length > 160) out.push({ field: "title", message: "Say what the work is in 3 to 160 characters." });
+  if (!Array.isArray(owners) || owners.length === 0) out.push({ field: "owners", message: "Pick at least one assignee" });
+  if (!DATE_RE.test(String(due || ""))) out.push({ field: "due_on", message: "Pick a due date." });
+  else if (String(due) < today) out.push({ field: "due_on", message: "The due date can’t be in the past." });
+  const files = filesUrlProblem(filesUrl);
+  if (files) out.push({ field: "files_url", message: files });
+  return out;
+}
+
+/** #4270 W2: the item ops_work_add gets from a host card's "Add work item". */
+export function quickAddItem({ title, owners, watchers = [], due, filesUrl = "", hostSees = false, recordId }) {
+  const item = { quick: true, title: String(title || "").trim(), owners, watchers, due_on: due,
+    links: [{ kind: "host", id: recordId }], on_brand_plan: !!hostSees };
+  if (String(filesUrl || "").trim()) item.files_url = String(filesUrl).trim();
+  return item;
+}
 export const KIT_WHO = { host_owner: "Host owner", marketing: "Sales and marketing" };
 
 /** The state chip of one launch kit row: its words and colour. */
@@ -744,7 +825,7 @@ export function kitStateChip(row) {
     if (card.status === "done") return { label: "Done", tone: "success" };
     if (card.blocked) return { label: "Blocked", tone: "error" };
     const status = WORK_STATUSES.find((s) => s.value === card.status);
-    return { label: status ? status.label : "Card", tone: card.status === "person" ? "warning" : "brand" };
+    return { label: status ? status.label : "Card", tone: isTagged(card) ? "warning" : "brand" };
   }
   if (state === "done") return { label: "Done", tone: "success" };
   if (state === "not_eligible") return { label: "Not eligible", tone: "error" };
@@ -936,60 +1017,101 @@ export const ATTENTION_GROUPS = [
 ];
 
 
-/** The Work board's four columns. "Done this week" holds cards closed since Monday. */
+/**
+ * #4270: the Work board's three columns. "Done" holds cards closed since
+ * Monday. "Waiting on a person" is gone: a card that needs a person sits in
+ * To do (or In progress) with its Send, Spend or Publish tag.
+ */
 export const WORK_COLUMNS = [
-  // #4130: Needs you was retired into Work; its first column says what it holds.
-  { key: "person", label: "Waiting on a person" },
-  { key: "todo", label: "To do" },
-  { key: "doing", label: "In progress" },
-  { key: "done", label: "Done this week" },
+  { key: "todo", label: "To do", note: "Late first, then by due date" },
+  { key: "doing", label: "In progress", note: "Late first, then by due date" },
+  { key: "done", label: "Done", note: "This week, latest due first" },
 ];
 
 /** #3980 W3 rework 2: a card's status in words, for Group by Person or Event. */
 export function workStatusLabel(status) {
-  return { person: "Waiting on a person", todo: "To do", doing: "In progress", done: "Done" }[status] || "";
+  return { todo: "To do", doing: "In progress", done: "Done" }[status] || "";
 }
 
 /**
- * #4130: "Waiting on a person" has one definition everywhere (Dashboard KPI,
- * Work menu count, Work board column, Team dashboard): an open card whose
- * status is "person", whatever the reason. A send card counts whether or not
- * its draft is ready. Drafts listed on their own are not cards.
+ * #4270: your cards due today, and overdue (ops_my_counts due_today_mine and
+ * overdue_mine) as a state: loading, error (a failed read is never 0) or
+ * ready. The Dashboard tile and the Work menu count read it.
  */
-export function isWaitingOnPerson(card) {
-  return !!card && card.status === "person" && !card.archived;
+export function dueTodayState({ enabled = true, data = null, error = null } = {}) {
+  if (!enabled) return { status: "ready", dueToday: 0, overdue: 0 };
+  if (data == null) return error ? { status: "error", dueToday: null, overdue: null } : { status: "loading", dueToday: null, overdue: null };
+  const dueToday = Number(data.due_today_mine);
+  const overdue = Number(data.overdue_mine);
+  return Number.isFinite(dueToday) && Number.isFinite(overdue)
+    ? { status: "ready", dueToday, overdue }
+    : { status: "error", dueToday: null, overdue: null };
 }
 
-/** The Work board column's count: its cards, never the loose drafts beside them. */
-export function waitingColumnCount(cards) {
-  return (Array.isArray(cards) ? cards : []).filter(isWaitingOnPerson).length;
+function dueKey(card) {
+  return card?.due_on ? String(card.due_on).slice(0, 10) : null;
 }
 
 /**
- * The server count of your own waiting cards (ops_my_counts
- * waiting_on_person_mine) as a state: loading, error (a failed read is never
- * 0) or ready.
+ * #4270 (D3): one column's order. To do and In progress: late first (oldest
+ * due first), then today, then later; a card with no date last; ties by card
+ * number. Done: latest due first, then latest closed first.
  */
-export function waitingCardsState({ enabled = true, data = null, error = null } = {}) {
-  if (!enabled) return { status: "ready", cards: 0 };
-  if (data == null) return error ? { status: "error", cards: null } : { status: "loading", cards: null };
-  const n = Number(data.waiting_on_person_mine);
-  return Number.isFinite(n) ? { status: "ready", cards: n } : { status: "error", cards: null };
-}
-
-export function columnCards(cards, key, today = todayIso()) {
-  const monday = mondayOf(today);
-  return (Array.isArray(cards) ? cards : []).filter((c) => {
-    if (key === "done") return c.status === "done" && (!c.closed_at || String(c.closed_at).slice(0, 10) >= monday);
-    return c.status === key;
+export function sortColumn(cards, key) {
+  const list = (Array.isArray(cards) ? cards : []).slice();
+  const num = (c) => Number(c?.number) || 0;
+  if (key === "done") {
+    return list.sort((a, b) => {
+      const da = dueKey(a); const db = dueKey(b);
+      if (da !== db) { if (!da) return 1; if (!db) return -1; return da < db ? 1 : -1; }
+      const ca = String(a?.closed_at || ""); const cb = String(b?.closed_at || "");
+      if (ca !== cb) return ca < cb ? 1 : -1;
+      return num(a) - num(b);
+    });
+  }
+  return list.sort((a, b) => {
+    const da = dueKey(a); const db = dueKey(b);
+    if (da !== db) { if (!da) return 1; if (!db) return -1; return da < db ? -1 : 1; }
+    return num(a) - num(b);
   });
+}
+
+/**
+ * One column's cards, in order. #4270 rework (P3-3): Done is what the server
+ * sent, closed since Monday 00:00 of the sprint in your time zone; the
+ * board never re-cuts it with a second clock. (P3-5) A card still marked
+ * with the retired status person is To do with its tag.
+ */
+export function columnCards(cards, key) {
+  return sortColumn((Array.isArray(cards) ? cards : []).filter((c) => boardStatus(c) === key), key);
+}
+
+/** #4270 rework (P3-5): the column a card sits in; the retired person status is To do. */
+export function boardStatus(card) {
+  return card?.status === "person" ? "todo" : card?.status;
+}
+
+/**
+ * #4270 rework (P3-5): a card or list from the server, with the retired
+ * status person read as To do (its tag stays in person_reason), so cards
+ * never drop off the board whichever ships first, the migration or this.
+ */
+export function readPersonAsTodo(data) {
+  if (!data || typeof data !== "object") return data;
+  const fix = (c) => (c && typeof c === "object" && c.status === "person"
+    ? { ...c, status: "todo", tag: c.tag || c.person_reason || "other", person_reason: c.person_reason || c.tag || "other" }
+    : c);
+  let out = data;
+  if (Array.isArray(data.cards) && data.cards.some((c) => c?.status === "person")) out = { ...out, cards: data.cards.map(fix) };
+  if (data.card?.status === "person") out = { ...out, card: fix(data.card) };
+  return out;
 }
 
 /** Red reason badges on a work card: No owner, Overdue <n>d, No update for <n>d. */
 export function cardReasons(card, now = Date.now()) {
   const out = [];
   if (!card || card.status === "done") return out;
-  if (card.status !== "person" && !(card.owners || []).length) out.push("No owner");
+  if (!(card.owners || []).length) out.push("No owner");
   if (card.due_on) {
     const days = Math.round((new Date(`${todayIso(new Date(now))}T00:00:00Z`) - new Date(`${String(card.due_on).slice(0, 10)}T00:00:00Z`)) / 86_400_000);
     if (days > 0) out.push(`Overdue ${days}d`);
@@ -1065,8 +1187,12 @@ export function attentionCounts(data) {
 export function hostUpcomingRows(events, openExpected, today) {
   const rows = [];
   for (const e of Array.isArray(events) ? events : []) {
-    if (!e?.start_on || (today && e.start_on < today)) continue;
-    rows.push({ key: `e-${e.id}`, kind: "event", id: e.id, title: e.title, on: e.start_on, state: e.state, repeats: false, moment: false });
+    // #4270 W2 (C-3): a trip or experience on right now stays listed.
+    if (!e?.start_on || (today && e.start_on < today && !e.live)) continue;
+    // Rework (P1-1): a row on right now says Live now and nothing else (its
+    // start is in the past, so a plain state would say Happened).
+    rows.push({ key: `e-${e.id}`, kind: "event", id: e.id, title: e.title, on: e.start_on, state: e.live ? null : e.state, repeats: false, moment: false,
+      eventKind: eventKind(e), live: !!e.live });
   }
   for (const x of Array.isArray(openExpected) ? openExpected : []) {
     if (!x) continue;
@@ -1075,14 +1201,23 @@ export function hostUpcomingRows(events, openExpected, today) {
     if (occ) {
       occ.forEach((o, i) => rows.push({
         key: `x-${x.id}-${o.on}`, kind: "expected", id: x.id, title: `${x.title}, ${dayLabel(o.on)}`, on: o.on,
-        state: o.state || x.state, repeats: true, moment: !!x.promo_moment, row: i === 0 ? x : null,
+        state: o.state || x.state, repeats: true, moment: !!x.promo_moment, row: i === 0 ? x : null, eventKind: "promised",
       }));
       continue;
     }
     rows.push({ key: `x-${x.id}`, kind: "expected", id: x.id, title: x.title, on: x.next_on || x.expected_on, state: x.state,
-      repeats, moment: !!x.promo_moment, row: x });
+      repeats, moment: !!x.promo_moment, row: x, eventKind: "promised" });
   }
   return rows.sort((a, b) => String(a.on).localeCompare(String(b.on)) || String(a.title).localeCompare(String(b.title)));
+}
+
+/**
+ * Issue #4270 W2 rework (P1-1): past events without anything that is on
+ * right now (a live trip or experience is listed once, as Live now).
+ */
+export function hostPastRows(past, events) {
+  const live = new Set((Array.isArray(events) ? events : []).filter((e) => e && e.live).map((e) => e.id));
+  return (Array.isArray(past) ? past : []).filter((p) => p && !live.has(p.id));
 }
 
 /**

@@ -249,15 +249,16 @@ $fn$;
 
 select pg_temp.ti_newkey('growth', 'claude', 'GC') is not null as k1;
 
+-- #4270: the legacy status person lands as To do with the tag.
 do $handoff$
 declare v text; v_card text;
 begin
   v_card := pg_temp.ti_card('growth', 'Y3980 Agent hands to a person', '["gia.y3980@test.local"]', '["abe.y3980@test.local"]');
   v := pg_temp.ti_work('GC', 'update_work', format('{"id":"%s","expected_revision":%s,"changes":{"status":"person","person_reason":"spend"}}', v_card, pg_temp.ti_rev(v_card)));
   perform pg_temp.ti_check('R-HANDOFF', 'an agent sets Needs a person with the reason spend',
-    coalesce(pg_temp.ti_get(v, 'result', 'card', 'status') || '/' || pg_temp.ti_get(v, 'result', 'card', 'person_reason'), v), 'person/spend');
+    coalesce(pg_temp.ti_get(v, 'result', 'card', 'status') || '/' || pg_temp.ti_get(v, 'result', 'card', 'person_reason'), v), 'todo/spend');
   perform pg_temp.ti_check('R-HANDOFF', 'the stored card keeps the reason',
-    (select status || '/' || person_reason from public.ops_work_cards where id = v_card::uuid), 'person/spend');
+    (select status || '/' || person_reason from public.ops_work_cards where id = v_card::uuid), 'todo/spend');
   v := pg_temp.ti_person('admin', 'select public.ops_review_list()::text');
   perform pg_temp.ti_check('R-HANDOFF', 'the card waits in To review',
     (select count(*) from jsonb_array_elements(pg_temp.ti_j(v)->'cards') c where c->>'id' = v_card)::text, '1');
@@ -265,13 +266,13 @@ begin
   v_card := pg_temp.ti_card('growth2', 'Y3980 Person hands to a person', '["hal.y3980@test.local"]');
   v := pg_temp.ti_person('growth2', format($q$select public.ops_work_update(%L, '{"status":"person","person_reason":"send"}'::jsonb, %s)::text$q$, v_card, pg_temp.ti_rev(v_card)));
   perform pg_temp.ti_check('R-HANDOFF', 'a person sets Needs a person with the reason send',
-    coalesce(pg_temp.ti_get(v, 'card', 'status') || '/' || pg_temp.ti_get(v, 'card', 'person_reason'), v), 'person/send');
+    coalesce(pg_temp.ti_get(v, 'card', 'status') || '/' || pg_temp.ti_get(v, 'card', 'person_reason'), v), 'todo/send');
   v := pg_temp.ti_person('growth2', format($q$select public.ops_work_update(%L, '{"person_reason":"publish"}'::jsonb, %s)::text$q$, v_card, pg_temp.ti_rev(v_card)));
   perform pg_temp.ti_check('R-HANDOFF', 'the reason alone can be changed while it waits',
-    coalesce(pg_temp.ti_get(v, 'card', 'status') || '/' || pg_temp.ti_get(v, 'card', 'person_reason'), v), 'person/publish');
+    coalesce(pg_temp.ti_get(v, 'card', 'status') || '/' || pg_temp.ti_get(v, 'card', 'person_reason'), v), 'todo/publish');
   v := pg_temp.ti_person('growth2', format($q$select public.ops_work_update(%L, '{"title":"Y3980 Person hands to a person, renamed"}'::jsonb, %s)::text$q$, v_card, pg_temp.ti_rev(v_card)));
   perform pg_temp.ti_check('R-HANDOFF', 'another change keeps the stored reason',
-    coalesce(pg_temp.ti_get(v, 'card', 'status') || '/' || pg_temp.ti_get(v, 'card', 'person_reason'), v), 'person/publish');
+    coalesce(pg_temp.ti_get(v, 'card', 'status') || '/' || pg_temp.ti_get(v, 'card', 'person_reason'), v), 'todo/publish');
 end;
 $handoff$;
 

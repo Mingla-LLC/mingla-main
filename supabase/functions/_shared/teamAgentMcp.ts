@@ -54,12 +54,8 @@ import {
   protectedResourceMetadata,
   wwwAuthenticate,
 } from "./minglaConnectorOAuth.ts";
-import {
-  createConnectorProxy,
-  McpHttpTransport,
-  splitProxiedName,
-  type UpstreamTransport,
-} from "./minglaConnectorProxy.ts";
+import { createConnectorProxy, splitProxiedName, type UpstreamTransport } from "./minglaConnectorProxy.ts";
+import { createUpstreamTransport } from "./minglaConnectorMetaGraph.ts";
 
 /** Handshake revisions this server speaks, newest first. */
 export const SUPPORTED_PROTOCOL_VERSIONS: readonly string[] = [
@@ -213,7 +209,7 @@ export interface ConnectorDeps {
   issuer?: string;
   /** The network, for company tool servers. */
   fetch?: (input: string, init: RequestInit) => Promise<Response>;
-  /** Replaces the MCP-over-HTTP transport (tests, a REST adapter later). */
+  /** Replaces the default transport (MCP over HTTP, Meta Graph for graph.facebook.com rows); tests. */
   transport?: UpstreamTransport;
 }
 
@@ -598,7 +594,7 @@ export function createTeamAgentHandler(
     ? createConnectorProxy({
       rpc: connector.rpc,
       transport: connector.transport ??
-        new McpHttpTransport(connector.fetch ?? ((input, init) => fetch(input, init))),
+        createUpstreamTransport(connector.fetch ?? ((input, init) => fetch(input, init))),
       now,
       log,
     })

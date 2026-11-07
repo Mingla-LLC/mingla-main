@@ -61,7 +61,7 @@ export function pulseTiles({ pulse, targets, runway, waiting, config, period }) 
   tiles.push({ key: "creators", label: `Creators moved to ${booked}`, value: now ? Number(now.moves?.creators?.booked) || 0 : null, note: now ? creators.note : "", up: creators.up, href: "#/outreach?tab=creators" });
   const leads = delta(now?.beta_leads, before?.beta_leads, range.before);
   tiles.push({ key: "leads", label: "New beta leads", value: now ? Number(now.beta_leads) || 0 : null, note: leads.note, up: leads.up, href: "#/inbound" });
-  tiles.push({ key: "waiting", label: "Cards waiting on a person", value: Number.isFinite(Number(waiting)) && waiting !== null ? Number(waiting) : null, note: "", up: undefined, href: "#/work-board" });
+  tiles.push({ key: "waiting", label: "Cards that need your OK", value: Number.isFinite(Number(waiting)) && waiting !== null ? Number(waiting) : null, note: "", up: undefined, href: "#/work-board" });
   return tiles;
 }
 

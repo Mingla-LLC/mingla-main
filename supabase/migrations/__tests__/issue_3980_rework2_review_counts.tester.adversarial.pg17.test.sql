@@ -294,7 +294,7 @@ begin
   end loop;
   perform pg_temp.tw_person('growth2', format($q$select public.ops_work_update(%L, '{"status":"person","person_reason":"send"}'::jsonb, %s)::text$q$, v_watch, pg_temp.tw_rev(v_watch)));
   perform pg_temp.tw_check('X-SETUP', 'seven send cards wait for a person',
-    (select count(*)::text from public.ops_work_cards where title like 'V3980 X%' and status = 'person' and person_reason = 'send'), '7');
+    (select count(*)::text from public.ops_work_cards where title like 'V3980 X%' and status = 'todo' and person_reason = 'send'), '7'); -- #4270: tagged in To do
 
   -- X-LINK: a waiting draft for a record the card reaches only through a
   -- non-host link (same uuid, kind event and brand), and one for an unlinked host.

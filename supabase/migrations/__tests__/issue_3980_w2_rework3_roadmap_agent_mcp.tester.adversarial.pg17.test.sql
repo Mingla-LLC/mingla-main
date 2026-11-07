@@ -270,10 +270,11 @@ begin
 
   -- M1: every MCP writer on a card waiting for a person.
   v_card := pg_temp.t3980r3t_bridge_d(7941, '39881000-0000-4000-c100-000000000041', 'M1 hosts see the new report');
-  perform pg_temp.t3980r3t_check('M1', 'the approval card waits for a person', pg_temp.t3980r3t_state(v_card), 'person:-:-');
+  perform pg_temp.t3980r3t_check('M1', 'the approval card waits for a person', pg_temp.t3980r3t_state(v_card), 'todo:-:-'); -- #4270: tagged in To do
   v := pg_temp.t3980r3t_mcp('owner', 'update_work', jsonb_build_object('id', v_card, 'expected_revision', pg_temp.t3980r3t_rev(v_card::text),
-         'changes', jsonb_build_object('status', 'todo', 'reason', 'The wording needs another pass by me.')));
-  perform pg_temp.t3980r3t_like('M1', 'MCP update_work status todo is people_only', v, '%"ok": false%"token": "people_only"%');
+         'changes', jsonb_build_object('person_reason', null, 'reason', 'The wording needs another pass by me.')));
+  -- #4270: taking the tag off is what moving it out of Needs a person was.
+  perform pg_temp.t3980r3t_like('M1', 'MCP update_work taking the tag off is people_only', v, '%"ok": false%"token": "people_only"%');
   v := pg_temp.t3980r3t_mcp('owner', 'update_work', jsonb_build_object('id', v_card, 'expected_revision', pg_temp.t3980r3t_rev(v_card::text),
          'changes', jsonb_build_object('person_reason', 'other')));
   perform pg_temp.t3980r3t_like('M1', 'MCP update_work person_reason is people_only', v, '%"ok": false%"token": "people_only"%');
@@ -285,7 +286,7 @@ begin
   perform pg_temp.t3980r3t_like('M1', 'MCP push_back is people_only', v, '%"ok": false%"token": "people_only"%');
   v := pg_temp.t3980r3t_mcp('owner', 'start_work', jsonb_build_object('id', v_card, 'expected_revision', pg_temp.t3980r3t_rev(v_card::text)));
   perform pg_temp.t3980r3t_like('M1', 'MCP start_work on a card waiting for a person is refused', v, '%"ok": false%');
-  perform pg_temp.t3980r3t_check('M1', 'after every MCP attempt it still waits for a person', pg_temp.t3980r3t_state(v_card), 'person:-:-');
+  perform pg_temp.t3980r3t_check('M1', 'after every MCP attempt it still waits for a person', pg_temp.t3980r3t_state(v_card), 'todo:-:-'); -- #4270: tagged in To do
 
   -- M2: a person sends it back; the agent may not move it to Doing either.
   v := pg_temp.t3980r3t_person('owner', format($q$select public.ops_work_person_action(%L, 'send_back', 'Change the wording first, please.', %s)::text$q$, v_card, pg_temp.t3980r3t_rev(v_card::text)));

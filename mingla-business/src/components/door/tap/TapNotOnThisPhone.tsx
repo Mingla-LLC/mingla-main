@@ -1,6 +1,9 @@
 /**
  * #4271 — design T1 "Not on this phone": the fallback when Stripe's device check
  * fails (or this binary has no Tap to Pay). Copy per the approved design.
+ *
+ * Door polish: neutral, not red. Nothing went wrong and the pay code works on
+ * any phone. No phone glyph on iPhone (Apple: no art of the device or feature).
  */
 import React from "react";
 import { Platform } from "react-native";
@@ -19,8 +22,8 @@ export interface TapNotOnThisPhoneProps {
 
 export const TapNotOnThisPhone = ({ onUsePayCode, loading = false }: TapNotOnThisPhoneProps): React.ReactElement => (
   <TapStatusView
-    tone="bad"
-    icon={Platform.OS === "ios" ? "close" : "phone"}
+    tone="neutral"
+    icon={Platform.OS === "ios" ? "settings" : "phone"}
     title="This phone can't take taps"
     body={Platform.OS === "ios" ? TAP_NOT_ON_THIS_PHONE_BODY_IOS : TAP_NOT_ON_THIS_PHONE_BODY_ANDROID}
     primary={{ label: "Use a pay code", onPress: onUsePayCode, loading, testID: "tap-use-pay-code" }}

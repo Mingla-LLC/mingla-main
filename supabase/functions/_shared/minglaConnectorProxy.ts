@@ -20,8 +20,9 @@
 //     every piece of it is removed from anything the server sends back.
 //     Nothing about a request (argument, result, header, key) is logged.
 //
-// The only transport today is MCP over streamable HTTP. A REST adapter later
-// implements the same UpstreamTransport.
+// The transport here is MCP over streamable HTTP. A row whose address is on
+// graph.facebook.com uses the Meta Graph REST adapter instead
+// (`minglaConnectorMetaGraph.ts`), which implements the same UpstreamTransport.
 //
 // No client library is imported and the environment is not read: the
 // database and the network are injected, so the whole file runs in a test.
@@ -316,7 +317,7 @@ export interface UpstreamTransport {
 // MCP over streamable HTTP.
 // ---------------------------------------------------------------------------
 
-type FetchLike = (input: string, init: RequestInit) => Promise<Response>;
+export type FetchLike = (input: string, init: RequestInit) => Promise<Response>;
 
 interface Session {
   id: string | null;
@@ -324,7 +325,7 @@ interface Session {
 }
 
 /** Reads a body up to the cap; aborts the rest. Null means it was larger. */
-async function readCapped(res: Response, cap: number): Promise<string | null> {
+export async function readCapped(res: Response, cap: number): Promise<string | null> {
   if (!res.body) return "";
   const reader = res.body.getReader();
   const chunks: Uint8Array[] = [];

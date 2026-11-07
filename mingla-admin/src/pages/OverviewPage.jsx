@@ -3,7 +3,7 @@
 //   - Five numbers: new sign-ups and paid tickets (7 days, coloured green when
 //     up and red when down), Mingla profit in USD over 7 days (Wave 2a money
 //     summary), hosts with a next event (and how many have none), and the Work
-//     cards waiting on you.
+//     cards due today for you, with the overdue count (#4270).
 //   - "Needs you today": Money, Platform health, Work, Support and Inbound
 //     leads, plus failed announcement pushes for admins, in one list
 //     (lib/dashboardToday.js). A source that failed to load
@@ -89,7 +89,8 @@ export function OverviewPage() {
   const review = useReviewCount();
   // #4130: a failed Work read is a "failed" item and a failed KPI, never a
   // skeleton forever and never 0.
-  const work = review.cardsError ? { status: "error" } : review.cardsLoaded ? { status: "ready", data: { cards: review.cards } } : { status: "loading" };
+  // #4270: the tile and the item say what is due today for you, and how much is overdue.
+  const work = review.cardsError ? { status: "error" } : review.cardsLoaded ? { status: "ready", data: { dueToday: review.dueToday, overdue: review.overdue } } : { status: "loading" };
 
   const s = summary.data;
   const signups = s ? weekTrend(s.signups?.last7, s.signups?.prev7) : null;
@@ -104,7 +105,7 @@ export function OverviewPage() {
 
   return (
     <div className="flex min-w-0 flex-col gap-6">
-      <PageHeader title={greeting()} description={`${date}. What moved in the last 7 days and what needs a person today.`} />
+      <PageHeader title={greeting()} description={`${date}. What moved in the last 7 days and what is due today.`} />
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {summary.status === "loading" ? (
@@ -152,13 +153,15 @@ export function OverviewPage() {
         {work.status === "loading" ? (
           <Skeleton height={104} rounded="xl" />
         ) : work.status === "error" ? (
-          <KpiFailed label="Waiting on you" onRetry={() => review.refetch?.()} />
+          <KpiFailed label="Due today for you" onRetry={() => review.refetch?.()} />
         ) : (
           <Kpi
-            label="Waiting on you"
+            label="Due today for you"
+            note={`${Number(review.overdue || 0).toLocaleString()} overdue`}
+            noteTone={Number(review.overdue || 0) > 0 ? trendTone(false).className : undefined}
             action={<a href="#/work-board" className="inline-flex min-h-8 items-center gap-1 text-sm font-semibold text-[var(--color-brand-700)] hover:underline">Open Work <ArrowRight aria-hidden="true" className="h-3.5 w-3.5" /></a>}
           >
-            {Number(review.cards).toLocaleString()}
+            {Number(review.dueToday || 0).toLocaleString()}
           </Kpi>
         )}
       </div>
@@ -167,7 +170,7 @@ export function OverviewPage() {
         <SectionCard title="Needs you today" subtitle="From Work, Money, Platform health, Support and Inbound leads" noPadding>
           {items.length === 0 ? (
             <p className="p-5 text-sm text-[var(--color-text-secondary)]">
-              {stillChecking ? "Checking…" : "Nothing needs you today. Late payouts, platform problems, waiting cards, unanswered tickets and quiet lead weeks show here."}
+              {stillChecking ? "Checking…" : "Nothing needs you today. Late payouts, platform problems, cards due today, unanswered tickets and quiet lead weeks show here."}
             </p>
           ) : (
             <ul className="divide-y divide-[var(--gray-200)]">

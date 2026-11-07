@@ -18,6 +18,8 @@ import * as service from "../../services/contentCalendarService";
 import { PeopleField } from "../people/PeopleField";
 import { suggestedPeople } from "../../lib/peopleField";
 import { NoteBox } from "../ops/NoteBox";
+import { LinkSearchField } from "./LinkSearchField";
+import { hostSeesWords, planLinkProblem } from "../../lib/brandPlan";
 import { usePeopleDirectory } from "../../hooks/usePeopleDirectory";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
@@ -131,6 +133,15 @@ export function ContentDrawer({ activeId, detail, config, online, loading, focus
   const driveLink = safeHttpsUrl(item?.drive_url);
   const liveLink = safeHttpsUrl(item?.live_url);
   const disabled = !online || !!busy || removed;
+  // #4270 W3: the plan link is https only, checked before it is sent.
+  const [planLinkError, setPlanLinkError] = useState("");
+  const savePlanLink = () => {
+    const value = String(item?.plan_link_url || "").trim();
+    const problem = planLinkProblem(value);
+    setPlanLinkError(problem);
+    if (!problem) save({ plan_link_url: value || null });
+  };
+  const planLink = item?.plan_link_url && !planLinkProblem(item.plan_link_url) ? item.plan_link_url : null;
 
   return (
     <Drawer open={!!activeId} onClose={close} title={item?.title || "Content card"} suspended={suspended}
@@ -142,12 +153,32 @@ export function ContentDrawer({ activeId, detail, config, online, loading, focus
           <Field label="Stage" htmlFor="content-stage"><Select id="content-stage" className="min-h-11" disabled={disabled} value={item.stage} options={CONTENT_STAGES.map((stage) => ({ ...stage, disabled: stage.value !== item.stage && !canMoveTo(item, stage.value) }))} onChange={(event) => onMove(item, event.target.value)} /></Field>
           <Field label="Publish date and time" htmlFor="content-publish"><input id="content-publish" type="datetime-local" className={`${CONTROL_CLASS} min-h-11`} disabled={disabled} value={dateTimeLocal(item.publish_at)} onChange={(event) => setItem({ ...item, publish_at: localToIso(event.target.value) })} onBlur={() => save({ publish_at: item.publish_at })} /></Field>
         </div>
+        {/* #4270 W3: the brand, who it is made with, and what the brand's hosts see. */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <LinkSearchField id="content-brand" label="Brand" kind="brand" emptyWords="No brand" disabled={disabled}
+            value={item.brand_id ? { id: item.brand_id, name: item.brand_name } : null}
+            onPick={(pick) => { setItem({ ...item, brand_id: pick?.id || null, brand_name: pick?.name || null }); save({ brand_id: pick?.id || null }); }} />
+          <LinkSearchField id="content-collab" label="Collab with" kind="creator" emptyWords="Nobody" disabled={disabled}
+            helper="A creator from the Creators board (optional)"
+            value={item.collaborator || null}
+            onPick={(pick) => { setItem({ ...item, collaborator: pick }); save({ collaborator_record_id: pick?.id || null }); }} />
+        </div>
+        <div data-host-sees-line="" className="rounded-lg bg-[var(--gray-50)] px-3 py-2 text-sm">
+          <span className="block text-xs font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">Host sees</span>
+          <span className="text-[var(--color-text-primary)]">{hostSeesWords(item)}</span>
+        </div>
+        <Field label="Plan link" htmlFor="content-plan-link" helper="Staff and the brand’s hosts see this link." error={planLinkError}>
+          <input id="content-plan-link" type="url" inputMode="url" placeholder="https://" className={`${CONTROL_CLASS} min-h-11`} disabled={disabled}
+            aria-invalid={planLinkError ? "true" : undefined}
+            value={item.plan_link_url || ""} onChange={(event) => { setItem({ ...item, plan_link_url: event.target.value }); setPlanLinkError(""); }} onBlur={savePlanLink} />
+          {planLink && <a href={planLink} target="_blank" rel="noopener noreferrer" className={`mt-1 inline-flex min-h-11 items-center text-sm font-semibold text-[var(--color-brand-700)] underline ${FOCUS}`}>Open plan link</a>}
+        </Field>
         <PeopleField id={`content-${item.id}-owners`} label="Owners" value={item.owners || []} team={directory.people} me={directory.me} suggested={suggestedPeople(directory.me, item.owners)} disabled={disabled} onChange={(next) => assign(next)} />
         <fieldset><legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">Channels</legend><div className="grid grid-cols-2 gap-1">{(config?.channels || []).map((channel, index) => <label key={channel.id} className={`flex min-h-11 cursor-pointer items-center gap-2 rounded-md px-2 text-sm text-[var(--color-text-primary)] hover:bg-[var(--gray-50)] ${FOCUS}`}><input id={index === 0 ? "content-channel-first" : undefined} type="checkbox" checked={(item.channels || []).includes(channel.id)} disabled={disabled} onChange={(event) => { const channels = event.target.checked ? [...new Set([...(item.channels || []), channel.id])] : (item.channels || []).filter((id) => id !== channel.id); setItem({ ...item, channels }); save({ channels }); }} />{channel.label}</label>)}</div></fieldset>
         <Field label="Copy" htmlFor="content-copy" helper={copyLocked ? "Copy is read-only after Writing. Move this card back to Writing to revise it." : undefined}><textarea id="content-copy" className={TEXTAREA_CLASS} rows={6} disabled={disabled || copyLocked} value={item.copy || ""} onChange={(event) => setItem({ ...item, copy: event.target.value })} onBlur={() => save({ copy: item.copy || "" })} /></Field>
         <Field label="Notes" htmlFor="content-notes"><textarea id="content-notes" className={TEXTAREA_CLASS} rows={4} disabled={disabled} value={item.notes || ""} onChange={(event) => setItem({ ...item, notes: event.target.value })} onBlur={() => save({ notes: item.notes || "" })} /></Field>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="Drive link" htmlFor="content-drive"><input id="content-drive" type="url" className={`${CONTROL_CLASS} min-h-11`} disabled={disabled} value={item.drive_url || ""} onChange={(event) => setItem({ ...item, drive_url: event.target.value })} onBlur={() => save({ drive_url: item.drive_url || "" })} />{driveLink && <a href={driveLink} target="_blank" rel="noopener noreferrer" className={`mt-1 inline-flex min-h-11 items-center text-sm font-semibold text-[var(--color-brand-700)] underline ${FOCUS}`}>Open Drive link</a>}</Field>
+          <Field label="Drive link" htmlFor="content-drive" helper="Staff only"><input id="content-drive" type="url" className={`${CONTROL_CLASS} min-h-11`} disabled={disabled} value={item.drive_url || ""} onChange={(event) => setItem({ ...item, drive_url: event.target.value })} onBlur={() => save({ drive_url: item.drive_url || "" })} />{driveLink && <a href={driveLink} target="_blank" rel="noopener noreferrer" className={`mt-1 inline-flex min-h-11 items-center text-sm font-semibold text-[var(--color-brand-700)] underline ${FOCUS}`}>Open Drive link</a>}</Field>
           <Field label="Live link" htmlFor="content-live"><input id="content-live" type="url" className={`${CONTROL_CLASS} min-h-11`} disabled={disabled} value={item.live_url || ""} onChange={(event) => setItem({ ...item, live_url: event.target.value })} onBlur={() => save({ live_url: item.live_url || "" })} />{liveLink && <a href={liveLink} target="_blank" rel="noopener noreferrer" className={`mt-1 inline-flex min-h-11 items-center text-sm font-semibold text-[var(--color-brand-700)] underline ${FOCUS}`}>Open live link</a>}</Field>
         </div>
         <details className="rounded-lg border border-[var(--gray-200)]"><summary className={`flex min-h-11 cursor-pointer items-center px-3 text-sm font-semibold text-[var(--color-text-primary)] ${FOCUS}`}>More details</summary><div className="grid grid-cols-1 gap-4 border-t border-[var(--gray-200)] p-3 sm:grid-cols-2"><Field label="Format" htmlFor="content-format"><Select id="content-format" className="min-h-11" disabled={disabled} value={item.format || ""} placeholder="Not set" options={(config?.formats || []).map((entry) => ({ value: entry.id, label: entry.label }))} onChange={(event) => { setItem({ ...item, format: event.target.value }); save({ format: event.target.value }); }} /></Field><Field label="Audience" htmlFor="content-audience"><Select id="content-audience" className="min-h-11" disabled={disabled} value={item.audience || ""} placeholder="Not set" options={(config?.audiences || []).map((entry) => ({ value: entry.id, label: entry.label }))} onChange={(event) => { setItem({ ...item, audience: event.target.value }); save({ audience: event.target.value }); }} /></Field><Field label="City" htmlFor="content-city"><Select id="content-city" className="min-h-11" disabled={disabled} value={item.city_id || ""} placeholder="Not set" options={(config?.cities || []).map((entry) => ({ value: entry.id, label: entry.name }))} onChange={(event) => { setItem({ ...item, city_id: event.target.value }); save({ city_id: event.target.value }); }} /></Field></div></details>

@@ -1,15 +1,16 @@
 /**
  * #4271 — how to take a tap, findable any time from Settings. Text only: on iOS 18
  * and later Apple's own How to Tap is one button away; every version gets the rows.
+ * Door polish: the rows are one grouped list (TapFactList), not a card each.
  */
 import React, { useCallback, useState } from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
 
-import { semantic, spacing, text as textTokens, typography } from "../../../constants/designSystem";
+import { semantic, spacing, typography } from "../../../constants/designSystem";
 import { TAP_HOW_TO_TAP_BUTTON, TAP_HOW_TO_TAP_FAILED, tapEducationRows } from "../../../constants/tapToPayCopy";
 import { showHowToTapEducation } from "../../../services/terminal/howToTap";
 import { Button } from "../../ui/Button";
-import { GlassCard } from "../../ui/GlassCard";
+import { TapFactList } from "./TapFactList";
 
 export interface TapToPayEducationProps {
   /** GB brands: Apple asks for PIN guidance by region. */
@@ -52,19 +53,12 @@ export const TapToPayEducation = ({ pinRow }: TapToPayEducationProps): React.Rea
           {error}
         </Text>
       ) : null}
-      {tapEducationRows(Platform.OS, { pinRow }).map((row) => (
-        <GlassCard key={row.title} variant="base" radius="md" padding={spacing.md}>
-          <Text style={styles.rowTitle}>{row.title}</Text>
-          <Text style={styles.rowSub}>{row.sub}</Text>
-        </GlassCard>
-      ))}
+      <TapFactList facts={tapEducationRows(Platform.OS, { pinRow })} testID="tap-education-facts" />
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   host: { gap: spacing.sm },
-  rowTitle: { ...typography.bodySm, fontWeight: "600", color: textTokens.primary },
-  rowSub: { ...typography.caption, color: textTokens.secondary, marginTop: 2 },
   error: { ...typography.bodySm, color: semantic.errorText, textAlign: "center" },
 });

@@ -11,8 +11,8 @@ import {
   assertMatch,
   assertNotMatch,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
-// #4130: waitingCardsState is the Work count the menu now shows.
-import { mentionToken, mentionedEmails, waitingCardsState } from "../lib/opsModel.js";
+// #4270: dueTodayState is the Work count the menu now shows (D20).
+import { dueTodayState, mentionToken, mentionedEmails } from "../lib/opsModel.js";
 import { AGENT_WORK_ABILITIES, AGENT_WORK_GUARDRAILS } from "../lib/agentConnect.js";
 
 const SRC = new URL("../", import.meta.url);
@@ -117,7 +117,8 @@ Deno.test("#3980 rework: status chips in the event panel never wrap", () => {
   // [TEST-MOD-APPROVED #3980] synced Wave 3 (R6): the panel's state pill never wraps (StatePill is whitespace-nowrap).
   assertMatch(panel, /<StatePill state=\{data\.state\} \/>/);
   assertMatch(code("components/ops/StateDot.jsx"), /inline-flex min-h-6 items-center gap-1\.5 whitespace-nowrap rounded-full/);
-  assertMatch(panel, /tone=\{c\.status === "done" \? "success" : c\.blocked \? "error" : "brand"\} className="shrink-0 whitespace-nowrap"/);
+  // #4270: a tagged card's chip is the warning tone and says its tag.
+  assertMatch(panel, /tone=\{c\.status === "done" \? "success" : c\.blocked \? "error" : isTagged\(c\) \? "warning" : "brand"\} className="shrink-0 whitespace-nowrap"/);
 });
 
 Deno.test("#3980 rework: Done means shows its whole text", () => {
@@ -138,16 +139,16 @@ Deno.test("#3980 rework: the To review header counts what the menu badge counts"
   assertMatch(hook, /window\.addEventListener\(REVIEW_CHANGED, refresh\)/);
   // #4130: Needs you left the menu; Work carries the count of your own waiting cards.
   assertMatch(code("components/layout/Sidebar.jsx"), /item\.id === "work-board" \? reviewCount\.cards/);
-  // #4130: the Work count is this person's own cards in "Waiting on a person"
-  // (ops_my_counts waiting_on_person_mine), read through waitingCardsState, so
-  // the menu, the Dashboard and the Work first column count the same thing.
-  assertMatch(hook, /const work = waitingCardsState\(\{ enabled, data: counts\.data, error: counts\.error \}\);/);
-  assertMatch(hook, /cards: work\.cards,/);
-  assertEquals(waitingCardsState({ data: { waiting_on_person_mine: 3, needs_person_mine: 9, draft_needed_mine: 9 } }), { status: "ready", cards: 3 });
-  // #4130: a failed or missing count is an error, never a made-up 0.
-  assertEquals(waitingCardsState({ data: null, error: new Error("x") }), { status: "error", cards: null });
-  assertEquals(waitingCardsState({ data: {} }), { status: "error", cards: null });
-  assertEquals(waitingCardsState({ data: null }), { status: "loading", cards: null });
+  // #4270 (D20): the Work count is this person's own open cards due today or
+  // overdue (ops_my_counts due_today_mine + overdue_mine), read through
+  // dueTodayState, so the menu and the Dashboard count the same thing.
+  assertMatch(hook, /const work = dueTodayState\(\{ enabled, data: counts\.data, error: counts\.error \}\);/);
+  assertMatch(hook, /cards: work\.status === "ready" \? work\.dueToday \+ work\.overdue : null,/);
+  assertEquals(dueTodayState({ data: { due_today_mine: 3, overdue_mine: 2, waiting_on_person_mine: 9 } }), { status: "ready", dueToday: 3, overdue: 2 });
+  // A failed or missing count is an error, never a made-up 0.
+  assertEquals(dueTodayState({ data: null, error: new Error("x") }), { status: "error", dueToday: null, overdue: null });
+  assertEquals(dueTodayState({ data: {} }), { status: "error", dueToday: null, overdue: null });
+  assertEquals(dueTodayState({ data: null }), { status: "loading", dueToday: null, overdue: null });
 });
 
 Deno.test("#3980 rework: the agent log names fields in plain words", () => {

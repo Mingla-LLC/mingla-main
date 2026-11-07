@@ -22,14 +22,18 @@ Deno.test("#3980 P2-2 set_expected_event takes repeats and makes a saved event w
   assert(!bad.ok, "an unknown repeat is refused before it reaches the server");
 });
 
-Deno.test("#3980 P2-2 set_expected_event takes a venue's promo moment", () => {
+// #4270 W2 (D16): the tool only changes a promised event already saved, so
+// it needs the id; a new one (no id) is refused before it reaches the server.
+Deno.test("#3980 P2-2 / #4270 D16 set_expected_event changes a saved one; it no longer adds one", () => {
   const tool = findWorkTool("set_expected_event")!;
-  const r = checkArguments(tool, {
+  const add = checkArguments(tool, {
     record_id: ID, title: "Detty December menu", event_type: "promo_moment", expected_on: "2026-12-05", repeats: "none",
     request_key: "g-moment-0001",
   });
-  assert(r.ok, JSON.stringify(r));
-  assertMatch(tool.description, /repeats: none, week or month; send id with repeats to make a saved event repeat in place/);
-  assertMatch(tool.description, /promo_moment/);
+  assert(!add.ok, "a new promised event (no id) is refused");
+  const change = checkArguments(tool, { record_id: ID, id: EXP, event_type: "promo_moment", repeats: "none", request_key: "g-moment-0002" });
+  assert(change.ok, JSON.stringify(change));
+  assertMatch(tool.description, /New promised events can no longer be added: hosts create their events, experiences and trips in the Host app/);
+  assertMatch(tool.description, /set repeats \(none, week or month\) in place/);
   assert(tool.description.length < 1900, "the description stays under 1900 characters");
 });

@@ -30,7 +30,8 @@ import {
   doorPayHostStatus,
   formatDoorPayCountdown,
 } from "../doorPayCodeState";
-import { decodeDoorTapDraft, doorSellAnotherHref, doorTapNewSaleHref } from "../doorTapDraft";
+import { decodeDoorTapDraft } from "../doorTapDraft";
+import { doorSellAnotherHref, doorTapNewSaleHref } from "../doorTapDraftHref";
 import {
   PAYMENT_METHOD_LABELS,
   PAYMENT_METHOD_PILLS,
@@ -48,28 +49,25 @@ const read = (relative: string): string =>
 const NO_TAP = { available: false, needsSetup: false };
 
 describe("#4271 door sale payment list", () => {
-  test("pay code first, then cash, manual and a disabled card reader; no NFC", () => {
+  // Door polish: no dead rows. The disabled Card reader row and the NEW badges went.
+  test("pay code first, then cash and manual; no card reader row, no NFC", () => {
     const options = buildDoorPaymentOptions({ eventCurrency: "GBP", tapToPay: NO_TAP, platform: "ios" });
-    expect(options.map((o) => o.id)).toEqual(["pay_code", "cash", "manual", "card_reader"]);
-    expect(options[0]).toMatchObject({
+    expect(options.map((o) => o.id)).toEqual(["pay_code", "cash", "manual"]);
+    expect(options[0]).toEqual({
+      id: "pay_code",
       label: "Buyer pays on their phone",
-      sub: "Show a code. They scan it with their camera and pay by card, Apple Pay or Google Pay.",
-      disabled: false,
+      sub: "They scan a code and pay by card, Apple Pay or Google Pay.",
     });
     expect(options.find((o) => o.id === "cash")?.sub).toBe("You collect cash at the door.");
     expect(options.find((o) => o.id === "manual")?.sub).toBe("Paid another way, like a bank transfer.");
-    expect(options.find((o) => o.id === "card_reader")).toMatchObject({
-      label: "Card reader",
-      sub: "Card machines are coming later.",
-      disabled: true,
-    });
+    expect(options.some((o) => o.id === "card_reader")).toBe(false);
     expect(options.some((o) => (o.id as string) === "nfc")).toBe(false);
   });
 
   test("Nigeria names Paystack's ways to pay", () => {
     const [payCode] = buildDoorPaymentOptions({ eventCurrency: "NGN", tapToPay: NO_TAP, platform: "android" });
     expect(payCode.sub).toBe(
-      "Show a code. They scan it with their camera and pay by card, bank transfer or USSD.",
+      "They scan a code and pay by card, bank transfer or USSD.",
     );
   });
 
@@ -79,7 +77,7 @@ describe("#4271 door sale payment list", () => {
       tapToPay: { available: true, needsSetup: false },
       platform: "ios",
     });
-    expect(ready.map((o) => o.id)).toEqual(["tap_to_pay", "pay_code", "cash", "manual", "card_reader"]);
+    expect(ready.map((o) => o.id)).toEqual(["tap_to_pay", "pay_code", "cash", "manual"]);
     expect(ready[0].sub).toBe("Take a card or phone on this iPhone.");
     const android = buildDoorPaymentOptions({
       eventCurrency: "GBP",
@@ -198,7 +196,7 @@ describe("#4271 pay-link QR guard", () => {
       .filter((f) => /\.tsx?$/.test(f))
       .filter((f) => fs.readFileSync(path.join(doorDir, f), "utf8").includes("react-native-qrcode-svg"));
     expect(encoders).toEqual(["DoorPayQr.tsx"]);
-    const route = read("app/event/[id]/door/pay/[codeId].tsx");
+    const route = read("src/components/door/DoorPayCodeScreen.tsx");
     expect(route).toContain("makeDoorPayUrl(row.code)");
     expect(route).not.toContain("react-native-qrcode-svg");
   });
@@ -318,7 +316,7 @@ describe("#4271 pay code states", () => {
     expect(hub).toContain("params.sellAnother");
     expect(hub).toContain("decodeDoorTapDraft(draftParam)");
     expect(hub).toContain("initialLines={sheetSeed?.lines}");
-    expect(read("app/event/[id]/door/pay/[codeId].tsx")).toContain("doorSellAnotherHref(");
+    expect(read("src/components/door/DoorPayCodeScreen.tsx")).toContain("doorSellAnotherHref(");
     expect(read("src/components/door/DoorSaleNewSheet.tsx")).toContain(
       "useTapToPayAvailability({ brand, currency: event.currency })",
     );
@@ -485,5 +483,27 @@ describe("#4271 B8 Tap to Pay on top, in Apple's words", () => {
       "app/event/[id]/orders/[oid]/index.tsx",
     ].forEach(walk);
     expect(offenders).toEqual([]);
+  });
+});
+
+describe("#4271 pay code screen stays in the on-intent door chunk (eager __common budget)", () => {
+  const importsOf = (relative: string): string[] =>
+    [...read(relative).matchAll(/from "([^"]+)"/g)].map((m) => m[1]);
+
+  test("the route renders the screen only through LazyDoorSaleScreens", () => {
+    const route = importsOf("app/event/[id]/door/pay/[codeId].tsx");
+    expect(route).toEqual(["react", "../../../../../src/components/door/LazyDoorSaleScreens"]);
+    expect(read("src/components/door/doorSaleScreens.ts")).toContain(
+      'export { DoorPayCodeScreen } from "./DoorPayCodeScreen";',
+    );
+    expect(read("src/components/door/LazyDoorSaleScreens.tsx")).toContain("(await loadDoorSaleScreens()).DoorPayCodeScreen");
+  });
+
+  test("the guest page and the door hub import nothing the door chunk owns", () => {
+    const guest = importsOf("app/pay/door/[code].tsx");
+    expect(guest.some((p) => /door\/(doorTone|DoorStatusPill|doorTapDraftHref)$/.test(p))).toBe(false);
+    const hub = importsOf("app/event/[id]/door/index.tsx");
+    expect(hub.some((p) => /door\/(doorTone|DoorStatusPill|doorTapDraftHref|DoorPayCodeScreen)$/.test(p))).toBe(false);
+    expect(importsOf("src/components/door/doorTapDraft.ts")).toEqual([]);
   });
 });

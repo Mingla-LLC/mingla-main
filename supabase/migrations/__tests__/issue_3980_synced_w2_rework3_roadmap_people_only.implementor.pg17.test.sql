@@ -243,9 +243,9 @@ declare v text; v_card uuid; v_card2 uuid; v_card3 uuid;
 begin
   -- R1
   v_card := pg_temp.t3980w2r3i_bridge_d(7931, '39880000-0000-4000-c100-000000000031', 'R1 hosts see the new report');
-  perform pg_temp.t3980w2r3i_check('R1', 'the approval card waits for a person', (select status from public.ops_work_cards where id = v_card), 'person');
-  v := pg_temp.t3980w2r3i_agent('owner', format($q$select public.ops_work_update(%L, '{"status":"todo","reason":"The wording needs another pass by me."}'::jsonb, %s)::text$q$, v_card, pg_temp.t3980w2r3i_rev(v_card::text)));
-  perform pg_temp.t3980w2r3i_like('R1', 'an agent sending it back to To do with a reason is people_only', v, 'ERR:42501:people_only:%');
+  perform pg_temp.t3980w2r3i_check('R1', 'the approval card waits for a person', (select status || ':' || person_reason from public.ops_work_cards where id = v_card), 'todo:publish'); -- #4270: tagged in To do
+  v := pg_temp.t3980w2r3i_agent('owner', format($q$select public.ops_work_update(%L, '{"person_reason":null,"reason":"The wording needs another pass by me."}'::jsonb, %s)::text$q$, v_card, pg_temp.t3980w2r3i_rev(v_card::text)));
+  perform pg_temp.t3980w2r3i_like('R1', 'an agent taking its tag off with a reason is people_only', v, 'ERR:42501:people_only:%');
   v := pg_temp.t3980w2r3i_agent('owner', format($q$select public.ops_work_update(%L, '{"status":"doing","reason":"I am working on the wording now."}'::jsonb, %s)::text$q$, v_card, pg_temp.t3980w2r3i_rev(v_card::text)));
   perform pg_temp.t3980w2r3i_like('R1', 'an agent moving it to Doing with a reason is people_only', v, 'ERR:42501:people_only:%');
   v := pg_temp.t3980w2r3i_agent('owner', format($q$select public.ops_work_update(%L, '{"person_reason":"send"}'::jsonb, %s)::text$q$, v_card, pg_temp.t3980w2r3i_rev(v_card::text)));
@@ -256,7 +256,7 @@ begin
   v := pg_temp.t3980w2r3i_agent('owner', format($q$select public.ops_work_push_back(%L, 'declined', 'Agent says hosts do not need this one.', '[]'::jsonb, %s)::text$q$, v_card, pg_temp.t3980w2r3i_rev(v_card::text)));
   perform pg_temp.t3980w2r3i_like('R3', 'an agent pushing it back while it waits for a person is people_only', v, 'ERR:42501:people_only:%');
   perform pg_temp.t3980w2r3i_check('R1', 'after every agent attempt it still waits for a person to publish',
-    (select status || ':' || coalesce(person_reason, '-') || ':' || coalesce(close_kind, '-') from public.ops_work_cards where id = v_card), 'person:publish:-');
+    (select status || ':' || coalesce(person_reason, '-') || ':' || coalesce(close_kind, '-') from public.ops_work_cards where id = v_card), 'todo:publish:-');
 
   -- R2: a person sends it back; the agent still cannot finish it.
   v := pg_temp.t3980w2r3i_person('owner', format($q$select public.ops_work_person_action(%L, 'send_back', 'Change the wording first, please.', %s)::text$q$, v_card, pg_temp.t3980w2r3i_rev(v_card::text)));
