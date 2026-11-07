@@ -1,3 +1,5 @@
+-- Re-versioned 2026-11-07 from 20280427001023 (it sorted below migrations
+-- already on main) to 20280430001023; content otherwise unchanged.
 -- issue #1023 wave 2 — widen every theme-animation allow-list from the 9
 -- original slugs to all 29 generated theme motions.
 --
