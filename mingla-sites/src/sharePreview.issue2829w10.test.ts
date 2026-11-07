@@ -16,7 +16,7 @@ import { NextRequest } from "next/server";
 
 const state = vi.hoisted(() => ({ published: true }));
 vi.mock("./lib/siteRedirects", () => ({ siteRedirectFor: async () => null }));
-vi.mock("./lib/siteVideo", () => ({ requestStreamVideoHosts: async () => [] }));
+vi.mock("./lib/siteVideo", () => ({ requestStreamVideoHosts: async () => [], previewStreamVideoHosts: () => ["video.cdn.example"] }));
 vi.mock("./lib/config", () => ({ runtimeConfig: () => { throw new Error("no config in this test"); } }));
 vi.mock("next/headers", () => ({ headers: async () => new Headers({ host: "young.sites.usemingla.com" }) }));
 vi.mock("./lib/publication", async (original) => ({
@@ -106,7 +106,21 @@ describe("#2829 W10 private preview headers", () => {
     expect(page.headers.get("x-robots-tag")).toBeNull();
     const preview = await run("/preview?k=x");
     expect(preview.headers.get("x-robots-tag")).toBe("noindex, nofollow");
-    expect(preview.headers.get("referrer-policy")).toBeNull();
+    // #2830 — the team preview's address carries its key, so it sends none either.
+    expect(preview.headers.get("referrer-policy")).toBe("no-referrer");
+  });
+
+  it("#2830 a draft's stream video may play on a preview: a public page's policy is unchanged", async () => {
+    expect((await run("/preview?k=x")).headers.get("content-security-policy")).toContain("media-src 'self' https://video.cdn.example");
+    expect((await run(`/preview/share/${TOKEN}`)).headers.get("content-security-policy")).toContain("media-src 'self' https://video.cdn.example");
+    expect((await run("/about-us")).headers.get("content-security-policy")).not.toContain("video.cdn.example");
+  });
+
+  it("#2830 a preview-keyed asset sends no referrer; the same asset without a key is unchanged", async () => {
+    for (const path of ["/media/x/1440.webp", "/om/x/c400", "/map/16/1/2", "/fonts/x"]) {
+      expect((await run(`${path}?k=key`)).headers.get("referrer-policy"), path).toBe("no-referrer");
+      expect((await run(path)).headers.get("referrer-policy"), path).toBeNull();
+    }
   });
 
   it("nobody may frame a shared link", () => {

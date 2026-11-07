@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_2830_ari_brand_research.tester.adversarial.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-2830-ari-brand-research-tester",
+  "profile": "deno-2-unit"
+}

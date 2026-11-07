@@ -19,6 +19,7 @@ import {
   stripUnsupportedTokens,
   toggleBlastChannel,
   PUSH_AUDIENCE_LIMIT,
+  pushBuyerListReason,
   PUSH_PREFILL_MAX,
   SMS_PREFILL_MAX_GSM,
 } from "../blastSendModel";
@@ -48,7 +49,8 @@ describe("#4273 Send by", () => {
       sealedAudience: true,
       lead: "email",
     });
-    expect(reasons).toEqual({ push: PUSH_AUDIENCE_LIMIT });
+    // #4273 — the reason names the buyer list, not "pick Your Book…".
+    expect(reasons).toEqual({ push: pushBuyerListReason([]) });
     expect(reconcileBlastChannels(["email", "push"], reasons)).toEqual(["email"]);
     // Push alone falls back to the first method still available.
     expect(reconcileBlastChannels(["push"], reasons)).toEqual(["email"]);
@@ -79,7 +81,7 @@ describe("#4273 Send by", () => {
       combinedAllowed: false,
       sealedAudience: false,
       lead: "email",
-    })).toEqual({ sms: PUSH_AUDIENCE_LIMIT, push: PUSH_AUDIENCE_LIMIT });
+    })).toEqual({ sms: PUSH_AUDIENCE_LIMIT, push: pushBuyerListReason([]) });
   });
 });
 

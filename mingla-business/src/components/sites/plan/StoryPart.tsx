@@ -1,19 +1,19 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "expo-router";
 import { SiteStoryView } from "../SiteStoryView";
-import { SafeScreen } from "../../../components/ui/SafeScreen";
-import { TopBar } from "../../../components/ui/TopBar";
-import { canvas } from "../../../constants/designSystem";
 import { useBrandSitePlan, useSaveBrandSitePlan } from "../../../sites/planApi";
 import { BrandSitesError } from "../../../services/brandSitesService";
 import { approvedPlanFrom } from "../../../sites/planScreens";
 import type { SitePlanStory } from "../../../sites/sitePlanState";
-import { mainActionChips, storyQuestions } from "../../../../../packages/site-contracts/src/sitePlan.ts";
+import { mainActionChips, storyQuestions, type PlanPartKey } from "../../../../../packages/site-contracts/src/sitePlan.ts";
 
 /** #2829 W9a — plan parts 4 (Your story) and 5 (Approve the plan). */
-export function StoryPart({ brandId, step: stepProp, embedded = false }: { brandId: string; step?: "questions" | "approve"; embedded?: boolean }): React.ReactElement {
-  const router = useRouter();
-  const step = stepProp ?? "questions";
+export function StoryPart({ brandId, step, onDone, readOnly = false }: {
+  brandId: string;
+  step: "questions" | "approve";
+  readOnly?: boolean;
+  /** Where to go next, on this same screen. */
+  onDone: (next: PlanPartKey) => void;
+}): React.ReactElement {
   const plan = useBrandSitePlan(brandId);
   const save = useSaveBrandSitePlan(brandId);
   const [story, setStory] = useState<SitePlanStory | null>(null);
@@ -34,11 +34,6 @@ export function StoryPart({ brandId, step: stepProp, embedded = false }: { brand
       ? "Your plan needs your brand's name and one line about it. That's all that's required; everything else can wait."
       : null;
 
-  const back = useCallback(() => {
-    if (router.canGoBack()) router.back();
-    else router.replace(`/brand/${brandId}/website/plan` as never);
-  }, [router, brandId]);
-
   const fail = (error: unknown, fallback: string) =>
     setNotice({ kind: "error", message: error instanceof BrandSitesError ? error.message : fallback });
 
@@ -53,11 +48,11 @@ export function StoryPart({ brandId, step: stepProp, embedded = false }: { brand
     save.mutate(
       { revision: plan.data.plan?.revision ?? 0, patch: { story: Object.keys(cleaned).length ? cleaned : null } },
       {
-        onSuccess: () => router.replace(`/brand/${brandId}/website/plan?part=approve` as never),
+        onSuccess: () => onDone("approve"),
         onError: (error) => fail(error, "Your answers didn't save. Try again."),
       },
     );
-  }, [plan.data, current, save, router, brandId]);
+  }, [plan.data, current, save, onDone]);
 
   const onApprove = useCallback(() => {
     if (!plan.data) return;
@@ -65,24 +60,22 @@ export function StoryPart({ brandId, step: stepProp, embedded = false }: { brand
     save.mutate(
       { revision: plan.data.plan?.revision ?? 0, patch: { approve: true, approved_plan: summary } },
       {
-        onSuccess: () => router.replace(`/brand/${brandId}/website/plan?part=build` as never),
+        onSuccess: () => onDone("build"),
         onError: (error) => fail(error, "The plan wasn't approved. Try again."),
       },
     );
-  }, [plan.data, summary, save, router, brandId]);
+  }, [plan.data, summary, save, onDone]);
 
   const loadError = plan.isError
     ? plan.error instanceof BrandSitesError ? plan.error.message : "Your website plan could not be loaded."
     : null;
 
-  // #2829 W9r — inside the Website section the shell draws the top bar.
-  const body = (
-    <>
+  return (
     <SiteStoryView
       step={step}
       isLoading={plan.isLoading || (plan.isSuccess && story === null)}
       loadError={loadError}
-      readOnly={plan.data?.canManage !== true}
+      readOnly={readOnly || plan.data?.canManage !== true}
       questions={storyQuestions(offerings)}
       chips={mainActionChips(offerings)}
       story={current}
@@ -94,16 +87,9 @@ export function StoryPart({ brandId, step: stepProp, embedded = false }: { brand
       onChange={(key, value) => setStory((prev) => ({ ...(prev ?? {}), [key]: value }))}
       onSaveAnswers={onSaveAnswers}
       onApprove={onApprove}
-      onEditBrand={() => router.push(`/brand/${brandId}/edit` as never)}
+      onEditBrand={() => onDone("brand")}
+      onChangeSomething={onDone}
       onRetry={() => { void plan.refetch(); }}
     />
-    </>
-  );
-  if (embedded) return body;
-  return (
-    <SafeScreen style={{ backgroundColor: canvas.discover }}>
-      <TopBar leftKind="back" title={step === "approve" ? "Approve the plan" : "Your story"} onBack={back} rightSlot={null} />
-      {body}
-    </SafeScreen>
   );
 }

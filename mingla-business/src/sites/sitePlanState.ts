@@ -41,6 +41,8 @@ export type BrandContextField = {
 
 export type BrandContextCompleteness = {
   revision: number;
+  /** #2830 — brand_context_revision, sent back with "doesn't apply". */
+  contextRevision: string;
   designKey: string | null;
   fields: BrandContextField[];
   requiredGapCount: number;
@@ -53,7 +55,25 @@ export type BrandContextCompleteness = {
   checkedAt: string | null;
 };
 
+/** #2830 — the server's one display status (brand_site_setup_status_internal). */
+export type RawSetupPart = {
+  key: PlanPartKey;
+  done: boolean;
+  skipped: boolean;
+  fieldCount: number;
+  openFields: string[];
+};
+
+export type RawSetupStatus = {
+  parts: RawSetupPart[];
+  doneCount: number;
+  nextPart: PlanPartKey | null;
+  total: number;
+};
+
 export type SitePlanState = {
+  /** #2830 — the one display status; null until the migration is applied. */
+  setupStatus: RawSetupStatus | null;
   brandId: string;
   entitled: boolean;
   rank: number;
@@ -104,7 +124,25 @@ export function normalizeSitePlan(brandId: string, value: unknown): SitePlanStat
     .filter((part) => isPart(part.key))
     .map((part) => ({ key: part.key as PlanPartKey, done: part.done === true, skipped: part.skipped === true, optional: part.optional === true }));
   const story = plan && plan.story ? obj(plan.story) : null;
+  const setup = raw.setup_status ? obj(raw.setup_status) : null;
   return {
+    setupStatus: setup
+      ? {
+        parts: (Array.isArray(setup.parts) ? setup.parts : [])
+          .map(obj)
+          .filter((part) => isPart(part.key))
+          .map((part) => ({
+            key: part.key as PlanPartKey,
+            done: part.done === true,
+            skipped: part.skipped === true,
+            fieldCount: num(part.field_count),
+            openFields: strings(part.open_fields) ?? [],
+          })),
+        doneCount: num(setup.done_count),
+        nextPart: isPart(setup.next_part) ? setup.next_part : null,
+        total: num(setup.total),
+      }
+      : null,
     brandId,
     entitled: raw.entitled === true,
     rank: num(raw.rank),
@@ -145,6 +183,7 @@ export function normalizeSitePlan(brandId: string, value: unknown): SitePlanStat
     completeness: completeness
       ? {
         revision: num(completeness.revision),
+        contextRevision: str(completeness.context_revision) ?? "",
         designKey: str(completeness.design_key),
         fields: (Array.isArray(completeness.fields) ? completeness.fields : [])
           .map(obj)
@@ -185,4 +224,11 @@ export function normalizeSitePlan(brandId: string, value: unknown): SitePlanStat
 
 export function partLabel(key: PlanPartKey): string {
   return PLAN_PARTS.find((part) => part.key === key)?.label ?? key;
+}
+
+/** #2830 — the one reading of "the pages are built". A draft status does not say so. */
+export function planBuildDone(plan: SitePlanState | null | undefined): boolean {
+  return plan?.setupStatus?.parts.find((part) => part.key === "build")?.done
+    ?? plan?.parts.find((part) => part.key === "build")?.done
+    ?? false;
 }

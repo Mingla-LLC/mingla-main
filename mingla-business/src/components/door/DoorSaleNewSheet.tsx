@@ -15,9 +15,12 @@
  *
  * I-30 — door tier filter: `t.visibility !== "hidden" && t.availableAt !== "online"`.
  *
- * [TRANSITIONAL] Card reader + NFC payment options are visible but
- * DISABLED with copy "Coming when backend ships" per Cycle 11 J-S1 banner
- * pattern. EXIT CONDITION: B-cycle wires Stripe Terminal SDK + platform NFC.
+ * issue #4271 — payment methods, in order: Buyer's phone (pay code: the guest
+ * scans a code and pays on their own phone), Tap to Pay (only where it works,
+ * see useTapToPayAvailability), Cash, Manual, and a disabled Card reader row
+ * ("Card machines are coming later."). Card money rides the online payment
+ * rail; cash and manual are recorded through biz_door_sale_record. The whole
+ * sheet is withheld from anyone the server says may not take door payments.
  *
  * Memory rules:
  *   - feedback_keyboard_never_blocks_input — ScrollView honors
@@ -50,11 +53,24 @@ import {
 } from "../../constants/designSystem";
 import type { DoorPaymentMethod } from "../../types/doorSales";
 import type { LiveEvent } from "../../store/liveEventStore";
+import type { Brand } from "../../types/brand";
 import type { TicketStub } from "../../store/draftEventStore";
 import { formatCurrency, currencyCodeOrNull } from "../../utils/currency";
 import { phoneStartCountryForCurrency } from "../../utils/phoneStartCountryForCurrency";
 import { randomUuid } from "../../utils/randomId";
+import { useRouter } from "expo-router";
 import { useRecordDoorSale } from "../../hooks/useEventDoorSales";
+import {
+  useCanTakeDoorPayment,
+  useCreateDoorPayCode,
+  useDoorPayCodeQuote,
+} from "../../hooks/useEventDoorSales";
+import { tapToPayName } from "../../constants/tapToPayName";
+import { TapToPayIcon } from "./tap/TapToPayIcon";
+import { getTapToPaySession } from "../../services/terminal/tapToPaySession";
+import { markDoorTapPress } from "../../services/terminal/tapTiming";
+import { useTapToPayAvailability } from "../../hooks/useTapToPayAvailability";
+import { DoorPayCodeError } from "../../services/doorPayCodeService";
 import { useEventDateKeys } from "../../hooks/useEventDateKeys";
 import { formatMultiDateList } from "../../utils/eventDateDisplay";
 import {
@@ -67,6 +83,18 @@ import { Button } from "../ui/Button";
 import { PhoneField, usePhoneEntry } from "../ui/PhoneField";
 import { Sheet } from "../ui/Sheet";
 import { doorTierUnitPrice } from "./doorListPrice";
+import {
+  buildDoorPaymentOptions,
+  doorMethodCollectsBuyerDetails,
+  doorPayCodeDockTotal,
+  doorSaleButtonLabel,
+  doorTapBlockReason,
+  doorTapDockTotal,
+  DOOR_PAY_CODE_BUYER_NOTE,
+  DOOR_PAYMENTS_NOT_ALLOWED,
+  DOOR_SALE_SUBHEAD,
+} from "./doorPaymentOptions";
+import { doorTapNewSaleHref } from "./doorTapDraft";
 
 // ---- Constants ------------------------------------------------------
 
@@ -92,42 +120,45 @@ interface DoorCartLine {
   quantity: number;
 }
 
-// ---- Payment method picker config ----------------------------------
+const makeDoorCartLine = (
+  tier: TicketStub,
+  quantity: number,
+  eventCurrency: string | null | undefined,
+): DoorCartLine => ({
+  ticketTypeId: tier.id,
+  ticketName: tier.name.length > 0 ? tier.name : "Untitled tier",
+  unitPrice: doorTierUnitPrice(tier),
+  // #962 G5 — never freeze a fabricated GBP. This local line currency is
+  // vestigial (the recorded sale uses the event's real currency at submit);
+  // empty when unset.
+  currency: currencyCodeOrNull(tier.currency ?? eventCurrency) ?? "",
+  isFree: tier.isFree,
+  quantity,
+});
 
-interface PaymentMethodOption {
-  id: DoorPaymentMethod;
-  label: string;
-  sub: string;
-  /** Disabled today; ENABLED in B-cycle when backend ships. */
-  disabled: boolean;
-}
+/** issue #4271 — tax on top of the price isn't known until checkout (US pass-tax). */
+export const DOOR_CARD_TAX_REFUSAL =
+  "Card payments at the door aren't available for this event yet because tax is added at checkout. Take cash, or send guests to the event page.";
 
-const PAYMENT_METHODS: readonly PaymentMethodOption[] = [
-  {
-    id: "cash",
-    label: "Cash",
-    sub: "Operator collects cash at the door.",
-    disabled: false,
-  },
-  {
-    id: "card_reader",
-    label: "Card reader",
-    sub: "Coming when backend ships",
-    disabled: true,
-  },
-  {
-    id: "nfc",
-    label: "NFC tap",
-    sub: "Coming when backend ships",
-    disabled: true,
-  },
-  {
-    id: "manual",
-    label: "Manual",
-    sub: "Bank transfer pre-paid; comp converted to paid; etc.",
-    disabled: false,
-  },
-];
+/** issue #4271 — every refusal says what happened; nothing was charged yet. */
+export const doorPayCodeCreateErrorCopy = (code: string): string => {
+  switch (code) {
+    case "door_ticket_capacity_exceeded":
+      return "Not enough tickets left for this sale.";
+    case "ticket_not_valid_on_chosen_days":
+      return "One of these tickets isn't valid on that date.";
+    case "door_access_denied":
+      return DOOR_PAYMENTS_NOT_ALLOWED;
+    case "stripe_account_not_ready":
+      return "Card payments aren't set up for this brand yet. Take cash or manual instead.";
+    case "door_tax_added_at_checkout":
+      return DOOR_CARD_TAX_REFUSAL;
+    case "invalid_lines":
+      return "Pick at least one ticket.";
+    default:
+      return "Couldn't make a pay code. Check your connection and try again.";
+  }
+};
 
 // ---- Props ----------------------------------------------------------
 
@@ -136,6 +167,11 @@ export interface DoorSaleNewSheetProps {
   event: LiveEvent;
   onClose: () => void;
   onSuccess: (result: RecordDoorSaleResult, phoneLast4: string | null) => void;
+  /** issue #4271 — "Sell another" / "Take cash instead" reopen with these. */
+  initialLines?: { ticketTypeId: string; quantity: number }[];
+  initialMethod?: DoorPaymentMethod;
+  /** The event's brand: Tap to Pay needs a Stripe brand that can charge. */
+  brand: Brand | null;
 }
 
 // ---- Component ------------------------------------------------------
@@ -145,10 +181,14 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
   event,
   onClose,
   onSuccess,
+  initialLines,
+  initialMethod,
+  brand,
 }) => {
+  const router = useRouter();
   const [lines, setLines] = useState<DoorCartLine[]>([]);
   const [paymentMethod, setPaymentMethod] =
-    useState<DoorPaymentMethod>("cash");
+    useState<DoorPaymentMethod>("pay_code");
   const [buyerName, setBuyerName] = useState<string>("");
   const [buyerEmail, setBuyerEmail] = useState<string>("");
   const [moreDetailsOpen, setMoreDetailsOpen] = useState<boolean>(false);
@@ -156,7 +196,13 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const clientRequestId = useRef<string>(randomUuid());
+  // Tap to Pay is the default once it's known to be available, until the host
+  // has chosen. Availability can resolve after the sheet opens.
+  const hostChoseMethodRef = useRef<boolean>(false);
   const recordSale = useRecordDoorSale(event.id);
+  const createPayCode = useCreateDoorPayCode(event.id);
+  const permission = useCanTakeDoorPayment(visible ? event.id : null);
+  const tapToPay = useTapToPayAvailability({ brand, currency: event.currency });
 
   // #962 G5 / OQ-2(a) — a door sale freezes its currency onto the record
   // (DoorSaleRecord.currency is NOT NULL). Pre-condition the record path behind
@@ -170,11 +216,36 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
   const fmtDoorMoney = (v: number): string =>
     eventCurrencyCode === null ? "—" : formatCurrency(v, eventCurrencyCode);
 
+  // I-30 tier filter: surfaces "door" + "both" tiers, hides hidden + online-only
+  const pickableTiers = useMemo<TicketStub[]>(
+    () =>
+      event.tickets
+        .filter((t) => t.visibility !== "hidden" && t.availableAt !== "online")
+        .sort((a, b) => a.displayOrder - b.displayOrder),
+    [event.tickets],
+  );
+
+  // issue #4271 — "Sell another" and "Take cash instead" reopen the sheet with
+  // the last tickets kept. Read through refs so a re-render of the parent does
+  // not reseed an open sheet.
+  const initialLinesRef = useRef(initialLines);
+  initialLinesRef.current = initialLines;
+  const initialMethodRef = useRef(initialMethod);
+  initialMethodRef.current = initialMethod;
+  const pickableTiersRef = useRef(pickableTiers);
+  pickableTiersRef.current = pickableTiers;
+
   // Reset on visible flip → true
   useEffect(() => {
     if (visible) {
-      setLines([]);
-      setPaymentMethod("cash");
+      const seeded = (initialLinesRef.current ?? []).flatMap((seed) => {
+        const tier = pickableTiersRef.current.find((t) => t.id === seed.ticketTypeId);
+        if (tier === undefined || seed.quantity <= 0) return [];
+        return [makeDoorCartLine(tier, Math.min(MAX_QTY_PER_TIER, seed.quantity), event.currency)];
+      });
+      setLines(seeded);
+      setPaymentMethod(initialMethodRef.current ?? "pay_code");
+      hostChoseMethodRef.current = initialMethodRef.current !== undefined;
       setBuyerName("");
       setBuyerEmail("");
       resetBuyerPhone();
@@ -184,16 +255,13 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
       setSubmitError(null);
       clientRequestId.current = randomUuid();
     }
-  }, [resetBuyerPhone, visible]);
+  }, [event.currency, resetBuyerPhone, visible]);
 
-  // I-30 tier filter: surfaces "door" + "both" tiers, hides hidden + online-only
-  const pickableTiers = useMemo<TicketStub[]>(
-    () =>
-      event.tickets
-        .filter((t) => t.visibility !== "hidden" && t.availableAt !== "online")
-        .sort((a, b) => a.displayOrder - b.displayOrder),
-    [event.tickets],
-  );
+  useEffect(() => {
+    if (!visible || !tapToPay.available || hostChoseMethodRef.current) return;
+    hostChoseMethodRef.current = true;
+    setPaymentMethod("tap_to_pay");
+  }, [visible, tapToPay.available]);
 
   const total = useMemo<number>(
     () => lines.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0),
@@ -214,22 +282,8 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
           if (existing === undefined) return prev;
           return prev.filter((l) => l.ticketTypeId !== tier.id);
         }
-        const unit = doorTierUnitPrice(tier);
         if (existing === undefined) {
-          return [
-            ...prev,
-            {
-              ticketTypeId: tier.id,
-              ticketName: tier.name.length > 0 ? tier.name : "Untitled tier",
-              unitPrice: unit,
-              // #962 G5 — never freeze a fabricated GBP. This local line
-              // currency is vestigial (the recorded sale uses the event's real
-              // currency at submit); empty when unset.
-              currency: currencyCodeOrNull(tier.currency ?? event.currency) ?? "",
-              isFree: tier.isFree,
-              quantity: safeQty,
-            },
-          ];
+          return [...prev, makeDoorCartLine(tier, safeQty, event.currency)];
         }
         return prev.map((l) =>
           l.ticketTypeId === tier.id ? { ...l, quantity: safeQty } : l,
@@ -249,14 +303,29 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
   );
 
   // Validation
-  const emailValid = isValidEmailOrEmpty(buyerEmail);
-  const phoneValid = buyerPhone.isEmpty || buyerPhone.e164 !== null;
+  // issue #4271 — the method list, in the approved order.
+  const paymentOptions = useMemo(
+    () =>
+      buildDoorPaymentOptions({
+        eventCurrency: eventCurrencyCode,
+        tapToPay,
+        platform: Platform.OS,
+      }),
+    [eventCurrencyCode, tapToPay],
+  );
+  const collectsBuyerDetails = doorMethodCollectsBuyerDetails(paymentMethod);
+  const emailValid = !collectsBuyerDetails || isValidEmailOrEmpty(buyerEmail);
+  const phoneValid =
+    !collectsBuyerDetails || buyerPhone.isEmpty || buyerPhone.e164 !== null;
   const notesValid = notes.length <= NOTES_MAX;
-  const paymentMethodOption = PAYMENT_METHODS.find(
+  const paymentMethodOption = paymentOptions.find(
     (p) => p.id === paymentMethod,
   );
   const paymentMethodValid =
     paymentMethodOption !== undefined && !paymentMethodOption.disabled;
+  // The server checks again on every money method; this only keeps a person
+  // without permission from filling in a sale that would be refused.
+  const permissionDenied = permission.data === false;
 
   // issue #3281 — a listed ticket's pass needs a date, and one sale has one.
   const [doorDateId, setDoorDateId] = useState<string | null>(null);
@@ -284,6 +353,30 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
     else if (!doorDates.some(([id]) => id === doorDateId)) setDoorDateId(null);
   }, [doorDateId, doorDateNeeded, doorDates]);
 
+  // issue #4271 — the card total comes from the server, the same pricing a pay
+  // code or a tap is created with. Never estimated on the phone.
+  const quotesServerTotal = paymentMethod === "pay_code" || paymentMethod === "tap_to_pay";
+  const payCodeQuote = useDoorPayCodeQuote({
+    eventId: event.id,
+    eventDateId: doorDateId,
+    lines,
+    enabled:
+      visible &&
+      quotesServerTotal &&
+      permission.data === true &&
+      (!doorDateNeeded || doorDateId !== null),
+  });
+  const formatQuoted = (cents: number, currency: string): string => formatCurrency(cents, currency, true);
+  const quotedDock =
+    paymentMethod === "tap_to_pay"
+      ? doorTapDockTotal(payCodeQuote.data, fmtDoorMoney(total), formatQuoted)
+      : doorPayCodeDockTotal(payCodeQuote.data, fmtDoorMoney(total), formatQuoted);
+  // Tax added at checkout: the server refuses door card money, so no amount shows.
+  const taxRefused =
+    quotesServerTotal &&
+    (payCodeQuote.error as { code?: unknown } | null | undefined)?.code === "door_tax_added_at_checkout";
+  const [tapBlockedMessage, setTapBlockedMessage] = useState<string | null>(null);
+
   const canSubmit =
     !submitting &&
     lines.length > 0 &&
@@ -292,17 +385,89 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
     emailValid &&
     phoneValid &&
     notesValid &&
+    permission.data === true &&
+    // #4271 — tax added at checkout: the refusal is already on screen, so the
+    // card buttons are off rather than printing it a second time.
+    !taxRefused &&
     // #962 G5 / OQ-2(a) — cannot record a paid sale without an established
     // currency; a sale must never freeze a fabricated GBP.
     eventCurrencyCode !== null;
 
+  const startTapSale = useCallback((): void => {
+    // The tax refusal already shows in the dock; never print it twice.
+    if (taxRefused) return;
+    const blocked = doorTapBlockReason({
+      hasLines: lines.length > 0,
+      dateMissing: doorDateNeeded && doorDateId === null,
+      currencyMissing: eventCurrencyCode === null,
+      permissionLoading: permission.data !== true,
+      emailInvalid: !isValidEmailOrEmpty(buyerEmail),
+      phoneInvalid: !buyerPhone.isEmpty && buyerPhone.e164 === null,
+      notesInvalid: !notesValid,
+    });
+    setTapBlockedMessage(blocked);
+    if (blocked !== null) return;
+    // The Tap to Pay route owns the card read; we only hand over the basket.
+    postHogService.capture("door_sale_tap_started", { ticket_count: totalQty });
+    markDoorTapPress(getTapToPaySession().readerReady);
+    onClose();
+    router.push(
+      doorTapNewSaleHref(event.id, {
+        lines: lines.map((l) => ({ ticketTypeId: l.ticketTypeId, quantity: l.quantity })),
+        eventDateId: doorDateId,
+        buyerPhone: buyerPhone.e164,
+      }) as never,
+    );
+  }, [
+    taxRefused,
+    lines,
+    doorDateNeeded,
+    doorDateId,
+    eventCurrencyCode,
+    permission.data,
+    buyerEmail,
+    buyerPhone,
+    notesValid,
+    totalQty,
+    onClose,
+    router,
+    event.id,
+  ]);
+
   const handleConfirm = useCallback(async (): Promise<void> => {
+    if (paymentMethod === "tap_to_pay") {
+      startTapSale();
+      return;
+    }
     if (!canSubmit) return;
     // #962 G5 — narrow: guaranteed non-null by canSubmit, asserted here so the
     // frozen record currency is always the event's REAL code.
     if (eventCurrencyCode === null) return;
+    const saleLines = lines.map((l) => ({
+      ticketTypeId: l.ticketTypeId,
+      quantity: l.quantity,
+    }));
     setSubmitting(true);
     setSubmitError(null);
+    if (paymentMethod === "pay_code") {
+      try {
+        const created = await createPayCode.mutateAsync({
+          eventId: event.id,
+          eventDateId: doorDateId,
+          lines: saleLines,
+        });
+        postHogService.capture("door_pay_code_created", { ticket_count: totalQty });
+        onClose();
+        router.push(`/event/${event.id}/door/pay/${created.codeId}` as never);
+      } catch (error) {
+        const code = error instanceof DoorPayCodeError ? error.code : "unknown";
+        postHogService.capture("door_pay_code_failed", { reason: code });
+        setSubmitError(doorPayCodeCreateErrorCopy(code));
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
     try {
       const result = await recordSale.mutateAsync({
         eventId: event.id,
@@ -311,10 +476,7 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
         buyerEmail: buyerEmail.trim().toLowerCase(),
         buyerPhoneE164: buyerPhone.e164,
         paymentMethod,
-        lines: lines.map((l) => ({
-          ticketTypeId: l.ticketTypeId,
-          quantity: l.quantity,
-        })),
+        lines: saleLines,
         notes: notes.trim(),
         clientRequestId: clientRequestId.current,
       });
@@ -338,7 +500,7 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
         ) {
           setSubmitError("One of these tickets isn't valid on that date.");
         } else if (error.code === "door_access_denied" || error.code === "42501") {
-          setSubmitError("You don't have door access for this event.");
+          setSubmitError(DOOR_PAYMENTS_NOT_ALLOWED);
         } else {
           setSubmitError("Couldn't record the sale. Check your connection and try again.");
         }
@@ -350,6 +512,7 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
     }
   }, [
     canSubmit,
+    startTapSale,
     doorDateId,
     event.id,
     eventCurrencyCode,
@@ -362,6 +525,9 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
     notes,
     onSuccess,
     recordSale,
+    createPayCode,
+    onClose,
+    router,
   ]);
 
   const handleClose = useCallback((): void => {
@@ -373,9 +539,21 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
     <Sheet visible={visible} onClose={handleClose} snapPoint="full">
       <View style={styles.body}>
         <Text style={styles.title}>New door sale</Text>
-        <Text style={styles.subhead}>
-          Record a sale at the door. Buyer is auto-checked-in.
-        </Text>
+        <Text style={styles.subhead}>{DOOR_SALE_SUBHEAD}</Text>
+        {permissionDenied ? (
+          <View style={styles.blockedWrap} testID="door-sale-not-allowed">
+            <Text style={styles.blockedTitle}>{DOOR_PAYMENTS_NOT_ALLOWED}</Text>
+            <Button
+              label="Close"
+              onPress={handleClose}
+              variant="secondary"
+              size="md"
+              fullWidth
+              accessibilityLabel="Close door sale"
+            />
+          </View>
+        ) : (
+        <>
 
         <ScrollView
           style={styles.scroll}
@@ -384,15 +562,6 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
           keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
         >
-          {/* TESTING MODE banner (mirror Cycle 11 ORCH-0711 pattern) */}
-          <View style={styles.banner}>
-            <Text style={styles.bannerTitle}>TESTING MODE</Text>
-            <Text style={styles.bannerBody}>
-              Only Cash and Manual payments work today. Card reader and NFC
-              tap-to-pay are not available yet.
-            </Text>
-          </View>
-
           {/* ───── Step 1: Pick tickets ───── */}
           <Text style={styles.sectionHeader}>1. Pick tickets</Text>
           {pickableTiers.length === 0 ? (
@@ -511,40 +680,52 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
             </View>
           ) : null}
 
-          {/* ───── Step 2: Payment method ───── */}
-          <Text style={styles.sectionHeader}>2. Payment method</Text>
+          {/* ───── Step 2: How they pay (issue #4271) ───── */}
+          <Text style={styles.sectionHeader}>2. How they pay</Text>
           <View style={styles.paymentList}>
-            {PAYMENT_METHODS.map((opt) => {
-              const active = paymentMethod === opt.id;
+            {paymentOptions.map((opt) => {
+              const active = paymentMethod === opt.id && !opt.disabled;
               return (
                 <Pressable
                   key={opt.id}
                   onPress={() => {
                     if (opt.disabled || submitting) return;
+                    hostChoseMethodRef.current = true;
                     setPaymentMethod(opt.id);
+                    setSubmitError(null);
+                    setTapBlockedMessage(null);
                   }}
-                  accessibilityRole="button"
+                  accessibilityRole="radio"
                   accessibilityState={{
                     selected: active,
                     disabled: opt.disabled,
                   }}
-                  accessibilityLabel={opt.label}
+                  accessibilityLabel={`${opt.label}. ${opt.sub}`}
                   disabled={opt.disabled || submitting}
+                  testID={`door-sale-method-${opt.id}`}
                   style={[
                     styles.paymentRow,
-                    active && !opt.disabled && styles.paymentRowActive,
+                    active && styles.paymentRowActive,
                     opt.disabled && styles.paymentRowDisabled,
                   ]}
                 >
                   <View style={styles.paymentCol}>
-                    <Text
-                      style={[
-                        styles.paymentLabel,
-                        opt.disabled && styles.paymentLabelDisabled,
-                      ]}
-                    >
-                      {opt.label}
-                    </Text>
+                    <View style={styles.paymentLabelRow}>
+                      {opt.id === "tap_to_pay" ? <TapToPayIcon size={18} /> : null}
+                      <Text
+                        style={[
+                          styles.paymentLabel,
+                          opt.disabled && styles.paymentLabelDisabled,
+                        ]}
+                      >
+                        {opt.label}
+                      </Text>
+                      {opt.isNew ? (
+                        <View style={styles.newBadge}>
+                          <Text style={styles.newBadgeText}>NEW</Text>
+                        </View>
+                      ) : null}
+                    </View>
                     <Text
                       style={[
                         styles.paymentSubline,
@@ -557,13 +738,11 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
                   <View
                     style={[
                       styles.radioOuter,
-                      active && !opt.disabled && styles.radioOuterActive,
+                      active && styles.radioOuterActive,
                       opt.disabled && styles.radioOuterDisabled,
                     ]}
                   >
-                    {active && !opt.disabled ? (
-                      <View style={styles.radioInner} />
-                    ) : null}
+                    {active ? <View style={styles.radioInner} /> : null}
                   </View>
                 </Pressable>
               );
@@ -571,6 +750,13 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
           </View>
 
           {/* ───── Step 3: Buyer details (optional) ───── */}
+          {!collectsBuyerDetails ? (
+            <View style={styles.payCodeNote} testID="door-sale-pay-code-note">
+              <Text style={styles.payCodeNoteTitle}>Buyer details</Text>
+              <Text style={styles.payCodeNoteBody}>{DOOR_PAY_CODE_BUYER_NOTE}</Text>
+            </View>
+          ) : (
+          <>
           <Text style={styles.sectionHeader}>3. Buyer details (optional)</Text>
 
           <View style={styles.fieldGroup}>
@@ -663,17 +849,42 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
               {notes.length} / {NOTES_MAX} characters
             </Text>
           </View>
+          </>
+          )}
         </ScrollView>
 
         {/* Sticky bottom bar — total + Record sale CTA */}
         <View style={styles.dock}>
-          <View style={styles.dockTotalRow}>
-            <Text style={styles.dockTotalLabel}>Total</Text>
-            <Text style={styles.dockTotalValue}>{fmtDoorMoney(total)}</Text>
-          </View>
+          {taxRefused ? null : (
+            <View style={styles.dockTotalRow} testID="door-sale-dock-total-row">
+              <Text style={styles.dockTotalLabel}>
+                {quotesServerTotal ? quotedDock.label : "Total"}
+              </Text>
+              <Text style={styles.dockTotalValue} testID="door-sale-dock-total">
+                {quotesServerTotal ? quotedDock.amount : fmtDoorMoney(total)}
+              </Text>
+            </View>
+          )}
+          {taxRefused ? (
+            <Text style={styles.submitError} accessibilityRole="alert" testID="door-sale-tax-refusal">
+              {DOOR_CARD_TAX_REFUSAL}
+            </Text>
+          ) : null}
+          {quotesServerTotal && !taxRefused && eventCurrencyCode !== null && !quotedDock.quoted ? (
+            <Text style={styles.currencyGateHint}>
+              {paymentMethod === "tap_to_pay"
+                ? "The tap screen shows the final total, with any fees."
+                : "The pay code shows the final total, with any fees."}
+            </Text>
+          ) : null}
           {eventCurrencyCode === null ? (
             <Text style={styles.currencyGateHint}>
               Add your bank to record paid sales.
+            </Text>
+          ) : null}
+          {permission.isError ? (
+            <Text style={styles.submitError} accessibilityRole="alert">
+              Couldn't check your door access. Check your connection and try again.
             </Text>
           ) : null}
           {submitError !== null ? (
@@ -681,16 +892,48 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
               {submitError}
             </Text>
           ) : null}
-          <Button
-            label={submitting ? "Completing…" : "Complete sale"}
-            onPress={handleConfirm}
-            variant="primary"
-            size="lg"
-            fullWidth
-            loading={submitting}
-            disabled={!canSubmit}
-            accessibilityLabel="Complete door sale"
-          />
+          {tapBlockedMessage !== null ? (
+            <Text style={styles.submitError} accessibilityRole="alert" testID="door-sale-tap-blocked">
+              {tapBlockedMessage}
+            </Text>
+          ) : null}
+          {tapToPay.available && paymentMethod !== "tap_to_pay" ? (
+            <View style={styles.tapDockRow}>
+              <TapToPayIcon size={22} />
+              <View style={styles.tapDockButton}>
+                <Button
+                  label={tapToPayName(Platform.OS)}
+                  onPress={() => {
+                    hostChoseMethodRef.current = true;
+                    setPaymentMethod("tap_to_pay");
+                    startTapSale();
+                  }}
+                  variant="secondary"
+                  size="lg"
+                  fullWidth
+                  disabled={submitting || taxRefused}
+                  accessibilityLabel={tapToPayName(Platform.OS)}
+                  testID="door-sale-tap-dock"
+                />
+              </View>
+            </View>
+          ) : null}
+          <View style={paymentMethod === "tap_to_pay" ? styles.tapDockRow : undefined}>
+            {paymentMethod === "tap_to_pay" ? <TapToPayIcon size={22} /> : null}
+            <View style={paymentMethod === "tap_to_pay" ? styles.tapDockButton : undefined}>
+              <Button
+                label={doorSaleButtonLabel(paymentMethod, Platform.OS)}
+                onPress={handleConfirm}
+                variant="primary"
+                size="lg"
+                fullWidth
+                loading={submitting}
+                disabled={paymentMethod === "tap_to_pay" ? submitting || taxRefused : !canSubmit}
+                accessibilityLabel={doorSaleButtonLabel(paymentMethod, Platform.OS)}
+                testID="door-sale-submit"
+              />
+            </View>
+          </View>
           <View style={styles.dockSpacer} />
           <Button
             label="Cancel"
@@ -702,6 +945,8 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
             accessibilityLabel="Cancel door sale"
           />
         </View>
+        </>
+        )}
       </View>
     </Sheet>
   );
@@ -710,6 +955,8 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
 // ---- Styles ---------------------------------------------------------
 
 const styles = StyleSheet.create({
+  tapDockRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.xs },
+  tapDockButton: { flex: 1 },
   body: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
@@ -737,26 +984,53 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.sm,
   },
 
-  // Banner ------------------------------------------------------------
-  banner: {
-    padding: spacing.md - 2,
-    borderRadius: radiusTokens.md,
-    backgroundColor: "rgba(235, 120, 37, 0.10)",
-    borderWidth: 1,
-    borderColor: "rgba(235, 120, 37, 0.30)",
+  // issue #4271 — shown instead of the sale to people without permission.
+  blockedWrap: {
+    marginTop: spacing.lg,
+    gap: spacing.md,
+  },
+  blockedTitle: {
+    fontSize: 15,
+    lineHeight: 21,
+    fontWeight: "600",
+    color: textTokens.primary,
+  },
+  payCodeNote: {
+    marginTop: spacing.md,
     marginBottom: spacing.md,
+    padding: spacing.md,
+    borderRadius: radiusTokens.md,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    backgroundColor: glass.tint.profileBase,
+    gap: 4,
   },
-  bannerTitle: {
-    fontSize: 11,
+  payCodeNoteTitle: {
+    fontSize: 13,
     fontWeight: "700",
-    letterSpacing: 1.4,
-    color: accent.warm,
-    marginBottom: 4,
+    color: textTokens.primary,
   },
-  bannerBody: {
+  payCodeNoteBody: {
     fontSize: 12,
     lineHeight: 17,
     color: textTokens.secondary,
+  },
+  paymentLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  newBadge: {
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 5,
+    backgroundColor: accent.warm,
+  },
+  newBadgeText: {
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 0.6,
+    color: textTokens.primary,
   },
 
   // Section headers ---------------------------------------------------

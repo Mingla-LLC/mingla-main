@@ -158,7 +158,19 @@ export interface MarketingBookQuote {
   audienceVersion?: number;
   /** #4273 — each picked group of a combined audience. */
   audienceSources?: MarketingAudienceSourceTotal[];
+  /**
+   * #4273 — the SMS total's per-currency parts. Two or more rows mean the
+   * total was converted into `currency` (the brand's) at quote time.
+   */
+  costBreakdown?: SmsCostBreakdownRow[];
   allowance?: MarketingBookAllowance;
+}
+
+/** #4273 — one provider currency's part of an SMS total. */
+export interface SmsCostBreakdownRow {
+  currency: string;
+  providerCostMinor: number;
+  convertedCostMinor: number;
 }
 
 /** #4273 — one campaign across methods: the figures that count each person once. */
@@ -169,6 +181,8 @@ export interface CampaignGroupFigures {
   estimatedCostMinor: number | null;
   currency: string | null;
   costKind: "provider_estimate" | "not_metered";
+  /** #4273 — the SMS total's per-currency parts. */
+  costBreakdown?: SmsCostBreakdownRow[];
   audienceSources: MarketingAudienceSourceTotal[];
   quotedAt: string;
   expiresAt: string;
@@ -182,6 +196,8 @@ export interface CampaignGroupPreview {
     quote: MarketingBookQuote | null;
     error: string | null;
   }>;
+  /** #4273 — group drafts the client did not name; the client discards them. */
+  unlistedDraftIds?: string[];
 }
 export type MarketingBookPreviewState =
   | { kind: "idle" }

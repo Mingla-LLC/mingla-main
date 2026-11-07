@@ -5,6 +5,7 @@ import {
   captureSiteAdClickIds,
   CONSENT_EVENT,
   CONSENT_KEY,
+  isPreviewPublication,
   sendSiteEvent,
 } from "../lib/clientAnalytics";
 
@@ -40,6 +41,8 @@ export function ConsentControl({ siteId, brandId, publicationId, subject = "this
     }
   };
 
+  // #2830 — a preview has no visitors to ask: nothing in it is ever counted.
+  if (isPreviewPublication(publicationId)) return null;
   if (choice && !expanded) return <button className="consent-link" onClick={() => setExpanded(true)}>Analytics choices</button>;
   return (
     <aside className="consent" aria-label="Analytics choices">

@@ -168,12 +168,17 @@ export function ariErrorResponse(
   _status: number,
   legacyCode: string,
   _message: string,
-  recovery?: { retry_after_seconds?: number; cooldown_until?: string },
+  recovery?: {
+    retry_after_seconds?: number;
+    cooldown_until?: string;
+    taken_over_by?: string;
+  },
 ): Response {
   const state = requireState();
   const code = mapLegacyAriErrorCode(legacyCode);
   const { status, body } = errorEnvelope(state.context, code, {
     retryAfterSeconds: recovery?.retry_after_seconds,
+    takenOverBy: recovery?.taken_over_by,
   });
   // Registry uses 0 for client-only OFFLINE; never emit that from the edge.
   const httpStatus = status > 0 ? status : 503;

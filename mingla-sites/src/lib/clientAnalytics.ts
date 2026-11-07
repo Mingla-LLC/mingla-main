@@ -12,6 +12,11 @@ export type SiteEventContext = {
   publicationId: string;
 };
 
+/** #2829 W10 — a preview (the team's or a shared link) is never counted. */
+export function isPreviewPublication(publicationId: string): boolean {
+  return publicationId.startsWith("preview-");
+}
+
 export function analyticsAllowed(): boolean {
   return typeof window !== "undefined" &&
     window.localStorage.getItem(CONSENT_KEY) === "granted";
@@ -143,8 +148,7 @@ export async function sendSiteEvent(
   eventName: string,
   fields: Record<string, string | undefined> = {},
 ): Promise<void> {
-  // #2829 W10 — a preview (the team's or a shared link) is never counted.
-  if (!analyticsAllowed() || context.publicationId.startsWith("preview-")) return;
+  if (!analyticsAllowed() || isPreviewPublication(context.publicationId)) return;
   await fetch("/api/events", {
     method: "POST",
     // An outbound or Book click navigates away; the event still arrives.

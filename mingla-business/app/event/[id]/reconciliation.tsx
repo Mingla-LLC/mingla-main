@@ -28,6 +28,7 @@
  * Per Cycle 13 SPEC §4.3.2 + ORCH-0796 reframe (real expected-payout wiring).
  */
 
+import { TAP_TO_PAY_SHORT } from "../../../src/constants/tapToPayName";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Pressable,
@@ -593,16 +594,19 @@ const RevenueSection: React.FC<RevenueSectionProps> = ({
         label="Cash (door)"
         value={fmt(summary.revenueByMethod.cash)}
       />
+      {/* issue #4271 — card money at the door rides the online rail, so its
+          fee is counted like online card. Tap to Pay never appears in a market
+          where it can't work (Nigeria) unless it somehow holds money. */}
       <SectionRow
-        label="Card reader (door)"
-        value={fmt(summary.revenueByMethod.card_reader)}
-        hint="Not available yet"
+        label="Buyer's phone (door)"
+        value={fmt(summary.revenueByMethod.pay_code)}
       />
-      <SectionRow
-        label="NFC tap (door)"
-        value={fmt(summary.revenueByMethod.nfc)}
-        hint="Not available yet"
-      />
+      {currency !== "NGN" || summary.revenueByMethod.tap_to_pay > 0 ? (
+        <SectionRow
+          label={`${TAP_TO_PAY_SHORT} (door)`}
+          value={fmt(summary.revenueByMethod.tap_to_pay)}
+        />
+      ) : null}
       <SectionRow
         label="Manual (door)"
         value={fmt(summary.revenueByMethod.manual)}
@@ -818,12 +822,6 @@ const ExportSection: React.FC<ExportSectionProps> = ({
     ) : !exportReady ? (
       <Text style={styles.exportCaption}>Refresh orders before exporting.</Text>
     ) : null}
-    {/* "Email PDF report" — DEFERRED to B-cycle per D-13-7. Visibly disabled, never tappable (Const #1 + #7). */}
-    <View style={styles.exportSecondaryDisabled}>
-      <Icon name="mail" size={18} color={textTokens.tertiary} />
-      <Text style={styles.exportSecondaryLabel}>Email PDF report</Text>
-      <Text style={styles.exportSecondaryHint}>Not available yet</Text>
-    </View>
   </View>
 );
 
@@ -1137,31 +1135,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: textTokens.tertiary,
     textAlign: "center",
-  },
-  exportSecondaryDisabled: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    padding: spacing.md - 2,
-    marginTop: spacing.sm,
-    borderRadius: radiusTokens.md,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: "rgba(255, 255, 255, 0.02)",
-    opacity: 0.6,
-  },
-  exportSecondaryLabel: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: "500",
-    color: textTokens.tertiary,
-  },
-  exportSecondaryHint: {
-    fontSize: 11,
-    fontWeight: "600",
-    letterSpacing: 1.0,
-    color: textTokens.quaternary,
-    textTransform: "uppercase",
   },
 
   // Toast ------------------------------------------------------------

@@ -1,5 +1,5 @@
 /* eslint-disable @next/next/no-img-element -- media is already sanitized, responsive, immutable, and integrity-checked by the controlled route. */
-import Link from "next/link";
+import { SiteAnchor, SiteRouteLink as Link } from "../../components/PreviewLinks";
 import { Fragment } from "react";
 import type { ArtifactV2 } from "../../contracts/generated/artifactV2.ts";
 import type { RichTextDoc } from "../../contracts/generated/richText.ts";
@@ -120,7 +120,7 @@ function SafeLink({ href, children, className, context, ctaKind = "checkout", of
   if (!isSafeHref(href)) return null;
   if (context && isCanonicalMinglaHref(href)) return <TrackedLink href={href} className={className} context={context} ctaKind={ctaKind} offeringId={offeringId}>{children}</TrackedLink>;
   const external = !href.startsWith("/");
-  return <a href={href} className={className} target={external ? "_blank" : undefined} rel={external ? "noopener noreferrer" : undefined}>{children}{external ? <span className="sr-only"> (opens in a new tab)</span> : null}</a>;
+  return <SiteAnchor href={href} className={className} target={external ? "_blank" : undefined} rel={external ? "noopener noreferrer" : undefined}>{children}{external ? <span className="sr-only"> (opens in a new tab)</span> : null}</SiteAnchor>;
 }
 
 

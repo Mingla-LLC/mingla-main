@@ -146,6 +146,23 @@ Do not mark evidence current manually. Re-run the actual backup/object manifest,
 perform the isolated restore, verify tenant/object digests, destroy the temporary
 target, and record only timestamps/counts/evidence digest.
 
+A bundle holds every tenant in Studio (#2830). Adding a brand never fails it, but
+each of these still does, loudly and without deactivating anything:
+`DATABASE_PILOT_TENANT_MISSING` (the `SITES_PILOT_SITE_ID` tenant is gone),
+`DATABASE_SITE_SCOPE_MISMATCH` (a tenant has no or a duplicate `core_site_id`, or a
+row names an unknown tenant), `OBJECT_UNKNOWN_TENANT` (a stored object names no
+known tenant), and `RESTORE_DATABASE_COUNT_MISMATCH` (a tenant did not come back
+with its documents). Each is one brand's data problem blocking every brand's
+backup: fix the data, then take a fresh backup. `RESTORE_DATABASE_COUNT_MISMATCH`
+also means the bundle is not proven restorable.
+
+The retention job sweeps the sites this run's verified snapshot covers. A failed
+brand does not stop the others; `SITES_RETENTION_SITE_FAILED position=<n>` names
+it by position and `housekeeping_alert` reports it. The bundle is read whole
+during restore and Node refuses a file over 2 GiB; `SITES_BACKUP_NEAR_SIZE_LIMIT`
+warns from 1.5 GiB. Every run downloads every object in all four buckets, so
+storage egress grows with each brand: check it against the spend cap.
+
 ### Suspension and last-good recovery
 
 Internal Admin may suspend/resume with an idempotent operation ID and reason

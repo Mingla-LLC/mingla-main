@@ -98,6 +98,8 @@ export type RunnerOutcome =
     text: string;
     view_only: boolean;
     artefact: FlowArtefact | null;
+    /** #2830 — a teammate's Website setup: the screen that offers the way on. */
+    open_route?: string;
     run: FlowRun;
   }
   | { kind: "stale"; artefact: FlowArtefact | null; run: FlowRun }
@@ -326,7 +328,17 @@ export function subjectIdFromResult(result: unknown): string | null {
   return null;
 }
 
-function busyText(viewOnly: boolean, name: string | null): string {
+function busyText(
+  viewOnly: boolean,
+  name: string | null,
+  flowKey: string,
+): string {
+  if (viewOnly && flowKey === "website_setup") {
+    // #2830 — no dead end: the setup screen offers to watch or take over.
+    return `${
+      name ?? "A teammate"
+    } is on Website setup right now. Open Website setup to watch, or to carry on if you're a brand admin.`;
+  }
   return viewOnly
     ? `${
       name ?? "A teammate"
@@ -371,8 +383,11 @@ export async function runFlowStep(
     return {
       kind: "busy",
       view_only: viewOnly,
-      text: busyText(viewOnly, lease.owner_display_name),
+      text: busyText(viewOnly, lease.owner_display_name, run.flow_key),
       artefact: lease.run.current_artefact,
+      ...(viewOnly && run.flow_key === "website_setup"
+        ? { open_route: `/brand/${run.brand_id}/website/setup` }
+        : {}),
       run: lease.run,
     };
   }

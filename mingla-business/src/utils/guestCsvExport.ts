@@ -22,11 +22,14 @@ import { currencyCodeOrNull } from "./currency";
 import type { LiveEvent } from "../store/liveEventStore";
 import type { OrderRecord } from "../store/orderStore";
 import { isCompOrder } from "./compOrders";
+import { PAYMENT_METHOD_LABELS } from "./paymentMethodLabels";
+import { doorSaleMoney } from "./moneySummary";
+import { isDoorOrder } from "./isDoorOrder";
+import type { ReconciliationSummary } from "./reconciliation";
 import type {
   DoorPaymentMethod,
   DoorSaleRecord,
 } from "../types/doorSales";
-import type { ReconciliationSummary } from "./reconciliation";
 
 // Re-typed locally to avoid importing the screen-level GuestRow shape
 // here (keeps the utility decoupled from the J-G1 implementation).
@@ -89,13 +92,11 @@ const doorQuantity = (lines: DoorSaleRecord["lines"]): number =>
 const doorPaymentLabel = (method: DoorPaymentMethod): string => {
   switch (method) {
     case "cash":
-      return "Cash";
-    case "card_reader":
-      return "Card reader";
-    case "nfc":
-      return "NFC tap";
     case "manual":
-      return "Manual";
+    case "card_reader":
+    case "pay_code":
+    case "tap_to_pay":
+      return PAYMENT_METHOD_LABELS[method];
     default: {
       const _exhaust: never = method;
       return _exhaust;
@@ -180,7 +181,7 @@ export const serializeGuestsToCsv = (
 ): string => {
   // Cycle 12 — added "Kind" column at front (ONLINE | COMP | DOOR) +
   // "Payment method" column (online sales: card/apple/google; door sales:
-  // cash/card_reader/nfc/manual; comps: blank).
+  // cash/manual/buyer's phone/tap to pay; comps: blank).
   // Cycle 13 — added "Gross", "Refunded", "Net" columns at positions 12-14
   // for accountant-friendly per-row refund attribution (DEC-095 D-13-8).
   const headers = [
@@ -293,9 +294,7 @@ export const serializeGuestsToCsv = (
       // Cycle 12 — door sale row.
       const s = row.sale;
       const buyerName = s.buyerName.length > 0 ? s.buyerName : "Walk-up";
-      const grossPaid = s.totalGbpAtSale;
-      const refunded = s.refundedAmountGbp;
-      const net = Math.max(0, grossPaid - refunded);
+      const money = doorSaleMoney(s);
       const fields = [
         "DOOR",
         buyerName,
@@ -308,11 +307,12 @@ export const serializeGuestsToCsv = (
         s.id,
         formatYmd(s.recordedAt),
         s.notes,
-        formatMoneyForCsv(grossPaid),
+        formatMoneyForCsv(money.charged),
         s.currency,
-        formatMoneyForCsv(refunded),
+        formatMoneyForCsv(money.refunded),
         s.currency,
-        formatMoneyForCsv(net),
+        // Blank while a card refund's fee is unconfirmed: never a guess.
+        money.net === null ? "" : formatMoneyForCsv(money.net),
         s.currency,
         // A door sale is rung up on the night, so its day is the night it was
         // rung up on — not a chosen occurrence. Left blank rather than guessed.
@@ -492,11 +492,12 @@ export interface ExportReconciliationCsvArgs {
  *
  * PDF DEFERRED to B-cycle email-attachment-via-Resend per D-13-7 (no expo-print dep).
  */
-export const exportReconciliationCsv = async (
-  args: ExportReconciliationCsvArgs,
-): Promise<ExportResult> => {
+export const reconciliationCsvRows = (
+  args: Pick<ExportReconciliationCsvArgs, "orders" | "doorSales">,
+): ExportGuestRow[] => {
   const rows: ExportGuestRow[] = [
-    ...args.orders.map(
+    // issue #4271 — each door sale once: as its DOOR row, which holds the charge.
+    ...args.orders.filter((o) => !isDoorOrder(o)).map(
       (o): ExportGuestRow => ({
         kind: "order",
         id: o.id,
@@ -517,6 +518,13 @@ export const exportReconciliationCsv = async (
   rows.sort((a, b) =>
     a.sortKey > b.sortKey ? -1 : a.sortKey < b.sortKey ? 1 : 0,
   );
+  return rows;
+};
+
+export const exportReconciliationCsv = async (
+  args: ExportReconciliationCsvArgs,
+): Promise<ExportResult> => {
+  const rows = reconciliationCsvRows(args);
 
   const stanza: ReconciliationCsvSummary = {
     eventName: args.event.name,
@@ -526,7 +534,8 @@ export const exportReconciliationCsv = async (
     totalRefunded: args.summary.totalRefunded,
     // grossRevenue is already net of refunds (live amount); we surface it again
     // here under "Net" so the 5-line preamble reads cleanly to an accountant.
-    netRevenue: args.summary.grossRevenue,
+    // issue #4271: less Mingla's fee on card door sales, as the door screen's NET.
+    netRevenue: Math.round((args.summary.grossRevenue - args.summary.doorCardMinglaFee) * 100) / 100,
     uniqueScannedTickets: args.summary.uniqueScannedTickets,
     // #962 G18 — null when unset; the serializer omits the currency code.
     currency: currencyCodeOrNull(args.event.currency),

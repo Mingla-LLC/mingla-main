@@ -43,7 +43,7 @@ describe("#2829 W11 an answer that didn't save", () => {
   it("keeps the ticks, stays on the part, and says Try again", () => {
     mockMutate.mockImplementation((_input: unknown, handlers: { onError: (error: unknown) => void }) => handlers.onError(new TypeError("Network request failed")));
     let tree!: { unmount: () => void };
-    act(() => { tree = create(<OfferingsPart brandId="b" embedded />); });
+    act(() => { tree = create(<OfferingsPart brandId="b" onDone={mockBack} />); });
     act(() => { (mockViewProps.onToggle as (key: string) => void)("events"); });
     act(() => { (mockViewProps.onContinue as () => void)(); });
     expect(mockMutate).toHaveBeenCalledWith({ revision: 4, patch: { offerings_selected: ["trips", "events"], venue_descriptor: null } }, expect.any(Object));
@@ -62,7 +62,7 @@ describe("#2829 W11 an answer that didn't save", () => {
     mockMutate.mockImplementation((_input: unknown, handlers: { onError: (error: unknown) => void }) =>
       handlers.onError(new BrandSitesError("PLAN_LOCKED", "Someone else is working on your website right now.", false)));
     let tree!: { unmount: () => void };
-    act(() => { tree = create(<OfferingsPart brandId="b" embedded />); });
+    act(() => { tree = create(<OfferingsPart brandId="b" onDone={mockBack} />); });
     act(() => { (mockViewProps.onContinue as () => void)(); });
     expect(mockViewProps.notice).toEqual({ kind: "error", message: "Someone else is working on your website right now." });
     act(() => tree.unmount());

@@ -43,7 +43,11 @@ export function publishStep(status: BrandSiteVersion["status"] | null | undefine
  * that publishes exactly what was checked, and a plain history to restore
  * from. A publish is followed to its receipt whatever it takes (A18 #1).
  */
-export function PublishSection(): React.ReactElement {
+export function PublishSection({ variant, onFix }: {
+  /** #2830 state 13 — the final check on the setup screen. Still the one publish path. */
+  variant?: "setup";
+  onFix?: (section: WebsiteSection) => void;
+} = {}): React.ReactElement {
   const ctx = useWebsite();
   const { controller, phone, headingRef, toast } = ctx;
   const router = useRouter();
@@ -88,6 +92,73 @@ export function PublishSection(): React.ReactElement {
   const firstPublish = site.last_successful_publication_id === null;
   const checksRan = designChecks.data !== undefined && !designChecks.isFetching;
   const readyToPublish = validation.data !== undefined && blocker === null && (!firstPublish || checksRan);
+
+  if (variant === "setup") {
+    const toFix = (designChecks.data?.checks ?? []).filter((check) => check.status === "warn");
+    const host = site.brand_site_hosts.find((entry) => entry.is_primary)?.hostname ?? null;
+    const problems = toFix.length + (blocker ? 1 : 0);
+    return (
+      <View testID="website-publish-setup" style={styles.setupHost}>
+        <CardTitle>Ready to publish?</CardTitle>
+        {tracking ? (
+          <View role="status" accessibilityLiveRegion="polite" testID="publish-progress">
+            <Hint>Publishing… usually under a minute. You can leave this screen; we&apos;ll tell you when it&apos;s live.</Hint>
+          </View>
+        ) : null}
+        {failed ? (
+          <Banner tone="err" icon="alert" alert title="That publish didn't go live" body={`Nothing went live: your website isn't public yet. ${failureReason(receipt)}`} testID="publish-failed">
+            <WButton label="Try again" size="sm" onPress={controller.actions.onResetFailedPublication} testID="publish-reset" />
+          </Banner>
+        ) : null}
+        {validation.isLoading || validation.isFetching || designChecks.isFetching ? <Hint>{"Checking your pages\u2026"}</Hint> : null}
+        {validation.data && !blocker ? (
+          <View style={styles.setupRow} testID="setup-check-pages"><CheckCircle state="on" /><Text style={styles.setupRowText}>Every page has content</Text></View>
+        ) : null}
+        {host ? (
+          <View style={styles.setupRow} testID="setup-check-address"><CheckCircle state="on" /><Text style={styles.setupRowText}>Address is ready</Text><Text style={styles.setupRowValue} numberOfLines={1}>{host}</Text></View>
+        ) : null}
+        {blocker ? (
+          <View style={styles.setupRow} testID="setup-check-blocker">
+            <CheckCircle state="fail" />
+            <Text style={[styles.setupRowText, styles.grow]}>{blocker.message}</Text>
+            <WButton label="Fix" size="sm" variant="ghost" onPress={() => onFix?.("pages")} testID="setup-fix-blocker" />
+          </View>
+        ) : null}
+        {toFix.map((check) => {
+          const copy = CHECK_COPY[check.key];
+          return (
+            <View key={check.key} style={styles.setupRow} testID={`setup-check-${check.key}`}>
+              <CheckCircle state="warn" />
+              <Text style={[styles.setupRowText, styles.grow]}>{copy.warn(check.items.length)}</Text>
+              <WButton label="Fix" size="sm" variant="ghost" onPress={() => onFix?.(copy.section)} testID={`setup-fix-${check.key}`} />
+            </View>
+          );
+        })}
+        {designChecks.isError ? (
+          <View style={styles.setupRow}>
+            <CheckCircle state="warn" />
+            <Text style={[styles.setupRowText, styles.grow]}>The design checks couldn&apos;t run.</Text>
+            <WButton label="Run them again" size="sm" onPress={() => { void designChecks.refetch(); }} testID="design-checks-retry" />
+          </View>
+        ) : null}
+        <View style={styles.actions}>
+          {canPublish ? (
+            <WButton
+              label="Publish"
+              variant="primary"
+              onPress={controller.actions.publish}
+              disabled={problems > 0 || !readyToPublish || tracking || ctx.lock.heldByOther || operation !== null}
+              loading={controller.isPublishing}
+              testID="publish-button"
+            />
+          ) : (
+            <WButton label="Ask an admin" icon="msg" onPress={() => ctx.askAdmin("publish")} loading={ctx.asking} testID="publish-ask-admin" />
+          )}
+          {problems > 0 ? <Hint>{`${problems} ${problems === 1 ? "thing" : "things"} to fix first`}</Hint> : null}
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View testID="website-publish">
@@ -434,6 +505,10 @@ function History({ versions, activeId, canRestore, onRestore, loading }: {
 }
 
 const styles = StyleSheet.create({
+  setupHost: { gap: 12 },
+  setupRow: { flexDirection: "row", alignItems: "center", gap: 10, minHeight: 44, paddingHorizontal: 14, borderRadius: 12, backgroundColor: "rgba(255, 255, 255, 0.04)", flexWrap: "wrap" },
+  setupRowText: { fontSize: 14, color: ui.t1 },
+  setupRowValue: { flex: 1, textAlign: "right", fontSize: 14, color: ui.t3 },
   grow: { flex: 1, minWidth: 0 },
   row: { flexDirection: "row", alignItems: "center", gap: 8 },
   steps: { gap: 10, marginTop: 12 },

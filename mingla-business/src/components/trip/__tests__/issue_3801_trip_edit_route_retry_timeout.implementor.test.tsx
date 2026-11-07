@@ -194,6 +194,8 @@ const BOUNDARY: Record<string, () => unknown> = {
   Button: () => ({ Button: leaf("Button") }),
   tripsService: () => ({ TRIP_DRAFT_PLACEHOLDER_TITLE: "Untitled trip" }),
   justPublishedSignal: () => ({ markJustPublished: jest.fn() }),
+  // #2830 — Website setup's way back: pure URL helpers, used as they ship.
+  brandEditReturn: () => jest.requireActual("../../../utils/brandEditReturn"),
 };
 
 const ROUTE_FILE = path.resolve(__dirname, "..", "..", "..", "..", "app", "trip", "[id]", "edit.tsx");
