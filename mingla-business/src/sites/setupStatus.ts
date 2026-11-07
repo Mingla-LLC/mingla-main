@@ -5,8 +5,8 @@
  *
  * MINGLA-INVARIANT: I-WEBSITE-SETUP-TICK-MEANS-NOTHING-OPEN | issue #2830 | setup_status part done implies empty open_fields, unless published; a tick here only ever comes from that.
  */
-import { PLAN_PARTS, type PlanPartKey } from "../../../packages/site-contracts/src/sitePlan.ts";
-import type { BrandContextField, BrandContextFieldState, RawSetupPart, RawSetupStatus } from "./sitePlanState";
+import { PLAN_PARTS, planBuildBlockers, type PlanPartKey } from "../../../packages/site-contracts/src/sitePlan.ts";
+import { planBuildDone, type BrandContextField, type BrandContextFieldState, type RawSetupPart, type RawSetupStatus, type SitePlanState } from "./sitePlanState";
 
 export type { RawSetupPart, RawSetupStatus };
 
@@ -74,6 +74,27 @@ export function setupSteps(input: {
     total: steps.length,
     nextKey: steps.find((step) => step.status.kind !== "done" && step.status.kind !== "skipped")?.key ?? null,
   };
+}
+
+/** #2830 — Ari's build rule over this screen's plan read (one rule, `planBuildBlockers`). */
+export function setupBuildBlockers(plan: SitePlanState): { key: string; label: string }[] {
+  if (planBuildDone(plan)) return [];
+  return planBuildBlockers({
+    partDone: (key) => plan.parts.some((part) => part.key === key && part.done),
+    contextComplete: plan.completeness?.contextComplete === true,
+    fields: plan.completeness?.fields ?? [],
+    labelOf: (field, key) => (typeof field.label === "string" && field.label ? field.label : key),
+  });
+}
+
+/** Where "Go to what's missing" goes: the first open part before Build. */
+export function firstMissingStep(plan: SitePlanState | null, blockers: readonly { key: string }[], nextKey: PlanPartKey | null): PlanPartKey | null {
+  if (nextKey && nextKey !== "build") return nextKey;
+  const first = blockers[0];
+  if (!first) return null;
+  if (first.key.startsWith("part:")) return first.key.slice(5) as PlanPartKey;
+  const owner = plan?.setupStatus?.parts.find((part) => part.openFields.includes(first.key));
+  return owner && owner.key !== "build" ? owner.key : "brand";
 }
 
 /** The words beside a step. The ring or tick is decided by `setupStepMark`. */

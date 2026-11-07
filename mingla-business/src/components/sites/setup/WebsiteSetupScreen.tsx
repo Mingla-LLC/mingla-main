@@ -8,7 +8,7 @@ import { brandSiteKeys } from "../../../sites/brandSiteKeys";
 import { firstOfferingRoute } from "../../../sites/planRoutes";
 import { useSaveBrandSitePlan } from "../../../sites/planApi";
 import { planBuildDone, SetupFlowError, useSetupDraft, useSetupFlowState, useTakeOverSetup } from "../../../sites/setupApi";
-import { nameInSentence, setupPresence, setupStepChip, setupSteps } from "../../../sites/setupStatus";
+import { firstMissingStep, nameInSentence, setupBuildBlockers, setupPresence, setupStepChip, setupSteps } from "../../../sites/setupStatus";
 import type { SitePlanState } from "../../../sites/sitePlanState";
 import { partLabel } from "../../../sites/sitePlanState";
 import { useCurrentBrandStore } from "../../../store/currentBrandStore";
@@ -182,6 +182,9 @@ export function WebsiteSetupScreen({ step, search, planQuery, grant, onHeartbeat
     draftFailed: draft.state.kind === "failed" && !draft.refusal,
     publishFailed,
   }), [draft.refusal, draft.state.kind, fields, plan?.parts, plan?.setupStatus, publishFailed]);
+  // #2830 — the same list Ari gives at Build, before anyone presses it.
+  const buildBlockers = useMemo(() => (plan ? setupBuildBlockers(plan) : []), [plan]);
+  const missingStep = firstMissingStep(plan, buildBlockers, status.nextKey);
   const activeStep: PlanPartKey = step ?? plan?.plan?.activePart ?? status.nextKey ?? "offer";
   const activeIndex = status.steps.findIndex((row) => row.key === activeStep);
   const active = status.steps[activeIndex] ?? status.steps[0];
@@ -302,7 +305,8 @@ export function WebsiteSetupScreen({ step, search, planQuery, grant, onHeartbeat
             state={draft.state}
             canManage={canManage && free && presenceKnown}
             refusal={draft.refusal}
-            nextStep={status.nextKey === "build" ? null : status.nextKey}
+            blockers={buildBlockers}
+            nextStep={missingStep}
             onStart={draft.start}
             onRetry={draft.retry}
             onTellMingla={() => router.push("/support/inbox" as never)}

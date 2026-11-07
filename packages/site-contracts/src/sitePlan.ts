@@ -217,3 +217,42 @@ export function storyQuestions(offerings: readonly string[] | null | undefined):
     main_action: "What should someone do when they find you?",
   };
 }
+
+/** A brand-context field as the plan read returns it (snake or camel case). */
+export type PlanBlockerField = {
+  readonly key?: unknown;
+  readonly label?: unknown;
+  readonly requirement?: unknown;
+  readonly state?: unknown;
+};
+
+export type PlanBuildBlocker = { readonly key: string; readonly label: string };
+
+/**
+ * #2830 — what still stands between a plan and "Build your pages", in order:
+ * the first five parts not yet done, then every required or recommended
+ * brand-context field not yet settled (while the context is incomplete).
+ *
+ * One rule for Ari's build step and the Host setup screen's Build step, read
+ * from the same plan (brand_site_plan_get), so both name the same things
+ * before anyone presses Build. `labelOf` resolves a field's owner label.
+ */
+export function planBuildBlockers(input: {
+  partDone: (key: PlanPartKey) => boolean;
+  contextComplete: boolean;
+  fields: readonly PlanBlockerField[];
+  labelOf: (field: PlanBlockerField, key: string) => string;
+}): PlanBuildBlocker[] {
+  const out: PlanBuildBlocker[] = [];
+  for (const part of PLAN_PARTS.slice(0, 5)) {
+    if (!input.partDone(part.key)) out.push({ key: `part:${part.key}`, label: part.label });
+  }
+  if (input.contextComplete) return out;
+  for (const field of input.fields) {
+    if (typeof field.key !== "string" || field.key === "approved_plan") continue;
+    if (field.requirement === "optional") continue;
+    if (field.state === "verified" || field.state === "not_applicable") continue;
+    out.push({ key: field.key, label: input.labelOf(field, field.key) });
+  }
+  return out;
+}

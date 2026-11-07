@@ -64,6 +64,7 @@ import {
 import {
   PLAN_OFFERING_OPTIONS,
   PLAN_PARTS,
+  planBuildBlockers,
   type PlanPartKey,
 } from "../siteContracts/sitePlan.ts";
 import {
@@ -1143,23 +1144,17 @@ const approveStep: StepDefinition = {
 };
 
 /** What still stops the build, in plan order (owner labels). */
+/**
+ * #2830 — the shared rule (siteContracts/sitePlan.ts), so the Host setup
+ * screen's Build step names exactly what this step names.
+ */
 function buildBlockers(plan: Json): { key: string; label: string }[] {
-  const out: { key: string; label: string }[] = [];
-  for (const part of PLAN_PARTS.slice(0, 5)) {
-    if (!websitePartDone(plan, part.key)) {
-      out.push({ key: `part:${part.key}`, label: part.label });
-    }
-  }
-  if (completeness(plan).context_complete !== true) {
-    for (const field of fieldsOf(plan)) {
-      if (!fieldNeeded(field) || field.key === "approved_plan") continue;
-      out.push({
-        key: String(field.key),
-        label: websiteSetupFieldLabel(field, String(field.key)),
-      });
-    }
-  }
-  return out;
+  return planBuildBlockers({
+    partDone: (key) => websitePartDone(plan, key),
+    contextComplete: completeness(plan).context_complete === true,
+    fields: fieldsOf(plan),
+    labelOf: (field, key) => websiteSetupFieldLabel(object(field), key),
+  });
 }
 
 async function siteRow(ctx: FlowContext): Promise<Json | null> {
