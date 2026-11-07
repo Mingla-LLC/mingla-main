@@ -25,6 +25,8 @@ export function BrandGroupSidePanel({ stack, side, brandName, onClose, onChanged
   const titles = stack?.titles;
   const register = useCallback((entry) => {
     const title = entry?.title || "";
+    // The stack's titles feed its Back words (the same write PanelStack.jsx makes).
+    // eslint-disable-next-line react-hooks/immutability
     if (titles) titles.current[2] = title;
     setCurrentTitle(title);
   }, [titles]);

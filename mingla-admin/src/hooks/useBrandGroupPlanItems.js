@@ -37,6 +37,7 @@ export function useBrandGroupPlanItems(recordId, { brandName = "", lines = [] } 
 
   useEffect(() => {
     checked.current = new Set();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- a new host card starts empty, then loads
     setItems([]);
     setPlan(null);
     void load();
@@ -44,16 +45,15 @@ export function useBrandGroupPlanItems(recordId, { brandName = "", lines = [] } 
 
   // A plan line that arrived after the last read and names something not in
   // the list: read again, once, 2 s later.
-  const fresh = (Array.isArray(lines) ? lines : [])
-    .filter((line) => line?.id && !checked.current.has(line.id) && !matchPlanLine(line.content, items, brandName))
-    .map((line) => line.id)
-    .join(",");
   useEffect(() => {
-    if (!recordId || !fresh || seq.current === 0) return undefined;
+    if (!recordId || seq.current === 0) return undefined;
+    const fresh = (Array.isArray(lines) ? lines : [])
+      .some((line) => line?.id && !checked.current.has(line.id) && !matchPlanLine(line.content, items, brandName));
+    if (!fresh) return undefined;
     clearTimeout(timer.current);
     timer.current = setTimeout(() => { void load(); }, 2_000);
     return () => clearTimeout(timer.current);
-  }, [recordId, fresh, load]);
+  }, [recordId, lines, items, brandName, load]);
 
   return { items, plan, reload: load };
 }

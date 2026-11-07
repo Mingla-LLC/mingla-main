@@ -4,6 +4,7 @@
 // team line and Mute only. Every button stays on this page.
 import { Bell, BellOff, PanelRight } from "lucide-react";
 import { useCrmConfig } from "../../hooks/useCrmConfig";
+import { setOwners } from "../../services/crmService";
 import { icpLabel, regionName, stageLabel } from "../../lib/crmModel";
 import { BRAND_ROLE_WORDS } from "../../lib/opsModel";
 import { teammatesWords } from "../../lib/brandGroupInbox";
@@ -25,6 +26,16 @@ function HostChips({ host }) {
       {where && <span className={`${CHIP} bg-[var(--gray-100)] text-[var(--color-text-secondary)]`}>{where}</span>}
     </>
   );
+}
+
+/**
+ * Assign to me: add me to the host card's owners (the same crm path the host
+ * card uses). Kept here, beside the button, so the Brand groups tab itself
+ * reaches only Support RPCs (#3988 capability contract).
+ */
+export async function assignHostToMe(host, myEmail) {
+  const emails = [...new Set([...(host?.owners || []).map((o) => String(o.email || "").toLowerCase()).filter(Boolean), String(myEmail || "").toLowerCase()].filter(Boolean))].sort();
+  return setOwners(host.record_id, emails);
 }
 
 /** "1 teammate · info (Owner)". */
