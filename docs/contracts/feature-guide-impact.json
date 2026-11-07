@@ -1437,7 +1437,8 @@
         "mingla-admin/src/pages/PlacePoolManagementPage.jsx",
         "supabase/migrations/20280419004276_issue_4276_fast_place_category.sql",
         "supabase/migrations/20280419014276_issue_4276_mv_refresh_slot_comma_minutes.sql",
-        "supabase/migrations/20280419024276_issue_4276_admin_spend_totals.sql"
+        "supabase/migrations/20280419024276_issue_4276_admin_spend_totals.sql",
+        "supabase/migrations/20280428004276_issue_4276_live_runs.sql"
       ]
     },
     {

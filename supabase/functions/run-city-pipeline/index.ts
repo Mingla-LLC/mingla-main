@@ -34,25 +34,76 @@ function json(data: unknown, status = 200): Response {
   });
 }
 
+/** A sub-call is cut off after this, so one slow call can't outlive the tick's lease. */
+export const SUB_CALL_TIMEOUT_MS = 45_000;
+const DEFAULT_RETRY_AFTER_MS = 60_000;
+
+/**
+ * #4276: the edge runtime throws Deno.errors.RateLimitError from fetch() when one
+ * function calls another too fast ("Rate limit exceeded for function. Retry after
+ * <n>ms."). It is a wait, not a failure, so it comes back as a 429 with the hint.
+ */
+export function rateLimitRetryAfterMs(err: unknown): number | null {
+  // deno-lint-ignore no-explicit-any
+  const RateLimitError = (Deno as any).errors?.RateLimitError;
+  const message = err instanceof Error ? err.message : String(err ?? "");
+  const isRateLimit = (typeof RateLimitError === "function" && err instanceof RateLimitError) ||
+    /Rate limit exceeded for function/.test(message);
+  if (!isRateLimit) return null;
+  // deno-lint-ignore no-explicit-any
+  const prop = (err as any)?.retryAfterMs;
+  if (typeof prop === "number" && Number.isFinite(prop) && prop >= 0) return prop;
+  const parsed = /Retry after (\d+)\s*ms/i.exec(message);
+  return parsed ? Number(parsed[1]) : DEFAULT_RETRY_AFTER_MS;
+}
+
+function isTimeout(err: unknown): boolean {
+  const name = (err as { name?: string } | null)?.name;
+  return name === "TimeoutError" || name === "AbortError";
+}
+
+/** Calls another edge function with the service key. Exported for tests. */
+export function makeCall(
+  supabaseUrl: string,
+  serviceKey: string,
+  doFetch: typeof fetch = fetch,
+  timeoutMs = SUB_CALL_TIMEOUT_MS,
+) {
+  return async (fn: string, body: Record<string, unknown>): Promise<CallResult> => {
+    let res: Response;
+    let text: string;
+    try {
+      res = await doFetch(`${supabaseUrl}/functions/v1/${fn}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      text = await res.text();
+    } catch (err) {
+      const retryAfterMs = rateLimitRetryAfterMs(err);
+      if (retryAfterMs !== null) {
+        return { status: 429, body: { error: "function_rate_limited", retry_after_ms: retryAfterMs } };
+      }
+      if (isTimeout(err)) return { status: 504, body: { error: "sub_call_timeout" } };
+      throw err;
+    }
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = text ? JSON.parse(text) : {};
+    } catch {
+      parsed = { error: text.slice(0, 500) };
+    }
+    return { status: res.status, body: parsed };
+  };
+}
+
 function buildDeps(supabaseUrl: string, serviceKey: string): Deps {
   const db = createClient(supabaseUrl, serviceKey);
   return {
     db,
-    call: async (fn: string, body: Record<string, unknown>): Promise<CallResult> => {
-      const res = await fetch(`${supabaseUrl}/functions/v1/${fn}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
-        body: JSON.stringify(body),
-      });
-      const text = await res.text();
-      let parsed: Record<string, unknown>;
-      try {
-        parsed = text ? JSON.parse(text) : {};
-      } catch {
-        parsed = { error: text.slice(0, 500) };
-      }
-      return { status: res.status, body: parsed };
-    },
+    call: makeCall(supabaseUrl, serviceKey),
+    sleep: (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
     measureStorage: async () => {
       const v = await checkStorageHeadroom(db, "run-city-pipeline tick");
       return v.ok
