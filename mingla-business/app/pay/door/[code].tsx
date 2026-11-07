@@ -68,7 +68,11 @@ import {
   doorPayGuestLateCopy,
   doorPayGuestReturnSettled,
 } from "../../../src/components/door/doorPayGuestState";
-import { doorPayGuestTone, doorToneStyle, type DoorTone } from "../../../src/components/door/doorTone";
+import {
+  DOOR_PAY_GUEST_TONE_STYLES,
+  doorPayGuestTone,
+  type DoorPayGuestTone,
+} from "../../../src/components/door/doorPayGuestTone";
 import { recordConsent } from "../../../src/services/consentService";
 import {
   createDoorCodeCheckout,
@@ -551,7 +555,7 @@ interface StateCardProps {
   onAction?: () => void;
   busy?: boolean;
   /** End states: the same door tones as the host's screen. */
-  tone?: DoorTone;
+  tone?: DoorPayGuestTone;
 }
 
 const StateCard: React.FC<StateCardProps> = ({ title, body, action, onAction, busy, tone }) => (
@@ -566,8 +570,8 @@ const StateCard: React.FC<StateCardProps> = ({ title, body, action, onAction, bu
   </View>
 );
 
-const GuestToneRing: React.FC<{ tone: DoorTone }> = ({ tone }) => {
-  const style = doorToneStyle(tone);
+const GuestToneRing: React.FC<{ tone: DoorPayGuestTone }> = ({ tone }) => {
+  const style = DOOR_PAY_GUEST_TONE_STYLES[tone];
   return (
     <View
       style={[

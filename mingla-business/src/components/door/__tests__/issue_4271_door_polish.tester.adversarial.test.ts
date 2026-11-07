@@ -21,7 +21,8 @@
  */
 import { describe, expect, test } from "@jest/globals";
 
-import { decodeDoorTapDraft, encodeDoorTapDraft } from "../doorTapDraft";
+import { decodeDoorTapDraft } from "../doorTapDraft";
+import { encodeDoorTapDraft } from "../doorTapDraftHref";
 import {
   encodeTapToPayDraft,
   parseTapToPayDraft,

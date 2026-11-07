@@ -30,7 +30,8 @@ import {
   doorPayHostStatus,
   formatDoorPayCountdown,
 } from "../doorPayCodeState";
-import { decodeDoorTapDraft, doorSellAnotherHref, doorTapNewSaleHref } from "../doorTapDraft";
+import { decodeDoorTapDraft } from "../doorTapDraft";
+import { doorSellAnotherHref, doorTapNewSaleHref } from "../doorTapDraftHref";
 import {
   PAYMENT_METHOD_LABELS,
   PAYMENT_METHOD_PILLS,
@@ -195,7 +196,7 @@ describe("#4271 pay-link QR guard", () => {
       .filter((f) => /\.tsx?$/.test(f))
       .filter((f) => fs.readFileSync(path.join(doorDir, f), "utf8").includes("react-native-qrcode-svg"));
     expect(encoders).toEqual(["DoorPayQr.tsx"]);
-    const route = read("app/event/[id]/door/pay/[codeId].tsx");
+    const route = read("src/components/door/DoorPayCodeScreen.tsx");
     expect(route).toContain("makeDoorPayUrl(row.code)");
     expect(route).not.toContain("react-native-qrcode-svg");
   });
@@ -315,7 +316,7 @@ describe("#4271 pay code states", () => {
     expect(hub).toContain("params.sellAnother");
     expect(hub).toContain("decodeDoorTapDraft(draftParam)");
     expect(hub).toContain("initialLines={sheetSeed?.lines}");
-    expect(read("app/event/[id]/door/pay/[codeId].tsx")).toContain("doorSellAnotherHref(");
+    expect(read("src/components/door/DoorPayCodeScreen.tsx")).toContain("doorSellAnotherHref(");
     expect(read("src/components/door/DoorSaleNewSheet.tsx")).toContain(
       "useTapToPayAvailability({ brand, currency: event.currency })",
     );
@@ -482,5 +483,27 @@ describe("#4271 B8 Tap to Pay on top, in Apple's words", () => {
       "app/event/[id]/orders/[oid]/index.tsx",
     ].forEach(walk);
     expect(offenders).toEqual([]);
+  });
+});
+
+describe("#4271 pay code screen stays in the on-intent door chunk (eager __common budget)", () => {
+  const importsOf = (relative: string): string[] =>
+    [...read(relative).matchAll(/from "([^"]+)"/g)].map((m) => m[1]);
+
+  test("the route renders the screen only through LazyDoorSaleScreens", () => {
+    const route = importsOf("app/event/[id]/door/pay/[codeId].tsx");
+    expect(route).toEqual(["react", "../../../../../src/components/door/LazyDoorSaleScreens"]);
+    expect(read("src/components/door/doorSaleScreens.ts")).toContain(
+      'export { DoorPayCodeScreen } from "./DoorPayCodeScreen";',
+    );
+    expect(read("src/components/door/LazyDoorSaleScreens.tsx")).toContain("(await loadDoorSaleScreens()).DoorPayCodeScreen");
+  });
+
+  test("the guest page and the door hub import nothing the door chunk owns", () => {
+    const guest = importsOf("app/pay/door/[code].tsx");
+    expect(guest.some((p) => /door\/(doorTone|DoorStatusPill|doorTapDraftHref)$/.test(p))).toBe(false);
+    const hub = importsOf("app/event/[id]/door/index.tsx");
+    expect(hub.some((p) => /door\/(doorTone|DoorStatusPill|doorTapDraftHref|DoorPayCodeScreen)$/.test(p))).toBe(false);
+    expect(importsOf("src/components/door/doorTapDraft.ts")).toEqual([]);
   });
 });

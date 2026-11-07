@@ -113,7 +113,7 @@ import {
   DOOR_PAYMENTS_NOT_ALLOWED,
   DOOR_SALE_SUBHEAD,
 } from "./doorPaymentOptions";
-import { doorTapNewSaleHref } from "./doorTapDraft";
+import { doorTapNewSaleHref } from "./doorTapDraftHref";
 
 // ---- Constants ------------------------------------------------------
 

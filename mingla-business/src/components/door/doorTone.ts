@@ -9,7 +9,8 @@
  *
  * Colour is never the only signal: each tone has its own icon. Kept free of
  * React Native imports so the map is unit-testable; shared by TapStatusView
- * and the pay code end states.
+ * and the host's pay code end states. The guest pay page keeps its own copy of
+ * the three tones it shows (doorPayGuestTone.ts), pinned to this map by test.
  */
 import { glass, semantic, text as textTokens } from "../../constants/designSystem";
 import type { IconName } from "../ui/Icon";
@@ -90,7 +91,3 @@ export const doorPayHostTone = (
     }
   }
 };
-
-/** The guest's page uses the same rule as the host. */
-export const doorPayGuestTone = (status: "paid" | "expired" | "cancelled" | "failed"): DoorTone =>
-  doorPayHostTone(status);

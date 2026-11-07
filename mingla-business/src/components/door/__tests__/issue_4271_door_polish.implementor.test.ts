@@ -43,8 +43,9 @@ import {
   doorTicketCountLabel,
   type DoorDockMessageFacts,
 } from "../doorPaymentOptions";
-import { doorTapNewSaleHref } from "../doorTapDraft";
-import { DOOR_TONE_STYLES, doorPayGuestTone, doorPayHostTone, doorToneStyle, type DoorTone } from "../doorTone";
+import { doorTapNewSaleHref } from "../doorTapDraftHref";
+import { DOOR_TONE_STYLES, doorPayHostTone, doorToneStyle, type DoorTone } from "../doorTone";
+import { DOOR_PAY_GUEST_TONE_STYLES, doorPayGuestTone } from "../doorPayGuestTone";
 import { TAP_SAVE_FAILED_PAID_LINE, tapSaleTone } from "../tap/tapSaleTone";
 
 const TONES: DoorTone[] = ["ok", "neutral", "caution", "bad"];
@@ -106,6 +107,19 @@ describe("P3 pay code tones", () => {
     expect(doorPayHostTone("payment_landing")).toBe("caution");
     for (const status of ["paid", "expired", "cancelled", "failed"] as const) {
       expect(doorPayGuestTone(status)).toBe(doorPayHostTone(status));
+    }
+  });
+
+  test("the guest page's own ring styles match the host's door tones exactly", () => {
+    for (const tone of ["ok", "neutral", "bad"] as const) {
+      const host = DOOR_TONE_STYLES[tone];
+      expect(DOOR_PAY_GUEST_TONE_STYLES[tone]).toEqual({
+        ringFill: host.ringFill,
+        ringBorder: host.ringBorder,
+        iconColor: host.iconColor,
+        iconSize: host.iconSize,
+        defaultIcon: host.defaultIcon,
+      });
     }
   });
 });

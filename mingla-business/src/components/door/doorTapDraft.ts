@@ -4,17 +4,14 @@
  * Sheet → Tap to Pay: `/event/<id>/door/tap/new?draft=<base64 json>`.
  * "Sell another" (after a tap sale or a pay code) →
  * `/event/<id>/door?sellAnother=1&draft=<base64 json>`, which reopens the
- * sheet with the same tickets (see doorSellAnotherHref).
+ * sheet with the same tickets.
  *
- * The sheet navigates to `/event/<id>/door/tap/new?draft=<base64 json>` with
- * `{lines, eventDateId, buyerPhone?, buyerName?}`. The tap route decodes it
- * with `parseTapToPayDraft`. A typed buyer name can be any script, so the
- * payload is encoded as UTF-8 base64 (encodeBase64Utf8), never `btoa`, which
- * throws on anything outside Latin-1. An ASCII payload encodes exactly as
- * before, so `decodeDoorTapDraft` (atob) still reads "Sell another".
+ * This file holds the shape and the door hub's reader (decodeDoorTapDraft). The
+ * writers (encodeDoorTapDraft, doorSellAnotherHref, doorTapNewSaleHref) are in
+ * doorTapDraftHref.ts, which only the on-intent door chunk imports, so the
+ * UTF-8 encoder they need stays out of the eager web __common chunk. An ASCII
+ * payload encodes exactly as `btoa` would, so `atob` here still reads it.
  */
-
-import { encodeBase64Utf8 } from "../../services/terminal/tapToPayDraft";
 
 export interface DoorTapDraft {
   lines: { ticketTypeId: string; quantity: number }[];
@@ -24,20 +21,6 @@ export interface DoorTapDraft {
   /** Door polish: shown on the tap paid screen's Guest row only. */
   buyerName?: string | null;
 }
-
-export const encodeDoorTapDraft = (draft: DoorTapDraft): string =>
-  encodeBase64Utf8(
-    JSON.stringify({
-      lines: draft.lines.map((line) => ({
-        ticketTypeId: line.ticketTypeId,
-        quantity: line.quantity,
-      })),
-      eventDateId: draft.eventDateId,
-      ...(draft.buyerPhone ? { buyerPhone: draft.buyerPhone } : {}),
-      ...(draft.phoneCountryIso ? { phoneCountryIso: draft.phoneCountryIso } : {}),
-      ...(draft.buyerName ? { buyerName: draft.buyerName } : {}),
-    }),
-  );
 
 export const decodeDoorTapDraft = (raw: string | null | undefined): DoorTapDraft | null => {
   if (typeof raw !== "string" || raw.length === 0) return null;
@@ -67,16 +50,3 @@ export const decodeDoorTapDraft = (raw: string | null | undefined): DoorTapDraft
     return null;
   }
 };
-
-/** "Sell another": reopen the door sale sheet with the same tickets. */
-export const doorSellAnotherHref = (
-  eventId: string,
-  draft: DoorTapDraft,
-  method?: "pay_code" | "cash",
-): string =>
-  `/event/${eventId}/door?sellAnother=1&draft=${encodeURIComponent(encodeDoorTapDraft(draft))}${
-    method !== undefined ? `&method=${method}` : ""
-  }`;
-
-export const doorTapNewSaleHref = (eventId: string, draft: DoorTapDraft): string =>
-  `/event/${eventId}/door/tap/new?draft=${encodeURIComponent(encodeDoorTapDraft(draft))}`;

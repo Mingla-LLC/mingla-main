@@ -129,7 +129,7 @@ jest.mock("../../../hooks/useDoorPayCodes", () => ({
 }));
 
 // eslint-disable-next-line import/first
-import DoorPayCodeRoute from "../../../../app/event/[id]/door/pay/[codeId]";
+import { DoorPayCodeScreen as DoorPayCodeRoute } from "../DoorPayCodeScreen";
 
 const row = (status: string): Record<string, unknown> => ({
   id: "code-1",
