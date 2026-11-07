@@ -63,13 +63,15 @@ describe("R-3 Back to the chat keeps browser Back working", () => {
   });
   // #4270 W7: the host card is one item of the Brand group side panel now;
   // closePanel keeps this rule (sideCloseStep: go back what this page pushed,
-  // else push, never replace).
+  // else push, never replace). W7 rework 1 (D-2): what was pushed is read from
+  // the panel's own history tags (lib/brandGroupPanelHistory.js).
   it("closing the side panel never replaces the address", () => {
     const src = code("components/community/BrandGroupsPanel.jsx");
-    const close = src.slice(src.indexOf("const closePanel = useCallback"), src.indexOf("const onPop = () =>"));
+    const close = src.slice(src.indexOf("const closePanel = useCallback"), src.indexOf("if (!sideOpen) return undefined;"));
     assert.ok(close.length > 40, "closePanel is there");
     assert.doesNotMatch(close, /replace:\s*true/);
-    assert.match(close, /const step = sideCloseStep\(pushesHere\.current\);/);
+    assert.match(close, /const step = history\.closeStep\(\);/);
+    assert.match(code("lib/brandGroupPanelHistory.js"), /return sideCloseStep\(depth\(\) \?\? 0\);/);
     assert.match(close, /if \(step\.kind === "go"\) window\.history\.go\(step\.delta\);/);
     assert.match(close, /else setSearch\(brandGroupSearch\(search, \{ side: null \}\)\);/);
   });

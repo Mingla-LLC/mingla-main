@@ -1074,6 +1074,7 @@
     {
       "capability_key": "staff-work-board",
       "paths": [
+        "mingla-admin/src/components/ops/WordingQueue.jsx",
         "mingla-admin/src/components/ops/CardPersonPanels.jsx",
         "mingla-admin/src/components/ops/EventPanel.jsx",
         "mingla-admin/src/components/ops/EventSteps.jsx",
@@ -1613,6 +1614,7 @@
     {
       "capability_key": "official-brand-groups",
       "paths": [
+        "mingla-admin/src/components/brands/BrandDrawer.jsx",
         "mingla-admin/src/components/community/BrandCalendarSide.jsx",
         "mingla-admin/src/components/community/BrandGroupComposer.jsx",
         "mingla-admin/src/components/community/BrandGroupHeader.jsx",
@@ -1626,7 +1628,9 @@
         "mingla-admin/src/components/community/PlanActivityCard.jsx",
         "mingla-admin/src/hooks/useBrandGroupLive.js",
         "mingla-admin/src/hooks/useBrandGroupPlanItems.js",
+        "mingla-admin/src/hooks/useBrandHostFallback.js",
         "mingla-admin/src/lib/brandGroupInbox.js",
+        "mingla-admin/src/lib/brandGroupPanelHistory.js",
         "mingla-admin/src/lib/brandPlan.js",
         "mingla-admin/src/services/communityService.js",
         "mingla-business/app/messages/[conversationId].tsx",

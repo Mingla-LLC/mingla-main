@@ -182,8 +182,11 @@ describe("C-5 Brand groups open the host card", () => {
     assert.match(panel, /const canHosts = canOpenPage\(access, "hosts"\);/);
     // #4270 W7: the host card comes with the inbox read (host is null without
     // Hosts and Creators access) and opens in the side panel only for Hosts staff.
-    assert.match(panel, /const host = canHosts \? selectedGroup\?\.host \?\? null : null;/);
-    assert.match(panel, /const hostButton = canHosts && host/);
+    // W7 rework 1 (D-6): while the inbox cannot answer, the pre-W7 lookup does.
+    assert.match(panel, /const hostFacts = canHosts\s*\? hostCardFacts\(\{ inboxStatus, group: selectedGroup, fallback: hostFallback \}\)\s*: \{ status: "none", host: null \};/);
+    assert.match(panel, /const host = hostFacts\.status === "ready" \? hostFacts\.host : null;/);
+    assert.match(panel, /const hostButton = !canHosts \? null/);
+    assert.match(code("hooks/useBrandHostFallback.js"), /await fetchBrandHostRecord\(brandId\)/);
     assert.match(panel, /return HOSTS_KINDS\.has\(side\.kind\) && !!canHosts;/);
     assert.match(code("services/opsService.js"), /supabase\.rpc\("ops_brand_host_record", \{ p_brand_id: brandId \}\)/);
   });
