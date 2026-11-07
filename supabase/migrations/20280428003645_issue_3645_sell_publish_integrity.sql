@@ -2294,6 +2294,17 @@ BEGIN
     false
   );
 
+  -- issue #3645: a price option that has sales keeps its row as it was,
+  -- currency included, so a publish in another currency would leave the
+  -- event and that ticket disagreeing. Refuse instead; nothing is written.
+  IF p_publish AND EXISTS (
+    SELECT 1 FROM public.ticket_types tt
+     WHERE tt.event_id = p_event_id AND tt.deleted_at IS NULL
+       AND tt.currency IS DISTINCT FROM v_currency
+  ) THEN
+    RAISE EXCEPTION 'ticket_currency_must_match_event_currency';
+  END IF;
+
   -- 12. Build the return payload -------------------------------------------
   SELECT * INTO v_event FROM public.events WHERE id = p_event_id;
 

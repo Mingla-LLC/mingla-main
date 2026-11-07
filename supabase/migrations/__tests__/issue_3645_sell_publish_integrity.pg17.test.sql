@@ -215,6 +215,8 @@ DECLARE
   v_event uuid;
   v_move record;
   v_reach bigint;
+  v_tt uuid;
+  v_err text;
 BEGIN
   PERFORM pg_temp.brand(v_brand, 'NGN');
   PERFORM pg_temp.as_host();
@@ -294,6 +296,32 @@ BEGIN
      IS DISTINCT FROM v_reach THEN
     RAISE EXCEPTION 'T4 FAIL: a draft save marked the brand reach dirty';
   END IF;
+  -- A price option with sales keeps its row, currency included: a publish
+  -- in another currency is refused and nothing changes.
+  v_event := (public.biz_create_experience(v_brand,
+    pg_temp.exp_payload(25000, 'NGN') || jsonb_build_object('price_options',
+      jsonb_build_array(jsonb_build_object('name', 'Adult', 'price_cents', 25000))), true)->'event'->>'id')::uuid;
+  v_tt := (SELECT id FROM public.ticket_types WHERE event_id = v_event AND deleted_at IS NULL);
+  SET LOCAL session_replication_role = replica;  -- a sold ticket without an order fixture
+  INSERT INTO public.tickets(id, order_id, ticket_type_id, event_id, qr_code, status)
+  VALUES (gen_random_uuid(), gen_random_uuid(), v_tt, v_event, 'b2b-qr-' || v_tt, 'valid');
+  SET LOCAL session_replication_role = origin;
+  v_err := NULL;
+  BEGIN
+    PERFORM public.biz_publish_experience(v_event,
+      pg_temp.exp_payload(25000, 'USD') || jsonb_build_object('price_options',
+        jsonb_build_array(jsonb_build_object('id', v_tt, 'name', 'Adult', 'price_cents', 25000))), true);
+  EXCEPTION WHEN OTHERS THEN v_err := SQLERRM;
+  END;
+  IF v_err IS DISTINCT FROM 'ticket_currency_must_match_event_currency'
+     OR (SELECT currency FROM public.events WHERE id = v_event) IS DISTINCT FROM 'NGN'
+     OR (SELECT currency FROM public.ticket_types WHERE id = v_tt) IS DISTINCT FROM 'NGN' THEN
+    RAISE EXCEPTION 'T4 FAIL: a sold option was left in another currency (%)', coalesce(v_err, 'accepted');
+  END IF;
+  PERFORM public.biz_publish_experience(v_event,
+    pg_temp.exp_payload(25000, 'NGN') || jsonb_build_object('price_options',
+      jsonb_build_array(jsonb_build_object('id', v_tt, 'name', 'Adult', 'price_cents', 25000))), true);
+
   RAISE NOTICE 'ISSUE-3645-2B T4 PASS: one update moves currency and status; tickets follow the stored currency';
 END $t4$;
 

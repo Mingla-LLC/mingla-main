@@ -77,6 +77,11 @@ export const SELL_PUBLISH_REEMITS: Reemit[] = [
         new: "    currency          = CASE WHEN p_publish THEN currency ELSE v_currency END,  -- issue #3645: see step 8b\n",
       },
       {
+        name: "a publish never leaves a live ticket in another currency (sold options keep theirs)",
+        old: "    p_payload->'price_options',\n    false\n  );\n",
+        new: "    p_payload->'price_options',\n    false\n  );\n\n  -- issue #3645: a price option that has sales keeps its row as it was,\n  -- currency included, so a publish in another currency would leave the\n  -- event and that ticket disagreeing. Refuse instead; nothing is written.\n  IF p_publish AND EXISTS (\n    SELECT 1 FROM public.ticket_types tt\n     WHERE tt.event_id = p_event_id AND tt.deleted_at IS NULL\n       AND tt.currency IS DISTINCT FROM v_currency\n  ) THEN\n    RAISE EXCEPTION 'ticket_currency_must_match_event_currency';\n  END IF;\n",
+      },
+      {
         name: "step 8b: one UPDATE writes currency and status; tickets use the stored currency",
         old: "  -- 9. REPLACE experience_stops ------------------------------------------\n",
         new: "  -- 8b. issue #3645 — PUBLISH: currency and status in ONE update, so the\n  -- status triggers (brand-currency stamp, draft-currency stop) see the\n  -- currency this publish writes. The brand-currency trigger may stamp the\n  -- brand's currency (or NULL for a free-only publish on a brand with none);\n  -- tickets follow what was stored, not what was sent.\n  IF p_publish THEN\n    UPDATE public.events\n    SET currency     = v_currency,\n        status       = 'scheduled',\n        visibility   = 'public',\n        published_at = COALESCE(published_at, v_now),\n        updated_at   = v_now\n    WHERE id = p_event_id;\n    SELECT e.currency INTO v_currency FROM public.events e WHERE e.id = p_event_id;\n  END IF;\n\n  -- 9. REPLACE experience_stops ------------------------------------------\n",
