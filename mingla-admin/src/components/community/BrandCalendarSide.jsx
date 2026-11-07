@@ -70,7 +70,7 @@ export function BrandCalendarSide({ side, brandName = "", onClose }) {
               <ul className="flex flex-col gap-1.5">
                 {posts.map((post) => (
                   <li key={post.id}>
-                    <SideLink side={{ kind: "content", id: post.id }} href={`#/content-calendar?card=${post.id}`}
+                    <SideLink side={{ kind: "content", id: post.id }}
                       className={`flex min-h-11 w-full items-center justify-between gap-2 rounded-lg border border-[var(--gray-200)] px-3 py-2 hover:bg-[var(--gray-50)] ${FOCUS}`}>
                       <span className="flex min-w-0 flex-col">
                         <span className={`text-[13px] font-semibold text-[var(--color-text-primary)] ${WORDS}`}>{post.title}</span>
