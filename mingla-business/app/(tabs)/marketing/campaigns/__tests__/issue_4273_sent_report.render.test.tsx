@@ -135,10 +135,12 @@ const treeText = (value: unknown): string => {
   return "";
 };
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const mount = (): any => {
+const mount = async (): Promise<any> => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let renderer: any;
-  act(() => { renderer = TestRenderer.create(<CampaignReportRoute />); });
+  // The composer panes load on demand (React.lazy): let them resolve.
+  await act(async () => { renderer = TestRenderer.create(<CampaignReportRoute />); });
+  await act(async () => { await Promise.resolve(); });
   return renderer;
 };
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -158,18 +160,18 @@ beforeEach(() => {
 });
 
 describe("#4273 T-16 a three-method blast", () => {
-  it("one tab per method, labelled with its status", () => {
+  it("one tab per method, labelled with its status", async () => {
     ready(blast());
-    const renderer = mount();
+    const renderer = await mount();
     for (const label of ["Email · Sent", "SMS · Sent", "Push · Sent"]) {
       expect(tab(renderer, label)).toBeDefined();
     }
     expect(treeText(renderer.toJSON())).toContain("Email · Sent");
   });
 
-  it("the tapped SMS opens first: exactly as sent, segments, cost, and no recipient list", () => {
+  it("the tapped SMS opens first: exactly as sent, segments, cost, and no recipient list", async () => {
     ready(blast());
-    const renderer = mount();
+    const renderer = await mount();
     const text = treeText(renderer.toJSON());
     expect(text).toContain("Exactly as sent");
     expect(text).toContain("Reply STOP to opt out.");
@@ -184,16 +186,16 @@ describe("#4273 T-16 a three-method blast", () => {
     expect(mockReportFor).toHaveBeenLastCalledWith(SMS);
   });
 
-  it("an SMS with no confirmed cost says so", () => {
+  it("an SMS with no confirmed cost says so", async () => {
     const members = blast();
     (members[1] as Record<string, unknown>).cost = null;
     ready(members);
-    expect(treeText(mount().toJSON())).toContain("Cost not recorded for this send.");
+    expect(treeText((await mount()).toJSON())).toContain("Cost not recorded for this send.");
   });
 
-  it("the push tab shows the push ledger's counts and the push as sent", () => {
+  it("the push tab shows the push ledger's counts and the push as sent", async () => {
     ready(blast());
-    const renderer = mount();
+    const renderer = await mount();
     act(() => tab(renderer, "Push · Sent").props.onPress());
     const text = treeText(renderer.toJSON());
     const cells = byTestId(renderer, "campaign-push-numbers");
@@ -214,9 +216,9 @@ describe("#4273 T-16 a three-method blast", () => {
     expect(mockReportFor).toHaveBeenLastCalledWith(null);
   });
 
-  it("the email tab keeps the email numbers and the recipient list, From as sent", () => {
+  it("the email tab keeps the email numbers and the recipient list, From as sent", async () => {
     ready(blast());
-    const renderer = mount();
+    const renderer = await mount();
     act(() => tab(renderer, "Email · Sent").props.onPress());
     const text = treeText(renderer.toJSON());
     expect(text).toContain("Lantern Room");
@@ -230,9 +232,9 @@ describe("#4273 T-16 a three-method blast", () => {
 });
 
 describe("#4273 T-17 states", () => {
-  it("draft: not sent yet, Keep editing opens the composer, no numbers", () => {
+  it("draft: not sent yet, Keep editing opens the composer, no numbers", async () => {
     ready([member({ campaignId: SMS, status: "draft", sentAt: null, isHead: true })]);
-    const renderer = mount();
+    const renderer = await mount();
     const text = treeText(renderer.toJSON());
     expect(text).toContain("Draft — not sent yet");
     expect(text).toContain("Numbers appear once it sends.");
@@ -243,41 +245,41 @@ describe("#4273 T-17 states", () => {
     expect(mockPush).toHaveBeenCalledWith(`/marketing/campaigns/compose?draft=${SMS}`);
   });
 
-  it("scheduled, failed and cancelled copy", () => {
+  it("scheduled, failed and cancelled copy", async () => {
     ready([member({ campaignId: SMS, status: "scheduled", sentAt: null, scheduledFor: "2026-12-01T18:00:00Z" })]);
-    let text = treeText(mount().toJSON());
+    let text = treeText((await mount()).toJSON());
     expect(text).toContain("This is what will be sent.");
     expect(text).toContain("Numbers appear once it sends.");
     ready([member({ campaignId: SMS, status: "cancelled", sentAt: null })]);
-    text = treeText(mount().toJSON());
+    text = treeText((await mount()).toJSON());
     expect(text).toContain("Cancelled — nothing was sent");
     expect(text).toContain("Numbers appear once it sends.");
     ready([member({ campaignId: SMS, status: "failed", sentAt: null })]);
-    text = treeText(mount().toJSON());
+    text = treeText((await mount()).toJSON());
     expect(text).toContain("This didn't go out");
     expect(text).toContain("Failed ");
   });
 
-  it("a legacy send with no snapshot is rebuilt and labelled (Q2)", () => {
+  it("a legacy send with no snapshot is rebuilt and labelled (Q2)", async () => {
     ready([member({ campaignId: SMS, snapshot: null })]);
-    const text = treeText(mount().toJSON());
+    const text = treeText((await mount()).toJSON());
     expect(text).toContain("Rebuilt from your saved message. Brand details may have changed since.");
     expect(text).not.toContain("Exactly as sent");
   });
 
-  it("loading and not-found", () => {
+  it("loading and not-found", async () => {
     mockGroupState = { data: undefined, isLoading: true, isError: false, notFound: false, hasResolved: false, refetch: jest.fn() };
-    expect(treeText(mount().toJSON())).not.toContain("Couldn't load");
+    expect(treeText((await mount()).toJSON())).not.toContain("Couldn't load");
     mockGroupState = { data: undefined, isLoading: false, isError: true, notFound: true, hasResolved: true, refetch: jest.fn() };
-    expect(treeText(mount().toJSON())).toContain("Campaign not found");
+    expect(treeText((await mount()).toJSON())).toContain("Campaign not found");
   });
 });
 
 describe("#4273 T-18 wide vs narrow", () => {
-  it("web at 1024px and wider: preview and numbers side by side", () => {
+  it("web at 1024px and wider: preview and numbers side by side", async () => {
     mockWide = true;
     ready(blast());
-    const renderer = mount();
+    const renderer = await mount();
     const row = byTestId(renderer, "campaign-layout-wide");
     expect(row.length).toBeGreaterThan(0);
     const style = [row[0].props.style].flat();
@@ -285,10 +287,10 @@ describe("#4273 T-18 wide vs narrow", () => {
     expect(byTestId(renderer, "campaign-layout-narrow")).toHaveLength(0);
   });
 
-  it("native and narrow web: one column", () => {
+  it("native and narrow web: one column", async () => {
     mockWide = false;
     ready(blast());
-    const renderer = mount();
+    const renderer = await mount();
     expect(byTestId(renderer, "campaign-layout-narrow").length).toBeGreaterThan(0);
     expect(byTestId(renderer, "campaign-layout-wide")).toHaveLength(0);
   });
@@ -296,14 +298,18 @@ describe("#4273 T-18 wide vs narrow", () => {
 
 describe("#4273 T-19 the #2262 layout doctrine on the campaign screen", () => {
   const source = readFileSync(path.join(__dirname, "../[id].tsx"), "utf8");
-  it("no height or maxHeight is built from the window", () => {
+  const previews = readFileSync(path.join(__dirname, "../../../../../src/components/marketing/SentCampaignPreviews.tsx"), "utf8");
+  it("no height or maxHeight is built from the window", async () => {
     expect(source).not.toMatch(/\bheight\s*[,}]/);
     expect(source).not.toMatch(/(?:max|min)?[hH]eight\s*:\s*[^,\n]*(?:height|width|window)/);
     expect(source).not.toMatch(/useWindowDimensions\(\)\.height/);
     expect(source).toMatch(/const \{ width, fontScale \} = useWindowDimensions\(\);/);
   });
-  it("the panes render without their own scroll", () => {
-    expect(source.match(/scrollable=\{false\}/g)).toHaveLength(2);
-    expect(source).toContain("fill={false}");
+  it("the panes render without their own scroll, and load on demand", async () => {
+    expect(previews.match(/scrollable=\{false\}/g)).toHaveLength(2);
+    expect(previews).toContain("fill={false}");
+    // Keep the report screen lazy: no static import of a composer pane here.
+    expect(source).not.toMatch(/^import .*(EmailPreviewPane|SmsPreviewPane|PushComposeCard|ComposerPreviewTabs|blastSendModel)/m);
+    expect(source).toContain('import("../../../../src/components/marketing/SentCampaignPreviews")');
   });
 });

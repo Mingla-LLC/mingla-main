@@ -41,7 +41,7 @@ import {
 import {
   filterCampaignGroups,
   groupCampaignRows,
-} from "../../../../src/features/marketing/sentPreviewModel";
+} from "../../../../src/features/marketing/campaignListGroups";
 import type { CampaignStatus } from "../../../../src/types/marketing";
 
 export default function MarketingCampaignsRoute(): React.ReactElement {

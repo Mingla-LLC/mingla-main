@@ -26,9 +26,9 @@ import {
   typography,
 } from "../../constants/designSystem";
 import {
-  METHOD_LABEL,
+  LIST_METHOD_LABEL,
   type CampaignListGroup,
-} from "../../features/marketing/sentPreviewModel";
+} from "../../features/marketing/campaignListGroups";
 
 export interface CampaignCardProps {
   group: CampaignListGroup;
@@ -211,12 +211,12 @@ export const CampaignCard: React.FC<CampaignCardProps> = ({
           <View
             style={styles.chipRow}
             accessible
-            accessibilityLabel={`Sent by ${group.channels.map((channel) => METHOD_LABEL[channel]).join(", ")}`}
+            accessibilityLabel={`Sent by ${group.channels.map((channel) => LIST_METHOD_LABEL[channel]).join(", ")}`}
             testID="campaign-card-methods"
           >
             {group.channels.map((channel) => (
               <View key={channel} style={styles.chip}>
-                <Text style={styles.chipLabel}>{METHOD_LABEL[channel]}</Text>
+                <Text style={styles.chipLabel}>{LIST_METHOD_LABEL[channel]}</Text>
               </View>
             ))}
           </View>

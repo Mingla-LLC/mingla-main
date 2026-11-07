@@ -23,7 +23,7 @@
  *   - Preview rules: src/features/marketing/sentPreviewModel.ts
  */
 
-import React, { useCallback, useState } from "react";
+import React, { Suspense, useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -39,10 +39,6 @@ import { useStickyFooterOffset } from "../../../../src/hooks/useStickyFooterOffs
 
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
 import { Icon } from "../../../../src/components/ui/Icon";
-import { ComposerPreviewTabs } from "../../../../src/components/marketing/ComposerPreviewTabs";
-import { EmailPreviewPane } from "../../../../src/components/marketing/EmailPreviewPane";
-import { SmsPreviewPane } from "../../../../src/components/marketing/SmsPreviewPane";
-import { PushPreview } from "../../../../src/components/marketing/PushComposeCard";
 import type { MarketingChannelKind } from "../../../../src/components/marketing/ChannelTabs";
 import {
   accent,
@@ -58,7 +54,6 @@ import {
 import { useCampaignReport } from "../../../../src/hooks/marketing/useCampaignReport";
 import { useCampaignGroupView } from "../../../../src/hooks/marketing/useCampaignGroupView";
 import { useResponsiveLayout } from "../../../../src/hooks/useResponsiveLayout";
-import { smsCostLabel } from "../../../../src/features/marketing/blastSendModel";
 import {
   METHOD_LABEL,
   NUMBERS_LATER,
@@ -68,7 +63,6 @@ import {
   previewSourceFor,
   sendStarted,
   tabMembers,
-  type PreviewResolution,
 } from "../../../../src/features/marketing/sentPreviewModel";
 import {
   CampaignNotFoundError,
@@ -76,6 +70,15 @@ import {
 } from "../../../../src/services/marketing/marketingCampaignGroupViewService";
 import type { CampaignReport } from "../../../../src/services/marketing/marketingReportService";
 import type { MessageStatus } from "../../../../src/types/marketing";
+
+// #4273 — the composer's panes load on demand, through one lazy owner. A
+// static import here would make two lazy routes share them, and Metro would
+// hoist them (and everything they import) into the boot chunk, __common.
+const loadSentPreviews = () =>
+  import("../../../../src/components/marketing/SentCampaignPreviews");
+const SentMethodTabs = React.lazy(async () => ({ default: (await loadSentPreviews()).SentMethodTabs }));
+const SentMethodPreview = React.lazy(async () => ({ default: (await loadSentPreviews()).SentMethodPreview }));
+const SentSmsCost = React.lazy(async () => ({ default: (await loadSentPreviews()).SentSmsCost }));
 
 // Friendly per-recipient status copy. Replaces raw DB enums in the
 // recipient detail list. Anything missing falls back to the raw value.
@@ -147,14 +150,6 @@ function statusCopy(member: CampaignGroupMember): { headline: string; detail: st
       return { headline: String(_exhaustive), detail: null };
     }
   }
-}
-
-/** {token} words in the subject, filled the way the send fills them. */
-function substituteSubject(subject: string, variables: Record<string, string | null>): string {
-  return subject.replace(/\{([a-z_]+)\}/g, (match, key: string) => {
-    if (!(key in variables)) return match;
-    return variables[key] ?? "";
-  });
 }
 
 export default function CampaignReportRoute(): React.ReactElement {
@@ -276,7 +271,9 @@ export default function CampaignReportRoute(): React.ReactElement {
             accessibilityLabel={started ? `Preview of the ${methodWord} as sent` : `Preview of the ${methodWord}`}
             testID="campaign-preview-card"
           >
-            <MethodPreview resolution={resolution} />
+            <Suspense fallback={<View style={styles.previewLoading}><ActivityIndicator size="small" color={textTokens.secondary} /></View>}>
+              <SentMethodPreview resolution={resolution} />
+            </Suspense>
           </View>
           {resolution.label !== null ? (
             <Text style={styles.sourceLabel} testID="campaign-preview-source">{resolution.label}</Text>
@@ -323,84 +320,22 @@ export default function CampaignReportRoute(): React.ReactElement {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        <ComposerPreviewTabs
-          channels={tabs.map((member) => member.channel)}
-          active={active.channel}
-          onSelect={(kind) => {
-            const next = tabs.find((member) => member.channel === kind);
-            if (next !== undefined) setActiveId(next.campaignId);
-          }}
-          labelFor={labelFor}
-          fill={false}
-          pane={body}
-        />
+        <Suspense fallback={body}>
+          <SentMethodTabs
+            channels={tabs.map((member) => member.channel)}
+            active={active.channel}
+            onSelect={(kind) => {
+              const next = tabs.find((member) => member.channel === kind);
+              if (next !== undefined) setActiveId(next.campaignId);
+            }}
+            labelFor={labelFor}
+            pane={body}
+          />
+        </Suspense>
       </ScrollView>
     </View>
   );
 }
-
-/** The composer's own panes, without their scroll, fed from the snapshot. */
-const MethodPreview: React.FC<{ resolution: PreviewResolution }> = ({ resolution }) => {
-  if (resolution.channel === "email") {
-    const p = resolution.props;
-    return (
-      <EmailPreviewPane
-        scrollable={false}
-        subject={substituteSubject(p.subject, { ...p.variables })}
-        bodyHtml={p.bodyHtml}
-        variables={p.variables}
-        brandName={p.brandName}
-        brandHeaderImageUrl={p.brandHeaderImageUrl}
-        embeddedEvents={p.embeddedEvents}
-        brandSlug={p.brandSlug}
-        fromLabel={p.fromLabel}
-      />
-    );
-  }
-  if (resolution.channel === "sms") {
-    const p = resolution.props;
-    return (
-      <SmsPreviewPane
-        scrollable={false}
-        body={p.body}
-        brandName={p.brandName}
-        brandSlug={p.brandSlug}
-        includeFollowCta={p.includeFollowCta}
-        reachableSms={null}
-        currencyCode=""
-        hasMedia={p.hasMedia}
-        mediaUris={p.mediaUris}
-        wireOverride={p.wireOverride}
-        countLineOverride={p.countLineOverride}
-      />
-    );
-  }
-  const p = resolution.props;
-  return (
-    <View style={styles.pushCanvas}>
-      {p.variants !== null
-        ? p.variants.map((variant) => (
-            <View key={variant.reason} style={styles.pushVariant}>
-              <Text style={styles.pushCaption}>{variant.caption}</Text>
-              <PushPreview
-                body={variant.body}
-                brandName={p.brandName}
-                reason={variant.reason}
-                rendered={{ title: variant.title, body: variant.body }}
-              />
-            </View>
-          ))
-        : (
-            <PushPreview
-              body={p.fallback?.body ?? ""}
-              title={p.fallback?.title ?? null}
-              brandName={p.brandName}
-              reason="follower"
-            />
-          )}
-    </View>
-  );
-};
 
 const EmailNumbers: React.FC<{ report: CampaignReport; oneColumn: boolean }> = ({ report, oneColumn }) => {
   const { campaign, recipientStats, clickStats, recipients } = report;
@@ -568,18 +503,9 @@ const SmsNumbers: React.FC<{ member: CampaignGroupMember; report: CampaignReport
       <LinkClicks clickStats={clickStats} oneColumn={oneColumn} totalLabel="Link taps" uniqueLabel="Unique people who tapped" />
       <View style={styles.smsFacts}>
         <Text style={styles.smsFact}>Segments sent: {member.sms?.segmentsSent ?? 0}</Text>
-        <Text style={styles.smsFact} testID="campaign-sms-cost">
-          {member.cost !== null
-            ? `Cost: ${smsCostLabel(
-                {
-                  costKind: member.cost.costKind,
-                  estimatedCostMinor: member.cost.estimatedCostMinor,
-                  currency: member.cost.currency,
-                },
-                "row",
-              )}`
-            : SMS_COST_MISSING}
-        </Text>
+        <Suspense fallback={null}>
+          <SentSmsCost cost={member.cost} missing={SMS_COST_MISSING} />
+        </Suspense>
       </View>
     </View>
   );
@@ -844,17 +770,9 @@ const styles = StyleSheet.create({
     ...typography.bodySm,
     color: textTokens.tertiary,
   },
-  pushCanvas: {
-    padding: spacing.md,
-    gap: spacing.md,
-    backgroundColor: canvas.discover,
-  },
-  pushVariant: {
-    gap: spacing.xs,
-  },
-  pushCaption: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
+  previewLoading: {
+    paddingVertical: spacing.xl,
+    alignItems: "center",
   },
   numbers: {
     gap: spacing.sm,

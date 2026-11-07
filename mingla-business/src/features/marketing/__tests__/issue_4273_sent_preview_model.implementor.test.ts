@@ -6,9 +6,11 @@
 import {
   filterCampaignGroups,
   groupCampaignRows,
+  rollUpStatus,
+} from "../campaignListGroups";
+import {
   methodTabLabel,
   previewSourceFor,
-  rollUpStatus,
   sendStarted,
   SOURCE_LABEL_EXACT,
   SOURCE_LABEL_REBUILT,

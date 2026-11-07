@@ -11,7 +11,10 @@ module.exports = {
   transform: {
     "^.+\\.(js|jsx|ts|tsx)$": [
       "babel-jest",
-      { configFile: path.join(__dirname, "jest.orch1118.babel.cjs") },
+      // #4273 polish: the campaign screen loads the composer panes through a
+      // dynamic import() (keeps them out of __common); the #2323 config is the
+      // shared render transform plus the import()-to-require lowering Metro does.
+      { configFile: path.join(__dirname, "jest.issue2323.babel.cjs") },
     ],
   },
   testMatch: [
