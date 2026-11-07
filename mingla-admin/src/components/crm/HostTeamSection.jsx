@@ -4,6 +4,7 @@
 // brand stays under Details ("Brand in Mingla").
 import { BRAND_ROLE_WORDS, opsErrorWords } from "../../lib/opsModel";
 import { Button } from "../ui/Button";
+import { SideLink } from "../ui/PanelStack";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 const WORDS = "break-normal [overflow-wrap:normal] hyphens-none";
@@ -42,7 +43,8 @@ export function HostTeamSection({ record, read }) {
                 ? <img src={brand.photo_url} alt="" className="h-10 w-10 shrink-0 rounded-full object-cover" />
                 : <span aria-hidden="true" className="inline-grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[var(--color-brand-100)] text-[12px] font-bold text-[var(--color-brand-700)]">{initials(brand.name)}</span>}
               <span className="min-w-0 flex-1">
-                <a href={`#/brands?brandId=${encodeURIComponent(brand.id)}`} className={`block text-[13.5px] font-semibold text-[var(--color-text-primary)] hover:underline ${WORDS} ${FOCUS}`}>{brand.name}</a>
+                {/* #4270 W7: on a page with a side panel the brand opens beside; elsewhere it is the plain link. */}
+                <SideLink side={{ kind: "brand", id: brand.id }} href={`#/brands?brandId=${encodeURIComponent(brand.id)}`} className={`block text-[13.5px] font-semibold text-[var(--color-text-primary)] hover:underline ${WORDS} ${FOCUS}`}>{brand.name}</SideLink>
                 {brand.slug && <span className="block text-[12px] text-[var(--color-text-tertiary)]">/{brand.slug}</span>}
               </span>
               <a href={brandGroupHref(brand.id)} className={`inline-flex min-h-11 items-center rounded-lg px-2 text-[12.5px] font-semibold text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)] ${FOCUS}`}>Open Brand group</a>

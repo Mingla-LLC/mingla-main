@@ -153,7 +153,16 @@ export function PlanRow({ item, online, onSaveLink }) {
   );
 }
 
-export function HostPlanSection({ record, online, onChanged }) {
+/** #4270 W7: the first upcoming event, experience or trip on the plan, or null. */
+export function nextPlanEvent(items, today) {
+  return (Array.isArray(items) ? items : []).find((i) => i && ["event", "experience", "trip"].includes(i.kind) && i.on && String(i.on) >= today) || null;
+}
+
+/**
+ * `prefill` (#4270 W7, Brand groups): { key, title, note, type }; a new key
+ * opens the Add to plan form with those values (from selected messages).
+ */
+export function HostPlanSection({ record, online, onChanged, prefill = null }) {
   const { addToast } = useToast();
   const directory = usePeopleDirectory();
   const team = directory.people;
@@ -181,6 +190,15 @@ export function HostPlanSection({ record, online, onChanged }) {
   const ownersFor = (type) => (type === "task" ? taskDefaults.owners : [me].filter(Boolean));
 
   const open = () => { setForm(emptyPlanForm(ownersFor("post"))); setTried(false); setRefused(null); setFailed(""); setAdding(true); };
+  const prefillKey = prefill?.key || "";
+  useEffect(() => {
+    if (!prefillKey || !prefill) return;
+    const type = prefill.type === "task" ? "task" : "post";
+    setForm({ ...emptyPlanForm(ownersFor(type)), type, title: String(prefill.title || ""), note: String(prefill.note || ""), watchers: type === "task" ? taskDefaults.watchers : [] });
+    setTried(false); setRefused(null); setFailed(""); setAdding(true);
+  }, [prefillKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const nextEvent = nextPlanEvent(data?.items, today);
+  const dayBefore = nextEvent ? [addDays(String(nextEvent.on), -1), today].sort().pop() : "";
   const pickType = (type) => set({ type, owners: ownersFor(type), watchers: type === "task" ? taskDefaults.watchers : [] });
 
   const saveLink = async (item, link) => {
@@ -300,6 +318,11 @@ export function HostPlanSection({ record, online, onChanged }) {
           <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="flex min-w-0 flex-col gap-1" htmlFor={fid("on")}>
               <span className={LABEL}>Due</span>
+              <span data-plan-date-shortcuts="" className="flex flex-wrap gap-1.5">
+                <button type="button" disabled={busy} onClick={() => set({ on: today })} className={`min-h-9 rounded-full border border-[var(--gray-300)] px-3 text-[12px] font-semibold text-[var(--color-text-primary)] hover:bg-[var(--gray-50)] ${FOCUS}`}>Today</button>
+                {nextEvent && <button type="button" disabled={busy} onClick={() => set({ on: dayBefore })} className={`min-h-9 rounded-full border border-[var(--gray-300)] px-3 text-[12px] font-semibold text-[var(--color-text-primary)] hover:bg-[var(--gray-50)] ${FOCUS}`}>Day before the event</button>}
+              </span>
+              {nextEvent && <span data-plan-next-event="" className={`text-[11.5px] text-[var(--color-text-tertiary)] ${WORDS}`}>Next event: {nextEvent.title}, {planDay(nextEvent.on)}</span>}
               <input id={fid("on")} type="date" min={today} value={form.on} disabled={busy}
                 aria-invalid={!!problemFor("on") || undefined} aria-describedby={problemFor("on") ? fid("on-err") : undefined}
                 onChange={(e) => set({ on: e.target.value })} className={INPUT} />
@@ -328,6 +351,7 @@ export function HostPlanSection({ record, online, onChanged }) {
             <input id={fid("note")} maxLength={500} value={form.note} disabled={busy} onChange={(e) => set({ note: e.target.value })} className={INPUT} />
             {problemFor("note") && <span className="text-[12px] text-[var(--color-error-700)]">{problemFor("note")}</span>}
           </label>
+          <p data-plan-quiet-line="" className="text-[12px] text-[var(--color-text-tertiary)]">Posts a quiet line in the Brand group.</p>
           <div className="flex flex-wrap justify-end gap-2">
             <Button type="button" variant="ghost" className="min-h-11" disabled={busy} onClick={() => setAdding(false)}>Cancel</Button>
             <Button type="submit" className="min-h-11" loading={busy} disabled={!online || busy}>{busy ? "Adding…" : "Add to plan"}</Button>
