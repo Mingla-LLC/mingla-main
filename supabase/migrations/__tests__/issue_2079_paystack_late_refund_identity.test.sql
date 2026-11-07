@@ -89,7 +89,7 @@ VALUES('20790000-0000-0000-0000-000000000711','20790000-0000-0000-0000-000000000
 INSERT INTO public.ticket_types(id,event_id,name,price_cents,currency,is_free,quantity_total,
   min_purchase_qty,available_online,available_in_person,display_order)
 VALUES('20790000-0000-0000-0000-000000000712','20790000-0000-0000-0000-000000000711',
-  'Issue 2079 ticket',1000,'NGN',false,10,1,true,false,0);
+  'Issue 2079 ticket',10000,'NGN',false,10,1,true,false,0);
 
 INSERT INTO public.ticket_checkout_sessions(id,event_id,brand_id,buyer_name,buyer_email,
   buyer_phone_e164,currency,subtotal_cents,total_cents,status,idempotency_key,expires_at,
@@ -97,10 +97,10 @@ INSERT INTO public.ticket_checkout_sessions(id,event_id,brand_id,buyer_name,buye
 VALUES
 ('20790000-0000-0000-0000-000000000721','20790000-0000-0000-0000-000000000711',
  '20790000-0000-0000-0000-000000000710','Attention buyer','attention@example.com',
- '+2348012345678','NGN',1000,1000,'requires_payment','issue-2079-attention',now()+interval '15 minutes',100),
+ '+2348012345678','NGN',10000,10000,'requires_payment','issue-2079-attention',now()+interval '15 minutes',100),
 ('20790000-0000-0000-0000-000000000722','20790000-0000-0000-0000-000000000711',
  '20790000-0000-0000-0000-000000000710','Complete buyer','complete@example.com',
- '+2348012345678','NGN',1000,1000,'requires_payment','issue-2079-complete',now()+interval '15 minutes',100),
+ '+2348012345678','NGN',10000,10000,'requires_payment','issue-2079-complete',now()+interval '15 minutes',100),
 ('20790000-0000-0000-0000-000000000723','20790000-0000-0000-0000-000000000711',
  '20790000-0000-0000-0000-000000000710','Stripe attention','stripe-attention@example.com',
  '+2348012345678','USD',1000,1000,'requires_payment','issue-2079-stripe-attention',now()+interval '15 minutes',100),
@@ -109,7 +109,7 @@ VALUES
  '+2348012345678','USD',1000,1000,'requires_payment','issue-2079-stripe-complete',now()+interval '15 minutes',100),
 ('20790000-0000-0000-0000-000000000725','20790000-0000-0000-0000-000000000711',
  '20790000-0000-0000-0000-000000000710','Missing attempt','missing-attempt@example.com',
- '+2348012345678','NGN',1000,1000,'failed','issue-2079-missing-attempt',now()+interval '15 minutes',100);
+ '+2348012345678','NGN',10000,10000,'failed','issue-2079-missing-attempt',now()+interval '15 minutes',100);
 UPDATE public.ticket_checkout_sessions SET revoked_at=now(),revoked_reason='event_status',
   reversal_state='paid_reversal_pending'
 WHERE id='20790000-0000-0000-0000-000000000725';
@@ -460,7 +460,7 @@ VALUES('e71d0000-0000-4000-8000-000000000012','e71d0000-0000-4000-8000-000000000
 ('e71d0000-0000-4000-8000-000000000014','e71d0000-0000-4000-8000-000000000011',
   'Last seat, second run',1000,'USD',false,1,1,true,false,2),
 ('e71d0000-0000-4000-8000-000000000022','e71d0000-0000-4000-8000-000000000021',
-  'NG General',1000,'NGN',false,100,1,true,false,0);
+  'NG General',10000,'NGN',false,100,1,true,false,0);
 
 -- A Stripe native checkout for one ticket, paid, whose first signal had no
 -- charge id: exactly the hold the webhook used to create.
@@ -833,11 +833,11 @@ BEGIN
     buyer_phone_e164,currency,subtotal_cents,total_cents,status,idempotency_key,expires_at,
     application_fee_amount_cents)
   VALUES(h,'e71d0000-0000-4000-8000-000000000021','e71d0000-0000-4000-8000-000000000020',
-    'NG buyer','ng-buyer@example.com','+2348012345699','NGN',1000,1000,'requires_payment',
+    'NG buyer','ng-buyer@example.com','+2348012345699','NGN',10000,10000,'requires_payment',
     'evidence-hold-'||h,now()+interval '15 minutes',100);
   INSERT INTO public.ticket_checkout_session_items(checkout_session_id,ticket_type_id,
     ticket_name_at_purchase,quantity,unit_price_cents,total_cents)
-  VALUES(h,'e71d0000-0000-4000-8000-000000000022','Ticket',1,1000,1000);
+  VALUES(h,'e71d0000-0000-4000-8000-000000000022','Ticket',1,10000,10000);
   v_claim:=public.issue_1930_claim_ticket_provider_attempt(h,
     'e71d0000-0000-4000-8000-000000000021','paystack','paystack_redirect','evidence-hold-fp-'||h);
   v_attempt:=(v_claim->>'attemptId')::uuid; v_epoch:=(v_claim->>'epoch')::bigint;
@@ -848,7 +848,7 @@ BEGIN
     RAISE EXCEPTION 'evidence hold 8: Paystack fixture did not hold: %',v;
   END IF;
   v:=public.release_ticket_checkout_evidence_hold(h,'paystack','evidence-hold-paystack-ref','2079901',
-    NULL,NULL,1000,'NGN');
+    NULL,NULL,10000,'NGN');
   IF v->>'outcome'<>'released' THEN
     RAISE EXCEPTION 'evidence hold 8: a proven Paystack payment was not released: %',v;
   END IF;

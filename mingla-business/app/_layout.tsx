@@ -46,6 +46,8 @@ import * as SplashScreen from "expo-splash-screen";
 import { AuthProvider, useAuth } from "../src/context/AuthContext";
 import { queryClient } from "../src/config/queryClient";
 import { ErrorBoundary } from "../src/components/ui/ErrorBoundary";
+import { TapToPayAwarenessModal } from "../src/components/door/tap/TapToPayAwarenessModal";
+import { TapToPayTerminalHost } from "../src/components/door/tap/TapToPayTerminalHost";
 // #2107 (U1): the launch guard installs when this file is imported, before
 // Sentry.init below wraps the global error handler.
 import { UpdateLaunchBoundary } from "../src/components/ui/UpdateLaunchBoundary";
@@ -835,6 +837,9 @@ function RootLayoutInner(): React.ReactElement {
       }}
     >
       <Stack screenOptions={{ headerShown: false }} />
+      {/* #4271: a SIBLING of the Stack, never a wrapper. Renders nothing unless Tap to Pay is live. */}
+      <TapToPayTerminalHost />
+      <TapToPayAwarenessModal />
     </ErrorBoundary>
   );
 }
@@ -947,7 +952,9 @@ export default function RootLayout(): React.ReactElement {
               {/* ORCH-0892-A: KeyboardRoot wraps the app shell and stays OUTSIDE
                   RootLayoutInner's ErrorBoundary. Stripe's native provider is
                   intentionally route-scoped to checkout payment screens so Home
-                  startup does not initialize the payment SDK. */}
+                  startup does not initialize the payment SDK. (#4271's Stripe
+                  Terminal host is separate and stays off unless the release
+                  gate says live.) */}
               <KeyboardRoot>
                 <MandatoryUpdateGate
                   foregroundEvent={versionForegroundEvent}

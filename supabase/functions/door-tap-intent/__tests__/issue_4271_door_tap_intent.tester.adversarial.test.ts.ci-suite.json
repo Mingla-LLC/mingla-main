@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/door-tap-intent/__tests__/issue_4271_door_tap_intent.tester.adversarial.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4271-door-tap-intent-tester-adversarial",
+  "profile": "deno-2-unit"
+}

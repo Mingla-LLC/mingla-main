@@ -47,7 +47,7 @@ import { deferAfterDismiss } from "../../../../src/utils/deferAfterDismiss";
 import { expandDoorTickets } from "../../../../src/utils/expandDoorTickets";
 import { PAYMENT_METHOD_LABELS } from "../../../../src/utils/paymentMethodLabels";
 
-import { DoorRefundSheet } from "../../../../src/components/door/DoorRefundSheet";
+import { LazyDoorRefundSheet } from "../../../../src/components/door/LazyDoorRefundSheet";
 import { Button } from "../../../../src/components/ui/Button";
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
 import { GlassCard } from "../../../../src/components/ui/GlassCard";
@@ -885,7 +885,12 @@ export default function GuestDetailRoute(): React.ReactElement {
               </View>
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Payment method</Text>
-                <Text style={styles.summaryValue}>{order.paymentMethod}</Text>
+                <Text style={styles.summaryValue}>
+                  {order.paymentMethod === "pay_code" ||
+                  order.paymentMethod === "tap_to_pay"
+                    ? PAYMENT_METHOD_LABELS[order.paymentMethod]
+                    : order.paymentMethod}
+                </Text>
               </View>
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Purchased</Text>
@@ -1130,7 +1135,7 @@ export default function GuestDetailRoute(): React.ReactElement {
           OBS-1 lock is enforced inside DoorRefundSheet's handleConfirm:
           NO useScanStore touch. Buyer stays CHECKED IN. */}
       {isDoor ? (
-        <DoorRefundSheet
+        <LazyDoorRefundSheet
           visible={refundOpen}
           sale={sale}
           onClose={() => setRefundOpen(false)}

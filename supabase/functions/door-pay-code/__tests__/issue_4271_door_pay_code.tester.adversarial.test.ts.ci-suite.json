@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/door-pay-code/__tests__/issue_4271_door_pay_code.tester.adversarial.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4271-door-pay-code-tester-adversarial",
+  "profile": "deno-2-unit"
+}

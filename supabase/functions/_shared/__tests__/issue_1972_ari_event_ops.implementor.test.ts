@@ -188,3 +188,42 @@ Deno.test("#4063 implementor: manage_event_door_sale create records the durable 
   assertEquals(result.recorded, true);
   assertEquals(result.sale.receiptQueued, true);
 });
+
+// #4271 — "nfc" is no longer a door payment method (biz_door_sale_record
+// refuses it). The Ari tool must refuse it before any RPC, and must not offer it.
+Deno.test("#4271 implementor: manage_event_door_sale refuses the removed nfc method", async () => {
+  const tool = domainTool("manage_event_door_sale");
+  assertEquals(
+    tool.parameters.properties.payment_method.enum,
+    ["cash", "card_reader", "manual"],
+  );
+  let rpcCalled = false;
+  const client = {
+    from(table: string) {
+      return eventsClient().from(table);
+    },
+    rpc() {
+      rpcCalled = true;
+      return Promise.resolve({ data: null, error: null });
+    },
+  };
+  let refused = false;
+  try {
+    await tool.executor(
+      {
+        brand_id: BRAND,
+        event_id: EVENT,
+        action: "create",
+        payment_method: "nfc",
+        lines: [{ ticket_type_id: TICKET_TYPE, quantity: 1 }],
+      },
+      client as never,
+      USER,
+      { operationId: OPERATION },
+    );
+  } catch (error) {
+    refused = String((error as Error).message).includes("cash, card_reader, or manual");
+  }
+  assert(refused, "nfc must be refused with the new method list");
+  assert(!rpcCalled, "no RPC may run for a refused method");
+});

@@ -41,6 +41,7 @@ const ALL_KEYS: SmsTemplateKey[] = [
   "S18",
   "S18A",
   "S18N",
+  "S19",
 ];
 
 const TYPICAL = {

@@ -160,7 +160,14 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4276: skip the conductor, score-hold and unparseable-date migrations on the pre-#1931 replay
 // (the conductor re-emits the #3872 Local picker typed on public.locals, which that replay skips).
 // #2830: register the Website setup takeover migration and its proof; the recovery workflow names the Studio migration guard.
-export const BOOTSTRAP_SHA256 = "ec18ada953602f069feb7e01e47a1b2648614589283e2a2190b03c197aeae16f";
+// #4271: re-sealed after the door pay migration and proof entered the preserved
+// inventories and the migration joined the pre-#1931 replay skip list by exact filename.
+// #4271: register the tester adversarial PostgreSQL proof the same way.
+// #4271: register the rework implementor PostgreSQL proof the same way.
+// #4271: register the Apple build PostgreSQL proof the same way.
+// #4271: register the final tester PostgreSQL proof the same way.
+// #4271: re-sealed after merging origin/main (#4261/#4273/#4275/#4276/#4283/#2830 rows kept beside the #4271 rows).
+export const BOOTSTRAP_SHA256 = "a6cb546f6ead10695609ab0294e680c726c6046c6e6e037c378731ac2adbcb8b";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
