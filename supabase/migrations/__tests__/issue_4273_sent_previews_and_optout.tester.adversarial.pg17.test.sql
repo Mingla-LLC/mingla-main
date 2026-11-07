@@ -16,7 +16,7 @@
 --   X   the freed slot (extra b): cancelled frees it too; a second failure in
 --       the same slot is allowed; a live duplicate is still refused.
 --
--- MINGLA-INVARIANT-REF: I-4273-SENT-CAMPAIGN-READ-ONLY, I-4273-SENT-VIEW-NO-CONTACTS,
+-- Invariants exercised: I-4273-SENT-CAMPAIGN-READ-ONLY, I-4273-SENT-VIEW-NO-CONTACTS,
 -- I-4273-PHONE-MATCH-E164, I-4273-ACCOUNT-SCOPE-IS-THE-SENDING-HOST,
 -- I-4273-FAILED-METHOD-FREES-ITS-SLOT (declared in the implementor suites).
 \set ON_ERROR_STOP on
