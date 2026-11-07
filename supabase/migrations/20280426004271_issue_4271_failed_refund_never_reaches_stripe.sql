@@ -17,11 +17,13 @@
 --    refund is first driven under (ticket_refund:<id> or admin_refund:<id>), so
 --    admin-reconcile-ticket-refund replays the refund under its ORIGINAL key and
 --    no path can drive one row under two keys.
--- 3. The #2097 prepare, pre-refund state, claim, record and finalize functions
---    refuse a refund whose status is not 'pending' (PT409; claim answers
---    "not claimed"), so a 'failed' row never reaches Stripe or settles later.
---    Their bodies are otherwise exactly the 20270412002097 ones (finalize: the
---    20280305003281 one).
+-- 3. The #2097 prepare and pre-refund state functions refuse a refund whose
+--    status is not 'pending' (PT409; a prepare replay answers not permitted), so
+--    no new Stripe call is ever permitted for it. Claim answers "not claimed" only
+--    for an attempt that was never permitted and holds no buyer refund. Record
+--    and finalize are not changed: money Stripe already moved always settles,
+--    even on a row another writer marked 'failed' (cancel-trip-booking's
+--    rollback). Bodies are otherwise exactly the 20270412002097 ones.
 --
 -- Static SQL, CREATE OR REPLACE only, no data change; safe to run twice.
 
@@ -386,9 +388,15 @@ BEGIN
   IF v.status NOT IN ('awaiting_application_fee','pending_visibility') THEN
     RETURN jsonb_build_object('attempt_id',v.id,'status',v.status,'claimed',false,'lease_epoch',v.lease_epoch);
   END IF;
-  -- issue #4271 — a refund that is no longer pending never reaches Stripe again.
+  -- issue #4271 — a refund that is no longer pending never reaches Stripe again,
+  -- but money Stripe already moved is always booked. Refuse only an attempt that
+  -- was never permitted to call Stripe and holds no buyer refund. A row another
+  -- writer failed after Stripe refunded (biz_cancel_trip_booking_rollback) still
+  -- settles through the fee webhook and the charge.refunded adoption. A row
+  -- issue_4271_commit_refund_failed failed has only closed, never-permitted attempts.
   -- Not claimed (never a raise): every caller already treats an unclaimed attempt as owned elsewhere.
-  IF EXISTS (SELECT 1 FROM public.refunds r WHERE r.id=v.refund_id AND r.status<>'pending') THEN
+  IF v.buyer_refund_id IS NULL AND v.provider_call_permitted_at IS NULL
+     AND EXISTS (SELECT 1 FROM public.refunds r WHERE r.id=v.refund_id AND r.status<>'pending') THEN
     RETURN jsonb_build_object('attempt_id',v.id,'status',v.status,'claimed',false,
       'lease_epoch',v.lease_epoch,'refund_not_pending',true);
   END IF;
@@ -405,155 +413,6 @@ BEGIN
   RETURN jsonb_build_object('attempt_id',v.id,'status',v.status,'claimed',true,'lease_epoch',v.lease_epoch);
 END;$function$;
 
-CREATE OR REPLACE FUNCTION public.issue_2097_record_buyer_refund(
-  p_attempt_id uuid,p_lease_owner uuid,p_lease_epoch bigint,
-  p_buyer_refund_id text,p_buyer_refund_amount_text text
-) RETURNS jsonb
-LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public','pg_temp'
-AS $function$
-DECLARE v public.ticket_refund_attempts%ROWTYPE; q record;
-BEGIN
-  SELECT * INTO v FROM public.ticket_refund_attempts WHERE id=p_attempt_id FOR UPDATE;
-  IF NOT FOUND THEN RAISE EXCEPTION 'attempt_not_found'; END IF;
-  IF v.buyer_refund_id IS NOT NULL THEN
-    IF v.buyer_refund_id<>p_buyer_refund_id THEN RAISE EXCEPTION 'buyer_refund_identity_conflict'; END IF;
-    RETURN jsonb_build_object('status',v.status,'idempotent_replay',true);
-  END IF;
-  -- issue #4271 — a refund that is no longer pending never reaches Stripe again.
-  IF EXISTS (SELECT 1 FROM public.refunds r WHERE r.id=v.refund_id AND r.status<>'pending') THEN
-    RAISE EXCEPTION 'refund_not_pending: refund=%',v.refund_id USING ERRCODE='PT409';
-  END IF;
-  IF v.lease_owner IS DISTINCT FROM p_lease_owner OR v.lease_epoch<>p_lease_epoch
-     OR v.lease_expires_at<=now() OR v.provider_call_permitted_at IS NULL THEN
-    RAISE EXCEPTION 'stale_refund_lease';
-  END IF;
-  IF p_buyer_refund_amount_text !~ '^[1-9][0-9]{0,15}$'
-     OR p_buyer_refund_amount_text::numeric<>v.requested_refund_amount_text::numeric THEN
-    RAISE EXCEPTION 'buyer_refund_amount_conflict';
-  END IF;
-  UPDATE public.ticket_refund_attempts SET buyer_refund_id=p_buyer_refund_id,
-    buyer_refund_amount_text=p_buyer_refund_amount_text,buyer_refunded_at=now(),status='pending_visibility',
-    observation_count=0,last_observed_at=NULL,next_observation_at=now(),
-    updated_at=now() WHERE id=v.id;
-  UPDATE public.refunds SET stripe_refund_id=p_buyer_refund_id,buyer_refund_status='succeeded',
-    buyer_refunded_at=now(),application_fee_refund_status='pending_visibility',
-    application_fee_refunded_cents=NULL WHERE id=v.refund_id;
-  FOR q IN SELECT rli.ticket_type_id,rli.quantity FROM public.refund_line_items rli WHERE rli.refund_id=v.refund_id LOOP
-    INSERT INTO public.ticket_refund_quarantine(attempt_id,ticket_id,prior_status)
-    SELECT v.id,t.id,'valid' FROM public.tickets t WHERE t.order_id=v.order_id
-      AND t.ticket_type_id=q.ticket_type_id AND t.status='valid'
-      ORDER BY t.created_at,t.id LIMIT q.quantity ON CONFLICT DO NOTHING;
-  END LOOP;
-  IF NOT FOUND THEN
-    INSERT INTO public.ticket_refund_quarantine(attempt_id,ticket_id,prior_status)
-    SELECT v.id,t.id,'valid' FROM public.tickets t
-    WHERE t.order_id=v.order_id AND t.status='valid'
-    ON CONFLICT DO NOTHING;
-  END IF;
-  UPDATE public.tickets t SET status='refund_pending'
-    FROM public.ticket_refund_quarantine x WHERE x.attempt_id=v.id AND x.ticket_id=t.id;
-  RETURN jsonb_build_object('status','pending_visibility','idempotent_replay',false);
-END;$function$;
-
-CREATE OR REPLACE FUNCTION public.issue_2097_finalize_refund_attempt(
-  p_attempt_id uuid,p_lease_owner uuid,p_lease_epoch bigint,p_status text,
-  p_fee_refund_id text,p_fee_refund_amount_text text,p_after_amount_refunded_text text,
-  p_stripe_event_id text DEFAULT NULL
-) RETURNS jsonb
-LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public','pg_temp'
-AS $function$
-DECLARE v public.ticket_refund_attempts%ROWTYPE; v_refund public.refunds%ROWTYPE;
-  v_total integer; v_order_status text; v_amount integer;
-  v_attempt_count integer; v_expected_count integer; v_nonterminal_count integer;
-  v_positive_total bigint; v_aggregate_status text;
-BEGIN
-  SELECT * INTO v FROM public.ticket_refund_attempts WHERE id=p_attempt_id FOR UPDATE;
-  IF NOT FOUND THEN RAISE EXCEPTION 'attempt_not_found'; END IF;
-  IF v.status IN ('succeeded_positive','not_applicable','fee_evidence_unavailable','evidence_conflict') THEN
-    RETURN jsonb_build_object('status',v.status,'application_fee_refunded_cents',v.fee_refund_amount_text,'idempotent_replay',true);
-  END IF;
-  IF v.lease_owner IS DISTINCT FROM p_lease_owner OR v.lease_epoch<>p_lease_epoch OR v.lease_expires_at<=now() THEN
-    RAISE EXCEPTION 'stale_refund_lease';
-  END IF;
-  IF p_status NOT IN ('succeeded_positive','not_applicable','fee_evidence_unavailable','evidence_conflict') THEN RAISE EXCEPTION 'invalid_fee_status'; END IF;
-  IF p_status='succeeded_positive' THEN
-    IF p_fee_refund_id IS NULL OR p_fee_refund_amount_text !~ '^[1-9][0-9]{0,15}$'
-      OR p_after_amount_refunded_text !~ '^[1-9][0-9]{0,15}$'
-      OR p_after_amount_refunded_text::numeric-v.baseline_amount_refunded_text::numeric<>p_fee_refund_amount_text::numeric
-      OR p_after_amount_refunded_text::numeric>v.application_fee_amount_text::numeric THEN
-      RAISE EXCEPTION 'fee_evidence_conflict';
-    END IF;
-    v_amount:=p_fee_refund_amount_text::integer;
-  ELSIF p_status='not_applicable' THEN
-    IF v.application_fee_id IS NOT NULL OR v.application_fee_amount_text<>'0'
-       OR p_fee_refund_id IS NOT NULL OR p_fee_refund_amount_text<>'0'
-       OR p_after_amount_refunded_text<>'0' OR v.buyer_refund_id IS NULL THEN
-      RAISE EXCEPTION 'no_fee_evidence_conflict';
-    END IF;
-    v_amount:=0;
-  ELSIF p_status='evidence_conflict' AND p_fee_refund_amount_text IS NOT NULL THEN
-    IF p_fee_refund_id IS NULL OR p_fee_refund_amount_text !~ '^(0|[1-9][0-9]{0,15})$' THEN
-      RAISE EXCEPTION 'invalid_conflict_evidence';
-    END IF;
-  ELSIF p_fee_refund_amount_text IS NOT NULL THEN RAISE EXCEPTION 'unknown_fee_amount_must_be_null'; END IF;
-  SELECT * INTO v_refund FROM public.refunds WHERE id=v.refund_id FOR UPDATE;
-  -- issue #4271 — a refund that is no longer pending never reaches Stripe again.
-  IF v_refund.status<>'pending' THEN
-    RAISE EXCEPTION 'refund_not_pending: refund=% status=%',v.refund_id,v_refund.status USING ERRCODE='PT409';
-  END IF;
-  INSERT INTO public.ticket_refund_fee_evidence(attempt_id,stripe_event_id,application_fee_id,
-    fee_refund_id,amount_text,currency,connected_account_id,charge_id,provider_mode,evidence_kind)
-  VALUES(v.id,p_stripe_event_id,v.application_fee_id,p_fee_refund_id,p_fee_refund_amount_text,
-    v.currency,v.connected_account_id,v.charge_id,v.provider_mode,
-    CASE WHEN p_status='succeeded_positive' THEN 'fee_refund' WHEN p_status='not_applicable' THEN 'no_fee'
-      WHEN p_status='fee_evidence_unavailable' THEN 'visibility_exhausted' ELSE 'conflict' END);
-  UPDATE public.ticket_refund_attempts SET status=p_status,fee_refund_id=p_fee_refund_id,
-    fee_refund_amount_text=CASE WHEN p_status IN ('succeeded_positive','not_applicable') THEN p_fee_refund_amount_text END,
-    observed_fee_refund_amount_text=p_fee_refund_amount_text,last_observed_at=now(),next_observation_at=NULL,
-    updated_at=now() WHERE id=v.id;
-  SELECT COUNT(*),MAX(expected_attempt_count),
-    COUNT(*) FILTER (WHERE status NOT IN ('succeeded_positive','not_applicable')),
-    COALESCE(SUM(fee_refund_amount_text::bigint) FILTER (WHERE status='succeeded_positive'),0)
-    INTO v_attempt_count,v_expected_count,v_nonterminal_count,v_positive_total
-  FROM public.ticket_refund_attempts WHERE refund_id=v.refund_id;
-  v_aggregate_status:=CASE
-    WHEN EXISTS(SELECT 1 FROM public.ticket_refund_attempts a WHERE a.refund_id=v.refund_id AND a.status='evidence_conflict') THEN 'evidence_conflict'
-    WHEN EXISTS(SELECT 1 FROM public.ticket_refund_attempts a WHERE a.refund_id=v.refund_id AND a.status='fee_evidence_unavailable') THEN 'fee_evidence_unavailable'
-    WHEN v_attempt_count=v_expected_count AND v_nonterminal_count=0 AND v_positive_total>0 THEN 'succeeded_positive'
-    WHEN v_attempt_count=v_expected_count AND v_nonterminal_count=0 THEN 'not_applicable'
-    ELSE 'pending_visibility' END;
-  UPDATE public.refunds SET application_fee_refund_status=v_aggregate_status,
-    application_fee_refunded_cents=CASE WHEN v_aggregate_status='succeeded_positive' THEN v_positive_total::integer
-      WHEN v_aggregate_status='not_applicable' THEN 0 ELSE NULL END,
-    status=CASE WHEN v_aggregate_status IN ('succeeded_positive','not_applicable') THEN 'succeeded' ELSE status END,
-    processed_at=CASE WHEN v_aggregate_status IN ('succeeded_positive','not_applicable')
-      THEN COALESCE(processed_at,now()) ELSE processed_at END
-  WHERE id=v.refund_id;
-  IF v_aggregate_status IN ('succeeded_positive','not_applicable') THEN
-  -- issue #3281 — two refunds settling together must see each other's result.
-  -- NO KEY UPDATE stays compatible with the key-share lock a new refund row holds.
-  -- It comes before the ticket update: that update's counter trigger locks the
-  -- ticket type, which a dashboard refund takes only after the order.
-  PERFORM 1 FROM public.orders WHERE id = v.order_id FOR NO KEY UPDATE;
-    UPDATE public.tickets t SET status='refunded' FROM public.ticket_refund_quarantine x
-      JOIN public.ticket_refund_attempts a ON a.id=x.attempt_id
-      WHERE a.refund_id=v.refund_id AND x.ticket_id=t.id AND t.status='refund_pending';
-    SELECT COALESCE(SUM(amount_cents),0) INTO v_total FROM public.refunds
-      WHERE order_id=v.order_id AND status='succeeded';
-    v_order_status:=public.issue_3281_settled_payment_status(v.order_id);
-    UPDATE public.orders SET payment_status=v_order_status,refunded_amount_cents=v_total,updated_at=now() WHERE id=v.order_id;
-    IF p_status='succeeded_positive' THEN
-      UPDATE public.mingla_revenue_log SET refunded_amount_cents=LEAST(amount_cents,
-        p_after_amount_refunded_text::integer),refunded=(p_after_amount_refunded_text::integer>=amount_cents),updated_at=now()
-        WHERE stripe_application_fee_id=v.application_fee_id;
-    END IF;
-  END IF;
-  RETURN jsonb_build_object('status',p_status,'aggregate_status',v_aggregate_status,
-    'application_fee_refunded_cents',CASE WHEN v_aggregate_status='succeeded_positive' THEN v_positive_total::integer
-      WHEN v_aggregate_status='not_applicable' THEN 0 END,
-    'new_payment_status',v_order_status,'idempotent_replay',false);
-END;$function$;
-
 REVOKE ALL ON FUNCTION public.issue_4271_commit_refund_failed(uuid,boolean) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.issue_4271_commit_refund_failed(uuid,boolean) TO service_role;
 REVOKE ALL ON FUNCTION public.issue_4271_bind_refund_provider_key(uuid,text) FROM PUBLIC,anon,authenticated;
@@ -562,13 +421,9 @@ GRANT EXECUTE ON FUNCTION public.issue_4271_bind_refund_provider_key(uuid,text) 
 REVOKE ALL ON FUNCTION public.issue_2097_prepare_refund_attempt(uuid,text,text,text,text,text,text,text,text,text,text,jsonb,text,boolean,integer,uuid) FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON FUNCTION public.issue_2097_record_pre_refund_state(uuid,text,text,text,text,text,text,text,text,text,text,integer,uuid) FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON FUNCTION public.issue_2097_claim_refund_attempt(uuid,uuid) FROM PUBLIC,anon,authenticated;
-REVOKE ALL ON FUNCTION public.issue_2097_record_buyer_refund(uuid,uuid,bigint,text,text) FROM PUBLIC,anon,authenticated;
-REVOKE ALL ON FUNCTION public.issue_2097_finalize_refund_attempt(uuid,uuid,bigint,text,text,text,text,text) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.issue_2097_prepare_refund_attempt(uuid,text,text,text,text,text,text,text,text,text,text,jsonb,text,boolean,integer,uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.issue_2097_record_pre_refund_state(uuid,text,text,text,text,text,text,text,text,text,text,integer,uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.issue_2097_claim_refund_attempt(uuid,uuid) TO service_role;
-GRANT EXECUTE ON FUNCTION public.issue_2097_record_buyer_refund(uuid,uuid,bigint,text,text) TO service_role;
-GRANT EXECUTE ON FUNCTION public.issue_2097_finalize_refund_attempt(uuid,uuid,bigint,text,text,text,text,text) TO service_role;
 
 COMMENT ON FUNCTION public.issue_4271_commit_refund_failed(uuid,boolean) IS
   'Issue #4271: commits a pending ticket refund failed, and closes its open #2097 attempts, only when Stripe provably never saw it (refunds.create not reached, no Stripe refund recorded, no attempt ever permitted), under the refunds row lock prepare takes. Otherwise outcome unknown and the row stays pending. Service role only.';

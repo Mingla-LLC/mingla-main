@@ -976,7 +976,8 @@
     {
       "capability_key": "staff-orders-money",
       "paths": [
-        "mingla-admin/src/pages/BusinessOrdersPage.jsx"
+        "mingla-admin/src/pages/BusinessOrdersPage.jsx",
+        "mingla-admin/src/lib/adminRefundError.js"
       ]
     },
     {

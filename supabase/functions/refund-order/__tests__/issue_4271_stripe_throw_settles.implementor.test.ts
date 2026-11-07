@@ -152,7 +152,11 @@ function fakeDb() {
       if (
         !["awaiting_application_fee", "pending_visibility"].includes(
           attempt.status,
-        ) || !pending(attempt.refund_id)
+        ) ||
+        // Mirrors the SQL: a non-pending row refuses only an attempt that was
+        // never permitted and holds no buyer refund; money that moved settles.
+        (!pending(attempt.refund_id) && !attempt.provider_call_permitted_at &&
+          !attempt.buyer_refund_id)
       ) {
         return ok({
           claimed: false,
@@ -169,7 +173,6 @@ function fakeDb() {
     }
     if (name === "issue_2097_record_buyer_refund") {
       const attempt = attempts.find((a) => a.id === args.p_attempt_id)!;
-      if (!pending(attempt.refund_id)) return conflict("refund_not_pending");
       attempt.buyer_refund_id = String(args.p_buyer_refund_id);
       attempt.status = "pending_visibility";
       refunds.get(attempt.refund_id)!.stripe_refund_id =
@@ -178,7 +181,6 @@ function fakeDb() {
     }
     if (name === "issue_2097_finalize_refund_attempt") {
       const attempt = attempts.find((a) => a.id === args.p_attempt_id)!;
-      if (!pending(attempt.refund_id)) return conflict("refund_not_pending");
       attempt.status = String(args.p_status);
       attempt.fee_refund_amount_text = args.p_fee_refund_amount_text as string;
       if (args.p_status === "succeeded_positive") {

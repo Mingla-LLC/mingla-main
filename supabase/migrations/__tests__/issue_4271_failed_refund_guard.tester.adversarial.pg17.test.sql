@@ -18,9 +18,12 @@
 --   G3  rewritten: answered and succeeded rows are always counted.
 --   D1  removed: it only exercised the host resume path (issue_4271_resumable_refund),
 --       which no longer exists, so no admin row can be handed to it.
---   D2  UNCHANGED: a row committed 'failed' must never settle later. Green now
---       because issue_2097_claim_refund_attempt answers not-claimed for a refund
---       that is not pending.
+--   D2  re-pointed in round 3 (tester-authorised, P3-6): the 'failed' row is now
+--       one failed by issue_4271_commit_refund_failed, the only writer this pull
+--       request adds. Same intent: a row our commit failed is never claimed again
+--       and never reaches Stripe. The old premise (a 'failed' row with a live
+--       permitted attempt) is exactly the trip rollback where Stripe DID refund,
+--       which D4 and D5 now require to settle.
 --   D3  removed: it only priced a resumable row in refund_preview; refund_preview
 --       is no longer changed by this pull request.
 \set ON_ERROR_STOP on
@@ -159,27 +162,29 @@ END
 $g3$;
 ROLLBACK;
 
--- D2. A refund committed 'failed' must never settle later.
+-- D2. A refund committed 'failed' by issue_4271_commit_refund_failed must never settle later.
 BEGIN;
 DO $d2$
 DECLARE
   f jsonb := pg_temp.t4303_fixture(12, 2, 1000, false);
   v_order uuid := (f->>'order')::uuid;
   v_lines jsonb := jsonb_build_array(jsonb_build_object('order_line_item_id', f->>'line', 'quantity', 2));
-  v_r1 uuid; v_r2 uuid; v_prep jsonb; v_claim jsonb; v_owner2 uuid := gen_random_uuid();
+  v_r1 uuid; v_r2 uuid; v_pre jsonb; v_prep jsonb; v_claim jsonb; v_out jsonb; v_owner2 uuid := gen_random_uuid();
   v_refunded int; v_errors text := '';
 BEGIN
   PERFORM pg_temp.t4303_as((f->>'owner')::uuid);
   v_r1 := (public.biz_refund_order(v_order, v_lines, 'Guest asked for a refund', 'd2-key-one')->>'refund_id')::uuid;
-  -- refund-order prepared the #2097 attempt (provider call permitted), then
-  -- refunds.create threw a StripePermissionError: the row is committed failed.
-  v_prep := public.issue_2097_prepare_refund_attempt(v_r1, 'd2-key-one', 'test', 'acct_4303',
-    'GBP', 'ch_4303_12', 'pi_4303_12', 'fee_4303_12', '30', '2000', '2000', '[]'::jsonb, '0', true, 1,
-    gen_random_uuid());
-  IF (v_prep->>'provider_call_permitted')::boolean IS NOT TRUE THEN
-    RAISE EXCEPTION 'D2 setup: prepare did not permit, got %', v_prep;
+  -- refund-order recorded the pre-refund state (fee not visible, no call permitted),
+  -- then Stripe refused the PI read: the edge commits the row failed.
+  v_pre := public.issue_2097_record_pre_refund_state(v_r1, 'd2-key-one', 'test', 'acct_4303', 'GBP',
+    'ch_4303_12', 'pi_4303_12', '30', '2000', '2000', 'awaiting_application_fee', 1, gen_random_uuid());
+  IF (v_pre->>'provider_call_permitted')::boolean THEN
+    RAISE EXCEPTION 'D2 setup: pre-refund state permitted a call, got %', v_pre;
   END IF;
-  PERFORM public.biz_refund_order_commit(v_r1, NULL, 0, 'failed');
+  v_out := public.issue_4271_commit_refund_failed(v_r1, false);
+  IF v_out->>'outcome' <> 'failed' THEN
+    RAISE EXCEPTION 'D2 setup: the commit did not fail the row, got %', v_out;
+  END IF;
 
   -- The tickets are free again: the host refunds them under a new row and it settles.
   v_r2 := (public.biz_refund_order(v_order, v_lines, 'Refund again after error', 'd2-key-two')->>'refund_id')::uuid;
@@ -188,24 +193,31 @@ BEGIN
   PERFORM public.biz_refund_order_commit(v_r2, 're_d2_second', 30, 'succeeded');
 
   -- Later (same-key Send in the still-open sheet, or admin-reconcile-ticket-refund)
-  -- the failed row's attempt is claimed again once its lease lapsed.
+  -- the failed row is driven again: prepare under its key, then claim of its attempt.
   UPDATE public.ticket_refund_attempts SET lease_expires_at = now() - interval '1 second'
    WHERE refund_id = v_r1;
-  v_claim := public.issue_2097_claim_refund_attempt((v_prep->>'attempt_id')::uuid, v_owner2);
+  v_prep := public.issue_2097_prepare_refund_attempt(v_r1, 'd2-key-one', 'test', 'acct_4303',
+    'GBP', 'ch_4303_12', 'pi_4303_12', 'fee_4303_12', '30', '2000', '2000', '[]'::jsonb, '0', true, 1,
+    gen_random_uuid());
+  IF (v_prep->>'provider_call_permitted')::boolean THEN
+    v_errors := v_errors || format('prepare permitted a Stripe call for the failed row (%s); ', v_prep);
+  END IF;
+  v_claim := public.issue_2097_claim_refund_attempt((v_pre->>'attempt_id')::uuid, v_owner2);
   IF (v_claim->>'claimed')::boolean THEN
     v_errors := v_errors || format('claim of the failed row''s attempt succeeded (%s); ', v_claim);
     -- (refunds.create is called here in the edge function: a second Stripe refund.)
-    PERFORM public.issue_2097_record_buyer_refund((v_prep->>'attempt_id')::uuid, v_owner2,
-      (v_claim->>'lease_epoch')::bigint, 're_d2_late', '2000');
+    BEGIN
+      PERFORM public.issue_2097_record_buyer_refund((v_pre->>'attempt_id')::uuid, v_owner2,
+        (v_claim->>'lease_epoch')::bigint, 're_d2_late', '2000');
+    EXCEPTION WHEN OTHERS THEN
+      v_errors := v_errors || format('record then refused (%s); ', SQLERRM);
+    END;
     IF (SELECT stripe_refund_id FROM public.refunds WHERE id = v_r1) = 're_d2_late' THEN
       v_errors := v_errors || 'a second buyer refund was recorded on the failed row; ';
     END IF;
-    BEGIN
-      PERFORM public.issue_2097_finalize_refund_attempt((v_prep->>'attempt_id')::uuid, v_owner2,
-        (v_claim->>'lease_epoch')::bigint, 'succeeded_positive', 'fr_d2_late', '30', '30', NULL);
-    EXCEPTION WHEN OTHERS THEN
-      v_errors := v_errors || format('finalize then refused (%s), so the money left twice and the ledger is stuck; ', SQLERRM);
-    END;
+  END IF;
+  IF (SELECT status FROM public.refunds WHERE id = v_r1) <> 'failed' THEN
+    v_errors := v_errors || format('the failed row moved to %s; ', (SELECT status FROM public.refunds WHERE id = v_r1));
   END IF;
   SELECT refunded_amount_cents INTO v_refunded FROM public.orders WHERE id = v_order;
   IF v_refunded > (f->>'total')::int THEN

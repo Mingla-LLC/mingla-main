@@ -4,7 +4,7 @@
 -- 20280426004271_issue_4271_failed_refund_never_reaches_stripe.sql on the
 -- replayed PG17 schema.
 --
--- MINGLA-INVARIANT: I-4271-FAILED-REFUND-NEVER-REACHES-STRIPE | issue #4271 | a ticket refund is committed failed only in one transaction that holds the refunds row lock and proves no #2097 attempt was ever permitted to call Stripe and refunds.create was not reached, closing its open attempts; prepare, pre-refund state, record and finalize raise PT409 and claim answers not-claimed for any refund that is not pending; reconcile replays a refund only under the Stripe key it was first bound to.
+-- MINGLA-INVARIANT: I-4271-FAILED-REFUND-NEVER-REACHES-STRIPE | issue #4271 | a ticket refund is committed failed only in one transaction that holds the refunds row lock and proves no #2097 attempt was ever permitted to call Stripe and refunds.create was not reached, closing its open attempts; prepare and pre-refund state raise PT409 for any refund that is not pending, and claim answers not-claimed for its attempts that were never permitted and hold no buyer refund, while money Stripe already moved always settles; reconcile replays a refund only under the Stripe key it was first bound to.
 --
 -- Cases:
 --   C1  Live repro: nothing reached Stripe -> 'failed' in one call, the
@@ -15,10 +15,12 @@
 --       existing pending conflict (line_overrefund), never a second refund.
 --   C3  p_provider_call_reached true, or a recorded Stripe refund -> 'unknown'.
 --   C4  Replays: an already failed row answers 'failed'; a succeeded row 'unknown'.
---   C5  A row that is 'failed' (even one failed by the old commit with a live
---       permitted attempt) can never reach Stripe: prepare (new and existing
---       fingerprint), pre-refund state, claim, record and finalize all refuse,
---       and every raise is PT409, never 40001.
+--   C5  A row failed by issue_4271_commit_refund_failed can never reach Stripe:
+--       prepare (new and existing fingerprint), pre-refund state, claim (even of
+--       an attempt forced back open), record and finalize all refuse; prepare
+--       and pre-refund state raise PT409, and nothing raises 40001. (Re-pointed
+--       in round 3: a 'failed' row with a permitted attempt is cancel-trip-booking's
+--       rollback after Stripe refunded, and must settle; tester D4/D5.)
 --   C6  A pending refund still runs prepare -> record -> finalize to succeeded.
 --   C7  The provider key binding: binds once, accepts the same key, refuses a
 --       different key (PT409), a foreign key (22023) and an unbound non-pending row.
@@ -172,17 +174,19 @@ END
 $c4$;
 ROLLBACK;
 
--- C5. A failed row can never reach Stripe again; every refusal is PT409.
+-- C5. A row our commit failed can never reach Stripe again; nothing raises 40001.
 BEGIN;
 DO $c5$
 DECLARE
   f jsonb := pg_temp.t4271_fixture(5);
-  v_refund uuid; v_clean uuid; v_prep jsonb; v_r jsonb; v_state text; v_owner uuid := gen_random_uuid();
+  v_refund uuid; v_pre jsonb; v_r jsonb; v_state text; v_owner uuid := gen_random_uuid();
 BEGIN
-  -- The pre-#4271 shape: permitted attempt, then the old commit marked it failed.
   v_refund := (public.biz_refund_order((f->>'order')::uuid, f->'lines', 'Guest could not make it', 'c5-key')->>'refund_id')::uuid;
-  v_prep := pg_temp.t4271_prepare(v_refund, 'c5-key', 5);
-  PERFORM public.biz_refund_order_commit(v_refund, NULL, 0, 'failed');
+  v_pre := public.issue_2097_record_pre_refund_state(v_refund, 'c5-key', 'test', 'acct_4271g', 'GBP',
+    'ch_4271g_5', 'pi_4271g_5', '30', '2000', '2000', 'awaiting_application_fee', 1, gen_random_uuid());
+  IF public.issue_4271_commit_refund_failed(v_refund, false)->>'outcome' <> 'failed' THEN
+    RAISE EXCEPTION 'C5 setup: the row was not committed failed';
+  END IF;
   UPDATE public.ticket_refund_attempts SET lease_expires_at = now() - interval '1 second' WHERE refund_id = v_refund;
 
   v_r := pg_temp.t4271_prepare(v_refund, 'c5-key', 5);
@@ -195,21 +199,26 @@ BEGIN
     'SELECT public.issue_2097_record_pre_refund_state(%L::uuid, %L, ''test'', ''acct_4271g'', ''GBP'', ''ch_4271g_5'', ''pi_4271g_5'', ''30'', ''2000'', ''2000'', ''awaiting_application_fee'', 1, gen_random_uuid())',
     v_refund, 'c5-pre-key'));
   IF v_state NOT LIKE 'PT409 refund_not_pending%' THEN RAISE EXCEPTION 'C5: pre-refund state gave %', v_state; END IF;
-  v_r := public.issue_2097_claim_refund_attempt((v_prep->>'attempt_id')::uuid, v_owner);
+  v_r := public.issue_2097_claim_refund_attempt((v_pre->>'attempt_id')::uuid, v_owner);
+  IF (v_r->>'claimed')::boolean THEN
+    RAISE EXCEPTION 'C5: claim of a failed row''s closed attempt must not claim, got %', v_r;
+  END IF;
+  -- Defence in depth: even an attempt forced back open is refused by the status
+  -- guard, because it was never permitted and holds no buyer refund.
+  UPDATE public.ticket_refund_attempts SET status = 'awaiting_application_fee', next_observation_at = NULL,
+    lease_expires_at = now() - interval '1 second' WHERE id = (v_pre->>'attempt_id')::uuid;
+  v_r := public.issue_2097_claim_refund_attempt((v_pre->>'attempt_id')::uuid, v_owner);
   IF (v_r->>'claimed')::boolean OR (v_r->>'refund_not_pending')::boolean IS NOT TRUE THEN
-    RAISE EXCEPTION 'C5: claim of a failed row''s attempt must not claim, got %', v_r;
+    RAISE EXCEPTION 'C5: claim of a reopened never-permitted attempt must answer refund_not_pending, got %', v_r;
   END IF;
   v_state := pg_temp.t4271_state(format(
-    'SELECT public.issue_2097_record_buyer_refund(%L::uuid, gen_random_uuid(), %s, ''re_c5'', ''2000'')',
-    v_prep->>'attempt_id', v_prep->>'lease_epoch'));
-  IF v_state NOT LIKE 'PT409 refund_not_pending%' THEN RAISE EXCEPTION 'C5: record gave %', v_state; END IF;
-  -- finalize checks the lease first; give it a live one so only the status guard can refuse.
-  UPDATE public.ticket_refund_attempts SET lease_owner = v_owner, lease_epoch = 9,
-    lease_expires_at = now() + interval '1 minute' WHERE refund_id = v_refund;
+    'SELECT public.issue_2097_record_buyer_refund(%L::uuid, %L::uuid, %s, ''re_c5'', ''2000'')',
+    v_pre->>'attempt_id', v_owner, coalesce(v_pre->>'lease_epoch', '0')));
+  IF v_state = '' OR v_state LIKE '40001%' THEN RAISE EXCEPTION 'C5: record gave %', coalesce(nullif(v_state, ''), 'success'); END IF;
   v_state := pg_temp.t4271_state(format(
-    'SELECT public.issue_2097_finalize_refund_attempt(%L::uuid, %L::uuid, 9, ''succeeded_positive'', ''fr_c5'', ''30'', ''30'', NULL)',
-    v_prep->>'attempt_id', v_owner));
-  IF v_state NOT LIKE 'PT409 refund_not_pending%' THEN RAISE EXCEPTION 'C5: finalize gave %', v_state; END IF;
+    'SELECT public.issue_2097_finalize_refund_attempt(%L::uuid, %L::uuid, %s, ''succeeded_positive'', ''fr_c5'', ''30'', ''30'', NULL)',
+    v_pre->>'attempt_id', v_owner, coalesce(v_pre->>'lease_epoch', '0')));
+  IF v_state = '' OR v_state LIKE '40001%' THEN RAISE EXCEPTION 'C5: finalize gave %', coalesce(nullif(v_state, ''), 'success'); END IF;
   IF (SELECT status FROM public.refunds WHERE id = v_refund) <> 'failed'
      OR (SELECT stripe_refund_id FROM public.refunds WHERE id = v_refund) IS NOT NULL THEN
     RAISE EXCEPTION 'C5: the failed row changed';
