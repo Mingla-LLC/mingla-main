@@ -1,9 +1,10 @@
 -- #4304 part 2 — Brand-group reactions, seen-by read state and inbox last speaker.
--- FAILS-ON-REVERT: dropping brand_group_reactions_scoped_insert lets the
--- outsider react (outsider_reacted); dropping brand_group_reactions_read hides
--- the reaction from Support (support_cannot_see_reaction); removing the roster
--- join from issue_4304_list_brand_group_read_state lists Support
--- (read_state_lists_support); removing the new list columns raises
+-- FAILS-ON-REVERT (measured on a local pg17 replay): dropping
+-- brand_group_reactions_scoped_insert accepts an unoffered emoji
+-- (unoffered_emoji_accepted); dropping brand_group_reactions_read refuses
+-- Support's reaction, which has no roster row (support_reaction_refused);
+-- removing the roster join from issue_4304_list_brand_group_read_state lists
+-- Support (read_state_lists_support); removing the new list columns raises
 -- inbox_last_speaker_wrong.
 -- MINGLA-INVARIANT: I-4304-BRAND-GROUP-REACTIONS-SCOPED | issue #4304 | A reaction on a Brand-group message can be read or written only by someone who can access that Brand group, and only with an offered emoji.
 -- MINGLA-INVARIANT: I-4304-BRAND-GROUP-SEEN-BY-ROSTER | issue #4304 | Brand-group read state is returned only to someone who can access the group, and lists only active accepted teammates other than the caller.
