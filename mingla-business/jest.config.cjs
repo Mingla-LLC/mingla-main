@@ -417,6 +417,16 @@ module.exports = {
     // issue #1023 — the shared ThemeEntranceAnimation imports the motion package
     // by name from packages/ (no node_modules there). Resolution repair only.
     "^@mingla/theme-animations$": "<rootDir>/../packages/theme-animations/index.ts",
+    // issue #1023 wave 2 — packages/offering-rendering's gradient fill imports
+    // this by name from packages/ (no node_modules there). Resolution repair
+    // only, pointing at the ONE real copy this app owns; suites that render it
+    // still jest.mock() it.
+    "^expo-linear-gradient$": "<rootDir>/node_modules/expo-linear-gradient",
+    // issue #1023 wave 2 — the shared Google font loader (reached by every
+    // suite that mounts the Theme sheet) imports expo-font, a native module
+    // whose ESM build cannot run under node. A lightweight manual mock
+    // (nothing registers, nothing is loaded); a suite's own jest.mock wins.
+    "^expo-font$": "<rootDir>/__manual_mocks__/expo-font.js",
     // #3859 — this pure deep contract is new on the issue worktree. Resolve
     // it from THIS checkout instead of the workspace symlink's anchor checkout.
     "^@mingla/offering-rendering/publicParityContract$":

@@ -59,38 +59,32 @@ describe("T-14 — the sheet body is flex-bounded, so the footer stays reachable
   });
 });
 
+// issue #1023 wave 2 — the hex fields moved to ThemeColourTab (Custom).
+// Invalidated: the ThemeSheet location and the handleHexChange/handleHexBlur
+// names. The ORCH-0964 contract itself is unchanged and pinned here.
+const COLOUR_TAB = "src/components/theme/ThemeColourTab.tsx";
 describe("keyboard — the hex field can never be occluded", () => {
   test("the hex input carries the ORCH-0964 input props", () => {
-    const s = src(SHEET);
+    const s = src(COLOUR_TAB);
     expect(s).toContain('autoCapitalize="none"');
     expect(s).toContain("autoCorrect={false}");
     expect(s).toContain("maxLength={7}");
-    expect(s).toContain('accessibilityLabel="Hex colour code"');
+    expect(s).toContain('"Hex colour code"');
   });
 
   test("the hex draft is SEPARATE state, never bound to the committed value", () => {
-    const s = src(SHEET);
-    // Binding the field to the committed value is what collapsed char-by-char
-    // typing in ORCH-0964.
-    expect(s).toMatch(/value=\{hexDraft\}/);
+    const s = src(COLOUR_TAB);
+    expect(s).toMatch(/value=\{draft\}/);
+    expect(s).toContain("useState<string>(color ?? \"\")");
     expect(s).not.toMatch(/value=\{value\?\.color/);
   });
 
   test("short-hex expansion happens on BLUR only, never on keystroke", () => {
-    const s = src(SHEET);
-    expect(s).toMatch(/onChangeText=\{handleHexChange\}/);
-    // handleHexChange must use the strict 6-digit gate...
-    const change = s.slice(
-      s.indexOf("const handleHexChange"),
-      s.indexOf("const handleHexBlur"),
-    );
+    const s = src(COLOUR_TAB);
+    const change = s.slice(s.indexOf("onChangeText={(raw)"), s.indexOf("onBlur={() =>"));
     expect(change).toContain("normalizeHexColor(raw)");
     expect(change).not.toContain("normalizeHexColorOnBlur");
-    // ...and only the blur path may expand.
-    const blur = s.slice(
-      s.indexOf("const handleHexBlur"),
-      s.indexOf("const pickSwatch"),
-    );
+    const blur = s.slice(s.indexOf("onBlur={() =>"), s.indexOf("autoCapitalize=\"none\""));
     expect(blur).toContain("normalizeHexColorOnBlur");
   });
 });
