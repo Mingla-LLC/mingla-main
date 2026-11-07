@@ -14,6 +14,7 @@ module.exports = {
     "**/src/utils/__tests__/issue_4271_door_sale_money.implementor.test.ts",
     "**/src/services/terminal/__tests__/issue_4271_apple_requirements.implementor.test.ts",
     "**/src/services/terminal/__tests__/issue_4271_tap_address.implementor.test.ts",
+    "**/src/services/terminal/__tests__/issue_4271_tap_live_reader.implementor.test.ts",
     "**/src/hooks/__tests__/issue_4271_tap_slim_brand.implementor.test.tsx",
     // #4271 tester adversarial suites.
     "**/src/components/door/__tests__/issue_4271_door_pay_qr.tester.adversarial.test.ts",
