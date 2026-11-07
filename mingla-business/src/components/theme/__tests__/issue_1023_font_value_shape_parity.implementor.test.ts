@@ -8,9 +8,9 @@
  * any one of the four patterns, or a catalogue rebuild that drops a legacy
  * family or lets a non-Latin / oversize / colour family in.
  */
-import { readFileSync } from "fs";
+import { readFile } from "fs/promises";
 import path from "path";
-import { describe, expect, test } from "@jest/globals";
+import { beforeAll, describe, expect, test } from "@jest/globals";
 
 import {
   GOOGLE_FONT_FAMILY_MAX,
@@ -24,22 +24,23 @@ import {
 } from "../../../../../packages/offering-rendering/themeResolver";
 
 const REPO = path.resolve(__dirname, "../../../../..");
-const read = (rel: string): string => readFileSync(path.join(REPO, rel), "utf8");
+const read = (rel: string): Promise<string> => readFile(path.join(REPO, rel), "utf8");
 
 type Catalog = { v: number; families: [string, string, number[]][] };
-const catalog = JSON.parse(
-  read("packages/offering-rendering/fonts/googleFontsCatalog.json"),
-) as Catalog;
-const ariFamilies = JSON.parse(
-  read("supabase/functions/_shared/googleFontFamilies.json"),
-) as string[];
-const migration = read(
-  "supabase/migrations/20280430011023_issue_1023_theme_fonts_and_gradients.sql",
-);
-const ariValidation = read("supabase/functions/_shared/themeFontValidation.ts");
-const buildScript = read(
-  "packages/offering-rendering/scripts/build-google-fonts-catalog.mjs",
-);
+let catalog: Catalog;
+let ariFamilies: string[];
+let migration: string;
+let ariValidation: string;
+let buildScript: string;
+let names: string[];
+beforeAll(async () => {
+  catalog = JSON.parse(await read("packages/offering-rendering/fonts/googleFontsCatalog.json")) as Catalog;
+  ariFamilies = JSON.parse(await read("supabase/functions/_shared/googleFontFamilies.json")) as string[];
+  migration = await read("supabase/migrations/20280430011023_issue_1023_theme_fonts_and_gradients.sql");
+  ariValidation = await read("supabase/functions/_shared/themeFontValidation.ts");
+  buildScript = await read("packages/offering-rendering/scripts/build-google-fonts-catalog.mjs");
+  names = catalog.families.map(([name]) => name);
+});
 
 const SHAPE = GOOGLE_FONT_FAMILY_RE.source;
 
@@ -97,7 +98,6 @@ describe("I-1023-FONT-SHAPE-PARITY — one family-name shape in four places", ()
 });
 
 describe("the catalogue", () => {
-  const names = catalog.families.map(([name]) => name);
 
   test("holds 1,626 eligible families (and never fewer than 1,400)", () => {
     expect(catalog.v).toBe(1);

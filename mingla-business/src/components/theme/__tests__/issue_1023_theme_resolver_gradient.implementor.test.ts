@@ -9,7 +9,7 @@
  * go red), dropping the first-stop check in color2FromColumn, or the motion
  * players going back to buildThemeMotionPalette(color).
  */
-import { readFileSync } from "fs";
+import { readFile } from "fs/promises";
 import path from "path";
 import { describe, expect, test } from "@jest/globals";
 
@@ -31,7 +31,7 @@ import {
 } from "../../../../../packages/offering-rendering/themePalette";
 
 const REPO = path.resolve(__dirname, "../../../../..");
-const read = (rel: string): string => readFileSync(path.join(REPO, rel), "utf8");
+const read = (rel: string): Promise<string> => readFile(path.join(REPO, rel), "utf8");
 
 describe("I-1023-GRADIENT-ONE-UNIT — the six precedence rows", () => {
   test("solid offering over a gradient brand = solid", () => {
@@ -104,12 +104,12 @@ describe("motion takes the gradient's second colour", () => {
     const solidOverBerry = resolveTheme({ color: "#e8508f", color2: "#7c5cff" }, { color: "#ff5a5f" });
     expect(buildThemeMotionPalette(solidOverBerry.color, solidOverBerry.color2).key).toBe("#ff5a5f");
   });
-  test("both players pass theme.color2 into the palette", () => {
+  test("both players pass theme.color2 into the palette", async () => {
     for (const file of [
       "packages/offering-rendering/ThemeEntranceAnimation.tsx",
       "packages/offering-rendering/ThemeEntranceAnimationWebImpl.tsx",
     ]) {
-      const src = read(file);
+      const src = await read(file);
       expect(src).toContain("color2={theme.color2 ?? null}");
       expect(src).toContain("buildThemeMotionPalette(color, color2)");
     }
@@ -132,22 +132,22 @@ describe("#1024 — small accent text is lightened, fills keep the colour", () =
     const palette = createThemePalette(resolveTheme({ color: "#111827" }, null));
     expect(themeTextAccent(palette)).toBe(palette.accent);
   });
-  test("the eleven small-text places use the text accent; fills still use palette.accent", () => {
-    const event = read("packages/offering-rendering/PublicEventPage.tsx");
+  test("the eleven small-text places use the text accent; fills still use palette.accent", async () => {
+    const event = await read("packages/offering-rendering/PublicEventPage.tsx");
     for (const style of ["showAllLabel", "brandCta", "aboutToggle"]) {
       expect(event).toContain(`styles.${style}, { color: themeTextAccent(palette) }`);
     }
     expect(event).toContain("{ color: themeTextAccent(palette), fontFamily: theme.fontFamilyValue }");
     expect(event).toContain("styles.brandTile, { backgroundColor: palette.accent }");
-    const brand = read("packages/brand-rendering/PublicBrandPage.tsx");
+    const brand = await read("packages/brand-rendering/PublicBrandPage.tsx");
     for (const style of ["verifiedBadge", "eventTypeLabel", "oCardDate", "readMore"]) {
       expect(brand).toContain(`styles.${style}, { color: themeTextAccent(palette) }`);
     }
     expect(brand).toContain("styles.buyPill, { backgroundColor: palette.accent }");
-    expect(read("packages/offering-rendering/EventOfferingBody.tsx")).toContain(
+    expect(await read("packages/offering-rendering/EventOfferingBody.tsx")).toContain(
       "styles.acquisitionEyebrow, { color: themeTextAccent(palette) }",
     );
-    const exp = read("packages/offering-rendering/ExperienceOfferingBody.tsx");
+    const exp = await read("packages/offering-rendering/ExperienceOfferingBody.tsx");
     expect(exp).toContain("styles.eyebrowLead, { color: themeTextAccent(palette) }");
     expect(exp).toContain("styles.saleAvailability, { color: themeTextAccent(palette) }");
   });

@@ -386,7 +386,8 @@ export function phase3dContractDigest(manifest) {
 // #4294: re-sealed after merging origin/main (#4303 and #4296 rows kept beside the #4294 rows).
 // #4273: register the buyer/follower auto opt-in, honest-quote and account-opt-out migrations and their proofs.
 // #4270: register the brand plan migrations (20280427004270-20280427024270) and their proofs the same way.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "3f3426158428e1991fcd094216eab8dda59134e1ed2337aa78180b6afd1991fd";
+// #1023: register the theme migrations (20280430001023, 20280430011023) and their proofs; skip wave 2 in the #1931/#2117 replays.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "06de67410ba72f6777b3c5b2aae3e1691440cd825fde1423a2f0ce3cbae2ec94";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
@@ -879,11 +880,14 @@ const PHASE3C_WRAPPER_SET = new Set(PHASE3C_WRAPPER_NAMES);
 // the door, and its lockfile entries. app-mobile is unchanged.
 // [TEST-MOD-APPROVED #4271] Re-banked after Host declared expo-brightness, so the
 // door pay code screen can reach full brightness. app-mobile is unchanged.
+// #1023 (wave 1) — re-banked after Host declared lottie-web 5.12.2 (exact pin),
+// the web player for the theme entrance motion, and its lockfile entries.
+// app-mobile is unchanged.
 export const PACKAGE_AUTHORITY_DIGESTS = Object.freeze({
   "app-mobile/package.json": "48af9d0cca47199b61b824a4fd80b87ec7e5bb12f07899994435031238834bbb",
   "app-mobile/package-lock.json": "9a7974a2de124482f7d450d46b49775126ef5206a325dcb6c7663ea3b9666065",
-  "mingla-business/package.json": "908439c00e8d25bc67db9cd181cfae5848ac6b7ee6f167057304b86a6a8c561a",
-  "mingla-business/package-lock.json": "8341e8aca8d2f6b17de51e57dd837ec45ec155fb8b4a1f3177a61d19c3b6b891",
+  "mingla-business/package.json": "dd0a4f5b3c115aa06a13deb9ea8714671df5230ad166d052160b550eb324e931",
+  "mingla-business/package-lock.json": "dc1cec4dd9bdfaa2b89cd0e48e0fedff8886ceb50f750aeeb21fb9093e605916",
 });
 // [#2439 SC-11.5] The seven Phase 3C records that hold a provider record and
 // transition retained-live-provider -> batched-provider at cutover. The other
