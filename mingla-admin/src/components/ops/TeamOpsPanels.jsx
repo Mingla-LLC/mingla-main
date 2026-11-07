@@ -100,7 +100,8 @@ function SprintPanel({ sprint, hostsWithoutOwner }) {
               <tr className="text-[11px] uppercase tracking-wide text-[var(--color-text-tertiary)]">
                 <th scope="col" className="w-[34%] py-1 font-semibold">Person</th>
                 <th scope="col" className="py-1 font-semibold">Open</th>
-                <th scope="col" className="py-1 font-semibold">Needs a person</th>
+                <th scope="col" className="py-1 font-semibold">Needs your OK</th>
+                <th scope="col" className="py-1 font-semibold">Overdue</th>
                 <th scope="col" className="py-1 font-semibold">Agent closed</th>
                 <th scope="col" className="py-1 font-semibold">Carried</th>
               </tr>
@@ -111,7 +112,8 @@ function SprintPanel({ sprint, hostsWithoutOwner }) {
                 <tr>
                   <th scope="row" className="break-words py-1.5 font-medium text-[var(--color-text-primary)]">{p.name}{sameName(p, people) && <span className="sr-only"> ({p.email})</span>}</th>
                   <td className="py-1.5 tabular-nums">{p.open}</td>
-                  <td className="py-1.5 tabular-nums">{p.needs_person}</td>
+                  <td className="py-1.5 tabular-nums">{p.needs_ok ?? p.needs_person}</td>
+                  <td className="py-1.5 tabular-nums">{p.overdue ?? "—"}</td>
                   <td className="py-1.5 tabular-nums">{p.closed_by_agent}</td>
                   <td className="py-1.5 tabular-nums">{p.carried}</td>
                 </tr>

@@ -243,7 +243,7 @@ begin
   v_card := pg_temp.t3980w2r2_bridge_d(7811, '39860000-0000-4000-c100-000000000011', 'H2 hosts see payouts sooner');
   v_draft := pg_temp.t3980w2r2_draft(7811);
   perform pg_temp.t3980w2r2_check('H1', 'Bridge D drafted the card and its approval card',
-    (v_draft is not null)::text || ':' || coalesce((select status || ':' || person_reason from public.ops_work_cards where id = v_card), '<none>'), 'true:person:publish');
+    (v_draft is not null)::text || ':' || coalesce((select status || ':' || person_reason from public.ops_work_cards where id = v_card), '<none>'), 'true:todo:publish'); -- #4270: tagged in To do
   v := pg_temp.t3980w2r2_person('owner', 'select public.ops_review_list(null)::text');
   perform pg_temp.t3980w2r2_check('H1', 'To review lists it with auto_kind roadmap_shipped and the drafted roadmap card linked',
     (select c->>'auto_kind' || ':' || (c->'links' @> jsonb_build_array(jsonb_build_object('kind', 'roadmap_card', 'id', v_draft)))::text
@@ -290,7 +290,7 @@ begin
   v_d1 := pg_temp.t3980w2r2_draft(7812);
   v_d2 := pg_temp.t3980w2r2_draft(7813);
   perform pg_temp.t3980w2r2_check('H3', 'two approval cards wait for a person',
-    (select string_agg(status, ',' order by auto_key) from public.ops_work_cards where id in (v_archived, v_published)), 'person,person');
+    (select string_agg(status, ',' order by auto_key) from public.ops_work_cards where id in (v_archived, v_published)), 'todo,todo'); -- #4270: tagged in To do
   v := pg_temp.t3980w2r2_person('owner', format($q$select public.community_upsert_roadmap_card(%L, 'H3 not needed after all', 'Now live: x.', null, 'shipped', 'archived')::text$q$, v_d1));
   v := pg_temp.t3980w2r2_person('owner', format($q$select public.community_upsert_roadmap_card(%L, 'H3 hosts get the new thing', 'Now live: the new thing.', null, 'shipped', 'published')::text$q$, v_d2));
   v := pg_temp.t3980w2r2_reconcile();

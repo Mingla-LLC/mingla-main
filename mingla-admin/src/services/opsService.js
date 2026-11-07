@@ -4,6 +4,7 @@
 // can word.
 import { supabase } from "../lib/supabase";
 import { parseServerError } from "../lib/crmModel";
+import { readPersonAsTodo } from "../lib/opsModel";
 
 export class OpsError extends Error {
   constructor({ token, message, detail, fixes }) {
@@ -40,7 +41,9 @@ async function call(run) {
     const parsed = parseServerError(result.error);
     throw new OpsError({ ...parsed, fixes: fixesFrom(parsed.detail) });
   }
-  return result.data;
+  // #4270 rework (P3-5): any card the server still marks with the retired
+  // status person is read as To do with its tag, so the board never hides it.
+  return readPersonAsTodo(result.data);
 }
 
 export const fetchOpsConfig = (today) => call(() => supabase.rpc("ops_config", { p_today: today || null }));
@@ -79,10 +82,19 @@ export const fetchRunwayReport = (from, to, today) =>
   call(() => supabase.rpc("ops_runway_report", { p_from: from || null, p_to: to || null, p_today: today || null }));
 export const fetchAnchorDetail = (kind, id, today) =>
   call(() => supabase.rpc("ops_anchor_detail", { p_kind: kind, p_id: id, p_today: today || null }));
-export const fetchHostOnMingla = (recordId, today) =>
-  call(() => supabase.rpc("ops_host_on_mingla", { p_record_id: recordId, p_today: today || null }));
+export const fetchHostOnMingla = (recordId, today, tz) =>
+  call(() => supabase.rpc("ops_host_on_mingla", { p_record_id: recordId, p_today: today || null, p_tz: tz || null }));
 export const setExpectedEvent = (item, requestKey) =>
   call(() => supabase.rpc("ops_expected_event_set", { p_item: item, p_request_key: requestKey }));
+// #4270 W2: the host card for a brand, for the Brand group header's host avatar.
+export const fetchBrandHostRecord = (brandId) => call(() => supabase.rpc("ops_brand_host_record", { p_brand_id: brandId }));
+// #4270 W3: the brand plan on a host card, adding to it, and its links.
+export const fetchBrandPlan = (recordId, from, to, today) =>
+  call(() => supabase.rpc("ops_brand_plan", { p_record_id: recordId, p_from: from, p_to: to, p_today: today || null }));
+export const addBrandPlanItem = (recordId, item, requestKey) =>
+  call(() => supabase.rpc("ops_brand_plan_add", { p_record_id: recordId, p_item: item, p_request_key: requestKey }));
+export const setBrandPlanLink = (kind, id, link, revision) =>
+  call(() => supabase.rpc("ops_brand_plan_set_link", { p_kind: kind, p_id: id, p_link: link || null, p_expected_revision: revision }));
 
 // Wave 3 — the launch kit, the giveaway and ads rule, the Team dashboard and
 // turning next steps into cards (owner only).

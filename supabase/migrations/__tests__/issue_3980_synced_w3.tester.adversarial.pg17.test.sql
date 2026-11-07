@@ -34,6 +34,8 @@
 
 \set ON_ERROR_STOP on
 begin;
+-- #4270 W2 (D16): a promised event is made the way it was before; see the fixture.
+\ir issue_4270_promised_event_before_d16.fixture.sql
 
 alter table auth.users add column if not exists email_confirmed_at timestamptz;
 alter table auth.users add column if not exists phone text;
@@ -238,7 +240,7 @@ begin
   perform pg_temp.w3t_check('T-OFF', 'a brand made after an earlier switch-on is not linked or carded while brand cards are off',
     (select count(*) from public.crm_records where brand_id = '39870000-0000-4000-b400-000000000099')::text
       || '/' || coalesce(v_res->>'brand_autolink', 'null'), '0/null');
-  v := pg_temp.w3t_person('growth', format('select public.ops_expected_event_set(%L::jsonb, %L)::text',
+  v := pg_temp.w3t_person('growth', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text',
     jsonb_build_object('record_id', '39870000-0000-4000-c100-000000000004', 'title', 'W3T Off Promise', 'event_type', 'event',
                        'expected_on', v_today + 60), 'w3t-off-promise-1'));
   perform pg_temp.w3t_check('T-OFF', 'a person saving a promise while off makes no step', (pg_temp.w3t_j(v)->>'status') || '/' || coalesce(pg_temp.w3t_j(v)->>'steps', 'null') || '/' || pg_temp.w3t_auto_count(), 'created/null/0');
@@ -303,7 +305,7 @@ begin
   perform pg_temp.w3t_check('T-REDATE', 'the public event has its giveaway card',
     split_part(pg_temp.w3t_card('promo:event:' || pg_temp.w3t_id('s_promo')), '/', 1), '1');
   update public.ops_work_cards set status = 'doing', started_at = now() where auto_key = 'golive:event:' || pg_temp.w3t_id('s_doing');
-  update public.ops_work_cards set status = 'person', person_reason = 'other' where auto_key = 'golive:event:' || pg_temp.w3t_id('s_person');
+  update public.ops_work_cards set status = 'todo', person_reason = 'other' where auto_key = 'golive:event:' || pg_temp.w3t_id('s_person'); -- #4270: tagged in To do
   update public.ops_work_cards set blocked = true, blocked_kind = 'manual', blocked_reason = 'Held by a person'
    where auto_key = 'golive:event:' || pg_temp.w3t_id('s_blocked');
   update public.ops_work_cards set status = 'done', close_kind = 'done', closed_at = now(), closed_by = 'ada.w3t3980@test.local', close_reason = 'Done by hand'
@@ -323,7 +325,7 @@ begin
         || to_char(v_today + split_part(k, ':', 2)::integer - 28, 'FMDD Mon'));
   end loop;
   perform pg_temp.w3t_check('T-REDATE', 'the person card is still waiting for a person after the re-date',
-    (select status || '/' || person_reason from public.ops_work_cards where auto_key = 'golive:event:' || pg_temp.w3t_id('s_person')), 'person/other');
+    (select status || '/' || person_reason from public.ops_work_cards where auto_key = 'golive:event:' || pg_temp.w3t_id('s_person')), 'todo/other'); -- #4270: tagged in To do
   perform pg_temp.w3t_check('T-REDATE', 'the blocked card is still blocked after the re-date',
     (select blocked::text || '/' || blocked_kind from public.ops_work_cards where auto_key = 'golive:event:' || pg_temp.w3t_id('s_blocked')), 'true/manual');
   perform pg_temp.w3t_check('T-REDATE', 'a card a person closed is never re-dated',
@@ -398,7 +400,7 @@ begin
   perform pg_temp.w3t_check('T-REPEAT', 'the count is kept between 1 and 12',
     jsonb_array_length(public.ops_expected_occurrences(x, '2027-01-01', 0))::text || '/' || jsonb_array_length(public.ops_expected_occurrences(x, '2027-01-01', 500))::text, '1/12');
   -- The host stops the series: its rolling card closes.
-  perform pg_temp.w3t_person('growth', format('select public.ops_expected_event_set(%L::jsonb, %L)::text',
+  perform pg_temp.w3t_person('growth', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text',
     jsonb_build_object('record_id', '39870000-0000-4000-c100-000000000002', 'id', '39870000-0000-4000-d100-000000000001', 'status', 'cancelled',
                        'cancel_reason', 'The supper club stopped'), 'w3t-series-stop-1'));
   perform pg_temp.w3t_check('T-REPEAT', 'cancelling the series closes its one rolling card',
@@ -412,7 +414,7 @@ $repeat$;
 do $promo$
 declare v_today date := pg_temp.w3t_id('today')::date; v text; j jsonb; v_id text; v_late text;
 begin
-  v := pg_temp.w3t_person('growth', format('select public.ops_expected_event_set(%L::jsonb, %L)::text',
+  v := pg_temp.w3t_person('growth', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text',
     jsonb_build_object('record_id', '39870000-0000-4000-c100-000000000003', 'title', 'W3T December Menu', 'event_type', 'promo_moment',
                        'expected_on', v_today + 40), 'w3t-promo-1'));
   v_id := pg_temp.w3t_j(v)->'expected'->>'id';
@@ -425,7 +427,7 @@ begin
   j := pg_temp.w3t_j(pg_temp.w3t_person('growth', format('select public.ops_calendar(%L, %L, %L)::text', v_today, v_today + 60, v_today)));
   perform pg_temp.w3t_check('T-PROMO', 'the Calendar shows it with the same state as an event',
     (select (e->>'promo_moment') || '/' || (e->'state'->>'k') from jsonb_array_elements(j->'expected') e where e->>'id' = v_id), 'true/notlive');
-  v := pg_temp.w3t_person('growth', format('select public.ops_expected_event_set(%L::jsonb, %L)::text',
+  v := pg_temp.w3t_person('growth', format('select pg_temp.t4270_promise(%L::jsonb, %L)::text',
     jsonb_build_object('record_id', '39870000-0000-4000-c100-000000000003', 'title', 'W3T Late Brunch', 'event_type', 'promo_moment',
                        'expected_on', v_today + 15), 'w3t-promo-2'));
   v_late := pg_temp.w3t_j(v)->'expected'->>'id';
@@ -605,14 +607,15 @@ $x3$;
 do $att$
 declare v_today date := pg_temp.w3t_id('today')::date; j jsonb; j2 jsonb; g text; v_card uuid; v_person uuid; v_done uuid;
 begin
-  -- An ownerless card waiting for a person (not "no owner": Needs you is its owner),
+  -- An ownerless card waiting for a person (#4270, D1: a tagged To do card
+  -- with no owner shows "No owner"),
   -- an overdue card a person closed, and an overdue open card.
   select id into v_person from public.ops_work_cards where auto_key = 'ask:39870000-0000-4000-c100-000000000004' and status <> 'done';
   if v_person is null then
     select id into v_person from public.ops_work_cards where status <> 'done' and archived_at is null
        and not exists (select 1 from public.ops_work_people p where p.card_id = ops_work_cards.id and p.role = 'owner') limit 1;
   end if;
-  update public.ops_work_cards set status = 'person', person_reason = 'other' where id = v_person;
+  update public.ops_work_cards set status = 'todo', person_reason = 'other' where id = v_person;
   select id into v_done from public.ops_work_cards where status = 'done' and archived_at is null limit 1;
   update public.ops_work_cards set due_on = v_today - 9 where id = v_done;
   select id into v_card from public.ops_work_cards where auto_key like 'series:%' or (status = 'todo' and archived_at is null) order by status = 'todo' desc limit 1;
@@ -622,8 +625,8 @@ begin
     perform pg_temp.w3t_check('T-ATT', g || ' counts exactly what it lists', j->'counts'->>g, jsonb_array_length(j->'groups'->g)::text);
   end loop;
   perform pg_temp.w3t_check('T-ATT', 'the total is the sum of the lists', j->>'total', (select sum(jsonb_array_length(value))::text from jsonb_each(j->'groups')));
-  perform pg_temp.w3t_check('T-ATT', 'a card waiting for a person is never listed as having no owner',
-    (select count(*) from jsonb_array_elements(j->'groups'->'noowner') i where i->>'id' = v_person::text)::text, '0');
+  perform pg_temp.w3t_check('T-ATT', 'a tagged card with no owner is listed as having no owner (#4270, D1)',
+    (select count(*) from jsonb_array_elements(j->'groups'->'noowner') i where i->>'id' = v_person::text)::text, '1');
   perform pg_temp.w3t_check('T-ATT', 'a closed card is never overdue',
     (select count(*) from jsonb_array_elements(j->'groups'->'overdue') i where i->>'id' = v_done::text)::text, '0');
   perform pg_temp.w3t_check('T-ATT', 'the engineering follow-through cards are listed under Engineering',

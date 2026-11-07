@@ -108,7 +108,8 @@ declare v_id uuid; v_today date := (now() AT TIME ZONE 'UTC')::date;
 begin
   insert into public.ops_work_cards (title, instructions, done_means, status, person_reason, due_on, due_source, sprint_id,
     created_by, created_at, updated_by, updated_at, closed_at, closed_by, close_kind, auto_key, archived_at, archived_by, archive_reason)
-  values (p_title, 'Do this task carefully and say what changed.', 'It is done and checked.', p_status,
+  -- #4270: "person" in a fixture is a To do card with the Send tag.
+  values (p_title, 'Do this task carefully and say what changed.', 'It is done and checked.', case when p_status = 'person' then 'todo' else p_status end,
     case when p_status = 'person' then 'send' end, v_today + p_due_days, 'explicit', public.ops_sprint_ensure(v_today + p_due_days),
     coalesce(p_owner, 'oona.w4130@test.local'), now() - p_created, coalesce(p_owner, 'oona.w4130@test.local'), now() - coalesce(p_updated, p_created),
     case when p_status = 'done' then now() - p_closed end, case when p_status = 'done' then coalesce(p_owner, 'oona.w4130@test.local') end,

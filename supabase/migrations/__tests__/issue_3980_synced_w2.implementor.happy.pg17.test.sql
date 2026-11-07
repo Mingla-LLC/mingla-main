@@ -445,7 +445,7 @@ begin
     (select title || ' | ' || status || ':' || person_reason from public.ops_work_cards where id = v_card)
       || ' | ' || (select string_agg(email || ':' || role, ',') from public.ops_work_people where card_id = v_card)
       || ' | ' || (select string_agg(kind || ':' || label, ',') from public.ops_work_links where card_id = v_card),
-    'Approve "Recently shipped": W2 Better host payouts | person:publish | ed.w23980@test.local:owner | roadmap_card:W2 Better host payouts');
+    'Approve "Recently shipped": W2 Better host payouts | todo:publish | ed.w23980@test.local:owner | roadmap_card:W2 Better host payouts');
   v := pg_temp.t3980w2_as('service', 'select public.ops_reconcile()::text');
   perform pg_temp.t3980w2_check('B4', 'never twice, across runs',
     (select count(*)::text from public.community_audit_log where action = 'draft_roadmap_card' and metadata->>'issue' = '5301')

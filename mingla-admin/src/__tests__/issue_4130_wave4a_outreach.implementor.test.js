@@ -91,14 +91,17 @@ describe("#4130 W4A-1: the Dashboard", () => {
         { service_key: "mapbox", display_name: "Mapbox", alert_state: "ok", layers: { a: { status: "healthy" } } },
       ] } },
       queue: { status: "error", error: new Error("Could not find the function public.admin_get_queue_health") },
-      work: { status: "ready", data: { cards: 5 } },
+      work: { status: "ready", data: { dueToday: 5, overdue: 0 } },
       summary: { status: "ready", data: { support: { waiting_first_reply: 2 }, inbound: { days_since_last: 53 } } },
     });
     const ids = items.map((i) => i.id);
     assert.deepEqual(ids.slice(0, 3).sort(), ["health-stripe", "money-late", "money-never"].sort());
     assert.ok(ids.includes("health-twilio") && !ids.includes("health-mapbox"));
     assert.ok(ids.includes("queue-not-set-up"), "a missing queue function is a setup gap, not an outage");
-    assert.ok(ids.includes("work-waiting") && ids.includes("support-waiting") && ids.includes("inbound-quiet"));
+    // #4270: the Work item is what is due today for you.
+    assert.ok(ids.includes("work-due") && ids.includes("support-waiting") && ids.includes("inbound-quiet"));
+    assert.match(items.find((i) => i.id === "work-due").title, /^5 Work cards due today for you$/);
+    assert.equal(items.find((i) => i.id === "work-due").detail, "0 overdue");
     assert.match(items.find((i) => i.id === "money-late").title, /^1 payout is late on Mingla$/);
     assert.match(items.find((i) => i.id === "inbound-quiet").title, /53 days/);
     const ranks = items.map((i) => ({ error: 0, bad: 1, warn: 2 })[i.tone]);

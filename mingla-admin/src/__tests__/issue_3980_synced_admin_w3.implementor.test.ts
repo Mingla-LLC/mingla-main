@@ -222,16 +222,17 @@ Deno.test("#3980 W3 R6: the four plain states and their words", () => {
 Deno.test("#3980 W3 R7: Work's columns, its card badges, and the tabs never stacked", () => {
   const today = "2026-10-21";
   const cards = [
-    { id: "1", status: "person", owners: [] },
+    { id: "1", status: "todo", person_reason: "send", owners: [], due_on: "2026-10-25" }, // #4270: tagged in To do
     { id: "2", status: "todo", owners: [], due_on: "2026-10-18" },
     { id: "3", status: "doing", owners: [{ email: "a@x.test" }], working: { last_update_at: "2026-10-10T00:00:00Z" } },
     { id: "4", status: "done", closed_at: "2026-10-20T10:00:00Z", owners: [] },
     { id: "5", status: "done", closed_at: "2026-10-12T10:00:00Z", owners: [] },
   ];
-  assertEquals(columnCards(cards, "person", today).map((c) => c.id), ["1"]);
-  assertEquals(columnCards(cards, "done", today).map((c) => c.id), ["4"], "done this week only");
+  assertEquals(columnCards(cards, "todo", today).map((c) => c.id), ["2", "1"], "late first, then by due date");
+  // #4270 rework (P3-3): the server sends only this week's done cards; the board does not cut them again.
+  assertEquals(columnCards(cards, "done", today).map((c) => c.id), ["4", "5"], "Done is what the server sent, latest closed first");
   const now = Date.parse("2026-10-21T12:00:00Z");
-  assertEquals(cardReasons(cards[0], now), [], "a card that needs a person is not flagged for its owner");
+  assertEquals(cardReasons(cards[0], now), ["No owner"], "#4270 (D1): a tagged card with no owner shows No owner");
   assertEquals(cardReasons(cards[1], now), ["No owner", "Overdue 3d"]);
   assertEquals(cardReasons(cards[2], now), ["No update for 11d"]);
   const page = code("pages/WorkBoardPage.jsx");
@@ -245,8 +246,10 @@ Deno.test("#3980 W3 R7: Work's columns, its card badges, and the tabs never stac
   assertEquals((page.match(/<NeedsAttention |<AgentActivity /g) || []).length, 0);
   assertEquals((page.match(/<WorkColumns /g) || []).length, 1);
   const columns = code("components/ops/WorkColumns.jsx");
-  assertMatch(columns, /gridAutoFlow: "column", gridAutoColumns: "minmax\(220px, 1fr\)"/);
-  assertMatch(columns, /overflow-x-auto/);
+  // #4270: three columns share the width from 768px; phones get tabs; nothing scrolls sideways.
+  assertMatch(columns, /grid min-w-0 grid-cols-1 gap-2 md:grid-cols-3/);
+  assertMatch(columns, /role="tablist" aria-label="Column"/);
+  assertNotMatch(columns, /overflow-x-auto|gridAutoFlow/);
   assertMatch(columns, /Nothing here\./);
   assertMatch(columns, /from the timeline/);
   assertMatch(code("components/ops/WorkCardDrawer.jsx"), /<Drawer open onClose=\{onClose\}/);

@@ -27,7 +27,7 @@ export interface BrandGroupMessage {
   sender_role: string | null;
   reply_content: string | null;
   reply_sender_display_name: string | null;
-  message_type: "text" | "image" | "video" | "file" | "brand_enquiry_card";
+  message_type: "text" | "image" | "video" | "file" | "brand_enquiry_card" | "system";
   file_id: string | null;
   file_name: string | null;
   file_size: number | null;

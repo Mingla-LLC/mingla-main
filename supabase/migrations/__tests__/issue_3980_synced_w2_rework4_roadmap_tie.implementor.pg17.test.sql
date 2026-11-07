@@ -346,21 +346,21 @@ begin
 
   -- T1: the tie is what Bridge D recorded, not the card's links (a person may edit them).
   v_c1 := pg_temp.t3980w2r4i_bridge_d(7951, '39882000-0000-4000-c100-000000000051', 'T1 hosts see the new report');
-  perform pg_temp.t3980w2r4i_check('T1', 'the approval card waits for a person', pg_temp.t3980w2r4i_state(v_c1), 'person:-:-');
+  perform pg_temp.t3980w2r4i_check('T1', 'the approval card waits for a person', pg_temp.t3980w2r4i_state(v_c1), 'todo:-:-'); -- #4270: tagged in To do
   perform pg_temp.t3980w2r4i_check('T1', 'the tie names the draft Bridge D recorded',
     (select public.ops_roadmap_shipped_draft(auto_key)::text from public.ops_work_cards where id = v_c1), pg_temp.t3980w2r4i_draft(7951)::text);
   v := pg_temp.t3980w2r4i_person('owner', format($q$select public.ops_work_update(%L, %L::jsonb, %s)::text$q$, v_c1,
          jsonb_build_object('links', jsonb_build_array(jsonb_build_object('kind', 'roadmap_card', 'id', v_pub))), pg_temp.t3980w2r4i_rev(v_c1::text)));
   perform pg_temp.t3980w2r4i_check('T1', 'a person can swap the link', pg_temp.t3980w2r4i_links(v_c1), 'roadmap_card:' || v_pub);
   perform pg_temp.t3980w2r4i_bridges();
-  perform pg_temp.t3980w2r4i_check('T1', 'after a swap to a published card and housekeeping, the card is still open', pg_temp.t3980w2r4i_state(v_c1), 'person:-:-');
+  perform pg_temp.t3980w2r4i_check('T1', 'after a swap to a published card and housekeeping, the card is still open', pg_temp.t3980w2r4i_state(v_c1), 'todo:-:-'); -- #4270: tagged in To do
   perform pg_temp.t3980w2r4i_check('T1', 'the unreviewed draft is still a draft',
     (select status from public.community_roadmap_cards where id = pg_temp.t3980w2r4i_draft(7951)), 'draft');
   v := pg_temp.t3980w2r4i_person('owner', format($q$select public.ops_work_update(%L, %L::jsonb, %s)::text$q$, v_c1,
          jsonb_build_object('links', jsonb_build_array(jsonb_build_object('kind', 'roadmap_card', 'id', v_pub),
            jsonb_build_object('kind', 'roadmap_card', 'id', pg_temp.t3980w2r4i_draft(7951)))), pg_temp.t3980w2r4i_rev(v_c1::text)));
   perform pg_temp.t3980w2r4i_bridges();
-  perform pg_temp.t3980w2r4i_check('T1', 'with its own draft and a published card linked, housekeeping still keeps it open', pg_temp.t3980w2r4i_state(v_c1), 'person:-:-');
+  perform pg_temp.t3980w2r4i_check('T1', 'with its own draft and a published card linked, housekeeping still keeps it open', pg_temp.t3980w2r4i_state(v_c1), 'todo:-:-'); -- #4270: tagged in To do
   perform pg_temp.t3980w2r4i_check('T1', 'a card made by hand never gets a draft tie',
     (select public.ops_roadmap_shipped_draft(null)::text), null);
   perform pg_temp.t3980w2r4i_check('T1', 'a key of another kind never gets a draft tie',
@@ -371,7 +371,7 @@ begin
   v := pg_temp.t3980w2r4i_person('owner', format($q$select public.ops_work_update(%L, '{"links":[]}'::jsonb, %s)::text$q$, v_c2, pg_temp.t3980w2r4i_rev(v_c2::text)));
   perform pg_temp.t3980w2r4i_check('T2', 'a person removed the link', pg_temp.t3980w2r4i_links(v_c2), '-');
   perform pg_temp.t3980w2r4i_bridges();
-  perform pg_temp.t3980w2r4i_check('T2', 'the draft is not published yet, so the card stays open', pg_temp.t3980w2r4i_state(v_c2), 'person:-:-');
+  perform pg_temp.t3980w2r4i_check('T2', 'the draft is not published yet, so the card stays open', pg_temp.t3980w2r4i_state(v_c2), 'todo:-:-'); -- #4270: tagged in To do
   update public.community_roadmap_cards set status = 'published' where id = pg_temp.t3980w2r4i_draft(7952);
   perform pg_temp.t3980w2r4i_bridges();
   perform pg_temp.t3980w2r4i_check('T2', 'a person published the draft; housekeeping closes the card with no link left',
@@ -414,7 +414,7 @@ begin
     (select coalesce(string_agg(number::text, ','), '-') from public.ops_work_github where card_id = v_c4) || ':' ||
     (select blocked::text from public.ops_work_cards where id = v_c4), '7954:false');
   perform pg_temp.t3980w2r4i_bridges();
-  perform pg_temp.t3980w2r4i_check('T3', 'housekeeping keeps the unreviewed card open', pg_temp.t3980w2r4i_state(v_c4), 'person:-:-');
+  perform pg_temp.t3980w2r4i_check('T3', 'housekeeping keeps the unreviewed card open', pg_temp.t3980w2r4i_state(v_c4), 'todo:-:-'); -- #4270: tagged in To do
 
   -- T4: start_work is a person's on this card, in every status.
   v := pg_temp.t3980w2r4i_mcp('owner', 'start_work', jsonb_build_object('id', v_c4, 'expected_revision', pg_temp.t3980w2r4i_rev(v_c4::text)));
@@ -480,7 +480,7 @@ begin
   perform pg_temp.t3980w2r4i_like('T5', 'an agent cannot create such a card', v, 'ERR:42501:people_only:%');
   perform pg_temp.t3980w2r4i_check('T5', 'after every raw agent write the card is as it was',
     (select status || ':' || coalesce(person_reason, '-') || ':' || coalesce(auto_key, '-') || ':' || blocked::text || ':' || coalesce(working_by, '-') || ':' || (archived_at is null)::text || ':' || revision::text
-       from public.ops_work_cards where id = v_c5), 'person:publish:roadmap_shipped:issue-7955:false:-:true:' || v_rev);
+       from public.ops_work_cards where id = v_c5), 'todo:publish:roadmap_shipped:issue-7955:false:-:true:' || v_rev);
   perform pg_temp.t3980w2r4i_check('T5', 'and its links and GitHub links too',
     pg_temp.t3980w2r4i_links(v_c5) || '|' || (select coalesce(string_agg(number::text, ','), '-') from public.ops_work_github where card_id = v_c5),
     'roadmap_card:' || pg_temp.t3980w2r4i_draft(7955) || '|7955');
