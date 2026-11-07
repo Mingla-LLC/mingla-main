@@ -6,6 +6,8 @@
 //   content           a post (ContentDrawer, the same panel as the Calendar's)
 //   event / expected  an event or a promised event (EventPanel)
 //   drafts            the message drafts of one record, or all of mine
+//   brand             a brand (BrandDrawer, the same panel as on Brands;
+//                     #4270 W7, so a Brand group's "Brand" opens beside)
 //
 // Each is drawn in a Drawer, which the PanelStack turns into a docked panel.
 // A small "Open full page" link is there for when someone really means to go.
@@ -19,6 +21,7 @@ import { EventPanel } from "../ops/EventPanel";
 import { RecordDrawer } from "../crm/RecordDrawer";
 import { ReasonPrompt } from "../crm/ReasonPrompt";
 import { ContentDrawer } from "../contentCalendar/ContentDrawer";
+import { BrandDrawer } from "../brands/BrandDrawer";
 import { DraftsPage } from "../../pages/DraftsPage";
 import { useToast } from "../../context/ToastContext";
 import { useOpsConfig } from "../../hooks/useOpsConfig";
@@ -246,6 +249,13 @@ function DraftsSide({ side, onClose }) {
   );
 }
 
+// #4270 W7: BrandDrawer loads its own board row when opened by id (row null).
+// It has no footer slot, so a page that docks it shows "Open full page"
+// itself (the Brand group panel does, in its trail bar).
+function BrandSide({ side, onClose, onChanged }) {
+  return <BrandDrawer brandId={side.id} row={null} onClose={onClose} onChanged={onChanged} />;
+}
+
 /**
  * Panel two. `onChanged(kind)` lets the page refresh what it shows after a
  * change made in the panel (a card closed, a post moved). `eventActions`
@@ -267,6 +277,8 @@ export function SidePanel({ side, onClose, onChanged, eventActions = null }) {
       return <EventSide side={side} onClose={onClose} actions={eventActions} />;
     case "drafts":
       return <DraftsSide side={side} onClose={onClose} />;
+    case "brand":
+      return <BrandSide side={side} onClose={onClose} onChanged={() => onChanged?.("brand")} />;
     default:
       return null;
   }
