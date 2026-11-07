@@ -30,6 +30,7 @@ import {
   routeToRender,
   sectionInNav,
   sectionShowsPreview,
+  showsPublishStep,
   SECTION_LABELS,
   websiteNavGroups,
   websitePath,
@@ -96,7 +97,7 @@ export default function WebsiteApp({ brandId, segments, search }: {
   const route = parseWebsitePath(brandId, segments, { part: search.part ?? null, step: search.step ?? null });
   const studioResult = STUDIO_RESULTS.has(search.studioResult as StudioReturnResult) ? (search.studioResult as StudioReturnResult) : null;
   const section: WebsiteSection = route.kind === "section" ? route.section : route.kind === "editor" ? route.section : route.kind === "setup" ? "plan" : "overview";
-  const controller = useWebsiteController(safeBrandId, studioResult, section === "publish");
+  const controller = useWebsiteController(safeBrandId, studioResult, showsPublishStep(route));
   const { canCheckAvailability, websiteAvailable } = controller;
 
   if (route.kind === "redirect") return <Redirect href={route.to as never} />;
