@@ -255,6 +255,10 @@ export const resolveProviderNeutralPaidPublishGuardCopy = (
  *     `console.error`, which is inside this function so it cannot be forgotten at a
  *     call site.
  */
+/** Issue #3645 — words for the server's paid_ticket_price_required refusal. */
+export const PAID_TICKET_PRICE_REQUIRED_COPY =
+  "A paid ticket needs a price. Set a price on each paid ticket, or mark it free.";
+
 const UNMAPPED_GUARD_TOKEN_SHAPE = /^[a-z][a-z0-9_]{2,63}$/;
 
 export const describeUnmappedPublishGuard = (
@@ -265,6 +269,11 @@ export const describeUnmappedPublishGuard = (
   // in. These two codes have plain words of their own.
   const currencyCopy = draftCurrencyRefusalCopy(s);
   if (currencyCopy !== null) return currencyCopy;
+  // Issue #3645 — the server refuses a paid ticket with no price (or one that
+  // rounds to 0). The wizard's own check normally stops this first.
+  if (/(?:^|[^a-z0-9_])paid_ticket_price_required(?:$|[^a-z0-9_])/.test(s)) {
+    return PAID_TICKET_PRICE_REQUIRED_COPY;
+  }
   // Requirement 3 — always logged, before anything is shown.
   console.error("[#2333] unmapped publish guard", s);
   if (UNMAPPED_GUARD_TOKEN_SHAPE.test(s)) {

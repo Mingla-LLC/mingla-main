@@ -13,6 +13,9 @@ import { applyHunks, definitions, REEMITS } from "./issue_3645_reemit_hunks.ts";
 
 const DIR = "supabase/migrations";
 const FIRST_3645 = "20280201003645";
+// Bundle 2b (and later) re-emits carry their own guard, whose sources are the
+// latest definitions before that migration: issue_3645_sell_publish_reemit_hunks.ts.
+const SELL_PUBLISH_TARGET = "20280428003645";
 
 function migrationFiles(): string[] {
   return [...Deno.readDirSync(DIR)]
@@ -63,7 +66,8 @@ Deno.test("#3645 every #3645 re-emit is declared (no undeclared money-function r
     for (const name of definitions(Deno.readTextFileSync(`${DIR}/${file}`)).keys()) before.add(name);
   }
   for (const file of migrationFiles().filter((f) =>
-    (f.startsWith("2028020") || f >= "20280407003645") && f.includes("_issue_3645_")
+    (f.startsWith("2028020") || (f >= "20280407003645" && f < SELL_PUBLISH_TARGET)) &&
+    f.includes("_issue_3645_")
   )) {
     for (const name of definitions(Deno.readTextFileSync(`${DIR}/${file}`)).keys()) {
       if (before.has(name)) assert(declared.has(name), `${file} re-emits ${name} without declared hunks`);

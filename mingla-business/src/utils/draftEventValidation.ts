@@ -560,7 +560,9 @@ const validateTickets = (d: DraftEvent): ValidationError[] => {
         message: `Ticket ${i + 1} needs a name.`,
       });
     }
-    if (!t.isFree && (t.priceGbp === null || t.priceGbp <= 0)) {
+    // Issue #3645 — same rule as the server: a price that rounds to 0 minor
+    // units is no price.
+    if (!t.isFree && (t.priceGbp === null || Math.round(t.priceGbp * 100) <= 0)) {
       errs.push({
         fieldKey: `tickets[${i}].price`,
         step: 4,

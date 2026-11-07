@@ -171,7 +171,8 @@
         "mingla-business/src/constants/consentDisclosure.ts",
         "mingla-business/src/payments/nativeCheckoutFlow.native.ts",
         "supabase/migrations/20280422004273_issue_4273_buyer_and_follower_auto_optin.sql",
-        "supabase/migrations/20280424004273_issue_4273_quote_judges_everyone_and_account_optouts.sql"
+        "supabase/migrations/20280424004273_issue_4273_quote_judges_everyone_and_account_optouts.sql",
+        "supabase/migrations/20280428003645_issue_3645_sell_publish_integrity.sql"
       ]
     },
     {
@@ -879,7 +880,8 @@
         "mingla-business/src/utils/ticketPriceMinimum.ts",
         "supabase/migrations/20280310003355_issue_3355_paid_tier_terms_and_minimums.sql",
         "supabase/migrations/20280311003355_issue_3355_event_seed_truth.sql",
-        "supabase/functions/_shared/payoutCountries.ts"
+        "supabase/functions/_shared/payoutCountries.ts",
+        "supabase/migrations/20280428003645_issue_3645_sell_publish_integrity.sql"
       ]
     },
     {
@@ -891,7 +893,8 @@
         "mingla-business/src/components/event/EditPublishedScreen.tsx",
         "mingla-business/src/utils/publishedEventEditGuards.ts",
         "mingla-business/src/store/liveEventStore.ts",
-        "mingla-business/src/utils/liveEventAdapter.ts"
+        "mingla-business/src/utils/liveEventAdapter.ts",
+        "supabase/migrations/20280428003645_issue_3645_sell_publish_integrity.sql"
       ]
     },
     {
