@@ -390,7 +390,9 @@ export function phase3dContractDigest(manifest) {
 // #4294: the company sign-in migration and its proof join the preserved inventories, and the
 // migration joins the pre-#1931 replay's exact-file exclusion.
 // #4294 (tester): the company sign-in tester proof joins the preserved inventories.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "f9c07ab1eff077a5f65a0ed91fb1e5b06ce7f84d4abf862cc2db1412fe80bf64";
+// #4271: register the tap buyer-name migration and its PostgreSQL proofs the same way.
+// #4271: the tap buyer-name migration joins the pre-#1931 replay's exact-file exclusion beside door pay.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "cb1746657b8899f7161538d3ebd111125d557051340ebdbb361e5d76082ecbff";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

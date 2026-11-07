@@ -1587,7 +1587,8 @@
         "supabase/functions/terminal-connection-token/function-policy.json",
         "supabase/functions/terminal-connection-token/index.ts",
         "supabase/functions/ticket-checkout-create/doorPayCheckout.ts",
-        "supabase/migrations/20280404004271_issue_4271_door_pay.sql"
+        "supabase/migrations/20280404004271_issue_4271_door_pay.sql",
+        "supabase/migrations/20280429004271_issue_4271_tap_buyer_name.sql"
       ]
     },
     {
