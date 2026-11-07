@@ -12,7 +12,6 @@ import {
   Animated,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -28,6 +27,7 @@ import {
   filterBrandGroups,
   type BrandGroupInboxFilter,
 } from "../../utils/brandGroupThreadModel";
+import { ScrollView } from "../../wrappers/SmartScrollView";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { BrandGroupTile } from "./BrandGroupTile";
@@ -197,7 +197,7 @@ export function BrandGroupInboxList({
           </Pressable>
         ) : null}
       </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips} accessibilityRole="tablist">
+      <View style={styles.chips} accessibilityRole="tablist">
         {filters.map((item) => {
           const active = filter === item.key;
           return (
@@ -214,7 +214,7 @@ export function BrandGroupInboxList({
             </Pressable>
           );
         })}
-      </ScrollView>
+      </View>
 
       {header}
 
@@ -270,7 +270,7 @@ const styles = StyleSheet.create({
   separator: { height: StyleSheet.hairlineWidth, marginLeft: spacing.md + TILE + 12, backgroundColor: brandGroupChat.hairline },
   searchWrap: { minHeight: 40, marginHorizontal: spacing.md, marginTop: spacing.sm, flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, borderRadius: 12, backgroundColor: brandGroupChat.surfaceRaised },
   search: { flex: 1, minHeight: 40, color: brandGroupChat.textPrimary, fontSize: 15, paddingVertical: 0 },
-  chips: { gap: 8, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: 8, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   chip: { minHeight: 34, justifyContent: "center", paddingHorizontal: 14, borderRadius: 17, borderWidth: 1, borderColor: brandGroupChat.hairline },
   chipActive: { borderColor: brandGroupChat.accent, backgroundColor: brandGroupChat.accentSoft },
   chipText: { color: brandGroupChat.textSecondary, fontSize: 13, fontWeight: "600" },

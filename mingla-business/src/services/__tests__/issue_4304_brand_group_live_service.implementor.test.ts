@@ -57,12 +57,16 @@ describe("#4304 brandGroupLiveService", () => {
     await expect(addBrandGroupReaction({ messageId: "m1", userId: "me", emoji: "🔥" })).resolves.toMatchObject({ id: "r9" });
     expect(calls[0]).toEqual({ table: "direct_message_reactions", op: "insert", args: [{ message_id: "m1", user_id: "me", emoji: "🔥" }] });
     calls.length = 0;
-    nextResult = { data: null, error: null };
+    nextResult = { data: [{ id: "r9" }], error: null };
     await removeBrandGroupReaction("r9");
     expect(calls).toEqual([
       { table: "direct_message_reactions", op: "delete", args: [] },
       { table: "direct_message_reactions", op: "eq", args: ["id", "r9"] },
+      { table: "direct_message_reactions", op: "select", args: ["id"] },
     ]);
+    // Zero rows deleted is an error, not a silent success.
+    nextResult = { data: [], error: null };
+    await expect(removeBrandGroupReaction("r9")).rejects.toThrow("already removed");
   });
 
   test("errors surface instead of returning empty state", async () => {

@@ -737,11 +737,9 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
       testID="brand-group-thread"
     >
       <View style={styles.header}>
-        {!embedded ? (
-          <Pressable accessibilityRole="button" accessibilityLabel="Back to Messages" onPress={() => router.back()} style={styles.iconButton} hitSlop={6}>
-            <Icon name="arrowL" size={20} color={brandGroupChat.textPrimary} />
-          </Pressable>
-        ) : null}
+        <Pressable accessibilityRole="button" accessibilityLabel="Back to Messages" onPress={() => router.back()} style={styles.iconButton} hitSlop={6}>
+          <Icon name="arrowL" size={20} color={brandGroupChat.textPrimary} />
+        </Pressable>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`${group?.brand_name || "Brand group"}, ${memberCount} teammates, tap to see people`}

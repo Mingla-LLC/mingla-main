@@ -1,5 +1,5 @@
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 
 import { SafeScreen } from "../../src/components/ui/SafeScreen";
@@ -75,11 +75,11 @@ export default function MessagesIndexRoute(): React.ReactElement {
       {isWideDesktop ? (
         <View style={styles.desktop}>
           <View style={styles.desktopList}>{list}</View>
-          <View style={styles.desktopEmpty}>
+          <ScrollView style={styles.desktopEmptyScroll} contentContainerStyle={styles.desktopEmpty}>
             <Icon name="chat" size={36} color={brandGroupChat.textMuted} />
             <Text style={styles.desktopEmptyTitle}>Your Mingla conversations</Text>
             <Text style={styles.desktopEmptyText}>Pick a Brand group on the left. Brand groups are created automatically and stay in sync with each brand’s active team.</Text>
-          </View>
+          </ScrollView>
         </View>
       ) : list}
     </SafeScreen>
@@ -97,7 +97,8 @@ const styles = StyleSheet.create({
   supportText: { color: brandGroupChat.textSoft, fontSize: 13 },
   desktop: { flex: 1, flexDirection: "row" },
   desktopList: { width: 320, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: brandGroupChat.hairline },
-  desktopEmpty: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.sm, padding: spacing.xl },
+  desktopEmptyScroll: { flex: 1 },
+  desktopEmpty: { flexGrow: 1, alignItems: "center", justifyContent: "center", gap: spacing.sm, padding: spacing.xl },
   desktopEmptyTitle: { color: brandGroupChat.textPrimary, fontSize: 18, fontWeight: "700" },
   desktopEmptyText: { color: brandGroupChat.textSoft, fontSize: 14, lineHeight: 20, maxWidth: 380, textAlign: "center" },
 });

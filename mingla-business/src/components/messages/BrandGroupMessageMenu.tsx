@@ -45,7 +45,8 @@ export function BrandGroupMessageMenu({
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
       <Pressable accessibilityRole="button" accessibilityLabel="Close message menu" style={styles.scrim} onPress={onClose}>
-        <Pressable accessible={false} style={styles.card} onPress={() => undefined} testID="brand-group-message-menu">
+        {/* Claims the touch so a tap inside the card never reaches the scrim. */}
+        <View style={styles.card} onStartShouldSetResponder={() => true} testID="brand-group-message-menu">
           <View style={styles.reactions} accessibilityLabel="React to this message">
             {BRAND_GROUP_REACTION_EMOJI.map((emoji) => {
               const active = myReactions.includes(emoji);
@@ -83,7 +84,7 @@ export function BrandGroupMessageMenu({
               <Text style={styles.actionText}>{action.label}</Text>
             </Pressable>
           ))}
-        </Pressable>
+        </View>
       </Pressable>
     </Modal>
   );

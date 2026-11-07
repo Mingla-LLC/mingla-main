@@ -40,11 +40,16 @@ export async function addBrandGroupReaction(input: {
 }
 
 export async function removeBrandGroupReaction(rowId: string): Promise<void> {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("direct_message_reactions")
     .delete()
-    .eq("id", rowId);
+    .eq("id", rowId)
+    .select("id");
   if (error) throw new Error(error.message || "Couldn't remove the reaction");
+  // A zero-row delete (already gone, or not yours) is not a silent success.
+  if (!Array.isArray(data) || data.length === 0) {
+    throw new Error("That reaction was already removed. Pull to refresh.");
+  }
 }
 
 export async function listBrandGroupReadState(
