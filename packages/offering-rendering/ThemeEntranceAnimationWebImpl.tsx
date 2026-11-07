@@ -29,6 +29,7 @@ import {
   SAFE_ZONE_OPACITY,
   buildSafeZoneMaskUrl,
   resolveTextSafeZone,
+  zoneFromRects,
   type TextSafeZoneProp,
 } from "./themeMotion";
 import { ThemeMotionPauseButton, useMotionPaused } from "./ThemeMotionPauseButton";
@@ -55,6 +56,14 @@ export interface ThemeEntranceAnimationProps {
   part?: "layer" | "pauseButton";
   /** A still frame of the loop and no button (picker tiles). */
   still?: boolean;
+  /** Native only (the sheet's top edge as an Animated value). Ignored here. */
+  textZoneTop?: unknown;
+  /**
+   * Full-screen overlay: the element holding the page text. Its LIVE on-screen
+   * rect (tracked through scroll and resize) is the text-safe zone; the side
+   * gutters beside it stay full strength. Wins over `textSafeZone`.
+   */
+  textZoneRef?: React.RefObject<unknown>;
 }
 
 /** The subset of lottie-web's AnimationItem this file uses. */
@@ -108,6 +117,7 @@ export const ThemeEntranceAnimation: React.FC<ThemeEntranceAnimationProps> = ({
   theme,
   sessionKey,
   textSafeZone,
+  textZoneRef,
   pauseButton = "inline",
   pauseButtonTop = 64,
   part = "layer",
@@ -128,6 +138,7 @@ export const ThemeEntranceAnimation: React.FC<ThemeEntranceAnimationProps> = ({
         color={theme.color}
         reduceMotion={reduceMotion}
         textSafeZone={textSafeZone}
+        textZoneRef={textZoneRef}
       />
       {pauseButton === "inline" && !still ? (
         <ThemeMotionPauseButton theme={theme} style={[styles.pause, { top: pauseButtonTop }]} />
@@ -141,6 +152,7 @@ interface WebMotionProps {
   color: string;
   reduceMotion: boolean;
   textSafeZone: TextSafeZoneProp;
+  textZoneRef?: React.RefObject<unknown>;
 }
 
 /** "contain" for centrepiece looks, else "cover" (from the generator's meta). */
@@ -154,7 +166,7 @@ const cloneForPlayer = (json: object): object =>
     ? (structuredClone(json) as object)
     : (JSON.parse(JSON.stringify(json)) as object);
 
-const WebMotion: React.FC<WebMotionProps> = ({ slug, color, reduceMotion, textSafeZone }) => {
+const WebMotion: React.FC<WebMotionProps> = ({ slug, color, reduceMotion, textSafeZone, textZoneRef }) => {
   const hostRef = useRef<View>(null);
   const introRef = useRef<HTMLDivElement | null>(null);
   const loopRef = useRef<HTMLDivElement | null>(null);
@@ -285,7 +297,48 @@ const WebMotion: React.FC<WebMotionProps> = ({ slug, color, reduceMotion, textSa
     );
   };
 
-  const zone = size ? resolveTextSafeZone(textSafeZone, size.w, size.h) : null;
+  // Follow the page text: recompute the zone from live rects on scroll
+  // (capture: inner scroll containers too) and resize, and write the masks
+  // straight to the two layers — no React render per scroll frame.
+  useEffect(() => {
+    if (textZoneRef === undefined || typeof window === "undefined") return undefined;
+    let frame = 0;
+    const update = (): void => {
+      frame = 0;
+      const host = hostRef.current as unknown as Element | null;
+      const target = textZoneRef.current as unknown as Element | null;
+      if (host === null || target === null || typeof host.getBoundingClientRect !== "function") return;
+      const o = host.getBoundingClientRect();
+      const z = zoneFromRects(target.getBoundingClientRect(), o);
+      const masks: Array<[HTMLDivElement | null, number]> = [
+        [introRef.current, SAFE_ZONE_OPACITY.intro],
+        [loopRef.current, SAFE_ZONE_OPACITY.loop],
+      ];
+      for (const [el, inside] of masks) {
+        if (el === null) continue;
+        const mask = buildSafeZoneMaskUrl(o.width, o.height, z, inside) ?? "none";
+        el.style.setProperty("mask-image", mask);
+        el.style.setProperty("-webkit-mask-image", mask);
+        el.style.setProperty("mask-size", "100% 100%");
+        el.style.setProperty("-webkit-mask-size", "100% 100%");
+        el.style.setProperty("mask-repeat", "no-repeat");
+        el.style.setProperty("-webkit-mask-repeat", "no-repeat");
+      }
+    };
+    const schedule = (): void => {
+      if (frame === 0) frame = window.requestAnimationFrame(update);
+    };
+    schedule();
+    window.addEventListener("scroll", schedule, { capture: true, passive: true });
+    window.addEventListener("resize", schedule);
+    return () => {
+      if (frame !== 0) window.cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", schedule, { capture: true });
+      window.removeEventListener("resize", schedule);
+    };
+  }, [textZoneRef, size, stage]);
+
+  const zone = size && textZoneRef === undefined ? resolveTextSafeZone(textSafeZone, size.w, size.h) : null;
   const introMask = size ? buildSafeZoneMaskUrl(size.w, size.h, zone, SAFE_ZONE_OPACITY.intro) : null;
   const loopMask = size ? buildSafeZoneMaskUrl(size.w, size.h, zone, SAFE_ZONE_OPACITY.loop) : null;
   const fade = `opacity ${THEME_MOTION_TIMING.crossfadeMs}ms ease`;

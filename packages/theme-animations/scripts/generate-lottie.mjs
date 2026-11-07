@@ -83,6 +83,12 @@ const EPS_ROT = 2; // degrees
 const EPS_SCALE = 2.5; // percent
 const EPS_OP = 2.5; // percent
 
+// issue #1023 — white and near-white pieces (snow, white sparkles, glitter,
+// stars) now also fall over the light details sheet, where pure white would
+// vanish. A hairline dark rim (22% black) keeps their shape readable on cream
+// and is invisible against dark covers.
+const lightEdge = (width = 0.5) => stroke("#000000", width * (400 / 270), 22, 2);
+
 const pal = (i) => `c${((i % 6) + 6) % 6}`;
 const palDark = (i) => (i % 4 >= 2 ? "d2" : "d0");
 const LOVE = ["#ff2d6f", "#ff5c8a", "#ff1744", "#ff7aa8"];
@@ -457,7 +463,7 @@ def({
   drawLook(key, r) {
     return [
       glowDisc(k(r * 2.4), pal(0), 0.35),
-      group([polygon(kp(star4Points(r, 0.16))), fill(key === "w" ? "#ffffff" : pal(1))]),
+      group([polygon(kp(star4Points(r, 0.16))), fill(key === "w" ? "#ffffff" : pal(1)), ...(key === "w" ? [lightEdge(0.4)] : [])]),
     ];
   },
   xf: (p) => {
@@ -480,7 +486,8 @@ def({
   lookKey: (p) => `${p.col}`,
   drawLook(key, r) {
     const c = ["#ffffff", "#ffe8a8", pal(1), pal(5)][Number(key)];
-    return [group([rect(k(r), k(r)), fill(c)])];
+    const light = key === "0" || key === "1" || key === "3";
+    return [group([rect(k(r), k(r)), fill(c), ...(light ? [lightEdge(0.35)] : [])])];
   },
   // the glint: .4 + .6·|sin(ph + age·9)|
   lookAnim(key, f) {
@@ -602,7 +609,7 @@ def({
   size: (p) => p.r,
   lookKey: () => "w",
   drawLook(_key, r) {
-    return [group([polygon(kp(star4Points(r))), fill("#ffffff")])];
+    return [group([polygon(kp(star4Points(r))), fill("#ffffff"), lightEdge(0.4)])];
   },
   xf: (p) => {
     const kk = ksin(p);
@@ -682,7 +689,7 @@ def({
   size: (p) => p.r,
   lookKey: () => "w",
   drawLook(_key, r) {
-    return [group([ellipse(k(r * 2), k(r * 2)), fill("#ffffff")])];
+    return [group([ellipse(k(r * 2), k(r * 2)), fill("#ffffff"), lightEdge(0.45)])];
   },
   instanceOpacity: (q) => (0.35 + q.r * 0.17) * 100,
   variants: 6,
@@ -866,8 +873,8 @@ def({
       const alpha = ctx.sample((t) => 0.25 + 0.75 * ((Math.sin(st.ph + t * w) + 1) / 2) ** 2);
       const big = st.r > 1.2;
       const shapes = big
-        ? [group([polygon(kp(star4Points(st.r * 2.6, 0.2))), fill("#fffaf0")])]
-        : [group([ellipse(k(st.r * 2), k(st.r * 2)), fill("#fffaf0")])];
+        ? [group([polygon(kp(star4Points(st.r * 2.6, 0.2))), fill("#fffaf0"), lightEdge(0.35)])]
+        : [group([ellipse(k(st.r * 2), k(st.r * 2)), fill("#fffaf0"), lightEdge(0.3)])];
       const ks = {
         p: { a: 0, k: [r1(k(st.x)), r1(k(st.y))] },
         o: animScalar(alpha.map((a) => a * 100), EPS_OP * 1.6, Math.round),

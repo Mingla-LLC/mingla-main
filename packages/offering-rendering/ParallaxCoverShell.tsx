@@ -42,6 +42,7 @@
 
 import React from "react";
 import {
+  Animated,
   Platform,
   ScrollView,
   StyleSheet,
@@ -98,6 +99,11 @@ const SEAM = 28;
 export const COVER_Z = 1;
 export const CONTENT_Z = 2;
 export const CHROME_Z = 70;
+// issue #1023 — the full-screen theme motion: over the cover AND the details
+// sheet, under the chrome. (Desktop web uses DESKTOP_MOTION_Z: its chrome sits
+// in the hero at z 5, so the overlay must stay below that.)
+export const MOTION_Z = CHROME_Z - 1;
+export const DESKTOP_MOTION_Z = 4;
 
 export interface ParallaxCoverShellProps {
   palette: ThemePalette;
@@ -353,19 +359,12 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
     </View>
   );
   const coverRender = sequenceActive ? coverPager : coverMedia;
-  // issue #1023 — the entrance motion fades over the title + meta written ON
-  // the cover. The overlay reports where that text really is; until it has
-  // (first frame) the reference default zone applies. No overlay = no text on
-  // the cover = no zone.
-  const [coverTextRect, setCoverTextRect] = React.useState<TextSafeZone | null>(null);
   const directionCOverlay = directionCIdentity ? (
     <DirectionCIdentityOverlay
       title={directionCIdentity.title}
       meta={directionCIdentity.meta}
-      onTextRect={setCoverTextRect}
     />
   ) : null;
-  const textSafeZone = directionCIdentity ? (coverTextRect ?? "default") : undefined;
 
   // The beneath-cover card row (card 0 = the cover). Rendered as the body's FIRST
   // row inside the scrolling body so it scrolls away over the pinned pager. Returns
@@ -382,30 +381,69 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
     />
   ) : null;
 
-  // Desktop: the hero is in the scroll flow, so the pause button sits on the
-  // layer itself, under the chrome row. Phone web + native: the cover is
-  // pinned BEHIND the scrolling body and cannot take touches, so the layer
-  // draws no button and `entrancePause` puts it in the scroll content, over
-  // the cover's top-right, where it scrolls away with the cover.
-  const entrance = (
-    <ThemeEntranceAnimation
-      theme={theme}
-      sessionKey={entranceAnimationKey}
-      textSafeZone={textSafeZone}
-      pauseButton={isDesktop ? "inline" : "none"}
-      pauseButtonTop={70}
-    />
+  // issue #1023 — the theme motion is a FULL-SCREEN overlay (as in the
+  // approved reference: pieces fall over the whole phone, not just the
+  // cover). It is pinned to the viewport, ignores touches, is hidden from
+  // screen readers, and sits ABOVE the cover and the details sheet but BELOW
+  // the chrome (close / share / pause). Its text-safe zone is the details
+  // sheet itself, followed live as the page scrolls: web measures the body
+  // element's rect; native moves the bands with the sheet's top edge.
+  const bodyRef = React.useRef<View>(null);
+  const desktopTextRef = React.useRef<View>(null);
+  const sheetTop = React.useRef(new Animated.Value(100000)).current;
+  const spacerHeight = React.useRef(0);
+  const scrollY = React.useRef(0);
+  const syncSheetTop = React.useCallback((): void => {
+    if (spacerHeight.current > 0) sheetTop.setValue(spacerHeight.current - SEAM - scrollY.current);
+  }, [sheetTop]);
+  const onSpacerLayout = React.useCallback(
+    (event: LayoutChangeEvent): void => {
+      spacerHeight.current = event.nativeEvent.layout.height;
+      syncSheetTop();
+    },
+    [syncSheetTop],
   );
-  const entrancePause = (
+  const handleScroll = React.useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>): void => {
+      scrollY.current = event.nativeEvent.contentOffset.y;
+      syncSheetTop();
+      onScroll?.(event);
+    },
+    [onScroll, syncSheetTop],
+  );
+  const motionOverlay = (textZone: { ref?: React.RefObject<unknown>; top?: Animated.Value }) => (
     <View
-      style={[styles.entrancePause, { top: safeAreaTop + 64 }]}
-      pointerEvents="box-none"
+      style={
+        isWeb
+          ? webStyle({ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: isDesktop ? DESKTOP_MOTION_Z : MOTION_Z })
+          : styles.motionOverlay
+      }
+      pointerEvents="none"
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      testID={testID !== undefined ? `${testID}-motion-overlay` : "theme-motion-overlay"}
     >
       <ThemeEntranceAnimation
         theme={theme}
         sessionKey={entranceAnimationKey}
-        part="pauseButton"
+        pauseButton="none"
+        textZoneRef={textZone.ref}
+        textZoneTop={textZone.top}
       />
+    </View>
+  );
+  // The pause control lives with the chrome (always on top, always tappable),
+  // at the cover's top-right under the share button.
+  const motionPause = (top: number) => (
+    <View
+      style={[
+        styles.motionPause,
+        isWeb ? webStyle({ position: isDesktop ? "absolute" : "fixed", zIndex: isDesktop ? 6 : CHROME_Z }) : null,
+        { top },
+      ]}
+      pointerEvents="box-none"
+    >
+      <ThemeEntranceAnimation theme={theme} sessionKey={entranceAnimationKey} part="pauseButton" />
     </View>
   );
 
@@ -426,7 +464,7 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
               {coverRender}
               <View style={styles.desktopHeroOverlay} pointerEvents="none" />
               {directionCOverlay}
-              {entrance}
+              {motionPause(70)}
               <View
                 style={webStyle({
                   position: "absolute",
@@ -446,7 +484,7 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
             ) : null}
 
             {/* two-column grid */}
-            <View style={styles.desktopGrid}>
+            <View style={styles.desktopGrid} ref={desktopTextRef}>
               <View style={styles.desktopLeft}>
                 {galleryRow}
                 {children}
@@ -466,6 +504,7 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
             </View>
           </View>
         </Scroll>
+        {motionOverlay({ ref: desktopTextRef })}
       </View>
     );
   }
@@ -506,7 +545,6 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
           {coverRender}
           <View style={styles.coverScrim} pointerEvents="none" />
           {directionCOverlay}
-          {entrance}
         </View>
 
         {/* body-level fixed chrome (highest layer) */}
@@ -540,7 +578,7 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
             { paddingBottom: contentBottomInset },
           ]}
           showsVerticalScrollIndicator={false}
-          onScroll={onScroll}
+          onScroll={handleScroll}
           scrollEventThrottle={16}
           onLayout={onScrollViewLayout}
           {...(scrollRef !== undefined ? { ref: scrollRef } : {})}
@@ -554,9 +592,9 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
             style={[styles.webPhoneSpacer, { aspectRatio: coverAspectRatio }]}
             pointerEvents={sequenceActive ? "none" : undefined}
           />
-          {entrancePause}
           {/* body slides up over the cover (middle layer) */}
           <View
+            ref={bodyRef}
             style={webStyle({
               position: "relative",
               zIndex: CONTENT_Z,
@@ -581,6 +619,8 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
           </View>
           {webPhoneActions}
         </Scroll>
+        {motionOverlay({ ref: bodyRef })}
+        {motionPause(safeAreaTop + 64)}
       </View>
     );
   }
@@ -599,7 +639,6 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
         {coverRender}
         <View style={styles.coverScrim} pointerEvents="none" />
         {directionCOverlay}
-        {entrance}
       </View>
 
       <Scroll
@@ -609,7 +648,7 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
           { paddingBottom: contentBottomInset },
         ]}
         showsVerticalScrollIndicator={false}
-        onScroll={onScroll}
+        onScroll={handleScroll}
         scrollEventThrottle={16}
         onLayout={onScrollViewLayout}
         {...(scrollRef !== undefined ? { ref: scrollRef } : {})}
@@ -620,8 +659,8 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
         <View
           style={[styles.nativeSpacer, { aspectRatio: coverAspectRatio }]}
           pointerEvents={sequenceActive ? "none" : undefined}
+          onLayout={onSpacerLayout}
         />
-        {entrancePause}
         <View
           style={[
             styles.nativeBody,
@@ -641,6 +680,8 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
         </View>
       </Scroll>
 
+      {motionOverlay({ top: sheetTop })}
+
       {/* chrome — absolute box-none sibling padded by the safe-area top */}
       <View
         style={[styles.nativeChrome, { top: safeAreaTop + 12 }]}
@@ -648,6 +689,7 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
       >
         {chrome}
       </View>
+      {motionPause(safeAreaTop + 64)}
     </View>
   );
 };
@@ -868,12 +910,18 @@ const styles = StyleSheet.create({
   phoneBannerWrap: {
     marginBottom: 12,
   },
-  // issue #1023 — pause control over the pinned cover's top-right, inside the
-  // scroll content (absolute, so it never shifts the body).
-  entrancePause: {
+  // issue #1023 — the full-screen motion overlay (native): above the cover and
+  // the scrolling sheet (CONTENT_Z), below the chrome (CHROME_Z).
+  motionOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: MOTION_Z,
+    elevation: 0,
+  },
+  // the motion pause control, with the chrome: on top and tappable
+  motionPause: {
     position: "absolute",
     right: 12,
-    zIndex: CHROME_Z - 1,
+    zIndex: CHROME_Z,
   },
 });
 

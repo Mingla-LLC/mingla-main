@@ -36,6 +36,7 @@ import {
 import type { ResolvedTheme } from "./designTokens";
 import {
   SAFE_ZONE_OPACITY,
+  computeFollowBands,
   computeSafeZoneBands,
   resolveTextSafeZone,
   type SafeZoneBand,
@@ -76,6 +77,19 @@ export interface ThemeEntranceAnimationProps {
   part?: "layer" | "pauseButton";
   /** A still frame of the loop and no button (picker tiles). */
   still?: boolean;
+  /**
+   * NATIVE full-screen overlay: the on-screen y of the page's details sheet
+   * top edge, as an Animated value the host updates as the page scrolls. The
+   * motion fades below that edge (the sheet's text, chips and Buy button).
+   * Wins over `textSafeZone`. Ignored on web (see `textZoneRef`).
+   */
+  textZoneTop?: Animated.Value | Animated.AnimatedInterpolation<number>;
+  /**
+   * WEB full-screen overlay: the element holding the page text; its live
+   * on-screen rect is the zone (with full strength in the side gutters).
+   * Ignored on native.
+   */
+  textZoneRef?: React.RefObject<unknown>;
 }
 
 /** Mid-loop still for Reduce Motion (progress 0..1). */
@@ -85,6 +99,7 @@ export const ThemeEntranceAnimation: React.FC<ThemeEntranceAnimationProps> = ({
   theme,
   sessionKey,
   textSafeZone,
+  textZoneTop,
   pauseButton = "inline",
   pauseButtonTop = 64,
   part = "layer",
@@ -105,6 +120,7 @@ export const ThemeEntranceAnimation: React.FC<ThemeEntranceAnimationProps> = ({
         color={theme.color}
         reduceMotion={reduceMotion}
         textSafeZone={textSafeZone}
+        textZoneTop={textZoneTop}
       />
       {pauseButton === "inline" && !still ? (
         <ThemeMotionPauseButton theme={theme} style={[styles.pause, { top: pauseButtonTop }]} />
@@ -118,6 +134,7 @@ interface MotionLayersProps {
   color: string;
   reduceMotion: boolean;
   textSafeZone: TextSafeZoneProp;
+  textZoneTop?: ThemeEntranceAnimationProps["textZoneTop"];
 }
 
 type Stage = "intro" | "crossfade" | "loop";
@@ -148,7 +165,13 @@ function useThemeLottie(
   return json;
 }
 
-const MotionLayers: React.FC<MotionLayersProps> = ({ slug, color, reduceMotion, textSafeZone }) => {
+const MotionLayers: React.FC<MotionLayersProps> = ({
+  slug,
+  color,
+  reduceMotion,
+  textSafeZone,
+  textZoneTop,
+}) => {
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const [stage, setStage] = useState<Stage>(reduceMotion ? "loop" : "intro");
   const stageRef = useRef<Stage>(stage);
@@ -216,6 +239,52 @@ const MotionLayers: React.FC<MotionLayersProps> = ({ slug, color, reduceMotion, 
     );
   };
 
+  // Full-screen overlay: bands ride the sheet's top edge (one Animated value,
+  // transforms only — no re-render or layout per scroll frame).
+  const renderFollowBands = (
+    json: object,
+    phase: ThemeMotionPhase,
+    refs: React.MutableRefObject<Array<LottieView | null>>,
+  ): React.ReactNode => {
+    if (size === null || textZoneTop === undefined) return null;
+    const inside = phase === "intro" ? SAFE_ZONE_OPACITY.intro : SAFE_ZONE_OPACITY.loop;
+    return computeFollowBands(size.h, inside).map((band, index) => {
+      const shift = Animated.add(textZoneTop, band.from);
+      return (
+        <Animated.View
+          key={`${phase}-follow-${index}`}
+          testID={`theme-entrance-follow-band-${phase}-${index}`}
+          style={[
+            styles.band,
+            { top: 0, height: band.height, opacity: band.opacity, transform: [{ translateY: shift }] },
+          ]}
+        >
+          <Animated.View
+            style={[
+              styles.lottieShift,
+              { width: size.w, height: size.h, transform: [{ translateY: Animated.multiply(shift, -1) }] },
+            ]}
+          >
+            <LottieView
+              ref={(view: LottieView | null) => {
+                refs.current[index] = view;
+              }}
+              source={json}
+              autoPlay={running}
+              loop={phase === "loop"}
+              progress={reduceMotion ? REDUCED_MOTION_PROGRESS : undefined}
+              resizeMode={motionResizeMode(json)}
+              cacheComposition
+              style={{ width: size.w, height: size.h }}
+              onAnimationFinish={phase === "intro" && index === 0 ? onIntroFinish : undefined}
+              testID={`theme-entrance-${phase}`}
+            />
+          </Animated.View>
+        </Animated.View>
+      );
+    });
+  };
+
   const renderBands = (
     json: object,
     bands: SafeZoneBand[],
@@ -235,7 +304,7 @@ const MotionLayers: React.FC<MotionLayersProps> = ({ slug, color, reduceMotion, 
           autoPlay={running}
           loop={phase === "loop"}
           progress={reduceMotion ? REDUCED_MOTION_PROGRESS : undefined}
-          resizeMode={(json as { meta?: { fit?: string } }).meta?.fit === "contain" ? "contain" : "cover"}
+          resizeMode={motionResizeMode(json)}
           cacheComposition
           style={[
             styles.lottie,
@@ -249,7 +318,7 @@ const MotionLayers: React.FC<MotionLayersProps> = ({ slug, color, reduceMotion, 
 
   return (
     <View
-      style={StyleSheet.absoluteFill}
+      style={[StyleSheet.absoluteFill, styles.clip]}
       pointerEvents="none"
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
@@ -257,19 +326,33 @@ const MotionLayers: React.FC<MotionLayersProps> = ({ slug, color, reduceMotion, 
     >
       {size && intro && stage !== "loop" ? (
         <Animated.View style={[StyleSheet.absoluteFill, { opacity: introOpacity }]}>
-          {renderBands(intro, introBands, "intro", introRefs)}
+          {textZoneTop !== undefined
+            ? renderFollowBands(intro, "intro", introRefs)
+            : renderBands(intro, introBands, "intro", introRefs)}
         </Animated.View>
       ) : null}
       {size && loop && stage !== "intro" ? (
         <Animated.View style={[StyleSheet.absoluteFill, { opacity: loopOpacity }]}>
-          {renderBands(loop, loopBands, "loop", loopRefs)}
+          {textZoneTop !== undefined
+            ? renderFollowBands(loop, "loop", loopRefs)
+            : renderBands(loop, loopBands, "loop", loopRefs)}
         </Animated.View>
       ) : null}
     </View>
   );
 };
 
+/** "contain" for centrepiece looks (meta.fit), else "cover". */
+const motionResizeMode = (json: object): "contain" | "cover" =>
+  (json as { meta?: { fit?: string } }).meta?.fit === "contain" ? "contain" : "cover";
+
 const styles = StyleSheet.create({
+  clip: { overflow: "hidden" },
+  lottieShift: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+  },
   wrap: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 2,

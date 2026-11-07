@@ -208,6 +208,58 @@ describe("#1023 web entrance motion", () => {
     warn.mockRestore();
   });
 
+  test("full-screen overlay: the mask follows the page text as it scrolls", async () => {
+    const listeners: Array<{ name: string; cb: () => void }> = [];
+    const g = globalThis as unknown as Record<string, unknown>;
+    g.window = {
+      requestAnimationFrame: (cb: () => void) => {
+        setTimeout(cb, 0);
+        return 1;
+      },
+      cancelAnimationFrame: () => undefined,
+      addEventListener: (name: string, cb: () => void) => listeners.push({ name, cb }),
+      removeEventListener: () => undefined,
+      devicePixelRatio: 1,
+    };
+    let sheetTop = 470;
+    const masks: Record<string, string> = {};
+    const nodeFor = (testID?: string) => ({
+      getBoundingClientRect: () =>
+        testID === "page-text"
+          ? { left: 0, top: sheetTop, right: 375, bottom: 2000 }
+          : { left: 0, top: 0, width: 375, height: 812, right: 375, bottom: 812 },
+      style: {
+        setProperty: (name: string, value: string) => {
+          masks[`${testID ?? "layer"}:${name}`] = value;
+        },
+      },
+    });
+    const textRef = { current: nodeFor("page-text") };
+    let tree!: Tree;
+    await act(async () => {
+      tree = TestRenderer.create(
+        <ThemeEntranceAnimation theme={theme("snowfall")} sessionKey="b:follow" textZoneRef={textRef} />,
+        { createNodeMock: () => nodeFor() },
+      );
+    });
+    for (let i = 0; i < 4; i += 1) {
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+    }
+    const first = masks["layer:mask-image"];
+    expect(decodeURIComponent(first)).toContain("y='470'");
+    sheetTop = 120; // the user scrolled: the sheet rose
+    // only SCROLL events: the zone must follow the page as it scrolls
+    listeners.filter((l) => l.name === "scroll").forEach((l) => l.cb());
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    });
+    expect(decodeURIComponent(masks["layer:mask-image"])).toContain("y='120'");
+    expect(tree.toJSON()).not.toBeNull();
+    delete g.window;
+  });
+
   test("a text-safe zone masks the motion with a soft-edged CSS mask", async () => {
     const tree = await mount(
       <ThemeEntranceAnimation theme={theme("confetti")} sessionKey="b:4" textSafeZone="default" />,

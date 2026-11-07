@@ -57,7 +57,14 @@ jest.mock("react-native", () => {
       absoluteFillObject: {},
       hairlineWidth: 1,
     },
-    Animated: { View: host("AnimatedView"), Value, timing: instant, parallel: instant },
+    Animated: {
+      View: host("AnimatedView"),
+      Value,
+      timing: instant,
+      parallel: instant,
+      add: (a: unknown, b: unknown) => ({ op: "add", a, b }),
+      multiply: (a: unknown, b: unknown) => ({ op: "multiply", a, b }),
+    },
     AppState: { currentState: "active", addEventListener: () => ({ remove: () => undefined }) },
     AccessibilityInfo: {
       isReduceMotionEnabled: () => Promise.resolve(reduceMotion.value),
@@ -192,6 +199,34 @@ describe("#1023 native entrance motion", () => {
       return undefined;
     });
     expect(bandOpacities).toEqual([1, 0.75, 0.5]);
+  });
+
+  test("full-screen overlay: the zone follows the sheet's top edge (one moving value)", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { Animated } = require("react-native") as { Animated: { Value: new (v: number) => object } };
+    const sheetTop = new Animated.Value(400);
+    const r = await mount(
+      <ThemeEntranceAnimation
+        theme={theme("snowfall")}
+        sessionKey="event:follow"
+        textZoneTop={sheetTop as never}
+      />,
+    );
+    const bands = r.root.findAll(
+      (n) => typeof n.props.testID === "string" && n.props.testID.startsWith("theme-entrance-follow-band-intro-"),
+    ).filter((n) => (n.type as unknown) === "AnimatedView");
+    expect(bands).toHaveLength(3);
+    const styleOf = (n: Node) => (n.props.style as Array<Record<string, unknown>>)[1];
+    expect(bands.map((b) => styleOf(b).opacity)).toEqual([1, 0.75, 0.5]);
+    // every band rides the SAME value: translateY = sheetTop + offset
+    const shifts = bands.map((b) => (styleOf(b).transform as Array<{ translateY: { op: string; a: unknown; b: number } }>)[0].translateY);
+    for (const shift of shifts) {
+      expect(shift.op).toBe("add");
+      expect(shift.a).toBe(sheetTop);
+    }
+    expect(shifts.map((x) => x.b)).toEqual([-500, -16, 0]);
+    // the static cover zone is not used when following
+    expect(lotties(r, "intro")).toHaveLength(3);
   });
 
   test("the pause button pauses every copy and says what it will do", async () => {

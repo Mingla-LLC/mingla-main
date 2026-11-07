@@ -13,7 +13,9 @@ import {
   THEME_ANIMATION_SLUGS,
 } from "../../../../../packages/offering-rendering/designTokens";
 import {
+  computeFollowBands,
   computeSafeZoneBands,
+  zoneFromRects,
   getThemeMotionDevOverride,
   parseMotionQueryParam,
   resolveTextSafeZone,
@@ -275,6 +277,86 @@ describe("#1023 — text-safe zone", () => {
     expect(loopOpacities[0]).toBe(1);
     expect(loopOpacities[1]).toBeCloseTo(0.57, 5);
     expect(loopOpacities[2]).toBe(0.14);
+  });
+});
+
+describe("#1023 — full-screen motion overlay on every public page", () => {
+  const ROOT = path.join(__dirname, "../../../../..");
+  const read = (rel: string): string => readFileSync(path.join(ROOT, rel), "utf8");
+
+  test("z-order: cover < details < motion < chrome", () => {
+    const shell = read("packages/offering-rendering/ParallaxCoverShell.tsx");
+    const z = (name: string): number => {
+      const m = new RegExp(`export const ${name} = ([^;]+);`).exec(shell);
+      return Function("CHROME_Z", `return ${m![1]};`)(70) as number;
+    };
+    expect(z("COVER_Z")).toBeLessThan(z("CONTENT_Z"));
+    expect(z("CONTENT_Z")).toBeLessThan(z("MOTION_Z"));
+    expect(z("MOTION_Z")).toBeLessThan(z("CHROME_Z"));
+    // desktop chrome lives in the hero at z 5
+    expect(z("DESKTOP_MOTION_Z")).toBeLessThan(5);
+  });
+
+  test("the shell mounts the overlay after the scrolling body in all three layouts, never inside the cover", () => {
+    const shell = read("packages/offering-rendering/ParallaxCoverShell.tsx");
+    const overlays = shell.match(/\{motionOverlay\(\{[^}]*\}\)\}/g) ?? [];
+    expect(overlays).toEqual([
+      "{motionOverlay({ ref: desktopTextRef })}",
+      "{motionOverlay({ ref: bodyRef })}",
+      "{motionOverlay({ top: sheetTop })}",
+    ]);
+    // each comes right after its </Scroll>
+    for (const o of overlays) {
+      const at = shell.indexOf(o);
+      expect(shell.lastIndexOf("</Scroll>", at)).toBeGreaterThan(shell.lastIndexOf("<Scroll", at));
+    }
+    const overlayFn = shell.slice(shell.indexOf("const motionOverlay"), shell.indexOf("const motionPause"));
+    expect(overlayFn).toContain('pointerEvents="none"');
+    expect(overlayFn).toContain('importantForAccessibility="no-hide-descendants"');
+    expect(overlayFn).toContain('pauseButton="none"');
+    expect(shell).not.toContain("{entrance}");
+  });
+
+  test.each([
+    "app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx",
+    "app-mobile/src/screens/Experience/ConsumerExperienceDetailScreen.tsx",
+    "app-mobile/src/screens/Trip/ConsumerTripDetailScreen.tsx",
+  ])("%s: overlay above the sheet scroll, below the chrome, following the sheet", (file) => {
+    const src = read(file);
+    const overlayAt = src.indexOf('testID="issue-1023-motion-overlay"');
+    expect(overlayAt).toBeGreaterThan(src.indexOf("</BottomSheetScrollView>"));
+    const block = src.slice(src.lastIndexOf("<View", overlayAt), src.indexOf("</View>", overlayAt));
+    expect(block).toContain('pointerEvents="none"');
+    expect(block).toContain("textZoneTop={motionSheetTop}");
+    expect(src).toMatch(/motionOverlay: \{ \.\.\.StyleSheet\.absoluteFillObject, zIndex: 69 \}/);
+    expect(src).toMatch(/motionPause: \{ position: "absolute", right: 12, zIndex: 70 \}/);
+    expect(src).toMatch(/nativeChrome: \{[\s\S]*?zIndex: 70/);
+    // the cover itself no longer hosts the motion layer
+    const cover = src.slice(src.indexOf("style={styles.nativeCover}"), src.indexOf("<BottomSheetScrollView"));
+    expect(cover).not.toContain("ThemeEntranceAnimation");
+    // the edge is driven by the scroll offset
+    expect(src).toContain("motionSheetTop.setValue(motionSpacerH.current - SEAM - motionScrollY.current)");
+  });
+
+  test("follow bands are offsets from one moving edge", () => {
+    const bands = computeFollowBands(800, 0.14);
+    expect(bands.map((b) => [b.from, b.height])).toEqual([[-800, 784], [-16, 16], [0, 800]]);
+    expect(bands[0].opacity).toBe(1);
+    expect(bands[1].opacity).toBeCloseTo(0.57, 5);
+    expect(bands[2].opacity).toBe(0.14);
+  });
+
+  test("web zone = the page text's live rect, clamped to the screen", () => {
+    const screen = { left: 0, top: 0, width: 375, height: 812 };
+    expect(zoneFromRects({ left: 0, top: 470, right: 375, bottom: 3000 }, screen)).toEqual({ x: 0, y: 470, width: 375, height: 342 });
+    expect(zoneFromRects({ left: 0, top: -2000, right: 375, bottom: -10 }, screen)).toBeNull();
+  });
+
+  test("white pieces carry a soft dark rim so they read on the light sheet", () => {
+    for (const slug of ["snowfall", "sparkles", "glitter_shower", "starry_sky", "shimmer_reveal"]) {
+      const text = JSON.stringify(readJson(`${slug}.loop.json`));
+      expect(text).toContain('"ty":"st","nm":"fx","c":{"a":0,"k":[0,0,0,1]},"o":{"a":0,"k":22}');
+    }
   });
 });
 

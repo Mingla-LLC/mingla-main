@@ -95,6 +95,55 @@ export function computeSafeZoneBands(
   return out;
 }
 
+export interface FollowBand {
+  /** Offset of the band's top edge from the moving zone top (points). */
+  from: number;
+  height: number;
+  opacity: number;
+}
+
+/**
+ * Native, FULL-SCREEN overlay whose text zone is the page's details sheet:
+ * everything below the sheet's top edge is page text, and that edge moves as
+ * the page scrolls. Three bands are positioned RELATIVE to the edge (so a
+ * single moving value — `translateY = edge + from` — drives all of them, no
+ * re-render per scroll frame): full strength above, the feather, then the
+ * faded zone down to the bottom of the screen.
+ */
+export function computeFollowBands(
+  height: number,
+  insideOpacity: number,
+  feather: number = SAFE_ZONE_FEATHER,
+): FollowBand[] {
+  if (height <= 0) return [];
+  return [
+    { from: -height, height: height - feather, opacity: 1 },
+    { from: -feather, height: feather, opacity: (1 + insideOpacity) / 2 },
+    { from: 0, height, opacity: insideOpacity },
+  ];
+}
+
+/**
+ * Web: the text zone is the on-screen rect of the page's details element,
+ * relative to the full-screen overlay, clamped to it. Null when the element is
+ * entirely off screen (no text under the motion).
+ */
+export function zoneFromRects(
+  target: { left: number; top: number; right: number; bottom: number },
+  overlay: { left: number; top: number; width: number; height: number },
+): TextSafeZone | null {
+  return resolveTextSafeZone(
+    {
+      x: target.left - overlay.left,
+      y: target.top - overlay.top,
+      width: target.right - target.left,
+      height: target.bottom - target.top,
+    },
+    overlay.width,
+    overlay.height,
+  );
+}
+
 /**
  * Web: one CSS mask. Fully opaque outside the zone, `insideOpacity` inside, a
  * blurred (soft) edge between, drawn as an SVG data URL sized to the

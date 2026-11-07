@@ -35,6 +35,7 @@ import React, {
   type ReactElement,
 } from "react";
 import {
+  Animated,
   ActivityIndicator,
   Pressable,
   StyleSheet,
@@ -342,11 +343,30 @@ export default function ConsumerExperienceDetailScreen({
   const handleDockLayout = useCallback((e: LayoutChangeEvent): void => {
     setDockTopY(e.nativeEvent.layout.y);
   }, []);
+  // issue #1023 — the details sheet's on-screen top edge, for the full-screen
+  // motion's text-safe zone: cover spacer height − seam − scroll offset.
+  const motionSheetTop = useRef(new Animated.Value(100000)).current;
+  const motionSpacerH = useRef(0);
+  const motionScrollY = useRef(0);
+  const syncMotionSheetTop = useCallback((): void => {
+    if (motionSpacerH.current > 0) {
+      motionSheetTop.setValue(motionSpacerH.current - SEAM - motionScrollY.current);
+    }
+  }, [motionSheetTop]);
+  const handleMotionSpacerLayout = useCallback(
+    (e: LayoutChangeEvent): void => {
+      motionSpacerH.current = e.nativeEvent.layout.height;
+      syncMotionSheetTop();
+    },
+    [syncMotionSheetTop],
+  );
   const handleScroll = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>): void => {
+      motionScrollY.current = e.nativeEvent.contentOffset.y;
+      syncMotionSheetTop();
       setScrollY(e.nativeEvent.contentOffset.y);
     },
-    [],
+    [syncMotionSheetTop],
   );
   const handleScrollLayout = useCallback((e: LayoutChangeEvent): void => {
     setViewportH(e.nativeEvent.layout.height);
@@ -1423,15 +1443,6 @@ export default function ConsumerExperienceDetailScreen({
             coverMediaNode
           )}
           <View style={styles.coverScrim} pointerEvents="none" />
-          {/* issue #1023 — every visit plays the entrance then the loop. Nothing
-              is written on this cover (the title is in the body below), so
-              there is no text-safe zone. The cover sits behind the scroll and
-              cannot take taps: the pause button lives in the scroll content. */}
-          <ThemeEntranceAnimation
-            theme={theme}
-            sessionKey={`experience:${seed.eventId}`}
-            pauseButton="none"
-          />
         </View>
 
         {/* (2) the gorhom scroll host — DIRECT child of <BaseBottomSheet>. */}
@@ -1452,17 +1463,8 @@ export default function ConsumerExperienceDetailScreen({
           <View
             style={styles.coverSpacer}
             pointerEvents={galleryActive ? "none" : undefined}
+            onLayout={handleMotionSpacerLayout}
           />
-          <View
-            style={[styles.motionPause, { top: insets.top + 64 }]}
-            pointerEvents="box-none"
-          >
-            <ThemeEntranceAnimation
-              theme={theme}
-              sessionKey={`experience:${seed.eventId}`}
-              part="pauseButton"
-            />
-          </View>
           <View
             style={[
               styles.nativeBody,
@@ -1515,6 +1517,26 @@ export default function ConsumerExperienceDetailScreen({
           </View>
         </BottomSheetScrollView>
 
+        {/* issue #1023 — the theme motion over the WHOLE screen (cover and
+            details), as in the approved reference. Above the scroll, below the
+            chrome; ignores touches; hidden from screen readers. It fades
+            below the details sheet's top edge, which it follows as the page
+            scrolls (motionSheetTop). */}
+        <View
+          style={styles.motionOverlay}
+          pointerEvents="none"
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          testID="issue-1023-motion-overlay"
+        >
+          <ThemeEntranceAnimation
+            theme={theme}
+            sessionKey={`experience:${seed.eventId}`}
+            pauseButton="none"
+            textZoneTop={motionSheetTop}
+          />
+        </View>
+
         {/* (3) chrome — absolute sibling above the cover + scroll */}
         <View style={[styles.nativeChrome, { top: insets.top + 12 }]} pointerEvents="box-none">
           <OfferingChrome
@@ -1527,6 +1549,12 @@ export default function ConsumerExperienceDetailScreen({
             closeAccessibilityLabel="Close"
             testID="orch-1138-consumer-experience-chrome"
           />
+        </View>
+        <View
+          style={[styles.motionPause, { top: insets.top + 64 }]}
+          pointerEvents="box-none"
+        >
+          <ThemeEntranceAnimation theme={theme} sessionKey={`experience:${seed.eventId}`} part="pauseButton" />
         </View>
 
         {/* (4) FLOATING reserve PILL — shown while the docked CTA is off-screen */}
@@ -1681,7 +1709,9 @@ const styles = StyleSheet.create({
   nativeScrollContent: { flexGrow: 1 },
   coverSpacer: { width: "100%", aspectRatio: 4 / 5 },
   // issue #1023 — the entrance motion's pause control over the cover.
-  motionPause: { position: "absolute", right: 12, zIndex: 3 },
+  motionPause: { position: "absolute", right: 12, zIndex: 70 },
+  // issue #1023 — full-screen motion: over the cover and the scroll, under the chrome (70)
+  motionOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 69 },
   nativeBody: {
     zIndex: 2,
     marginTop: -SEAM,
