@@ -249,3 +249,36 @@ describe("#4294 C-6: no key in a breadcrumb", () => {
     assert.match(read("diagnostics/sentry.js"), /beforeBreadcrumb: dropConnectorBreadcrumb/);
   });
 });
+
+describe("#4294 C-7: no other site can frame Mingla Admin (the Connect screen included)", () => {
+  it("sends frame-ancestors 'none' and X-Frame-Options DENY on every path", () => {
+    const vercel = JSON.parse(fs.readFileSync(path.join(ADMIN, "vercel.json"), "utf8"));
+    // The app is one page with hash routes (#/connect), so the page itself is "/".
+    const rule = vercel.headers.find((h) => h.source === "/(.*)");
+    assert.ok(rule, "a header rule covers every path");
+    assert.equal(new RegExp("^" + rule.source + "$").test("/"), true);
+    const value = (key) => rule.headers.find((h) => h.key.toLowerCase() === key.toLowerCase())?.value;
+    assert.equal(value("X-Frame-Options"), "DENY");
+    assert.equal(value("Content-Security-Policy"), "frame-ancestors 'none'");
+    // The authorization server's document keeps its own JSON rule.
+    const doc = vercel.headers.find((h) => h.source === "/.well-known/oauth-authorization-server");
+    assert.equal(doc.headers.find((h) => h.key === "Content-Type").value, "application/json");
+  });
+
+  it("Admin never frames one of its own pages, so DENY breaks nothing", () => {
+    const files = [];
+    const walk = (dir) => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, e.name);
+        if (e.isDirectory()) { if (e.name !== "__tests__") walk(p); } else if (/\.(jsx?|tsx?)$/.test(e.name)) files.push(p);
+      }
+    };
+    walk(path.join(ADMIN, "src"));
+    for (const f of files) {
+      const src = fs.readFileSync(f, "utf8");
+      for (const m of src.matchAll(/<iframe[^>]*>/g)) {
+        assert.equal(/admin\.usemingla\.com|window\.location|src=\{?["'`]\/(?!\/)/.test(m[0]), false, `${f} frames an Admin page`);
+      }
+    }
+  });
+});
