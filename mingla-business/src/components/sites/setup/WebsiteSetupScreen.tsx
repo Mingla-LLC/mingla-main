@@ -8,7 +8,7 @@ import { brandSiteKeys } from "../../../sites/brandSiteKeys";
 import { firstOfferingRoute } from "../../../sites/planRoutes";
 import { useSaveBrandSitePlan } from "../../../sites/planApi";
 import { planBuildDone, SetupFlowError, useSetupDraft, useSetupFlowState, useTakeOverSetup } from "../../../sites/setupApi";
-import { firstMissingStep, nameInSentence, setupBuildBlockers, setupPresence, setupStepChip, setupSteps } from "../../../sites/setupStatus";
+import { ariStepToFollow, firstMissingStep, nameInSentence, nextOpenStep, setupBuildBlockers, setupPresence, setupStepChip, setupSteps } from "../../../sites/setupStatus";
 import type { SitePlanState } from "../../../sites/sitePlanState";
 import { partLabel } from "../../../sites/sitePlanState";
 import { useCurrentBrandStore } from "../../../store/currentBrandStore";
@@ -112,8 +112,14 @@ export function WebsiteSetupScreen({ step, search, planQuery, grant, onHeartbeat
 
   // ── Ari ────────────────────────────────────────────────────────────────
   const [ariOpen, setAriOpen] = useState(search.ari === "1");
+  // Back from a creator on this same mounted screen: ?ari=1 reopens the panel.
+  useEffect(() => {
+    if (search.ari === "1") setAriOpen(true);
+  }, [search.ari]);
   const [ariAttempt, setAriAttempt] = useState(0);
   const [hotField, setHotField] = useState<string | null>(null);
+  // #2830 — "Add it myself" in the panel: the field, on this screen.
+  const [focusRequest, setFocusRequest] = useState<{ key: string; at: number } | null>(null);
   const [showSteps, setShowSteps] = useState(false);
 
   // ── Presence ───────────────────────────────────────────────────────────
@@ -198,10 +204,13 @@ export function WebsiteSetupScreen({ step, search, planQuery, grant, onHeartbeat
     }
   }, [plan?.plan, readOnly, router, save]);
 
-  const nextAfter = (key: PlanPartKey): PlanPartKey => {
-    const at = status.steps.findIndex((row) => row.key === key);
-    return status.steps[at + 1]?.key ?? key;
-  };
+  // #2830 — when Ari moves on to another part, the form goes with it.
+  const ariStepRef = useRef<string | null>(null);
+  const onFlowStep = useCallback((stepKey: string | null) => {
+    const follow = ariStepToFollow(ariStepRef.current, stepKey);
+    if (stepKey) ariStepRef.current = stepKey;
+    if (follow) goStep(follow, false);
+  }, [goStep]);
 
   const startWith = useCallback((withAri: boolean) => {
     // The start screen is a way in, not a way past a teammate who is already here.
@@ -241,7 +250,8 @@ export function WebsiteSetupScreen({ step, search, planQuery, grant, onHeartbeat
 
   // ── The first trip or event ────────────────────────────────────────────
   const setCurrentBrandId = useCurrentBrandStore((store) => store.setCurrentBrandId);
-  const setupPath = `/brand/${brandId}/website/setup?step=first_offering`;
+  // The way back keeps Ari open if it was (the creator comes back with ?ari=1).
+  const setupPath = `/brand/${brandId}/website/setup?step=first_offering${ariOpen ? "&ari=1" : ""}`;
   const openCreator = () => {
     if (!plan) return;
     const route = firstOfferingRoute(plan);
@@ -269,18 +279,22 @@ export function WebsiteSetupScreen({ step, search, planQuery, grant, onHeartbeat
     if (!plan) return null;
     switch (activeStep) {
       case "offer":
-        return <OfferingsPart brandId={brandId} readOnly={readOnly} onDone={() => goStep("brand")} />;
-      case "brand":
+        return <OfferingsPart brandId={brandId} readOnly={readOnly} onDone={() => goStep(nextOpenStep(status.steps, "offer"))} />;
+      case "brand": {
+        // "Next" is the next part still open, never one already done.
+        const next = nextOpenStep(status.steps, "brand");
         return (
           <SetupBrandStep
             brandId={brandId}
             plan={plan}
             readOnly={readOnly}
             hotField={hotField}
-            onNext={() => goStep("look")}
-            nextStepLabel={partLabel("look")}
+            focusRequest={focusRequest}
+            onNext={() => goStep(next)}
+            nextStepLabel={partLabel(next)}
           />
         );
+      }
       case "look":
         return plan.site ? (
           <View style={styles.gap}>
@@ -290,7 +304,7 @@ export function WebsiteSetupScreen({ step, search, planQuery, grant, onHeartbeat
               <WButton label="Open Website design" onPress={() => router.push(`/brand/${brandId}/website/design?returnTo=${encodeURIComponent(`/brand/${brandId}/website/setup?step=look`)}` as never)} testID="setup-open-design" />
             </View>
           </View>
-        ) : <PlanDesignPart brandId={brandId} planState={plan} readOnly={readOnly} onDone={() => goStep("story")} />;
+        ) : <PlanDesignPart brandId={brandId} planState={plan} readOnly={readOnly} onDone={() => goStep(nextOpenStep(status.steps, "look"))} />;
       case "story":
         return <StoryPart brandId={brandId} step="questions" readOnly={readOnly} onDone={(next) => goStep(next)} />;
       case "approve":
@@ -394,6 +408,12 @@ export function WebsiteSetupScreen({ step, search, planQuery, grant, onHeartbeat
             onOpenStep: (next: string) => goStep(next as PlanPartKey, false),
             onClose: () => setAriOpen(false),
             onFlowField: setHotField,
+            onFlowStep,
+            onFocusField: (key: string) => {
+              setFocusRequest({ key, at: Date.now() });
+              // On a phone Ari covers the form: step aside so the field shows.
+              if (phone) setAriOpen(false);
+            },
           }}
         />
       </Suspense>

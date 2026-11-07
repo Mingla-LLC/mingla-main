@@ -97,6 +97,27 @@ export function firstMissingStep(plan: SitePlanState | null, blockers: readonly 
   return owner && owner.key !== "build" ? owner.key : "brand";
 }
 
+/**
+ * #2830 — where "Next" goes from a step: the first part after it that is
+ * still open (not done, not skipped), else simply the one after it.
+ */
+export function nextOpenStep(steps: readonly SetupStep[], key: PlanPartKey): PlanPartKey {
+  const at = steps.findIndex((row) => row.key === key);
+  const after = steps.slice(at + 1);
+  return after.find((row) => row.status.kind !== "done" && row.status.kind !== "skipped")?.key ?? after[0]?.key ?? key;
+}
+
+/**
+ * #2830 — the form follows Ari's part. Only a MOVE of Ari's run (a new
+ * current_step_key) moves the form, so a person who goes to another part by
+ * hand afterwards stays there until Ari moves again. Returns the part to
+ * open, or null to stay.
+ */
+export function ariStepToFollow(lastSeen: string | null, current: string | null | undefined): PlanPartKey | null {
+  if (!current || current === lastSeen) return null;
+  return PLAN_PARTS.find((part) => part.key === current)?.key ?? null;
+}
+
 /** The words beside a step. The ring or tick is decided by `setupStepMark`. */
 export function setupStepChip(status: SetupStepStatus): string | null {
   switch (status.kind) {
