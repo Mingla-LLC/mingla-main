@@ -377,10 +377,13 @@ export function phase3dContractDigest(manifest) {
 // #4271: register the final tester PostgreSQL proof the same way.
 // #4271: re-sealed after merging origin/main (#4261/#4273/#4275/#4276/#4283/#2830 rows kept beside the #4271 rows).
 // #3645: register the stay flat-net migration the same way.
+// #4271: register the resumable stuck-refund tester PostgreSQL proof (PR #4303).
+// #4271: PR #4303 rework renamed the migration and both proofs (failed-refund guard).
 // #4294: the Mingla connector migration and its proof join the preserved inventories, and the
 // migration joins the pre-#1931 replay's exact-file exclusion (#2492).
 // #4294: re-sealed after the connector's tester PostgreSQL proof joined the pre-#1931 template suites' inventories.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "5f9349357c1d5461d1fc7b59dd83c27b97d99642ff5f1b19306a52cf04b73ad3";
+// #4294: re-sealed after merging origin/main (#4303 rows kept beside the #4294 rows).
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "3af34ae5c326a79f664496c5a7d727fa3656786710128c6f898eb011fafc9f51";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

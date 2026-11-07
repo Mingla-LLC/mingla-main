@@ -102,7 +102,8 @@ test("refundOrder requires and forwards the caller key without a random fallback
 test("RefundModal owns the key lazily and its existing mount boundary defines reset", () => {
   assert.match(
     pageSource,
-    /const \[idempotencyKey\] = useState\(createAdminRefundIdempotencyKey\);/,
+    // #4271: the setter exists only to start a new refund after the server spent the key.
+    /const \[idempotencyKey(?:, setIdempotencyKey)?\] = useState\(createAdminRefundIdempotencyKey\);/,
     "the key factory must run only when a refund intent mounts",
   );
   assert.match(
