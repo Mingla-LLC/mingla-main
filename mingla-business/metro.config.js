@@ -148,7 +148,7 @@ const REACT_NATIVE_REANIMATED_WEB_STUB = path.join(
 );
 
 const originalResolveRequest = config.resolver.resolveRequest;
-const WORKSPACE_LAZY_PACKAGES = ["offering-rendering", "theme-animations"];
+const WORKSPACE_LAZY_PACKAGES = ["offering-rendering", "theme-animations", "brand-rendering"];
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   // Public offering pages lazy-load

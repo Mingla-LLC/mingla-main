@@ -21,11 +21,13 @@ const context = {
   }),
 };
 
-describe("#1023 Metro resolves lazy workspace chunk requests", () => {
+describe("#1023 Metro resolves lazy workspace chunk requests (native and web)", () => {
   test.each([
     ["./packages/offering-rendering/ThemeEntranceAnimationWebImpl", "packages/offering-rendering/ThemeEntranceAnimationWebImpl"],
     ["./packages/theme-animations/lottie/confetti.intro.json", "packages/theme-animations/lottie/confetti.intro.json"],
     ["./packages/offering-rendering/OfferingRefundLadder", "packages/offering-rendering/OfferingRefundLadder"],
+    // the brand page's lazy disclosure (blocked /b/<slug> in the dev client)
+    ["./packages/brand-rendering/MeasuredTextDisclosure", "packages/brand-rendering/MeasuredTextDisclosure"],
   ])("%s → the workspace file, resolved by Metro", (moduleName, target) => {
     const out = metro.resolver.resolveRequest(context, moduleName, "web");
     expect(out).toEqual({ delegated: path.join(WORKSPACE, target), platform: "web" });
@@ -34,6 +36,11 @@ describe("#1023 Metro resolves lazy workspace chunk requests", () => {
   test("the pinned exact entries keep their results", () => {
     const out = metro.resolver.resolveRequest(context, "./packages/offering-rendering/publicParityContract", "web");
     expect(out.filePath).toBe(path.join(WORKSPACE, "packages", "offering-rendering", "publicParityContract.ts"));
+    const follow = metro.resolver.resolveRequest(context, "./packages/brand-rendering/FollowButton", "ios");
+    expect(follow).toEqual({
+      filePath: path.join(WORKSPACE, "packages", "brand-rendering", "FollowButton.tsx"),
+      type: "sourceFile",
+    });
   });
 
   test("other packages are untouched", () => {
