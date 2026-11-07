@@ -1,6 +1,5 @@
+// MINGLA-INVARIANT: I-1023-FONT-SHAPE-PARITY | issue #1023 | The Google family-name shape is one rule in four places: the app (GOOGLE_FONT_FAMILY_RE), the database helper public.issue_1023_is_theme_font, Ari's theme schema, and the catalogue build script. Every catalogue name passes it.
 /**
- * MINGLA-INVARIANT: I-1023-FONT-SHAPE-PARITY | issue #1023 | The Google family-name shape is one rule in four places: the app (GOOGLE_FONT_FAMILY_RE), the database helper public.issue_1023_is_theme_font, Ari's theme schema, and the catalogue build script. Every catalogue name passes it.
- *
  * issue #1023 wave 2 — P-1. Also pins the catalogue's integrity: all 14
  * bundled families present, the count, the filter rules, and that Ari's family
  * list is exactly the catalogue's names.

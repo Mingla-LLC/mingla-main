@@ -1,7 +1,6 @@
+// MINGLA-INVARIANT: I-1023-FONT-FALLS-BACK-TO-INTER | issue #1023 | A Google family that cannot load is registered as Inter under its own GF_ keys, never left unregistered (iOS would draw the system face).
+// MINGLA-INVARIANT: I-1023-NO-GOOGLE-FROM-BUYER-BROWSER | issue #1023 | A production web build fetches font CSS and files from the same-origin /gfonts proxy only.
 /**
- * MINGLA-INVARIANT: I-1023-FONT-FALLS-BACK-TO-INTER | issue #1023 | A Google family that cannot load is registered as Inter under its own GF_ keys, never left unregistered (iOS would draw the system face).
- * MINGLA-INVARIANT: I-1023-NO-GOOGLE-FROM-BUYER-BROWSER | issue #1023 | A production web build fetches font CSS and files from the same-origin /gfonts proxy only.
- *
  * issue #1023 wave 2 — P-3. The shared loader with fetch, expo-font and the
  * URL cache mocked at their boundaries; the CSS parsing, weight snapping,
  * dedupe, fallback and web rewrite are the real code.

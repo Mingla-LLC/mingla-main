@@ -1,6 +1,5 @@
+// MINGLA-INVARIANT: I-1023-GRADIENT-ONE-UNIT | issue #1023 | The second colour always comes from the same level as the first, and only when its stored first stop equals that level's colour.
 /**
- * MINGLA-INVARIANT: I-1023-GRADIENT-ONE-UNIT | issue #1023 | The second colour always comes from the same level as the first, and only when its stored first stop equals that level's colour.
- *
  * issue #1023 wave 2 — P-2. The six precedence rows of the spec's table, the
  * stale and orphan guards, font canonicalisation and keys, the motion palette
  * taking the gradient's second colour, and #1024's text-safe accent (small

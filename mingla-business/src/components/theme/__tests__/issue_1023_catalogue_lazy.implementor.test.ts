@@ -1,6 +1,5 @@
+// MINGLA-INVARIANT: I-1023-ONLY-CHOSEN-FONT-DOWNLOADS | issue #1023 | The Google Fonts catalogue is never in the eager web chunk: only the Theme sheet's Font tab loads it, through a dynamic import().
 /**
- * MINGLA-INVARIANT: I-1023-ONLY-CHOSEN-FONT-DOWNLOADS | issue #1023 | The Google Fonts catalogue is never in the eager web chunk: only the Theme sheet's Font tab loads it, through a dynamic import().
- *
  * issue #1023 wave 2 — P-7. Runs the real strict-grep gate
  * (.github/scripts/strict-grep/i-1047-biz-bundle-budget-deferral.mjs, rule 3)
  * against this checkout, and pins the Font tab's dynamic import directly.
