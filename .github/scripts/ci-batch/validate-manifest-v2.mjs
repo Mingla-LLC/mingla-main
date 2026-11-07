@@ -379,7 +379,8 @@ export function phase3dContractDigest(manifest) {
 // #3645: register the stay flat-net migration the same way.
 // #4294: the Mingla connector migration and its proof join the preserved inventories, and the
 // migration joins the pre-#1931 replay's exact-file exclusion (#2492).
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "da27cc24b1699126856e53bb7c82f457763434ee3c5578b74626c0ac5c2987e2";
+// #4294: re-sealed after the connector's tester PostgreSQL proof joined the pre-#1931 template suites' inventories.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "5f9349357c1d5461d1fc7b59dd83c27b97d99642ff5f1b19306a52cf04b73ad3";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

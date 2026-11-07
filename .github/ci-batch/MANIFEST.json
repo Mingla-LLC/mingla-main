@@ -20776,6 +20776,8 @@
         "supabase/migrations/__tests__/issue_4283_accept_single_member_row.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4294_mingla_connector.implementor.happy.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4294_mingla_connector.implementor.happy.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4294_mingla_connector.tester.adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4294_mingla_connector.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_679_brand_follows.test.ts",
         "supabase/migrations/__tests__/issue_679_brand_follows_rls.test.sql",
         "supabase/migrations/__tests__/issue_855_pr1_numbers_engine_rollups.test.sql",
@@ -25749,6 +25751,8 @@
         "supabase/migrations/__tests__/issue_4283_accept_single_member_row.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4294_mingla_connector.implementor.happy.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4294_mingla_connector.implementor.happy.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4294_mingla_connector.tester.adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4294_mingla_connector.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_679_brand_follows.test.ts",
         "supabase/migrations/__tests__/issue_679_brand_follows_rls.test.sql",
         "supabase/migrations/__tests__/issue_855_pr1_numbers_engine_rollups.test.sql",
@@ -53045,5 +53049,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "a846f1a438bb88e06a6fb372d3fefb770d02241e63ceb9c26844774857059cdf",
-  "phase3eContractSha256": "da27cc24b1699126856e53bb7c82f457763434ee3c5578b74626c0ac5c2987e2"
+  "phase3eContractSha256": "5f9349357c1d5461d1fc7b59dd83c27b97d99642ff5f1b19306a52cf04b73ad3"
 }

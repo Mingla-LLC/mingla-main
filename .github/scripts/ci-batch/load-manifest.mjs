@@ -170,7 +170,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3645: register the stay flat-net migration the same way.
 // #4294: re-sealed after the Mingla connector migration entered the preserved inventories
 // and joined the pre-#1931 replay skip list by exact filename.
-export const BOOTSTRAP_SHA256 = "f9538d3e40ac0766d76a23fa93119de89dcfbcd8fa35c6a619fa2d4c60da9ece";
+// #4294: re-sealed after the connector's tester PostgreSQL proof joined the pre-#1931 template suites' inventories.
+export const BOOTSTRAP_SHA256 = "50dab7e22f7925972d3248c9d360469604ef6899881eb87255e6b2ccce34945e";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
