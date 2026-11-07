@@ -180,7 +180,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4270: register the brand plan migrations (20280427004270-20280427024270) and their proofs the same way.
 // #3645: register the unpaid-release-holds migration and its PostgreSQL proof the same way.
 // #3645: register the sell-and-publish integrity migration, its PostgreSQL proof and its re-emit guard.
-export const BOOTSTRAP_SHA256 = "f78d9846cc9c9f4c559a1f1f143b1656b3593dd3d2aad2c80c3ed4f0b0d0d1ba";
+// #3645: the sell-and-publish migration joins the pre-#1931 and pre-#2117 replay skip lists by exact filename.
+export const BOOTSTRAP_SHA256 = "5568e73728ca0abfd4b3e36c691e976a8b4f9ad3926f1479cfee383a04e8e2b6";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

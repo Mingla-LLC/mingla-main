@@ -388,7 +388,8 @@ export function phase3dContractDigest(manifest) {
 // #4270: register the brand plan migrations (20280427004270-20280427024270) and their proofs the same way.
 // #3645: register the unpaid-release-holds migration and its PostgreSQL proof the same way.
 // #3645: register the sell-and-publish integrity migration, its PostgreSQL proof and its re-emit guard.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "e6cdeb49ab8e9ef8656b39b97a916758cc6537231652811da30dda23ccc10154";
+// #3645: the sell-and-publish migration joins the pre-#1931 and pre-#2117 replay skip lists by exact filename.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "ab529b137ae64aabca230df9b8a00d4ba75e5142de4cf6fcf0c60024f7d67698";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
