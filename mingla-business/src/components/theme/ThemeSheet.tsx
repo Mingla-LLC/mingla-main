@@ -1,16 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
-  AccessibilityInfo,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
   useWindowDimensions,
 } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
-import { Gesture } from "react-native-gesture-handler";
 
 import type { ThemeAnimationSlug, ThemeInput } from "@mingla/offering-rendering";
 import {
@@ -26,8 +21,11 @@ import { setThemeMotionDevOverride } from "../../../../packages/offering-renderi
 import {
   boldFontFamily,
   createThemePalette,
+  themeTextAccent,
 } from "../../../../packages/offering-rendering/themePalette";
 import { resolveTheme } from "../../../../packages/offering-rendering/themeResolver";
+import { ThemeAccentGradientLayer } from "../../../../packages/offering-rendering/ThemeAccentFill";
+import { googleFontOutcome } from "../../../../packages/offering-rendering/googleFontLoader";
 
 import {
   accent,
@@ -35,11 +33,8 @@ import {
   radius,
   spacing,
   text as textTokens,
-  typography,
 } from "../../constants/designSystem";
-import { readableTextFor } from "../../utils/buttonAccentContrast";
 import { themeAxisIsInherited } from "../../services/offeringTheme";
-import { useThemeRecentsStore } from "../../store/themeRecentsStore";
 import { useThemeFont } from "../../theme/useThemeFont";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { Button } from "../ui/Button";
@@ -49,15 +44,9 @@ import { Icon } from "../ui/Icon";
 // consumer repo-wide that did) bypassed Sheet.web.tsx entirely, so the
 // >=1024px DesktopCenteredCard never rendered and the sheet went full-bleed.
 import { Sheet } from "../ui/Sheet";
-import { WebSafeGestureDetector } from "../ui/WebSafeGestureDetector";
-import { FONT_SPECIMENS } from "./fontSpecimens";
-import { normalizeHexColor, normalizeHexColorOnBlur } from "./normalizeHexColor";
-import { THEME_PRESETS, presetForHex } from "./themePresets";
+import { ThemeColourTab } from "./ThemeColourTab";
+import { ThemeFontTab } from "./ThemeFontTab";
 import {
-  FONT_GROUPS,
-  hexToHsv,
-  hsvToHex,
-  hueName,
   themeDefaultFontLabel,
   themeResetLabel,
   type ThemeControlScope,
@@ -82,20 +71,21 @@ import {
  *    content leaves only ~20pt of slack, so there is no margin for error.
  *    SmartScrollView is also what keeps the hex field clear of the keyboard.
  *
- * 2. NO GESTURE COORDINATION. The S/V plane and hue rail use their own Pan
- *    gestures. They are NOT coordinated with the sheet's dismiss pan via
- *    Gesture.Simultaneous / Gesture.Native / simultaneousWithExternalGesture /
- *    blocksExternalGesture. ORCH-1173 R1 tried exactly that and it failed on a
- *    physical Samsung. The sheet's dismiss pan is scoped to its own 52pt handle
- *    band (#1022, SheetMobile), which is what makes plane dragging safe.
+ * 2. NO GESTURE COORDINATION. The Custom hue sliders (ThemeColourTab) use
+ *    their own Pan gestures. They are NOT coordinated with the sheet's dismiss
+ *    pan via Gesture.Simultaneous / Gesture.Native /
+ *    simultaneousWithExternalGesture / blocksExternalGesture. ORCH-1173 R1
+ *    tried exactly that and it failed on a physical Samsung. The sheet's
+ *    dismiss pan is scoped to its own 52pt handle band (#1022, SheetMobile),
+ *    which is what makes slider dragging safe.
+ *
+ * issue #1023 wave 2 — the colour tab is swatches + gradients + Custom
+ * (ThemeColourTab), the font tab is every Google Fonts family (ThemeFontTab).
+ * The font tab is rendered OUTSIDE the body ScrollView: its FlatList owns the
+ * scroll (a list nested in a same-direction ScrollView loses virtualisation).
  */
 
 const COMPACT_SCREEN_HEIGHT = 700;
-const PLANE_HEIGHT = 170;
-const PLANE_HEIGHT_COMPACT = 132;
-const RAIL_HEIGHT = 28;
-const PLANE_THUMB = 28;
-const RAIL_THUMB = 32;
 
 type TabKey = ThemeSheetTab;
 
@@ -117,18 +107,27 @@ export interface ThemeSheetProps {
   testID?: string;
 }
 
-/** Merge one axis into the current override and normalise the empty case. */
+/**
+ * Merge one axis into the current override and normalise the empty case.
+ * issue #1023 — `color2` belongs to the colour axis: a colour commit sets both
+ * stops at once (a gradient is one unit), any other axis keeps them, and
+ * clearing the colour clears the second stop too.
+ */
 const withAxis = (
   current: ThemeInput | null | undefined,
   axis: "color" | "font" | "animation",
   next: string | null,
+  nextColor2: string | null = null,
 ): ThemeInput | null => {
+  const color = axis === "color" ? next : (current?.color ?? null);
+  const color2 =
+    axis === "color" ? (next === null ? null : nextColor2) : (current?.color2 ?? null);
   const merged: ThemeInput = {
-    color: current?.color ?? null,
-    font: current?.font ?? null,
-    animation: current?.animation ?? null,
-    [axis]: next,
+    color,
+    font: axis === "font" ? next : (current?.font ?? null),
+    animation: axis === "animation" ? next : (current?.animation ?? null),
   };
+  if (color !== null && color2 !== null) merged.color2 = color2;
   if (merged.color === null && merged.font === null && merged.animation === null) {
     return null;
   }
@@ -152,11 +151,6 @@ export const ThemeSheet: React.FC<ThemeSheetProps> = ({
   const [replayNonce, setReplayNonce] = useState(0);
   // issue #1023 — a preview-only motion pick (not saved; see below).
   const [previewSlug, setPreviewSlug] = useState<ThemeAnimationSlug | null>(null);
-  const [screenReaderOn, setScreenReaderOn] = useState(false);
-  const [numericMode, setNumericMode] = useState(false);
-
-  const recents = useThemeRecentsStore((s) => s.recents);
-  const addRecent = useThemeRecentsStore((s) => s.addRecent);
 
   // C-1 — brandTheme FIRST. Getting this backwards is the bug that shipped.
   const resolved = useMemo(
@@ -174,45 +168,26 @@ export const ThemeSheet: React.FC<ThemeSheetProps> = ({
 
   // ORCH-1083 — the ONLY useThemeFont call site in this sheet. Browsing the
   // font list loads nothing; only the SELECTED family loads, for the preview.
-  useThemeFont(resolved.fontFamilyValue);
+  const resolvedFontState = useThemeFont(resolved.fontFamilyValue);
+  const resolvedFontLoaded = resolvedFontState?.loaded === true;
+  // issue #1023 — a Google family that could not load is drawn as Inter; say
+  // so under the preview rather than letting the host think Inter was chosen.
+  const resolvedFamily = resolved.fontFamilyValue.startsWith("GF_")
+    ? resolved.font
+    : null;
+  const resolvedFamilyFellBack =
+    resolvedFontLoaded &&
+    resolvedFamily !== null &&
+    googleFontOutcome(resolvedFamily)?.fellBack === true;
 
-  const seedHex = value?.color ?? resolved.color;
-  const hsv = useMemo(() => hexToHsv(seedHex) ?? { h: 25, s: 0.84, v: 0.92 }, [seedHex]);
-
-  // ── screen-reader detection: the 2D plane is unusable without sight, so the
-  // colour tab opens in numeric mode and hides the plane from the a11y tree.
-  useEffect(() => {
-    // #1022 F-3 — NEVER trust this API on web. react-native-web's
-    // AccessibilityInfo.isScreenReaderEnabled() resolves `true`
-    // UNCONDITIONALLY for every browser and every user
-    // (react-native-web/dist/exports/AccessibilityInfo/index.js), so the
-    // accessibility fallback was forcing numeric mode on 100% of web users
-    // and the colour plane — the deliverable Seth approved — never rendered
-    // on any browser at all. The a11y path is right; the API is not.
-    // Native keeps the real detection; web users get the plane and can still
-    // reach numeric mode with the keyboard toggle.
-    if (Platform.OS === "web") {
-      setScreenReaderOn(false);
-      return;
-    }
-    let cancelled = false;
-    void AccessibilityInfo.isScreenReaderEnabled().then((on) => {
-      if (cancelled) return;
-      setScreenReaderOn(on);
-      if (on) setNumericMode(true);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   // ── THE single colour write path ─────────────────────────────────────────
-  // Plane drag, rail drag, swatch, recent, brand tap and hex commit ALL funnel
-  // through here. Each call emits ONE patch derived from CURRENT state (never a
-  // captured prop snapshot — that is A/F-11).
+  // Swatch, gradient, slider release and hex commit ALL funnel through here.
+  // Each call emits ONE patch derived from CURRENT state (never a captured
+  // prop snapshot — that is A/F-11), carrying both stops together.
   const commitColor = useCallback(
-    (hex: string): void => {
-      onChange(withAxis(value, "color", hex));
+    (hex: string, hex2: string | null): void => {
+      onChange(withAxis(value, "color", hex, hex2));
     },
     [onChange, value],
   );
@@ -244,89 +219,6 @@ export const ThemeSheet: React.FC<ThemeSheetProps> = ({
     [onChange, value],
   );
 
-  // ── hex field: the ORCH-0964 contract, reproduced exactly ────────────────
-  // `hexDraft` is SEPARATE raw state and is NEVER bound to the committed
-  // value. Binding it is what collapsed char-by-char typing.
-  const [hexDraft, setHexDraft] = useState<string>(seedHex);
-  useEffect(() => {
-    setHexDraft(value?.color ?? "");
-  }, [value?.color]);
-
-  const handleHexChange = useCallback(
-    (raw: string): void => {
-      setHexDraft(raw);
-      const normalized = normalizeHexColor(raw);
-      if (normalized !== null) commitColor(normalized);
-    },
-    [commitColor],
-  );
-
-  const handleHexBlur = useCallback((): void => {
-    // Short hex (#f80) expands HERE and only here — never on keystroke, where
-    // it would commit "#FF1" while someone is typing "#FF1493".
-    const expanded = normalizeHexColorOnBlur(hexDraft);
-    if (expanded === null) {
-      setHexDraft(value?.color ?? "");
-      return;
-    }
-    commitColor(expanded);
-    addRecent(expanded);
-  }, [hexDraft, value?.color, commitColor, addRecent]);
-
-  const pickSwatch = useCallback(
-    (hex: string): void => {
-      commitColor(hex);
-      addRecent(hex);
-    },
-    [commitColor, addRecent],
-  );
-
-  // ── plane + rail gestures (NO coordination with the sheet pan) ───────────
-  // #1022 F-5 — the measured widths MUST live in state. Reading them from a
-  // ref meant the first painted frame used width 1, so both thumbs opened
-  // clipped at the far-left edge (left = 0.84*1 - 14 = -13.2) while the
-  // committed colour was something else entirely — the control opened telling
-  // the user their colour was something it was not. A ref assignment schedules
-  // no re-render, so nothing ever corrected it until an unrelated state change
-  // happened to repaint.
-  const [planeWidth, setPlaneWidth] = useState(0);
-  const [railWidth, setRailWidth] = useState(0);
-  const planeHeight = compact ? PLANE_HEIGHT_COMPACT : PLANE_HEIGHT;
-
-  const applyPlane = useCallback(
-    (x: number, y: number): void => {
-      const s = Math.min(1, Math.max(0, x / Math.max(1, planeWidth)));
-      const v = 1 - Math.min(1, Math.max(0, y / Math.max(1, planeHeight)));
-      commitColor(hsvToHex({ h: hsv.h, s, v }));
-    },
-    [commitColor, hsv.h, planeHeight, planeWidth],
-  );
-
-  const applyRail = useCallback(
-    (x: number): void => {
-      const ratioX = Math.min(1, Math.max(0, x / Math.max(1, railWidth)));
-      commitColor(hsvToHex({ h: ratioX * 360, s: hsv.s, v: hsv.v }));
-    },
-    [commitColor, hsv.s, hsv.v, railWidth],
-  );
-
-  const planeGesture = useMemo(
-    () =>
-      Gesture.Pan()
-        .onBegin((e) => applyPlane(e.x, e.y))
-        .onUpdate((e) => applyPlane(e.x, e.y))
-        .runOnJS(true),
-    [applyPlane],
-  );
-
-  const railGesture = useMemo(
-    () =>
-      Gesture.Pan()
-        .onBegin((e) => applyRail(e.x))
-        .onUpdate((e) => applyRail(e.x))
-        .runOnJS(true),
-    [applyRail],
-  );
 
   const snapPoint = compact ? 0.9 : 0.86;
 
@@ -371,7 +263,7 @@ export const ThemeSheet: React.FC<ThemeSheetProps> = ({
         <View style={styles.previewRow}>
           <View style={styles.previewText}>
             <Text
-              style={[styles.previewEyebrow, { color: palette.accent }]}
+              style={[styles.previewEyebrow, { color: themeTextAccent(palette) }]}
               numberOfLines={1}
             >
               {previewContent.dateLine}
@@ -386,6 +278,12 @@ export const ThemeSheet: React.FC<ThemeSheetProps> = ({
               {previewContent.title}
             </Text>
             <View style={[styles.previewCta, { backgroundColor: palette.accent }]}>
+              <ThemeAccentGradientLayer
+                theme={resolved}
+                palette={palette}
+                borderRadius={styles.previewCta.borderRadius}
+                testID={testID !== undefined ? `${testID}-preview-gradient` : undefined}
+              />
               <Text style={styles.previewCtaLabel}>{previewContent.ctaLabel}</Text>
             </View>
           </View>
@@ -459,6 +357,24 @@ export const ThemeSheet: React.FC<ThemeSheetProps> = ({
         becomes permanently unreachable (ORCH-1193). SmartScrollView also keeps
         the hex field above the keyboard + the 42pt Done bar.
       */}
+      {resolvedFamilyFellBack ? (
+        <Text style={styles.fallbackNote} testID={testID !== undefined ? `${testID}-font-fallback` : undefined}>
+          This font couldn't load, so pages will show Inter for now.
+        </Text>
+      ) : null}
+
+      {tab === "font" ? (
+        <View style={styles.bodyScroll}>
+          <ThemeFontTab
+            font={value?.font ?? null}
+            inherited={fontInherited}
+            inheritLabel={themeDefaultFontLabel(scope, brandTheme)}
+            inheritAccessibilityLabel={`${scope === "brand" ? "Mingla" : "Brand"} default font`}
+            onCommit={commitFont}
+            testID={testID !== undefined ? `${testID}-font-tab` : undefined}
+          />
+        </View>
+      ) : (
       <ScrollView
         style={styles.bodyScroll}
         contentContainerStyle={styles.bodyContent}
@@ -467,255 +383,14 @@ export const ThemeSheet: React.FC<ThemeSheetProps> = ({
       >
         {tab === "colour" ? (
           <View style={styles.tabBody}>
-            {!numericMode ? (
-              <>
-                <WebSafeGestureDetector gesture={planeGesture}>
-                  <View
-                    style={[styles.plane, { height: planeHeight }]}
-                    onLayout={(e) => setPlaneWidth(e.nativeEvent.layout.width)}
-                    accessibilityElementsHidden={screenReaderOn}
-                    importantForAccessibility={
-                      screenReaderOn ? "no-hide-descendants" : "auto"
-                    }
-                  >
-                    <View
-                      style={[
-                        StyleSheet.absoluteFill,
-                        { backgroundColor: `hsl(${Math.round(hsv.h)}, 100%, 50%)` },
-                      ]}
-                    />
-                    <LinearGradient
-                      colors={["#ffffff", "rgba(255,255,255,0)"]}
-                      start={{ x: 0, y: 0.5 }}
-                      end={{ x: 1, y: 0.5 }}
-                      style={StyleSheet.absoluteFill}
-                    />
-                    <LinearGradient
-                      colors={["rgba(0,0,0,0)", "#000000"]}
-                      start={{ x: 0.5, y: 0 }}
-                      end={{ x: 0.5, y: 1 }}
-                      style={StyleSheet.absoluteFill}
-                    />
-                    {planeWidth > 0 ? (
-                    <View
-                      pointerEvents="none"
-                      style={[
-                        styles.planeThumb,
-                        {
-                          left: hsv.s * planeWidth - PLANE_THUMB / 2,
-                          top: (1 - hsv.v) * planeHeight - PLANE_THUMB / 2,
-                          backgroundColor: seedHex,
-                        },
-                      ]}
-                    />
-                    ) : null}
-                  </View>
-                </WebSafeGestureDetector>
-
-                <WebSafeGestureDetector gesture={railGesture}>
-                  <View
-                    style={styles.rail}
-                    onLayout={(e) => setRailWidth(e.nativeEvent.layout.width)}
-                    accessibilityElementsHidden={screenReaderOn}
-                    importantForAccessibility={
-                      screenReaderOn ? "no-hide-descendants" : "auto"
-                    }
-                  >
-                    <LinearGradient
-                      colors={[
-                        "#ff0000",
-                        "#ffff00",
-                        "#00ff00",
-                        "#00ffff",
-                        "#0000ff",
-                        "#ff00ff",
-                        "#ff0000",
-                      ]}
-                      start={{ x: 0, y: 0.5 }}
-                      end={{ x: 1, y: 0.5 }}
-                      style={[StyleSheet.absoluteFill, { borderRadius: radius.full }]}
-                    />
-                    {railWidth > 0 ? (
-                    <View
-                      pointerEvents="none"
-                      style={[
-                        styles.railThumb,
-                        {
-                          left: (hsv.h / 360) * railWidth - RAIL_THUMB / 2,
-                          backgroundColor: `hsl(${Math.round(hsv.h)}, 100%, 50%)`,
-                        },
-                      ]}
-                    />
-                    ) : null}
-                  </View>
-                </WebSafeGestureDetector>
-              </>
-            ) : (
-              // Numeric mode — the 2D-plane accessibility answer. Hue is
-              // announced with a COLOUR NAME, not just a number.
-              <View style={styles.numericBlock}>
-                {(
-                  [
-                    ["Hue", `${Math.round(hsv.h)} degrees, ${hueName(hsv)}`, "h"],
-                    ["Saturation", `${Math.round(hsv.s * 100)} percent`, "s"],
-                    ["Lightness", `${Math.round(hsv.v * 100)} percent`, "v"],
-                  ] as const
-                ).map(([label, valueText, axis]) => (
-                  <View
-                    key={axis}
-                    style={styles.numericRow}
-                    accessibilityRole="adjustable"
-                    accessibilityLabel={label}
-                    accessibilityValue={{ text: valueText }}
-                    accessibilityActions={[
-                      { name: "increment" },
-                      { name: "decrement" },
-                    ]}
-                    onAccessibilityAction={(e) => {
-                      const dir = e.nativeEvent.actionName === "increment" ? 1 : -1;
-                      const next =
-                        axis === "h"
-                          ? { ...hsv, h: (hsv.h + dir + 360) % 360 }
-                          : axis === "s"
-                            ? { ...hsv, s: Math.min(1, Math.max(0, hsv.s + dir * 0.01)) }
-                            : { ...hsv, v: Math.min(1, Math.max(0, hsv.v + dir * 0.01)) };
-                      commitColor(hsvToHex(next));
-                    }}
-                  >
-                    <Text style={styles.numericLabel}>{label}</Text>
-                    <Text style={styles.numericValue}>{valueText}</Text>
-                  </View>
-                ))}
-              </View>
-            )}
-
-            <View style={styles.hexRow}>
-              <TextInput
-                value={hexDraft}
-                onChangeText={handleHexChange}
-                onBlur={handleHexBlur}
-                autoCapitalize="none"
-                autoCorrect={false}
-                spellCheck={false}
-                autoComplete="off"
-                maxLength={7}
-                placeholder="#eb7825"
-                placeholderTextColor={textTokens.quaternary}
-                accessibilityLabel="Hex colour code"
-                style={styles.hexInput}
-              />
-              <Pressable
-                onPress={() => setNumericMode((m) => !m)}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={
-                  numericMode ? "Switch to colour plane" : "Switch to numeric colour entry"
-                }
-                style={styles.numericToggle}
-              >
-                <Text style={styles.numericToggleLabel}>⌨</Text>
-              </Pressable>
-            </View>
-
-            {/* Swatch strip — brand · recents · presets */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.swatchStrip}
-              keyboardShouldPersistTaps="handled"
-            >
-              {/* issue #1564 — `!== "brand"` rather than `=== "offering"`.
-                  A venue inherits from its brand exactly as an offering does,
-                  so it gets the "Use my brand colour" swatch too; only the
-                  BRAND scope (which has no parent) must not show it. */}
-              {scope !== "brand" && brandTheme?.color ? (
-                <>
-                  <SwatchDot
-                    hex={brandTheme.color}
-                    selected={
-                      (value?.color ?? "").toLowerCase() ===
-                      brandTheme.color.toLowerCase()
-                    }
-                    label="Use my brand colour"
-                    onPress={() => pickSwatch(brandTheme.color as string)}
-                  />
-                  <View style={styles.swatchDivider} />
-                </>
-              ) : null}
-
-              {recents.map((hex) => (
-                <SwatchDot
-                  key={`recent-${hex}`}
-                  hex={hex}
-                  selected={(value?.color ?? "").toLowerCase() === hex.toLowerCase()}
-                  label={`Recent ${presetForHex(hex)?.name ?? hex}`}
-                  onPress={() => pickSwatch(hex)}
-                />
-              ))}
-              {recents.length > 0 ? <View style={styles.swatchDivider} /> : null}
-
-              {THEME_PRESETS.map((preset) => (
-                <SwatchDot
-                  key={preset.hex}
-                  hex={preset.hex}
-                  selected={
-                    (value?.color ?? "").toLowerCase() === preset.hex.toLowerCase()
-                  }
-                  label={`${preset.name}, ${preset.colorWord}`}
-                  onPress={() => pickSwatch(preset.hex)}
-                />
-              ))}
-            </ScrollView>
-          </View>
-        ) : null}
-
-        {tab === "font" ? (
-          <View style={styles.tabBody}>
-            <Pressable
-              onPress={() => commitFont(null)}
-              style={[styles.fontRow, fontInherited ? styles.fontRowSelected : null]}
-              accessibilityRole="button"
-              accessibilityState={{ selected: fontInherited }}
-              accessibilityLabel={`${scope === "brand" ? "Mingla" : "Brand"} default font`}
-            >
-              {/* issue #3348 — names the font INHERITING gives you (the
-                  brand's, or Mingla's for a brand), never the current pick. */}
-              <Text style={styles.fontRowLabel}>
-                {themeDefaultFontLabel(scope, brandTheme)}
-              </Text>
-              {fontInherited ? <Icon name="check" size={16} color={accent.warm} /> : null}
-            </Pressable>
-
-            {FONT_GROUPS.map((group) => (
-              <View key={group.label}>
-                <Text style={styles.groupHeader}>{group.label}</Text>
-                {group.slugs.map((slug) => {
-                  const spec = FONT_SPECIMENS[slug];
-                  if (spec === undefined) return null;
-                  const selected = !fontInherited && value?.font === slug;
-                  return (
-                    <Pressable
-                      key={slug}
-                      onPress={() => commitFont(slug)}
-                      style={[styles.fontRow, selected ? styles.fontRowSelected : null]}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected }}
-                      accessibilityLabel={spec.accessibilityLabel}
-                    >
-                      {/* NOTE: `spec.style` never sets fontFamily — browsing
-                          this list loads ZERO typefaces (ORCH-1083). */}
-                      <Text style={[styles.fontSpecimen, spec.style]} numberOfLines={1}>
-                        {spec.label}
-                      </Text>
-                      <Text style={styles.fontDescriptor}>{spec.descriptor}</Text>
-                      {selected ? (
-                        <Icon name="check" size={16} color={accent.warm} />
-                      ) : null}
-                    </Pressable>
-                  );
-                })}
-              </View>
-            ))}
+            <ThemeColourTab
+              value={value}
+              scope={scope}
+              brandTheme={brandTheme}
+              colourInherited={colourInherited}
+              onCommit={commitColor}
+              onInherit={() => onChange(withAxis(value, "color", null))}
+            />
           </View>
         ) : null}
 
@@ -760,6 +435,7 @@ export const ThemeSheet: React.FC<ThemeSheetProps> = ({
           </View>
         ) : null}
       </ScrollView>
+      )}
 
       {/* ── footer: per-axis reset + Done. Done DISMISSES ONLY — every change
           is already committed, so there is no save button to miss. ── */}
@@ -782,25 +458,6 @@ export const ThemeSheet: React.FC<ThemeSheetProps> = ({
     </Sheet>
   );
 };
-
-const SwatchDot: React.FC<{
-  hex: string;
-  selected: boolean;
-  label: string;
-  onPress: () => void;
-}> = ({ hex, selected, label, onPress }) => (
-  <Pressable
-    onPress={onPress}
-    hitSlop={4}
-    accessibilityRole="button"
-    accessibilityState={{ selected }}
-    accessibilityLabel={label}
-    style={[styles.swatch, { backgroundColor: hex }, selected ? styles.swatchSelected : null]}
-  >
-    {/* Selection is not colour-only — a check in a readable colour rides on top. */}
-    {selected ? <Icon name="check" size={14} color={readableTextFor(hex)} /> : null}
-  </Pressable>
-);
 
 interface MotionTileProps {
   label: string;
@@ -898,95 +555,7 @@ const styles = StyleSheet.create({
   bodyScroll: { flex: 1 },
   bodyContent: { paddingTop: spacing.md, paddingBottom: spacing.md, gap: spacing.md },
   tabBody: { gap: spacing.md },
-  plane: { width: "100%", borderRadius: radius.md, overflow: "hidden" },
-  planeThumb: {
-    position: "absolute",
-    width: PLANE_THUMB,
-    height: PLANE_THUMB,
-    borderRadius: PLANE_THUMB / 2,
-    borderWidth: 3,
-    borderColor: "#ffffff",
-  },
-  rail: {
-    width: "100%",
-    height: RAIL_HEIGHT,
-    borderRadius: radius.full,
-    justifyContent: "center",
-  },
-  railThumb: {
-    position: "absolute",
-    width: RAIL_THUMB,
-    height: RAIL_THUMB,
-    borderRadius: RAIL_THUMB / 2,
-    borderWidth: 3,
-    borderColor: "#ffffff",
-    top: (RAIL_HEIGHT - RAIL_THUMB) / 2,
-  },
-  numericBlock: { gap: spacing.sm },
-  numericRow: {
-    minHeight: 44,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.sm,
-    borderRadius: radius.md,
-    backgroundColor: glass.tint.profileBase,
-  },
-  numericLabel: { fontSize: 14, fontWeight: "600", color: textTokens.secondary },
-  numericValue: { fontSize: 13, color: textTokens.tertiary },
-  hexRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  hexInput: {
-    width: 132,
-    height: 44,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    color: textTokens.primary,
-    paddingHorizontal: spacing.sm,
-    fontSize: 14,
-  },
-  numericToggle: {
-    width: 28,
-    height: 28,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  numericToggleLabel: { fontSize: 16, color: textTokens.tertiary },
-  swatchStrip: { alignItems: "center", gap: spacing.sm, paddingVertical: 2 },
-  swatch: {
-    width: 36,
-    height: 36,
-    borderRadius: radius.md,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  swatchSelected: { borderWidth: 3, borderColor: "#ffffff" },
-  swatchDivider: {
-    width: 1,
-    height: 20,
-    backgroundColor: glass.border.profileBase,
-    marginHorizontal: 2,
-  },
-  fontRow: {
-    height: 52,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radius.md,
-  },
-  fontRowSelected: { backgroundColor: accent.tint },
-  fontRowLabel: { flex: 1, fontSize: 14, fontWeight: "600", color: textTokens.primary },
-  fontSpecimen: { flex: 1, fontSize: 18, color: textTokens.primary },
-  fontDescriptor: { fontSize: 11, color: textTokens.quaternary },
-  groupHeader: {
-    ...typography.labelCap,
-    textTransform: "uppercase",
-    color: textTokens.tertiary,
-    paddingTop: spacing.md,
-    paddingBottom: 6,
-  },
+  fallbackNote: { fontSize: 12, color: textTokens.tertiary, marginTop: 4 },
   motionGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   motionGroup: { marginTop: spacing.md },
   motionGroupLabel: {

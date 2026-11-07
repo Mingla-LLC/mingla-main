@@ -110,6 +110,65 @@ export const hueName = ({ h, s, v }: Hsv): string => {
   return HUE_NAMES[index];
 };
 
+// ─── issue #1023 wave 2: hue sliders ──────────────────────────────────────
+
+/**
+ * The Custom picker's hue sliders map a hue (0-359) to one fixed saturation
+ * and lightness, `hsl(h, 82%, 56%)`, exactly as the approved design does, so
+ * any slider position is a vivid colour that reads on the dark page.
+ */
+export const CUSTOM_HUE_SATURATION = 82;
+export const CUSTOM_HUE_LIGHTNESS = 56;
+
+export const hslToHex = (h: number, s: number, l: number): string => {
+  const hue = ((h % 360) + 360) % 360;
+  const sat = clamp(s, 0, 100) / 100;
+  const light = clamp(l, 0, 100) / 100;
+  const c = (1 - Math.abs(2 * light - 1)) * sat;
+  const x = c * (1 - Math.abs(((hue / 60) % 2) - 1));
+  const m = light - c / 2;
+  let rgb: [number, number, number];
+  if (hue < 60) rgb = [c, x, 0];
+  else if (hue < 120) rgb = [x, c, 0];
+  else if (hue < 180) rgb = [0, c, x];
+  else if (hue < 240) rgb = [0, x, c];
+  else if (hue < 300) rgb = [x, 0, c];
+  else rgb = [c, 0, x];
+  return `#${toHexByte((rgb[0] + m) * 255)}${toHexByte((rgb[1] + m) * 255)}${toHexByte((rgb[2] + m) * 255)}`;
+};
+
+/** The slider colour for a hue. */
+export const customHueHex = (hue: number): string =>
+  hslToHex(hue, CUSTOM_HUE_SATURATION, CUSTOM_HUE_LIGHTNESS);
+
+/** The hue (0-359, rounded) of a hex, for placing a slider thumb. */
+export const hueOfHex = (hex: string | null | undefined): number | null => {
+  if (typeof hex !== "string") return null;
+  const hsv = hexToHsv(hex);
+  return hsv === null ? null : Math.round(hsv.h) % 360;
+};
+
+/** Switching Custom to Gradient with no second colour seeds one 320° on. */
+export const seedSecondColour = (firstHex: string): string =>
+  customHueHex(((hueOfHex(firstHex) ?? 25) + 320) % 360);
+
+/**
+ * The contrast line under the colour controls (D-2 approved: small text is
+ * lightened for readability, fills keep the exact colour). `ratio` is the
+ * weaker stop's accent-on-page contrast.
+ */
+export const themeContrastLine = (ratio: number, gradient: boolean): string => {
+  const shown = (Math.floor(ratio * 10) / 10).toFixed(1);
+  if (ratio >= 4.5) {
+    return gradient
+      ? `Reads well on your page (${shown}:1 for the weaker colour).`
+      : `Reads well on your page (${shown}:1).`;
+  }
+  return gradient
+    ? `Small text gets lightened to stay readable (${shown}:1 for the weaker colour). Buttons keep your exact gradient.`
+    : `Small text gets lightened to stay readable (${shown}:1). Buttons keep your exact colour.`;
+};
+
 // ─── Nudge to AA ──────────────────────────────────────────────────────────
 
 /** Accent-on-page contrast for a seed, through the REAL derivation chain. */
@@ -281,6 +340,7 @@ export const themeDefaultFontLabel = (
     scope === "brand"
       ? resolveTheme(null, null)
       : resolveTheme(brandTheme ?? null, null);
+  // issue #1023 — a Google family's display name is the family name itself.
   const name = FONT_DISPLAY_NAMES[inherited.font] ?? inherited.font;
   return `${scope === "brand" ? "Mingla default" : "Brand default"} — ${name}`;
 };
@@ -314,7 +374,9 @@ export const themeValueLine = (
     ? scope === "brand"
       ? "Mingla default"
       : "Brand default"
-    : "Custom colour";
+    : typeof value?.color2 === "string" && value.color2.length > 0
+      ? "Custom gradient"
+      : "Custom colour";
 
   const fontLabel = FONT_DISPLAY_NAMES[resolved.font] ?? resolved.font;
   const motionLabel =
