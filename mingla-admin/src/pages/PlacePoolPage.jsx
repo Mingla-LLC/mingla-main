@@ -112,7 +112,7 @@ function PoolOverview({ funnel, loading, error, onRetry, onOpenTab }) {
       <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
         <SectionCard
           title="From seeded place to Explorer's deck"
-          subtitle={funnel?.counted_at ? `Counted ${new Date(funnel.counted_at).toLocaleString()}.` : "Counted on the server when you open this."}
+          subtitle={`Every share is of active places, counted on the server when you open this.${funnel?.counted_at ? ` Last counted ${new Date(funnel.counted_at).toLocaleString()}.` : ""}`}
           action={
             <Button size="sm" variant="secondary" icon={RotateCcw} loading={loading} onClick={onRetry}>
               {loading ? "Counting…" : "Update now"}
