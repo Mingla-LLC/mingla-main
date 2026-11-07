@@ -1139,6 +1139,29 @@ export const createTicketCheckoutCreateHandler = (
       );
     }
     if ((futureDateCount ?? 0) === 0) {
+      // issue #3281 — upcoming dates exist but every one is cancelled: answer
+      // with the occurrence token so the buyer apps clear the chosen date and
+      // refresh (their re-pick path). Absent or ended dates keep the old answer.
+      const { count: cancelledUpcomingCount, error: cancelledErr } =
+        await supabase
+          .from("event_dates")
+          .select("id", { count: "exact", head: true })
+          .eq("event_id", eventId)
+          .eq("status", "cancelled")
+          .gt("end_at", new Date().toISOString());
+      if (cancelledErr !== null) {
+        console.error(
+          "[ticket-checkout-create] cancelled event_dates lookup failed",
+          cancelledErr,
+        );
+        return jsonResponse(
+          { error: "event_date_lookup_failed", detail: cancelledErr.message },
+          500,
+        );
+      }
+      if ((cancelledUpcomingCount ?? 0) > 0) {
+        return refuse({ error: "occurrence_not_available" }, 422);
+      }
       return refuse({ error: "event_no_active_dates" }, 422);
     }
 

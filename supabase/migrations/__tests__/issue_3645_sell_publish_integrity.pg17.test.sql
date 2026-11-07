@@ -575,6 +575,20 @@ BEGIN
   IF v_err IS DISTINCT FROM 'occurrence_not_available' THEN
     RAISE EXCEPTION 'T10 FAIL: single-date event with its date cancelled (%)', coalesce(v_err, 'accepted');
   END IF;
+  -- The cancelled date's original time has passed: the refusal must not lapse.
+  UPDATE public.event_dates
+     SET start_at = now() - interval '3 hours', end_at = now() - interval '1 hour'
+   WHERE id = '36452b00-0000-4000-8000-00000000edd1';
+  v_dateless := gen_random_uuid();
+  INSERT INTO public.ticket_checkout_sessions(id, event_id, brand_id, buyer_name, buyer_email,
+    buyer_phone_e164, expires_at, subtotal_cents, application_fee_amount_cents, total_cents,
+    currency, status, idempotency_key)
+  VALUES (v_dateless, '36452b00-0000-4000-8000-0000000000ed', v_brand, 'Dateless later',
+    'b2b-dateless-2@example.test', '+2348000000001', now() + interval '1 hour', 250000, 0, 250000,
+    'NGN', 'requires_payment', 'b2b-dateless-2-' || v_dateless);
+  IF public.issue_1930_ticket_session_authorized(v_dateless, '36452b00-0000-4000-8000-0000000000ed') THEN
+    RAISE EXCEPTION 'T10 FAIL: a dateless checkout is authorised once the cancelled date has ended';
+  END IF;
   RAISE NOTICE 'ISSUE-3645-2B T10 PASS: with every upcoming date cancelled nothing can be checked out, and the buyer is told why';
 END $t10$;
 

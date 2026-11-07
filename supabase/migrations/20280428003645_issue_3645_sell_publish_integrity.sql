@@ -2653,15 +2653,17 @@ BEGIN
                  WHERE d.id=i.event_date_id AND d.event_id=p_event_id
                    AND d.end_at > now() AND d.status = 'active')) THEN RETURN false; END IF;  -- issue #3281
   -- issue #3281: a checkout with no date of its own (a single-date event,
-  -- or one opened before a cancel) cannot complete once every upcoming date
-  -- of the event is cancelled.
+  -- or one opened before a cancel) cannot complete once the event has no
+  -- active upcoming date and a date was cancelled. The cancelled date is
+  -- matched whenever it was, so the refusal does not lapse when its
+  -- original end time passes.
   IF NOT EXISTS(SELECT 1 FROM public.ticket_checkout_session_event_dates i
                  WHERE i.checkout_session_id=p_session_id)
      AND (v_session.metadata->>'event_date_id') IS NULL
      AND NOT EXISTS(SELECT 1 FROM public.event_dates d
                      WHERE d.event_id=p_event_id AND d.end_at > now() AND d.status = 'active')
      AND EXISTS(SELECT 1 FROM public.event_dates d
-                 WHERE d.event_id=p_event_id AND d.end_at > now() AND d.status <> 'active')
+                 WHERE d.event_id=p_event_id AND d.status <> 'active')
   THEN RETURN false; END IF;
   RETURN true;
 END $function$;

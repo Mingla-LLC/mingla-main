@@ -31,6 +31,15 @@ Deno.test("#3281 the event must still have an active upcoming date", () => {
   assert(block.includes('.eq("status", "active")'), "future-date count ignores cancelled dates");
 });
 
+Deno.test("#3281 every upcoming date cancelled answers occurrence_not_available, not event_no_active_dates", () => {
+  const block = between("const { count: futureDateCount", "// ORCH-1072");
+  const cancelledAt = block.indexOf('.eq("status", "cancelled")');
+  const tokenAt = block.indexOf('refuse({ error: "occurrence_not_available" }, 422)');
+  const oldAt = block.indexOf('refuse({ error: "event_no_active_dates" }, 422)');
+  assert(cancelledAt > 0, "no lookup of cancelled upcoming dates");
+  assert(tokenAt > cancelledAt && oldAt > tokenAt, "cancelled-only must answer occurrence_not_available before event_no_active_dates");
+});
+
 Deno.test("#3281 a single chosen occurrence that is cancelled is refused", () => {
   const block = between("if (eventDateId !== null) {", "// ═══");
   assert(block.includes('.select("id, end_at, status")'));
