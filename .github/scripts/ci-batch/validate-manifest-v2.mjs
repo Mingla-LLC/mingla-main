@@ -387,7 +387,9 @@ export function phase3dContractDigest(manifest) {
 // #4273: register the buyer/follower auto opt-in, honest-quote and account-opt-out migrations and their proofs.
 // #4270: register the brand plan migrations (20280427004270-20280427024270) and their proofs the same way.
 // #3645: register the unpaid-release-holds migration and its PostgreSQL proof the same way.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "7fc97c0310cf3b7a6d6e4bd934c2cf3b23d8516ed5e3e88e8cbb170bedc57d14";
+// #4271: register the tap buyer-name migration and its PostgreSQL proofs the same way.
+// #4271: the tap buyer-name migration joins the pre-#1931 replay's exact-file exclusion beside door pay.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "3df3f1f50246e86647d9866d63f18643c33c8b8c2df2026971606ca766f94e65";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

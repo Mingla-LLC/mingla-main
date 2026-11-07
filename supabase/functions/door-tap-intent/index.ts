@@ -63,6 +63,48 @@ const defaultDeps: DoorTapIntentDeps = {
 
 type Body = Record<string, unknown>;
 
+/** Longest buyer name a door sale keeps (biz_door_sale_record's rule). */
+export const DOOR_BUYER_NAME_MAX = 120;
+
+/**
+ * True when the text holds U+0000 or a lone UTF-16 surrogate (a high surrogate
+ * not followed by a low one, or a low one not preceded by a high one). Postgres
+ * text cannot store either, so PostgREST fails converting the JSON and the
+ * request would be a 500 that echoes part of the value in the database logs.
+ * Valid pairs (emoji and other astral characters) pass.
+ */
+function hasUnstorableText(text: string): boolean {
+  for (let i = 0; i < text.length; i++) {
+    const unit = text.charCodeAt(i);
+    if (unit === 0) return true;
+    if (unit >= 0xd800 && unit <= 0xdbff) {
+      const next = i + 1 < text.length ? text.charCodeAt(i + 1) : -1;
+      if (next < 0xdc00 || next > 0xdfff) return true;
+      i++; // a valid pair: skip its low half
+    } else if (unit >= 0xdc00 && unit <= 0xdfff) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * The host-typed buyer name for a tap, by the cash door sale's rule: trimmed,
+ * empty or missing is none, at most 120 characters. Anything that is not a
+ * string, or that holds U+0000 or a lone surrogate, is refused. Never logged.
+ */
+export function doorTapBuyerName(
+  raw: unknown,
+): { ok: true; value: string | null } | { ok: false } {
+  if (raw === undefined || raw === null) return { ok: true, value: null };
+  if (typeof raw !== "string") return { ok: false };
+  const trimmed = raw.trim();
+  if (trimmed === "") return { ok: true, value: null };
+  if (hasUnstorableText(trimmed)) return { ok: false };
+  if (Array.from(trimmed).length > DOOR_BUYER_NAME_MAX) return { ok: false };
+  return { ok: true, value: trimmed };
+}
+
 async function handleCreate(
   body: Body,
   actorId: string,
@@ -85,6 +127,9 @@ async function handleCreate(
     }
     buyerPhone = phone.e164;
   }
+  const name = doorTapBuyerName(body.buyerName);
+  if (!name.ok) return jsonResponse({ error: "buyer_name_invalid" }, 400);
+  const buyerName = name.value;
   const supabase = deps.serviceClient();
   if (!(await canTakeDoorPayment(supabase, eventId, actorId))) {
     return jsonResponse({ error: "door_access_denied" }, 400);
@@ -169,6 +214,10 @@ async function handleCreate(
     stripe_account_id: quote.stripeAccountId,
     stripe_location_id: locationId,
     buyer_phone_e164: buyerPhone,
+    // Always written, like buyer_phone_e164, so a re-price retry clears a stale
+    // name. The buyer_name migration is applied to production before this
+    // function deploys, so the column always exists when this runs.
+    buyer_name: buyerName,
     created_by: actorId,
   };
   // An earlier attempt stored the intent but never reached Stripe: re-price it.

@@ -427,7 +427,7 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
         lines: lines.map((l) => ({ ticketTypeId: l.ticketTypeId, quantity: l.quantity })),
         eventDateId: doorDateId,
         buyerPhone: buyerPhone.e164,
-        // Shown on the paid screen's Guest row only when the host typed one.
+        // Shown on the paid screen's Guest row and saved on the sale (#4271).
         buyerName: buyerName.trim().length > 0 ? buyerName.trim() : null,
       }) as never,
     );
