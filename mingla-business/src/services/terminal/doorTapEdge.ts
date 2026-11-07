@@ -3,7 +3,7 @@
  *
  *  terminal-connection-token  {eventId | brandId, platform}   → {secret, locationId}
  *  door-tap-intent  location  {eventId | brandId, platform}   → {locationId}
- *  door-tap-intent  create    {eventId, platform, eventDateId, lines, clientRequestId, buyerPhone, phoneCountryIso}
+ *  door-tap-intent  create    {eventId, platform, eventDateId, lines, clientRequestId, buyerPhone, phoneCountryIso, buyerName}
  *                             → {paymentIntentId, clientSecret, totalCents, currency, stripeAccountId, locationId}
  *  door-tap-intent  complete  {paymentIntentId, clientRequestId} → biz_door_tap_record result
  *  door-tap-intent  cancel    {paymentIntentId, clientRequestId} → {status:"cancelled"}
@@ -100,6 +100,8 @@ export interface CreateDoorTapIntentInput {
   clientRequestId: string;
   buyerPhone: string | null;
   phoneCountryIso: string | null;
+  /** What the host typed as the buyer's name; saved on the sale. Null when none. */
+  buyerName: string | null;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -237,6 +239,7 @@ export const createDoorTapIntent = async (
     clientRequestId: input.clientRequestId,
     buyerPhone: input.buyerPhone,
     phoneCountryIso: input.phoneCountryIso,
+    buyerName: input.buyerName,
   });
   return {
     paymentIntentId: requireString(data, "paymentIntentId"),

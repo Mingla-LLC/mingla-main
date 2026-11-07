@@ -585,6 +585,7 @@ export class TapToPaySaleFlow {
         clientRequestId,
         buyerPhone: this.input.draft.buyerPhone,
         phoneCountryIso: this.input.draft.phoneCountryIso,
+        buyerName: this.input.draft.buyerName ?? null,
       });
     } catch (error) {
       // An unclear failure (lost answer, server error) may have made an intent

@@ -63,6 +63,25 @@ const defaultDeps: DoorTapIntentDeps = {
 
 type Body = Record<string, unknown>;
 
+/** Longest buyer name a door sale keeps (biz_door_sale_record's rule). */
+export const DOOR_BUYER_NAME_MAX = 120;
+
+/**
+ * The host-typed buyer name for a tap, by the cash door sale's rule: trimmed,
+ * empty or missing is none, at most 120 characters. Anything that is not a
+ * string is refused. Never logged.
+ */
+export function doorTapBuyerName(
+  raw: unknown,
+): { ok: true; value: string | null } | { ok: false } {
+  if (raw === undefined || raw === null) return { ok: true, value: null };
+  if (typeof raw !== "string") return { ok: false };
+  const trimmed = raw.trim();
+  if (trimmed === "") return { ok: true, value: null };
+  if (Array.from(trimmed).length > DOOR_BUYER_NAME_MAX) return { ok: false };
+  return { ok: true, value: trimmed };
+}
+
 async function handleCreate(
   body: Body,
   actorId: string,
@@ -85,6 +104,9 @@ async function handleCreate(
     }
     buyerPhone = phone.e164;
   }
+  const name = doorTapBuyerName(body.buyerName);
+  if (!name.ok) return jsonResponse({ error: "buyer_name_invalid" }, 400);
+  const buyerName = name.value;
   const supabase = deps.serviceClient();
   if (!(await canTakeDoorPayment(supabase, eventId, actorId))) {
     return jsonResponse({ error: "door_access_denied" }, 400);
@@ -169,6 +191,8 @@ async function handleCreate(
     stripe_account_id: quote.stripeAccountId,
     stripe_location_id: locationId,
     buyer_phone_e164: buyerPhone,
+    // Only sent with a name, so a tap without one never needs the column.
+    ...(buyerName !== null ? { buyer_name: buyerName } : {}),
     created_by: actorId,
   };
   // An earlier attempt stored the intent but never reached Stripe: re-price it.
