@@ -63,7 +63,7 @@ export function avatar(props) { return renderToStaticMarkup(<HostAvatarButton on
     },
     bundle: true, write: false, platform: "node", format: "esm", jsx: "automatic", logLevel: "silent",
     loader: { ".js": "jsx" },
-    banner: { js: 'import { createRequire as __createRequire } from "node:module"; const require = __createRequire(import.meta.url);' },
+    banner: { js: 'import { createRequire as __createRequire } from "node:module"; const require = __createRequire(import.meta.url); if (typeof globalThis.WebSocket === "undefined") globalThis.WebSocket = class { constructor() { throw new Error("issue4270 render test: no network"); } };' },
     define: { "process.env.NODE_ENV": '"production"', "import.meta.env": '{"VITE_SUPABASE_URL":"https://x.supabase.test","VITE_SUPABASE_ANON_KEY":"test"}' },
   });
   const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "issue4270-host-tester-")), "harness.mjs");
