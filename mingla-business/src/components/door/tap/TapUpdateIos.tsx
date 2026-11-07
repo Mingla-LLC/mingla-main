@@ -1,6 +1,7 @@
 /**
  * #4271 — iPhone on iOS below 17.6: tell the host to update, and keep the pay
- * code one tap away.
+ * code one tap away. Door polish: neutral with a download icon; an update is
+ * not an error.
  */
 import React, { useCallback } from "react";
 import { Linking } from "react-native";
@@ -21,8 +22,8 @@ export const TapUpdateIos = ({ onUsePayCode, loading }: TapUpdateIosProps): Reac
   }, []);
   return (
     <TapStatusView
-      tone="bad"
-      icon="close"
+      tone="neutral"
+      icon="download"
       title={TAP_UPDATE_IOS_COPY.title}
       body={TAP_UPDATE_IOS_COPY.body}
       primary={{ label: TAP_UPDATE_IOS_COPY.primary, onPress: openSettings, testID: "tap-update-open-settings" }}
