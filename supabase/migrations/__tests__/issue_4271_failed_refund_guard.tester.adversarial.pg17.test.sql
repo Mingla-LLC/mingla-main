@@ -216,3 +216,121 @@ BEGIN
 END
 $d2$;
 ROLLBACK;
+
+-- ---------------------------------------------------------------------------
+-- Round 2 (PR #4303 rework, tester). The status guards on claim / record /
+-- finalize also fire for rows that ANOTHER writer marked 'failed' after Stripe
+-- really refunded. cancel-trip-booking does exactly that: when the #2097 fee
+-- truth comes back non-terminal (pending_visibility) or a later installment
+-- throws, it calls biz_cancel_trip_booking_rollback, which sets the refunds row
+-- 'failed' while its attempt holds a real buyer refund. Before this PR the
+-- application_fee.refunded webhook (claim + finalize) and the charge.refunded
+-- crash-recovery adoption (claim + record) still settled that row. Now the
+-- claim answers not-claimed, the webhook returns quietly, and the money that
+-- moved is never booked.
+--   D4  a buyer refund that landed, then rollback 'failed': the fee webhook
+--       must still settle the row 'succeeded', mark its tickets refunded and
+--       book the order's refunded amount.
+--   D5  Stripe refunded but the edge died before record_buyer_refund, then
+--       rollback 'failed': the crash-recovery adoption must still record the
+--       Stripe refund id on the row.
+-- Both RED BY DESIGN at 4e08abf51f; they pass on the pre-PR functions.
+-- ---------------------------------------------------------------------------
+
+-- D4. Money moved, another writer said 'failed': the fee webhook must still settle it.
+BEGIN;
+DO $d4$
+DECLARE
+  f jsonb := pg_temp.t4303_fixture(14, 2, 1000, false);
+  v_order uuid := (f->>'order')::uuid;
+  v_event uuid;
+  v_lines jsonb := jsonb_build_array(jsonb_build_object('order_line_item_id', f->>'line', 'quantity', 2));
+  v_refund uuid; v_prep jsonb; v_claim jsonb; v_hook uuid := gen_random_uuid();
+  v_errors text := ''; v_status text; v_refunded int; v_tickets int;
+BEGIN
+  SELECT event_id INTO v_event FROM public.orders WHERE id = v_order;
+  INSERT INTO public.tickets(order_id, ticket_type_id, event_id, qr_code, status)
+  VALUES (v_order, (f->>'tt')::uuid, v_event, 'r2-d4-1', 'valid'),
+         (v_order, (f->>'tt')::uuid, v_event, 'r2-d4-2', 'valid');
+  PERFORM pg_temp.t4303_as((f->>'owner')::uuid);
+  v_refund := (public.biz_refund_order(v_order, v_lines, 'Trip cancelled by guest', 'r2-d4-key')->>'refund_id')::uuid;
+  -- executeTicketRefundWithFeeTruth: prepare permits, refunds.create returns, the
+  -- buyer refund is recorded; the fee refund is not visible yet (pending_visibility).
+  v_prep := public.issue_2097_prepare_refund_attempt(v_refund, 'r2-d4-key', 'test', 'acct_4303',
+    'GBP', 'ch_4303_14', 'pi_4303_14', 'fee_4303_14', '30', '2000', '2000', '[]'::jsonb, '0', true, 1,
+    gen_random_uuid());
+  PERFORM public.issue_2097_record_buyer_refund((v_prep->>'attempt_id')::uuid,
+    (SELECT lease_owner FROM public.ticket_refund_attempts WHERE id = (v_prep->>'attempt_id')::uuid),
+    (v_prep->>'lease_epoch')::bigint, 're_r2_d4', '2000');
+  -- cancel-trip-booking: fee truth not terminal -> rollback marks the row failed.
+  PERFORM public.biz_cancel_trip_booking_rollback(v_refund, 'fee_truth_pending_visibility');
+  IF (SELECT status FROM public.refunds WHERE id = v_refund) <> 'failed' THEN
+    RAISE EXCEPTION 'D4 setup: rollback did not mark the row failed';
+  END IF;
+  -- Minutes later Stripe sends application_fee.refunded (stripeWebhookRouter): claim + finalize.
+  UPDATE public.ticket_refund_attempts SET lease_expires_at = now() - interval '1 second'
+   WHERE id = (v_prep->>'attempt_id')::uuid;
+  v_claim := public.issue_2097_claim_refund_attempt((v_prep->>'attempt_id')::uuid, v_hook);
+  IF (v_claim->>'claimed')::boolean IS NOT TRUE THEN
+    v_errors := v_errors || format('the fee webhook could not claim the attempt (%s), so it returns without booking anything; ', v_claim);
+  ELSE
+    BEGIN
+      PERFORM public.issue_2097_finalize_refund_attempt((v_prep->>'attempt_id')::uuid, v_hook,
+        (v_claim->>'lease_epoch')::bigint, 'succeeded_positive', 'fr_r2_d4', '30', '30', 'evt_r2_d4');
+    EXCEPTION WHEN OTHERS THEN
+      v_errors := v_errors || format('finalize refused (%s %s); ', SQLSTATE, SQLERRM);
+    END;
+  END IF;
+  SELECT status INTO v_status FROM public.refunds WHERE id = v_refund;
+  SELECT refunded_amount_cents INTO v_refunded FROM public.orders WHERE id = v_order;
+  SELECT count(*) INTO v_tickets FROM public.tickets WHERE order_id = v_order AND status = 'refunded';
+  IF v_status <> 'succeeded' OR coalesce(v_refunded, 0) <> 2000 OR v_tickets <> 2 THEN
+    v_errors := v_errors || format('Stripe refunded 2000 (re_r2_d4) but the row is %s, the order shows %s refunded and %s of 2 tickets are refunded; ',
+      v_status, coalesce(v_refunded, 0), v_tickets);
+  END IF;
+  IF v_errors <> '' THEN RAISE EXCEPTION 'DEFECT D4: %', v_errors; END IF;
+END
+$d4$;
+ROLLBACK;
+
+-- D5. Stripe refunded, the edge died before recording it, then rollback 'failed':
+--     the charge.refunded crash-recovery adoption must still record it.
+BEGIN;
+DO $d5$
+DECLARE
+  f jsonb := pg_temp.t4303_fixture(15, 2, 1000, false);
+  v_order uuid := (f->>'order')::uuid;
+  v_lines jsonb := jsonb_build_array(jsonb_build_object('order_line_item_id', f->>'line', 'quantity', 2));
+  v_refund uuid; v_prep jsonb; v_claim jsonb; v_hook uuid := gen_random_uuid();
+  v_errors text := ''; v_stripe text;
+BEGIN
+  PERFORM pg_temp.t4303_as((f->>'owner')::uuid);
+  v_refund := (public.biz_refund_order(v_order, v_lines, 'Trip cancelled by guest', 'r2-d5-key')->>'refund_id')::uuid;
+  v_prep := public.issue_2097_prepare_refund_attempt(v_refund, 'r2-d5-key', 'test', 'acct_4303',
+    'GBP', 'ch_4303_15', 'pi_4303_15', 'fee_4303_15', '30', '2000', '2000', '[]'::jsonb, '0', true, 1,
+    gen_random_uuid());
+  -- refunds.create returned re_r2_d5, then record_buyer_refund threw; the trip
+  -- loop catches it and rolls the row back to failed.
+  PERFORM public.biz_cancel_trip_booking_rollback(v_refund, 'record_buyer_refund timeout');
+  UPDATE public.ticket_refund_attempts SET lease_expires_at = now() - interval '1 second'
+   WHERE id = (v_prep->>'attempt_id')::uuid;
+  -- charge.refunded carries metadata.mingla_refund_id: claim + record (stripeWebhookRouter adoption).
+  v_claim := public.issue_2097_claim_refund_attempt((v_prep->>'attempt_id')::uuid, v_hook);
+  IF (v_claim->>'claimed')::boolean IS NOT TRUE THEN
+    v_errors := v_errors || format('the adoption could not claim the attempt (%s) and returns quietly; ', v_claim);
+  ELSE
+    BEGIN
+      PERFORM public.issue_2097_record_buyer_refund((v_prep->>'attempt_id')::uuid, v_hook,
+        (v_claim->>'lease_epoch')::bigint, 're_r2_d5', '2000');
+    EXCEPTION WHEN OTHERS THEN
+      v_errors := v_errors || format('record refused (%s %s); ', SQLSTATE, SQLERRM);
+    END;
+  END IF;
+  SELECT stripe_refund_id INTO v_stripe FROM public.refunds WHERE id = v_refund;
+  IF v_stripe IS DISTINCT FROM 're_r2_d5' THEN
+    v_errors := v_errors || format('Stripe refunded 2000 (re_r2_d5) but the row records %s; ', coalesce(v_stripe, 'no Stripe refund'));
+  END IF;
+  IF v_errors <> '' THEN RAISE EXCEPTION 'DEFECT D5: %', v_errors; END IF;
+END
+$d5$;
+ROLLBACK;
