@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 /**
- * ORCH-0847 gate #3, retargeted by issue #3859.
+ * ORCH-0847 gate #3, retargeted by issue #3859 and again by issue #4273.
  *
- * Marketing consent still defaults off on anonymous buyer web. Explorer is a
- * different surface: account-level marketing is always on outside checkout, so
- * checkout exposes only the required purchase-terms act. That act records only
- * transactional scope and must never become a marketing control.
+ * #4273 (Seth, 2026-11-06): anybody who buys is opted in to the brand's
+ * marketing. Buyer web now matches Explorer: checkout exposes only the
+ * required purchase-terms act, which records only transactional scope and must
+ * never become a marketing control. Buyer web shows a plain opt-in notice
+ * instead of a box; the grant is recorded at order ingest.
  *
  * Keep this historical filename stable because the batched strict-grep manifest
  * already owns its class-A registration.
@@ -15,7 +16,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-// MINGLA-INVARIANT: I-PROPOSED-3859-CONSENT-SEPARATION | issue #3859 | Explorer checkout has one required transactional purchase act and no marketing control; buyer web keeps purchase and optional marketing independent and default-off.
+// MINGLA-INVARIANT: I-PROPOSED-3859-CONSENT-SEPARATION | issue #3859 | Explorer and buyer-web checkout each have one required transactional purchase act and no marketing control; purchase terms default off; both show the #4273 opt-in notice.
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const LOCAL_DECLARATION_PREFIX = "// MINGLA-" + "INVARIANT: ";
@@ -108,7 +109,11 @@ export function checkSnapshot(snapshot) {
   );
   forbidToken(explorer, "setMarketingOptIn", "Explorer checkout", failures);
   forbidToken(explorer, "toggleMarketing", "Explorer checkout", failures);
-  forbidToken(explorer, "CHECKOUT_MARKETING_", "Explorer checkout", failures);
+  // #4273: the only marketing copy at checkout is the plain opt-in notice.
+  forbidToken(explorer, "CHECKOUT_MARKETING_LABEL", "Explorer checkout", failures);
+  forbidToken(explorer, "CHECKOUT_MARKETING_HELPER", "Explorer checkout", failures);
+  forbidToken(explorer, "CHECKOUT_MARKETING_DISCLOSURE", "Explorer checkout", failures);
+  requireToken(explorer, "{CHECKOUT_MARKETING_NOTICE}", "Explorer opt-in notice", failures);
 
   requireToken(
     explorer,
@@ -140,24 +145,13 @@ export function checkSnapshot(snapshot) {
     );
   }
 
-  // Buyer web: purchase terms and optional marketing are separate and off by default.
+  // Buyer web (#4273): one required purchase act, terms default off, no
+  // marketing control or marketing write, and the plain opt-in notice.
   const emptyBuyer = objectLiteralAfter(webCart, "const EMPTY_BUYER: BuyerDetails =");
   if (emptyBuyer === null) {
     failures.push("Buyer web defaults: EMPTY_BUYER object is missing or malformed");
   } else {
-    requireToken(
-      emptyBuyer,
-      "marketingOptIn: false,",
-      "Buyer web defaults",
-      failures,
-    );
-    requireToken(
-      emptyBuyer,
-      "termsAccepted: false,",
-      "Buyer web defaults",
-      failures,
-    );
-    forbidToken(emptyBuyer, "marketingOptIn: true", "Buyer web defaults", failures);
+    requireToken(emptyBuyer, "termsAccepted: false,", "Buyer web defaults", failures);
     forbidToken(emptyBuyer, "termsAccepted: true", "Buyer web defaults", failures);
   }
 
@@ -170,44 +164,13 @@ export function checkSnapshot(snapshot) {
       `${label} purchase state`,
       failures,
     );
-    requireToken(
-      source,
-      "setBuyer({ termsAccepted: next });",
-      `${label} purchase control`,
-      failures,
-    );
-    requireToken(
-      source,
-      "setBuyer({ marketingOptIn: !buyer.marketingOptIn });",
-      `${label} optional marketing control`,
-      failures,
-    );
-    requireToken(
-      source,
-      'scopes: ["transactional"]',
-      `${label} purchase audit`,
-      failures,
-    );
-    requireToken(
-      source,
-      'scopes: ["marketing"]',
-      `${label} optional marketing audit`,
-      failures,
-    );
+    requireToken(source, "setBuyer({ termsAccepted: next });", `${label} purchase control`, failures);
+    requireToken(source, 'scopes: ["transactional"]', `${label} purchase audit`, failures);
     requireToken(source, "onPress={toggleTerms}", `${label} purchase UI`, failures);
-    requireToken(source, "onPress={toggleMarketing}", `${label} marketing UI`, failures);
-
-    const buyerPatches = [...source.matchAll(/setBuyer\s*\(\s*\{([\s\S]*?)\}\s*\)/g)];
-    if (
-      buyerPatches.some(
-        (match) =>
-          /\btermsAccepted\b/.test(match[1]) && /\bmarketingOptIn\b/.test(match[1]),
-      )
-    ) {
-      failures.push(
-        `${label}: one setBuyer patch couples purchase acceptance to optional marketing`,
-      );
-    }
+    requireToken(source, "{CHECKOUT_MARKETING_NOTICE}", `${label} opt-in notice`, failures);
+    forbidToken(source, 'scopes: ["marketing"]', `${label} consent audit`, failures);
+    forbidToken(source, "toggleMarketing", `${label} checkout`, failures);
+    forbidToken(source, "marketingOptIn", `${label} checkout`, failures);
   }
 
   const declaration =
@@ -223,11 +186,9 @@ function verifyHostileMutations() {
   const webBuyer = `
     const termsAccepted = buyer.termsAccepted === true;
     setBuyer({ termsAccepted: next });
-    setBuyer({ marketingOptIn: !buyer.marketingOptIn });
     recordConsent({ scopes: ["transactional"] });
-    recordConsent({ scopes: ["marketing"] });
     <Pressable onPress={toggleTerms} />;
-    <Pressable onPress={toggleMarketing} />;
+    <Text>{CHECKOUT_MARKETING_NOTICE}</Text>;
   `;
   const clean = {
     explorer: `
@@ -236,10 +197,11 @@ function verifyHostileMutations() {
       recordConsent({ scopes: ["transactional"] });
       <Pressable accessibilityLabel={PURCHASE_TERMS_DISCLOSURE_TEXT} />;
       onCheckout({ marketingOptIn: true, purchaseTermsAccepted: termsAccepted, });
+      <Text>{CHECKOUT_MARKETING_NOTICE}</Text>;
     `,
     webCart: `
       const EMPTY_BUYER: BuyerDetails = {
-        marketingOptIn: false,
+        marketingOptIn: true,
         termsAccepted: false,
       };
     `,
@@ -277,9 +239,24 @@ function verifyHostileMutations() {
       clean.explorer.replace('scopes: ["transactional"]', 'scopes: ["marketing"]'),
     ],
     [
-      "Buyer web marketing prechecked",
-      "webCart",
-      clean.webCart.replace("marketingOptIn: false", "marketingOptIn: true"),
+      "Explorer opt-in notice removed",
+      "explorer",
+      clean.explorer.replace("{CHECKOUT_MARKETING_NOTICE}", ""),
+    ],
+    [
+      "Buyer web marketing box restored",
+      "webEvent",
+      `${clean.webEvent}\n<Pressable onPress={toggleMarketing} />;`,
+    ],
+    [
+      "Buyer web checkbox marketing write restored",
+      "webExperience",
+      `${clean.webExperience}\nrecordConsent({ scopes: ["marketing"] });`,
+    ],
+    [
+      "Buyer web opt-in notice removed",
+      "webEvent",
+      clean.webEvent.replace("{CHECKOUT_MARKETING_NOTICE}", ""),
     ],
     [
       "Buyer web purchase terms prechecked",
@@ -309,7 +286,7 @@ function verifyHostileMutations() {
   }
 
   process.stdout.write(
-    "[ORCH-0847/#3859 consent separation] MUTATION PROOF PASS — 8 hostile consent mutations detected.\n",
+    "[ORCH-0847/#3859 consent separation] MUTATION PROOF PASS — 11 hostile consent mutations detected.\n",
   );
 }
 
@@ -324,6 +301,6 @@ if (failures.length > 0) {
   process.exitCode = 1;
 } else {
   process.stdout.write(
-    "[ORCH-0847/#3859 consent separation] PASS — Explorer purchase-only checkout and independent default-off buyer-web marketing are intact.\n",
+    "[ORCH-0847/#3859 consent separation] PASS — Explorer and buyer-web purchase-only checkout, with the opt-in notice on both, are intact.\n",
   );
 }

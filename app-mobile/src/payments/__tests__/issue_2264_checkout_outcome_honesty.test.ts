@@ -781,7 +781,7 @@ describe("#2264 T-16 — free and Stripe request bodies are unchanged", () => {
           name: "Ada Buyer",
           email: "ada@example.com",
           phone: "+2348012345678",
-          marketingOptIn: false,
+          marketingOptIn: true, // #4273: buying opts in
         },
         lines: [{ ticketTypeId: "tt-ga", quantity: 1 }],
       },

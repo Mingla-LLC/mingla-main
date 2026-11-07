@@ -81,3 +81,30 @@ export function nextGlobalSendWindowOpen(now: Date): Date {
   if (!Number.isFinite(bestHoursUntilOpen)) bestHoursUntilOpen = 0;
   return new Date(now.getTime() + bestHoursUntilOpen * 60 * 60 * 1000);
 }
+
+/** "8 AM", "8 PM", "12 PM" for a 0-23 hour. */
+function formatHour(hour: number): string {
+  const suffix = hour >= 12 ? "PM" : "AM";
+  const twelve = hour % 12 === 0 ? 12 : hour % 12;
+  return `${twelve} ${suffix}`;
+}
+
+const SMS_MARKET_LABEL: Record<SmsMarket, string> = {
+  NG: "Nigeria",
+  US: "the US",
+};
+
+/**
+ * #4273 — the recipient-local sending windows as host copy, built from
+ * SMS_QUIET_HOURS (which the drift test pins to the edge fn's QUIET_HOURS), so
+ * the composer can never state a window the sender does not use.
+ * Example: "8 AM–8 PM in Nigeria, 8 AM–9 PM in the US".
+ */
+export function formatSmsSendWindows(): string {
+  return (["NG", "US"] as const)
+    .map((market) => {
+      const { startHour, endHour } = SMS_QUIET_HOURS[market];
+      return `${formatHour(startHour)}–${formatHour(endHour)} in ${SMS_MARKET_LABEL[market]}`;
+    })
+    .join(", ");
+}

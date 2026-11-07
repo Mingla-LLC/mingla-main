@@ -85,6 +85,7 @@ import {
   PURCHASE_TERMS_LABEL_PRIVACY,
   PURCHASE_TERMS_LABEL_SUFFIX,
   PURCHASE_TERMS_LABEL_TERMS,
+  CHECKOUT_MARKETING_NOTICE,
 } from "../../constants/consentDisclosure";
 import { LEGAL_URLS } from "../../constants/urls";
 import { InAppBrowserProvider, useOpenInMingla } from "../InAppBrowserProvider";
@@ -2199,6 +2200,11 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
             Please agree to continue.
           </Text>
         ) : null}
+        {/* #4273 — buying opts the buyer in; say so plainly, same words as
+            buyer web. */}
+        <Text style={styles.marketingNotice} testID="checkout-marketing-notice">
+          {CHECKOUT_MARKETING_NOTICE}
+        </Text>
 
         {/* #3859 — deterministic, booking-local Explorer contact. */}
         <ConsumerCartCard style={styles.recapCard}>
@@ -3069,6 +3075,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#ef4444",
     fontWeight: "500",
+  },
+  marketingNotice: {
+    marginTop: 8,
+    fontSize: 12,
+    lineHeight: 18,
+    color: "rgba(255, 255, 255, 0.65)",
   },
   // Buyer recap
   recapCard: {

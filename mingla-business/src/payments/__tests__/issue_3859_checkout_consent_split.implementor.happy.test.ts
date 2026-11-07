@@ -53,53 +53,40 @@ describe("#3859 buyer-web checkout consent split", () => {
     });
   });
 
-  test("pins the approved purchase and optional-marketing words independently", () => {
+  test("pins the approved purchase words; #4273 replaces the marketing box with a notice", () => {
     expect(disclosure).toContain(
       '"I agree to Mingla’s Terms of Service and Privacy Policy."',
     );
     expect(disclosure).toContain('"2026-10-14-purchase-v1"');
-    expect(disclosure).toContain(
-      '"Send me occasional updates and offers from Mingla and this host."',
-    );
-    expect(disclosure).toContain(
-      '"Optional. You can unsubscribe at any time."',
-    );
-    expect(disclosure).toContain('"2026-10-14-marketing-v1"');
+    expect(disclosure).not.toContain("Send me occasional updates");
+    expect(disclosure).toContain("CHECKOUT_MARKETING_NOTICE");
   });
 
-  test("keeps anonymous marketing off until its own affirmative act", () => {
-    expect(cartContext).toMatch(/marketingOptIn:\s*false/);
+  test("terms stay their own affirmative act; buying opts in to marketing", () => {
     expect(cartContext).toMatch(/termsAccepted:\s*false/);
+    expect(cartContext).toMatch(/marketingOptIn:\s*true/);
     for (const { source } of buyerRoutes) {
       expect(source).toContain("setBuyer({ termsAccepted: next })");
-      expect(source).toContain(
-        "setBuyer({ marketingOptIn: !buyer.marketingOptIn })",
-      );
-      expect(source).not.toMatch(
-        /setBuyer\(\{\s*termsAccepted:[^}]*marketingOptIn:/,
-      );
+      expect(source).not.toContain("marketingOptIn");
     }
   });
 
-  test("records purchase and optional marketing under separate scopes", () => {
+  test("records only the purchase grant at checkout", () => {
     for (const { source } of buyerRoutes) {
       expect(source).toContain("PURCHASE_TERMS_DISCLOSURE_TEXT");
       expect(source).toContain('scopes: ["transactional"]');
-      expect(source).toContain("CHECKOUT_MARKETING_DISCLOSURE_TEXT");
-      expect(source).toContain('scopes: ["marketing"]');
-      expect(source).toMatch(/if \(buyer\.marketingOptIn\) \{/);
+      expect(source).not.toContain('scopes: ["marketing"]');
       expect(source).not.toContain("CONSENT_VISIBLE_FOLLOW_BEFORE");
     }
   });
 
-  test("emits two accessible, independently checked controls", () => {
+  test("emits one accessible terms control and the plain opt-in notice", () => {
     for (const { source } of buyerRoutes) {
       expect(source).toContain(
         "accessibilityState={{ checked: termsAccepted, disabled: !authReady }}",
       );
       expect(source).toContain("aria-checked={termsAccepted}");
-      expect(source).toContain("checked: buyer.marketingOptIn");
-      expect(source).toContain("aria-checked={buyer.marketingOptIn}");
+      expect(source).toContain('testID="checkout-marketing-notice"');
       expect(source).toContain("PURCHASE_TERMS_URL");
       expect(source).toContain("PURCHASE_PRIVACY_URL");
       expect(source.match(/event\.stopPropagation\(\)/g)).toHaveLength(2);
