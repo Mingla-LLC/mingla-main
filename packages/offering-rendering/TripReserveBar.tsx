@@ -48,6 +48,8 @@ import * as Haptics from "expo-haptics";
 
 import type { CtaState } from "./offeringCta";
 import type { ThemePalette } from "./themePalette";
+import type { ResolvedTheme } from "./designTokens";
+import { ThemeAccentGradientLayer } from "./ThemeAccentFill";
 import type { ReserveSplitButton, ReserveSplitCtas } from "./tripOfferingTypes";
 
 export type { ReserveSplitButton, ReserveSplitCtas } from "./tripOfferingTypes";
@@ -55,6 +57,11 @@ export type { ReserveSplitButton, ReserveSplitCtas } from "./tripOfferingTypes";
 export interface TripReserveBarProps {
   cta: CtaState;
   palette: ThemePalette;
+  /**
+   * issue #1023 wave 2 — the resolved theme, so the primary fill can paint the
+   * theme gradient. Optional: without it the fill stays solid `palette.accent`.
+   */
+  theme?: ResolvedTheme;
   /** Small line above the price ("All-in, taxes included" / "Due today · deposit"). */
   kicker: string | null;
   /** Resolved bold font family for the price + CTA (native bold). */
@@ -91,6 +98,7 @@ const FLOAT_GAP = 16;
 export const TripReserveBar: React.FC<TripReserveBarProps> = ({
   cta,
   palette,
+  theme,
   kicker,
   fontFamily,
   onPress,
@@ -230,6 +238,13 @@ export const TripReserveBar: React.FC<TripReserveBarProps> = ({
       ]}
       testID={testID !== undefined ? `${testID}-action` : undefined}
     >
+      {theme !== undefined ? (
+        <ThemeAccentGradientLayer
+          theme={theme}
+          palette={palette}
+          borderRadius={styles.reserve.borderRadius}
+        />
+      ) : null}
       {kicker !== null || price.length > 0 ? (
         <View style={styles.rLeft}>
           {kicker !== null ? (
@@ -315,6 +330,13 @@ export const TripReserveBar: React.FC<TripReserveBarProps> = ({
       ]}
       testID={testID !== undefined ? `${testID}-action` : undefined}
     >
+      {theme !== undefined ? (
+        <ThemeAccentGradientLayer
+          theme={theme}
+          palette={palette}
+          borderRadius={styles.floatButton.borderRadius}
+        />
+      ) : null}
       {/* ORCH-1175 — the floating pill ALSO shows the live selected price (the
           same `cta.price` the docked bar + §10 box read) so it never lags the
           box. Truncates first (flexShrink) so a long price can't shove the

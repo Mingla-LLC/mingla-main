@@ -16,6 +16,8 @@
 --   T-7  the three views end with the new columns and keep security_invoker
 --   T-8  brand_context_revision ignores a NULL gradient (unchanged revision)
 --        and changes when one is set
+--   T-9  anon can read events.theme_gradient_override exactly like
+--        theme_color_override (#2489 column-scoped grants)
 \set ON_ERROR_STOP on
 BEGIN;
 
@@ -368,5 +370,15 @@ BEGIN
   END IF;
   RAISE NOTICE 'T-8 PASS';
 END $t8$;
+
+-- T-9 ------------------------------------------------------------------------
+DO $t9$
+BEGIN
+  IF NOT has_column_privilege('anon', 'public.events', 'theme_gradient_override', 'SELECT')
+     OR NOT has_column_privilege('anon', 'public.events', 'theme_color_override', 'SELECT') THEN
+    RAISE EXCEPTION 'T-9 FAIL: anon cannot read the gradient override the way it reads the colour';
+  END IF;
+  RAISE NOTICE 'T-9 PASS';
+END $t9$;
 
 ROLLBACK;

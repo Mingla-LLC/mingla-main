@@ -452,13 +452,20 @@ export {
   // fontFamily at the 700-weight loaded family. boldFontFamily(theme) returns it.
   FONT_FAMILY_BOLD_MAP,
   boldFontFamily,
+  // issue #1023 wave 2 / #1024 — gradient fill spec and the text-safe accent.
+  themeAccentFill,
+  themeTextAccent,
   // #2539 — `hexToRgba` is deliberately NOT re-exported here. 18 test files
   // hand-build a PARTIAL mock of this barrel, so every NEW name added to it is
   // `undefined` inside those suites and blows up at render in whatever
   // component imports it. PublicBrandPage.tsx deep-imports it from
   // "./themePalette" instead, which no barrel mock can intercept.
 } from "./themePalette";
-export type { ThemePalette, OfferingSurfaceStyles } from "./themePalette";
+export type {
+  ThemePalette,
+  OfferingSurfaceStyles,
+  ThemeAccentFillSpec,
+} from "./themePalette";
 export { PublicEventNotFound } from "./PublicEventNotFound";
 export { EventCoverMedia } from "./EventCoverMedia";
 export { ThemeEntranceAnimation } from "./ThemeEntranceAnimation";
@@ -472,9 +479,28 @@ export {
   isThemeColor,
   isThemeFontSlug,
   resolveTheme,
+  // issue #1023 wave 2 — Google fonts and gradients.
+  canonicalThemeFont,
+  color2FromColumn,
+  familyFromGoogleFontKey,
+  googleFontKey,
+  gradientToColumn,
+  isGoogleFontFamily,
+  isThemeFontValue,
 } from "./themeResolver";
+export { ThemeAccentFill, ThemeAccentGradientLayer } from "./ThemeAccentFill";
+export type {
+  ThemeAccentFillProps,
+  ThemeAccentGradientLayerProps,
+} from "./ThemeAccentFill";
+// The Google font loader is deliberately NOT in this barrel: apps deep-import
+// "@mingla/offering-rendering/googleFontLoader" so partial barrel mocks in
+// app test suites never see an undefined loader.
 export {
   FONT_FAMILY_MAP,
+  GOOGLE_FONT_FAMILY_MAX,
+  GOOGLE_FONT_FAMILY_RE,
+  LEGACY_FONT_FAMILY_NAMES,
   MINGLA_DEFAULT_THEME,
   SERVER_ACCEPTED_ANIMATION_SLUGS,
   THEME_ANIMATION_CATALOG,
@@ -660,9 +686,11 @@ export type {
   OfferingGalleryImage,
 } from "./types";
 export type {
+  GoogleFontFamily,
   ResolvedTheme,
   ThemeAnimationSlug,
   ThemeFontSlug,
+  ThemeFontValue,
   ThemeInput,
 } from "./designTokens";
 

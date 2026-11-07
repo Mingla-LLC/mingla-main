@@ -66,6 +66,7 @@ import {
   ticketSaleEnded,
 } from "./offeringCta";
 import { ThemeEntranceAnimation } from "./ThemeEntranceAnimation";
+import { ThemeAccentGradientLayer } from "./ThemeAccentFill";
 import type { TextSafeZone } from "./themeMotion";
 import { EventCoverMedia } from "./EventCoverMedia";
 import { PresentedByFollowerCount } from "./PresentedByFollowerCount";
@@ -75,7 +76,11 @@ import { PresentedByFollowerCount } from "./PresentedByFollowerCount";
 // This page's render output is byte-identical; RT-1 snapshot guards the move.
 // (resolveOfferingSurface is not called here — it is re-exported from index.ts
 // straight off ./themePalette.)
-import { createThemePalette, type ThemePalette } from "./themePalette";
+import {
+  createThemePalette,
+  themeTextAccent,
+  type ThemePalette,
+} from "./themePalette";
 // ORCH-1162 Bug 2 — the shared static-Mapbox builder (single owner, this package)
 // for the "Where you'll be" map. Returns null when coords/token are absent →
 // the renderer falls back to the honest text venue card (rule-9).
@@ -561,7 +566,7 @@ const PublishedBody = ({
               <Text
                 style={[
                   styles.dateLine,
-                  { color: palette.accent, fontFamily: theme.fontFamilyValue },
+                  { color: themeTextAccent(palette), fontFamily: theme.fontFamilyValue },
                 ]}
               >
                 {event.dateLine}
@@ -643,7 +648,7 @@ const PublishedBody = ({
                       style={styles.showAllBtn}
                     >
                       <Text
-                        style={[styles.showAllLabel, { color: palette.accent }]}
+                        style={[styles.showAllLabel, { color: themeTextAccent(palette) }]}
                       >
                         Show all {event.datesList.length} dates
                       </Text>
@@ -696,6 +701,11 @@ const PublishedBody = ({
               <View
                 style={[styles.brandTile, { backgroundColor: palette.accent }]}
               >
+                <ThemeAccentGradientLayer
+                  theme={theme}
+                  palette={palette}
+                  borderRadius={styles.brandTile.borderRadius}
+                />
                 <Text
                   style={[styles.brandLetter, { color: palette.accentText }]}
                 >
@@ -721,7 +731,7 @@ const PublishedBody = ({
               />
             </View>
             {callbacks.onOpenBrand !== undefined ? (
-              <Text style={[styles.brandCta, { color: palette.accent }]}>
+              <Text style={[styles.brandCta, { color: themeTextAccent(palette) }]}>
                 View
               </Text>
             ) : null}
@@ -992,7 +1002,7 @@ const PublishedBody = ({
                     style={styles.aboutToggleRow}
                   >
                     <Text
-                      style={[styles.aboutToggle, { color: palette.accent }]}
+                      style={[styles.aboutToggle, { color: themeTextAccent(palette) }]}
                     >
                       {collapsed ? "Read more" : "Show less"}
                     </Text>
@@ -1202,6 +1212,14 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
             },
           ]}
         >
+          {isButtonDisabled ? null : (
+            <ThemeAccentGradientLayer
+              theme={theme}
+              palette={palette}
+              borderRadius={styles.ticketBuyerBtn.borderRadius}
+              testID="ticket-buy-gradient"
+            />
+          )}
           <Text
             style={[
               styles.ticketBuyerBtnLabel,

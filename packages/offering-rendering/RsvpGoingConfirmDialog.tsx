@@ -22,6 +22,7 @@ import {
 } from "react-native";
 
 import { boldFontFamily, type ThemePalette } from "./themePalette";
+import { ThemeAccentGradientLayer } from "./ThemeAccentFill";
 import { type ResolvedTheme } from "./designTokens";
 
 export interface RsvpGoingConfirmDialogProps {
@@ -117,6 +118,11 @@ export const RsvpGoingConfirmDialog: React.FC<RsvpGoingConfirmDialogProps> = ({
             style={[styles.primaryBtn, { backgroundColor: palette.accent, opacity: submitting ? 0.7 : 1 }]}
             testID="orch-1163-rsvp-going-confirm-cta"
           >
+            <ThemeAccentGradientLayer
+              theme={theme}
+              palette={palette}
+              borderRadius={styles.primaryBtn.borderRadius}
+            />
             {submitting ? (
               <ActivityIndicator color={palette.accentText} />
             ) : null}

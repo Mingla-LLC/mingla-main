@@ -150,6 +150,7 @@ const FULL_ROW: Required<ServerDraftEventRow> = {
   theme_color_override: "#16a34a",
   theme_font_override: null,
   theme_animation_override: null,
+  theme_gradient_override: null,
 };
 
 const draft = (patch: Partial<DraftEvent> = {}): DraftEvent => ({

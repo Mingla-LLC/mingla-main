@@ -71,8 +71,10 @@ import {
 import {
   boldFontFamily,
   offeringSurfaceStyles,
+  themeTextAccent,
   type ThemePalette,
 } from "./themePalette";
+import { ThemeAccentGradientLayer } from "./ThemeAccentFill";
 import { Calendar, Globe, MapPin, Minus, Plus } from "./LucideIcons";
 import {
   PresentedByFollowerCount,
@@ -206,7 +208,7 @@ export const EventAcquisitionNotice: React.FC<EventAcquisitionNoticeProps> = ({
       style={[styles.acquisitionNotice, surface.card]}
       testID={noticeId}
     >
-      <Text style={[styles.acquisitionEyebrow, { color: palette.accent }]}>
+      <Text style={[styles.acquisitionEyebrow, { color: themeTextAccent(palette) }]}>
         {copy.eyebrow}
       </Text>
       <Text
@@ -745,6 +747,11 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
             <View
               style={[styles.brandTile, { backgroundColor: palette.accent }]}
             >
+              <ThemeAccentGradientLayer
+                theme={theme}
+                palette={palette}
+                borderRadius={styles.brandTile.borderRadius}
+              />
               {brand?.photo !== undefined && brand.photo.length > 0 ? (
                 <Image
                   source={{ uri: brand.photo }}
@@ -1446,7 +1453,7 @@ const TicketStepperRow: React.FC<{
           active={listPriceLabel !== null}
           remaining={ticket.saleRemaining}
           endsAt={ticket.saleEndsAt}
-          style={[styles.saleAvailability, { color: palette.accent }]}
+          style={[styles.saleAvailability, { color: themeTextAccent(palette) }]}
         />
       </View>
 

@@ -67,8 +67,10 @@ import {
 import {
   boldFontFamily,
   offeringSurfaceStyles,
+  themeTextAccent,
   type ThemePalette,
 } from "./themePalette";
+import { ThemeAccentGradientLayer } from "./ThemeAccentFill";
 import { type ResolvedTheme } from "./designTokens";
 // #3372 — naira shows "₦", not "NGN", whatever the engine or locale (#3341 rule).
 import { withCurrencyGlyph } from "./currencyGlyph";
@@ -413,7 +415,7 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
       {!isDesktop ? (
         <View style={styles.leadBlock} testID="experience-body-title">
           {stopEyebrow !== null ? (
-            <Text style={[styles.eyebrowLead, { color: palette.accent }]}>
+            <Text style={[styles.eyebrowLead, { color: themeTextAccent(palette) }]}>
               {stopEyebrow}
             </Text>
           ) : null}
@@ -545,6 +547,11 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
                 />
               ) : (
                 <View style={styles.brandInitialWrap}>
+                  <ThemeAccentGradientLayer
+                    theme={theme}
+                    palette={palette}
+                    borderRadius={999}
+                  />
                   <Text
                     style={[
                       styles.brandInitial,
@@ -848,7 +855,7 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
             remaining={data.ticket?.saleRemaining}
             endsAt={data.ticket?.saleEndsAt}
             timezone={data.timezone}
-            style={[styles.saleAvailability, { color: palette.accent }]}
+            style={[styles.saleAvailability, { color: themeTextAccent(palette) }]}
           />
           {experienceOfferingOptions(data).length > 1 ? (
             <View

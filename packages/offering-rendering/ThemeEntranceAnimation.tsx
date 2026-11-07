@@ -118,6 +118,7 @@ export const ThemeEntranceAnimation: React.FC<ThemeEntranceAnimationProps> = ({
         key={`${sessionKey}:${slug}:${reduceMotion ? "still" : "play"}:${replayKey}`}
         slug={slug}
         color={theme.color}
+        color2={theme.color2 ?? null}
         reduceMotion={reduceMotion}
         textSafeZone={textSafeZone}
         textZoneTop={textZoneTop}
@@ -132,6 +133,8 @@ export const ThemeEntranceAnimation: React.FC<ThemeEntranceAnimationProps> = ({
 interface MotionLayersProps {
   slug: ThemeMotionSlug;
   color: string;
+  /** issue #1023 wave 2 — the gradient's second colour (one unit with `color`). */
+  color2: string | null;
   reduceMotion: boolean;
   textSafeZone: TextSafeZoneProp;
   textZoneTop?: ThemeEntranceAnimationProps["textZoneTop"];
@@ -168,6 +171,7 @@ function useThemeLottie(
 const MotionLayers: React.FC<MotionLayersProps> = ({
   slug,
   color,
+  color2,
   reduceMotion,
   textSafeZone,
   textZoneTop,
@@ -188,7 +192,10 @@ const MotionLayers: React.FC<MotionLayersProps> = ({
     return () => sub.remove();
   }, []);
 
-  const palette = useMemo(() => buildThemeMotionPalette(color), [color]);
+  const palette = useMemo(
+    () => buildThemeMotionPalette(color, color2),
+    [color, color2],
+  );
   const introRaw = useThemeLottie(slug, "intro", !reduceMotion);
   const loopRaw = useThemeLottie(slug, "loop", true);
   const intro = useMemo(() => (introRaw ? tintLottie(introRaw, palette) : null), [introRaw, palette]);

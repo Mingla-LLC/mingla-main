@@ -42,9 +42,6 @@ import type {
   VenueCategory,
 } from "../types/brand";
 import {
-  isThemeAnimationSlug,
-  isThemeColor,
-  isThemeFontSlug,
   type ThemeInput,
   type OfferingGalleryImage,
   type EventAcquisitionInput,
@@ -52,6 +49,7 @@ import {
   type EventTerminalSource,
   resolveEventAcquisitionState as sharedResolveEventAcquisitionState,
 } from "@mingla/offering-rendering";
+import { themeInputFromFields } from "@mingla/offering-rendering/themeResolver";
 import { parseClaimedVenueHours } from "../utils/venuePublicHours";
 import { buildVenueGalleryPhotoUrls } from "../utils/venuePublicPhotos";
 import {
@@ -85,6 +83,7 @@ interface BusinessPublicEventViewRow {
   brand_theme_color: string | null;
   brand_theme_font: string | null;
   brand_theme_animation: string | null;
+  brand_theme_gradient?: string | null;
   title: string;
   description: string | null;
   slug: string;
@@ -153,6 +152,7 @@ interface BusinessPublicEventViewRow {
   theme_color_override: string | null;
   theme_font_override: string | null;
   theme_animation_override: string | null;
+  theme_gradient_override?: string | null;
   // ORCH-0792: master event_dates columns surfaced by the view.
   master_start_at: string | null;
   master_end_at: string | null;
@@ -216,6 +216,7 @@ interface BusinessPublicBrandViewRow {
   theme_color: string | null;
   theme_font: string | null;
   theme_animation: string | null;
+  theme_gradient?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -244,6 +245,7 @@ export interface ClaimedVenuePublicViewRow {
   theme_color: string | null;
   theme_font: string | null;
   theme_animation: string | null;
+  theme_gradient?: string | null;
   claim_status: "none" | "pending_review" | "verified" | "rejected";
   venue_category: VenueCategory | null;
   place_pool_id: string | null;
@@ -811,17 +813,14 @@ const extractBrandContact = (
   return Object.keys(out).length > 0 ? out : undefined;
 };
 
+// issue #1023 wave 2 — one guard for every theme read (Google families and
+// the gradient's second stop included); see themeInputFromFields.
 const asThemeInput = (
   color: unknown,
   font: unknown,
   animation: unknown,
-): ThemeInput | null => {
-  const out: ThemeInput = {};
-  if (isThemeColor(color)) out.color = color;
-  if (isThemeFontSlug(font)) out.font = font;
-  if (isThemeAnimationSlug(animation)) out.animation = animation;
-  return Object.keys(out).length > 0 ? out : null;
-};
+  gradient?: unknown,
+): ThemeInput | null => themeInputFromFields(color, font, animation, gradient);
 
 const publicBrandCore = (
   id: string,
@@ -863,6 +862,7 @@ const viewRowToBrand = (row: BusinessPublicEventViewRow): PublicBrandRecord => {
       row.brand_theme_color,
       row.brand_theme_font,
       row.brand_theme_animation,
+      row.brand_theme_gradient,
     ),
   };
 };
@@ -883,7 +883,12 @@ export const publicBrandViewRowToBrand = (
     links: asLinks(row.social_links, row.custom_links),
     displayAttendeeCount: row.display_attendee_count,
     claimStatus: row.claim_status,
-    theme: asThemeInput(row.theme_color, row.theme_font, row.theme_animation),
+    theme: asThemeInput(
+      row.theme_color,
+      row.theme_font,
+      row.theme_animation,
+      row.theme_gradient,
+    ),
   };
 };
 
@@ -1171,7 +1176,12 @@ export const claimedVenueRowToBrand = (
     venueCategory: asVenueCategory(row.venue_category) ?? undefined,
     googlePlaceId: asStringOrNull(row.google_place_id) ?? undefined,
     placePoolId: row.place_pool_id ?? undefined,
-    theme: asThemeInput(row.theme_color, row.theme_font, row.theme_animation),
+    theme: asThemeInput(
+      row.theme_color,
+      row.theme_font,
+      row.theme_animation,
+      row.theme_gradient,
+    ),
   };
 };
 
@@ -1384,6 +1394,7 @@ export const publicEventViewRowToEvent = (
       row.theme_color_override,
       row.theme_font_override,
       row.theme_animation_override,
+      row.theme_gradient_override,
     ),
     // ORCH-1150 — discriminator + RSVP host-control snapshot (inert for
     // non-RSVP rows). The public RSVP page + Hub list-card read these.
@@ -1866,6 +1877,7 @@ const detailFromDirectBundle = async (
     brand_theme_color: asStringOrNull(brand.themeColor),
     brand_theme_font: asStringOrNull(brand.themeFont),
     brand_theme_animation: asStringOrNull(brand.themeAnimation),
+    brand_theme_gradient: asStringOrNull(brand.themeGradient),
     title: payload.name,
     description: asStringOrNull(payload.description),
     slug: payload.eventSlug,
@@ -1913,6 +1925,7 @@ const detailFromDirectBundle = async (
     theme_color_override: asStringOrNull(payload.themeColorOverride),
     theme_font_override: asStringOrNull(payload.themeFontOverride),
     theme_animation_override: asStringOrNull(payload.themeAnimationOverride),
+    theme_gradient_override: asStringOrNull(payload.themeGradientOverride),
     master_start_at: asStringOrNull(payload.masterStartAt),
     master_end_at: asStringOrNull(payload.masterEndAt),
     master_timezone: asStringOrNull(payload.timezone),

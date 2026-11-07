@@ -82,6 +82,7 @@ import {
   type ConsumerExperienceOccurrence,
 } from "../../hooks/useConsumerExperienceDetail";
 import { experienceSeatsLabel } from "@mingla/offering-rendering/experienceR3";
+import { color2FromColumn } from "@mingla/offering-rendering/themeResolver";
 
 import { Icon } from "../../components/ui/Icon";
 import { PresentedByFollowAndMessage } from "../../components/brandEnquiry/PresentedByFollowAndMessage";
@@ -488,10 +489,18 @@ export default function ConsumerExperienceDetailScreen({
   const seedTheme = useMemo(() => {
     const bt = seed?.brandTheme ?? null;
     if (bt === null) return resolveTheme(null, null);
+    // issue #1023 — the gradient's second stop only when its first stop is
+    // this level's colour (a gradient is one unit).
     return resolveTheme(
-      { color: bt.color ?? undefined, font: bt.font ?? undefined, animation: bt.animation ?? undefined },
+      {
+        color: bt.color ?? undefined,
+        color2: color2FromColumn(bt.color, bt.gradient),
+        font: bt.font ?? undefined,
+        animation: bt.animation ?? undefined,
+      },
       {
         color: bt.color_override ?? undefined,
+        color2: color2FromColumn(bt.color_override, bt.gradient_override),
         font: bt.font_override ?? undefined,
         animation: bt.animation_override ?? undefined,
       },
@@ -1381,6 +1390,7 @@ export default function ConsumerExperienceDetailScreen({
     <TripReserveBar
       cta={offeringCta}
       palette={palette}
+      theme={theme}
       kicker={barKicker}
       fontFamily={boldFamily}
       onPress={beginBooking}
@@ -1394,6 +1404,7 @@ export default function ConsumerExperienceDetailScreen({
     <TripReserveBar
       cta={offeringCta}
       palette={palette}
+      theme={theme}
       kicker={barKicker}
       fontFamily={boldFamily}
       onPress={beginBooking}

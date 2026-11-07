@@ -33,6 +33,7 @@ import {
 } from "react-native";
 
 import { boldFontFamily, type ThemePalette } from "./themePalette";
+import { ThemeAccentGradientLayer } from "./ThemeAccentFill";
 import { type ResolvedTheme } from "./designTokens";
 
 export interface RsvpDetailsModalProps {
@@ -124,6 +125,11 @@ export const RsvpDetailsModal: React.FC<RsvpDetailsModalProps> = ({
             ]}
             testID="orch-1163-rsvp-details-continue"
           >
+            <ThemeAccentGradientLayer
+              theme={theme}
+              palette={palette}
+              borderRadius={styles.primaryBtn.borderRadius}
+            />
             <Text style={[styles.primaryBtnText, { color: palette.accentText, fontFamily: boldFamily }]}>
               {continueLabel}
             </Text>

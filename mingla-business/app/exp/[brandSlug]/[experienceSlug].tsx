@@ -802,6 +802,7 @@ const ResolvedExperiencePage: React.FC<{
     <TripReserveBar
       cta={accessGatedExpCta}
       palette={palette}
+      theme={theme}
       surface={surface}
       kicker={barKicker}
       fontFamily={boldFamily}
@@ -891,6 +892,7 @@ const ResolvedExperiencePage: React.FC<{
         <TripReserveBar
           cta={accessGatedExpCta}
           palette={palette}
+          theme={theme}
           surface={surface}
           kicker={barKicker}
           fontFamily={boldFamily}

@@ -36,12 +36,14 @@ import { normalizeStopStartOffset } from "../utils/experienceBookingSettings";
 // ThemeInput so the /exp/ route resolves a palette (Direction-A). Same guard the
 // trip path uses (usePublicTripBySlug.asThemeInput); identical validator imports.
 import {
-  isThemeAnimationSlug,
-  isThemeColor,
-  isThemeFontSlug,
   type ThemeInput,
   type OfferingGalleryImage,
 } from "@mingla/offering-rendering";
+import {
+  withGradientColumnFallback,
+  withoutGradientColumns,
+} from "@mingla/offering-rendering/themeGradientColumnFallback";
+import { themeInputFromFields } from "@mingla/offering-rendering/themeResolver";
 // issue #3284 — the three-state refund-terms reader. DEEP specifier on purpose: it
 // is pure, and a partial barrel mock cannot blank it.
 import {
@@ -215,12 +217,10 @@ function asThemeInput(
   color: unknown,
   font: unknown,
   animation: unknown,
+  gradient?: unknown,
 ): ThemeInput | null {
-  const out: ThemeInput = {};
-  if (isThemeColor(color)) out.color = color;
-  if (isThemeFontSlug(font)) out.font = font;
-  if (isThemeAnimationSlug(animation)) out.animation = animation;
-  return Object.keys(out).length > 0 ? out : null;
+  // issue #1023 wave 2 — Google families and the gradient's second stop.
+  return themeInputFromFields(color, font, animation, gradient);
 }
 
 // ORCH-1138 Leg 3 (§4.2) — map events.experience_intents (text[]) to a string[].
@@ -270,18 +270,28 @@ async function fetchBrandThemeFromView(
   brandSlug: string,
   experienceSlug: string,
 ): Promise<ThemeInput | null> {
-  const { data, error } = await supabase
-    .from("business_public_events_view")
-    .select("brand_theme_color, brand_theme_font, brand_theme_animation")
-    .eq("brand_slug", brandSlug)
-    .eq("slug", experienceSlug)
-    .eq("event_type", "experience")
-    .maybeSingle();
+  // [TRANSITIONAL] #1023 — retries without the gradient column until the
+  // gradient migration is applied. Exit: migration applied to production.
+  const { data, error } = await withGradientColumnFallback((withGradient) =>
+    supabase
+      .from("business_public_events_view")
+      .select(
+        withGradient
+          ? "brand_theme_color, brand_theme_font, brand_theme_animation, brand_theme_gradient"
+          : "brand_theme_color, brand_theme_font, brand_theme_animation",
+      )
+      .eq("brand_slug", brandSlug)
+      .eq("slug", experienceSlug)
+      .eq("event_type", "experience")
+      .maybeSingle(),
+  );
   if (error !== null || data === null) return null;
+  const row = data as unknown as Record<string, unknown>;
   return asThemeInput(
-    data.brand_theme_color,
-    data.brand_theme_font,
-    data.brand_theme_animation,
+    row.brand_theme_color,
+    row.brand_theme_font,
+    row.brand_theme_animation,
+    row.brand_theme_gradient,
   );
 }
 
@@ -566,6 +576,7 @@ function mapExperience(input: MapInput): PublicExperience {
       event.theme_color_override,
       event.theme_font_override,
       event.theme_animation_override,
+      event.theme_gradient_override,
     ),
     // ORCH-1076 — default true when the caller did not resolve readiness.
     bookable: input.bookable !== false,
@@ -722,6 +733,7 @@ interface RpcExpBrand {
   themeColor: unknown;
   themeFont: unknown;
   themeAnimation: unknown;
+  themeGradient?: unknown;
 }
 interface RpcExpPayload {
   id: string;
@@ -748,6 +760,7 @@ interface RpcExpPayload {
   themeColorOverride: unknown;
   themeFontOverride: unknown;
   themeAnimationOverride: unknown;
+  themeGradientOverride?: unknown;
   brand: RpcExpBrand;
   stops: RpcExpStop[];
   ticket: RpcExpTicket | null;
@@ -775,7 +788,12 @@ function mapRpcPayload(p: RpcExpPayload): PublicExperiencePayload {
     coverMediaUrl: p.brand.coverMediaUrl ?? null,
     coverMediaType: normalizeCoverType(p.brand.coverMediaType),
     coverHue: typeof p.brand.coverHue === "number" ? p.brand.coverHue : null,
-    theme: asThemeInput(p.brand.themeColor, p.brand.themeFont, p.brand.themeAnimation),
+    theme: asThemeInput(
+      p.brand.themeColor,
+      p.brand.themeFont,
+      p.brand.themeAnimation,
+      p.brand.themeGradient,
+    ),
   };
 
   const t = p.ticket;
@@ -842,6 +860,7 @@ function mapRpcPayload(p: RpcExpPayload): PublicExperiencePayload {
       p.themeColorOverride,
       p.themeFontOverride,
       p.themeAnimationOverride,
+      p.themeGradientOverride,
     ),
     bookable: p.bookable !== false,
     // issue #3284 — absent key → unknown; null → none; a valid policy → set.
@@ -936,6 +955,9 @@ export async function getPublicExperienceBySlug(
   return mapRpcPayload(data as RpcExpPayload);
 }
 
+const PUBLIC_EXPERIENCE_EVENT_SELECT =
+  "id,brand_id,title,description,slug,status,visibility,timezone,theme,theme_color_override,theme_font_override,theme_animation_override,theme_gradient_override,cover_media_url,cover_media_type,is_recurring,is_multi_date,recurrence_rules,experience_intents, brands(id, slug, name, description, cover_media_url, cover_media_type, cover_hue)";
+
 /**
  * Resolve one published experience by its event-row id (for the checkout
  * chain). Mirrors getPublicTripById. Returns null when missing / not an
@@ -952,16 +974,26 @@ export async function getPublicExperienceById(
   // exact pin and the combined street string on every screen although the mapper reads
   // neither. An experience's own stop addresses are unaffected — they live in the
   // sidecar and are gated there.
-  const eventResp = await supabase
-    .from("events")
-    .select(
-      "id,brand_id,title,description,slug,status,visibility,timezone,theme,theme_color_override,theme_font_override,theme_animation_override,cover_media_url,cover_media_type,is_recurring,is_multi_date,recurrence_rules,experience_intents, brands(id, slug, name, description, cover_media_url, cover_media_type, cover_hue)",
-    )
-    .eq("id", eventId)
-    .eq("event_type", "experience")
-    .in("status", PUBLIC_STATUSES as unknown as string[])
-    .is("deleted_at", null)
-    .maybeSingle();
+  // [TRANSITIONAL] #1023 — retries without the gradient column until the
+  // gradient migration is applied. Exit: migration applied to production.
+  const eventResp = await withGradientColumnFallback((withGradient) =>
+    supabase
+      .from("events")
+      .select(
+        withGradient
+          ? PUBLIC_EXPERIENCE_EVENT_SELECT
+          : // The fallback list differs only by the gradient column, which
+            // reads as absent (solid) — same row shape for the parser.
+            (withoutGradientColumns(
+              PUBLIC_EXPERIENCE_EVENT_SELECT,
+            ) as typeof PUBLIC_EXPERIENCE_EVENT_SELECT),
+      )
+      .eq("id", eventId)
+      .eq("event_type", "experience")
+      .in("status", PUBLIC_STATUSES as unknown as string[])
+      .is("deleted_at", null)
+      .maybeSingle(),
+  );
   if (eventResp.error) throw eventResp.error;
   if (eventResp.data === null) return null;
   const event = eventResp.data;

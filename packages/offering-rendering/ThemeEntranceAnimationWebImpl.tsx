@@ -136,6 +136,7 @@ export const ThemeEntranceAnimation: React.FC<ThemeEntranceAnimationProps> = ({
         key={`${sessionKey}:${slug}:${reduceMotion ? "still" : "play"}:${replayKey}`}
         slug={slug}
         color={theme.color}
+        color2={theme.color2 ?? null}
         reduceMotion={reduceMotion}
         textSafeZone={textSafeZone}
         textZoneRef={textZoneRef}
@@ -150,6 +151,8 @@ export const ThemeEntranceAnimation: React.FC<ThemeEntranceAnimationProps> = ({
 interface WebMotionProps {
   slug: ThemeMotionSlug;
   color: string;
+  /** issue #1023 wave 2 — the gradient's second colour (one unit with `color`). */
+  color2: string | null;
   reduceMotion: boolean;
   textSafeZone: TextSafeZoneProp;
   textZoneRef?: React.RefObject<unknown>;
@@ -166,7 +169,14 @@ const cloneForPlayer = (json: object): object =>
     ? (structuredClone(json) as object)
     : (JSON.parse(JSON.stringify(json)) as object);
 
-const WebMotion: React.FC<WebMotionProps> = ({ slug, color, reduceMotion, textSafeZone, textZoneRef }) => {
+const WebMotion: React.FC<WebMotionProps> = ({
+  slug,
+  color,
+  color2,
+  reduceMotion,
+  textSafeZone,
+  textZoneRef,
+}) => {
   const hostRef = useRef<View>(null);
   const introRef = useRef<HTMLDivElement | null>(null);
   const loopRef = useRef<HTMLDivElement | null>(null);
@@ -177,7 +187,10 @@ const WebMotion: React.FC<WebMotionProps> = ({ slug, color, reduceMotion, textSa
   const [pageVisible, setPageVisible] = useState(true);
   const [onScreen, setOnScreen] = useState(true);
   const paused = useMotionPaused();
-  const palette = useMemo(() => buildThemeMotionPalette(color), [color]);
+  const palette = useMemo(
+    () => buildThemeMotionPalette(color, color2),
+    [color, color2],
+  );
   const running = !paused && pageVisible && onScreen && !reduceMotion;
   const runningRef = useRef(running);
   runningRef.current = running;

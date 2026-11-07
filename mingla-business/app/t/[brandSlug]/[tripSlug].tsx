@@ -798,6 +798,7 @@ const ResolvedTripPage: React.FC<{
       <TripReserveBar
         cta={accessGatedCta}
         palette={palette}
+        theme={theme}
         kicker={offeringState.barKicker}
         fontFamily={boldFamily}
         onPress={reserveSelected}
@@ -810,6 +811,7 @@ const ResolvedTripPage: React.FC<{
       <TripReserveBar
         cta={accessGatedCta}
         palette={palette}
+        theme={theme}
         kicker={offeringState.barKicker}
         fontFamily={boldFamily}
         onPress={reserveSelected}
@@ -914,6 +916,7 @@ const ResolvedTripPage: React.FC<{
           <TripReserveBar
             cta={accessGatedCta}
             palette={palette}
+            theme={theme}
             kicker={offeringState.barKicker}
             fontFamily={boldFamily}
             onPress={reserveSelected}
@@ -925,6 +928,7 @@ const ResolvedTripPage: React.FC<{
           <TripReserveBar
             cta={accessGatedCta}
             palette={palette}
+            theme={theme}
             kicker={offeringState.barKicker}
             fontFamily={boldFamily}
             onPress={reserveSelected}

@@ -31,6 +31,7 @@ import {
   joinBrandDescription,
   type BrandRow,
 } from "./brandMapping";
+import { withGradientColumnFallback } from "@mingla/offering-rendering/themeGradientColumnFallback";
 import type {
   Brand,
   BrandRole,
@@ -868,13 +869,24 @@ export async function updateBrand(
     return existing;
   }
 
-  const { data, error } = await supabase
-    .from("brands")
-    .update(updatePayload)
-    .eq("id", brandId)
-    .is("deleted_at", null) // defensive — RLS already prevents update of soft-deleted
-    .select()
-    .single();
+  const runUpdate = (withGradient: boolean) => {
+    const payload: Record<string, unknown> = { ...updatePayload };
+    if (!withGradient) delete payload.theme_gradient;
+    return supabase
+      .from("brands")
+      .update(payload)
+      .eq("id", brandId)
+      .is("deleted_at", null) // defensive — RLS already prevents update of soft-deleted
+      .select()
+      .single();
+  };
+  // [TRANSITIONAL] #1023 — before the gradient migration is applied, a save
+  // with NO gradient retries without the column; a save WITH one fails loudly
+  // (never silently drops it). Exit: migration applied to production.
+  const { data, error } =
+    "theme_gradient" in updatePayload && updatePayload.theme_gradient !== null
+      ? await runUpdate(true)
+      : await withGradientColumnFallback(runUpdate);
 
   if (error) throw error;
   if (data === null) {

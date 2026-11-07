@@ -90,7 +90,15 @@ import {
 // than as a stale mock. Importing from the module directly bypasses those
 // mocks entirely, which is why this stays a deep import and why `hexToRgba` is
 // deliberately NOT re-exported from the barrel (#2539 PR #2552 CI).
-import { hexToRgba } from "@mingla/offering-rendering/themePalette";
+import {
+  hexToRgba,
+  themeAccentFill,
+  themeTextAccent,
+} from "@mingla/offering-rendering/themePalette";
+import {
+  ThemeAccentFill,
+  ThemeAccentGradientLayer,
+} from "@mingla/offering-rendering/ThemeAccentFill";
 
 import { spacing } from "./designTokens";
 // #3188 — the socials-row sizing solver. A separate, pure, import-free module
@@ -647,10 +655,10 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   // ---- shared sub-blocks ----
   const identityBlock = (
     <View style={styles.identityRow}>
-      <Avatar brand={brand} palette={palette} />
+      <Avatar brand={brand} palette={palette} theme={theme} />
       <View style={styles.identityCopy}>
         {isVerified ? (
-          <Text style={[styles.verifiedBadge, { color: palette.accent }]}>
+          <Text style={[styles.verifiedBadge, { color: themeTextAccent(palette) }]}>
             Verified venue
           </Text>
         ) : null}
@@ -841,7 +849,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
       <View style={[styles.deskAccent, { backgroundColor: palette.accent }]} />
       <View style={styles.deskInner}>
         <View style={styles.deskIdentity}>
-          <Avatar brand={brand} palette={palette} size={60} />
+          <Avatar brand={brand} palette={palette} theme={theme} size={60} />
           <View style={styles.identityCopy}>
             <Text
               style={[
@@ -971,8 +979,44 @@ const DeskShareRow = ({ palette, brandName, onShare, onMessage }: DeskShareRowPr
 const Avatar: React.FC<{
   brand: PublicBrand;
   palette: ThemePalette;
+  /** issue #1023 wave 2 — a gradient theme draws the ring as a 2 px gradient. */
+  theme?: ResolvedTheme;
   size?: number;
-}> = ({ brand, palette, size = 84 }) => {
+}> = ({ brand, palette, theme, size = 84 }) => {
+  // issue #1023 wave 2 — a gradient cannot be a borderColor, so a gradient
+  // theme wraps the avatar in a gradient circle the same size and draws the
+  // avatar 2 px inside it with no border. A solid theme keeps today's ring.
+  const gradientRing =
+    theme !== undefined && themeAccentFill(theme, palette).kind === "gradient";
+  if (gradientRing && theme !== undefined) {
+    return (
+      <View
+        style={{
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          boxShadow: [
+            {
+              offsetX: 0,
+              offsetY: 10,
+              blurRadius: 18,
+              spreadDistance: 0,
+              color: hexToRgba(palette.accent, 0.26),
+            },
+          ],
+        }}
+      >
+        <ThemeAccentFill
+          theme={theme}
+          palette={palette}
+          style={[styles.avatarRing, { width: size, height: size, borderRadius: size / 2 }]}
+          testID="brand-avatar-gradient-ring"
+        >
+          <AvatarFace brand={brand} palette={palette} size={size - 4} bordered={false} />
+        </ThemeAccentFill>
+      </View>
+    );
+  }
   // #2539 — NO shadowColor here either. It is a shadow* prop like the other
   // three, and on web it reaches the SAME react-native-web <Image> that turns
   // the set into `filter: drop-shadow()` on the clipped inner layer.
@@ -1040,6 +1084,46 @@ const Avatar: React.FC<{
           </Text>
         </View>
       )}
+    </View>
+  );
+};
+
+// issue #1023 wave 2 — the avatar face alone (photo or initial), for the
+// gradient ring. Same styles as Avatar's own branches, minus the border.
+const AvatarFace: React.FC<{
+  brand: PublicBrand;
+  palette: ThemePalette;
+  size: number;
+  bordered: boolean;
+}> = ({ brand, palette, size, bordered }) => {
+  const faceStyle = [
+    styles.avatar,
+    {
+      width: size,
+      height: size,
+      borderRadius: size / 2,
+      backgroundColor: palette.panelStrong,
+      borderColor: palette.accent,
+    },
+    bordered ? null : styles.avatarNoBorder,
+  ];
+  return brand.photo !== undefined && brand.photo.length > 0 ? (
+    <Image
+      source={{ uri: brand.photo }}
+      style={faceStyle}
+      resizeMode="cover"
+      accessibilityLabel={`${brand.displayName} avatar`}
+    />
+  ) : (
+    <View style={faceStyle}>
+      <Text
+        style={[
+          styles.avatarInitial,
+          { fontSize: size * 0.42, color: palette.primaryText },
+        ]}
+      >
+        {(brand.displayName.charAt(0) || "?").toUpperCase()}
+      </Text>
     </View>
   );
 };
@@ -1437,11 +1521,11 @@ const EventMiniCard: React.FC<EventMiniCardProps> = ({
       <View style={styles.oCardBody}>
         <View style={styles.eventTypeRow}>
           <TypeIcon size={14} color={palette.accent} />
-          <Text style={[styles.eventTypeLabel, { color: palette.accent }]}>
+          <Text style={[styles.eventTypeLabel, { color: themeTextAccent(palette) }]}>
             {isRsvp ? "RSVP" : "TICKETS"}
           </Text>
         </View>
-        <Text style={[styles.oCardDate, { color: palette.accent }]}>
+        <Text style={[styles.oCardDate, { color: themeTextAccent(palette) }]}>
           {event.dateLine}
         </Text>
         <Text
@@ -1481,6 +1565,11 @@ const EventMiniCard: React.FC<EventMiniCardProps> = ({
           </View>
         ) : null}
         <View style={[styles.buyPill, { backgroundColor: palette.accent }]}>
+          <ThemeAccentGradientLayer
+            theme={theme}
+            palette={palette}
+            borderRadius={styles.buyPill.borderRadius}
+          />
           <Text style={[styles.buyPillLabel, { color: palette.accentText }]}>
             {action}
           </Text>
@@ -1645,7 +1734,7 @@ const TripMiniCard: React.FC<{
       />
       <View style={styles.oCardBody}>
         {dateLine.length > 0 ? (
-          <Text style={[styles.oCardDate, { color: palette.accent }]}>
+          <Text style={[styles.oCardDate, { color: themeTextAccent(palette) }]}>
             {dateLine}
           </Text>
         ) : null}
@@ -1769,7 +1858,7 @@ const OfferingMiniCard: React.FC<OfferingMiniCardProps> = ({
         mediaType={item.coverMediaType}
       />
       <View style={styles.oCardBody}>
-        <Text style={[styles.oCardDate, { color: palette.accent }]}>
+        <Text style={[styles.oCardDate, { color: themeTextAccent(palette) }]}>
           {formatUpcomingDateLine(item.startsAt)}
         </Text>
         <Text
@@ -1935,7 +2024,7 @@ const SectionMiniCard: React.FC<SectionCardProps> = ({
         mediaType={card.coverMediaType}
       />
       <View style={styles.oCardBody}>
-        <Text style={[styles.oCardDate, { color: palette.accent }]}>
+        <Text style={[styles.oCardDate, { color: themeTextAccent(palette) }]}>
           {dateLine}
         </Text>
         <Text
@@ -2153,7 +2242,7 @@ const ExperienceMiniCard: React.FC<{
       />
       <View style={styles.oCardBody}>
         {experience.nextOccurrenceAt !== null ? (
-          <Text style={[styles.oCardDate, { color: palette.accent }]}>
+          <Text style={[styles.oCardDate, { color: themeTextAccent(palette) }]}>
             {formatUpcomingDateLine(experience.nextOccurrenceAt)}
           </Text>
         ) : null}
@@ -2397,7 +2486,7 @@ const ClampedBio: React.FC<{ text: string; palette: ThemePalette }> = ({
       text={text}
       collapsedLines={BIO_CLAMP_LINES}
       textStyle={[styles.bio, { color: palette.secondaryText }]}
-      toggleTextStyle={[styles.readMore, { color: palette.accent }]}
+      toggleTextStyle={[styles.readMore, { color: themeTextAccent(palette) }]}
       containerStyle={styles.bioWrap}
       testID="public-brand-bio-disclosure"
     />
@@ -2434,6 +2523,13 @@ const styles = StyleSheet.create({
   },
   avatarInitial: {
     fontWeight: "900",
+  },
+  avatarRing: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarNoBorder: {
+    borderWidth: 0,
   },
   verifiedBadge: {
     fontSize: 10,

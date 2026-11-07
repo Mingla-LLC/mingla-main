@@ -77,6 +77,11 @@ COMMENT ON FUNCTION public.issue_1023_is_theme_gradient(text) IS
 ALTER TABLE public.brands ADD COLUMN IF NOT EXISTS theme_gradient text;
 ALTER TABLE public.events ADD COLUMN IF NOT EXISTS theme_gradient_override text;
 
+-- #2489 made anon's read of public.events column-scoped: a new column is
+-- invisible to anonymous readers until granted. The gradient is exactly as
+-- public as theme_color_override, which anon can read, so grant it the same.
+GRANT SELECT (theme_gradient_override) ON public.events TO anon;
+
 COMMENT ON COLUMN public.brands.theme_gradient IS
   'issue #1023: "#first,#second" gradient for the brand theme. Read only when the first stop equals theme_color.';
 COMMENT ON COLUMN public.events.theme_gradient_override IS

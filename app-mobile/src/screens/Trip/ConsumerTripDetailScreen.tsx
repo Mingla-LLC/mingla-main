@@ -1190,6 +1190,7 @@ export default function ConsumerTripDetailScreen({
     <TripReserveBar
       cta={offeringState.cta}
       palette={palette}
+      theme={theme}
       kicker={offeringState.barKicker}
       fontFamily={boldFamily}
       onPress={openCart}
@@ -1205,6 +1206,7 @@ export default function ConsumerTripDetailScreen({
     <TripReserveBar
       cta={offeringState.cta}
       palette={palette}
+      theme={theme}
       kicker={offeringState.barKicker}
       fontFamily={boldFamily}
       onPress={openCart}

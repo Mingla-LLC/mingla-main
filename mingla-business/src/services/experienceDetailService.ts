@@ -14,6 +14,10 @@
 import { supabase } from "./supabase";
 import type { ThemeInput } from "@mingla/offering-rendering";
 import { themeOverridesFromColumns } from "./offeringTheme";
+import {
+  withGradientColumnFallback,
+  withoutGradientColumns,
+} from "@mingla/offering-rendering/themeGradientColumnFallback";
 import type { RecurrenceRule } from "../store/draftEventStore";
 import type { RefundPolicy } from "./refundPolicyService";
 // issue #3284 — the pure refund-terms shape check (deep specifier: a partial
@@ -186,6 +190,7 @@ interface RawEventRow {
   theme_color_override?: string | null;
   theme_font_override?: string | null;
   theme_animation_override?: string | null;
+  theme_gradient_override?: string | null;
   // issue #3284 — events.refund_policy (jsonb).
   refund_policy?: unknown;
   // issue #3281 R3
@@ -283,20 +288,33 @@ function brandSlugOf(brands: RawEventRow["brands"]): string | null {
  * Loads one experience (events-row + stops + single ticket + dates). Returns
  * null when the id is missing, the row is not an experience, or it's deleted.
  */
+const EXPERIENCE_DETAIL_SELECT =
+  "id, brand_id, title, slug, description, status, visibility, currency, timezone, cover_media_url, cover_media_poster_url, cover_media_type, location_mode, pricing_mode, experience_intent, experience_intents, whole_price_cents, is_recurring, is_multi_date, recurrence_rules, event_type, theme, theme_color_override, theme_font_override, theme_animation_override, theme_gradient_override, refund_policy, capacity_scope, booking_spacing_minutes, min_notice_minutes, brands(slug)";
+
 export async function getExperienceDetail(
   eventId: string,
 ): Promise<ExperienceDetail | null> {
-  const { data: row, error } = await supabase
-    .from("events")
-    .select(
-      // #1022 — this select is EXPLICIT (not a star), so the three theme override
-      // columns must be named here or the wizard cannot display what is set.
-      "id, brand_id, title, slug, description, status, visibility, currency, timezone, cover_media_url, cover_media_poster_url, cover_media_type, location_mode, pricing_mode, experience_intent, experience_intents, whole_price_cents, is_recurring, is_multi_date, recurrence_rules, event_type, theme, theme_color_override, theme_font_override, theme_animation_override, refund_policy, capacity_scope, booking_spacing_minutes, min_notice_minutes, brands(slug)",
-    )
-    .eq("id", eventId)
-    .eq("event_type", "experience")
-    .is("deleted_at", null)
-    .maybeSingle();
+  // [TRANSITIONAL] #1023 — retries without the gradient column until the
+  // gradient migration is applied. Exit: migration applied to production.
+  const { data: row, error } = await withGradientColumnFallback((withGradient) =>
+    supabase
+      .from("events")
+      .select(
+        // #1022 — this select is EXPLICIT (not a star), so the theme override
+        // columns must be named here or the wizard cannot display what is set.
+        withGradient
+          ? EXPERIENCE_DETAIL_SELECT
+          : // The fallback list differs only by the gradient column, which
+            // reads as absent (solid) — same row shape for the parser.
+            (withoutGradientColumns(
+              EXPERIENCE_DETAIL_SELECT,
+            ) as typeof EXPERIENCE_DETAIL_SELECT),
+      )
+      .eq("id", eventId)
+      .eq("event_type", "experience")
+      .is("deleted_at", null)
+      .maybeSingle(),
+  );
 
   if (error) throw error;
   if (row === null) return null;
