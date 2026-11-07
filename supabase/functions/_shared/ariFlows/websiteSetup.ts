@@ -51,6 +51,7 @@ import {
   websiteSetupFieldLabel,
   websiteSetupMergedPlanAnswers,
   websiteSetupPlanAnswer,
+  websiteSetupPlanAnswerProblem,
   websiteSetupPlanRevision,
   websiteSetupQuestion,
   websiteSetupUploadHandoff,
@@ -67,6 +68,11 @@ import {
   planBuildBlockers,
   type PlanPartKey,
 } from "../siteContracts/sitePlan.ts";
+import {
+  type PublishFinding,
+  publishFindings,
+  publishFindingsCount,
+} from "../siteContracts/publishChecks.ts";
 import {
   formatPhoneNational,
   parsePhoneEntry,
@@ -471,6 +477,10 @@ export function resolveWebsiteFormAnswer(args: {
   const planAnswer = websiteSetupPlanAnswer(message);
   if (planAnswer) {
     if (planAnswer.fieldKey !== args.fieldKey) return { kind: "stale" };
+    // #2830 — a story answer becomes page copy: the publish truth check's
+    // rules run now, so nothing publish would refuse is ever saved or built.
+    const problem = websiteSetupPlanAnswerProblem(planAnswer, args.plan);
+    if (problem) return { kind: "retry", problem };
     return {
       kind: "propose",
       tool_name: "save_site_plan_answers",
@@ -1534,7 +1544,7 @@ type Prepared =
     site_id: string;
     expected_revision: string;
     source_digest: string;
-    warnings: { label: string; message: string | null }[];
+    warnings: PublishFinding[];
   }
   | { ok: false; problem: string; retry: boolean };
 
@@ -1602,16 +1612,8 @@ async function preparePublish(ctx: FlowContext): Promise<Prepared> {
         "Your draft changed while I was checking it, so I haven't prepared a publish.",
     };
   }
-  const warnings = (Array.isArray(checks.checks) ? checks.checks : [])
-    .map(object)
-    .filter((check) => check.status === "warn")
-    .map((check) => {
-      const items = Array.isArray(check.items) ? check.items.map(object) : [];
-      return {
-        label: str(check.label) ?? "A design check",
-        message: str(items[0]?.message),
-      };
-    });
+  // #2830 — the same list, count and sentences as the Host publish step.
+  const warnings = publishFindings(checks.checks);
   return {
     ok: true,
     site_id: siteId,
@@ -1710,25 +1712,33 @@ const publishStep: StepDefinition = {
         },
       };
     }
+    // Every design check is a warning (the server never refuses a publish
+    // for one), so "Publish anyway" is honest here; the Host publish step
+    // shows the same list with the same count and leaves Publish on.
+    const count = prepared.warnings.length;
+    // One sentence: each check's own words, without its full stop.
     const shown = prepared.warnings.slice(0, 3).map((warning) =>
-      warning.message ? `${warning.label}: ${warning.message}` : warning.label
+      warning.message.replace(/[.\s]+$/, "")
     );
+    const more = count > shown.length
+      ? `; and ${count - shown.length} more`
+      : "";
     return {
       done: false,
       ask: {
         kind: "question",
         reuse_key: `website:publish:warnings:${prepared.source_digest}`,
         title: "Before you publish",
-        text: `The design checks found ${prepared.warnings.length} thing${
-          prepared.warnings.length === 1 ? "" : "s"
-        } to look at: ${shown.join("; ")}. You can fix ${
-          prepared.warnings.length === 1 ? "it" : "them"
-        } in your Website first, or publish as it is.`,
+        text: `The design checks found ${publishFindingsCount(count)}: ${
+          shown.join("; ")
+        }${more}. None of them stops you publishing. You can fix ${
+          count === 1 ? "it" : "them"
+        } first, or publish as it is.`,
         options: [
           {
             id: "open",
             label: "Fix it in my Website",
-            route: `/brand/${ctx.run.brand_id}/website`,
+            route: `/brand/${ctx.run.brand_id}/website/setup?step=publish`,
           },
           { id: "publish", label: "Publish anyway" },
           { id: "check", label: "Check again" },
@@ -1786,7 +1796,7 @@ const publishStep: StepDefinition = {
             label: "Design checks",
             value: now.warnings.length === 0
               ? "All passed"
-              : `${now.warnings.length} to look at`,
+              : publishFindingsCount(now.warnings.length),
           },
         ],
       },

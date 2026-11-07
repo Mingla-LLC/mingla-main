@@ -14,7 +14,22 @@ jest.mock("../../plan/BuildPart", () => ({
   },
 }));
 
+const mockSave = jest.fn();
+const mockStoryView: { props: Record<string, any> | null } = { props: null };
+const mockPlan: { current: unknown } = { current: null };
+jest.mock("../../../../sites/planApi", () => ({
+  useBrandSitePlan: () => ({ data: mockPlan.current, isLoading: false, isSuccess: true, isError: false, refetch: jest.fn() }),
+  useSaveBrandSitePlan: () => ({ mutate: mockSave, isPending: false }),
+}));
+jest.mock("../../SiteStoryView", () => ({
+  SiteStoryView: (props: Record<string, any>) => {
+    mockStoryView.props = props;
+    return null;
+  },
+}));
+
 import { SetupDraftStep } from "../SetupDraftStep";
+import { StoryPart } from "../../plan/StoryPart";
 import { firstMissingStep, setupBuildBlockers, setupSteps } from "../../../../sites/setupStatus";
 import type { BrandContextField, SitePlanState } from "../../../../sites/sitePlanState";
 
@@ -113,5 +128,31 @@ describe("#2830 bug 2 — Build names what is missing before the press", () => {
       <SetupDraftStep brandId="b" brandName="Lantern Room" state={{ kind: "can_start" }} canManage blockers={[]} onStart={noop} onRetry={noop} onTellMingla={noop} onDone={noop} />,
     );
     expect(has(tree.root, "build-create")).toBe(true);
+  });
+});
+
+describe("#2830 bug 3 — a story answer publish would refuse is never saved", () => {
+  const plan = () => ({ ...planMissingMedia(), plan: { revision: 3, story: {}, offeringsSelected: ["trips"] } });
+
+  const answer = (who: string) => {
+    mockPlan.current = plan();
+    mockSave.mockReset();
+    mount(<StoryPart brandId="b" step="questions" onDone={noop} />);
+    act(() => { mockStoryView.props!.onChange("who", who); });
+    act(() => { mockStoryView.props!.onSaveAnswers(); });
+  };
+
+  it("asks for another way to say it, by the truth check's rules", () => {
+    answer("Young professionals in their late 20s and 30s");
+    expect(mockSave).not.toHaveBeenCalled();
+    expect(mockStoryView.props!.notice).toEqual({
+      kind: "error",
+      message: expect.stringContaining("Your website can't say '20' and '30'"),
+    });
+  });
+
+  it("saves an answer with nothing to back", () => {
+    answer("Young professionals who love slow weekends away");
+    expect(mockSave).toHaveBeenCalledTimes(1);
   });
 });
