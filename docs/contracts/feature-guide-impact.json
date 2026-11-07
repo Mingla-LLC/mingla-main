@@ -75,6 +75,8 @@
         "supabase/functions/admin-refund-order/index.ts",
         "supabase/functions/refund-order/index.ts",
         "supabase/migrations/20280305003281_issue_3281_webhook_fee_unknown.sql",
+        "supabase/functions/_shared/ticketRefundStripeThrow.ts",
+        "supabase/migrations/20280426004271_issue_4271_resumable_stuck_refund.sql",
         "mingla-business/src/services/orderRefundService.ts"
       ]
     },

@@ -33,6 +33,11 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { stripeTicketRefund } from "../_shared/stripe.ts";
 import {
+  refundEverPermittedProviderCall,
+  settleStripeRefundThrow,
+  trackRefundCreate,
+} from "../_shared/ticketRefundStripeThrow.ts";
+import {
   type ExecuteTicketRefundResult,
   executeTicketRefundWithFeeTruth,
   isFeeTruthTerminalSuccess,
@@ -303,6 +308,12 @@ serve(async (req: Request): Promise<Response> => {
   // ── Step 3: provider refund. Stripe direct-charge payload stays unchanged. ─
   let stripeRefund: StripeRefundResult;
   let stripeFeeTruth: ExecuteTicketRefundResult | null = null;
+  // Issue #4271: was refunds.create ever allowed for this row before this request?
+  const permittedBeforeRequest = paymentProvider === "stripe" &&
+      isIdempotentReplay
+    ? await refundEverPermittedProviderCall(supabase, refundId)
+    : false;
+  const refundCreate = trackRefundCreate();
   if (paymentProvider === "paystack") {
     const transaction = paystackRefundTransaction(paymentIntentId, chargeId);
     if (!transaction) {
@@ -377,7 +388,7 @@ serve(async (req: Request): Promise<Response> => {
         requestedRefundAmount: amountCents,
         requestFingerprint: idempotencyKey,
         providerIdempotencyKey: `admin_refund:${refundId}`,
-        createBuyerRefund: () =>
+        createBuyerRefund: refundCreate.track(() =>
           stripe.refunds.create(
             {
               payment_intent: paymentIntentId,
@@ -395,7 +406,8 @@ serve(async (req: Request): Promise<Response> => {
               idempotencyKey: `admin_refund:${refundId}`,
               stripeAccount: connectedAccountId,
             },
-          ),
+          )
+        ),
       });
       stripeRefund = {
         id: stripeFeeTruth.buyerRefundId ?? "",
@@ -411,7 +423,29 @@ serve(async (req: Request): Promise<Response> => {
         "[admin-refund-order] stripe.refunds.create failed",
         detail,
       );
-      return json({ error: "stripe_declined", detail }, 502);
+      // Issue #4271: commit 'failed' only when Stripe provably made no refund;
+      // otherwise the row stays pending for admin-reconcile-ticket-refund.
+      const refundOutcome = await settleStripeRefundThrow({
+        error: err,
+        tracker: refundCreate,
+        permittedBeforeRequest,
+        loadPermittedNow: () =>
+          refundEverPermittedProviderCall(supabase, refundId),
+        commitFailed: () =>
+          supabase.rpc("admin_refund_order_commit", {
+            p_refund_id: refundId,
+            p_stripe_refund_id: null,
+            p_application_fee_refunded_cents: 0,
+            p_status: "failed",
+          }),
+        logContext: "admin-refund-order",
+      });
+      return json({
+        error: "stripe_declined",
+        detail,
+        refund_id: refundId,
+        refund_outcome: refundOutcome,
+      }, 502);
     }
   }
 
