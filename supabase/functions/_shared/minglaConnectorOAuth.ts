@@ -350,7 +350,8 @@ export async function handleToken(
     if (a.error === "invalid_grant") return await refuse(400, "invalid_grant");
     return { outcome: "server_error", res: tokenError(500, "server_error") };
   }
-  const expiresIn = Math.max(1, Math.min(3600, Math.floor(Number(a.expires_in) || 3600)));
+  // The lifetime is decided in the database (mingla_connector_limits); this only bounds it.
+  const expiresIn = Math.max(1, Math.min(86400, Math.floor(Number(a.expires_in) || 3600)));
   return {
     outcome: "ok",
     res: new Response(
