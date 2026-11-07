@@ -13,7 +13,6 @@
 
 import React, { useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import { ArrowUp } from "lucide-react-native";
 
 import {
   accent,
@@ -64,7 +63,9 @@ export function HomeAskAri({
           style={({ pressed }) => [styles.send, pressed && styles.pressed]}
           testID="home-ask-ari-send"
         >
-          <ArrowUp size={18} color="#101216" strokeWidth={2.5} />
+          {/* A text glyph, not an SVG icon: keeps react-native-svg out of
+              Home's graph (its render suites mock react-native partially). */}
+          <Text style={styles.sendGlyph}>↑</Text>
         </Pressable>
       </View>
     </View>
@@ -109,6 +110,12 @@ const styles = StyleSheet.create({
     backgroundColor: accent.warm,
     alignItems: "center",
     justifyContent: "center",
+  },
+  sendGlyph: {
+    color: "#101216",
+    fontSize: 18,
+    lineHeight: 20,
+    fontWeight: "800",
   },
   pressed: { opacity: 0.72 },
 });

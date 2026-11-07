@@ -100,7 +100,7 @@ export function useFirstRunStage(): FirstRunStageState {
     queryKey: probeEnabled
       ? firstRunKeys.content(userId as string, brandIdsKey)
       : DISABLED_KEY,
-    enabled: probeEnabled,
+    enabled: isAuthReady && probeEnabled,
     staleTime: 10_000,
     refetchInterval: (query) =>
       probeEnabled && query.state.data === false ? EMPTY_BRAND_RECHECK_MS : false,
