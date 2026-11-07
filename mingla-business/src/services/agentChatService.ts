@@ -80,6 +80,8 @@ export interface AriFlowState {
   lease_owner_name: string | null;
   owner_name: string;
   view_only: boolean;
+  /** #2830 — the field the open card asks about. */
+  current_field_key?: string | null;
 }
 
 /** #3355 P3 (I-ARI-BOUND-ANSWERS) — a structured card answer. */
@@ -154,6 +156,8 @@ export type AgentChatResponse =
       conversation_id: string;
       next: AriFlowArtefact | null;
       flow_state: AriFlowState | null;
+      /** #2830 — why, when a teammate took this Website setup over. */
+      taken_over_text?: string;
     }
   | {
       kind: "pending_action";

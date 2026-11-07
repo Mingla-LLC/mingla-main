@@ -6,18 +6,20 @@ const read = (relative: string) =>
 
 describe("#2830 Ari owns Website setup without trapping the owner", () => {
   const screen = read("../../../screens/ari/AriChatScreen.tsx");
-  const pane = read("../AriWebsiteSetupPane.tsx");
+  const setupScreen = read("../../sites/setup/WebsiteSetupScreen.tsx");
   const route = read("../../../../app/brand/[id]/website/ari.tsx");
-  const overview = read("../../sites/website/sections/OverviewSection.tsx");
   const agentHook = read("../../../hooks/useAgentChat.ts");
   const agentService = read("../../../services/agentChatService.ts");
 
-  it("routes pre-draft setup to a distinct Ari mode and keeps edit mode intact", () => {
-    expect(route).toContain('requestedIntent === "setup" ? "setup" : "edit"');
-    expect(route).toContain("setupPart=");
-    expect(overview).toContain("/website/ari?intent=setup");
-    expect(screen).toContain('const websiteSetup = sitesIntent === "setup"');
+  // #2830 — setup with Ari is one screen now: old addresses land there, and the
+  // chat beside the form takes its brand and step from the screen.
+  it("sends old setup addresses to the one setup screen and keeps edit mode intact", () => {
+    expect(route).toContain('requestedIntent === "setup"');
+    expect(route).toContain("/website/setup?ari=1");
+    expect(route).toContain("sitesIntent=edit");
+    expect(screen).toContain("const websiteSetup = setup !== undefined");
     expect(screen).toContain('sitesIntent === "edit" || websiteSetup');
+    expect(screen).toContain("legacySetupRoute");
     expect(screen).toContain("setCurrentBrandId(sitesBrandId)");
     expect(screen).toContain("ariWebsiteSetupConversationScopeKey");
     expect(screen).toContain(
@@ -27,18 +29,12 @@ describe("#2830 Ari owns Website setup without trapping the owner", () => {
     expect(agentService).toContain('workflow_context?: "website_setup"');
   });
 
-  // [TEST-MOD-APPROVED #2830] P4 live certification (D8): the audit
-  // instruction no longer travels as the owner's own bubble. The screen sends
-  // a structured kickoff ("Set up my Website"); the server builds the same
-  // instruction (pinned in supabase/functions/_shared/__tests__/
-  // issue_2830_website_flow_engine.implementor.test.ts, "cert D8").
-  it("loads the plan beside Ari and starts with a real audit before any draft", () => {
-    expect(screen).toContain("<AriWebsiteSetupPane");
+  it("opens Ari beside the form and starts with the server's kickoff, before any draft", () => {
+    expect(setupScreen).toContain('import("../../../screens/ari/AriChatScreen")');
+    expect(screen).not.toContain("AriWebsiteSetupPane");
     expect(screen).toContain(".startWebsiteSetup(setupPart ?? null)");
     expect(screen).not.toContain("Check the live setup plan");
     expect(agentHook).toContain("website_setup_kickoff");
-    expect(pane).toContain("/site-plan");
-    expect(pane).toContain('testID="ari-website-setup"');
   });
 
   // [TEST-MOD-APPROVED #3355] P3 (3(b).5, I-ARI-NO-CLIENT-AUTHORED-CONTINUATION):
@@ -67,7 +63,7 @@ describe("#2830 Ari owns Website setup without trapping the owner", () => {
     // after a confirm is gone (P3); the rest are still checked.
     // [TEST-MOD-APPROVED #2830] one fewer again (P4 D8): the setup kickoff is
     // a structured request now, not a message sent as the owner.
-    expect(sent.length).toBeGreaterThanOrEqual(2);
+    // #2830: the pane's two scripted messages went with the pane.
     for (const message of sent) {
       expect(message).not.toMatch(/\b[a-z]+_[a-z_]+\b/);
       expect(message).not.toMatch(/plan part is/);
@@ -77,13 +73,6 @@ describe("#2830 Ari owns Website setup without trapping the owner", () => {
       );
     }
     expect(agentHook).toContain('WEBSITE_SETUP_KICKOFF_DISPLAY = "Set up my Website"');
-  });
-
-  it("#3355 bug 19: the setup pane's own words are plain and never show a raw key", () => {
-    expect(pane).not.toMatch(/field-level|context gaps?\b|Brand context|brand context/);
-    expect(pane).toMatch(/PART_LABELS\[key\] \?\? plainKey\(key\)/);
-    expect(pane).toMatch(/PART_LABELS\[activePart\] \?\? plainKey\(activePart\)/);
-    expect(pane).not.toMatch(/PART_LABELS\[key\] \?\? key\b/);
   });
 
   it("never re-sends the automatic setup audit after it fails", () => {
@@ -99,50 +88,6 @@ describe("#2830 Ari owns Website setup without trapping the owner", () => {
     expect(start).toBeGreaterThan(-1);
     expect(effect).not.toMatch(/resetWebsiteSetupAutoAudits/);
     expect(effect).toContain("Use Retry on the message");
-  });
-
-  it("scrolls the setup pane so its last actions stay reachable", () => {
-    expect(pane).toContain("<ScrollView");
-    expect(pane).toContain('testID="ari-website-setup-scroll"');
-    const scrollOpen = pane.indexOf("<ScrollView");
-    const scrollClose = pane.indexOf("</ScrollView>");
-    const backAction = pane.indexOf(">Back to setup plan<");
-    expect(backAction).toBeGreaterThan(scrollOpen);
-    expect(backAction).toBeLessThan(scrollClose);
-  });
-
-  it("offers the complete ownership path and both self-service exits", () => {
-    expect(pane).toContain("Fix all gaps with Ari");
-    expect(pane).toContain("Review the gaps");
-    expect(pane).toContain('testID="ari-setup-review-gaps"');
-    expect(pane).toContain("Add it myself");
-    expect(pane).toContain("Back to setup plan");
-    // #3355 bug 19 — the Fix-all request is the owner's own bubble, so it is
-    // in the owner's words; the same promises (one question at a time, save
-    // only after approval, no draft first) without engine vocabulary.
-    expect(screen).toContain("Fix all my Website gaps with me, one question at a time.");
-    expect(screen).toContain("save each change only after I approve it");
-    expect(screen).toContain("Don’t build a draft yet.");
-    expect(screen).not.toContain("checkpoint each write");
-    expect(screen).not.toContain("re-audit until");
-  });
-
-  it("refreshes server truth while Ari works and labels uploads as human actions", () => {
-    expect(pane).toContain("refetchInterval: 3_000");
-    expect(pane).toContain('return "Needs your upload"');
-    expect(pane).toContain('return "Needs correction"');
-    expect(pane).toContain('return "Needs verification"');
-    expect(pane).toContain('return "Choose the correct detail"');
-    expect(pane).toContain("Ari will not guess");
-  });
-
-  it("keeps phone setup context visible in a collapsible summary", () => {
-    expect(pane).toContain('testID="ari-setup-toggle"');
-    expect(pane).toContain(
-      "accessibilityState={{ expanded: compactExpanded }}",
-    );
-    expect(pane).toContain("Current: {currentLabel}");
-    expect(pane).toContain('compactExpanded ? "Hide details" : "Show details"');
   });
 });
 
@@ -274,8 +219,8 @@ describe("#2830 Ari asks brand details in the Host form's own shape", () => {
     expect(editRoute).toContain('value === "photo"');
     expect(editRoute).toContain('value === "cover"');
     expect(server).toContain("/brand/${brandId}/website/plan?part=approve");
-    expect(websiteNav).toContain(
-      'first === "plan" && search.part ? { planPart: search.part }',
-    );
+    // #2830 — the old plan address lands on that step of the setup screen.
+    expect(websiteNav).toContain('first === "plan" && !second');
+    expect(websiteNav).toContain("validStep(search.part)");
   });
 });

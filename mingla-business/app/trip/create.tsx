@@ -27,7 +27,7 @@
 
 import React, { useEffect, useRef } from "react";
 import { ActivityIndicator, StyleSheet, Text } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 
 import {
   spacing,
@@ -37,11 +37,16 @@ import {
 import { SafeScreen } from "../../src/components/ui/SafeScreen";
 import { useCurrentBrand } from "../../src/hooks/useCurrentBrand";
 import { generateDraftId } from "../../src/utils/draftEventId";
+import { isSetupReturn, withReturnTo } from "../../src/utils/brandEditReturn";
 
 export default function TripCreateRoute(): React.ReactElement {
   const router = useRouter();
   const currentBrand = useCurrentBrand();
   const startedRef = useRef<boolean>(false);
+  // #2830 — carried through to the wizard, only when it is Website setup's.
+  const params = useLocalSearchParams<{ returnTo?: string | string[] }>();
+  const rawReturnTo = Array.isArray(params.returnTo) ? params.returnTo[0] : params.returnTo;
+  const setupReturn = isSetupReturn(rawReturnTo) ? (rawReturnTo as string) : null;
 
   useEffect(() => {
     if (startedRef.current) return;
@@ -51,8 +56,12 @@ export default function TripCreateRoute(): React.ReactElement {
     // ORCH-0893: synchronous client-side id, no server round-trip.
     // I-PROPOSED-CREATOR-ENTRY-IS-INSTANT.
     const clientId = generateDraftId();
+    if (setupReturn) {
+      router.replace(withReturnTo(`/trip/${clientId}/edit`, setupReturn) as never);
+      return;
+    }
     router.replace(`/trip/${clientId}/edit` as never);
-  }, [currentBrand, router]);
+  }, [currentBrand, router, setupReturn]);
 
   if (currentBrand === null) {
     return (

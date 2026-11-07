@@ -265,18 +265,13 @@ describe("#2830 P0 only the newest answer card is live", () => {
 describe("#2830 P0 the Website setup kickoff survives remounts", () => {
   beforeEach(() => resetWebsiteSetupAutoAuditsForTests());
 
-  it("claims each brand + part once per session", () => {
-    const key = websiteSetupAutoAuditKey("brand-1", "brand");
+  it("claims each brand once per session", () => {
+    const key = websiteSetupAutoAuditKey("brand-1");
     expect(claimWebsiteSetupAutoAudit(key)).toBe(true);
     // A remount re-runs the effect: the module-scope claim refuses it.
     expect(claimWebsiteSetupAutoAudit(key)).toBe(false);
     expect(claimWebsiteSetupAutoAudit(key)).toBe(false);
-    expect(
-      claimWebsiteSetupAutoAudit(websiteSetupAutoAuditKey("brand-1", null)),
-    ).toBe(true);
-    expect(websiteSetupAutoAuditKey("brand-1", undefined)).toBe(
-      "brand-1:overview",
-    );
+    expect(claimWebsiteSetupAutoAudit(websiteSetupAutoAuditKey("brand-2"))).toBe(true);
   });
 
   it("guards the kickoff with the module claim, not a component ref", () => {
