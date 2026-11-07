@@ -1263,11 +1263,12 @@ const styles = StyleSheet.create({
   },
 
   // Sticky bottom dock: one row ---------------------------------------
+  // The Sheet already pads its body by spacing.lg plus the bottom safe area,
+  // which is the dock's bottom padding; no second gap here.
   dock: {
     marginHorizontal: -spacing.lg,
     paddingTop: 12,
     paddingHorizontal: 20,
-    paddingBottom: 20,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: glass.border.profileBase,
   },
