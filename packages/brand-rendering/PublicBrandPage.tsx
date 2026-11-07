@@ -817,6 +817,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
           <BrandFollowControl
             brand={brand}
             palette={palette}
+            theme={theme}
             isFollowing={isFollowing}
             followPending={followPending}
             followState={followState}
@@ -871,6 +872,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         <BrandFollowControl
           brand={brand}
           palette={palette}
+          theme={theme}
           isFollowing={isFollowing}
           followPending={followPending}
           followState={followState}
@@ -1214,6 +1216,8 @@ const SocialIcon: React.FC<{
 type BrandFollowControlProps = {
   brand: PublicBrand;
   palette: ThemePalette;
+  /** issue #1023 — the filled Follow state paints the theme gradient. */
+  theme?: ResolvedTheme;
   isFollowing?: boolean;
   followPending?: boolean;
   /** #3682 Wave 2.5 — email-sheet Pending (not busy spinner). */
@@ -1229,6 +1233,7 @@ type BrandFollowControlProps = {
 const BrandFollowControl: React.FC<BrandFollowControlProps> = ({
   brand,
   palette,
+  theme,
   isFollowing,
   followPending,
   followState,
@@ -1257,6 +1262,7 @@ const BrandFollowControl: React.FC<BrandFollowControlProps> = ({
       <SharedFollowButton
         brandName={brand.displayName}
         palette={palette}
+        theme={theme}
         isFollowing={isFollowing}
         followPending={followPending}
         state={followState}
@@ -1375,6 +1381,16 @@ const TabBar: React.FC<TabBarProps> = ({
                 },
               ]}
             >
+              {/* issue #1023 — the active tab paints the theme gradient (a
+                  solid theme renders nothing here and looks as before). */}
+              {active ? (
+                <ThemeAccentGradientLayer
+                  theme={theme}
+                  palette={palette}
+                  borderRadius={styles.tabChip.borderRadius}
+                  testID={`brand-tab-gradient-${tab}`}
+                />
+              ) : null}
               <Text
                 style={[
                   styles.tabLabel,

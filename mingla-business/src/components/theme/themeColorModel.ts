@@ -9,6 +9,7 @@ import { createThemePalette } from "../../../../packages/offering-rendering/them
 import { resolveTheme } from "../../../../packages/offering-rendering/themeResolver";
 import { contrastRatio } from "../../utils/buttonAccentContrast";
 import { themeAxisIsInherited } from "../../services/offeringTheme";
+import { gradientSwatchFor, presetForHex } from "./themePresets";
 
 /**
  * #1022 — the Theme control's pure model layer.
@@ -346,6 +347,24 @@ export const themeDefaultFontLabel = (
 };
 
 /**
+ * issue #1023 — the colour axis named the way the picker names it: a design
+ * swatch by its name ("Coral", "Sunset gradient"), anything else "Custom
+ * colour" / "Custom gradient". Matching is case-insensitive: saved hexes are
+ * lower case, the design writes them upper case.
+ */
+export const themeColourName = (
+  color: string | null | undefined,
+  color2: string | null | undefined,
+): string => {
+  const hasSecond = typeof color2 === "string" && color2.length > 0;
+  if (hasSecond) {
+    const gradient = gradientSwatchFor(color, color2);
+    return gradient !== null ? `${gradient.name} gradient` : "Custom gradient";
+  }
+  return presetForHex(color)?.name ?? "Custom colour";
+};
+
+/**
  * The collapsed row's value line, e.g. "Brand default · Poppins · Confetti".
  *
  * C-1 LIVES HERE. `resolveTheme(brandTheme, offeringOverride)` — the BRAND
@@ -374,9 +393,7 @@ export const themeValueLine = (
     ? scope === "brand"
       ? "Mingla default"
       : "Brand default"
-    : typeof value?.color2 === "string" && value.color2.length > 0
-      ? "Custom gradient"
-      : "Custom colour";
+    : themeColourName(value?.color, value?.color2);
 
   const fontLabel = FONT_DISPLAY_NAMES[resolved.font] ?? resolved.font;
   const motionLabel =

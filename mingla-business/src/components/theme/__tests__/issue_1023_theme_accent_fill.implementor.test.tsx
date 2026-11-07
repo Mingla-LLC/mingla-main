@@ -30,6 +30,10 @@ import {
   ThemeAccentGradientLayer,
 } from "../../../../../packages/offering-rendering/ThemeAccentFill";
 // eslint-disable-next-line import/first
+import { FollowButton } from "../../../../../packages/brand-rendering/FollowButton";
+// eslint-disable-next-line import/first
+import { themeColourName, themeValueLine } from "../themeColorModel";
+// eslint-disable-next-line import/first
 import { resolveTheme } from "../../../../../packages/offering-rendering/themeResolver";
 // eslint-disable-next-line import/first
 import {
@@ -102,5 +106,56 @@ describe("ThemeAccentGradientLayer", () => {
     const [layer] = tree.root.findAll((n) => n.type === "LinearGradient");
     expect(layer.props.pointerEvents).toBe("none");
     expect(JSON.stringify(layer.props.style)).toContain('"borderRadius":12');
+  });
+});
+
+describe("Follow button (brand pages)", () => {
+  const gradientTheme = resolveTheme({ color: "#ff8a3b", color2: "#ff2e63" }, null);
+  const solidTheme = resolveTheme({ color: "#ff8a3b" }, null);
+  const gradients = (tree: ReturnType<typeof render>) =>
+    tree.root.findAll((n) => n.type === "LinearGradient");
+
+  test("the filled Follow state paints the theme gradient, label stays the accent text", () => {
+    const palette = createThemePalette(gradientTheme);
+    const tree = render(
+      <FollowButton brandName="Jogular" palette={palette} theme={gradientTheme} onPress={() => undefined} />,
+    );
+    const [layer] = gradients(tree);
+    expect(layer).toBeDefined();
+    expect((layer.props.colors as string[])[0]).toBe(palette.accent);
+    for (const stop of layer.props.colors as string[]) {
+      expect(contrastRatio(stop, palette.accentText)).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  test("a solid theme and the Following state draw no gradient", () => {
+    const solid = render(
+      <FollowButton brandName="Jogular" palette={createThemePalette(solidTheme)} theme={solidTheme} onPress={() => undefined} />,
+    );
+    expect(gradients(solid)).toHaveLength(0);
+    const following = render(
+      <FollowButton
+        brandName="Jogular"
+        palette={createThemePalette(gradientTheme)}
+        theme={gradientTheme}
+        isFollowing
+        onPress={() => undefined}
+      />,
+    );
+    expect(gradients(following)).toHaveLength(0);
+  });
+});
+
+describe("the Theme row names design colours case-insensitively", () => {
+  test("Sunset saved lower case reads Sunset gradient, not Custom gradient", () => {
+    expect(themeColourName("#ff8a3b", "#ff2e63")).toBe("Sunset gradient");
+    expect(themeColourName("#FF8A3B", "#FF2E63")).toBe("Sunset gradient");
+    expect(themeColourName("#FF5A5F", null)).toBe("Coral");
+    expect(themeColourName("#ff5a5f", null)).toBe("Coral");
+    expect(themeColourName("#123456", null)).toBe("Custom colour");
+    expect(themeColourName("#ff8a3b", "#000000")).toBe("Custom gradient");
+    expect(
+      themeValueLine({ color: "#ff8a3b", color2: "#ff2e63", font: null, animation: null }, "brand", null),
+    ).toMatch(/^Sunset gradient · /);
   });
 });

@@ -1,6 +1,8 @@
 import React from "react";
 import { Pressable, Text } from "react-native";
 
+import { ThemeAccentGradientLayer } from "@mingla/offering-rendering/ThemeAccentFill";
+
 import type { FollowButtonProps } from "./FollowButton";
 
 const LoadedFollowButton = React.lazy(async () => {
@@ -50,6 +52,10 @@ const ImmediateFollowButton: React.FC<FollowButtonProps> = (props) => {
         props.style,
       ]}
     >
+      {/* issue #1023 — same gradient as the loaded button, filled state only. */}
+      {props.theme !== undefined && !active && !disabled ? (
+        <ThemeAccentGradientLayer theme={props.theme} palette={props.palette} borderRadius={14} />
+      ) : null}
       <Text style={{ color: active ? props.palette.primaryText : props.palette.accentText, fontWeight: "700" }}>
         {label}
       </Text>
