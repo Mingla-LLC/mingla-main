@@ -91,6 +91,7 @@ import {
 // mocks entirely, which is why this stays a deep import and why `hexToRgba` is
 // deliberately NOT re-exported from the barrel (#2539 PR #2552 CI).
 import {
+  boldFontFamily,
   hexToRgba,
   themeAccentFill,
   themeTextAccent,
@@ -384,6 +385,9 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     [palette],
   );
   const themedFont = { fontFamily: resolvedTheme.fontFamilyValue };
+  // issue #1023 — heavy text names the bold face: React Native never picks a
+  // heavier face from fontWeight for a custom (Google) family.
+  const themedBoldFont = { fontFamily: boldFontFamily(resolvedTheme) };
 
   const upcomingEvents = useMemo(
     () =>
@@ -666,7 +670,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
           </Text>
         ) : null}
         <Text
-          style={[styles.brandName, themedFont, { color: palette.primaryText }]}
+          style={[styles.brandName, themedBoldFont, { color: palette.primaryText }]}
         >
           {brand.displayName}
         </Text>
@@ -858,7 +862,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
             <Text
               style={[
                 styles.deskBrandName,
-                themedFont,
+                themedBoldFont,
                 { color: palette.primaryText },
               ]}
             >
@@ -1396,7 +1400,7 @@ const TabBar: React.FC<TabBarProps> = ({
               <Text
                 style={[
                   styles.tabLabel,
-                  { fontFamily: theme.fontFamilyValue },
+                  { fontFamily: boldFontFamily(theme) },
                   {
                     color: active ? palette.accentText : palette.secondaryText,
                   },
@@ -1549,7 +1553,7 @@ const EventMiniCard: React.FC<EventMiniCardProps> = ({
         <Text
           style={[
             styles.oCardTitle,
-            { fontFamily: theme.fontFamilyValue, color: palette.primaryText },
+            { fontFamily: boldFontFamily(theme), color: palette.primaryText },
           ]}
           numberOfLines={2}
         >
@@ -1627,7 +1631,7 @@ const NextOfferingTeaser: React.FC<{
         <Text
           style={[
             styles.nextTeaserBody,
-            { fontFamily: theme.fontFamilyValue, color: palette.accentText },
+            { fontFamily: boldFontFamily(theme), color: palette.accentText },
           ]}
           numberOfLines={2}
         >
@@ -1759,7 +1763,7 @@ const TripMiniCard: React.FC<{
         <Text
           style={[
             styles.oCardTitle,
-            { fontFamily: theme.fontFamilyValue, color: palette.primaryText },
+            { fontFamily: boldFontFamily(theme), color: palette.primaryText },
           ]}
           numberOfLines={2}
         >
@@ -1882,7 +1886,7 @@ const OfferingMiniCard: React.FC<OfferingMiniCardProps> = ({
         <Text
           style={[
             styles.oCardTitle,
-            { fontFamily: theme.fontFamilyValue, color: palette.primaryText },
+            { fontFamily: boldFontFamily(theme), color: palette.primaryText },
           ]}
           numberOfLines={2}
         >
@@ -2048,7 +2052,7 @@ const SectionMiniCard: React.FC<SectionCardProps> = ({
         <Text
           style={[
             styles.oCardTitle,
-            { fontFamily: theme.fontFamilyValue, color: palette.primaryText },
+            { fontFamily: boldFontFamily(theme), color: palette.primaryText },
           ]}
           numberOfLines={2}
         >
@@ -2267,7 +2271,7 @@ const ExperienceMiniCard: React.FC<{
         <Text
           style={[
             styles.oCardTitle,
-            { fontFamily: theme.fontFamilyValue, color: palette.primaryText },
+            { fontFamily: boldFontFamily(theme), color: palette.primaryText },
           ]}
           numberOfLines={2}
         >
@@ -2473,7 +2477,7 @@ const AboutTab: React.FC<{
         <Text
           style={[
             styles.tagline,
-            { fontFamily: theme.fontFamilyValue, color: palette.primaryText },
+            { fontFamily: boldFontFamily(theme), color: palette.primaryText },
           ]}
         >
           {tagline}

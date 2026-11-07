@@ -137,7 +137,7 @@ describe("#1024 — small accent text is lightened, fills keep the colour", () =
     for (const style of ["showAllLabel", "brandCta", "aboutToggle"]) {
       expect(event).toContain(`styles.${style}, { color: themeTextAccent(palette) }`);
     }
-    expect(event).toContain("{ color: themeTextAccent(palette), fontFamily: theme.fontFamilyValue }");
+    expect(event).toContain("{ color: themeTextAccent(palette), fontFamily: boldFontFamily(theme) }");
     // Was `{ backgroundColor: palette.accent }`; invalidated by the #1023
     // gradient-everywhere scope: fills now paint through accentFill(palette).
     expect(event).toContain("styles.brandTile, accentFill(palette)");

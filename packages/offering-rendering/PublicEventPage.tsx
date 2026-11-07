@@ -102,6 +102,7 @@ import type {
 // issue #3314 — the one owner of remaining-count copy under "Hide remaining count".
 import { ticketAvailabilityCaption } from "./remainingCountVisibility";
 import { accentFill } from "./themeAccentStyle";
+import { boldFontFamily } from "./themePalette";
 
 const SHOW_INITIAL_DATES = 10;
 
@@ -567,7 +568,7 @@ const PublishedBody = ({
               <Text
                 style={[
                   styles.dateLine,
-                  { color: themeTextAccent(palette), fontFamily: theme.fontFamilyValue },
+                  { color: themeTextAccent(palette), fontFamily: boldFontFamily(theme) },
                 ]}
               >
                 {event.dateLine}
@@ -577,7 +578,7 @@ const PublishedBody = ({
                   styles.titleLine,
                   {
                     color: palette.primaryText,
-                    fontFamily: theme.fontFamilyValue,
+                    fontFamily: boldFontFamily(theme),
                   },
                 ]}
               >
@@ -969,7 +970,7 @@ const PublishedBody = ({
                       styles.sectionTitle,
                       {
                         color: palette.primaryText,
-                        fontFamily: theme.fontFamilyValue,
+                        fontFamily: boldFontFamily(theme),
                       },
                     ]}
                   >
@@ -1019,7 +1020,7 @@ const PublishedBody = ({
               styles.sectionTitle,
               {
                 color: palette.primaryText,
-                fontFamily: theme.fontFamilyValue,
+                fontFamily: boldFontFamily(theme),
               },
             ]}
           >
@@ -1226,7 +1227,7 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
               styles.ticketBuyerBtnLabel,
               {
                 color: palette.accentText,
-                fontFamily: theme.fontFamilyValue,
+                fontFamily: boldFontFamily(theme),
               },
               isButtonDisabled && { color: palette.tertiaryText },
             ]}

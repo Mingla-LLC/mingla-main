@@ -21,6 +21,7 @@ import {
 import { THEME_ANIMATION_SLUGS } from "../../../../packages/offering-rendering/designTokens";
 import { normalizeHexColor } from "./normalizeHexColor";
 import { useThemeFont } from "../../theme/useThemeFont";
+import { boldFontFamily } from "@mingla/offering-rendering/themePalette";
 
 interface ThemeEditorSectionProps {
   value: ThemeInput | null | undefined;
@@ -57,6 +58,7 @@ export const ThemeEditorSection: React.FC<ThemeEditorSectionProps> = ({
   // ORCH-1083: the preview renders the SELECTED font, so load only that family on
   // demand as the user cycles slugs — NOT all 14 eagerly. See SPEC §C-2.
   useThemeFont(theme.fontFamilyValue);
+  useThemeFont(boldFontFamily(theme)); // issue #1023 — the preview title is bold
 
   // ORCH-0964 hot-fix (post-operator-smoke-test): the hex input must allow
   // free typing. Prior shape `value={value?.color ?? ""}` + on-keystroke
@@ -92,7 +94,7 @@ export const ThemeEditorSection: React.FC<ThemeEditorSectionProps> = ({
         </View>
         <View style={styles.previewBody}>
           <Text
-            style={[styles.previewTitle, { fontFamily: theme.fontFamilyValue }]}
+            style={[styles.previewTitle, { fontFamily: boldFontFamily(theme) }]}
           >
             Public page preview
           </Text>

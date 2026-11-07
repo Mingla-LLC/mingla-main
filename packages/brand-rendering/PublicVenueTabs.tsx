@@ -31,6 +31,7 @@ import {
   type PublicVenueTab,
 } from "./publicVenueTabState";
 import { accentFillWithBorder } from "@mingla/offering-rendering/themeAccentStyle";
+import { boldFontFamily } from "@mingla/offering-rendering/themePalette";
 
 // This package is source-linked into both apps. Their isolated typecheck
 // sandboxes resolve React peers from the app root, while files under packages/
@@ -471,7 +472,7 @@ export const PublicVenueTabs = forwardRef<
               <Text
                 style={[
                   styles.label,
-                  { fontFamily: theme.fontFamilyValue },
+                  { fontFamily: boldFontFamily(theme) },
                   {
                     color: active ? palette.accentText : palette.secondaryText,
                   },

@@ -22,6 +22,7 @@ import type { EnquiryPhoneFieldArgs, EnquiryPhoneState } from "./BrandMessageShe
 import { replyTimeLabel } from "./replyTime";
 import { accentEdgeOnFill, accentFill, accentOutline } from "@mingla/offering-rendering/themeAccentStyle";
 import { AccentLucideIcon } from "@mingla/offering-rendering/LucideIcons";
+import { boldFontFamily } from "@mingla/offering-rendering/themePalette";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -90,6 +91,8 @@ export const BrandPageFoot = forwardRef<BrandPageFootHandle, BrandPageFootProps>
   const [emailError, setEmailError] = useState<string | null>(null);
   const openedAt = useRef<number>(Date.now());
   const themedFont = { fontFamily: theme.fontFamilyValue };
+  // issue #1023 — titles name the bold face (native ignores fontWeight here).
+  const themedBoldFont = { fontFamily: boldFontFamily(theme) };
 
   useImperativeHandle(
     ref,
@@ -139,7 +142,7 @@ export const BrandPageFoot = forwardRef<BrandPageFootHandle, BrandPageFootProps>
               <View style={[styles.okIcon, { backgroundColor: palette.accentWash }]}>
                 <AccentLucideIcon Icon={Check} size={20} palette={palette} />
               </View>
-              <Text style={[styles.title, themedFont, { color: palette.primaryText }]} accessibilityRole="header">
+              <Text style={[styles.title, themedBoldFont, { color: palette.primaryText }]} accessibilityRole="header">
                 Check your email
               </Text>
               <Text style={[styles.sub, { color: palette.secondaryText }]} accessibilityLiveRegion="polite">
@@ -163,7 +166,7 @@ export const BrandPageFoot = forwardRef<BrandPageFootHandle, BrandPageFootProps>
             </View>
           ) : (
             <View style={styles.form}>
-              <Text style={[styles.title, themedFont, { color: palette.primaryText }]} accessibilityRole="header">
+              <Text style={[styles.title, themedBoldFont, { color: palette.primaryText }]} accessibilityRole="header">
                 Stay in the loop
               </Text>
               <Text style={[styles.sub, { color: palette.secondaryText }]}>
@@ -288,7 +291,7 @@ export const BrandPageFoot = forwardRef<BrandPageFootHandle, BrandPageFootProps>
           testID={`${testID}-message`}
         >
           <View style={styles.messageCopy}>
-            <Text style={[styles.messageTitle, themedFont, { color: palette.primaryText }]}>Questions?</Text>
+            <Text style={[styles.messageTitle, themedBoldFont, { color: palette.primaryText }]}>Questions?</Text>
             {replyLine !== null ? (
               <Text style={[styles.messageSub, { color: palette.tertiaryText }]} testID={`${testID}-reply-time`}>
                 {replyLine}

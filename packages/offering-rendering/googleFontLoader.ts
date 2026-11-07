@@ -6,17 +6,21 @@
 // `boldFontFamily(theme)`, so this loader only has to make sure something real
 // is registered under those two keys:
 //
-//   - the family's 500 and 700 faces (snapped: a missing weight falls back to
-//     the family's default face, and a missing bold reuses the base face);
+//   - each key loads on its own, only when a surface asks for it (a page that
+//     never draws bold text never downloads the bold face);
+//   - the base key is the family's 500 face (else its default face); the bold
+//     key is the nearest heavy face: 700, then 800, 600, 900, else the base
+//     face. React Native never picks a heavier face from `fontWeight` for a
+//     custom family, so heavy text must name the bold key (boldFontFamily);
 //   - or, when anything fails (offline with no cache, a family Google no
-//     longer serves, a timeout), Inter registered under BOTH keys.
+//     longer serves, a timeout), Inter (500 / 700) registered under that key.
 //
 // I-1023-FONT-FALLS-BACK-TO-INTER: never leave a referenced key unregistered.
 // On native an unregistered family silently draws the system face; Inter is
 // the Mingla default, so a failure looks like "no custom font", not "broken".
 //
-// I-1023-ONLY-CHOSEN-FONT-DOWNLOADS: a page downloads one family's base and
-// bold only. The 14 legacy slugs never reach this module (they stay bundled).
+// I-1023-ONLY-CHOSEN-FONT-DOWNLOADS: a page downloads one family's base and,
+// only if it draws bold text, its bold face. The 14 legacy slugs never reach this module (they stay bundled).
 //
 // I-1023-NO-GOOGLE-FROM-BUYER-BROWSER: on web every request is same-origin
 // (`/gfonts/...`, a Vercel rewrite in mingla-business/vercel.json), so Google
@@ -31,7 +35,7 @@
 import * as Font from "expo-font";
 import { Platform } from "react-native";
 
-import { googleFontKey, isGoogleFontFamily } from "./themeResolver";
+import { familyFromGoogleFontKey, isGoogleFontFamily } from "./themeResolver";
 
 export type FontModuleSource = number | string;
 
@@ -152,41 +156,45 @@ export const rewriteBlocksForWeb = (
     )
     .join("\n");
 
-export interface ResolvedFaces {
-  base: FontFaceBlock[];
-  bold: FontFaceBlock[];
-}
+/** Which of a family's two keys: `_500` (base) or `_700` (bold). */
+export type GoogleFace = "base" | "bold";
+
+/** Nearest-weight order for the bold key when a family has no 700. */
+export const BOLD_WEIGHT_ORDER = [700, 800, 600, 900] as const;
+
+/** The face a `GF_<family>_<weight>` key names: `_700` is bold, else base. */
+export const googleFaceOfKey = (key: string): GoogleFace =>
+  key.endsWith("_700") ? "bold" : "base";
 
 /**
- * Resolves the base (500) and bold (700) faces with at most four small css2
- * requests. Google answers HTTP 400 for a weight the family lacks, so weights
- * are snapped: pair → single 500 (else the default face) → single 700 (else
- * the base). Returns null when nothing usable came back.
+ * Resolves ONE face with small css2 requests. Google answers HTTP 400 for a
+ * weight the family lacks, so weights are snapped. Base: 500, else the
+ * family's default face. Bold: 700, 800, 600, 900 in that order, else the
+ * base face. Returns null when nothing usable came back (network failure).
  */
-export const resolveGoogleFaces = async (
+export const resolveGoogleFace = async (
   family: string,
+  face: GoogleFace,
   fetchCss: (url: string) => Promise<{ status: number; text: string } | null>,
   origin: string,
-): Promise<ResolvedFaces | null> => {
-  const pair = await fetchCss(googleCssUrl(origin, family, [500, 700]));
-  if (pair !== null && pair.status === 200) {
-    const blocks = parseFontFaceBlocks(pair.text);
-    const base = blocks.filter((b) => b.weight === 500);
-    const bold = blocks.filter((b) => b.weight === 700);
-    if (base.length > 0) return { base, bold: bold.length > 0 ? bold : base };
-  }
-  if (pair === null || pair.status !== 400) return null;
-
-  const single = async (weights?: number[]): Promise<FontFaceBlock[]> => {
+): Promise<FontFaceBlock[] | null> => {
+  const single = async (weights?: number[]): Promise<FontFaceBlock[] | null> => {
     const response = await fetchCss(googleCssUrl(origin, family, weights));
-    if (response === null || response.status !== 200) return [];
-    return parseFontFaceBlocks(response.text);
+    if (response === null || (response.status !== 200 && response.status !== 400)) return null;
+    return response.status === 200 ? parseFontFaceBlocks(response.text) : [];
   };
-  let base = await single([500]);
-  if (base.length === 0) base = await single();
-  if (base.length === 0) return null;
-  const bold = await single([700]);
-  return { base, bold: bold.length > 0 ? bold : base };
+  if (face === "bold") {
+    for (const weight of BOLD_WEIGHT_ORDER) {
+      const blocks = await single([weight]);
+      if (blocks === null) return null;
+      if (blocks.length > 0) return blocks;
+    }
+  }
+  const base = await single([500]);
+  if (base === null) return null;
+  if (base.length > 0) return base;
+  const fallback = await single();
+  return fallback !== null && fallback.length > 0 ? fallback : null;
 };
 
 const firstUrl = (blocks: readonly FontFaceBlock[]): string | null => {
@@ -220,9 +228,11 @@ const fetchWithTimeout = async (
 // ---------------------------------------------------------------------------
 // Native URL cache: lets a later offline launch register from expo-asset's
 // on-disk copy (keyed by URL). Capped at 50 families, least recently used out.
-const CACHE_KEY = "mingla.gfonts.v1";
-const CACHE_LIMIT = 50;
-type UrlCache = Record<string, { b: string; B: string; t: number }>;
+// v2 is keyed by font key (one face per entry), so a bold face is cached only
+// once it has been used.
+const CACHE_KEY = "mingla.gfonts.v2";
+const CACHE_LIMIT = 100;
+type UrlCache = Record<string, { u: string; t: number }>;
 
 type AsyncStorageLike = {
   getItem: (key: string) => Promise<string | null>;
@@ -279,14 +289,12 @@ const writeCache = async (cache: UrlCache): Promise<void> => {
 const inFlight = new Map<string, Promise<EnsureGoogleFontResult>>();
 const settled = new Map<string, EnsureGoogleFontResult>();
 
-/** True once a family's keys are registered (real face or Inter). */
-export const isGoogleFontSettled = (family: string): boolean =>
-  settled.has(family);
+/** True once a font key is registered (real face or Inter). */
+export const isGoogleFontKeySettled = (key: string): boolean => settled.has(key);
 
-/** The outcome for a family, or null while it is still loading. */
-export const googleFontOutcome = (
-  family: string,
-): EnsureGoogleFontResult | null => settled.get(family) ?? null;
+/** The outcome for a font key, or null while it is still loading. */
+export const googleFontOutcome = (key: string): EnsureGoogleFontResult | null =>
+  settled.get(key) ?? null;
 
 /** Test seam. */
 export const __resetGoogleFontLoaderForTests = (): void => {
@@ -298,52 +306,48 @@ export const __resetGoogleFontLoaderForTests = (): void => {
 };
 
 const registerFallback = async (
-  family: string,
+  key: string,
   options: EnsureGoogleFontOptions,
 ): Promise<EnsureGoogleFontResult> => {
-  const base = googleFontKey(family, 500);
-  const bold = googleFontKey(family, 700);
-  console.warn("[theme-font] fallback", family);
+  console.warn("[theme-font] fallback", key);
   try {
     const modules = await options.loadFallback();
-    const map: Record<string, FontModuleSource> = {};
-    if (!Font.isLoaded(base)) map[base] = modules.base;
-    if (!Font.isLoaded(bold)) map[bold] = modules.bold;
-    if (Object.keys(map).length > 0) await Font.loadAsync(map);
+    if (!Font.isLoaded(key)) {
+      await Font.loadAsync({
+        [key]: googleFaceOfKey(key) === "bold" ? modules.bold : modules.base,
+      });
+    }
     return { loaded: true, fellBack: true };
   } catch (error) {
-    console.warn("[theme-font] inter fallback failed", family, error);
+    console.warn("[theme-font] inter fallback failed", key, error);
     return { loaded: false, fellBack: true };
   }
 };
 
-const loadNative = async (family: string): Promise<boolean> => {
-  const base = googleFontKey(family, 500);
-  const bold = googleFontKey(family, 700);
+const loadNative = async (key: string, family: string): Promise<boolean> => {
   const cache = await readCache();
-  const cached = cache[family];
+  const cached = cache[key];
   if (cached !== undefined) {
     try {
-      await Font.loadAsync({ [base]: cached.b, [bold]: cached.B });
-      cache[family] = { ...cached, t: Date.now() };
+      await Font.loadAsync({ [key]: cached.u });
+      cache[key] = { ...cached, t: Date.now() };
       void writeCache(cache);
       return true;
     } catch {
       // Google moved the file: forget it and resolve again below.
-      delete cache[family];
+      delete cache[key];
     }
   }
-  const faces = await resolveGoogleFaces(
+  const blocks = await resolveGoogleFace(
     family,
+    googleFaceOfKey(key),
     (url) => fetchWithTimeout(url, NATIVE_CSS_HEADERS),
     GF_CSS_ORIGIN,
   );
-  if (faces === null) return false;
-  const baseUrl = firstUrl(faces.base);
-  const boldUrl = firstUrl(faces.bold) ?? baseUrl;
-  if (baseUrl === null || boldUrl === null) return false;
-  await Font.loadAsync({ [base]: baseUrl, [bold]: boldUrl });
-  cache[family] = { b: baseUrl, B: boldUrl, t: Date.now() };
+  const url = blocks === null ? null : firstUrl(blocks);
+  if (url === null) return false;
+  await Font.loadAsync({ [key]: url });
+  cache[key] = { u: url, t: Date.now() };
   void writeCache(cache);
   return true;
 };
@@ -363,29 +367,25 @@ const withCap = <T>(promise: Promise<T>, ms: number): Promise<T | null> =>
     );
   });
 
-const loadWeb = async (family: string): Promise<boolean> => {
+const loadWeb = async (key: string, family: string): Promise<boolean> => {
   if (typeof document === "undefined") return false;
-  const faces = await resolveGoogleFaces(
+  const blocks = await resolveGoogleFace(
     family,
+    googleFaceOfKey(key),
     (url) => fetchWithTimeout(url, undefined),
     GF_CSS_ORIGIN,
   );
-  if (faces === null) return false;
-  const base = googleFontKey(family, 500);
-  const bold = googleFontKey(family, 700);
+  if (blocks === null) return false;
   const style = document.createElement("style");
-  style.setAttribute("data-mingla-gfont", family);
-  style.textContent = `${rewriteBlocksForWeb(faces.base, base, GF_FILE_ORIGIN)}\n${rewriteBlocksForWeb(faces.bold, bold, GF_FILE_ORIGIN)}`;
+  style.setAttribute("data-mingla-gfont", key);
+  style.textContent = rewriteBlocksForWeb(blocks, key, GF_FILE_ORIGIN);
   document.head.appendChild(style);
   const fonts = (document as { fonts?: { load: (f: string) => Promise<unknown[]> } }).fonts;
   if (fonts === undefined) return true;
-  const result = await withCap(
-    Promise.all([fonts.load(`1em "${base}"`), fonts.load(`1em "${bold}"`)]),
-    WEB_LOAD_CAP_MS,
-  );
-  if (result === null || result[0].length === 0) {
+  const result = await withCap(fonts.load(`1em "${key}"`), WEB_LOAD_CAP_MS);
+  if (result === null || result.length === 0) {
     // Too slow or nothing matched: drop it so the page never swaps face
-    // mid-session, and let Inter take the keys.
+    // mid-session, and let Inter take the key.
     style.remove();
     return false;
   }
@@ -393,37 +393,38 @@ const loadWeb = async (family: string): Promise<boolean> => {
 };
 
 /**
- * Registers a Google family under its `GF_<family>_500/_700` keys, or Inter
- * under the same keys when it cannot. Deduped per family; a family that fell
- * back is not retried in the same session.
+ * Registers ONE Google font key (`GF_<family>_500` or `_700`): the family's
+ * face for it, or Inter under the same key when it cannot. Deduped per key; a
+ * key that fell back is not retried in the same session.
  */
-export const ensureGoogleFont = (
-  family: string,
+export const ensureGoogleFontKey = (
+  key: string,
   options: EnsureGoogleFontOptions,
 ): Promise<EnsureGoogleFontResult> => {
-  const done = settled.get(family);
+  const done = settled.get(key);
   if (done !== undefined) return Promise.resolve(done);
-  const existing = inFlight.get(family);
+  const existing = inFlight.get(key);
   if (existing !== undefined) return existing;
   const promise = (async (): Promise<EnsureGoogleFontResult> => {
     let ok = false;
+    const family = familyFromGoogleFontKey(key);
     // Never build a URL from an unvalidated value.
-    if (isGoogleFontFamily(family)) {
+    if (family !== null && key.startsWith("GF_")) {
       try {
-        ok = Platform.OS === "web" ? await loadWeb(family) : await loadNative(family);
+        ok = Platform.OS === "web" ? await loadWeb(key, family) : await loadNative(key, family);
       } catch (error) {
-        console.warn("[theme-font] load failed", family, error);
+        console.warn("[theme-font] load failed", key, error);
         ok = false;
       }
     }
     const result = ok
       ? { loaded: true, fellBack: false }
-      : await registerFallback(family, options);
-    settled.set(family, result);
-    inFlight.delete(family);
+      : await registerFallback(key, options);
+    settled.set(key, result);
+    inFlight.delete(key);
     return result;
   })();
-  inFlight.set(family, promise);
+  inFlight.set(key, promise);
   return promise;
 };
 

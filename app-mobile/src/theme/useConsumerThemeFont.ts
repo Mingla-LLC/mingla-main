@@ -15,8 +15,8 @@
 import { useEffect, useState } from "react";
 import * as Font from "expo-font";
 import {
-  ensureGoogleFont,
-  isGoogleFontSettled,
+  ensureGoogleFontKey,
+  isGoogleFontKeySettled,
   type InterFallbackModules,
 } from "@mingla/offering-rendering/googleFontLoader";
 import { familyFromGoogleFontKey } from "@mingla/offering-rendering/themeResolver";
@@ -39,13 +39,12 @@ const loadInterFallback = async (): Promise<InterFallbackModules> => {
   return { base, bold };
 };
 
-/** True when a font key is ready to draw (bundled face or settled Google family). */
-export const isThemeFontKeyReady = (key: string): boolean => {
-  const family = familyFromGoogleFontKey(key);
-  return family !== null && key.startsWith("GF_")
-    ? isGoogleFontSettled(family)
-    : Font.isLoaded(key);
-};
+const isGoogleKey = (key: string): boolean =>
+  key.startsWith("GF_") && familyFromGoogleFontKey(key) !== null;
+
+/** True when a font key is ready to draw (bundled face or settled Google key). */
+export const isThemeFontKeyReady = (key: string): boolean =>
+  isGoogleKey(key) ? isGoogleFontKeySettled(key) : Font.isLoaded(key);
 
 /**
  * Load a single theme-font family on demand by its `fontFamilyValue`
@@ -61,11 +60,9 @@ export async function loadConsumerThemeFont(
   const existing = inFlight.get(family);
   if (existing) return existing;
 
-  const googleFamily = family.startsWith("GF_")
-    ? familyFromGoogleFontKey(family)
-    : null;
-  if (googleFamily !== null) {
-    await ensureGoogleFont(googleFamily, { loadFallback: loadInterFallback });
+  if (isGoogleKey(family)) {
+    // Each key loads on its own: the bold face only where bold text is drawn.
+    await ensureGoogleFontKey(family, { loadFallback: loadInterFallback });
     return;
   }
 

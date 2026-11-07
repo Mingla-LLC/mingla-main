@@ -71,6 +71,7 @@ import {
 } from "./enquiryTopics";
 import { accentEdgeOnFill, accentFill, accentFillWithBorder, accentOutline } from "@mingla/offering-rendering/themeAccentStyle";
 import { AccentLucideIcon } from "@mingla/offering-rendering/LucideIcons";
+import { boldFontFamily } from "@mingla/offering-rendering/themePalette";
 
 export type EnquiryViewer =
   | { kind: "signed_in"; name: string }
@@ -167,6 +168,8 @@ export const BrandMessageSheet = ({
   const { width, height } = useWindowDimensions();
   const wide = width >= 768;
   const themedFont = { fontFamily: theme.fontFamilyValue };
+  // issue #1023 — titles name the bold face (native ignores fontWeight here).
+  const themedBoldFont = { fontFamily: boldFontFamily(theme) };
   const signedIn = viewer.kind === "signed_in";
 
   const [step, setStep] = useState<Step>("topic");
@@ -443,7 +446,7 @@ export const BrandMessageSheet = ({
   // ---- step 1 ----------------------------------------------------------------
   const topicStep = (
     <View>
-      <Text style={[styles.title, themedFont, { color: palette.primaryText }]} accessibilityRole="header">
+      <Text style={[styles.title, themedBoldFont, { color: palette.primaryText }]} accessibilityRole="header">
         {`Message ${brandName}`}
       </Text>
       <Text style={[styles.sub, { color: palette.secondaryText }]}>What&apos;s this about?</Text>
@@ -671,7 +674,7 @@ export const BrandMessageSheet = ({
             {pick.subtitle === null ? pick.title : `${pick.title} · ${pick.subtitle}`}
           </Text>
         </Pressable>
-        <Text style={[styles.title, themedFont, { color: palette.primaryText }]} accessibilityRole="header">
+        <Text style={[styles.title, themedBoldFont, { color: palette.primaryText }]} accessibilityRole="header">
           {pick.reasons.length > 0 ? "What do you need?" : pick.title}
         </Text>
         {pick.reasons.length > 0 ? (
@@ -716,7 +719,7 @@ export const BrandMessageSheet = ({
         <View style={[styles.sentIcon, { backgroundColor: palette.accentWash }]}>
           <AccentLucideIcon Icon={Check} size={26} palette={palette} />
         </View>
-        <Text style={[styles.title, styles.center, themedFont, { color: palette.primaryText }]}>
+        <Text style={[styles.title, styles.center, themedBoldFont, { color: palette.primaryText }]}>
           {`Message sent to ${brandName}`}
         </Text>
         <Text style={[styles.sub, styles.center, { color: palette.secondaryText }]}>

@@ -48,7 +48,8 @@ const assertUsesNativeFontMetrics = (
   );
   assert(
     new RegExp(
-      `styles\\.${styleName}[\\s\\S]{0,220}(?:fontFamily|themedFont|fontStyle)`,
+      // issue #1023: heavy text names the bold face (themedBoldFont).
+      `styles\\.${styleName}[\\s\\S]{0,220}(?:fontFamily|themedFont|themedBoldFont|fontStyle)`,
     ).test(source),
     `${surface} styles.${styleName} must remain wired to the selected font`,
   );

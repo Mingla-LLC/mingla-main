@@ -6,8 +6,9 @@
  * dedupe, fallback and web rewrite are the real code.
  *
  * Fails on revert: removing the Inter registration on failure, the 400 →
- * single-weight snapping, the bold-aliases-base rule, or the same-origin web
- * origins.
+ * single-weight snapping, the nearest-heavy-weight order (700, 800, 600, 900),
+ * the bold-aliases-base rule, per-key loading (a base key downloading the bold
+ * face), heavy brand text naming the bold key, or the same-origin web origins.
  */
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 
@@ -30,7 +31,8 @@ jest.mock("expo-font", () => ({
 import {
   __resetGoogleFontLoaderForTests,
   __setGoogleFontStorageForTests,
-  ensureGoogleFont,
+  BOLD_WEIGHT_ORDER,
+  ensureGoogleFontKey,
   ensureGooglePreviewFace,
   googleCssUrl,
   googlePreviewsInFlight,
@@ -38,6 +40,16 @@ import {
   resolveGoogleFontOrigins,
   rewriteBlocksForWeb,
 } from "../../../../../packages/offering-rendering/googleFontLoader";
+// eslint-disable-next-line import/first
+import { resolveTheme } from "../../../../../packages/offering-rendering/themeResolver";
+// eslint-disable-next-line import/first
+import { boldFontFamily } from "../../../../../packages/offering-rendering/themePalette";
+// eslint-disable-next-line import/first
+import { readFile } from "fs/promises";
+// eslint-disable-next-line import/first
+import path from "path";
+
+const REPO = path.resolve(__dirname, "../../../../..");
 
 const ttfCss = (family: string, weights: number[]): string =>
   weights
@@ -81,88 +93,137 @@ beforeEach(() => {
   warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
 });
 
-describe("native: the chosen family's base and bold", () => {
-  test("a 200 pair registers both weights from their TTF files and remembers the URLs", async () => {
-    replies = { "Roboto+Slab:wght@500;700": { status: 200, text: ttfCss("Roboto Slab", [500, 700]) } };
-    const result = await ensureGoogleFont("Roboto Slab", fallback);
+const BASE = (f: string): string => `GF_${f.replace(/ /g, "_")}_500`;
+const BOLD = (f: string): string => `GF_${f.replace(/ /g, "_")}_700`;
+
+describe("native: each key loads its own face, only when asked", () => {
+  test("the base key registers the 500 TTF only (no bold download) and remembers the URL", async () => {
+    replies = { "Roboto+Slab:wght@500&": { status: 200, text: ttfCss("Roboto Slab", [500]) } };
+    const result = await ensureGoogleFontKey(BASE("Roboto Slab"), fallback);
     expect(result).toEqual({ loaded: true, fellBack: false });
     expect(mockFont.calls).toEqual([
-      {
-        GF_Roboto_Slab_500: "https://fonts.gstatic.com/s/x/v1/RobotoSlab-500.ttf",
-        GF_Roboto_Slab_700: "https://fonts.gstatic.com/s/x/v1/RobotoSlab-700.ttf",
-      },
+      { GF_Roboto_Slab_500: "https://fonts.gstatic.com/s/x/v1/RobotoSlab-500.ttf" },
     ]);
-    expect(requested[0]).toContain("https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@500;700");
+    expect(requested).toEqual([
+      "https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@500&display=swap",
+    ]);
     await new Promise((r) => setTimeout(r, 0));
-    expect(JSON.parse(storage.get("mingla.gfonts.v1") ?? "{}")["Roboto Slab"].b).toContain("RobotoSlab-500.ttf");
+    expect(JSON.parse(storage.get("mingla.gfonts.v2") ?? "{}")[BASE("Roboto Slab")].u).toContain(
+      "RobotoSlab-500.ttf",
+    );
   });
 
-  test("a family without 700 snaps: single 500, then bold aliases the base", async () => {
+  test("the bold key registers the 700 TTF (Bricolage Grotesque on /b/jogular)", async () => {
     replies = {
-      "Bebas+Neue:wght@500;700": { status: 400, text: "<html>" },
-      "Bebas+Neue:wght@500&": { status: 200, text: ttfCss("Bebas Neue", [500]) },
-      "Bebas+Neue:wght@700&": { status: 400, text: "<html>" },
+      "Bricolage+Grotesque:wght@700&": { status: 200, text: ttfCss("Bricolage Grotesque", [700]) },
     };
-    await ensureGoogleFont("Bebas Neue", fallback);
+    await ensureGoogleFontKey(BOLD("Bricolage Grotesque"), fallback);
+    expect(mockFont.calls).toEqual([
+      { GF_Bricolage_Grotesque_700: "https://fonts.gstatic.com/s/x/v1/BricolageGrotesque-700.ttf" },
+    ]);
+  });
+
+  test("no 700: the bold key takes the nearest heavy face, 800 before 600", async () => {
+    replies = {
+      "Big+Shoulders:wght@700&": { status: 400, text: "<html>" },
+      "Big+Shoulders:wght@800&": { status: 200, text: ttfCss("Big Shoulders", [800]) },
+      "Big+Shoulders:wght@600&": { status: 200, text: ttfCss("Big Shoulders", [600]) },
+    };
+    await ensureGoogleFontKey(BOLD("Big Shoulders"), fallback);
     expect(mockFont.calls[0]).toEqual({
-      GF_Bebas_Neue_500: "https://fonts.gstatic.com/s/x/v1/BebasNeue-500.ttf",
+      GF_Big_Shoulders_700: "https://fonts.gstatic.com/s/x/v1/BigShoulders-800.ttf",
+    });
+    expect(requested.some((u) => u.includes("wght@600"))).toBe(false);
+  });
+
+  test("no 700 or 800: 600 is next", async () => {
+    replies = {
+      "Mulish:wght@600&": { status: 200, text: ttfCss("Mulish", [600]) },
+    };
+    await ensureGoogleFontKey(BOLD("Mulish"), fallback);
+    expect(mockFont.calls[0]).toEqual({
+      GF_Mulish_700: "https://fonts.gstatic.com/s/x/v1/Mulish-600.ttf",
+    });
+  });
+
+  test("a single-weight family: the bold key reuses the base face", async () => {
+    replies = {
+      "Bebas+Neue:wght@500&": { status: 200, text: ttfCss("Bebas Neue", [500]) },
+    };
+    await ensureGoogleFontKey(BOLD("Bebas Neue"), fallback);
+    expect(mockFont.calls[0]).toEqual({
       GF_Bebas_Neue_700: "https://fonts.gstatic.com/s/x/v1/BebasNeue-500.ttf",
     });
-    expect(requested.length).toBeLessThanOrEqual(4);
   });
 
-  test("no 500 either: the family's default face is the base (nearest weight)", async () => {
-    replies = {
-      "Anton:wght@500;700": { status: 400, text: "<html>" },
-      "Anton:wght@500&": { status: 400, text: "<html>" },
-      "family=Anton&display": { status: 200, text: ttfCss("Anton", [400]) },
-      "Anton:wght@700&": { status: 400, text: "<html>" },
-    };
-    await ensureGoogleFont("Anton", fallback);
-    expect(mockFont.calls[0]).toEqual({
-      GF_Anton_500: "https://fonts.gstatic.com/s/x/v1/Anton-400.ttf",
-      GF_Anton_700: "https://fonts.gstatic.com/s/x/v1/Anton-400.ttf",
-    });
-    expect(requested.length).toBeLessThanOrEqual(4);
+  test("no 500 either: the family's default face (nearest weight)", async () => {
+    replies = { "family=Anton&display": { status: 200, text: ttfCss("Anton", [400]) } };
+    await ensureGoogleFontKey(BASE("Anton"), fallback);
+    expect(mockFont.calls[0]).toEqual({ GF_Anton_500: "https://fonts.gstatic.com/s/x/v1/Anton-400.ttf" });
   });
 
-  test("total failure registers Inter under both keys, warns once and never retries", async () => {
+  test("total failure registers Inter under that key (bold gets Inter 700), warns once, never retries", async () => {
     replies = { "Zzzz+Nope": "throw" };
-    const result = await ensureGoogleFont("Zzzz Nope", fallback);
-    expect(result).toEqual({ loaded: true, fellBack: true });
-    expect(mockFont.calls).toEqual([{ GF_Zzzz_Nope_500: 101, GF_Zzzz_Nope_700: 102 }]);
-    expect(warn.mock.calls.filter((c) => c[0] === "[theme-font] fallback")).toHaveLength(1);
+    expect(await ensureGoogleFontKey(BASE("Zzzz Nope"), fallback)).toEqual({ loaded: true, fellBack: true });
+    expect(await ensureGoogleFontKey(BOLD("Zzzz Nope"), fallback)).toEqual({ loaded: true, fellBack: true });
+    expect(mockFont.calls).toEqual([{ GF_Zzzz_Nope_500: 101 }, { GF_Zzzz_Nope_700: 102 }]);
+    expect(warn.mock.calls.filter((c) => c[0] === "[theme-font] fallback")).toHaveLength(2);
     const before = requested.length;
-    await ensureGoogleFont("Zzzz Nope", fallback);
+    await ensureGoogleFontKey(BOLD("Zzzz Nope"), fallback);
     expect(requested.length).toBe(before);
   });
 
   test("an unvalidated name never builds a URL: straight to Inter", async () => {
-    await ensureGoogleFont("Inter';}body{display:none}", fallback);
+    await ensureGoogleFontKey("GF_Inter';}body{display:none}_700", fallback);
     expect(requested).toEqual([]);
-    expect(Object.values(mockFont.calls[0])).toEqual([101, 102]);
+    expect(Object.values(mockFont.calls[0])).toEqual([102]);
   });
 
-  test("concurrent requests for one family share one load", async () => {
-    replies = { "Lexend:wght@500;700": { status: 200, text: ttfCss("Lexend", [500, 700]) } };
-    await Promise.all([ensureGoogleFont("Lexend", fallback), ensureGoogleFont("Lexend", fallback)]);
+  test("concurrent requests for one key share one load", async () => {
+    replies = { "Lexend:wght@500&": { status: 200, text: ttfCss("Lexend", [500]) } };
+    await Promise.all([
+      ensureGoogleFontKey(BASE("Lexend"), fallback),
+      ensureGoogleFontKey(BASE("Lexend"), fallback),
+    ]);
     expect(requested).toHaveLength(1);
     expect(mockFont.calls).toHaveLength(1);
   });
 
-  test("offline later: the remembered URLs register from the disk cache with no request", async () => {
+  test("offline later: a remembered URL registers from the disk cache with no request", async () => {
     storage.set(
-      "mingla.gfonts.v1",
-      JSON.stringify({ Sora: { b: "https://fonts.gstatic.com/s/sora-500.ttf", B: "https://fonts.gstatic.com/s/sora-700.ttf", t: 1 } }),
+      "mingla.gfonts.v2",
+      JSON.stringify({ GF_Sora_700: { u: "https://fonts.gstatic.com/s/sora-700.ttf", t: 1 } }),
     );
     replies = { Sora: "throw" };
-    const result = await ensureGoogleFont("Sora", fallback);
+    const result = await ensureGoogleFontKey(BOLD("Sora"), fallback);
     expect(result.fellBack).toBe(false);
     expect(requested).toEqual([]);
-    expect(mockFont.calls[0]).toEqual({
-      GF_Sora_500: "https://fonts.gstatic.com/s/sora-500.ttf",
-      GF_Sora_700: "https://fonts.gstatic.com/s/sora-700.ttf",
-    });
+    expect(mockFont.calls[0]).toEqual({ GF_Sora_700: "https://fonts.gstatic.com/s/sora-700.ttf" });
+  });
+
+  test("the nearest-weight order is 700, 800, 600, 900", () => {
+    expect(BOLD_WEIGHT_ORDER).toEqual([700, 800, 600, 900]);
+  });
+});
+
+describe("heavy text names the bold key (native never derives bold from fontWeight)", () => {
+  test("a Google family resolves its bold family to the _700 key, a legacy slug to its bold face", () => {
+    const jogular = resolveTheme({ font: "Bricolage Grotesque" }, null);
+    expect(jogular.fontFamilyValue).toBe("GF_Bricolage_Grotesque_500");
+    expect(boldFontFamily(jogular)).toBe("GF_Bricolage_Grotesque_700");
+    expect(boldFontFamily(resolveTheme({ font: "inter" }, null))).toBe("Inter_700Bold");
+  });
+
+  test("the brand page draws its name and headings in the bold face and loads it", async () => {
+    const read = (rel: string) => readFile(path.join(REPO, rel), "utf8");
+    const page = await read("packages/brand-rendering/PublicBrandPage.tsx");
+    expect(page).toContain("styles.brandName, themedBoldFont");
+    expect(page).toContain("styles.deskBrandName,\n                themedBoldFont");
+    expect(page).not.toContain("{ fontFamily: theme.fontFamilyValue");
+    const host = await read("mingla-business/src/components/brand/PublicBrandPage.tsx");
+    expect(host).toContain("useThemeFont(boldFontFamily(theme))");
+    const explorer = await read("app-mobile/src/screens/ConsumerBrandProfileScreen.tsx");
+    expect(explorer).toContain("useConsumerThemeFont(resolvedTheme === null ? null : boldFontFamily(resolvedTheme))");
   });
 });
 

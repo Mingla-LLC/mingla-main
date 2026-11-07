@@ -7,7 +7,9 @@
 // platform (web + native) the load goes through `expo-font`'s `Font.loadAsync`.
 //
 // issue #1023 wave 2: a Google family's keys (`GF_<family>_500/_700`) load
-// through @mingla/offering-rendering/googleFontLoader, Inter on failure.
+// through @mingla/offering-rendering/googleFontLoader, Inter on failure. Each
+// key loads on its own, so the bold face downloads only where bold text is
+// drawn (surfaces call this hook with `boldFontFamily(theme)` for that).
 //
 // DO NOT re-introduce a static `@expo-google-fonts/*` import or a root
 // `useFonts` call (breaks the mobile boot budget). The 14 family modules are
@@ -47,19 +49,16 @@ const loadGoogleFontLoader = () =>
   import("@mingla/offering-rendering/googleFontLoader");
 const googleOutcomes = new Map<string, EnsureGoogleFontResult>();
 
-/** True when a font key is ready to draw (bundled face or settled Google family). */
-export const isThemeFontKeyReady = (key: string): boolean => {
-  const family = familyFromGoogleFontKey(key);
-  return family !== null && key.startsWith("GF_")
-    ? googleOutcomes.has(family)
-    : Font.isLoaded(key);
-};
+const isGoogleKey = (key: string): boolean =>
+  key.startsWith("GF_") && familyFromGoogleFontKey(key) !== null;
 
-/** True when a Google family could not load and is drawn as Inter. */
-export const themeFontFellBack = (key: string): boolean => {
-  const family = key.startsWith("GF_") ? familyFromGoogleFontKey(key) : null;
-  return family !== null && googleOutcomes.get(family)?.fellBack === true;
-};
+/** True when a font key is ready to draw (bundled face or settled Google key). */
+export const isThemeFontKeyReady = (key: string): boolean =>
+  isGoogleKey(key) ? googleOutcomes.has(key) : Font.isLoaded(key);
+
+/** True when a Google key could not load and is drawn as Inter. */
+export const themeFontFellBack = (key: string): boolean =>
+  googleOutcomes.get(key)?.fellBack === true;
 
 /**
  * Load a single theme-font family on demand by its `fontFamilyValue`
@@ -73,15 +72,12 @@ export async function loadThemeFont(family: string | null | undefined): Promise<
   const existing = inFlight.get(family);
   if (existing) return existing;
 
-  const googleFamily = family.startsWith("GF_")
-    ? familyFromGoogleFontKey(family)
-    : null;
-  if (googleFamily !== null) {
-    const { ensureGoogleFont } = await loadGoogleFontLoader();
-    const outcome = await ensureGoogleFont(googleFamily, {
+  if (isGoogleKey(family)) {
+    const { ensureGoogleFontKey } = await loadGoogleFontLoader();
+    const outcome = await ensureGoogleFontKey(family, {
       loadFallback: loadInterFallback,
     });
-    googleOutcomes.set(googleFamily, outcome);
+    googleOutcomes.set(family, outcome);
     return;
   }
 

@@ -14,6 +14,7 @@ import {
   type PublicMenuGroup,
 } from "@mingla/brand-rendering";
 import {
+  boldFontFamily,
   createThemePalette,
   resolveTheme,
   type ResolvedTheme,
@@ -266,6 +267,9 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   );
   // ORCH-1083: load this brand's theme font on demand (no longer eager at root).
   useThemeFont(theme.fontFamilyValue);
+  // issue #1023 — the bold face for the brand name and headings (native never
+  // derives it from fontWeight for a Google family).
+  useThemeFont(boldFontFamily(theme));
   const sharedBrand = useMemo(() => mapBrand(brand), [brand]);
   const sharedEvents = useMemo(() => events.map(mapEvent), [events]);
   const sharedPastEvents = useMemo(() => pastEvents.map(mapEvent), [pastEvents]);

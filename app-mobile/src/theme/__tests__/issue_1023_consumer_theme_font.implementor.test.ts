@@ -39,10 +39,11 @@ Deno.test("#1023 — consumer pages load both theme keys (base and bold)", () =>
 
 Deno.test("#1023 — useConsumerThemeFont delegates GF_ keys to the shared loader", () => {
   assert(hook.includes('from "@mingla/offering-rendering/googleFontLoader"'));
-  assert(/family\.startsWith\("GF_"\)\s*\?\s*familyFromGoogleFontKey\(family\)/.test(hook));
-  assert(/await ensureGoogleFont\(googleFamily, \{ loadFallback: loadInterFallback \}\)/.test(hook));
+  // Each key (base or bold) loads on its own: the bold face only where used.
+  assert(/key\.startsWith\("GF_"\) && familyFromGoogleFontKey\(key\) !== null/.test(hook));
+  assert(/await ensureGoogleFontKey\(family, \{ loadFallback: loadInterFallback \}\)/.test(hook));
   // The delegation happens before the bundled thunk lookup.
-  assert(hook.indexOf("ensureGoogleFont(googleFamily") < hook.indexOf("CONSUMER_THEME_FONT_MODULE_THUNKS[family]"));
+  assert(hook.indexOf("ensureGoogleFontKey(family") < hook.indexOf("CONSUMER_THEME_FONT_MODULE_THUNKS[family]"));
 });
 
 Deno.test("#1023 — the fallback is the bundled Inter 500 and 700", () => {
