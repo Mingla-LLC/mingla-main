@@ -82,7 +82,7 @@ jest.mock(
 );
 
 // eslint-disable-next-line import/first
-import { ThemeEntranceAnimation } from "../../../../../packages/offering-rendering/ThemeEntranceAnimation.web";
+import { ThemeEntranceAnimation } from "../../../../../packages/offering-rendering/ThemeEntranceAnimationWebImpl";
 // eslint-disable-next-line import/first
 import type { ResolvedTheme } from "../../../../../packages/offering-rendering/designTokens";
 
@@ -118,6 +118,21 @@ beforeEach(() => {
 });
 
 describe("#1023 web entrance motion", () => {
+  test("the eager web entry lazily mounts the real player", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const shell = require("../../../../../packages/offering-rendering/ThemeEntranceAnimation.web") as {
+      ThemeEntranceAnimation: React.FC<{ theme: ResolvedTheme; sessionKey: string }>;
+    };
+    const Shell = shell.ThemeEntranceAnimation;
+    const tree = await mount(<Shell theme={theme("bokeh")} sessionKey="b:0" />);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(tree.root.findAll((n) => n.props.testID === "theme-entrance-web-player").length).toBeGreaterThan(0);
+    const none = await mount(<Shell theme={theme("none")} sessionKey="b:00" />);
+    expect(none.toJSON()).toBeNull();
+  });
+
   test("renders a real player, not null", async () => {
     const tree = await mount(<ThemeEntranceAnimation theme={theme("confetti")} sessionKey="b:1" />);
     expect(tree.toJSON()).not.toBeNull();
