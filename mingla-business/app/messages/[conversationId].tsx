@@ -584,7 +584,7 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
 
   function startReply(message: BrandGroupMessage): void {
     setReplyTo(message);
-    requestAnimationFrame(() => composerRef.current?.focus());
+    setTimeout(() => composerRef.current?.focus(), 0);
   }
 
   async function copyMessage(message: BrandGroupMessage): Promise<void> {
