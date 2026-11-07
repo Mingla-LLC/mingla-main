@@ -21,6 +21,10 @@
 //        transport shape, and nothing else is
 //   X-8  the issuer, endpoints and supported methods agree between the
 //        static document, the edge and Admin
+//   X-9  retest: the anti-framing headers cover every served path, restrict
+//        nothing but framing, are set by one rule only, leave the
+//        authorization server document's CORS intact, and no other Mingla
+//        surface frames an Admin page
 //
 // Invariant exercised: I-4294-2 (Admin side).
 // {"invariant":"I-4294-2","issue":4294,"status":"ACTIVE","enforced_by":["mingla-admin/src/__tests__/issue4294_connector.tester.adversarial.test.js"]}
@@ -362,5 +366,63 @@ describe("#4294 X-8: the issuer and endpoints agree across the static document, 
     assert.deepEqual([...doc.grant_types_supported].sort(), ["authorization_code", "refresh_token"]);
     assert.equal("registration_endpoint" in doc, false);
     assert.equal(doc.client_id_metadata_document_supported, true);
+  });
+});
+
+describe("#4294 X-9: the anti-framing headers cover all of Admin and break nothing", () => {
+  const vercel = JSON.parse(fs.readFileSync(path.join(ADMIN, "vercel.json"), "utf8"));
+  // Vercel sources are path-to-regexp; "/(.*)" is a plain group here.
+  const matches = (source, p) => new RegExp("^" + source + "$").test(p);
+  const setting = (key) => vercel.headers.filter((r) => r.headers.some((h) => h.key.toLowerCase() === key.toLowerCase()));
+
+  it("every path Admin serves gets both headers", () => {
+    for (const p of ["/", "/index.html", "/assets/index-abc123.js", "/favicon.ico", "/.well-known/oauth-authorization-server", "/connect"]) {
+      for (const key of ["X-Frame-Options", "Content-Security-Policy"]) {
+        assert.ok(setting(key).some((r) => matches(r.source, p)), `${key} on ${p}`);
+      }
+    }
+  });
+
+  it("one rule sets them, and the policy restricts framing only", () => {
+    assert.equal(setting("X-Frame-Options").length, 1);
+    assert.equal(setting("Content-Security-Policy").length, 1);
+    const csp = setting("Content-Security-Policy")[0].headers.find((h) => h.key === "Content-Security-Policy").value;
+    const directives = csp.split(";").map((d) => d.trim()).filter(Boolean);
+    assert.deepEqual(directives, ["frame-ancestors 'none'"], "no script, style, connect or frame-src limit that could break Admin");
+    assert.equal(setting("X-Frame-Options")[0].headers.find((h) => h.key === "X-Frame-Options").value, "DENY");
+    // No page-level policy that would disagree with the header.
+    const html = fs.readFileSync(path.join(ADMIN, "index.html"), "utf8");
+    assert.equal(/http-equiv\s*=\s*["']?(content-security-policy|x-frame-options)/i.test(html), false);
+  });
+
+  it("the authorization server document keeps its CORS and JSON type", () => {
+    const doc = vercel.headers.find((h) => h.source === "/.well-known/oauth-authorization-server");
+    const v = (k) => doc.headers.find((h) => h.key === k)?.value;
+    assert.equal(v("Access-Control-Allow-Origin"), "*");
+    assert.equal(v("Content-Type"), "application/json");
+  });
+
+  it("no other Mingla surface frames an Admin page", () => {
+    const roots = ["app-mobile/src", "mingla-business/src", "mingla-business/app", "mingla-marketing/app", "mingla-marketing/src",
+      "mingla-sites/src", "mingla-site-cms/src"].map((r) => path.join(REPO, r)).filter((r) => fs.existsSync(r));
+    assert.ok(roots.length >= 4, "the surfaces were found");
+    let scanned = 0;
+    const walk = (dir) => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, e.name);
+        if (e.isDirectory()) {
+          if (e.name !== "node_modules" && e.name !== "__tests__") walk(p);
+        } else if (/\.(jsx?|tsx?|mjs|html)$/.test(e.name)) {
+          scanned++;
+          const src = fs.readFileSync(p, "utf8");
+          if (!/admin\.usemingla\.com|mingla-admin/.test(src)) continue;
+          for (const m of src.matchAll(/<(iframe|frame|embed|object|WebView)\b[^>]*>/gi)) {
+            assert.equal(/admin\.usemingla\.com|mingla-admin/.test(m[0]), false, `${p} frames Admin`);
+          }
+        }
+      }
+    };
+    roots.forEach(walk);
+    assert.ok(scanned > 500, `scanned ${scanned} files`);
   });
 });

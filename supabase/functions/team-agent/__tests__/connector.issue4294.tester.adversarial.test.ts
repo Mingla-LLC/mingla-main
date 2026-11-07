@@ -23,6 +23,12 @@
 //         text and no key; one finished call-log row each
 //   T-P4  nothing of ours is forwarded; a replaced key never rides an old
 //         session; an internal address is never fetched
+//   T-O7  retest: the token endpoint takes only Claude's exact origins or
+//         none (case, padding, slash, port, subdomain, null, empty, a list);
+//         any Authorization is refused; no CORS header on any answer
+//   T-P6  retest: more address spellings are never fetched and agree with
+//         the database rule (A-13); an encoded echo of the key never reaches
+//         Claude through a whole tool call
 //
 // Invariants exercised: I-4294-1, I-4294-3, I-4294-4, I-4294-5.
 // {"invariant":"I-4294-3","issue":4294,"status":"ACTIVE","enforced_by":["supabase/functions/team-agent/__tests__/connector.issue4294.tester.adversarial.test.ts"]}
@@ -788,4 +794,110 @@ Deno.test("#4294 T-P5: a role the row does not allow sees and calls nothing; an 
   const offCall = (await (await off.handler(mcp(GROWTH, "tools/call", { name: "fake__read_things" }))).json()).result;
   assertEquals(offCall.structuredContent.error.token, "not_allowed");
   assertEquals(off.upstream.length, 0);
+});
+
+Deno.test("#4294 T-O7: the token endpoint takes only Claude's exact origins or none; any Authorization is refused; never a CORS header", async () => {
+  const exchanged = (rpc: { fn: string }[]) => rpc.some((c) => c.fn === "mingla_connector_oauth_exchange");
+  const noCors = (res: Response, label: string) => {
+    for (const [name] of res.headers.entries()) {
+      assertEquals(name.startsWith("access-control-"), false, `${label}: ${name}`);
+    }
+  };
+  // Accepted: no Origin, Claude's two origins, and those origins with the
+  // surrounding whitespace HTTP itself strips from a header value.
+  for (const origin of [null, "https://claude.ai", "https://claude.com", "  https://claude.ai\t"]) {
+    const { handler, rpc } = oauthSetup();
+    const res = await handler(token(form(CODE_FORM), { headers: origin === null ? {} : { origin } }));
+    assertEquals(exchanged(rpc), true, `${JSON.stringify(origin)} reaches the exchange`);
+    noCors(res, String(origin));
+  }
+  // Refused before the database: anything that is not exactly one of them.
+  for (const origin of [
+    "https://Claude.ai", "HTTPS://claude.ai", "https://claude.ai/", "https://claude.ai:443", "https://claude.ai:8443",
+    "https://www.claude.ai", "https://api.claude.com", "https://claude.ai.", "https://claude.ai.evil.example",
+    "https://evilclaude.ai", "http://claude.com", "null", "", "https:// claude.ai", "https://claude.ai, https://evil.example",
+    "https://claude.ai https://claude.com", "https://xn--claude-.ai", "https://claude.ai\u00a0",
+  ]) {
+    const { handler, rpc } = oauthSetup();
+    const res = await handler(token(form(CODE_FORM), { headers: { origin } }));
+    assertEquals(res.status, 400, origin);
+    assertEquals(await res.json(), { error: "invalid_request" }, origin);
+    assertEquals(exchanged(rpc), false, `${origin}: never reaches the database`);
+    noCors(res, origin);
+  }
+  // Two Origin headers are one joined value, and refused.
+  {
+    const { handler, rpc } = oauthSetup();
+    const h = new Headers({ "content-type": "application/x-www-form-urlencoded" });
+    h.append("origin", "https://claude.ai");
+    h.append("origin", "https://evil.example");
+    const res = await handler(new Request(`${MCP}/oauth/token`, { method: "POST", headers: h, body: form(CODE_FORM) }));
+    assertEquals(res.status, 400);
+    assertEquals(exchanged(rpc), false, "two origins never reach the database");
+  }
+  // A Claude origin does not open the door to client credentials.
+  for (const authorization of ["Basic " + btoa(`${encodeURIComponent(APP)}:`), "Basic ", "basic x", "Bearer x", "Negotiate x", "x"]) {
+    const { handler, rpc } = oauthSetup();
+    const res = await handler(token(form(CODE_FORM), { headers: { origin: "https://claude.ai", authorization } }));
+    assertEquals(res.status, 401, authorization);
+    assertEquals(await res.json(), { error: "invalid_client" }, authorization);
+    assertEquals(exchanged(rpc), false, `${authorization}: never reaches the database`);
+    noCors(res, authorization);
+  }
+  // A browser preflight gets no CORS grant either.
+  {
+    const { handler } = oauthSetup();
+    const res = await handler(new Request(`${MCP}/oauth/token`, {
+      method: "OPTIONS",
+      headers: { origin: "https://claude.ai", "access-control-request-method": "POST", "access-control-request-headers": "content-type" },
+    }));
+    noCors(res, "preflight");
+  }
+});
+
+Deno.test("#4294 T-P6: more address spellings are never fetched; an encoded echo of the key never reaches Claude", async () => {
+  // The same spellings the database refuses in A-13, at the edge.
+  for (const url of [
+    "https://0X7f.1/mcp", "https://0x7F.1/mcp", "https://tòols.example.com/mcp", "https://ｅxample.com/mcp",
+    "https://exa​mple.com/mcp", "https://tools.example.com./mcp", "https://tools.example.com/mcp\n", "https://tools.example.com\n/mcp",
+    "https://tools.example.com:0443/mcp", "https://tools.0xffffffff/mcp", "https://tools.08/mcp", "https://tools.example.com/%2e%2e/mcp",
+    "https://a.ß.com/mcp", "https://tools.0x7f/mcp", "https://tools.example.com\t/mcp", "https://ex%61mple.com/mcp",
+  ]) {
+    const t = proxySetup({ row: { url } });
+    const result = (await (await t.handler(mcp(GROWTH, "tools/call", { name: "fake__read_things" }))).json()).result;
+    assertEquals(result.structuredContent.error.token, "upstream_unavailable", JSON.stringify(url));
+    assertEquals(t.upstream.length, 0, `${JSON.stringify(url)} was fetched`);
+  }
+  // Names that only look numeric are names (controls; the database agrees).
+  for (const url of ["https://tools.0x0x7f/mcp", "https://tools.1e3/mcp", "https://xn--0-6eu.example/mcp"]) {
+    const t = proxySetup({ row: { url } });
+    await t.handler(mcp(GROWTH, "tools/call", { name: "fake__read_things" }));
+    assert(t.upstream.length > 0, `${url} is a name and is fetched`);
+  }
+
+  // A whole tool call whose server echoes its key encoded, inside a result
+  // and inside an object key: Claude sees none of it.
+  const b64 = (x: string) => btoa(x);
+  const pct = (x: string) => Array.from(x).map((c) => "%" + c.charCodeAt(0).toString(16).padStart(2, "0")).join("");
+  const rev = (x: string) => Array.from(x).reverse().join("");
+  const echoes: Record<string, string> = {
+    "base64 of a query": b64(`token=${COMPANY_KEY}&page=2`),
+    "base64 url alphabet, shifted": b64("ab" + COMPANY_KEY).replace(/\+/g, "-").replace(/\//g, "_"),
+    "percent, spaced": pct(COMPANY_KEY).split("%").join(" %"),
+    "percent, mixed case": pct(COMPANY_KEY).replace(/%([0-9a-f])([a-f])/g, (_m, a, b) => `%${a}${b.toUpperCase()}`),
+    "reversed with separators": rev(COMPANY_KEY).split("").join("|"),
+    "split by a newline and a tab": COMPANY_KEY.slice(0, 11) + "\n\t" + COMPANY_KEY.slice(11),
+  };
+  for (const [label, echoed] of Object.entries(echoes)) {
+    const s = proxySetup({
+      mode: (m) =>
+        m.method === "tools/call"
+          ? Response.json({ jsonrpc: "2.0", id: m.id, result: { content: [{ type: "text", text: `here: ${echoed} .` }], structuredContent: { [echoed]: echoed } } })
+          : null,
+    });
+    const text = await (await s.handler(mcp(GROWTH, "tools/call", { name: "fake__read_things" }))).text();
+    assertEquals(text.includes(echoed), false, `${label}: the echo reached Claude`);
+    assert(text.includes("[removed]"), `${label}: scrubbed`);
+    noKeyIn(text, label);
+  }
 });

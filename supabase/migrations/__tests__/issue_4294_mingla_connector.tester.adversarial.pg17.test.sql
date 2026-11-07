@@ -31,6 +31,12 @@
 --        touch Vault; every internal function is closed to clients
 --   A-12 company-tool addresses written as hex or short IPv4 forms are
 --        refused by the database rule and by saving
+--   A-13 retest: more address spellings (upper-case hex, accented and
+--        full-width letters, zero-width space, a trailing dot or newline,
+--        a padded port) agree with the edge; approve's one-account rule
+--        through a ban, an unconfirmed twin, a deleted twin and a sign-in
+--        that is not the confirmed account; refused calls over five minutes
+--        grow the log by at most the limit plus one row a minute
 --
 -- One transaction, rolled back. Never run on production. Runs as the
 -- image's admin role from the repository root.
@@ -940,6 +946,80 @@ begin
 end;
 $a12$;
 
+-- ---------------------------------------------------------------------------
+-- A-13 retest after the hardening pass.
+-- ---------------------------------------------------------------------------
+do $a13$
+declare
+  r record;
+  v text;
+  v_key text := pg_temp.ta_digest(pg_temp.ta_id('owner.personal'));
+  v_rows bigint;
+begin
+  -- More spellings. Each refused one is also refused by the edge (T-P6).
+  for r in select * from (values
+      ('https://0X7f.1/mcp'), ('https://0x7F.1/mcp'), ('https://TOOLS.example.com/mcp'), ('https://t' || chr(242) || 'ols.example.com/mcp'),
+      ('https://' || chr(65349) || 'xample.com/mcp'), ('https://exa' || chr(8203) || 'mple.com/mcp'), ('https://tools.example.com./mcp'),
+      ('https://tools.example.com/mcp' || chr(10)), ('https://tools.example.com' || chr(10) || '/mcp'), ('https://tools.example.com:0443/mcp'),
+      ('https://tools.0xffffffff/mcp'), ('https://tools.08/mcp'), ('https://tools.example.com/%2e%2e/mcp'), ('https://a.' || chr(223) || '.com/mcp')
+    ) as t(url)
+  loop
+    perform pg_temp.ta_check('A-13', format('%s is refused by the address rule', r.url), public.mingla_connector_url_ok(r.url)::text, 'false');
+  end loop;
+  -- Names that only look numeric are names under the URL standard too (controls).
+  for r in select * from (values ('https://tools.0x0x7f/mcp'), ('https://tools.1e3/mcp'), ('https://xn--0-6eu.example/mcp')) as t(url)
+  loop
+    perform pg_temp.ta_check('A-13', format('%s is still a name', r.url), public.mingla_connector_url_ok(r.url)::text, 'true');
+  end loop;
+
+  -- Approve's one-account rule, case by case.
+  insert into ta_people (who, id, email) values
+    ('solo',  '4294a000-0000-4000-a000-0000000000c1', 'issue4294t-solo@test.local'),
+    ('ghost', '4294a000-0000-4000-a000-0000000000c3', 'issue4294t-ghost@test.local');
+  insert into auth.users (id, email, email_confirmed_at) values
+    ('4294a000-0000-4000-a000-0000000000c1', 'issue4294t-solo@test.local', now()),
+    ('4294a000-0000-4000-a000-0000000000c3', 'issue4294t-ghost@test.local', null),
+    ('4294a000-0000-4000-a000-0000000000c4', 'Issue4294T-Ghost@test.local', now());
+  insert into public.admin_team_members (email, role, status, accepted_at) values
+    ('issue4294t-solo@test.local', 'growth', 'active', now()),
+    ('issue4294t-ghost@test.local', 'growth', 'active', now());
+  perform pg_temp.ta_like('A-13', 'one confirmed account approves (control)',
+    pg_temp.ta_approve('solo', pg_temp.ta_c('app'), pg_temp.ta_c('app_redirect'), pg_temp.ta_c('verifier'), 's1'), '{"code": "mglo_%');
+  update auth.users set banned_until = now() + interval '1 day' where id = '4294a000-0000-4000-a000-0000000000c1';
+  perform pg_temp.ta_like('A-13', 'a banned account cannot approve',
+    pg_temp.ta_approve('solo', pg_temp.ta_c('app'), pg_temp.ta_c('app_redirect'), pg_temp.ta_c('verifier'), 'x'), 'ERR:42501:%');
+  update auth.users set banned_until = now() - interval '1 day' where id = '4294a000-0000-4000-a000-0000000000c1';
+  perform pg_temp.ta_like('A-13', 'a ban that has ended does not block approve',
+    pg_temp.ta_approve('solo', pg_temp.ta_c('app'), pg_temp.ta_c('app_redirect'), pg_temp.ta_c('verifier'), 's2'), '{"code": "mglo_%');
+  insert into auth.users (id, email, email_confirmed_at) values ('4294a000-0000-4000-a000-0000000000c2', 'ISSUE4294T-SOLO@test.local ', null);
+  perform pg_temp.ta_like('A-13', 'an unconfirmed second account does not block approve',
+    pg_temp.ta_approve('solo', pg_temp.ta_c('app'), pg_temp.ta_c('app_redirect'), pg_temp.ta_c('verifier'), 's3'), '{"code": "mglo_%');
+  update auth.users set email_confirmed_at = now(), deleted_at = now() where id = '4294a000-0000-4000-a000-0000000000c2';
+  perform pg_temp.ta_like('A-13', 'a confirmed second account blocks approve even when deleted (same count as the exchange)',
+    pg_temp.ta_approve('solo', pg_temp.ta_c('app'), pg_temp.ta_c('app_redirect'), pg_temp.ta_c('verifier'), 'x'), 'ERR:42501:%');
+  perform pg_temp.ta_check('A-13', 'and a code from before exchanges for nothing',
+    pg_temp.ta_exchange('s3', pg_temp.ta_c('app'), pg_temp.ta_c('app_redirect'), pg_temp.ta_c('verifier'), 'gs3'), '{"error": "invalid_grant"}');
+  perform pg_temp.ta_like('A-13', 'signed in as an unconfirmed account whose address has another confirmed account: no approve',
+    pg_temp.ta_approve('ghost', pg_temp.ta_c('app'), pg_temp.ta_c('app_redirect'), pg_temp.ta_c('verifier'), 'x'), 'ERR:42501:%');
+
+  -- Refused calls over five minutes: at most the limit plus one row a minute.
+  update public.mingla_connector_calls set started_at = started_at - interval '2 days' where owner_email = 'issue4294t-owner@test.local';
+  for m in 1..5 loop
+    for i in 1..80 loop
+      v := pg_temp.ta_as('service', format('select public.mingla_connector_call_begin(%L, %L, %L, %L)::text',
+             v_key, 'nope' || i, 'not_a_tool', 'tester'));
+    end loop;
+    perform pg_temp.ta_check('A-13', format('minute %s: the last refused call is rate_limited', m), v::jsonb ->> 'token', 'rate_limited');
+    perform pg_temp.ta_check('A-13', format('minute %s: a rate_limited answer carries no call id', m), (v::jsonb ? 'call_id')::text, 'false');
+    update public.mingla_connector_calls set started_at = started_at - interval '61 seconds'
+     where owner_email = 'issue4294t-owner@test.local' and started_at > clock_timestamp() - interval '1 day';
+  end loop;
+  select count(*) into v_rows from public.mingla_connector_calls
+   where owner_email = 'issue4294t-owner@test.local' and started_at > clock_timestamp() - interval '1 day';
+  perform pg_temp.ta_check('A-13', '400 refused calls in five minutes wrote 5 x (30 + 1) rows', v_rows::text, '155');
+end;
+$a13$;
+
 do $verdict$
 declare
   v_total int;
@@ -953,7 +1033,7 @@ begin
   if v_failed > 0 or v_total < 200 then
     raise exception 'ISSUE-4294 TESTER FAIL: % of % checks failed (at least 200 must run)', v_failed, v_total;
   end if;
-  raise notice 'ISSUE-4294 TESTER PASS: % checks across A-1..A-12, 0 failed', v_total;
+  raise notice 'ISSUE-4294 TESTER PASS: % checks across A-1..A-13, 0 failed', v_total;
 end;
 $verdict$;
 
