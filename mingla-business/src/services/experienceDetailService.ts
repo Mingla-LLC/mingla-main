@@ -14,10 +14,6 @@
 import { supabase } from "./supabase";
 import type { ThemeInput } from "@mingla/offering-rendering";
 import { themeOverridesFromColumns } from "./offeringTheme";
-import {
-  withGradientColumnFallback,
-  withoutGradientColumns,
-} from "@mingla/offering-rendering/themeGradientColumnFallback";
 import type { RecurrenceRule } from "../store/draftEventStore";
 import type { RefundPolicy } from "./refundPolicyService";
 // issue #3284 — the pure refund-terms shape check (deep specifier: a partial
@@ -294,27 +290,15 @@ const EXPERIENCE_DETAIL_SELECT =
 export async function getExperienceDetail(
   eventId: string,
 ): Promise<ExperienceDetail | null> {
-  // [TRANSITIONAL] #1023 — retries without the gradient column until the
-  // gradient migration is applied. Exit: migration applied to production.
-  const { data: row, error } = await withGradientColumnFallback((withGradient) =>
-    supabase
-      .from("events")
-      .select(
-        // #1022 — this select is EXPLICIT (not a star), so the theme override
-        // columns must be named here or the wizard cannot display what is set.
-        withGradient
-          ? EXPERIENCE_DETAIL_SELECT
-          : // The fallback list differs only by the gradient column, which
-            // reads as absent (solid) — same row shape for the parser.
-            (withoutGradientColumns(
-              EXPERIENCE_DETAIL_SELECT,
-            ) as typeof EXPERIENCE_DETAIL_SELECT),
-      )
-      .eq("id", eventId)
-      .eq("event_type", "experience")
-      .is("deleted_at", null)
-      .maybeSingle(),
-  );
+  const { data: row, error } = await supabase
+    .from("events")
+    // #1022 — this select is EXPLICIT (not a star), so the theme override
+    // columns must be named here or the wizard cannot display what is set.
+    .select(EXPERIENCE_DETAIL_SELECT)
+    .eq("id", eventId)
+    .eq("event_type", "experience")
+    .is("deleted_at", null)
+    .maybeSingle();
 
   if (error) throw error;
   if (row === null) return null;

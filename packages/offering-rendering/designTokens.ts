@@ -129,27 +129,6 @@ export const THEME_ANIMATION_SLUGS = [
   "love_balloons",
 ] as const;
 
-/**
- * [TRANSITIONAL] issue #1023 wave 1 — the animation slugs production's
- * database accepts today (the table CHECKs and the theme RPC validations still
- * list only these nine). The other 20 are preview-only in the Theme sheet and
- * are never saved. Exit condition: the wave 2 migration
- * `20280430001023_issue_1023_widen_theme_animation_slugs.sql` is applied to
- * production; then delete this list and let every slug save.
- */
-export const SERVER_ACCEPTED_ANIMATION_SLUGS = [
-  "none",
-  "confetti",
-  "fireworks",
-  "balloons",
-  "sparkles",
-  "glitter_shower",
-  "snowfall",
-  "falling_petals",
-  "hearts",
-  "shimmer_reveal",
-] as const satisfies readonly (typeof THEME_ANIMATION_SLUGS)[number][];
-
 export type ThemeMotionGroup = "Celebrate" | "Glow" | "Nature" | "Night" | "Love";
 
 /** Display name and picker group for every animation (reference page names). */

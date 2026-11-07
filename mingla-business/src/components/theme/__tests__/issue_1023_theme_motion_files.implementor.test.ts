@@ -8,7 +8,6 @@ import path from "path";
 import { describe, expect, test } from "@jest/globals";
 
 import {
-  SERVER_ACCEPTED_ANIMATION_SLUGS,
   THEME_ANIMATION_CATALOG,
   THEME_ANIMATION_SLUGS,
 } from "../../../../../packages/offering-rendering/designTokens";
@@ -459,18 +458,14 @@ describe("#1023 — the dev-only preview override is inert outside dev", () => {
     expect(parseMotionQueryParam("")).toBeNull();
   });
 
-  test("[TRANSITIONAL] only the original nine save until the wave 2 migration", () => {
-    expect([...SERVER_ACCEPTED_ANIMATION_SLUGS]).toEqual([
-      "none",
-      "confetti",
-      "fireworks",
-      "balloons",
-      "sparkles",
-      "glitter_shower",
-      "snowfall",
-      "falling_petals",
-      "hearts",
-      "shimmer_reveal",
-    ]);
+  // Invalidated (2026-11-07): "[TRANSITIONAL] only the original nine save
+  // until the wave 2 migration". The migration is applied and the save gate
+  // and SERVER_ACCEPTED_ANIMATION_SLUGS are gone: every motion saves.
+  test("every one of the 29 motions saves from the Theme sheet", async () => {
+    const { readFile } = await import("fs/promises");
+    const sheet = await readFile(path.join(__dirname, "../ThemeSheet.tsx"), "utf8");
+    expect(sheet).not.toContain("SERVER_ACCEPTED_ANIMATION_SLUGS");
+    expect(sheet).not.toContain("Preview only");
+    expect(sheet).toMatch(/onChange\(withAxis\(value, "animation", slug\)\)/);
   });
 });

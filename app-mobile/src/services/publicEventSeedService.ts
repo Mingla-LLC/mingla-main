@@ -252,23 +252,12 @@ export async function fetchPublicEventSeedBySlug(
   // Lazy import (oneLinkShare precedent) — keeps this module loadable by a
   // headless unit runner that exercises ONLY the pure mapper above.
   const { supabase } = await import("./supabase");
-  // [TRANSITIONAL] #1023 — retries without the gradient columns until the
-  // gradient migration is applied. Exit: migration applied to production.
-  const { withGradientColumnFallback, withoutGradientColumns } = await import(
-    "@mingla/offering-rendering/themeGradientColumnFallback"
-  );
-  const { data, error } = await withGradientColumnFallback((withGradient) =>
-    supabase
-      .from("business_public_events_view")
-      .select(
-        withGradient
-          ? PUBLIC_EVENT_SEED_COLUMNS
-          : withoutGradientColumns(PUBLIC_EVENT_SEED_COLUMNS),
-      )
-      .eq("brand_slug", brandSlug)
-      .eq("slug", eventSlug)
-      .maybeSingle(),
-  );
+  const { data, error } = await supabase
+    .from("business_public_events_view")
+    .select(PUBLIC_EVENT_SEED_COLUMNS)
+    .eq("brand_slug", brandSlug)
+    .eq("slug", eventSlug)
+    .maybeSingle();
   if (error !== null) {
     throw new Error(error.message);
   }

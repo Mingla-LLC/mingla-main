@@ -5,10 +5,6 @@ import {
   type ThemeInput,
 } from "@mingla/offering-rendering";
 import { themeInputFromFields } from "@mingla/offering-rendering/themeResolver";
-import {
-  withGradientColumnFallback,
-  withoutGradientColumns,
-} from "@mingla/offering-rendering/themeGradientColumnFallback";
 
 import { supabase } from "../services/supabase";
 import type { BusinessEventCard } from "../types/mergedDiscover";
@@ -51,19 +47,11 @@ export const useEventTheme = (
     staleTime: 5 * 60 * 1000,
     queryFn: async () => {
       if (eventId === null) return resolveTheme(null, null);
-      // [TRANSITIONAL] #1023 — retries without the gradient columns until the
-      // gradient migration is applied. Exit: migration applied to production.
-      const { data, error } = await withGradientColumnFallback((withGradient) =>
-        supabase
-          .from("business_public_events_view")
-          .select(
-            withGradient
-              ? EVENT_THEME_SELECT
-              : withoutGradientColumns(EVENT_THEME_SELECT),
-          )
-          .eq("id", eventId)
-          .maybeSingle(),
-      );
+      const { data, error } = await supabase
+        .from("business_public_events_view")
+        .select(EVENT_THEME_SELECT)
+        .eq("id", eventId)
+        .maybeSingle();
       if (error !== null) throw error;
       const row = data as ThemeRow | null;
       return resolveTheme(

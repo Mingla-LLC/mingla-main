@@ -194,6 +194,18 @@ describe("Colour tab — swatches and gradients, one patch each", () => {
   });
 });
 
+describe("Motion tab — every motion saves (migration applied)", () => {
+  test("a motion that was preview-only before the apply saves in one patch", async () => {
+    const onChange = jest.fn<(next: ThemeInput | null) => void>();
+    const tree = await mount({ brandTheme: BRAND, onChange });
+    await press(byLabel(tree, "Motion")[0]);
+    expect(byLabel(tree, "Aurora, preview only")).toHaveLength(0);
+    await press(byLabel(tree, "Aurora")[0]);
+    expect(onChange).toHaveBeenLastCalledWith({ color: null, font: null, animation: "aurora" });
+    await act(() => tree.unmount());
+  });
+});
+
 const openFontTab = async (tree: Tree): Promise<void> => {
   await press(byLabel(tree, "Font")[0]);
   // Let the lazy catalogue import resolve.

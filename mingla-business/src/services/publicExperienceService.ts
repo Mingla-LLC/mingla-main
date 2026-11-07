@@ -39,10 +39,6 @@ import {
   type ThemeInput,
   type OfferingGalleryImage,
 } from "@mingla/offering-rendering";
-import {
-  withGradientColumnFallback,
-  withoutGradientColumns,
-} from "@mingla/offering-rendering/themeGradientColumnFallback";
 import { themeInputFromFields } from "@mingla/offering-rendering/themeResolver";
 // issue #3284 — the three-state refund-terms reader. DEEP specifier on purpose: it
 // is pure, and a partial barrel mock cannot blank it.
@@ -270,21 +266,13 @@ async function fetchBrandThemeFromView(
   brandSlug: string,
   experienceSlug: string,
 ): Promise<ThemeInput | null> {
-  // [TRANSITIONAL] #1023 — retries without the gradient column until the
-  // gradient migration is applied. Exit: migration applied to production.
-  const { data, error } = await withGradientColumnFallback((withGradient) =>
-    supabase
-      .from("business_public_events_view")
-      .select(
-        withGradient
-          ? "brand_theme_color, brand_theme_font, brand_theme_animation, brand_theme_gradient"
-          : "brand_theme_color, brand_theme_font, brand_theme_animation",
-      )
-      .eq("brand_slug", brandSlug)
-      .eq("slug", experienceSlug)
-      .eq("event_type", "experience")
-      .maybeSingle(),
-  );
+  const { data, error } = await supabase
+    .from("business_public_events_view")
+    .select("brand_theme_color, brand_theme_font, brand_theme_animation, brand_theme_gradient")
+    .eq("brand_slug", brandSlug)
+    .eq("slug", experienceSlug)
+    .eq("event_type", "experience")
+    .maybeSingle();
   if (error !== null || data === null) return null;
   const row = data as unknown as Record<string, unknown>;
   return asThemeInput(
@@ -974,26 +962,14 @@ export async function getPublicExperienceById(
   // exact pin and the combined street string on every screen although the mapper reads
   // neither. An experience's own stop addresses are unaffected — they live in the
   // sidecar and are gated there.
-  // [TRANSITIONAL] #1023 — retries without the gradient column until the
-  // gradient migration is applied. Exit: migration applied to production.
-  const eventResp = await withGradientColumnFallback((withGradient) =>
-    supabase
-      .from("events")
-      .select(
-        withGradient
-          ? PUBLIC_EXPERIENCE_EVENT_SELECT
-          : // The fallback list differs only by the gradient column, which
-            // reads as absent (solid) — same row shape for the parser.
-            (withoutGradientColumns(
-              PUBLIC_EXPERIENCE_EVENT_SELECT,
-            ) as typeof PUBLIC_EXPERIENCE_EVENT_SELECT),
-      )
-      .eq("id", eventId)
-      .eq("event_type", "experience")
-      .in("status", PUBLIC_STATUSES as unknown as string[])
-      .is("deleted_at", null)
-      .maybeSingle(),
-  );
+  const eventResp = await supabase
+    .from("events")
+    .select(PUBLIC_EXPERIENCE_EVENT_SELECT)
+    .eq("id", eventId)
+    .eq("event_type", "experience")
+    .in("status", PUBLIC_STATUSES as unknown as string[])
+    .is("deleted_at", null)
+    .maybeSingle();
   if (eventResp.error) throw eventResp.error;
   if (eventResp.data === null) return null;
   const event = eventResp.data;

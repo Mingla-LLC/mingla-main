@@ -417,11 +417,11 @@ module.exports = {
     // issue #1023 — the shared ThemeEntranceAnimation imports the motion package
     // by name from packages/ (no node_modules there). Resolution repair only.
     "^@mingla/theme-animations$": "<rootDir>/../packages/theme-animations/index.ts",
-    // issue #1023 wave 2 — packages/offering-rendering's gradient fill imports
-    // this by name from packages/ (no node_modules there). Resolution repair
-    // only, pointing at the ONE real copy this app owns; suites that render it
-    // still jest.mock() it.
-    "^expo-linear-gradient$": "<rootDir>/node_modules/expo-linear-gradient",
+    // issue #1023 wave 2 — the shared offering bodies import expo-linear-gradient
+    // (gradient fills) from packages/, and its ESM build cannot run under node.
+    // A lightweight manual mock that renders a `LinearGradient` host element;
+    // a suite's own jest.mock wins.
+    "^expo-linear-gradient$": "<rootDir>/__manual_mocks__/expo-linear-gradient.js",
     // issue #1023 wave 2 — the shared Google font loader (reached by every
     // suite that mounts the Theme sheet) imports expo-font, a native module
     // whose ESM build cannot run under node. A lightweight manual mock

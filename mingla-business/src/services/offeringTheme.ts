@@ -4,7 +4,6 @@ import {
   color2FromColumn,
   gradientToColumn,
 } from "@mingla/offering-rendering/themeResolver";
-import { withGradientColumnFallback } from "@mingla/offering-rendering/themeGradientColumnFallback";
 
 /**
  * #1022 — THE canonical offering-theme column contract.
@@ -179,24 +178,14 @@ export const patchOfferingTheme = async (
   // orch-strict-grep-allow events-type-filter — id-targeted UPDATE; the .select("id")
   // is a rowcount check (I-PROPOSED-I), not a content read, so an event_type
   // filter is irrelevant (the eq("id") already uniquely identifies the row).
-  const columns = themeOverridesToColumns(input.themeOverrides);
-  const runUpdate = (withGradient: boolean) => {
-    const { theme_gradient_override: gradient, ...rest } = columns;
-    // orch-strict-grep-allow events-type-filter — id-targeted UPDATE (see above);
-    // the .eq("id") uniquely identifies the row, so no event_type filter.
-    return supabase
-      .from("events")
-      .update(withGradient ? { ...rest, theme_gradient_override: gradient } : rest)
-      .eq("id", input.offeringId)
-      .select("id");
-  };
-  // [TRANSITIONAL] #1023 — before the gradient migration is applied, a save
-  // with NO gradient retries without the column; a save WITH one fails loudly
-  // (never silently drops the gradient). Exit: migration applied.
-  const { data, error } =
-    columns.theme_gradient_override === null
-      ? await withGradientColumnFallback(runUpdate)
-      : await runUpdate(true);
+  // orch-strict-grep-allow events-type-filter — id-targeted UPDATE; the
+  // .select("id") is a rowcount check (I-PROPOSED-I), not a content read, so an
+  // event_type filter is irrelevant (the eq("id") uniquely identifies the row).
+  const { data, error } = await supabase
+    .from("events")
+    .update(themeOverridesToColumns(input.themeOverrides))
+    .eq("id", input.offeringId)
+    .select("id");
 
   if (error !== null) {
     throw new Error(error.message ?? "patch_offering_theme_failed");

@@ -18,7 +18,7 @@ import {
   text as textTokens,
 } from "../../constants/designSystem";
 
-import { SERVER_ACCEPTED_ANIMATION_SLUGS } from "../../../../packages/offering-rendering/designTokens";
+import { THEME_ANIMATION_SLUGS } from "../../../../packages/offering-rendering/designTokens";
 import { normalizeHexColor } from "./normalizeHexColor";
 import { useThemeFont } from "../../theme/useThemeFont";
 
@@ -166,7 +166,7 @@ export const ThemeEditorSection: React.FC<ThemeEditorSectionProps> = ({
       <View style={styles.optionGrid}>
         {/* issue #1023 — this editor saves on tap, so it lists only the
             slugs production accepts today (the Theme sheet previews the rest). */}
-        {SERVER_ACCEPTED_ANIMATION_SLUGS.map((animation) => (
+        {THEME_ANIMATION_SLUGS.map((animation) => (
           <OptionPill
             key={animation}
             label={labelForSlug(animation)}

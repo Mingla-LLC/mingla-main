@@ -8,13 +8,12 @@ import {
   useWindowDimensions,
 } from "react-native";
 
-import type { ThemeAnimationSlug, ThemeInput } from "@mingla/offering-rendering";
+import type { ThemeInput } from "@mingla/offering-rendering";
 import {
   EventCoverMedia,
   ThemeEntranceAnimation,
 } from "@mingla/offering-rendering";
 import {
-  SERVER_ACCEPTED_ANIMATION_SLUGS,
   THEME_ANIMATION_CATALOG,
   THEME_MOTION_GROUPS,
 } from "../../../../packages/offering-rendering/designTokens";
@@ -157,8 +156,6 @@ export const ThemeSheet: React.FC<ThemeSheetProps> = ({
   const compact = screenHeight < COMPACT_SCREEN_HEIGHT;
   const [tab, setTab] = useState<TabKey>("colour");
   const [replayNonce, setReplayNonce] = useState(0);
-  // issue #1023 — a preview-only motion pick (not saved; see below).
-  const [previewSlug, setPreviewSlug] = useState<ThemeAnimationSlug | null>(null);
 
   // C-1 — brandTheme FIRST. Getting this backwards is the bug that shipped.
   const resolved = useMemo(
@@ -169,10 +166,7 @@ export const ThemeSheet: React.FC<ThemeSheetProps> = ({
     [scope, value, brandTheme],
   );
   const palette = useMemo(() => createThemePalette(resolved), [resolved]);
-  const previewTheme = useMemo(
-    () => (previewSlug === null ? resolved : { ...resolved, animation: previewSlug }),
-    [resolved, previewSlug],
-  );
+  const previewTheme = resolved;
 
   // ORCH-1083 — the ONLY useThemeFont call site in this sheet. Browsing the
   // font list loads nothing; only the SELECTED family loads, for the preview.
@@ -201,21 +195,13 @@ export const ThemeSheet: React.FC<ThemeSheetProps> = ({
     [onChange, value],
   );
 
-  // issue #1023 — production's database still accepts only the original nine
-  // slugs. A saveable pick commits as before. A preview-only pick is NEVER
-  // sent to onChange: it plays in the preview band and, in dev builds only,
-  // overrides every live entrance layer so the real public pages show it.
+  // issue #1023 — all 29 motions save (the wave 1 migration is applied). A
+  // pick clears any dev-only `?motion=` override so the live pages show the
+  // saved motion.
   const commitAnimation = useCallback(
     (slug: string | null): void => {
-      const accepted = (SERVER_ACCEPTED_ANIMATION_SLUGS as readonly (string | null)[]).includes(slug);
-      if (slug === null || accepted) {
-        setPreviewSlug(null);
-        setThemeMotionDevOverride(null, typeof __DEV__ !== "undefined" && __DEV__);
-        onChange(withAxis(value, "animation", slug));
-      } else {
-        setPreviewSlug(slug as ThemeAnimationSlug);
-        setThemeMotionDevOverride(slug as ThemeAnimationSlug, typeof __DEV__ !== "undefined" && __DEV__);
-      }
+      setThemeMotionDevOverride(null, typeof __DEV__ !== "undefined" && __DEV__);
+      onChange(withAxis(value, "animation", slug));
       setReplayNonce((n) => n + 1);
     },
     [onChange, value],
@@ -409,7 +395,7 @@ export const ThemeSheet: React.FC<ThemeSheetProps> = ({
             <View style={styles.motionGrid}>
               <MotionTile
                 label="No motion"
-                selected={!motionInherited && (value?.animation ?? null) === "none" && previewSlug === null}
+                selected={!motionInherited && (value?.animation ?? null) === "none"}
                 onPress={() => commitAnimation("none")}
               />
             </View>
@@ -420,16 +406,12 @@ export const ThemeSheet: React.FC<ThemeSheetProps> = ({
                   {(Object.keys(THEME_ANIMATION_CATALOG) as Array<keyof typeof THEME_ANIMATION_CATALOG>)
                     .filter((slug) => THEME_ANIMATION_CATALOG[slug].group === group)
                     .map((slug) => {
-                      const previewOnly = !(SERVER_ACCEPTED_ANIMATION_SLUGS as readonly string[]).includes(slug);
-                      const selected = previewOnly
-                        ? previewSlug === slug
-                        : previewSlug === null && !motionInherited && (value?.animation ?? null) === slug;
+                      const selected = !motionInherited && (value?.animation ?? null) === slug;
                       return (
                         <MotionTile
                           key={slug}
                           label={THEME_ANIMATION_CATALOG[slug].name}
                           selected={selected}
-                          previewOnly={previewOnly}
                           onPress={() => commitAnimation(slug)}
                           stillTheme={{ ...resolved, animation: slug }}
                         />
@@ -475,18 +457,16 @@ interface MotionTileProps {
   label: string;
   selected: boolean;
   onPress: () => void;
-  previewOnly?: boolean;
   stillTheme?: ReturnType<typeof resolveTheme>;
 }
 
-const MotionTile: React.FC<MotionTileProps> = ({ label, selected, onPress, previewOnly = false, stillTheme }) => (
+const MotionTile: React.FC<MotionTileProps> = ({ label, selected, onPress, stillTheme }) => (
   <Pressable
     onPress={onPress}
     style={[styles.motionTile, selected ? styles.motionTileSelected : null]}
     accessibilityRole="button"
     accessibilityState={{ selected }}
-    accessibilityLabel={previewOnly ? `${label}, preview only` : label}
-    accessibilityHint={previewOnly ? "Plays in the preview. Not saved yet." : undefined}
+    accessibilityLabel={label}
   >
     {stillTheme !== undefined ? (
       <View style={styles.motionTileArt} pointerEvents="none">
@@ -496,11 +476,6 @@ const MotionTile: React.FC<MotionTileProps> = ({ label, selected, onPress, previ
           still
           pauseButton="none"
         />
-      </View>
-    ) : null}
-    {previewOnly ? (
-      <View style={styles.previewChip}>
-        <Text style={styles.previewChipLabel}>Preview only</Text>
       </View>
     ) : null}
     <Text style={styles.motionTileLabel} numberOfLines={1}>
@@ -583,16 +558,6 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     backgroundColor: "#0c0e12",
   },
-  previewChip: {
-    position: "absolute",
-    top: spacing.sm,
-    left: spacing.sm,
-    borderRadius: 999,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    backgroundColor: "rgba(12,14,18,0.72)",
-  },
-  previewChipLabel: { fontSize: 10, fontWeight: "700", color: "#ffffff" },
   motionTile: {
     // #1022 F-6 — 174 needed 356pt for two tiles + the 8pt gap, but the sheet
     // body is `screen - 32`: 343 on iPhone SE/8 and 352 on the tested Samsung.
