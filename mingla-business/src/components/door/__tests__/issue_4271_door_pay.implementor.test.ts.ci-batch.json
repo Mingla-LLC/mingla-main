@@ -42,6 +42,7 @@
       "mingla-business/src/components/door/__tests__/issue_4271_door_pay_qr.tester.adversarial.test.ts",
       "mingla-business/src/components/door/__tests__/jest.issue4271.cjs",
       "mingla-business/src/hooks/__tests__/issue_4271_door_screen_awake.implementor.test.ts",
+      "mingla-business/src/hooks/__tests__/issue_4271_tap_slim_brand.implementor.test.tsx",
       "mingla-business/src/hooks/__tests__/issue_4271_tap_to_pay_availability.tester.adversarial.test.ts",
       "mingla-business/src/native/__tests__/issue_4271_android_min_sdk.implementor.test.ts",
       "mingla-business/src/services/__tests__/doorSalesService.issue4063.test.ts",
