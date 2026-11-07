@@ -164,6 +164,16 @@ export type WebsiteRoute =
   | { kind: "setup"; step: PlanPartKey | null }
   | { kind: "redirect"; to: string };
 
+/**
+ * #2830 — whether the screen shows a Publish step, so the draft check
+ * (validate_site_draft) runs. Website setup's own "Check and publish" step
+ * counts: without it the setup Publish button could never turn on.
+ */
+export function showsPublishStep(route: WebsiteRoute): boolean {
+  return (route.kind === "section" && route.section === "publish") ||
+    (route.kind === "setup" && route.step === "publish");
+}
+
 const ENTRY_ID = /^[A-Za-z0-9-]{1,64}$/;
 
 /**

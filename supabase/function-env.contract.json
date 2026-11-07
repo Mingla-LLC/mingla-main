@@ -202,7 +202,9 @@
     },
     "admin-seed-places": {
       "migration_fallback_top_level": [],
-      "optional_top_level": [],
+      "optional_top_level": [
+        "GOOGLE_SEEDING_API_KEY"
+      ],
       "required_bundle_fields": {},
       "required_top_level": [
         "GOOGLE_MAPS_API_KEY"
@@ -469,7 +471,9 @@
     },
     "backfill-place-photos": {
       "migration_fallback_top_level": [],
-      "optional_top_level": [],
+      "optional_top_level": [
+        "GOOGLE_SEEDING_API_KEY"
+      ],
       "required_bundle_fields": {},
       "required_top_level": [
         "GOOGLE_MAPS_API_KEY"

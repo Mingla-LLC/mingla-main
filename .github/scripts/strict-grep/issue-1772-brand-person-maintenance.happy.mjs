@@ -380,10 +380,10 @@ export function audit(base = repoRoot) {
   if (field?.owner !== "Platform Security" || field?.source_type !== "secure_vault") failures.push("secret field owner/source contract drifted");
   if ((secretManifest?.secrets ?? []).some((entry) => entry.name === "BRAND_PERSON_ERASURE_CHALLENGE_SECRET")) failures.push("standalone erasure secret name is forbidden");
 
-  // [TEST-MOD-APPROVED #3645] — the payout-release RAK fills approved slot 90;
-  // every #1772 field and ordering check stays fixed.
+  // [TEST-MOD-APPROVED #4276] — [secret count 91 approved by Seth]: GOOGLE_SEEDING_API_KEY
+  // fills approved slot 91; every #1772 field and ordering check stays fixed.
   for (const needle of [
-    "90-name envelope",
+    "91-name envelope",
     "canonical standard Base64",
     "fail-closed handler ordering",
     "provider executes the Node proof before both happy Deno suites",

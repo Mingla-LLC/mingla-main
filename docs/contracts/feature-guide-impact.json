@@ -1411,6 +1411,7 @@
         "supabase/functions/admin-seed-places/cityBox.ts",
         "supabase/functions/admin-seed-places/searchPipeline.ts",
         "supabase/functions/backfill-place-photos/index.ts",
+        "supabase/functions/_shared/seedingGoogleKey.ts",
         "supabase/functions/run-city-pipeline/conductor.ts",
         "supabase/functions/run-city-pipeline/function-policy.json",
         "supabase/functions/run-city-pipeline/gates.ts",
@@ -1594,7 +1595,8 @@
       "capability_key": "payouts-timing",
       "paths": [
         "supabase/functions/payout-release-sweep/partnerRelease.ts",
-        "supabase/migrations/20280407003645_issue_3645_stay_net_excludes_provider_fee.sql"
+        "supabase/migrations/20280407003645_issue_3645_stay_net_excludes_provider_fee.sql",
+        "supabase/migrations/20280422003645_issue_3645_unpaid_release_holds.sql"
       ]
     },
     {

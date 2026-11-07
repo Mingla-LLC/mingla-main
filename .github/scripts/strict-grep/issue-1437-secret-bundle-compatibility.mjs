@@ -485,9 +485,10 @@ export function violations(files) {
   // exact capacity baseline while remaining a standalone cryptographic secret.
   // [TEST-MOD-APPROVED #2830] The established Phase B names remain bundled;
   // founder-approved Sites slot 88 is independently guarded by issue #2830.
-  // #3645: the payout-release RAK is the approved 90th and final name.
-  if (manifest.rollout?.expected_user_managed_count !== 90) {
-    failures.push("manifest: Phase B plus approved slots 88–90 must enforce expected count at 90");
+  // #3645: the payout-release RAK is the approved 90th name.
+  // #4276: count 91 approved by Seth Ogieva on 2026-11-07 in chat (GOOGLE_SEEDING_API_KEY).
+  if (manifest.rollout?.expected_user_managed_count !== 91) {
+    failures.push("manifest: Phase B plus approved slots 88–91 must enforce expected count at 91");
   }
   const records = new Map(
     (manifest.secrets ?? []).map((record) => [record.name, record]),
