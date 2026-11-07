@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/terminal-connection-token/__tests__/issue_4271_tap_address.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4271-tap-address-implementor",
+  "profile": "deno-2-unit"
+}

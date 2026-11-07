@@ -89,9 +89,18 @@ $vacuity$;
 -- [TEST-MOD-APPROVED #2829] Sites adds four in-app/push-only producers whose
 -- owning PostgreSQL suites prove their recipient, payload, and trigger paths;
 -- none of their categories routes SMS, raising the writer floor 35 -> 39.
+-- [TEST-MOD-APPROVED #4271] Door card payments add two SMS producers that
+-- decide country_code at enqueue with the shared helper: the Tap to Pay
+-- receipt (biz_door_tap_record) and the pay-link text
+-- (issue_4271_door_pay_code_text_link). A PG17 full replay measures 40
+-- writers on 88e51e68c0^ and 42 on cfb605f80d, so the floor rises 39 -> 42
+-- (the live number, per the rule below).
+-- Their owning registered PostgreSQL suite
+-- (issue_4271_door_pay.implementor.pg17) asserts the derived country on the
+-- rows each one enqueues.
 -- (2) RATCHET — raised 12 -> 18 for #3988, 18 -> 19 for #4073, 19 -> 20 for
 --     the buyer venue-order receipt, 20 -> 22 for #4063 Wave 5, and
---     22 -> 25 for #4111, 25 -> 35 for #3872, and 35 -> 39 for #2829.
+--     22 -> 25 for #4111, 25 -> 35 for #3872, 35 -> 39 for #2829, and 39 -> 42 for #4271.
 --     The floor is the number that ACTUALLY exists in the catalog, so a
 --     producer DISAPPEARING is caught as well as
 --     one appearing. At the old floor of 8 any of #3720's three new producers
@@ -102,9 +111,9 @@ DECLARE
   v_count integer;
 BEGIN
   SELECT count(*) INTO v_count FROM issue_1529_discovered_producers;
-  IF v_count < 39 THEN
+  IF v_count < 42 THEN
     RAISE EXCEPTION
-      'issue_1529_producer_floor_breached_expected_at_least_39_got_%', v_count;
+      'issue_1529_producer_floor_breached_expected_at_least_42_got_%', v_count;
   END IF;
 END;
 $ratchet$;
@@ -143,6 +152,10 @@ $ratchet$;
 --       issue_4111_enqueue_team_notice      → explicit NULL (push-only enquiry notice)
 --       brand_enquiry_reply                 → explicit NULL (push-only Explorer reply)
 --       issue_4111_enquiry_nudge_sweep      → explicit NULL (email-only 24h nudge)
+--       biz_door_tap_record                 → mingla_e164_country(buyer_phone_e164)
+--                                             on the Tap to Pay SMS receipt
+--       issue_4271_door_pay_code_text_link  → mingla_e164_country(p_phone_e164)
+--                                             on the door pay-link SMS
 --
 --     PUSH-ONLY — the #3872 notification producers write only in-app/push
 --     categories and deliberately do not carry an SMS country. They are still
@@ -187,7 +200,9 @@ DECLARE
     'pg_ticket_offer_to_friend',
     'issue_4111_enqueue_team_notice',
     'brand_enquiry_reply',
-    'issue_4111_enquiry_nudge_sweep'
+    'issue_4111_enquiry_nudge_sweep',
+    'biz_door_tap_record',
+    'issue_4271_door_pay_code_text_link'
   ];
   -- [TEST-MOD-APPROVED #2829] Sites and the current #3872 notification writers
   -- are in-app/push-only. Their owning suites prove delivery behavior; none of
@@ -322,7 +337,9 @@ DECLARE
     'tg_venue_orders_a4063_receipt',
     'issue_4111_enqueue_team_notice',
     'brand_enquiry_reply',
-    'issue_4111_enquiry_nudge_sweep'
+    'issue_4111_enquiry_nudge_sweep',
+    'biz_door_tap_record',
+    'issue_4271_door_pay_code_text_link'
   ];
   v_missing text;
 BEGIN

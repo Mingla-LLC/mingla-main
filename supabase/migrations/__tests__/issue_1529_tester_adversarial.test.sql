@@ -276,9 +276,12 @@ BEGIN
   -- producers included: 47 functions touch the outbox.
   -- [TEST-MOD-APPROVED #2829] Four Sites push-only producers raise the exact
   -- live catalog floor from 47 to 51 outbox-touching functions.
-  IF v_count < 51 THEN
+  -- [TEST-MOD-APPROVED #4271] A PG17 full replay measures 54 outbox-touching
+  -- functions on 88e51e68c0^ and 56 on cfb605f80d (the two door card payment
+  -- SMS writers), so the floor rises to the live 56.
+  IF v_count < 56 THEN
     RAISE EXCEPTION
-      'issue_1529_adv_outbox_touching_function_floor_breached_expected_at_least_51_got_%',
+      'issue_1529_adv_outbox_touching_function_floor_breached_expected_at_least_56_got_%',
       v_count;
   END IF;
 
@@ -291,9 +294,11 @@ BEGIN
   -- [TEST-MOD-APPROVED #3643] The eleven #3872 push-only writers are deliberately
   -- outside the country-code bucket; the measured live writer count is 35.
   -- [TEST-MOD-APPROVED #2829] Four Sites push-only writers raise it to 39.
-  IF v_count < 39 THEN
+  -- [TEST-MOD-APPROVED #4271] Two door card payment SMS writers: a PG17 full
+  -- replay measures 40 writers on 88e51e68c0^ and 42 on cfb605f80d.
+  IF v_count < 42 THEN
     RAISE EXCEPTION
-      'issue_1529_adv_producer_floor_breached_expected_at_least_39_got_%',
+      'issue_1529_adv_producer_floor_breached_expected_at_least_42_got_%',
       v_count;
   END IF;
 END;
@@ -335,6 +340,12 @@ DECLARE
     'issue_4111_enqueue_team_notice',
     'brand_enquiry_reply',
     'issue_4111_enquiry_nudge_sweep',
+    -- [TEST-MOD-APPROVED #4271] Door card payments: the Tap to Pay SMS receipt
+    -- and the pay-link text both derive country_code with
+    -- mingla_e164_country at enqueue; issue_4271_door_pay.implementor.pg17
+    -- asserts the country on the rows they write.
+    'biz_door_tap_record',
+    'issue_4271_door_pay_code_text_link',
     'create_support_ticket'
   ];
   -- [TEST-MOD-APPROVED #2829] Sites and the current #3872 notification writers
