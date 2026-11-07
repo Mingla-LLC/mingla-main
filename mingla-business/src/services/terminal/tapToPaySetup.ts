@@ -34,13 +34,17 @@ export type TapToPaySetupResult =
   | { kind: "not_available" }
   | { kind: "failed"; message: string };
 
+/** Stripe needs the full address for the brand's Tap to Pay Location (#4271). */
+export const TAP_ADDRESS_MISSING_COPY =
+  "Add your brand's full address (street, city, state and ZIP) in brand settings, then set up Tap to Pay again.";
+
 const locationFailure = (error: unknown): TapToPaySetupResult => {
   if (error instanceof DoorTapError) {
     if (error.code === "tap_not_available") {
       return error.detail === "address_missing"
         ? {
             kind: "failed",
-            message: "Add the brand's address in brand settings, then set up Tap to Pay again.",
+            message: TAP_ADDRESS_MISSING_COPY,
           }
         : { kind: "not_available" };
     }

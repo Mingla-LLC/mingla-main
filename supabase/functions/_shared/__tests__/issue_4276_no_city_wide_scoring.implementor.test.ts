@@ -24,7 +24,8 @@ globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
   if (url.pathname === "/auth/v1/user") {
     return Promise.resolve(Response.json({ id: "a1", email: "admin@local.test", aud: "authenticated" }));
   }
-  if (url.pathname === "/rest/v1/admin_users") return Promise.resolve(Response.json([{ id: "admin-row" }]));
+  // The admin check is is_admin_user(), asked as the caller (_shared/placeJudgingAuth.ts).
+  if (url.pathname === "/rest/v1/rpc/is_admin_user") return Promise.resolve(Response.json(true));
   // Anything past the gate: an unknown signal, so a let-through request stops at 404.
   return Promise.resolve(Response.json([]));
 }) as typeof fetch;

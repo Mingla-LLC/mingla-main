@@ -112,8 +112,36 @@ export interface StripeCall {
   options: unknown;
 }
 
+/**
+ * Stripe's own rule for a Terminal Location's address (docs.stripe.com/terminal/
+ * fleet/locations-and-zones, "Required address properties"): US needs line1,
+ * city, state, postal_code, country; the UK needs line1, city, postal_code,
+ * country. The fake refuses exactly as live Stripe did on #4271, so a partial
+ * address can't pass a test and then fail in production.
+ */
+export function stripeLocationAddressError(address: unknown): Record<string, unknown> | null {
+  const a = (address ?? {}) as Record<string, unknown>;
+  const country = String(a.country ?? "").toUpperCase();
+  const required = country === "US"
+    ? ["line1", "city", "state", "postal_code", "country"]
+    : country === "GB"
+    ? ["line1", "city", "postal_code", "country"]
+    : ["line1", "country"];
+  const missing = required.find((k) => typeof a[k] !== "string" || (a[k] as string).trim() === "");
+  if (missing === undefined) return null;
+  return {
+    type: "StripeInvalidRequestError",
+    rawType: "invalid_request_error",
+    statusCode: 400,
+    param: `address[${missing}]`,
+    message: `Missing required address field for a Location in ${country || "??"}: address[${missing}].`,
+  };
+}
+
 export function fakeStripe(overrides: {
   retrievePi?: (id: string) => Record<string, unknown>;
+  /** Make Stripe refuse even a complete address (e.g. a ZIP it can't place). */
+  locationError?: Record<string, unknown>;
 } = {}) {
   const calls: StripeCall[] = [];
   return {
@@ -139,6 +167,9 @@ export function fakeStripe(overrides: {
         locations: {
           create: (params: unknown, options: unknown) => {
             calls.push({ method: "terminal.locations.create", params, options });
+            const refusal = overrides.locationError ??
+              stripeLocationAddressError((params as { address?: unknown })?.address);
+            if (refusal !== null) return Promise.reject(refusal);
             return Promise.resolve({ id: "tml_door1" });
           },
         },

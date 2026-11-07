@@ -4,6 +4,7 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { stripeTicketRefund } from "../_shared/stripe.ts";
 import { executeTicketRefundWithFeeTruth } from "../_shared/issue2097TicketRefundTruth.ts";
+import { boundRefundProviderKey } from "../_shared/ticketRefundStripeThrow.ts";
 
 const headers = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info", "Content-Type": "application/json" };
 const reply = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers });
@@ -21,6 +22,20 @@ serve(async (req) => {
   let body: { refundId?: unknown };
   try { body = await req.json(); } catch { return reply({ error: "invalid_json" }, 400); }
   if (typeof body.refundId !== "string") return reply({ error: "refund_id_required" }, 400);
+  // Issue #4271: only a pending refund is re-driven, and only under the Stripe
+  // key it was first sent with. A different key makes Stripe create a second
+  // refund, so an unbound row (legacy, cancel or trip refund) is refused.
+  const { data: refund, error: refundError } = await supabase.from("refunds")
+    .select("id,status,metadata").eq("id", body.refundId).maybeSingle();
+  if (refundError) return reply({ error: "refund_lookup_failed" }, 500);
+  if (!refund) return reply({ error: "refund_not_found" }, 404);
+  if (refund.status !== "pending") {
+    return reply({ error: "refund_not_pending", refund_id: body.refundId, status: refund.status }, 409);
+  }
+  const providerIdempotencyKey = boundRefundProviderKey(body.refundId, refund.metadata);
+  if (!providerIdempotencyKey) {
+    return reply({ error: "provider_key_unknown", refund_id: body.refundId }, 409);
+  }
   const { data: attempts, error } = await supabase.from("ticket_refund_attempts")
     .select("refund_id,order_id,request_fingerprint,connected_account_id,currency,charge_id,payment_intent_id,application_fee_amount_text,requested_refund_amount_text,expected_attempt_count")
     .eq("refund_id", body.refundId).order("created_at", { ascending: true });
@@ -55,6 +70,7 @@ serve(async (req) => {
         requestedRefundAmount: attempt.requested_refund_amount_text,
         requestFingerprint: attempt.request_fingerprint,
         expectedAttemptCount: attempt.expected_attempt_count,
+        providerIdempotencyKey,
       });
       status = Math.max(status, result.httpStatus);
       results.push({ attempt_id: result.attemptId, application_fee_refund_status: result.status });

@@ -11,9 +11,12 @@
 --            door_payment_method 'pay_code', tickets born used with a scan row,
 --            the code paid, one ledger row. A second payment never re-points
 --            the code. An expired code refuses a new session.
---   P-TEXT   a code can be texted at most three times.
+--   P-TEXT   a code can be texted at most three times, and every pay-link
+--            SMS row carries the recipient's country (#1529 populating).
 --   P-TAP    a recorded tap is an online_checkout order with tap_to_pay,
 --            tickets born used, a ledger row; replays return the same order.
+--            A tap with a buyer phone queues one SMS receipt whose row
+--            carries that phone's country (#1529 populating).
 --   P-TEAM   brand members read each other's names and emails; outsiders
 --            are refused.
 --   P-RLS    codes are visible to payment takers only.
@@ -45,6 +48,7 @@ DECLARE
   v_order uuid := gen_random_uuid();
   v_order2 uuid := gen_random_uuid();
   v_intent uuid := gen_random_uuid();
+  v_intent2 uuid := gen_random_uuid();
   v_result jsonb;
   v_text text;
   v_raised text;
@@ -300,6 +304,14 @@ BEGIN
   SELECT count(*) INTO v_count FROM public.notification_outbox
    WHERE category_key = 'buyer_door_pay_link' AND contact = '+12025550199';
   IF v_count <> 3 THEN RAISE EXCEPTION 'P-TEXT expected 3 outbox rows, got %', v_count; END IF;
+  -- #1529: the pay-link SMS is a populating producer; the drain routes SMS on
+  -- the row's country, so every row must carry the phone's country.
+  SELECT count(*) INTO v_count FROM public.notification_outbox
+   WHERE category_key = 'buyer_door_pay_link' AND contact = '+12025550199'
+     AND country_code IS NOT DISTINCT FROM 'US';
+  IF v_count <> 3 THEN
+    RAISE EXCEPTION 'P-TEXT every pay-link SMS row must carry country_code US, got % of 3', v_count;
+  END IF;
 
   -- P-TAP
   INSERT INTO public.door_tap_intents (
@@ -333,6 +345,30 @@ BEGIN
   v_result := public.biz_door_tap_record('pi_w4271tap', 'ch_w4271tap', 2090, 'visa', '4242');
   IF NOT (v_result->>'replayed')::boolean OR (v_result->>'orderId')::uuid <> v_row.id THEN
     RAISE EXCEPTION 'P-TAP replay must return the same order %', v_result;
+  END IF;
+  -- #1529: a tap with a buyer phone queues the SMS receipt with that phone's
+  -- country decided at enqueue (populating producer).
+  INSERT INTO public.door_tap_intents (
+    id, brand_id, event_id, event_date_id, client_request_id, lines, currency,
+    subtotal_cents, fee_cents, total_cents, application_fee_cents,
+    stripe_account_id, stripe_payment_intent_id, created_by, buyer_phone_e164
+  ) VALUES (
+    v_intent2, v_brand, v_event, v_date, gen_random_uuid(),
+    jsonb_build_array(jsonb_build_object(
+      'ticketTypeId', v_tier, 'quantity', 1, 'unitCents', 2000, 'name', 'Door entry')),
+    'USD', 2000, 90, 2090, 90, 'acct_w4271', 'pi_w4271tapsms', v_pay_scanner,
+    '+2348031234567'
+  );
+  v_result := public.biz_door_tap_record('pi_w4271tapsms', 'ch_w4271tapsms', 2090, 'visa', '4242');
+  IF NOT (v_result->>'receiptQueued')::boolean THEN
+    RAISE EXCEPTION 'P-TAP a tap with a buyer phone must queue a receipt %', v_result;
+  END IF;
+  SELECT * INTO v_row FROM public.notification_outbox
+   WHERE idempotency_key = 'buyer_door_receipt:' || (v_result->>'orderId') || ':sms';
+  IF NOT FOUND OR v_row.category_key <> 'buyer_door_receipt'
+     OR v_row.contact <> '+2348031234567'
+     OR v_row.country_code IS DISTINCT FROM 'NG' THEN
+    RAISE EXCEPTION 'P-TAP receipt row must carry country_code NG, got %', to_jsonb(v_row);
   END IF;
 
   -- P-TEAM

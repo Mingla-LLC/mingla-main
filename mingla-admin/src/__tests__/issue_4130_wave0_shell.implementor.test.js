@@ -63,7 +63,8 @@ const MENU = [
   ["Company", ["admin:Team and roles", "careers:Careers", "data-room:Data room"]],
   // [TEST-MOD-APPROVED #3355] The guarded Ari Improvement Lab is a first-class
   // System destination and must remain in the approved sidebar order.
-  ["System", ["platform-health:Platform health", "feature-flags:Feature flags", "ari-improvement-lab:Ari Improvement Lab", "settings:Settings"]],
+  // #4294: Company tools (owner only) joins System.
+  ["System", ["platform-health:Platform health", "feature-flags:Feature flags", "ari-improvement-lab:Ari Improvement Lab", "settings:Settings", "company-tools:Company tools"]],
 ];
 
 // The approved "Retired and merged" table, as the spec's redirect list.
@@ -109,7 +110,7 @@ describe("#4130 W0-1: the menu is the approved sidebar", () => {
     }
     // #4130: Careers is back as its own page (27). #4130 + #3872: + the four
     // Creator Program pages. #3355: + the guarded Ari Improvement Lab.
-    assert.equal(NAV_ITEMS.length, 32);
+    assert.equal(NAV_ITEMS.length, 33); // #4294: + Company tools
   });
   it("Needs you, My agent and Guide are not menu entries; My agent and Guide keep their pages in the header", () => {
     const ids = NAV_ITEMS.map((i) => i.id);
