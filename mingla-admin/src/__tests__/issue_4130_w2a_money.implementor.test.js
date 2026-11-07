@@ -247,8 +247,11 @@ describe("W2A-6 Orders", () => {
   it("the refund window names the brand's provider and explains Paystack errors", () => {
     assert.match(page, /Refunds move real money through \$\{PROVIDER_NAME\[provider\]/);
     assert.doesNotMatch(page, /Stripe LIVE mode/);
+    // #4271 moved the refund error copy into lib/adminRefundError.js, which the page imports.
+    const refundErrors = stripComments(read("lib/adminRefundError.js"));
+    assert.match(page, /adminRefundError/);
     for (const code of ["paystack_refund_failed", "paystack_refund_retryable", "paystack_refund_below_minimum"]) {
-      assert.match(page, new RegExp(`case "${code}"`), code);
+      assert.match(refundErrors, new RegExp(`case "${code}"`), code);
     }
   });
   it("columns: ticket, Mingla fee, buyer paid, host paid", () => {
