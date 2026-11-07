@@ -92,6 +92,9 @@ export function HomeRecentAriPrompt({
 
 const styles = StyleSheet.create({
   panel: {
+    // #4304 — full width of Home's content (on desktop it sits in a wrapping
+    // row, which would otherwise shrink it to its content).
+    width: "100%",
     alignItems: "center",
     paddingVertical: spacing.xl,
     paddingHorizontal: spacing.md,
@@ -122,7 +125,6 @@ const styles = StyleSheet.create({
   field: {
     marginTop: spacing.sm,
     width: "100%",
-    maxWidth: 520,
     minHeight: 48,
     flexDirection: "row",
     alignItems: "center",
@@ -133,7 +135,7 @@ const styles = StyleSheet.create({
     paddingLeft: spacing.md,
     paddingRight: spacing.xs,
   },
-  fieldCompact: { marginTop: 0, maxWidth: "100%", paddingLeft: spacing.sm },
+  fieldCompact: { marginTop: 0, paddingLeft: spacing.sm },
   fieldOrb: { width: 32, alignItems: "center", marginRight: spacing.xs },
   fieldText: { flex: 1, color: textTokens.tertiary, fontSize: 15 },
   send: {
