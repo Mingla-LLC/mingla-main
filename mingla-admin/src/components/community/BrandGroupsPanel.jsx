@@ -169,6 +169,7 @@ export function BrandGroupsPanel({ onCounts }) {
   const pushesHere = useRef(0);
   const opener = useRef(null);
   const lightTimer = useRef(null);
+  const inboxErrorShown = useRef(false);
 
   useEffect(() => () => { mounted.current = false; clearTimeout(lightTimer.current); }, []);
   useEffect(() => () => {
@@ -207,8 +208,12 @@ export function BrandGroupsPanel({ onCounts }) {
           : r));
       });
     } catch (cause) {
-      // The list still works without the inbox facts; say why once.
-      if (mounted.current && withPlan) addToast({ variant: "error", title: "Couldn't load who is waiting", description: cause?.message });
+      // The list still works without the inbox facts; say why once a session
+      // (a refresh on every focus must not repeat it).
+      if (mounted.current && withPlan && !inboxErrorShown.current) {
+        inboxErrorShown.current = true;
+        addToast({ variant: "error", title: "Couldn't load who is waiting", description: cause?.message });
+      }
     }
   }, [addToast]);
 
