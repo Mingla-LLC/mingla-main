@@ -117,6 +117,9 @@ export const createTerminalConnectionTokenHandler = (
       country: tap.country,
       address,
     });
+    if (locationId === null) {
+      return jsonResponse({ error: "tap_not_available", reason: "address_missing" }, 400);
+    }
     // @ts-ignore -- Stripe SDK namespace is runtime-provided in Deno.
     const token = await stripe.terminal.connectionTokens.create(
       { location: locationId },

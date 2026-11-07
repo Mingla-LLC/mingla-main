@@ -201,11 +201,15 @@ Deno.test("#4271 B3 location by brand reuses the stored Location first, even wit
 Deno.test("#4271 B3 location by brand makes one from the brand's own address, or says it is missing", async () => {
   const stripe = fakeStripe();
   const made = await createDoorTapIntentHandler({
-    serviceClient: () => makeDb(ON), userIdFromAuthHeader: auth, stripe: () => stripe.client,
+    // The brand's one-line address carries the state and ZIP Stripe needs (#4271 tap-address).
+    serviceClient: () => makeDb(ON, () => null, "1 Main St, Austin, TX 78701"), userIdFromAuthHeader: auth,
+    stripe: () => stripe.client,
   })(post({ action: "location", brandId: BRAND, platform: "ios" }));
   assertEquals((await made.json()).locationId, "tml_door1");
   const location = stripe.calls.find((c) => c.method === "terminal.locations.create")!;
-  assertEquals((location.params as { address: { line1: string } }).address.line1, "1 Main St");
+  assertEquals((location.params as { address: Record<string, string> }).address, {
+    line1: "1 Main St", city: "Austin", state: "TX", postal_code: "78701", country: "US",
+  });
 
   const noAddress = await createDoorTapIntentHandler({
     serviceClient: () => makeDb(ON, () => null, null), userIdFromAuthHeader: auth, stripe: () => fakeStripe().client,

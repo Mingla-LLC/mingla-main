@@ -913,8 +913,15 @@ BEGIN
   -- idx_event_dates_event_id_start_at in 20280327003281 (count 80 -> 81).
   -- #4238's 20280328004238/20280329004238 add no index on these relations and
   -- leave the seven fingerprinted functions unchanged.
-  IF v_index_count <> 81
-    OR v_index_fingerprint <> '37e9eade3735be4ac9a0763e4c4013e8'
+  -- [TEST-MOD-APPROVED #4271] 20280404004271_issue_4271_door_pay adds two
+  -- partial unique indexes on orders: orders_door_pay_code_uq (one paid order
+  -- per door pay code) and orders_door_tap_request_uq (one Tap to Pay order
+  -- per event + client request). Count 81 -> 83,
+  -- hash 37e9eade3735be4ac9a0763e4c4013e8 -> d82eb3bebdb6d476c6ed48e69d36d940,
+  -- measured on PG17 full replays of 88e51e68c0^ and cfb605f80d. #3645's
+  -- 20280407003645 adds no index here and the seven functions are unchanged.
+  IF v_index_count <> 83
+    OR v_index_fingerprint <> 'd82eb3bebdb6d476c6ed48e69d36d940'
     OR v_function_mismatch IS NOT NULL
   THEN
     RAISE EXCEPTION

@@ -142,8 +142,12 @@ BEGIN
   -- #3281 added event_dates_event_occurrence_key_unique (79 -> 80) and
   -- idx_event_dates_event_id_start_at in 20280327003281 (80 -> 81). #4238's
   -- 20280328004238/20280329004238 add no index on these relations.
-  IF v_index_count <> 81
-    OR v_index_fingerprint <> '37e9eade3735be4ac9a0763e4c4013e8'
+  -- [TEST-MOD-APPROVED #4271] 20280404004271_issue_4271_door_pay adds
+  -- orders_door_pay_code_uq and orders_door_tap_request_uq (81 -> 83,
+  -- hash d82eb3bebdb6d476c6ed48e69d36d940, measured on a PG17 full replay of
+  -- cfb605f80d; 88e51e68c0^ measures 81 / 37e9eade3735be4ac9a0763e4c4013e8).
+  IF v_index_count <> 83
+    OR v_index_fingerprint <> 'd82eb3bebdb6d476c6ed48e69d36d940'
   THEN
     RAISE EXCEPTION
       'T-2 FAIL: complete business-index inventory drift count=% hash=%',
@@ -151,7 +155,7 @@ BEGIN
       v_index_fingerprint;
   END IF;
 
-  RAISE NOTICE 'T-2 PASS: complete business-index inventory is exactly 81 / 37e9eade3735be4ac9a0763e4c4013e8';
+  RAISE NOTICE 'T-2 PASS: complete business-index inventory is exactly 83 / d82eb3bebdb6d476c6ed48e69d36d940';
 END;
 $test$;
 
@@ -197,9 +201,11 @@ BEGIN
 
   -- [TEST-MOD-APPROVED #3643] Terminal inventory is 81 (#3281's
   -- idx_event_dates_event_id_start_at is the 81st); excluding #871 → 80.
+  -- [TEST-MOD-APPROVED #4271] #4271's two orders door-payment unique indexes
+  -- make the terminal inventory 83; excluding #871 → 82.
   -- Fingerprint is recomputed each run against the live projected set so a second
   -- post-#1406 index still fails the count check below.
-  IF v_projected_count <> 80
+  IF v_projected_count <> 82
   THEN
     RAISE EXCEPTION
       'T-3 FAIL: projected #1406 inventory drift count=% hash=%',
@@ -207,7 +213,7 @@ BEGIN
       v_projected_fingerprint;
   END IF;
 
-  RAISE NOTICE 'T-3 PASS: excluding only the #871 index reconstructs 80 rows (hash %)', v_projected_fingerprint;
+  RAISE NOTICE 'T-3 PASS: excluding only the #871 index reconstructs 82 rows (hash %)', v_projected_fingerprint;
 END;
 $test$;
 

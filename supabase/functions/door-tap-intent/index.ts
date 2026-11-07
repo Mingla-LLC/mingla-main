@@ -151,6 +151,9 @@ async function handleCreate(
     country: tap.country,
     address,
   });
+  if (locationId === null) {
+    return jsonResponse({ error: "tap_not_available", reason: "address_missing" }, 400);
+  }
 
   const intentRow = {
     brand_id: quote.brandId,
@@ -283,6 +286,9 @@ async function handleLocation(
     country: tap.country,
     address,
   });
+  if (locationId === null) {
+    return jsonResponse({ error: "tap_not_available", reason: "address_missing" }, 400);
+  }
   return jsonResponse({ locationId });
 }
 
