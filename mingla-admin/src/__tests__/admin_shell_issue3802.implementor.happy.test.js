@@ -68,7 +68,8 @@ const MENU = [
   ["Explorer app", ["placepool"]],
   ["Growth", ["ad-engine"]],
   ["Company", ["admin", "careers", "data-room"]],
-  ["System", ["platform-health", "feature-flags", "ari-improvement-lab", "settings"]],
+  // #4294: Company tools (owner only) joins System.
+  ["System", ["platform-health", "feature-flags", "ari-improvement-lab", "settings", "company-tools"]],
 ];
 
 // The words on each menu item. #4130: the polish design's names.
@@ -86,6 +87,7 @@ const LABELS = {
   "ad-engine": "Ads",
   admin: "Team and roles", careers: "Careers", "data-room": "Data room",
   "platform-health": "Platform health", "feature-flags": "Feature flags", "ari-improvement-lab": "Ari Improvement Lab", settings: "Settings",
+  "company-tools": "Company tools",
 };
 
 const person = (role, areas) => ({ email: `${role}@example.test`, role, status: "active", areas });
@@ -144,7 +146,7 @@ describe("#3802 S-2: every page is in the menu exactly once", () => {
     // #4130: Wave 0 — 40 entries became 26 pages.
     // #4130 + #3872: + the four Creator Program pages (Creators, Gigs, Mingla Locals, Disputes).
     // #3355: the guarded Ari Improvement Lab is the 32nd admin destination.
-    assert.equal(ids.length, 32);
+    assert.equal(ids.length, 33); // #4294: + Company tools
   });
   it("the menu plus governed Ads deep links are the app's pages (the role Home aside)", () => {
     const pagesBlock = APP.match(/const PAGES = \{([\s\S]*?)\n\};/);
@@ -438,6 +440,8 @@ describe("#3802 S-8: one page header, and no page setting its own frame", () => 
     // (Hosts and creators is pages/HostsAndCreatorsHub.jsx: the board inside
     // it, PipelinePage, draws its one header with the tabs in it.)
     "InboundLeadsPage.jsx", "AriImprovementLabPage.jsx",
+    // #4294: Company tools draws the one header in every state.
+    "CompanyToolsPage.jsx",
     // #4130 + #3872: the four Creator Program pages draw the one header.
     "ProgramCreatorsPage.jsx", "ProgramGigsPage.jsx", "ProgramLocalsPage.jsx", "ProgramDisputesPage.jsx",
   ];
@@ -478,7 +482,7 @@ describe("#3802 S-8: one page header, and no page setting its own frame", () => 
     // #4130 (Wave 4a): Inbound leads page added (+1).
     // #4130 (integration): 46 after 4b + 1 from 4a = 47, the count of pages/*Page.jsx.
     // #4130 + #3872: + the four Creator Program pages = 51, the count of pages/*Page.jsx.
-    assert.equal(MIGRATED.length, 50); // #4276: Intelligence Trial and Signal Library pages retired
+    assert.equal(MIGRATED.length, 51); // #4276: Intelligence Trial and Signal Library pages retired; #4294: + Company tools
     assert.equal(FOLLOW_UP.length, 0);
   });
 
@@ -628,7 +632,7 @@ describe("#3802 S-9: rework after the tester's verdict", () => {
     // #4130 (Wave 4a): Inbound leads page added (+1).
     // #4130 (integration): 46 after 4b + 1 from 4a = 47, the count of pages/*Page.jsx.
     // #4130 + #3872: + the four Creator Program pages = 51, the count of pages/*Page.jsx.
-    assert.equal(MIGRATED.length, 50); // #4276: Intelligence Trial and Signal Library pages retired
+    assert.equal(MIGRATED.length, 51); // #4276: Intelligence Trial and Signal Library pages retired; #4294: + Company tools
     for (const file of MIGRATED) {
       const without = pageReturns(file).filter((r) => !r.hasHeader);
       assert.equal(

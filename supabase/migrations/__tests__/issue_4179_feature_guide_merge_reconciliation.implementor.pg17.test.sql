@@ -15,7 +15,8 @@ BEGIN
      OR has_table_privilege('authenticated', 'public.ops_feature_guide_coverage', 'SELECT') THEN
     RAISE EXCEPTION 'issue4179_internal_coverage_authority_broadened';
   END IF;
-  IF (SELECT count(*) FROM public.product_capabilities) <> 159 THEN
+  -- #4294 adds staff-company-tools after this reconciliation.
+  IF (SELECT count(*) FROM public.product_capabilities WHERE capability_key <> 'staff-company-tools') <> 159 THEN
     RAISE EXCEPTION 'issue4179_catalog_count:%', (SELECT count(*) FROM public.product_capabilities);
   END IF;
   IF (SELECT count(*) FROM public.product_capabilities

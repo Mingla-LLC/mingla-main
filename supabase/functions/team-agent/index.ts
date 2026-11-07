@@ -17,6 +17,12 @@
 //
 // Sign-in is checked here, by key, on every request, so the platform's own
 // session check is off for this function (see supabase/config.toml).
+//
+// Issue #4294: the same address also serves sign-in for the Claude apps
+// (`/.well-known/oauth-protected-resource`, `/oauth/authorize`,
+// `/oauth/token`) and company tools. Both reach the database only through
+// the mingla_connector_ functions named below. No company key is a function
+// secret: keys live in Supabase Vault and are read for one allowed call.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { createTeamAgentHandler } from "../_shared/teamAgentMcp.ts";
@@ -60,6 +66,16 @@ const WORK_TOOLS = new Set([
   "set_expected_event",
 ]);
 
+// Issue #4294: the only database functions sign-in and company tools call.
+const CONNECTOR_FUNCTIONS = new Set([
+  "mingla_connector_oauth_exchange",
+  "mingla_connector_oauth_refresh",
+  "mingla_connector_upstreams_for",
+  "mingla_connector_call_begin",
+  "mingla_connector_call_finish",
+  "mingla_connector_upstream_key",
+]);
+
 const handler = createTeamAgentHandler({
   // The only call this function makes.
   gateway: async (keyHash, tool, args, client, chat) => {
@@ -83,6 +99,17 @@ const handler = createTeamAgentHandler({
     const { data, error } = await call;
     if (error) throw new Error("gateway");
     return data;
+  },
+  connector: {
+    rpc: async (fn, args) => {
+      if (!CONNECTOR_FUNCTIONS.has(fn)) throw new Error("connector");
+      const { data, error } = await server.rpc(fn, args);
+      if (error) throw new Error("connector");
+      return data;
+    },
+    // The address Claude is given for this connector, exactly.
+    resourceUrl: `${SUPABASE_URL.replace(/\/+$/, "")}/functions/v1/team-agent`,
+    fetch: (input, init) => fetch(input, init),
   },
   // One line per request: an id, the method, the tool, the outcome, the time.
   log: (line) => console.log(JSON.stringify(line)),
