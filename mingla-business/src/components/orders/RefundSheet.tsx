@@ -336,6 +336,11 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
       onSuccess(result.amountCents / 100);
       return;
     } catch (err) {
+      // issue #4271 — the server committed this refund 'failed' (nothing was
+      // refunded). Its key is spent, so the next Send starts a new refund.
+      if ((err as { code?: unknown } | null)?.code === "refund_failed") {
+        idempotencyKeyRef.current = randomId();
+      }
       const message = err instanceof Error ? err.message : String(err);
       setErrorMessage(message);
       return;

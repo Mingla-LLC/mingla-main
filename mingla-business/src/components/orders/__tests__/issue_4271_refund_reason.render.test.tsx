@@ -12,7 +12,11 @@
  *       least 10 characters." under the box, focuses the box, and sends nothing;
  *       with a valid reason the same tap sends the refund.
  *
- * FAILS-ON-REVERT: restoring `Min ${REASON_MIN} characters` or
+ *   R3  (PR #4303 rework) when the server says the refund failed (code
+ *       "refund_failed"), the next Send uses a NEW idempotency key, so it starts
+ *       a new refund; any other error keeps the same key (same refund).
+ *
+ * FAILS-ON-REVERT: dropping the key reset in RefundSheet fails R3; restoring `Min ${REASON_MIN} characters` or
  * `disabled={!canSubmit}` (the silent dead button) in either sheet fails R1/R2.
  */
 import React from "react";
@@ -259,5 +263,26 @@ describe("#4271 refund reason countdown (rendered)", () => {
     });
     expect(submit).toHaveBeenCalledTimes(1);
     expect(submit.mock.calls[0][0].reason).toBe("Guest could not attend");
+  });
+
+  test("R3 RefundSheet starts a new refund after a failed one, and reuses the key otherwise", async () => {
+    const tree = mount(<RefundSheet visible mode="full" order={order} onClose={jest.fn()} onSuccess={jest.fn()} />);
+    type(tree, "Guest could not attend");
+    const send = async (): Promise<void> => {
+      await act(async () => {
+        await sendButton(tree).props.onPress();
+      });
+    };
+    mockRefundOrder.mockReset();
+    mockRefundOrder.mockRejectedValueOnce(Object.assign(new Error("declined"), { code: "stripe_declined" }));
+    await send();
+    mockRefundOrder.mockRejectedValueOnce(Object.assign(new Error("failed"), { code: "refund_failed" }));
+    await send();
+    mockRefundOrder.mockResolvedValueOnce({ amountCents: 2000 });
+    await send();
+    const keys = mockRefundOrder.mock.calls.map((call) => call[0].idempotencyKey as string);
+    expect(keys).toHaveLength(3);
+    expect(keys[1]).toBe(keys[0]);
+    expect(keys[2]).not.toBe(keys[1]);
   });
 });

@@ -17,6 +17,7 @@ module.exports = {
     "**/src/services/terminal/__tests__/issue_4271_tap_live_reader.implementor.test.ts",
     "**/src/hooks/__tests__/issue_4271_tap_slim_brand.implementor.test.tsx",
     "**/src/utils/__tests__/issue_4271_refund_reason_hint.implementor.test.ts",
+    "**/src/services/__tests__/issue_4271_refund_failed_code.implementor.test.ts",
     // #4271 tester adversarial suites.
     "**/src/components/door/__tests__/issue_4271_door_pay_qr.tester.adversarial.test.ts",
     "**/src/hooks/__tests__/issue_4271_tap_to_pay_availability.tester.adversarial.test.ts",

@@ -62,6 +62,8 @@ describe("resolveTerminalSimulated (pure)", () => {
     expect(resolveTerminalSimulated({ publishableKey: LIVE, simulatedFlag: "1" }, warn)).toBe(false);
     expect(warn).toHaveBeenCalledTimes(1);
     expect(String(warn.mock.calls[0]?.[0])).toMatch(/live/);
+    // #3645: the warning never names the payment provider.
+    expect(String(warn.mock.calls[0]?.[0])).not.toMatch(/stripe|paystack/i);
   });
 
   test("env=1 with a test key → simulated", () => {
@@ -106,6 +108,18 @@ describe("isTerminalSimulated reads the app's real key source", () => {
     process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY = TEST;
     process.env.EXPO_PUBLIC_TERMINAL_SIMULATED = "1";
     expect(isTerminalSimulated()).toBe(true);
+  });
+
+  test("an empty app config key falls back to the env key (PR #4303 P3-9)", () => {
+    mockExtraKey = "";
+    process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY = TEST;
+    expect(isTerminalSimulated()).toBe(true);
+    mockExtraKey = "   ";
+    process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY = LIVE;
+    process.env.EXPO_PUBLIC_TERMINAL_SIMULATED = "1";
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+    expect(isTerminalSimulated()).toBe(false);
+    warn.mockRestore();
   });
 
   test("no key anywhere, __DEV__ on → real reader", () => {

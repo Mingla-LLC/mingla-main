@@ -31,7 +31,7 @@ export const resolveTerminalSimulated = (
     if (flagOn && !warnedLiveOverride) {
       warnedLiveOverride = true;
       warn(
-        "[tap-to-pay] EXPO_PUBLIC_TERMINAL_SIMULATED=1 ignored: the Stripe publishable key is live, so the real reader is used.",
+        "[tap-to-pay] EXPO_PUBLIC_TERMINAL_SIMULATED=1 ignored: the publishable key is live, so the real reader is used.",
       );
     }
     return false;
@@ -56,7 +56,11 @@ const readPublishableKey = (): string | null => {
   } catch (error) {
     console.warn("[tap-to-pay] could not read app config for the Stripe key", error);
   }
-  const key = (fromExtra ?? process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? "").trim();
+  // An empty or blank app config value falls back to the inlined env.
+  const extraKey = (fromExtra ?? "").trim();
+  const key = extraKey.length > 0
+    ? extraKey
+    : (process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? "").trim();
   return key.length > 0 ? key : null;
 };
 
