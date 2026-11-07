@@ -787,9 +787,11 @@ export default function ConsumerEventDetailScreen({
     handleSeeWhosGoing,
   ]);
 
+  // #1023 (Seth): event override → brand → Mingla default, for the page AND
+  // the motion tint (the overlay below is handed this same `theme`).
   const theme =
     canonical?.brand?.theme !== undefined
-      ? resolveTheme(canonical.brand.theme, null)
+      ? resolveTheme(canonical.brand.theme, canonical.event.themeOverrides ?? null)
       : (themeQuery.data ?? resolveTheme(null, null));
   const palette = useMemo(() => createThemePalette(theme), [theme]);
   const rsvpPhoneTheme = useMemo<PhoneInputTheme>(() => ({

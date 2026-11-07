@@ -301,6 +301,19 @@ const mapRpcTicket = (raw: unknown, fallbackCurrency: string): PublicTicketProps
   };
 };
 
+/** The event's own theme overrides from the RPC payload, or null when none. */
+export const eventThemeOverrides = (
+  payload: Record<string, unknown>,
+): PublicEventProps["themeOverrides"] => {
+  const out: NonNullable<PublicEventProps["themeOverrides"]> = {};
+  if (isThemeColor(payload.themeColorOverride)) out.color = payload.themeColorOverride;
+  if (isThemeFontSlug(payload.themeFontOverride)) out.font = payload.themeFontOverride;
+  if (isThemeAnimationSlug(payload.themeAnimationOverride)) {
+    out.animation = payload.themeAnimationOverride;
+  }
+  return Object.keys(out).length > 0 ? out : null;
+};
+
 /** Map the pg_public_event_by_slug json payload → the shared PublicEventProps. */
 export const mapRpcPayloadToPublicEvent = (
   payload: Record<string, unknown>,
@@ -365,7 +378,9 @@ export const mapRpcPayloadToPublicEvent = (
     partyTypes: asStringArray(payload.partyTypes),
     vibeTags: asStringArray(payload.vibeTags),
     musicGenres: asStringArray(payload.musicGenres),
-    themeOverrides: null,
+    // #1023 (Seth): the page theme is event override → brand → Mingla. The
+    // RPC has always sent the event's own overrides; they were dropped here.
+    themeOverrides: eventThemeOverrides(payload),
   };
   const brand: PublicBrandProps | null =
     brandRaw === null

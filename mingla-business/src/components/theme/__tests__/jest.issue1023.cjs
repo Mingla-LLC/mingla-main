@@ -14,5 +14,6 @@ module.exports = {
     "**/src/components/theme/__tests__/issue_1023_theme_entrance_web_chunk_failure.implementor.test.tsx",
     "**/src/components/theme/__tests__/issue_1023_motion_metro_resolver.implementor.test.ts",
     "**/src/dev/__tests__/issue_1023_motion_deep_link.implementor.test.ts",
+    "**/src/components/theme/__tests__/issue_1023_event_theme_precedence.implementor.test.ts",
   ],
 };
