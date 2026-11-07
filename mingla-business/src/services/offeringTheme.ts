@@ -182,6 +182,8 @@ export const patchOfferingTheme = async (
   const columns = themeOverridesToColumns(input.themeOverrides);
   const runUpdate = (withGradient: boolean) => {
     const { theme_gradient_override: gradient, ...rest } = columns;
+    // orch-strict-grep-allow events-type-filter — id-targeted UPDATE (see above);
+    // the .eq("id") uniquely identifies the row, so no event_type filter.
     return supabase
       .from("events")
       .update(withGradient ? { ...rest, theme_gradient_override: gradient } : rest)

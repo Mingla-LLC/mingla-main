@@ -15,10 +15,9 @@
 
 import { useEffect, useState } from "react";
 import * as Font from "expo-font";
-import {
-  ensureGoogleFont,
-  isGoogleFontSettled,
-  type InterFallbackModules,
+import type {
+  EnsureGoogleFontResult,
+  InterFallbackModules,
 } from "@mingla/offering-rendering/googleFontLoader";
 import { familyFromGoogleFontKey } from "@mingla/offering-rendering/themeResolver";
 
@@ -40,12 +39,26 @@ const loadInterFallback = async (): Promise<InterFallbackModules> => {
   return { base, bold };
 };
 
+// The Google loader is imported ON DEMAND, only for a GF_ key: this module is
+// shared by every themed surface, so a static import would put the loader in
+// the eager web chunk (bundle budget, #1509) although bundled fonts never use
+// it.
+const loadGoogleFontLoader = () =>
+  import("@mingla/offering-rendering/googleFontLoader");
+const googleOutcomes = new Map<string, EnsureGoogleFontResult>();
+
 /** True when a font key is ready to draw (bundled face or settled Google family). */
 export const isThemeFontKeyReady = (key: string): boolean => {
   const family = familyFromGoogleFontKey(key);
   return family !== null && key.startsWith("GF_")
-    ? isGoogleFontSettled(family)
+    ? googleOutcomes.has(family)
     : Font.isLoaded(key);
+};
+
+/** True when a Google family could not load and is drawn as Inter. */
+export const themeFontFellBack = (key: string): boolean => {
+  const family = key.startsWith("GF_") ? familyFromGoogleFontKey(key) : null;
+  return family !== null && googleOutcomes.get(family)?.fellBack === true;
 };
 
 /**
@@ -64,7 +77,11 @@ export async function loadThemeFont(family: string | null | undefined): Promise<
     ? familyFromGoogleFontKey(family)
     : null;
   if (googleFamily !== null) {
-    await ensureGoogleFont(googleFamily, { loadFallback: loadInterFallback });
+    const { ensureGoogleFont } = await loadGoogleFontLoader();
+    const outcome = await ensureGoogleFont(googleFamily, {
+      loadFallback: loadInterFallback,
+    });
+    googleOutcomes.set(googleFamily, outcome);
     return;
   }
 
@@ -92,7 +109,11 @@ export async function loadThemeFont(family: string | null | undefined): Promise<
  * it is ready. The themed surface renders immediately (system-font fallback for
  * ≤ the load duration); `loaded` flips true once the family is available.
  */
-export function useThemeFont(family: string | null | undefined): { loaded: boolean } {
+export function useThemeFont(family: string | null | undefined): {
+  loaded: boolean;
+  /** issue #1023 — a Google family that could not load is drawn as Inter. */
+  fellBack: boolean;
+} {
   const [loaded, setLoaded] = useState<boolean>(() =>
     family ? isThemeFontKeyReady(family) : true,
   );
@@ -116,5 +137,5 @@ export function useThemeFont(family: string | null | undefined): { loaded: boole
     };
   }, [family]);
 
-  return { loaded };
+  return { loaded, fellBack: loaded && !!family && themeFontFellBack(family) };
 }

@@ -60,7 +60,7 @@ jest.mock("expo-linear-gradient", () => {
   };
 });
 jest.mock("../../../theme/useThemeFont", () => ({
-  useThemeFont: () => ({ loaded: true }),
+  useThemeFont: () => ({ loaded: true, fellBack: false }),
 }));
 
 // eslint-disable-next-line import/first
@@ -90,6 +90,8 @@ const mount = async (props: Partial<ThemeSheetProps>): Promise<Tree> => {
       <ThemeSheet visible onClose={() => undefined} value={null} onChange={() => undefined} scope="offering" {...props} />,
     );
   });
+  // The colour and font tabs are lazy chunks: let them resolve.
+  for (let i = 0; i < 5; i++) await act(async () => new Promise((r) => setTimeout(r, 0)));
   return tree as Tree;
 };
 

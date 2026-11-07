@@ -10,11 +10,6 @@ import {
   type ViewToken,
 } from "react-native";
 
-import {
-  ensureGooglePreviewFace,
-  googlePreviewKey,
-  isGooglePreviewReady,
-} from "@mingla/offering-rendering/googleFontLoader";
 import { canonicalThemeFont } from "@mingla/offering-rendering/themeResolver";
 
 import {
@@ -50,6 +45,14 @@ import {
  */
 
 export const FONT_ROW_HEIGHT = 52;
+
+// The preview loader is imported on demand (the same async module the theme
+// font hook loads), so it is one lazy chunk and never hoisted into the eager
+// web chunk by being shared between two lazy chunks.
+const loadGoogleFontLoader = () =>
+  import("@mingla/offering-rendering/googleFontLoader");
+/** The preview face key; equals googleFontLoader.googlePreviewKey. */
+const previewKey = (family: string): string => `GFP_${family.replace(/ /g, "_")}`;
 const VISIBLE_DWELL_MS = 200;
 
 type CatalogState =
@@ -91,7 +94,7 @@ export const ThemeFontTab: React.FC<ThemeFontTabProps> = ({
   const [attempt, setAttempt] = useState(0);
   const [chip, setChip] = useState<FontChip>("popular");
   const [query, setQuery] = useState("");
-  const [, setPreviewVersion] = useState(0);
+  const [readyFaces, setReadyFaces] = useState<ReadonlySet<string>>(() => new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -129,15 +132,20 @@ export const ThemeFontTab: React.FC<ThemeFontTabProps> = ({
     [],
   );
   const pump = useCallback((): void => {
-    for (const family of visible.current) {
-      if (isGooglePreviewReady(family)) continue;
-      void ensureGooglePreviewFace(family).then((ok) => {
-        if (!mounted.current) return;
-        if (ok) setPreviewVersion((v) => v + 1);
-        // A finished request frees a slot: start the next visible row.
-        pump();
-      });
-    }
+    void loadGoogleFontLoader().then(({ ensureGooglePreviewFace, isGooglePreviewReady }) => {
+      for (const family of visible.current) {
+        if (isGooglePreviewReady(family)) continue;
+        void ensureGooglePreviewFace(family).then((ok) => {
+          if (!mounted.current) return;
+          if (ok) setReadyFaces((prev) => new Set(prev).add(family));
+          // A finished request frees a slot: start the next visible row.
+          if (ok) pump();
+        });
+      }
+    }, (error: unknown) => {
+      // Previews are decoration: rows keep the system font.
+      console.warn("[theme-font] preview loader unavailable", error);
+    });
   }, []);
   const dwellTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onViewableItemsChanged = useRef(
@@ -162,7 +170,7 @@ export const ThemeFontTab: React.FC<ThemeFontTabProps> = ({
   const renderRow = useCallback(
     ({ item }: { item: FontRow }) => {
       const selected = currentFamily !== null && item.family === currentFamily;
-      const ready = isGooglePreviewReady(item.family);
+      const ready = readyFaces.has(item.family);
       return (
         <Pressable
           onPress={() => onCommit(canonicalThemeFont(item.family))}
@@ -176,7 +184,7 @@ export const ThemeFontTab: React.FC<ThemeFontTabProps> = ({
             <Text
               style={[
                 styles.rowName,
-                ready ? { fontFamily: googlePreviewKey(item.family) } : null,
+                ready ? { fontFamily: previewKey(item.family) } : null,
               ]}
               numberOfLines={1}
             >
@@ -188,7 +196,7 @@ export const ThemeFontTab: React.FC<ThemeFontTabProps> = ({
         </Pressable>
       );
     },
-    [currentFamily, onCommit],
+    [currentFamily, onCommit, readyFaces],
   );
 
   const getItemLayout = useCallback(

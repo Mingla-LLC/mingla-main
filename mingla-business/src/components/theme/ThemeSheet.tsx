@@ -1,5 +1,6 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { Suspense, useCallback, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   Pressable,
   StyleSheet,
   Text,
@@ -25,7 +26,6 @@ import {
 } from "../../../../packages/offering-rendering/themePalette";
 import { resolveTheme } from "../../../../packages/offering-rendering/themeResolver";
 import { ThemeAccentGradientLayer } from "../../../../packages/offering-rendering/ThemeAccentFill";
-import { googleFontOutcome } from "../../../../packages/offering-rendering/googleFontLoader";
 
 import {
   accent,
@@ -44,8 +44,16 @@ import { Icon } from "../ui/Icon";
 // consumer repo-wide that did) bypassed Sheet.web.tsx entirely, so the
 // >=1024px DesktopCenteredCard never rendered and the sheet went full-bleed.
 import { Sheet } from "../ui/Sheet";
-import { ThemeColourTab } from "./ThemeColourTab";
-import { ThemeFontTab } from "./ThemeFontTab";
+// issue #1023 wave 2 — both pickers are lazy chunks. ThemeSheet is shared by
+// every editor, so a static import would put the swatches, the 1,626-family
+// font list model and the preview-face loader in the eager web chunk
+// (bundle budget, #1509). They load the first time the sheet opens.
+const ThemeColourTab = React.lazy(() =>
+  import("./ThemeColourTab").then((m) => ({ default: m.ThemeColourTab })),
+);
+const ThemeFontTab = React.lazy(() =>
+  import("./ThemeFontTab").then((m) => ({ default: m.ThemeFontTab })),
+);
 import {
   themeDefaultFontLabel,
   themeResetLabel,
@@ -169,16 +177,10 @@ export const ThemeSheet: React.FC<ThemeSheetProps> = ({
   // ORCH-1083 — the ONLY useThemeFont call site in this sheet. Browsing the
   // font list loads nothing; only the SELECTED family loads, for the preview.
   const resolvedFontState = useThemeFont(resolved.fontFamilyValue);
-  const resolvedFontLoaded = resolvedFontState?.loaded === true;
+
   // issue #1023 — a Google family that could not load is drawn as Inter; say
   // so under the preview rather than letting the host think Inter was chosen.
-  const resolvedFamily = resolved.fontFamilyValue.startsWith("GF_")
-    ? resolved.font
-    : null;
-  const resolvedFamilyFellBack =
-    resolvedFontLoaded &&
-    resolvedFamily !== null &&
-    googleFontOutcome(resolvedFamily)?.fellBack === true;
+  const resolvedFamilyFellBack = resolvedFontState?.fellBack === true;
 
 
   // ── THE single colour write path ─────────────────────────────────────────
@@ -365,6 +367,7 @@ export const ThemeSheet: React.FC<ThemeSheetProps> = ({
 
       {tab === "font" ? (
         <View style={styles.bodyScroll}>
+          <Suspense fallback={<TabLoading />}>
           <ThemeFontTab
             font={value?.font ?? null}
             inherited={fontInherited}
@@ -373,6 +376,7 @@ export const ThemeSheet: React.FC<ThemeSheetProps> = ({
             onCommit={commitFont}
             testID={testID !== undefined ? `${testID}-font-tab` : undefined}
           />
+          </Suspense>
         </View>
       ) : (
       <ScrollView
@@ -383,6 +387,7 @@ export const ThemeSheet: React.FC<ThemeSheetProps> = ({
       >
         {tab === "colour" ? (
           <View style={styles.tabBody}>
+            <Suspense fallback={<TabLoading />}>
             <ThemeColourTab
               value={value}
               scope={scope}
@@ -391,6 +396,7 @@ export const ThemeSheet: React.FC<ThemeSheetProps> = ({
               onCommit={commitColor}
               onInherit={() => onChange(withAxis(value, "color", null))}
             />
+            </Suspense>
           </View>
         ) : null}
 
@@ -458,6 +464,12 @@ export const ThemeSheet: React.FC<ThemeSheetProps> = ({
     </Sheet>
   );
 };
+
+const TabLoading: React.FC = () => (
+  <View style={styles.tabLoading} accessibilityLabel="Loading">
+    <ActivityIndicator color={textTokens.tertiary} />
+  </View>
+);
 
 interface MotionTileProps {
   label: string;
@@ -555,6 +567,7 @@ const styles = StyleSheet.create({
   bodyScroll: { flex: 1 },
   bodyContent: { paddingTop: spacing.md, paddingBottom: spacing.md, gap: spacing.md },
   tabBody: { gap: spacing.md },
+  tabLoading: { minHeight: 88, alignItems: "center", justifyContent: "center" },
   fallbackNote: { fontSize: 12, color: textTokens.tertiary, marginTop: 4 },
   motionGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   motionGroup: { marginTop: spacing.md },
