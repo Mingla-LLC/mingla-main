@@ -17,7 +17,13 @@ const mockPoster = { kind: "decoded-first-frame" };
 const mockGeneratePoster = jest.fn(async (): Promise<object> => mockPoster);
 const mockUpload = jest.fn(async () => undefined);
 const mockFinalize = jest.fn(async () => "m-1");
+let mockStatusListener: ((payload: { status: string }) => void) | null = null;
 const mockPlayer = {
+  status: "readyToPlay",
+  addListener: jest.fn((_event: string, listener: (payload: { status: string }) => void) => {
+    mockStatusListener = listener;
+    return { remove: () => { mockStatusListener = null; } };
+  }),
   generateThumbnailsAsync: jest.fn(async () => [mockPoster]),
   release: jest.fn(),
   pause: jest.fn(),
@@ -140,5 +146,22 @@ describe("#4304 media speed — local video poster", () => {
     expect(mockPlayer.generateThumbnailsAsync).toHaveBeenCalledWith([0], { maxWidth: 640, maxHeight: 640 });
     expect(mockPlayer.release).toHaveBeenCalledTimes(1);
     expect(liveVideoPlayerCountForReload()).toBe(0);
+  });
+
+  it("waits until the clip has loaded before asking for frame 0", async () => {
+    // Simulator smoke test 2026-11-07: asking straight away returned an empty
+    // list on iOS, so a just-sent video never got its still.
+    mockPlayer.status = "loading";
+    mockPlayer.generateThumbnailsAsync.mockClear();
+    mockPlayer.addListener.mockClear();
+    const pending = nativePoster("file:///pick/clip.mp4");
+    for (let tick = 0; tick < 50 && !mockStatusListener; tick += 1) await Promise.resolve();
+    expect(mockPlayer.addListener).toHaveBeenCalledWith("statusChange", expect.any(Function));
+    expect(mockPlayer.generateThumbnailsAsync).not.toHaveBeenCalled();
+    mockStatusListener!({ status: "readyToPlay" });
+    await expect(pending).resolves.toBe(mockPoster);
+    expect(mockPlayer.generateThumbnailsAsync).toHaveBeenCalledTimes(1);
+    expect(mockStatusListener).toBeNull();
+    mockPlayer.status = "readyToPlay";
   });
 });
