@@ -86,6 +86,9 @@ jest.mock("../../ui/Button", () => ({
     require("react").createElement("Pressable", { onPress: props.onPress }, props.label as string),
 }));
 jest.mock("../../ui/Icon", () => ({ Icon: () => null }));
+// #4304 — the route module also carries the /messages inbox screen (one web
+// chunk for both Messages routes); its TopBar is not under test here.
+jest.mock("../../ui/TopBar", () => ({ TopBar: () => null }));
 jest.mock("../../ui/SafeScreen", () => ({
   SafeScreen: (props: Record<string, unknown>) =>
     // eslint-disable-next-line @typescript-eslint/no-require-imports

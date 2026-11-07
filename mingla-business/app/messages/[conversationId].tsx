@@ -66,6 +66,10 @@ import { listBrandGroupMembers, listBrandGroupMentionCandidates } from "../../sr
 import { supabase } from "../../src/services/supabase";
 import { fileMeta } from "../../src/services/brandGroupFileMetaService";
 import type { BrandGroupMediaRow } from "../../src/services/brandGroupMediaService";
+// #4304 — static: this route and its pending-upload rows already load
+// MediaThumb's local-preview store (brandGroupLocalPreviews). A separate lazy
+// MediaThumb chunk made Metro hoist them into the eager web __common chunk.
+import { MediaThumb } from "../../src/components/media/MediaThumb";
 import { formatFileSize, formatMediaDuration } from "../../src/utils/formatMediaDuration";
 import {
   brandGroupMentionTarget,
@@ -107,22 +111,13 @@ const LazyBrandPlanPanel = React.lazy(async () => {
   return { default: module.BrandPlanPanel };
 });
 
-const LazyMediaThumb = React.lazy(async () => {
-  const module = await import("../../src/components/media/MediaThumb");
-  return { default: module.MediaThumb };
-});
-
 /** #4304 — the desktop details rail collapses below this width. */
 const DETAILS_RAIL_MIN_WIDTH = 1200;
 const COMPOSER_MIN = 40;
 const COMPOSER_MAX = 132;
 
 function renderMediaThumbnail(item: BrandGroupMediaRow, style?: StyleProp<ViewStyle>, bubble = false): React.ReactNode {
-  return (
-    <React.Suspense fallback={<View style={style} />}>
-      <LazyMediaThumb item={item} style={style} bubble={bubble} />
-    </React.Suspense>
-  );
+  return <MediaThumb item={item} style={style} bubble={bubble} />;
 }
 
 function first(value: string | string[] | undefined): string | null {
