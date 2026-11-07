@@ -716,7 +716,6 @@ export default function HomeTab(): React.ReactElement {
         <HomeRecentAriPrompt
           compact={isWideDesktop}
           onOpenAri={handleOpenFreshAri}
-          onCreateManually={() => setIsUniversalCreatorOpen(true)}
         />
       );
     }

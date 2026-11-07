@@ -337,24 +337,14 @@ describe("issue #874 Home integration real render", () => {
     ).toBeUndefined();
   });
 
-  it("opens the create modal from the Recent empty state", async () => {
+  it("empty Recent has no manual create link (the top bar's + keeps the wizards)", async () => {
     mockRecentState = "empty";
     const screen = await render(<HomeTab />);
-
-    // #4304 — empty Recent is now an Ari prompt; the manual wizards stay one tap away.
-    expect(screen.getByText("Or create it yourself")).toBeTruthy();
+    // #4304 — Seth, 2026-11-07: the empty state is Ari only, no manual link.
+    expect(screen.queryByText("Or create it yourself")).toBeNull();
+    expect(screen.queryByTestId("home-recent-create-manually")).toBeNull();
+    expect(screen.queryByText("Create something")).toBeNull();
     expect(screen.queryByText("Browse your work")).toBeNull();
-
-    await act(async () => {
-      fireEvent.press(screen.getByTestId("home-recent-create-manually"));
-    });
-
-    expect(
-      findNodes(
-        screen.root as unknown as TestNode,
-        (node) => node.type === "UniversalCreatorSheet",
-      ),
-    ).toHaveLength(1);
     expect(mockPush).not.toHaveBeenCalledWith("/(tabs)/hub");
   });
 

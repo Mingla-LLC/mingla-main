@@ -4,8 +4,8 @@
  * Instead of "Nothing recent yet / Create something", Home invites the host to
  * tell Ari what to make: the Ari orb, one line of copy, a tap-to-type Ari field
  * and the same "what are you hosting" chips as the new-brand screen. Each opens
- * a NEW Ari chat (a chip's words land in the composer); "Create it yourself"
- * keeps the manual wizards one tap away.
+ * a NEW Ari chat (a chip's words land in the composer). The manual wizards
+ * stay in the top bar's "+".
  *
  * The field is a Pressable styled as a field, not a TextInput: this panel
  * scrolls with Home, and the ORCH-0892 / #1841 keyboard gate forbids a
@@ -27,7 +27,6 @@ export function recentPromptChipText(label: string): string {
 export interface HomeRecentAriPromptProps {
   /** Opens a new Ari chat; `text` lands in the composer ("" = empty). */
   onOpenAri: (text: string) => void;
-  onCreateManually: () => void;
   /** Wide desktop: Recent only gets the height left under the pulse panel, so
    *  the prompt drops the headline and puts the orb inside the field. */
   compact?: boolean;
@@ -35,7 +34,6 @@ export interface HomeRecentAriPromptProps {
 
 export function HomeRecentAriPrompt({
   onOpenAri,
-  onCreateManually,
   compact = false,
 }: HomeRecentAriPromptProps): React.ReactElement {
   return (
@@ -87,31 +85,7 @@ export function HomeRecentAriPrompt({
             </Text>
           </Pressable>
         ))}
-        {compact ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Create it yourself"
-            onPress={onCreateManually}
-            hitSlop={8}
-            style={({ pressed }) => [styles.manualInline, pressed && styles.pressed]}
-            testID="home-recent-create-manually"
-          >
-            <Text style={styles.manualText}>Or create it yourself</Text>
-          </Pressable>
-        ) : null}
       </View>
-      {compact ? null : (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Create it yourself"
-          onPress={onCreateManually}
-          hitSlop={8}
-          style={({ pressed }) => [styles.manual, pressed && styles.pressed]}
-          testID="home-recent-create-manually"
-        >
-          <Text style={styles.manualText}>Or create it yourself</Text>
-        </Pressable>
-      )}
     </View>
   );
 }
@@ -126,7 +100,9 @@ const styles = StyleSheet.create({
   panelCompact: {
     alignItems: "stretch",
     paddingVertical: spacing.xs,
-    paddingHorizontal: 0,
+    // The desktop Recent grid sits 4px outside its clipping scroll (card
+    // gutters); this keeps the field's and first chip's left edge visible.
+    paddingHorizontal: 4,
   },
   title: {
     marginTop: spacing.sm,
@@ -193,8 +169,5 @@ const styles = StyleSheet.create({
   },
   chipText: { color: textTokens.primary, fontSize: 13, fontWeight: "600" },
   chipTextPrimary: { color: "#ffd7bd" },
-  manualInline: { paddingHorizontal: spacing.xs, paddingVertical: spacing.xs },
-  manual: { marginTop: spacing.xs, paddingVertical: spacing.xs },
-  manualText: { color: textTokens.secondary, fontSize: 13, fontWeight: "600", textDecorationLine: "underline" },
   pressed: { opacity: 0.72 },
 });
