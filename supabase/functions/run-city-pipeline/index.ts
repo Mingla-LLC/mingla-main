@@ -44,11 +44,11 @@ const DEFAULT_RETRY_AFTER_MS = 60_000;
  * <n>ms."). It is a wait, not a failure, so it comes back as a 429 with the hint.
  */
 export function rateLimitRetryAfterMs(err: unknown): number | null {
-  // deno-lint-ignore no-explicit-any
-  const RateLimitError = (Deno as any).errors?.RateLimitError;
+  // The runtime's class is RateLimitError; match it by name so this file reads no
+  // Deno global beyond Deno.env (the #2241 function secret contract allows only that).
+  const name = err instanceof Error ? err.name : "";
   const message = err instanceof Error ? err.message : String(err ?? "");
-  const isRateLimit = (typeof RateLimitError === "function" && err instanceof RateLimitError) ||
-    /Rate limit exceeded for function/.test(message);
+  const isRateLimit = name === "RateLimitError" || /Rate limit exceeded for function/.test(message);
   if (!isRateLimit) return null;
   // deno-lint-ignore no-explicit-any
   const prop = (err as any)?.retryAfterMs;

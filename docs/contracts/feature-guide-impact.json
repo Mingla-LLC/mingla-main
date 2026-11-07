@@ -1387,6 +1387,8 @@
         "mingla-admin/src/components/placePool/CityBoxMap.jsx",
         "mingla-admin/src/components/placePool/CityBoxPanel.jsx",
         "mingla-admin/src/components/placePool/CityRunPanel.jsx",
+        "mingla-admin/src/components/placePool/LiveRunsSection.jsx",
+        "mingla-admin/src/hooks/useLiveCityRuns.js",
         "mingla-admin/src/components/placePool/ExcludedSummary.jsx",
         "mingla-admin/src/components/placePool/PipelineSection.jsx",
         "mingla-admin/src/components/placePool/ScoringTools.jsx",
