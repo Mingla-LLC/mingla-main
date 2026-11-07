@@ -91,7 +91,16 @@ const lightEdge = (width = 0.5) => stroke("#000000", width * (400 / 270), 22, 2)
 
 const pal = (i) => `c${((i % 6) + 6) % 6}`;
 const palDark = (i) => (i % 4 >= 2 ? "d2" : "d0");
-const LOVE = ["#ff2d6f", "#ff5c8a", "#ff1744", "#ff7aa8"];
+// Seth (#1023): the love set keeps the BRAND colour — no fixed reds or pinks.
+// Two-tone pairs from the brand palette, led by the reference `bigHeart`'s
+// pal0→pal2; the rest are its light and blended neighbours.
+const LOVE_PAIRS = [
+  ["c0", "c2"],
+  ["c1", "c0"],
+  ["c2", "c3"],
+  ["c4", "c0"],
+  ["c0", "c3"],
+];
 
 /* --------------------------------------------------------------- physics -- */
 
@@ -139,9 +148,8 @@ function heartLook(r, ca, cb) {
 }
 
 function loveCols(rng) {
-  return rng.next() < 0.5
-    ? [rng.pick(LOVE), pal(rng.next() < 0.5 ? 0 : 2)]
-    : [pal(0), pal(2)];
+  // half the hearts wear the reference pair, the rest a brand neighbour pair
+  return rng.next() < 0.5 ? ["c0", "c2"] : [...rng.pick(LOVE_PAIRS)];
 }
 
 function noteGlyph(kind, sz, color) {
@@ -1099,7 +1107,10 @@ def({
   size: (p) => p.r,
   lookKey: (p) => `${p.col}`,
   drawLook(key, r) {
-    const ca = ["#e0004d", "#ff2d6f", "#b0003a", "#ff5c8a", pal(0)][Number(key)];
+    // brand petals: a slot colour, lit with the brand cream, shaded toward the
+    // dark shade of the same family (d0 for the base hue, d2 for the second)
+    const ca = ["c0", "c2", "c4", "c1", "c3"][Number(key)];
+    const shade = ca === "c2" || ca === "c3" ? "d2" : "d0";
     return [
       group([
         pathShape([
@@ -1108,9 +1119,9 @@ def({
         ]),
         gradientFill(
           [
-            { at: 0, color: "#ffd2e1", alpha: 0.95 },
+            { at: 0, color: "c5", alpha: 0.95 },
             { at: 0.35, color: ca, alpha: 1 },
-            { at: 1, color: "#5a0018", alpha: 1 },
+            { at: 1, color: shade, alpha: 1 },
           ],
           [k(-r * 0.2), k(-r * 0.3)],
           [k(r * 0.9), k(r * 0.5)],

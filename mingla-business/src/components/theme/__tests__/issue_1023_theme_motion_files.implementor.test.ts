@@ -382,6 +382,50 @@ describe("#1023 — full-screen motion overlay on every public page", () => {
   });
 });
 
+describe("#1023 — the love set wears the brand colour (Seth)", () => {
+  type Paint = { ty: string; nm?: string; c?: { k: number[] }; g?: { p: number; k: { k: number[] } } };
+  const chromatic = (r: number, g: number, b: number): boolean =>
+    Math.max(r, g, b) - Math.min(r, g, b) > 0.02;
+
+  test.each(["hearts", "love_burst", "rose_petals", "love_balloons"])(
+    "%s: every fixed colour is neutral (white, black or grey); colour comes from brand slots",
+    (slug) => {
+      for (const phase of ["intro", "loop"]) {
+        const offenders: string[] = [];
+        let slotted = 0;
+        const walk = (node: unknown): void => {
+          if (node === null || typeof node !== "object") return;
+          const obj = node as Paint & Json;
+          if ((obj.ty === "fl" || obj.ty === "st") && obj.c) {
+            const [r, g, b] = obj.c.k;
+            if (obj.nm === "fx" && chromatic(r, g, b)) offenders.push(`${obj.ty} ${obj.c.k.join(",")}`);
+            if (obj.nm !== "fx") slotted += 1;
+          }
+          if ((obj.ty === "gf" || obj.ty === "gs") && obj.g && typeof obj.nm === "string") {
+            const slots = obj.nm.split("|").slice(1);
+            for (let i = 0; i < obj.g.p; i += 1) {
+              const [r, g, b] = obj.g.k.k.slice(i * 4 + 1, i * 4 + 4);
+              if (slots[i] === "fx" && chromatic(r, g, b)) offenders.push(`gradient stop ${r},${g},${b}`);
+              if (slots[i] !== "fx") slotted += 1;
+            }
+          }
+          for (const value of Object.values(obj)) walk(value);
+        };
+        walk(readJson(`${slug}.${phase}.json`));
+        expect(offenders).toEqual([]);
+        expect(slotted).toBeGreaterThan(0);
+      }
+    },
+  );
+
+  test("tinting a love animation to a blue brand leaves no red behind", () => {
+    const blue = buildThemeMotionPalette("#2563eb");
+    const text = JSON.stringify(tintLottie(readJson("hearts.loop.json"), blue));
+    // the old fixed love reds (#ff2d6f, #ff1744, …) as 0..1 RGB
+    expect(text).not.toMatch(/\[1,0\.(09|176),0\.(268|43)/);
+  });
+});
+
 describe("#1023 — the dev-only preview override is inert outside dev", () => {
   test("setting it in a production build does nothing", () => {
     setThemeMotionDevOverride(null, true);
