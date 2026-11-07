@@ -169,7 +169,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4271: re-sealed after merging origin/main (#4261/#4273/#4275/#4276/#4283/#2830 rows kept beside the #4271 rows).
 // #3645: register the stay flat-net migration the same way.
 // #4271: register the resumable stuck-refund migration and its PostgreSQL proof.
-export const BOOTSTRAP_SHA256 = "ace8b4734adb76035b7a74a5caad60e51c31f245dc2ba725002c95e05c1a57c8";
+// #4271: register the resumable stuck-refund tester PostgreSQL proof (PR #4303).
+export const BOOTSTRAP_SHA256 = "3ea69ee51651756182717c52c51f51631799119e568cbeabd01a72c00360591f";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

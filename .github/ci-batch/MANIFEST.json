@@ -20732,6 +20732,8 @@
         "supabase/migrations/__tests__/issue_4271_door_pay_rework.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4271_resumable_stuck_refund.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4271_resumable_stuck_refund.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4271_resumable_stuck_refund.tester.adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4271_resumable_stuck_refund.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4273_blast_combined_audience.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4273_blast_combined_audience.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4273_blast_combined_audience.tester_adversarial.pg17.test.sql",
@@ -25705,6 +25707,8 @@
         "supabase/migrations/__tests__/issue_4271_door_pay_rework.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4271_resumable_stuck_refund.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4271_resumable_stuck_refund.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4271_resumable_stuck_refund.tester.adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4271_resumable_stuck_refund.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4273_blast_combined_audience.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4273_blast_combined_audience.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4273_blast_combined_audience.tester_adversarial.pg17.test.sql",
@@ -53045,5 +53049,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "a846f1a438bb88e06a6fb372d3fefb770d02241e63ceb9c26844774857059cdf",
-  "phase3eContractSha256": "5bd799c9a10659bfb09ccb0c315ebb84182e7e2b5f954155f9d7ccc055136f1e"
+  "phase3eContractSha256": "70bd29c40295dd954d568fbe480368e8c7dfef28cdc0dd93b4b0cb3a77dd8e0f"
 }
