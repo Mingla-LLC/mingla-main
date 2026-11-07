@@ -475,7 +475,7 @@ export function isGraphAuthError(status: number, error: unknown): boolean {
 /**
  * Meta's next-page address, made safe to follow: https, exactly
  * graph.facebook.com, no port or user name, under the same API version, with
- * any access_token or appsecret_proof taken out. Null when it is not one.
+ * any access_token, appsecret_proof or method taken out. Null when it is not one.
  */
 export function safeNextUrl(next: unknown, base: string): string | null {
   if (typeof next !== "string" || next.length > 4096) return null;
@@ -492,8 +492,11 @@ export function safeNextUrl(next: unknown, base: string): string | null {
   ) {
     return null;
   }
-  u.searchParams.delete("access_token");
-  u.searchParams.delete("appsecret_proof");
+  // `method` would turn this GET into a POST or DELETE on Graph. These names
+  // are dropped in any letter case.
+  for (const name of [...new Set(u.searchParams.keys())]) {
+    if (["access_token", "appsecret_proof", "method"].includes(name.toLowerCase())) u.searchParams.delete(name);
+  }
   u.hash = "";
   return u.toString();
 }
