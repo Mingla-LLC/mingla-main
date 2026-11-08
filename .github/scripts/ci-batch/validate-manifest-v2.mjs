@@ -404,7 +404,7 @@ export function phase3dContractDigest(manifest) {
 // #1023: re-sealed after merging origin/main 5dd7f103ca (#4273 polish rows kept beside the #1023 rows).
 // #1023: re-sealed after merging origin/main 6038982e1a.
 // #4334: register the Google places migration and its PostgreSQL proofs, and point the issue-992 lane at the renamed server geocode helper.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "7d89c77ad3ab2d42d7df888ca70b6b9b5a144fa9b80dc75907420ae299af417f";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "7ab1d98aa13d7e96cddc29843b228fc243401261e7cb0b007afabd268b314266";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
