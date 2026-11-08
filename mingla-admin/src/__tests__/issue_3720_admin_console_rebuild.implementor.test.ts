@@ -24,7 +24,8 @@ Deno.test("#3720 Admin Community and Support rebuild stays complete", async () =
     Promise.all([read("components/email/EmailComposer.jsx"), read("lib/emailAudience.js")]).then((parts) => parts.join("\n")),
     read("components/community/TeamRolesPanel.jsx"),
     read("components/community/FeatureGuidePanel.jsx"),
-    read("components/community/BrandGroupsPanel.jsx"),
+    // #4270 W7: the Brand group list and its words moved out of the panel.
+    Promise.all([read("components/community/BrandGroupsPanel.jsx"), read("components/community/BrandGroupList.jsx"), read("lib/brandGroupInbox.js")]).then((parts) => parts.join("\n")),
     read("components/community/ProductInboxPanel.jsx"),
     read("services/communityService.js"),
   ]);
@@ -62,8 +63,8 @@ Deno.test("#3720 Admin Community and Support rebuild stays complete", async () =
   assertMatch(guide, /Apply evidence packet/);
   assertMatch(guide, /pinned Mingla GitHub URL/);
   assertMatch(guide, /before[\s\S]+after/);
-  assertMatch(groups, /Search Brand groups/);
-  assertMatch(groups, /count === 1 [^\n]+teammate/);
+  assertMatch(groups, /Search brand groups/);
+  assertMatch(groups, /n === 1 \? "teammate" : "teammates"/);
   assertMatch(inbox, /Open the Mingla Avengers board/);
 
   for (const rpc of [

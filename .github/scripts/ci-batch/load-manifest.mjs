@@ -187,7 +187,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3645: register the sell-and-publish integrity migration, its PostgreSQL proof and its re-emit guard.
 // #3645: the sell-and-publish migration joins the pre-#1931 and pre-#2117 replay skip lists by exact filename.
 // #4304: register the Brand group live migration and its PostgreSQL proof the same way.
-export const BOOTSTRAP_SHA256 = "ab0702d3193c6629e42f1fc1382070ab9f1cb5ff61cd9e5162de0936903cb0ee";
+// #4270 W7: register the admin Brand group inbox suites; migration 20280502004270; re-sealed after merging origin/main (#4322).
+export const BOOTSTRAP_SHA256 = "298dc09bd4d6ee9336805ff86a919ecb15e5c3645c2700ae339560148c9c1e02";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

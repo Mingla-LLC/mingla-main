@@ -5,7 +5,7 @@
 // opens a short form: what, assignees, watchers, due, Files link and "Host
 // can see this task on their plan" (off by default, D4). Mingla writes the
 // card's instructions and done means (C-6); staff can edit them on the card.
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 import { Button } from "../ui/Button";
 import { SideLink } from "../ui/PanelStack";
@@ -67,7 +67,11 @@ export function HostToDoRow({ card, today = todayIso() }) {
   );
 }
 
-export function HostToDoSection({ record, read, online, onAdded }) {
+/**
+ * `prefill` (#4270 W7, Brand groups): { key, title }; a new key opens the
+ * Add work item form with that title (Host can see stays off).
+ */
+export function HostToDoSection({ record, read, online, onAdded, prefill = null }) {
   const { addToast } = useToast();
   const directory = usePeopleDirectory();
   const team = directory.people;
@@ -91,6 +95,12 @@ export function HostToDoSection({ record, read, online, onAdded }) {
   const fid = (key) => `host-todo-${id}-${key}`;
 
   const open = () => { setForm(emptyForm(defaultOwners)); setTried(false); setRefused(null); setAdding(true); };
+  const prefillKey = prefill?.key || "";
+  useEffect(() => {
+    if (!prefillKey || !prefill) return;
+    setForm({ ...emptyForm(defaultOwners), title: String(prefill.title || "").slice(0, 160) });
+    setTried(false); setRefused(null); setAdding(true);
+  }, [prefillKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const submit = async (e) => {
     e.preventDefault();
     setTried(true);

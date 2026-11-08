@@ -48,7 +48,7 @@ export function CardDrafts({ card }) {
   );
 }
 
-export function CardWording({ card, onChanged }) {
+export function CardWording({ card, onChanged, onOpenSide = null }) {
   const { access } = useAuth();
   const canTell = isFullAdmin(access);
   const show = canTell && isRoadmapApproval(card) && isTagged(card);
@@ -64,7 +64,7 @@ export function CardWording({ card, onChanged }) {
       ) : read.error ? (
         <AlertCard variant="error" title="Couldn’t load the wording">{opsErrorWords(read.error)}</AlertCard>
       ) : wording ? (
-        <WordingCard card={wording} myName={myName} onDone={() => { read.refetch({ quiet: true }); onChanged?.(); }} />
+        <WordingCard card={wording} myName={myName} onDone={() => { read.refetch({ quiet: true }); onChanged?.(); }} onOpenSide={onOpenSide} />
       ) : (
         <p className="text-[13px] text-[var(--color-text-secondary)]">The drafted wording is not waiting any more.</p>
       )}

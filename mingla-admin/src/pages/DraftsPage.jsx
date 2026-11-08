@@ -9,6 +9,7 @@ import { Segmented } from "../components/crm/fields";
 import { DraftCard } from "../components/drafts/DraftCard";
 import { DraftQueueSkeleton } from "../components/drafts/DraftQueueSkeleton";
 import { useHashQuery } from "../hooks/useHashQuery";
+import { PageLink } from "../components/ui/PanelStack";
 import { useOnline } from "../hooks/useCrmPipeline";
 import { useDrafts } from "../hooks/useDrafts";
 import { announceDraftMutation, useDraftCountValue } from "../hooks/useDraftCounts";
@@ -43,7 +44,10 @@ function paramsFrom(search) {
 // in local state, and shows only the message drafts (spend, publish and
 // roadmap wording open from their Work cards). Nothing it could do is lost:
 // edit, copy, mark sent, discard, restore and undo all stay here.
-export function DraftsPage({ embedded = null }) {
+// #4270 W7 rework (D-1): `onOpenSide` is set when this shows inside the Brand
+// group panel; "Open My agent" (another page, no panel of its own) is not
+// shown there. Without it nothing changes.
+export function DraftsPage({ embedded = null, onOpenSide = null }) {
   const [hashSearch, setHashSearch] = useHashQuery("drafts");
   const [localSearch, setLocalSearch] = useState(() => (embedded ? String(embedded.search || "") : ""));
   const search = embedded ? localSearch : hashSearch;
@@ -189,11 +193,11 @@ export function DraftsPage({ embedded = null }) {
       {queue.loading || (!online && queue.error && queue.drafts.length === 0) ? <DraftQueueSkeleton still={!online || reduced} /> : queue.error ? (
         <AlertCard variant="error" title="Couldn’t load your drafts" action={<Button type="button" variant="secondary" className="min-h-11" onClick={() => queue.refetch()}>Try again</Button>}>{draftErrorWords(queue.error)}</AlertCard>
       ) : notFound ? (
-        <SectionCard><h2 ref={emptyHeadingRef} tabIndex={-1} className="text-[15px] font-semibold text-[var(--color-text-primary)]">That draft isn’t here.</h2><p className="mt-2 text-[13px] text-[var(--color-text-secondary)]">It may have been removed, or this link is not available to you.</p>{embedded ? <Button type="button" variant="secondary" className="mt-4 min-h-11" onClick={() => setSearch("")}>Show all my drafts</Button> : <a href="#/drafts" className="mt-4 inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-semibold text-[var(--color-brand-700)]">Back to drafts</a>}</SectionCard>
+        <SectionCard><h2 ref={emptyHeadingRef} tabIndex={-1} className="text-[15px] font-semibold text-[var(--color-text-primary)]">That draft isn’t here.</h2><p className="mt-2 text-[13px] text-[var(--color-text-secondary)]">It may have been removed, or this link is not available to you.</p>{embedded ? <Button type="button" variant="secondary" className="mt-4 min-h-11" onClick={() => setSearch("")}>Show all my drafts</Button> : <PageLink href="#/drafts" onOpenSide={onOpenSide} hide className="mt-4 inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-semibold text-[var(--color-brand-700)]">Back to drafts</PageLink>}</SectionCard>
       ) : queue.drafts.length === 0 && caughtUp && query.state === "waiting" && !filtered && !draftNeededShown ? (
         <SectionCard><h2 ref={emptyHeadingRef} tabIndex={-1} className="text-[15px] font-semibold text-[var(--color-text-primary)]">You’re all caught up.</h2><p className="mt-2 text-[13px] text-[var(--color-text-secondary)]">Nothing needs your OK right now: no messages to send, no money to spend, nothing to publish.</p></SectionCard>
       ) : queue.drafts.length === 0 ? (
-        <SectionCard><h2 ref={emptyHeadingRef} tabIndex={-1} className="text-[15px] font-semibold text-[var(--color-text-primary)]">{emptyTitle}</h2><p className="mt-2 text-[13px] text-[var(--color-text-secondary)]">{emptyCopy}</p>{query.state === "waiting" && !filtered ? <a href="#/agent" className="mt-4 inline-flex min-h-11 items-center rounded-lg bg-[var(--color-brand-800)] px-4 text-sm font-semibold text-white hover:bg-[var(--color-brand-900)]">Open My agent</a> : <Button type="button" variant="secondary" className="mt-4 min-h-11" onClick={() => filtered ? (() => { const p = new URLSearchParams(search); p.delete("record"); setSearch(p.toString()); })() : selectState("waiting")}>{filtered ? "Clear filter" : "Show waiting"}</Button>}</SectionCard>
+        <SectionCard><h2 ref={emptyHeadingRef} tabIndex={-1} className="text-[15px] font-semibold text-[var(--color-text-primary)]">{emptyTitle}</h2><p className="mt-2 text-[13px] text-[var(--color-text-secondary)]">{emptyCopy}</p>{query.state === "waiting" && !filtered ? <PageLink href="#/agent" onOpenSide={onOpenSide} hide className="mt-4 inline-flex min-h-11 items-center rounded-lg bg-[var(--color-brand-800)] px-4 text-sm font-semibold text-white hover:bg-[var(--color-brand-900)]">Open My agent</PageLink> : <Button type="button" variant="secondary" className="mt-4 min-h-11" onClick={() => filtered ? (() => { const p = new URLSearchParams(search); p.delete("record"); setSearch(p.toString()); })() : selectState("waiting")}>{filtered ? "Clear filter" : "Show waiting"}</Button>}</SectionCard>
       ) : (
         <>
           <div className={embedded ? "grid min-w-0 grid-cols-1 gap-4" : "grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-2"}>
