@@ -15,34 +15,73 @@ export class LinksStripsError extends Error {
   }
 }
 
-/** The error a failed RPC becomes: stale, not_ready, forbidden or request_failed. */
+// Server refusals from the admin_links_* RPCs (migration 20280501004318):
+// each becomes plain copy and, where it names a form field, that field.
+const SERVER_REFUSALS = Object.freeze({
+  links_title_invalid: { field: "title", message: "Add a title of up to 60 characters." },
+  links_url_invalid: { field: "url", message: "Enter a web link like usemingla.com/host." },
+  links_shows_on_invalid: { field: "showsOn", message: "Pick today or a later day." },
+  links_blog_post_invalid: { field: "blog", message: "Choose a published blog post." },
+  links_city_invalid: { field: "city", message: "Pick a city from the list." },
+  links_label_invalid: { field: "label", message: "Pick an option from the list." },
+  links_opens_invalid: { field: "opens", message: "Pick an option from the list." },
+});
+
+const STALE_MESSAGE = "The list changed. It's been refreshed.";
+
+function isNetworkFailure(error) {
+  if (error?.code) return false;
+  const message = String(error?.message || "");
+  return error?.name === "TypeError" || /failed to fetch|network ?error|load failed|fetch failed|networkerror/i.test(message);
+}
+
+/**
+ * The error a failed RPC becomes. code is one of: a links_* refusal (with its
+ * field), stale (stale order or a strip that is gone), not_ready, forbidden,
+ * network, or request_failed.
+ */
 export function toLinksStripsError(error) {
   const message = String(error?.message || "links_strips_request_failed");
   const detail = error?.details || error?.detail || null;
-  if (error?.code === "PT409" || /stale/i.test(message)) return new LinksStripsError("stale", message, { detail });
+  const reason = (message.match(/\blinks_[a-z_]+\b/) || [])[0] || null;
+  if (reason && Object.hasOwn(SERVER_REFUSALS, reason)) {
+    const result = new LinksStripsError(reason, message, { detail });
+    result.field = SERVER_REFUSALS[reason].field;
+    return result;
+  }
+  if (error?.code === "PT409" || reason === "links_strips_stale" || reason === "links_strip_not_found") {
+    return new LinksStripsError("stale", message, { detail });
+  }
+  if (reason === "links_forbidden" || ["42501", "PT403"].includes(error?.code)) {
+    return new LinksStripsError("forbidden", message, { detail });
+  }
   if (["42P01", "42883", "PGRST202", "PGRST204", "PGRST205"].includes(error?.code)) {
     return new LinksStripsError("not_ready", message, { detail });
   }
-  if (["42501", "PT403"].includes(error?.code) || /forbidden|not_authorized|permission/i.test(message)) {
-    return new LinksStripsError("forbidden", message, { detail });
-  }
+  if (isNetworkFailure(error)) return new LinksStripsError("network", message, { detail });
   return new LinksStripsError(error?.code || "request_failed", message, { detail });
 }
 
 /** Plain words for a Links page error, for toasts and inline errors. */
 export function linksStripsErrorMessage(error) {
+  if (error?.code && Object.hasOwn(SERVER_REFUSALS, error.code)) return SERVER_REFUSALS[error.code].message;
   switch (error?.code) {
     case "stale":
-      return "Someone else changed the strips at the same time. The list has been reloaded; try again.";
+      return STALE_MESSAGE;
     case "not_ready":
       return "The Links page strips aren't switched on yet: the database migration must be applied first.";
     case "forbidden":
-      return "Your account can't change the Links page. Ask an Admin for Support access.";
+      return "You don't have access to edit the links page. Ask an Admin for Support access.";
+    case "network":
+      return "The server couldn't be reached. Check your connection and try again.";
     default:
-      return error?.message && !/^[a-z0-9_]+$/.test(error.message)
-        ? error.message
-        : "The server didn't accept that. Check your connection and try again.";
+      return "The server didn't accept that change. Try again, and tell engineering if it keeps happening.";
   }
+}
+
+/** The form field a server refusal names, or null. */
+export function linksStripsErrorField(error) {
+  return error?.code && Object.hasOwn(SERVER_REFUSALS, error.code) ? SERVER_REFUSALS[error.code].field : null;
 }
 
 export async function listLinksStrips() {

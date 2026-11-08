@@ -16,7 +16,7 @@ import {
   showsOnOptions, stripDayLabel, stripMetaLine, stripOpensSummary, stripRows, stripSaveArgs, validateStripDraft,
 } from "../../lib/linksStrips";
 import {
-  deleteLinksStrip, linksStripsErrorMessage, listLinksStrips, listPublishedBlogPostsForLinks,
+  deleteLinksStrip, linksStripsErrorField, linksStripsErrorMessage, listLinksStrips, listPublishedBlogPostsForLinks,
   reorderLinksStrips, saveLinksStrip,
 } from "../../services/linksStripsService";
 
@@ -179,7 +179,11 @@ export function LinksPagePanel() {
       resetForm();
       await load();
     } catch (error) {
-      setFormError({ field: null, message: linksStripsErrorMessage(error) });
+      const field = linksStripsErrorField(error);
+      setFormError({ field, message: linksStripsErrorMessage(error) });
+      if (field) fieldRefs.current[field]?.focus();
+      // A strip that changed or went away meanwhile: show the server's list.
+      if (error?.code === "stale") await load();
     } finally {
       setSaving(false);
     }
@@ -212,6 +216,7 @@ export function LinksPagePanel() {
       await load();
     } catch (error) {
       addToast({ variant: "error", title: "The strip wasn't removed", description: linksStripsErrorMessage(error) });
+      if (error?.code === "stale") await load();
     } finally {
       setRemovingId(null);
     }
@@ -245,8 +250,12 @@ export function LinksPagePanel() {
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label htmlFor="links-strip-city" className={LABEL}>City</label>
-              <select id="links-strip-city" value={draft.citySlug} onChange={(e) => update({ citySlug: e.target.value })} className={fieldClass("city")}>
+              <select id="links-strip-city" ref={(node) => { fieldRefs.current.city = node; }} value={draft.citySlug} onChange={(e) => update({ citySlug: e.target.value })} className={fieldClass("city")}>
                 <option value="">{EVERY_LIVE_CITY_LABEL}</option>
+                {draft.citySlug && !LINKS_CITIES.some((city) => city.slug === draft.citySlug) ? (
+                  // An edited strip keeps a city the admin list does not know yet.
+                  <option value={draft.citySlug}>{`${draft.citySlug} (not in the list)`}</option>
+                ) : null}
                 {LINKS_CITIES.map((city) => <option key={city.slug} value={city.slug}>{city.name}</option>)}
               </select>
             </div>

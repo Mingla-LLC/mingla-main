@@ -17,9 +17,20 @@ export const LINKS_STRIP_OPENS = Object.freeze([
   Object.freeze({ id: "host", label: "Host app" }),
 ]);
 
-// The design's rule: a web link looks like domain.tld or domain.tld/path,
-// with an optional http(s):// that is stripped before it is stored.
-const WEB_LINK_PATTERN = /^[\w.-]+\.[a-z]{2,}(\/\S*)?$/i;
+// The server's rule, exactly (admin_links_strip_save in
+// supabase/migrations/20280501004318_issue_4318_links_page.sql): after an
+// optional http(s):// is stripped, a host of letters, digits and inner
+// hyphens per label, a 2-63 letter TLD, an optional port, then any path,
+// query or fragment; at most 500 characters and no other scheme.
+const WEB_LINK_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,63}(:[0-9]{1,5})?([/?#]\S*)?$/i;
+const OTHER_SCHEME = /^[a-z][a-z0-9+.-]*:\/\//i;
+const WEB_LINK_MAX = 500;
+
+/** True when the server will accept this web link. */
+export function isValidStripUrl(url) {
+  const value = normalizeStripUrl(url);
+  return value.length > 0 && value.length <= WEB_LINK_MAX && !OTHER_SCHEME.test(value) && WEB_LINK_PATTERN.test(value);
+}
 
 export const LINKS_STRIP_MESSAGES = Object.freeze({
   title: "Add a title so people know what the strip is.",
@@ -51,7 +62,7 @@ export function validateStripDraft(draft) {
   if (!LINKS_STRIP_LABELS.includes(value.label)) return { field: "label", message: LINKS_STRIP_MESSAGES.label };
   if (!LINKS_STRIP_OPENS.some((option) => option.id === value.opens)) return { field: "opens", message: LINKS_STRIP_MESSAGES.opens };
   if (value.opens === "blog" && !value.blogPostId) return { field: "blog", message: LINKS_STRIP_MESSAGES.blog };
-  if (value.opens === "web" && !WEB_LINK_PATTERN.test(normalizeStripUrl(value.url))) {
+  if (value.opens === "web" && !isValidStripUrl(value.url)) {
     return { field: "url", message: LINKS_STRIP_MESSAGES.url };
   }
   return null;
