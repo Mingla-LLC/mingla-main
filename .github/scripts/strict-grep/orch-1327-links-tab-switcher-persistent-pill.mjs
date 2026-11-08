@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// MINGLA-INVARIANT: I-4318-LINKS-FILTER-CHIPS | issue #4318 | The /links filter chips are labelled toggle buttons (All, Events, Trips, Experiences) that never filter the admin strips, and the retired tab model never returns.
+// MINGLA-INVARIANT: I-4318-LINKS-FILTER-CHIPS | issue #4318 | The /links filter chips are labelled toggle buttons (All, Events, Trips, Experiences) that never filter the admin strips, and the old tab switcher never comes back.
 /**
  * ORCH-1327 [links tab switcher swing] → #4318 [links city week calendar].
  *
