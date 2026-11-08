@@ -200,21 +200,25 @@ const I4137_PREDICATE_BLOCK = [
 const I4137_NAMES = [...I4137_PUBLIC_SIGNATURES, ...I4137_PREDICATE_SIGNATURES]
   .map((signature) => signature.slice(0, signature.indexOf("(") + 1));
 
-// #4318 — eleventh binding amendment. Exactly ONE intended-public reader: the
-// /links week of public listings. It sits directly after the #4137 Blog
-// preview reader, returns a column allow-list only (no ids, prices, buyers or
-// authoring fields; a withheld address gives no place text and a one-decimal
-// point) and advances the audited intended-public count by exactly one.
+// #4318 — eleventh binding amendment. Exactly TWO intended-public readers:
+// the /links week of public listings, and the quiet-week places near a city
+// centre. They sit directly after the #4137 Blog preview reader, return a
+// column allow-list only (no ids beyond the place id, prices, buyers,
+// addresses or authoring fields) and advance the intended-public count by two.
 const I4318_OLD_HEADER = I4137_NEW_HEADER;
 const I4318_NEW_HEADER =
-  "# Signature count: 205 (intended-public 32, internally-gated 108, predicate/read-helper 62, PostGIS 3).";
+  "# Signature count: 206 (intended-public 33, internally-gated 108, predicate/read-helper 62, PostGIS 3).";
 const I4318_ANCHOR = I4137_PUBLIC_SIGNATURES[1];
 const I4318_SIGNATURE = "links_page_week()";
+const I4318_PLACES_SIGNATURE = "links_page_places(p_lat double precision, p_lng double precision, p_radius_km integer, p_limit integer)";
 const I4318_BLOCK = [
   "# #4318: the /links week: public, published, upcoming listings for the next seven days under the discover_v2_items eligibility rule; column allow-list only, no ids, buyers or authoring fields, a withheld address gives no place text and a one-decimal point, capped at 500 rows.",
   I4318_SIGNATURE,
+  "# #4318: the /links quiet week: at most 6 Explorer-servable, operational places with a stored thumb within 100 km of a point the page passes; name, category, city label, point and bucket-relative thumb only, no address or private column.",
+  I4318_PLACES_SIGNATURE,
 ].join("\n");
 const I4318_NAME = "links_page_week(";
+const I4318_PLACES_NAME = "links_page_places(";
 // The count header every later amendment leaves in place.
 const CURRENT_HEADER = I4318_NEW_HEADER;
 
@@ -410,12 +414,13 @@ const expectedAfter4137 = (base) => {
 const expectedAfter4318 = (base) => {
   if (
     countExactLine(base, I4318_SIGNATURE) === 1 &&
+    countExactLine(base, I4318_PLACES_SIGNATURE) === 1 &&
     base.includes(`${I4318_ANCHOR}\n${I4318_BLOCK}\n`) &&
     countExactLine(base, I4318_NEW_HEADER) === 1
   ) {
     return base;
   }
-  if (base.includes(I4318_NAME) || base.includes("# #4318:")) {
+  if (base.includes(I4318_NAME) || base.includes(I4318_PLACES_NAME) || base.includes("# #4318:")) {
     throw new Error("base contains a partial or lookalike #4318 /links reader");
   }
   if (countExactLine(base, I4318_OLD_HEADER) !== 1) {
@@ -454,7 +459,7 @@ export const validate = ({ baseAllowlist, currentAllowlist }) => {
   }
   if (expected && currentAllowlist !== expected) {
     failures.push(
-      "allowlist delta is not the exact #2986 pair/comments/header correction plus the exact #3426 reader, #3281 R3 slot reader, #3697 pixel-mode reader, #3682 aggregate follower-count readers, #3872 R1 display readers, #4111 brand-page enquiry readers, #3872 R3/R4 public creator, Local and referral readers, #2829 W4 public trip-guide reader, #4137 Blog readers, and #4318 /links week reader",
+      "allowlist delta is not the exact #2986 pair/comments/header correction plus the exact #3426 reader, #3281 R3 slot reader, #3697 pixel-mode reader, #3682 aggregate follower-count readers, #3872 R1 display readers, #4111 brand-page enquiry readers, #3872 R3/R4 public creator, Local and referral readers, #2829 W4 public trip-guide reader, #4137 Blog readers, and #4318 /links week and places readers",
     );
   }
   for (const signature of [
@@ -470,6 +475,7 @@ export const validate = ({ baseAllowlist, currentAllowlist }) => {
     ...I4137_PUBLIC_SIGNATURES,
     ...I4137_PREDICATE_SIGNATURES,
     I4318_SIGNATURE,
+    I4318_PLACES_SIGNATURE,
   ]) {
     if (countExactLine(currentAllowlist, signature) !== 1) failures.push(`signature must occur exactly once: ${signature}`);
   }
@@ -624,6 +630,9 @@ const runSelfTest = () => {
     ["#4318 lookalike overload", `${head}links_page_week(p_debug boolean)\n`, false],
     ["#4318 moved away from its anchor", head.replace(`${I4318_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${I4318_BLOCK}\n`), false],
     ["#4318 plus a forged neighbour", head.replace(`${I4318_BLOCK}\n`, `${I4318_BLOCK}\nforged_neighbour_function()\n`), false],
+    ["#4318 places reader dropped", head.replace(`\n${I4318_PLACES_SIGNATURE}\n`, "\n"), false],
+    ["#4318 places signature changed", head.replace(I4318_PLACES_SIGNATURE, "links_page_places(lat double precision, lng double precision)"), false],
+    ["#4318 places lookalike overload", `${head}links_page_places(p_lat double precision, p_lng double precision)\n`, false],
     ["#4318 count not corrected", head.replace(CURRENT_HEADER, I4318_OLD_HEADER), false],
   ];
   for (const [name, candidate, shouldPass] of cases) {
@@ -653,7 +662,7 @@ const runReal = (baseSha) => {
   const failures = validate({ baseAllowlist, currentAllowlist });
   if (failures.length) throw new Error(failures.join("\n"));
   process.stdout.write(
-    "#2986 exact allowlist pair + #3426 exact reader + #3281 R3 slot reader + #3697 pixel-mode reader + #3682 aggregate follower-count readers + #3872 R1 display readers + #4111 brand-page enquiry readers + #3872 R3/R4 public readers + #2829 W4 public trip-guide reader + #4137 Blog readers + #4318 /links week reader PASS\n",
+    "#2986 exact allowlist pair + #3426 exact reader + #3281 R3 slot reader + #3697 pixel-mode reader + #3682 aggregate follower-count readers + #3872 R1 display readers + #4111 brand-page enquiry readers + #3872 R3/R4 public readers + #2829 W4 public trip-guide reader + #4137 Blog readers + #4318 /links week and places readers PASS\n",
   );
 };
 

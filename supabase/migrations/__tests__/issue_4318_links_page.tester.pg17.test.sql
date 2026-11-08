@@ -21,6 +21,9 @@
 --    cancelled, a soft-deleted brand, private/hidden/discover/draft/ended
 --    listings, a sold-out date, and no column or private address beyond the
 --    contract.
+-- PL links_page_places(): closed, inactive, unservable, deleted and
+--    photo-less places stay hidden; limit and radius are capped; bad
+--    coordinates return nothing; no address or private column leaks.
 -- Runs after the full migration replay; every fixture rolls back.
 BEGIN;
 
@@ -90,14 +93,14 @@ UPDATE public.blog_posts SET take_down_mode = 'at', take_down_at = now() - inter
 
 -- ── Strips written as the owner, for the read attacks ────────────────────
 -- Other suites' rows are irrelevant: everything below filters on these ids.
-INSERT INTO public.links_strips (id, city_slug, shows_on, title, label, opens, url, blog_post_id, position, is_published, created_by) VALUES
-  ('4318a000-0000-4000-9000-000000000001', 'lagos', (now() AT TIME ZONE 'utc')::date, 'T live', 'New', 'host', NULL, NULL, 1, true, '4318a000-0000-4000-a000-000000000002'),
-  ('4318a000-0000-4000-9000-000000000002', 'lagos', (now() AT TIME ZONE 'utc')::date + 3, 'T unpublished', 'New', 'host', NULL, NULL, 2, false, '4318a000-0000-4000-a000-000000000002'),
-  ('4318a000-0000-4000-9000-000000000003', NULL, (now() AT TIME ZONE 'utc')::date - 30, 'T long expired', 'New', 'explorer', NULL, NULL, 3, true, '4318a000-0000-4000-a000-000000000002'),
-  ('4318a000-0000-4000-9000-000000000004', NULL, (now() AT TIME ZONE 'utc')::date + 1, 'T deleted post', 'Featured', 'blog', NULL, '4318a000-0000-4000-b000-000000000003', 4, true, NULL),
-  ('4318a000-0000-4000-9000-000000000005', NULL, (now() AT TIME ZONE 'utc')::date + 1, 'T scheduled post', 'Featured', 'blog', NULL, '4318a000-0000-4000-b000-000000000004', 5, true, NULL),
-  ('4318a000-0000-4000-9000-000000000006', NULL, (now() AT TIME ZONE 'utc')::date + 1, 'T taken-down post', 'Featured', 'blog', NULL, '4318a000-0000-4000-b000-000000000005', 6, true, NULL),
-  ('4318a000-0000-4000-9000-000000000007', NULL, (now() AT TIME ZONE 'utc')::date + 1, 'T public post', 'Featured', 'blog', NULL, '4318a000-0000-4000-b000-000000000001', 7, true, NULL);
+INSERT INTO public.links_strips (id, shows_on, title, label, opens, url, blog_post_id, position, is_published, created_by) VALUES
+  ('4318a000-0000-4000-9000-000000000001', (now() AT TIME ZONE 'utc')::date, 'T live', 'New', 'host', NULL, NULL, 1, true, '4318a000-0000-4000-a000-000000000002'),
+  ('4318a000-0000-4000-9000-000000000002', (now() AT TIME ZONE 'utc')::date + 3, 'T unpublished', 'New', 'host', NULL, NULL, 2, false, '4318a000-0000-4000-a000-000000000002'),
+  ('4318a000-0000-4000-9000-000000000003', (now() AT TIME ZONE 'utc')::date - 30, 'T long expired', 'New', 'explorer', NULL, NULL, 3, true, '4318a000-0000-4000-a000-000000000002'),
+  ('4318a000-0000-4000-9000-000000000004', (now() AT TIME ZONE 'utc')::date + 1, 'T deleted post', 'Featured', 'blog', NULL, '4318a000-0000-4000-b000-000000000003', 4, true, NULL),
+  ('4318a000-0000-4000-9000-000000000005', (now() AT TIME ZONE 'utc')::date + 1, 'T scheduled post', 'Featured', 'blog', NULL, '4318a000-0000-4000-b000-000000000004', 5, true, NULL),
+  ('4318a000-0000-4000-9000-000000000006', (now() AT TIME ZONE 'utc')::date + 1, 'T taken-down post', 'Featured', 'blog', NULL, '4318a000-0000-4000-b000-000000000005', 6, true, NULL),
+  ('4318a000-0000-4000-9000-000000000007', (now() AT TIME ZONE 'utc')::date + 1, 'T public post', 'Featured', 'blog', NULL, '4318a000-0000-4000-b000-000000000001', 7, true, NULL);
 
 -- ═══ D: nobody writes the table directly ═════════════════════════════════
 SET LOCAL ROLE anon;
@@ -142,7 +145,7 @@ SET LOCAL ROLE authenticated;
 DO $test$
 BEGIN
   IF pg_temp.t4318_expect('SELECT public.admin_links_strips_list()', '42501') <> 'links_forbidden'
-     OR pg_temp.t4318_expect($$SELECT public.admin_links_strip_save(NULL, NULL, current_date, 'x', 'New', 'host', NULL, NULL)$$, '42501') <> 'links_forbidden'
+     OR pg_temp.t4318_expect($$SELECT public.admin_links_strip_save(NULL, current_date, 'x', 'New', 'host', NULL, NULL)$$, '42501') <> 'links_forbidden'
      OR pg_temp.t4318_expect($$SELECT public.admin_links_strip_delete('4318a000-0000-4000-9000-000000000001')$$, '42501') <> 'links_forbidden' THEN
     RAISE EXCEPTION 'D: a disabled Support member got past the guard';
   END IF;
@@ -206,7 +209,7 @@ BEGIN
     '4318a000-0000-4000-b000-000000000004', '4318a000-0000-4000-b000-000000000005',
     '4318a000-0000-4000-b000-0000000000ff', NULL]::uuid[] LOOP
     IF pg_temp.t4318_expect(format(
-         $$SELECT public.admin_links_strip_save(NULL, NULL, current_date, 'Read this', 'New', 'blog', NULL, %L)$$, v_post),
+         $$SELECT public.admin_links_strip_save(NULL, current_date, 'Read this', 'New', 'blog', NULL, %L)$$, v_post),
          'P0001') <> 'links_blog_post_invalid' THEN
       RAISE EXCEPTION 'B: a blog strip was saved on post %', v_post;
     END IF;
@@ -214,13 +217,13 @@ BEGIN
 
   -- Editing a strip so it points at a hidden post is refused too.
   IF pg_temp.t4318_expect(
-       $$SELECT public.admin_links_strip_save('4318a000-0000-4000-9000-000000000007', NULL, current_date, 'Read this', 'New', 'blog', NULL, '4318a000-0000-4000-b000-000000000004')$$,
+       $$SELECT public.admin_links_strip_save('4318a000-0000-4000-9000-000000000007', current_date, 'Read this', 'New', 'blog', NULL, '4318a000-0000-4000-b000-000000000004')$$,
        'P0001') <> 'links_blog_post_invalid' THEN
     RAISE EXCEPTION 'B: a strip was re-pointed at a scheduled post';
   END IF;
 
   -- A real post: saved, then the post is hard-deleted below.
-  v_row := public.admin_links_strip_save(NULL, NULL, (now() AT TIME ZONE 'utc')::date, 'Doomed post', 'New', 'blog',
+  v_row := public.admin_links_strip_save(NULL, (now() AT TIME ZONE 'utc')::date, 'Doomed post', 'New', 'blog',
                                          'usemingla.com/ignored', '4318a000-0000-4000-b000-000000000006');
   IF v_row.url IS NOT NULL OR v_row.blog_post_id <> '4318a000-0000-4000-b000-000000000006' THEN
     RAISE EXCEPTION 'B: a blog strip kept a URL or lost its post: %', to_jsonb(v_row);
@@ -278,7 +281,7 @@ BEGIN
     'usemingla.com@evil.example.com', 'usemingla.com\@evil.example.com', '   ', ''
   ] LOOP
     IF pg_temp.t4318_expect(format(
-         $$SELECT public.admin_links_strip_save(NULL, NULL, current_date, 'Web', 'New', 'web', %L, NULL)$$, v_bad),
+         $$SELECT public.admin_links_strip_save(NULL, current_date, 'Web', 'New', 'web', %L, NULL)$$, v_bad),
          'P0001') <> 'links_url_invalid' THEN
       RAISE EXCEPTION 'U: % was accepted', v_bad;
     END IF;
@@ -290,14 +293,14 @@ BEGIN
     ('usemingla.com/links?src=bio#top', 'usemingla.com/links?src=bio#top'),
     ('blog.usemingla.com/a-b_c/%20', 'blog.usemingla.com/a-b_c/%20')
   ) AS t(given, stored) LOOP
-    v_row := public.admin_links_strip_save(NULL, NULL, (now() AT TIME ZONE 'utc')::date, 'Web', 'New', 'web', v_case.given, NULL);
+    v_row := public.admin_links_strip_save(NULL, (now() AT TIME ZONE 'utc')::date, 'Web', 'New', 'web', v_case.given, NULL);
     IF v_row.url IS DISTINCT FROM v_case.stored THEN
       RAISE EXCEPTION 'U: % stored as %, want %', v_case.given, v_row.url, v_case.stored;
     END IF;
   END LOOP;
 
   -- An app strip never stores a URL, whatever is sent.
-  v_row := public.admin_links_strip_save(NULL, NULL, (now() AT TIME ZONE 'utc')::date, 'App', 'New', 'explorer', 'javascript:alert(1)', '4318a000-0000-4000-b000-000000000001');
+  v_row := public.admin_links_strip_save(NULL, (now() AT TIME ZONE 'utc')::date, 'App', 'New', 'explorer', 'javascript:alert(1)', '4318a000-0000-4000-b000-000000000001');
   IF v_row.url IS NOT NULL OR v_row.blog_post_id IS NOT NULL THEN
     RAISE EXCEPTION 'U: an app strip kept a URL or post: %', to_jsonb(v_row);
   END IF;
@@ -338,15 +341,15 @@ BEGIN
     E'\t', E'\n\n', E' \r\n ', E'\u00a0', E'\u3000', E'\t\u00a0 '
   ] LOOP
     IF pg_temp.t4318_expect(format(
-         $$SELECT public.admin_links_strip_save(NULL, NULL, current_date, %L, 'New', 'host', NULL, NULL)$$, v_bad),
+         $$SELECT public.admin_links_strip_save(NULL, current_date, %L, 'New', 'host', NULL, NULL)$$, v_bad),
          'P0001') <> 'links_title_invalid' THEN
       RAISE EXCEPTION 'T: title % was accepted', to_jsonb(v_bad);
     END IF;
   END LOOP;
-  PERFORM pg_temp.t4318_expect($$SELECT public.admin_links_strip_save(NULL, NULL, current_date, NULL, 'New', 'host', NULL, NULL)$$, 'P0001');
+  PERFORM pg_temp.t4318_expect($$SELECT public.admin_links_strip_save(NULL, current_date, NULL, 'New', 'host', NULL, NULL)$$, 'P0001');
 
   -- Exactly 60 characters, counted as characters not bytes, after trimming.
-  v_row := public.admin_links_strip_save(NULL, NULL, (now() AT TIME ZONE 'utc')::date, '   ' || repeat('é', 60) || '   ', 'New', 'host', NULL, NULL);
+  v_row := public.admin_links_strip_save(NULL, (now() AT TIME ZONE 'utc')::date, '   ' || repeat('é', 60) || '   ', 'New', 'host', NULL, NULL);
   IF v_row.title <> repeat('é', 60) THEN
     RAISE EXCEPTION 'T: a 60-character title was not stored trimmed: %', v_row.title;
   END IF;
@@ -397,7 +400,7 @@ BEGIN
   END IF;
 
   -- A new strip goes above position 1, so the page and the list agree.
-  PERFORM public.admin_links_strip_save(NULL, 'paris', (now() AT TIME ZONE 'utc')::date, 'Newest', 'New', 'host', NULL, NULL);
+  PERFORM public.admin_links_strip_save(NULL, (now() AT TIME ZONE 'utc')::date, 'Newest', 'New', 'host', NULL, NULL);
   IF (SELECT strip.title FROM public.admin_links_strips_list() strip ORDER BY strip.position, strip.created_at, strip.id LIMIT 1) <> 'Newest' THEN
     RAISE EXCEPTION 'O: a strip saved after a reorder is not on top';
   END IF;
@@ -414,7 +417,7 @@ DO $test$
 DECLARE
   v_row public.links_strips;
 BEGIN
-  v_row := public.admin_links_strip_save(NULL, NULL, (now() AT TIME ZONE 'utc')::date, 'First ever', 'New', 'host', NULL, NULL);
+  v_row := public.admin_links_strip_save(NULL, (now() AT TIME ZONE 'utc')::date, 'First ever', 'New', 'host', NULL, NULL);
   IF v_row.position <> 0 THEN RAISE EXCEPTION 'O: the first strip on an empty page got position %', v_row.position; END IF;
 END
 $test$;
@@ -430,7 +433,7 @@ DECLARE
   v_src text;
 BEGIN
   FOREACH v_fn IN ARRAY ARRAY[
-    'public.admin_links_strip_save(uuid,text,date,text,text,text,text,uuid)',
+    'public.admin_links_strip_save(uuid,date,text,text,text,text,uuid)',
     'public.admin_links_strip_delete(uuid)',
     'public.admin_links_strips_reorder(uuid[])'] LOOP
     SELECT prosrc INTO v_src FROM pg_proc WHERE oid = v_fn::regprocedure;
@@ -624,12 +627,115 @@ BEGIN
     RAISE EXCEPTION 'W: links_page_week result drifted: %', pg_get_function_result('public.links_page_week()'::regprocedure);
   END IF;
   IF pg_get_function_result('public.links_page_strips()'::regprocedure) <>
-     'TABLE(id uuid, city_slug text, shows_on date, title text, label text, opens text, url text, blog_slug text, "position" integer)' THEN
+     'TABLE(id uuid, shows_on date, title text, label text, opens text, url text, blog_slug text, "position" integer)' THEN
     RAISE EXCEPTION 'P: links_page_strips result drifted: %', pg_get_function_result('public.links_page_strips()'::regprocedure);
   END IF;
   IF NOT (SELECT prosecdef FROM pg_proc WHERE oid = 'public.links_page_week()'::regprocedure)
      OR (SELECT proconfig FROM pg_proc WHERE oid = 'public.links_page_week()'::regprocedure) IS DISTINCT FROM ARRAY['search_path=""'] THEN
     RAISE EXCEPTION 'W: links_page_week must be SECURITY DEFINER with an empty search_path';
+  END IF;
+END
+$test$;
+
+-- ═══ PL: links_page_places, adversarial ══════════════════════════════════
+-- Centre (-40.0, 120.0), open ocean. Every place that must stay hidden gets
+-- a huge review count, so a leak would sort to the top and be seen.
+RESET ROLE;
+INSERT INTO public.place_pool (id, google_place_id, name, address, lat, lng, city, review_count,
+  primary_type_display_name, business_status, is_active, is_servable, stored_photo_urls, thumbs_backfilled_at) VALUES
+  -- Eight good places within 40 km.
+  ('4318a000-0000-4000-8000-000000000001', 't4318-g1', 'T good 1', 'HIDDEN-ADDR g1', -40.01, 120.0, 'Oceania Test', 10, 'Cafe', 'OPERATIONAL', true, true, ARRAY['https://x.supabase.co/storage/v1/object/public/place-photos/ChIJt4318g1/0.jpg'], now()),
+  ('4318a000-0000-4000-8000-000000000002', 't4318-g2', 'T good 2', 'HIDDEN-ADDR g2', -40.02, 120.0, 'Oceania Test', 20, 'Cafe', 'OPERATIONAL', true, true, ARRAY['https://x.supabase.co/storage/v1/object/public/place-photos/ChIJt4318g2/0.jpg'], now()),
+  ('4318a000-0000-4000-8000-000000000003', 't4318-g3', 'T good 3', 'HIDDEN-ADDR g3', -40.03, 120.0, 'Oceania Test', 30, 'Cafe', 'OPERATIONAL', true, true, ARRAY['https://x.supabase.co/storage/v1/object/public/place-photos/ChIJt4318g3/0.jpg'], now()),
+  ('4318a000-0000-4000-8000-000000000004', 't4318-g4', 'T good 4', 'HIDDEN-ADDR g4', -40.04, 120.0, 'Oceania Test', 40, 'Cafe', 'OPERATIONAL', true, true, ARRAY['https://x.supabase.co/storage/v1/object/public/place-photos/ChIJt4318g4/0.jpg'], now()),
+  ('4318a000-0000-4000-8000-000000000005', 't4318-g5', 'T good 5', 'HIDDEN-ADDR g5', -40.05, 120.0, 'Oceania Test', 50, 'Cafe', 'OPERATIONAL', true, true, ARRAY['https://x.supabase.co/storage/v1/object/public/place-photos/ChIJt4318g5/0.jpg'], now()),
+  ('4318a000-0000-4000-8000-000000000006', 't4318-g6', 'T good 6', 'HIDDEN-ADDR g6', -40.06, 120.0, 'Oceania Test', 60, 'Cafe', 'OPERATIONAL', true, true, ARRAY['https://x.supabase.co/storage/v1/object/public/place-photos/ChIJt4318g6/0.jpg'], now()),
+  ('4318a000-0000-4000-8000-000000000007', 't4318-g7', 'T good 7', 'HIDDEN-ADDR g7', -40.07, 120.0, 'Oceania Test', 70, 'Cafe', 'OPERATIONAL', true, true, ARRAY['https://x.supabase.co/storage/v1/object/public/place-photos/ChIJt4318g7/0.jpg'], now()),
+  ('4318a000-0000-4000-8000-000000000008', 't4318-g8', 'T good 8', 'HIDDEN-ADDR g8', -40.08, 120.0, 'Oceania Test', 80, 'Cafe', 'OPERATIONAL', true, true, ARRAY['https://x.supabase.co/storage/v1/object/public/place-photos/ChIJt4318g8/0.jpg'], now()),
+  -- Good in every way but 150 km out: beyond the 100 km cap.
+  ('4318a000-0000-4000-8000-000000000009', 't4318-far', 'T LEAK far', 'HIDDEN-ADDR far', -41.35, 120.0, 'Oceania Test', 999999, 'Cafe', 'OPERATIONAL', true, true, ARRAY['https://x.supabase.co/storage/v1/object/public/place-photos/ChIJt4318far/0.jpg'], now()),
+  -- Closed or not public.
+  ('4318a000-0000-4000-8000-000000000011', 't4318-closed-t', 'T LEAK closed temporarily', 'HIDDEN-ADDR c1', -40.01, 120.01, 'Oceania Test', 999999, 'Cafe', 'CLOSED_TEMPORARILY', true, true, ARRAY['https://x.supabase.co/storage/v1/object/public/place-photos/ChIJt4318c1/0.jpg'], now()),
+  ('4318a000-0000-4000-8000-000000000012', 't4318-closed-p', 'T LEAK closed permanently', 'HIDDEN-ADDR c2', -40.01, 120.01, 'Oceania Test', 999999, 'Cafe', 'CLOSED_PERMANENTLY', true, true, ARRAY['https://x.supabase.co/storage/v1/object/public/place-photos/ChIJt4318c2/0.jpg'], now()),
+  ('4318a000-0000-4000-8000-000000000013', 't4318-nostatus', 'T LEAK no status', 'HIDDEN-ADDR c3', -40.01, 120.01, 'Oceania Test', 999999, 'Cafe', NULL, true, true, ARRAY['https://x.supabase.co/storage/v1/object/public/place-photos/ChIJt4318c3/0.jpg'], now()),
+  ('4318a000-0000-4000-8000-000000000014', 't4318-inactive', 'T LEAK inactive', 'HIDDEN-ADDR c4', -40.01, 120.01, 'Oceania Test', 999999, 'Cafe', 'OPERATIONAL', false, true, ARRAY['https://x.supabase.co/storage/v1/object/public/place-photos/ChIJt4318c4/0.jpg'], now()),
+  ('4318a000-0000-4000-8000-000000000015', 't4318-unservable', 'T LEAK not servable', 'HIDDEN-ADDR c5', -40.01, 120.01, 'Oceania Test', 999999, 'Cafe', 'OPERATIONAL', true, false, ARRAY['https://x.supabase.co/storage/v1/object/public/place-photos/ChIJt4318c5/0.jpg'], now()),
+  ('4318a000-0000-4000-8000-000000000016', 't4318-deleted', 'T LEAK deleted', 'HIDDEN-ADDR c6', -40.01, 120.01, 'Oceania Test', 999999, 'Cafe', 'OPERATIONAL', true, true, ARRAY['https://x.supabase.co/storage/v1/object/public/place-photos/ChIJt4318c6/0.jpg'], now()),
+  -- No usable photo.
+  ('4318a000-0000-4000-8000-000000000021', 't4318-nophoto', 'T LEAK no photo', 'HIDDEN-ADDR n1', -40.01, 120.02, 'Oceania Test', 999999, 'Cafe', 'OPERATIONAL', true, true, NULL, now()),
+  ('4318a000-0000-4000-8000-000000000022', 't4318-emptyphoto', 'T LEAK empty photo', 'HIDDEN-ADDR n2', -40.01, 120.02, 'Oceania Test', 999999, 'Cafe', 'OPERATIONAL', true, true, '{}', now()),
+  ('4318a000-0000-4000-8000-000000000023', 't4318-failedphoto', 'T LEAK failed photo', 'HIDDEN-ADDR n3', -40.01, 120.02, 'Oceania Test', 999999, 'Cafe', 'OPERATIONAL', true, true, ARRAY['__backfill_failed__'], now()),
+  ('4318a000-0000-4000-8000-000000000024', 't4318-google', 'T LEAK google photo', 'HIDDEN-ADDR n4', -40.01, 120.02, 'Oceania Test', 999999, 'Cafe', 'OPERATIONAL', true, true, ARRAY['https://lh3.googleusercontent.com/places/abc=s800'], now()),
+  ('4318a000-0000-4000-8000-000000000025', 't4318-nothumb', 'T LEAK no thumb yet', 'HIDDEN-ADDR n5', -40.01, 120.02, 'Oceania Test', 999999, 'Cafe', 'OPERATIONAL', true, true, ARRAY['https://x.supabase.co/storage/v1/object/public/place-photos/ChIJt4318n5/0.jpg'], NULL),
+  ('4318a000-0000-4000-8000-000000000026', 't4318-rootphoto', 'T LEAK bucket-root photo', 'HIDDEN-ADDR n6', -40.01, 120.02, 'Oceania Test', 999999, 'Cafe', 'OPERATIONAL', true, true, ARRAY['https://x.supabase.co/storage/v1/object/public/place-photos/0.jpg'], now()),
+  ('4318a000-0000-4000-8000-000000000027', 't4318-render', 'T LEAK render URL', 'HIDDEN-ADDR n7', -40.01, 120.02, 'Oceania Test', 999999, 'Cafe', 'OPERATIONAL', true, true, ARRAY['https://x.supabase.co/storage/v1/render/image/public/place-photos/ChIJt4318n7/0.jpg?width=400'], now());
+UPDATE public.place_pool SET deleted_at = now() WHERE id = '4318a000-0000-4000-8000-000000000016';
+
+SET LOCAL ROLE anon;
+DO $test$
+DECLARE
+  v_names text[];
+  v_text text;
+  v_probe record;
+BEGIN
+  -- Limit beyond the cap gives 6, never more; the hidden places never appear.
+  SELECT array_agg(place.name ORDER BY place.name) INTO v_names FROM public.links_page_places(-40.0, 120.0, 60, 50) place;
+  IF v_names IS DISTINCT FROM ARRAY['T good 3', 'T good 4', 'T good 5', 'T good 6', 'T good 7', 'T good 8'] THEN
+    RAISE EXCEPTION 'PL: limit 50 not capped at 6 or a hidden place leaked: %', v_names;
+  END IF;
+  IF (SELECT count(*) FROM public.links_page_places(-40.0, 120.0, 60, 2147483647)) <> 6 THEN
+    RAISE EXCEPTION 'PL: max-int limit not capped';
+  END IF;
+  -- NULL limit and NULL radius fall back to the defaults (3 within 60 km).
+  IF (SELECT count(*) FROM public.links_page_places(-40.0, 120.0, NULL, NULL)) <> 3 THEN
+    RAISE EXCEPTION 'PL: NULL radius/limit did not fall back to defaults';
+  END IF;
+  -- Zero or negative limits never return more than one row.
+  IF (SELECT count(*) FROM public.links_page_places(-40.0, 120.0, 60, -5)) > 1 THEN
+    RAISE EXCEPTION 'PL: a negative limit returned many rows';
+  END IF;
+  -- Radius beyond the cap: the place 150 km out stays out.
+  IF EXISTS (SELECT 1 FROM public.links_page_places(-40.0, 120.0, 100000, 6) place WHERE place.name LIKE 'T LEAK%') THEN
+    RAISE EXCEPTION 'PL: radius not capped at 100 km';
+  END IF;
+  -- Nothing hidden appears at any reach or limit.
+  IF EXISTS (SELECT 1 FROM public.links_page_places(-40.01, 120.01, 100, 6) place WHERE place.name LIKE 'T LEAK%') THEN
+    RAISE EXCEPTION 'PL: a closed, non-public or photo-less place leaked';
+  END IF;
+
+  -- Null, NaN, infinite and out-of-range coordinates return nothing, never an error.
+  FOR v_probe IN SELECT * FROM (VALUES
+    (NULL::double precision, 120.0::double precision), (-40.0, NULL), (NULL, NULL),
+    ('NaN', 120.0), (-40.0, 'NaN'), ('Infinity', 120.0), (-40.0, '-Infinity'),
+    (91.0, 120.0), (-40.0, 181.0)
+  ) AS c(lat, lng) LOOP
+    IF (SELECT count(*) FROM public.links_page_places(v_probe.lat, v_probe.lng)) <> 0 THEN
+      RAISE EXCEPTION 'PL: coordinates % returned places', to_jsonb(v_probe);
+    END IF;
+  END LOOP;
+
+  -- No address, Google id, review count or private column, ever.
+  SELECT string_agg(to_jsonb(place)::text, ' ') INTO v_text FROM public.links_page_places(-40.0, 120.0, 100, 6) place;
+  IF v_text LIKE '%HIDDEN-ADDR%' OR v_text LIKE '%t4318-%' OR v_text LIKE '%review%' OR v_text LIKE '%render/image%' THEN
+    RAISE EXCEPTION 'PL: a private value leaked: %', v_text;
+  END IF;
+  IF v_text NOT LIKE '%"photo_path": "ChIJt4318g8/0_thumb.jpg"%' THEN
+    RAISE EXCEPTION 'PL: photo_path is not the bucket-relative thumb: %', v_text;
+  END IF;
+END
+$test$;
+RESET ROLE;
+
+DO $test$
+BEGIN
+  IF pg_get_function_result('public.links_page_places(double precision,double precision,integer,integer)'::regprocedure) <>
+     'TABLE(place_id text, name text, category text, area_label text, lat double precision, lng double precision, photo_path text)' THEN
+    RAISE EXCEPTION 'PL: links_page_places result drifted';
+  END IF;
+  IF NOT (SELECT prosecdef FROM pg_proc WHERE oid = 'public.links_page_places(double precision,double precision,integer,integer)'::regprocedure)
+     OR (SELECT proconfig FROM pg_proc WHERE oid = 'public.links_page_places(double precision,double precision,integer,integer)'::regprocedure)
+        IS DISTINCT FROM ARRAY['search_path=""'] THEN
+    RAISE EXCEPTION 'PL: links_page_places must be SECURITY DEFINER with an empty search_path';
   END IF;
 END
 $test$;

@@ -12,6 +12,8 @@
 --    scheme, and puts a new strip on top.
 -- R  admin_links_strips_reorder rejects a stale, partial or padded set (PT409)
 --    and applies an exact one.
+-- PL links_page_places(): Explorer-servable places with a thumb, review count
+--    then distance, default 60 km / 3, the bucket-relative thumb path, no address.
 -- Runs after the full migration replay; every fixture rolls back.
 BEGIN;
 
@@ -144,13 +146,13 @@ UPDATE public.blog_posts SET draft_version_id = '43180000-0000-4000-b100-0000000
   WHERE id = '43180000-0000-4000-b000-000000000002';
 
 -- ── Strips written directly (as the owner) for the read proofs ────────────
-INSERT INTO public.links_strips (id, city_slug, shows_on, title, label, opens, url, blog_post_id, position, is_published) VALUES
-  ('43180000-0000-4000-9000-000000000001', NULL, (now() AT TIME ZONE 'utc')::date + 2, 'Every city strip', 'From Mingla', 'explorer', NULL, NULL, 10, true),
-  ('43180000-0000-4000-9000-000000000002', 'raleigh-nc', (now() AT TIME ZONE 'utc')::date - 1, 'Raleigh last day', 'New', 'web', 'usemingla.com/raleigh', NULL, 20, true),
-  ('43180000-0000-4000-9000-000000000003', 'raleigh-nc', (now() AT TIME ZONE 'utc')::date - 2, 'Expired strip', 'New', 'host', NULL, NULL, 5, true),
-  ('43180000-0000-4000-9000-000000000004', 'lagos', (now() AT TIME ZONE 'utc')::date + 1, 'Unpublished strip', 'Featured', 'host', NULL, NULL, 6, false),
-  ('43180000-0000-4000-9000-000000000005', NULL, (now() AT TIME ZONE 'utc')::date + 1, 'Public blog strip', 'Featured', 'blog', NULL, '43180000-0000-4000-b000-000000000001', 30, true),
-  ('43180000-0000-4000-9000-000000000006', NULL, (now() AT TIME ZONE 'utc')::date + 1, 'Draft blog strip', 'Featured', 'blog', NULL, '43180000-0000-4000-b000-000000000002', 7, true);
+INSERT INTO public.links_strips (id, shows_on, title, label, opens, url, blog_post_id, position, is_published) VALUES
+  ('43180000-0000-4000-9000-000000000001', (now() AT TIME ZONE 'utc')::date + 2, 'Every city strip', 'From Mingla', 'explorer', NULL, NULL, 10, true),
+  ('43180000-0000-4000-9000-000000000002', (now() AT TIME ZONE 'utc')::date - 1, 'Raleigh last day', 'New', 'web', 'usemingla.com/raleigh', NULL, 20, true),
+  ('43180000-0000-4000-9000-000000000003', (now() AT TIME ZONE 'utc')::date - 2, 'Expired strip', 'New', 'host', NULL, NULL, 5, true),
+  ('43180000-0000-4000-9000-000000000004', (now() AT TIME ZONE 'utc')::date + 1, 'Unpublished strip', 'Featured', 'host', NULL, NULL, 6, false),
+  ('43180000-0000-4000-9000-000000000005', (now() AT TIME ZONE 'utc')::date + 1, 'Public blog strip', 'Featured', 'blog', NULL, '43180000-0000-4000-b000-000000000001', 30, true),
+  ('43180000-0000-4000-9000-000000000006', (now() AT TIME ZONE 'utc')::date + 1, 'Draft blog strip', 'Featured', 'blog', NULL, '43180000-0000-4000-b000-000000000002', 7, true);
 
 -- ═══ W: links_page_week ═══════════════════════════════════════════════════
 SET LOCAL ROLE anon;
@@ -259,7 +261,7 @@ BEGIN
     'UPDATE public.links_strips SET title = ''hacked''',
     'DELETE FROM public.links_strips',
     'SELECT public.admin_links_strips_list()',
-    'SELECT public.admin_links_strip_save(NULL, NULL, current_date, ''x'', ''New'', ''host'', NULL, NULL)',
+    'SELECT public.admin_links_strip_save(NULL, current_date, ''x'', ''New'', ''host'', NULL, NULL)',
     'SELECT public.admin_links_strip_delete(''43180000-0000-4000-9000-000000000001'')',
     'SELECT public.admin_links_strips_reorder(ARRAY[]::uuid[])'
   ] LOOP
@@ -285,7 +287,7 @@ DECLARE
 BEGIN
   FOREACH v_probe IN ARRAY ARRAY[
     'SELECT public.admin_links_strips_list()',
-    'SELECT public.admin_links_strip_save(NULL, NULL, current_date, ''x'', ''New'', ''host'', NULL, NULL)',
+    'SELECT public.admin_links_strip_save(NULL, current_date, ''x'', ''New'', ''host'', NULL, NULL)',
     'SELECT public.admin_links_strip_delete(''43180000-0000-4000-9000-000000000001'')',
     'SELECT public.admin_links_strips_reorder(ARRAY[''43180000-0000-4000-9000-000000000001'']::uuid[])'
   ] LOOP
@@ -320,25 +322,24 @@ DECLARE
   v_again public.links_strips;
 BEGIN
   FOR v_case IN SELECT * FROM (VALUES
-    ('Bad Slug!', v_today, 'Title', 'New', 'host', NULL, NULL::uuid, 'links_city_invalid'),
-    (NULL, v_today - 2, 'Title', 'New', 'host', NULL, NULL::uuid, 'links_shows_on_invalid'),
-    (NULL, NULL, 'Title', 'New', 'host', NULL, NULL::uuid, 'links_shows_on_invalid'),
-    (NULL, v_today, '   ', 'New', 'host', NULL, NULL::uuid, 'links_title_invalid'),
-    (NULL, v_today, repeat('x', 61), 'New', 'host', NULL, NULL::uuid, 'links_title_invalid'),
-    (NULL, v_today, 'Title', 'Hot', 'host', NULL, NULL::uuid, 'links_label_invalid'),
-    (NULL, v_today, 'Title', 'New', 'store', NULL, NULL::uuid, 'links_opens_invalid'),
-    (NULL, v_today, 'Title', 'New', 'web', NULL, NULL::uuid, 'links_url_invalid'),
-    (NULL, v_today, 'Title', 'New', 'web', 'not a url', NULL::uuid, 'links_url_invalid'),
-    (NULL, v_today, 'Title', 'New', 'web', 'javascript:alert(1)', NULL::uuid, 'links_url_invalid'),
-    (NULL, v_today, 'Title', 'New', 'web', 'ftp://files.example.com/a', NULL::uuid, 'links_url_invalid'),
-    (NULL, v_today, 'Title', 'New', 'web', 'https://https://usemingla.com', NULL::uuid, 'links_url_invalid'),
-    (NULL, v_today, 'Title', 'New', 'blog', NULL, NULL::uuid, 'links_blog_post_invalid'),
-    (NULL, v_today, 'Title', 'New', 'blog', NULL, '43180000-0000-4000-b000-000000000002'::uuid, 'links_blog_post_invalid'),
-    (NULL, v_today, 'Title', 'New', 'blog', NULL, gen_random_uuid(), 'links_blog_post_invalid')
-  ) AS c(city, shows_on, title, label, opens, url, blog, expected) LOOP
+    (v_today - 2, 'Title', 'New', 'host', NULL, NULL::uuid, 'links_shows_on_invalid'),
+    (NULL, 'Title', 'New', 'host', NULL, NULL::uuid, 'links_shows_on_invalid'),
+    (v_today, '   ', 'New', 'host', NULL, NULL::uuid, 'links_title_invalid'),
+    (v_today, repeat('x', 61), 'New', 'host', NULL, NULL::uuid, 'links_title_invalid'),
+    (v_today, 'Title', 'Hot', 'host', NULL, NULL::uuid, 'links_label_invalid'),
+    (v_today, 'Title', 'New', 'store', NULL, NULL::uuid, 'links_opens_invalid'),
+    (v_today, 'Title', 'New', 'web', NULL, NULL::uuid, 'links_url_invalid'),
+    (v_today, 'Title', 'New', 'web', 'not a url', NULL::uuid, 'links_url_invalid'),
+    (v_today, 'Title', 'New', 'web', 'javascript:alert(1)', NULL::uuid, 'links_url_invalid'),
+    (v_today, 'Title', 'New', 'web', 'ftp://files.example.com/a', NULL::uuid, 'links_url_invalid'),
+    (v_today, 'Title', 'New', 'web', 'https://https://usemingla.com', NULL::uuid, 'links_url_invalid'),
+    (v_today, 'Title', 'New', 'blog', NULL, NULL::uuid, 'links_blog_post_invalid'),
+    (v_today, 'Title', 'New', 'blog', NULL, '43180000-0000-4000-b000-000000000002'::uuid, 'links_blog_post_invalid'),
+    (v_today, 'Title', 'New', 'blog', NULL, gen_random_uuid(), 'links_blog_post_invalid')
+  ) AS c(shows_on, title, label, opens, url, blog, expected) LOOP
     v_message := NULL;
     BEGIN
-      PERFORM public.admin_links_strip_save(NULL, v_case.city, v_case.shows_on, v_case.title, v_case.label,
+      PERFORM public.admin_links_strip_save(NULL, v_case.shows_on, v_case.title, v_case.label,
                                             v_case.opens, v_case.url, v_case.blog);
     EXCEPTION WHEN raise_exception THEN
       v_message := SQLERRM;
@@ -348,11 +349,11 @@ BEGIN
     END IF;
   END LOOP;
 
-  -- A web strip: scheme stripped, title trimmed, city normalised, on top.
-  v_row := public.admin_links_strip_save(NULL, ' Raleigh-NC ', v_today, '  Opening night  ', 'Giveaway', 'web',
+  -- A web strip: scheme stripped, title trimmed, on top.
+  v_row := public.admin_links_strip_save(NULL, v_today, '  Opening night  ', 'Giveaway', 'web',
                                          ' HTTPS://usemingla.com/blog/opening?ref=links ', NULL);
   IF v_row.url <> 'usemingla.com/blog/opening?ref=links' OR v_row.title <> 'Opening night'
-     OR v_row.city_slug <> 'raleigh-nc' OR v_row.created_by <> '43180000-0000-4000-a000-000000000002' THEN
+     OR v_row.created_by <> '43180000-0000-4000-a000-000000000002' THEN
     RAISE EXCEPTION 'V: web strip stored wrong: %', to_jsonb(v_row);
   END IF;
   IF v_row.position >= (SELECT min(strip.position) FROM public.admin_links_strips_list() strip WHERE strip.id <> v_row.id) THEN
@@ -363,14 +364,14 @@ BEGIN
   END IF;
 
   -- A second new strip goes above the first.
-  v_again := public.admin_links_strip_save(NULL, NULL, v_today, 'Get the app', 'From Mingla', 'explorer',
+  v_again := public.admin_links_strip_save(NULL, v_today, 'Get the app', 'From Mingla', 'explorer',
                                            'usemingla.com/ignored', '43180000-0000-4000-b000-000000000001');
   IF v_again.position >= v_row.position OR v_again.url IS NOT NULL OR v_again.blog_post_id IS NOT NULL THEN
     RAISE EXCEPTION 'V: explorer strip wrong: %', to_jsonb(v_again);
   END IF;
 
   -- A blog strip on a public post; the list carries its title.
-  v_again := public.admin_links_strip_save(NULL, NULL, v_today, 'Read this', 'Featured', 'blog', NULL,
+  v_again := public.admin_links_strip_save(NULL, v_today, 'Read this', 'Featured', 'blog', NULL,
                                            '43180000-0000-4000-b000-000000000001');
   IF (SELECT strip.blog_title FROM public.admin_links_strips_list() strip WHERE strip.id = v_again.id)
      IS DISTINCT FROM 'Issue 4318 Public Post' THEN
@@ -378,14 +379,13 @@ BEGIN
   END IF;
 
   -- An update keeps the position and rewrites the fields.
-  v_again := public.admin_links_strip_save(v_row.id, NULL, v_today + 1, 'Opening week', 'New', 'host', NULL, NULL);
-  IF v_again.position <> v_row.position OR v_again.title <> 'Opening week' OR v_again.url IS NOT NULL
-     OR v_again.city_slug IS NOT NULL THEN
+  v_again := public.admin_links_strip_save(v_row.id, v_today + 1, 'Opening week', 'New', 'host', NULL, NULL);
+  IF v_again.position <> v_row.position OR v_again.title <> 'Opening week' OR v_again.url IS NOT NULL THEN
     RAISE EXCEPTION 'V: update wrong: %', to_jsonb(v_again);
   END IF;
   v_message := NULL;
   BEGIN
-    PERFORM public.admin_links_strip_save(gen_random_uuid(), NULL, v_today, 'Ghost', 'New', 'host', NULL, NULL);
+    PERFORM public.admin_links_strip_save(gen_random_uuid(), v_today, 'Ghost', 'New', 'host', NULL, NULL);
   EXCEPTION WHEN raise_exception THEN v_message := SQLERRM;
   END;
   IF v_message IS DISTINCT FROM 'links_strip_not_found' THEN RAISE EXCEPTION 'V: updating a missing strip: %', v_message; END IF;
@@ -465,18 +465,73 @@ END
 $test$;
 RESET ROLE;
 
+-- ═══ PL: links_page_places, the quiet-week places ═══════════════════════
+-- Centre (40.0, -50.0), open ocean, so no other fixture is in range.
+INSERT INTO public.place_pool (id, google_place_id, name, address, lat, lng, city, review_count,
+  primary_type_display_name, business_status, is_active, is_servable, stored_photo_urls, thumbs_backfilled_at) VALUES
+  ('43180000-0000-4000-8000-000000000001', 'i4318-near', 'Issue 4318 Near Cafe', 'SECRET 1 Near Street', 40.018, -50.0, 'Testville', 500,
+   'Cafe', 'OPERATIONAL', true, true, ARRAY['https://x.supabase.co/storage/v1/object/public/place-photos/ChIJi4318near/0.jpg?v=2'], now()),
+  ('43180000-0000-4000-8000-000000000002', 'i4318-mid', 'Issue 4318 Mid Bar', 'SECRET 2 Mid Street', 40.27, -50.0, 'Testville', 900,
+   'Bar', 'OPERATIONAL', true, true, ARRAY['https://x.supabase.co/storage/v1/object/public/place-photos/ChIJi4318mid/3.webp'], now()),
+  ('43180000-0000-4000-8000-000000000003', 'i4318-close', 'Issue 4318 Close Park', 'SECRET 3 Close Street', 40.09, -50.0, 'Testville', 900,
+   'Park', 'OPERATIONAL', true, true, ARRAY['https://x.supabase.co/storage/v1/object/public/place-photos/ChIJi4318close/1.jpg'], now()),
+  ('43180000-0000-4000-8000-000000000004', 'i4318-far', 'Issue 4318 Far Gallery', 'SECRET 4 Far Street', 40.72, -50.0, 'Farville', 5000,
+   'Art gallery', 'OPERATIONAL', true, true, ARRAY['https://x.supabase.co/storage/v1/object/public/place-photos/ChIJi4318far/0.jpg'], now()),
+  ('43180000-0000-4000-8000-000000000005', 'i4318-unserved', 'Issue 4318 Unserved', 'SECRET 5', 40.01, -50.0, 'Testville', 99999,
+   'Cafe', 'OPERATIONAL', true, false, ARRAY['https://x.supabase.co/storage/v1/object/public/place-photos/ChIJi4318unserved/0.jpg'], now()),
+  ('43180000-0000-4000-8000-000000000006', 'i4318-nothumb', 'Issue 4318 No Thumb', 'SECRET 6', 40.01, -50.0, 'Testville', 99999,
+   'Cafe', 'OPERATIONAL', true, true, ARRAY['https://x.supabase.co/storage/v1/object/public/place-photos/ChIJi4318nothumb/0.jpg'], NULL);
+
+SET LOCAL ROLE anon;
+DO $test$
+DECLARE
+  v_rows jsonb;
+BEGIN
+  SELECT jsonb_agg(to_jsonb(place) - 'ord' ORDER BY ord) INTO v_rows
+  FROM public.links_page_places(40.0, -50.0) WITH ORDINALITY AS place(place_id, name, category, area_label, lat, lng, photo_path, ord);
+
+  -- Default radius 60 km and limit 3; review count first, then distance.
+  IF (SELECT array_agg(elem->>'name' ORDER BY o) FROM jsonb_array_elements(v_rows) WITH ORDINALITY AS t(elem, o))
+     IS DISTINCT FROM ARRAY['Issue 4318 Close Park', 'Issue 4318 Mid Bar', 'Issue 4318 Near Cafe'] THEN
+    RAISE EXCEPTION 'PL: default places wrong: %', v_rows;
+  END IF;
+  IF (SELECT array_agg(key ORDER BY key) FROM jsonb_object_keys(v_rows->0) AS key)
+     IS DISTINCT FROM ARRAY['area_label', 'category', 'lat', 'lng', 'name', 'photo_path', 'place_id'] THEN
+    RAISE EXCEPTION 'PL: column allow-list drifted: %', v_rows->0;
+  END IF;
+  -- The thumb sibling of the stored photo, bucket-relative, query dropped.
+  IF v_rows->2->>'photo_path' <> 'ChIJi4318near/0_thumb.jpg'
+     OR v_rows->1->>'photo_path' <> 'ChIJi4318mid/3_thumb.jpg'
+     OR v_rows->2->>'place_id' <> '43180000-0000-4000-8000-000000000001'
+     OR v_rows->2->>'area_label' <> 'Testville' OR v_rows->2->>'category' <> 'Cafe' THEN
+    RAISE EXCEPTION 'PL: place row wrong: %', v_rows->2;
+  END IF;
+  IF v_rows::text LIKE '%SECRET%' OR v_rows::text LIKE '%render/image%' THEN
+    RAISE EXCEPTION 'PL: an address or a transformation URL leaked: %', v_rows;
+  END IF;
+
+  -- A wider reach brings in the far place, which then leads on reviews.
+  IF (SELECT array_agg(place.name) FROM public.links_page_places(40.0, -50.0, 100, 6) place)
+     IS DISTINCT FROM ARRAY['Issue 4318 Far Gallery', 'Issue 4318 Close Park', 'Issue 4318 Mid Bar', 'Issue 4318 Near Cafe'] THEN
+    RAISE EXCEPTION 'PL: 100 km reach wrong';
+  END IF;
+END
+$test$;
+RESET ROLE;
+
 -- ═══ Catalog: grants and the definer shape ════════════════════════════════
 DO $test$
 BEGIN
   IF NOT has_function_privilege('anon', 'public.links_page_week()', 'EXECUTE')
-     OR NOT has_function_privilege('anon', 'public.links_page_strips()', 'EXECUTE') THEN
+     OR NOT has_function_privilege('anon', 'public.links_page_strips()', 'EXECUTE')
+     OR NOT has_function_privilege('anon', 'public.links_page_places(double precision,double precision,integer,integer)', 'EXECUTE') THEN
     RAISE EXCEPTION 'catalog: anon cannot call the public readers';
   END IF;
   IF (SELECT prosecdef FROM pg_proc WHERE oid = 'public.links_page_strips()'::regprocedure) THEN
     RAISE EXCEPTION 'catalog: links_page_strips must be SECURITY INVOKER';
   END IF;
   IF has_function_privilege('anon', 'public.admin_links_strips_list()', 'EXECUTE')
-     OR has_function_privilege('anon', 'public.admin_links_strip_save(uuid,text,date,text,text,text,text,uuid)', 'EXECUTE')
+     OR has_function_privilege('anon', 'public.admin_links_strip_save(uuid,date,text,text,text,text,uuid)', 'EXECUTE')
      OR has_function_privilege('anon', 'public.admin_links_strip_delete(uuid)', 'EXECUTE')
      OR has_function_privilege('anon', 'public.admin_links_strips_reorder(uuid[])', 'EXECUTE') THEN
     RAISE EXCEPTION 'catalog: anon may call an admin RPC';
