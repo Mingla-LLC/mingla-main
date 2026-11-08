@@ -137,7 +137,7 @@ export interface PublicEventProps {
   address: string | null;
   hideAddressUntilTicket: boolean;
   /**
-   * ORCH-1162 Bug 2 — venue lat/lng for the static-Mapbox "Where you'll be"
+   * ORCH-1162 Bug 2 — venue lat/lng for the static map "Where you'll be"
    * snapshot. ADDITIVE + default-safe: every PublicEventProps constructor that
    * predates this field leaves it undefined → no map (rule-9: the renderer falls
    * back to the honest text venue card, never a blank/placeholder box). The pin

@@ -1,7 +1,7 @@
 /**
  * @mingla/location-input · token + injection types
  *
- * The shared MapboxAddressInput is theme-driven via an injected `tokens` bundle
+ * The shared AddressInput is theme-driven via an injected `tokens` bundle
  * + `IconComponent` + `invoke` (each app's supabase.functions.invoke). No
  * business OR consumer design-system import inside the package — every value is
  * injected. Per META-ORCH-1060 DESIGN §0/§1 (THE TOKEN RULE).
@@ -96,6 +96,15 @@ export interface LocationInputTokens {
    * BYTE-IDENTICAL to before. Only the business host injects it (brand orange).
    */
   action?: LocationInputAction;
+  /**
+   * #4334 (Seth decision D5) — the "Powered by Google" row under the list.
+   * "light" on light surfaces, "dark" on dark ones (Explorer city picker).
+   */
+  attribution?: LocationInputAttribution;
+}
+
+export interface LocationInputAttribution {
+  variant: "light" | "dark";
 }
 
 /** Issue #1363 — accent tokens for the free-text ACTION row (optional). */
@@ -116,8 +125,13 @@ export interface LocationInputCopy {
   searching: string;
   /** Suggest returned 0 results (e.g. "No matches — try a broader search."). */
   noResults: string;
-  /** Network error reaching suggest (e.g. "Couldn't reach search. Tap to try again."). */
-  offline: string;
+  /**
+   * #4334 — search itself is down (provider refused, quota, rate limit,
+   * network). Never shown as "No matches". Host: "Address search isn't working
+   * right now. Tap to try again."; Explorer: "Search isn't working right now.
+   * Tap to try again."
+   */
+  unavailable: string;
   /** retrieve threw (e.g. "Couldn't fetch that place. Tap to try again."). */
   pickError: string;
 }

@@ -434,7 +434,7 @@ export type { ResponsiveLayout } from "./useResponsiveLayout";
 // was DISSOLVED into this one package (Seth's decision: ONE rendering package).
 // Every symbol that the old event-rendering barrel exported is re-exported below,
 // now from LOCAL modules. The shared theming engine, CTA state machine, EventCover/
-// EventCoverMedia, types, QuantityRow, RefundPolicyDisplay, mapbox builders, and
+// EventCoverMedia, types, QuantityRow, RefundPolicyDisplay, static map builders, and
 // the legacy PublicEventPage all live here. No behavior change — pure refactor.
 // ===========================================================================
 
@@ -539,21 +539,16 @@ export type {
   EventTerminalResolution,
   EventTerminalSource,
 } from "./eventAcquisitionLifecycle";
-// ORCH-1162 Bug 2 — the SINGLE shared static-Mapbox URL builder. The trip,
-// event, and experience public pages all draw their "Where you'll be" map from
-// this one primitive (mingla-business + app-mobile re-export it, never re-fork).
-// I-PROPOSED-1162-MAP-PRIMITIVE-SINGLE-OWNER.
-// ORCH-1165: the static map is now server-proxied (vendor-neutral static-map edge fn);
-// buildStaticMapUrl composes a token-less proxy URL via the Supabase functions
-// base. getPublicMapboxToken stays exported (sourced from ./mapboxToken) for
-// backward-compat with existing import paths — it is no longer used by the static
-// map itself.
+// ORCH-1162 Bug 2 — the SINGLE shared static map URL builder. The trip, event,
+// and experience public pages all draw their "Where you'll be" map from this
+// one primitive (mingla-business + app-mobile re-export it, never re-fork).
+// I-PROPOSED-1162-MAP-PRIMITIVE-SINGLE-OWNER. ORCH-1165: server-proxied through
+// the `static-map` edge fn (Google Maps Static API since #4334).
 export {
   buildStaticMapUrl,
   getSupabaseFunctionsBaseUrl,
-} from "./mapboxStaticImage";
-export { getPublicMapboxToken } from "./mapboxToken";
-export type { StaticMapParams } from "./mapboxStaticImage";
+} from "./staticMapImage";
+export type { StaticMapParams } from "./staticMapImage";
 // issue #2468 — THE ONE "open in maps" deep-link builder. Sibling of the static
 // map builder above ON PURPOSE: the thumbnail and the link now read the SAME
 // stored coordinate, so they can no longer point at two different places.

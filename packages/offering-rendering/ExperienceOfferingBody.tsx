@@ -112,7 +112,7 @@ export interface RightNowFacts {
    */
   readonly estimated?: boolean;
 }
-import { buildStaticMapUrl } from "./mapboxStaticImage";
+import { buildStaticMapUrl } from "./staticMapImage";
 import {
   experienceAvailabilityBanner as computeAvailabilityBanner,
   type AvailabilityBanner,

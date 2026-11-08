@@ -75,10 +75,10 @@ import { PresentedByFollowerCount } from "./PresentedByFollowerCount";
 // (resolveOfferingSurface is not called here — it is re-exported from index.ts
 // straight off ./themePalette.)
 import { createThemePalette, type ThemePalette } from "./themePalette";
-// ORCH-1162 Bug 2 — the shared static-Mapbox builder (single owner, this package)
+// ORCH-1162 Bug 2 — the shared static map builder (single owner, this package)
 // for the "Where you'll be" map. Returns null when coords/token are absent →
 // the renderer falls back to the honest text venue card (rule-9).
-import { buildStaticMapUrl } from "./mapboxStaticImage";
+import { buildStaticMapUrl } from "./staticMapImage";
 // issue #2468 — the ONE privacy gate + label composer for the venue card.
 import { canOpenMapsTarget, selectVenueMapsTarget } from "./mapsDeepLink";
 // issue #2508 — the shared "which map app?" chooser + copy-address button. Fed
@@ -722,7 +722,7 @@ const PublishedBody = ({
             ) : null}
           </Pressable>
 
-          {/* ORCH-1162 Bug 2 — "Where you'll be" static-Mapbox map. Modeled on
+          {/* ORCH-1162 Bug 2 — "Where you'll be" static map. Modeled on
               TripPreview's reference block. Renders ONLY for in-person events
               that carry finite venue geo AND when buildStaticMapUrl resolves a
               URL (token present at runtime). Rule-9 fail-safe: when the URL is
@@ -1525,7 +1525,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: glass.border.profileBase,
   },
-  // ORCH-1162 Bug 2 — "Where you'll be" static-Mapbox block (mirrors the trip
+  // ORCH-1162 Bug 2 — "Where you'll be" static map block (mirrors the trip
   // reference: a fixed-height rounded card with the map filling it + an accent
   // caption pill overlaid bottom-left). overflow:'hidden' clips the image to the
   // radius (Android glass policy — opaque clip, no translucent fill).

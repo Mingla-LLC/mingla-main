@@ -1,11 +1,10 @@
 /**
- * @mingla/location-input · MapboxAddressInput
+ * @mingla/location-input · AddressInput
  *
- * Shared Mapbox Search Box address/city picker FIELD + suggestion list, used by
- * BOTH mingla-business (experience stops) and app-mobile (consumer
- * discover/preferences/onboarding). Extracted from
- * mingla-business/src/components/location/MapboxAddressInput.tsx per
- * META-ORCH-1060 §3.2.
+ * Shared address/city picker FIELD + suggestion list, used by BOTH
+ * mingla-business (every Host address field) and app-mobile (Explorer
+ * discover/preferences/onboarding). Google Maps Platform behind the proxy
+ * since #4334.
  *
  * THE TOKEN RULE (DESIGN §0): the field owns NO design-system import. The host
  * injects a fully-resolved `tokens` bundle + `IconComponent` + `invoke` + copy.
@@ -16,16 +15,20 @@
  * minQueryLength gate, the row markup, a11y, haptics, and these states (DESIGN
  * §6): idle/typing-hint, loading-suggestions, suggestions-open, fetching-details
  * (NEW for consumer — the retrieve round-trip), picked, pick-error (NEW),
- * empty-no-results, offline. The HOST owns the sheet chrome + where the list
- * mounts (card-below vs inline) via the `dropdown.mode` token.
+ * empty-no-results, unavailable (#4334: search itself is down — never shown as
+ * "No matches"). The HOST owns the sheet chrome + where the list mounts
+ * (card-below vs inline) via the `dropdown.mode` token.
+ *
+ * Attribution (#4334, D5): a non-interactive "Powered by Google" row closes the
+ * list whenever rows, "No matches" or "unavailable" are showing.
  *
  * Gorhom awareness (DESIGN §3.3): consumer hosts are @gorhom bottom sheets, so
  * the host injects its gorhom-aware `TextInputComponent` (BottomSheetTextInput).
  * The business host omits it → falls back to RN TextInput.
  *
- * Mapbox docs: suggest https://docs.mapbox.com/api/search/search-box/#get-suggestions
- * retrieve https://docs.mapbox.com/api/search/search-box/#retrieve-a-suggested-feature
- * session billing https://docs.mapbox.com/api/search/search-box/#session-billing
+ * Google docs: autocomplete https://developers.google.com/maps/documentation/places/web-service/place-autocomplete
+ * session pricing https://developers.google.com/maps/documentation/places/web-service/session-pricing
+ * attribution https://developers.google.com/maps/documentation/places/web-service/policies
  */
 
 import React, {
@@ -52,14 +55,15 @@ import {
 } from "react-native";
 
 import {
-  autocompleteMapbox,
-  autocompletePlacesMapbox,
-  newMapboxSessionToken,
-  retrieveMapboxPlace,
+  autocompleteAddress,
+  autocompletePlaces,
+  newPlacesSessionToken,
+  PlacesServiceError,
+  retrievePlace,
   type InvokeFn,
   type PlaceAutocompleteSuggestion,
   type PlaceDetails,
-} from "./mapboxGeocodeService";
+} from "./placesService";
 import type {
   LocationInputCopy,
   LocationInputIcon,
@@ -71,6 +75,9 @@ import {
 } from "./assistFooter";
 
 const AUTOCOMPLETE_DEBOUNCE_MS = 250;
+
+/** Google autocomplete sessions expire; a token idle this long is replaced. */
+export const SESSION_IDLE_ROTATE_MS = 3 * 60 * 1000;
 
 // ── Keyboard-aware dropdown cap (issue #1027 · Thread A) ──────────────────────
 // I-PROPOSED-1027-KEYBOARD-AWARE-DROPDOWN-CAP. The card-mode suggestion list
@@ -128,11 +135,10 @@ export function computeDropdownMaxHeight(params: {
 }
 
 // ── Issue #3291 — the saved address carries the tapped name ────────────────
-// A row shows a bold name ("Ozumba Mbadiwe Avenue") over a grey line. Mapbox
-// fills the grey line from `full_address` when the feature has one and
-// `place_formatted` otherwise — only the SURROUNDING AREA ("Lagos 10, Lagos,
-// Nigeria"), never the name; streets, cities and venues have no
-// `full_address`. Saving the grey line (#1407) dropped the street/city name.
+// A row shows a bold name ("Didi Museum") over a grey line. The grey line is
+// Google's `secondaryText` — only the SURROUNDING AREA ("Akin Adesola Street,
+// Lagos, Nigeria"), never the name. Saving the grey line (#1407) dropped the
+// venue/street/city name.
 // One rule for the pending pill, the saved label and the row a11y label:
 //   grey line begins with the name → the grey line (no doubling)
 //   otherwise                      → "<name>, <grey line>"
@@ -143,7 +149,7 @@ export function computeDropdownMaxHeight(params: {
 // Kept in this file (not a module of its own) because the picker ships in the
 // eager `__common` web chunk and every module costs a wrapper (ORCH-1083).
 
-// #3355 — Mapbox names a street in full ("10 Downing Street") but abbreviates
+// #3355 — a provider can name a street in full ("10 Downing Street") but abbreviate
 // it in the grey line ("10 Downing St, London…"), so the label read "10 Downing
 // Street, 10 Downing St, London…". The comparison treats the common street
 // abbreviations as their full words. Only the COMPARISON changes: the label
@@ -215,7 +221,7 @@ type HapticsLike = {
   NotificationFeedbackType?: { Success?: unknown; Error?: unknown };
 };
 
-export interface MapboxAddressInputProps {
+export interface AddressInputProps {
   /** Current displayed value (formatted address or in-progress typing). */
   value: string;
   /** Fires on every keystroke so the parent can keep its address in sync. */
@@ -266,18 +272,17 @@ export interface MapboxAddressInputProps {
   /** autoFocus the field on mount (City does). */
   autoFocus?: boolean;
 
-  // ── ORCH-1361 [location-suggestions] · OPTIONAL Mapbox rank bias (ADDITIVE) ─
-  // Threaded to the suggest call so results RANK to the user's area instead of
-  // the edge datacenter IP. All optional — when every one is absent the request
-  // is byte-identical to the pre-1361 behavior (business pickers + CityPicker
-  // callers that pass none are unchanged). NO types/country FILTER — the suggest
-  // handler must stay filter-free so business venue-name search returns POIs
-  // (INV-3 / ORCH-1079); proximity biases ranking without excluding results.
-  // Doc format: proximity "longitude,latitude"; limit ≤ 10.
-  /** User-proximity rank bias "longitude,latitude" (Mapbox order). */
+  // ── ORCH-1361 [location-suggestions] · OPTIONAL rank bias ─────────────────
+  // Threaded to the suggest call so results RANK to the user's area. NO type or
+  // region FILTER on the Host search — venue names (POIs) must resolve.
+  /** User-proximity rank bias "longitude,latitude" (client contract; the proxy swaps it). */
   proximity?: string;
-  /** suggest `limit` override (≤10). Default (omitted) → edge default 5. */
-  suggestLimit?: number;
+  /**
+   * #4334 — called when search is unavailable (the proxy's error code), so
+   * the host can report it (throttled Sentry capture). Never called for an
+   * honest empty result.
+   */
+  onSearchUnavailable?: (code: string) => void;
 
   // ── Issue #1363 [pinless selected-address mode] ────────────────────────────
   // All OPTIONAL + default-off. When every one is absent the assist footer is
@@ -312,11 +317,11 @@ type Status =
   | { kind: "loading_suggestions" }
   | { kind: "suggestions_open"; results: PlaceAutocompleteSuggestion[] }
   | { kind: "no_results" }
-  | { kind: "offline" }
+  | { kind: "unavailable"; query: string }
   | { kind: "fetching_details" }
   | { kind: "pick_error"; message: string };
 
-export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
+export const AddressInput: React.FC<AddressInputProps> = ({
   value,
   onChangeText,
   onPick,
@@ -336,7 +341,7 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
   haptics,
   autoFocus = false,
   proximity,
-  suggestLimit,
+  onSearchUnavailable,
   allowFreeText = false,
   onFreeText,
   selectionState = "editing",
@@ -357,8 +362,18 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
   // keystroke. Used ONLY to hide the Tier-2 free-text row immediately after a
   // pick (so the picked address doesn't re-offer "Use '<address>'").
   const justPicked = useRef<boolean>(false);
-  // One Mapbox session token per typing session; reused across suggest→retrieve.
-  const sessionToken = useRef<string>(newMapboxSessionToken());
+  // One session token per typing session; reused across suggest→retrieve and
+  // rotated after a pick, after Clear, and after 3 minutes idle (#4334).
+  const sessionToken = useRef<string>(newPlacesSessionToken());
+  const sessionLastUsed = useRef<number>(Date.now());
+  const currentSessionToken = useCallback((): string => {
+    const now = Date.now();
+    if (now - sessionLastUsed.current > SESSION_IDLE_ROTATE_MS) {
+      sessionToken.current = newPlacesSessionToken();
+    }
+    sessionLastUsed.current = now;
+    return sessionToken.current;
+  }, []);
 
   // issue #1027 (Thread A) — keyboard-aware card-mode dropdown cap. Track the
   // soft keyboard's top edge (window coords) + the dropdown card's own top edge
@@ -461,6 +476,34 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
     }
   }, []);
 
+  const runSearch = useCallback(
+    (next: string, generation: number): void => {
+      setStatus({ kind: "loading_suggestions" });
+      debounceTimer.current = setTimeout(async (): Promise<void> => {
+        // ORCH-1365 — "places" (Explorer) → suggest_places (areas only);
+        // "venue" (Host, default) → suggest, filter-free so venue names resolve.
+        const token = currentSessionToken();
+        const result =
+          searchMode === "places"
+            ? await autocompletePlaces(next, token, { invoke }, { proximity })
+            : await autocompleteAddress(next, token, { invoke }, { proximity });
+        if (generation !== requestGeneration.current) return;
+        if (!result.ok) {
+          // #4334 / #338 — search is DOWN: say so, never "No matches".
+          setStatus({ kind: "unavailable", query: next });
+          announce(copy.unavailable);
+          onSearchUnavailable?.(result.code);
+        } else if (result.rows.length === 0) {
+          setStatus({ kind: "no_results" });
+          announce(copy.noResults);
+        } else {
+          setStatus({ kind: "suggestions_open", results: result.rows });
+        }
+      }, AUTOCOMPLETE_DEBOUNCE_MS);
+    },
+    [announce, copy.noResults, copy.unavailable, currentSessionToken, invoke, onSearchUnavailable, proximity, searchMode],
+  );
+
   const handleChangeText = useCallback(
     (next: string): void => {
       const generation = ++requestGeneration.current;
@@ -473,45 +516,9 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
         setStatus({ kind: "idle" });
         return;
       }
-      setStatus({ kind: "loading_suggestions" });
-      debounceTimer.current = setTimeout(async (): Promise<void> => {
-        try {
-          // ORCH-1365 — route by searchMode. "places" (consumer) → the edge
-          // `suggest_places` action (place-type filter + trailing-country strip +
-          // country bias, POIs dropped). "venue" (business, DEFAULT) → the
-          // filter-free `suggest` action, BYTE-IDENTICAL to pre-1365
-          // (INV-3 / ORCH-1079). ORCH-1361 — the optional proximity/limit bias is
-          // merged only when present → byte-identical request when omitted.
-          const results =
-            searchMode === "places"
-              ? await autocompletePlacesMapbox(
-                  next,
-                  sessionToken.current,
-                  { invoke },
-                  { proximity, limit: suggestLimit },
-                )
-              : await autocompleteMapbox(
-                  next,
-                  sessionToken.current,
-                  { invoke },
-                  { proximity, limit: suggestLimit },
-                );
-          if (generation !== requestGeneration.current) return;
-          if (results.length === 0) {
-            setStatus({ kind: "no_results" });
-            announce(copy.noResults);
-          } else {
-            setStatus({ kind: "suggestions_open", results });
-          }
-        } catch {
-          if (generation !== requestGeneration.current) return;
-          // autocompleteMapbox itself swallows; this guards the unexpected.
-          setStatus({ kind: "offline" });
-          announce(copy.offline);
-        }
-      }, AUTOCOMPLETE_DEBOUNCE_MS);
+      runSearch(next, generation);
     },
-    [announce, clearDebounceTimer, copy.noResults, copy.offline, invoke, minQueryLength, onChangeText, proximity, searchMode, suggestLimit],
+    [clearDebounceTimer, minQueryLength, onChangeText, runSearch],
   );
 
   const handlePickSuggestion = useCallback(
@@ -525,9 +532,15 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
       setPendingSelectedLabel(label);
       setStatus({ kind: "fetching_details" });
       try {
-        const details = await retrieveMapboxPlace(s.placeId, sessionToken.current, {
-          invoke,
-        });
+        // Explorer place picks are preference anchors: coordinates from the
+        // Geocoding API by place id (spec v2 A2). Host picks end the session
+        // with Place Details.
+        const details = await retrievePlace(
+          s.placeId,
+          currentSessionToken(),
+          { invoke },
+          searchMode === "places" ? { lookup: "geocoding" } : {},
+        );
         if (generation !== requestGeneration.current) return;
         // Issue #3291 — prefer the looked-up full address, but only when it
         // still begins with the tapped name.
@@ -540,22 +553,31 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
         setPendingSelectedLabel(null);
         fireHaptic("success");
         // Rotate the session token AFTER a completed suggest→retrieve pair.
-        sessionToken.current = newMapboxSessionToken();
+        sessionToken.current = newPlacesSessionToken();
       } catch (e: unknown) {
         if (generation !== requestGeneration.current) return;
-        const message = e instanceof Error ? e.message : "MAPBOX_UNKNOWN";
-        console.warn("[MapboxAddressInput] pick failure:", message);
+        const code = e instanceof PlacesServiceError ? e.code : "network";
         fireHaptic("error");
         setStatus({ kind: "pick_error", message: copy.pickError });
+        announce(copy.pickError);
+        onSearchUnavailable?.(code);
+        if (code === "provider_id_retired") {
+          // #4334 — a pre-#4334 id can never resolve: drop the stale
+          // selection so the user searches again.
+          setPendingSelectedLabel(null);
+          sessionToken.current = newPlacesSessionToken();
+          onClear();
+        }
       }
     },
-    [clearDebounceTimer, copy.pickError, fireHaptic, invoke, onPick],
+    [announce, clearDebounceTimer, copy.pickError, currentSessionToken, fireHaptic, invoke, onClear, onPick, onSearchUnavailable, searchMode],
   );
 
   const handleClear = useCallback((): void => {
     requestGeneration.current += 1;
     clearDebounceTimer();
     setStatus({ kind: "idle" });
+    sessionToken.current = newPlacesSessionToken();
     onClear();
   }, [clearDebounceTimer, onClear]);
 
@@ -569,9 +591,15 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
   }, [clearDebounceTimer, onChangeSelected]);
 
   const handleRetry = useCallback((): void => {
-    requestGeneration.current += 1;
+    const generation = ++requestGeneration.current;
+    clearDebounceTimer();
+    // #4334 — "Tap to try again" re-runs the same query.
+    if (status.kind === "unavailable" && status.query.trim().length >= minQueryLength) {
+      runSearch(status.query, generation);
+      return;
+    }
     setStatus({ kind: "idle" });
-  }, []);
+  }, [clearDebounceTimer, minQueryLength, runSearch, status]);
 
   const isBusy =
     status.kind === "loading_suggestions" || status.kind === "fetching_details";
@@ -685,7 +713,7 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
     </View>
   );
 
-  // Single-row status blocks (loading / no-results / offline). ORCH-1365 — kept
+  // Single-row status blocks (loading / no-results / unavailable). ORCH-1365 — kept
   // OUTSIDE the scrollable row list so they never scroll; shared by card + inline.
   const statusContent = (
     <>
@@ -714,11 +742,12 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
 
       {status.kind === "no_results" ? statusText(copy.noResults) : null}
 
-      {status.kind === "offline" ? (
+      {status.kind === "unavailable" ? (
         <Pressable
           onPress={handleRetry}
           accessibilityRole="button"
-          accessibilityLabel={`Retry: ${copy.offline}`}
+          accessibilityLabel={copy.unavailable}
+          accessibilityLiveRegion="polite"
           style={{
             flexDirection: "row",
             alignItems: "center",
@@ -739,12 +768,21 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
               lineHeight: tokens.status.lineHeight,
             }}
           >
-            {copy.offline}
+            {copy.unavailable}
           </Text>
         </Pressable>
       ) : null}
     </>
   );
+
+  // #4334 (D5) — the list is Google's: close it with the attribution row.
+  const showAttribution =
+    status.kind === "suggestions_open" ||
+    status.kind === "no_results" ||
+    status.kind === "unavailable";
+  const attribution = showAttribution ? (
+    <PoweredByGoogle variant={tokens.attribution?.variant ?? "light"} />
+  ) : null;
 
   const rowsOpen = status.kind === "suggestions_open" ? status.results : null;
 
@@ -754,6 +792,7 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
     <>
       {statusContent}
       {rowsOpen ? renderRows(rowsOpen) : null}
+      {attribution}
     </>
   );
 
@@ -780,7 +819,7 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
       status.kind === "suggestions_open" ||
       status.kind === "loading_suggestions" ||
       status.kind === "no_results" ||
-      status.kind === "offline" ? (
+      status.kind === "unavailable" ? (
         <View
           ref={cardRef}
           onLayout={measureCard}
@@ -807,6 +846,7 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
               {renderRows(rowsOpen)}
             </Scroll>
           ) : null}
+          {attribution}
         </View>
       ) : null
     ) : (
@@ -1124,6 +1164,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  attributionRow: {
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    alignItems: "flex-end",
+    justifyContent: "center",
+  },
+  attributionText: {
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: "500",
+  },
   cardShadow: {
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
@@ -1133,4 +1184,34 @@ const styles = StyleSheet.create({
   },
 });
 
-export default MapboxAddressInput;
+/**
+ * #4334 (Seth decision D5) — "Powered by Google" attribution row: the last,
+ * non-interactive row of the suggestion list. 18 pt tall, 12 pt vertical
+ * padding, right-aligned.
+ *
+ * [TRANSITIONAL] renders Google's attribution as text. Exit condition: Google's
+ * official "Powered by Google" logo PNGs (on-white and on-non-white, @1x/2x/3x)
+ * are committed to packages/location-input/assets/ and rendered here as an
+ * <Image> (the assets need an approved download from Google's brand page).
+ */
+export function PoweredByGoogle({ variant }: { variant: "light" | "dark" }): React.ReactElement {
+  return (
+    <View
+      accessible
+      accessibilityLabel="Powered by Google"
+      style={styles.attributionRow}
+      testID="powered-by-google"
+    >
+      <Text
+        style={[
+          styles.attributionText,
+          { color: variant === "dark" ? "#FFFFFF" : "#5F6368" },
+        ]}
+      >
+        Powered by Google
+      </Text>
+    </View>
+  );
+}
+
+export default AddressInput;

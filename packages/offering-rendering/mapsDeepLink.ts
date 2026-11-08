@@ -21,7 +21,7 @@
 //
 // The same screens already drew their static-map THUMBNAIL from `locationGeo`
 // while the LINK used text: two owners for one location (Constitution #2). This
-// module is the single owner. `mapboxStaticProxyUrl.ts` (the thumbnail) is its
+// module is the single owner. `staticMapProxyUrl.ts` (the thumbnail) is its
 // sibling in this same package, deliberately.
 //
 // WHY IT LIVES IN @mingla/offering-rendering
@@ -30,7 +30,7 @@
 // a new dependency edge: `packages/brand-rendering` (13 imports),
 // `mingla-business` (src/ + app/), `app-mobile` (src/ + app/). The package is
 // also the monorepo's SOLE rendering package and already owns every OTHER map
-// URL builder (mapboxStaticProxyUrl / mapboxStaticImage / mapboxStaticUrl).
+// URL builder (staticMapProxyUrl / staticMapImage).
 //
 // PURITY CONTRACT
 // ---------------
@@ -55,6 +55,13 @@ export interface MapsGeoPoint {
 export interface MapsOpenTarget {
   label: string | null;
   geo: MapsGeoPoint | null;
+  /**
+   * #4334 (Seth decision D8) — the Google place id of a place picked through
+   * Google. Added to the GOOGLE links only (`query_place_id`), so Google Maps
+   * shows the venue's name with the pin. Absent on rows picked before #4334:
+   * those links stay byte-identical.
+   */
+  googlePlaceId?: string | null;
 }
 
 export interface MapsDeepLink {
@@ -75,6 +82,8 @@ export interface MapsDeepLink {
 export interface BuildMapsUrlParams {
   geo?: MapsGeoPoint | null;
   label?: string | null;
+  /** #4334 — see MapsOpenTarget.googlePlaceId. */
+  googlePlaceId?: string | null;
   /** Pass `Platform.OS`. Anything that is not "ios"/"android" is treated as web. */
   platform: MapsPlatform | string;
 }
@@ -114,6 +123,30 @@ const normalizeLabel = (label: string | null | undefined): string | null => {
 
 const googleSearchUrl = (query: string): string =>
   `https://www.google.com/maps/search/?api=1&query=${query}`;
+
+/**
+ * #4334 — a usable Google place id, or null. Pre-#4334 ids (base64 "urn:",
+ * prefix dXJuOm) are not Google ids and are never sent to Google.
+ */
+export const normalizeGooglePlaceId = (id: string | null | undefined): string | null => {
+  if (typeof id !== "string") return null;
+  const trimmed = id.trim();
+  if (!/^[A-Za-z0-9_-]{10,}$/.test(trimmed) || /^dXJuOm/.test(trimmed)) return null;
+  return trimmed;
+};
+
+/**
+ * #4334 (D8) — Google search link anchored by place id. `query` stays EXACTLY
+ * the coordinate pair when we hold one (#2553 G-2: never a label in `query`);
+ * `query_place_id` is appended. With no coordinate (a past offering whose
+ * Google coordinates expired, spec v2 §6.6) the id anchors and `query` is the
+ * host's label, which Google uses only if it cannot find the id.
+ * https://developers.google.com/maps/documentation/urls/get-started#search-action
+ */
+const googlePlaceSearchUrl = (query: string, placeId: string | null): string =>
+  placeId === null
+    ? googleSearchUrl(query)
+    : `${googleSearchUrl(query)}&query_place_id=${encodeURIComponent(placeId)}`;
 
 /**
  * Android's `geo:` label is wrapped in LITERAL parentheses — `?q=<lat>,<lng>(<label>)`
@@ -157,6 +190,7 @@ export function buildMapsDeepLink(
   const platform = normalizePlatform(params.platform);
   const geo = normalizeMapsGeo(params.geo);
   const label = normalizeLabel(params.label);
+  const placeId = normalizeGooglePlaceId(params.googlePlaceId);
 
   if (geo !== null) {
     const pair = `${geo.lat},${geo.lng}`;
@@ -176,13 +210,16 @@ export function buildMapsDeepLink(
           : `geo:${pair}?q=${pair}(${encodeGeoLabel(label)})`;
       return { url, fallbackUrl, coordinateAnchored: true };
     }
-    return { url: fallbackUrl, fallbackUrl, coordinateAnchored: true };
+    const webUrl = googlePlaceSearchUrl(pair, placeId);
+    return { url: webUrl, fallbackUrl: webUrl, coordinateAnchored: true };
   }
 
   if (label === null) return null;
 
   const encoded = encodeURIComponent(label);
-  const fallbackUrl = googleSearchUrl(encoded);
+  const fallbackUrl = platform === "web"
+    ? googlePlaceSearchUrl(encoded, placeId)
+    : googleSearchUrl(encoded);
   if (platform === "ios") {
     return { url: `maps://?q=${encoded}`, fallbackUrl, coordinateAnchored: false };
   }
@@ -226,6 +263,8 @@ export interface VenueMapsTargetParams {
   addressHidden: boolean;
   /** The exact pin. NEVER pass `cityGeo` here — see the note below. */
   locationGeo?: MapsGeoPoint | null;
+  /** #4334 — the picked Google place id; withheld with the address. */
+  googlePlaceId?: string | null;
 }
 
 /**
@@ -257,7 +296,10 @@ export function selectVenueMapsTarget(
   if (venueName === null) return null;
   const address = normalizeLabel(params.address);
   const label = address === null ? venueName : `${venueName}, ${address}`;
-  return { label, geo: normalizeMapsGeo(params.locationGeo) };
+  const googlePlaceId = normalizeGooglePlaceId(params.googlePlaceId);
+  return googlePlaceId === null
+    ? { label, geo: normalizeMapsGeo(params.locationGeo) }
+    : { label, geo: normalizeMapsGeo(params.locationGeo), googlePlaceId };
 }
 
 // ===========================================================================
@@ -323,6 +365,7 @@ export function buildMapsAppLink(
   const platform = normalizePlatform(params.platform);
   const geo = normalizeMapsGeo(params.geo);
   const label = normalizeLabel(params.label);
+  const placeId = normalizeGooglePlaceId(params.googlePlaceId);
   if (geo === null && label === null) return null;
 
   const name = MAPS_APP_LABELS[params.app];
@@ -376,9 +419,11 @@ export function buildMapsAppLink(
   //             ("the query is only used if Google Maps cannot find the place
   //             ID"). It needs a GOOGLE place id. `public.events` has no
   //             place-id column at all (only location_geo / location_text /
-  //             location_mode) — our addresses come from Mapbox. Even
-  //             `venue_listings`, which HAS the column, populated it for 1 of 5
-  //             rows. So it is unavailable on the surface that reported this.
+  //             location_mode) — our addresses came from a non-Google provider.
+  //             Even `venue_listings`, which HAS the column, populated it for
+  //             1 of 5 rows. So it was unavailable on the surface that reported
+  //             this. (#4334 stores the Google place id for new picks; their
+  //             Google links now carry `query_place_id` — googlePlaceSearchUrl.)
   //   ios     → comgooglemaps:// documents `q` as "the query string for your
   //             search". No label parameter. No parentheses. Anywhere.
   //
@@ -422,7 +467,7 @@ export function buildMapsAppLink(
   // authority sits BEFORE the `?`, so the label cannot move the pin.
   if (geo !== null) {
     const pair = `${geo.lat},${geo.lng}`;
-    const fallbackUrl = googleSearchUrl(pair);
+    const fallbackUrl = googlePlaceSearchUrl(pair, placeId);
     return {
       id: "google",
       label: name,
@@ -442,7 +487,7 @@ export function buildMapsAppLink(
 
   if (label === null) return null;
   const encoded = encodeURIComponent(label);
-  const fallbackUrl = googleSearchUrl(encoded);
+  const fallbackUrl = googlePlaceSearchUrl(encoded, placeId);
   return {
     id: "google",
     label: name,

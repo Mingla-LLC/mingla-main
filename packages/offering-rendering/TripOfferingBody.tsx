@@ -84,7 +84,7 @@ import {
 // ORCH-1339 — cross-entity social-proof momentum (props-only; glyph cluster).
 import { OfferingMomentum } from "./OfferingMomentum";
 import { type SocialProofSummary } from "./socialProofTypes";
-import { buildStaticMapUrl } from "./mapboxStaticImage";
+import { buildStaticMapUrl } from "./staticMapImage";
 import type {
   TripOfferingBrand,
   TripOfferingCallbacks,

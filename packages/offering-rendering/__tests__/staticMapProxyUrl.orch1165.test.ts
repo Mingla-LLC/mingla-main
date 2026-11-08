@@ -1,29 +1,23 @@
-// ORCH-1165 [Mapbox static map server-proxy] — client builder regression test
-// (implementor-owned happy-path; Deno-runnable — mapboxStaticProxyUrl.ts is pure,
-// no expo-constants in its chain).
+// ORCH-1165 [static map server-proxy] — client builder regression test
+// (implementor-owned happy-path; Deno-runnable — staticMapProxyUrl.ts is pure,
+// no expo-constants in its chain). Provider behind the proxy: Google (#4334).
 //
-// Proves the CLIENT builder emits a token-less, VENDOR-NEUTRAL PROXY URL:
-//  - the URL points at `<functionsBaseUrl>/static-map`, NOT api.mapbox.com;
-//  - the substring "mapbox" appears NOWHERE in the client URL (the public fn name
-//    is `static-map` — Seth's hard requirement: the client traffic must not reveal
-//    the upstream map vendor);
-//  - it carries NO `access_token` and NO `pk.` token of any kind;
-//  - the host string "api.mapbox.com" never appears (stack-hiding);
+// Proves the CLIENT builder emits a key-less, provider-neutral PROXY URL:
+//  - the URL points at `<functionsBaseUrl>/static-map`, never a provider host
+//    (maps.googleapis.com) and never carries a key;
 //  - coords are forwarded; the accent is normalized; rule-9 null fail-safe holds
 //    (missing coords OR missing base → null → caller hides the map).
 //
-// FAILS-ON-REVERT (verified by true line-deletion in the implementation report):
-//  - delete the `?${query}` composition / repoint to api.mapbox.com → the
-//    vendor-neutral-path + no-"mapbox"-substring assertions FAIL;
-//  - rename the path back to `/mapbox-static` → the no-"mapbox"-substring
-//    assertion FAILS;
+// FAILS-ON-REVERT:
+//  - delete the `?${query}` composition / repoint at a provider host → the
+//    provider-neutral path assertions FAIL;
 //  - delete the coord/base null guards → the rule-9 failsafe assertions FAIL.
 import {
   assert,
   assertEquals,
   assertStringIncludes,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import { buildProxyStaticMapUrl } from "../mapboxStaticProxyUrl.ts";
+import { buildProxyStaticMapUrl } from "../staticMapProxyUrl.ts";
 
 const BASE = "https://gqnoajqerqhnvulmnyvv.supabase.co/functions/v1";
 
@@ -35,21 +29,12 @@ Deno.test("ORCH-1165: client builder emits a token-less, vendor-neutral proxy UR
   assert(url !== null);
   const u = url as string;
 
-  // Points at the VENDOR-NEUTRAL proxy edge fn, NOT api.mapbox.com.
+  // Points at the provider-neutral proxy edge fn, never a provider host.
   assertStringIncludes(u, `${BASE}/static-map?`);
-  assert(!u.includes("api.mapbox.com"), "must NOT contain the Mapbox host");
-
-  // Seth's HARD requirement: the substring "mapbox" appears NOWHERE in the
-  // client-facing URL (case-insensitive) — the public fn name is `static-map`,
-  // so client network traffic reveals nothing about the upstream map vendor.
-  assert(
-    !u.toLowerCase().includes("mapbox"),
-    `client URL must NOT contain the substring "mapbox": ${u}`,
-  );
-
-  // No token of any kind in the client URL.
-  assert(!u.includes("access_token"), "must NOT contain access_token");
-  assert(!u.toLowerCase().includes("pk."), "must NOT contain a pk. token");
+  assert(!u.includes("googleapis.com"), "must NOT contain the Google host");
+  // No key of any kind in the client URL.
+  assert(!u.includes("key="), "must NOT contain a key");
+  assert(!u.includes("AIza"), "must NOT contain a Google key");
 
   // Coords forwarded; accent normalized ('#' stripped, lowercased).
   assertStringIncludes(u, "lat=35.79");
