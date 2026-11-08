@@ -24,7 +24,8 @@
 -- Static SQL only. No backfill: no target was ever sealed this way (the quote
 -- threw instead), and sealed targets are immutable.
 --
--- MINGLA-INVARIANT: I-4273-UNPRICED-SEALED-AS-SKIPPED | issue #4273 | A sealed SMS Blast target the quote could not price (0 segments) is written as suppressed with reason sms_unpriced_country, so no send audience ever returns it.
+-- Invariant I-4273-UNPRICED-SEALED-AS-SKIPPED is declared beside its proof:
+-- supabase/migrations/__tests__/issue_4273_sms_unpriced_country.implementor.pg17.test.sql
 
 BEGIN;
 

@@ -73,7 +73,8 @@ export const SMS_UNPRICED_COUNTRY = "sms_unpriced_country";
  * Country from the handset; NG routes to Termii, everything else to Twilio.
  * Null = unpriced. The Blast quote, the invite quote and the send guard all
  * call this, so they skip exactly the same numbers.
- * MINGLA-INVARIANT: I-4273-UNPRICED-ONE-RULE | issue #4273 | Whether a phone can be priced is decided only by smsRateForPhone; the Blast quote, the invite quote and the SMS send guard all read it, and an unpriced phone is skipped, never texted and never a quote failure.
+ * Invariant I-4273-UNPRICED-ONE-RULE is declared beside its proof,
+ * supabase/functions/marketing-send/issue_4273_sms_unpriced_country.implementor.test.ts.
  */
 export function smsRateForPhone<
   R extends Pick<SmsRateV1, "country" | "provider">,
