@@ -35,12 +35,12 @@
 .lk *::after {
   box-sizing: border-box;
 }
-.lk button {
+:where(.lk) button {
   font: inherit;
   color: inherit;
   cursor: pointer;
 }
-.lk a {
+:where(.lk) a {
   color: inherit;
   text-decoration: none;
 }
@@ -488,6 +488,7 @@
   height: 18px;
 }
 
+/* Resets above use :where() so every component class below wins over them. */
 /* short phones */
 @container lk (max-height: 700px) {
   .lk-bar {
