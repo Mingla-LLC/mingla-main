@@ -11,12 +11,14 @@
 import type {
   CampaignChannelPayload,
   CampaignGroupFigures,
+  CampaignStatus,
   MarketingBookQuote,
   SealedMarketingAudienceKind,
 } from "../../types/marketing";
 import {
   createDraft,
   deleteDraft,
+  DraftChangedElsewhereError,
   MarketingBookSendError,
   updateDraft,
 } from "./marketingCampaignService";
@@ -157,6 +159,11 @@ export async function prepareCampaignGroupPreview(input: {
     payload: CampaignChannelPayload;
     existingCampaignId: string | null;
   }>;
+  /**
+   * #4273 follow-up 1 — group drafts this composer saw (id -> updated_at), at
+   * load or from its own writes. This call records its own writes here.
+   */
+  seen: Map<string, string>;
 }): Promise<{
   lead: MarketingBookQuote | null;
   leadError: string | null;
@@ -170,6 +177,7 @@ export async function prepareCampaignGroupPreview(input: {
     leadCampaignId: input.leadCampaignId,
     leadChannel: input.leadChannel,
     extras: input.extras,
+    seen: input.seen,
   });
   const drafts: Array<{ channel: CampaignChannel; campaignId: string }> = [];
   for (const extra of input.extras) {
@@ -186,13 +194,26 @@ export async function prepareCampaignGroupPreview(input: {
         campaign_group_id: groupId,
       });
       campaignId = row.id;
+      rememberWrite(input.seen, row);
     } else {
-      await updateDraft({
-        campaign_id: campaignId,
-        name: input.name,
-        audience_id: input.audienceId,
-        channel_payload: extra.payload,
-      });
+      // Only the version this composer saw: a draft another tab changed since
+      // is theirs (follow-up 1).
+      const expected = input.seen.get(campaignId);
+      try {
+        const row = await updateDraft({
+          campaign_id: campaignId,
+          name: input.name,
+          audience_id: input.audienceId,
+          channel_payload: extra.payload,
+          ...(expected !== undefined ? { expectedUpdatedAt: expected } : {}),
+        });
+        rememberWrite(input.seen, row);
+      } catch (error) {
+        if (error instanceof DraftChangedElsewhereError) {
+          throw new GroupDraftInUseElsewhereError(extra.channel);
+        }
+        throw error;
+      }
     }
     drafts.push({ channel: extra.channel, campaignId });
   }
@@ -202,9 +223,11 @@ export async function prepareCampaignGroupPreview(input: {
     ...drafts.map((draft) => draft.campaignId),
   ]);
   // Never the group head: it is the host's original campaign (#4273 P2-1).
-  const unlisted = (preview.unlistedDraftIds ?? []).filter((id) => !keep.has(id));
+  // Only drafts this composer saw: one another tab is still writing is theirs.
+  const unlisted = (preview.unlistedDraftIds ?? [])
+    .filter((id) => !keep.has(id) && input.seen.has(id));
   if (unlisted.length > 0) {
-    void discardSiblingDrafts(unlisted);
+    void discardSiblingDrafts(unlisted, input.seen);
   }
   const lead = preview.methods.find((method) => method.channel === input.leadChannel);
   return {
@@ -280,15 +303,30 @@ export async function confirmSiblingChannels(input: {
  * #4273 — leftover sibling drafts in a group. A draft on the lead's method, or
  * on a method the host did not tick, is deleted (it would collide with the lead
  * or be counted for a method nobody picked). A draft on a ticked method that
- * has no draft in memory is returned to be reused. Returns method → draft id.
+ * has no draft in memory is returned to be reused. Returns method -> draft id.
+ *
+ * Follow-up 1 (invariant I-4273-GROUP-DRAFT-CLEANUP-SEEN-ONLY): only a
+ * draft this composer saw, with the same updated_at, may be adopted or
+ * deleted. Any other draft belongs to another tab or device and is left alone;
+ * if it holds a method this composer wants, the host is told instead.
+ * Follow-up 2: a method the campaign already scheduled or sent is named for
+ * what it is, before anything is written or deleted.
  */
 export async function settleLeftoverGroupDrafts(input: {
   leadCampaignId: string;
   leadChannel: CampaignChannel;
   extras: ReadonlyArray<{ channel: CampaignChannel; existingCampaignId: string | null }>;
+  seen: ReadonlyMap<string, string>;
 }): Promise<Map<CampaignChannel, string>> {
   return (await settleLeftoverGroupDraftsDetailed(input)).adopt;
 }
+
+/** A member in these states keeps its method: it went out, or will. */
+const METHOD_HOLDING_STATUSES: ReadonlySet<CampaignStatus> = new Set<CampaignStatus>([
+  "scheduled",
+  "sending",
+  "sent",
+]);
 
 /**
  * Same as settleLeftoverGroupDrafts, and also returns the ids that must never
@@ -298,53 +336,111 @@ async function settleLeftoverGroupDraftsDetailed(input: {
   leadCampaignId: string;
   leadChannel: CampaignChannel;
   extras: ReadonlyArray<{ channel: CampaignChannel; existingCampaignId: string | null }>;
+  seen: ReadonlyMap<string, string>;
 }): Promise<{ adopt: Map<CampaignChannel, string>; keep: Set<string>; groupId: string }> {
-  const { groupId, drafts: leftovers } = await listGroupDrafts(input.leadCampaignId);
+  const { groupId, drafts: leftovers, members } = await listGroupDrafts(input.leadCampaignId);
   const keep = new Set(leftovers.filter((draft) => draft.isHead).map((draft) => draft.id));
-  // The head is the host's original campaign. It is never reused, overwritten
-  // or deleted from a sibling's composer: if this composer wants the head's
-  // method, say so plainly instead.
-  for (const head of leftovers.filter((draft) => draft.isHead)) {
-    const wanted = head.channel === input.leadChannel ||
-      input.extras.some((extra) => extra.channel === head.channel && extra.existingCampaignId !== head.id);
-    if (wanted) throw new GroupHeadMethodTakenError(head.channel);
+  const wants = (member: { id: string; channel: CampaignChannel }): boolean =>
+    member.channel === input.leadChannel ||
+    input.extras.some((extra) => extra.channel === member.channel && extra.existingCampaignId !== member.id);
+  // Follow-up 2. The head is the host's original campaign and a scheduled or
+  // sent method is spoken for: never reused, overwritten or deleted from here.
+  // If this composer wants that method, say what holds it. A failed or
+  // cancelled method no longer holds its slot (#4273 extra b).
+  for (const member of members) {
+    const holds = member.status === "draft" ? member.isHead : METHOD_HOLDING_STATUSES.has(member.status);
+    if (holds && wants(member)) {
+      throw new GroupHeadMethodTakenError(member.channel, member.status, member.isHead);
+    }
   }
   const known = new Set(
     input.extras.flatMap((extra) => (extra.existingCampaignId === null ? [] : [extra.existingCampaignId])),
   );
+  const ours = leftovers.filter((draft) => !draft.isHead && !known.has(draft.id));
+  // Follow-up 1. A draft this composer did not see, or saw before someone
+  // changed it, belongs to another tab: refuse before writing anything.
+  for (const draft of ours) {
+    if (input.seen.get(draft.id) !== draft.updatedAt && wants(draft)) {
+      throw new GroupDraftInUseElsewhereError(draft.channel);
+    }
+  }
   const adopt = new Map<CampaignChannel, string>();
   const discard: string[] = [];
-  for (const draft of leftovers) {
-    if (known.has(draft.id)) continue;
+  for (const draft of ours) {
+    if (input.seen.get(draft.id) !== draft.updatedAt) continue; // another tab's
     const extra = input.extras.find((row) => row.channel === draft.channel);
     if (
-      !draft.isHead &&
       draft.channel !== input.leadChannel &&
       extra !== undefined &&
       extra.existingCampaignId === null &&
       !adopt.has(draft.channel)
     ) {
       adopt.set(draft.channel, draft.id);
-    } else if (!draft.isHead) {
-      // The head is the host's original campaign: skipped, never deleted.
+    } else {
       discard.push(draft.id);
     }
   }
-  if (discard.length > 0) await discardSiblingDrafts(discard);
+  if (discard.length > 0) await discardSiblingDrafts(discard, input.seen);
   return { adopt, keep, groupId };
 }
 
 const METHOD_LABEL: Record<CampaignChannel, string> = { email: "Email", sms: "SMS", push: "Push" };
 
-/** #4273 — a sibling's composer asked for the method its original campaign uses. */
+/**
+ * #4273 — this composer wants a method the campaign already uses. The message
+ * says what holds it (follow-up 2): a draft, a scheduled send, one that went
+ * out. The class name is kept for imports.
+ */
 export class GroupHeadMethodTakenError extends Error {
+  constructor(
+    public readonly channel: CampaignChannel,
+    public readonly status: CampaignStatus = "draft",
+    public readonly isHead: boolean = true,
+  ) {
+    super(groupMethodTakenMessage(channel, status, isHead));
+    this.name = "GroupHeadMethodTakenError";
+  }
+}
+
+export function groupMethodTakenMessage(
+  channel: CampaignChannel,
+  status: CampaignStatus,
+  isHead: boolean,
+): string {
+  const label = METHOD_LABEL[channel];
+  const subject = isHead ? "Your original campaign" : "This campaign";
+  switch (status) {
+    case "draft":
+      return `${subject} already sends by ${label}. Open it from Drafts to send by ${label}, or untick ${label} here.`;
+    case "scheduled":
+      return `${subject} is already scheduled to send by ${label}. Untick ${label} here, or cancel that send in Campaigns first.`;
+    case "sending":
+    case "sent":
+      return `${subject} already went out by ${label}. Untick ${label} here. To send by ${label} again, start a new campaign.`;
+    case "failed":
+    case "cancelled":
+      return `${subject}'s ${label} didn't go out. Untick ${label} here, or delete that send in Campaigns and try again.`;
+    default: {
+      const _exhaustive: never = status;
+      return String(_exhaustive);
+    }
+  }
+}
+
+/** #4273 follow-up 1 — a draft for this method is being written in another tab. */
+export class GroupDraftInUseElsewhereError extends Error {
   constructor(public readonly channel: CampaignChannel) {
     const label = METHOD_LABEL[channel];
     super(
-      `Your original campaign already sends by ${label}. Open it from Drafts to send by ${label}, or untick ${label} here.`,
+      `This campaign is open in another tab or device, and that tab is using ${label}. Close it there, or reload here and try again.`,
     );
-    this.name = "GroupHeadMethodTakenError";
+    this.name = "GroupDraftInUseElsewhereError";
   }
+}
+
+/** Record this composer's own write so it may later adopt or drop the draft. */
+function rememberWrite(seen: Map<string, string>, row: { id: string; updated_at?: string } | undefined): void {
+  if (row !== undefined && typeof row.updated_at === "string") seen.set(row.id, row.updated_at);
 }
 
 /**
@@ -359,7 +455,7 @@ export function draftSaveErrorMessage(error: unknown): string {
       : "";
   const code = (error as { code?: unknown } | null)?.code;
   if (text.includes("issue_3682_one_channel_per_campaign_group") || code === "23505") {
-    return "Another draft of this campaign already sends by this method. Open it from Drafts, or pick a different method here.";
+    return "This campaign already has a message by this method — as a draft, a scheduled send, or one that went out. Pick a different method here, or start a new campaign.";
   }
   if (text.includes("campaign_group_invalid")) {
     return "This draft can't join that campaign. Start a new campaign from Blast and try again.";
@@ -368,13 +464,21 @@ export function draftSaveErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Couldn't save draft. Tap Save draft to retry.";
 }
 
-/** Drop sibling drafts the host backed out of (they never sent). */
-export async function discardSiblingDrafts(campaignIds: string[]): Promise<void> {
+/**
+ * Drop sibling drafts the host backed out of (they never sent). Given `seen`,
+ * each delete holds only for the version this composer saw: a draft another
+ * tab changed since is theirs and stays (follow-up 1).
+ */
+export async function discardSiblingDrafts(
+  campaignIds: string[],
+  seen?: ReadonlyMap<string, string>,
+): Promise<void> {
   for (const id of campaignIds) {
+    const expected = seen?.get(id);
     try {
-      await deleteDraft(id);
+      await deleteDraft(id, expected !== undefined ? { expectedUpdatedAt: expected } : undefined);
     } catch {
-      // Already confirmed or gone: nothing left to discard.
+      // Already confirmed, gone, or changed in another tab: not ours to drop.
     }
   }
 }

@@ -48,12 +48,31 @@ export interface PushComposeCardProps {
   title?: string | null;
 }
 
-export function PushPreview({ body, brandName, reason, title }: {
+export function PushPreview({ body, brandName, reason, title, rendered }: {
   title?: string | null;
   body: string;
   brandName: string;
   reason: PushAudienceReason;
+  /**
+   * #4273 — a push exactly as sent (title and body already rendered, reason
+   * line included). Shown as-is; nothing is re-appended.
+   */
+  rendered?: { title: string; body: string };
 }) {
+  if (rendered !== undefined) {
+    return (
+      <View
+        style={styles.preview}
+        accessible
+        accessibilityLabel={`${rendered.title}. ${rendered.body}`}
+        testID="push-preview"
+      >
+        <Text style={styles.previewApp}>MINGLA · now</Text>
+        <Text style={styles.previewTitle} numberOfLines={1}>{rendered.title}</Text>
+        <Text style={styles.previewBody} numberOfLines={3}>{rendered.body}</Text>
+      </View>
+    );
+  }
   return (
     <View style={styles.preview} accessibilityLabel="Push preview" testID="push-preview">
       <Text style={styles.previewApp}>MINGLA · now</Text>

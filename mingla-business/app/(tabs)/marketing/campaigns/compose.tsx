@@ -215,10 +215,12 @@ import {
   prepareCampaignGroupPreview,
   settleLeftoverGroupDrafts,
   draftSaveErrorMessage,
+  GroupDraftInUseElsewhereError,
   GroupHeadMethodTakenError,
   type CampaignChannel,
   type SiblingChannelState,
 } from "../../../../src/services/marketing/campaignChannelGroupService";
+import { listGroupDrafts } from "../../../../src/services/marketing/marketingBookSendService";
 import {
   getCombinedAudienceReach,
   getCombinedAudienceSummary,
@@ -338,6 +340,16 @@ function hasFreshCircleAvailability(
   const expiresAt = Date.parse(availability.expiresAt);
   return Number.isFinite(expiresAt) && expiresAt > Date.now();
 }
+
+// #4273 — the composer's chunk is the one on-demand owner of the preview
+// panes. The campaign screen loads its sent-view wrappers through this route's
+// own chunk (import("./compose")), so the panes and everything they import are
+// never shared by two lazy chunks, which would hoist them into __common.
+export {
+  SentMethodPreview,
+  SentMethodTabs,
+  SentSmsCost,
+} from "../../../../src/components/marketing/SentCampaignPreviews";
 
 export default function ComposeCampaignRoute(): React.ReactElement {
   const router = useRouter();
@@ -741,6 +753,11 @@ export default function ComposeCampaignRoute(): React.ReactElement {
 
   // Sanctioned-exit disarm flag for back-listener.
   const sanctionedExitRef = useRef(false);
+  // #4273 follow-up 1 — group drafts this composer saw (id -> updated_at), at
+  // load and from its own writes. Only these may be adopted or dropped; a
+  // draft another tab or device wrote is left alone.
+  // Invariant I-4273-GROUP-DRAFT-CLEANUP-SEEN-ONLY (declared beside its test).
+  const seenGroupDraftsRef = useRef(new Map<string, string>());
 
   // F.9: editor owns its own InsertionBar + TemplatePreviewDrawer state
   // internally. compose.tsx only keeps the imperative handle for
@@ -900,6 +917,17 @@ export default function ComposeCampaignRoute(): React.ReactElement {
         const row = await getCampaign(draftId);
         if (cancelled || row === null) return;
         setCampaignId(row.id);
+        // #4273 follow-up 1 — the group drafts this composer saw at load. If
+        // this read fails, nothing is marked seen: leftovers are then left
+        // alone and a clash is named at review, so the draft still opens.
+        try {
+          const groupAtLoad = await listGroupDrafts(row.id);
+          for (const draft of groupAtLoad.drafts) {
+            seenGroupDraftsRef.current.set(draft.id, draft.updatedAt);
+          }
+        } catch (groupError) {
+          console.warn("[#4273] group drafts unread at load", groupError);
+        }
         setChannel(row.channel as MarketingChannelKind);
         // #3682 — clear a cross-brand audience left on a stale draft.
         let restoredAudienceId: string | null = row.audience_id;
@@ -1070,16 +1098,18 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           channel_payload: payload,
           ...(templateId !== null ? { template_id: templateId } : {}),
         });
+        seenGroupDraftsRef.current.set(row.id, row.updated_at);
         setCampaignId(row.id);
         setIsDirty(false);
         return row.id;
       } else {
-        await updateDraft({
+        const row = await updateDraft({
           campaign_id: campaignId,
           name: campaignName,
           audience_id: audienceId,
           channel_payload: payload,
         });
+        seenGroupDraftsRef.current.set(row.id, row.updated_at);
       }
       setIsDirty(false);
       return campaignId;
@@ -1437,7 +1467,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     // clash with the lead taking over its channel.
     const staleSiblings = siblings.filter((row) => !extraChannels.has(row.channel));
     if (staleSiblings.length > 0) {
-      await discardSiblingDrafts(staleSiblings.map((row) => row.campaignId));
+      await discardSiblingDrafts(staleSiblings.map((row) => row.campaignId), seenGroupDraftsRef.current);
     }
     // #4273 — a tab that closed with the review open leaves sibling drafts in
     // the group. Drop the one on the lead's method before saving the lead, or
@@ -1453,10 +1483,11 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                 existingCampaignId: siblings.find((row) => row.channel === kind)?.campaignId ?? null,
               }))
             : [],
+          seen: seenGroupDraftsRef.current,
         });
       } catch (error) {
         setErrorBanner(
-          error instanceof GroupHeadMethodTakenError
+          error instanceof GroupHeadMethodTakenError || error instanceof GroupDraftInUseElsewhereError
             ? error.message
             : "Couldn't check this campaign's drafts. Try again.",
         );
@@ -1490,6 +1521,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
             payload: payloadFor(kind),
             existingCampaignId: siblings.find((row) => row.channel === kind)?.campaignId ?? null,
           })),
+          seen: seenGroupDraftsRef.current,
         });
         setSiblingsPending(false);
         setSiblings(prepared.siblings);
@@ -1507,7 +1539,11 @@ export default function ComposeCampaignRoute(): React.ReactElement {
       setBookRequestId(newRequestId());
     } catch (error) {
       setSiblingsPending(false);
-      setBookPreviewError(bookPreviewFailure(error));
+      setBookPreviewError(
+        error instanceof GroupHeadMethodTakenError || error instanceof GroupDraftInUseElsewhereError
+          ? error.message
+          : bookPreviewFailure(error),
+      );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- bookPreviewFailure reads only the audience kind below
   }, [accountId, audienceId, bookPreviewMutation, brandId, campaignId, campaignName, channel, extraChannels, flushDraft, payloadFor, sealedAudienceKind, siblings]);
@@ -1518,7 +1554,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   const closeReview = useCallback((): void => {
     setShowReview(false);
     if (siblings.length > 0) {
-      void discardSiblingDrafts(siblings.map((row) => row.campaignId));
+      void discardSiblingDrafts(siblings.map((row) => row.campaignId), seenGroupDraftsRef.current);
       setSiblings([]);
     }
     setGroupFigures(null);
