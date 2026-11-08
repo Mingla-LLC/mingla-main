@@ -51,7 +51,7 @@ export function PageSystemShell({
         </footer>
         <aside className="ps-review-dock" aria-label="Private page-system review" data-private-review-dock data-print-hide>
           <div className="ps-review-state">
-            <strong>#2990 private review · noindex</strong>
+            <strong>Private review · noindex</strong>
             <span>Future route: {futurePath}</span>
           </div>
           <nav aria-label="Review fixtures">
