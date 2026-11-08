@@ -415,9 +415,14 @@ BEGIN
     RAISE EXCEPTION 'cross-brand/currency isolation or partial withholding failed';
   END IF;
   PERFORM public.mature_postponement_debts('2026-07-23T00:00:00Z');
-  IF (SELECT amount_cents FROM public.payout_ledger_adjustments
-      WHERE release_id=v_partial_target AND kind='maturity_recredit')<>600 OR
-     (SELECT amount_cents FROM public.payout_ledger_adjustments
+  -- #3645 2d: the target is unpaid, so the 600 held goes back through net (a
+  -- 'matured' return) instead of a recredit on top; the 400 never held is
+  -- written off as before.
+  IF (SELECT coalesce(sum(amount_cents),0) FROM public.payout_debt_application_returns
+      WHERE release_id=v_partial_target AND reason='matured')<>600 OR
+     EXISTS(SELECT 1 FROM public.payout_ledger_adjustments
+      WHERE release_id=v_partial_target AND kind='maturity_recredit') OR
+     (SELECT coalesce(sum(amount_cents),0) FROM public.payout_ledger_adjustments
       WHERE release_id=v_partial_origin AND kind='debt_writeoff')<>400 THEN
     RAISE EXCEPTION 'partial recovery did not recredit only held value';
   END IF;
@@ -451,10 +456,14 @@ BEGIN
   IF (SELECT (principal_cents,recovered_cents,status)
       FROM public.organiser_payout_debts WHERE id=v_permanent)
        IS DISTINCT FROM ROW(400,400,'closed'::text) OR
-     (SELECT amount_cents FROM public.payout_ledger_adjustments
-      WHERE release_id=v_convert_target AND kind='maturity_recredit')<>300 OR
-     (SELECT count(*) FROM public.payout_ledger_adjustments
-      WHERE release_id=v_convert_target AND kind='maturity_recredit')<>1 OR
+     -- #3645 2d: the unconverted 300 goes back through net on the unpaid
+     -- target (one 'matured' return), never as a recredit on top.
+     (SELECT coalesce(sum(amount_cents),0) FROM public.payout_debt_application_returns
+      WHERE release_id=v_convert_target AND reason='matured')<>300 OR
+     (SELECT count(*) FROM public.payout_debt_application_returns
+      WHERE release_id=v_convert_target AND reason='matured')<>1 OR
+     EXISTS(SELECT 1 FROM public.payout_ledger_adjustments
+      WHERE release_id=v_convert_target AND kind='maturity_recredit') OR
      (SELECT converted_cents FROM public.payout_debt_applications
       WHERE debt_id=v_convert_debt AND release_id=v_convert_target)<>400 THEN
     RAISE EXCEPTION 'cancellation conversion double-withheld or double-recredited';

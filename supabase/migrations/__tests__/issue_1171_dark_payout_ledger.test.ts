@@ -300,8 +300,12 @@ BEGIN
   IF public.mature_postponement_debts('2026-07-05T00:00:00Z')<>1 THEN
     RAISE EXCEPTION 'maturity did not process exactly one debt';
   END IF;
-  IF (SELECT amount_cents FROM public.payout_ledger_adjustments
-      WHERE idempotency_key LIKE 'postpone-recredit:%')<>600 OR
+  -- #3645 2d: the target is unpaid, so the withheld 600 goes back through
+  -- net (a 'matured' return), never as a recredit on top.
+  IF (SELECT coalesce(sum(amount_cents),0) FROM public.payout_debt_application_returns
+      WHERE debt_id=v_debt AND release_id=v_target AND reason='matured')<>600 OR
+     EXISTS(SELECT 1 FROM public.payout_ledger_adjustments
+       WHERE idempotency_key LIKE 'postpone-recredit:%') OR
      NOT EXISTS(
        SELECT 1 FROM public.payout_debt_applications
        WHERE debt_id=v_debt AND released_at='2026-07-05T00:00:00Z'
@@ -411,10 +415,16 @@ BEGIN
        WHERE debt_id=v_reopen_debt AND release_id=v_reopen_a
          AND released_at='2026-08-05T00:00:00Z' AND converted_cents=0
      ) OR
+     -- #3645 2d: reserve-a is unpaid, so maturity returns the 600 through
+     -- net instead of a recredit on top.
      NOT EXISTS(
+       SELECT 1 FROM public.payout_debt_application_returns
+       WHERE release_id=v_reopen_a AND debt_id=v_reopen_debt
+         AND reason='matured' AND amount_cents=600
+     ) OR
+     EXISTS(
        SELECT 1 FROM public.payout_ledger_adjustments
        WHERE release_id=v_reopen_a AND kind='maturity_recredit'
-         AND amount_cents=600
      ) THEN
     RAISE EXCEPTION 'lifecycle A did not preserve released historical truth';
   END IF;
