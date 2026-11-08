@@ -401,7 +401,8 @@ export function phase3dContractDigest(manifest) {
 // #1023: re-sealed after merging origin/main (#3645, #4294, #4271, #4304, #4270 W7 rows kept beside the #1023 rows).
 // #1023: re-sealed after merging origin/main 4ace6deafa (#4331 rows kept beside the #1023 rows).
 // #1023: re-sealed after merging origin/main 5dd7f103ca (#4273 polish rows kept beside the #1023 rows).
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "61bd956905c2b4aa03359d9f6281f2a4bc7afe23610545ab8e785dc0990796b2";
+// #1023: re-sealed after merging origin/main 6038982e1a.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "f62cce585cb0da177bd885657d6c841a5efa6892349a50e6b12d651049e4ac6a";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
