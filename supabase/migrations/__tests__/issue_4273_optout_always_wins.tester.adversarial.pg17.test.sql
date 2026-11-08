@@ -66,9 +66,10 @@ VALUES ('  O01@EXAMPLE.test ', 'email', 'brand', pg_temp.u('b1'), 't');
 -- O02 unsubscribed from ANOTHER brand only.
 INSERT INTO public.marketing_unsubscribes(contact_email, channel, scope, brand_id, reason)
 VALUES ('o02@example.test', 'email', 'brand', pg_temp.u('b2'), 't');
--- O03 account-scope unsubscribe on the buyer's own account.
+-- O03 account-scope unsubscribe from the sending host's account (#4273 Q1:
+-- account scope is the host that owns the brand; 01 owns b1).
 INSERT INTO public.marketing_unsubscribes(contact_email, channel, scope, account_id, reason)
-VALUES ('o03@example.test', 'email', 'account', pg_temp.u('03'), 't');
+VALUES ('o03@example.test', 'email', 'account', pg_temp.u('01'), 't');
 -- O04 STOP on the phone; email suppression stored upper-case.
 INSERT INTO public.channel_suppressions(user_id, contact, channel, scope, reason) VALUES
   (NULL, '+2348031100004', 'sms', 'all', 'stop_keyword'),
@@ -119,7 +120,7 @@ BEGIN
     pg_temp.st(b, 'email', 'o01@example.test') || '/' || pg_temp.st(b, 'phone', '+2348031100001'));
   PERFORM pg_temp.chk('G-02 an unsubscribe from another brand does not withhold this one',
     pg_temp.st(b, 'email', 'o02@example.test') = 'granted', pg_temp.st(b, 'email', 'o02@example.test'));
-  PERFORM pg_temp.chk('G-03 account-scope unsubscribe on the buyer''s account withholds email',
+  PERFORM pg_temp.chk('G-03 an account-scope unsubscribe from the sending host''s account withholds email',
     pg_temp.st(b, 'email', 'o03@example.test') = 'withheld' AND pg_temp.autos('o03@example.test') = 0,
     pg_temp.st(b, 'email', 'o03@example.test') || ' autos=' || pg_temp.autos('o03@example.test'));
   PERFORM pg_temp.chk('G-05 an account-keyed suppression withholds the logged-in buyer''s email',
@@ -232,8 +233,10 @@ DO $acct$
 DECLARE b uuid := pg_temp.u('b1');
 BEGIN
   PERFORM pg_temp.ingest(pg_temp.u('31a')); PERFORM pg_temp.ingest(pg_temp.u('32a')); PERFORM pg_temp.ingest(pg_temp.u('32b'));
-  PERFORM pg_temp.chk('A-01 an account-scope SMS opt-out withholds every phone that account bought with, made from any address',
-    pg_temp.st(b, 'phone', '+2348031100031') = 'withheld', pg_temp.st(b, 'phone', '+2348031100031'));
+  -- #4273 Q1 (Seth, 2026-11-07): account scope is the SENDING HOST's account. A row
+  -- keyed to a buyer's own account (31) for another address withholds nothing.
+  PERFORM pg_temp.chk('A-01 an account-scope row keyed to the buyer''s own account, for another address, withholds nothing',
+    pg_temp.st(b, 'phone', '+2348031100031') = 'granted', pg_temp.st(b, 'phone', '+2348031100031'));
   PERFORM pg_temp.chk('A-02 and never that account''s email (other channel)',
     pg_temp.st(b, 'email', 'acct31@example.test') = 'granted', pg_temp.st(b, 'email', 'acct31@example.test'));
   -- 32's order lands in a merge conflict (its phone is already 31's), so its

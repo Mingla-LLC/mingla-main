@@ -5,8 +5,10 @@
  * with a filter pill row (All · Scheduled · Sent · Drafts · Failed) + an
  * FAB to open the composer.
  *
- * Per-campaign "View report" is deferred to Sub-ORCH-0815-C (campaign
- * report screen at `/marketing/campaigns/[id].tsx` — Hard Guard §13).
+ * #4273 — every method of a blast is one card (grouped by
+ * COALESCE(campaign_group_id, id)); the status filter applies after grouping,
+ * so a blast shows when any of its methods matches. Tapping a card opens the
+ * campaign screen (`/marketing/campaigns/[id].tsx`) on its first method.
  */
 
 import React, { useCallback, useMemo, useState } from "react";
@@ -32,10 +34,13 @@ import {
 import { useCurrentBrand } from "../../../../src/hooks/useCurrentBrand";
 import { useCampaigns } from "../../../../src/hooks/marketing/useCampaigns";
 import { useResponsiveLayout } from "../../../../src/hooks/useResponsiveLayout";
+import { cancelScheduled } from "../../../../src/services/marketing/marketingCampaignService";
+import { deleteCampaign } from "../../../../src/services/marketing/campaignDeleteService";
+import { ConfirmDialog } from "../../../../src/components/ui/ConfirmDialog";
 import {
-  cancelScheduled,
-  deleteDraft,
-} from "../../../../src/services/marketing/marketingCampaignService";
+  filterCampaignGroups,
+  groupCampaignRows,
+} from "../../../../src/features/marketing/campaignListGroups";
 import type { CampaignStatus } from "../../../../src/types/marketing";
 
 export default function MarketingCampaignsRoute(): React.ReactElement {
@@ -52,10 +57,9 @@ export default function MarketingCampaignsRoute(): React.ReactElement {
     return filter;
   }, [filter]);
 
-  const campaignsQuery = useCampaigns({
-    brand_id: brandId,
-    status: statusFilter,
-  });
+  // #4273 — every status is fetched; the filter applies after grouping, so a
+  // blast with a sent email and a failed SMS shows under Sent and Failed.
+  const campaignsQuery = useCampaigns({ brand_id: brandId });
 
   const handleResume = useCallback((id: string) => {
     router.push(`/marketing/campaigns/compose?draft=${id}` as never);
@@ -70,30 +74,60 @@ export default function MarketingCampaignsRoute(): React.ReactElement {
       await cancelScheduled(id);
       await campaignsQuery.refetch();
     } catch (err) {
+      const message = (err as { message?: unknown } | null)?.message;
+      // #4273 extra (a): a send that is due or has started is read-only.
       Alert.alert(
         "Couldn't cancel",
-        err instanceof Error ? err.message : "Try again in a moment.",
+        typeof message === "string" && message.includes("campaign_locked")
+          ? "This send has already started, so it can't be cancelled now."
+          : err instanceof Error ? err.message : "Try again in a moment.",
       );
     }
   }, [campaignsQuery]);
 
-  const handleDelete = useCallback(async (id: string) => {
+  const groups = useMemo(
+    () => filterCampaignGroups(groupCampaignRows(campaignsQuery.data ?? []), statusFilter),
+    [campaignsQuery.data, statusFilter],
+  );
+
+  // #4273 — Delete asks first: it names the campaign and says it can't be undone.
+  const [pendingDelete, setPendingDelete] = useState<{ ids: string[]; name: string; cancelled: boolean } | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const handleDelete = useCallback((ids: string[]) => {
+    const group = groups.find((row) => row.members.some((member) => ids.includes(member.id)));
+    setDeleteError(null);
+    const cancelled = group !== undefined &&
+      group.members.filter((member) => ids.includes(member.id)).every((member) => member.status === "cancelled");
+    setPendingDelete({ ids, name: group?.primary.name ?? "This campaign", cancelled });
+  }, [groups]);
+
+  const closeDelete = useCallback(() => {
+    if (deleting) return;
+    setPendingDelete(null);
+    setDeleteError(null);
+  }, [deleting]);
+
+  const confirmDelete = useCallback(async () => {
+    if (pendingDelete === null) return;
+    setDeleting(true);
+    setDeleteError(null);
     try {
-      await deleteDraft(id);
+      // #4273 extra (b) — a failed or cancelled method, not a draft.
+      for (const id of pendingDelete.ids) await deleteCampaign(id);
+      setPendingDelete(null);
       await campaignsQuery.refetch();
     } catch (err) {
-      Alert.alert(
-        "Couldn't delete",
-        err instanceof Error ? err.message : "Try again in a moment.",
-      );
+      setDeleteError(err instanceof Error ? err.message : "Couldn't delete. Try again in a moment.");
+    } finally {
+      setDeleting(false);
     }
-  }, [campaignsQuery]);
-
-  const campaigns = campaignsQuery.data ?? [];
+  }, [campaignsQuery, pendingDelete]);
 
   return (
     <View style={styles.host}>
-      {filter !== "all" && campaigns.length === 0 ? (
+      {filter !== "all" && groups.length === 0 ? (
         <CampaignFilterPills active={filter} onChange={setFilter} />
       ) : null}
       {/* ORCH-0889: disabled-query (auth-bootstrap) and first-fetch both
@@ -113,7 +147,7 @@ export default function MarketingCampaignsRoute(): React.ReactElement {
             description="Pull to retry, or come back in a moment."
           />
         </View>
-      ) : campaigns.length === 0 ? (
+      ) : groups.length === 0 ? (
         <View style={styles.centerHost}>
           <EmptyState
             illustration="users"
@@ -128,10 +162,10 @@ export default function MarketingCampaignsRoute(): React.ReactElement {
         >
           <CampaignFilterPills active={filter} onChange={setFilter} />
           <View style={[styles.campaignGrid, isWideDesktop && styles.campaignGridWide]}>
-            {campaigns.map((campaign) => (
-              <View key={campaign.id} style={isWideDesktop ? styles.campaignCellWide : styles.campaignCell}>
+            {groups.map((group) => (
+              <View key={group.groupId} style={isWideDesktop ? styles.campaignCellWide : styles.campaignCell}>
                 <CampaignCard
-                  campaign={campaign}
+                  group={group}
                   onResume={handleResume}
                   onCancel={handleCancel}
                   onDelete={handleDelete}
@@ -142,6 +176,28 @@ export default function MarketingCampaignsRoute(): React.ReactElement {
           </View>
         </ScrollView>
       )}
+      <ConfirmDialog
+        visible={pendingDelete !== null}
+        onClose={closeDelete}
+        onConfirm={confirmDelete}
+        title="Delete this campaign?"
+        description={
+          pendingDelete !== null
+            ? `"${pendingDelete.name}" ${pendingDelete.cancelled ? "was cancelled before it went out" : "didn't finish sending"}. Deleting removes it from Campaigns. This can't be undone.`
+            : ""
+        }
+        variant="simple"
+        confirmLabel="Delete"
+        cancelLabel="Keep it"
+        confirmLoading={deleting}
+        confirmDisabled={deleting}
+        closeDisabled={deleting}
+        errorMessage={deleteError}
+        testID="delete-campaign-confirm"
+        confirmTestID="delete-campaign-confirm-button"
+        cancelTestID="delete-campaign-cancel-button"
+        destructive
+      />
     </View>
   );
 }

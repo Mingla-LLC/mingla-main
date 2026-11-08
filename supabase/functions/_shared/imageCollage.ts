@@ -21,6 +21,21 @@ export const TARGET_SIZE = 768;
 export const MAX_PHOTOS = 16;
 
 /**
+ * #4276: at most this many cells in one collage may fall back to a full-size original
+ * when their thumbnail is missing. Abuja (2026-11-08) reached Intelligence with 840
+ * held places and no thumbnails; decoding up to 16 originals per collage exceeded the
+ * edge CPU limit on every place, so the run made no progress and re-spent its review
+ * requests on each retry. Past this cap a missing thumbnail leaves the cell blank and
+ * counts as a fetch failure, with no original fetched.
+ */
+export const MAX_ORIGINAL_FALLBACKS = 2;
+
+/** How many original-object fallbacks one collage has left. */
+export interface OriginalFallbackBudget {
+  remaining: number;
+}
+
+/**
  * [#1644 Stage 2] Cache-Control max-age, in seconds, for every object written to
  * the `place-collages` bucket — by the generator here and by the one-time WebP
  * re-encode worker (`scripts/issue-1644/`).
@@ -252,7 +267,12 @@ type DecodeOutcome =
  * fallback on ANY non-OK thumb response and fall back to the ORIGINAL full-size
  * object (decodable baseline JPEG) — never the metered render endpoint.
  */
-async function fetchAndDecode(url: string, tileSize: number, timeoutMs = 12_000): Promise<DecodeOutcome> {
+async function fetchAndDecode(
+  url: string,
+  tileSize: number,
+  timeoutMs = 12_000,
+  fallbackBudget?: OriginalFallbackBudget,
+): Promise<DecodeOutcome> {
   const transformedUrl = transformPhotoUrlForTile(url, tileSize);
   let fetchUrlForDecode = transformedUrl;
   try {
@@ -265,6 +285,13 @@ async function fetchAndDecode(url: string, tileSize: number, timeoutMs = 12_000)
       thumbFallbackEnabled() &&
       isThumbObjectRewrite(url, transformedUrl)
     ) {
+      // #4276: the collage's original-object fallbacks are capped; past the cap the
+      // cell stays blank and counts as a fetch failure, with no original fetched.
+      if (fallbackBudget && fallbackBudget.remaining <= 0) {
+        console.warn(`[imageCollage] thumb missing (${res.status}); original fallback cap reached, leaving cell blank for ${transformedUrl.slice(0, 80)}`);
+        return { image: null, failure: "fetch" };
+      }
+      if (fallbackBudget) fallbackBudget.remaining--;
       fetchUrlForDecode = originalObjectFallbackUrl(url);
       console.warn(`[imageCollage] thumb missing (${res.status}); falling back to original object for ${transformedUrl.slice(0, 80)}`);
       res = await fetchUrl(fetchUrlForDecode, timeoutMs);
@@ -340,8 +367,10 @@ export async function composeCollage(photoUrls: string[]): Promise<{
   // ORCH-1033: the original-object fallback (when a thumb is missing) decodes a
   // single full-size 800px original at a time here, so this loop staying serial
   // keeps the worst case at one ≤6.4 MB decode in flight.
+  // #4276: one budget per collage caps how many full-size originals it decodes.
+  const fallbackBudget: OriginalFallbackBudget = { remaining: MAX_ORIGINAL_FALLBACKS };
   for (let i = 0; i < limited.length; i++) {
-    const outcome = await fetchAndDecode(limited[i], tile);                 // v6: pass tile for URL transform
+    const outcome = await fetchAndDecode(limited[i], tile, undefined, fallbackBudget); // v6: pass tile for URL transform
     if (!outcome.image) {
       failed++;
       if (outcome.failure === "fetch") fetchFailed++;
