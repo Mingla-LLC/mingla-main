@@ -42,7 +42,7 @@ import { coverBasePayload, type ServerDraftCover } from "../utils/draftCoverBase
 // are included on purpose: optional is exactly how the gallery slipped through.
 // Keep this a single string literal — #1022's T-2 reads it from source.
 export const EVENT_DRAFT_SELECT =
-  "id,brand_id,created_by,title,description,slug,location_text,online_url,cover_media_url,cover_media_poster_url,cover_media_type,cover_media_provider,cover_media_source_url,cover_media_credit,cover_media_credit_url,cover_media_alt,cover_media_gallery,currency,is_online,is_recurring,is_multi_date,recurrence_rules,theme,visibility,status,timezone,created_at,updated_at,published_at,deleted_at,party_types,vibe_tags,music_genres,city,location_geo,pass_tax,pass_mingla_fee,pass_service_fee,theme_color_override,theme_font_override,theme_animation_override";
+  "id,brand_id,created_by,title,description,slug,location_text,online_url,cover_media_url,cover_media_poster_url,cover_media_type,cover_media_provider,cover_media_source_url,cover_media_credit,cover_media_credit_url,cover_media_alt,cover_media_gallery,currency,is_online,is_recurring,is_multi_date,recurrence_rules,theme,visibility,status,timezone,created_at,updated_at,published_at,deleted_at,party_types,vibe_tags,music_genres,city,location_geo,pass_tax,pass_mingla_fee,pass_service_fee,theme_color_override,theme_font_override,theme_animation_override,theme_gradient_override";
 
 type SelectColumns<
   S extends string,
@@ -326,13 +326,13 @@ export const fetchDraftsForBrand = async (
   // ORCH-1150: include RSVP drafts (DRAFT_EVENT_TYPES) so they don't vanish.
   // orch-strict-grep-allow events-type-filter — ORCH-1150 D-2: RSVP drafts are included via .in("event_type", ["event","rsvp"]); event_type IS filtered (event+rsvp), not unfiltered.
   const { data, error } = await supabase
-    .from("events")
-    .select(EVENT_DRAFT_SELECT)
-    .eq("brand_id", brandId)
-    .in("event_type", DRAFT_EVENT_TYPES)
-    .eq("status", "draft")
-    .is("deleted_at", null)
-    .order("updated_at", { ascending: false });
+      .from("events")
+      .select(EVENT_DRAFT_SELECT)
+      .eq("brand_id", brandId)
+      .in("event_type", DRAFT_EVENT_TYPES)
+      .eq("status", "draft")
+      .is("deleted_at", null)
+      .order("updated_at", { ascending: false });
 
   if (error !== null) throw error;
   return (data ?? []).map(rowToDraft);
@@ -345,13 +345,13 @@ export const fetchDraftById = async (
   // ORCH-1150: include RSVP drafts so resume/edit can resolve them.
   // orch-strict-grep-allow events-type-filter — ORCH-1150 D-2: RSVP drafts are included via .in("event_type", ["event","rsvp"]); event_type IS filtered (event+rsvp), not unfiltered.
   const { data, error } = await supabase
-    .from("events")
-    .select(EVENT_DRAFT_SELECT)
-    .eq("id", draftId)
-    .in("event_type", DRAFT_EVENT_TYPES)
-    .eq("status", "draft")
-    .is("deleted_at", null)
-    .maybeSingle();
+      .from("events")
+      .select(EVENT_DRAFT_SELECT)
+      .eq("id", draftId)
+      .in("event_type", DRAFT_EVENT_TYPES)
+      .eq("status", "draft")
+      .is("deleted_at", null)
+      .maybeSingle();
 
   if (error !== null) throw error;
   return data === null ? null : rowToDraft(data);

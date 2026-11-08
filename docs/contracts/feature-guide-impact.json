@@ -1792,6 +1792,269 @@
       "paths": [
         "mingla-business/app/rsvp/[id]/scanners/index.tsx"
       ]
+    },
+    {
+      "capability_key": "brand-profile",
+      "paths": [
+        "app-mobile/src/components/brandEnquiry/PresentedByFollowAndMessage.tsx",
+        "app-mobile/src/theme/useConsumerThemeFont.ts",
+        "app-mobile/tsconfig.json",
+        "mingla-business/__manual_mocks__/expo-font.js",
+        "mingla-business/__manual_mocks__/expo-linear-gradient.js",
+        "mingla-business/__manual_mocks__/offering-rendering.js",
+        "mingla-business/jest.issue1036.render.cjs",
+        "mingla-business/jest.issue679.cfg.cjs",
+        "mingla-business/metro.config.js",
+        "mingla-business/src/components/brand/PublicBrandPage.tsx",
+        "mingla-business/src/components/brandContact/GuestThreadScreen.tsx",
+        "mingla-business/src/components/brandContact/PresentedByActions.tsx",
+        "mingla-business/src/components/theme/ThemeColourTab.tsx",
+        "mingla-business/src/components/theme/ThemeControlRow.tsx",
+        "mingla-business/src/components/theme/ThemeEditorSection.tsx",
+        "mingla-business/src/components/theme/ThemeFontTab.tsx",
+        "mingla-business/src/components/theme/ThemeSheet.tsx",
+        "mingla-business/src/components/theme/ThemeSheetLazy.tsx",
+        "mingla-business/src/components/theme/fontCatalogModel.ts",
+        "mingla-business/src/components/theme/themeColorModel.ts",
+        "mingla-business/src/components/theme/themePresets.ts",
+        "mingla-business/src/components/theme/themedPreviewCardColors.ts",
+        "mingla-business/src/dev/motionDeepLink.ts",
+        "mingla-business/src/services/brandMapping.ts",
+        "mingla-business/src/services/offeringTheme.ts",
+        "mingla-business/src/theme/useThemeFont.ts",
+        "mingla-business/vercel.json",
+        "packages/brand-rendering/FollowButton.tsx",
+        "packages/brand-rendering/PublicBrandPage.tsx",
+        "packages/brand-rendering/SharedFollowButton.web.tsx",
+        "packages/brand-rendering/enquiry/BrandMessageSheet.tsx",
+        "packages/brand-rendering/enquiry/BrandPageFoot.tsx",
+        "packages/offering-rendering/LucideIcons.tsx",
+        "packages/offering-rendering/ParallaxCoverShell.tsx",
+        "packages/offering-rendering/ThemeAccentFill.tsx",
+        "packages/offering-rendering/ThemeEntranceAnimation.tsx",
+        "packages/offering-rendering/ThemeEntranceAnimation.web.tsx",
+        "packages/offering-rendering/ThemeEntranceAnimationWebImpl.tsx",
+        "packages/offering-rendering/ThemeMotionPauseButton.tsx",
+        "packages/offering-rendering/designTokens.ts",
+        "packages/offering-rendering/fonts/googleFontsCatalog.json",
+        "packages/offering-rendering/googleFontLoader.ts",
+        "packages/offering-rendering/package.json",
+        "packages/offering-rendering/scripts/build-google-fonts-catalog.mjs",
+        "packages/offering-rendering/themeAccentStyle.ts",
+        "packages/offering-rendering/themeMotion.ts",
+        "packages/offering-rendering/themeMotionDevOverride.ts",
+        "packages/offering-rendering/themeMotionPauseStore.ts",
+        "packages/offering-rendering/themeMotionPauseStore.web.ts",
+        "packages/offering-rendering/themePalette.ts",
+        "packages/offering-rendering/themeResolver.ts",
+        "packages/offering-rendering/useReduceMotionPreference.ts",
+        "packages/offering-rendering/useReduceMotionPreference.web.ts",
+        "packages/offering-rendering/useThemeMotionSlug.ts",
+        "packages/theme-animations/README.md",
+        "packages/theme-animations/index.ts",
+        "packages/theme-animations/loaders.ts",
+        "packages/theme-animations/loaders.web.ts",
+        "packages/theme-animations/lottie/aurora.intro.json",
+        "packages/theme-animations/lottie/aurora.loop.json",
+        "packages/theme-animations/lottie/autumn_leaves.intro.json",
+        "packages/theme-animations/lottie/autumn_leaves.loop.json",
+        "packages/theme-animations/lottie/balloons.intro.json",
+        "packages/theme-animations/lottie/balloons.json",
+        "packages/theme-animations/lottie/balloons.loop.json",
+        "packages/theme-animations/lottie/bokeh.intro.json",
+        "packages/theme-animations/lottie/bokeh.loop.json",
+        "packages/theme-animations/lottie/bubbles.intro.json",
+        "packages/theme-animations/lottie/bubbles.loop.json",
+        "packages/theme-animations/lottie/champagne.intro.json",
+        "packages/theme-animations/lottie/champagne.loop.json",
+        "packages/theme-animations/lottie/confetti.intro.json",
+        "packages/theme-animations/lottie/confetti.json",
+        "packages/theme-animations/lottie/confetti.loop.json",
+        "packages/theme-animations/lottie/disco_glints.intro.json",
+        "packages/theme-animations/lottie/disco_glints.loop.json",
+        "packages/theme-animations/lottie/embers.intro.json",
+        "packages/theme-animations/lottie/embers.loop.json",
+        "packages/theme-animations/lottie/falling_petals.intro.json",
+        "packages/theme-animations/lottie/falling_petals.json",
+        "packages/theme-animations/lottie/falling_petals.loop.json",
+        "packages/theme-animations/lottie/fireflies.intro.json",
+        "packages/theme-animations/lottie/fireflies.loop.json",
+        "packages/theme-animations/lottie/fireworks.intro.json",
+        "packages/theme-animations/lottie/fireworks.json",
+        "packages/theme-animations/lottie/fireworks.loop.json",
+        "packages/theme-animations/lottie/glitter_shower.intro.json",
+        "packages/theme-animations/lottie/glitter_shower.json",
+        "packages/theme-animations/lottie/glitter_shower.loop.json",
+        "packages/theme-animations/lottie/golden_dust.intro.json",
+        "packages/theme-animations/lottie/golden_dust.loop.json",
+        "packages/theme-animations/lottie/hearts.intro.json",
+        "packages/theme-animations/lottie/hearts.json",
+        "packages/theme-animations/lottie/hearts.loop.json",
+        "packages/theme-animations/lottie/lanterns.intro.json",
+        "packages/theme-animations/lottie/lanterns.loop.json",
+        "packages/theme-animations/lottie/love_balloons.intro.json",
+        "packages/theme-animations/lottie/love_balloons.loop.json",
+        "packages/theme-animations/lottie/love_burst.intro.json",
+        "packages/theme-animations/lottie/love_burst.loop.json",
+        "packages/theme-animations/lottie/music_notes.intro.json",
+        "packages/theme-animations/lottie/music_notes.loop.json",
+        "packages/theme-animations/lottie/neon_pulse.intro.json",
+        "packages/theme-animations/lottie/neon_pulse.loop.json",
+        "packages/theme-animations/lottie/party_shapes.intro.json",
+        "packages/theme-animations/lottie/party_shapes.loop.json",
+        "packages/theme-animations/lottie/rain.intro.json",
+        "packages/theme-animations/lottie/rain.loop.json",
+        "packages/theme-animations/lottie/rose_petals.intro.json",
+        "packages/theme-animations/lottie/rose_petals.loop.json",
+        "packages/theme-animations/lottie/shimmer_reveal.intro.json",
+        "packages/theme-animations/lottie/shimmer_reveal.json",
+        "packages/theme-animations/lottie/shimmer_reveal.loop.json",
+        "packages/theme-animations/lottie/snowfall.intro.json",
+        "packages/theme-animations/lottie/snowfall.json",
+        "packages/theme-animations/lottie/snowfall.loop.json",
+        "packages/theme-animations/lottie/sparkles.intro.json",
+        "packages/theme-animations/lottie/sparkles.json",
+        "packages/theme-animations/lottie/sparkles.loop.json",
+        "packages/theme-animations/lottie/starry_sky.intro.json",
+        "packages/theme-animations/lottie/starry_sky.loop.json",
+        "packages/theme-animations/lottie/streamers.intro.json",
+        "packages/theme-animations/lottie/streamers.loop.json",
+        "packages/theme-animations/lottie/sun_rays.intro.json",
+        "packages/theme-animations/lottie/sun_rays.loop.json",
+        "packages/theme-animations/package.json",
+        "packages/theme-animations/scripts/generate-lottie.mjs",
+        "packages/theme-animations/scripts/lottieKit.mjs",
+        "packages/theme-animations/tint.ts",
+        "packages/theme-animations/types.ts",
+        "supabase/functions/_shared/googleFontFamilies.json",
+        "supabase/functions/_shared/themeFontValidation.ts",
+        "supabase/migrations/20280430001023_issue_1023_widen_theme_animation_slugs.sql",
+        "supabase/migrations/20280430011023_issue_1023_theme_fonts_and_gradients.sql"
+      ]
+    },
+    {
+      "capability_key": "checkout-tickets",
+      "paths": [
+        "mingla-business/src/components/ui/Button.tsx",
+        "mingla-business/src/utils/checkoutBrandAccent.ts"
+      ]
+    },
+    {
+      "capability_key": "discover-events",
+      "paths": [
+        "mingla-business/server/publicSearchDocument.js"
+      ]
+    },
+    {
+      "capability_key": "events-create",
+      "paths": [
+        "app-mobile/src/components/offering/ConsumerEventReserveBar.tsx",
+        "app-mobile/src/hooks/useEventTheme.ts",
+        "mingla-business/src/components/event/CreatorStep4Cover.tsx",
+        "mingla-business/src/components/event/CreatorStep7Preview.tsx",
+        "mingla-business/src/components/event/FoundationEventPreview.tsx",
+        "mingla-business/src/components/event/SeeWhosGoingGate.tsx",
+        "mingla-business/src/services/eventDrafts.ts",
+        "packages/offering-rendering/ChipGroup.tsx",
+        "packages/offering-rendering/CoverGalleryRow.tsx",
+        "packages/offering-rendering/EventDatePicker.tsx",
+        "packages/offering-rendering/GuestAvatarCluster.tsx",
+        "packages/offering-rendering/OfferingMomentum.tsx",
+        "packages/offering-rendering/PublicEventPage.tsx"
+      ]
+    },
+    {
+      "capability_key": "experiences-create",
+      "paths": [
+        "app-mobile/src/components/expandedCard/ExperienceDayStep.tsx",
+        "app-mobile/src/components/expandedCard/ExperienceReservePicker.tsx",
+        "mingla-business/app/exp/[brandSlug]/[experienceSlug].tsx",
+        "mingla-business/src/components/experience/ExperienceCoverStep.tsx",
+        "mingla-business/src/components/experience/ExperienceDayStep.tsx",
+        "mingla-business/src/components/experience/ExperiencePreview.tsx",
+        "mingla-business/src/components/experience/ExperienceReservePicker.tsx",
+        "mingla-business/src/services/experienceDetailService.ts",
+        "mingla-business/src/services/publicExperienceService.ts",
+        "packages/offering-rendering/ExperienceOfferingBody.tsx"
+      ]
+    },
+    {
+      "capability_key": "rsvp-create",
+      "paths": [
+        "mingla-business/src/components/event/FoundationRsvpPreview.tsx",
+        "mingla-business/src/components/rsvp/RsvpStep7Preview.tsx",
+        "packages/offering-rendering/RsvpChipInPanel.tsx",
+        "packages/offering-rendering/RsvpDetailsModal.tsx",
+        "packages/offering-rendering/RsvpGoingConfirmDialog.tsx",
+        "packages/offering-rendering/RsvpMomentumDecision.tsx",
+        "packages/offering-rendering/RsvpOfferingBody.tsx",
+        "packages/offering-rendering/RsvpSuccessPopup.tsx"
+      ]
+    },
+    {
+      "capability_key": "staff-people-brands",
+      "paths": [
+        "mingla-admin/src/services/identityReadService.js"
+      ]
+    },
+    {
+      "capability_key": "stays-hosting",
+      "paths": [
+        "packages/brand-rendering/StayReservationDetail.tsx"
+      ]
+    },
+    {
+      "capability_key": "trips-create",
+      "paths": [
+        "mingla-business/app/t/[brandSlug]/[tripSlug].tsx",
+        "mingla-business/src/components/trip/TripCreatorStep1Basics.tsx",
+        "mingla-business/src/components/trip/TripCreatorStep5Review.tsx",
+        "mingla-business/src/components/trip/TripPaymentChoice.tsx",
+        "mingla-business/src/components/trip/TripPreview.tsx",
+        "mingla-business/src/components/trip/TripReserveBar.tsx",
+        "mingla-business/src/hooks/usePublicTripBySlug.ts",
+        "packages/offering-rendering/DayByDay.tsx",
+        "packages/offering-rendering/StopSpine.tsx",
+        "packages/offering-rendering/TripOfferingBody.tsx",
+        "packages/offering-rendering/TripPaymentChoice.tsx",
+        "packages/offering-rendering/TripReserveBar.tsx"
+      ]
+    },
+    {
+      "capability_key": "venues-menu",
+      "paths": [
+        "packages/brand-rendering/PublicMenuSections.tsx"
+      ]
+    },
+    {
+      "capability_key": "venues-qr-ordering",
+      "paths": [
+        "packages/brand-rendering/venueOrdering/VenueOrderReviewPane.tsx",
+        "packages/brand-rendering/venueOrdering/VenueOrderStatusPane.tsx",
+        "packages/brand-rendering/venueOrdering/VenueOrderingMenuList.tsx",
+        "packages/brand-rendering/venueOrdering/VenueOrderingNoticeCard.tsx",
+        "packages/brand-rendering/venueOrdering/VenueOrderingStickyBar.tsx"
+      ]
+    },
+    {
+      "capability_key": "venues-reservations",
+      "paths": [
+        "app-mobile/src/services/publicVenueService.ts",
+        "mingla-business/src/components/venue/GuestVenueReservation.tsx",
+        "packages/brand-rendering/PublicVenueScreen.tsx",
+        "packages/brand-rendering/PublicVenueTabs.tsx",
+        "packages/brand-rendering/publicVenueRefreshState.tsx",
+        "packages/offering-rendering/VenueMapsActions.tsx"
+      ]
+    },
+    {
+      "capability_key": "venues-claim-or-add",
+      "paths": [
+        "mingla-business/src/components/venue/VenueCoverStep.tsx",
+        "mingla-business/src/components/venue/VenueStep7Review.tsx",
+        "mingla-business/src/components/venue/claim/ClaimStepCover.tsx",
+        "mingla-business/src/components/venue/claim/ClaimStepReview.tsx"
+      ]
     }
   ]
 }

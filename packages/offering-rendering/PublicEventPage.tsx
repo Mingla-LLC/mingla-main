@@ -66,6 +66,8 @@ import {
   ticketSaleEnded,
 } from "./offeringCta";
 import { ThemeEntranceAnimation } from "./ThemeEntranceAnimation";
+import { ThemeAccentGradientLayer } from "./ThemeAccentFill";
+import type { TextSafeZone } from "./themeMotion";
 import { EventCoverMedia } from "./EventCoverMedia";
 import { PresentedByFollowerCount } from "./PresentedByFollowerCount";
 // ORCH-1138 A1 — createThemePalette + the ThemePalette type + the color-math
@@ -74,7 +76,11 @@ import { PresentedByFollowerCount } from "./PresentedByFollowerCount";
 // This page's render output is byte-identical; RT-1 snapshot guards the move.
 // (resolveOfferingSurface is not called here — it is re-exported from index.ts
 // straight off ./themePalette.)
-import { createThemePalette, type ThemePalette } from "./themePalette";
+import {
+  createThemePalette,
+  themeTextAccent,
+  type ThemePalette,
+} from "./themePalette";
 // ORCH-1162 Bug 2 — the shared static map builder (single owner, this package)
 // for the "Where you'll be" map. Returns null when coords/token are absent →
 // the renderer falls back to the honest text venue card (rule-9).
@@ -95,6 +101,7 @@ import type {
 } from "./types";
 // issue #3314 — the one owner of remaining-count copy under "Hide remaining count".
 import { ticketAvailabilityCaption } from "./remainingCountVisibility";
+import { accentFill, themeBoldFace } from "./themeAccentStyle";
 
 const SHOW_INITIAL_DATES = 10;
 
@@ -434,6 +441,8 @@ const PublishedBody = ({
   // media reports its intrinsic aspect ratio. Clamp so a very tall/vertical
   // cover can't push the whole page below the fold.
   const [heroAspect, setHeroAspect] = useState<number>(16 / 9);
+  // issue #1023 — where the on-cover title/meta really sits (text-safe zone).
+  const [coverTextRect, setCoverTextRect] = useState<TextSafeZone | null>(null);
   const clampedHeroAspect = Math.min(Math.max(heroAspect, 0.75), 16 / 9);
 
   return (
@@ -490,11 +499,13 @@ const PublishedBody = ({
               <DirectionCIdentityOverlay
                 title={event.name}
                 meta={[event.dateLine, event.venueName].filter(Boolean).join(" · ")}
+                onTextRect={setCoverTextRect}
               />
             ) : null}
             <ThemeEntranceAnimation
               theme={theme}
               sessionKey={`event:${event.id}`}
+              textSafeZone={useDirectionCIdentity ? (coverTextRect ?? "default") : undefined}
             />
             {event.coverCredit !== null ? (
               <View style={styles.coverCreditBadge} pointerEvents="none">
@@ -557,7 +568,7 @@ const PublishedBody = ({
               <Text
                 style={[
                   styles.dateLine,
-                  { color: palette.accent, fontFamily: theme.fontFamilyValue },
+                  { color: themeTextAccent(palette), ...themeBoldFace(theme) },
                 ]}
               >
                 {event.dateLine}
@@ -567,7 +578,7 @@ const PublishedBody = ({
                   styles.titleLine,
                   {
                     color: palette.primaryText,
-                    fontFamily: theme.fontFamilyValue,
+                    ...themeBoldFace(theme),
                   },
                 ]}
               >
@@ -639,7 +650,7 @@ const PublishedBody = ({
                       style={styles.showAllBtn}
                     >
                       <Text
-                        style={[styles.showAllLabel, { color: palette.accent }]}
+                        style={[styles.showAllLabel, { color: themeTextAccent(palette) }]}
                       >
                         Show all {event.datesList.length} dates
                       </Text>
@@ -690,8 +701,13 @@ const PublishedBody = ({
               />
             ) : (
               <View
-                style={[styles.brandTile, { backgroundColor: palette.accent }]}
+                style={[styles.brandTile, accentFill(palette)]}
               >
+                <ThemeAccentGradientLayer
+                  theme={theme}
+                  palette={palette}
+                  borderRadius={styles.brandTile.borderRadius}
+                />
                 <Text
                   style={[styles.brandLetter, { color: palette.accentText }]}
                 >
@@ -717,7 +733,7 @@ const PublishedBody = ({
               />
             </View>
             {callbacks.onOpenBrand !== undefined ? (
-              <Text style={[styles.brandCta, { color: palette.accent }]}>
+              <Text style={[styles.brandCta, { color: themeTextAccent(palette) }]}>
                 View
               </Text>
             ) : null}
@@ -815,7 +831,7 @@ const PublishedBody = ({
                 <View
                   style={[
                     styles.venueIconDisk,
-                    { backgroundColor: palette.accent },
+                    accentFill(palette),
                   ]}
                 >
                   <Text
@@ -844,7 +860,7 @@ const PublishedBody = ({
                     style={[
                       styles.venueMapsPill,
                       {
-                        backgroundColor: palette.accent,
+                        ...accentFill(palette),
                         borderColor: palette.accentText,
                         shadowColor: palette.accent,
                       },
@@ -890,7 +906,7 @@ const PublishedBody = ({
                 <View
                   style={[
                     styles.venueIconDisk,
-                    { backgroundColor: palette.accent },
+                    accentFill(palette),
                   ]}
                 >
                   <Text
@@ -954,7 +970,7 @@ const PublishedBody = ({
                       styles.sectionTitle,
                       {
                         color: palette.primaryText,
-                        fontFamily: theme.fontFamilyValue,
+                        ...themeBoldFace(theme),
                       },
                     ]}
                   >
@@ -988,7 +1004,7 @@ const PublishedBody = ({
                     style={styles.aboutToggleRow}
                   >
                     <Text
-                      style={[styles.aboutToggle, { color: palette.accent }]}
+                      style={[styles.aboutToggle, { color: themeTextAccent(palette) }]}
                     >
                       {collapsed ? "Read more" : "Show less"}
                     </Text>
@@ -1004,7 +1020,7 @@ const PublishedBody = ({
               styles.sectionTitle,
               {
                 color: palette.primaryText,
-                fontFamily: theme.fontFamilyValue,
+                ...themeBoldFace(theme),
               },
             ]}
           >
@@ -1141,7 +1157,7 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
     >
       <View
         pointerEvents="none"
-        style={[styles.ticketCardAccent, { backgroundColor: palette.accent }]}
+        style={[styles.ticketCardAccent, accentFill(palette)]}
       />
       <View style={styles.ticketHeaderRow}>
         <View style={styles.ticketTextCol}>
@@ -1186,7 +1202,7 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
           style={[
             styles.ticketBuyerBtn,
             {
-              backgroundColor: palette.accent,
+              ...accentFill(palette),
               borderColor: palette.accentText,
               shadowColor: palette.accent,
             },
@@ -1198,12 +1214,20 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
             },
           ]}
         >
+          {isButtonDisabled ? null : (
+            <ThemeAccentGradientLayer
+              theme={theme}
+              palette={palette}
+              borderRadius={styles.ticketBuyerBtn.borderRadius}
+              testID="ticket-buy-gradient"
+            />
+          )}
           <Text
             style={[
               styles.ticketBuyerBtnLabel,
               {
                 color: palette.accentText,
-                fontFamily: theme.fontFamilyValue,
+                ...themeBoldFace(theme),
               },
               isButtonDisabled && { color: palette.tertiaryText },
             ]}

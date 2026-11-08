@@ -3,7 +3,6 @@ import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import {
   MINGLA_DEFAULT_THEME,
   resolveTheme,
-  THEME_ANIMATION_SLUGS,
   THEME_FONT_SLUGS,
   ThemeEntranceAnimation,
   type ThemeAnimationSlug,
@@ -19,8 +18,11 @@ import {
   text as textTokens,
 } from "../../constants/designSystem";
 
+import { THEME_ANIMATION_SLUGS } from "../../../../packages/offering-rendering/designTokens";
 import { normalizeHexColor } from "./normalizeHexColor";
 import { useThemeFont } from "../../theme/useThemeFont";
+import { boldFontFamily } from "@mingla/offering-rendering/themePalette";
+import { themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
 
 interface ThemeEditorSectionProps {
   value: ThemeInput | null | undefined;
@@ -57,6 +59,7 @@ export const ThemeEditorSection: React.FC<ThemeEditorSectionProps> = ({
   // ORCH-1083: the preview renders the SELECTED font, so load only that family on
   // demand as the user cycles slugs — NOT all 14 eagerly. See SPEC §C-2.
   useThemeFont(theme.fontFamilyValue);
+  useThemeFont(boldFontFamily(theme)); // issue #1023 — the preview title is bold
 
   // ORCH-0964 hot-fix (post-operator-smoke-test): the hex input must allow
   // free typing. Prior shape `value={value?.color ?? ""}` + on-keystroke
@@ -92,7 +95,7 @@ export const ThemeEditorSection: React.FC<ThemeEditorSectionProps> = ({
         </View>
         <View style={styles.previewBody}>
           <Text
-            style={[styles.previewTitle, { fontFamily: theme.fontFamilyValue }]}
+            style={[styles.previewTitle, themeBoldFace(theme)]}
           >
             Public page preview
           </Text>
@@ -164,6 +167,8 @@ export const ThemeEditorSection: React.FC<ThemeEditorSectionProps> = ({
 
       <Text style={styles.controlLabel}>Animation</Text>
       <View style={styles.optionGrid}>
+        {/* issue #1023 — this editor saves on tap, so it lists only the
+            slugs production accepts today (the Theme sheet previews the rest). */}
         {THEME_ANIMATION_SLUGS.map((animation) => (
           <OptionPill
             key={animation}

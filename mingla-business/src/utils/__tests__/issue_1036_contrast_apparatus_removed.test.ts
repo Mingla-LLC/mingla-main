@@ -97,28 +97,28 @@ describe("#1036 — the seed->derived disclosure is gone", () => {
 describe("#1036 — the real colour controls survive", () => {
   const sheet = src(SHEET);
 
-  test("S/V plane and hue rail are still rendered", () => {
-    expect(sheet).toContain("planeGesture");
-    expect(sheet).toContain("styles.plane");
-    expect(sheet).toContain("railGesture");
-    expect(sheet).toContain("styles.rail");
+  // issue #1023 wave 2 — the plane, rail and preset strip were REPLACED by
+  // the design's swatches, gradients and Custom hue sliders (ThemeColourTab).
+  // Invalidated: planeGesture/styles.plane/railGesture/SwatchDot/THEME_PRESETS
+  // in ThemeSheet. What #1036 protects — real colour controls stay — holds:
+  const colourTab = src("src/components/theme/ThemeColourTab.tsx");
+  test("the colour controls are rendered (swatches, gradients, hue sliders)", () => {
+    expect(sheet).toContain("<ThemeColourTab");
+    expect(colourTab).toContain("SOLID_SWATCHES.map");
+    expect(colourTab).toContain("GRADIENT_SWATCHES.map");
+    expect(colourTab).toContain("<HueSlider");
   });
 
   test("the hex field is still present", () => {
-    expect(sheet).toContain("styles.hexInput");
-    expect(sheet).toContain('accessibilityLabel="Hex colour code"');
-    expect(sheet).toContain("handleHexChange");
-  });
-
-  test("the swatch strip (brand · recents · presets) is still present", () => {
-    expect(sheet).toContain("SwatchDot");
-    expect(sheet).toContain("THEME_PRESETS");
-    expect(sheet).toContain("styles.swatchStrip");
+    expect(colourTab).toContain("styles.hexInput");
+    expect(colourTab).toContain('"Hex colour code"');
   });
 
   test("the live preview band — now the sole readability signal — survives", () => {
     expect(sheet).toContain("styles.preview");
-    expect(sheet).toContain("palette.accent");
+    // [TEST-MOD-APPROVED #1023] The band's CTA paints the theme accent through
+    // the gradient-aware fill (accentFill(palette)), not a raw palette.accent.
+    expect(sheet).toContain("styles.previewCta, accentFill(palette)");
     expect(sheet).toContain("Preview: your page with this theme");
   });
 

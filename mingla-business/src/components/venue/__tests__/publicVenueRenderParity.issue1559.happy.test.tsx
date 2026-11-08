@@ -203,6 +203,16 @@
  * phone/menu loses one 21px themed menu-section box. The other two cases are
  * byte-identical. No element, copy, anchor, ordering, case, size floor, or
  * assertion is removed or weakened.
+ *
+ * ---------------------------------------------------------------------------
+ * [TEST-MOD-APPROVED #1023] — HEAVY THEMED TEXT USES THE BOLD FACE
+ * ---------------------------------------------------------------------------
+ * The venue name, answers, desk name, tab labels and menu section names now
+ * name the theme's bold face (Inter_700Bold here) instead of the 500 face,
+ * the resolved theme carries boldFontFamilyValue and color2, and the accent
+ * icons' gradient ids (useId) shift React's generated ids («r1» → «r4» ...).
+ * Regenerated with the same command. Nothing else changed: no element, copy,
+ * anchor, ordering, case or assertion is removed or weakened.
  */
 import React from "react";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";

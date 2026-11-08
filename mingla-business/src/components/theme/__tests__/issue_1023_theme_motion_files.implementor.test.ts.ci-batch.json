@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-suite",
+  "ownerIssue": "#1023",
+  "suite": {
+    "id": "issue-1023-theme-entrance-motion",
+    "class": "business-node22-ignore-scripts",
+    "originPaths": [
+      "mingla-business/src/**",
+      "mingla-business/jest.config.cjs",
+      "packages/offering-rendering/**",
+      "packages/theme-animations/**",
+      "mingla-business/metro.config.js",
+      "app-mobile/src/hooks/usePublicEventBySlug.ts",
+      "app-mobile/src/screens/**",
+      "supabase/migrations/20280430011023_issue_1023_theme_fonts_and_gradients.sql",
+      "supabase/functions/_shared/themeFontValidation.ts",
+      "supabase/functions/_shared/googleFontFamilies.json",
+      ".github/scripts/strict-grep/i-1047-biz-bundle-budget-deferral.mjs",
+      "packages/brand-rendering/**",
+      "mingla-business/app/**",
+      "app-mobile/src/components/**"
+    ],
+    "steps": [
+      {
+        "name": "Theme entrance motion contracts",
+        "cwd": "mingla-business",
+        "run": "npx jest --config src/components/theme/__tests__/jest.issue1023.cjs --runInBand",
+        "commandId": "assert:issue-1023-theme-entrance-motion:01",
+        "invocation": {
+          "kind": "raw-shell",
+          "command": "bash",
+          "argv": [
+            "-c",
+            "npx jest --config src/components/theme/__tests__/jest.issue1023.cjs --runInBand"
+          ]
+        },
+        "exceptionRationale": "New self-registering execution replaces a legacy workflow registry edit."
+      }
+    ],
+    "lifecycle": "batched-active",
+    "ownerIssue": "#1023",
+    "runtime": {
+      "name": "node",
+      "version": "22"
+    },
+    "setupProfile": "business-node22-ignore-scripts",
+    "cwd": "mingla-business",
+    "envNames": [],
+    "isolation": "clean-worktree",
+    "expectedFiles": [
+      "mingla-business/src/components/theme/__tests__/issue_1023_catalogue_lazy.implementor.test.ts",
+      "mingla-business/src/components/theme/__tests__/issue_1023_event_theme_precedence.implementor.test.ts",
+      "mingla-business/src/components/theme/__tests__/issue_1023_font_value_shape_parity.implementor.test.ts",
+      "mingla-business/src/components/theme/__tests__/issue_1023_google_font_loader.implementor.test.ts",
+      "mingla-business/src/components/theme/__tests__/issue_1023_gradient_everywhere.implementor.test.ts",
+      "mingla-business/src/components/theme/__tests__/issue_1023_motion_metro_resolver.implementor.test.ts",
+      "mingla-business/src/components/theme/__tests__/issue_1023_offering_theme_columns.implementor.test.ts",
+      "mingla-business/src/components/theme/__tests__/issue_1023_theme_accent_fill.implementor.test.tsx",
+      "mingla-business/src/components/theme/__tests__/issue_1023_theme_entrance_native.implementor.test.tsx",
+      "mingla-business/src/components/theme/__tests__/issue_1023_theme_entrance_web.implementor.test.tsx",
+      "mingla-business/src/components/theme/__tests__/issue_1023_theme_entrance_web_chunk_failure.implementor.test.tsx",
+      "mingla-business/src/components/theme/__tests__/issue_1023_theme_motion_files.implementor.test.ts",
+      "mingla-business/src/components/theme/__tests__/issue_1023_theme_resolver_gradient.implementor.test.ts",
+      "mingla-business/src/components/theme/__tests__/issue_1023_theme_sheet_pickers.implementor.test.tsx",
+      "mingla-business/src/components/theme/__tests__/jest.issue1023.cjs",
+      "mingla-business/src/dev/__tests__/issue_1023_motion_deep_link.implementor.test.ts"
+    ],
+    "externalReferenceFiles": [
+      "mingla-business/jest.config.cjs"
+    ],
+    "requiredContext": "CI batch: business-node22-ignore-scripts",
+    "timingSeconds": {
+      "p50": 240,
+      "p95": 420,
+      "evidence": "Local targeted run 2026-11-07 (--maxWorkers=2, cold ts-jest cache)"
+    },
+    "generatedPaths": [
+      "suite-results.json"
+    ],
+    "exceptionRationale": "Raw shell preserves the reviewed assertion while this self-registering suite replaces a legacy workflow registry edit.",
+    "timeoutSeconds": 900
+  }
+}

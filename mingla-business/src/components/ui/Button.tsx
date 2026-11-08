@@ -95,6 +95,12 @@ export interface ButtonProps {
    * orange. Invalid hex → ignored (falls back to the default token).
    */
   accentColor?: string;
+  /**
+   * issue #1023 — the theme gradient's two stops (first = accentColor). The
+   * `primary` fill paints a 135° gradient over accentColor. Ignored without
+   * accentColor, for other variants, and while disabled.
+   */
+  accentGradient?: readonly [string, string] | null;
   leadingIcon?: IconName;
   trailingIcon?: IconName;
   loading?: boolean;
@@ -210,6 +216,7 @@ export const Button = forwardRef<
     size = "md",
     shape = "pill",
     accentColor,
+    accentGradient,
     leadingIcon,
     trailingIcon,
     loading = false,
@@ -321,6 +328,19 @@ export const Button = forwardRef<
     opacity: disabled ? 0.6 : 1,
   };
 
+  // issue #1023 — the brand gradient over the brand fill (web: CSS
+  // backgroundImage; native: New Architecture experimental_backgroundImage).
+  const gradientImage =
+    brandBg !== null && !disabled && accentGradient !== undefined && accentGradient !== null
+      ? `linear-gradient(135deg, ${accentGradient[0]} 0%, ${accentGradient[1]} 100%)`
+      : null;
+  const gradientStyle: (ViewStyle & { backgroundImage?: string }) | null =
+    gradientImage === null
+      ? null
+      : Platform.OS === "web"
+        ? { backgroundImage: gradientImage }
+        : { experimental_backgroundImage: gradientImage };
+
   const resolvedTextColor = disabled ? textTokens.tertiary : effectiveText;
   const resolvedIconColor =
     !disabled && typeof iconColor === "string" ? iconColor : resolvedTextColor;
@@ -343,6 +363,7 @@ export const Button = forwardRef<
         style={[
           styles.container,
           containerStaticStyle,
+          gradientStyle,
           hovered && Platform.OS === "web"
             ? { backgroundColor: effectiveHoverBg }
             : null,

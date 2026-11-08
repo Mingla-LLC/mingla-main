@@ -16,6 +16,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { ThemePalette } from "@mingla/offering-rendering";
 
 import { formatMenuPrice } from "../PublicMenuSections";
+import { accentFill } from "@mingla/offering-rendering/themeAccentStyle";
 
 export const VenueOrderingStickyBar: React.FC<{
   count: number;
@@ -37,7 +38,7 @@ export const VenueOrderingStickyBar: React.FC<{
         onPress={onPress}
         accessibilityRole="button"
         accessibilityLabel={label}
-        style={[styles.bar, { backgroundColor: palette.accent }]}
+        style={[styles.bar, accentFill(palette)]}
       >
         <Text style={[styles.label, { color: palette.accentText }]}>
           {label}

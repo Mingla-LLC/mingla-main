@@ -354,7 +354,9 @@ describe("#1564 — the copy the operator reads", () => {
 
   test("an overridden venue reads as CUSTOM", () => {
     const line = themeValueLine(VENUE_FULL, "venue", BRAND);
-    expect(line.startsWith("Custom colour")).toBe(true);
+    // [TEST-MOD-APPROVED #1023] An override reads by its colour's name: #eb7825
+    // is the "Mingla orange" swatch (a non-swatch hex still reads "Custom colour").
+    expect(line.startsWith("Mingla orange")).toBe(true);
     expect(line).toContain("Bebas Neue");
     expect(line).toContain("Sparkles");
   });

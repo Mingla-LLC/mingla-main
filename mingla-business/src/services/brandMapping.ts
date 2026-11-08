@@ -28,6 +28,11 @@ import type {
   VenueCategory,
 } from "../types/brand";
 import { deriveBrandStripeStatus } from "../utils/deriveBrandStripeStatus";
+import {
+  canonicalThemeFont,
+  color2FromColumn,
+  gradientToColumn,
+} from "@mingla/offering-rendering/themeResolver";
 import { brandPhoneE164 } from "@mingla/brand-rendering/brandPhoneHref";
 
 /**
@@ -91,6 +96,8 @@ export interface BrandRow {
   theme_color?: string | null;
   theme_font?: string | null;
   theme_animation?: string | null;
+  /** issue #1023 wave 2 — "#first,#second"; read only when its first stop equals theme_color. */
+  theme_gradient?: string | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -141,6 +148,8 @@ export type BrandTableInsert = {
   theme_color?: string | null;
   theme_font?: string | null;
   theme_animation?: string | null;
+  /** issue #1023 wave 2 — "#first,#second"; read only when its first stop equals theme_color. */
+  theme_gradient?: string | null;
   place_pool_id?: string | null;
   google_place_id?: string | null;
   lat?: number | null;
@@ -330,6 +339,7 @@ export function mapBrandRowToUi(row: BrandRow, options: MapBrandRowToUiOptions):
       row.theme_animation !== undefined
         ? {
             color: row.theme_color ?? null,
+            color2: color2FromColumn(row.theme_color, row.theme_gradient),
             font: row.theme_font ?? null,
             animation: row.theme_animation ?? null,
           }
@@ -414,8 +424,10 @@ export function mapUiToBrandInsert(input: MapUiToBrandInsertInput): BrandTableIn
   }
   if (brand.theme !== undefined) {
     row.theme_color = brand.theme?.color ?? null;
-    row.theme_font = brand.theme?.font ?? null;
+    row.theme_font = canonicalThemeFont(brand.theme?.font ?? null);
     row.theme_animation = brand.theme?.animation ?? null;
+    // issue #1023 — the gradient is one unit with the colour.
+    row.theme_gradient = gradientToColumn(brand.theme?.color, brand.theme?.color2);
   }
   if (brand.claimStatus !== undefined) row.claim_status = brand.claimStatus;
   if (brand.googlePlaceId !== undefined) {
@@ -514,8 +526,10 @@ export function mapUiToBrandUpdatePatch(
   }
   if (patch.theme !== undefined) {
     out.theme_color = patch.theme?.color ?? null;
-    out.theme_font = patch.theme?.font ?? null;
+    out.theme_font = canonicalThemeFont(patch.theme?.font ?? null);
     out.theme_animation = patch.theme?.animation ?? null;
+    // issue #1023 — the gradient is one unit with the colour.
+    out.theme_gradient = gradientToColumn(patch.theme?.color, patch.theme?.color2);
   }
   if (patch.claimStatus !== undefined) out.claim_status = patch.claimStatus;
   if (patch.googlePlaceId !== undefined) {

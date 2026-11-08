@@ -30,6 +30,7 @@ import {
   reconcileInitialVenueTab,
   type PublicVenueTab,
 } from "./publicVenueTabState";
+import { accentFillWithBorder, themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
 
 // This package is source-linked into both apps. Their isolated typecheck
 // sandboxes resolve React peers from the app root, while files under packages/
@@ -462,8 +463,7 @@ export const PublicVenueTabs = forwardRef<
                 styles.chip,
                 surface.card,
                 active && {
-                  backgroundColor: palette.accent,
-                  borderColor: palette.accent,
+                  ...accentFillWithBorder(palette),
                 },
                 focusOutline,
               ]}
@@ -471,7 +471,7 @@ export const PublicVenueTabs = forwardRef<
               <Text
                 style={[
                   styles.label,
-                  { fontFamily: theme.fontFamilyValue },
+                  themeBoldFace(theme),
                   {
                     color: active ? palette.accentText : palette.secondaryText,
                   },

@@ -220,6 +220,7 @@ import { useThemeFont } from "../../theme/useThemeFont";
 import { ShareModal } from "../ui/ShareModal";
 import { Toast } from "../ui/Toast";
 import { JoinWaitlistSheet } from "../waitlist/JoinWaitlistSheet";
+import { accentFill, themeFontFace } from "@mingla/offering-rendering/themeAccentStyle";
 
 interface PublicEventPageAdapterProps {
   event: LiveEvent;
@@ -862,6 +863,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     [resolvedTheme],
   );
   const boldFamily = boldFontFamily(resolvedTheme);
+  const boldFace = themeFontFace(boldFamily);
   // #4111 D6 — "Message" on the organiser row, with this event already picked.
   const messageTarget = useMemo(
     () =>
@@ -1559,7 +1561,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         ]}
       >
         <View
-          style={[styles.deskAccent, { backgroundColor: palette.accent }]}
+          style={[styles.deskAccent, accentFill(palette)]}
         />
         <View style={styles.deskInner}>
           <EventTicketBox
@@ -2032,7 +2034,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
                 <Text
                   style={[
                     styles.returnBannerTitle,
-                    { color: palette.primaryText, fontFamily: boldFamily },
+                    { color: palette.primaryText, ...boldFace },
                   ]}
                 >
                   {returnBanner === "paid"

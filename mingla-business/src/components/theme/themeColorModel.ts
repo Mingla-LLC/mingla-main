@@ -1,6 +1,7 @@
 import type { ThemeInput } from "@mingla/offering-rendering";
 
 import {
+  THEME_ANIMATION_CATALOG,
   THEME_ANIMATION_SLUGS,
   THEME_FONT_SLUGS,
 } from "../../../../packages/offering-rendering/designTokens";
@@ -8,6 +9,7 @@ import { createThemePalette } from "../../../../packages/offering-rendering/them
 import { resolveTheme } from "../../../../packages/offering-rendering/themeResolver";
 import { contrastRatio } from "../../utils/buttonAccentContrast";
 import { themeAxisIsInherited } from "../../services/offeringTheme";
+import { gradientSwatchFor, presetForHex } from "./themePresets";
 
 /**
  * #1022 — the Theme control's pure model layer.
@@ -109,6 +111,65 @@ export const hueName = ({ h, s, v }: Hsv): string => {
   return HUE_NAMES[index];
 };
 
+// ─── issue #1023 wave 2: hue sliders ──────────────────────────────────────
+
+/**
+ * The Custom picker's hue sliders map a hue (0-359) to one fixed saturation
+ * and lightness, `hsl(h, 82%, 56%)`, exactly as the approved design does, so
+ * any slider position is a vivid colour that reads on the dark page.
+ */
+export const CUSTOM_HUE_SATURATION = 82;
+export const CUSTOM_HUE_LIGHTNESS = 56;
+
+export const hslToHex = (h: number, s: number, l: number): string => {
+  const hue = ((h % 360) + 360) % 360;
+  const sat = clamp(s, 0, 100) / 100;
+  const light = clamp(l, 0, 100) / 100;
+  const c = (1 - Math.abs(2 * light - 1)) * sat;
+  const x = c * (1 - Math.abs(((hue / 60) % 2) - 1));
+  const m = light - c / 2;
+  let rgb: [number, number, number];
+  if (hue < 60) rgb = [c, x, 0];
+  else if (hue < 120) rgb = [x, c, 0];
+  else if (hue < 180) rgb = [0, c, x];
+  else if (hue < 240) rgb = [0, x, c];
+  else if (hue < 300) rgb = [x, 0, c];
+  else rgb = [c, 0, x];
+  return `#${toHexByte((rgb[0] + m) * 255)}${toHexByte((rgb[1] + m) * 255)}${toHexByte((rgb[2] + m) * 255)}`;
+};
+
+/** The slider colour for a hue. */
+export const customHueHex = (hue: number): string =>
+  hslToHex(hue, CUSTOM_HUE_SATURATION, CUSTOM_HUE_LIGHTNESS);
+
+/** The hue (0-359, rounded) of a hex, for placing a slider thumb. */
+export const hueOfHex = (hex: string | null | undefined): number | null => {
+  if (typeof hex !== "string") return null;
+  const hsv = hexToHsv(hex);
+  return hsv === null ? null : Math.round(hsv.h) % 360;
+};
+
+/** Switching Custom to Gradient with no second colour seeds one 320° on. */
+export const seedSecondColour = (firstHex: string): string =>
+  customHueHex(((hueOfHex(firstHex) ?? 25) + 320) % 360);
+
+/**
+ * The contrast line under the colour controls (D-2 approved: small text is
+ * lightened for readability, fills keep the exact colour). `ratio` is the
+ * weaker stop's accent-on-page contrast.
+ */
+export const themeContrastLine = (ratio: number, gradient: boolean): string => {
+  const shown = (Math.floor(ratio * 10) / 10).toFixed(1);
+  if (ratio >= 4.5) {
+    return gradient
+      ? `Reads well on your page (${shown}:1 for the weaker colour).`
+      : `Reads well on your page (${shown}:1).`;
+  }
+  return gradient
+    ? `Small text gets lightened to stay readable (${shown}:1 for the weaker colour). Buttons keep your exact gradient.`
+    : `Small text gets lightened to stay readable (${shown}:1). Buttons keep your exact colour.`;
+};
+
 // ─── Nudge to AA ──────────────────────────────────────────────────────────
 
 /** Accent-on-page contrast for a seed, through the REAL derivation chain. */
@@ -178,18 +239,13 @@ export const FONT_DISPLAY_NAMES: Readonly<Record<string, string>> = {
   dancing_script: "Dancing Script",
 };
 
-/** `none` is "No motion", NEVER "None". */
+/** `none` is "No motion", NEVER "None". issue #1023 — all 29 names come
+ *  from the shared catalog (the reference page's names). */
 export const MOTION_DISPLAY_NAMES: Readonly<Record<string, string>> = {
   none: "No motion",
-  confetti: "Confetti",
-  fireworks: "Fireworks",
-  balloons: "Balloons",
-  sparkles: "Sparkles",
-  glitter_shower: "Glitter shower",
-  snowfall: "Snowfall",
-  falling_petals: "Falling petals",
-  hearts: "Hearts",
-  shimmer_reveal: "Shimmer reveal",
+  ...Object.fromEntries(
+    Object.entries(THEME_ANIMATION_CATALOG).map(([slug, entry]) => [slug, entry.name]),
+  ),
 };
 
 export const FONT_GROUPS: readonly {
@@ -285,8 +341,27 @@ export const themeDefaultFontLabel = (
     scope === "brand"
       ? resolveTheme(null, null)
       : resolveTheme(brandTheme ?? null, null);
+  // issue #1023 — a Google family's display name is the family name itself.
   const name = FONT_DISPLAY_NAMES[inherited.font] ?? inherited.font;
   return `${scope === "brand" ? "Mingla default" : "Brand default"} — ${name}`;
+};
+
+/**
+ * issue #1023 — the colour axis named the way the picker names it: a design
+ * swatch by its name ("Coral", "Sunset gradient"), anything else "Custom
+ * colour" / "Custom gradient". Matching is case-insensitive: saved hexes are
+ * lower case, the design writes them upper case.
+ */
+export const themeColourName = (
+  color: string | null | undefined,
+  color2: string | null | undefined,
+): string => {
+  const hasSecond = typeof color2 === "string" && color2.length > 0;
+  if (hasSecond) {
+    const gradient = gradientSwatchFor(color, color2);
+    return gradient !== null ? `${gradient.name} gradient` : "Custom gradient";
+  }
+  return presetForHex(color)?.name ?? "Custom colour";
 };
 
 /**
@@ -318,7 +393,7 @@ export const themeValueLine = (
     ? scope === "brand"
       ? "Mingla default"
       : "Brand default"
-    : "Custom colour";
+    : themeColourName(value?.color, value?.color2);
 
   const fontLabel = FONT_DISPLAY_NAMES[resolved.font] ?? resolved.font;
   const motionLabel =

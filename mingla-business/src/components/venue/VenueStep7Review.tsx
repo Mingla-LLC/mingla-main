@@ -20,7 +20,7 @@ import type { VenueCategory } from "../../types/brand";
 import { useBrandDiscoveryCurrency } from "../../hooks/useBrandDiscoveryCurrency";
 import { useDraftVenueStore } from "../../store/draftVenueStore";
 import { ThemeControlRow } from "../theme/ThemeControlRow";
-import { ThemeSheet } from "../theme/ThemeSheet";
+import { ThemeSheet } from "../theme/ThemeSheetLazy";
 import { Button } from "../ui/Button";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { useVenueThemeControl } from "./useVenueThemeControl";

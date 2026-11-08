@@ -37,7 +37,7 @@ import {
 import { Button } from "../ui/Button";
 import { useBrand } from "../../hooks/useBrands";
 import { ThemeControlRow } from "../theme/ThemeControlRow";
-import { ThemeSheet } from "../theme/ThemeSheet";
+import { ThemeSheet } from "../theme/ThemeSheetLazy";
 // The shared address picker (Google behind the proxy since #4334).
 // place.placeId is the picked Google place id, stored in
 // theme.business_trip.{departure,destination}PlaceId; places-coordinate-refresh

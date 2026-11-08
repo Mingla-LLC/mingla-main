@@ -95,7 +95,8 @@ Deno.test("fallback honesty: onError → glyph permanently; ONE glyph-disk treat
   assertStringIncludes(CLUSTER, "PersonGlyph");
   // Exactly ONE glyph-disk fill — a second "private-style" disk (dim/marker)
   // would leak the one bit a private guest chose to hide.
-  const glyphFills = CLUSTER.match(/backgroundColor: palette\.accent/g) ?? [];
+  // issue #1023: the disk paints through accentFill (gradient-aware).
+  const glyphFills = CLUSTER.match(/accentFill\(palette\)/g) ?? [];
   assert(
     glyphFills.length === 1,
     `exactly one glyph-disk fill expected, found ${glyphFills.length}`,
@@ -145,7 +146,8 @@ Deno.test("theme dial: no hex in GuestAvatarCluster; primaryText link label; acc
   // threshold; accent only guarantees 3.15:1 vs the page — DESIGN §1.4).
   assertStringIncludes(CLUSTER, "color: palette.primaryText");
   // The accent rides the chevron — a ≥3:1 UI mark, not text.
-  assertStringIncludes(CLUSTER, "ChevronGlyph color={palette.accent}");
+  // issue #1023 (gradient everywhere): the accent paints through the gradient-aware helpers.
+  assertStringIncludes(CLUSTER, "<ChevronGlyph {...accentIcon(palette)} />");
 });
 
 // ── §4.6-8 — no checkout affordance, no fetch (I-MOR-0827) ──────────────────

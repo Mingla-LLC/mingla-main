@@ -189,8 +189,12 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4304: register the Brand group live migration and its PostgreSQL proof the same way.
 // #4270 W7: register the admin Brand group inbox suites; migration 20280502004270; re-sealed after merging origin/main (#4322).
 // #4273 polish: register the sent-previews migration, its PostgreSQL proofs (implementor + tester) and the campaign-screen render proof.
-// #4334 (tester): re-sealed after the Google places tester adversarial proof entered the preserved inventories.
-export const BOOTSTRAP_SHA256 = "3c9373aa95a889bb15a9152337c83972e8d297bd30fe0342fa54e9339e201506";
+// #1023: skip the wave 2 theme migration (20280430011023) in the #1931 and #2117 filtered replays.
+// #1023: re-sealed after merging origin/main (#3645, #4294, #4271, #4304, #4270 W7 rows kept beside the #1023 rows).
+// #1023: re-sealed after merging origin/main 4ace6deafa (#4331 rows kept beside the #1023 rows).
+// #1023: re-sealed after merging origin/main 5dd7f103ca (#4273 polish rows kept beside the #1023 rows).
+// #1023: re-sealed after merging origin/main 6038982e1a.
+export const BOOTSTRAP_SHA256 = "43796dd531635d9bafc5efa20450037dbbb270e1db60da44dc94c612ee702c5b";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

@@ -64,6 +64,9 @@ module.exports = {
   // parser/constant), re-exported REAL like every pure helper above. ADDITION only.
   ...real("offeringRefundPolicy"),
   ...real("followerCount"),
+  // issue #1023 wave 2 — designTokens constants (GOOGLE_FONT_FAMILY_RE,
+  // LEGACY_FONT_FAMILY_NAMES, ...) re-exported REAL. ADDITION only.
+  ...real("designTokens"),
 
   // ---- Stubbed RN visual components (never rendered under node/ts-jest) -----
   ParallaxCoverShell: Stub,
@@ -76,6 +79,9 @@ module.exports = {
   GuestAvatarCluster: Stub,
   StopSpine: Stub,
   ThemeEntranceAnimation: Stub,
+  // issue #1023 wave 2 — gradient fill components (RN visuals).
+  ThemeAccentFill: Stub,
+  ThemeAccentGradientLayer: Stub,
   PublicEventNotFound: Stub,
   PublicEventPage: Stub,
   EventCover: Stub,

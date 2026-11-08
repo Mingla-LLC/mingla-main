@@ -22,7 +22,9 @@ import {
 } from "react-native";
 
 import { boldFontFamily, type ThemePalette } from "./themePalette";
+import { ThemeAccentGradientLayer } from "./ThemeAccentFill";
 import { type ResolvedTheme } from "./designTokens";
+import { accentFill, themeFontFace } from "./themeAccentStyle";
 
 export interface RsvpGoingConfirmDialogProps {
   visible: boolean;
@@ -59,6 +61,7 @@ export const RsvpGoingConfirmDialog: React.FC<RsvpGoingConfirmDialogProps> = ({
   onCancel,
 }) => {
   const boldFamily = boldFontFamily(theme);
+  const boldFace = themeFontFace(boldFamily);
   const bringingLine =
     plusGuests.length > 0
       ? `Bringing ${plusGuests.length}: ${plusGuests
@@ -88,7 +91,7 @@ export const RsvpGoingConfirmDialog: React.FC<RsvpGoingConfirmDialogProps> = ({
           onPress={() => undefined}
           testID="orch-1163-rsvp-going-confirm-dialog"
         >
-          <Text style={[styles.title, { color: palette.primaryText, fontFamily: boldFamily }]}>
+          <Text style={[styles.title, { color: palette.primaryText, ...boldFace }]}>
             Confirm your RSVP
           </Text>
           <Text style={[styles.body, { color: palette.secondaryText }]}>
@@ -114,13 +117,18 @@ export const RsvpGoingConfirmDialog: React.FC<RsvpGoingConfirmDialogProps> = ({
             accessibilityRole="button"
             accessibilityState={{ disabled: submitting }}
             accessibilityLabel={submitting ? "Confirming" : "Confirm I'm going"}
-            style={[styles.primaryBtn, { backgroundColor: palette.accent, opacity: submitting ? 0.7 : 1 }]}
+            style={[styles.primaryBtn, { ...accentFill(palette), opacity: submitting ? 0.7 : 1 }]}
             testID="orch-1163-rsvp-going-confirm-cta"
           >
+            <ThemeAccentGradientLayer
+              theme={theme}
+              palette={palette}
+              borderRadius={styles.primaryBtn.borderRadius}
+            />
             {submitting ? (
               <ActivityIndicator color={palette.accentText} />
             ) : null}
-            <Text style={[styles.primaryBtnText, { color: palette.accentText, fontFamily: boldFamily }]}>
+            <Text style={[styles.primaryBtnText, { color: palette.accentText, ...boldFace }]}>
               {submitting ? "Confirming…" : "Confirm I'm going"}
             </Text>
           </Pressable>
