@@ -427,7 +427,12 @@ BEGIN
     RAISE EXCEPTION 'T6 fixture net %', (pg_temp.rel(v_r4)).net_release_cents;
   END IF;
   -- A refund on the postponement's origin converts 2500 of it. The r3
-  -- application (older) was fully handed back, so all 2500 must come from r4.
+  -- application (made the older one, so an unaware pick takes it first) was
+  -- fully handed back, so all 2500 must come from r4.
+  SET LOCAL session_replication_role = replica;
+  UPDATE public.payout_debt_applications SET created_at = created_at - interval '1 minute'
+  WHERE debt_id = v_temp AND release_id = v_r3;
+  SET LOCAL session_replication_role = origin;
   PERFORM public.convert_postponement_debt_to_permanent(
     pg_temp.uid(7, 3, 3), 'post_release_refund', 2500, timestamptz '2026-10-22 00:00:00+00'
   );
@@ -791,6 +796,111 @@ BEGIN
   END IF;
 END
 $t13$;
+
+-- T15: the Paystack refund path's own conversion loop never takes a part that
+-- was handed back. Postponement debt D (2000) is withheld in full from A, which
+-- can cover only 500 (1500 handed back), then 1500 from B. Two refunds on D's
+-- origin then convert 300 of A's 500 (through convert_postponement_debt_to_
+-- permanent) and grow it by 1000 (through record_paystack_refund_outcome's
+-- own loop), which may take only A's last 200 before moving on to B.
+DO $t15$
+DECLARE
+  v_brand uuid;
+  v_origin uuid := pg_temp.uid(7, 13, 1);
+  v_src uuid := pg_temp.uid(8, 13, 1);
+  v_d uuid;
+  v_a uuid;
+  v_b uuid;
+  v_bad record;
+BEGIN
+  v_brand := pg_temp.brand(13);
+  INSERT INTO public.brand_payout_releases(
+    id, brand_id, occurrence_key, surface, provider, currency,
+    anchor_end_at, releasable_at, gross_cents, net_release_cents,
+    organiser_cash_delivered_cents, status, released_at
+  ) VALUES (
+    v_origin, v_brand, 'issue-3645-2d-ngn-origin', 'venue_reservation', 'paystack', 'ngn',
+    timestamptz '2026-09-01 00:00:00+00', timestamptz '2026-09-02 00:00:00+00',
+    2000, 2000, 2000, 'released', timestamptz '2026-09-02 00:00:00+00'
+  );
+  INSERT INTO public.payout_release_items(
+    release_id, source_type, source_id, gross_cents, net_cents, source_finalized_at
+  ) VALUES (v_origin, 'venue_reservation', v_src, 2000, 2000, timestamptz '2026-09-01 00:00:00+00');
+  v_d := public.open_post_release_postponement_debt(v_origin, timestamptz '2026-12-01 00:00:00+00');
+
+  INSERT INTO public.brand_payout_releases(
+    brand_id, occurrence_key, surface, provider, currency,
+    anchor_end_at, releasable_at, gross_cents, net_release_cents, status
+  ) VALUES (
+    v_brand, 'issue-3645-2d-ngn-a', 'venue_reservation', 'paystack', 'ngn',
+    timestamptz '2026-10-20 00:00:00+00', timestamptz '2026-10-21 00:00:00+00',
+    2000, 2000, 'pending'
+  ) RETURNING id INTO v_a;
+  INSERT INTO public.payout_release_items(
+    release_id, source_type, source_id, gross_cents, net_cents, source_finalized_at
+  ) VALUES (v_a, 'venue_reservation', gen_random_uuid(), 500, 500, timestamptz '2026-10-20 00:00:00+00');
+  PERFORM public.apply_open_payout_debts(v_a, timestamptz '2026-10-21 00:00:00+00');
+  IF public.issue_3645_return_unrecovered_release_debt(v_a) <> 1500 THEN
+    RAISE EXCEPTION 'T15 fixture: A did not hand back 1500';
+  END IF;
+  -- A's application is the older one, so an unaware pick would take it first.
+  SET LOCAL session_replication_role = replica;
+  UPDATE public.payout_debt_applications SET created_at = created_at - interval '1 minute'
+  WHERE debt_id = v_d AND release_id = v_a;
+  SET LOCAL session_replication_role = origin;
+
+  INSERT INTO public.brand_payout_releases(
+    brand_id, occurrence_key, surface, provider, currency,
+    anchor_end_at, releasable_at, gross_cents, net_release_cents, status
+  ) VALUES (
+    v_brand, 'issue-3645-2d-ngn-b', 'venue_reservation', 'paystack', 'ngn',
+    timestamptz '2026-10-20 00:00:00+00', timestamptz '2026-10-21 00:00:00+00',
+    5000, 5000, 'pending'
+  ) RETURNING id INTO v_b;
+  INSERT INTO public.payout_release_items(
+    release_id, source_type, source_id, gross_cents, net_cents, source_finalized_at
+  ) VALUES (v_b, 'venue_reservation', gen_random_uuid(), 5000, 5000, timestamptz '2026-10-20 00:00:00+00');
+  PERFORM public.apply_open_payout_debts(v_b, timestamptz '2026-10-21 00:00:00+00');
+  IF (pg_temp.app(v_d, v_b)).amount_cents <> 1500 THEN
+    RAISE EXCEPTION 'T15 fixture: B withheld %', (pg_temp.app(v_d, v_b)).amount_cents;
+  END IF;
+
+  PERFORM public.record_paystack_refund_outcome(
+    'venue_reservation', v_src, NULL, 'ref-3645-2d-1', 'note-3645-2d-1', 'rf_3645_2d_1',
+    300, 'processed', NULL, timestamptz '2026-10-22 00:00:00+00'
+  );
+  PERFORM public.record_paystack_refund_outcome(
+    'venue_reservation', v_src, NULL, 'ref-3645-2d-2', 'note-3645-2d-2', 'rf_3645_2d_2',
+    1000, 'processed', NULL, timestamptz '2026-10-22 00:00:01+00'
+  );
+  -- A third refund runs the loop again once A has nothing left to give.
+  PERFORM public.record_paystack_refund_outcome(
+    'venue_reservation', v_src, NULL, 'ref-3645-2d-3', 'note-3645-2d-3', 'rf_3645_2d_3',
+    200, 'processed', NULL, timestamptz '2026-10-22 00:00:02+00'
+  );
+  IF (SELECT principal_cents FROM public.organiser_payout_debts
+      WHERE origin_release_id = v_origin AND kind = 'post_release_refund') <> 1500 THEN
+    RAISE EXCEPTION 'T15 refund debt did not grow to 1500';
+  END IF;
+  -- A has only 500 left to give: never more converted than that.
+  SELECT a.id, a.amount_cents, a.converted_cents,
+         public.issue_3645_application_returned_cents(a.id) AS returned
+  INTO v_bad
+  FROM public.payout_debt_applications a
+  WHERE a.debt_id = v_d
+    AND a.converted_cents + public.issue_3645_application_returned_cents(a.id) > a.amount_cents;
+  IF FOUND THEN
+    RAISE EXCEPTION 'T15 conversion took a handed-back part: %', row_to_json(v_bad);
+  END IF;
+  IF (pg_temp.app(v_d, v_a)).converted_cents
+     + (pg_temp.app(v_d, v_b)).converted_cents <> 1500
+     OR (pg_temp.app(v_d, v_a)).converted_cents <> 500 THEN
+    RAISE EXCEPTION 'T15 converted % + %, expected 500 + 1000',
+      (pg_temp.app(v_d, v_a)).converted_cents, (pg_temp.app(v_d, v_b)).converted_cents;
+  END IF;
+  PERFORM pg_temp.assert_i1('T15');
+END
+$t15$;
 
 -- T14: the table is append-only, bounded and private.
 DO $t14$
