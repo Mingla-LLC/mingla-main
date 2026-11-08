@@ -618,6 +618,7 @@
         "supabase/functions/_shared/agentConversationState.ts",
         "supabase/functions/_shared/agentCopyLint.ts",
         "supabase/functions/_shared/agentDomainTools.ts",
+        "supabase/functions/_shared/agentFollowupProposal.ts",
         "supabase/functions/_shared/agentGemini.ts",
         "supabase/functions/_shared/agentLaunchPlan.ts",
         "supabase/functions/_shared/agentLoop.ts",
@@ -1410,6 +1411,8 @@
         "mingla-admin/src/components/placePool/CityBoxMap.jsx",
         "mingla-admin/src/components/placePool/CityBoxPanel.jsx",
         "mingla-admin/src/components/placePool/CityRunPanel.jsx",
+        "mingla-admin/src/components/placePool/LiveRunsSection.jsx",
+        "mingla-admin/src/hooks/useLiveCityRuns.js",
         "mingla-admin/src/components/placePool/ExcludedSummary.jsx",
         "mingla-admin/src/components/placePool/PipelineSection.jsx",
         "mingla-admin/src/components/placePool/ScoringTools.jsx",
@@ -1460,7 +1463,9 @@
         "mingla-admin/src/pages/PlacePoolManagementPage.jsx",
         "supabase/migrations/20280419004276_issue_4276_fast_place_category.sql",
         "supabase/migrations/20280419014276_issue_4276_mv_refresh_slot_comma_minutes.sql",
-        "supabase/migrations/20280419024276_issue_4276_admin_spend_totals.sql"
+        "supabase/migrations/20280419024276_issue_4276_admin_spend_totals.sql",
+        "supabase/migrations/20280428004276_issue_4276_live_runs.sql",
+        "supabase/migrations/20280504004276_issue_4276_admin_counts_headroom.sql"
       ]
     },
     {
@@ -1517,7 +1522,6 @@
         "mingla-business/modules/mingla-tap-to-pay-education/expo-module.config.json",
         "mingla-business/modules/mingla-tap-to-pay-education/ios/MinglaTapToPayEducation.podspec",
         "mingla-business/modules/mingla-tap-to-pay-education/ios/MinglaTapToPayEducationModule.swift",
-        "mingla-business/package-lock.json",
         "mingla-business/package.json",
         "mingla-business/plugins/withAndroidMinSdk26.js",
         "mingla-business/src/components/brand/BrandOnboardView.tsx",
@@ -1621,7 +1625,8 @@
       "paths": [
         "supabase/functions/payout-release-sweep/partnerRelease.ts",
         "supabase/migrations/20280407003645_issue_3645_stay_net_excludes_provider_fee.sql",
-        "supabase/migrations/20280422003645_issue_3645_unpaid_release_holds.sql"
+        "supabase/migrations/20280422003645_issue_3645_unpaid_release_holds.sql",
+        "supabase/migrations/20280503003645_issue_3645_float_forecast_alerts.sql"
       ]
     },
     {

@@ -60,6 +60,7 @@ import {
   mergeInbox,
   openGroupStep,
   personName,
+  staffName,
   planPrefillFromMessages,
   quickReplies,
   seenByWords,
@@ -530,10 +531,17 @@ export function BrandGroupsPanel({ onCounts }) {
   const roleWordsFor = (message) => (message.sender_role === "Mingla Support" ? "Mingla Support" : roleByUser.get(message.sender_id) || message.sender_role || "");
   const myNewest = useMemo(() => [...messages].reverse().find((m) => m.sender_id && m.sender_id === myUserId) || null, [messages, myUserId]);
   // D-4: a name that is an address falls back to the person's name on the People tab.
-  const nameByUser = useMemo(() => new Map(people.rows.map((p) => [p.user_id, p.display_name])), [people.rows]);
+  // Staff are not on the People tab: a Mingla Support sender's name comes from staffName (an address reads as its name, "Seth").
+  const nameByUser = useMemo(() => {
+    const names = new Map(people.rows.map((p) => [p.user_id, p.display_name]));
+    for (const m of messages) {
+      if (m.sender_role === "Mingla Support" && m.sender_id && !names.has(m.sender_id)) names.set(m.sender_id, staffName(m.sender_display_name));
+    }
+    return names;
+  }, [people.rows, messages]);
   const nameFor = useCallback((userId) => nameByUser.get(userId) || null, [nameByUser]);
   const seenText = myNewest ? seenByWords(live.reads, myNewest, nameFor) : "";
-  const staffNames = useMemo(() => [...new Set(messages.filter((m) => m.sender_role === "Mingla Support" && m.sender_display_name).map((m) => personName(m.sender_display_name)))], [messages]);
+  const staffNames = useMemo(() => [...new Set(messages.filter((m) => m.sender_role === "Mingla Support" && m.sender_display_name).map((m) => staffName(m.sender_display_name)))], [messages]);
   const today = todayIso();
   const sunday = (() => { const d = new Date(`${today}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + ((7 - d.getUTCDay()) % 7)); return d.toISOString().slice(0, 10); })();
   const chips = quickReplies({

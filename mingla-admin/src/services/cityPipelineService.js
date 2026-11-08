@@ -77,3 +77,20 @@ export async function fetchPipelineRuns() {
   }
   return latest;
 }
+
+/**
+ * #4276 Live runs: every active city run plus those finished in the last `days`, each
+ * with its stages and the current stage's progress. One database read, no edge call.
+ */
+export async function fetchLiveRuns(days = 7) {
+  const { data, error } = await supabase.rpc("admin_city_pipeline_live", { p_days: days });
+  if (error) {
+    const err = new Error(`Couldn't read live runs: ${error.message || "the server did not answer."}`);
+    err.code = error.code;
+    throw err;
+  }
+  if (!data || typeof data !== "object" || !Array.isArray(data.runs)) {
+    throw new Error("Couldn't read live runs: the server's answer had no runs list.");
+  }
+  return data;
+}

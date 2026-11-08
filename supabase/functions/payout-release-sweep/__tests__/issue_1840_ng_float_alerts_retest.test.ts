@@ -54,9 +54,16 @@ const MIGRATION =
 const MATURITY_MIGRATION =
   "supabase/migrations/20270720003645_issue_3645_payment_plus_24h_payouts.sql";
 const SWEEP = "supabase/functions/payout-release-sweep/index.ts";
+// #3645 2c re-emits the float raise and adds the stale stay-dispute kind, both
+// with revision-bearing keys; the guard reads it alongside the #1840 migration.
+const FLOAT_FORECAST_MIGRATION =
+  "supabase/migrations/20280503003645_issue_3645_float_forecast_alerts.sql";
 
 /** The kind whose payload is a number that moves — the one honoured downstream. */
-const REVISION_BEARING_KINDS = ["paystack_float_shortfall"];
+const REVISION_BEARING_KINDS = [
+  "paystack_float_shortfall",
+  "stay_dispute_hold_open",
+];
 
 const ALL_KINDS = [
   "stripe_attempt_cap",
@@ -67,6 +74,8 @@ const ALL_KINDS = [
   "paystack_reversal_unreconciled",
   "paystack_balance_blocked",
   "paystack_float_shortfall",
+  "waiting_for_bank",
+  "stay_dispute_hold_open",
 ];
 
 /**
@@ -88,7 +97,8 @@ function keyExpression(src: string, at: number): string {
 // ── D1: the scoping must not become a trap for whoever adds the next kind ──
 
 Deno.test("#1840 RETEST the kinds writing a revision-bearing key are EXACTLY the kinds the notifier honours", async () => {
-  const migration = await Deno.readTextFile(MIGRATION);
+  const migration = (await Deno.readTextFile(MIGRATION)) +
+    (await Deno.readTextFile(FLOAT_FORECAST_MIGRATION));
   const sweep = await Deno.readTextFile(SWEEP);
 
   // Which kinds does the SQL give a key with structure beyond `<kind>:<id>`?

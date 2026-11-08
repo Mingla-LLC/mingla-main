@@ -190,7 +190,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4270 W7: register the admin Brand group inbox suites; migration 20280502004270; re-sealed after merging origin/main (#4322).
 // #1023: skip the wave 2 theme migration (20280430011023) in the #1931 and #2117 filtered replays.
 // #1023: re-sealed after merging origin/main (#3645, #4294, #4271, #4304, #4270 W7 rows kept beside the #1023 rows).
-export const BOOTSTRAP_SHA256 = "58e3753ac8d49a5a4553b47efe6c1cd3d87e8b19bc8dbf1e87110994e0b79985";
+// #1023: re-sealed after merging origin/main 4ace6deafa (#4331 rows kept beside the #1023 rows).
+export const BOOTSTRAP_SHA256 = "a6dc37f74c681ac13038188d367fcc1c94bf726265ff70eb6c74a70ee465cf04";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

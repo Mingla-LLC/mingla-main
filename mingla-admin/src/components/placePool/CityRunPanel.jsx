@@ -7,8 +7,13 @@
 // the browser changes nothing: the run carries on server-side.
 //
 // Serper's cost is shown as unknown until a rate is set; nothing here invents it.
+//
+// #4276 Live runs: while the Pipeline tab's live read is answering, RunStatus takes
+// its run from there (no 15 s poll of its own), shows each stage's progress, the
+// heartbeat, the last wake-up and any error before a pause, and tells the tab when
+// the run's status changes so the city row refreshes.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Play, Pause, RotateCcw, XCircle, Check, RefreshCw } from "lucide-react";
 import { SectionCard, AlertCard } from "../ui/Card";
 import { Button } from "../ui/Button";
@@ -16,14 +21,21 @@ import { Badge } from "../ui/Badge";
 import { Spinner } from "../ui/Spinner";
 import { ModalBody, ModalFooter } from "../ui/Modal";
 // #4276: modals here are drawn on document.body, above the sticky table and Run plan.
-import { PortalModal as Modal } from "./PoolUi";
+import { PortalModal as Modal, ShareBar } from "./PoolUi";
 import { useToast } from "../../context/ToastContext";
 import { pipeline } from "../../services/cityPipelineService";
 import {
   ACTIVE_RUN_STATUSES,
   RUN_STAGES,
   approvalLines,
+  clockTime,
   count,
+  errorLine,
+  heartbeatState,
+  liveStage,
+  outcomeText,
+  problemNote,
+  stageProgress,
   pauseReasonText,
   pendingApproval,
   runStatusWord,
@@ -43,7 +55,7 @@ const STAGE_STATUS = {
   skipped: { label: "Skipped", variant: "outline" },
 };
 
-function Field({ label, children, hint }) {
+export function Field({ label, children, hint }) {
   return (
     <label className="flex flex-col gap-1 text-xs font-medium text-[var(--color-text-secondary)]">
       {label}
@@ -53,10 +65,10 @@ function Field({ label, children, hint }) {
   );
 }
 
-const inputClass =
+export const inputClass =
   "h-10 rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 text-sm text-[var(--color-text-primary)] tabular-nums";
 
-function ConfirmModal({ open, title, children, confirmLabel, destructive, busy, onConfirm, onClose }) {
+export function ConfirmModal({ open, title, children, confirmLabel, destructive, busy, onConfirm, onClose }) {
   return (
     <Modal open={open} onClose={busy ? () => {} : onClose} title={title} destructive={destructive}>
       <ModalBody><div className="flex flex-col gap-2 text-sm text-[var(--color-text-secondary)]">{children}</div></ModalBody>
@@ -318,7 +330,15 @@ function planPriceText(plan, serperRate) {
 
 // ── During and after a run ───────────────────────────────────────────────────
 
-function RunStatus({ runId, serperRate, onChanged }) {
+const BEAT_TONE = {
+  moving: "bg-[var(--color-success-500)]",
+  waiting: "bg-[var(--color-info-500)]",
+  stalled: "bg-[var(--color-warning-500)]",
+  stopped: "bg-[var(--gray-400)]",
+  done: "bg-[var(--gray-400)]",
+};
+
+function RunStatus({ runId, serperRate, onChanged, liveRun = null, liveReady = false }) {
   const { addToast } = useToast();
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -340,9 +360,39 @@ function RunStatus({ runId, serperRate, onChanged }) {
     // A server read; its state changes happen when it answers.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
+    // The live read already refreshes this run every 5 s; poll here only without it.
+    if (liveReady) return undefined;
     const t = setInterval(load, POLL_MS);
     return () => clearInterval(t);
-  }, [load]);
+  }, [load, liveReady]);
+
+  // The spend ledger and held counts come from the status call: read it again when
+  // the live run moves to another status or stage, not on a timer.
+  const liveKey = liveRun ? `${liveRun.status}:${liveRun.current_stage ?? ""}` : null;
+  const lastLiveKey = useRef(liveKey);
+  useEffect(() => {
+    if (liveKey === null || liveKey === lastLiveKey.current) return;
+    lastLiveKey.current = liveKey;
+    load();
+  }, [liveKey, load]);
+
+  // Tell the tab when the status changes, so the city row and the table refresh.
+  const status = liveRun?.status ?? data?.run?.status ?? null;
+  // A clock for the heartbeat's "N s ago", ticking once a second while live.
+  const [now, setNow] = useState(() => Date.now());
+  const isLive = liveRun !== null;
+  useEffect(() => {
+    if (!isLive) return undefined;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [isLive]);
+  const lastStatus = useRef(null);
+  useEffect(() => {
+    if (status === null) return;
+    const before = lastStatus.current;
+    lastStatus.current = status;
+    if (before !== null && before !== status) onChanged();
+  }, [status, onChanged]);
 
   const act = async (action, body, done) => {
     setBusy(action);
@@ -364,12 +414,17 @@ function RunStatus({ runId, serperRate, onChanged }) {
   if (error && !data) return <AlertCard variant="error" title="Couldn't read the run" action={<Button size="sm" variant="secondary" onClick={load}>Try again</Button>}>{error}</AlertCard>;
   if (!data) return <div className="flex justify-center py-6"><Spinner /></div>;
 
-  const run = data.run;
+  // The live run is newer than the last status read; its fields win.
+  const run = liveRun ? { ...data.run, ...liveRun } : data.run;
   const word = runStatusWord(run.status);
+  const beat = liveRun ? heartbeatState(run, now) : null;
+  const problem = problemNote(run);
+  const outcome = outcomeText(run.last_outcome);
   const approval = pendingApproval(run);
   const spend = spendSummary(data.spend);
   const active = ACTIVE_RUN_STATUSES.includes(run.status);
   const stagesById = Object.fromEntries((data.stages ?? []).map((s) => [s.stage, s]));
+  if (liveRun) for (const s of liveRun.stages ?? []) stagesById[s.stage] = { ...stagesById[s.stage], ...s };
   const limitNumber = Number(newLimit);
   const newLimitOk = newLimit.trim() === "" || (Number.isFinite(limitNumber) && limitNumber > 0);
 
@@ -383,7 +438,21 @@ function RunStatus({ runId, serperRate, onChanged }) {
         </span>
       </div>
       {run.pause_reason && active && <p className="text-sm text-[var(--color-text-primary)]">{pauseReasonText(run.pause_reason)}</p>}
-      {run.pause_detail?.error && <p className="text-xs text-[var(--color-error-700)]">{run.pause_detail.error}</p>}
+      {run.pause_detail?.error && <p className="text-xs text-[var(--color-error-700)]">{errorLine(run.pause_detail.error)}</p>}
+      {beat && beat.text && (
+        <div className={`flex items-center gap-2 text-[12.5px] ${beat.state === "stalled" ? "font-medium text-[var(--color-warning-700)]" : "text-[var(--color-text-secondary)]"}`} role="status">
+          <i aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${BEAT_TONE[beat.state]}`} />{beat.text}
+        </div>
+      )}
+      {outcome && run.last_outcome?.at && (
+        <p className="text-[11px] tabular-nums text-[var(--color-text-tertiary)]">Last wake-up {clockTime(run.last_outcome.at, { seconds: true })} · {outcome}</p>
+      )}
+      {problem && (
+        <div className="flex flex-col gap-0.5 rounded-lg bg-[var(--color-error-50)] px-3 py-2 text-[12.5px] text-[var(--color-error-700)]">
+          <b className="font-semibold">{problem.title}</b>
+          {problem.message && <span className="break-words font-mono text-[11.5px]">{problem.message}</span>}
+        </div>
+      )}
       {run.rules_only && <p className="text-xs text-[var(--color-warning-700)]">Rules only was chosen for this run: places can go live without Intelligence.</p>}
 
       {approval && (
@@ -412,11 +481,18 @@ function RunStatus({ runId, serperRate, onChanged }) {
           const st = stagesById[s.id];
           const status = STAGE_STATUS[st?.status] ?? STAGE_STATUS.pending;
           const isCurrent = run.current_stage === s.id && active;
+          const progress = stageProgress(liveStage({ stages: Object.values(stagesById) }, s.id));
           return (
             <li key={s.id} className={`flex flex-wrap items-center gap-2 px-3 py-2 text-sm ${isCurrent ? "bg-[var(--color-brand-50)]" : ""}`}>
               <span className="min-w-0 flex-1">
                 <span className="font-medium">{s.label}</span>
                 <span className="ml-2 text-xs text-[var(--color-text-tertiary)]">{s.sub}</span>
+                {progress && (
+                  <span className="mt-1 flex flex-col gap-1">
+                    <span className="text-xs tabular-nums text-[var(--color-text-secondary)]">{progress.line}</span>
+                    {progress.pct !== null && <ShareBar share={progress.pct} label={`${s.label}: ${progress.pct}%`} />}
+                  </span>
+                )}
               </span>
               {st?.estimate?.google_usd != null && <span className="text-xs tabular-nums text-[var(--color-text-secondary)]">est. {usd(st.estimate.google_usd)}</span>}
               {st?.estimate?.gemini_usd != null && <span className="text-xs tabular-nums text-[var(--color-text-secondary)]">est. {usd(st.estimate.gemini_usd)} + {serperCostText(st.estimate.serper_requests_max, serperRate)}</span>}
@@ -483,7 +559,7 @@ function RunStatus({ runId, serperRate, onChanged }) {
   );
 }
 
-export function CityRunPanel({ city, latestRun, serperRate, onChanged, footer = null, picks = null }) {
+export function CityRunPanel({ city, latestRun, serperRate, onChanged, footer = null, picks = null, liveRuns = null }) {
   const [runId, setRunId] = useState(latestRun?.id ?? null);
   const [planning, setPlanning] = useState(false);
   // A server read; its state changes happen when it answers.
@@ -502,7 +578,8 @@ export function CityRunPanel({ city, latestRun, serperRate, onChanged, footer = 
       {showPlan ? (
         <RunPlan city={city} serperRate={serperRate} picks={picks} onStarted={(id) => { setRunId(id); setPlanning(false); onChanged(); }} />
       ) : (
-        <RunStatus runId={runId} serperRate={serperRate} onChanged={onChanged} />
+        <RunStatus runId={runId} serperRate={serperRate} onChanged={onChanged}
+          liveReady={Array.isArray(liveRuns)} liveRun={Array.isArray(liveRuns) ? liveRuns.find((r) => r.id === runId) ?? null : null} />
       )}
       {footer && <div className="mt-4">{footer}</div>}
     </SectionCard>
