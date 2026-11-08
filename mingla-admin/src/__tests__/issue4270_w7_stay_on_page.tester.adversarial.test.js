@@ -10,7 +10,7 @@
 //      Support without Hosts access; the header without Hosts access
 //   L  live layer: typing payloads that are spoofed, oversized or malformed
 //
-// I-4270-W7-BRAND-GROUP-STAYS-ON-PAGE: nothing in a Brand group navigates away
+// MINGLA-INVARIANT: I-4270-W7-BRAND-GROUP-STAYS-ON-PAGE | issue #4270 | nothing in a Brand group navigates away; every linked thing opens in the side panel beside the chat, and only links marked data-full-page may leave the page
 // (Seth, 2026-11-07 design rule). Known defects are pinned as `todo` tests
 // (they run and report but do not fail the suite) until the fix lands; S-D1
 // became a plain test in W7 rework 1.
