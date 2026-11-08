@@ -12,6 +12,9 @@
 //   - the one-screen fit rule: admin strips push the listings down to 3 (1 on
 //     short screens), then fold into "See N more from Mingla";
 //   - the hand-off per device and per strip target.
+//   - the live cities (8 Nov ruling): exactly the `links_page_cities()` rows,
+//     a newly live city with no code change, a city switched off, quiet
+//     cities in the picker, and `?city=` with an older guide slug.
 //
 // Run from mingla-marketing/ (Node 22.13+):
 //   node --test lib/__tests__/issue-4318-links.implementor.test.mjs
@@ -130,12 +133,17 @@ test('the page opens on ?city=, then the visitor location, then the remembered c
 
   // 1. ?city= always wins, even over location, and even for a quiet city.
   assert.deepEqual(resolve({ query: 'brussels', geo: { lat: 35.9, lng: -79 } }), { slug: 'brussels', source: 'query' })
-  // 2. location: the nearest LIVE city, however far (Berlin → London, Abuja → Lagos).
-  assert.deepEqual(resolve({ geo: { lat: 52.52, lng: 13.4 }, cookie: 'lagos' }), { slug: 'london', source: 'geo' })
+  // 2. location: the nearest live city, however far, quiet or not. Live cities
+  //    ruling (8 Nov): every city live in Explorer is a landing city, so Berlin
+  //    lands on quiet Brussels (its places and "Plans in London →"), no longer
+  //    on London just because London has plans; Abuja still lands on Lagos.
+  assert.deepEqual(resolve({ geo: { lat: 52.52, lng: 13.4 }, cookie: 'lagos' }), { slug: 'brussels', source: 'geo' })
   assert.deepEqual(resolve({ geo: { lat: 9.07, lng: 7.4 } }), { slug: 'lagos', source: 'geo' })
-  // 3. no location: the remembered city, when it is live.
+  // 3. no location: the remembered city, while it is live. Same ruling: a
+  //    remembered quiet city opens too (it is live in Explorer).
   assert.deepEqual(resolve({ cookie: 'lagos' }), { slug: 'lagos', source: 'cookie' })
-  assert.notEqual(resolve({ cookie: 'brussels' }).source, 'cookie', 'a remembered city with nothing on is skipped')
+  assert.deepEqual(resolve({ cookie: 'brussels' }), { slug: 'brussels', source: 'cookie' })
+  assert.notEqual(resolve({ cookie: 'atlanta' }).source, 'cookie', 'a remembered city that is not live is skipped')
   // 4. else the busiest live city.
   assert.deepEqual(resolve({}), { slug: 'raleigh-nc', source: 'busiest' })
   // Nothing live anywhere: still a real registry city, never a crash.
@@ -526,4 +534,129 @@ test('the revalidate route drops blog by default, links on {"tag":"links"}, and 
   for (const bad of ['{"tag":"all"}', '{"tag":["links"]}', '"links"', '[]', 'null', '{', '{"tag":"LINKS"}']) {
     assert.equal(revalidate.revalidateTargetFor(bad), null, bad)
   }
+})
+
+// ---------------------------------------------------------------- live cities (8 Nov ruling)
+
+// The ten `links_page_cities()` rows read from production on 8 Nov 2026 (ids,
+// names, country codes and centres as stored), with the design's photo counts.
+const LIVE_ROWS = [
+  ['42197b35-45e8-4cac-b40d-a548416d87d2', 'Brussels', 'BE', 50.8477029, 4.3572001, 2593],
+  ['9cff3a58-18cc-4c51-aa94-4c3e96ca1841', 'Cary', 'US', 35.7890402, -78.7797644, 959],
+  ['a9e110dd-c26c-4141-9fee-165fad1fd455', 'Durham', 'US', 35.9955684, -78.9002077, 839],
+  ['96d591c0-acb6-4605-884d-442cc261ea8d', 'Fort Lauderdale', 'US', 26.1224386, -80.1373174, 1302],
+  ['287cab01-4430-4930-983a-435aa194f33a', 'Lagos', 'NG', 6.6137395, 3.3552568, 1036],
+  ['c0bcef4f-82c1-44c6-9e9d-3329f5c860bf', 'London', 'GB', 51.5072178, -0.1275862, 11654],
+  ['72cd3c91-7a32-470b-8e59-a57af654d07f', 'New York', 'US', 40.7127753, -74.0059728, 9880],
+  ['13d9113a-4796-499e-9544-ae4d17c678db', 'Paris', 'FR', 48.8575475, 2.3513765, 4438],
+  ['0ccfcf20-21a9-4d7b-805d-cbe629dcfd2b', 'Raleigh', 'US', 35.7795897, -78.6381787, 2129],
+  ['e7b70cd8-d2c8-47f2-9112-08e86942bf96', 'Washington', 'US', 38.9072873, -77.0369274, 2682],
+].map(([city_id, name, country_code, center_lat, center_lng, place_count]) => ({ city_id, name, country_code, center_lat, center_lng, place_count }))
+// What the city guides know (content/cities/registry.ts): older slugs, regions, zones.
+const HINTS = CITIES.map((c) => ({ slug: c.slug, countryCode: { lagos: 'NG', brussels: 'BE', london: 'GB' }[c.slug] ?? 'US', region: c.region, timezone: c.timezone, lat: c.lat, lng: c.lng }))
+  .concat([{ slug: 'washington-dc', countryCode: 'US', region: 'District of Columbia', timezone: 'America/New_York', lat: 38.9072, lng: -77.0369 }])
+
+test('the live cities are exactly the database rows: slugs from names, older guide slugs kept, Lagos 80 km, the rest 60', () => {
+  const cities = week.linksCitiesFromRows(LIVE_ROWS, HINTS)
+  assert.deepEqual(cities.map((c) => c.slug), ['brussels', 'cary', 'durham', 'fort-lauderdale', 'lagos', 'london', 'new-york', 'paris', 'raleigh', 'washington'])
+  const by = Object.fromEntries(cities.map((c) => [c.slug, c]))
+  assert.deepEqual(by['new-york'].aliases, ['new-york-city'])
+  assert.deepEqual(by.washington.aliases, ['washington-dc'])
+  assert.deepEqual(by.lagos.aliases, [])
+  assert.equal(by.washington.region, 'District of Columbia')
+  assert.equal(by.durham.region, 'North Carolina')
+  // Paris has no guide hint in this fixture: its country is the region line.
+  assert.equal(by.paris.region, 'France')
+  assert.equal(by.paris.timezone, '')
+  for (const c of cities) assert.equal(c.reachKm, c.slug === 'lagos' ? 80 : 60, c.slug)
+  assert.equal(by.london.placeCount, 11654)
+  // Slugs: lowercase, hyphenated, punctuation stripped.
+  assert.equal(week.citySlug('Washington, D.C.'), 'washington-dc')
+  assert.equal(week.citySlug("St. John's"), 'st-johns')
+  assert.equal(week.citySlug('Liège'), 'liege')
+  // Junk rows are dropped, never patched up; a duplicate slug takes its country.
+  const junk = week.linksCitiesFromRows(
+    [
+      { ...LIVE_ROWS[0], city_id: 'not-a-uuid' },
+      { ...LIVE_ROWS[1], name: '  ' },
+      { ...LIVE_ROWS[2], center_lat: 95 },
+      LIVE_ROWS[3],
+      { ...LIVE_ROWS[3], city_id: '00000000-0000-4000-8000-000000000001', country_code: 'GB' },
+    ],
+    [],
+  )
+  assert.deepEqual(junk.map((c) => c.slug), ['fort-lauderdale', 'fort-lauderdale-gb'])
+})
+
+test('a city switched live appears with no code change: listed, bucketed, its zone from its listings', () => {
+  const abuja = { city_id: '00000000-0000-4000-8000-0000000000ab', name: 'Abuja', country_code: 'NG', center_lat: 9.0765, center_lng: 7.3986, place_count: 120 }
+  const base = week.linksCitiesFromRows([...LIVE_ROWS, abuja], HINTS)
+  const listings = week.bucketListings(
+    [row({ lat: 9.06, lng: 7.49, tz: 'Africa/Lagos', starts_at: '2026-11-08T18:00:00Z', item_slug: 'abuja-1' })],
+    base,
+  )
+  const cities = week.withListingZones(base, listings)
+  const city2 = cities.find((c) => c.slug === 'abuja')
+  assert.deepEqual([city2.name, city2.region, city2.reachKm, city2.timezone], ['Abuja', 'Nigeria', 60, 'Africa/Lagos'])
+  assert.deepEqual(listings.map((l) => l.citySlug), ['abuja'])
+  const counts = week.cityCounts(cities, listings, [], NOW)
+  assert.equal(counts.length, 11)
+  assert.deepEqual(week.pickerOrder(counts, null)[0], { city: city2, count: 1, km: null })
+  assert.deepEqual(week.resolveCity({ cities, live: week.liveCities(cities, listings, [], NOW), query: 'abuja', geo: null, cookie: null }), { slug: 'abuja', source: 'query' })
+  // A new live city with no listings and no guide: UTC, still listed.
+  assert.equal(week.withListingZones(base, []).find((c) => c.slug === 'abuja').timezone, 'UTC')
+})
+
+test('a city switched off disappears: not listed, not bucketed, its ?city= and cookie no longer open it', () => {
+  const cities = week.linksCitiesFromRows(LIVE_ROWS.filter((r) => r.name !== 'Paris'), HINTS)
+  assert.equal(cities.some((c) => c.slug === 'paris'), false)
+  const listings = week.bucketListings([row({ lat: 48.86, lng: 2.35, tz: 'Europe/Paris', item_slug: 'p1' })], cities)
+  assert.deepEqual(listings, [], 'a Paris listing belongs to no live city (Brussels is 260 km away)')
+  const live = week.liveCities(cities, listings, [], NOW)
+  assert.notEqual(week.resolveCity({ cities, live, query: 'paris', geo: null, cookie: null }).source, 'query')
+  assert.notEqual(week.resolveCity({ cities, live, query: null, geo: null, cookie: 'paris' }).source, 'cookie')
+  // Geo near Paris lands on the nearest city still live.
+  assert.equal(week.resolveCity({ cities, live, query: null, geo: { lat: 48.85, lng: 2.35 }, cookie: null }).slug, 'brussels')
+})
+
+test('quiet cities are listed: every live city, nearest first, else most plans then name, "Places to explore"', () => {
+  const cities = week.withListingZones(week.linksCitiesFromRows(LIVE_ROWS, HINTS), [])
+  const listings = week.bucketListings(
+    [
+      row({ lat: 6.45, lng: 3.42, tz: 'Africa/Lagos', starts_at: '2026-11-08T18:00:00Z', item_slug: 'l1' }),
+      row({ lat: 6.45, lng: 3.42, tz: 'Africa/Lagos', starts_at: '2026-11-09T18:00:00Z', item_slug: 'l2' }),
+      row({ lat: 35.789, lng: -78.78, item_slug: 'c1' }),
+    ],
+    cities,
+  )
+  const counts = week.cityCounts(cities, listings, [], NOW)
+  assert.equal(counts.length, 10, 'all ten live cities, quiet ones included')
+  // No location: plans this week, then name.
+  assert.deepEqual(week.pickerOrder(counts, null).map((r) => r.city.slug), ['lagos', 'cary', 'brussels', 'durham', 'fort-lauderdale', 'london', 'new-york', 'paris', 'raleigh', 'washington'])
+  // From Chapel Hill: Durham, Cary, Raleigh first; Lagos last.
+  const fromChapelHill = week.pickerOrder(counts, { lat: 35.913, lng: -79.0558 }).map((r) => r.city.slug)
+  assert.deepEqual(fromChapelHill.slice(0, 3), ['durham', 'cary', 'raleigh'])
+  assert.equal(fromChapelHill.at(-1), 'lagos')
+  assert.equal(week.pickerCountLabel(2), '2 this week')
+  assert.equal(week.pickerCountLabel(0), 'Places to explore')
+  // A visitor in Chapel Hill lands on quiet Durham, which points at plans in Cary.
+  const live = week.liveCities(cities, listings, [], NOW)
+  const initial = week.resolveCity({ cities, live, query: null, geo: { lat: 35.913, lng: -79.0558 }, cookie: null })
+  assert.deepEqual(initial, { slug: 'durham', source: 'geo' })
+  const durham = cities.find((c) => c.slug === 'durham')
+  const q = week.quietWeek({ city: durham, cityHasListings: false, places: [], live, readFailed: false })
+  assert.deepEqual([q.mode, q.heading, q.plansIn.slug], ['quiet', 'A quiet week in Durham.', 'cary'])
+})
+
+test('?city= with an older guide slug opens the live city (washington-dc, new-york-city, durham-nc)', () => {
+  const cities = week.linksCitiesFromRows(LIVE_ROWS, HINTS)
+  const resolve = (query, cookie = null) => week.resolveCity({ cities, live: [], query, geo: null, cookie })
+  assert.deepEqual(resolve('washington-dc'), { slug: 'washington', source: 'query' })
+  assert.deepEqual(resolve('washington'), { slug: 'washington', source: 'query' })
+  assert.deepEqual(resolve('new-york-city'), { slug: 'new-york', source: 'query' })
+  assert.deepEqual(resolve('durham-nc'), { slug: 'durham', source: 'query' })
+  // The remembered-city cookie from before the change still opens its city.
+  assert.deepEqual(resolve(null, 'raleigh-nc'), { slug: 'raleigh', source: 'cookie' })
+  // Nothing on anywhere and nothing asked: the first live city.
+  assert.deepEqual(resolve(null), { slug: 'brussels', source: 'fallback' })
 })

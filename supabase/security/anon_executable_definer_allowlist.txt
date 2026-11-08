@@ -14,7 +14,7 @@
 # INVESTIGATION_ORCH-1392 bucket (definer_privilege_gate_inventory.csv). Format:
 # `proname(identity_args)` exactly as pg_get_function_identity_arguments renders.
 #
-# Signature count: 206 (intended-public 33, internally-gated 108, predicate/read-helper 62, PostGIS 3).
+# Signature count: 207 (intended-public 34, internally-gated 108, predicate/read-helper 62, PostGIS 3).
 # (#1931 recomputed this line from the file itself AFTER its one appended signature, by
 #  counting non-comment, non-blank lines per section. The previous value of 194/25/109/57
 #  was already stale by two against the 192 lines then present; the count is not gate-
@@ -33,6 +33,8 @@ blog_public_preview(p_token text)
 links_page_week()
 # #4318: the /links quiet week: at most 6 Explorer-servable, operational places with a stored thumb within 100 km of a point the page passes; name, category, city label, point and bucket-relative thumb only, no address or private column.
 links_page_places(p_lat double precision, p_lng double precision, p_radius_km integer, p_limit integer)
+# #4318 live cities: every city live for consumers in Explorer; id, name, country code, centre and a count of photo places under the links_page_places rules only, no seeding, coverage, cost or private column.
+links_page_cities()
 check_username_availability(check_username text)
 is_username_available(p_username text)
 # #1384: static active currency metadata is required before sign-in and carries no user or brand data.

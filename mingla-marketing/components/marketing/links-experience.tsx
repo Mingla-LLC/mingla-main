@@ -69,8 +69,10 @@ import {
   quietWeek,
   listingDayKey,
   listingWhen,
+  cityCounts,
   liveCities,
   longDayLabel,
+  pickerCountLabel,
   pickerOrder,
   pinWebHref,
   pinWhen,
@@ -288,7 +290,7 @@ export interface LinksExperienceProps {
   src: string
   /** The server's clock, so server and client agree on "this week". */
   nowIso: string
-  /** Every registry city (used when nothing is live anywhere). */
+  /** Every city live in Explorer (`links_page_cities()`); the picker lists them all. */
   cities: LinksCity[]
   listings: LinksListing[]
   pins: LinksPin[]
@@ -319,6 +321,7 @@ export function LinksExperience({
   const [sheet, setSheet] = useState<SheetState | null>(null)
   const [platform, setPlatform] = useState<Platform | null>(null)
 
+  const counts = useMemo(() => cityCounts(cities, listings, pins, nowIso), [cities, listings, pins, nowIso])
   const live = useMemo(() => liveCities(cities, listings, pins, nowIso), [cities, listings, pins, nowIso])
   const city = cities.find((c) => c.slug === citySlug) ?? cities[0]
   const week = useMemo(() => cityWeek(city, listings, pins, nowIso), [city, listings, pins, nowIso])
@@ -698,7 +701,8 @@ export function LinksExperience({
   const hostHrefs = hrefFor(hostTarget)
 
   const cityList = () => {
-    const rows = pickerOrder(live.length > 0 ? live : cities.map((c) => ({ city: c, count: 0 })), visitor.point)
+    // Every live city, quiet ones too: nearest first, else most plans then name.
+    const rows = pickerOrder(counts, visitor.point)
     return (
       <ul className={styles.cities}>
         {rows.map(({ city: c, count, km }) => (
@@ -712,7 +716,7 @@ export function LinksExperience({
                 </small>
               </span>
               <em>
-                {count} this week
+                {pickerCountLabel(count)}
                 {c.slug === city.slug ? <Icon name="check" /> : null}
               </em>
             </button>

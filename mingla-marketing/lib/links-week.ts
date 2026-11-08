@@ -5,9 +5,12 @@
 // truth:
 //   - the database shapes the page reads (`links_page_week()` listing rows and
 //     `links_page_strips()` admin strips) and their validation;
-//   - which live city a listing belongs to (nearest registry centre, 60 km);
+//   - the live cities: exactly the rows of `links_page_cities()` (the cities
+//     live for consumers in Explorer), never a hand-kept list;
+//   - which live city a listing belongs to (nearest centre within its reach:
+//     60 km, Lagos 80 km);
 //   - which city the page opens on (?city= > visitor location > remembered
-//     city > busiest city);
+//     city > busiest city > first by name);
 //   - the week (today through today+6 in the city's own time zone), its day
 //     grouping and the strip labels.
 //
@@ -53,14 +56,40 @@ export interface LinksPoint {
   lng: number
 }
 
-/** A live city as the page needs it (built from content/cities/registry.ts). */
+/** A live city as the page needs it (built from `links_page_cities()` rows by linksCitiesFromRows). */
 export interface LinksCity extends LinksPoint {
   slug: string
   name: string
   region: string
   timezone: string
-  /** How far a listing may be from the centre and still belong here (registry CITY_HUB_REACH_KM). */
+  /** How far a listing may be from the centre and still belong here (cityReachKm). */
   reachKm?: number
+  /** Older slugs that still open this city through `?city=` or the remembered-city cookie. */
+  aliases?: string[]
+  /** Photo places the city has (links_page_places rules); null when unknown. */
+  placeCount?: number | null
+}
+
+/** One row of `public.links_page_cities()`: a city live for consumers in Explorer. */
+export interface LinksCityRow {
+  city_id: string
+  name: string
+  country_code: string | null
+  center_lat: number
+  center_lng: number
+  place_count: number
+}
+
+/**
+ * What the city-guide registry already knows about a city (content/cities/
+ * registry.ts). Only used to enrich a live city the database lists: its older
+ * slug, its region line and its time zone. It never adds or removes a city.
+ */
+export interface LinksCityHint extends LinksPoint {
+  slug: string
+  countryCode: string
+  region: string
+  timezone: string
 }
 
 export interface LinksListing {
@@ -90,8 +119,16 @@ export interface LinksPin {
   position: number
 }
 
-/** The reach of a city that does not state its own (the registry states every one). */
+/** The reach of every city without an override (LINKS_CITY_REACH_KM). */
 export const NEAREST_CITY_RADIUS_KM = 60
+/**
+ * Per-slug reach overrides (km). Lagos reaches 80 km because the metro and the
+ * Lekki coast sprawl (Ibeju-Lekki, the Lekki Free Trade Zone). Every other
+ * city, including one that goes live tomorrow, reaches NEAREST_CITY_RADIUS_KM.
+ */
+export const LINKS_CITY_REACH_KM: Readonly<Record<string, number>> = { lagos: 80 }
+/** How close a registry centre must be to a live city's centre to be the same city. */
+export const CITY_HINT_MATCH_KM = 30
 export const WEEK_DAYS = 7
 
 const LISTING_KINDS: readonly LinksListingKind[] = ['event', 'trip', 'experience']
@@ -151,6 +188,106 @@ export function parseGeoHeaders(lat: string | null, lng: string | null): LinksPo
   if (!Number.isFinite(point.lat) || !Number.isFinite(point.lng)) return null
   if (Math.abs(point.lat) > 90 || Math.abs(point.lng) > 180) return null
   return point
+}
+
+// ---------------------------------------------------------------- the live cities
+
+/** "Fort Lauderdale" → "fort-lauderdale", "Washington, D.C." → "washington-dc", "Liège" → "liege". */
+export function citySlug(name: string): string {
+  return name
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/['’.]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60)
+    .replace(/-+$/g, '')
+}
+
+/** The listing reach of a city: its override, else 60 km. */
+export function cityReachKm(slug: string): number {
+  return LINKS_CITY_REACH_KM[slug] ?? NEAREST_CITY_RADIUS_KM
+}
+
+function countryName(code: string | null): string {
+  if (!code) return ''
+  try {
+    return new Intl.DisplayNames(['en'], { type: 'region' }).of(code) ?? code
+  } catch {
+    return code
+  }
+}
+
+const CITY_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * `links_page_cities()` rows → the page's live cities, in the database's order.
+ * The database is the one owner of which cities are live and where they are;
+ * the registry hints only add an older slug (accepted by `?city=`), the region
+ * line and the time zone for the city whose centre they share. A city with no
+ * hint still works: its country is the region line and its zone comes from its
+ * own listings (withListingZones), else UTC. A row that does not validate is
+ * dropped; two live cities that slug the same keep the first plain and give
+ * the next its country code (`-us`).
+ */
+export function linksCitiesFromRows(rows: readonly LinksCityRow[], hints: readonly LinksCityHint[]): LinksCity[] {
+  const out: LinksCity[] = []
+  const taken = new Set<string>()
+  for (const row of rows) {
+    if (!row || typeof row.city_id !== 'string' || !CITY_ID.test(row.city_id)) continue
+    const name = (row.name ?? '').trim()
+    const lat = Number(row.center_lat)
+    const lng = Number(row.center_lng)
+    if (name === '' || !Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) continue
+    const code =
+      typeof row.country_code === 'string' && /^[A-Za-z]{2}$/.test(row.country_code.trim())
+        ? row.country_code.trim().toUpperCase()
+        : null
+    let slug = citySlug(name)
+    if (slug === '') continue
+    if (taken.has(slug)) slug = code ? `${slug}-${code.toLowerCase()}` : ''
+    if (slug === '' || taken.has(slug)) continue
+    taken.add(slug)
+    const point = { lat, lng }
+    const hint = nearestCity(
+      hints.filter((h) => code !== null && h.countryCode.toUpperCase() === code),
+      point,
+      CITY_HINT_MATCH_KM,
+    )?.city
+    const count = Number(row.place_count)
+    out.push({
+      slug,
+      name,
+      region: hint?.region ?? countryName(code),
+      timezone: hint?.timezone ?? '',
+      reachKm: cityReachKm(slug),
+      aliases: hint && hint.slug !== slug ? [hint.slug] : [],
+      placeCount: Number.isInteger(count) && count >= 0 ? count : null,
+      lat,
+      lng,
+    })
+  }
+  return out
+}
+
+/**
+ * A city the registry does not know takes the zone of its first listing this
+ * week (listings carry their own zone); with none, UTC. Cities that already
+ * have a zone are returned as they are.
+ */
+export function withListingZones(cities: readonly LinksCity[], listings: readonly LinksListing[]): LinksCity[] {
+  return cities.map((city) => {
+    if (city.timezone !== '') return city
+    const first = listings.find((l) => l.citySlug === city.slug)
+    return { ...city, timezone: first ? first.tz : 'UTC' }
+  })
+}
+
+/** The live city a `?city=` value or remembered slug names: its own slug or an older one. */
+export function cityForSlug<C extends LinksCity>(cities: readonly C[], slug: string | null): C | null {
+  if (slug === null) return null
+  return cities.find((c) => c.slug === slug) ?? cities.find((c) => (c.aliases ?? []).includes(slug)) ?? null
 }
 
 // ---------------------------------------------------------------- dates
@@ -402,9 +539,23 @@ export function pinWhen(pin: LinksPin, today: string): string {
 // ---------------------------------------------------------------- cities
 
 /**
- * The picker's cities: only those with at least one listing this week, with
- * their listing counts. Admin strips show in every city, so they never make a
- * city live; the `pins` argument stays so callers pass the same week inputs.
+ * Every live city with its plan count this week (0 for a quiet city). Admin
+ * strips show in every city, so they never count; the `pins` argument stays so
+ * callers pass the same week inputs.
+ */
+export function cityCounts(
+  cities: readonly LinksCity[],
+  listings: readonly LinksListing[],
+  pins: readonly LinksPin[],
+  nowIso: string,
+): Array<{ city: LinksCity; count: number }> {
+  // "N this week" counts plans, not dates (a recurring plan is one).
+  return cities.map((city) => ({ city, count: groupListings(cityWeek(city, listings, pins, nowIso).listings).length }))
+}
+
+/**
+ * The cities with at least one plan this week, with their counts: what
+ * "busiest city" and "Plans in <city> →" choose from.
  */
 export function liveCities(
   cities: readonly LinksCity[],
@@ -412,10 +563,7 @@ export function liveCities(
   pins: readonly LinksPin[],
   nowIso: string,
 ): Array<{ city: LinksCity; count: number }> {
-  return cities
-    // "N this week" counts plans, not dates (a recurring plan is one).
-    .map((city) => ({ city, count: groupListings(cityWeek(city, listings, pins, nowIso).listings).length }))
-    .filter((c) => c.count > 0)
+  return cityCounts(cities, listings, pins, nowIso).filter((c) => c.count > 0)
 }
 
 export type CitySource = 'query' | 'geo' | 'cookie' | 'busiest' | 'fallback'
@@ -429,22 +577,26 @@ export interface ResolveCityInput {
 }
 
 /**
- * The city the page opens on (#4318 §10):
- *   1. `?city=<slug>` always wins (city-specific bio links);
- *   2. the visitor's coarse location: the nearest live city, however far;
- *   3. the city they picked last time, when it is live;
- *   4. the live city with the most plans this week;
- *   5. with nothing live anywhere, the same rules over every registry city.
+ * The city the page opens on (#4318 §10; live cities ruling, 8 Nov 2026):
+ *   1. `?city=<slug>` always wins (city-specific bio links), an older registry
+ *      slug included (`washington-dc` opens Washington);
+ *   2. the visitor's coarse location: the nearest live city, however far,
+ *      quiet or not (a quiet city shows its places and "Plans in <city> →");
+ *   3. the city they picked last time, while it is live;
+ *   4. the city with the most plans this week;
+ *   5. with nothing on anywhere, the first live city.
+ * `cities` is every live city; `live` is the ones with plans this week.
  */
 export function resolveCity({ cities, live, query, geo, cookie }: ResolveCityInput): { slug: string; source: CitySource } {
-  if (cities.length === 0) throw new Error('#4318 links: the city registry is empty')
-  if (query !== null && cities.some((c) => c.slug === query)) return { slug: query, source: 'query' }
-  const pool = live.length > 0 ? live.map((l) => l.city) : cities
+  if (cities.length === 0) throw new Error('#4318 links: no live city')
+  const asked = cityForSlug(cities, query)
+  if (asked !== null) return { slug: asked.slug, source: 'query' }
   if (geo !== null) {
-    const hit = nearestCity(pool, geo)
+    const hit = nearestCity(cities, geo)
     if (hit !== null) return { slug: hit.city.slug, source: 'geo' }
   }
-  if (cookie !== null && pool.some((c) => c.slug === cookie)) return { slug: cookie, source: 'cookie' }
+  const remembered = cityForSlug(cities, cookie)
+  if (remembered !== null) return { slug: remembered.slug, source: 'cookie' }
   if (live.length > 0) {
     const busiest = live.reduce((best, next) => (next.count > best.count ? next : best))
     return { slug: busiest.city.slug, source: 'busiest' }
@@ -452,14 +604,22 @@ export function resolveCity({ cities, live, query, geo, cookie }: ResolveCityInp
   return { slug: cities[0].slug, source: 'fallback' }
 }
 
-/** Picker order: closest to the visitor first, else registry order. */
+/**
+ * Picker order over every live city: closest to the visitor first; with no
+ * location, most plans this week first, then by name.
+ */
 export function pickerOrder(
-  live: ReadonlyArray<{ city: LinksCity; count: number }>,
+  rows: ReadonlyArray<{ city: LinksCity; count: number }>,
   geo: LinksPoint | null,
 ): Array<{ city: LinksCity; count: number; km: number | null }> {
-  const rows = live.map((l) => ({ ...l, km: geo === null ? null : haversineKm(geo, l.city) }))
-  if (geo !== null) rows.sort((a, b) => (a.km ?? 0) - (b.km ?? 0))
-  return rows
+  const out = rows.map((l) => ({ ...l, km: geo === null ? null : haversineKm(geo, l.city) }))
+  if (geo !== null) return out.sort((a, b) => (a.km ?? 0) - (b.km ?? 0) || a.city.name.localeCompare(b.city.name))
+  return out.sort((a, b) => b.count - a.count || a.city.name.localeCompare(b.city.name))
+}
+
+/** The picker row's right-hand label: "3 this week", or "Places to explore" for a quiet city. */
+export function pickerCountLabel(count: number): string {
+  return count > 0 ? `${count} this week` : 'Places to explore'
 }
 
 /**
