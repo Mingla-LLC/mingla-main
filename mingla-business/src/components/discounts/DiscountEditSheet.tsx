@@ -22,6 +22,7 @@ import {
   spacing,
   text as textTokens,
 } from "../../constants/designSystem";
+import { discountWriteHostCopy } from "@mingla/offering-rendering/discountWriteRefusalCopy";
 import { captureDiscountEvent } from "../../analytics/discountAnalytics";
 import type {
   BrandDiscount,
@@ -197,19 +198,8 @@ export const DiscountEditSheet: React.FC<DiscountEditSheetProps> = ({
         typeof cause.detail === "string"
           ? cause.detail
           : "internal";
-      setError(
-        detail === "version_conflict"
-          ? "This discount changed elsewhere. Load latest, then redo your change."
-          : detail === "code_taken"
-            ? "That code is already in use."
-            : detail === "sale_price_overlap"
-              ? "This item already has a sale in that time window."
-              : detail === "set_price_not_lower"
-                ? "A sale price must be lower than the list price."
-                : detail === "too_many_automatics"
-                  ? "This brand already has the maximum number of live automatic discounts."
-                  : "Couldn't save this discount. Check the fields and try again.",
-      );
+      // #4304: one shared wording per writer refusal (Ari reads it too).
+      setError(discountWriteHostCopy(detail));
     },
   });
 

@@ -222,3 +222,13 @@ export function ariDomainRefusalMessage(raw: unknown): string | null {
   const code = detectAriRefusalCode(raw);
   return code === null ? null : ARI_REFUSAL_COPY[code].message;
 }
+
+/**
+ * #4304 — owner sentences for the Host discount writer's refusals.
+ *
+ * Scoped to `brand-discount-upsert` (never matched as global tokens, because
+ * generic words such as `window_invalid` mean something else elsewhere). The
+ * one source of truth is the shared package, which the Host's manual
+ * discount editor reads too.
+ */
+export { DISCOUNT_WRITE_REFUSAL_COPY } from "../../../packages/offering-rendering/discountWriteRefusalCopy.ts";

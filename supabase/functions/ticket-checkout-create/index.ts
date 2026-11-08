@@ -1125,6 +1125,8 @@ export const createTicketCheckoutCreateHandler = (
       .from("event_dates")
       .select("id", { count: "exact", head: true })
       .eq("event_id", eventId)
+      // issue #3281 — a cancelled date is not a date this event still has.
+      .eq("status", "active")
       .gt("end_at", new Date().toISOString());
     if (futureDateErr !== null) {
       console.error(
@@ -1137,6 +1139,29 @@ export const createTicketCheckoutCreateHandler = (
       );
     }
     if ((futureDateCount ?? 0) === 0) {
+      // issue #3281 — upcoming dates exist but every one is cancelled: answer
+      // with the occurrence token so the buyer apps clear the chosen date and
+      // refresh (their re-pick path). Absent or ended dates keep the old answer.
+      const { count: cancelledUpcomingCount, error: cancelledErr } =
+        await supabase
+          .from("event_dates")
+          .select("id", { count: "exact", head: true })
+          .eq("event_id", eventId)
+          .eq("status", "cancelled")
+          .gt("end_at", new Date().toISOString());
+      if (cancelledErr !== null) {
+        console.error(
+          "[ticket-checkout-create] cancelled event_dates lookup failed",
+          cancelledErr,
+        );
+        return jsonResponse(
+          { error: "event_date_lookup_failed", detail: cancelledErr.message },
+          500,
+        );
+      }
+      if ((cancelledUpcomingCount ?? 0) > 0) {
+        return refuse({ error: "occurrence_not_available" }, 422);
+      }
       return refuse({ error: "event_no_active_dates" }, 422);
     }
 
@@ -1150,7 +1175,7 @@ export const createTicketCheckoutCreateHandler = (
     if (eventDateId !== null) {
       const { data: occRow, error: occErr } = await supabase
         .from("event_dates")
-        .select("id, end_at")
+        .select("id, end_at, status")
         .eq("id", eventDateId)
         .eq("event_id", eventId)
         .maybeSingle();
@@ -1173,6 +1198,10 @@ export const createTicketCheckoutCreateHandler = (
         new Date(occRow.end_at).getTime() <= Date.now()
       ) {
         // The chosen occurrence already ended → unbookable.
+        return refuse({ error: "occurrence_not_available" }, 422);
+      }
+      if ((occRow as { status?: unknown }).status !== "active") {
+        // issue #3281 — the chosen occurrence was cancelled → unbookable.
         return refuse({ error: "occurrence_not_available" }, 422);
       }
     }
@@ -1233,6 +1262,8 @@ export const createTicketCheckoutCreateHandler = (
           .from("event_dates")
           .select("id, end_at")
           .eq("event_id", eventId)
+          // issue #3281 — a pass covers the dates still on, not cancelled ones.
+          .eq("status", "active")
           .gt("end_at", new Date().toISOString())
           .order("start_at", { ascending: true });
         if (passDatesErr !== null) {
@@ -1303,7 +1334,7 @@ export const createTicketCheckoutCreateHandler = (
     if (orderedEventDateIds.length === 0 && eventDateIds.length > 0) {
       const { data: occRows, error: occSetErr } = await supabase
         .from("event_dates")
-        .select("id, end_at")
+        .select("id, end_at, status")
         .eq("event_id", eventId)
         .in("id", eventDateIds)
         .order("start_at", { ascending: true });
@@ -1318,7 +1349,7 @@ export const createTicketCheckoutCreateHandler = (
         );
       }
       const rows = (occRows ?? []) as Array<
-        { id: string; end_at: string | null }
+        { id: string; end_at: string | null; status?: string | null }
       >;
       if (rows.length !== eventDateIds.length) {
         // At least one id is not an occurrence of THIS event (or was deleted).
@@ -1326,8 +1357,10 @@ export const createTicketCheckoutCreateHandler = (
       }
       if (
         rows.some((row) =>
-          typeof row.end_at === "string" &&
-          new Date(row.end_at).getTime() <= Date.now()
+          (typeof row.end_at === "string" &&
+            new Date(row.end_at).getTime() <= Date.now()) ||
+          // issue #3281 — a cancelled day cannot be bought.
+          row.status !== "active"
         )
       ) {
         return refuse({ error: "occurrence_not_available" }, 422);
@@ -1855,6 +1888,11 @@ export const createTicketCheckoutCreateHandler = (
             { error: "invalid_request", detail: "discount_code_invalid" },
             400,
           );
+        }
+        // issue #3281 — a date cancelled after the checks above (or a day
+        // set the database refuses) keeps its own token so the buyer re-picks.
+        if (detail.includes("occurrence_not_available")) {
+          return refuse({ error: "occurrence_not_available" }, 422);
         }
         return jsonResponse({ error: "checkout_quote_failed", detail }, 409);
       }
@@ -2401,6 +2439,13 @@ export const createTicketCheckoutCreateHandler = (
         sessionError.message.includes("by_date_not_supported_for_all_days")
       ) {
         return refuse({ error: "by_date_not_supported_for_all_days" }, 422);
+      }
+      // issue #3281 — the database refused a cancelled or past date.
+      if (
+        typeof sessionError?.message === "string" &&
+        sessionError.message.includes("occurrence_not_available")
+      ) {
+        return refuse({ error: "occurrence_not_available" }, 422);
       }
       return jsonResponse(
         { error: "checkout_session_failed", detail: sessionError?.message },

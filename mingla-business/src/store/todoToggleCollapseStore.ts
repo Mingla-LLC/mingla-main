@@ -14,8 +14,11 @@
  * Global (never brand-keyed): brand switches leave it untouched; `reset` is
  * wired into `clearAllStores` (logout cascade, Constitution #6).
  *
- * Migration note: new store, no `migrate` fn; any future shape change bumps
- * `version` and adds `migrate`.
+ * #4304 (Seth, 2026-11-07): the To-do list is ALWAYS collapsed by default so it
+ * takes no space. Version 2 persists nothing: every app open starts collapsed,
+ * an open position is shared by Home and Hub for the session only, and an old
+ * v1 "open" value is dropped on load. The store stays a persisted store so the
+ * hydration gate (#882, no first-paint flip) keeps working unchanged.
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -27,7 +30,7 @@ import {
 } from "zustand/middleware";
 
 export type TodoToggleCollapseState = {
-  /** Persisted. Default false → the To-Do toggle is OPEN on first load. */
+  /** Session only (#4304). Default true → the To-do list starts COLLAPSED. */
   collapsed: boolean;
   /**
    * NOT persisted. False until the store has rehydrated from AsyncStorage
@@ -41,7 +44,7 @@ export type TodoToggleCollapseState = {
   reset: () => void;
 };
 
-type PersistedState = Pick<TodoToggleCollapseState, "collapsed">;
+type PersistedState = Record<string, never>;
 
 const persistOptions: PersistOptions<
   TodoToggleCollapseState,
@@ -49,10 +52,12 @@ const persistOptions: PersistOptions<
 > = {
   name: "mingla-business.todoToggleCollapse.v1",
   storage: createJSONStorage(() => AsyncStorage),
-  // Only `collapsed` is persisted — `hasHydrated` always starts false on a
-  // fresh load so the cold-start gate is honest (Constitution #14).
-  partialize: (state) => ({ collapsed: state.collapsed }),
-  version: 1,
+  // #4304 — nothing is persisted: every load starts collapsed. `hasHydrated`
+  // still flips only in onRehydrateStorage (Constitution #14).
+  partialize: () => ({}),
+  version: 2,
+  // A v1 store held { collapsed }; drop it so an old "open" never returns.
+  migrate: () => ({}),
   onRehydrateStorage: () => () =>
     useTodoToggleCollapseStore.getState().setHasHydrated(true),
 };
@@ -60,12 +65,12 @@ const persistOptions: PersistOptions<
 export const useTodoToggleCollapseStore = create<TodoToggleCollapseState>()(
   persist(
     (set) => ({
-      collapsed: false,
+      collapsed: true,
       hasHydrated: false,
       setCollapsed: (value) => set({ collapsed: value }),
       toggle: () => set((state) => ({ collapsed: !state.collapsed })),
       setHasHydrated: (value) => set({ hasHydrated: value }),
-      reset: () => set({ collapsed: false }),
+      reset: () => set({ collapsed: true }),
     }),
     persistOptions,
   ),

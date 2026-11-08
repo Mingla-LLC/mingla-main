@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/door-tap-intent/__tests__/issue_4271_tap_buyer_name.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4271-tap-buyer-name-edge-implementor",
+  "profile": "deno-2-unit"
+}

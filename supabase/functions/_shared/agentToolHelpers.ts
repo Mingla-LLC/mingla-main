@@ -309,11 +309,43 @@ export async function callRpc<T = unknown>(
   return data as T;
 }
 
+export interface InvokeFnOptions {
+  /**
+   * #4304 — refusals scoped to this one edge writer: its response `detail`
+   * mapped to an owner sentence. Matched exactly (not as a global token), so
+   * a generic detail word only means this writer's refusal here.
+   */
+  refusals?: Readonly<Record<string, string>>;
+}
+
+/** The `detail` (or `code`) of a non-2xx edge answer, else null. */
+async function invokeErrorDetail(
+  error: { context?: unknown },
+): Promise<string | null> {
+  const context = error.context as
+    | { clone?: () => { json?: () => Promise<unknown> } }
+    | null
+    | undefined;
+  if (!context || typeof context.clone !== "function") return null;
+  try {
+    const body = await context.clone().json?.() as
+      | { code?: unknown; detail?: unknown }
+      | null
+      | undefined;
+    if (typeof body?.detail === "string") return body.detail;
+    if (typeof body?.code === "string") return body.code;
+  } catch {
+    // Not JSON, or already consumed: no detail to report.
+  }
+  return null;
+}
+
 export async function invokeFn<T = unknown>(
   client: SupabaseClient,
   name: string,
   body: Record<string, unknown>,
   headers?: Record<string, string>,
+  options?: InvokeFnOptions,
 ): Promise<T> {
   const { data, error } = await client.functions.invoke(name, {
     body,
@@ -322,9 +354,21 @@ export async function invokeFn<T = unknown>(
   if (error) {
     const terms = await organiserTermsRefusalFromInvoke(error);
     if (terms) throw terms;
+    const detail = await invokeErrorDetail(error);
+    if (
+      options?.refusals && detail !== null &&
+      Object.hasOwn(options.refusals, detail)
+    ) {
+      throw new ToolError(DOMAIN_REFUSED_CODE, options.refusals[detail]);
+    }
     const refusal = await ariDomainRefusalFromInvoke(error);
     if (refusal) throw refusal;
-    throw new ToolError("EDGE_FAILED", `${name}: ${error.message}`);
+    // #4304: keep the writer's own detail code in the receipt so a failure
+    // is diagnosable from agent_pending_actions without the edge logs.
+    throw new ToolError(
+      "EDGE_FAILED",
+      `${name}: ${error.message}${detail ? ` (${detail})` : ""}`,
+    );
   }
   return data as T;
 }

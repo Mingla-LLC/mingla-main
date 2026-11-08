@@ -6,6 +6,7 @@
  */
 
 import { invokeWithRefresh, SUPABASE_ANON_KEY, SUPABASE_URL, supabase } from "../lib/supabase";
+import { todayIso } from "../lib/opsModel";
 
 function throwRpc(error) {
   if (!error) return;
@@ -489,15 +490,101 @@ export async function finalizeOfficialBrandGroupFile(fileId) {
   return data?.message_id ?? null;
 }
 
-export async function openOfficialBrandGroupFile(fileId) {
+export async function openOfficialBrandGroupFile(fileId, { thumb = false } = {}) {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session?.access_token) throw new Error("Your admin session expired. Sign in again to continue.");
-  const response = await fetch(`${SUPABASE_URL}/functions/v1/brand-group-files?file_id=${encodeURIComponent(fileId)}`, {
+  // #4270 W7: the Media tab asks for the small thumbnail the Host app uses.
+  const variant = thumb ? "&variant=thumb" : "";
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/brand-group-files?file_id=${encodeURIComponent(fileId)}${variant}`, {
     headers: { Authorization: `Bearer ${session.access_token}`, apikey: SUPABASE_ANON_KEY },
     cache: "no-store",
   });
   if (!response.ok) throw new Error(response.status === 404 ? "You no longer have access to this file." : "Couldn't open this file.");
   return URL.createObjectURL(await response.blob());
+}
+
+// ── #4270 W7: the staff Brand group inbox ───────────────────────────────────
+// Each throws the Supabase error; the panel says what failed.
+
+/**
+ * Who waits on Mingla Support and since when, and (Hosts and Creators access
+ * only) each brand's host card, owners and plan. `withPlan: false` is the
+ * light refresh after a message: no plan reads.
+ */
+export async function listBrandGroupInbox({ withPlan = true } = {}) {
+  const { data, error } = await supabase.rpc("issue_4270_brand_group_inbox", {
+    p_today: todayIso(),
+    p_with_plan: withPlan,
+  });
+  if (error) throw error;
+  return data ?? [];
+}
+
+/** The brand team by display name and role (never an address). */
+export async function listBrandGroupPeople(conversationId) {
+  const { data, error } = await supabase.rpc("issue_4270_brand_group_people", {
+    p_conversation_id: conversationId,
+  });
+  if (error) throw error;
+  return data ?? [];
+}
+
+/** How far each brand teammate has read (#4304), for "Seen by". */
+export async function listBrandGroupReadState(conversationId) {
+  const { data, error } = await supabase.rpc("issue_4304_list_brand_group_read_state", {
+    p_conversation_id: conversationId,
+  });
+  if (error) throw error;
+  return data ?? [];
+}
+
+/** Reactions on the loaded messages (#4304 scopes them to the group). */
+export async function listBrandGroupReactions(messageIds) {
+  if (!Array.isArray(messageIds) || messageIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from("direct_message_reactions")
+    .select("id, message_id, user_id, emoji")
+    .in("message_id", [...messageIds]);
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function addBrandGroupReaction({ messageId, userId, emoji }) {
+  const { data, error } = await supabase
+    .from("direct_message_reactions")
+    .insert({ message_id: messageId, user_id: userId, emoji })
+    .select("id, message_id, user_id, emoji")
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function removeBrandGroupReaction(rowId) {
+  const { data, error } = await supabase
+    .from("direct_message_reactions")
+    .delete()
+    .eq("id", rowId)
+    .select("id");
+  if (error) throw error;
+  // A zero-row delete (already gone, or not yours) is not a silent success.
+  if (!Array.isArray(data) || data.length === 0) throw new Error("That reaction was already removed.");
+}
+
+/** Photos and videos ("media") or files ("files") shared in a group, newest first. */
+export async function listOfficialBrandGroupMedia(conversationId, kind, cursor = null) {
+  const { data, error } = await supabase.rpc("issue_3988_list_brand_group_media", {
+    p_conversation_id: conversationId,
+    p_kind: kind === "files" ? "files" : "media",
+    p_cursor_created_at: cursor?.createdAt ?? null,
+    p_cursor_id: cursor?.id ?? null,
+    p_limit: 60,
+  });
+  if (error) throw error;
+  return {
+    totals: { media: Number(data?.totals?.media || 0), files: Number(data?.totals?.files || 0) },
+    rows: Array.isArray(data?.rows) ? data.rows : [],
+    nextCursor: data?.nextCursor ?? null,
+  };
 }
 
 // ── Reported enquiries (#4111) ──────────────────────────────────────────────

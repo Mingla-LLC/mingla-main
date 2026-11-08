@@ -23,12 +23,16 @@ const contract = JSON.parse(
 const NAME = "STRIPE_RAK_PAYOUT_RELEASE_LIVE";
 const projectRef = "gqnoajqerqhnvulmnyvv";
 const exceptionWindowNow = Date.parse("2026-10-22T12:00:00Z");
+// [TEST-MOD-APPROVED #4276] #4276 [secret count 91 approved by Seth]: GOOGLE_SEEDING_API_KEY is the
+// 91st name after this one; the payout-release RAK stays governed, the absolute
+// ceiling is 91, and any 92nd live name still fails closed.
 
-test("#3645 happy: payout release RAK is the governed 90th name", () => {
+test("#3645 happy: payout release RAK stays governed after the approved 91st name", () => {
   const names = manifest.secrets.map((record) => record.name);
-  assert.equal(names.length, 90);
-  assert.equal(new Set(names).size, 90);
-  assert.equal(manifest.rollout.expected_user_managed_count, 90);
+  assert.equal(names.length, 91);
+  assert.equal(new Set(names).size, 91);
+  assert.equal(manifest.rollout.expected_user_managed_count, 91);
+  assert.ok(names.includes("GOOGLE_SEEDING_API_KEY"));
   assert.deepEqual(manifest.secrets.find((record) => record.name === NAME), {
     name: NAME,
     class: "restricted_api_key",
@@ -55,11 +59,11 @@ test("#3645 happy: payout release RAK is the governed 90th name", () => {
     liveAudit: true,
   });
   assert.equal(budget.ok, true);
-  assert.equal(budget.count, 90);
-  assert.equal(budget.freeSlots, 10);
+  assert.equal(budget.count, 91);
+  assert.equal(budget.freeSlots, 9);
 });
 
-test("#3645 adversarial: an undeclared or 91st live name fails closed", () => {
+test("#3645 adversarial: an undeclared or 92nd live name fails closed", () => {
   const names = manifest.secrets.map((record) => record.name);
   const withoutPayout = structuredClone(manifest);
   withoutPayout.secrets = withoutPayout.secrets.filter((record) =>
@@ -84,17 +88,17 @@ test("#3645 adversarial: an undeclared or 91st live name fails closed", () => {
       assertLiveNameParity({
         contract,
         manifest,
-        liveNames: [...names, "UNAPPROVED_NINETY_FIRST_NAME"],
+        liveNames: [...names, "UNAPPROVED_NINETY_SECOND_NAME"],
         projectRef,
       }),
     (error) =>
       error instanceof ReadinessError &&
       error.code === "live_name_set_mismatch" &&
-      error.details.includes("unexpected:UNAPPROVED_NINETY_FIRST_NAME"),
+      error.details.includes("unexpected:UNAPPROVED_NINETY_SECOND_NAME"),
   );
   const over = auditSecretBudget({
     manifest,
-    liveNames: [...names, "UNAPPROVED_NINETY_FIRST_NAME"],
+    liveNames: [...names, "UNAPPROVED_NINETY_SECOND_NAME"],
     nowMs: exceptionWindowNow,
   });
   assert.equal(over.ok, false);

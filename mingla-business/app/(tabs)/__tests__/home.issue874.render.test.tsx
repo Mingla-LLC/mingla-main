@@ -337,24 +337,46 @@ describe("issue #874 Home integration real render", () => {
     ).toBeUndefined();
   });
 
-  it("opens the create modal from the Recent empty state", async () => {
+  it("empty Recent has no manual create link (the top bar's + keeps the wizards)", async () => {
     mockRecentState = "empty";
     const screen = await render(<HomeTab />);
-
-    expect(screen.getByText("Create something")).toBeTruthy();
+    // #4304 — Seth, 2026-11-07: the empty state is Ari only, no manual link.
+    expect(screen.queryByText("Or create it yourself")).toBeNull();
+    expect(screen.queryByTestId("home-recent-create-manually")).toBeNull();
+    expect(screen.queryByText("Create something")).toBeNull();
     expect(screen.queryByText("Browse your work")).toBeNull();
-
-    await act(async () => {
-      fireEvent.press(screen.getByTestId("recent-state-cta"));
-    });
-
-    expect(
-      findNodes(
-        screen.root as unknown as TestNode,
-        (node) => node.type === "UniversalCreatorSheet",
-      ),
-    ).toHaveLength(1);
     expect(mockPush).not.toHaveBeenCalledWith("/(tabs)/hub");
+  });
+
+  it("#4304: empty Recent invites the host to tell Ari, opens a NEW Ari chat, and hides the top Ask Ari field", async () => {
+    // Seth's review 2026-11-07: "Nothing recent yet / Create something" became
+    // the Ari prompt; one Ari field on screen, not two.
+    mockRecentState = "empty";
+    const screen = await render(<HomeTab />);
+    expect(screen.getByTestId("home-recent-ari-prompt")).toBeTruthy();
+    expect(screen.queryByTestId("home-ask-ari")).toBeNull();
+    expect(screen.queryByText("Nothing recent yet")).toBeNull();
+    const { useAriSeedStore } = jest.requireActual("../../../src/store/ariSeedStore") as {
+      useAriSeedStore: { getState: () => { seed: string | null; reset: () => void } };
+    };
+    useAriSeedStore.getState().reset();
+    await act(async () => {
+      fireEvent.press(screen.getByTestId("home-recent-ari-chip-trips"));
+    });
+    expect(useAriSeedStore.getState().seed).toBe("I want to make a trip");
+    expect(mockPush).toHaveBeenCalledWith("/(tabs)/ari");
+    await act(async () => {
+      fireEvent.press(screen.getByTestId("home-recent-ari-field"));
+    });
+    // An empty seed still opens a fresh conversation (not the last thread).
+    expect(useAriSeedStore.getState().seed).toBe("");
+  });
+
+  it("#4304: the draft card is gone from Home (the to-do row names the draft instead)", async () => {
+    mockRecentState = "empty";
+    const screen = await render(<HomeTab />);
+    expect(screen.queryByTestId("home-draft-lead")).toBeNull();
+    expect(screen.queryByText("Finish draft")).toBeNull();
   });
 
   it("pull-to-refresh invalidates payout and both Home traffic queries", async () => {

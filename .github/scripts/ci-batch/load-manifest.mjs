@@ -178,8 +178,19 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4294: re-sealed after merging origin/main (#4303 and #4296 rows kept beside the #4294 rows).
 // #4273: register the buyer/follower auto opt-in, honest-quote and account-opt-out migrations and their proofs.
 // #4270: register the brand plan migrations (20280427004270-20280427024270) and their proofs the same way.
+// #3645: register the unpaid-release-holds migration and its PostgreSQL proof the same way.
+// #4294: re-sealed after the company sign-in migration and its PostgreSQL proof entered the preserved inventories
+// and the migration joined the pre-#1931 replay's exact-file exclusion.
+// #4294 (tester): re-sealed after the company sign-in tester proof entered the preserved inventories.
+// #4271: register the tap buyer-name migration and its PostgreSQL proofs the same way.
+// #4271: the tap buyer-name migration joins the pre-#1931 replay's exact-file exclusion beside door pay.
+// #3645: register the sell-and-publish integrity migration, its PostgreSQL proof and its re-emit guard.
+// #3645: the sell-and-publish migration joins the pre-#1931 and pre-#2117 replay skip lists by exact filename.
+// #4304: register the Brand group live migration and its PostgreSQL proof the same way.
+// #4270 W7: register the admin Brand group inbox suites; migration 20280502004270; re-sealed after merging origin/main (#4322).
 // #1023: skip the wave 2 theme migration (20280430011023) in the #1931 and #2117 filtered replays.
-export const BOOTSTRAP_SHA256 = "10a74abbc4878dbfeb707b118d0effd7b6e31cf7dbb90e1cea9d20754abd27bd";
+// #1023: re-sealed after merging origin/main (#3645, #4294, #4271, #4304, #4270 W7 rows kept beside the #1023 rows).
+export const BOOTSTRAP_SHA256 = "58e3753ac8d49a5a4553b47efe6c1cd3d87e8b19bc8dbf1e87110994e0b79985";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

@@ -11,6 +11,17 @@
  *
  * States: loading, error (nothing editable, Retry), empty, populated; every
  * save disables its button while it runs and says how it went.
+ *
+ * Issue #4294 company sign-in: a row of kind "company sign-in" (Mingla
+ * Studio) has no key. It shows Connect / Reconnect / Disconnect and
+ * "Connected as X on DATE by Y" or "Reconnect needed"; Connect sends the
+ * owner's browser to the tool's own sign-in page and back. It also has a
+ * display name, words to hide from Claude, the tools that count as
+ * generation calls and the daily limit per person.
+ *
+ * The On switch saves itself the moment it is pressed (it never shows On
+ * before the server has it on), and goes back with a reason if the save is
+ * refused. Save saves everything else.
  */
 import { useCallback, useEffect, useState } from "react";
 import { PageHeader } from "../components/ui/PageHeader";
@@ -27,13 +38,20 @@ import {
   CONNECT_WORDS,
   ROLE_OPTIONS,
   SLUG_RULE,
+  canTurnOn,
   clearCompanyToolKey,
+  disconnectCompanySignin,
   hostOf,
   keyLooksUsable,
   keyStatusLine,
+  parseDailyCap,
+  parseHideWords,
   parseToolList,
   saveCompanyTool,
   setCompanyToolKey,
+  signinStatusLine,
+  startCompanySignin,
+  switchCompanyTool,
 } from "../services/minglaConnectorService";
 
 const fmtDate = (d) => {
@@ -122,24 +140,138 @@ function KeyForm({ row, onSaved, onClose }) {
   );
 }
 
+/**
+ * A company sign-in: its status and Connect / Reconnect / Disconnect. The
+ * browser goes to the tool's own sign-in page and comes back to a plain page
+ * from Mingla's server; no token ever reaches this page.
+ */
+function SigninPanel({ row, onChanged }) {
+  const { addToast } = useToast();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false);
+  const connected = Boolean(row.signin?.connected);
+  const reconnect = Boolean(row.signin?.reconnect_needed);
+
+  const connect = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      const to = await startCompanySignin(row.slug);
+      // Leaves Mingla Admin for the tool's own sign-in page.
+      window.location.assign(to);
+    } catch (err) {
+      setError(err?.message || CONNECT_WORDS.signinUnavailable);
+      setBusy(false);
+    }
+  };
+
+  const disconnect = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      await disconnectCompanySignin(row.slug);
+      addToast({ variant: "success", title: `${row.label} is disconnected`, description: "The tool is off." });
+      setConfirmDisconnect(false);
+      onChanged();
+    } catch (err) {
+      setError(saveWords(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-3">
+      <p className="text-sm text-[var(--color-text-primary)]">
+        <Badge variant={connected && !reconnect ? "success" : reconnect ? "warning" : "default"}>
+          {signinStatusLine(row, fmtDate)}
+        </Badge>
+      </p>
+      <p className="mt-1 text-xs text-[var(--color-text-tertiary)]">
+        Company sign-in: no key. Connect opens the tool's own sign-in page; sign in with the company account.
+      </p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {!confirmDisconnect && (
+          <Button size="sm" variant={connected && !reconnect ? "secondary" : "primary"} className="min-h-11 sm:min-h-0" loading={busy} onClick={connect}>
+            {connected ? "Reconnect" : "Connect"}
+          </Button>
+        )}
+        {connected && !confirmDisconnect && (
+          <Button size="sm" variant="secondary" className="min-h-11 sm:min-h-0" disabled={busy} onClick={() => setConfirmDisconnect(true)}>
+            Disconnect
+          </Button>
+        )}
+        {confirmDisconnect && (
+          <>
+            <Button size="sm" variant="danger" className="min-h-11 sm:min-h-0" loading={busy} onClick={disconnect}>
+              Disconnect and turn off
+            </Button>
+            <Button size="sm" variant="secondary" className="min-h-11 sm:min-h-0" disabled={busy} onClick={() => setConfirmDisconnect(false)}>
+              Keep it
+            </Button>
+          </>
+        )}
+      </div>
+      {error && (
+        <p role="alert" className="mt-1 text-xs text-[#ef4444]">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function ToolRow({ row, onChanged }) {
   const { addToast } = useToast();
+  const isSignin = row.auth_kind === "signin";
   const [enabled, setEnabled] = useState(row.enabled);
+  const [toggling, setToggling] = useState(false);
   const [roles, setRoles] = useState(row.allowed_roles ?? []);
   const [toolsText, setToolsText] = useState((row.tool_allowlist ?? []).join("\n"));
+  const [displayLabel, setDisplayLabel] = useState(row.display_label ?? "");
+  const [hideText, setHideText] = useState((row.hide_words ?? []).join(", "));
+  const [genText, setGenText] = useState((row.generation_tools ?? []).join("\n"));
+  const [capText, setCapText] = useState(String(row.daily_generation_cap ?? 40));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [keyOpen, setKeyOpen] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [removing, setRemoving] = useState(false);
   const parsed = parseToolList(toolsText);
+  const hide = parseHideWords(hideText);
+  const gen = parseToolList(genText);
+  const cap = parseDailyCap(capText);
+  const signinErrors = isSignin
+    ? [...hide.errors, ...gen.errors, ...(cap === null ? ["The daily limit is a whole number from 0 to 10000."] : [])]
+    : [];
+
+  // The On switch saves itself at once: it shows On only once the server has it on.
+  const toggle = async (next) => {
+    setToggling(true);
+    setError("");
+    const result = await switchCompanyTool(row.slug, next);
+    setEnabled(result.enabled);
+    if (result.error) setError(saveWords(result.error));
+    else addToast({ variant: "success", title: `${row.label} is ${result.enabled ? "on" : "off"}` });
+    setToggling(false);
+  };
 
   const save = async () => {
-    if (parsed.errors.length) return;
+    if (parsed.errors.length || signinErrors.length) return;
     setSaving(true);
     setError("");
     try {
-      await saveCompanyTool({ slug: row.slug, enabled, allowed_roles: roles, tool_allowlist: parsed.tools });
+      const fields = { slug: row.slug, allowed_roles: roles, tool_allowlist: parsed.tools };
+      if (isSignin) {
+        Object.assign(fields, {
+          display_label: displayLabel.trim(),
+          hide_words: hide.words,
+          generation_tools: gen.tools,
+          daily_generation_cap: cap,
+        });
+      }
+      await saveCompanyTool(fields);
       addToast({ variant: "success", title: `${row.label} saved` });
       onChanged();
     } catch (err) {
@@ -174,14 +306,22 @@ function ToolRow({ row, onChanged }) {
           </p>
           <p className="text-xs text-[var(--color-text-secondary)] break-all">{hostOf(row.mcp_url)}</p>
         </div>
-        <Toggle
-          label={enabled ? "On" : "Off"}
-          checked={enabled}
-          disabled={!row.key_set || saving}
-          onChange={setEnabled}
-        />
+        <div className="flex flex-col items-end">
+          <Toggle
+            label={toggling ? "Saving…" : enabled ? "On" : "Off"}
+            checked={enabled}
+            disabled={(!enabled && !canTurnOn(row)) || saving || toggling}
+            onChange={toggle}
+          />
+          <span className="mt-1 text-xs text-[var(--color-text-tertiary)]">
+            {canTurnOn(row) || enabled ? "Saves at once" : isSignin ? "Connect first" : "Set a key first"}
+          </span>
+        </div>
       </div>
 
+      {isSignin ? (
+        <SigninPanel row={row} onChanged={onChanged} />
+      ) : (
       <div className="mt-3">
         <p className="text-sm text-[var(--color-text-primary)]">
           <Badge variant={row.key_set ? "success" : "default"}>{keyStatusLine(row, fmtDate)}</Badge>
@@ -220,6 +360,7 @@ function ToolRow({ row, onChanged }) {
           />
         )}
       </div>
+      )}
 
       <fieldset className="mt-4">
         <legend className="text-sm font-medium text-[var(--color-text-primary)]">Roles that may use it</legend>
@@ -244,13 +385,47 @@ function ToolRow({ row, onChanged }) {
         />
       </div>
 
+      {isSignin && (
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <Input
+            label="Name Claude sees"
+            helper="Shown instead of the tool's own name, for example Mingla Studio."
+            value={displayLabel}
+            onChange={(e) => setDisplayLabel(e.target.value)}
+          />
+          <Input
+            label="Words to hide"
+            helper="Comma separated. Rewritten to the name above in tool descriptions and answers (never inside links)."
+            value={hideText}
+            error={hide.errors[0]}
+            onChange={(e) => setHideText(e.target.value)}
+          />
+          <Textarea
+            label="Generation tools, one per line"
+            helper="Each person's calls to these count toward the daily limit."
+            rows={3}
+            value={genText}
+            error={gen.errors[0]}
+            onChange={(e) => setGenText(e.target.value)}
+          />
+          <Input
+            label="Generation calls per person per day"
+            helper="0 to 10000. Counted per UTC day."
+            inputMode="numeric"
+            value={capText}
+            error={cap === null ? "A whole number from 0 to 10000." : undefined}
+            onChange={(e) => setCapText(e.target.value)}
+          />
+        </div>
+      )}
+
       {error && (
         <p role="alert" className="mt-2 text-sm text-[#ef4444]">
           {error}
         </p>
       )}
       <div className="mt-3">
-        <Button size="sm" className="min-h-11 sm:min-h-0" loading={saving} disabled={parsed.errors.length > 0} onClick={save}>
+        <Button size="sm" className="min-h-11 sm:min-h-0" loading={saving} disabled={parsed.errors.length > 0 || signinErrors.length > 0} onClick={save}>
           Save
         </Button>
       </div>
@@ -264,6 +439,7 @@ function AddTool({ onAdded }) {
   const [slug, setSlug] = useState("");
   const [label, setLabel] = useState("");
   const [url, setUrl] = useState("");
+  const [kind, setKind] = useState("key");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const slugOk = SLUG_RULE.test(slug);
@@ -271,8 +447,12 @@ function AddTool({ onAdded }) {
     setSaving(true);
     setError("");
     try {
-      await saveCompanyTool({ slug, label: label.trim(), mcp_url: url.trim() });
-      addToast({ variant: "success", title: `${label.trim()} added`, description: "Set its key, then choose roles and tools." });
+      await saveCompanyTool({ slug, label: label.trim(), mcp_url: url.trim(), auth_kind: kind });
+      addToast({
+        variant: "success",
+        title: `${label.trim()} added`,
+        description: kind === "signin" ? "Connect it, then choose roles and tools." : "Set its key, then choose roles and tools.",
+      });
       setOpen(false);
       setSlug("");
       setLabel("");
@@ -304,6 +484,20 @@ function AddTool({ onAdded }) {
         <Input label="Label" value={label} onChange={(e) => setLabel(e.target.value)} />
         <Input label="MCP address" placeholder="https://" value={url} onChange={(e) => setUrl(e.target.value)} />
       </div>
+      <fieldset className="mt-3">
+        <legend className="text-sm font-medium text-[var(--color-text-primary)]">How it signs in</legend>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {[
+            { id: "key", label: "A key" },
+            { id: "signin", label: "Company sign-in (no key)" },
+          ].map((k) => (
+            <label key={k.id} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[var(--gray-300)] px-3 text-sm sm:min-h-0 sm:py-1">
+              <input type="radio" name="company-tool-kind" checked={kind === k.id} onChange={() => setKind(k.id)} />
+              {k.label}
+            </label>
+          ))}
+        </div>
+      </fieldset>
       {error && (
         <p role="alert" className="mt-2 text-sm text-[#ef4444]">
           {error}

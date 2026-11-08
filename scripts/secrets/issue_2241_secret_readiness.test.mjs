@@ -20,6 +20,11 @@
  * 90th and final slot. Declared moves 89 -> 90 and the migration band becomes
  * empty, so remediation remains exactly 90 without tolerating a 91st name.
  *
+ * [TEST-MOD-APPROVED #4276] #4276 [secret count 91 approved by Seth]. GOOGLE_SEEDING_API_KEY is the
+ * 91st declared name and the absolute ceiling moves 90 -> 91. Declared moves
+ * 90 -> 91 with the band still empty, so remediation is exactly 91 and a 92nd
+ * name is still refused.
+ *
  * Load-bearing assertions include:
  * - unclassified imported environment read fails closed
  * - signed receipt replay is rejected
@@ -342,7 +347,7 @@ test("#2241 happy: checked contract classifies the complete production import gr
   // new function's contract entry and the deepEqual above fails with
   // `contract:function_set_mismatch` before this line is ever reached.
   assert.deepEqual(Object.keys(contract.functions).sort(), effectivePolicy.diskFunctions);
-  assert.equal(manifest.secrets.length, 90);
+  assert.equal(manifest.secrets.length, 91);
 });
 
 test("#2241 happy: every exact direct reader is bundle-first with only its matching fallback", () => {
@@ -1353,11 +1358,11 @@ test("#2241 happy: normal deploy accepts a selected function with every required
     mergedCommit,
   });
   assert.deepEqual(result.selected_functions, ["admin-place-search"]);
-  assert.equal(result.live_user_managed_count, 90);
+  assert.equal(result.live_user_managed_count, 91);
   assert.equal(result.bundle_receipts, 0);
 });
 
-test("#2241 happy: exact 90 remediation and protected receipt set pass once", () => {
+test("#2241 happy: exact 91 remediation and protected receipt set pass once", () => {
   const set = receiptSet();
   const result = evaluateFunctionReadiness({
     contract,
@@ -1377,7 +1382,7 @@ test("#2241 happy: exact 90 remediation and protected receipt set pass once", ()
     },
     verifyReceiptSet: set.authority.verifyReceiptSet,
   });
-  assert.equal(result.live_user_managed_count, 90);
+  assert.equal(result.live_user_managed_count, 91);
   assert.equal(result.selected_functions.length, 23);
   assert.throws(
     () =>
@@ -1468,7 +1473,7 @@ test("#2241 adversarial: exact live/project/function sets and in-memory authorit
   );
 });
 
-test("#2241 adversarial: exact 90 cardinality rejects both off-by-one directions", () => {
+test("#2241 adversarial: exact 91 cardinality rejects both off-by-one directions", () => {
   const normal = manifest.secrets.map((record) => record.name);
   const remediation = [...normal, ...ISSUE_2241_EXTRA_NAMES];
   for (const liveNames of [normal.slice(1), [...normal, "UNAPPROVED_EXTRA"]]) {
@@ -2425,7 +2430,7 @@ const ISSUE_2913_EXACT_PLATFORM_MANAGED = Object.freeze([
   "SUPABASE_URL",
 ]);
 
-test("#2913 happy: exact provider defaults preserve 90-name user-managed parity", () => {
+test("#2913 happy: exact provider defaults preserve 91-name user-managed parity", () => {
   assert.deepEqual(
     contract.platform_managed,
     ISSUE_2913_EXACT_PLATFORM_MANAGED,
@@ -2449,8 +2454,8 @@ test("#2913 happy: exact provider defaults preserve 90-name user-managed parity"
     mode: "issue-2241-remediation",
   });
 
-  assert.equal(normal.liveUserManaged.length, 90);
-  assert.equal(remediation.liveUserManaged.length, 90);
+  assert.equal(normal.liveUserManaged.length, 91);
+  assert.equal(remediation.liveUserManaged.length, 91);
 });
 
 test("#2913 adversarial: each new provider default is required by exact name", () => {
@@ -2578,10 +2583,10 @@ test("#2241 regression: the migration band is empty at the absolute ceiling", ()
   }
 });
 
-test("#2241 regression: remediation parity passes at exactly 90 and rejects 93", () => {
+test("#2241 regression: remediation parity passes at exactly 91 and rejects 94", () => {
   const declared = manifest.secrets.map((record) => record.name);
   const live = [...declared, ...ISSUE_2241_EXTRA_NAMES];
-  assert.equal(live.length, 90);
+  assert.equal(live.length, 91);
 
   const result = assertLiveNameParity({
     contract,
@@ -2590,7 +2595,7 @@ test("#2241 regression: remediation parity passes at exactly 90 and rejects 93",
     projectRef,
     mode: "issue-2241-remediation",
   });
-  assert.equal(result.liveUserManaged.length, 90);
+  assert.equal(result.liveUserManaged.length, 91);
 
   // The pre-narrowing live set can no longer satisfy the band: those three
   // names are gone from production, so expecting them is unsatisfiable.

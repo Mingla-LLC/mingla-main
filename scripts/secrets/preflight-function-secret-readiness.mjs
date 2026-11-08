@@ -165,7 +165,10 @@ export function assertLiveNameParity({
   // normal and remediation modes both require the exact 90-name manifest.
   // The comparison stays exact in both directions: a declared name that is
   // absent fails `missing:`, and any 91st user-managed name fails `unexpected:`.
-  // The literal 90 below remains the fail-closed absolute-ceiling ratchet.
+  // #4276: Seth approved GOOGLE_SEEDING_API_KEY as the 91st governed name on
+  // 2026-11-07 and raised the absolute ceiling to 91. Both modes now require
+  // the exact 91-name manifest; any 92nd user-managed name fails `unexpected:`.
+  // The literal 91 below remains the fail-closed absolute-ceiling ratchet.
   const requiredLive = mode === "issue-2241-remediation"
     ? sortedUnique([...manifestNames, ...bandNames])
     : manifestNames;
@@ -190,8 +193,8 @@ export function assertLiveNameParity({
   }
   if (
     mode === "issue-2241-remediation" &&
-    liveUserManaged.length !== 90
-  ) throw new ReadinessError("remediation_requires_exact_90");
+    liveUserManaged.length !== 91
+  ) throw new ReadinessError("remediation_requires_exact_91");
   return { liveUserManaged, manifestNames, remediation };
 }
 

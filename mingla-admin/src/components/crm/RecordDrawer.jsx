@@ -117,6 +117,9 @@ export function RecordDrawer({
   onOpenCard,
   onRefreshRegions,
   footerExtra = null,
+  // #4270 W7 rework (D-1): set inside the Brand group panel; links then open
+  // in that panel (or show as plain words) and the page never changes.
+  onOpenSide = null,
 }) {
   const { addToast } = useToast();
   const uid = useId();
@@ -228,12 +231,14 @@ export function RecordDrawer({
         action: {
           label: "Open the card",
           onClick: () => {
-            window.location.hash = buildCrmHash(pipeline, { card: recordId });
+            // In the Brand group panel the card opens there again; elsewhere on its page.
+            if (typeof onOpenSide === "function") onOpenSide(pipeline === "creators" ? "creator" : "host", recordId);
+            else window.location.hash = buildCrmHash(pipeline, { card: recordId });
           },
         },
       });
     },
-    [recordId, pipeline, addToast]
+    [recordId, pipeline, addToast, onOpenSide]
   );
 
   // Saves that are on their way to the server, by field: key -> { value,
@@ -788,7 +793,7 @@ export function RecordDrawer({
             <div className="border-t border-[var(--gray-200)] pt-3">
               <OnMinglaSection key={`on-mingla-${record.id}`} record={record} read={hostRead} online={online && !locked} />
             </div>
-            <HostTeamSection record={record} read={hostRead} />
+            <HostTeamSection record={record} read={hostRead} onOpenSide={onOpenSide} />
           </>
         )}
         {!isHosts && next && (
