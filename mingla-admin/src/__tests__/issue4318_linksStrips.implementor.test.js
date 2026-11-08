@@ -5,13 +5,15 @@
 //   L-3  save arguments carry only what the chosen "Opens" needs
 //   L-4  reorder moves, clamps, and rolls back when the save fails (PT409 too)
 //   L-5  the tab sits directly after Blog, follows Support, and the panel is wired
+//   L-6  optional "Show until": empty keeps one day, never before "Shows on"
+//   L-7  a failed /links refresh after a saved change is never a failed save
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  LINKS_STRIP_MESSAGES, moveStrip, normalizeStripUrl, runOptimisticReorder, stripMetaLine, stripRows,
+  LINKS_STRIP_MESSAGES, moveStrip, normalizeStripUrl, runOptimisticReorder, stripDateRange, stripMetaLine, stripRows,
   stripSaveArgs, validateStripDraft,
 } from "../lib/linksStrips.js";
 import { SUPPORT_PAGE_TABS } from "../lib/supportCommunityTabs.js";
@@ -70,14 +72,14 @@ describe("L-3 save arguments", () => {
   it("stores the web link without its scheme and drops a stale post", () => {
     assert.deepEqual(stripSaveArgs({ ...valid, blogPostId: "p1" }), {
       p_id: null, p_shows_on: "2026-11-12", p_title: valid.title,
-      p_label: "From Mingla", p_opens: "web", p_url: "usemingla.com/host", p_blog_post_id: null,
+      p_label: "From Mingla", p_opens: "web", p_url: "usemingla.com/host", p_blog_post_id: null, p_shows_until: null,
     });
     assert.equal(normalizeStripUrl("  HTTPS://usemingla.com/x "), "usemingla.com/x");
   });
 
   it("sends no city at all, and drops a stale URL", () => {
     const args = stripSaveArgs({ ...valid, id: "s1", citySlug: "lagos", opens: "blog", blogPostId: "p1", title: "  Hi  " });
-    assert.deepEqual(Object.keys(args).sort(), ["p_blog_post_id", "p_id", "p_label", "p_opens", "p_shows_on", "p_title", "p_url"]);
+    assert.deepEqual(Object.keys(args).sort(), ["p_blog_post_id", "p_id", "p_label", "p_opens", "p_shows_on", "p_shows_until", "p_title", "p_url"]);
     assert.equal(args.p_id, "s1");
     assert.equal(args.p_url, null);
     assert.equal(args.p_blog_post_id, "p1");
@@ -172,5 +174,48 @@ describe("L-5 tab, access and panel wiring", () => {
     assert.match(panel, /Remove this strip\?/);
     assert.equal(/\bconfirm\(/.test(panel), false, "no browser confirm()");
     assert.match(panel, /onDrop=/);
+  });
+});
+
+describe("L-6 optional Show until", () => {
+  it("an empty end date keeps the strip to its one day", () => {
+    for (const showsUntil of [undefined, "", "   "]) {
+      assert.equal(validateStripDraft({ ...valid, showsUntil }), null);
+      assert.equal(stripSaveArgs({ ...valid, showsUntil }).p_shows_until, null);
+    }
+    assert.equal(stripDateRange("2026-11-12", null), "Thu 12");
+    assert.equal(stripDateRange("2026-11-12", "2026-11-12"), "Thu 12");
+  });
+
+  it("refuses an end date before the start, and accepts the same day or later", () => {
+    assert.deepEqual(validateStripDraft({ ...valid, showsUntil: "2026-11-11" }), { field: "showsUntil", message: LINKS_STRIP_MESSAGES.showsUntil });
+    assert.match(LINKS_STRIP_MESSAGES.showsUntil, /can't be before/);
+    assert.equal(validateStripDraft({ ...valid, showsUntil: "not a day" }).field, "showsUntil");
+    assert.equal(validateStripDraft({ ...valid, showsUntil: "2026-11-12" }), null);
+    assert.equal(stripSaveArgs({ ...valid, showsUntil: "2026-11-16" }).p_shows_until, "2026-11-16");
+  });
+
+  it("lists a range as Mon 9 – Fri 13, with months when it crosses one", () => {
+    assert.equal(stripDateRange("2026-11-09", "2026-11-13"), "Mon 9 \u2013 Fri 13");
+    assert.equal(stripDateRange("2026-10-30", "2026-11-02"), "Fri 30 Oct \u2013 Mon 2 Nov");
+  });
+});
+
+describe("L-7 the /links refresh after a change", () => {
+  it("the service has one refresh seam and one fallback sentence", () => {
+    const source = read("services/linksStripsService.js");
+    assert.match(source, /export async function refreshLinksPage\(\)/);
+    assert.match(source, /LINKS_REFRESH_FALLBACK = "Saved\. The links page may take a few minutes to update\."/);
+  });
+
+  it("the panel refreshes after save, delete and reorder, and a failed refresh only says the page may lag", () => {
+    const panel = read("components/links/LinksPagePanel.jsx");
+    const helper = panel.slice(panel.indexOf("async function refreshAfterWrite()"), panel.indexOf("const LABEL"));
+    assert.match(helper, /await refreshLinksPage\(\);\s*return null;\s*\} catch \{\s*return LINKS_REFRESH_FALLBACK;/);
+    assert.equal((panel.match(/refreshAfterWrite\(\)/g) || []).length, 4, "defined once, called after save, delete and reorder");
+    const save = panel.slice(panel.indexOf("async function submit("), panel.indexOf("async function move("));
+    const ok = save.slice(0, save.indexOf("} catch (error)"));
+    assert.match(ok, /variant: "success"/, "a saved strip is always reported as saved");
+    assert.match(ok, /description: stale \|\|/);
   });
 });

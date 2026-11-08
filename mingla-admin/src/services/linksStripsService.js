@@ -21,6 +21,7 @@ const SERVER_REFUSALS = Object.freeze({
   links_title_invalid: { field: "title", message: "Add a title of up to 60 characters." },
   links_url_invalid: { field: "url", message: "Enter a web link like usemingla.com/host." },
   links_shows_on_invalid: { field: "showsOn", message: "Pick today or a later day." },
+  links_shows_until_invalid: { field: "showsUntil", message: "“Show until” can't be before “Shows on”." },
   links_blog_post_invalid: { field: "blog", message: "Choose a published blog post." },
   links_label_invalid: { field: "label", message: "Pick an option from the list." },
   links_opens_invalid: { field: "opens", message: "Pick an option from the list." },
@@ -119,4 +120,26 @@ export async function listPublishedBlogPostsForLinks() {
   if (error) throw toLinksStripsError(error);
   const posts = Array.isArray(data?.posts) ? data.posts : [];
   return posts.filter((post) => post?.derived_state === "published" && post.id && post.title);
+}
+
+/**
+ * Whether refreshLinksPage reaches the server-side /links refresh yet. While
+ * false the panel keeps its "within 5 minutes" note.
+ */
+export const LINKS_PAGE_REFRESH_WIRED = false;
+
+/** Said when a change saved but the instant /links refresh did not happen. */
+export const LINKS_REFRESH_FALLBACK = "Saved. The links page may take a few minutes to update.";
+
+/**
+ * Asks the server to refresh usemingla.com/links now, after a save, delete or
+ * reorder. Throws when the refresh did not happen; callers treat that as
+ * "saved, the page catches up later", never as a failed save.
+ */
+export async function refreshLinksPage() {
+  // [TRANSITIONAL] #4318: the data builder is adding the /links refresh the
+  // way Blog's admin-blog "revalidate" works. Until it lands this reports
+  // "not refreshed", so the panel says the page may take a few minutes.
+  // Exit: point this at that call and set LINKS_PAGE_REFRESH_WIRED = true.
+  throw new LinksStripsError("refresh_not_wired", "The links page refresh is not wired yet.");
 }

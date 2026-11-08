@@ -20,6 +20,8 @@
 //   A-5 strips are not by city: the panel offers no city and the old
 //       admin city list is gone (#4318 addendum 2 A, Seth)
 //   A-6 removing a strip needs a second, explicit confirm
+//   A-7 optional "Show until" (Seth, follow-up): never before "Shows on",
+//       empty sends null; a failed /links refresh after a save is still a save
 //
 // It needs the admin app's packages (react, react-dom, esbuild, lucide-react):
 // run `npm ci` in mingla-admin first. Without them it FAILS; it never skips.
@@ -658,5 +660,54 @@ describe("A-6 removing a strip needs a second, explicit confirm", () => {
     const toast = globalThis.__links4318.toasts.at(-1);
     assert.equal(toast.variant, "error");
     assert.match(toast.description, /Support access/);
+  });
+});
+
+// ── A-7 Show until and the /links refresh ──────────────────────────────────
+describe("A-7 Show until and the /links refresh", () => {
+  async function fillValid(container) {
+    await typeInto(container.querySelector('[id="links-strip-title"]'), "Range strip");
+    await typeInto(container.querySelector('[id="links-strip-url"]'), "usemingla.com/host");
+  }
+
+  it("an end date before the start sends nothing and says why", async () => {
+    const container = await mountPanel();
+    await fillValid(container);
+    const start = container.querySelector('[id="links-strip-day"]').value;
+    const [y, m, d] = start.split("-").map(Number);
+    const before = new Date(y, m - 1, d - 1);
+    const iso = `${before.getFullYear()}-${String(before.getMonth() + 1).padStart(2, "0")}-${String(before.getDate()).padStart(2, "0")}`;
+    await typeInto(container.querySelector('[id="links-strip-until"]'), iso);
+    await submit(container);
+    assert.equal(calls("admin_links_strip_save").length, 0, "an end before the start reached the server");
+    assert.match(errorText(container), /can't be before/);
+  });
+
+  it("an empty end date sends null; a later one is sent and listed as a range", async () => {
+    server.handlers.admin_links_strip_save = (args) => Promise.resolve({ data: { id: "new", ...args }, error: null });
+    server.strips = [strip("r", 1, { shows_on: "2026-11-09", shows_until: "2026-11-13", title: "Ranged" })];
+    const container = await mountPanel();
+    assert.match(container.querySelector("li").textContent, /Mon 9 \u2013 Fri 13/);
+    await fillValid(container);
+    await submit(container);
+    assert.equal(calls("admin_links_strip_save")[0].args.p_shows_until, null);
+    const start = container.querySelector('[id="links-strip-day"]').value;
+    await fillValid(container);
+    await typeInto(container.querySelector('[id="links-strip-until"]'), start);
+    await submit(container);
+    assert.equal(calls("admin_links_strip_save")[1].args.p_shows_until, start, "the same day is a valid end");
+  });
+
+  it("a failed /links refresh after a successful save is still reported as saved", async () => {
+    server.handlers.admin_links_strip_save = (args) => Promise.resolve({ data: { id: "new", ...args }, error: null });
+    const container = await mountPanel();
+    await fillValid(container);
+    await submit(container);
+    assert.equal(calls("admin_links_strip_save").length, 1);
+    assert.equal(errorText(container), "", "no save failure is shown");
+    const toast = globalThis.__links4318.toasts.at(-1);
+    assert.equal(toast.variant, "success");
+    assert.equal(toast.description, "Saved. The links page may take a few minutes to update.");
+    assert.equal(calls("admin_links_strips_list").length, 2, "the list was reloaded after the save");
   });
 });
