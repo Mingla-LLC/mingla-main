@@ -30,6 +30,15 @@ const { act, create } = require("react-test-renderer") as {
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const rpcMock = jest.fn<(fn: string, args: unknown) => Promise<{ data: unknown; error: unknown }>>();
+// #4339 round B: the hook records ari_draft_claimed through host web's own
+// PostHog; the default tracker is replaced here so no native module loads.
+const trackedClaims: string[] = [];
+jest.mock("../../services/ariPolishAnalytics", () => ({
+  captureAriDraftClaimed: (outcome: string) => {
+    trackedClaims.push(outcome);
+  },
+}));
+
 jest.mock("../../services/supabase", () => ({
   supabase: { rpc: (fn: string, args: unknown) => rpcMock(fn, args) },
 }));
@@ -187,6 +196,24 @@ describe("useSitePromptDraftHandoff", () => {
     await flush();
     expect(claim).not.toHaveBeenCalled();
     expect(onSettled).not.toHaveBeenCalled();
+  });
+
+  test("round B: each claim outcome is recorded once as ari_draft_claimed", async () => {
+    trackedClaims.length = 0;
+    claim.mockResolvedValue({ status: "claimed", body: BODY });
+    render({});
+    await flush();
+    expect(trackedClaims).toEqual(["claimed"]);
+
+    const track = jest.fn<(outcome: "claimed" | "unavailable" | "failed") => void>();
+    resetSitePromptDraftHandoffForTests();
+    act(() => renderer?.unmount());
+    renderer = null;
+    claim.mockRejectedValue(new Error("network down"));
+    render({ track });
+    await flush();
+    expect(track).toHaveBeenCalledTimes(1);
+    expect(track).toHaveBeenCalledWith("failed");
   });
 
   test("an unavailable draft opens Ari normally: no message, id dropped", async () => {

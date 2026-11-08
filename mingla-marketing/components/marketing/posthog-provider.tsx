@@ -18,11 +18,15 @@ import {
   sanitizeCityHubAnalytics,
 } from '@/lib/city-hub-analytics'
 import {
+  attributedPageLocation,
   cleanReferrerOrigin,
   sanitizeSearchMeasurement,
   type SearchEventName,
   type SearchMeasurementProperties,
 } from '@mingla/search-measurement'
+import { isMarketingEventName } from '@/lib/marketing-events'
+import { TOOL_ICP, pageMeasurement } from '@/lib/page-measurement'
+import { rememberLandingCampaign } from '@/lib/landing-campaign'
 
 const POSTHOG_HOST =
   process.env.NEXT_PUBLIC_POSTHOG_HOST ?? 'https://us.i.posthog.com'
@@ -303,7 +307,27 @@ function stopMarketingAnalytics(): void {
 
 function cityHubGaLocation(pathname: string): string | null {
   const cleanPathname = cleanCityHubPathname(pathname)
-  return cleanPathname === null ? null : new URL(cleanPathname, SITE_ORIGIN).toString()
+  if (cleanPathname === null) return null
+  return gaPageLocation(new URL(cleanPathname, SITE_ORIGIN).toString())
+}
+
+/**
+ * #4339 round B — GA4 attribution. page_location is the canonical URL plus
+ * ONLY the campaign parameters GA4 reads for session source (utm_*, and the
+ * Google click ids gclid/gbraid/wbraid while ads are on); page_referrer is the
+ * referrer's origin, never its path or query. Before this every GA4 session
+ * landed in Direct.
+ */
+export function gaPageLocation(canonical: string): string {
+  if (typeof window === 'undefined') return canonical
+  const withQuery = `${canonical}${window.location.search}`
+  return attributedPageLocation(withQuery, { clickIds: isMarketingAdsOn() }) ?? canonical
+}
+
+export function gaReferrerOrigin(): string {
+  if (typeof document === 'undefined') return ''
+  const origin = cleanReferrerOrigin(document.referrer)
+  return origin ?? ''
 }
 
 function sanitizeCityHubPostHogEvent(event: CaptureResult | null): CaptureResult | null {
@@ -438,10 +462,21 @@ export function captureMarketing(
         ;(window as unknown as GtagTarget).gtag?.('event', sanitized.event, {
           ...sanitized.properties,
           page_location: pageLocation,
-          page_referrer: '',
+          page_referrer: gaReferrerOrigin(),
         })
       }
       return
+    }
+    if (!isMarketingEventName(event)) {
+      // #4339 round B: only allowlisted events reach PostHog (lib/marketing-events.ts).
+      console.warn(`[marketing analytics] dropped unlisted event ${event}`)
+      return
+    }
+    // #4339 round B: a finished free-tool report is the governed
+    // `tool_interaction` outcome (PostHog and GA4), by the ICP the tool serves.
+    if (event === 'tool_report_ready') {
+      const icp = typeof properties?.tool === 'string' ? TOOL_ICP[properties.tool] : undefined
+      if (icp) captureSearchMeasurement('tool_interaction', { audience: 'host', page_family: 'tools', icp, action_state: 'succeeded' })
     }
     if (posthogClient === null || posthogOptedOut) return
     posthogClient.capture(event, properties)
@@ -479,7 +514,11 @@ function GrantedAnalyticsChildren({
 }
 
 function ManualGoogleAnalytics({ gaId, pathname }: { readonly gaId: string; readonly pathname: string }) {
-  const pageLocation = new URL(pathname || '/', SITE_ORIGIN).toString()
+  // #4339 round B: the canonical URL plus the allowlisted campaign parameters,
+  // and the referrer's origin (the #2983 compatibility receipt for its source
+  // guard was `page_referrer: ''`; city events keep their own sanitizer).
+  const pageLocation = gaPageLocation(new URL(pathname || '/', SITE_ORIGIN).toString())
+  const pageReferrer = gaReferrerOrigin()
   const initialConfiguration = useRef({ gaId, pageLocation })
 
   useEffect(() => {
@@ -491,16 +530,16 @@ function ManualGoogleAnalytics({ gaId, pathname }: { readonly gaId: string; read
     ;(window as unknown as GtagTarget).gtag?.('config', gaId, {
       send_page_view: false,
       page_location: pageLocation,
-      page_referrer: '',
+      page_referrer: pageReferrer,
     })
-  }, [gaId, pageLocation])
+  }, [gaId, pageLocation, pageReferrer])
 
   if (!/^G-[A-Z0-9-]+$/.test(gaId)) return null
   gaMeasurementId = gaId
   const config = JSON.stringify({
     send_page_view: false,
     page_location: pageLocation,
-    page_referrer: '',
+    page_referrer: pageReferrer,
   })
   return (
     <>
@@ -523,6 +562,9 @@ export function PostHogProvider({ children }: PostHogProviderProps): ReactNode {
     // On unless this visitor turned analytics off: boot on arrival, stop on a
     // turn-off, start again on a turn-on (no reload).
     const resolve = (): void => {
+      // #4339 round B: keep the landing campaign for the app hand-off while
+      // ads are on (cleared when they are turned off).
+      rememberLandingCampaign(window.location.search, isMarketingAdsOn())
       if (!isMarketingAnalyticsOn()) {
         setEnabled(false)
         return
@@ -545,13 +587,14 @@ export function PostHogProvider({ children }: PostHogProviderProps): ReactNode {
     // analytics on from the first visit (#2331), this generic page_view would
     // otherwise reach GA before the referrer-stripping config is applied.
     if (isCityHubPathname(pathname)) return
-    const audience = pathname === '/host' || pathname.startsWith('/host/') ? 'host' : pathname === '/going-out' || pathname.startsWith('/cities/') ? 'explorer' : 'neutral'
-    const pageFamily = pathname.startsWith('/cities/') ? 'city_hub' : pathname.startsWith('/tools') ? 'tools' : pathname === '/going-out' ? 'explorer_pillar' : pathname === '/host' ? 'host_pillar' : 'brand_core'
+    // #4339 round B: audience, page family and (Host landing pages) the ICP
+    // come from one table (lib/page-measurement.ts); page_location keeps the
+    // allowlisted campaign parameters.
+    const page = pageMeasurement(pathname)
     const referrerOrigin = typeof document === 'undefined' ? null : cleanReferrerOrigin(document.referrer)
     captureSearchMeasurement('page_view', {
-      audience,
-      page_family: pageFamily,
-      page_location: new URL(pathname, SITE_ORIGIN).toString(),
+      ...page,
+      page_location: gaPageLocation(new URL(pathname, SITE_ORIGIN).toString()),
       source_kind: referrerOrigin ? 'referrer' : 'direct',
       ...(referrerOrigin ? { page_referrer_origin: referrerOrigin } : {}),
     })

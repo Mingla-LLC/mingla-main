@@ -14,6 +14,7 @@
 
 import { useEffect, useRef } from "react";
 
+import { captureAriDraftClaimed } from "../services/ariPolishAnalytics";
 import {
   claimSitePromptDraft,
   type SitePromptDraftClaim,
@@ -54,6 +55,8 @@ export interface SitePromptDraftHandoffArgs {
   onMessage: (message: string) => void;
   onSettled: () => void;
   claim?: (draftId: string) => Promise<SitePromptDraftClaim>;
+  /** #4339 round B: records `ari_draft_claimed` (host web PostHog). */
+  track?: (outcome: "claimed" | "unavailable" | "failed") => void;
 }
 
 export function useSitePromptDraftHandoff({
@@ -62,9 +65,10 @@ export function useSitePromptDraftHandoff({
   onMessage,
   onSettled,
   claim = claimSitePromptDraft,
+  track = captureAriDraftClaimed,
 }: SitePromptDraftHandoffArgs): void {
-  const latest = useRef({ onMessage, onSettled, claim });
-  latest.current = { onMessage, onSettled, claim };
+  const latest = useRef({ onMessage, onSettled, claim, track });
+  latest.current = { onMessage, onSettled, claim, track };
   // A claimed draft is spent server-side, so once the claim starts its answer
   // is delivered even if `ready` flickers; only an unmount drops it.
   const mounted = useRef(true);
@@ -81,11 +85,13 @@ export function useSitePromptDraftHandoff({
     void latest.current
       .claim(draftId)
       .then((result) => {
+        latest.current.track(result.status);
         if (mounted.current && result.status === "claimed") {
           latest.current.onMessage(sitePromptFirstMessage(result.body));
         }
       })
       .catch((error: unknown) => {
+        latest.current.track("failed");
         // Ari still opens normally; the host can type their request.
         console.warn(
           "[ari] website description claim failed",

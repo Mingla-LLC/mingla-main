@@ -200,3 +200,45 @@ Deno.test("#4339 no client address still stores (hash is null)", async () => {
   assertEquals(res.status, 201);
   assertEquals(store.calls, [[DESCRIPTION, null]]);
 });
+
+// #4339 round B — the server funnel event: a created draft logs exactly one
+// `ari_draft_created` line, with a length band and nothing identifying.
+Deno.test("round B: a created draft logs ari_draft_created without the description", async () => {
+  const lines: string[] = [];
+  const original = console.log;
+  console.log = (...args: unknown[]) => {
+    lines.push(args.map(String).join(" "));
+  };
+  try {
+    const { create } = recorder({ status: "created", id: DRAFT_ID });
+    const res = await handler(post({ description: DESCRIPTION }), create);
+    assertEquals(res.status, 201);
+  } finally {
+    console.log = original;
+  }
+  const events = lines.filter((line) => line.includes("ari_draft_created"));
+  assertEquals(events.length, 1);
+  const parsed = JSON.parse(events[0]);
+  assertEquals(parsed, { event: "ari_draft_created", length_bucket: "short" });
+  assert(!events[0].includes("rooftop"), "the description is never logged");
+  assert(!events[0].includes(DRAFT_ID), "the draft id is never logged");
+});
+
+Deno.test("round B: a refused draft logs no funnel event", async () => {
+  const lines: string[] = [];
+  const original = console.log;
+  console.log = (...args: unknown[]) => {
+    lines.push(args.map(String).join(" "));
+  };
+  try {
+    const { create } = recorder({ status: "rate_limited" });
+    const res = await handler(post({ description: DESCRIPTION }), create);
+    assertEquals(res.status, 429);
+  } finally {
+    console.log = original;
+  }
+  assertEquals(
+    lines.filter((line) => line.includes("ari_draft_created")).length,
+    0,
+  );
+});

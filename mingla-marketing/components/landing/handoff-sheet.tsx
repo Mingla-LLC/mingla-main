@@ -6,7 +6,10 @@ import { X } from 'lucide-react'
 import { AppleMark, PlayMark } from '@/components/ui/store-marks'
 import { detectClientPlatform } from '@/lib/device-platform'
 import type { OneLinkAttribution } from '@/lib/links-src'
-import { appHandoffHrefs, hostWebLabel, type AppHandoffSheet } from '@/lib/app-handoff'
+import { appHandoffHrefs, hostWebLabel, withLandingCampaign, type AppHandoffSheet } from '@/lib/app-handoff'
+import { captureMarketing, isMarketingAdsOn } from '@/components/marketing/posthog-provider'
+import { readLandingCampaign } from '@/lib/landing-campaign'
+import type { SearchIcp } from '@/lib/page-measurement'
 
 // #4339 §3 — the two computer sheets of the site-wide app hand-off.
 //
@@ -89,6 +92,9 @@ interface HandoffSheetProps {
   sheet: AppHandoffSheet
   attribution: OneLinkAttribution
   onClose: () => void
+  /** #4339 round B: the page's ICP (Host landing pages) and where the button sat. */
+  icp?: SearchIcp
+  sourceKind?: string
 }
 
 interface SheetFrameProps {
@@ -170,17 +176,24 @@ export function SheetFrame({ kind, labelledBy, onClose, children }: SheetFramePr
 }
 
 /** The app's two store buttons, for a computer sheet. */
-export function StoreButtons({ stores }: { stores: { appStore: string; googlePlay: string } }) {
+export function StoreButtons({
+  stores,
+  onStore,
+}: {
+  stores: { appStore: string; googlePlay: string }
+  /** #4339 round B: which store was clicked (handoff_store_clicked). */
+  onStore?: (store: 'app_store' | 'google_play') => void
+}) {
   return (
     <div className="gs-st">
-      <a className="store" href={stores.appStore} target="_blank" rel="noopener">
+      <a className="store" href={stores.appStore} target="_blank" rel="noopener" onClick={() => onStore?.('app_store')}>
         <AppleMark />
         <span>
           <small>Download on the</small>
           <b>App Store</b>
         </span>
       </a>
-      <a className="store" href={stores.googlePlay} target="_blank" rel="noopener">
+      <a className="store" href={stores.googlePlay} target="_blank" rel="noopener" onClick={() => onStore?.('google_play')}>
         <PlayMark />
         <span>
           <small>Get it on</small>
@@ -191,9 +204,21 @@ export function StoreButtons({ stores }: { stores: { appStore: string; googlePla
   )
 }
 
-export function HandoffSheet({ sheet, attribution, onClose }: HandoffSheetProps) {
-  const hrefs = appHandoffHrefs(sheet === 'host' ? 'host' : 'explorer', attribution)
+export function HandoffSheet({ sheet, attribution, onClose, icp, sourceKind }: HandoffSheetProps) {
+  // #4339 round B: the visitor's landing campaign rides into the QR's OneLink
+  // (af_sub1–3) and the host web link (utm_*), only while ads are on.
+  const hrefs = withLandingCampaign(
+    appHandoffHrefs(sheet === 'host' ? 'host' : 'explorer', attribution),
+    readLandingCampaign(isMarketingAdsOn()),
+  )
   const copy = SHEET_COPY[sheet]
+  const opened = useRef({ sheet, icp, sourceKind })
+  useEffect(() => {
+    const { sheet: kind, icp: pageIcp, sourceKind: source } = opened.current
+    captureMarketing('handoff_sheet_opened', { sheet: kind, icp: pageIcp ?? null, source_kind: source ?? null })
+    return () => captureMarketing('handoff_sheet_closed', { sheet: kind, icp: pageIcp ?? null })
+  }, [])
+  const onStore = (store: 'app_store' | 'google_play') => captureMarketing('handoff_store_clicked', { store, sheet, icp: icp ?? null })
   return (
     <SheetFrame kind={sheet} labelledBy={copy.titleId} onClose={onClose}>
       <div className="gs-ph">
@@ -206,12 +231,20 @@ export function HandoffSheet({ sheet, attribution, onClose }: HandoffSheetProps)
         <div className="qr">
           <QRCode value={hrefs.phoneHref} size={112} title={copy.qrTitle} />
         </div>
-        <StoreButtons stores={hrefs.stores} />
+        <StoreButtons stores={hrefs.stores} onStore={onStore} />
       </div>
       {sheet === 'host' ? (
         <div className="gs-web">
           <span>Or keep going on this computer</span>
-          <a href={hrefs.computerHref} target="_blank" rel="noopener" onClick={onClose}>
+          <a
+            href={hrefs.computerHref}
+            target="_blank"
+            rel="noopener"
+            onClick={() => {
+              captureMarketing('handoff_host_web_clicked', { sheet, icp: icp ?? null })
+              onClose()
+            }}
+          >
             Continue on {hostWebLabel(hrefs.computerHref)}
           </a>
         </div>

@@ -31,6 +31,8 @@ import {
   type StoreListingHrefs,
 } from './cta-destination'
 
+import type { LandingCampaign } from './landing-campaign'
+
 export type AppHandoffSheet = 'host' | 'explore'
 
 export type AppHandoff =
@@ -153,4 +155,66 @@ export function resolveSiteTargetHandoff(target: LinksTarget, platform: Platform
     return { action: 'navigate', href: hrefs.computerHref, newTab: true }
   }
   return { action: 'sheet', sheet: 'item' }
+}
+
+// ---------------------------------------------------------------------------
+// #4339 round B — campaign pass-through. The seam (lib/cta-destination.ts)
+// builds every URL; this only ADDS the visitor's landing campaign to the URLs
+// it returned, so paid traffic stays attributed after the hand-off:
+//
+//   OneLink (phone)   af_sub1 = utm_campaign, af_sub2 = utm_source,
+//                     af_sub3 = the ad click id (gclid / gbraid / wbraid / …)
+//   host web          the utm_* parameters, unchanged
+//
+// Only the two known origins are touched: a OneLink is any https URL whose
+// query already carries `pid=` (every OneLink the seam builds does), host web
+// is the seam's own host web origin. Anything else (/download, a store
+// listing, a listing page) is returned as it was. Existing parameters win:
+// a deep link's own values are never overwritten.
+
+function appendParams(href: string, params: Readonly<Record<string, string>>): string {
+  const entries = Object.entries(params).filter(([, value]) => value !== '')
+  if (entries.length === 0) return href
+  let url: URL
+  try {
+    url = new URL(href)
+  } catch {
+    return href
+  }
+  for (const [key, value] of entries) if (!url.searchParams.has(key)) url.searchParams.set(key, value)
+  return url.toString()
+}
+
+function isOneLink(href: string): boolean {
+  try {
+    const url = new URL(href)
+    return url.protocol === 'https:' && url.searchParams.has('pid')
+  } catch {
+    return false
+  }
+}
+
+/** One href with the landing campaign added (OneLink → af_sub1–3, host web → utm_*). */
+export function withLandingCampaignHref(href: string, campaign: LandingCampaign): string {
+  if (isOneLink(href)) {
+    return appendParams(href, {
+      af_sub1: campaign.utm.utm_campaign ?? '',
+      af_sub2: campaign.utm.utm_source ?? '',
+      af_sub3: campaign.clickId ?? '',
+    })
+  }
+  const hostOrigin = resolveCtaDestinations('host', siteAttribution('business_hero')).computerHref.replace(/\/+$/, '')
+  if (href === hostOrigin || href.startsWith(`${hostOrigin}/`) || href.startsWith(`${hostOrigin}?`)) {
+    return appendParams(href, campaign.utm)
+  }
+  return href
+}
+
+/** A hand-off's destinations with the landing campaign added. */
+export function withLandingCampaign<T extends CtaDestinations>(hrefs: T, campaign: LandingCampaign): T {
+  return {
+    ...hrefs,
+    computerHref: withLandingCampaignHref(hrefs.computerHref, campaign),
+    phoneHref: withLandingCampaignHref(hrefs.phoneHref, campaign),
+  }
 }

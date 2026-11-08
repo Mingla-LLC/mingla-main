@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom'
 import { ArrowRight, Sparkles, X } from 'lucide-react'
 import { siteAttribution } from '@/lib/links-src'
 import { ariDraftContinueHref, draftTransportFromEnv, postSitePromptDraft } from '@/lib/site-prompt-draft'
+import { captureMarketing } from '@/components/marketing/posthog-provider'
 
 // #4339 §5 — "Prompt your website into existence". The visitor describes their
 // place and taps Generate; five build steps tick by while a small site preview
@@ -55,6 +56,8 @@ export function SitePromptDemo() {
   const timers = useRef<number[]>([])
   // Each Generate is one run; a late draft answer from a closed run is ignored.
   const runRef = useRef(0)
+  // #4339 round B funnel: started (first keystroke), generated, Ari hand-off.
+  const startedRef = useRef(false)
   const fieldId = useId()
   const errorId = useId()
   const preview = previewName(text)
@@ -102,6 +105,7 @@ export function SitePromptDemo() {
           setDraftId(id)
           setStep(STEPS.length)
           setSheetOpen(true)
+          captureMarketing('website_prompt_generated', { has_draft: id !== null, length_bucket: lengthBucket(text) })
         })
       }, STEPS.length * tick + 300),
     )
@@ -131,7 +135,13 @@ export function SitePromptDemo() {
               maxLength={MAX_LENGTH}
               aria-describedby={error ? errorId : undefined}
               aria-invalid={error ? true : undefined}
-              onChange={(e) => setText(e.target.value)}
+              onChange={(e) => {
+                setText(e.target.value)
+                if (!startedRef.current && e.target.value.trim() !== '') {
+                  startedRef.current = true
+                  captureMarketing('website_prompt_started', {})
+                }
+              }}
               placeholder="A rooftop café in Lekki with live acoustic sets on Fridays and the best plantain in town."
             />
             {error ? (
@@ -177,12 +187,23 @@ export function SitePromptDemo() {
           </div>
         </div>
       )}
-      {sheetOpen ? <AriSheet href={ariDraftContinueHref(draftId, ATTRIBUTION)} onClose={closeSheet} /> : null}
+      {sheetOpen ? (
+        <AriSheet href={ariDraftContinueHref(draftId, ATTRIBUTION)}
+          onClose={closeSheet}
+          onContinue={() => captureMarketing('ari_handoff_clicked', { has_draft: draftId !== null })}
+        />
+      ) : null}
     </div>
   )
 }
 
-function AriSheet({ href, onClose }: { href: string; onClose: () => void }) {
+/** A coarse length band: the description itself never leaves the POST body. */
+function lengthBucket(value: string): 'short' | 'medium' | 'long' {
+  const n = value.trim().length
+  return n < 80 ? 'short' : n < 300 ? 'medium' : 'long'
+}
+
+function AriSheet({ href, onClose, onContinue }: { href: string; onClose: () => void; onContinue?: () => void }) {
   const dialogRef = useRef<HTMLDivElement>(null)
   const primaryRef = useRef<HTMLAnchorElement>(null)
 
@@ -234,7 +255,15 @@ function AriSheet({ href, onClose }: { href: string; onClose: () => void }) {
           Ari’s ready <em>to build it.</em>
         </h3>
         <p>Sign in to Mingla Host and Ari starts building it straight away, from what you wrote. You can watch every step.</p>
-        <a ref={primaryRef} className="sheet-cta" href={href} target="_blank" rel="noopener" onClick={onClose}>
+        <a
+          ref={primaryRef}
+          className="sheet-cta"
+          href={href} target="_blank" rel="noopener"
+          onClick={() => {
+            onContinue?.()
+            onClose()
+          }}
+        >
           Continue on Mingla Web <ArrowRight aria-hidden="true" width={17} height={17} />
         </a>
       </div>

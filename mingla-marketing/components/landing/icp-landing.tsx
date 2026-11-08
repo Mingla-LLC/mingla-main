@@ -1,3 +1,4 @@
+import { IcpLandingAnalytics } from './icp-landing-analytics'
 import type { ReactNode } from 'react'
 import Link from 'next/link'
 import {
@@ -82,6 +83,7 @@ export function IcpLandingPage({ slug }: { slug: IcpSlug }) {
 
   return (
     <LandingRoot slug={slug}>
+      <IcpLandingAnalytics slug={slug} />
       <SiteNav surface="host" current="host" />
 
       {/* 1. Hero */}
@@ -114,13 +116,13 @@ export function IcpLandingPage({ slug }: { slug: IcpSlug }) {
         <div className="wrap">
           <p className="intro">{d.intro}</p>
           <div className="row">
-            <Link className="btn ink talk" href={scheduleHref(slug)}>
+            <Link className="btn ink talk" href={scheduleHref(slug)} data-icp-event="icp_talk_to_team_clicked">
               <span className="circ" aria-hidden="true">
                 <Mail />
               </span>
               Talk to the team
             </Link>
-            <a className="btn soft" href={`#${FEATURES_ID}`} data-see-inside="">
+            <a className="btn soft" href={`#${FEATURES_ID}`} data-see-inside="" data-icp-event="icp_see_inside_clicked">
               <Plus aria-hidden="true" /> See what’s inside
             </a>
           </div>
@@ -227,7 +229,7 @@ export function IcpLandingPage({ slug }: { slug: IcpSlug }) {
               <h2 className="h2">{d.tool.n}</h2>
               <p className="lead">{d.tool.d}</p>
               <div className="row" style={{ marginTop: 28 }}>
-                <Link className="btn cta" href={toolPath}>
+                <Link className="btn cta" href={toolPath} data-icp-event="icp_tool_card_clicked">
                   {d.tool.cta} <ArrowRight aria-hidden="true" />
                 </Link>
               </div>
@@ -250,7 +252,7 @@ export function IcpLandingPage({ slug }: { slug: IcpSlug }) {
                   </div>
                 )
               })}
-              <button className="btn ink" type="submit" style={{ marginTop: 6 }}>
+              <button className="btn ink" type="submit" style={{ marginTop: 6 }} data-icp-event="icp_tool_card_clicked">
                 {d.tool.cta}
               </button>
             </form>
@@ -273,7 +275,7 @@ export function IcpLandingPage({ slug }: { slug: IcpSlug }) {
           </div>
           <div className="faq reveal">
             {d.faq.map(([q, a], i) => (
-              <details key={q} open={i === 0}>
+              <details key={q} open={i === 0} data-icp-faq={i}>
                 <summary>
                   {q}
                   <span className="pl" aria-hidden="true">

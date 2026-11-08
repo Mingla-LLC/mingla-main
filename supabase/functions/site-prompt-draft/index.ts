@@ -92,6 +92,12 @@ export function normalizeDescription(raw: unknown): string | null {
   return value;
 }
 
+/** A coarse length band for the funnel log; the description itself is never logged. */
+export function lengthBucket(description: string): "short" | "medium" | "long" {
+  const n = [...description].length;
+  return n < 80 ? "short" : n < 300 ? "medium" : "long";
+}
+
 export type CreateDraft = (
   body: string,
   ipHash: string | null,
@@ -186,6 +192,16 @@ export async function handler(
         console.error("[site-prompt-draft] create returned no id");
         return json({ error: "unavailable" }, 503);
       }
+      // #4339 round B funnel: the server half of "Prompt your website into
+      // existence" → Ari. A structured log line (no description, no IP, no
+      // id): the function has no analytics key, and adding one would be a
+      // new secret name.
+      console.log(
+        JSON.stringify({
+          event: "ari_draft_created",
+          length_bucket: lengthBucket(description),
+        }),
+      );
       return json({ draft_id: result.id }, 201);
     case "invalid":
       return json({ error: "validation" }, 400);

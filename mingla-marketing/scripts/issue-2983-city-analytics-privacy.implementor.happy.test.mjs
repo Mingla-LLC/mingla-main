@@ -111,7 +111,8 @@ function sourceContract() {
     /page_location: pageLocation/,
     /page_referrer: ''/,
     /if \(!isCityHubPathname\(window\.location\.pathname\)\) posthog\.capture\('\$pageview'\)/,
-    /if \(isCityHubPathname\(pathname\)\) return\s*const audience =/,
+    // #4339 round B: the generic page_view now reads lib/page-measurement.ts.
+    /if \(isCityHubPathname\(pathname\)\) return\s*(?:\/\/[^\n]*\s*)*const page = pageMeasurement\(pathname\)/,
     /transport: 'XHR'/,
   ]) assert.match(provider, contract)
   // #2331 retired the grant step (on unless turned off), and with it the

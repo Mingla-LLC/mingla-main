@@ -2,9 +2,12 @@
 import type { MouseEvent, ReactNode } from 'react'
 import { ArrowRight } from 'lucide-react'
 import { DeviceLink } from '@/components/cutout/device-link'
-import { captureSearchMeasurement } from '@/components/marketing/posthog-provider'
+import { captureSearchMeasurement, isMarketingAdsOn } from '@/components/marketing/posthog-provider'
+import { readLandingCampaign } from '@/lib/landing-campaign'
+import { pageMeasurement } from '@/lib/page-measurement'
 import { siteAttribution } from '@/lib/links-src'
-import { resolveAppHandoff } from '@/lib/app-handoff'
+import { resolveAppHandoff, withLandingCampaignHref } from '@/lib/app-handoff'
+import { useState } from 'react'
 import { HandoffSheet, isPlainClick, useHandoffSheet } from './handoff-sheet'
 
 // #4339 §3 — the Explorer hand-off: every "Use Mingla", "Get Mingla" and
@@ -38,21 +41,30 @@ interface ExplorerHandoffButtonProps {
 export function ExplorerHandoffButton({ location, className, withArrow = false, children }: ExplorerHandoffButtonProps) {
   const sheet = useHandoffSheet()
 
+  const [opened, setOpened] = useState<{ icp?: ReturnType<typeof pageMeasurement>['icp']; sourceKind: string }>({ sourceKind: 'product' })
+
   const onActivate = (platform: Parameters<typeof resolveAppHandoff>[1], event: MouseEvent<HTMLAnchorElement>) => {
     const handoff = resolveAppHandoff('explorer', platform, ATTRIBUTION)
+    // #4339 round B: the click is attributed to the page it happened on
+    // (page family, and the ICP on a Host landing page).
+    const page = pageMeasurement(window.location.pathname)
+    const sourceKind = location === 'hero' ? 'hero' : location === 'nav' ? 'navigation' : 'product'
     captureSearchMeasurement('explorer_install_click', {
       audience: 'explorer',
-      page_family: 'explorer_pillar',
-      source_kind: location === 'hero' ? 'hero' : location === 'nav' ? 'navigation' : 'product',
+      page_family: page.page_family,
+      ...(page.icp ? { icp: page.icp } : {}),
+      source_kind: sourceKind,
       destination_kind: handoff.action === 'navigate' ? 'explorer_onelink' : 'explorer_download',
       action_state: 'opened',
     })
     if (handoff.action === 'navigate') {
-      event.currentTarget.setAttribute('href', handoff.href)
+      // The landing campaign rides into the OneLink (af_sub1–3) while ads are on.
+      event.currentTarget.setAttribute('href', withLandingCampaignHref(handoff.href, readLandingCampaign(isMarketingAdsOn())))
       return
     }
     if (!isPlainClick(event)) return
     event.preventDefault()
+    setOpened({ icp: page.icp, sourceKind })
     sheet.show(event)
   }
 
@@ -69,7 +81,9 @@ export function ExplorerHandoffButton({ location, className, withArrow = false, 
         {children ?? 'Use Mingla'}
         {withArrow ? <ArrowRight aria-hidden="true" /> : null}
       </DeviceLink>
-      {sheet.open ? <HandoffSheet sheet="explore" attribution={ATTRIBUTION} onClose={sheet.close} /> : null}
+      {sheet.open ? (
+        <HandoffSheet sheet="explore" attribution={ATTRIBUTION} onClose={sheet.close} icp={opened.icp} sourceKind={opened.sourceKind} />
+      ) : null}
     </>
   )
 }

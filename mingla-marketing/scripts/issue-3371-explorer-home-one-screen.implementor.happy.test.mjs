@@ -164,9 +164,13 @@ function sourceContract(overrides = {}) {
     assert.doesNotMatch(footerCode, /'\/explorer'/, `${footer} must not link the redirected path`)
   }
   const posthog = code(source(M('components/marketing/posthog-provider.tsx')))
-  assert.match(posthog, /pathname === '\/going-out' \|\| pathname\.startsWith\('\/cities\/'\) \? 'explorer' : 'neutral'/, 'audience continuity')
-  assert.match(posthog, /pathname === '\/going-out' \? 'explorer_pillar'/, 'page-family continuity')
+  // #4339 round B: audience and page family moved to lib/page-measurement.ts.
+  const measurement = code(source(M('lib/page-measurement.ts')))
+  assert.match(posthog, /const page = pageMeasurement\(pathname\)/, 'the page_view reads the page table')
+  assert.match(measurement, /if \(path === '\/going-out'\) return \{ audience: 'explorer', page_family: 'explorer_pillar' \}/, 'audience and page-family continuity')
+  assert.match(measurement, /path\.startsWith\('\/cities\/'\)\) return \{ audience: 'explorer', page_family: 'city_hub' \}/, 'city audience continuity')
   assert.doesNotMatch(posthog, /'\/explorer'/)
+  assert.doesNotMatch(measurement, /'\/explorer'/)
 
   const scripts = JSON.parse(source(M('package.json'))).scripts
   const sourceCommand = `node scripts/${SELF} --source-only`

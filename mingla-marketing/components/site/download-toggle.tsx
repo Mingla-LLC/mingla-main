@@ -2,6 +2,7 @@
 import { useState, type ReactNode } from 'react'
 import QRCode from 'react-qr-code'
 import { FilterChips } from './filter-row'
+import { captureMarketing } from '@/components/marketing/posthog-provider'
 
 // #4339 phase 2b — the Get the app toggle: Mingla (Explorer) or Mingla Host.
 // Both panels are server-rendered by app/download/page.tsx; this only chooses
@@ -25,7 +26,11 @@ export function DownloadToggle({ initial, explorer, host }: DownloadToggleProps)
         label="Choose the app"
         options={[LABELS.explorer, LABELS.host]}
         value={LABELS[app]}
-        onChange={(label) => setApp(label === LABELS.host ? 'host' : 'explorer')}
+        onChange={(label) => {
+          const next: App = label === LABELS.host ? 'host' : 'explorer'
+          if (next !== app) captureMarketing('download_toggle_changed', { app: next })
+          setApp(next)
+        }}
       />
       {app === 'host' ? host : explorer}
     </div>

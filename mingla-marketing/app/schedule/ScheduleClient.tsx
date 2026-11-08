@@ -24,7 +24,8 @@ import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type React
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { ArrowRight, Check, Mail } from 'lucide-react'
-import { captureMarketing } from '@/components/marketing/posthog-provider'
+import { captureMarketing, captureSearchMeasurement } from '@/components/marketing/posthog-provider'
+import { landingIcp } from '@/lib/page-measurement'
 import { bookCall, fetchBookingSlots, type BookingSlot } from '@/lib/growth-tools-submit'
 import { BOOKING_ICPS, SOCIAL_PLATFORMS, bookingErrors, icpFromParam, type BookingField } from '@/lib/booking-social'
 
@@ -153,6 +154,7 @@ export function ScheduleClient() {
     setPhase('confirming')
     setError(null)
     setServerField(null)
+    captureMarketing('schedule_details_submitted', { icp, source })
     const res = await bookCall({
       start: selectedSlot,
       name: name.trim(),
@@ -175,6 +177,11 @@ export function ScheduleClient() {
         social_platform: socialPlatform,
         start: res.start,
       })
+      // #4339 round B: a confirmed booking is the lead GA4 counts, by ICP.
+      const leadIcp = landingIcp(icp)
+      if (leadIcp) {
+        captureSearchMeasurement('generate_lead', { audience: 'host', page_family: 'host_pillar', icp: leadIcp, action_state: 'succeeded' })
+      }
       setConfirmed({ start: res.start, email: email.trim(), meet_url: res.meet_url })
       setPhase('done')
       return
@@ -305,6 +312,8 @@ export function ScheduleClient() {
                 aria-pressed={active}
                 onClick={() => {
                   setSelectedSlot(s.start)
+                  // #4339 round B: the time is chosen (no personal detail).
+                  captureMarketing('schedule_slot_selected', { icp: presetIcp || null, source })
                   setError(null)
                 }}
               >

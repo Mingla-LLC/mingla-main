@@ -2,9 +2,12 @@
 import type { MouseEvent, ReactNode } from 'react'
 import { ArrowRight } from 'lucide-react'
 import { DeviceLink } from '@/components/cutout/device-link'
-import { captureSearchMeasurement } from '@/components/marketing/posthog-provider'
+import { captureSearchMeasurement, isMarketingAdsOn } from '@/components/marketing/posthog-provider'
+import { readLandingCampaign } from '@/lib/landing-campaign'
+import { pageMeasurement } from '@/lib/page-measurement'
 import { siteAttribution } from '@/lib/links-src'
-import { resolveAppHandoff } from '@/lib/app-handoff'
+import { resolveAppHandoff, withLandingCampaignHref } from '@/lib/app-handoff'
+import { useState } from 'react'
 import { HandoffSheet, isPlainClick, useHandoffSheet } from './handoff-sheet'
 
 // #4339 §3 — "Use Mingla Web", the Host hand-off, on every redesigned page.
@@ -36,22 +39,33 @@ export function HostHandoffButton({ location, className, withArrow = false, chil
   const sheet = useHandoffSheet()
   const attribution = location === 'nav' ? NAV_ATTRIBUTION : ATTRIBUTION
 
+  const [opened, setOpened] = useState<{ icp?: ReturnType<typeof pageMeasurement>['icp']; sourceKind: string }>({ sourceKind: 'product' })
+
   const onActivate = (platform: Parameters<typeof resolveAppHandoff>[1], event: MouseEvent<HTMLAnchorElement>) => {
     const handoff = resolveAppHandoff('host', platform, ATTRIBUTION)
+    // #4339 round B: the click is attributed to the page it happened on
+    // (page family, and the ICP on a Host landing page).
+    const page = pageMeasurement(window.location.pathname)
+    const sourceKind = location === 'hero' ? 'hero' : location === 'nav' ? 'navigation' : 'product'
     captureSearchMeasurement('host_start_click', {
       audience: 'host',
-      page_family: 'host_pillar',
-      source_kind: location === 'hero' ? 'hero' : location === 'nav' ? 'navigation' : 'product',
+      page_family: page.page_family,
+      ...(page.icp ? { icp: page.icp } : {}),
+      source_kind: sourceKind,
       destination_kind: handoff.action === 'navigate' ? 'host_onelink' : 'host_web',
       action_state: 'opened',
     })
     if (handoff.action === 'navigate') {
       const own = resolveAppHandoff('host', platform, attribution)
-      if (own.action === 'navigate') event.currentTarget.setAttribute('href', own.href)
+      // The landing campaign rides into the OneLink (af_sub1–3) while ads are on.
+      if (own.action === 'navigate') {
+        event.currentTarget.setAttribute('href', withLandingCampaignHref(own.href, readLandingCampaign(isMarketingAdsOn())))
+      }
       return
     }
     if (!isPlainClick(event)) return
     event.preventDefault()
+    setOpened({ icp: page.icp, sourceKind })
     sheet.show(event)
   }
 
@@ -72,7 +86,9 @@ export function HostHandoffButton({ location, className, withArrow = false, chil
         )}
         {withArrow ? <ArrowRight aria-hidden="true" /> : null}
       </DeviceLink>
-      {sheet.open ? <HandoffSheet sheet="host" attribution={attribution} onClose={sheet.close} /> : null}
+      {sheet.open ? (
+        <HandoffSheet sheet="host" attribution={attribution} onClose={sheet.close} icp={opened.icp} sourceKind={opened.sourceKind} />
+      ) : null}
     </>
   )
 }
