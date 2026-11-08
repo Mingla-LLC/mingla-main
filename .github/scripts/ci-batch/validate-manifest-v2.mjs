@@ -889,11 +889,13 @@ const PHASE3C_WRAPPER_SET = new Set(PHASE3C_WRAPPER_NAMES);
 // the door, and its lockfile entries. app-mobile is unchanged.
 // [TEST-MOD-APPROVED #4271] Re-banked after Host declared expo-brightness, so the
 // door pay code screen can reach full brightness. app-mobile is unchanged.
+// [TEST-MOD-APPROVED #3643] Re-banked both lockfiles after the transitive
+// node-forge 1.4.0 -> 1.4.2 security patch; package.json files are unchanged.
 export const PACKAGE_AUTHORITY_DIGESTS = Object.freeze({
   "app-mobile/package.json": "48af9d0cca47199b61b824a4fd80b87ec7e5bb12f07899994435031238834bbb",
-  "app-mobile/package-lock.json": "9a7974a2de124482f7d450d46b49775126ef5206a325dcb6c7663ea3b9666065",
+  "app-mobile/package-lock.json": "3ca515d470c958f53d8ebd8c59cb35051ae7ea903b074f5b8c634e4aced9546f",
   "mingla-business/package.json": "908439c00e8d25bc67db9cd181cfae5848ac6b7ee6f167057304b86a6a8c561a",
-  "mingla-business/package-lock.json": "8341e8aca8d2f6b17de51e57dd837ec45ec155fb8b4a1f3177a61d19c3b6b891",
+  "mingla-business/package-lock.json": "b73ce2d534a052043ed37b7391b06ba8f3f91796adf7f32dd4f118e46872ec0f",
 });
 // [#2439 SC-11.5] The seven Phase 3C records that hold a provider record and
 // transition retained-live-provider -> batched-provider at cutover. The other
