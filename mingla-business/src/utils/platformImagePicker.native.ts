@@ -7,6 +7,9 @@ export type PlatformImagePickerAsset = {
   fileSize?: number | null;
   duration?: number | null;
   type?: string | null;
+  /** Pixel size as expo-image-picker reports it (#4304 photo shrink). */
+  width?: number | null;
+  height?: number | null;
 };
 
 // #1063: expo-image-picker v17 returns a DISCRIMINATED UNION — on cancel it

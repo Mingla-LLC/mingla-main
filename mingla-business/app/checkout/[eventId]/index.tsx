@@ -88,6 +88,11 @@ import { eventAcquisitionNoticeCopy } from "@mingla/offering-rendering";
 // META-ORCH-1187 LEG 2 — buyer-web funnel capture (web-only; native no-op).
 import { captureWeb, gaEvent } from "../../../src/analytics/webAnalytics";
 import { PrivacyChoicesLink } from "../../../src/analytics/PrivacyChoicesLink";
+import {
+  CheckoutColumns,
+  CheckoutOrderSummary,
+  useCheckoutWideLayout,
+} from "../../../src/components/checkout/CheckoutOrderSummary";
 
 const CheckoutDiscountCodeField = React.lazy(() =>
   import("../../../src/components/checkout/DiscountCodeField").then(
@@ -116,6 +121,8 @@ const EMPTY_OCCURRENCES: readonly PublicEventOccurrence[] = [];
 
 export default function CheckoutTicketsScreen(): React.ReactElement {
   const insets = useSafeAreaInsets();
+  // #4304 — wide desktop: tickets left, a static order summary right.
+  const wide = useCheckoutWideLayout();
   const router = useRouter();
   const params = useLocalSearchParams<{
     eventId: string;
@@ -631,258 +638,256 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
         title="Get tickets"
         onBack={handleBack}
       />
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingBottom: insets.bottom + 140 },
-        ]}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Event mini-card: cover hue band + name + date line */}
-        <View style={styles.miniCard}>
-          <EventCoverMedia
-            hue={event.coverHue}
-            mediaUrl={event.coverMediaUrl}
-            mediaType={event.coverMediaType}
-            radius={0}
-            label=""
-            style={styles.miniCover}
-          />
-          <Text style={styles.miniTitle} numberOfLines={2}>
-            {event.name.trim().length > 0 ? event.name : "Untitled event"}
-          </Text>
-          {/* issue #2135 — when the guest picked a day on the public page, step 1
-              of 3 names THAT day instead of repeating the master date.
-              issue #2338 — and when they did NOT pick one, this now names the
-              event's REAL first day rather than "Date TBD": the public reader
-              strips the organiser's draft days, so the old fallback was blind on
-              exactly the events that have more than one. Still never a
-              fabricated day — an event with no readable date says "Date TBD". */}
-          <Text
-            testID="issue-2338-cart-date-line"
-            style={styles.miniSubtitle}
-            numberOfLines={1}
-          >
-            {brand?.displayName ?? "Mingla"}
-            {" · "}
-            {dayLine}
-          </Text>
-        </View>
-
-        <Text style={styles.sectionLabel}>Select your tickets</Text>
-
-        {eventDateIds.length >= 2 ? (
-          <View
-            style={styles.sameTicketsRow}
-            testID="issue-3281-same-tickets-switch"
-          >
-            <Text style={styles.sameTicketsLabel}>
-              Same tickets for every date
-            </Text>
-            <Switch
-              value={sameTicketsForEveryDate}
-              onValueChange={handleSameTicketsForEveryDate}
-              accessibilityLabel="Same tickets for every date"
+      <CheckoutColumns wide={wide}>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: wide ? spacing.xl : insets.bottom + 140 },
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Event mini-card: cover hue band + name + date line */}
+          <View style={styles.miniCard}>
+            <EventCoverMedia
+              hue={event.coverHue}
+              mediaUrl={event.coverMediaUrl}
+              mediaType={event.coverMediaType}
+              radius={0}
+              label=""
+              style={styles.miniCover}
             />
-          </View>
-        ) : null}
-
-        {eventDateIds.length >= 2 && !sameTicketsForEveryDate
-          ? eventDateIds.map((dateId) => {
-              const occ = occurrences.find((o) => o.id === dateId);
-              const dateLabel =
-                occ != null
-                  ? new Date(occ.startAt).toLocaleDateString(undefined, {
-                      weekday: "short",
-                      month: "short",
-                      day: "numeric",
-                    })
-                  : "This date";
-              return (
-                <View key={dateId} style={styles.perDateBlock}>
-                  <Text style={styles.perDateHeading}>{dateLabel}</Text>
-                  {visibleTickets
-                    .filter((ticket) =>
-                      ticketCoversAnyDate(ticket.validOccurrenceIds, [dateId]),
-                    )
-                    .map((ticket) => {
-                    const line = lines.find((l) => l.ticketTypeId === ticket.id);
-                    const qty = line?.byDate?.[dateId] ?? 0;
-                    const maxHint =
-                      ticket.maxPurchaseQty != null && ticket.maxPurchaseQty > 0
-                        ? `Up to ${ticket.maxPurchaseQty} per date`
-                        : null;
-                    return (
-                      <View key={`${dateId}-${ticket.id}`}>
-                        {maxHint != null ? (
-                          <Text style={styles.perDateHint}>{maxHint}</Text>
-                        ) : null}
-                        <QuantityRow
-                          ticket={withDayScope(ticket)}
-                          quantity={qty}
-                          hideRemainingCount={hideRemainingCount}
-                          onJoinWaitlist={setWaitlistTicketId}
-                          onQuantityChange={(next): void => {
-                            const nextByDate = {
-                              ...(line?.byDate ?? {}),
-                              [dateId]: next,
-                            };
-                            if (next <= 0) delete nextByDate[dateId];
-                            const sum = Object.values(nextByDate).reduce(
-                              (a, b) => a + (Number(b) || 0),
-                              0,
-                            );
-                            setLineQuantity({
-                              ticketTypeId: ticket.id,
-                              ticketName: ticket.name,
-                              unitPrice: ticket.priceGbp ?? 0,
-                              unitPriceAllIn:
-                                ticket.priceAllInGbp ?? ticket.priceGbp ?? 0,
-                              currency:
-                                ticket.currency ?? event.currency ?? "GBP",
-                              isFree: ticket.isFree,
-                              quantity: sum,
-                              byDate: nextByDate,
-                            });
-                          }}
-                        />
-                      </View>
-                    );
-                  })}
-                </View>
-              );
-            })
-          : visibleTickets
-              .filter((ticket) =>
-                ticketCoversAnyDate(ticket.validOccurrenceIds, eventDateIds),
-              )
-              .map((ticket) => {
-              const line = lines.find((l) => l.ticketTypeId === ticket.id);
-              const qty = line === undefined ? 0 : quantityPerDate(line);
-              const maxHint =
-                eventDateIds.length >= 2 &&
-                ticket.maxPurchaseQty != null &&
-                ticket.maxPurchaseQty > 0
-                  ? `Up to ${ticket.maxPurchaseQty} per date`
-                  : null;
-              return (
-                <View key={ticket.id}>
-                  {maxHint != null ? (
-                    <Text style={styles.perDateHint}>{maxHint}</Text>
-                  ) : null}
-                  <QuantityRow
-                    ticket={withDayScope(ticket)}
-                    quantity={qty}
-                    hideRemainingCount={hideRemainingCount}
-                    onJoinWaitlist={setWaitlistTicketId}
-                    onQuantityChange={(next): void =>
-                      setLineQuantity({
-                        ticketTypeId: ticket.id,
-                        ticketName: ticket.name,
-                        unitPrice: ticket.priceGbp ?? 0,
-                        // ORCH-1147 — seed the server fee-grossed all-in
-                        // (priceAllInGbp, from pg_public_event_tier_allin) as the
-                        // headline-Total basis; fall back to base when the tier has
-                        // no all-in (free / RPC miss — never fabricate).
-                        unitPriceAllIn:
-                          ticket.priceAllInGbp ?? ticket.priceGbp ?? 0,
-                        currency: ticket.currency ?? event.currency ?? "GBP",
-                        isFree: ticket.isFree,
-                        ...dayLimitedLine(
-                          ticket.validOccurrenceIds,
-                          next,
-                          eventDateIds,
-                          pricingMode === "per_day",
-                        ),
-                      })
-                    }
-                  />
-                  <CartTicketExtras
-                    ticket={ticket}
-                    line={line}
-                    eventDateIds={eventDateIds}
-                    occurrences={occurrences}
-                    allDaysPass={publicEventQuery.data?.allDaysPass === true}
-                    currency={ticket.currency ?? event.currency ?? "GBP"}
-                  />
-                </View>
-              );
-            })}
-        {/* issue #3281 — per-date carts pick extras once per ticket, after the dates. */}
-        {eventDateIds.length >= 2 && !sameTicketsForEveryDate
-          ? visibleTickets.map((ticket) => (
-              <CartTicketExtras
-                key={`extras-${ticket.id}`}
-                ticket={ticket}
-                line={lines.find((l) => l.ticketTypeId === ticket.id)}
-                eventDateIds={eventDateIds}
-                occurrences={occurrences}
-                allDaysPass={publicEventQuery.data?.allDaysPass === true}
-                currency={ticket.currency ?? event.currency ?? "GBP"}
-              />
-            ))
-          : null}
-        {extrasRefusal !== null ? (
-          <Text
-            style={styles.extrasRefusal}
-            testID="issue-3281-extras-refusal"
-            accessibilityLiveRegion="polite"
-          >
-            {extrasRefusal}
-          </Text>
-        ) : null}
-        {/* #2331 — end of content: reopens the privacy bar. */}
-        <PrivacyChoicesLink />
-      </ScrollView>
-
-      {/* Sticky bottom bar — subtotal + Continue */}
-      <View
-        style={[
-          styles.bottomBar,
-          { paddingBottom: insets.bottom + spacing.md },
-        ]}
-      >
-        <React.Suspense fallback={null}>
-          <CheckoutDiscountCodeField
-            surface="web_event"
-            disabled={totals.isEmpty}
-            saleNameByLineRef={saleNameByLineRef}
-          />
-        </React.Suspense>
-        {showFeesTaxLine ? (
-          <View style={styles.feesTaxRow}>
-            <Text style={styles.feesTaxLabel}>Fees &amp; tax</Text>
-            <Text style={styles.feesTaxValue}>
-              {formatCurrency(totals.feesTaxCents, totals.currency, true)}
+            <Text style={styles.miniTitle} numberOfLines={2}>
+              {event.name.trim().length > 0 ? event.name : "Untitled event"}
+            </Text>
+            {/* issue #2135 — when the guest picked a day on the public page, step 1
+                of 3 names THAT day instead of repeating the master date.
+                issue #2338 — and when they did NOT pick one, this now names the
+                event's REAL first day rather than "Date TBD": the public reader
+                strips the organiser's draft days, so the old fallback was blind on
+                exactly the events that have more than one. Still never a
+                fabricated day — an event with no readable date says "Date TBD". */}
+            <Text
+              testID="issue-2338-cart-date-line"
+              style={styles.miniSubtitle}
+              numberOfLines={1}
+            >
+              {brand?.displayName ?? "Mingla"}
+              {" · "}
+              {dayLine}
             </Text>
           </View>
-        ) : null}
-        <View style={styles.subtotalRow}>
-          <Text style={styles.subtotalLabel}>Total</Text>
-          <Text style={styles.subtotalValue}>
-            {totals.isEmpty ? "—" : totals.isFree ? "Free" : headlineAllIn}
-          </Text>
-        </View>
-        <Button
-          label={continueLabel}
-          onPress={handleContinue}
-          variant="primary"
-          accentColor={ctaAccent}
-          size="lg"
-          fullWidth
-          disabled={totals.isEmpty || quoteStatus !== "ready"}
-          accessibilityLabel={
-            totals.isEmpty
-              ? "Add tickets above"
-              : quoteStatus !== "ready"
-                ? "Waiting for your latest total"
-                : totals.isFree
-                  ? "Reserve free ticket"
-                  : `Continue to buyer details, total ${headlineAllIn}`
-          }
-        />
-      </View>
+
+          <Text style={styles.sectionLabel}>Select your tickets</Text>
+
+          {eventDateIds.length >= 2 ? (
+            <View
+              style={styles.sameTicketsRow}
+              testID="issue-3281-same-tickets-switch"
+            >
+              <Text style={styles.sameTicketsLabel}>
+                Same tickets for every date
+              </Text>
+              <Switch
+                value={sameTicketsForEveryDate}
+                onValueChange={handleSameTicketsForEveryDate}
+                accessibilityLabel="Same tickets for every date"
+              />
+            </View>
+          ) : null}
+
+          {eventDateIds.length >= 2 && !sameTicketsForEveryDate
+            ? eventDateIds.map((dateId) => {
+                const occ = occurrences.find((o) => o.id === dateId);
+                const dateLabel =
+                  occ != null
+                    ? new Date(occ.startAt).toLocaleDateString(undefined, {
+                        weekday: "short",
+                        month: "short",
+                        day: "numeric",
+                      })
+                    : "This date";
+                return (
+                  <View key={dateId} style={styles.perDateBlock}>
+                    <Text style={styles.perDateHeading}>{dateLabel}</Text>
+                    {visibleTickets
+                      .filter((ticket) =>
+                        ticketCoversAnyDate(ticket.validOccurrenceIds, [dateId]),
+                      )
+                      .map((ticket) => {
+                      const line = lines.find((l) => l.ticketTypeId === ticket.id);
+                      const qty = line?.byDate?.[dateId] ?? 0;
+                      const maxHint =
+                        ticket.maxPurchaseQty != null && ticket.maxPurchaseQty > 0
+                          ? `Up to ${ticket.maxPurchaseQty} per date`
+                          : null;
+                      return (
+                        <View key={`${dateId}-${ticket.id}`}>
+                          {maxHint != null ? (
+                            <Text style={styles.perDateHint}>{maxHint}</Text>
+                          ) : null}
+                          <QuantityRow
+                            ticket={withDayScope(ticket)}
+                            quantity={qty}
+                            hideRemainingCount={hideRemainingCount}
+                            onJoinWaitlist={setWaitlistTicketId}
+                            onQuantityChange={(next): void => {
+                              const nextByDate = {
+                                ...(line?.byDate ?? {}),
+                                [dateId]: next,
+                              };
+                              if (next <= 0) delete nextByDate[dateId];
+                              const sum = Object.values(nextByDate).reduce(
+                                (a, b) => a + (Number(b) || 0),
+                                0,
+                              );
+                              setLineQuantity({
+                                ticketTypeId: ticket.id,
+                                ticketName: ticket.name,
+                                unitPrice: ticket.priceGbp ?? 0,
+                                unitPriceAllIn:
+                                  ticket.priceAllInGbp ?? ticket.priceGbp ?? 0,
+                                currency:
+                                  ticket.currency ?? event.currency ?? "GBP",
+                                isFree: ticket.isFree,
+                                quantity: sum,
+                                byDate: nextByDate,
+                              });
+                            }}
+                          />
+                        </View>
+                      );
+                    })}
+                  </View>
+                );
+              })
+            : visibleTickets
+                .filter((ticket) =>
+                  ticketCoversAnyDate(ticket.validOccurrenceIds, eventDateIds),
+                )
+                .map((ticket) => {
+                const line = lines.find((l) => l.ticketTypeId === ticket.id);
+                const qty = line === undefined ? 0 : quantityPerDate(line);
+                const maxHint =
+                  eventDateIds.length >= 2 &&
+                  ticket.maxPurchaseQty != null &&
+                  ticket.maxPurchaseQty > 0
+                    ? `Up to ${ticket.maxPurchaseQty} per date`
+                    : null;
+                return (
+                  <View key={ticket.id}>
+                    {maxHint != null ? (
+                      <Text style={styles.perDateHint}>{maxHint}</Text>
+                    ) : null}
+                    <QuantityRow
+                      ticket={withDayScope(ticket)}
+                      quantity={qty}
+                      hideRemainingCount={hideRemainingCount}
+                      onJoinWaitlist={setWaitlistTicketId}
+                      onQuantityChange={(next): void =>
+                        setLineQuantity({
+                          ticketTypeId: ticket.id,
+                          ticketName: ticket.name,
+                          unitPrice: ticket.priceGbp ?? 0,
+                          // ORCH-1147 — seed the server fee-grossed all-in
+                          // (priceAllInGbp, from pg_public_event_tier_allin) as the
+                          // headline-Total basis; fall back to base when the tier has
+                          // no all-in (free / RPC miss — never fabricate).
+                          unitPriceAllIn:
+                            ticket.priceAllInGbp ?? ticket.priceGbp ?? 0,
+                          currency: ticket.currency ?? event.currency ?? "GBP",
+                          isFree: ticket.isFree,
+                          ...dayLimitedLine(
+                            ticket.validOccurrenceIds,
+                            next,
+                            eventDateIds,
+                            pricingMode === "per_day",
+                          ),
+                        })
+                      }
+                    />
+                    <CartTicketExtras
+                      ticket={ticket}
+                      line={line}
+                      eventDateIds={eventDateIds}
+                      occurrences={occurrences}
+                      allDaysPass={publicEventQuery.data?.allDaysPass === true}
+                      currency={ticket.currency ?? event.currency ?? "GBP"}
+                    />
+                  </View>
+                );
+              })}
+          {/* issue #3281 — per-date carts pick extras once per ticket, after the dates. */}
+          {eventDateIds.length >= 2 && !sameTicketsForEveryDate
+            ? visibleTickets.map((ticket) => (
+                <CartTicketExtras
+                  key={`extras-${ticket.id}`}
+                  ticket={ticket}
+                  line={lines.find((l) => l.ticketTypeId === ticket.id)}
+                  eventDateIds={eventDateIds}
+                  occurrences={occurrences}
+                  allDaysPass={publicEventQuery.data?.allDaysPass === true}
+                  currency={ticket.currency ?? event.currency ?? "GBP"}
+                />
+              ))
+            : null}
+          {extrasRefusal !== null ? (
+            <Text
+              style={styles.extrasRefusal}
+              testID="issue-3281-extras-refusal"
+              accessibilityLiveRegion="polite"
+            >
+              {extrasRefusal}
+            </Text>
+          ) : null}
+          {/* #2331 — end of content: reopens the privacy bar. */}
+          <PrivacyChoicesLink />
+        </ScrollView>
+
+        {/* Sticky bottom bar (narrow) / order summary (wide) — #4304 */}
+        <CheckoutOrderSummary wide={wide} bottomInset={insets.bottom}>
+          <React.Suspense fallback={null}>
+            <CheckoutDiscountCodeField
+              collapsible={!wide}
+              surface="web_event"
+              disabled={totals.isEmpty}
+              saleNameByLineRef={saleNameByLineRef}
+            />
+          </React.Suspense>
+          {showFeesTaxLine ? (
+            <View style={styles.feesTaxRow}>
+              <Text style={styles.feesTaxLabel}>Fees &amp; tax</Text>
+              <Text style={styles.feesTaxValue}>
+                {formatCurrency(totals.feesTaxCents, totals.currency, true)}
+              </Text>
+            </View>
+          ) : null}
+          <View style={styles.subtotalRow}>
+            <Text style={styles.subtotalLabel}>Total</Text>
+            <Text style={styles.subtotalValue}>
+              {totals.isEmpty ? "—" : totals.isFree ? "Free" : headlineAllIn}
+            </Text>
+          </View>
+          <Button
+            label={continueLabel}
+            onPress={handleContinue}
+            variant="primary"
+            accentColor={ctaAccent}
+            size="lg"
+            fullWidth
+            disabled={totals.isEmpty || quoteStatus !== "ready"}
+            accessibilityLabel={
+              totals.isEmpty
+                ? "Add tickets above"
+                : quoteStatus !== "ready"
+                  ? "Waiting for your latest total"
+                  : totals.isFree
+                    ? "Reserve free ticket"
+                    : `Continue to buyer details, total ${headlineAllIn}`
+            }
+          />
+        </CheckoutOrderSummary>
+      </CheckoutColumns>
 
       <JoinWaitlistSheet
         visible={waitlistTicket !== null}
@@ -975,17 +980,6 @@ const styles = StyleSheet.create({
     color: textTokens.secondary,
     fontSize: 14,
     textAlign: "center",
-  },
-  bottomBar: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingTop: spacing.md,
-    paddingHorizontal: spacing.lg,
-    backgroundColor: "rgba(12, 14, 18, 0.94)",
-    borderTopWidth: 1,
-    borderTopColor: "rgba(255, 255, 255, 0.06)",
   },
   subtotalRow: {
     flexDirection: "row",

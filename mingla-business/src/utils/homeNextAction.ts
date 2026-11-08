@@ -71,6 +71,16 @@ export const mostRecentDraftRoute = (drafts: DraftEvent[]): string | null => {
   });
 };
 
+/** #4304 — the name of that same most-recently-updated draft (null if none). */
+export const mostRecentDraftTitle = (drafts: DraftEvent[]): string | null => {
+  if (drafts.length === 0) return null;
+  const mostRecent = drafts
+    .slice()
+    .sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""))[0];
+  const name = (mostRecent as DraftEvent & { name?: string | null }).name?.trim();
+  return name ? name : null;
+};
+
 /**
  * Pick the highest-priority next-action rung for the given brand state.
  * Returns null when the brand is in a healthy state (no rung applicable).

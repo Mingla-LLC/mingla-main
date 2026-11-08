@@ -103,7 +103,11 @@ export type IconName =
   // gift, Promote megaphone.
   | "video"
   | "gift"
-  | "megaphone";
+  | "megaphone"
+  // #4304 part 2 — Brand-group chat: reactions, reply and copy.
+  | "heart"
+  | "reply"
+  | "copy";
 
 export interface IconProps {
   name: IconName;
@@ -441,6 +445,16 @@ const RENDERERS: Record<IconName, Renderer> = {
   ),
   megaphone: () => (
     <Path d="M3 10v4a1 1 0 0 0 1 1h3l9 5V4L7 9H4a1 1 0 0 0-1 1zM7 15l1.5 5M19 9a4 4 0 0 1 0 6" />
+  ),
+  heart: (color) => (
+    <Path d="M12 21s-7.5-4.6-9.5-9.2C1 8.3 3.2 4.5 7 4.5c2.1 0 3.6 1.1 5 2.9 1.4-1.8 2.9-2.9 5-2.9 3.8 0 6 3.8 4.5 7.3C19.5 16.4 12 21 12 21z" fill={color} />
+  ),
+  reply: () => <Path d="M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z" />,
+  copy: () => (
+    <>
+      <Rect x="9" y="9" width="12" height="12" rx="2" />
+      <Path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" />
+    </>
   ),
   threads: () => (
     <Path d="M12 21a9 9 0 1 1 9-9c0 2-1 4-3 5M9 11c1-2 3-3 5-2 1 1 1 3-1 4M11 14c-1-1-1-3 0-4 2-1 4 1 4 3-1 2-3 2-4 1" />

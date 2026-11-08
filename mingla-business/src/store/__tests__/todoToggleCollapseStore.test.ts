@@ -47,11 +47,10 @@ beforeEach(() => {
 });
 
 describe("todoToggleCollapseStore", () => {
-  test("T1 defaults: collapsed=false (open) and hasHydrated=false until rehydration", () => {
+  test("T1 defaults: collapsed=true (#4304: always collapsed by default) and hasHydrated=false until rehydration", () => {
     const s = useTodoToggleCollapseStore.getState();
-    // collapsed defaults to false → the To-Do toggle is OPEN on first load
-    // (AC-5 / SC-5: fresh install with no persisted key renders open).
-    expect(s.collapsed).toBe(false);
+    // #4304 (Seth, 2026-11-07) — the To-do list starts COLLAPSED so it takes no space.
+    expect(s.collapsed).toBe(true);
     // The in-memory initializer default for the gate is false — the toggle
     // renders NOTHING until onRehydrateStorage flips it (Constitution #14).
     expect(s.hasHydrated).toBe(false);
@@ -59,42 +58,42 @@ describe("todoToggleCollapseStore", () => {
 
   test("T2 toggle flips collapsed; setCollapsed sets it explicitly", () => {
     useTodoToggleCollapseStore.getState().toggle();
-    expect(useTodoToggleCollapseStore.getState().collapsed).toBe(true);
-    useTodoToggleCollapseStore.getState().toggle();
     expect(useTodoToggleCollapseStore.getState().collapsed).toBe(false);
-    useTodoToggleCollapseStore.getState().setCollapsed(true);
+    useTodoToggleCollapseStore.getState().toggle();
     expect(useTodoToggleCollapseStore.getState().collapsed).toBe(true);
+    useTodoToggleCollapseStore.getState().setCollapsed(false);
+    expect(useTodoToggleCollapseStore.getState().collapsed).toBe(false);
   });
 
-  test("T3 partialize honesty: persisted partition is exactly { collapsed } — never hasHydrated", () => {
+  test("T3 partialize honesty (#4304): nothing is persisted — never collapsed, never hasHydrated", () => {
     const partialized = persistApi.getOptions().partialize?.({
-      collapsed: true,
+      collapsed: false,
       hasHydrated: true,
     });
-    expect(partialized).toEqual({ collapsed: true });
+    expect(partialized).toEqual({});
     expect(Object.keys(partialized ?? {})).not.toContain("hasHydrated");
   });
 
-  test("T4 persist identity: name mingla-business.todoToggleCollapse.v1, version 1", () => {
+  test("T4 persist identity: name mingla-business.todoToggleCollapse.v1, version 2 (#4304)", () => {
     const options = persistApi.getOptions();
     expect(options.name).toBe("mingla-business.todoToggleCollapse.v1");
-    expect(options.version).toBe(1);
+    expect(options.version).toBe(2);
   });
 
-  test("T5 reset returns collapsed to the default (open) — logout cascade (Constitution #6)", () => {
-    useTodoToggleCollapseStore.getState().setCollapsed(true);
+  test("T5 reset returns collapsed to the default (collapsed) — logout cascade (Constitution #6)", () => {
+    useTodoToggleCollapseStore.getState().setCollapsed(false);
     useTodoToggleCollapseStore.getState().reset();
-    expect(useTodoToggleCollapseStore.getState().collapsed).toBe(false);
+    expect(useTodoToggleCollapseStore.getState().collapsed).toBe(true);
   });
 
   test("onRehydrateStorage wires setHasHydrated(true) without touching collapsed", () => {
-    useTodoToggleCollapseStore.getState().setCollapsed(true);
+    useTodoToggleCollapseStore.getState().setCollapsed(false);
     expect(useTodoToggleCollapseStore.getState().hasHydrated).toBe(false);
     // Invoke the persist option exactly as the middleware does post-rehydrate.
     const postRehydrate = persistApi.getOptions().onRehydrateStorage?.();
     postRehydrate?.(undefined, undefined);
     const s = useTodoToggleCollapseStore.getState();
     expect(s.hasHydrated).toBe(true);
-    expect(s.collapsed).toBe(true);
+    expect(s.collapsed).toBe(false);
   });
 });

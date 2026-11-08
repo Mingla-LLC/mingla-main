@@ -24,6 +24,7 @@ import { agentQueryKeys } from "./agentQueryKeys";
 import { brandKeys } from "./brandKeys";
 import { brandReadinessKeys } from "./brandReadinessKeys";
 import { creatorAccountKeys } from "./creatorAccountKeys";
+import { firstRunKeys } from "./firstRunKeys";
 import { brandHoursKeys } from "./useBrandHours";
 import { brandDiscoveryCurrencyKeys } from "./useBrandDiscoveryCurrency";
 import { venueAvailabilityKeys } from "./useVenueAvailability";
@@ -66,6 +67,18 @@ export function useConfirmPendingAction(
           : typeof result?.brand_id === "string"
             ? result.brand_id
             : null;
+        // #4304 — a draft or listing made through Ari unlocks Home at once.
+        if (
+          [
+            "create_event",
+            "create_rsvp",
+            "create_experience",
+            "create_trip",
+            "create_venue_listing",
+          ].includes(response.tool_name)
+        ) {
+          qc.invalidateQueries({ queryKey: firstRunKeys.all });
+        }
         // Invalidate downstream caches that other parts of the app rely on.
         // (These keys are owned by elsewhere in the app; we invalidate broadly
         // because tool writes may affect brands or events lists.)

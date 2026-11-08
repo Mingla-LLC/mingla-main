@@ -23,6 +23,7 @@ import {
   type AgentChoiceSubmissionV2,
   type AgentChatResponse,
   type AgentMessage,
+  type AriFirstRunHint,
   type AriFlowAnswer,
   type AriFlowState,
   fetchMessages,
@@ -140,6 +141,7 @@ export interface UseAgentChatResult {
   sendMessage: (
     text: string,
     attachments?: AriAttachmentDraft[],
+    options?: { firstRun?: AriFirstRunHint | null },
   ) => Promise<AgentChatResponse>;
   sendChoice: (
     submission: AgentChoiceSubmissionV2,
@@ -197,6 +199,8 @@ type TurnPayload = {
   attachment_ids?: string[];
   workflow_context?: "website_setup";
   website_setup_kickoff?: { part?: string };
+  /** #4304 — first-run context; travels with the turn so a retry keeps it. */
+  first_run?: AriFirstRunHint;
 };
 
 interface LocalTurn {
@@ -1107,7 +1111,11 @@ export function useAgentChat(
   );
 
   const sendMessage = useCallback(
-    (text: string, attachments: AriAttachmentDraft[] = []) => {
+    (
+      text: string,
+      attachments: AriAttachmentDraft[] = [],
+      options?: { firstRun?: AriFirstRunHint | null },
+    ) => {
       const attachmentIds = attachments
         .map((attachment) => attachment.attachmentId)
         .filter((id): id is string => !!id);
@@ -1119,6 +1127,7 @@ export function useAgentChat(
           ...(workflowContextRef.current
             ? { workflow_context: workflowContextRef.current }
             : {}),
+          ...(options?.firstRun ? { first_run: options.firstRun } : {}),
         },
         attachments,
       );
