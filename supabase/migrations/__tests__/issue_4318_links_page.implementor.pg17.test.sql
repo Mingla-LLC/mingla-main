@@ -524,7 +524,7 @@ DO $test$
 BEGIN
   IF NOT has_function_privilege('anon', 'public.links_page_week()', 'EXECUTE')
      OR NOT has_function_privilege('anon', 'public.links_page_strips()', 'EXECUTE')
-     OR NOT has_function_privilege('anon', 'public.links_page_places(double precision,double precision,integer,integer)', 'EXECUTE') THEN
+     OR NOT has_function_privilege('anon', 'public.links_page_places(double precision,double precision,integer,integer,uuid)', 'EXECUTE') THEN
     RAISE EXCEPTION 'catalog: anon cannot call the public readers';
   END IF;
   IF (SELECT prosecdef FROM pg_proc WHERE oid = 'public.links_page_strips()'::regprocedure) THEN

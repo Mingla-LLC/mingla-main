@@ -31,9 +31,9 @@ blog_public_post_embeds(p_slug text)
 blog_public_preview(p_token text)
 # #4318: the /links week: public, published, upcoming listings for the next seven days under the discover_v2_items eligibility rule; column allow-list only, no ids, buyers or authoring fields, a withheld address gives no place text and a one-decimal point, capped at 500 rows.
 links_page_week()
-# #4318: the /links quiet week: at most 6 Explorer-servable, operational places with a stored thumb within 100 km of a point the page passes; name, category, city label, point and bucket-relative thumb only, no address or private column.
-links_page_places(p_lat double precision, p_lng double precision, p_radius_km integer, p_limit integer)
-# #4318 live cities: every city live for consumers in Explorer; id, name, country code, centre and a count of photo places under the links_page_places rules only, no seeding, coverage, cost or private column.
+# #4318: the /links quiet week: at most 6 Explorer-servable, operational places with a stored thumb, in one live city by id or within 100 km of a point the page passes; name, category, city label, point and bucket-relative thumb only, no address or private column.
+links_page_places(p_lat double precision, p_lng double precision, p_radius_km integer, p_limit integer, p_city_id uuid)
+# #4318 live cities: every city live for consumers in Explorer; id, name, country code, centre and whether it has photo places under the links_page_places rules only, no seeding, coverage, cost or private column.
 links_page_cities()
 check_username_availability(check_username text)
 is_username_available(p_username text)

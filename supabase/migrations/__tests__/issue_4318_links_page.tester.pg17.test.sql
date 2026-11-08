@@ -728,12 +728,12 @@ RESET ROLE;
 
 DO $test$
 BEGIN
-  IF pg_get_function_result('public.links_page_places(double precision,double precision,integer,integer)'::regprocedure) <>
+  IF pg_get_function_result('public.links_page_places(double precision,double precision,integer,integer,uuid)'::regprocedure) <>
      'TABLE(place_id text, name text, category text, area_label text, lat double precision, lng double precision, photo_path text)' THEN
     RAISE EXCEPTION 'PL: links_page_places result drifted';
   END IF;
-  IF NOT (SELECT prosecdef FROM pg_proc WHERE oid = 'public.links_page_places(double precision,double precision,integer,integer)'::regprocedure)
-     OR (SELECT proconfig FROM pg_proc WHERE oid = 'public.links_page_places(double precision,double precision,integer,integer)'::regprocedure)
+  IF NOT (SELECT prosecdef FROM pg_proc WHERE oid = 'public.links_page_places(double precision,double precision,integer,integer,uuid)'::regprocedure)
+     OR (SELECT proconfig FROM pg_proc WHERE oid = 'public.links_page_places(double precision,double precision,integer,integer,uuid)'::regprocedure)
         IS DISTINCT FROM ARRAY['search_path=""'] THEN
     RAISE EXCEPTION 'PL: links_page_places must be SECURITY DEFINER with an empty search_path';
   END IF;

@@ -5,8 +5,8 @@
 --     one of them, and no other (compared with the table itself, so cities a
 --     replayed migration seeds are covered too).
 -- LC2 the column allow-list is exactly city_id, name, country_code,
---     center_lat, center_lng, place_count.
--- LC3 place_count counts the city's own places under the links_page_places
+--     center_lat, center_lng, has_places (#4318 follow-up: was place_count).
+-- LC3 has_places says whether the city has places under the links_page_places
 --     rules (servable, active, OPERATIONAL, thumbs backfilled, a well-formed
 --     place-photos object), and agrees with links_page_places itself; a quiet
 --     city with no photo places is listed with 0.
@@ -80,23 +80,25 @@ BEGIN
 
   -- LC2: the column allow-list.
   IF (SELECT array_agg(key ORDER BY key) FROM jsonb_object_keys(v_rows->0) AS key)
-     IS DISTINCT FROM ARRAY['center_lat', 'center_lng', 'city_id', 'country_code', 'name', 'place_count'] THEN
+     IS DISTINCT FROM ARRAY['center_lat', 'center_lng', 'city_id', 'country_code', 'has_places', 'name'] THEN
     RAISE EXCEPTION 'LC2: column allow-list drifted: %', v_rows->0;
   END IF;
 
-  -- LC3: Liveton counts its 2 photo places; Quietton is listed with 0.
+  -- LC3: Liveton has photo places; Quietton is listed with none.
   IF (SELECT elem FROM jsonb_array_elements(v_rows) elem WHERE elem->>'city_id' = '43181000-0000-4000-c000-000000000001')
      IS DISTINCT FROM jsonb_build_object('city_id', '43181000-0000-4000-c000-000000000001', 'name', 'Issue 4318 Liveton',
-       'country_code', 'TL', 'center_lat', 41.0, 'center_lng', -45.0, 'place_count', 2) THEN
+       'country_code', 'TL', 'center_lat', 41.0, 'center_lng', -45.0, 'has_places', true) THEN
     RAISE EXCEPTION 'LC3: Liveton row wrong: %', v_rows;
   END IF;
-  IF (SELECT (elem->>'place_count')::integer FROM jsonb_array_elements(v_rows) elem
-      WHERE elem->>'city_id' = '43181000-0000-4000-c000-000000000003') IS DISTINCT FROM 0 THEN
-    RAISE EXCEPTION 'LC3: Quietton must be listed with 0 places: %', v_rows;
+  IF (SELECT (elem->>'has_places')::boolean FROM jsonb_array_elements(v_rows) elem
+      WHERE elem->>'city_id' = '43181000-0000-4000-c000-000000000003') IS DISTINCT FROM false THEN
+    RAISE EXCEPTION 'LC3: Quietton must be listed with no places: %', v_rows;
   END IF;
-  -- The count and the quiet-week reader agree on the same rules.
-  IF (SELECT count(*) FROM public.links_page_places(41.0, -45.0, 100, 6)) <> 2 THEN
-    RAISE EXCEPTION 'LC3: links_page_places disagrees with place_count';
+  -- has_places and the quiet-week reader agree on the same rules.
+  IF (SELECT count(*) FROM public.links_page_places(41.0, -45.0, 100, 6)) <> 2
+     OR (SELECT count(*) FROM public.links_page_places(NULL, NULL, 60, 6, '43181000-0000-4000-c000-000000000001')) <> 2
+     OR EXISTS (SELECT 1 FROM public.links_page_places(NULL, NULL, 60, 6, '43181000-0000-4000-c000-000000000003')) THEN
+    RAISE EXCEPTION 'LC3: links_page_places disagrees with has_places';
   END IF;
 END
 $test$;
@@ -109,7 +111,7 @@ SET LOCAL ROLE anon;
 DO $test$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM public.links_page_cities() c
-                 WHERE c.city_id = '43181000-0000-4000-c000-000000000002' AND c.place_count = 1) THEN
+                 WHERE c.city_id = '43181000-0000-4000-c000-000000000002' AND c.has_places) THEN
     RAISE EXCEPTION 'LC4: a city switched live did not appear with its place';
   END IF;
   IF EXISTS (SELECT 1 FROM public.links_page_cities() c WHERE c.city_id = '43181000-0000-4000-c000-000000000001') THEN
