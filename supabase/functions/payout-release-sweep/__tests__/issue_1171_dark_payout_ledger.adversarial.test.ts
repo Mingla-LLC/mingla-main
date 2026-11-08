@@ -409,15 +409,25 @@ BEGIN
     WHERE occurrence_key='wrong-currency';
   SELECT id INTO v_partial_target FROM public.brand_payout_releases
     WHERE occurrence_key='partial-target';
+  -- #3645 2d: a real item, so the release can cover what it withholds.
+  INSERT INTO public.payout_release_items(
+    release_id,source_type,source_id,gross_cents,net_cents,source_finalized_at
+  ) VALUES(v_partial_target,'venue_reservation',gen_random_uuid(),600,600,'2026-06-20T00:00:00Z');
   IF public.apply_open_payout_debts(v_wrong_brand,'2026-07-14T00:00:00Z')<>0 OR
      public.apply_open_payout_debts(v_wrong_currency,'2026-07-14T00:00:00Z')<>0 OR
      public.apply_open_payout_debts(v_partial_target,'2026-07-14T00:00:00Z')<>600 THEN
     RAISE EXCEPTION 'cross-brand/currency isolation or partial withholding failed';
   END IF;
   PERFORM public.mature_postponement_debts('2026-07-23T00:00:00Z');
-  IF (SELECT amount_cents FROM public.payout_ledger_adjustments
-      WHERE release_id=v_partial_target AND kind='maturity_recredit')<>600 OR
-     (SELECT amount_cents FROM public.payout_ledger_adjustments
+  -- #3645 2d: the target is unpaid, so the 600 held goes back through net (a
+  -- 'matured' return) instead of a recredit on top; the 400 never held is
+  -- written off as before.
+  IF (SELECT coalesce(sum(amount_cents),0) FROM public.payout_debt_application_returns
+      WHERE release_id=v_partial_target AND reason='matured')<>600 OR
+     EXISTS(SELECT 1 FROM public.payout_ledger_adjustments
+      WHERE release_id=v_partial_target AND kind='maturity_recredit') OR
+     public.issue_3645_release_effective_withheld(v_partial_target)<>0 OR
+     (SELECT coalesce(sum(amount_cents),0) FROM public.payout_ledger_adjustments
       WHERE release_id=v_partial_origin AND kind='debt_writeoff')<>400 THEN
     RAISE EXCEPTION 'partial recovery did not recredit only held value';
   END IF;
@@ -439,6 +449,10 @@ BEGIN
     'venue_reservation','stripe','usd','2026-07-12T00:00:00Z',
     '2026-07-13T00:00:00Z',700,700,'pending'
   ) RETURNING id INTO v_convert_target;
+  -- #3645 2d: a real item, so the release can cover what it withholds.
+  INSERT INTO public.payout_release_items(
+    release_id,source_type,source_id,gross_cents,net_cents,source_finalized_at
+  ) VALUES(v_convert_target,'venue_reservation',gen_random_uuid(),700,700,'2026-06-20T00:00:00Z');
   v_convert_debt:=public.open_post_release_postponement_debt(
     v_convert_origin,'2026-07-30T00:00:00Z'
   );
@@ -451,10 +465,16 @@ BEGIN
   IF (SELECT (principal_cents,recovered_cents,status)
       FROM public.organiser_payout_debts WHERE id=v_permanent)
        IS DISTINCT FROM ROW(400,400,'closed'::text) OR
-     (SELECT amount_cents FROM public.payout_ledger_adjustments
-      WHERE release_id=v_convert_target AND kind='maturity_recredit')<>300 OR
-     (SELECT count(*) FROM public.payout_ledger_adjustments
-      WHERE release_id=v_convert_target AND kind='maturity_recredit')<>1 OR
+     -- #3645 2d: the unconverted 300 goes back through net on the unpaid
+     -- target (one 'matured' return), never as a recredit on top.
+     (SELECT coalesce(sum(amount_cents),0) FROM public.payout_debt_application_returns
+      WHERE release_id=v_convert_target AND reason='matured')<>300 OR
+     (SELECT count(*) FROM public.payout_debt_application_returns
+      WHERE release_id=v_convert_target AND reason='matured')<>1 OR
+     EXISTS(SELECT 1 FROM public.payout_ledger_adjustments
+      WHERE release_id=v_convert_target AND kind='maturity_recredit') OR
+     -- the 400 converted to permanent debt stays withheld; the rest is back
+     public.issue_3645_release_effective_withheld(v_convert_target)<>400 OR
      (SELECT converted_cents FROM public.payout_debt_applications
       WHERE debt_id=v_convert_debt AND release_id=v_convert_target)<>400 THEN
     RAISE EXCEPTION 'cancellation conversion double-withheld or double-recredited';
