@@ -76,7 +76,8 @@ describe("#1564 — four mounts, one existing component", () => {
       /import \{ ThemeControlRow \} from "\.\.\/(?:\.\.\/)?theme\/ThemeControlRow";/,
     );
     expect(s).toMatch(
-      /import \{ ThemeSheet \} from "\.\.\/(?:\.\.\/)?theme\/ThemeSheet";/,
+      // [TEST-MOD-APPROVED #1023] the same sheet, loaded on intent (ThemeSheetLazy).
+      /import \{ ThemeSheet \} from "\.\.\/(?:\.\.\/)?theme\/ThemeSheetLazy";/,
     );
   });
 
