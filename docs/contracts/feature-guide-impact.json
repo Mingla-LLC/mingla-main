@@ -1020,7 +1020,8 @@
         "mingla-business/src/hooks/marketing/useCampaignGroupView.ts",
         "mingla-business/src/services/marketing/marketingCampaignGroupViewService.ts",
         "supabase/functions/marketing-send/sentSnapshot.ts",
-        "supabase/migrations/20280506004273_issue_4273_sent_previews_and_optout_matching.sql"
+        "supabase/migrations/20280506004273_issue_4273_sent_previews_and_optout_matching.sql",
+        "supabase/migrations/20280511004273_issue_4273_sms_unpriced_country_skips.sql"
       ]
     },
     {
@@ -1264,6 +1265,7 @@
         "mingla-business/src/services/offeringAccountInvitesService.ts",
         "mingla-business/src/services/offeringInvitePlanService.ts",
         "supabase/functions/offering-invite-dispatch/index.ts",
+        "supabase/functions/_shared/offeringInviteQuote.ts",
         "supabase/migrations/20280401033682_issue_3682_account_invite_recipients.sql",
         "supabase/migrations/20280404004273_issue_4273_invite_combined_sources_and_methods.sql"
       ]

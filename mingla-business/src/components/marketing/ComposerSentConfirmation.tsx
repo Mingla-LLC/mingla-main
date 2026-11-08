@@ -50,7 +50,10 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
-import { partialSendLine } from "../../services/marketing/campaignSendCopy";
+import {
+  partialSendLine,
+  unpricedSmsLine,
+} from "../../services/marketing/campaignSendCopy";
 
 export interface ComposerSentConfirmationProps {
   visible: boolean;
@@ -63,6 +66,8 @@ export interface ComposerSentConfirmationProps {
   deliveredRecipientCount?: number;
   /** #3682 — send-now recipients the provider turned down (partial send). */
   failedRecipientCount?: number;
+  /** #4273 — texts skipped because Mingla can't text that country yet. */
+  unpricedRecipientCount?: number;
   /** Closes the overlay only — leaves the operator on the composer route. */
   onDismiss: () => void;
   /** Closes the overlay AND navigates to the campaigns list. */
@@ -76,6 +81,7 @@ export const ComposerSentConfirmation: React.FC<ComposerSentConfirmationProps> =
   skippedRecipientCount = 0,
   deliveredRecipientCount = 0,
   failedRecipientCount = 0,
+  unpricedRecipientCount = 0,
   onDismiss,
   onViewInCampaigns,
 }) => {
@@ -210,6 +216,13 @@ export const ComposerSentConfirmation: React.FC<ComposerSentConfirmationProps> =
               {`${skippedRecipientCount} ${
                 skippedRecipientCount === 1 ? "person" : "people"
               } couldn't be reached.`}
+            </Text>
+          ) : null}
+          {/* #4273 — skipped before sending, with its own honest reason: the
+              number's country, never who the person is. */}
+          {unpricedRecipientCount > 0 ? (
+            <Text style={styles.body} testID="composer-sent-unpriced">
+              {unpricedSmsLine(unpricedRecipientCount)}
             </Text>
           ) : null}
         </Animated.View>

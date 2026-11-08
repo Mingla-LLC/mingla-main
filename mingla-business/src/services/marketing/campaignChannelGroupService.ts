@@ -28,7 +28,7 @@ import {
   previewMarketingBook,
   previewMarketingCampaignGroup,
 } from "./marketingBookSendService";
-import { partialSendLine } from "./campaignSendCopy";
+import { bookPricingErrorCopy, partialSendLine } from "./campaignSendCopy";
 
 export type CampaignChannel = "email" | "sms" | "push";
 
@@ -74,6 +74,11 @@ export function siblingErrorMessage(channel: CampaignChannel, error: unknown): s
   }
   if (code.includes("FLAG_DISABLED")) return `${label} isn't switched on for this audience yet.`;
   if (code.includes("FORBIDDEN")) return `You can't send ${label.toLowerCase()} for this brand.`;
+  // #4273 P2-a — a price failure reads exactly as it does for the lead method.
+  const pricing = bookPricingErrorCopy(code);
+  if (pricing !== null) {
+    return pricing.startsWith(label) ? pricing : `${label}: ${pricing}`;
+  }
   return `${label} preview is unavailable. Refresh before sending.`;
 }
 
