@@ -83,13 +83,8 @@
  *   passes. It directly checks `EXPO_PUBLIC_ONESIGNAL_APP_ID` because #3720's
  *   physical-device proof found the public id stored with EAS Secret visibility:
  *   the local OTA bundler could not read it, Host logged "SDK disabled", and the
- *   prior verifier still reported green. It also excludes
- *   `EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN`: SPEC §3.4-V1
- *   made that entry conditional on the variable existing in the EAS production
- *   environment, and the IMPLEMENT-phase read-only check (2026-08-09,
- *   `eas env:list --environment production` in `mingla-business`) found it
- *   ABSENT. A required check on a value the environment never had would abort
- *   every correct publish.
+ *   prior verifier still reported green. (#4334 removed the client map token
+ *   it used to exclude.)
  *
  * WHAT THIS MODULE DOES NOT PROVE — read before citing it as proof.
  *   - It does NOT prove `EXPO_PUBLIC_SENTRY_DSN` (business) or

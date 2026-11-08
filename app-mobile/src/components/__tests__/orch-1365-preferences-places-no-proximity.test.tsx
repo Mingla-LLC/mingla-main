@@ -69,7 +69,8 @@ const SHARED = stripComments(
 // ── T-8a: Preferences field routes through the `places` mode, no proximity ─────
 Deno.test("T-8a: PreferencesSectionsAdvanced passes searchMode=\"places\" + keeps config", () => {
   assertStringIncludes(ADVANCED, 'searchMode="places"', "field must use places mode (POIs dropped + country strip)");
-  assertStringIncludes(ADVANCED, "suggestLimit={8}", "consumer multi-row limit preserved");
+  // #4334 D4 — Google returns at most 5 rows; no client limit is sent.
+  assert(!ADVANCED.includes("suggestLimit"), "no client row limit (#4334 D4)");
   assertStringIncludes(ADVANCED, "minQueryLength={4}", "≥4-char gate preserved");
   assertStringIncludes(ADVANCED, "onPick={onPickLocation}", "pick routes to the host");
   assertStringIncludes(ADVANCED, "hasSelected ?", "chip shows on a resolved location");

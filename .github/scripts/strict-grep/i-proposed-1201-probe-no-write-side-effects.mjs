@@ -59,6 +59,16 @@ if (!GEMINI_HOST_OK) {
   );
 }
 
+// #4334 — the Google autocomplete probe URL must really be Places Autocomplete (New).
+const GOOGLE_AUTOCOMPLETE_OK = (() => {
+  try {
+    const logic = readFileSync(join(process.cwd(), "supabase/functions/api-health-probe/logic.ts"), "utf8");
+    return /autocomplete:\s*"https:\/\/places\.googleapis\.com\/v1\/places:autocomplete"/.test(logic);
+  } catch {
+    return false;
+  }
+})();
+
 // Find fetch(...) call args that include method: "POST" and a vendor URL that
 // is NOT google.serper.dev. We scan each `timedFetch(` / `fetch(` invocation.
 const callRe = /\b(?:timedFetch|fetch)\s*\(\s*([^,]+),([\s\S]*?)\)\s*;/g;
@@ -96,6 +106,10 @@ while ((m = callRe.exec(code)) !== null) {
   ) {
     continue;
   }
+  // allowed (#4334): the Places Autocomplete (New) liveness search — a POST that
+  // creates no vendor-side state, like the Serper search. Host-scoped by
+  // RESOLVING the constant in logic.ts (fails closed if it points elsewhere).
+  if (/GOOGLE_PROBE_URLS\.autocomplete\b/.test(urlArg) && GOOGLE_AUTOCOMPLETE_OK) continue;
   // allowed: cloudinary destroy lives in _shared, not here; supabase writes are not fetch.
   failures.push(
     `api-health-probe/index.ts: POST vendor fetch to ${urlArg.trim()} — synthetic probes must be read-only (only Serper search + Stripe/Paystack SDK reads allowed).`,
@@ -105,7 +119,7 @@ while ((m = callRe.exec(code)) !== null) {
 // recordApiCall must be fire-and-forget everywhere it is wired.
 const wrapFiles = [
   "supabase/functions/_shared/paystack.ts",
-  "supabase/functions/_shared/mapboxGeocode.ts",
+  "supabase/functions/_shared/placesGeocode.ts",
   // #966 (SPEC AMENDMENT 1): the cover-video vendor call moved from
   // eventCoverVideo.ts (Cloudinary destroy fetch, removed) to bunnyStream.ts, which
   // now owns `void recordApiCall("bunny", …)` at 3 sites; eventCoverVideo.ts no

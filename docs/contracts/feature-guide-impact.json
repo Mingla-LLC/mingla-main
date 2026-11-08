@@ -331,7 +331,7 @@
         "supabase/migrations/20280329004238_issue_4238_ads_media_buyer.sql",
         "supabase/functions/_shared/adHostEstimateRate.ts",
         "supabase/functions/_shared/adProviderEstimate.ts",
-        "supabase/functions/_shared/mapboxGeocode.ts",
+        "supabase/functions/_shared/placesGeocode.ts",
         "supabase/functions/_shared/google.ts",
         "supabase/functions/_shared/reddit.ts",
         "supabase/functions/_shared/snapchat.ts"
@@ -1046,7 +1046,7 @@
         "mingla-business/src/utils/businessTodoDispatch.ts",
         "mingla-business/src/utils/businessTodos.ts",
         "mingla-business/src/utils/homeBrandReadiness.ts",
-        "packages/location-input/src/MapboxAddressInput.tsx",
+        "packages/location-input/src/AddressInput.tsx",
         "mingla-business/src/components/brand/LazyBrandAvatarPickerSheet.tsx",
         "mingla-business/src/components/location/LazyAddressMapPreview.tsx",
         "packages/offering-rendering/GlassBlur.tsx"

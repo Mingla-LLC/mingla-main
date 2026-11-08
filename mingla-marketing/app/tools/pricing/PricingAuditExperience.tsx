@@ -178,7 +178,7 @@ export function PricingAuditExperience({ embedded = false }: { readonly embedded
   const [runId, setRunId] = useState<string | null>(null)
   const [report, setReport] = useState<PricingReport | null>(null)
 
-  // Debounced city autocomplete (validates the city against Mapbox).
+  // Debounced city autocomplete (validates the city against Google Places).
   useEffect(() => {
     const q = city.trim()
     if (cityChosen || q.length < 2) {

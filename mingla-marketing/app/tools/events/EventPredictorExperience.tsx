@@ -182,7 +182,7 @@ export function EventPredictorExperience({ embedded = false }: { readonly embedd
   const [runId, setRunId] = useState<string | null>(null)
   const [report, setReport] = useState<EventReport | null>(null)
 
-  // Debounced city autocomplete (validates the city against Mapbox). Skips while
+  // Debounced city autocomplete (validates the city against Google Places). Skips while
   // a suggestion is already chosen; degrades to free text if the geocoder is down.
   useEffect(() => {
     const q = city.trim()

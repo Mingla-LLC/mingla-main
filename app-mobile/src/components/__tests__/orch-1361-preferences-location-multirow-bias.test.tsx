@@ -97,8 +97,9 @@ Deno.test("P-1b: the shared field renders INSIDE the `!useGpsLocation && !isLock
   );
 });
 
-Deno.test("P-1c: field config — suggestLimit 8, ≥4-char gate, places-mode, NO proximity [TEST-MOD-APPROVED ORCH-1365]", () => {
-  assertStringIncludes(ADVANCED, "suggestLimit={8}", "consumer multi-row limit");
+Deno.test("P-1c: field config — no row limit (#4334 D4), ≥4-char gate, places-mode, NO proximity [TEST-MOD-APPROVED ORCH-1365]", () => {
+  // #4334 D4 — Google returns at most 5 rows; no client limit is sent.
+  assert(!ADVANCED.includes("suggestLimit"), "no client row limit (#4334 D4)");
   assertStringIncludes(ADVANCED, "minQueryLength={4}", "preserve today's ≥4-char gate");
   assertStringIncludes(ADVANCED, "onPick={onPickLocation}", "pick routes to the host");
   assertStringIncludes(ADVANCED, "hasSelected ?", "chip shows on a resolved location");
@@ -152,7 +153,7 @@ Deno.test("P-2c: the removed host suggestion state is GONE (dead forward path de
 // ── OQ-4: manually entered cities are global [TEST-MOD-APPROVED #3988] ───────
 Deno.test("OQ-4: CityPickerSheet searches places globally without device bias [TEST-MOD-APPROVED #3988]", () => {
   assertStringIncludes(CITY, 'searchMode="places"', "CityPicker uses the place-only lane");
-  assertStringIncludes(CITY, "suggestLimit={8}", "CityPicker exposes enough global city matches");
+  assert(!CITY.includes("suggestLimit"), "no client row limit (#4334 D4)");
   assert(!CITY.includes("proximity={"), "manual city search must not bias to the device");
   assert(!CITY.includes("getLastKnownLocation"), "manual city search must not resolve a device anchor");
   assert(!CITY.includes("country={country}"), "CityPicker must not hard-filter a country");
