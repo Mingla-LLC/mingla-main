@@ -90,5 +90,8 @@ module.exports = {
     "**/__tests__/issue_4275_page_catchup.tester.adversarial.render.test.tsx",
     // issue #4275 — the hook around the open-chat recovery controller.
     "**/__tests__/issue_4275_open_chat_recovery.implementor.render.test.tsx",
+    // issue #4347 — a paid brand experience that lost its cardType never
+    // writes "Spend level: Free" into the phone calendar.
+    "**/__tests__/issue_4347_device_calendar_spend_level.implementor.happy.test.ts",
   ],
 };
