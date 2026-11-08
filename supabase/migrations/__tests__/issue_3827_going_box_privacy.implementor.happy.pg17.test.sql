@@ -283,7 +283,9 @@ BEGIN
       'timezone','status','isOnline','onlineUrl','venueName','address','hideAddressUntilTicket',
       'format','city','locationGeo','cityGeo','coverMediaUrl','coverMediaType','coverMediaAlt',
       'coverGallery','coverMediaProvider','coverMediaCredit','currency','partyTypes','vibeTags',
-      'musicGenres','themeColorOverride','themeFontOverride','themeAnimationOverride','brand',
+      'musicGenres','themeColorOverride','themeFontOverride','themeAnimationOverride',
+      -- [TEST-MOD-APPROVED #1023] 20280430011023 adds the event's gradient override after the animation.
+      'themeGradientOverride','brand',
       'rsvpGoingCount','rsvpCapacity','rsvpAllowPlusOnes','rsvpPlusOnesMax','rsvpWaitlistEnabled',
       'rsvpApprovalMode','publicEventRow']::text[],
     'T-17 no new top-level key: U-01e list + publicEventRow last (got ' || array_to_string(v_keys, ',') || ')');

@@ -117,17 +117,18 @@ describe("RT-6 ORCH-1138 — native-only render parity", () => {
     const bodySrc = read("../packages/offering-rendering/TripOfferingBody.tsx");
     expect(bodySrc).toContain("const boldFamily = boldFontFamily(theme);");
     expect(bodySrc).toMatch(
-      /styles\.title,\s*surface\.primaryText,\s*\{ fontFamily: boldFamily \}/,
+      /styles\.title,\s*surface\.primaryText,\s*boldFace\b/ /* [TEST-MOD-APPROVED #1023] the bold family via themeFontFace (fontWeight normal on Android) */,
     );
-    expect(bodySrc).toMatch(
-      /surface\.primaryText,\s*\{ fontFamily: boldFamily \}/,
-    );
+    // [TEST-MOD-APPROVED #1023] the bold family now rides themeFontFace
+    // (boldFace = themeFontFace(boldFamily); fontWeight normal on Android).
+    expect(bodySrc).toContain("const boldFace = themeFontFace(boldFamily);");
+    expect(bodySrc).toMatch(/surface\.primaryText,\s*boldFace\b/);
     // the §3 route pills carry the bold family on their value text.
     expect(bodySrc).toMatch(
-      /styles\.fullPillText,\s*\n?\s*\{ color: palette\.primaryText, fontFamily: boldFamily \}/,
+      /styles\.fullPillText,\s*\n?\s*\{ color: palette\.primaryText, \.\.\.boldFace \}/,
     );
     // the §4 meta pills + brand name apply the bold font family too.
-    expect(bodySrc).toContain("fontFamily: boldFamily");
+    expect(bodySrc).toContain("...boldFace");
   });
 
   test("BUG-2: the route LOADS the bold family via useThemeFont (else it never registers)", () => {

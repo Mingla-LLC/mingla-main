@@ -301,6 +301,9 @@ const renderPublicEventPage = (
       case "react-native-safe-area-context":
       case "@mingla/offering-rendering":
       case "@mingla/offering-rendering":
+      // [TEST-MOD-APPROVED #1023] Harness registration only: the gradient-aware
+      // accent helpers, real; no close assertion changed.
+      case "@mingla/offering-rendering/themeAccentStyle":
         return require(request);
       case "./FoundationEventPreview":
         return { FoundationEventPreview: "FoundationEventPreview" };

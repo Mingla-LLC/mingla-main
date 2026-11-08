@@ -478,7 +478,7 @@ BEGIN
                         'departureLat','departureLng','departureText','description',
                         'destinationLat','destinationLng','destinationText','endAt','id',
                         'inclusions','refundPolicy','startAt','status',
-                        'themeAnimationOverride','themeColorOverride','themeFontOverride',
+                        'themeAnimationOverride','themeColorOverride','themeFontOverride','themeGradientOverride', -- [TEST-MOD-APPROVED #1023]
                         'tiers','timezone','title','tripSlug'];
         -- Direction 1 -- REMOVALS. A strip of pricing, inventory or itinerary
         -- takes a key off the payload and reds here. Guards availability.
@@ -523,7 +523,7 @@ BEGIN
                         'coverMediaType','coverMediaUrl','currency','dates','description',
                         'experienceSlug','hideAddressUntilTicket','id','intents','isMultiDate',
                         'isRecurring','recurrenceRules','status','stops',
-                        'themeAnimationOverride','themeColorOverride','themeFontOverride',
+                        'themeAnimationOverride','themeColorOverride','themeFontOverride','themeGradientOverride', -- [TEST-MOD-APPROVED #1023]
                         'ticket','timezone','title','venueText','visibility'];
         SELECT COALESCE(array_agg(k ORDER BY k), '{}') INTO v_missing
         FROM unnest(v_keys) AS k WHERE NOT (v_payload ? k);
