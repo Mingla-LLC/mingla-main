@@ -62,6 +62,7 @@ import {
 } from "../_shared/marketingBlastFollow.ts";
 import {
   generateTrackingId,
+  signSmsUnsubscribeToken,
   signUnsubscribeToken,
 } from "../_shared/marketingTokens.ts";
 import {
@@ -74,7 +75,17 @@ import {
 // module-private copy that used to sit next to the SMS dispatch below.
 import { countryFromE164 } from "../_shared/e164Country.ts";
 import {
-  configuredSmsRoutes,
+  isWithinSmsWindow,
+  smsCountryProfile,
+  smsMarketingRoute,
+  msUntilSmsWindowOpens,
+  smsLocalZones,
+} from "../_shared/smsCountries.ts";
+import { loadSmsRates, loadSmsRoutes } from "../_shared/smsPriceTable.ts";
+import {
+  type configuredSmsRoutes,
+  SMS_UNPRICED_COUNTRY,
+  smsCountryTextableNow,
   smsRateForPhone,
 } from "../_shared/smsPriceBook.ts";
 import { resolveDeliveryFlagValue } from "../_shared/secretBundle.ts";
@@ -297,12 +308,9 @@ function inertOfferingUrl(eventUrl: string): string {
 }
 
 // META-ORCH-1161 Sub-B — marketing quiet hours (SPEC §6.6 / §8.2). Marketing SMS
-// is blocked outside these recipient-local windows. Transactional SMS is NOT
-// gated here (this function is marketing-only).
-const QUIET_HOURS = {
-  US: { startHour: 8, endHour: 21 }, // 8 AM–9 PM recipient-local
-  NG: { startHour: 8, endHour: 20 }, // 8 AM–8 PM WAT
-} as const;
+// is blocked outside recipient-local windows. Transactional SMS is NOT gated
+// here (this function is marketing-only). #4273 — the per-country windows live
+// in _shared/smsCountries.ts (SMS_COUNTRIES), one row per mapped country.
 
 // ORCH-1270 — quiet-hours DEFER termination bounds (SPEC §5.1). An out-of-window
 // recipient with a RESOLVABLE tz is held (status='deferred') and re-attempted by
@@ -412,27 +420,13 @@ export function decideSmsDisposition(
     return { action: "fail", reason: "quiet_hours_unreachable" };
   }
 
-  const cc = (countryCode ?? "").toUpperCase();
-  const market: "US" | "NG" = cc === "NG" ? "NG" : "US";
-  const { startHour } = QUIET_HOURS[market];
-  let localHour: number = startHour;
-  try {
-    const fmt = new Intl.DateTimeFormat("en-US", {
-      timeZone: tz,
-      hour: "numeric",
-      hour12: false,
-    });
-    const parsed = parseInt(fmt.format(now), 10);
-    if (!Number.isNaN(parsed)) localHour = parsed;
-  } catch {
-    // Fall back to startHour → hoursUntilOpen 0 → MIN_DEFER_INTERVAL_MS re-check.
-    localHour = startHour;
+  // #4273 — the next instant the window opens in every zone the number can
+  // be in (never sooner than MIN_DEFER_INTERVAL_MS; the next pass re-checks).
+  const untilOpen = msUntilSmsWindowOpens(phone, countryCode, now);
+  if (untilOpen === null) {
+    return { action: "fail", reason: "quiet_hours_unreachable" };
   }
-  const hoursUntilOpen = (startHour - localHour + 24) % 24;
-  const deltaMs = Math.max(
-    hoursUntilOpen * 60 * 60 * 1000,
-    MIN_DEFER_INTERVAL_MS,
-  );
+  const deltaMs = Math.max(untilOpen, MIN_DEFER_INTERVAL_MS);
   return {
     action: "defer",
     next_attempt_at: new Date(now.getTime() + deltaMs).toISOString(),
@@ -672,6 +666,11 @@ export async function handleMarketingSendRequest(
       followBrand: quoteBrand.followBrand,
       costCurrency: quoteBrand.costCurrency,
       fx: dbSmsFxConverter(supabase),
+      // #4273 item 10 — the live prices (public.sms_country_prices). Unreadable
+      // → none → the SMS quote fails closed as BOOK_BLAST_RATE_BOOK_UNAVAILABLE.
+      ...((candidates.data as { channel?: unknown } | null)?.channel === "sms"
+        ? { smsRates: await loadSmsRates(supabase).catch(() => undefined) }
+        : {}),
     };
     if (requestedQuotedAt === null) {
       const refreshed = await safeBookQuote(candidates.data, quoteOptions);
@@ -989,6 +988,7 @@ export async function handleGroupPreview(
         },
         quoteBrand: (candidates) => resolveQuoteBrand(supabase, candidates),
         fx: dbSmsFxConverter(supabase),
+        smsRates: await loadSmsRates(supabase).catch(() => undefined),
         allowance: async (candidates, quote) => {
           const attached = await attachBookAllowance(supabase, actorId, candidates, quote);
           if (!attached.ok) throw new Error("cost_unavailable");
@@ -2116,13 +2116,10 @@ interface SmsContact {
 // (#1529 F-7) and no single source of truth, which is how the notification
 // pipeline ended up with a country column that no two layers agreed on.
 //
-// BEHAVIOUR IS PRESERVED, verified branch by branch: +1 → US and +234 → NG are
-// unchanged. +44/+32 previously returned null and now resolve to GB/BE, which
-// changes nothing downstream — `isWithinQuietHours` returns false for any
-// country that is neither US nor NG (identical to what null did), and the
-// adapter's `resolveMarketKillSwitch` maps every non-NG country to
-// SMS_LIVE_ENABLED_US, exactly as null did. An unmapped prefix still returns
-// null → quiet-hours conservatively DENIES (defer).
+// #4273 — every payout country now maps (and Canada splits from +1 by area
+// code). Each has its own quiet-hours window (SMS_COUNTRIES) and its own
+// SMS switch (sms_live_enabled.<cc>, off until set). An unmapped prefix still
+// returns null → quiet-hours fails it closed (unknown_timezone).
 
 /**
  * Branded short links (SPEC §6.7): rewrite every http(s) URL in the SMS body
@@ -2130,374 +2127,56 @@ interface SmsContact {
  * — NEVER a public shortener. Each rewritten link gets a marketing_clicks row so
  * attribution + per-campaign click tracking works identically to email.
  */
-// META-ORCH-1161 go-live-prep (P3-1 carry-forward) — US NANP area-code → IANA
-// timezone. The prior quiet-hours logic anchored EVERY US number to
-// America/New_York, so a +1 West-Coast recipient was evaluated at Eastern time
-// and could be texted at 5 AM local (8 AM ET). FCC/TCPA quiet hours are
-// RECIPIENT-LOCAL (8 AM–9 PM), so we derive the actual zone from the area code.
-// Covers the 50 states + DC + PR/VI; an area code NOT in the map → unknown → the
-// caller conservatively DENIES (defer) rather than guess. Codes that straddle a
-// DST/standard quirk (AZ no-DST) get their correct IANA zone (Phoenix).
-const US_AREACODE_TZ: Record<string, string> = (() => {
-  const m: Record<string, string> = {};
-  const add = (tz: string, codes: string[]) => {
-    for (const c of codes) m[c] = tz;
-  };
-  // Eastern.
-  add("America/New_York", [
-    "201",
-    "202",
-    "203",
-    "207",
-    "212",
-    "215",
-    "216",
-    "219",
-    "220",
-    "223",
-    "224",
-    "226",
-    "229",
-    "234",
-    "239",
-    "240",
-    "267",
-    "272",
-    "276",
-    "283",
-    "301",
-    "302",
-    "304",
-    "305",
-    "321",
-    "330",
-    "339",
-    "340",
-    "347",
-    "351",
-    "352",
-    "380",
-    "386",
-    "401",
-    "404",
-    "407",
-    "410",
-    "412",
-    "413",
-    "419",
-    "434",
-    "440",
-    "443",
-    "445",
-    "464",
-    "470",
-    "475",
-    "478",
-    "484",
-    "508",
-    "513",
-    "516",
-    "517",
-    "518",
-    "540",
-    "551",
-    "557",
-    "561",
-    "564",
-    "567",
-    "570",
-    "571",
-    "585",
-    "586",
-    "588",
-    "603",
-    "606",
-    "607",
-    "609",
-    "610",
-    "614",
-    "616",
-    "617",
-    "631",
-    "646",
-    "667",
-    "678",
-    "680",
-    "681",
-    "689",
-    "703",
-    "704",
-    "706",
-    "716",
-    "717",
-    "718",
-    "724",
-    "727",
-    "732",
-    "734",
-    "737",
-    "740",
-    "743",
-    "754",
-    "757",
-    "762",
-    "770",
-    "772",
-    "774",
-    "781",
-    "786",
-    "787",
-    "802",
-    "803",
-    "804",
-    "810",
-    "813",
-    "814",
-    "828",
-    "835",
-    "843",
-    "845",
-    "848",
-    "850",
-    "856",
-    "857",
-    "860",
-    "862",
-    "863",
-    "864",
-    "878",
-    "901",
-    "904",
-    "910",
-    "912",
-    "914",
-    "917",
-    "919",
-    "920",
-    "929",
-    "937",
-    "939",
-    "941",
-    "947",
-    "954",
-    "959",
-    "978",
-    "980",
-    "984",
-  ]);
-  // Central.
-  add("America/Chicago", [
-    "205",
-    "210",
-    "214",
-    "217",
-    "218",
-    "224",
-    "225",
-    "228",
-    "254",
-    "256",
-    "262",
-    "270",
-    "281",
-    "309",
-    "312",
-    "314",
-    "318",
-    "319",
-    "320",
-    "331",
-    "334",
-    "337",
-    "361",
-    "380",
-    "402",
-    "405",
-    "409",
-    "414",
-    "417",
-    "430",
-    "432",
-    "447",
-    "456",
-    "469",
-    "479",
-    "501",
-    "504",
-    "507",
-    "512",
-    "515",
-    "531",
-    "539",
-    "563",
-    "573",
-    "580",
-    "601",
-    "608",
-    "612",
-    "615",
-    "618",
-    "620",
-    "630",
-    "636",
-    "641",
-    "651",
-    "657",
-    "660",
-    "662",
-    "682",
-    "708",
-    "713",
-    "715",
-    "731",
-    "737",
-    "763",
-    "769",
-    "773",
-    "779",
-    "785",
-    "806",
-    "815",
-    "816",
-    "817",
-    "830",
-    "832",
-    "847",
-    "850",
-    "870",
-    "901",
-    "903",
-    "913",
-    "915",
-    "920",
-    "930",
-    "931",
-    "936",
-    "940",
-    "952",
-    "956",
-    "972",
-    "979",
-    "985",
-  ]);
-  // Mountain (DST-observing).
-  add("America/Denver", [
-    "303",
-    "307",
-    "308",
-    "385",
-    "406",
-    "435",
-    "505",
-    "575",
-    "719",
-    "720",
-    "970",
-    "984",
-  ]);
-  // Arizona (no DST — distinct zone).
-  add("America/Phoenix", ["480", "520", "602", "623", "928"]);
-  // Pacific.
-  add("America/Los_Angeles", [
-    "209",
-    "213",
-    "279",
-    "310",
-    "323",
-    "341",
-    "350",
-    "408",
-    "415",
-    "424",
-    "442",
-    "510",
-    "530",
-    "559",
-    "562",
-    "619",
-    "626",
-    "628",
-    "650",
-    "657",
-    "661",
-    "669",
-    "707",
-    "714",
-    "747",
-    "760",
-    "805",
-    "818",
-    "820",
-    "831",
-    "858",
-    "909",
-    "916",
-    "925",
-    "949",
-    "951",
-  ]);
-  // Alaska / Hawaii.
-  add("America/Anchorage", ["907"]);
-  add("Pacific/Honolulu", ["808"]);
-  return m;
-})();
+// #4273 — the US/CA area-code zone tables moved to _shared/smsCountries.ts,
+// beside every other country's window.
 
 /**
- * Resolve the recipient-local IANA timezone for quiet-hours evaluation.
- *   - US (+1): derive from the NANP area code (digits 2-4 of the E.164). An
- *     unrecognized area code returns null → caller defers (no Eastern guess).
- *   - NG (+234): Africa/Lagos (single zone, WAT).
- *   - any other / unknown market: null.
+ * Resolve the recipient-local IANA timezone(s) for quiet-hours evaluation.
+ * #4273 — every mapped country has a row in SMS_COUNTRIES; US and CA resolve
+ * the zone from the NANP area code; a country or area code Mingla cannot
+ * place returns null (fail closed: unknown_timezone). A number that can be in
+ * several zones returns the first; the window check uses all of them.
  */
 function resolveRecipientTz(
   phone: string,
   countryCode: string | null,
 ): string | null {
-  const cc = (countryCode ?? "").toUpperCase();
-  if (cc === "NG") return "Africa/Lagos";
-  if (cc === "US") {
-    const digits = phone.replace(/[^0-9]/g, "");
-    // +1AAANXXXXXX → strip the leading country '1', take the next 3 = area code.
-    const national = digits.startsWith("1") ? digits.slice(1) : digits;
-    const areaCode = national.slice(0, 3);
-    return US_AREACODE_TZ[areaCode] ?? null;
-  }
-  return null;
+  return smsLocalZones(phone, countryCode)?.[0] ?? null;
 }
 
 /**
- * Marketing quiet hours (SPEC §6.6 / §8.2). Returns true when it is currently
- * INSIDE the RECIPIENT-LOCAL sending window for the contact's market. The
- * timezone is derived from the phone itself (US area code; NG = Lagos) so a
- * West-Coast +1 number is evaluated in Pacific time, not Eastern. An unknown
- * market OR an unrecognized US area code conservatively DENIES (defer) — we will
- * not text a number whose local time we cannot establish (fail-safe).
+ * Marketing quiet hours. True only when it is INSIDE the country's local
+ * window in every zone the number can be in (FR also never on a Sunday). An
+ * unknown market or zone conservatively DENIES.
  */
 function isWithinQuietHours(
   phone: string,
   countryCode: string | null,
   now: Date,
 ): boolean {
-  const cc = (countryCode ?? "").toUpperCase();
-  if (cc !== "US" && cc !== "NG") return false;
-  const tz = resolveRecipientTz(phone, countryCode);
-  if (tz === null) return false; // unknown recipient zone → conservative deny.
-  const market: "US" | "NG" = cc === "NG" ? "NG" : "US";
-  const { startHour, endHour } = QUIET_HOURS[market];
-  let localHour: number;
+  return isWithinSmsWindow(phone, countryCode, now);
+}
+
+/**
+ * #4273 — is this campaign a sealed Blast (it has a confirmed execution)?
+ * A read error counts as sealed: the cautious answer writes no extra rows.
+ */
+async function isSealedBookSend(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  campaignId: string,
+): Promise<boolean> {
   try {
-    const fmt = new Intl.DateTimeFormat("en-US", {
-      timeZone: tz,
-      hour: "numeric",
-      hour12: false,
-    });
-    localHour = parseInt(fmt.format(now), 10);
-    if (Number.isNaN(localHour)) return false;
+    const { data, error } = await supabase
+      .from("marketing_book_send_executions")
+      .select("id")
+      .eq("campaign_id", campaignId)
+      .maybeSingle();
+    if (error) return true;
+    return data !== null && data !== undefined;
   } catch {
-    return false; // unknown tz → conservative deny
+    return true;
   }
-  // Inside the window means startHour <= localHour < endHour.
-  return localHour >= startHour && localHour < endHour;
 }
 
 async function sendSms(
@@ -2605,8 +2284,15 @@ async function sendSms(
     );
   }
 
-  const marketingSid = Deno.env.get("TWILIO_MARKETING_MESSAGING_SERVICE_SID") ??
-    null;
+  // #4273 — the marketing Messaging Service holds the alphanumeric "Mingla"
+  // sender and no number. It is used ONLY for alphanumeric countries: US and
+  // CA texts stay on the toll-free (transactional) service, which the US and
+  // Canada require; NG goes to Termii. An alphanumeric country with no
+  // marketing service configured is never textable (smsCountryTextableNow),
+  // so it never falls back to the toll-free number.
+  const marketingSidRaw = Deno.env.get("TWILIO_MARKETING_MESSAGING_SERVICE_SID")
+    ?.trim() ?? "";
+  const marketingSid = marketingSidRaw.length > 0 ? marketingSidRaw : null;
 
   // 3. Throttled batches.
   const deliverable = resolved.rows.filter(
@@ -2620,13 +2306,35 @@ async function sendSms(
   const now = new Date();
   // #4273 — never attempt a phone the quote could not price. The quote sealed
   // such a phone as skipped (sms_unpriced_country); this guard holds the same
-  // line at send with the same rule (smsRateForPhone), so a send can never
-  // text an unpriced number, even before that seal exists or if the book
-  // loses a country after confirm. No book configured → no quote could have
-  // been sealed, so there is nothing to hold (legacy sends keep working).
+  // line at send with the same rule (smsRateForPhone, rate routes + the
+  // country's own switch), so a send can never text an unpriced number, even
+  // before that seal exists or if the book loses a country after confirm.
+  //
+  // FAIL SAFE (tester P3): when the book cannot be read at all, nothing is
+  // texted — Mingla cannot know any number is priced. That is never silent:
+  // it is logged, and a buyer-list (legacy, unsealed) send records each
+  // number as failed 'sms_rate_book_unavailable' so the host's report says
+  // so. A sealed Blast records nothing extra: its sealed-but-unsent people
+  // already read as "couldn't be reached".
+  //
+  // Unpriced numbers on a legacy send are recorded too
+  // ('sms_unpriced_country'), so the host sees them (tester P3). A sealed
+  // Blast never reaches here with them once the seal migration is applied.
   const smsRoutes = options.smsRoutes !== undefined
     ? options.smsRoutes
-    : configuredSmsRoutes();
+    : await loadSmsRoutes(supabase);
+  const sealedSend = await isSealedBookSend(supabase, campaign.id);
+  if (smsRoutes === null) {
+    console.error(JSON.stringify({
+      event: "marketing_sms_rate_book_unreadable",
+      campaign_id: campaign.id,
+    }));
+  }
+  // A supplied (test) route list is taken as switched on; production reads
+  // each country's own switch.
+  const smsLiveAtSend = options.smsRoutes !== undefined
+    ? () => true
+    : smsCountryTextableNow;
   let unpricedSkipped = 0;
 
   for (let i = 0; i < deliverable.length; i += SMS_BATCH_SIZE) {
@@ -2636,12 +2344,6 @@ async function sendSms(
       if (phone === null || !isValidE164(phone.trim())) {
         // Non-E.164 phone — skip, do NOT write a row (mirrors email's
         // suppressed-skip discipline: report deliverable, not total).
-        continue;
-      }
-      if (
-        smsRoutes !== null && smsRateForPhone(phone.trim(), smsRoutes) === null
-      ) {
-        unpricedSkipped += 1;
         continue;
       }
       const countryCode = countryFromE164(phone);
@@ -2673,6 +2375,31 @@ async function sendSms(
         .maybeSingle();
       if (selErr) throw new Error(`message_select:${selErr.message}`);
       if (shouldSkipDispatchedRecipient(existing)) {
+        continue;
+      }
+      const unpricedReason = smsRoutes === null
+        ? "sms_rate_book_unavailable"
+        : smsRateForPhone(phone.trim(), smsRoutes, smsLiveAtSend) === null
+        ? SMS_UNPRICED_COUNTRY
+        : null;
+      if (unpricedReason !== null) {
+        unpricedSkipped += 1;
+        if (!sealedSend) {
+          const { error: skipErr } = await supabase
+            .from("marketing_messages")
+            .upsert(
+              {
+                campaign_id: campaign.id,
+                recipient_phone: phone,
+                channel: "sms",
+                status: "failed",
+                failure_reason: unpricedReason,
+              },
+              { onConflict: "campaign_id,recipient_phone" },
+            );
+          if (skipErr) throw new Error(`message_upsert:${skipErr.message}`);
+          failed += 1;
+        }
         continue;
       }
       // #4273 — Twilio has no idempotency key. A row already `queued` when a pass
@@ -2765,7 +2492,28 @@ async function sendSms(
       const segmentBody = inviteContext === null || eventUrl === null
         ? rewritten
         : replaceSingleMarker(rewritten, inertOfferingUrl(eventUrl));
-      const segments = computeSegments(composeSmsBody(segmentBody, true));
+      // #4273 — a number whose sender cannot take a "STOP" reply gets a
+      // branded, fixed-length opt-out link instead (the quote measured the
+      // same length, so quote = send). It is a tracked short link whose
+      // destination is the signed SMS unsubscribe URL.
+      const optOut = smsCountryProfile(countryCode)?.replyable === false
+        ? {
+          trackingId: generateTrackingId(),
+          destination: `${getUnsubscribeOrigin()}/${await signSmsUnsubscribeToken(
+            {
+              campaign_id: campaign.id,
+              recipient_phone: phone.trim(),
+              brand_id: campaign.brand_id,
+            },
+          )}`,
+        }
+        : null;
+      const optOutLink = optOut === null
+        ? undefined
+        : `${resolveMarketingTrackingOrigin()}/${optOut.trackingId}`;
+      const segments = computeSegments(
+        composeSmsBody(segmentBody, true, optOutLink),
+      );
 
       // UPSERT the queued row (∅→queued or deferred→queued). onConflict clears
       // next_attempt_at so a formerly-deferred row is no longer due.
@@ -2787,14 +2535,18 @@ async function sendSms(
       if (upQueuedErr) throw new Error(`message_upsert:${upQueuedErr.message}`);
       const messageId = (upserted as { id: string }).id;
 
-      if (links.length > 0) {
+      const clickLinks = optOut === null ? links : [
+        ...links,
+        { tracking_id: optOut.trackingId, destination_url: optOut.destination },
+      ];
+      if (clickLinks.length > 0) {
         // Clicks are written only on the actual send pass (a deferred row wrote
         // none). Each send re-runs rewriteMarketingSmsLinks producing fresh unique
         // tracking_ids — no dup because a recipient sends at most once.
         const { error: insClicksErr } = await supabase
           .from("marketing_clicks")
           .insert(
-            links.map((link) => ({
+            clickLinks.map((link) => ({
               campaign_id: campaign.id,
               message_id: messageId,
               destination_url: link.destination_url,
@@ -2836,7 +2588,10 @@ async function sendSms(
         brandName,
         message: providerMessage,
         countryCode,
-        messagingServiceSid: marketingSid,
+        messagingServiceSid:
+          smsMarketingRoute(countryCode, marketingSid !== null) === "marketing"
+            ? marketingSid
+            : null,
         // ORCH-1227 (DEC-192) — NG marketing routes to Termii's `generic`
         // channel (Twilio ignores this field; reputation isolation there is the
         // separate marketing Messaging Service SID above).
@@ -2845,6 +2600,8 @@ async function sendSms(
         // its own line (blank line + STOP line) so the delivered text matches
         // the composer preview. Wire-body change → marketing-send needs redeploy.
         stopFooterOwnLine: true,
+        // #4273 — the opt-out link replaces "Reply STOP" where no reply works.
+        ...(optOutLink === undefined ? {} : { optOutLink }),
         // ORCH-1282 — MMS media (US/Twilio only; the adapter's NG/Termii branch
         // ignores it → NG silently sends SMS-only). ORCH-1289 — up to 10 items.
         mediaUrls,

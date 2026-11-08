@@ -54,16 +54,69 @@
  * shorter prefix could shadow it.
  */
 const CALLING_CODE_TO_ISO2: ReadonlyArray<readonly [string, string]> = [
+  // #4273 — every payout country a host can pick (34 Stripe + NG), and only
+  // those. Ghana, South Africa, the Philippines and Kenya stay unmapped by
+  // Seth's decision (2026-11-08): they read "can't text their country yet".
+  // Longest prefix first; the SQL twin public.mingla_e164_country carries the
+  // SAME table (parity fixtures in issue_1529_e164_parity.test.sql).
   ["+234", "NG"], // Nigeria — the Termii route
-  ["+44", "GB"], // United Kingdom — present in production data
-  ["+33", "FR"], // France — present in production data (see below)
+  ["+351", "PT"],
+  ["+352", "LU"],
+  ["+353", "IE"],
+  ["+354", "IS"],
+  ["+356", "MT"],
+  ["+357", "CY"],
+  ["+358", "FI"],
+  ["+359", "BG"],
+  ["+370", "LT"],
+  ["+371", "LV"],
+  ["+372", "EE"],
+  ["+385", "HR"],
+  ["+386", "SI"],
+  ["+420", "CZ"],
+  ["+421", "SK"],
+  ["+423", "LI"],
+  ["+30", "GR"],
+  ["+31", "NL"],
   ["+32", "BE"], // Belgium — present in production data
-  ["+1", "US"], // NANP. See #1529 SPEC §11 Q1: a Canadian handset resolves to
-  // "US". That is correct ROUTING (Twilio serves all of NANP) and is an
-  // accepted, documented imprecision in the consent audit, whose current
-  // alternative is NULL for every recipient. Splitting NANP by area code is a
-  // registered follow-up, NOT this issue.
+  ["+33", "FR"], // France — present in production data (see below)
+  ["+34", "ES"],
+  ["+36", "HU"],
+  ["+39", "IT"],
+  ["+40", "RO"],
+  ["+41", "CH"],
+  ["+43", "AT"],
+  ["+44", "GB"], // United Kingdom — present in production data
+  ["+45", "DK"],
+  ["+46", "SE"],
+  ["+47", "NO"],
+  ["+48", "PL"],
+  ["+49", "DE"],
+  // NANP. #4273 splits Canada out by area code (CANADIAN_AREA_CODES below);
+  // every other +1 number stays "US", the documented #1529 imprecision for
+  // the Caribbean NANP members.
+  ["+1", "US"],
 ];
+
+/**
+ * #4273 — Canadian geographic NANP area codes (CRTC). A +1 number whose area
+ * code is listed here is Canada; any other +1 number is "US". Mirrored in the
+ * SQL twin.
+ */
+export const CANADIAN_AREA_CODES: ReadonlyArray<string> = [
+  "204", "226", "236", "249", "250", "257", "263", "289", "306", "343",
+  "354", "365", "367", "368", "382", "403", "416", "418", "428", "431",
+  "437", "438", "450", "468", "474", "506", "514", "519", "548", "579",
+  "581", "584", "587", "604", "613", "639", "647", "672", "683", "705",
+  "709", "742", "753", "778", "780", "782", "807", "819", "825", "867",
+  "873", "879", "902", "905", "942",
+];
+const CANADIAN_AREA_CODE_SET = new Set(CANADIAN_AREA_CODES);
+
+/** #4273 — every country this table can return. */
+export const MAPPED_COUNTRIES: ReadonlyArray<string> = [
+  ...new Set([...CALLING_CODE_TO_ISO2.map(([, iso2]) => iso2), "CA"]),
+].sort();
 
 /**
  * Calling codes OBSERVED IN PRODUCTION `auth.users.phone` (2026-08-03).
@@ -92,6 +145,9 @@ export const PRODUCTION_CALLING_CODES: ReadonlyArray<string> = [
   "+44",
   "+33",
   "+32",
+  // #4273 — +27 (ZA) and +63 (PH) handsets also exist in production
+  // (2026-11-08) but stay unmapped by Seth's decision: they read "can't text
+  // their country yet". They are deliberately NOT listed here.
 ];
 
 const E164_RE = /^\+[1-9][0-9]{1,14}$/;
@@ -163,7 +219,11 @@ export function countryFromE164(raw: string | null | undefined): string | null {
   // calling code, not a phone number, and must not resolve to Nigeria.
   if (e164.length - 1 < MIN_E164_DIGITS) return null;
   for (const [prefix, iso2] of CALLING_CODE_TO_ISO2) {
-    if (e164.startsWith(prefix)) return iso2;
+    if (!e164.startsWith(prefix)) continue;
+    if (iso2 === "US" && CANADIAN_AREA_CODE_SET.has(e164.slice(2, 5))) {
+      return "CA";
+    }
+    return iso2;
   }
   return null;
 }

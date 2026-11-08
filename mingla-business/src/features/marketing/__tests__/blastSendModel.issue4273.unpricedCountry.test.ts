@@ -159,3 +159,35 @@ describe("#4273 P2-c the phone preview sheet's tabs are readable on its light he
     expect(sheet.slice(0, sheet.indexOf("</Modal>"))).toMatch(/<ComposerPreviewTabs[\s\S]*?surface="light"/);
   });
 });
+
+describe("#4273 tester P3 — a method that reaches nobody is never offered as a retry", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { confirmSiblingChannels } = require("../../../services/marketing/campaignChannelGroupService") as typeof import("../../../services/marketing/campaignChannelGroupService");
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { getBookBlastDisabledReason } = require("../../../hooks/marketing/useBookBlastPreview") as typeof import("../../../hooks/marketing/useBookBlastPreview");
+  const quote = (reachableCount: number, unpricedCount: number) => ({
+    quoteVersion: 1 as const, quoteHash: "a".repeat(64), quotedAt: "2026-11-08T12:00:00.000Z",
+    expiresAt: "2099-01-01T00:00:00.000Z", selectedCount: 2, reachableCount,
+    suppressedCount: 2 - reachableCount, unavailableCount: 0, unpricedCount, smsSegments: 0,
+    costKind: "provider_estimate" as const, estimatedCostMinor: 0, currency: null,
+  });
+
+  it("every text skipped by country: not sent, says why, not retryable, never confirmed", async () => {
+    const sent = await confirmSiblingChannels({
+      siblings: [{ channel: "sms", campaignId: "c", quote: quote(0, 2), requestId: "r", error: null }],
+      audienceKind: "combined_sources",
+      scheduledFor: null,
+    });
+    expect(sent).toEqual([{
+      channel: "sms", ok: false, delivered: 0, failed: 0, retryable: false,
+      message: "SMS: nobody here can be texted. Mingla can't text their country yet.",
+    }]);
+  });
+
+  it("the lead's own hold names the reason instead of a generic one", () => {
+    expect(getBookBlastDisabledReason({
+      featureReady: true, online: true, previewPending: false, previewError: null,
+      quote: quote(0, 2), nowMs: Date.parse("2026-11-08T12:00:00.000Z"), channel: "sms",
+    })).toBe("Nobody here can be texted: Mingla can't text their country yet.");
+  });
+});

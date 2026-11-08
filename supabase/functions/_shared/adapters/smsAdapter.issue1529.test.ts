@@ -258,7 +258,7 @@ Deno.test("#1529 T-3-5: an unmapped calling code returns country_unresolved with
     setAllCreds();
     Deno.env.set("MINGLA_DELIVERY_FLAGS_JSON", bundle(true, true));
   }, async () => {
-    for (const to of ["+4915112345678", "+41441234567", "+233201234567"]) {
+    for (const to of ["+233241234567", "+27821234567", "+639171234567"]) {
       captures = [];
       const result = await smsAdapter.send({
         ...baseInput,
@@ -282,7 +282,8 @@ Deno.test("#1529 T-3-6: resolveMarketKillSwitch returns null for an absent count
   assertEquals(resolveMarketKillSwitch("NG"), "SMS_LIVE_ENABLED_NG");
   assertEquals(resolveMarketKillSwitch("ng"), "SMS_LIVE_ENABLED_NG");
   assertEquals(resolveMarketKillSwitch("US"), "SMS_LIVE_ENABLED_US");
-  assertEquals(resolveMarketKillSwitch("GB"), "SMS_LIVE_ENABLED_US");
+  // #4273 — one switch per country: GB has its own, never the US one.
+  assertEquals(resolveMarketKillSwitch("GB"), "SMS_LIVE_ENABLED_GB");
 });
 
 // ---------------------------------------------------------------------------

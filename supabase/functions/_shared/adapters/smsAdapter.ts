@@ -69,7 +69,7 @@
 // "generic") and revert the invariant + strict-grep gate with it. The DND route
 // remains the correct design; this interim exists only because it is unavailable.
 // ===========================================================================
-import { resolveDeliveryFlagValue } from "../secretBundle.ts";
+import { resolveSmsCountryLive } from "../secretBundle.ts";
 import { resolveRuntimeConfigValue } from "../runtimeConfig.ts";
 // #2218 — the ONE definition of the Nigerian `generic` operator embargo. Both
 // rails read it from here; see the essay at the top of that file.
@@ -81,7 +81,7 @@ import {
 } from "../ngSmsEmbargo.ts";
 // #1529 — the single source of truth for E.164 → ISO-2. The DESTINATION NUMBER
 // is the routing authority (operator decision, Seth 2026-08-03).
-import { countryFromE164 } from "../e164Country.ts";
+import { countryFromE164, MAPPED_COUNTRIES } from "../e164Country.ts";
 
 export interface AdapterResult {
   // #2218 — `deferred` joins the vocabulary: HELD, not sent, not skipped, not
@@ -166,6 +166,12 @@ export interface SmsSendInput {
   // Transactional sends omit this (default false → single-space footer,
   // byte-identical to the prior behavior + every existing transactional test).
   stopFooterOwnLine?: boolean;
+  /**
+   * #4273 — for a destination whose sender cannot take a "STOP" reply
+   * (alphanumeric or overwritten senders), the opt-out is this link instead
+   * of "Reply STOP to opt out." Marketing only; set by marketing-send.
+   */
+  optOutLink?: string;
   beforeProviderIo?: () => Promise<void>;
 }
 
@@ -244,11 +250,24 @@ const STOP_FOOTER = "Reply STOP to opt out.";
 // Compose the final body: brand-name identity is the caller's responsibility in
 // `message` (the COPY templates already lead with "{Brand}:"). We append the
 // STOP footer only if not already present, then GSM-7-sanitize the whole thing.
+/** #4273 — the opt-out line for a text that cannot take a "STOP" reply. */
+export function smsOptOutLine(link: string): string {
+  return `Stop: ${link}`;
+}
+
 export function composeSmsBody(
   message: string,
   stopFooterOwnLine = false,
+  /**
+   * #4273 — when set, the text ends with "Stop: <link>" on its own line
+   * INSTEAD of the STOP footer (the recipient cannot reply STOP).
+   */
+  optOutLink?: string,
 ): string {
   let body = message.trim();
+  if (typeof optOutLink === "string" && optOutLink.length > 0) {
+    return sanitizeGsm7(`${body}\n\n${smsOptOutLine(optOutLink)}`);
+  }
   // ===========================================================================
   // #1541 tester T-1541-FOOTER-SUPPRESSION (P3) — THE GUARD IS END-ANCHORED.
   // ===========================================================================
@@ -318,9 +337,12 @@ export function resolveMarketKillSwitch(
 ): string | null {
   // #1529 — no country means NO MARKET, not the US market.
   if (countryCode === null || countryCode === undefined) return null;
+  // #4273 — ONE SWITCH PER COUNTRY (Seth, 2026-11-08). The US switch no longer
+  // carries every non-NG country: each mapped country has its own
+  // `sms_live_enabled.<cc>`, OFF until set. An unmapped country has none.
   const cc = countryCode.toUpperCase();
-  if (cc === "NG") return "SMS_LIVE_ENABLED_NG";
-  return "SMS_LIVE_ENABLED_US";
+  if (!MAPPED_COUNTRIES.includes(cc)) return null;
+  return `SMS_LIVE_ENABLED_${cc}`;
 }
 
 // ===========================================================================
@@ -365,12 +387,9 @@ export function smsProviderForDestination(
 }
 
 function envTrue(name: string): boolean {
-  const field = name === "SMS_LIVE_ENABLED_NG"
-    ? "sms_live_enabled.ng"
-    : "sms_live_enabled.us";
-  const raw = resolveDeliveryFlagValue(field, name);
-  if (typeof raw === "boolean") return raw;
-  return raw === "true" || raw === "1";
+  // #4273 — the switch name carries its country; the per-country resolver
+  // keeps the legacy env fallback for US and NG only.
+  return resolveSmsCountryLive(name.replace(/^SMS_LIVE_ENABLED_/, ""));
 }
 
 // #1537 — every sender NAMES ITSELF on every return path. `provider` is required
@@ -664,6 +683,7 @@ export const smsAdapter = {
     const body = composeSmsBody(
       input.message,
       input.stopFooterOwnLine === true,
+      input.optOutLink,
     );
     const segments = computeSegments(body);
 

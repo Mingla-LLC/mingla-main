@@ -195,8 +195,8 @@ Deno.test("smsAdapter: kill-switch OFF returns skipped WITHOUT an HTTP call", as
 Deno.test("smsAdapter: resolveMarketKillSwitch routes NG vs US, and NEVER defaults", () => {
   assertEquals(resolveMarketKillSwitch("US"), "SMS_LIVE_ENABLED_US");
   assertEquals(resolveMarketKillSwitch("NG"), "SMS_LIVE_ENABLED_NG");
-  // Every non-NG country still rides the Twilio/US switch — unchanged.
-  assertEquals(resolveMarketKillSwitch("GB"), "SMS_LIVE_ENABLED_US");
+  // #4273 — one switch per country: GB has its own, never the US one.
+  assertEquals(resolveMarketKillSwitch("GB"), "SMS_LIVE_ENABLED_GB");
   assertEquals(resolveMarketKillSwitch("ng"), "SMS_LIVE_ENABLED_NG");
   // #1529: absent country resolves to NO market. It must NOT invent the US.
   assertEquals(resolveMarketKillSwitch(null), null);

@@ -106,6 +106,7 @@ Deno.test("#4273 U-2 allocateSmsCosts skips an unpriced phone instead of throwin
     ],
     NOW,
     RATES,
+    () => true,
   );
   assertEquals(priced.allocations.map((a) => a.target), ["us"]);
   assertEquals(priced.unpriced.map((u) => u.target), ["be", "none"]);
@@ -154,7 +155,7 @@ Deno.test("#4273 U-4 one Belgian number no longer fails the quote: it is skipped
       candidate("off", NG, false),
     ]),
     NOW,
-    { smsRates: RATES, trackingOrigin: "https://usemingla.com/m" },
+    { smsCountryLive: () => true, smsRates: RATES, trackingOrigin: "https://usemingla.com/m" },
   );
   assertEquals(quote.reachableCount, 1);
   assertEquals(quote.unpricedCount, 1);
@@ -190,7 +191,7 @@ Deno.test("#4273 U-5 every SMS recipient unpriced: reach 0 with that reason, not
   const quote = await buildMarketingBookQuote(
     smsEnvelope([candidate("be", BE), candidate("be2", "+32470999888")]),
     NOW,
-    { smsRates: RATES, trackingOrigin: "https://usemingla.com/m" },
+    { smsCountryLive: () => true, smsRates: RATES, trackingOrigin: "https://usemingla.com/m" },
   );
   assertEquals(quote.reachableCount, 0);
   assertEquals(quote.unpricedCount, 2);
@@ -226,7 +227,7 @@ Deno.test("#4273 U-6 group figures skip a person reachable only by an unpriced t
         Promise.resolve({ followBrand: null, costCurrency: "USD" }),
       allowance: (_c, quote) => Promise.resolve(quote),
       errorCode: (error) => String(error),
-      smsRates: RATES,
+      smsCountryLive: () => true, smsRates: RATES,
     },
     "e",
     NOW,
@@ -280,6 +281,8 @@ Deno.test("#4273 U-7 the invite snapshot seals an unpriced text as suppressed an
       candidates: rows,
       content: {},
       now: NOW,
+      smsRates: RATES,
+      smsCountryLive: () => true,
     });
     const be = snapshot.candidates.find((c) =>
       c.contactMethodId === rows[1].contactMethodId
@@ -318,6 +321,7 @@ Deno.test("#4273 U-8 configuredSmsRoutes reads the book without dates; no book i
 
 function sendFake(
   writes: Array<{ table: string; op: string; payload: unknown }>,
+  sealed = true,
 ) {
   const brandId = "42730000-0000-4000-8000-0000000000b1";
   const row = (key: string, phone: string) => ({
@@ -363,6 +367,9 @@ function sendFake(
           };
       }
       if (table === "marketing_messages") return { data: null, error: null };
+      if (table === "marketing_book_send_executions") {
+        return { data: sealed ? { id: "exec" } : null, error: null };
+      }
       return { data: [], error: null };
     };
     const chain: Record<string, unknown> = {};
@@ -476,4 +483,74 @@ Deno.test("#4273 U-9 the send never attempts an unpriced number", async () => {
     [],
     "no message row is ever written for the unpriced number",
   );
+});
+
+async function runSend(
+  options: { smsRoutes?: Array<{ country: string; provider: "twilio" | "termii" }> | null },
+  sealed: boolean,
+) {
+  const writes: Array<{ table: string; op: string; payload: unknown }> = [];
+  const sentTo: string[] = [];
+  const realSend = smsAdapter.send;
+  const time = new FakeTime(new Date("2026-11-09T17:00:00Z"));
+  smsAdapter.send = (input) => {
+    sentTo.push(input.to);
+    return Promise.resolve({
+      ok: true,
+      status: "sent",
+      providerMessageId: "SM-test",
+      provider: "twilio",
+      segments: 1,
+      // deno-lint-ignore no-explicit-any
+    } as any);
+  };
+  try {
+    const summary = await processClaimedCampaigns(
+      // deno-lint-ignore no-explicit-any
+      sendFake(writes, sealed) as any,
+      [{
+        id: "42730000-0000-4000-8000-0000000000c1",
+        account_id: "42730000-0000-4000-8000-0000000000d1",
+        brand_id: "42730000-0000-4000-8000-0000000000b1",
+        audience_id: "aud",
+        channel: "sms",
+        // deno-lint-ignore no-explicit-any
+        channel_payload: { kind: "sms", body: "Doors at 9." } as any,
+        name: "Legacy",
+        scheduled_for: null,
+        // deno-lint-ignore no-explicit-any
+      }] as any,
+      // deno-lint-ignore no-explicit-any
+      { live: true, resendApiKey: "re_test_key", ...options } as any,
+    );
+    return { summary, writes, sentTo };
+  } finally {
+    smsAdapter.send = realSend;
+    time.restore();
+  }
+}
+
+const failedRows = (writes: Array<{ table: string; op: string; payload: unknown }>) =>
+  writes.filter((w) =>
+    w.table === "marketing_messages" &&
+    (w.payload as { status?: string } | null)?.status === "failed"
+  ).map((w) => (w.payload as { failure_reason: string }).failure_reason);
+
+Deno.test("#4273 U-10 (tester P3) a legacy buyer-list send records the unpriced number so the host sees it", async () => {
+  const { sentTo, writes, summary } = await runSend(
+    { smsRoutes: [{ country: "US", provider: "twilio" }] },
+    false,
+  );
+  assertEquals(sentTo, [US]);
+  assertEquals(failedRows(writes), [SMS_UNPRICED_COUNTRY]);
+  assertEquals(summary.recipient_failed, 1, "counted as not reached");
+});
+
+Deno.test("#4273 U-11 (tester P3) no readable prices: nothing is texted, and a legacy send says why", async () => {
+  const legacy = await runSend({ smsRoutes: null }, false);
+  assertEquals(legacy.sentTo, [], "fail safe: never text a number Mingla can't price");
+  assertEquals(failedRows(legacy.writes), ["sms_rate_book_unavailable", "sms_rate_book_unavailable"]);
+  const sealed = await runSend({ smsRoutes: null }, true);
+  assertEquals(sealed.sentTo, []);
+  assertEquals(failedRows(sealed.writes), [], "a sealed Blast adds no rows: its unsent people already read as couldn't be reached");
 });

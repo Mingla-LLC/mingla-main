@@ -116,7 +116,7 @@ function deps(overrides: Record<string, unknown> = {}) {
     allowance: (_c: unknown, quote: Record<string, unknown>) =>
       Promise.resolve(quote),
     errorCode: groupMethodErrorCode,
-    smsRates: RATES,
+    smsCountryLive: () => true, smsRates: RATES,
     ...overrides,
   };
 }

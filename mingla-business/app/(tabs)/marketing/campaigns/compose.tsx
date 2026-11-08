@@ -1336,13 +1336,17 @@ export default function ComposeCampaignRoute(): React.ReactElement {
               });
               setSiblingsPending(false);
               setSiblings([]);
-              const failures = sent.filter((row) => !row.ok);
+              const failures = sent.filter((row) => !row.ok && row.retryable !== false);
+              // #4273 (tester P3) — a method that reaches nobody is not a
+              // retry case: say why, never "saved in Campaigns to retry".
+              const nobody = sent.filter((row) => !row.ok && row.retryable === false);
               const partial = sent.filter((row) => row.ok && row.message !== null);
               const notes: string[] = [];
               if (failures.length > 0) {
                 notes.push(`Not sent: ${failures.map((row) =>
                   row.message ?? CHANNEL_LABEL[row.channel]).join(" ")} It is saved in Campaigns to retry.`);
               }
+              for (const row of nobody) notes.push(`Not sent: ${row.message ?? CHANNEL_LABEL[row.channel]}`);
               // #3682 wave 3 — a channel where some people failed says so.
               for (const row of partial) notes.push(row.message as string);
               if (notes.length > 0) {

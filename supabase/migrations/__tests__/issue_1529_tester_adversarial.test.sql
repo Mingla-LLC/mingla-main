@@ -79,7 +79,8 @@ INSERT INTO issue_1529_adv_fixtures (label, raw, expect_e164, expect_country) VA
   -- NANP is ONE calling code shared by many sovereign states. All of them must
   -- resolve to the same Twilio route; none may resolve to NULL and fail closed.
   ('nanp_us_california', '+14155550123', '+14155550123', 'US'),
-  ('nanp_canada_toronto', '+16475550123', '+16475550123', 'US'),
+  -- #4273: Canada splits from +1 by area code (its own switch).
+  ('nanp_canada_toronto', '+16475550123', '+16475550123', 'CA'),
   ('nanp_jamaica', '+18765550123', '+18765550123', 'US'),
   ('nanp_dominican', '+18095550123', '+18095550123', 'US'),
   -- +44 crown dependency (Jersey). Must not fall out of the GB branch.
@@ -104,7 +105,7 @@ INSERT INTO issue_1529_adv_fixtures (label, raw, expect_e164, expect_country) VA
   ('mapped_france_2_production_users', '+33075123456', '+33075123456', 'FR'),
   -- Genuinely unmapped calling codes MUST still be NULL, never a guess. These
   -- two carry that half of the contract now that France no longer does.
-  ('unmapped_germany', '+4915112345678', '+4915112345678', NULL),
+  ('unmapped_ghana', '+233241234567', '+233241234567', NULL),
   ('unmapped_russia_kazakh_shared', '+79001234567', '+79001234567', NULL),
   -- The P3-1 minimum-length floor, pinned from the tester side. Both of these
   -- resolved to a COUNTRY before that fix — '+234' derived NG, and a vanity
@@ -691,7 +692,7 @@ INSERT INTO public.reservations (
    '00000000-1529-4dd0-8000-000000000010',
    '00000000-1529-4dd0-8000-000000000011',
    now() + interval '15 days', 2, 'confirmed', 'website', 'guest',
-   'DE Guest', '+4915112345678', 'adv-de@example.test');
+   'GH Guest', '+233241234567', 'adv-gh@example.test');
 
 DO $adv_reservation_matrix$
 DECLARE
@@ -711,7 +712,7 @@ BEGIN
       -- NULL until the production probe found two real +33 users.
       ('00000000-1529-4dd0-8000-000000000053', 'FR'),
       ('00000000-1529-4dd0-8000-000000000054', NULL),
-      -- Germany: genuinely unmapped. NULL, never US.
+      -- Ghana: genuinely unmapped (#4273: Germany now maps). NULL, never US.
       ('00000000-1529-4dd0-8000-000000000055', NULL)
     ) AS t(rid, expected)
   LOOP

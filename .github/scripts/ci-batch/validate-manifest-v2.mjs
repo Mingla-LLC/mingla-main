@@ -404,7 +404,8 @@ export function phase3dContractDigest(manifest) {
 // #1023: re-sealed after merging origin/main 6038982e1a.
 // #4318: register the /links migration (20280508004318) and its implementor and tester PostgreSQL proofs; it joins the pre-#1931 replay skip list by exact filename.
 // #4273 unpriced country: register the sms-unpriced-country migration and its PostgreSQL proofs (implementor + tester); re-sealed after merging origin/main.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "50cb55caa26031d6ae177602503de064bbc474c98fc7a056dc489e28f6b00fca";
+// #4273 all countries: register the all-countries / automatic-prices PostgreSQL proof.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "07f3f22933541102a6a0176a48f5d4e3d45172d05e718b624c180cb962a1d6e3";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

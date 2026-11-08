@@ -283,7 +283,7 @@ Deno.test("#1995 linked SMS quote prices the exact tracking-link wire boundary",
     new Date("2026-08-13T12:00:00.000Z"),
     {
       trackingOrigin,
-      smsRates: [{
+      smsCountryLive: () => true, smsRates: [{
         rateId: "twilio-us-test",
         provider: "twilio",
         country: "US",

@@ -113,6 +113,7 @@ Deno.test("#4273 T-2 phones no country can be read from are unpriced, never thro
     ],
     NOW,
     rates,
+    () => true,
   );
   assertEquals(priced.allocations, []);
   assertEquals(priced.unpriced.map((u) => u.target), ["x", "y"]);
@@ -125,6 +126,7 @@ Deno.test("#4273 T-2 phones no country can be read from are unpriced, never thro
         [{ key: "a", normalizedPhone: US, segments: 0, target: "x" }],
         NOW,
         rates,
+        () => true,
       ),
     Error,
     "sms_segments_invalid",
@@ -154,7 +156,7 @@ Deno.test("#4273 T-3 mixed audience: only priced routes count, the execution sti
       },
     ]),
     NOW,
-    { ...QUOTE_OPTIONS, smsRates: rates },
+    { ...QUOTE_OPTIONS, smsCountryLive: () => true, smsRates: rates },
   );
   assertEquals(quote.reachableCount, 2);
   assertEquals(quote.unpricedCount, 4, "NG(wrong route), BE, GB, no-country");
@@ -207,7 +209,7 @@ Deno.test("#4273 T-4 an email quote never reports unpriced people", async () => 
       content: { kind: "email" },
     },
     NOW,
-    { ...QUOTE_OPTIONS, smsRates: [] },
+    { ...QUOTE_OPTIONS, smsCountryLive: () => true, smsRates: [] },
   );
   assertEquals(quote.unpricedCount, 0);
   assertEquals(quote.reachableCount, 1);
@@ -255,42 +257,23 @@ Deno.test("#4273 T-5 a configured book with no rates fails closed, not 'every co
   }
 });
 
-Deno.test("#4273 T-6 an expired book in the runtime config fails the whole quote, even with an unpriced number in it", async () => {
-  const previous = Deno.env.get("MINGLA_RUNTIME_CONFIG_JSON");
-  Deno.env.set(
-    "MINGLA_RUNTIME_CONFIG_JSON",
-    JSON.stringify({
-      schema_version: 1,
-      bunny_storage_cap_bytes: 1000,
-      bunny_traffic_cap_bytes: 2000,
-      event_cover_video_provider: "bunny",
-      google_ads_api_version: "v24",
-      meta_api_version: "v25.0",
-      mingla_footer_address: "Mingla legal address",
-      mingla_logo_url: "https://usemingla.com/brand/email/logo.png",
-      termii_base_url: "https://v3.api.termii.com",
-      offering_invite_sms_price_book_v1: [{
+Deno.test("#4273 T-6 (item 10) an old price never fails the quote: past its expiresAt it still prices", async () => {
+  // Automatic prices replace the hand-renewed secret book; a price is never
+  // too old to quote (the staleness alert covers a stuck refresh).
+  const quote = await buildMarketingBookQuote(
+    smsEnvelope([candidate("us", US), candidate("be", BE)]),
+    NOW,
+    {
+      ...QUOTE_OPTIONS,
+      smsCountryLive: () => true,
+      smsRates: [{
         ...rate("tw-us", "twilio", "US", "USD", 79),
         expiresAt: "2026-02-01T00:00:00.000Z",
       }],
-    }),
+    },
   );
-  try {
-    const error = await assertRejects(() =>
-      buildMarketingBookQuote(
-        smsEnvelope([candidate("us", US), candidate("be", BE)]),
-        NOW,
-        QUOTE_OPTIONS,
-      )
-    );
-    assertEquals(
-      marketingBookQuoteErrorCode(error),
-      "BOOK_BLAST_RATE_BOOK_EXPIRED",
-    );
-  } finally {
-    if (previous === undefined) Deno.env.delete("MINGLA_RUNTIME_CONFIG_JSON");
-    else Deno.env.set("MINGLA_RUNTIME_CONFIG_JSON", previous);
-  }
+  assertEquals(quote.reachableCount, 1);
+  assertEquals(quote.unpricedCount, 1);
 });
 
 // ── The send: same numbers as the quote, end to end ────────────────────────
@@ -450,7 +433,7 @@ Deno.test("#4273 T-7 quote = send: a mixed audience texts exactly the numbers th
   const quote = await buildMarketingBookQuote(
     smsEnvelope(phones.map((phone, i) => candidate(`k${i}`, phone))),
     NOW,
-    { ...QUOTE_OPTIONS, smsRates: book },
+    { ...QUOTE_OPTIONS, smsCountryLive: () => true, smsRates: book },
   );
   const quoted = quote.candidates.filter((c) => c.allowed && !c.smsUnpriced)
     .map((c) => c.normalizedContact as string).sort();

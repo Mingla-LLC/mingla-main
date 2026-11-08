@@ -54,8 +54,10 @@ export interface GroupPreviewDeps {
     quote: Record<string, unknown>,
   ) => Promise<Record<string, unknown>>;
   errorCode: (error: unknown) => string;
-  /** Tests only: the rate book the quote prices with. */
+  /** #4273 item 10 — the live prices (loadSmsRates); tests supply their own. */
   smsRates?: SmsRateV1[];
+  /** #4273 — can this country be texted now; defaults to the live switches. */
+  smsCountryLive?: (country: string) => boolean;
 }
 
 export interface GroupMethodPreview {
@@ -137,6 +139,9 @@ export async function buildCampaignGroupPreview(
           costCurrency: brand.costCurrency,
           ...(deps.fx === undefined ? {} : { fx: deps.fx }),
           ...(deps.smsRates === undefined ? {} : { smsRates: deps.smsRates }),
+          ...(deps.smsCountryLive === undefined
+            ? {}
+            : { smsCountryLive: deps.smsCountryLive }),
         });
         publicQuote = publicMarketingBookQuote(quote);
         // #4273 — the quote's own verdict: a phone with no rate is skipped

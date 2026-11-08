@@ -1021,6 +1021,12 @@
         "mingla-business/src/services/marketing/marketingCampaignGroupViewService.ts",
         "supabase/functions/marketing-send/sentSnapshot.ts",
         "supabase/migrations/20280506004273_issue_4273_sent_previews_and_optout_matching.sql",
+        "supabase/functions/_shared/e164Country.ts",
+        "supabase/functions/_shared/marketingTokens.ts",
+        "supabase/functions/_shared/smsCountries.ts",
+        "supabase/functions/_shared/smsPriceTable.ts",
+        "supabase/functions/marketing-unsubscribe/index.ts",
+        "supabase/functions/sms-price-refresh/index.ts",
         "supabase/migrations/20280511004273_issue_4273_sms_unpriced_country_skips.sql"
       ]
     },

@@ -262,7 +262,12 @@ Deno.test("#4273 T-2 an SMS snapshot is the adapter's text with one sample link,
         body: "Lantern Room: doors at 9. Tickets https://tix.example/rooftop now.",
         include_follow_cta: true,
       })] as any,
-      { live: true, resendApiKey: "re_test_key" },
+      // #4273 item 10 — the send guard reads live prices; supply the NG route.
+      {
+        live: true,
+        resendApiKey: "re_test_key",
+        smsRoutes: [{ country: "NG", provider: "termii" }],
+      },
     );
     assertEquals(summary.failed, 0, JSON.stringify(summary.errors));
   } finally {

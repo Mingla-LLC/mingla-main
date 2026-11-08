@@ -42,7 +42,44 @@ INSERT INTO issue_1529_e164_fixtures (label, raw, expect_e164, expect_country) V
   ('us_formatted', '+1 (415) 555-0123', '+14155550123', 'US'),
   ('gb_e164', '+447700900000', '+447700900000', 'GB'),
   ('be_e164', '+32460964460', '+32460964460', 'BE'),
-  ('de_unmapped', '+4915112345678', '+4915112345678', NULL),
+  -- #4273 — every payout country maps; Ghana, South Africa, the Philippines
+  -- and Kenya stay unmapped by decision (2026-11-08).
+  ('gh_unmapped', '+233241234567', '+233241234567', NULL),
+  ('za_unmapped', '+27821234567', '+27821234567', NULL),
+  ('ph_unmapped', '+639171234567', '+639171234567', NULL),
+  ('ke_unmapped', '+254712345678', '+254712345678', NULL),
+  ('ca_toronto', '+14165550142', '+14165550142', 'CA'),
+  ('ca_vancouver', '+16045550142', '+16045550142', 'CA'),
+  ('us_not_ca_212', '+12125550142', '+12125550142', 'US'),
+  ('ie_e164', '+353851234567', '+353851234567', 'IE'),
+  ('de_e164', '+4915112345678', '+4915112345678', 'DE'),
+  ('es_e164', '+34612345678', '+34612345678', 'ES'),
+  ('nl_e164', '+31612345678', '+31612345678', 'NL'),
+  ('it_e164', '+393123456789', '+393123456789', 'IT'),
+  ('pt_e164', '+351912345678', '+351912345678', 'PT'),
+  ('at_e164', '+436641234567', '+436641234567', 'AT'),
+  ('ch_e164', '+41791234567', '+41791234567', 'CH'),
+  ('bg_e164', '+359881234567', '+359881234567', 'BG'),
+  ('cy_e164', '+35796123456', '+35796123456', 'CY'),
+  ('cz_e164', '+420601123456', '+420601123456', 'CZ'),
+  ('dk_e164', '+4520123456', '+4520123456', 'DK'),
+  ('ee_e164', '+3725123456', '+3725123456', 'EE'),
+  ('fi_e164', '+358401234567', '+358401234567', 'FI'),
+  ('gr_e164', '+306912345678', '+306912345678', 'GR'),
+  ('hr_e164', '+385911234567', '+385911234567', 'HR'),
+  ('hu_e164', '+36201234567', '+36201234567', 'HU'),
+  ('is_e164', '+3546111234', '+3546111234', 'IS'),
+  ('li_e164', '+4237811234', '+4237811234', 'LI'),
+  ('lt_e164', '+37061234567', '+37061234567', 'LT'),
+  ('lu_e164', '+352621123456', '+352621123456', 'LU'),
+  ('lv_e164', '+37121234567', '+37121234567', 'LV'),
+  ('mt_e164', '+35679123456', '+35679123456', 'MT'),
+  ('no_e164', '+4791234567', '+4791234567', 'NO'),
+  ('pl_e164', '+48601234567', '+48601234567', 'PL'),
+  ('ro_e164', '+40712345678', '+40712345678', 'RO'),
+  ('se_e164', '+46701234567', '+46701234567', 'SE'),
+  ('si_e164', '+38631234567', '+38631234567', 'SI'),
+  ('sk_e164', '+421901123456', '+421901123456', 'SK'),
   -- #1529 P2-1 — TWO REAL PRODUCTION USERS hold +33 handsets. Omitting France
   -- made them fail closed with country_unresolved: permanent non-delivery.
   ('fr_production', '+33075123456', '+33075123456', 'FR'),
@@ -81,7 +118,7 @@ BEGIN
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM issue_1529_e164_fixtures
-    WHERE label = 'de_unmapped' AND expect_country IS NULL
+    WHERE label = 'gh_unmapped' AND expect_country IS NULL
   ) THEN
     RAISE EXCEPTION 'issue_1529_t5_fixtures_lost_unmapped_is_null_coverage';
   END IF;
@@ -113,7 +150,7 @@ END;
 $normalize$;
 
 -- The country contract. Fails on revert: any reintroduced "default to US"
--- turns de_unmapped / email / NULL rows into 'US' and this raises.
+-- turns gh_unmapped / email / NULL rows into 'US' and this raises.
 DO $country$
 DECLARE
   v_row    record;

@@ -641,7 +641,7 @@ Deno.test(
     }, async () => {
       const result = await smsAdapter.send({
         ...baseInput,
-        to: "+4915112345678", // DE — deliberately unmapped
+        to: "+233241234567", // GH — deliberately unmapped (#4273: DE now maps)
         countryCode: "US", // a label that would previously have sent it
         messageType: "transactional",
       });

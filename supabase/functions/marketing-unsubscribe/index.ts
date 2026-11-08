@@ -73,6 +73,37 @@ serve(async (req) => {
     );
   }
 
+  // #4273 — an SMS opt-out link (texts whose sender cannot take a "STOP"
+  // reply). It stands in for STOP, so it records what STOP records: an SMS
+  // suppression for the number across Mingla (scope 'all'), which every
+  // marketing and transactional SMS reader already honours.
+  if (payload.channel === "sms" && typeof payload.recipient_phone === "string") {
+    const admin = serviceClient();
+    const { error: smsErr } = await admin.from("channel_suppressions").insert({
+      user_id: null,
+      contact: payload.recipient_phone,
+      channel: "sms",
+      scope: "all",
+      reason: "unsubscribe",
+      brand_id: null,
+    });
+    if (smsErr && !isUniqueViolation(smsErr)) {
+      console.error("[marketing-unsubscribe] sms suppression failed", smsErr.message);
+      return htmlError(
+        "Unsubscribe failed",
+        "Something went wrong on our side. Email support@usemingla.com " +
+          "and we'll stop texting you manually.",
+        500,
+      );
+    }
+    await admin
+      .from("marketing_messages")
+      .update({ status: "unsubscribed" })
+      .eq("campaign_id", payload.campaign_id)
+      .eq("recipient_phone", payload.recipient_phone);
+    return htmlSmsConfirmation();
+  }
+
   // ?scope=global escalates from brand-scope to global suppression.
   const scopeParam = url.searchParams.get("scope");
   const scope: "brand" | "global" = scopeParam === "global" ? "global" : "brand";
@@ -207,6 +238,15 @@ function htmlConfirmation(
       "Cache-Control": "no-store",
     },
   });
+}
+
+function htmlSmsConfirmation(): Response {
+  return htmlError(
+    "You won't get marketing texts from Mingla anymore.",
+    "This number is opted out of texts from every brand on Mingla. If this " +
+      "was a mistake, email support@usemingla.com.",
+    200,
+  );
 }
 
 function htmlError(title: string, body: string, status: number): Response {

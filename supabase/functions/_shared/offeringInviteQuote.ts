@@ -1,9 +1,16 @@
 import { composeSmsBody, computeSegments } from "./adapters/smsAdapter.ts";
 import {
+  resolveMarketingTrackingOrigin,
+  smsNeedsOptOutLink,
+} from "./marketingBookQuote.ts";
+import {
+  smsCountryTextableNow,
   smsRateForPhone,
   type SmsRateV1,
-  validatedSmsRates,
 } from "./smsPriceBook.ts";
+
+/** #4273 — a sample id of the send's opt-out link length (a UUID). */
+const OPT_OUT_LINK_SAMPLE_ID = "00000000-0000-4000-8000-000000000000";
 
 export const OFFERING_INVITE_LINK_MARKER = "__MINGLA_OFFERING_INVITE_URL_V1__";
 const HEX = /^[0-9a-f]{64}$/;
@@ -216,9 +223,8 @@ function canonicalTimestamp(now: Date): string {
   return now.toISOString().replace(/\.(\d{3})Z$/, ".$1000Z");
 }
 
-function resolveOfferingInviteSmsPriceBook(now: Date): SmsRateV1[] {
-  return validatedSmsRates(now);
-}
+// #4273 item 10 — invite SMS prices come from public.sms_country_prices
+// (loadSmsRates), supplied by the caller as `smsRates`.
 
 function assertContent(value: string, maxBytes: number): void {
   if (
@@ -292,6 +298,10 @@ export async function buildOfferingExecutionSnapshot(input: {
   retryPushPayload?: PersistedOfferingPushV1 | null;
   now?: Date;
   allowEmptyPreview?: boolean;
+  /** #4273 item 10 — the live SMS prices (loadSmsRates). */
+  smsRates?: SmsRateV1[];
+  /** #4273 — per-country switch; defaults to the delivery flags. */
+  smsCountryLive?: (country: string) => boolean;
 }): Promise<ExecutionSnapshotV1> {
   const now = input.now ?? new Date();
   if (
@@ -456,7 +466,10 @@ export async function buildOfferingExecutionSnapshot(input: {
   const hasReachableSms = candidates.some((candidate) =>
     candidate.channel === "sms" && candidate.outcome === "queued"
   );
-  const rates = hasReachableSms ? resolveOfferingInviteSmsPriceBook(now) : [];
+  if (hasReachableSms && (input.smsRates ?? []).length === 0) {
+    throw new Error("cost_unavailable");
+  }
+  const rates: SmsRateV1[] = hasReachableSms ? input.smsRates ?? [] : [];
   const fractions: Array<
     { candidate: ExecutionCandidateV1; numerator: bigint; denominator: bigint }
   > = [];
@@ -470,7 +483,11 @@ export async function buildOfferingExecutionSnapshot(input: {
     // quote: it seals as suppressed (the reason the seal already accepts for
     // an SMS the edge holds back), so it is never priced and never texted.
     // offeringUnpricedSmsCount reports how many, for the host's copy.
-    const rate = smsRateForPhone(source.normalizedContact, rates);
+    const rate = smsRateForPhone(
+      source.normalizedContact,
+      rates,
+      input.smsCountryLive ?? smsCountryTextableNow,
+    );
     if (rate === null) {
       candidate.outcome = "suppressed";
       candidate.safeReasonCode = "suppressed";
@@ -492,7 +509,17 @@ export async function buildOfferingExecutionSnapshot(input: {
       OFFERING_INVITE_LINK_MARKER,
       eventUrl.toString(),
     );
-    const segments = computeSegments(composeSmsBody(body, true));
+    // #4273 — quote = send: marketing-send appends a fixed-length opt-out
+    // link (instead of "Reply STOP") where the sender cannot take a reply.
+    const segments = computeSegments(
+      composeSmsBody(
+        body,
+        true,
+        smsNeedsOptOutLink(source.normalizedContact)
+          ? `${resolveMarketingTrackingOrigin()}/${OPT_OUT_LINK_SAMPLE_ID}`
+          : undefined,
+      ),
+    );
     candidate.smsQuote = {
       segments,
       rateId: rate.rateId,

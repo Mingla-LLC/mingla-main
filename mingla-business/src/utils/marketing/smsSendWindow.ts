@@ -7,104 +7,115 @@
  *   - `nextGlobalSendWindowOpen` → the soonest global sending window, used both
  *     to label the "Schedule for …" secondary CTA and to schedule the whole
  *     blast for that instant instead of firing a blind out-of-hours send.
- *   - `SMS_QUIET_HOURS` → the recipient-local window (8 AM–9 PM) shown in the
- *     copy and the source of truth the T-9 drift test compares to the edge fn.
+ *   - `SMS_WINDOWS` → the recipient-local windows shown in the copy.
  *
- * ORCH-1270 F-1: the earlier `isAnyMarketInSendWindow` gate was dead code.
- * SUPPORTED_SMS_ZONES span Honolulu (UTC-10) through Lagos (UTC+1), whose
- * per-market windows union to all 24 UTC hours, so it returned `true` for every
- * instant and the conditional warning it gated NEVER fired. The note is now
- * ALWAYS shown for an SMS "Send now" (informational, not a warning — RC-1's
- * defer already makes a blind send safe; the note just explains that off-hours
- * recipients are held, not lost), so the dead predicate was removed.
- *
- * SMS_QUIET_HOURS MUST equal the edge fn's QUIET_HOURS
- * (supabase/functions/marketing-send/index.ts). The T-9 drift test
- * (src/utils/__tests__/smsSendWindow.test.ts) reads both source files and
- * compares the {US,NG}×{start,end} tuples so the two copies can't drift.
+ * #4273 — the edge sender now has a window for every payout country
+ * (supabase/functions/_shared/smsCountries.ts, SMS_COUNTRIES): Nigeria
+ * 8 AM–8 PM, France 8 AM–9:30 PM Monday to Saturday, everywhere else
+ * 8 AM–9 PM. SMS_WINDOWS MUST equal those rows; the drift test
+ * (src/utils/__tests__/smsSendWindow.test.ts) reads the edge file and compares.
  */
 
-/** Recipient-local sending window per market. MUST equal edge fn QUIET_HOURS. */
-export const SMS_QUIET_HOURS = {
-  US: { startHour: 8, endHour: 21 }, // 8 AM–9 PM recipient-local
-  NG: { startHour: 8, endHour: 20 }, // 8 AM–8 PM WAT
-} as const;
+/** A recipient-local window in minutes after midnight (days: 0 = Sunday). */
+export interface SmsWindow {
+  start: number;
+  end: number;
+  days?: readonly number[];
+}
 
-export type SmsMarket = keyof typeof SMS_QUIET_HOURS;
+/** Recipient-local sending windows. MUST equal the edge SMS_COUNTRIES rows. */
+export const SMS_WINDOWS = {
+  NG: { start: 8 * 60, end: 20 * 60 },
+  FR: { start: 8 * 60, end: 21 * 60 + 30, days: [1, 2, 3, 4, 5, 6] },
+  DEFAULT: { start: 8 * 60, end: 21 * 60 },
+} as const satisfies Record<string, SmsWindow>;
+
+export type SmsMarket = keyof typeof SMS_WINDOWS;
 
 /**
- * The distinct IANA zones the edge fn can resolve, tagged with their market.
- * US zones mirror the edge fn's US_AREACODE_TZ codomain (all 50 states + DC).
+ * The IANA zones the edge fn can resolve, tagged with their window. US zones
+ * mirror US_AREACODE_TZ; Canada, Europe and Lagos follow SMS_COUNTRIES.
  */
 export const SUPPORTED_SMS_ZONES: ReadonlyArray<{ zone: string; market: SmsMarket }> = [
-  { zone: "America/New_York", market: "US" },
-  { zone: "America/Chicago", market: "US" },
-  { zone: "America/Denver", market: "US" },
-  { zone: "America/Phoenix", market: "US" },
-  { zone: "America/Los_Angeles", market: "US" },
-  { zone: "America/Anchorage", market: "US" },
-  { zone: "Pacific/Honolulu", market: "US" },
+  ...[
+    "America/New_York", "America/Chicago", "America/Denver", "America/Phoenix",
+    "America/Los_Angeles", "America/Anchorage", "Pacific/Honolulu",
+    "America/Vancouver", "America/Edmonton", "America/Regina", "America/Winnipeg",
+    "America/Toronto", "America/Halifax", "America/St_Johns",
+    "Europe/London", "Europe/Dublin", "Europe/Lisbon", "Atlantic/Reykjavik",
+    "Europe/Berlin", "Europe/Madrid", "Europe/Rome", "Europe/Amsterdam",
+    "Europe/Brussels", "Europe/Vienna", "Europe/Zurich", "Europe/Warsaw",
+    "Europe/Prague", "Europe/Stockholm", "Europe/Oslo", "Europe/Copenhagen",
+    "Europe/Helsinki", "Europe/Athens", "Europe/Bucharest", "Europe/Sofia",
+  ].map((zone) => ({ zone, market: "DEFAULT" as const })),
+  { zone: "Europe/Paris", market: "FR" },
   { zone: "Africa/Lagos", market: "NG" },
 ];
 
-/** Current local hour (0-23) in a zone, or null if the zone is unresolvable. */
-function localHourInZone(zone: string, now: Date): number | null {
+/** Local minutes after midnight and weekday in a zone, or null. */
+function localClock(zone: string, now: Date): { minutes: number; day: number } | null {
   try {
-    const fmt = new Intl.DateTimeFormat("en-US", {
+    const parts = new Intl.DateTimeFormat("en-US", {
       timeZone: zone,
       hour: "numeric",
+      minute: "numeric",
+      weekday: "short",
       hour12: false,
-    });
-    const h = parseInt(fmt.format(now), 10);
-    return Number.isNaN(h) ? null : h;
+    }).formatToParts(now);
+    const get = (type: string) => parts.find((part) => part.type === type)?.value;
+    const hour = Number(get("hour")) % 24;
+    const minute = Number(get("minute"));
+    const day = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(get("weekday") ?? "");
+    if (!Number.isFinite(hour) || !Number.isFinite(minute) || day < 0) return null;
+    return { minutes: hour * 60 + minute, day };
   } catch {
     return null;
   }
 }
 
+function inWindow(window: SmsWindow, clock: { minutes: number; day: number }): boolean {
+  if (window.days !== undefined && !window.days.includes(clock.day)) return false;
+  return clock.minutes >= window.start && clock.minutes < window.end;
+}
+
 /**
- * The soonest instant at which SOME supported zone enters (or is already in) its
- * window — the min over zones of `now + hoursUntilOpen`. Powers the
- * "Schedule for …" affordance. Returns `now` when a zone is already open.
+ * The soonest instant at which SOME supported zone is inside its window,
+ * found in 15-minute steps (up to a day). Powers the "Schedule for …"
+ * affordance. Returns `now` when a zone is already open.
  */
 export function nextGlobalSendWindowOpen(now: Date): Date {
-  let bestHoursUntilOpen = Number.POSITIVE_INFINITY;
-  for (const { zone, market } of SUPPORTED_SMS_ZONES) {
-    const h = localHourInZone(zone, now);
-    if (h === null) continue;
-    const { startHour, endHour } = SMS_QUIET_HOURS[market];
-    const hoursUntilOpen = h >= startHour && h < endHour
-      ? 0 // already inside the window
-      : (startHour - h + 24) % 24;
-    if (hoursUntilOpen < bestHoursUntilOpen) bestHoursUntilOpen = hoursUntilOpen;
+  const step = 15 * 60 * 1000;
+  for (let delta = 0; delta <= 24 * 60 * 60 * 1000; delta += step) {
+    const at = new Date(now.getTime() + delta);
+    const open = SUPPORTED_SMS_ZONES.some(({ zone, market }) => {
+      const clock = localClock(zone, at);
+      return clock !== null && inWindow(SMS_WINDOWS[market], clock);
+    });
+    if (open) return at;
   }
-  if (!Number.isFinite(bestHoursUntilOpen)) bestHoursUntilOpen = 0;
-  return new Date(now.getTime() + bestHoursUntilOpen * 60 * 60 * 1000);
+  return now;
 }
 
-/** "8 AM", "8 PM", "12 PM" for a 0-23 hour. */
-function formatHour(hour: number): string {
+/** "8 AM", "9:30 PM" for minutes after midnight. */
+function formatTime(minutes: number): string {
+  const hour = Math.floor(minutes / 60);
+  const minute = minutes % 60;
   const suffix = hour >= 12 ? "PM" : "AM";
   const twelve = hour % 12 === 0 ? 12 : hour % 12;
-  return `${twelve} ${suffix}`;
+  return minute === 0 ? `${twelve} ${suffix}` : `${twelve}:${String(minute).padStart(2, "0")} ${suffix}`;
 }
-
-const SMS_MARKET_LABEL: Record<SmsMarket, string> = {
-  NG: "Nigeria",
-  US: "the US",
-};
 
 /**
  * #4273 — the recipient-local sending windows as host copy, built from
- * SMS_QUIET_HOURS (which the drift test pins to the edge fn's QUIET_HOURS), so
- * the composer can never state a window the sender does not use.
- * Example: "8 AM–8 PM in Nigeria, 8 AM–9 PM in the US".
+ * SMS_WINDOWS (pinned to the edge rows by the drift test), so the composer can
+ * never state a window the sender does not use.
+ * "8 AM–8 PM in Nigeria, 8 AM–9:30 PM Monday to Saturday in France, 8 AM–9 PM everywhere else".
  */
 export function formatSmsSendWindows(): string {
-  return (["NG", "US"] as const)
-    .map((market) => {
-      const { startHour, endHour } = SMS_QUIET_HOURS[market];
-      return `${formatHour(startHour)}–${formatHour(endHour)} in ${SMS_MARKET_LABEL[market]}`;
-    })
-    .join(", ");
+  const range = (window: SmsWindow) => `${formatTime(window.start)}–${formatTime(window.end)}`;
+  return [
+    `${range(SMS_WINDOWS.NG)} in Nigeria`,
+    `${range(SMS_WINDOWS.FR)} Monday to Saturday in France`,
+    `${range(SMS_WINDOWS.DEFAULT)} everywhere else`,
+  ].join(", ");
 }

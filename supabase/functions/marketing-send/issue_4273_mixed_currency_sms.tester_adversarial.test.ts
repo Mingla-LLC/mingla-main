@@ -80,7 +80,7 @@ function linearFx(factors: Record<string, number>, id = "snap-1", calls: unknown
     },
   };
 }
-const OPT: any = { smsRates: RATES, trackingOrigin: "https://x.test/m" };
+const OPT: any = { smsCountryLive: () => true, smsRates: RATES, trackingOrigin: "https://x.test/m" };
 function rng(seed: number) { return () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; }; }
 
 Deno.test("ADV-1 property: 400 random mixed quotes — shares sum exactly to the total, never negative, per-currency groups sum to their converted part", async () => {
@@ -290,7 +290,7 @@ Deno.test("ADV-13 group figures: two metered quotes in different currencies → 
     quoteBrand: () => Promise.resolve({ followBrand: null, costCurrency: "NGN" }),
     allowance: (_c: unknown, q: Record<string, unknown>) => Promise.resolve(q),
     errorCode: (e: unknown) => String(e),
-    smsRates: RATES,
+    smsCountryLive: () => true, smsRates: RATES,
   } as never, "a", NOW);
   assertEquals(preview.group?.estimatedCostMinor, null);
   assertEquals(preview.group?.currency, null);

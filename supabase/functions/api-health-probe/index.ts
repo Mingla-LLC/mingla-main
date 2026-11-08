@@ -24,6 +24,7 @@ import {
   resolvePaystackSecretKey,
 } from "../_shared/paystack.ts";
 import { sendOpsAlertEmail } from "../_shared/stripeOpsAlertEmail.ts";
+import { SMS_PRICE_TABLE, smsPriceStalenessAlert } from "../_shared/smsPriceTable.ts";
 import { logError, structuredLog } from "../_shared/structuredLog.ts";
 // META-ORCH-1270 (Phase 2) — Bunny Stream account usage read for the alarm.
 import {
@@ -1410,6 +1411,33 @@ serve(async (req) => {
       }
     }
 
+    // #4273 item 10 — once a day, warn when an automatic SMS price has not
+    // refreshed for 7 days (quotes keep the last good price meanwhile).
+    // Its own try so it can never fail the tick.
+    let smsPriceStaleness: string | null = null;
+    if (new Date(nowMs).getUTCHours() === 13) {
+      try {
+        const { data, error } = await serviceClient
+          .from(SMS_PRICE_TABLE)
+          .select("country, source, fetched_at");
+        const alert = smsPriceStalenessAlert(new Date(nowMs), error ? null : (data ?? []));
+        if (alert === null) {
+          smsPriceStaleness = "quiet";
+        } else {
+          const result = await sendOpsAlertEmail({
+            subject: alert.subject,
+            paragraphs: alert.paragraphs,
+            recipients: alertRecipients(),
+            cta: { label: "Open API Health hub", url: `${adminUrl()}/#/api-health` },
+          });
+          smsPriceStaleness = result.succeeded > 0 ? "alerted" : "send_failed";
+        }
+      } catch (err) {
+        smsPriceStaleness = "error";
+        logError("sms price staleness check failed", err, { fn: "api-health-probe" });
+      }
+    }
+
     structuredLog("info", "api_health_probe tick", {
       fn: "api-health-probe",
       ticks: checkRows.length,
@@ -1423,6 +1451,7 @@ serve(async (req) => {
       alerts_sent: alertsSent,
       digest_sent: digestSent,
       chat_media_storage: chatMediaStorage,
+      sms_price_staleness: smsPriceStaleness,
       timestamp: new Date(nowMs).toISOString(),
     });
   } catch (err) {

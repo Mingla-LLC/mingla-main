@@ -109,17 +109,22 @@ Deno.test("NG still uses the WAT window (8 AM–8 PM)", () => {
 });
 
 // ── fails-on-revert anchors ─────────────────────────────────────────────────
-Deno.test("source carries the area-code map + phone-aware signature (anti-revert)", () => {
-  srcContains("US_AREACODE_TZ", "the NANP area-code→IANA timezone map must exist");
+Deno.test("source carries the area-code map + phone-aware signature (anti-revert)", async () => {
+  // #4273 — the zone tables moved to _shared/smsCountries.ts beside every
+  // country's window; marketing-send delegates to it with the phone.
+  const SHARED = await Deno.readTextFile("supabase/functions/_shared/smsCountries.ts");
+  const has = (needle: string, why: string) =>
+    assert(SHARED.includes(needle), `_shared/smsCountries.ts must contain \`${needle}\` (${why})`);
+  has("US_AREACODE_TZ", "the NANP area-code→IANA timezone map must exist");
   srcContains("resolveRecipientTz", "the per-phone TZ resolver must exist");
   srcContains("function isWithinQuietHours(\n  phone: string,", "isWithinQuietHours must take the phone (not just country)");
   srcContains("isWithinQuietHours(phone, countryCode, now)", "the call site must pass the phone");
-  // The LOAD-BEARING derivation: the US branch of resolveRecipientTz MUST look up
-  // the area code in the map — NOT return a fixed zone. A revert to a constant
-  // (e.g. `return "America/New_York"`) deletes these exact lines → this fails.
-  srcContains("const national = digits.startsWith(\"1\") ? digits.slice(1) : digits;", "area-code extraction must exist");
-  srcContains("const areaCode = national.slice(0, 3);", "the 3-digit area code must be extracted");
-  srcContains("return US_AREACODE_TZ[areaCode] ?? null;", "the US branch must map the area code, not hardcode a zone");
+  srcContains("return isWithinSmsWindow(phone, countryCode, now);", "quiet hours delegate to the per-country window");
+  // The LOAD-BEARING derivation: the US branch MUST look up the area code in
+  // the map — NOT return a fixed zone.
+  has("const national = digits.startsWith(\"1\") ? digits.slice(1) : digits;", "area-code extraction must exist");
+  has("const areaCode = national.slice(0, 3);", "the 3-digit area code must be extracted");
+  has("const us = US_AREACODE_TZ[areaCode];", "the US branch must map the area code, not hardcode a zone");
   // The OLD fixed-Eastern anchor comment must be gone.
   assert(
     !SRC.includes('US: "America/New_York", // conservative US-east anchor (earliest 9 PM cutoff)'),

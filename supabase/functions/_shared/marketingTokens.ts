@@ -25,8 +25,12 @@
 
 export interface UnsubscribeTokenPayload {
   campaign_id: string;
+  /** Empty on an SMS token (#4273). */
   recipient_email: string;
   brand_id: string;
+  /** #4273 — set on an SMS opt-out token: the text's E.164 number. */
+  channel?: "sms";
+  recipient_phone?: string;
   /** Unix seconds. */
   exp: number;
 }
@@ -98,6 +102,9 @@ export async function signUnsubscribeToken(
     campaign_id: payload.campaign_id,
     recipient_email: payload.recipient_email,
     brand_id: payload.brand_id,
+    ...(payload.channel === "sms"
+      ? { channel: "sms" as const, recipient_phone: payload.recipient_phone }
+      : {}),
     exp,
   };
   const payloadEncoded = base64UrlEncode(
@@ -110,6 +117,24 @@ export async function signUnsubscribeToken(
     ENCODER.encode(payloadEncoded),
   );
   return `${payloadEncoded}.${base64UrlEncode(new Uint8Array(sig))}`;
+}
+
+/**
+ * #4273 — the opt-out for a text whose sender cannot take a "STOP" reply
+ * (alphanumeric or overwritten senders). Same signature, secret and handler
+ * as the email link; the handler writes an SMS suppression for the number.
+ */
+export function signSmsUnsubscribeToken(
+  payload: { campaign_id: string; recipient_phone: string; brand_id: string },
+  options: { secretEnvKey?: string; ttlSeconds?: number } = {},
+): Promise<string> {
+  return signUnsubscribeToken({
+    campaign_id: payload.campaign_id,
+    recipient_email: "",
+    brand_id: payload.brand_id,
+    channel: "sms",
+    recipient_phone: payload.recipient_phone,
+  }, options);
 }
 
 export async function verifyUnsubscribeToken(
@@ -150,7 +175,11 @@ export async function verifyUnsubscribeToken(
     typeof payload.campaign_id !== "string" ||
     typeof payload.recipient_email !== "string" ||
     typeof payload.brand_id !== "string" ||
-    typeof payload.exp !== "number"
+    typeof payload.exp !== "number" ||
+    (payload.channel !== undefined && payload.channel !== "sms") ||
+    (payload.channel === "sms" &&
+      (typeof payload.recipient_phone !== "string" ||
+        !/^\+[1-9][0-9]{6,14}$/.test(payload.recipient_phone)))
   ) {
     throw new Error("unsubscribe_token_payload_invalid");
   }

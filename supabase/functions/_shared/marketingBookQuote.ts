@@ -1,6 +1,8 @@
 import { composeSmsBody, computeSegments } from "./adapters/smsAdapter.ts";
 import { smsBlastBodyWithFollow } from "./marketingBlastFollow.ts";
 import { allocateSmsCosts } from "./smsPriceBook.ts";
+import { countryFromE164 } from "./e164Country.ts";
+import { smsCountryProfile } from "./smsCountries.ts";
 import type { SmsRateV1 } from "./smsPriceBook.ts";
 import {
   SMS_FX_PROVIDER,
@@ -69,12 +71,24 @@ export function rewriteMarketingSmsLinks(
 export function marketingBookSmsWireBody(
   rawBody: string,
   trackingOrigin: string,
+  /**
+   * #4273 — the recipient's sender cannot take a "STOP" reply, so the text
+   * ends with a branded opt-out link of the same fixed length as at send.
+   */
+  optOutLink = false,
 ): string {
   return composeSmsBody(
     rewriteMarketingSmsLinks(rawBody, trackingOrigin, () => QUOTE_TRACKING_ID)
       .rewritten,
     true,
+    optOutLink ? `${trackingOrigin}/${QUOTE_TRACKING_ID}` : undefined,
   );
+}
+
+/** #4273 — true when a text to this number carries the opt-out link. */
+export function smsNeedsOptOutLink(normalizedPhone: string | null): boolean {
+  return smsCountryProfile(countryFromE164(normalizedPhone))?.replyable ===
+    false;
 }
 export interface MarketingBookCandidate {
   brandPersonId: string;
@@ -159,6 +173,8 @@ export async function buildMarketingBookQuote(
   options: {
     trackingOrigin?: string;
     smsRates?: SmsRateV1[];
+    /** #4273 — per-country switch; see allocateSmsCosts for the default. */
+    smsCountryLive?: (country: string) => boolean;
     /** #3682 — same Follow line dispatch appends; required for SMS segment parity. */
     followBrand?: { name: string; slug: string } | null;
     /** #4273 — the brand's pricing currency; a mixed-currency SMS total is shown in it. */
@@ -210,11 +226,15 @@ export async function buildMarketingBookQuote(
       options.followBrand?.name,
       options.followBrand?.slug,
     );
-    const wireBody = marketingBookSmsWireBody(
-      authorBody,
-      options.trackingOrigin ?? resolveMarketingTrackingOrigin(),
+    const origin = options.trackingOrigin ?? resolveMarketingTrackingOrigin();
+    // #4273 — quote = send: a text that carries the opt-out link is measured
+    // with it (the send appends a link of exactly this length).
+    const segmentsWithStop = computeSegments(
+      marketingBookSmsWireBody(authorBody, origin),
     );
-    const segments = computeSegments(wireBody);
+    const segmentsWithLink = computeSegments(
+      marketingBookSmsWireBody(authorBody, origin, true),
+    );
     const priced = allocateSmsCosts(
       deliverable.map((candidate) => {
         if (candidate.normalizedContact === null) {
@@ -226,12 +246,15 @@ export async function buildMarketingBookQuote(
               candidate.buyerContactKey ?? "unavailable"
           }`,
           normalizedPhone: candidate.normalizedContact,
-          segments,
+          segments: smsNeedsOptOutLink(candidate.normalizedContact)
+            ? segmentsWithLink
+            : segmentsWithStop,
           target: candidate,
         };
       }),
       now,
       options.smsRates,
+      options.smsCountryLive,
     );
     for (const skipped of priced.unpriced) skipped.target.smsUnpriced = true;
     unpricedCount = priced.unpriced.length;

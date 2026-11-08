@@ -82,7 +82,9 @@ const CONSUMER_CONTRACTS = [
   ["supabase/functions/_shared/paystack.ts", "resolvePaymentModeValue"],
   ["supabase/functions/_shared/email/senders.ts", "resolveEmailSenderValue"],
   ["supabase/functions/marketing-send/index.ts", "resolveDeliveryFlagValue"],
-  ["supabase/functions/_shared/adapters/smsAdapter.ts", "resolveDeliveryFlagValue"],
+  // #4273 — the adapter reads one SMS switch per country (resolveSmsCountryLive,
+  // which wraps resolveDeliveryFlagValue for US/NG).
+  ["supabase/functions/_shared/adapters/smsAdapter.ts", "resolveSmsCountryLive"],
   ["supabase/functions/brand-stripe-onboard/index.ts", "resolvePaymentOperationFlagValue"],
   ["supabase/functions/brand-paystack-onboard/index.ts", "resolvePaystackPayoutHoldOnboardFlip"],
   ["supabase/functions/payout-release-sweep/index.ts", "resolvePaymentOperationFlagValue"],

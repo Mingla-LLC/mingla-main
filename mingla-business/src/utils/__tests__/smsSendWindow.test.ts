@@ -20,8 +20,9 @@ import { readFileSync } from "fs";
 import path from "path";
 
 import {
-  SMS_QUIET_HOURS,
+  SMS_WINDOWS,
   SUPPORTED_SMS_ZONES,
+  formatSmsSendWindows,
   nextGlobalSendWindowOpen,
 } from "../marketing/smsSendWindow";
 
@@ -60,38 +61,46 @@ describe("ORCH-1270 smsSendWindow — SUPPORTED_SMS_ZONES", () => {
       expect(zones).toContain(z);
     }
     expect(SUPPORTED_SMS_ZONES.find((z) => z.zone === "Africa/Lagos")?.market).toBe("NG");
-    expect(SUPPORTED_SMS_ZONES.find((z) => z.zone === "America/New_York")?.market).toBe("US");
+    expect(SUPPORTED_SMS_ZONES.find((z) => z.zone === "America/New_York")?.market).toBe("DEFAULT");
+    expect(SUPPORTED_SMS_ZONES.find((z) => z.zone === "Europe/Paris")?.market).toBe("FR");
   });
 });
 
-// ─── T-9 drift guard (SPEC §8.2) ──────────────────────────────────────────────
-describe("ORCH-1270 T-9 — client SMS_QUIET_HOURS equals edge fn QUIET_HOURS", () => {
-  it("does not drift from supabase/functions/marketing-send/index.ts", () => {
-    const edgePath = path.join(
-      __dirname,
-      "../../../../supabase/functions/marketing-send/index.ts",
+// ─── T-9 drift guard — #4273: the edge windows live in _shared/smsCountries.ts
+describe("ORCH-1270 T-9 / #4273 — client SMS_WINDOWS equal the edge SMS_COUNTRIES rows", () => {
+  const edgePath = path.join(__dirname, "../../../../supabase/functions/_shared/smsCountries.ts");
+  const edgeSrc = readFileSync(edgePath, "utf8");
+  const minutes = (expr: string): number => {
+    const m = expr.match(/H\((\d+)(?:,\s*(\d+))?\)/);
+    expect(m).not.toBeNull();
+    return parseInt(m![1], 10) * 60 + (m![2] ? parseInt(m![2], 10) : 0);
+  };
+
+  it("the default window (DAY) matches", () => {
+    const day = edgeSrc.match(/const DAY = \{ start: (H\([^)]*\)), end: (H\([^)]*\)) \}/);
+    expect(day).not.toBeNull();
+    expect({ start: minutes(day![1]), end: minutes(day![2]) }).toEqual({
+      start: SMS_WINDOWS.DEFAULT.start,
+      end: SMS_WINDOWS.DEFAULT.end,
+    });
+  });
+
+  it("Nigeria's window matches", () => {
+    const ng = edgeSrc.match(/NG: \{[^\n]*window: \{ start: (H\([^)]*\)), end: (H\([^)]*\)) \}/);
+    expect(ng).not.toBeNull();
+    expect({ start: minutes(ng![1]), end: minutes(ng![2]) }).toEqual({ start: SMS_WINDOWS.NG.start, end: SMS_WINDOWS.NG.end });
+  });
+
+  it("France's window and days match", () => {
+    const fr = edgeSrc.match(/FR: eu\([^\n]*window: \{ start: (H\([^)]*\)), end: (H\([^)]*\)), days: \[([^\]]*)\]/);
+    expect(fr).not.toBeNull();
+    expect({ start: minutes(fr![1]), end: minutes(fr![2]) }).toEqual({ start: SMS_WINDOWS.FR.start, end: SMS_WINDOWS.FR.end });
+    expect(fr![3].split(",").map((d) => parseInt(d.trim(), 10))).toEqual([...SMS_WINDOWS.FR.days]);
+  });
+
+  it("the host copy names all three windows", () => {
+    expect(formatSmsSendWindows()).toBe(
+      "8 AM–8 PM in Nigeria, 8 AM–9:30 PM Monday to Saturday in France, 8 AM–9 PM everywhere else",
     );
-    const edgeSrc = readFileSync(edgePath, "utf8");
-
-    // Extract the edge fn's QUIET_HOURS US/NG {startHour,endHour} tuples.
-    const block = edgeSrc.match(/const QUIET_HOURS\s*=\s*\{([\s\S]*?)\}\s*as const;/);
-    expect(block).not.toBeNull();
-    const body = block![1];
-    const grab = (market: string): { startHour: number; endHour: number } => {
-      const m = body.match(
-        new RegExp(`${market}:\\s*\\{\\s*startHour:\\s*(\\d+),\\s*endHour:\\s*(\\d+)`),
-      );
-      expect(m).not.toBeNull();
-      return { startHour: parseInt(m![1], 10), endHour: parseInt(m![2], 10) };
-    };
-
-    expect(grab("US")).toEqual({
-      startHour: SMS_QUIET_HOURS.US.startHour,
-      endHour: SMS_QUIET_HOURS.US.endHour,
-    });
-    expect(grab("NG")).toEqual({
-      startHour: SMS_QUIET_HOURS.NG.startHour,
-      endHour: SMS_QUIET_HOURS.NG.endHour,
-    });
   });
 });
