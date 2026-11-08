@@ -56,6 +56,12 @@ import {
 } from "./minglaConnectorOAuth.ts";
 import { createConnectorProxy, splitProxiedName, type UpstreamTransport } from "./minglaConnectorProxy.ts";
 import { createUpstreamTransport } from "./minglaConnectorMetaGraph.ts";
+import {
+  createSigninTokenSource,
+  handleSigninCallback,
+  handleSigninStart,
+  upstreamSigninRoute,
+} from "./minglaConnectorSignin.ts";
 
 /** Handshake revisions this server speaks, newest first. */
 export const SUPPORTED_PROTOCOL_VERSIONS: readonly string[] = [
@@ -211,6 +217,13 @@ export interface ConnectorDeps {
   fetch?: (input: string, init: RequestInit) => Promise<Response>;
   /** Replaces the default transport (MCP over HTTP, Meta Graph for graph.facebook.com rows); tests. */
   transport?: UpstreamTransport;
+  /**
+   * Issue #4294 company sign-in: calls one database function as the person
+   * whose Mingla Admin session token this is (the owner check of Connect).
+   */
+  userRpc?: (jwt: string, fn: string, args: Record<string, unknown>) => Promise<unknown>;
+  /** The Mingla Admin origin allowed to start a company sign-in. */
+  adminOrigin?: string;
 }
 
 export interface TeamAgentDeps {
@@ -590,13 +603,14 @@ export function createTeamAgentHandler(
   const minRefusalMs = deps.minRefusalMs ?? MIN_REFUSAL_MS;
   const log = deps.log ?? (() => {});
   const connector = deps.connector;
+  const network = connector?.fetch ?? ((input: string, init: RequestInit) => fetch(input, init));
   const proxy = connector
     ? createConnectorProxy({
       rpc: connector.rpc,
-      transport: connector.transport ??
-        createUpstreamTransport(connector.fetch ?? ((input, init) => fetch(input, init))),
+      transport: connector.transport ?? createUpstreamTransport(network),
       now,
       log,
+      signinToken: createSigninTokenSource({ rpc: connector.rpc, fetch: network, now, log }),
     })
     : null;
 
@@ -643,6 +657,27 @@ export function createTeamAgentHandler(
         }),
       );
     };
+
+    // Issue #4294: company sign-in (Connect in Company tools, and the tool's
+    // callback). Nothing about these requests (code, state, verifier, token,
+    // admin session) is logged; the browser never gets a token.
+    const signinRoute = upstreamSigninRoute(req.url);
+    if (signinRoute !== null) {
+      method = "oauth:upstream-" + signinRoute;
+      if (!connector) return done("not_available", new Response(null, { status: 404 }));
+      const signinDeps = {
+        rpc: connector.rpc,
+        userRpc: connector.userRpc,
+        fetch: network,
+        resourceUrl,
+        adminOrigin: connector.adminOrigin,
+        now,
+      };
+      const answered = signinRoute === "start"
+        ? await handleSigninStart(req, signinDeps)
+        : await handleSigninCallback(req, signinDeps);
+      return done(answered.outcome, answered.res);
+    }
 
     if (req.method === "OPTIONS") {
       return done("options", new Response(null, { status: 204 }));

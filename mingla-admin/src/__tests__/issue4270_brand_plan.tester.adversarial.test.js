@@ -41,7 +41,7 @@ import {
   planLinkProblem,
   planWeeks,
 } from "../lib/brandPlan.js";
-import { hostCloseStep } from "../lib/panelStack.js";
+import { hostCloseStep, sideCloseStep } from "../lib/panelStack.js";
 import { hostPastRows, hostUpcomingRows } from "../lib/opsModel.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -170,12 +170,18 @@ describe("Q-LINE plan lines in Brand groups", () => {
     assert.equal(isPlanLine({ message_type: "text", sender_id: null, content: "x" }), false);
     assert.equal(isPlanLine(null), false);
   });
-  it("the Brand group renders a plan line before any bubble, with no reply or select control", () => {
-    const panel = code("components/community/BrandGroupsPanel.jsx");
-    const m = /if \(isPlanLine\(message\)\) \{\s*return (<p [\s\S]*?<\/p>);\s*\}/.exec(panel);
-    assert.ok(m, "the plan line branch returns a single <p>");
-    assert.doesNotMatch(m[1], /onClick|button|Reply|select/i);
-    assert.ok(panel.indexOf("if (isPlanLine(message))") < panel.indexOf("const mine = message.sender_id === myUserId"), "the plan line is decided before the bubble");
+  // #4270 W7: plan lines fold into PlanActivityCard; a line opens its item only
+  // when it matches one (else it is a data-system-line <p>), and it never gets
+  // Reply, React or Select.
+  it("the Brand group folds plan lines before any bubble, with no reply or select control", () => {
+    const fold = code("lib/brandGroupInbox.js");
+    assert.ok(fold.indexOf("if (isPlanLine(message))") < fold.indexOf('out.push({ type: "message"'), "the plan line is decided before the bubble");
+    const card = code("components/community/PlanActivityCard.jsx");
+    const plain = /<p data-system-line=""[^>]*>\{line\.content\}<\/p>/.exec(card);
+    assert.ok(plain, "an unmatched line is a single <p>");
+    assert.doesNotMatch(card, /Reply|aria-label="React|select/i);
+    const thread = code("components/community/BrandGroupThread.jsx");
+    assert.match(thread, /if \(entry\.type === "plan"\) \{\s*return <PlanActivityCard /);
   });
 });
 
@@ -192,11 +198,14 @@ describe("Q-W2R the Wave 2 rework", () => {
   it("closing the host card goes back only when this page opened it, and never replaces history", () => {
     assert.equal(hostCloseStep(true), "back");
     assert.equal(hostCloseStep(false), "push");
+    // #4270 W7: closePanel replaced closeHost; same rule through sideCloseStep.
+    assert.deepEqual(sideCloseStep(1), { kind: "go", delta: -1 });
+    assert.deepEqual(sideCloseStep(0), { kind: "push" });
     const panel = code("components/community/BrandGroupsPanel.jsx");
-    const close = /const closeHost = \(\) => \{([\s\S]*?)\n  \};/.exec(panel)?.[1] || "";
-    assert.ok(close, "closeHost is found");
+    const close = /const closePanel = useCallback\(\(\) => \{([\s\S]*?)\n  \}, \[/.exec(panel)?.[1] || "";
+    assert.ok(close, "closePanel is found");
     assert.doesNotMatch(close, /replace:\s*true/);
-    assert.match(close, /window\.history\.back\(\)/);
+    assert.match(close, /window\.history\.go\(step\.delta\)/);
   });
   it("a live item is left out of Past and has no plain state among the upcoming rows", () => {
     const events = [

@@ -1096,6 +1096,7 @@
     {
       "capability_key": "staff-work-board",
       "paths": [
+        "mingla-admin/src/components/ops/WordingQueue.jsx",
         "mingla-admin/src/components/ops/CardPersonPanels.jsx",
         "mingla-admin/src/components/ops/EventPanel.jsx",
         "mingla-admin/src/components/ops/EventSteps.jsx",
@@ -1626,20 +1627,42 @@
     {
       "capability_key": "staff-company-tools",
       "paths": [
+        "mingla-admin/public/oauth/mingla-connector-client.json",
         "mingla-admin/src/hooks/useMinglaConnector.js",
         "mingla-admin/src/pages/CompanyToolsPage.jsx",
         "mingla-admin/src/services/minglaConnectorService.js",
+        "mingla-admin/vercel.json",
         "supabase/functions/_shared/minglaConnectorMetaGraph.ts",
         "supabase/functions/_shared/minglaConnectorProxy.ts",
+        "supabase/functions/_shared/minglaConnectorSignin.ts",
         "supabase/functions/_shared/teamAgentMcp.ts",
-        "supabase/migrations/20280425004294_issue_4294_mingla_connector.sql"
+        "supabase/functions/team-agent/index.ts",
+        "supabase/migrations/20280425004294_issue_4294_mingla_connector.sql",
+        "supabase/migrations/20280428024294_issue_4294_company_signin.sql"
       ]
     },
     {
       "capability_key": "official-brand-groups",
       "paths": [
+        "mingla-admin/src/components/brands/BrandDrawer.jsx",
+        "mingla-admin/src/components/community/BrandCalendarSide.jsx",
+        "mingla-admin/src/components/community/BrandGroupComposer.jsx",
+        "mingla-admin/src/components/community/BrandGroupHeader.jsx",
+        "mingla-admin/src/components/community/BrandGroupList.jsx",
+        "mingla-admin/src/components/community/BrandGroupRail.jsx",
+        "mingla-admin/src/components/community/BrandGroupSidePanel.jsx",
+        "mingla-admin/src/components/community/BrandGroupStrip.jsx",
+        "mingla-admin/src/components/community/BrandGroupThread.jsx",
         "mingla-admin/src/components/community/BrandGroupsPanel.jsx",
+        "mingla-admin/src/components/community/HostCardEmptyState.jsx",
+        "mingla-admin/src/components/community/PlanActivityCard.jsx",
+        "mingla-admin/src/hooks/useBrandGroupLive.js",
+        "mingla-admin/src/hooks/useBrandGroupPlanItems.js",
+        "mingla-admin/src/hooks/useBrandHostFallback.js",
+        "mingla-admin/src/lib/brandGroupInbox.js",
+        "mingla-admin/src/lib/brandGroupPanelHistory.js",
         "mingla-admin/src/lib/brandPlan.js",
+        "mingla-admin/src/services/communityService.js",
         "mingla-business/app/messages/[conversationId].tsx",
         "mingla-business/src/components/messages/BrandPlanAddSheet.tsx",
         "mingla-business/src/components/messages/BrandPlanPanel.tsx",
@@ -1682,6 +1705,7 @@
         "mingla-business/src/services/brandGroupsService.ts",
         "mingla-business/src/services/brandPlanService.ts",
         "supabase/migrations/20280427024270_issue_4270_w3_brand_plan.sql",
+        "supabase/migrations/20280502004270_issue_4270_w7_admin_brand_group_inbox.sql",
         "mingla-business/app/messages/index.tsx",
         "mingla-business/jest.config.cjs",
         "mingla-business/jest.issue1890.render.cjs",
