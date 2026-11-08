@@ -48,8 +48,9 @@ const assertUsesNativeFontMetrics = (
   );
   assert(
     new RegExp(
-      // issue #1023: heavy text names the bold face (themedBoldFont).
-      `styles\\.${styleName}[\\s\\S]{0,220}(?:fontFamily|themedFont|themedBoldFont|fontStyle)`,
+      // issue #1023: heavy text names the bold face through themeFontFace
+      // (boldFace, themedBoldFont, themeBoldFace), so Android draws it (no Roboto fallback).
+      `styles\\.${styleName}[\\s\\S]{0,220}(?:fontFamily|themedFont|themedBoldFont|boldFace|themeFontFace|themeBoldFace|fontStyle)`,
     ).test(source),
     `${surface} styles.${styleName} must remain wired to the selected font`,
   );

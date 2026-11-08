@@ -60,7 +60,7 @@ import {
   type MapsOpenTarget,
 } from "./mapsDeepLink";
 import { type ThemePalette } from "./themePalette";
-import { accentIcon } from "./themeAccentStyle";
+import { accentIcon, themeFontFace } from "./themeAccentStyle";
 
 /** How long the "Copied" / "Couldn't copy" confirm holds before reverting. */
 const CONFIRM_HOLD_MS = 1600;
@@ -313,7 +313,7 @@ export const VenueCopyAddressButton = ({
         <Text
           style={[
             styles.copyPillText,
-            font === undefined ? null : { fontFamily: font },
+            font === undefined ? null : themeFontFace(font),
             { color: tint },
           ]}
         >
@@ -356,7 +356,7 @@ export const MapsAppChooserDialog = ({
 }: MapsAppChooserDialogProps) => {
   // Never mount a chooser that has nothing to choose between.
   if (!actions.offersChoice) return null;
-  const boldStyle = font === undefined ? null : { fontFamily: font };
+  const boldStyle = font === undefined ? null : themeFontFace(font);
   const subtitle =
     placeLabel !== null && placeLabel !== undefined && placeLabel.length > 0
       ? placeLabel

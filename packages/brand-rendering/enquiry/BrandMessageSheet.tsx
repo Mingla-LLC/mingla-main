@@ -69,9 +69,8 @@ import {
   type EnquirySendRequest,
   type TableRequestDetails,
 } from "./enquiryTopics";
-import { accentEdgeOnFill, accentFill, accentFillWithBorder, accentOutline } from "@mingla/offering-rendering/themeAccentStyle";
+import { accentEdgeOnFill, accentFill, accentFillWithBorder, accentOutline, themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
 import { AccentLucideIcon } from "@mingla/offering-rendering/LucideIcons";
-import { boldFontFamily } from "@mingla/offering-rendering/themePalette";
 
 export type EnquiryViewer =
   | { kind: "signed_in"; name: string }
@@ -169,7 +168,7 @@ export const BrandMessageSheet = ({
   const wide = width >= 768;
   const themedFont = { fontFamily: theme.fontFamilyValue };
   // issue #1023 — titles name the bold face (native ignores fontWeight here).
-  const themedBoldFont = { fontFamily: boldFontFamily(theme) };
+  const themedBoldFont = themeBoldFace(theme);
   const signedIn = viewer.kind === "signed_in";
 
   const [step, setStep] = useState<Step>("topic");

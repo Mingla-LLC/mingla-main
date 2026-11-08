@@ -91,7 +91,7 @@ import {
 // ORCH-1292 — the party chips now resolve to CANONICAL labels (via the shared
 // in-package resolver), matching the pills row — not the humanized partyTypeLabel.
 import { taxonomyLabel } from "./taxonomyLabels";
-import { accentFill, accentFillWithBorder, accentIcon, accentOutline } from "./themeAccentStyle";
+import { accentFill, accentFillWithBorder, accentIcon, accentOutline, themeFontFace } from "./themeAccentStyle";
 import { useAccentStroke } from "./LucideIcons";
 
 // ───────────────────────── presentational types ─────────────────────────────
@@ -352,6 +352,7 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
   testID,
 }) => {
   const boldFamily = boldFontFamily(theme);
+  const boldFace = themeFontFace(boldFamily);
   // Explicitly typed: a `= null` default alone narrows these to `null` in
   // hosts whose type-check cannot resolve react (mingla-business's tsconfig).
   const hintText = validationHint as string | null;
@@ -512,7 +513,7 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
     >
       <View style={styles.momTop}>
         <Text
-          style={[styles.momCount, { color: palette.primaryText, fontFamily: boldFamily }]}
+          style={[styles.momCount, { color: palette.primaryText, ...boldFace }]}
           testID="orch-1157-rsvp-going-count"
           accessibilityLabel={`${momentum.displayCount} people going`}
         >
@@ -590,7 +591,7 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
         <UserPlusGlyph color={goingFilled ? palette.accentText : palette.tertiaryText} />
       )}
       <Text
-        style={[styles.dbtnText, { color: goingFilled ? palette.accentText : palette.tertiaryText, fontFamily: boldFamily }]}
+        style={[styles.dbtnText, { color: goingFilled ? palette.accentText : palette.tertiaryText, ...boldFace }]}
         numberOfLines={1}
       >
         {goingLabel}
@@ -623,7 +624,7 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
       <Text
         style={[
           styles.dbtnText,
-          { color: maybeDisabled ? palette.tertiaryText : palette.accent, fontFamily: boldFamily },
+          { color: maybeDisabled ? palette.tertiaryText : palette.accent, ...boldFace },
         ]}
         numberOfLines={1}
       >
@@ -642,7 +643,7 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
       testID={notGoingTestID ?? "orch-1157-rsvp-not-going"}
     >
       <XGlyph color={palette.secondaryText} />
-      <Text style={[styles.dbtnText, { color: palette.secondaryText, fontFamily: boldFamily }]} numberOfLines={1}>
+      <Text style={[styles.dbtnText, { color: palette.secondaryText, ...boldFace }]} numberOfLines={1}>
         Can't go
       </Text>
     </Pressable>
@@ -727,7 +728,7 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
         >
           <Text style={[styles.stepGlyph, { color: palette.accent }]}>–</Text>
         </Pressable>
-        <Text style={[styles.stepCount, { color: palette.primaryText, fontFamily: boldFamily }]}>+{plusCount}</Text>
+        <Text style={[styles.stepCount, { color: palette.primaryText, ...boldFace }]}>+{plusCount}</Text>
         <Pressable
           onPress={() => onPlusChange(Math.min(plusOnesMax, plusCount + 1))}
           disabled={plusCount >= plusOnesMax}
@@ -784,7 +785,7 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
           style={styles.secondaryAction}
           testID={passAction.testID ?? "rsvp-decision-secondary-action"}
         >
-          <Text style={[styles.secondaryActionText, { color: palette.accent, fontFamily: boldFamily }]}>
+          <Text style={[styles.secondaryActionText, { color: palette.accent, ...boldFace }]}>
             {passAction.label}
           </Text>
         </Pressable>
@@ -802,7 +803,7 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
           { ...accentFill(palette), transform: [{ scale: dotScale }], opacity: dotOpacity },
         ]}
       />
-      <Text style={[styles.kickerText, { color: palette.primaryText, fontFamily: boldFamily }]}>
+      <Text style={[styles.kickerText, { color: palette.primaryText, ...boldFace }]}>
         YOU'RE INVITED
       </Text>
     </View>

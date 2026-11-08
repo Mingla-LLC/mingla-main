@@ -19,7 +19,6 @@ import {
 } from "../../../../packages/offering-rendering/designTokens";
 import { setThemeMotionDevOverride } from "../../../../packages/offering-rendering/themeMotion";
 import {
-  boldFontFamily,
   createThemePalette,
   themeTextAccent,
 } from "../../../../packages/offering-rendering/themePalette";
@@ -63,7 +62,7 @@ import {
   SAMPLE_THEME_PREVIEW,
   type ThemePreviewContent,
 } from "./themePreviewContent";
-import { accentFill } from "@mingla/offering-rendering/themeAccentStyle";
+import { accentFill, themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
 
 /**
  * #1022 — the expanded Theme control.
@@ -260,7 +259,7 @@ export const ThemeSheet: React.FC<ThemeSheetProps> = ({
             <Text
               style={[
                 styles.previewTitle,
-                { color: palette.primaryText, fontFamily: boldFontFamily(resolved) },
+                { color: palette.primaryText, ...themeBoldFace(resolved) },
               ]}
               numberOfLines={1}
             >

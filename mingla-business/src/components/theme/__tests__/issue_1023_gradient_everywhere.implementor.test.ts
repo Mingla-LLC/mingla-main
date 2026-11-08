@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-1023-ANDROID-THEME-FONT-FACE | issue #1023 | Text in a theme font key goes through themeFontFace, which adds fontWeight "normal" on Android (expo-font registers the NORMAL style only; a weight >= 700 falls back to Roboto).
 // MINGLA-INVARIANT: I-1023-GRADIENT-EVERYWHERE | issue #1023 | On every public surface the theme accent is drawn through the gradient-aware helpers (fills, borders, icons, buttons); a raw accent colour is allowed only for accent text or an allowlisted exception with a reason.
 /**
  * issue #1023 (Seth: "every single element should follow the gradient if a
@@ -24,7 +25,7 @@ type Loaded = Helpers & { SOLID: Palette; SUNSET: Palette };
 
 // Each platform gets its own module registry, so the palettes are made by the
 // same themePalette module instance the helpers read their gradient from.
-const loadHelpers = async (os: "web" | "ios"): Promise<Loaded> => {
+const loadHelpers = async (os: "web" | "ios" | "android"): Promise<Loaded> => {
   let loaded: Loaded | undefined;
   jest.isolateModules(() => {
     jest.doMock("react-native", () => ({ Platform: { OS: os } }));
@@ -87,6 +88,18 @@ describe("helpers: solid draws as before, gradient draws the gradient", () => {
   test("a palette spread into a new object reads solid (never a wrong gradient)", async () => {
     const web = await loadHelpers("web");
     expect(web.accentFill({ ...web.SUNSET })).toEqual({ backgroundColor: web.SUNSET.accent });
+  });
+});
+
+describe("theme font face: Android names the face without a bold weight", () => {
+  test("Android adds fontWeight normal; iOS and web keep the stylesheet weight", async () => {
+    const android = await loadHelpers("android");
+    const ios = await loadHelpers("ios");
+    const web = await loadHelpers("web");
+    const key = "GF_Bricolage_Grotesque_700";
+    expect(android.themeFontFace(key)).toEqual({ fontFamily: key, fontWeight: "normal" });
+    expect(ios.themeFontFace(key)).toEqual({ fontFamily: key });
+    expect(web.themeFontFace(key)).toEqual({ fontFamily: key });
   });
 });
 
@@ -163,6 +176,22 @@ describe("coverage: the accent is drawn through the gradient helpers", () => {
           if (isText(lines, i)) return;
           if (ALLOW.some((a) => a.re.test(line))) return;
           offenders.push(`${rel}:${i + 1}: ${line.trim()}`);
+        });
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  test("no bold theme font is set as a raw fontFamily (Android would draw Roboto)", async () => {
+    const offenders: string[] = [];
+    for (const root of ROOTS) {
+      for (const rel of await walk(root)) {
+        const lines = (await readFile(path.join(REPO, rel), "utf8")).split("\n");
+        lines.forEach((line, i) => {
+          if (/^\s*(\*|\/\/)/.test(line)) return;
+          if (/fontFamily: (?:boldFamily|bold|boldFontFamily\()/.test(line)) {
+            offenders.push(`${rel}:${i + 1}: ${line.trim()}`);
+          }
         });
       }
     }

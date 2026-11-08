@@ -53,7 +53,7 @@ import { deriveSocialProofMomentum } from "./socialProofMomentum";
 // ORCH-1340 — the ONE shared disk system (photo|glyph|+N|see-row) for both
 // momentum cards; the faceless PersonGlyph now lives inside it.
 import { GuestAvatarCluster } from "./GuestAvatarCluster";
-import { accentFill } from "./themeAccentStyle";
+import { accentFill, themeFontFace } from "./themeAccentStyle";
 
 // ───────────────────────────── props contract ───────────────────────────────
 
@@ -101,6 +101,7 @@ export const OfferingMomentum: React.FC<OfferingMomentumProps> = ({
   if (!momentum.visible) return null;
 
   const boldFamily = boldFontFamily(theme);
+  const boldFace = themeFontFace(boldFamily);
   const a11yLabel = `${momentum.displayCount} people ${momentum.countLabel}`;
 
   return (
@@ -113,7 +114,7 @@ export const OfferingMomentum: React.FC<OfferingMomentumProps> = ({
     >
       <View style={styles.momTop}>
         <Text
-          style={[styles.momCount, { color: palette.primaryText, fontFamily: boldFamily }]}
+          style={[styles.momCount, { color: palette.primaryText, ...boldFace }]}
           accessibilityLabel={a11yLabel}
         >
           {momentum.displayCount}

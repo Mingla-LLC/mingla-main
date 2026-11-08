@@ -53,8 +53,7 @@ import {
   venueOrderingModifierFailure,
   venueOrderingModifierMessage,
 } from "./venueOrderingRules";
-import { accentFill, accentOutline } from "@mingla/offering-rendering/themeAccentStyle";
-import { boldFontFamily } from "@mingla/offering-rendering/themePalette";
+import { accentFill, accentOutline, themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
 
 type Surface = ReturnType<typeof offeringSurfaceStyles>;
 
@@ -107,7 +106,7 @@ export const VenueOrderingMenuList: React.FC<VenueOrderingMenuListProps> = ({
             accessibilityRole="header"
             style={[
               styles.sectionName,
-              { fontFamily: boldFontFamily(theme), color: palette.primaryText },
+              { ...themeBoldFace(theme), color: palette.primaryText },
             ]}
           >
             {group.menuName}

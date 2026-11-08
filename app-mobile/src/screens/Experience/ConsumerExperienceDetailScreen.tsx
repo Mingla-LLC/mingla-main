@@ -153,6 +153,7 @@ import { hueFromId } from "../../utils/hueFromId";
 import type { BusinessEventCard } from "../../types/mergedDiscover";
 import { CircleAlert } from "lucide-react-native";
 import { AccentLucideIcon } from "@mingla/offering-rendering/LucideIcons";
+import { themeFontFace } from "@mingla/offering-rendering/themeAccentStyle";
 
 const ACCENT = "#FF6B35";
 
@@ -512,6 +513,7 @@ export default function ConsumerExperienceDetailScreen({
   const palette = useMemo(() => createThemePalette(theme), [theme]);
   const surface = useMemo(() => offeringSurfaceStyles(palette), [palette]);
   const boldFamily = boldFontFamily(theme);
+  const boldFace = themeFontFace(boldFamily);
   useConsumerThemeFont(theme.fontFamilyValue);
   useConsumerThemeFont(boldFamily);
 
@@ -1357,7 +1359,7 @@ export default function ConsumerExperienceDetailScreen({
         <AccentLucideIcon Icon={CircleAlert} size={16} palette={palette} />
         <View style={styles.stateBannerTextCol}>
           <Text
-            style={[styles.stateBannerTitle, { color: palette.primaryText, fontFamily: boldFamily }]}
+            style={[styles.stateBannerTitle, { color: palette.primaryText, ...boldFace }]}
           >
             {stateBanner.title}
           </Text>

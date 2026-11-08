@@ -20,9 +20,8 @@ import type { ResolvedTheme, ThemePalette } from "@mingla/offering-rendering";
 
 import type { EnquiryPhoneFieldArgs, EnquiryPhoneState } from "./BrandMessageSheet";
 import { replyTimeLabel } from "./replyTime";
-import { accentEdgeOnFill, accentFill, accentOutline } from "@mingla/offering-rendering/themeAccentStyle";
+import { accentEdgeOnFill, accentFill, accentOutline, themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
 import { AccentLucideIcon } from "@mingla/offering-rendering/LucideIcons";
-import { boldFontFamily } from "@mingla/offering-rendering/themePalette";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -92,7 +91,7 @@ export const BrandPageFoot = forwardRef<BrandPageFootHandle, BrandPageFootProps>
   const openedAt = useRef<number>(Date.now());
   const themedFont = { fontFamily: theme.fontFamilyValue };
   // issue #1023 — titles name the bold face (native ignores fontWeight here).
-  const themedBoldFont = { fontFamily: boldFontFamily(theme) };
+  const themedBoldFont = themeBoldFace(theme);
 
   useImperativeHandle(
     ref,

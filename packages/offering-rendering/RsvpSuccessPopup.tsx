@@ -24,7 +24,7 @@ import {
 
 import { boldFontFamily, type ThemePalette } from "./themePalette";
 import { type ResolvedTheme } from "./designTokens";
-import { accentFill } from "./themeAccentStyle";
+import { accentFill, themeFontFace } from "./themeAccentStyle";
 
 // Keep the sizeable SVG QR renderer out of the initial buyer-web bundle.
 // @ts-expect-error -- the host apps provide this workspace peer dependency.
@@ -103,7 +103,7 @@ const Row: React.FC<{
     <Text
       style={[
         styles.detailValue,
-        { color: palette.primaryText, fontFamily: bold },
+        { color: palette.primaryText, ...themeFontFace(bold) },
       ]}
     >
       {value}
@@ -128,6 +128,7 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
     renderClaimBody,
   } = props;
   const boldFamily = boldFontFamily(theme);
+  const boldFace = themeFontFace(boldFamily);
   const { height: windowHeight } = useWindowDimensions();
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
@@ -230,7 +231,7 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
             <Text
               style={[
                 styles.title,
-                { color: palette.primaryText, fontFamily: boldFamily },
+                { color: palette.primaryText, ...boldFace },
               ]}
             >
               {title}
@@ -247,7 +248,7 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
                   <Text
                     style={[
                       styles.claimWaiting,
-                      { color: palette.primaryText, fontFamily: boldFamily },
+                      { color: palette.primaryText, ...boldFace },
                     ]}
                   >
                     Your pass is waiting in the Mingla app.
@@ -273,7 +274,7 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
                     <Text
                       style={[
                         styles.claimButtonText,
-                        { color: palette.accentText, fontFamily: boldFamily },
+                        { color: palette.accentText, ...boldFace },
                       ]}
                     >
                       Get my pass
@@ -390,7 +391,7 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
                     <Text
                       style={[
                         styles.passName,
-                        { color: palette.primaryText, fontFamily: boldFamily },
+                        { color: palette.primaryText, ...boldFace },
                       ]}
                     >
                       {selected.displayName}
@@ -422,7 +423,7 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
                             styles.downloadText,
                             {
                               color: palette.primaryText,
-                              fontFamily: boldFamily,
+                              ...boldFace,
                             },
                           ]}
                         >
@@ -461,7 +462,7 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
                   <Text
                     style={[
                       styles.doneBtnText,
-                      { color: palette.accentText, fontFamily: boldFamily },
+                      { color: palette.accentText, ...boldFace },
                     ]}
                   >
                     Done

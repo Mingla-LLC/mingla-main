@@ -22,6 +22,7 @@ import { THEME_ANIMATION_SLUGS } from "../../../../packages/offering-rendering/d
 import { normalizeHexColor } from "./normalizeHexColor";
 import { useThemeFont } from "../../theme/useThemeFont";
 import { boldFontFamily } from "@mingla/offering-rendering/themePalette";
+import { themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
 
 interface ThemeEditorSectionProps {
   value: ThemeInput | null | undefined;
@@ -94,7 +95,7 @@ export const ThemeEditorSection: React.FC<ThemeEditorSectionProps> = ({
         </View>
         <View style={styles.previewBody}>
           <Text
-            style={[styles.previewTitle, { fontFamily: boldFontFamily(theme) }]}
+            style={[styles.previewTitle, themeBoldFace(theme)]}
           >
             Public page preview
           </Text>

@@ -91,7 +91,6 @@ import {
 // mocks entirely, which is why this stays a deep import and why `hexToRgba` is
 // deliberately NOT re-exported from the barrel (#2539 PR #2552 CI).
 import {
-  boldFontFamily,
   hexToRgba,
   themeAccentFill,
   themeTextAccent,
@@ -124,7 +123,7 @@ import type {
   PublicBrandVenueSummary,
   PublicMediaType,
 } from "./types";
-import { accentFill, accentFillWithBorder, accentOutline } from "@mingla/offering-rendering/themeAccentStyle";
+import { accentFill, accentFillWithBorder, accentOutline, themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
 import { opaqueAccentWashColor } from "@mingla/offering-rendering/themePalette";
 import { AccentLucideIcon } from "@mingla/offering-rendering/LucideIcons";
 
@@ -387,7 +386,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   const themedFont = { fontFamily: resolvedTheme.fontFamilyValue };
   // issue #1023 — heavy text names the bold face: React Native never picks a
   // heavier face from fontWeight for a custom (Google) family.
-  const themedBoldFont = { fontFamily: boldFontFamily(resolvedTheme) };
+  const themedBoldFont = themeBoldFace(resolvedTheme);
 
   const upcomingEvents = useMemo(
     () =>
@@ -1400,7 +1399,7 @@ const TabBar: React.FC<TabBarProps> = ({
               <Text
                 style={[
                   styles.tabLabel,
-                  { fontFamily: boldFontFamily(theme) },
+                  themeBoldFace(theme),
                   {
                     color: active ? palette.accentText : palette.secondaryText,
                   },
@@ -1553,7 +1552,7 @@ const EventMiniCard: React.FC<EventMiniCardProps> = ({
         <Text
           style={[
             styles.oCardTitle,
-            { fontFamily: boldFontFamily(theme), color: palette.primaryText },
+            { ...themeBoldFace(theme), color: palette.primaryText },
           ]}
           numberOfLines={2}
         >
@@ -1631,7 +1630,7 @@ const NextOfferingTeaser: React.FC<{
         <Text
           style={[
             styles.nextTeaserBody,
-            { fontFamily: boldFontFamily(theme), color: palette.accentText },
+            { ...themeBoldFace(theme), color: palette.accentText },
           ]}
           numberOfLines={2}
         >
@@ -1763,7 +1762,7 @@ const TripMiniCard: React.FC<{
         <Text
           style={[
             styles.oCardTitle,
-            { fontFamily: boldFontFamily(theme), color: palette.primaryText },
+            { ...themeBoldFace(theme), color: palette.primaryText },
           ]}
           numberOfLines={2}
         >
@@ -1886,7 +1885,7 @@ const OfferingMiniCard: React.FC<OfferingMiniCardProps> = ({
         <Text
           style={[
             styles.oCardTitle,
-            { fontFamily: boldFontFamily(theme), color: palette.primaryText },
+            { ...themeBoldFace(theme), color: palette.primaryText },
           ]}
           numberOfLines={2}
         >
@@ -2052,7 +2051,7 @@ const SectionMiniCard: React.FC<SectionCardProps> = ({
         <Text
           style={[
             styles.oCardTitle,
-            { fontFamily: boldFontFamily(theme), color: palette.primaryText },
+            { ...themeBoldFace(theme), color: palette.primaryText },
           ]}
           numberOfLines={2}
         >
@@ -2271,7 +2270,7 @@ const ExperienceMiniCard: React.FC<{
         <Text
           style={[
             styles.oCardTitle,
-            { fontFamily: boldFontFamily(theme), color: palette.primaryText },
+            { ...themeBoldFace(theme), color: palette.primaryText },
           ]}
           numberOfLines={2}
         >
@@ -2477,7 +2476,7 @@ const AboutTab: React.FC<{
         <Text
           style={[
             styles.tagline,
-            { fontFamily: boldFontFamily(theme), color: palette.primaryText },
+            { ...themeBoldFace(theme), color: palette.primaryText },
           ]}
         >
           {tagline}

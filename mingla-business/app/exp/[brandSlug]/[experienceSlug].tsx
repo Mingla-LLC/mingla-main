@@ -131,7 +131,7 @@ import {
   priceDecimals,
   priceFallbackDecimals,
 } from "@mingla/offering-rendering/priceDecimals";
-import { accentFill } from "@mingla/offering-rendering/themeAccentStyle";
+import { accentFill, themeFontFace } from "@mingla/offering-rendering/themeAccentStyle";
 
 function allDatesPast(isos: string[], nowMs: number = Date.now()): boolean {
   const valid = isos
@@ -469,6 +469,7 @@ const ResolvedExperiencePage: React.FC<{
     Platform.OS === "web" ? handleSeeWhosGoingWeb : undefined;
   useThemeFont(theme.fontFamilyValue);
   const boldFamily = boldFontFamily(theme);
+  const boldFace = themeFontFace(boldFamily);
   useThemeFont(boldFamily);
 
   // float→dock Reserve pill visibility (mirror the trip route 1:1).
@@ -782,7 +783,7 @@ const ResolvedExperiencePage: React.FC<{
           style={[
             styles.deskReserveText,
             { color: reserveTappable ? palette.accentText : palette.tertiaryText },
-            { fontFamily: boldFamily },
+            boldFace,
           ]}
         >
           {reserveTappable

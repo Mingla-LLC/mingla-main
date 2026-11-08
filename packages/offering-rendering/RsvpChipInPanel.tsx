@@ -36,7 +36,7 @@ import { type ResolvedTheme } from "./designTokens";
 // #3372 — naira chip-ins show "₦", not "NGN", whatever the engine or locale
 // (#3341 rule). The amount-field prefix below reads the same formatter.
 import { withCurrencyGlyph } from "./currencyGlyph";
-import { accentEdgeOnFill, accentFill } from "./themeAccentStyle";
+import { accentEdgeOnFill, accentFill, themeFontFace } from "./themeAccentStyle";
 
 const DANGER = "#ef4444";
 
@@ -145,6 +145,7 @@ export const RsvpChipInPanel: React.FC<RsvpChipInPanelProps> = ({
   testID,
 }) => {
   const boldFamily = boldFontFamily(theme);
+  const boldFace = themeFontFace(boldFamily);
   const cardFill = opaqueCardFill(palette);
   const presets = useMemo(
     () => derivePresets(suggestedCents, minCents, currency),
@@ -182,7 +183,7 @@ export const RsvpChipInPanel: React.FC<RsvpChipInPanelProps> = ({
         testID={`${testID ?? "orch-1291-rsvp-chipin-panel"}-success`}
       >
         <Text style={[styles.successHeart, { color: palette.accent }]}>💛</Text>
-        <Text style={[styles.successHeading, { color: palette.primaryText, fontFamily: boldFamily }]}>
+        <Text style={[styles.successHeading, { color: palette.primaryText, ...boldFace }]}>
           Thank you 💛
         </Text>
         <Text style={[styles.successBody, { color: palette.secondaryText }]}>
@@ -201,7 +202,7 @@ export const RsvpChipInPanel: React.FC<RsvpChipInPanelProps> = ({
       style={[styles.card, { backgroundColor: cardFill, borderColor: palette.panelBorder }]}
       testID={testID ?? "orch-1291-rsvp-chipin-panel"}
     >
-      <Text style={[styles.heading, { color: palette.primaryText, fontFamily: boldFamily }]}>
+      <Text style={[styles.heading, { color: palette.primaryText, ...boldFace }]}>
         Chip in for {host}
       </Text>
       <Text style={[styles.sub, { color: palette.secondaryText }]}>
@@ -232,7 +233,7 @@ export const RsvpChipInPanel: React.FC<RsvpChipInPanelProps> = ({
               <Text
                 style={[
                   styles.presetLabel,
-                  { color: selected ? palette.accentText : palette.primaryText, fontFamily: boldFamily },
+                  { color: selected ? palette.accentText : palette.primaryText, ...boldFace },
                 ]}
               >
                 {fmtWhole(preset, currency)}
@@ -255,7 +256,7 @@ export const RsvpChipInPanel: React.FC<RsvpChipInPanelProps> = ({
             },
           ]}
         >
-          <Text style={[styles.presetLabel, { color: palette.primaryText, fontFamily: boldFamily }]}>
+          <Text style={[styles.presetLabel, { color: palette.primaryText, ...boldFace }]}>
             Other
           </Text>
         </Pressable>
@@ -271,7 +272,7 @@ export const RsvpChipInPanel: React.FC<RsvpChipInPanelProps> = ({
           },
         ]}
       >
-        <Text style={[styles.currencyPrefix, { color: palette.primaryText, fontFamily: boldFamily }]}>
+        <Text style={[styles.currencyPrefix, { color: palette.primaryText, ...boldFace }]}>
           {fmtWhole(0, currency).replace(/[\d.,\s]/g, "") || "$"}
         </Text>
         <TextInput
@@ -327,7 +328,7 @@ export const RsvpChipInPanel: React.FC<RsvpChipInPanelProps> = ({
         {submitting ? (
           <View style={styles.primaryBtnRow}>
             <ActivityIndicator color={palette.accentText} />
-            <Text style={[styles.primaryLabel, { color: palette.accentText, fontFamily: boldFamily }]}>
+            <Text style={[styles.primaryLabel, { color: palette.accentText, ...boldFace }]}>
               {"  "}Sending…
             </Text>
           </View>
@@ -335,7 +336,7 @@ export const RsvpChipInPanel: React.FC<RsvpChipInPanelProps> = ({
           <Text
             style={[
               styles.primaryLabel,
-              { color: canSubmit ? palette.accentText : palette.tertiaryText, fontFamily: boldFamily },
+              { color: canSubmit ? palette.accentText : palette.tertiaryText, ...boldFace },
             ]}
           >
             {primaryLabel}

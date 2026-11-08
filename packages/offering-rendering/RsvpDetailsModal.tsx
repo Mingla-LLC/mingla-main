@@ -35,7 +35,7 @@ import {
 import { boldFontFamily, type ThemePalette } from "./themePalette";
 import { ThemeAccentGradientLayer } from "./ThemeAccentFill";
 import { type ResolvedTheme } from "./designTokens";
-import { accentFill } from "./themeAccentStyle";
+import { accentFill, themeFontFace } from "./themeAccentStyle";
 
 export interface RsvpDetailsModalProps {
   visible: boolean;
@@ -70,6 +70,7 @@ export const RsvpDetailsModal: React.FC<RsvpDetailsModalProps> = ({
   onCancel,
 }) => {
   const boldFamily = boldFontFamily(theme);
+  const boldFace = themeFontFace(boldFamily);
   const disabled = !continueEnabled || submitting;
   return (
     <Modal
@@ -98,7 +99,7 @@ export const RsvpDetailsModal: React.FC<RsvpDetailsModalProps> = ({
           onPress={() => undefined}
           testID="orch-1163-rsvp-details-modal"
         >
-          <Text style={[styles.title, { color: palette.primaryText, fontFamily: boldFamily }]}>
+          <Text style={[styles.title, { color: palette.primaryText, ...boldFace }]}>
             Add your details
           </Text>
           <Text style={[styles.sub, { color: palette.secondaryText }]}>
@@ -131,7 +132,7 @@ export const RsvpDetailsModal: React.FC<RsvpDetailsModalProps> = ({
               palette={palette}
               borderRadius={styles.primaryBtn.borderRadius}
             />
-            <Text style={[styles.primaryBtnText, { color: palette.accentText, fontFamily: boldFamily }]}>
+            <Text style={[styles.primaryBtnText, { color: palette.accentText, ...boldFace }]}>
               {continueLabel}
             </Text>
           </Pressable>

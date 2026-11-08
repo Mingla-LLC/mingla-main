@@ -103,7 +103,7 @@ import {
   type TripOfferingState,
   type TripPaymentPlanChoice,
 } from "./useTripOfferingState";
-import { accentFill, accentIcon } from "./themeAccentStyle";
+import { accentFill, accentIcon, themeFontFace } from "./themeAccentStyle";
 
 const ABOUT_COLLAPSE_THRESHOLD = 160;
 
@@ -211,6 +211,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
   // issue #1023 — one accent-icon prop set (gradient stroke when themed).
   const accentIconProps = accentIcon(palette);
   const boldFamily = boldFontFamily(theme);
+  const boldFace = themeFontFace(boldFamily);
   const isDesktop = variant === "desktop";
   const [aboutCollapsed, setAboutCollapsed] = useState<boolean>(true);
   // Issue #2829 W4 — which guide FAQ answers are open (all closed at first).
@@ -351,7 +352,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
             style={[
               styles.title,
               surface.primaryText,
-              { fontFamily: boldFamily },
+              boldFace,
             ]}
           >
             {data.title}
@@ -380,7 +381,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
             <Text
               style={[
                 styles.fullPillText,
-                { color: palette.primaryText, fontFamily: boldFamily },
+                { color: palette.primaryText, ...boldFace },
               ]}
               numberOfLines={1}
               ellipsizeMode="tail"
@@ -404,7 +405,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
             <Text
               style={[
                 styles.fullPillText,
-                { color: palette.primaryText, fontFamily: boldFamily },
+                { color: palette.primaryText, ...boldFace },
               ]}
               numberOfLines={1}
               ellipsizeMode="tail"
@@ -499,7 +500,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
                   <Text
                     style={[
                       styles.brandInitial,
-                      { color: palette.accentText, fontFamily: boldFamily },
+                      { color: palette.accentText, ...boldFace },
                     ]}
                   >
                     {(brand.name.trim()[0] ?? "•").toUpperCase()}
@@ -516,7 +517,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
                   style={[
                     styles.brandName,
                     surface.primaryText,
-                    { fontFamily: boldFamily },
+                    boldFace,
                   ]}
                 >
                   {brand.name}
@@ -553,7 +554,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
             style={[
               styles.secTitle,
               surface.primaryText,
-              { fontFamily: boldFamily },
+              boldFace,
             ]}
           >
             About this trip
@@ -589,7 +590,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
             style={[
               styles.secTitle,
               surface.primaryText,
-              { fontFamily: boldFamily },
+              boldFace,
             ]}
           >
             Highlights
@@ -635,7 +636,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
             style={[
               styles.secTitle,
               surface.primaryText,
-              { fontFamily: boldFamily },
+              boldFace,
             ]}
           >
             Day by day
@@ -657,7 +658,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
             style={[
               styles.secTitle,
               surface.primaryText,
-              { fontFamily: boldFamily },
+              boldFace,
             ]}
           >
             What&rsquo;s included
@@ -673,7 +674,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
             style={[
               styles.secTitle,
               surface.primaryText,
-              { fontFamily: boldFamily },
+              boldFace,
             ]}
           >
             What&rsquo;s not included
@@ -689,7 +690,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
             style={[
               styles.secTitle,
               surface.primaryText,
-              { fontFamily: boldFamily },
+              boldFace,
             ]}
           >
             What to prepare
@@ -705,7 +706,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
             style={[
               styles.secTitle,
               surface.primaryText,
-              { fontFamily: boldFamily },
+              boldFace,
             ]}
           >
             Good to know
@@ -721,7 +722,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
             style={[
               styles.secTitle,
               surface.primaryText,
-              { fontFamily: boldFamily },
+              boldFace,
             ]}
           >
             Questions
@@ -745,7 +746,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
                     style={[
                       styles.guideFaqQuestion,
                       surface.primaryText,
-                      { fontFamily: boldFamily },
+                      boldFace,
                     ]}
                   >
                     {faq.question}
@@ -791,7 +792,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
           style={[
             styles.secTitle,
             surface.primaryText,
-            { fontFamily: boldFamily },
+            boldFace,
           ]}
         >
           {data.tiers.length > 1 ? "Choose your package" : "Choose how you pay"}
@@ -877,7 +878,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
                     style={[
                       styles.selectTierName,
                       surface.primaryText,
-                      { fontFamily: boldFamily },
+                      boldFace,
                     ]}
                     numberOfLines={1}
                   >
@@ -929,7 +930,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
                   },
                   summaryPriceLabel !== null && summaryPriceLabel !== "Free"
                     ? styles.moneyText
-                    : { fontFamily: boldFamily },
+                    : boldFace,
                 ]}
               >
                 {reserveLabel}
@@ -952,7 +953,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
             style={[
               styles.secTitle,
               surface.primaryText,
-              { fontFamily: boldFamily },
+              boldFace,
             ]}
           >
             Where you&rsquo;ll be
@@ -1068,7 +1069,7 @@ const TripPackageRow: React.FC<{
             style={[
               styles.selectTierName,
               surface.primaryText,
-              { fontFamily: boldFamily },
+              themeFontFace(boldFamily),
             ]}
             numberOfLines={2}
           >
@@ -1150,7 +1151,7 @@ const TripPackageRow: React.FC<{
                 style={[
                   styles.pkgQty,
                   surface.primaryText,
-                  { fontFamily: boldFamily },
+                  themeFontFace(boldFamily),
                 ]}
                 accessibilityLabel={`${quantity} ${tier.tierName} selected`}
               >
@@ -1219,7 +1220,7 @@ const MetaPill: React.FC<{
     <Text
       style={[
         styles.pillText,
-        { color: palette.primaryText, fontFamily: font },
+        { color: palette.primaryText, ...themeFontFace(font) },
       ]}
       numberOfLines={1}
     >

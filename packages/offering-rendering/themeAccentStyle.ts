@@ -21,9 +21,31 @@
 
 import { Platform } from "react-native";
 
-import { paletteAccentGradient, type ThemePalette } from "./themePalette";
+import { boldFontFamily, paletteAccentGradient, type ThemePalette } from "./themePalette";
+import type { ResolvedTheme } from "./designTokens";
 
 const IS_WEB = Platform.OS === "web";
+const IS_ANDROID = Platform.OS === "android";
+
+/**
+ * issue #1023 — the style for text drawn in a theme font key (a Google
+ * `GF_<family>_500/_700` key or a bundled theme face). The key already names
+ * the face. On Android, expo-font registers a loaded face for the NORMAL style
+ * only, and React Native maps fontWeight >= 700 to the BOLD style, finds
+ * nothing under the key and falls back to the system font (Roboto Bold). So
+ * Android also gets `fontWeight: "normal"`, which must come after the
+ * StyleSheet weight. iOS and web keep the stylesheet weight (web needs it to
+ * pick the weight of a variable font file).
+ */
+export const themeFontFace = (
+  fontFamily: string,
+): { fontFamily: string; fontWeight?: "normal" } =>
+  IS_ANDROID ? { fontFamily, fontWeight: "normal" } : { fontFamily };
+
+/** The theme's bold face (`boldFontFamily`) as a text style; see themeFontFace. */
+export const themeBoldFace = (
+  theme: ResolvedTheme,
+): { fontFamily: string; fontWeight?: "normal" } => themeFontFace(boldFontFamily(theme));
 
 const linear = (stops: readonly [string, string]): string =>
   `linear-gradient(135deg, ${stops[0]} 0%, ${stops[1]} 100%)`;

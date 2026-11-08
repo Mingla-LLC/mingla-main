@@ -136,7 +136,7 @@ import {
   LazyOfferingRefundLadder as OfferingRefundLadder,
   LazySaleAvailabilityText,
 } from "./LazyOfferingRefundLadder";
-import { accentFill, accentIcon } from "./themeAccentStyle";
+import { accentFill, accentIcon, themeFontFace } from "./themeAccentStyle";
 
 const ABOUT_COLLAPSE_THRESHOLD = 160;
 
@@ -344,6 +344,7 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
   // issue #1023 — one accent-icon prop set (gradient stroke when themed).
   const accentIconProps = accentIcon(palette);
   const boldFamily = boldFontFamily(theme);
+  const boldFace = themeFontFace(boldFamily);
   const isDesktop = variant === "desktop";
   const [aboutCollapsed, setAboutCollapsed] = useState<boolean>(true);
 
@@ -426,7 +427,7 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
             style={[
               styles.title,
               surface.primaryText,
-              { fontFamily: boldFamily },
+              boldFace,
             ]}
           >
             {data.title}
@@ -484,7 +485,7 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
               <Text
                 style={[
                   styles.vibeChipText,
-                  { color: palette.primaryText, fontFamily: boldFamily },
+                  { color: palette.primaryText, ...boldFace },
                 ]}
               >
                 {label}
@@ -558,7 +559,7 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
                   <Text
                     style={[
                       styles.brandInitial,
-                      { color: palette.accentText, fontFamily: boldFamily },
+                      { color: palette.accentText, ...boldFace },
                     ]}
                   >
                     {(brand.name.trim()[0] ?? "•").toUpperCase()}
@@ -575,7 +576,7 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
                   style={[
                     styles.brandName,
                     surface.primaryText,
-                    { fontFamily: boldFamily },
+                    boldFace,
                   ]}
                 >
                   {brand.name}
@@ -628,7 +629,7 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
               style={[
                 styles.availabilityWhen,
                 surface.primaryText,
-                { fontFamily: boldFamily },
+                boldFace,
               ]}
             >
               {availability.primary}
@@ -664,7 +665,7 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
             style={[
               styles.secTitle,
               surface.primaryText,
-              { fontFamily: boldFamily },
+              boldFace,
             ]}
           >
             Right now
@@ -714,7 +715,7 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
             style={[
               styles.secTitle,
               surface.primaryText,
-              { fontFamily: boldFamily },
+              boldFace,
             ]}
           >
             About this experience
@@ -751,7 +752,7 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
             style={[
               styles.secTitle,
               surface.primaryText,
-              { fontFamily: boldFamily },
+              boldFace,
             ]}
           >
             {stopCount === 1 ? "What you'll do" : "The itinerary"}
@@ -774,7 +775,7 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
             style={[
               styles.secTitle,
               surface.primaryText,
-              { fontFamily: boldFamily },
+              boldFace,
             ]}
           >
             Where you&rsquo;ll start
@@ -937,7 +938,7 @@ const MetaChip: React.FC<{
         style={[
           styles.metaChipText,
           surface.secondaryText,
-          { fontFamily: font },
+          themeFontFace(font),
         ]}
         numberOfLines={1}
       >

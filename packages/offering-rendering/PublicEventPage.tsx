@@ -101,8 +101,7 @@ import type {
 } from "./types";
 // issue #3314 — the one owner of remaining-count copy under "Hide remaining count".
 import { ticketAvailabilityCaption } from "./remainingCountVisibility";
-import { accentFill } from "./themeAccentStyle";
-import { boldFontFamily } from "./themePalette";
+import { accentFill, themeBoldFace } from "./themeAccentStyle";
 
 const SHOW_INITIAL_DATES = 10;
 
@@ -568,7 +567,7 @@ const PublishedBody = ({
               <Text
                 style={[
                   styles.dateLine,
-                  { color: themeTextAccent(palette), fontFamily: boldFontFamily(theme) },
+                  { color: themeTextAccent(palette), ...themeBoldFace(theme) },
                 ]}
               >
                 {event.dateLine}
@@ -578,7 +577,7 @@ const PublishedBody = ({
                   styles.titleLine,
                   {
                     color: palette.primaryText,
-                    fontFamily: boldFontFamily(theme),
+                    ...themeBoldFace(theme),
                   },
                 ]}
               >
@@ -970,7 +969,7 @@ const PublishedBody = ({
                       styles.sectionTitle,
                       {
                         color: palette.primaryText,
-                        fontFamily: boldFontFamily(theme),
+                        ...themeBoldFace(theme),
                       },
                     ]}
                   >
@@ -1020,7 +1019,7 @@ const PublishedBody = ({
               styles.sectionTitle,
               {
                 color: palette.primaryText,
-                fontFamily: boldFontFamily(theme),
+                ...themeBoldFace(theme),
               },
             ]}
           >
@@ -1227,7 +1226,7 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
               styles.ticketBuyerBtnLabel,
               {
                 color: palette.accentText,
-                fontFamily: boldFontFamily(theme),
+                ...themeBoldFace(theme),
               },
               isButtonDisabled && { color: palette.tertiaryText },
             ]}

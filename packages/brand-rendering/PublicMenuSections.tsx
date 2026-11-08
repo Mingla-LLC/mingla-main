@@ -29,7 +29,7 @@ import type {
 } from "@mingla/offering-rendering";
 
 import type { PublicMenuGroup } from "./types";
-import { boldFontFamily } from "@mingla/offering-rendering/themePalette";
+import { themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
 
 type Surface = ReturnType<typeof offeringSurfaceStyles>;
 
@@ -86,7 +86,7 @@ const MenuTab: React.FC<{
           accessibilityRole="header"
           style={[
             styles.menuSectionName,
-            { fontFamily: boldFontFamily(theme), color: palette.primaryText },
+            { ...themeBoldFace(theme), color: palette.primaryText },
           ]}
         >
           {group.menuName}

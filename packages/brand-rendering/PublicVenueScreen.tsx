@@ -154,7 +154,7 @@ import {
 } from "./publicVenueReservationUiState";
 import { semantic } from "../offering-rendering/designTokens";
 import { PublicVenueRetryAction } from "./publicVenueRefreshState";
-import { accentFill, accentOutline } from "@mingla/offering-rendering/themeAccentStyle";
+import { accentFill, accentOutline, themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
 import { boldFontFamily } from "@mingla/offering-rendering/themePalette";
 
 type WebVenueViewStyle = Omit<ViewStyle, "position"> & {
@@ -1231,7 +1231,7 @@ export const PublicVenueScreen = ({
     () => ({ fontFamily: resolvedTheme.fontFamilyValue }),
     [resolvedTheme.fontFamilyValue],
   );
-  const themedBoldFont = { fontFamily: boldFontFamily(resolvedTheme) };
+  const themedBoldFont = themeBoldFace(resolvedTheme);
 
   // §6.4 — the static map itself lives in VenueLocationSection (it is that
   // section's data, not the page's). The page keeps only the maps QUERY, which

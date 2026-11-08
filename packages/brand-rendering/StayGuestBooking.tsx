@@ -57,9 +57,8 @@ import {
   useBrandRenderingState as useState,
   type BrandRenderingReactElement,
 } from "./PublicVenueTabs";
-import { accentEdgeOnFill, accentFill, accentFillWithBorder, accentOutline } from "@mingla/offering-rendering/themeAccentStyle";
+import { accentEdgeOnFill, accentFill, accentFillWithBorder, accentOutline, themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
 import { opaqueAccentWashColor } from "@mingla/offering-rendering/themePalette";
-import { boldFontFamily } from "@mingla/offering-rendering/themePalette";
 
 type Surface = ReturnType<typeof offeringSurfaceStyles>;
 
@@ -815,7 +814,7 @@ function RoomPriceFilter({
                   styles.bandText,
                   {
                     color: selected ? palette.accentText : palette.primaryText,
-                    fontFamily: boldFontFamily(theme),
+                    ...themeBoldFace(theme),
                   },
                 ]}
               >

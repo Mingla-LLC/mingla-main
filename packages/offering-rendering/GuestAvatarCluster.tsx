@@ -50,7 +50,7 @@ import { boldFontFamily, type ThemePalette } from "./themePalette";
 import { type ResolvedTheme } from "./designTokens";
 import { type SocialProofSampleEntry } from "./socialProofTypes";
 import { useAccentStroke } from "./LucideIcons";
-import { accentFill, accentIcon } from "./themeAccentStyle";
+import { accentFill, accentIcon, themeFontFace } from "./themeAccentStyle";
 
 // ─────────────────────────────── glyphs (SVG) ───────────────────────────────
 
@@ -192,6 +192,7 @@ export const GuestAvatarCluster: React.FC<GuestAvatarClusterProps> = ({
   testID,
 }) => {
   const boldFamily = boldFontFamily(theme);
+  const boldFace = themeFontFace(boldFamily);
 
   const clusterRow = (
     <View style={styles.clusterRow}>
@@ -253,7 +254,7 @@ export const GuestAvatarCluster: React.FC<GuestAvatarClusterProps> = ({
           <Text
             style={[
               styles.seeLabel,
-              { color: palette.primaryText, fontFamily: boldFamily },
+              { color: palette.primaryText, ...boldFace },
             ]}
           >
             See who's going

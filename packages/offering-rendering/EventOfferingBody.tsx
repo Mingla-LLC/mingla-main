@@ -139,7 +139,7 @@ import {
   LazySaleAvailabilityText,
 } from "./LazyOfferingRefundLadder";
 import { type RefundPolicyReadState } from "./offeringRefundPolicy";
-import { accentFill, accentIcon } from "./themeAccentStyle";
+import { accentFill, accentIcon, themeBoldFace, themeFontFace } from "./themeAccentStyle";
 
 // Re-export the pure totals so a single import surface stays one place.
 export { computeRunningTotal, totalSelectedQuantity } from "./eventBoxTotals";
@@ -216,7 +216,7 @@ export const EventAcquisitionNotice: React.FC<EventAcquisitionNoticeProps> = ({
         style={[
           styles.acquisitionHeading,
           surface.primaryText,
-          { fontFamily: boldFontFamily(theme) },
+          themeBoldFace(theme),
         ]}
       >
         {copy.heading}
@@ -446,6 +446,7 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
 }: EventOfferingBodyProps) => {
   const surface = offeringSurfaceStyles(palette);
   const boldFamily = boldFontFamily(theme);
+  const boldFace = themeFontFace(boldFamily);
   const [aboutCollapsed, setAboutCollapsed] = useState<boolean>(true);
   const acquisitionState = event.acquisitionState ?? {
     kind: "current" as const,
@@ -575,7 +576,7 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
           style={[
             styles.title,
             surface.primaryText,
-            { fontFamily: boldFamily },
+            boldFace,
           ]}
         >
           {event.name.length > 0 ? event.name : "Untitled event"}
@@ -608,7 +609,7 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
               <Text
                 style={[
                   styles.dateLine,
-                  { color: palette.primaryText, fontFamily: boldFamily },
+                  { color: palette.primaryText, ...boldFace },
                 ]}
                 testID="orch-1167-date-line"
               >
@@ -619,7 +620,7 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
               <Text
                 style={[
                   styles.dateSubline,
-                  { color: palette.secondaryText, fontFamily: boldFamily },
+                  { color: palette.secondaryText, ...boldFace },
                 ]}
               >
                 {event.dateSubline}
@@ -765,7 +766,7 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
                   <Text
                     style={[
                       styles.brandInitial,
-                      { color: palette.accentText, fontFamily: boldFamily },
+                      { color: palette.accentText, ...boldFace },
                     ]}
                   >
                     {(brand?.displayName?.trim()[0] ?? "•").toUpperCase()}
@@ -783,7 +784,7 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
                 style={[
                   styles.brandName,
                   surface.primaryText,
-                  { fontFamily: boldFamily },
+                  boldFace,
                 ]}
                 numberOfLines={2}
               >
@@ -816,7 +817,7 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
             style={[
               styles.secTitle,
               surface.primaryText,
-              { fontFamily: boldFamily },
+              boldFace,
             ]}
           >
             About
@@ -851,7 +852,7 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
             style={[
               styles.secTitle,
               surface.primaryText,
-              { fontFamily: boldFamily },
+              boldFace,
             ]}
           >
             Where you&rsquo;ll be
@@ -867,7 +868,7 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
                 style={[
                   styles.venueName,
                   surface.primaryText,
-                  { fontFamily: boldFamily },
+                  boldFace,
                 ]}
               >
                 Online
@@ -884,7 +885,7 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
             style={[
               styles.secTitle,
               surface.primaryText,
-              { fontFamily: boldFamily },
+              boldFace,
             ]}
           >
             Where you&rsquo;ll be
@@ -919,7 +920,7 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
                 style={[
                   styles.venueName,
                   surface.primaryText,
-                  { fontFamily: boldFamily },
+                  boldFace,
                 ]}
               >
                 {event.venueName}
@@ -1050,6 +1051,7 @@ export const EventTicketBox: React.FC<EventTicketBoxProps> = ({
 }) => {
   const surface = offeringSurfaceStyles(palette);
   const boldFamily = boldFontFamily(theme);
+  const boldFace = themeFontFace(boldFamily);
 
   const visibleTickets = useMemo(
     () => sortTickets(event.tickets.filter((t) => t.visibility !== "hidden")),
@@ -1108,7 +1110,7 @@ export const EventTicketBox: React.FC<EventTicketBoxProps> = ({
           style={[
             styles.secTitle,
             surface.primaryText,
-            { fontFamily: boldFamily },
+            boldFace,
           ]}
         >
           Tickets
@@ -1185,7 +1187,7 @@ export const EventTicketBox: React.FC<EventTicketBoxProps> = ({
                     : palette.tertiaryText,
                 },
                 totalLabel === null
-                  ? { fontFamily: boldFamily }
+                  ? boldFace
                   : styles.moneyText,
               ]}
             >
@@ -1244,6 +1246,7 @@ export const EventOfferingFloatingBar: React.FC<
   testID,
 }) => {
   const boldFamily = boldFontFamily(theme);
+  const boldFace = themeFontFace(boldFamily);
   const visibleTickets = useMemo(
     () => event.tickets.filter((t) => t.visibility !== "hidden"),
     [event.tickets],
@@ -1313,7 +1316,7 @@ export const EventOfferingFloatingBar: React.FC<
           {
             color: enabled ? palette.accentText : palette.tertiaryText,
           },
-          totalLabel === null ? { fontFamily: boldFamily } : styles.moneyText,
+          totalLabel === null ? boldFace : styles.moneyText,
         ]}
       >
         {label}
@@ -1352,7 +1355,7 @@ const Pill: React.FC<{
     <Text
       style={[
         styles.pillText,
-        { color: palette.primaryText, fontFamily: font },
+        { color: palette.primaryText, ...themeFontFace(font) },
       ]}
     >
       {children}
@@ -1429,7 +1432,7 @@ const TicketStepperRow: React.FC<{
           style={[
             styles.tierName,
             surface.primaryText,
-            { fontFamily: boldFamily },
+            themeFontFace(boldFamily),
           ]}
         >
           {ticket.name}
@@ -1509,7 +1512,7 @@ const TicketStepperRow: React.FC<{
               style={[
                 styles.stepQty,
                 surface.primaryText,
-                { fontFamily: boldFamily },
+                themeFontFace(boldFamily),
               ]}
               accessibilityLabel={`${quantity} selected`}
             >
