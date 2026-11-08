@@ -31,7 +31,7 @@ import {
   coverCropFraction,
   STATIC_MAP_PROXY_MAX_SIDE,
   staticMapUriForBox,
-} from "./staticMapBox";
+} from "./staticMapSizing";
 
 export { coverCropFraction, STATIC_MAP_PROXY_MAX_SIDE, staticMapUriForBox };
 

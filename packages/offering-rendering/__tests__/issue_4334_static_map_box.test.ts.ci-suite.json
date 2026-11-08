@@ -1,8 +1,0 @@
-{
-  "schemaVersion": 1,
-  "kind": "suite",
-  "path": "packages/offering-rendering/__tests__/issue_4334_static_map_box.test.ts",
-  "lane": "deno2-discovered",
-  "orderKey": "issue-4334-static-map-box-packages",
-  "profile": "deno-2-unit"
-}

@@ -13,7 +13,7 @@
 // drop the w/h rewrite in staticMapUriForBox, or put a pill back at bottom: 12.
 
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { coverCropFraction, staticMapUriForBox } from "../staticMapBox.ts";
+import { coverCropFraction, staticMapUriForBox } from "../staticMapSizing.ts";
 import { fitGoogleSize } from "../../../supabase/functions/static-map/index.ts";
 
 const URI = "https://x.supabase.co/functions/v1/static-map?lat=6.43&lng=3.42&accent=eb7825&zoom=14&h=180";
