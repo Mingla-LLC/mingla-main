@@ -760,7 +760,7 @@ const LIVE_ROWS = [
   ['13d9113a-4796-499e-9544-ae4d17c678db', 'Paris', 'FR', 48.8575475, 2.3513765, 4438],
   ['0ccfcf20-21a9-4d7b-805d-cbe629dcfd2b', 'Raleigh', 'US', 35.7795897, -78.6381787, 2129],
   ['e7b70cd8-d2c8-47f2-9112-08e86942bf96', 'Washington', 'US', 38.9072873, -77.0369274, 2682],
-].map(([city_id, name, country_code, center_lat, center_lng, place_count]) => ({ city_id, name, country_code, center_lat, center_lng, place_count }))
+].map(([city_id, name, country_code, center_lat, center_lng, place_count]) => ({ city_id, name, country_code, center_lat, center_lng, has_places: place_count > 0 }))
 
 test('live cities against the REAL guides: every guide matches its live city, older slugs open it, nothing is added', () => {
   const cities = week.linksCitiesFromRows(LIVE_ROWS, CITIES)
@@ -794,8 +794,8 @@ test('hostile links_page_cities() rows: junk dropped, names never break the slug
       { ...base, city_id: '00000000-0000-4000-8000-000000000002', name: '!!!' },
       { ...base, city_id: '00000000-0000-4000-8000-000000000003', name: 'Zürich', country_code: 'ch' },
       { ...base, city_id: '00000000-0000-4000-8000-000000000004', name: 'Nowhere', center_lng: 'abc' },
-      { ...base, city_id: '00000000-0000-4000-8000-000000000005', name: 'Ghost', country_code: null, place_count: -3 },
-      { ...base, city_id: '00000000-0000-4000-8000-000000000006', name: 'x'.repeat(200), place_count: 1.5 },
+      { ...base, city_id: '00000000-0000-4000-8000-000000000005', name: 'Ghost', country_code: null, has_places: 'yes' },
+      { ...base, city_id: '00000000-0000-4000-8000-000000000006', name: 'x'.repeat(200), has_places: false },
     ].filter(Boolean),
     CITIES,
   )
@@ -804,9 +804,34 @@ test('hostile links_page_cities() rows: junk dropped, names never break the slug
   for (const c of got) assert.equal(oneParam(c.slug), c.slug, `slug ${c.slug} passes the page parser`)
   // The display name is kept as text (React escapes it); the slug is clean.
   assert.equal(got[0].name, '"><script>alert(1)</script>')
-  assert.deepEqual([got[1].region, got[2].region, got[2].placeCount, got[3].placeCount], ['Switzerland', '', null, null])
+  assert.deepEqual([got[1].region, got[2].region, got[2].hasPlaces, got[3].hasPlaces], ['Switzerland', '', null, false])
   // An empty city list never crashes the resolver silently: it throws loudly.
   assert.throws(() => week.resolveCity({ cities: [], live: [], query: null, geo: null, cookie: null }))
+})
+
+test('the quiet-week request sends p_city_id to links_page_places (and lat/lng only as the fallback)', async () => {
+  const realFetch = globalThis.fetch
+  const env = { ...process.env }
+  const bodies = []
+  try {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://db.example.test'
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'anon'
+    globalThis.fetch = async (url, init) => {
+      bodies.push({ url: String(url), body: JSON.parse(init.body) })
+      return new Response('[]', { status: 200 })
+    }
+    const [paris] = week.linksCitiesFromRows([LIVE_ROWS[7]], CITIES)
+    const guide = city('lagos')
+    await data.getLinksPlaces([paris, guide])
+    assert.deepEqual(bodies.map((b) => b.url), Array(2).fill('https://db.example.test/rest/v1/rpc/links_page_places'))
+    assert.equal(bodies[0].body.p_city_id, '13d9113a-4796-499e-9544-ae4d17c678db')
+    assert.equal('p_city_id' in bodies[1].body, false, 'a city with no id uses the lat/lng path')
+    assert.equal(bodies[1].body.p_radius_km, 80)
+  } finally {
+    globalThis.fetch = realFetch
+    for (const key of Object.keys(process.env)) if (!(key in env)) delete process.env[key]
+    Object.assign(process.env, env)
+  }
 })
 
 test('the page builds its list from links_page_cities() only; the guides stand in only while that read is down', () => {

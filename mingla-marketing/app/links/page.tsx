@@ -79,7 +79,7 @@ function outageCities(hints: readonly LinksCityHint[]): LinksCity[] {
     name: hub.city,
     reachKm: cityReachKm(hub.slug),
     aliases: [],
-    placeCount: null,
+    hasPlaces: null,
   }))
 }
 
@@ -119,7 +119,7 @@ export default async function LinksPage({
   // city, so every quiet one the visitor can switch to gets its places (each
   // read cached 5 minutes). A city with no photo places is not asked.
   const liveSlugs = new Set(live.map((l) => l.city.slug))
-  const quietCities = cities.filter((c) => !liveSlugs.has(c.slug) && c.placeCount !== 0)
+  const quietCities = cities.filter((c) => !liveSlugs.has(c.slug) && c.hasPlaces !== false)
   const readFailed = outage || data.failed.includes('week')
   const places = readFailed ? { places: {}, failed: [] } : await getLinksPlaces(quietCities)
 

@@ -551,7 +551,7 @@ const LIVE_ROWS = [
   ['13d9113a-4796-499e-9544-ae4d17c678db', 'Paris', 'FR', 48.8575475, 2.3513765, 4438],
   ['0ccfcf20-21a9-4d7b-805d-cbe629dcfd2b', 'Raleigh', 'US', 35.7795897, -78.6381787, 2129],
   ['e7b70cd8-d2c8-47f2-9112-08e86942bf96', 'Washington', 'US', 38.9072873, -77.0369274, 2682],
-].map(([city_id, name, country_code, center_lat, center_lng, place_count]) => ({ city_id, name, country_code, center_lat, center_lng, place_count }))
+].map(([city_id, name, country_code, center_lat, center_lng, place_count]) => ({ city_id, name, country_code, center_lat, center_lng, has_places: place_count > 0 }))
 // What the city guides know (content/cities/registry.ts): older slugs, regions, zones.
 const HINTS = CITIES.map((c) => ({ slug: c.slug, countryCode: { lagos: 'NG', brussels: 'BE', london: 'GB' }[c.slug] ?? 'US', region: c.region, timezone: c.timezone, lat: c.lat, lng: c.lng }))
   .concat([{ slug: 'washington-dc', countryCode: 'US', region: 'District of Columbia', timezone: 'America/New_York', lat: 38.9072, lng: -77.0369 }])
@@ -569,7 +569,8 @@ test('the live cities are exactly the database rows: slugs from names, older gui
   assert.equal(by.paris.region, 'France')
   assert.equal(by.paris.timezone, '')
   for (const c of cities) assert.equal(c.reachKm, c.slug === 'lagos' ? 80 : 60, c.slug)
-  assert.equal(by.london.placeCount, 11654)
+  assert.equal(by.london.hasPlaces, true)
+  assert.equal(by.london.cityId, 'c0bcef4f-82c1-44c6-9e9d-3329f5c860bf')
   // Slugs: lowercase, hyphenated, punctuation stripped.
   assert.equal(week.citySlug('Washington, D.C.'), 'washington-dc')
   assert.equal(week.citySlug("St. John's"), 'st-johns')
@@ -589,7 +590,7 @@ test('the live cities are exactly the database rows: slugs from names, older gui
 })
 
 test('a city switched live appears with no code change: listed, bucketed, its zone from its listings', () => {
-  const abuja = { city_id: '00000000-0000-4000-8000-0000000000ab', name: 'Abuja', country_code: 'NG', center_lat: 9.0765, center_lng: 7.3986, place_count: 120 }
+  const abuja = { city_id: '00000000-0000-4000-8000-0000000000ab', name: 'Abuja', country_code: 'NG', center_lat: 9.0765, center_lng: 7.3986, has_places: true }
   const base = week.linksCitiesFromRows([...LIVE_ROWS, abuja], HINTS)
   const listings = week.bucketListings(
     [row({ lat: 9.06, lng: 7.49, tz: 'Africa/Lagos', starts_at: '2026-11-08T18:00:00Z', item_slug: 'abuja-1' })],
@@ -646,6 +647,22 @@ test('quiet cities are listed: every live city, nearest first, else most plans t
   const durham = cities.find((c) => c.slug === 'durham')
   const q = week.quietWeek({ city: durham, cityHasListings: false, places: [], live, readFailed: false })
   assert.deepEqual([q.mode, q.heading, q.plansIn.slug], ['quiet', 'A quiet week in Durham.', 'cary'])
+})
+
+test('quiet-week places are read by city_id (the fast index path); lat/lng alone only when no id is known', () => {
+  const cities = week.linksCitiesFromRows(LIVE_ROWS, HINTS)
+  const durham = cities.find((c) => c.slug === 'durham')
+  assert.deepEqual(week.linksPlacesArgs(durham, 3), {
+    p_lat: 35.9955684,
+    p_lng: -78.9002077,
+    p_radius_km: 60,
+    p_limit: 3,
+    p_city_id: 'a9e110dd-c26c-4141-9fee-165fad1fd455',
+  })
+  // A stand-in guide city (cities read down) has no id: the lat/lng path, Lagos at 80 km.
+  const noId = { slug: 'lagos', name: 'Lagos', region: 'Nigeria', timezone: 'Africa/Lagos', lat: 6.4281, lng: 3.4219, reachKm: 80 }
+  assert.deepEqual(week.linksPlacesArgs(noId, 3), { p_lat: 6.4281, p_lng: 3.4219, p_radius_km: 80, p_limit: 3 })
+  assert.equal('p_city_id' in week.linksPlacesArgs({ ...noId, cityId: 'not-a-uuid' }, 3), false)
 })
 
 test('?city= with an older guide slug opens the live city (washington-dc, new-york-city, durham-nc)', () => {

@@ -21,7 +21,7 @@
 // crashing; the page then shows the same empty state.
 
 import {
-  cityReachKm,
+  linksPlacesArgs,
   normalisePlaces,
   QUIET_WEEK_PLACES,
   type LinksCity,
@@ -46,7 +46,7 @@ export function linksDataConfigured(): boolean {
 
 async function rpc<T>(
   name: 'links_page_week' | 'links_page_strips' | 'links_page_places' | 'links_page_cities',
-  args: Record<string, number> = {},
+  args: Record<string, number | string> = {},
 ): Promise<T[]> {
   const anonKey = runtimeEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY')
   const base = runtimeEnv('NEXT_PUBLIC_SUPABASE_URL').replace(/\/$/, '')
@@ -112,8 +112,9 @@ export interface LinksPlacesData {
 }
 
 /**
- * Up to 3 real places for each city asked for, around the city's centre (from
- * `links_page_cities()`) and within its own reach. Photos are stored
+ * Up to 3 real places for each city asked for: the city's own top places by
+ * its `city_id` from `links_page_cities()`, or, with no id, around its centre
+ * within its own reach. Photos are stored
  * thumbnails on the public object endpoint (never /render/image).
  */
 export async function getLinksPlaces(cities: readonly LinksCity[]): Promise<LinksPlacesData> {
@@ -122,12 +123,8 @@ export async function getLinksPlaces(cities: readonly LinksCity[]): Promise<Link
   const storage = runtimeEnv('NEXT_PUBLIC_SUPABASE_URL')
   const results = await Promise.allSettled(
     cities.map((city) =>
-      rpc<LinksPlaceRow>('links_page_places', {
-        p_lat: city.lat,
-        p_lng: city.lng,
-        p_radius_km: Math.round(city.reachKm ?? cityReachKm(city.slug)),
-        p_limit: QUIET_WEEK_PLACES,
-      }),
+      // By city id (the fast index path); lat/lng only when no id is known.
+      rpc<LinksPlaceRow>('links_page_places', linksPlacesArgs(city, QUIET_WEEK_PLACES)),
     ),
   )
   results.forEach((result, i) => {

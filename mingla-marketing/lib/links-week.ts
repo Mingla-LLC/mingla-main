@@ -66,8 +66,10 @@ export interface LinksCity extends LinksPoint {
   reachKm?: number
   /** Older slugs that still open this city through `?city=` or the remembered-city cookie. */
   aliases?: string[]
-  /** Photo places the city has (links_page_places rules); null when unknown. */
-  placeCount?: number | null
+  /** The city's id in `seeding_cities` (from `links_page_cities()`); its places are read by id. */
+  cityId?: string
+  /** Whether the city has any photo place (links_page_places rules); null when unknown. */
+  hasPlaces?: boolean | null
 }
 
 /** One row of `public.links_page_cities()`: a city live for consumers in Explorer. */
@@ -77,7 +79,8 @@ export interface LinksCityRow {
   country_code: string | null
   center_lat: number
   center_lng: number
-  place_count: number
+  /** Any photo place under the links_page_places rules (#4318: replaced place_count). */
+  has_places: boolean
 }
 
 /**
@@ -255,7 +258,6 @@ export function linksCitiesFromRows(rows: readonly LinksCityRow[], hints: readon
       point,
       CITY_HINT_MATCH_KM,
     )?.city
-    const count = Number(row.place_count)
     out.push({
       slug,
       name,
@@ -263,7 +265,8 @@ export function linksCitiesFromRows(rows: readonly LinksCityRow[], hints: readon
       timezone: hint?.timezone ?? '',
       reachKm: cityReachKm(slug),
       aliases: hint && hint.slug !== slug ? [hint.slug] : [],
-      placeCount: Number.isInteger(count) && count >= 0 ? count : null,
+      cityId: row.city_id.toLowerCase(),
+      hasPlaces: typeof row.has_places === 'boolean' ? row.has_places : null,
       lat,
       lng,
     })
@@ -282,6 +285,22 @@ export function withListingZones(cities: readonly LinksCity[], listings: readonl
     const first = listings.find((l) => l.citySlug === city.slug)
     return { ...city, timezone: first ? first.tz : 'UTC' }
   })
+}
+
+/**
+ * The `links_page_places` arguments for a quiet city: its `city_id` when known
+ * (the fast per-city index path), with the centre and reach as the fallback
+ * the function still requires. Without an id, the lat/lng path alone.
+ */
+export function linksPlacesArgs(city: LinksCity, limit: number): Record<string, number | string> {
+  const args: Record<string, number | string> = {
+    p_lat: city.lat,
+    p_lng: city.lng,
+    p_radius_km: Math.round(city.reachKm ?? cityReachKm(city.slug)),
+    p_limit: limit,
+  }
+  if (city.cityId && CITY_ID.test(city.cityId)) args.p_city_id = city.cityId
+  return args
 }
 
 /** The live city a `?city=` value or remembered slug names: its own slug or an older one. */
