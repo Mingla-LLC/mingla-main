@@ -49,6 +49,11 @@ CREATE TABLE public.payout_debt_application_returns (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+-- The projection, the returner and maturity read applications by release on
+-- every planner pass; the only existing index leads with debt_id.
+CREATE INDEX payout_debt_applications_release_idx
+  ON public.payout_debt_applications (release_id);
+
 CREATE INDEX payout_debt_application_returns_application_idx
   ON public.payout_debt_application_returns (application_id);
 CREATE INDEX payout_debt_application_returns_release_idx
@@ -1739,6 +1744,37 @@ BEGIN
     'debt_created', v_debt_created,
     'debt_id', v_debt_id
   );
+END;
+$fn$;
+
+-- ---- protect_payout_debt_application (source and hunks: __tests__/issue_3645_debt_return_reemit_hunks.ts)
+CREATE OR REPLACE FUNCTION public.protect_payout_debt_application()
+RETURNS trigger LANGUAGE plpgsql SET search_path = public, pg_temp AS $fn$
+BEGIN
+  IF TG_OP='DELETE' THEN
+    RAISE EXCEPTION 'payout_ledger_append_only' USING ERRCODE='P0001';
+  END IF;
+  IF OLD.released_at IS NULL AND NEW.released_at IS NOT NULL
+     AND NEW.id=OLD.id AND NEW.debt_id=OLD.debt_id
+     AND NEW.release_id=OLD.release_id AND NEW.amount_cents=OLD.amount_cents
+     AND NEW.converted_cents=OLD.converted_cents
+     AND NEW.idempotency_key=OLD.idempotency_key AND NEW.created_at=OLD.created_at THEN
+    RETURN NEW;
+  END IF;
+  IF NEW.released_at IS NOT DISTINCT FROM OLD.released_at
+     AND NEW.id=OLD.id AND NEW.debt_id=OLD.debt_id
+     AND NEW.release_id=OLD.release_id AND NEW.amount_cents=OLD.amount_cents
+     AND NEW.converted_cents>=OLD.converted_cents
+     AND NEW.idempotency_key=OLD.idempotency_key AND NEW.created_at=OLD.created_at THEN
+    -- #3645 2d: the same bound the returns trigger keeps, from this side.
+    IF NEW.converted_cents>OLD.converted_cents
+       AND NEW.converted_cents::bigint
+         +public.issue_3645_application_returned_cents(NEW.id)>NEW.amount_cents THEN
+      RAISE EXCEPTION 'debt_conversion_exceeds_application' USING ERRCODE='23514';
+    END IF;
+    RETURN NEW;
+  END IF;
+  RAISE EXCEPTION 'payout_debt_application_immutable' USING ERRCODE='P0001';
 END;
 $fn$;
 

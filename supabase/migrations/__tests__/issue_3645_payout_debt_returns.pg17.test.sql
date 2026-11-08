@@ -237,15 +237,16 @@ BEGIN
   ) THEN
     RAISE EXCEPTION '% I2 broken: stored withheld columns disagree with the applications', p_label;
   END IF;
-  -- I3: no unpaid release withholds more than its items cover after settling.
+  -- I3: every settled unpaid release stores the projected net, and none
+  -- withholds more than its items cover.
   IF EXISTS (
     SELECT 1 FROM public.brand_payout_releases r
     CROSS JOIN LATERAL public.issue_3645_release_projected_totals(r.id) t
     WHERE r.brand_id IN (SELECT id FROM public.brands WHERE slug LIKE 'issue-3645-2d-%')
       AND public.issue_3645_release_settleable(r.id)
       AND EXISTS (SELECT 1 FROM public.payout_release_items i WHERE i.release_id = r.id)
-      AND t.withheld_cents > t.items_net_cents
-      AND r.net_release_cents <> t.net_release_cents
+      AND (r.net_release_cents <> t.net_release_cents
+           OR t.withheld_cents > t.items_net_cents)
   ) THEN
     RAISE EXCEPTION '% I3 broken: a settled release stores a stale net', p_label;
   END IF;
@@ -911,7 +912,7 @@ BEGIN
   SELECT * INTO v_ret FROM public.payout_debt_application_returns LIMIT 1;
   BEGIN
     UPDATE public.payout_debt_application_returns SET amount_cents = 1 WHERE id = v_ret.id;
-    v_ok := true;
+    v_ok := false;
   EXCEPTION WHEN OTHERS THEN v_ok := SQLERRM = 'payout_ledger_append_only';
   END;
   IF v_ok IS NOT TRUE THEN RAISE EXCEPTION 'T14 update allowed'; END IF;
@@ -934,6 +935,16 @@ BEGIN
   EXCEPTION WHEN check_violation THEN v_ok := SQLERRM = 'debt_return_exceeds_application';
   END;
   IF v_ok IS NOT TRUE THEN RAISE EXCEPTION 'T14 over-return allowed'; END IF;
+  -- Nor can a conversion, written straight to the application, take a part
+  -- that was handed back.
+  BEGIN
+    UPDATE public.payout_debt_applications
+    SET converted_cents = amount_cents - public.issue_3645_application_returned_cents(id) + 1
+    WHERE id = v_ret.application_id;
+    v_ok := false;
+  EXCEPTION WHEN check_violation THEN v_ok := SQLERRM = 'debt_conversion_exceeds_application';
+  END;
+  IF v_ok IS NOT TRUE THEN RAISE EXCEPTION 'T14 over-conversion allowed'; END IF;
   -- A return names its application's own release.
   BEGIN
     INSERT INTO public.payout_debt_application_returns(

@@ -202,4 +202,16 @@ export const DEBT_RETURN_REEMITS: Reemit[] = [
       },
     ],
   },
+  {
+    fn: "protect_payout_debt_application",
+    source: "supabase/migrations/20270110000001_issue_1171_dark_payout_ledger.sql",
+    target: TARGET,
+    hunks: [
+      {
+        name: "a conversion never takes a part that was handed back, whoever updates the row",
+        old: "     AND NEW.converted_cents>=OLD.converted_cents\n     AND NEW.idempotency_key=OLD.idempotency_key AND NEW.created_at=OLD.created_at THEN\n    RETURN NEW;\n",
+        new: "     AND NEW.converted_cents>=OLD.converted_cents\n     AND NEW.idempotency_key=OLD.idempotency_key AND NEW.created_at=OLD.created_at THEN\n    -- #3645 2d: the same bound the returns trigger keeps, from this side.\n    IF NEW.converted_cents>OLD.converted_cents\n       AND NEW.converted_cents::bigint\n         +public.issue_3645_application_returned_cents(NEW.id)>NEW.amount_cents THEN\n      RAISE EXCEPTION 'debt_conversion_exceeds_application' USING ERRCODE='23514';\n    END IF;\n    RETURN NEW;\n",
+      },
+    ],
+  },
 ];
