@@ -1757,6 +1757,7 @@
         "mingla-business/src/components/checkout/CheckoutOrderSummary.tsx",
         "mingla-business/src/components/checkout/DiscountCodeField.tsx",
         "mingla-business/src/components/discounts/DiscountEditSheet.tsx",
+        "mingla-business/src/components/discounts/DiscountListView.tsx",
         "packages/offering-rendering/discountWriteRefusalCopy.ts",
         "supabase/functions/brand-discount-upsert/index.ts"
       ]

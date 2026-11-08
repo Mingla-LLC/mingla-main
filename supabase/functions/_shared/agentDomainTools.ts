@@ -3366,6 +3366,25 @@ export function buildCreateDiscountRequest(
   };
 }
 
+/** #4304: the exact edge request for a discount status change (pause, resume, end). */
+export function buildDiscountStatusRequest(
+  action: "pause" | "resume" | "end",
+  args: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    action,
+    payload: {
+      id: args.discount_id,
+      brandId: args.brand_id,
+      version: args.version,
+      source: "ari",
+    },
+  };
+}
+
+// #4304 — pause, resume and end share one request shape: the Host names a
+// discount, Ari reads its id and version from list_discounts, then proposes
+// the change. The edge writer owns the transition and the version check.
 const pauseDiscount = writeTool(
   "pause_discount",
   "Pause a discount after the Host confirms. Existing orders keep their price.",
@@ -3380,15 +3399,49 @@ const pauseDiscount = writeTool(
     return await invokeFn(
       client,
       "brand-discount-upsert",
-      {
-        action: "pause",
-        payload: {
-          id: args.discount_id,
-          brandId: args.brand_id,
-          version: args.version,
-          source: "ari",
-        },
-      },
+      buildDiscountStatusRequest("pause", args),
+      undefined,
+      { refusals: DISCOUNT_WRITE_REFUSAL_COPY },
+    );
+  },
+);
+
+const resumeDiscount = writeTool(
+  "resume_discount",
+  "Resume a paused discount after the Host confirms, so buyers can use it again. Get discount_id and version from list_discounts first.",
+  {
+    brand_id: UUID,
+    discount_id: UUID,
+    version: { type: "integer", minimum: 1 },
+  },
+  ["brand_id", "discount_id", "version"],
+  async (args, client, userId) => {
+    await requireBrand(args, client, userId);
+    return await invokeFn(
+      client,
+      "brand-discount-upsert",
+      buildDiscountStatusRequest("resume", args),
+      undefined,
+      { refusals: DISCOUNT_WRITE_REFUSAL_COPY },
+    );
+  },
+);
+
+const endDiscount = writeTool(
+  "end_discount",
+  "End a discount for good after the Host confirms. Buyers stop receiving it; existing orders keep their price. Get discount_id and version from list_discounts first.",
+  {
+    brand_id: UUID,
+    discount_id: UUID,
+    version: { type: "integer", minimum: 1 },
+  },
+  ["brand_id", "discount_id", "version"],
+  async (args, client, userId) => {
+    await requireBrand(args, client, userId);
+    return await invokeFn(
+      client,
+      "brand-discount-upsert",
+      buildDiscountStatusRequest("end", args),
       undefined,
       { refusals: DISCOUNT_WRITE_REFUSAL_COPY },
     );
@@ -9534,6 +9587,8 @@ export const DOMAIN_TOOLS: AgentToolDefinition[] = [
   listDiscounts,
   createDiscount,
   pauseDiscount,
+  resumeDiscount,
+  endDiscount,
   listReferralOffers,
   createReferralOffer,
   invitePromoters,
