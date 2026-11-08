@@ -361,9 +361,11 @@ export async function composeCollage(photoUrls: string[]): Promise<{
 
   // [CRITICAL — ORCH-0737 v6] This loop stays SERIAL on purpose.
   // Per-call memory safety: ~5 MB peak per photo (URL-transformed at tile
-  // resolution). The outer parallel-12 lives in `runPrepIteration` — DO NOT
-  // also parallelize photos within a single compose call, or memory blows
-  // (12 outer × 16 inner = 192 in-flight decoded buffers = 546 errors).
+  // resolution). DO NOT parallelize photos within a single compose call, or
+  // memory blows (12 outer × 16 inner = 192 in-flight decoded buffers = 546
+  // errors). #4276: `runPrepIteration` now also composes one collage at a time,
+  // at most PREP_MAX_COMPOSES_PER_INVOCATION per worker, because CPU time, not
+  // memory, is what killed parallel-12.
   // ORCH-1033: the original-object fallback (when a thumb is missing) decodes a
   // single full-size 800px original at a time here, so this loop staying serial
   // keeps the worst case at one ≤6.4 MB decode in flight.

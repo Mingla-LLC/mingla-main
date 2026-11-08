@@ -1027,7 +1027,35 @@ export async function fetchReviewsForPlace(
   forceRefresh: boolean,
   serperKey: string,
   onSerperRequest?: () => void,
+  opts: { refreshedSince?: string | null } = {},
 ): Promise<ReviewFetchOutcome> {
+  // #4276: a forced redo refreshes each place once per run. When this place's fetch
+  // already finished after `refreshedSince` (the run's creation), a retry after a
+  // killed worker reuses it instead of paying Serper again. A failed fetch always
+  // retries.
+  if (forceRefresh && opts.refreshedSince) {
+    const { data: state, error: stateErr } = await db
+      .from("place_review_fetch_state")
+      .select("outcome, last_checked_at, review_count")
+      .eq("place_id", placePoolId)
+      .maybeSingle();
+    if (stateErr) {
+      return {
+        kind: "failed",
+        error: `review state read failed: ${stateErr.message}`,
+        depleted: false,
+        fetched: 0,
+        placeName: null,
+      };
+    }
+    if (
+      state && state.outcome !== "failed" && typeof state.last_checked_at === "string" &&
+      Date.parse(state.last_checked_at) >= Date.parse(opts.refreshedSince)
+    ) {
+      return { kind: "skipped_fresh", count: Number(state.review_count ?? 0) };
+    }
+  }
+
   // Idempotency check
   if (!forceRefresh) {
     const cutoff = new Date(
@@ -1174,6 +1202,10 @@ export async function fetchReviewsForPlace(
         // #4276 R1: `raw` is no longer written. Nothing reads it, and it held about
         // 930 MB. Rows keep their existing value; the column stays until a reclaim.
         media: r.media || [],
+        // #4276: a review seen again is fresh again. Without this the upsert kept the
+        // first fetch's date, so a place whose reviews were all already stored never
+        // looked fresh and every retry paid Serper for the same pages.
+        fetched_at: new Date().toISOString(),
       }));
       const { error: upsertErr } = await db
         .from("place_external_reviews")
@@ -3472,9 +3504,9 @@ async function handleListActiveRuns(db: SupabaseClient): Promise<Response> {
 // v6 CHANGES (this file):
 // - Budget loop wraps phase decider (multi-phase per invocation)
 // - Score iteration: parallel-12 (was ~3 effective due to prep starvation)
-// - Prep iteration: parallel-12 OUTER × serial-internal compose
-//   (memory-safe due to URL transforms in imageCollage.ts:fetchAndDecode —
-//   per-call peak ~5 MB, 12 × ~5 MB = 60 MB << 150 MB cap)
+// - Prep iteration: parallel review fetch, then collages one at a time, at most
+//   PREP_MAX_COMPOSES_PER_INVOCATION new ones per invocation (#4276: parallel-12
+//   compose was memory-safe but blew the edge CPU limit; see runPrepIteration)
 // - Self-invoke at end-of-budget via EdgeRuntime.waitUntil
 // - lock_run_for_chunk pattern unchanged (lock releases at RPC return; chunk
 //   serialization is heartbeat-staleness on cron side; safe-by-construction
@@ -3663,6 +3695,8 @@ export async function handleProcessChunk(
   let totalReclaimed = 0;
   let runComplete = false;
   let exitReason = "budget_exhausted";
+  // #4276: collage CPU is budgeted per invocation, across all its prep iterations.
+  const composeBudget = newComposeBudget();
 
   while (
     Date.now() - startedAtMs < V6_BUDGET_MS &&
@@ -3770,6 +3804,12 @@ export async function handleProcessChunk(
         continue;
       }
     } else {
+      // #4276: this invocation has composed all the collages its CPU allows. Stop
+      // here; the self-invoke below chains a fresh worker with a fresh budget.
+      if (composeBudget.remaining <= 0) {
+        exitReason = "prep_compose_cap_reached";
+        break;
+      }
       const result = await runPrepIteration({
         db,
         serperKey,
@@ -3777,6 +3817,7 @@ export async function handleProcessChunk(
         stuckCutoff,
         workerStartedAtMs: startedAtMs,
         iteration: iterations,
+        composeBudget,
       });
       totalPrepped += result.prepped;
       totalPrepFailed += result.prep_failed;
@@ -4077,17 +4118,39 @@ class ReviewFetchFailure extends Error {
   }
 }
 
-// ─── Prep iteration (v6): PARALLEL-12 OUTER × serial-internal compose ────
+// ─── Prep iteration: parallel review fetch, then SERIAL, capped compose ──
 // Returns a result shape (not a Response) — the budget loop wraps this.
 //
-// Memory safety: each compose_collage call internally processes photos in
-// a SERIAL for-loop (per imageCollage.ts comment block). With URL-transformed
-// photos at tile resolution, per-call peak is ~5 MB. 12 parallel × ~5 MB =
-// 60 MB << 150 MB cap. Safe by construction.
+// #4276 CPU budget. The edge runtime kills an invocation once its CPU time passes
+// its limit (HTTP 546 "CPU Time exceeded"); waiting on Serper, Gemini or Storage
+// costs nothing, decoding and encoding images is nearly all of it. One collage
+// (decode up to 16 tiles, resize, composite, WebP-encode 768x768) measured
+// 0.45-0.6 s of CPU on a developer Mac, and the edge CPU is not faster. The old
+// parallel-12 compose spent ~6 s per batch, so in Abuja (2026-11-08) every worker
+// died ~16 s after boot, and the places it had claimed sat 5 minutes before the
+// stuck-recovery picked them up again.
 //
-// If WORKER_RESOURCE_LIMIT 546 errors appear post-deploy, REVERT to .limit(6)
-// or .limit(3) (single-line edit) and escalate. The internal compose loop
-// MUST stay serial — do NOT parallelize photos within a compose call.
+// So one worker invocation composes at most PREP_MAX_COMPOSES_PER_INVOCATION new
+// collages (about 1-1.2 s of CPU, leaving room for the score phase and JSON work
+// under a 2 s limit), one at a time. A cache hit costs no CPU and doesn't count.
+// The budget loop stops prep when the cap is reached and the self-invoke chains the
+// next worker. Prep claims no more places than the cap allows, so nothing is
+// claimed and then left waiting for the stuck-recovery.
+//
+// MINGLA-INVARIANT: I-4276-PREP-COMPOSE-CAP | issue #4276 | One process_chunk invocation composes at most PREP_MAX_COMPOSES_PER_INVOCATION new collages, one at a time
+export const PREP_MAX_COMPOSES_PER_INVOCATION = 2;
+/** Most places one prep batch claims (and fetches reviews for in parallel). */
+export const PREP_CLAIM_LIMIT = 12;
+
+/** New collages this invocation may still compose. Shared across prep iterations. */
+export interface ComposeBudget {
+  remaining: number;
+}
+
+export function newComposeBudget(): ComposeBudget {
+  return { remaining: PREP_MAX_COMPOSES_PER_INVOCATION };
+}
+
 export async function runPrepIteration(args: {
   db: SupabaseClient;
   serperKey: string;
@@ -4095,25 +4158,34 @@ export async function runPrepIteration(args: {
   stuckCutoff: string;
   workerStartedAtMs: number;
   iteration: number;
+  composeBudget?: ComposeBudget;
 }): Promise<
   {
     prepped: number;
     prep_failed: number;
     reclaimed: number;
     paused_by_provider: boolean;
+    composed: number;
   }
 > {
   const { db, serperKey, runId, stuckCutoff, workerStartedAtMs, iteration } =
     args;
+  const composeBudget = args.composeBudget ?? newComposeBudget();
+  if (composeBudget.remaining <= 0) {
+    return { prepped: 0, prep_failed: 0, reclaimed: 0, paused_by_provider: false, composed: 0 };
+  }
 
-  // #4276 S4: a redo run re-fetches reviews even when they look fresh.
+  // #4276 S4: a redo run re-fetches reviews even when they look fresh, once per run.
   const { data: parentRun, error: parentRunErr } = await db
     .from("place_intelligence_runs")
-    .select("force_refresh_reviews")
+    .select("force_refresh_reviews, created_at")
     .eq("id", runId)
     .maybeSingle();
   if (parentRunErr) throw new Error(`prep run read failed: ${parentRunErr.message}`);
   const forceRefreshReviews = parentRun?.force_refresh_reviews === true;
+  // #4276: a redo's reviews checked since the run was created are this run's own
+  // refresh, so a retry after a killed worker doesn't buy them again.
+  const refreshedSince = typeof parentRun?.created_at === "string" ? parentRun.created_at : null;
 
   // #4276: check Serper before claiming a prep batch, so an outage costs nothing: no
   // collage, no review fetch, no place marked failed. Same pause and reason as running
@@ -4134,20 +4206,21 @@ export async function runPrepIteration(args: {
       .eq("status", "running");
     if (pauseErr) throw new Error(`run could not be paused: ${pauseErr.message}`);
     console.error(`[v6 prep] run ${runId} paused before prep: Serper's latest health check is not healthy`);
-    return { prepped: 0, prep_failed: 0, reclaimed: 0, paused_by_provider: true };
+    return { prepped: 0, prep_failed: 0, reclaimed: 0, paused_by_provider: true, composed: 0 };
   }
 
+  const claimLimit = Math.min(PREP_CLAIM_LIMIT, composeBudget.remaining);
   const { data: pickupRows, error: pickupErr } = await db
     .from("place_intelligence_trial_runs")
     .select("id, place_pool_id, status, started_at")
     .eq("parent_run_id", runId)
     .is("prep_status", null)
     .or(`status.eq.pending,and(status.eq.running,started_at.lt.${stuckCutoff})`)
-    .limit(12); // v6: parallel-12 outer (was 3 in v4, 6 in v5 spec)
+    .limit(claimLimit);
 
   if (pickupErr) throw new Error(`prep pickup failed: ${pickupErr.message}`);
   if (!pickupRows || pickupRows.length === 0) {
-    return { prepped: 0, prep_failed: 0, reclaimed: 0, paused_by_provider: false };
+    return { prepped: 0, prep_failed: 0, reclaimed: 0, paused_by_provider: false, composed: 0 };
   }
 
   const reclaimed = pickupRows.filter((r) => r.status === "running").length;
@@ -4163,27 +4236,21 @@ export async function runPrepIteration(args: {
     .in("id", rowIds);
 
   let serperRequests = 0;
+  let composed = 0;
   const batchStartedAtPerf = performance.now();
   const batchStartedAtIso = new Date().toISOString();
   const batchContext: BatchContext = {
     batch_id: `${runId}-prep-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`,
     batch_kind: "prep",
     batch_iteration: iteration,
-    batch_parallel_n: 12,
+    batch_parallel_n: pickupRows.length,
     batch_row_count: pickupRows.length,
     batch_started_at: batchStartedAtIso,
     worker_elapsed_ms_at_batch_start: Date.now() - workerStartedAtMs,
   };
 
-  // ─── PARALLEL-12 outer prep via Promise.all ─────────────────────────────
-  // Each row's compose_collage now peaks at ~5 MB (URL-transformed photos
-  // via imageCollage.ts:fetchAndDecode). 12 parallel × ~5 MB = 60 MB peak,
-  // well under 150 MB edge fn cap. URL-transform is the load-bearing
-  // memory-safety primitive — DO NOT bypass it.
-  //
-  // First v6 deploy will INVALIDATE existing fingerprint caches (URL pattern
-  // changes). Acceptable one-time hit; subsequent runs hit cache as before.
-  const results = await Promise.all(pickupRows.map(async (row) => {
+  // ─── Step A: review fetches in parallel (I/O only, no CPU to speak of) ──
+  const fetchedRows = await Promise.all(pickupRows.map(async (row) => {
     const rowStartedAt = new Date().toISOString();
     const rowTimer = performance.now();
     const baseDiagnostics = {
@@ -4202,11 +4269,11 @@ export async function runPrepIteration(args: {
         batchContext.worker_elapsed_ms_at_batch_start,
       row_started_at: rowStartedAt,
     };
-    let reviewsFetchMs: number | null = null;
-    let composeCollageMs: number | null = null;
+    const reviewsStarted = performance.now();
+    let fetchError: unknown = null;
     try {
-      // fetch_reviews (idempotent — skips if fresh-within-30-days)
-      const reviewsStarted = performance.now();
+      // fetch_reviews (idempotent — skips if fresh-within-30-days). Stores each page
+      // and the place's fetch state as it goes, before any collage work.
       const reviewOutcome = await fetchReviewsForPlace(
         db,
         row.place_pool_id,
@@ -4215,16 +4282,50 @@ export async function runPrepIteration(args: {
         () => {
           serperRequests++;
         },
+        { refreshedSince },
       );
-      reviewsFetchMs = elapsedMs(reviewsStarted);
       // #4276 S4: this result used to be ignored, so a failed fetch went on to
       // Gemini as a place with no reviews. No reviews on Google is not a failure.
       if (reviewOutcome.kind === "failed") {
-        throw new ReviewFetchFailure(reviewOutcome.error, reviewOutcome.depleted);
+        fetchError = new ReviewFetchFailure(reviewOutcome.error, reviewOutcome.depleted);
       }
+    } catch (err) {
+      fetchError = err;
+    }
+    return {
+      row,
+      rowTimer,
+      baseDiagnostics,
+      reviewsFetchMs: elapsedMs(reviewsStarted),
+      fetchError,
+    };
+  }));
+
+  // #4276 M1: count the Serper requests now, before any collage CPU is spent, so a
+  // worker killed later in the batch still has them on the run's spend ledger.
+  // A lost count understates spend, so it is reported, not swallowed.
+  if (serperRequests > 0) {
+    const { error: serperCountErr } = await db.rpc("increment_run_serper_requests", {
+      p_run_id: runId,
+      p_requests: serperRequests,
+    });
+    if (serperCountErr) {
+      console.error(
+        `[v6 prep] run ${runId}: ${serperRequests} Serper requests not counted: ${serperCountErr.message}`,
+      );
+    }
+  }
+
+  // ─── Step B: collages ONE AT A TIME, each place saved as soon as it's done ──
+  // [ORCH-0737 v6] composeCollage's photo loop stays serial too (memory).
+  const results = [];
+  for (const fetched of fetchedRows) {
+    const { row, rowTimer, baseDiagnostics, reviewsFetchMs } = fetched;
+    let composeCollageMs: number | null = null;
+    try {
+      if (fetched.fetchError) throw fetched.fetchError;
 
       // compose_collage (idempotent — skips if fingerprint-matched cache)
-      // Internally serial photo loop; per-call peak ~5 MB with URL transforms.
       const composeStarted = performance.now();
       const collageRes = await handleComposeCollage(db, {
         place_pool_id: row.place_pool_id,
@@ -4232,6 +4333,11 @@ export async function runPrepIteration(args: {
       });
       const collageBody = await collageRes.json();
       composeCollageMs = elapsedMs(composeStarted);
+      // A cache hit decoded nothing. Anything else may have: count it.
+      if (!collageBody.cached) {
+        composed++;
+        composeBudget.remaining--;
+      }
       if (collageBody.error) {
         throw new Error(`compose_collage failed: ${collageBody.error}`);
       }
@@ -4273,13 +4379,13 @@ export async function runPrepIteration(args: {
         .update({ timing_diagnostics: finalDiagnostics })
         .eq("id", row.id);
       emitTiming("row_complete", finalDiagnostics);
-      return {
+      results.push({
         ok: true,
         id: row.id,
         place_pool_id: row.place_pool_id,
         diagnostics: finalDiagnostics,
         provider_depleted: false,
-      };
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[v6 prep] row ${row.place_pool_id} prep failed: ${msg}`);
@@ -4326,15 +4432,15 @@ export async function runPrepIteration(args: {
         );
       }
       emitTiming("row_failed", diagnostics);
-      return {
+      results.push({
         ok: false,
         id: row.id,
         place_pool_id: row.place_pool_id,
         diagnostics,
         provider_depleted: providerDepleted,
-      };
+      });
     }
-  }));
+  }
 
   const batchTotalMs = elapsedMs(batchStartedAtPerf);
   const workerElapsedEnd = Date.now() - workerStartedAtMs;
@@ -4381,19 +4487,6 @@ export async function runPrepIteration(args: {
     worker_elapsed_ms_at_batch_end: workerElapsedEnd,
   });
 
-  // #4276 M1: a lost count understates spend, so it is reported, not swallowed.
-  if (serperRequests > 0) {
-    const { error: serperCountErr } = await db.rpc("increment_run_serper_requests", {
-      p_run_id: runId,
-      p_requests: serperRequests,
-    });
-    if (serperCountErr) {
-      console.error(
-        `[v6 prep] run ${runId}: ${serperRequests} Serper requests not counted: ${serperCountErr.message}`,
-      );
-    }
-  }
-
   // Failed-prep rows count toward processed (terminal). Successful preps do NOT
   // count yet — they need to flow through score iteration.
   if (prepFailedCount > 0) {
@@ -4431,5 +4524,6 @@ export async function runPrepIteration(args: {
     prep_failed: prepFailedCount,
     reclaimed,
     paused_by_provider: pausedByProvider,
+    composed,
   };
 }
