@@ -501,6 +501,8 @@ async function stageCheck(ctx: Ctx, fn: "run-pre-photo-bouncer" | "run-bouncer")
   }
   const processed = Number(ctx.stage.cursor?.processed ?? 0) + Number(page.processed ?? 0);
   if (page.done === true) {
+    // #4276: record the last partial page on the cursor too, so live progress ends at the true count.
+    await setCursor(ctx, { processed });
     return { kind: "done", result: { processed } };
   }
   await setCursor(ctx, { after_id: page.next_cursor, processed });

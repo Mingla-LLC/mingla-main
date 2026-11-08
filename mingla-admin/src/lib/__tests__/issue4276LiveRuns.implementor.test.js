@@ -357,3 +357,12 @@ test("card actions go through the conductor with the Run plan's confirm steps", 
   assert.ok(live.includes("This is normal."), "a wait is explained as normal");
   assert.ok(live.includes("Last 7 days"), "finished runs table");
 });
+
+// Abuja's finished pre-check: the cursor stopped at 4,000 while the result counted 4,133.
+test("a finished check reads its final result, not the lagging cursor", () => {
+  const done = stageProgress({ stage: "pre_check", status: "complete", progress: { kind: "check", processed: 4000 }, result: { processed: 4133 } });
+  assert.equal(done.done, 4133);
+  assert.match(done.line, /4,133 places checked/);
+  const running = stageProgress({ stage: "pre_check", status: "running", progress: { kind: "check", processed: 2000 }, result: null });
+  assert.equal(running.done, 2000);
+});

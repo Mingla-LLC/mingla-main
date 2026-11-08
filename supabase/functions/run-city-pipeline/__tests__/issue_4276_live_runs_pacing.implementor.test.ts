@@ -560,3 +560,18 @@ Deno.test("every tick path writes last_outcome", async () => {
     assert(typeof o.at === "string" && typeof o.calls === "number" && "retry_after_ms" in o && typeof o.why === "string");
   }
 });
+
+// #4276: Abuja's finished pre-check left cursor.processed at 4,000 while its result said 4,133,
+// because the last partial page only reached the result. The done branch records it on the cursor too.
+Deno.test("a finished check records its last page on the cursor before it reports done", async () => {
+  const src = await Deno.readTextFile(new URL("../conductor.ts", import.meta.url));
+  const done = src.indexOf('if (page.done === true) {');
+  if (done < 0) throw new Error("check runner's done branch not found");
+  const ret = 'return { kind: "done", result: { processed } };';
+  const end = src.indexOf(ret, done);
+  if (end < 0) throw new Error("check runner's done return not found");
+  const branch = src.slice(done, end + ret.length);
+  if (!/await setCursor\(ctx, \{ processed \}\);[\s\S]*return \{ kind: "done", result: \{ processed \} \}/.test(branch)) {
+    throw new Error("the done branch must setCursor({ processed }) before returning done");
+  }
+});
