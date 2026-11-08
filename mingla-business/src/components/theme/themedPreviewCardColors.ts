@@ -28,6 +28,7 @@ import {
   mixHex,
   readableTextFor,
 } from "../../utils/buttonAccentContrast";
+import { accentFillWithBorder } from "../../../../packages/offering-rendering/themeAccentStyle";
 
 /** WCAG 2.x AA minimum for normal-size text. */
 export const AA_TEXT_CONTRAST = 4.5;
@@ -43,6 +44,8 @@ export interface ThemedPreviewCardColors {
   pillBorder: string;
   pillText: string;
   goingFill: string;
+  /** issue #1023 — the Going pill's fill (the theme gradient when set). */
+  goingFillStyle: { backgroundColor: string; borderColor: string };
   goingText: string;
   notGoingFill: string;
   notGoingBorder: string;
@@ -128,6 +131,7 @@ export const themedPreviewCardColors = (
     pillBorder: palette.panelBorder,
     pillText: readableAccentOn(palette.accent, pillFill),
     goingFill: palette.accent,
+    goingFillStyle: accentFillWithBorder(palette),
     goingText: readableOr(palette.accentText, palette.accent),
     notGoingFill,
     notGoingBorder: palette.panelBorder,

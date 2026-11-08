@@ -94,6 +94,9 @@ describe("RT-3 ORCH-1138 — offering-rendering package isolation", () => {
       "expo-constants",
       "expo-image",
       "expo-linear-gradient",
+      // [TEST-MOD-APPROVED #1023] the Google theme-font loader registers faces
+      // with expo-font (declared as a peer dependency like the other expo libs).
+      "expo-font",
       "expo-haptics",
       "lottie-react-native",
       "@mingla/theme-animations",

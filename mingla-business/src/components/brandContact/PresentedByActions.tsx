@@ -7,6 +7,7 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { ThemePalette } from "@mingla/offering-rendering";
+import { accentOutline } from "@mingla/offering-rendering/themeAccentStyle";
 
 export interface PresentedByActionsProps {
   follow: React.ReactNode;
@@ -35,7 +36,7 @@ export function PresentedByActions({
         style={({ pressed }) => [
           styles.cell,
           styles.message,
-          { borderColor: palette.accent },
+          accentOutline(palette, { opaqueBackground: palette.page }),
           pressed && styles.pressed,
         ]}
       >

@@ -47,6 +47,7 @@ import {
   InstallmentScheduleDisplay,
   type InstallmentScheduleDisplaySchedule,
 } from "./InstallmentScheduleDisplay";
+import { accentFill, accentOutline } from "@mingla/offering-rendering/themeAccentStyle";
 
 export type TripPaymentChoiceValue = "full" | "installments";
 
@@ -77,8 +78,8 @@ export const paletteOverrides = (
       backgroundColor: palette.accentWash,
     },
     selectedSegmentTitle: { color: palette.primaryText },
-    selectedDotBorder: { borderColor: palette.accent },
-    selectedDotInner: { backgroundColor: palette.accent },
+    selectedDotBorder: accentOutline(palette, { opaqueBackground: palette.page }),
+    selectedDotInner: accentFill(palette),
     amountValue: { color: palette.primaryText },
     amountLabel: { color: palette.secondaryText },
     primaryText: { color: palette.primaryText },
@@ -345,7 +346,7 @@ const PaymentMockupCard: React.FC<{
       ]}
       testID={testID}
     >
-      <View style={[mock.accentBar, { backgroundColor: palette.accent }]} />
+      <View style={[mock.accentBar, accentFill(palette)]} />
       <View style={mock.inner}>
         {/* Segmented TAB toggle (mockup `.seg`) — dark track, active = accent
             fill + white. This is the mockup's TAB control (SPEC §1.7 tablist/tab),
@@ -363,7 +364,7 @@ const PaymentMockupCard: React.FC<{
             accessibilityState={{ selected: isFull }}
             aria-selected={isFull}
             onPress={() => onChange("full")}
-            style={[mock.segBtn, isFull ? { backgroundColor: palette.accent } : null]}
+            style={[mock.segBtn, isFull ? accentFill(palette) : null]}
           >
             <Text
               style={[
@@ -382,7 +383,7 @@ const PaymentMockupCard: React.FC<{
             accessibilityState={{ selected: !isFull }}
             aria-selected={!isFull}
             onPress={() => onChange("installments")}
-            style={[mock.segBtn, !isFull ? { backgroundColor: palette.accent } : null]}
+            style={[mock.segBtn, !isFull ? accentFill(palette) : null]}
           >
             <Text
               style={[
@@ -479,7 +480,7 @@ const ScheduleRow: React.FC<{
       <View
         style={[
           mock.schedDot,
-          { backgroundColor: future ? palette.tertiaryText : palette.accent },
+          (future ? { backgroundColor: palette.tertiaryText } : accentFill(palette)),
         ]}
       />
       <Text style={[mock.schedWhenText, { color: palette.secondaryText }]}>

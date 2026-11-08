@@ -314,7 +314,7 @@ export async function listBrands({ search, sortKey, sortDir, filters = {}, page 
 const BRAND_DETAIL_COLS =
   "id,account_id,name,slug,description,venue_category,claim_status,verified_at,verified_by," +
   "rejection_reason,marked_called_at,duplicate_of_brand_id,city,country_code,lat,lng," +
-  "cover_media_url,profile_photo_url,theme_color,theme_font,theme_animation,social_links,custom_links," +
+  "cover_media_url,profile_photo_url,theme_color,theme_font,theme_animation,theme_gradient,social_links,custom_links," +
   "pricing_currency,default_currency,pricing_region,take_rate_bps_override,payment_provider,payment_country," +
   "stripe_connect_id,stripe_charges_enabled,stripe_payouts_enabled,paystack_subaccount_code," +
   "deleted_at,created_at";

@@ -58,6 +58,15 @@ jest.mock("react-native", () => {
     Text: host("Text"),
     View: host("View"),
     AccessibilityInfo: { announceForAccessibilityWithOptions: () => undefined },
+    // [TEST-MOD-APPROVED #1023] The screen keeps the details sheet's on-screen
+    // top in an Animated.Value for the full-screen motion's text-safe zone.
+    Animated: {
+      Value: class {
+        setValue(): void {
+          // the text-safe zone tracks the sheet; nothing to draw here
+        }
+      },
+    },
     Platform: { OS: "ios", select: (o: Row) => o.ios ?? o.default },
     StyleSheet: {
       create: <T,>(styles: T): T => styles,

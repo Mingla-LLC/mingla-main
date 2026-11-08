@@ -26,7 +26,7 @@ import type { ThemeInput } from "@mingla/offering-rendering";
 import { useBrand } from "../../hooks/useBrands";
 import { resolveTheme } from "../../../../packages/offering-rendering/themeResolver";
 import { ThemeControlRow } from "../theme/ThemeControlRow";
-import { ThemeSheet } from "../theme/ThemeSheet";
+import { ThemeSheet } from "../theme/ThemeSheetLazy";
 
 import {
   radius as radiusTokens,

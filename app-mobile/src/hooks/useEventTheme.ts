@@ -1,12 +1,10 @@
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import {
   resolveTheme,
-  isThemeAnimationSlug,
-  isThemeColor,
-  isThemeFontSlug,
   type ResolvedTheme,
   type ThemeInput,
 } from "@mingla/offering-rendering";
+import { themeInputFromFields } from "@mingla/offering-rendering/themeResolver";
 
 import { supabase } from "../services/supabase";
 import type { BusinessEventCard } from "../types/mergedDiscover";
@@ -23,19 +21,21 @@ interface ThemeRow {
   theme_color_override: string | null;
   theme_font_override: string | null;
   theme_animation_override: string | null;
+  brand_theme_gradient?: string | null;
+  theme_gradient_override?: string | null;
 }
 
+const EVENT_THEME_SELECT =
+  "brand_theme_color,brand_theme_font,brand_theme_animation,theme_color_override,theme_font_override,theme_animation_override,brand_theme_gradient,theme_gradient_override";
+
+// issue #1023 wave 2 — one guard for every theme read (Google families and
+// the gradient's second stop included); see themeInputFromFields.
 const asThemeInput = (
   color: unknown,
   font: unknown,
   animation: unknown,
-): ThemeInput | null => {
-  const out: ThemeInput = {};
-  if (isThemeColor(color)) out.color = color;
-  if (isThemeFontSlug(font)) out.font = font;
-  if (isThemeAnimationSlug(animation)) out.animation = animation;
-  return Object.keys(out).length > 0 ? out : null;
-};
+  gradient?: unknown,
+): ThemeInput | null => themeInputFromFields(color, font, animation, gradient);
 
 export const useEventTheme = (
   card: BusinessEventCard | null,
@@ -49,9 +49,7 @@ export const useEventTheme = (
       if (eventId === null) return resolveTheme(null, null);
       const { data, error } = await supabase
         .from("business_public_events_view")
-        .select(
-          "brand_theme_color,brand_theme_font,brand_theme_animation,theme_color_override,theme_font_override,theme_animation_override",
-        )
+        .select(EVENT_THEME_SELECT)
         .eq("id", eventId)
         .maybeSingle();
       if (error !== null) throw error;
@@ -61,11 +59,13 @@ export const useEventTheme = (
           row?.brand_theme_color,
           row?.brand_theme_font,
           row?.brand_theme_animation,
+          row?.brand_theme_gradient,
         ),
         asThemeInput(
           row?.theme_color_override,
           row?.theme_font_override,
           row?.theme_animation_override,
+          row?.theme_gradient_override,
         ),
       );
     },

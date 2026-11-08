@@ -59,38 +59,32 @@ describe("T-14 — the sheet body is flex-bounded, so the footer stays reachable
   });
 });
 
+// issue #1023 wave 2 — the hex fields moved to ThemeColourTab (Custom).
+// Invalidated: the ThemeSheet location and the handleHexChange/handleHexBlur
+// names. The ORCH-0964 contract itself is unchanged and pinned here.
+const COLOUR_TAB = "src/components/theme/ThemeColourTab.tsx";
 describe("keyboard — the hex field can never be occluded", () => {
   test("the hex input carries the ORCH-0964 input props", () => {
-    const s = src(SHEET);
+    const s = src(COLOUR_TAB);
     expect(s).toContain('autoCapitalize="none"');
     expect(s).toContain("autoCorrect={false}");
     expect(s).toContain("maxLength={7}");
-    expect(s).toContain('accessibilityLabel="Hex colour code"');
+    expect(s).toContain('"Hex colour code"');
   });
 
   test("the hex draft is SEPARATE state, never bound to the committed value", () => {
-    const s = src(SHEET);
-    // Binding the field to the committed value is what collapsed char-by-char
-    // typing in ORCH-0964.
-    expect(s).toMatch(/value=\{hexDraft\}/);
+    const s = src(COLOUR_TAB);
+    expect(s).toMatch(/value=\{draft\}/);
+    expect(s).toContain("useState<string>(color ?? \"\")");
     expect(s).not.toMatch(/value=\{value\?\.color/);
   });
 
   test("short-hex expansion happens on BLUR only, never on keystroke", () => {
-    const s = src(SHEET);
-    expect(s).toMatch(/onChangeText=\{handleHexChange\}/);
-    // handleHexChange must use the strict 6-digit gate...
-    const change = s.slice(
-      s.indexOf("const handleHexChange"),
-      s.indexOf("const handleHexBlur"),
-    );
+    const s = src(COLOUR_TAB);
+    const change = s.slice(s.indexOf("onChangeText={(raw)"), s.indexOf("onBlur={() =>"));
     expect(change).toContain("normalizeHexColor(raw)");
     expect(change).not.toContain("normalizeHexColorOnBlur");
-    // ...and only the blur path may expand.
-    const blur = s.slice(
-      s.indexOf("const handleHexBlur"),
-      s.indexOf("const pickSwatch"),
-    );
+    const blur = s.slice(s.indexOf("onBlur={() =>"), s.indexOf("autoCapitalize=\"none\""));
     expect(blur).toContain("normalizeHexColorOnBlur");
   });
 });
@@ -164,23 +158,25 @@ describe("T-19 — browsing fonts loads ZERO typefaces (ORCH-1083)", () => {
   });
 });
 
-describe("motion — exactly one Lottie instance is ever alive", () => {
-  test("the sheet renders ThemeEntranceAnimation exactly once, in the preview band", () => {
+// issue #1023 — the contract changed: the sheet lists all 29 animations as
+// STILL tiles (a frame of each look in the brand colour) and the preview band
+// is still the ONE player that animates. The web-only "app-only" banner is gone
+// because shared web links now play motion.
+describe("motion — one live player, still tiles", () => {
+  test("the preview band is the only playing ThemeEntranceAnimation", () => {
     const s = src(SHEET);
-    const instances = s.match(/<ThemeEntranceAnimation/g) ?? [];
-    expect(instances).toHaveLength(1);
+    const band = s.slice(s.indexOf("styles.previewOverlay"), s.indexOf("Replay motion preview"));
+    expect(band).toContain("<ThemeEntranceAnimation");
+    expect(band).not.toMatch(/\bstill\b/);
+    // every other instance in the file is a tile still
+    const tile = s.slice(s.indexOf("const MotionTile"), s.indexOf("const styles = StyleSheet.create"));
+    expect(tile).toMatch(/<ThemeEntranceAnimation[\s\S]*?\bstill\b/);
+    expect((s.match(/<ThemeEntranceAnimation/g) ?? []).length).toBe(2);
   });
 
-  test("motion tiles are STATIC — no Lottie inside the grid", () => {
+  test("the web build no longer carries the app-only banner", () => {
     const s = src(SHEET);
-    const grid = s.slice(s.indexOf("styles.motionGrid"), s.indexOf("</View>\n      ) : null}\n      </ScrollView>"));
-    expect(grid).not.toContain("ThemeEntranceAnimation");
-  });
-
-  test("the web build shows the app-only truth banner", () => {
-    const s = src(SHEET);
-    expect(s).toContain('Platform.OS === "web"');
-    expect(s).toContain("Entrance motion plays in the Mingla apps");
+    expect(s).not.toContain("Entrance motion plays in the Mingla apps");
   });
 
   test("'none' renders as 'No motion', never 'None'", () => {

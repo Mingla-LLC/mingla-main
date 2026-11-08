@@ -95,11 +95,14 @@ describe("T-3 — normalizeThemeOverrides", () => {
 });
 
 describe("T-3 — column <-> domain mapping", () => {
-  test("the three column names are pinned in one place", () => {
+  // issue #1023 wave 2 — invalidated: "three" columns. The gradient column
+  // joins them (one unit with the colour).
+  test("the column names are pinned in one place", () => {
     expect(THEME_OVERRIDE_COLUMNS).toEqual([
       "theme_color_override",
       "theme_font_override",
       "theme_animation_override",
+      "theme_gradient_override",
     ]);
   });
 
@@ -134,6 +137,7 @@ describe("T-3 — column <-> domain mapping", () => {
       theme_color_override: null,
       theme_font_override: null,
       theme_animation_override: null,
+      theme_gradient_override: null,
     });
     expect(
       themeOverridesToColumns({ color: "#16a34a", font: null, animation: null }),
@@ -141,6 +145,7 @@ describe("T-3 — column <-> domain mapping", () => {
       theme_color_override: "#16a34a",
       theme_font_override: null,
       theme_animation_override: null,
+      theme_gradient_override: null,
     });
   });
 
@@ -177,6 +182,7 @@ describe("T-6 — patchOfferingTheme writes the three columns", () => {
       theme_color_override: "#16a34a",
       theme_font_override: null,
       theme_animation_override: null,
+      theme_gradient_override: null,
     });
   });
 
@@ -197,6 +203,7 @@ describe("T-6 — patchOfferingTheme writes the three columns", () => {
       theme_color_override: null,
       theme_font_override: null,
       theme_animation_override: null,
+      theme_gradient_override: null,
     });
   });
 });

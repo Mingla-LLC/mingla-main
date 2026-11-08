@@ -116,6 +116,9 @@ Deno.test("ORCH-1342 T-8: RSVP row maps the §4.7 field table exactly", () => {
       color_override: "#112233",
       font_override: "grotesk",
       animation_override: null,
+      // issue #1023: gradient themes ("#a,#b"); null when the row carries none.
+      gradient: null,
+      gradient_override: null,
     },
   });
 });

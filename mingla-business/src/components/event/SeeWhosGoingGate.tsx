@@ -74,6 +74,7 @@ import {
   type Platform as GuestPlatform,
 } from "../../services/guestFunnelLink";
 import { GateQr } from "./GateQr";
+import { accentFill, themeFontFace } from "@mingla/offering-rendering/themeAccentStyle";
 
 export interface SeeWhosGoingGateProps {
   visible: boolean;
@@ -139,7 +140,7 @@ const MiniClusterEcho: React.FC<{
           style={[
             styles.echoDisk,
             {
-              backgroundColor: palette.accent,
+              ...accentFill(palette),
               borderColor: palette.page,
               marginLeft: i === 0 ? 0 : -8,
             },
@@ -169,6 +170,7 @@ export const SeeWhosGoingGate: React.FC<SeeWhosGoingGateProps> = ({
   const { isDesktop } = useResponsiveLayout();
   const reducedMotion = useReducedMotionWeb();
   const boldFamily = boldFontFamily(theme);
+  const boldFace = themeFontFace(boldFamily);
   const variant: "phone_panel" | "desktop_qr" = isDesktop
     ? "desktop_qr"
     : "phone_panel";
@@ -402,7 +404,7 @@ export const SeeWhosGoingGate: React.FC<SeeWhosGoingGateProps> = ({
               accessibilityLabel="Mingla"
             />
             <Text
-              style={[styles.dialogTitle, { color: palette.primaryText, fontFamily: boldFamily }]}
+              style={[styles.dialogTitle, { color: palette.primaryText, ...boldFace }]}
               accessibilityRole="header"
             >
               See who's going
@@ -488,7 +490,7 @@ export const SeeWhosGoingGate: React.FC<SeeWhosGoingGateProps> = ({
         <View style={[styles.handle, { backgroundColor: palette.panelBorder }]} />
         <MiniClusterEcho palette={palette} guestSample={guestSample} />
         <Text
-          style={[styles.panelTitle, { color: palette.primaryText, fontFamily: boldFamily }]}
+          style={[styles.panelTitle, { color: palette.primaryText, ...boldFace }]}
           accessibilityRole="header"
         >
           See who's going
@@ -505,7 +507,7 @@ export const SeeWhosGoingGate: React.FC<SeeWhosGoingGateProps> = ({
           accessibilityLabel="Get the app"
           style={({ pressed }) => [
             styles.primaryCta,
-            { backgroundColor: palette.accent },
+            accentFill(palette),
             pressed ? styles.pressed : null,
           ]}
           testID="orch-1342-gate-get-app"

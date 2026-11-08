@@ -32,7 +32,7 @@ import type { OfferingGalleryImage } from "@mingla/offering-rendering";
 
 import { useBrand } from "../../hooks/useBrands";
 import { ThemeControlRow } from "../theme/ThemeControlRow";
-import { ThemeSheet } from "../theme/ThemeSheet";
+import { ThemeSheet } from "../theme/ThemeSheetLazy";
 import { buildDraftThemePreview } from "../theme/themePreviewContent";
 
 import { type StepBodyProps } from "./types";

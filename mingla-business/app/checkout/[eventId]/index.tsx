@@ -61,7 +61,10 @@ import {
   resolveChosenDaysLine,
 } from "../../../src/utils/eventDateDisplay";
 // ORCH-1162 Bug 3 — brand-accent for the checkout CTA, matching the public page.
-import { resolveCheckoutBrandAccent } from "../../../src/utils/checkoutBrandAccent";
+import {
+  resolveCheckoutBrandAccent,
+  resolveCheckoutBrandAccentGradient,
+} from "../../../src/utils/checkoutBrandAccent";
 
 import { Button } from "../../../src/components/ui/Button";
 import { EmptyState } from "../../../src/components/ui/EmptyState";
@@ -217,6 +220,14 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
           eventThemeOverrides: event.themeOverrides ?? null,
         }) ?? undefined)
       : undefined;
+  // issue #1023 — the CTA wears the theme gradient (D-6 reversed).
+  const ctaAccentGradient =
+    event !== null
+      ? resolveCheckoutBrandAccentGradient({
+          brandTheme: brand?.theme ?? null,
+          eventThemeOverrides: event.themeOverrides ?? null,
+        })
+      : null;
 
   const {
     lines,
@@ -875,6 +886,7 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
             onPress={handleContinue}
             variant="primary"
             accentColor={ctaAccent}
+            accentGradient={ctaAccentGradient}
             size="lg"
             fullWidth
             disabled={totals.isEmpty || quoteStatus !== "ready"}

@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/theme/__tests__/issue_1023_consumer_theme_font.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-1023-consumer-theme-font-implementor",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

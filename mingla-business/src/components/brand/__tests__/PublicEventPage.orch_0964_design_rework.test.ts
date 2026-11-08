@@ -118,7 +118,7 @@ describe("ORCH-0964 design rework — public event page premium renderer", () =>
     // colors contrast-adjusted ≥4.5:1. The date eyebrow takes palette.accent;
     // the recurrence pill label takes palette.primaryText.
     expect(sharedSource).toContain(
-      "{ color: palette.accent, fontFamily: theme.fontFamilyValue }",
+      "{ color: themeTextAccent(palette), ...themeBoldFace(theme) }",
     );
     expect(sharedSource).toContain("styles.recurrencePillLabel");
     expect(sharedSource).toContain("{ color: palette.primaryText }");

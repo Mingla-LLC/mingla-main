@@ -22,6 +22,7 @@ import type { ThemePalette } from "./themePalette";
 // #3372 — naira shows "₦", not "NGN", whatever the engine or locale (#3341 rule).
 import { withCurrencyGlyph } from "./currencyGlyph";
 import type { ProjectedTripSchedule } from "./tripOfferingTypes";
+import { accentFill } from "./themeAccentStyle";
 
 export type TripPaymentPlanChoice = "full" | "installments";
 
@@ -103,7 +104,7 @@ export const TripPaymentChoice: React.FC<TripPaymentChoiceProps> = ({
       ]}
       testID={testID}
     >
-      <View style={[styles.accentBar, { backgroundColor: palette.accent }]} />
+      <View style={[styles.accentBar, accentFill(palette)]} />
       <View style={styles.inner}>
         {/* segmented TAB toggle */}
         <View
@@ -117,7 +118,7 @@ export const TripPaymentChoice: React.FC<TripPaymentChoiceProps> = ({
             accessibilityState={{ selected: isFull }}
             aria-selected={isFull}
             onPress={() => onChange("full")}
-            style={[styles.segBtn, isFull ? { backgroundColor: palette.accent } : null]}
+            style={[styles.segBtn, isFull ? accentFill(palette) : null]}
           >
             <Text
               style={[
@@ -136,7 +137,7 @@ export const TripPaymentChoice: React.FC<TripPaymentChoiceProps> = ({
             accessibilityState={{ selected: !isFull }}
             aria-selected={!isFull}
             onPress={() => onChange("installments")}
-            style={[styles.segBtn, !isFull ? { backgroundColor: palette.accent } : null]}
+            style={[styles.segBtn, !isFull ? accentFill(palette) : null]}
           >
             <Text
               style={[
@@ -230,7 +231,7 @@ const ScheduleRow: React.FC<{
       <View
         style={[
           styles.schedDot,
-          { backgroundColor: future ? palette.tertiaryText : palette.accent },
+          (future ? { backgroundColor: palette.tertiaryText } : accentFill(palette)),
         ]}
       />
       <Text style={[styles.schedWhenText, { color: palette.secondaryText }]}>

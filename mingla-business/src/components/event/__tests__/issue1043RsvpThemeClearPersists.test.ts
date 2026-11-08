@@ -53,6 +53,9 @@ describe("#1043 (tester) — clearing an RSVP theme persists as explicit nulls",
       theme_color_override: null,
       theme_font_override: null,
       theme_animation_override: null,
+      // issue #1023 wave 2 — invalidated: exactly three columns; the gradient
+      // column is written (cleared) with the colour.
+      theme_gradient_override: null,
     });
   });
 
@@ -76,6 +79,9 @@ describe("#1043 (tester) — clearing an RSVP theme persists as explicit nulls",
       theme_color_override: "#2563eb",
       theme_font_override: null,
       theme_animation_override: null,
+      // issue #1023 wave 2 — invalidated: exactly three columns; the gradient
+      // column is written (cleared) with the colour.
+      theme_gradient_override: null,
     });
   });
 
