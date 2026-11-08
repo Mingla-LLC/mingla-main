@@ -843,7 +843,16 @@ BEGIN
       SELECT 1 FROM public.payout_debt_applications a
       JOIN public.brand_payout_releases r ON r.id=a.release_id
       WHERE a.debt_id=v_debt.id AND a.released_at IS NULL
-        AND r.status='in_flight'
+        AND (r.status='in_flight'
+             -- An ambiguous Paystack outcome puts the release back to
+             -- pending but leaves its organiser leg in flight, and the
+             -- re-claim reuses that leg: a recredit booked now would not be
+             -- in it. Wait until the transfer is reconciled.
+             OR EXISTS (
+               SELECT 1 FROM public.payout_transfer_legs leg
+               WHERE leg.release_id=r.id AND leg.kind='organiser'
+                 AND leg.status='in_flight'
+             ))
     ) THEN
       CONTINUE;
     END IF;

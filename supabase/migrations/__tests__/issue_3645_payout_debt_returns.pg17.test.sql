@@ -573,6 +573,60 @@ BEGIN
 END
 $t7$;
 
+-- T10c: an ambiguous Paystack transfer outcome puts the release back to
+-- pending while its organiser leg stays in flight, and the re-claim reuses
+-- that leg. Maturity waits for the transfer to be reconciled instead of
+-- booking a recredit the leg would never carry.
+DO $t10c$
+DECLARE
+  v_temp uuid;
+  v_r uuid;
+  v_leg uuid;
+  v_outcome text;
+BEGIN
+  PERFORM pg_temp.brand(14);
+  v_temp := pg_temp.temp_debt(14, 1, 1500, timestamptz '2026-10-25 00:00:00+00');
+  v_r := pg_temp.stay(14, 1);
+  UPDATE public.brand_payout_releases
+  SET provider = 'paystack', status = 'in_flight',
+      paystack_execution_claim_id = gen_random_uuid(), paystack_execution_claimed_at = now()
+  WHERE id = v_r;
+  INSERT INTO public.payout_transfer_legs(
+    release_id, kind, chunk_index, principal_cents, fee_schedule_version, status
+  ) VALUES (v_r, 'organiser', 0, 8500, 'test', 'planned')
+  RETURNING id INTO v_leg;
+  -- (Its own statement: checks in the same expression would read the state
+  -- from before the call.)
+  v_outcome := public.record_paystack_transfer_leg_outcome(
+    v_leg, v_r, 'retryable_error', NULL, 'ref_3645d_14', 'timeout'
+  );
+  IF v_outcome <> 'retryable'
+     OR (pg_temp.rel(v_r)).status <> 'pending'
+     OR (SELECT status FROM public.payout_transfer_legs WHERE id = v_leg) <> 'in_flight' THEN
+    RAISE EXCEPTION 'T10c fixture: the retryable outcome did not leave the leg in flight';
+  END IF;
+
+  PERFORM public.mature_postponement_debts(timestamptz '2026-10-29 00:00:00+00');
+  IF (pg_temp.d(v_temp)).status <> 'open'
+     OR (pg_temp.app(v_temp, v_r)).released_at IS NOT NULL
+     OR pg_temp.adj(v_r, 'maturity_recredit') <> 0
+     OR EXISTS (SELECT 1 FROM public.payout_debt_application_returns WHERE debt_id = v_temp) THEN
+    RAISE EXCEPTION 'T10c maturity acted while the organiser transfer was in flight';
+  END IF;
+
+  -- Reconciliation finds the transfer never went out: the next tick hands
+  -- the withheld part back through net.
+  UPDATE public.payout_transfer_legs SET status = 'failed' WHERE id = v_leg;
+  PERFORM public.mature_postponement_debts(timestamptz '2026-10-29 01:00:00+00');
+  IF pg_temp.returned(v_temp, v_r, 'matured') <> 1500
+     OR pg_temp.adj(v_r, 'maturity_recredit') <> 0
+     OR (pg_temp.rel(v_r)).net_release_cents <> 10000 THEN
+    RAISE EXCEPTION 'T10c after reconciliation: returned % net %',
+      pg_temp.returned(v_temp, v_r, 'matured'), (pg_temp.rel(v_r)).net_release_cents;
+  END IF;
+END
+$t10c$;
+
 -- T10b: a hold and maturity end in the same state whichever lands first.
 -- Brand 10 settles the hold, then matures; brand 11 matures first (the hold
 -- was recorded but its refresh had not run).
