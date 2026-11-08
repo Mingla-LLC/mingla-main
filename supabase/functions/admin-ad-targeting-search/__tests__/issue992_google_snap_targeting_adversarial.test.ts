@@ -320,7 +320,7 @@ Deno.test("adv H: targeting-search Snap CITY passthrough never geocodes (no coor
   assert(src.includes("circle_passthrough"), "city branch echoes a passthrough chip");
   // The ENTIRE search fn never CALLS the geocoder — coordinates are resolved
   // only server-side at CREATE, so none can reach the browser via search.
-  // (The Snap comment documents "no Mapbox call here"; the invariant we assert
+  // (The Snap comment documents "no geocoding call here"; the invariant we assert
   // is the absence of the geocode call + of any lat/lng field on the wire.)
   assert(!src.includes("forwardGeocodeText"), "the search fn must never call the geocoder");
   assert(!/\blat(itude)?\b\s*[:=]|\blng\b\s*[:=]|\blongitude\b\s*[:=]/i.test(src),

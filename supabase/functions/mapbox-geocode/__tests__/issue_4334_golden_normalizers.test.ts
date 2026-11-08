@@ -33,7 +33,7 @@ const doc = JSON.parse(
     query: string;
     google_place: GooglePlace;
     google_geocoding_result: Record<string, unknown>;
-    mapbox_before: { country_code: string | null; city: string | null; feature_type: string | null };
+    before_4334: { country_code: string | null; city: string | null; feature_type: string | null };
   }>;
 };
 
@@ -81,9 +81,9 @@ Deno.test("G-1 bake-off fixtures: city (D1), region code, country, precision", (
     assertEquals(featureTypeToPrecision(d.featureType), want.precision, `${f.id} precision`);
     assertEquals(d.provider, "google");
     assert(d.formattedAddress.length > 0, `${f.id} empty address`);
-    // Same country as the Mapbox-era answer whenever Mapbox found the right place.
-    if (f.mapbox_before.country_code === "NG" || f.mapbox_before.country_code === "US") {
-      assertEquals(d.countryCode, f.mapbox_before.country_code, `${f.id} country vs before`);
+    // Same country as the pre-#4334 answer whenever it found the right place.
+    if (f.before_4334.country_code === "NG" || f.before_4334.country_code === "US") {
+      assertEquals(d.countryCode, f.before_4334.country_code, `${f.id} country vs before`);
     }
   }
 });

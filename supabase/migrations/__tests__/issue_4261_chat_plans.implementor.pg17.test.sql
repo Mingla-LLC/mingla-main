@@ -50,12 +50,11 @@
 -- Run after the full migration chain on PostgreSQL 17. The re-apply proves
 -- the migration is idempotent; everything after it rolls back.
 
-\ir ../20280403044261_issue_4261_chat_plans.sql
--- Wave D-back (#4261) replaces plan_lock with a five-argument function and
--- widens the where shape; re-applying the A2 file above re-creates the old
--- four-argument plan_lock beside it, so the D-back file is re-applied too to
--- leave exactly the merged schema under test.
-\ir ../20280403054261_issue_4261_plan_places_and_link_previews.sql
+-- #4334 renamed mapbox_id to provider_place_id and regenerated every plan
+-- function body, so the 4261 files can no longer re-run on top of it. The
+-- re-apply is of the current owner of those bodies, which also proves it is
+-- idempotent.
+\ir ../20280507004334_issue_4334_google_places.sql
 
 BEGIN;
 
@@ -236,9 +235,9 @@ BEGIN
   -- d) nowhere, no time.
   r := public.plan_create(pg_temp.t4261p_id('plain'), NULL, 'Board games', 'none', NULL, NULL, 'none', NULL, NULL, NULL, NULL);
   INSERT INTO t4261p_vals VALUES ('plan_d', r ->> 'planId');
-  -- e) Mapbox place in the DM, a vote with no times yet.
+  -- e) Google place in the DM, a vote with no times yet.
   r := public.plan_create(pg_temp.t4261p_id('dm'), NULL, NULL, 'place',
-         jsonb_build_object('mapboxId', 'dXJuOm1ieHBvaTo0', 'name', 'Lekki Conservation Centre', 'address', 'Lekki, Lagos', 'lat', 6.44, 'lng', 3.53),
+         jsonb_build_object('providerPlaceId', 'ChIJlekkiConservation1', 'name', 'Lekki Conservation Centre', 'address', 'Lekki, Lagos', 'lat', 6.44, 'lng', 3.53),
          NULL, 'poll', NULL, NULL, true, NULL);
   INSERT INTO t4261p_vals VALUES ('plan_e', r ->> 'planId');
   RESET ROLE;
@@ -291,9 +290,9 @@ BEGIN
     RAISE EXCEPTION 'P-01d: none/none';
   END IF;
   SELECT * INTO v_plan FROM public.chat_plans WHERE id = pg_temp.t4261p_val('plan_e')::uuid;
-  IF v_plan.mapbox_id <> 'dXJuOm1ieHBvaTo0' OR v_plan.place_pool_id IS NOT NULL OR v_plan.place_photo_url IS NOT NULL
+  IF v_plan.provider_place_id <> 'ChIJlekkiConservation1' OR v_plan.place_pool_id IS NOT NULL OR v_plan.place_photo_url IS NOT NULL
      OR v_plan.title <> 'Lekki Conservation Centre' THEN
-    RAISE EXCEPTION 'P-01e: Mapbox place';
+    RAISE EXCEPTION 'P-01e: Google place';
   END IF;
 
   -- Validation refusals.

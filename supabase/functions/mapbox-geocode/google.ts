@@ -73,8 +73,8 @@ export const PLACE_SEARCH_PRIMARY_TYPES = [
   "administrative_area_level_2",
 ];
 
-/** Mapbox ids are base64 of "urn:..." — retired by #4334. */
-export const RETIRED_MAPBOX_ID = /^dXJuOm/;
+/** Pre-#4334 place ids are base64 of "urn:..." — retired by #4334. */
+export const RETIRED_PLACE_ID_PREFIX = /^dXJuOm/;
 
 type Action =
   | "suggest"
@@ -123,10 +123,10 @@ export function upstreamFailure(params: {
   return jsonResponse({ error: error.code, ...(params.extraBody ?? {}) }, error.httpStatus);
 }
 
-// ─── proximity (Mapbox-era client contract "lng,lat") ────────────────────────
+// ─── proximity (pre-#4334 client contract "lng,lat") ─────────────────────────
 
 /**
- * The client sends proximity as "lng,lat" (Mapbox order, F-3). Google wants
+ * The client sends proximity as "lng,lat" (the pre-#4334 order, F-3). Google wants
  * latitude/longitude by name, so the two are swapped here. Malformed → null
  * (the bias is omitted, never guessed).
  */

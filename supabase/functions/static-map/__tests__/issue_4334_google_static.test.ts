@@ -1,5 +1,5 @@
 // #4334 — static-map on the Google Maps Static API (matrix R-MAP-1, R-MAP-2).
-// Replaces the ORCH-1165 Mapbox suites; keeps their security angles: the key
+// Replaces the ORCH-1165 suites; keeps their security angles: the key
 // is never echoed, the only fetched host is maps.googleapis.com, and any
 // upstream failure is a non-200 JSON so the client <Image> hides the map
 // (I-PROPOSED-1162-MAP-FAILSAFE-HIDES).

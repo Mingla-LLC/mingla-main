@@ -19,7 +19,7 @@
  * that id (`google_place_id`), the text search is skipped and the pool is
  * looked up directly — no Google spend. Without an id (a free-text address)
  * Google is asked once, AFTER the brand has chosen: "which place is this?".
- * A retired Mapbox-era id never reaches the pool lookup.
+ * A retired pre-#4334 id never reaches the pool lookup.
  *
  *   POST { formatted_address, lat, lng, google_place_id? }
  *     -> 200 { match: PoolMatchResult | null }
@@ -90,7 +90,7 @@ export interface ResolveInput {
   googlePlaceId: string | null;
 }
 
-/** A Google place id, never a retired Mapbox-era id (base64 "urn:"). */
+/** A Google place id, never a retired pre-#4334 id (base64 "urn:"). */
 export function usableGooglePlaceId(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const id = value.trim();

@@ -177,7 +177,8 @@ CREATE OR REPLACE FUNCTION public.places_is_google_place_id(p_id text)
  SET search_path = public, pg_temp
 AS $function$
   SELECT p_id IS NOT NULL
-     AND p_id ~ '^[A-Za-z0-9_-]{10,256}$'
+     AND length(p_id) BETWEEN 10 AND 256
+     AND p_id ~ '^[A-Za-z0-9_-]+$'
      AND p_id !~ '^dXJuOm';
 $function$;
 
@@ -1345,7 +1346,9 @@ $function$;
 
 -- Record one refresh outcome. Guarded by the place id the job READ, so a host
 -- who re-picked in between wins (spec v2 §6.5). Text columns are never read
--- or written (D9). p_result: 'ok' (p_lat/p_lng set only when the pin moved,
+-- or written (D9). The stamp is clock_timestamp(), not now(): the stamp
+-- triggers trust a write only when the stamp CHANGES, and now() would repeat
+-- the insert-time stamp inside one transaction. p_result: 'ok' (p_lat/p_lng set only when the pin moved,
 -- p_new_place_id only when Google re-ided the place), 'failing', 'place_gone'.
 CREATE OR REPLACE FUNCTION public.places_refresh_record(
   p_kind text, p_row_id uuid, p_expected_place_id text, p_result text,
@@ -1377,7 +1380,7 @@ BEGIN
     UPDATE public.events SET
       location_provider_place_id = CASE WHEN v_ok THEN v_id ELSE location_provider_place_id END,
       location_geo = CASE WHEN v_ok AND v_move THEN point(p_lng, p_lat) ELSE location_geo END,
-      location_geo_refreshed_at = CASE WHEN v_ok THEN now() ELSE location_geo_refreshed_at END,
+      location_geo_refreshed_at = CASE WHEN v_ok THEN clock_timestamp() ELSE location_geo_refreshed_at END,
       location_geo_refresh_state = p_result,
       location_geo_refresh_failures = CASE WHEN v_ok THEN 0
         ELSE LEAST(location_geo_refresh_failures + 1, 32767) END
@@ -1388,7 +1391,7 @@ BEGIN
       CASE WHEN v_ok THEN
         jsonb_build_object(
           v_side || 'PlaceId', v_id,
-          v_side || 'GeoRefreshedAt', to_jsonb(now()),
+          v_side || 'GeoRefreshedAt', to_jsonb(clock_timestamp()),
           v_side || 'GeoRefreshState', 'ok',
           v_side || 'GeoRefreshFailures', 0)
         || CASE WHEN v_move THEN jsonb_build_object(v_side || 'Lat', p_lat, v_side || 'Lng', p_lng)
@@ -1407,7 +1410,7 @@ BEGIN
       place_id = CASE WHEN v_ok THEN v_id ELSE place_id END,
       lat = CASE WHEN v_ok AND v_move THEN p_lat ELSE lat END,
       lng = CASE WHEN v_ok AND v_move THEN p_lng ELSE lng END,
-      geo_refreshed_at = CASE WHEN v_ok THEN now() ELSE geo_refreshed_at END,
+      geo_refreshed_at = CASE WHEN v_ok THEN clock_timestamp() ELSE geo_refreshed_at END,
       geo_refresh_state = p_result,
       geo_refresh_failures = CASE WHEN v_ok THEN 0 ELSE LEAST(geo_refresh_failures + 1, 32767) END
      WHERE id = p_row_id AND place_id = p_expected_place_id;
@@ -1416,7 +1419,7 @@ BEGIN
       location_provider_place_id = CASE WHEN v_ok THEN v_id ELSE location_provider_place_id END,
       lat = CASE WHEN v_ok AND v_move THEN p_lat ELSE lat END,
       lng = CASE WHEN v_ok AND v_move THEN p_lng ELSE lng END,
-      location_geo_refreshed_at = CASE WHEN v_ok THEN now() ELSE location_geo_refreshed_at END,
+      location_geo_refreshed_at = CASE WHEN v_ok THEN clock_timestamp() ELSE location_geo_refreshed_at END,
       location_geo_refresh_state = p_result,
       location_geo_refresh_failures = CASE WHEN v_ok THEN 0
         ELSE LEAST(location_geo_refresh_failures + 1, 32767) END
@@ -1426,7 +1429,7 @@ BEGIN
       location_provider_place_id = CASE WHEN v_ok THEN v_id ELSE location_provider_place_id END,
       lat = CASE WHEN v_ok AND v_move THEN p_lat ELSE lat END,
       lng = CASE WHEN v_ok AND v_move THEN p_lng ELSE lng END,
-      location_geo_refreshed_at = CASE WHEN v_ok THEN now() ELSE location_geo_refreshed_at END,
+      location_geo_refreshed_at = CASE WHEN v_ok THEN clock_timestamp() ELSE location_geo_refreshed_at END,
       location_geo_refresh_state = p_result,
       location_geo_refresh_failures = CASE WHEN v_ok THEN 0
         ELSE LEAST(location_geo_refresh_failures + 1, 32767) END
@@ -1436,7 +1439,7 @@ BEGIN
       custom_location_place_id = CASE WHEN v_ok THEN v_id ELSE custom_location_place_id END,
       custom_lat = CASE WHEN v_ok AND v_move THEN p_lat ELSE custom_lat END,
       custom_lng = CASE WHEN v_ok AND v_move THEN p_lng ELSE custom_lng END,
-      custom_location_geo_refreshed_at = CASE WHEN v_ok THEN now() ELSE custom_location_geo_refreshed_at END,
+      custom_location_geo_refreshed_at = CASE WHEN v_ok THEN clock_timestamp() ELSE custom_location_geo_refreshed_at END,
       custom_location_geo_refresh_state = p_result,
       custom_location_geo_refresh_failures = CASE WHEN v_ok THEN 0
         ELSE LEAST(custom_location_geo_refresh_failures + 1, 32767) END
@@ -1446,7 +1449,7 @@ BEGIN
       discover_city_place_id = CASE WHEN v_ok THEN v_id ELSE discover_city_place_id END,
       discover_city_lat = CASE WHEN v_ok AND v_move THEN p_lat::numeric ELSE discover_city_lat END,
       discover_city_lng = CASE WHEN v_ok AND v_move THEN p_lng::numeric ELSE discover_city_lng END,
-      discover_city_geo_refreshed_at = CASE WHEN v_ok THEN now() ELSE discover_city_geo_refreshed_at END,
+      discover_city_geo_refreshed_at = CASE WHEN v_ok THEN clock_timestamp() ELSE discover_city_geo_refreshed_at END,
       discover_city_geo_refresh_state = p_result,
       discover_city_geo_refresh_failures = CASE WHEN v_ok THEN 0
         ELSE LEAST(discover_city_geo_refresh_failures + 1, 32767) END
@@ -1456,7 +1459,7 @@ BEGIN
       provider_place_id = CASE WHEN v_ok THEN v_id ELSE provider_place_id END,
       place_lat = CASE WHEN v_ok AND v_move THEN p_lat ELSE place_lat END,
       place_lng = CASE WHEN v_ok AND v_move THEN p_lng ELSE place_lng END,
-      place_geo_refreshed_at = CASE WHEN v_ok THEN now() ELSE place_geo_refreshed_at END,
+      place_geo_refreshed_at = CASE WHEN v_ok THEN clock_timestamp() ELSE place_geo_refreshed_at END,
       place_geo_refresh_state = p_result,
       place_geo_refresh_failures = CASE WHEN v_ok THEN 0
         ELSE LEAST(place_geo_refresh_failures + 1, 32767) END
@@ -1839,8 +1842,11 @@ BEGIN
 END;
 $block$;
 
-SELECT cron.unschedule('places-coordinate-refresh-daily')
- WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'places-coordinate-refresh-daily');
+-- Unschedule by job id: pg_cron's by-name form only sees the caller's own
+-- jobs, so a re-apply by a different superuser would fail.
+SELECT cron.unschedule(jobid)
+  FROM cron.job
+ WHERE jobname = 'places-coordinate-refresh-daily';
 
 SELECT cron.schedule(
   'places-coordinate-refresh-daily',

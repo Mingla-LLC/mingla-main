@@ -1,7 +1,7 @@
 /**
  * #4334 — Google Maps Platform helpers shared by the address proxy, the
  * server-side forward geocode (paired view, ad-plan, admin campaigns) and the
- * coordinate refresh job. Replaces the Mapbox helper this file superseded.
+ * coordinate refresh job. Replaces the pre-#4334 helper.
  *
  * Every Google failure is LOUD (Seth decision D7, history trap H1 / #338):
  * the Geocoding API answers HTTP 200 with `status: REQUEST_DENIED`,

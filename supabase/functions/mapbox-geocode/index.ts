@@ -20,7 +20,7 @@
  *   place_id_required / invalid_json / invalid_request 400 · method_not_allowed 405 ·
  *   provider_key_missing 500.
  *
- * Invariant I-4334-RETIRED-IDS-FAIL-LOUD: a Mapbox-era id (base64 "urn:",
+ * Invariant I-4334-RETIRED-IDS-FAIL-LOUD: a pre-#4334 id (base64 "urn:",
  * prefix dXJuOm) is answered 410 provider_id_retired with a Sentry event and
  * no upstream call (supabase/functions/mapbox-geocode/__tests__/issue_4334_proxy_contract.test.ts).
  * Invariant I-4334-PROVIDER-ERRORS-ARE-LOUD: no upstream failure becomes an
@@ -40,7 +40,7 @@ import {
   handleSuggest,
   handleSuggestPlaces,
   jsonResponse,
-  RETIRED_MAPBOX_ID,
+  RETIRED_PLACE_ID_PREFIX,
 } from "./google.ts";
 
 export { featureTypeToPrecision, googlePlaceToDetails } from "./googleNormalize.ts";
@@ -56,7 +56,7 @@ interface RequestBody {
   lookup?: string;
   latitude?: number;
   longitude?: number;
-  /** "lng,lat" (client contract kept from the Mapbox era). */
+  /** "lng,lat" (client contract kept from before #4334). */
   proximity?: string;
   /** Ignored: Google returns at most 5 (D4). Accepted so old clients don't 400. */
   limit?: number;
@@ -151,8 +151,8 @@ export async function handler(req: Request): Promise<Response> {
       const placeId = (typeof body.place_id === "string" && body.place_id.trim()) ||
         (typeof body.mapbox_id === "string" && body.mapbox_id.trim()) || "";
       if (placeId.length === 0) return jsonResponse({ error: "place_id_required" }, 400);
-      if (RETIRED_MAPBOX_ID.test(placeId)) {
-        captureEdgeException(new Error("retired Mapbox place id retrieved"), {
+      if (RETIRED_PLACE_ID_PREFIX.test(placeId)) {
+        captureEdgeException(new Error("retired pre-#4334 place id retrieved"), {
           fn: "mapbox-geocode",
           tags: { issue: "4334", code: "provider_id_retired" },
         });

@@ -1,5 +1,5 @@
 {
-  "_provenance": "Recorded from the #4334 bake-off (2026-11-08, Places API (New) Place Details on the top autocomplete suggestion). The bake-off kept each component's first type and its long text; `shortText` is filled for country and administrative_area_level_1 only (ISO code), `political` is re-added to political components, and place ids are synthetic (`ChIJfixture_*`). `mapbox_before` is the Mapbox retrieve the Host app returned for the same query, kept as the recorded 'before' value only.",
+  "_provenance": "Recorded from the #4334 bake-off (2026-11-08, Places API (New) Place Details on the top autocomplete suggestion). The bake-off kept each component's first type and its long text; `shortText` is filled for country and administrative_area_level_1 only (ISO code), `political` is re-added to political components, and place ids are synthetic (`ChIJfixture_*`). `before_4334` is the Mapbox retrieve the Host app returned for the same query, kept as the recorded 'before' value only.",
   "fixtures": [
     {
       "id": "1_addr",
@@ -166,7 +166,7 @@
           "street_address"
         ]
       },
-      "mapbox_before": {
+      "before_4334": {
         "feature_type": "address",
         "city": "Lagos",
         "region_code": "LA",
@@ -343,7 +343,7 @@
           "establishment"
         ]
       },
-      "mapbox_before": {
+      "before_4334": {
         "feature_type": "poi",
         "city": "Lagos",
         "region_code": null,
@@ -516,7 +516,7 @@
           "street_address"
         ]
       },
-      "mapbox_before": {
+      "before_4334": {
         "feature_type": "address",
         "city": "Lagos",
         "region_code": "LA",
@@ -708,7 +708,7 @@
           "establishment"
         ]
       },
-      "mapbox_before": {
+      "before_4334": {
         "feature_type": "poi",
         "city": "Lagos de Moreno",
         "region_code": null,
@@ -881,7 +881,7 @@
           "street_address"
         ]
       },
-      "mapbox_before": {
+      "before_4334": {
         "feature_type": "address",
         "city": "Lagos",
         "region_code": "LA",
@@ -1043,7 +1043,7 @@
           "establishment"
         ]
       },
-      "mapbox_before": {
+      "before_4334": {
         "feature_type": "street",
         "city": "Ikorodu",
         "region_code": "LA",
@@ -1218,7 +1218,7 @@
           "establishment"
         ]
       },
-      "mapbox_before": {
+      "before_4334": {
         "feature_type": "street",
         "city": "Lagos",
         "region_code": "LA",
@@ -1423,7 +1423,7 @@
           "establishment"
         ]
       },
-      "mapbox_before": {
+      "before_4334": {
         "feature_type": "street",
         "city": "Melbourne",
         "region_code": "VIC",
@@ -1583,7 +1583,7 @@
           "route"
         ]
       },
-      "mapbox_before": {
+      "before_4334": {
         "feature_type": "street",
         "city": "Lagos",
         "region_code": "LA",
@@ -1756,7 +1756,7 @@
           "establishment"
         ]
       },
-      "mapbox_before": {
+      "before_4334": {
         "feature_type": "street",
         "city": "El Alto",
         "region_code": "L",
@@ -1929,7 +1929,7 @@
           "street_address"
         ]
       },
-      "mapbox_before": {
+      "before_4334": {
         "feature_type": "address",
         "city": "Lagos",
         "region_code": "LA",
@@ -2089,7 +2089,7 @@
           "establishment"
         ]
       },
-      "mapbox_before": {
+      "before_4334": {
         "feature_type": "place",
         "city": "Raleigh",
         "region_code": "NC",
@@ -2260,7 +2260,7 @@
           "street_address"
         ]
       },
-      "mapbox_before": {
+      "before_4334": {
         "feature_type": "address",
         "city": "Raleigh",
         "region_code": "NC",
@@ -2411,7 +2411,7 @@
           "establishment"
         ]
       },
-      "mapbox_before": {
+      "before_4334": {
         "feature_type": "poi",
         "city": "Cary",
         "region_code": "NC",
@@ -2554,7 +2554,7 @@
           "street_address"
         ]
       },
-      "mapbox_before": {
+      "before_4334": {
         "feature_type": "address",
         "city": "Cary",
         "region_code": "NC",
@@ -2725,7 +2725,7 @@
           "street_address"
         ]
       },
-      "mapbox_before": {
+      "before_4334": {
         "feature_type": "address",
         "city": "Raleigh",
         "region_code": "NC",
@@ -2885,7 +2885,7 @@
           "street_address"
         ]
       },
-      "mapbox_before": {
+      "before_4334": {
         "feature_type": "address",
         "city": "New York",
         "region_code": "NY",

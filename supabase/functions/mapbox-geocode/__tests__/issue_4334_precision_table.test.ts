@@ -1,5 +1,5 @@
 // #4334 — every row of spec v1 §4.4: Google `types` → legacy featureType →
-// coordinate precision (matrix R-PREC-1). Successor of the #1629 Mapbox
+// coordinate precision (matrix R-PREC-1). Successor of the #1629
 // feature_type test.
 //
 // Invariant I-4334-FEATURETYPE-VOCABULARY: featureType ∈ {poi, address,

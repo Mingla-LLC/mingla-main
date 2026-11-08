@@ -3,11 +3,11 @@
 // R-SRCH-1/3/4/5/6/8, R-PREF-1/4/5/6, R-HIER-1.
 //
 // Invariants:
-//   I-4334-RETIRED-IDS-FAIL-LOUD      a Mapbox-era id → 410, no upstream call.
+//   I-4334-RETIRED-IDS-FAIL-LOUD      a pre-#4334 id → 410, no upstream call.
 //   I-4334-PROVIDER-ERRORS-ARE-LOUD   no upstream failure becomes an empty list.
 //
 // Fails-on-revert (line deleted → test red):
-//   C-1  the RETIRED_MAPBOX_ID branch in index.ts
+//   C-1  the RETIRED_PLACE_ID_PREFIX branch in index.ts
 //   C-2  `includedPrimaryTypes` added to buildSuggestBody
 //   C-3  proximityToCenter returning {latitude: parts[0], ...} (no swap)
 //   C-4  `.slice(0, MAX_SUGGESTIONS)` in mapAutocompleteRows
@@ -75,7 +75,7 @@ const prediction = (placeId: string, main: string, secondary: string) => ({
   },
 });
 
-Deno.test("C-1 R-RETIRE-1: a retired Mapbox id → 410 provider_id_retired, no upstream call", async () => {
+Deno.test("C-1 R-RETIRE-1: a retired pre-#4334 id → 410 provider_id_retired, no upstream call", async () => {
   __resetRateLimitForTests();
   for (const key of ["place_id", "mapbox_id"]) {
     const r = await call({ action: "retrieve", [key]: "dXJuOm1ieHBvaTpkaWRp" }, () => ok({}));

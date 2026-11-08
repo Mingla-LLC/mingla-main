@@ -1,5 +1,5 @@
 // #4334 §4.12 — a picked Google place id skips the text search (no Google
-// spend) and a retired Mapbox-era id never reaches the pool lookup.
+// spend) and a retired pre-#4334 id never reaches the pool lookup.
 // Fails-on-revert: drop usableGooglePlaceId's dXJuOm guard → V-2 red;
 // make the handler always call resolveGooglePlaceId → V-3 red.
 
