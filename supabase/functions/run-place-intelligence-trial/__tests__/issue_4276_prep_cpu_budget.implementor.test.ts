@@ -1,6 +1,7 @@
 // Issue #4276: Intelligence prep stays under the edge CPU limit, doesn't buy the
 // same reviews twice, and counts every Serper request.
 //
+// MINGLA-INVARIANT: I-4276-PREP-COMPOSE-CAP | issue #4276 | One process_chunk invocation composes at most PREP_MAX_COMPOSES_PER_INVOCATION new collages, one at a time
 // MINGLA-INVARIANT: I-4276-PREP-SERPER-COUNTED-BEFORE-COMPOSE | issue #4276 | Prep adds its Serper requests to place_intelligence_runs.serper_requests before it composes any collage
 //
 // Abuja, 2026-11-08: every process_chunk worker died with "CPU Time exceeded" ~16 s

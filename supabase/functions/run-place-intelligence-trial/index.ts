@@ -4137,7 +4137,8 @@ class ReviewFetchFailure extends Error {
 // next worker. Prep claims no more places than the cap allows, so nothing is
 // claimed and then left waiting for the stuck-recovery.
 //
-// MINGLA-INVARIANT: I-4276-PREP-COMPOSE-CAP | issue #4276 | One process_chunk invocation composes at most PREP_MAX_COMPOSES_PER_INVOCATION new collages, one at a time
+// Invariant I-4276-PREP-COMPOSE-CAP is declared in
+// __tests__/issue_4276_prep_cpu_budget.implementor.test.ts, which enforces it.
 export const PREP_MAX_COMPOSES_PER_INVOCATION = 2;
 /** Most places one prep batch claims (and fetches reviews for in parallel). */
 export const PREP_CLAIM_LIMIT = 12;
