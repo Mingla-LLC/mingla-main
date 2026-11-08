@@ -1,7 +1,10 @@
 -- Issue #3645 bundle 2d — real two-session PostgreSQL 17 regressions for the
 -- payout debt hand-back. Fixtures are committed (dblink sessions must see
--- them) in an isolated UUID namespace; payout rows are append-only, so they
--- stay in this suite-owned database.
+-- them) in an isolated UUID namespace, and payout rows are append-only, so
+-- they stay in the database. The behavioural suite runs in the same database
+-- afterwards and checks invariants over brands slugged 'issue-3645-2d-%', so
+-- these brands use 'issue-3645-2dcc-' and stay out of its scope (C2 leaves
+-- its release short on purpose).
 \set ON_ERROR_STOP on
 \getenv issue3645_2d_pw PGPASSWORD
 CREATE SCHEMA issue_3645_2d_cc;
@@ -29,18 +32,18 @@ DECLARE
 BEGIN
   INSERT INTO auth.users(id) VALUES (v_owner);
   INSERT INTO public.creator_accounts(id, email)
-  VALUES (v_owner, 'issue-3645-2d-' || p_b || '@example.test');
+  VALUES (v_owner, 'issue-3645-2dcc-' || p_b || '@example.test');
   INSERT INTO public.brands(
     id, account_id, name, slug, payment_provider, pricing_region,
     pricing_currency, default_currency, payout_hold_cutover_at
   ) VALUES (
-    v_brand, v_owner, 'Issue 3645 2d ' || p_b, 'issue-3645-2d-' || p_b,
+    v_brand, v_owner, 'Issue 3645 2d cc ' || p_b, 'issue-3645-2dcc-' || p_b,
     'stripe', 'US', 'USD', 'USD', timestamptz '2020-01-01 00:00:00+00'
   );
   INSERT INTO public.venue_listings(
     id, brand_id, slug, name, lat, lng, venue_category, claim_status
   ) VALUES (
-    pg_temp.uid(3, p_b, 0), v_brand, 'issue36452d' || p_b, 'Issue 3645 2d stay ' || p_b,
+    pg_temp.uid(3, p_b, 0), v_brand, 'issue36452dcc' || p_b, 'Issue 3645 2d cc stay ' || p_b,
     40.8, -74.1, 'stay', 'verified'
   );
   INSERT INTO public.stay_settings(
@@ -70,7 +73,7 @@ BEGIN
     v_group, 'ST-36452' || lpad((p_b * 1000 + p_n)::text, 15, '0'), gen_random_uuid(),
     repeat('a', 64), pg_temp.uid(3, p_b, 0), pg_temp.uid(2, p_b, 0), 'USD',
     'instant', 'confirmed', '{}'::jsonb, 10000, 450, 0, 10450,
-    'issue-3645-2d-group-' || p_b || '-' || p_n, repeat('b', 64)
+    'issue-3645-2dcc-group-' || p_b || '-' || p_n, repeat('b', 64)
   );
   INSERT INTO public.stay_reservation_lines(
     id, group_id, quote_line_id, offering_id, kind, state, room_check_in,
@@ -87,7 +90,7 @@ BEGIN
     idempotency_key, request_hash, succeeded_at
   ) VALUES (
     v_attempt, v_group, 'stripe', 1, 10450, 'USD', 450, 300, 'succeeded',
-    'pi_3645d_' || p_b || '_' || p_n, 'issue-3645-2d-attempt-' || p_b || '-' || p_n,
+    'pi_3645d_' || p_b || '_' || p_n, 'issue-3645-2dcc-attempt-' || p_b || '-' || p_n,
     repeat('c', 64), v_now - interval '25 hours'
   );
   INSERT INTO public.stay_payout_line_snapshots(
@@ -116,7 +119,7 @@ BEGIN
     anchor_end_at, releasable_at, gross_cents, net_release_cents,
     organiser_cash_delivered_cents, status, released_at
   ) VALUES (
-    v_id, pg_temp.uid(2, p_b, 0), 'issue-3645-2d-origin-' || p_b || '-' || p_n,
+    v_id, pg_temp.uid(2, p_b, 0), 'issue-3645-2dcc-origin-' || p_b || '-' || p_n,
     'order', 'stripe', 'usd', timestamptz '2026-09-01 00:00:00+00',
     timestamptz '2026-09-02 00:00:00+00', p_cash, p_cash, p_cash, 'released',
     timestamptz '2026-09-02 00:00:00+00'
@@ -135,7 +138,7 @@ BEGIN
     idempotency_key, opened_at
   ) VALUES (
     pg_temp.uid(2, p_b, 0), 'usd', pg_temp.origin(p_b, p_n, p_principal),
-    'post_release_refund', p_principal, 'issue-3645-2d-debt-' || p_b || '-' || p_n,
+    'post_release_refund', p_principal, 'issue-3645-2dcc-debt-' || p_b || '-' || p_n,
     p_opened
   ) RETURNING id INTO v_id;
   RETURN v_id;
@@ -214,7 +217,7 @@ BEGIN
     provider_ref, idempotency_key
   ) VALUES (
     v_r, pg_temp.uid(5, 22, 1), 'dispute_opened', 0, 9000, 9000, 'dp_3645d_22',
-    'issue-3645-2d-hold-22'
+    'issue-3645-2dcc-hold-22'
   );
 
   -- C3: a postponement debt that is due, withheld from an unpaid release.
