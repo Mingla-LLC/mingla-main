@@ -1,5 +1,6 @@
 'use client'
 
+import { orphanTile } from '@/components/site/orphan-tile'
 import { useCallback, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import QRCode from 'react-qr-code'
 import { ArrowRight } from 'lucide-react'
@@ -231,11 +232,11 @@ export function CityThisWeekend({ cityName, citySlug, countryCode, model }: City
         ) : null}
         {shownListings.length ? (
           <ul className="wk-grid" data-weekend-listings="" data-filter={kind}>
-            {shownListings.map((l) => {
+            {shownListings.map((l, index) => {
               const hrefs = siteTargetHrefs({ type: 'listing', listing: l })
               const when = listingWhen(l, model.today)
               return (
-                <li key={l.id} data-kind={listingChip(l)}>
+                <li key={l.id} data-kind={listingChip(l)} data-orphan={orphanTile(index, shownListings.length) ? '' : undefined}>
                   <a
                     className="wk-card"
                     href={hrefs.computerHref}

@@ -9,8 +9,8 @@
 // Media: `v:<name>` is the looping clip public/marketing/site/m/<name>.mp4 with
 // its poster m/<name>.jpg; `p:<name>` is the still p/<name>.jpg. `bg` (the
 // features background) is a plain name for a still from p/, or `v:<name>` for
-// a looping clip from m/ (Seth approved bg-events for /host/events, 8 Nov; the
-// other ICPs keep their stills until their clips arrive).
+// a looping clip from m/ (Seth, 8 Nov: every ICP's features background is its
+// own `bg-<icp>` loop, starting with bg-events for /host/events).
 //
 // No store, host or OneLink URL lives here: every "Use Mingla Web" button goes
 // through lib/app-handoff.ts, which asks lib/cta-destination.ts (#4137).
@@ -131,7 +131,7 @@ export const ICP_LANDINGS = {
     name: "Trip organisers",
     short: "Trips",
     hero: "v:hikers",
-    bg: "weekend-lagos-boat",
+    bg: "v:bg-trips",
     l1: "Plan the trip,",
     l2: "let the group pay in parts.",
     sub: "Itineraries, instalments and a group chat that keeps everyone on the same page, from the first deposit to the last day.",
@@ -141,7 +141,7 @@ export const ICP_LANDINGS = {
     fh: "From idea to *wheels up.*",
     fp: "Everything a trip host juggles, in the order it actually happens.",
     feats: [
-      { ic: "map", t: "Itineraries people trust", m: "p:lagos-weekend-2-canopy", p: "Lay out every day with times, places and what’s included, so people can see the trip before they commit to it.", tags: ["Day by day", "What’s included", "Shareable page"] },
+      { ic: "map", t: "Itineraries people trust", m: "v:f-trip", p: "Lay out every day with times, places and what’s included, so people can see the trip before they commit to it.", tags: ["Day by day", "What’s included", "Shareable page"] },
       { ic: "card", t: "Pay in instalments", m: "v:beach", p: "Take a deposit, then the rest in parts. Fewer drop-outs, and no chasing people for money in DMs.", tags: ["Deposits", "Instalments", "One link to pay"] },
       { ic: "chat", t: "One group chat", m: "v:sailing", p: "Updates, reminders and questions live with the trip, not scattered across five apps.", tags: ["Group chat", "Updates", "Reminders"] },
     ],
@@ -170,7 +170,7 @@ export const ICP_LANDINGS = {
     name: "Experience hosts",
     short: "Experiences",
     hero: "v:pottery",
-    bg: "lagos-quests-paint",
+    bg: "v:bg-exp",
     l1: "Your class is the plan,",
     l2: "make it easy to book.",
     sub: "Workshops, classes, tastings and tours: list the sessions, sell the spots and fill the next one from the last.",
@@ -209,7 +209,7 @@ export const ICP_LANDINGS = {
     name: "Restaurants, cafés & diners",
     short: "Restaurants",
     hero: "v:cafe",
-    bg: "durham-midweek-coffee",
+    bg: "v:bg-rest",
     l1: "Get found by people",
     l2: "choosing where to eat.",
     sub: "A venue listing that sells the room, reservations, table ordering, menu intelligence and a demand forecast for the nights ahead.",
@@ -246,7 +246,7 @@ export const ICP_LANDINGS = {
     name: "Hotels & resorts",
     short: "Hotels",
     hero: "v:lp-hotel",
-    bg: "apex-beach-relax",
+    bg: "v:bg-hotel",
     l1: "Be the reason",
     l2: "they book the weekend.",
     sub: "List the stay, the day passes and the events on your grounds, and market them to the people planning their next getaway.",
@@ -283,7 +283,7 @@ export const ICP_LANDINGS = {
     name: "Galleries, museums & art spaces",
     short: "Art & culture",
     hero: "v:lp-art",
-    bg: "lagos-quests-museum",
+    bg: "v:bg-art",
     l1: "Culture is a plan,",
     l2: "make it the obvious one.",
     sub: "Openings, exhibitions, talks and late nights, listed where people plan their weekend, with tickets or free RSVPs.",
@@ -293,9 +293,9 @@ export const ICP_LANDINGS = {
     fh: "From the opening *to the next visit.*",
     fp: "For spaces whose calendar is the reason to come back.",
     feats: [
-      { ic: "calendar", t: "Every opening, listed", m: "p:lagos-quests-museum", p: "Exhibitions, openings, talks and late nights, each with its own page, date and way in.", tags: ["Exhibitions", "Openings", "Talks", "Late nights"] },
+      { ic: "calendar", t: "Every opening, listed", m: "v:f-museum", p: "Exhibitions, openings, talks and late nights, each with its own page, date and way in.", tags: ["Exhibitions", "Openings", "Talks", "Late nights"] },
       { ic: "ticket", t: "Tickets or free RSVPs", m: "v:grandplace", p: "Charge for entry or take free RSVPs so you know who’s coming, and scan them in at the door.", tags: ["Tickets", "Free RSVP", "Door scanning"] },
-      { ic: "mail", t: "A list that comes back", m: "p:lagos-not-parties-stage", p: "Every visitor joins your list, so the next exhibition starts with an audience.", tags: ["Guest lists", "Campaigns"] },
+      { ic: "mail", t: "A list that comes back", m: "v:f-stage", p: "Every visitor joins your list, so the next exhibition starts with an audience.", tags: ["Guest lists", "Campaigns"] },
     ],
     who: ["Galleries", "Museums", "Art spaces", "Studios", "Theatres", "Cultural centres", "Libraries", "Pop-up shows"],
     tool: {
@@ -321,7 +321,7 @@ export const ICP_LANDINGS = {
     name: "Play spaces, bowling & arcades",
     short: "Play",
     hero: "v:nightlife",
-    bg: "durham-underrated-arcade",
+    bg: "v:bg-play",
     l1: "Make your place",
     l2: "the group’s yes.",
     sub: "Bowling, arcades, karaoke, escape rooms and game nights: be the answer when a group asks what to do tonight.",
@@ -332,7 +332,7 @@ export const ICP_LANDINGS = {
     fp: "From walk-ins to tournament nights, run the busy side of fun.",
     feats: [
       { ic: "image", t: "A listing that shows the fun", m: "v:nightlife", p: "Video cover, galleries and “best for” tags like groups, birthdays and date night.", tags: ["Video cover", "Best for", "Typical spend"] },
-      { ic: "ticket", t: "Theme nights & tournaments", m: "p:durham-underrated-arcade", p: "Sell league nights, tournaments and parties as events with tickets, guest lists and scanning.", tags: ["Tickets", "Guest lists", "Door scanning"] },
+      { ic: "ticket", t: "Theme nights & tournaments", m: "v:f-arcade", p: "Sell league nights, tournaments and parties as events with tickets, guest lists and scanning.", tags: ["Tickets", "Guest lists", "Door scanning"] },
       { ic: "calendar", t: "Reservations for groups", m: "v:crowd", p: "Take bookings for lanes, rooms and tables, and see the busy nights coming with a demand forecast.", tags: ["Reservations", "Demand forecast"] },
     ],
     who: ["Bowling", "Arcades", "Karaoke", "Escape rooms", "Mini golf", "Trampoline parks", "Board-game cafés", "Go-karts"],

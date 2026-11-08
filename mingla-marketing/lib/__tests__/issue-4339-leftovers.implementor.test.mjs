@@ -135,24 +135,22 @@ test('no empty gap: a section the reader jumped past is still revealed', () => {
   assert.match(code(read('components/cities/city-page.tsx')), /<h2 className="h2" id="city-guide-title">\s*More than <em>one mode\.<\/em>\s*<\/h2>/)
 })
 
-test('Cary uses the licensed fountain photo, never the cover with drinks in shot (no alcohol, §11)', () => {
+test('Cary never shows the cover with drinks in shot (no alcohol, §11); it now uses its picked c-cary loop', () => {
+  // Round A (Seth, 8 Nov): the fountain photo was the stand-in until Cary's own
+  // clip arrived. The Cary tile, page hero and Home tile read CITY_MEDIA; the
+  // Going out "Cary has range" tile uses g-date.
   assert.equal(fs.existsSync(path.join(MARKETING, 'public/marketing/site/p/weekend-cary-cover.jpg')), false)
   for (const rel of ['components/site/city-media.tsx', 'components/site/home-page.tsx', 'app/(core)/going-out/page.tsx']) {
-    const source = code(read(rel))
-    assert.doesNotMatch(source, /weekend-cary-cover/, rel)
-    assert.match(source, /'p:cary-fountain'/, rel)
+    assert.doesNotMatch(code(read(rel)), /weekend-cary-cover/, rel)
   }
-  const same = (a, b) => fs.readFileSync(path.join(MARKETING, a)).equals(fs.readFileSync(path.join(MARKETING, b)))
-  assert.ok(same('public/marketing/site/p/cary-fountain.jpg', 'public/marketing/cities/cards/cary-nc.jpg'), 'the same licensed bytes as the Cary city card')
-  const manifest = JSON.parse(read('public/marketing/cities/asset-manifest.json'))
-  const card = manifest.assets.find((a) => a.path === '/marketing/cities/cards/cary-nc.jpg')
-  assert.ok(card && card.license && card.aiGenerated === false, 'licensed, not generated')
+  assert.match(code(read('components/site/city-media.tsx')), /'cary-nc': 'v:c-cary'/)
+  assert.match(code(read('app/(core)/going-out/page.tsx')), /'v:g-date', title: 'Cary has range'/)
 })
 
-test('built: the Cary page and tile use the fountain', { skip: !BUILT }, () => {
+test('built: the Cary page and tile use the c-cary loop', { skip: !BUILT }, () => {
   for (const rel of ['cities/cary-nc.html', 'cities.html', 'index.html', 'going-out.html']) {
     const html = built(rel)
     assert.doesNotMatch(html, /weekend-cary-cover/, rel)
   }
-  assert.match(built('cities/cary-nc.html'), /\/marketing\/site\/p\/cary-fountain\.jpg/)
+  assert.match(built('cities/cary-nc.html'), /\/marketing\/site\/m\/c-cary\.jpg/)
 })

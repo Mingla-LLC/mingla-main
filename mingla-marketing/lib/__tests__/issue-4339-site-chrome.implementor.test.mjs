@@ -112,9 +112,10 @@ test('canonical footer: columns, tagline, cross-link, and no "Privacy choices"',
   const columns = [...footer.matchAll(/title: '(\w+)',\s*links: \[([\s\S]*?)\]/g)].map((m) => [m[1], [...m[2].matchAll(/label: '([^']+)'/g)].map((l) => l[1])])
   assert.deepEqual(columns, [
     ['Explore', ['Home', 'Going out', 'Cities', 'Blog']],
-    ['Host', ['For Hosts', 'Free tools', 'Help centre']],
-    ['Company', ['About', 'Careers']],
-    ['Legal', ['Privacy', 'Terms', 'Organiser Terms', 'Support']],
+    // Round A (Seth, 8 Nov): four columns of four; Support moved to Host.
+    ['Host', ['For Hosts', 'Free tools', 'Help centre', 'Support']],
+    ['Company', ['About', 'Careers', 'Locals', 'Creators']],
+    ['Legal', ['Privacy', 'Terms', 'Organiser Terms', 'Delete account']],
   ])
   assert.match(footer, /explorer: \{ href: '\/host', label: 'Run a venue, event or experience\? → Mingla Host' \}/)
   assert.match(footer, /host: \{ href: '\/', label: 'Looking for the app\? → Mingla for Explorers' \}/)

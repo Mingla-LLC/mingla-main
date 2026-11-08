@@ -1,5 +1,6 @@
 'use client'
 
+import { orphanTile } from '@/components/site/orphan-tile'
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { captureMarketing } from '@/components/marketing/posthog-provider'
@@ -47,6 +48,8 @@ export function CityWeekend({ cityName, citySlug, countryCode, locale, cityPath,
 
   const ranks = useMemo(() => categoryRank(places), [places])
   const visible = places
+  // The tiles on screen: 12 while collapsed, all once expanded (no-orphan rule).
+  const shownCount = collapsed ? Math.min(COLLAPSED_COUNT, visible.length) : visible.length
   const selected = detail?.startsWith('place:') ? places.find((place) => `place:${place.placePoolId}` === detail) : undefined
 
   useEffect(() => {
@@ -126,7 +129,7 @@ export function CityWeekend({ cityName, citySlug, countryCode, locale, cityPath,
                 const label = rankLabel(place, ranks)
                 const rating = ratingLine(place, locale)
                 return (
-                  <li key={place.placePoolId} data-tags="Places">
+                  <li key={place.placePoolId} data-tags="Places" data-orphan={orphanTile(index, shownCount) ? '' : undefined}>
                     <a
                       href={place.detailHref}
                       className="wk-card"

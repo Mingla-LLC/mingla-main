@@ -71,12 +71,16 @@ function verifySource(overrides = {}) {
   const manifest = JSON.parse(source(manifestRelative))
 
   // #4339 phase 2b — /cities, /about and /going-out are the approved redesign.
-  // /cities is one tile per registry city (CityMedia: the picked clip or the
-  // licensed city photo), each opening its city page. The #3176 cinematic
+  // /cities is one tile per registry city (CityMedia: the city's picked clip),
+  // each opening its city page. The #3176 cinematic
   // hero, pills and CityDirectory were replaced on purpose; the provenance
   // of the licensed city photos and the removed-copy rules stay pinned.
   assert.match(cities, /CITY_HUBS\.map\(\(city\) =>[\s\S]*?<CityMedia slug=\{city\.slug\} \/>[\s\S]*?cityHubPath\(city\)|CITY_HUBS\.map\(\(city\) =>[\s\S]*?cityHubPath\(city\)[\s\S]*?<CityMedia slug=\{city\.slug\} \/>/, '/cities must render one tile per registry city')
-  assert.match(media, /CITY_HERO_IMAGE\[slug\]/, 'a city without a picked clip falls back to its licensed photo')
+  // #4339 round A (Seth, 8 Nov): every city now has its own picked loop, so
+  // CITY_MEDIA is a full Record over the registry slugs and the licensed-photo
+  // fallback is gone; the photos stay registered below for their provenance.
+  assert.match(media, /CITY_MEDIA: Readonly<Record<CityHubSlug, LandingMediaRef>>/, 'every registry city must have a picked clip')
+  assert.match(media, /<LandingMedia media=\{CITY_MEDIA\[slug\]\} hero=\{hero\} \/>/, 'a city tile and its page hero must share the city clip')
   for (const phrase of REMOVED_COPY) {
     assert(![about, explorer, cities, answer].join('\n').includes(phrase), `removed public copy remains: ${phrase}`)
   }

@@ -87,7 +87,7 @@ export default function LocalsPage() {
               </div>
             </div>
             <div className="band reveal mt-24">
-              <LandingMedia media="v:cafe" />
+              <LandingMedia media="v:amb-locals" />
               <div className="in">
                 <div className="band-copy">
                   <h2>

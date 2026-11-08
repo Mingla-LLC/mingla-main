@@ -40,7 +40,7 @@ export default function AboutPage() {
         <section className="about-clip" aria-hidden="true">
           <div className="wrap">
             <div className="ph reveal">
-              <LandingMedia media="v:grandplace" />
+              <LandingMedia media="v:amb-about" />
             </div>
           </div>
         </section>

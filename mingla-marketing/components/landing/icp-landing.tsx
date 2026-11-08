@@ -129,8 +129,11 @@ export function IcpLandingPage({ slug }: { slug: IcpSlug }) {
             <b />
             <i />
           </div>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img className="wm" src="/brand/mingla-wordmark.svg" alt="Mingla" width={85} height={30} />
+          {/* Every Mingla logo goes Home (Seth, 8 Nov). */}
+          <Link className="wm-link" href="/" aria-label="Mingla home">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img className="wm" src="/brand/mingla-wordmark.svg" alt="" width={85} height={30} />
+          </Link>
           <div className="duo">
             <span className="a">{d.duo[0]}</span> / {d.duo[1]}
           </div>

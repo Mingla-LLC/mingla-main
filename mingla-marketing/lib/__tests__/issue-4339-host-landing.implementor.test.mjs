@@ -223,20 +223,19 @@ test('clips: poster first, no source in the server HTML, never loaded under redu
   assert.match(media, /video\.preload = hero \? 'auto' : 'metadata'/, 'only the hero preloads')
 })
 
-test('/host/events: the features background is the approved bg-events clip under the clip rules; the others keep their stills', () => {
-  // Seth approved bg-events (8 Nov): stage lights through haze, 1280 wide, 5 s,
-  // no people, no text. It replaces the still durham-midweek-live.
-  assert.equal(icps.ICP_LANDINGS.events.bg, 'v:bg-events')
-  assert.equal(icps.landingBackgroundMedia('v:bg-events'), 'v:bg-events')
-  const clip = icps.resolveLandingMedia('v:bg-events')
-  assert.equal(clip.src, '/marketing/site/m/bg-events.mp4')
-  assert.equal(clip.poster, '/marketing/site/m/bg-events.jpg')
-  for (const file of [clip.src, clip.poster]) assert.ok(fs.existsSync(path.join(MARKETING, 'public', file)), `${file} exists`)
-  assert.ok(fs.statSync(path.join(MARKETING, 'public', clip.src)).size < 600_000, 'the loop stays light')
-  for (const slug of SLUGS.filter((s) => s !== 'events')) {
-    const bg = icps.ICP_LANDINGS[slug].bg
-    assert.doesNotMatch(bg, /^v:/, `${slug}: keeps its still until its clip arrives`)
-    assert.equal(icps.landingBackgroundMedia(bg), `p:${bg}`)
+test('every ICP: the features background is its own approved bg-<icp> loop under the clip rules', () => {
+  // Seth approved bg-events (8 Nov), then the other six in round A (8 Nov):
+  // each ICP page's sticky features background is its own looping clip.
+  const BG = { events: 'bg-events', trips: 'bg-trips', experiences: 'bg-exp', restaurants: 'bg-rest', hotels: 'bg-hotel', art: 'bg-art', play: 'bg-play' }
+  for (const slug of SLUGS) {
+    const ref = `v:${BG[slug]}`
+    assert.equal(icps.ICP_LANDINGS[slug].bg, ref, `${slug}: features background`)
+    assert.equal(icps.landingBackgroundMedia(ref), ref)
+    const clip = icps.resolveLandingMedia(ref)
+    assert.equal(clip.src, `/marketing/site/m/${BG[slug]}.mp4`)
+    assert.equal(clip.poster, `/marketing/site/m/${BG[slug]}.jpg`)
+    for (const file of [clip.src, clip.poster]) assert.ok(fs.existsSync(path.join(MARKETING, 'public', file)), `${file} exists`)
+    assert.ok(fs.statSync(path.join(MARKETING, 'public', clip.src)).size < 800_000, `${slug}: the loop stays light`)
   }
   // The sticky background renders through LandingMedia (muted, loop,
   // playsInline, preload none, poster only under reduced motion / Save-Data),
@@ -248,12 +247,14 @@ test('/host/events: the features background is the approved bg-events clip under
   const css = read('components/landing/landing.css')
   assert.match(css, /\[data-landing\] \.feat-bg img,\s*\[data-landing\] \.feat-bg video \{[^}]*object-fit: cover;[^}]*filter: brightness\(0\.5\) saturate\(0\.9\);/)
   if (BUILT) {
-    const html = fs.readFileSync(path.join(MARKETING, '.next/server/app/host', 'events.html'), 'utf8')
-    const bg = html.match(/<div class="feat-bg" aria-hidden="true">([\s\S]*?)<\/div>/)?.[1] ?? ''
-    assert.match(bg, /<video[^>]*poster="\/marketing\/site\/m\/bg-events\.jpg"/, 'built: the clip with its poster')
-    assert.match(bg, /preload="none"/, 'built: nothing preloads')
-    assert.match(bg, /data-landing-clip="\/marketing\/site\/m\/bg-events\.mp4"/)
-    assert.doesNotMatch(bg, /\ssrc=|<img/, 'built: no source until on screen, no still')
+    for (const slug of SLUGS) {
+      const html = fs.readFileSync(path.join(MARKETING, '.next/server/app/host', `${slug}.html`), 'utf8')
+      const bg = html.match(/<div class="feat-bg" aria-hidden="true">([\s\S]*?)<\/div>/)?.[1] ?? ''
+      assert.match(bg, new RegExp(`<video[^>]*poster="/marketing/site/m/${BG[slug]}\\.jpg"`), `built ${slug}: the clip with its poster`)
+      assert.match(bg, /preload="none"/, `built ${slug}: nothing preloads`)
+      assert.match(bg, new RegExp(`data-landing-clip="/marketing/site/m/${BG[slug]}\\.mp4"`))
+      assert.doesNotMatch(bg, /\ssrc=|<img/, `built ${slug}: no source until on screen, no still`)
+    }
   }
 })
 

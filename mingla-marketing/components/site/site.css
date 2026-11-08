@@ -524,10 +524,10 @@
   transform: none;
   opacity: 1;
 }
+/* Free tools: a clip under the same ink wash (.scrim) as the host-type tiles
+   beside it; the ink shows only until the poster paints. */
 [data-landing] .tile.tools .ph {
   background: var(--ink);
-  display: grid;
-  place-items: center;
 }
 
 /* city row */
@@ -860,6 +860,23 @@
   }
   [data-landing] .cityrow {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  /* No orphan tiles on phones (Seth, 8 Nov): in a 2-column tile grid with an
+     odd count, the last tile spans both columns at a wider 16:10, so it is not
+     taller than the pair above it. Static grids use :last-child:nth-child(odd);
+     grids whose shown count changes at runtime (the weekend and places grids)
+     mark their last shown tile [data-orphan] instead. Tablet and desktop keep
+     their 3+ columns and are unchanged. */
+  [data-landing] .cityrow > :last-child:nth-child(odd),
+  [data-landing] .reel-grid > :last-child:nth-child(odd),
+  [data-landing] .wk-grid > li[data-orphan] {
+    grid-column: 1 / -1;
+  }
+  [data-landing] .cityrow > a:last-child:nth-child(odd),
+  [data-landing] .cityrow > li:last-child:nth-child(odd) > a,
+  [data-landing] .reel-grid > :last-child:nth-child(odd) .ph,
+  [data-landing] .wk-grid > li[data-orphan] .wk-card .ph {
+    aspect-ratio: 16 / 10;
   }
   [data-landing] .list-item {
     grid-template-columns: 40px minmax(0, 1fr);

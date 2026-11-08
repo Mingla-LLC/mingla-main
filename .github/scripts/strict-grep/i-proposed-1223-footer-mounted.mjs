@@ -16,6 +16,11 @@
  *        must carry NO "Privacy choices" text or link (#4339 §9/§10: the #4318
  *        bottom strip is the only privacy control).
  *
+ * #4339 round A ADDS ONE ASSERTION (Seth, 8 Nov): the footer is symmetrical,
+ *   four columns of four links each (Explore, Host, Company, Legal), so the
+ *   phone 2×2 grid has no ragged gaps. A column that gains or loses a link
+ *   fails here, on purpose.
+ *
  * #2902 SUPERSEDES ONE ASSERTION, NAMED HERE:
  *   old: app/host/layout.tsx must import `Footer` from '@/components/marketing/
  *        footer' AND render `<Footer surface="organiser" ...>`.
@@ -110,6 +115,28 @@ const evaluateMustMount = ({ label, code }) => {
     failures.push(
       `${label}: no <Footer .../> or <CutoutFooter .../> render — footer is un-mounted (ORCH-1053 failure mode). I-PROPOSED-1223-FOOTER-MOUNTED.`,
     );
+  }
+  return failures;
+};
+
+/**
+ * #4339 round A: four columns of four links each. Reads the column literals
+ * (`title: '<Name>', links: [ ... ]`) and counts each column's `label:` keys.
+ */
+const evaluateSymmetry = ({ label, code }) => {
+  const src = stripComments(code);
+  const columns = [...src.matchAll(/title:\s*'([^']+)',\s*links:\s*\[([\s\S]*?)\]/g)].map((m) => ({
+    title: m[1],
+    count: [...m[2].matchAll(/label:\s*'/g)].length,
+  }));
+  const failures = [];
+  if (columns.length !== 4) {
+    failures.push(`${label}: footer has ${columns.length} columns, expected 4 (Explore, Host, Company, Legal). I-PROPOSED-1223-FOOTER-MOUNTED (#4339).`);
+  }
+  for (const column of columns) {
+    if (column.count !== 4) {
+      failures.push(`${label}: footer column "${column.title}" has ${column.count} links, expected 4 — the phone 2×2 footer must stay symmetrical (#4339). I-PROPOSED-1223-FOOTER-MOUNTED.`);
+    }
   }
   return failures;
 };
@@ -241,6 +268,14 @@ if (SELF_TEST) {
     ] }]
   `;
 
+  const col = (title, n) => `{ title: '${title}', links: [${Array.from({ length: n }, (_, i) => `{ href: '/x${i}', label: 'L${i}' }`).join(", ")}] }`;
+  const GOOD_SYMMETRY = `[${["Explore", "Host", "Company", "Legal"].map((t) => col(t, 4)).join(", ")}]`;
+  const BAD_SYMMETRY_RAGGED = `[${col("Explore", 4)}, ${col("Host", 3)}, ${col("Company", 2)}, ${col("Legal", 4)}]`;
+  const BAD_SYMMETRY_THREE = `[${["Explore", "Host", "Legal"].map((t) => col(t, 4)).join(", ")}]`;
+  const goodSym = evaluateSymmetry({ label: "footer", code: GOOD_SYMMETRY });
+  const badSymRagged = evaluateSymmetry({ label: "footer", code: BAD_SYMMETRY_RAGGED });
+  const badSymThree = evaluateSymmetry({ label: "footer", code: BAD_SYMMETRY_THREE });
+
   const goodB = evaluateMustMount({ label: "business", code: GOOD_BUSINESS });
   const goodBCutout = evaluateMustMount({ label: "business", code: GOOD_BUSINESS_CUTOUT });
   const goodLinks = evaluateLegalLinks({ label: "footer", code: GOOD_FOOTER_LINKS });
@@ -271,7 +306,10 @@ if (SELF_TEST) {
     badEC.length >= 1 &&
     badBNoRender.length >= 1 &&
     badBCommented.length >= 1 &&
-    notMountSeesSite.length >= 1;
+    notMountSeesSite.length >= 1 &&
+    goodSym.length === 0 &&
+    badSymRagged.length === 2 &&
+    badSymThree.length === 1;
 
   if (!ok) {
     console.error("ORCH-1223/1224 footer-mounted SELF-TEST failed:", {
@@ -287,6 +325,9 @@ if (SELF_TEST) {
       badEC,
       badBNoRender,
       badBCommented,
+      goodSym,
+      badSymRagged,
+      badSymThree,
     });
     process.exit(1);
   }
@@ -325,6 +366,7 @@ if (!existsSync(footerAbs)) {
   failures.push(`${FOOTER_COMPONENT}: footer component not found — cannot verify Privacy/Terms links.`);
 } else {
   failures.push(...evaluateLegalLinks({ label: FOOTER_COMPONENT, code: readFileSync(footerAbs, "utf8") }));
+  failures.push(...evaluateSymmetry({ label: FOOTER_COMPONENT, code: readFileSync(footerAbs, "utf8") }));
 }
 
 if (failures.length > 0) {

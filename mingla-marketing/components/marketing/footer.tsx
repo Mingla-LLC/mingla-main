@@ -9,9 +9,13 @@ import './site-footer.css'
 // /schedule layouts through <Footer>. One set of columns, one tagline.
 //
 //   Explore  Home, Going out, Cities, Blog
-//   Host     For Hosts, Free tools, Help centre
-//   Company  About, Careers (the careers subdomain, ORCH-1225)
-//   Legal    Privacy, Terms, Organiser Terms, Support
+//   Host     For Hosts, Free tools, Help centre, Support
+//   Company  About, Careers (the careers subdomain, ORCH-1225), Locals, Creators
+//   Legal    Privacy, Terms, Organiser Terms, Delete account
+//
+// Four columns of four links each (Seth, 8 Nov), so the phone 2×2 grid is
+// symmetrical: equal column widths, headings on one baseline per row, one link
+// rhythm. Support moved from Legal to Host (it's help).
 //
 // Bottom line: "© <year> Mingla. Making real life easier to find." plus the
 // cross-link to the other side of Mingla. There is NO "Privacy choices" text
@@ -50,6 +54,7 @@ export const SITE_FOOTER_COLUMNS: FooterColumn[] = [
       { href: '/host', label: 'For Hosts' },
       { href: '/tools', label: 'Free tools' },
       { href: '/help', label: 'Help centre' },
+      { href: '/support', label: 'Support' },
     ],
   },
   {
@@ -57,6 +62,8 @@ export const SITE_FOOTER_COLUMNS: FooterColumn[] = [
     links: [
       { href: '/about', label: 'About' },
       { href: 'https://career.usemingla.com', label: 'Careers', external: true },
+      { href: '/locals', label: 'Locals' },
+      { href: '/creators', label: 'Creators' },
     ],
   },
   {
@@ -65,7 +72,7 @@ export const SITE_FOOTER_COLUMNS: FooterColumn[] = [
       { href: '/privacy-policy', label: 'Privacy' },
       { href: '/terms-of-service', label: 'Terms' },
       { href: '/organiser-terms', label: 'Organiser Terms' },
-      { href: '/support', label: 'Support' },
+      { href: '/delete-account', label: 'Delete account' },
     ],
   },
 ]

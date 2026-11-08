@@ -4,8 +4,9 @@ import { SiteFooter } from '@/components/marketing/footer'
 import { ExplorerHandoffButton } from '@/components/landing/explorer-handoff'
 import { LandingMedia } from '@/components/landing/landing-media'
 import { LandingRoot } from '@/components/landing/landing-root'
-import { cityHubForSlug, cityHubPath } from '@/content/cities/registry'
+import { cityHubForSlug, cityHubPath, type CityHubSlug } from '@/content/cities/registry'
 import type { LandingMediaRef } from '@/content/host-landing/icps'
+import { CITY_MEDIA } from './city-media'
 import { ReelHero } from './reel-hero'
 import type { ReelCard } from './reel-stage'
 import { RotatingPhrase } from './rotating-phrase'
@@ -40,19 +41,15 @@ export const HOME_REEL: readonly ReelCard[] = [
 
 const AUDIENCES: readonly { media: LandingMediaRef; title: string; line: string }[] = [
   { media: 'v:bachata', title: 'Couples', line: 'Date nights that aren’t dinner again.' },
-  { media: 'p:weekend-lagos-boat', title: 'Friends', line: 'The plan the whole chat agrees on.' },
+  { media: 'v:a-friends', title: 'Friends', line: 'The plan the whole chat agrees on.' },
   { media: 'v:a-family', title: 'Family', line: 'Something for every age.' },
   { media: 'v:a-solo', title: 'Solo', line: 'Some of the best plans only need you.' },
 ]
 
-/** City tiles: registry slugs, so a renamed hub fails the build, not a click. */
-const CITY_TILES: readonly { slug: string; media: LandingMediaRef }[] = [
-  { slug: 'lagos', media: 'p:weekend-lagos-cover' },
-  { slug: 'raleigh-nc', media: 'v:raleigh' },
-  { slug: 'durham-nc', media: 'p:weekend-durham-cover' },
-  { slug: 'cary-nc', media: 'p:cary-fountain' },
-  { slug: 'brussels', media: 'v:grandplace' },
-]
+/** City tiles: registry slugs, so a renamed hub fails the build, not a click.
+ *  Each tile shows that city's own loop from CITY_MEDIA (the same clip as its
+ *  /cities tile and its page hero). */
+const CITY_TILES: readonly CityHubSlug[] = ['lagos', 'raleigh-nc', 'durham-nc', 'cary-nc', 'brussels']
 
 const MARQUEE = ['Date night', 'Side quests', 'Live music', 'Brunch', 'Boat day', 'Gallery hop', 'Game night', 'Solo Saturday']
 
@@ -183,12 +180,12 @@ export function HomePage() {
             </div>
           </div>
           <div className="cityrow">
-            {CITY_TILES.map(({ slug, media }) => {
+            {CITY_TILES.map((slug) => {
               const city = cityTile(slug)
               return (
                 <Link href={city.href} className="reveal" key={slug}>
                   <div className="ph scrim">
-                    <LandingMedia media={media} />
+                    <LandingMedia media={CITY_MEDIA[slug]} />
                   </div>
                   <div className="ov">
                     <h3>{city.name}</h3>

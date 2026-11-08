@@ -34,8 +34,6 @@ export function GlassNav() {
     ? 'organiser'
     : 'explorer'
 
-  const homeHref = surface === 'organiser' ? '/host' : '/'
-
   // ORCH-1010 — the logo + toggle + CTA float over the hero with NO background.
   // Once the page scrolls off the hero, a frosted band fades in behind the nav
   // area so the logo color + "Get the app" CTA gain contrast against the light
@@ -163,8 +161,9 @@ export function GlassNav() {
               logo + BOTH pinned-copy pills cannot fit at 360px (hence the
               one-action mobile nav below). */}
           <Link
-            href={homeHref}
-            aria-label={surface === 'organiser' ? 'Mingla Host home' : 'Mingla home'}
+            /* #4339: every Mingla logo goes Home, on either surface. */
+            href="/"
+            aria-label="Mingla home"
             className="inline-flex shrink-0 items-center gap-2 rounded-md px-0.5 transition-all duration-200 ease-out-quart hover:-translate-y-0.5 hover:brightness-110 active:translate-y-0 active:brightness-100 focus-ring"
           >
             {surface === 'organiser' ? (

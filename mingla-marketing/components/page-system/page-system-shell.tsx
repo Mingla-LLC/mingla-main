@@ -34,7 +34,9 @@ export function PageSystemShell({
         </main>
         <footer className="ps-footer" data-print-hide>
           <div>
-            <img src="/brand/mingla-wordmark.svg" alt="Mingla" width="116" height="41" />
+            <Link href="/" aria-label="Mingla home">
+              <img src="/brand/mingla-wordmark.svg" alt="" width="116" height="41" />
+            </Link>
             <p>Find the plan. Publish what people can join.</p>
             <p className="ps-footer-cities">{LAUNCH_CITIES.join(' · ')}</p>
           </div>

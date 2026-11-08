@@ -39,13 +39,17 @@ export default function CareersRolesLayout({ children }: { children: React.React
         style={{ background: 'var(--page-bg)', borderTop: '1px solid var(--border)' }}
       >
         <div className="mx-auto w-full max-w-[1120px] px-5 py-12 sm:px-6">
-          <Image
-            src="/brand/mingla-wordmark.svg"
-            alt="Mingla"
-            width={100}
-            height={28}
-            className="h-7 w-auto"
-          />
+          {/* Every Mingla logo goes Home (#4339): the careers host's home is
+              usemingla.com, the same target as the careers header logo. */}
+          <a href="https://usemingla.com" aria-label="Mingla home" className="inline-block">
+            <Image
+              src="/brand/mingla-wordmark.svg"
+              alt=""
+              width={100}
+              height={28}
+              className="h-7 w-auto"
+            />
+          </a>
           <p className="mt-3 text-[15px]" style={{ color: 'var(--ink-muted)' }}>
             Mingla — find something to do.
           </p>

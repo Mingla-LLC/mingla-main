@@ -356,10 +356,16 @@
   height: 1px;
   background: rgba(17, 17, 16, 0.35);
 }
+[data-landing] .about .wm-link {
+  display: block;
+  width: fit-content;
+  margin: 0 auto;
+  border-radius: 6px;
+}
 [data-landing] .about .wm {
+  display: block;
   height: 30px;
   width: auto;
-  margin: 0 auto;
 }
 [data-landing] .duo {
   font-family: var(--mono);

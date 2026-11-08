@@ -122,8 +122,8 @@ export function HostPage() {
               )
             })}
             <Link className="tile tools reveal" href="/tools">
-              <div className="ph">
-                <span className="pill glass">4 free tools</span>
+              <div className="ph scrim">
+                <LandingMedia media="v:bg-exp" />
               </div>
               <div className="ov">
                 <h3>Free tools</h3>
