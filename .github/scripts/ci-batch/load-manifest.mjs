@@ -150,7 +150,46 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4261: the #1880 expanded-share suite also runs when PlansSheet or PlanMatchesSheet change (they own the two collab mounts now).
 // #4273: register the tester retest proofs the same way.
 // #4273: register the segment-count proofs the same way.
-export const BOOTSTRAP_SHA256 = "7713824a2a24a40d88b88e9510e83dc9816a74b1e834d1b41b541972029a0bfa";
+// #3281: register the door extras migration and test
+// #3281: register the private link dates migration and test
+// #3281: skip the private link dates migration on the pre-feature lanes
+// #3281: skip the private link dates migration on the pre-feature lanes
+// #4275: register the signal batch and cron stagger migrations and their proofs the same way.
+// #4283: register the accept single-member-row migration and its proofs
+// #4276: register the place-pipeline migrations and their proofs.
+// #4276: skip the conductor, score-hold and unparseable-date migrations on the pre-#1931 replay
+// (the conductor re-emits the #3872 Local picker typed on public.locals, which that replay skips).
+// #2830: register the Website setup takeover migration and its proof; the recovery workflow names the Studio migration guard.
+// #4271: re-sealed after the door pay migration and proof entered the preserved
+// inventories and the migration joined the pre-#1931 replay skip list by exact filename.
+// #4271: register the tester adversarial PostgreSQL proof the same way.
+// #4271: register the rework implementor PostgreSQL proof the same way.
+// #4271: register the Apple build PostgreSQL proof the same way.
+// #4271: register the final tester PostgreSQL proof the same way.
+// #4271: re-sealed after merging origin/main (#4261/#4273/#4275/#4276/#4283/#2830 rows kept beside the #4271 rows).
+// #3645: register the stay flat-net migration the same way.
+// #4271: register the resumable stuck-refund migration and its PostgreSQL proof.
+// #4271: register the resumable stuck-refund tester PostgreSQL proof (PR #4303).
+// #4271: PR #4303 rework renamed the migration and both proofs (failed-refund guard).
+// #4276: re-sealed after merging origin/main (#4271/#2830 rows kept beside the #4276 rows).
+// #4294: re-sealed after the Mingla connector migration entered the preserved inventories
+// and joined the pre-#1931 replay skip list by exact filename.
+// #4294: re-sealed after the connector's tester PostgreSQL proof joined the pre-#1931 template suites' inventories.
+// #4294: re-sealed after merging origin/main (#4303 and #4296 rows kept beside the #4294 rows).
+// #4273: register the buyer/follower auto opt-in, honest-quote and account-opt-out migrations and their proofs.
+// #4270: register the brand plan migrations (20280427004270-20280427024270) and their proofs the same way.
+// #3645: register the unpaid-release-holds migration and its PostgreSQL proof the same way.
+// #4294: re-sealed after the company sign-in migration and its PostgreSQL proof entered the preserved inventories
+// and the migration joined the pre-#1931 replay's exact-file exclusion.
+// #4294 (tester): re-sealed after the company sign-in tester proof entered the preserved inventories.
+// #4271: register the tap buyer-name migration and its PostgreSQL proofs the same way.
+// #4271: the tap buyer-name migration joins the pre-#1931 replay's exact-file exclusion beside door pay.
+// #3645: register the sell-and-publish integrity migration, its PostgreSQL proof and its re-emit guard.
+// #3645: the sell-and-publish migration joins the pre-#1931 and pre-#2117 replay skip lists by exact filename.
+// #4304: register the Brand group live migration and its PostgreSQL proof the same way.
+// #4270 W7: register the admin Brand group inbox suites; migration 20280502004270; re-sealed after merging origin/main (#4322).
+// #4273 polish: register the sent-previews migration, its PostgreSQL proofs (implementor + tester) and the campaign-screen render proof.
+export const BOOTSTRAP_SHA256 = "3866c0e162cb998441886ab561a52d627c89732912dc2a0cb2b0a4d2f3abff4c";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

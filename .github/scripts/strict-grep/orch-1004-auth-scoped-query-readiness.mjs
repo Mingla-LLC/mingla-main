@@ -106,6 +106,9 @@ const AUTH_SCOPED_HOOK_FILES = [
   // Issue #3697 v1.4 — resumable Host ad plans (JWT + brand-scoped edge).
   "marketing/useHostAdPlans.ts",
   "marketing/useAudienceList.ts",
+  // #4273 polish: sent-campaign group view (biz_marketing_campaign_group_view_v1,
+  // auth.uid() author or brand-member check). Folds isAuthReady into enabled.
+  "marketing/useCampaignGroupView.ts",
   "marketing/useBrandCustomers.ts",
   "marketing/useEventBuyers.ts",
   "marketing/useMarketingOverview.ts",

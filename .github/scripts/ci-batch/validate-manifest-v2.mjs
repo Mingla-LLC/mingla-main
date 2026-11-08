@@ -362,7 +362,42 @@ export function phase3dContractDigest(manifest) {
 // #4261: renumber the #4261 migrations after #3682, then after #4265 and #4270, before #4273 (20280403034261-20280403084261).
 // #4273: register the tester retest proofs the same way.
 // #4273: register the segment-count proofs the same way.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "27ec0729c22a0fbdcdbd5e854dbd47f88f9ee8aa9cb840052cf12dac0b7974d6";
+// #3281: register the door extras migration and test
+// #3281: register the private link dates migration and test
+// #3281: skip the private link dates migration on the pre-feature lanes
+// #3281: skip the private link dates migration on the pre-feature lanes
+// #4275: register the signal batch and cron stagger migrations and their proofs the same way.
+// #4283: register the accept single-member-row migration and its proofs
+// #4276: register the place-pipeline migrations and their proofs.
+// #4271: the door pay migration and its proof join the preserved inventories, and the
+// migration joins the pre-#1931 replay's exact-file exclusion (#2492).
+// #4271: register the tester adversarial PostgreSQL proof the same way.
+// #4271: register the rework implementor PostgreSQL proof the same way.
+// #4271: register the Apple build PostgreSQL proof the same way.
+// #4271: register the final tester PostgreSQL proof the same way.
+// #4271: re-sealed after merging origin/main (#4261/#4273/#4275/#4276/#4283/#2830 rows kept beside the #4271 rows).
+// #3645: register the stay flat-net migration the same way.
+// #4271: register the resumable stuck-refund tester PostgreSQL proof (PR #4303).
+// #4271: PR #4303 rework renamed the migration and both proofs (failed-refund guard).
+// #4276: re-sealed after merging origin/main (#4271/#2830 rows kept beside the #4276 rows).
+// #4294: the Mingla connector migration and its proof join the preserved inventories, and the
+// migration joins the pre-#1931 replay's exact-file exclusion (#2492).
+// #4294: re-sealed after the connector's tester PostgreSQL proof joined the pre-#1931 template suites' inventories.
+// #4294: re-sealed after merging origin/main (#4303 and #4296 rows kept beside the #4294 rows).
+// #4273: register the buyer/follower auto opt-in, honest-quote and account-opt-out migrations and their proofs.
+// #4270: register the brand plan migrations (20280427004270-20280427024270) and their proofs the same way.
+// #3645: register the unpaid-release-holds migration and its PostgreSQL proof the same way.
+// #4294: the company sign-in migration and its proof join the preserved inventories, and the
+// migration joins the pre-#1931 replay's exact-file exclusion.
+// #4294 (tester): the company sign-in tester proof joins the preserved inventories.
+// #4271: register the tap buyer-name migration and its PostgreSQL proofs the same way.
+// #4271: the tap buyer-name migration joins the pre-#1931 replay's exact-file exclusion beside door pay.
+// #3645: register the sell-and-publish integrity migration, its PostgreSQL proof and its re-emit guard.
+// #3645: the sell-and-publish migration joins the pre-#1931 and pre-#2117 replay skip lists by exact filename.
+// #4304: register the Brand group live migration and its PostgreSQL proof the same way.
+// #4270 W7: register the admin Brand group inbox suites; migration 20280502004270; re-sealed after merging origin/main (#4322).
+// #4273 polish: register the sent-previews migration, its PostgreSQL proofs (implementor + tester) and the campaign-screen render proof.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "624cd2daf3421bba6340731137c565cc95315ef6482c5f7a1ff10bf555173fe3";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
@@ -850,11 +885,18 @@ const PHASE3C_WRAPPER_SET = new Set(PHASE3C_WRAPPER_NAMES);
 // refresh advanced three in-range transitive/runtime packages in the lockfile.
 // [TEST-MOD-APPROVED #3872] Re-banked after the required final Creator/Local
 // Host dependency refresh advanced two in-range transitive packages.
+// [TEST-MOD-APPROVED #4271] Re-banked after Host declared the exact-pinned
+// Stripe Terminal SDK (@stripe/stripe-terminal-react-native) for Tap to Pay at
+// the door, and its lockfile entries. app-mobile is unchanged.
+// [TEST-MOD-APPROVED #4271] Re-banked after Host declared expo-brightness, so the
+// door pay code screen can reach full brightness. app-mobile is unchanged.
+// [TEST-MOD-APPROVED #3643] Re-banked both lockfiles after the transitive
+// node-forge 1.4.0 -> 1.4.2 security patch; package.json files are unchanged.
 export const PACKAGE_AUTHORITY_DIGESTS = Object.freeze({
   "app-mobile/package.json": "48af9d0cca47199b61b824a4fd80b87ec7e5bb12f07899994435031238834bbb",
-  "app-mobile/package-lock.json": "9a7974a2de124482f7d450d46b49775126ef5206a325dcb6c7663ea3b9666065",
-  "mingla-business/package.json": "6f77fc43e63360ac45b94d11195b966433d4e6769b34a0340d88f9871b4b2315",
-  "mingla-business/package-lock.json": "77de9a72fcbf260277096d888a4bfa317cbf420e3a26c78bf7826feeacff3410",
+  "app-mobile/package-lock.json": "3ca515d470c958f53d8ebd8c59cb35051ae7ea903b074f5b8c634e4aced9546f",
+  "mingla-business/package.json": "908439c00e8d25bc67db9cd181cfae5848ac6b7ee6f167057304b86a6a8c561a",
+  "mingla-business/package-lock.json": "b73ce2d534a052043ed37b7391b06ba8f3f91796adf7f32dd4f118e46872ec0f",
 });
 // [#2439 SC-11.5] The seven Phase 3C records that hold a provider record and
 // transition retained-live-provider -> batched-provider at cutover. The other
@@ -1264,11 +1306,13 @@ export function trackedFiles(root) {
   trackedFilesProcessInvocationTotal += 1;
   let listed;
   try {
+    // The list of tracked paths has passed Node's default 1 MiB output limit.
     listed = execFileSync("git", ["ls-files", "-z"], { cwd: root, maxBuffer: 64 * 1024 * 1024 })
       .toString("utf8")
       .split("\0")
       .filter(Boolean);
-  } catch {
+  } catch (error) {
+    if (error?.code === "ENOBUFS") throw new Error("registry validation: git ls-files output exceeded maxBuffer");
     throw new Error("registry validation requires a git worktree");
   }
   if (!scope) return listed;

@@ -20,6 +20,13 @@ export interface ComposerPreviewTabsProps {
   active: MarketingChannelKind;
   onSelect: (kind: MarketingChannelKind) => void;
   pane: React.ReactElement;
+  /** #4273 — the tab's words ("Email · Sent"); defaults to the method name. */
+  labelFor?: (kind: MarketingChannelKind) => string;
+  /**
+   * #4273 — false lets the tabs and pane take their content height inside a
+   * page scroll (the sent-campaign screen). Default fills the parent.
+   */
+  fill?: boolean;
 }
 
 export const ComposerPreviewTabs: React.FC<ComposerPreviewTabsProps> = ({
@@ -27,8 +34,10 @@ export const ComposerPreviewTabs: React.FC<ComposerPreviewTabsProps> = ({
   active,
   onSelect,
   pane,
+  labelFor,
+  fill = true,
 }) => (
-  <View style={styles.host} testID="composer-preview-tabs">
+  <View style={fill ? styles.host : styles.hostContent} testID="composer-preview-tabs">
     {channels.length > 1 ? (
       <View style={styles.row} accessibilityRole="tablist">
         {channels.map((kind) => {
@@ -38,7 +47,7 @@ export const ComposerPreviewTabs: React.FC<ComposerPreviewTabsProps> = ({
               key={kind}
               onPress={() => onSelect(kind)}
               accessibilityRole="tab"
-              accessibilityLabel={`Preview ${CHANNEL_LABEL[kind]}`}
+              accessibilityLabel={labelFor !== undefined ? `Show ${labelFor(kind)}` : `Preview ${CHANNEL_LABEL[kind]}`}
               accessibilityState={{ selected: isActive }}
               style={({ pressed }) => [
                 styles.tab,
@@ -47,19 +56,20 @@ export const ComposerPreviewTabs: React.FC<ComposerPreviewTabsProps> = ({
               ]}
             >
               <Text style={[styles.tabLabel, isActive ? styles.tabLabelActive : null]}>
-                {CHANNEL_LABEL[kind]}
+                {labelFor !== undefined ? labelFor(kind) : CHANNEL_LABEL[kind]}
               </Text>
             </Pressable>
           );
         })}
       </View>
     ) : null}
-    <View style={styles.pane}>{pane}</View>
+    <View style={fill ? styles.pane : styles.paneContent}>{pane}</View>
   </View>
 );
 
 const styles = StyleSheet.create({
   host: { flex: 1, minHeight: 0 },
+  hostContent: { flexGrow: 0 },
   row: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -82,4 +92,5 @@ const styles = StyleSheet.create({
   tabLabel: { color: textTokens.secondary, fontSize: 13, fontWeight: "600" },
   tabLabelActive: { color: textTokens.primary },
   pane: { flex: 1, minHeight: 0 },
+  paneContent: { flexGrow: 0 },
 });
