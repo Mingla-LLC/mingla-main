@@ -188,8 +188,14 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3645: the sell-and-publish migration joins the pre-#1931 and pre-#2117 replay skip lists by exact filename.
 // #4304: register the Brand group live migration and its PostgreSQL proof the same way.
 // #4270 W7: register the admin Brand group inbox suites; migration 20280502004270; re-sealed after merging origin/main (#4322).
-// #4318: register the /links migration (renamed to 20280505004318 to stay last after main's 20280504004276) and its implementor and tester PostgreSQL proofs; it joins the pre-#1931 replay skip list by exact filename.
-export const BOOTSTRAP_SHA256 = "15f2a58d3e8aa1e21874246e07f6fefef84c2f3e897b06030e4a363c3b856883";
+// #4273 polish: register the sent-previews migration, its PostgreSQL proofs (implementor + tester) and the campaign-screen render proof.
+// #1023: skip the wave 2 theme migration (20280430011023) in the #1931 and #2117 filtered replays.
+// #1023: re-sealed after merging origin/main (#3645, #4294, #4271, #4304, #4270 W7 rows kept beside the #1023 rows).
+// #1023: re-sealed after merging origin/main 4ace6deafa (#4331 rows kept beside the #1023 rows).
+// #1023: re-sealed after merging origin/main 5dd7f103ca (#4273 polish rows kept beside the #1023 rows).
+// #1023: re-sealed after merging origin/main 6038982e1a.
+// #4318: register the /links migration (20280508004318) and its implementor and tester PostgreSQL proofs; it joins the pre-#1931 replay skip list by exact filename.
+export const BOOTSTRAP_SHA256 = "b52938386fc2f90d55424cefee02c4c5f5b92d29265db10686ca5955f402a476";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

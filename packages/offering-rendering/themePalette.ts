@@ -158,7 +158,7 @@ export const createThemePalette = (theme: ResolvedTheme): ThemePalette => {
     4.5,
   );
   const primaryText = readableTextFor(page);
-  return {
+  const palette: ThemePalette = {
     page,
     accent: accentColor,
     accentText: "#ffffff",
@@ -180,7 +180,31 @@ export const createThemePalette = (theme: ResolvedTheme): ThemePalette => {
     glassTint: useDark ? "dark" : "light",
     accentWash: hexToRgba(accentColor, useDark ? 0.24 : 0.18),
   };
+  // issue #1023 — a gradient theme registers its two white-label-safe stops
+  // against this palette object, so every accent fill drawn from the palette
+  // can paint the gradient. The palette's own shape and values are untouched
+  // (RT-1 parity): a solid theme registers nothing and draws exactly as before.
+  if (typeof theme.color2 === "string" && /^#[0-9a-fA-F]{6}$/.test(theme.color2)) {
+    PALETTE_GRADIENTS.set(palette, [
+      accentColor,
+      contrastAdjustedForWhiteText(
+        contrastAdjustedAccent(theme.color2, page, 3.15),
+        4.5,
+      ),
+    ]);
+  }
+  return palette;
 };
+
+/**
+ * issue #1023 — the two gradient stops a palette was built with, or null for
+ * a solid theme (or a palette not made by createThemePalette, e.g. a spread
+ * copy, which then draws solid: never wrong, only plainer).
+ */
+const PALETTE_GRADIENTS = new WeakMap<ThemePalette, readonly [string, string]>();
+export const paletteAccentGradient = (
+  palette: ThemePalette,
+): readonly [string, string] | null => PALETTE_GRADIENTS.get(palette) ?? null;
 
 // =====================================================================
 // ORCH-1163 R4 — GENUINELY-OPAQUE surface helpers.
@@ -369,5 +393,113 @@ export const FONT_FAMILY_BOLD_MAP: Record<ThemeFontSlug, string> = {
  * Falls back to the medium/base family for the 3 single-weight display faces.
  * Use this (NOT `fontWeight` alone) for every heavy/bold text on a themed page.
  */
+//
+// issue #1023 wave 2 — `resolveTheme` now sets `boldFontFamilyValue` for every
+// font (the legacy map for the 14 slugs, `GF_<family>_700` for a Google
+// family). A hand-built theme without it falls back to the legacy map.
 export const boldFontFamily = (theme: ResolvedTheme): string =>
-  FONT_FAMILY_BOLD_MAP[theme.font] ?? theme.fontFamilyValue;
+  theme.boldFontFamilyValue ??
+  FONT_FAMILY_BOLD_MAP[theme.font as ThemeFontSlug] ??
+  theme.fontFamilyValue;
+
+// =====================================================================
+// issue #1023 wave 2 — gradient fills.
+//
+// A gradient is one unit (the resolver guarantees `color2` belongs to the
+// same level as `color`). Fills behind white labels get BOTH stops through
+// the same two passes the solid accent gets, so each stop keeps white labels
+// readable wherever the existing algorithm can reach it. The page canvas and
+// every text accent keep deriving from the first colour only.
+export type ThemeAccentFillSpec =
+  | { kind: "solid"; color: string }
+  | { kind: "gradient"; colors: [string, string] };
+
+export const themeAccentFill = (
+  theme: ResolvedTheme,
+  palette: ThemePalette,
+): ThemeAccentFillSpec => {
+  const color2 = theme.color2;
+  if (typeof color2 !== "string" || !/^#[0-9a-fA-F]{6}$/.test(color2)) {
+    return { kind: "solid", color: palette.accent };
+  }
+  const second = contrastAdjustedForWhiteText(
+    contrastAdjustedAccent(color2, palette.page, 3.15),
+    4.5,
+  );
+  return { kind: "gradient", colors: [palette.accent, second] };
+};
+
+// =====================================================================
+// issue #1024 — text-safe accent for SMALL accent text on the page canvas.
+//
+// `palette.accent` is the FILL accent: it is kept dark enough for white
+// button labels, which caps it below 4.5:1 on every dark page (#1024). Small
+// accent text needs 4.5:1 on the page, so it gets its own token: the same hue
+// with HSL lightness moved toward the page's readable text colour until it
+// reaches 4.5:1, or the closest reachable value. Fills never use this.
+type Hsl = { h: number; s: number; l: number };
+
+const hexToHsl = (hex: string): Hsl => {
+  const { r, g, b } = parseHexColor(hex);
+  const rn = r / 255;
+  const gn = g / 255;
+  const bn = b / 255;
+  const max = Math.max(rn, gn, bn);
+  const min = Math.min(rn, gn, bn);
+  const l = (max + min) / 2;
+  if (max === min) return { h: 0, s: 0, l };
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  const h =
+    max === rn
+      ? (gn - bn) / d + (gn < bn ? 6 : 0)
+      : max === gn
+        ? (bn - rn) / d + 2
+        : (rn - gn) / d + 4;
+  return { h: h / 6, s, l };
+};
+
+const hslToHexColor = ({ h, s, l }: Hsl): string => {
+  if (s === 0) return rgbToHex({ r: l * 255, g: l * 255, b: l * 255 });
+  const hue2rgb = (p: number, q: number, t0: number): number => {
+    let t = t0;
+    if (t < 0) t += 1;
+    if (t > 1) t -= 1;
+    if (t < 1 / 6) return p + (q - p) * 6 * t;
+    if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+    return p;
+  };
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  return rgbToHex({
+    r: hue2rgb(p, q, h + 1 / 3) * 255,
+    g: hue2rgb(p, q, h) * 255,
+    b: hue2rgb(p, q, h - 1 / 3) * 255,
+  });
+};
+
+export const SMALL_TEXT_MIN_CONTRAST = 4.5;
+
+export const themeTextAccent = (palette: ThemePalette): string => {
+  const accentHex = palette.accent;
+  if (contrastRatio(accentHex, palette.page) >= SMALL_TEXT_MIN_CONTRAST) {
+    return accentHex;
+  }
+  const lighten = readableTextFor(palette.page) === "#ffffff";
+  const hsl = hexToHsl(accentHex);
+  let best = accentHex;
+  let bestRatio = contrastRatio(accentHex, palette.page);
+  for (let step = 1; step <= 50; step++) {
+    const l = Math.min(1, Math.max(0, hsl.l + (lighten ? 0.02 : -0.02) * step));
+    const candidate = hslToHexColor({ ...hsl, l });
+    const ratio = contrastRatio(candidate, palette.page);
+    if (ratio > bestRatio) {
+      best = candidate;
+      bestRatio = ratio;
+    }
+    if (ratio >= SMALL_TEXT_MIN_CONTRAST) return candidate;
+    if (l === 0 || l === 1) break;
+  }
+  return best;
+};

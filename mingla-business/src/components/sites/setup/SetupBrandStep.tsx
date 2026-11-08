@@ -12,7 +12,7 @@ import type { Brand } from "../../../store/currentBrandStore";
 import type { BrandAddressPatch } from "../../../utils/brandAddressPatch";
 import { parsePhoneEntry } from "../../../../../packages/phone-input/phoneNumber";
 import { ThemeControlRow } from "../../theme/ThemeControlRow";
-import { ThemeSheet } from "../../theme/ThemeSheet";
+import { ThemeSheet } from "../../theme/ThemeSheetLazy";
 import { Input, PHONE_COUNTRIES } from "../../ui/Input";
 import type { AriFlowUploadCopy, AriFlowUploadKind } from "../../ari/ariFlowCards";
 import { Chip, Field, Hint, WButton, ui } from "../website/ui";

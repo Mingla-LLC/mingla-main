@@ -10,8 +10,8 @@ import path from "node:path";
 // Pins:
 //   - EmailPreviewPane renders the REAL wordmark image (90x32, mirroring the
 //     server shell's 180px header at half scale) — never a styled "Mingla"
-//     <Text> header. The "via Mingla" sender-identity COPY strings are
-//     legitimate prose and exempt.
+//     <Text> header. (The "via Mingla" From copy was removed by #4273: the
+//     real From line is the brand name alone.)
 //   - SeeWhosGoingGate renders the wordmark image tinted to the event-theme
 //     accent (tintColor={palette.accent}) — never the "MINGLA" text kicker.
 //
@@ -39,8 +39,10 @@ describe("ISSUE-1001 — EmailPreviewPane wordmark swap (W4-2)", () => {
     // The removed header: <Text style={styles.miniglaLogo}>Mingla</Text>
     expect(source).not.toMatch(/<Text[^>]*>\s*Mingla\s*<\/Text>/);
     expect(source).not.toMatch(/miniglaLogo:\s*\{/); // orphaned style deleted
-    // The exempt copy strings are exact-match prose, not wordmark renders.
-    expect(source).toContain("via Mingla");
+    // #4273 extra (c): the From line is the brand name alone, as the real
+    // email's From header is; "via Mingla" is gone from the pane.
+    expect(source).not.toContain("via Mingla");
+    expect(source).toContain('const fromLine = fromLabel ?? brandName ?? "Your brand";');
   });
 
   test("image is the half-scale echo of the server shell's header logo", () => {

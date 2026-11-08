@@ -111,6 +111,9 @@ function loadHost(mode: "create" | "edit"): React.ComponentType<any> {
     if (name.endsWith("/ticketDayScope")) return require("../../../utils/ticketDayScope"); // #3281 pure helpers
     const exportName = name.split("/").pop()!;
     if (/^(Button|ConfirmDialog|GlassCard|Icon|IconChrome|Stepper|TopBar|Toast|CreatorStep\d\w+|RsvpStep7Preview|PublishErrorsSheet|ChangeSummaryModal|EditAfterPublishBanner|ThemeControlRow|ThemeSheet)$/.test(exportName)) return { [exportName]: leaf(exportName) };
+    // [TEST-MOD-APPROVED #1023] Harness registration only: hosts import the
+    // on-intent wrapper, which exports the same ThemeSheet name.
+    if (exportName === "ThemeSheetLazy") return { ThemeSheet: leaf("ThemeSheet") };
     throw new Error(`Unclassified host boundary: ${name}`);
   };
   const module = { exports: {} as Record<string, React.ComponentType<any>> };

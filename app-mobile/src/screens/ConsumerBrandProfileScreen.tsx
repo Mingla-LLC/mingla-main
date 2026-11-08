@@ -24,7 +24,8 @@ import {
   enquiryVenueFromSummary,
 } from "@mingla/brand-rendering/enquiry/enquiryPageData";
 // DEEP specifier: the barrel pulls the offering chrome into this screen.
-import { createThemePalette } from "@mingla/offering-rendering/themePalette";
+import { boldFontFamily, createThemePalette } from "@mingla/offering-rendering/themePalette";
+import { useConsumerThemeFont } from "../theme/useConsumerThemeFont";
 
 import {
   useBrandBySlug,
@@ -150,6 +151,11 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
     () => (resolvedTheme === null ? null : createThemePalette(resolvedTheme)),
     [resolvedTheme],
   );
+  // issue #1023 — the brand page draws the theme font (base and, for the brand
+  // name and headings, the bold face); native never derives bold from
+  // fontWeight for a custom family.
+  useConsumerThemeFont(resolvedTheme?.fontFamilyValue ?? null);
+  useConsumerThemeFont(resolvedTheme === null ? null : boldFontFamily(resolvedTheme));
 
   const handleShare = useCallback((): void => {
     if (typeof slug !== "string") return;

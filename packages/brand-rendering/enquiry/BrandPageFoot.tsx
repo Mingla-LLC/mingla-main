@@ -20,6 +20,8 @@ import type { ResolvedTheme, ThemePalette } from "@mingla/offering-rendering";
 
 import type { EnquiryPhoneFieldArgs, EnquiryPhoneState } from "./BrandMessageSheet";
 import { replyTimeLabel } from "./replyTime";
+import { accentEdgeOnFill, accentFill, accentOutline, themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
+import { AccentLucideIcon } from "@mingla/offering-rendering/LucideIcons";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -88,6 +90,8 @@ export const BrandPageFoot = forwardRef<BrandPageFootHandle, BrandPageFootProps>
   const [emailError, setEmailError] = useState<string | null>(null);
   const openedAt = useRef<number>(Date.now());
   const themedFont = { fontFamily: theme.fontFamilyValue };
+  // issue #1023 — titles name the bold face (native ignores fontWeight here).
+  const themedBoldFont = themeBoldFace(theme);
 
   useImperativeHandle(
     ref,
@@ -135,9 +139,9 @@ export const BrandPageFoot = forwardRef<BrandPageFootHandle, BrandPageFootProps>
           {loop.state === "sent" ? (
             <View style={styles.sentBody} testID={`${testID}-loop-sent`}>
               <View style={[styles.okIcon, { backgroundColor: palette.accentWash }]}>
-                <Check size={20} color={palette.accent} />
+                <AccentLucideIcon Icon={Check} size={20} palette={palette} />
               </View>
-              <Text style={[styles.title, themedFont, { color: palette.primaryText }]} accessibilityRole="header">
+              <Text style={[styles.title, themedBoldFont, { color: palette.primaryText }]} accessibilityRole="header">
                 Check your email
               </Text>
               <Text style={[styles.sub, { color: palette.secondaryText }]} accessibilityLiveRegion="polite">
@@ -161,7 +165,7 @@ export const BrandPageFoot = forwardRef<BrandPageFootHandle, BrandPageFootProps>
             </View>
           ) : (
             <View style={styles.form}>
-              <Text style={[styles.title, themedFont, { color: palette.primaryText }]} accessibilityRole="header">
+              <Text style={[styles.title, themedBoldFont, { color: palette.primaryText }]} accessibilityRole="header">
                 Stay in the loop
               </Text>
               <Text style={[styles.sub, { color: palette.secondaryText }]}>
@@ -225,8 +229,8 @@ export const BrandPageFoot = forwardRef<BrandPageFootHandle, BrandPageFootProps>
                   <View
                     style={[
                       styles.checkBox,
-                      { borderColor: wantsSms ? palette.accent : palette.panelBorder },
-                      wantsSms && { backgroundColor: palette.accent },
+                      { borderColor: wantsSms ? accentEdgeOnFill(palette) : palette.panelBorder },
+                      wantsSms && accentFill(palette),
                     ]}
                   >
                     {wantsSms ? <Check size={14} color={palette.accentText} /> : null}
@@ -262,7 +266,7 @@ export const BrandPageFoot = forwardRef<BrandPageFootHandle, BrandPageFootProps>
                 testID={`${testID}-loop-submit`}
                 style={({ pressed }) => [
                   styles.primaryBtn,
-                  { backgroundColor: palette.accent },
+                  accentFill(palette),
                   loop.state === "sending" && styles.dim,
                   pressed && styles.pressed,
                 ]}
@@ -286,7 +290,7 @@ export const BrandPageFoot = forwardRef<BrandPageFootHandle, BrandPageFootProps>
           testID={`${testID}-message`}
         >
           <View style={styles.messageCopy}>
-            <Text style={[styles.messageTitle, themedFont, { color: palette.primaryText }]}>Questions?</Text>
+            <Text style={[styles.messageTitle, themedBoldFont, { color: palette.primaryText }]}>Questions?</Text>
             {replyLine !== null ? (
               <Text style={[styles.messageSub, { color: palette.tertiaryText }]} testID={`${testID}-reply-time`}>
                 {replyLine}
@@ -298,7 +302,7 @@ export const BrandPageFoot = forwardRef<BrandPageFootHandle, BrandPageFootProps>
             accessibilityRole="button"
             accessibilityLabel={`Message ${brandName}`}
             testID={`${testID}-message-button`}
-            style={({ pressed }) => [styles.lineBtn, { borderColor: palette.accent }, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.lineBtn, accentOutline(palette, { opaqueBackground: palette.page }), pressed && styles.pressed]}
           >
             <Text numberOfLines={2} style={[styles.lineLabel, { color: palette.primaryText }]}>
               {`Message ${brandName}`}

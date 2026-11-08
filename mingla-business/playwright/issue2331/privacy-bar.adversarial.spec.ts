@@ -23,6 +23,8 @@ const PIXELS = ["meta", "tiktok", "snap", "reddit"] as const;
 
 for (const size of SHORT) {
   test(`${size.width}x${size.height}: the strip covers no control; the sheet fits above it and never moves it`, async ({ browser }) => {
+    // Ten pages, each opened, audited, its sheet opened and closed.
+    test.setTimeout(600_000);
     for (const target of PAGES) {
       const context = await browser.newContext({ viewport: size });
       await install(context, { signedIn: target.signedIn });
@@ -33,10 +35,31 @@ for (const size of SHORT) {
       await scrollToEnd(page);
       const closed = await auditOcclusion(page);
       expect(closed.covered, `${target.name} @ ${size.width}x${size.height}`).toEqual([]);
+      // The strip sits below sheets and dialogs (react-native-web's Modal
+      // layer is z 9999): a page that opens its own dialog on arrival (the
+      // signed-in host home) covers the strip by design, so only the page's
+      // own dialog may be on top of it.
+      const top = await page.evaluate(() => {
+        const strip = document.querySelector<HTMLElement>("[data-testid='privacy-strip']")!.getBoundingClientRect();
+        const hit = document.elementFromPoint(strip.left + strip.width / 2, strip.top + strip.height / 2);
+        if (hit?.closest("[data-testid='privacy-strip']")) return "strip";
+        for (let node = hit; node !== null; node = node.parentElement) {
+          const style = getComputedStyle(node);
+          if (style.position === "fixed" && Number(style.zIndex) >= 9999) return "modal";
+        }
+        return "other";
+      });
+      expect(top, `${target.name} @ ${size.width}x${size.height}`).not.toBe("other");
+      if (top === "modal") {
+        await context.close();
+        continue;
+      }
       const before = await page.getByTestId("privacy-strip").boundingBox();
       await page.getByTestId("privacy-strip").click();
       const sheet = page.getByTestId("privacy-sheet");
       await expect(sheet).toBeVisible();
+      // Let the 0.2s entrance (a 12px rise) settle before measuring.
+      await page.waitForTimeout(300);
       const box = (await sheet.boundingBox())!;
       expect(box.y + box.height).toBeLessThanOrEqual(size.height - 28 + 0.5);
       expect(await page.getByTestId("privacy-strip").boundingBox()).toEqual(before);

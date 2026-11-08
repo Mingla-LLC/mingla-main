@@ -26,7 +26,7 @@ import { Button } from "../ui/Button";
 import { CoverPickerSheet } from "../ui/CoverPickerSheet";
 import { useBrand } from "../../hooks/useBrands";
 import { ThemeControlRow } from "../theme/ThemeControlRow";
-import { ThemeSheet } from "../theme/ThemeSheet";
+import { ThemeSheet } from "../theme/ThemeSheetLazy";
 import { buildDraftThemePreview } from "../theme/themePreviewContent";
 import type { ThemeInput } from "@mingla/offering-rendering";
 import { EventCoverMedia } from "../ui/EventCoverMedia";

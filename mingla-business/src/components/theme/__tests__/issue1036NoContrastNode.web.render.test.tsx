@@ -128,7 +128,26 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
 import { ThemeSheet } from "../ThemeSheet";
 import type { ThemeInput } from "@mingla/offering-rendering";
 
+// issue #1023 wave 2 (spec 4.x "Contrast line", D-2): the picker shows ONE
+// plain-language contrast line under the controls ("Reads well on your page
+// (4.6:1)" / "Small text gets lightened to stay readable (3.8:1). Buttons keep
+// your exact colour."). It replaces nothing #1036 removed (no chip, no tiers,
+// no nudge). The #1036 negative assertions below therefore run on the markup
+// with that one spec'd line taken out, and the line itself is pinned exactly.
+// Invalidated assertion: "no ratio / no 'readable' anywhere in the sheet".
+const CONTRAST_LINE = /<div[^>]*data-testid="theme-colour-contrast"[^>]*>([^<]*)<\/div>/;
+const SPEC_CONTRAST_LINE =
+  /^(Reads well on your page \(\d+\.\d:1\)\.|Small text gets lightened to stay readable \(\d+\.\d:1\)\. Buttons keep your exact colour\.)$/;
+
+function contrastLineOf(markup: string): string | null {
+  return markup.match(CONTRAST_LINE)?.[1] ?? null;
+}
+
 function renderColourTab(seed: string): string {
+  return renderColourTabRaw(seed).replace(CONTRAST_LINE, "");
+}
+
+function renderColourTabRaw(seed: string): string {
   const value: ThemeInput = { color: seed, font: null, animation: null };
   return ReactDOMServer.renderToStaticMarkup(
     <ThemeSheet
@@ -166,10 +185,27 @@ const SEEDS: Array<[label: string, hex: string]> = [
   ["bright green", "#00e676"],
 ];
 
+// issue #1023 wave 2 made the Colour tab a lazy chunk (React.lazy). A static
+// server render only shows its Suspense fallback until the chunk has loaded
+// once, so warm it before any assertion: render, let the import settle, and
+// every later render paints the real picker. Without this the "no chip"
+// assertions below would pass vacuously over a spinner.
+beforeAll(async () => {
+  renderColourTabRaw(SEEDS[0][1]); // starts the lazy import
+  await import("../ThemeColourTab"); // the same module, now loaded
+  for (let i = 0; i < 50 && !renderColourTabRaw(SEEDS[0][1]).includes("Solid theme colour"); i += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  expect(renderColourTabRaw(SEEDS[0][1])).toContain("Solid theme colour");
+}, 60_000);
+
 describe("#1036 — no contrast-advisory node renders for ANY seed (tester, WEB render)", () => {
   for (const [label, hex] of SEEDS) {
     describe(`seed ${hex} — ${label}`, () => {
-      const html = renderColourTab(hex);
+      let html = "";
+      beforeAll(() => {
+        html = renderColourTab(hex);
+      });
 
       test("the colour picker actually rendered (preview band + hex field + Done)", () => {
         // If these are absent the render is empty and the "no chip" assertions
@@ -177,8 +213,16 @@ describe("#1036 — no contrast-advisory node renders for ANY seed (tester, WEB 
         expect(html).toContain("Preview: your page with this theme");
         expect(html).toContain("Rooftop Sessions");
         expect(html).toContain("Get tickets");
-        expect(html).toContain("Hex colour code");
+        // issue #1023 wave 2: the hex field sits behind "Custom colour" and is
+        // open only for a colour that is not a swatch (invalidated assertion:
+        // "the hex field is always rendered"). The swatch grid always is.
+        expect(html).toContain("Solid theme colour");
+        expect(html).toContain("Custom colour");
         expect(html).toContain("Done");
+      });
+
+      test("the one spec'd contrast line is plain language (issue #1023 wave 2)", () => {
+        expect(contrastLineOf(renderColourTabRaw(hex))).toMatch(SPEC_CONTRAST_LINE);
       });
 
       test("no decimal contrast-ratio badge is rendered", () => {

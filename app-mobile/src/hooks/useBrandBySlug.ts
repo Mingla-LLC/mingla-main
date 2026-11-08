@@ -6,13 +6,11 @@ import {
 import {
   resolveTheme,
   resolveEventAcquisitionState,
-  isThemeAnimationSlug,
-  isThemeColor,
-  isThemeFontSlug,
   type ResolvedTheme,
   type EventTerminalSource,
   type ThemeInput,
 } from "@mingla/offering-rendering";
+import { themeInputFromFields } from "@mingla/offering-rendering/themeResolver";
 import type {
   PublicBrand,
   PublicBrandEvent,
@@ -55,6 +53,7 @@ interface PublicBrandRow {
   theme_color: string | null;
   theme_font: string | null;
   theme_animation: string | null;
+  theme_gradient?: string | null;
 }
 
 interface PublicEventRow {
@@ -167,17 +166,14 @@ const asRecord = (value: unknown): Record<string, unknown> =>
     ? (value as Record<string, unknown>)
     : {};
 
+// issue #1023 wave 2 — one guard for every theme read (Google families and
+// the gradient's second stop included); see themeInputFromFields.
 const asThemeInput = (
   color: unknown,
   font: unknown,
   animation: unknown,
-): ThemeInput | null => {
-  const out: ThemeInput = {};
-  if (isThemeColor(color)) out.color = color;
-  if (isThemeFontSlug(font)) out.font = font;
-  if (isThemeAnimationSlug(animation)) out.animation = animation;
-  return Object.keys(out).length > 0 ? out : null;
-};
+  gradient?: unknown,
+): ThemeInput | null => themeInputFromFields(color, font, animation, gradient);
 
 const splitDescription = (
   description: string | null,
@@ -222,7 +218,12 @@ const mapBrand = (row: PublicBrandRow): PublicBrand => {
       ...(row.contact_email ? { email: row.contact_email } : {}),
       ...(row.contact_phone ? { phone: row.contact_phone } : {}),
     },
-    theme: asThemeInput(row.theme_color, row.theme_font, row.theme_animation),
+    theme: asThemeInput(
+      row.theme_color,
+      row.theme_font,
+      row.theme_animation,
+      row.theme_gradient,
+    ),
   };
 };
 

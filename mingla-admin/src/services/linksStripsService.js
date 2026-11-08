@@ -15,7 +15,7 @@ export class LinksStripsError extends Error {
   }
 }
 
-// Server refusals from the admin_links_* RPCs (migration 20280505004318):
+// Server refusals from the admin_links_* RPCs (migration 20280508004318):
 // each becomes plain copy and, where it names a form field, that field.
 const SERVER_REFUSALS = Object.freeze({
   links_title_invalid: { field: "title", message: "Add a title of up to 60 characters." },

@@ -197,11 +197,28 @@ export async function createDraft(
   return data as unknown as MarketingCampaignRow;
 }
 
+/**
+ * #4273 follow-up 1 — the draft changed (or went) since this composer saw it:
+ * another tab or device owns it now. Never the generic "not found" error, so a
+ * caller can leave someone else's draft alone.
+ */
+export class DraftChangedElsewhereError extends Error {
+  constructor(public readonly campaignId: string) {
+    super("This draft was changed in another tab or device.");
+    this.name = "DraftChangedElsewhereError";
+  }
+}
+
 export async function updateDraft(input: {
   campaign_id: string;
   name?: string;
   audience_id?: string;
   channel_payload?: CampaignChannelPayload;
+  /**
+   * #4273 follow-up 1 — only when the row still carries this updated_at.
+   * Checked inside the UPDATE's WHERE, so it is atomic on the server.
+   */
+  expectedUpdatedAt?: string;
 }): Promise<MarketingCampaignRow> {
   assertUuid(input.campaign_id, "updateDraft.campaign_id");
   const patch: Record<string, unknown> = {
@@ -235,17 +252,25 @@ export async function updateDraft(input: {
     patch.channel_payload = input.channel_payload;
     patch.channel = input.channel_payload.kind;
   }
-  const { data, error } = await supabase
+  // I-MUTATION-ROWCOUNT-WAIVER: #4273 rowcount verified below via .select(...).maybeSingle() on the reassigned query
+  let query = supabase
     .from("marketing_campaigns")
     .update(patch)
     .eq("id", input.campaign_id)
-    .eq("status", "draft")
+    .eq("status", "draft");
+  if (input.expectedUpdatedAt !== undefined) {
+    query = query.eq("updated_at", input.expectedUpdatedAt);
+  }
+  const { data, error } = await query
     .select(
       "id, account_id, brand_id, audience_id, template_id, name, channel, channel_payload, status, scheduled_for, sent_at, recipient_count, created_at, updated_at",
     )
     .maybeSingle();
   if (error) throw error;
   if (data === null) {
+    if (input.expectedUpdatedAt !== undefined) {
+      throw new DraftChangedElsewhereError(input.campaign_id);
+    }
     throw new Error(
       "updateDraft: no row updated (campaign not found or not draft)",
     );
@@ -305,19 +330,35 @@ export async function cancelScheduled(
   return data as unknown as MarketingCampaignRow;
 }
 
-export async function deleteDraft(campaignId: string): Promise<void> {
+export async function deleteDraft(
+  campaignId: string,
+  opts?: {
+    /**
+     * #4273 follow-up 1 — delete only the version this composer saw. Checked
+     * inside the DELETE's WHERE, so it is atomic on the server.
+     */
+    expectedUpdatedAt?: string;
+  },
+): Promise<void> {
   assertUuid(campaignId, "deleteDraft.campaign_id");
   // .select("id") per I-PROPOSED-I MUTATION-ROWCOUNT-VERIFIED — verify a
   // matching draft row actually existed; if not (already sent, not a draft,
   // or RLS denied), throw rather than silently succeed.
-  const { data, error } = await supabase
+  // I-MUTATION-ROWCOUNT-WAIVER: #4273 rowcount verified below via .select("id") on the reassigned query
+  let query = supabase
     .from("marketing_campaigns")
     .delete()
     .eq("id", campaignId)
-    .eq("status", "draft")
-    .select("id");
+    .eq("status", "draft");
+  if (opts?.expectedUpdatedAt !== undefined) {
+    query = query.eq("updated_at", opts.expectedUpdatedAt);
+  }
+  const { data, error } = await query.select("id");
   if (error) throw error;
   if (!data || data.length === 0) {
+    if (opts?.expectedUpdatedAt !== undefined) {
+      throw new DraftChangedElsewhereError(campaignId);
+    }
     throw new Error(
       "Draft not found, already sent, or not eligible for deletion",
     );
@@ -348,7 +389,7 @@ export async function listCampaigns(input: {
   let query = supabase
     .from("marketing_campaigns")
     .select(
-      "id, account_id, brand_id, audience_id, template_id, name, channel, channel_payload, status, scheduled_for, sent_at, recipient_count, created_at, updated_at",
+      "id, account_id, brand_id, audience_id, template_id, name, channel, channel_payload, campaign_group_id, status, scheduled_for, sent_at, recipient_count, created_at, updated_at",
     )
     .eq("brand_id", input.brand_id)
     .order("created_at", { ascending: false })
@@ -366,7 +407,7 @@ export async function getCampaign(
   const { data, error } = await supabase
     .from("marketing_campaigns")
     .select(
-      "id, account_id, brand_id, audience_id, template_id, name, channel, channel_payload, status, scheduled_for, sent_at, recipient_count, created_at, updated_at",
+      "id, account_id, brand_id, audience_id, template_id, name, channel, channel_payload, campaign_group_id, status, scheduled_for, sent_at, recipient_count, created_at, updated_at",
     )
     .eq("id", campaignId)
     .maybeSingle();

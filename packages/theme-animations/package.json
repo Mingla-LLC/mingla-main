@@ -5,9 +5,12 @@
   "main": "index.ts",
   "types": "index.ts",
   "license": "UNLICENSED",
-  "description": "Small in-house Lottie entrance animations for ORCH-0964 public theme rendering.",
+  "description": "Generated, brand-tintable Lottie theme motion (intro + seamless loop per slug) for the public theme Motion axis (ORCH-0964, issue #1023).",
   "peerDependencies": {
     "react": "*",
     "react-native": "*"
+  },
+  "scripts": {
+    "generate": "node scripts/generate-lottie.mjs"
   }
 }

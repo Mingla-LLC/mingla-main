@@ -11,7 +11,10 @@ module.exports = {
   transform: {
     "^.+\\.(js|jsx|ts|tsx)$": [
       "babel-jest",
-      { configFile: path.join(__dirname, "jest.orch1118.babel.cjs") },
+      // #4273 polish: the campaign screen loads the composer panes through a
+      // dynamic import() (keeps them out of __common); the #2323 config is the
+      // shared render transform plus the import()-to-require lowering Metro does.
+      { configFile: path.join(__dirname, "jest.issue2323.babel.cjs") },
     ],
   },
   testMatch: [
@@ -36,6 +39,8 @@ module.exports = {
     "**/__tests__/issue_4273_hidden_skip_response.tester_adversarial.test.ts",
     "**/__tests__/blastSendModel.issue4273.rework.test.ts",
     "**/__tests__/smsCost.issue4273.test.ts",
+    // #4273 polish: the campaign screen (one tab per method, as sent).
+    "**/__tests__/issue_4273_sent_report.render.test.tsx",
   ],
   transformIgnorePatterns: [
     "node_modules/(?!(jest-)?react-native|@react-native|@react-native-community|expo|@expo)",

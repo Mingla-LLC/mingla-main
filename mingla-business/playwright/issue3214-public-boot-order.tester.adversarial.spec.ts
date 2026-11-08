@@ -458,6 +458,9 @@ const layout = (page: Page) => page.evaluate(() => {
     viewport: window.innerHeight,
     html: document.documentElement.getBoundingClientRect().height,
     root: root ? root.getBoundingClientRect().height : -1,
+    // #4318 — the permanent privacy strip's height (its inset).
+    inset: Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--mingla-privacy-inset')) || 0,
+    stripBottom: document.querySelector('[data-testid="privacy-strip"]')?.getBoundingClientRect().bottom ?? -1,
     scrollers: Array.from(document.querySelectorAll('#root *'))
       .filter((element) => /(auto|scroll)/.test(getComputedStyle(element).overflowY))
       .map((element) => ({ clientHeight: element.clientHeight, scrollHeight: element.scrollHeight })),
@@ -696,9 +699,22 @@ test.describe('#3214 tester adversarial — desktop width', () => {
     test.setTimeout(90_000)
     const harness = await openPage(page, { consent: true })
     await takenOver(page)
-    await expect.poll(async () => (await layout(page)).root, { timeout: 30_000 }).toBe(800)
+    // #4318 — the takeover fills the viewport above the permanent 28px
+    // "Privacy & ad choices" strip, which ends at the viewport bottom.
+    await expect.poll(async () => { const m = await layout(page); return Math.round(m.root + m.inset) }, { timeout: 30_000 }).toBe(800)
     const measured = await layout(page)
+    expect(measured.inset).toBe(28)
+    expect(Math.round(measured.stripBottom)).toBe(800)
     expect(measured.html).toBe(measured.viewport)
+    // The handed-over scroll owner: #root itself while the strip holds the
+    // inset (html[data-mingla-privacy-bar="shown"] #root{overflow-y:auto}),
+    // or a scroll area inside it.
+    const owner = await page.evaluate(() => {
+      const root = document.getElementById('root')
+      const scrolls = (element: Element) => /(auto|scroll)/.test(getComputedStyle(element).overflowY)
+      return root !== null && (scrolls(root) || Array.from(root.querySelectorAll('*')).some(scrolls))
+    })
+    expect(owner, 'a scroll container is handed over').toBe(true)
     await expect(page.locator('style#expo-reset')).toHaveCount(1)
     await expect(page.locator('style#mingla-public-document-style')).toHaveCount(0)
     await shot(page, 'adv-desktop-takeover')

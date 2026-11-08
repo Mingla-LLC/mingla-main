@@ -312,7 +312,11 @@ test.describe('#3214 public page handoff to the Expo app', () => {
     await expect(storyDisclosure).toHaveAttribute('aria-expanded', 'false')
     const measured = await layout(page)
     expect(measured.html).toBe(measured.viewport)
-    expect(measured.root).toBe(measured.viewport)
+    // #4318 — the permanent 28px "Privacy & ad choices" strip holds the inset
+    // even with a saved choice, so the app root fills the viewport above it.
+    expect(measured.inset).toBe(28)
+    expect(measured.barShown).toBe(true)
+    expect(Math.round(measured.root + measured.inset)).toBe(measured.viewport)
     const scroller = measured.scrollers.find((candidate) => candidate.scrollHeight > candidate.clientHeight)
     expect(scroller, `a scroll container with overflow: ${JSON.stringify(measured.scrollers)}`).toBeDefined()
     expect(scroller?.clientHeight ?? 0).toBeGreaterThan(measured.viewport / 2)

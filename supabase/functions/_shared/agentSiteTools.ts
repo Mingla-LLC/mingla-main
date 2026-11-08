@@ -49,6 +49,13 @@ import {
 } from "./siteContracts/designs.ts";
 import { PLAN_OFFERING_KEYS } from "./siteContracts/sitePlan.ts";
 import {
+  ARI_THEME_FONT_PATTERN,
+  GOOGLE_FONT_FAMILY_MAX,
+  THEME_ANIMATION_SLUGS,
+  THEME_FONT_SLUGS,
+  validateAriTheme,
+} from "./themeFontValidation.ts";
+import {
   MAX_NAV_ITEMS,
   MAX_NAV_LABEL_LENGTH,
   MAX_PAGE_TITLE_LENGTH,
@@ -1022,41 +1029,28 @@ const CONTEXT_PATCH = closedObject({
     additionalProperties: false,
     properties: {
       color: { type: "string", nullable: true, pattern: "^#[0-9a-fA-F]{6}$" },
+      // issue #1023 wave 2 — the gradient's second colour. Only with `color`
+      // (a gradient is one unit); omit it for a solid theme.
+      color2: {
+        type: "string",
+        nullable: true,
+        pattern: "^#[0-9a-fA-F]{6}$",
+        description: "Second gradient colour. Send only together with color; omit for a solid colour.",
+      },
       font: {
         type: "string",
         nullable: true,
-        enum: [
-          "inter",
-          "poppins",
-          "space_grotesk",
-          "plus_jakarta_sans",
-          "manrope",
-          "playfair_display",
-          "dm_serif_display",
-          "fraunces",
-          "lora",
-          "bebas_neue",
-          "anton",
-          "unbounded",
-          "caveat",
-          "dancing_script",
-        ],
+        maxLength: GOOGLE_FONT_FAMILY_MAX,
+        pattern: ARI_THEME_FONT_PATTERN,
+        description:
+          "One of the bundled fonts (" +
+          THEME_FONT_SLUGS.join(", ") +
+          ") or any Google Fonts family name spelt exactly as Google spells it, for example \"Roboto Slab\".",
       },
       animation: {
         type: "string",
         nullable: true,
-        enum: [
-          "none",
-          "confetti",
-          "fireworks",
-          "balloons",
-          "sparkles",
-          "glitter_shower",
-          "snowfall",
-          "falling_petals",
-          "hearts",
-          "shimmer_reveal",
-        ],
+        enum: [...THEME_ANIMATION_SLUGS],
       },
     },
   },
@@ -1148,12 +1142,21 @@ const updateBrandContext = tool(
         "Provide a field change or an explicit exception",
       );
     }
+    // issue #1023 wave 2 — the font must be a bundled slug or a real Google
+    // family (the database only checks the shape), and a second colour needs
+    // a first.
+    let checkedPatch: Record<string, unknown> = patch as Record<string, unknown>;
+    if ("theme" in checkedPatch) {
+      const checked = validateAriTheme(checkedPatch.theme);
+      if (!checked.ok) throw new ToolError("INVALID_ARGS", checked.message);
+      checkedPatch = { ...checkedPatch, theme: checked.theme };
+    }
     const { data, error } = await client.rpc("ari_update_brand_context", {
       p_operation_id: operationId,
       p_brand_id: args.brand_id,
       p_expected_plan_revision: args.expected_plan_revision,
       p_expected_context_revision: args.expected_context_revision,
-      p_patch: patch,
+      p_patch: checkedPatch,
       p_exceptions: exceptions,
       p_evidence: args.evidence,
     });
@@ -1954,6 +1957,18 @@ export function assertSiteToolArgs(
     }
     if (typeof args.why !== "string" || !args.why.trim()) {
       invalid("why is required");
+    }
+  }
+  // issue #1023 wave 2 — refuse an unknown font or a lone second colour at
+  // proposal time, before the owner is asked to confirm it.
+  if (toolName === "update_brand_context") {
+    const patch = args.patch;
+    if (
+      patch !== null && typeof patch === "object" && !Array.isArray(patch) &&
+      "theme" in (patch as Record<string, unknown>)
+    ) {
+      const checked = validateAriTheme((patch as Record<string, unknown>).theme);
+      if (!checked.ok) invalid(checked.message);
     }
   }
   if (toolName === "propose_site_composition") {

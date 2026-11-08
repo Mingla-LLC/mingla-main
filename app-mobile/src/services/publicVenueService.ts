@@ -19,9 +19,12 @@ import { buildVenueGalleryPhotoUrls } from "@mingla/brand-rendering/venuePublicP
 import {
   isThemeAnimationSlug,
   isThemeColor,
-  isThemeFontSlug,
   type ThemeInput,
 } from "@mingla/offering-rendering";
+import {
+  canonicalThemeFont,
+  isThemeFontValue,
+} from "@mingla/offering-rendering/themeResolver";
 
 import { supabase } from "./supabase";
 
@@ -358,7 +361,10 @@ export async function fetchConsumerPublicVenue(
 
   const theme: ThemeInput = {};
   if (isThemeColor(row.theme_color)) theme.color = row.theme_color;
-  if (isThemeFontSlug(row.theme_font)) theme.font = row.theme_font;
+  // issue #1023 wave 2 — a Google family name is a valid theme font too.
+  if (isThemeFontValue(row.theme_font)) {
+    theme.font = canonicalThemeFont(row.theme_font);
+  }
   if (isThemeAnimationSlug(row.theme_animation)) {
     theme.animation = row.theme_animation;
   }

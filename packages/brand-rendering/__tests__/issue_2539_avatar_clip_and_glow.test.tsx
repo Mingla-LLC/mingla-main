@@ -163,8 +163,11 @@ describe("#2539 brand avatar — round clip survives WebKit, glow renders", () =
 
   test("T-4 both call sites go through the same Avatar — default 84 and the 60px sticky panel", () => {
     expect(avatarSource).toMatch(/size = 84/);
-    expect(brandPage).toContain("<Avatar brand={brand} palette={palette} />");
-    expect(brandPage).toContain("<Avatar brand={brand} palette={palette} size={60} />");
+    // [TEST-MOD-APPROVED #1023] The call sites also hand the Avatar the theme
+    // (a gradient theme draws the ring with ThemeAccentFill); still the same
+    // Avatar at 84 and 60.
+    expect(brandPage).toContain("<Avatar brand={brand} palette={palette} theme={theme} />");
+    expect(brandPage).toContain("<Avatar brand={brand} palette={palette} theme={theme} size={60} />");
     // Both sizes derive the wrapper box from `size`, so T-1..T-3 hold at both.
     expect(glowStyleObject).toMatch(/width:\s*size/);
     expect(avatarStyleArray).toMatch(/width:\s*size/);
@@ -186,8 +189,10 @@ describe("#2539 brand avatar — round clip survives WebKit, glow renders", () =
     // RETARGETED (PR #2552 CI): it now arrives by DEEP import from the module
     // rather than through the barrel, so the assertion follows the import to
     // where it actually is. Same meaning, new target.
+    // [TEST-MOD-APPROVED #1023] The same deep import now carries the theme
+    // text-accent helpers beside hexToRgba (one import statement, same module).
     expect(brandPage).toMatch(
-      /^import \{ hexToRgba \} from "@mingla\/offering-rendering\/themePalette";$/m,
+      /^import \{[^}]*\bhexToRgba,[^}]*\} from "@mingla\/offering-rendering\/themePalette";$/m,
     );
     expect(brandPage).not.toMatch(/const hexToRgba\s*=/);
     expect(themePalette).toMatch(/export const hexToRgba = \(hex: string, alpha: number\): string =>/);
@@ -213,8 +218,17 @@ describe("#2539 brand avatar — round clip survives WebKit, glow renders", () =
   });
 
   test("T-6 exactly one accessible node still carries the avatar label", () => {
-    const labels = avatarSource.match(/accessibilityLabel=/g) ?? [];
-    expect(labels).toHaveLength(1);
+    // [TEST-MOD-APPROVED #1023] The gradient-ring branch draws the face through
+    // AvatarFace, so the source now has two <Image>s, ONE per rendered branch:
+    // the solid branch's own Image and AvatarFace's. Each branch still renders
+    // exactly one labelled node; the gradient wrapper carries no a11y props.
+    const faceStart = avatarSource.indexOf("const AvatarFace");
+    const avatarOnly = avatarSource.slice(0, faceStart);
+    const faceOnly = avatarSource.slice(faceStart);
+    expect(avatarOnly.match(/accessibilityLabel=/g) ?? []).toHaveLength(1);
+    expect(faceOnly.match(/accessibilityLabel=/g) ?? []).toHaveLength(1);
+    const ring = avatarOnly.slice(avatarOnly.indexOf("<ThemeAccentFill"), avatarOnly.indexOf("<AvatarFace"));
+    expect(ring).not.toMatch(/accessib/i);
     const imageTag = avatarSource.slice(
       avatarSource.indexOf("<Image"),
       avatarSource.indexOf("/>", avatarSource.indexOf("<Image")),

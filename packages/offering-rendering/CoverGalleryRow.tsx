@@ -29,6 +29,7 @@ import Svg, { Path } from "react-native-svg";
 import { deriveCoverPosterUrl } from "./coverMediaPresentation";
 import { type ThemePalette } from "./themePalette";
 import { type OfferingGalleryImage } from "./types";
+import { accentFill, accentOutline } from "./themeAccentStyle";
 
 export interface CoverGalleryRowProps {
   /** Hero sequence index 0 — the primary cover (image OR video OR gif). */
@@ -157,7 +158,7 @@ const PlayBadge: React.FC = () => (
 // selected state is never color-alone (WCAG). Mirrors CoverPicker's selectedBadge.
 const CheckBadge: React.FC<{ palette: ThemePalette }> = ({ palette }) => (
   <View
-    style={[styles.checkBadge, { backgroundColor: palette.accent }]}
+    style={[styles.checkBadge, accentFill(palette)]}
     pointerEvents="none"
     testID="cover-active-check"
   >
@@ -247,7 +248,9 @@ export const CoverGalleryRow: React.FC<CoverGalleryRowProps> = ({
                 overflow: "hidden",
                 borderRadius: 12,
                 backgroundColor: opaqueTileBg(palette),
-                borderColor: active ? palette.accent : palette.panelBorder,
+                ...(active
+                  ? accentOutline(palette, { opaqueBackground: opaqueTileBg(palette) })
+                  : { borderColor: palette.panelBorder }),
                 borderWidth: active ? 2 : 1,
               },
             },
@@ -271,7 +274,9 @@ export const CoverGalleryRow: React.FC<CoverGalleryRowProps> = ({
             width: size.width,
             height: size.height,
             backgroundColor: opaqueTileBg(palette),
-            borderColor: active ? palette.accent : palette.panelBorder,
+            ...(active
+                  ? accentOutline(palette, { opaqueBackground: opaqueTileBg(palette) })
+                  : { borderColor: palette.panelBorder }),
             borderWidth: active ? 2 : 1,
           },
         ]}
