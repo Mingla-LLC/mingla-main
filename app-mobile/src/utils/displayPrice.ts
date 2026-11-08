@@ -27,6 +27,30 @@ export interface ServerDisplayPrice {
   readonly displayPriceMax?: number | null;
   readonly displayCurrency?: string | null;
   readonly priceIsApprox?: boolean | null;
+  /**
+   * The app session that received these fields from a live deck response
+   * (stamped by deckService). Fields from any other session — a Likes or
+   * Calendar copy, or a restored deck snapshot — are not trusted.
+   */
+  readonly displayPriceSession?: string | null;
+}
+
+/**
+ * #4347 rework (P3-4) — the server's conversion is a fact about ONE live deck
+ * response. Saved, calendar and restored copies keep the fields forever, so
+ * they are only trusted when stamped by THIS app session; otherwise the price
+ * is recomputed from a servable client rate or shown in its own currency.
+ */
+export function trustedServerPrice(
+  server: ServerDisplayPrice | null | undefined,
+  liveSession: string,
+): ServerDisplayPrice | null {
+  if (!server || typeof server !== 'object') return null;
+  return typeof server.displayPriceSession === 'string' &&
+      server.displayPriceSession.length > 0 &&
+      server.displayPriceSession === liveSession
+    ? server
+    : null;
 }
 
 export interface DisplayPriceInput {

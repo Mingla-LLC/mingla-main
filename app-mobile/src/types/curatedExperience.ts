@@ -105,6 +105,8 @@ export interface CuratedExperienceCard {
   displayPriceMax?: number | null;
   displayCurrency?: string | null;
   priceIsApprox?: boolean;
+  /** #4347 rework: the app session that received the display fields live. */
+  displayPriceSession?: string | null;
   estimatedDurationMinutes: number;
   matchScore: number;
   shoppingList?: string[];  // AI-generated picnic shopping checklist (picnic-dates only)

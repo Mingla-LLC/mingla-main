@@ -12,7 +12,7 @@
 //
 // Run: deno test --allow-read --no-check app-mobile/src/utils/__tests__/issue_4347_display_price.implementor.test.ts
 
-import { buildDisplayPrice, isFreePrice, roundApproxAmount } from "../displayPrice.ts";
+import { buildDisplayPrice, isFreePrice, roundApproxAmount, trustedServerPrice } from "../displayPrice.ts";
 import { curatedSpendLevel } from "../curatedPriceRange.ts";
 
 function assertEquals(actual: unknown, expected: unknown, message = "mismatch"): void {
@@ -130,4 +130,30 @@ Deno.test("#4347 Decision 2: an AI plan shows a spend level, never its USD tier 
   assertEquals(curatedSpendLevel([{ priceMin: 0, priceMax: 50 }, { priceMin: 50, priceMax: 150 }]), "moderate");
   assertEquals(curatedSpendLevel([{ priceMin: 50, priceMax: 150 }, { priceMin: 300, priceMax: 500 }]), "upscale");
   assertEquals(curatedSpendLevel([]), null, "no stops: no level rather than an invented one");
+});
+
+Deno.test("#4347 rework: server fields are trusted only from THIS session's live deck response", async () => {
+  const live = { displayPriceMin: 74.2, displayCurrency: "USD", priceIsApprox: true, displayPriceSession: "s-now" };
+  assertEquals(trustedServerPrice(live, "s-now"), live);
+  // A Likes / Calendar copy from an earlier launch, or one never stamped.
+  assertEquals(trustedServerPrice({ ...live, displayPriceSession: "s-last-week" }, "s-now"), null);
+  assertEquals(trustedServerPrice({ ...live, displayPriceSession: undefined }, "s-now"), null);
+  assertEquals(trustedServerPrice(null, "s-now"), null);
+
+  // Through the binding's order: an untrusted saved figure is dropped, and the
+  // price is recomputed (or shown in its own currency with no servable rate).
+  const saved = { displayPriceMin: 50, displayCurrency: "USD", priceIsApprox: true, displayPriceSession: "old" };
+  const lagos = { min: 100_000, sourceCurrency: "NGN", viewerCurrency: "USD" };
+  assertEquals(buildDisplayPrice({ ...lagos, server: trustedServerPrice(saved, "s-now") }, noRates)?.text, "₦100,000");
+  assertEquals(buildDisplayPrice({ ...lagos, server: trustedServerPrice(saved, "s-now") }, deps)?.text, "≈ $74");
+
+  const strip = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+  const formatters = strip(await Deno.readTextFile(new URL("../../components/utils/formatters.ts", import.meta.url)));
+  if (!/trustedServerPrice\(input\.server, LIVE_DISPLAY_PRICE_SESSION\)/.test(formatters)) {
+    throw new Error("formatDisplayPrice trusts server fields without the live-session check");
+  }
+  const deck = strip(await Deno.readTextFile(new URL("../../services/deckService.ts", import.meta.url)));
+  if (!deck.includes("? LIVE_DISPLAY_PRICE_SESSION : null")) {
+    throw new Error("deckService no longer stamps live display fields");
+  }
 });

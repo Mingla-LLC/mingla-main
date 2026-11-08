@@ -3,9 +3,11 @@
 import { convertBetween, getServableRate } from '../../services/currencyService';
 import {
   buildDisplayPrice,
+  trustedServerPrice,
   type DisplayPrice,
   type DisplayPriceInput,
 } from '../../utils/displayPrice';
+import { LIVE_DISPLAY_PRICE_SESSION } from '../../utils/liveDisplayPriceSession';
 import { currencySymbolMap } from '../../services/countryCurrencyService';
 import { getUserLocale } from '../../utils/localeUtils';
 
@@ -73,7 +75,9 @@ export function formatCurrency(
  * is not an honest price, so the caller hides the span.
  */
 export function formatDisplayPrice(input: DisplayPriceInput): DisplayPrice | null {
-  return buildDisplayPrice(input, {
+  // Server fields count only when this app session received them live.
+  const server = trustedServerPrice(input.server, LIVE_DISPLAY_PRICE_SESSION);
+  return buildDisplayPrice({ ...input, server }, {
     symbolFor: (code) => currencyData[code]?.symbol ?? null,
     rateFor: getServableRate,
     locale: getUserLocale(),
