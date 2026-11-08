@@ -123,7 +123,11 @@ describe("ORCH-1186 wizard map preview — CreatorStep3Where wiring", () => {
 
   test("renders the real map <Image> when a URL resolves", () => {
     expect(PREVIEW).toMatch(/mapUrl !== null \?/);
-    expect(PREVIEW).toContain("<Image");
+    // [TEST-MOD-APPROVED #4334] F-1: the real map <Image> is drawn by the shared
+    // StaticMapImage, which requests it at the box's own size (Google's logo and
+    // attribution stay uncropped).
+    expect(PREVIEW).toContain("<StaticMapImage");
+    expect(PREVIEW).toContain("uri={mapUrl}");
   });
 
   test("renders the honest empty state (no fabricated tile) when no URL", () => {

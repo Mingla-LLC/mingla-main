@@ -178,6 +178,8 @@ jest.mock("@mingla/offering-rendering", () => {
     ...themeResolver,
     ...themePalette,
     ...staticMapImage,
+    // #4334 F-1 — the REAL shared map renderer (sizes the request to its box).
+    StaticMapImage: require("../../../../../packages/offering-rendering/StaticMapFrame").StaticMapImage,
     ...mapsDeepLink,
     ...venueMapsActions,
     // The consumer app is phone-only for this route (its `useResponsiveLayout`
@@ -529,8 +531,23 @@ describe("#1560 the consumer app adopts the shared venue page", () => {
     // proxy; the URL is built from the venue's lat/lng, which is the exact pair
     // the old mapper dropped. Asserting on the coordinates (not just "an image
     // exists") is what makes this fail if lat/lng go missing again.
-    expect(mounted.json).toContain("static-map");
-    expect(mounted.json).toContain("51.5361");
+    // [TEST-MOD-APPROVED #4334] F-1: the shared map renderer requests the image
+    // only once its box is laid out (at the box's own size, so Google's logo and
+    // attribution are never cropped). Lay the box out as a phone would, then
+    // read the requested URL off the image.
+    const frame = mounted.root.findAll(
+      (n) => n.props?.testID === "venue-map" && typeof n.props?.onLayout === "function",
+    )[0];
+    TestRenderer.act(() => {
+      (frame.props.onLayout as (e: unknown) => void)({ nativeEvent: { layout: { width: 343, height: 220 } } });
+    });
+    const uri = String(
+      mounted.root.findAll((n) => typeof (n.props?.source as { uri?: unknown } | undefined)?.uri === "string")
+        .map((n) => (n.props.source as { uri: string }).uri)
+        .find((u) => u.includes("static-map")),
+    );
+    expect(uri).toContain("static-map");
+    expect(uri).toContain("51.5361");
     mounted.unmount();
   });
 

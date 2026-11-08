@@ -191,6 +191,8 @@ jest.mock("@mingla/offering-rendering", () => {
     ...themeResolver,
     ...themePalette,
     ...staticMapImage,
+    // #4334 F-1 — the REAL shared map renderer (sizes the request to its box).
+    StaticMapImage: require("../../../../../packages/offering-rendering/StaticMapFrame").StaticMapImage,
     ...mapsDeepLink,
     ...venueMapsActions,
     useResponsiveLayout: () => ({

@@ -35,6 +35,7 @@ module.exports = {
   ...real("themeResolver"), // isThemeColor / isThemeAnimationSlug / isThemeFontSlug / resolveTheme
   ...real("themePalette"),
   ...real("staticMapImage"), // buildStaticMapUrl / getSupabaseFunctionsBaseUrl
+  ...real("staticMapSizing"), // #4334 F-1 staticMapUriForBox / coverCropFraction (RN-free)
   ...real("normalizeCityCountry"),
   ...real("experienceOpenDaily"),
   ...real("experienceAvailabilityBanner"),
@@ -70,6 +71,7 @@ module.exports = {
 
   // ---- Stubbed RN visual components (never rendered under node/ts-jest) -----
   ParallaxCoverShell: Stub,
+  StaticMapImage: Stub, // #4334 F-1 shared map renderer (visual)
   OfferingChrome: Stub,
   OfferingMomentum: Stub,
   CountAwareGallery: Stub,

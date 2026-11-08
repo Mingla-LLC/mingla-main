@@ -213,6 +213,17 @@
  * icons' gradient ids (useId) shift React's generated ids («r1» → «r4» ...).
  * Regenerated with the same command. Nothing else changed: no element, copy,
  * anchor, ordering, case or assertion is removed or weakened.
+ *
+ * ---------------------------------------------------------------------------
+ * [TEST-MOD-APPROVED #4334] — THE MAP IS DRAWN BY THE SHARED RENDERER
+ * ---------------------------------------------------------------------------
+ * Google's logo and "Map data ©Google" sit in the static map's bottom corners
+ * and must stay visible (tester F-1). The venue map is now the shared
+ * StaticMapImage: a box that requests the image at its own measured size, with
+ * the venue-name pill moved to the top-left. Before layout (this harness never
+ * lays out) the box draws no image, so the map node changes shape. Regenerated
+ * with the same command. Nothing else changed: no copy, anchor, ordering, case
+ * or assertion is removed or weakened.
  */
 import React from "react";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -374,6 +385,8 @@ jest.mock("@mingla/offering-rendering", () => {
     ...themeResolver,
     ...themePalette,
     ...staticMapImage,
+    // #4334 F-1 — the REAL shared map renderer (sizes the request to its box).
+    StaticMapImage: require("../../../../../packages/offering-rendering/StaticMapFrame").StaticMapImage,
     ...mapsDeepLink,
     ...venueMapsActions,
     useResponsiveLayout: () => ({
