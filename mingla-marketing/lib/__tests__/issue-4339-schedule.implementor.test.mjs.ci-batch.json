@@ -46,10 +46,7 @@
     "envNames": [],
     "isolation": "clean-worktree",
     "expectedFiles": [
-      "mingla-marketing/lib/__tests__/issue-4339-schedule.implementor.test.mjs",
-      "mingla-marketing/lib/__tests__/issue-4339-browser-harness.mjs",
-      "mingla-marketing/lib/booking-social.fixtures.json",
-      "supabase/functions/growth-tools-book/issue_4339_booking_context.implementor.test.ts"
+      "mingla-marketing/lib/__tests__/issue-4339-schedule.implementor.test.mjs"
     ],
     "externalReferenceFiles": [],
     "requiredContext": "CI batch: node22-noinstall",
