@@ -14,10 +14,9 @@
 
 import { useEffect, useState } from "react";
 import * as Font from "expo-font";
-import {
-  ensureGoogleFontKey,
-  isGoogleFontKeySettled,
-  type InterFallbackModules,
+import type {
+  EnsureGoogleFontResult,
+  InterFallbackModules,
 } from "@mingla/offering-rendering/googleFontLoader";
 import { familyFromGoogleFontKey } from "@mingla/offering-rendering/themeResolver";
 
@@ -42,9 +41,17 @@ const loadInterFallback = async (): Promise<InterFallbackModules> => {
 const isGoogleKey = (key: string): boolean =>
   key.startsWith("GF_") && familyFromGoogleFontKey(key) !== null;
 
+// The Google loader is imported ON DEMAND, only for a GF_ key: a static
+// import pulls expo-font's remote loader (and expo-asset) into every screen
+// that draws a theme, render suites included, although bundled fonts never
+// use it.
+const loadGoogleFontLoader = () =>
+  import("@mingla/offering-rendering/googleFontLoader");
+const googleOutcomes = new Map<string, EnsureGoogleFontResult>();
+
 /** True when a font key is ready to draw (bundled face or settled Google key). */
 export const isThemeFontKeyReady = (key: string): boolean =>
-  isGoogleKey(key) ? isGoogleFontKeySettled(key) : Font.isLoaded(key);
+  isGoogleKey(key) ? googleOutcomes.has(key) : Font.isLoaded(key);
 
 /**
  * Load a single theme-font family on demand by its `fontFamilyValue`
@@ -62,7 +69,11 @@ export async function loadConsumerThemeFont(
 
   if (isGoogleKey(family)) {
     // Each key loads on its own: the bold face only where bold text is drawn.
-    await ensureGoogleFontKey(family, { loadFallback: loadInterFallback });
+    const { ensureGoogleFontKey } = await loadGoogleFontLoader();
+    const outcome = await ensureGoogleFontKey(family, {
+      loadFallback: loadInterFallback,
+    });
+    googleOutcomes.set(family, outcome);
     return;
   }
 

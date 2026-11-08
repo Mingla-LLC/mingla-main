@@ -10,6 +10,10 @@ import path from "path";
 import { describe, expect, jest, test } from "@jest/globals";
 
 jest.mock("../../../../../app-mobile/src/services/supabase", () => ({ supabase: { rpc: jest.fn() } }));
+// The Explorer hook file imports React Query for its hook; the mapper under
+// test never calls it. Virtual: the business CI lane installs no app-mobile
+// dependencies (a real resolve fails there).
+jest.mock("@tanstack/react-query", () => ({ useQuery: jest.fn() }), { virtual: true });
 jest.mock("@mingla/offering-rendering", () => {
   // the REAL theme rules, not stubs: this suite is about their precedence
   const resolver = jest.requireActual<typeof import("../../../../../packages/offering-rendering/themeResolver")>("../../../../../packages/offering-rendering/themeResolver");
@@ -21,9 +25,17 @@ jest.mock("@mingla/offering-rendering", () => {
   };
 });
 
-import { mapRpcPayloadToPublicEvent } from "../../../../../app-mobile/src/hooks/usePublicEventBySlug";
+// require, not import: the business typecheck must not follow the Explorer
+// hook into app-mobile's dependency graph (it has no app-mobile node_modules).
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { mapRpcPayloadToPublicEvent } = require("../../../../../app-mobile/src/hooks/usePublicEventBySlug") as {
+  mapRpcPayloadToPublicEvent: (payload: Record<string, unknown>) => {
+    event: { themeOverrides?: ThemeInput | null };
+    brand: { theme?: ThemeInput | null } | null;
+  };
+};
 import { resolveTheme } from "../../../../../packages/offering-rendering/themeResolver";
-import { MINGLA_DEFAULT_THEME } from "../../../../../packages/offering-rendering/designTokens";
+import { MINGLA_DEFAULT_THEME, type ThemeInput } from "../../../../../packages/offering-rendering/designTokens";
 import { buildThemeMotionPalette } from "../../../../../packages/theme-animations/tint";
 
 const payload = (extra: Record<string, unknown>, brandColor: string | null): Record<string, unknown> => ({

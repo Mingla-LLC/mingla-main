@@ -19,7 +19,8 @@ export function useReduceMotionPreference(): boolean {
     });
     return () => {
       mounted = false;
-      sub.remove();
+      // react-native-web returns no subscription for this event.
+      sub?.remove();
     };
   }, []);
   return reduce;

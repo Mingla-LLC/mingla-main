@@ -80,7 +80,7 @@ import { useResponsiveLayout } from "./useResponsiveLayout";
 // single sanctioned escape hatch for the parallax pin + the sticky panel.
 // issue #868 — extended with the horizontal scroll-snap CSS props RN's ViewStyle
 // omits but react-native-web honors, for the web cover pager (independent axes).
-type WebViewStyle = ViewStyle & {
+type WebViewStyle = Omit<ViewStyle, "position"> & {
   position?: ViewStyle["position"] | "fixed" | "sticky";
   overflowX?: "auto" | "hidden" | "scroll" | "visible";
   scrollSnapType?: string;

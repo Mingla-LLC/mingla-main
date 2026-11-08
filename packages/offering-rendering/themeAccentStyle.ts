@@ -24,8 +24,11 @@ import { Platform } from "react-native";
 import { boldFontFamily, paletteAccentGradient, type ThemePalette } from "./themePalette";
 import type { ResolvedTheme } from "./designTokens";
 
-const IS_WEB = Platform.OS === "web";
-const IS_ANDROID = Platform.OS === "android";
+// Read per call, not at module load: render suites mock react-native without
+// Platform, and a module-scope read throws before anything renders. The
+// bundler still inlines Platform.OS, so web folds these to constants.
+const isWeb = (): boolean => Platform !== undefined && Platform.OS === "web";
+const isAndroid = (): boolean => Platform !== undefined && Platform.OS === "android";
 
 /**
  * issue #1023 — the style for text drawn in a theme font key (a Google
@@ -40,7 +43,7 @@ const IS_ANDROID = Platform.OS === "android";
 export const themeFontFace = (
   fontFamily: string,
 ): { fontFamily: string; fontWeight?: "normal" } =>
-  IS_ANDROID ? { fontFamily, fontWeight: "normal" } : { fontFamily };
+  isAndroid() ? { fontFamily, fontWeight: "normal" } : { fontFamily };
 
 /** The theme's bold face (`boldFontFamily`) as a text style; see themeFontFace. */
 export const themeBoldFace = (
@@ -61,7 +64,7 @@ export const accentFill = (
 ): { backgroundColor: string } & GradientImage => {
   const stops = paletteAccentGradient(palette);
   if (stops === null) return { backgroundColor: palette.accent };
-  return IS_WEB
+  return isWeb()
     ? { backgroundColor: palette.accent, backgroundImage: linear(stops) }
     : { backgroundColor: palette.accent, experimental_backgroundImage: linear(stops) };
 };
@@ -109,7 +112,7 @@ export const accentOutline = (
     backgroundOrigin?: "border-box";
   } = { borderColor: palette.accent };
   if (fills.background !== undefined) out.backgroundColor = fills.background;
-  if (stops !== null && IS_WEB) {
+  if (stops !== null && isWeb()) {
     const op = fills.opaqueBackground;
     out.borderColor = "transparent";
     out.backgroundImage = `linear-gradient(${op}, ${op}) padding-box, ${linear(stops)} border-box`;

@@ -41,7 +41,11 @@ Deno.test("#1023 — useConsumerThemeFont delegates GF_ keys to the shared loade
   assert(hook.includes('from "@mingla/offering-rendering/googleFontLoader"'));
   // Each key (base or bold) loads on its own: the bold face only where used.
   assert(/key\.startsWith\("GF_"\) && familyFromGoogleFontKey\(key\) !== null/.test(hook));
-  assert(/await ensureGoogleFontKey\(family, \{ loadFallback: loadInterFallback \}\)/.test(hook));
+  // Loaded on demand (dynamic import), so render paths never pull expo-font's
+  // remote loader in.
+  assert(hook.includes('import("@mingla/offering-rendering/googleFontLoader")'));
+  assert(/await ensureGoogleFontKey\(family, \{\s*loadFallback: loadInterFallback,?\s*\}\)/.test(hook));
+  assert(!/^import \{[^}]*ensureGoogleFontKey[^}]*\} from/m.test(hook));
   // The delegation happens before the bundled thunk lookup.
   assert(hook.indexOf("ensureGoogleFontKey(family") < hook.indexOf("CONSUMER_THEME_FONT_MODULE_THUNKS[family]"));
 });
