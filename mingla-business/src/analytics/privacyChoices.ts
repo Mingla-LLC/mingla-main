@@ -1,7 +1,8 @@
 /**
- * #2331 — "Your privacy choices" reopens the one privacy bar, already
- * expanded. The link and the bar talk through one window event so any page
- * (including the server-rendered public document) can ask for it.
+ * #2331 — the one way to reopen the privacy bar, already expanded. Since #4318
+ * the only caller is the bar's own folded "Privacy settings" button (there is
+ * no separate privacy link on any page); the server-rendered public documents
+ * listen for the same window event.
  */
 export const PRIVACY_CHOICES_EVENT = "mingla:privacy-choices";
 

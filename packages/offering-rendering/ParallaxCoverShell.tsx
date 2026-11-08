@@ -60,7 +60,6 @@ import {
 } from "@mingla/card-identity/s6";
 
 import { EventCoverMedia } from "./EventCoverMedia";
-import { getPageFooterAccessory, type PageFooterAccessoryProps } from "./pageFooterAccessory";
 import { ThemeEntranceAnimation } from "./ThemeEntranceAnimation";
 import { CoverGalleryRow } from "./CoverGalleryRow";
 import { type ResolvedTheme } from "./designTokens";
@@ -223,13 +222,6 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
 }: ParallaxCoverShellProps) => {
   const { isDesktop, isWeb } = useResponsiveLayout();
   const Scroll = ScrollComponent ?? ScrollView;
-  // #2331 — host-provided end-of-content accessory (buyer web: "Your privacy
-  // choices"). Absent ⇒ nothing renders.
-  const FooterAccessory = getPageFooterAccessory() as React.ComponentType<PageFooterAccessoryProps> | null;
-  const footerAccessory =
-    FooterAccessory !== null ? (
-      <FooterAccessory color={palette.tertiaryText} />
-    ) : null;
 
   // issue #868 [cover-gallery] — hero sequence = [cover] ++ gallery. The pager +
   // beneath-cover row engage ONLY when there is at least one ADDITIONAL image
@@ -419,7 +411,6 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
               <View style={styles.desktopLeft}>
                 {galleryRow}
                 {children}
-                {footerAccessory}
               </View>
               {stickyPanel != null ? (
                 <View
@@ -545,7 +536,6 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
             {/* issue #868 — the beneath-cover card row is the body's FIRST row. */}
             {galleryRow}
             {webPhoneBody}
-            {footerAccessory}
           </View>
           {webPhoneActions}
         </Scroll>
@@ -604,7 +594,6 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
           {/* issue #868 — the beneath-cover card row is the body's FIRST row. */}
           {galleryRow}
           {children}
-          {footerAccessory}
         </View>
       </Scroll>
 

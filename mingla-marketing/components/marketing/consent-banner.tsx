@@ -13,7 +13,11 @@
 // Collapsed: one 53px row (1px line + 4px + 44px row + 4px) plus the bottom
 // safe-area inset. Options expands it in place, upward, to at most 60% of the
 // viewport, with Analytics and Ads switches showing the live state. Any choice
-// hides it; "Your privacy choices" in the footer reopens it, expanded.
+// folds it to one icon-only "Privacy settings" button (#4318: the bar is the
+// one place to make and change the choice; no page carries a separate
+// "Privacy choices" link). The folded bar writes its own height to the same
+// inset, so it never covers a bottom-fixed control, and its button reopens the
+// bar, expanded, through the one reopen event (PRIVACY_CHOICES_EVENT).
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { SITE_ORIGIN } from '@/lib/site'
@@ -75,6 +79,9 @@ body{padding-bottom:var(${PRIVACY_INSET_PROPERTY},0px)}
 .mpb-actions{grid-column:1/-1;display:flex;align-items:center;gap:4px;flex-wrap:wrap;padding-top:4px}
 .mpb-policy{margin-left:auto;display:inline-flex;align-items:center;min-height:44px;padding:0 4px;font-size:13px;color:rgba(255,255,255,.72);text-decoration:underline}
 .mpb-policy:focus-visible{outline:2px solid #eb7825;outline-offset:2px}
+.mpb-mini{padding-top:0;padding-bottom:env(safe-area-inset-bottom,0px)}
+.mpb-icon{width:32px;padding:0;justify-content:center}
+.mpb-icon svg{display:block;width:16px;height:16px}
 .mpb-toast{position:fixed;z-index:96;left:50%;transform:translateX(-50%);bottom:calc(16px + var(${PRIVACY_INSET_PROPERTY},0px));max-width:calc(100vw - 32px);padding:10px 16px;border-radius:999px;background:#171a20;color:#fff;border:1px solid rgba(255,255,255,.14);font:600 13px/18px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;pointer-events:none;white-space:nowrap}
 @keyframes mpb-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){.mpb-panel{animation:none}.mpb-chev,.mpb-switch,.mpb-switch::after{transition:none}}
@@ -105,6 +112,7 @@ export function ConsentBanner(): React.ReactElement | null {
   const [toast, setToast] = useState<string | null>(null)
   const barRef = useRef<HTMLElement | null>(null)
   const toggleRef = useRef<HTMLButtonElement | null>(null)
+  const reopenRef = useRef<HTMLButtonElement | null>(null)
   const returnFocusRef = useRef<HTMLElement | null>(null)
 
   const visible = mounted && (!privacy.saved || reopened)
@@ -119,6 +127,8 @@ export function ConsentBanner(): React.ReactElement | null {
       returnFocusRef.current = active instanceof HTMLElement ? active : null
       setReopened(true)
       setExpanded(true)
+      // The folded button unmounts as the bar opens: keep focus in the bar.
+      window.requestAnimationFrame(() => toggleRef.current?.focus())
     }
     window.addEventListener(PRIVACY_CHOICES_EVENT, open)
     return () => {
@@ -132,10 +142,11 @@ export function ConsentBanner(): React.ReactElement | null {
     if (expanded) setDraft({ analytics: privacy.analytics, ads: privacy.ads })
   }, [expanded, privacy.analytics, privacy.ads])
 
-  // I-PRIVACY-BAR-NEVER-OCCLUDES — the live height is the page's bottom inset.
+  // I-PRIVACY-BAR-NEVER-OCCLUDES — the live height (full bar or folded bar)
+  // is the page's bottom inset.
   useLayoutEffect(() => {
     const bar = barRef.current
-    if (!visible || bar === null) {
+    if (!mounted || bar === null) {
       if (mounted) writeInset(0)
       return
     }
@@ -163,6 +174,7 @@ export function ConsentBanner(): React.ReactElement | null {
       const target = returnFocusRef.current
       returnFocusRef.current = null
       if (target !== null && target.isConnected) target.focus()
+      else window.requestAnimationFrame(() => reopenRef.current?.focus())
       return
     }
     window.requestAnimationFrame(() => toggleRef.current?.focus())
@@ -198,7 +210,35 @@ export function ConsentBanner(): React.ReactElement | null {
       </div>
     ) : null
 
-  if (!visible) return toastNode
+  if (!visible) {
+    // #4318 — after a choice the bar folds to one icon-only button that
+    // reopens it. No text, so the page never shows a second privacy control.
+    return (
+      <>
+        <div ref={(node) => { barRef.current = node }} className="mpb mpb-mini ph-no-capture" data-testid="privacy-bar-folded">
+          <div className="mpb-row">
+            <button
+              type="button"
+              ref={reopenRef}
+              className="mpb-hit"
+              data-testid="privacy-bar-reopen"
+              aria-label="Privacy settings"
+              onClick={() => window.dispatchEvent(new Event(PRIVACY_CHOICES_EVENT))}
+            >
+              <span className="mpb-pill mpb-ghost mpb-icon" aria-hidden="true">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+                  <path d="M2 4h7M12 4h2M2 12h2M7 12h7" />
+                  <circle cx="10.5" cy="4" r="1.5" />
+                  <circle cx="5.5" cy="12" r="1.5" />
+                </svg>
+              </span>
+            </button>
+          </div>
+        </div>
+        {toastNode}
+      </>
+    )
+  }
 
   return (
     <>

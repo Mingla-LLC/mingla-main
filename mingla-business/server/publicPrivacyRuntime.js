@@ -64,6 +64,9 @@ const PRIVACY_BAR_CSS_LINES = [
   ".mpb-actions{grid-column:1/-1;display:flex;align-items:center;gap:4px;flex-wrap:wrap;padding-top:4px}",
   ".mpb-policy{margin-left:auto;display:inline-flex;align-items:center;min-height:44px;padding:0 4px;font-size:13px;color:rgba(255,255,255,.72);text-decoration:underline}",
   ".mpb-policy:focus-visible{outline:2px solid #eb7825;outline-offset:2px}",
+  ".mpb-mini{padding-top:0;padding-bottom:env(safe-area-inset-bottom,0px)}",
+  ".mpb-icon{width:32px;padding:0;justify-content:center}",
+  ".mpb-icon svg{display:block;width:16px;height:16px}",
   ".mpb-toast{position:fixed;z-index:9001;left:50%;transform:translateX(-50%);bottom:calc(16px + var(--mingla-privacy-inset,0px));max-width:calc(100vw - 32px);padding:10px 16px;border-radius:999px;background:#171a20;color:#fff;border:1px solid rgba(255,255,255,.14);font:600 13px/18px -apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,Helvetica,Arial,sans-serif;pointer-events:none;white-space:nowrap}",
   "@keyframes mpb-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}",
   "@media (prefers-reduced-motion:reduce){.mpb-panel{animation:none}.mpb-chev,.mpb-switch,.mpb-switch::after{transition:none}}",
@@ -88,23 +91,30 @@ const privacyBarMarkup = () => [
   '<button type="button" class="mpb-hit" data-mpb-act="ok" data-testid="privacy-bar-ok"><span class="mpb-pill mpb-primary">OK</span></button>',
   '<button type="button" class="mpb-hit mpb-options" data-mpb-act="toggle" data-testid="privacy-bar-options" aria-expanded="false" aria-controls="mingla-privacy-panel" aria-label="Privacy options"><span class="mpb-pill mpb-ghost"><span class="mpb-options-label" data-mpb-label>Options</span><span class="mpb-chev mpb-chev-up" data-mpb-chev aria-hidden="true"></span></span></button>',
   "</div></section>",
+  // #4318 — after a choice the bar folds to one icon-only button that reopens
+  // it (no "Privacy choices" link anywhere else on the page).
+  '<div class="mpb mpb-mini ph-no-capture" data-testid="privacy-bar-folded" data-mingla-ssr-privacy-folded hidden><div class="mpb-row">',
+  '<button type="button" class="mpb-hit" data-testid="privacy-bar-reopen" aria-label="Privacy settings"><span class="mpb-pill mpb-ghost mpb-icon" aria-hidden="true">',
+  '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 4h7M12 4h2M2 12h2M7 12h7"/><circle cx="10.5" cy="4" r="1.5"/><circle cx="5.5" cy="12" r="1.5"/></svg>',
+  "</span></button></div></div>",
 ].join("");
 
 /**
  * Binds the server-rendered bar. Requires privacyReaderSource() in the same
  * script. Saving writes `mingla_privacy_v2`, hands the choice to the app
  * (`__minglaPrebootPrivacy`) and dispatches `mingla:privacy-saved` with the
- * choice as `detail`, so the page can start or stop vendors. "Your privacy
- * choices" (`mingla:privacy-choices`) reopens it, expanded.
+ * choice as `detail`, so the page can start or stop vendors. A saved choice
+ * folds the bar to its icon-only "Privacy settings" button, which reopens it,
+ * expanded, through `mingla:privacy-choices` (#4318).
  */
 const privacyBarRuntimeSource = () => [
   "function __minglaPrivacyBar(){var bar=document.querySelector(\"[data-mingla-ssr-privacy-bar]\");if(!bar)return;",
-  "var panel=bar.querySelector(\".mpb-panel\"),toggle=bar.querySelector('[data-mpb-act=\"toggle\"]'),ok=bar.querySelector('[data-mpb-act=\"ok\"]'),label=bar.querySelector(\"[data-mpb-label]\"),chev=bar.querySelector(\"[data-mpb-chev]\"),collapsedText=bar.querySelector(\"[data-mpb-collapsed]\"),expandedText=bar.querySelector(\"[data-mpb-expanded]\"),reopened=false;",
+  "var folded=document.querySelector(\"[data-mingla-ssr-privacy-folded]\"),panel=bar.querySelector(\".mpb-panel\"),toggle=bar.querySelector('[data-mpb-act=\"toggle\"]'),ok=bar.querySelector('[data-mpb-act=\"ok\"]'),label=bar.querySelector(\"[data-mpb-label]\"),chev=bar.querySelector(\"[data-mpb-chev]\"),collapsedText=bar.querySelector(\"[data-mpb-collapsed]\"),expandedText=bar.querySelector(\"[data-mpb-expanded]\"),reopened=false;",
   "function sw(k){return bar.querySelector('[data-mpb-switch=\"'+k+'\"]');}",
-  "function inset(){var h=bar.isConnected&&!bar.hidden?Math.round(bar.getBoundingClientRect().height):0,d=document.documentElement;d.style.setProperty(\"--mingla-privacy-inset\",h+\"px\");if(typeof d.setAttribute===\"function\"){if(h>0)d.setAttribute(\"data-mingla-privacy-bar\",\"shown\");else d.removeAttribute(\"data-mingla-privacy-bar\");}}",
+  "function inset(){var h=bar.isConnected&&!bar.hidden?Math.round(bar.getBoundingClientRect().height):folded&&folded.isConnected&&!folded.hidden?Math.round(folded.getBoundingClientRect().height):0,d=document.documentElement;d.style.setProperty(\"--mingla-privacy-inset\",h+\"px\");if(typeof d.setAttribute===\"function\"){if(h>0)d.setAttribute(\"data-mingla-privacy-bar\",\"shown\");else d.removeAttribute(\"data-mingla-privacy-bar\");}}",
   "function expand(open){bar.setAttribute(\"data-expanded\",String(open));panel.hidden=!open;ok.hidden=open;collapsedText.hidden=open;expandedText.hidden=!open;toggle.setAttribute(\"aria-expanded\",String(open));toggle.setAttribute(\"aria-label\",open?\"Close privacy choices\":\"Privacy options\");label.textContent=open?\"Close\":\"Options\";label.className=open?\"\":\"mpb-options-label\";chev.className=open?\"mpb-chev\":\"mpb-chev mpb-chev-up\";",
   "if(open){sw(\"analytics\").checked=__minglaPrivacyOn(\"analytics\");sw(\"ads\").checked=__minglaPrivacyOn(\"ads\");}inset();}",
-  "function show(on){bar.hidden=!on;if(!on)expand(false);inset();}",
+  "function show(on){bar.hidden=!on;if(folded)folded.hidden=on;if(!on)expand(false);inset();}",
   "function toast(m){var t=document.createElement(\"div\");t.className=\"mpb-toast\";t.setAttribute(\"role\",\"status\");t.setAttribute(\"aria-live\",\"polite\");t.setAttribute(\"data-testid\",\"privacy-toast\");t.textContent=m;document.body.appendChild(t);setTimeout(function(){t.remove();},1800);}",
   "function save(a,d){var c={analytics:a,ads:d,ts:Date.now()};window.__minglaPrebootPrivacy=c;try{window.localStorage.setItem(\"mingla_privacy_v2\",JSON.stringify(c));window.localStorage.removeItem(\"mingla_consent_v1\");}catch(_){}",
   "reopened=false;show(false);toast(a&&d?\"Saved\":!a&&!d?\"Analytics and ads are off\":a?\"Ads are off\":\"Analytics is off\");window.dispatchEvent(new CustomEvent(\"mingla:privacy-saved\",{detail:c}));}",
@@ -113,9 +123,9 @@ const privacyBarRuntimeSource = () => [
   "bar.querySelector('[data-mpb-act=\"save\"]').addEventListener(\"click\",function(){save(sw(\"analytics\").checked,sw(\"ads\").checked);});",
   "bar.querySelector('[data-mpb-act=\"off\"]').addEventListener(\"click\",function(){save(false,false);});",
   "document.addEventListener(\"keydown\",function(e){if(e.key===\"Escape\"&&bar.getAttribute(\"data-expanded\")===\"true\"){if(reopened){reopened=false;show(false);}else{expand(false);toggle.focus();}}});",
-  "window.addEventListener(\"mingla:privacy-choices\",function(){if(!bar.isConnected)return;reopened=true;show(true);expand(true);});",
-  "document.querySelectorAll(\"[data-mingla-privacy-choices]\").forEach(function(el){el.addEventListener(\"click\",function(){window.dispatchEvent(new Event(\"mingla:privacy-choices\"));});});",
-  "if(typeof ResizeObserver===\"function\")new ResizeObserver(inset).observe(bar);show(__minglaPrivacy()===null);}",
+  "window.addEventListener(\"mingla:privacy-choices\",function(){if(!bar.isConnected)return;reopened=true;show(true);expand(true);toggle.focus();});",
+  "if(folded)folded.querySelector(\"button\").addEventListener(\"click\",function(){window.dispatchEvent(new Event(\"mingla:privacy-choices\"));});",
+  "if(typeof ResizeObserver===\"function\"){var ro=new ResizeObserver(inset);ro.observe(bar);if(folded)ro.observe(folded);}show(__minglaPrivacy()===null);}",
 ].join("");
 
 // ---------------------------------------------------------------------------
@@ -126,7 +136,7 @@ const privacyBarRuntimeSource = () => [
 // (`window.__minglaPrivacyOpenExpanded`) and boots it; the React bar then
 // opens already expanded with the switches, Save, Turn off all and the policy.
 
-const COLLAPSED_ONLY_EXCLUDED = /^(?:\.mpb-panel|@media \(min-width:600px\)|\.mpb-switch|\.mpb-actions|\.mpb-policy|\.mpb-toast|\.mpb-text b|@keyframes|@media \(prefers-reduced-motion)/;
+const COLLAPSED_ONLY_EXCLUDED = /^(?:\.mpb-mini|\.mpb-icon|\.mpb-panel|@media \(min-width:600px\)|\.mpb-switch|\.mpb-actions|\.mpb-policy|\.mpb-toast|\.mpb-text b|@keyframes|@media \(prefers-reduced-motion)/;
 
 const privacyBarCollapsedCss = () =>
   PRIVACY_BAR_CSS_LINES.filter((line) => !COLLAPSED_ONLY_EXCLUDED.test(line)).join("\n");
