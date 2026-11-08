@@ -252,6 +252,7 @@ export async function updateDraft(input: {
     patch.channel_payload = input.channel_payload;
     patch.channel = input.channel_payload.kind;
   }
+  // I-MUTATION-ROWCOUNT-WAIVER: #4273 rowcount verified below via .select(...).maybeSingle() on the reassigned query
   let query = supabase
     .from("marketing_campaigns")
     .update(patch)
@@ -343,6 +344,7 @@ export async function deleteDraft(
   // .select("id") per I-PROPOSED-I MUTATION-ROWCOUNT-VERIFIED — verify a
   // matching draft row actually existed; if not (already sent, not a draft,
   // or RLS denied), throw rather than silently succeed.
+  // I-MUTATION-ROWCOUNT-WAIVER: #4273 rowcount verified below via .select("id") on the reassigned query
   let query = supabase
     .from("marketing_campaigns")
     .delete()

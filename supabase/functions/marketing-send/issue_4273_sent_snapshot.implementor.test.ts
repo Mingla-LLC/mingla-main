@@ -199,7 +199,7 @@ Deno.test("#4273 T-1 an email campaign writes one snapshot, before the first rec
     [campaign("email", {
       kind: "email",
       subject: "Hi {first_name}, {brand_name} is back",
-      body_html: `<p>Hi {first_name}. See you at {next_event_name}.</p>{{event:${EVENT_ID}}}`,
+      body_html: "<p>Hi {first_name}. See you at {next_event_name}.</p>{{event:" + EVENT_ID + "}}",
       body_text: "x",
       embedded_events: [EVENT_ID],
     })] as any,
