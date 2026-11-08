@@ -1008,7 +1008,19 @@
         "mingla-business/src/utils/marketing/smsSendWindow.ts",
         "supabase/migrations/20280422004273_issue_4273_buyer_and_follower_auto_optin.sql",
         "supabase/migrations/20280422014273_issue_4273_quote_matches_send_and_honest_count.sql",
-        "supabase/migrations/20280424004273_issue_4273_quote_judges_everyone_and_account_optouts.sql"
+        "supabase/migrations/20280424004273_issue_4273_quote_judges_everyone_and_account_optouts.sql",
+        "mingla-business/app/(tabs)/marketing/campaigns/[id].tsx",
+        "mingla-business/app/(tabs)/marketing/campaigns/index.tsx",
+        "mingla-business/src/components/marketing/CampaignCard.tsx",
+        "mingla-business/src/components/marketing/SmsPreviewPane.tsx",
+        "mingla-business/src/features/marketing/sentPreviewModel.ts",
+        "mingla-business/src/features/marketing/campaignListGroups.ts",
+        "mingla-business/src/services/marketing/campaignDeleteService.ts",
+        "mingla-business/src/components/marketing/SentCampaignPreviews.tsx",
+        "mingla-business/src/hooks/marketing/useCampaignGroupView.ts",
+        "mingla-business/src/services/marketing/marketingCampaignGroupViewService.ts",
+        "supabase/functions/marketing-send/sentSnapshot.ts",
+        "supabase/migrations/20280506004273_issue_4273_sent_previews_and_optout_matching.sql"
       ]
     },
     {
