@@ -138,14 +138,17 @@ const A1_CHECKS = [
     re: /\bmin-h-0\b[^'"]*\bflex-1\b|\bflex-1\b[^'"]*\bmin-h-0\b/ },
 ];
 
-// I-PRIVACY-BAR-NEVER-OCCLUDES (#2331): /links ends above the privacy bar, and
-// carries the in-page "Your privacy choices" link at the end of its content.
+// I-PRIVACY-BAR-NEVER-OCCLUDES (#2331): /links ends above the privacy bar.
+// #4318 (Seth, feedback 15): the separate "Privacy choices" text link comes OFF
+// /links (the #2331 bar stays the one place to choose), so A2a-link now asserts
+// its ABSENCE on /links. Every other surface is out of #4318's scope.
 const A2A_CHECKS = [
   { id: "A2a-inset", protects: "links-experience.tsx <main> inline height",
     desc: "inline `height: 'calc(100dvh - var(--mingla-privacy-inset, 0px))'`",
     re: /height:\s*['"]calc\(100dvh - var\(--mingla-privacy-inset, 0px\)\)['"]/ },
-  { id: "A2a-link", protects: "links-experience.tsx end of content",
-    desc: "`<PrivacyChoicesLink` rendered in the page", re: /<PrivacyChoicesLink\b/ },
+  { id: "A2a-link", protects: "links-experience.tsx (no Privacy choices text link, #4318)",
+    desc: "no `<PrivacyChoicesLink` / `privacy-choices-link` on /links",
+    re: /^(?![\s\S]*(?:<PrivacyChoicesLink\b|privacy-choices-link))[\s\S]*$/ },
 ];
 
 // The bar is never suppressed by route, and it writes its live height.
@@ -243,10 +246,10 @@ const SELF_TEST_FAMILIES = [
         checks: A2A_CHECKS,
         clean:
           `style={{ height: 'calc(100dvh - var(--mingla-privacy-inset, 0px))' }}\n` +
-          `<PrivacyChoicesLink className="x" />`,
-        // The inset reverted out of /links -> the bar would cover the socials.
+          `<nav aria-label="Mingla on social">x</nav>`,
+        // #4318: the Privacy choices text link re-added to /links -> flags.
         violated:
-          `style={{ height: '100dvh' }}\n` +
+          `style={{ height: 'calc(100dvh - var(--mingla-privacy-inset, 0px))' }}\n` +
           `<PrivacyChoicesLink className="x" />`,
       },
       {

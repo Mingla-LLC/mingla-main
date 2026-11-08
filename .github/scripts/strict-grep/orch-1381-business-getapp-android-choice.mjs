@@ -56,7 +56,7 @@
  *      (AppsFlyer → My Apps → Refresh Status) + an Android curl returning the 301.
  *   6. go.usemingla.com — consumer-owned (1 branded domain = 1 template, ORCH-1346).
  *
- * Over each of the 3 CTA surfaces REQUIRE: resolveBusinessAppTarget( AND
+ * Over each of the CTA surfaces REQUIRE (2 since #4318 moved /links to the seam): resolveBusinessAppTarget( AND
  * BUSINESS_APP_CHOICE_COPY (the note is a CLAIM pinned to the shared constant — a
  * hand-written variant is how a verified claim silently becomes an invented one).
  *
@@ -85,7 +85,12 @@ const HELPER = "mingla-marketing/lib/business-app-target.ts";
 const SURFACES = [
   "mingla-marketing/app/host/download/page.tsx",
   "mingla-marketing/components/marketing/glass-nav.tsx",
-  "mingla-marketing/components/marketing/links-experience.tsx",
+  // #4318: /links (links-experience.tsx) left this list. It is no longer a
+  // two-action business CTA: its Host hand-offs resolve through the #4137 seam
+  // (lib/links-handoff.ts → resolveCtaDestinations('host', …), which delegates to
+  // resolveBusinessAppTarget), and its computer sheet offers the same two
+  // choices (the Host app by QR, or the host web app). Pinned by orch-1326 and
+  // orch-1328 instead.
 ];
 
 const stripComments = (src) =>
@@ -414,7 +419,7 @@ if (failures.length > 0) {
 console.log(
   "ORCH-1381 PASS (ORCH-1399-amended) — the business get-app decision lives in ONE module\n" +
     "(lib/business-app-target.ts: both phones → the ATTRIBUTED business OneLink, which 301s\n" +
-    "per device; desktop → web only, canInstall-gated), all 3 CTA surfaces delegate to it\n" +
+    "per device; desktop → web only, canInstall-gated), both CTA surfaces delegate to it\n" +
     "WITH an attribution argument and render BUSINESS_APP_CHOICE_COPY, and no surface\n" +
     "carries the ORCH-1324 collapsed ternary, a raw *.onelink.me domain, the consumer\n" +
     "go.usemingla.com domain, or a hardcoded branded-domain literal.",

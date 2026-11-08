@@ -39,9 +39,13 @@
  * `platform === 'ios' ? BUSINESS_APP_STORE_URL : BUSINESS_WEB_URL` — that is the
  * exact bug ORCH-1381 killed (it sends every Android owner to the web app).
  *
- * Over mingla-marketing/lib/links-config.ts (comment-stripped) REQUIRE:
- *   references LINKS_BUSINESS_DOWNLOAD_PATH AND the string '/host/download'
- *   AND `destination: 'business_download'` (the business tab is NOT wired back to
+ * #4318 RE-POINT: /links no longer has a business tab or a links-config CTA. Its
+ * Host hand-offs (the Host banner and Host-app admin strips) go through the #4137
+ * device seam instead. Over mingla-marketing/lib/links-handoff.ts (comment-stripped)
+ * REQUIRE: the Host destination is resolveCtaDestinations('host', linksAttribution(src,
+ * 'business_bio')) — phones get the attributed business OneLink, computers the host web
+ * app (the same live-app contract this gate was written for). The old config check
+ * required LINKS_BUSINESS_DOWNLOAD_PATH + `destination: 'business_download'` (the business tab is NOT wired back to
  *   the bare /host CTA — the app is live).
  *
  * --self-test injects fixtures (compliant → pass; each violation → fire).
@@ -54,7 +58,7 @@ const root = process.cwd().endsWith("mingla-marketing")
   : process.cwd();
 
 const ROUTE = "mingla-marketing/app/host/download/page.tsx";
-const CONFIG = "mingla-marketing/lib/links-config.ts";
+const CONFIG = "mingla-marketing/lib/links-handoff.ts";
 
 const stripComments = (src) =>
   src
@@ -119,17 +123,15 @@ function checkRoute(rawSrc, failures) {
 function checkConfig(rawSrc, failures) {
   const src = stripComments(rawSrc);
 
-  if (!/LINKS_BUSINESS_DOWNLOAD_PATH/.test(src)) {
-    failures.push(`${CONFIG}: must reference LINKS_BUSINESS_DOWNLOAD_PATH (the business device-smart path).`);
-  }
-  if (!/'\/host\/download'/.test(src)) {
-    failures.push(`${CONFIG}: must define the '/host/download' path string.`);
-  }
-  if (!/destination: 'business_download'/.test(src)) {
+  // #4318 — the /links Host hand-off resolves through the #4137 seam with the business bio campaign.
+  if (!/resolveCtaDestinations\('host', linksAttribution\(src, 'business_bio'\)\)/.test(src)) {
     failures.push(
-      `${CONFIG}: the business tab CTA must carry \`destination: 'business_download'\` — it ` +
-        `must NOT be wired back to the bare /host CTA (the business app is live).`,
+      `${CONFIG}: the /links Host hand-off must be resolveCtaDestinations('host', linksAttribution(src, 'business_bio')) — ` +
+        `the attributed business OneLink on phones, the host web app on computers (the business app is live).`,
     );
+  }
+  if (/business_download|['"]\/host['"]/.test(src)) {
+    failures.push(`${CONFIG}: the /links Host hand-off must not be wired back to a bare /host page or the retired business_download tab CTA.`);
   }
 }
 
@@ -163,10 +165,8 @@ export default async function BusinessDownloadPage() {
   if (runRoute(goodRoute).length !== 0) selfFailures.push("compliant route wrongly flagged: " + JSON.stringify(runRoute(goodRoute)));
 
   const goodConfig = `
-export const LINKS_BUSINESS_DOWNLOAD_PATH = '/host/download'
-export const LINKS_TABS = [
-  { id: 'business', cta: { label: 'Get the app', href: LINKS_BUSINESS_DOWNLOAD_PATH, destination: 'business_download', intent: 'glass' } },
-]
+import { resolveCtaDestinations } from './cta-destination'
+const host = () => resolveCtaDestinations('host', linksAttribution(src, 'business_bio'))
 `;
   if (runConfig(goodConfig).length !== 0) selfFailures.push("compliant config wrongly flagged: " + JSON.stringify(runConfig(goodConfig)));
 
@@ -217,13 +217,13 @@ export const LINKS_TABS = [
   );
   if (runRoute(play).length === 0) selfFailures.push("bare consumer PLAY_STORE_URL not flagged");
 
-  // Config missing '/host/download' → fire.
-  const noPath = goodConfig.replace(/'\/host\/download'/g, "'/host'");
-  if (runConfig(noPath).length === 0) selfFailures.push("config missing '/host/download' not flagged");
+  // #4318 — the Host hand-off lost its business bio attribution → fire.
+  const noPath = goodConfig.replace("'business_bio'", "'explorer_bio'");
+  if (runConfig(noPath).length === 0) selfFailures.push("links Host hand-off with the wrong campaign not flagged");
 
-  // Config reverted to bare /host CTA (no business_download destination) → fire.
-  const bareCta = goodConfig.replace("destination: 'business_download'", "destination: 'business'");
-  if (runConfig(bareCta).length === 0) selfFailures.push("config reverted business_download destination not flagged");
+  // #4318 — the Host hand-off wired back to a bare /host page → fire.
+  const bareCta = goodConfig + "\nconst fallback = '/host'\n";
+  if (runConfig(bareCta).length === 0) selfFailures.push("links Host hand-off wired to bare /host not flagged");
 
   // A banned token inside a COMMENT must be stripped → compliant route still passes.
   const commented = goodRoute + "\n// note: no apps.apple.com literal / no testflight / no DownloadQr here\n";
@@ -250,7 +250,7 @@ checkRoute(fs.readFileSync(routeAbs, "utf8"), failures);
 
 const configAbs = path.join(root, CONFIG);
 if (!fs.existsSync(configAbs)) {
-  console.error(`ORCH-1326 FAIL — target not found at ${CONFIG} (links config missing).`);
+  console.error(`ORCH-1326 FAIL — target not found at ${CONFIG} (the /links hand-off module is missing).`);
   process.exit(1);
 }
 checkConfig(fs.readFileSync(configAbs, "utf8"), failures);
@@ -262,9 +262,8 @@ if (failures.length > 0) {
       "resolvePlatformFromUa, resolve its destinations through resolveBusinessAppTarget(\n" +
       "(the ONE decision module), and RENDER the inline choice as plain <a> anchors\n" +
       "branching on canInstall — SSR-safe, no redirect, no QR/badges/form, no consumer\n" +
-      "PLAY_STORE_URL, and never the ORCH-1324 collapsed ternary; the /links business CTA\n" +
-      "must target LINKS_BUSINESS_DOWNLOAD_PATH ('/host/download', destination\n" +
-      "'business_download').\n\nFailures:\n  " +
+      "PLAY_STORE_URL, and never the ORCH-1324 collapsed ternary; the /links Host hand-off\n" +
+      "must resolve through the #4137 seam with the business bio campaign (#4318).\n\nFailures:\n  " +
       failures.join("\n  "),
   );
   process.exit(1);
@@ -274,6 +273,6 @@ console.log(
     "resolvePlatformFromUa, delegates to resolveBusinessAppTarget, and renders the inline\n" +
     "choice as plain <a> anchors branching on canInstall (iOS → business App Store,\n" +
     "Android → business Play, desktop → web only); SSR-safe, no redirect/QR/badges/form,\n" +
-    "no consumer PLAY_STORE_URL, no collapsed ternary; the /links business CTA targets\n" +
-    "'/host/download' (destination 'business_download').",
+    "no consumer PLAY_STORE_URL, no collapsed ternary; the /links Host hand-off resolves\n" +
+    "through the #4137 seam with the business bio campaign (#4318).",
 );
