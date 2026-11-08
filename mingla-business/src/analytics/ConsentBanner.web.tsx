@@ -1,25 +1,21 @@
 /**
- * #2331 — the buyer-web privacy bar. One slim, full-width bar for analytics
- * and ads, fixed to the bottom of the viewport at every width.
+ * #2331 → #4318 — the buyer-web privacy strip. One thin full-width button,
+ * "Privacy & ad choices", 28px plus the bottom safe area, at the very bottom of
+ * every Host web page. It is there from the first paint and never changes size
+ * or position. There is no first-visit banner, no OK prompt and no toast:
+ * analytics and ads are on unless this visitor turned them off
+ * (I-PRIVACY-ON-UNLESS-VISITOR-TURNED-OFF, #4128).
  *
- * I-PRIVACY-BAR-NEVER-OCCLUDES: the bar measures its own live height into
- * `--mingla-privacy-inset` on the root element (0px while hidden). The app
- * root (`#root`) ends that far above the viewport bottom, so every
- * bottom-pinned action and every scroll area sits above the bar, and anything
- * fixed to the viewport adds the same inset to its own bottom offset.
+ * I-PRIVACY-BAR-NEVER-OCCLUDES: the strip measures its own height into
+ * `--mingla-privacy-inset` on the root element. The app root (`#root`) ends
+ * that far above the viewport bottom, so every bottom-pinned action and every
+ * scroll area sits above the strip, and anything fixed to the viewport adds
+ * the same inset to its own bottom offset.
  *
- * - Collapsed: one 53px row (1px line + 4px + 44px row + 4px) plus the bottom
- *   safe-area inset. The sentence never wraps; it shortens below 400px and
- *   ends in an ellipsis.
- * - Options expands the bar in place, upward, to at most 60% of the viewport,
- *   with the Analytics and Ads switches showing the live state.
- * - Any choice folds the bar down to one icon-only "Privacy settings" button
- *   (#4318: the bar is the one place to make and change the choice; there is
- *   no separate "Privacy choices" link anywhere). The folded bar is part of
- *   the bar: it writes its own height to the same inset, so it never sits on
- *   a bottom-pinned control. Its button reopens the bar, already expanded,
- *   through the one reopen event (`mingla:privacy-choices`).
- * - Non-modal; above page content, below sheets and dialogs.
+ * Tapping the strip opens the choices (Analytics, Ads measurement, Save) as a
+ * sheet above it. The sheet traps focus, closes on Escape and returns focus to
+ * the strip. After Save the strip reads "Saved" for 1.8s (aria-live). The one
+ * reopen event (`mingla:privacy-choices`) opens the same sheet.
  */
 
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -30,41 +26,30 @@ import { savePrivacyChoice } from "./webAnalytics.web";
 
 export const PRIVACY_INSET_PROPERTY = "--mingla-privacy-inset";
 export const PRIVACY_POLICY_URL = "https://usemingla.com/privacy-policy";
+export const PRIVACY_STRIP_LABEL = "Privacy & ad choices";
+export const PRIVACY_SAVED_LABEL = "Saved";
 const STYLE_ID = "mingla-privacy-bar-style";
 const PRIVACY_BAR_ATTRIBUTE = "data-mingla-privacy-bar";
 const PANEL_ID = "mingla-privacy-panel";
-const TOAST_MS = 1800;
+const SAVED_MS = 1800;
 
-/** The one toast line for a saved choice. */
-export function privacyToastFor(choice: { analytics: boolean; ads: boolean }): string {
-  if (choice.analytics && choice.ads) return "Saved";
-  if (!choice.analytics && !choice.ads) return "Analytics and ads are off";
-  return choice.analytics ? "Ads are off" : "Analytics is off";
-}
-
-// Below sheets and dialogs (react-native-web's Modal layer sits at 9999).
+// Strip above page content; the sheet and its scrim just above it; all below
+// react-native-web's Modal layer (9999).
 const BAR_CSS = `
+:root{${PRIVACY_INSET_PROPERTY}:calc(28px + env(safe-area-inset-bottom,0px))}
 #root{box-sizing:border-box;height:calc(100% - var(${PRIVACY_INSET_PROPERTY},0px))}
 html[data-mingla-privacy-bar="shown"] #root{overflow-y:auto;overscroll-behavior:contain}
-.mpb{position:fixed;left:0;right:0;bottom:0;z-index:9000;box-sizing:border-box;margin:0;background:#171a20;color:#fff;border-top:1px solid rgba(255,255,255,.14);padding:4px max(12px,env(safe-area-inset-right,0px)) calc(4px + env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px));max-height:60vh;max-height:60dvh;overflow-y:auto;overscroll-behavior:contain;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+.mps{position:fixed;left:0;right:0;bottom:0;z-index:9000;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:6px;width:100%;height:calc(28px + env(safe-area-inset-bottom,0px));margin:0;padding:0 12px env(safe-area-inset-bottom,0px);border:0;border-radius:0;background:#15171c;color:rgba(255,255,255,.9);font:600 12px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;cursor:pointer;-webkit-tap-highlight-color:transparent;-webkit-font-smoothing:antialiased}
+.mps svg{display:block;flex:none;width:14px;height:14px}
+.mps:focus{outline:none}
+.mps:focus-visible{outline:2px solid #eb7825;outline-offset:-3px}
+.mps-saved{color:#8fd3a8}
+.mpb-scrim{position:fixed;left:0;right:0;top:0;bottom:var(${PRIVACY_INSET_PROPERTY},0px);z-index:9001;background:rgba(0,0,0,.45)}
+.mpb{position:fixed;left:0;right:0;bottom:var(${PRIVACY_INSET_PROPERTY},0px);z-index:9002;box-sizing:border-box;margin:0;background:#15171c;color:#fff;border-radius:18px 18px 0 0;padding:16px max(16px,env(safe-area-inset-right,0px)) 12px max(16px,env(safe-area-inset-left,0px));max-height:80vh;max-height:80dvh;overflow-y:auto;overscroll-behavior:contain;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;animation:mpb-in .2s ease-out}
 .mpb *{box-sizing:border-box}
-.mpb[hidden],.mpb [hidden]{display:none!important}
-.mpb-row{max-width:1200px;height:44px;margin:0 auto;display:flex;align-items:center;gap:4px}
-.mpb-text{flex:1;min-width:0;margin:0 4px 0 0;font-size:13px;line-height:18px;color:rgba(255,255,255,.78);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.mpb-text b{color:#fff;font-weight:700}
-.mpb-short{display:none}
-@media (max-width:399.98px){.mpb-long{display:none}.mpb-short{display:inline}}
-.mpb-hit{flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;min-height:44px;min-width:44px;padding:0 2px;margin:0;border:0;background:none;color:inherit;font:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
-.mpb-hit:focus{outline:none}
-.mpb-hit:focus-visible .mpb-pill{outline:2px solid #eb7825;outline-offset:2px}
-.mpb-pill{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 14px;border-radius:999px;font-size:13px;font-weight:700;line-height:1;white-space:nowrap}
-.mpb-primary{background:#eb7825;color:#111}
-.mpb-ghost{color:#fff;border:1px solid rgba(255,255,255,.32)}
-.mpb-chev{width:7px;height:7px;border-right:2px solid currentColor;border-top:2px solid currentColor;transform:translateY(2px) rotate(-45deg);transition:transform .2s ease}
-.mpb-chev-up{transform:translateY(-2px) rotate(135deg)}
-@media (max-width:359.98px){.mpb-options-label{display:none}.mpb-options .mpb-pill{padding:0 11px}}
-.mpb-panel{max-width:1200px;margin:0 auto;padding:2px 0 6px;display:grid;grid-template-columns:1fr;column-gap:24px;animation:mpb-in .2s ease-out}
-@media (min-width:600px){.mpb-panel{grid-template-columns:1fr 1fr}}
+.mpb[hidden],.mpb [hidden],.mpb-scrim[hidden]{display:none!important}
+.mpb-panel{max-width:640px;margin:0 auto;display:flex;flex-direction:column}
+.mpb-title{margin:0 0 4px;font-size:15px;line-height:20px;font-weight:700;color:#fff}
 .mpb-switch-row{display:flex;align-items:center;gap:12px;min-height:56px;padding:8px 0;border-top:1px solid rgba(255,255,255,.1);cursor:pointer}
 .mpb-switch-copy{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
 .mpb-switch-title{font-size:14px;font-weight:700;color:#fff}
@@ -74,15 +59,16 @@ html[data-mingla-privacy-bar="shown"] #root{overflow-y:auto;overscroll-behavior:
 .mpb-switch:checked{background:#eb7825}
 .mpb-switch:checked::after{transform:translateX(18px)}
 .mpb-switch:focus-visible{outline:2px solid #eb7825;outline-offset:2px}
-.mpb-actions{grid-column:1/-1;display:flex;align-items:center;gap:4px;flex-wrap:wrap;padding-top:4px}
+.mpb-actions{display:flex;align-items:center;gap:4px;padding-top:4px;border-top:1px solid rgba(255,255,255,.1)}
+.mpb-hit{flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;min-height:44px;min-width:44px;padding:0 2px;margin:0;border:0;background:none;color:inherit;font:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.mpb-hit:focus{outline:none}
+.mpb-hit:focus-visible .mpb-pill{outline:2px solid #eb7825;outline-offset:2px}
+.mpb-pill{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 16px;border-radius:999px;font-size:13px;font-weight:700;line-height:1;white-space:nowrap}
+.mpb-primary{background:#eb7825;color:#111}
 .mpb-policy{margin-left:auto;display:inline-flex;align-items:center;min-height:44px;padding:0 4px;font-size:13px;color:rgba(255,255,255,.72);text-decoration:underline}
 .mpb-policy:focus-visible{outline:2px solid #eb7825;outline-offset:2px}
-.mpb-mini{padding-top:0;padding-bottom:env(safe-area-inset-bottom,0px)}
-.mpb-icon{width:32px;padding:0;justify-content:center}
-.mpb-icon svg{display:block;width:16px;height:16px}
-.mpb-toast{position:fixed;z-index:9001;left:50%;transform:translateX(-50%);bottom:calc(16px + var(${PRIVACY_INSET_PROPERTY},0px));max-width:calc(100vw - 32px);padding:10px 16px;border-radius:999px;background:#171a20;color:#fff;border:1px solid rgba(255,255,255,.14);font:600 13px/18px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;pointer-events:none;white-space:nowrap}
-@keyframes mpb-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-@media (prefers-reduced-motion:reduce){.mpb-panel{animation:none}.mpb-chev,.mpb-switch,.mpb-switch::after{transition:none}}
+@keyframes mpb-in{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.mpb{animation:none}.mpb-switch,.mpb-switch::after{transition:none}}
 `;
 
 function ensureBarStyle(): void {
@@ -96,307 +82,235 @@ function ensureBarStyle(): void {
 function writeInset(px: number): void {
   const inset = Math.max(0, Math.round(px));
   document.documentElement.style.setProperty(PRIVACY_INSET_PROPERTY, `${inset}px`);
-  // While the bar shows, the app root ends at the bar's top edge and clips
-  // there, at every bar height (bottom-pinned actions rise with the bar). A
-  // screen that cannot scroll on its own and no longer fits (a centred card,
-  // a short landscape viewport with Options open) scrolls inside the root
-  // instead of sliding under the bar.
+  // While the strip shows, the app root ends at the strip's top edge and
+  // clips there (bottom-pinned actions sit above it). A screen that cannot
+  // scroll on its own and no longer fits scrolls inside the root instead of
+  // sliding under the strip.
   if (inset > 0) document.documentElement.setAttribute(PRIVACY_BAR_ATTRIBUTE, "shown");
   else document.documentElement.removeAttribute(PRIVACY_BAR_ATTRIBUTE);
+}
+
+/** The small sliders icon of the strip. */
+function SlidersIcon(): React.ReactElement {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
+      <path d="M2 4h7M12 4h2M2 12h2M7 12h7" />
+      <circle cx="10.5" cy="4" r="1.5" />
+      <circle cx="5.5" cy="12" r="1.5" />
+    </svg>
+  );
 }
 
 export function ConsentBanner(): React.ReactElement | null {
   const privacy = usePrivacyState();
   const [mounted, setMounted] = useState<boolean>(false);
-  const [reopened, setReopened] = useState<boolean>(false);
-  const [expanded, setExpanded] = useState<boolean>(false);
+  const [open, setOpen] = useState<boolean>(false);
   const [draft, setDraft] = useState({ analytics: true, ads: true });
   const [saving, setSaving] = useState<boolean>(false);
-  const [toast, setToast] = useState<string | null>(null);
-  const barRef = useRef<HTMLElement | null>(null);
-  const toggleRef = useRef<HTMLButtonElement | null>(null);
-  const reopenRef = useRef<HTMLButtonElement | null>(null);
-  const returnFocusRef = useRef<HTMLElement | null>(null);
-
-  const visible = mounted && (!privacy.saved || reopened);
+  const [saved, setSaved] = useState<boolean>(false);
+  const stripRef = useRef<HTMLButtonElement | null>(null);
+  const sheetRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     ensureBarStyle();
-    // The server-rendered public document carries its own copy of this bar
+    // The server-rendered public document carries its own copy of the strip
     // until the app takes over; only one may ever show.
     for (const node of Array.from(
-      document.querySelectorAll("[data-mingla-ssr-privacy-bar],[data-mingla-ssr-privacy-folded]"),
+      document.querySelectorAll("[data-mingla-ssr-privacy-bar],[data-mingla-ssr-privacy-strip]"),
     )) {
       node.remove();
     }
     setMounted(true);
-    // The #922 invite shell carries only the collapsed bar: its Options boots
-    // the app with this hand-off, so the choices open already expanded.
+    // The #922 invite shell carries only the strip: tapping it boots the app
+    // with this hand-off, so the choices open straight away.
     const handoff = window as Window & { __minglaPrivacyOpenExpanded?: boolean };
     if (handoff.__minglaPrivacyOpenExpanded === true) {
       handoff.__minglaPrivacyOpenExpanded = false;
-      setExpanded(true);
+      setOpen(true);
     }
-    const open = (): void => {
-      const active = document.activeElement;
-      returnFocusRef.current = active instanceof HTMLElement ? active : null;
-      setReopened(true);
-      setExpanded(true);
-      // The folded button unmounts as the bar opens: keep focus in the bar.
-      window.requestAnimationFrame(() => toggleRef.current?.focus());
-    };
-    window.addEventListener(PRIVACY_CHOICES_EVENT, open);
+    const reopen = (): void => setOpen(true);
+    window.addEventListener(PRIVACY_CHOICES_EVENT, reopen);
     return () => {
-      window.removeEventListener(PRIVACY_CHOICES_EVENT, open);
+      window.removeEventListener(PRIVACY_CHOICES_EVENT, reopen);
       writeInset(0);
     };
   }, []);
 
   // The switches always start from what is actually running.
   useEffect(() => {
-    if (expanded) setDraft({ analytics: privacy.analytics, ads: privacy.ads });
-  }, [expanded, privacy.analytics, privacy.ads]);
+    if (open) setDraft({ analytics: privacy.analytics, ads: privacy.ads });
+  }, [open, privacy.analytics, privacy.ads]);
 
-  // I-PRIVACY-BAR-NEVER-OCCLUDES — the live height (full bar or folded bar)
-  // is the page's bottom inset.
+  // I-PRIVACY-BAR-NEVER-OCCLUDES — the strip's height is the page's bottom inset.
   useLayoutEffect(() => {
-    const bar = barRef.current;
-    if (!mounted || bar === null) {
-      if (mounted) writeInset(0);
-      return;
-    }
-    const measure = (): void => writeInset(bar.getBoundingClientRect().height);
+    const strip = stripRef.current;
+    if (!mounted || strip === null) return;
+    const measure = (): void => writeInset(strip.getBoundingClientRect().height);
     measure();
     if (typeof ResizeObserver === "undefined") {
       window.addEventListener("resize", measure);
       return () => window.removeEventListener("resize", measure);
     }
     const observer = new ResizeObserver(measure);
-    observer.observe(bar);
+    observer.observe(strip);
     return () => observer.disconnect();
-  }, [visible, mounted, expanded]);
+  }, [mounted]);
 
   useEffect(() => {
-    if (toast === null) return;
-    const timer = window.setTimeout(() => setToast(null), TOAST_MS);
+    if (!saved) return;
+    const timer = window.setTimeout(() => setSaved(false), SAVED_MS);
     return () => window.clearTimeout(timer);
-  }, [toast]);
+  }, [saved]);
 
   const close = useCallback((): void => {
-    setExpanded(false);
-    if (reopened) {
-      setReopened(false);
-      const target = returnFocusRef.current;
-      returnFocusRef.current = null;
-      if (target !== null && target.isConnected) target.focus();
-      else window.requestAnimationFrame(() => reopenRef.current?.focus());
-      return;
-    }
-    window.requestAnimationFrame(() => toggleRef.current?.focus());
-  }, [reopened]);
+    setOpen(false);
+    window.requestAnimationFrame(() => stripRef.current?.focus());
+  }, []);
 
+  // Focus moves into the sheet, stays there (Tab wraps) and Escape closes it.
   useEffect(() => {
-    if (!expanded) return;
+    if (!open) return;
+    const sheet = sheetRef.current;
+    const focusables = (): HTMLElement[] =>
+      sheet === null
+        ? []
+        : Array.from(sheet.querySelectorAll<HTMLElement>("input, button, a[href]"));
+    window.requestAnimationFrame(() => focusables()[0]?.focus());
     const onKey = (event: KeyboardEvent): void => {
       if (event.key === "Escape") {
         event.preventDefault();
         close();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const items = focusables();
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement;
+      if (event.shiftKey && (active === first || !sheet?.contains(active))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (active === last || !sheet?.contains(active))) {
+        event.preventDefault();
+        first.focus();
       }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [expanded, close]);
+  }, [open, close]);
 
-  const choose = useCallback(
-    (choice: { analytics: boolean; ads: boolean }): void => {
-      if (saving) return;
-      setSaving(true);
-      setExpanded(false);
-      setReopened(false);
-      setToast(privacyToastFor(choice));
-      void savePrivacyChoice(choice)
-        .catch((err: unknown) => {
-          console.warn("[privacyBar] saving the privacy choice failed:", err);
-        })
-        .finally(() => setSaving(false));
-    },
-    [saving],
-  );
+  const save = useCallback((): void => {
+    if (saving) return;
+    setSaving(true);
+    setSaved(true);
+    close();
+    void savePrivacyChoice(draft)
+      .catch((err: unknown) => {
+        console.warn("[privacyStrip] saving the privacy choice failed:", err);
+      })
+      .finally(() => setSaving(false));
+  }, [close, draft, saving]);
 
   if (!mounted) return null;
-
-  const toastNode =
-    toast !== null ? (
-      <div className="mpb-toast" role="status" aria-live="polite" data-testid="privacy-toast">
-        {toast}
-      </div>
-    ) : null;
-
-  if (!visible) {
-    // #4318 — after a choice the bar folds to one icon-only button that
-    // reopens it. No text, so the page never shows a second privacy control.
-    return (
-      <>
-        <div
-          ref={(node) => {
-            barRef.current = node;
-          }}
-          className="mpb mpb-mini ph-no-capture"
-          data-testid="privacy-bar-folded"
-        >
-          <div className="mpb-row">
-            <button
-              type="button"
-              ref={reopenRef}
-              className="mpb-hit"
-              data-testid="privacy-bar-reopen"
-              aria-label="Privacy settings"
-              onClick={openPrivacyChoices}
-            >
-              <span className="mpb-pill mpb-ghost mpb-icon" aria-hidden="true">
-                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
-                  <path d="M2 4h7M12 4h2M2 12h2M7 12h7" />
-                  <circle cx="10.5" cy="4" r="1.5" />
-                  <circle cx="5.5" cy="12" r="1.5" />
-                </svg>
-              </span>
-            </button>
-          </div>
-        </div>
-        {toastNode}
-      </>
-    );
-  }
-
-  const bar = (
-    <section
-      ref={(node) => {
-        barRef.current = node;
-      }}
-      className="mpb ph-no-capture"
-      role="region"
-      aria-label="Privacy choices"
-      data-testid="privacy-bar"
-      data-expanded={expanded ? "true" : "false"}
-    >
-      {expanded ? (
-        <div className="mpb-panel" id={PANEL_ID} data-testid="privacy-panel">
-          <label className="mpb-switch-row">
-            <span className="mpb-switch-copy">
-              <span className="mpb-switch-title">Analytics</span>
-              <span className="mpb-switch-desc">
-                Helps us see which pages work and fix what doesn&apos;t.
-              </span>
-            </span>
-            <input
-              type="checkbox"
-              role="switch"
-              className="mpb-switch"
-              aria-label="Analytics"
-              data-testid="privacy-switch-analytics"
-              checked={draft.analytics}
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, analytics: event.target.checked }))
-              }
-            />
-          </label>
-          <label className="mpb-switch-row">
-            <span className="mpb-switch-copy">
-              <span className="mpb-switch-title">Ads</span>
-              <span className="mpb-switch-desc">
-                Lets Meta, TikTok, Snapchat and Reddit measure our ads.
-              </span>
-            </span>
-            <input
-              type="checkbox"
-              role="switch"
-              className="mpb-switch"
-              aria-label="Ads"
-              data-testid="privacy-switch-ads"
-              checked={draft.ads}
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, ads: event.target.checked }))
-              }
-            />
-          </label>
-          <div className="mpb-actions">
-            <button
-              type="button"
-              className="mpb-hit"
-              data-testid="privacy-bar-save"
-              onClick={() => choose(draft)}
-            >
-              <span className="mpb-pill mpb-primary">Save</span>
-            </button>
-            <button
-              type="button"
-              className="mpb-hit"
-              data-testid="privacy-bar-off-all"
-              onClick={() => choose({ analytics: false, ads: false })}
-            >
-              <span className="mpb-pill mpb-ghost">Turn off all</span>
-            </button>
-            <a
-              className="mpb-policy"
-              href={PRIVACY_POLICY_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Privacy policy
-            </a>
-          </div>
-        </div>
-      ) : null}
-      <div className="mpb-row">
-        <p className="mpb-text">
-          {expanded ? (
-            <b>Your privacy choices</b>
-          ) : (
-            <>
-              <span className="mpb-long">Mingla uses cookies for analytics and ads.</span>
-              <span className="mpb-short">Cookies for analytics and ads.</span>
-            </>
-          )}
-        </p>
-        {expanded ? null : (
-          <button
-            type="button"
-            className="mpb-hit"
-            data-testid="privacy-bar-ok"
-            onClick={() => choose({ analytics: privacy.analytics, ads: privacy.ads })}
-          >
-            <span className="mpb-pill mpb-primary">OK</span>
-          </button>
-        )}
-        <button
-          type="button"
-          ref={toggleRef}
-          className="mpb-hit mpb-options"
-          data-testid="privacy-bar-options"
-          aria-expanded={expanded}
-          aria-controls={PANEL_ID}
-          aria-label={expanded ? "Close privacy choices" : "Privacy options"}
-          onClick={() => (expanded ? close() : setExpanded(true))}
-        >
-          <span className="mpb-pill mpb-ghost">
-            {expanded ? (
-              "Close"
-            ) : (
-              <span className="mpb-options-label">Options</span>
-            )}
-            <span className={expanded ? "mpb-chev" : "mpb-chev mpb-chev-up"} aria-hidden="true" />
-          </span>
-        </button>
-      </div>
-    </section>
-  );
 
   // Rendered in place: `position: fixed` resolves against the viewport (no
   // transformed ancestor in the root stack), like ParallaxCoverShell's chrome.
   return (
     <>
-      {bar}
-      {toastNode}
+      {open ? (
+        <>
+          <div className="mpb-scrim" data-testid="privacy-scrim" onClick={close} />
+          <section
+            ref={(node) => {
+              sheetRef.current = node;
+            }}
+            className="mpb ph-no-capture"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="mingla-privacy-title"
+            id={PANEL_ID}
+            data-testid="privacy-sheet"
+          >
+            <div className="mpb-panel" data-testid="privacy-panel">
+              <h2 className="mpb-title" id="mingla-privacy-title">
+                {PRIVACY_STRIP_LABEL}
+              </h2>
+              <label className="mpb-switch-row">
+                <span className="mpb-switch-copy">
+                  <span className="mpb-switch-title">Analytics</span>
+                  <span className="mpb-switch-desc">
+                    Helps us see which pages work and fix what doesn&apos;t.
+                  </span>
+                </span>
+                <input
+                  type="checkbox"
+                  role="switch"
+                  className="mpb-switch"
+                  aria-label="Analytics"
+                  data-testid="privacy-switch-analytics"
+                  checked={draft.analytics}
+                  onChange={(event) =>
+                    setDraft((current) => ({ ...current, analytics: event.target.checked }))
+                  }
+                />
+              </label>
+              <label className="mpb-switch-row">
+                <span className="mpb-switch-copy">
+                  <span className="mpb-switch-title">Ads measurement</span>
+                  <span className="mpb-switch-desc">
+                    Lets Meta, TikTok, Snapchat and Reddit measure our ads.
+                  </span>
+                </span>
+                <input
+                  type="checkbox"
+                  role="switch"
+                  className="mpb-switch"
+                  aria-label="Ads measurement"
+                  data-testid="privacy-switch-ads"
+                  checked={draft.ads}
+                  onChange={(event) =>
+                    setDraft((current) => ({ ...current, ads: event.target.checked }))
+                  }
+                />
+              </label>
+              <div className="mpb-actions">
+                <button
+                  type="button"
+                  className="mpb-hit"
+                  data-testid="privacy-bar-save"
+                  onClick={save}
+                >
+                  <span className="mpb-pill mpb-primary">Save</span>
+                </button>
+                <a
+                  className="mpb-policy"
+                  href={PRIVACY_POLICY_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Privacy policy
+                </a>
+              </div>
+            </div>
+          </section>
+        </>
+      ) : null}
+      <button
+        type="button"
+        ref={stripRef}
+        className="mps ph-no-capture"
+        data-testid="privacy-strip"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-controls={open ? PANEL_ID : undefined}
+        onClick={() => (open ? close() : openPrivacyChoices())}
+      >
+        <SlidersIcon />
+        <span aria-live="polite" className={saved ? "mps-saved" : undefined}>
+          {saved ? PRIVACY_SAVED_LABEL : PRIVACY_STRIP_LABEL}
+        </span>
+      </button>
     </>
   );
 }
