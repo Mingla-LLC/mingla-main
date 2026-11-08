@@ -3,22 +3,20 @@ import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from 
 import { createPortal } from 'react-dom'
 import { ArrowRight, Sparkles, X } from 'lucide-react'
 import { siteAttribution } from '@/lib/links-src'
-import { appHandoffHrefs } from '@/lib/app-handoff'
+import { ariDraftContinueHref, draftTransportFromEnv, postSitePromptDraft } from '@/lib/site-prompt-draft'
 
-// #4339 §5 — "Prompt your website into existence", phase 2a: the VISUAL DEMO
-// only. The visitor describes their place and taps Generate; five build steps
-// tick by while a small site preview assembles with their place's name; then
-// the sheet "Ari's ready to build it." opens. "Continue on Mingla Web" goes to
-// host web through the #4137 seam (lib/app-handoff.ts → cta-destination.ts).
+// #4339 §5 — "Prompt your website into existence". The visitor describes their
+// place and taps Generate; five build steps tick by while a small site preview
+// assembles with their place's name; then the sheet "Ari's ready to build it."
+// opens.
 //
-// The description stays in this page's memory. It is never put in a URL, never
-// stored and never sent anywhere (spec §5: it must not travel in a query
-// string).
-//
-// TODO(#4339 §5): the Ari draft hand-off — post the description to the
-// rate-limited draft endpoint, get a short opaque `draft` id, and continue to
-// host web's /ari?draft=<id> so Ari starts building after sign-in. Until that
-// ships, Continue opens host web's front door with nothing attached.
+// Phase 4b, the Ari draft hand-off: Generate also POSTs the description to the
+// rate-limited `site-prompt-draft` endpoint (lib/site-prompt-draft.ts), which
+// stores it server-side and answers with an opaque draft id. "Continue on
+// Mingla Web" then opens host web's sign-in resuming at /ari?draft=<id>, on
+// EVERY device, phones included (round 3, point 1), and Ari starts building
+// after sign-in. The description itself never goes in a URL or query string.
+// If the post fails, Continue opens host web's front door and nothing breaks.
 
 const STEPS = [
   'Reading your description',
@@ -51,9 +49,12 @@ export function SitePromptDemo() {
   const [step, setStep] = useState(-1)
   const [sheetOpen, setSheetOpen] = useState(false)
   const [error, setError] = useState('')
+  const [draftId, setDraftId] = useState<string | null>(null)
   const areaRef = useRef<HTMLTextAreaElement>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const timers = useRef<number[]>([])
+  // Each Generate is one run; a late draft answer from a closed run is ignored.
+  const runRef = useRef(0)
   const fieldId = useId()
   const errorId = useId()
   const preview = previewName(text)
@@ -88,16 +89,26 @@ export function SitePromptDemo() {
     const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
     const tick = reduced ? 60 : 850
     timers.current.forEach((t) => window.clearTimeout(t))
+    const run = ++runRef.current
+    setDraftId(null)
+    // The draft is stored while the steps tick; the sheet waits for its answer
+    // (bounded by the post's own timeout), so Continue carries the id.
+    const draft = postSitePromptDraft(text, draftTransportFromEnv())
     timers.current = STEPS.map((_, i) => window.setTimeout(() => setStep(i), i * tick))
     timers.current.push(
       window.setTimeout(() => {
-        setStep(STEPS.length)
-        setSheetOpen(true)
+        void draft.then((id) => {
+          if (runRef.current !== run) return
+          setDraftId(id)
+          setStep(STEPS.length)
+          setSheetOpen(true)
+        })
       }, STEPS.length * tick + 300),
     )
   }
 
   const closeSheet = useCallback(() => {
+    runRef.current += 1
     setSheetOpen(false)
     setRunning(false)
     setStep(-1)
@@ -166,13 +177,12 @@ export function SitePromptDemo() {
           </div>
         </div>
       )}
-      {sheetOpen ? <AriSheet onClose={closeSheet} /> : null}
+      {sheetOpen ? <AriSheet href={ariDraftContinueHref(draftId, ATTRIBUTION)} onClose={closeSheet} /> : null}
     </div>
   )
 }
 
-function AriSheet({ onClose }: { onClose: () => void }) {
-  const hrefs = appHandoffHrefs('host', ATTRIBUTION)
+function AriSheet({ href, onClose }: { href: string; onClose: () => void }) {
   const dialogRef = useRef<HTMLDivElement>(null)
   const primaryRef = useRef<HTMLAnchorElement>(null)
 
@@ -224,7 +234,7 @@ function AriSheet({ onClose }: { onClose: () => void }) {
           Ari’s ready <em>to build it.</em>
         </h3>
         <p>Sign in to Mingla Host and Ari starts building it straight away, from what you wrote. You can watch every step.</p>
-        <a ref={primaryRef} className="sheet-cta" href={hrefs.computerHref} target="_blank" rel="noopener" onClick={onClose}>
+        <a ref={primaryRef} className="sheet-cta" href={href} target="_blank" rel="noopener" onClick={onClose}>
           Continue on Mingla Web <ArrowRight aria-hidden="true" width={17} height={17} />
         </a>
       </div>
