@@ -1,4 +1,5 @@
 // MINGLA-INVARIANT: I-1023-ANDROID-THEME-FONT-FACE | issue #1023 | Text in a theme font key goes through themeFontFace, which adds fontWeight "normal" on Android (expo-font registers the NORMAL style only; a weight >= 700 falls back to Roboto).
+// MINGLA-INVARIANT: I-1023-MOTION-IN-EVERY-LIFECYCLE-STATE | issue #1023 | Public event, RSVP, experience and trip pages (web, business app, Explorer) pass the resolved theme to the motion; no closed-state override sets animation to "none" (Seth, 7 Nov; lifts #1902's suppression).
 // MINGLA-INVARIANT: I-1023-GRADIENT-EVERYWHERE | issue #1023 | On every public surface the theme accent is drawn through the gradient-aware helpers (fills, borders, icons, buttons); a raw accent colour is allowed only for accent text or an allowlisted exception with a reason.
 /**
  * issue #1023 (Seth: "every single element should follow the gradient if a
@@ -180,6 +181,34 @@ describe("coverage: the accent is drawn through the gradient helpers", () => {
       }
     }
     expect(offenders).toEqual([]);
+  });
+
+  test("motion plays in every lifecycle state: nothing overrides the resolved animation to none", async () => {
+    const offenders: string[] = [];
+    for (const root of ROOTS) {
+      for (const rel of await walk(root)) {
+        if (/designTokens\.ts$/.test(rel)) continue; // the Mingla default theme
+        const raw = await readFile(path.join(REPO, rel), "utf8");
+        // Block comments (JSX ones included) blanked, keeping line numbers.
+        const lines = raw.replace(/\/\*[\s\S]*?\*\//g, (c) => c.replace(/[^\n]/g, " ")).split("\n");
+        lines.forEach((line, i) => {
+          if (/^\s*(\*|\/\/)/.test(line)) return;
+          if (/animation: ?["']none["']|\.\.\.theme, animation:/.test(line)) {
+            offenders.push(`${rel}:${i + 1}: ${line.trim()}`);
+          }
+        });
+      }
+    }
+    expect(offenders).toEqual([]);
+    // The two #1902 closed-state shells hand the motion the real theme.
+    for (const rel of [
+      "mingla-business/src/components/event/FoundationEventPreview.tsx",
+      "mingla-business/src/components/event/FoundationRsvpPreview.tsx",
+    ]) {
+      const src = await readFile(path.join(REPO, rel), "utf8");
+      expect(src).not.toContain("shellTheme");
+      expect(src).toMatch(/<ParallaxCoverShell[\s\S]{0,400}theme=\{theme\}/);
+    }
   });
 
   test("no bold theme font is set as a raw fontFamily (Android would draw Roboto)", async () => {
