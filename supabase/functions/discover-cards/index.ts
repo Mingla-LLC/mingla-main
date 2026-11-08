@@ -19,6 +19,7 @@ import { haversineKm, estimateTravelMinutes, radiusKmForConstraint, type TravelM
 import {
   attachExperienceDisplayPrices,
   dbMinorConverter,
+  loadCurrencyExponents,
 } from '../_shared/experienceDisplayPrice.ts';
 // ORCH-1061 PART 2: single source of truth for the curated open-hours cascade +
 // the shared hours-text parsers. filterByDateTime AND the curated path both read
@@ -2837,6 +2838,8 @@ export async function handleDiscoverCards(
           experienceCards,
           displayCurrency,
           fxSnapshotId !== null ? dbMinorConverter(supabaseAdmin, fxSnapshotId) : null,
+          // supported_brand_currencies.minor_unit_exponent, read once here.
+          displayCurrency !== null ? await loadCurrencyExponents(supabaseAdmin) : undefined,
         );
       }
     } catch (err) {

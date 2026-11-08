@@ -18,6 +18,7 @@ import {
   dbMinorConverter,
   experienceDisplayPrice,
   latestServableSnapshotId,
+  loadCurrencyExponents,
   normalizeViewerCurrency,
 } from '../../_shared/experienceDisplayPrice.ts';
 
@@ -102,6 +103,52 @@ Deno.test('#4347 a range converts both ends; repeated prices share one round tri
   assertEquals(client.calls.length, 2, 'memoised per amount + currency pair');
   assertEquals(normalizeViewerCurrency(' usd '), 'USD');
   assertEquals(normalizeViewerCurrency('dollars'), null);
+});
+
+Deno.test('#4347 rework: minor-unit exponents come from supported_brand_currencies', async () => {
+  // A 0-exponent currency: 9,000 units is 9,000 minor units, not 900,000.
+  const exponentsClient = {
+    rpc(fn: string) {
+      if (fn !== 'issue_1384_supported_currencies') throw new Error(`unexpected rpc ${fn}`);
+      return Promise.resolve({
+        data: [
+          { code: 'USD', minor_unit_exponent: 2 },
+          { code: 'ISK', minor_unit_exponent: 0 },
+          { code: 'KWD', minor_unit_exponent: 3 },
+        ],
+        error: null,
+      });
+    },
+  };
+  const exponentFor = await loadCurrencyExponents(exponentsClient);
+  assertEquals(exponentFor('ISK'), 0);
+  assertEquals(exponentFor('KWD'), 3);
+  assertEquals(exponentFor('NGN'), 2, 'an unlisted code falls back to 2');
+
+  const seen: Array<{ amount: number; source: string; target: string }> = [];
+  // 1 USD = 138 ISK; the fake returns target minor units (USD cents).
+  const convert = (amount: number, source: string, target: string) => {
+    seen.push({ amount, source, target });
+    return Promise.resolve(Math.round((amount / 138) * 100));
+  };
+  const price = await experienceDisplayPrice(
+    { totalPriceMin: 9_000, totalPriceMax: 9_000, currency: 'ISK' },
+    'USD',
+    convert,
+    exponentFor,
+  );
+  assertEquals(seen[0], { amount: 9_000, source: 'ISK', target: 'USD' }, 'ISK was scaled by 100');
+  assertEquals(price.displayPriceMin, 65.22);
+
+  // A failed read keeps the fallback rather than throwing.
+  const broken = await loadCurrencyExponents({ rpc: () => Promise.reject(new Error('down')) });
+  assertEquals(broken('ISK'), 2);
+
+  const strip = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+  for (const rel of ['../index.ts', '../../generate-curated-experiences/index.ts']) {
+    const src = strip(await Deno.readTextFile(new URL(rel, import.meta.url)));
+    assert(src.includes('loadCurrencyExponents(supabaseAdmin)'), `${rel} does not read the currency exponents`);
+  }
 });
 
 Deno.test('#4347 both deck functions attach the converted price to experience cards', async () => {

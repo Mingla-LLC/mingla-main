@@ -74,6 +74,7 @@ import {
   attachExperienceDisplayPrices,
   dbMinorConverter,
   latestServableSnapshotId,
+  loadCurrencyExponents,
   normalizeViewerCurrency,
 } from '../_shared/experienceDisplayPrice.ts';
 
@@ -2077,6 +2078,8 @@ export const handler = async (req: Request): Promise<Response> => {
             experienceCards,
             viewerDisplayCurrency,
             snapshotId !== null ? dbMinorConverter(supabaseAdmin, snapshotId) : null,
+            // supported_brand_currencies.minor_unit_exponent, read once here.
+            await loadCurrencyExponents(supabaseAdmin),
           );
         }
         if (experienceCards.length > 0) {

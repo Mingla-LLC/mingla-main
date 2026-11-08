@@ -43,10 +43,39 @@ export type MinorConverter = (
 ) => Promise<number | null>;
 
 const CODE = /^[A-Z]{3}$/;
-// Every currency in supported_brand_currencies has exponent 2 today; the
-// lookup still goes through this so a 0- or 3-exponent currency cannot be
-// silently mis-scaled.
+// The fallback only. The real exponent comes from
+// supported_brand_currencies.minor_unit_exponent (loadCurrencyExponents, read
+// once per request), so a 0- or 3-exponent currency is never mis-scaled.
 const DEFAULT_EXPONENT = 2;
+
+export type ExponentLookup = (code: string) => number;
+
+/**
+ * #4347 — `supported_brand_currencies.minor_unit_exponent` for every
+ * supported code, via the existing `issue_1384_supported_currencies` RPC.
+ * Unknown codes (or a failed read) fall back to 2.
+ */
+// deno-lint-ignore no-explicit-any
+export async function loadCurrencyExponents(client: any): Promise<ExponentLookup> {
+  const exponents = new Map<string, number>();
+  try {
+    const { data, error } = await client.rpc('issue_1384_supported_currencies');
+    if (!error && Array.isArray(data)) {
+      for (const row of data) {
+        const exponent = row?.minor_unit_exponent;
+        if (
+          typeof row?.code === 'string' &&
+          Number.isInteger(exponent) && exponent >= 0 && exponent <= 3
+        ) {
+          exponents.set(row.code.toUpperCase(), exponent);
+        }
+      }
+    }
+  } catch {
+    // fall through to the default
+  }
+  return (code) => exponents.get(code) ?? DEFAULT_EXPONENT;
+}
 
 export function normalizeViewerCurrency(value: unknown): string | null {
   if (typeof value !== 'string') return null;
@@ -152,11 +181,12 @@ export async function attachExperienceDisplayPrices<T extends PricedExperience>(
   cards: T[],
   viewerCurrency: string | null,
   convert: MinorConverter | null,
+  exponentFor?: ExponentLookup,
 ): Promise<Array<T & ExperienceDisplayPrice>> {
   return await Promise.all(
     cards.map(async (card) => {
       try {
-        return { ...card, ...(await experienceDisplayPrice(card, viewerCurrency, convert)) };
+        return { ...card, ...(await experienceDisplayPrice(card, viewerCurrency, convert, exponentFor)) };
       } catch {
         return { ...card, ...NONE };
       }
