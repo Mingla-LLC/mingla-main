@@ -35,6 +35,8 @@ import { fileURLToPath } from 'node:url'
 // Modes: `--source-only` (before `next build`), `--built-only` (against the
 // final production build, including local Chrome geometry), `--self-test`
 // (proves the source and geometry guards reject the pre-#3371 state).
+// #4339 phase 2b: a page that still renders the Cutout side menu.
+const MENU_ROUTE = '/help/getting-the-apps'
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const REPO = path.resolve(ROOT, '..')
 const SELF = path.basename(fileURLToPath(import.meta.url))
@@ -119,7 +121,10 @@ function sourceContract(overrides = {}) {
   assert(!fs.existsSync(path.join(REPO, M(`app/(core)/${UNSHIPPED_SLUG}`))), `the unshipped /${UNSHIPPED_SLUG} page must not exist`)
   const goingOut = code(source(M('app/(core)/going-out/page.tsx')))
   assert.match(goingOut, /const record = CORE_PAGES\['going-out'\]/)
-  assert.match(goingOut, /crumbs=\{\[\{name:'Home',path:'\/'\},\{name:'Going out',path:'\/going-out'\}\]\}/, 'breadcrumb must read Home -> Going out')
+  // #4339 phase 2b: the redesigned page has no visible breadcrumb; its
+  // BreadcrumbList (Home -> the record's eyebrow, "Going out") is the JSON-LD.
+  assert.match(goingOut, /corePageStructuredData\(record\)/, 'breadcrumb must read Home -> Going out')
+  assert.match(code(source(M('lib/search/core-page-schema.ts'))), /name: record\.eyebrow, item: canonicalMarketingUrl\(record\.pathname\)/)
   const corePages = code(source(M('content/core-pages.ts')))
   assert.match(corePages, /slug: 'going-out', pathname: '\/going-out', lifecycle: CORE_PAGE_RELEASE_LIFECYCLE/)
   assert.match(corePages, /title: 'Going out: Date Plans, Events & City Gems \| Mingla'/)
@@ -411,7 +416,8 @@ async function runtimeContract() {
     const renamed = await request(serverPort, '/going-out')
     assert.equal(renamed.status, 200, '/going-out must render')
     assert.match(renamed.body, /<title>Going out: Date Plans, Events &amp; City Gems \| Mingla<\/title>/, '/going-out browser title')
-    assert.match(renamed.body, /<h1\b[^>]*>Find a plan that fits the moment\.<\/h1>/, '/going-out keeps its H1')
+    // #4339 phase 2b: the redesigned headline; the record's h1 stays the SEO record.
+    assert.match(renamed.body, /<h1\b[^>]*>Going out, <em>sorted\.<\/em><\/h1>/, '/going-out keeps its H1')
     assert.doesNotMatch(renamed.body, /href="\/explorer"/, '/going-out links the redirected path')
     const home = await request(serverPort, '/')
     assert.equal(home.status, 200)
@@ -445,26 +451,28 @@ async function runtimeContract() {
 
     // #4339: the one-screen home geometry and the side-menu check on `/` are
     // retired (the home is the scrolling redesign with the #4339 site nav).
+    // #4339 phase 2b: /going-out is redesigned with the site nav, so the
+    // redirect is proven by the landing path and the side-menu geometry is
+    // measured on a help video page, which still carries the Cutout side menu
+    // (lit: Help).
     await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false })
     await page.send('Page.navigate', { url: `${base}/explorer` })
-    await waitFor(() => page.evaluate(`location.pathname==='/going-out'&&document.readyState==='complete'&&!!document.querySelector('button[aria-label="Open menu"]')`), 'browser did not follow /explorer to /going-out')
+    await waitFor(() => page.evaluate(`location.pathname==='/going-out'&&document.readyState==='complete'&&!!document.querySelector('[data-site-nav]')`), 'browser did not follow /explorer to /going-out')
+    await page.send('Page.navigate', { url: `${base}${MENU_ROUTE}` })
+    await waitFor(() => page.evaluate(`location.pathname===${JSON.stringify(MENU_ROUTE)}&&document.readyState==='complete'&&!!document.querySelector('button[aria-label="Open menu"]')`), `${MENU_ROUTE} did not load`)
     assert.deepEqual(await openMenuItems(page), [
-      ['Explorer', '/', null], ['Cities', '/cities', null], ['Going out', '/going-out', 'page'],
+      ['Explorer', '/', null], ['Cities', '/cities', null], ['Going out', '/going-out', null],
       ['Host', '/host', null], ['Free tools', '/tools', null], ['About', '/about', null],
-      ['Help', '/help', null], ['Support', '/support', null], ['Careers', 'https://career.usemingla.com', null],
-    ], 'on /going-out the menu must light Going out, not Explorer')
+      ['Help', '/help', 'page'], ['Support', '/support', null], ['Careers', 'https://career.usemingla.com', null],
+    ], `on ${MENU_ROUTE} the menu must light Help`)
 
-    // #4339: the side-menu geometry is measured on /going-out, which still
-    // carries the Cutout side menu (the home now has the #4339 site nav).
     for (const [width, height] of MENU_VIEWPORTS) {
-      const { label, sample } = await openMenuGeometry(page, `${base}/going-out`, width, height)
+      const { label, sample } = await openMenuGeometry(page, `${base}${MENU_ROUTE}`, width, height)
       assertMenuAlignment(sample, label)
-      assert.equal(sample.items.find((item) => item.current === 'page')?.label, 'Going out', `${label}: Going out must be the lit row`)
+      // Help is a chip, not a row, so no row is lit on this page (the lit chip is pinned above).
+      assert.equal(sample.items.find((item) => item.current === 'page'), undefined, `${label}: no row is lit on a Help page`)
       process.stdout.write(`EVIDENCE #3371 menu ${label} iconOffset=${Math.max(...sample.items.map((item) => Math.abs(item.iconLeft - item.box.left - item.paddingLeft))).toFixed(2)}px iconLeftSpread=${spread(sample.items.map((item) => item.iconLeft)).toFixed(2)}px ctaCentreOffset=${sample.ctas.map((cta) => cta.centreOffset.toFixed(2)).join('/')}px scrollWidth=${sample.scrollWidth}/${sample.innerWidth} drawerOverflowY=${Math.max(0, sample.cardScrollHeight - sample.cardClientHeight)}px\n`)
     }
-    const goingOutMenu = await openMenuGeometry(page, `${base}/going-out`, 402, 874)
-    assertMenuAlignment(goingOutMenu.sample, goingOutMenu.label)
-    assert.equal(goingOutMenu.sample.items.find((item) => item.current === 'page')?.label, 'Going out', `${goingOutMenu.label}: Going out must be the lit row`)
     for (const [width, height] of MENU_VIEWPORTS.filter(([width]) => width < 768)) {
       await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true })
       await page.send('Page.navigate', { url: `${base}/going-out` })
@@ -473,8 +481,8 @@ async function runtimeContract() {
       const overflow = await page.evaluate(`document.documentElement.scrollWidth-innerWidth`)
       assert.equal(overflow, 0, `/going-out ${width}x${height}: page overflows horizontally by ${overflow}px`)
     }
-    process.stdout.write(`PASS #3371 menu: ${MENU_VIEWPORTS.map(([w, h]) => `${w}x${h}`).join(', ')} rows left-aligned (icon at padding <=${ICON_TOLERANCE_PX}px, one icon column, text after icon, no wrap/truncation, identical active/inactive rows), bottom CTAs centred, drawer inside the viewport (content scrolls where taller); lit Going out on /going-out; /going-out no horizontal overflow on phones\n`)
-    process.stdout.write('PASS #3371 browser: side menu highlight on /going-out (the one-screen home geometry is retired by #4339)\n')
+    process.stdout.write(`PASS #3371 menu: ${MENU_VIEWPORTS.map(([w, h]) => `${w}x${h}`).join(', ')} rows left-aligned (icon at padding <=${ICON_TOLERANCE_PX}px, one icon column, text after icon, no wrap/truncation, identical active/inactive rows), bottom CTAs centred, drawer inside the viewport (content scrolls where taller); lit Help on ${MENU_ROUTE}; /going-out no horizontal overflow on phones\n`)
+    process.stdout.write('PASS #3371 browser: /explorer lands on /going-out; side menu highlight on a Help page (the one-screen home geometry and the /going-out side menu are retired by #4339)\n')
   } finally {
     try { if (page) await page.send('Browser.close', {}, 2_000) } catch { /* the owned Chrome is force-stopped below */ }
     page?.close()

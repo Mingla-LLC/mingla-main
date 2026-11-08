@@ -3,6 +3,7 @@ import '@/components/cutout/cutout.css'
 import { Footer } from '@/components/marketing/footer'
 import { ToolsBreadcrumb } from '@/components/marketing/tools-breadcrumb'
 import { ToolsAudienceMenu } from '@/components/marketing/tools-audience-menu'
+import { RouteFrame } from '@/components/site/route-frame'
 
 // #1003 [Venue Website Grader — growth tools, test cut] — the /tools shell.
 //
@@ -13,39 +14,49 @@ import { ToolsAudienceMenu } from '@/components/marketing/tools-audience-menu'
 // minimal top bar routes back to Mingla Host instead. The shared site
 // Footer mounts below, wrapped in data-theme="light" because it is a light
 // (bg-vellum) band and its text tokens are theme-aware.
+//
+// #4339 phase 2b — the /tools hub itself is redesigned (app/tools/page.tsx
+// brings the site nav, its <main> and the canonical footer), so the hub
+// renders without this frame. The tool pages and their report pages keep it
+// unchanged (components/site/route-frame.tsx).
 export default function ToolsLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-screen flex-col bg-smoke text-text-primary">
-      <header className="px-6 pt-6 md:px-10 [padding-left:max(1.5rem,env(safe-area-inset-left))] [padding-right:max(1.5rem,env(safe-area-inset-right))]">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
-          <Link
-            href="/host"
-            aria-label="Mingla Host home"
-            className="inline-flex shrink-0 items-center rounded-md px-0.5 transition-all duration-200 ease-out-quart hover:-translate-y-0.5 hover:brightness-110 focus-ring"
-          >
-            <img
-              src="/brand/mingla-wordmark.svg"
-              alt="Mingla"
-              className="h-7 w-auto select-none"
-              draggable={false}
-            />
-          </Link>
-          <div className="flex items-center gap-2">
-            <Link
-              href="/host"
-              className="inline-flex min-h-11 items-center rounded-full border border-white/12 bg-white/8 px-4 text-sm font-semibold text-text-secondary transition hover:bg-white/12 hover:text-text-primary focus-ring"
-            >
-              Mingla Host
-            </Link>
-            <ToolsAudienceMenu />
-          </div>
-        </div>
-      </header>
-      <ToolsBreadcrumb />
-      <main id="main" className="flex-1">{children}</main>
-      <div data-theme="light">
-        <Footer surface="organiser" />
-      </div>
-    </div>
+    <RouteFrame
+      bare={['/tools']}
+      variant="tools"
+      header={
+        <>
+          <header className="px-6 pt-6 md:px-10 [padding-left:max(1.5rem,env(safe-area-inset-left))] [padding-right:max(1.5rem,env(safe-area-inset-right))]">
+            <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
+              <Link
+                href="/host"
+                aria-label="Mingla Host home"
+                className="inline-flex shrink-0 items-center rounded-md px-0.5 transition-all duration-200 ease-out-quart hover:-translate-y-0.5 hover:brightness-110 focus-ring"
+              >
+                <img
+                  src="/brand/mingla-wordmark.svg"
+                  alt="Mingla"
+                  className="h-7 w-auto select-none"
+                  draggable={false}
+                />
+              </Link>
+              <div className="flex items-center gap-2">
+                <Link
+                  href="/host"
+                  className="inline-flex min-h-11 items-center rounded-full border border-white/12 bg-white/8 px-4 text-sm font-semibold text-text-secondary transition hover:bg-white/12 hover:text-text-primary focus-ring"
+                >
+                  Mingla Host
+                </Link>
+                <ToolsAudienceMenu />
+              </div>
+            </div>
+          </header>
+          <ToolsBreadcrumb />
+        </>
+      }
+      footer={<Footer surface="organiser" />}
+    >
+      {children}
+    </RouteFrame>
   )
 }

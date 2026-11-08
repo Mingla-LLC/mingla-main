@@ -1,37 +1,122 @@
-import Image from 'next/image'
 import Link from 'next/link'
+import { ArrowRight, Bookmark, MapPin, Plus } from 'lucide-react'
 import { cityHubPath, type CityHubRecord } from '@/content/cities/registry'
-import { CutoutFooter, CutoutShell } from '@/components/cutout'
-import { PageSystemNav } from '@/components/page-system/page-system-nav'
-import { CITY_HERO_IMAGE } from '@/lib/city-hero-images'
-import { CityDeviceAction, CityHubImpression } from './city-actions'
-import { CityFaq, CityLifecycleNotice, type CityHubCatalogue } from './city-hub'
-import { CityPlans } from './city-plans'
-import { CityTopPlaces } from './city-top-places'
+import { ExplorerHandoffButton } from '@/components/landing/explorer-handoff'
+import { CityMedia } from '@/components/site/city-media'
+import { SitePage } from '@/components/site/site-page'
+import { CityHubImpression, CityTrackedLink } from './city-actions'
+import { CityLifecycleNotice, type CityHubCatalogue } from './city-hub'
+import { CityWeekend } from './city-weekend'
 
-// #4137 wave 2 — the release layout of /cities/[city]: dark photo hero, the top
-// 50 places with category chips, ready-made plans where real ones exist (Lagos
-// today), a host band and the questions the page's FAQPage markup promises.
-// The historical #2983 layout stays in city-hub.tsx for its pinned build lane.
+// #4339 phase 2b — the release layout of /cities/[city] (one template for
+// every city), in the approved design:
+//
+//   1. the photo/clip hero with the city pill, "<City>, what are we outside
+//      for?" and the glass bar with Use Mingla (the Explorer hand-off, §3);
+//   2. "This weekend" with the Events / Experiences / Places chips
+//      (city-weekend.tsx);
+//   3. the moss "More than one mode." guide band;
+//   4. the city's questions (the FAQPage markup's visible answers);
+//   5. "Run a place in <City>?" with ONE host button, See Mingla Host → /host
+//      (round 1, point 8: we don't know their ICP yet).
+//
+// DATA is the page's existing source and content, unchanged: the #4137
+// catalogue snapshot (ranked places, ready-made plans) and the registry
+// record (guide sections, FAQs). links_page_week / links_page_strips arrive in
+// phase 4. The historical #2983 layout stays in city-hub.tsx for its pinned
+// build lane.
 
-function CityPageHero({ record, placeCount, hasPlans }: { readonly record: CityHubRecord; readonly placeCount: number; readonly hasPlans: boolean }) {
-  const hero = CITY_HERO_IMAGE[record.slug]
+function CityHero({ record }: { readonly record: CityHubRecord }) {
   return (
-    <section className="city-v2-hero" aria-labelledby="city-hub-title">
-      <Image src={hero.src} alt="" fill priority sizes="100vw" className="city-v2-hero-photo" />
-      <div className="city-v2-hero-veil" aria-hidden="true" />
-      <div className="city-v2-hero-inner">
-        <nav aria-label="Breadcrumb" className="city-breadcrumbs">
-          <ol><li><Link href="/">Home</Link></li><li aria-hidden="true">/</li><li aria-current="page">{record.city}</li></ol>
-        </nav>
-        <h1 id="city-hub-title">Things to do in {record.city}.</h1>
-        <p className="city-v2-hero-lede">
-          {`The top ${placeCount} places in ${record.city}, ranked by Mingla, not by who paid.`}
-          {hasPlans ? ' Plus ready-made plans to send to the group.' : null}
-        </p>
-        <div className="city-v2-hero-actions">
-          <CityDeviceAction citySlug={record.slug} countryCode={record.countryCode} surface="explorer" label={`Explore ${record.city}`} location="city_hub_hero_explorer" variant="primary" />
-          <CityDeviceAction citySlug={record.slug} countryCode={record.countryCode} surface="host" label={`Host in ${record.city}`} location="city_hub_hero_host" variant="quiet" className="city-v2-hero-host" />
+    <section className="lp-hero city-lp-hero" aria-labelledby="city-hub-title">
+      <CityMedia slug={record.slug} hero />
+      <div className="shade" aria-hidden="true" />
+      <div className="in wrap">
+        <div className="row">
+          <span className="pill glass">
+            <MapPin aria-hidden="true" /> {record.city}, {record.country}
+          </span>
+        </div>
+        <h1 id="city-hub-title">
+          <span>{record.city}, what are we</span>
+          <span>
+            <em>outside for?</em>
+          </span>
+        </h1>
+        <div className="bottom">
+          <p>Places, plans and side quests in {record.city}, on Mingla. Save the ones you like and pick a date.</p>
+          <div className="glassbar">
+            <span className="bring">Plan it in the app.</span>
+            <ExplorerHandoffButton location="city_hero" className="btn white" />
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function CityGuideBand({ record, catalogue }: { readonly record: CityHubRecord; readonly catalogue: CityHubCatalogue }) {
+  const plans = catalogue.plans
+  return (
+    <section className="sec moss" aria-labelledby="city-guide-title">
+      <div className="wrap">
+        <div className="split reveal">
+          <h2 className="h2" id="city-guide-title">
+            More than <em>one mode.</em>
+          </h2>
+          <p className="lead">
+            {plans.length ? `Ready-made plans for ${record.city}, to send to the group.` : record.utilityHeading}
+          </p>
+        </div>
+        <ul className="list mt-40">
+          {plans.length
+            ? plans.map((plan, index) => (
+                <li key={plan.generatedCardId} className="list-item" data-city-plan-card="">
+                  <span className="n">{String(index + 1).padStart(2, '0')}</span>
+                  <div>
+                    <h3>{plan.title}</h3>
+                    <p>{`${plan.itineraryLabel} · ${plan.stops.length} stops`}</p>
+                  </div>
+                  <ExplorerHandoffButton location="city_plan_save" className="btn sm">
+                    Save <Bookmark aria-hidden="true" />
+                  </ExplorerHandoffButton>
+                </li>
+              ))
+            : record.utilitySections.map((utility, index) => (
+                <li key={utility.title} className="list-item">
+                  <span className="n">{String(index + 1).padStart(2, '0')}</span>
+                  <div>
+                    <h3>{utility.title}</h3>
+                    <p>{utility.answer}</p>
+                  </div>
+                </li>
+              ))}
+        </ul>
+      </div>
+    </section>
+  )
+}
+
+function CityQuestions({ record }: { readonly record: CityHubRecord }) {
+  if (!record.faqs.length) return null
+  return (
+    <section className="sec" aria-labelledby="city-faq-title">
+      <div className="wrap">
+        <h2 className="h2 reveal" id="city-faq-title">
+          {record.city} questions, <em>answered.</em>
+        </h2>
+        <div className="faq mt-40">
+          {record.faqs.map((faq) => (
+            <details key={faq.question}>
+              <summary>
+                {faq.question}
+                <span className="pl" aria-hidden="true">
+                  <Plus />
+                </span>
+              </summary>
+              <p>{faq.answer}</p>
+            </details>
+          ))}
         </div>
       </div>
     </section>
@@ -40,40 +125,45 @@ function CityPageHero({ record, placeCount, hasPlans }: { readonly record: CityH
 
 function CityHostBand({ record }: { readonly record: CityHubRecord }) {
   return (
-    <section className="city-v2-host" aria-labelledby="city-host-title">
-      <div className="city-v2-host-copy">
-        <span className="city-v2-pill city-v2-pill-accent">{record.city} hosts</span>
-        <h2 id="city-host-title">Run a venue, event or trip in {record.city}?</h2>
-        <p>Get in front of the people planning their weekend in {record.city}.</p>
+    <section className="sec" aria-labelledby="city-host-title">
+      <div className="wrap">
+        <div className="split split-center reveal">
+          <h2 className="h2" id="city-host-title">
+            Run a place <em>in {record.city}?</em>
+          </h2>
+          <div className="row">
+            <CityTrackedLink citySlug={record.slug} countryCode={record.countryCode} event="city_hub_host_action" destinationType="host_web">
+              <Link className="btn ink" href="/host">
+                See Mingla Host <ArrowRight aria-hidden="true" />
+              </Link>
+            </CityTrackedLink>
+          </div>
+        </div>
       </div>
-      <CityDeviceAction citySlug={record.slug} countryCode={record.countryCode} surface="host" label={`Host in ${record.city}`} location="city_hub_host_band" variant="primary" />
     </section>
   )
 }
 
 export function CityPage({ record, catalogue }: { readonly record: CityHubRecord; readonly catalogue: CityHubCatalogue }) {
   return (
-    <div className="page-system-root city-hub-root city-page-v2">
-      <CutoutShell>
-        <CityHubImpression citySlug={record.slug} countryCode={record.countryCode} />
-        <PageSystemNav surface="explorer" />
+    <div className="page-system-root city-hub-root city-page-v2 city-page-v3">
+      <CityHubImpression citySlug={record.slug} countryCode={record.countryCode} />
+      <SitePage surface="explorer" current="cities">
+        <CityHero record={record} />
         <CityLifecycleNotice record={record} />
-        <main id="main" className="page-system-printable">
-          <CityPageHero record={record} placeCount={catalogue.places.length} hasPlans={catalogue.plans.length > 0} />
-          <CityTopPlaces
-            cityName={record.city}
-            citySlug={record.slug}
-            countryCode={record.countryCode}
-            locale={record.locale}
-            cityPath={cityHubPath(record)}
-            places={catalogue.places}
-          />
-          {catalogue.plans.length ? <CityPlans record={record} plans={catalogue.plans} /> : null}
-          <CityHostBand record={record} />
-          <CityFaq record={record} />
-        </main>
-        <CutoutFooter surface="explorer" />
-      </CutoutShell>
+        <CityWeekend
+          cityName={record.city}
+          citySlug={record.slug}
+          countryCode={record.countryCode}
+          locale={record.locale}
+          cityPath={cityHubPath(record)}
+          places={catalogue.places}
+        />
+        <CityGuideBand record={record} catalogue={catalogue} />
+        <CityQuestions record={record} />
+        <CityHostBand record={record} />
+      </SitePage>
+      <div data-city-detail-host="" />
     </div>
   )
 }

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import Link from 'next/link'
 import { blogCardCoverSrc, BLOG_PAGE_SIZE, type BlogIndex } from '@/lib/blog/data'
 import { BlogCategoryTabs } from './blog-category-tabs'
@@ -10,15 +11,23 @@ import { BlogCollectionSchema } from './blog-article-schema'
 // No newsletter or sign-up box and no city filter (Seth: blogs are not city
 // guides). Missing data is never faked: an empty blog says so and points to
 // the city pages.
+//
+// #4339 phase 2b — restyled in the approved design (the page renders it inside
+// components/site/site-page.tsx): the serif headline and lead, the category
+// chips in one row that swipes on a phone (each one a real category page, so
+// a chip filters the posts and stays indexable), then the featured story and
+// the grid. The posts, categories, paging and Load more are unchanged.
 
 const coverSrcFor = blogCardCoverSrc
 
-export function BlogIndexView({ index, page, category, heading, lede, basePath }: {
+export function BlogIndexView({ index, page, category, heading, title, lede, basePath }: {
   readonly index: BlogIndex
   readonly page: number
   /** null on /blog; the category on a category page. */
   readonly category: { readonly slug: string; readonly label: string } | null
   readonly heading: string
+  /** The h1 as shown (its italic half as <em>); defaults to `heading`. */
+  readonly title?: ReactNode
   readonly lede: string
   readonly basePath: string
 }) {
@@ -32,19 +41,19 @@ export function BlogIndexView({ index, page, category, heading, lede, basePath }
   return (
     <>
       <BlogCollectionSchema path={basePath} name={heading} description={lede} slugs={slugs} />
-      <section className="blog-band" aria-labelledby="blog-heading">
-        <div className="blog-wrap">
-          <header className="blog-band-head">
-            <h1 id="blog-heading" className="blog-display">{heading}</h1>
-            <p className="blog-lede">{lede}</p>
-          </header>
-          {lead ? <BlogFeaturedCard card={lead} coverSrc={coverSrcFor(lead)} /> : null}
+      <section className="page-hero blog-head" aria-labelledby="blog-heading">
+        <div className="wrap">
+          <h1 id="blog-heading">{title ?? heading}</h1>
+          <p className="lead">{lede}</p>
+          <div className="tabs-wrap">
+            <BlogCategoryTabs active={category?.slug ?? null} />
+          </div>
         </div>
       </section>
 
-      <section className="blog-section" aria-label={category ? `${category.label} stories` : 'Latest stories'}>
-        <div className="blog-wrap">
-          <BlogCategoryTabs active={category?.slug ?? null} />
+      <section className="pb-100 blog-list" aria-label={category ? `${category.label} stories` : 'Latest stories'}>
+        <div className="wrap">
+          {lead ? <BlogFeaturedCard card={lead} coverSrc={coverSrcFor(lead)} /> : null}
           {empty ? (
             <p className="blog-empty">
               {category

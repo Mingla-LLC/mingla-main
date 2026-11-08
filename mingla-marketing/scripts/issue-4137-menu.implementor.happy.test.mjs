@@ -34,6 +34,8 @@ const BUILT_ONLY = process.argv.includes('--built-only')
 assert(SOURCE_ONLY !== BUILT_ONLY, 'choose --source-only or --built-only')
 const code = (source) => source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
 
+// #4339 phase 2b: a page that still renders this side menu.
+const MENU_ROUTE = '/help/getting-the-apps'
 const EXPECTED_LINKS = [
   ['Explorer', '/'], ['Cities', '/cities'], ['Going out', '/going-out'],
   ['Host', '/host'], ['Free tools', '/tools'],
@@ -211,14 +213,15 @@ async function runtimeContract() {
     await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('mingla_consent_v1',JSON.stringify({value:'denied',ts:Date.now()}))` })
     const base = `http://127.0.0.1:${serverPort}`
 
-    // AC-M1, M4, M5 across viewports. #4339 phase 2a: `/` and `/host` now carry
-    // the redesign's own site nav, not this side menu, so the side menu is
-    // measured on /going-out (lit: Going out), a page that still renders it.
+    // AC-M1, M4, M5 across viewports. #4339 phase 2a/2b: the redesigned pages
+    // (/, /host, /going-out, /cities, the city pages, /about, /help, /support …)
+    // carry the redesign's own site nav, not this side menu, so the side menu is
+    // measured on a help video page (lit: Help), a page that still renders it.
     for (const [width, height] of [[1440, 900], [390, 844], [402, 874], [375, 667], [360, 780]]) {
-      const label = `/going-out ${width}x${height}`
-      const state = await openMenu(page, base, '/going-out', width, height)
+      const label = `${MENU_ROUTE} ${width}x${height}`
+      const state = await openMenu(page, base, MENU_ROUTE, width, height)
       assert.deepEqual(state.links.map((link) => [link.label, link.href]), EXPECTED_LINKS, `#4137 AC-M1: ${label} links`)
-      assert.deepEqual(state.links.map((link) => link.current), [null, null, 'page', null, null, null, null, null, null], `#4137 AC-M1: ${label} lights Going out`)
+      assert.deepEqual(state.links.map((link) => link.current), [null, null, null, null, null, null, 'page', null, null], `#4137 AC-M1: ${label} lights Help`)
       assert.deepEqual(state.groups, ['EXPLORE', 'HOST', 'COMPANY'], `#4137 AC-M1: ${label} group labels`)
       for (const link of state.links) {
         assert(link.box.height >= 44 - 0.5 && link.box.width >= 44 - 0.5, `#4137 AC-M4: ${label} "${link.label}" is ${link.box.width.toFixed(1)}x${link.box.height.toFixed(1)}`)
@@ -240,7 +243,7 @@ async function runtimeContract() {
 
     // AC-M6 — 375x667: CTAs in view with the groups scrolled to the top, page locked.
     {
-      const state = await openMenu(page, base, '/cities/raleigh-nc', 375, 667)
+      const state = await openMenu(page, base, MENU_ROUTE, 375, 667)
       await page.evaluate(`document.querySelector('[role="dialog"][aria-labelledby]').firstElementChild.scrollTop=0`)
       const again = await page.evaluate(MENU_STATE)
       for (const cta of again.ctas) assert(cta.box.top >= 0 && cta.box.bottom <= again.innerHeight + 0.5, `#4137 AC-M6: CTA "${cta.label}" is outside the 375x667 viewport (${cta.box.top.toFixed(1)}..${cta.box.bottom.toFixed(1)})`)
@@ -249,13 +252,13 @@ async function runtimeContract() {
     }
 
     // AC-M2 — one lit item per route.
-    for (const [route, lit] of [['/going-out', 'Going out'], ['/cities/raleigh-nc', 'Cities'], ['/cities', 'Cities'], ['/help', 'Help'], ['/about', 'About']]) { // #4339: /host carries the redesign's site nav // /support renders its own layout with no side menu; its chip is proven in issue-4137-menu-blog-seam
+    for (const [route, lit] of [[MENU_ROUTE, 'Help']]) { // #4339 phase 2b: every other route in this list now carries the redesign's site nav (covered by lib/__tests__/issue-4339-*.implementor.test.mjs)
       const state = await openMenu(page, base, route, 1440, 900)
       assert.deepEqual(state.links.filter((link) => link.current === 'page').map((link) => link.label), [lit], `#4137 AC-M2: ${route} lights ${lit} only`)
     }
 
     // AC-M7 — keyboard order, wrap, QR suspension and focus return (desktop).
-    await openMenu(page, base, '/help', 1440, 900)
+    await openMenu(page, base, MENU_ROUTE, 1440, 900)
     await page.evaluate(`document.querySelector('button[aria-label="Close menu"]').focus()`)
     const describe = `(()=>{const el=document.activeElement;const c=el.cloneNode(true);c.querySelectorAll?.('.sr-only').forEach((n)=>n.remove());return (el.getAttribute('aria-label')||c.textContent||'').trim()})()`
     const order = [await page.evaluate(describe)]

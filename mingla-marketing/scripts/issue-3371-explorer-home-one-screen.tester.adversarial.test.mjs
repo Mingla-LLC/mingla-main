@@ -68,7 +68,9 @@ const RETIRED = '/explorer'
 const DESTINATION = '/going-out'
 const DESTINATION_LABEL = 'Going out'
 const DESTINATION_TITLE = 'Going out: Date Plans, Events & City Gems | Mingla'
-const DESTINATION_H1 = 'Find a plan that fits the moment.'
+// #4339 phase 2b: the redesigned page's headline (the record's SEO title,
+// description and BreadcrumbList JSON-LD are unchanged).
+const DESTINATION_H1 = 'Going out, sorted.'
 // The interim name from the first #3371 pass never shipped. Spelled indirectly
 // so the repo-wide rename grep for it stays empty.
 const UNSHIPPED = `/${['for', 'explorers'].join('-')}`
@@ -363,7 +365,8 @@ function seoFacts(html) {
   return {
     canonical: attr(/<link rel="canonical" href="([^"]+)"/), ogUrl: attr(/<meta property="og:url" content="([^"]+)"/),
     robots: attr(/<meta name="robots" content="([^"]+)"/), title: attr(/<title>([^<]*)<\/title>/),
-    h1: attr(/<h1\b[^>]*>([^<]*)<\/h1>/), jsonLd,
+    // #4339 phase 2b: the redesigned headline carries its italic half in <em>.
+    h1: (() => { const inner = /<h1\b[^>]*>([\s\S]*?)<\/h1>/.exec(html)?.[1]; return inner == null ? null : decode(inner.replace(/<[^>]+>/g, '')) })(), jsonLd,
   }
 }
 
@@ -791,9 +794,11 @@ async function destinationDom(page, base) {
   report.destinationDom = dom
   process.stdout.write(`DEST ${LABEL} ${JSON.stringify(dom)}\n`)
   check(dom.title === DESTINATION_TITLE, `${DESTINATION}: document.title "${dom.title}"`)
-  check(dom.eyebrow === DESTINATION_LABEL, `${DESTINATION}: hero eyebrow must read "${DESTINATION_LABEL}" (got "${dom.eyebrow}")`)
+  // #4339 phase 2b: no eyebrow pill and no visible breadcrumb (the design has
+  // neither); the breadcrumb lives in the page's BreadcrumbList JSON-LD.
+  check(dom.eyebrow === null, `${DESTINATION}: the redesigned hero has no eyebrow pill (got "${dom.eyebrow}")`)
   check(dom.h1 === DESTINATION_H1, `${DESTINATION}: H1 "${dom.h1}"`)
-  check(JSON.stringify(dom.crumbs) === JSON.stringify([{ text: 'Home', href: '/', current: false }, { text: DESTINATION_LABEL, href: null, current: true }]), `${DESTINATION}: visible breadcrumb must be Home -> ${DESTINATION_LABEL} (got ${JSON.stringify(dom.crumbs)})`)
+  check(dom.crumbs.length === 0, `${DESTINATION}: the redesigned page has no visible breadcrumb (got ${JSON.stringify(dom.crumbs)})`)
 }
 
 async function browserRedirects(page, base) {
@@ -855,10 +860,14 @@ async function main() {
       if (!REPORT_ONLY) await destinationDom(page, base)
       await browserRedirects(page, base)
       // #4339: the one-screen home geometry (section 6) is retired.
-      await menuHighlights(page, base, citySlug)
-      await menuAlignment(page, base)
-      await collateral(page, base)
-      if (!REPORT_ONLY) await menuFlows(page, base)
+      // #4339 phase 2b: /going-out, /cities, the city pages, /about and /help
+      // now carry the redesign's site nav, not the Cutout side menu, so the
+      // side-menu highlight, row-alignment, .cut-btn collateral and menu-flow
+      // sections here are retired with it. The side menu that remains (help
+      // video and blog post pages) is pinned by
+      // scripts/issue-4137-menu.implementor.happy.test.mjs; the site nav by
+      // lib/__tests__/issue-4339-site-chrome.implementor.test.mjs.
+      note(`${citySlug}: side-menu sections retired by #4339 phase 2b (redesigned pages use the site nav)`)
     }
   } finally {
     try { if (page) await page.send('Browser.close', {}, 3_000) } catch { /* force-stopped below */ }

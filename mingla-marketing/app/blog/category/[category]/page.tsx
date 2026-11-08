@@ -1,12 +1,20 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { BlogIndexView, blogPageFrom } from '@/components/blog/blog-index'
-import { BLOG_CATEGORIES, blogCategoryForSlug, blogCategoryPath, type BlogCategorySlug } from '@/content/blog/categories'
+import {
+  BLOG_CATEGORIES,
+  blogCategoryForSlug,
+  blogCategoryPath,
+  type BlogCategorySlug,
+} from '@/content/blog/categories'
 import { getBlogIndex } from '@/lib/blog/data'
 import { canonicalUrlForSearchRoute } from '@/lib/search/route-registry'
 import { searchRouteMetadata } from '@/lib/search/metadata'
+import { SitePage } from '@/components/site/site-page'
+import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
 
 // #4137 — /blog/category/<slug> for the four categories; anything else 404s.
+// #4339 phase 2b — redesigned like /blog (site nav, canonical footer).
 export const dynamic = 'force-dynamic'
 export const dynamicParams = false
 
@@ -25,7 +33,11 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
   const path = blogCategoryPath(category.slug as BlogCategorySlug)
   const metadata = searchRouteMetadata(path)
   if (blogPageFrom((await searchParams).page) > 1) {
-    return { ...metadata, robots: { index: false, follow: true }, alternates: { canonical: canonicalUrlForSearchRoute(path) } }
+    return {
+      ...metadata,
+      robots: { index: false, follow: true },
+      alternates: { canonical: canonicalUrlForSearchRoute(path) },
+    }
   }
   return metadata
 }
@@ -36,13 +48,17 @@ export default async function BlogCategoryPage({ params, searchParams }: Props) 
   const page = blogPageFrom((await searchParams).page)
   const index = await getBlogIndex(category.slug, page)
   return (
-    <BlogIndexView
-      index={index}
-      page={page}
-      category={{ slug: category.slug, label: category.label }}
-      heading={category.label}
-      lede={category.description}
-      basePath={blogCategoryPath(category.slug as BlogCategorySlug)}
-    />
+    <div className={`${landingSerif.variable} ${landingSans.variable} ${landingMono.variable}`}>
+      <SitePage surface="explorer">
+        <BlogIndexView
+          index={index}
+          page={page}
+          category={{ slug: category.slug, label: category.label }}
+          heading={category.label}
+          lede={category.description}
+          basePath={blogCategoryPath(category.slug as BlogCategorySlug)}
+        />
+      </SitePage>
+    </div>
   )
 }

@@ -562,10 +562,15 @@ const checkBuiltManifests = () => {
   assert.equal(fontManifest.appUsingSizeAdjust, false)
   assert.equal(fontManifest.pagesUsingSizeAdjust, false)
   // #4318: the root layout owns the site faces; the /links page alone owns the brand faces.
-  // #4339: the redesigned pages (/, /host, /host/<icp>) own their own copy of
-  // the same brand faces, through the one module app/site-fonts.ts.
+  // #4339: the redesigned pages (phase 2a: /, /host, /host/<icp>; phase 2b:
+  // every redesigned public page, LANDING_FONT_CONSUMERS) own their own copy
+  // of the same brand faces, through the one module app/site-fonts.ts.
   const allEntries = Object.entries(fontManifest.app)
-  assert.equal(allEntries.length, 5, 'the root layout, the /links page and the three redesigned pages own the local font emissions')
+  assert.equal(
+    allEntries.length,
+    2 + LANDING_FONT_MANIFEST_ENTRIES.length,
+    'the root layout, the /links page and each redesigned page own the local font emissions',
+  )
   const linksEntry = allEntries.find(([key]) => /\/app\/links\/page$/.test(key))
   assert(linksEntry, 'the /links page must own the /links brand faces')
   const landingEntries = LANDING_FONT_MANIFEST_ENTRIES.map((pattern) => allEntries.find(([key]) => pattern.test(key)))

@@ -158,7 +158,7 @@
 [data-landing] .drop li a {
   display: flex;
   align-items: center;
-  min-height: 40px;
+  min-height: 44px;
   font-size: 15px;
   color: #2a2a28;
 }

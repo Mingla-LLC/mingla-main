@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
-import { Clock, Search } from 'lucide-react'
-import { cn } from '@/lib/cn'
+import { Play, Search } from 'lucide-react'
+import { FilterChips } from '@/components/site/filter-row'
 import {
   HELP_CHAPTERS,
   HELP_INTENTS,
@@ -20,7 +20,14 @@ import {
  * renders all of it on the server first — so the titles, blurbs and steps are
  * in the delivered HTML. Filtering only ever hides what is already there.
  * Nothing here fetches.
+ *
+ * #4339 phase 2b — restyled in the approved design: the round search field,
+ * the intent chips as one row that swipes on a phone (pages.css .tabs), and
+ * the video cards (poster, play mark, duration). The registry, the search over
+ * titles, blurbs, intents and steps, and the player pages are unchanged.
  */
+const EVERYTHING = 'All'
+
 export function HelpBrowser({ videos }: { videos: readonly HelpVideoRecord[] }) {
   const [query, setQuery] = useState('')
   const [intent, setIntent] = useState<HelpIntent | null>(null)
@@ -49,72 +56,55 @@ export function HelpBrowser({ videos }: { videos: readonly HelpVideoRecord[] }) 
   return (
     <div>
       {/* search */}
-      <div className="relative mx-auto max-w-2xl">
-        <Search
-          aria-hidden="true"
-          className="pointer-events-none absolute left-5 top-1/2 h-5 w-5 -translate-y-1/2 text-[var(--cut-body)] opacity-60"
-        />
+      <div className="search">
+        <Search aria-hidden="true" />
         <input
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="What are you trying to do?"
+          placeholder="Search guides, e.g. “payouts”"
           aria-label="Search the help centre"
-          className={cn(
-            'cut-card w-full rounded-full py-4 pl-14 pr-6',
-            'text-[1.0625rem] text-[var(--cut-ink)] placeholder:text-[var(--cut-body)]',
-            'outline-none focus-visible:ring-2 focus-visible:ring-[var(--cut-accent-ink)]',
-          )}
         />
       </div>
 
       {/* intent chips */}
-      <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
-        <Chip active={intent === null} onClick={() => setIntent(null)}>
-          Everything
-        </Chip>
-        {HELP_INTENTS.map((i) => (
-          <Chip key={i} active={intent === i} onClick={() => setIntent(intent === i ? null : i)}>
-            {i}
-          </Chip>
-        ))}
+      <div className="tabs-wrap">
+        <FilterChips
+          label="Filter help videos"
+          options={[EVERYTHING, ...HELP_INTENTS]}
+          value={intent ?? EVERYTHING}
+          onChange={(next) => setIntent(next === EVERYTHING ? null : (next as HelpIntent))}
+        />
       </div>
 
       {/* results */}
       {showingAll ? (
-        <div className="mt-16 space-y-16">
+        <div className="mt-56">
           {HELP_CHAPTERS.map((chapter) => {
             const inChapter = videos
               .filter((v) => v.chapter === chapter.id)
               .sort((a, b) => a.episode - b.episode)
             if (!inChapter.length) return null
             return (
-              <section key={chapter.id} aria-label={chapter.label}>
-                <h2 className="font-display cut-display-2 text-[var(--cut-ink)]">
-                  {chapter.label}
-                </h2>
-                <p className="mt-3 max-w-2xl text-[1.0625rem] leading-relaxed text-[var(--cut-body)]">
-                  {chapter.blurb}
-                </p>
-                <VideoGrid videos={inChapter} className="mt-8" />
+              <section key={chapter.id} aria-label={chapter.label} className="help-chapter">
+                <h2 className="h3">{chapter.label}</h2>
+                <p className="lead">{chapter.blurb}</p>
+                <VideoGrid videos={inChapter} chapterLabel={chapter.label} />
               </section>
             )
           })}
         </div>
       ) : (
-        <div className="mt-14">
-          <p className="mb-8 text-center text-[0.9375rem] text-[var(--cut-body)]">
+        <div className="mt-40">
+          <p className="filter-note" aria-live="polite">
             {matches.length === 0
               ? 'Nothing matches that yet.'
               : `${matches.length} ${matches.length === 1 ? 'video' : 'videos'}`}
           </p>
           {matches.length === 0 ? (
-            <p className="mx-auto max-w-md text-center text-[1.0625rem] leading-relaxed text-[var(--cut-body)]">
+            <p className="lead">
               More videos are being recorded. If you cannot find what you need,{' '}
-              <a className="underline" href="mailto:support@usemingla.com">
-                email support@usemingla.com
-              </a>{' '}
-              and we will walk you through it.
+              <a href="mailto:support@usemingla.com">email support@usemingla.com</a> and we will walk you through it.
             </p>
           ) : (
             <VideoGrid videos={matches} />
@@ -125,81 +115,39 @@ export function HelpBrowser({ videos }: { videos: readonly HelpVideoRecord[] }) 
   )
 }
 
-function Chip({
-  children,
-  active,
-  onClick,
-}: {
-  children: React.ReactNode
-  active: boolean
-  onClick: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        'rounded-full px-4 py-2 text-[0.8125rem] font-semibold transition-colors',
-        active
-          ? 'text-white'
-          : 'cut-btn-light text-[var(--cut-accent-ink)] hover:opacity-80',
-      )}
-      /* White on --cut-accent is 2.90:1 — it fails AA for text AND the 3:1
-         threshold for UI. --cut-accent-ink (#a8450e) is the kit's accessible
-         accent and gives 5.96:1, so filled accent surfaces use it. */
-      style={active ? { background: 'var(--cut-accent-ink)' } : undefined}
-    >
-      {children}
-    </button>
-  )
+function chapterLabelFor(video: HelpVideoRecord): string {
+  return HELP_CHAPTERS.find((chapter) => chapter.id === video.chapter)?.label ?? ''
 }
 
-function VideoGrid({
-  videos,
-  className,
-}: {
-  videos: readonly HelpVideoRecord[]
-  className?: string
-}) {
+function VideoGrid({ videos, chapterLabel }: { videos: readonly HelpVideoRecord[]; chapterLabel?: string }) {
   return (
-    <ul className={cn('grid gap-6 sm:grid-cols-2 lg:grid-cols-3', className)}>
+    <ul className="grid3 vid-grid mt-24">
       {videos.map((v) => (
         <li key={v.slug}>
-          <Link href={helpVideoPath(v.slug)} className="group block h-full">
-            <article className="cut-card cut-card-interactive flex h-full flex-col p-0">
-              <div className="cut-media relative aspect-video w-full overflow-hidden bg-black/5">
-                {v.bambooEntryId ? (
-                  /* eslint-disable-next-line @next/next/no-img-element */
-                  <img
-                    src={bambooPosterUrl(v.bambooEntryId, 640)}
-                    alt=""
-                    loading="lazy"
-                    className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
-                  />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center">
-                    <span className="text-[0.75rem] font-bold uppercase tracking-[0.14em] text-[var(--cut-body)]">
-                      Coming soon
-                    </span>
-                  </div>
-                )}
-              </div>
-              <div className="flex flex-1 flex-col p-6">
-                <h3 className="font-display text-[1.125rem] font-bold leading-snug text-[var(--cut-ink)]">
-                  {v.title}
-                </h3>
-                <p className="mt-2 flex-1 text-[0.9375rem] leading-relaxed text-[var(--cut-body)]">
-                  {v.blurb}
-                </p>
-                <p className="mt-4 flex items-center gap-1.5 text-[0.8125rem] text-[var(--cut-body)]">
-                  <Clock aria-hidden="true" className="h-3.5 w-3.5" />
-                  {v.duration}
-                  <span aria-hidden="true">·</span>
-                  {v.surfaces.join(', ')}
-                </p>
-              </div>
-            </article>
+          <Link href={helpVideoPath(v.slug)} className="vid">
+            <div className="ph">
+              {v.bambooEntryId ? (
+                <>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={bambooPosterUrl(v.bambooEntryId, 640)} alt="" loading="lazy" decoding="async" />
+                  <span className="play" aria-hidden="true">
+                    <i>
+                      <Play fill="currentColor" />
+                    </i>
+                  </span>
+                  <span className="dur">{v.duration}</span>
+                </>
+              ) : (
+                <span className="soon">Coming soon</span>
+              )}
+            </div>
+            <div className="meta">
+              <small>
+                {chapterLabel ?? chapterLabelFor(v)} · {v.surfaces.join(', ')}
+              </small>
+              <h3>{v.title}</h3>
+              <p>{v.blurb}</p>
+            </div>
           </Link>
         </li>
       ))}

@@ -5,6 +5,11 @@ import { CITY_HUBS, cityHubForSlug } from '@/content/cities/registry'
 import { getCityCatalogueSnapshot, getLagosCatalogueSnapshot } from '@/lib/page-system/city-catalogue.server'
 import { cityHubMetadata } from '@/lib/search/metadata'
 import { cityHubStructuredData, serializeCityHubStructuredData } from '@/lib/search/city-schema'
+import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
+
+// #4339 phase 2b — the release layout is the redesigned city page
+// (components/cities/city-page.tsx); its brand faces are route-scoped here
+// (#3548). Data sources are unchanged.
 
 interface CityHubPageProps {
   readonly params: Promise<{ city: string }>
@@ -31,7 +36,7 @@ export default async function CityHubPage({ params }: CityHubPageProps) {
   const legacyLagosCatalogue = city === 'lagos' ? getLagosCatalogueSnapshot('/cities/lagos') : null
   const catalogue = legacyLagosCatalogue ?? getCityCatalogueSnapshot(record.slug, `/cities/${record.slug}`)
   return (
-    <>
+    <div className={`${landingSerif.variable} ${landingSans.variable} ${landingMono.variable}`}>
       {structuredData ? (
         <script
           type="application/ld+json"
@@ -48,6 +53,6 @@ export default async function CityHubPage({ params }: CityHubPageProps) {
           initialDetail: null,
         } : undefined}
       />
-    </>
+    </div>
   )
 }

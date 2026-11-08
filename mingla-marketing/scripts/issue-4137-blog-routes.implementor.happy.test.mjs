@@ -39,7 +39,12 @@ function sourceContract() {
     'app/blog/[slug]/page.tsx', 'app/blog/[slug]/not-found.tsx', 'app/blog/preview/[token]/page.tsx',
     'app/api/blog/revalidate/route.ts', 'app/api/blog/posts/route.ts', 'lib/blog/data.ts', 'content/blog/categories.ts',
   ]) assert(fs.existsSync(path.join(ROOT, file)), `#4137: ${file} exists`)
-  assert.match(read('app/blog/layout.tsx'), /<main id="main">\{children\}<\/main>/, '#4137: the blog layout owns <main>')
+  // #4339 phase 2b: the index and category pages are redesigned and bring their
+  // own <main> (components/site/site-page.tsx); the posts keep the layout's
+  // frame, whose <main> moved into components/site/route-frame.tsx.
+  assert.match(read('app/blog/layout.tsx'), /<RouteFrame[\s\S]*?bare=\{\['\/blog'\]\}[\s\S]*?barePrefixes=\{\['\/blog\/category\/'\]\}[\s\S]*?variant="cutout"/, '#4137/#4339: the blog layout frames the posts, not the redesigned index')
+  assert.match(read('components/site/route-frame.tsx'), /<main id="main">\{children\}<\/main>/, '#4137: the posts frame owns <main>')
+  assert.match(read('components/site/site-page.tsx'), /<main id="main">\{children\}<\/main>/, '#4339: the redesigned index owns <main>')
   for (const file of ['app/blog/page.tsx', 'app/blog/category/[category]/page.tsx', 'app/blog/[slug]/page.tsx', 'app/blog/preview/[token]/page.tsx']) {
     assert.match(read(file), /export const dynamic = 'force-dynamic'/, `#4137: ${file} renders per request`)
   }
@@ -159,7 +164,7 @@ async function builtContract() {
     }
     const index = await get(port, '/blog')
     assert.equal(index.status, 200)
-    assert.match(index.body, /<h1[^>]*>Go out better\.<\/h1>/, '#4137: /blog h1')
+    assert.match(index.body, /<h1[^>]*>Go out <em>better\.<\/em><\/h1>/, '#4137/#4339: /blog h1 (the italic half is the redesign)')
     assert.match(index.body, /<main id="main">/)
     assert.match(index.body, /New stories are on the way/, '#4137: honest empty state without a database')
     assert.match(index.body, /<nav aria-label="Blog categories"/)

@@ -15,10 +15,14 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const VIEWPORTS = [[360, 780], [375, 667], [390, 844], [402, 874], [768, 1024], [1440, 900]]
 // #4339 phase 2a: `/` and `/host` carry the redesign's site nav (pinned by
 // lib/__tests__/issue-4339-site-chrome.*), not this grouped side menu.
-const ROUTES = ['/going-out', '/cities', '/cities/raleigh-nc', '/tools', '/help', '/support', '/about']
+// #4339 phase 2b: the redesigned pages (/going-out, /cities, the city pages,
+// /tools, /help, /support, /about) carry the site nav, pinned by
+// lib/__tests__/issue-4339-*.implementor.test.mjs; this matrix keeps the
+// grouped side menu on the pages that still render it.
+const ROUTES = ['/tools/venues', '/help/getting-the-apps']
 
 for (const file of [
-  'components/cities/city-top-places.tsx', 'components/cities/city-page.tsx',
+  'components/cities/city-weekend.tsx', 'components/cities/city-page.tsx',
   'lib/city-place-photo.ts', 'components/page-system/current-place-photo.tsx',
 ]) {
   const source = fs.readFileSync(path.join(ROOT, file), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
@@ -45,12 +49,13 @@ await withNextBrowser(ROOT, async ({ page, baseUrl, consoleErrors }) => {
     }
   }
 
+  // #4339 phase 2b: the redesigned "This weekend" grid (components/cities/city-weekend.tsx).
   await open(page, baseUrl, '/cities/raleigh-nc?qa=city', { width: 390, height: 844, reducedMotion: true })
   const initial = await page.evaluate(`(() => ({
     total:document.querySelectorAll('[data-city-place-card]').length,
-    visible:[...document.querySelectorAll('#city-places-grid>li')].filter(n=>getComputedStyle(n).display!=='none').length,
-    button:document.querySelector('.city-v2-show-all')?.textContent.trim(),
-    labels:/Photo by|Google Maps/.test(document.querySelector('#places').textContent),
+    visible:[...document.querySelectorAll('#city-weekend-grid>li')].filter(n=>getComputedStyle(n).display!=='none').length,
+    button:document.querySelector('.wk-more button')?.textContent.trim(),
+    labels:/Photo by|Google Maps/.test(document.querySelector('#weekend').textContent),
     stored:[...document.querySelectorAll('[data-place-media="stored"] img')].map(i=>i.getAttribute('src')),
     optimized:[...document.images].map(i=>i.src).filter(s=>s.includes('/_next/image')&&s.includes('place-photos'))
   }))()`)
@@ -61,30 +66,28 @@ await withNextBrowser(ROOT, async ({ page, baseUrl, consoleErrors }) => {
   assert(initial.stored.length > 0 && initial.stored.every((src) => /_thumb\.jpg(?:$|\?)/.test(src)), 'city cards must use stored thumbnails')
   assert.deepEqual(initial.optimized, [], 'stored place photos must not pass through the Next image optimiser')
 
-  await page.evaluate(`document.querySelector('.city-v2-show-all').click()`)
-  await waitFor(() => page.evaluate(`document.querySelectorAll('#city-places-grid>li:not([style*="display: none"])').length >= 50 && document.activeElement?.classList.contains('city-v2-place-link')`), 'Show all did not reveal 50 and focus the first new place')
+  await page.evaluate(`document.querySelector('.wk-more button').click()`)
+  await waitFor(() => page.evaluate(`[...document.querySelectorAll('#city-weekend-grid>li')].filter(n=>getComputedStyle(n).display!=='none').length >= 50 && document.activeElement?.classList.contains('wk-card')`), 'Show all did not reveal 50 and focus the first new place')
 
-  const chips = await page.evaluate(`[...document.querySelectorAll('.city-v2-chips button')].map(b=>b.textContent.trim())`)
-  assert(chips.length > 2, 'Raleigh must expose category chips')
-  await page.evaluate(`(() => { const b=[...document.querySelectorAll('.city-v2-chips button')]; for(let i=0;i<20;i++) b[i%2].click(); })()`)
-  const chipState = await page.evaluate(`(() => { const pressed=[...document.querySelectorAll('.city-v2-chips button')].filter(b=>b.getAttribute('aria-pressed')==='true'); return {pressed:pressed.map(b=>b.textContent.trim()),search:location.search}; })()`)
-  assert.equal(chipState.pressed.length, 1, 'rapid filtering left more than one pressed chip')
-  assert.equal(
-    new URLSearchParams(chipState.search).has('category'),
-    !chipState.pressed[0].startsWith('All'),
-    `pressed chip and URL disagree: ${JSON.stringify(chipState)}`,
-  )
+  const chips = await page.evaluate(`[...document.querySelectorAll('#weekend [data-filter-row] button')].map(b=>b.textContent.trim())`)
+  assert.deepEqual(chips, ['All', 'Events', 'Experiences', 'Places'], 'Raleigh exposes the four weekend chips')
+  await page.evaluate(`(() => { const b=[...document.querySelectorAll('#weekend [data-filter-row] button')]; for(let i=0;i<20;i++) b[i%2].click(); })()`)
+  const chipState = await page.evaluate(`[...document.querySelectorAll('#weekend [data-filter-row] button')].filter(b=>b.getAttribute('aria-pressed')==='true').map(b=>b.textContent.trim())`)
+  assert.deepEqual(chipState, ['Events'], 'rapid filtering left exactly the last chip pressed')
+  assert.match(await page.evaluate(`document.querySelector('#weekend .filter-note')?.textContent || ''`), /No events are listed in Raleigh yet/, 'an empty chip says so instead of inventing listings')
+  await page.evaluate(`[...document.querySelectorAll('#weekend [data-filter-row] button')].find(b=>b.textContent.trim()==='Places').click()`)
+  await waitFor(() => page.evaluate(`document.querySelectorAll('[data-city-place-card]').length === 50`), 'Places did not show the 50 places')
 
   await open(page, baseUrl, '/cities/raleigh-nc?category=xyz', { width: 390, height: 844 })
-  assert.equal(await page.evaluate(`document.querySelector('.city-v2-chips button').getAttribute('aria-pressed')`), 'true', 'unknown category must fall back to All')
+  assert.equal(await page.evaluate(`document.querySelector('#weekend [data-filter-row] button').getAttribute('aria-pressed')`), 'true', 'an unknown query keeps All')
   assert.equal(await page.evaluate(`document.querySelectorAll('[data-city-place-card]').length`), 50)
 
   await open(page, baseUrl, '/cities/raleigh-nc?detail=place:not-a-real-id', { width: 390, height: 844 })
-  assert.match(await page.evaluate(`document.querySelector('[role=alert]')?.textContent || ''`), /no longer available/i)
+  await waitFor(() => page.evaluate(`/no longer available/i.test(document.querySelector('[role=alert]')?.textContent || '')`), 'a missing place must say it is no longer available')
   assert.equal(await page.evaluate(`Boolean(document.querySelector('[role=alert] a[href="/cities/raleigh-nc"]'))`), true)
 
   await open(page, baseUrl, '/cities/raleigh-nc?qa=no-js', { width: 390, height: 844, scriptDisabled: true })
-  const noJs = await page.evaluate(`(() => ({visible:[...document.querySelectorAll('#city-places-grid>li')].filter(n=>getComputedStyle(n).display!=='none').length,button:getComputedStyle(document.querySelector('.city-v2-show-all')).display}))()`)
+  const noJs = await page.evaluate(`(() => ({visible:[...document.querySelectorAll('#city-weekend-grid>li')].filter(n=>getComputedStyle(n).display!=='none').length,button:getComputedStyle(document.querySelector('.wk-more')).display}))()`)
   assert.equal(noJs.visible, 50, 'no-JavaScript city catalogue must expose all 50 places')
   assert.equal(noJs.button, 'none', 'no-JavaScript city catalogue must hide Show all')
 

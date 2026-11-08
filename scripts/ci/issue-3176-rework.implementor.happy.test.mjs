@@ -111,7 +111,7 @@ async function runtimeContract() {
     }
     const directory = await request(port, '/cities')
     assert.equal(directory.status, 200, '/cities must be 200 in the final release build')
-    assert(directory.body.replace(/<!--[\s\S]*?-->/g, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').includes('Explore Mingla city by city.'), '/cities lost current release content')
+    assert(directory.body.replace(/<!--[\s\S]*?-->/g, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').includes('Pick a city. Find a plan.'), '/cities lost current release content (#4339 phase 2b headline)')
     for (const pathname of CITY_PATHS) {
       const response = await request(port, pathname)
       assert.equal(response.status, 200, `${pathname} must be 200 in the final release build`)

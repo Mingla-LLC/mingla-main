@@ -7,16 +7,47 @@
 // scripts/issue-4318-links-fonts.contract.mjs owns their bytes and licences).
 // They are defined in app/site-fonts.ts and imported by the redesigned pages
 // alone (phase 2a moved the module up from app/host/[icp]/fonts.ts when Home
-// and Mingla Host joined the landing pages): /, /host and /host/<icp>. They
-// load and preload on those routes and nowhere else.
+// and Mingla Host joined the landing pages): /, /host and /host/<icp>; phase
+// 2b adds every redesigned public page (Going out, Cities, the city page, Get
+// the app, Free tools, About, Locals, Creators, the careers index, Blog, Help,
+// Support, the six legal documents, Delete account and Unsubscribe). They load
+// and preload on those routes and nowhere else; /links keeps its own module.
 
 import assert from 'node:assert/strict'
 
 export const LANDING_FONT_MODULE = 'app/site-fonts.ts'
 /** The redesigned pages, sorted: the only modules that may import the brand faces. */
-export const LANDING_FONT_CONSUMERS = ['app/(explorer)/page.tsx', 'app/host/[icp]/page.tsx', 'app/host/page.tsx']
-/** Their app-router entries in the built font manifest. */
-export const LANDING_FONT_MANIFEST_ENTRIES = [/\/app\/\(explorer\)\/page$/, /\/app\/host\/\[icp\]\/page$/, /\/app\/host\/page$/]
+export const LANDING_FONT_CONSUMERS = [
+  'app/(core)/about/page.tsx',
+  'app/(core)/cities/page.tsx',
+  'app/(core)/going-out/page.tsx',
+  'app/(explorer)/page.tsx',
+  'app/blog/category/[category]/page.tsx',
+  'app/blog/page.tsx',
+  'app/careers/page.tsx',
+  'app/cities/[city]/page.tsx',
+  'app/creator-agreement/page.tsx',
+  'app/creators/page.tsx',
+  'app/delete-account/page.tsx',
+  'app/download/page.tsx',
+  'app/help/page.tsx',
+  'app/host/[icp]/page.tsx',
+  'app/host/page.tsx',
+  'app/local-agreement/page.tsx',
+  'app/locals/page.tsx',
+  'app/organiser-terms/page.tsx',
+  'app/privacy-policy/page.tsx',
+  'app/sms-terms/page.tsx',
+  'app/support/page.tsx',
+  'app/terms-of-service/page.tsx',
+  'app/tools/page.tsx',
+  'app/unsubscribe/page.tsx',
+]
+const escapeRe = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+/** Their app-router entries in the built font manifest (one per consumer). */
+export const LANDING_FONT_MANIFEST_ENTRIES = LANDING_FONT_CONSUMERS.map(
+  (file) => new RegExp(`/${escapeRe(file.replace(/\.tsx$/, ''))}$`),
+)
 
 export const LANDING_FONT_DEFINITIONS = [
   {
@@ -83,7 +114,7 @@ export function checkLandingFontSource(read, sourceFiles) {
   const importers = sourceFiles
     .filter((file) => file !== LANDING_FONT_MODULE && /from '(?:@\/app\/site-fonts|\.\.?\/(?:\.\.\/)*site-fonts)'/.test(read(file)))
     .sort()
-  assert.deepEqual(importers, LANDING_FONT_CONSUMERS, '#4339: only the redesigned pages (/, /host, /host/<icp>) may use the brand faces')
+  assert.deepEqual(importers, LANDING_FONT_CONSUMERS, '#4339: only the redesigned pages may use the brand faces')
   for (const consumer of LANDING_FONT_CONSUMERS) {
     assert.match(
       read(consumer),

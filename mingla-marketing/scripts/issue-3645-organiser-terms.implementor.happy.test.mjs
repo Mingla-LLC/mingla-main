@@ -77,7 +77,10 @@ function verifySource(files) {
   assert.match(files['scripts/verify-search-foundation.mjs'], /'\/terms-of-service',[\s\S]*?'\/organiser-terms',/, '/organiser-terms must be in the sitemap/search-ready verifier')
   assert.match(page, /searchRouteMetadata\('\/organiser-terms'\)/, 'page must use the search-ready metadata helper')
   assert.doesNotMatch(page, /publicNoindexMetadata/, 'page must not use the noindex metadata helper')
-  assert.match(page, /<main\b[^>]*id="main"/, 'page needs the <main id="main"> landmark')
+  // #4339 phase 2b: the legal reading layout (components/site/legal-shell.tsx →
+  // site-page.tsx) owns the <main id="main"> landmark around the document.
+  assert.match(page, /<LegalShell current="organiser">/, 'page renders inside the legal reading layout')
+  assert.match(readFileSync(path.join(ROOT, 'components/site/site-page.tsx'), 'utf8'), /<main id="main">/, 'page needs the <main id="main"> landmark')
 
   // Held clauses and editor notes never render.
   for (const phrase of [...HELD_PHRASES, ...EDITOR_MARKERS]) {

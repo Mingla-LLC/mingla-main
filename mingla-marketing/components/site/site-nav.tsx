@@ -75,9 +75,17 @@ const MENU_GROUPS: { title: string; links: MenuLink[] }[] = [
 interface SiteNavProps {
   surface: SiteNavSurface
   current?: SiteNavKey
+  /**
+   * Set on a page served from another host (career.usemingla.com): every
+   * internal link becomes absolute on this origin, since a relative link there
+   * would resolve inside the careers segment (ORCH-1225). The hand-off CTA is
+   * left out there because its no-JavaScript fallback is a relative page.
+   */
+  origin?: string
 }
 
-export function SiteNav({ surface, current }: SiteNavProps) {
+export function SiteNav({ surface, current, origin }: SiteNavProps) {
+  const abs = (href: string) => (origin && href.startsWith('/') ? `${origin}${href}` : href)
   const [open, setOpen] = useState(false)
   const navRef = useRef<HTMLElement>(null)
   const burgerRef = useRef<HTMLButtonElement>(null)
@@ -111,17 +119,17 @@ export function SiteNav({ surface, current }: SiteNavProps) {
   return (
     <header ref={navRef} className={open ? 'site-nav open' : 'site-nav'} data-site-nav="" data-surface={surface}>
       <div className="nav-in">
-        <Link className="brand" href="/" aria-label="Mingla home">
+        <Link className="brand" href={abs('/')} aria-label="Mingla home">
           <Wordmark height={24} title={null} />
         </Link>
         <nav className="nav-links" aria-label="Main">
           {TOP_LINKS.map((l) => (
-            <Link key={l.key} href={l.href} className={current === l.key ? 'on' : undefined} aria-current={current === l.key ? 'page' : undefined}>
+            <Link key={l.key} href={abs(l.href)} className={current === l.key ? 'on' : undefined} aria-current={current === l.key ? 'page' : undefined}>
               {l.label}
             </Link>
           ))}
         </nav>
-        {surface === 'host' ? (
+        {origin ? null : surface === 'host' ? (
           <HostHandoffButton location="nav" className="btn cta nav-cta" />
         ) : (
           <ExplorerHandoffButton location="nav" className="btn cta nav-cta" />
@@ -154,13 +162,13 @@ export function SiteNav({ surface, current }: SiteNavProps) {
               <ul>
                 {group.links.map((l) => (
                   <li key={l.href}>
-                    {l.external ? <a href={l.href}>{l.label}</a> : <Link href={l.href}>{l.label}</Link>}
+                    {l.external ? <a href={l.href}>{l.label}</a> : <Link href={abs(l.href)}>{l.label}</Link>}
                   </li>
                 ))}
               </ul>
             </div>
           ))}
-          <Link className="feat-card" href="/host">
+          <Link className="feat-card" href={abs('/host')}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/marketing/site/p/lagos-quests-gallery.jpg" alt="" decoding="async" />
             <span>

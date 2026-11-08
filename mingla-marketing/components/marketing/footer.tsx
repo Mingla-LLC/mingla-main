@@ -77,14 +77,20 @@ const CROSS_LINK: Record<SiteFooterSurface, FooterLink> = {
   host: { href: '/', label: 'Looking for the app? → Mingla for Explorers' },
 }
 
-export function SiteFooter({ surface }: { surface: SiteFooterSurface }) {
+/**
+ * `origin` is set on a page served from another host (career.usemingla.com),
+ * where a relative link would resolve inside the careers segment (ORCH-1225):
+ * every internal link then becomes absolute on that origin.
+ */
+export function SiteFooter({ surface, origin }: { surface: SiteFooterSurface; origin?: string }) {
   const cross = CROSS_LINK[surface]
+  const abs = (href: string) => (origin && href.startsWith('/') ? `${origin}${href}` : href)
   return (
     <footer data-site-footer="" data-surface={surface} aria-label="Footer">
       <div className="sf-wrap">
         <div className="sf-top">
           <div>
-            <Link className="sf-brand" href="/" aria-label="Mingla home">
+            <Link className="sf-brand" href={abs('/')} aria-label="Mingla home">
               <Wordmark height={26} title={null} />
             </Link>
           </div>
@@ -95,7 +101,7 @@ export function SiteFooter({ surface }: { surface: SiteFooterSurface }) {
                 {col.links.map((l) => (
                   <li key={l.href}>
                     {/* ORCH-1225: the careers subdomain is a real anchor, same tab. */}
-                    {l.external ? <a href={l.href}>{l.label}</a> : <Link href={l.href}>{l.label}</Link>}
+                    {l.external ? <a href={l.href}>{l.label}</a> : <Link href={abs(l.href)}>{l.label}</Link>}
                   </li>
                 ))}
               </ul>
@@ -106,7 +112,7 @@ export function SiteFooter({ surface }: { surface: SiteFooterSurface }) {
           <p>
             © {new Date().getFullYear()} Mingla. {SITE_FOOTER_TAGLINE}
           </p>
-          <Link className="sf-cross" href={cross.href}>
+          <Link className="sf-cross" href={abs(cross.href)}>
             {cross.label}
           </Link>
         </div>
