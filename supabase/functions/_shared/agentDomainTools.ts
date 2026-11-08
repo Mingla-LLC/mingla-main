@@ -3448,6 +3448,46 @@ const endDiscount = writeTool(
   },
 );
 
+/** #4304: the discount tools whose cards name the discount. */
+const DISCOUNT_STATUS_TOOLS = new Set([
+  "pause_discount",
+  "resume_discount",
+  "end_discount",
+]);
+
+/**
+ * #4304: proposal-time name for a pause/resume/end discount card. Reads the
+ * row through the caller-bound client (bd_read RLS: brand members rank >= 20),
+ * so a paused discount, which brand_discounts_list never returns, is found
+ * too. Returns the code when the discount has one, else its name. Any miss or
+ * failure returns null and never blocks the proposal.
+ */
+export async function preflightDiscountProposal(
+  toolName: string,
+  args: Record<string, unknown>,
+  client: any,
+): Promise<Record<string, unknown> | null> {
+  if (!DISCOUNT_STATUS_TOOLS.has(toolName)) return null;
+  if (!client || !isUuid(args.discount_id) || !isUuid(args.brand_id)) {
+    return null;
+  }
+  try {
+    const { data, error } = await client
+      .from("brand_discounts")
+      .select("id,code,name")
+      .eq("id", args.discount_id)
+      .eq("brand_id", args.brand_id)
+      .maybeSingle();
+    if (error || !data || data.id !== args.discount_id) return null;
+    const code = typeof data.code === "string" ? data.code.trim() : "";
+    const name = typeof data.name === "string" ? data.name.trim() : "";
+    const label = code || name;
+    return label ? { discount_name: label } : null;
+  } catch {
+    return null;
+  }
+}
+
 // #3872 R2 — Ari shares the exact Host referral control plane. It never
 // inserts offer/member rows directly; the caller-bound edge functions and SQL
 // retain permission, overlap, rollout and cash-offer finance gates.

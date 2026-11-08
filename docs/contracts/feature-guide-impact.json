@@ -618,6 +618,7 @@
         "supabase/functions/_shared/agentConversationState.ts",
         "supabase/functions/_shared/agentCopyLint.ts",
         "supabase/functions/_shared/agentDomainTools.ts",
+        "supabase/functions/_shared/agentFollowupProposal.ts",
         "supabase/functions/_shared/agentGemini.ts",
         "supabase/functions/_shared/agentLaunchPlan.ts",
         "supabase/functions/_shared/agentLoop.ts",
