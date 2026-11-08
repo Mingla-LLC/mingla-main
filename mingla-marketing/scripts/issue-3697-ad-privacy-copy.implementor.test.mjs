@@ -19,7 +19,9 @@ for (const shared of [
 ]) assert.match(source, new RegExp(shared), `${shared} disclosure is missing`)
 
 assert.match(source, /measure and improve our ads and to show people relevant events/)
-assert.match(source, /banner or the “Ad privacy choices” link in the page footer/)
+// #4318 (Seth): the strip is the one place to opt out; the footer link is gone.
+assert.match(source, /You can opt out at any time from the “Privacy & ad choices” strip at the bottom of every page\./)
+assert.doesNotMatch(source, /Ad privacy choices/)
 assert.match(source, /Opting out stops the advertising pixels and suppresses server-side conversion sharing/)
 assert.doesNotMatch(
   source,

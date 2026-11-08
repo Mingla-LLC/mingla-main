@@ -47,7 +47,7 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
 await Metro.runBuild(config, { entry: path.join(here, "entry.tsx"), platform: "web", minify: false, dev: true, out: outputBundle, sourceMap: false });
 const bundle = readFileSync(outputBundle, "utf8");
 // #2331 — the real privacy bar (inset writer) and the always-shown reserve bar.
-for (const marker of ["orch-1255-public-venue", "privacy-bar-ok", "--mingla-privacy-inset", "issue-2729-reserve-bar"]) {
+for (const marker of ["orch-1255-public-venue", "privacy-strip", "--mingla-privacy-inset", "issue-2729-reserve-bar"]) {
   if (!bundle.includes(marker)) throw new Error(`issue #2769 real-source marker missing: ${marker}`);
 }
 writeFileSync(path.join(outputDir, "index.html"), readFileSync(path.join(here, "index.html"), "utf8"));

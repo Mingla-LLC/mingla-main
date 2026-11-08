@@ -37,21 +37,23 @@ const cases: ReadonlyArray<[string, () => void]> = [
     assert(provider.includes("MARKETING_PRIVACY_STORAGE_KEY = 'mingla_privacy_v2'"), 'v2 key')
     assert(/window\.localStorage\.removeItem\(MARKETING_LEGACY_CONSENT_STORAGE_KEY\)/.test(provider), 'v1 removed after carry-over')
   }],
+  // #4318 (Seth): the approved copy is the strip's "Privacy & ad choices";
+  // the first-visit banner copy, OK and Turn off all are retired.
   ['the copy is the approved copy and the retired copy is gone everywhere', () => {
-    for (const copy of ['Mingla uses cookies for analytics and ads.', 'Cookies for analytics and ads.', 'Your privacy choices', 'Turn off all']) {
+    for (const copy of ["PRIVACY_STRIP_LABEL = 'Privacy & ad choices'", "PRIVACY_SAVED_LABEL = 'Saved'", 'Ads measurement']) {
       assert(banner.includes(copy), `missing copy: ${copy}`)
     }
-    assert(!/Nothing is set until you|Nothing is tracked until you|Accept all|>\s*Reject\s*</.test(banner), 'retired copy must be gone')
+    assert(!/Mingla uses cookies|Cookies for analytics|Your privacy choices|Turn off all|Nothing is set until you|Nothing is tracked until you|Accept all|>\s*Reject\s*<|>\s*OK\s*</.test(banner), 'retired copy must be gone')
   }],
-  // #4318 (Seth): the bar is the one place to make and change the choice. The
-  // footer "Your privacy choices" links are gone; the folded bar reopens itself.
-  ['no footer carries a separate privacy link; the folded bar reopens the choices', () => {
+  // #4318 (Seth): the strip is the one place to make and change the choice.
+  // No footer or sheet carries a "Your privacy choices" link.
+  ['no footer carries a separate privacy link; the strip opens the choices', () => {
     for (const rel of ['components/marketing/footer.tsx', 'components/cutout/footer.tsx', 'components/page-system/page-system-shell.tsx', 'components/sections/explorer-home/hero.tsx']) {
       assert(!/PrivacyChoicesLink|privacy-choices-link/.test(stripComments(read(rel))), `${rel} must not render a privacy link`)
     }
     assert(!fs.existsSync(path.resolve(process.cwd(), 'components/marketing/privacy-choices-link.tsx')), 'privacy-choices-link.tsx must be deleted')
-    assert(/aria-label="Privacy settings"/.test(banner), 'the folded bar has an icon-only Privacy settings button')
-    assert(/window\.dispatchEvent\(new Event\(PRIVACY_CHOICES_EVENT\)\)/.test(banner), 'it reopens through the one reopen event')
+    assert(/data-testid="privacy-strip"/.test(banner), 'the strip renders')
+    assert(/window\.dispatchEvent\(new Event\(PRIVACY_CHOICES_EVENT\)\)/.test(banner), 'it opens through the one reopen event')
   }],
 ]
 

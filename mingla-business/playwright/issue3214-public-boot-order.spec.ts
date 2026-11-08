@@ -274,7 +274,7 @@ async function layout(page: Page) {
       root: root ? root.getBoundingClientRect().height : -1,
       // #2331 — the privacy bar's live height (0 while hidden).
       inset: Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--mingla-privacy-inset')) || 0,
-      barShown: document.querySelector('[data-testid="privacy-bar"]') !== null,
+      barShown: document.querySelector('[data-testid="privacy-strip"]') !== null,
       scrollers,
     }
   })
@@ -347,28 +347,24 @@ test.describe('#3214 public page handoff to the Expo app', () => {
     expect(harness.beacons[0]).toMatchObject({ path: '/b/issue3214-host' })
   })
 
-  // #2331 I-PRIVACY-BAR-NEVER-OCCLUDES: with the privacy bar shown, the app
-  // root ends at the bar's top edge (viewport minus the measured inset); with
-  // a saved choice the bar is hidden and the root fills the viewport.
+  // #2331 I-PRIVACY-BAR-NEVER-OCCLUDES: the app root ends at the privacy
+  // strip's top edge (viewport minus the measured inset), with or without a
+  // saved choice (#4318: the strip never goes away).
   for (const target of KINDS) {
     for (const state of ['bar shown', 'saved choice'] as const) {
       test(`${target.kind}: takeover fills the viewport above the privacy bar (${state}) and swaps the plain page's styles for the app's`, async ({ page }) => {
         test.setTimeout(60_000)
         const harness = await openPublicPage(page, target, { consent: state === 'saved choice' })
         await expectTakenOver(page)
-        if (state === 'bar shown') {
-          await expect(page.getByTestId('privacy-bar')).toBeVisible()
-          await expect.poll(async () => (await layout(page)).inset).toBeGreaterThan(0)
-          await expect.poll(async () => {
-            const measured = await layout(page)
-            return Math.round(measured.root + measured.inset)
-          }).toBe(640)
-        } else {
-          await expect.poll(async () => (await layout(page)).root).toBe(640)
+        // #4318 — the strip is permanent: the root ends above its 28px in
+        // both states (no choice, or a saved one).
+        await expect(page.getByTestId('privacy-strip')).toBeVisible()
+        await expect.poll(async () => (await layout(page)).inset).toBe(28)
+        await expect.poll(async () => {
           const measured = await layout(page)
-          expect(measured.barShown).toBe(false)
-          expect(measured.inset).toBe(0)
-        }
+          return Math.round(measured.root + measured.inset)
+        }).toBe(640)
+        expect((await layout(page)).barShown).toBe(true)
         const measured = await layout(page)
         expect(measured.html).toBe(measured.viewport)
         expect(measured.body).toBe(measured.viewport)

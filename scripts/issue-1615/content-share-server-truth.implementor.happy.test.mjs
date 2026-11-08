@@ -201,7 +201,7 @@ test('ST11 S6 analytics is on unless the visitor turned it off, and the page car
   const run=(stored)=>{const beacons=[];const primary={dataset:{shareDestination:'buy_tickets'},addEventListener(_event,listener){this.listener=listener}};const install={addEventListener(_event,listener){this.listener=listener}};
     vm.runInNewContext(script,{localStorage:{getItem:()=>stored},navigator:{sendBeacon:(url,body)=>{beacons.push({url,payload:JSON.parse(body)});return true}},document:{querySelector:()=>install,querySelectorAll:()=>[primary]}});
     install.listener?.();primary.listener?.();return beacons;};
-  assert.match(html,/data-testid="privacy-bar"/);assert.doesNotMatch(html,/data-mingla-privacy-choices/);assert.match(html,/data-testid="privacy-bar-reopen"/);assert.match(html,/__minglaPrivacyBar\(\);/);
+  assert.match(html,/data-testid="privacy-strip"/);assert.doesNotMatch(html,/data-mingla-privacy-choices/);assert.match(html,/__minglaPrivacyBar\(\);/);
   for(const granted of [null,'{',JSON.stringify({choice:true}),JSON.stringify({value:1}),JSON.stringify({granted:true}),JSON.stringify({choice:'granted',ts:1}),JSON.stringify({value:'granted',ts:1}),JSON.stringify({analytics:true,ads:false,ts:1})]){
     const beacons=run(granted);assert.deepEqual(beacons.map((item)=>item.payload.event),['share_public_page_viewed','share_install_cta_opened','share_destination_action']);
     assert.ok(beacons.every((item)=>item.url==='/api/content-share-analytics'&&item.payload.code==='Aa0Bb1Cc2Dd3Ee4F'&&item.payload.version===2));

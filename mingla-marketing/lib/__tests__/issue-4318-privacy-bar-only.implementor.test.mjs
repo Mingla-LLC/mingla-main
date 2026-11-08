@@ -1,13 +1,17 @@
-// #4318 section 7 (Seth): the bottom privacy bar is the ONE place people make
-// and change their analytics and ads choice on usemingla.com. No page, footer
-// or sheet carries a separate "Your privacy choices" link any more.
+// #4318 section 7 (Seth): one thin "Privacy & ad choices" strip at the very
+// bottom of every usemingla.com page is the ONE place people make and change
+// their analytics and ads choice. No first-visit banner, no OK prompt, no
+// toast, and no separate "Your privacy choices" link on any page, footer or
+// sheet. Analytics and ads stay on unless turned off (#4128).
 //
-// That link was the only way back into the choices, so after a choice the bar
-// folds to one icon-only "Privacy settings" button that reopens it, expanded,
-// through the one reopen event. This suite pins both halves:
-//   (a) no marketing source renders the retired link or its copy;
-//   (b) the bar folds (and keeps its inset, so it covers nothing) and the
-//       folded button reopens the switches, whose Save is the real choice.
+// This suite pins:
+//   (a) no marketing source renders the retired link or its copy, and the
+//       privacy policy names the strip, not the retired footer link;
+//   (b) the strip is server-rendered on every route from the root layout,
+//       28px plus the safe area, holding the inset from the first paint;
+//   (c) the strip opens the choices sheet; Save is the real choice (it turns
+//       analytics on again), the strip reads "Saved" for 1.8s (aria-live),
+//       and the sheet traps focus, closes on Escape and returns focus.
 //
 // Run from mingla-marketing/:
 //   node --test lib/__tests__/issue-4318-privacy-bar-only.implementor.test.mjs
@@ -32,7 +36,7 @@ function walk(dir, out = []) {
   return out
 }
 
-test('(a) no marketing page, footer or sheet renders a separate privacy link', () => {
+test('(a) no marketing page, footer or sheet renders a separate privacy link or its copy', () => {
   assert.equal(fs.existsSync(path.join(MARKETING, 'components/marketing/privacy-choices-link.tsx')), false)
   const offenders = []
   for (const root of ['app', 'components', 'lib']) {
@@ -40,34 +44,40 @@ test('(a) no marketing page, footer or sheet renders a separate privacy link', (
       const rel = path.relative(MARKETING, file)
       const source = code(fs.readFileSync(file, 'utf8'))
       if (/PrivacyChoicesLink|privacy-choices-link|ps-footer-privacy|openPrivacyChoices/.test(source)) offenders.push(rel)
-      // The bar's own expanded heading is the one allowed place for the words.
-      if (rel !== 'components/marketing/consent-banner.tsx' && /Your privacy choices/i.test(source)) offenders.push(`${rel} (copy)`)
+      if (/Your privacy choices|Ad privacy choices/i.test(source)) offenders.push(`${rel} (copy)`)
     }
   }
   assert.deepEqual(offenders, [])
+  const policy = read('lib/privacyContent.ts')
+  assert.match(policy, /You can opt out at any time from the “Privacy & ad choices” strip at the bottom of every page\./)
 })
 
-test('(b) after a choice the bar folds to an icon-only Privacy settings button', () => {
+test('(b) the strip is server-rendered on every route and holds the inset from the first paint', () => {
+  const layout = code(read('app/layout.tsx'))
+  assert.match(layout, /<ConsentBanner \/>/)
   const banner = code(read('components/marketing/consent-banner.tsx'))
-  // A saved choice no longer removes the bar: it renders the folded bar.
-  assert.match(banner, /if \(!visible\) \{[\s\S]*data-testid="privacy-bar-folded"[\s\S]*aria-label="Privacy settings"/)
-  // Icon only: the folded bar carries no words.
-  const folded = banner.slice(banner.indexOf('data-testid="privacy-bar-folded"'), banner.indexOf('{toastNode}', banner.indexOf('data-testid="privacy-bar-folded"')))
-  const words = [...folded.matchAll(/>\s*([^<>{}=]+?)\s*</g)].map((m) => m[1]).filter((t) => /[A-Za-z]/.test(t))
-  assert.deepEqual(words, [])
-  // It reopens through the one reopen event the bar listens to.
-  assert.match(folded, /window\.dispatchEvent\(new Event\(PRIVACY_CHOICES_EVENT\)\)/)
-  assert.match(banner, /window\.addEventListener\(PRIVACY_CHOICES_EVENT, open\)/)
-  assert.match(banner, /setReopened\(true\)\s*setExpanded\(true\)/)
-  // The folded bar is measured into the same inset, so it covers nothing.
-  assert.match(banner, /if \(!mounted \|\| bar === null\) \{/)
-  assert.match(banner, /\.mpb-mini\{padding-top:0;padding-bottom:env\(safe-area-inset-bottom,0px\)\}/)
+  // No mounted gate and no saved-choice gate: the strip is in the server HTML.
+  assert.doesNotMatch(banner, /if \(!mounted\)|setMounted|const visible|privacy\.saved/)
+  assert.match(banner, /<style id="mingla-privacy-bar-style" dangerouslySetInnerHTML=\{\{ __html: BAR_CSS \}\} \/>/)
+  assert.match(banner, /:root\{\$\{PRIVACY_INSET_PROPERTY\}:calc\(28px \+ env\(safe-area-inset-bottom,0px\)\)\}/)
+  assert.match(banner, /\.mps\{position:fixed;left:0;right:0;bottom:0;[^}]*height:calc\(28px \+ env\(safe-area-inset-bottom,0px\)\)/)
+  assert.match(banner, /\.mps\{[^}]*background:#15171c;color:rgba\(255,255,255,\.9\)/)
+  // No first-visit banner, OK, toast or folded icon.
+  assert.doesNotMatch(banner, /privacy-bar-ok|privacy-bar-options|privacy-toast|privacy-bar-folded|Mingla uses cookies|Turn off all/)
 })
 
-test('(b) reopening shows the live switches and Save is the real choice', () => {
+test('(c) the strip opens the sheet; Save takes effect and shows Saved; focus is trapped and returned', () => {
   const banner = code(read('components/marketing/consent-banner.tsx'))
-  assert.match(banner, /if \(expanded\) setDraft\(\{ analytics: privacy\.analytics, ads: privacy\.ads \}\)/)
-  assert.match(banner, /data-testid="privacy-bar-save" onClick=\{\(\) => choose\(draft\)\}/)
+  assert.match(banner, /export const PRIVACY_STRIP_LABEL = 'Privacy & ad choices'/)
+  assert.match(banner, /data-testid="privacy-strip"[\s\S]*onClick=\{\(\) => \(open \? close\(\) : window\.dispatchEvent\(new Event\(PRIVACY_CHOICES_EVENT\)\)\)\}/)
+  assert.match(banner, /window\.addEventListener\(PRIVACY_CHOICES_EVENT, reopen\)/)
+  assert.match(banner, /if \(open\) setDraft\(\{ analytics: privacy\.analytics, ads: privacy\.ads \}\)/)
   assert.match(banner, /saveMarketingPrivacy\(choice\)/)
   assert.match(banner, /if \(choice\.analytics\) void posthogOptIn\(\)/)
+  assert.match(banner, /<span aria-live="polite"[^>]*>\s*\{saved \? PRIVACY_SAVED_LABEL : PRIVACY_STRIP_LABEL\}/)
+  assert.match(banner, /const SAVED_MS = 1800/)
+  assert.match(banner, /role="dialog"\s*aria-modal="true"/)
+  assert.match(banner, /if \(event\.key === 'Escape'\)/)
+  assert.match(banner, /if \(event\.key !== 'Tab'\) return/)
+  assert.match(banner, /window\.requestAnimationFrame\(\(\) => stripRef\.current\?\.focus\(\)\)/)
 })
