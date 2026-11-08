@@ -21,6 +21,12 @@
 //   - removing the per-card try/catch in attachExperienceDisplayPrices fails
 //     "one card's conversion failure is isolated".
 //
+// RETEST (P3-5 rework): the implementor tests a 0-exponent SOURCE. These add
+// a 0-exponent TARGET (an ISK viewer), the attach path end to end, and
+// malformed exponent rows. FAILS-ON-REVERT: dropping `exponentFor` from
+// attachExperienceDisplayPrices, or scaling the target by a fixed 100, fails
+// "a 0-exponent viewer currency is not divided by 100".
+//
 // Run: deno test --allow-read --no-check supabase/functions/discover-cards/__tests__/issue_4347_experience_display_price.tester.adversarial.test.ts
 
 import { assertEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts';
@@ -28,6 +34,7 @@ import {
   attachExperienceDisplayPrices,
   dbMinorConverter,
   experienceDisplayPrice,
+  loadCurrencyExponents,
   type MinorConverter,
 } from '../../_shared/experienceDisplayPrice.ts';
 
@@ -163,4 +170,80 @@ Deno.test('#4347 adv: fractional naira and concurrent duplicates send whole mino
   assertEquals(seen[0].p_amount, 10_000_000, 'the RPC must receive whole minor units');
   assertEquals(Number.isInteger(seen[0].p_amount), true);
   for (const r of results) assertEquals(r.displayPriceMin, 74.2);
+});
+
+/** A fake client whose supported-currencies RPC answers `rows`, and whose FX RPC
+ * converts major units at `perUsd` and reports in the target's own exponent. */
+function exponentClient(rows: unknown, opts: { failCurrencies?: boolean } = {}) {
+  const exp: Record<string, number> = { USD: 2, NGN: 2, ISK: 0 };
+  const perUsd: Record<string, number> = { USD: 1, NGN: 1347.74, ISK: 122.56 };
+  const calls: Array<Record<string, unknown>> = [];
+  return {
+    calls,
+    rpc(fn: string, args: Record<string, unknown>) {
+      if (fn === 'issue_1384_supported_currencies') {
+        if (opts.failCurrencies) return Promise.resolve({ data: null, error: { message: 'permission denied' } });
+        return Promise.resolve({ data: rows, error: null });
+      }
+      calls.push(args);
+      const src = String(args.p_source);
+      const tgt = String(args.p_target);
+      const major = Number(args.p_amount) / 10 ** exp[src];
+      const converted = (major / perUsd[src]) * perUsd[tgt];
+      return Promise.resolve({ data: String(Math.round(converted * 10 ** exp[tgt])), error: null });
+    },
+  };
+}
+
+const ROWS = [
+  { code: 'USD', minor_unit_exponent: 2 },
+  { code: 'NGN', minor_unit_exponent: 2 },
+  { code: 'ISK', minor_unit_exponent: 0 },
+];
+
+Deno.test('#4347 retest: a 0-exponent viewer currency is not divided by 100', async () => {
+  const client = exponentClient(ROWS);
+  const exponentFor = await loadCurrencyExponents(client);
+  const [card] = await attachExperienceDisplayPrices(
+    [{ id: 'lagos', totalPriceMin: 100_000, totalPriceMax: 100_000, currency: 'NGN' }],
+    'ISK',
+    dbMinorConverter(client, 'snap-1'),
+    exponentFor,
+  );
+  // ₦100,000 ≈ $74.20 ≈ 9,094 ISK. Divided by 100 it would read "≈ kr91".
+  assertEquals(card.displayPriceMin, 9_094);
+  assertEquals(card.displayCurrency, 'ISK');
+  assertEquals(client.calls[0].p_amount, 10_000_000, 'the NGN source still goes in kobo');
+});
+
+Deno.test('#4347 retest: malformed exponent rows are ignored, a failed read falls back to 2', async () => {
+  const lookup = await loadCurrencyExponents(
+    exponentClient([
+      { code: 'ISK', minor_unit_exponent: 0 },
+      { code: 'HUF', minor_unit_exponent: '0' },
+      { code: 'JPY', minor_unit_exponent: -1 },
+      { code: 'KWD', minor_unit_exponent: 4 },
+      { code: 'BHD', minor_unit_exponent: 1.5 },
+      { code: 'nok', minor_unit_exponent: 0 },
+      { code: null, minor_unit_exponent: 0 },
+      null,
+      'garbage',
+    ]),
+  );
+  assertEquals(lookup('ISK'), 0);
+  assertEquals(lookup('HUF'), 2, 'a string exponent was trusted');
+  assertEquals(lookup('JPY'), 2);
+  assertEquals(lookup('KWD'), 2, 'an exponent above 3 was trusted');
+  assertEquals(lookup('BHD'), 2);
+  assertEquals(lookup('NOK'), 0, 'lowercase codes are normalised');
+  // A failed or non-array answer never throws; every code reads 2.
+  for (const client of [
+    exponentClient(ROWS, { failCurrencies: true }),
+    exponentClient({ not: 'an array' }),
+    { rpc: () => Promise.reject(new Error('socket hang up')) },
+    { rpc: () => { throw new Error('sync boom'); } },
+  ]) {
+    const fallback = await loadCurrencyExponents(client);
+    assertEquals([fallback('ISK'), fallback('USD')], [2, 2]);
+  }
 });
