@@ -171,12 +171,13 @@ test('Host hand-off keeps phase 1: phone → Host OneLink, computer → Host she
   const host = code(read('components/site/host-page.tsx'))
   assert.match(host, /cta=\{<HostHandoffButton location="hero" className="btn cta" withArrow \/>\}/)
   assert.match(code(read('components/landing/host-handoff.tsx')), /<HandoffSheet sheet="host" attribution=\{attribution\}/)
-  // The website demo continues to host web through the seam; the description never travels.
+  // The website demo continues to host web through the seam on every device.
+  // Phase 4b: the description is POSTed to the draft endpoint and only the
+  // draft id travels (lib/__tests__/issue-4339-ari-draft-handoff.implementor.test.mjs).
   const demo = code(read('components/site/site-prompt-demo.tsx'))
-  assert.match(demo, /const hrefs = appHandoffHrefs\('host', ATTRIBUTION\)/)
-  assert.match(demo, /href=\{hrefs\.computerHref\}/)
-  assert.doesNotMatch(demo, /encodeURIComponent|searchParams|\?draft|location\.href|fetch\(/, 'the description is never put in a URL or sent')
-  assert.match(read('components/site/site-prompt-demo.tsx'), /TODO\(#4339 §5\)/)
+  assert.match(demo, /<AriSheet href=\{ariDraftContinueHref\(draftId, ATTRIBUTION\)\}/)
+  assert.match(demo, /href=\{href\} target="_blank"/)
+  assert.doesNotMatch(demo, /encodeURIComponent|searchParams|location\.href|fetch\(/, 'the description is never put in a URL')
   // Book a call and the host-type tiles.
   assert.match(host, /<Link className="btn white" href="\/schedule">\s*Book a call\s*<\/Link>/)
   assert.match(host, /ICP_SLUGS\.map\(\(slug\) => \{[\s\S]*?href=\{icpLandingPath\(slug\)\}/)
