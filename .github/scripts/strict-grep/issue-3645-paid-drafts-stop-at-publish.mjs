@@ -423,8 +423,8 @@ const RULES = [
     '"Whole experience price"',
   ], "0.00 is the placeholder of the whole-price field"),
   has("Eb-validation-unchanged", F.experienceWizard,
-    'if (pricingMode === "whole") return resolvedTotalMajor > 0;',
-    "a paid whole-price experience still needs a price above zero"),
+    'if (pricingMode === "whole") return paidPriceHasMinorUnits(resolvedTotalMajor);',
+    "a paid whole-price experience still needs a price of at least one minor unit (#3645 2b: the server's rounding)"),
 
   // E-c. The payout country prompt inside the ticket sheet.
   ordered("Ec-slot-under-price", F.ticketSheet, [
