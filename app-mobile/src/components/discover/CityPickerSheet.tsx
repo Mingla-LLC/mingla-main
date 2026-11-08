@@ -22,6 +22,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import * as Haptics from "expo-haptics";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BaseBottomSheet } from "../ui/BaseBottomSheet";
 import { AddressInput, type PlaceDetails } from "../location/AddressInput";
 import { PreferencesService } from "../../services/preferencesService";
@@ -53,6 +54,11 @@ export const CityPickerSheet: React.FC<CityPickerSheetProps> = ({
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [persisting, setPersisting] = useState(false);
+  // #4334 polish: the search field autofocuses, and keyboardBehavior
+  // "interactive" lifts the 90% sheet by the keyboard height. Without a cap the
+  // header slid past the status bar / notch and the sheet bled off the top of
+  // the screen. topInset stops the sheet just below the safe area (#3872 W5.1).
+  const insets = useSafeAreaInsets();
 
   // Reset state when sheet opens
   useEffect(() => {
@@ -147,6 +153,7 @@ export const CityPickerSheet: React.FC<CityPickerSheetProps> = ({
       visible={visible}
       onClose={onClose}
       snapPoints={SNAP_POINTS}
+      topInset={Math.max(0, insets.top) + 8}
       theme="dark"
       scrollMode="scroll"
       wrapInRNModal
