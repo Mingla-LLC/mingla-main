@@ -2,7 +2,6 @@ import * as Calendar from 'expo-calendar';
 import { Platform, Alert } from 'react-native';
 import { canonicalDiscoveryPriceDetail } from '../utils/priceTiers';
 import { curatedSpendLevel, type SpendLevel } from '../utils/curatedPriceRange';
-import { isBrandExperiencePayload } from '../utils/isBrandExperiencePayload';
 
 /** #4347 — device-calendar notes are English, like every other line in them. */
 const SPEND_LEVEL_WORD: Record<SpendLevel, string> = {
@@ -237,10 +236,15 @@ export class DeviceCalendarService {
     const stopNames = stops.map((s: any) => s.placeName).join(' → ');
     // A brand experience's stops carry 0 (its price is the envelope, in the
     // host's currency), so it gets no spend-level line rather than a false Free.
-    // The SHARED discriminator (as savedCardToExpandedCardData and
-    // ExpandedCardModal use): a Likes/Calendar copy can lose `cardType`, and a
-    // paid experience recovered only by brandId + eventId must not read "Free".
-    const isAiPlan = !isBrandExperiencePayload(card);
+    // A brand experience is decided STRUCTURALLY, as ExpandedCardModal does:
+    // brandId + eventId present (or an explicit experience tag). A copied row
+    // can carry a wrong `cardType: 'curated'`, and a paid experience — whose
+    // stops all carry 0 — must never read "Spend level: Free".
+    const isBrandExperience =
+      card?.cardType === 'experience' ||
+      (typeof card?.brandId === 'string' && card.brandId.length > 0 &&
+        typeof card?.eventId === 'string' && card.eventId.length > 0);
+    const isAiPlan = !isBrandExperience;
     const planSpendLevel = isAiPlan
       ? curatedSpendLevel(stops.filter((s: any) => s?.optional !== true))
       : null;

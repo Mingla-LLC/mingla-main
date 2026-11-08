@@ -12,7 +12,8 @@
  * expo-calendar mocked.
  *
  * FAILS-ON-REVERT: going back to `card?.cardType !== 'experience'` writes
- * "Spend level: Free" for the tag-less experience and fails E-2.
+ * "Spend level: Free" for the tag-less experience and fails E-2; deciding by
+ * isBrandExperiencePayload (which trusts an explicit 'curated' tag) fails E-4.
  */
 jest.mock(
   "expo-calendar",
@@ -69,6 +70,24 @@ describe("#4347 device calendar spend level", () => {
     );
     expect(event.notes).not.toContain("Spend level");
     expect(event.notes).not.toContain("Free");
+  });
+
+  it("E-4 a paid brand experience WRONGLY tagged curated still gets no spend-level line", () => {
+    const event = DeviceCalendarService.createEventFromCuratedCard(
+      {
+        cardType: "curated",
+        brandId: "brand-1",
+        eventId: "event-1",
+        tagline: "Lagos food walk",
+        stops: experienceStops,
+        totalPriceMin: 100000,
+        totalPriceMax: 100000,
+        currency: "NGN",
+      },
+      START,
+      150,
+    );
+    expect(event.notes).not.toContain("Spend level");
   });
 
   it("E-3 a tagged brand experience gets no spend-level line either", () => {
