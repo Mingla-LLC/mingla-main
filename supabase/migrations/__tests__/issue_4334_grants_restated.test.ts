@@ -30,3 +30,10 @@ Deno.test("G-2 the public event read keeps its guest grant; the RSVP graph keeps
   assert(flat.includes("GRANT EXECUTE ON FUNCTION public.pg_public_event_by_slug(text,text) TO anon,authenticated,service_role;"));
   assert(/COMMENT ON FUNCTION public\.business_update_rsvp_graph\(uuid,jsonb,text,uuid\) IS '#3044 db-push-reachable/.test(flat));
 });
+
+Deno.test("G-3 the N-1 regenerated public reads restate production's guest grants and stay #2489 carriers", () => {
+  assert(flat.includes("REVOKE ALL ON FUNCTION public.pg_direct_event_checkout_bundle(uuid,text,text) FROM PUBLIC;"));
+  assert(flat.includes("GRANT EXECUTE ON FUNCTION public.pg_direct_event_checkout_bundle(uuid,text,text) TO anon,authenticated,service_role;"));
+  assert(flat.includes("GRANT EXECUTE ON FUNCTION public.pg_public_rsvp_by_slug(text,text) TO anon,authenticated,service_role;"));
+  assert(flat.includes("('pg_direct_event_checkout_bundle', 'function'), ('pg_public_rsvp_by_slug', 'function') ON CONFLICT (object_name) DO NOTHING;"));
+});

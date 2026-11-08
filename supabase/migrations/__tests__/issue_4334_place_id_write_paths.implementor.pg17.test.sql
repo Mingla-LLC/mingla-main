@@ -15,6 +15,8 @@
 --   W-12 the write-path registry below (a path that stops writing the id),
 --        including both publish owners (draft → live promotes pin + id)
 --   W-13 pg_public_event_by_slug googlePlaceId
+--   W-14 pg_direct_event_checkout_bundle googlePlaceId (the buyer page's REAL read)
+--   W-15 pg_public_rsvp_by_slug googlePlaceId (the RSVP page's read)
 \set ON_ERROR_STOP on
 BEGIN;
 
@@ -129,6 +131,38 @@ BEGIN
   v_result := public.pg_public_event_by_slug('place-ids-4334', 'place-ids-event')::jsonb;
   IF NOT (v_result ? 'googlePlaceId') OR v_result -> 'googlePlaceId' <> 'null'::jsonb THEN
     RAISE EXCEPTION 'W-13b: a hidden street leaked its place id (%)', v_result -> 'googlePlaceId';
+  END IF;
+
+  -- ── W-14 the buyer page's direct bundle carries the id, withheld with the street
+  UPDATE public.events SET theme = jsonb_build_object('business_event', jsonb_build_object('hideAddressUntilTicket', false))
+   WHERE id = v_event;
+  v_result := public.pg_direct_event_checkout_bundle(NULL, 'place-ids-4334', 'place-ids-event')::jsonb;
+  IF v_result IS NULL OR v_result ->> 'googlePlaceId' IS DISTINCT FROM v_id1 THEN
+    RAISE EXCEPTION 'W-14: the checkout bundle did not return googlePlaceId (%)', left(v_result::text, 300);
+  END IF;
+  IF (public.pg_direct_event_checkout_bundle(v_event, NULL, NULL)::jsonb) ->> 'googlePlaceId' IS DISTINCT FROM v_id1 THEN
+    RAISE EXCEPTION 'W-14: the checkout bundle by event id did not return googlePlaceId';
+  END IF;
+  UPDATE public.events SET theme = jsonb_build_object('business_event', jsonb_build_object('hideAddressUntilTicket', true))
+   WHERE id = v_event;
+  v_result := public.pg_direct_event_checkout_bundle(NULL, 'place-ids-4334', 'place-ids-event')::jsonb;
+  IF NOT (v_result ? 'googlePlaceId') OR v_result -> 'googlePlaceId' <> 'null'::jsonb THEN
+    RAISE EXCEPTION 'W-14b: the checkout bundle leaked a hidden street''s place id (%)', v_result -> 'googlePlaceId';
+  END IF;
+
+  -- ── W-15 the RSVP page's read carries the id, withheld with the street ───
+  UPDATE public.events SET event_type = 'rsvp',
+    theme = jsonb_build_object('business_event', jsonb_build_object('hideAddressUntilTicket', false))
+   WHERE id = v_event;
+  v_result := public.pg_public_rsvp_by_slug('place-ids-4334', 'place-ids-event')::jsonb;
+  IF v_result IS NULL OR v_result ->> 'googlePlaceId' IS DISTINCT FROM v_id1 THEN
+    RAISE EXCEPTION 'W-15: the RSVP read did not return googlePlaceId (%)', left(v_result::text, 300);
+  END IF;
+  UPDATE public.events SET theme = jsonb_build_object('business_event', jsonb_build_object('hideAddressUntilTicket', true))
+   WHERE id = v_event;
+  v_result := public.pg_public_rsvp_by_slug('place-ids-4334', 'place-ids-event')::jsonb;
+  IF NOT (v_result ? 'googlePlaceId') OR v_result -> 'googlePlaceId' <> 'null'::jsonb THEN
+    RAISE EXCEPTION 'W-15b: the RSVP read leaked a hidden street''s place id (%)', v_result -> 'googlePlaceId';
   END IF;
 
   -- ── W-7 venue create: id in the insert, stamped ──────────────────────────

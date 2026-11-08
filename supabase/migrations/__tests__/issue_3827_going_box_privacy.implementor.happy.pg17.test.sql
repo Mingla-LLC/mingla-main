@@ -287,7 +287,9 @@ BEGIN
       -- [TEST-MOD-APPROVED #1023] 20280430011023 adds the event's gradient override after the animation.
       'themeGradientOverride','brand',
       'rsvpGoingCount','rsvpCapacity','rsvpAllowPlusOnes','rsvpPlusOnesMax','rsvpWaitlistEnabled',
-      'rsvpApprovalMode','publicEventRow']::text[],
+      'rsvpApprovalMode',
+      -- [TEST-MOD-APPROVED #4334] 20280521004334 adds googlePlaceId just before publicEventRow.
+      'googlePlaceId','publicEventRow']::text[],
     'T-17 no new top-level key: U-01e list + publicEventRow last (got ' || array_to_string(v_keys, ',') || ')');
 
   v := public.pg_public_rsvp_by_slug(b.o_slug, pub.o_slug)::jsonb;
