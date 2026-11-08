@@ -64,6 +64,7 @@ import {
   cityWeek,
   distanceLabel,
   emptyListText,
+  quietWeek,
   listingDayKey,
   listingWhen,
   liveCities,
@@ -75,6 +76,7 @@ import {
   type LinksCity,
   type LinksListing,
   type LinksListingKind,
+  type LinksPlace,
   type LinksPin,
   type LinksPoint,
   type LinksWeek,
@@ -291,6 +293,10 @@ export interface LinksExperienceProps {
   visitor: { point: LinksPoint | null; useMiles: boolean }
   /** A database read failed (logged on the server): nothing can be listed. */
   readFailed?: boolean
+  /** Up to 3 places per quiet city (#4318 addendum 2), keyed by city slug. */
+  places?: Record<string, LinksPlace[]>
+  /** Cities whose places read failed. */
+  placesFailed?: string[]
 }
 
 export function LinksExperience({
@@ -302,6 +308,8 @@ export function LinksExperience({
   initialCity,
   visitor,
   readFailed = false,
+  places = {},
+  placesFailed = [],
 }: LinksExperienceProps) {
   const [citySlug, setCitySlug] = useState(initialCity)
   const [filter, setFilter] = useState<Filter>('all')
@@ -320,6 +328,8 @@ export function LinksExperience({
   const listRef = useRef<HTMLUListElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
   const moreRef = useRef<HTMLButtonElement>(null)
+  // The quiet week's "Plans in … / Host something in …" links play the more link's part.
+  const quietLinksRef = useRef<HTMLDivElement>(null)
   const chipsRef = useRef<HTMLDivElement>(null)
   const [chipLevel, setChipLevel] = useState<ChipFitLevel>(0)
   // Strips stay invisible until the first measured fit, so none paints cut off.
@@ -343,7 +353,7 @@ export function LinksExperience({
     const list = listRef.current
     const wrap = wrapRef.current
     // The "more" link is absent when the city has no listings.
-    const moreButton = moreRef.current
+    const moreButton: HTMLElement | null = moreRef.current ?? quietLinksRef.current
     if (!root || !list || !wrap) return
     const grid = wrap.closest<HTMLElement>('[data-pins]')
     // Measure with no spread room, then spread what the maximal fit leaves.
@@ -521,8 +531,8 @@ export function LinksExperience({
       })
     } else {
       captureMarketing('links_strip_opened', {
-        kind: target.type === 'listing' ? target.listing.kind : target.pin.opens,
-        source: target.type === 'listing' ? 'listing' : 'custom',
+        kind: target.type === 'listing' ? target.listing.kind : target.type === 'place' ? 'place' : target.pin.opens,
+        source: target.type === 'listing' ? 'listing' : target.type === 'place' ? 'place' : 'custom',
         device,
         city: city.slug,
       })
@@ -566,6 +576,21 @@ export function LinksExperience({
         </span>
       )
       meta = <span className={styles.k}>{pinWhen(target.pin, week.today)}</span>
+    } else if (target.type === 'place') {
+      const pl = target.place
+      thumb = pl.photo ? (
+        <span className={styles['st-th']} style={{ backgroundImage: cssUrl(pl.photo) }} role="img" aria-label={pl.name} />
+      ) : (
+        <span className={cn(styles['st-th'], styles['st-th--experience'])} aria-hidden="true">
+          <Icon name="pin" />
+        </span>
+      )
+      meta = (
+        <>
+          <span className={styles.k}>{pl.category ?? 'Place'}</span>
+          {pl.area ? <span>{pl.area}</span> : null}
+        </>
+      )
     } else {
       const l = target.listing
       const when = listingWhen(l, week.today)
@@ -599,7 +624,7 @@ export function LinksExperience({
         >
           {thumb}
           <span className={styles['st-txt']}>
-            <b>{target.type === 'pin' ? target.pin.title : target.listing.title}</b>
+            <b>{target.type === 'pin' ? target.pin.title : target.type === 'place' ? target.place.name : target.listing.title}</b>
             <span className={styles['st-meta']}>{meta}</span>
           </span>
           <span className={styles['st-go']}>
@@ -646,13 +671,24 @@ export function LinksExperience({
   const pinsMore = pinsMoreLabel(week.pins.length, fit.pinsShown)
   const words = FILTERS.find((f) => f.id === filter) ?? FILTERS[0]
   const otherLiveCity = live.some((l) => l.city.slug !== city.slug && l.count > 0)
-  const emptyText = emptyListText({
-    nothingAnywhere: readFailed || live.every((l) => l.count === 0),
+  // The shared "nothing this week" rule (lib/links-week.ts quietWeek).
+  const quiet = quietWeek({
+    city,
     cityHasListings: week.listings.length > 0,
+    places: places[city.slug] ?? [],
+    live,
+    readFailed: readFailed || placesFailed.includes(city.slug),
+  })
+  // Listings exist but the chip filter leaves none.
+  const emptyText = emptyListText({
+    nothingAnywhere: false,
+    cityHasListings: true,
     cityName: city.name,
     plural: words.plural,
     otherLiveCity,
   })
+  const hostTarget: LinksTarget = { type: 'banner', app: 'host' }
+  const hostHrefs = hrefFor(hostTarget)
 
   const cityList = () => {
     const rows = pickerOrder(live.length > 0 ? live : cities.map((c) => ({ city: c, count: 0 })), visitor.point)
@@ -698,6 +734,7 @@ export function LinksExperience({
       <div
         className={cn(styles['lk-grid'], 'min-h-0 flex-1')}
         data-pins={week.pins.length > 0 ? '1' : '0'}
+        data-quiet={quiet.mode === 'listings' ? '0' : '1'}
         inert={sheet !== null}
       >
         <div className={styles['lk-left']} ref={leftRef}>
@@ -756,7 +793,14 @@ export function LinksExperience({
             </button>
             <p className={styles['lk-line']}>Find places, events and plans that fit the vibe.</p>
           </header>
-          <div className={styles['lk-chips']} role="group" aria-label="Filter" ref={chipsRef} data-fit={chipLevel}>
+          <div
+            className={styles['lk-chips']}
+            role="group"
+            aria-label="Filter"
+            ref={chipsRef}
+            data-fit={chipLevel}
+            hidden={quiet.mode !== 'listings'}
+          >
             {FILTERS.map((f) => (
               <button
                 key={f.id}
@@ -773,8 +817,16 @@ export function LinksExperience({
             ))}
           </div>
           <div className={styles['lk-listwrap']} ref={wrapRef} data-fit-gate="">
-            <ul className={styles['lk-list']} aria-label="Plans" ref={listRef}>
-              {shown.length > 0 ? (
+            {quiet.mode === 'quiet' ? <p className={styles['lk-quiet-h']}>{quiet.heading}</p> : null}
+            <ul className={styles['lk-list']} aria-label={quiet.mode === 'quiet' ? 'Places' : 'Plans'} ref={listRef}>
+              {quiet.mode === 'quiet' ? (
+                quiet.places.map((place) => strip({ type: 'place', place }, place.id, 'strip'))
+              ) : quiet.mode === 'fallback' ? (
+                <li className={styles['lk-empty']}>
+                  <b>A quiet one.</b>
+                  {quiet.text}
+                </li>
+              ) : shown.length > 0 ? (
                 shown.map((listing) => strip({ type: 'listing', listing }, listing.id, 'strip'))
               ) : (
                 <li className={styles['lk-empty']}>
@@ -783,6 +835,25 @@ export function LinksExperience({
                 </li>
               )}
             </ul>
+            {quiet.mode === 'quiet' ? (
+              <div className={styles['lk-quiet-links']} ref={quietLinksRef}>
+                {quiet.plansIn !== null ? (
+                  <button type="button" className={styles['lk-more']} onClick={() => pickCity(quiet.plansIn?.slug ?? city.slug)}>
+                    <u>Plans in {quiet.plansIn.name}</u>
+                    <Icon name="right" />
+                  </button>
+                ) : null}
+                <a
+                  href={hostHrefs.href}
+                  data-cta-phone-href={hostHrefs.phoneHref}
+                  className={styles['lk-more']}
+                  onClick={(event) => onTap(hostTarget, event)}
+                >
+                  <u>Host something in {quiet.hostCity}</u>
+                  <Icon name="right" />
+                </a>
+              </div>
+            ) : null}
             {week.listings.length > 0 ? (
               <button
                 type="button"
@@ -981,6 +1052,33 @@ function Sheet({ sheet, closeRef, onClose, city, src, week, shown, words, hasVis
             </QrBlock>
           </>
         )
+      } else if (target.type === 'place') {
+        const pl = target.place
+        title = pl.name
+        label = pl.name
+        body = (
+          <>
+            {pl.photo ? (
+              <div className={styles.hero} style={{ backgroundImage: cssUrl(pl.photo) }} role="img" aria-label={pl.name} />
+            ) : null}
+            <div>
+              <span className={styles.pill}>
+                {pl.category ?? 'Place'} · {city.name}
+              </span>
+            </div>
+            {pl.area ? (
+              <ul className={styles.meta}>
+                <li>
+                  <Icon name="pin" />
+                  {pl.area}
+                </li>
+              </ul>
+            ) : null}
+            <QrBlock value={hrefs.phoneHref} title="Find it in Mingla" body="Scan to get the app and explore places like this one.">
+              <StoreButtons app="explorer" />
+            </QrBlock>
+          </>
+        )
       } else {
         const p = target.pin
         const app = targetApp(target)
@@ -1053,7 +1151,7 @@ function Sheet({ sheet, closeRef, onClose, city, src, week, shown, words, hasVis
         </>
       )
       label = 'From Mingla'
-      sub = `${week.pins.length} pinned in ${city.name}`
+      sub = `${week.pins.length} pinned this week`
       tall = week.pins.length > 6
       body = <ul className={styles['lk-list']}>{week.pins.map((pin) => renderStrip({ type: 'pin', pin }, pin.id))}</ul>
       break

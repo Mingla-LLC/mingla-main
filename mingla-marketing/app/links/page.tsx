@@ -5,7 +5,8 @@
 // the week through lib/links-data.ts (cached 5 minutes), works out which city
 // the page opens on, and hands plain data to the client <LinksExperience/>.
 //
-// City order (lib/links-week.ts resolveCity): `?city=<slug>` wins, then the
+// City order (lib/links-week.ts resolveCity; it picks whose LISTINGS show, admin
+// strips show in every city): `?city=<slug>` wins, then the
 // visitor's coarse location from Vercel's edge headers (no prompt, nothing
 // stored), then the city they picked last time (cookie), then the busiest city.
 //
@@ -17,7 +18,7 @@ import { cookies, headers } from 'next/headers'
 import { LinksExperience } from '@/components/marketing/links-experience'
 import { CITY_HUB_CENTRES, CITY_HUB_REACH_KM, CITY_HUB_REGIONS, CITY_HUBS } from '@/content/cities/registry'
 import { LINKS_CITY_COOKIE } from '@/lib/links-config'
-import { getLinksData } from '@/lib/links-data'
+import { getLinksData, getLinksPlaces } from '@/lib/links-data'
 import { sanitizeLinksSrc } from '@/lib/links-src'
 import {
   bucketListings,
@@ -80,6 +81,13 @@ export default async function LinksPage({
     cookie: oneParam(jar.get(LINKS_CITY_COOKIE)?.value),
   })
 
+  // The quiet-week places (#4318 addendum 2): for every city the visitor can
+  // reach without listings — the opening city when it is quiet, and every
+  // registry city when nothing is live (the picker then lists them all).
+  const liveSlugs = new Set(live.map((l) => l.city.slug))
+  const quietCities = live.length === 0 ? cities : cities.filter((c) => c.slug === initial.slug && !liveSlugs.has(c.slug))
+  const places = data.failed.includes('week') ? { places: {}, failed: [] } : await getLinksPlaces(quietCities)
+
   return (
     <div className={`${linksSerif.variable} ${linksSans.variable} ${linksMono.variable}`}>
       <LinksExperience
@@ -90,7 +98,9 @@ export default async function LinksPage({
         pins={pins}
         initialCity={initial.slug}
         visitor={{ point: geo, useMiles: requestHeaders.get('x-vercel-ip-country') === 'US' }}
-        readFailed={data.failed.length > 0}
+        readFailed={data.failed.includes('week')}
+        places={places.places}
+        placesFailed={places.failed}
       />
     </div>
   )

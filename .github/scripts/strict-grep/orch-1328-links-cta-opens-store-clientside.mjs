@@ -92,8 +92,8 @@ function checkPage(rawSrc, failures) {
     failures.push(`${TARGET}: the banners and strips must be real <a> anchors handled by onTap(.`);
   }
   for (const a of handoffAnchors) {
-    if (!/data-cta-phone-href=\{phoneHref\}/.test(a)) {
-      failures.push(`${TARGET}: a hand-off anchor is missing data-cta-phone-href={phoneHref} (pre-hydration phone taps): ${a.replace(/\s+/g, " ").slice(0, 80)}…`);
+    if (!/data-cta-phone-href=\{(?:\w+\.)?phoneHref\}/.test(a)) {
+      failures.push(`${TARGET}: a hand-off anchor is missing data-cta-phone-href={…phoneHref} (pre-hydration phone taps): ${a.replace(/\s+/g, " ").slice(0, 80)}…`);
     }
     if (/target=\{newTab \? '_blank'/.test(a) && !/rel=\{newTab \? 'noopener'/.test(a)) {
       failures.push(`${TARGET}: a new-tab hand-off anchor is missing rel="noopener": ${a.replace(/\s+/g, " ").slice(0, 80)}…`);

@@ -33,10 +33,12 @@ export interface LinksWeekRow {
   item_slug: string | null
 }
 
-/** One row of `public.links_page_strips()` (published, unexpired). */
+/**
+ * One row of `public.links_page_strips()` (published, unexpired). Admin strips
+ * are not by city (Seth, 8 Nov 2026): every strip shows first in every city.
+ */
 export interface LinksStripRow {
   id: string
-  city_slug: string | null
   shows_on: string
   title: string
   label: string
@@ -76,8 +78,6 @@ export interface LinksListing {
 
 export interface LinksPin {
   id: string
-  /** null = every live city. */
-  citySlug: string | null
   /** YYYY-MM-DD, the day shown on the strip. */
   showsOn: string
   title: string
@@ -277,12 +277,10 @@ export function normalisePins(rows: readonly LinksStripRow[]): LinksPin[] {
     if (!isOneOf(PIN_LABELS, row.label) || !isOneOf(PIN_OPENS, row.opens)) continue
     const title = (row.title ?? '').trim()
     if (title === '' || !DATE_KEY.test(row.shows_on ?? '')) continue
-    if (row.city_slug !== null && !SLUG.test(row.city_slug)) continue
     if (row.opens === 'web' && pinWebHref(row.url) === null) continue
     if (row.opens === 'blog' && (!row.blog_slug || !SLUG.test(row.blog_slug))) continue
     out.push({
       id: row.id,
-      citySlug: row.city_slug,
       showsOn: row.shows_on,
       title,
       label: row.label,
@@ -311,7 +309,7 @@ export interface LinksWeek {
   listings: LinksListing[]
   /** Only the days that have something on. */
   days: LinksDay[]
-  /** Admin strips for this city (its own and every-city ones), admin order. */
+  /** Every unexpired admin strip (strips show in every city), admin order. */
   pins: LinksPin[]
 }
 
@@ -335,7 +333,7 @@ export function cityWeek(
   const days = keys
     .map((key) => ({ key, listings: mine.filter((l) => listingDayKey(l) === key) }))
     .filter((d) => d.listings.length > 0)
-  const cityPins = pins.filter((p) => (p.citySlug === null || p.citySlug === city.slug) && p.showsOn >= today)
+  const cityPins = pins.filter((p) => p.showsOn >= today)
   return { today, keys, listings: mine, days, pins: cityPins }
 }
 
@@ -355,8 +353,9 @@ export function pinWhen(pin: LinksPin, today: string): string {
 // ---------------------------------------------------------------- cities
 
 /**
- * The picker's cities: only those with at least one listing or one admin strip
- * aimed at that city this week, with their listing counts.
+ * The picker's cities: only those with at least one listing this week, with
+ * their listing counts. Admin strips show in every city, so they never make a
+ * city live; the `pins` argument stays so callers pass the same week inputs.
  */
 export function liveCities(
   cities: readonly LinksCity[],
@@ -365,14 +364,8 @@ export function liveCities(
   nowIso: string,
 ): Array<{ city: LinksCity; count: number }> {
   return cities
-    .map((city) => {
-      const week = cityWeek(city, listings, pins, nowIso)
-      // An every-city strip does not make a city live on its own.
-      const own = week.pins.filter((p) => p.citySlug === city.slug).length
-      return { city, count: week.listings.length, pins: own }
-    })
-    .filter((c) => c.count > 0 || c.pins > 0)
-    .map(({ city, count }) => ({ city, count }))
+    .map((city) => ({ city, count: cityWeek(city, listings, pins, nowIso).listings.length }))
+    .filter((c) => c.count > 0)
 }
 
 export type CitySource = 'query' | 'geo' | 'cookie' | 'busiest' | 'fallback'
@@ -434,4 +427,109 @@ export function emptyListText(input: {
   if (input.nothingAnywhere) return 'Nothing is listed this week yet. Check back soon.'
   if (input.cityHasListings) return `No ${input.plural} listed in ${input.cityName} this week yet.`
   return `Nothing is listed in ${input.cityName} this week yet.${input.otherLiveCity ? ' Try another city.' : ''}`
+}
+
+// ---------------------------------------------------------------- places (the quiet week)
+
+/** One row of `public.links_page_places(p_lat, p_lng, p_radius_km, p_limit)`. */
+export interface LinksPlaceRow {
+  place_id: string
+  name: string
+  category: string | null
+  area_label: string | null
+  lat: number | null
+  lng: number | null
+  photo_path: string | null
+}
+
+export interface LinksPlace {
+  id: string
+  name: string
+  category: string | null
+  area: string | null
+  /** The stored `<placeId>/<n>_thumb.jpg` on the public object endpoint, or null. */
+  photo: string | null
+  citySlug: string
+}
+
+export const QUIET_WEEK_PLACES = 3
+const PLACE_ID = /^[A-Za-z0-9_-]{8,256}$/
+const PLACE_THUMB_PATH = /^[A-Za-z0-9_-]{8,256}\/\d{1,3}_thumb\.jpg$/
+
+/**
+ * The public URL of a stored place thumbnail: the non-metered public object
+ * endpoint of the `place-photos` bucket, never /render/image (hold #1643), and
+ * only the pre-generated `<placeId>/<n>_thumb.jpg` objects.
+ */
+export function placePhotoUrl(storageBase: string, path: string | null): string | null {
+  if (!path || !PLACE_THUMB_PATH.test(path)) return null
+  const base = storageBase.replace(/\/$/, '')
+  if (!/^https:\/\//.test(base)) return null
+  return `${base}/storage/v1/object/public/place-photos/${path}`
+}
+
+/** Place rows → at most 3 valid places for one city. */
+export function normalisePlaces(rows: readonly LinksPlaceRow[], citySlug: string, storageBase: string): LinksPlace[] {
+  const out: LinksPlace[] = []
+  const seen = new Set<string>()
+  for (const row of rows) {
+    if (!row || typeof row.place_id !== 'string' || !PLACE_ID.test(row.place_id) || seen.has(row.place_id)) continue
+    const name = (row.name ?? '').trim()
+    if (name === '') continue
+    seen.add(row.place_id)
+    out.push({
+      id: row.place_id,
+      name,
+      category: row.category?.trim() || null,
+      area: row.area_label?.trim() || null,
+      photo: placePhotoUrl(storageBase, row.photo_path),
+      citySlug,
+    })
+    if (out.length === QUIET_WEEK_PLACES) break
+  }
+  return out
+}
+
+/** The nearest other city with listings this week, for "Plans in <city> →". */
+export function nearestLiveCity(
+  city: LinksCity,
+  live: ReadonlyArray<{ city: LinksCity; count: number }>,
+): LinksCity | null {
+  const others = live.filter((l) => l.city.slug !== city.slug && l.count > 0).map((l) => l.city)
+  return nearestCity(others, city)?.city ?? null
+}
+
+export type QuietWeek =
+  | { mode: 'listings' }
+  | { mode: 'quiet'; heading: string; places: LinksPlace[]; plansIn: LinksCity | null; hostCity: string }
+  | { mode: 'fallback'; text: string }
+
+/**
+ * The shared "nothing this week" rule (#4318 addendum 2, mirrored by #4339):
+ *   1. admin strips always first (rendered above, not decided here);
+ *   2. the city has listings this week: the listings;
+ *   3. no listings: "A quiet week in <City>." with up to 3 real places;
+ *   4. under that, "Plans in <nearest live city> →" when another city has
+ *      listings, then "Host something in <City> →";
+ *   5. a failed read, or nothing live anywhere and no places: the fallback line.
+ */
+export function quietWeek(input: {
+  city: LinksCity
+  cityHasListings: boolean
+  places: readonly LinksPlace[]
+  live: ReadonlyArray<{ city: LinksCity; count: number }>
+  readFailed: boolean
+}): QuietWeek {
+  if (input.cityHasListings) return { mode: 'listings' }
+  const plansIn = nearestLiveCity(input.city, input.live)
+  if (input.readFailed || (plansIn === null && input.places.length === 0)) {
+    return { mode: 'fallback', text: 'Nothing is listed this week yet. Check back soon.' }
+  }
+  return {
+    mode: 'quiet',
+    heading: `A quiet week in ${input.city.name}.`,
+    places: input.places.slice(0, QUIET_WEEK_PLACES),
+    plansIn,
+    hostCity: input.city.name,
+  }
 }

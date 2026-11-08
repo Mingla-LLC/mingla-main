@@ -84,6 +84,18 @@
   grid-template-rows: auto auto auto minmax(0, 1fr) auto;
   grid-template-areas: 'ban' 'head' 'chips' 'list' 'foot';
 }
+/* A quiet week has no chips: drop their track too. */
+.lk-grid[data-quiet='1'][data-pins='1'] {
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  grid-template-areas: 'ban' 'pin' 'head' 'list' 'foot';
+}
+.lk-grid[data-quiet='1'][data-pins='0'] {
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-areas: 'ban' 'head' 'list' 'foot';
+}
+.lk-chips[hidden] {
+  display: none;
+}
 .lk-left,
 .lk-right {
   display: contents;
@@ -324,6 +336,23 @@
   min-height: 0;
   overflow: hidden;
 }
+/* The quiet week (#4318 addendum 2): heading, up to 3 places, then the links. */
+.lk-quiet-h {
+  flex: none;
+  margin: 0;
+  font: 400 26px / 1.1 var(--serif);
+  letter-spacing: -0.01em;
+}
+.lk-quiet-links {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.lk-quiet-links .lk-more {
+  justify-content: flex-start;
+  padding: 0 4px;
+}
 .lk-list {
   list-style: none;
   margin: 0;
@@ -562,6 +591,12 @@
   .lk-grid[data-pins='1'] .lk-empty b {
     display: none;
   }
+  .lk-quiet-h {
+    font-size: 22px;
+  }
+  .lk-quiet-links .lk-more {
+    height: 34px;
+  }
 }
 @container lk (max-width: 380px) {
   .chip span {
@@ -638,7 +673,9 @@
     grid-template-rows: minmax(0, 1fr);
     grid-template-areas: none;
   }
-  .lk-grid[data-pins='0'] {
+  .lk-grid[data-pins='0'],
+  .lk-grid[data-quiet='1'][data-pins='1'],
+  .lk-grid[data-quiet='1'][data-pins='0'] {
     grid-template-rows: minmax(0, 1fr);
     grid-template-areas: none;
   }

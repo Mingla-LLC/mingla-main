@@ -159,26 +159,28 @@ test('the week is today through today+6 in the city zone, grouped by day, with a
   ]
   const listings = week.bucketListings(rows, CITIES)
   const pins = week.normalisePins([
-    { id: 'p1', city_slug: null, shows_on: '2026-11-12', title: 'Every city', label: 'Giveaway', opens: 'explorer', url: null, blog_slug: null, position: 2 },
-    { id: 'p2', city_slug: 'raleigh-nc', shows_on: '2026-11-09', title: 'Raleigh only', label: 'From Mingla', opens: 'web', url: 'host.usemingla.com/e/apexmanager/beach-unwind-2-0?ref=bio', blog_slug: null, position: 1 },
-    { id: 'p3', city_slug: 'lagos', shows_on: '2026-11-09', title: 'Lagos only', label: 'New', opens: 'host', url: null, blog_slug: null, position: 0 },
-    { id: 'p4', city_slug: 'raleigh-nc', shows_on: '2026-11-06', title: 'Expired', label: 'New', opens: 'host', url: null, blog_slug: null, position: -1 },
-    { id: 'p5', city_slug: 'raleigh-nc', shows_on: '2026-11-09', title: 'Bad web link', label: 'New', opens: 'web', url: 'not a url', blog_slug: null, position: 3 },
+    // Admin strips are not by city (#4318 addendum 2): no city_slug at all.
+    { id: 'p1', shows_on: '2026-11-12', title: 'Giveaway strip', label: 'Giveaway', opens: 'explorer', url: null, blog_slug: null, position: 2 },
+    { id: 'p2', shows_on: '2026-11-09', title: 'Event link strip', label: 'From Mingla', opens: 'web', url: 'host.usemingla.com/e/apexmanager/beach-unwind-2-0?ref=bio', blog_slug: null, position: 1 },
+    { id: 'p3', shows_on: '2026-11-09', title: 'Host strip', label: 'New', opens: 'host', url: null, blog_slug: null, position: 0 },
+    { id: 'p4', shows_on: '2026-11-06', title: 'Expired', label: 'New', opens: 'host', url: null, blog_slug: null, position: -1 },
+    { id: 'p5', shows_on: '2026-11-09', title: 'Bad web link', label: 'New', opens: 'web', url: 'not a url', blog_slug: null, position: 3 },
   ])
   const w = week.cityWeek(city('raleigh-nc'), listings, pins, NOW)
   assert.equal(w.today, '2026-11-07')
   assert.deepEqual(w.keys, ['2026-11-07', '2026-11-08', '2026-11-09', '2026-11-10', '2026-11-11', '2026-11-12', '2026-11-13'])
   assert.deepEqual(w.listings.map((l) => l.title), ['Tonight', 'Sunday brunch', 'Friday trip'])
   assert.deepEqual(w.days.map((d) => [d.key, d.listings.length]), [['2026-11-07', 1], ['2026-11-08', 1], ['2026-11-13', 1]])
-  // Admin order (position), this city's strips plus every-city ones, never expired or invalid.
-  assert.deepEqual(w.pins.map((p) => p.title), ['Raleigh only', 'Every city'])
+  // Admin order (position), every strip in every city, never expired or invalid.
+  assert.deepEqual(w.pins.map((p) => p.title), ['Host strip', 'Event link strip', 'Giveaway strip'])
+  assert.deepEqual(week.cityWeek(city('lagos'), listings, pins, NOW).pins.map((p) => p.id), ['p3', 'p2', 'p1'])
   // Labels: Tonight for today from 5 PM, else kind and day; admin strips show label and day only.
   assert.deepEqual(week.listingWhen(w.listings[0], w.today), { tonight: true, text: 'Tonight' })
   assert.deepEqual(week.listingWhen(w.listings[1], w.today), { tonight: false, text: 'Experience · Sun 8' })
-  assert.equal(week.pinWhen(w.pins[1], w.today), 'Giveaway · Thu 12')
+  assert.equal(week.pinWhen(w.pins[2], w.today), 'Giveaway · Thu 12')
   assert.equal(week.timeLabel(w.listings[0].startsAt, w.listings[0].tz), '6:30 PM')
-  // An every-city strip does not make a quiet city live on its own.
-  assert.deepEqual(week.liveCities(CITIES, listings, pins, NOW).map((l) => l.city.slug), ['lagos', 'raleigh-nc'])
+  // Strips never make a city live; only listings do.
+  assert.deepEqual(week.liveCities(CITIES, listings, pins, NOW).map((l) => l.city.slug), ['raleigh-nc'])
 })
 
 // ---------------------------------------------------------------- the fit
@@ -393,4 +395,92 @@ test('rulings: Lagos reaches 80 km, admin strips always first, and the empty cop
   assert.equal(text({ otherLiveCity: false }), 'Nothing is listed in Cary this week yet.')
   assert.equal(text({ nothingAnywhere: true }), 'Nothing is listed this week yet. Check back soon.')
   assert.equal(text({ cityHasListings: true, plural: 'trips' }), 'No trips listed in Cary this week yet.')
+})
+
+// ---------------------------------------------------------------- the quiet week (addendum 2)
+
+const STORAGE = 'https://gqnoajqerqhnvulmnyvv.supabase.co'
+const placeRow = (i, over = {}) => ({
+  place_id: `ChIJplace000${i}`,
+  name: `Place ${i}`,
+  category: 'Park',
+  area_label: 'Downtown',
+  lat: 35.78,
+  lng: -78.64,
+  photo_path: `ChIJplace000${i}/0_thumb.jpg`,
+  ...over,
+})
+
+test('quiet week ladder: listings, places, plans elsewhere, nothing anywhere, a failed read', () => {
+  const raleigh = city('raleigh-nc')
+  const cary = city('cary-nc')
+  const listings = week.bucketListings([row({ lat: 35.7796, lng: -78.6382, item_slug: 'r1' })], CITIES)
+  const live = week.liveCities(CITIES, listings, [], NOW)
+  const places = week.normalisePlaces([placeRow(1), placeRow(2), placeRow(3), placeRow(4)], 'cary-nc', STORAGE)
+
+  // 2. The city has listings: listings.
+  assert.deepEqual(week.quietWeek({ city: raleigh, cityHasListings: true, places, live, readFailed: false }), { mode: 'listings' })
+  // 3 + 4. No listings, with places: the heading, up to 3 places, plans in the nearest live city, host.
+  const q = week.quietWeek({ city: cary, cityHasListings: false, places, live, readFailed: false })
+  assert.equal(q.mode, 'quiet')
+  assert.equal(q.heading, 'A quiet week in Cary.')
+  assert.deepEqual(q.places.map((p) => p.name), ['Place 1', 'Place 2', 'Place 3'])
+  assert.equal(q.plansIn.slug, 'raleigh-nc')
+  assert.equal(q.hostCity, 'Cary')
+  // No listings, no places, another city live: heading and both links, no places.
+  const q2 = week.quietWeek({ city: cary, cityHasListings: false, places: [], live, readFailed: false })
+  assert.deepEqual([q2.mode, q2.places.length, q2.plansIn.slug], ['quiet', 0, 'raleigh-nc'])
+  // No listings anywhere but places here: places and host, no "Plans in".
+  const q3 = week.quietWeek({ city: cary, cityHasListings: false, places, live: [], readFailed: false })
+  assert.deepEqual([q3.mode, q3.plansIn], ['quiet', null])
+  // 5. Nothing anywhere and no places, or a failed read: the fallback.
+  const fallback = { mode: 'fallback', text: 'Nothing is listed this week yet. Check back soon.' }
+  assert.deepEqual(week.quietWeek({ city: cary, cityHasListings: false, places: [], live: [], readFailed: false }), fallback)
+  assert.deepEqual(week.quietWeek({ city: cary, cityHasListings: false, places, live, readFailed: true }), fallback)
+})
+
+test('places: stored thumbnails on the public object endpoint only, junk dropped, Explorer hand-off', () => {
+  const [p] = week.normalisePlaces([placeRow(1)], 'cary-nc', STORAGE)
+  assert.equal(p.photo, `${STORAGE}/storage/v1/object/public/place-photos/ChIJplace0001/0_thumb.jpg`)
+  // Never /render/image, never a full-size original, never a foreign path.
+  for (const photo_path of ['ChIJplace0001/0.jpg', '../x/0_thumb.jpg', 'ChIJplace0001/0_thumb.jpg?width=99', null]) {
+    assert.equal(week.normalisePlaces([placeRow(1, { photo_path })], 'cary-nc', STORAGE)[0].photo, null, String(photo_path))
+  }
+  assert.equal(week.placePhotoUrl('http://insecure.example', 'ChIJplace0001/0_thumb.jpg'), null)
+  assert.equal(week.normalisePlaces([placeRow(1, { place_id: '<script>' }), placeRow(2, { name: '  ' })], 'x', STORAGE).length, 0)
+  // Phone: the plain Explorer OneLink with the bio pid (no place deep link exists); computer: the sheet.
+  const h = handoff.resolveLinksHandoff({ type: 'place', place: p }, 'android', 'instagram')
+  const u = new URL(h.href)
+  assert.deepEqual([`${u.origin}${u.pathname}`, u.searchParams.get('pid'), u.searchParams.get('deep_link_value')], [stores.EXPLORER_ONELINK_URL, 'bio_instagram', null])
+  assert.deepEqual(handoff.resolveLinksHandoff({ type: 'place', place: p }, 'other', 'instagram'), { action: 'sheet', sheet: 'item' })
+})
+
+test('quiet week fit at 320x568 and 390x844: admin strips first, places fill, links fit, no clipping', () => {
+  // MEASURED in Chrome (2026-11-08) on a quiet city with 4 admin strips, 3
+  // places and both links: the box height per admin strips shown, the heading,
+  // the strip, the gap and the two links' block.
+  const Q = {
+    '320x568': { short: true, headH: 24, stripH: 54, gap: 10, linksH: 70, rooms: [224, 160, 96, 32, 10], expected: [1, 0] },
+    '390x844': { short: false, headH: 29, stripH: 60, gap: 10, linksH: 82, rooms: [447, 377, 307, 237, 209], expected: [1, 3] },
+  }
+  for (const [size, g] of Object.entries(Q)) {
+    const bottoms = [1, 2, 3].map((n) => g.headH + g.gap + n * g.stripH + (n - 1) * g.gap)
+    const minimum = g.headH + g.gap + g.linksH
+    const r = fit.computeLinksFit({
+      pinCount: 4,
+      listCount: 3,
+      short: g.short,
+      desk: false,
+      fitList: (s) => fit.stripsThatFit(bottoms, g.rooms[s], g.linksH, g.gap),
+      leftOverflows: (s) => g.rooms[s] < minimum,
+    })
+    assert.deepEqual([r.pinsShown, r.listShown], g.expected, size)
+    const used = r.listShown ? bottoms[r.listShown - 1] + g.gap + g.linksH : minimum
+    assert.ok(used <= g.rooms[r.pinsShown] + fit.FIT_TOLERANCE_PX, `${size}: the quiet block fits (${used} > ${g.rooms[r.pinsShown]})`)
+    assert.equal(
+      fit.leavesStripGap({ leftover: g.rooms[r.pinsShown] - used, stripStep: g.stripH + g.gap, pinsHidden: 4 - r.pinsShown, listHidden: 3 - r.listShown }),
+      false,
+      `${size}: no strip-height gap while something is hidden`,
+    )
+  }
 })

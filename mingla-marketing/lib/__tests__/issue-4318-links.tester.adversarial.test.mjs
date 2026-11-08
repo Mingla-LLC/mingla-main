@@ -117,7 +117,6 @@ function pinRow(over) {
   seq += 1
   return {
     id: `pin-${seq}`,
-    city_slug: null,
     shows_on: '2026-11-10',
     title: `Strip ${seq}`,
     label: 'From Mingla',
@@ -241,12 +240,13 @@ test('a remembered cookie for a city that is no longer live is ignored, unless n
   assert.equal(week.resolveCity({ cities: CITIES, live, query: null, geo: null, cookie: oneParam('atlanta') }).source, 'busiest')
   // A tampered cookie never reaches the resolver.
   assert.equal(oneParam('lagos; Path=/'), null)
-  // A city that is live only through its own admin strip counts as live.
-  const pins = week.normalisePins([pinRow({ city_slug: 'brussels', shows_on: '2026-11-09' })])
+  // #4318 addendum 2: admin strips are not by city and show in every city, so a
+  // strip never makes a city live; a remembered quiet city is still skipped.
+  const pins = week.normalisePins([pinRow({ shows_on: '2026-11-09' })])
   const live2 = week.liveCities(CITIES, listings, pins, NOW)
   assert.deepEqual(week.resolveCity({ cities: CITIES, live: live2, query: null, geo: null, cookie: 'brussels' }), {
-    slug: 'brussels',
-    source: 'cookie',
+    slug: 'raleigh-nc',
+    source: 'busiest',
   })
   // Nothing live anywhere: the remembered city still opens (it is a real registry city).
   assert.deepEqual(week.resolveCity({ cities: CITIES, live: [], query: null, geo: null, cookie: 'brussels' }), {

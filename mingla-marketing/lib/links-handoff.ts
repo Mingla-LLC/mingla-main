@@ -10,6 +10,12 @@
 //   strip, blog       /blog/<slug>                           detail sheet ("Read on the Mingla blog")
 //   strip, explorer   Explorer OneLink (store)               detail sheet (QR + stores)
 //   strip, host       Host OneLink (store)                   detail sheet (QR + stores + host web)
+//   place (quiet week) Explorer OneLink (store)              detail sheet (QR + stores)
+//
+// Places use the plain Explorer OneLink: the app's OneLink resolver only
+// deep-links a place through an opaque 36-hex share id
+// (app-mobile/src/services/oneLinkResolver.ts:115-120, isOpaqueShareId at :78),
+// never a Google place id, so there is no place deep link to send.
 //
 // Every OneLink and host-web URL comes from the #4137 device seam
 // (lib/cta-destination.ts), with the sanitised `?src=` as the bio pid. Nothing
@@ -22,12 +28,13 @@ import {
   resolveListingDestinations,
   type CtaDestinations,
 } from './cta-destination'
-import { pinWebHref, type LinksListing, type LinksPin } from './links-week'
+import { pinWebHref, type LinksListing, type LinksPin, type LinksPlace } from './links-week'
 
 export type LinksTarget =
   | { type: 'banner'; app: 'explorer' | 'host' }
   | { type: 'listing'; listing: LinksListing }
   | { type: 'pin'; pin: LinksPin }
+  | { type: 'place'; place: LinksPlace }
 
 export type LinksSheetKind = 'explore' | 'host' | 'item'
 
@@ -55,6 +62,8 @@ export function linksTargetHrefs(target: LinksTarget, src: string): CtaDestinati
   switch (target.type) {
     case 'banner':
       return target.app === 'explorer' ? explorer() : host()
+    case 'place':
+      return explorer()
     case 'listing': {
       const { kind, brandSlug, itemSlug } = target.listing
       return resolveListingDestinations(kind, brandSlug, itemSlug, linksAttribution(src, 'explorer_bio'))
@@ -102,7 +111,7 @@ export function resolveLinksHandoff(target: LinksTarget, platform: Platform, src
 /** The app a target installs, for the QR code and store buttons; null for web and blog strips. */
 export function targetApp(target: LinksTarget): 'explorer' | 'host' | null {
   if (target.type === 'banner') return target.app
-  if (target.type === 'listing') return 'explorer'
+  if (target.type === 'listing' || target.type === 'place') return 'explorer'
   if (target.pin.opens === 'explorer') return 'explorer'
   if (target.pin.opens === 'host') return 'host'
   return null
