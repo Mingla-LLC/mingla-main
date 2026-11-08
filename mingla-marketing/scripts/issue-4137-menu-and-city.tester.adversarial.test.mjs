@@ -19,10 +19,14 @@ const VIEWPORTS = [[360, 780], [375, 667], [390, 844], [402, 874], [768, 1024], 
 // /tools, /help, /support, /about) carry the site nav, pinned by
 // lib/__tests__/issue-4339-*.implementor.test.mjs; this matrix keeps the
 // grouped side menu on the pages that still render it.
-const ROUTES = ['/tools/venues', '/help/getting-the-apps']
+// #4339 phase 2c: the tool pages and the help video pages moved onto the site
+// nav too (lib/__tests__/issue-4339-leftovers.implementor.test.mjs); the only
+// route left with this side menu that loads without a token is the internal
+// chart gallery.
+const ROUTES = ['/internal/charts']
 
 for (const file of [
-  'components/cities/city-weekend.tsx', 'components/cities/city-page.tsx',
+  'components/cities/city-weekend.tsx', 'components/cities/city-page.tsx', 'components/cities/city-this-weekend.tsx',
   'lib/city-place-photo.ts', 'components/page-system/current-place-photo.tsx',
 ]) {
   const source = fs.readFileSync(path.join(ROOT, file), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
