@@ -199,6 +199,13 @@ export interface ExpandedCardData extends Partial<CanonicalDiscoveryPrice> {
     date: string;
     time: string;
     price: string;
+    /**
+     * #4347 — the structured ticket price behind `price`, so the CTA converts
+     * from the event's OWN currency instead of parsing digits out of "USD 25".
+     */
+    priceMinMajor?: number | null;
+    priceMaxMajor?: number | null;
+    priceCurrency?: string | null;
     genre?: string;
     subGenre?: string;
     tags: string[];

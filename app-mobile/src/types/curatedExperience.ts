@@ -94,6 +94,17 @@ export interface CuratedExperienceCard {
   totalPriceMax: number;
   /** #4265: at least one stop's max is unknown; print the total as "from". */
   totalPriceOpenEnded?: boolean;
+  /**
+   * #4347 — brand experiences only: the currency `totalPriceMin/Max` are in
+   * (events.currency), and the server's conversion of the envelope into the
+   * viewer's currency from the daily FX snapshot. AI-curated plans carry none
+   * of these: their stop prices are tier constants and show a spend level.
+   */
+  currency?: string;
+  displayPriceMin?: number | null;
+  displayPriceMax?: number | null;
+  displayCurrency?: string | null;
+  priceIsApprox?: boolean;
   estimatedDurationMinutes: number;
   matchScore: number;
   shoppingList?: string[];  // AI-generated picnic shopping checklist (picnic-dates only)

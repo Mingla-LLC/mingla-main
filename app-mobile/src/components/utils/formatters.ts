@@ -1,6 +1,11 @@
 // Utility functions for formatting currency and measurements based on user preferences
 
-import { getRate, convertBetween } from '../../services/currencyService';
+import { convertBetween, getServableRate } from '../../services/currencyService';
+import {
+  buildDisplayPrice,
+  type DisplayPrice,
+  type DisplayPriceInput,
+} from '../../utils/displayPrice';
 import { currencySymbolMap } from '../../services/countryCurrencyService';
 import { getUserLocale } from '../../utils/localeUtils';
 
@@ -30,38 +35,75 @@ const wholeNumberCurrencies = [
 ];
 
 /**
- * Format currency based on user preferences with thousand separators.
+ * Format an amount in a target currency, converting FROM `sourceCurrency`.
  *
- * ORCH-1034 [de-GBP-ify the currency layer]: converts FROM `sourceCurrency` TO
- * `currencyCode` using the USD-based CROSS-rate (fixes the prior USD-base bug
- * that omitted the source→USD leg). Same-currency is an exact identity.
+ * #4347: every argument is REQUIRED. The old `sourceCurrency = 'USD'` default
+ * let NGN ticket money be read as dollars and "converted" USD→USD into
+ * "$100,000"; the compiler now makes each caller say what currency its amount
+ * is in. Explorer prices should use `formatDisplayPrice` (the ≈ / rounding /
+ * no-servable-rate rules); this stays for exact same-currency labels.
  *
  * @param amount - Amount expressed in `sourceCurrency`
- * @param currencyCode - Target (buyer) currency code to display in
- * @param sourceCurrency - Currency the `amount` is in. Defaults to 'USD' for
- *   legacy non-commerce callers whose source genuinely IS USD (place-pool
- *   price data). COMMERCE callers (event/ticket prices in the seller currency)
- *   MUST pass the real seller currency. With the default 'USD', the cross-rate
- *   reduces to the prior `amount * getRate(target)` behavior — fully backward
- *   compatible — while same-currency (USD→USD) now returns the amount unchanged.
- * @returns Formatted currency string (e.g., 136851 -> "$136,851")
+ * @param currencyCode - Currency to display in
+ * @param sourceCurrency - Currency the `amount` is in
  */
 export function formatCurrency(
   amount: number,
-  currencyCode: string = 'USD',
-  sourceCurrency: string = 'USD',
+  currencyCode: string,
+  sourceCurrency: string,
 ): string {
   const currency = currencyData[currencyCode as keyof typeof currencyData];
-  if (!currency) return `$${Math.round(amount).toLocaleString(getUserLocale())}`;
+  const symbol = currency?.symbol ?? `${currencyCode} `;
 
   const convertedAmount = convertBetween(amount, sourceCurrency, currencyCode);
 
   if (wholeNumberCurrencies.includes(currencyCode)) {
-    return `${currency.symbol}${Math.round(convertedAmount).toLocaleString(getUserLocale())}`;
+    return `${symbol}${Math.round(convertedAmount).toLocaleString(getUserLocale())}`;
   }
-  
+
   // For currencies with decimals, format with 2 decimal places and thousand separators
-  return `${currency.symbol}${convertedAmount.toLocaleString(getUserLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `${symbol}${convertedAmount.toLocaleString(getUserLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+/**
+ * #4347 — THE Explorer price formatter. Binds the pure rule in
+ * utils/displayPrice.ts to the app's symbol table and its SERVABLE live rates.
+ * Pass the amount, the currency it is in, the viewer's currency and (when the
+ * card carries them) the server's display fields. Returns null when the input
+ * is not an honest price, so the caller hides the span.
+ */
+export function formatDisplayPrice(input: DisplayPriceInput): DisplayPrice | null {
+  return buildDisplayPrice(input, {
+    symbolFor: (code) => currencyData[code]?.symbol ?? null,
+    rateFor: getServableRate,
+    locale: getUserLocale(),
+  });
+}
+
+type Translate = (key: string, options?: Record<string, unknown>) => string;
+
+/** "naira" — the currency's spoken name, i18n'd, falling back to its code. */
+export function currencyName(code: string, t: Translate): string {
+  return t(`cards:price.currency_${code}`, { defaultValue: code });
+}
+
+/**
+ * #4347 — the expanded surfaces' second line when a price was converted:
+ * "₦100,000 · charged in naira". null when nothing was converted, so the line
+ * is absent rather than repeating the main figure.
+ */
+export function formatChargedInLine(
+  sourceText: string | null | undefined,
+  sourceCurrency: string | null | undefined,
+  t: Translate,
+): string | null {
+  if (typeof sourceText !== 'string' || sourceText.length === 0) return null;
+  if (typeof sourceCurrency !== 'string' || sourceCurrency.length === 0) return null;
+  return t('cards:price.charged_in', {
+    defaultValue: '{{amount}} · charged in {{currency}}',
+    amount: sourceText,
+    currency: currencyName(sourceCurrency, t),
+  });
 }
 
 /**
@@ -141,68 +183,9 @@ export function formatWeight(pounds: number, system: 'Metric' | 'Imperial' = 'Im
  * @param currencyCode - Currency code
  * @returns Currency symbol
  */
-export function getCurrencySymbol(currencyCode: string = 'USD'): string {
+export function getCurrencySymbol(currencyCode: string): string {
   const currency = currencyData[currencyCode as keyof typeof currencyData];
-  return currency?.symbol || '$';
-}
-
-/**
- * Convert a price range string to the user's preferred currency.
- *
- * ORCH-1034: converts FROM `sourceCurrency` TO `currencyCode` via the USD-based
- * cross-rate. `sourceCurrency` defaults to 'USD' (place-pool price strings are
- * USD-based) — with the default the cross-rate reduces to the prior behavior.
- *
- * @param priceRange - Price range string (e.g., "$20-40", "$100+", "Free", "$50")
- * @param currencyCode - Target (buyer) currency code
- * @param sourceCurrency - Currency the parsed numbers are in (default 'USD')
- * @returns Formatted price range string in target currency
- */
-export function formatPriceRange(priceRange: string | undefined, currencyCode: string = 'USD', sourceCurrency: string = 'USD'): string {
-  // Missing discovery money is unknown, never implicitly free.
-  if (!priceRange || priceRange.includes('undefined') || priceRange.includes('NaN')) return '';
-
-  // Handle "Free" or non-numeric ranges
-  if (priceRange.toLowerCase() === 'free' || priceRange === '-') {
-    return priceRange;
-  }
-
-  const currency = currencyData[currencyCode as keyof typeof currencyData];
-  const symbol = currency?.symbol || '$';
-
-  // Extract numbers from the price range
-  // Patterns: "$20-40", "$20 - $40", "$100+", "$50", "20-40"
-  const rangeMatch = priceRange.match(/\$?([\d,]+(?:\.\d{2})?)\s*[-–]\s*\$?([\d,]+(?:\.\d{2})?)/i);
-  const singleMatch = priceRange.match(/\$?([\d,]+(?:\.\d{2})?)\+?/i);
-  const hasPlus = priceRange.includes('+');
-
-  if (rangeMatch) {
-    // Range format: $20-40 or $20 - $40
-    const minSource = parseFloat(rangeMatch[1].replace(/,/g, ''));
-    const maxSource = parseFloat(rangeMatch[2].replace(/,/g, ''));
-    const minConverted = Math.round(convertBetween(minSource, sourceCurrency, currencyCode));
-    const maxConverted = Math.round(convertBetween(maxSource, sourceCurrency, currencyCode));
-
-    return `${symbol}${minConverted.toLocaleString(getUserLocale())} - ${symbol}${maxConverted.toLocaleString(getUserLocale())}`;
-  } else if (singleMatch) {
-    // Single value format: $100+ or $50
-    const valueSource = parseFloat(singleMatch[1].replace(/,/g, ''));
-    const valueConverted = Math.round(convertBetween(valueSource, sourceCurrency, currencyCode));
-    
-    return `${symbol}${valueConverted.toLocaleString(getUserLocale())}${hasPlus ? '+' : ''}`;
-  }
-
-  // If we can't parse, return original
-  return priceRange;
-}
-
-/**
- * Get conversion rate for currency
- * @param currencyCode - Target currency code
- * @returns Conversion rate from USD
- */
-export function getCurrencyRate(currencyCode: string = 'USD'): number {
-  return getRate(currencyCode);
+  return currency?.symbol || currencyCode;
 }
 
 /**

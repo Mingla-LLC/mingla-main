@@ -1,8 +1,15 @@
 import * as Calendar from 'expo-calendar';
 import { Platform, Alert } from 'react-native';
-import { tierLabel, tierRangeLabel } from '../constants/priceTiers';
 import { canonicalDiscoveryPriceDetail } from '../utils/priceTiers';
-import { curatedTotalPriceRange } from '../utils/curatedPriceRange';
+import { curatedSpendLevel, type SpendLevel } from '../utils/curatedPriceRange';
+
+/** #4347 — device-calendar notes are English, like every other line in them. */
+const SPEND_LEVEL_WORD: Record<SpendLevel, string> = {
+  free: 'Free',
+  budget: 'Budget',
+  moderate: 'Moderate',
+  upscale: 'Upscale',
+};
 
 export interface DeviceCalendarEvent {
   title: string;
@@ -227,11 +234,17 @@ export class DeviceCalendarService {
     // Keep their legacy display isolated from createEventFromCard above.
     const stops = card.stops || [];
     const stopNames = stops.map((s: any) => s.placeName).join(' → ');
+    // A brand experience's stops carry 0 (its price is the envelope, in the
+    // host's currency), so it gets no spend-level line rather than a false Free.
+    const isAiPlan = card?.cardType !== 'experience';
+    const planSpendLevel = isAiPlan
+      ? curatedSpendLevel(stops.filter((s: any) => s?.optional !== true))
+      : null;
     const stopDetails = stops
       .map((s: any, i: number) => {
-        const priceLine = s.priceTier
-          ? `\nPrice: ${tierLabel(s.priceTier)} (${tierRangeLabel(s.priceTier)})`
-          : '';
+        // #4347: a stop's tier is a spend level, not "$50 – $150".
+        const level = isAiPlan && s.priceTier ? curatedSpendLevel([s]) : null;
+        const priceLine = level !== null ? `\nSpend level: ${SPEND_LEVEL_WORD[level]}` : '';
         return `Stop ${i + 1}: ${s.placeName}\nAddress: ${s.address}\nRating: ${s.rating}⭐${priceLine}`;
       })
       .join('\n\n');
@@ -244,8 +257,9 @@ export class DeviceCalendarService {
         card.tagline || '',
         '',
         `Total estimated time: ${totalDurationMinutes} minutes`,
-        // #4265: same open-ended rule as the cards — never "$100–$0".
-        `Estimated cost: ${curatedTotalPriceRange(card.totalPriceMin, card.totalPriceMax, card.totalPriceOpenEnded)}`,
+        // #4347 Decision 2: an AI plan's totals are USD tier constants, so the
+        // note gives the plan's spend level, never a "$30–$70" amount.
+        ...(planSpendLevel !== null ? [`Spend level: ${SPEND_LEVEL_WORD[planSpendLevel]}`] : []),
         '',
         '--- Stops ---',
         stopDetails,

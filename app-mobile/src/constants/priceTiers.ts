@@ -10,14 +10,11 @@
  * Must stay in sync with supabase/functions/_shared/priceTiers.ts
  */
 
-import { getUserLocale } from '../utils/localeUtils';
-
 export type PriceTierSlug = 'any' | 'chill' | 'comfy' | 'bougie' | 'lavish';
 
 export interface PriceTier {
   slug: PriceTierSlug;
   label: string;
-  rangeLabel: string;
   googleLevels: string[];
   min: number;
   max: number | null;
@@ -26,11 +23,11 @@ export interface PriceTier {
 }
 
 export const PRICE_TIERS: readonly PriceTier[] = [
-  { slug: 'any', label: 'Any', rangeLabel: 'All prices', googleLevels: [], min: 0, max: null, icon: 'cash-outline', color: '#eb7825' },
-  { slug: 'chill', label: 'Chill', rangeLabel: '$50 max', googleLevels: ['PRICE_LEVEL_FREE', 'PRICE_LEVEL_INEXPENSIVE'], min: 0, max: 50, icon: 'leaf-outline', color: '#10B981' },
-  { slug: 'comfy', label: 'Comfy', rangeLabel: '$50 – $150', googleLevels: ['PRICE_LEVEL_MODERATE'], min: 50, max: 150, icon: 'cafe-outline', color: '#3B82F6' },
-  { slug: 'bougie', label: 'Bougie', rangeLabel: '$150 – $300', googleLevels: ['PRICE_LEVEL_EXPENSIVE'], min: 150, max: 300, icon: 'sparkles-outline', color: '#8B5CF6' },
-  { slug: 'lavish', label: 'Lavish', rangeLabel: '$300+', googleLevels: ['PRICE_LEVEL_VERY_EXPENSIVE'], min: 300, max: null, icon: 'diamond-outline', color: '#F59E0B' },
+  { slug: 'any', label: 'Any', googleLevels: [], min: 0, max: null, icon: 'cash-outline', color: '#eb7825' },
+  { slug: 'chill', label: 'Chill', googleLevels: ['PRICE_LEVEL_FREE', 'PRICE_LEVEL_INEXPENSIVE'], min: 0, max: 50, icon: 'leaf-outline', color: '#10B981' },
+  { slug: 'comfy', label: 'Comfy', googleLevels: ['PRICE_LEVEL_MODERATE'], min: 50, max: 150, icon: 'cafe-outline', color: '#3B82F6' },
+  { slug: 'bougie', label: 'Bougie', googleLevels: ['PRICE_LEVEL_EXPENSIVE'], min: 150, max: 300, icon: 'sparkles-outline', color: '#8B5CF6' },
+  { slug: 'lavish', label: 'Lavish', googleLevels: ['PRICE_LEVEL_VERY_EXPENSIVE'], min: 300, max: null, icon: 'diamond-outline', color: '#F59E0B' },
 ] as const;
 
 export const GOOGLE_LEVEL_TO_TIER: Record<string, PriceTierSlug> = {};
@@ -58,23 +55,11 @@ export function tierLabel(slug: PriceTierSlug): string {
   return TIER_BY_SLUG[slug]?.label ?? 'Chill';
 }
 
-export function tierRangeLabel(slug: PriceTierSlug, currencySymbol: string = '$', rate: number = 1): string {
-  const tier = TIER_BY_SLUG[slug];
-  if (!tier) return '';
-  if (tier.max === null) {
-    return `${currencySymbol}${Math.round(tier.min * rate).toLocaleString(getUserLocale())}+`;
-  }
-  if (tier.min === 0) {
-    return `${currencySymbol}${Math.round(tier.max * rate).toLocaleString(getUserLocale())} max`;
-  }
-  return `${currencySymbol}${Math.round(tier.min * rate).toLocaleString(getUserLocale())} – ${currencySymbol}${Math.round(tier.max * rate).toLocaleString(getUserLocale())}`;
-}
-
-export function formatTierLabel(slug: PriceTierSlug, currencySymbol: string = '$', rate: number = 1): string {
-  const tier = TIER_BY_SLUG[slug];
-  if (!tier) return 'Chill';
-  return `${tier.label} · ${tierRangeLabel(slug, currencySymbol, rate)}`;
-}
+// #4347: tierRangeLabel / formatTierLabel were deleted. They turned a tier's
+// USD bracket into money ("$50 – $150") with a '$' default and a caller-supplied
+// rate, which is how a collab card multiplied naira by the dollar rate. A tier
+// is a spend level, not an amount: say `tierLabel`, or `curatedSpendLevel` for
+// a plan (utils/curatedPriceRange).
 
 /**
  * Derive a price tier from a dollar amount (uses the upper bound of the range).

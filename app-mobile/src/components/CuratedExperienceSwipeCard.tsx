@@ -30,7 +30,7 @@ import { MAX_FONT_SCALE, SURFACES } from '../../../packages/card-identity/index.
 import type { CuratedExperienceCard } from '../types/curatedExperience';
 // `parseAndFormatDistance` moved with the rest of the span derivation into
 // `expandedCard/expandedCardFacts` (#1605 P1-6).
-import { formatCurrency } from './utils/formatters';
+import { formatDisplayPrice } from './utils/formatters';
 /*
   #1605 P1-6 — THE META SPANS ARE PRODUCED ONCE, HERE AND ON THE SHEET.
 
@@ -360,7 +360,10 @@ export function CuratedExperienceSwipeCard({ card, travelMode, measurementSystem
    */
   const curatedSpans: MetaSpanInput[] = curatedPlanSpans(card, {
     measurementSystem,
-    formatMoney: (amount) => formatCurrency(amount, currencyCode || 'USD'),
+    // #4347: the producer passes the amount WITH the experience's own currency;
+    // only the viewer's currency is bound here.
+    formatMoney: (price) => formatDisplayPrice({ ...price, viewerCurrency: currencyCode })?.text ?? null,
+    spendLevelLabel: (level) => t(`cards:price.spend_${level}`),
     freeLabel: t('cards:swipeable.free', { defaultValue: 'Free' }),
     stopCountLabel: (count) =>
       t('cards:expanded.stop_count', { defaultValue: '{{count}} stops', count }),

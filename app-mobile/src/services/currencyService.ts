@@ -119,6 +119,28 @@ export function getRate(currencyCode: string): number {
 }
 
 /**
+ * #4347 — a rate the app may SHOW a converted price with, or null.
+ *
+ * Only a rate fetched from the live provider within the last 48 hours is
+ * servable. The static FALLBACK_RATES table is months old (NGN was 1600 when
+ * the market was ~1350) and `getRate`'s `?? 1.0` is a 1:1 guess; neither may
+ * put an "≈" figure in front of a viewer. With no servable rate the price is
+ * shown in its own currency instead (formatDisplayPrice).
+ */
+const SERVABLE_RATE_MAX_AGE_MS = 48 * 60 * 60 * 1000;
+
+export function getServableRate(currencyCode: string): number | null {
+  const code = currencyCode?.toUpperCase();
+  if (!code) return null;
+  if (code === "USD") return 1;
+  if (lastFetchedAt === 0 || Date.now() - lastFetchedAt > SERVABLE_RATE_MAX_AGE_MS) {
+    return null;
+  }
+  const rate = cachedRates[code];
+  return typeof rate === "number" && Number.isFinite(rate) && rate > 0 ? rate : null;
+}
+
+/**
  * ORCH-1034 [de-GBP-ify the currency layer] — convert an amount FROM one
  * currency TO another using the USD-based cross-rate.
  *
