@@ -615,6 +615,48 @@ test('fit: 0, 1 and 40 listings against 0 and 10 admin strips, tall and short sc
   assert.equal(fit.stripsThatFit([54, 118], 0, 40, 10), 0)
 })
 
+test('phones: admin strips that alone overflow the screen fold, even when the city has no listings', () => {
+  // Measured in Chrome at 320x568 and 390x844 with 0 listings and 10 admin
+  // strips: all 10 rendered, strip 6 (320) / strip 9 (390) cut in half, and the
+  // city switcher, chips, empty state and socials pushed off the screen.
+  // With no listings the floor is 0, so the phone loop never folds a strip;
+  // the probe's overflow signal must still be honoured.
+  const capacity = 3 // admin strips that fit above the city switcher on a 320x568 phone
+  for (const short of [true, false]) {
+    const r = fit.computeLinksFit({
+      pinCount: 10,
+      listCount: 0,
+      short,
+      desk: false,
+      fitList: () => 0,
+      leftOverflows: (shown) => shown > capacity,
+    })
+    assert.ok(
+      r.pinsShown <= capacity,
+      `${short ? 'short' : 'tall'} phone with 0 listings showed ${r.pinsShown} admin strips; only ${capacity} fit`,
+    )
+  }
+})
+
+test('sheets trap Tab inside the dialog and close on Escape wherever focus is', () => {
+  // Chrome, 390x844 and 1440x900: four Tabs from the city picker (three from the
+  // Host sheet) land on the consent bar's "OK" / "Privacy options" and then
+  // "Skip to content", outside the aria-modal dialog; Escape then does nothing
+  // because the only Escape handler is on <main>. Tapping the sheet's title
+  // (focus goes to <body>) breaks Escape the same way.
+  const ui = read('components/marketing/links-experience.tsx')
+  const code = ui
+    .split('\n')
+    .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
+    .join('\n')
+  assert.match(code, /key === 'Tab'/, 'no Tab focus trap inside the open sheet')
+  assert.match(
+    code,
+    /(document|window)\.addEventListener\(\s*'keydown'/,
+    'Escape is only heard while focus is inside <main>; listen on the document while a sheet is open',
+  )
+})
+
 test('very long titles survive the model untouched (the CSS clamps them), and blank titles are dropped', () => {
   const long = 'A'.repeat(300)
   const [l] = week.bucketListings([row({ title: `  ${long}  ` })], CITIES)
