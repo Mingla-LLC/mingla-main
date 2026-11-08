@@ -10,7 +10,8 @@ import { defineConfig, devices } from '@playwright/test'
 // ISSUE_3214_WEB_BUILD points it at another export directory.
 export default defineConfig({
   testDir: './playwright',
-  testMatch: /issue3214-public-boot-order(?:\.tester\.adversarial)?\.spec\.ts$/,
+  // #4318's first-tap privacy sheet proof uses the same server document.
+  testMatch: /(?:issue3214-public-boot-order(?:\.tester\.adversarial)?|issue4318-privacy-sheet-first-tap)\.spec\.ts$/,
   fullyParallel: false,
   workers: 1,
   retries: 0,

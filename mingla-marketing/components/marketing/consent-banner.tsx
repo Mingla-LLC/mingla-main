@@ -68,7 +68,7 @@ body{padding-bottom:var(${PRIVACY_INSET_PROPERTY},0px)}
 .mpb-primary{background:#eb7825;color:#111}
 .mpb-policy{margin-left:auto;display:inline-flex;align-items:center;min-height:44px;padding:0 4px;font-size:13px;color:rgba(255,255,255,.72);text-decoration:underline}
 .mpb-policy:focus-visible{outline:2px solid #eb7825;outline-offset:2px}
-@keyframes mpb-in{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+@keyframes mpb-in{from{transform:translateY(12px)}to{transform:none}}
 @media (prefers-reduced-motion:reduce){.mpb{animation:none}.mpb-switch,.mpb-switch::after{transition:none}}
 `
 
