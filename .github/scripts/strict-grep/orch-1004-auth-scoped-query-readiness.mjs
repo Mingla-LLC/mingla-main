@@ -223,6 +223,9 @@ const AUTH_SCOPED_HOOK_FILES = [
   // #865 — brand's own ad-conversion rollup, auth.uid()-scoped RPC
   // (brand_conversion_rollup self-authorizes via biz_is_brand_member_for_read_for_caller).
   "useBrandConversionRollup.ts",
+  // #4304 — First Home gate: "anything made?" existence probe over the
+  // caller's own brands (RLS-scoped events + venue_listings reads).
+  "useFirstRunStage.ts",
   // ── Issue #1735 [growth-tools client] — reads the brand's OWN tool runs /
   //    competitor watch via the app-lane growth-tools functions (P-3 verified
   //    JWT + biz_is_brand_member_for_read on every door). Gates every query on

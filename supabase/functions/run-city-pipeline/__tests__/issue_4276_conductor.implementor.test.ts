@@ -92,6 +92,8 @@ function deps(w: World): Deps {
       eq: (k: string, v: unknown) => { filters.push([k, v]); return chain; },
       in: () => chain,
       not: () => chain,
+      is: () => chain,
+      neq: () => chain,
       order: () => chain,
       limit: () => chain,
       maybeSingle: () => { const r = exec(); return Promise.resolve({ ...r, data: r.data[0] ?? null }); },

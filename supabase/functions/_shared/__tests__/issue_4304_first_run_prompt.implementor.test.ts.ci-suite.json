@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_4304_first_run_prompt.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4304-first-run-prompt-implementor",
+  "profile": "deno-2-unit"
+}

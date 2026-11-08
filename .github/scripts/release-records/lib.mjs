@@ -139,7 +139,11 @@ export function parseFeatureGuide(body) {
 const PRODUCT_PATH = /^(?:app-mobile|mingla-admin|mingla-business|mingla-marketing|mingla-site-cms|mingla-sites|packages|supabase\/functions|supabase\/migrations)\//;
 // #3493: a project's scripts/ci/ holds CI tooling (gates, bundle ratchets), not
 // shipped product code, so changing it never needs a capability key.
-const NON_PRODUCT_PATH = /(?:^|\/)(?:__tests__|fixtures)\/|^[^/]+\/scripts\/ci\/|(?:[._](?:test|spec)\.[^/]+$)|[.]ci-suite[.]json$/;
+// #3643: an npm lockfile only pins resolved versions inside the ranges its
+// package.json already declares, so a lockfile-only dependency patch needs no
+// capability key. package.json itself stays product code: a range change can
+// change behaviour.
+const NON_PRODUCT_PATH = /(?:^|\/)(?:__tests__|fixtures)\/|^[^/]+\/scripts\/ci\/|(?:[._](?:test|spec)\.[^/]+$)|[.]ci-suite[.]json$|(?:^|\/)package-lock[.]json$/;
 const CATALOG_REF_FIELDS = new Set(["source_path", "test_path", "migration_path"]);
 const CATALOG_REFS_FIELDS = new Set(["claim_refs", "source_refs"]);
 

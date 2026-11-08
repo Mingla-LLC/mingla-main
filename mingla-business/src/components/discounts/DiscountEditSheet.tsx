@@ -1,6 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { Suspense, useEffect, useMemo, useState } from "react";
 import {
-  Alert,
   Platform,
   Pressable,
   StyleSheet,
@@ -22,6 +21,7 @@ import {
   spacing,
   text as textTokens,
 } from "../../constants/designSystem";
+import { discountWriteHostCopy } from "@mingla/offering-rendering/discountWriteRefusalCopy";
 import { captureDiscountEvent } from "../../analytics/discountAnalytics";
 import type {
   BrandDiscount,
@@ -35,6 +35,17 @@ import { Button } from "../ui/Button";
 import { Sheet } from "../ui/Sheet";
 import { WebDateTimeInput } from "../ui/WebDateTimeInput";
 import { DiscountScopePicker } from "./DiscountScopePicker";
+
+/**
+ * #4304: Alert.alert with buttons is a no-op on react-native-web, so closing a
+ * changed discount did nothing on host.usemingla.com. ConfirmDialog works on
+ * web and native and loads only when it opens.
+ */
+const LazyConfirmDialog = React.lazy(() =>
+  import("../ui/ConfirmDialog").then((module) => ({
+    default: module.ConfirmDialog,
+  })),
+);
 import { isoFromLocalDateTime, localDateTimeValue } from "./discountDateTime";
 import {
   canCreateDiscountKind,
@@ -135,6 +146,7 @@ export const DiscountEditSheet: React.FC<DiscountEditSheetProps> = ({
     discount ? fromDiscount(discount) : defaultDraft(brandId, presetTarget),
   );
   const [dirty, setDirty] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSchedule, setShowSchedule] = useState(false);
   useEffect(() => {
@@ -197,19 +209,8 @@ export const DiscountEditSheet: React.FC<DiscountEditSheetProps> = ({
         typeof cause.detail === "string"
           ? cause.detail
           : "internal";
-      setError(
-        detail === "version_conflict"
-          ? "This discount changed elsewhere. Load latest, then redo your change."
-          : detail === "code_taken"
-            ? "That code is already in use."
-            : detail === "sale_price_overlap"
-              ? "This item already has a sale in that time window."
-              : detail === "set_price_not_lower"
-                ? "A sale price must be lower than the list price."
-                : detail === "too_many_automatics"
-                  ? "This brand already has the maximum number of live automatic discounts."
-                  : "Couldn't save this discount. Check the fields and try again.",
-      );
+      // #4304: one shared wording per writer refusal (Ari reads it too).
+      setError(discountWriteHostCopy(detail));
     },
   });
 
@@ -231,10 +232,7 @@ export const DiscountEditSheet: React.FC<DiscountEditSheetProps> = ({
       onClose();
       return;
     }
-    Alert.alert("Discard changes?", "Your unsaved discount will be lost.", [
-      { text: "Keep editing", style: "cancel" },
-      { text: "Discard", style: "destructive", onPress: onClose },
-    ]);
+    setConfirmDiscard(true);
   };
   const percentText = useMemo(
     () => (draft.valueBps == null ? "" : String(draft.valueBps / 100)),
@@ -617,6 +615,27 @@ export const DiscountEditSheet: React.FC<DiscountEditSheetProps> = ({
           />
         </View>
       </View>
+      {confirmDiscard ? (
+        <Suspense fallback={null}>
+          <LazyConfirmDialog
+            visible
+            onClose={() => setConfirmDiscard(false)}
+            onConfirm={() => {
+              setConfirmDiscard(false);
+              onClose();
+            }}
+            title="Discard changes?"
+            description="Your unsaved discount will be lost."
+            cancelLabel="Keep editing"
+            confirmLabel="Discard"
+            destructive
+            initialFocus="cancel"
+            testID="discount-discard-confirm"
+            confirmTestID="discount-discard-confirm-yes"
+            cancelTestID="discount-discard-confirm-cancel"
+          />
+        </Suspense>
+      ) : null}
     </Sheet>
   );
 };

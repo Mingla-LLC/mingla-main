@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_3645_unattached_sources_match_sweeps.structural.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3645-unattached-sources-match-sweeps",
+  "profile": "deno-1.46-stripe"
+}

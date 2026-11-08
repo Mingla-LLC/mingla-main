@@ -37,7 +37,6 @@ export type BrandGroupPeoplePanelProps = {
   muteBusy: boolean;
   onToggleMute: () => void;
   onClose?: () => void;
-  onShowMedia?: () => void;
 };
 
 export function BrandGroupPeoplePanel({
@@ -49,7 +48,6 @@ export function BrandGroupPeoplePanel({
   muteBusy,
   onToggleMute,
   onClose,
-  onShowMedia,
 }: BrandGroupPeoplePanelProps): React.ReactElement {
   return (
     <View style={styles.panel} testID="brand-group-people-panel">
@@ -65,12 +63,9 @@ export function BrandGroupPeoplePanel({
         ) : null}
       </View>
 
-      {onShowMedia ? (
-        <View style={styles.tabs} accessibilityRole="tablist">
-          <View style={[styles.tab, styles.tabActive]} accessibilityRole="tab" accessibilityState={{ selected: true }}><Text style={styles.tabActiveText}>People · {members.length || "—"}</Text></View>
-          <Pressable accessibilityRole="tab" accessibilityLabel="Show media" accessibilityState={{ selected: false }} onPress={onShowMedia} style={styles.tab}><Text style={styles.tabText}>Media</Text></Pressable>
-        </View>
-      ) : null}
+      {/* #4304 — no inner People | Media tabs: the details rail's shared
+          People / Plan / Media row is the only tab row (live double row on
+          #4270's check). */}
 
       <ScrollView style={styles.list} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>
         {loading ? <ActivityIndicator color={accent.warm} style={styles.state} /> : error ? (
@@ -132,11 +127,6 @@ const styles = StyleSheet.create({
   title: { color: textTokens.primary, fontSize: 17, fontWeight: "800" },
   subtitle: { marginTop: 3, color: textTokens.tertiary, fontSize: 11 },
   iconButton: { width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 20, borderWidth: 1, borderColor: glass.border.profileElevated },
-  tabs: { flexDirection: "row", gap: 4, padding: 8 },
-  tab: { minHeight: 40, flex: 1, alignItems: "center", justifyContent: "center", borderRadius: radius.full },
-  tabActive: { borderWidth: 1, borderColor: "rgba(235,120,37,0.38)", backgroundColor: "rgba(235,120,37,0.10)" },
-  tabText: { color: textTokens.tertiary, fontSize: 12, fontWeight: "700" },
-  tabActiveText: { color: textTokens.primary, fontSize: 12, fontWeight: "800" },
   list: { flex: 1, minHeight: 120 },
   listContent: { paddingHorizontal: spacing.md },
   state: { margin: spacing.xl },

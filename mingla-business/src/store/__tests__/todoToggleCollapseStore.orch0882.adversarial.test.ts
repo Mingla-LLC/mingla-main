@@ -78,42 +78,19 @@ const readRepoFile = (relFromHere: string): string =>
   fs.readFileSync(path.join(__dirname, relFromHere), "utf8");
 
 describe("ORCH-0882 ADVERSARIAL — hostile storage must never brick the toggle", () => {
-  test("ADV-882-01: corrupted (non-JSON) blob → no crash, default OPEN, and the hydration gate STILL opens", async () => {
+  test("ADV-882-01: corrupted (non-JSON) blob → no crash, default COLLAPSED (#4304), and the hydration gate STILL opens", async () => {
     const mod = loadFreshStore("{not-json!! ]][");
     await flushHydration();
     const s = mod.useTodoToggleCollapseStore.getState();
-    // Fallback is the default position (open), never a crash or a poisoned value.
-    expect(s.collapsed).toBe(false);
-    // CRITICAL: hasHydrated must flip true even on the ERROR path. The
-    // component renders null until hasHydrated — if a corrupt blob left the
-    // gate closed, the To-Do toggle would be permanently invisible.
+    expect(s.collapsed).toBe(true);
+    // CRITICAL: hasHydrated must flip true even on the ERROR path, or the
+    // To-do toggle would be permanently invisible.
     expect(s.hasHydrated).toBe(true);
   });
 
-  test("ADV-882-02: version-mismatch blob (v0, no migrate fn) → persisted value discarded, default OPEN, gate opens", async () => {
-    const consoleError = jest
-      .spyOn(console, "error")
-      .mockImplementation(() => undefined);
-    try {
-      const mod = loadFreshStore(
-        JSON.stringify({ state: { collapsed: true }, version: 0 }),
-      );
-      await flushHydration();
-      const s = mod.useTodoToggleCollapseStore.getState();
-      // No migrate fn exists (SPEC: version bump requires adding one) — a
-      // mismatched version must NOT leak its state through.
-      expect(s.collapsed).toBe(false);
-      expect(s.hasHydrated).toBe(true);
-      // Prove the mismatch path actually ran (zustand logs it).
-      expect(consoleError).toHaveBeenCalled();
-    } finally {
-      consoleError.mockRestore();
-    }
-  });
-
-  test("ADV-882-03: valid collapsed blob → rehydrates collapsed=true (SC-2 restart persistence, store level)", async () => {
+  test("ADV-882-02: any older blob (v0) is migrated to nothing → default COLLAPSED, gate opens", async () => {
     const mod = loadFreshStore(
-      JSON.stringify({ state: { collapsed: true }, version: 1 }),
+      JSON.stringify({ state: { collapsed: false }, version: 0 }),
     );
     await flushHydration();
     const s = mod.useTodoToggleCollapseStore.getState();
@@ -121,19 +98,25 @@ describe("ORCH-0882 ADVERSARIAL — hostile storage must never brick the toggle"
     expect(s.hasHydrated).toBe(true);
   });
 
-  test("ADV-882-04: a write inside the hydration window is STOMPED by the incoming persisted value — the component gate is load-bearing, not ceremony", async () => {
+  test("ADV-882-03 (#4304): a remembered v1 OPEN position never comes back — every load starts collapsed", async () => {
+    // Seth, 2026-11-07: "the to do should always be collapsed by default".
+    const mod = loadFreshStore(
+      JSON.stringify({ state: { collapsed: false }, version: 1 }),
+    );
+    await flushHydration();
+    const s = mod.useTodoToggleCollapseStore.getState();
+    expect(s.collapsed).toBe(true);
+    expect(s.hasHydrated).toBe(true);
+  });
+
+  test("ADV-882-04 (#4304): with nothing persisted, rehydration never overwrites the session position", async () => {
     const mod = loadFreshStore(
       JSON.stringify({ state: { collapsed: true }, version: 1 }),
     );
-    // Interact BEFORE rehydration resolves (only possible if a consumer
-    // renders pre-hydration — which the component gate forbids).
     mod.useTodoToggleCollapseStore.getState().setCollapsed(false);
-    expect(mod.useTodoToggleCollapseStore.getState().collapsed).toBe(false);
     await flushHydration();
-    // The persisted value wins: the pre-hydration write is silently lost.
-    // This IS zustand-persist's merge semantics — the reason the component
-    // must render nothing (and accept no taps) before hasHydrated.
-    expect(mod.useTodoToggleCollapseStore.getState().collapsed).toBe(true);
+    // The empty persisted partition merges as a no-op; the gate still opens.
+    expect(mod.useTodoToggleCollapseStore.getState().collapsed).toBe(false);
     expect(mod.useTodoToggleCollapseStore.getState().hasHydrated).toBe(true);
   });
 });

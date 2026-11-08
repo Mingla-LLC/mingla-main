@@ -240,6 +240,8 @@ Deno.test("adversarial bearer variants cannot construct a client and the accepte
     "surface_payout_releases_waiting_for_bank",
     "claim_brand_payout_pause_notices",
     "claim_brand_payout_outcome_notices",
+    // #3645: stale stay-dispute alerts are raised before the drain delivers.
+    "issue_3645_raise_stale_stay_dispute_alerts",
     "claim_payout_release_alerts",
     // #1345: reservation slot-unavailable alert drain runs after attempt-cap alerts.
     "claim_reservation_slot_unavailable_alerts",

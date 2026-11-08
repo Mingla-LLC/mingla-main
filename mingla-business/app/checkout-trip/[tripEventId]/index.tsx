@@ -71,6 +71,11 @@ import { QuantityRow } from "../../../src/components/checkout/QuantityRow";
 // undercounting started checkouts). Web-only (native no-op via the .web split).
 import { captureWeb, gaEvent } from "../../../src/analytics/webAnalytics";
 import { PrivacyChoicesLink } from "../../../src/analytics/PrivacyChoicesLink";
+import {
+  CheckoutColumns,
+  CheckoutOrderSummary,
+  useCheckoutWideLayout,
+} from "../../../src/components/checkout/CheckoutOrderSummary";
 
 const CheckoutDiscountCodeField = React.lazy(() =>
   import("../../../src/components/checkout/DiscountCodeField").then(
@@ -144,6 +149,8 @@ const formatTripDateLine = (
 
 export default function CheckoutTripTicketsScreen(): React.ReactElement {
   const insets = useSafeAreaInsets();
+  // #4304 — wide desktop: tickets left, a static order summary right.
+  const wide = useCheckoutWideLayout();
   const router = useRouter();
   const params = useLocalSearchParams<{
     tripEventId: string;
@@ -611,169 +618,169 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
         title="Reserve your spot"
         onBack={handleBack}
       />
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingBottom: insets.bottom + 140 },
-        ]}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Trip mini-card: cover + title + brand/date line */}
-        <View style={styles.miniCard}>
-          <EventCoverMedia
-            hue={0}
-            mediaUrl={trip.coverMediaUrl}
-            mediaType={trip.coverMediaType as "image" | "video" | "gif" | null}
-            radius={0}
-            label=""
-            style={styles.miniCover}
-          />
-          <Text style={styles.miniTitle} numberOfLines={2}>
-            {trip.title.trim().length > 0 ? trip.title : "Untitled trip"}
-          </Text>
-          <Text style={styles.miniSubtitle} numberOfLines={1}>
-            {brand?.name ?? "Mingla"}
-            {dateLine.length > 0 ? ` · ${dateLine}` : ""}
-          </Text>
-          {trip.businessTrip.destinationLocationText !== null ? (
-            <Text style={styles.miniDestination} numberOfLines={1}>
-              {trip.businessTrip.destinationLocationText}
+      <CheckoutColumns wide={wide}>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: wide ? spacing.xl : insets.bottom + 140 },
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Trip mini-card: cover + title + brand/date line */}
+          <View style={styles.miniCard}>
+            <EventCoverMedia
+              hue={0}
+              mediaUrl={trip.coverMediaUrl}
+              mediaType={
+                trip.coverMediaType as "image" | "video" | "gif" | null
+              }
+              radius={0}
+              label=""
+              style={styles.miniCover}
+            />
+            <Text style={styles.miniTitle} numberOfLines={2}>
+              {trip.title.trim().length > 0 ? trip.title : "Untitled trip"}
             </Text>
-          ) : null}
-        </View>
+            <Text style={styles.miniSubtitle} numberOfLines={1}>
+              {brand?.name ?? "Mingla"}
+              {dateLine.length > 0 ? ` · ${dateLine}` : ""}
+            </Text>
+            {trip.businessTrip.destinationLocationText !== null ? (
+              <Text style={styles.miniDestination} numberOfLines={1}>
+                {trip.businessTrip.destinationLocationText}
+              </Text>
+            ) : null}
+          </View>
 
-        <Text style={styles.sectionLabel}>Select your tier</Text>
+          <Text style={styles.sectionLabel}>Select your tier</Text>
 
-        {/* ORCH-1130 — the passive per-tier installment projection is REMOVED.
+          {/* ORCH-1130 — the passive per-tier installment projection is REMOVED.
             The pay-full vs pay-over-time schedule now lives behind the selector
             on the public page + Review step. This legacy multi-tier picker only
             renders for >1-tier trips (no prod data); single-tier auto-skips. */}
-        {tickets.map((ticket) => {
-          const line = lines.find((l) => l.ticketTypeId === ticket.id);
-          const qty = line?.quantity ?? 0;
-          // ORCH-1181 — per-package installment sub-line on the tile. Shown ONLY
-          // when pay-over-time is this line's choice AND this tier is on a
-          // plan AND it has ≥1 selected. The deposit comes from the SAME
-          // projectInstallmentSchedule the cart-level "Due today" reads (lines
-          // 195-215) — never recomputed/fabricated. No-plan / pay-in-full / cart
-          // "full" → null (events untouched: trip-only tiers carry a schedule).
-          const sourceTier =
-            line?.paymentPlanChoice === "installments"
-              ? trip.pricingTiers.find((t) => t.ticketTypeId === ticket.id)
-              : undefined;
-          const tierDeposit =
-            sourceTier !== undefined &&
-            sourceTier.installmentSchedule !== null &&
-            qty >= 1
-              ? (projectInstallmentSchedule(sourceTier, new Date(), qty)
-                  ?.depositCents ?? null)
-              : null;
-          const installmentNote = formatTripTierInstallmentNote(
-            tierDeposit,
-            ticket.currency ?? trip.pricingTiers[0]?.currency ?? "USD",
-            (value, currency) => formatCurrency(value, currency),
-          );
-          return (
-            <View key={ticket.id} style={styles.tierWrap}>
-              <QuantityRow
-                ticket={ticket}
-                quantity={qty}
-                installmentNote={installmentNote}
-                onQuantityChange={(next): void =>
-                  setLineQuantity({
-                    ticketTypeId: ticket.id,
-                    ticketName: ticket.name,
-                    unitPrice: ticket.priceGbp ?? 0,
-                    // ORCH-1147 — server fee-grossed all-in (priceAllInGbp) as
-                    // the headline-Total basis; base fallback (never fabricate).
-                    unitPriceAllIn:
-                      ticket.priceAllInGbp ?? ticket.priceGbp ?? 0,
-                    currency:
-                      ticket.currency ??
-                      trip.pricingTiers[0]?.currency ??
-                      "USD",
-                    isFree: ticket.isFree,
-                    quantity: next,
-                    paymentPlanChoice:
-                      lines.find((line) => line.ticketTypeId === ticket.id)
-                        ?.paymentPlanChoice ??
-                      (sourceTier?.installmentSchedule != null
-                        ? paymentPlanChoice
-                        : "full"),
-                  })
-                }
-              />
-            </View>
-          );
-        })}
-        {/* #2331 — end of content: reopens the privacy bar. */}
-        <PrivacyChoicesLink />
-      </ScrollView>
+          {tickets.map((ticket) => {
+            const line = lines.find((l) => l.ticketTypeId === ticket.id);
+            const qty = line?.quantity ?? 0;
+            // ORCH-1181 — per-package installment sub-line on the tile. Shown ONLY
+            // when pay-over-time is this line's choice AND this tier is on a
+            // plan AND it has ≥1 selected. The deposit comes from the SAME
+            // projectInstallmentSchedule the cart-level "Due today" reads (lines
+            // 195-215) — never recomputed/fabricated. No-plan / pay-in-full / cart
+            // "full" → null (events untouched: trip-only tiers carry a schedule).
+            const sourceTier =
+              line?.paymentPlanChoice === "installments"
+                ? trip.pricingTiers.find((t) => t.ticketTypeId === ticket.id)
+                : undefined;
+            const tierDeposit =
+              sourceTier !== undefined &&
+              sourceTier.installmentSchedule !== null &&
+              qty >= 1
+                ? (projectInstallmentSchedule(sourceTier, new Date(), qty)
+                    ?.depositCents ?? null)
+                : null;
+            const installmentNote = formatTripTierInstallmentNote(
+              tierDeposit,
+              ticket.currency ?? trip.pricingTiers[0]?.currency ?? "USD",
+              (value, currency) => formatCurrency(value, currency),
+            );
+            return (
+              <View key={ticket.id} style={styles.tierWrap}>
+                <QuantityRow
+                  ticket={ticket}
+                  quantity={qty}
+                  installmentNote={installmentNote}
+                  onQuantityChange={(next): void =>
+                    setLineQuantity({
+                      ticketTypeId: ticket.id,
+                      ticketName: ticket.name,
+                      unitPrice: ticket.priceGbp ?? 0,
+                      // ORCH-1147 — server fee-grossed all-in (priceAllInGbp) as
+                      // the headline-Total basis; base fallback (never fabricate).
+                      unitPriceAllIn:
+                        ticket.priceAllInGbp ?? ticket.priceGbp ?? 0,
+                      currency:
+                        ticket.currency ??
+                        trip.pricingTiers[0]?.currency ??
+                        "USD",
+                      isFree: ticket.isFree,
+                      quantity: next,
+                      paymentPlanChoice:
+                        lines.find((line) => line.ticketTypeId === ticket.id)
+                          ?.paymentPlanChoice ??
+                        (sourceTier?.installmentSchedule != null
+                          ? paymentPlanChoice
+                          : "full"),
+                    })
+                  }
+                />
+              </View>
+            );
+          })}
+          {/* #2331 — end of content: reopens the privacy bar. */}
+          <PrivacyChoicesLink />
+        </ScrollView>
 
-      {/* Sticky bottom bar — subtotal + Continue */}
-      <View
-        style={[
-          styles.bottomBar,
-          { paddingBottom: insets.bottom + spacing.md },
-        ]}
-      >
-        <React.Suspense fallback={null}>
-          <CheckoutDiscountCodeField
-            surface="web_trip"
-            disabled={totals.isEmpty}
-            saleNameByLineRef={Object.fromEntries(
-              trip.pricingTiers.map((tier) => [
-                tier.ticketTypeId,
-                tier.saleName ?? "sale",
-              ]),
-            )}
-          />
-        </React.Suspense>
-        {showFeesTaxLine ? (
-          <View style={styles.feesTaxRow}>
-            <Text style={styles.feesTaxLabel}>Fees &amp; tax</Text>
-            <Text style={styles.feesTaxValue}>
-              {formatCurrency(totals.feesTaxCents, totals.currency, true)}
+        {/* Sticky bottom bar (narrow) / order summary (wide) — #4304 */}
+        <CheckoutOrderSummary wide={wide} bottomInset={insets.bottom}>
+          <React.Suspense fallback={null}>
+            <CheckoutDiscountCodeField
+              collapsible={!wide}
+              surface="web_trip"
+              disabled={totals.isEmpty}
+              saleNameByLineRef={Object.fromEntries(
+                trip.pricingTiers.map((tier) => [
+                  tier.ticketTypeId,
+                  tier.saleName ?? "sale",
+                ]),
+              )}
+            />
+          </React.Suspense>
+          {showFeesTaxLine ? (
+            <View style={styles.feesTaxRow}>
+              <Text style={styles.feesTaxLabel}>Fees &amp; tax</Text>
+              <Text style={styles.feesTaxValue}>
+                {formatCurrency(totals.feesTaxCents, totals.currency, true)}
+              </Text>
+            </View>
+          ) : null}
+          <View style={styles.subtotalRow}>
+            <Text style={styles.subtotalLabel}>
+              {dueTodayCents !== null && !totals.isEmpty && !totals.isFree
+                ? "Due today"
+                : "Total"}
+            </Text>
+            <Text style={styles.subtotalValue}>
+              {totals.isEmpty
+                ? "—"
+                : totals.isFree
+                  ? "Free"
+                  : dueTodayCents !== null
+                    ? formatCurrency(dueTodayCents, totals.currency, true)
+                    : headlineAllIn}
             </Text>
           </View>
-        ) : null}
-        <View style={styles.subtotalRow}>
-          <Text style={styles.subtotalLabel}>
-            {dueTodayCents !== null && !totals.isEmpty && !totals.isFree
-              ? "Due today"
-              : "Total"}
-          </Text>
-          <Text style={styles.subtotalValue}>
-            {totals.isEmpty
-              ? "—"
-              : totals.isFree
-                ? "Free"
-                : dueTodayCents !== null
-                  ? formatCurrency(dueTodayCents, totals.currency, true)
-                  : headlineAllIn}
-          </Text>
-        </View>
-        <Button
-          label={continueLabel}
-          onPress={handleContinue}
-          variant="primary"
-          size="lg"
-          fullWidth
-          disabled={totals.isEmpty || quoteStatus !== "ready"}
-          accessibilityLabel={
-            totals.isEmpty
-              ? "Add a tier above"
-              : quoteStatus !== "ready"
-                ? "Waiting for your latest total"
-                : totals.isFree
-                  ? "Reserve free spot"
-                  : dueTodayCents !== null
-                    ? `Continue to buyer details, due today ${formatCurrency(dueTodayCents, totals.currency, true)}`
-                    : `Continue to buyer details, total ${headlineAllIn}`
-          }
-        />
-      </View>
+          <Button
+            label={continueLabel}
+            onPress={handleContinue}
+            variant="primary"
+            size="lg"
+            fullWidth
+            disabled={totals.isEmpty || quoteStatus !== "ready"}
+            accessibilityLabel={
+              totals.isEmpty
+                ? "Add a tier above"
+                : quoteStatus !== "ready"
+                  ? "Waiting for your latest total"
+                  : totals.isFree
+                    ? "Reserve free spot"
+                    : dueTodayCents !== null
+                      ? `Continue to buyer details, due today ${formatCurrency(dueTodayCents, totals.currency, true)}`
+                      : `Continue to buyer details, total ${headlineAllIn}`
+            }
+          />
+        </CheckoutOrderSummary>
+      </CheckoutColumns>
     </View>
   );
 }
@@ -835,17 +842,6 @@ const styles = StyleSheet.create({
     color: textTokens.secondary,
     fontSize: 14,
     textAlign: "center",
-  },
-  bottomBar: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingTop: spacing.md,
-    paddingHorizontal: spacing.lg,
-    backgroundColor: "rgba(12, 14, 18, 0.94)",
-    borderTopWidth: 1,
-    borderTopColor: "rgba(255, 255, 255, 0.06)",
   },
   subtotalRow: {
     flexDirection: "row",

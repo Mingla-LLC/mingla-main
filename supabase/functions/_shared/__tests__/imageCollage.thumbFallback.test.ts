@@ -10,8 +10,8 @@
 // - THUMB_404_FALLBACK_TO_TRANSFORM=false leaves the cell blank and keeps composing.
 
 import { Image } from "https://deno.land/x/imagescript@1.2.17/mod.ts";
-import { assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import { composeCollage } from "../imageCollage.ts";
+import { assert, assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
+import { composeCollage, MAX_ORIGINAL_FALLBACKS } from "../imageCollage.ts";
 
 const RENDER_ENDPOINT_NEEDLE = "/storage/v1/" + "render/image/";
 
@@ -289,6 +289,99 @@ Deno.test("T-04c USE_PLACE_PHOTO_THUMBS=false STILL routes to the gated metered 
       assertEquals(fetchUrls.some((url) => url.includes(RENDER_ENDPOINT_NEEDLE)), true);
       // And it must NOT have rewritten to a _thumb.jpg object.
       assertEquals(fetchUrls.some((url) => url.endsWith("_thumb.jpg")), false);
+    });
+  } finally {
+    globalThis.fetch = priorFetch;
+  }
+});
+
+// ─── #4276: the original-object fallback is capped per collage ────────────────
+//
+// Abuja (2026-11-08): 840 held places reached Intelligence with no thumbnails, so
+// every collage fell back to up to 16 full-size originals and the worker hit
+// "CPU Time exceeded" on every place. A collage now decodes at most
+// MAX_ORIGINAL_FALLBACKS originals; every further missing thumbnail leaves its cell
+// blank and counts as a fetch failure, with no original fetched.
+
+Deno.test("#4276 16 photos with every thumb missing fetch at most MAX_ORIGINAL_FALLBACKS originals", async () => {
+  assertEquals(MAX_ORIGINAL_FALLBACKS, 2);
+  const priorFetch = globalThis.fetch;
+  const jpegBody = await makeJpegBody();
+  const fetchUrls: string[] = [];
+  const originals = Array.from(
+    { length: 16 },
+    (_, i) => `https://x.supabase.co/storage/v1/object/public/place-photos/place-abuja/${i}.jpg`,
+  );
+
+  globalThis.fetch = (input: string | URL | Request, _init?: RequestInit) => {
+    const url = String(input);
+    fetchUrls.push(url);
+    if (url.endsWith("_thumb.jpg")) {
+      return Promise.resolve(new Response(
+        JSON.stringify({ statusCode: "404", error: "not_found", message: "Object not found" }),
+        { status: 400, headers: { "content-type": "application/json" } },
+      ));
+    }
+    return Promise.resolve(new Response(jpegBody.slice(0), {
+      status: 200,
+      headers: { "content-type": "image/jpeg" },
+    }));
+  };
+
+  try {
+    await withEnv({
+      USE_PLACE_PHOTO_THUMBS: undefined,
+      THUMB_404_FALLBACK_TO_TRANSFORM: undefined, // default ON
+      DISABLE_PHOTO_URL_TRANSFORM: undefined,
+    }, async () => {
+      const result = await composeCollage(originals);
+      const originalFetches = fetchUrls.filter((url) => !url.endsWith("_thumb.jpg"));
+      assert(originalFetches.length <= MAX_ORIGINAL_FALLBACKS, `fetched ${originalFetches.length} originals`);
+      assertEquals(originalFetches, originals.slice(0, MAX_ORIGINAL_FALLBACKS));
+      assertEquals(fetchUrls.filter((url) => url.endsWith("_thumb.jpg")).length, 16, "every thumb is still tried");
+      assertEquals(result.placedCount, MAX_ORIGINAL_FALLBACKS);
+      assertEquals(result.failedCount, 16 - MAX_ORIGINAL_FALLBACKS);
+      assertEquals(fetchUrls.filter((url) => url.includes(RENDER_ENDPOINT_NEEDLE)).length, 0);
+    });
+  } finally {
+    globalThis.fetch = priorFetch;
+  }
+});
+
+Deno.test("#4276 the fallback cap is per collage, and thumbs that exist are unaffected by it", async () => {
+  const priorFetch = globalThis.fetch;
+  const jpegBody = await makeJpegBody();
+  const fetchUrls: string[] = [];
+  const photos = Array.from(
+    { length: 6 },
+    (_, i) => `https://x.supabase.co/storage/v1/object/public/place-photos/place-b/${i}.jpg`,
+  );
+
+  // Thumbs 0..2 are missing; 3..5 exist.
+  globalThis.fetch = (input: string | URL | Request, _init?: RequestInit) => {
+    const url = String(input);
+    fetchUrls.push(url);
+    if (/\/[012]_thumb\.jpg$/.test(url)) return Promise.resolve(new Response("{}", { status: 400 }));
+    return Promise.resolve(new Response(jpegBody.slice(0), {
+      status: 200,
+      headers: { "content-type": "image/jpeg" },
+    }));
+  };
+
+  try {
+    await withEnv({
+      USE_PLACE_PHOTO_THUMBS: undefined,
+      THUMB_404_FALLBACK_TO_TRANSFORM: undefined,
+      DISABLE_PHOTO_URL_TRANSFORM: undefined,
+    }, async () => {
+      for (let round = 0; round < 2; round++) {
+        fetchUrls.length = 0;
+        const result = await composeCollage(photos);
+        // Two originals (photos 0 and 1), photo 2 blank, photos 3..5 from their thumbs.
+        assertEquals(fetchUrls.filter((url) => !url.endsWith("_thumb.jpg")), photos.slice(0, 2));
+        assertEquals(result.placedCount, 5, `round ${round}: a new collage gets a fresh budget`);
+        assertEquals(result.failedCount, 1);
+      }
     });
   } finally {
     globalThis.fetch = priorFetch;

@@ -154,6 +154,8 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   list_discounts: role("marketing_manager", "brand"),
   create_discount: role("marketing_manager", "brand"),
   pause_discount: role("marketing_manager", "brand"),
+  resume_discount: role("marketing_manager", "brand"),
+  end_discount: role("marketing_manager", "brand"),
   list_referral_offers: role("marketing_manager", "brand"),
   create_referral_offer: role("marketing_manager", "brand"),
   invite_promoters: role("marketing_manager", "brand"),
@@ -401,6 +403,9 @@ export function moneyToolPredicate(
 export const OWNER_SPOKEN_REFUSAL_CODES: ReadonlySet<string> = new Set([
   // #4238: another brand's (or a hidden) audience, refused before any card.
   "AD_AUDIENCE_NOT_OWNED",
+  // #4304: a discount proposal that cannot fit the SQL shape (code format,
+  // missing value, unclear target) is asked about before any card.
+  "DISCOUNT_PROPOSAL_INVALID",
   "MONEY_ROLE_DENIED",
   "OWNER_NOTE_NOT_NEEDED",
   "OWNER_NOTE_UNAVAILABLE",

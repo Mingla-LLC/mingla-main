@@ -22,6 +22,7 @@ import {
   buildSystemPrompt,
   BusinessContext,
   OfferingSummary,
+  parseFirstRunHint,
   TENANT_CONTEXT_VERSION,
 } from "../_shared/agentSystemPrompt.ts";
 import { detectPromptInjection } from "../_shared/agentPromptInjection.ts";
@@ -86,7 +87,12 @@ import {
   verifiedProposalArgs,
 } from "../_shared/agentTicketPricing.ts";
 import {
+  type FollowupProposal,
+  followupProposal,
+} from "../_shared/agentFollowupProposal.ts";
+import {
   bindTripStandardPlaceholderProposal,
+  preflightDiscountProposal,
   preflightMoneyProposal,
 } from "../_shared/agentDomainTools.ts";
 import { logError } from "../_shared/structuredLog.ts";
@@ -303,6 +309,12 @@ interface RequestBody {
   attachment_ids?: string[];
   ari_ui?: unknown;
   workflow_context?: "website_setup";
+  /**
+   * #4304: First Home with Ari — context only, never the owner's words. The
+   * Host app sends it while the account has no brand (no_brand) or nothing
+   * made yet (empty_brand), with what the host said they host.
+   */
+  first_run?: unknown;
   /** #3355 P3: a structured answer bound to the run's current question. */
   flow_answer?: unknown;
   /**
@@ -1018,6 +1030,13 @@ async function handle(req: Request): Promise<Response> {
     body.workflow_context !== "website_setup"
   ) {
     return errorResponse(400, "BAD_REQUEST", "workflow_context is invalid");
+  }
+
+  const firstRun = body.first_run === undefined
+    ? null
+    : parseFirstRunHint(body.first_run);
+  if (body.first_run !== undefined && !firstRun) {
+    return errorResponse(400, "BAD_REQUEST", "first_run is invalid");
   }
 
   const choiceSubmission = body.choice_response === undefined
@@ -2278,6 +2297,11 @@ async function handle(req: Request): Promise<Response> {
     const systemPrompt = buildSystemPrompt(profile, brandsList, {
       injectStrictReminder: injection.flagged,
       business,
+      // #4304: the hint is advisory; the brand list above stays the truth (a
+      // "no_brand" hint on an account that now has brands is ignored).
+      firstRun: firstRun && (firstRun.stage === "empty_brand" || brandsList.length === 0)
+        ? firstRun
+        : null,
     });
 
     let currentAttachmentParts: GeminiContentMessage["parts"] = [];
@@ -3950,7 +3974,7 @@ ${boundedAgentContext}
 
     // Branch on tool call vs text
     if (gemini.toolCall) {
-      const tool = findTool(gemini.toolCall.name);
+      let tool = findTool(gemini.toolCall.name);
       if (!tool) {
         return errorResponse(
           500,
@@ -3961,7 +3985,10 @@ ${boundedAgentContext}
 
       // For READ-ONLY tools, execute inline (no confirmation needed)
       if (isReadOnlyAgentToolCall(tool.name, gemini.toolCall.args)) {
-        try {
+        // #4304: set when the read's follow-up proposes the write the Host
+        // asked for; it then leaves this branch for the write-proposal path.
+        let promoted: FollowupProposal<NonNullable<typeof tool>> | null = null;
+        readTurn: try {
           if (
             !await appendActivity({
               client: serviceClient,
@@ -4079,6 +4106,28 @@ ${boundedAgentContext}
               }),
             );
             followup = undefined;
+          }
+          // #4304: the follow-up's own write (end_discount after
+          // list_discounts) becomes this turn's proposal; a card carries its
+          // own words, so it wins over any follow-up text. A second read stays
+          // a text turn.
+          promoted = followupProposal(
+            followup,
+            findTool,
+            isReadOnlyAgentToolCall,
+            readInterruption,
+          );
+          if (promoted) {
+            console.log(
+              "[agent-chat] read follow-up proposal promoted",
+              JSON.stringify({
+                fn: "agent-chat",
+                issue: "4304",
+                read_tool_name: tool.name,
+                tool_name: promoted.tool.name,
+              }),
+            );
+            break readTurn;
           }
           const text = followup?.textResponse ?? "Here's what I found.";
           await assertAttemptRunning(
@@ -4235,6 +4284,11 @@ ${boundedAgentContext}
             err?.message ?? "Tool failed",
           );
         }
+        if (!promoted) {
+          return errorResponse(500, "INTERNAL", "Read turn did not finish");
+        }
+        tool = promoted.tool;
+        gemini.toolCall = promoted.toolCall;
       }
 
       if (activeEventPlan) {
@@ -4285,6 +4339,25 @@ ${boundedAgentContext}
           userClient,
         );
       } catch (err: unknown) {
+        if (
+          err instanceof ToolError && OWNER_SPOKEN_REFUSAL_CODES.has(err.code)
+        ) {
+          // #4304: a proposal canonicaliser's question (e.g. a discount code
+          // that can't fit) is said in plain words before any card.
+          return await commitTextTurn({
+            client: serviceClient,
+            userId,
+            conversationId,
+            clientTurnId: body.client_turn_id,
+            previousState: taskState,
+            nextState: taskState,
+            expectedRevision: taskStateRevision,
+            previousSummary: conversationSummary,
+            text: err.message,
+            classification: "owner_refusal",
+            startedAt: turnStartedAt,
+          });
+        }
         if (err instanceof ToolError) {
           return errorResponse(
             err.code === "INVALID_ARGS" ? 400 : 503,
@@ -4345,11 +4418,20 @@ ${boundedAgentContext}
           gemini.toolCall.args,
           userClient,
         );
-        if (pricingContext || moneyContext || readinessContext) {
+        // #4304: pause/resume/end discount cards name the discount.
+        const discountContext = await preflightDiscountProposal(
+          tool.name,
+          gemini.toolCall.args,
+          userClient,
+        );
+        if (
+          pricingContext || moneyContext || readinessContext || discountContext
+        ) {
           proposalContext = {
             ...(pricingContext ?? {}),
             ...(moneyContext ?? {}),
             ...(readinessContext ?? {}),
+            ...(discountContext ?? {}),
           };
         }
       } catch (err: unknown) {

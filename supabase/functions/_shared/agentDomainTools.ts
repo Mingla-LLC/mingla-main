@@ -15,6 +15,8 @@ import {
   resolveEventBrand,
   ToolError,
 } from "./agentToolHelpers.ts";
+import { canonicalizeCreateDiscountArgs } from "./ariDiscountArgs.ts";
+import { DISCOUNT_WRITE_REFUSAL_COPY } from "./ariRefusalCopy.ts";
 import {
   applyTierPatch,
   loadEventTicketState,
@@ -3257,7 +3259,7 @@ const listDiscounts = writeTool(
 
 const createDiscount = writeTool(
   "create_discount",
-  "Propose a Host discount. Marketing managers can create codes; automatic discounts and sale prices require finance manager or above.",
+  "Propose a Host discount. Marketing managers can create codes; automatic discounts and sale prices require finance manager or above. Codes are 4-16 letters or numbers. Percent uses value_bps only; amount or set_price uses value_minor only. Each target is EITHER a specific listing (target_kind such as event or ticket_type plus target_id, no listing_kind) OR every listing of one kind (target_kind listing_kind plus listing_kind, no target_id).",
   {
     brand_id: UUID,
     kind: { type: "string", enum: ["code", "automatic", "sale_price"] },
@@ -3311,44 +3313,78 @@ const createDiscount = writeTool(
     },
   },
   ["brand_id", "kind", "name", "value_type", "scope_kind", "targets"],
-  async (args, client, userId) => {
+  async (rawArgs, client, userId) => {
+    // #4304: defense in depth — the proposal was canonicalised already; a
+    // direct executor call gets the same one shape the SQL writer accepts.
+    const args = canonicalizeCreateDiscountArgs(rawArgs);
     await requireBrand(args, client, userId);
-    const targets = Array.isArray(args.targets)
-      ? args.targets.map((value) => {
-        const target = value as Record<string, unknown>;
-        return {
-          targetKind: target.target_kind,
-          listingKind: target.listing_kind,
-          targetId: target.target_id,
-        };
-      })
-      : [];
-    return await invokeFn(client, "brand-discount-upsert", {
-      action: "create",
-      payload: {
-        brandId: args.brand_id,
-        kind: args.kind,
-        code: args.code,
-        name: args.name,
-        valueType: args.value_type,
-        valueBps: args.value_bps,
-        valueMinor: args.value_minor,
-        scopeKind: args.scope_kind,
-        combinesWith: args.combines_with,
-        startsAt: args.starts_at ?? new Date().toISOString(),
-        endsAt: args.ends_at,
-        endsAfterCount: args.ends_after_count,
-        maxTotalUses: args.max_total_uses,
-        maxUsesPerBuyer: args.max_uses_per_buyer,
-        minSubtotalMinor: args.min_subtotal_minor,
-        status: "active",
-        source: "ari",
-        targets,
-      },
-    });
+    return await invokeFn(
+      client,
+      "brand-discount-upsert",
+      buildCreateDiscountRequest(args),
+      undefined,
+      { refusals: DISCOUNT_WRITE_REFUSAL_COPY },
+    );
   },
 );
 
+/** #4304: the exact edge request for canonical `create_discount` args. */
+export function buildCreateDiscountRequest(
+  args: Record<string, unknown>,
+  now: () => Date = () => new Date(),
+): Record<string, unknown> {
+  const targets = Array.isArray(args.targets)
+    ? args.targets.map((value) => {
+      const target = value as Record<string, unknown>;
+      return target.target_kind === "listing_kind"
+        ? { targetKind: "listing_kind", listingKind: target.listing_kind }
+        : { targetKind: target.target_kind, targetId: target.target_id };
+    })
+    : [];
+  return {
+    action: "create",
+    payload: {
+      brandId: args.brand_id,
+      kind: args.kind,
+      code: args.code,
+      name: args.name,
+      valueType: args.value_type,
+      valueBps: args.value_bps,
+      valueMinor: args.value_minor,
+      scopeKind: args.scope_kind,
+      combinesWith: args.combines_with,
+      startsAt: args.starts_at ?? now().toISOString(),
+      endsAt: args.ends_at,
+      endsAfterCount: args.ends_after_count,
+      maxTotalUses: args.max_total_uses,
+      maxUsesPerBuyer: args.max_uses_per_buyer,
+      minSubtotalMinor: args.min_subtotal_minor,
+      status: "active",
+      source: "ari",
+      targets,
+    },
+  };
+}
+
+/** #4304: the exact edge request for a discount status change (pause, resume, end). */
+export function buildDiscountStatusRequest(
+  action: "pause" | "resume" | "end",
+  args: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    action,
+    payload: {
+      id: args.discount_id,
+      brandId: args.brand_id,
+      version: args.version,
+      source: "ari",
+    },
+  };
+}
+
+// #4304 — pause, resume and end share one request shape: the Host names a
+// discount, Ari reads its id and version from list_discounts, then proposes
+// the change. The edge writer owns the transition and the version check.
 const pauseDiscount = writeTool(
   "pause_discount",
   "Pause a discount after the Host confirms. Existing orders keep their price.",
@@ -3360,17 +3396,97 @@ const pauseDiscount = writeTool(
   ["brand_id", "discount_id", "version"],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
-    return await invokeFn(client, "brand-discount-upsert", {
-      action: "pause",
-      payload: {
-        id: args.discount_id,
-        brandId: args.brand_id,
-        version: args.version,
-        source: "ari",
-      },
-    });
+    return await invokeFn(
+      client,
+      "brand-discount-upsert",
+      buildDiscountStatusRequest("pause", args),
+      undefined,
+      { refusals: DISCOUNT_WRITE_REFUSAL_COPY },
+    );
   },
 );
+
+const resumeDiscount = writeTool(
+  "resume_discount",
+  "Resume a paused discount after the Host confirms, so buyers can use it again. Get discount_id and version from list_discounts first.",
+  {
+    brand_id: UUID,
+    discount_id: UUID,
+    version: { type: "integer", minimum: 1 },
+  },
+  ["brand_id", "discount_id", "version"],
+  async (args, client, userId) => {
+    await requireBrand(args, client, userId);
+    return await invokeFn(
+      client,
+      "brand-discount-upsert",
+      buildDiscountStatusRequest("resume", args),
+      undefined,
+      { refusals: DISCOUNT_WRITE_REFUSAL_COPY },
+    );
+  },
+);
+
+const endDiscount = writeTool(
+  "end_discount",
+  "End a discount for good after the Host confirms. Buyers stop receiving it; existing orders keep their price. Get discount_id and version from list_discounts first.",
+  {
+    brand_id: UUID,
+    discount_id: UUID,
+    version: { type: "integer", minimum: 1 },
+  },
+  ["brand_id", "discount_id", "version"],
+  async (args, client, userId) => {
+    await requireBrand(args, client, userId);
+    return await invokeFn(
+      client,
+      "brand-discount-upsert",
+      buildDiscountStatusRequest("end", args),
+      undefined,
+      { refusals: DISCOUNT_WRITE_REFUSAL_COPY },
+    );
+  },
+);
+
+/** #4304: the discount tools whose cards name the discount. */
+const DISCOUNT_STATUS_TOOLS = new Set([
+  "pause_discount",
+  "resume_discount",
+  "end_discount",
+]);
+
+/**
+ * #4304: proposal-time name for a pause/resume/end discount card. Reads the
+ * row through the caller-bound client (bd_read RLS: brand members rank >= 20),
+ * so a paused discount, which brand_discounts_list never returns, is found
+ * too. Returns the code when the discount has one, else its name. Any miss or
+ * failure returns null and never blocks the proposal.
+ */
+export async function preflightDiscountProposal(
+  toolName: string,
+  args: Record<string, unknown>,
+  client: any,
+): Promise<Record<string, unknown> | null> {
+  if (!DISCOUNT_STATUS_TOOLS.has(toolName)) return null;
+  if (!client || !isUuid(args.discount_id) || !isUuid(args.brand_id)) {
+    return null;
+  }
+  try {
+    const { data, error } = await client
+      .from("brand_discounts")
+      .select("id,code,name")
+      .eq("id", args.discount_id)
+      .eq("brand_id", args.brand_id)
+      .maybeSingle();
+    if (error || !data || data.id !== args.discount_id) return null;
+    const code = typeof data.code === "string" ? data.code.trim() : "";
+    const name = typeof data.name === "string" ? data.name.trim() : "";
+    const label = code || name;
+    return label ? { discount_name: label } : null;
+  } catch {
+    return null;
+  }
+}
 
 // #3872 R2 — Ari shares the exact Host referral control plane. It never
 // inserts offer/member rows directly; the caller-bound edge functions and SQL
@@ -9511,6 +9627,8 @@ export const DOMAIN_TOOLS: AgentToolDefinition[] = [
   listDiscounts,
   createDiscount,
   pauseDiscount,
+  resumeDiscount,
+  endDiscount,
   listReferralOffers,
   createReferralOffer,
   invitePromoters,

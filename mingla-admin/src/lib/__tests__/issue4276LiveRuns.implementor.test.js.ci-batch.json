@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-suite",
+  "ownerIssue": "#4276",
+  "suite": {
+    "id": "issue-4276-admin-live-runs",
+    "class": "admin-node20-install",
+    "originPaths": ["mingla-admin/src/**"],
+    "steps": [{
+      "name": "Admin place pool live runs",
+      "cwd": "mingla-admin",
+      "run": "node --test src/lib/__tests__/issue4276LiveRuns.implementor.test.js",
+      "commandId": "assert:issue-4276-admin-live-runs:01",
+      "invocation": {
+        "kind": "raw-shell",
+        "command": "bash",
+        "argv": ["-c", "node --test src/lib/__tests__/issue4276LiveRuns.implementor.test.js"]
+      },
+      "exceptionRationale": "Self-registering targeted Admin regression suite replaces a legacy workflow edit."
+    }],
+    "lifecycle": "batched-active",
+    "ownerIssue": "#4276",
+    "runtime": {"name": "node", "version": "20"},
+    "setupProfile": "admin-node20-install",
+    "cwd": "mingla-admin",
+    "envNames": [],
+    "isolation": "clean-worktree",
+    "expectedFiles": ["mingla-admin/src/lib/__tests__/issue4276LiveRuns.implementor.test.js"],
+    "externalReferenceFiles": [],
+    "requiredContext": "CI batch: admin-node20-install",
+    "timingSeconds": {"p50": 1, "p95": 2, "evidence": "Local targeted run 2026-11-07"},
+    "generatedPaths": ["suite-results.json"],
+    "exceptionRationale": "Raw shell preserves the reviewed assertion in the self-registering suite.",
+    "timeoutSeconds": 60
+  }
+}

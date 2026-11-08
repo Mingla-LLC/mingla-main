@@ -52,6 +52,11 @@ import { QuantityRow } from "../../../src/components/checkout/QuantityRow";
 // didn't, undercounting started checkouts). Web-only (native no-op via .web split).
 import { captureWeb, gaEvent } from "../../../src/analytics/webAnalytics";
 import { PrivacyChoicesLink } from "../../../src/analytics/PrivacyChoicesLink";
+import {
+  CheckoutColumns,
+  CheckoutOrderSummary,
+  useCheckoutWideLayout,
+} from "../../../src/components/checkout/CheckoutOrderSummary";
 
 const CheckoutDiscountCodeField = React.lazy(() =>
   import("../../../src/components/checkout/DiscountCodeField").then(
@@ -95,6 +100,8 @@ const allDatesPast = (isos: string[], nowMs: number = Date.now()): boolean => {
 
 export default function CheckoutExperienceTicketScreen(): React.ReactElement {
   const insets = useSafeAreaInsets();
+  // #4304 — wide desktop: tickets left, a static order summary right.
+  const wide = useCheckoutWideLayout();
   const router = useRouter();
   // ORCH-1138 Leg 3 — the public /exp/ page threads the buyer's adaptive-Reserve
   // selection via route params: the chosen occurrence (`eventDateId`) + the
@@ -382,109 +389,108 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
         title="Get your spot"
         onBack={handleBack}
       />
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingBottom: insets.bottom + 140 },
-        ]}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.miniCard}>
-          <EventCoverMedia
-            hue={0}
-            mediaUrl={experience.coverMediaUrl}
-            mediaType={experience.coverMediaType}
-            radius={0}
-            label=""
-            style={styles.miniCover}
-          />
-          <Text style={styles.miniTitle} numberOfLines={2}>
-            {experience.title.trim().length > 0
-              ? experience.title
-              : "Untitled experience"}
-          </Text>
-          <Text style={styles.miniSubtitle} numberOfLines={1}>
-            {brand?.name ?? "Mingla"}
-          </Text>
-          {subline.length > 0 ? (
-            <Text style={styles.miniSubtitle} numberOfLines={1}>
-              {subline}
+      <CheckoutColumns wide={wide}>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: wide ? spacing.xl : insets.bottom + 140 },
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.miniCard}>
+            <EventCoverMedia
+              hue={0}
+              mediaUrl={experience.coverMediaUrl}
+              mediaType={experience.coverMediaType}
+              radius={0}
+              label=""
+              style={styles.miniCover}
+            />
+            <Text style={styles.miniTitle} numberOfLines={2}>
+              {experience.title.trim().length > 0
+                ? experience.title
+                : "Untitled experience"}
             </Text>
-          ) : null}
-        </View>
+            <Text style={styles.miniSubtitle} numberOfLines={1}>
+              {brand?.name ?? "Mingla"}
+            </Text>
+            {subline.length > 0 ? (
+              <Text style={styles.miniSubtitle} numberOfLines={1}>
+                {subline}
+              </Text>
+            ) : null}
+          </View>
 
-        <Text style={styles.sectionLabel}>Your spot</Text>
+          <Text style={styles.sectionLabel}>Your spot</Text>
 
-        <QuantityRow
-          ticket={stub}
-          quantity={qty}
-          onQuantityChange={(next): void =>
-            setLineQuantity({
-              ticketTypeId: stub.id,
-              ticketName: stub.name,
-              unitPrice: stub.priceGbp ?? 0,
-              // ORCH-1147 — server fee-grossed all-in (priceAllInGbp) as the
-              // headline-Total basis; falls back to base until the experience
-              // source plumbs the per-tier all-in (never fabricate).
-              unitPriceAllIn: stub.priceAllInGbp ?? stub.priceGbp ?? 0,
-              currency: stub.currency ?? experience.ticket?.currency ?? "USD",
-              isFree: stub.isFree,
-              quantity: next,
-            })
-          }
-        />
-        {/* #2331 — end of content: reopens the privacy bar. */}
-        <PrivacyChoicesLink />
-      </ScrollView>
-
-      <View
-        style={[
-          styles.bottomBar,
-          { paddingBottom: insets.bottom + spacing.md },
-        ]}
-      >
-        <React.Suspense fallback={null}>
-          <CheckoutDiscountCodeField
-            surface="web_experience"
-            disabled={totals.isEmpty}
-            saleNameByLineRef={{
-              [stub.id]: ticket.saleName ?? "sale",
-            }}
+          <QuantityRow
+            ticket={stub}
+            quantity={qty}
+            onQuantityChange={(next): void =>
+              setLineQuantity({
+                ticketTypeId: stub.id,
+                ticketName: stub.name,
+                unitPrice: stub.priceGbp ?? 0,
+                // ORCH-1147 — server fee-grossed all-in (priceAllInGbp) as the
+                // headline-Total basis; falls back to base until the experience
+                // source plumbs the per-tier all-in (never fabricate).
+                unitPriceAllIn: stub.priceAllInGbp ?? stub.priceGbp ?? 0,
+                currency: stub.currency ?? experience.ticket?.currency ?? "USD",
+                isFree: stub.isFree,
+                quantity: next,
+              })
+            }
           />
-        </React.Suspense>
-        {showFeesTaxLine ? (
-          <View style={styles.feesTaxRow}>
-            <Text style={styles.feesTaxLabel}>Fees &amp; tax</Text>
-            <Text style={styles.feesTaxValue}>
-              {formatCurrency(totals.feesTaxCents, totals.currency, true)}
+          {/* #2331 — end of content: reopens the privacy bar. */}
+          <PrivacyChoicesLink />
+        </ScrollView>
+
+        {/* Sticky bottom bar (narrow) / order summary (wide) — #4304 */}
+        <CheckoutOrderSummary wide={wide} bottomInset={insets.bottom}>
+          <React.Suspense fallback={null}>
+            <CheckoutDiscountCodeField
+              collapsible={!wide}
+              surface="web_experience"
+              disabled={totals.isEmpty}
+              saleNameByLineRef={{
+                [stub.id]: ticket.saleName ?? "sale",
+              }}
+            />
+          </React.Suspense>
+          {showFeesTaxLine ? (
+            <View style={styles.feesTaxRow}>
+              <Text style={styles.feesTaxLabel}>Fees &amp; tax</Text>
+              <Text style={styles.feesTaxValue}>
+                {formatCurrency(totals.feesTaxCents, totals.currency, true)}
+              </Text>
+            </View>
+          ) : null}
+          <View style={styles.subtotalRow}>
+            <Text style={styles.subtotalLabel}>Total</Text>
+            <Text style={styles.subtotalValue}>
+              {totals.isEmpty ? "—" : totals.isFree ? "Free" : headlineAllIn}
             </Text>
           </View>
-        ) : null}
-        <View style={styles.subtotalRow}>
-          <Text style={styles.subtotalLabel}>Total</Text>
-          <Text style={styles.subtotalValue}>
-            {totals.isEmpty ? "—" : totals.isFree ? "Free" : headlineAllIn}
-          </Text>
-        </View>
-        <Button
-          label={continueLabel}
-          onPress={handleContinue}
-          variant="primary"
-          size="lg"
-          fullWidth
-          disabled={totals.isEmpty || quoteStatus !== "ready"}
-          accessibilityLabel={
-            totals.isEmpty
-              ? "Add your spot above"
-              : quoteStatus !== "ready"
-                ? "Waiting for your latest total"
-                : totals.isFree
-                  ? "Reserve free spot"
-                  : `Continue to buyer details, total ${headlineAllIn}`
-          }
-        />
-      </View>
+          <Button
+            label={continueLabel}
+            onPress={handleContinue}
+            variant="primary"
+            size="lg"
+            fullWidth
+            disabled={totals.isEmpty || quoteStatus !== "ready"}
+            accessibilityLabel={
+              totals.isEmpty
+                ? "Add your spot above"
+                : quoteStatus !== "ready"
+                  ? "Waiting for your latest total"
+                  : totals.isFree
+                    ? "Reserve free spot"
+                    : `Continue to buyer details, total ${headlineAllIn}`
+            }
+          />
+        </CheckoutOrderSummary>
+      </CheckoutColumns>
     </View>
   );
 }
@@ -529,17 +535,6 @@ const styles = StyleSheet.create({
     color: textTokens.secondary,
     fontSize: 14,
     textAlign: "center",
-  },
-  bottomBar: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingTop: spacing.md,
-    paddingHorizontal: spacing.lg,
-    backgroundColor: "rgba(12, 14, 18, 0.94)",
-    borderTopWidth: 1,
-    borderTopColor: "rgba(255, 255, 255, 0.06)",
   },
   subtotalRow: {
     flexDirection: "row",
