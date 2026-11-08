@@ -11,14 +11,14 @@
 //       cannot start while one is in flight, drag-and-drop rolls back too
 //   A-2 a stale order (PT409) reloads the server's list; other failures do not
 //   A-3 save validation: nothing reaches the server for an invalid draft
-//       (whitespace of every kind, 61 characters, script links); every city
-//       sends a null city; a server refusal is explained without blaming the
+//       (whitespace of every kind, 61 characters, script links); no strip
+//       carries a city (#4318 addendum 2 A); a server refusal is explained without blaming the
 //       connection; the client's web-link rule never passes a link the server
 //       refuses
 //   A-4 blog title prefill never overwrites a typed title, drafts are never
 //       offered, and a long post title is cut to 60
-//   A-5 the city list is the marketing registry EXECUTED (not pattern-read),
-//       and a city added to the registry later is caught
+//   A-5 strips are not by city: the panel offers no city and the old
+//       admin city list is gone (#4318 addendum 2 A, Seth)
 //   A-6 removing a strip needs a second, explicit confirm
 //
 // It needs the admin app's packages (react, react-dom, esbuild, lucide-react):
@@ -30,12 +30,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { LINKS_CITIES } from "../lib/linksCities.js";
 import { validateStripDraft } from "../lib/linksStrips.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(HERE, "..");
-const REGISTRY = path.resolve(SRC, "../../mingla-marketing/content/cities/registry.ts");
 
 // ── A small DOM: just enough of the platform for react-dom/client ──────────
 class FakeNode {
@@ -320,7 +318,7 @@ function deferred() {
 }
 
 const strip = (id, position, extra = {}) => ({
-  id, city_slug: "lagos", shows_on: "2026-11-09", title: `Strip ${id}`, label: "New", opens: "host",
+  id, shows_on: "2026-11-09", title: `Strip ${id}`, label: "New", opens: "host",
   url: null, blog_post_id: null, blog_title: null, position, is_published: true, ...extra,
 });
 
@@ -492,33 +490,33 @@ describe("A-3 save validation and arguments", () => {
     }
   });
 
-  it("every live city sends a null city and the list names it; a scheme is stripped", async () => {
+  it("a new strip sends no city and the list names none; a scheme is stripped", async () => {
     server.handlers.admin_links_strip_save = (args) => Promise.resolve({ data: { id: "new", ...args }, error: null });
-    server.strips = [strip("e", 1, { city_slug: null, title: "Everywhere" })];
+    server.strips = [strip("e", 1, { title: "Everywhere" })];
     const container = await mountPanel();
-    assert.match(container.querySelector("li").textContent, /Every live city/);
-    assert.equal(container.querySelector('[id="links-strip-city"]').value, "", "the form starts on every live city");
+    assert.doesNotMatch(container.querySelector("li").textContent, /Every live city/);
+    assert.ok(!container.querySelector('[id="links-strip-city"]'), "the form has no City field");
     await typeInto(container.querySelector('[id="links-strip-title"]'), "  Fresh strip  ");
     await typeInto(container.querySelector('[id="links-strip-url"]'), " HTTPS://usemingla.com/host ");
     await submit(container);
     const [save] = calls("admin_links_strip_save");
-    assert.equal(save.args.p_city_slug, null);
+    assert.equal(Object.hasOwn(save.args, "p_city_slug"), false, "admin_links_strip_save has no city parameter");
     assert.equal(save.args.p_title, "Fresh strip");
     assert.equal(save.args.p_url, "usemingla.com/host");
     assert.equal(save.args.p_blog_post_id, null);
     assert.equal(save.args.p_id, null);
   });
 
-  it("editing a strip whose city the admin list does not know yet keeps that city", async () => {
+  it("editing a row that still carries an old city sends no city and shows none", async () => {
     server.handlers.admin_links_strip_save = (args) => Promise.resolve({ data: args, error: null });
-    server.strips = [strip("n", 1, { city_slug: "accra", title: "Accra night" })];
+    server.strips = [strip("n", 1, { city_slug: "accra", title: "Old night" })];
     const container = await mountPanel();
-    assert.match(container.querySelector("li").textContent, /accra/, "an unknown slug is shown, not renamed");
-    await settle(() => buttonByLabel(container, "Edit: Accra night").click());
+    assert.doesNotMatch(container.querySelector("li").textContent, /accra/, "a leftover city is never shown");
+    await settle(() => buttonByLabel(container, "Edit: Old night").click());
     await submit(container);
     const [save] = calls("admin_links_strip_save");
     assert.equal(save.args.p_id, "n");
-    assert.equal(save.args.p_city_slug, "accra", "an edit never silently moves a strip to every city");
+    assert.equal(Object.hasOwn(save.args, "p_city_slug"), false, "an edit never sends a city");
   });
 
   it("a refusal from the server says what is wrong, not that the connection failed", async () => {
@@ -612,48 +610,17 @@ describe("A-4 blog post picker and title prefill", () => {
   });
 });
 
-// ── A-5 the city list is the executed registry ─────────────────────────────
-async function loadRegistry(transformSource = (s) => s) {
-  const esbuild = await import("esbuild");
-  const source = transformSource(fs.readFileSync(REGISTRY, "utf8"));
-  const out = await esbuild.build({
-    stdin: { contents: source, resolveDir: path.dirname(REGISTRY), sourcefile: "registry.ts", loader: "ts" },
-    bundle: true, write: false, platform: "node", format: "esm", logLevel: "silent",
-  });
-  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "issue4318-registry-")), "registry.mjs");
-  fs.writeFileSync(file, out.outputFiles[0].text);
-  return import(pathToFileURL(file).href);
-}
-
-function cityDrift(registry, cities = LINKS_CITIES) {
-  const live = registry.CITY_HUB_SLUGS.map((slug) => {
-    const record = registry.CITY_HUBS.find((hub) => hub.slug === slug);
-    return { slug, name: record?.city };
-  });
-  return JSON.stringify(live) === JSON.stringify(cities.map(({ slug, name }) => ({ slug, name })))
-    ? null
-    : { live, admin: cities };
-}
-
-describe("A-5 the admin city list is the marketing registry, run", () => {
-  it("matches the registry's live cities, order and names, as the module evaluates them", async () => {
-    const registry = await loadRegistry();
-    assert.equal(cityDrift(registry), null);
+// ── A-5 strips are not by city ─────────────────────────────────────────────
+describe("A-5 strips are not by city (#4318 addendum 2 A)", () => {
+  it("the admin city list module is gone", () => {
+    assert.equal(fs.existsSync(path.join(SRC, "lib/linksCities.js")), false);
   });
 
-  it("the panel offers exactly every live city plus Every live city", async () => {
-    const registry = await loadRegistry();
+  it("the panel renders no city control and no city words", async () => {
+    server.strips = [strip("a", 0), strip("b", 1)];
     const container = await mountPanel();
-    const options = container.querySelector('[id="links-strip-city"]').options.map((o) => [o.value, o.textContent]);
-    assert.deepEqual(options, [["", "Every live city"], ...registry.CITY_HUB_SLUGS.map((slug) => [slug, registry.CITY_HUBS.find((h) => h.slug === slug).city])]);
-  });
-
-  it("a city added to the registry later is caught", async () => {
-    const grown = await loadRegistry((source) => source
-      .replace("export const CITY_HUB_SLUGS = [", "export const CITY_HUB_SLUGS = [\n  'accra',")
-      .replace("export const CITY_HUBS = [", "export const CITY_HUBS = [\n  { slug: 'accra', city: 'Accra' } as never,"));
-    assert.equal(grown.CITY_HUB_SLUGS[0], "accra", "the fixture really grew the registry");
-    assert.notEqual(cityDrift(grown), null, "the admin list must be updated when the registry grows");
+    assert.ok(!container.querySelector('[id="links-strip-city"]'));
+    assert.doesNotMatch(container.textContent, /Every live city|not in the list/);
   });
 });
 

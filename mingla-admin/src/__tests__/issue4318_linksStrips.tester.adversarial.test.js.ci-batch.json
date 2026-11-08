@@ -7,13 +7,11 @@
     "class": "admin-node20-install",
     "originPaths": [
       "mingla-admin/src/**",
-      "mingla-admin/package-lock.json",
-      "mingla-marketing/content/cities/registry.ts",
-      "mingla-marketing/lib/search/historical-city-build.ts"
+      "mingla-admin/package-lock.json"
     ],
     "steps": [
       {
-        "name": "Admin Links page strips, tester: the real panel driven (reorder rollback, stale reload, validation, blog title prefill, executed city registry, delete confirm)",
+        "name": "Admin Links page strips, tester: the real panel driven (reorder rollback, stale reload, validation, blog title prefill, no city, delete confirm)",
         "cwd": "mingla-admin",
         "run": "node --test src/__tests__/issue4318_linksStrips.tester.adversarial.test.js",
         "commandId": "assert:issue-4318-admin-links-strips-tester:01",
@@ -41,10 +39,7 @@
     "expectedFiles": [
       "mingla-admin/src/__tests__/issue4318_linksStrips.tester.adversarial.test.js"
     ],
-    "externalReferenceFiles": [
-      "mingla-marketing/content/cities/registry.ts",
-      "mingla-marketing/lib/search/historical-city-build.ts"
-    ],
+    "externalReferenceFiles": [],
     "requiredContext": "CI batch: admin-node20-install",
     "timingSeconds": {
       "p50": 13,

@@ -6,12 +6,11 @@
     "id": "issue-4318-admin-links-strips",
     "class": "admin-node20-install",
     "originPaths": [
-      "mingla-admin/src/**",
-      "mingla-marketing/content/cities/registry.ts"
+      "mingla-admin/src/**"
     ],
     "steps": [
       {
-        "name": "Admin Links page strips: city list, validation, reorder and tab wiring",
+        "name": "Admin Links page strips: validation, reorder and tab wiring",
         "cwd": "mingla-admin",
         "run": "node --test src/__tests__/issue4318_linksStrips.implementor.test.js",
         "commandId": "assert:issue-4318-admin-links-strips:01",
@@ -39,9 +38,7 @@
     "expectedFiles": [
       "mingla-admin/src/__tests__/issue4318_linksStrips.implementor.test.js"
     ],
-    "externalReferenceFiles": [
-      "mingla-marketing/content/cities/registry.ts"
-    ],
+    "externalReferenceFiles": [],
     "requiredContext": "CI batch: admin-node20-install",
     "timingSeconds": {
       "p50": 1,

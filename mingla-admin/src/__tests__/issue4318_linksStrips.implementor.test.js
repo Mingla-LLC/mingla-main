@@ -1,6 +1,6 @@
 // #4318 — Support › Links page: custom strips for usemingla.com/links.
 //
-//   L-1  the admin city list mirrors the marketing city registry exactly
+//   L-1  strips are not by city (Seth, addendum 2 A): no city field or argument
 //   L-2  save validation says what is wrong, in the design's words
 //   L-3  save arguments carry only what the chosen "Opens" needs
 //   L-4  reorder moves, clamps, and rolls back when the save fails (PT409 too)
@@ -10,7 +10,6 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { LINKS_CITIES, linksCityName } from "../lib/linksCities.js";
 import {
   LINKS_STRIP_MESSAGES, moveStrip, normalizeStripUrl, runOptimisticReorder, stripMetaLine, stripRows,
   stripSaveArgs, validateStripDraft,
@@ -21,30 +20,17 @@ import { communitySupportTabsForAccess } from "../lib/communitySupportAccess.js"
 
 const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (rel) => fs.readFileSync(path.join(SRC, rel), "utf8");
-const REGISTRY = path.resolve(SRC, "../../mingla-marketing/content/cities/registry.ts");
 
-describe("L-1 city list mirrors the marketing registry", () => {
-  it("has the same slugs, in order, and the same names", () => {
-    const registry = fs.readFileSync(REGISTRY, "utf8");
-    const hubBlock = registry.match(/export const CITY_HUB_SLUGS = \[([\s\S]*?)\] as const/);
-    assert.ok(hubBlock, "CITY_HUB_SLUGS parsed from the registry");
-    const hubSlugs = [...hubBlock[1].matchAll(/'([a-z0-9-]+)'/g)].map((m) => m[1]);
-    assert.deepEqual(LINKS_CITIES.map((city) => city.slug), hubSlugs);
-    const names = Object.fromEntries(
-      [...registry.matchAll(/slug: '([a-z0-9-]+)', city: '([^']+)'/g)].map((m) => [m[1], m[2]]),
-    );
-    for (const city of LINKS_CITIES) assert.equal(city.name, names[city.slug], city.slug);
-  });
-
-  it("names every live city for a strip with no city", () => {
-    assert.equal(linksCityName(null), "Every live city");
-    assert.equal(linksCityName(""), "Every live city");
-    assert.equal(linksCityName("raleigh-nc"), "Raleigh");
+describe("L-1 strips are not by city", () => {
+  it("the form has no City field and the list names no city", () => {
+    assert.equal(fs.existsSync(path.join(SRC, "lib/linksCities.js")), false);
+    const panel = read("components/links/LinksPagePanel.jsx");
+    assert.equal(/links-strip-city|city_slug|citySlug|linksCities/.test(panel), false);
   });
 });
 
 const valid = {
-  id: null, citySlug: "raleigh-nc", showsOn: "2026-11-12", title: "Free Host Night: sell out your first event",
+  id: null, showsOn: "2026-11-12", title: "Free Host Night: sell out your first event",
   label: "From Mingla", opens: "web", url: "https://usemingla.com/host", blogPostId: "",
 };
 
@@ -83,16 +69,16 @@ describe("L-2 save validation", () => {
 describe("L-3 save arguments", () => {
   it("stores the web link without its scheme and drops a stale post", () => {
     assert.deepEqual(stripSaveArgs({ ...valid, blogPostId: "p1" }), {
-      p_id: null, p_city_slug: "raleigh-nc", p_shows_on: "2026-11-12", p_title: valid.title,
+      p_id: null, p_shows_on: "2026-11-12", p_title: valid.title,
       p_label: "From Mingla", p_opens: "web", p_url: "usemingla.com/host", p_blog_post_id: null,
     });
     assert.equal(normalizeStripUrl("  HTTPS://usemingla.com/x "), "usemingla.com/x");
   });
 
-  it("sends a null city for every live city and drops a stale URL", () => {
-    const args = stripSaveArgs({ ...valid, id: "s1", citySlug: "", opens: "blog", blogPostId: "p1", title: "  Hi  " });
+  it("sends no city at all, and drops a stale URL", () => {
+    const args = stripSaveArgs({ ...valid, id: "s1", citySlug: "lagos", opens: "blog", blogPostId: "p1", title: "  Hi  " });
+    assert.deepEqual(Object.keys(args).sort(), ["p_blog_post_id", "p_id", "p_label", "p_opens", "p_shows_on", "p_title", "p_url"]);
     assert.equal(args.p_id, "s1");
-    assert.equal(args.p_city_slug, null);
     assert.equal(args.p_url, null);
     assert.equal(args.p_blog_post_id, "p1");
     assert.equal(args.p_title, "Hi");

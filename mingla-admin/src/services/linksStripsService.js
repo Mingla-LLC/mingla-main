@@ -22,7 +22,6 @@ const SERVER_REFUSALS = Object.freeze({
   links_url_invalid: { field: "url", message: "Enter a web link like usemingla.com/host." },
   links_shows_on_invalid: { field: "showsOn", message: "Pick today or a later day." },
   links_blog_post_invalid: { field: "blog", message: "Choose a published blog post." },
-  links_city_invalid: { field: "city", message: "Pick a city from the list." },
   links_label_invalid: { field: "label", message: "Pick an option from the list." },
   links_opens_invalid: { field: "opens", message: "Pick an option from the list." },
 });

@@ -69,14 +69,13 @@ export function validateStripDraft(draft) {
 }
 
 /**
- * The admin_links_strip_save arguments for a valid draft. A strip for every
- * live city sends a null city; only a web strip sends a URL and only a blog
- * strip sends a post, so switching "Opens" never leaves a stale value behind.
+ * The admin_links_strip_save arguments for a valid draft. Strips are not by
+ * city: every strip shows on every city's view. Only a web strip sends a URL
+ * and only a blog strip sends a post, so switching "Opens" never leaves a stale value behind.
  */
 export function stripSaveArgs(draft) {
   return {
     p_id: draft.id || null,
-    p_city_slug: draft.citySlug ? draft.citySlug : null,
     p_shows_on: draft.showsOn,
     p_title: String(draft.title ?? "").trim(),
     p_label: draft.label,

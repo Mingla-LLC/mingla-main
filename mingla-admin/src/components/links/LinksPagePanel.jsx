@@ -1,7 +1,7 @@
 // #4318 — Support › Links page: the custom strips shown on usemingla.com/links.
 //
 // Staff add, edit, reorder and remove strips. Strips sit in their own pinned
-// group under the page's two banners, in the cities picked here; the page's
+// group under the page's two banners, the same in every city; the page's
 // filters never hide them. The list order is the order on the page, saved as
 // an explicit position by admin_links_strips_reorder.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -10,7 +10,6 @@ import { Button } from "../ui/Button";
 import { AlertCard, SectionCard } from "../ui/Card";
 import { LoadError } from "../ui/LoadError";
 import { useToast } from "../../context/ToastContext";
-import { LINKS_CITIES, EVERY_LIVE_CITY_LABEL, linksCityName } from "../../lib/linksCities";
 import {
   LINKS_STRIP_LABELS, LINKS_STRIP_OPENS, LINKS_STRIP_TITLE_MAX, moveStrip, runOptimisticReorder,
   showsOnOptions, stripDayLabel, stripMetaLine, stripOpensSummary, stripRows, stripSaveArgs, validateStripDraft,
@@ -26,13 +25,12 @@ const FIELD_BAD = "border-[#ef4444]";
 const LABEL = "mb-1.5 block text-sm font-medium text-[var(--color-text-primary)]";
 
 function emptyDraft(today) {
-  return { id: null, citySlug: "", showsOn: today, title: "", label: LINKS_STRIP_LABELS[0], opens: "web", url: "", blogPostId: "" };
+  return { id: null, showsOn: today, title: "", label: LINKS_STRIP_LABELS[0], opens: "web", url: "", blogPostId: "" };
 }
 
 function draftFromStrip(strip) {
   return {
     id: strip.id,
-    citySlug: strip.city_slug || "",
     showsOn: strip.shows_on,
     title: strip.title || "",
     label: strip.label,
@@ -174,7 +172,7 @@ export function LinksPagePanel() {
       addToast({
         variant: "success",
         title: draft.id ? "Strip saved" : "Strip published",
-        description: `${linksCityName(draft.citySlug)} · pinned under the banners on usemingla.com/links.`,
+        description: "Pinned under the banners on usemingla.com/links, in every city.",
       });
       resetForm();
       await load();
@@ -244,21 +242,10 @@ export function LinksPagePanel() {
         <form noValidate onSubmit={submit} className="space-y-4">
           <p className="text-sm text-[var(--color-text-secondary)]">
             Live listings fill each city on their own. Custom strips sit in their own pinned spot under the two banners,
-            above the city switcher, in the cities you pick. Filters never hide them. They push the listings down until 3
+            above the city switcher, and show first in every city. Filters never hide them. They push the listings down until 3
             are left; any more fold into &ldquo;See more from Mingla&rdquo;.
           </p>
           <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label htmlFor="links-strip-city" className={LABEL}>City</label>
-              <select id="links-strip-city" ref={(node) => { fieldRefs.current.city = node; }} value={draft.citySlug} onChange={(e) => update({ citySlug: e.target.value })} className={fieldClass("city")}>
-                <option value="">{EVERY_LIVE_CITY_LABEL}</option>
-                {draft.citySlug && !LINKS_CITIES.some((city) => city.slug === draft.citySlug) ? (
-                  // An edited strip keeps a city the admin list does not know yet.
-                  <option value={draft.citySlug}>{`${draft.citySlug} (not in the list)`}</option>
-                ) : null}
-                {LINKS_CITIES.map((city) => <option key={city.slug} value={city.slug}>{city.name}</option>)}
-              </select>
-            </div>
             <div>
               <label htmlFor="links-strip-day" className={LABEL}>Shows on</label>
               <select
@@ -436,7 +423,7 @@ export function LinksPagePanel() {
                   <div className="min-w-0">
                     <b className="block truncate text-sm font-semibold">{strip.title}</b>
                     <small className="block truncate text-xs text-[var(--color-text-secondary)]">
-                      {linksCityName(strip.city_slug)} · {strip.label} · {stripDayLabel(strip.shows_on)} · {stripOpensSummary(strip)}
+                      {strip.label} · {stripDayLabel(strip.shows_on)} · {stripOpensSummary(strip)}
                     </small>
                   </div>
                   {confirming ? (
