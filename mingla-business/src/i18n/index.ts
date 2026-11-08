@@ -60,6 +60,24 @@ function nestedValue(copy: TranslationTree, key: string): string | null {
   return typeof current === "string" ? current : null;
 }
 
+/**
+ * #4304 — Hermes on iOS ships Intl without PluralRules, so `new
+ * Intl.PluralRules` threw and crashed the Brand group Media panel. Use it when
+ * the engine has it; otherwise fall back to the one/other split, which is what
+ * every Brand group media string defines.
+ */
+export function pluralCategory(language: string, count: number): string {
+  const PluralRules = (globalThis as { Intl?: { PluralRules?: typeof Intl.PluralRules } }).Intl?.PluralRules;
+  if (typeof PluralRules === "function") {
+    try {
+      return new PluralRules(language).select(count);
+    } catch {
+      // An unsupported locale tag falls through to the plain rule.
+    }
+  }
+  return count === 1 ? "one" : "other";
+}
+
 function translatedValue(
   copy: TranslationTree,
   language: BusinessMediaLanguage,
@@ -67,7 +85,7 @@ function translatedValue(
   variables: BusinessMediaVariables,
 ): string | null {
   if (typeof variables.count === "number") {
-    const category = new Intl.PluralRules(language).select(variables.count);
+    const category = pluralCategory(language, variables.count);
     return nestedValue(copy, `${key}_${category}`) ?? nestedValue(copy, `${key}_other`) ?? nestedValue(copy, key);
   }
   return nestedValue(copy, key);

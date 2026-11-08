@@ -185,12 +185,14 @@ Deno.test("P6: an event manager asking for a refund hears 'Only admins or financ
   );
   // Both model proposal paths speak the refusal; the flow-answer path (a
   // "Tell them" note) says the same plain words without a second suffix.
+  // #4304: the direct path's canonicalise step speaks it too (a discount
+  // code that can't fit is asked about before any card).
   assertEquals(
     chat.match(/OWNER_SPOKEN_REFUSAL_CODES\.has\(/g)?.length,
-    3,
+    4,
     "every proposal path speaks the refusal",
   );
-  assertEquals(chat.match(/classification: "owner_refusal"/g)?.length, 2);
+  assertEquals(chat.match(/classification: "owner_refusal"/g)?.length, 3);
 });
 
 Deno.test("P6: finance managers, admins and owners pass the money predicate; non-members stay not-found", async () => {
@@ -788,7 +790,11 @@ Deno.test("P6: Nigeria's minimum is ₦100 (Seth's decision, 2026-11-01) and rea
   // ₦99 is refused, ₦100 passes (kobo).
   assertEquals(ticketPriceBelowMinimum(9900, "NGN"), words);
   assertEquals(ticketPriceBelowMinimum(10000, "NGN"), null);
-  assertEquals(ticketPriceBelowMinimum(0, "NGN"), null, "free is never checked");
+  assertEquals(
+    ticketPriceBelowMinimum(0, "NGN"),
+    null,
+    "free is never checked",
+  );
 });
 
 function tierClient(): Any {
@@ -1128,7 +1134,10 @@ Deno.test("P6 decision 3: confirming the draft tier saves it; nothing refuses it
   );
   assertEquals(result.representation, "draft");
   assert(calls.includes("ari_execute_ticket_pricing_operation"));
-  assert(!calls.includes("pg_brand_can_collect"), "drafts are checked at publish");
+  assert(
+    !calls.includes("pg_brand_can_collect"),
+    "drafts are checked at publish",
+  );
 });
 
 Deno.test("P6 decision 3: live tiers are unchanged — a new paid tier still needs payments before any card or write", async () => {

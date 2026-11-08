@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useEffect, useState } from "react";
-import { Image, Platform, StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
+import { Platform, StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
 
 import { brandGroupFileThumbnailRequest } from "../../services/brandGroupFileRequests";
 import type { BrandGroupMediaRow } from "../../services/brandGroupMediaService";
@@ -8,6 +8,8 @@ import { useBusinessMediaTranslation } from "../../i18n";
 import { formatMediaDuration } from "../../utils/formatMediaDuration";
 import { Icon } from "../ui/Icon";
 import { glass, text as textTokens } from "../../constants/designSystem";
+import { useBrandGroupLocalPreview } from "../messages/brandGroupLocalPreviews";
+import { BrandGroupCachedImage } from "./BrandGroupCachedImage";
 import { requestThumbnailForState, thumbnailResolutionPlan } from "./thumbnailResolution";
 
 const MAX_WEB_THUMB_OBJECT_URLS = 120;
@@ -120,9 +122,18 @@ export function MediaThumb({ item, style, bubble = false }: { item: BrandGroupMe
     return () => clearTimeout(timer);
   }, [queryClient, retryDelayMs, retryToken]);
   const duration = item.kind === "video" ? formatMediaDuration(item.durationMs) : null;
+  // #4304 — the sender's own just-sent photo (local file) or video (poster
+  // made on the phone) sits under the server thumbnail, so the bubble is never
+  // blank while Drive prepares one and the swap from the pending bubble does
+  // not flash. Other people's media has no local preview.
+  const localPreview = useBrandGroupLocalPreview(item.fileId);
+  const localSource = localPreview?.kind === "image"
+    ? { uri: localPreview.uri }
+    : localPreview?.kind === "video" ? localPreview.poster : null;
   return (
     <View style={[styles.root, style]}>
-      {source ? <Image source={source} resizeMode="cover" onError={() => setSource(null)} style={StyleSheet.absoluteFill} /> : (
+      {localSource ? <BrandGroupCachedImage source={localSource} fit="cover" style={StyleSheet.absoluteFill} testID="media-thumb-local-preview" /> : null}
+      {source ? <BrandGroupCachedImage fileId={item.fileId} variant="thumb" source={source} fit="cover" onError={() => setSource(null)} style={StyleSheet.absoluteFill} /> : localSource ? null : (
         <View style={styles.placeholder}>
           <Icon name={item.kind === "video" ? "play" : item.kind === "image" ? "eye" : "notebook"} size={24} color={textTokens.tertiary} />
           {item.thumbState === "pending" ? <Text style={styles.preparing} numberOfLines={2}>{t("media.preparing")}</Text> : null}

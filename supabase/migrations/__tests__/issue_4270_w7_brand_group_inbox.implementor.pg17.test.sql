@@ -1,5 +1,5 @@
 -- Issue #4270 (Wave 7) -- implementor happy path for
--- 20280428014270_issue_4270_w7_admin_brand_group_inbox.sql, on the fully
+-- 20280502004270_issue_4270_w7_admin_brand_group_inbox.sql, on the fully
 -- replayed PG17 schema (with #4304's 20280426004304 present).
 -- MINGLA-INVARIANT: I-4270-W7-INBOX-STAFF-ONLY | issue #4270 | issue_4270_brand_group_inbox answers only Mingla Support or admins; host card, owner and plan facts only to staff with Hosts and Creators access.
 -- MINGLA-INVARIANT: I-4270-W7-PEOPLE-NO-EMAIL | issue #4270 | the staff Brand group people list names teammates by display name and role, never by email.
