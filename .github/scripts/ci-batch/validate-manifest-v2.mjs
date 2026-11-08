@@ -387,14 +387,16 @@ export function phase3dContractDigest(manifest) {
 // #4273: register the buyer/follower auto opt-in, honest-quote and account-opt-out migrations and their proofs.
 // #4270: register the brand plan migrations (20280427004270-20280427024270) and their proofs the same way.
 // #3645: register the unpaid-release-holds migration and its PostgreSQL proof the same way.
+// #4294: the company sign-in migration and its proof join the preserved inventories, and the
+// migration joins the pre-#1931 replay's exact-file exclusion.
+// #4294 (tester): the company sign-in tester proof joins the preserved inventories.
 // #4271: register the tap buyer-name migration and its PostgreSQL proofs the same way.
 // #4271: the tap buyer-name migration joins the pre-#1931 replay's exact-file exclusion beside door pay.
 // #3645: register the sell-and-publish integrity migration, its PostgreSQL proof and its re-emit guard.
 // #3645: the sell-and-publish migration joins the pre-#1931 and pre-#2117 replay skip lists by exact filename.
 // #4304: register the Brand group live migration and its PostgreSQL proof the same way.
-// #4318: register the /links page migration and its implementor and tester PostgreSQL proofs (re-sealed after merging main for #4316).
-// #4318: the /links migration joins the pre-#1931 replay skip list by exact filename (it references the skipped #4137 blog_posts).
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "076ddbcc8a6be3ef437e051b494f1b1d55df80da47c7f86a21e52a51513e6e63";
+// #4318: register the /links migration and its implementor and tester PostgreSQL proofs; the migration joins the pre-#1931 replay skip list by exact filename (re-sealed after merging main for #4322).
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "5acfe06f8feb560661863724f38df969380847b05644780cd572a572861b09f1";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

@@ -179,14 +179,16 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4273: register the buyer/follower auto opt-in, honest-quote and account-opt-out migrations and their proofs.
 // #4270: register the brand plan migrations (20280427004270-20280427024270) and their proofs the same way.
 // #3645: register the unpaid-release-holds migration and its PostgreSQL proof the same way.
+// #4294: re-sealed after the company sign-in migration and its PostgreSQL proof entered the preserved inventories
+// and the migration joined the pre-#1931 replay's exact-file exclusion.
+// #4294 (tester): re-sealed after the company sign-in tester proof entered the preserved inventories.
 // #4271: register the tap buyer-name migration and its PostgreSQL proofs the same way.
 // #4271: the tap buyer-name migration joins the pre-#1931 replay's exact-file exclusion beside door pay.
 // #3645: register the sell-and-publish integrity migration, its PostgreSQL proof and its re-emit guard.
 // #3645: the sell-and-publish migration joins the pre-#1931 and pre-#2117 replay skip lists by exact filename.
 // #4304: register the Brand group live migration and its PostgreSQL proof the same way.
-// #4318: register the /links page migration and its implementor and tester PostgreSQL proofs (re-sealed after merging main for #4316).
-// #4318: the /links migration joins the pre-#1931 replay skip list by exact filename (it references the skipped #4137 blog_posts).
-export const BOOTSTRAP_SHA256 = "ff626d3aa09a37bd61e093c1f948e7a431eb68538364fba787411aaeffab9ea4";
+// #4318: register the /links migration and its implementor and tester PostgreSQL proofs; the migration joins the pre-#1931 replay skip list by exact filename (re-sealed after merging main for #4322).
+export const BOOTSTRAP_SHA256 = "7f082c4451ed951f2f416b9304144e3c426154bd837d659436a7a45d4938d2c0";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
