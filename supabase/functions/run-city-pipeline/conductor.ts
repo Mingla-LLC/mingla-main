@@ -53,6 +53,8 @@ export const RATE_LIMIT_MARGIN_MS = 2_000;
 const DEFAULT_RETRY_AFTER_MS = 60_000;
 /** Another Intelligence run holding the city this long pauses the run for a person. */
 export const INTELLIGENCE_BUSY_PAUSE_MS = 30 * 60 * 1000;
+/** Held places still without thumbnails this long after Intelligence first waited pause the run. */
+export const THUMBNAILS_WAIT_PAUSE_MS = 60 * 60 * 1000;
 const PHOTO_RETRY_LIMIT = 50;
 
 export type StageName =
@@ -633,6 +635,43 @@ async function intelligenceSpendReached(ctx: Ctx): Promise<Outcome | null> {
   return null;
 }
 
+/**
+ * #4276 (Abuja, 2026-11-08): Intelligence builds each place's collage from its photo
+ * thumbnails. Held places used to get thumbnails only after release, so 840 places
+ * reached Intelligence without them; every collage decoded full-size originals and
+ * exceeded the edge CPU limit, and each retry re-spent review requests. Before a new
+ * Intelligence run, the city's held places that passed the final check must have their
+ * thumbnails: kick the thumbnail run and wait, and after an hour ask a person.
+ */
+async function thumbnailsFirst(ctx: Ctx): Promise<Outcome | null> {
+  const { count, error } = await ctx.deps.db
+    .from("place_pool")
+    .select("id", { count: "exact", head: true })
+    .eq("city_id", ctx.run.city_id)
+    .eq("serving_hold", true)
+    .eq("held_final_check_passed", true)
+    .is("thumbs_backfilled_at", null)
+    .is("thumbs_failed_at", null)
+    .not("stored_photo_urls", "is", null)
+    // The thumbnail run skips an empty photo list, so it must not hold Intelligence.
+    .neq("stored_photo_urls", "{}");
+  if (error) throw new Error(`thumbnail backlog read failed: ${error.message}`);
+  const pending = Number(count ?? 0);
+  if (pending === 0) return null;
+
+  const since = ctx.stage.cursor?.thumbs_wait_since ? Date.parse(ctx.stage.cursor.thumbs_wait_since) : NaN;
+  if (!Number.isNaN(since) && ctx.now - since >= THUMBNAILS_WAIT_PAUSE_MS) {
+    return { kind: "pause", reason: "thumbnails_stuck", detail: { pending, thumbs_wait_since: ctx.stage.cursor.thumbs_wait_since } };
+  }
+  const kicked = await callPaced(ctx, "backfill-place-photo-thumbs", { action: "ensure_auto_run" });
+  if (kicked.status === 507) {
+    return { kind: "pause", reason: "storage_limit", detail: kicked.body };
+  }
+  must(kicked, "ensure_auto_run");
+  if (Number.isNaN(since)) await setCursor(ctx, { thumbs_wait_since: new Date(ctx.now).toISOString() });
+  return { kind: "wait", why: "thumbnails_first" };
+}
+
 async function stageIntelligence(ctx: Ctx): Promise<Outcome> {
   if (ctx.run.rules_only) return { kind: "done", result: { rules_only: true, by: ctx.run.rules_only_by } };
   const db = ctx.deps.db;
@@ -703,6 +742,10 @@ async function stageIntelligence(ctx: Ctx): Promise<Outcome> {
     }
     return { kind: "done", result: { succeeded: child.succeeded_count, cost_usd: child.cost_so_far_usd } };
   }
+
+  // Only before a new run: once an Intelligence run id is on the cursor, it is not asked again.
+  const thumbs = await thumbnailsFirst(ctx);
+  if (thumbs) return thumbs;
 
   const startArgs = intelligenceArgs(ctx.run.city_id, admin, ctx.run.scope, {
     planned: ctx.stage.cursor?.plan === true,
@@ -853,7 +896,10 @@ async function stageRelease(ctx: Ctx): Promise<Outcome> {
   return { kind: "done", result: { ...released, released: total } };
 }
 
-/** After release, because thumbnails only select servable places. The work is its own run. */
+/**
+ * After release, for the places released servable. Held places that passed the final
+ * check had theirs before Intelligence (thumbnailsFirst). The work is its own run.
+ */
 async function stageThumbnails(ctx: Ctx): Promise<Outcome> {
   const kicked = await callPaced(ctx, "backfill-place-photo-thumbs", { action: "ensure_auto_run" });
   if (kicked.status === 507) {
@@ -1468,6 +1514,8 @@ export async function resume(deps: Deps, body: Row) {
     const base = await currentFailureBase(deps, stage);
     if (base) patch.failure_base = base;
     if (["intelligence_busy"].includes(run.pause_reason)) patch.busy_since = null;
+    // A resume after thumbnails_stuck gives the thumbnails another hour.
+    if (run.pause_reason === "thumbnails_stuck") patch.thumbs_wait_since = null;
     if (Object.keys(patch).length > 0) {
       const { error } = await deps.db.from("city_pipeline_stages")
         .update({ cursor: { ...stage.cursor, ...patch } }).eq("id", stage.id);

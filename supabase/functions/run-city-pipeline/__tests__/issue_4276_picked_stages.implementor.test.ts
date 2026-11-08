@@ -82,7 +82,7 @@ function deps(w: World): Deps {
       select: () => chain,
       update: (p: Row) => { update = p; return chain; },
       eq: (k: string, v: unknown) => { filters.push([k, v]); return chain; },
-      in: () => chain, not: () => chain, order: () => chain, limit: () => chain,
+      in: () => chain, not: () => chain, is: () => chain, neq: () => chain, order: () => chain, limit: () => chain,
       maybeSingle: () => { const r = exec(); return Promise.resolve({ ...r, data: r.data[0] ?? null }); },
       single: () => { const r = exec(); return Promise.resolve({ ...r, data: r.data[0] ?? null }); },
       // deno-lint-ignore no-explicit-any
