@@ -1799,6 +1799,7 @@
         "mingla-business/src/components/theme/ThemeEditorSection.tsx",
         "mingla-business/src/components/theme/ThemeFontTab.tsx",
         "mingla-business/src/components/theme/ThemeSheet.tsx",
+        "mingla-business/src/components/theme/ThemeSheetLazy.tsx",
         "mingla-business/src/components/theme/fontCatalogModel.ts",
         "mingla-business/src/components/theme/themeColorModel.ts",
         "mingla-business/src/components/theme/themePresets.ts",
@@ -1935,6 +1936,8 @@
       "paths": [
         "app-mobile/src/components/offering/ConsumerEventReserveBar.tsx",
         "app-mobile/src/hooks/useEventTheme.ts",
+        "mingla-business/src/components/event/CreatorStep4Cover.tsx",
+        "mingla-business/src/components/event/CreatorStep7Preview.tsx",
         "mingla-business/src/components/event/FoundationEventPreview.tsx",
         "mingla-business/src/components/event/SeeWhosGoingGate.tsx",
         "mingla-business/src/services/eventDrafts.ts",
@@ -1952,6 +1955,7 @@
         "app-mobile/src/components/expandedCard/ExperienceDayStep.tsx",
         "app-mobile/src/components/expandedCard/ExperienceReservePicker.tsx",
         "mingla-business/app/exp/[brandSlug]/[experienceSlug].tsx",
+        "mingla-business/src/components/experience/ExperienceCoverStep.tsx",
         "mingla-business/src/components/experience/ExperienceDayStep.tsx",
         "mingla-business/src/components/experience/ExperiencePreview.tsx",
         "mingla-business/src/components/experience/ExperienceReservePicker.tsx",
@@ -1989,6 +1993,8 @@
       "capability_key": "trips-create",
       "paths": [
         "mingla-business/app/t/[brandSlug]/[tripSlug].tsx",
+        "mingla-business/src/components/trip/TripCreatorStep1Basics.tsx",
+        "mingla-business/src/components/trip/TripCreatorStep5Review.tsx",
         "mingla-business/src/components/trip/TripPaymentChoice.tsx",
         "mingla-business/src/components/trip/TripPreview.tsx",
         "mingla-business/src/components/trip/TripReserveBar.tsx",
@@ -2025,6 +2031,15 @@
         "packages/brand-rendering/PublicVenueTabs.tsx",
         "packages/brand-rendering/publicVenueRefreshState.tsx",
         "packages/offering-rendering/VenueMapsActions.tsx"
+      ]
+    },
+    {
+      "capability_key": "venues-claim-or-add",
+      "paths": [
+        "mingla-business/src/components/venue/VenueCoverStep.tsx",
+        "mingla-business/src/components/venue/VenueStep7Review.tsx",
+        "mingla-business/src/components/venue/claim/ClaimStepCover.tsx",
+        "mingla-business/src/components/venue/claim/ClaimStepReview.tsx"
       ]
     }
   ]
