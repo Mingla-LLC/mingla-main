@@ -139,6 +139,7 @@ Deno.test("T-07 backfill skips already-present thumbs without refetching origina
 // awaitable (then) and resolves to { data, error }.
 function makeRecordingBuilder(resolveData: unknown) {
   const eqCalls: Array<{ column: string; value: unknown }> = [];
+  const orCalls: string[] = [];
   const builder: Record<string, unknown> = {};
   const chain = () => builder;
   for (const m of ["select", "range", "order", "is", "not", "ilike", "limit", "in", "update", "insert", "delete"]) {
@@ -148,16 +149,23 @@ function makeRecordingBuilder(resolveData: unknown) {
     eqCalls.push({ column, value });
     return builder;
   };
+  builder.or = (filter: string) => {
+    orCalls.push(filter);
+    return builder;
+  };
   builder.maybeSingle = () => Promise.resolve({ data: resolveData, error: null });
   builder.single = () => Promise.resolve({ data: resolveData, error: null });
   // Awaitable: a paged select resolves to a single short page so the loop stops.
   builder.then = (onFulfilled: (v: { data: unknown; error: null }) => unknown) =>
     Promise.resolve({ data: resolveData, error: null }).then(onFulfilled);
-  return { builder, eqCalls };
+  return { builder, eqCalls, orCalls };
 }
 
-Deno.test("T-02 loadPendingPlaces always filters is_servable=true and adds city_id when scoped", async () => {
-  const recorders: Array<{ eqCalls: Array<{ column: string; value: unknown }> }> = [];
+// #4276: the servable filter became an OR with held places that passed the final check.
+const PENDING_SCOPE = "is_servable.eq.true,and(serving_hold.eq.true,held_final_check_passed.eq.true)";
+
+Deno.test("T-02 loadPendingPlaces always filters servable-or-held-passed and adds city_id when scoped", async () => {
+  const recorders: Array<{ eqCalls: Array<{ column: string; value: unknown }>; orCalls: string[] }> = [];
   const db = {
     from(_table: string) {
       const rec = makeRecordingBuilder([]); // 0-row page → loop exits
@@ -169,12 +177,12 @@ Deno.test("T-02 loadPendingPlaces always filters is_servable=true and adds city_
   await loadPendingPlaces(db as unknown as Record<string, never>, { cityId: "london-uuid" });
 
   const allEq = recorders.flatMap((r) => r.eqCalls);
-  assert(allEq.some((c) => c.column === "is_servable" && c.value === true), "must filter is_servable=true");
+  assertEquals(recorders.flatMap((r) => r.orCalls), [PENDING_SCOPE], "must filter servable OR held+passed");
   assert(allEq.some((c) => c.column === "city_id" && c.value === "london-uuid"), "must filter city_id when scoped");
 });
 
 Deno.test("T-02b loadPendingPlaces without city does NOT add a city_id filter", async () => {
-  const recorders: Array<{ eqCalls: Array<{ column: string; value: unknown }> }> = [];
+  const recorders: Array<{ eqCalls: Array<{ column: string; value: unknown }>; orCalls: string[] }> = [];
   const db = {
     from(_table: string) {
       const rec = makeRecordingBuilder([]);
@@ -186,8 +194,115 @@ Deno.test("T-02b loadPendingPlaces without city does NOT add a city_id filter", 
   await loadPendingPlaces(db as unknown as Record<string, never>, {});
 
   const allEq = recorders.flatMap((r) => r.eqCalls);
-  assert(allEq.some((c) => c.column === "is_servable" && c.value === true), "must always filter is_servable=true");
+  assertEquals(recorders.flatMap((r) => r.orCalls), [PENDING_SCOPE], "must always filter servable OR held+passed");
   assertEquals(allEq.some((c) => c.column === "city_id"), false);
+});
+
+// #4276 (Abuja, 2026-11-08): 840 held places reached Intelligence with no thumbnails,
+// because only servable places were eligible. This runs loadPendingPlaces over an
+// in-memory place_pool that applies every filter the query builds (eq, is, not, and
+// the PostgREST or/and grammar), so it proves which rows come back, not which string
+// was sent.
+type PlaceRow = Record<string, unknown>;
+
+/** Evaluates `col.eq.value` and `and(...)` terms, comma-separated, as PostgREST does for or(). */
+function postgrestOr(filter: string): (row: PlaceRow) => boolean {
+  const split = (text: string): string[] => {
+    const out: string[] = [];
+    let depth = 0;
+    let cur = "";
+    for (const ch of text) {
+      if (ch === "(") depth++;
+      if (ch === ")") depth--;
+      if (ch === "," && depth === 0) {
+        out.push(cur);
+        cur = "";
+      } else cur += ch;
+    }
+    if (cur) out.push(cur);
+    return out;
+  };
+  const term = (t: string): (row: PlaceRow) => boolean => {
+    if (t.startsWith("and(") && t.endsWith(")")) {
+      const parts = split(t.slice(4, -1)).map(term);
+      return (row) => parts.every((p) => p(row));
+    }
+    if (t.startsWith("or(") && t.endsWith(")")) {
+      const parts = split(t.slice(3, -1)).map(term);
+      return (row) => parts.some((p) => p(row));
+    }
+    const [column, op, ...rest] = t.split(".");
+    const raw = rest.join(".");
+    if (op !== "eq") throw new Error(`unsupported operator ${op} in ${t}`);
+    const value = raw === "true" ? true : raw === "false" ? false : raw;
+    return (row) => row[column] === value;
+  };
+  const parts = split(filter).map(term);
+  return (row) => parts.some((p) => p(row));
+}
+
+function placePoolDb(rows: PlaceRow[]) {
+  return {
+    from(table: string) {
+      assertEquals(table, "place_pool");
+      const tests: Array<(row: PlaceRow) => boolean> = [];
+      let range: [number, number] | null = null;
+      // deno-lint-ignore no-explicit-any
+      const builder: any = {
+        select: () => builder,
+        order: () => builder,
+        range: (from: number, to: number) => {
+          range = [from, to];
+          return builder;
+        },
+        eq: (column: string, value: unknown) => {
+          tests.push((row) => row[column] === value);
+          return builder;
+        },
+        is: (column: string, value: unknown) => {
+          tests.push((row) => (row[column] ?? null) === value);
+          return builder;
+        },
+        not: (column: string, op: string, value: unknown) => {
+          if (op !== "is") throw new Error(`unsupported not operator ${op}`);
+          tests.push((row) => (row[column] ?? null) !== value);
+          return builder;
+        },
+        or: (filter: string) => {
+          tests.push(postgrestOr(filter));
+          return builder;
+        },
+        then: (onFulfilled: (v: { data: PlaceRow[]; error: null }) => unknown) => {
+          const hits = rows.filter((row) => tests.every((t) => t(row)));
+          const page = range ? hits.slice(range[0], range[1] + 1) : hits;
+          return Promise.resolve({ data: page, error: null }).then(onFulfilled);
+        },
+      };
+      return builder;
+    },
+  };
+}
+
+Deno.test("T-4276 held places that passed the final check get thumbnails; rejected and unjudged held places do not", async () => {
+  const photos = ["https://x.supabase.co/storage/v1/object/public/place-photos/p/0.jpg"];
+  const base = { stored_photo_urls: photos, thumbs_backfilled_at: null, thumbs_failed_at: null, thumbs_attempts: 0, city_id: "abuja" };
+  const rows: PlaceRow[] = [
+    { ...base, id: "servable", is_servable: true, serving_hold: false, held_final_check_passed: null },
+    { ...base, id: "held-passed", is_servable: false, serving_hold: true, held_final_check_passed: true },
+    { ...base, id: "held-rejected", is_servable: false, serving_hold: true, held_final_check_passed: false },
+    { ...base, id: "held-unjudged", is_servable: false, serving_hold: true, held_final_check_passed: null },
+    { ...base, id: "not-servable", is_servable: false, serving_hold: false, held_final_check_passed: true },
+    { ...base, id: "held-passed-done", is_servable: false, serving_hold: true, held_final_check_passed: true, thumbs_backfilled_at: "2026-11-08T00:00:00Z" },
+    { ...base, id: "held-passed-failed", is_servable: false, serving_hold: true, held_final_check_passed: true, thumbs_failed_at: "2026-11-08T00:00:00Z" },
+    { ...base, id: "held-passed-no-photos", is_servable: false, serving_hold: true, held_final_check_passed: true, stored_photo_urls: null },
+    { ...base, id: "held-passed-other-city", is_servable: false, serving_hold: true, held_final_check_passed: true, city_id: "lagos" },
+  ];
+
+  const all = await loadPendingPlaces(placePoolDb(rows) as unknown as Record<string, never>, {});
+  assertEquals(all.map((r) => r.id).sort(), ["held-passed", "held-passed-other-city", "servable"]);
+
+  const abuja = await loadPendingPlaces(placePoolDb(rows) as unknown as Record<string, never>, { cityId: "abuja" });
+  assertEquals(abuja.map((r) => r.id).sort(), ["held-passed", "servable"]);
 });
 
 // A mock db for handleProcessChunk: a runs table + a batches table with a

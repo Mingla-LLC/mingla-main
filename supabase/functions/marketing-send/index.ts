@@ -93,8 +93,31 @@ import {
   publicPushQuote,
   sendPushCampaign,
 } from "./pushCampaign.ts";
+import {
+  buildEmailSnapshot,
+  buildSmsSnapshot,
+  SAMPLE_TRACKING_ID,
+  writeSentSnapshot,
+} from "./sentSnapshot.ts";
 
 const BATCH_LIMIT = 10;
+
+/** #4273 — no guest: buildVariables with this yields per-campaign values only. */
+const SNAPSHOT_NO_GUEST: ResolvedContact = {
+  contact_key: "",
+  display_name: "",
+  first_name: "",
+  raw_email: null,
+  raw_phone: null,
+  order_count: 0,
+  total_spend_minor: 0,
+  total_spend_currency: "",
+  last_event_id: null,
+  last_event_name: null,
+  last_purchase_at: null,
+  email_marketing_ok: false,
+  sms_marketing_ok: false,
+};
 const RESEND_MAX_RETRIES = 3;
 const RESEND_BACKOFF_MS = [1000, 3000, 9000];
 
@@ -1712,6 +1735,40 @@ async function sendEmail(
   if (bodyHtml.includes(OFFERING_LINK_MARKER) !== isOfferingAudience) {
     throw new Error("offering_invite_volatile_link_invalid");
   }
+
+  // #4273 — the send snapshot: write-once, best-effort, never blocks a send.
+  // After every guard above (a refused campaign writes none), before the first
+  // recipient row. Per-campaign values only (I-4273-SENT-VIEW-NO-CONTACTS).
+  {
+    const campaignVars = buildVariables(SNAPSHOT_NO_GUEST, brandName, embedded);
+    await writeSentSnapshot(
+      supabase,
+      campaign.id,
+      buildEmailSnapshot({
+        brandName,
+        brandSlug,
+        subject,
+        bodyHtml,
+        fromDisplay,
+        fromAddress: `${fromLocal}@campaigns.usemingla.com`,
+        replyToIsBrand: brandContactEmail.includes("@"),
+        headerImageUrl: brandHeaderImageUrl,
+        followUrl: brandSlug !== null && brandSlug.length > 0
+          ? brandFollowPublicUrl(brandSlug)
+          : null,
+        campaignVariables: {
+          brand_name: brandName,
+          event_date: campaignVars.event_date,
+          event_date_short: campaignVars.event_date_short,
+          ends_at: campaignVars.ends_at,
+          event_url: campaignVars.event_url,
+          next_event_name: campaignVars.next_event_name,
+          event_id: campaignVars.event_id,
+        },
+        embedded,
+      }),
+    );
+  }
   let previewSkipped = 0;
   let sent = 0;
   let deferredCount = 0;
@@ -2503,6 +2560,41 @@ async function sendSms(
       (u) => typeof u === "string" && u.length > 0,
     )
     : [];
+
+  // #4273 — the send snapshot: write-once, best-effort, never blocks a send.
+  // After the empty-body and link guards, before the first recipient row. The
+  // wire text is the one the segment count below measures, with one sample
+  // short link in place of each guest's own (I-4273-SENT-VIEW-NO-CONTACTS).
+  try {
+    const sample = rewriteMarketingSmsLinks(
+      rawBody,
+      resolveMarketingTrackingOrigin(),
+      () => SAMPLE_TRACKING_ID,
+    );
+    const primaryEventUrl = embedded[0]?.url ?? null;
+    const sampleBody = isOfferingAudience && primaryEventUrl !== null
+      ? replaceSingleMarker(sample.rewritten, inertOfferingUrl(primaryEventUrl))
+      : sample.rewritten;
+    await writeSentSnapshot(
+      supabase,
+      campaign.id,
+      buildSmsSnapshot({
+        brandName,
+        brandSlug: brandSlugSms,
+        bodyAsAuthored: rawBodyBase,
+        wireText: composeSmsBody(sampleBody, true),
+        mediaUrls,
+        followIncluded: rawBody !== rawBodyBase,
+        linksShortened: sample.links.length > 0,
+      }),
+    );
+  } catch (error) {
+    console.error(
+      `[#4273] sent_snapshot_build_failed campaign=${campaign.id}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
 
   const marketingSid = Deno.env.get("TWILIO_MARKETING_MESSAGING_SERVICE_SID") ??
     null;

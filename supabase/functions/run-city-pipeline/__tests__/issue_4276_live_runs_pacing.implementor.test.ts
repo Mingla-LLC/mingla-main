@@ -8,6 +8,7 @@
 // MINGLA-INVARIANT: I-4276-RATE-LIMIT-IS-A-WAIT | issue #4276 | A function rate limit ends the tick as a wait with next_attempt_at set, never counts toward error_streak, and never pauses a run
 // MINGLA-INVARIANT: I-4276-TICK-PACED-AND-LEASED | issue #4276 | A tick spaces calls to one function MIN_CALL_GAP_MS apart, makes at most MAX_CALLS_PER_FN_PER_TICK to one function, and only the tick holding the lease can end it
 // MINGLA-INVARIANT: I-4276-TICK-OUTCOME-RECORDED | issue #4276 | Every tick writes last_outcome on the run, and last_progress_at when it moved a stage forward
+// MINGLA-INVARIANT: I-4276-THUMBNAILS-BEFORE-INTELLIGENCE | issue #4276 | A new Intelligence run starts only when the city's held places that passed the final check have thumbnails; until then the stage kicks the thumbnail run and waits, and pauses as thumbnails_stuck after an hour
 //
 // Runs the real conductor (and the real call wrapper from index.ts, over a fake fetch)
 // against a small in-memory store. Time is a fake clock that only sleeps move, so the
@@ -104,7 +105,21 @@ function deps(w: World, budgetMs = 110_000): Deps {
       update: (p: Row) => { update = p; return chain; },
       eq: (k: string, v: unknown) => { tests.push((r) => r[k] === v); return chain; },
       in: (k: string, vs: unknown[]) => { tests.push((r) => vs.includes(r[k])); return chain; },
-      not: () => chain,
+      // not(k, "is", null), is(k, v) and neq(k, v) filter for real: the thumbnails-first
+      // count reads place_pool with them.
+      not: (k: string, op: string, v: unknown) => {
+        if (op === "is") tests.push((r) => (r[k] ?? null) !== v);
+        return chain;
+      },
+      is: (k: string, v: unknown) => { tests.push((r) => (r[k] ?? null) === v); return chain; },
+      neq: (k: string, v: unknown) => {
+        tests.push((r) => {
+          const x = r[k];
+          if (x === null || x === undefined) return false;
+          return Array.isArray(x) && v === "{}" ? x.length > 0 : x !== v;
+        });
+        return chain;
+      },
       order: () => chain,
       limit: () => chain,
       maybeSingle: () => { const r = exec(); return Promise.resolve({ ...r, data: r.data[0] ?? null }); },
@@ -479,6 +494,116 @@ Deno.test("while Intelligence runs, each tick checks spend and pauses at the lim
   assertEquals(w.run.status, "paused");
   const paused = w.calls.find((c) => c.action === "pause_run");
   assertEquals(paused?.body.run_id, "i-1", "the Intelligence run is paused too");
+});
+
+// ── Intelligence: thumbnails first (Abuja, 2026-11-08) ──────────────────────
+//
+// 840 held places reached Intelligence with stored photos and no thumbnails. Every
+// collage fell back to full-size originals, the worker hit "CPU Time exceeded", and
+// 0 of 840 were processed. A new Intelligence run now waits for the held places'
+// thumbnails, and pauses for a person after an hour.
+
+const PHOTOS = ["https://x.supabase.co/storage/v1/object/public/place-photos/p/0.jpg"];
+
+function heldPlace(id: string, patch: Row = {}): Row {
+  return {
+    id, city_id: "city-1", is_servable: false, serving_hold: true, held_final_check_passed: true,
+    stored_photo_urls: PHOTOS, thumbs_backfilled_at: null, thumbs_failed_at: null, ...patch,
+  };
+}
+
+function intelWorld(places: Row[]): World {
+  const w = world("intelligence", (fn, b) => {
+    if (fn === "backfill-place-photo-thumbs") return ok({ ok: true, status: "started" });
+    if (fn === "run-place-intelligence-trial" && b.estimate_only === true) {
+      return ok({ totalPlaces: 40, estimatedCostUsd: 0.36, exceedsCostGuard: false });
+    }
+    if (fn === "run-place-intelligence-trial" && b.action === "start_run") return ok({ runId: "i-new" });
+    return ok();
+  });
+  w.tables.place_pool = places;
+  return w;
+}
+
+const intelCursor = (w: World) => w.stages.find((s) => s.stage === "intelligence")!.cursor as Row;
+const intelCalls = (w: World) => w.calls.filter((c) => c.fn === "run-place-intelligence-trial");
+const thumbKicks = (w: World) => w.calls.filter((c) => c.fn === "backfill-place-photo-thumbs");
+
+Deno.test("#4276 held places without thumbnails: Intelligence kicks the thumbnail run and waits, starting nothing", async () => {
+  const w = intelWorld([heldPlace("a"), heldPlace("b")]);
+  assertEquals((await tick(deps(w))).ended, "wait:thumbnails_first");
+  assertEquals(thumbKicks(w).map((c) => c.action), ["ensure_auto_run"]);
+  assertEquals(intelCalls(w), [], "no estimate and no start_run while thumbnails are pending");
+  assertEquals(w.run.status, "running");
+  assertEquals(w.run.error_streak, 0);
+  assertEquals((w.run.last_outcome as Row).why, "thumbnails_first");
+  assertEquals(intelCursor(w).thumbs_wait_since, new Date(T0).toISOString());
+  assertEquals(intelCursor(w).intel_run_id, undefined);
+
+  // Ten minutes on, still pending: kicked again, and the first wait time is kept.
+  w.clock += 10 * 60_000;
+  w.run.lease_until = "lease-B";
+  assertEquals((await tick(deps(w))).ended, "wait:thumbnails_first");
+  assertEquals(thumbKicks(w).length, 2);
+  assertEquals(intelCursor(w).thumbs_wait_since, new Date(T0).toISOString());
+  assertEquals(intelCalls(w), []);
+});
+
+Deno.test("#4276 thumbnails still pending after an hour pause the run as thumbnails_stuck, and a resume gives another hour", async () => {
+  const w = intelWorld([heldPlace("a"), heldPlace("b"), heldPlace("c")]);
+  assertEquals((await tick(deps(w))).ended, "wait:thumbnails_first");
+
+  w.clock += 61 * 60_000;
+  w.run.lease_until = "lease-B";
+  assertEquals((await tick(deps(w))).ended, "thumbnails_stuck");
+  assertEquals(w.run.status, "paused");
+  assertEquals(w.run.pause_reason, "thumbnails_stuck");
+  assertEquals((w.run.pause_detail as Row).pending, 3);
+  assertEquals(thumbKicks(w).length, 1, "the stuck tick pauses without kicking again");
+  assertEquals(intelCalls(w), []);
+
+  await resume(deps(w), { runId: "run-1" });
+  assertEquals(intelCursor(w).thumbs_wait_since, null);
+  w.run.status = "running";
+  w.run.lease_until = "lease-C";
+  assertEquals((await tick(deps(w))).ended, "wait:thumbnails_first");
+  assertEquals(intelCursor(w).thumbs_wait_since, new Date(w.clock).toISOString());
+});
+
+Deno.test("#4276 no held place waiting on thumbnails: Intelligence starts as before", async () => {
+  const w = intelWorld([
+    heldPlace("done", { thumbs_backfilled_at: "2026-11-08T00:00:00Z" }),
+    heldPlace("failed", { thumbs_failed_at: "2026-11-08T00:00:00Z" }),
+    heldPlace("rejected", { held_final_check_passed: false }),
+    heldPlace("unjudged", { held_final_check_passed: null }),
+    heldPlace("no-photos", { stored_photo_urls: null }),
+    heldPlace("empty-photos", { stored_photo_urls: [] }),
+    heldPlace("other-city", { city_id: "city-2" }),
+    { ...heldPlace("servable"), is_servable: true, serving_hold: false, held_final_check_passed: null },
+  ]);
+  assertEquals((await tick(deps(w))).ended, "wait:intelligence started");
+  assertEquals(thumbKicks(w), []);
+  assertEquals(intelCalls(w).map((c) => [c.action, c.body.estimate_only === true]), [["start_run", true], ["start_run", false]]);
+  assertEquals(intelCursor(w).intel_run_id, "i-new");
+});
+
+Deno.test("#4276 once an Intelligence run is on the cursor, thumbnails are not checked again", async () => {
+  const w = intelWorld([heldPlace("a")]);
+  const intel = w.stages.find((s) => s.stage === "intelligence")!;
+  intel.status = "running";
+  intel.cursor = { intel_run_id: "i-1" };
+  w.tables.place_intelligence_runs = [{ id: "i-1", status: "running", processed_count: 1, failed_count: 0 }];
+  assertEquals((await tick(deps(w))).ended, "wait:intelligence running");
+  assertEquals(thumbKicks(w), []);
+});
+
+Deno.test("#4276 a full storage answer to the thumbnail kick pauses as storage_limit", async () => {
+  const w = intelWorld([heldPlace("a")]);
+  w.respond = (fn) => fn === "backfill-place-photo-thumbs" ? { status: 507, body: { error: "storage guard" } } : ok();
+  assertEquals((await tick(deps(w))).ended, "storage_limit");
+  assertEquals(w.run.pause_reason, "storage_limit");
+  assertEquals(w.run.current_stage, "intelligence", "paused at Intelligence, not at the later thumbnails stage");
+  assertEquals(intelCalls(w), []);
 });
 
 // ── Release: unjudged places are counted ────────────────────────────────────

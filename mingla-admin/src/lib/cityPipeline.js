@@ -129,6 +129,7 @@ const PAUSE_REASONS = Object.freeze({
   box_needs_person: "Google returned a state or region, or the box would cost over $500 to seed.",
   split_sample: "The first 10 capped tiles were searched again. Look at the yield before the rest.",
   split_level: "The next split level is ready, with its real numbers.",
+  thumbnails_stuck: "Photo thumbnails didn't finish within an hour; Intelligence needs them.",
 });
 
 export function pauseReasonText(reason) {
@@ -895,6 +896,7 @@ const WAIT_REASONS = Object.freeze({
   "intelligence running": "Intelligence is still working",
   "intelligence started": "Intelligence just started",
   "intelligence city busy": "Another Intelligence run is using this city",
+  "thumbnails first": "Waiting for photo thumbnails before Intelligence",
 });
 
 /** Why a run is waiting, in plain words. Unknown reasons get a safe generic line. */
