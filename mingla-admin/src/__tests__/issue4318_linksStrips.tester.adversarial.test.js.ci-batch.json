@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-suite",
+  "ownerIssue": "#4318",
+  "suite": {
+    "id": "issue-4318-admin-links-strips-tester",
+    "class": "admin-node20-install",
+    "originPaths": [
+      "mingla-admin/src/**",
+      "mingla-admin/package-lock.json",
+      "mingla-marketing/content/cities/registry.ts",
+      "mingla-marketing/lib/search/historical-city-build.ts"
+    ],
+    "steps": [
+      {
+        "name": "Admin Links page strips, tester: the real panel driven (reorder rollback, stale reload, validation, blog title prefill, executed city registry, delete confirm)",
+        "cwd": "mingla-admin",
+        "run": "node --test src/__tests__/issue4318_linksStrips.tester.adversarial.test.js",
+        "commandId": "assert:issue-4318-admin-links-strips-tester:01",
+        "invocation": {
+          "kind": "raw-shell",
+          "command": "bash",
+          "argv": [
+            "-c",
+            "node --test src/__tests__/issue4318_linksStrips.tester.adversarial.test.js"
+          ]
+        },
+        "exceptionRationale": "Self-registering targeted Admin regression suite replaces a legacy workflow edit."
+      }
+    ],
+    "lifecycle": "batched-active",
+    "ownerIssue": "#4318",
+    "runtime": {
+      "name": "node",
+      "version": "20"
+    },
+    "setupProfile": "admin-node20-install",
+    "cwd": "mingla-admin",
+    "envNames": [],
+    "isolation": "clean-worktree",
+    "expectedFiles": [
+      "mingla-admin/src/__tests__/issue4318_linksStrips.tester.adversarial.test.js"
+    ],
+    "externalReferenceFiles": [
+      "mingla-marketing/content/cities/registry.ts",
+      "mingla-marketing/lib/search/historical-city-build.ts"
+    ],
+    "requiredContext": "CI batch: admin-node20-install",
+    "timingSeconds": {
+      "p50": 13,
+      "p95": 25,
+      "evidence": "Local targeted run 2026-11-07 (bundles the panel with esbuild)"
+    },
+    "generatedPaths": [
+      "suite-results.json"
+    ],
+    "exceptionRationale": "Raw shell preserves the reviewed assertion in the self-registering suite.",
+    "timeoutSeconds": 120
+  }
+}
