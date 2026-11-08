@@ -196,7 +196,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #1023: re-sealed after merging origin/main 6038982e1a.
 // #4318: register the /links migration (20280508004318) and its implementor and tester PostgreSQL proofs; it joins the pre-#1931 replay skip list by exact filename.
 // #4318: register the /links live-cities migration (20280514004318) and its implementor PostgreSQL proof.
-export const BOOTSTRAP_SHA256 = "eeb1fc5e14656291d0d258489455b50757eb2a26404e98db31b676417dbf2b44";
+// #4318: register the /links strip end-date migration (20280515004318) and its PostgreSQL proof; it joins the pre-#1931 replay skip list by exact filename.
+export const BOOTSTRAP_SHA256 = "733b7447a0650bef1b95e80430610717740b5b70c52b3bb4939ae482aad6932a";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
