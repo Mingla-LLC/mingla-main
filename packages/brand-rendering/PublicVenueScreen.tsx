@@ -154,6 +154,8 @@ import {
 } from "./publicVenueReservationUiState";
 import { semantic } from "../offering-rendering/designTokens";
 import { PublicVenueRetryAction } from "./publicVenueRefreshState";
+import { accentFill, accentOutline, themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
+import { boldFontFamily } from "@mingla/offering-rendering/themePalette";
 
 type WebVenueViewStyle = Omit<ViewStyle, "position"> & {
   position?: ViewStyle["position"] | "sticky";
@@ -862,7 +864,7 @@ const VenueHoursSection: VenueSectionRenderer = ({
           <View key={entry.weekday} style={styles.hoursRow}>
             {isToday ? (
               <View
-                style={[styles.todayBar, { backgroundColor: palette.accent }]}
+                style={[styles.todayBar, accentFill(palette)]}
               />
             ) : null}
             <Text
@@ -1221,12 +1223,15 @@ export const PublicVenueScreen = ({
   // Hook-shaped host capability — called unconditionally, once, every render,
   // so `useThemeFont` can be passed straight in without breaking hook order.
   loadThemeFont(resolvedTheme.fontFamilyValue);
+  // issue #1023 — the bold face for the venue name, answers and tab labels.
+  loadThemeFont(boldFontFamily(resolvedTheme));
   // Memoised because it is threaded to every Overview section through
   // `sectionProps`; a fresh object each render would defeat that memo.
   const themedFont = useMemo(
     () => ({ fontFamily: resolvedTheme.fontFamilyValue }),
     [resolvedTheme.fontFamilyValue],
   );
+  const themedBoldFont = themeBoldFace(resolvedTheme);
 
   // §6.4 — the static map itself lives in VenueLocationSection (it is that
   // section's data, not the page's). The page keeps only the maps QUERY, which
@@ -1488,7 +1493,7 @@ export const PublicVenueScreen = ({
       </Text>
       <Text
         numberOfLines={1}
-        style={[styles.answerValue, themedFont, { color: palette.primaryText }]}
+        style={[styles.answerValue, themedBoldFont, { color: palette.primaryText }]}
       >
         {cell.value}
       </Text>
@@ -1531,7 +1536,7 @@ export const PublicVenueScreen = ({
         ) : null}
       </View>
       <Text
-        style={[styles.venueName, themedFont, { color: palette.primaryText }]}
+        style={[styles.venueName, themedBoldFont, { color: palette.primaryText }]}
       >
         {venue.name}
       </Text>
@@ -1559,7 +1564,7 @@ export const PublicVenueScreen = ({
             testID="issue-4111-venue-message"
             style={({ pressed }) => [
               styles.messageBrandBtn,
-              { borderColor: palette.accent },
+              accentOutline(palette, { opaqueBackground: palette.page }),
               pressed && styles.pressed,
             ]}
           >
@@ -1779,7 +1784,7 @@ export const PublicVenueScreen = ({
               onPress={handleRetryMenu}
               style={({ pressed }) => [
                 styles.menuRetry,
-                { backgroundColor: palette.accent },
+                accentFill(palette),
                 retryHovered && !pressed && !menuBusy
                   ? styles.menuRetryHovered
                   : null,
@@ -1875,7 +1880,7 @@ export const PublicVenueScreen = ({
             onPress={onRetryReservability}
             accessibilityRole="button"
             accessibilityLabel="Try checking reservations again"
-            style={[styles.stateRetry, { backgroundColor: palette.accent }]}
+            style={[styles.stateRetry, accentFill(palette)]}
           >
             <Text style={[styles.stateRetryText, { color: palette.accentText }]}>
               Try again
@@ -1912,7 +1917,7 @@ export const PublicVenueScreen = ({
       accessibilityLabel={profile.reserveAction}
       style={({ pressed }) => [
         styles.reserveCta,
-        { backgroundColor: palette.accent },
+        accentFill(palette),
         pressed && styles.pressed,
       ]}
     >
@@ -1951,10 +1956,10 @@ export const PublicVenueScreen = ({
   // ── §6.10 desktop sticky panel ────────────────────────────────────────────
   const stickyPanel = isDesktop ? (
     <View style={[styles.deskPanel, surface.cardStrong]}>
-      <View style={[styles.deskAccent, { backgroundColor: palette.accent }]} />
+      <View style={[styles.deskAccent, accentFill(palette)]} />
       <View style={styles.deskInner}>
         <Text
-          style={[styles.deskName, themedFont, { color: palette.primaryText }]}
+          style={[styles.deskName, themedBoldFont, { color: palette.primaryText }]}
         >
           {venue.name}
         </Text>
@@ -2005,7 +2010,7 @@ export const PublicVenueScreen = ({
               style={({ pressed }) => [
                 styles.deskShareBtn,
                 styles.deskShareCell,
-                { backgroundColor: palette.accent },
+                accentFill(palette),
                 pressed && styles.pressed,
               ]}
             >
@@ -2022,7 +2027,7 @@ export const PublicVenueScreen = ({
                 styles.deskShareBtn,
                 styles.deskShareCell,
                 styles.deskMessageBtn,
-                { borderColor: palette.accent },
+                accentOutline(palette, { opaqueBackground: palette.page }),
                 pressed && styles.pressed,
               ]}
             >
@@ -2038,7 +2043,7 @@ export const PublicVenueScreen = ({
             accessibilityLabel="Share this venue"
             style={({ pressed }) => [
               styles.deskShareBtn,
-              { backgroundColor: palette.accent },
+              accentFill(palette),
               pressed && styles.pressed,
             ]}
           >
@@ -2140,6 +2145,7 @@ export const PublicVenueScreen = ({
             busy={refreshRetryBusy}
             accessibleLabel="Try refreshing venue again"
             backgroundColor={palette.accent}
+            fillStyle={accentFill(palette)}
             textColor={palette.accentText}
             focusColor={palette.accentText}
             focusOffset={-4}

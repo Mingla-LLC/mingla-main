@@ -14,12 +14,44 @@
 
 import { useEffect, useState } from "react";
 import * as Font from "expo-font";
+import type {
+  EnsureGoogleFontResult,
+  InterFallbackModules,
+} from "@mingla/offering-rendering/googleFontLoader";
+import { familyFromGoogleFontKey } from "@mingla/offering-rendering/themeResolver";
 
 import { CONSUMER_THEME_FONT_MODULE_THUNKS } from "./consumerThemeFonts";
 
 // Idempotency cache: multiple surfaces requesting the same family load it once
 // (concurrent requests share the in-flight promise).
 const inFlight = new Map<string, Promise<void>>();
+
+// issue #1023 wave 2 — a Google family (`GF_<family>_500` / `_700`) loads
+// through the shared package loader. If it cannot load, the bundled Inter
+// faces are registered under the same keys, so every render site shows Inter,
+// never a system face.
+const loadInterFallback = async (): Promise<InterFallbackModules> => {
+  const [base, bold] = await Promise.all([
+    CONSUMER_THEME_FONT_MODULE_THUNKS.Inter_500Medium(),
+    CONSUMER_THEME_FONT_MODULE_THUNKS.Inter_700Bold(),
+  ]);
+  return { base, bold };
+};
+
+const isGoogleKey = (key: string): boolean =>
+  key.startsWith("GF_") && familyFromGoogleFontKey(key) !== null;
+
+// The Google loader is imported ON DEMAND, only for a GF_ key: a static
+// import pulls expo-font's remote loader (and expo-asset) into every screen
+// that draws a theme, render suites included, although bundled fonts never
+// use it.
+const loadGoogleFontLoader = () =>
+  import("@mingla/offering-rendering/googleFontLoader");
+const googleOutcomes = new Map<string, EnsureGoogleFontResult>();
+
+/** True when a font key is ready to draw (bundled face or settled Google key). */
+export const isThemeFontKeyReady = (key: string): boolean =>
+  isGoogleKey(key) ? googleOutcomes.has(key) : Font.isLoaded(key);
 
 /**
  * Load a single theme-font family on demand by its `fontFamilyValue`
@@ -34,6 +66,16 @@ export async function loadConsumerThemeFont(
 
   const existing = inFlight.get(family);
   if (existing) return existing;
+
+  if (isGoogleKey(family)) {
+    // Each key loads on its own: the bold face only where bold text is drawn.
+    const { ensureGoogleFontKey } = await loadGoogleFontLoader();
+    const outcome = await ensureGoogleFontKey(family, {
+      loadFallback: loadInterFallback,
+    });
+    googleOutcomes.set(family, outcome);
+    return;
+  }
 
   const thunk = CONSUMER_THEME_FONT_MODULE_THUNKS[family];
   if (!thunk) return; // unknown family → leave to system-font fallback
@@ -63,7 +105,7 @@ export function useConsumerThemeFont(family: string | null | undefined): {
   loaded: boolean;
 } {
   const [loaded, setLoaded] = useState<boolean>(() =>
-    family ? Font.isLoaded(family) : true,
+    family ? isThemeFontKeyReady(family) : true,
   );
 
   useEffect(() => {
@@ -72,13 +114,13 @@ export function useConsumerThemeFont(family: string | null | undefined): {
       setLoaded(true);
       return;
     }
-    if (Font.isLoaded(family)) {
+    if (isThemeFontKeyReady(family)) {
       setLoaded(true);
       return;
     }
     setLoaded(false);
     void loadConsumerThemeFont(family).then(() => {
-      if (!cancelled) setLoaded(Font.isLoaded(family));
+      if (!cancelled) setLoaded(isThemeFontKeyReady(family));
     });
     return () => {
       cancelled = true;

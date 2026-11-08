@@ -41,7 +41,7 @@ export const PUBLIC_EVENT_SEED_COLUMNS =
   "is_online, public_theme, theme_color_override, theme_font_override, " +
   "theme_animation_override, currency, pricing_currency, display_price_cents, " +
   "party_types, vibe_tags, music_genres, location_geo, brand_theme_color, " +
-  "brand_theme_font, brand_theme_animation";
+  "brand_theme_font, brand_theme_animation, brand_theme_gradient, theme_gradient_override";
 
 /** Structural row shape of the §4.7 column select (view column names verified
  * against the LATEST view recreation, 20261220000000_orch_1291:630-732). */
@@ -84,6 +84,8 @@ export type PublicEventSeedViewRow = {
   brand_theme_color: string | null;
   brand_theme_font: string | null;
   brand_theme_animation: string | null;
+  brand_theme_gradient?: string | null;
+  theme_gradient_override?: string | null;
 };
 
 const asRecord = (value: unknown): Record<string, unknown> =>
@@ -231,6 +233,8 @@ export function mapPublicEventSeedRow(
       color_override: row.theme_color_override ?? null,
       font_override: row.theme_font_override ?? null,
       animation_override: row.theme_animation_override ?? null,
+      gradient: row.brand_theme_gradient ?? null,
+      gradient_override: row.theme_gradient_override ?? null,
     },
   };
 }

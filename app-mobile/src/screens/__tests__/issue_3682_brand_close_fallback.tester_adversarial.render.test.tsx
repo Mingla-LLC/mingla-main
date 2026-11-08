@@ -78,6 +78,11 @@ jest.mock("react-native", () => {
     StyleSheet: { create: <T,>(styles: T): T => styles },
   };
 });
+// [TEST-MOD-APPROVED #1023] The Explorer brand page now loads its theme font
+// (base and bold) through this hook; font loading is not under test here.
+jest.mock("../../theme/useConsumerThemeFont", () => ({
+  useConsumerThemeFont: () => ({ loaded: true }),
+}));
 jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));

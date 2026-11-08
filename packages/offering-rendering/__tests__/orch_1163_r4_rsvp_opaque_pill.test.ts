@@ -152,7 +152,8 @@ Deno.test("R4 §1 — the component imports + uses the opaque-surface helpers (n
 
 Deno.test("R4 §1 — Going button is UNCHANGED (solid palette.accent active fill)", () => {
   // The hierarchy keeps Going = solid accent; we only made Maybe/Can't opaque.
-  assertStringIncludes(COMPONENT, "backgroundColor: palette.accent, borderColor: palette.accent");
+  // issue #1023 (gradient everywhere): the accent paints through the gradient-aware helpers.
+  assertStringIncludes(COMPONENT, "goingFilled\n          ? accentFillWithBorder(palette)");
 });
 
 // ───────────────────────────── FIX 2: micro pill ─────────────────────────────

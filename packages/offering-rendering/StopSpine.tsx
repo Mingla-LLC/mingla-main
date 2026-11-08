@@ -26,6 +26,7 @@ import { CountAwareGallery, type CountAwareGalleryItem } from "./CountAwareGalle
 import { offeringSurfaceStyles, type ThemePalette } from "./themePalette";
 import type { ExperienceOfferingStop } from "./experienceOfferingTypes";
 import { experienceStopOffsetLabel } from "./experienceR3";
+import { accentFill } from "./themeAccentStyle";
 
 /** START HERE / THEN / END WITH from index + count (single owner). */
 export function stopLabelForIndex(index: number, total: number): string {
@@ -83,7 +84,7 @@ export const StopSpine: React.FC<StopSpineProps> = ({
         const label = stopLabelForIndex(idx, stops.length);
         return (
           <View key={stop.id} style={styles.stop}>
-            <View style={[styles.stopDot, { backgroundColor: palette.accent }]}>
+            <View style={[styles.stopDot, accentFill(palette)]}>
               <Text style={[styles.stopDotText, { color: palette.accentText }]}>
                 {stop.stopOrder + 1}
               </Text>

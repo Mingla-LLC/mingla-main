@@ -19,15 +19,13 @@
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import {
   forwardableAcquisitionState,
-  isThemeAnimationSlug,
-  isThemeColor,
-  isThemeFontSlug,
   type PublicBrandProps,
   type PublicEventProps,
   type PublicTicketProps,
   type OfferingGalleryImage,
   type EventTerminalSource,
 } from "@mingla/offering-rendering";
+import { themeInputFromFields } from "@mingla/offering-rendering/themeResolver";
 
 // issue #3284 — the three-state refund-terms reader. DEEP specifier on purpose:
 // the #1929 / #2230 suites partially mock the package barrel, and a name missing
@@ -291,6 +289,19 @@ const mapRpcTicket = (raw: unknown, fallbackCurrency: string): PublicTicketProps
   };
 };
 
+/** The event's own theme overrides from the RPC payload, or null when none. */
+export const eventThemeOverrides = (
+  payload: Record<string, unknown>,
+): PublicEventProps["themeOverrides"] => {
+  // issue #1023 wave 2 — Google families and the gradient's second stop.
+  return themeInputFromFields(
+    payload.themeColorOverride,
+    payload.themeFontOverride,
+    payload.themeAnimationOverride,
+    payload.themeGradientOverride,
+  );
+};
+
 /** Map the pg_public_event_by_slug json payload → the shared PublicEventProps. */
 export const mapRpcPayloadToPublicEvent = (
   payload: Record<string, unknown>,
@@ -355,7 +366,9 @@ export const mapRpcPayloadToPublicEvent = (
     partyTypes: asStringArray(payload.partyTypes),
     vibeTags: asStringArray(payload.vibeTags),
     musicGenres: asStringArray(payload.musicGenres),
-    themeOverrides: null,
+    // #1023 (Seth): the page theme is event override → brand → Mingla. The
+    // RPC has always sent the event's own overrides; they were dropped here.
+    themeOverrides: eventThemeOverrides(payload),
   };
   const brand: PublicBrandProps | null =
     brandRaw === null
@@ -365,17 +378,14 @@ export const mapRpcPayloadToPublicEvent = (
           slug: String(brandRaw.slug ?? ""),
           displayName: String(brandRaw.name ?? "Brand"),
           photo: asString(brandRaw.profilePhotoUrl) ?? undefined,
-          theme: {
-            ...(isThemeColor(brandRaw.themeColor)
-              ? { color: brandRaw.themeColor }
-              : {}),
-            ...(isThemeFontSlug(brandRaw.themeFont)
-              ? { font: brandRaw.themeFont }
-              : {}),
-            ...(isThemeAnimationSlug(brandRaw.themeAnimation)
-              ? { animation: brandRaw.themeAnimation }
-              : {}),
-          },
+          // issue #1023 wave 2 — Google families and the gradient's second stop.
+          theme:
+            themeInputFromFields(
+              brandRaw.themeColor,
+              brandRaw.themeFont,
+              brandRaw.themeAnimation,
+              brandRaw.themeGradient,
+            ) ?? {},
         };
   return {
     event,

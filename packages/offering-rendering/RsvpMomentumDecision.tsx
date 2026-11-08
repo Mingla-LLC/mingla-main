@@ -91,6 +91,8 @@ import {
 // ORCH-1292 — the party chips now resolve to CANONICAL labels (via the shared
 // in-package resolver), matching the pills row — not the humanized partyTypeLabel.
 import { taxonomyLabel } from "./taxonomyLabels";
+import { accentFill, accentFillWithBorder, accentIcon, accentOutline, themeFontFace } from "./themeAccentStyle";
+import { useAccentStroke } from "./LucideIcons";
 
 // ───────────────────────── presentational types ─────────────────────────────
 
@@ -247,13 +249,20 @@ const CheckGlyph: React.FC<{ color: string }> = ({ color }) => (
     <Path d="M5 13l4 4L19 7" stroke={color} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 );
-const MaybeGlyph: React.FC<{ color: string }> = ({ color }) => (
-  <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
-    <Circle cx={12} cy={12} r={9} stroke={color} strokeWidth={2.2} />
-    <Path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.8.4-1 .9-1 1.7" stroke={color} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
-    <Path d="M12 17h.01" stroke={color} strokeWidth={2.4} strokeLinecap="round" />
-  </Svg>
-);
+const MaybeGlyph: React.FC<{ color: string; gradient?: readonly [string, string] }> = ({
+  color,
+  gradient,
+}) => {
+  const { stroke, defs } = useAccentStroke(color, gradient);
+  return (
+    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
+      {defs}
+      <Circle cx={12} cy={12} r={9} stroke={stroke} strokeWidth={2.2} />
+      <Path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.8.4-1 .9-1 1.7" stroke={stroke} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M12 17h.01" stroke={stroke} strokeWidth={2.4} strokeLinecap="round" />
+    </Svg>
+  );
+};
 const XGlyph: React.FC<{ color: string }> = ({ color }) => (
   <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
     <Path d="M6 6l12 12M18 6L6 18" stroke={color} strokeWidth={2.2} strokeLinecap="round" />
@@ -343,6 +352,7 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
   testID,
 }) => {
   const boldFamily = boldFontFamily(theme);
+  const boldFace = themeFontFace(boldFamily);
   // Explicitly typed: a `= null` default alone narrows these to `null` in
   // hosts whose type-check cannot resolve react (mingla-business's tsconfig).
   const hintText = validationHint as string | null;
@@ -503,7 +513,7 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
     >
       <View style={styles.momTop}>
         <Text
-          style={[styles.momCount, { color: palette.primaryText, fontFamily: boldFamily }]}
+          style={[styles.momCount, { color: palette.primaryText, ...boldFace }]}
           testID="orch-1157-rsvp-going-count"
           accessibilityLabel={`${momentum.displayCount} people going`}
         >
@@ -522,7 +532,7 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
           <Animated.View
             style={[
               styles.meterFill,
-              { width: meterFillWidth, backgroundColor: palette.accent },
+              { width: meterFillWidth, ...accentFill(palette) },
             ]}
             testID="orch-1157-rsvp-meter"
           />
@@ -566,7 +576,7 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
       style={[
         styles.dbtn,
         goingFilled
-          ? { backgroundColor: palette.accent, borderColor: palette.accent }
+          ? accentFillWithBorder(palette)
           : { backgroundColor: opaqueCardFill(palette), borderColor: palette.panelBorder },
       ]}
       testID={goingTestID ?? "orch-1157-rsvp-going"}
@@ -581,7 +591,7 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
         <UserPlusGlyph color={goingFilled ? palette.accentText : palette.tertiaryText} />
       )}
       <Text
-        style={[styles.dbtnText, { color: goingFilled ? palette.accentText : palette.tertiaryText, fontFamily: boldFamily }]}
+        style={[styles.dbtnText, { color: goingFilled ? palette.accentText : palette.tertiaryText, ...boldFace }]}
         numberOfLines={1}
       >
         {goingLabel}
@@ -603,15 +613,18 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
           ? // disabled: OPAQUE neutral surface + dimmed text/border (no see-through).
             { backgroundColor: opaqueCardFill(palette), borderColor: palette.panelBorder }
           : // active: OPAQUE accent-tinted fill + accent border + accent text.
-            { backgroundColor: opaqueAccentFill(palette), borderColor: palette.accent },
+            accentOutline(palette, {
+              background: opaqueAccentFill(palette),
+              opaqueBackground: opaqueAccentFill(palette),
+            }),
       ]}
       testID={maybeTestID ?? "orch-1157-rsvp-maybe"}
     >
-      <MaybeGlyph color={maybeDisabled ? palette.tertiaryText : palette.accent} />
+      <MaybeGlyph {...(maybeDisabled ? { color: palette.tertiaryText } : accentIcon(palette))} />
       <Text
         style={[
           styles.dbtnText,
-          { color: maybeDisabled ? palette.tertiaryText : palette.accent, fontFamily: boldFamily },
+          { color: maybeDisabled ? palette.tertiaryText : palette.accent, ...boldFace },
         ]}
         numberOfLines={1}
       >
@@ -630,7 +643,7 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
       testID={notGoingTestID ?? "orch-1157-rsvp-not-going"}
     >
       <XGlyph color={palette.secondaryText} />
-      <Text style={[styles.dbtnText, { color: palette.secondaryText, fontFamily: boldFamily }]} numberOfLines={1}>
+      <Text style={[styles.dbtnText, { color: palette.secondaryText, ...boldFace }]} numberOfLines={1}>
         Can't go
       </Text>
     </Pressable>
@@ -715,7 +728,7 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
         >
           <Text style={[styles.stepGlyph, { color: palette.accent }]}>–</Text>
         </Pressable>
-        <Text style={[styles.stepCount, { color: palette.primaryText, fontFamily: boldFamily }]}>+{plusCount}</Text>
+        <Text style={[styles.stepCount, { color: palette.primaryText, ...boldFace }]}>+{plusCount}</Text>
         <Pressable
           onPress={() => onPlusChange(Math.min(plusOnesMax, plusCount + 1))}
           disabled={plusCount >= plusOnesMax}
@@ -737,7 +750,11 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
       {stepper}
       {hintText !== null && hintText !== undefined && hintText.length > 0 ? (
         <Text
-          style={[styles.validationHint, { color: palette.primaryText, borderColor: palette.accent }]}
+          style={[
+            styles.validationHint,
+            { color: palette.primaryText },
+            accentOutline(palette, { opaqueBackground: palette.page }),
+          ]}
           accessibilityRole={Platform.OS === "web" && announceHint ? "alert" : undefined}
           accessibilityLiveRegion={announceHint ? "polite" : "none"}
           testID="rsvp-decision-validation-hint"
@@ -768,7 +785,7 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
           style={styles.secondaryAction}
           testID={passAction.testID ?? "rsvp-decision-secondary-action"}
         >
-          <Text style={[styles.secondaryActionText, { color: palette.accent, fontFamily: boldFamily }]}>
+          <Text style={[styles.secondaryActionText, { color: palette.accent, ...boldFace }]}>
             {passAction.label}
           </Text>
         </Pressable>
@@ -783,10 +800,10 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
       <Animated.View
         style={[
           styles.kickerDot,
-          { backgroundColor: palette.accent, transform: [{ scale: dotScale }], opacity: dotOpacity },
+          { ...accentFill(palette), transform: [{ scale: dotScale }], opacity: dotOpacity },
         ]}
       />
-      <Text style={[styles.kickerText, { color: palette.primaryText, fontFamily: boldFamily }]}>
+      <Text style={[styles.kickerText, { color: palette.primaryText, ...boldFace }]}>
         YOU'RE INVITED
       </Text>
     </View>

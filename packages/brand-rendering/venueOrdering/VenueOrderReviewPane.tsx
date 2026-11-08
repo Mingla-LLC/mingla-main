@@ -69,6 +69,7 @@ import {
   venueOrderHandoverChip,
   venueOrderTipPresets,
 } from "./venueOrderingRules";
+import { accentEdgeOnFill, accentFill } from "@mingla/offering-rendering/themeAccentStyle";
 
 type Surface = ReturnType<typeof offeringSurfaceStyles>;
 
@@ -630,7 +631,7 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
         }
         style={[
           styles.payBtn,
-          { backgroundColor: canPay ? palette.accent : palette.panelBorder },
+          (canPay ? accentFill(palette) : { backgroundColor: palette.panelBorder }),
         ]}
       >
         <Text
@@ -664,8 +665,8 @@ const TipChip: React.FC<{
     style={[
       styles.tipChip,
       {
-        borderColor: selected ? palette.accent : palette.panelBorder,
-        backgroundColor: selected ? palette.accent : "rgba(0,0,0,0)",
+        borderColor: selected ? accentEdgeOnFill(palette) : palette.panelBorder,
+        ...(selected ? accentFill(palette) : { backgroundColor: "rgba(0,0,0,0)" }),
       },
     ]}
   >
