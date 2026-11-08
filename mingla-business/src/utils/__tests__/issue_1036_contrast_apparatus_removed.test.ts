@@ -116,7 +116,9 @@ describe("#1036 — the real colour controls survive", () => {
 
   test("the live preview band — now the sole readability signal — survives", () => {
     expect(sheet).toContain("styles.preview");
-    expect(sheet).toContain("palette.accent");
+    // [TEST-MOD-APPROVED #1023] The band's CTA paints the theme accent through
+    // the gradient-aware fill (accentFill(palette)), not a raw palette.accent.
+    expect(sheet).toContain("styles.previewCta, accentFill(palette)");
     expect(sheet).toContain("Preview: your page with this theme");
   });
 
