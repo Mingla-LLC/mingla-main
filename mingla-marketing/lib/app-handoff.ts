@@ -19,10 +19,12 @@
 // tests share one decision table.
 
 import type { Platform } from './device-platform'
-import type { OneLinkAttribution } from './links-src'
-import { isPhone } from './links-handoff'
+import { siteAttribution, type OneLinkAttribution } from './links-src'
+import { isPhone, pinBlogHref, type LinksTarget } from './links-handoff'
+import { pinWebHref } from './links-week'
 import {
   resolveCtaDestinations,
+  resolveListingDestinations,
   resolveStoreListingHrefs,
   type CtaDestinations,
   type CtaSurface,
@@ -70,4 +72,85 @@ export function hostWebLabel(href: string): string {
 export function hostWebPageHref(path: `/${string}`, attribution: OneLinkAttribution): string {
   const origin = resolveCtaDestinations('host', attribution).computerHref.replace(/\/+$/, '')
   return resolveCtaDestinations('host', attribution, { hostComputerHref: `${origin}${path}` }).computerHref
+}
+
+// ---------------------------------------------------------------------------
+// #4339 phase 4a — the city page's "This weekend" taps: admin strips, live
+// listings and the quiet week's places. The SAME targets and decision as the
+// #4318 /links page (`LinksTarget`, `pinWebHref`, `pinBlogHref`,
+// `resolveListingDestinations`), with the site's own governed attribution
+// instead of the /links bio `?src=`:
+//
+//   target              phone (iPhone, iPad, Android)          computer
+//   listing, event      Explorer OneLink deep-linked to it      its public page on host web
+//   listing, trip/exp.  Explorer OneLink deep-linked to it      detail sheet (QR + stores)
+//   place               Explorer OneLink (store)                detail sheet (QR + stores)
+//   strip, web          the web address (new tab)               the web address (new tab)
+//   strip, blog         /blog/<slug>                            /blog/<slug>
+//   strip, explorer     Explorer OneLink (store)                "Mingla lives on your phone" sheet
+//   strip, host         Host OneLink (store)                    "Host on Mingla" sheet
+//
+// Every OneLink, store and host-web URL still comes from lib/cta-destination.ts.
+
+/** The Explorer and Host attribution of the city page's taps (governed site campaigns). */
+export const CITY_EXPLORER_ATTRIBUTION: OneLinkAttribution = siteAttribution('explorer_nav')
+export const CITY_HOST_ATTRIBUTION: OneLinkAttribution = siteAttribution('business_hero')
+
+/** The two hrefs of a city-page target's anchor (computer = server href and no-JS destination). */
+export function siteTargetHrefs(target: LinksTarget): CtaDestinations {
+  switch (target.type) {
+    case 'banner':
+      return resolveCtaDestinations(target.app, target.app === 'explorer' ? CITY_EXPLORER_ATTRIBUTION : CITY_HOST_ATTRIBUTION)
+    case 'place':
+      return resolveCtaDestinations('explorer', CITY_EXPLORER_ATTRIBUTION)
+    case 'listing': {
+      const { kind, brandSlug, itemSlug } = target.listing
+      return resolveListingDestinations(kind, brandSlug, itemSlug, CITY_EXPLORER_ATTRIBUTION)
+    }
+    case 'pin': {
+      const { pin } = target
+      switch (pin.opens) {
+        case 'web': {
+          const href = pinWebHref(pin.url)
+          if (href === null) throw new Error(`#4339 city strip ${pin.id} has no valid web address`)
+          return { computerHref: href, phoneHref: href }
+        }
+        case 'blog': {
+          const href = pinBlogHref(pin)
+          return { computerHref: href, phoneHref: href }
+        }
+        case 'explorer':
+          return resolveCtaDestinations('explorer', CITY_EXPLORER_ATTRIBUTION)
+        case 'host':
+          return resolveCtaDestinations('host', CITY_HOST_ATTRIBUTION)
+        default: {
+          const never: never = pin.opens
+          throw new Error(`#4339 city strip: unknown target ${String(never)}`)
+        }
+      }
+    }
+    default: {
+      const never: never = target
+      throw new Error(`#4339 city target: unknown ${JSON.stringify(never)}`)
+    }
+  }
+}
+
+export type SiteTargetHandoff =
+  | { action: 'navigate'; href: string; newTab: boolean }
+  | { action: 'sheet'; sheet: AppHandoffSheet | 'item' }
+
+/** What a tap on a city-page target does on this device. */
+export function resolveSiteTargetHandoff(target: LinksTarget, platform: Platform): SiteTargetHandoff {
+  const hrefs = siteTargetHrefs(target)
+  if (target.type === 'pin' && (target.pin.opens === 'web' || target.pin.opens === 'blog')) {
+    return { action: 'navigate', href: hrefs.computerHref, newTab: target.pin.opens === 'web' }
+  }
+  if (isPhone(platform)) return { action: 'navigate', href: hrefs.phoneHref, newTab: false }
+  if (target.type === 'banner') return { action: 'sheet', sheet: target.app === 'host' ? 'host' : 'explore' }
+  if (target.type === 'pin') return { action: 'sheet', sheet: target.pin.opens === 'host' ? 'host' : 'explore' }
+  if (target.type === 'listing' && target.listing.kind === 'event') {
+    return { action: 'navigate', href: hrefs.computerHref, newTab: true }
+  }
+  return { action: 'sheet', sheet: 'item' }
 }

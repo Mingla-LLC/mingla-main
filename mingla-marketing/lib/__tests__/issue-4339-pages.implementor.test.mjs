@@ -108,6 +108,7 @@ const SHARED = [
   'components/site/pages.css',
   'components/cities/city-page.tsx',
   'components/cities/city-weekend.tsx',
+  'components/cities/city-this-weekend.tsx',
   'components/help/help-browser.tsx',
   'components/blog/blog-index.tsx',
   'components/blog/blog-category-tabs.tsx',
@@ -201,11 +202,14 @@ test('filter chips are <button aria-pressed> in one swipeable row, and they filt
   assert.equal(tagged.length, 6, 'six guide tiles')
   for (const chip of chips) assert(tagged.some(([, tags]) => tags.includes(`'${chip}'`)), `chip "${chip}" filters to at least one guide`)
   assert.match(goingOut, /<FilterGrid\s+label="Filter guides"/)
-  // The city page: the four weekend chips over the existing places.
-  const weekend = code(read('components/cities/city-weekend.tsx'))
+  // The city page: the four weekend chips. #4339 phase 4a moved them onto the
+  // live "This weekend" (city-this-weekend.tsx; its own test,
+  // issue-4339-city-weekend.implementor.test.mjs, pins how they filter); the
+  // ranked places sit below under their own heading.
+  const weekend = code(read('components/cities/city-this-weekend.tsx'))
   assert.match(weekend, /const KINDS = \['All', 'Events', 'Experiences', 'Places'\] as const/)
   assert.match(weekend, /<FilterChips label=\{`Filter \$\{cityName\} listings`\} options=\{KINDS\} value=\{kind\} onChange=\{selectKind\} \/>/)
-  assert.match(weekend, /kind === 'All' \|\| kind === 'Places' \? places : \[\]/, 'Events and Experiences show nothing invented until phase 4 wires the live listings')
+  assert.doesNotMatch(code(read('components/cities/city-weekend.tsx')), /FilterChips/, 'the places section has no chips of its own')
   assert.match(code(read('components/help/help-browser.tsx')), /<FilterChips\s+label="Filter help videos"/)
   assert.match(code(read('components/site/download-toggle.tsx')), /<FilterChips\s+label="Choose the app"/)
   assert.match(code(read('components/blog/blog-category-tabs.tsx')), /className="tabs"/, 'blog categories use the same chip row (each a real category page)')
@@ -225,6 +229,13 @@ test('hand-offs go through the seam; no new file holds a store, OneLink or host 
   assert.match(code(read('app/(core)/about/page.tsx')), /<Link className="vcard text-card reveal" href="\/host">/, 'the Mingla Host card opens /host')
   assert.match(code(read('components/cities/city-page.tsx')), /<Link className="btn ink" href="\/host">\s*See Mingla Host/, 'the city page has one host button, to /host')
   assert.doesNotMatch(code(read('components/cities/city-page.tsx')), /surface="host"|HostHandoffButton|CityDeviceAction/, 'no other host button on the city page')
+  // #4339 phase 4a (§4 rule 4): the one exception is the empty week's "Host
+  // something in <City> →", the Host hand-off, inside "This weekend" only.
+  assert.deepEqual(
+    [...code(read('components/cities/city-this-weekend.tsx')).matchAll(/<HostHandoffButton location="([a-z_]+)"/g)].map((m) => m[1]),
+    ['city_strip', 'city_quiet', 'city_quiet'],
+    'Host hand-offs on the city page: a Host admin strip, and Host something in <City> in the quiet and fallback branches',
+  )
   // Get the app reads the seam.
   const download = code(read('app/download/page.tsx'))
   assert.match(download, /appHandoffHrefs\('explorer', siteAttribution\('explorer_nav'\)\)/)
@@ -350,14 +361,15 @@ test('built + Chrome: pressing a chip filters (Going out, the city page)', { ski
     await until(`document.querySelectorAll('[data-filter-grid] > li').length===6`, 'All did not bring the six guides back')
     assert.equal(await evaluate(`(()=>{const r=document.querySelector('[data-filter-row]');return r.scrollWidth>r.clientWidth&&getComputedStyle(r).overflowX==='auto'&&document.documentElement.scrollWidth===innerWidth})()`), true, 'at 375px the chip row swipes inside itself and the page does not scroll sideways')
 
+    // #4339 phase 4a: the chips belong to the live "This weekend" (the build
+    // has no database, so it shows the fallback line); the 50 ranked places
+    // sit below under their own heading and stay whatever chip is pressed.
     await send('Page.navigate', { url: `http://127.0.0.1:${port}/cities/raleigh-nc` })
     await until(hydrated, '/cities/raleigh-nc did not hydrate')
     assert.equal(await evaluate(`document.querySelectorAll('[data-city-place-card]').length`), 50)
     await evaluate(press('Events'))
-    await until(`document.querySelectorAll('[data-city-place-card]').length===0`, 'Events did not filter')
-    assert.match(await evaluate(`document.querySelector('#weekend .filter-note').textContent`), /No events are listed in Raleigh yet/)
-    await evaluate(press('Places'))
-    await until(`document.querySelectorAll('[data-city-place-card]').length===50`, 'Places did not show the places')
+    await until(`[...document.querySelectorAll('#weekend [data-filter-row] button')].find(b=>b.getAttribute('aria-pressed')==='true')?.textContent==='Events'`, 'Events did not press')
+    assert.equal(await evaluate(`document.querySelectorAll('[data-city-place-card]').length`), 50)
     socket.close()
   } finally {
     const exited = (child) => new Promise((resolve) => { if (child.exitCode !== null) resolve(); else { child.once('exit', resolve); setTimeout(resolve, 5000) } })

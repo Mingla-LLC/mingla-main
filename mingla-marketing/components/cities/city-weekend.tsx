@@ -5,21 +5,21 @@ import { createPortal } from 'react-dom'
 import { captureMarketing } from '@/components/marketing/posthog-provider'
 import { CatalogueDetail } from '@/components/page-system/catalogue-detail'
 import { CurrentPlacePhoto } from '@/components/page-system/current-place-photo'
-import { FilterChips } from '@/components/site/filter-row'
 import type { CataloguePlace } from '@/content/page-system/shared'
 import { storedPlaceThumbSrc } from '@/lib/city-place-photo'
 import { categoryRank, rankLabel, ratingLine } from '@/lib/city-place-rank'
 
-// #4339 phase 2b — the city page's "This weekend" section, in the approved
-// design: the heading, the Events / Experiences / Places chips (one row that
-// swipes on a phone; each chip is a button that filters the cards) and the
-// cards in the new style.
+// #4339 phase 2b — the city's ranked places, in the approved design's card
+// style.
+//
+// #4339 phase 4a — "This weekend" moved to the live readers
+// (city-this-weekend.tsx, which owns the Events / Experiences / Places chips),
+// so this section is now the page's existing places, below it, under its own
+// heading, "Places in <City>." (id="places", the target of the weekend's
+// Places chip when the weekend has listings).
 //
 // DATA: the page's EXISTING source, unchanged (the #4137 catalogue snapshot:
-// the city's ranked places). The live weekly listings (links_page_week /
-// links_page_strips, §4) arrive in phase 4. Until then the city has no event
-// or experience listings on this page, so those chips say so honestly instead
-// of showing anything invented (Constitution #9).
+// the city's ranked places).
 //
 // A card opens the place detail exactly as before (#4137): the URL gains the
 // place's detail path, the sheet opens, Escape or Back closes it and focus
@@ -27,8 +27,6 @@ import { categoryRank, rankLabel, ratingLine } from '@/lib/city-place-rank'
 // own styles apply.
 
 const COLLAPSED_COUNT = 12
-const KINDS = ['All', 'Events', 'Experiences', 'Places'] as const
-type Kind = (typeof KINDS)[number]
 
 interface CityWeekendProps {
   readonly cityName: string
@@ -40,18 +38,15 @@ interface CityWeekendProps {
 }
 
 export function CityWeekend({ cityName, citySlug, countryCode, locale, cityPath, places }: CityWeekendProps) {
-  const [kind, setKind] = useState<Kind>('All')
   const [collapsed, setCollapsed] = useState(true)
   const [detail, setDetail] = useState<string | null>(null)
-  const [announcement, setAnnouncement] = useState('')
   const [portal, setPortal] = useState<Element | null>(null)
   const openerRef = useRef<HTMLAnchorElement | null>(null)
   const gridRef = useRef<HTMLUListElement>(null)
   const focusAfterExpand = useRef(false)
 
   const ranks = useMemo(() => categoryRank(places), [places])
-  // Every listing on this page today is a place (see the header).
-  const visible = useMemo(() => (kind === 'All' || kind === 'Places' ? places : []), [kind, places])
+  const visible = places
   const selected = detail?.startsWith('place:') ? places.find((place) => `place:${place.placePoolId}` === detail) : undefined
 
   useEffect(() => {
@@ -71,14 +66,6 @@ export function CityWeekend({ cityName, citySlug, countryCode, locale, cityPath,
     focusAfterExpand.current = false
     gridRef.current?.querySelectorAll<HTMLAnchorElement>('.wk-card')[COLLAPSED_COUNT]?.focus()
   }, [collapsed])
-
-  function selectKind(next: string) {
-    const value = (KINDS as readonly string[]).includes(next) ? (next as Kind) : 'All'
-    setKind(value)
-    setCollapsed(true)
-    const count = value === 'All' || value === 'Places' ? places.length : 0
-    setAnnouncement(value === 'All' ? `Showing all ${count} listings` : `Showing ${count} ${value.toLowerCase()}`)
-  }
 
   function openPlace(event: MouseEvent<HTMLAnchorElement>, place: CataloguePlace) {
     if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
@@ -123,20 +110,18 @@ export function CityWeekend({ cityName, citySlug, countryCode, locale, cityPath,
   ) : null
 
   return (
-    <section className="sec" id="weekend" aria-labelledby="city-weekend-title">
+    <section className="sec places-sec" id="places" aria-labelledby="city-places-title">
       <div className="wrap">
         <div className="wk-head">
-          <h2 className="h2" id="city-weekend-title">
-            This <em>weekend.</em>
+          <h2 className="h2" id="city-places-title">
+            Places in <em>{cityName}.</em>
           </h2>
-          <FilterChips label={`Filter ${cityName} listings`} options={KINDS} value={kind} onChange={selectKind} />
         </div>
-        <p className="sr-only" aria-live="polite">{announcement}</p>
 
         {visible.length ? (
           <>
             <noscript><style>{'.wk-grid[data-collapsed] > li{display:list-item!important}.wk-more{display:none!important}'}</style></noscript>
-            <ul ref={gridRef} id="city-weekend-grid" className="wk-grid" data-filter-grid="" data-filter={kind} data-collapsed={collapsed && visible.length > COLLAPSED_COUNT ? 'true' : 'false'}>
+            <ul ref={gridRef} id="city-places-grid" className="wk-grid" data-collapsed={collapsed && visible.length > COLLAPSED_COUNT ? 'true' : 'false'}>
               {visible.map((place, index) => {
                 const label = rankLabel(place, ranks)
                 const rating = ratingLine(place, locale)
@@ -175,7 +160,7 @@ export function CityWeekend({ cityName, citySlug, countryCode, locale, cityPath,
                 <button
                   type="button"
                   className="btn soft"
-                  aria-controls="city-weekend-grid"
+                  aria-controls="city-places-grid"
                   aria-expanded="false"
                   onClick={() => {
                     focusAfterExpand.current = true
@@ -188,11 +173,7 @@ export function CityWeekend({ cityName, citySlug, countryCode, locale, cityPath,
             ) : null}
           </>
         ) : (
-          <p className="filter-note">
-            {kind === 'All' || kind === 'Places'
-              ? `Nothing is listed in ${cityName} yet. Check back soon.`
-              : `No ${kind.toLowerCase()} are listed in ${cityName} yet. Places are under All.`}
-          </p>
+          <p className="filter-note">{`No places are listed in ${cityName} yet. Check back soon.`}</p>
         )}
       </div>
       {sheet && portal ? createPortal(sheet, portal) : null}

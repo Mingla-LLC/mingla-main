@@ -6,10 +6,18 @@ import { getCityCatalogueSnapshot, getLagosCatalogueSnapshot } from '@/lib/page-
 import { cityHubMetadata } from '@/lib/search/metadata'
 import { cityHubStructuredData, serializeCityHubStructuredData } from '@/lib/search/city-schema'
 import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
+import { getCityWeekend } from '@/lib/city-weekend-data'
+import { historicalCityBuildEnabled } from '@/lib/search/historical-city-build'
 
 // #4339 phase 2b — the release layout is the redesigned city page
 // (components/cities/city-page.tsx); its brand faces are route-scoped here
-// (#3548). Data sources are unchanged.
+// (#3548).
+//
+// #4339 phase 4a — "This weekend" reads #4318's public readers
+// (links_page_week, links_page_strips, links_page_places) through
+// lib/city-weekend-data.ts: the same 5-minute cache and `links` tag as /links,
+// so the page regenerates at most every 5 minutes. The ranked places, plans and
+// FAQs below it keep their existing sources.
 
 interface CityHubPageProps {
   readonly params: Promise<{ city: string }>
@@ -35,6 +43,7 @@ export default async function CityHubPage({ params }: CityHubPageProps) {
   const structuredData = cityHubStructuredData(record)
   const legacyLagosCatalogue = city === 'lagos' ? getLagosCatalogueSnapshot('/cities/lagos') : null
   const catalogue = legacyLagosCatalogue ?? getCityCatalogueSnapshot(record.slug, `/cities/${record.slug}`)
+  const weekend = historicalCityBuildEnabled() ? undefined : await getCityWeekend(record.slug, new Date().toISOString())
   return (
     <div className={`${landingSerif.variable} ${landingSans.variable} ${landingMono.variable}`}>
       {structuredData ? (
@@ -52,6 +61,7 @@ export default async function CityHubPage({ params }: CityHubPageProps) {
           initialIntents: [],
           initialDetail: null,
         } : undefined}
+        weekend={weekend}
       />
     </div>
   )

@@ -91,9 +91,20 @@ interface HandoffSheetProps {
   onClose: () => void
 }
 
-export function HandoffSheet({ sheet, attribution, onClose }: HandoffSheetProps) {
-  const hrefs = appHandoffHrefs(sheet === 'host' ? 'host' : 'explorer', attribution)
-  const copy = SHEET_COPY[sheet]
+interface SheetFrameProps {
+  /** `data-sheet` on the overlay (styling and tests). */
+  kind: string
+  labelledBy: string
+  onClose: () => void
+  children: ReactNode
+}
+
+/**
+ * The dialog chrome every computer sheet shares (#4339 §3): the overlay that
+ * closes on a tap outside, X, Escape, a Tab trap, scroll lock and focus on X
+ * when it opens. Portalled into the page's brand root.
+ */
+export function SheetFrame({ kind, labelledBy, onClose, children }: SheetFrameProps) {
   const dialogRef = useRef<HTMLDivElement>(null)
   const closeRef = useRef<HTMLButtonElement>(null)
 
@@ -140,54 +151,71 @@ export function HandoffSheet({ sheet, attribution, onClose }: HandoffSheetProps)
   const node: ReactNode = (
     <div
       data-landing-sheet=""
-      data-sheet={sheet}
+      data-sheet={kind}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose()
       }}
     >
-      <div ref={dialogRef} className="modal-in" role="dialog" aria-modal="true" aria-labelledby={copy.titleId}>
+      <div ref={dialogRef} className="modal-in" role="dialog" aria-modal="true" aria-labelledby={labelledBy}>
         <button ref={closeRef} type="button" className="x" aria-label="Close" onClick={onClose}>
           <X aria-hidden="true" />
         </button>
-        <div className="gs-ph">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={copy.photo} alt="" decoding="async" />
-        </div>
-        <h3 id={copy.titleId}>{copy.title}</h3>
-        <p>{copy.lead}</p>
-        <div className="gs-row">
-          <div className="qr">
-            <QRCode value={hrefs.phoneHref} size={112} title={copy.qrTitle} />
-          </div>
-          <div className="gs-st">
-            <a className="store" href={hrefs.stores.appStore} target="_blank" rel="noopener">
-              <AppleMark />
-              <span>
-                <small>Download on the</small>
-                <b>App Store</b>
-              </span>
-            </a>
-            <a className="store" href={hrefs.stores.googlePlay} target="_blank" rel="noopener">
-              <PlayMark />
-              <span>
-                <small>Get it on</small>
-                <b>Google Play</b>
-              </span>
-            </a>
-          </div>
-        </div>
-        {sheet === 'host' ? (
-          <div className="gs-web">
-            <span>Or keep going on this computer</span>
-            <a href={hrefs.computerHref} target="_blank" rel="noopener" onClick={onClose}>
-              Continue on {hostWebLabel(hrefs.computerHref)}
-            </a>
-          </div>
-        ) : null}
+        {children}
       </div>
     </div>
   )
 
   // Into the page's brand root, so the sheet keeps the route-scoped faces.
   return createPortal(node, document.querySelector('[data-landing]') ?? document.body)
+}
+
+/** The app's two store buttons, for a computer sheet. */
+export function StoreButtons({ stores }: { stores: { appStore: string; googlePlay: string } }) {
+  return (
+    <div className="gs-st">
+      <a className="store" href={stores.appStore} target="_blank" rel="noopener">
+        <AppleMark />
+        <span>
+          <small>Download on the</small>
+          <b>App Store</b>
+        </span>
+      </a>
+      <a className="store" href={stores.googlePlay} target="_blank" rel="noopener">
+        <PlayMark />
+        <span>
+          <small>Get it on</small>
+          <b>Google Play</b>
+        </span>
+      </a>
+    </div>
+  )
+}
+
+export function HandoffSheet({ sheet, attribution, onClose }: HandoffSheetProps) {
+  const hrefs = appHandoffHrefs(sheet === 'host' ? 'host' : 'explorer', attribution)
+  const copy = SHEET_COPY[sheet]
+  return (
+    <SheetFrame kind={sheet} labelledBy={copy.titleId} onClose={onClose}>
+      <div className="gs-ph">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={copy.photo} alt="" decoding="async" />
+      </div>
+      <h3 id={copy.titleId}>{copy.title}</h3>
+      <p>{copy.lead}</p>
+      <div className="gs-row">
+        <div className="qr">
+          <QRCode value={hrefs.phoneHref} size={112} title={copy.qrTitle} />
+        </div>
+        <StoreButtons stores={hrefs.stores} />
+      </div>
+      {sheet === 'host' ? (
+        <div className="gs-web">
+          <span>Or keep going on this computer</span>
+          <a href={hrefs.computerHref} target="_blank" rel="noopener" onClick={onClose}>
+            Continue on {hostWebLabel(hrefs.computerHref)}
+          </a>
+        </div>
+      ) : null}
+    </SheetFrame>
+  )
 }

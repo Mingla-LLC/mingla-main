@@ -7,23 +7,28 @@ import { SitePage } from '@/components/site/site-page'
 import { CityHubImpression, CityTrackedLink } from './city-actions'
 import { CityLifecycleNotice, type CityHubCatalogue } from './city-hub'
 import { CityWeekend } from './city-weekend'
+import { CityThisWeekend } from './city-this-weekend'
+import type { CityWeekendModel } from '@/lib/city-weekend'
 
 // #4339 phase 2b — the release layout of /cities/[city] (one template for
 // every city), in the approved design:
 //
 //   1. the photo/clip hero with the city pill, "<City>, what are we outside
 //      for?" and the glass bar with Use Mingla (the Explorer hand-off, §3);
-//   2. "This weekend" with the Events / Experiences / Places chips
-//      (city-weekend.tsx);
+//   2. "This weekend" from the live readers (#4339 phase 4a, §4): admin
+//      strips first, the city's Friday–Sunday listings, the empty-week rule,
+//      and the Events / Experiences / Places chips (city-this-weekend.tsx);
+//   2b. the city's ranked places with their detail sheet (city-weekend.tsx),
+//      unchanged from phase 2b apart from its own heading;
 //   3. the moss "More than one mode." guide band;
 //   4. the city's questions (the FAQPage markup's visible answers);
 //   5. "Run a place in <City>?" with ONE host button, See Mingla Host → /host
 //      (round 1, point 8: we don't know their ICP yet).
 //
-// DATA is the page's existing source and content, unchanged: the #4137
-// catalogue snapshot (ranked places, ready-made plans) and the registry
-// record (guide sections, FAQs). links_page_week / links_page_strips arrive in
-// phase 4. The historical #2983 layout stays in city-hub.tsx for its pinned
+// DATA: "This weekend" is #4318's readers (lib/city-weekend-data.ts); the rest
+// is the page's existing source, unchanged: the #4137 catalogue snapshot
+// (ranked places, ready-made plans) and the registry record (guide sections,
+// FAQs). The historical #2983 layout stays in city-hub.tsx for its pinned
 // build lane.
 
 function CityHero({ record }: { readonly record: CityHubRecord }) {
@@ -144,13 +149,22 @@ function CityHostBand({ record }: { readonly record: CityHubRecord }) {
   )
 }
 
-export function CityPage({ record, catalogue }: { readonly record: CityHubRecord; readonly catalogue: CityHubCatalogue }) {
+export function CityPage({
+  record,
+  catalogue,
+  weekend,
+}: {
+  readonly record: CityHubRecord
+  readonly catalogue: CityHubCatalogue
+  readonly weekend: CityWeekendModel
+}) {
   return (
     <div className="page-system-root city-hub-root city-page-v2 city-page-v3">
       <CityHubImpression citySlug={record.slug} countryCode={record.countryCode} />
       <SitePage surface="explorer" current="cities">
         <CityHero record={record} />
         <CityLifecycleNotice record={record} />
+        <CityThisWeekend cityName={record.city} citySlug={record.slug} countryCode={record.countryCode} model={weekend} />
         <CityWeekend
           cityName={record.city}
           citySlug={record.slug}

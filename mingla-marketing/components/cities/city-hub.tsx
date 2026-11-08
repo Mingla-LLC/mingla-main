@@ -17,6 +17,7 @@ import type { CataloguePlace, CataloguePlan, ExplorerCategorySlug } from '@/cont
 import { CityDeviceAction, CityHostCreationLinks, CityHubImpression, CityTrackedLink } from './city-actions'
 import { historicalCityBuildEnabled } from '@/lib/search/historical-city-build'
 import { CityPage } from './city-page'
+import type { CityWeekendModel } from '@/lib/city-weekend'
 
 export interface CityHubCatalogue {
   readonly places: readonly CataloguePlace[]
@@ -287,10 +288,19 @@ export function RootCityGrid({ surface }: { readonly surface: 'explorer' | 'host
   )
 }
 
-export function CityHub({ record, catalogue: suppliedCatalogue }: { readonly record: CityHubRecord; readonly catalogue?: CityHubCatalogue }) {
+export function CityHub({
+  record,
+  catalogue: suppliedCatalogue,
+  weekend,
+}: {
+  readonly record: CityHubRecord
+  readonly catalogue?: CityHubCatalogue
+  /** #4339 phase 4a — "This weekend" from the live readers (release layout only). */
+  readonly weekend?: CityWeekendModel
+}) {
   // #4137 wave 2: the release build renders the redesigned city page; the
   // historical #2983 lane below keeps its pinned layout.
-  if (!historicalCityBuildEnabled() && suppliedCatalogue) return <CityPage record={record} catalogue={suppliedCatalogue} />
+  if (!historicalCityBuildEnabled() && suppliedCatalogue && weekend) return <CityPage record={record} catalogue={suppliedCatalogue} weekend={weekend} />
   // The historical #2983 append-only guard builds one explicit compatibility
   // artifact. The unflagged release build always receives the real catalogue.
   const catalogue = historicalCityBuildEnabled() && record.slug !== 'lagos' ? undefined : suppliedCatalogue

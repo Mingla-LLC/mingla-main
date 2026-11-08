@@ -49,13 +49,15 @@ await withNextBrowser(ROOT, async ({ page, baseUrl, consoleErrors }) => {
     }
   }
 
-  // #4339 phase 2b: the redesigned "This weekend" grid (components/cities/city-weekend.tsx).
+  // #4339 phase 2b: the redesigned ranked-places grid (components/cities/city-weekend.tsx).
+  // #4339 phase 4a moved it under "Places in <City>" (#places, #city-places-grid);
+  // "This weekend" (#weekend) now reads the live listings (city-this-weekend.tsx).
   await open(page, baseUrl, '/cities/raleigh-nc?qa=city', { width: 390, height: 844, reducedMotion: true })
   const initial = await page.evaluate(`(() => ({
     total:document.querySelectorAll('[data-city-place-card]').length,
-    visible:[...document.querySelectorAll('#city-weekend-grid>li')].filter(n=>getComputedStyle(n).display!=='none').length,
+    visible:[...document.querySelectorAll('#city-places-grid>li')].filter(n=>getComputedStyle(n).display!=='none').length,
     button:document.querySelector('.wk-more button')?.textContent.trim(),
-    labels:/Photo by|Google Maps/.test(document.querySelector('#weekend').textContent),
+    labels:/Photo by|Google Maps/.test(document.querySelector('#places').textContent),
     stored:[...document.querySelectorAll('[data-place-media="stored"] img')].map(i=>i.getAttribute('src')),
     optimized:[...document.images].map(i=>i.src).filter(s=>s.includes('/_next/image')&&s.includes('place-photos'))
   }))()`)
@@ -67,16 +69,17 @@ await withNextBrowser(ROOT, async ({ page, baseUrl, consoleErrors }) => {
   assert.deepEqual(initial.optimized, [], 'stored place photos must not pass through the Next image optimiser')
 
   await page.evaluate(`document.querySelector('.wk-more button').click()`)
-  await waitFor(() => page.evaluate(`[...document.querySelectorAll('#city-weekend-grid>li')].filter(n=>getComputedStyle(n).display!=='none').length >= 50 && document.activeElement?.classList.contains('wk-card')`), 'Show all did not reveal 50 and focus the first new place')
+  await waitFor(() => page.evaluate(`[...document.querySelectorAll('#city-places-grid>li')].filter(n=>getComputedStyle(n).display!=='none').length >= 50 && document.activeElement?.classList.contains('wk-card')`), 'Show all did not reveal 50 and focus the first new place')
 
   const chips = await page.evaluate(`[...document.querySelectorAll('#weekend [data-filter-row] button')].map(b=>b.textContent.trim())`)
   assert.deepEqual(chips, ['All', 'Events', 'Experiences', 'Places'], 'Raleigh exposes the four weekend chips')
   await page.evaluate(`(() => { const b=[...document.querySelectorAll('#weekend [data-filter-row] button')]; for(let i=0;i<20;i++) b[i%2].click(); })()`)
   const chipState = await page.evaluate(`[...document.querySelectorAll('#weekend [data-filter-row] button')].filter(b=>b.getAttribute('aria-pressed')==='true').map(b=>b.textContent.trim())`)
   assert.deepEqual(chipState, ['Events'], 'rapid filtering left exactly the last chip pressed')
-  assert.match(await page.evaluate(`document.querySelector('#weekend .filter-note')?.textContent || ''`), /No events are listed in Raleigh yet/, 'an empty chip says so instead of inventing listings')
+  // The build has no database, so "This weekend" shows the shared fallback line, never invented listings.
+  assert.match(await page.evaluate(`document.querySelector('#weekend .filter-note')?.textContent || ''`), /Nothing is listed this week yet\. Check back soon\./, 'an empty week says so instead of inventing listings')
   await page.evaluate(`[...document.querySelectorAll('#weekend [data-filter-row] button')].find(b=>b.textContent.trim()==='Places').click()`)
-  await waitFor(() => page.evaluate(`document.querySelectorAll('[data-city-place-card]').length === 50`), 'Places did not show the 50 places')
+  await waitFor(() => page.evaluate(`document.querySelectorAll('[data-city-place-card]').length === 50`), 'the 50 ranked places did not stay')
 
   await open(page, baseUrl, '/cities/raleigh-nc?category=xyz', { width: 390, height: 844 })
   assert.equal(await page.evaluate(`document.querySelector('#weekend [data-filter-row] button').getAttribute('aria-pressed')`), 'true', 'an unknown query keeps All')
@@ -87,7 +90,7 @@ await withNextBrowser(ROOT, async ({ page, baseUrl, consoleErrors }) => {
   assert.equal(await page.evaluate(`Boolean(document.querySelector('[role=alert] a[href="/cities/raleigh-nc"]'))`), true)
 
   await open(page, baseUrl, '/cities/raleigh-nc?qa=no-js', { width: 390, height: 844, scriptDisabled: true })
-  const noJs = await page.evaluate(`(() => ({visible:[...document.querySelectorAll('#city-weekend-grid>li')].filter(n=>getComputedStyle(n).display!=='none').length,button:getComputedStyle(document.querySelector('.wk-more')).display}))()`)
+  const noJs = await page.evaluate(`(() => ({visible:[...document.querySelectorAll('#city-places-grid>li')].filter(n=>getComputedStyle(n).display!=='none').length,button:getComputedStyle(document.querySelector('.wk-more')).display}))()`)
   assert.equal(noJs.visible, 50, 'no-JavaScript city catalogue must expose all 50 places')
   assert.equal(noJs.button, 'none', 'no-JavaScript city catalogue must hide Show all')
 
