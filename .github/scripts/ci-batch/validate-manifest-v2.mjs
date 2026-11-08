@@ -399,7 +399,7 @@ export function phase3dContractDigest(manifest) {
 // #4270 W7: register the admin Brand group inbox suites; migration 20280502004270; re-sealed after merging origin/main (#4322).
 // #4273 polish: register the sent-previews migration, its PostgreSQL proofs (implementor + tester) and the campaign-screen render proof.
 // #4334: register the Google places migration and its PostgreSQL proof, and point the issue-992 lane at the renamed server geocode helper.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "3b0d6b6c877d3292622388f304c5439d66049da949c3cf1bc82325f4f873c35e";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "3ce2f3e61e2a1521cae285cb0e5298b1e18d0653fe7e91e42038e8d79ee16b03";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

@@ -54,7 +54,7 @@
 -- function body, so the 4261 files can no longer re-run on top of it. The
 -- re-apply is of the current owner of those bodies, which also proves it is
 -- idempotent.
-\ir ../20280510004334_issue_4334_google_places.sql
+\ir ../20280513004334_issue_4334_google_places.sql
 
 BEGIN;
 

@@ -189,7 +189,7 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4304: register the Brand group live migration and its PostgreSQL proof the same way.
 // #4270 W7: register the admin Brand group inbox suites; migration 20280502004270; re-sealed after merging origin/main (#4322).
 // #4273 polish: register the sent-previews migration, its PostgreSQL proofs (implementor + tester) and the campaign-screen render proof.
-export const BOOTSTRAP_SHA256 = "300a38d4ab7e579d84edbe0b8972cd82c8d4992fdeba9c19a8c3e270343b2da2";
+export const BOOTSTRAP_SHA256 = "c4a2fe59a5827bac04808cf84b61b7f5d9a85bca8e3ec851fc08be050cd90332";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
