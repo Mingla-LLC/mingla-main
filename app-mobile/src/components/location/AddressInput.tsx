@@ -1,6 +1,6 @@
 /**
- * Consumer MapboxAddressInput wrapper — META-ORCH-1060 [Mapbox consumer
- * migration] §3.2 / DESIGN §0–§6.
+ * Explorer AddressInput wrapper — META-ORCH-1060 §3.2 / DESIGN §0–§6; Google
+ * Maps Platform behind the shared field since #4334.
  *
  * Thin per-app wrapper that injects CONSUMER design tokens (light/dark variant)
  * + the consumer Icon + the consumer supabase.functions.invoke + consumer copy
@@ -20,7 +20,7 @@
 import React, { useMemo } from "react";
 
 import {
-  MapboxAddressInput as SharedMapboxAddressInput,
+  AddressInput as SharedAddressInput,
   type LocationInputCopy,
   type LocationInputTokens,
   type PlaceDetails,
@@ -38,12 +38,13 @@ import {
   BottomSheetTextInput,
 } from "../ui/BaseBottomSheet";
 import { supabase } from "../../services/supabase";
+import { reportAddressSearchUnavailable } from "../../services/addressSearchTelemetry";
 
 export type { PlaceDetails };
 
 export type LocationInputVariant = "light" | "dark";
 
-interface ConsumerMapboxAddressInputProps {
+interface ExplorerAddressInputProps {
   value: string;
   onChangeText: (next: string) => void;
   onPick: (details: PlaceDetails) => void;
@@ -70,11 +71,9 @@ interface ConsumerMapboxAddressInputProps {
   // search RANKS to the user's area (fixes the server-IP wrong-country bug).
   // Omitted by callers that don't resolve a device anchor → byte-identical. NO
   // types/country filter — proximity biases ranking without excluding results,
-  // keeping the shared suggest handler filter-free (INV-3 / ORCH-1079).
-  /** User-proximity rank bias "longitude,latitude" (Mapbox order). */
+  // keeping the Host suggest handler filter-free (INV-3 / ORCH-1079).
+  /** User-proximity rank bias "longitude,latitude" (client contract). */
   proximity?: string;
-  /** suggest `limit` override (≤10). Omitted → edge default 5. */
-  suggestLimit?: number;
   // ── ORCH-1362 [onboarding-location] ───────────────────────────────────────
   /**
    * True (default) = gorhom sheet host (Preferences / CityPicker) → inject
@@ -97,7 +96,8 @@ const CONSUMER_COPY: LocationInputCopy = {
   minLengthHint: "Type a couple letters to search.",
   searching: "Searching…",
   noResults: "No matches — try a broader search.",
-  offline: "Couldn't reach search. Tap to try again.",
+  // #4334 — search itself is down (never "No matches").
+  unavailable: "Search isn't working right now. Tap to try again.",
   pickError: "Couldn't fetch that place. Tap to try again.",
 };
 
@@ -115,6 +115,7 @@ const LIGHT_TOKENS: LocationInputTokens = {
     paddingVertical: 14,
     focusBorderWidth: 1.5,
   },
+  attribution: { variant: "light" },
   text: {
     input: colors.text.primary,
     placeholder: colors.gray[500], // LOCKED contrast fix (5.0:1)
@@ -172,6 +173,7 @@ const DARK_TOKENS: LocationInputTokens = {
     paddingVertical: 14,
     focusBorderWidth: 1.5,
   },
+  attribution: { variant: "dark" },
   text: {
     input: "rgba(255,255,255,0.95)",
     placeholder: "rgba(255,255,255,0.4)",
@@ -215,7 +217,7 @@ const DARK_TOKENS: LocationInputTokens = {
   },
 };
 
-export const MapboxAddressInput: React.FC<ConsumerMapboxAddressInputProps> = ({
+export const AddressInput: React.FC<ExplorerAddressInputProps> = ({
   value,
   onChangeText,
   onPick,
@@ -229,7 +231,6 @@ export const MapboxAddressInput: React.FC<ConsumerMapboxAddressInputProps> = ({
   autoFocus = false,
   searchMode = "venue",
   proximity,
-  suggestLimit,
   inBottomSheet = true,
 }) => {
   const tokens = useMemo(
@@ -240,7 +241,7 @@ export const MapboxAddressInput: React.FC<ConsumerMapboxAddressInputProps> = ({
     leadingIcon ?? (variant === "dark" ? "search" : "location");
 
   return (
-    <SharedMapboxAddressInput
+    <SharedAddressInput
       value={value}
       onChangeText={onChangeText}
       onPick={onPick}
@@ -260,9 +261,9 @@ export const MapboxAddressInput: React.FC<ConsumerMapboxAddressInputProps> = ({
       haptics={Haptics}
       autoFocus={autoFocus}
       proximity={proximity}
-      suggestLimit={suggestLimit}
+      onSearchUnavailable={reportAddressSearchUnavailable}
     />
   );
 };
 
-export default MapboxAddressInput;
+export default AddressInput;

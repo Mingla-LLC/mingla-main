@@ -64,13 +64,13 @@ export function chatPlanKindOf(input: ChatPlanKindInput): ChatPlanKind | null {
 export type PlanFormWhere = "place" | "link" | "none";
 export type PlanFormWhen = "set" | "poll";
 
-/** A picked place: a pool row, a Mapbox row (after retrieve) or typed text. */
+/** A picked place: a pool row, a Google row (after retrieve) or typed text. */
 export interface PlanFormPlace {
-  source: "pool" | "mapbox" | "typed";
+  source: "pool" | "google" | "typed";
   name: string;
   area: string | null;
   poolId?: string;
-  mapboxId?: string;
+  providerPlaceId?: string;
   lat?: number | null;
   lng?: number | null;
 }
@@ -85,7 +85,7 @@ export interface PlanFormDraft {
   title: string;
   where: PlanFormWhere;
   place: PlanFormPlace | null;
-  /** Amendment 1: the optional own link of a Mapbox / typed place (reset when the place changes). */
+  /** Amendment 1: the optional own link of a Google / typed place (reset when the place changes). */
   placeLink: string;
   link: string;
   when: PlanFormWhen;
@@ -153,11 +153,11 @@ export function canPostPlan(form: PlanFormDraft): boolean {
 /** A picked place as the `p_where_kind` / `p_place` pair the RPCs take. Pool rows send only their id. */
 export function placeInputOf(place: PlanFormPlace): { whereKind: "place" | "address"; place: PlanPlaceInput } {
   if (place.source === "pool" && place.poolId) return { whereKind: "place", place: { poolId: place.poolId } };
-  if (place.source === "mapbox" && place.mapboxId) {
+  if (place.source === "google" && place.providerPlaceId) {
     return {
       whereKind: "place",
       place: {
-        mapboxId: place.mapboxId,
+        providerPlaceId: place.providerPlaceId,
         name: place.name,
         ...(place.area ? { address: place.area } : {}),
         ...(typeof place.lat === "number" ? { lat: place.lat } : {}),
@@ -168,7 +168,7 @@ export function placeInputOf(place: PlanFormPlace): { whereKind: "place" | "addr
   return { whereKind: "address", place: { name: place.name } };
 }
 
-/** The place's own link for `p_link_url`: Mapbox / typed places only, never a Mingla place. */
+/** The place's own link for `p_link_url`: Google / typed places only, never a Mingla place. */
 export function placeLinkUrlOf(place: PlanFormPlace, placeLink: string | null | undefined): string | null {
   if (place.source === "pool") return null;
   const text = (placeLink ?? "").trim();
@@ -597,7 +597,7 @@ export function quickDays(now: Date): QuickDay[] {
 }
 
 // ---------------------------------------------------------------------------
-// Place results: pool first, then Mapbox, then the typed row
+// Place results: pool first, then Google, then the typed row
 // (Invariant I-4261-PLACE-SEARCH-POOL-FIRST is declared beside its test, issue_4261_plan_model.)
 // ---------------------------------------------------------------------------
 
@@ -609,15 +609,15 @@ export interface PlacePoolRowInput {
   lng: number | null;
 }
 
-export interface PlaceMapboxRowInput {
-  mapboxId: string;
+export interface PlaceSearchRowInput {
+  providerPlaceId: string;
   name: string;
   area: string | null;
 }
 
 export type PlaceResultRow =
   | { kind: "pool"; key: string; name: string; area: string | null; onMingla: true; poolId: string; lat: number | null; lng: number | null }
-  | { kind: "mapbox"; key: string; name: string; area: string | null; onMingla: false; mapboxId: string }
+  | { kind: "google"; key: string; name: string; area: string | null; onMingla: false; providerPlaceId: string }
   | { kind: "typed"; key: string; name: string; area: null; onMingla: false };
 
 function placeKey(name: string, area: string | null): string {
@@ -627,7 +627,7 @@ function placeKey(name: string, area: string | null): string {
 
 export function mergePlaceResults(
   pool: readonly PlacePoolRowInput[],
-  mapbox: readonly PlaceMapboxRowInput[],
+  searched: readonly PlaceSearchRowInput[],
   query: string,
 ): PlaceResultRow[] {
   const rows: PlaceResultRow[] = [];
@@ -638,11 +638,11 @@ export function mergePlaceResults(
     seen.add(key);
     rows.push({ kind: "pool", key: `pool:${row.id}`, name: row.name, area: row.area, onMingla: true, poolId: row.id, lat: row.lat, lng: row.lng });
   }
-  for (const row of mapbox) {
+  for (const row of searched) {
     const key = placeKey(row.name, row.area);
     if (seen.has(key)) continue;
     seen.add(key);
-    rows.push({ kind: "mapbox", key: `mapbox:${row.mapboxId}`, name: row.name, area: row.area, onMingla: false, mapboxId: row.mapboxId });
+    rows.push({ kind: "google", key: `google:${row.providerPlaceId}`, name: row.name, area: row.area, onMingla: false, providerPlaceId: row.providerPlaceId });
   }
   const typed = query.trim();
   if (typed) rows.push({ kind: "typed", key: `typed:${typed}`, name: typed, area: null, onMingla: false });
@@ -983,7 +983,7 @@ function normalizePlaceOption(value: unknown): ChatPlanPlaceOption | null {
     id: record.id,
     kind,
     poolId: stringOrNull(record.poolId),
-    mapboxId: stringOrNull(record.mapboxId),
+    providerPlaceId: stringOrNull(record.providerPlaceId),
     name: stringOrNull(record.name),
     address: stringOrNull(record.address),
     lat: numberOrNull(record.lat),

@@ -48,7 +48,7 @@ export type PlanReaction = "up" | "down";
 
 export interface ChatPlanPlace {
   poolId: string | null;
-  mapboxId: string | null;
+  providerPlaceId: string | null;
   name: string | null;
   address: string | null;
   lat: number | null;
@@ -72,7 +72,7 @@ export interface ChatPlanPlaceOption {
   id: string;
   kind: "place" | "address" | "link";
   poolId: string | null;
-  mapboxId: string | null;
+  providerPlaceId: string | null;
   name: string | null;
   address: string | null;
   lat: number | null;
@@ -161,7 +161,7 @@ export interface PlanQuoteSnapshot {
 /** `p_place` argument of `plan_create`. Pool rows: only `poolId` is trusted. */
 export interface PlanPlaceInput {
   poolId?: string;
-  mapboxId?: string;
+  providerPlaceId?: string;
   name?: string;
   address?: string;
   lat?: number;

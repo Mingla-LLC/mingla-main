@@ -90,7 +90,7 @@ export function PlanFormSheet({ visible, onClose, conversationId, senderId, chat
   const [query, setQuery] = useState("");
   const createPlan = useCreatePlan(conversationId, senderId);
 
-  // A fresh form, client id and Mapbox session every time the sheet opens.
+  // A fresh form, client id and Google session every time the sheet opens.
   useEffect(() => {
     if (!visible) return;
     setForm(blankPlanForm());

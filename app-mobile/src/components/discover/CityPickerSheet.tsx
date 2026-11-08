@@ -1,19 +1,19 @@
 /**
  * CityPickerSheet — ORCH-0809 Slice M2
- * META-ORCH-1060 [Mapbox consumer migration] §3.5 — migrated to the shared
- * @mingla/location-input Mapbox Search Box picker (dark variant).
+ * META-ORCH-1060 §3.5 — the shared @mingla/location-input picker (dark
+ * variant); Google Maps Platform behind it since #4334.
  *
  * Bottom-sheet modal that lets the user pick a city for Discover's Ticketmaster
  * filter. On selection, persists the five `discover_city_*` columns to
  * `preferences` and closes. The DiscoverScreen consumer refetches via React
  * Query invalidation.
  *
- * META-ORCH-1060 keystone: the ISO state/country codes now come from the
- * STRUCTURED Mapbox fields (`details.regionCode` / `details.countryCode`) and
- * the clean city token from `details.city` (Mapbox context.place.name). The old
- * display-string parser + the comma-split city derivation are DELETED — codes
- * are structured, never parsed (INV-3).
- * https://docs.mapbox.com/api/search/search-box/#retrieve-a-suggested-feature
+ * META-ORCH-1060 keystone: the ISO state/country codes come from the
+ * STRUCTURED fields (`details.regionCode` / `details.countryCode`, ISO-validated
+ * by the proxy) and the clean city token from `details.city` (the #4334 city
+ * rule: every Lagos State address is "Lagos"). Codes are structured, never
+ * parsed (INV-3). #4334: the Google place id is saved too, so the anchor's
+ * coordinates can be refreshed (spec v2 A2).
  *
  * Hard guard: this sheet ONLY writes the discover_city_* fields. It does NOT
  * touch custom_lat/custom_lng/custom_location/use_gps_location.
@@ -23,7 +23,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import * as Haptics from "expo-haptics";
 import { BaseBottomSheet } from "../ui/BaseBottomSheet";
-import { MapboxAddressInput, type PlaceDetails } from "../location/MapboxAddressInput";
+import { AddressInput, type PlaceDetails } from "../location/AddressInput";
 import { PreferencesService } from "../../services/preferencesService";
 import type { DiscoverCity } from "../../types/discoverFilters";
 import { Icon } from "../ui/Icon";
@@ -77,8 +77,8 @@ export const CityPickerSheet: React.FC<CityPickerSheetProps> = ({
       setPersisting(true);
       setError(null);
 
-      // META-ORCH-1060: codes from STRUCTURED Mapbox fields (never parsed).
-      // - discover_city_name      = details.city (Mapbox context.place.name) —
+      // META-ORCH-1060: codes from STRUCTURED fields (never parsed).
+      // - discover_city_name      = details.city (the proxy's city rule) —
       //   the clean locality token that exact-matches events.city (ORCH-0824).
       // - discover_city_state_code = details.regionCode (ISO 3166-2) — now
       //   correct for ALL countries, not just US (was a US-only string parse).
@@ -99,6 +99,7 @@ export const CityPickerSheet: React.FC<CityPickerSheetProps> = ({
             discover_city_country_code: details.countryCode,
             discover_city_lat: details.location.lat,
             discover_city_lng: details.location.lng,
+            discover_city_place_id: details.placeId || null,
           });
         } catch (err) {
           console.error("[CityPickerSheet] persist failed:", err);
@@ -161,7 +162,7 @@ export const CityPickerSheet: React.FC<CityPickerSheetProps> = ({
       }}
     >
       <View style={styles.fieldWrap}>
-        <MapboxAddressInput
+        <AddressInput
           variant="dark"
           value={query}
           onChangeText={setQuery}
@@ -176,7 +177,6 @@ export const CityPickerSheet: React.FC<CityPickerSheetProps> = ({
           leadingIcon="search"
           minQueryLength={2}
           searchMode="places"
-          suggestLimit={8}
           autoFocus
         />
       </View>

@@ -4,7 +4,7 @@
  * 1. Fewer than 2 characters: no network.
  * 2. Mingla's places first (`search_plan_places`, near the phone when location
  *    permission is ALREADY granted; this form never asks for it).
- * 3. Mapbox only when the pool returned fewer than 5 rows and the query has at
+ * 3. Google only when the pool returned fewer than 5 rows and the query has at
  *    least 3 characters, for the remaining slots.
  * 4. The typed `Use "{q}"` row always last.
  * 5. A source that fails keeps what loaded and sets `partialFailure` (the form
@@ -14,7 +14,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import * as Location from 'expo-location';
 import { planKeys } from './queryKeys';
-import { searchPool, suggestMapbox } from '../services/planPlaceSearchService';
+import { searchPool, suggestPlaces } from '../services/planPlaceSearchService';
 import { mergePlaceResults, type PlaceResultRow } from '../components/chat/planModel';
 
 const DEBOUNCE_MS = 250;
@@ -77,24 +77,24 @@ export function usePlanPlaceSearch(query: string, sessionToken: string, active: 
         console.warn('[usePlanPlaceSearch] Mingla places failed', error);
         partialFailure = true;
       }
-      let mapbox: Awaited<ReturnType<typeof suggestMapbox>> = [];
+      let searched: Awaited<ReturnType<typeof suggestPlaces>> = [];
       if (pool.length < POOL_LIMIT && debounced.length >= 3) {
         try {
-          mapbox = await suggestMapbox(
+          searched = await suggestPlaces(
             debounced,
             sessionToken,
             lat !== null && lng !== null ? { lat, lng } : null,
             POOL_LIMIT - pool.length,
           );
         } catch (error) {
-          console.warn('[usePlanPlaceSearch] Mapbox suggest failed', error);
+          console.warn('[usePlanPlaceSearch] Google suggest failed', error);
           partialFailure = true;
         }
       }
       return {
         rows: mergePlaceResults(
           pool.map((row) => ({ id: row.id, name: row.name, area: row.area, lat: row.lat, lng: row.lng })),
-          mapbox,
+          searched,
           '',
         ),
         partialFailure,

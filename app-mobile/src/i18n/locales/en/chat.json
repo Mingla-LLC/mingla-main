@@ -321,7 +321,7 @@
   "plan_search_near": "Near you",
   "plan_search_results": "Results",
   "plan_search_on_mingla": "On Mingla",
-  "plan_search_attribution": "Places on Mingla first · more results from Mapbox",
+  "plan_search_attribution": "Places on Mingla first · more results powered by Google",
   "plan_search_use_typed": "Use \"{{query}}\"",
   "plan_search_use_typed_sub": "Add as your own address or meeting spot",
   "plan_change": "Change",

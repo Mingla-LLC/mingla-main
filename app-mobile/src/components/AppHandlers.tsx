@@ -470,6 +470,9 @@ export function useAppHandlers(state: any) {
       dbPreferences.use_gps_location = preferences.useGpsLocation ?? true;
       dbPreferences.custom_lat = preferences.custom_lat ?? null;
       dbPreferences.custom_lng = preferences.custom_lng ?? null;
+      // #4334 (spec v2 A2/A3) — the Google place id of a picked or typed custom
+      // location, so its coordinates can be refreshed. Null for GPS.
+      dbPreferences.custom_location_place_id = preferences.custom_location_place_id ?? null;
 
       // === Optimistic cache update FIRST — deck uses this immediately ===
       queryClient.setQueryData(["userPreferences", user.id], {
@@ -485,6 +488,7 @@ export function useAppHandlers(state: any) {
         custom_location: dbPreferences.custom_location,
         custom_lat: dbPreferences.custom_lat,
         custom_lng: dbPreferences.custom_lng,
+        custom_location_place_id: dbPreferences.custom_location_place_id,
         use_gps_location: dbPreferences.use_gps_location,
         intent_toggle: dbPreferences.intent_toggle,
         category_toggle: dbPreferences.category_toggle,

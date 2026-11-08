@@ -10,14 +10,14 @@ import { useTranslation } from 'react-i18next';
 import { Icon } from '../ui/Icon';
 import { TRAVEL_TIME_PRESETS } from "../../types/onboarding";
 // ORCH-1361 → ORCH-1365 [location-search-relevance] — the custom starting-point
-// field is the shared multi-row Mapbox suggest→retrieve picker (replacing the old
+// field is the shared multi-row suggest→retrieve picker (replacing the old
 // forward/limit=1 single-row adapter). ORCH-1365 routes it through the `places`
 // search mode (edge `suggest_places`: place-type filter drops POI noise +
 // trailing-country strip + country ISO bias) and DROPS device proximity (OQ-4) —
 // it is a "search a place you are NOT at" field, so the device bias buried the
 // target place for a non-local user (evidence/ORCH-1365 §3). Business venue-name
 // search stays on the SEPARATE filter-free `suggest` path (INV-3 / ORCH-1079).
-import { MapboxAddressInput, type PlaceDetails } from "../location/MapboxAddressInput";
+import { AddressInput, type PlaceDetails } from "../location/AddressInput";
 // META-ORCH-0991 Wave C — PreferencesSheet body now scrolls inside a gorhom
 // BaseBottomSheet. The two text fields here must be gorhom's
 // BottomSheetTextInput (so a focused field coordinates with the sheet position
@@ -220,10 +220,11 @@ export const LocationInputSection = memo(
       {!useGpsLocation && !isLocked && (
         <>
           {/* ORCH-1365 — chip when a location is resolved; otherwise the shared
-              multi-row Mapbox suggest→retrieve field in `places` search mode
+              multi-row suggest→retrieve field in `places` search mode
               (POIs dropped + trailing-country strip + country bias). Proximity is
               DROPPED for this field (OQ-4): it is a "search a place you are NOT
-              at" field, so device bias buried the target place. suggestLimit 8.
+              at" field, so device bias buried the target place. At most 5 rows
+              (Google, #4334 D4).
               Business venue-name search stays on the separate filter-free
               `suggest` path (INV-3 / ORCH-1079). */}
           {hasSelected ? (
@@ -240,7 +241,7 @@ export const LocationInputSection = memo(
             </View>
           ) : (
             <View style={styles.locationFieldWrap}>
-              <MapboxAddressInput
+              <AddressInput
                 variant="light"
                 value={searchLocation}
                 onChangeText={onLocationInputChange}
@@ -251,7 +252,6 @@ export const LocationInputSection = memo(
                 leadingIcon="location"
                 searchMode="places"
                 minQueryLength={4}
-                suggestLimit={8}
               />
             </View>
           )}
@@ -271,8 +271,8 @@ export const LocationInputSection = memo(
       )}
 
       {/* ORCH-1361 — the old hand-rolled suggestions dropdown is REMOVED; the
-          shared MapboxAddressInput owns its own multi-row list + all states
-          (searching / no-results / offline-retry / fetching-details / picked). */}
+          shared AddressInput owns its own multi-row list + all states
+          (searching / no-results / unavailable-retry / fetching-details / picked). */}
     </View>
     );
   }
@@ -420,7 +420,7 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontWeight: '600',
   },
-  // ORCH-1361 — wrapper around the shared multi-row Mapbox field (replaces the
+  // ORCH-1361 — wrapper around the shared multi-row address field (replaces the
   // old locationInputContainer + hand-rolled suggestionsContainer dropdown; the
   // shared field owns its own field chrome, row list, and states).
   locationFieldWrap: {
