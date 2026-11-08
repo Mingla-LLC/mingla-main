@@ -3366,6 +3366,25 @@ export function buildCreateDiscountRequest(
   };
 }
 
+/** #4304: the exact edge request for a discount status change (pause, resume, end). */
+export function buildDiscountStatusRequest(
+  action: "pause" | "resume" | "end",
+  args: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    action,
+    payload: {
+      id: args.discount_id,
+      brandId: args.brand_id,
+      version: args.version,
+      source: "ari",
+    },
+  };
+}
+
+// #4304 — pause, resume and end share one request shape: the Host names a
+// discount, Ari reads its id and version from list_discounts, then proposes
+// the change. The edge writer owns the transition and the version check.
 const pauseDiscount = writeTool(
   "pause_discount",
   "Pause a discount after the Host confirms. Existing orders keep their price.",
@@ -3380,20 +3399,94 @@ const pauseDiscount = writeTool(
     return await invokeFn(
       client,
       "brand-discount-upsert",
-      {
-        action: "pause",
-        payload: {
-          id: args.discount_id,
-          brandId: args.brand_id,
-          version: args.version,
-          source: "ari",
-        },
-      },
+      buildDiscountStatusRequest("pause", args),
       undefined,
       { refusals: DISCOUNT_WRITE_REFUSAL_COPY },
     );
   },
 );
+
+const resumeDiscount = writeTool(
+  "resume_discount",
+  "Resume a paused discount after the Host confirms, so buyers can use it again. Get discount_id and version from list_discounts first.",
+  {
+    brand_id: UUID,
+    discount_id: UUID,
+    version: { type: "integer", minimum: 1 },
+  },
+  ["brand_id", "discount_id", "version"],
+  async (args, client, userId) => {
+    await requireBrand(args, client, userId);
+    return await invokeFn(
+      client,
+      "brand-discount-upsert",
+      buildDiscountStatusRequest("resume", args),
+      undefined,
+      { refusals: DISCOUNT_WRITE_REFUSAL_COPY },
+    );
+  },
+);
+
+const endDiscount = writeTool(
+  "end_discount",
+  "End a discount for good after the Host confirms. Buyers stop receiving it; existing orders keep their price. Get discount_id and version from list_discounts first.",
+  {
+    brand_id: UUID,
+    discount_id: UUID,
+    version: { type: "integer", minimum: 1 },
+  },
+  ["brand_id", "discount_id", "version"],
+  async (args, client, userId) => {
+    await requireBrand(args, client, userId);
+    return await invokeFn(
+      client,
+      "brand-discount-upsert",
+      buildDiscountStatusRequest("end", args),
+      undefined,
+      { refusals: DISCOUNT_WRITE_REFUSAL_COPY },
+    );
+  },
+);
+
+/** #4304: the discount tools whose cards name the discount. */
+const DISCOUNT_STATUS_TOOLS = new Set([
+  "pause_discount",
+  "resume_discount",
+  "end_discount",
+]);
+
+/**
+ * #4304: proposal-time name for a pause/resume/end discount card. Reads the
+ * row through the caller-bound client (bd_read RLS: brand members rank >= 20),
+ * so a paused discount, which brand_discounts_list never returns, is found
+ * too. Returns the code when the discount has one, else its name. Any miss or
+ * failure returns null and never blocks the proposal.
+ */
+export async function preflightDiscountProposal(
+  toolName: string,
+  args: Record<string, unknown>,
+  client: any,
+): Promise<Record<string, unknown> | null> {
+  if (!DISCOUNT_STATUS_TOOLS.has(toolName)) return null;
+  if (!client || !isUuid(args.discount_id) || !isUuid(args.brand_id)) {
+    return null;
+  }
+  try {
+    const { data, error } = await client
+      .from("brand_discounts")
+      .select("id,code,name")
+      .eq("id", args.discount_id)
+      .eq("brand_id", args.brand_id)
+      .maybeSingle();
+    if (error || !data || data.id !== args.discount_id) return null;
+    const code = typeof data.code === "string" ? data.code.trim() : "";
+    const name = typeof data.name === "string" ? data.name.trim() : "";
+    const label = code || name;
+    return label ? { discount_name: label } : null;
+  } catch {
+    return null;
+  }
+}
 
 // #3872 R2 — Ari shares the exact Host referral control plane. It never
 // inserts offer/member rows directly; the caller-bound edge functions and SQL
@@ -9534,6 +9627,8 @@ export const DOMAIN_TOOLS: AgentToolDefinition[] = [
   listDiscounts,
   createDiscount,
   pauseDiscount,
+  resumeDiscount,
+  endDiscount,
   listReferralOffers,
   createReferralOffer,
   invitePromoters,

@@ -4,6 +4,7 @@
 // brand stays under Details ("Brand in Mingla").
 import { BRAND_ROLE_WORDS, opsErrorWords } from "../../lib/opsModel";
 import { Button } from "../ui/Button";
+import { PageLink, SideLink } from "../ui/PanelStack";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 const WORDS = "break-normal [overflow-wrap:normal] hyphens-none";
@@ -18,7 +19,13 @@ function brandGroupHref(brandId) {
   return brandId ? `#/community?tab=brand-groups&brand=${encodeURIComponent(brandId)}` : "";
 }
 
-export function HostTeamSection({ record, read }) {
+/**
+ * `onOpenSide(kind, id)` (#4270 W7 rework, D-1): set inside the Brand group
+ * panel. The brand then opens in that panel, and "Open Brand group" (which
+ * would leave the panel for the same group) is not shown. Without it the
+ * links are as before.
+ */
+export function HostTeamSection({ record, read, onOpenSide = null }) {
   const id = record?.id;
   const data = read?.data;
   const brand = data?.brand || null;
@@ -42,10 +49,15 @@ export function HostTeamSection({ record, read }) {
                 ? <img src={brand.photo_url} alt="" className="h-10 w-10 shrink-0 rounded-full object-cover" />
                 : <span aria-hidden="true" className="inline-grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[var(--color-brand-100)] text-[12px] font-bold text-[var(--color-brand-700)]">{initials(brand.name)}</span>}
               <span className="min-w-0 flex-1">
-                <a href={`#/brands?brandId=${encodeURIComponent(brand.id)}`} className={`block text-[13.5px] font-semibold text-[var(--color-text-primary)] hover:underline ${WORDS} ${FOCUS}`}>{brand.name}</a>
+                {/* #4270 W7: on a page with a side panel the brand opens beside; elsewhere it is the plain link. */}
+                {typeof onOpenSide === "function" ? (
+                  <PageLink side={{ kind: "brand", id: brand.id }} href={`#/brands?brandId=${encodeURIComponent(brand.id)}`} onOpenSide={onOpenSide} className={`block text-[13.5px] font-semibold text-[var(--color-text-primary)] hover:underline ${WORDS} ${FOCUS}`} textClassName={`block text-[13.5px] font-semibold text-[var(--color-text-primary)] ${WORDS}`}>{brand.name}</PageLink>
+                ) : (
+                  <SideLink side={{ kind: "brand", id: brand.id }} href={`#/brands?brandId=${encodeURIComponent(brand.id)}`} className={`block text-[13.5px] font-semibold text-[var(--color-text-primary)] hover:underline ${WORDS} ${FOCUS}`}>{brand.name}</SideLink>
+                )}
                 {brand.slug && <span className="block text-[12px] text-[var(--color-text-tertiary)]">/{brand.slug}</span>}
               </span>
-              <a href={brandGroupHref(brand.id)} className={`inline-flex min-h-11 items-center rounded-lg px-2 text-[12.5px] font-semibold text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)] ${FOCUS}`}>Open Brand group</a>
+              <PageLink href={brandGroupHref(brand.id)} onOpenSide={onOpenSide} hide className={`inline-flex min-h-11 items-center rounded-lg px-2 text-[12.5px] font-semibold text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)] ${FOCUS}`}>Open Brand group</PageLink>
             </div>
           ) : (
             <p className={`rounded-xl bg-[var(--gray-100)] px-3 py-2 text-[13px] text-[var(--color-text-primary)] ${WORDS}`}>No brand linked yet.</p>

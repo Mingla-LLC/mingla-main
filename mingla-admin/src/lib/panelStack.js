@@ -12,7 +12,13 @@
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** What panel two can show. */
-export const SIDE_KINDS = Object.freeze(["card", "host", "creator", "content", "event", "expected", "drafts"]);
+export const SIDE_KINDS = Object.freeze(["card", "host", "creator", "content", "event", "expected", "drafts", "brand"]);
+
+/**
+ * #4270 W7: a Brand group's side panel also opens a brand's own Calendar
+ * (`calendar:<host record id>`), which exists only there.
+ */
+export const BRAND_GROUP_SIDE_KINDS = Object.freeze([...SIDE_KINDS, "calendar"]);
 
 /** Below this width panel two covers panel one, with a Back button (D10). */
 export const PANEL_NARROW_PX = 1024;
@@ -26,6 +32,8 @@ export const SIDE_KIND_WORDS = Object.freeze({
   event: "event",
   expected: "promised event",
   drafts: "message drafts",
+  brand: "brand",
+  calendar: "calendar",
 });
 
 function validId(kind, id) {
@@ -35,49 +43,49 @@ function validId(kind, id) {
 }
 
 /** A side panel `{ kind, id }`, or null when it is not well-formed. */
-export function cleanSide(side) {
+export function cleanSide(side, kinds = SIDE_KINDS) {
   if (!side || typeof side !== "object") return null;
   const kind = String(side.kind || "");
   const id = String(side.id || "").toLowerCase();
-  if (!SIDE_KINDS.includes(kind) || !validId(kind, id)) return null;
+  if (!kinds.includes(kind) || !validId(kind, id)) return null;
   return { kind, id };
 }
 
 /** "host:<uuid>" -> { kind: "host", id: "<uuid>" }; anything odd -> null. */
-export function parseSideValue(value) {
+export function parseSideValue(value, kinds = SIDE_KINDS) {
   if (typeof value !== "string" || value.length > 80) return null;
   const at = value.indexOf(":");
   if (at < 1) return null;
-  return cleanSide({ kind: value.slice(0, at), id: value.slice(at + 1) });
+  return cleanSide({ kind: value.slice(0, at), id: value.slice(at + 1) }, kinds);
 }
 
-export function sideValue(side) {
-  const clean = cleanSide(side);
+export function sideValue(side, kinds = SIDE_KINDS) {
+  const clean = cleanSide(side, kinds);
   return clean ? `${clean.kind}:${clean.id}` : "";
 }
 
 /** The panel two named in a query string (the part after "?"). */
-export function parseSide(search) {
+export function parseSide(search, kinds = SIDE_KINDS) {
   let params;
   try {
     params = new URLSearchParams(typeof search === "string" ? search : "");
   } catch {
     return null;
   }
-  return parseSideValue(params.get("side"));
+  return parseSideValue(params.get("side"), kinds);
 }
 
 /** The same query string with panel two set (or removed with null). */
-export function withSide(search, side) {
+export function withSide(search, side, kinds = SIDE_KINDS) {
   const params = new URLSearchParams(typeof search === "string" ? search : "");
-  const value = sideValue(side);
+  const value = sideValue(side, kinds);
   if (value) params.set("side", value);
   else params.delete("side");
   return params.toString();
 }
 
-export function sameSide(a, b) {
-  return sideValue(a) === sideValue(b) && sideValue(a) !== "";
+export function sameSide(a, b, kinds = SIDE_KINDS) {
+  return sideValue(a, kinds) === sideValue(b, kinds) && sideValue(a, kinds) !== "";
 }
 
 /**
@@ -85,10 +93,10 @@ export function sameSide(a, b) {
  * `current` is what panel two shows now ({ side, title }), `next` the side to
  * open. Returns the new trail; reopening what is already shown changes nothing.
  */
-export function pushTrail(trail, current, next) {
+export function pushTrail(trail, current, next, kinds = SIDE_KINDS) {
   const list = Array.isArray(trail) ? trail : [];
-  if (!current?.side || sameSide(current.side, next)) return list;
-  return [...list, { side: cleanSide(current.side), title: String(current.title || "") }].slice(-20);
+  if (!current?.side || sameSide(current.side, next, kinds)) return list;
+  return [...list, { side: cleanSide(current.side, kinds), title: String(current.title || "") }].slice(-20);
 }
 
 /** Back: the trail without its last entry, and the entry to show again. */
@@ -116,6 +124,8 @@ export function sideHref(side) {
       return `#/content-calendar?event=${s.kind}:${s.id}`;
     case "drafts":
       return s.id === "all" ? "#/drafts" : `#/drafts?record=${s.id}`;
+    case "brand":
+      return `#/brands?brandId=${s.id}`;
     default:
       return "";
   }
@@ -132,15 +142,26 @@ export function linkSide(link) {
 }
 
 /**
- * #4270 W2: where the Brand groups page is, in its address (after "?"):
+ * #4270 W2/W7: where the Brand groups page is, in its address (after "?"):
  * group=<conversation> (the open thread; on a phone or tablet it means the
  * thread is showing), brand=<brand id> (open that brand's group, from a host
- * card) and side=host:<record id> (the host card is open). Back walks them.
+ * card), side=<kind>:<id> (the item open in the side panel beside the chat,
+ * any Brand group kind) and rail=plan|host|media|people (the right rail's
+ * tab). `host` stays the host card's record id when the panel shows one.
  */
+export const BRAND_GROUP_RAIL_TABS = Object.freeze(["plan", "host", "media", "people"]);
+
 export function brandGroupView(search) {
   const params = new URLSearchParams(typeof search === "string" ? search : "");
-  const side = parseSide(search);
-  return { group: params.get("group") || "", brand: params.get("brand") || "", host: side?.kind === "host" ? side.id : "" };
+  const side = parseSide(search, BRAND_GROUP_SIDE_KINDS);
+  const rail = params.get("rail") || "";
+  return {
+    group: params.get("group") || "",
+    brand: params.get("brand") || "",
+    host: side?.kind === "host" ? side.id : "",
+    side,
+    rail: BRAND_GROUP_RAIL_TABS.includes(rail) ? rail : "",
+  };
 }
 
 /**
@@ -154,13 +175,32 @@ export function hostCloseStep(openedHere) {
   return openedHere ? "back" : "push";
 }
 
+/**
+ * #4270 W7: closing the Brand group side panel. `pushesHere` is how many
+ * history entries this page pushed since the panel opened (the first open and
+ * each link followed inside it). Going back that many returns the address to
+ * exactly what it was before the panel opened, so the browser's Back never
+ * reopens a closed item. A panel that arrived in the address (a pasted link,
+ * a reload) gets a new entry without it: never a replace (W2 rework P3-2).
+ */
+export function sideCloseStep(pushesHere) {
+  const n = Number(pushesHere);
+  return Number.isInteger(n) && n > 0 ? { kind: "go", delta: -n } : { kind: "push" };
+}
+
 export function brandGroupSearch(search, patch) {
   const params = new URLSearchParams(typeof search === "string" ? search : "");
   params.set("tab", "brand-groups");
   for (const [k, v] of Object.entries(patch)) {
-    if (k === "host") continue;
+    if (k === "host" || k === "side") continue;
+    if (k === "rail") {
+      if (BRAND_GROUP_RAIL_TABS.includes(v)) params.set("rail", v); else params.delete("rail");
+      continue;
+    }
     if (v) params.set(k, v); else params.delete(k);
   }
-  const next = params.toString();
-  return Object.hasOwn(patch, "host") ? withSide(next, patch.host ? { kind: "host", id: patch.host } : null) : next;
+  let next = params.toString();
+  if (Object.hasOwn(patch, "host")) next = withSide(next, patch.host ? { kind: "host", id: patch.host } : null);
+  if (Object.hasOwn(patch, "side")) next = withSide(next, patch.side || null, BRAND_GROUP_SIDE_KINDS);
+  return next;
 }

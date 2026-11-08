@@ -121,6 +121,11 @@ export function SupportCommunityConsole({ pageId }) {
     setNavCounts((current) => (current.support === counts.open ? current : { ...current, support: counts.open }));
   }, []);
 
+  // #4270 W7: the Brand groups badge is how many groups wait on Mingla.
+  const onBrandGroupCounts = useCallback((waiting) => {
+    setNavCounts((current) => (current["brand-groups"] === waiting ? current : { ...current, "brand-groups": waiting }));
+  }, []);
+
   const onBlogCounts = useCallback((inReview) => {
     setNavCounts((current) => (current.blog === inReview ? current : { ...current, blog: inReview }));
   }, []);
@@ -258,7 +263,7 @@ export function SupportCommunityConsole({ pageId }) {
       {activeTab === "questions" && capabilities.canCommunity && <QuestionsPanel />}
       {activeTab === "moderation" && capabilities.canCommunity && <ModerationPanel />}
       {activeTab === "enquiry-reports" && capabilities.canCommunity && <ReportedEnquiriesPanel />}
-      {activeTab === "brand-groups" && <BrandGroupsPanel />}
+      {activeTab === "brand-groups" && <BrandGroupsPanel onCounts={onBrandGroupCounts} />}
       {activeTab === "feature-guide" && capabilities.canSupport && (
         <FeatureGuidePanel canManage={capabilities.isAdmin} />
       )}

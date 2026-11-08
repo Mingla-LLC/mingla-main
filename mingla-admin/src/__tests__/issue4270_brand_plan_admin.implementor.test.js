@@ -179,7 +179,8 @@ describe("B-4 services and the quiet line", () => {
     assert.equal(isPlanLine({ message_type: "system", sender_id: null }), true);
     assert.equal(isPlanLine({ message_type: "system", sender_id: "u1" }), false);
     assert.equal(isPlanLine({ message_type: "text", sender_id: null }), false);
-    assert.match(code("components/community/BrandGroupsPanel.jsx"), /if \(isPlanLine\(message\)\) \{\s*return <p key=\{message\.id\} data-system-line=""/);
+    // #4270 W7: a plan line no one can open stays a quiet line (PlanActivityCard).
+    assert.match(code("components/community/PlanActivityCard.jsx"), /<p data-system-line=""[^>]*>\{line\.content\}<\/p>/);
   });
   it("site names", () => {
     assert.equal(linkSite("https://www.canva.com/design/x"), "canva.com");

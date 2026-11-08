@@ -10,11 +10,11 @@
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
     "verified_at": "2026-10-31T03:20:00Z",
-    "registered_tool_count": 183,
-    "capability_count": 195,
+    "registered_tool_count": 185,
+    "capability_count": 197,
     "status_breakdown": {
       "verified": 0,
-      "registered_unverified": 182,
+      "registered_unverified": 184,
       "broken": 0,
       "guided_handoff": 8,
       "unsupported": 0,
@@ -2358,6 +2358,66 @@
       ],
       "confidence": "high",
       "verified_at": "2026-10-22"
+    },
+    {
+      "id": "ari.discounts.resume",
+      "domain": "marketing",
+      "outcome": "Resume a paused Host discount so buyers can use it again",
+      "safety": "write",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "issue_4304" },
+      "owners": {
+        "ui": ["mingla-business/app/brand/[id]/discounts.tsx"],
+        "source": [{
+          "path": "supabase/functions/_shared/agentDomainTools.ts",
+          "symbol": "const resumeDiscount"
+        }]
+      },
+      "ari_tool": "resume_discount",
+      "status": "registered_unverified",
+      "evidence": [{
+        "tier": "regression",
+        "sha": "73b1f90f81394606ce3961061bcc8f9b1a3f4a60",
+        "reference": "issue_3872_agent_tools_registry.implementor.test.ts: registered confirmed versioned resume"
+      }],
+      "owning_issues": [4304, 2000],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-11-07"
+    },
+    {
+      "id": "ari.discounts.end",
+      "domain": "marketing",
+      "outcome": "End a Host discount for good without changing existing orders",
+      "safety": "write",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "issue_4304" },
+      "owners": {
+        "ui": ["mingla-business/app/brand/[id]/discounts.tsx"],
+        "source": [{
+          "path": "supabase/functions/_shared/agentDomainTools.ts",
+          "symbol": "const endDiscount"
+        }]
+      },
+      "ari_tool": "end_discount",
+      "status": "registered_unverified",
+      "evidence": [{
+        "tier": "regression",
+        "sha": "73b1f90f81394606ce3961061bcc8f9b1a3f4a60",
+        "reference": "issue_3872_agent_tools_registry.implementor.test.ts: registered confirmed versioned end"
+      }],
+      "owning_issues": [4304, 2000],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-11-07"
     },
     {
       "id": "ari.referrals.list",

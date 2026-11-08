@@ -18,7 +18,7 @@ export const LINKS_STRIP_OPENS = Object.freeze([
 ]);
 
 // The server's rule, exactly (admin_links_strip_save in
-// supabase/migrations/20280501004318_issue_4318_links_page.sql): after an
+// supabase/migrations/20280505004318_issue_4318_links_page.sql): after an
 // optional http(s):// is stripped, a host of letters, digits and inner
 // hyphens per label, a 2-63 letter TLD, an optional port, then any path,
 // query or fragment; at most 500 characters and no other scheme.

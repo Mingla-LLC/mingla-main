@@ -154,6 +154,8 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   list_discounts: role("marketing_manager", "brand"),
   create_discount: role("marketing_manager", "brand"),
   pause_discount: role("marketing_manager", "brand"),
+  resume_discount: role("marketing_manager", "brand"),
+  end_discount: role("marketing_manager", "brand"),
   list_referral_offers: role("marketing_manager", "brand"),
   create_referral_offer: role("marketing_manager", "brand"),
   invite_promoters: role("marketing_manager", "brand"),

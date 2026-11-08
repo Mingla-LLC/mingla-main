@@ -535,7 +535,7 @@ describe("A-3 save validation and arguments", () => {
   });
 
   it("the form's web-link rule never passes a link the server refuses", () => {
-    // admin_links_strip_save's rule (migration 20280501004318), after the
+    // admin_links_strip_save's rule (migration 20280505004318), after the
     // http(s):// prefix is stripped.
     const server = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,63}(:[0-9]{1,5})?([/?#][^\s]*)?$/i;
     const base = { showsOn: "2026-11-09", title: "Fine", label: "New", opens: "web" };

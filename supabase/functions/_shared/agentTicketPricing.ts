@@ -79,6 +79,8 @@ const VERIFIED_PROPOSAL_CONTEXT_KEYS = new Set([
   "ad_credit",
   "ad_review",
   "ad_binding",
+  // #4304: the pause/resume/end discount card names the discount (display only).
+  "discount_name",
 ]);
 
 export function verifiedProposalArgs(

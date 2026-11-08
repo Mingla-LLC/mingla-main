@@ -180,25 +180,37 @@ describe("C-5 Brand groups open the host card", () => {
   it("only staff who can open Hosts see it", () => {
     const panel = code("components/community/BrandGroupsPanel.jsx");
     assert.match(panel, /const canHosts = canOpenPage\(access, "hosts"\);/);
-    assert.match(panel, /const hostButton = canHosts && host\.brandId === selectedBrandId/);
-    assert.match(panel, /const hostOpen = !!view\.host && canHosts;/);
+    // #4270 W7: the host card comes with the inbox read (host is null without
+    // Hosts and Creators access) and opens in the side panel only for Hosts staff.
+    // W7 rework 1 (D-6): while the inbox cannot answer, the pre-W7 lookup does.
+    assert.match(panel, /const hostFacts = canHosts\s*\? hostCardFacts\(\{ inboxStatus, group: selectedGroup, fallback: hostFallback \}\)\s*: \{ status: "none", host: null \};/);
+    assert.match(panel, /const host = hostFacts\.status === "ready" \? hostFacts\.host : null;/);
+    assert.match(panel, /const hostButton = !canHosts \? null/);
+    assert.match(code("hooks/useBrandHostFallback.js"), /await fetchBrandHostRecord\(brandId\)/);
+    assert.match(panel, /return HOSTS_KINDS\.has\(side\.kind\) && !!canHosts;/);
     assert.match(code("services/opsService.js"), /supabase\.rpc\("ops_brand_host_record", \{ p_brand_id: brandId \}\)/);
   });
   it("the address walks list -> thread -> host card", () => {
     const thread = brandGroupSearch("tab=brand-groups", { group: "g1", brand: null, host: null });
     assert.equal(thread, "tab=brand-groups&group=g1");
     const card = brandGroupSearch(thread, { group: "g1", host: "11111111-2222-4333-8444-555555555555" });
-    assert.deepEqual(brandGroupView(card), { group: "g1", brand: "", host: "11111111-2222-4333-8444-555555555555" });
-    assert.deepEqual(brandGroupView(brandGroupSearch(card, { host: null })), { group: "g1", brand: "", host: "" });
-    assert.deepEqual(brandGroupView("tab=brand-groups&brand=b1"), { group: "", brand: "b1", host: "" });
+    // #4270 W7: the view also names the side panel item and the rail tab.
+    const pick = ({ group, brand, host }) => ({ group, brand, host });
+    assert.deepEqual(pick(brandGroupView(card)), { group: "g1", brand: "", host: "11111111-2222-4333-8444-555555555555" });
+    assert.deepEqual(brandGroupView(card).side, { kind: "host", id: "11111111-2222-4333-8444-555555555555" });
+    assert.deepEqual(pick(brandGroupView(brandGroupSearch(card, { host: null }))), { group: "g1", brand: "", host: "" });
+    assert.deepEqual(pick(brandGroupView("tab=brand-groups&brand=b1")), { group: "", brand: "b1", host: "" });
   });
-  it("beside the chat from 1280px, over the list from 1024px, one pane at a time below", () => {
+  // #4270 W7: the host card is one item of the side panel: list (strip while
+  // open), thread, rail and panel; one pane at a time below 1024px.
+  it("beside the chat with the list as a strip from 1024px, one pane at a time below", () => {
     const panel = code("components/community/BrandGroupsPanel.jsx");
-    assert.match(panel, /xl:grid-cols-\[260px_minmax\(0,1fr\)_minmax\(0,420px\)\]/);
-    assert.match(panel, /lg:grid-cols-\[minmax\(0,420px\)_minmax\(0,1fr\)\]/);
-    assert.match(panel, /data-pane-host="" className="flex min-w-0 flex-col lg:order-first xl:order-none"/);
-    assert.match(panel, /const pane = hostOpen \? "host" : view\.group \? "thread" : "list";/);
+    assert.match(panel, /lg:grid-cols-\[72px_minmax\(0,1fr\)_400px\] xl:grid-cols-\[72px_minmax\(0,1fr\)_340px_400px\]/);
+    assert.match(panel, /lg:grid-cols-\[260px_minmax\(0,1fr\)_320px\] xl:grid-cols-\[300px_minmax\(0,1fr\)_340px\]/);
+    assert.match(panel, /const pane = sideOpen \? "side" : !view\.group \? "list" : narrowRail \? "rail" : "thread";/);
+    for (const pane of ["data-pane-list", "data-pane-strip", "data-pane-thread", "data-pane-rail", "data-pane-side"]) assert.match(panel, new RegExp(`${pane}=""`));
     assert.match(panel, /Back to Brand groups/);
     assert.match(panel, /Back to the chat/);
+    assert.match(code("components/community/BrandGroupSidePanel.jsx"), /Back to the chat/);
   });
 });
