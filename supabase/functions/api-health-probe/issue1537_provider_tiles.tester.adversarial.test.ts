@@ -80,7 +80,6 @@ const REGISTERED_BEFORE_MIGRATION: ReadonlySet<string> = new Set([
   "gemini",
   "giphy",
   "google_places",
-  "mapbox",
   "mixpanel",
   "onesignal_business",
   "onesignal_consumer",

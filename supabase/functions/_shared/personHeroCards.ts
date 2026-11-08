@@ -4,7 +4,7 @@ import { getCompositionForHolidayKey, COMBO_EMPTY_REASON, type CompositionRule }
 import { TRAVEL_CONFIG } from "./distanceMath.ts";
 // META-ORCH-1060 §4: the paired-view 4th fallback — forward-geocode the
 // friend's text `profiles.location` when they have no GPS/custom/discover coords.
-import { forwardGeocodeText } from "./mapboxGeocode.ts";
+import { forwardGeocodeText } from "./placesGeocode.ts";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -354,7 +354,7 @@ export async function resolveFriendLocation(
   // add a separate un-gated read path (SPEC §4.5). Best-effort: a geocode failure
   // or empty text degrades to the existing null → "missing" state (never fabricate
   // a location, Constitution #3). The forward helper caches text→coords to cap
-  // Mapbox calls (SPEC §4.6).
+  // Google Geocoding calls (SPEC §4.6, #4334).
   let locationText: string | null = null;
   try {
     const { data: profileRow, error: profileError } = await adminClient

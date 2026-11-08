@@ -42,7 +42,6 @@ export interface ProbeResult {
 export const STATUS_PAGE_URLS: Record<string, string> = {
   openai: "https://status.openai.com/api/v2/status.json",
   twilio: "https://status.twilio.com/api/v2/status.json",
-  mapbox: "https://status.mapbox.com/api/v2/status.json",
   sentry: "https://status.sentry.io/api/v2/status.json",
   supabase: "https://status.supabase.com/api/v2/status.json",
   vercel: "https://www.vercel-status.com/api/v2/status.json",
@@ -95,8 +94,40 @@ export const CLASS_B_DEPLETION: Record<
   },
   serper: { reactive: { http: [400, 401, 402, 403, 429], field: "body", match: "Not enough credits" } },
   resend: { reactive: { http: 429, field: "type", match: "quota_exceeded" } },
-  mapbox: { reactive: { http: 429, field: "status_text", match: "429" } },
-  google_places: { reactive: { http: [429], field: "status_text", match: "RESOURCE_EXHAUSTED" } },
+  // #4334 — the Google services the address proxy, static-map proxy and
+  // coordinate refresh job record (recordApiCall error_code = the proxy's
+  // provider_* code). Places (New) refuses with HTTP 403 / 429; the Geocoding
+  // API refuses INSIDE an HTTP 200 body, so its matchers key on the code.
+  google_places: {
+    reactive: [
+      { http: [429], field: "status_text", match: "RESOURCE_EXHAUSTED", kind: "depletion" },
+      { http: [403], field: "type", match: "provider_denied", kind: "refusal" },
+    ],
+  },
+  google_place_details: {
+    reactive: [
+      { http: [429], field: "type", match: "provider_quota", kind: "depletion" },
+      { http: [403], field: "type", match: "provider_denied", kind: "refusal" },
+    ],
+  },
+  google_geocoding: {
+    reactive: [
+      { http: [200, 429], field: "type", match: "provider_quota", kind: "depletion" },
+      { http: [200, 403], field: "type", match: "provider_denied", kind: "refusal" },
+    ],
+  },
+  google_static_maps: {
+    reactive: [
+      { http: [403], field: "type", match: "map_unavailable", kind: "refusal" },
+      { http: [429], field: "type", match: "map_unavailable", kind: "depletion" },
+    ],
+  },
+  google_place_refresh: {
+    reactive: [
+      { http: [429], field: "type", match: "provider_quota", kind: "depletion" },
+      { http: [403], field: "type", match: "provider_denied", kind: "refusal" },
+    ],
+  },
   pexels: { header: { name: "x-ratelimit-remaining", warn: 2500 } },
   ticketmaster: { header: { name: "rate-limit-available", warn: 500 } },
 };
@@ -229,7 +260,7 @@ export function matchClassBDepletion(
 
   // issue #3526 — `reactive` may now be an ARRAY of matchers. A single object
   // is still accepted verbatim so every pre-#3526 service (openai, serper,
-  // resend, mapbox, google_places) keeps working with no data change.
+  // resend) keeps working with no data change.
   if (!signal.reactive) return none;
   const matchers: ClassBReactive[] = Array.isArray(signal.reactive)
     ? signal.reactive
@@ -842,6 +873,48 @@ export function bodyVerdict(ok: boolean, httpStatus: number | null | undefined):
     return "degraded";
   }
   return "down";
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// #4334 — Google probe verdicts (pure). Each one is a BODY verdict.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Google's own sample place id (Googleplex), from the Place Details docs. */
+export const GOOGLE_PROBE_PLACE_ID = "ChIJj61dQgK6j4AR4GeTYWZsKWw";
+
+export const GOOGLE_PROBE_URLS = {
+  autocomplete: "https://places.googleapis.com/v1/places:autocomplete",
+  placeDetails: `https://places.googleapis.com/v1/places/${GOOGLE_PROBE_PLACE_ID}?languageCode=en`,
+  geocoding: "https://maps.googleapis.com/maps/api/geocode/json?address=Lagos&language=en",
+  staticMap: "https://maps.googleapis.com/maps/api/staticmap?center=6.45,3.39&zoom=10&size=1x1",
+} as const;
+
+/** Places (New) error bodies carry `{ error: { status } }`. */
+export function googleErrorStatusOf(body: unknown): string | null {
+  const status = (body as { error?: { status?: unknown } } | null)?.error?.status;
+  return typeof status === "string" ? status : null;
+}
+
+export function googleAutocompleteProbeOk(httpStatus: number, body: unknown): boolean {
+  const suggestions = (body as { suggestions?: unknown } | null)?.suggestions;
+  return httpStatus === 200 && Array.isArray(suggestions) && suggestions.length > 0;
+}
+
+export function googlePlaceDetailsProbeOk(httpStatus: number, body: unknown): boolean {
+  const loc = (body as { location?: { latitude?: unknown; longitude?: unknown } } | null)
+    ?.location;
+  return httpStatus === 200 &&
+    typeof loc?.latitude === "number" && Number.isFinite(loc.latitude) &&
+    typeof loc?.longitude === "number" && Number.isFinite(loc.longitude);
+}
+
+export function googleGeocodingProbeOk(httpStatus: number, body: unknown): boolean {
+  return httpStatus === 200 && (body as { status?: unknown } | null)?.status === "OK";
+}
+
+export function googleStaticProbeOk(httpStatus: number, contentType: string | null): boolean {
+  return httpStatus === 200 &&
+    typeof contentType === "string" && contentType.toLowerCase().startsWith("image/");
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

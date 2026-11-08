@@ -92,11 +92,13 @@ Deno.test("T-2 #1620: real provider 200-with-error bodies are not healthy", () =
       why: "Paystack's ONLY account-restriction signal — live NG money rail",
     },
     {
-      provider: "mapbox",
+      // #4334 replaced the retired map-vendor case with the Geocoding API,
+      // which refuses inside an HTTP 200 body.
+      provider: "google_geocoding",
       http: 200,
-      body: { message: "Not Authorized - Invalid Token" }, // no `features` array
-      ok: false, // res.ok && Array.isArray(body.features)
-      why: "200 without a features array",
+      body: { status: "REQUEST_DENIED", error_message: "API key not authorized" },
+      ok: false, // googleGeocodingProbeOk: status must be "OK"
+      why: "200 with REQUEST_DENIED",
     },
     {
       provider: "gemini",

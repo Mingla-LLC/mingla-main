@@ -1,0 +1,2897 @@
+{
+  "_provenance": "Recorded from the #4334 bake-off (2026-11-08, Places API (New) Place Details on the top autocomplete suggestion). The bake-off kept each component's first type and its long text; `shortText` is filled for country and administrative_area_level_1 only (ISO code), `political` is re-added to political components, and place ids are synthetic (`ChIJfixture_*`). `mapbox_before` is the Mapbox retrieve the Host app returned for the same query, kept as the recorded 'before' value only.",
+  "fixtures": [
+    {
+      "id": "1_addr",
+      "label": "Harmattan Club, Victoria Island, Lagos",
+      "query": "12 Ozumba Mbadiwe Avenue, Victoria Island, Lagos",
+      "google_place": {
+        "id": "ChIJfixture_1_addr",
+        "formattedAddress": "12 Ozumba Mbadiwe Ave, Victoria Island, Lagos 106104, Lagos, Nigeria",
+        "addressComponents": [
+          {
+            "longText": "12",
+            "types": [
+              "street_number"
+            ]
+          },
+          {
+            "longText": "Ozumba Mbadiwe Avenue",
+            "types": [
+              "route"
+            ]
+          },
+          {
+            "longText": "Victoria Island",
+            "types": [
+              "neighborhood",
+              "political"
+            ]
+          },
+          {
+            "longText": "Lagos",
+            "types": [
+              "locality",
+              "political"
+            ]
+          },
+          {
+            "longText": "Ikoyi I",
+            "types": [
+              "administrative_area_level_3",
+              "political"
+            ]
+          },
+          {
+            "longText": "Eti Osa",
+            "types": [
+              "administrative_area_level_2",
+              "political"
+            ]
+          },
+          {
+            "longText": "Lagos",
+            "types": [
+              "administrative_area_level_1",
+              "political"
+            ],
+            "shortText": "LA"
+          },
+          {
+            "longText": "Nigeria",
+            "types": [
+              "country",
+              "political"
+            ],
+            "shortText": "NG"
+          },
+          {
+            "longText": "106104",
+            "types": [
+              "postal_code"
+            ]
+          }
+        ],
+        "location": {
+          "latitude": 6.437435,
+          "longitude": 3.412435
+        },
+        "types": [
+          "premise",
+          "street_address"
+        ]
+      },
+      "google_geocoding_result": {
+        "place_id": "ChIJfixture_1_addr",
+        "formatted_address": "12 Ozumba Mbadiwe Ave, Victoria Island, Lagos 106104, Lagos, Nigeria",
+        "address_components": [
+          {
+            "long_name": "12",
+            "short_name": "12",
+            "types": [
+              "street_number"
+            ]
+          },
+          {
+            "long_name": "Ozumba Mbadiwe Avenue",
+            "short_name": "Ozumba Mbadiwe Avenue",
+            "types": [
+              "route"
+            ]
+          },
+          {
+            "long_name": "Victoria Island",
+            "short_name": "Victoria Island",
+            "types": [
+              "neighborhood",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Lagos",
+            "short_name": "Lagos",
+            "types": [
+              "locality",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Ikoyi I",
+            "short_name": "Ikoyi I",
+            "types": [
+              "administrative_area_level_3",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Eti Osa",
+            "short_name": "Eti Osa",
+            "types": [
+              "administrative_area_level_2",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Lagos",
+            "short_name": "LA",
+            "types": [
+              "administrative_area_level_1",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Nigeria",
+            "short_name": "NG",
+            "types": [
+              "country",
+              "political"
+            ]
+          },
+          {
+            "long_name": "106104",
+            "short_name": "106104",
+            "types": [
+              "postal_code"
+            ]
+          }
+        ],
+        "geometry": {
+          "location": {
+            "lat": 6.437435,
+            "lng": 3.412435
+          }
+        },
+        "types": [
+          "premise",
+          "street_address"
+        ]
+      },
+      "mapbox_before": {
+        "feature_type": "address",
+        "city": "Lagos",
+        "region_code": "LA",
+        "country_code": "NG",
+        "full_address": "Ozumba Mbadiwe Avenue 12, Lagos 10, Lagos, Nigeria"
+      }
+    },
+    {
+      "id": "2_name",
+      "label": "Quays Lagos, Lekki/VI",
+      "query": "Quays Lagos",
+      "google_place": {
+        "id": "ChIJfixture_2_name",
+        "formattedAddress": "3 Tokunbo Omisore St, Lekki Phase I, Lekki 106104, Lagos, Nigeria",
+        "addressComponents": [
+          {
+            "longText": "3",
+            "types": [
+              "street_number"
+            ]
+          },
+          {
+            "longText": "Tokunbo Omisore Street",
+            "types": [
+              "route"
+            ]
+          },
+          {
+            "longText": "Lekki Phase I",
+            "types": [
+              "neighborhood",
+              "political"
+            ]
+          },
+          {
+            "longText": "Lekki",
+            "types": [
+              "locality",
+              "political"
+            ]
+          },
+          {
+            "longText": "Lekki/Ikate And Environs",
+            "types": [
+              "administrative_area_level_3",
+              "political"
+            ]
+          },
+          {
+            "longText": "Eti Osa",
+            "types": [
+              "administrative_area_level_2",
+              "political"
+            ]
+          },
+          {
+            "longText": "Lagos",
+            "types": [
+              "administrative_area_level_1",
+              "political"
+            ],
+            "shortText": "LA"
+          },
+          {
+            "longText": "Nigeria",
+            "types": [
+              "country",
+              "political"
+            ],
+            "shortText": "NG"
+          },
+          {
+            "longText": "106104",
+            "types": [
+              "postal_code"
+            ]
+          }
+        ],
+        "location": {
+          "latitude": 6.448213699999999,
+          "longitude": 3.4569178
+        },
+        "types": [
+          "restaurant",
+          "food",
+          "point_of_interest",
+          "establishment"
+        ]
+      },
+      "google_geocoding_result": {
+        "place_id": "ChIJfixture_2_name",
+        "formatted_address": "3 Tokunbo Omisore St, Lekki Phase I, Lekki 106104, Lagos, Nigeria",
+        "address_components": [
+          {
+            "long_name": "3",
+            "short_name": "3",
+            "types": [
+              "street_number"
+            ]
+          },
+          {
+            "long_name": "Tokunbo Omisore Street",
+            "short_name": "Tokunbo Omisore Street",
+            "types": [
+              "route"
+            ]
+          },
+          {
+            "long_name": "Lekki Phase I",
+            "short_name": "Lekki Phase I",
+            "types": [
+              "neighborhood",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Lekki",
+            "short_name": "Lekki",
+            "types": [
+              "locality",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Lekki/Ikate And Environs",
+            "short_name": "Lekki/Ikate And Environs",
+            "types": [
+              "administrative_area_level_3",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Eti Osa",
+            "short_name": "Eti Osa",
+            "types": [
+              "administrative_area_level_2",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Lagos",
+            "short_name": "LA",
+            "types": [
+              "administrative_area_level_1",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Nigeria",
+            "short_name": "NG",
+            "types": [
+              "country",
+              "political"
+            ]
+          },
+          {
+            "long_name": "106104",
+            "short_name": "106104",
+            "types": [
+              "postal_code"
+            ]
+          }
+        ],
+        "geometry": {
+          "location": {
+            "lat": 6.448213699999999,
+            "lng": 3.4569178
+          }
+        },
+        "types": [
+          "restaurant",
+          "food",
+          "point_of_interest",
+          "establishment"
+        ]
+      },
+      "mapbox_before": {
+        "feature_type": "poi",
+        "city": "Lagos",
+        "region_code": null,
+        "country_code": "PT",
+        "full_address": "8600-315 Lagos, Portugal"
+      }
+    },
+    {
+      "id": "2_addr",
+      "label": "Quays Lagos, Lekki/VI",
+      "query": "3 Tokunbo Omisore Street, Lagos",
+      "google_place": {
+        "id": "ChIJfixture_2_addr",
+        "formattedAddress": "3 Tokunbo Omisore St, Lekki Phase I, Lekki 106104, Lagos, Nigeria",
+        "addressComponents": [
+          {
+            "longText": "3",
+            "types": [
+              "street_number"
+            ]
+          },
+          {
+            "longText": "Tokunbo Omisore Street",
+            "types": [
+              "route"
+            ]
+          },
+          {
+            "longText": "Lekki Phase I",
+            "types": [
+              "neighborhood",
+              "political"
+            ]
+          },
+          {
+            "longText": "Lekki",
+            "types": [
+              "locality",
+              "political"
+            ]
+          },
+          {
+            "longText": "Lekki/Ikate And Environs",
+            "types": [
+              "administrative_area_level_3",
+              "political"
+            ]
+          },
+          {
+            "longText": "Eti Osa",
+            "types": [
+              "administrative_area_level_2",
+              "political"
+            ]
+          },
+          {
+            "longText": "Lagos",
+            "types": [
+              "administrative_area_level_1",
+              "political"
+            ],
+            "shortText": "LA"
+          },
+          {
+            "longText": "Nigeria",
+            "types": [
+              "country",
+              "political"
+            ],
+            "shortText": "NG"
+          },
+          {
+            "longText": "106104",
+            "types": [
+              "postal_code"
+            ]
+          }
+        ],
+        "location": {
+          "latitude": 6.448113500000001,
+          "longitude": 3.4569989
+        },
+        "types": [
+          "premise",
+          "street_address"
+        ]
+      },
+      "google_geocoding_result": {
+        "place_id": "ChIJfixture_2_addr",
+        "formatted_address": "3 Tokunbo Omisore St, Lekki Phase I, Lekki 106104, Lagos, Nigeria",
+        "address_components": [
+          {
+            "long_name": "3",
+            "short_name": "3",
+            "types": [
+              "street_number"
+            ]
+          },
+          {
+            "long_name": "Tokunbo Omisore Street",
+            "short_name": "Tokunbo Omisore Street",
+            "types": [
+              "route"
+            ]
+          },
+          {
+            "long_name": "Lekki Phase I",
+            "short_name": "Lekki Phase I",
+            "types": [
+              "neighborhood",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Lekki",
+            "short_name": "Lekki",
+            "types": [
+              "locality",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Lekki/Ikate And Environs",
+            "short_name": "Lekki/Ikate And Environs",
+            "types": [
+              "administrative_area_level_3",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Eti Osa",
+            "short_name": "Eti Osa",
+            "types": [
+              "administrative_area_level_2",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Lagos",
+            "short_name": "LA",
+            "types": [
+              "administrative_area_level_1",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Nigeria",
+            "short_name": "NG",
+            "types": [
+              "country",
+              "political"
+            ]
+          },
+          {
+            "long_name": "106104",
+            "short_name": "106104",
+            "types": [
+              "postal_code"
+            ]
+          }
+        ],
+        "geometry": {
+          "location": {
+            "lat": 6.448113500000001,
+            "lng": 3.4569989
+          }
+        },
+        "types": [
+          "premise",
+          "street_address"
+        ]
+      },
+      "mapbox_before": {
+        "feature_type": "address",
+        "city": "Lagos",
+        "region_code": "LA",
+        "country_code": "NG",
+        "full_address": "Tokunbo Omisore Street 3, Lagos 10, Lagos, Nigeria"
+      }
+    },
+    {
+      "id": "3_name",
+      "label": "21 Bistro Lagos, Lekki Phase 1",
+      "query": "21 Bistro Lagos",
+      "google_place": {
+        "id": "ChIJfixture_3_name",
+        "formattedAddress": "The Seasons, 21 Ichie Mike Ejezie St, Lekki Phase 1, Eti Osa 105102, Lagos, Nigeria",
+        "addressComponents": [
+          {
+            "longText": "The Seasons",
+            "types": [
+              "point_of_interest",
+              "establishment"
+            ]
+          },
+          {
+            "longText": "21",
+            "types": [
+              "street_number"
+            ]
+          },
+          {
+            "longText": "Ichie Mike Ejezie Street",
+            "types": [
+              "route"
+            ]
+          },
+          {
+            "longText": "Lekki Phase I",
+            "types": [
+              "neighborhood",
+              "political"
+            ]
+          },
+          {
+            "longText": "Lekki",
+            "types": [
+              "locality",
+              "political"
+            ]
+          },
+          {
+            "longText": "Lekki/Ikate And Environs",
+            "types": [
+              "administrative_area_level_3",
+              "political"
+            ]
+          },
+          {
+            "longText": "Eti Osa",
+            "types": [
+              "administrative_area_level_2",
+              "political"
+            ]
+          },
+          {
+            "longText": "Lagos",
+            "types": [
+              "administrative_area_level_1",
+              "political"
+            ],
+            "shortText": "LA"
+          },
+          {
+            "longText": "Nigeria",
+            "types": [
+              "country",
+              "political"
+            ],
+            "shortText": "NG"
+          },
+          {
+            "longText": "105102",
+            "types": [
+              "postal_code"
+            ]
+          }
+        ],
+        "location": {
+          "latitude": 6.4440545,
+          "longitude": 3.4771284999999996
+        },
+        "types": [
+          "restaurant",
+          "food",
+          "point_of_interest",
+          "establishment"
+        ]
+      },
+      "google_geocoding_result": {
+        "place_id": "ChIJfixture_3_name",
+        "formatted_address": "The Seasons, 21 Ichie Mike Ejezie St, Lekki Phase 1, Eti Osa 105102, Lagos, Nigeria",
+        "address_components": [
+          {
+            "long_name": "The Seasons",
+            "short_name": "The Seasons",
+            "types": [
+              "point_of_interest",
+              "establishment"
+            ]
+          },
+          {
+            "long_name": "21",
+            "short_name": "21",
+            "types": [
+              "street_number"
+            ]
+          },
+          {
+            "long_name": "Ichie Mike Ejezie Street",
+            "short_name": "Ichie Mike Ejezie Street",
+            "types": [
+              "route"
+            ]
+          },
+          {
+            "long_name": "Lekki Phase I",
+            "short_name": "Lekki Phase I",
+            "types": [
+              "neighborhood",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Lekki",
+            "short_name": "Lekki",
+            "types": [
+              "locality",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Lekki/Ikate And Environs",
+            "short_name": "Lekki/Ikate And Environs",
+            "types": [
+              "administrative_area_level_3",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Eti Osa",
+            "short_name": "Eti Osa",
+            "types": [
+              "administrative_area_level_2",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Lagos",
+            "short_name": "LA",
+            "types": [
+              "administrative_area_level_1",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Nigeria",
+            "short_name": "NG",
+            "types": [
+              "country",
+              "political"
+            ]
+          },
+          {
+            "long_name": "105102",
+            "short_name": "105102",
+            "types": [
+              "postal_code"
+            ]
+          }
+        ],
+        "geometry": {
+          "location": {
+            "lat": 6.4440545,
+            "lng": 3.4771284999999996
+          }
+        },
+        "types": [
+          "restaurant",
+          "food",
+          "point_of_interest",
+          "establishment"
+        ]
+      },
+      "mapbox_before": {
+        "feature_type": "poi",
+        "city": "Lagos de Moreno",
+        "region_code": null,
+        "country_code": "MX",
+        "full_address": "Constituyentes Nte. 21, 47420 Lagos de Moreno, Mexico"
+      }
+    },
+    {
+      "id": "3_addr",
+      "label": "21 Bistro Lagos, Lekki Phase 1",
+      "query": "21 Ichie Mike Ejezie Street, Lekki Phase 1, Lagos",
+      "google_place": {
+        "id": "ChIJfixture_3_addr",
+        "formattedAddress": "21 Ichie Mike Ejezie St, Lekki Phase 1, Lekki 105102, Lagos, Nigeria",
+        "addressComponents": [
+          {
+            "longText": "21",
+            "types": [
+              "street_number"
+            ]
+          },
+          {
+            "longText": "Ichie Mike Ejezie Street",
+            "types": [
+              "route"
+            ]
+          },
+          {
+            "longText": "Lekki Phase I",
+            "types": [
+              "neighborhood",
+              "political"
+            ]
+          },
+          {
+            "longText": "Lekki",
+            "types": [
+              "locality",
+              "political"
+            ]
+          },
+          {
+            "longText": "Lekki/Ikate And Environs",
+            "types": [
+              "administrative_area_level_3",
+              "political"
+            ]
+          },
+          {
+            "longText": "Eti Osa",
+            "types": [
+              "administrative_area_level_2",
+              "political"
+            ]
+          },
+          {
+            "longText": "Lagos",
+            "types": [
+              "administrative_area_level_1",
+              "political"
+            ],
+            "shortText": "LA"
+          },
+          {
+            "longText": "Nigeria",
+            "types": [
+              "country",
+              "political"
+            ],
+            "shortText": "NG"
+          },
+          {
+            "longText": "105102",
+            "types": [
+              "postal_code"
+            ]
+          }
+        ],
+        "location": {
+          "latitude": 6.4444097000000005,
+          "longitude": 3.4771533999999997
+        },
+        "types": [
+          "subpremise",
+          "street_address"
+        ]
+      },
+      "google_geocoding_result": {
+        "place_id": "ChIJfixture_3_addr",
+        "formatted_address": "21 Ichie Mike Ejezie St, Lekki Phase 1, Lekki 105102, Lagos, Nigeria",
+        "address_components": [
+          {
+            "long_name": "21",
+            "short_name": "21",
+            "types": [
+              "street_number"
+            ]
+          },
+          {
+            "long_name": "Ichie Mike Ejezie Street",
+            "short_name": "Ichie Mike Ejezie Street",
+            "types": [
+              "route"
+            ]
+          },
+          {
+            "long_name": "Lekki Phase I",
+            "short_name": "Lekki Phase I",
+            "types": [
+              "neighborhood",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Lekki",
+            "short_name": "Lekki",
+            "types": [
+              "locality",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Lekki/Ikate And Environs",
+            "short_name": "Lekki/Ikate And Environs",
+            "types": [
+              "administrative_area_level_3",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Eti Osa",
+            "short_name": "Eti Osa",
+            "types": [
+              "administrative_area_level_2",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Lagos",
+            "short_name": "LA",
+            "types": [
+              "administrative_area_level_1",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Nigeria",
+            "short_name": "NG",
+            "types": [
+              "country",
+              "political"
+            ]
+          },
+          {
+            "long_name": "105102",
+            "short_name": "105102",
+            "types": [
+              "postal_code"
+            ]
+          }
+        ],
+        "geometry": {
+          "location": {
+            "lat": 6.4444097000000005,
+            "lng": 3.4771533999999997
+          }
+        },
+        "types": [
+          "subpremise",
+          "street_address"
+        ]
+      },
+      "mapbox_before": {
+        "feature_type": "address",
+        "city": "Lagos",
+        "region_code": "LA",
+        "country_code": "NG",
+        "full_address": "Ichie Mike Ejezie Str 21, Lagos 10, Lagos, Nigeria"
+      }
+    },
+    {
+      "id": "4_name",
+      "label": "Kyma Beach, Elegushi, Lekki",
+      "query": "Kyma Beach Elegushi Lagos",
+      "google_place": {
+        "id": "ChIJfixture_4_name",
+        "formattedAddress": "Elegushi Beach, Ikate, Lagos 234100, Lagos, Nigeria",
+        "addressComponents": [
+          {
+            "longText": "Elegushi Beach",
+            "types": [
+              "point_of_interest",
+              "establishment"
+            ]
+          },
+          {
+            "longText": "Ikate",
+            "types": [
+              "neighborhood",
+              "political"
+            ]
+          },
+          {
+            "longText": "Lagos",
+            "types": [
+              "locality",
+              "political"
+            ]
+          },
+          {
+            "longText": "Lekki/Ikate And Environs",
+            "types": [
+              "administrative_area_level_3",
+              "political"
+            ]
+          },
+          {
+            "longText": "Eti Osa",
+            "types": [
+              "administrative_area_level_2",
+              "political"
+            ]
+          },
+          {
+            "longText": "Lagos",
+            "types": [
+              "administrative_area_level_1",
+              "political"
+            ],
+            "shortText": "LA"
+          },
+          {
+            "longText": "Nigeria",
+            "types": [
+              "country",
+              "political"
+            ],
+            "shortText": "NG"
+          },
+          {
+            "longText": "234100",
+            "types": [
+              "postal_code"
+            ]
+          }
+        ],
+        "location": {
+          "latitude": 6.4227028,
+          "longitude": 3.4843411
+        },
+        "types": [
+          "point_of_interest",
+          "establishment"
+        ]
+      },
+      "google_geocoding_result": {
+        "place_id": "ChIJfixture_4_name",
+        "formatted_address": "Elegushi Beach, Ikate, Lagos 234100, Lagos, Nigeria",
+        "address_components": [
+          {
+            "long_name": "Elegushi Beach",
+            "short_name": "Elegushi Beach",
+            "types": [
+              "point_of_interest",
+              "establishment"
+            ]
+          },
+          {
+            "long_name": "Ikate",
+            "short_name": "Ikate",
+            "types": [
+              "neighborhood",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Lagos",
+            "short_name": "Lagos",
+            "types": [
+              "locality",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Lekki/Ikate And Environs",
+            "short_name": "Lekki/Ikate And Environs",
+            "types": [
+              "administrative_area_level_3",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Eti Osa",
+            "short_name": "Eti Osa",
+            "types": [
+              "administrative_area_level_2",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Lagos",
+            "short_name": "LA",
+            "types": [
+              "administrative_area_level_1",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Nigeria",
+            "short_name": "NG",
+            "types": [
+              "country",
+              "political"
+            ]
+          },
+          {
+            "long_name": "234100",
+            "short_name": "234100",
+            "types": [
+              "postal_code"
+            ]
+          }
+        ],
+        "geometry": {
+          "location": {
+            "lat": 6.4227028,
+            "lng": 3.4843411
+          }
+        },
+        "types": [
+          "point_of_interest",
+          "establishment"
+        ]
+      },
+      "mapbox_before": {
+        "feature_type": "street",
+        "city": "Ikorodu",
+        "region_code": "LA",
+        "country_code": "NG",
+        "full_address": "Beach Road, Ikorodu 10, Lagos, Nigeria"
+      }
+    },
+    {
+      "id": "4_addr",
+      "label": "Kyma Beach, Elegushi, Lekki",
+      "query": "Elegushi Beach, Lekki, Lagos",
+      "google_place": {
+        "id": "ChIJfixture_4_addr",
+        "formattedAddress": "By Road 3, Lekki Phase 1, Lekki 106104, Lagos, Nigeria",
+        "addressComponents": [
+          {
+            "longText": "By",
+            "types": [
+              "street_number"
+            ]
+          },
+          {
+            "longText": "Road 3",
+            "types": [
+              "route"
+            ]
+          },
+          {
+            "longText": "Lekki Phase 1",
+            "types": [
+              "sublocality_level_1",
+              "sublocality",
+              "political"
+            ]
+          },
+          {
+            "longText": "Lekki",
+            "types": [
+              "locality",
+              "political"
+            ]
+          },
+          {
+            "longText": "Lekki/Ikate And Environs",
+            "types": [
+              "administrative_area_level_3",
+              "political"
+            ]
+          },
+          {
+            "longText": "Eti Osa",
+            "types": [
+              "administrative_area_level_2",
+              "political"
+            ]
+          },
+          {
+            "longText": "Lagos",
+            "types": [
+              "administrative_area_level_1",
+              "political"
+            ],
+            "shortText": "LA"
+          },
+          {
+            "longText": "Nigeria",
+            "types": [
+              "country",
+              "political"
+            ],
+            "shortText": "NG"
+          },
+          {
+            "longText": "106104",
+            "types": [
+              "postal_code"
+            ]
+          }
+        ],
+        "location": {
+          "latitude": 6.4220536,
+          "longitude": 3.4866077
+        },
+        "types": [
+          "point_of_interest",
+          "establishment"
+        ]
+      },
+      "google_geocoding_result": {
+        "place_id": "ChIJfixture_4_addr",
+        "formatted_address": "By Road 3, Lekki Phase 1, Lekki 106104, Lagos, Nigeria",
+        "address_components": [
+          {
+            "long_name": "By",
+            "short_name": "By",
+            "types": [
+              "street_number"
+            ]
+          },
+          {
+            "long_name": "Road 3",
+            "short_name": "Road 3",
+            "types": [
+              "route"
+            ]
+          },
+          {
+            "long_name": "Lekki Phase 1",
+            "short_name": "Lekki Phase 1",
+            "types": [
+              "sublocality_level_1",
+              "sublocality",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Lekki",
+            "short_name": "Lekki",
+            "types": [
+              "locality",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Lekki/Ikate And Environs",
+            "short_name": "Lekki/Ikate And Environs",
+            "types": [
+              "administrative_area_level_3",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Eti Osa",
+            "short_name": "Eti Osa",
+            "types": [
+              "administrative_area_level_2",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Lagos",
+            "short_name": "LA",
+            "types": [
+              "administrative_area_level_1",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Nigeria",
+            "short_name": "NG",
+            "types": [
+              "country",
+              "political"
+            ]
+          },
+          {
+            "long_name": "106104",
+            "short_name": "106104",
+            "types": [
+              "postal_code"
+            ]
+          }
+        ],
+        "geometry": {
+          "location": {
+            "lat": 6.4220536,
+            "lng": 3.4866077
+          }
+        },
+        "types": [
+          "point_of_interest",
+          "establishment"
+        ]
+      },
+      "mapbox_before": {
+        "feature_type": "street",
+        "city": "Lagos",
+        "region_code": "LA",
+        "country_code": "NG",
+        "full_address": null
+      }
+    },
+    {
+      "id": "5_name",
+      "label": "Gameland Lekki Coliseum",
+      "query": "Gameland Lekki Coliseum",
+      "google_place": {
+        "id": "ChIJfixture_5_name",
+        "formattedAddress": "THE LEKKI COLISEUM (TLC, Plot 14 The Providence St, off Admiralty Way, Lekki Phase I, Lekki 106104, Lagos, Nigeria",
+        "addressComponents": [
+          {
+            "longText": "THE LEKKI COLISEUM (TLC",
+            "types": [
+              "point_of_interest",
+              "establishment"
+            ]
+          },
+          {
+            "longText": "Plot 14",
+            "types": [
+              "street_number"
+            ]
+          },
+          {
+            "longText": "Admiralty Way",
+            "types": [
+              "route",
+              "landmark"
+            ]
+          },
+          {
+            "longText": "The Providence Street",
+            "types": [
+              "route"
+            ]
+          },
+          {
+            "longText": "Lekki Phase I",
+            "types": [
+              "neighborhood",
+              "political"
+            ]
+          },
+          {
+            "longText": "Lekki",
+            "types": [
+              "locality",
+              "political"
+            ]
+          },
+          {
+            "longText": "Lekki/Ikate And Environs",
+            "types": [
+              "administrative_area_level_3",
+              "political"
+            ]
+          },
+          {
+            "longText": "Eti Osa",
+            "types": [
+              "administrative_area_level_2",
+              "political"
+            ]
+          },
+          {
+            "longText": "Lagos",
+            "types": [
+              "administrative_area_level_1",
+              "political"
+            ],
+            "shortText": "LA"
+          },
+          {
+            "longText": "Nigeria",
+            "types": [
+              "country",
+              "political"
+            ],
+            "shortText": "NG"
+          },
+          {
+            "longText": "106104",
+            "types": [
+              "postal_code"
+            ]
+          }
+        ],
+        "location": {
+          "latitude": 6.4317975,
+          "longitude": 3.4642827
+        },
+        "types": [
+          "playground",
+          "point_of_interest",
+          "establishment"
+        ]
+      },
+      "google_geocoding_result": {
+        "place_id": "ChIJfixture_5_name",
+        "formatted_address": "THE LEKKI COLISEUM (TLC, Plot 14 The Providence St, off Admiralty Way, Lekki Phase I, Lekki 106104, Lagos, Nigeria",
+        "address_components": [
+          {
+            "long_name": "THE LEKKI COLISEUM (TLC",
+            "short_name": "THE LEKKI COLISEUM (TLC",
+            "types": [
+              "point_of_interest",
+              "establishment"
+            ]
+          },
+          {
+            "long_name": "Plot 14",
+            "short_name": "Plot 14",
+            "types": [
+              "street_number"
+            ]
+          },
+          {
+            "long_name": "Admiralty Way",
+            "short_name": "Admiralty Way",
+            "types": [
+              "route",
+              "landmark"
+            ]
+          },
+          {
+            "long_name": "The Providence Street",
+            "short_name": "The Providence Street",
+            "types": [
+              "route"
+            ]
+          },
+          {
+            "long_name": "Lekki Phase I",
+            "short_name": "Lekki Phase I",
+            "types": [
+              "neighborhood",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Lekki",
+            "short_name": "Lekki",
+            "types": [
+              "locality",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Lekki/Ikate And Environs",
+            "short_name": "Lekki/Ikate And Environs",
+            "types": [
+              "administrative_area_level_3",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Eti Osa",
+            "short_name": "Eti Osa",
+            "types": [
+              "administrative_area_level_2",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Lagos",
+            "short_name": "LA",
+            "types": [
+              "administrative_area_level_1",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Nigeria",
+            "short_name": "NG",
+            "types": [
+              "country",
+              "political"
+            ]
+          },
+          {
+            "long_name": "106104",
+            "short_name": "106104",
+            "types": [
+              "postal_code"
+            ]
+          }
+        ],
+        "geometry": {
+          "location": {
+            "lat": 6.4317975,
+            "lng": 3.4642827
+          }
+        },
+        "types": [
+          "playground",
+          "point_of_interest",
+          "establishment"
+        ]
+      },
+      "mapbox_before": {
+        "feature_type": "street",
+        "city": "Melbourne",
+        "region_code": "VIC",
+        "country_code": "AU",
+        "full_address": "Coliseum Avenue, Donnybrook Victoria 3064, Australia"
+      }
+    },
+    {
+      "id": "5_addr",
+      "label": "Gameland Lekki Coliseum",
+      "query": "Gameland, Admiralty Way, Lekki Phase 1, Lagos",
+      "google_place": {
+        "id": "ChIJfixture_5_addr",
+        "formattedAddress": "Admiralty Wy, Lekki Phase 1, Lekki 106104, Lagos, Nigeria",
+        "addressComponents": [
+          {
+            "longText": "Admiralty Way",
+            "types": [
+              "route"
+            ]
+          },
+          {
+            "longText": "Lekki Phase 1",
+            "types": [
+              "sublocality_level_1",
+              "sublocality",
+              "political"
+            ]
+          },
+          {
+            "longText": "Lekki",
+            "types": [
+              "locality",
+              "political"
+            ]
+          },
+          {
+            "longText": "Lekki/Ikate And Environs",
+            "types": [
+              "administrative_area_level_3",
+              "political"
+            ]
+          },
+          {
+            "longText": "Eti Osa",
+            "types": [
+              "administrative_area_level_2",
+              "political"
+            ]
+          },
+          {
+            "longText": "Lagos",
+            "types": [
+              "administrative_area_level_1",
+              "political"
+            ],
+            "shortText": "LA"
+          },
+          {
+            "longText": "Nigeria",
+            "types": [
+              "country",
+              "political"
+            ],
+            "shortText": "NG"
+          },
+          {
+            "longText": "106104",
+            "types": [
+              "postal_code"
+            ]
+          }
+        ],
+        "location": {
+          "latitude": 6.4475857,
+          "longitude": 3.4676137
+        },
+        "types": [
+          "route"
+        ]
+      },
+      "google_geocoding_result": {
+        "place_id": "ChIJfixture_5_addr",
+        "formatted_address": "Admiralty Wy, Lekki Phase 1, Lekki 106104, Lagos, Nigeria",
+        "address_components": [
+          {
+            "long_name": "Admiralty Way",
+            "short_name": "Admiralty Way",
+            "types": [
+              "route"
+            ]
+          },
+          {
+            "long_name": "Lekki Phase 1",
+            "short_name": "Lekki Phase 1",
+            "types": [
+              "sublocality_level_1",
+              "sublocality",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Lekki",
+            "short_name": "Lekki",
+            "types": [
+              "locality",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Lekki/Ikate And Environs",
+            "short_name": "Lekki/Ikate And Environs",
+            "types": [
+              "administrative_area_level_3",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Eti Osa",
+            "short_name": "Eti Osa",
+            "types": [
+              "administrative_area_level_2",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Lagos",
+            "short_name": "LA",
+            "types": [
+              "administrative_area_level_1",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Nigeria",
+            "short_name": "NG",
+            "types": [
+              "country",
+              "political"
+            ]
+          },
+          {
+            "long_name": "106104",
+            "short_name": "106104",
+            "types": [
+              "postal_code"
+            ]
+          }
+        ],
+        "geometry": {
+          "location": {
+            "lat": 6.4475857,
+            "lng": 3.4676137
+          }
+        },
+        "types": [
+          "route"
+        ]
+      },
+      "mapbox_before": {
+        "feature_type": "street",
+        "city": "Lagos",
+        "region_code": "LA",
+        "country_code": "NG",
+        "full_address": "Admiralty Way, Lagos 10, Lagos, Nigeria"
+      }
+    },
+    {
+      "id": "6_name",
+      "label": "Didi Museum, Victoria Island",
+      "query": "Didi Museum Lagos",
+      "google_place": {
+        "id": "ChIJfixture_6_name",
+        "formattedAddress": "175Akin, Akin Adesola St, Victoria Island, Lagos 106104, Lagos, Nigeria",
+        "addressComponents": [
+          {
+            "longText": "175Akin",
+            "types": []
+          },
+          {
+            "longText": "Akin Adesola Street",
+            "types": [
+              "route"
+            ]
+          },
+          {
+            "longText": "Victoria Island",
+            "types": [
+              "neighborhood",
+              "political"
+            ]
+          },
+          {
+            "longText": "Lagos",
+            "types": [
+              "locality",
+              "political"
+            ]
+          },
+          {
+            "longText": "Ikoyi I",
+            "types": [
+              "administrative_area_level_3",
+              "political"
+            ]
+          },
+          {
+            "longText": "Eti Osa",
+            "types": [
+              "administrative_area_level_2",
+              "political"
+            ]
+          },
+          {
+            "longText": "Lagos",
+            "types": [
+              "administrative_area_level_1",
+              "political"
+            ],
+            "shortText": "LA"
+          },
+          {
+            "longText": "Nigeria",
+            "types": [
+              "country",
+              "political"
+            ],
+            "shortText": "NG"
+          },
+          {
+            "longText": "106104",
+            "types": [
+              "postal_code"
+            ]
+          }
+        ],
+        "location": {
+          "latitude": 6.4325387,
+          "longitude": 3.4236888999999997
+        },
+        "types": [
+          "museum",
+          "art_gallery",
+          "point_of_interest",
+          "establishment"
+        ]
+      },
+      "google_geocoding_result": {
+        "place_id": "ChIJfixture_6_name",
+        "formatted_address": "175Akin, Akin Adesola St, Victoria Island, Lagos 106104, Lagos, Nigeria",
+        "address_components": [
+          {
+            "long_name": "175Akin",
+            "short_name": "175Akin",
+            "types": []
+          },
+          {
+            "long_name": "Akin Adesola Street",
+            "short_name": "Akin Adesola Street",
+            "types": [
+              "route"
+            ]
+          },
+          {
+            "long_name": "Victoria Island",
+            "short_name": "Victoria Island",
+            "types": [
+              "neighborhood",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Lagos",
+            "short_name": "Lagos",
+            "types": [
+              "locality",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Ikoyi I",
+            "short_name": "Ikoyi I",
+            "types": [
+              "administrative_area_level_3",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Eti Osa",
+            "short_name": "Eti Osa",
+            "types": [
+              "administrative_area_level_2",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Lagos",
+            "short_name": "LA",
+            "types": [
+              "administrative_area_level_1",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Nigeria",
+            "short_name": "NG",
+            "types": [
+              "country",
+              "political"
+            ]
+          },
+          {
+            "long_name": "106104",
+            "short_name": "106104",
+            "types": [
+              "postal_code"
+            ]
+          }
+        ],
+        "geometry": {
+          "location": {
+            "lat": 6.4325387,
+            "lng": 3.4236888999999997
+          }
+        },
+        "types": [
+          "museum",
+          "art_gallery",
+          "point_of_interest",
+          "establishment"
+        ]
+      },
+      "mapbox_before": {
+        "feature_type": "street",
+        "city": "El Alto",
+        "region_code": "L",
+        "country_code": "BO",
+        "full_address": null
+      }
+    },
+    {
+      "id": "6_addr",
+      "label": "Didi Museum, Victoria Island",
+      "query": "175 Akin Adesola Street, Victoria Island, Lagos",
+      "google_place": {
+        "id": "ChIJfixture_6_addr",
+        "formattedAddress": "175 Akin Adesola St, Victoria Island, Lagos 021189, Lagos, Nigeria",
+        "addressComponents": [
+          {
+            "longText": "175",
+            "types": [
+              "street_number"
+            ]
+          },
+          {
+            "longText": "Akin Adesola Street",
+            "types": [
+              "route"
+            ]
+          },
+          {
+            "longText": "Victoria Island",
+            "types": [
+              "neighborhood",
+              "political"
+            ]
+          },
+          {
+            "longText": "Lagos",
+            "types": [
+              "locality",
+              "political"
+            ]
+          },
+          {
+            "longText": "Ikoyi I",
+            "types": [
+              "administrative_area_level_3",
+              "political"
+            ]
+          },
+          {
+            "longText": "Eti Osa",
+            "types": [
+              "administrative_area_level_2",
+              "political"
+            ]
+          },
+          {
+            "longText": "Lagos",
+            "types": [
+              "administrative_area_level_1",
+              "political"
+            ],
+            "shortText": "LA"
+          },
+          {
+            "longText": "Nigeria",
+            "types": [
+              "country",
+              "political"
+            ],
+            "shortText": "NG"
+          },
+          {
+            "longText": "021189",
+            "types": [
+              "postal_code"
+            ]
+          }
+        ],
+        "location": {
+          "latitude": 6.432542799999999,
+          "longitude": 3.4236499
+        },
+        "types": [
+          "subpremise",
+          "street_address"
+        ]
+      },
+      "google_geocoding_result": {
+        "place_id": "ChIJfixture_6_addr",
+        "formatted_address": "175 Akin Adesola St, Victoria Island, Lagos 021189, Lagos, Nigeria",
+        "address_components": [
+          {
+            "long_name": "175",
+            "short_name": "175",
+            "types": [
+              "street_number"
+            ]
+          },
+          {
+            "long_name": "Akin Adesola Street",
+            "short_name": "Akin Adesola Street",
+            "types": [
+              "route"
+            ]
+          },
+          {
+            "long_name": "Victoria Island",
+            "short_name": "Victoria Island",
+            "types": [
+              "neighborhood",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Lagos",
+            "short_name": "Lagos",
+            "types": [
+              "locality",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Ikoyi I",
+            "short_name": "Ikoyi I",
+            "types": [
+              "administrative_area_level_3",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Eti Osa",
+            "short_name": "Eti Osa",
+            "types": [
+              "administrative_area_level_2",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Lagos",
+            "short_name": "LA",
+            "types": [
+              "administrative_area_level_1",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Nigeria",
+            "short_name": "NG",
+            "types": [
+              "country",
+              "political"
+            ]
+          },
+          {
+            "long_name": "021189",
+            "short_name": "021189",
+            "types": [
+              "postal_code"
+            ]
+          }
+        ],
+        "geometry": {
+          "location": {
+            "lat": 6.432542799999999,
+            "lng": 3.4236499
+          }
+        },
+        "types": [
+          "subpremise",
+          "street_address"
+        ]
+      },
+      "mapbox_before": {
+        "feature_type": "address",
+        "city": "Lagos",
+        "region_code": "LA",
+        "country_code": "NG",
+        "full_address": "Akin Adesola Street 175, Lagos 10, Lagos, Nigeria"
+      }
+    },
+    {
+      "id": "7_name",
+      "label": "DIOR Lounge, Raleigh",
+      "query": "Dior Lounge Raleigh",
+      "google_place": {
+        "id": "ChIJfixture_7_name",
+        "formattedAddress": "226 Fayetteville St, Raleigh, NC 27601, USA",
+        "addressComponents": [
+          {
+            "longText": "226",
+            "types": [
+              "street_number"
+            ]
+          },
+          {
+            "longText": "Fayetteville Street",
+            "types": [
+              "route"
+            ]
+          },
+          {
+            "longText": "Downtown",
+            "types": [
+              "neighborhood",
+              "political"
+            ]
+          },
+          {
+            "longText": "Raleigh",
+            "types": [
+              "locality",
+              "political"
+            ]
+          },
+          {
+            "longText": "Wake County",
+            "types": [
+              "administrative_area_level_2",
+              "political"
+            ]
+          },
+          {
+            "longText": "North Carolina",
+            "types": [
+              "administrative_area_level_1",
+              "political"
+            ],
+            "shortText": "NC"
+          },
+          {
+            "longText": "United States",
+            "types": [
+              "country",
+              "political"
+            ],
+            "shortText": "US"
+          },
+          {
+            "longText": "27601",
+            "types": [
+              "postal_code"
+            ]
+          }
+        ],
+        "location": {
+          "latitude": 35.7774262,
+          "longitude": -78.639658
+        },
+        "types": [
+          "bar",
+          "point_of_interest",
+          "establishment"
+        ]
+      },
+      "google_geocoding_result": {
+        "place_id": "ChIJfixture_7_name",
+        "formatted_address": "226 Fayetteville St, Raleigh, NC 27601, USA",
+        "address_components": [
+          {
+            "long_name": "226",
+            "short_name": "226",
+            "types": [
+              "street_number"
+            ]
+          },
+          {
+            "long_name": "Fayetteville Street",
+            "short_name": "Fayetteville Street",
+            "types": [
+              "route"
+            ]
+          },
+          {
+            "long_name": "Downtown",
+            "short_name": "Downtown",
+            "types": [
+              "neighborhood",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Raleigh",
+            "short_name": "Raleigh",
+            "types": [
+              "locality",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Wake County",
+            "short_name": "Wake County",
+            "types": [
+              "administrative_area_level_2",
+              "political"
+            ]
+          },
+          {
+            "long_name": "North Carolina",
+            "short_name": "NC",
+            "types": [
+              "administrative_area_level_1",
+              "political"
+            ]
+          },
+          {
+            "long_name": "United States",
+            "short_name": "US",
+            "types": [
+              "country",
+              "political"
+            ]
+          },
+          {
+            "long_name": "27601",
+            "short_name": "27601",
+            "types": [
+              "postal_code"
+            ]
+          }
+        ],
+        "geometry": {
+          "location": {
+            "lat": 35.7774262,
+            "lng": -78.639658
+          }
+        },
+        "types": [
+          "bar",
+          "point_of_interest",
+          "establishment"
+        ]
+      },
+      "mapbox_before": {
+        "feature_type": "place",
+        "city": "Raleigh",
+        "region_code": "NC",
+        "country_code": "US",
+        "full_address": "Raleigh, North Carolina, United States"
+      }
+    },
+    {
+      "id": "7_addr",
+      "label": "DIOR Lounge, Raleigh",
+      "query": "226 Fayetteville Street, Raleigh, NC 27601",
+      "google_place": {
+        "id": "ChIJfixture_7_addr",
+        "formattedAddress": "226 Fayetteville St, Raleigh, NC 27601, USA",
+        "addressComponents": [
+          {
+            "longText": "226",
+            "types": [
+              "street_number"
+            ]
+          },
+          {
+            "longText": "Fayetteville Street",
+            "types": [
+              "route"
+            ]
+          },
+          {
+            "longText": "Downtown",
+            "types": [
+              "neighborhood",
+              "political"
+            ]
+          },
+          {
+            "longText": "Raleigh",
+            "types": [
+              "locality",
+              "political"
+            ]
+          },
+          {
+            "longText": "Wake County",
+            "types": [
+              "administrative_area_level_2",
+              "political"
+            ]
+          },
+          {
+            "longText": "North Carolina",
+            "types": [
+              "administrative_area_level_1",
+              "political"
+            ],
+            "shortText": "NC"
+          },
+          {
+            "longText": "United States",
+            "types": [
+              "country",
+              "political"
+            ],
+            "shortText": "US"
+          },
+          {
+            "longText": "27601",
+            "types": [
+              "postal_code"
+            ]
+          },
+          {
+            "longText": "1310",
+            "types": [
+              "postal_code_suffix"
+            ]
+          }
+        ],
+        "location": {
+          "latitude": 35.7774262,
+          "longitude": -78.639658
+        },
+        "types": [
+          "premise",
+          "street_address"
+        ]
+      },
+      "google_geocoding_result": {
+        "place_id": "ChIJfixture_7_addr",
+        "formatted_address": "226 Fayetteville St, Raleigh, NC 27601, USA",
+        "address_components": [
+          {
+            "long_name": "226",
+            "short_name": "226",
+            "types": [
+              "street_number"
+            ]
+          },
+          {
+            "long_name": "Fayetteville Street",
+            "short_name": "Fayetteville Street",
+            "types": [
+              "route"
+            ]
+          },
+          {
+            "long_name": "Downtown",
+            "short_name": "Downtown",
+            "types": [
+              "neighborhood",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Raleigh",
+            "short_name": "Raleigh",
+            "types": [
+              "locality",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Wake County",
+            "short_name": "Wake County",
+            "types": [
+              "administrative_area_level_2",
+              "political"
+            ]
+          },
+          {
+            "long_name": "North Carolina",
+            "short_name": "NC",
+            "types": [
+              "administrative_area_level_1",
+              "political"
+            ]
+          },
+          {
+            "long_name": "United States",
+            "short_name": "US",
+            "types": [
+              "country",
+              "political"
+            ]
+          },
+          {
+            "long_name": "27601",
+            "short_name": "27601",
+            "types": [
+              "postal_code"
+            ]
+          },
+          {
+            "long_name": "1310",
+            "short_name": "1310",
+            "types": [
+              "postal_code_suffix"
+            ]
+          }
+        ],
+        "geometry": {
+          "location": {
+            "lat": 35.7774262,
+            "lng": -78.639658
+          }
+        },
+        "types": [
+          "premise",
+          "street_address"
+        ]
+      },
+      "mapbox_before": {
+        "feature_type": "address",
+        "city": "Raleigh",
+        "region_code": "NC",
+        "country_code": "US",
+        "full_address": "226 Fayetteville Street, Raleigh, North Carolina 27601, United States"
+      }
+    },
+    {
+      "id": "8_name",
+      "label": "Komana Brewing, Cary",
+      "query": "Komana Brewing Cary",
+      "google_place": {
+        "id": "ChIJfixture_8_name",
+        "formattedAddress": "1020 Ryan Rd, Cary, NC 27511, USA",
+        "addressComponents": [
+          {
+            "longText": "1020",
+            "types": [
+              "street_number"
+            ]
+          },
+          {
+            "longText": "Ryan Road",
+            "types": [
+              "route"
+            ]
+          },
+          {
+            "longText": "Cary",
+            "types": [
+              "locality",
+              "political"
+            ]
+          },
+          {
+            "longText": "Wake County",
+            "types": [
+              "administrative_area_level_2",
+              "political"
+            ]
+          },
+          {
+            "longText": "North Carolina",
+            "types": [
+              "administrative_area_level_1",
+              "political"
+            ],
+            "shortText": "NC"
+          },
+          {
+            "longText": "United States",
+            "types": [
+              "country",
+              "political"
+            ],
+            "shortText": "US"
+          },
+          {
+            "longText": "27511",
+            "types": [
+              "postal_code"
+            ]
+          }
+        ],
+        "location": {
+          "latitude": 35.776947799999995,
+          "longitude": -78.7677823
+        },
+        "types": [
+          "brewery",
+          "manufacturer",
+          "food",
+          "point_of_interest",
+          "service",
+          "establishment"
+        ]
+      },
+      "google_geocoding_result": {
+        "place_id": "ChIJfixture_8_name",
+        "formatted_address": "1020 Ryan Rd, Cary, NC 27511, USA",
+        "address_components": [
+          {
+            "long_name": "1020",
+            "short_name": "1020",
+            "types": [
+              "street_number"
+            ]
+          },
+          {
+            "long_name": "Ryan Road",
+            "short_name": "Ryan Road",
+            "types": [
+              "route"
+            ]
+          },
+          {
+            "long_name": "Cary",
+            "short_name": "Cary",
+            "types": [
+              "locality",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Wake County",
+            "short_name": "Wake County",
+            "types": [
+              "administrative_area_level_2",
+              "political"
+            ]
+          },
+          {
+            "long_name": "North Carolina",
+            "short_name": "NC",
+            "types": [
+              "administrative_area_level_1",
+              "political"
+            ]
+          },
+          {
+            "long_name": "United States",
+            "short_name": "US",
+            "types": [
+              "country",
+              "political"
+            ]
+          },
+          {
+            "long_name": "27511",
+            "short_name": "27511",
+            "types": [
+              "postal_code"
+            ]
+          }
+        ],
+        "geometry": {
+          "location": {
+            "lat": 35.776947799999995,
+            "lng": -78.7677823
+          }
+        },
+        "types": [
+          "brewery",
+          "manufacturer",
+          "food",
+          "point_of_interest",
+          "service",
+          "establishment"
+        ]
+      },
+      "mapbox_before": {
+        "feature_type": "poi",
+        "city": "Cary",
+        "region_code": "NC",
+        "country_code": "US",
+        "full_address": "1020 Ryan Rd, Cary, North Carolina 27511, United States"
+      }
+    },
+    {
+      "id": "8_addr",
+      "label": "Komana Brewing, Cary",
+      "query": "1020 Ryan Road, Cary, NC 27511",
+      "google_place": {
+        "id": "ChIJfixture_8_addr",
+        "formattedAddress": "1020 Ryan Rd, Cary, NC 27511, USA",
+        "addressComponents": [
+          {
+            "longText": "1020",
+            "types": [
+              "street_number"
+            ]
+          },
+          {
+            "longText": "Ryan Road",
+            "types": [
+              "route"
+            ]
+          },
+          {
+            "longText": "Cary",
+            "types": [
+              "locality",
+              "political"
+            ]
+          },
+          {
+            "longText": "Wake County",
+            "types": [
+              "administrative_area_level_2",
+              "political"
+            ]
+          },
+          {
+            "longText": "North Carolina",
+            "types": [
+              "administrative_area_level_1",
+              "political"
+            ],
+            "shortText": "NC"
+          },
+          {
+            "longText": "United States",
+            "types": [
+              "country",
+              "political"
+            ],
+            "shortText": "US"
+          },
+          {
+            "longText": "27511",
+            "types": [
+              "postal_code"
+            ]
+          }
+        ],
+        "location": {
+          "latitude": 35.776947799999995,
+          "longitude": -78.7677823
+        },
+        "types": [
+          "subpremise",
+          "street_address"
+        ]
+      },
+      "google_geocoding_result": {
+        "place_id": "ChIJfixture_8_addr",
+        "formatted_address": "1020 Ryan Rd, Cary, NC 27511, USA",
+        "address_components": [
+          {
+            "long_name": "1020",
+            "short_name": "1020",
+            "types": [
+              "street_number"
+            ]
+          },
+          {
+            "long_name": "Ryan Road",
+            "short_name": "Ryan Road",
+            "types": [
+              "route"
+            ]
+          },
+          {
+            "long_name": "Cary",
+            "short_name": "Cary",
+            "types": [
+              "locality",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Wake County",
+            "short_name": "Wake County",
+            "types": [
+              "administrative_area_level_2",
+              "political"
+            ]
+          },
+          {
+            "long_name": "North Carolina",
+            "short_name": "NC",
+            "types": [
+              "administrative_area_level_1",
+              "political"
+            ]
+          },
+          {
+            "long_name": "United States",
+            "short_name": "US",
+            "types": [
+              "country",
+              "political"
+            ]
+          },
+          {
+            "long_name": "27511",
+            "short_name": "27511",
+            "types": [
+              "postal_code"
+            ]
+          }
+        ],
+        "geometry": {
+          "location": {
+            "lat": 35.776947799999995,
+            "lng": -78.7677823
+          }
+        },
+        "types": [
+          "subpremise",
+          "street_address"
+        ]
+      },
+      "mapbox_before": {
+        "feature_type": "address",
+        "city": "Cary",
+        "region_code": "NC",
+        "country_code": "US",
+        "full_address": "1020 Ryan Road, Cary, North Carolina 27511, United States"
+      }
+    },
+    {
+      "id": "9_addr",
+      "label": "213 Fayetteville St, Raleigh (host experience stop)",
+      "query": "213 Fayetteville Street, Raleigh, NC 27601",
+      "google_place": {
+        "id": "ChIJfixture_9_addr",
+        "formattedAddress": "213 Fayetteville St, Raleigh, NC 27601, USA",
+        "addressComponents": [
+          {
+            "longText": "213",
+            "types": [
+              "street_number"
+            ]
+          },
+          {
+            "longText": "Fayetteville Street",
+            "types": [
+              "route"
+            ]
+          },
+          {
+            "longText": "Downtown",
+            "types": [
+              "neighborhood",
+              "political"
+            ]
+          },
+          {
+            "longText": "Raleigh",
+            "types": [
+              "locality",
+              "political"
+            ]
+          },
+          {
+            "longText": "Wake County",
+            "types": [
+              "administrative_area_level_2",
+              "political"
+            ]
+          },
+          {
+            "longText": "North Carolina",
+            "types": [
+              "administrative_area_level_1",
+              "political"
+            ],
+            "shortText": "NC"
+          },
+          {
+            "longText": "United States",
+            "types": [
+              "country",
+              "political"
+            ],
+            "shortText": "US"
+          },
+          {
+            "longText": "27601",
+            "types": [
+              "postal_code"
+            ]
+          },
+          {
+            "longText": "1309",
+            "types": [
+              "postal_code_suffix"
+            ]
+          }
+        ],
+        "location": {
+          "latitude": 35.777907899999995,
+          "longitude": -78.6390304
+        },
+        "types": [
+          "subpremise",
+          "street_address"
+        ]
+      },
+      "google_geocoding_result": {
+        "place_id": "ChIJfixture_9_addr",
+        "formatted_address": "213 Fayetteville St, Raleigh, NC 27601, USA",
+        "address_components": [
+          {
+            "long_name": "213",
+            "short_name": "213",
+            "types": [
+              "street_number"
+            ]
+          },
+          {
+            "long_name": "Fayetteville Street",
+            "short_name": "Fayetteville Street",
+            "types": [
+              "route"
+            ]
+          },
+          {
+            "long_name": "Downtown",
+            "short_name": "Downtown",
+            "types": [
+              "neighborhood",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Raleigh",
+            "short_name": "Raleigh",
+            "types": [
+              "locality",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Wake County",
+            "short_name": "Wake County",
+            "types": [
+              "administrative_area_level_2",
+              "political"
+            ]
+          },
+          {
+            "long_name": "North Carolina",
+            "short_name": "NC",
+            "types": [
+              "administrative_area_level_1",
+              "political"
+            ]
+          },
+          {
+            "long_name": "United States",
+            "short_name": "US",
+            "types": [
+              "country",
+              "political"
+            ]
+          },
+          {
+            "long_name": "27601",
+            "short_name": "27601",
+            "types": [
+              "postal_code"
+            ]
+          },
+          {
+            "long_name": "1309",
+            "short_name": "1309",
+            "types": [
+              "postal_code_suffix"
+            ]
+          }
+        ],
+        "geometry": {
+          "location": {
+            "lat": 35.777907899999995,
+            "lng": -78.6390304
+          }
+        },
+        "types": [
+          "subpremise",
+          "street_address"
+        ]
+      },
+      "mapbox_before": {
+        "feature_type": "address",
+        "city": "Raleigh",
+        "region_code": "NC",
+        "country_code": "US",
+        "full_address": "213 Fayetteville Street, Raleigh, North Carolina 27601, United States"
+      }
+    },
+    {
+      "id": "10_addr",
+      "label": "Lantern Room / Wythe Ave, Brooklyn",
+      "query": "61 Wythe Avenue, Brooklyn, NY 11249",
+      "google_place": {
+        "id": "ChIJfixture_10_addr",
+        "formattedAddress": "61 Wythe Ave, Brooklyn, NY 11249, USA",
+        "addressComponents": [
+          {
+            "longText": "61",
+            "types": [
+              "street_number"
+            ]
+          },
+          {
+            "longText": "Wythe Avenue",
+            "types": [
+              "route"
+            ]
+          },
+          {
+            "longText": "Williamsburg",
+            "types": [
+              "neighborhood",
+              "political"
+            ]
+          },
+          {
+            "longText": "Brooklyn",
+            "types": [
+              "sublocality_level_1",
+              "sublocality",
+              "political"
+            ]
+          },
+          {
+            "longText": "Kings County",
+            "types": [
+              "administrative_area_level_2",
+              "political"
+            ]
+          },
+          {
+            "longText": "New York",
+            "types": [
+              "administrative_area_level_1",
+              "political"
+            ],
+            "shortText": "NY"
+          },
+          {
+            "longText": "United States",
+            "types": [
+              "country",
+              "political"
+            ],
+            "shortText": "US"
+          },
+          {
+            "longText": "11249",
+            "types": [
+              "postal_code"
+            ]
+          }
+        ],
+        "location": {
+          "latitude": 40.7220004,
+          "longitude": -73.9574611
+        },
+        "types": [
+          "premise",
+          "street_address"
+        ]
+      },
+      "google_geocoding_result": {
+        "place_id": "ChIJfixture_10_addr",
+        "formatted_address": "61 Wythe Ave, Brooklyn, NY 11249, USA",
+        "address_components": [
+          {
+            "long_name": "61",
+            "short_name": "61",
+            "types": [
+              "street_number"
+            ]
+          },
+          {
+            "long_name": "Wythe Avenue",
+            "short_name": "Wythe Avenue",
+            "types": [
+              "route"
+            ]
+          },
+          {
+            "long_name": "Williamsburg",
+            "short_name": "Williamsburg",
+            "types": [
+              "neighborhood",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Brooklyn",
+            "short_name": "Brooklyn",
+            "types": [
+              "sublocality_level_1",
+              "sublocality",
+              "political"
+            ]
+          },
+          {
+            "long_name": "Kings County",
+            "short_name": "Kings County",
+            "types": [
+              "administrative_area_level_2",
+              "political"
+            ]
+          },
+          {
+            "long_name": "New York",
+            "short_name": "NY",
+            "types": [
+              "administrative_area_level_1",
+              "political"
+            ]
+          },
+          {
+            "long_name": "United States",
+            "short_name": "US",
+            "types": [
+              "country",
+              "political"
+            ]
+          },
+          {
+            "long_name": "11249",
+            "short_name": "11249",
+            "types": [
+              "postal_code"
+            ]
+          }
+        ],
+        "geometry": {
+          "location": {
+            "lat": 40.7220004,
+            "lng": -73.9574611
+          }
+        },
+        "types": [
+          "premise",
+          "street_address"
+        ]
+      },
+      "mapbox_before": {
+        "feature_type": "address",
+        "city": "New York",
+        "region_code": "NY",
+        "country_code": "US",
+        "full_address": "61 Wythe Avenue, Brooklyn, New York 11249, United States"
+      }
+    }
+  ]
+}

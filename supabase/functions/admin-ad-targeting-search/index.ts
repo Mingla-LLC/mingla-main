@@ -378,7 +378,7 @@ async function resolveSnapchat(
   }
   // ISSUE-992 (3a) city: PASSTHROUGH echo of the typed name (like Reddit). The
   // create path re-geocodes server-side (§4) so coordinates NEVER reach the
-  // browser — no Mapbox call here. The chip carries { label, country } from the
+  // browser — no geocoding call here. The chip carries { label, country } from the
   // shared Meta geo dictionary; that is enough for the create-time geocode.
   const name = q.trim();
   if (!name) return { results: [] };

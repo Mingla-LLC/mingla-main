@@ -360,7 +360,7 @@ function placeStep(args: {
       const problem = typeof ctx.state?.data?.problem === "string"
         ? `${ctx.state.data.problem} `
         : "";
-      // The Host shows its address search (MapboxAddressInput) on this card.
+      // The Host shows its address search (AddressInput) on this card.
       return Promise.resolve({
         done: false,
         ask: {
