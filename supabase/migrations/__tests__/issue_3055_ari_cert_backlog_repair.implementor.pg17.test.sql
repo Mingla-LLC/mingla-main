@@ -64,9 +64,10 @@ INSERT INTO issue_3055_input (name, body) VALUES
   -- This suite replays the historical 164-requirement certification lane.
   -- The current capability ledger also includes #3355's newer product
   -- capabilities, #2830's four post-census Website-completeness capabilities
-  -- and #4238's read-only list_ad_audiences, so project those rows out for
-  -- this historical replay. Their runtime and authorization contracts are
-  -- covered by their owning issue suites.
+  -- #4238's read-only list_ad_audiences and #4304's end_discount and
+  -- resume_discount writes, so project those rows out for this historical
+  -- replay. Their runtime and authorization contracts are covered by their
+  -- owning issue suites.
   ('ledger', jsonb_set(
     :'issue_3055_ledger'::jsonb,
     '{capabilities}',
@@ -78,7 +79,9 @@ INSERT INTO issue_3055_input (name, body) VALUES
          'ari.sites.start_completeness_job',
          'ari.sites.save_plan_design',
          'ari.sites.record_context_finding',
-         'ari.ads.list_ad_audiences'
+         'ari.ads.list_ad_audiences',
+         'ari.discounts.end',
+         'ari.discounts.resume'
        ))
   )::text);
 
