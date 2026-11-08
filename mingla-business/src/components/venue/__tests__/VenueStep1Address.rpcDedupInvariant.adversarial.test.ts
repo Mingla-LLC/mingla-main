@@ -40,7 +40,7 @@
 import { describe, expect, test } from "@jest/globals";
 import { parseVenuePlaceResult } from "../../../utils/parseVenuePlaceResult";
 import { prefillDraftFromPoolMatch } from "../../../utils/prefillDraftFromPoolMatch";
-import type { PlaceDetails } from "../../../services/mapboxGeocodeService";
+import type { PlaceDetails } from "../../../services/placesService";
 import type { PoolMatch } from "../../../types/poolMatch";
 
 // ----- faithful port of biz_create_venue_brand_authoring dedup (migration :311-326) -----

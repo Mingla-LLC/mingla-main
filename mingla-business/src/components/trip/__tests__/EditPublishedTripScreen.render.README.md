@@ -2,7 +2,7 @@
 
 This is the runtime mount proof (mingla-tester RETEST) for ORCH-1118. It renders
 the REAL `EditPublishedTripScreen` via `@testing-library/react-native` to prove
-the swapped `MapboxAddressInput` pickers MOUNT on the basics path and the save
+the swapped `AddressInput` pickers MOUNT on the basics path and the save
 gate FIRES at runtime (killing the dead-tap / stale-render class).
 
 The business package's default jest is `testEnvironment: node` + `ts-jest` with
@@ -29,7 +29,7 @@ npx jest --config jest.orch1118.render.cjs --runInBand
 
 ## Expected (against the CURRENT branch HEAD)
 
-- `(a)` PASS — both location fields mount as MapboxAddressInput (combobox).
+- `(a)` PASS — both location fields mount as AddressInput (combobox).
 - `(b1-gate)` PASS — blocked save does not open the change-summary modal; toast fires.
 - `(b1-inline-error)` **FAIL** — documents P1-EDIT-STALE-ERROR: the inline field
   errors do NOT render after a blocked save because `renderSectionBody`'s

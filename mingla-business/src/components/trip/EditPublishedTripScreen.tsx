@@ -143,9 +143,10 @@ import {
   notifyTripChanged,
 } from "../../services/tripChangeNotifier";
 
-// ORCH-1118 — published-edit departure + destination must be confirmed Mapbox
+// ORCH-1118 — published-edit departure + destination must be confirmed address
 // picks before save. Swap the legacy plain TextInputs for the shared picker.
-import { MapboxAddressInput } from "../location/MapboxAddressInput";
+import { AddressInput } from "../location/AddressInput";
+import { precisionFromPlaceDetails } from "@mingla/location-input";
 import {
   advanceLocationRequestGeneration,
   isFreeTextResolveStale,
@@ -1214,11 +1215,11 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
       showToast("Trip title can't be empty.");
       return;
     }
-    // ORCH-1118 — trip location must be a confirmed Mapbox pick before save.
+    // ORCH-1118 — trip location must be a confirmed address pick before save.
     // BOTH departure AND destination are hard-required — an empty OR dirty
     // (typed-but-unpicked) value on either field blocks save. Reveal the inline
     // errors + expand the basics section. Do not loosen
-    // (I-PROPOSED-TRIP-LOCATION-MAPBOX-VALIDATED).
+    // (I-PROPOSED-TRIP-LOCATION-PICK-VALIDATED).
     if (
       !destinationLocationValidated(
         editState.destinationLocationText,
@@ -1668,7 +1669,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                   wrapping View (the picker wrapper takes no testID prop). */}
               <View style={styles.fieldGroup} testID="edit-trip-departure">
                 <Text style={styles.fieldLabel}>Departing from</Text>
-                <MapboxAddressInput
+                <AddressInput
                   value={editState.departureLocationText ?? ""}
                   accessibilityLabel="Departing from"
                   placeholder="e.g. Washington, DC, USA"
@@ -1712,7 +1713,8 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                       departureLng: place.location.lng,
                       departureCity: place.city,
                       departureCountryCode: place.countryCode,
-                      departureCoordinatePrecision: "approximate",
+                      // #4334 F-7 — a real pick: READ the precision (#1629).
+                      departureCoordinatePrecision: precisionFromPlaceDetails(place),
                     });
                     departureContextRef.current = {
                       city: place.city,
@@ -1775,7 +1777,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
               </View>
               <View style={styles.fieldGroup} testID="edit-trip-destination">
                 <Text style={styles.fieldLabel}>Destination</Text>
-                <MapboxAddressInput
+                <AddressInput
                   value={editState.destinationLocationText ?? ""}
                   accessibilityLabel="Destination"
                   placeholder="e.g. Tulum, Quintana Roo, Mexico"
@@ -1819,7 +1821,8 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                       destinationLng: place.location.lng,
                       destinationCity: place.city,
                       destinationCountryCode: place.countryCode,
-                      destinationCoordinatePrecision: "approximate",
+                      // #4334 F-7 — a real pick: READ the precision (#1629).
+                      destinationCoordinatePrecision: precisionFromPlaceDetails(place),
                     });
                     destinationContextRef.current = {
                       city: place.city,

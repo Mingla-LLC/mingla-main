@@ -3,13 +3,13 @@
  * Step 2 — STOPS (the stops builder).
  *
  * Authoritative design: DESIGN_META-ORCH-1059_WIZARD_STOPS_PRICING.md §2.
- * Builds 1–5 ordered stops, each = a Mapbox-validated address + name + 1–5
+ * Builds 1–5 ordered stops, each = a pick-validated address + name + 1–5
  * photos + OPTIONAL start time + OPTIONAL per-stop price (per_stop mode only).
  * A LOCATION MODE toggle (operator-locked) governs whether all stops share one
  * location (single, default) or each has its own (per_stop). Reorder via
  * chevrons recomputes the Start Here / Then / End With labels live.
  *
- * Reuse at the primitive level (design §0.3): MapboxAddressInput, GlassCard,
+ * Reuse at the primitive level (design §0.3): AddressInput, GlassCard,
  * Input, Icon. Per-stop photos are added through the app's EXISTING media
  * picker surface — ExperienceStopPhotoSheet (Library + GIFs + Photos, NO video)
  * — which reuses the unified CoverPicker's GIPHY/Pexels services + the brand-
@@ -32,7 +32,7 @@ import {
 import { Icon } from "../ui/Icon";
 import { ExperienceStopPhotoSheet } from "./ExperienceStopPhotoSheet";
 import { ExperienceStopCard } from "./ExperienceStopCard";
-import { useAddressSearchProximity } from "../location/MapboxAddressInput";
+import { useAddressSearchProximity } from "../location/AddressInput";
 import type { BrandProximityLike } from "../../utils/addressSearchProximity";
 import {
   emptyStop,

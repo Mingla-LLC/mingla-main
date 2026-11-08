@@ -7,7 +7,7 @@
  * the card are thin around this.
  *
  * THE LOAD-BEARING RULE is `coordinatePrecision === "exact"`. Issue #1629 made
- * that field mean something real: Mapbox's own `feature_type` said `address` or
+ * that field mean something real: the pick's own feature type said `address` or
  * `poi`, i.e. the brand PICKED a specific building. The other two ways the draft
  * acquires a coordinate must never reach Google:
  *   - free text resolved by `resolveFreeTextLocation` → "approximate", a CITY

@@ -40,7 +40,7 @@ import {
   addressBeginsWithName,
   composeSuggestionLabel,
   resolvePickedLabel,
-} from "../../../../../packages/location-input/src/MapboxAddressInput";
+} from "../../../../../packages/location-input/src/AddressInput";
 
 const DIRECTORY = [
   { iso: "GB", dialCode: "+44" },

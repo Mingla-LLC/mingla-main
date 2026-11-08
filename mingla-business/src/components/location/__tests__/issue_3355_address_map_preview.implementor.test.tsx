@@ -51,7 +51,7 @@ const buildStaticMapUrl = jest.fn(
       ? null
       : `https://maps.test/static?c=${params.lng},${params.lat}&z=${params.zoom}`,
 );
-jest.mock("../../../utils/mapboxStaticImage", () => ({
+jest.mock("../../../utils/staticMapImage", () => ({
   buildStaticMapUrl: (params: { lat: number | null; lng: number | null; zoom: number }) =>
     buildStaticMapUrl(params),
 }));

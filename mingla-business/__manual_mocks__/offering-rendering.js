@@ -7,12 +7,12 @@
 // node/ts-jest config those cannot load — `react/jsx-runtime` is unresolvable
 // from `packages/` (no react there; mingla-business owns react) and react-native's
 // entry is Flow ESM. So ANY node-env service/util test that transitively imports
-// the barrel (publicEventsService, publicExperienceService, mapboxStaticImage, …)
+// the barrel (publicEventsService, publicExperienceService, staticMapImage, …)
 // dies at module-load before a single assertion runs.
 //
 // NON-FAKING: those node tests only consume the barrel's PURE, RN-free helpers.
 // This mock re-exports the REAL helper submodules verbatim (`isThemeColor`,
-// `buildStaticMapUrl`, `getPublicMapboxToken`, … run their real implementations —
+// `buildStaticMapUrl`, `getSupabaseFunctionsBaseUrl`, … run their real implementations —
 // zero behavior faked) and stubs ONLY the visual components, which no node-env
 // test renders. If a suite genuinely needs a component's behavior it runs under a
 // dedicated jest.<orch>.render.cjs render config, never here.
@@ -21,7 +21,7 @@
 
 const PKG = "../../packages/offering-rendering/";
 // The real, RN-free logic submodules (each verified free of react-native imports;
-// mapbox* reach expo-constants only, which the config maps to a lightweight mock).
+// staticMapImage reaches expo-constants only, which the config maps to a lightweight mock).
 const real = (name) => require(PKG + name);
 
 // Inert passthrough for the RN visual components — never rendered under node.
@@ -34,8 +34,7 @@ module.exports = {
   // ---- REAL pure logic (verbatim re-export — no faking) --------------------
   ...real("themeResolver"), // isThemeColor / isThemeAnimationSlug / isThemeFontSlug / resolveTheme
   ...real("themePalette"),
-  ...real("mapboxStaticImage"), // buildStaticMapUrl / getSupabaseFunctionsBaseUrl
-  ...real("mapboxToken"), // getPublicMapboxToken
+  ...real("staticMapImage"), // buildStaticMapUrl / getSupabaseFunctionsBaseUrl
   ...real("normalizeCityCountry"),
   ...real("experienceOpenDaily"),
   ...real("experienceAvailabilityBanner"),

@@ -125,7 +125,7 @@ interface BusinessPublicEventViewRow {
   // ORCH-1162 Bug 2 — venue geo exposed by business_public_events_view (a
   // `point` column; PostgREST serializes it as a "(lng,lat)" string for anon
   // reads). Threaded into PublicEventRecord.locationGeo so the buyer-web +
-  // consumer public event page can draw the "Where you'll be" static-Mapbox map.
+  // consumer public event page can draw the "Where you'll be" static map map.
   location_geo?: string | { x: number; y: number } | null;
   online_url: string | null;
   is_online: boolean;

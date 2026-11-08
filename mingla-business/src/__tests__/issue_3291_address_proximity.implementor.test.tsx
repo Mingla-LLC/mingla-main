@@ -44,9 +44,9 @@ jest.mock("../services/supabase", () => ({
 jest.mock("../components/ui/Icon", () => ({ Icon: () => null }));
 
 import {
-  MapboxAddressInput,
+  AddressInput,
   useAddressSearchProximity,
-} from "../components/location/MapboxAddressInput";
+} from "../components/location/AddressInput";
 import {
   approximatePointForTimeZone,
   deviceTimeZone,
@@ -214,7 +214,7 @@ describe("Issue #3291 — the lazy hook", () => {
 
   test("the resolver stays behind a dynamic import — no Host file value-imports it", () => {
     const wrapper = fs.readFileSync(
-      path.resolve(ROOT, "mingla-business/src/components/location/MapboxAddressInput.tsx"),
+      path.resolve(ROOT, "mingla-business/src/components/location/AddressInput.tsx"),
       "utf8",
     );
     expect(wrapper).toContain('import("../../utils/addressSearchProximity")');
@@ -249,7 +249,7 @@ async function typeIntoBusinessPicker(
   let tree: Tree | undefined;
   await TestRenderer.act(() => {
     tree = TestRenderer.create(
-      <MapboxAddressInput
+      <AddressInput
         value=""
         onChangeText={() => undefined}
         onPick={() => undefined}

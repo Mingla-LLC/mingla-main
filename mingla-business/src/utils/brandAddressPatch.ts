@@ -3,7 +3,7 @@
  * (BrandEditAddressField). A placed address writes the address, its point,
  * and the city and country it carries, together.
  */
-import type { PlaceDetails } from "../services/mapboxGeocodeService";
+import type { PlaceDetails } from "../services/placesService";
 import type { Brand } from "../types/brand";
 import { parseVenuePlaceResult } from "./parseVenuePlaceResult";
 
@@ -15,7 +15,7 @@ export type BrandAddressPatch = Partial<
 /**
  * Pure: the patch a placed address writes — address, coordinates, and the
  * city and country the place carries (a place without one leaves that field
- * as it was). ORCH-1079 LOCKED: the Mapbox id is never written into
+ * as it was). ORCH-1079 LOCKED: the picked place id is never written into
  * brands.google_place_id, so it is not part of the patch at all.
  */
 export function brandAddressPatchFromLocation(

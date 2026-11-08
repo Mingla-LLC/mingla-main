@@ -25,8 +25,8 @@ jest.mock("../../../constants/designSystem", () => ({
 jest.mock("../../../hooks/useCurrentBrand", () => ({
   useCurrentBrand: () => null,
 }));
-jest.mock("../../location/MapboxAddressInput", () => ({
-  MapboxAddressInput: "mapbox-address-input",
+jest.mock("../../location/AddressInput", () => ({
+  AddressInput: "mapbox-address-input",
 }));
 jest.mock("../../ui/Button", () => ({ Button: "button" }));
 jest.mock("../../ui/Input", () => ({ Input: "input" }));

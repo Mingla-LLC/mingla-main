@@ -100,7 +100,7 @@ describe("ORCH-1089 signed-in Event Creator wizard parity", () => {
     // re-guarded (see orch_1027_web_datetime_* suites for the full contract).
     expect(step2).toContain("WebDateTimeInput");
     expect(step2).not.toContain("showPicker");
-    expect(step3).toContain("MapboxAddressInput");
+    expect(step3).toContain("AddressInput");
     expect(step4).toContain("CoverPickerSheet");
     expect(step5).toContain("TicketTierEditSheet");
     expect(ticketTierSheet).toContain('type="datetime-local"');

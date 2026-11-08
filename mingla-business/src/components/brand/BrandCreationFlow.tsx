@@ -60,12 +60,11 @@ import { Toast } from "../ui/Toast";
 import type { OfferingKind } from "./OfferingChooser";
 import { CoverPickerSheet } from "../ui/CoverPickerSheet";
 // META-ORCH-1009 Sub-F (WS1+WS2): validated address autocomplete + cover preview.
-// ORCH-1079 [Business-venue Google→Mapbox sweep]: swapped to the shared Mapbox
-// picker. The Mapbox `placeId` (a mapbox_id) is IGNORED for persistence — we set
-// `googlePlaceId: null` so a mapbox_id never lands in `brands.google_place_id`.
-// Mapbox Search Box /suggest returns POIs/businesses by name (no `types` filter):
-// https://docs.mapbox.com/api/search/search-box/#get-suggestions
-import { MapboxAddressInput } from "../location/MapboxAddressInput";
+// ORCH-1079 [Business-venue address sweep]: the shared address picker. The
+// picked `placeId` is never written into `brands.google_place_id` (that column
+// is the pool/claim identity) — we set `googlePlaceId: null`. The Host search is
+// filter-free, so businesses resolve by name.
+import { AddressInput } from "../location/AddressInput";
 import {
   advanceLocationRequestGeneration,
   isFreeTextResolveStale,
@@ -73,7 +72,7 @@ import {
   resolveFreeTextLocation,
 } from "../../utils/resolveApproxLocation";
 import { parseVenuePlaceResult } from "../../utils/parseVenuePlaceResult";
-import type { PlaceDetails } from "../../services/mapboxGeocodeService";
+import type { PlaceDetails } from "../../services/placesService";
 import type { LocationSelectionState } from "@mingla/location-input";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { useShareNetworkState } from "../ui/useShareNetworkState";
@@ -1358,7 +1357,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
             {/* WS1: validated autocomplete. Free-text typing clears the geo meta so
                 Continue stays gated until a real result is picked; Skip handles
                 brands with no fixed address. */}
-            <MapboxAddressInput
+            <AddressInput
               value={address}
               allowFreeText
               selectionState={addressSelectionState}
@@ -1391,8 +1390,8 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
                 committedAddrRef.current = label;
                 setAddress(label);
                 // ORCH-1079 LOCKED (§3.B): write geo identically but set
-                // googlePlaceId: null — the Mapbox mapbox_id (`p.placeId`) is
-                // IGNORED so it never pollutes `brands.google_place_id`.
+                // googlePlaceId: null — the picked id (`p.placeId`) never
+                // pollutes `brands.google_place_id` (the pool identity).
                 setAddrMeta({
                   lat: p.lat,
                   lng: p.lng,

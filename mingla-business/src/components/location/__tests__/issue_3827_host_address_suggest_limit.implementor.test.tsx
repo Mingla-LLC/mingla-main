@@ -26,7 +26,7 @@ jest.mock("@mingla/location-input", () => {
   const ReactActual = require("react") as typeof React;
   return {
     __esModule: true,
-    MapboxAddressInput: (props: Record<string, unknown>) =>
+    AddressInput: (props: Record<string, unknown>) =>
       ReactActual.createElement("SharedMapboxAddressInput", props),
   };
 });
@@ -39,8 +39,8 @@ jest.mock("../../../services/supabase", () => ({
 import {
   HOST_ADDRESS_DROPDOWN_MAX_HEIGHT,
   HOST_ADDRESS_SUGGEST_LIMIT,
-  MapboxAddressInput,
-} from "../MapboxAddressInput";
+  AddressInput,
+} from "../AddressInput";
 import { autocompleteMapbox } from "../../../../../packages/location-input/src/mapboxGeocodeService";
 
 interface Node {
@@ -64,7 +64,7 @@ const renderHostField = async (): Promise<Node> => {
   let tree!: Tree;
   await TestRenderer.act(async () => {
     tree = TestRenderer.create(
-      <MapboxAddressInput
+      <AddressInput
         value=""
         onChangeText={() => undefined}
         onPick={() => undefined}
@@ -121,7 +121,7 @@ describe("issue #3827 — Host address suggestions", () => {
     expect(body).not.toHaveProperty("limit");
 
     // The shared field declares the prop optional and gives it no default.
-    const sharedSource = read("packages/location-input/src/MapboxAddressInput.tsx");
+    const sharedSource = read("packages/location-input/src/AddressInput.tsx");
     expect(sharedSource).toMatch(/\n\s*suggestLimit\?: number;/);
     expect(sharedSource).toMatch(/\n\s*suggestLimit,\n/);
     expect(sharedSource).not.toMatch(/suggestLimit\s*=\s*\d/);
@@ -134,7 +134,7 @@ describe("issue #3827 — Host address suggestions", () => {
   });
 
   test("the Explorer app is not moved to 10", () => {
-    const consumerWrapper = read("app-mobile/src/components/location/MapboxAddressInput.tsx");
+    const consumerWrapper = read("app-mobile/src/components/location/AddressInput.tsx");
 
     // It only passes on what its own caller asked for; it sets no limit itself.
     expect(consumerWrapper).toContain("suggestLimit={suggestLimit}");
@@ -154,7 +154,7 @@ describe("issue #3827 — Host address suggestions", () => {
 
     // The shared card list bounds a scroll view by that token (keyboard-aware
     // on native), so rows past the bound are reachable by scrolling.
-    const sharedSource = read("packages/location-input/src/MapboxAddressInput.tsx");
+    const sharedSource = read("packages/location-input/src/AddressInput.tsx");
     expect(sharedSource).toContain("tokenMaxHeight: tokens.dropdown.maxHeight,");
     expect(sharedSource).toMatch(
       /<Scroll\s+style=\{\{ maxHeight: dropdownMaxHeight \}\}\s+keyboardShouldPersistTaps="handled"\s+nestedScrollEnabled\s+showsVerticalScrollIndicator\s*>/,

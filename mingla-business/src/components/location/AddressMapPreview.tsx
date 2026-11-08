@@ -28,7 +28,7 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
-import { buildStaticMapUrl } from "../../utils/mapboxStaticImage";
+import { buildStaticMapUrl } from "../../utils/staticMapImage";
 import { Icon } from "../ui/Icon";
 
 export const ADDRESS_MAP_PREVIEW_EMPTY_COPY =
@@ -106,7 +106,7 @@ const styles = StyleSheet.create({
     color: textTokens.quaternary,
   },
   // Themed center pin overlaid on the real static map (the static URL already
-  // draws a Mapbox pin; this is the consistent brand-accent dot the wizard used).
+  // draws a map pin; this is the consistent brand-accent dot the wizard used).
   mapPin: {
     width: 32,
     height: 32,

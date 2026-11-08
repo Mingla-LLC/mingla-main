@@ -502,7 +502,7 @@ module.exports = {
     "^react-native-safe-area-context$":
       "<rootDir>/__manual_mocks__/react-native-safe-area-context.js",
     // ESM-native expo packages (reached via expo-image-picker / expo-file-system /
-    // mapboxToken / config reads).
+    // config reads).
     "^expo-constants$": "<rootDir>/__manual_mocks__/expo-constants.js",
     "^expo-modules-core$": "<rootDir>/__manual_mocks__/expo-modules-core.js",
     // react-native (Flow ESM entry) is pulled only via async-storage in the node

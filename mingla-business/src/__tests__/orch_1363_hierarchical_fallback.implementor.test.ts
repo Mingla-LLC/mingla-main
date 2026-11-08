@@ -10,7 +10,7 @@ import {
   destinationLocationValidated,
 } from "../components/trip/tripLocationValidated";
 
-jest.mock("../services/mapboxGeocodeService", () => ({
+jest.mock("../services/placesService", () => ({
   forwardHierarchyMapbox: jest.fn(),
 }));
 

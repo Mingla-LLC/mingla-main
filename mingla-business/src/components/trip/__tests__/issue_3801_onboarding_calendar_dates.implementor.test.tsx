@@ -112,7 +112,7 @@ function boundaryFor(os: "web" | "ios"): Record<string, () => unknown> {
     }),
     ThemeControlRow: () => ({ ThemeControlRow: nothing }),
     ThemeSheet: () => ({ ThemeSheet: nothing }),
-    MapboxAddressInput: () => ({ MapboxAddressInput: nothing }),
+    AddressInput: () => ({ AddressInput: nothing }),
     resolveApproxLocation: () => ({
       advanceLocationRequestGeneration: (): void => undefined,
       isFreeTextResolveStale: () => false,

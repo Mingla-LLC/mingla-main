@@ -7,7 +7,7 @@ import type {
   HierarchicalForwardResult,
   SavedLocationContext,
 } from "@mingla/location-input";
-import { forwardHierarchyMapbox as businessForwardHierarchy } from "../services/mapboxGeocodeService";
+import { forwardHierarchy as businessForwardHierarchy } from "../services/placesService";
 
 export type CoordinatePrecision = "exact" | "approximate";
 

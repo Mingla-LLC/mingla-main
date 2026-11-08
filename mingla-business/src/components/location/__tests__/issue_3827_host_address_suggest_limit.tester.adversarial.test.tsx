@@ -31,7 +31,7 @@ jest.mock("@mingla/location-input", () => {
   const ReactActual = require("react") as typeof React;
   return {
     __esModule: true,
-    MapboxAddressInput: (props: Record<string, unknown>) =>
+    AddressInput: (props: Record<string, unknown>) =>
       ReactActual.createElement("SharedMapboxAddressInput", props),
   };
 });
@@ -41,11 +41,11 @@ jest.mock("../../../services/supabase", () => ({
   supabase: { functions: { invoke: jest.fn() } },
 }));
 
-import * as hostWrapper from "../MapboxAddressInput";
+import * as hostWrapper from "../AddressInput";
 import { computeShowFreeTextRow } from "../../../../../packages/location-input/src/assistFooter";
 import { autocompleteMapbox } from "../../../../../packages/location-input/src/mapboxGeocodeService";
 
-const { MapboxAddressInput } = hostWrapper;
+const { AddressInput } = hostWrapper;
 // Read through the namespace so that, with the fix reverted, the file still
 // loads and each case fails on its own assertion.
 const HOST_LIMIT = (hostWrapper as unknown as { HOST_ADDRESS_SUGGEST_LIMIT?: number })
@@ -69,7 +69,7 @@ const TestRenderer = require("react-test-renderer") as {
 const repo = join(__dirname, "..", "..", "..", "..", "..");
 const read = (relative: string): string => readFileSync(join(repo, relative), "utf8");
 
-const sharedSource = read("packages/location-input/src/MapboxAddressInput.tsx");
+const sharedSource = read("packages/location-input/src/AddressInput.tsx");
 const edgeSource = read("supabase/functions/mapbox-geocode/index.ts");
 
 /** Lift one exported function out of a source file and run it under jest. */
@@ -135,7 +135,7 @@ const buildSuggestUrl = lift<
 
 const renderHostField = async (extraProps: Record<string, unknown> = {}): Promise<Node> => {
   let tree!: Tree;
-  const Field = MapboxAddressInput as unknown as React.ComponentType<Record<string, unknown>>;
+  const Field = AddressInput as unknown as React.ComponentType<Record<string, unknown>>;
   await TestRenderer.act(async () => {
     tree = TestRenderer.create(
       <Field
@@ -187,7 +187,7 @@ describe("issue #3827 tester — the limit a Host field asks for", () => {
     }
     // The wrapper's own props do not offer a limit, so this cannot compile in
     // a real caller: the override above is deliberate, not an accident.
-    const wrapper = read("mingla-business/src/components/location/MapboxAddressInput.tsx");
+    const wrapper = read("mingla-business/src/components/location/AddressInput.tsx");
     const propsBlock = wrapper.slice(
       wrapper.indexOf("interface MapboxAddressInputProps {"),
       wrapper.indexOf("\n}\n", wrapper.indexOf("interface MapboxAddressInputProps {")),
@@ -206,9 +206,9 @@ describe("issue #3827 tester — the limit a Host field asks for", () => {
           walk(full);
           continue;
         }
-        if (!/\.tsx$/.test(entry) || full.endsWith("location/MapboxAddressInput.tsx")) continue;
+        if (!/\.tsx$/.test(entry) || full.endsWith("location/AddressInput.tsx")) continue;
         const text = readFileSync(full, "utf8");
-        if (/<MapboxAddressInput\b/.test(text) && /suggestLimit=/.test(text)) offenders.push(full);
+        if (/<AddressInput\b/.test(text) && /suggestLimit=/.test(text)) offenders.push(full);
       }
     };
     walk(join(repo, "mingla-business", "src"));
@@ -291,11 +291,11 @@ describe("issue #3827 tester — Explorer and the shared default are untouched",
       // [TEST-MOD-APPROVED #3988] Discover's global city picker uses the same
       // established Explorer suggestion budget; Host remains the sole 10-result caller.
       "app-mobile/src/components/discover/CityPickerSheet.tsx": ["suggestLimit={8}"],
-      "app-mobile/src/components/location/MapboxAddressInput.tsx": [
+      "app-mobile/src/components/location/AddressInput.tsx": [
         "suggestLimit={suggestLimit}",
       ],
     });
-    expect(read("app-mobile/src/components/location/MapboxAddressInput.tsx")).not.toMatch(
+    expect(read("app-mobile/src/components/location/AddressInput.tsx")).not.toMatch(
       /HOST_ADDRESS|maxHeight: 320/,
     );
   });

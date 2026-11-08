@@ -11,7 +11,7 @@ import React from "react";
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, jest, test } from "@jest/globals";
-import { MapboxAddressInput } from "../../../packages/location-input/src/MapboxAddressInput";
+import { AddressInput } from "../../../packages/location-input/src/AddressInput";
 import {
   forwardHierarchyMapbox,
   type InvokeFn,
@@ -39,7 +39,7 @@ const edgeSource = fs.readFileSync(
   "utf8",
 );
 const sharedSource = fs.readFileSync(
-  path.resolve(ROOT, "packages/location-input/src/MapboxAddressInput.tsx"),
+  path.resolve(ROOT, "packages/location-input/src/AddressInput.tsx"),
   "utf8",
 );
 
@@ -169,7 +169,7 @@ describe("Issue #1363 tester adversarial — selected pill and isolation", () =>
     let tree: Tree | undefined;
     await TestRenderer.act(() => {
       tree = TestRenderer.create(
-        <MapboxAddressInput
+        <AddressInput
           value="1 Fortune Avenue, Port Harcourt"
           onChangeText={() => undefined}
           onPick={() => undefined}
@@ -220,7 +220,7 @@ describe("Issue #1363 tester adversarial — selected pill and isolation", () =>
       "app-mobile/src/components/OnboardingFlow.tsx",
       "app-mobile/src/components/PreferencesSheet.tsx",
       "app-mobile/src/components/discover/CityPickerSheet.tsx",
-      "app-mobile/src/components/location/MapboxAddressInput.tsx",
+      "app-mobile/src/components/location/AddressInput.tsx",
     ];
     for (const file of consumerFiles) {
       const source = fs.readFileSync(path.resolve(ROOT, file), "utf8");
@@ -261,7 +261,7 @@ describe("Issue #1363 tester adversarial — stale completion", () => {
     let tree: Tree | undefined;
     await TestRenderer.act(() => {
       tree = TestRenderer.create(
-        <MapboxAddressInput
+        <AddressInput
           value="Lagos"
           onChangeText={() => undefined}
           onPick={onPick}

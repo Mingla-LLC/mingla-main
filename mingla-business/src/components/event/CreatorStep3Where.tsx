@@ -32,19 +32,19 @@ import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
 import { TurnoutForecastCard } from "../intel/TurnoutForecastCard";
 import { useTurnoutFocusTarget } from "../intel/useTurnoutFocusTarget";
-// ORCH-1047: the event Where step now uses the Mapbox address autocomplete
-// (META-ORCH-1059's mapbox-geocode edge fn + MapboxAddressInput) — the legacy
+// ORCH-1047: the event Where step uses the shared address autocomplete
+// (the address proxy + AddressInput; Google since #4334) — the legacy
 // Google Places path was REQUEST_DENIED, leaving an empty suggestions dropdown.
-// MapboxAddressInput is a drop-in for AddressAutocompleteInput (same props +
+// AddressInput is a drop-in for AddressAutocompleteInput (same props +
 // the same PlaceDetails boundary: formattedAddress / city / location).
-import { MapboxAddressInput } from "../location/MapboxAddressInput";
+import { AddressInput } from "../location/AddressInput";
 import {
   advanceLocationRequestGeneration,
   isFreeTextResolveStale,
   isLocationRequestGenerationCurrent,
   resolveFreeTextLocation,
 } from "../../utils/resolveApproxLocation";
-import type { PlaceDetails } from "../../services/mapboxGeocodeService";
+import type { PlaceDetails } from "../../services/placesService";
 import type { LocationSelectionState } from "@mingla/location-input";
 // ORCH-1186 [wizard-map-preview] — the static-map preview (vendor-neutral
 // `static-map` proxy, honest empty state) now lives in the shared
@@ -185,7 +185,7 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
               from the suggestions." */}
           <View style={styles.field}>
             <Text style={styles.fieldLabel}>Address</Text>
-            <MapboxAddressInput
+            <AddressInput
               value={draft.address ?? ""}
               allowFreeText
               selectionState={selectionState}
@@ -216,7 +216,7 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
                   address: label,
                   city: details.city,
                   locationGeo: details.location,
-                  // Issue #1629 — READ the precision from Mapbox's own feature_type
+                  // Issue #1629 — READ the precision from the pick's own feature type
                   // instead of asserting it. This branch is a REAL PICK, so hardcoding
                   // "approximate" made `exact` unreachable everywhere (0 rows in prod).
                   coordinatePrecision: precisionFromPlaceDetails(details),

@@ -24,7 +24,7 @@ import { describe, expect, test } from "@jest/globals";
 import { readFileSync } from "fs";
 import path from "path";
 import { parseVenuePlaceResult } from "../../../utils/parseVenuePlaceResult";
-import type { PlaceDetails } from "../../../services/mapboxGeocodeService";
+import type { PlaceDetails } from "../../../services/placesService";
 
 // NOTE: the real useDraftVenueStore is AsyncStorage-persisted (needs `window`),
 // which the node-env Jest harness can't load. We model the store's `patch`
@@ -81,7 +81,7 @@ describe("ORCH-1079 — VenueStep1Address dedup guard (source shape)", () => {
   test("T-3C/T-3D: no patch() call writes googlePlaceId (regression catcher)", () => {
     const src = venueSource();
     // The picker is the shared Mapbox input, not the retired Google one.
-    expect(src).toContain("MapboxAddressInput");
+    expect(src).toContain("AddressInput");
     expect(src).not.toContain("AddressAutocompleteInput");
     // Strip line + block comments (our LOCKED comments legitimately mention
     // googlePlaceId), then assert NO `patch({...})` call ever sets it. A

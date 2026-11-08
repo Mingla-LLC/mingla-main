@@ -1,5 +1,5 @@
 /**
- * Ve1 wizard — Step 1: Address (Mapbox proxy, ORCH-1079).
+ * Ve1 wizard — Step 1: Address (address proxy, ORCH-1079; Google since #4334).
  *
  * Issue #1363 — suggestion or raw free text becomes a selected address while a
  * safe approximate coordinate is resolved automatically.
@@ -18,13 +18,13 @@ import {
   resolveFreeTextLocation,
 } from "../../utils/resolveApproxLocation";
 import { useDraftVenueStore } from "../../store/draftVenueStore";
-import { MapboxAddressInput } from "../location/MapboxAddressInput";
+import { AddressInput } from "../location/AddressInput";
 import type { BrandProximityLike } from "../../utils/addressSearchProximity";
 // Issue #1648 — the recognition moment for a PICKED address. Kept in its own
 // component on purpose: accepting a match writes `googlePlaceId`, which the
 // ORCH-1079 guard forbids any `patch({...})` in THIS file from doing.
 import { VenueAddressMatchPrompt } from "./VenueAddressMatchPrompt";
-import type { PlaceDetails } from "../../services/mapboxGeocodeService";
+import type { PlaceDetails } from "../../services/placesService";
 import type { LocationSelectionState } from "@mingla/location-input";
 
 export interface VenueStep1AddressProps {
@@ -125,7 +125,7 @@ export const VenueStep1Address: React.FC<VenueStep1AddressProps> = ({
       <Text style={styles.helper}>
         Start typing and choose a result, or use what you typed.
       </Text>
-      <MapboxAddressInput
+      <AddressInput
         value={formattedAddress}
         allowFreeText
         selectionState={selectionState}
@@ -139,7 +139,7 @@ export const VenueStep1Address: React.FC<VenueStep1AddressProps> = ({
           // ORCH-1079 LOCKED dedup guard: null the address/geo but NEVER
           // `googlePlaceId`. Issue #1363 adds coordinatePrecision to the reset.
           committedAddrRef.current = t;
-          patch({ formattedAddress: t, lat: null, lng: null, city: null, countryCode: null, coordinatePrecision: null });
+          patch({ formattedAddress: t, lat: null, lng: null, city: null, countryCode: null, coordinatePrecision: null, locationProviderPlaceId: null });
         }}
         onFreeText={resolveCommittedText}
         onPick={(details: PlaceDetails, selectedLabel?: string): void => {
@@ -147,23 +147,23 @@ export const VenueStep1Address: React.FC<VenueStep1AddressProps> = ({
           const p = parseVenuePlaceResult(details);
           const label = selectedLabel ?? p.formattedAddress;
           committedAddrRef.current = label;
-          // ORCH-1079 LOCKED dedup guard (§3.C): patch ONLY the address/geo —
-          // NEVER `googlePlaceId`. On the CLAIM path the pool-derived Google id
+          // ORCH-1079 LOCKED dedup guard (§3.C): NEVER patch `googlePlaceId`
+          // (the pool/claim identity). On the CLAIM path the pool-derived id
           // (set by prefillDraftFromPoolMatch) MUST survive a Step-1 address
           // re-pick so `biz_create_venue_brand_authoring` doesn't throw
-          // `place_pool_google_place_id_mismatch`. On the CREATE-NEW path the
-          // store's default `googlePlaceId: null` is preserved → no mapbox_id
-          // (`p.placeId`) ever reaches `brands.google_place_id`.
+          // `place_pool_google_place_id_mismatch`. #4334: the picked Google id
+          // goes to its own field, `locationProviderPlaceId`.
           patch({
             formattedAddress: label,
             lat: p.lat,
             lng: p.lng,
             city: p.city,
             countryCode: p.countryCode,
-            // Issue #1629 — READ the precision from Mapbox's own feature_type
+            // Issue #1629 — READ the precision from the pick's own feature type
             // instead of asserting it. This branch is a REAL PICK, so hardcoding
             // "approximate" made `exact` unreachable everywhere (0 rows in prod).
             coordinatePrecision: precisionFromPlaceDetails(details),
+            locationProviderPlaceId: p.placeId || null,
           });
           savedContextRef.current = {
             city: p.city,

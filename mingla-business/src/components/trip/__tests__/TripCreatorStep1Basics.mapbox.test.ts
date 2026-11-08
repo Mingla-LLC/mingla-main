@@ -2,7 +2,7 @@
  * ORCH-1079 [Business-venue Google→Mapbox sweep] — trip creator swap (T-1A/T-1B/T-1C).
  *
  * Node-env Jest harness (no RN renderer) → source-characterizes the locked swap:
- * both departure + destination fields use the shared MapboxAddressInput, the
+ * both departure + destination fields use the shared AddressInput, the
  * handler bodies are unchanged (placeId/locationText/lat/lng written; cleared to
  * null), and the Google path is fully removed.
  *
@@ -21,18 +21,18 @@ const src = (): string =>
   );
 
 describe("ORCH-1079 — TripCreatorStep1Basics uses the shared Mapbox picker", () => {
-  test("T-1C: imports MapboxAddressInput from components/location and drops the Google path", () => {
+  test("T-1C: imports AddressInput from components/location and drops the Google path", () => {
     const s = src();
     expect(s).toMatch(
-      /import\s*\{[^}]*\bMapboxAddressInput\b[^}]*\}\s*from\s*["'][^"']*location\/MapboxAddressInput["']/,
+      /import\s*\{[^}]*\bMapboxAddressInput\b[^}]*\}\s*from\s*["'][^"']*location\/AddressInput["']/,
     );
     expect(s).not.toContain("AddressAutocompleteInput");
     expect(s).not.toContain("googlePlacesService");
     expect(s).not.toContain("parseGooglePlaceResult");
   });
 
-  test("T-1A: both trip fields render MapboxAddressInput (departure + destination)", () => {
-    const tags = src().match(/<MapboxAddressInput/g) ?? [];
+  test("T-1A: both trip fields render AddressInput (departure + destination)", () => {
+    const tags = src().match(/<AddressInput/g) ?? [];
     expect(tags.length).toBe(2);
   });
 

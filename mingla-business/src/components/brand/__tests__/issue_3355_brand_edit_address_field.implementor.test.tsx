@@ -1,7 +1,7 @@
 /**
  * #3355 P5 (C3) — Brand Edit's address field, rendered.
  *
- * The field is the brand-creation search (`MapboxAddressInput`) with the
+ * The field is the brand-creation search (`AddressInput`) with the
  * brand's saved point for ranking. A legacy free-text address loads as the
  * selected address (no forced re-search); a pick writes address, city,
  * country and point together; "use what you typed" is placed through the
@@ -41,8 +41,8 @@ jest.mock("../../../constants/designSystem", () => ({
   text: { secondary: "grey" },
   typography: { caption: { fontSize: 12 } },
 }));
-jest.mock("../../location/MapboxAddressInput", () => ({
-  MapboxAddressInput: (props: Record<string, unknown>) =>
+jest.mock("../../location/AddressInput", () => ({
+  AddressInput: (props: Record<string, unknown>) =>
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     require("react").createElement("mapbox-address-input", props),
 }));
@@ -52,7 +52,7 @@ jest.mock("../../location/AddressMapPreview", () => ({
     require("react").createElement("address-map-preview", props),
 }));
 const forwardHierarchyMapbox = jest.fn();
-jest.mock("../../../services/mapboxGeocodeService", () => ({
+jest.mock("../../../services/placesService", () => ({
   forwardHierarchyMapbox: (...args: unknown[]) => forwardHierarchyMapbox(...args),
 }));
 

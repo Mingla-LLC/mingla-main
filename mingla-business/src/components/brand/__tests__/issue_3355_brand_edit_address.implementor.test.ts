@@ -11,7 +11,7 @@
  */
 import { describe, expect, test } from "@jest/globals";
 
-import type { PlaceDetails } from "../../../services/mapboxGeocodeService";
+import type { PlaceDetails } from "../../../services/placesService";
 import { mapUiToBrandUpdatePatch } from "../../../services/brandMapping";
 import type { Brand } from "../../../types/brand";
 import {

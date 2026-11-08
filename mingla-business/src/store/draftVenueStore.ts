@@ -139,6 +139,13 @@ export interface DraftVenueState {
    * `?? null` (additive — no persist-version bump).
    */
   coordinatePrecision?: "exact" | "approximate" | null;
+  /**
+   * #4334 — the picked Google place id (never the pool identity in
+   * `googlePlaceId`). Sent to the pool match (direct lookup) and attached to
+   * the venue listing after create so its coordinates can be refreshed.
+   * Optional so older persisted blobs rehydrate as null.
+   */
+  locationProviderPlaceId?: string | null;
   hours: BrandHourEntry[];
   contactEmail: string;
   contactPhone: string;
@@ -242,6 +249,7 @@ const initial: DraftVenueState = {
   city: null,
   countryCode: null,
   coordinatePrecision: null,
+  locationProviderPlaceId: null,
   hours: defaultBrandHoursWeek(),
   contactEmail: "",
   contactPhone: "",
@@ -322,6 +330,7 @@ const pickDraft = (s: DraftVenueState): DraftVenueState => ({
   countryCode: s.countryCode,
   // Issue #1363 — `?? null` tolerates a pre-1363 persisted v3 blob (field absent).
   coordinatePrecision: s.coordinatePrecision ?? null,
+  locationProviderPlaceId: s.locationProviderPlaceId ?? null,
   hours: s.hours,
   contactEmail: s.contactEmail,
   contactPhone: s.contactPhone,

@@ -23,6 +23,7 @@ import { normalizeThemeOverrides } from "./offeringTheme";
 import { brandHoursToRpcPayload } from "../utils/venueBrandHours";
 import { logAppsFlyerEvent } from "./appsFlyerService";
 import { SlugCollisionError } from "./brandsService";
+import { attachLocationPlaceId } from "./locationPlaceIdService";
 import { supabase } from "./supabase";
 
 export interface VenueListing {
@@ -149,6 +150,8 @@ export async function findOwnListingForPlace(
 }
 
 export interface CreateVenueListingInput {
+  /** #4334 — the picked Google place id (not the pool identity). */
+  locationProviderPlaceId?: string | null;
   brandId: string;
   name: string;
   slug: string;
@@ -254,6 +257,8 @@ export async function createVenueListing(
   }
 
   const venueId = data;
+  // #4334 — the picked Google place id, for the 30-day coordinate refresh.
+  await attachLocationPlaceId("venue_listing", venueId, input.locationProviderPlaceId);
   logAppsFlyerEvent("mingla_venue_listing_submitted", { venue_id: venueId });
   await invokeVenueClaimSubmittedEmail(venueId);
   return venueId;

@@ -3,7 +3,7 @@
  * Implementor-owned happy-path guard for the shared keyboard-aware dropdown cap.
  *
  * ROOT CAUSE (proven on a physical Samsung A72): the shared card-mode suggestion
- * list in `packages/location-input/src/MapboxAddressInput.tsx` rendered
+ * list in `packages/location-input/src/AddressInput.tsx` rendered
  * `<Scroll style={{ maxHeight: tokens.dropdown.maxHeight }}>` — with the injected
  * token = 9999 on every business host — so the list laid out as one tall block
  * that overflowed BEHIND the soft keyboard; rows past the keyboard's top edge
@@ -39,7 +39,7 @@ const SRC = (): string =>
   readFileSync(
     path.join(
       process.cwd(),
-      "../packages/location-input/src/MapboxAddressInput.tsx",
+      "../packages/location-input/src/AddressInput.tsx",
     ),
     "utf8",
   );

@@ -47,7 +47,7 @@ import {
   useVenueDetailsForHost,
   useWithdrawVenueDetailsChangeRequest,
 } from "../../hooks/useVenueDetailsEdit";
-import type { PlaceDetails } from "../../services/mapboxGeocodeService";
+import type { PlaceDetails } from "../../services/placesService";
 import type { VenueCategory } from "../../types/brand";
 import { parseVenuePlaceResult } from "../../utils/parseVenuePlaceResult";
 import {
@@ -57,7 +57,7 @@ import {
   resolveFreeTextLocation,
 } from "../../utils/resolveApproxLocation";
 import { VenueCategoryPicker } from "../brand/VenueCategoryPicker";
-import { MapboxAddressInput } from "../location/MapboxAddressInput";
+import { AddressInput } from "../location/AddressInput";
 import { Button } from "../ui/Button";
 import { Input, PHONE_COUNTRIES, type PhoneCountry } from "../ui/Input";
 import {
@@ -511,7 +511,7 @@ export function VenueDetailsEditor({
           )}
 
           <Text style={styles.fieldLabel}>Address</Text>
-          <MapboxAddressInput
+          <AddressInput
             value={identityDraft.addressText}
             allowFreeText
             selectionState={selectionState}
@@ -537,7 +537,7 @@ export function VenueDetailsEditor({
                 countryCode: place.countryCode,
               };
               // Pin and precision travel with the label, from the pick itself
-              // (#1629, #3407). The Mapbox place id is never stored (ORCH-1079).
+              // (#1629, #3407). The place id is never stored in google_place_id (ORCH-1079).
               patchDraft({
                 addressText: label,
                 address: {

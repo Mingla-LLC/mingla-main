@@ -2,7 +2,7 @@
  * ORCH-1079 [Business-venue Google→Mapbox sweep] — brand creation swap (T-2A/T-2B/T-2D).
  *
  * Node-env Jest harness (no RN renderer) → source-characterizes the locked swap:
- * Step 2 address uses the shared MapboxAddressInput; on pick the geo is written
+ * Step 2 address uses the shared AddressInput; on pick the geo is written
  * identically BUT googlePlaceId is forced to null (the mapbox_id `p.placeId` is
  * IGNORED) so a mapbox_id never lands in brands.google_place_id; and the Google
  * path is fully removed.
@@ -22,10 +22,10 @@ const src = (): string =>
   );
 
 describe("ORCH-1079 — BrandCreationFlow uses the shared Mapbox picker", () => {
-  test("T-2D: imports MapboxAddressInput + parseVenuePlaceResult, drops the Google path", () => {
+  test("T-2D: imports AddressInput + parseVenuePlaceResult, drops the Google path", () => {
     const s = src();
     expect(s).toMatch(
-      /import\s*\{[^}]*\bMapboxAddressInput\b[^}]*\}\s*from\s*["'][^"']*location\/MapboxAddressInput["']/,
+      /import\s*\{[^}]*\bMapboxAddressInput\b[^}]*\}\s*from\s*["'][^"']*location\/AddressInput["']/,
     );
     expect(s).toContain("parseVenuePlaceResult");
     expect(s).not.toContain("AddressAutocompleteInput");
@@ -33,8 +33,8 @@ describe("ORCH-1079 — BrandCreationFlow uses the shared Mapbox picker", () => 
     expect(s).not.toContain("parseGooglePlaceResult");
   });
 
-  test("T-2A: renders MapboxAddressInput for the step-2 address field", () => {
-    expect(src()).toContain("<MapboxAddressInput");
+  test("T-2A: renders AddressInput for the step-2 address field", () => {
+    expect(src()).toContain("<AddressInput");
   });
 
   test("T-2B: onPick sets googlePlaceId: null (never the mapbox_id p.placeId)", () => {
