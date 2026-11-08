@@ -404,7 +404,8 @@ export function phase3dContractDigest(manifest) {
 // #1023: re-sealed after merging origin/main 6038982e1a.
 // #4318: register the /links migration (20280508004318) and its implementor and tester PostgreSQL proofs; it joins the pre-#1931 replay skip list by exact filename.
 // #4339: register the Ari draft hand-off migration (20280512004339) and its implementor PostgreSQL proof in the #1857, #1931 and #2117 replay lanes, after merging origin/main 2e6e331749 (#4318).
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "c909487c8448f8f6f1caf9023c5e4afd01441e95e098a48f210278292a9cc9d6";
+// #4339: the #1931 lane skips 20280512004339_issue_4339_site_prompt_drafts.sql by exact filename (#2492 closure guard: CREATE TABLE columns are not credited as definitions).
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "c867973bbbd1e54ab4c471a964a80f1c1ddd6d7431dbd4624fc5cbe245f6c1bd";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
