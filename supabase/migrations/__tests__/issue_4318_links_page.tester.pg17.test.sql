@@ -433,7 +433,7 @@ DECLARE
   v_src text;
 BEGIN
   FOREACH v_fn IN ARRAY ARRAY[
-    'public.admin_links_strip_save(uuid,date,text,text,text,text,uuid)',
+    'public.admin_links_strip_save(uuid,date,text,text,text,text,uuid,date)',
     'public.admin_links_strip_delete(uuid)',
     'public.admin_links_strips_reorder(uuid[])'] LOOP
     SELECT prosrc INTO v_src FROM pg_proc WHERE oid = v_fn::regprocedure;
@@ -627,7 +627,7 @@ BEGIN
     RAISE EXCEPTION 'W: links_page_week result drifted: %', pg_get_function_result('public.links_page_week()'::regprocedure);
   END IF;
   IF pg_get_function_result('public.links_page_strips()'::regprocedure) <>
-     'TABLE(id uuid, shows_on date, title text, label text, opens text, url text, blog_slug text, "position" integer)' THEN
+     'TABLE(id uuid, shows_on date, shows_until date, title text, label text, opens text, url text, blog_slug text, "position" integer)' THEN
     RAISE EXCEPTION 'P: links_page_strips result drifted: %', pg_get_function_result('public.links_page_strips()'::regprocedure);
   END IF;
   IF NOT (SELECT prosecdef FROM pg_proc WHERE oid = 'public.links_page_week()'::regprocedure)

@@ -531,7 +531,7 @@ BEGIN
     RAISE EXCEPTION 'catalog: links_page_strips must be SECURITY INVOKER';
   END IF;
   IF has_function_privilege('anon', 'public.admin_links_strips_list()', 'EXECUTE')
-     OR has_function_privilege('anon', 'public.admin_links_strip_save(uuid,date,text,text,text,text,uuid)', 'EXECUTE')
+     OR has_function_privilege('anon', 'public.admin_links_strip_save(uuid,date,text,text,text,text,uuid,date)', 'EXECUTE')
      OR has_function_privilege('anon', 'public.admin_links_strip_delete(uuid)', 'EXECUTE')
      OR has_function_privilege('anon', 'public.admin_links_strips_reorder(uuid[])', 'EXECUTE') THEN
     RAISE EXCEPTION 'catalog: anon may call an admin RPC';
