@@ -134,7 +134,7 @@ export default function CardInfoSection({
               defaultValue: "Per person",
             })}
             value={
-              // #4347: the viewer reads their own currency first ("≈ $13–$33")
+              // #4347: the viewer reads their own currency first (the ≈ figure)
               // and the venue's own money second, as what it is charged in.
               present(priceDetail.approximate)
                 ? `≈ ${priceDetail.approximate}`

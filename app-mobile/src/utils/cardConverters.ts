@@ -75,7 +75,7 @@ export function curatedToRecommendation(card: any): Recommendation {
     description: card.tagline ?? '',
     // #4347 Decision 2: an AI plan's totals are sums of USD tier constants, not
     // money. The plate shows its spend level (curatedPlanSpans); these carried
-    // strings used to say "$30–$70" to every viewer in every currency, and were
+    // strings used to print a dollar range to every viewer in every currency, and were
     // persisted into Likes and the Calendar. Empty = absent; readers guard it.
     budget: '',
     rating: avgRating,

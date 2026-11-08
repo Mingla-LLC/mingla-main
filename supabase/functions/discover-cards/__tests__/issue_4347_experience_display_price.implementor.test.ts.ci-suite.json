@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/discover-cards/__tests__/issue_4347_experience_display_price.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4347-experience-display-price-implementor",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

@@ -355,7 +355,7 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
 
               // #4347 Decision 2: an AI plan's stop prices are USD tier constants,
               // so the plan shows a SPEND LEVEL, never an amount. The old code
-              // printed the first stop's "$50 – $150" bracket times the USD rate.
+              // printed the first stop's tier bracket times the USD rate.
               const spendLevel = curatedSpendLevel(planVisibleStops(stops));
               const priceText = spendLevel === null
                 ? ""
