@@ -73,8 +73,8 @@
   padding: 14px 16px 12px;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto auto;
-  grid-template-areas: 'ban' 'pin' 'head' 'chips' 'list' 'more' 'foot';
+  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
+  grid-template-areas: 'ban' 'pin' 'head' 'chips' 'list' 'foot';
   row-gap: 14px;
 }
 .lk-left,
@@ -279,6 +279,19 @@
 .chip span {
   color: var(--stone);
 }
+/* Measured chip fit (lib/links-fit.ts chipFitLevel): 1 hides the counts,
+   2 also tightens the chips, so a chip is never clipped. */
+.lk-chips[data-fit='1'] .chip span,
+.lk-chips[data-fit='2'] .chip span {
+  display: none;
+}
+.lk-chips[data-fit='2'] {
+  gap: 4px;
+}
+.lk-chips[data-fit='2'] .chip {
+  padding: 0 8px;
+  letter-spacing: 0.06em;
+}
 .chip[aria-pressed='true'] {
   background: var(--ink);
   color: var(--paper);
@@ -287,9 +300,18 @@
   color: rgba(245, 244, 240, 0.7);
 }
 
-.lk-list {
+/* The listings and their "more" link share one box, so the link sits flush
+   under the last visible strip and any leftover room falls below it. */
+.lk-listwrap {
   grid-area: list;
   position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow: hidden;
+}
+.lk-list {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -297,8 +319,9 @@
   grid-template-columns: minmax(0, 1fr);
   align-content: start;
   gap: 10px;
-  min-height: 0;
-  overflow: hidden;
+}
+.lk-listwrap > .lk-list {
+  flex: none;
 }
 .st {
   width: 100%;
@@ -432,7 +455,7 @@
 }
 
 .lk-more {
-  grid-area: more;
+  flex: none;
   height: 40px;
   border: 0;
   background: none;
@@ -553,6 +576,7 @@
     font-size: 34px;
   }
   .lk-list,
+  .lk-listwrap,
   .lk-pins {
     gap: 12px;
   }
@@ -632,14 +656,8 @@
     line-height: 1.5;
     color: var(--stone);
   }
-  .lk-list {
+  .lk-listwrap {
     flex: 1;
-    gap: 12px;
-  }
-  .lk-more {
-    height: 40px;
-    justify-content: center;
-    flex: none;
   }
   .lk-foot {
     justify-content: flex-start;

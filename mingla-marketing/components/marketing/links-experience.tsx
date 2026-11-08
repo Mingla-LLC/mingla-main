@@ -43,7 +43,16 @@ import {
   LINKS_SOCIALS,
   type LinksSocialId,
 } from '@/lib/links-config'
-import { computeLinksFit, moreLabel, pinsMoreLabel, SHORT_SCREEN_PX, type LinksFit } from '@/lib/links-fit'
+import {
+  chipFitLevel,
+  computeLinksFit,
+  moreLabel,
+  pinsMoreLabel,
+  SHORT_SCREEN_PX,
+  stripsThatFit,
+  type ChipFitLevel,
+  type LinksFit,
+} from '@/lib/links-fit'
 import {
   isPhone,
   linksTargetHrefs,
@@ -297,6 +306,10 @@ export function LinksExperience({ src, nowIso, cities, listings, pins, initialCi
   const leftRef = useRef<HTMLDivElement>(null)
   const pinsRef = useRef<HTMLUListElement>(null)
   const listRef = useRef<HTMLUListElement>(null)
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const moreRef = useRef<HTMLButtonElement>(null)
+  const chipsRef = useRef<HTMLDivElement>(null)
+  const [chipLevel, setChipLevel] = useState<ChipFitLevel>(0)
   const closeRef = useRef<HTMLButtonElement>(null)
   const openerRef = useRef<HTMLElement | null>(null)
   const cityButtonRef = useRef<HTMLButtonElement>(null)
@@ -314,7 +327,21 @@ export function LinksExperience({ src, nowIso, cities, listings, pins, initialCi
   const runFit = useCallback(() => {
     const root = rootRef.current
     const list = listRef.current
-    if (!root || !list) return
+    const wrap = wrapRef.current
+    const moreButton = moreRef.current
+    if (!root || !list || !wrap || !moreButton) return
+
+    // Chips first (their row height is fixed): the first level that does not clip.
+    const chips = chipsRef.current
+    if (chips) {
+      const level = chipFitLevel((next) => {
+        chips.dataset.fit = String(next)
+        return chips.scrollWidth > chips.clientWidth + 0.5
+      })
+      chips.dataset.fit = String(level)
+      setChipLevel(level)
+    }
+
     const strips = Array.from(list.querySelectorAll<HTMLElement>(':scope > li[data-strip]'))
     const group = pinsRef.current
     const pinItems = group ? Array.from(group.querySelectorAll<HTMLElement>(':scope > li[data-pin]')) : []
@@ -331,13 +358,15 @@ export function LinksExperience({ src, nowIso, cities, listings, pins, initialCi
       strips.forEach((li) => {
         li.hidden = false
       })
-      const height = list.clientHeight
-      let n = 0
-      for (const li of strips) {
-        if (li.offsetTop + li.offsetHeight <= height + 0.5) n++
-        else break
-      }
-      return n
+      // The listings and their "more" link share the box: a strip fits when it
+      // AND the link under it fit whole (offsets are relative to the box).
+      const gap = Number.parseFloat(getComputedStyle(wrap).rowGap) || 0
+      return stripsThatFit(
+        strips.map((li) => li.offsetTop + li.offsetHeight),
+        wrap.clientHeight,
+        moreButton.offsetHeight,
+        gap,
+      )
     }
     const result = computeLinksFit({
       pinCount: pinItems.length,
@@ -639,7 +668,7 @@ export function LinksExperience({ src, nowIso, cities, listings, pins, initialCi
             </button>
             <p className={styles['lk-line']}>Find places, events and plans that fit the vibe.</p>
           </header>
-          <div className={styles['lk-chips']} role="group" aria-label="Filter">
+          <div className={styles['lk-chips']} role="group" aria-label="Filter" ref={chipsRef} data-fit={chipLevel}>
             {FILTERS.map((f) => (
               <button
                 key={f.id}
@@ -655,28 +684,31 @@ export function LinksExperience({ src, nowIso, cities, listings, pins, initialCi
               </button>
             ))}
           </div>
-          <ul className={styles['lk-list']} aria-label="Plans" ref={listRef}>
-            {shown.length > 0 ? (
-              shown.map((listing) => strip({ type: 'listing', listing }, listing.id, 'strip'))
-            ) : (
-              <li className={styles['lk-empty']}>
-                <b>A quiet one.</b>
-                No {words.plural} in {city.name} this week yet. Try another city.
-              </li>
-            )}
-          </ul>
-          <button
-            type="button"
-            className={styles['lk-more']}
-            onClick={(event) => {
-              captureMarketing('links_full_week_opened', { city: city.slug, plans: shown.length })
-              openSheet({ kind: 'all' }, event.currentTarget)
-            }}
-          >
-            <u>{more.text}</u>
-            {more.count ? <span>{more.count}</span> : null}
-            <Icon name="right" />
-          </button>
+          <div className={styles['lk-listwrap']} ref={wrapRef}>
+            <ul className={styles['lk-list']} aria-label="Plans" ref={listRef}>
+              {shown.length > 0 ? (
+                shown.map((listing) => strip({ type: 'listing', listing }, listing.id, 'strip'))
+              ) : (
+                <li className={styles['lk-empty']}>
+                  <b>A quiet one.</b>
+                  No {words.plural} in {city.name} this week yet. Try another city.
+                </li>
+              )}
+            </ul>
+            <button
+              type="button"
+              ref={moreRef}
+              className={styles['lk-more']}
+              onClick={(event) => {
+                captureMarketing('links_full_week_opened', { city: city.slug, plans: shown.length })
+                openSheet({ kind: 'all' }, event.currentTarget)
+              }}
+            >
+              <u>{more.text}</u>
+              {more.count ? <span>{more.count}</span> : null}
+              <Icon name="right" />
+            </button>
+          </div>
         </div>
       </div>
       {sheet !== null ? (

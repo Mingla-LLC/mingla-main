@@ -64,3 +64,48 @@ export function pinsMoreLabel(pinCount: number, pinsShown: number): string | nul
   const hidden = Math.max(0, pinCount - pinsShown)
   return hidden > 0 ? `See ${hidden} more from Mingla` : null
 }
+
+// ---------------------------------------------------------------- chips
+
+/** 0 = full chips, 1 = counts hidden, 2 = counts hidden and chips tightened. */
+export type ChipFitLevel = 0 | 1 | 2
+export const CHIP_FIT_LEVELS: readonly ChipFitLevel[] = [0, 1, 2]
+
+/**
+ * The first chip level at which the chip row does not overflow its box, so a
+ * chip is never clipped. `overflowsAt` applies a level and measures.
+ */
+export function chipFitLevel(overflowsAt: (level: ChipFitLevel) => boolean): ChipFitLevel {
+  for (const level of CHIP_FIT_LEVELS) {
+    if (!overflowsAt(level)) return level
+  }
+  return 2
+}
+
+/**
+ * The flush rule's post-condition: once fitted, the room left under the
+ * "more" link is smaller than one strip whenever anything is still hidden.
+ */
+export function leavesStripGap(input: {
+  leftover: number
+  stripStep: number
+  pinsHidden: number
+  listHidden: number
+}): boolean {
+  return input.leftover >= input.stripStep && (input.pinsHidden > 0 || input.listHidden > 0)
+}
+
+/**
+ * How many listing strips fit whole in the listings box when the "more" link
+ * must sit flush under the last one and still fit: `bottoms` are each strip's
+ * bottom edge inside the box (in order), `room` the box height.
+ */
+export function stripsThatFit(bottoms: readonly number[], room: number, moreHeight: number, gap: number): number {
+  const limit = room - moreHeight - gap
+  let n = 0
+  for (const bottom of bottoms) {
+    if (bottom <= limit + 0.5) n++
+    else break
+  }
+  return n
+}

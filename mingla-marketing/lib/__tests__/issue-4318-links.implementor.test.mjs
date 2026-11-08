@@ -281,3 +281,72 @@ test('every tap lands in the right place per device and per strip target', () =>
   assert.equal(handoff.targetApp({ type: 'pin', pin: pin('explorer') }), 'explorer')
   assert.equal(handoff.targetApp({ type: 'pin', pin: pin('web') }), null)
 })
+
+// ---------------------------------------------------------------- flush + chips
+
+// Geometry MEASURED in Chrome on the built page (2026-11-07, 4 admin strips and
+// 12 listings): for each size, the listings box height with s admin strips
+// shown (the "See N more from Mingla" line included while any is folded), the
+// strip height, the gap and the "more" link height.
+const MEASURED = {
+  '320x568': { short: true, desk: false, stripH: 54, gap: 10, moreH: 40, rooms: [157, 93, 29, 0, 0] },
+  '360x640': { short: true, desk: false, stripH: 54, gap: 10, moreH: 40, rooms: [229, 165, 101, 37, 15] },
+  '390x844': { short: false, desk: false, stripH: 60, gap: 10, moreH: 40, rooms: [374, 304, 234, 164, 136] },
+  '820x1180': { short: false, desk: false, stripH: 66, gap: 12, moreH: 40, rooms: [575, 497, 419, 341, 307] },
+  // Desktop: admin strips live in the left column (it never overflowed with 4),
+  // so the listings box is the same whatever the admin strips do.
+  '1440x900': { short: false, desk: true, stripH: 64, gap: 12, moreH: 40, rooms: [437, 437, 437, 437, 437] },
+}
+const PINS = 4
+const LISTINGS = 12
+
+function fitAt(size) {
+  const g = MEASURED[size]
+  const bottoms = Array.from({ length: LISTINGS }, (_, i) => (i + 1) * g.stripH + i * g.gap)
+  const fitList = (shown) => fit.stripsThatFit(bottoms, g.rooms[shown], g.moreH, g.gap)
+  const result = fit.computeLinksFit({
+    pinCount: PINS,
+    listCount: LISTINGS,
+    short: g.short,
+    desk: g.desk,
+    fitList,
+    leftOverflows: () => false,
+  })
+  const used = result.listShown > 0 ? bottoms[result.listShown - 1] + g.gap + g.moreH : g.moreH
+  return { ...result, g, used, leftover: g.rooms[result.pinsShown] - used }
+}
+
+test('flush: the more link sits under the last strip, fits whole, and no strip-height gap is left while anything is hidden', () => {
+  const expected = { '320x568': [0, 1], '360x640': [1, 1], '390x844': [1, 3], '820x1180': [4, 3], '1440x900': [4, 5] }
+  for (const size of Object.keys(MEASURED)) {
+    const r = fitAt(size)
+    assert.deepEqual([r.pinsShown, r.listShown], expected[size], `${size}: admin strips and listings shown`)
+    assert.ok(r.leftover >= 0, `${size}: the more link must fit inside the box (leftover ${r.leftover})`)
+    const gap = fit.leavesStripGap({
+      leftover: r.leftover,
+      stripStep: r.g.stripH + r.g.gap,
+      pinsHidden: r.g.desk ? 0 : PINS - r.pinsShown,
+      listHidden: LISTINGS - r.listShown,
+    })
+    assert.equal(gap, false, `${size}: ${r.leftover}px left under the more link is a whole strip while items are hidden`)
+  }
+})
+
+// Chip row widths MEASURED in Chrome (scrollWidth per fit level vs the row's box).
+const CHIPS = {
+  '320x568': { box: 292, widths: [311, 311, 292] },
+  '360x640': { box: 332, widths: [332, 332, 332] },
+  '390x844': { box: 358, widths: [377, 358, 358] },
+  '820x1180': { box: 576, widths: [576, 576, 576] },
+  '1440x900': { box: 484, widths: [484, 484, 484] },
+}
+
+test('the chip row never overflows: counts hide first, then the chips tighten', () => {
+  const levels = {}
+  for (const [size, c] of Object.entries(CHIPS)) {
+    const level = fit.chipFitLevel((l) => c.widths[l] > c.box + 0.5)
+    levels[size] = level
+    assert.ok(c.widths[level] <= c.box + 0.5, `${size}: chip row overflows at level ${level}`)
+  }
+  assert.deepEqual(levels, { '320x568': 2, '360x640': 0, '390x844': 1, '820x1180': 0, '1440x900': 0 })
+})
