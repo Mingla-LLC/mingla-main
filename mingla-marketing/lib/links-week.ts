@@ -57,6 +57,8 @@ export interface LinksCity extends LinksPoint {
   name: string
   region: string
   timezone: string
+  /** How far a listing may be from the centre and still belong here (registry CITY_HUB_REACH_KM). */
+  reachKm?: number
 }
 
 export interface LinksListing {
@@ -88,6 +90,7 @@ export interface LinksPin {
   position: number
 }
 
+/** The reach of a city that does not state its own (the registry states every one). */
 export const NEAREST_CITY_RADIUS_KM = 60
 export const WEEK_DAYS = 7
 
@@ -102,6 +105,16 @@ function isOneOf<T extends string>(list: readonly T[], value: string): value is 
 }
 
 // ---------------------------------------------------------------- distance
+
+/** The city whose centre is nearest among those whose own reach covers the point. */
+export function owningCity<C extends LinksCity>(cities: readonly C[], point: LinksPoint): { city: C; km: number } | null {
+  let best: { city: C; km: number } | null = null
+  for (const city of cities) {
+    const km = haversineKm(point, city)
+    if (km <= (city.reachKm ?? NEAREST_CITY_RADIUS_KM) && (best === null || km < best.km)) best = { city, km }
+  }
+  return best
+}
 
 /** Great-circle distance in km. */
 export function haversineKm(a: LinksPoint, b: LinksPoint): number {
@@ -208,8 +221,8 @@ export function timeLabel(iso: string, tz: string): string {
 // ---------------------------------------------------------------- rows
 
 /**
- * Listing rows → listings, each assigned to its nearest live city within
- * 60 km. A row with no location, an unknown kind or no slugs is dropped.
+ * Listing rows → listings, each assigned to the nearest city whose own reach
+ * (60 km, Lagos 80 km) covers it. A row with no location, an unknown kind or no slugs is dropped.
  */
 export function bucketListings(rows: readonly LinksWeekRow[], cities: readonly LinksCity[]): LinksListing[] {
   const out: LinksListing[] = []
@@ -220,7 +233,7 @@ export function bucketListings(rows: readonly LinksWeekRow[], cities: readonly L
     if (!row.brand_slug || !row.item_slug || !SLUG.test(row.brand_slug) || !SLUG.test(row.item_slug)) continue
     if (typeof row.lat !== 'number' || typeof row.lng !== 'number') continue
     if (!Number.isFinite(row.lat) || !Number.isFinite(row.lng)) continue
-    const hit = nearestCity(cities, { lat: row.lat, lng: row.lng }, NEAREST_CITY_RADIUS_KM)
+    const hit = owningCity(cities, { lat: row.lat, lng: row.lng })
     if (hit === null) continue
     const startsAt = new Date(row.starts_at).toISOString()
     out.push({
@@ -404,4 +417,21 @@ export function pickerOrder(
   const rows = live.map((l) => ({ ...l, km: geo === null ? null : haversineKm(geo, l.city) }))
   if (geo !== null) rows.sort((a, b) => (a.km ?? 0) - (b.km ?? 0))
   return rows
+}
+
+/**
+ * The empty list's line (#4318 rulings): a city with nothing says so and only
+ * offers another city when one is live; with nothing live anywhere (or a
+ * failed read) it says to check back.
+ */
+export function emptyListText(input: {
+  nothingAnywhere: boolean
+  cityHasListings: boolean
+  cityName: string
+  plural: string
+  otherLiveCity: boolean
+}): string {
+  if (input.nothingAnywhere) return 'Nothing is listed this week yet. Check back soon.'
+  if (input.cityHasListings) return `No ${input.plural} listed in ${input.cityName} this week yet.`
+  return `Nothing is listed in ${input.cityName} this week yet.${input.otherLiveCity ? ' Try another city.' : ''}`
 }

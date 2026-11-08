@@ -53,7 +53,7 @@ const stores = await load('store-links')
 // ---------------------------------------------------------------- fixtures
 
 const CITIES = [
-  { slug: 'lagos', name: 'Lagos', region: 'Nigeria', timezone: 'Africa/Lagos', lat: 6.4281, lng: 3.4219 },
+  { slug: 'lagos', name: 'Lagos', region: 'Nigeria', timezone: 'Africa/Lagos', lat: 6.4281, lng: 3.4219, reachKm: 80 },
   { slug: 'durham-nc', name: 'Durham', region: 'North Carolina', timezone: 'America/New_York', lat: 35.994, lng: -78.8986 },
   { slug: 'cary-nc', name: 'Cary', region: 'North Carolina', timezone: 'America/New_York', lat: 35.7915, lng: -78.7811 },
   { slug: 'raleigh-nc', name: 'Raleigh', region: 'North Carolina', timezone: 'America/New_York', lat: 35.7796, lng: -78.6382 },
@@ -317,7 +317,8 @@ function fitAt(size) {
 }
 
 test('flush: the more link sits under the last strip, fits whole, and no strip-height gap is left while anything is hidden', () => {
-  const expected = { '320x568': [0, 1], '360x640': [1, 1], '390x844': [1, 3], '820x1180': [4, 3], '1440x900': [4, 5] }
+  // 320x568: at least one admin strip always shows (#4318 ruling), so no listing fits there.
+  const expected = { '320x568': [1, 0], '360x640': [1, 1], '390x844': [1, 3], '820x1180': [4, 3], '1440x900': [4, 5] }
   for (const size of Object.keys(MEASURED)) {
     const r = fitAt(size)
     assert.deepEqual([r.pinsShown, r.listShown], expected[size], `${size}: admin strips and listings shown`)
@@ -368,4 +369,28 @@ test('leftover room never sits as one blank block: it spreads evenly over the se
   assert.deepEqual(fit.spreadLeftover(-3, 5), { perGap: 0, bottom: 0 })
   // Sub-pixel: a strip 1.5px past the line still fits (2px tolerance).
   assert.equal(fit.stripsThatFit([54, 118], 118 + 10 + 40 + 1.5 - 1.5 - 1.5, 40, 10), 2)
+})
+
+test('rulings: Lagos reaches 80 km, admin strips always first, and the empty copy', () => {
+  // Lekki Free Trade Zone is ~70 km from the Lagos centre: Lagos, not dropped.
+  const [ftz] = week.bucketListings([row({ lat: 6.4526, lng: 4.057, tz: 'Africa/Lagos', item_slug: 'ftz' })], CITIES)
+  assert.equal(ftz?.citySlug, 'lagos')
+  // 80.5 km out of Lagos is still dropped; another city keeps its 60 km.
+  assert.equal(week.bucketListings([row({ lat: 6.4281 + 80.5 / 111.2, lng: 3.4219 })], CITIES).length, 0)
+
+  // At least one admin strip whenever any exist, even when it costs the floor.
+  assert.deepEqual(fitAt('320x568').pinsShown, 1)
+  // 0 listings and 10 admin strips: they fill what fits, the rest fold.
+  const none = fit.computeLinksFit({ pinCount: 10, listCount: 0, short: true, desk: false, fitList: () => 0, leftOverflows: (n) => n > 4 })
+  assert.deepEqual(none, { pinsShown: 4, listShown: 0 })
+  assert.equal(fit.pinsMoreLabel(10, none.pinsShown), 'See 6 more from Mingla')
+  // Even the first admin strip folds if it alone would clip something.
+  assert.equal(fit.computeLinksFit({ pinCount: 3, listCount: 0, short: true, desk: false, fitList: () => 0, leftOverflows: () => true }).pinsShown, 0)
+
+  // Empty copy.
+  const text = (over) => week.emptyListText({ nothingAnywhere: false, cityHasListings: false, cityName: 'Cary', plural: 'plans', otherLiveCity: true, ...over })
+  assert.equal(text({}), 'Nothing is listed in Cary this week yet. Try another city.')
+  assert.equal(text({ otherLiveCity: false }), 'Nothing is listed in Cary this week yet.')
+  assert.equal(text({ nothingAnywhere: true }), 'Nothing is listed this week yet. Check back soon.')
+  assert.equal(text({ cityHasListings: true, plural: 'trips' }), 'No trips listed in Cary this week yet.')
 })

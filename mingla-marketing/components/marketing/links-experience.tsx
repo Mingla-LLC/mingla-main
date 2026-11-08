@@ -27,7 +27,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type KeyboardEvent,
   type MouseEvent,
   type ReactNode,
   type RefObject,
@@ -64,6 +63,7 @@ import {
 import {
   cityWeek,
   distanceLabel,
+  emptyListText,
   listingDayKey,
   listingWhen,
   liveCities,
@@ -289,9 +289,20 @@ export interface LinksExperienceProps {
   pins: LinksPin[]
   initialCity: string
   visitor: { point: LinksPoint | null; useMiles: boolean }
+  /** A database read failed (logged on the server): nothing can be listed. */
+  readFailed?: boolean
 }
 
-export function LinksExperience({ src, nowIso, cities, listings, pins, initialCity, visitor }: LinksExperienceProps) {
+export function LinksExperience({
+  src,
+  nowIso,
+  cities,
+  listings,
+  pins,
+  initialCity,
+  visitor,
+  readFailed = false,
+}: LinksExperienceProps) {
   const [citySlug, setCitySlug] = useState(initialCity)
   const [filter, setFilter] = useState<Filter>('all')
   const [sheet, setSheet] = useState<SheetState | null>(null)
@@ -311,6 +322,8 @@ export function LinksExperience({ src, nowIso, cities, listings, pins, initialCi
   const moreRef = useRef<HTMLButtonElement>(null)
   const chipsRef = useRef<HTMLDivElement>(null)
   const [chipLevel, setChipLevel] = useState<ChipFitLevel>(0)
+  // Strips stay invisible until the first measured fit, so none paints cut off.
+  const [fitted, setFitted] = useState(false)
   const closeRef = useRef<HTMLButtonElement>(null)
   const openerRef = useRef<HTMLElement | null>(null)
   const cityButtonRef = useRef<HTMLButtonElement>(null)
@@ -329,8 +342,9 @@ export function LinksExperience({ src, nowIso, cities, listings, pins, initialCi
     const root = rootRef.current
     const list = listRef.current
     const wrap = wrapRef.current
+    // The "more" link is absent when the city has no listings.
     const moreButton = moreRef.current
-    if (!root || !list || !wrap || !moreButton) return
+    if (!root || !list || !wrap) return
     const grid = wrap.closest<HTMLElement>('[data-pins]')
     // Measure with no spread room, then spread what the maximal fit leaves.
     grid?.style.setProperty('--fill', '0px')
@@ -369,19 +383,27 @@ export function LinksExperience({ src, nowIso, cities, listings, pins, initialCi
       return stripsThatFit(
         strips.map((li) => li.offsetTop + li.offsetHeight),
         wrap.clientHeight,
-        moreButton.offsetHeight,
-        gap,
+        moreButton?.offsetHeight ?? 0,
+        moreButton ? gap : 0,
       )
     }
+    const desk = left !== null && getComputedStyle(left).display !== 'contents'
     const result = computeLinksFit({
       pinCount: pinItems.length,
       listCount: strips.length,
       short: root.clientHeight < SHORT_SCREEN_PX,
-      desk: left !== null && getComputedStyle(left).display !== 'contents',
+      desk,
       fitList,
       leftOverflows: (count) => {
         applyPins(count)
-        return left !== null && left.scrollHeight > left.clientHeight + 1
+        if (desk) return left !== null && left.scrollHeight > left.clientHeight + 1
+        // Phones and tablet: with no listing shown, does everything else still
+        // fit whole (city, chips, the more link or empty state, socials)?
+        strips.forEach((li) => {
+          li.hidden = true
+        })
+        const pageOverflows = grid !== null && grid.scrollHeight > grid.clientHeight + 1
+        return pageOverflows || wrap.scrollHeight > wrap.clientHeight + 1
       },
     })
     applyPins(result.pinsShown)
@@ -390,8 +412,9 @@ export function LinksExperience({ src, nowIso, cities, listings, pins, initialCi
     })
     // Phones and tablet: spread the leftover over the section gaps (desktop
     // centres its columns instead).
-    if (grid && left !== null && getComputedStyle(left).display === 'contents') {
-      const leftover = wrap.clientHeight - (moreButton.offsetTop + moreButton.offsetHeight)
+    if (grid && !desk) {
+      const last = moreButton ?? list
+      const leftover = wrap.clientHeight - (last.offsetTop + last.offsetHeight)
       const sections = Array.from(grid.querySelectorAll<HTMLElement>(':scope > div > *')).filter(
         (el) => getComputedStyle(el).display !== 'none',
       ).length
@@ -400,6 +423,7 @@ export function LinksExperience({ src, nowIso, cities, listings, pins, initialCi
       grid.style.setProperty('--fill-bottom', `${spread.bottom}px`)
     }
     setFit((prev) => (prev.pinsShown === result.pinsShown && prev.listShown === result.listShown ? prev : result))
+    setFitted(true)
   }, [])
 
   // Every commit can change the strips (city, filter, data), so measure after each.
@@ -445,12 +469,44 @@ export function LinksExperience({ src, nowIso, cities, listings, pins, initialCi
     })
   }, [sheet])
 
-  const onRootKeyDown = (event: KeyboardEvent<HTMLElement>) => {
-    if (event.key === 'Escape' && sheet !== null) {
-      event.stopPropagation()
-      closeSheet()
+  // While a sheet is open the DOCUMENT listens, so Escape works wherever focus
+  // is (the sheet title, blank sheet space, the consent bar), and Tab /
+  // Shift+Tab stay inside the dialog.
+  useEffect(() => {
+    if (sheet === null) return
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      const dialog = rootRef.current?.querySelector<HTMLElement>('[role="dialog"]')
+      if (!dialog) return
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        event.stopPropagation()
+        closeSheet()
+        return
+      }
+      if (event.key === 'Tab') trapTab(dialog, event)
     }
-  }
+    const trapTab = (dialog: HTMLElement, event: globalThis.KeyboardEvent) => {
+      const focusables = Array.from(
+        dialog.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'),
+      ).filter((el) => el.offsetParent !== null || el === document.activeElement)
+      if (focusables.length === 0) return
+      const first = focusables[0]
+      const last = focusables[focusables.length - 1]
+      const active = document.activeElement
+      const inside = active instanceof Node && dialog.contains(active) && active !== dialog
+      if (event.shiftKey) {
+        if (!inside || active === first) {
+          event.preventDefault()
+          last.focus({ preventScroll: true })
+        }
+      } else if (!inside || active === last) {
+        event.preventDefault()
+        first.focus({ preventScroll: true })
+      }
+    }
+    document.addEventListener('keydown', onKey, true)
+    return () => document.removeEventListener('keydown', onKey, true)
+  }, [sheet, closeSheet])
 
   // ---- taps
   const onTap = (target: LinksTarget, event: MouseEvent<HTMLAnchorElement>) => {
@@ -589,6 +645,14 @@ export function LinksExperience({ src, nowIso, cities, listings, pins, initialCi
   const more = moreLabel(shown.length, fit.listShown)
   const pinsMore = pinsMoreLabel(week.pins.length, fit.pinsShown)
   const words = FILTERS.find((f) => f.id === filter) ?? FILTERS[0]
+  const otherLiveCity = live.some((l) => l.city.slug !== city.slug && l.count > 0)
+  const emptyText = emptyListText({
+    nothingAnywhere: readFailed || live.every((l) => l.count === 0),
+    cityHasListings: week.listings.length > 0,
+    cityName: city.name,
+    plural: words.plural,
+    otherLiveCity,
+  })
 
   const cityList = () => {
     const rows = pickerOrder(live.length > 0 ? live : cities.map((c) => ({ city: c, count: 0 })), visitor.point)
@@ -619,10 +683,14 @@ export function LinksExperience({ src, nowIso, cities, listings, pins, initialCi
     <main
       id="main"
       ref={rootRef}
-      onKeyDown={onRootKeyDown}
+      data-fitted={fitted ? '1' : '0'}
       className={cn(styles.lk, 'h-[calc(100svh-var(--mingla-privacy-inset,0px))] overflow-hidden')}
       style={{ height: 'calc(100dvh - var(--mingla-privacy-inset, 0px))' }}
     >
+      {/* Without scripts the fit never runs: show everything rather than nothing. */}
+      <noscript>
+        <style>{`#main[data-fitted='0'] [data-fit-gate]{visibility:visible!important}`}</style>
+      </noscript>
       <div className={styles['lk-bar']} inert={sheet !== null}>
         {/* eslint-disable-next-line @next/next/no-img-element -- a 7 KB brand SVG; the image optimiser does not serve SVG */}
         <img src="/brand/links/mingla-wordmark-white.svg" alt="Mingla" width={68} height={24} />
@@ -638,7 +706,7 @@ export function LinksExperience({ src, nowIso, cities, listings, pins, initialCi
             {banner('host')}
           </div>
           {week.pins.length > 0 ? (
-            <ul className={styles['lk-pins']} aria-label="From Mingla" ref={pinsRef}>
+            <ul className={styles['lk-pins']} aria-label="From Mingla" ref={pinsRef} data-fit-gate="">
               {week.pins.map((pin) => strip({ type: 'pin', pin }, pin.id, 'pin'))}
               <li className={styles['pins-more']} data-pins-more="" hidden>
                 <button
@@ -704,30 +772,32 @@ export function LinksExperience({ src, nowIso, cities, listings, pins, initialCi
               </button>
             ))}
           </div>
-          <div className={styles['lk-listwrap']} ref={wrapRef}>
+          <div className={styles['lk-listwrap']} ref={wrapRef} data-fit-gate="">
             <ul className={styles['lk-list']} aria-label="Plans" ref={listRef}>
               {shown.length > 0 ? (
                 shown.map((listing) => strip({ type: 'listing', listing }, listing.id, 'strip'))
               ) : (
                 <li className={styles['lk-empty']}>
                   <b>A quiet one.</b>
-                  No {words.plural} in {city.name} this week yet. Try another city.
+                  {emptyText}
                 </li>
               )}
             </ul>
-            <button
-              type="button"
-              ref={moreRef}
-              className={styles['lk-more']}
-              onClick={(event) => {
-                captureMarketing('links_full_week_opened', { city: city.slug, plans: shown.length })
-                openSheet({ kind: 'all' }, event.currentTarget)
-              }}
-            >
-              <u>{more.text}</u>
-              {more.count ? <span>{more.count}</span> : null}
-              <Icon name="right" />
-            </button>
+            {week.listings.length > 0 ? (
+              <button
+                type="button"
+                ref={moreRef}
+                className={styles['lk-more']}
+                onClick={(event) => {
+                  captureMarketing('links_full_week_opened', { city: city.slug, plans: shown.length })
+                  openSheet({ kind: 'all' }, event.currentTarget)
+                }}
+              >
+                <u>{more.text}</u>
+                {more.count ? <span>{more.count}</span> : null}
+                <Icon name="right" />
+              </button>
+            ) : null}
           </div>
         </div>
       </div>
@@ -1044,7 +1114,13 @@ function Sheet({ sheet, closeRef, onClose, city, src, week, shown, words, hasVis
   return (
     <div className={styles['sh-wrap']}>
       <button type="button" className={styles['sh-scrim']} aria-label="Close" tabIndex={-1} onClick={onClose} />
-      <section className={cn(styles.sh, tall && styles['is-tall'])} role="dialog" aria-modal="true" aria-label={label}>
+      <section
+        className={cn(styles.sh, tall && styles['is-tall'])}
+        role="dialog"
+        aria-modal="true"
+        aria-label={label}
+        tabIndex={-1}
+      >
         <span className={styles['sh-grab']} aria-hidden="true" />
         <div className={styles['sh-head']}>
           <div>

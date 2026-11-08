@@ -15,7 +15,7 @@
 
 import { cookies, headers } from 'next/headers'
 import { LinksExperience } from '@/components/marketing/links-experience'
-import { CITY_HUB_CENTRES, CITY_HUB_REGIONS, CITY_HUBS } from '@/content/cities/registry'
+import { CITY_HUB_CENTRES, CITY_HUB_REACH_KM, CITY_HUB_REGIONS, CITY_HUBS } from '@/content/cities/registry'
 import { LINKS_CITY_COOKIE } from '@/lib/links-config'
 import { getLinksData } from '@/lib/links-data'
 import { sanitizeLinksSrc } from '@/lib/links-src'
@@ -50,6 +50,7 @@ function registryCities(): LinksCity[] {
     name: hub.city,
     region: CITY_HUB_REGIONS[hub.slug],
     timezone: hub.timezone,
+    reachKm: CITY_HUB_REACH_KM[hub.slug],
     ...CITY_HUB_CENTRES[hub.slug],
   }))
 }
@@ -89,6 +90,7 @@ export default async function LinksPage({
         pins={pins}
         initialCity={initial.slug}
         visitor={{ point: geo, useMiles: requestHeaders.get('x-vercel-ip-country') === 'US' }}
+        readFailed={data.failed.length > 0}
       />
     </div>
   )

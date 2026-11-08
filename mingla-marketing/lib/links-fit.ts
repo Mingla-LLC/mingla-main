@@ -3,10 +3,11 @@
 // The page never scrolls. After layout (and after fonts load, and on every
 // resize) the page measures:
 //
-//   phones and tablet: admin strips come first. Show every admin strip while at
-//     least 3 listing strips (1 on a screen under 700 px tall, or all of them
-//     when there are fewer) still fit whole; past that, fold the remaining
-//     admin strips into "See N more from Mingla".
+//   phones and tablet: admin strips come first. At least 1 shows whenever any
+//     exist (at every size). More show while at least 3 listing strips (1 on a
+//     screen under 700 px tall, or all of them when there are fewer; none when
+//     the city has no listings) still fit whole AND nothing below them is
+//     pushed off the screen; the rest fold into "See N more from Mingla".
 //   desktop: admin strips sit in the left column under the banners and fold
 //     only when that column runs out of room.
 //
@@ -27,7 +28,11 @@ export interface LinksFitProbe {
   desk: boolean
   /** With `shownPins` admin strips visible: how many listing strips fit whole. */
   fitList: (shownPins: number) => number
-  /** With `shownPins` admin strips visible: does the desktop left column overflow. */
+  /**
+   * With `shownPins` admin strips visible: is anything clipped or pushed off the
+   * screen? Desktop: the left column overflows. Phones and tablet: the page (city
+   * switcher, chips, the "more" link or empty state, socials) no longer fits.
+   */
   leftOverflows: (shownPins: number) => boolean
 }
 
@@ -46,7 +51,11 @@ export function computeLinksFit(probe: LinksFitProbe): LinksFit {
   if (probe.desk) {
     while (shown > 0 && probe.leftOverflows(shown)) shown--
   } else {
-    while (shown > 0 && probe.fitList(shown) < need) shown--
+    // Admin strips first: keep at least one, then only as many as leave the
+    // listing floor and the rest of the page whole.
+    while (shown > 1 && (probe.leftOverflows(shown) || probe.fitList(shown) < need)) shown--
+    // Never clip: even the first admin strip folds if it alone would overflow.
+    if (shown === 1 && probe.leftOverflows(1)) shown = 0
   }
   return { pinsShown: shown, listShown: Math.min(probe.listCount, probe.fitList(shown)) }
 }

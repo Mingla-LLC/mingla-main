@@ -74,6 +74,22 @@ export const CITY_HUB_CENTRES: Readonly<Record<CityHubSlug, Readonly<{ lat: numb
   'washington-dc': { lat: 38.9072, lng: -77.0369 },
 }
 
+// #4318 — how far from its centre a listing still belongs to each city (km).
+// Lagos reaches 80 km because the metro and the Lekki coast sprawl (Ibeju-Lekki
+// and the Lekki Free Trade Zone); every other city reaches 60 km.
+export const CITY_HUB_REACH_KM: Readonly<Record<CityHubSlug, number>> = {
+  lagos: 80,
+  'durham-nc': 60,
+  'cary-nc': 60,
+  'raleigh-nc': 60,
+  'new-york-city': 60,
+  brussels: 60,
+  paris: 60,
+  london: 60,
+  'fort-lauderdale': 60,
+  'washington-dc': 60,
+}
+
 // #4318 — the region line under each city in the /links city picker.
 export const CITY_HUB_REGIONS: Readonly<Record<CityHubSlug, string>> = {
   lagos: 'Nigeria',

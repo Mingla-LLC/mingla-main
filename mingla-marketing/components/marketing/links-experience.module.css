@@ -307,6 +307,12 @@
   color: rgba(245, 244, 240, 0.7);
 }
 
+/* No strip paints cut off before the first measured fit (a <noscript> rule
+   in the component shows everything when scripts never run). */
+.lk[data-fitted='0'] [data-fit-gate] {
+  visibility: hidden;
+}
+
 /* The listings and their "more" link share one box, so the link sits flush
    under the last visible strip and any leftover room falls below it. */
 .lk-listwrap {
@@ -545,6 +551,16 @@
   }
   .bn-txt b {
     font-size: 19px;
+  }
+  /* Short screens with admin strips: the empty state shrinks to its one line
+     so the first admin strip always has room (#4318 ruling). */
+  .lk-empty {
+    padding: 10px 14px;
+    border-radius: 18px;
+    font-size: 13px;
+  }
+  .lk-grid[data-pins='1'] .lk-empty b {
+    display: none;
   }
 }
 @container lk (max-width: 380px) {

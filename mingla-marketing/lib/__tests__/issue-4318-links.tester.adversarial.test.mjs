@@ -67,13 +67,17 @@ const REGISTRY = read('content/cities/registry.ts')
 function registryCities() {
   const centres = REGISTRY.match(/CITY_HUB_CENTRES[^=]*=\s*\{([\s\S]*?)\n\}/)[1]
   const regions = REGISTRY.match(/CITY_HUB_REGIONS[^=]*=\s*\{([\s\S]*?)\n\}/)[1]
+  // Conductor ruling (#4318, 3): each city owns its reach in the registry (Lagos 80 km).
+  const reaches = REGISTRY.match(/CITY_HUB_REACH_KM[^=]*=\s*\{([\s\S]*?)\n\}/)[1]
   const cities = []
   for (const m of centres.matchAll(/'?([a-z0-9-]+)'?:\s*\{\s*lat:\s*(-?[\d.]+),\s*lng:\s*(-?[\d.]+)\s*\}/g)) {
     const slug = m[1]
     const rec = REGISTRY.match(new RegExp(`slug: '${slug}', city: '([^']+)'[^\\n]*?timezone: '([^']+)'`))
     const region = regions.match(new RegExp(`'?${slug}'?:\\s*'([^']+)'`))
     assert.ok(rec && region, `registry record for ${slug}`)
-    cities.push({ slug, name: rec[1], region: region[1], timezone: rec[2], lat: Number(m[2]), lng: Number(m[3]) })
+    const reach = reaches.match(new RegExp(`'?${slug}'?:\\s*(\\d+)`))
+    assert.ok(reach, `registry reach for ${slug}`)
+    cities.push({ slug, name: rec[1], region: region[1], timezone: rec[2], lat: Number(m[2]), lng: Number(m[3]), reachKm: Number(reach[1]) })
   }
   return cities
 }
@@ -253,10 +257,13 @@ test('a remembered cookie for a city that is no longer live is ignored, unless n
 
 // ================================================================= 2. nearest-city bucketing
 
-test('the 60 km edge: just inside is kept, just outside is dropped, in every direction', () => {
+test('each city\u2019s reach edge (60 km, Lagos 80 km): just inside is kept, just outside is dropped', () => {
+  // Conductor ruling (#4318, 3): the edge is the city's own registry reach.
+  assert.equal(city('lagos').reachKm, 80)
   for (const c of CITIES) {
-    const inside = northOf(c, 59.9)
-    const outside = northOf(c, 60.1)
+    if (c.slug !== 'lagos') assert.equal(c.reachKm, 60, c.slug)
+    const inside = northOf(c, c.reachKm - 0.1)
+    const outside = northOf(c, c.reachKm + 0.1)
     // Only test a city whose 60 km ring does not reach another city's ring.
     const neighbour = week.nearestCity(CITIES.filter((x) => x.slug !== c.slug), outside)
     if (neighbour.km < 70) continue
@@ -264,7 +271,7 @@ test('the 60 km edge: just inside is kept, just outside is dropped, in every dir
     assert.deepEqual(
       got.map((l) => [l.itemSlug, l.citySlug]),
       [['in', c.slug]],
-      `${c.slug}: 59.9 km kept, 60.1 km dropped`,
+      `${c.slug}: ${c.reachKm - 0.1} km kept, ${c.reachKm + 0.1} km dropped`,
     )
   }
   // Exactly on the line: the radius is inclusive (km <= 60).
@@ -578,10 +585,12 @@ test('fit: 0, 1 and 40 listings against 0 and 10 admin strips, tall and short sc
   assert.equal(fit.pinsMoreLabel(0, 0), null)
   // One listing: it is the floor, so admin strips fold to keep it.
   assert.deepEqual(phoneFit({ room: 4, pins: 10, list: 1 }), { pinsShown: 3, listShown: 1 })
-  assert.deepEqual(phoneFit({ room: 1, pins: 10, list: 1, short: true }), { pinsShown: 0, listShown: 1 })
+  // Conductor ruling (#4318, 2): at least one admin strip always shows when any
+  // exist and nothing would be clipped, even at the cost of the listing floor.
+  assert.deepEqual(phoneFit({ room: 1, pins: 10, list: 1, short: true }), { pinsShown: 1, listShown: 0 })
   assert.equal(fit.pinsMoreLabel(10, 0), 'See 10 more from Mingla')
   // A screen so small that even the one listing cannot fit: zero, never negative.
-  assert.deepEqual(phoneFit({ room: 0, pins: 10, list: 1, short: true }), { pinsShown: 0, listShown: 0 })
+  assert.deepEqual(phoneFit({ room: 0, pins: 10, list: 1, short: true }), { pinsShown: 1, listShown: 0 })
   assert.deepEqual(fit.moreLabel(1, 0), { hidden: 1, text: 'See 1 more', count: '1 this week' })
   // Forty listings: the floor of 3 holds on a tall phone, 1 on a short one.
   assert.deepEqual(phoneFit({ room: 4, pins: 10, list: 40 }), { pinsShown: 1, listShown: 3 })
