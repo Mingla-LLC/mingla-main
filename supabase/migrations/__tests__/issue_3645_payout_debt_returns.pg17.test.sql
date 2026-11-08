@@ -226,6 +226,17 @@ BEGIN
     RAISE EXCEPTION '% I1 broken: debt % recovered % but applications withhold %',
       p_label, v_bad.id, v_bad.recovered_cents, v_bad.effective;
   END IF;
+  -- I2: the attach-time columns still equal Σ(amount − converted), so moving
+  -- the projection from the columns to the applications changed nothing.
+  IF EXISTS (
+    SELECT 1 FROM public.brand_payout_releases r
+    WHERE r.brand_id IN (SELECT id FROM public.brands WHERE slug LIKE 'issue-3645-2d-%')
+      AND r.permanent_debt_withheld_cents + r.temporary_debt_withheld_cents
+        <> coalesce((SELECT sum(a.amount_cents - a.converted_cents)
+                     FROM public.payout_debt_applications a WHERE a.release_id = r.id), 0)
+  ) THEN
+    RAISE EXCEPTION '% I2 broken: stored withheld columns disagree with the applications', p_label;
+  END IF;
   -- I3: no unpaid release withholds more than its items cover after settling.
   IF EXISTS (
     SELECT 1 FROM public.brand_payout_releases r
@@ -531,8 +542,81 @@ BEGIN
     RAISE EXCEPTION 'T10 next tick: returned %', pg_temp.returned(v_f, v_r4, 'matured');
   END IF;
   PERFORM pg_temp.assert_i1('T10');
+
+  -- I4: every matured postponement debt is fully accounted for: recredits +
+  -- 'matured' returns + writeoff = principal (nothing paid twice, nothing lost).
+  IF EXISTS (
+    SELECT 1 FROM public.organiser_payout_debts d
+    WHERE d.id IN (v_q, v_t, v_s, v_f)
+      AND d.principal_cents <> (
+        SELECT coalesce(sum(adj.amount_cents), 0) FROM public.payout_ledger_adjustments adj
+        WHERE adj.kind = 'maturity_recredit'
+          AND adj.idempotency_key IN (
+            SELECT 'postpone-recredit:' || a.id FROM public.payout_debt_applications a
+            WHERE a.debt_id = d.id)
+      ) + (
+        SELECT coalesce(sum(ret.amount_cents), 0) FROM public.payout_debt_application_returns ret
+        WHERE ret.debt_id = d.id AND ret.reason = 'matured'
+      ) + (
+        SELECT coalesce(sum(adj.amount_cents), 0) FROM public.payout_ledger_adjustments adj
+        WHERE adj.kind = 'debt_writeoff' AND adj.release_id = d.origin_release_id
+      )
+  ) THEN
+    RAISE EXCEPTION 'I4 broken: a matured debt is not fully accounted for';
+  END IF;
 END
 $t7$;
+
+-- T10b: a hold and maturity end in the same state whichever lands first.
+-- Brand 10 settles the hold, then matures; brand 11 matures first (the hold
+-- was recorded but its refresh had not run).
+DO $t10b$
+DECLARE
+  v_b integer;
+  v_perm uuid[];
+  v_temp uuid[];
+  v_rel uuid[];
+  v_state text[];
+BEGIN
+  FOREACH v_b IN ARRAY ARRAY[10, 11] LOOP
+    PERFORM pg_temp.brand(v_b);
+    v_perm := v_perm || pg_temp.debt(v_b, 1, 3000, timestamptz '2026-10-01 00:00:00+00');
+    v_temp := v_temp || pg_temp.temp_debt(v_b, 2, 4000, timestamptz '2026-10-25 00:00:00+00');
+    v_rel := v_rel || pg_temp.stay(v_b, 1);
+  END LOOP;
+
+  -- Brand 10: the hold is settled by its refresh before maturity.
+  PERFORM pg_temp.dispute(10, 1, 'dp_3645d_10', 9000, 'needs_response');
+  -- Brand 11: the hold is recorded, but its refresh has not run yet.
+  INSERT INTO public.stay_payout_release_holds(
+    release_id, line_id, kind, refunded_cents, disputed_cents, net_hold_cents,
+    provider_ref, idempotency_key
+  ) VALUES (
+    v_rel[2], pg_temp.uid(5, 11, 1), 'dispute_opened', 0, 9000, 9000,
+    'dp_3645d_11', 'issue-3645-2d-hold-11'
+  );
+  -- Maturity reaches both; then the planner's pass settles whatever is left.
+  PERFORM public.mature_postponement_debts(timestamptz '2026-10-29 00:00:00+00');
+  PERFORM public.plan_pending_payout_partner_legs(500);
+
+  FOR i IN 1..2 LOOP
+    v_state := v_state || concat_ws('|',
+      'temp hold ' || pg_temp.returned(v_temp[i], v_rel[i], 'hold'),
+      'temp matured ' || pg_temp.returned(v_temp[i], v_rel[i], 'matured'),
+      'perm hold ' || pg_temp.returned(v_perm[i], v_rel[i], 'hold'),
+      'writeoff ' || pg_temp.adj(pg_temp.uid(7, 9 + i, 2), 'debt_writeoff'),
+      'recredit ' || pg_temp.adj(v_rel[i], 'maturity_recredit'),
+      'net ' || (pg_temp.rel(v_rel[i])).net_release_cents,
+      'perm ' || (pg_temp.d(v_perm[i])).status || ' ' || (pg_temp.d(v_perm[i])).recovered_cents,
+      'temp ' || (pg_temp.d(v_temp[i])).status
+    );
+  END LOOP;
+  IF v_state[1] <> v_state[2]
+     OR v_state[1] <> 'temp hold 4000|temp matured 0|perm hold 2000|writeoff 4000|recredit 0|net 0|perm open 1000|temp closed' THEN
+    RAISE EXCEPTION 'T10b order changed the ledger: settle-first % / mature-first %', v_state[1], v_state[2];
+  END IF;
+END
+$t10b$;
 
 -- T11-T13: guards, partner legs, the Paystack refresh and the planner fallback.
 DO $t11$
@@ -598,6 +682,52 @@ BEGIN
   PERFORM pg_temp.assert_i1('T12');
 END
 $t11$;
+
+-- T12c (known gap, pinned): a Paystack claim plans organiser legs before it
+-- authorizes. While a never-sent organiser leg stays 'planned', the release
+-- is not settleable: a hold leaves its debt counted as recovered, and
+-- maturity books today's recredit. Voiding unsent legs when the release goes
+-- back to pending is tracked on #3645 (a re-claim reuses those legs at their
+-- old principal, so returning debt here would not change what is paid).
+DO $t12c$
+DECLARE
+  v_debt uuid;
+  v_temp uuid;
+  v_r uuid;
+BEGIN
+  PERFORM pg_temp.brand(12);
+  v_debt := pg_temp.debt(12, 1, 3000, timestamptz '2026-10-01 00:00:00+00');
+  v_temp := pg_temp.temp_debt(12, 2, 1000, timestamptz '2026-10-25 00:00:00+00');
+  v_r := pg_temp.stay(12, 1);
+  INSERT INTO public.stay_payout_release_holds(
+    release_id, line_id, kind, refunded_cents, disputed_cents, net_hold_cents,
+    provider_ref, idempotency_key
+  ) VALUES (
+    v_r, pg_temp.uid(5, 12, 1), 'dispute_opened', 0, 9000, 9000, 'dp_3645d_12',
+    'issue-3645-2d-hold-12'
+  );
+  INSERT INTO public.payout_transfer_legs(
+    release_id, kind, chunk_index, principal_cents, fee_schedule_version, status
+  ) VALUES (v_r, 'organiser', 0, 6000, 'test', 'planned');
+  UPDATE public.brand_payout_releases
+  SET provider = 'paystack', status = 'in_flight',
+      paystack_execution_claim_id = gen_random_uuid(), paystack_execution_claimed_at = now()
+  WHERE id = v_r;
+  PERFORM public.refresh_paystack_dispute_release_projection(v_r);
+  IF (pg_temp.rel(v_r)).status <> 'pending'
+     OR (pg_temp.rel(v_r)).net_release_cents <> 0
+     OR EXISTS (SELECT 1 FROM public.payout_debt_application_returns WHERE release_id = v_r)
+     OR (pg_temp.d(v_debt)).status <> 'closed' THEN
+    RAISE EXCEPTION 'T12c pinned behaviour changed: status % returns %', (pg_temp.rel(v_r)).status,
+      (SELECT count(*) FROM public.payout_debt_application_returns WHERE release_id = v_r);
+  END IF;
+  PERFORM public.mature_postponement_debts(timestamptz '2026-10-29 00:00:00+00');
+  IF pg_temp.adj(v_r, 'maturity_recredit') <> 1000
+     OR pg_temp.returned(v_temp, v_r, 'matured') <> 0 THEN
+    RAISE EXCEPTION 'T12c maturity on a planned-leg release changed';
+  END IF;
+END
+$t12c$;
 
 -- T12b: a blocked release is still unpaid (the Stripe claim pays blocked_kyc
 -- and blocked_balance), so a hold on it hands the debt back.

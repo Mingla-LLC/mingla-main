@@ -212,6 +212,17 @@ BEGIN
     RETURN 0;
   END IF;
 
+  -- Only a release that is actually short locks its debts: settle runs on
+  -- every planner pass and hold, and apply_open_payout_debts skips a locked
+  -- debt (SKIP LOCKED), so locking when nothing is short would make a
+  -- concurrent attach pay the host without withholding.
+  SELECT * INTO v_totals
+  FROM public.issue_3645_release_projected_totals(p_release_id);
+  v_short := v_totals.withheld_cents - v_totals.items_net_cents;
+  IF v_short IS NULL OR v_short <= 0 THEN
+    RETURN 0;
+  END IF;
+
   PERFORM 1 FROM public.organiser_payout_debts d
   WHERE d.id IN (
     SELECT a.debt_id FROM public.payout_debt_applications a
@@ -220,6 +231,7 @@ BEGIN
   ORDER BY d.id
   FOR UPDATE;
 
+  -- Re-read under the debt locks: a conversion may have moved value since.
   SELECT * INTO v_totals
   FROM public.issue_3645_release_projected_totals(p_release_id);
   v_short := v_totals.withheld_cents - v_totals.items_net_cents;
@@ -808,6 +820,17 @@ BEGIN
         WHERE a.debt_id=v_debt.id AND a.released_at IS NULL
       )
       ORDER BY r.id FOR UPDATE NOWAIT;
+      -- and every debt withheld from those releases, so settling them below
+      -- never waits on another transaction.
+      PERFORM 1 FROM public.organiser_payout_debts d
+      WHERE d.id IN (
+        SELECT a2.debt_id FROM public.payout_debt_applications a2
+        WHERE a2.release_id IN (
+          SELECT a.release_id FROM public.payout_debt_applications a
+          WHERE a.debt_id=v_debt.id AND a.released_at IS NULL
+        )
+      )
+      ORDER BY d.id FOR UPDATE NOWAIT;
     EXCEPTION WHEN lock_not_available THEN
       CONTINUE;
     END;
@@ -819,6 +842,16 @@ BEGIN
     ) THEN
       CONTINUE;
     END IF;
+    -- #3645 2d: settle each unpaid release first, so the part holds left
+    -- uncovered is handed back as a 'hold' return (and written off below)
+    -- before maturity hands the rest back through net. Maturity and settle
+    -- then end in the same state whichever runs first.
+    PERFORM public.issue_3645_return_unrecovered_release_debt(x.release_id, p_now)
+    FROM (
+      SELECT DISTINCT a.release_id FROM public.payout_debt_applications a
+      WHERE a.debt_id=v_debt.id AND a.released_at IS NULL
+    ) x;
+    SELECT * INTO v_debt FROM public.organiser_payout_debts WHERE id=v_debt.id;
     FOR v_app IN
       SELECT * FROM public.payout_debt_applications
       WHERE debt_id=v_debt.id AND released_at IS NULL
@@ -996,6 +1029,16 @@ BEGIN
   WHERE origin_release_id=p_origin_release_id AND kind=p_kind;
   IF FOUND THEN RETURN v_permanent_id; END IF;
 
+  -- #3645 2d: key-share the releases a conversion may insert onto before any
+  -- debt lock, as settle locks release then debt (else the two deadlock).
+  PERFORM 1 FROM public.brand_payout_releases r
+  WHERE r.id IN (
+    SELECT a.release_id FROM public.payout_debt_applications a
+    JOIN public.organiser_payout_debts d ON d.id=a.debt_id
+    WHERE d.origin_release_id=p_origin_release_id
+      AND d.kind='post_release_postponement' AND a.released_at IS NULL
+  )
+  ORDER BY r.id FOR KEY SHARE;
   SELECT * INTO v_temp FROM public.organiser_payout_debts
   WHERE origin_release_id=p_origin_release_id
     AND kind='post_release_postponement' AND status='open'
@@ -1191,7 +1234,16 @@ BEGIN
   FROM public.payout_ledger_adjustments
   WHERE release_id=v_release.id AND kind='post_release_refund';
 
-  -- #3645 2d: lock both debts in id order, as settle does, before either.
+  -- #3645 2d: key-share the releases a conversion may insert onto, then
+  -- lock both debts in id order: settle locks release, then debts.
+  PERFORM 1 FROM public.brand_payout_releases r
+  WHERE r.id IN (
+    SELECT a.release_id FROM public.payout_debt_applications a
+    JOIN public.organiser_payout_debts d ON d.id=a.debt_id
+    WHERE d.origin_release_id=v_release.id
+      AND d.kind='post_release_postponement' AND a.released_at IS NULL
+  )
+  ORDER BY r.id FOR KEY SHARE;
   PERFORM 1 FROM public.organiser_payout_debts
   WHERE origin_release_id=v_release.id
     AND kind IN ('post_release_refund','post_release_postponement')
@@ -1556,7 +1608,16 @@ BEGIN
         FROM public.payout_ledger_adjustments
         WHERE release_id = v_release.id AND kind = 'post_release_dispute';
 
-        -- #3645 2d: lock both debts in id order, as settle does, before either.
+        -- #3645 2d: key-share the releases a conversion may insert onto, then
+        -- lock both debts in id order: settle locks release, then debts.
+        PERFORM 1 FROM public.brand_payout_releases r
+        WHERE r.id IN (
+          SELECT a.release_id FROM public.payout_debt_applications a
+          JOIN public.organiser_payout_debts d ON d.id = a.debt_id
+          WHERE d.origin_release_id = v_release.id
+            AND d.kind = 'post_release_postponement' AND a.released_at IS NULL
+        )
+        ORDER BY r.id FOR KEY SHARE;
         PERFORM 1 FROM public.organiser_payout_debts
         WHERE origin_release_id = v_release.id
           AND kind IN ('post_release_dispute', 'post_release_postponement')

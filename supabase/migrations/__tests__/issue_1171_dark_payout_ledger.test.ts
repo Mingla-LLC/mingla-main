@@ -289,6 +289,11 @@ BEGIN
     'venue_reservation','stripe','usd','2026-06-28T00:00:00Z',
     '2026-06-29T00:00:00Z',600,600,'pending'
   ) RETURNING id INTO v_target;
+  -- #3645 2d: a real item, so the release can cover what it withholds (the
+  -- test later withholds 600 + 400 + 400 from this same release).
+  INSERT INTO public.payout_release_items(
+    release_id,source_type,source_id,gross_cents,net_cents,source_finalized_at
+  ) VALUES(v_target,'venue_reservation',gen_random_uuid(),1400,1400,'2026-06-20T00:00:00Z');
   -- #3645: postponement maturity is live_anchor+1d (was +3d). Keep maturity
   -- AFTER apply_open_payout_debts so the debt still reserves future value.
   v_debt:=public.open_post_release_postponement_debt(
@@ -306,6 +311,8 @@ BEGIN
       WHERE debt_id=v_debt AND release_id=v_target AND reason='matured')<>600 OR
      EXISTS(SELECT 1 FROM public.payout_ledger_adjustments
        WHERE idempotency_key LIKE 'postpone-recredit:%') OR
+     -- nothing is withheld from the target any more: it pays its items in full
+     public.issue_3645_release_effective_withheld(v_target)<>0 OR
      NOT EXISTS(
        SELECT 1 FROM public.payout_debt_applications
        WHERE debt_id=v_debt AND released_at='2026-07-05T00:00:00Z'
@@ -392,6 +399,10 @@ BEGIN
     'venue_reservation','stripe','usd','2026-07-28T00:00:00Z',
     '2026-07-29T00:00:00Z',600,600,'pending'
   ) RETURNING id INTO v_reopen_a;
+  -- #3645 2d: a real item, so the release can cover what it withholds.
+  INSERT INTO public.payout_release_items(
+    release_id,source_type,source_id,gross_cents,net_cents,source_finalized_at
+  ) VALUES(v_reopen_a,'venue_reservation',gen_random_uuid(),600,600,'2026-06-20T00:00:00Z');
   INSERT INTO public.brand_payout_releases(
     brand_id,occurrence_key,surface,provider,currency,anchor_end_at,releasable_at,
     gross_cents,net_release_cents,status
@@ -400,6 +411,10 @@ BEGIN
     'venue_reservation','stripe','usd','2026-08-07T00:00:00Z',
     '2026-08-08T00:00:00Z',600,600,'pending'
   ) RETURNING id INTO v_reopen_b;
+  -- #3645 2d: a real item, so the release can cover what it withholds.
+  INSERT INTO public.payout_release_items(
+    release_id,source_type,source_id,gross_cents,net_cents,source_finalized_at
+  ) VALUES(v_reopen_b,'venue_reservation',gen_random_uuid(),600,600,'2026-06-20T00:00:00Z');
 
   v_reopen_debt:=public.open_post_release_postponement_debt(
     v_reopen_origin,'2026-08-03T00:00:00Z'
@@ -425,7 +440,8 @@ BEGIN
      EXISTS(
        SELECT 1 FROM public.payout_ledger_adjustments
        WHERE release_id=v_reopen_a AND kind='maturity_recredit'
-     ) THEN
+     ) OR
+     public.issue_3645_release_effective_withheld(v_reopen_a)<>0 THEN
     RAISE EXCEPTION 'lifecycle A did not preserve released historical truth';
   END IF;
 
