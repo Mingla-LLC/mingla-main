@@ -4,7 +4,7 @@
 //
 // Each export names its RPC literally: the #3988 tab-contract suite reads the
 // exported bodies to list what the Links page tab reaches.
-import { supabase } from "../lib/supabase";
+import { invokeWithRefresh, supabase } from "../lib/supabase";
 
 export class LinksStripsError extends Error {
   constructor(code, message, { detail = null } = {}) {
@@ -122,12 +122,6 @@ export async function listPublishedBlogPostsForLinks() {
   return posts.filter((post) => post?.derived_state === "published" && post.id && post.title);
 }
 
-/**
- * Whether refreshLinksPage reaches the server-side /links refresh yet. While
- * false the panel keeps its "within 5 minutes" note.
- */
-export const LINKS_PAGE_REFRESH_WIRED = false;
-
 /** Said when a change saved but the instant /links refresh did not happen. */
 export const LINKS_REFRESH_FALLBACK = "Saved. The links page may take a few minutes to update.";
 
@@ -137,9 +131,10 @@ export const LINKS_REFRESH_FALLBACK = "Saved. The links page may take a few minu
  * "saved, the page catches up later", never as a failed save.
  */
 export async function refreshLinksPage() {
-  // [TRANSITIONAL] #4318: the data builder is adding the /links refresh the
-  // way Blog's admin-blog "revalidate" works. Until it lands this reports
-  // "not refreshed", so the panel says the page may take a few minutes.
-  // Exit: point this at that call and set LINKS_PAGE_REFRESH_WIRED = true.
-  throw new LinksStripsError("refresh_not_wired", "The links page refresh is not wired yet.");
+  // admin-blog "revalidate_links": 200 {ok:true} is the only success; 502
+  // {ok:false}, 503 revalidate_not_configured and 403 are all failures.
+  const { data, error } = await invokeWithRefresh("admin-blog", { body: { action: "revalidate_links" } });
+  if (error) throw new LinksStripsError("refresh_failed", String(error?.message || "links_refresh_failed"));
+  if (data?.ok !== true) throw new LinksStripsError("refresh_failed", String(data?.error || `links_refresh_status_${data?.status ?? "unknown"}`));
+  return data;
 }

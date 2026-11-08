@@ -205,6 +205,10 @@ describe("L-7 the /links refresh after a change", () => {
   it("the service has one refresh seam and one fallback sentence", () => {
     const source = read("services/linksStripsService.js");
     assert.match(source, /export async function refreshLinksPage\(\)/);
+    assert.match(source, /invokeWithRefresh\("admin-blog", \{ body: \{ action: "revalidate_links" \} \}\)/);
+    assert.match(source, /if \(data\?\.ok !== true\) throw/, "only {ok:true} counts as refreshed");
+    assert.equal(/LINKS_PAGE_REFRESH_WIRED|within 5 minutes/.test(source + read("components/links/LinksPagePanel.jsx")), false);
+    assert.deepEqual(COMMUNITY_SUPPORT_TAB_CONTRACT.links.functions, ["admin-blog"]);
     assert.match(source, /LINKS_REFRESH_FALLBACK = "Saved\. The links page may take a few minutes to update\."/);
   });
 

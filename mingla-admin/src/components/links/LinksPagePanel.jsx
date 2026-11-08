@@ -15,7 +15,7 @@ import {
   showsOnOptions, stripDateRange, stripDayLabel, stripMetaLine, stripOpensSummary, stripRows, stripSaveArgs, validateStripDraft,
 } from "../../lib/linksStrips";
 import {
-  LINKS_PAGE_REFRESH_WIRED, LINKS_REFRESH_FALLBACK, deleteLinksStrip, linksStripsErrorField, linksStripsErrorMessage, listLinksStrips,
+  LINKS_REFRESH_FALLBACK, deleteLinksStrip, linksStripsErrorField, linksStripsErrorMessage, listLinksStrips,
   listPublishedBlogPostsForLinks, refreshLinksPage, reorderLinksStrips, saveLinksStrip,
 } from "../../services/linksStripsService";
 
@@ -406,7 +406,6 @@ export function LinksPagePanel() {
       <SectionCard title="Custom strips" subtitle={loading ? undefined : `${strips.length} on the page`}>
         <p className="mb-4 text-sm text-[var(--color-text-secondary)]">
           Drag a strip, or use the arrows, to set the order. The top of this list shows first on the page.
-          {LINKS_PAGE_REFRESH_WIRED ? null : " Changes reach usemingla.com/links within 5 minutes."}
         </p>
         {loadError ? (
           <LoadError title="Couldn't load the strips" message={linksStripsErrorMessage(loadError)} onRetry={load} retrying={loading} />

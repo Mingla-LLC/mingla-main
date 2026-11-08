@@ -21,7 +21,9 @@
 //       admin city list is gone (#4318 addendum 2 A, Seth)
 //   A-6 removing a strip needs a second, explicit confirm
 //   A-7 optional "Show until" (Seth, follow-up): never before "Shows on",
-//       empty sends null; a failed /links refresh after a save is still a save
+//       empty sends null; save, delete and reorder each refresh /links
+//       (admin-blog revalidate_links); a 502, 503, 403 or thrown refresh is
+//       still a save, and only {ok:true} counts as refreshed
 //
 // It needs the admin app's packages (react, react-dom, esbuild, lucide-react):
 // run `npm ci` in mingla-admin first. Without them it FAILS; it never skips.
@@ -277,7 +279,8 @@ before(async () => {
       build.onResolve({ filter: /\/lib\/supabase(\.js)?$/ }, () => ({ path: "supabase-stub", namespace: "stub" }));
       build.onResolve({ filter: /\/context\/ToastContext(\.jsx)?$/ }, () => ({ path: "toast-stub", namespace: "stub" }));
       build.onLoad({ filter: /^supabase-stub$/, namespace: "stub" }, () => ({
-        contents: "export const supabase = { rpc: (name, args) => globalThis.__links4318.rpc(name, args) };",
+        contents: "export const supabase = { rpc: (name, args) => globalThis.__links4318.rpc(name, args) };\n"
+          + "export const invokeWithRefresh = (name, options) => globalThis.__links4318.invoke(name, options);",
         loader: "js",
       }));
       build.onLoad({ filter: /^toast-stub$/, namespace: "stub" }, () => ({
@@ -340,6 +343,13 @@ beforeEach(() => {
       if (name === "admin_links_strips_list") return Promise.resolve({ data: server.strips.map((s) => ({ ...s })), error: null });
       if (name === "issue_4137_blog_list_posts") return Promise.resolve({ data: { posts: server.posts }, error: null });
       return Promise.resolve({ data: null, error: null });
+    },
+    // admin-blog, as invokeWithRefresh returns it: 200 {ok:true,status:200}
+    // unless a test sets server.refresh.
+    invoke: (name, options) => {
+      server.calls.push({ name: `fn:${name}`, args: options?.body });
+      if (server.refresh) return server.refresh(name, options);
+      return Promise.resolve({ data: { ok: true, status: 200 }, error: null });
     },
   };
 });
@@ -698,16 +708,62 @@ describe("A-7 Show until and the /links refresh", () => {
     assert.equal(calls("admin_links_strip_save")[1].args.p_shows_until, start, "the same day is a valid end");
   });
 
-  it("a failed /links refresh after a successful save is still reported as saved", async () => {
+  const refreshCalls = () => calls("fn:admin-blog");
+  const FALLBACK = "Saved. The links page may take a few minutes to update.";
+
+  it("a refreshed save says it is live, and calls revalidate_links once", async () => {
     server.handlers.admin_links_strip_save = (args) => Promise.resolve({ data: { id: "new", ...args }, error: null });
     const container = await mountPanel();
     await fillValid(container);
     await submit(container);
-    assert.equal(calls("admin_links_strip_save").length, 1);
-    assert.equal(errorText(container), "", "no save failure is shown");
+    assert.deepEqual(refreshCalls().map((c) => c.args), [{ action: "revalidate_links" }]);
     const toast = globalThis.__links4318.toasts.at(-1);
     assert.equal(toast.variant, "success");
-    assert.equal(toast.description, "Saved. The links page may take a few minutes to update.");
+    assert.notEqual(toast.description, FALLBACK);
     assert.equal(calls("admin_links_strips_list").length, 2, "the list was reloaded after the save");
   });
+
+  it("every refresh failure after a successful save is still reported as saved", async () => {
+    const failures = {
+      "502 ok:false": () => Promise.resolve({ data: null, error: { message: "Edge Function returned a non-2xx status code", context: { status: 502 } } }),
+      "200 body ok:false": () => Promise.resolve({ data: { ok: false, status: 500 }, error: null }),
+      "503 not configured": () => Promise.resolve({ data: null, error: { message: "revalidate_not_configured", context: { status: 503 } } }),
+      "403 forbidden": () => Promise.resolve({ data: null, error: { message: "forbidden", context: { status: 403 } } }),
+      "network throw": () => Promise.reject(new TypeError("Failed to fetch")),
+    };
+    for (const [label, refresh] of Object.entries(failures)) {
+      server.calls = [];
+      globalThis.__links4318.toasts = [];
+      server.refresh = refresh;
+      server.handlers.admin_links_strip_save = (args) => Promise.resolve({ data: { id: "new", ...args }, error: null });
+      const container = await mountPanel();
+      await fillValid(container);
+      await submit(container);
+      assert.equal(refreshCalls().length, 1, label);
+      assert.equal(errorText(container), "", `${label}: no save failure is shown`);
+      const toast = globalThis.__links4318.toasts.at(-1);
+      assert.equal(toast.variant, "success", label);
+      assert.equal(toast.description, FALLBACK, label);
+    }
+  });
+
+  it("delete and reorder refresh too, and a failed refresh after them only says the page may lag", async () => {
+    let container = await mountPanel();
+    await settle(() => buttonByText(container.querySelectorAll("li")[0], "Remove")[0].click());
+    await settle(() => buttonByText(container.querySelectorAll("li")[0], "Remove")[0].click());
+    assert.equal(refreshCalls().length, 1, "delete refreshed");
+    assert.equal(globalThis.__links4318.toasts.at(-1).variant, "success");
+
+    server.calls = [];
+    server.refresh = () => Promise.resolve({ data: { ok: false, status: 502 }, error: null });
+    container = await mountPanel();
+    await settle(() => buttonByLabel(container, "Move down: Strip a").click());
+    await settle();
+    assert.equal(calls("admin_links_strips_reorder").length, 1);
+    assert.equal(refreshCalls().length, 1, "reorder refreshed");
+    const toast = globalThis.__links4318.toasts.at(-1);
+    assert.notEqual(toast.variant, "error", "a saved order is never reported as failed");
+    assert.equal(toast.description, FALLBACK);
+  });
+
 });
