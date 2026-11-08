@@ -34,7 +34,22 @@ function blogMediaPattern() {
   }
 }
 
+// #4339 round B — the event covers on the city pages' "This weekend" cards
+// (public `event_covers` bucket), optimised by next/image on Vercel, never by
+// Supabase's billed /render/image (hold #1643). Same host rule as blog media.
+function eventCoversPattern() {
+  return { ...blogMediaPattern(), pathname: '/storage/v1/object/public/event_covers/**' }
+}
+
+// #4339 round B (SEO audit 13) — AI crawlers that read HTML without running
+// JavaScript get the page's metadata (title, canonical, robots) blocking in
+// <head> instead of streamed. Search and answer bots plus the AI training and
+// assistant crawlers named in app/robots.ts.
+const HTML_LIMITED_BOTS =
+  /Googlebot|Bingbot|Slurp|DuckDuckBot|Baiduspider|YandexBot|facebookexternalhit|Twitterbot|LinkedInBot|Slackbot|Discordbot|WhatsApp|GPTBot|ChatGPT-User|OAI-SearchBot|ClaudeBot|Claude-User|Claude-SearchBot|anthropic-ai|PerplexityBot|Perplexity-User|Google-Extended|Applebot|Applebot-Extended|CCBot|cohere-ai|Amazonbot|Meta-ExternalAgent|meta-externalfetcher|Bytespider|DuckAssistBot|MistralAI-User/i
+
 const config: NextConfig = {
+  htmlLimitedBots: HTML_LIMITED_BOTS,
   reactStrictMode: true,
   devIndicators: false,
   // Pin trace root to this app so Next does not climb into the parent monorepo
@@ -49,6 +64,7 @@ const config: NextConfig = {
       { protocol: 'https', hostname: 'images.unsplash.com' },
       { protocol: 'https', hostname: 'framerusercontent.com' },
       blogMediaPattern(),
+      eventCoversPattern(),
     ],
   },
   experimental: {

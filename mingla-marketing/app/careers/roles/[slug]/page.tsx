@@ -7,6 +7,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { getOpenRoleBySlug, employmentLabel } from '@/lib/careers-data'
+import { careersPageTitle, jobPostingStructuredData, serializeJobPosting } from '@/lib/careers-seo'
 import { renderJobBody } from '@/lib/careers-markdown'
 import { SolidCtaLink } from '../../_components/careers-button'
 import { StickyApplyBar } from '../../_components/sticky-apply-bar'
@@ -22,7 +23,7 @@ export async function generateMetadata({
   try {
     const role = await getOpenRoleBySlug(slug)
     if (role) {
-      return { title: role.title, description: role.summary }
+      return { title: careersPageTitle(role.title), description: role.summary }
     }
   } catch {
     /* fall through to default */
@@ -92,6 +93,8 @@ export default async function RoleDetailPage({
 
   return (
     <div className="mx-auto max-w-[760px] px-5 pb-24 pt-8 sm:px-6">
+      {/* #4339 round B: JobPosting markup for the open role. */}
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJobPosting(jobPostingStructuredData(role)) }} />
       <Link
         href="/"
         className="text-[14px] font-medium transition-colors hover:text-[var(--coral-500)]"

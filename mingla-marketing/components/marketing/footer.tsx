@@ -103,7 +103,8 @@ export function SiteFooter({ surface, origin }: { surface: SiteFooterSurface; or
           </div>
           {SITE_FOOTER_COLUMNS.map((col) => (
             <div className="sf-col" key={col.title}>
-              <h2>{col.title}</h2>
+              {/* #4339 round B: a group label, not a page heading. */}
+              <p className="sf-label">{col.title}</p>
               <ul>
                 {col.links.map((l) => (
                   <li key={l.href}>

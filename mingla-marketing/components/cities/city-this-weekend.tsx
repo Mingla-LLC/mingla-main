@@ -3,6 +3,7 @@
 import { orphanTile } from '@/components/site/orphan-tile'
 import { useCallback, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import QRCode from 'react-qr-code'
+import Image from 'next/image'
 import { ArrowRight } from 'lucide-react'
 import { captureMarketing } from '@/components/marketing/posthog-provider'
 import { ExplorerHandoffButton } from '@/components/landing/explorer-handoff'
@@ -96,6 +97,24 @@ function StripLink({ pin, when }: { pin: LinksPin; when: string }) {
 }
 
 type ItemTarget = Extract<LinksTarget, { type: 'listing' } | { type: 'place' }>
+
+/**
+ * #4339 round B — an event cover on a "This weekend" card: fixed width and
+ * height (no shift), the event title as its alt text, and Mingla's own
+ * `event_covers` bucket through next/image (optimised on Vercel; never
+ * Supabase's billed /render/image, hold #1643). A cover hosted anywhere else
+ * keeps a plain lazy <img> with the same size and alt.
+ */
+const EVENT_COVERS = /^https:\/\/[a-z0-9]+\.supabase\.co\/storage\/v1\/object\/public\/event_covers\//
+export const EVENT_COVER_SIZE = { width: 640, height: 400 } as const
+
+export function EventCover({ src, title }: { src: string; title: string }) {
+  if (EVENT_COVERS.test(src)) {
+    return <Image src={src} alt={title} {...EVENT_COVER_SIZE} sizes="(min-width: 1024px) 25vw, 50vw" loading="lazy" />
+  }
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={src} alt={title} {...EVENT_COVER_SIZE} loading="lazy" decoding="async" />
+}
 
 function ItemSheet({ target, cityName, onClose }: { target: ItemTarget; cityName: string; onClose: () => void }) {
   const hrefs = siteTargetHrefs(target)
@@ -246,8 +265,7 @@ export function CityThisWeekend({ cityName, citySlug, countryCode, model }: City
                   >
                     <div className={l.cover ? 'ph' : 'ph ph-empty'}>
                       {l.cover ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={l.cover} alt="" loading="lazy" decoding="async" />
+                        <EventCover src={l.cover} title={l.title} />
                       ) : (
                         <span aria-hidden="true">{KIND_LABEL[l.kind]}</span>
                       )}

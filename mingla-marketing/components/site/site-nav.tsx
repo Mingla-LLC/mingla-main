@@ -158,7 +158,8 @@ export function SiteNav({ surface, current, origin }: SiteNavProps) {
         >
           {MENU_GROUPS.map((group) => (
             <div key={group.title}>
-              <h2>{group.title}</h2>
+              {/* #4339 round B: a menu label, not a page heading. */}
+              <p className="drop-label">{group.title}</p>
               <ul>
                 {group.links.map((l) => (
                   <li key={l.href}>

@@ -374,8 +374,9 @@
   text-transform: uppercase;
   margin-top: 18px;
 }
+/* #4339 round B: 4.6:1 on the sand band (was --stone, 3.6:1 at 12px). */
 [data-landing] .duo .a {
-  color: var(--stone);
+  color: #6b675f;
 }
 [data-landing] .big {
   font-family: var(--serif);
@@ -388,8 +389,10 @@
 [data-landing] .big .w {
   color: var(--ink);
 }
+/* #4339 round B: unlit words stay readable (3.4:1, large text) before they
+   light up on scroll (was 0.2 alpha, 1.5:1). */
 [data-landing][data-lp-js] .big .w {
-  color: rgba(17, 17, 16, 0.2);
+  color: rgba(17, 17, 16, 0.5);
   transition: color 0.3s;
 }
 [data-landing][data-lp-js] .big .w.lit {

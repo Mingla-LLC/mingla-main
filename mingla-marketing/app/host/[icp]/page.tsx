@@ -1,7 +1,8 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { searchRouteMetadata } from '@/lib/search/metadata'
-import { ICP_SLUGS, icpLandingPath, isIcpSlug } from '@/content/host-landing/icps'
+import { ICP_LANDINGS, ICP_SLUGS, icpLandingPath, isIcpSlug } from '@/content/host-landing/icps'
+import { hostLandingStructuredData, serializeStructuredData } from '@/lib/search/page-schema'
 import { IcpLandingPage } from '@/components/landing/icp-landing'
 import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
 
@@ -34,6 +35,11 @@ export default async function HostIcpLandingPage({ params }: { params: Params })
   if (!isIcpSlug(icp)) notFound()
   return (
     <div className={`${landingSerif.variable} ${landingSans.variable} ${landingMono.variable}`}>
+      {/* #4339 round B: WebPage + BreadcrumbList (Home › Mingla Host › <ICP>). */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: serializeStructuredData(hostLandingStructuredData(icpLandingPath(icp), ICP_LANDINGS[icp].name)) }}
+      />
       <IcpLandingPage slug={icp} />
     </div>
   )

@@ -141,7 +141,7 @@
     visibility 0s;
   pointer-events: auto;
 }
-[data-landing] .drop h2 {
+[data-landing] .drop .drop-label {
   font-family: var(--mono);
   font-weight: 500;
   font-size: 11px;

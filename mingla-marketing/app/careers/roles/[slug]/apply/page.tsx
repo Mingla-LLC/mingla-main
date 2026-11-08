@@ -6,6 +6,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { getOpenRoleBySlug } from '@/lib/careers-data'
+import { careersPageTitle } from '@/lib/careers-seo'
 import { ApplyForm } from '../../../_components/apply-form'
 import { SolidCtaLink } from '../../../_components/careers-button'
 
@@ -19,7 +20,7 @@ export async function generateMetadata({
   const { slug } = await params
   try {
     const role = await getOpenRoleBySlug(slug)
-    if (role) return { title: `Apply — ${role.title}` }
+    if (role) return { title: `Apply for ${careersPageTitle(role.title)}`, robots: { index: false, follow: true } }
   } catch {
     /* default */
   }

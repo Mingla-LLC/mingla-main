@@ -271,7 +271,7 @@ const ORPHANS = `(() => {
 const FOOTER = `(() => {
   const cols = [...document.querySelectorAll('[data-site-footer] .sf-col')].map((c) => {
     const r = c.getBoundingClientRect()
-    const h = c.querySelector('h2').getBoundingClientRect()
+    const h = c.querySelector('.sf-label').getBoundingClientRect()
     return { x: Math.round(r.left), w: Math.round(r.width), head: Math.round(h.bottom), links: c.querySelectorAll('li a').length, gaps: [...c.querySelectorAll('li a')].map((a, i, all) => i ? Math.round(a.getBoundingClientRect().top - all[i - 1].getBoundingClientRect().top) : 0).slice(1) }
   })
   const brand = document.querySelector('[data-site-footer] .sf-brand').getBoundingClientRect().left
