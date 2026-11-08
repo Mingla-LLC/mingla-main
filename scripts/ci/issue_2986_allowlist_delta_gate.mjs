@@ -200,6 +200,24 @@ const I4137_PREDICATE_BLOCK = [
 const I4137_NAMES = [...I4137_PUBLIC_SIGNATURES, ...I4137_PREDICATE_SIGNATURES]
   .map((signature) => signature.slice(0, signature.indexOf("(") + 1));
 
+// #4318 — eleventh binding amendment. Exactly ONE intended-public reader: the
+// /links week of public listings. It sits directly after the #4137 Blog
+// preview reader, returns a column allow-list only (no ids, prices, buyers or
+// authoring fields; a withheld address gives no place text and a one-decimal
+// point) and advances the audited intended-public count by exactly one.
+const I4318_OLD_HEADER = I4137_NEW_HEADER;
+const I4318_NEW_HEADER =
+  "# Signature count: 205 (intended-public 32, internally-gated 108, predicate/read-helper 62, PostGIS 3).";
+const I4318_ANCHOR = I4137_PUBLIC_SIGNATURES[1];
+const I4318_SIGNATURE = "links_page_week()";
+const I4318_BLOCK = [
+  "# #4318: the /links week: public, published, upcoming listings for the next seven days under the discover_v2_items eligibility rule; column allow-list only, no ids, buyers or authoring fields, a withheld address gives no place text and a one-decimal point, capped at 500 rows.",
+  I4318_SIGNATURE,
+].join("\n");
+const I4318_NAME = "links_page_week(";
+// The count header every later amendment leaves in place.
+const CURRENT_HEADER = I4318_NEW_HEADER;
+
 const countExactLine = (source, expected) => source.split(/\r?\n/).filter((line) => line.trim() === expected).length;
 
 const expectedAfter2986 = (base) => {
@@ -340,7 +358,8 @@ const expectedAfter2829 = (base) => {
   if (
     countExactLine(base, I2829_SIGNATURE) === 1 &&
     base.includes(`${I2829_ANCHOR}\n${I2829_BLOCK}\n`) &&
-    (countExactLine(base, I2829_NEW_HEADER) === 1 || countExactLine(base, I4137_NEW_HEADER) === 1)
+    (countExactLine(base, I2829_NEW_HEADER) === 1 || countExactLine(base, I4137_NEW_HEADER) === 1 ||
+      countExactLine(base, I4318_NEW_HEADER) === 1)
   ) {
     return base;
   }
@@ -364,7 +383,7 @@ const expectedAfter4137 = (base) => {
       .every((signature) => countExactLine(base, signature) === 1) &&
     base.includes(`${I4137_PUBLIC_ANCHOR}\n${I4137_PUBLIC_BLOCK}\n`) &&
     base.includes(`${I4137_PREDICATE_ANCHOR}\n${I4137_PREDICATE_BLOCK}\n`) &&
-    countExactLine(base, I4137_NEW_HEADER) === 1
+    (countExactLine(base, I4137_NEW_HEADER) === 1 || countExactLine(base, I4318_NEW_HEADER) === 1)
   ) {
     return base;
   }
@@ -386,8 +405,32 @@ const expectedAfter4137 = (base) => {
     .replace(`${I4137_PREDICATE_ANCHOR}\n`, `${I4137_PREDICATE_ANCHOR}\n${I4137_PREDICATE_BLOCK}\n`);
 };
 
+// #4318 — applied on top of #4137. A settled base must keep the exact block,
+// its placement and the count; partial, moved or lookalike additions fail closed.
+const expectedAfter4318 = (base) => {
+  if (
+    countExactLine(base, I4318_SIGNATURE) === 1 &&
+    base.includes(`${I4318_ANCHOR}\n${I4318_BLOCK}\n`) &&
+    countExactLine(base, I4318_NEW_HEADER) === 1
+  ) {
+    return base;
+  }
+  if (base.includes(I4318_NAME) || base.includes("# #4318:")) {
+    throw new Error("base contains a partial or lookalike #4318 /links reader");
+  }
+  if (countExactLine(base, I4318_OLD_HEADER) !== 1) {
+    throw new Error("base #4318 count-header anchor is absent or duplicated");
+  }
+  if (countExactLine(base, I4318_ANCHOR) !== 1) {
+    throw new Error("base #4318 insertion anchor is absent or duplicated");
+  }
+  return base
+    .replace(I4318_OLD_HEADER, I4318_NEW_HEADER)
+    .replace(`${I4318_ANCHOR}\n`, `${I4318_ANCHOR}\n${I4318_BLOCK}\n`);
+};
+
 export const expectedAllowlist = (base) =>
-  expectedAfter4137(
+  expectedAfter4318(expectedAfter4137(
     expectedAfter2829(
       expectedAfter3872Public(
         expectedAfter4111(
@@ -399,7 +442,7 @@ export const expectedAllowlist = (base) =>
         ),
       ),
     ),
-  );
+  ));
 
 export const validate = ({ baseAllowlist, currentAllowlist }) => {
   const failures = [];
@@ -411,7 +454,7 @@ export const validate = ({ baseAllowlist, currentAllowlist }) => {
   }
   if (expected && currentAllowlist !== expected) {
     failures.push(
-      "allowlist delta is not the exact #2986 pair/comments/header correction plus the exact #3426 reader, #3281 R3 slot reader, #3697 pixel-mode reader, #3682 aggregate follower-count readers, #3872 R1 display readers, #4111 brand-page enquiry readers, #3872 R3/R4 public creator, Local and referral readers, #2829 W4 public trip-guide reader, and #4137 Blog readers",
+      "allowlist delta is not the exact #2986 pair/comments/header correction plus the exact #3426 reader, #3281 R3 slot reader, #3697 pixel-mode reader, #3682 aggregate follower-count readers, #3872 R1 display readers, #4111 brand-page enquiry readers, #3872 R3/R4 public creator, Local and referral readers, #2829 W4 public trip-guide reader, #4137 Blog readers, and #4318 /links week reader",
     );
   }
   for (const signature of [
@@ -426,6 +469,7 @@ export const validate = ({ baseAllowlist, currentAllowlist }) => {
     I2829_SIGNATURE,
     ...I4137_PUBLIC_SIGNATURES,
     ...I4137_PREDICATE_SIGNATURES,
+    I4318_SIGNATURE,
   ]) {
     if (countExactLine(currentAllowlist, signature) !== 1) failures.push(`signature must occur exactly once: ${signature}`);
   }
@@ -521,7 +565,7 @@ const runSelfTest = () => {
     ["#3697 lookalike overload", `${head}ad_pixel_public_config(p_country_code text, p_debug boolean)\n`, false],
     ["#3697 moved away from its anchor", head.replace(`${I3697_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${I3697_BLOCK}\n`), false],
     ["#3697 plus a forged neighbour", head.replace(`${I3697_BLOCK}\n`, `${I3697_BLOCK}\nforged_neighbour_function()\n`), false],
-    ["#3697 count not corrected", head.replace(I4137_NEW_HEADER, I3697_OLD_HEADER), false],
+    ["#3697 count not corrected", head.replace(CURRENT_HEADER, I3697_OLD_HEADER), false],
     // #3682 — the fifth amendment is exactly two aggregate-only readers and
     // their one product-decision comment.
     ["#3682 block missing", head.replace(`${I3682_BLOCK}\n`, ""), false],
@@ -557,8 +601,8 @@ const runSelfTest = () => {
     ["#2829 W4 lookalike overload", `${head}pg_public_trip_guide(p_trip_id uuid, p_debug boolean)\n`, false],
     ["#2829 W4 moved away from its anchor", head.replace(`${I2829_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${I2829_BLOCK}\n`), false],
     ["#2829 W4 plus a forged neighbour", head.replace(`${I2829_BLOCK}\n`, `${I2829_BLOCK}\nforged_neighbour_function()\n`), false],
-    ["#2829 W4 count not corrected", head.replace(I4137_NEW_HEADER, I2829_OLD_HEADER), false],
-    ["#2829 W4 header edited", head.replace(I4137_NEW_HEADER, "# Signature count: 207 (intended-public 38, internally-gated 108, predicate/read-helper 58, PostGIS 3)."), false],
+    ["#2829 W4 count not corrected", head.replace(CURRENT_HEADER, I2829_OLD_HEADER), false],
+    ["#2829 W4 header edited", head.replace(CURRENT_HEADER, "# Signature count: 207 (intended-public 38, internally-gated 108, predicate/read-helper 58, PostGIS 3)."), false],
     // #4137 — the tenth amendment is exactly two public Blog readers, four
     // boolean RLS helpers, their decision comments, placement, and count.
     ["#4137 public block missing", head.replace(`${I4137_PUBLIC_BLOCK}\n`, ""), false],
@@ -570,17 +614,27 @@ const runSelfTest = () => {
     ["#4137 helper dropped", head.replace(`${I4137_PREDICATE_SIGNATURES[3]}\n`, ""), false],
     ["#4137 public block moved", head.replace(`${I4137_PUBLIC_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${I4137_PUBLIC_BLOCK}\n`), false],
     ["#4137 predicate block moved", head.replace(`${I4137_PREDICATE_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${I4137_PREDICATE_BLOCK}\n`), false],
-    ["#4137 count not corrected", head.replace(I4137_NEW_HEADER, I4137_OLD_HEADER), false],
+    ["#4137 count not corrected", head.replace(CURRENT_HEADER, I4137_OLD_HEADER), false],
+    // #4318 — the eleventh amendment is exactly one /links reader, its
+    // decision comment, its placement after the Blog preview, and the count.
+    ["#4318 block missing", head.replace(`${I4318_BLOCK}\n`, ""), false],
+    ["#4318 comment missing", head.replace(`${I4318_BLOCK.split("\n")[0]}\n`, ""), false],
+    ["#4318 comment substituted", head.replace("# #4318: the /links week:", "# #4318: approved somehow:"), false],
+    ["#4318 signature changed", head.replace(`\n${I4318_SIGNATURE}\n`, "\nlinks_page_week(p_city text)\n"), false],
+    ["#4318 lookalike overload", `${head}links_page_week(p_debug boolean)\n`, false],
+    ["#4318 moved away from its anchor", head.replace(`${I4318_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${I4318_BLOCK}\n`), false],
+    ["#4318 plus a forged neighbour", head.replace(`${I4318_BLOCK}\n`, `${I4318_BLOCK}\nforged_neighbour_function()\n`), false],
+    ["#4318 count not corrected", head.replace(CURRENT_HEADER, I4318_OLD_HEADER), false],
   ];
   for (const [name, candidate, shouldPass] of cases) {
     const passed = validate({ baseAllowlist: base, currentAllowlist: candidate }).length === 0;
     if (passed !== shouldPass) throw new Error(`self-test ${name} ${shouldPass ? "failed" : "was not rejected"}`);
   }
-  // Once a base carries all ten amendments, the ONLY accepted head is that
+  // Once a base carries all eleven amendments, the ONLY accepted head is that
   // base, byte for byte.
   const settled = expectedAllowlist(base);
   if (validate({ baseAllowlist: settled, currentAllowlist: settled }).length !== 0) {
-    throw new Error("self-test settled base with all ten amendments failed");
+    throw new Error("self-test settled base with all eleven amendments failed");
   }
   if (validate({ baseAllowlist: settled, currentAllowlist: `${settled}forged_after_settle()\n` }).length === 0) {
     throw new Error("self-test settled base accepted a new line");
@@ -599,7 +653,7 @@ const runReal = (baseSha) => {
   const failures = validate({ baseAllowlist, currentAllowlist });
   if (failures.length) throw new Error(failures.join("\n"));
   process.stdout.write(
-    "#2986 exact allowlist pair + #3426 exact reader + #3281 R3 slot reader + #3697 pixel-mode reader + #3682 aggregate follower-count readers + #3872 R1 display readers + #4111 brand-page enquiry readers + #3872 R3/R4 public readers + #2829 W4 public trip-guide reader + #4137 Blog readers PASS\n",
+    "#2986 exact allowlist pair + #3426 exact reader + #3281 R3 slot reader + #3697 pixel-mode reader + #3682 aggregate follower-count readers + #3872 R1 display readers + #4111 brand-page enquiry readers + #3872 R3/R4 public readers + #2829 W4 public trip-guide reader + #4137 Blog readers + #4318 /links week reader PASS\n",
   );
 };
 
