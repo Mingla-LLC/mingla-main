@@ -967,7 +967,11 @@ export function stageProgress(stage) {
       return { label, ...s, unit: "places", line: `${count(p.done)} of ${count(p.total)} places${pctText}` };
     }
     case "check": {
-      return { label, ...progressShape(p.processed, null, ""), unit: "places", line: `${plural(p.processed ?? 0, "place")} checked` };
+      // #4276: the live cursor is only advanced between pages, so a finished check's cursor
+      // lags its last partial page (Abuja: cursor 4,000, result 4,133). The stage's result
+      // is the final count, so a finished check reads it.
+      const processed = Math.max(num(p.processed) ?? 0, num(stage?.result?.processed) ?? 0);
+      return { label, ...progressShape(processed, null, ""), unit: "places", line: `${plural(processed, "place")} checked` };
     }
     case "score": {
       const idx = num(p.signal_index);
