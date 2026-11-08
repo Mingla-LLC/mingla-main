@@ -7,8 +7,17 @@
 // NOT Workspace domain-wide delegation. Two actions:
 //
 //   POST {action:"slots"}                → {slots:[{start,end}]} (UTC ISO)
-//   POST {action:"book", start, name, email, venue?, report_url?, source?}
+//   POST {action:"book", start, name, email, icp, social_platform,
+//         social_handle, venue?, website?, report_url?, source?}
 //                                        → {ok:true, event_url, meet_url, start}
+//
+// #4339 §6 — `icp`, `social_platform` and `social_handle` are REQUIRED on every
+// booking (the /schedule page is the only caller; every funnel reaches it), and
+// `website` is optional. They are validated in bookingContext.ts, put at the TOP
+// of the calendar description (the social as a working profile link, then the
+// website), stored on the event as private extended properties, and shown at the
+// top of the "New Mingla call" notification. A booking without them is a 400
+// {error:"validation", field}.
 //
 // Config secret GOOGLE_CALENDAR_KEYS = "client_id|client_secret|refresh_token".
 // Optional env: BOOKING_TZ (default America/New_York), BOOKING_CALENDAR_ID
@@ -43,6 +52,14 @@ import {
   originLabel,
   sanitizeLine,
 } from "./bookingDetails.ts";
+import {
+  type BookingContext,
+  buildBookingDescription,
+  buildPrivateProperties,
+  ICP_LABELS,
+  parseBookingContext,
+  SOCIAL_LABELS,
+} from "./bookingContext.ts";
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -301,6 +318,7 @@ async function sendBookingEmails(input: {
   venue: string;
   reportUrl: string;
   source: string;
+  context: BookingContext;
   meetUrl: string | null;
   eventUrl: string | null;
 }): Promise<void> {
@@ -332,12 +350,22 @@ async function sendBookingEmails(input: {
     (input.meetUrl ? `\n\nMeet: ${input.meetUrl}` : "");
 
   // 2) Notification to Seth — reply-to is the lead so a reply reaches them.
+  // #4339 §6 — their social (a working profile link) and website come FIRST, so
+  // the team can open them before the call.
+  const socialLabel = SOCIAL_LABELS[input.context.social.platform];
+  const contextLinks = [
+    `<a href="${escapeHtml(input.context.social.url)}" style="color:${BRAND_ORANGE_BUTTON};font-weight:600;">${escapeHtml(socialLabel)}: ${escapeHtml(input.context.social.display)}</a>`,
+    input.context.website
+      ? `<a href="${escapeHtml(input.context.website)}" style="color:${BRAND_ORANGE_BUTTON};font-weight:600;">Website: ${escapeHtml(input.context.website)}</a>`
+      : `<span style="color:${BRAND_MUTED};">No website given</span>`,
+  ].join(" &nbsp;·&nbsp; ");
   const rows = [
     `<tr><td style="padding:4px 12px 4px 0;color:${BRAND_MUTED};">When</td><td style="color:${BRAND_INK};font-weight:600;">${escapeHtml(when)}</td></tr>`,
     `<tr><td style="padding:4px 12px 4px 0;color:${BRAND_MUTED};">Who</td><td style="color:${BRAND_INK};font-weight:600;">${escapeHtml(input.name)} &lt;${escapeHtml(input.email)}&gt;</td></tr>`,
     input.venue
       ? `<tr><td style="padding:4px 12px 4px 0;color:${BRAND_MUTED};">Venue</td><td style="color:${BRAND_INK};font-weight:600;">${escapeHtml(input.venue)}</td></tr>`
       : "",
+    `<tr><td style="padding:4px 12px 4px 0;color:${BRAND_MUTED};">Runs</td><td style="color:${BRAND_INK};font-weight:600;">${escapeHtml(ICP_LABELS[input.context.icp])}</td></tr>`,
     // #3601 — unconditional, matching the calendar: the origin is never blank, so
     // a blank can never be ambiguous between "came in cold" and "we lost the tag".
     `<tr><td style="padding:4px 12px 4px 0;color:${BRAND_MUTED};">Came from</td><td style="color:${BRAND_INK};font-weight:600;">${escapeHtml(originLabel(input.source))}</td></tr>`,
@@ -350,11 +378,16 @@ async function sendBookingEmails(input: {
   ].join(" ");
   const ownerBody = `
     <h1 style="margin:0 0 12px;color:${BRAND_INK};font-size:22px;">New call booked 📅</h1>
+    <p style="margin:0 0 14px;font-size:15px;">${contextLinks}</p>
     <table style="border-collapse:collapse;font-size:15px;border-top:1px solid ${BRAND_BORDER};border-bottom:1px solid ${BRAND_BORDER};padding:8px 0;">${rows}</table>
     <p style="margin:18px 0 0;">${links}</p>`;
   const ownerText =
-    `New Mingla call booked.\n\nWhen: ${when}\nWho: ${input.name} <${input.email}>` +
+    `New Mingla call booked.\n\n` +
+    `Social: ${input.context.social.url} (${socialLabel})\n` +
+    `Website: ${input.context.website ?? "none given"}\n\n` +
+    `When: ${when}\nWho: ${input.name} <${input.email}>` +
     (input.venue ? `\nVenue: ${input.venue}` : "") +
+    `\nRuns: ${ICP_LABELS[input.context.icp]}` +
     `\nCame from: ${originLabel(input.source)}` +
     (input.meetUrl ? `\nMeet: ${input.meetUrl}` : "") +
     (input.reportUrl ? `\nReport: ${input.reportUrl}` : "");
@@ -416,6 +449,13 @@ async function handleBook(
   ) {
     return json({ error: "validation" }, 400);
   }
+  // #4339 §6 — what they run and their main social are required; website is
+  // optional but must be a real address when given.
+  const parsedContext = parseBookingContext(body);
+  if (!parsedContext.ok) {
+    return json({ error: "validation", field: parsedContext.field }, 400);
+  }
+  const context = parsedContext.context;
   // Slot must be in the future (min notice) and land on a valid grid boundary.
   if (startMs < Date.now() + MIN_NOTICE_MS) {
     return json({ error: "validation" }, 400);
@@ -445,7 +485,11 @@ async function handleBook(
       },
       body: JSON.stringify({
         summary: `Mingla call${venue ? ` — ${venue}` : ""}`,
-        description: buildEventDescription({ name, email, venue, reportUrl, source }),
+        description: buildBookingDescription(
+          context,
+          buildEventDescription({ name, email, venue, reportUrl, source }),
+        ),
+        extendedProperties: { private: buildPrivateProperties(context, source) },
         start: { dateTime: new Date(startMs).toISOString() },
         end: { dateTime: new Date(endMs).toISOString() },
         attendees: buildAttendees(email, name),
@@ -482,6 +526,7 @@ async function handleBook(
     venue,
     reportUrl,
     source,
+    context,
     meetUrl: meet,
     eventUrl: ev.htmlLink ?? null,
   });

@@ -1303,3 +1303,224 @@
     animation: none;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   #4339 phase 3 — Book a call (/schedule), the design's VIEWS.schedule:
+   a dark section, the serif headline on the left and the paper panel on the
+   right: day chips (one row that swipes), the time grid, the details form
+   and "You're booked."
+--------------------------------------------------------------------------- */
+[data-landing] .sched-sec {
+  padding: clamp(130px, 17vh, 180px) 0 clamp(80px, 10vw, 130px);
+}
+[data-landing] .sched {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: clamp(28px, 5vw, 72px);
+  align-items: start;
+}
+[data-landing] .sched > * {
+  min-width: 0;
+}
+[data-landing] .sched-title {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: clamp(48px, 6.4vw, 96px);
+  line-height: 0.92;
+  letter-spacing: -0.025em;
+}
+[data-landing] .sched .panel {
+  background: var(--paper);
+  color: var(--ink);
+  border-radius: 28px;
+  padding: clamp(20px, 3vw, 32px);
+}
+[data-landing] .sched .panel .muted {
+  color: #5f5b54;
+}
+[data-landing] .sched .h6 {
+  font-family: var(--mono);
+  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #6b675f;
+  margin: 0 0 12px;
+}
+[data-landing] .days {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 2px 2px 4px;
+  margin: 0 -2px 24px;
+  scroll-snap-type: x proximity;
+  overscroll-behavior-x: contain;
+}
+[data-landing] .days::-webkit-scrollbar {
+  display: none;
+}
+[data-landing] .days button {
+  flex: none;
+  width: 72px;
+  min-height: 72px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: #fff;
+  padding: 10px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-size: 12px;
+  color: #6b675f;
+  scroll-snap-align: start;
+}
+[data-landing] .days button b {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ink);
+}
+[data-landing] .days button.on {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: rgba(255, 255, 255, 0.78);
+}
+[data-landing] .days button.on b {
+  color: #fff;
+}
+[data-landing] .slots {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  max-height: 236px;
+  overflow: auto;
+  padding: 2px;
+}
+[data-landing] .slots button {
+  min-height: 44px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: #fff;
+  font-size: 14px;
+  font-weight: 500;
+}
+[data-landing] .slots button.on {
+  background: var(--ink);
+  color: #fff;
+  border-color: var(--ink);
+}
+[data-landing] .sform {
+  display: grid;
+  margin-top: 22px;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+[data-landing] .sform > *,
+[data-landing] .soc > * {
+  min-width: 0;
+}
+[data-landing] .sform .full {
+  grid-column: 1 / -1;
+}
+[data-landing] .soc {
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr);
+  gap: 8px;
+}
+[data-landing] .sform .field label {
+  color: #6b675f;
+}
+[data-landing] .sform [aria-invalid='true'] {
+  border-color: #b3261e;
+}
+[data-landing] .sform .err {
+  color: #b3261e;
+  font-size: 13px;
+  line-height: 1.35;
+}
+[data-landing] .req {
+  color: #c25a12;
+}
+[data-landing] .sform .btn.full {
+  grid-column: 1 / -1;
+  width: 100%;
+  margin-top: 6px;
+}
+[data-landing] .sform .btn[disabled] {
+  opacity: 0.6;
+  cursor: progress;
+}
+[data-landing] .sched-error {
+  margin-top: 14px;
+  color: #b3261e;
+  font-size: 14px;
+}
+[data-landing] .sched-state,
+[data-landing] .done {
+  text-align: center;
+  padding: 30px 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+[data-landing] .sched-state .muted,
+[data-landing] .done .muted {
+  max-width: 420px;
+}
+[data-landing] .done .row {
+  justify-content: center;
+  margin-top: 10px;
+}
+[data-landing] .done .h3:focus {
+  outline: none;
+}
+[data-landing] .done .tick {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: #fff;
+  display: grid;
+  place-items: center;
+}
+[data-landing] .done .tick svg {
+  width: 28px;
+  height: 28px;
+}
+[data-landing] .sched-state .spin {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  border-top-color: var(--orange);
+  animation: sched-spin 0.9s linear infinite;
+}
+@keyframes sched-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (max-width: 1000px) {
+  [data-landing] .sched {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 640px) {
+  [data-landing] .sform {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  [data-landing] .soc {
+    grid-template-columns: 112px minmax(0, 1fr);
+  }
+  [data-landing] .slots {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-landing] .sched-state .spin {
+    animation-duration: 3s;
+  }
+}

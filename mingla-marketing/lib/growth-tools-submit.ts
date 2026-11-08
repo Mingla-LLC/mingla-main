@@ -224,7 +224,7 @@ async function postGrowthTools(
     | 'growth-tools-book',
   payload: Record<string, unknown>,
   signal?: AbortSignal,
-): Promise<{ ok: true; body: unknown } | { ok: false; error: GrowthToolsError }> {
+): Promise<{ ok: true; body: unknown } | { ok: false; error: GrowthToolsError; body?: unknown }> {
   let response: Response
   try {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -252,7 +252,7 @@ async function postGrowthTools(
   }
 
   if (response.ok) return { ok: true, body }
-  return { ok: false, error: mapErrorBody(response.status, body) }
+  return { ok: false, error: mapErrorBody(response.status, body), body }
 }
 
 /** Typeahead search: {action:'search'} → up to a handful of place matches. */
@@ -379,24 +379,40 @@ export async function fetchBookingSlots(): Promise<
   return { ok: true, slots }
 }
 
-/** Book a call: creates the event + Meet link and emails the invite. */
+/**
+ * Book a call: creates the event + Meet link and emails the invite.
+ *
+ * #4339 §6 — `icp`, `social_platform` and `social_handle` are required (the
+ * function refuses a booking without them); `website` is optional. On a refusal
+ * the function names the field, returned here as `field`.
+ */
 export async function bookCall(input: {
   start: string
   name: string
   email: string
+  icp: string
+  social_platform: string
+  social_handle: string
   venue?: string
+  website?: string
   report_url?: string
   /** #3601 — funnel/standalone-link origin tag; renders on the calendar invite. */
   source?: string
 }): Promise<
   | { ok: true; event_url: string | null; meet_url: string | null; start: string }
-  | { ok: false; error: GrowthToolsError }
+  | { ok: false; error: GrowthToolsError; field?: string }
 > {
   const result = await postGrowthTools('growth-tools-book', {
     action: 'book',
     ...input,
   })
-  if (!result.ok) return result
+  if (!result.ok) {
+    const field =
+      result.body && typeof result.body === 'object' && 'field' in result.body
+        ? (result.body as { field?: unknown }).field
+        : undefined
+    return { ok: false, error: result.error, ...(typeof field === 'string' ? { field } : {}) }
+  }
   const b = result.body as
     | { ok?: boolean; event_url?: string | null; meet_url?: string | null; start?: string }
     | null

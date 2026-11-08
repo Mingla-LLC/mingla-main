@@ -1,0 +1,39 @@
+{
+  "about": "#4339 §6: one table for the booker's main social, asserted by the marketing page test and by the growth-tools-book Deno suite, so the browser and the server validate the same way. valid rows: [platform, what was typed, the profile link]. invalid rows: [platform, what was typed].",
+  "valid": [
+    ["instagram", "bluenote", "https://instagram.com/bluenote"],
+    ["instagram", "@blue.note_bar", "https://instagram.com/blue.note_bar"],
+    ["instagram", "  @bluenote  ", "https://instagram.com/bluenote"],
+    ["instagram", "https://www.instagram.com/bluenote/", "https://www.instagram.com/bluenote/"],
+    ["instagram", "instagram.com/bluenote", "https://instagram.com/bluenote"],
+    ["tiktok", "@blue.note", "https://tiktok.com/@blue.note"],
+    ["tiktok", "https://www.tiktok.com/@bluenote", "https://www.tiktok.com/@bluenote"],
+    ["facebook", "bluenote.lagos", "https://facebook.com/bluenote.lagos"],
+    ["facebook", "https://m.facebook.com/bluenote", "https://m.facebook.com/bluenote"],
+    ["x", "@blue_note", "https://x.com/blue_note"],
+    ["x", "https://twitter.com/blue_note", "https://twitter.com/blue_note"],
+    ["youtube", "@blue-note.tv", "https://youtube.com/@blue-note.tv"],
+    ["youtube", "https://www.youtube.com/@bluenote", "https://www.youtube.com/@bluenote"],
+    ["linkedin", "ada-lovelace", "https://linkedin.com/in/ada-lovelace"],
+    ["linkedin", "https://www.linkedin.com/company/bluenote", "https://www.linkedin.com/company/bluenote"]
+  ],
+  "invalid": [
+    ["instagram", ""],
+    ["instagram", "@"],
+    ["instagram", "blue note"],
+    ["instagram", "blue-note"],
+    ["instagram", "@@bluenote"],
+    ["instagram", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+    ["tiktok", "b"],
+    ["tiktok", "https://www.instagram.com/bluenote"],
+    ["facebook", "blue_note"],
+    ["x", "blue.note"],
+    ["x", "abcdefghijklmnop"],
+    ["youtube", "ab"],
+    ["linkedin", "ada_lovelace"],
+    ["linkedin", "https://linkedin.com/"],
+    ["instagram", "https://instagram.com.evil.example/bluenote"],
+    ["instagram", "javascript:alert(1)"],
+    ["myspace", "bluenote"]
+  ]
+}

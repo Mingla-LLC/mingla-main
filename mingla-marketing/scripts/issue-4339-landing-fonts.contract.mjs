@@ -10,8 +10,9 @@
 // and Mingla Host joined the landing pages): /, /host and /host/<icp>; phase
 // 2b adds every redesigned public page (Going out, Cities, the city page, Get
 // the app, Free tools, About, Locals, Creators, the careers index, Blog, Help,
-// Support, the six legal documents, Delete account and Unsubscribe). They load
-// and preload on those routes and nowhere else; /links keeps its own module.
+// Support, the six legal documents, Delete account and Unsubscribe); phase 3
+// adds Book a call (/schedule). They load and preload on those routes and
+// nowhere else; /links keeps its own module.
 
 import assert from 'node:assert/strict'
 
@@ -37,6 +38,7 @@ export const LANDING_FONT_CONSUMERS = [
   'app/locals/page.tsx',
   'app/organiser-terms/page.tsx',
   'app/privacy-policy/page.tsx',
+  'app/schedule/page.tsx',
   'app/sms-terms/page.tsx',
   'app/support/page.tsx',
   'app/terms-of-service/page.tsx',
