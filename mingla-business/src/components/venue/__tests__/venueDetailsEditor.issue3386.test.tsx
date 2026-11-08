@@ -273,6 +273,8 @@ describe("in review — name, category and address save directly", () => {
         countryCode: "NG",
         lat: 6.4474,
         lng: 3.4723,
+        // #4334 — the picked Google place id rides with the pin.
+        locationProviderPlaceId: "ChIJfixture_abc",
         coordinatePrecision: "exact",
       },
     });

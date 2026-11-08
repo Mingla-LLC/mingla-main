@@ -54,6 +54,8 @@ describe("Issue #1363 hierarchy client contract", () => {
         countryCode: "NG",
         precision: "approximate",
         matchLevel: level,
+        // #4334 — the fixture hit carries no Google place id.
+        placeId: null,
       },
     });
     expect(forwardHierarchy).toHaveBeenCalledWith("Raw, Label!", {

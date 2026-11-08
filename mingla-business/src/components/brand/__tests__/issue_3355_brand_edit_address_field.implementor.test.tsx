@@ -158,9 +158,11 @@ describe("#3355 P5 — Brand Edit address field, rendered", () => {
         countryCode: "GB",
         lat: 51.3891,
         lng: 1.3863,
+        // #4334 — the picked id lives in its own column, never google_place_id.
+        locationProviderPlaceId: "dXJuOm1ieHBvaTo",
       },
     ]);
-    expect(JSON.stringify(changes)).not.toContain("dXJuOm1ieHBvaTo");
+    expect(Object.keys(changes[0])).not.toContain("googlePlaceId");
     expect(input(r).props.selectionState).toBe("selected");
     void TestRenderer.act(() => r.unmount());
   });
