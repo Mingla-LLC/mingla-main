@@ -17,6 +17,9 @@ const FIRST_3645 = "20280201003645";
 // definitions before it (issue_3645_sell_publish_reemit_hunks.ts). Every other
 // #3645 migration, later ones included, must still declare its hunks here.
 const SELL_PUBLISH_TARGET = "20280428003645_issue_3645_sell_publish_integrity.sql";
+// Bundle 2c's migration likewise carries its own guard
+// (issue_3645_float_forecast_reemit_hunks.ts).
+const FLOAT_FORECAST_TARGET = "20280503003645_issue_3645_float_forecast_alerts.sql";
 
 function migrationFiles(): string[] {
   return [...Deno.readDirSync(DIR)]
@@ -67,7 +70,7 @@ Deno.test("#3645 every #3645 re-emit is declared (no undeclared money-function r
     for (const name of definitions(Deno.readTextFileSync(`${DIR}/${file}`)).keys()) before.add(name);
   }
   for (const file of migrationFiles().filter((f) =>
-    (f.startsWith("2028020") || (f >= "20280407003645" && f !== SELL_PUBLISH_TARGET)) &&
+    (f.startsWith("2028020") || (f >= "20280407003645" && f !== SELL_PUBLISH_TARGET && f !== FLOAT_FORECAST_TARGET)) &&
     f.includes("_issue_3645_")
   )) {
     for (const name of definitions(Deno.readTextFileSync(`${DIR}/${file}`)).keys()) {

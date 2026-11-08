@@ -73,7 +73,7 @@ type SweepDeps = {
     },
   ) => Promise<void>;
   notifyAttemptCap?: (
-    release: Pick<StripeReleaseCandidate, "release_id" | "brand_id">,
+    release: AlertAnchor,
     message: string,
     alertKind?: string,
     outboxIdempotencyKey?: string | null,
@@ -92,7 +92,16 @@ type SweepDeps = {
   drainReservationSlotUnavailableAlerts?: (
     admin: AdminClient,
   ) => Promise<void>;
+  // Issue #3645 — injectable so the stale stay-dispute raise is unit-testable.
+  raiseStaleStayDisputeAlerts?: (
+    admin: AdminClient,
+  ) => Promise<{ raised: number; refreshed: number }>;
 };
+
+// Issue #3645 — what an outbox alert is about. Every kind names a release and
+// its brand, except the one Mingla-wide float-shortfall row (both null),
+// raised when the shortfall is made only of sales that are not releases yet.
+type AlertAnchor = { release_id: string | null; brand_id: string | null };
 
 type PaystackClaimRow = {
   release_id: string;
@@ -196,8 +205,9 @@ type FeeSnapshot = {
 
 type PayoutReleaseAlert = {
   alert_id: string;
-  release_id: string;
-  brand_id: string;
+  // Issue #3645 — null on the Mingla-wide float-shortfall row only.
+  release_id: string | null;
+  brand_id: string | null;
   // Issue #1217 — the drain now returns alert_kind so the worker can emit
   // rail-aware copy (Stripe vs Paystack) rather than Stripe-only wording.
   alert_kind: string;
@@ -273,6 +283,15 @@ function payoutReleaseAlertCopy(alertKind: string): {
         title: "Organiser payout is waiting for a bank account",
         bodyLead:
           "is mature and owed but cannot release until the organiser connects a payout bank",
+      };
+    // Issue #3645 — a stay payout held by a dispute that has been open for
+    // over 90 days. The error_message names the disputes.
+    case "stay_dispute_hold_open":
+      return {
+        type: "ops.stay_payout_release_dispute_hold_open",
+        title: "Stay payout held by a long-open dispute",
+        bodyLead:
+          "is held by a stay dispute that has been open for over 90 days",
       };
     case "stripe_attempt_cap":
     default:
@@ -503,7 +522,7 @@ async function surfaceWaitingForBank(
 }
 
 async function notifyAttemptCap(
-  release: Pick<StripeReleaseCandidate, "release_id" | "brand_id">,
+  release: AlertAnchor,
   message: string,
   alertKind = "stripe_attempt_cap",
   outboxIdempotencyKey?: string | null,
@@ -519,34 +538,75 @@ async function notifyAttemptCap(
   // one layer below this function and ops would keep the stale number. Every
   // other kind keeps the #1217 key byte-for-byte: their payload is a fixed
   // fact, and re-sending it would be noise.
+  // Issue #3645 — the stale stay-dispute kind re-arms with a revision key
+  // the same way, when the set of stale disputes on a release changes.
   const idempotencyKey =
-    alertKind === "paystack_float_shortfall" &&
+    (alertKind === "paystack_float_shortfall" ||
+        alertKind === "stay_dispute_hold_open") &&
       typeof outboxIdempotencyKey === "string" &&
       outboxIdempotencyKey.length > 0
       ? outboxIdempotencyKey
       : `${copy.type}:${release.release_id}`;
-  const result = await dispatchNotification({
-    emailTo: "ops@mingla.app",
-    emailVariant: "generic_notification",
-    type: copy.type,
-    title: copy.title,
-    body: `Release ${release.release_id} ${copy.bodyLead}. Last error: ${
-      message.slice(0, 500)
-    }`,
-    data: {
-      releaseId: release.release_id,
-      brandId: release.brand_id,
-      alertKind,
-    },
-    relatedId: release.release_id,
-    relatedType: "payout_release",
-    idempotencyKey,
-    skipPush: true,
-  });
+  // Issue #3645 — the Mingla-wide float row has no release: its message is
+  // the whole body (byte-stable per revision, since the email claim
+  // fingerprints the payload per key).
+  const result = await dispatchNotification(
+    release.release_id === null
+      ? {
+        emailTo: "ops@mingla.app",
+        emailVariant: "generic_notification",
+        type: copy.type,
+        title: copy.title,
+        body: message.slice(0, 500),
+        data: { alertKind },
+        relatedType: "payout_float",
+        idempotencyKey,
+        skipPush: true,
+      }
+      : {
+        emailTo: "ops@mingla.app",
+        emailVariant: "generic_notification",
+        type: copy.type,
+        title: copy.title,
+        body: `Release ${release.release_id} ${copy.bodyLead}. Last error: ${
+          message.slice(0, 500)
+        }`,
+        data: {
+          releaseId: release.release_id,
+          brandId: release.brand_id,
+          alertKind,
+        },
+        relatedId: release.release_id,
+        relatedType: "payout_release",
+        idempotencyKey,
+        skipPush: true,
+      },
+  );
   if (!result.providerAccepted) {
     throw new Error("attempt_cap_provider_acceptance_missing");
   }
   return "provider_accepted";
+}
+
+/**
+ * Issue #3645 — raise the ops alert for stay payouts held by a dispute that
+ * has been open for over 90 days (issue_3645_raise_stale_stay_dispute_alerts).
+ */
+async function raiseStaleStayDisputeAlerts(
+  admin: AdminClient,
+): Promise<{ raised: number; refreshed: number }> {
+  const { data, error } = await admin.rpc(
+    "issue_3645_raise_stale_stay_dispute_alerts" as never,
+    { p_now: new Date().toISOString() } as never,
+  );
+  if (error) {
+    throw new Error(`stale_stay_dispute_alert_failed:${error.message}`);
+  }
+  const result = (data ?? {}) as Record<string, unknown>;
+  return {
+    raised: Number(result.raised ?? 0),
+    refreshed: Number(result.refreshed ?? 0),
+  };
 }
 
 async function deliverPendingAttemptCapAlerts(
@@ -1292,6 +1352,31 @@ async function runPayoutReleaseSweepAuthenticated(
         ? outcomeError.message
         : String(outcomeError),
     });
+  }
+
+  // Issue #3645 — stay payouts held by a long-open dispute. Pure SQL that only
+  // writes the alert outbox, so it runs on every tick (dark and execute) and
+  // before the drain below, which delivers it in the same tick. Non-fatal: a
+  // failure logs a structured event and never changes the tick's outcome.
+  try {
+    const stale = await (deps.raiseStaleStayDisputeAlerts ??
+      raiseStaleStayDisputeAlerts)(admin as never);
+    if (stale.raised > 0 || stale.refreshed > 0) {
+      console.info(JSON.stringify({
+        event: "stale_stay_dispute_alerts_raised",
+        function_name: "payout-release-sweep",
+        raised: stale.raised,
+        refreshed: stale.refreshed,
+      }));
+    }
+  } catch (staleError) {
+    console.error(JSON.stringify({
+      event: "stale_stay_dispute_alerts_failed",
+      function_name: "payout-release-sweep",
+      reason: (staleError instanceof Error
+        ? staleError.message
+        : String(staleError)).slice(0, 200),
+    }));
   }
 
   let alertDelivery;

@@ -17801,6 +17801,7 @@
         "supabase/migrations/20280428024294_issue_4294_company_signin.sql",
         "supabase/migrations/20280429004271_issue_4271_tap_buyer_name.sql",
         "supabase/migrations/20280502004270_issue_4270_w7_admin_brand_group_inbox.sql",
+        "supabase/migrations/20280503003645_issue_3645_float_forecast_alerts.sql",
         "supabase/migrations/__tests__/issue_1773_preserves_1857_phone_authority.pg17.test.sql",
         "supabase/migrations/__tests__/issue_1857_phone_country_authority.pg17.test.sql",
         "supabase/migrations/__tests__/issue_1902_public_event_lifecycle.pg17.test.sql",
@@ -19540,6 +19541,7 @@
         "supabase/migrations/20280428024294_issue_4294_company_signin.sql",
         "supabase/migrations/20280429004271_issue_4271_tap_buyer_name.sql",
         "supabase/migrations/20280502004270_issue_4270_w7_admin_brand_group_inbox.sql",
+        "supabase/migrations/20280503003645_issue_3645_float_forecast_alerts.sql",
         "supabase/migrations/__tests__/biz_trip_tickets_sold.test.ts",
         "supabase/migrations/__tests__/draft_autosave_keeps_applied_cover.test.sql",
         "supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts",
@@ -24589,6 +24591,7 @@
         "supabase/migrations/20280428024294_issue_4294_company_signin.sql",
         "supabase/migrations/20280429004271_issue_4271_tap_buyer_name.sql",
         "supabase/migrations/20280502004270_issue_4270_w7_admin_brand_group_inbox.sql",
+        "supabase/migrations/20280503003645_issue_3645_float_forecast_alerts.sql",
         "supabase/migrations/__tests__/biz_trip_tickets_sold.test.ts",
         "supabase/migrations/__tests__/draft_autosave_keeps_applied_cover.test.sql",
         "supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts",
@@ -53215,5 +53218,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "a846f1a438bb88e06a6fb372d3fefb770d02241e63ceb9c26844774857059cdf",
-  "phase3eContractSha256": "7627f812039b42cdafc7a124ec6f6cbf2529817591cd67bae00885fe818a5e41"
+  "phase3eContractSha256": "96130fdf9fca774363ecdb41b18de677350210880bb458bed1dbe5017882c80e"
 }
