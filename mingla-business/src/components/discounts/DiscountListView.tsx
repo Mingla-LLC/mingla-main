@@ -1,6 +1,5 @@
 import React, { Suspense, useState } from "react";
 import {
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -37,6 +36,16 @@ const LazyEditSheet = React.lazy(async () => {
   const mod = await import("./DiscountEditSheet");
   return { default: mod.DiscountEditSheet };
 });
+/**
+ * #4304: Alert.alert with buttons is a no-op on react-native-web, so End did
+ * nothing on host.usemingla.com. ConfirmDialog works on web and native; it
+ * loads only when the dialog opens, keeping it off the boot bundle.
+ */
+const LazyConfirmDialog = React.lazy(() =>
+  import("../ui/ConfirmDialog").then((module) => ({
+    default: module.ConfirmDialog,
+  })),
+);
 const FILTERS: [
   [DiscountFilter, string],
   [DiscountFilter, string],
@@ -74,6 +83,7 @@ export const DiscountListView: React.FC<DiscountListViewProps> = ({
   );
   const [preset, setPreset] = useState<BrandPriceRow | null>(null);
   const [saved, setSaved] = useState(false);
+  const [endTarget, setEndTarget] = useState<BrandDiscount | null>(null);
   const list = useQuery({
     queryKey: discountListKey(brandId, filter),
     queryFn: async () =>
@@ -109,20 +119,13 @@ export const DiscountListView: React.FC<DiscountListViewProps> = ({
     row: BrandDiscount,
     op: "pause" | "resume" | "end" | "delete_draft",
   ): void => {
-    if (op === "end")
-      Alert.alert(
-        "End this discount?",
-        "Buyers will stop receiving it. Existing orders keep their discount.",
-        [
-          { text: "Keep live", style: "cancel" },
-          {
-            text: "End discount",
-            style: "destructive",
-            onPress: () => action.mutate({ row, op }),
-          },
-        ],
-      );
+    if (op === "end") setEndTarget(row);
     else action.mutate({ row, op });
+  };
+  const confirmEnd = (): void => {
+    const row = endTarget;
+    setEndTarget(null);
+    if (row) action.mutate({ row, op: "end" });
   };
   const rows = list.data ?? [];
   const priceRows = prices.data ?? [];
@@ -304,6 +307,24 @@ export const DiscountListView: React.FC<DiscountListViewProps> = ({
               setPreset(null);
               setSaved(true);
             }}
+          />
+        </Suspense>
+      ) : null}
+      {endTarget ? (
+        <Suspense fallback={null}>
+          <LazyConfirmDialog
+            visible
+            onClose={() => setEndTarget(null)}
+            onConfirm={confirmEnd}
+            title="End this discount?"
+            description="Buyers will stop receiving it. Existing orders keep their discount."
+            cancelLabel="Keep live"
+            confirmLabel="End discount"
+            destructive
+            initialFocus="cancel"
+            testID="discount-end-confirm"
+            confirmTestID="discount-end-confirm-yes"
+            cancelTestID="discount-end-confirm-cancel"
           />
         </Suspense>
       ) : null}

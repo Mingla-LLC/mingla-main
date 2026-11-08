@@ -87,7 +87,12 @@ import {
   verifiedProposalArgs,
 } from "../_shared/agentTicketPricing.ts";
 import {
+  type FollowupProposal,
+  followupProposal,
+} from "../_shared/agentFollowupProposal.ts";
+import {
   bindTripStandardPlaceholderProposal,
+  preflightDiscountProposal,
   preflightMoneyProposal,
 } from "../_shared/agentDomainTools.ts";
 import { logError } from "../_shared/structuredLog.ts";
@@ -3969,7 +3974,7 @@ ${boundedAgentContext}
 
     // Branch on tool call vs text
     if (gemini.toolCall) {
-      const tool = findTool(gemini.toolCall.name);
+      let tool = findTool(gemini.toolCall.name);
       if (!tool) {
         return errorResponse(
           500,
@@ -3980,7 +3985,10 @@ ${boundedAgentContext}
 
       // For READ-ONLY tools, execute inline (no confirmation needed)
       if (isReadOnlyAgentToolCall(tool.name, gemini.toolCall.args)) {
-        try {
+        // #4304: set when the read's follow-up proposes the write the Host
+        // asked for; it then leaves this branch for the write-proposal path.
+        let promoted: FollowupProposal<NonNullable<typeof tool>> | null = null;
+        readTurn: try {
           if (
             !await appendActivity({
               client: serviceClient,
@@ -4098,6 +4106,28 @@ ${boundedAgentContext}
               }),
             );
             followup = undefined;
+          }
+          // #4304: the follow-up's own write (end_discount after
+          // list_discounts) becomes this turn's proposal; a card carries its
+          // own words, so it wins over any follow-up text. A second read stays
+          // a text turn.
+          promoted = followupProposal(
+            followup,
+            findTool,
+            isReadOnlyAgentToolCall,
+            readInterruption,
+          );
+          if (promoted) {
+            console.log(
+              "[agent-chat] read follow-up proposal promoted",
+              JSON.stringify({
+                fn: "agent-chat",
+                issue: "4304",
+                read_tool_name: tool.name,
+                tool_name: promoted.tool.name,
+              }),
+            );
+            break readTurn;
           }
           const text = followup?.textResponse ?? "Here's what I found.";
           await assertAttemptRunning(
@@ -4254,6 +4284,11 @@ ${boundedAgentContext}
             err?.message ?? "Tool failed",
           );
         }
+        if (!promoted) {
+          return errorResponse(500, "INTERNAL", "Read turn did not finish");
+        }
+        tool = promoted.tool;
+        gemini.toolCall = promoted.toolCall;
       }
 
       if (activeEventPlan) {
@@ -4383,11 +4418,20 @@ ${boundedAgentContext}
           gemini.toolCall.args,
           userClient,
         );
-        if (pricingContext || moneyContext || readinessContext) {
+        // #4304: pause/resume/end discount cards name the discount.
+        const discountContext = await preflightDiscountProposal(
+          tool.name,
+          gemini.toolCall.args,
+          userClient,
+        );
+        if (
+          pricingContext || moneyContext || readinessContext || discountContext
+        ) {
           proposalContext = {
             ...(pricingContext ?? {}),
             ...(moneyContext ?? {}),
             ...(readinessContext ?? {}),
+            ...(discountContext ?? {}),
           };
         }
       } catch (err: unknown) {

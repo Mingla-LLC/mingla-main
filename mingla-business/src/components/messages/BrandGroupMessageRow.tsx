@@ -221,9 +221,12 @@ const styles = StyleSheet.create({
   columnMine: { alignItems: "flex-end" },
   columnOther: { alignItems: "flex-start" },
   sender: { color: brandGroupChat.senderName, fontSize: 12, fontWeight: "700", marginLeft: 12, marginBottom: 3 },
-  bubbleLine: { flexDirection: "row", alignItems: "center", gap: 4 },
+  // #4304 — the line may never be wider than its column, and the bubble is the
+  // part that gives way: React Native row items do not shrink by default, so a
+  // long message otherwise grows past the 78% column and is cut off.
+  bubbleLine: { flexDirection: "row", alignItems: "center", gap: 4, maxWidth: "100%", minWidth: 0 },
   bubbleLineMine: { flexDirection: "row-reverse" },
-  bubble: { paddingHorizontal: 14, paddingVertical: 9, gap: 6, borderWidth: 1, borderColor: "transparent" },
+  bubble: { flexShrink: 1, minWidth: 0, paddingHorizontal: 14, paddingVertical: 9, gap: 6, borderWidth: 1, borderColor: "transparent" },
   bubbleMine: { backgroundColor: brandGroupChat.mineBubble },
   bubbleOther: { backgroundColor: brandGroupChat.otherBubble },
   bubbleSelected: { borderColor: brandGroupChat.selected, borderWidth: 2 },

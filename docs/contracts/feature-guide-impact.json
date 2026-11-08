@@ -618,6 +618,7 @@
         "supabase/functions/_shared/agentConversationState.ts",
         "supabase/functions/_shared/agentCopyLint.ts",
         "supabase/functions/_shared/agentDomainTools.ts",
+        "supabase/functions/_shared/agentFollowupProposal.ts",
         "supabase/functions/_shared/agentGemini.ts",
         "supabase/functions/_shared/agentLaunchPlan.ts",
         "supabase/functions/_shared/agentLoop.ts",
@@ -1410,6 +1411,8 @@
         "mingla-admin/src/components/placePool/CityBoxMap.jsx",
         "mingla-admin/src/components/placePool/CityBoxPanel.jsx",
         "mingla-admin/src/components/placePool/CityRunPanel.jsx",
+        "mingla-admin/src/components/placePool/LiveRunsSection.jsx",
+        "mingla-admin/src/hooks/useLiveCityRuns.js",
         "mingla-admin/src/components/placePool/ExcludedSummary.jsx",
         "mingla-admin/src/components/placePool/PipelineSection.jsx",
         "mingla-admin/src/components/placePool/ScoringTools.jsx",
@@ -1460,7 +1463,8 @@
         "mingla-admin/src/pages/PlacePoolManagementPage.jsx",
         "supabase/migrations/20280419004276_issue_4276_fast_place_category.sql",
         "supabase/migrations/20280419014276_issue_4276_mv_refresh_slot_comma_minutes.sql",
-        "supabase/migrations/20280419024276_issue_4276_admin_spend_totals.sql"
+        "supabase/migrations/20280419024276_issue_4276_admin_spend_totals.sql",
+        "supabase/migrations/20280428004276_issue_4276_live_runs.sql"
       ]
     },
     {
@@ -1757,6 +1761,7 @@
         "mingla-business/src/components/checkout/CheckoutOrderSummary.tsx",
         "mingla-business/src/components/checkout/DiscountCodeField.tsx",
         "mingla-business/src/components/discounts/DiscountEditSheet.tsx",
+        "mingla-business/src/components/discounts/DiscountListView.tsx",
         "packages/offering-rendering/discountWriteRefusalCopy.ts",
         "supabase/functions/brand-discount-upsert/index.ts"
       ]
