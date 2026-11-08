@@ -77,6 +77,13 @@ Deno.test("S-3 every static-map caller renders through StaticMapImage; no overla
       if (m) assertEquals(/\bbottom:/.test(m[1]), false, `${rel} ${name} sits on a bottom corner`);
     }
   }
+  // N-6: no map draws its own pin over the image — Google's marker is the one pin.
+  for (const rel of CALLERS) {
+    const src = await Deno.readTextFile(new URL(rel, ROOT));
+    for (const m of src.matchAll(/<StaticMapImage[\s\S]*?<\/StaticMapImage>/g)) {
+      assertEquals(/<MapPin\b/.test(m[0]), false, `${rel} draws a second pin over the map`);
+    }
+  }
   // F-10: the Host preview draws one pin (Google's marker), not its own as well.
   const preview = await Deno.readTextFile(new URL("mingla-business/src/components/location/AddressMapPreview.tsx", ROOT));
   assertEquals(preview.includes("styles.mapPin"), false);

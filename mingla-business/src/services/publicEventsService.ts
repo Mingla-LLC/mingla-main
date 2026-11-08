@@ -1948,6 +1948,12 @@ const detailFromDirectBundle = async (
   };
   const event = publicEventViewRowToEvent(row, tickets, terminalSource);
   event.cityGeo = asLatLng(payload.cityGeo);
+  // #4334 N-1 — the bundle is the buyer page's primary read; its googlePlaceId
+  // (withheld server-side with the street) anchors the Google Maps link.
+  event.googlePlaceId =
+    typeof payload.googlePlaceId === "string" && payload.googlePlaceId.length > 0
+      ? payload.googlePlaceId
+      : null;
   const bookable = await resolveEventBookable(
     String(payload.brandId),
     ticketsArePaidOnline(tickets),

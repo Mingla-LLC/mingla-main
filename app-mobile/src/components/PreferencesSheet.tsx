@@ -45,6 +45,14 @@ import { mixpanelService } from "../services/mixpanelService";
 import { useAppStore } from "../store/appStore";
 import { normalizePreferencesForSave } from "../utils/preferencesConverter";
 import { toastManager } from "./ui/Toast";
+
+/**
+ * #4334 retest N-5 — said INLINE under the location field (a toast renders
+ * behind this sheet's modal on iOS). geocodingService already reported the
+ * proxy code to Sentry.
+ */
+export const LOCATION_SEARCH_UNAVAILABLE_COPY =
+  'Location search is unavailable right now. Try again, or turn on Use my location.';
 import { useTranslation } from 'react-i18next';
 
 import {
@@ -326,6 +334,8 @@ export default function PreferencesSheet({
   // deck toggle at handleGpsToggle), so its import stays.
   const locationSectionRef = useRef<View>(null);
   const locationSectionY = useRef<number>(0);
+  // #4334 N-5 — the inline "search is unavailable" message (not a toast).
+  const [locationUnavailable, setLocationUnavailable] = useState(false);
   const categoriesSectionRef = useRef<View>(null);
   const categoriesSectionY = useRef<number>(0);
   const travelSectionRef = useRef<View>(null);
@@ -671,6 +681,7 @@ export default function PreferencesSheet({
   // location, so selectedCoords is cleared (a pick re-sets it via onPick).
   const handleLocationInputChange = useCallback((text: string) => {
     if (!isEditable) return;
+    setLocationUnavailable(false);
     setSearchLocation(text);
     setSelectedCoords(null);
     setSelectedPlaceId(null);
@@ -678,6 +689,7 @@ export default function PreferencesSheet({
 
   const handleClearLocation = useCallback(() => {
     if (!isEditable) return;
+    setLocationUnavailable(false);
     setSearchLocation('');
     setSelectedCoords(null);
     setSelectedPlaceId(null);
@@ -688,6 +700,7 @@ export default function PreferencesSheet({
   // point. The field's own retrieve step already validated the feature.
   const handlePickLocation = useCallback((details: PlaceDetails) => {
     if (!isEditable) return;
+    setLocationUnavailable(false);
     setSearchLocation(details.formattedAddress);
     const loc = details.location;
     if (loc && Math.abs(loc.lat) <= 90 && Math.abs(loc.lng) <= 180) {
@@ -700,6 +713,7 @@ export default function PreferencesSheet({
   }, [isEditable]);
 
   const handleGpsToggle = useCallback((value: boolean) => {
+    setLocationUnavailable(false);
     if (!isEditable) return;
     setUseGpsLocation(value);
     if (value) {
@@ -914,10 +928,10 @@ export default function PreferencesSheet({
         if (!(err instanceof LocationSearchUnavailableError)) {
           console.warn('[ORCH-0943] auto-resolve failed', err);
         }
-        toastManager.error(
-          'Location search is unavailable right now. Try again, or turn on Use my location.',
-          4000,
-        );
+        // #4334 N-5 — inline under the field, scrolled into view; a toast here
+        // renders behind the sheet's modal on iOS.
+        setLocationUnavailable(true);
+        scrollRef.current?.scrollTo?.({ y: Math.max(0, locationSectionY.current - 16), animated: true });
         return;
       }
 
@@ -1220,6 +1234,16 @@ export default function PreferencesSheet({
                 setShowPaywall(true);
               }}
             />
+            {locationUnavailable && !useGpsLocation ? (
+              <View
+                style={styles.sectionWarningPill}
+                accessibilityRole="alert"
+                accessibilityLiveRegion="polite"
+                testID="preferences-location-unavailable"
+              >
+                <Text style={styles.sectionWarningText}>{LOCATION_SEARCH_UNAVAILABLE_COPY}</Text>
+              </View>
+            ) : null}
             {sectionWarnings.location && (
               <View style={styles.sectionWarningPill}>
                 <Text style={styles.sectionWarningText}>{sectionWarnings.location}</Text>

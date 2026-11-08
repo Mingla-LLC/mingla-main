@@ -19,8 +19,9 @@
  * "No matches"). The HOST owns the sheet chrome + where the list mounts
  * (card-below vs inline) via the `dropdown.mode` token.
  *
- * Attribution (#4334, D5): a non-interactive Google Maps logo row closes the
- * list whenever rows, "No matches" or "unavailable" are showing.
+ * Attribution (#4334, D5): a non-interactive Google Maps logo row sits directly
+ * beneath the field, above the list, whenever rows, "No matches" or
+ * "unavailable" are showing — so the keyboard never covers it (retest N-2).
  *
  * Gorhom awareness (DESIGN §3.3): consumer hosts are @gorhom bottom sheets, so
  * the host injects its gorhom-aware `TextInputComponent` (BottomSheetTextInput).
@@ -776,7 +777,10 @@ export const AddressInput: React.FC<AddressInputProps> = ({
     </>
   );
 
-  // #4334 (D5) — the list is Google's: close it with the attribution row.
+  // #4334 (D5, retest N-2) — the list is Google's, so Google's logo sits
+  // DIRECTLY BENEATH THE FIELD, above the suggestions: the keyboard rises from
+  // the bottom, so a footer row could be covered while the user types (iPhone SE,
+  // notched phones, short sheets); a row under the field never is.
   const showAttribution =
     status.kind === "suggestions_open" ||
     status.kind === "no_results" ||
@@ -791,9 +795,9 @@ export const AddressInput: React.FC<AddressInputProps> = ({
   // scroll wrapper; the dark CityPicker sheet already scrolls its own body).
   const inlineContent = (
     <>
+      {attribution}
       {statusContent}
       {rowsOpen ? renderRows(rowsOpen) : null}
-      {attribution}
     </>
   );
 
@@ -808,12 +812,17 @@ export const AddressInput: React.FC<AddressInputProps> = ({
   // issue #1027 (Thread A) — the injected `dropdown.maxHeight` token is now an
   // UPPER BOUND; the effective viewport is capped to the space above the keyboard
   // (falls back to the token unchanged when the keyboard is hidden / not measured).
-  const dropdownMaxHeight = computeDropdownMaxHeight({
-    keyboardScreenY,
-    cardTopY,
-    tokenMaxHeight: tokens.dropdown.maxHeight,
-    isIOS: Platform.OS === "ios",
-  });
+  // #4334 N-2 — the logo row sits inside the card above the list, so the list's
+  // viewport gives up that row's height to keep its bottom above the keyboard.
+  const dropdownMaxHeight = Math.max(
+    0,
+    computeDropdownMaxHeight({
+      keyboardScreenY,
+      cardTopY,
+      tokenMaxHeight: tokens.dropdown.maxHeight,
+      isIOS: Platform.OS === "ios",
+    }) - (showAttribution ? GOOGLE_MAPS_ATTRIBUTION_ROW_HEIGHT : 0),
+  );
 
   const wrappedList =
     tokens.dropdown.mode === "card" ? (
@@ -836,6 +845,7 @@ export const AddressInput: React.FC<AddressInputProps> = ({
             tokens.dropdown.hasShadow ? styles.cardShadow : null,
           ]}
         >
+          {attribution}
           {statusContent}
           {rowsOpen ? (
             <Scroll
@@ -847,7 +857,6 @@ export const AddressInput: React.FC<AddressInputProps> = ({
               {renderRows(rowsOpen)}
             </Scroll>
           ) : null}
-          {attribution}
         </View>
       ) : null
     ) : (
@@ -1183,8 +1192,9 @@ const styles = StyleSheet.create({
 });
 
 /**
- * #4334 (Seth decision D5) — Google Maps attribution: the last, non-interactive
- * row of the suggestion list. Google's own logo files, unmodified
+ * #4334 (Seth decision D5) — Google Maps attribution: a non-interactive row
+ * directly beneath the field, above the suggestion list (retest N-2: never
+ * where the keyboard can cover it). Google's own logo files, unmodified
  * (packages/location-input/assets, from Google_Maps_Attribution_Assets.zip,
  * approved by Seth 2026-11-08), drawn at 98×18 dp — their native aspect ratio
  * and inside Google's 16–19 dp height rule — with the required clear space:
@@ -1198,6 +1208,8 @@ export const GOOGLE_MAPS_LOGO = {
   dark: require("../assets/google-maps-logo-white.png"),
 } as const;
 export const GOOGLE_MAPS_LOGO_SIZE = { width: 98, height: 18 } as const;
+/** The logo row's full height: 10 dp clear space above + 18 dp logo + 5 dp below. */
+export const GOOGLE_MAPS_ATTRIBUTION_ROW_HEIGHT = 33;
 
 export function PoweredByGoogle({ variant }: { variant: "light" | "dark" }): React.ReactElement {
   return (

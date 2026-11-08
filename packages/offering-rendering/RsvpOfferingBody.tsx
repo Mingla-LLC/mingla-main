@@ -2381,6 +2381,7 @@ export const RsvpOfferingBody: React.FC<
     address: event.address,
     addressHidden: !addressRevealed,
     locationGeo: event.locationGeo,
+    googlePlaceId: event.googlePlaceId ?? null,
   });
   const canOpenVenueMaps =
     canOpenMapsTarget(venueMapsTarget) && onOpenMaps !== undefined;

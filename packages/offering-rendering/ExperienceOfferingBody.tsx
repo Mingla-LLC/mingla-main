@@ -790,7 +790,7 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
             accessibilityLabel={`Map of ${mapStop.placeName ?? "the first stop"}`}
             testID="experience-body-map"
           >
-            <MapPin size={26} {...accentIconProps} />
+            {/* #4334 N-6 — one pin only: Google's marker (drawn by the proxy). */}
             {mapStop.placeName !== null ? (
               <View
                 style={[styles.mapCapPill, { backgroundColor: palette.page }]}

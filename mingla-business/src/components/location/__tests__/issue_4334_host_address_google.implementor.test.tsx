@@ -10,6 +10,7 @@
  *   F-1 `if (!result.ok)` branch deleted (outage treated as rows)     → red
  *   F-2 handleRetry no longer re-runs the query                        → red
  *   F-3 the Google Maps logo Image removed or swapped for text          → red
+ *   F-3 the logo row moved back below the suggestions (N-2)             → red
  *   F-4 `code === "provider_id_retired"` → onClear() deleted           → red
  *   F-5 limit / types / country sent in the suggest body               → red
  *   F-6 errorCodeFromInvokeError returning message instead of body code→ red
@@ -153,7 +154,7 @@ describe("#4334 — loud search failures (R-SRCH-5)", () => {
 });
 
 describe("#4334 — retired ids and attribution", () => {
-  test("F-3 rows are followed by Google's own Maps logo (unmodified file, 98×18, clear space, labelled, not tappable)", async () => {
+  test("F-3 Google's own Maps logo sits beneath the field, before the rows (unmodified file, 98×18, clear space, labelled, not tappable)", async () => {
     jest.useFakeTimers();
     const f = await mount(async () => ({
       data: { suggestions: [{ placeId: "ChIJdidi000001", displayName: "Didi Museum", fullAddress: "Akin Adesola St, Lagos", provider: "google" }] },
@@ -172,6 +173,15 @@ describe("#4334 — retired ids and attribution", () => {
     const row = f.tree.root.findAll((n) => n.props.testID === "powered-by-google" && n.props.style !== undefined)[0];
     const style = StyleSheet.flatten(row.props.style);
     expect(style).toMatchObject({ paddingTop: 10, paddingBottom: 5, paddingHorizontal: 10 });
+    // #4334 retest N-2 — the logo sits directly beneath the field, BEFORE the
+    // suggestions (in render order), so the keyboard can never cover it.
+    const order = f.tree.root.findAll(() => true);
+    const logoAt = order.findIndex((n) => n.props.testID === "google-maps-logo");
+    const firstRowAt = order.findIndex(
+      (n) => n.type === "Text" && JSON.stringify(n.props.children ?? "").includes("Didi Museum"),
+    );
+    expect(logoAt).toBeGreaterThanOrEqual(0);
+    expect(firstRowAt).toBeGreaterThan(logoAt);
     jest.useRealTimers();
   });
 

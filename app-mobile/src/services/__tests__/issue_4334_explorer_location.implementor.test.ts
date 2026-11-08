@@ -7,7 +7,7 @@
 //
 // Fails-on-revert (line deleted → red):
 //   E-1 geocodingService: `throw new LocationSearchUnavailableError(code)`
-//   E-2 PreferencesSheet: the unavailable toast + return in the auto-resolve catch
+//   E-2 PreferencesSheet: the inline unavailable message + return in the auto-resolve catch
 //   E-3 PreferencesSheet / AppHandlers: custom_location_place_id in the solo save
 //   E-4 CityPickerSheet: discover_city_place_id in the persisted fields
 //   E-5 resolveOnboardingPlaceId's launch-city / GPS guard
@@ -35,15 +35,28 @@ Deno.test("E-1 A3.4: geocodingService splits 'no match' ([]) from 'search unavai
   assertStringIncludes(src, "stateCode: details.regionCode || undefined,");
 });
 
-Deno.test("E-2 R-PREF-6: a search outage on Save shows the unavailable toast and saves nothing", async () => {
-  const src = strip(await read("../../components/PreferencesSheet.tsx"));
+Deno.test("E-2 R-PREF-6 / N-5: a search outage on Save says so INLINE under the field (not a toast behind the sheet) and saves nothing", async () => {
+  const raw = await read("../../components/PreferencesSheet.tsx");
+  const src = strip(raw);
+  // the exact copy, said inline in the sheet
+  assertStringIncludes(raw, "'Location search is unavailable right now. Try again, or turn on Use my location.'");
   const block = src.slice(src.indexOf("await geocodingService.autocomplete(searchLocation)"));
   const catchAt = block.indexOf("} catch (err) {");
   const catchBody = block.slice(catchAt, block.indexOf("if (!resolvedSuggestion || !resolvedCoords)"));
   assertStringIncludes(catchBody, "isSavingRef.current = false;");
-  assertStringIncludes(catchBody, "'Location search is unavailable right now. Try again, or turn on Use my location.'");
+  assertStringIncludes(catchBody, "setLocationUnavailable(true);");
   assertStringIncludes(catchBody, "return;");
-  // The "no match" toast is kept for an honest empty answer.
+  assertEquals(catchBody.includes("toastManager.error("), false, "the outage must not be a toast (it renders behind the sheet)");
+  // rendered in the sheet, beside the field's own warning, as an alert
+  assertStringIncludes(src, "{LOCATION_SEARCH_UNAVAILABLE_COPY}");
+  assertStringIncludes(src, 'testID="preferences-location-unavailable"');
+  assertStringIncludes(src, 'accessibilityRole="alert"');
+  // a new attempt clears it (typing, clearing, picking, GPS)
+  for (const fn of ["handleLocationInputChange", "handleClearLocation", "handlePickLocation", "handleGpsToggle"]) {
+    const body = src.slice(src.indexOf(`const ${fn} = useCallback(`), src.indexOf(`const ${fn} = useCallback(`) + 400);
+    assertStringIncludes(body, "setLocationUnavailable(false);", fn);
+  }
+  // The "no match" path is unchanged: an honest empty answer keeps its toast.
   assertStringIncludes(block, "toastManager.warning('Tap a suggestion to set your location.', 3000);");
 });
 
