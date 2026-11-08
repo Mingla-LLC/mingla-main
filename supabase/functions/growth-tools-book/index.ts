@@ -19,6 +19,11 @@
 // top of the "New Mingla call" notification. A booking without them is a 400
 // {error:"validation", field}.
 //
+// #4339 round A — every confirmed booking is also written to
+// public.book_call_leads (bookingLead.ts, service role, idempotent on the
+// calendar event id), so it shows in Mingla Admin's Inbound leads as
+// "Book a call". A failed lead write never fails the booking.
+//
 // Config secret GOOGLE_CALENDAR_KEYS = "client_id|client_secret|refresh_token".
 // Optional env: BOOKING_TZ (default America/New_York), BOOKING_CALENDAR_ID
 // (default "primary"), BOOKING_NOTIFY_TO (default seth@usemingla.com). Bookable
@@ -60,6 +65,7 @@ import {
   parseBookingContext,
   SOCIAL_LABELS,
 } from "./bookingContext.ts";
+import { buildBookingLead, recordBookingLead } from "./bookingLead.ts";
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -510,12 +516,24 @@ async function handleBook(
     return json({ error: "calendar_unavailable" }, 502);
   }
   const ev = await res.json() as {
+    id?: string;
     htmlLink?: string;
     hangoutLink?: string;
     conferenceData?: { entryPoints?: { uri?: string }[] };
   };
   const meet = ev.hangoutLink ??
     ev.conferenceData?.entryPoints?.find((e) => e.uri)?.uri ?? null;
+
+  // #4339 round A — the booking becomes an Inbound lead in Mingla Admin. Awaited
+  // so the write completes before the isolate is frozen; it never fails the
+  // booking (recordBookingLead never throws and logs every failure loudly).
+  await recordBookingLead(
+    buildBookingLead({ eventId: ev.id ?? null, startMs, name, email, venue, source, context }),
+    {
+      supabaseUrl: Deno.env.get("SUPABASE_URL"),
+      serviceKey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"),
+    },
+  );
 
   // Confirmation to the booker + notification to Seth. Best-effort and awaited
   // so the sends complete before the isolate is frozen; never fails the booking.
