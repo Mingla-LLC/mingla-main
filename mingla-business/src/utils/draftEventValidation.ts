@@ -11,6 +11,7 @@
  * gate uses the same structure to drive the errors sheet's Fix-jump links.
  */
 
+import { paidPriceHasMinorUnits } from "./paidPublishGuards";
 import type {
   DraftEvent,
   DraftEventStatus,
@@ -560,7 +561,9 @@ const validateTickets = (d: DraftEvent): ValidationError[] => {
         message: `Ticket ${i + 1} needs a name.`,
       });
     }
-    if (!t.isFree && (t.priceGbp === null || t.priceGbp <= 0)) {
+    // Issue #3645 — same rule as the server: a price that rounds to 0 minor
+    // units is no price.
+    if (!t.isFree && !paidPriceHasMinorUnits(t.priceGbp)) {
       errs.push({
         fieldKey: `tickets[${i}].price`,
         step: 4,
