@@ -34,7 +34,7 @@ describe("#4273 SMS window copy", () => {
 
   it("is built from the sender's own hours", () => {
     // #4273 — the sender's windows live in _shared/smsCountries.ts.
-    const ng = /NG: \{[^\n]*window: \{ start: H\((\d+)\), end: H\((\d+)\) \}/.exec(EDGE);
+    const ng = /NG: \{[^}]*?window: \{ start: H\((\d+)\), end: H\((\d+)\) \}/.exec(EDGE);
     expect(ng).not.toBeNull();
     expect(SMS_WINDOWS.NG.start).toBe(Number(ng?.[1]) * 60);
     expect(SMS_WINDOWS.NG.end).toBe(Number(ng?.[2]) * 60);

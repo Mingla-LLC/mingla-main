@@ -86,13 +86,13 @@ describe("ORCH-1270 T-9 / #4273 — client SMS_WINDOWS equal the edge SMS_COUNTR
   });
 
   it("Nigeria's window matches", () => {
-    const ng = edgeSrc.match(/NG: \{[^\n]*window: \{ start: (H\([^)]*\)), end: (H\([^)]*\)) \}/);
+    const ng = edgeSrc.match(/NG: \{[^}]*?window: \{ start: (H\([^)]*\)), end: (H\([^)]*\)) \}/);
     expect(ng).not.toBeNull();
     expect({ start: minutes(ng![1]), end: minutes(ng![2]) }).toEqual({ start: SMS_WINDOWS.NG.start, end: SMS_WINDOWS.NG.end });
   });
 
   it("France's window and days match", () => {
-    const fr = edgeSrc.match(/FR: eu\([^\n]*window: \{ start: (H\([^)]*\)), end: (H\([^)]*\)), days: \[([^\]]*)\]/);
+    const fr = edgeSrc.match(/FR: eu\(\[[^\]]*\],\s*\{\s*window: \{ start: (H\([^)]*\)), end: (H\([^)]*\)), days: \[([^\]]*)\]/);
     expect(fr).not.toBeNull();
     expect({ start: minutes(fr![1]), end: minutes(fr![2]) }).toEqual({ start: SMS_WINDOWS.FR.start, end: SMS_WINDOWS.FR.end });
     expect(fr![3].split(",").map((d) => parseInt(d.trim(), 10))).toEqual([...SMS_WINDOWS.FR.days]);
