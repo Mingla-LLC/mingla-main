@@ -64,9 +64,16 @@ export interface GoogleFontOrigins {
   file: string;
 }
 
-const GOOGLE_CSS = "https://fonts.googleapis.com";
-const GOOGLE_FILES = "https://fonts.gstatic.com";
 const PROXY = "/gfonts";
+// D-1 (privacy): a production web build talks to the same-origin proxy only,
+// so it must not even CONTAIN a Google font origin. The direct origins exist
+// only where a build can use them: native, and the local web dev server (no
+// rewrite there). Metro inlines Platform.OS and __DEV__, so for production
+// web this folds to the proxy and the minifier drops both Google strings.
+const DIRECT_GOOGLE =
+  Platform.OS !== "web" || (typeof __DEV__ !== "undefined" && __DEV__ === true);
+const GOOGLE_CSS = DIRECT_GOOGLE ? "https://fonts.googleapis.com" : PROXY;
+const GOOGLE_FILES = DIRECT_GOOGLE ? "https://fonts.gstatic.com" : PROXY;
 
 /**
  * Where font CSS and files come from. Web production uses the same-origin
@@ -149,8 +156,10 @@ export const rewriteBlocksForWeb = (
   blocks
     .map((block) =>
       block.css
-        .split(`${GOOGLE_FILES}/`)
-        .join(`${fileOrigin}/`)
+        // Re-host every font file URL on `fileOrigin`. Any absolute origin is
+        // replaced (the CSS only ever comes from Google or its proxy), so the
+        // production web path needs no Google origin string to do it.
+        .replace(/url\((['"]?)https:\/\/[^/'")\s]+\//g, `url($1${fileOrigin}/`)
         .replace(/font-family:\s*[^;]+;/, `font-family: '${key}';`)
         .replace(/font-weight:\s*\d+;/, "font-weight: 100 900;"),
     )

@@ -480,6 +480,13 @@ BEGIN
                         'inclusions','refundPolicy','startAt','status',
                         'themeAnimationOverride','themeColorOverride','themeFontOverride','themeGradientOverride', -- [TEST-MOD-APPROVED #1023]
                         'tiers','timezone','title','tripSlug'];
+                        -- [TEST-MOD-APPROVED #1023] themeGradientOverride is emitted only once the wave 2
+                        -- migration (20280430011023) has re-emitted this reader; the pre-#2117 replay
+                        -- skips that file by exact name, so there the key set is the pre-#1023 one.
+                        IF NOT EXISTS (SELECT 1 FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace
+                                       AND p.proname = 'pg_public_trip_by_slug' AND p.prosrc LIKE '%themeGradientOverride%') THEN
+                          v_keys := array_remove(v_keys, 'themeGradientOverride');
+                        END IF;
         -- Direction 1 -- REMOVALS. A strip of pricing, inventory or itinerary
         -- takes a key off the payload and reds here. Guards availability.
         SELECT COALESCE(array_agg(k ORDER BY k), '{}') INTO v_missing
@@ -525,6 +532,13 @@ BEGIN
                         'isRecurring','recurrenceRules','status','stops',
                         'themeAnimationOverride','themeColorOverride','themeFontOverride','themeGradientOverride', -- [TEST-MOD-APPROVED #1023]
                         'ticket','timezone','title','venueText','visibility'];
+                        -- [TEST-MOD-APPROVED #1023] themeGradientOverride is emitted only once the wave 2
+                        -- migration (20280430011023) has re-emitted this reader; the pre-#2117 replay
+                        -- skips that file by exact name, so there the key set is the pre-#1023 one.
+                        IF NOT EXISTS (SELECT 1 FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace
+                                       AND p.proname = 'pg_public_experience_by_slug' AND p.prosrc LIKE '%themeGradientOverride%') THEN
+                          v_keys := array_remove(v_keys, 'themeGradientOverride');
+                        END IF;
         SELECT COALESCE(array_agg(k ORDER BY k), '{}') INTO v_missing
         FROM unnest(v_keys) AS k WHERE NOT (v_payload ? k);
         SELECT COALESCE(array_agg(k ORDER BY k), '{}') INTO v_extra

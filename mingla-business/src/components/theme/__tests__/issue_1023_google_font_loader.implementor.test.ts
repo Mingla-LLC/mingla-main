@@ -206,6 +206,34 @@ describe("native: each key loads its own face, only when asked", () => {
   });
 });
 
+describe("D-1: a production web build contains no Google font origin", () => {
+  // The #3214 export test fails on any unreviewed origin in the built web
+  // chunks. The loader's Google origins must therefore be reachable only where
+  // the bundler cannot fold them away: native (Platform.OS) and dev (__DEV__).
+  test("every Google origin literal sits behind the native-or-dev fold", async () => {
+    const src = await readFile(path.join(REPO, "packages/offering-rendering/googleFontLoader.ts"), "utf8");
+    const code = src
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .split("\n")
+      .filter((line) => !/^\s*\/\//.test(line));
+    const withOrigin = code.filter((line) => /fonts\.(googleapis|gstatic)\.com/.test(line));
+    expect(withOrigin).toEqual([
+      'const GOOGLE_CSS = DIRECT_GOOGLE ? "https://fonts.googleapis.com" : PROXY;',
+      'const GOOGLE_FILES = DIRECT_GOOGLE ? "https://fonts.gstatic.com" : PROXY;',
+    ]);
+    expect(src).toMatch(
+      /const DIRECT_GOOGLE =\s*Platform\.OS !== "web" \|\| \(typeof __DEV__ !== "undefined" && __DEV__ === true\);/,
+    );
+  });
+
+  test("re-hosting a font file needs no Google origin: any absolute origin moves to the proxy", () => {
+    const css = "@font-face {\n  font-family: 'X';\n  font-weight: 500;\n  src: url(https://fonts.gstatic.com/s/x/v1/a.woff2) format('woff2');\n}";
+    const out = rewriteBlocksForWeb(parseFontFaceBlocks(css), "GF_X_500", "/gfonts");
+    expect(out).toContain("src: url(/gfonts/s/x/v1/a.woff2)");
+    expect(out).not.toMatch(/https:\/\//);
+  });
+});
+
 describe("heavy text names the bold key (native never derives bold from fontWeight)", () => {
   test("a Google family resolves its bold family to the _700 key, a legacy slug to its bold face", () => {
     const jogular = resolveTheme({ font: "Bricolage Grotesque" }, null);
