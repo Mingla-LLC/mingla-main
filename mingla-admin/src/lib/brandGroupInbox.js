@@ -133,6 +133,23 @@ export function personName(name, ...fallbacks) {
   return NO_NAME_WORDS;
 }
 
+/**
+ * A Mingla staff name. Staff accounts can carry their work address as their
+ * display name; for staff only (never a brand teammate) the screen uses the
+ * name the Work board already gives that address (crm_display_name's rule):
+ * the address's first part before . _ + or -, capitalised, so
+ * "seth@usemingla.com" reads "Seth". Anything that still looks like an
+ * address, or nothing usable, reads "A teammate".
+ */
+export function staffName(name) {
+  const clean = typeof name === "string" ? name.replace(/\s+/g, " ").trim() : "";
+  if (!clean) return NO_NAME_WORDS;
+  if (!clean.includes("@")) return clean;
+  const head = (clean.split("@")[0].match(/^[^._+-]+/) || [""])[0];
+  if (!head || /[^\p{L}\p{N}]/u.test(head)) return NO_NAME_WORDS;
+  return head.charAt(0).toUpperCase() + head.slice(1);
+}
+
 /** The first name of `personName(...)`: "Ada" for "Ada Obi"; "A teammate" stays whole. */
 export function personFirstName(name, ...fallbacks) {
   const full = personName(name, ...fallbacks);
