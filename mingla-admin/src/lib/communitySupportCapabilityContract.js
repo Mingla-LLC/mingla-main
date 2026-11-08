@@ -121,6 +121,9 @@ export const COMMUNITY_SUPPORT_TAB_CONTRACT = Object.freeze({
   "brand-groups": Object.freeze({
     area: SUPPORT,
     panel: "components/community/BrandGroupsPanel.jsx",
+    // #4270 W7: the staff inbox (who waits, the brand team) and #4304's
+    // Seen by. Host card, plan and Calendar reads stay in the rail and the
+    // side panel (Hosts and Creators access), not in this tab's own calls.
     rpcs: Object.freeze([
       "issue_3720_list_brand_group_messages",
       "issue_3720_list_brand_groups",
@@ -128,6 +131,9 @@ export const COMMUNITY_SUPPORT_TAB_CONTRACT = Object.freeze({
       "issue_3720_prepare_brand_group_files",
       "issue_3720_send_brand_group_message",
       "issue_3988_set_brand_group_muted",
+      "issue_4270_brand_group_inbox",
+      "issue_4270_brand_group_people",
+      "issue_4304_list_brand_group_read_state",
     ]),
     functions: Object.freeze(["brand-group-files"]),
   }),

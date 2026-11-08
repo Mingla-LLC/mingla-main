@@ -387,7 +387,16 @@ export function phase3dContractDigest(manifest) {
 // #4273: register the buyer/follower auto opt-in, honest-quote and account-opt-out migrations and their proofs.
 // #4270: register the brand plan migrations (20280427004270-20280427024270) and their proofs the same way.
 // #3645: register the unpaid-release-holds migration and its PostgreSQL proof the same way.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "99eff08ce9050ccf69ebb57e240ce9479549febcd7775e3a7cb416dc2c452358";
+// #4294: the company sign-in migration and its proof join the preserved inventories, and the
+// migration joins the pre-#1931 replay's exact-file exclusion.
+// #4294 (tester): the company sign-in tester proof joins the preserved inventories.
+// #4271: register the tap buyer-name migration and its PostgreSQL proofs the same way.
+// #4271: the tap buyer-name migration joins the pre-#1931 replay's exact-file exclusion beside door pay.
+// #3645: register the sell-and-publish integrity migration, its PostgreSQL proof and its re-emit guard.
+// #3645: the sell-and-publish migration joins the pre-#1931 and pre-#2117 replay skip lists by exact filename.
+// #4304: register the Brand group live migration and its PostgreSQL proof the same way.
+// #4270 W7: register the admin Brand group inbox suites; migration 20280502004270; re-sealed after merging origin/main (#4322).
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "2e2a55efa78e8a7bb5e7c6143fa973016d1c94514f10759ba061bee89b264172";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

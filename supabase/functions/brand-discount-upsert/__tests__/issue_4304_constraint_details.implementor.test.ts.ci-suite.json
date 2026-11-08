@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/brand-discount-upsert/__tests__/issue_4304_constraint_details.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-4304-02-upsert-details",
+  "profile": "deno-1.46-stripe"
+}

@@ -15,6 +15,7 @@ import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Skeleton } from "../ui/Skeleton";
 import { LoadError } from "../ui/LoadError";
+import { PageLink } from "../ui/PanelStack";
 import { HighRiskActionModal } from "../entity/HighRiskActionModal";
 import { getBrandDetail, listBrandsBoard } from "../../services/identityReadService";
 import { setBrandClaimStatus, setBrandPayoutsPaused, mapWriteError } from "../../services/identityWriteService";
@@ -33,6 +34,7 @@ import {
 } from "../../lib/peopleSegments";
 import { formatDate, formatDateTime, timeAgo } from "../../lib/formatters";
 import { formatMoneyMinor } from "../../lib/moneyFormat";
+import { personName } from "../../lib/brandGroupInbox";
 
 const TABS = [
   { id: "team", label: "Team" },
@@ -111,7 +113,13 @@ function daysWaiting(since, now) {
   return Number.isFinite(days) ? days : null;
 }
 
-export function BrandDrawer({ brandId, row: rowFromList, onClose, onChanged }) {
+export function BrandDrawer({ brandId, row: rowFromList, onClose, onChanged, onOpenSide = null }) {
+  // #4270 W7 rework (D-1): opened inside the Brand group panel (`onOpenSide`
+  // set), no link here leaves the page: people, offerings, venues, claims and
+  // websites have no panel of their own, so they show as plain words, and
+  // "Full record" is left to the panel's own "Open full page". Elsewhere the
+  // links are exactly as before.
+  const inPanel = typeof onOpenSide === "function";
   const [tab, setTab] = useState("team");
   // Opened from a link (no list row): read this brand's board row by id.
   const [rowFromServer, setRowFromServer] = useState(null);
@@ -256,12 +264,14 @@ export function BrandDrawer({ brandId, row: rowFromList, onClose, onChanged }) {
       {internalView.canClear && internalNow === null && (
         <Button variant="ghost" size="sm" onClick={() => setAction("clearInternal")}>Use the owner's status…</Button>
       )}
-      <a
+      <PageLink
         href={`#/brands?view=record&brandId=${encodeURIComponent(brandId)}`}
+        onOpenSide={onOpenSide}
+        hide
         className="ml-auto text-sm font-medium text-[var(--color-brand-600)] underline-offset-2 hover:underline"
       >
         Full record
-      </a>
+      </PageLink>
     </div>
   ) : null;
 
@@ -292,9 +302,9 @@ export function BrandDrawer({ brandId, row: rowFromList, onClose, onChanged }) {
                   <ul className="flex flex-col gap-2">
                     {team.map((m) => (
                       <li key={m.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                        <a href={`#/people?tab=hosts&userId=${encodeURIComponent(m.user_id)}`} className="font-medium text-[var(--color-brand-600)] underline-offset-2 hover:underline">
-                          {m.member_name || m.member_email || "Unnamed person"}
-                        </a>
+                        <PageLink href={`#/people?tab=hosts&userId=${encodeURIComponent(m.user_id)}`} onOpenSide={onOpenSide} className="font-medium text-[var(--color-brand-600)] underline-offset-2 hover:underline" textClassName="font-medium text-[var(--color-text-primary)]">
+                          {inPanel ? personName(m.member_name) : m.member_name || m.member_email || "Unnamed person"}
+                        </PageLink>
                         <span className="flex items-center gap-1.5">
                           <Badge variant="outline">{brandRoleLabel(m.role)}</Badge>
                           {!m.accepted_at && <Badge variant="warning">Not accepted yet</Badge>}
@@ -365,9 +375,9 @@ export function BrandDrawer({ brandId, row: rowFromList, onClose, onChanged }) {
                     const st = offeringState(o.state);
                     return (
                       <li key={o.id} className="flex flex-col gap-1 py-2.5">
-                        <a href={`#/business-offerings?offeringId=${encodeURIComponent(o.id)}`} className="font-medium text-[var(--color-brand-600)] underline-offset-2 hover:underline">
+                        <PageLink href={`#/business-offerings?offeringId=${encodeURIComponent(o.id)}`} onOpenSide={onOpenSide} className="font-medium text-[var(--color-brand-600)] underline-offset-2 hover:underline" textClassName="font-medium text-[var(--color-text-primary)]">
                           {o.title || "Untitled"}
-                        </a>
+                        </PageLink>
                         <span className="flex flex-wrap items-center gap-1.5 text-xs text-[var(--color-text-secondary)]">
                           <Badge variant={st.variant}>{st.label}</Badge>
                           {o.start_at && <span>{formatDate(o.start_at)}</span>}
@@ -398,9 +408,9 @@ export function BrandDrawer({ brandId, row: rowFromList, onClose, onChanged }) {
                     const waiting = v.waiting_days;
                     return (
                       <li key={v.id} className="flex flex-col gap-1 text-sm">
-                        <a href={`#/brands?tab=venues&venueId=${encodeURIComponent(v.id)}`} className="font-medium text-[var(--color-brand-600)] underline-offset-2 hover:underline">
+                        <PageLink href={`#/brands?tab=venues&venueId=${encodeURIComponent(v.id)}`} onOpenSide={onOpenSide} className="font-medium text-[var(--color-brand-600)] underline-offset-2 hover:underline" textClassName="font-medium text-[var(--color-text-primary)]">
                           {v.name || "Unnamed venue"}
-                        </a>
+                        </PageLink>
                         <span className="flex flex-wrap items-center gap-1.5 text-xs text-[var(--color-text-secondary)]">
                           {claim && <Badge variant={claim.variant}>{claim.label}</Badge>}
                           {v.city && <span>{v.city}</span>}
@@ -408,9 +418,9 @@ export function BrandDrawer({ brandId, row: rowFromList, onClose, onChanged }) {
                           {waiting !== null && <span>· waiting {waiting} {waiting === 1 ? "day" : "days"}</span>}
                         </span>
                         {v.claim_status === "pending_review" && (
-                          <a href="#/brands?tab=claims" className="text-xs font-medium text-[var(--color-brand-600)] underline-offset-2 hover:underline">
+                          <PageLink href="#/brands?tab=claims" onOpenSide={onOpenSide} hide className="text-xs font-medium text-[var(--color-brand-600)] underline-offset-2 hover:underline">
                             Review the claim
-                          </a>
+                          </PageLink>
                         )}
                       </li>
                     );
@@ -440,9 +450,9 @@ export function BrandDrawer({ brandId, row: rowFromList, onClose, onChanged }) {
                             ["Failed publishes this week", site.failed_this_week.toLocaleString()],
                           ]}
                         />
-                        <a href={`#/brands?tab=websites&siteId=${encodeURIComponent(site.site_id)}`} className="text-sm font-medium text-[var(--color-brand-600)] underline-offset-2 hover:underline">
+                        <PageLink href={`#/brands?tab=websites&siteId=${encodeURIComponent(site.site_id)}`} onOpenSide={onOpenSide} hide className="text-sm font-medium text-[var(--color-brand-600)] underline-offset-2 hover:underline">
                           Open the website tools
-                        </a>
+                        </PageLink>
                       </li>
                     );
                   })}

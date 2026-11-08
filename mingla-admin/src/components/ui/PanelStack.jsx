@@ -53,6 +53,34 @@ export function SideLink({ side, href, className = "", children, ...rest }) {
   );
 }
 
+/**
+ * #4270 W7 rework (D-1): a link to another admin page inside a drawer. A page
+ * that must not change (the Brand group side panel) passes the drawer an
+ * `onOpenSide(kind, id)` opener; with it, the link opens its item in that
+ * panel when it has a side kind (`side`) the opener allows, shows its words as
+ * plain text otherwise, or nothing at all with `hide`. Without the opener it
+ * is the plain link it always was, so every other page behaves as before.
+ */
+export function PageLink({ href, side = null, onOpenSide = null, hide = false, className = "", textClassName = "", children, ...rest }) {
+  if (typeof onOpenSide !== "function") {
+    return (
+      <a href={href} className={className} {...rest}>
+        {children}
+      </a>
+    );
+  }
+  const allowed = side && (typeof onOpenSide.allows !== "function" || onOpenSide.allows(side.kind));
+  if (allowed) {
+    return (
+      <button type="button" data-side-link={`${side.kind}:${side.id}`} className={`text-left ${className}`} onClick={() => onOpenSide(side.kind, side.id)}>
+        {children}
+      </button>
+    );
+  }
+  if (hide) return null;
+  return <span data-page-link-text="" className={textClassName}>{children}</span>;
+}
+
 /** "Draft kept · not saved yet", with a Discard that asks first. */
 export function DraftKeptNote({ kept, onDiscard, className = "" }) {
   const [asking, setAsking] = useState(false);

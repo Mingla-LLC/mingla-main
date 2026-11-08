@@ -20,6 +20,15 @@
 //     every piece of it is removed from anything the server sends back.
 //     Nothing about a request (argument, result, header, key) is logged.
 //
+// Issue #4294 company sign-in: a row of kind 'signin' has no key. Its access
+// token comes from `deps.signinToken` (minglaConnectorSignin.ts), renewed
+// shortly before it ends, and is treated exactly like a key from there on:
+// the Authorization header only, and removed from every answer. Each row
+// also has a display label and words to hide; those words are rewritten to
+// the label in the tool titles and descriptions Claude is shown, and in the
+// text of every result, never inside a link in a result (downloads must
+// still work).
+//
 // The transport here is MCP over streamable HTTP. A row whose address is on
 // graph.facebook.com uses the Meta Graph REST adapter instead
 // (`minglaConnectorMetaGraph.ts`), which implements the same UpstreamTransport.
@@ -55,6 +64,8 @@ export const PROXY_WORDS: Readonly<Record<string, string>> = Object.freeze({
     "This company tool took too long to answer. Try again with a smaller request.",
   upstream_too_large:
     "This company tool's answer was too large. Ask for less at once.",
+  generation_limit:
+    "You have used today's generation calls for this company tool. Try again tomorrow, or ask an owner to raise the daily limit in Company tools.",
 });
 
 /** `<slug>__<tool>`, or null when it would be longer than 64 characters. */
@@ -254,6 +265,107 @@ export function scrubText(text: string, key: string): string {
 type Json = Record<string, unknown>;
 const isObject = (v: unknown): v is Json =>
   typeof v === "object" && v !== null && !Array.isArray(v);
+
+// ---------------------------------------------------------------------------
+// Name hiding (issue #4294 company sign-in).
+// ---------------------------------------------------------------------------
+
+/** A web address inside a text (without a closing full stop or comma): kept exactly as it is in a result. */
+const LINK = /\b(?:https?|wss?|ftp):\/\/[^\s"'<>()\[\]{}`]*[^\s"'<>()\[\]{}`.,;:!?]/gi;
+/** Keys whose values are addresses or raw data: never rewritten. */
+const DATA_KEYS = new Set(["uri", "url", "href", "src", "link", "download_url", "blob", "data", "mimeType"]);
+/** Characters that show nothing but could split a hidden word in a listing. */
+const INVISIBLE = /[\u00AD\u200B-\u200F\u2060-\u2064\uFEFF]/g;
+const HIDE_WORD = /^[A-Za-z0-9](?:[A-Za-z0-9 .&'-]{0,38}[A-Za-z0-9])?$/;
+
+export interface Hider {
+  /** Every hidden word in plain text rewritten to the label; links kept. */
+  text(t: string): string;
+  /** As text, and a link that holds a hidden word becomes "[link]" (tool listings only). */
+  listingText(t: string): string;
+  /** Every string in a result rewritten, except addresses and raw data. */
+  value(v: unknown, depth?: number): unknown;
+  /** A tool's input schema: only its description and title strings. */
+  schema(v: unknown, depth?: number): unknown;
+  /** Does this text still hold a hidden word anywhere? */
+  holds(t: string): boolean;
+}
+
+/**
+ * Rewrites each hidden word (whole word, any case) to the label. A word
+ * that is part of a longer name, an address, a file name or an id
+ * (joined by a letter, digit, _, -, /, @, : or a dot before a letter) is
+ * left alone, so ids and links still work.
+ */
+export function createHider(words: unknown, label: string): Hider {
+  const list = (Array.isArray(words) ? words : [])
+    .filter((w): w is string => typeof w === "string" && HIDE_WORD.test(w.trim()))
+    .map((w) => w.trim())
+    .sort((a, b) => b.length - a.length);
+  const escaped = list.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/ /g, "\\s+"));
+  const re = escaped.length
+    ? new RegExp(
+      `(?<![\\p{L}\\p{N}_\\-/@:.])(?:${escaped.join("|")})(?![\\p{L}\\p{N}_\\-/@]|[.:][\\p{L}\\p{N}/])`,
+      "giu",
+    )
+    : null;
+  const anywhere = escaped.length ? new RegExp(`(?:${escaped.join("|")})`, "iu") : null;
+  // Tool listings keep no hidden word at all (I-4294-13): after the whole-word
+  // pass, any word still holding one (magnific.com, @magnific, MagnificAI,
+  // Magnific-powered) is rewritten too, and invisible characters that could
+  // split a word are dropped first. Results keep the gentler pass so ids and
+  // file names still work.
+  const everywhere = escaped.length ? new RegExp(`(?:${escaped.join("|")})`, "giu") : null;
+  const plain = (t: string): string => (re ? t.replace(re, () => label) : t);
+  const outsideLinks = (t: string, onLink: (link: string) => string): string => {
+    if (!re) return t;
+    let out = "";
+    let at = 0;
+    for (const m of t.matchAll(LINK)) {
+      const i = m.index ?? 0;
+      out += plain(t.slice(at, i)) + onLink(m[0]);
+      at = i + m[0].length;
+    }
+    return out + plain(t.slice(at));
+  };
+  const hider: Hider = {
+    text: (t) => outsideLinks(t, (link) => link),
+    listingText: (t) => {
+      const shown = outsideLinks(
+        re ? t.replace(INVISIBLE, "") : t,
+        (link) => (anywhere && anywhere.test(link) ? "[link]" : link),
+      );
+      return everywhere ? shown.replace(everywhere, () => label) : shown;
+    },
+    value(v, depth = 0) {
+      if (!re || depth > 40) return v;
+      if (typeof v === "string") return hider.text(v);
+      if (Array.isArray(v)) return v.map((x) => hider.value(x, depth + 1));
+      if (isObject(v)) {
+        const out: Json = {};
+        for (const [k, x] of Object.entries(v)) out[k] = DATA_KEYS.has(k) ? x : hider.value(x, depth + 1);
+        return out;
+      }
+      return v;
+    },
+    schema(v, depth = 0) {
+      if (!re || depth > 40) return v;
+      if (Array.isArray(v)) return v.map((x) => hider.schema(x, depth + 1));
+      if (isObject(v)) {
+        const out: Json = {};
+        for (const [k, x] of Object.entries(v)) {
+          out[k] = (k === "description" || k === "title") && typeof x === "string"
+            ? hider.listingText(x)
+            : hider.schema(x, depth + 1);
+        }
+        return out;
+      }
+      return v;
+    },
+    holds: (t) => (anywhere ? anywhere.test(t) : false),
+  };
+  return hider;
+}
 
 /** A value with every string scrubbed and every `_meta` dropped. */
 export function scrubValue(value: unknown, key: string, depth = 0): unknown {
@@ -594,6 +706,14 @@ export interface ProxyDeps {
   now?: () => number;
   /** One line per upstream request: names, outcome and time only. */
   log?: (line: Record<string, unknown>) => void;
+  /**
+   * Issue #4294: the access token of a company sign-in for one running,
+   * allowed call (renewed when about to end). Without it a sign-in row is
+   * never called.
+   */
+  signinToken?: (callId: string) => Promise<
+    { ok: true; token: string; generation: number } | { ok: false; token: string }
+  >;
 }
 
 /** A tool as listed to the agent. */
@@ -647,8 +767,8 @@ export function createConnectorProxy(deps: ProxyDeps) {
 
   type Ran<T> =
     | { auth: false }
-    | { auth: true; ok: true; value: T; key: string }
-    | { auth: true; ok: false; token: string; message: string };
+    | { auth: true; ok: true; value: T; key: string; hider: Hider }
+    | { auth: true; ok: false; token: string; message: string; hider: Hider };
 
   /**
    * One request to a company server: the database allows it and writes its
@@ -671,38 +791,54 @@ export function createConnectorProxy(deps: ProxyDeps) {
       p_client: client,
     });
     if (!isObject(begun) || begun.auth !== undefined) return { auth: false };
+    const hider = createHider(begun.hide_words, typeof begun.label === "string" ? begun.label : slug);
     if (begun.ok !== true || typeof begun.call_id !== "string") {
       const token = typeof begun.token === "string" && PROXY_WORDS[begun.token] ? begun.token : "not_allowed";
       log({ fn: "team-agent", upstream: slug, upstream_tool: tool, outcome: token });
-      return { auth: true, ok: false, token, message: "" };
+      return { auth: true, ok: false, token, message: "", hider };
     }
     const callId = begun.call_id;
     const started = now();
     const url = typeof begun.mcp_url === "string" ? begun.mcp_url : "";
-    const got = await deps.rpc("mingla_connector_upstream_key", { p_call_id: callId });
-    const key = isObject(got) && got.ok === true && typeof got.key === "string" ? got.key : "";
+    let key = "";
+    let version = String(begun.version ?? "");
+    if (begun.auth_kind === "signin") {
+      // A company sign-in: the access token for this call, renewed if it is about to end.
+      const got = deps.signinToken ? await deps.signinToken(callId) : { ok: false as const, token: "not_allowed" };
+      if (!got.ok) {
+        const token = PROXY_WORDS[got.token] ? got.token : "not_allowed";
+        await finish(callId, token, null, now() - started);
+        log({ fn: "team-agent", upstream: slug, upstream_tool: tool, outcome: token });
+        return { auth: true, ok: false, token, message: "", hider };
+      }
+      key = got.token;
+      version = `${version}|g${got.generation}`;
+    } else {
+      const got = await deps.rpc("mingla_connector_upstream_key", { p_call_id: callId });
+      key = isObject(got) && got.ok === true && typeof got.key === "string" ? got.key : "";
+    }
     if (!key) {
       await finish(callId, "not_allowed", null, now() - started);
       log({ fn: "team-agent", upstream: slug, upstream_tool: tool, outcome: "not_allowed" });
-      return { auth: true, ok: false, token: "not_allowed", message: "" };
+      return { auth: true, ok: false, token: "not_allowed", message: "", hider };
     }
     let value: T;
     try {
-      value = await work({ slug, url, key, version: String(begun.version ?? "") });
+      value = await work({ slug, url, key, version });
     } catch (err) {
       const e = err instanceof UpstreamError ? err : new UpstreamError("upstream_unavailable", null);
       await finish(callId, e.token, e.httpStatus, now() - started);
       log({ fn: "team-agent", upstream: slug, upstream_tool: tool, outcome: e.token, ms: now() - started });
-      return { auth: true, ok: false, token: e.token, message: e.upstreamMessage };
+      return { auth: true, ok: false, token: e.token, message: e.upstreamMessage, hider };
     }
     const outcome = outcomeOf(value);
     await finish(callId, outcome, 200, now() - started);
     log({ fn: "team-agent", upstream: slug, upstream_tool: tool, outcome, ms: now() - started });
-    return { auth: true, ok: true, value, key };
+    return { auth: true, ok: true, value, key, hider };
   }
 
   /** The upstream's tool as the agent sees it, or null when not offered. */
-  function listing(slug: string, label: string, allow: Set<string>, t: UpstreamTool): ListedTool | null {
+  function listing(slug: string, label: string, allow: Set<string>, t: UpstreamTool, hider: Hider): ListedTool | null {
     if (typeof t.name !== "string" || !UPSTREAM_TOOL_PATTERN.test(t.name) || !allow.has(t.name)) return null;
     const name = exposedName(slug, t.name);
     if (!name) return null;
@@ -714,10 +850,13 @@ export function createConnectorProxy(deps: ProxyDeps) {
     }
     return {
       name,
-      title: `${label}: ${typeof t.title === "string" && t.title ? t.title : t.name}`.slice(0, 120),
-      description: `[${label}, a company tool] ${typeof t.description === "string" ? t.description : ""}`
-        .slice(0, 2000),
-      inputSchema: isObject(t.inputSchema) && t.inputSchema.type === "object" ? t.inputSchema : { type: "object" },
+      title: `${label}: ${hider.listingText(typeof t.title === "string" && t.title ? t.title : t.name)}`.slice(0, 120),
+      description: `[${label}, a company tool] ${
+        hider.listingText(typeof t.description === "string" ? t.description : "")
+      }`.slice(0, 2000),
+      inputSchema: isObject(t.inputSchema) && t.inputSchema.type === "object"
+        ? hider.schema(t.inputSchema)
+        : { type: "object" },
       ...(Object.keys(annotations).length > 0 ? { annotations } : {}),
     };
   }
@@ -736,6 +875,7 @@ export function createConnectorProxy(deps: ProxyDeps) {
       const slug = typeof u.slug === "string" ? u.slug : "";
       if (!SLUG_PATTERN.test(slug)) return [];
       const label = typeof u.label === "string" ? u.label : slug;
+      const hider = createHider(u.hide_words, label);
       const allow = new Set(
         (Array.isArray(u.tool_allowlist) ? u.tool_allowlist : []).filter((t): t is string => typeof t === "string"),
       );
@@ -759,7 +899,7 @@ export function createConnectorProxy(deps: ProxyDeps) {
       }
       const out: ListedTool[] = [];
       for (const t of tools) {
-        const l = listing(slug, label, allow, t);
+        const l = listing(slug, label, allow, t, hider);
         if (l) out.push(l);
       }
       return out;
@@ -792,10 +932,14 @@ export function createConnectorProxy(deps: ProxyDeps) {
     );
     if (!done.auth) return { kind: "auth_invalid" };
     if (!done.ok) {
-      const extra = done.message && done.token === "upstream_unavailable" ? ` The tool said: ${done.message}` : "";
+      const extra = done.message && done.token === "upstream_unavailable"
+        ? ` The tool said: ${done.hider.text(done.message)}`
+        : "";
       return { kind: "answer", outcome: done.token, slug, tool, result: toolError(done.token, extra) };
     }
-    const content = (scrubValue(done.value.content, done.key) as unknown[]).filter((c) => isObject(c));
+    const content = (done.hider.value(scrubValue(done.value.content, done.key)) as unknown[]).filter((c) =>
+      isObject(c)
+    );
     return {
       kind: "answer",
       outcome: done.value.isError ? "upstream_tool_error" : "ok",

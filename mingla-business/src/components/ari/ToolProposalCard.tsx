@@ -164,6 +164,10 @@ function humanizeToolName(toolName: string): string {
       return "Create discount";
     case "pause_discount":
       return "Pause discount";
+    case "resume_discount":
+      return "Resume discount";
+    case "end_discount":
+      return "End discount";
     case "list_discounts":
       return "List discounts";
     case "list_referral_offers":
@@ -388,6 +392,19 @@ function fieldsFor(
     out.push({
       label: "Effect",
       value: "Stops new uses; existing orders keep their price",
+    });
+  }
+  if (toolName === "resume_discount") {
+    if (typeof context.discount_name === "string")
+      out.push({ label: "Discount", value: context.discount_name });
+    out.push({ label: "Effect", value: "Buyers can use it again" });
+  }
+  if (toolName === "end_discount") {
+    if (typeof context.discount_name === "string")
+      out.push({ label: "Discount", value: context.discount_name });
+    out.push({
+      label: "Effect",
+      value: "Stops it for good; existing orders keep their price",
     });
   }
   if (toolName === "create_referral_offer") {

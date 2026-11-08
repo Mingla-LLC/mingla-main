@@ -255,7 +255,7 @@ describe("W1-7 everything Needs you did is reachable from Work", () => {
   const drafts = code("pages/DraftsPage.jsx");
   it("a send card shows its drafts with every draft action; a roadmap card shows the wording editor", () => {
     assert.match(detail, /<CardDrafts card=\{card\} \/>/);
-    assert.match(detail, /<CardWording card=\{card\} onChanged=\{refresh\} \/>/);
+    assert.match(detail, /<CardWording card=\{card\} onChanged=\{refresh\}( onOpenSide=\{onOpenSide\})? \/>/);
     assert.match(panels, /<DraftsPage key=\{id\} embedded=\{\{ search: `record=\$\{id\}` \}\} \/>/);
     assert.match(panels, /<WordingCard card=\{wording\}/);
     for (const action of ["service.updateDraft", "service.markDraftSent", "service.discardDrafts", "service.restoreDraft", "service.undoDraftSent"]) {
@@ -263,7 +263,7 @@ describe("W1-7 everything Needs you did is reachable from Work", () => {
     }
   });
   it("embedded, the drafts screen is only the message drafts, kept in its own address", () => {
-    assert.match(drafts, /export function DraftsPage\(\{ embedded = null \}\)/);
+    assert.match(drafts, /export function DraftsPage\(\{ embedded = null(, onOpenSide = null)? \}\)/);
     assert.match(drafts, /const search = embedded \? localSearch : hashSearch;/);
     assert.match(drafts, /\{!embedded && <Segmented label="What to review"/);
   });

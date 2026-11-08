@@ -654,7 +654,7 @@ begin
   -- The seeded rows are off, owner only, nothing listed, no key: default deny.
   perform pg_temp.ta_check('A-8', 'the seeded company tools start closed',
     (select string_agg(slug || ':' || enabled || ':' || (vault_secret_id is null) || ':' || cardinality(tool_allowlist), ',' order by slug)
-       from public.mingla_connector_upstreams),
+       from public.mingla_connector_upstreams where auth_kind = 'key'),
     'appsflyer:false:true:0,metaads:false:true:0,posthog:false:true:0,sentry:false:true:0');
   -- An owner-only tool with a key and a listed tool.
   perform pg_temp.ta_as('owner', format('select public.mingla_connector_set_key(%L, %L)::text', 'posthog', pg_temp.ta_c('marker')));
@@ -881,25 +881,29 @@ declare
 begin
   perform pg_temp.ta_check('A-11', 'set_key never builds SQL text (no EXECUTE, no format)',
     (pg_get_functiondef('public.mingla_connector_set_key(text,text)'::regprocedure) ~* '(\mexecute\M|format\s*\()')::text, 'false');
-  perform pg_temp.ta_check('A-11', 'only set_key writes a Vault secret',
+  perform pg_temp.ta_check('A-11', 'only set_key and the sign-in store write a Vault secret',
     (select string_agg(p.proname, ',' order by p.proname) from pg_proc p
       where p.pronamespace = 'public'::regnamespace and p.prokind = 'f'
         and (p.proname like 'mingla_connector_%' or p.proname like 'team_agent_%')
-        and pg_get_functiondef(p.oid) ~* 'vault\.(create_secret|update_secret)'), 'mingla_connector_set_key');
-  perform pg_temp.ta_check('A-11', 'only clear_key deletes a Vault secret',
+        and pg_get_functiondef(p.oid) ~* 'vault\.(create_secret|update_secret)'),
+    -- #4294 company sign-in adds the two sign-in writers.
+    'mingla_connector_set_key,mingla_connector_signin_complete,mingla_connector_signin_refresh_store');
+  perform pg_temp.ta_check('A-11', 'only clear_key and sign-in disconnect delete a Vault secret',
     (select string_agg(p.proname, ',' order by p.proname) from pg_proc p
       where p.pronamespace = 'public'::regnamespace and p.prokind = 'f'
         and (p.proname like 'mingla_connector_%' or p.proname like 'team_agent_%')
-        and pg_get_functiondef(p.oid) ~* 'delete\s+from\s+vault\.'), 'mingla_connector_clear_key');
-  perform pg_temp.ta_check('A-11', 'only the reader reads decrypted secrets among connector functions',
+        and pg_get_functiondef(p.oid) ~* 'delete\s+from\s+vault\.'), 'mingla_connector_clear_key,mingla_connector_signin_disconnect');
+  perform pg_temp.ta_check('A-11', 'only the key and sign-in readers read decrypted secrets among connector functions',
     (select string_agg(p.proname, ',' order by p.proname) from pg_proc p
       where p.pronamespace = 'public'::regnamespace and p.prokind = 'f' and p.proname like 'mingla_connector_%'
-        and pg_get_functiondef(p.oid) ~* 'vault\.decrypted_secrets'), 'mingla_connector_upstream_key');
+        and pg_get_functiondef(p.oid) ~* 'vault\.decrypted_secrets'),
+    'mingla_connector_signin_credential,mingla_connector_signin_refresh_begin,mingla_connector_upstream_key');
   for r in select p.oid, p.proname, pg_get_function_identity_arguments(p.oid) args from pg_proc p
             where p.pronamespace = 'public'::regnamespace and p.proname like 'mingla_connector_%'
               and p.proname not in ('mingla_connector_oauth_approve', 'mingla_connector_connections_mine', 'mingla_connector_disconnect',
                                     'mingla_connector_registry_list', 'mingla_connector_registry_save', 'mingla_connector_set_key',
-                                    'mingla_connector_clear_key', 'mingla_connector_registry_delete', 'mingla_connector_calls_recent')
+                                    'mingla_connector_clear_key', 'mingla_connector_registry_delete', 'mingla_connector_calls_recent',
+                                    'mingla_connector_signin_status', 'mingla_connector_signin_begin', 'mingla_connector_signin_disconnect')
   loop
     perform pg_temp.ta_check('A-11', format('%s(%s) is closed to anon and authenticated', r.proname, r.args),
       (has_function_privilege('anon', r.oid, 'EXECUTE') or has_function_privilege('authenticated', r.oid, 'EXECUTE'))::text, 'false');

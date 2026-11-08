@@ -6,6 +6,8 @@
 //   content           a post (ContentDrawer, the same panel as the Calendar's)
 //   event / expected  an event or a promised event (EventPanel)
 //   drafts            the message drafts of one record, or all of mine
+//   brand             a brand (BrandDrawer, the same panel as on Brands;
+//                     #4270 W7, so a Brand group's "Brand" opens beside)
 //
 // Each is drawn in a Drawer, which the PanelStack turns into a docked panel.
 // A small "Open full page" link is there for when someone really means to go.
@@ -19,6 +21,7 @@ import { EventPanel } from "../ops/EventPanel";
 import { RecordDrawer } from "../crm/RecordDrawer";
 import { ReasonPrompt } from "../crm/ReasonPrompt";
 import { ContentDrawer } from "../contentCalendar/ContentDrawer";
+import { BrandDrawer } from "../brands/BrandDrawer";
 import { DraftsPage } from "../../pages/DraftsPage";
 import { useToast } from "../../context/ToastContext";
 import { useOpsConfig } from "../../hooks/useOpsConfig";
@@ -41,20 +44,20 @@ export function FullPageLink({ side }) {
   );
 }
 
-function WorkCardSide({ side, onClose, onChanged }) {
+function WorkCardSide({ side, onClose, onChanged, onOpenSide }) {
   const config = useOpsConfig();
   const online = useOnline();
   return (
     <Drawer open onClose={onClose} title="Work card" header={<p className="pt-2 text-[13px] font-semibold text-[var(--color-text-secondary)]">Work card</p>}>
       <div className="flex min-w-0 flex-col gap-2">
-        <WorkDetail key={side.id} cardId={side.id} config={config.data} online={online} inDrawer onBack={onClose} onChanged={onChanged} />
+        <WorkDetail key={side.id} cardId={side.id} config={config.data} online={online} inDrawer onBack={onClose} onChanged={onChanged} onOpenSide={onOpenSide} />
         <FullPageLink side={side} />
       </div>
     </Drawer>
   );
 }
 
-function RecordSide({ side, onClose }) {
+function RecordSide({ side, onClose, onOpenSide }) {
   const pipeline = side.kind === "creator" ? "creators" : "hosts";
   const { addToast } = useToast();
   const online = useOnline();
@@ -142,6 +145,7 @@ function RecordSide({ side, onClose }) {
         onDelete={async () => false}
         onRefreshRegions={cfg.retry}
         footerExtra={<FullPageLink side={side} />}
+        onOpenSide={onOpenSide}
       />
       {reasonFor && (
         <ReasonPrompt
@@ -235,15 +239,22 @@ function EventSide({ side, onClose, actions }) {
   );
 }
 
-function DraftsSide({ side, onClose }) {
+function DraftsSide({ side, onClose, onOpenSide }) {
   return (
     <Drawer open onClose={onClose} title={side.id === "all" ? "All my message drafts" : "Message drafts for this host or creator"}>
       <div className="flex min-w-0 flex-col gap-2">
-        <DraftsPage key={side.id} embedded={{ search: side.id === "all" ? "" : `record=${side.id}` }} />
+        <DraftsPage key={side.id} embedded={{ search: side.id === "all" ? "" : `record=${side.id}` }} onOpenSide={onOpenSide} />
         <FullPageLink side={side} />
       </div>
     </Drawer>
   );
+}
+
+// #4270 W7: BrandDrawer loads its own board row when opened by id (row null).
+// It has no footer slot, so a page that docks it shows "Open full page"
+// itself (the Brand group panel does, in its trail bar).
+function BrandSide({ side, onClose, onChanged, onOpenSide }) {
+  return <BrandDrawer brandId={side.id} row={null} onClose={onClose} onChanged={onChanged} onOpenSide={onOpenSide} />;
 }
 
 /**
@@ -251,22 +262,28 @@ function DraftsSide({ side, onClose }) {
  * change made in the panel (a card closed, a post moved). `eventActions`
  * (a function of the event, or null) adds the Calendar's own actions to an
  * event.
+ *
+ * #4270 W7 rework (D-1): `onOpenSide(kind, id)` (optional) is for a page that
+ * must not change, the Brand group: each drawer's links to other pages then
+ * open in this panel or show as plain words. Without it nothing changes.
  */
-export function SidePanel({ side, onClose, onChanged, eventActions = null }) {
+export function SidePanel({ side, onClose, onChanged, eventActions = null, onOpenSide = null }) {
   if (!side) return null;
   switch (side.kind) {
     case "card":
-      return <WorkCardSide side={side} onClose={onClose} onChanged={() => onChanged?.("card")} />;
+      return <WorkCardSide side={side} onClose={onClose} onChanged={() => onChanged?.("card")} onOpenSide={onOpenSide} />;
     case "host":
     case "creator":
-      return <RecordSide side={side} onClose={onClose} />;
+      return <RecordSide side={side} onClose={onClose} onOpenSide={onOpenSide} />;
     case "content":
       return <ContentSide side={side} onClose={onClose} onChanged={() => onChanged?.("content")} />;
     case "event":
     case "expected":
       return <EventSide side={side} onClose={onClose} actions={eventActions} />;
     case "drafts":
-      return <DraftsSide side={side} onClose={onClose} />;
+      return <DraftsSide side={side} onClose={onClose} onOpenSide={onOpenSide} />;
+    case "brand":
+      return <BrandSide side={side} onClose={onClose} onChanged={() => onChanged?.("brand")} onOpenSide={onOpenSide} />;
     default:
       return null;
   }

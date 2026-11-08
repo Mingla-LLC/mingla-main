@@ -1623,7 +1623,7 @@ const CONTENT_MIGRATION = read(
   "../../../migrations/20271020003802_issue_3802_wave2_content_calendar.sql",
 );
 
-Deno.test("#3802 U-11: the function reaches one thing, reads two settings and logs one shaped line", () => {
+Deno.test("#3802 U-11: the function reaches one thing, reads three settings and logs one shaped line", () => {
   // #4294: its only request of its own goes to a company tool server, through
   // the proxy (one injected fetch in the function, one default in the module).
   assertEquals(
@@ -1637,7 +1637,8 @@ Deno.test("#3802 U-11: the function reaches one thing, reads two settings and lo
   assertEquals(
     [...INDEX.matchAll(/Deno\.env\.get\("([A-Z_]+)"\)/g)].map((m) => m[1])
       .sort(),
-    ["SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_URL"],
+    // #4294 company sign-in: the anon key, so Connect runs the owner check as the owner's own admin session.
+    ["SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_URL"],
   );
   assert(
     !/Deno\.env/.test(MCP) && !/Deno\.env/.test(TOOLS),

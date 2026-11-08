@@ -324,6 +324,12 @@ export const WRITE_TOOL_OWNER_COPY: Readonly<
     "Pause this discount",
     "Discount paused",
   ),
+  resume_discount: row(
+    "Resume discount",
+    "Resume this discount",
+    "Discount resumed",
+  ),
+  end_discount: row("End discount", "End this discount", "Discount ended"),
   create_referral_offer: row(
     "Create referral offer",
     "New referral offer",

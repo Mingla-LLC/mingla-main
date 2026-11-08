@@ -21,6 +21,10 @@ import { accent, canvas, radius, spacing, text as textTokens, typography } from 
 import { DESKTOP_RAIL_WIDTH } from "../../src/constants/desktopLayout";
 import { useCommunityUnreadCount } from "../../src/hooks/useCommunity";
 import { useResponsiveLayout } from "../../src/hooks/useResponsiveLayout";
+import { useAuth } from "../../src/context/AuthContext";
+// #4304 — the tabs layout owns the first-run gate and publishes the reduced
+// nav here; importing the gate itself would hoist it into the web boot chunk.
+import { useFirstRunStore } from "../../src/store/firstRunStore";
 import { useStickyFooterOffset } from "../../src/hooks/useStickyFooterOffset";
 import { listCommunityPosts } from "../../src/services/communityService";
 import {
@@ -39,11 +43,13 @@ const APP_TABS: { id: string; icon: IconName; label: string }[] = [
   { id: "marketing", icon: "send", label: "Blast" },
 ];
 
-function SupportDesktopRail({ onChange }: { onChange: (id: string) => void }) {
+function SupportDesktopRail({ onChange, locked }: { onChange: (id: string) => void; locked: boolean }) {
+  // #4304 — a first-run host's rail is Ari only here (Account is this page).
+  const tabs = locked ? APP_TABS.filter((item) => item.id === "ari") : APP_TABS;
   return (
     <View style={styles.appRail} accessibilityRole="tablist">
       <Image source={MINGLA_BUSINESS_LOGO} style={styles.brandLogo} resizeMode="contain" accessibilityIgnoresInvertColors />
-      {APP_TABS.map((item) => (
+      {tabs.map((item) => (
         <Pressable key={item.id} onPress={() => onChange(item.id)} accessibilityRole="tab" accessibilityLabel={item.label} style={styles.appRailItem}>
           <Icon name={item.icon} size={20} color="#b9b9c2" />
           <Text style={styles.appRailLabel}>{item.label}</Text>
@@ -61,6 +67,9 @@ export default function SupportRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { isWideDesktop } = useResponsiveLayout();
+  const { user } = useAuth();
+  const lockedNavUserId = useFirstRunStore((s) => s.lockedNavUserId);
+  const firstRunLocked = lockedNavUserId !== null && lockedNavUserId === (user?.id ?? null);
   const floatingBottom = useStickyFooterOffset();
   const params = useLocalSearchParams<{
     tab?: string | string[];
@@ -218,7 +227,7 @@ export default function SupportRoute(): React.ReactElement {
             <Text style={styles.floatingActionText}>{communityAction.label}</Text>
           </Pressable>
         ) : null}
-        {isWideDesktop ? <SupportDesktopRail onChange={(id) => router.push(`/(tabs)/${id}` as never)} /> : null}
+        {isWideDesktop ? <SupportDesktopRail locked={firstRunLocked} onChange={(id) => router.push(`/(tabs)/${id}` as never)} /> : null}
         <View style={styles.toastWrap} pointerEvents="box-none"><Toast visible={toast.visible} kind="info" message={toast.message} onDismiss={() => setToast({ visible: false, message: "" })} /></View>
       </View>
     </DesktopCanvas>
