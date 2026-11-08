@@ -19,7 +19,11 @@
       "mingla-marketing/lib/business-app-target.ts",
       "mingla-marketing/lib/explorer-app-target.ts",
       "mingla-marketing/lib/search/route-registry.ts",
-      "mingla-marketing/public/marketing/site/**"
+      "mingla-marketing/public/marketing/site/**",
+      "mingla-marketing/components/site/**",
+      "mingla-marketing/components/marketing/footer.tsx",
+      "mingla-marketing/app/site-fonts.ts",
+      "mingla-marketing/app/sitemap.ts"
     ],
     "steps": [
       {
