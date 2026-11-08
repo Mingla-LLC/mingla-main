@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
-import { classifyLinkStatus, collectBlogLinkReferences, isBlogNotReadyError, isPrivateAddress, resolveMarketingRevalidateSecret, validateLinkCheckUrl } from "./model.ts";
+import { classifyLinkStatus, collectBlogLinkReferences, isBlogNotReadyError, isLinksRevalidated, isPrivateAddress, linksRevalidateRequest, resolveMarketingRevalidateSecret, validateLinkCheckUrl } from "./model.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -92,6 +92,20 @@ serve(async (req) => {
     try {
       const response = await fetch(`${MARKETING_ORIGIN}/api/blog/revalidate`, { method: "POST", signal: controller.signal, headers: { "x-mingla-revalidate-secret": REVALIDATE_SECRET } });
       return json({ ok: response.ok, status: response.status }, response.ok ? 200 : 502);
+    } catch { return json({ ok: false, status: 0 }, 502); }
+    finally { clearTimeout(timer); }
+  }
+  if (body.action === "revalidate_links") {
+    // #4318: /links admin strips are Support-area work, so the can_write
+    // (is_support_staff) check above is this action's guard, the same one the
+    // admin_links_* RPCs apply. Same governed secret as the blog revalidate.
+    if (!REVALIDATE_SECRET) return json({ error: "revalidate_not_configured" }, 503);
+    const request = linksRevalidateRequest(MARKETING_ORIGIN, REVALIDATE_SECRET);
+    const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 5000);
+    try {
+      const response = await fetch(request.url, { ...request.init, signal: controller.signal });
+      const ok = isLinksRevalidated(response.status, await response.json().catch(() => null));
+      return json({ ok, status: response.status }, ok ? 200 : 502);
     } catch { return json({ ok: false, status: 0 }, 502); }
     finally { clearTimeout(timer); }
   }
