@@ -34,6 +34,7 @@ function harness(
   stale: () => Promise<{ data: unknown; error: { message: string } | null }>,
 ) {
   const rpcNames: string[] = [];
+  const staleArgs: Array<Record<string, unknown>> = [];
   const recorded: Array<Record<string, unknown>> = [];
   const deps = {
     env: (key: string) =>
@@ -52,7 +53,10 @@ function harness(
           recorded.push(args);
           return Promise.resolve({ data: args.p_outcome, error: null });
         }
-        if (name === "issue_3645_raise_stale_stay_dispute_alerts") return stale();
+        if (name === "issue_3645_raise_stale_stay_dispute_alerts") {
+          staleArgs.push(args);
+          return stale();
+        }
         if (EMPTY_ROW_RPCS.has(name)) return Promise.resolve({ data: [], error: null });
         return Promise.resolve({ data: { dark: true, executed: 0 }, error: null });
       },
@@ -64,7 +68,7 @@ function harness(
       throw new Error("no provider-fee candidates expected");
     },
   };
-  return { deps, rpcNames, recorded };
+  return { deps, rpcNames, recorded, staleArgs };
 }
 
 async function withNotifyCapture(
@@ -191,7 +195,8 @@ Deno.test("#3645 2c a long-open stay dispute alert has its own copy and honours 
 });
 
 Deno.test("#3645 2c the stale raise runs before the drain on a dark tick", async () => {
-  const { deps, rpcNames } = harness([], () => Promise.resolve({ data: { raised: 0, refreshed: 0 }, error: null }));
+  const { deps, rpcNames, staleArgs } = harness([], () => Promise.resolve({ data: { raised: 0, refreshed: 0 }, error: null }));
+  const before = Date.now();
   const response = await handlePayoutReleaseSweep(request(), deps);
   assertEquals(response.status, 200);
   assertEquals((await response.json()).dark, true);
@@ -199,6 +204,11 @@ Deno.test("#3645 2c the stale raise runs before the drain on a dark tick", async
   const drain = rpcNames.indexOf("claim_payout_release_alerts");
   assert(raise >= 0, "the stale raise must run with execution off");
   assert(raise < drain, "raised before the drain, so it is delivered in the same tick");
+  // Exactly the RPC's argument: a renamed parameter would fail every call.
+  assertEquals(staleArgs.length, 1);
+  assertEquals(Object.keys(staleArgs[0]), ["p_now"]);
+  const at = Date.parse(String(staleArgs[0].p_now));
+  assert(at >= before - 1000 && at <= Date.now() + 1000, "p_now is the current time as ISO");
 });
 
 Deno.test("#3645 2c a failing stale raise never changes the tick", async () => {

@@ -103,7 +103,7 @@ $$;
 CREATE FUNCTION pg_temp.ord(
   p_n integer, p_event text, p_date text, p_total integer, p_fee integer,
   p_age interval, p_status text DEFAULT 'paid', p_refunded integer DEFAULT 0,
-  p_snapshot boolean DEFAULT true
+  p_snapshot boolean DEFAULT true, p_currency text DEFAULT 'NGN'
 ) RETURNS uuid
 LANGUAGE plpgsql AS $$
 DECLARE
@@ -113,7 +113,7 @@ BEGIN
     id, event_id, total_cents, currency, payment_status, source, buyer_phone_e164,
     event_date_id, stripe_application_fee_amount_cents, refunded_amount_cents, created_at
   ) VALUES (
-    v_id, ('3645c000-0000-4000-8000-0000000000' || p_event)::uuid, p_total, 'NGN',
+    v_id, ('3645c000-0000-4000-8000-0000000000' || p_event)::uuid, p_total, p_currency,
     p_status, 'online_checkout', '+2348000000' || lpad(p_n::text, 3, '0'),
     ('3645c000-0000-4000-8000-0000000000' || p_date)::uuid, p_fee, p_refunded,
     timestamptz '2026-10-21 12:00:00+00' - p_age
@@ -199,6 +199,10 @@ SELECT pg_temp.ord(5, 'e3', 'd3', 30000, 1350, interval '2 hours');             
 SELECT pg_temp.ord(6, 'e4', 'd4', 30000, 1350, interval '2 hours');                       -- cancelled event
 SELECT pg_temp.ord(7, 'e1', 'd1', 30000, 1350, interval '2 hours', 'paid', 0, false);     -- no fee snapshot
 SELECT pg_temp.ord(8, 'e1', 'd1', 30000, 1350, interval '2 hours', 'refunded', 30000);    -- fully refunded
+-- A source, but not counted: a non-NGN Paystack sale, and a net-0 sale (fee
+-- equals the remainder) that would otherwise be the earliest maturity.
+SELECT pg_temp.ord(9, 'e1', 'd1', 30000, 1350, interval '2 hours', 'paid', 0, true, 'USD');
+SELECT pg_temp.ord(10, 'e1', 'd1', 450, 450, interval '30 hours');
 UPDATE public.events SET status = 'cancelled' WHERE id = '3645c000-0000-4000-8000-0000000000e4';
 -- Stays: a Paystack stay (10450 - 450 = 10,000) and a Stripe stay (excluded).
 SELECT pg_temp.stay(1, 'ng', 'paystack', 'NGN', interval '3 hours');
@@ -214,7 +218,7 @@ BEGIN
   INTO v_set
   FROM public.issue_3645_unattached_payout_sources(timestamptz '2026-10-28 12:00:00+00') u
   WHERE u.provider = 'paystack';
-  IF v_set IS DISTINCT FROM 'order:01=95500,order:02=37750,order:03=19100,stay_reservation:01=10000' THEN
+  IF v_set IS DISTINCT FROM 'order:01=95500,order:02=37750,order:03=19100,order:09=28650,order:10=0,stay_reservation:01=10000' THEN
     RAISE EXCEPTION 'T1 unattached Paystack set wrong: %', v_set;
   END IF;
   -- The Stripe sales are sources too (the function is provider-neutral), but
@@ -229,8 +233,9 @@ BEGIN
      OR (v->>'unattached_kobo')::bigint <> 162350
      OR (v->>'obligation_kobo')::bigint <> 162350
      OR (v->>'release_count')::int <> 0
-     OR v->'anchor_release_id' <> 'null'::jsonb
-     OR (v->>'earliest_maturity_at')::timestamptz <> timestamptz '2026-10-21 11:00:00+00' THEN
+     OR v->'anchor_release_id' IS DISTINCT FROM 'null'::jsonb
+     -- Order 3 (N - 1h). Not order 10 (net 0, N - 6h), not the USD order.
+     OR (v->>'earliest_maturity_at')::timestamptz IS DISTINCT FROM timestamptz '2026-10-21 11:00:00+00' THEN
     RAISE EXCEPTION 'T1 obligation wrong: %', v;
   END IF;
   -- Every old key is still there.
@@ -256,6 +261,17 @@ BEGIN
     WHERE source_id = pg_temp.oid(1)
   ) THEN
     RAISE EXCEPTION 'T3 a sale maturing after the horizon end was counted';
+  END IF;
+  -- Stay 1 was paid at N - 3h, so it matures at N + 21h.
+  IF NOT EXISTS (
+    SELECT 1 FROM public.issue_3645_unattached_payout_sources(timestamptz '2026-10-22 09:00:00+00')
+    WHERE source_id = '3645c000-0000-4000-8003-000000000001'
+  ) OR EXISTS (
+    SELECT 1 FROM public.issue_3645_unattached_payout_sources(
+      timestamptz '2026-10-22 09:00:00+00' - interval '1 microsecond')
+    WHERE source_id = '3645c000-0000-4000-8003-000000000001'
+  ) THEN
+    RAISE EXCEPTION 'T3 stay maturity boundary wrong';
   END IF;
 END
 $t3$;
@@ -409,7 +425,7 @@ BEGIN
      OR (v_after->>'unattached_count')::int <> 3
      OR (v_after->>'release_count')::int <> 1
      OR (v_after->>'unattached_kobo')::bigint <> 162350 - 19100
-     OR (v_after->>'anchor_release_id')::uuid <> v_rel THEN
+     OR (v_after->>'anchor_release_id')::uuid IS DISTINCT FROM v_rel THEN
     RAISE EXCEPTION 'T8 double count or drop: before % after %', v_before, v_after;
   END IF;
 
@@ -429,8 +445,8 @@ BEGIN
   IF v_mismatch IS NOT NULL THEN
     RAISE EXCEPTION 'T8 the sweeps attached something other than predicted: %', v_mismatch;
   END IF;
-  IF (SELECT count(*) FROM predicted) <> 6 THEN
-    -- 4 Paystack (orders 1-3, stay 1) + 2 Stripe (order 4, stay 2).
+  IF (SELECT count(*) FROM predicted) <> 8 THEN
+    -- 6 Paystack (orders 1-3, 9, 10, stay 1) + 2 Stripe (order 4, stay 2).
     RAISE EXCEPTION 'T8 predicted set size %', (SELECT count(*) FROM predicted);
   END IF;
   IF EXISTS (SELECT 1 FROM public.issue_3645_unattached_payout_sources(timestamptz '2026-10-30 12:00:00+00')
@@ -446,8 +462,13 @@ DO $t9$
 DECLARE
   v jsonb;
   v_anchor uuid;
+  v_obligation bigint;
   r public.payout_release_alert_outbox;
 BEGIN
+  -- The Mingla-wide row is still undelivered when a release appears.
+  UPDATE public.payout_release_alert_outbox
+  SET status = 'pending', provider_accepted_at = NULL, alert_magnitude_kobo = 5000
+  WHERE id = (pg_temp.global_row()).id;
   v := public.raise_paystack_float_shortfall_alert(0, 7, timestamptz '2026-10-23 12:00:00+00');
   v_anchor := (v->>'anchor_release_id')::uuid;
   IF v->>'alert' <> 'raised' OR v_anchor IS NULL THEN
@@ -459,8 +480,28 @@ BEGIN
      OR r.brand_id IS NULL THEN
     RAISE EXCEPTION 'T9 anchored row changed shape: %', row_to_json(r);
   END IF;
-  IF (pg_temp.global_row()).alert_magnitude_kobo <> 0 THEN
+  IF (pg_temp.global_row()).alert_magnitude_kobo IS DISTINCT FROM 0 THEN
     RAISE EXCEPTION 'T9 the Mingla-wide row was not marked covered';
+  END IF;
+  -- Accepted on purpose: the older release-less figure, still undelivered, is
+  -- delivered alongside the anchored one (anchored rows already behave the
+  -- same way when the anchor moves). Both are top-up warnings; the newer one
+  -- carries the current figure.
+  IF (SELECT count(*) FROM public.claim_payout_release_alerts(20, timestamptz '2026-10-23 12:01:00+00')
+      WHERE alert_kind = 'paystack_float_shortfall') <> 2 THEN
+    RAISE EXCEPTION 'T9 expected both float rows to be delivered';
+  END IF;
+
+  -- An anchored row with no recorded magnitude behaves as under #1840: a
+  -- delivered row, 1h later, a shortfall under NGN 1,000 is suppressed.
+  v_obligation := (v->>'obligation_kobo')::bigint;
+  UPDATE public.payout_release_alert_outbox
+  SET status = 'provider_accepted', provider_accepted_at = timestamptz '2026-10-23 12:02:00+00',
+      dispatch_claim_id = NULL, dispatch_claimed_at = NULL, alert_magnitude_kobo = NULL
+  WHERE release_id = v_anchor AND alert_kind = 'paystack_float_shortfall';
+  v := public.raise_paystack_float_shortfall_alert(v_obligation - 50000, 7, timestamptz '2026-10-23 13:00:00+00');
+  IF v->>'alert' IS DISTINCT FROM 'suppressed' THEN
+    RAISE EXCEPTION 'T9 an anchored row with no magnitude no longer behaves as before: %', v;
   END IF;
 END
 $t9$;
@@ -504,12 +545,12 @@ BEGIN
   END IF;
   PERFORM pg_temp.dispute(10, 'evt_3645c_10a', 'du_10a', 'needs_response');
 
-  -- 89 days: nothing. 91 days: one row naming the dispute.
-  v := public.issue_3645_raise_stale_stay_dispute_alerts(now() + interval '89 days');
-  IF (v->>'raised')::int <> 0 OR pg_temp.stale(pg_temp.srel(10)) IS NOT NULL AND (pg_temp.stale(pg_temp.srel(10))).id IS NOT NULL THEN
+  -- Just under 90 days: nothing. Exactly 90 days: one row naming the dispute.
+  v := public.issue_3645_raise_stale_stay_dispute_alerts(now() + interval '90 days' - interval '1 microsecond');
+  IF (v->>'raised')::int <> 0 OR (pg_temp.stale(pg_temp.srel(10))).id IS NOT NULL THEN
     RAISE EXCEPTION 'T10 alerted before 90 days: %', v;
   END IF;
-  v := public.issue_3645_raise_stale_stay_dispute_alerts(now() + interval '91 days');
+  v := public.issue_3645_raise_stale_stay_dispute_alerts(now() + interval '90 days');
   r := pg_temp.stale(pg_temp.srel(10));
   IF (v->>'raised')::int <> 1 OR r.id IS NULL
      OR r.idempotency_key <> 'stay_dispute_hold_open:' || pg_temp.srel(10)::text || ':r1'
@@ -547,6 +588,28 @@ BEGIN
      OR r.idempotency_key <> 'stay_dispute_hold_open:' || pg_temp.srel(10)::text || ':r2'
      OR position('du_10b' in r.error_message) = 0 OR position('du_10a' in r.error_message) > 0 THEN
     RAISE EXCEPTION 'T10 second stale dispute not re-armed: % %', v, row_to_json(r);
+  END IF;
+
+  -- A row being delivered is never rewritten; the change is picked up after.
+  UPDATE public.payout_release_alert_outbox
+  SET status = 'dispatching', dispatch_claim_id = gen_random_uuid(), dispatch_claimed_at = now()
+  WHERE id = r.id;
+  PERFORM pg_temp.dispute(10, 'evt_3645c_10d', 'du_10c', 'needs_response');
+  v := public.issue_3645_raise_stale_stay_dispute_alerts(now() + interval '91 days');
+  IF (v->>'refreshed')::int <> 0
+     OR (pg_temp.stale(pg_temp.srel(10))).idempotency_key IS DISTINCT FROM r.idempotency_key THEN
+    RAISE EXCEPTION 'T10 a dispatching stale row was rewritten: %', v;
+  END IF;
+  UPDATE public.payout_release_alert_outbox
+  SET status = 'provider_accepted', provider_accepted_at = now(),
+      dispatch_claim_id = NULL, dispatch_claimed_at = NULL
+  WHERE id = r.id;
+  v := public.issue_3645_raise_stale_stay_dispute_alerts(now() + interval '91 days');
+  r := pg_temp.stale(pg_temp.srel(10));
+  IF (v->>'refreshed')::int <> 1
+     OR r.idempotency_key IS DISTINCT FROM 'stay_dispute_hold_open:' || pg_temp.srel(10)::text || ':r3'
+     OR position('du_10c' in r.error_message) = 0 THEN
+    RAISE EXCEPTION 'T10 the change was not picked up after delivery: % %', v, row_to_json(r);
   END IF;
 
   -- Lost also closes it.
@@ -592,6 +655,7 @@ BEGIN
   FOREACH v_fn IN ARRAY ARRAY[
     'public.issue_3645_unattached_payout_sources(timestamptz)',
     'public.issue_3645_raise_stale_stay_dispute_alerts(timestamptz)',
+    'public.issue_3645_mark_mingla_float_covered(timestamptz)',
     'public.paystack_payout_float_obligation(integer,timestamptz)',
     'public.raise_paystack_float_shortfall_alert(bigint,integer,timestamptz)',
     'public.claim_payout_release_alerts(integer,timestamptz)'

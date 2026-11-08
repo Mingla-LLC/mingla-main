@@ -11,6 +11,7 @@ export const TARGET = "supabase/migrations/20280503003645_issue_3645_float_forec
 /** Functions this migration defines for the first time (not re-emits). */
 export const FLOAT_FORECAST_NEW_FUNCTIONS = [
   "issue_3645_unattached_payout_sources",
+  "issue_3645_mark_mingla_float_covered",
   "issue_3645_raise_stale_stay_dispute_alerts",
 ];
 
@@ -28,7 +29,7 @@ export const FLOAT_FORECAST_REEMITS: Reemit[] = [
       {
         name: "add paid Paystack sales maturing inside the horizon that are not attached yet",
         old: "  INTO v_obligation,v_count,v_earliest,v_anchor_release,v_anchor_brand\n  FROM owed o;\n",
-        new: "  INTO v_obligation,v_count,v_earliest,v_anchor_release,v_anchor_brand\n  FROM owed o;\n\n  -- issue #3645: a sale only becomes a release when it matures, so counting\n  -- releases alone read 0 until the moment the money was due. Add every paid\n  -- Paystack sale that matures inside the horizon and is not attached yet, at\n  -- the net its release will store. Debts are not subtracted (over-inclusion\n  -- is the safe direction for a top-up warning). The anchor stays release-only.\n  SELECT coalesce(sum(u.net_cents),0), count(*)::integer,\n         min(u.finalized_at + interval '1 day')\n  INTO v_unattached_kobo, v_unattached_count, v_unattached_earliest\n  FROM public.issue_3645_unattached_payout_sources(v_horizon_end) u\n  WHERE u.provider='paystack' AND u.net_cents>0;\n\n  v_obligation := coalesce(v_obligation,0) + v_unattached_kobo;\n  v_earliest := least(v_earliest, v_unattached_earliest);\n",
+        new: "  INTO v_obligation,v_count,v_earliest,v_anchor_release,v_anchor_brand\n  FROM owed o;\n\n  -- issue #3645: a sale only becomes a release when it matures, so counting\n  -- releases alone read 0 until the moment the money was due. Add every paid\n  -- Paystack sale that matures inside the horizon and is not attached yet, at\n  -- the net its release will store. Debts are not subtracted (over-inclusion\n  -- is the safe direction for a top-up warning). The anchor stays release-only.\n  SELECT coalesce(sum(u.net_cents),0), count(*)::integer,\n         min(u.finalized_at + interval '1 day')\n  INTO v_unattached_kobo, v_unattached_count, v_unattached_earliest\n  FROM public.issue_3645_unattached_payout_sources(v_horizon_end) u\n  WHERE u.provider='paystack' AND u.currency='ngn' AND u.net_cents>0;\n\n  v_obligation := coalesce(v_obligation,0) + v_unattached_kobo;\n  v_earliest := least(v_earliest, v_unattached_earliest);\n",
       },
       {
         name: "report the unattached totals",
@@ -50,7 +51,7 @@ export const FLOAT_FORECAST_REEMITS: Reemit[] = [
       {
         name: "a shortfall with no release uses the Mingla-wide row; the global row re-arms when it is not the one raising",
         old: "  IF v_obligation<=0 OR v_anchor_release IS NULL OR v_shortfall<=0 THEN\n",
-        new: "  -- issue #3645: whenever the Mingla-wide row is not the one raising (no\n  -- shortfall, or a release anchors it), mark it covered so the next\n  -- release-less shortfall is raised at once instead of waiting out the bounds.\n  IF v_obligation<=0 OR v_shortfall<=0 OR v_anchor_release IS NOT NULL THEN\n    UPDATE public.payout_release_alert_outbox\n    SET alert_magnitude_kobo=0, updated_at=p_now\n    WHERE release_id IS NULL AND alert_kind='paystack_float_shortfall'\n      AND status<>'dispatching' AND alert_magnitude_kobo<>0;\n  END IF;\n  v_key_base := coalesce(v_anchor_release::text,'mingla');\n\n  IF v_obligation<=0 OR v_shortfall<=0 THEN\n",
+        new: "  -- issue #3645: whenever the Mingla-wide row is not the one raising (no\n  -- shortfall, or a release anchors it), mark it covered so the next\n  -- release-less shortfall is raised at once instead of waiting out the bounds.\n  -- (The sweep calls the same function when the obligation is 0, because it\n  -- does not call this raise then.)\n  IF v_obligation<=0 OR v_shortfall<=0 OR v_anchor_release IS NOT NULL THEN\n    PERFORM public.issue_3645_mark_mingla_float_covered(p_now);\n  END IF;\n  v_key_base := coalesce(v_anchor_release::text,'mingla');\n\n  IF v_obligation<=0 OR v_shortfall<=0 THEN\n",
       },
       {
         name: "look up the anchored row, or the Mingla-wide row when there is no release",
@@ -70,7 +71,7 @@ export const FLOAT_FORECAST_REEMITS: Reemit[] = [
       {
         name: "a row marked covered re-alerts at once",
         old: "      AND left(v_message,1000) IS DISTINCT FROM v_existing.error_message\n    )\n  ) THEN\n",
-        new: "      AND left(v_message,1000) IS DISTINCT FROM v_existing.error_message\n    )\n    -- 4. issue #3645: marked covered since it was last alerted (the\n    -- Mingla-wide row), so a new shortfall is a new alert\n    OR v_existing.alert_magnitude_kobo=0\n  ) THEN\n",
+        new: "      AND left(v_message,1000) IS DISTINCT FROM v_existing.error_message\n    )\n    -- 4. issue #3645: marked covered since it was last alerted (the\n    -- Mingla-wide row), so a new shortfall is a new alert\n    OR (v_existing.release_id IS NULL\n        AND coalesce(v_existing.alert_magnitude_kobo,1)=0)\n  ) THEN\n",
       },
       {
         name: "revision key uses the key base",

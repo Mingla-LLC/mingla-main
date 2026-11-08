@@ -74,8 +74,8 @@ CREATE OR REPLACE FUNCTION public.issue_3645_unattached_payout_sources(
 LANGUAGE sql
 STABLE
 -- No SET clause on purpose: a set-returning SQL function with a SET clause is
--- never inlined, and inlining is what pushes the maturity and not-attached
--- filters into each arm instead of materialising every paid sale in history.
+-- never inlined, and inlining lets the caller's own filters (provider,
+-- currency) reach each arm instead of materialising every candidate first.
 -- The body is fully schema-qualified, and EXECUTE is service_role only.
 AS $fn$
   -- issue #3645: the paid sales the two dark sweeps would attach once they
@@ -338,6 +338,34 @@ REVOKE ALL ON FUNCTION public.issue_3645_unattached_payout_sources(timestamptz)
 GRANT EXECUTE ON FUNCTION public.issue_3645_unattached_payout_sources(timestamptz)
   TO service_role;
 
+-- §3. Mark the Mingla-wide float row covered.
+CREATE OR REPLACE FUNCTION public.issue_3645_mark_mingla_float_covered(
+  p_now timestamptz DEFAULT now()
+) RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $fn$
+DECLARE
+  v_count integer;
+BEGIN
+  -- issue #3645: the Nigerian float is covered (or a release now anchors the
+  -- shortfall), so the next release-less shortfall is a new alert, not a
+  -- figure to compare with the last one. A row being delivered is left alone.
+  UPDATE public.payout_release_alert_outbox
+  SET alert_magnitude_kobo = 0, updated_at = p_now
+  WHERE release_id IS NULL AND alert_kind = 'paystack_float_shortfall'
+    AND status <> 'dispatching' AND alert_magnitude_kobo <> 0;
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  RETURN v_count;
+END;
+$fn$;
+
+REVOKE ALL ON FUNCTION public.issue_3645_mark_mingla_float_covered(timestamptz)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_3645_mark_mingla_float_covered(timestamptz)
+  TO service_role;
+
 -- Re-emit: paystack_payout_float_obligation (from supabase/migrations/20270720003645_issue_3645_payment_plus_24h_payouts.sql; hunks declared in __tests__/issue_3645_float_forecast_reemit_hunks.ts).
 CREATE OR REPLACE FUNCTION public.paystack_payout_float_obligation(
   p_horizon_days integer DEFAULT 7,
@@ -458,7 +486,7 @@ BEGIN
          min(u.finalized_at + interval '1 day')
   INTO v_unattached_kobo, v_unattached_count, v_unattached_earliest
   FROM public.issue_3645_unattached_payout_sources(v_horizon_end) u
-  WHERE u.provider='paystack' AND u.net_cents>0;
+  WHERE u.provider='paystack' AND u.currency='ngn' AND u.net_cents>0;
 
   v_obligation := coalesce(v_obligation,0) + v_unattached_kobo;
   v_earliest := least(v_earliest, v_unattached_earliest);
@@ -520,11 +548,10 @@ BEGIN
   -- issue #3645: whenever the Mingla-wide row is not the one raising (no
   -- shortfall, or a release anchors it), mark it covered so the next
   -- release-less shortfall is raised at once instead of waiting out the bounds.
+  -- (The sweep calls the same function when the obligation is 0, because it
+  -- does not call this raise then.)
   IF v_obligation<=0 OR v_shortfall<=0 OR v_anchor_release IS NOT NULL THEN
-    UPDATE public.payout_release_alert_outbox
-    SET alert_magnitude_kobo=0, updated_at=p_now
-    WHERE release_id IS NULL AND alert_kind='paystack_float_shortfall'
-      AND status<>'dispatching' AND alert_magnitude_kobo<>0;
+    PERFORM public.issue_3645_mark_mingla_float_covered(p_now);
   END IF;
   v_key_base := coalesce(v_anchor_release::text,'mingla');
 
@@ -604,7 +631,8 @@ BEGIN
     )
     -- 4. issue #3645: marked covered since it was last alerted (the
     -- Mingla-wide row), so a new shortfall is a new alert
-    OR v_existing.alert_magnitude_kobo=0
+    OR (v_existing.release_id IS NULL
+        AND coalesce(v_existing.alert_magnitude_kobo,1)=0)
   ) THEN
     RETURN v_forecast || jsonb_build_object(
       'balance_kobo',p_balance_kobo,

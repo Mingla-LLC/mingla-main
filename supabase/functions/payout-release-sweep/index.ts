@@ -137,6 +137,10 @@ export type PaystackFloatForecast =
     status: "ok";
     horizonDays: number;
     releaseCount: number;
+    // Issue #3645 — paid Paystack sales inside the horizon not attached yet
+    // (already included in obligationKobo).
+    unattachedCount: number;
+    unattachedKobo: number;
     obligationKobo: number;
     balanceRead: boolean;
     shortfallKobo: number;
@@ -1132,10 +1136,14 @@ async function forecastPaystackFloat(
   const obligation = (obligationData ?? {}) as Record<string, unknown>;
   const obligationKobo = Number(obligation.obligation_kobo ?? 0);
   const releaseCount = Number(obligation.release_count ?? 0);
+  const unattachedCount = Number(obligation.unattached_count ?? 0);
+  const unattachedKobo = Number(obligation.unattached_kobo ?? 0);
   const idle: PaystackFloatForecast = {
     status: "ok",
     horizonDays,
     releaseCount: Number.isFinite(releaseCount) ? releaseCount : 0,
+    unattachedCount: Number.isFinite(unattachedCount) ? unattachedCount : 0,
+    unattachedKobo: Number.isFinite(unattachedKobo) ? unattachedKobo : 0,
     obligationKobo: Number.isFinite(obligationKobo) ? obligationKobo : 0,
     balanceRead: false,
     shortfallKobo: 0,
@@ -1144,7 +1152,28 @@ async function forecastPaystackFloat(
   };
   // Nothing matures inside the horizon ⇒ nothing to fund, and no reason to
   // spend a provider call reading the balance.
-  if (!Number.isFinite(obligationKobo) || obligationKobo <= 0) return idle;
+  if (!Number.isFinite(obligationKobo) || obligationKobo <= 0) {
+    // Issue #3645 — the float is covered, so a later release-less shortfall
+    // must be a new alert (the raise below, which does this itself, is not
+    // called on this path). Non-fatal: at worst that alert waits out the
+    // usual bounds.
+    try {
+      const { error: coveredError } = await admin.rpc(
+        "issue_3645_mark_mingla_float_covered" as never,
+        { p_now: new Date().toISOString() } as never,
+      );
+      if (coveredError) throw new Error(coveredError.message);
+    } catch (coveredError) {
+      console.error(JSON.stringify({
+        event: "ng_payout_float_mark_covered_failed",
+        function_name: "payout-release-sweep",
+        reason: (coveredError instanceof Error
+          ? coveredError.message
+          : String(coveredError)).slice(0, 200),
+      }));
+    }
+    return idle;
+  }
 
   const client = deps.createPaystackReleaseClient?.() ??
     defaultPaystackReleaseClient();
@@ -1170,6 +1199,8 @@ async function forecastPaystackFloat(
     status: "ok",
     horizonDays,
     releaseCount: Number(result.release_count ?? idle.releaseCount),
+    unattachedCount: Number(result.unattached_count ?? idle.unattachedCount),
+    unattachedKobo: Number(result.unattached_kobo ?? idle.unattachedKobo),
     obligationKobo: Number(result.obligation_kobo ?? obligationKobo),
     balanceRead: true,
     shortfallKobo: Number(result.shortfall_kobo ?? 0),

@@ -63,3 +63,65 @@ Deno.test("#3645 2c the sources function stays inlinable (STABLE sql, invoker, n
   assert(!/SECURITY DEFINER/.test(header), "a SECURITY DEFINER function is never inlined");
   assert(!/^\s*SET\s/m.test(header), "a SET clause stops inlining; the body is schema-qualified instead");
 });
+
+// The forecast's net is the net each attach function stores. If either attach
+// formula changes (for example deducting the provider fee again), this fails
+// until issue_3645_unattached_payout_sources is changed to match.
+Deno.test("#3645 2c the forecast net is the net attach_payout_release stores", () => {
+  const attach = latest("attach_payout_release").body;
+  assert(
+    attach.includes(
+      "v_net := greatest(0, p_gross_cents - p_refunded_cents - p_disputed_cents\n    - p_mingla_fee_cents);",
+    ),
+    "attach_payout_release's net changed; change the forecast net to match",
+  );
+  assert(
+    SOURCES.includes(
+      "greatest(0, sale.gross_cents::bigint - sale.refunded_cents\n      - sale.disputed_cents - sale.mingla_fee_cents)",
+    ),
+  );
+});
+
+Deno.test("#3645 2c the forecast net is the net issue_1389_attach_stay_payout_release stores", () => {
+  const attach = latest("issue_1389_attach_stay_payout_release").body;
+  assert(
+    attach.includes(
+      "v_net := greatest(\n    0,\n    p_gross_cents - p_refunded_cents - p_mingla_fee_cents\n  );",
+    ),
+    "issue_1389_attach_stay_payout_release's net changed; change the forecast net to match",
+  );
+  assert(
+    SOURCES.includes(
+      "greatest(0, stay.gross_cents::bigint - stay.refunded_cents\n      - stay.mingla_fee_cents)",
+    ),
+  );
+});
+
+// Each sweep can still skip a candidate inside its loop, before attaching. The
+// forecast does not see those skips, so they are pinned: a new or changed skip
+// fails here until the forecast accounts for it.
+Deno.test("#3645 2c the sweeps' per-row skips before attach are the known ones", () => {
+  const sweep = latest("run_payout_release_dark_sweep").body;
+  const loopStart = sweep.indexOf("  LOOP\n", sweep.indexOf("    ORDER BY c.finalized_at,c.source_id\n"));
+  const attachAt = sweep.indexOf("    v_release_id:=public.attach_payout_release(", loopStart);
+  assert(loopStart >= 0 && attachAt > loopStart);
+  assertEquals(
+    sweep.slice(loopStart, attachAt),
+    "  LOOP\n" +
+      "    PERFORM pg_advisory_xact_lock(\n" +
+      "      hashtextextended(v_row.source_type||':'||v_row.source_id::text,0)\n" +
+      "    );\n" +
+      // The same unreconciled-refund rule is already inside the candidate text
+      // for these three arms, so the forecast excludes them too.
+      "    IF v_row.source_type IN ('venue_reservation','rsvp_contribution','venue_menu_order') AND EXISTS (\n" +
+      "      SELECT 1 FROM public.source_refunds sr\n" +
+      "      WHERE sr.source_type=v_row.source_type AND sr.source_id=v_row.source_id\n" +
+      "        AND sr.financial_state<>'reconciled'\n" +
+      "    ) THEN CONTINUE; END IF;\n",
+  );
+  const stay = latest("run_stay_payout_release_dark_sweep").body;
+  const stayLoop = stay.indexOf("  LOOP\n", stay.indexOf("    ORDER BY anchor_end_at, line.id\n"));
+  const stayAttach = stay.indexOf("    v_release_id := public.issue_1389_attach_stay_payout_release(", stayLoop);
+  assert(stayLoop >= 0 && stayAttach > stayLoop);
+  assertEquals(stay.slice(stayLoop, stayAttach), "  LOOP\n");
+});
