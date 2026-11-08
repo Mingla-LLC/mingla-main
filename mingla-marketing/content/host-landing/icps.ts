@@ -8,7 +8,9 @@
 // Markup inside copy: `*words*` is the italic, emphasised half.
 // Media: `v:<name>` is the looping clip public/marketing/site/m/<name>.mp4 with
 // its poster m/<name>.jpg; `p:<name>` is the still p/<name>.jpg. `bg` (the
-// features background) is always a still from p/.
+// features background) is a plain name for a still from p/, or `v:<name>` for
+// a looping clip from m/ (Seth approved bg-events for /host/events, 8 Nov; the
+// other ICPs keep their stills until their clips arrive).
 //
 // No store, host or OneLink URL lives here: every "Use Mingla Web" button goes
 // through lib/app-handoff.ts, which asks lib/cta-destination.ts (#4137).
@@ -56,6 +58,7 @@ export interface IcpLanding {
   readonly name: string
   readonly short: string
   readonly hero: LandingMediaRef
+  /** Features background: a still name from p/, or `v:<name>` for a clip. */
   readonly bg: string
   /** Headline line one (roman) and line two (italic). */
   readonly l1: string
@@ -88,7 +91,7 @@ export const ICP_LANDINGS = {
     name: "Event organisers",
     short: "Events",
     hero: "v:crowd",
-    bg: "durham-midweek-live",
+    bg: "v:bg-events",
     l1: "Fill the room,",
     l2: "not just the timeline.",
     sub: "Tickets, guest lists, door scanning and an AI demand forecast, in one place built for the people who throw the night.",
@@ -389,9 +392,16 @@ export function resolveLandingMedia(ref: LandingMediaRef): ResolvedLandingMedia 
   return { kind: 'photo', src: null, poster: `${MEDIA_ROOT}/p/${name}.jpg` }
 }
 
-export function landingBackground(name: string): string {
-  if (!/^[a-z0-9-]+$/.test(name)) throw new Error(`#4339 landing background is not a plain slug: ${name}`)
-  return `${MEDIA_ROOT}/p/${name}.jpg`
+/** The features background as a media reference: `v:<name>` stays a clip, a plain name is a still. */
+export function landingBackgroundMedia(bg: string): LandingMediaRef {
+  const ref: LandingMediaRef = bg.startsWith('v:') ? (bg as LandingMediaRef) : `p:${bg}`
+  resolveLandingMedia(ref)
+  return ref
+}
+
+/** The features background's still: the poster of a clip, or the photo itself. */
+export function landingBackground(bg: string): string {
+  return resolveLandingMedia(landingBackgroundMedia(bg)).poster
 }
 
 /** Split `*emphasised*` copy into plain and italic runs. */

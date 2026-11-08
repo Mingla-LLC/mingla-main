@@ -407,7 +407,8 @@
   margin-bottom: -100svh;
   overflow: hidden;
 }
-[data-landing] .feat-bg img {
+[data-landing] .feat-bg img,
+[data-landing] .feat-bg video {
   width: 100%;
   height: 100%;
   object-fit: cover;

@@ -223,6 +223,40 @@ test('clips: poster first, no source in the server HTML, never loaded under redu
   assert.match(media, /video\.preload = hero \? 'auto' : 'metadata'/, 'only the hero preloads')
 })
 
+test('/host/events: the features background is the approved bg-events clip under the clip rules; the others keep their stills', () => {
+  // Seth approved bg-events (8 Nov): stage lights through haze, 1280 wide, 5 s,
+  // no people, no text. It replaces the still durham-midweek-live.
+  assert.equal(icps.ICP_LANDINGS.events.bg, 'v:bg-events')
+  assert.equal(icps.landingBackgroundMedia('v:bg-events'), 'v:bg-events')
+  const clip = icps.resolveLandingMedia('v:bg-events')
+  assert.equal(clip.src, '/marketing/site/m/bg-events.mp4')
+  assert.equal(clip.poster, '/marketing/site/m/bg-events.jpg')
+  for (const file of [clip.src, clip.poster]) assert.ok(fs.existsSync(path.join(MARKETING, 'public', file)), `${file} exists`)
+  assert.ok(fs.statSync(path.join(MARKETING, 'public', clip.src)).size < 600_000, 'the loop stays light')
+  for (const slug of SLUGS.filter((s) => s !== 'events')) {
+    const bg = icps.ICP_LANDINGS[slug].bg
+    assert.doesNotMatch(bg, /^v:/, `${slug}: keeps its still until its clip arrives`)
+    assert.equal(icps.landingBackgroundMedia(bg), `p:${bg}`)
+  }
+  // The sticky background renders through LandingMedia (muted, loop,
+  // playsInline, preload none, poster only under reduced motion / Save-Data),
+  // never a bare <img> or <video> of its own, and the clip gets the still's
+  // brightness filter.
+  const template = code(read('components/landing/icp-landing.tsx'))
+  assert.match(template, /<div className="feat-bg" aria-hidden="true">\s*(?:\{\}\s*)?<LandingMedia media=\{landingBackgroundMedia\(d\.bg\)\} \/>\s*<\/div>/)
+  assert.doesNotMatch(template, /landingBackground\(d\.bg\)/)
+  const css = read('components/landing/landing.css')
+  assert.match(css, /\[data-landing\] \.feat-bg img,\s*\[data-landing\] \.feat-bg video \{[^}]*object-fit: cover;[^}]*filter: brightness\(0\.5\) saturate\(0\.9\);/)
+  if (BUILT) {
+    const html = fs.readFileSync(path.join(MARKETING, '.next/server/app/host', 'events.html'), 'utf8')
+    const bg = html.match(/<div class="feat-bg" aria-hidden="true">([\s\S]*?)<\/div>/)?.[1] ?? ''
+    assert.match(bg, /<video[^>]*poster="\/marketing\/site\/m\/bg-events\.jpg"/, 'built: the clip with its poster')
+    assert.match(bg, /preload="none"/, 'built: nothing preloads')
+    assert.match(bg, /data-landing-clip="\/marketing\/site\/m\/bg-events\.mp4"/)
+    assert.doesNotMatch(bg, /\ssrc=|<img/, 'built: no source until on screen, no still')
+  }
+})
+
 // ---- built HTML (after `next build`) ---------------------------------------
 test('built: all seven pages prerender indexed, with the two-line hero and no privacy link', { skip: !BUILT && 'set ISSUE_4339_BUILT=1 after next build' }, () => {
   for (const slug of SLUGS) {

@@ -22,7 +22,7 @@ import {
   ICP_LANDINGS,
   TOOL_PATH,
   emphasisRuns,
-  landingBackground,
+  landingBackgroundMedia,
   litWords,
   type IcpLanding,
   type IcpSlug,
@@ -147,8 +147,10 @@ export function IcpLandingPage({ slug }: { slug: IcpSlug }) {
       {/* 3. Features */}
       <section className="feat" id={FEATURES_ID} data-feat="" aria-labelledby="lp-feat-title">
         <div className="feat-bg" aria-hidden="true">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={landingBackground(d.bg)} alt="" loading="lazy" decoding="async" />
+          {/* A still, or a muted looping clip under the same video rules as every
+              other clip (preload none until on screen; poster only under
+              reduced motion or Save-Data). */}
+          <LandingMedia media={landingBackgroundMedia(d.bg)} />
         </div>
         <div className="wrap feat-grid">
           <div className="feat-left">
