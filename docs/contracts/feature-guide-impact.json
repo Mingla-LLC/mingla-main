@@ -1478,7 +1478,8 @@
         "supabase/migrations/20280419014276_issue_4276_mv_refresh_slot_comma_minutes.sql",
         "supabase/migrations/20280419024276_issue_4276_admin_spend_totals.sql",
         "supabase/migrations/20280428004276_issue_4276_live_runs.sql",
-        "supabase/migrations/20280504004276_issue_4276_admin_counts_headroom.sql"
+        "supabase/migrations/20280504004276_issue_4276_admin_counts_headroom.sql",
+        "supabase/migrations/20280509004276_issue_4276_resume_resets_progress.sql"
       ]
     },
     {
@@ -2054,6 +2055,93 @@
         "mingla-business/src/components/venue/VenueStep7Review.tsx",
         "mingla-business/src/components/venue/claim/ClaimStepCover.tsx",
         "mingla-business/src/components/venue/claim/ClaimStepReview.tsx"
+      ]
+    },
+    {
+      "capability_key": "staff-community-support",
+      "paths": [
+        "mingla-admin/src/components/links/LinksPagePanel.jsx",
+        "mingla-admin/src/lib/linksStrips.js",
+        "mingla-admin/src/lib/supportCommunityTabs.js",
+        "mingla-admin/src/services/linksStripsService.js"
+      ]
+    },
+    {
+      "capability_key": "web-city-guides",
+      "paths": [
+        "mingla-marketing/content/cities/registry.ts"
+      ]
+    },
+    {
+      "capability_key": "web-download",
+      "paths": [
+        "mingla-marketing/app/fonts/Geist-latin-wght-normal.woff2",
+        "mingla-marketing/app/fonts/GeistMono-latin-500-normal.woff2",
+        "mingla-marketing/app/fonts/InstrumentSerif-latin-400-italic.woff2",
+        "mingla-marketing/app/fonts/InstrumentSerif-latin-400-normal.woff2",
+        "mingla-marketing/app/fonts/OFL-Geist.txt",
+        "mingla-marketing/app/fonts/OFL-Instrument-Serif.txt",
+        "mingla-marketing/app/fonts/SOURCES.json",
+        "mingla-marketing/app/links/fonts.ts",
+        "mingla-marketing/app/links/page.tsx",
+        "mingla-marketing/components/marketing/links-experience.module.css",
+        "mingla-marketing/components/marketing/links-experience.tsx",
+        "mingla-marketing/lib/cta-destination.ts",
+        "mingla-marketing/lib/links-data.ts",
+        "mingla-marketing/lib/links-fit.ts",
+        "mingla-marketing/lib/links-handoff.ts",
+        "mingla-marketing/lib/links-week.ts",
+        "mingla-marketing/public/brand/links/SOURCES.json",
+        "mingla-marketing/public/brand/links/explore-rooftop-golden-hour.jpg",
+        "mingla-marketing/public/brand/links/host-check-in-party.jpg",
+        "mingla-marketing/public/brand/links/mingla-wordmark-white.svg",
+        "mingla-marketing/scripts/issue-4318-links-fonts.contract.mjs",
+        "supabase/migrations/20280508004318_issue_4318_links_page.sql"
+      ]
+    },
+    {
+      "capability_key": "web-legal",
+      "paths": [
+        "mingla-business/app/_layout.tsx",
+        "mingla-business/app/checkout-experience/[experienceEventId]/buyer.tsx",
+        "mingla-business/app/checkout-experience/[experienceEventId]/confirm.tsx",
+        "mingla-business/app/checkout-experience/[experienceEventId]/index.tsx",
+        "mingla-business/app/checkout-experience/[experienceEventId]/payment.tsx",
+        "mingla-business/app/checkout-trip/[tripEventId]/buyer.tsx",
+        "mingla-business/app/checkout-trip/[tripEventId]/confirm.tsx",
+        "mingla-business/app/checkout-trip/[tripEventId]/index.tsx",
+        "mingla-business/app/checkout-trip/[tripEventId]/payment.tsx",
+        "mingla-business/app/checkout/[eventId]/buyer.tsx",
+        "mingla-business/app/checkout/[eventId]/confirm.tsx",
+        "mingla-business/app/checkout/[eventId]/index.tsx",
+        "mingla-business/app/checkout/[eventId]/payment.tsx",
+        "mingla-business/app/o/venue/[orderId].tsx",
+        "mingla-business/app/reserve/[brandId]/confirm.tsx",
+        "mingla-business/app/reserve/[brandId]/index.tsx",
+        "mingla-business/playwright/issue2331/harness.ts",
+        "mingla-business/playwright/issue2768/bundle.mjs",
+        "mingla-business/playwright/issue2769/bundle.mjs",
+        "mingla-business/playwright/issue2769/entry.tsx",
+        "mingla-business/server/publicPrivacyRuntime.js",
+        "mingla-business/server/publicSearchDocument.js",
+        "mingla-business/server/socialPreview.js",
+        "mingla-business/src/analytics/ConsentBanner.web.tsx",
+        "mingla-business/src/analytics/PrivacyChoicesLink.tsx",
+        "mingla-business/src/analytics/PrivacyChoicesLink.web.tsx",
+        "mingla-business/src/analytics/privacyChoices.ts",
+        "mingla-business/src/components/checkout/StaticBuyerClaimPage.tsx",
+        "mingla-marketing/components/cutout/footer.tsx",
+        "mingla-marketing/components/marketing/consent-banner.tsx",
+        "mingla-marketing/components/marketing/footer.tsx",
+        "mingla-marketing/components/marketing/posthog-provider.tsx",
+        "mingla-marketing/components/marketing/privacy-choices-link.tsx",
+        "mingla-marketing/components/page-system/page-system-shell.tsx",
+        "mingla-marketing/components/page-system/page-system.css",
+        "mingla-marketing/components/sections/explorer-home/hero.tsx",
+        "mingla-marketing/lib/privacyContent.ts",
+        "packages/offering-rendering/ParallaxCoverShell.tsx",
+        "packages/offering-rendering/index.ts",
+        "packages/offering-rendering/pageFooterAccessory.ts"
       ]
     }
   ]

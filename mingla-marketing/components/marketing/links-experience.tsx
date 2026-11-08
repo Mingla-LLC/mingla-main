@@ -1,557 +1,1236 @@
 'use client'
-// ORCH-1317 [Mingla link-in-bio page] — the interactive shell for
-// usemingla.com/links. This is the single link Mingla drops in its social bios,
-// so it is MOBILE-FIRST (a centered column, 44px+ tap targets, no horizontal
-// overflow) and premium/uncluttered (a Linktree feel on the brand's night canvas).
+// #4318 — usemingla.com/links: the city week calendar (replaces the ORCH-1317
+// two-tab Explorer / For Hosts page).
 //
-// SNAPSHOT CONTRACT (§1): the whole page fits in ONE viewport and NEVER scrolls —
-// wordmark + tagline + tab toggle + active CTA + socials are all visible at once.
-// The root is exactly one dynamic viewport tall (100dvh, 100svh fallback) with
-// `overflow-hidden` and safe-area insets; a flex column distributes the content so
-// it fits short phones (~667px) without clipping and taller ones without scroll.
+// ONE SCREEN, NEVER SCROLLS: the page is exactly one viewport tall less the
+// #2331 privacy bar (I-PRIVACY-BAR-NEVER-OCCLUDES), and the strips fit by
+// MEASURING (lib/links-fit.ts): admin strips come first, listings keep a floor
+// of 3 (1 on short screens), whatever does not fit whole is hidden and counted
+// in the "more" links. Anything extra opens as a sheet inside the page.
 //
-// STRUCTURE (all data lives in lib/links-config.ts — add tabs/socials there, not
-// here): a wordmark + tagline, an accessible two-tab segmented control (ARIA
-// tablist + roving tabindex + arrow-key nav), a per-tab CTA panel, and a socials
-// row pinned to the bottom.
+// EVERY TAP goes through the #4137 device seam (lib/links-handoff.ts →
+// lib/cta-destination.ts): each banner and strip is a real <a> whose server
+// href is the computer destination and whose `data-cta-phone-href` is the
+// phone destination (the boot script fixes a tap made before hydration). On a
+// computer the tap opens a sheet with a QR code instead. No store or host URL
+// lives in this file.
 //
-// A11Y: role=tablist/tab/tabpanel, aria-selected, roving tabindex (only the
-// active tab is Tab-focusable), ArrowLeft/Right/Home/End move selection AND
-// focus, and every interactive element carries the shared .focus-ring.
+// Layout, tokens and behaviour follow the approved design contract (#4318,
+// version 11) through links-experience.module.css. Light theme only.
 //
-// ANALYTICS (§7): consent-gated captureMarketing (no-op until PostHog opt-in) on
-// tab switch + every CTA / store-badge / social click.
+// ANALYTICS: consent-gated captureMarketing, spec §11.
 
-import { useCallback, useEffect, useId, useRef, useState } from 'react'
-import { motion } from 'framer-motion'
-import { Instagram, Linkedin, Facebook, Youtube } from 'lucide-react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+  type ReactNode,
+  type RefObject,
+} from 'react'
+import QRCode from 'react-qr-code'
 import { captureMarketing } from '@/components/marketing/posthog-provider'
-import { useMinglaReducedMotion } from '@/lib/reduced-motion'
 import { cn } from '@/lib/cn'
 import { detectClientPlatform, type Platform } from '@/lib/device-platform'
+import { resolveStoreListingHrefs } from '@/lib/cta-destination'
 import {
-  BUSINESS_APP_CHOICE_COPY,
-  resolveBusinessAppTarget,
-} from '@/lib/business-app-target'
-import { resolveExplorerAppTarget } from '@/lib/explorer-app-target'
-import { LINKS_SRC_FALLBACK, linksAttribution } from '@/lib/links-src'
-// ORCH-1381 ADDENDUM D-B — external opens go through the ONE owner. Never inline
-// window.open here: a 'noopener'/'noreferrer' feature string makes it return null
-// even on success, so the popup-block fallback fires on every tap — which navigated
-// /links away and violated this page's own "stays mounted" contract (ORCH-1328).
-// ORCH-1399 — openExternal now has exactly ONE caller on this page: the Explorer
-// DESKTOP branch, which opens the /download QR page. That is a genuinely different
-// action (a page, not a store hand-off), so it stays a <button>. Every STORE/web
-// destination is now a real <a href> — see the CTA block below.
-import { openExternal } from '@/lib/open-external'
-import {
-  LINKS_TABS,
-  socialHref,
-  socialsForTab,
-  type LinksTab,
-  type LinksTabId,
+  LINKS_CITY_COOKIE,
+  LINKS_CITY_COOKIE_MAX_AGE_SECONDS,
+  LINKS_SOCIALS,
+  type LinksSocialId,
 } from '@/lib/links-config'
-import { PrivacyChoicesLink } from '@/components/marketing/privacy-choices-link'
+import {
+  chipFitLevel,
+  computeLinksFit,
+  moreLabel,
+  pinsMoreLabel,
+  SHORT_SCREEN_PX,
+  spreadLeftover,
+  stripsThatFit,
+  type ChipFitLevel,
+  type LinksFit,
+} from '@/lib/links-fit'
+import {
+  isPhone,
+  linksTargetHrefs,
+  resolveLinksHandoff,
+  targetApp,
+  type LinksTarget,
+} from '@/lib/links-handoff'
+import {
+  cityWeek,
+  distanceLabel,
+  emptyListText,
+  quietWeek,
+  listingDayKey,
+  listingWhen,
+  liveCities,
+  longDayLabel,
+  pickerOrder,
+  pinWebHref,
+  pinWhen,
+  timeLabel,
+  type LinksCity,
+  type LinksListing,
+  type LinksListingKind,
+  type LinksPlace,
+  type LinksPin,
+  type LinksPoint,
+  type LinksWeek,
+} from '@/lib/links-week'
+import styles from './links-experience.module.css'
 
-const EASE = [0.16, 1, 0.3, 1] as const
+// ---------------------------------------------------------------- icons
 
-// ORCH-1328 — the CTA is now a real <button> that performs a device-aware action
-// on the tap (open the store / web app directly, so /links stays mounted). It
-// mirrors the Button token recipe (rounded-full font-display, warm / glass
-// variant, lg size h-14 = 56px tap target, full width) rather than importing the
-// <Button> element, to preserve the exact /links visual (focus-ring, transitions).
-const CTA_BASE =
-  'inline-flex h-14 w-full items-center justify-center gap-2 rounded-full px-7 text-base font-display font-medium tracking-[-0.005em] transition-all duration-200 ease-out-quart cursor-pointer focus-ring'
-const CTA_INTENT: Record<LinksTab['cta']['intent'], string> = {
-  primary:
-    'bg-warm text-white hover:-translate-y-0.5 hover:bg-[var(--color-warm-hover)] hover:brightness-110 active:translate-y-0 active:brightness-100',
-  glass:
-    'glass-soft text-text-primary hover:-translate-y-0.5 hover:brightness-110 active:translate-y-0 active:brightness-100',
+const svgProps = {
+  viewBox: '0 0 24 24',
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeLinecap: 'round' as const,
+  strokeLinejoin: 'round' as const,
+  'aria-hidden': true,
 }
 
-// lucide ships clean Instagram / LinkedIn / Facebook / YouTube marks. It has no X
-// (Twitter rebrand), TikTok, or Threads glyph, so those use inline brand SVGs (§4).
-function SocialIcon({ label }: { label: string }) {
-  const cls = 'h-5 w-5'
-  switch (label) {
-    case 'Instagram':
-      return <Instagram className={cls} aria-hidden="true" />
-    case 'LinkedIn':
-      return <Linkedin className={cls} aria-hidden="true" />
-    case 'Facebook':
-      return <Facebook className={cls} aria-hidden="true" />
-    case 'YouTube':
-      return <Youtube className={cls} aria-hidden="true" />
-    case 'TikTok':
+type IconName = 'arrow' | 'right' | 'chev' | 'x' | 'pin' | 'check' | 'cal' | 'clock' | 'globe' | 'phone'
+
+function Icon({ name }: { name: IconName }): ReactNode {
+  switch (name) {
+    case 'arrow':
+      return <svg {...svgProps} strokeWidth={2.2}><path d="M7 17L17 7M9 7h8v8" /></svg>
+    case 'right':
+      return <svg {...svgProps} strokeWidth={2.2}><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+    case 'chev':
+      return <svg {...svgProps} strokeWidth={2.2}><path d="M6 9l6 6 6-6" /></svg>
+    case 'x':
+      return <svg {...svgProps} strokeWidth={2.2}><path d="M6 6l12 12M18 6L6 18" /></svg>
+    case 'pin':
       return (
-        <svg className={cls} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.08-.14 1.62.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z" />
+        <svg {...svgProps} strokeWidth={2.2}>
+          <path d="M12 21s-6.5-5.6-6.5-10.5a6.5 6.5 0 0 1 13 0C18.5 15.4 12 21 12 21z" />
+          <circle cx="12" cy="10.5" r="2.2" />
         </svg>
       )
-    case 'Threads':
+    case 'check':
+      return <svg {...svgProps} strokeWidth={2.6}><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+    case 'cal':
       return (
-        <svg className={cls} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <path d="M16.5 11.1c-.11-.05-.22-.1-.34-.15-.2-3.7-2.22-5.82-5.62-5.84h-.05c-2.03 0-3.72.87-4.76 2.45l1.87 1.28c.77-1.17 1.99-1.42 2.9-1.42h.03c1.13.01 1.99.34 2.54 .99 .4 .47 .67 1.12 .8 1.94-1-.17-2.08-.22-3.24-.15-3.24.19-5.33 2.08-5.19 4.7 .07 1.33 .73 2.47 1.86 3.22 .96 .63 2.19 .94 3.47 .87 1.69-.09 3.02-.74 3.94-1.92 .7-.9 1.15-2.06 1.35-3.53 .81 .49 1.41 1.13 1.74 1.91 .57 1.32 .6 3.49-1.17 5.26-1.55 1.55-3.42 2.22-6.24 2.24-3.13-.02-5.5-1.03-7.04-2.99C2.7 17.44 1.96 15.15 1.93 12v-.01c.03-3.15 .77-5.44 2.21-6.82C5.68 3.21 8.05 2.2 11.18 2.18c3.15 .02 5.55 1.03 7.14 3 .78 .97 1.37 2.19 1.75 3.6l1.95-.52c-.47-1.75-1.22-3.27-2.24-4.54C17.75 1.28 14.79 .02 11.19 0h-.02C7.57 .02 4.6 1.29 2.72 3.68 1.05 5.81 .18 8.75 .15 12.24v.02c.03 3.49 .9 6.43 2.57 8.55C4.6 23.2 7.57 24.47 11.17 24.49h.02c3.28-.02 5.6-.88 7.5-2.78 2.49-2.49 2.41-5.6 1.59-7.53-.59-1.38-1.71-2.5-3.24-3.24zM11.5 16.68c-1.42 .08-2.9-.56-2.97-1.92-.05-1.01 .72-2.13 3.06-2.27 .27-.02 .53-.02 .79-.02 .85 0 1.64 .08 2.36 .24-.27 3.36-1.85 3.9-3.24 3.97z" />
+        <svg {...svgProps} strokeWidth={2}>
+          <rect x="3.5" y="5" width="17" height="15" rx="3" />
+          <path d="M3.5 10h17M8 3v4M16 3v4" />
         </svg>
       )
-    // ORCH-1399 (D) — lucide-react ^0.460.0 ships NO Snapchat glyph, so it follows
-    // the same inline brand-SVG convention as TikTok / Threads / X above. No new
-    // asset file, no new dependency, no icon-library change.
-    case 'Snapchat':
+    case 'clock':
       return (
-        <svg className={cls} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <path d="M12.206.793c.99 0 4.347.276 5.93 3.821.529 1.193.403 3.219.299 4.847l-.003.06c-.012.18-.022.345-.03.51.075.045.203.09.401.09.3-.016.659-.12 1.033-.301.165-.088.344-.104.464-.104.182 0 .359.029.509.09.45.149.734.479.734.838.015.449-.39.839-1.213 1.168-.089.029-.209.075-.344.119-.45.135-1.139.36-1.333.81-.09.225-.061.524.12.868l.015.015c.06.136 1.526 3.475 4.791 4.014.255.044.435.269.42.523 0 .075-.015.15-.045.225-.24.569-1.273.988-3.146 1.271-.059.09-.12.404-.18.658-.045.225-.09.435-.15.703-.045.194-.164.404-.54.404h-.015c-.135 0-.313-.031-.539-.076-.315-.06-.734-.135-1.273-.135-.315 0-.645.03-.99.089-.674.12-1.242.524-1.898.988-.945.674-2.008 1.428-3.611 1.428-.075 0-.135-.015-.196-.015-.06.015-.135.015-.21.015-1.603 0-2.653-.754-3.598-1.428-.66-.464-1.224-.869-1.898-.988-.345-.06-.675-.089-.99-.089-.554 0-.958.09-1.273.135-.226.045-.404.074-.539.074-.196 0-.42-.075-.54-.404-.06-.27-.104-.494-.15-.703-.06-.254-.12-.569-.18-.658-1.873-.284-2.906-.703-3.146-1.271-.03-.075-.045-.15-.045-.225-.015-.254.165-.479.42-.523 3.264-.539 4.73-3.878 4.791-4.014l.015-.015c.18-.344.21-.643.12-.868-.194-.45-.883-.675-1.333-.81-.135-.044-.255-.09-.344-.119-.823-.329-1.228-.719-1.213-1.168 0-.359.284-.689.734-.838.15-.061.327-.09.509-.09.12 0 .299.016.464.104.374.181.733.285 1.033.301.198 0 .326-.045.401-.09-.008-.165-.018-.33-.03-.51l-.003-.06c-.104-1.628-.23-3.654.299-4.847C7.859 1.069 11.216.793 12.206.793z" />
+        <svg {...svgProps} strokeWidth={2}>
+          <circle cx="12" cy="12" r="8.5" />
+          <path d="M12 7.5V12l3 2" />
         </svg>
       )
-    case 'X':
-    default:
+    case 'globe':
       return (
-        <svg className={cls} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24h-6.66l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.45-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77Z" />
+        <svg {...svgProps} strokeWidth={2}>
+          <circle cx="12" cy="12" r="9" />
+          <path d="M3 12h18M12 3c2.6 2.5 3.9 5.5 3.9 9s-1.3 6.5-3.9 9c-2.6-2.5-3.9-5.5-3.9-9S9.4 5.5 12 3z" />
         </svg>
       )
+    case 'phone':
+      return (
+        <svg {...svgProps} strokeWidth={2}>
+          <rect x="6.5" y="2.5" width="11" height="19" rx="3" />
+          <path d="M11 18.5h2" />
+        </svg>
+      )
+    default: {
+      const never: never = name
+      return never
+    }
   }
 }
 
-interface LinksExperienceProps {
-  /** Tagline under the wordmark. Passed from the (server) page so the copy is
-   *  editable in one place; defaults to the brand line if omitted. */
-  tagline?: string
-  /**
-   * ORCH-1399 — the SANITISED `?src=` bio source (already through
-   * sanitizeLinksSrc on the server; defaults to the fail-safe). It is a PAGE-level
-   * value passed as a prop, NOT tab state — which is what makes it structurally
-   * impossible for a tab switch to lose it (§4.4).
-   */
-  src?: string
+function SocialIcon({ id }: { id: LinksSocialId }): ReactNode {
+  const p = { ...svgProps, strokeWidth: 1.8 }
+  switch (id) {
+    case 'instagram':
+      return (
+        <svg {...p}>
+          <rect x="3.5" y="3.5" width="17" height="17" rx="5" />
+          <circle cx="12" cy="12" r="3.8" />
+          <circle cx="17.2" cy="6.8" r=".9" fill="currentColor" />
+        </svg>
+      )
+    case 'tiktok':
+      return (
+        <svg {...p}>
+          <path d="M14 3.5v11a3.6 3.6 0 1 1-3.6-3.6" />
+          <path d="M14 3.5c.5 2.8 2.4 4.5 5 4.7" />
+        </svg>
+      )
+    case 'threads':
+      return (
+        <svg {...p}>
+          <path d="M19.5 12a7.5 7.5 0 1 0-2.9 5.9" />
+          <circle cx="12" cy="12" r="3.4" />
+          <path d="M15.4 12c0 2.4 1 3.5 2.3 3.5s2-1.4 1.8-3.5" />
+        </svg>
+      )
+    case 'snapchat':
+      return (
+        <svg {...p}>
+          <path d="M12 3.5c-3 0-5 2.2-5 5v2.2l-1.9.7 1.7 1.2c-.6 1.6-1.8 2.8-3.3 3.4 1 .7 2.2.8 2.8 1 .2.6.3 1.2 1 1.2.9 0 1.7-.4 2.7.2s1.6 1.3 2 1.3 1-.7 2-1.3 1.8-.2 2.7-.2c.7 0 .8-.6 1-1.2.6-.2 1.8-.3 2.8-1-1.5-.6-2.7-1.8-3.3-3.4l1.7-1.2-1.9-.7V8.5c0-2.8-2-5-5-5z" />
+        </svg>
+      )
+    case 'youtube':
+      return (
+        <svg {...p}>
+          <rect x="2.5" y="5.5" width="19" height="13" rx="4" />
+          <path d="M10.5 9.5v5l4.3-2.5z" fill="currentColor" stroke="none" />
+        </svg>
+      )
+    case 'facebook':
+      return (
+        <svg {...p}>
+          <path d="M14 8.5h2.5v-4H14a3.5 3.5 0 0 0-3.5 3.5v2.5H8V14h2.5v6.5H14V14h2.5l.5-3.5h-3V9a.5.5 0 0 1 .5-.5z" />
+        </svg>
+      )
+    case 'linkedin':
+      return (
+        <svg {...p}>
+          <rect x="3.5" y="3.5" width="17" height="17" rx="3.5" />
+          <path d="M8 10.5V16M8 7.9v.1M11.5 16v-5.5M11.5 13a2.3 2.3 0 0 1 4.5-.6V16" />
+        </svg>
+      )
+    default: {
+      const never: never = id
+      return never
+    }
+  }
+}
+
+// ---------------------------------------------------------------- helpers
+
+type Filter = 'all' | LinksListingKind
+type StripTarget = Exclude<LinksTarget, { type: 'banner' }>
+type SheetState =
+  | { kind: 'city' }
+  | { kind: 'all' }
+  | { kind: 'pins' }
+  | { kind: 'explore' }
+  | { kind: 'host' }
+  | { kind: 'item'; target: StripTarget }
+
+const FILTERS: ReadonlyArray<{ id: Filter; label: string; plural: string; singular: string }> = [
+  { id: 'all', label: 'All', plural: 'plans', singular: 'plan' },
+  { id: 'event', label: 'Events', plural: 'events', singular: 'event' },
+  { id: 'trip', label: 'Trips', plural: 'trips', singular: 'trip' },
+  { id: 'experience', label: 'Experiences', plural: 'experiences', singular: 'experience' },
+]
+
+const KIND_LABEL: Readonly<Record<LinksListingKind, string>> = {
+  event: 'Event',
+  trip: 'Trip',
+  experience: 'Experience',
+}
+
+/** "New York <em>City</em>": the last word in italic. */
+function CityName({ name }: { name: string }): ReactNode {
+  const words = name.split(' ')
+  if (words.length < 2) return <em>{name}</em>
+  return (
+    <>
+      {words.slice(0, -1).join(' ')} <em>{words[words.length - 1]}</em>
+    </>
+  )
+}
+
+function cssUrl(url: string): string {
+  return `url(${JSON.stringify(url)})`
+}
+
+function dayNumber(key: string): number {
+  return Number(key.slice(8, 10))
+}
+
+/** "Saturday 7 to Friday 13 November" */
+function weekRange(keys: readonly string[]): string {
+  const first = longDayLabel(keys[0] ?? '')
+  const last = longDayLabel(keys[keys.length - 1] ?? '')
+  const sameMonth = first.split(' ').pop() === last.split(' ').pop()
+  return `${sameMonth ? first.split(' ').slice(0, 2).join(' ') : first} to ${last}`
+}
+
+function rememberCity(slug: string): void {
+  try {
+    const secure = window.location.protocol === 'https:' ? '; Secure' : ''
+    document.cookie = `${LINKS_CITY_COOKIE}=${encodeURIComponent(slug)}; Max-Age=${LINKS_CITY_COOKIE_MAX_AGE_SECONDS}; Path=/links; SameSite=Lax${secure}`
+  } catch (error) {
+    console.error('[#4318 links] could not remember the city', error)
+  }
+}
+
+function hostLabel(href: string): string {
+  try {
+    return new URL(href).host
+  } catch {
+    return href
+  }
+}
+
+// ---------------------------------------------------------------- page
+
+export interface LinksExperienceProps {
+  /** The sanitised `?src=` bio source (sanitizeLinksSrc on the server). */
+  src: string
+  /** The server's clock, so server and client agree on "this week". */
+  nowIso: string
+  /** Every registry city (used when nothing is live anywhere). */
+  cities: LinksCity[]
+  listings: LinksListing[]
+  pins: LinksPin[]
+  initialCity: string
+  visitor: { point: LinksPoint | null; useMiles: boolean }
+  /** A database read failed (logged on the server): nothing can be listed. */
+  readFailed?: boolean
+  /** Up to 3 places per quiet city (#4318 addendum 2), keyed by city slug. */
+  places?: Record<string, LinksPlace[]>
+  /** Cities whose places read failed. */
+  placesFailed?: string[]
 }
 
 export function LinksExperience({
-  tagline = 'Find a vibe, not a venue.',
-  src = LINKS_SRC_FALLBACK,
+  src,
+  nowIso,
+  cities,
+  listings,
+  pins,
+  initialCity,
+  visitor,
+  readFailed = false,
+  places = {},
+  placesFailed = [],
 }: LinksExperienceProps) {
-  const reduced = useMinglaReducedMotion()
-  const [activeId, setActiveId] = useState<LinksTabId>(LINKS_TABS[0].id)
-  const idBase = useId()
-  const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
+  const [citySlug, setCitySlug] = useState(initialCity)
+  const [filter, setFilter] = useState<Filter>('all')
+  const [sheet, setSheet] = useState<SheetState | null>(null)
+  const [platform, setPlatform] = useState<Platform | null>(null)
 
-  const activeIndex = LINKS_TABS.findIndex((t) => t.id === activeId)
-  const activeTab = LINKS_TABS[activeIndex] ?? LINKS_TABS[0]
+  const live = useMemo(() => liveCities(cities, listings, pins, nowIso), [cities, listings, pins, nowIso])
+  const city = cities.find((c) => c.slug === citySlug) ?? cities[0]
+  const week = useMemo(() => cityWeek(city, listings, pins, nowIso), [city, listings, pins, nowIso])
+  const shown = filter === 'all' ? week.listings : week.listings.filter((l) => l.kind === filter)
+  const [fit, setFit] = useState<LinksFit>({ pinsShown: week.pins.length, listShown: shown.length })
 
-  // ORCH-1381 — the RENDERED business choice is device-aware, so it must resolve
-  // AFTER mount: detectClientPlatform() reads navigator, absent during SSR.
-  // Seeding 'other' keeps the server HTML and the first client render in agreement
-  // (web-action-only — the safe treatment); the effect then swaps in the real
-  // platform. onCtaClick re-reads the platform fresh, so a tap never uses a stale
-  // value.
-  const [businessPlatform, setBusinessPlatform] = useState<Platform>('other')
+  const rootRef = useRef<HTMLElement>(null)
+  const leftRef = useRef<HTMLDivElement>(null)
+  const pinsRef = useRef<HTMLUListElement>(null)
+  const listRef = useRef<HTMLUListElement>(null)
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const moreRef = useRef<HTMLButtonElement>(null)
+  // The quiet week's "Plans in … / Host something in …" links play the more link's part.
+  const quietLinksRef = useRef<HTMLDivElement>(null)
+  const chipsRef = useRef<HTMLDivElement>(null)
+  const [chipLevel, setChipLevel] = useState<ChipFitLevel>(0)
+  // Strips stay invisible until the first measured fit, so none paints cut off.
+  const [fitted, setFitted] = useState(false)
+  const closeRef = useRef<HTMLButtonElement>(null)
+  const openerRef = useRef<HTMLElement | null>(null)
+  const cityButtonRef = useRef<HTMLButtonElement>(null)
+
   useEffect(() => {
-    setBusinessPlatform(detectClientPlatform())
-  }, [])
-  // ORCH-1399 — both targets now resolve an ATTRIBUTED OneLink href that is rendered
-  // into a real <a href>, so they must be resolved during render (not on the tap).
-  // `src` is a page-level prop, so switching tabs re-renders both with the SAME pid —
-  // only the campaign differs. That is SC-3 (persistence) satisfied by structure.
-  const businessTarget = resolveBusinessAppTarget(
-    businessPlatform,
-    linksAttribution(src, 'business_bio'),
-  )
-  const explorerTarget = resolveExplorerAppTarget(
-    businessPlatform,
-    linksAttribution(src, 'explorer_bio'),
-  )
-
-  const tabDomId = (id: LinksTabId) => `${idBase}-tab-${id}`
-  const panelDomId = (id: LinksTabId) => `${idBase}-panel-${id}`
-
-  const selectTab = useCallback((id: LinksTabId) => {
-    setActiveId((prev) => {
-      if (prev !== id) {
-        // §7 — consent-gated no-op analytics on tab switch.
-        captureMarketing('links_page_tab_switched', { tab: id })
-      }
-      return id
-    })
+    const detected = detectClientPlatform()
+    setPlatform(detected)
+    const html = document.documentElement
+    if (!html.hasAttribute('data-platform')) html.setAttribute('data-platform', detected)
   }, [])
 
-  // Roving-tabindex arrow-key navigation (WAI-ARIA tabs pattern): Arrow keys move
-  // selection AND focus; Home/End jump to the ends.
-  const onTabKeyDown = useCallback(
-    (e: React.KeyboardEvent, index: number) => {
-      const last = LINKS_TABS.length - 1
-      let next = index
-      switch (e.key) {
-        case 'ArrowRight':
-        case 'ArrowDown':
-          next = index === last ? 0 : index + 1
-          break
-        case 'ArrowLeft':
-        case 'ArrowUp':
-          next = index === 0 ? last : index - 1
-          break
-        case 'Home':
-          next = 0
-          break
-        case 'End':
-          next = last
-          break
-        default:
-          return
-      }
-      e.preventDefault()
-      const nextTab = LINKS_TABS[next]
-      selectTab(nextTab.id)
-      tabRefs.current[next]?.focus()
-    },
-    [selectTab],
-  )
+  // ---- the one-screen fit (design `fit()`), measured on the real layout.
+  // Visibility of strips is set here, imperatively and only here, so React
+  // never fights the measurement; the counts land in state for the labels.
+  const runFit = useCallback(() => {
+    const root = rootRef.current
+    const list = listRef.current
+    const wrap = wrapRef.current
+    // The "more" link is absent when the city has no listings.
+    const moreButton: HTMLElement | null = moreRef.current ?? quietLinksRef.current
+    if (!root || !list || !wrap) return
+    const grid = wrap.closest<HTMLElement>('[data-pins]')
+    // Measure with no spread room, then spread what the maximal fit leaves.
+    grid?.style.setProperty('--fill', '0px')
+    grid?.style.setProperty('--fill-bottom', '0px')
 
-  // ORCH-1399 — THE STORE CTAs ARE NOW REAL <a href> ANCHORS, not buttons.
-  //
-  // WHY (and NOT for the reason you might assume). Anchors do NOT fix the "Android
-  // shows the Play website first" complaint — the DESTINATION does. A plain store URL
-  // returns HTTP 200 text/html and Chrome renders it, whether it is reached by
-  // window.open, an <a href>, or a typed URL; the OneLink 301s to market:// and that,
-  // alone, removes the intermediate page. Anchors are adopted on stronger grounds:
-  //
-  //  1. IN-APP BROWSERS — the decisive one. /links is a link-in-bio page: its traffic
-  //     is overwhelmingly Instagram / TikTok / LinkedIn / Snapchat in-app webviews,
-  //     where window.open is routinely blocked, ignored or silently no-op'd. A plain
-  //     anchor is the one navigation primitive that always works. This page's most
-  //     important audience was the one most likely to have the CTA fail.
-  //  2. CORRECT SEMANTICS, FREE PLATFORM BEHAVIOUR — long-press → "Open in new tab",
-  //     middle-click, "Copy link address", and real screen-reader link semantics, all
-  //     of which a <button> destroys. It also removes the popup-blocker dependency.
-  //  3. THE FILE'S OWN PRECEDENT — the socials row below has always been <a href
-  //     target="_blank" rel="noopener noreferrer">. The CTA was the odd one out.
-  //
-  // target="_blank" keeps ORCH-1328's "/links stays mounted" invariant literally
-  // true, AND keeps captureMarketing alive: a same-tab anchor races the unload and
-  // the capture can be silently lost.
-  //
-  // ⚠ rel="noopener" IS REQUIRED HERE AND IS **NOT** THE ORCH-1381 PATHOLOGY.
-  // open-external.ts's docblock bans noopener/noreferrer in the loudest possible
-  // terms — that ban is scoped to window.open FEATURE STRINGS, where either token
-  // makes open() return null even on success. On an <a> element, rel="noopener" has
-  // no such behaviour and is a mandatory anti-reverse-tabnabbing property. Stripping
-  // it "to comply with ORCH-1381" would ship a real security regression. (Verified:
-  // the ORCH-1381 ban regex is anchored to `.open(` and does not match rel=.)
-
-  // §7 — consent-gated tap analytics. ORCH-1399: this NO LONGER navigates — the
-  // anchor does. It fires the capture and returns, so analytics cannot be silently
-  // dropped when the anchor takes over the navigation.
-  const onCtaTrack = useCallback(
-    (tab: LinksTab, action?: 'download' | 'use_web') => {
-      const platform = detectClientPlatform()
-
-      if (tab.id === 'business') {
-        const target = resolveBusinessAppTarget(platform, linksAttribution(src, 'business_bio'))
-        const useWeb = action === 'use_web' || target.installHref === null
-        captureMarketing('links_page_cta_clicked', {
-          tab: tab.id,
-          destination: tab.cta.destination,
-          action: useWeb ? 'use_web' : 'download',
-          platform,
-          store: useWeb ? 'business_web' : target.installStore,
-          src,
-        })
-        return
-      }
-
-      // Explorer phones → the attributed Explorer OneLink (the anchor navigates).
-      if (platform === 'ios' || platform === 'android') {
-        const target = resolveExplorerAppTarget(platform, linksAttribution(src, 'explorer_bio'))
-        captureMarketing('links_page_cta_clicked', {
-          tab: tab.id,
-          destination: tab.cta.destination,
-          platform,
-          store: target.installStore,
-          src,
-        })
-        return
-      }
-
-      // Explorer desktop / other → the /download QR page. Analytics only; the
-      // onCtaDesktop handler below performs the open.
-      captureMarketing('links_page_cta_clicked', {
-        tab: tab.id,
-        destination: tab.cta.destination,
-        platform: 'other',
-        store: 'qr_page',
-        src,
+    // Chips first (their row height is fixed): the first level that does not clip.
+    const chips = chipsRef.current
+    if (chips) {
+      const level = chipFitLevel((next) => {
+        chips.dataset.fit = String(next)
+        return chips.scrollWidth > chips.clientWidth + 0.5
       })
-    },
-    [src],
-  )
+      chips.dataset.fit = String(level)
+      setChipLevel(level)
+    }
 
-  // ORCH-1399 — the LAST surviving openExternal call site on this page.
-  //
-  // Explorer DESKTOP has no store app to hand off to, so this opens the device-smart
-  // /download QR page in a new tab while /links stays mounted. That is a genuinely
-  // different action from a store hand-off — a page, not an app — so it correctly
-  // stays a <button>, and openExternal (the ONE owner of the popup-block decision,
-  // ORCH-1381 ADDENDUM D-B) remains the right delegate.
-  const onCtaDesktop = useCallback(
-    (tab: LinksTab) => {
-      onCtaTrack(tab)
-      openExternal(tab.cta.href)
-    },
-    [onCtaTrack],
-  )
+    const strips = Array.from(list.querySelectorAll<HTMLElement>(':scope > li[data-strip]'))
+    const group = pinsRef.current
+    const pinItems = group ? Array.from(group.querySelectorAll<HTMLElement>(':scope > li[data-pin]')) : []
+    const pinsMore = group?.querySelector<HTMLElement>(':scope > li[data-pins-more]') ?? null
+    const left = leftRef.current
+    const applyPins = (count: number) => {
+      pinItems.forEach((li, i) => {
+        li.hidden = i >= count
+      })
+      if (pinsMore) pinsMore.hidden = pinItems.length - count <= 0
+    }
+    const fitList = (count: number) => {
+      applyPins(count)
+      strips.forEach((li) => {
+        li.hidden = false
+      })
+      // The listings and their "more" link share the box: a strip fits when it
+      // AND the link under it fit whole (offsets are relative to the box).
+      const gap = Number.parseFloat(getComputedStyle(wrap).rowGap) || 0
+      return stripsThatFit(
+        strips.map((li) => li.offsetTop + li.offsetHeight),
+        wrap.clientHeight,
+        moreButton?.offsetHeight ?? 0,
+        moreButton ? gap : 0,
+      )
+    }
+    const desk = left !== null && getComputedStyle(left).display !== 'contents'
+    const result = computeLinksFit({
+      pinCount: pinItems.length,
+      listCount: strips.length,
+      short: root.clientHeight < SHORT_SCREEN_PX,
+      desk,
+      fitList,
+      leftOverflows: (count) => {
+        applyPins(count)
+        if (desk) return left !== null && left.scrollHeight > left.clientHeight + 1
+        // Phones and tablet: with no listing shown, does everything else still
+        // fit whole (city, chips, the more link or empty state, socials)?
+        strips.forEach((li) => {
+          li.hidden = true
+        })
+        const pageOverflows = grid !== null && grid.scrollHeight > grid.clientHeight + 1
+        return pageOverflows || wrap.scrollHeight > wrap.clientHeight + 1
+      },
+    })
+    applyPins(result.pinsShown)
+    strips.forEach((li, i) => {
+      li.hidden = i >= result.listShown
+    })
+    // Phones and tablet: spread the leftover over the section gaps (desktop
+    // centres its columns instead).
+    if (grid && !desk) {
+      const last = moreButton ?? list
+      const leftover = wrap.clientHeight - (last.offsetTop + last.offsetHeight)
+      const sections = Array.from(grid.querySelectorAll<HTMLElement>(':scope > div > *')).filter(
+        (el) => getComputedStyle(el).display !== 'none',
+      ).length
+      const spread = spreadLeftover(leftover, sections - 1)
+      grid.style.setProperty('--fill', `${spread.perGap}px`)
+      grid.style.setProperty('--fill-bottom', `${spread.bottom}px`)
+    }
+    setFit((prev) => (prev.pinsShown === result.pinsShown && prev.listShown === result.listShown ? prev : result))
+    setFitted(true)
+  }, [])
 
-  const onSocialClick = useCallback(
-    (network: string) => {
-      // `surface` distinguishes an @usemingla tap (explorer) from an
-      // @minglahost tap (Host) on the same network icon.
-      captureMarketing('links_page_social_clicked', { network, surface: activeId })
-    },
-    [activeId],
-  )
+  // Every commit can change the strips (city, filter, data), so measure after each.
+  useLayoutEffect(() => {
+    runFit()
+  })
+
+  useEffect(() => {
+    const root = rootRef.current
+    if (!root) return
+    let cancelled = false
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => runFit())
+    observer?.observe(root)
+    // Fonts change strip heights: measure again once the brand faces load.
+    void document.fonts?.ready.then(() => {
+      if (!cancelled) runFit()
+    })
+    return () => {
+      cancelled = true
+      observer?.disconnect()
+    }
+  }, [runFit])
+
+  // ---- sheets: focus moves into the sheet and back to its opener; Escape,
+  // the X and a tap outside all close it; the page behind is inert.
+  useEffect(() => {
+    if (sheet !== null) closeRef.current?.focus({ preventScroll: true })
+  }, [sheet])
+
+  const openSheet = useCallback((next: SheetState, opener: HTMLElement | null) => {
+    openerRef.current = opener
+    setSheet(next)
+  }, [])
+
+  const closeSheet = useCallback(() => {
+    if (sheet !== null) captureMarketing('links_sheet_closed', { sheet: sheet.kind })
+    setSheet(null)
+    const opener = openerRef.current
+    openerRef.current = null
+    window.requestAnimationFrame(() => {
+      const target = opener && opener.isConnected ? opener : cityButtonRef.current
+      target?.focus({ preventScroll: true })
+    })
+  }, [sheet])
+
+  // While a sheet is open the DOCUMENT listens, so Escape works wherever focus
+  // is (the sheet title, blank sheet space, the consent bar), and Tab /
+  // Shift+Tab stay inside the dialog.
+  useEffect(() => {
+    if (sheet === null) return
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      const dialog = rootRef.current?.querySelector<HTMLElement>('[role="dialog"]')
+      if (!dialog) return
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        event.stopPropagation()
+        closeSheet()
+        return
+      }
+      if (event.key === 'Tab') trapTab(dialog, event)
+    }
+    const trapTab = (dialog: HTMLElement, event: globalThis.KeyboardEvent) => {
+      const focusables = Array.from(
+        dialog.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'),
+      ).filter((el) => el.offsetParent !== null || el === document.activeElement)
+      if (focusables.length === 0) return
+      const first = focusables[0]
+      const last = focusables[focusables.length - 1]
+      const active = document.activeElement
+      const inside = active instanceof Node && dialog.contains(active) && active !== dialog
+      if (event.shiftKey) {
+        if (!inside || active === first) {
+          event.preventDefault()
+          last.focus({ preventScroll: true })
+        }
+      } else if (!inside || active === last) {
+        event.preventDefault()
+        first.focus({ preventScroll: true })
+      }
+    }
+    document.addEventListener('keydown', onKey, true)
+    return () => document.removeEventListener('keydown', onKey, true)
+  }, [sheet, closeSheet])
+
+  // ---- taps
+  const onTap = (target: LinksTarget, event: MouseEvent<HTMLAnchorElement>) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+    const device = detectClientPlatform()
+    const handoff = resolveLinksHandoff(target, device, src)
+    if (target.type === 'banner') {
+      captureMarketing('links_banner_tapped', {
+        banner: target.app === 'explorer' ? 'explore' : 'host',
+        device,
+        city: city.slug,
+      })
+    } else {
+      captureMarketing('links_strip_opened', {
+        kind: target.type === 'listing' ? target.listing.kind : target.type === 'place' ? 'place' : target.pin.opens,
+        source: target.type === 'listing' ? 'listing' : target.type === 'place' ? 'place' : 'custom',
+        device,
+        city: city.slug,
+      })
+    }
+    if (handoff.action === 'sheet') {
+      event.preventDefault()
+      const opener = event.currentTarget
+      if (target.type === 'banner') openSheet({ kind: target.app === 'explorer' ? 'explore' : 'host' }, opener)
+      else openSheet({ kind: 'item', target }, opener)
+      return
+    }
+    // A phone: the anchor navigates; make sure it carries the device href now.
+    event.currentTarget.setAttribute('href', handoff.href)
+  }
+
+  const pickCity = (slug: string) => {
+    if (slug !== city.slug) captureMarketing('links_city_changed', { city: slug, from: city.slug })
+    setCitySlug(slug)
+    setFilter('all')
+    rememberCity(slug)
+    openerRef.current = cityButtonRef.current
+    closeSheet()
+  }
+
+  // ---- pieces
+  const hrefFor = (target: LinksTarget) => {
+    const d = linksTargetHrefs(target, src)
+    return { href: platform !== null && isPhone(platform) ? d.phoneHref : d.computerHref, phoneHref: d.phoneHref }
+  }
+
+  const strip = (target: StripTarget, key: string, role?: 'strip' | 'pin') => {
+    const { href, phoneHref } = hrefFor(target)
+    const isPin = target.type === 'pin'
+    const newTab = isPin && target.pin.opens === 'web'
+    let thumb: ReactNode
+    let meta: ReactNode
+    if (target.type === 'pin') {
+      thumb = (
+        <span className={cn(styles['st-th'], styles['st-th--pin'])}>
+          <Icon name="pin" />
+        </span>
+      )
+      meta = <span className={styles.k}>{pinWhen(target.pin, week.today)}</span>
+    } else if (target.type === 'place') {
+      const pl = target.place
+      thumb = pl.photo ? (
+        <span className={styles['st-th']} style={{ backgroundImage: cssUrl(pl.photo) }} role="img" aria-label={pl.name} />
+      ) : (
+        <span className={cn(styles['st-th'], styles['st-th--experience'])} aria-hidden="true">
+          <Icon name="pin" />
+        </span>
+      )
+      meta = (
+        <>
+          <span className={styles.k}>{pl.category ?? 'Place'}</span>
+          {pl.area ? <span>{pl.area}</span> : null}
+        </>
+      )
+    } else {
+      const l = target.listing
+      const when = listingWhen(l, week.today)
+      thumb = l.cover ? (
+        <span className={styles['st-th']} style={{ backgroundImage: cssUrl(l.cover) }} role="img" aria-label={l.place ?? l.title} />
+      ) : (
+        <span className={cn(styles['st-th'], styles[`st-th--${l.kind}`])} aria-hidden="true">
+          {dayNumber(listingDayKey(l))}
+        </span>
+      )
+      const rest = [timeLabel(l.startsAt, l.tz), l.place].filter((x): x is string => Boolean(x)).join(' · ')
+      meta = (
+        <>
+          <span className={styles.k}>
+            {when.tonight ? <i /> : null}
+            {when.text}
+          </span>
+          {rest ? <span>{rest}</span> : null}
+        </>
+      )
+    }
+    return (
+      <li key={key} data-strip={role === 'strip' ? '' : undefined} data-pin={role === 'pin' ? '' : undefined}>
+        <a
+          href={href}
+          data-cta-phone-href={phoneHref}
+          target={newTab ? '_blank' : undefined}
+          rel={newTab ? 'noopener' : undefined}
+          className={cn(styles.st, isPin && styles['st--pin'])}
+          onClick={(event) => onTap(target, event)}
+        >
+          {thumb}
+          <span className={styles['st-txt']}>
+            <b>{target.type === 'pin' ? target.pin.title : target.type === 'place' ? target.place.name : target.listing.title}</b>
+            <span className={styles['st-meta']}>{meta}</span>
+          </span>
+          <span className={styles['st-go']}>
+            <Icon name="arrow" />
+          </span>
+        </a>
+      </li>
+    )
+  }
+
+  const banner = (app: 'explorer' | 'host') => {
+    const target: LinksTarget = { type: 'banner', app }
+    const { href, phoneHref } = hrefFor(target)
+    return (
+      <a
+        href={href}
+        data-cta-phone-href={phoneHref}
+        className={cn(styles.bn, app === 'explorer' ? styles['bn--explore'] : styles['bn--host'])}
+        aria-label={app === 'explorer' ? 'Explore your city: get the Mingla app' : 'Host something in your city: get Mingla Host'}
+        onClick={(event) => onTap(target, event)}
+      >
+        <span className={styles['bn-top']}>
+          <span className={styles['bn-go']}>
+            <Icon name="arrow" />
+          </span>
+        </span>
+        <span className={styles['bn-txt']}>
+          {app === 'explorer' ? (
+            <b>
+              Explore <em>your city</em>
+            </b>
+          ) : (
+            <b>
+              Host something in <em>your city</em>
+            </b>
+          )}
+        </span>
+      </a>
+    )
+  }
+
+  const kindCount = (kind: LinksListingKind) => week.listings.filter((l) => l.kind === kind).length
+  const more = moreLabel(shown.length, fit.listShown)
+  const pinsMore = pinsMoreLabel(week.pins.length, fit.pinsShown)
+  const words = FILTERS.find((f) => f.id === filter) ?? FILTERS[0]
+  const otherLiveCity = live.some((l) => l.city.slug !== city.slug && l.count > 0)
+  // The shared "nothing this week" rule (lib/links-week.ts quietWeek).
+  const quiet = quietWeek({
+    city,
+    cityHasListings: week.listings.length > 0,
+    places: places[city.slug] ?? [],
+    live,
+    readFailed: readFailed || placesFailed.includes(city.slug),
+  })
+  // Listings exist but the chip filter leaves none.
+  const emptyText = emptyListText({
+    nothingAnywhere: false,
+    cityHasListings: true,
+    cityName: city.name,
+    plural: words.plural,
+    otherLiveCity,
+  })
+  const hostTarget: LinksTarget = { type: 'banner', app: 'host' }
+  const hostHrefs = hrefFor(hostTarget)
+
+  const cityList = () => {
+    const rows = pickerOrder(live.length > 0 ? live : cities.map((c) => ({ city: c, count: 0 })), visitor.point)
+    return (
+      <ul className={styles.cities}>
+        {rows.map(({ city: c, count, km }) => (
+          <li key={c.slug}>
+            <button type="button" className={styles.cty} aria-current={c.slug === city.slug} onClick={() => pickCity(c.slug)}>
+              <span>
+                <b>{c.name}</b>
+                <small>
+                  {c.region}
+                  {km !== null ? ` · ${distanceLabel(km, visitor.useMiles)}` : ''}
+                </small>
+              </span>
+              <em>
+                {count} this week
+                {c.slug === city.slug ? <Icon name="check" /> : null}
+              </em>
+            </button>
+          </li>
+        ))}
+      </ul>
+    )
+  }
 
   return (
     <main
       id="main"
-      // §1 SNAPSHOT: exactly one dynamic viewport tall, never scrolls. `h-[100svh]`
-      // is the fallback; the inline `height: 100dvh` wins on modern browsers (and is
-      // silently dropped where dvh is unsupported, leaving svh). `overflow-hidden`
-      // guarantees no scrollbar; the flex column below distributes the content to fit.
-      className="relative flex h-[calc(100svh-var(--mingla-privacy-inset,0px))] flex-col overflow-hidden bg-[#08090b] px-5 text-text-primary"
-      style={{
-        // #2331 — the page ends above the privacy bar (I-PRIVACY-BAR-NEVER-OCCLUDES).
-        height: 'calc(100dvh - var(--mingla-privacy-inset, 0px))',
-        paddingTop: 'max(1.25rem, env(safe-area-inset-top))',
-        paddingBottom: 'max(1.25rem, env(safe-area-inset-bottom))',
-      }}
+      ref={rootRef}
+      data-fitted={fitted ? '1' : '0'}
+      className={cn(styles.lk, 'h-[calc(100svh-var(--mingla-privacy-inset,0px))] overflow-hidden')}
+      style={{ height: 'calc(100dvh - var(--mingla-privacy-inset, 0px))' }}
     >
-      {/* Brand night-canvas atmosphere (matches /download). */}
-      <div aria-hidden="true" className="pointer-events-none absolute inset-0">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_18%_10%,rgba(235,120,37,0.18),transparent_34%),radial-gradient(ellipse_at_84%_16%,rgba(255,255,255,0.06),transparent_30%),linear-gradient(180deg,#08090b_0%,#0d0d10_60%,#07080a_100%)]" />
-        <div className="absolute inset-x-0 bottom-0 h-48 bg-gradient-to-t from-black to-transparent" />
+      {/* Without scripts the fit never runs: show everything rather than nothing. */}
+      <noscript>
+        <style>{`#main[data-fitted='0'] [data-fit-gate]{visibility:visible!important}`}</style>
+      </noscript>
+      <div className={styles['lk-bar']} inert={sheet !== null}>
+        {/* eslint-disable-next-line @next/next/no-img-element -- a 7 KB brand SVG; the image optimiser does not serve SVG */}
+        <img src="/brand/links/mingla-wordmark-white.svg" alt="Mingla" width={68} height={24} />
       </div>
-
-      {/* Centered content column. `min-h-0` lets it shrink inside the fixed-height
-          flex parent so the socials row below always stays on-screen (§1). */}
-      <div className="relative z-10 flex w-full min-h-0 flex-1 flex-col items-center justify-center">
-        <motion.div
-          initial={reduced ? false : { opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, ease: EASE }}
-          className="w-full max-w-[440px]"
-        >
-          {/* Wordmark + tagline. */}
-          <div className="flex flex-col items-center text-center">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="/brand/mingla-wordmark.svg"
-              alt="Mingla"
-              className="h-9 w-auto select-none sm:h-10"
-              draggable={false}
-            />
-            <p className="mt-3 text-balance text-lg font-medium leading-snug text-white/82">
-              {tagline}
-            </p>
+      <div
+        className={cn(styles['lk-grid'], 'min-h-0 flex-1')}
+        data-pins={week.pins.length > 0 ? '1' : '0'}
+        data-quiet={quiet.mode === 'listings' ? '0' : '1'}
+        inert={sheet !== null}
+      >
+        <div className={styles['lk-left']} ref={leftRef}>
+          <div className={styles['lk-ban']}>
+            {banner('explorer')}
+            {banner('host')}
           </div>
-
-          {/* Segmented tablist. `relative` makes it the positioning context for
-              the persistent highlight pill below (§2 / ORCH-1327). */}
-          <div
-            role="tablist"
-            aria-label="Choose Mingla for you or your business"
-            aria-orientation="horizontal"
-            className="relative glass-soft mt-5 flex gap-1 rounded-full p-1"
-          >
-            {/* ORCH-1327 — the active-tab highlight is ONE PERSISTENT, absolutely-
-                positioned pill that slides its horizontal position between the two
-                equal-width tab slots. It replaces the previous conditionally-mounted
-                framer shared-layout pill, whose mount/unmount forced a cross-instance
-                framer-motion layout projection that read a wrong mid-reflow origin
-                and swung the pill in a diagonal ARC
-                (INVESTIGATION_ORCH-1326_1327 §2). No shared-layout id, no
-                mount/unmount, no layout projection → a straight, crisp slide, immune
-                to ancestor transform/filter. Geometry (exactly two equal `flex-1`
-                tabs in a `p-1` container with `gap-1`): slot width = calc(50% - 6px);
-                slot-to-slot shift = one own-width + the 4px gap = calc(100% + 4px),
-                so x = activeIndex * that. */}
-            <motion.div
-              aria-hidden="true"
-              className="pointer-events-none absolute left-1 top-1 h-11 rounded-full bg-warm"
-              style={{ width: 'calc(50% - 0.375rem)' }}
-              initial={false}
-              animate={{ x: `calc(${activeIndex} * (100% + 0.25rem))` }}
-              transition={
-                reduced
-                  ? { duration: 0 }
-                  : { type: 'tween', duration: 0.18, ease: [0.4, 0, 0.2, 1] }
-              }
-            />
-            {LINKS_TABS.map((tab, i) => {
-              const selected = tab.id === activeId
-              return (
-                <button
-                  key={tab.id}
-                  ref={(el) => {
-                    tabRefs.current[i] = el
-                  }}
-                  role="tab"
-                  id={tabDomId(tab.id)}
-                  aria-selected={selected}
-                  aria-controls={panelDomId(tab.id)}
-                  tabIndex={selected ? 0 : -1}
-                  onClick={() => selectTab(tab.id)}
-                  onKeyDown={(e) => onTabKeyDown(e, i)}
-                  className={cn(
-                    'relative flex h-11 flex-1 items-center justify-center rounded-full px-4 text-[15px] font-display font-medium tracking-[-0.005em] transition-colors duration-200 focus-ring',
-                    selected ? 'text-white' : 'text-white/60 hover:text-white/85',
-                  )}
-                >
-                  <span className="relative z-10">{tab.label}</span>
-                </button>
-              )
-            })}
-          </div>
-
-          {/* Active tab panel. Only one panel is mounted (roving tabindex model).
-              §2 — a quick crossfade on switch (tween, no overshoot). */}
-          <motion.div
-            key={activeTab.id}
-            role="tabpanel"
-            id={panelDomId(activeTab.id)}
-            aria-labelledby={tabDomId(activeTab.id)}
-            tabIndex={0}
-            initial={reduced ? false : { opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: reduced ? 0 : 0.2, ease: [0.4, 0, 0.2, 1] }}
-            className="mt-5 rounded-[28px] border border-white/10 bg-white/[0.03] p-5 text-center focus-ring"
-          >
-            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-warm">
-              {activeTab.eyebrow}
-            </p>
-            <h1 className="mt-2 font-display text-2xl leading-tight text-white sm:text-[28px]">
-              {activeTab.heading}
-            </h1>
-            <p className="mx-auto mt-3 max-w-sm text-[15px] leading-relaxed text-white/72">
-              {activeTab.body}
-            </p>
-
-            {/* §4 — the smart CTA. ORCH-1399: every STORE/web destination is a real
-                <a href> pointing at the ATTRIBUTED OneLink, which 301s straight to
-                market:// (Android) / apps.apple.com (iOS) — so the store app opens
-                with NO intermediate web page, and the install carries pid/c. Explorer
-                desktop/other has no store app to hand off to and still opens the
-                `/download` QR page via openExternal (a page, not an app → a button).
-                ORCH-1381: the Business tab offers an explicit choice (Get the app /
-                Use on web) plus the app-does-more note; desktop can install nothing →
-                the web action only, never a dead button.
-                ORCH-1399 §1 NO-SCROLL: the two business actions now STACK vertically
-                (see below), which is why the ADDENDUM D-A px-4 override is gone. */}
-            <div className="mt-4">
-              {activeTab.id === 'business' ? (
-                <>
-                  {/* ORCH-1399 — STACKED, not side-by-side.
-                      The ORCH-1381 ADDENDUM D-A `px-4` override is REMOVED, and its
-                      comment block with it, because the constraint that forced it no
-                      longer exists. D-A's own recorded reason was: "Two w-full pills
-                      share this row, so flex shrinks each to ~130px at 360px; px-7
-                      left 'Use on web' a 59px content box → 3-line wrap → 9px spill
-                      past the fixed h-14." Stacking DELETES that precondition — each
-                      pill is now full-width (~320px at 360px), so CTA_BASE's px-7 fits
-                      with room to spare and visual parity with the Explorer CTA is
-                      restored. Do not reintroduce px-4 here (pinned by T-10).
-                      Vertical budget: stacking costs ~64px against the ~20px measured
-                      headroom at 375x667, reclaimed by the panel/spacing trims marked
-                      "ORCH-1399 budget" in this file. The copy is a code-verified
-                      CLAIM and is NEVER shortened to buy space. */}
-                  <div className="flex flex-col items-center justify-center gap-2">
-                    {businessTarget.canInstall && businessTarget.installHref !== null ? (
-                      <a
-                        href={businessTarget.installHref}
-                        target="_blank"
-                        rel="noopener"
-                        onClick={() => onCtaTrack(activeTab, 'download')}
-                        className={cn(CTA_BASE, CTA_INTENT.primary)}
-                      >
-                        {BUSINESS_APP_CHOICE_COPY.download}
-                      </a>
-                    ) : null}
-                    <a
-                      href={businessTarget.webHref}
-                      target="_blank"
-                      rel="noopener"
-                      onClick={() => onCtaTrack(activeTab, 'use_web')}
-                      className={cn(CTA_BASE, CTA_INTENT.glass)}
-                    >
-                      {BUSINESS_APP_CHOICE_COPY.useWeb}
-                    </a>
-                  </div>
-                  <p className="mx-auto mt-2 max-w-sm text-[12px] leading-snug text-white/60">
-                    {businessTarget.canInstall
-                      ? BUSINESS_APP_CHOICE_COPY.moreNote
-                      : BUSINESS_APP_CHOICE_COPY.desktopNote}
-                  </p>
-                </>
-              ) : explorerTarget.canInstall && explorerTarget.installHref !== null ? (
-                // Explorer PHONE → a real anchor to the attributed Explorer OneLink.
-                <a
-                  href={explorerTarget.installHref}
-                  target="_blank"
-                  rel="noopener"
-                  onClick={() => onCtaTrack(activeTab)}
-                  className={cn(CTA_BASE, CTA_INTENT[activeTab.cta.intent])}
-                >
-                  {activeTab.cta.label}
-                </a>
-              ) : (
-                // Explorer DESKTOP → the /download QR page. A page, not a store
-                // hand-off, so it stays a real <button> + openExternal.
+          {week.pins.length > 0 ? (
+            <ul className={styles['lk-pins']} aria-label="From Mingla" ref={pinsRef} data-fit-gate="">
+              {week.pins.map((pin) => strip({ type: 'pin', pin }, pin.id, 'pin'))}
+              <li className={styles['pins-more']} data-pins-more="" hidden>
                 <button
                   type="button"
-                  onClick={() => onCtaDesktop(activeTab)}
-                  className={cn(CTA_BASE, CTA_INTENT[activeTab.cta.intent])}
+                  className={styles['lk-more']}
+                  onClick={(event) => openSheet({ kind: 'pins' }, event.currentTarget)}
                 >
-                  {activeTab.cta.label}
+                  <u>{pinsMore ?? 'See more from Mingla'}</u>
+                  <Icon name="right" />
                 </button>
-              )}
-            </div>
-          </motion.div>
-        </motion.div>
-      </div>
-
-      {/* Socials — pinned to the bottom of the viewport (§3).
-          The row is SURFACE-AWARE in TWO ways now (ORCH-1399):
-           - the five Host-branded networks swap to @minglahost, while the
-             NEUTRAL YouTube & LinkedIn stay universal (resolved by `socialHref`);
-           - `socialsForTab` FILTERS the row: Snapchat is explorer_only (there is no
-             business Snapchat account), so Explorer shows 8 and Business shows 7.
-          `flex-wrap` + a tight gap keep every 44px tap target on one tidy row on
-          standard phones (≥390px) and wrap them cleanly on narrower/very short
-          devices — never forcing a scroll (§1). */}
-      <motion.nav
-        aria-label={
-          activeId === 'business' ? 'Mingla Host on social media' : 'Mingla on social media'
-        }
-        initial={reduced ? false : { opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.6, delay: reduced ? 0 : 0.25, ease: EASE }}
-        className="relative z-10 mt-4 flex flex-wrap items-center justify-center gap-1.5"
-      >
-        {socialsForTab(activeId).map((s) => (
-          <a
-            key={s.label}
-            href={socialHref(s, activeId)}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label={`${activeId === 'business' ? 'Mingla Host' : 'Mingla'} on ${s.label}`}
-            onClick={() => onSocialClick(s.label)}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white/70 transition-all duration-200 hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.08] hover:text-white focus-ring"
+              </li>
+            </ul>
+          ) : null}
+          <footer className={styles['lk-foot']}>
+            <nav className={styles.soc} aria-label="Mingla on social">
+              {LINKS_SOCIALS.map((social) => (
+                <a
+                  key={social.id}
+                  href={social.href}
+                  target="_blank"
+                  rel="noopener"
+                  aria-label={social.label}
+                  onClick={() => captureMarketing('links_page_social_clicked', { network: social.id })}
+                >
+                  <SocialIcon id={social.id} />
+                </a>
+              ))}
+            </nav>
+          </footer>
+        </div>
+        <div className={styles['lk-right']}>
+          <header className={styles['lk-head']}>
+            <button
+              type="button"
+              ref={cityButtonRef}
+              className={styles['lk-city']}
+              aria-haspopup="dialog"
+              aria-label={`${city.name}. Change city`}
+              onClick={(event) => openSheet({ kind: 'city' }, event.currentTarget)}
+            >
+              <span className={styles.nm}>
+                <CityName name={city.name} />
+              </span>
+              <span className={styles.chev}>
+                <Icon name="chev" />
+              </span>
+            </button>
+            <p className={styles['lk-line']}>Find places, events and plans that fit the vibe.</p>
+          </header>
+          <div
+            className={styles['lk-chips']}
+            role="group"
+            aria-label="Filter"
+            ref={chipsRef}
+            data-fit={chipLevel}
+            hidden={quiet.mode !== 'listings'}
           >
-            <SocialIcon label={s.label} />
-          </a>
-        ))}
-      </motion.nav>
-      {/* #2331 — end of content: reopens the privacy bar, expanded. */}
-      <div className="relative z-10 flex justify-center">
-        <PrivacyChoicesLink className="inline-flex min-h-11 items-center px-3 text-xs text-white/60 underline underline-offset-2 transition-colors hover:text-white focus-ring" />
+            {FILTERS.map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                className={styles.chip}
+                aria-pressed={filter === f.id}
+                onClick={() => {
+                  setFilter(f.id)
+                  captureMarketing('links_filter_changed', { filter: f.id, city: city.slug })
+                }}
+              >
+                {f.label} <span>{f.id === 'all' ? week.listings.length : kindCount(f.id)}</span>
+              </button>
+            ))}
+          </div>
+          <div className={styles['lk-listwrap']} ref={wrapRef} data-fit-gate="">
+            {quiet.mode === 'quiet' ? <p className={styles['lk-quiet-h']}>{quiet.heading}</p> : null}
+            <ul className={styles['lk-list']} aria-label={quiet.mode === 'quiet' ? 'Places' : 'Plans'} ref={listRef}>
+              {quiet.mode === 'quiet' ? (
+                quiet.places.map((place) => strip({ type: 'place', place }, place.id, 'strip'))
+              ) : quiet.mode === 'fallback' ? (
+                <li className={styles['lk-empty']}>
+                  <b>A quiet one.</b>
+                  {quiet.text}
+                </li>
+              ) : shown.length > 0 ? (
+                shown.map((listing) => strip({ type: 'listing', listing }, listing.id, 'strip'))
+              ) : (
+                <li className={styles['lk-empty']}>
+                  <b>A quiet one.</b>
+                  {emptyText}
+                </li>
+              )}
+            </ul>
+            {quiet.mode === 'quiet' ? (
+              <div className={styles['lk-quiet-links']} ref={quietLinksRef}>
+                {quiet.plansIn !== null ? (
+                  <button type="button" className={styles['lk-more']} onClick={() => pickCity(quiet.plansIn?.slug ?? city.slug)}>
+                    <u>Plans in {quiet.plansIn.name}</u>
+                    <Icon name="right" />
+                  </button>
+                ) : null}
+                <a
+                  href={hostHrefs.href}
+                  data-cta-phone-href={hostHrefs.phoneHref}
+                  className={styles['lk-more']}
+                  onClick={(event) => onTap(hostTarget, event)}
+                >
+                  <u>Host something in {quiet.hostCity}</u>
+                  <Icon name="right" />
+                </a>
+              </div>
+            ) : null}
+            {week.listings.length > 0 ? (
+              <button
+                type="button"
+                ref={moreRef}
+                className={styles['lk-more']}
+                onClick={(event) => {
+                  captureMarketing('links_full_week_opened', { city: city.slug, plans: shown.length })
+                  openSheet({ kind: 'all' }, event.currentTarget)
+                }}
+              >
+                <u>{more.text}</u>
+                {more.count ? <span>{more.count}</span> : null}
+                <Icon name="right" />
+              </button>
+            ) : null}
+          </div>
+        </div>
       </div>
+      {sheet !== null ? (
+        <Sheet
+          sheet={sheet}
+          closeRef={closeRef}
+          onClose={closeSheet}
+          city={city}
+          src={src}
+          week={week}
+          shown={shown}
+          words={words}
+          hasVisitor={visitor.point !== null}
+          renderStrip={strip}
+          renderCities={cityList}
+        />
+      ) : null}
     </main>
+  )
+}
+
+// ---------------------------------------------------------------- sheets
+
+interface SheetProps {
+  sheet: SheetState
+  closeRef: RefObject<HTMLButtonElement | null>
+  onClose: () => void
+  city: LinksCity
+  src: string
+  week: LinksWeek
+  shown: LinksListing[]
+  words: { plural: string; singular: string }
+  hasVisitor: boolean
+  renderStrip: (target: StripTarget, key: string) => ReactNode
+  renderCities: () => ReactNode
+}
+
+function StoreButtons({ app }: { app: 'explorer' | 'host' }): ReactNode {
+  const stores = resolveStoreListingHrefs(app)
+  return (
+    <div className={styles.stores}>
+      <a className={cn(styles.btn, styles['btn--ink'])} href={stores.appStore} target="_blank" rel="noopener">
+        <Icon name="phone" />
+        App Store
+      </a>
+      <a className={cn(styles.btn, styles['btn--line'])} href={stores.googlePlay} target="_blank" rel="noopener">
+        <Icon name="phone" />
+        Google Play
+      </a>
+    </div>
+  )
+}
+
+function QrBlock({ value, title, body, children }: { value: string; title: string; body: string; children?: ReactNode }): ReactNode {
+  return (
+    <div className={styles.opt}>
+      <div className={styles.qrrow}>
+        <div className={styles.qr}>
+          <QRCode value={value} size={128} title="QR code that opens Mingla on your phone" />
+        </div>
+        <div className={styles.qrtxt}>
+          <b>{title}</b>
+          <span>{body}</span>
+          {children}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function Sheet({ sheet, closeRef, onClose, city, src, week, shown, words, hasVisitor, renderStrip, renderCities }: SheetProps) {
+  let title: ReactNode = null
+  let label = ''
+  let sub = ''
+  let body: ReactNode = null
+  let tall = false
+
+  switch (sheet.kind) {
+    case 'city': {
+      title = (
+        <>
+          Pick a <em>city</em>
+        </>
+      )
+      label = 'Pick a city'
+      sub = hasVisitor ? 'Closest to you first.' : ''
+      body = renderCities()
+      break
+    }
+    case 'host': {
+      const hrefs = linksTargetHrefs({ type: 'banner', app: 'host' }, src)
+      title = (
+        <>
+          Host in <em>{city.name}</em>
+        </>
+      )
+      label = `Host in ${city.name}`
+      sub = 'Sell tickets and keep more. Pages, RSVPs, the guest list and the door, in one place.'
+      body = (
+        <>
+          <div className={cn(styles.hero, styles['hero--host'])} />
+          <QrBlock
+            value={hrefs.phoneHref}
+            title="Get Mingla Host"
+            body="Point your phone camera here. It opens the App Store on iPhone and Google Play on Android."
+          />
+          <div className={styles.or}>or</div>
+          <div className={styles.opt}>
+            <div className={styles.qrtxt}>
+              <b>Stay on this screen</b>
+              <span>Same account on the web. Build your page and run your guest list from your laptop.</span>
+            </div>
+            <a className={cn(styles.btn, styles['btn--orange'])} href={hrefs.computerHref} target="_blank" rel="noopener">
+              <Icon name="globe" />
+              Continue on {hostLabel(hrefs.computerHref)}
+            </a>
+          </div>
+        </>
+      )
+      break
+    }
+    case 'explore': {
+      const hrefs = linksTargetHrefs({ type: 'banner', app: 'explorer' }, src)
+      title = (
+        <>
+          Mingla lives on <em>your phone</em>
+        </>
+      )
+      label = 'Mingla lives on your phone'
+      sub = `Find places, events and plans that fit the vibe. Scan to get the app; it opens on ${city.name}.`
+      body = (
+        <>
+          <div className={cn(styles.hero, styles['hero--explore'])} />
+          <QrBlock value={hrefs.phoneHref} title="Scan with your camera" body="Or pick your store.">
+            <StoreButtons app="explorer" />
+          </QrBlock>
+        </>
+      )
+      break
+    }
+    case 'item': {
+      const { target } = sheet
+      const hrefs = linksTargetHrefs(target, src)
+      if (target.type === 'listing') {
+        const l = target.listing
+        title = l.title
+        label = l.title
+        body = (
+          <>
+            {l.cover ? (
+              <div className={styles.hero} style={{ backgroundImage: cssUrl(l.cover) }} role="img" aria-label={l.place ?? l.title} />
+            ) : null}
+            <div>
+              <span className={styles.pill}>
+                {KIND_LABEL[l.kind]} · {city.name}
+              </span>
+            </div>
+            <ul className={styles.meta}>
+              <li>
+                <Icon name="cal" />
+                {longDayLabel(listingDayKey(l))}
+              </li>
+              <li>
+                <Icon name="clock" />
+                {timeLabel(l.startsAt, l.tz)}
+              </li>
+              {l.place ? (
+                <li>
+                  <Icon name="pin" />
+                  {l.place}
+                </li>
+              ) : null}
+            </ul>
+            <QrBlock
+              value={hrefs.phoneHref}
+              title="Open it in Mingla"
+              body={`Scan to land on this ${KIND_LABEL[l.kind].toLowerCase()} in the app.`}
+            >
+              <StoreButtons app="explorer" />
+            </QrBlock>
+          </>
+        )
+      } else if (target.type === 'place') {
+        const pl = target.place
+        title = pl.name
+        label = pl.name
+        body = (
+          <>
+            {pl.photo ? (
+              <div className={styles.hero} style={{ backgroundImage: cssUrl(pl.photo) }} role="img" aria-label={pl.name} />
+            ) : null}
+            <div>
+              <span className={styles.pill}>
+                {pl.category ?? 'Place'} · {city.name}
+              </span>
+            </div>
+            {pl.area ? (
+              <ul className={styles.meta}>
+                <li>
+                  <Icon name="pin" />
+                  {pl.area}
+                </li>
+              </ul>
+            ) : null}
+            <QrBlock value={hrefs.phoneHref} title="Find it in Mingla" body="Scan to get the app and explore places like this one.">
+              <StoreButtons app="explorer" />
+            </QrBlock>
+          </>
+        )
+      } else {
+        const p = target.pin
+        const app = targetApp(target)
+        title = p.title
+        label = p.title
+        let action: ReactNode
+        if (p.opens === 'blog') {
+          action = (
+            <a className={cn(styles.btn, styles['btn--orange'])} href={hrefs.computerHref}>
+              <Icon name="right" />
+              Read on the Mingla blog
+            </a>
+          )
+        } else if (p.opens === 'web') {
+          const href = pinWebHref(p.url) ?? hrefs.computerHref
+          action = (
+            <a className={cn(styles.btn, styles['btn--orange'])} href={href} target="_blank" rel="noopener">
+              <Icon name="globe" />
+              Open {href.replace(/^https:\/\//, '').replace(/\/$/, '')}
+            </a>
+          )
+        } else if (app === 'host') {
+          const hostWeb = linksTargetHrefs({ type: 'banner', app: 'host' }, src).computerHref
+          action = (
+            <>
+              <QrBlock
+                value={hrefs.phoneHref}
+                title="Open it in Mingla Host"
+                body="Scan with your phone camera. It opens the right store for your phone."
+              >
+                <StoreButtons app="host" />
+              </QrBlock>
+              <div className={styles.or}>or</div>
+              <a className={cn(styles.btn, styles['btn--orange'])} href={hostWeb} target="_blank" rel="noopener">
+                <Icon name="globe" />
+                Continue on {hostLabel(hostWeb)}
+              </a>
+            </>
+          )
+        } else {
+          action = (
+            <QrBlock value={hrefs.phoneHref} title="Open it in Mingla" body="Scan to land on this page in the app.">
+              <StoreButtons app="explorer" />
+            </QrBlock>
+          )
+        }
+        body = (
+          <>
+            <div>
+              <span className={styles.pill}>
+                {p.label} · {city.name}
+              </span>
+            </div>
+            <ul className={styles.meta}>
+              <li>
+                <Icon name="cal" />
+                {longDayLabel(p.showsOn)}
+              </li>
+            </ul>
+            {action}
+          </>
+        )
+      }
+      break
+    }
+    case 'pins': {
+      title = (
+        <>
+          From <em>Mingla</em>
+        </>
+      )
+      label = 'From Mingla'
+      sub = `${week.pins.length} pinned this week`
+      tall = week.pins.length > 6
+      body = <ul className={styles['lk-list']}>{week.pins.map((pin) => renderStrip({ type: 'pin', pin }, pin.id))}</ul>
+      break
+    }
+    case 'all': {
+      tall = shown.length + week.pins.length > 6
+      title = (
+        <>
+          <CityName name={city.name} />, the full week
+        </>
+      )
+      label = `${city.name}, the full week`
+      sub = `${shown.length} ${shown.length === 1 ? words.singular : words.plural} from ${weekRange(week.keys)}`
+      const groups = week.keys
+        .map((key) => ({ key, items: shown.filter((l) => listingDayKey(l) === key) }))
+        .filter((g) => g.items.length > 0)
+      body = (
+        <>
+          {week.pins.length > 0 ? (
+            <section className={styles.wk}>
+              <h3>
+                From Mingla<span>{week.pins.length} pinned</span>
+              </h3>
+              <ul className={styles['lk-list']}>{week.pins.map((pin) => renderStrip({ type: 'pin', pin }, pin.id))}</ul>
+            </section>
+          ) : null}
+          {groups.length > 0 ? (
+            groups.map((g) => (
+              <section key={g.key} className={styles.wk}>
+                <h3>
+                  {g.key === week.today ? 'Today, ' : ''}
+                  {longDayLabel(g.key)}
+                  <span>
+                    {g.items.length} {g.items.length === 1 ? 'plan' : 'plans'}
+                  </span>
+                </h3>
+                <ul className={styles['lk-list']}>
+                  {g.items.map((listing) => renderStrip({ type: 'listing', listing }, listing.id))}
+                </ul>
+              </section>
+            ))
+          ) : (
+            <p className={styles['lk-empty']}>
+              <b>A quiet one.</b>
+              Nothing to show yet.
+            </p>
+          )}
+        </>
+      )
+      break
+    }
+    default: {
+      const never: never = sheet
+      return never
+    }
+  }
+
+  return (
+    <div className={styles['sh-wrap']}>
+      <button type="button" className={styles['sh-scrim']} aria-label="Close" tabIndex={-1} onClick={onClose} />
+      <section
+        className={cn(styles.sh, tall && styles['is-tall'])}
+        role="dialog"
+        aria-modal="true"
+        aria-label={label}
+        tabIndex={-1}
+      >
+        <span className={styles['sh-grab']} aria-hidden="true" />
+        <div className={styles['sh-head']}>
+          <div>
+            <h2>{title}</h2>
+            {sub ? <p>{sub}</p> : null}
+          </div>
+          <button type="button" ref={closeRef} className={styles['sh-x']} aria-label="Close" onClick={onClose}>
+            <Icon name="x" />
+          </button>
+        </div>
+        <div className={styles['sh-body']}>{body}</div>
+      </section>
+    </div>
   )
 }

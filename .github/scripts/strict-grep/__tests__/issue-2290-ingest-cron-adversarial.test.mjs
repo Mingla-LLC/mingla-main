@@ -408,7 +408,7 @@ test("A-5 a non-literal cron.unschedule is NOT modelled — frozen as a tripwire
   // caller's own jobs, so a re-apply by another superuser would fail) and
   // reschedules it in the same transaction (+1 → 22). Proven here like the pairs above.
   {
-    const file = "supabase/migrations/20280513004334_issue_4334_google_places.sql";
+    const file = "supabase/migrations/20280521004334_issue_4334_google_places.sql";
     const sql = stripSqlComments(fs.readFileSync(path.join(REPO_ROOT, file), "utf8"));
     const job = "places-coordinate-refresh-daily";
     const unschedule = sql.search(/cron\.unschedule\s*\(\s*jobid\s*\)/i);

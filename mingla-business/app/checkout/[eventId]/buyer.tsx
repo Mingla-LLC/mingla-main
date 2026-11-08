@@ -146,7 +146,6 @@ import {
   getCountryByCode,
   type PhoneInputTheme,
 } from "@mingla/phone-input";
-import { PrivacyChoicesLink } from "../../../src/analytics/PrivacyChoicesLink";
 
 // ORCH-0847 Phase B — dark-mode theme tokens for the public buyer form's
 // phone field. mingla-business renders on a dark canvas (`#0c0e12`); the
@@ -1133,8 +1132,6 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
             {EXTRAS_CHANGED_MESSAGE}
           </Text>
         ) : null}
-        {/* #2331 — end of content: reopens the privacy bar. */}
-        <PrivacyChoicesLink />
       </ScrollView>
 
       {/* Sticky bottom bar */}

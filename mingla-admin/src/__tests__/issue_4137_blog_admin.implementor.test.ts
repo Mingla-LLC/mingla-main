@@ -10,7 +10,8 @@ import { AREA, SUPPORT_OPERATIONS_AREA } from "../lib/access.js";
 const read = (relative: string) => Deno.readTextFile(new URL(`../${relative}`, import.meta.url));
 
 Deno.test("#4137 Blog sits beside Email and follows the Support capability", () => {
-  assertEquals(SUPPORT_PAGE_TABS.map((tab) => tab.id), ["support", "email", "blog", "team"]);
+  // #4318: the Links page tab sits directly after Blog.
+  assertEquals(SUPPORT_PAGE_TABS.map((tab) => tab.id), ["support", "email", "blog", "links", "team"]);
   // #4255: Blog follows the team-wide blog area that every teammate holds.
   assertEquals(COMMUNITY_SUPPORT_TAB_CONTRACT.blog.area, "blog");
   assertEquals(COMMUNITY_SUPPORT_TAB_CONTRACT.blog.panel, "components/blog/BlogPanel.jsx");
@@ -18,9 +19,9 @@ Deno.test("#4137 Blog sits beside Email and follows the Support capability", () 
   const support = { status: "active", role: "growth", areas: [SUPPORT_OPERATIONS_AREA, "email_drafts", "blog"] };
   const community = { status: "active", role: "growth", areas: ["community_support_community"] };
   const admin = { status: "active", role: "admin", areas: [AREA.ADMIN_CONSOLE] };
-  assertEquals(communitySupportTabsForAccess(support, SUPPORT_PAGE_TABS).map((tab: { id: string }) => tab.id), ["support", "email", "blog"]);
+  assertEquals(communitySupportTabsForAccess(support, SUPPORT_PAGE_TABS).map((tab: { id: string }) => tab.id), ["support", "email", "blog", "links"]);
   assertEquals(communitySupportTabsForAccess(community, SUPPORT_PAGE_TABS), []);
-  assertEquals(communitySupportTabsForAccess(admin, SUPPORT_PAGE_TABS).map((tab: { id: string }) => tab.id), ["support", "email", "blog", "team"]);
+  assertEquals(communitySupportTabsForAccess(admin, SUPPORT_PAGE_TABS).map((tab: { id: string }) => tab.id), ["support", "email", "blog", "links", "team"]);
 });
 
 Deno.test("#4137 block reducer inserts, moves, removes and restores without mutation", () => {

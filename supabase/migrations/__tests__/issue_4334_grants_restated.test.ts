@@ -6,7 +6,7 @@
 import { assert } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
 const sql = await Deno.readTextFile(
-  new URL("../20280513004334_issue_4334_google_places.sql", import.meta.url),
+  new URL("../20280521004334_issue_4334_google_places.sql", import.meta.url),
 );
 const flat = sql.replace(/\s+/g, " ");
 

@@ -147,7 +147,6 @@ import {
   getCountryByCode,
   type PhoneInputTheme,
 } from "@mingla/phone-input";
-import { PrivacyChoicesLink } from "../../../src/analytics/PrivacyChoicesLink";
 
 const TicketQuoteSummary = React.lazy(() =>
   import("../../../src/components/checkout/TicketQuoteSummary").then(
@@ -970,8 +969,6 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
         {bannerMessage !== null ? (
           <Text style={styles.errorText}>{bannerMessage}</Text>
         ) : null}
-        {/* #2331 — end of content: reopens the privacy bar. */}
-        <PrivacyChoicesLink />
       </ScrollView>
 
       {/* Sticky bottom bar */}

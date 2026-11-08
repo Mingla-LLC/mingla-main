@@ -49,12 +49,12 @@
 --
 -- Run after the full migration chain on PostgreSQL 17. #4334 renamed
 -- mapbox_id to provider_place_id and owns the current plan function bodies,
--- so the re-applies are of 20280513004334_issue_4334_google_places.sql (the
+-- so the re-applies are of 20280521004334_issue_4334_google_places.sql (the
 -- 4261 file can no longer re-run on top of the rename). The two re-applies
 -- prove that migration is idempotent; everything after them rolls back.
 
-\ir ../20280513004334_issue_4334_google_places.sql
-\ir ../20280513004334_issue_4334_google_places.sql
+\ir ../20280521004334_issue_4334_google_places.sql
+\ir ../20280521004334_issue_4334_google_places.sql
 
 BEGIN;
 

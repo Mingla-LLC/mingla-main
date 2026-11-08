@@ -17,10 +17,17 @@
 // node test can all import it.
 
 import type { Platform } from './device-platform'
-import type { OneLinkAttribution } from './links-src'
+import { buildOneLinkHref, type OneLinkAttribution } from './links-src'
 import { resolveExplorerAppTarget } from './explorer-app-target'
 import { resolveBusinessAppTarget } from './business-app-target'
-import { BUSINESS_WEB_URL } from './store-links'
+import {
+  APP_STORE_URL,
+  BUSINESS_APP_STORE_URL,
+  BUSINESS_PLAY_STORE_URL,
+  BUSINESS_WEB_URL,
+  EXPLORER_ONELINK_URL,
+  PLAY_STORE_URL,
+} from './store-links'
 import { DOWNLOAD_PATH } from './app-link-landing'
 
 export type CtaSurface = 'explorer' | 'host'
@@ -75,4 +82,54 @@ export function ctaHrefFor(platform: Platform, destinations: CtaDestinations): s
 /** True when an href leaves usemingla.com (OneLink or host web). */
 export function isExternalCtaHref(href: string): boolean {
   return /^https?:\/\//.test(href)
+}
+
+// ---------------------------------------------------------------------------
+// #4318 — /links listings and desktop store buttons. Same seam, same rule: the
+// URL constants stay in lib/store-links.ts and every surface asks here.
+
+export type ListingKind = 'event' | 'trip' | 'experience'
+
+// The public listing pages on the host web app (mingla-business routes
+// app/{e,t,exp}/[brandSlug]/[slug].tsx, verified app links on both phones).
+const LISTING_WEB_PATH: Readonly<Record<ListingKind, string>> = {
+  event: 'e',
+  trip: 't',
+  experience: 'exp',
+}
+
+/**
+ * One listing. Phones get the Explorer OneLink deep-linked to that listing
+ * (store first if the app is missing, then the listing). Computers, bots and
+ * no-JavaScript get the listing's public page on the host web app; /links
+ * itself opens its detail sheet on a computer once hydrated.
+ */
+export function resolveListingDestinations(
+  kind: ListingKind,
+  brandSlug: string,
+  itemSlug: string,
+  attribution: OneLinkAttribution,
+): CtaDestinations {
+  if (brandSlug.trim() === '' || itemSlug.trim() === '') {
+    throw new Error('#4318 cta-destination: a listing needs both its brand slug and its own slug')
+  }
+  const phoneHref = buildOneLinkHref(EXPLORER_ONELINK_URL, attribution, {
+    value: kind,
+    sub1: brandSlug,
+    sub2: itemSlug,
+  })
+  const computerHref = `${BUSINESS_WEB_URL}/${LISTING_WEB_PATH[kind]}/${encodeURIComponent(brandSlug)}/${encodeURIComponent(itemSlug)}`
+  return { computerHref, phoneHref }
+}
+
+export interface StoreListingHrefs {
+  appStore: string
+  googlePlay: string
+}
+
+/** The two store listings of one app, for the computer sheets' store buttons. */
+export function resolveStoreListingHrefs(surface: CtaSurface): StoreListingHrefs {
+  return surface === 'explorer'
+    ? { appStore: APP_STORE_URL, googlePlay: PLAY_STORE_URL }
+    : { appStore: BUSINESS_APP_STORE_URL, googlePlay: BUSINESS_PLAY_STORE_URL }
 }
