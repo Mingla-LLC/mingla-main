@@ -1613,7 +1613,7 @@
   line-height: 1;
   margin: 0;
 }
-[data-landing] ul.quiet-places {
+[data-landing] ul.grid3.quiet-places {
   list-style: none;
   padding: 0;
   margin: 24px 0 0;
@@ -1829,8 +1829,10 @@
   border-top: 1px solid var(--line);
 }
 [data-landing] .art-next a {
-  display: block;
-  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  margin-top: 4px;
   font-family: var(--serif);
   font-size: 26px;
   line-height: 1.1;
