@@ -11,9 +11,9 @@
  * via the existing `startsWith(prefix + "/")` clause.
  */
 
-import React, { Suspense, useMemo } from "react";
-import { Platform, StyleSheet, View } from "react-native";
-import { Slot, useRouter, usePathname } from "expo-router";
+import React, { Suspense, useEffect, useMemo } from "react";
+import { ActivityIndicator, Platform, StyleSheet, View } from "react-native";
+import { Redirect, Slot, useRouter, usePathname } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BottomNav } from "../../src/components/ui/BottomNav";
@@ -25,7 +25,7 @@ import type { BottomNavTab } from "../../src/components/ui/BottomNav";
 import { DesktopCanvas } from "../../src/components/ui/DesktopCanvas";
 import { isTabVisible } from "../../src/config/featureFlags";
 import { tabsNavigatorSettings } from "../../src/config/tabsNavigatorSettings";
-import { canvas, spacing } from "../../src/constants/designSystem";
+import { accent, canvas, spacing } from "../../src/constants/designSystem";
 import { useResponsiveLayout } from "../../src/hooks/useResponsiveLayout";
 // ORCH-1055 (META-ORCH-1048 sub-F): rank-aware tab filtering. The TABS
 // array below is the registered superset; the actual visible set is
@@ -42,6 +42,17 @@ import {
   useCurrentBrandHasHydrated,
 } from "../../src/store/currentBrandStore";
 import { visibleTabsForRank } from "../../src/utils/navTabGate";
+// #4304 part 3 — First Home with Ari: until a host has made something, the
+// nav is Ari + Account and Ari is the landing tab.
+import { useFirstRunStage } from "../../src/hooks/useFirstRunStage";
+import { useCreatorAccount } from "../../src/hooks/useCreatorAccount";
+import { FirstRunStageContext } from "../../src/context/FirstRunStageContext";
+import { useFirstRunStore } from "../../src/store/firstRunStore";
+import {
+  firstRunRedirect,
+  firstRunVisibleTabs,
+  isFirstRunLocked,
+} from "../../src/utils/firstRunState";
 
 import { CommandPaletteHost } from "../../src/components/ui/CommandPaletteHost";
 import { GlobalSearchSheetHost } from "../../src/components/ui/GlobalSearchSheetHost";
@@ -69,6 +80,9 @@ const TABS: BottomNavTab[] = [
 ];
 
 const DEFAULT_TAB_ID = "home";
+// #4304 — while first-run is locked the highlighted default is Ari. Routing
+// is explicit (see firstRunRedirect); the #4237 Slot fallback stays "home".
+const FIRST_RUN_DEFAULT_TAB_ID = "ari";
 
 // #4237: the Slot's fallback screen must be the tab the nav highlights by
 // default; see src/config/tabsNavigatorSettings.ts.
@@ -106,12 +120,38 @@ export default function TabsLayout(): React.ReactElement {
     currentBrandId === null &&
     (!hasBrandHydrated || brandResolving);
 
+  // #4304 — pending (brands, roles or the "anything made?" answer still
+  // loading) keeps the rank-derived set above, so the reduced first-run set
+  // never flashes while things load.
+  const firstRun = useFirstRunStage();
+  const firstRunLocked = isFirstRunLocked(firstRun.stage);
+  // #4304 — Help & Support (outside the tabs) mirrors the reduced nav from
+  // here instead of loading the gate a second time (bundle-baseline-movement).
+  const setLockedNavUserId = useFirstRunStore((s) => s.setLockedNavUserId);
+  useEffect(() => {
+    setLockedNavUserId(firstRunLocked ? firstRun.userId : null);
+  }, [firstRun.userId, firstRunLocked, setLockedNavUserId]);
+  const creatorAccount = useCreatorAccount();
+  const firstRunDisplayName = creatorAccount.data?.display_name ?? null;
+  const firstRunContext = useMemo(
+    () => ({
+      stage: firstRun.stage,
+      userId: firstRun.userId,
+      displayName: firstRunDisplayName,
+    }),
+    [firstRun.stage, firstRun.userId, firstRunDisplayName],
+  );
+
   const visibleTabs = useMemo(
     () =>
-      visibleTabsForRank(TABS, brandPointerPending ? Number.MAX_SAFE_INTEGER : rank).filter(
-        (tab) => isTabVisible(tab.id),
+      firstRunVisibleTabs(
+        visibleTabsForRank(TABS, brandPointerPending ? Number.MAX_SAFE_INTEGER : rank).filter(
+          (tab) => isTabVisible(tab.id),
+        ),
+        TABS.filter((tab) => isTabVisible(tab.id)),
+        firstRun.stage,
       ),
-    [rank, brandPointerPending],
+    [rank, brandPointerPending, firstRun.stage],
   );
 
   const activeId = useMemo(() => {
@@ -121,8 +161,16 @@ export default function TabsLayout(): React.ReactElement {
       const prefix = `/${tab.id}`;
       return lower === prefix || lower.startsWith(`${prefix}/`);
     });
-    return match?.id ?? DEFAULT_TAB_ID;
-  }, [pathname, visibleTabs]);
+    return match?.id ?? (firstRunLocked ? FIRST_RUN_DEFAULT_TAB_ID : DEFAULT_TAB_ID);
+  }, [pathname, visibleTabs, firstRunLocked]);
+
+  // #4304 — any link, push, email or #4237 Slot fallback that lands a locked
+  // host on Home goes to Ari instead. Home is never mounted for them.
+  const firstRunTarget = firstRunRedirect(pathname, firstRun.stage);
+  // Brands known, only "anything made?" outstanding: hold Home behind a
+  // neutral loader so a host about to land on Ari never sees Home first.
+  const holdHome =
+    firstRun.awaitingContent && firstRunRedirect(pathname, "no_brand") !== null;
 
   // Focused authoring surfaces hide the mobile bottom capsule so the route's
   // own sticky footer is not covered. Desktop web keeps the left rail visible
@@ -137,6 +185,7 @@ export default function TabsLayout(): React.ReactElement {
   };
 
   return (
+    <FirstRunStageContext.Provider value={firstRunContext}>
     <View style={styles.host}>
       <DesktopCanvas>
         {/* ORCH-1320 (biz Account-tab Apple crash) — FINDING, do not "disable the
@@ -156,7 +205,20 @@ export default function TabsLayout(): React.ReactElement {
             that is OFF the crash path and would kill all root push animations
             (auth→tabs, checkout, partner routes), a broad UX regression. See
             I-PROPOSED-1320-NO-WORKLET-ON-TAB-COMMIT-PATH. */}
-        <Slot />
+        {firstRunTarget !== null ? (
+          <Redirect href={firstRunTarget as never} />
+        ) : holdHome ? (
+          <View
+            style={styles.firstRunHold}
+            accessibilityRole="progressbar"
+            accessibilityLabel="Loading"
+            testID="first-run-hold"
+          >
+            <ActivityIndicator color={accent.warm} />
+          </View>
+        ) : (
+          <Slot />
+        )}
       </DesktopCanvas>
       {hideBottomNav ? null : (
         <View
@@ -182,6 +244,7 @@ export default function TabsLayout(): React.ReactElement {
         <GlobalSearchSheetHost />
       </Suspense>
     </View>
+    </FirstRunStageContext.Provider>
   );
 }
 
@@ -192,6 +255,11 @@ const styles = StyleSheet.create({
     // so the home-indicator area blends seamlessly with the dark theme. The
     // BottomNav is a floating capsule positioned absolute on top.
     backgroundColor: canvas.discover,
+  },
+  firstRunHold: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
   navWrap: {
     position: "absolute",

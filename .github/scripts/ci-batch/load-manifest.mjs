@@ -184,7 +184,10 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4294 (tester): re-sealed after the company sign-in tester proof entered the preserved inventories.
 // #4271: register the tap buyer-name migration and its PostgreSQL proofs the same way.
 // #4271: the tap buyer-name migration joins the pre-#1931 replay's exact-file exclusion beside door pay.
-export const BOOTSTRAP_SHA256 = "f675b7663a1fe155309f2e8c0f9d61f56e824222b665cce5d1f44a2dc19f439c";
+// #3645: register the sell-and-publish integrity migration, its PostgreSQL proof and its re-emit guard.
+// #3645: the sell-and-publish migration joins the pre-#1931 and pre-#2117 replay skip lists by exact filename.
+// #4304: register the Brand group live migration and its PostgreSQL proof the same way.
+export const BOOTSTRAP_SHA256 = "ab0702d3193c6629e42f1fc1382070ab9f1cb5ff61cd9e5162de0936903cb0ee";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

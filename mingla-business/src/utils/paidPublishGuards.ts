@@ -233,6 +233,19 @@ export const resolveProviderNeutralPaidPublishGuardCopy = (
 };
 
 /**
+ * Issue #3645 — the server's rule for "this paid price is a price": it rounds
+ * to at least one minor unit (business_publish_event_draft and
+ * biz_publish_experience compare round(price * 100) with 0). The wizards use
+ * this so they refuse exactly what the server refuses.
+ */
+export const paidPriceHasMinorUnits = (major: number | null | undefined): boolean =>
+  typeof major === "number" && Number.isFinite(major) && Math.round(major * 100) > 0;
+
+/** Issue #3645 — words for the server's paid_ticket_price_required refusal. */
+export const PAID_TICKET_PRICE_REQUIRED_COPY =
+  "A paid ticket needs a price. Set a price on each paid ticket, or mark it free.";
+
+/**
  * issue #2333 S4b — the LAST-RESORT copy for a server guard NOTHING above
  * recognises. Pinned by DRAFT invariant
  * I-2333-UNMAPPED-SERVER-GUARD-NEVER-INVITES-RETRY.
@@ -265,6 +278,11 @@ export const describeUnmappedPublishGuard = (
   // in. These two codes have plain words of their own.
   const currencyCopy = draftCurrencyRefusalCopy(s);
   if (currencyCopy !== null) return currencyCopy;
+  // Issue #3645 — the server refuses a paid ticket with no price (or one that
+  // rounds to 0). The wizard's own check normally stops this first.
+  if (/(?:^|[^a-z0-9_])paid_ticket_price_required(?:$|[^a-z0-9_])/.test(s)) {
+    return PAID_TICKET_PRICE_REQUIRED_COPY;
+  }
   // Requirement 3 — always logged, before anything is shown.
   console.error("[#2333] unmapped publish guard", s);
   if (UNMAPPED_GUARD_TOKEN_SHAPE.test(s)) {

@@ -226,6 +226,25 @@ export interface SendMessageArgs {
   flow_answer?: AriFlowAnswer;
   /** #2830 P4 — opening Website setup (structured, never owner words). */
   website_setup_kickoff?: { part?: string };
+  /**
+   * #4304 — First Home with Ari. Context only (never the owner's words): the
+   * host has no brand / nothing made yet, and what they said they host.
+   */
+  first_run?: AriFirstRunHint;
+}
+
+/** #4304 — what the app knows about a first-run host when they send. */
+export interface AriFirstRunHint {
+  stage: "no_brand" | "empty_brand";
+  intent:
+    | "brand"
+    | "events"
+    | "rsvp"
+    | "experiences"
+    | "trips"
+    | "venue"
+    | "about"
+    | null;
 }
 
 export interface ConfirmActionArgs {
