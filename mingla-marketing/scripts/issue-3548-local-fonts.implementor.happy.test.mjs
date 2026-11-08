@@ -6,6 +6,13 @@ import { readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import {
+  LINKS_FONT_ASSETS,
+  LINKS_FONT_DEFINITIONS,
+  LINKS_FONT_LICENCES,
+  checkLinksFontSource,
+  linksManifestRows,
+} from './issue-4318-links-fonts.contract.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const read = (relativePath, encoding = 'utf8') => readFileSync(path.join(ROOT, relativePath), encoding)
@@ -127,10 +134,12 @@ for (const relativePath of productionAppFiles) {
 }
 
 const fontDefinition = read('app/fonts.ts')
+// #4318: app/links/fonts.ts holds the /links-only brand faces (pinned in
+// scripts/issue-4318-links-fonts.contract.mjs); app/fonts.ts stays the site's.
 assert.equal(
   productionAppFiles.filter((relativePath) => read(relativePath).includes('next/font/local')).join(','),
-  'app/fonts.ts',
-  'app/fonts.ts must be the one production local-font definition module',
+  'app/fonts.ts,app/links/fonts.ts',
+  'app/fonts.ts and the /links-scoped app/links/fonts.ts must be the only local-font definition modules',
 )
 assert.equal((fontDefinition.match(/localFont\s*\(/g) ?? []).length, 4, 'exactly four local definitions must exist')
 
@@ -260,7 +269,29 @@ assert.deepEqual(manifest, {
   schemaVersion: 1,
   investigationDate: '2026-09-27',
   assets: EXPECTED_ASSETS.map(({ oflSha256: _oflSha256, ...asset }) => asset),
+  linksRouteAssets: linksManifestRows(),
 })
+// #4318 — the /links brand faces: exact definitions, scoped to the /links page.
+const linksSourceFiles = []
+const collectLinksSources = (relativeDirectory) => {
+  for (const entry of readdirSync(path.join(ROOT, relativeDirectory))) {
+    const relativePath = path.join(relativeDirectory, entry)
+    if (statSync(path.join(ROOT, relativePath)).isDirectory()) collectLinksSources(relativePath)
+    else if (/\.(?:ts|tsx|js|jsx)$/.test(entry)) linksSourceFiles.push(relativePath)
+  }
+}
+for (const sourceRoot of ['app', 'components', 'lib']) collectLinksSources(sourceRoot)
+checkLinksFontSource((relativePath) => read(relativePath), linksSourceFiles)
+for (const asset of LINKS_FONT_ASSETS) {
+  const binary = read(`app/fonts/${asset.localFile}`, null)
+  assert.equal(binary.byteLength, asset.byteLength, `${asset.localFile} byte length must stay pinned`)
+  assert.equal(sha256(binary), asset.sha256, `${asset.localFile} SHA-256 must stay pinned`)
+}
+for (const licence of LINKS_FONT_LICENCES) {
+  const license = read(`app/fonts/${licence.oflFile}`, null)
+  assert.equal(sha256(license), licence.oflSha256, `${licence.oflFile} must stay pinned`)
+  assert.equal(license.toString('utf8').split('\n')[0], licence.oflNotice, `${licence.oflFile} must carry its copyright notice`)
+}
 for (const asset of EXPECTED_ASSETS) {
   const binary = read(`app/fonts/${asset.localFile}`, null)
   assert.equal(binary.byteLength, asset.byteLength, `${asset.localFile} byte length must stay pinned`)
@@ -467,6 +498,19 @@ if (process.argv.includes('--built-only')) {
     )
   }
 
+  // #4318 — each /links face compiles once per pinned weight/style and adds no generated fallback.
+  for (const definition of LINKS_FONT_DEFINITIONS) {
+    const faces = faceBlocks
+      .map(declarations)
+      .filter((parsed) => unquote(parsed['font-family'] ?? '') === definition.exportName)
+    assert.deepEqual(
+      faces.map((parsed) => [parsed['font-weight'], parsed['font-style']]),
+      definition.faces.map(([, weight, style]) => [weight, style]),
+      `${definition.exportName} must compile its exact faces`,
+    )
+    assert.ok(!builtCss.includes(`${definition.exportName} Fallback`), `${definition.exportName} must not gain a generated fallback`)
+  }
+
   for (const { exportName, family } of EXPECTED_FALLBACKS) {
     const escapedFamily = family.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')
     const stackPattern = new RegExp(
@@ -477,6 +521,7 @@ if (process.argv.includes('--built-only')) {
 }
 
 console.log('PASS #3548 exact local font definitions, consumers, weights and class placement')
+console.log('PASS #4318 /links brand faces: exact definitions, pinned bytes and licences, /links page only')
 console.log('PASS #3548 pinned WOFF2 bytes, source manifest and exact OFL files')
 console.log('PASS #3548 exact manual Arial fallback descriptors, identities and source stacks')
 console.log('PASS #3548 dependency-free local fonts and both production build denials')

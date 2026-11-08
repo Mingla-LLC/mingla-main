@@ -126,7 +126,19 @@ export function toBioPid(src: string): string {
 }
 
 /**
- * Build a OneLink href carrying attribution.
+ * #4318 — a OneLink deep link to one listing. The Explorer app resolves
+ * `deep_link_value=event|trip|experience` + `deep_link_sub1=<brand slug>` +
+ * `deep_link_sub2=<listing slug>` to that listing
+ * (app-mobile/src/services/oneLinkResolver.ts), after install too.
+ */
+export interface OneLinkDeepLink {
+  value: 'event' | 'trip' | 'experience'
+  sub1: string
+  sub2: string
+}
+
+/**
+ * Build a OneLink href carrying attribution (and, for a listing, its deep link).
  *
  * Uses URLSearchParams as DEFENCE IN DEPTH: the values are already sanitised, so this
  * is the second lock, not the first. Manual string concat here would be a silent hole
@@ -134,11 +146,20 @@ export function toBioPid(src: string): string {
  *
  * @param base EXPLORER_ONELINK_URL or BUSINESS_ONELINK_URL — never crossed (H-2).
  */
-export function buildOneLinkHref(base: string, attribution: OneLinkAttribution): string {
+export function buildOneLinkHref(
+  base: string,
+  attribution: OneLinkAttribution,
+  deepLink?: OneLinkDeepLink,
+): string {
   const params = new URLSearchParams({
     pid: attribution.pid,
     c: attribution.campaign,
   })
+  if (deepLink !== undefined) {
+    params.set('deep_link_value', deepLink.value)
+    params.set('deep_link_sub1', deepLink.sub1)
+    params.set('deep_link_sub2', deepLink.sub2)
+  }
   return `${base}?${params.toString()}`
 }
 

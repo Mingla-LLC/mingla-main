@@ -40,8 +40,11 @@ const cases: ReadonlyArray<[string, () => void]> = [
     assert(links.includes("height: 'calc(100dvh - var(--mingla-privacy-inset, 0px))'"), '/links must subtract the privacy inset from 100dvh')
     assert(links.includes('h-[calc(100svh-var(--mingla-privacy-inset,0px))]'), '/links svh fallback must subtract the inset too')
   }],
-  ['/links ends with the in-page "Your privacy choices" link', () => {
-    assert(/<PrivacyChoicesLink\b/.test(links), '/links must render PrivacyChoicesLink at the end of its content')
+  // #4318 (Seth, feedback 15): the separate "Privacy choices" text link comes off
+  // /links; the bar above is the one place to choose. Other surfaces keep theirs
+  // (the adversarial suite pins the footers) until Seth decides the reopen path.
+  ['/links carries no separate "Privacy choices" text link (#4318)', () => {
+    assert(!/<PrivacyChoicesLink\b|privacy-choices-link/.test(links), '/links must not render PrivacyChoicesLink')
   }],
 ]
 

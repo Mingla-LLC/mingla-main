@@ -64,7 +64,8 @@ for (const size of SIZES) {
     expect(Math.round(main.height)).toBe(size.height - 53);
     expect(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight + 1)).toBe(true);
     expect(await underBar(page)).toEqual([]);
-    await expect(page.getByTestId("privacy-choices-link")).toBeAttached();
+    // #4318: the separate Privacy choices text link is off /links; the bar is the one place to choose.
+    await expect(page.getByTestId("privacy-choices-link")).toHaveCount(0);
     await context.close();
   });
 }

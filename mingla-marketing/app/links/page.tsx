@@ -1,17 +1,34 @@
-// ORCH-1317 [Mingla link-in-bio page] — usemingla.com/links.
+// ORCH-1317 → #4318 — usemingla.com/links, the single link in Mingla's social
+// bios: a one-screen week calendar for every live Mingla city.
 //
-// The single link Mingla puts in its social bios (Linktree-style). This is a thin
-// SERVER Component: it owns the SEO metadata and the default tagline, then renders
-// the client <LinksExperience/> which holds the accessible tabs, CTAs, analytics,
-// and socials. All link/tab data lives in lib/links-config.ts (extensible, §5).
+// A thin SERVER Component. It owns the SEO metadata (public, noindex), reads
+// the week through lib/links-data.ts (cached 5 minutes), works out which city
+// the page opens on, and hands plain data to the client <LinksExperience/>.
+//
+// City order (lib/links-week.ts resolveCity): `?city=<slug>` wins, then the
+// visitor's coarse location from Vercel's edge headers (no prompt, nothing
+// stored), then the city they picked last time (cookie), then the busiest city.
+//
+// ORCH-1399 — `?src=` is UNTRUSTED INPUT that reaches an OUTBOUND URL. It is
+// sanitised HERE, once, at the boundary (sanitizeLinksSrc), and passed down as
+// a page-level prop so every tap on the page carries the same bio pid.
 
+import { cookies, headers } from 'next/headers'
 import { LinksExperience } from '@/components/marketing/links-experience'
+import { CITY_HUB_CENTRES, CITY_HUB_REGIONS, CITY_HUBS } from '@/content/cities/registry'
+import { LINKS_CITY_COOKIE } from '@/lib/links-config'
+import { getLinksData } from '@/lib/links-data'
 import { sanitizeLinksSrc } from '@/lib/links-src'
+import {
+  bucketListings,
+  liveCities,
+  normalisePins,
+  parseGeoHeaders,
+  resolveCity,
+  type LinksCity,
+} from '@/lib/links-week'
 import { publicNoindexMetadata } from '@/lib/search/metadata'
-
-// Shipped default tagline (see the ORCH-1317 report for the alternates). It's the
-// canonical brand line, so /links reads consistently with the rest of the site.
-const LINKS_TAGLINE = 'Find a vibe, not a venue.'
+import { linksSans, linksMono, linksSerif } from './fonts'
 
 export const metadata = publicNoindexMetadata('/links', {
   title: 'Get Mingla',
@@ -19,30 +36,60 @@ export const metadata = publicNoindexMetadata('/links', {
     'Mingla is the experiences app for date nights, things to do, and your city’s hidden gems. Get the app, or if you run a venue, event, or trip, get started on the web.',
 })
 
-// ORCH-1399 [links-src-tracking-getapp-stack] — `?src=` SOURCE TRACKING.
-//
-// `usemingla.com/links?src=youtube` carries the source into the OneLink as
-// `pid=bio_youtube`, so an install from Seth's YouTube bio is attributable whichever
-// app the visitor picks. Today every bio install is anonymous.
-//
-// WHY THE SERVER `searchParams` PROP AND NOT `useSearchParams()`:
-//  - no Suspense boundary needed (useSearchParams() requires one, or the build errors)
-//  - the value is present in the FIRST PAINT — no client-only flicker / hydration risk
-//  - it stays a pure function, testable with the repo's plain tsc+node pattern
-// Reading searchParams opts this route into dynamic rendering — correct and intended.
-// The route is explicitly public-noindex, so `?src=` variants cannot fragment search.
-//
-// `src` is UNTRUSTED INPUT that reaches an OUTBOUND URL. It is sanitised HERE, once,
-// at the boundary — never passed raw. Next hands repeated params (`?src=a&src=b`) as
-// `string[]`, which sanitizeLinksSrc treats as ambiguous and fails safe on.
-//
-// Resolved ONCE here and passed DOWN as a prop, so it is a page-level value that
-// switching Explorer↔Business cannot lose — by structure, not by discipline (§4.4).
+const CITY_SLUG = /^[a-z0-9-]{2,60}$/
+
+function oneParam(raw: string | string[] | undefined): string | null {
+  if (typeof raw !== 'string') return null
+  const value = raw.trim().toLowerCase()
+  return CITY_SLUG.test(value) ? value : null
+}
+
+function registryCities(): LinksCity[] {
+  return CITY_HUBS.map((hub) => ({
+    slug: hub.slug,
+    name: hub.city,
+    region: CITY_HUB_REGIONS[hub.slug],
+    timezone: hub.timezone,
+    ...CITY_HUB_CENTRES[hub.slug],
+  }))
+}
+
 export default async function LinksPage({
   searchParams,
 }: {
-  searchParams: Promise<{ src?: string | string[] }>
+  searchParams: Promise<{ src?: string | string[]; city?: string | string[] }>
 }) {
-  const { src } = await searchParams
-  return <LinksExperience tagline={LINKS_TAGLINE} src={sanitizeLinksSrc(src)} />
+  const { src, city } = await searchParams
+  const [requestHeaders, jar, data] = await Promise.all([headers(), cookies(), getLinksData()])
+
+  const nowIso = new Date().toISOString()
+  const cities = registryCities()
+  const listings = bucketListings(data.rows, cities)
+  const pins = normalisePins(data.strips)
+  const live = liveCities(cities, listings, pins, nowIso)
+  const geo = parseGeoHeaders(
+    requestHeaders.get('x-vercel-ip-latitude'),
+    requestHeaders.get('x-vercel-ip-longitude'),
+  )
+  const initial = resolveCity({
+    cities,
+    live,
+    query: oneParam(city),
+    geo,
+    cookie: oneParam(jar.get(LINKS_CITY_COOKIE)?.value),
+  })
+
+  return (
+    <div className={`${linksSerif.variable} ${linksSans.variable} ${linksMono.variable}`}>
+      <LinksExperience
+        src={sanitizeLinksSrc(src)}
+        nowIso={nowIso}
+        cities={cities}
+        listings={listings}
+        pins={pins}
+        initialCity={initial.slug}
+        visitor={{ point: geo, useMiles: requestHeaders.get('x-vercel-ip-country') === 'US' }}
+      />
+    </div>
+  )
 }

@@ -88,7 +88,7 @@ for (const tool of ['tool_events', 'tool_trips', 'tool_pricing', 'tool_venues'])
 const stripComments = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
 const SEAM = new Set(['lib/store-links.ts', 'lib/explorer-app-target.ts', 'lib/business-app-target.ts', 'lib/cta-destination.ts'])
 const EXEMPT = new Set([
-  'app/download/page.tsx', 'app/host/download/page.tsx', 'components/marketing/links-experience.tsx',
+  'app/download/page.tsx', 'app/host/download/page.tsx',
   'components/marketing/glass-nav.tsx', 'components/sections/organiser-home/hero.tsx',
   'components/cutout/schema.tsx', 'lib/search/entity-graph.ts',
 ])
