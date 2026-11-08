@@ -165,6 +165,22 @@ export const COMMUNITY_SUPPORT_TAB_CONTRACT = Object.freeze({
     ]),
     functions: Object.freeze(["admin-blog"]),
   }),
+  // #4318 — Links page strips. Its admin_links_* RPCs guard on
+  // is_support_staff (the Support area's own predicate), so the tab follows
+  // the Support area; the blog picker reuses the Blog tab's post reader,
+  // which every active teammate may call.
+  links: Object.freeze({
+    area: SUPPORT,
+    panel: "components/links/LinksPagePanel.jsx",
+    rpcs: Object.freeze([
+      "admin_links_strip_delete",
+      "admin_links_strip_save",
+      "admin_links_strips_list",
+      "admin_links_strips_reorder",
+      "issue_4137_blog_list_posts",
+    ]),
+    functions: Object.freeze([]),
+  }),
   team: Object.freeze({
     area: ADMIN,
     panel: "components/community/TeamRolesPanel.jsx",
