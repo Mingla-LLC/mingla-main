@@ -22,11 +22,35 @@ SET LOCAL lock_timeout = '10s';
 -- ───────────────────────────────────────────────────────────────────────────
 -- A. The strips table.
 -- ───────────────────────────────────────────────────────────────────────────
+-- The one title normaliser, shared by the CHECK and the save RPC: every run of
+-- whitespace (ASCII, no-break, the Unicode space separators, line and
+-- paragraph separators, ideographic space, zero-width space and BOM) becomes
+-- one plain space, and the ends are trimmed. btrim alone trims plain spaces
+-- only, so a title of tabs, newlines or U+00A0/U+3000 would pass as "text".
+CREATE OR REPLACE FUNCTION public.issue_4318_links_title_normal(p_title text)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+PARALLEL SAFE
+SET search_path = ''
+AS $function$
+  SELECT regexp_replace(
+    regexp_replace(p_title,
+      '[\s\u0085  ᠎ -​    　﻿]+', ' ', 'g'),
+    '^ | $', '', 'g');
+$function$;
+REVOKE ALL ON FUNCTION public.issue_4318_links_title_normal(text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.issue_4318_links_title_normal(text) TO authenticated, service_role;
+COMMENT ON FUNCTION public.issue_4318_links_title_normal(text) IS
+  '#4318: a /links strip title with every Unicode whitespace run collapsed to one space and the ends trimmed.';
+
 CREATE TABLE IF NOT EXISTS public.links_strips (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   city_slug text NULL CHECK (city_slug IS NULL OR city_slug ~ '^[a-z0-9-]{2,60}$'),
   shows_on date NOT NULL,
-  title text NOT NULL CHECK (title = btrim(title) AND length(title) BETWEEN 1 AND 60),
+  title text NOT NULL CHECK (
+    title = public.issue_4318_links_title_normal(title) AND length(title) BETWEEN 1 AND 60
+  ),
   label text NOT NULL CHECK (label IN ('From Mingla', 'Featured', 'New', 'Giveaway')),
   opens text NOT NULL CHECK (opens IN ('web', 'blog', 'explorer', 'host')),
   url text NULL CHECK (
@@ -276,7 +300,7 @@ AS $function$
 DECLARE
   v_actor uuid := auth.uid();
   v_city text := NULLIF(lower(btrim(COALESCE(p_city_slug, ''))), '');
-  v_title text := btrim(COALESCE(p_title, ''));
+  v_title text := COALESCE(public.issue_4318_links_title_normal(p_title), '');
   v_url text := NULL;
   v_blog uuid := NULL;
   v_row public.links_strips;
