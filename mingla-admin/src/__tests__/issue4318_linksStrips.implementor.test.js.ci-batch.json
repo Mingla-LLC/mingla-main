@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-suite",
+  "ownerIssue": "#4318",
+  "suite": {
+    "id": "issue-4318-admin-links-strips",
+    "class": "admin-node20-install",
+    "originPaths": [
+      "mingla-admin/src/**"
+    ],
+    "steps": [
+      {
+        "name": "Admin Links page strips: validation, reorder and tab wiring",
+        "cwd": "mingla-admin",
+        "run": "node --test src/__tests__/issue4318_linksStrips.implementor.test.js",
+        "commandId": "assert:issue-4318-admin-links-strips:01",
+        "invocation": {
+          "kind": "raw-shell",
+          "command": "bash",
+          "argv": [
+            "-c",
+            "node --test src/__tests__/issue4318_linksStrips.implementor.test.js"
+          ]
+        },
+        "exceptionRationale": "Self-registering targeted Admin regression suite replaces a legacy workflow edit."
+      }
+    ],
+    "lifecycle": "batched-active",
+    "ownerIssue": "#4318",
+    "runtime": {
+      "name": "node",
+      "version": "20"
+    },
+    "setupProfile": "admin-node20-install",
+    "cwd": "mingla-admin",
+    "envNames": [],
+    "isolation": "clean-worktree",
+    "expectedFiles": [
+      "mingla-admin/src/__tests__/issue4318_linksStrips.implementor.test.js"
+    ],
+    "externalReferenceFiles": [],
+    "requiredContext": "CI batch: admin-node20-install",
+    "timingSeconds": {
+      "p50": 1,
+      "p95": 2,
+      "evidence": "Local targeted run 2026-11-07"
+    },
+    "generatedPaths": [
+      "suite-results.json"
+    ],
+    "exceptionRationale": "Raw shell preserves the reviewed assertion in the self-registering suite.",
+    "timeoutSeconds": 60
+  }
+}

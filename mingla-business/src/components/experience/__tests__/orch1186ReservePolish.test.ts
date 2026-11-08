@@ -76,7 +76,8 @@ describe("ORCH-1186 — Fix 2 vibe chip color parity", () => {
   test("vibe chip TEXT uses palette.primaryText (icon stays accent)", () => {
     expect(bodySrc).toMatch(/styles\.vibeChipText,\s*\n?\s*\{\s*color: palette\.primaryText/);
     // the Sparkles icon keeps accent.
-    expect(bodySrc).toMatch(/<Sparkles size=\{13\} color=\{palette\.accent\}/);
+    // [TEST-MOD-APPROVED #1023] the icon stays accent, now via the gradient-aware icon props.
+    expect(bodySrc).toMatch(/<Sparkles size=\{13\} \{\.\.\.accentIconProps\}/);
   });
 });
 

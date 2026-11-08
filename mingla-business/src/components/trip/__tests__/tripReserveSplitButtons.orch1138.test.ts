@@ -89,14 +89,15 @@ describe("ORCH-1138 — trip Reserve UNIFIED seam-split CTA (business/web)", () 
   test("SP-U3 the primary segment is ACCENT-FILLED and leads (flex 1.15); secondary is SOLID WHITE w/ accent hairline", () => {
     // ORCH-1138 (Seth, 2026-06-15) two-tone: primary = accent fill; secondary = solid
     // white (#FFFFFF) with an accent-tinted hairline (borderColor: palette.accent) so
-    // it reads on a LIGHT brand page. fails-on-revert: deleting the SECONDARY_FILL /
+    // it reads on a LIGHT brand page. issue #1023: the fill paints through
+    // accentFill(palette) and the hairline through accentOutline (gradient-aware). fails-on-revert: deleting the SECONDARY_FILL /
     // borderColor wiring flips this case red.
     expect(reserveBarSrc).toMatch(/const SECONDARY_FILL = "#FFFFFF"/);
     expect(reserveBarSrc).toMatch(
-      /backgroundColor:\s*isPrimary\s*\?\s*palette\.accent\s*:\s*SECONDARY_FILL/,
+      /isPrimary\s*\?\s*accentFill\(palette\)\s*:\s*\{\s*backgroundColor:\s*SECONDARY_FILL\s*\}/,
     );
     expect(reserveBarSrc).toMatch(
-      /borderColor:\s*isPrimary\s*\?\s*undefined\s*:\s*palette\.accent/,
+      /isPrimary\s*\?\s*\{\}\s*:\s*accentOutline\(palette,\s*\{\s*opaqueBackground:\s*SECONDARY_FILL\s*\}\)/,
     );
     expect(reserveBarSrc).toMatch(
       /segmentSecondaryBorder:\s*\{[^}]*borderTopWidth:\s*1[^}]*borderRightWidth:\s*1[^}]*borderBottomWidth:\s*1/,

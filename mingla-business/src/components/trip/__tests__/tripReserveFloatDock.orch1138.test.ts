@@ -126,8 +126,11 @@ describe("ORCH-1138 DR3 — trip Reserve CTA float→dock (business/web)", () =>
     expect(shellSrc).toMatch(/onScroll\?:/);
     expect(shellSrc).toMatch(/onScrollViewLayout\?:/);
     // both phone branches wire onScroll + onLayout.
-    const wired = shellSrc.match(/onScroll=\{onScroll\}/g) ?? [];
+    // [TEST-MOD-APPROVED #1023] both branches wire handleScroll, which tracks the
+    // sheet edge for the motion's text-safe zone and then forwards onScroll.
+    const wired = shellSrc.match(/onScroll=\{handleScroll\}/g) ?? [];
     expect(wired.length).toBeGreaterThanOrEqual(2);
+    expect(shellSrc).toMatch(/const handleScroll = React\.useCallback\([\s\S]{0,240}onScroll\?\.\(event\)/);
   });
 
   test("DR3g the route no longer reserves a bar-sized paddingBottom void", () => {

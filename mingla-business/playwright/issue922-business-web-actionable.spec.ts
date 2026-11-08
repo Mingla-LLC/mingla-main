@@ -196,38 +196,28 @@ test("static invitation and consent UI has no visible Samsung delta from the Rea
   expect(visibleDelta, `visible pixel delta=${visibleDelta}`).toBeLessThanOrEqual(0.005);
 });
 
-// #2331 — the shell shows the collapsed privacy bar (on unless turned off).
-// OK saves the live state and boots the app; Options boots the app with its
-// bar handed off expanded (the switches live in the React owner).
-test("OK saves the live privacy state, hides the bar, then boots in order", async ({ context, page }) => {
+// #2331 → #4318 — the shell shows the "Privacy & ad choices" strip from the
+// first paint (on unless turned off; no banner, no OK). Tapping it boots the
+// app with its choices sheet handed off open (the switches live in the React
+// owner). The retired OK flows (save on OK, OK under a rejecting store) have
+// no control left to drive.
+test("the shell shows the 28px strip and saves nothing until a choice", async ({ context, page }) => {
   await cleanStorage(context);
-  const requests = await stubExpoScripts(page);
+  await stubExpoScripts(page);
   await page.goto(invite);
-  const bar = page.getByTestId("privacy-bar");
-  await expect(bar).toBeVisible();
-  await expect(bar.getByText("Mingla uses cookies for analytics and ads.")).toBeVisible();
-  expect(Math.round((await bar.boundingBox())!.height)).toBe(53);
-  await page.getByTestId("privacy-bar-ok").click();
-  await expect(page.locator("#issue922-app-mounted")).toBeVisible();
-  const state = await page.evaluate(() => ({
-    stored: JSON.parse(window.localStorage.getItem("mingla_privacy_v2") ?? "null"),
-    legacy: window.localStorage.getItem("mingla_consent_v1"),
-    order: (window as typeof window & { __issue922Order?: string[] }).__issue922Order,
-    choices: (window as typeof window & { __issue922Choices?: string[] }).__issue922Choices,
-  }));
-  expect(state.stored).toMatchObject({ analytics: true, ads: true });
-  expect(typeof state.stored.ts).toBe("number");
-  expect(state.legacy).toBeNull();
-  expect(state.choices).toEqual(Array(3).fill(JSON.stringify({ analytics: true, ads: true })));
-  expect(state.order).toHaveLength(3);
-  expect(requests).toEqual(state.order);
+  const strip = page.getByTestId("privacy-strip");
+  await expect(strip).toBeVisible();
+  await expect(strip).toHaveText("Privacy & ad choices");
+  expect(Math.round((await strip.boundingBox())!.height)).toBe(28);
+  await expect(page.getByText("Mingla uses cookies for analytics and ads.")).toHaveCount(0);
+  expect(await page.evaluate(() => window.localStorage.getItem("mingla_privacy_v2"))).toBeNull();
 });
 
-test("Options boots the app with the bar handed off expanded and saves nothing", async ({ context, page }) => {
+test("the strip boots the app with the choices handed off open and saves nothing", async ({ context, page }) => {
   await cleanStorage(context);
   const requests = await stubExpoScripts(page);
   await page.goto(invite);
-  await page.getByTestId("privacy-bar-options").click();
+  await page.getByTestId("privacy-strip").click();
   await expect(page.locator("#issue922-app-mounted")).toBeVisible();
   const state = await page.evaluate(() => ({
     stored: window.localStorage.getItem("mingla_privacy_v2"),
@@ -237,27 +227,6 @@ test("Options boots the app with the bar handed off expanded and saves nothing",
   expect(requests).toHaveLength(3);
 });
 
-test("a readable store that rejects privacy writes keeps the choice for multiple app readers", async ({ context, page }) => {
-  await cleanStorage(context);
-  const requests = await stubExpoScripts(page);
-  await page.goto(invite);
-  await page.evaluate(() => {
-    Storage.prototype.setItem = function setItem(): never {
-      throw new Error("quota rejected the privacy write");
-    };
-  });
-  await page.getByTestId("privacy-bar-ok").click();
-  await expect(page.locator("#issue922-app-mounted")).toBeVisible();
-  const state = await page.evaluate(() => ({
-    stored: window.localStorage.getItem("mingla_privacy_v2"),
-    readers: (window as typeof window & { __issue922Choices?: string[] }).__issue922Choices,
-    pageLifetimeChoice: (window as typeof window & { __minglaPrebootPrivacy?: { analytics: boolean; ads: boolean } }).__minglaPrebootPrivacy,
-  }));
-  expect(state.stored).toBeNull();
-  expect(state.readers).toEqual(Array(3).fill(JSON.stringify({ analytics: true, ads: true })));
-  expect(state.pageLifetimeChoice).toMatchObject({ analytics: true, ads: true });
-  expect(requests).toHaveLength(3);
-});
 
 test("every ambiguous or returning-visitor case immediately boots the ordinary Expo app", async ({ browser, baseURL }) => {
   const cases: { url: string; storage?: [string, string]; blockedStorage?: boolean }[] = [

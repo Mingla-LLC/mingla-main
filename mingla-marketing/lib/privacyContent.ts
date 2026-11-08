@@ -128,7 +128,7 @@ export const PRIVACY_SECTIONS = [
     title: '5.2 Advertising measurement and choices',
     paragraphs: [
       'On Mingla buyer web pages, we use the Meta Pixel and Conversions API, the Snap Pixel and Conversions API, and the TikTok Pixel and Events API. We may share hashed email and phone numbers, page and purchase events, and device and browser data with these providers. We use this information to measure and improve our ads and to show people relevant events.',
-      'These advertising pixels load when a page opens unless you have opted out. You can opt out using the banner or the “Ad privacy choices” link in the page footer. Your choice is remembered in that browser. Opting out stops the advertising pixels and suppresses server-side conversion sharing for that browser.',
+      'These advertising pixels load when a page opens unless you have opted out. You can opt out at any time from the “Privacy & ad choices” strip at the bottom of every page. Your choice is remembered in that browser. Opting out stops the advertising pixels and suppresses server-side conversion sharing for that browser.',
     ],
   },
   {

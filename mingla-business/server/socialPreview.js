@@ -76,12 +76,12 @@ const PUBLIC_ANALYTICS_FAMILIES = new Set(["opaque-share", "content-share"]);
 /**
  * #2331 — the server-rendered share hosts (/s/ content shares, /p/ shared
  * cards) show the same privacy bar as every buyer page, from the one
- * server-side source, plus an in-page "Your privacy choices" that reopens it
- * expanded. The page body ends above the bar.
+ * server-side source: the "Privacy & ad choices" strip and its choices sheet
+ * (#4318: no separate privacy link on the page). The page body ends above the
+ * strip.
  */
 const sharePrivacyBar = () =>
-  `<style>${privacyBarCss()}\nbody{padding-bottom:var(--mingla-privacy-inset,0px)}.share-privacy{max-width:1040px;margin:0 auto;padding:0 20px 24px}.share-privacy-link{min-height:44px;padding:0;border:0;background:none;color:#ead7c7;font:inherit;font-size:14px;text-decoration:underline;cursor:pointer}</style>`
-  + `<p class="share-privacy"><button type="button" class="share-privacy-link" data-mingla-privacy-choices data-testid="privacy-choices-link">Your privacy choices</button></p>`
+  `<style>${privacyBarCss()}\nbody{padding-bottom:var(--mingla-privacy-inset,0px)}</style>`
   + privacyBarMarkup()
   + `<script>${privacyReaderSource()}${privacyBarRuntimeSource()}__minglaPrivacyBar();</script>`;
 

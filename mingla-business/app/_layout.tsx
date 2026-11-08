@@ -82,8 +82,6 @@ import {
   initWebAnalytics,
 } from "../src/analytics/webAnalytics";
 import { ConsentBanner } from "../src/analytics/ConsentBanner";
-import { PrivacyChoicesLink } from "../src/analytics/PrivacyChoicesLink";
-import { setPageFooterAccessory } from "@mingla/offering-rendering/pageFooterAccessory";
 import {
   initializeAppsFlyer,
   subscribeOneLinkDeepLink,
@@ -112,6 +110,13 @@ import {
   isBusinessNavigationStartupSettled,
 } from "../src/services/businessPushLaunchIntent";
 import { usePushPermissionMoment } from "../src/hooks/usePushPermissionMoment";
+// issue #1023 — the ?motion= deep link is a DEV-ONLY preview tool. Required
+// only under __DEV__ so production bundles never carry it (or the motion
+// override module) in the boot payload.
+const useMotionDeepLink: () => void = __DEV__
+  ? // eslint-disable-next-line @typescript-eslint/no-require-imports
+    (require("../src/dev/motionDeepLink") as typeof import("../src/dev/motionDeepLink")).useMotionDeepLink
+  : () => undefined;
 import { verifyStripeModeAlignment } from "../src/services/stripeModeHandshake";
 // ORCH-1102 — route-agnostic auth routing with no dead-ends. Pure, unit-tested
 // predicates: an unauthenticated user on ANY web route redirects to the real
@@ -132,10 +137,6 @@ import { hasUsableStoredWebSession } from "../src/utils/authReadiness";
 import { shouldRequestAttNow } from "../src/utils/attRequestTiming";
 import { shouldDisplayForegroundBusinessNotification } from "../src/utils/brandGroupNotificationForeground";
 import { syncBusinessMediaLanguage } from "../src/i18n";
-
-// #2331 — every public offering page ends with the "Your privacy choices"
-// link on buyer web (native registers nothing and renders as before).
-if (Platform.OS === "web") setPageFooterAccessory(PrivacyChoicesLink);
 
 // Sub-B: a tap that arrives before auth is stashed here + replayed post-login
 // (mirrors the consumer deferred-deeplink pattern). Keyed in AsyncStorage so a
@@ -854,6 +855,8 @@ const authRoutingStyles = StyleSheet.create({
 });
 
 export default function RootLayout(): React.ReactElement {
+  // issue #1023 — DEV-ONLY `motion=<slug>` link switch (no-op in production).
+  useMotionDeepLink();
   const prevAppStateRef = useRef<AppStateStatus>(AppState.currentState);
   const versionForegroundStateRef = useRef(new VersionForegroundStateMachine());
   const updateRequiredRef = useRef(false);

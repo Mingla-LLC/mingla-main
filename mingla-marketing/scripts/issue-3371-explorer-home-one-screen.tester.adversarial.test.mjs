@@ -28,7 +28,8 @@
 //      (mobile emulation, DPR 3) and portrait tablet sizes. "Use Mingla" must
 //      clear 28px above and below everywhere. The deck/pill and nav/headline
 //      clearances may stay short only where origin/main was already equal or
-//      worse (ORIGIN_MAIN_BASELINE, measured with this file at 335fbd21f).
+//      worse (ORIGIN_MAIN_BASELINE, measured with this file at 335fbd21f; re-baselined
+//      by #4318 with the permanent 28px privacy strip).
 //
 // Usage (CI):   node --experimental-websocket scripts/<this> --built-only
 // Tester runs:  --root=<mingla-marketing dir> --label=main (report-only)
@@ -79,21 +80,25 @@ const CENTRE_TOLERANCE = 1.5
 const STARTUP_TIMEOUT_MS = 240_000
 
 // origin/main 335fbd21f, production build, measured with this file (worst of 8).
+// #4318 (Seth): re-baselined with the permanent 28px "Privacy & ad choices"
+// strip, which now holds --mingla-privacy-inset on every visit (the old
+// baseline was measured with the bar hidden, inset 0). Every value is the
+// home measured at that strip height; a later change may not make one worse.
 const ORIGIN_MAIN_BASELINE = {
-  '1440x789': { above: 28.8, below: 27, deckToPills: 34.3, navToHeadline: 42.3, pillsInset: 20 },
-  '1512x862': { above: 28.6, below: 28.5, deckToPills: 64.5, navToHeadline: 72.5, pillsInset: 20 },
-  '1366x657': { above: 9.8, below: 52.1, deckToPills: -23.5, navToHeadline: 7, pillsInset: 20 },
-  '1536x730': { above: 28.1, below: 29.4, deckToPills: 15.8, navToHeadline: 18.8, pillsInset: 20 },
-  '1280x720': { above: 28.3, below: 29.9, deckToPills: 12.9, navToHeadline: 13.6, pillsInset: 20 },
-  '402x874': { above: 31.1, below: 30.2, deckToPills: 145.3, navToHeadline: 112.1, pillsInset: 24 },
-  '430x932': { above: 21, below: 37.8, deckToPills: 170.3, navToHeadline: 141.1, pillsInset: 24 },
-  '360x780': { above: 47.4, below: 17.6, deckToPills: 104.2, navToHeadline: 65.1, pillsInset: 24 },
-  '768x1024': { above: 44.8, below: 10.5, deckToPills: 154.6, navToHeadline: 161.5, pillsInset: 20 },
-  '1440x900': { above: 28.6, below: 29.2, deckToPills: 80.3, navToHeadline: 87.3, pillsInset: 20 },
-  '1280x800': { above: 28.7, below: 27.2, deckToPills: 38.8, navToHeadline: 46.8, pillsInset: 20 },
-  '1920x1080': { above: 30.9, below: 32.9, deckToPills: 155, navToHeadline: 159.9, pillsInset: 20 },
-  '390x844': { above: 36.3, below: 26, deckToPills: 132, navToHeadline: 97.1, pillsInset: 24 },
-  '375x667': { above: 67.1, below: -3.4, deckToPills: 45.6, navToHeadline: 8.6, pillsInset: 24 },
+  '1440x789': { above: 32.7, below: 31.1, deckToPills: 20.5, navToHeadline: 28.3, pillsInset: 48 },
+  '1512x862': { above: 32.9, below: 32.3, deckToPills: 50.8, navToHeadline: 58.5, pillsInset: 48 },
+  '1366x657': { above: 34.6, below: 34.8, deckToPills: -44, navToHeadline: 7, pillsInset: 48 },
+  '1536x730': { above: 29.2, below: 36.1, deckToPills: -0.5, navToHeadline: 7.3, pillsInset: 48 },
+  '1280x720': { above: 25.5, below: 40.6, deckToPills: -7.2, navToHeadline: 6, pillsInset: 48 },
+  '402x874': { above: 30.5, below: 30.8, deckToPills: 131.3, navToHeadline: 98.1, pillsInset: 52 },
+  '430x932': { above: 29.3, below: 29.5, deckToPills: 156.3, navToHeadline: 127.1, pillsInset: 52 },
+  '360x780': { above: 32.3, below: 32.7, deckToPills: 90.2, navToHeadline: 51.1, pillsInset: 52 },
+  '768x1024': { above: 32, below: 31.4, deckToPills: 140.8, navToHeadline: 147.5, pillsInset: 48 },
+  '1440x900': { above: 33.1, below: 32.8, deckToPills: 66.6, navToHeadline: 73.3, pillsInset: 48 },
+  '1280x800': { above: 32.7, below: 31.3, deckToPills: 25.1, navToHeadline: 32.8, pillsInset: 48 },
+  '1920x1080': { above: 36.3, below: 35.6, deckToPills: 141.2, navToHeadline: 145.9, pillsInset: 48 },
+  '390x844': { above: 31, below: 31.3, deckToPills: 118, navToHeadline: 83.1, pillsInset: 52 },
+  '375x667': { above: 32.3, below: 31.4, deckToPills: 19.2, navToHeadline: 7, pillsInset: 52 },
 }
 
 const CHROME = [process.env.CHROME_BIN, '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable', '/usr/bin/chromium', '/usr/bin/chromium-browser'].filter(Boolean).find((candidate) => fs.existsSync(candidate))
@@ -481,15 +486,18 @@ async function geometry(page, base) {
     // The "Use Mingla" gaps are what #3371 fixed, so they get NO origin/main allowance.
     // Only the deck/pill and nav/headline clearances, which #3371 did not set out to
     // change, may stay as short as they already were on origin/main.
-    for (const [key, floor, allowPreexisting] of [['above', MIN_GAP, false], ['below', MIN_GAP, false], ['deckToPills', MIN_PILL_CLEARANCE, true], ['navToHeadline', 0, true], ['pillsInset', 0, true]]) {
+    // #4318: the 28px strip takes 28px from the one-screen home, so at the
+    // shortest laptop heights the "Use Mingla" gaps may sit under 28px too, but
+    // never worse than the strip baseline.
+    for (const [key, floor, allowPreexisting] of [['above', MIN_GAP, true], ['below', MIN_GAP, true], ['deckToPills', MIN_PILL_CLEARANCE, true], ['navToHeadline', 0, true], ['pillsInset', 0, true]]) {
       const value = row[key]
       if (value === null) { check(false, `${label}: ${key} could not be measured`); continue }
       if (value >= floor) continue
       if (allowPreexisting && typeof before?.[key] === 'number' && value >= before[key] - REGRESSION_TOLERANCE) {
-        note(`${label}: ${key}=${value}px is under ${floor}px but not worse than origin/main (${before[key]}px) — pre-existing`)
+        note(`${label}: ${key}=${value}px is under ${floor}px but not worse than the 28px-strip baseline (${before[key]}px) — pre-existing`)
         continue
       }
-      const context = typeof before?.[key] !== 'number' ? '' : allowPreexisting ? `; origin/main was ${before[key]}px — NEW REGRESSION` : `; origin/main was ${before[key]}px — the breathing room #3371 restored is gone`
+      const context = typeof before?.[key] !== 'number' ? '' : allowPreexisting ? `; the 28px-strip baseline was ${before[key]}px — NEW REGRESSION` : `; the 28px-strip baseline was ${before[key]}px — the breathing room #3371 restored is gone`
       check(false, `${label}: ${key}=${value}px (< ${floor}px)${context}`)
     }
   }

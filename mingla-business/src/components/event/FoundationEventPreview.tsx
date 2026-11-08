@@ -183,12 +183,6 @@ export const FoundationEventPreview: React.FC<FoundationEventPreviewProps> = ({
 }) => {
   const { isDesktop } = useResponsiveLayout();
   void isDesktop; // ParallaxCoverShell owns the responsive two-column shell.
-  const acquisitionClosed =
-    event.acquisitionState?.kind !== undefined &&
-    event.acquisitionState.kind !== "current";
-  const shellTheme = acquisitionClosed
-    ? { ...theme, animation: "none" as const }
-    : theme;
 
   const coverType: "image" | "video" | "gif" | null =
     event.coverMediaType === "video"
@@ -247,7 +241,9 @@ export const FoundationEventPreview: React.FC<FoundationEventPreviewProps> = ({
   return (
     <ParallaxCoverShell
       palette={palette}
-      theme={shellTheme}
+      // issue #1023 (Seth, 7 Nov): the theme motion plays in every lifecycle
+      // state; #1902's closed-state animation suppression is lifted.
+      theme={theme}
       coverMediaUrl={event.coverMediaUrl}
       coverMediaType={coverType}
       coverHue={event.coverHue}

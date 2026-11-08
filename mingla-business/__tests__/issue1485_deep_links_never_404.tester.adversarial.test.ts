@@ -137,6 +137,13 @@ const COMPILED_SRC: Record<string, string> = {
   // truth. The exhaustive #1485 oracle now preserves the exact invitation
   // owner while retaining the original static-asset exclusion unchanged.
   "/accept-brand-invitation": "^/accept-brand-invitation$",
+  // [TEST-MOD-APPROVED #1023] The same-origin Google Fonts proxy (decision D-1:
+  // buyers' browsers never call Google) adds three rewrites before the SPA
+  // catch-all. Their path-to-regexp 6 compiled forms (strict, "/" delimiter)
+  // keep this oracle exhaustive; the catch-all literal below is unchanged.
+  "/gfonts/css2": "^/gfonts/css2$",
+  "/gfonts/s/:path*": "^/gfonts/s(?:/((?:[^/]+?)(?:/(?:[^/]+?))*))?$",
+  "/gfonts/l/:path*": "^/gfonts/l(?:/((?:[^/]+?)(?:/(?:[^/]+?))*))?$",
   // [TEST-MOD-APPROVED #1876] #1876 F-2 adds `assets/` to the same alternation
   // (#1485's deferred discovery D-1). This table is a lookup keyed by the
   // SHIPPED source, so the key has to track it or `resolveForBrowser` stops

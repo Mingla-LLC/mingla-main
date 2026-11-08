@@ -1,9 +1,14 @@
 import type { ThemeInput } from "@mingla/offering-rendering";
+import {
+  canonicalThemeFont,
+  color2FromColumn,
+  gradientToColumn,
+} from "@mingla/offering-rendering/themeResolver";
 
 /**
  * #1022 — THE canonical offering-theme column contract.
  *
- * One module owns the three `public.events` theme override columns, the
+ * One module owns the `public.events` theme override columns, the
  * normaliser, and the standalone columnar write. Every mount (4 create
  * wizards + 2 edit surfaces) reads and writes through this file.
  *
@@ -13,22 +18,34 @@ import type { ThemeInput } from "@mingla/offering-rendering";
  *   - Draft / event / RSVP / trip / experience rows are ALL rows in
  *     `public.events`, so one column contract serves every offering type.
  *
+ * issue #1023 wave 2 — a fourth column, `theme_gradient_override`, stores a
+ * gradient as ONE value ("#first,#second"). It belongs to the colour axis: the
+ * domain `color2` is only kept with a `color`, and it is read back only when
+ * the stored first stop equals the colour column (a stale pair reads solid).
+ *
  * I-PROPOSED-1022-OFFERING-THEME-COLUMNS-ONLY
  * I-PROPOSED-1022-THEME-SINGLE-WRITE-PATH
  */
 
-/** The three DB column names, in one place. */
+/** The DB column names, in one place. */
 export const THEME_OVERRIDE_COLUMNS = [
   "theme_color_override",
   "theme_font_override",
   "theme_animation_override",
-] as const satisfies readonly ["theme_color_override", "theme_font_override", "theme_animation_override"];
+  "theme_gradient_override",
+] as const satisfies readonly [
+  "theme_color_override",
+  "theme_font_override",
+  "theme_animation_override",
+  "theme_gradient_override",
+];
 
-/** Row shape carrying the three columns (all optional — legacy rows may lack them). */
+/** Row shape carrying the columns (all optional — legacy rows may lack them). */
 export interface OfferingThemeColumns {
   theme_color_override?: string | null;
   theme_font_override?: string | null;
   theme_animation_override?: string | null;
+  theme_gradient_override?: string | null;
 }
 
 /** The three theme axes, in canonical order. */
@@ -38,6 +55,8 @@ export type ThemeAxis = "color" | "font" | "animation";
  * THE normaliser (I-PROPOSED-1022-THEME-EMPTY-NORMALISED).
  *
  * `undefined` | `null` | `{null,null,null}` | any all-null permutation -> `null`.
+ * `color2` is part of the colour axis: without a `color` it is dropped, and it
+ * never keeps an override alive on its own.
  * Otherwise returns a NEW object with every axis explicitly present (null for
  * an inherited axis). Never mutates its input.
  *
@@ -54,6 +73,7 @@ export const normalizeThemeOverrides = (
   }
 
   const color = t.color ?? null;
+  const color2 = color === null ? null : (t.color2 ?? null);
   const font = t.font ?? null;
   const animation = t.animation ?? null;
 
@@ -61,7 +81,11 @@ export const normalizeThemeOverrides = (
     return null;
   }
 
-  return { color, font, animation };
+  // `color2` is only present when set, so a solid override keeps the
+  // three-key shape every existing comparison and snapshot relies on.
+  return color2 === null
+    ? { color, font, animation }
+    : { color, color2, font, animation };
 };
 
 /** Row columns -> domain. Applies normalizeThemeOverrides. */
@@ -74,13 +98,17 @@ export const themeOverridesFromColumns = (
 
   return normalizeThemeOverrides({
     color: row.theme_color_override ?? null,
+    color2: color2FromColumn(
+      row.theme_color_override,
+      row.theme_gradient_override,
+    ),
     font: row.theme_font_override ?? null,
     animation: row.theme_animation_override ?? null,
   });
 };
 
 /**
- * Domain -> row columns. Always returns all three keys (null for inherited),
+ * Domain -> row columns. Always returns every key (null for inherited),
  * so a partial commit explicitly clears the axes it does not set.
  */
 export const themeOverridesToColumns = (
@@ -90,8 +118,12 @@ export const themeOverridesToColumns = (
 
   return {
     theme_color_override: normalized?.color ?? null,
-    theme_font_override: normalized?.font ?? null,
+    theme_font_override: canonicalThemeFont(normalized?.font ?? null) ?? null,
     theme_animation_override: normalized?.animation ?? null,
+    theme_gradient_override: gradientToColumn(
+      normalized?.color,
+      normalized?.color2,
+    ),
   };
 };
 
@@ -146,6 +178,9 @@ export const patchOfferingTheme = async (
   // orch-strict-grep-allow events-type-filter — id-targeted UPDATE; the .select("id")
   // is a rowcount check (I-PROPOSED-I), not a content read, so an event_type
   // filter is irrelevant (the eq("id") already uniquely identifies the row).
+  // orch-strict-grep-allow events-type-filter — id-targeted UPDATE; the
+  // .select("id") is a rowcount check (I-PROPOSED-I), not a content read, so an
+  // event_type filter is irrelevant (the eq("id") uniquely identifies the row).
   const { data, error } = await supabase
     .from("events")
     .update(themeOverridesToColumns(input.themeOverrides))

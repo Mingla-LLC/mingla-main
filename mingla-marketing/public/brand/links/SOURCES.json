@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "issue": "#4318",
+  "purpose": "Brand assets for usemingla.com/links, copied from the Mingla brand pack \"Mingla, Edited\" (approved 2026-11-06).",
+  "assets": [
+    {
+      "file": "mingla-wordmark-white.svg",
+      "use": "White Mingla wordmark on the orange header bar",
+      "source": "brand-pack/02-logos/mingla-wordmark-white.svg",
+      "sourceSha256": "3305daf2b1c82c0d899465340f0bdb8add6e6aef71b6c0df2299d5eadb4dccce",
+      "processing": "copied byte for byte",
+      "sha256": "3305daf2b1c82c0d899465340f0bdb8add6e6aef71b6c0df2299d5eadb4dccce"
+    },
+    {
+      "file": "explore-rooftop-golden-hour.jpg",
+      "use": "\"Explore your city\" banner and the Explore sheet photo",
+      "source": "brand-pack/06-photos/magnific-rooftop-golden-hour-1080x1920.jpg",
+      "sourceSha256": "cdaa2f2feb990d4b396c96cf480cd37fcf2def35a393916e20cc75a7eeed6f8c",
+      "provenance": "Frame from the Friday Lagos film (Magnific). Generated; label as AI-generated in paid campaigns (brand-pack/06-photos/photo-sources.txt).",
+      "processing": "sharp 0.35.5: cover-crop to 900x1200, centre, mozjpeg quality 74",
+      "sha256": "64abef1cd2cbff2a8e610c780988c89e695352d2e1599690a34b523f03f07c48"
+    },
+    {
+      "file": "host-check-in-party.jpg",
+      "use": "\"Host something in your city\" banner and the Host sheet photo",
+      "source": "brand-pack/06-photos/magnific-host-check-in-party-1536x2730.jpg",
+      "sourceSha256": "49410f12a9c5f9e791cb94eea9ea6e368b0f2e820f896dacf723f31b741d2e21",
+      "provenance": "Magnific generation for the Host store listing. Generated (brand-pack/06-photos/photo-sources.txt).",
+      "processing": "sharp 0.35.5: cover-crop to 900x1200, centre, mozjpeg quality 74",
+      "sha256": "aafbe6e5f1ecc067a49d79dee7df0a4af4944f7ead6cd66c87de7386faa5dbf3"
+    }
+  ]
+}

@@ -19,8 +19,10 @@ export const EVENT_SLUG = "night-a";
 export const EVENT_ID = "00000000-0000-4000-8000-0000000002a1";
 export const ORDER_ID = "00000000-0000-4000-8000-0000000002b1";
 
-/** The six sizes the contract names. */
+/** The sizes the contracts name (#2331's six plus #4318's 360x640 and 390x844). */
 export const SIZES = [
+  { width: 360, height: 640 },
+  { width: 390, height: 844 },
   { width: 320, height: 568 },
   { width: 375, height: 667 },
   { width: 412, height: 718 },
@@ -61,7 +63,7 @@ export async function scrollToEnd(page: Page): Promise<void> {
   await page.evaluate(() => {
     for (const node of Array.from(document.querySelectorAll<HTMLElement>("*"))) {
       const style = getComputedStyle(node);
-      if (/(auto|scroll)/.test(style.overflowY) && node.scrollHeight > node.clientHeight + 1 && !node.closest("[data-testid='privacy-bar']")) {
+      if (/(auto|scroll)/.test(style.overflowY) && node.scrollHeight > node.clientHeight + 1 && !node.closest("[data-testid='privacy-sheet']")) {
         node.scrollTop = node.scrollHeight;
         node.dispatchEvent(new Event("scroll"));
       }
@@ -180,7 +182,8 @@ export interface OcclusionReport {
  */
 export async function auditOcclusion(page: Page): Promise<OcclusionReport> {
   return page.evaluate(() => {
-    const bar = document.querySelector<HTMLElement>("[data-testid='privacy-bar']");
+    // #4318 — the bar is the permanent "Privacy & ad choices" strip.
+    const bar = document.querySelector<HTMLElement>("[data-testid='privacy-strip']");
     const barRect = bar?.getBoundingClientRect();
     const controls = Array.from(
       document.querySelectorAll<HTMLElement>("button, a[href], [role='button'], [role='link'], input[type='checkbox']"),
@@ -219,7 +222,7 @@ export async function auditOcclusion(page: Page): Promise<OcclusionReport> {
       if (hit === undefined || underBar) {
         covered.push({
           label: (node.getAttribute("aria-label") ?? node.textContent ?? node.tagName).trim().slice(0, 60),
-          hit: hit === undefined ? "none" : `${hit.tagName}${hit.closest("[data-testid='privacy-bar']") ? " (privacy bar)" : ""}`,
+          hit: hit === undefined ? "none" : `${hit.tagName}${hit.closest("[data-testid='privacy-strip']") ? " (privacy strip)" : ""}`,
           x: Math.round(x),
           y: Math.round(y),
         });

@@ -24,7 +24,7 @@ import {
 } from "../../constants/designSystem";
 import { flushDraftVenuePersistence, useDraftVenueStore } from "../../store/draftVenueStore";
 import { ThemeControlRow } from "../theme/ThemeControlRow";
-import { ThemeSheet } from "../theme/ThemeSheet";
+import { ThemeSheet } from "../theme/ThemeSheetLazy";
 import { CoverPickerSheet } from "../ui/CoverPickerSheet";
 import type { CoverPatch } from "../ui/CoverPicker";
 import { EventCoverMedia } from "../ui/EventCoverMedia";

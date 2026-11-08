@@ -116,9 +116,9 @@ const bundle = readFileSync(outputBundle, "utf8");
 for (const marker of [
   "orch-1255-public-venue",
   "issue-2729-reserve-cta",
-  // #2331 — the real privacy bar and its inset writer.
-  "Privacy choices",
-  "privacy-bar-ok",
+  // #2331 → #4318 — the real privacy strip and its inset writer.
+  "Privacy & ad choices",
+  "privacy-strip",
   "mingla_privacy_v2",
 ]) {
   if (!bundle.includes(marker)) {

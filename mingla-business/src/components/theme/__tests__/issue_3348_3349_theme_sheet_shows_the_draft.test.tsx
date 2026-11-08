@@ -69,11 +69,6 @@ jest.mock("expo-linear-gradient", () => ({
 jest.mock("../../../theme/useThemeFont", () => ({
   useThemeFont: () => undefined,
 }));
-jest.mock("../../../store/themeRecentsStore", () => ({
-  useThemeRecentsStore: (
-    select: (s: { recents: string[]; addRecent: () => void }) => unknown,
-  ) => select({ recents: [], addRecent: () => undefined }),
-}));
 
 // eslint-disable-next-line import/first
 import { EventCoverMedia, type ThemeInput } from "@mingla/offering-rendering";
@@ -139,6 +134,10 @@ const openFontTab = async (tree: Tree): Promise<void> => {
   await TestRenderer.act(() => {
     (tab.props.onPress as () => void)();
   });
+  // issue #1023 wave 2 — the Font tab loads its catalogue lazily.
+  for (let i = 0; i < 5; i++) {
+    await TestRenderer.act(async () => new Promise((r) => setTimeout(r, 0)));
+  }
 };
 
 const defaultRow = (tree: Tree): HostNode => {
@@ -186,13 +185,24 @@ describe("#3348 — the Brand default font row names the brand's font, never the
     expect(textOf(row)).toBe("Brand default — Inter");
     expect(textOf(row)).not.toContain("Space Grotesk");
     // The inherit row is NOT selected; the picked row is.
-    expect(row.props.accessibilityState).toEqual({ selected: false });
-    const picked = tree.root.findAll(
-      (n) =>
-        n.type === "Pressable" &&
-        n.props.accessibilityLabel === "Space Grotesk, technical sans",
+    // issue #1023 wave 2 — rows are radios in a virtualised list now: the row
+    // a11y state gains `checked`, and the picked row is rendered through the
+    // list's renderItem (the specimen label "technical sans" is gone).
+    expect(row.props.accessibilityState).toEqual({ selected: false, checked: false });
+    const list = tree.root.findAll(
+      (n) => n.props.testID === "theme-font-list" && Array.isArray(n.props.data),
     )[0];
-    expect(picked.props.accessibilityState).toEqual({ selected: true });
+    const item = (list.props.data as Array<{ family: string }>).find(
+      (r) => r.family === "Space Grotesk",
+    );
+    expect(item).toBeDefined();
+    const picked = (
+      list.props.renderItem as (a: { item: unknown }) => React.ReactElement
+    )({ item });
+    expect((picked.props as { accessibilityState: unknown }).accessibilityState).toEqual({
+      selected: true,
+      checked: true,
+    });
 
     await TestRenderer.act(() => tree.unmount());
   });

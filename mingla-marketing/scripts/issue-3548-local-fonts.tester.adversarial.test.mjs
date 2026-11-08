@@ -6,6 +6,13 @@ import { createHash } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import {
+  LINKS_FONT_ASSETS,
+  LINKS_FONT_DEFINITIONS,
+  LINKS_FONT_LICENCES,
+  checkLinksFontSource,
+  linksManifestRows,
+} from './issue-4318-links-fonts.contract.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const BUILD_ROOT = path.join(ROOT, '.next')
@@ -307,6 +314,14 @@ const checkSourceTopology = () => {
     assert.match(previewSource, /<div\s+className=\{previewInter\.className\}>/)
     assert.doesNotMatch(previewSource, /localFont|next\/font|const\s+previewInter/)
   }
+
+  // #4318 — the /links brand faces live in their own route-scoped module.
+  const linksSources = ['app', 'components', 'lib'].flatMap((root) =>
+    collectFiles(path.join(ROOT, root), (candidate) => /\.(?:ts|tsx|js|jsx)$/.test(candidate)).map((absolutePath) =>
+      path.relative(ROOT, absolutePath),
+    ),
+  )
+  checkLinksFontSource((relativePath) => read(relativePath), linksSources)
 }
 
 const checkForbiddenProductionHosts = () => {
@@ -341,6 +356,9 @@ const checkSourceBinariesAndLicenses = () => {
   const expectedFiles = [
     'SOURCES.json',
     ...EXPECTED_ASSETS.flatMap(({ localFile, oflFile }) => [localFile, oflFile]),
+    // #4318 — the /links brand faces and their two OFL files.
+    ...LINKS_FONT_ASSETS.map(({ localFile }) => localFile),
+    ...LINKS_FONT_LICENCES.map(({ oflFile }) => oflFile),
   ].sort()
   assert.deepEqual(readdirSync(fontDirectory).sort(), expectedFiles, 'the pinned font directory must be exact')
 
@@ -356,6 +374,14 @@ const checkSourceBinariesAndLicenses = () => {
       `${asset.oflFile} must retain its upstream copyright notice verbatim`,
     )
   }
+  for (const asset of LINKS_FONT_ASSETS) {
+    const bytes = read(`app/fonts/${asset.localFile}`, null)
+    assert.equal(bytes.byteLength, asset.byteLength, `${asset.localFile} byte length must match the pin`)
+    assert.equal(sha256(bytes), asset.sha256, `${asset.localFile} hash must match the pin`)
+    const license = read(`app/fonts/${asset.oflFile}`, null)
+    assert.equal(sha256(license), asset.oflSha256, `${asset.oflFile} must match its pin`)
+    assert.equal(license.toString('utf8').split('\n')[0], asset.oflNotice, `${asset.oflFile} notice`)
+  }
 }
 
 const checkSourceAssetsAndLicenses = () => {
@@ -365,6 +391,7 @@ const checkSourceAssetsAndLicenses = () => {
     schemaVersion: 1,
     investigationDate: '2026-09-27',
     assets: EXPECTED_ASSETS.map(({ oflSha256: _oflSha256, oflNotice: _oflNotice, ...asset }) => asset),
+    linksRouteAssets: linksManifestRows(),
   })
 }
 
@@ -410,11 +437,12 @@ const checkBuiltAssets = () => {
     file: path.basename(absolutePath),
     sha256: sha256(readFileSync(absolutePath)),
   }))
-  assert.equal(emitted.length, 3, 'the build must emit exactly three WOFF2 files')
+  // #4318: three site faces plus the four /links brand faces.
+  assert.equal(emitted.length, 7, 'the build must emit exactly seven WOFF2 files')
   assert.deepEqual(
     emitted.map(({ sha256: hash }) => hash).sort(),
-    EXPECTED_ASSETS.map(({ sha256: hash }) => hash).sort(),
-    'the exact three approved source hashes must reach emitted media',
+    [...EXPECTED_ASSETS, ...LINKS_FONT_ASSETS].map(({ sha256: hash }) => hash).sort(),
+    'the exact seven approved source hashes must reach emitted media',
   )
 }
 
@@ -457,6 +485,27 @@ const checkBuiltCss = () => {
     assert.equal(normalizePercent(face['size-adjust']), normalizePercent(expected.sizeAdjust))
   }
 
+  // #4318 — every /links face resolves to its approved emitted bytes.
+  const linksBytes = new Map(LINKS_FONT_ASSETS.map((asset) => [asset.localFile, asset.sha256]))
+  for (const definition of LINKS_FONT_DEFINITIONS) {
+    const matching = faces.filter((face) => unquote(face['font-family'] ?? '') === definition.exportName)
+    assert.deepEqual(
+      matching.map((face) => [face['font-weight'], face['font-style']]),
+      definition.faces.map(([, weight, style]) => [weight, style]),
+      `${definition.exportName} compiled faces must remain exact`,
+    )
+    matching.forEach((face, i) => {
+      assert.equal(face['font-display'], 'swap')
+      const source = face.src?.match(/^url\((\/_next\/static\/media\/([^)]*\.woff2))\) format\(["']woff2["']\)$/)
+      assert(source, `${definition.exportName} must use same-origin emitted WOFF2 media`)
+      assert.equal(
+        sha256(readFileSync(path.join(mediaDirectory, source[2]))),
+        linksBytes.get(definition.faces[i][0]),
+        `${definition.exportName} must resolve to its approved emitted bytes`,
+      )
+    })
+  }
+
   const allowedFallbacks = new Set(EXPECTED_FALLBACKS.map(({ family }) => family))
   for (const face of faces) {
     const family = unquote(face['font-family'] ?? '')
@@ -489,8 +538,12 @@ const checkBuiltManifests = () => {
   assert.deepEqual(fontManifest.pages, {})
   assert.equal(fontManifest.appUsingSizeAdjust, false)
   assert.equal(fontManifest.pagesUsingSizeAdjust, false)
-  const appEntries = Object.entries(fontManifest.app)
-  assert.equal(appEntries.length, 1, 'one root layout must own all local font emissions')
+  // #4318: the root layout owns the site faces; the /links page alone owns the brand faces.
+  const allEntries = Object.entries(fontManifest.app)
+  assert.equal(allEntries.length, 2, 'the root layout and the /links page own the local font emissions')
+  const linksEntry = allEntries.find(([key]) => /\/app\/links\/page$/.test(key))
+  assert(linksEntry, 'the /links page must own the /links brand faces')
+  const appEntries = allEntries.filter(([key]) => key !== linksEntry[0])
   assert.match(appEntries[0][0], /\/app\/layout$/)
   const expectedMediaByHash = new Map(
     collectFiles(path.join(BUILD_ROOT, 'static/media'), (candidate) => candidate.endsWith('.woff2')).map(
@@ -506,6 +559,11 @@ const checkBuiltManifests = () => {
       expectedMediaByHash.get(EXPECTED_ASSETS[2].sha256),
     ].sort(),
     'the font manifest must retain root roles plus a distinct preview Inter role',
+  )
+  assert.deepEqual(
+    [...new Set(linksEntry[1])].sort(),
+    LINKS_FONT_ASSETS.map(({ sha256: hash }) => expectedMediaByHash.get(hash)).sort(),
+    'the /links page must preload exactly the four /links brand faces',
   )
 
   const appBuildManifest = JSON.parse(readFileSync(path.join(BUILD_ROOT, 'app-build-manifest.json'), 'utf8'))

@@ -324,7 +324,6 @@ const renderVisibleDocument = ({
   <style id="mingla-public-document-style">
     :root{color-scheme:dark;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#080706;color:#fff8f1}
     ${publicAdPrivacyStyle()}
-    .mingla-privacy-choices{min-height:44px;padding:0 4px;border:0;background:transparent;color:#ffb77f;font:inherit;text-decoration:underline;cursor:pointer}.mingla-privacy-choices:focus-visible{outline:3px solid #fff;outline-offset:3px}
     *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 85% 5%,rgba(244,124,32,.2),transparent 30rem),#080706;color:#fff8f1}
     a{color:inherit}.shell{max-width:1120px;margin:0 auto;padding:24px clamp(18px,4vw,56px) 64px}.brand{display:inline-flex;align-items:center;gap:10px;text-decoration:none;font-weight:900;letter-spacing:.02em}.brand-logo{display:block;width:auto;height:42px;max-width:170px;object-fit:contain}.hero{display:grid;gap:clamp(28px,5vw,64px);align-items:center;min-height:calc(100vh - 100px);padding:52px 0}.hero.has-image{grid-template-columns:minmax(0,1fr) minmax(280px,.78fr)}.eyebrow{color:#ff9a4d;font-size:.82rem;font-weight:800;letter-spacing:.16em;text-transform:uppercase}.status{display:inline-flex;margin:18px 0 0;padding:8px 12px;border:1px solid rgba(255,154,77,.42);border-radius:999px;color:#ffd5b2}.status[role="status"]{border-color:#f2b84b;color:#ffe0a0}.hero h1{margin:14px 0 18px;font-size:clamp(2.8rem,7vw,6.8rem);line-height:.92;letter-spacing:-.05em}.summary{max-width:720px;margin:0;color:#e5d5c7;font-size:clamp(1.08rem,2vw,1.35rem);line-height:1.58}.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:30px 0}.fact{padding:16px;border:1px solid rgba(255,255,255,.13);border-radius:16px;background:rgba(255,255,255,.05)}.fact dt{color:#c9b8aa;font-size:.78rem;text-transform:uppercase;letter-spacing:.1em}.fact dd{margin:7px 0 0;font-weight:750}.actions{display:flex;flex-wrap:wrap;gap:12px}.cta,.share{display:inline-flex;min-height:52px;align-items:center;justify-content:center;padding:0 24px;border-radius:999px;font:inherit;font-weight:900}.cta{background:#f47c20;color:#090807;text-decoration:none}.share{border:1px solid rgba(255,255,255,.24);background:transparent;color:#fff8f1;cursor:pointer}.share:disabled{cursor:wait;opacity:.7}.share:focus-visible,.cta:focus-visible,.brand:focus-visible,.share-fallback input:focus-visible{outline:3px solid #fff;outline-offset:4px}.share-feedback{min-height:1.5rem;margin:12px 0 0;color:#ffe0a0}.share-fallback{max-width:680px;margin:12px 0 0;padding:14px;border:1px solid rgba(255,255,255,.18);border-radius:14px;background:rgba(255,255,255,.05)}.share-fallback p{margin:0 0 8px;color:#e5d5c7}.share-fallback input{width:100%;padding:10px;border:1px solid rgba(255,255,255,.24);border-radius:9px;background:#15120f;color:#fff8f1;font:inherit;user-select:all}.runtime-status{min-height:1.3rem;margin:16px 0 0;color:#f2b84b}.cover{width:100%;max-height:72vh;aspect-ratio:4/5;border-radius:30px;object-fit:cover;border:1px solid rgba(255,255,255,.14);box-shadow:0 28px 80px rgba(0,0,0,.45)}.trust{border-top:1px solid rgba(255,255,255,.12);padding-top:24px;color:#a99a8f;font-size:.9rem}@media(max-width:780px){.hero.has-image{grid-template-columns:1fr}.hero{min-height:auto;padding-top:64px}.cover{aspect-ratio:16/10;order:-1}}
   </style>
@@ -346,7 +345,7 @@ const renderVisibleDocument = ({
       </div>
       ${image ? `<img class="cover" src="${escapeHtml(image)}" alt="${escapeHtml(text(facts.imageAlt, `${text(facts.title)} cover image`))}" />` : ""}
     </article>
-    <footer class="trust">Public facts supplied by ${escapeHtml(text(facts.brandName, "the host"))} and served from Mingla’s authoritative Host domain. <button type="button" class="mingla-privacy-choices" data-mingla-privacy-choices>Your privacy choices</button></footer>
+    <footer class="trust">Public facts supplied by ${escapeHtml(text(facts.brandName, "the host"))} and served from Mingla’s authoritative Host domain.</footer>
   </main></div>
   ${publicAdPrivacyMarkup()}
   <script>${browserRuntimeScript(canonicalUrl)}</script>
@@ -429,7 +428,7 @@ const publicDocumentCspSources = () => [
   ["img-src", "https:", "cover, gallery and avatar images from public hosts; pixel images (unchanged)"],
   ["img-src", "data:", "inline images (unchanged)"],
   ["style-src", "'unsafe-inline'", "the document's own <style>, react-native-web and index.html styles injected at takeover (unchanged)"],
-  ["font-src", "'self'", "the app's theme fonts (Inter, Poppins, ...) under /assets"],
+  ["font-src", "'self'", "the app's theme fonts (Inter, Poppins, ...) under /assets, and a host's Google Fonts theme font through the same-origin /gfonts proxy"],
   ["media-src", "'self'", "the app's own bundled media"],
   ["media-src", BUNNY_STREAM_ORIGIN, "cover videos (Bunny Stream)"],
   ["media-src", BAMBOO_GUIDES_ORIGIN, "Host Guide HLS manifests and video segments (Bamboo Video)"],
@@ -450,7 +449,7 @@ const publicDocumentCspSources = () => [
   ["script-src", "https://sc-static.net", "Snap pixel script (scevent.min.js)"],
   ["script-src", "https://tr.snapchat.com", "Snap pixel configuration"],
   ["script-src", "https://www.redditstatic.com", "Reddit pixel"],
-  ["connect-src", "'self'", "/index.html handoff, /api/public-boot-outcome, /api/content-share-analytics"],
+  ["connect-src", "'self'", "/index.html handoff, /api/public-boot-outcome, /api/content-share-analytics, /gfonts theme-font CSS"],
   ["connect-src", supabaseOrigin(), "every public page's data, RPCs and edge functions"],
   ["connect-src", MINGLA_MARKETING_ORIGIN, "Host Guide caption sidecars under /help/captions/*.vtt"],
   // Conditional-spread like the Sentry row: a malformed SUPABASE_URL must add

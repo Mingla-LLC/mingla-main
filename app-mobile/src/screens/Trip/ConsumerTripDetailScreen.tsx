@@ -56,6 +56,7 @@ import React, {
   type ReactElement,
 } from "react";
 import {
+  Animated,
   AccessibilityInfo,
   ActivityIndicator,
   Platform,
@@ -570,11 +571,30 @@ export default function ConsumerTripDetailScreen({
   const handleDockLayout = useCallback((e: LayoutChangeEvent): void => {
     setDockTopY(e.nativeEvent.layout.y);
   }, []);
+  // issue #1023 — the details sheet's on-screen top edge, for the full-screen
+  // motion's text-safe zone: cover spacer height − seam − scroll offset.
+  const motionSheetTop = useRef(new Animated.Value(100000)).current;
+  const motionSpacerH = useRef(0);
+  const motionScrollY = useRef(0);
+  const syncMotionSheetTop = useCallback((): void => {
+    if (motionSpacerH.current > 0) {
+      motionSheetTop.setValue(motionSpacerH.current - SEAM - motionScrollY.current);
+    }
+  }, [motionSheetTop]);
+  const handleMotionSpacerLayout = useCallback(
+    (e: LayoutChangeEvent): void => {
+      motionSpacerH.current = e.nativeEvent.layout.height;
+      syncMotionSheetTop();
+    },
+    [syncMotionSheetTop],
+  );
   const handleScroll = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>): void => {
+      motionScrollY.current = e.nativeEvent.contentOffset.y;
+      syncMotionSheetTop();
       setScrollY(e.nativeEvent.contentOffset.y);
     },
-    [],
+    [syncMotionSheetTop],
   );
   const handleScrollLayout = useCallback((e: LayoutChangeEvent): void => {
     setViewportH(e.nativeEvent.layout.height);
@@ -1170,6 +1190,7 @@ export default function ConsumerTripDetailScreen({
     <TripReserveBar
       cta={offeringState.cta}
       palette={palette}
+      theme={theme}
       kicker={offeringState.barKicker}
       fontFamily={boldFamily}
       onPress={openCart}
@@ -1185,6 +1206,7 @@ export default function ConsumerTripDetailScreen({
     <TripReserveBar
       cta={offeringState.cta}
       palette={palette}
+      theme={theme}
       kicker={offeringState.barKicker}
       fontFamily={boldFamily}
       onPress={openCart}
@@ -1233,10 +1255,6 @@ export default function ConsumerTripDetailScreen({
             coverMediaNode
           )}
           <View style={styles.coverScrim} pointerEvents="none" />
-          <ThemeEntranceAnimation
-            theme={theme}
-            sessionKey={`trip:${detail.tripId}`}
-          />
         </View>
 
         {/* (2) the gorhom scroll host — DIRECT child of <BaseBottomSheet>, flex:1,
@@ -1264,6 +1282,7 @@ export default function ConsumerTripDetailScreen({
           <View
             style={styles.coverSpacer}
             pointerEvents={galleryActive ? "none" : undefined}
+            onLayout={handleMotionSpacerLayout}
           />
           <View
             style={[
@@ -1325,6 +1344,26 @@ export default function ConsumerTripDetailScreen({
           </View>
         </BottomSheetScrollView>
 
+        {/* issue #1023 — the theme motion over the WHOLE screen (cover and
+            details), as in the approved reference. Above the scroll, below the
+            chrome; ignores touches; hidden from screen readers. It fades
+            below the details sheet's top edge, which it follows as the page
+            scrolls (motionSheetTop). */}
+        <View
+          style={styles.motionOverlay}
+          pointerEvents="none"
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          testID="issue-1023-motion-overlay"
+        >
+          <ThemeEntranceAnimation
+            theme={theme}
+            sessionKey={`trip:${detail.tripId}`}
+            pauseButton="none"
+            textZoneTop={motionSheetTop}
+          />
+        </View>
+
         {/* (3) chrome — absolute sibling above the cover + scroll, padded by the
             safe-area top. Reuses the shared OfferingChrome (close/share/mute). */}
         <View
@@ -1341,6 +1380,12 @@ export default function ConsumerTripDetailScreen({
             closeAccessibilityLabel="Close"
             testID="orch-1138-consumer-trip-chrome"
           />
+        </View>
+        <View
+          style={[styles.motionPause, { top: insets.top + 64 }]}
+          pointerEvents="box-none"
+        >
+          <ThemeEntranceAnimation theme={theme} sessionKey={`trip:${detail.tripId}`} part="pauseButton" />
         </View>
 
         {/* (4) FLOATING reserve PILL — absolute sibling, JUST the button (no
@@ -1474,6 +1519,11 @@ const styles = StyleSheet.create({
   nativeScroll: { zIndex: 2 },
   nativeScrollContent: { flexGrow: 1 },
   coverSpacer: { width: "100%", aspectRatio: 4 / 5 },
+  // issue #1023 — the entrance motion's pause control over the cover.
+  motionPause: { position: "absolute", right: 12, zIndex: 70 },
+  // issue #1023 — full-screen motion: over the cover and the scroll (2), under
+  // the floating Buy/Reserve bar (6+), the chrome (70) and overlays (100)
+  motionOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 5 },
   nativeBody: {
     zIndex: 2,
     marginTop: -SEAM,

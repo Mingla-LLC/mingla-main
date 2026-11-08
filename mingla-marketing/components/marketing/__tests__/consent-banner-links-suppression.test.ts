@@ -32,16 +32,22 @@ const cases: ReadonlyArray<[string, () => void]> = [
   ['the route-suppression module is gone', () => {
     assert(!fs.existsSync(path.resolve(process.cwd(), 'lib/consent-banner-visibility.ts')), 'lib/consent-banner-visibility.ts must be deleted')
   }],
-  ['the bar never asks the route whether to show', () => {
+  // #4318 (Seth): the bar became one permanent strip, rendered from the first
+  // HTML on every route; nothing decides whether it shows.
+  ['the strip never asks the route (or a saved choice) whether to show', () => {
     assert(!/shouldRenderConsentBanner|SUPPRESSED_CONSENT_ROUTES|usePathname/.test(banner), 'consent-banner.tsx must not suppress by route')
-    assert(/const visible = mounted && \(!privacy\.saved \|\| reopened\)/.test(banner), 'the bar shows while no choice is saved')
+    assert(!/privacy\.saved|const visible/.test(banner), 'the strip shows whatever was saved')
+    assert(/data-testid="privacy-strip"/.test(banner), 'the strip renders')
   }],
   ['/links sizes itself above the bar', () => {
     assert(links.includes("height: 'calc(100dvh - var(--mingla-privacy-inset, 0px))'"), '/links must subtract the privacy inset from 100dvh')
     assert(links.includes('h-[calc(100svh-var(--mingla-privacy-inset,0px))]'), '/links svh fallback must subtract the inset too')
   }],
-  ['/links ends with the in-page "Your privacy choices" link', () => {
-    assert(/<PrivacyChoicesLink\b/.test(links), '/links must render PrivacyChoicesLink at the end of its content')
+  // #4318 (Seth, feedback 15): the separate "Privacy choices" text link comes off
+  // /links and every other page; the bar is the one place to choose, and it
+  // folds to a "Privacy settings" button after a choice (adversarial suite).
+  ['/links carries no separate "Privacy choices" text link (#4318)', () => {
+    assert(!/<PrivacyChoicesLink\b|privacy-choices-link/.test(links), '/links must not render PrivacyChoicesLink')
   }],
 ]
 

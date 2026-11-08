@@ -4,7 +4,6 @@ import { CutoutShell } from '@/components/cutout'
 import { LAUNCH_CITIES, PAGE_SYSTEM_PATHS, type PageSystemPath } from '@/content/page-system/shared'
 import { CityHostAcquisitionBar } from './city-host-acquisition-bar'
 import { PageSystemNav } from './page-system-nav'
-import { PrivacyChoicesLink } from '@/components/marketing/privacy-choices-link'
 
 const REVIEW_LABELS: Record<PageSystemPath, string> = {
   '/internal/page-system/city-lagos': 'Lagos city hub',
@@ -46,7 +45,6 @@ export function PageSystemShell({
             <Link href="/privacy-policy">Privacy</Link>
             <Link href="/terms-of-service">Terms</Link>
             <Link href="/organiser-terms">Organiser Terms</Link>
-            <PrivacyChoicesLink className="ps-footer-privacy" />
           </nav>
         </footer>
         <aside className="ps-review-dock" aria-label="Private page-system review" data-private-review-dock data-print-hide>

@@ -61,6 +61,7 @@ import {
 } from "@mingla/offering-rendering/rsvpFloatingDecision";
 import type { RsvpGuestSnapshot } from "@mingla/offering-rendering/rsvpGuestSnapshot";
 import { useOwnProfilePhoneOnFile } from "../../hooks/useOwnProfilePhoneOnFile";
+import { accentFill } from "@mingla/offering-rendering/themeAccentStyle";
 
 /** How often the inline-decision visibility is re-measured between scroll events. */
 const VISIBILITY_POLL_MS = 400;
@@ -211,9 +212,6 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (
   const acquisitionClosed =
     event.acquisitionState?.kind !== undefined &&
     event.acquisitionState.kind !== "current";
-  const shellTheme = acquisitionClosed
-    ? { ...theme, animation: "none" as const }
-    : theme;
 
   // ORCH-1163-R3 — the RSVP floating bar is TALLER + variable (3 glyph+label
   // buttons + a wrapping micro subcopy) vs the event page's ~56px single button, so
@@ -389,7 +387,7 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (
         ]}
       >
         <View
-          style={[styles.deskAccent, { backgroundColor: palette.accent }]}
+          style={[styles.deskAccent, accentFill(palette)]}
         />
         <View style={styles.deskInner}>
           <RsvpDecisionBox
@@ -409,7 +407,9 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (
     >
       <ParallaxCoverShell
         palette={palette}
-        theme={shellTheme}
+        // issue #1023 (Seth, 7 Nov): the theme motion plays in every lifecycle
+        // state; #1902's closed-state animation suppression is lifted.
+        theme={theme}
         coverMediaUrl={event.coverMediaUrl}
         coverMediaType={coverType}
         coverHue={event.coverHue}

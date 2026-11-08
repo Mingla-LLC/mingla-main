@@ -34,6 +34,11 @@ export type EventDatePickerProps = {
   onRetry?: () => void;
   /** Accent for selected chips. */
   accentColor?: string;
+  /**
+   * issue #1023 — the full selected-chip fill (the theme gradient, from
+   * accentFillWithBorder). Wins over accentColor for the chip fill and edge.
+   */
+  selectedFill?: { backgroundColor: string; borderColor: string };
   /** Muted text/border. */
   mutedColor?: string;
   style?: ViewStyle;
@@ -92,6 +97,7 @@ export function EventDatePicker({
   status = "ready",
   onRetry,
   accentColor = "#0B6E4F",
+  selectedFill,
   mutedColor = "#667085",
   style,
   testID = "event-date-picker",
@@ -257,6 +263,7 @@ export function EventDatePicker({
                   backgroundColor: isOn ? accentColor : "transparent",
                   opacity: full ? 0.45 : 1,
                 },
+                isOn && selectedFill !== undefined ? selectedFill : null,
               ]}
               testID={rowTestID}
               {...(rowNativeID !== undefined ? { nativeID: rowNativeID } : {})}

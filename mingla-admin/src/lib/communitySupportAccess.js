@@ -45,6 +45,8 @@ export function communitySupportTabsForAccess(access, tabs) {
     allowed.add("support");
     allowed.add("feature-guide");
     allowed.add("brand-groups");
+    // #4318: admin_links_* RPCs guard on is_support_staff.
+    allowed.add("links");
   }
   if (canBlog) allowed.add("blog");
   if (canEmail) allowed.add("email");

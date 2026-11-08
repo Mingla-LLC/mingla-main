@@ -61,7 +61,8 @@ describe("RT-5 ORCH-1138 R2 — public trip page device-parity rework", () => {
     expect(paymentSrc).toContain("<PaymentMockupCard");
     // The mockup seg: dark track + two flex tabs, active = solid accent fill.
     expect(paymentSrc).toContain('backgroundColor: "rgba(0,0,0,0.28)"');
-    expect(paymentSrc).toContain("isFull ? { backgroundColor: palette.accent }");
+    // issue #1023 (gradient everywhere): accent fills paint through accentFill(palette).
+    expect(paymentSrc).toContain("isFull ? accentFill(palette)");
     // The 34px amount block (mockup `.pay-amt`).
     expect(paymentSrc).toMatch(/amt:\s*\{[\s\S]*?fontSize:\s*34/);
   });
@@ -94,7 +95,8 @@ describe("RT-5 ORCH-1138 R2 — public trip page device-parity rework", () => {
     expect(routeSrc).not.toContain("<FloatingOfferingBar");
     // the bar fills with the BRAND accent (not a hardcoded warm orange) + a kicker.
     const sharedBarSrc = read("../packages/offering-rendering/TripReserveBar.tsx");
-    expect(sharedBarSrc).toContain("backgroundColor: palette.accent");
+    // issue #1023 (gradient everywhere): accent fills paint through accentFill(palette).
+    expect(sharedBarSrc).toContain("accentFill(palette)");
     expect(routeSrc).toContain("kicker={offeringState.barKicker}");
   });
 

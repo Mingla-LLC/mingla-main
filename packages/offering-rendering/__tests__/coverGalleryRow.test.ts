@@ -59,7 +59,8 @@ Deno.test("T-4 renders 1 + gallery.length cards (card 0 = cover, cards 1..N = ga
 Deno.test("T-5 rings + badges the ACTIVE card (WCAG two-signal: ring + check + selected)", () => {
   assert(/const\s+active\s*=\s*index\s*===\s*activeIndex/.test(CODE));
   assert(
-    /borderColor:\s*active\s*\?\s*palette\.accent\s*:\s*palette\.panelBorder/.test(CODE),
+    // issue #1023: the active ring paints through accentOutline (gradient-aware).
+    /active\s*\?\s*accentOutline\(palette,[\s\S]{0,80}?:\s*\{\s*borderColor:\s*palette\.panelBorder\s*\}/.test(CODE),
     "accent ring on active card",
   );
   assert(/borderWidth:\s*active\s*\?\s*2\s*:\s*1/.test(CODE));

@@ -23,6 +23,7 @@ import type {
 } from "@mingla/offering-rendering";
 
 import type { VenueOrderingNotice } from "./venueOrderingRules";
+import { accentFill } from "@mingla/offering-rendering/themeAccentStyle";
 
 type Surface = ReturnType<typeof offeringSurfaceStyles>;
 
@@ -66,7 +67,7 @@ export const VenueOrderingSpotChip: React.FC<{
   palette: ThemePalette;
 }> = ({ label, palette }) => (
   <View
-    style={[styles.chip, { backgroundColor: palette.accent }]}
+    style={[styles.chip, accentFill(palette)]}
     accessibilityRole="text"
     accessibilityLabel={label}
   >

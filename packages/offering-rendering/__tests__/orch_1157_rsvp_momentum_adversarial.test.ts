@@ -126,7 +126,8 @@ Deno.test("adversarial: kicker is the locked 'YOU'RE INVITED' (inherits title co
   );
   // the dot is the accent.
   assert(
-    /kickerDot[\s\S]{0,120}backgroundColor: palette\.accent/.test(COMPONENT),
+    // issue #1023: the dot paints through accentFill (gradient-aware).
+    /kickerDot[\s\S]{0,120}accentFill\(palette\)/.test(COMPONENT),
     "kicker dot must use palette.accent",
   );
 });

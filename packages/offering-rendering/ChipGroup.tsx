@@ -15,6 +15,7 @@ import { StyleSheet, Text, View } from "react-native";
 import Svg, { Line, Path } from "react-native-svg";
 
 import { type ThemePalette } from "./themePalette";
+import { accentFill } from "./themeAccentStyle";
 
 export interface Chip {
   label: string;
@@ -94,7 +95,7 @@ export const ChipGroup: React.FC<ChipGroupProps> = ({
               style={[
                 styles.badge,
                 isYes
-                  ? { backgroundColor: palette.accent }
+                  ? accentFill(palette)
                   : { backgroundColor: "rgba(127,127,127,0.22)" },
               ]}
             >

@@ -82,37 +82,10 @@ describe("F-2 — the 52pt dismiss band must not cover interactive sheet content
 /* ------------------------------------------------------------------ *
  * F-3 — thumb positions are read from refs during render.
  * ------------------------------------------------------------------ */
-describe("F-3 — plane and rail thumbs must be positioned from STATE, not a ref", () => {
-  test("thumb offsets are not computed from a `.current` ref read", () => {
-    const s = src(SHEET);
+// issue #1023 wave 2 — F-3 (plane/rail thumbs) retired with the plane; the
+// replacement hue slider's measured-state rule is pinned in
+// issue1022ReworkFindings.test.ts ("F-5 (#1023)").
 
-    // `onLayout` assigns to a useRef and a ref assignment does NOT schedule a
-    // re-render, so the FIRST painted frame positions both thumbs with a width
-    // of 1: left = s * 1 - 14 => a negative offset clamped to the left edge.
-    // Proven on the iPhone 17 Pro simulator: on open, the plane thumb and the
-    // hue thumb both render clipped at the far-left edge while the committed
-    // colour is a fully saturated orange. The control opens telling the user
-    // the wrong colour.
-    const planeThumb = /planeThumb,\s*\{[\s\S]{0,240}?\}/.exec(s);
-    expect(planeThumb).not.toBeNull();
-    expect(planeThumb?.[0]).not.toMatch(/planeWidthRef\.current/);
-
-    const railThumb = /railThumb,\s*\{[\s\S]{0,240}?\}/.exec(s);
-    expect(railThumb).not.toBeNull();
-    expect(railThumb?.[0]).not.toMatch(/railWidthRef\.current/);
-  });
-
-  test("the measured plane width is held in state so layout triggers a repaint", () => {
-    const s = src(SHEET);
-    // A useState (or a reanimated shared value driving an animated style) is
-    // the only shape that repaints after onLayout.
-    expect(s).toMatch(/setPlaneWidth|planeWidth,\s*setPlaneWidth|useSharedValue/);
-  });
-});
-
-/* ------------------------------------------------------------------ *
- * F-4 — the motion grid cannot be two-up on the phones we ship to.
- * ------------------------------------------------------------------ */
 describe("F-4 — motion tiles must fit two-up at the narrowest shipped width", () => {
   test("two tiles plus the gap fit inside the sheet body on a 375pt phone", () => {
     const s = src(SHEET);
@@ -173,10 +146,13 @@ describe("offeringTheme — adversarial contract edges", () => {
       font: null,
       animation: null,
     });
+    // issue #1023 wave 2 — invalidated: exactly three keys. The gradient
+    // column is written every time too, so clearing a gradient clears it.
     expect(Object.keys(cols).sort()).toEqual([
       "theme_animation_override",
       "theme_color_override",
       "theme_font_override",
+      "theme_gradient_override",
     ]);
     expect(cols.theme_color_override).toBe("#16a34a");
     expect(cols.theme_font_override).toBeNull();

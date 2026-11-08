@@ -6,18 +6,59 @@
 // when that surface mounts/changes, instead of all 14 at app boot. On every
 // platform (web + native) the load goes through `expo-font`'s `Font.loadAsync`.
 //
+// issue #1023 wave 2: a Google family's keys (`GF_<family>_500/_700`) load
+// through @mingla/offering-rendering/googleFontLoader, Inter on failure. Each
+// key loads on its own, so the bold face downloads only where bold text is
+// drawn (surfaces call this hook with `boldFontFamily(theme)` for that).
+//
 // DO NOT re-introduce a static `@expo-google-fonts/*` import or a root
 // `useFonts` call (breaks the mobile boot budget). The 14 family modules are
 // dynamic `import()` thunks in ./themeFonts.
 
 import { useEffect, useState } from "react";
 import * as Font from "expo-font";
+import type {
+  EnsureGoogleFontResult,
+  InterFallbackModules,
+} from "@mingla/offering-rendering/googleFontLoader";
+import { familyFromGoogleFontKey } from "@mingla/offering-rendering/themeResolver";
 
 import { THEME_FONT_MODULE_THUNKS } from "./themeFonts";
 
 // Idempotency cache so multiple surfaces requesting the same family load it once
 // (and concurrent requests share the in-flight promise).
 const inFlight = new Map<string, Promise<void>>();
+
+// issue #1023 wave 2 — a Google family (`GF_<family>_500` / `_700`) loads
+// through the shared package loader. If it cannot load, the bundled Inter
+// faces are registered under the same keys, so every render site shows Inter,
+// never a system face.
+const loadInterFallback = async (): Promise<InterFallbackModules> => {
+  const [base, bold] = await Promise.all([
+    THEME_FONT_MODULE_THUNKS.Inter_500Medium(),
+    THEME_FONT_MODULE_THUNKS.Inter_700Bold(),
+  ]);
+  return { base, bold };
+};
+
+// The Google loader is imported ON DEMAND, only for a GF_ key: this module is
+// shared by every themed surface, so a static import would put the loader in
+// the eager web chunk (bundle budget, #1509) although bundled fonts never use
+// it.
+const loadGoogleFontLoader = () =>
+  import("@mingla/offering-rendering/googleFontLoader");
+const googleOutcomes = new Map<string, EnsureGoogleFontResult>();
+
+const isGoogleKey = (key: string): boolean =>
+  key.startsWith("GF_") && familyFromGoogleFontKey(key) !== null;
+
+/** True when a font key is ready to draw (bundled face or settled Google key). */
+export const isThemeFontKeyReady = (key: string): boolean =>
+  isGoogleKey(key) ? googleOutcomes.has(key) : Font.isLoaded(key);
+
+/** True when a Google key could not load and is drawn as Inter. */
+export const themeFontFellBack = (key: string): boolean =>
+  googleOutcomes.get(key)?.fellBack === true;
 
 /**
  * Load a single theme-font family on demand by its `fontFamilyValue`
@@ -30,6 +71,15 @@ export async function loadThemeFont(family: string | null | undefined): Promise<
 
   const existing = inFlight.get(family);
   if (existing) return existing;
+
+  if (isGoogleKey(family)) {
+    const { ensureGoogleFontKey } = await loadGoogleFontLoader();
+    const outcome = await ensureGoogleFontKey(family, {
+      loadFallback: loadInterFallback,
+    });
+    googleOutcomes.set(family, outcome);
+    return;
+  }
 
   const thunk = THEME_FONT_MODULE_THUNKS[family];
   if (!thunk) return; // unknown family → leave to system-font fallback
@@ -55,9 +105,13 @@ export async function loadThemeFont(family: string | null | undefined): Promise<
  * it is ready. The themed surface renders immediately (system-font fallback for
  * ≤ the load duration); `loaded` flips true once the family is available.
  */
-export function useThemeFont(family: string | null | undefined): { loaded: boolean } {
+export function useThemeFont(family: string | null | undefined): {
+  loaded: boolean;
+  /** issue #1023 — a Google family that could not load is drawn as Inter. */
+  fellBack: boolean;
+} {
   const [loaded, setLoaded] = useState<boolean>(() =>
-    family ? Font.isLoaded(family) : true,
+    family ? isThemeFontKeyReady(family) : true,
   );
 
   useEffect(() => {
@@ -66,18 +120,18 @@ export function useThemeFont(family: string | null | undefined): { loaded: boole
       setLoaded(true);
       return;
     }
-    if (Font.isLoaded(family)) {
+    if (isThemeFontKeyReady(family)) {
       setLoaded(true);
       return;
     }
     setLoaded(false);
     void loadThemeFont(family).then(() => {
-      if (!cancelled) setLoaded(Font.isLoaded(family));
+      if (!cancelled) setLoaded(isThemeFontKeyReady(family));
     });
     return () => {
       cancelled = true;
     };
   }, [family]);
 
-  return { loaded };
+  return { loaded, fellBack: loaded && !!family && themeFontFellBack(family) };
 }

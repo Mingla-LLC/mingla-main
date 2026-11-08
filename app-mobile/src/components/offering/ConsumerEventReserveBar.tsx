@@ -41,6 +41,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 
 import type { CtaState, ThemePalette } from "@mingla/offering-rendering";
+import { accentFill } from "@mingla/offering-rendering/themeAccentStyle";
 
 export interface ConsumerEventReserveBarProps {
   cta: CtaState;
@@ -129,7 +130,7 @@ export const ConsumerEventReserveBar: React.FC<ConsumerEventReserveBarProps> = (
       }
       style={({ pressed }) => [
         styles.reserve,
-        { backgroundColor: palette.accent },
+        accentFill(palette),
         pressed ? styles.reservePressed : null,
       ]}
       testID={testID !== undefined ? `${testID}-action` : undefined}
@@ -209,7 +210,7 @@ export const ConsumerEventReserveBar: React.FC<ConsumerEventReserveBarProps> = (
       }
       style={({ pressed }) => [
         styles.floatButton,
-        { backgroundColor: palette.accent },
+        accentFill(palette),
         pressed ? styles.reservePressed : null,
       ]}
       testID={testID !== undefined ? `${testID}-action` : undefined}

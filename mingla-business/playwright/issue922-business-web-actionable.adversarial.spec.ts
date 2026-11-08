@@ -66,7 +66,7 @@ test("eligible first visit exposes one accessible hit target and no external JS 
   })).toBe(true);
   await signIn.focus();
   await expect(signIn).toBeFocused();
-  await expect(page.getByTestId("privacy-bar")).toBeVisible();
+  await expect(page.getByTestId("privacy-strip")).toBeVisible();
   expect(external).toEqual([]);
 });
 
@@ -158,30 +158,8 @@ test("exact invite and trailing slash are critical; success, scanner, callback, 
   }
 });
 
-// #2331 — Global Privacy Control starts ads off; OK on the shell saves that
-// live state, and a failed durable write still hands it to every reader.
-test("under GPC, OK keeps ads off for every same-page reader even when the write fails", async ({ context, page }) => {
-  await clean(context);
-  await context.addInitScript(() => {
-    Object.defineProperty(navigator, "globalPrivacyControl", { configurable: true, get: () => true });
-  });
-  const requests = await captureFullApp(page);
-  await page.goto(target);
-  await page.evaluate(() => {
-    Storage.prototype.setItem = function setItem(): never { throw new Error("quota"); };
-  });
-  await page.getByTestId("privacy-bar-ok").click();
-  await expectFullApp(page, requests);
-  const result = await page.evaluate(() => ({
-    stored: window.localStorage.getItem("mingla_privacy_v2"),
-    choices: (window as ProbeWindow).__adversarialChoices,
-    handoff: (window as ProbeWindow).__minglaPrebootPrivacy,
-  }));
-  const off = JSON.stringify({ analytics: true, ads: false });
-  expect(result.stored).toBeNull();
-  expect(result.choices).toEqual([off, off, off]);
-  expect(result.handoff).toMatchObject({ analytics: true, ads: false });
-});
+// #4318 — the shell has no OK any more (the strip opens the app's choices),
+// so the GPC-on-OK case is retired; GPC itself is pinned in the server tests.
 
 test("a late bootstrap exception falls back to the full app instead of stranding static markup", async ({ context, page }) => {
   await clean(context);

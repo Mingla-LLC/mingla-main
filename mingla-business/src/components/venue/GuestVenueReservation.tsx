@@ -58,6 +58,8 @@ import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
 import { BuyerClaimCard } from "../checkout/DownloadMinglaCta";
 import { mintClaimLinkHandoff } from "../../services/claimLinkService";
+import { accentIcon, accentOutline } from "@mingla/offering-rendering/themeAccentStyle";
+import { opaqueAccentWashColor } from "@mingla/offering-rendering/themePalette";
 
 const DiscountReasonText = React.lazy(() =>
   import("@mingla/offering-rendering/DiscountReasonText").then((module) => ({
@@ -207,8 +209,7 @@ function GuestVenueReservationBody({
     () => ({
       chip: { borderColor: palette.panelBorder },
       chipSelected: {
-        borderColor: palette.accent,
-        backgroundColor: palette.accentWash,
+        ...accentOutline(palette, { background: palette.accentWash, opaqueBackground: opaqueAccentWashColor(palette) }),
       },
     }),
     [palette],
@@ -1029,6 +1030,7 @@ function GuestVenueReservationBody({
             // ORCH-1162 Bug 3 — the primary fill takes the venue's accent, and
             // Button's own WCAG helpers pick the readable label colour for it.
             accentColor={palette.accent}
+            accentGradient={accentIcon(palette).gradient ?? null}
             size="lg"
             fullWidth
             loading={submitting}

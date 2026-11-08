@@ -11,7 +11,6 @@ import {
 } from '@/components/sections/explorer-home/hero-place-deck'
 import { DEFAULT_CITY, type CityKey } from '@/lib/city-decks'
 import { cn } from '@/lib/cn'
-import { PrivacyChoicesLink } from '@/components/marketing/privacy-choices-link'
 import { PRIVACY_SECTIONS, PRIVACY_EFFECTIVE_DATE } from '@/lib/privacyContent'
 import { TERMS_SECTIONS, TERMS_EFFECTIVE_DATE } from '@/lib/termsContent'
 
@@ -297,13 +296,6 @@ function PrivacyModal({ open, onClose }: TermsModalProps) {
               >
                 Privacy Policy
               </h2>
-              {/* #2331 — the home page has no footer, so the privacy sheet is
-                  where "Your privacy choices" lives: it closes the sheet and
-                  reopens the privacy bar, expanded. */}
-              <PrivacyChoicesLink
-                onOpen={onClose}
-                className="mt-2 inline-flex min-h-11 items-center text-left text-sm text-text-secondary underline underline-offset-2 transition-colors hover:text-text-primary focus-ring"
-              />
               <button
                 type="button"
                 autoFocus

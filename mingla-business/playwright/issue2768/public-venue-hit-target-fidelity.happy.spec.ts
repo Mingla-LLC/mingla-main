@@ -70,7 +70,7 @@ async function captureTouchGesture(
       "[data-testid='issue-2729-reserve-cta']",
     );
     const consent = document.querySelector<HTMLElement>(
-      "[data-testid='privacy-bar']",
+      "[data-testid='privacy-strip']",
     );
     const hit = document.elementFromPoint(start.x, start.y) as HTMLElement | null;
     if (cta === null || hit === null) {
@@ -251,14 +251,15 @@ async function assertFreshConsentOwnership(page: Page): Promise<void> {
   // [TEST-MOD-APPROVED #2331] The slim privacy bar no longer owns the bottom
   // edge exclusively: it shows WITH the reserve CTA, which sits above it and
   // owns its own centre point (I-PRIVACY-BAR-NEVER-OCCLUDES).
-  const bar = page.getByLabel("Privacy choices");
+  // #4318 — the bar is now the permanent "Privacy & ad choices" strip.
+  const bar = page.getByTestId("privacy-strip");
   await expect(bar).toHaveCount(1);
-  await expect(page.getByTestId("privacy-bar-ok")).toBeVisible();
+  await expect(bar).toBeVisible();
   const cta = page.getByTestId("issue-2729-reserve-cta");
   await expect(cta).toHaveCount(1);
   expect(
     await cta.evaluate((control) => {
-      const owner = document.querySelector<HTMLElement>("[data-testid='privacy-bar']");
+      const owner = document.querySelector<HTMLElement>("[data-testid='privacy-strip']");
       const rect = control.getBoundingClientRect();
       const hit = document.elementFromPoint(
         rect.left + rect.width / 2,
@@ -292,9 +293,11 @@ for (const topology of ["business-preview", "buyer-host"] as const) {
     expect(await page.evaluate(() => window.__issue2768Topology)).toBe(topology);
     await assertNoAnalyticsInitialization(page);
 
-    await page.getByTestId("privacy-bar-options").click();
-      await page.getByTestId("privacy-bar-off-all").click();
-    await expect(page.getByLabel("Privacy choices")).toHaveCount(0);
+    await page.getByTestId("privacy-strip").click();
+      await page.getByTestId("privacy-switch-analytics").setChecked(false)
+      await page.getByTestId("privacy-switch-ads").setChecked(false)
+      await page.getByTestId("privacy-bar-save").click();
+    await expect(page.getByTestId("privacy-sheet")).toHaveCount(0);
     await expect(page.getByTestId("issue-2729-reserve-cta")).toHaveCount(1);
     expect(
       await page.evaluate(() =>
