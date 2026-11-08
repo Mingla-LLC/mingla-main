@@ -739,8 +739,12 @@ export function LinksExperience({
         <style>{`#main[data-fitted='0'] [data-fit-gate]{visibility:visible!important}`}</style>
       </noscript>
       <div className={styles['lk-bar']} inert={sheet !== null}>
-        {/* eslint-disable-next-line @next/next/no-img-element -- a 7 KB brand SVG; the image optimiser does not serve SVG */}
-        <img src="/brand/links/mingla-wordmark-white.svg" alt="Mingla" width={68} height={24} />
+        {/* Every Mingla wordmark goes Home. A plain anchor (a full page load), not next/link:
+            /links bans soft navigation (orch-1328), and Home is a different page shell. */}
+        <a href="/" aria-label="Mingla home" className={styles['lk-home']}>
+          {/* eslint-disable-next-line @next/next/no-img-element -- a 7 KB brand SVG; the image optimiser does not serve SVG */}
+          <img src="/brand/links/mingla-wordmark-white.svg" alt="" width={68} height={24} />
+        </a>
       </div>
       <div
         className={cn(styles['lk-grid'], 'min-h-0 flex-1')}

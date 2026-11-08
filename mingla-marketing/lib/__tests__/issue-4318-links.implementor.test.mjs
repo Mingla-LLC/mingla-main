@@ -677,3 +677,15 @@ test('?city= with an older guide slug opens the live city (washington-dc, new-yo
   // Nothing on anywhere and nothing asked: the first live city.
   assert.deepEqual(resolve(null), { slug: 'brussels', source: 'fallback' })
 })
+
+test('the white wordmark in the orange bar goes Home, with a 44px target and a visible focus ring', () => {
+  const ui = fs.readFileSync(path.join(MARKETING, 'components/marketing/links-experience.tsx'), 'utf8')
+  const css = fs.readFileSync(path.join(MARKETING, 'components/marketing/links-experience.module.css'), 'utf8')
+  const bar = ui.slice(ui.indexOf("styles['lk-bar']"), ui.indexOf("styles['lk-grid']"))
+  assert.match(bar, /<a href="\/" aria-label="Mingla home" className=\{styles\['lk-home'\]\}>[\s\S]*mingla-wordmark-white\.svg[\s\S]*<\/a>/)
+  const home = css.match(/\.lk-home \{([^}]*)\}/)
+  assert.ok(home, 'a .lk-home rule exists')
+  assert.match(home[1], /min-height: 44px/)
+  assert.match(home[1], /text-decoration: none/)
+  assert.match(css, /\.lk-home:focus-visible \{\s*outline: 2px solid #fff/)
+})
