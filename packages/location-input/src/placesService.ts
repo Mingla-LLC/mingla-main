@@ -127,10 +127,12 @@ export async function errorCodeFromInvokeError(
   const context = error?.context as
     | { json?: () => Promise<unknown>; clone?: () => { json: () => Promise<unknown> } }
     | undefined;
-  if (context && typeof context.json === "function") {
+  const readJson = context?.json;
+  if (context && typeof readJson === "function") {
     try {
-      const source = typeof context.clone === "function" ? context.clone() : context;
-      const body = (await source.json()) as { error?: unknown } | null;
+      const body = (await (typeof context.clone === "function"
+        ? context.clone().json()
+        : readJson.call(context))) as { error?: unknown } | null;
       if (body && typeof body.error === "string" && body.error.length > 0) return body.error;
     } catch {
       // an unreadable body is reported as "network" below
