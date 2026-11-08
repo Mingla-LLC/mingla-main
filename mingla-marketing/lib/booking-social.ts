@@ -137,7 +137,7 @@ export function bookingErrors(details: BookingDetails): Partial<Record<BookingFi
     const label = SOCIAL_PLATFORMS.find((p) => p.value === details.socialPlatform)?.label ?? 'social'
     errors.social = details.socialHandle.trim() === ''
       ? `Add your ${label} handle.`
-      : `That doesn’t look like a ${label} handle. Use the handle, like @yourplace, or paste your profile link.`
+      : `That doesn’t look like a handle for ${label}. Use the handle, like @yourplace, or paste your profile link.`
   }
   if (!websiteIsValid(details.website)) errors.website = 'Use a web address, like yourplace.com.'
   return errors

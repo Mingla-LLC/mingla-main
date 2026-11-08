@@ -78,9 +78,16 @@ export async function withBrowser(marketingDir, body, { env = {} } = {}) {
       }
     })
     const send = (method, params = {}) =>
-      new Promise((resolve) => {
+      new Promise((resolve, reject) => {
         const n = ++id
-        pending.set(n, resolve)
+        const timer = setTimeout(() => {
+          pending.delete(n)
+          reject(new Error(`DevTools ${method} did not answer in 60 s`))
+        }, 60_000)
+        pending.set(n, (message) => {
+          clearTimeout(timer)
+          resolve(message)
+        })
         socket.send(JSON.stringify({ id: n, method, params }))
       })
     const on = (method, fn) => listeners.set(method, [...(listeners.get(method) ?? []), fn])

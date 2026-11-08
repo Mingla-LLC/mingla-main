@@ -1513,7 +1513,10 @@
     grid-template-columns: minmax(0, 1fr);
   }
   [data-landing] .soc {
-    grid-template-columns: 112px minmax(0, 1fr);
+    grid-template-columns: 132px minmax(0, 1fr);
+  }
+  [data-landing] .soc select {
+    padding: 0 8px 0 12px;
   }
   [data-landing] .slots {
     grid-template-columns: repeat(3, minmax(0, 1fr));
