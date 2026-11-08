@@ -401,6 +401,9 @@ export function moneyToolPredicate(
 export const OWNER_SPOKEN_REFUSAL_CODES: ReadonlySet<string> = new Set([
   // #4238: another brand's (or a hidden) audience, refused before any card.
   "AD_AUDIENCE_NOT_OWNED",
+  // #4304: a discount proposal that cannot fit the SQL shape (code format,
+  // missing value, unclear target) is asked about before any card.
+  "DISCOUNT_PROPOSAL_INVALID",
   "MONEY_ROLE_DENIED",
   "OWNER_NOTE_NOT_NEEDED",
   "OWNER_NOTE_UNAVAILABLE",

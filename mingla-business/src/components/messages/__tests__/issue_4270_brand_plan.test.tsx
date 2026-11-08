@@ -735,9 +735,12 @@ describe("source contracts", () => {
   });
   it("the pill is only for the brand's own team on a phone, and the rail order is People, Plan, Media", () => {
     expect(chat).toContain('const planBrandId = canBrand && group ? group.brand_id : null;');
-    expect(chat).toContain("{!isWideDesktop && planBrandId ? (");
+    // #4304: the pill shows whenever the details rail does not (phones and
+    // desktop windows too narrow for three panes).
+    expect(chat).toContain("{!showRail && planBrandId ? (");
     expect(chat).toContain('testID="brand-plan-pill"');
-    const rail = chat.slice(chat.indexOf('testID="brand-group-rail-tabs"'));
+    // #4304: the rail tabs render through the shared BrandGroupRailTabRow.
+    const rail = chat.slice(chat.indexOf("<BrandGroupRailTabRow"));
     const people = rail.indexOf("People ·");
     const planTab = rail.indexOf('t("plan.pill")');
     const media = rail.indexOf('t("chat.media")');
@@ -746,6 +749,12 @@ describe("source contracts", () => {
     expect(planTab).toBeLessThan(media);
     expect(chat).toContain('requestedGallery === "1" ? "media" : "plan"');
     expect(chat).toContain('desktopDetailTab === "plan" && !planBrandId ? "people"');
+  });
+  it("#4304: the People pane has no inner People | Media tab row (one tab row in the rail)", () => {
+    // Live check on #4270: wide web showed two tab rows on the People tab.
+    const people = fs.readFileSync(path.join(__dirname, "../BrandGroupPeoplePanel.tsx"), "utf8");
+    expect(people).not.toContain('accessibilityRole="tablist"');
+    expect(people).not.toContain("onShowMedia");
   });
   it("a system line is a centred line with no Reply or Select, and it refreshes the plan", () => {
     const start = chat.indexOf('if (message.message_type === "system")');

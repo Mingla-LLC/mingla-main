@@ -29,7 +29,18 @@ jest.mock("../../../hooks/useBrandGroups", () => ({
   }),
 }));
 jest.mock("../../../services/brandGroupFileMetaService", () => ({ fileMeta: async () => mockFileMeta }));
-jest.mock("../../../hooks/useResponsiveLayout", () => ({ useResponsiveLayout: () => ({ isWideDesktop: true }) }));
+// #4304 — the details rail shows from 1200px; below that the gallery is full-screen.
+jest.mock("../../../hooks/useResponsiveLayout", () => ({ useResponsiveLayout: () => ({ isWideDesktop: true, width: 1440 }) }));
+jest.mock("../../../services/brandGroupLiveService", () => ({
+  listBrandGroupReactions: jest.fn(async () => []),
+  listBrandGroupReadState: jest.fn(async () => []),
+  addBrandGroupReaction: jest.fn(),
+  removeBrandGroupReaction: jest.fn(),
+}));
+jest.mock("../../../services/brandGroupRosterService", () => ({
+  listBrandGroupMembers: jest.fn(async () => ({ members: [], error: null })),
+  listBrandGroupMentionCandidates: jest.fn(async () => ({ candidates: [], error: null })),
+}));
 jest.mock("../../../hooks/useSupportStaff", () => ({ useSupportStaff: () => ({ isStaff: false }) }));
 jest.mock("../../../services/brandGroupsService", () => ({
   listBrandGroupMessages: (...args: unknown[]) => mockListMessages(...args),
@@ -80,6 +91,9 @@ jest.mock("../../ui/Button", () => ({
     require("react").createElement("Pressable", { onPress: props.onPress }, props.label as string),
 }));
 jest.mock("../../ui/Icon", () => ({ Icon: () => null }));
+// #4304 — the route module also carries the /messages inbox screen (one web
+// chunk for both Messages routes); its TopBar is not under test here.
+jest.mock("../../ui/TopBar", () => ({ TopBar: () => null }));
 jest.mock("../../ui/SafeScreen", () => ({
   SafeScreen: (props: Record<string, unknown>) =>
     // eslint-disable-next-line @typescript-eslint/no-require-imports

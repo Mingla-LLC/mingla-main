@@ -80,15 +80,23 @@ describe("#4111 boot payload — the eager importers", () => {
 });
 
 describe("#4111 boot payload — the Messages routes load the screens lazily", () => {
+  // #4304 — the /messages inbox body moved into BrandGroupInboxScreen.tsx,
+  // which the route loads lazily; the enquiry list is still an import() there.
   test.each([
-    ["app/messages/index.tsx", "BrandEnquiryListSection"],
+    ["src/components/messages/BrandGroupInboxScreen.tsx", "BrandEnquiryListSection"],
     ["app/messages/enquiry/[enquiryId].tsx", "BrandEnquiryThreadScreen"],
   ])("%s loads %s with import() from the one shared module", (file, screen) => {
     const code = source(file);
     for (const heavy of HEAVY) expect(staticImportsOf(code, heavy)).toBe(false);
     expect(code).toContain('await import("');
-    expect(code).toContain('components/messages/BrandEnquiryScreens")).' + screen);
+    expect(code).toContain('BrandEnquiryScreens")).' + screen);
     expect(code).toContain("React.Suspense");
+  });
+
+  test("app/messages/index.tsx imports no enquiry screen at all", () => {
+    const code = source("app/messages/index.tsx");
+    for (const heavy of HEAVY) expect(staticImportsOf(code, heavy)).toBe(false);
+    expect(code).not.toContain("BrandEnquiryScreens");
   });
 
   test("the Brand-group route uses only the small modules", () => {

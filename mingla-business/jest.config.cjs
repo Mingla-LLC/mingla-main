@@ -100,6 +100,8 @@ module.exports = {
     // here). Named `.happy.test.ts`, so it is NOT covered by the
     // `\.render\.test\.tsx$` catch-all below.
     "issue_3460_ari_composer_narrow_web_clearance\\.happy\\.test\\.ts$",
+    // #4304 — First Home with Ari render proof; runs under jest.issue1890.render.cjs.
+    "issue_4304_first_run_ari\\.implementor\\.test\\.ts$",
     // #1036 [remove-contrast-chip] tester adversarial WEB render-proof — mounts
     // the REAL ThemeSheet through react-native-web (ReactDOMServer) to assert no
     // contrast-advisory node renders for any seed. Runs under

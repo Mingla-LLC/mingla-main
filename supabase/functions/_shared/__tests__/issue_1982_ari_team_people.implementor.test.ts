@@ -148,7 +148,7 @@ Deno.test("#1982 implementor: auth + read-only pins", () => {
 });
 
 Deno.test("#1982 implementor: PROMPT_VERSION v22 ads team surface", () => {
-  assertEquals(PROMPT_VERSION, "v27"); // #2829 W11 completes the website journey entrances
+  assertEquals(PROMPT_VERSION, "v28"); // #2829 W11 completes the website journey entrances
   const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false });
   assert(prompt.includes("revoke_brand_invitation"));
   assert(prompt.includes("scanner invitations"));

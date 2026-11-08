@@ -6,7 +6,6 @@ import {
   AccessibilityInfo,
   ActivityIndicator,
   FlatList,
-  Image,
   Platform,
   Pressable,
   Share,
@@ -29,6 +28,7 @@ import type { BrandGroupMediaRow } from "../../services/brandGroupMediaService";
 import { formatFileSize } from "../../utils/formatMediaDuration";
 import { Icon } from "../ui/Icon";
 import { WebSafeGestureDetector } from "../ui/WebSafeGestureDetector";
+import { BrandGroupCachedImage } from "./BrandGroupCachedImage";
 import { MediaViewerShell, type MediaViewerStage } from "./MediaViewerShell";
 import { fitContain } from "./fitContain";
 import { useReducedMotionNative } from "../../hooks/useReducedMotionNative";
@@ -62,7 +62,7 @@ function ViewerPage({ item, request, progress, stage, active, renderThumbnail }:
   if (!active) return <>{renderThumbnail(item, boxStyle)}</>;
   const localizedSize = (size: number): string => formatFileSize(size, (key, variables) => t(key, variables));
   if (!request) return <View style={[stage.style, styles.state]}><ActivityIndicator color={accent.warm} /><Text style={styles.stateText}>{progress && progress.total > 0 ? t("viewer.loading_progress", { loaded: localizedSize(progress.loaded), total: localizedSize(progress.total) }) : t("viewer.loading")}</Text></View>;
-  if (item.kind === "image") return <Image source={request} resizeMode="contain" accessibilityLabel={item.name} style={boxStyle} />;
+  if (item.kind === "image") return <BrandGroupCachedImage fileId={item.fileId} variant="full" source={request} fit="contain" accessibilityLabel={item.name} style={boxStyle} />;
   if (item.kind === "video") return <ActiveVideo source={request} label={item.name} style={boxStyle} />;
   if (item.mime === "application/pdf") {
     if (Platform.OS === "web") {

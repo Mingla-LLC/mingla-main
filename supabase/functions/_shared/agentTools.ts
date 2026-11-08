@@ -12,6 +12,7 @@
 import { registerOwnerCopyToolNames } from "./ariOwnerCopy.ts";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { DOMAIN_READ_ONLY, DOMAIN_TOOLS } from "./agentDomainTools.ts";
+import { canonicalizeCreateDiscountArgs } from "./ariDiscountArgs.ts";
 import {
   assertAgentReadBrand,
   resolveAccessibleAgentBrands,
@@ -1219,9 +1220,14 @@ export function canonicalizeAgentProposalArgs(
   toolName: string,
   args: Record<string, unknown>,
 ): Record<string, unknown> {
-  return toolName === "manage_brand_hours"
-    ? canonicalizeBrandHoursArgs(args)
-    : args;
+  if (toolName === "manage_brand_hours") {
+    return canonicalizeBrandHoursArgs(args);
+  }
+  // #4304: one target / value / code shape the SQL writer accepts.
+  if (toolName === "create_discount") {
+    return canonicalizeCreateDiscountArgs(args);
+  }
+  return args;
 }
 
 const manageBrandHours: AgentToolDefinition = {

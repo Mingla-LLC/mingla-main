@@ -391,9 +391,9 @@ export function phase3dContractDigest(manifest) {
 // #4271: the tap buyer-name migration joins the pre-#1931 replay's exact-file exclusion beside door pay.
 // #3645: register the sell-and-publish integrity migration, its PostgreSQL proof and its re-emit guard.
 // #3645: the sell-and-publish migration joins the pre-#1931 and pre-#2117 replay skip lists by exact filename.
-// #4318: register the /links page migration and its PostgreSQL proof the same way (re-sealed after merging main for #4317).
-// #4318: re-sealed after the /links tester PostgreSQL proof joined the pre-#1931 and pre-#2117 template suites' inventories.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "4c8f86e200fe946b262ed557d1535298a4f41ad2ec5f85181206db80797f5c3b";
+// #4304: register the Brand group live migration and its PostgreSQL proof the same way.
+// #4318: register the /links page migration and its implementor and tester PostgreSQL proofs (re-sealed after merging main for #4316).
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "45e5e248a8c0010237f5fe3a2164054b59731be8db755ad9c39b2e5a5df87ebf";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
