@@ -13,9 +13,9 @@ import path from "node:path";
 import { describe, expect, jest, test } from "@jest/globals";
 import { AddressInput } from "../../../packages/location-input/src/AddressInput";
 import {
-  forwardHierarchyMapbox,
+  forwardHierarchy,
   type InvokeFn,
-} from "../../../packages/location-input/src/mapboxGeocodeService";
+} from "../../../packages/location-input/src/placesService";
 import type { LocationInputTokens } from "../../../packages/location-input/src/types";
 import { resolveFreeTextLocation } from "../utils/resolveApproxLocation";
 
@@ -35,7 +35,7 @@ const TestRenderer = require("react-test-renderer") as {
 
 const ROOT = path.resolve(__dirname, "../../..");
 const edgeSource = fs.readFileSync(
-  path.resolve(ROOT, "supabase/functions/mapbox-geocode/index.ts"),
+  path.resolve(ROOT, "supabase/functions/mapbox-geocode/google.ts"),
   "utf8",
 );
 const sharedSource = fs.readFileSync(
@@ -90,7 +90,7 @@ const copy = {
   minLengthHint: "Type more",
   searching: "Searching",
   noResults: "No matches",
-  offline: "Offline",
+  unavailable: "Offline",
   pickError: "Pick failed",
 };
 
@@ -124,7 +124,7 @@ describe("Issue #1363 tester adversarial — boundary honesty", () => {
     await expect(
       resolveFreeTextLocation("Port Harcourt, Nigeria", {}, {
         forwardHierarchy: (query, savedContext) =>
-          forwardHierarchyMapbox(query, savedContext, {
+          forwardHierarchy(query, savedContext, {
             invoke: malformedInvoke,
           }),
       }),
@@ -135,31 +135,30 @@ describe("Issue #1363 tester adversarial — boundary honesty", () => {
       error: null,
     });
     await expect(
-      forwardHierarchyMapbox("nonsense", {}, { invoke: noMatchInvoke }),
+      forwardHierarchy("nonsense", {}, { invoke: noMatchInvoke }),
     ).resolves.toEqual({ details: null, reason: "needs_context" });
 
     const transportInvoke: InvokeFn = async () => ({
       data: null,
       error: { message: "provider unavailable" },
     });
+    // #4334 — the code comes from the proxy's response body; a transport error
+    // with no readable body is "network". Still an error, never data.
     await expect(
-      forwardHierarchyMapbox("Lagos, Nigeria", {}, { invoke: transportInvoke }),
-    ).rejects.toThrow("provider unavailable");
+      forwardHierarchy("Lagos, Nigeria", {}, { invoke: transportInvoke }),
+    ).rejects.toThrow("network");
   });
 
   test("ISO/locality acceptance is tied to structured context, never a matching street name", () => {
+    // #4334 — the same rule on Google results (google.ts).
     expect(edgeSource).toContain(
-      "countryCode !== requiredCountryIso.toUpperCase()",
-    );
-    expect(edgeSource).toContain(
-      "adminNames.has(normalizeHierarchyName(candidate))",
+      "cc !== params.requiredCountryIso.toUpperCase()",
     );
     expect(edgeSource).toContain(
-      "featureAdministrativeNames(feature)",
+      "params.localityCandidates.some((c) => names.has(normalizeName(c)))",
     );
-    expect(edgeSource).not.toContain(
-      "feature.properties?.name.includes(candidate)",
-    );
+    expect(edgeSource).toContain("administrativeNames(comps)");
+    expect(edgeSource).not.toMatch(/\.includes\(candidate\)/);
   });
 });
 
@@ -243,7 +242,7 @@ describe("Issue #1363 tester adversarial — stale completion", () => {
           data: {
             suggestions: [
               {
-                placeId: "mapbox.lagos",
+                placeId: "ChIJfixture_lagos",
                 displayName: "Lagos",
                 fullAddress: "Lagos, Nigeria",
               },
@@ -307,7 +306,7 @@ describe("Issue #1363 tester adversarial — stale completion", () => {
       finishRetrieve?.({
         data: {
           details: {
-            placeId: "mapbox.lagos",
+            placeId: "ChIJfixture_lagos",
             formattedAddress: "Lagos, Nigeria",
             city: "Lagos",
             region: "Lagos",

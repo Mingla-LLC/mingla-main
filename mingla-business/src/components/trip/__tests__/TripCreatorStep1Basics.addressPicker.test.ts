@@ -1,5 +1,5 @@
 /**
- * ORCH-1079 [Business-venue Google→Mapbox sweep] — trip creator swap (T-1A/T-1B/T-1C).
+ * ORCH-1079 [Business-venue address sweep] — trip creator swap (T-1A/T-1B/T-1C).
  *
  * Node-env Jest harness (no RN renderer) → source-characterizes the locked swap:
  * both departure + destination fields use the shared AddressInput, the
@@ -20,11 +20,11 @@ const src = (): string =>
     "utf8",
   );
 
-describe("ORCH-1079 — TripCreatorStep1Basics uses the shared Mapbox picker", () => {
+describe("ORCH-1079 — TripCreatorStep1Basics uses the shared address picker", () => {
   test("T-1C: imports AddressInput from components/location and drops the Google path", () => {
     const s = src();
     expect(s).toMatch(
-      /import\s*\{[^}]*\bMapboxAddressInput\b[^}]*\}\s*from\s*["'][^"']*location\/AddressInput["']/,
+      /import\s*\{[^}]*\bAddressInput\b[^}]*\}\s*from\s*["'][^"']*location\/AddressInput["']/,
     );
     expect(s).not.toContain("AddressAutocompleteInput");
     expect(s).not.toContain("googlePlacesService");
@@ -55,7 +55,7 @@ describe("ORCH-1079 — TripCreatorStep1Basics uses the shared Mapbox picker", (
 });
 
 // ---------------------------------------------------------------------------
-// ORCH-1118 [trip from/destination fields must be Mapbox-validated addresses]
+// ORCH-1118 [trip from/destination fields must be pick-validated addresses]
 // ---------------------------------------------------------------------------
 
 const wizardSrc = (): string =>
@@ -64,7 +64,7 @@ const wizardSrc = (): string =>
     "utf8",
   );
 
-describe("ORCH-1118 — create wizard requires confirmed Mapbox picks", () => {
+describe("ORCH-1118 — create wizard requires confirmed address picks", () => {
   test("T-4: typing into either field nulls placeId/lat/lng (both onChangeText)", () => {
     const s = src();
     // Departure onChangeText nulls its structured fields.

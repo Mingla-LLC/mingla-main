@@ -55,7 +55,7 @@ describe("#3355 P5 — Brand Edit structured address", () => {
     });
   });
 
-  test("ORCH-1079: a Mapbox id never reaches google_place_id", () => {
+  test("ORCH-1079: a picked place id never reaches google_place_id", () => {
     const patch = brandAddressPatchFromPlace(margate);
     expect(Object.keys(patch)).not.toContain("googlePlaceId");
     expect(JSON.stringify(patch)).not.toContain(margate.placeId);

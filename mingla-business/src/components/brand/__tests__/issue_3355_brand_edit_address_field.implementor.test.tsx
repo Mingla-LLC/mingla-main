@@ -44,16 +44,16 @@ jest.mock("../../../constants/designSystem", () => ({
 jest.mock("../../location/AddressInput", () => ({
   AddressInput: (props: Record<string, unknown>) =>
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    require("react").createElement("mapbox-address-input", props),
+    require("react").createElement("address-input", props),
 }));
 jest.mock("../../location/AddressMapPreview", () => ({
   AddressMapPreview: (props: Record<string, unknown>) =>
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     require("react").createElement("address-map-preview", props),
 }));
-const forwardHierarchyMapbox = jest.fn();
+const forwardHierarchy = jest.fn();
 jest.mock("../../../services/placesService", () => ({
-  forwardHierarchyMapbox: (...args: unknown[]) => forwardHierarchyMapbox(...args),
+  forwardHierarchy: (...args: unknown[]) => forwardHierarchy(...args),
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -86,9 +86,9 @@ function mount(props: {
 }
 
 const input = (r: ReturnType<typeof mount>): Node =>
-  r.root.findAll((n) => n.type === "mapbox-address-input")[0];
+  r.root.findAll((n) => n.type === "address-input")[0];
 
-beforeEach(() => forwardHierarchyMapbox.mockReset());
+beforeEach(() => forwardHierarchy.mockReset());
 
 describe("#3355 P5 — Brand Edit address field, rendered", () => {
   test("an untouched legacy free-text address loads as the selected address, no re-search", () => {
@@ -101,7 +101,7 @@ describe("#3355 P5 — Brand Edit address field, rendered", () => {
     expect(field.props.selectedLabel).toBe(legacy);
     expect(field.props.allowFreeText).toBe(true);
     expect(changes).toEqual([]);
-    expect(forwardHierarchyMapbox).not.toHaveBeenCalled();
+    expect(forwardHierarchy).not.toHaveBeenCalled();
     void TestRenderer.act(() => r.unmount());
   });
 
@@ -133,7 +133,7 @@ describe("#3355 P5 — Brand Edit address field, rendered", () => {
     void TestRenderer.act(() => r.unmount());
   });
 
-  test("a picked place writes address, city, country and point together; never a Mapbox id", () => {
+  test("a picked place writes address, city, country and point together; never a picked place id in google_place_id", () => {
     const changes: Patch[] = [];
     const r = mount({ address: "", onChange: (p) => changes.push(p) });
     void TestRenderer.act(() => {
@@ -166,7 +166,7 @@ describe("#3355 P5 — Brand Edit address field, rendered", () => {
   });
 
   test("'use what you typed' is placed by the shared search and the map says approximate", async () => {
-    forwardHierarchyMapbox.mockResolvedValue({
+    forwardHierarchy.mockResolvedValue({
       details: {
         lat: 51.38,
         lng: 1.38,
@@ -186,7 +186,7 @@ describe("#3355 P5 — Brand Edit address field, rendered", () => {
     await TestRenderer.act(async () => {
       (input(r).props.onFreeText as (label: string) => void)("The pier, Margate");
     });
-    expect(forwardHierarchyMapbox).toHaveBeenCalledWith("The pier, Margate", {
+    expect(forwardHierarchy).toHaveBeenCalledWith("The pier, Margate", {
       city: "London",
       countryCode: "GB",
     });

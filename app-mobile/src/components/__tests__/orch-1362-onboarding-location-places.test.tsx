@@ -10,7 +10,7 @@
 //
 // PROTECTIVE COMMENT — the onboarding manual-location field is a "type the city
 // you live in" field shown when GPS is off/denied (Apple 5.1.5 no-GPS path). It
-// MUST route through the shared @mingla/location-input `MapboxAddressInput` in
+// MUST route through the shared @mingla/location-input `AddressInput` in
 // `searchMode="places"` (edge `suggest_places`: place-type filter + trailing-
 // country strip + country ISO bias + zero-result fallback) so "lekki" /
 // "lekki nigeria" return a real multi-row list with Lekki, Lagos #1 (POIs
@@ -55,7 +55,7 @@ function stripComments(src: string): string {
 }
 
 const ONBOARDING = stripComments(await read("../OnboardingFlow.tsx"));
-const WRAPPER = stripComments(await read("../location/MapboxAddressInput.tsx"));
+const WRAPPER = stripComments(await read("../location/AddressInput.tsx"));
 
 // Isolate the manual-location render panel so the absence assertions target the
 // swapped block, not the whole 4k-line file (the confirm button + chip stay).
@@ -63,13 +63,13 @@ const PANEL_START = ONBOARDING.indexOf("renderManualLocationPanel");
 assert(PANEL_START !== -1, "renderManualLocationPanel must exist");
 
 // ── T-1: onboarding renders the shared field in places mode ───────────────────
-Deno.test('T-1: OnboardingFlow renders <MapboxAddressInput searchMode="places" inBottomSheet={false}>', () => {
+Deno.test('T-1: OnboardingFlow renders <AddressInput searchMode="places" inBottomSheet={false}>', () => {
   assertStringIncludes(
     ONBOARDING,
-    "import { MapboxAddressInput, type PlaceDetails } from './location/MapboxAddressInput'",
+    "import { AddressInput, type PlaceDetails } from './location/AddressInput'",
     "onboarding must import the shared consumer place-search wrapper",
   );
-  assertStringIncludes(ONBOARDING, "<MapboxAddressInput", "the shared field must be rendered");
+  assertStringIncludes(ONBOARDING, "<AddressInput", "the shared field must be rendered");
   assertStringIncludes(ONBOARDING, 'searchMode="places"', "onboarding must use the places engine (POIs dropped + country strip)");
   assertStringIncludes(ONBOARDING, "inBottomSheet={false}", "onboarding is a plain screen — gorhom injection must be OFF");
   assertStringIncludes(ONBOARDING, "suggestLimit={8}", "consumer multi-row limit");

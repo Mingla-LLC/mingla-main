@@ -10,7 +10,7 @@
  * It also re-pins ORCH-1079's dedup guard ACROSS the new mount. Accepting a
  * match legitimately writes `googlePlaceId` (the pool row's own Google id, which
  * `biz_create_venue_brand_authoring` compares against `place_pool`), while the
- * address handlers must never write it (a Mapbox `mapbox_id` in that column
+ * address handlers must never write it (a picked place id in that column
  * poisons the dedup key). Keeping the conversion in its own file is what lets
  * both be true, so the file boundary itself is asserted.
  *
@@ -146,7 +146,7 @@ describe("#1648 — YES at s0 lands in the same place YES at the name gate lands
 
     expect(after.placePoolId).toBe("pool-row-1");
     // The pool row's OWN Google id — the dedup key the create RPC compares.
-    // Never a Mapbox id, which is the whole point of ORCH-1079's guard.
+    // Never a picked place id, which is the whole point of ORCH-1079's guard.
     expect(after.googlePlaceId).toBe("ChIJpoolGooglePlaceId");
     expect(after.claim).not.toBeNull();
     // The pool row is the identity, so its address replaces the typed one.

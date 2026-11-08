@@ -74,7 +74,7 @@ const BOUNDARY: Record<string, () => unknown> = {
   "./PresentedByFollowerCount": () => ({ PresentedByFollowerCount: leaf("PresentedByFollowerCount") }),
   "./OfferingMomentum": () => ({ OfferingMomentum: leaf("OfferingMomentum") }),
   "./socialProofTypes": () => ({}),
-  "./mapboxStaticImage": () => ({ buildStaticMapUrl: () => "https://map.fixture/static.png" }),
+  "./staticMapImage": () => ({ buildStaticMapUrl: () => "https://map.fixture/static.png" }),
   "./tripOfferingTypes": () => ({}),
   "./useTripOfferingState": () => jest.requireActual("@mingla/offering-rendering/useTripOfferingState"),
   "./tripGuide": () => jest.requireActual("@mingla/offering-rendering/tripGuide"),

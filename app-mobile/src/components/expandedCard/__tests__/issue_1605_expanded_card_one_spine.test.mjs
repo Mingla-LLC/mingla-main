@@ -1457,19 +1457,19 @@ test('S-8 nothing produces, types, fetches or translates traffic any more', () =
   //
   // `main` rendered a Traffic row — car icon, condition chip, travel time, its
   // own loading state. Wave 4 deleted the ROW and left the PRODUCER, so a
-  // Mapbox Directions round-trip fired on every expanded-card open for a row
+  // third-party Directions round-trip fired on every expanded-card open for a row
   // nobody saw, and the field sat in two type files with zero consumers.
   //
   // Restoring it would have restored a fabrication: the fallback arm returned
   // `${10 + extraMin} min` from the clock alone, and it fired whenever the
-  // Mapbox token was unset, location permission was denied or the request
+  // routing token was unset, location permission was denied or the request
   // failed. The real arm restated the distance span the plate already carries
   // (D-2: "14 min" beside "6.7 mi" is the same fact twice). So the producer
   // went with the row, and this rule keeps both ends deleted together.
   const service = stripComments(read('busyness'));
 
   for (const dead of ['TrafficInfo', 'trafficInfo', 'trafficCondition', 'currentTravelTime',
-    'fetchMapboxTraffic', 'getTrafficHeuristic', 'MAPBOX_DIRECTIONS_URL', 'routeCache']) {
+    'fetchTraffic', 'getTrafficHeuristic', 'DIRECTIONS_URL', 'routeCache']) {
     assert.equal(
       service.includes(dead),
       false,
@@ -1479,9 +1479,9 @@ test('S-8 nothing produces, types, fetches or translates traffic any more', () =
     );
   }
   assert.equal(
-    /api\.mapbox\.com\/directions/.test(service),
+    /\/directions\//.test(service),
     false,
-    'S-8: busyness fetches a Mapbox Directions route again. That was one third-party round-trip per '
+    'S-8: busyness fetches a Directions route again. That was one third-party round-trip per '
     + 'expanded-card open, for a row that does not exist.',
   );
   // The reason must be written down where the next person will look.

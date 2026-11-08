@@ -22,8 +22,8 @@
 //         `proximity` threaded, no `getLastKnownLocation`/`setProximity` effect,
 //         no `proximity` state.
 //   T-8c: the I-1315 co-guard (`!useGpsLocation && !isLocked`) is preserved.
-//   T-9a: the shared MapboxAddressInput routes by searchMode — `places` →
-//         autocompletePlacesMapbox, default/venue → autocompleteMapbox (business
+//   T-9a: the shared AddressInput routes by searchMode — `places` →
+//         autocompletePlaces, default/venue → autocompleteAddress (business
 //         path UNCHANGED).
 //   T-9b: the consumer wrapper forwards searchMode + injects the gorhom-aware
 //         BottomSheetScrollView (card-list scroll fix, F-5).
@@ -61,9 +61,9 @@ const ADVANCED = stripComments(
   await read("../PreferencesSheet/PreferencesSectionsAdvanced.tsx"),
 );
 const PREFS = stripComments(await read("../PreferencesSheet.tsx"));
-const WRAPPER = stripComments(await read("../location/MapboxAddressInput.tsx"));
+const WRAPPER = stripComments(await read("../location/AddressInput.tsx"));
 const SHARED = stripComments(
-  await read("../../../../packages/location-input/src/MapboxAddressInput.tsx"),
+  await read("../../../../packages/location-input/src/AddressInput.tsx"),
 );
 
 // ── T-8a: Preferences field routes through the `places` mode, no proximity ─────
@@ -100,10 +100,10 @@ Deno.test("T-8c: the `!useGpsLocation && !isLocked` custom-field guard is preser
 });
 
 // ── T-9a: the shared component routes by searchMode ───────────────────────────
-Deno.test("T-9a: shared MapboxAddressInput routes by searchMode (places vs venue/business)", () => {
+Deno.test("T-9a: shared AddressInput routes by searchMode (places vs venue/business)", () => {
   assertStringIncludes(SHARED, 'searchMode === "places"', "must branch on the places mode");
-  assertStringIncludes(SHARED, "autocompletePlacesMapbox(", "places → the place-search service");
-  assertStringIncludes(SHARED, "autocompleteMapbox(", "venue/default → the business service (unchanged)");
+  assertStringIncludes(SHARED, "autocompletePlaces(", "places → the place-search service");
+  assertStringIncludes(SHARED, "autocompleteAddress(", "venue/default → the business service (unchanged)");
   // default is venue so business callers that omit searchMode are byte-identical.
   assertStringIncludes(SHARED, 'searchMode = "venue"', "default preserves business behavior");
 });

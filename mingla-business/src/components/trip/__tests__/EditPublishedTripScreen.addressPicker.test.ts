@@ -1,5 +1,5 @@
 /**
- * ORCH-1118 [trip from/destination fields must be Mapbox-validated addresses]
+ * ORCH-1118 [trip from/destination fields must be pick-validated addresses]
  *
  * Node-env Jest source-characterization harness (no RN renderer) → proves the
  * published-edit screen swapped its two plain TextInputs for the shared
@@ -24,7 +24,7 @@ const src = (): string =>
     "utf8",
   );
 
-describe("ORCH-1118 — EditPublishedTripScreen uses the Mapbox picker for both fields", () => {
+describe("ORCH-1118 — EditPublishedTripScreen uses the address picker for both fields", () => {
   test("T-6: both address fields are AddressInput (exactly two)", () => {
     const tags = src().match(/<AddressInput/g) ?? [];
     expect(tags.length).toBe(2);

@@ -11,7 +11,7 @@ import {
 } from "../components/trip/tripLocationValidated";
 
 jest.mock("../services/placesService", () => ({
-  forwardHierarchyMapbox: jest.fn(),
+  forwardHierarchy: jest.fn(),
 }));
 
 const hit = (

@@ -1,8 +1,8 @@
 /**
- * ORCH-1079 [Business-venue Google→Mapbox sweep] — TESTER ADVERSARIAL regression.
+ * ORCH-1079 [Business-venue address sweep] — TESTER ADVERSARIAL regression.
  *
  * DIFFERENT ANGLE than the implementor's tests. The implementor's
- * VenueStep1Address.mapboxDedup.test.ts proves the *store* keeps the pool-derived
+ * VenueStep1Address.pickDedup.test.ts proves the *store* keeps the pool-derived
  * `googlePlaceId` after onPick/onClear. It never exercises the actual database
  * invariant those handlers exist to satisfy:
  *
@@ -25,7 +25,7 @@
  *
  * It asserts the guard is LOAD-BEARING two ways:
  *   (1) the preserved pool id passes the RPC invariant (no mismatch), AND
- *   (2) every poisoned variant the guard prevents (mapbox_id, null-out,
+ *   (2) every poisoned variant the guard prevents (picked place id, null-out,
  *       empty-string, whitespace-only) WOULD throw the mismatch — proving the
  *       guard is not cosmetic.
  *
@@ -33,7 +33,7 @@
  * normalization edge cases (empty string vs null vs whitespace, and the
  * `?? ""` coercion in brandsService), none of which the implementor's
  * store-level test touches. Step 0.5: this MUST FAIL on revert (if onPick is
- * reverted to patch googlePlaceId:p.placeId, the chain feeds a mapbox_id into
+ * reverted to patch googlePlaceId:p.placeId, the chain feeds a picked place id into
  * the RPC and assertNoMismatch throws).
  */
 
@@ -98,8 +98,8 @@ const poolMatch: PoolMatch = {
   photoUrls: [],
 } as unknown as PoolMatch;
 
-const mapboxRepick: PlaceDetails = {
-  placeId: "dXJuOm1ieHBvaTpBRFZFUlNBUlk", // a mapbox_id — must NEVER reach the RPC arg
+const pickedRepick: PlaceDetails = {
+  placeId: "ChIJpickedRepick000001", // the picked place id — must NEVER reach the RPC arg
   formattedAddress: "2 Re-picked Blvd, Raleigh, NC 27601, USA",
   city: "Raleigh",
   region: "North Carolina",
@@ -110,7 +110,7 @@ const mapboxRepick: PlaceDetails = {
 };
 
 describe("ORCH-1079 ADVERSARIAL — claim chain satisfies the RPC dedup invariant", () => {
-  test("full claim chain: pool prefill → Mapbox re-pick → RPC arg STILL matches pool google id (no mismatch)", () => {
+  test("full claim chain: pool prefill → address re-pick → RPC arg STILL matches pool google id (no mismatch)", () => {
     // prefillDraftFromPoolMatch seeds the dedup key from the Google-seeded pool row.
     const seeded = prefillDraftFromPoolMatch(poolMatch);
     const store = {
@@ -124,13 +124,13 @@ describe("ORCH-1079 ADVERSARIAL — claim chain satisfies the RPC dedup invarian
     };
     expect(store.googlePlaceId).toBe(POOL_GOOGLE_ID);
 
-    // The operator re-picks a different Mapbox address in Step 1.
-    lockedOnPick(store, mapboxRepick);
+    // The operator re-picks a different address in Step 1.
+    lockedOnPick(store, pickedRepick);
 
     // Address/geo refined, but the dedup key is untouched.
-    expect(store.formattedAddress).toBe(mapboxRepick.formattedAddress);
+    expect(store.formattedAddress).toBe(pickedRepick.formattedAddress);
     expect(store.googlePlaceId).toBe(POOL_GOOGLE_ID);
-    expect(store.googlePlaceId).not.toBe(mapboxRepick.placeId);
+    expect(store.googlePlaceId).not.toBe(pickedRepick.placeId);
 
     // The wizard builds the RPC arg and the RPC dedup check passes.
     const rpcArg = buildRpcArg(store.googlePlaceId);
@@ -141,9 +141,9 @@ describe("ORCH-1079 ADVERSARIAL — claim chain satisfies the RPC dedup invarian
   });
 
   test("the guard is load-bearing: every poisoned arg the guard prevents WOULD throw the mismatch", () => {
-    // (a) mapbox_id leaked into the dedup key (the exact reverted-onPick bug)
+    // (a) picked place id leaked into the dedup key (the exact reverted-onPick bug)
     expect(() =>
-      rpcDedupCheck(mapboxRepick.placeId, poolMatch.id, POOL_GOOGLE_ID),
+      rpcDedupCheck(pickedRepick.placeId, poolMatch.id, POOL_GOOGLE_ID),
     ).toThrow("place_pool_google_place_id_mismatch");
 
     // (b) onClear nulled the key (the reverted-onClear bug) → "" via ?? "" → null
@@ -162,7 +162,7 @@ describe("ORCH-1079 ADVERSARIAL — claim chain satisfies the RPC dedup invarian
     ).toThrow("place_pool_google_place_id_mismatch");
   });
 
-  test("create-new path: null pool id → dedup branch skipped, no mapbox_id required or stored", () => {
+  test("create-new path: null pool id → dedup branch skipped, no picked place id required or stored", () => {
     const store = {
       placePoolId: null as string | null,
       googlePlaceId: null as string | null,
@@ -172,7 +172,7 @@ describe("ORCH-1079 ADVERSARIAL — claim chain satisfies the RPC dedup invarian
       city: null as string | null,
       countryCode: null as string | null,
     };
-    lockedOnPick(store, mapboxRepick);
+    lockedOnPick(store, pickedRepick);
     // No google id was ever set by the pick.
     expect(store.googlePlaceId).toBeNull();
     const rpcArg = buildRpcArg(store.googlePlaceId);

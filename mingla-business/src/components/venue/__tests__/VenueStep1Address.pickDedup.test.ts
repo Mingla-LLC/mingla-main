@@ -1,12 +1,12 @@
 /**
- * ORCH-1079 [Business-venue Google→Mapbox sweep] — venue-claim dedup guard.
+ * ORCH-1079 [Business-venue address sweep] — venue-claim dedup guard.
  *
  * THE make-or-break test. VenueStep1Address.onPick / onClear must NEVER write or
  * null `googlePlaceId` in the draft venue store, so that:
  *   • CLAIM path  — the pool-derived Google id (set by prefillDraftFromPoolMatch)
- *     survives a Step-1 Mapbox re-pick → biz_create_venue_brand_authoring does
+ *     survives a Step-1 address re-pick → biz_create_venue_brand_authoring does
  *     NOT throw `place_pool_google_place_id_mismatch` (T-3A).
- *   • CREATE-NEW path — googlePlaceId stays null → no mapbox_id reaches
+ *   • CREATE-NEW path — googlePlaceId stays null → no picked place id reaches
  *     brands.google_place_id (T-3B).
  *
  * Repo Jest harness is Node-env with no RN renderer, so this test combines:
@@ -66,8 +66,8 @@ const venueSource = (): string =>
     "utf8",
   );
 
-const mapboxPick: PlaceDetails = {
-  placeId: "dXJuOm1ieHBvaTptYXBib3gtdmVudWU", // a mapbox_id, NOT a Google id
+const pickedPlace: PlaceDetails = {
+  placeId: "ChIJpickedGooglePlace01", // the picked place id, NOT the pool identity
   formattedAddress: "123 Re-picked Ave, Tulum, Quintana Roo, Mexico",
   city: "Tulum",
   region: "Quintana Roo",
@@ -80,7 +80,7 @@ const mapboxPick: PlaceDetails = {
 describe("ORCH-1079 — VenueStep1Address dedup guard (source shape)", () => {
   test("T-3C/T-3D: no patch() call writes googlePlaceId (regression catcher)", () => {
     const src = venueSource();
-    // The picker is the shared Mapbox input, not the retired Google one.
+    // The picker is the shared address input, not the retired Google one.
     expect(src).toContain("AddressInput");
     expect(src).not.toContain("AddressAutocompleteInput");
     // Strip line + block comments (our LOCKED comments legitimately mention
@@ -124,39 +124,39 @@ describe("ORCH-1079 — draftVenueStore dedup invariant (behavioral)", () => {
     });
   }
 
-  test("T-3A: CLAIM path — pool-derived googlePlaceId survives a Mapbox re-pick", () => {
+  test("T-3A: CLAIM path — pool-derived googlePlaceId survives a address re-pick", () => {
     // Simulate prefillDraftFromPoolMatch: pool row id + its Google place id.
     const store = makeStore({
       placePoolId: "pool-row-1",
       googlePlaceId: "ChIJpoolGooglePlaceId", // Google-seeded dedup key
     });
-    applyLockedOnPick(store, mapboxPick);
+    applyLockedOnPick(store, pickedPlace);
     const s = store.getState();
     // The dedup key is UNCHANGED — RPC will match place_pool.google_place_id.
     expect(s.googlePlaceId).toBe("ChIJpoolGooglePlaceId");
-    expect(s.googlePlaceId).not.toBe(mapboxPick.placeId);
-    // Address/geo were refined from the Mapbox pick.
-    expect(s.formattedAddress).toBe(mapboxPick.formattedAddress);
+    expect(s.googlePlaceId).not.toBe(pickedPlace.placeId);
+    // Address/geo were refined from the address pick.
+    expect(s.formattedAddress).toBe(pickedPlace.formattedAddress);
     expect(s.lat).toBe(20.21);
     expect(s.city).toBe("Tulum");
     expect(s.countryCode).toBe("MX");
   });
 
-  test("T-3B: CREATE-NEW path — googlePlaceId stays null (no mapbox_id stored)", () => {
+  test("T-3B: CREATE-NEW path — googlePlaceId stays null (no picked place id stored)", () => {
     // No pool match → default googlePlaceId is null.
     const store = makeStore();
     expect(store.getState().googlePlaceId).toBeNull();
-    applyLockedOnPick(store, mapboxPick);
+    applyLockedOnPick(store, pickedPlace);
     const s = store.getState();
     expect(s.googlePlaceId).toBeNull();
-    expect(s.formattedAddress).toBe(mapboxPick.formattedAddress);
+    expect(s.formattedAddress).toBe(pickedPlace.formattedAddress);
   });
 
   test("T-3D: onClear preserves a pool-derived googlePlaceId", () => {
     const store = makeStore({
       placePoolId: "pool-row-1",
       googlePlaceId: "ChIJpoolGooglePlaceId",
-      formattedAddress: mapboxPick.formattedAddress,
+      formattedAddress: pickedPlace.formattedAddress,
       lat: 20.21,
       lng: -87.46,
       city: "Tulum",

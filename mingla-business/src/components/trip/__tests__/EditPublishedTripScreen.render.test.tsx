@@ -1,5 +1,5 @@
 /**
- * ORCH-1118 [trip from/destination must be Mapbox-validated addresses] —
+ * ORCH-1118 [trip from/destination must be pick-validated addresses] —
  * RENDER-PROOF (mingla-tester, RETEST gap-closer).
  *
  * The prior CONDITIONAL PASS left ONE residual: the published-edit screen's
@@ -100,7 +100,7 @@ jest.mock("../../../services/tripChangeNotifier", () => ({
 // supabase service — the AddressInput wrapper imports it for `invoke`.
 // We stub invoke so no real geocode network fires; the pick is simulated via
 // the picker's onPick prop directly (see helper below), which is the same code
-// path a real Mapbox suggestion tap takes.
+// path a real address suggestion tap takes.
 jest.mock("../../../services/supabase", () => ({
   supabase: { functions: { invoke: jest.fn(async () => ({ data: null, error: null })) } },
 }));

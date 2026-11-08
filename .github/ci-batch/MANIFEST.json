@@ -1442,7 +1442,7 @@
       "class": "business-node20-1",
       "origin": ".github/workflows/issue-1027-keyboard-and-datetime-tests.yml",
       "originPaths": [
-        "packages/location-input/src/MapboxAddressInput.tsx",
+        "packages/location-input/src/AddressInput.tsx",
         "mingla-business/src/components/event/CreatorStep1Basics.tsx",
         "mingla-business/src/components/event/EventCreatorWizard.tsx",
         "mingla-business/src/components/rsvp/RsvpCreatorWizard.tsx",
@@ -1454,8 +1454,8 @@
         "mingla-business/src/components/trip/PaymentPlanEditor.tsx",
         "mingla-business/src/components/trip/BookingDeadlinePicker.tsx",
         "mingla-business/src/components/marketing/ComposerStepWhen.tsx",
-        "mingla-business/src/components/location/__tests__/mapboxAddressInputKeyboardCap.1027.test.ts",
-        "mingla-business/src/components/location/__tests__/mapboxAddressInputKeyboardCap.adversarial.1027.test.ts",
+        "mingla-business/src/components/location/__tests__/addressInputKeyboardCap.1027.test.ts",
+        "mingla-business/src/components/location/__tests__/addressInputKeyboardCap.adversarial.1027.test.ts",
         "mingla-business/src/components/event/__tests__/creatorStep1DescriptionOnFocusReveal.1027.test.ts",
         "mingla-business/src/components/event/__tests__/creatorStep1DescriptionOnFocusReveal.adversarial.1027.test.tsx",
         "mingla-business/src/components/event/__tests__/creatorDescriptionRevealDeferred.1027.regression.test.ts",
@@ -1469,13 +1469,13 @@
         {
           "name": "Symptom 1 — implementor happy-path (cap formula + wiring)",
           "cwd": "mingla-business",
-          "run": "npx jest src/components/location/__tests__/mapboxAddressInputKeyboardCap.1027.test.ts --runInBand",
+          "run": "npx jest src/components/location/__tests__/addressInputKeyboardCap.1027.test.ts --runInBand",
           "invocation": {
             "kind": "raw-shell",
             "command": "bash",
             "argv": [
               "-c",
-              "npx jest src/components/location/__tests__/mapboxAddressInputKeyboardCap.1027.test.ts --runInBand"
+              "npx jest src/components/location/__tests__/addressInputKeyboardCap.1027.test.ts --runInBand"
             ]
           },
           "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
@@ -1484,13 +1484,13 @@
         {
           "name": "Symptom 1 — tester ADVERSARIAL (over-constrain / no-keyboard, cap EXECUTED)",
           "cwd": "mingla-business",
-          "run": "npx jest src/components/location/__tests__/mapboxAddressInputKeyboardCap.adversarial.1027.test.ts --runInBand",
+          "run": "npx jest src/components/location/__tests__/addressInputKeyboardCap.adversarial.1027.test.ts --runInBand",
           "invocation": {
             "kind": "raw-shell",
             "command": "bash",
             "argv": [
               "-c",
-              "npx jest src/components/location/__tests__/mapboxAddressInputKeyboardCap.adversarial.1027.test.ts --runInBand"
+              "npx jest src/components/location/__tests__/addressInputKeyboardCap.adversarial.1027.test.ts --runInBand"
             ]
           },
           "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
@@ -1618,8 +1618,8 @@
         "mingla-business/src/components/event/__tests__/creatorStep1DescriptionOnFocusReveal.adversarial.1027.test.tsx",
         "mingla-business/src/components/event/__tests__/orch_1027_web_datetime_native_input.test.tsx",
         "mingla-business/src/components/event/__tests__/orch_1027_web_datetime_structural.test.ts",
-        "mingla-business/src/components/location/__tests__/mapboxAddressInputKeyboardCap.1027.test.ts",
-        "mingla-business/src/components/location/__tests__/mapboxAddressInputKeyboardCap.adversarial.1027.test.ts",
+        "mingla-business/src/components/location/__tests__/addressInputKeyboardCap.1027.test.ts",
+        "mingla-business/src/components/location/__tests__/addressInputKeyboardCap.adversarial.1027.test.ts",
         "mingla-business/src/components/ui/__tests__/webDateTimeInput.adversarial.1027.test.tsx",
         "mingla-business/src/utils/__tests__/orch_1089_signedin_event_creator_wizard.test.ts"
       ],
@@ -42503,7 +42503,7 @@
         "executable": "bash",
         "argv": [
           "-c",
-          "npx jest src/components/location/__tests__/mapboxAddressInputKeyboardCap.1027.test.ts --runInBand"
+          "npx jest src/components/location/__tests__/addressInputKeyboardCap.1027.test.ts --runInBand"
         ],
         "payloadSha256": "6ead3c8ddf4ef856ccf2aef29c3476801d4dd44eac0d2d24dafbd34c378c75f5"
       },
@@ -42515,7 +42515,7 @@
         "executable": "bash",
         "argv": [
           "-c",
-          "npx jest src/components/location/__tests__/mapboxAddressInputKeyboardCap.adversarial.1027.test.ts --runInBand"
+          "npx jest src/components/location/__tests__/addressInputKeyboardCap.adversarial.1027.test.ts --runInBand"
         ],
         "payloadSha256": "a872d10110c65626964b065fbf38be6ec0ecacdad637f3ef866e741026c902e1"
       },

@@ -249,7 +249,7 @@ describe("in review — name, category and address save directly", () => {
     await TestRenderer.act(async () => {
       (byType(tree.root, "AddressInput").props.onPick as (d: unknown, l?: string) => void)(
         {
-          placeId: "mapbox.abc",
+          placeId: "ChIJfixture_abc",
           formattedAddress: "10 New Road, Lekki, Lagos, Nigeria",
           city: "Lagos",
           region: null,

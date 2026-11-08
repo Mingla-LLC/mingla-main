@@ -24,7 +24,7 @@
 //
 // Enforces:
 //   P-1: the Preferences custom-location field is the shared multi-row
-//        MapboxAddressInput (imported from ../location/MapboxAddressInput),
+//        AddressInput (imported from ../location/AddressInput),
 //        rendered INSIDE the `!useGpsLocation && !isLocked` block, with the
 //        suggestLimit=8 + the ≥4-char gate, and NO types/country FILTER on the
 //        field (INV-3 / ORCH-1079) — and the old forward/limit=1 single-row
@@ -77,18 +77,18 @@ const PREFS = stripComments(await read("../PreferencesSheet.tsx"));
 const CITY = stripComments(await read("../discover/CityPickerSheet.tsx"));
 
 // ── P-1: LocationInputSection is the shared multi-row field ───────────────────
-Deno.test("P-1a: PreferencesSectionsAdvanced imports the shared MapboxAddressInput", () => {
+Deno.test("P-1a: PreferencesSectionsAdvanced imports the shared AddressInput", () => {
   assertStringIncludes(
     ADVANCED,
-    'from "../location/MapboxAddressInput"',
-    "must import the shared consumer MapboxAddressInput wrapper",
+    'from "../location/AddressInput"',
+    "must import the shared consumer AddressInput wrapper",
   );
-  assertStringIncludes(ADVANCED, "<MapboxAddressInput", "must render the shared field");
+  assertStringIncludes(ADVANCED, "<AddressInput", "must render the shared field");
 });
 
 Deno.test("P-1b: the shared field renders INSIDE the `!useGpsLocation && !isLocked` block", () => {
   const guardIdx = ADVANCED.search(/!useGpsLocation\s*&&\s*!isLocked/);
-  const fieldIdx = ADVANCED.indexOf("<MapboxAddressInput");
+  const fieldIdx = ADVANCED.indexOf("<AddressInput");
   assert(guardIdx !== -1, "the custom-field guard must be preserved (I-1315 co-guard)");
   assert(fieldIdx !== -1, "the shared field must render");
   assert(
@@ -161,7 +161,7 @@ Deno.test("OQ-4: CityPickerSheet searches places globally without device bias [T
 // ── OQ-1: behavioral omit-when-absent model ───────────────────────────────────
 // Mirrors the host/CityPicker resolution: device present → proximity;
 // no device location → omitted (never a hardcoded default). This is the
-// contract the mapboxGeocodeService merges "only when present". NO country —
+// contract the places service merges "only when present". NO country —
 // proximity biases ranking without excluding results (INV-3 / ORCH-1079).
 function biasFromDevice(
   loc: { longitude: number; latitude: number } | null,

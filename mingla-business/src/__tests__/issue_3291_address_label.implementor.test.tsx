@@ -28,7 +28,7 @@ import type {
   InvokeFn,
   PlaceAutocompleteSuggestion,
   PlaceDetails,
-} from "../../../packages/location-input/src/mapboxGeocodeService";
+} from "../../../packages/location-input/src/placesService";
 import type { LocationInputTokens } from "../../../packages/location-input/src/types";
 import { buildDraftEvent } from "../store/draftEventStore";
 import {
@@ -54,22 +54,22 @@ const ROOT = path.resolve(__dirname, "../../..");
 
 // ── Live-shaped fixtures (captured from the production mapbox-geocode proxy) ──
 const STREET: PlaceAutocompleteSuggestion = {
-  placeId: "mapbox.street.ozumba",
+  placeId: "ChIJfixture_street_ozumba",
   displayName: "Ozumba Mbadiwe Avenue",
   fullAddress: "Lagos 10, Lagos, Nigeria",
 };
 const HOUSE_NUMBER: PlaceAutocompleteSuggestion = {
-  placeId: "mapbox.address.ozumba12",
+  placeId: "ChIJfixture_address_ozumba12",
   displayName: "Ozumba Mbadiwe Rd 12",
   fullAddress: "Ozumba Mbadiwe Rd 12, Lagos 10, Lagos, Nigeria",
 };
 const CITY: PlaceAutocompleteSuggestion = {
-  placeId: "mapbox.place.london",
+  placeId: "ChIJfixture_place_london",
   displayName: "London",
   fullAddress: "Greater London, England, United Kingdom",
 };
 const VENUE: PlaceAutocompleteSuggestion = {
-  placeId: "mapbox.poi.nike",
+  placeId: "ChIJfixture_poi_nike",
   displayName: "Nike Art Gallery",
   fullAddress: "2 Elegushi Beach Rd, Lekki, Lagos, Nigeria",
 };
@@ -132,7 +132,7 @@ const copy = {
   minLengthHint: "Type more",
   searching: "Searching",
   noResults: "No matches",
-  offline: "Offline",
+  unavailable: "Offline",
   pickError: "Pick failed",
 };
 

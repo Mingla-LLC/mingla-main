@@ -1,8 +1,8 @@
 /**
- * ORCH-1118 [trip from/destination fields must be Mapbox-validated addresses]
+ * ORCH-1118 [trip from/destination fields must be pick-validated addresses]
  *
  * Unit tests for the shared trip-location predicate. The contract: BOTH
- * departure and destination are valid ONLY when a real Mapbox pick is present
+ * departure and destination are valid ONLY when a real address pick is present
  * (placeId + lat + lng all non-null). Empty text and dirty (typed-but-unpicked)
  * text are BOTH invalid for BOTH fields.
  *

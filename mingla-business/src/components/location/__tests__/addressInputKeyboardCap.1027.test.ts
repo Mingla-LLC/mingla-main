@@ -16,7 +16,7 @@
  * from "react"`, and `react`/`react-native` are unresolvable FROM the packages/
  * dir under this node/ts-jest config (mingla-business owns the only real copy —
  * see jest.config.cjs moduleNameMapper notes). Every shared-location regression
- * in this repo (BrandCreationFlow.mapbox, TripCreatorStep1Basics.mapbox,
+ * in this repo (BrandCreationFlow.addressPicker, TripCreatorStep1Basics.addressPicker,
  * orch-1361/1362) is therefore source-characterization. This suite pins the exact
  * cap formula + constants (the behavioral contract, SPEC §7 T-1..T-4) AND the
  * wiring (SPEC §9), reading the worktree package source directly.

@@ -28,7 +28,7 @@ jest.mock("../../../hooks/useCurrentBrand", () => ({
   useCurrentBrand: () => null,
 }));
 jest.mock("../../location/AddressInput", () => ({
-  AddressInput: "mapbox",
+  AddressInput: "address-input",
 }));
 jest.mock("../../ui/Button", () => ({ Button: "button" }));
 jest.mock("../../ui/Input", () => ({ Input: "input" }));

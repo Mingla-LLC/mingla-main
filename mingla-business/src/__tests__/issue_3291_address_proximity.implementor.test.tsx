@@ -1,7 +1,7 @@
 /**
  * Issue #3291 — Host address search ranks results near the host, RANK-ONLY.
  *
- * THE DEFECT: the business picker never sent a location, so Mapbox ranked from
+ * THE DEFECT: the business picker never sent a location, so the provider ranked from
  * the edge server's own IP in the United States — typing "Lagos" surfaced a
  * restaurant in Virginia before Lagos, Nigeria.
  *
@@ -105,7 +105,7 @@ describe("Issue #3291 — where ranking comes from", () => {
     expect(resolveAddressSearchProximity({})).toBeUndefined();
   });
 
-  test("Mapbox order is longitude,latitude", () => {
+  test("the proximity contract is longitude,latitude", () => {
     expect(resolveAddressSearchProximity({ brandPoint: { lat: 51.5, lng: -0.12 } })).toBe(
       "-0.12,51.5",
     );
