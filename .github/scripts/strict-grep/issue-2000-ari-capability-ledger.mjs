@@ -79,6 +79,8 @@ ari.venue.send_sms
 ari.discounts.list
 ari.discounts.create
 ari.discounts.pause
+ari.discounts.resume
+ari.discounts.end
 ari.referrals.list
 ari.referrals.create
 ari.referrals.invite_promoters
