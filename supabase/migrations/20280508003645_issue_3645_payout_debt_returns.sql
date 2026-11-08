@@ -856,6 +856,20 @@ BEGIN
       SELECT DISTINCT a.release_id FROM public.payout_debt_applications a
       WHERE a.debt_id=v_debt.id AND a.released_at IS NULL
     ) x;
+    -- Store the settled projection on each of those unpaid releases now: a
+    -- hand-back above may leave nothing for maturity to return below, and a
+    -- blocked release is claimed (Stripe) without the planner re-projecting.
+    UPDATE public.brand_payout_releases r SET
+      refunded_cents=projected.refunded_cents,
+      disputed_cents=projected.disputed_cents,
+      net_release_cents=projected.net_release_cents,
+      updated_at=p_now
+    FROM (
+      SELECT DISTINCT a.release_id FROM public.payout_debt_applications a
+      WHERE a.debt_id=v_debt.id AND a.released_at IS NULL
+    ) x
+    CROSS JOIN LATERAL public.issue_3645_release_projected_totals(x.release_id) projected
+    WHERE r.id=x.release_id AND public.issue_3645_release_settleable(r.id);
     SELECT * INTO v_debt FROM public.organiser_payout_debts WHERE id=v_debt.id;
     FOR v_app IN
       SELECT * FROM public.payout_debt_applications
@@ -1777,6 +1791,196 @@ BEGIN
   RAISE EXCEPTION 'payout_debt_application_immutable' USING ERRCODE='P0001';
 END;
 $fn$;
+
+-- ---- cancel_event_refund_prepare (source and hunks: __tests__/issue_3645_debt_return_reemit_hunks.ts)
+CREATE OR REPLACE FUNCTION public.cancel_event_refund_prepare(p_event_id uuid, p_now timestamp with time zone DEFAULT now())
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_status text;
+  v_brand_id uuid;
+  v_provider text;
+  v_release record;
+  v_temp public.organiser_payout_debts;
+  v_total integer;
+  v_rsvp_count integer;
+  v_run_status text;
+  v_pending_ids uuid[];
+  v_installments_cancelled integer := 0;
+BEGIN
+  -- 1. Status-first guard (binding race guard + the SOLE authorization).
+  SELECT status, brand_id INTO v_status, v_brand_id
+  FROM public.events WHERE id = p_event_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'event_not_found' USING ERRCODE = 'P0001';
+  END IF;
+  IF v_status IS DISTINCT FROM 'cancelled' THEN
+    RAISE EXCEPTION 'event_not_cancelled' USING ERRCODE = 'P0002';
+  END IF;
+
+  SELECT CASE WHEN b.payment_provider = 'paystack' THEN 'paystack' ELSE 'stripe' END
+  INTO v_provider FROM public.brands b WHERE b.id = v_brand_id;
+  v_provider := COALESCE(v_provider, 'stripe');
+
+  -- 1b. #3645 PR2 — freeze sales (idempotent).
+  UPDATE public.ticket_types
+  SET sale_end_at = p_now,
+      is_disabled = true,
+      updated_at = p_now
+  WHERE event_id = p_event_id
+    AND deleted_at IS NULL
+    AND is_hidden IS NOT TRUE
+    AND available_online IS TRUE
+    AND (
+      sale_end_at IS NULL
+      OR sale_end_at > p_now
+      OR is_disabled IS NOT TRUE
+    );
+
+  UPDATE public.events
+  SET bookings_closed = true,
+      bookings_closed_at = COALESCE(bookings_closed_at, p_now)
+  WHERE id = p_event_id
+    AND bookings_closed IS NOT TRUE;
+
+  -- 1c. #3645 PR5 / #2030 — cancel scheduled/failed installments on this event's
+  --     orders (mirror biz_cancel_trip_booking_begin). Collected rows stay.
+  UPDATE public.order_installments oi
+  SET status = 'cancelled',
+      cancelled_at = p_now
+  FROM public.orders o
+  WHERE o.id = oi.order_id
+    AND o.event_id = p_event_id
+    AND oi.status IN ('scheduled', 'failed')
+    AND oi.cancelled_at IS NULL;
+  GET DIAGNOSTICS v_installments_cancelled = ROW_COUNT;
+
+  -- 2. Stop releases (event-scoped; NEVER releases).
+  WITH locked AS (
+    SELECT id FROM public.brand_payout_releases
+    WHERE event_id = p_event_id
+      AND status IN (
+        'pending','blocked_kyc','blocked_balance','blocked_otp','blocked_over_cap',
+        'fee_unreconciled','blocked_anchor','reanchored'
+      )
+    FOR UPDATE SKIP LOCKED
+  )
+  UPDATE public.brand_payout_releases r
+  SET status = 'cancelled_event', updated_at = p_now
+  FROM locked WHERE r.id = locked.id;
+
+  -- 3. Atomic debt conversion BEFORE any refund (Stripe only).
+  FOR v_release IN
+    SELECT r.id AS release_id
+    FROM public.brand_payout_releases r
+    WHERE r.event_id = p_event_id
+      AND r.status = 'released'
+      AND r.provider = 'stripe'
+    FOR UPDATE OF r SKIP LOCKED
+  LOOP
+    -- #3645 2d: key-share the releases the conversion may insert onto before
+    -- the debt lock, as settle locks release, then debt (else they deadlock).
+    PERFORM 1 FROM public.brand_payout_releases r
+    WHERE r.id IN (
+      SELECT a.release_id FROM public.payout_debt_applications a
+      JOIN public.organiser_payout_debts d ON d.id = a.debt_id
+      WHERE d.origin_release_id = v_release.release_id
+        AND d.kind = 'post_release_postponement' AND a.released_at IS NULL
+    )
+    ORDER BY r.id FOR KEY SHARE;
+    SELECT * INTO v_temp FROM public.organiser_payout_debts
+    WHERE origin_release_id = v_release.release_id
+      AND kind = 'post_release_postponement'
+      AND status = 'open'
+    FOR UPDATE;
+    IF FOUND AND v_temp.principal_cents > 0 THEN
+      PERFORM public.convert_postponement_debt_to_permanent(
+        v_release.release_id, 'post_release_cancellation', v_temp.principal_cents, p_now
+      );
+    END IF;
+  END LOOP;
+
+  -- 4. Open / refresh the backstop run.
+  INSERT INTO public.event_cancel_refund_runs (event_id, status, last_attempt_at, opened_at)
+  VALUES (p_event_id, 'awaiting_review', p_now, p_now)
+  ON CONFLICT (event_id) DO UPDATE SET
+    last_attempt_at = p_now;
+
+  -- 5. Enumerate + persist per-object progress rows (orders only).
+  INSERT INTO public.event_cancel_refund_progress (
+    event_id, source_type, source_id, provider, amount_cents, status
+  )
+  -- Issue #3872: a cancelled event returns what each buyer was charged
+  -- (buyer_total_cents, which includes passed fees and added tax), on every
+  -- rail. orders.total_cents is the ticket base on Stripe paths.
+  SELECT p_event_id, 'order', o.id, v_provider,
+         (COALESCE(o.buyer_total_cents, o.total_cents)::integer
+           - COALESCE(o.refunded_amount_cents, 0)), 'pending'
+  FROM public.orders o
+  WHERE o.event_id = p_event_id
+    AND o.payment_status IN ('paid','partial_refund')
+    AND (COALESCE(o.buyer_total_cents, o.total_cents)::integer
+           - COALESCE(o.refunded_amount_cents, 0)) > 0
+  ON CONFLICT (source_type, source_id) DO NOTHING;
+
+  -- 5a. Issue #3645 (both rails): every collected instalment is its own money
+  --     object, refunded for what it charged and has not had back. Its refunds
+  --     never count against the deposit (orders.refunded_amount_cents).
+  INSERT INTO public.event_cancel_refund_progress (
+    event_id, source_type, source_id, provider, amount_cents, status
+  )
+  SELECT p_event_id, 'order_installment', oi.id, oi.provider,
+         (coalesce(oi.buyer_total_cents, oi.amount_cents) - oi.refunded_amount_cents)::integer,
+         'pending'
+  FROM public.order_installments oi
+  JOIN public.orders o ON o.id = oi.order_id
+  WHERE o.event_id = p_event_id
+    AND oi.status = 'collected'
+    AND (coalesce(oi.buyer_total_cents, oi.amount_cents) - oi.refunded_amount_cents) > 0
+  ON CONFLICT (source_type, source_id) DO NOTHING;
+
+  SELECT count(*)::integer INTO v_total
+  FROM public.event_cancel_refund_progress WHERE event_id = p_event_id;
+
+  -- 5b. RSVP chip-in contributions.
+  SELECT count(*)::integer INTO v_rsvp_count
+  FROM public.event_rsvp_contributions c
+  WHERE c.event_id = p_event_id
+    AND c.status IN ('paid','partially_refunded')
+    AND c.buyer_total_cents > c.refunded_amount_cents;
+
+  -- 6. Resolve the run status from the refund work.
+  UPDATE public.event_cancel_refund_runs
+  SET total_objects = v_total,
+      status = CASE
+        WHEN status = 'completed' THEN status
+        WHEN v_total = 0 AND v_rsvp_count = 0 THEN 'completed'
+        ELSE status
+      END,
+      completed_at = CASE
+        WHEN status <> 'completed' AND v_total = 0 AND v_rsvp_count = 0
+             AND completed_at IS NULL THEN p_now
+        ELSE completed_at
+      END
+  WHERE event_id = p_event_id
+  RETURNING status INTO v_run_status;
+
+  SELECT COALESCE(array_agg(id), ARRAY[]::uuid[]) INTO v_pending_ids
+  FROM public.event_cancel_refund_progress
+  WHERE event_id = p_event_id AND status IN ('pending','failed_retryable');
+
+  RETURN jsonb_build_object(
+    'run_status', v_run_status,
+    'total_objects', v_total,
+    'pending_object_ids', to_jsonb(v_pending_ids),
+    'rsvp_pending_count', v_rsvp_count,
+    'installments_cancelled', v_installments_cancelled
+  );
+END;
+$function$;
 
 -- §7. Self-assert: the new writer path is wired before anything commits.
 DO $assert$

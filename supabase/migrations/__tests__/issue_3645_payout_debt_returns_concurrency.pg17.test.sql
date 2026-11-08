@@ -220,6 +220,34 @@ BEGIN
     'issue-3645-2dcc-hold-22'
   );
 
+  -- C4: a released Stripe release of a cancelled event, with a postponement
+  -- debt withheld in full from a release a hold has left short.
+  PERFORM pg_temp.brand(24);
+  INSERT INTO public.events(id, brand_id, title, slug, status, currency)
+  VALUES (pg_temp.uid(9, 24, 1), pg_temp.uid(2, 24, 0), 'Issue 3645 2d cc event',
+          'issue-3645-2dcc-event-24', 'cancelled', 'USD');
+  INSERT INTO public.brand_payout_releases(
+    id, brand_id, event_id, occurrence_key, surface, provider, currency,
+    anchor_end_at, releasable_at, gross_cents, net_release_cents,
+    organiser_cash_delivered_cents, status, released_at
+  ) VALUES (
+    pg_temp.uid(7, 24, 1), pg_temp.uid(2, 24, 0), pg_temp.uid(9, 24, 1),
+    'issue-3645-2dcc-origin-24-1', 'order', 'stripe', 'usd',
+    timestamptz '2026-09-01 00:00:00+00', timestamptz '2026-09-02 00:00:00+00',
+    2000, 2000, 2000, 'released', timestamptz '2026-09-02 00:00:00+00'
+  );
+  INSERT INTO issue_3645_2d_cc.ids VALUES ('c4_temp', public.open_post_release_postponement_debt(
+    pg_temp.uid(7, 24, 1), timestamptz '2026-12-01 00:00:00+00'));
+  v_r := pg_temp.stay(24, 1);
+  INSERT INTO issue_3645_2d_cc.ids VALUES ('c4_r', v_r);
+  INSERT INTO public.stay_payout_release_holds(
+    release_id, line_id, kind, refunded_cents, disputed_cents, net_hold_cents,
+    provider_ref, idempotency_key
+  ) VALUES (
+    v_r, pg_temp.uid(5, 24, 1), 'dispute_opened', 0, 9000, 9000, 'dp_3645d_24',
+    'issue-3645-2dcc-hold-24'
+  );
+
   -- C3: a postponement debt that is due, withheld from an unpaid release.
   PERFORM pg_temp.brand(23);
   INSERT INTO issue_3645_2d_cc.ids VALUES
@@ -311,6 +339,44 @@ BEGIN
 END
 $c2$;
 
+-- C4: the cancellation path locks the postponement debt itself before it
+-- converts, so it too key-shares the target releases first.
+DO $c4$
+DECLARE
+  v_err_a text;
+  v_err_b text;
+BEGIN
+  PERFORM dblink_connect('issue3645_c4a', pg_temp.conn());
+  PERFORM dblink_connect('issue3645_c4b', pg_temp.conn());
+  PERFORM dblink_send_query('issue3645_c4a', format($q$
+    DO $do$ BEGIN
+      PERFORM 1 FROM public.brand_payout_releases WHERE id = %1$L::uuid FOR UPDATE;
+      PERFORM pg_sleep(2);
+      PERFORM public.issue_3645_return_unrecovered_release_debt(%1$L::uuid);
+    END $do$
+  $q$, pg_temp.cc('c4_r')));
+  PERFORM pg_sleep(0.5);
+  PERFORM dblink_send_query('issue3645_c4b', format($q$
+    SELECT public.cancel_event_refund_prepare(%L::uuid, now())::text
+  $q$, pg_temp.uid(9, 24, 1)));
+  PERFORM * FROM dblink_get_result('issue3645_c4a', false) AS t(r text);
+  v_err_a := nullif(dblink_error_message('issue3645_c4a'), 'OK');
+  PERFORM * FROM dblink_get_result('issue3645_c4b', false) AS t(r text);
+  v_err_b := nullif(dblink_error_message('issue3645_c4b'), 'OK');
+  PERFORM dblink_disconnect('issue3645_c4a');
+  PERFORM dblink_disconnect('issue3645_c4b');
+  IF v_err_a IS NOT NULL OR v_err_b IS NOT NULL THEN
+    RAISE EXCEPTION 'C4 FAIL: settle % / cancellation %', v_err_a, v_err_b;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.organiser_payout_debts
+                 WHERE origin_release_id = pg_temp.uid(7, 24, 1)
+                   AND kind = 'post_release_cancellation') THEN
+    RAISE EXCEPTION 'C4 FAIL: the cancellation did not convert the postponement debt';
+  END IF;
+  RAISE NOTICE 'C4 PASS: settle and an event cancellation on the same debt both complete';
+END
+$c4$;
+
 -- C3: maturity never waits on a release someone else holds: it leaves the
 -- whole debt for the next tick, which hands it back through net.
 DO $c3$
@@ -348,4 +414,4 @@ BEGIN
 END
 $c3b$;
 
-\echo 'issue #3645 2d two-session payout debt paths passed (C1-C3)'
+\echo 'issue #3645 2d two-session payout debt paths passed (C1-C4)'

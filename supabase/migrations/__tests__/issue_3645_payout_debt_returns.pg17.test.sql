@@ -601,8 +601,15 @@ BEGIN
     v_rel[2], pg_temp.uid(5, 11, 1), 'dispute_opened', 0, 9000, 9000,
     'dp_3645d_11', 'issue-3645-2d-hold-11'
   );
-  -- Maturity reaches both; then the planner's pass settles whatever is left.
+  -- Maturity reaches both. It stores the settled net itself: a blocked
+  -- release is claimed without the planner re-projecting it first.
   PERFORM public.mature_postponement_debts(timestamptz '2026-10-29 00:00:00+00');
+  IF (pg_temp.rel(v_rel[1])).net_release_cents <> 0
+     OR (pg_temp.rel(v_rel[2])).net_release_cents <> 0
+     OR (pg_temp.rel(v_rel[2])).disputed_cents <> 9000 THEN
+    RAISE EXCEPTION 'T10b maturity left a stale stored net: % / %',
+      (pg_temp.rel(v_rel[1])).net_release_cents, (pg_temp.rel(v_rel[2])).net_release_cents;
+  END IF;
   PERFORM public.plan_pending_payout_partner_legs(500);
 
   FOR i IN 1..2 LOOP
