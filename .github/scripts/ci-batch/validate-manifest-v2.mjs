@@ -396,7 +396,7 @@ export function phase3dContractDigest(manifest) {
 // #3645: the sell-and-publish migration joins the pre-#1931 and pre-#2117 replay skip lists by exact filename.
 // #4304: register the Brand group live migration and its PostgreSQL proof the same way.
 // #4270 W7: register the admin Brand group inbox suites; migration 20280502004270; re-sealed after merging origin/main (#4322).
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "ebb3f254b0db948f6980a5ce1b341ee0b393de638ba51f6541319138ecc791b0";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "1b6ead8373560ce603d1bc00895e5874c61d8b0e77707f1a68f7b013fc902397";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

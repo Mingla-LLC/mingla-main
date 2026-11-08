@@ -63,6 +63,10 @@ on:
       # a change to only one of them would otherwise never re-run the Deno and
       # Jest suites that guard them. Listed in BOTH filters.
       - "supabase/functions/delete-user/**"
+      # Issue #3645 2c — the float-alert sweep suites (stripe-deno lane) guard
+      # payout-release-sweep/index.ts. Listed in BOTH filters so a sweep-only
+      # change re-runs them.
+      - "supabase/functions/payout-release-sweep/**"
       - "mingla-business/app/account/**"
       - "mingla-business/app/(tabs)/account.tsx"
       - "mingla-business/src/hooks/useAccountDeletion.ts"
@@ -490,6 +494,10 @@ on:
       # a change to only one of them would otherwise never re-run the Deno and
       # Jest suites that guard them. Listed in BOTH filters.
       - "supabase/functions/delete-user/**"
+      # Issue #3645 2c — the float-alert sweep suites (stripe-deno lane) guard
+      # payout-release-sweep/index.ts. Listed in BOTH filters so a sweep-only
+      # change re-runs them.
+      - "supabase/functions/payout-release-sweep/**"
       - "mingla-business/app/account/**"
       - "mingla-business/app/(tabs)/account.tsx"
       - "mingla-business/src/hooks/useAccountDeletion.ts"

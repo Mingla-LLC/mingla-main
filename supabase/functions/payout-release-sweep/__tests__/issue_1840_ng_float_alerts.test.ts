@@ -475,6 +475,10 @@ function sweepHarness(scenario: SweepCase) {
           error: null,
         });
       }
+      // Issue #3645 2c: a zero obligation marks the Mingla-wide float row covered.
+      if (name === "issue_3645_mark_mingla_float_covered") {
+        return Promise.resolve({ data: 0, error: null });
+      }
       // Issue #3645 PR8 (append-only): dark+execute ticks surface waiting-for-bank.
       if (name === "surface_payout_releases_waiting_for_bank") {
         return Promise.resolve({ data: [], error: null });
@@ -587,6 +591,8 @@ Deno.test("#1840 D2 the forecast runs BEFORE any release execution and alerts on
     status: "ok",
     horizonDays: 7,
     releaseCount: 2,
+    unattachedCount: 0,
+    unattachedKobo: 0,
     obligationKobo: 1_000_000,
     balanceRead: true,
     shortfallKobo: 750_000,
@@ -605,10 +611,17 @@ Deno.test("#1840 D2 no obligation in the horizon ⇒ no balance read and no aler
     harness.rpcOrder.includes("raise_paystack_float_shortfall_alert"),
     false,
   );
+  // #3645 2c: the raise is skipped, so the float is marked covered directly.
+  assertEquals(
+    harness.rpcOrder.includes("issue_3645_mark_mingla_float_covered"),
+    true,
+  );
   assertEquals(body.paystackFloatForecast, {
     status: "ok",
     horizonDays: 7,
     releaseCount: 0,
+    unattachedCount: 0,
+    unattachedKobo: 0,
     obligationKobo: 0,
     balanceRead: false,
     shortfallKobo: 0,
