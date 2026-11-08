@@ -1521,7 +1521,6 @@
         "mingla-business/modules/mingla-tap-to-pay-education/expo-module.config.json",
         "mingla-business/modules/mingla-tap-to-pay-education/ios/MinglaTapToPayEducation.podspec",
         "mingla-business/modules/mingla-tap-to-pay-education/ios/MinglaTapToPayEducationModule.swift",
-        "mingla-business/package-lock.json",
         "mingla-business/package.json",
         "mingla-business/plugins/withAndroidMinSdk26.js",
         "mingla-business/src/components/brand/BrandOnboardView.tsx",
