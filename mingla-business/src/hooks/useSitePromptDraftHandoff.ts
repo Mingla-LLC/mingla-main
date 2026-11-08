@@ -22,9 +22,30 @@ import { sitePromptFirstMessage } from "../utils/sitePromptDraft";
 
 const handledDraftIds = new Set<string>();
 
+/**
+ * A host with no brand yet: Ari makes creating the brand part zero (its
+ * website rules), and creating it switches the Ari screen to the new brand's
+ * own, empty conversation (#4304 State A → B). The website request is carried
+ * across that switch in memory, once, so Ari continues the build in the new
+ * brand's conversation instead of leaving the words in the composer.
+ */
+let carriedMessage: string | null = null;
+
+export function carrySitePromptMessage(message: string): void {
+  carriedMessage = message;
+}
+
+/** True once, when `message` is the carried website request (then it is spent). */
+export function takeCarriedSitePromptMessage(message: string): boolean {
+  if (carriedMessage === null || carriedMessage.trim() !== message.trim()) return false;
+  carriedMessage = null;
+  return true;
+}
+
 /** Test seam: forget which drafts this page load has handled. */
 export function resetSitePromptDraftHandoffForTests(): void {
   handledDraftIds.clear();
+  carriedMessage = null;
 }
 
 export interface SitePromptDraftHandoffArgs {

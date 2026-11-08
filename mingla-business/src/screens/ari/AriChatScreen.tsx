@@ -114,7 +114,11 @@ import {
   isFirstRunLocked,
 } from "../../utils/firstRunState";
 import type { AriFirstRunHint } from "../../services/agentChatService";
-import { useSitePromptDraftHandoff } from "../../hooks/useSitePromptDraftHandoff";
+import {
+  carrySitePromptMessage,
+  takeCarriedSitePromptMessage,
+  useSitePromptDraftHandoff,
+} from "../../hooks/useSitePromptDraftHandoff";
 import { parseSitePromptDraftId } from "../../utils/sitePromptDraft";
 import {
   ariConversationScopeKey,
@@ -747,11 +751,35 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     ready: sitePromptReady,
     onMessage: (message) => {
       chat.setConversationId(null);
+      // No brand yet: the request also rides across brand creation (below).
+      if (brandCount === 0) carrySitePromptMessage(message);
       // A send that cannot go now (rate limit) keeps the words in the composer.
       if (!handleSendRef.current(message)) setDraftText(message);
     },
     onSettled: () => router.setParams({ draft: undefined } as never),
   });
+  // The brand Ari just created is selected and its own conversation restored
+  // (State B): send the carried website request there once, so the build
+  // continues without the host retyping or re-sending it.
+  React.useEffect(() => {
+    if (
+      firstRunStage !== "empty_brand" ||
+      selectedBrandId === null ||
+      !conversationRestored ||
+      rememberedFirstRunText === null ||
+      !takeCarriedSitePromptMessage(rememberedFirstRunText)
+    )
+      return;
+    firstRunPrefilledBrandRef.current = selectedBrandId;
+    chat.setConversationId(null);
+    if (!handleSendRef.current(rememberedFirstRunText)) setDraftText(rememberedFirstRunText);
+  }, [
+    chat.setConversationId,
+    conversationRestored,
+    firstRunStage,
+    rememberedFirstRunText,
+    selectedBrandId,
+  ]);
 
   // #4304 — a greeting chip is sent as the host's own message, with the chip's
   // intent as context. In State A a kind ("I host events") is remembered so the

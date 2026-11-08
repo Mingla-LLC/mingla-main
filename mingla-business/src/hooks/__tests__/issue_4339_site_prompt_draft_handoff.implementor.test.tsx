@@ -38,7 +38,9 @@ import { claimSitePromptDraft } from "../../services/sitePromptDraftService";
 import { sanitizeNextRoute } from "../../utils/nextRoute";
 import { parseSitePromptDraftId, sitePromptFirstMessage } from "../../utils/sitePromptDraft";
 import {
+  carrySitePromptMessage,
   resetSitePromptDraftHandoffForTests,
+  takeCarriedSitePromptMessage,
   useSitePromptDraftHandoff,
   type SitePromptDraftHandoffArgs,
 } from "../useSitePromptDraftHandoff";
@@ -206,6 +208,19 @@ describe("useSitePromptDraftHandoff", () => {
   });
 });
 
+describe("the website request rides across brand creation once", () => {
+  beforeEach(() => resetSitePromptDraftHandoffForTests());
+
+  test("taken once, only for the same words", () => {
+    const message = sitePromptFirstMessage(BODY);
+    expect(takeCarriedSitePromptMessage(message)).toBe(false);
+    carrySitePromptMessage(message);
+    expect(takeCarriedSitePromptMessage("Make me an event")).toBe(false);
+    expect(takeCarriedSitePromptMessage(`  ${message}  `)).toBe(true);
+    expect(takeCarriedSitePromptMessage(message)).toBe(false);
+  });
+});
+
 describe("AriChatScreen wiring", () => {
   const source = fs.readFileSync(
     path.join(__dirname, "../../screens/ari/AriChatScreen.tsx"),
@@ -225,5 +240,15 @@ describe("AriChatScreen wiring", () => {
       /onMessage: \(message\) => \{\s*chat\.setConversationId\(null\);[\s\S]*?if \(!handleSendRef\.current\(message\)\) setDraftText\(message\);/,
     );
     expect(source).toMatch(/onSettled: \(\) => router\.setParams\(\{ draft: undefined \} as never\)/);
+  });
+
+  test("a host with no brand: carried at the first send, re-sent once in the new brand's conversation", () => {
+    expect(source).toMatch(/if \(brandCount === 0\) carrySitePromptMessage\(message\);/);
+    expect(source).toMatch(
+      /firstRunStage !== "empty_brand" \|\|\s*selectedBrandId === null \|\|\s*!conversationRestored \|\|\s*rememberedFirstRunText === null \|\|\s*!takeCarriedSitePromptMessage\(rememberedFirstRunText\)/,
+    );
+    expect(source).toMatch(
+      /chat\.setConversationId\(null\);\s*if \(!handleSendRef\.current\(rememberedFirstRunText\)\) setDraftText\(rememberedFirstRunText\);/,
+    );
   });
 });
