@@ -1466,7 +1466,8 @@
         "supabase/migrations/20280419014276_issue_4276_mv_refresh_slot_comma_minutes.sql",
         "supabase/migrations/20280419024276_issue_4276_admin_spend_totals.sql",
         "supabase/migrations/20280428004276_issue_4276_live_runs.sql",
-        "supabase/migrations/20280504004276_issue_4276_admin_counts_headroom.sql"
+        "supabase/migrations/20280504004276_issue_4276_admin_counts_headroom.sql",
+        "supabase/migrations/20280505004276_issue_4276_resume_resets_progress.sql"
       ]
     },
     {
