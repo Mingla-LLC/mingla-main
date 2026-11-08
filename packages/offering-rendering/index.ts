@@ -471,7 +471,7 @@ export { EventCoverMedia } from "./EventCoverMedia";
 export { ThemeEntranceAnimation } from "./ThemeEntranceAnimation";
 export type { ThemeEntranceAnimationProps } from "./ThemeEntranceAnimation";
 // issue #1023 — text-safe zone + dev-only motion preview.
-export { setThemeMotionDevOverride } from "./themeMotion";
+export { setThemeMotionDevOverride } from "./themeMotionDevOverride";
 export type { TextSafeZone, TextSafeZoneProp } from "./themeMotion";
 export {
   computeForeground,

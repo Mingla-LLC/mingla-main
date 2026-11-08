@@ -40,3 +40,33 @@ describe("the font catalogue stays lazy", () => {
     expect(sheet).not.toContain("googleFontsCatalog");
   });
 });
+
+// issue #1023 merge prep — the motion helpers stay out of the boot chunk: the
+// eager web shim, the barrel and the Theme sheet read the dev override and the
+// Reduce Motion frame from ./themeMotionDevOverride, never the full
+// ./themeMotion (text-safe zones, pause store), which only the lazy players use.
+describe("the motion helpers stay lazy", () => {
+  test("eager modules import only themeMotionDevOverride (types excepted)", async () => {
+    const repo = path.resolve(__dirname, "../../../../..");
+    for (const rel of [
+      "packages/offering-rendering/ThemeEntranceAnimation.web.tsx",
+      "packages/offering-rendering/index.ts",
+      "packages/offering-rendering/ParallaxCoverShell.tsx",
+      "packages/offering-rendering/PublicEventPage.tsx",
+      "mingla-business/src/components/theme/ThemeSheet.tsx",
+    ]) {
+      const src = await readFile(path.join(repo, rel), "utf8");
+      const valueImports = src
+        .split("\n")
+        .filter((l) => /from "(?:\.\/|.*offering-rendering\/)themeMotion"/.test(l))
+        .filter((l) => !/^\s*(?:import|export) type\b|\{\s*type\s[^,}]*\}/.test(l));
+      expect({ rel, valueImports }).toEqual({ rel, valueImports: [] });
+    }
+    const split = await readFile(
+      path.join(repo, "packages/offering-rendering/themeMotionDevOverride.ts"),
+      "utf8",
+    );
+    expect(split).toContain("export function setThemeMotionDevOverride(");
+    expect(split).toContain("export const REDUCED_MOTION_PROGRESS");
+  });
+});

@@ -17,7 +17,7 @@ import {
   THEME_ANIMATION_CATALOG,
   THEME_MOTION_GROUPS,
 } from "../../../../packages/offering-rendering/designTokens";
-import { setThemeMotionDevOverride } from "../../../../packages/offering-rendering/themeMotion";
+import { setThemeMotionDevOverride } from "../../../../packages/offering-rendering/themeMotionDevOverride";
 import {
   createThemePalette,
   themeTextAccent,

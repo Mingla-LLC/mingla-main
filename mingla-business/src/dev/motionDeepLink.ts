@@ -11,7 +11,7 @@
 import { useEffect } from "react";
 import { Linking } from "react-native";
 
-import { isPreviewableMotionSlug, setThemeMotionDevOverride } from "@mingla/offering-rendering/themeMotion";
+import { isPreviewableMotionSlug, setThemeMotionDevOverride } from "@mingla/offering-rendering/themeMotionDevOverride";
 import type { ThemeAnimationSlug } from "@mingla/offering-rendering/designTokens";
 
 export type MotionLinkAction =
