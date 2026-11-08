@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/run-city-pipeline/__tests__/issue_4276_live_runs_pacing.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4276-live-runs-pacing",
+  "profile": "deno-2-unit"
+}

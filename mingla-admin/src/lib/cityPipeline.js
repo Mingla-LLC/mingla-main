@@ -850,3 +850,384 @@ export function filterChipCount(n, { loading, error }) {
   if (loading) return "–";
   return n;
 }
+
+// ── Live runs (#4276 smooth pipeline) ────────────────────────────────────────
+//
+// The words behind Place pool > Pipeline > Live runs, read from
+// admin_city_pipeline_live. Each run says whether it is moving, waiting (normal,
+// never a failure), stalled, stopped for a person, or done. Serper stays "not
+// priced" until a rate is set: nothing here turns an unpriced request into $0.
+
+export const LIVE_MOVING_MS = 2 * 60_000;
+export const LIVE_STALLED_MS = 5 * 60_000;
+export const LIVE_RATE_WINDOW_MS = 3 * 60_000;
+const LIVE_RATE_MIN_SPAN_MS = 30_000;
+export const FINISHED_RUN_STATUSES = Object.freeze(["completed", "complete", "cancelled", "failed"]);
+
+function ms(iso) {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  return Number.isFinite(t) ? t : null;
+}
+
+/** "9 s", "6 min", "2 h 5 min". */
+export function ageText(msAgo) {
+  const s = Math.max(0, Math.floor((num(msAgo) ?? 0) / 1000));
+  if (s < 60) return `${s} s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  return m % 60 ? `${h} h ${m % 60} min` : `${h} h`;
+}
+
+/** A wall-clock time, "19:58", in the viewer's zone. */
+export function clockTime(iso, { seconds = false } = {}) {
+  const t = ms(iso);
+  if (t === null) return "–";
+  return new Date(t).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", ...(seconds ? { second: "2-digit" } : {}) });
+}
+
+const WAIT_REASONS = Object.freeze({
+  "function rate limit": "Supabase asked us to slow down",
+  "function rate limited": "Supabase asked us to slow down",
+  "google rate limit": "Google asked us to slow down",
+  "a search is still running": "A search is still running",
+  "intelligence running": "Intelligence is still working",
+  "intelligence started": "Intelligence just started",
+  "intelligence city busy": "Another Intelligence run is using this city",
+});
+
+/** Why a run is waiting, in plain words. Unknown reasons get a safe generic line. */
+export function waitReasonText(why) {
+  const key = String(why ?? "").trim().toLowerCase().replace(/^wait:/, "").replaceAll("_", " ").trim();
+  return WAIT_REASONS[key] ?? "Waiting for the next step";
+}
+
+/** A run's last error as one line, whatever shape it was stored in. */
+export function errorLine(err) {
+  if (err === null || err === undefined || err === "") return "";
+  if (typeof err === "string") return err;
+  if (typeof err === "object") return String(err.message ?? err.error ?? JSON.stringify(err));
+  return String(err);
+}
+
+/** What the run's last wake-up did, as one line (no time; the screen adds it). */
+export function outcomeText(outcome) {
+  if (!outcome || typeof outcome !== "object") return "";
+  const calls = num(outcome.calls);
+  const callsText = calls !== null && calls > 0 ? ` · ${plural(calls, "call")}` : "";
+  switch (outcome.kind) {
+    case "progress": return `Moved forward${callsText}`;
+    case "wait": return `Waited: ${waitReasonText(outcome.why)}${callsText}`;
+    case "budget": return `Ended at its per-minute cap${callsText}`;
+    case "approval": return "Stopped to ask for your OK";
+    case "pause": return `Paused: ${pauseReasonText(outcome.why) || "no reason given"}`;
+    case "error": return `Hit a problem${outcome.why ? `: ${errorLine(outcome.why)}` : ""}${callsText}`;
+    case "complete": return "Finished";
+    default: return "Did something this page doesn't know how to describe";
+  }
+}
+
+/** The live entry for one stage of a run, or null. */
+export function liveStage(run, stageId) {
+  return (Array.isArray(run?.stages) ? run.stages : []).find((s) => s.stage === stageId) ?? null;
+}
+
+function progressShape(done, total, line, extra = {}) {
+  const d = num(done);
+  const t = num(total);
+  const pct = d !== null && t !== null && t > 0 ? Math.max(0, Math.min(100, Math.round((d / t) * 100))) : null;
+  return { done: d, total: t, pct, line, ...extra };
+}
+
+/** One stage's progress inside the stage: { label, done, total, pct, line } or null. */
+export function stageProgress(stage) {
+  const p = stage?.progress;
+  if (!p || typeof p !== "object") return null;
+  const label = stage.stage === "fill" ? "Searching" : stageLabel(stage.stage);
+  switch (p.kind) {
+    case "search": {
+      const done = (num(p.done) ?? 0) + (num(p.failed) ?? 0);
+      const s = progressShape(done, p.total, "");
+      const pctText = s.pct === null ? "" : ` (${s.pct}%)`;
+      return { label, ...s, unit: "searches", line: `${count(done)} of ${count(p.total)} searches${pctText}` };
+    }
+    case "photos": {
+      const byPlace = num(p.places_total) !== null;
+      const done = byPlace ? (num(p.succeeded) ?? 0) + (num(p.failed_places) ?? 0) : (num(p.done) ?? 0) + (num(p.failed) ?? 0);
+      const total = byPlace ? p.places_total : p.total;
+      const s = progressShape(done, total, "");
+      const unit = byPlace ? "places" : "batches";
+      const pctText = s.pct === null ? "" : ` (${s.pct}%)`;
+      return { label, ...s, unit, line: `${count(done)} of ${count(total)} ${unit}${pctText}` };
+    }
+    case "intelligence": {
+      const s = progressShape(p.done, p.total, "");
+      const pctText = s.pct === null ? "" : ` (${s.pct}%)`;
+      return { label, ...s, unit: "places", line: `${count(p.done)} of ${count(p.total)} places${pctText}` };
+    }
+    case "check": {
+      return { label, ...progressShape(p.processed, null, ""), unit: "places", line: `${plural(p.processed ?? 0, "place")} checked` };
+    }
+    case "score": {
+      const idx = num(p.signal_index);
+      const s = progressShape(idx, p.signals, "");
+      const written = num(p.written);
+      return { label, ...s, unit: "signals", line: `Signal ${count(idx)} of ${count(p.signals)}${written !== null ? ` · ${count(written)} scores written` : ""}` };
+    }
+    case "completeness":
+      return { label, done: null, total: null, pct: null, unit: null, line: "Checking what is still missing" };
+    default:
+      return null;
+  }
+}
+
+/** The current stage's progress for a run, or null. */
+export function currentProgress(run) {
+  if (!run?.current_stage) return null;
+  return stageProgress(liveStage(run, run.current_stage));
+}
+
+/**
+ * Progress per minute over the last 3 minutes of poll samples [{ ts, done }].
+ * Null until 30 s of samples exist; never negative.
+ */
+export function runRate(samples, windowMs = LIVE_RATE_WINDOW_MS) {
+  const list = (Array.isArray(samples) ? samples : []).filter((s) => num(s?.ts) !== null && num(s?.done) !== null);
+  if (list.length < 2) return null;
+  const last = list[list.length - 1];
+  const inWindow = list.filter((s) => s.ts >= last.ts - windowMs);
+  const first = inWindow[0];
+  const span = last.ts - first.ts;
+  if (span < LIVE_RATE_MIN_SPAN_MS) return null;
+  const moved = last.done - first.done;
+  if (moved < 0) return null;
+  return (moved / span) * 60_000;
+}
+
+/** "About 50 searches a minute · about 66 min left". */
+export function etaText(ratePerMin, remaining, unit = "searches") {
+  const rate = num(ratePerMin);
+  const left = num(remaining);
+  if (left !== null && left <= 0) return "Almost done";
+  if (rate === null) return "Working out the pace…";
+  if (rate <= 0) return "No progress in the last 3 min";
+  const pace = rate < 1 ? `Less than 1 ${unit === "searches" ? "search" : unit.replace(/s$/, "")} a minute` : `About ${count(Math.round(rate))} ${unit} a minute`;
+  if (left === null) return pace;
+  const mins = left / rate;
+  let leftText;
+  if (mins < 1) leftText = "under a minute left";
+  else if (mins < 90) leftText = `about ${Math.round(mins)} min left`;
+  else {
+    const h = Math.floor(mins / 60);
+    const m = Math.round(mins % 60);
+    leftText = `about ${h} h${m ? ` ${m} min` : ""} left`;
+  }
+  return `${pace} · ${leftText}`;
+}
+
+/**
+ * Is the run moving? { state: moving|waiting|stalled|stopped|done, text, quiet? }.
+ *   moving   running, last progress under 2 min ago
+ *   waiting  the last wake-up chose to wait, or a retry time is still ahead (normal)
+ *   stalled  running, no progress for 5 min or more and not waiting (amber)
+ *   stopped  paused, or waiting for a person
+ *   done     finished, cancelled or failed
+ * Between 2 and 5 min the run is still "moving" but quiet: it says the age, not "Moving".
+ */
+export function heartbeatState(run, nowMs = Date.now()) {
+  if (!run) return { state: "done", text: "" };
+  const status = run.status;
+  if (FINISHED_RUN_STATUSES.includes(status)) {
+    const word = status === "cancelled" ? "Cancelled" : status === "failed" ? "Failed" : "Finished";
+    const at = run.completed_at ? ` ${ageText(nowMs - ms(run.completed_at))} ago` : "";
+    return { state: "done", text: `${word}${at}` };
+  }
+  if (status === "awaiting_approval") {
+    const since = run.last_outcome?.kind === "approval" ? run.last_outcome.at : run.last_tick_at;
+    return { state: "stopped", text: since ? `Waiting for you since ${clockTime(since)}` : "Waiting for your OK" };
+  }
+  if (status === "paused") {
+    const since = ms(run.last_outcome?.kind === "pause" ? run.last_outcome.at : run.last_tick_at);
+    const where = run.current_stage ? ` at ${stageLabel(run.current_stage)}` : "";
+    return { state: "stopped", text: since !== null ? `Stopped ${ageText(nowMs - since)} ago${where}` : `Stopped${where}` };
+  }
+  if (status === "queued") return { state: "waiting", text: "Queued: starts on the next wake-up" };
+
+  const outcome = run.last_outcome && typeof run.last_outcome === "object" ? run.last_outcome : null;
+  const nextAt = ms(run.next_attempt_at);
+  const outcomeAt = ms(outcome?.at);
+  // A wait recorded more than 5 minutes ago with no retry ahead means nothing is
+  // waking the run: that is a stall, not a wait.
+  const freshWait = outcome?.kind === "wait" && (outcomeAt === null || nowMs - outcomeAt < LIVE_STALLED_MS);
+  const retryAhead = nextAt !== null && nextAt > nowMs;
+  if (freshWait || retryAhead) {
+    let leftMs = retryAhead ? nextAt - nowMs : null;
+    const retry = num(outcome?.retry_after_ms);
+    if (leftMs === null && retry !== null && outcomeAt !== null) leftMs = Math.max(0, outcomeAt + retry - nowMs);
+    const why = String(outcome?.why ?? "").toLowerCase().replaceAll("_", " ");
+    if (outcome?.kind === "wait" && why.startsWith("intelligence") && !why.includes("busy")) {
+      const p = stageProgress(liveStage(run, "intelligence"));
+      if (p && p.total !== null) return { state: "waiting", text: `Waiting for Intelligence to finish (${count(p.done)} of ${count(p.total)})` };
+    }
+    const reason = outcome?.kind === "wait" ? waitReasonText(outcome.why) : "Supabase asked us to slow down";
+    const secs = leftMs !== null && leftMs > 0 ? ` ${Math.ceil(leftMs / 1000)} s` : "";
+    return { state: "waiting", text: `Waiting${secs}: ${reason}` };
+  }
+
+  const progressAt = ms(run.last_progress_at) ?? ms(run.started_at) ?? ms(run.created_at);
+  if (progressAt === null) return { state: "moving", text: "Starting up", quiet: true };
+  const age = nowMs - progressAt;
+  if (age >= LIVE_STALLED_MS) return { state: "stalled", text: `No progress for ${Math.floor(age / 60_000)} min` };
+  if (!run.last_progress_at) return { state: "moving", text: "Starting up", quiet: true };
+  if (age < LIVE_MOVING_MS) return { state: "moving", text: `Moving: last progress ${ageText(age)} ago` };
+  return { state: "moving", text: `Last progress ${ageText(age)} ago`, quiet: true };
+}
+
+/** The pill on a run card: { label, variant }. */
+export function livePill(run, nowMs = Date.now()) {
+  switch (run?.status) {
+    case "awaiting_approval": return { label: "Needs your OK", variant: "info" };
+    case "paused": return { label: "Paused", variant: "warning" };
+    case "queued": return { label: "Queued", variant: "info" };
+    case "completed":
+    case "complete": return { label: "Finished", variant: "default" };
+    case "cancelled": return { label: "Cancelled", variant: "error" };
+    case "failed": return { label: "Failed", variant: "error" };
+    case "running": {
+      const beat = heartbeatState(run, nowMs);
+      if (beat.state === "waiting") return { label: "Waiting", variant: "info" };
+      if (beat.state === "stalled") return { label: "No progress", variant: "warning" };
+      return { label: "Running", variant: "success" };
+    }
+    default: return { label: String(run?.status ?? "Unknown"), variant: "default" };
+  }
+}
+
+/** The city row's chip, from the live run; null when the city has no active run. */
+export function liveChipFor(run, nowMs = Date.now()) {
+  if (!run || !ACTIVE_RUN_STATUSES.includes(run.status)) return null;
+  const pill = livePill(run, nowMs);
+  if (run.status === "running" && pill.label === "Running") {
+    const p = currentProgress(run);
+    return { ...pill, label: p?.pct != null ? `Running ${p.pct}%` : "Running", runId: run.id };
+  }
+  return { ...pill, runId: run.id };
+}
+
+/** The 11-segment stage track: done | current | paused | skipped | pending per stage. */
+export function stageTrack(run) {
+  const active = ACTIVE_RUN_STATUSES.includes(run?.status);
+  return RUN_STAGES.map((s) => {
+    const st = liveStage(run, s.id);
+    let state = "pending";
+    if (st?.status === "complete") state = "done";
+    else if (st?.status === "skipped") state = "skipped";
+    if (active && run.current_stage === s.id) state = run.status === "running" || run.status === "queued" ? "current" : "paused";
+    else if (st?.status === "running") state = "current";
+    return { id: s.id, label: s.label, state };
+  });
+}
+
+/**
+ * Spend against the limit. Serper requests read "not priced" until a rate is set;
+ * they are never folded into the dollars as $0.
+ */
+export function liveSpend(run, serperRate = null) {
+  const spent = num(run?.spent_usd);
+  const limit = num(run?.spend_limit_usd);
+  const requests = num(run?.serper_requests) ?? 0;
+  const rate = num(serperRate);
+  let serperText = null;
+  if (requests > 0) serperText = rate === null ? `${plural(requests, "Serper request")}, not priced` : serperCostText(requests, rate);
+  return { spentText: usd(spent), limitText: usd(limit), pct: sharePct(spent, limit), over: spent !== null && limit !== null && spent >= limit, serperText };
+}
+
+/** The three numbers on a run card, chosen for the stage it is at. */
+export function liveStats(run, serperRate = null) {
+  const stage = run?.current_stage;
+  const p = liveStage(run, stage)?.progress;
+  if (p?.kind === "search") {
+    const ran = (num(p.done) ?? 0) + (num(p.failed) ?? 0);
+    const failed = num(p.failed);
+    const failPct = failed && ran > 0 ? `${((failed / ran) * 100).toFixed(1)}%` : null;
+    return [
+      { label: "Places stored", value: count(p.places_new), note: "new" },
+      { label: "Already known", value: count(p.places_duped) },
+      { label: "Failed searches", value: count(failed), note: failPct },
+    ];
+  }
+  if (p?.kind === "photos") {
+    return [
+      { label: "Places held", value: count(run.held_places) },
+      { label: "Photos", value: count(p.succeeded ?? p.done), note: p.places_total != null ? `of ${count(p.places_total)} places` : null },
+      { label: "Failed photos", value: count(p.failed_places ?? p.failed) },
+    ];
+  }
+  if (p?.kind === "intelligence") {
+    const req = num(p.serper_requests);
+    const rate = num(serperRate);
+    return [
+      { label: "Intelligence done", value: count(p.succeeded ?? p.done), note: p.total != null ? `of ${count(p.total)}` : null },
+      { label: "Failed", value: count(p.failed) },
+      { label: "Serper", value: count(req ?? 0), note: rate === null ? "requests · not priced" : `requests · ${usd((req ?? 0) * rate)}` },
+    ];
+  }
+  const req = num(run?.serper_requests) ?? 0;
+  const rate = num(serperRate);
+  return [
+    { label: "Places held", value: count(run?.held_places) },
+    { label: "Stage", value: stage ? stageLabel(stage) : "–" },
+    { label: "Serper", value: count(req), note: rate === null ? "requests · not priced" : `requests · ${usd(req * rate)}` },
+  ];
+}
+
+/** An error the run hit while still going: { title, message } or null. */
+export function problemNote(run) {
+  if (!run || !["running", "queued"].includes(run.status)) return null;
+  const streak = num(run.error_streak) ?? 0;
+  const outcomeError = run.last_outcome?.kind === "error";
+  if (streak <= 0 && !outcomeError) return null;
+  const n = Math.max(streak, 1);
+  const message = errorLine(run.last_error) || errorLine(run.last_outcome?.why);
+  return { title: `${n} ${n === 1 ? "problem" : "problems"}${n > 1 ? " in a row" : ""}, still running`, message };
+}
+
+/** A paused run's reason plus the numbers behind it. */
+export function pauseNote(run) {
+  if (!run || run.status !== "paused") return null;
+  const d = run.pause_detail && typeof run.pause_detail === "object" ? run.pause_detail : {};
+  const lines = [];
+  if (run.pause_reason === "spend_limit") lines.push(`${usd(run.spent_usd)} of ${usd(run.spend_limit_usd)} spent.`);
+  if (num(d.unjudged) !== null && num(d.unjudged) > 0) lines.push(`${plural(d.unjudged, "place")} never got a final check verdict. Run the final check again.`);
+  if (d.error) lines.push(errorLine(d.error));
+  if (run.pause_reason === "intelligence_busy") lines.push("Another Intelligence run held this city for 30 minutes.");
+  return { title: run.pause_reason === "intelligence_busy" ? "Intelligence was busy in this city" : pauseReasonText(run.pause_reason) || "Paused", lines };
+}
+
+/** A finished run's row in "Last 7 days". */
+export function finishedRunRow(run) {
+  const stages = (Array.isArray(run?.stages) ? run.stages : []).filter((s) => s.status === "complete" || s.status === "running")
+    .sort((a, b) => (num(a.ord) ?? 0) - (num(b.ord) ?? 0));
+  const names = stages.map((s) => (s.stage === "fill" ? "Searching" : stageLabel(s.stage)));
+  const stagesText = names.length === 0 ? "–" : names.length <= 2 ? names.join(", ") : `${names[0]} to ${names[names.length - 1].toLowerCase()}`;
+  let stored = null;
+  for (const s of run?.stages ?? []) {
+    const v = num(s?.result?.places_new) ?? num(s?.progress?.places_new);
+    if (v !== null) stored = (stored ?? 0) + v;
+  }
+  const released = num(liveStage(run, "release")?.result?.released);
+  const start = ms(run?.started_at) ?? ms(run?.created_at);
+  const end = ms(run?.completed_at);
+  return {
+    id: run?.id,
+    city: run?.city_name ?? "–",
+    pill: livePill(run),
+    stagesText,
+    storedText: stored === null ? "–" : `${count(stored)} new`,
+    liveText: released === null ? "–" : count(released),
+    spentText: usd(run?.spent_usd),
+    tookText: start !== null && end !== null && end >= start ? ageText(end - start) : "–",
+    finishedText: end === null ? "–" : new Date(end).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }),
+  };
+}
