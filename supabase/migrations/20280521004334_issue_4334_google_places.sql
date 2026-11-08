@@ -5220,7 +5220,12 @@ AS $function$WITH issue_3872_original(payload) AS MATERIALIZED (
             sched.upcoming_count,
             sched.schedule_line,
             b.theme_gradient AS brand_theme_gradient,
-            e.theme_gradient_override
+            e.theme_gradient_override,
+            -- #4334: the view's appended last column, same withholding rule.
+            CASE
+              WHEN public.issue_2489_address_withheld(e.theme) THEN NULL::text
+              ELSE e.location_provider_place_id
+            END AS location_provider_place_id
           FROM public.events e
           JOIN public.brands b ON b.id = e.brand_id
           LEFT JOIN public.event_dates ed ON ed.event_id = e.id AND ed.is_master = true
@@ -5267,5 +5272,134 @@ INSERT INTO public.issue_2489_gate_carriers (object_name, object_kind) VALUES
   ('pg_direct_event_checkout_bundle', 'function'),
   ('pg_public_rsvp_by_slug', 'function')
 ON CONFLICT (object_name) DO NOTHING;
+
+-- =====================================================================================
+-- N-1 follow-up: public RSVP pages (buyer web and the Business app) read
+-- business_public_events_view, so it carries the picked Google place id too. The body
+-- is the CURRENT PRODUCTION view (pg_get_viewdef md5 3892f43bff3751a6690cd108bdf1d6b8,
+-- 2026-11-08; identical to 20280430011023) with ONE column appended LAST, so every
+-- existing column keeps its position. NULL when the street is withheld, by the same
+-- issue_2489_address_withheld rule as location_text / location_geo. Stays a #2489 carrier.
+-- =====================================================================================
+CREATE OR REPLACE VIEW public.business_public_events_view WITH (security_invoker = false) AS
+ SELECT e.id,
+    e.brand_id,
+    b.slug AS brand_slug,
+    b.name AS brand_name,
+    b.description AS brand_description,
+    b.profile_photo_url AS brand_profile_photo_url,
+    b.display_attendee_count AS brand_display_attendee_count,
+    b.address AS brand_address,
+    b.cover_media_url AS brand_cover_media_url,
+    b.theme_color AS brand_theme_color,
+    b.theme_font AS brand_theme_font,
+    b.theme_animation AS brand_theme_animation,
+    e.title,
+    e.description,
+    e.slug,
+    e.event_type,
+        CASE
+            WHEN issue_2489_address_withheld(e.theme) THEN NULL::text
+            ELSE e.location_text
+        END AS location_text,
+    e.online_url,
+    e.is_online,
+    e.is_recurring,
+    e.is_multi_date,
+    e.recurrence_rules,
+    e.cover_media_url,
+    e.cover_media_type,
+    e.visibility,
+    e.show_on_discover,
+    e.status,
+    e.published_at,
+    e.timezone,
+    e.created_at,
+    e.updated_at,
+    issue_2489_public_theme(e.theme) AS public_theme,
+    e.theme_color_override,
+    e.theme_font_override,
+    e.theme_animation_override,
+    e.currency,
+    e.cover_media_provider,
+    e.cover_media_source_url,
+    e.cover_media_credit,
+    e.cover_media_credit_url,
+    e.cover_media_alt,
+    ed.start_at AS master_start_at,
+    ed.end_at AS master_end_at,
+    ed.timezone AS master_timezone,
+    ed.id AS master_event_date_id,
+    e.city,
+    e.party_types,
+    e.vibe_tags,
+    e.music_genres,
+        CASE
+            WHEN issue_2489_address_withheld(e.theme) THEN NULL::point
+            ELSE e.location_geo
+        END AS location_geo,
+    COALESCE(e.pass_tax, b.default_pass_tax) AS pass_tax,
+    COALESCE(e.pass_mingla_fee, b.default_pass_mingla_fee) AS pass_mingla_fee,
+    COALESCE(e.pass_service_fee, b.default_pass_service_fee) AS pass_service_fee,
+    b.pricing_region,
+    b.pricing_currency,
+    e.pricing_locked_at IS NOT NULL AS pricing_locked,
+    ( SELECT d.display_price_cents
+           FROM pg_public_event_display_prices(ARRAY[e.id]) d(event_id, display_price_cents, display_sale_price_cents, display_sale_ends_at)
+          WHERE d.event_id = e.id) AS display_price_cents,
+    e.rsvp_discoverable,
+    e.rsvp_capacity,
+    e.rsvp_allow_plus_ones,
+    e.rsvp_plus_ones_max,
+    e.rsvp_waitlist_enabled,
+    e.rsvp_approval_mode,
+        CASE
+            WHEN issue_3827_private_guest_list(e.theme) THEN NULL::integer
+            ELSE ( SELECT COALESCE(sum(1 + r.plus_count), 0::bigint)::integer AS "coalesce"
+               FROM event_rsvps r
+              WHERE r.event_id = e.id AND r.rsvp_status = 'going'::text AND r.approval_status = 'approved'::text)
+        END AS rsvp_going_count,
+    e.city_geo,
+    e.rsvp_contribution_enabled,
+    e.rsvp_contribution_suggested_cents,
+    e.rsvp_contribution_min_cents,
+    e.cover_media_gallery,
+    sched.next_start_at,
+    sched.next_end_at,
+    sched.upcoming_count,
+    sched.schedule_line,
+    b.theme_gradient AS brand_theme_gradient,
+    e.theme_gradient_override,
+        CASE
+            WHEN issue_2489_address_withheld(e.theme) THEN NULL::text
+            ELSE e.location_provider_place_id
+        END AS location_provider_place_id
+   FROM events e
+     JOIN brands b ON b.id = e.brand_id
+     LEFT JOIN event_dates ed ON ed.event_id = e.id AND ed.is_master = true
+     LEFT JOIN LATERAL ( SELECT n.start_at AS next_start_at,
+            n.end_at AS next_end_at,
+            COALESCE(c.upcoming_count, 0) AS upcoming_count,
+                CASE
+                    WHEN COALESCE(c.upcoming_count, 0) = 0 THEN NULL::text
+                    WHEN c.upcoming_count = 1 THEN to_char((n.start_at AT TIME ZONE COALESCE(NULLIF(btrim(e.timezone), ''::text), 'UTC'::text)), 'Dy DD Mon'::text)
+                    ELSE format('%s · +%s more'::text, to_char((n.start_at AT TIME ZONE COALESCE(NULLIF(btrim(e.timezone), ''::text), 'UTC'::text)), 'Dy DD Mon'::text), c.upcoming_count - 1)
+                END AS schedule_line
+           FROM ( SELECT count(*)::integer AS upcoming_count
+                   FROM event_dates d
+                  WHERE d.event_id = e.id AND d.end_at > now()) c
+             LEFT JOIN LATERAL ( SELECT d.start_at,
+                    d.end_at
+                   FROM event_dates d
+                  WHERE d.event_id = e.id AND d.end_at > now()
+                  ORDER BY d.start_at, d.id
+                 LIMIT 1) n ON true) sched ON true
+  WHERE e.deleted_at IS NULL AND b.deleted_at IS NULL AND e.visibility = 'public'::text AND (e.status = ANY (ARRAY['scheduled'::text, 'live'::text, 'ended'::text, 'cancelled'::text])) AND NOT issue_1931_event_ordinary_read_blocked(e.id);
+
+REVOKE ALL ON TABLE public.business_public_events_view FROM PUBLIC;
+GRANT SELECT ON TABLE public.business_public_events_view TO anon, authenticated;
+GRANT ALL ON TABLE public.business_public_events_view TO service_role;
+INSERT INTO public.issue_2489_gate_carriers (object_name, object_kind)
+VALUES ('business_public_events_view', 'view') ON CONFLICT (object_name) DO NOTHING;
 
 COMMIT;

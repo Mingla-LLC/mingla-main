@@ -37,3 +37,11 @@ Deno.test("G-3 the N-1 regenerated public reads restate production's guest grant
   assert(flat.includes("GRANT EXECUTE ON FUNCTION public.pg_public_rsvp_by_slug(text,text) TO anon,authenticated,service_role;"));
   assert(flat.includes("('pg_direct_event_checkout_bundle', 'function'), ('pg_public_rsvp_by_slug', 'function') ON CONFLICT (object_name) DO NOTHING;"));
 });
+
+Deno.test("G-4 the public events view keeps production's ACL and its #2489 carrier row; the place id is appended last", () => {
+  assert(flat.includes("REVOKE ALL ON TABLE public.business_public_events_view FROM PUBLIC;"));
+  assert(flat.includes("GRANT SELECT ON TABLE public.business_public_events_view TO anon, authenticated;"));
+  assert(flat.includes("GRANT ALL ON TABLE public.business_public_events_view TO service_role;"));
+  assert(flat.includes("VALUES ('business_public_events_view', 'view') ON CONFLICT (object_name) DO NOTHING;"));
+  assert(/e\.theme_gradient_override, CASE WHEN issue_2489_address_withheld\(e\.theme\) THEN NULL::text ELSE e\.location_provider_place_id END AS location_provider_place_id FROM events e/.test(flat));
+});

@@ -126,6 +126,8 @@ interface BusinessPublicEventViewRow {
   // reads). Threaded into PublicEventRecord.locationGeo so the buyer-web +
   // consumer public event page can draw the "Where you'll be" static map map.
   location_geo?: string | { x: number; y: number } | null;
+  // #4334 — the picked Google place id; the view NULLs it when the street is withheld.
+  location_provider_place_id?: string | null;
   online_url: string | null;
   is_online: boolean;
   is_recurring: boolean;
@@ -1345,6 +1347,8 @@ export const publicEventViewRowToEvent = (
     // the "Where you'll be" map. Mirrors the proven parser at businessEvents.ts.
     // null → no map (rule-9 text-card fallback).
     locationGeo: parseLocationGeoPoint(row.location_geo),
+    // #4334 — public RSVP pages read this view; the Maps link opens the picked place.
+    googlePlaceId: asStringOrNull(row.location_provider_place_id),
     onlineUrl: row.online_url,
     hideAddressUntilTicket: asBoolean(
       businessEvent.hideAddressUntilTicket,

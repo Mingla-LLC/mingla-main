@@ -244,11 +244,13 @@ BEGIN
       'rsvp_plus_ones_max','rsvp_waitlist_enabled','rsvp_approval_mode','rsvp_going_count','city_geo',
       'rsvp_contribution_enabled','rsvp_contribution_suggested_cents','rsvp_contribution_min_cents',
       'cover_media_gallery','next_start_at','next_end_at','upcoming_count','schedule_line',
-      'brand_theme_gradient','theme_gradient_override']::text[],
+      'brand_theme_gradient','theme_gradient_override','location_provider_place_id']::text[],
     -- [TEST-MOD-APPROVED #3281] PR7 appends four schedule columns after cover_media_gallery.
     -- [TEST-MOD-APPROVED #1023] 20280430011023 appends the theme gradient pair last.
+    -- [TEST-MOD-APPROVED #4334] 20280521004334 appends location_provider_place_id LAST
+    -- (NULL when the street is withheld); every earlier column keeps its position.
     'T-4b the view column list is EXACTLY the sealed list including #3281 schedule cols (got ' || array_to_string(v_cols, ',') || ')');
-  PERFORM pg_temp.gb_assert(n = 75, 'T-4c the view has 75 columns after #3281 schedule and #1023 gradient appends');
+  PERFORM pg_temp.gb_assert(n = 76, 'T-4c the view has 76 columns after #3281 schedule, #1023 gradient and #4334 place-id appends');
   PERFORM pg_temp.gb_assert(v_types[array_position(v_cols, 'rsvp_going_count')] = 'integer',
     'T-4d rsvp_going_count stays integer');
   PERFORM pg_temp.gb_assert(

@@ -17,6 +17,8 @@
 --   W-13 pg_public_event_by_slug googlePlaceId
 --   W-14 pg_direct_event_checkout_bundle googlePlaceId (the buyer page's REAL read)
 --   W-15 pg_public_rsvp_by_slug googlePlaceId (the RSVP page's read)
+--   W-16 business_public_events_view.location_provider_place_id (public RSVP pages),
+--        appended last, withheld with the street, mirrored in publicEventRow
 \set ON_ERROR_STOP on
 BEGIN;
 
@@ -163,6 +165,31 @@ BEGIN
   v_result := public.pg_public_rsvp_by_slug('place-ids-4334', 'place-ids-event')::jsonb;
   IF NOT (v_result ? 'googlePlaceId') OR v_result -> 'googlePlaceId' <> 'null'::jsonb THEN
     RAISE EXCEPTION 'W-15b: the RSVP read leaked a hidden street''s place id (%)', v_result -> 'googlePlaceId';
+  END IF;
+
+  -- ── W-16 the public view (public RSVP pages) carries it, last, withheld ──
+  UPDATE public.events SET theme = jsonb_build_object('business_event', jsonb_build_object('hideAddressUntilTicket', false))
+   WHERE id = v_event;
+  IF (SELECT location_provider_place_id FROM public.business_public_events_view WHERE id = v_event) IS DISTINCT FROM v_id1 THEN
+    RAISE EXCEPTION 'W-16: the public view did not return the place id';
+  END IF;
+  IF (SELECT attname FROM pg_attribute WHERE attrelid = 'public.business_public_events_view'::regclass
+       AND attnum > 0 AND NOT attisdropped ORDER BY attnum DESC LIMIT 1) <> 'location_provider_place_id' THEN
+    RAISE EXCEPTION 'W-16: the place id is not the view''s last column';
+  END IF;
+  v_result := public.pg_public_rsvp_by_slug('place-ids-4334', 'place-ids-event')::jsonb;
+  IF v_result #>> '{publicEventRow,location_provider_place_id}' IS DISTINCT FROM v_id1 THEN
+    RAISE EXCEPTION 'W-16: publicEventRow does not mirror the view column';
+  END IF;
+  UPDATE public.events SET theme = jsonb_build_object('business_event', jsonb_build_object('hideAddressUntilTicket', true))
+   WHERE id = v_event;
+  IF (SELECT location_provider_place_id FROM public.business_public_events_view WHERE id = v_event) IS NOT NULL THEN
+    RAISE EXCEPTION 'W-16b: the public view leaked a hidden street''s place id';
+  END IF;
+  v_result := public.pg_public_rsvp_by_slug('place-ids-4334', 'place-ids-event')::jsonb;
+  IF NOT ((v_result -> 'publicEventRow') ? 'location_provider_place_id')
+     OR v_result #> '{publicEventRow,location_provider_place_id}' <> 'null'::jsonb THEN
+    RAISE EXCEPTION 'W-16b: publicEventRow leaked a hidden street''s place id';
   END IF;
 
   -- ── W-7 venue create: id in the insert, stamped ──────────────────────────
