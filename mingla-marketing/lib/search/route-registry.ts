@@ -7,6 +7,7 @@ import {
 import { CORE_PAGES } from '../../content/core-pages'
 import { HELP_VIDEOS, helpVideoPath } from '../../content/help/registry'
 import { BLOG_CATEGORIES, blogCategoryPath } from '../../content/blog/categories'
+import { ICP_SLUGS, icpLandingPath } from '../../content/host-landing/icps'
 
 export const ROUTE_LIFECYCLE_STATES = [
   'draft',
@@ -316,6 +317,15 @@ export const BLOG_CATEGORY_ROUTE_CONTRACTS: readonly SearchReadyRouteContract[] 
   lastModified: '2026-10-27' as const,
 }))
 
+// #4339 — the seven Host landing pages (/host/<icp>), projected from the one
+// ICP data file. Paid ads point at them; they stay noindex until Seth decides
+// they should be search pages (flip the lifecycle here, nowhere else).
+export const HOST_LANDING_ROUTE_CONTRACTS: readonly RouteContract[] = ICP_SLUGS.map((slug) => ({
+  id: `host-landing-${slug}`,
+  match: { type: 'exact' as const, pathname: icpLandingPath(slug) },
+  lifecycle: 'public_noindex' as const,
+}))
+
 // #4137 — WHY A PREFIX + NOINDEX FAMILY FOR /blog. Published posts live in the
 // database, not in this file, so they cannot be exact contracts at build time.
 // The family makes every other /blog path (staff previews, `?page=N` pages,
@@ -370,6 +380,7 @@ export const ROUTE_REGISTRY: readonly RouteContract[] = [
   ...CITY_ROUTE_CONTRACTS,
   ...HELP_ROUTE_CONTRACTS,
   ...BLOG_CATEGORY_ROUTE_CONTRACTS,
+  ...HOST_LANDING_ROUTE_CONTRACTS,
   ...REDIRECTED_ROUTES,
 ]
 

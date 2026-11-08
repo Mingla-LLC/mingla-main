@@ -13,6 +13,7 @@ import {
   checkLinksFontSource,
   linksManifestRows,
 } from './issue-4318-links-fonts.contract.mjs'
+import { LANDING_FONT_DEFINITIONS, checkLandingFontSource } from './issue-4339-landing-fonts.contract.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const BUILD_ROOT = path.join(ROOT, '.next')
@@ -322,6 +323,8 @@ const checkSourceTopology = () => {
     ),
   )
   checkLinksFontSource((relativePath) => read(relativePath), linksSources)
+  // #4339 — the Host landing brand faces live in their own route-scoped module.
+  checkLandingFontSource((relativePath) => read(relativePath), linksSources)
 }
 
 const checkForbiddenProductionHosts = () => {
@@ -506,6 +509,26 @@ const checkBuiltCss = () => {
     })
   }
 
+  // #4339 — every Host landing face resolves to the same approved emitted bytes.
+  for (const definition of LANDING_FONT_DEFINITIONS) {
+    const matching = faces.filter((face) => unquote(face['font-family'] ?? '') === definition.exportName)
+    assert.deepEqual(
+      matching.map((face) => [face['font-weight'], face['font-style']]),
+      definition.faces.map(([, weight, style]) => [weight, style]),
+      `${definition.exportName} compiled faces must remain exact`,
+    )
+    matching.forEach((face, i) => {
+      assert.equal(face['font-display'], 'swap')
+      const source = face.src?.match(/^url\((\/_next\/static\/media\/([^)]*\.woff2))\) format\(["']woff2["']\)$/)
+      assert(source, `${definition.exportName} must use same-origin emitted WOFF2 media`)
+      assert.equal(
+        sha256(readFileSync(path.join(mediaDirectory, source[2]))),
+        linksBytes.get(definition.faces[i][0]),
+        `${definition.exportName} must resolve to its approved emitted bytes`,
+      )
+    })
+  }
+
   const allowedFallbacks = new Set(EXPECTED_FALLBACKS.map(({ family }) => family))
   for (const face of faces) {
     const family = unquote(face['font-family'] ?? '')
@@ -539,11 +562,14 @@ const checkBuiltManifests = () => {
   assert.equal(fontManifest.appUsingSizeAdjust, false)
   assert.equal(fontManifest.pagesUsingSizeAdjust, false)
   // #4318: the root layout owns the site faces; the /links page alone owns the brand faces.
+  // #4339: the Host landing page owns its own copy of the same brand faces.
   const allEntries = Object.entries(fontManifest.app)
-  assert.equal(allEntries.length, 2, 'the root layout and the /links page own the local font emissions')
+  assert.equal(allEntries.length, 3, 'the root layout, the /links page and the Host landing page own the local font emissions')
   const linksEntry = allEntries.find(([key]) => /\/app\/links\/page$/.test(key))
   assert(linksEntry, 'the /links page must own the /links brand faces')
-  const appEntries = allEntries.filter(([key]) => key !== linksEntry[0])
+  const landingEntry = allEntries.find(([key]) => /\/app\/host\/\[icp\]\/page$/.test(key))
+  assert(landingEntry, 'the Host landing page must own the landing brand faces')
+  const appEntries = allEntries.filter(([key]) => key !== linksEntry[0] && key !== landingEntry[0])
   assert.match(appEntries[0][0], /\/app\/layout$/)
   const expectedMediaByHash = new Map(
     collectFiles(path.join(BUILD_ROOT, 'static/media'), (candidate) => candidate.endsWith('.woff2')).map(
@@ -564,6 +590,11 @@ const checkBuiltManifests = () => {
     [...new Set(linksEntry[1])].sort(),
     LINKS_FONT_ASSETS.map(({ sha256: hash }) => expectedMediaByHash.get(hash)).sort(),
     'the /links page must preload exactly the four /links brand faces',
+  )
+  assert.deepEqual(
+    [...new Set(landingEntry[1])].sort(),
+    LINKS_FONT_ASSETS.map(({ sha256: hash }) => expectedMediaByHash.get(hash)).sort(),
+    'the Host landing page must preload exactly the same four brand faces',
   )
 
   const appBuildManifest = JSON.parse(readFileSync(path.join(BUILD_ROOT, 'app-build-manifest.json'), 'utf8'))
