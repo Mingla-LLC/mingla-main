@@ -592,6 +592,33 @@ async function notifyAttemptCap(
   return "provider_accepted";
 }
 
+/** Issue #3645 — the stale stay-dispute raise, logged and never thrown. */
+async function raiseStaleStayDisputeAlertsNonFatal(
+  admin: AdminClient,
+  deps: SweepDeps,
+): Promise<void> {
+  try {
+    const stale = await (deps.raiseStaleStayDisputeAlerts ??
+      raiseStaleStayDisputeAlerts)(admin as never);
+    if (stale.raised > 0 || stale.refreshed > 0) {
+      console.info(JSON.stringify({
+        event: "stale_stay_dispute_alerts_raised",
+        function_name: "payout-release-sweep",
+        raised: stale.raised,
+        refreshed: stale.refreshed,
+      }));
+    }
+  } catch (staleError) {
+    console.error(JSON.stringify({
+      event: "stale_stay_dispute_alerts_failed",
+      function_name: "payout-release-sweep",
+      reason: (staleError instanceof Error
+        ? staleError.message
+        : String(staleError)).slice(0, 200),
+    }));
+  }
+}
+
 /**
  * Issue #3645 — raise the ops alert for stay payouts held by a dispute that
  * has been open for over 90 days (issue_3645_raise_stale_stay_dispute_alerts).
@@ -1241,9 +1268,26 @@ export async function handlePayoutReleaseSweep(
   // reservation slot-unavailable ops-alert outbox fail-open in `finally`,
   // including partner_attribution_pending / Stripe-phase / ledger early
   // returns. Budget-bounded so Resend cannot starve money work.
+  // Issue #3645 — set once the tick reaches the stale stay-dispute raise and
+  // the durable alert drain. An earlier failure (fee read, ledger sweep,
+  // waiting-for-bank) returns before them; the finally then runs both, so an
+  // unrelated persistent failure can never keep ops alerts silent.
+  const tick = { outboxAlertsHandled: false };
   try {
-    return await runPayoutReleaseSweepAuthenticated(admin, deps);
+    return await runPayoutReleaseSweepAuthenticated(admin, deps, tick);
   } finally {
+    if (!tick.outboxAlertsHandled) {
+      await raiseStaleStayDisputeAlertsNonFatal(admin, deps);
+      try {
+        await deliverPendingAttemptCapAlerts(admin as never, deps);
+      } catch (alertError) {
+        console.error("[payout-release-sweep] durable alert drain failed", {
+          message: alertError instanceof Error
+            ? alertError.message
+            : String(alertError),
+        });
+      }
+    }
     try {
       await (deps.drainReservationSlotUnavailableAlerts ??
         ((a: AdminClient) =>
@@ -1267,6 +1311,7 @@ export async function handlePayoutReleaseSweep(
 async function runPayoutReleaseSweepAuthenticated(
   admin: AdminClient,
   deps: SweepDeps,
+  tick: { outboxAlertsHandled: boolean },
 ): Promise<Response> {
   // Per-charge provider fees are immutable ledger inputs. Missing fee truth
   // blocks attachment; it never silently becomes zero and never comes from an
@@ -1387,28 +1432,10 @@ async function runPayoutReleaseSweepAuthenticated(
 
   // Issue #3645 — stay payouts held by a long-open dispute. Pure SQL that only
   // writes the alert outbox, so it runs on every tick (dark and execute) and
-  // before the drain below, which delivers it in the same tick. Non-fatal: a
-  // failure logs a structured event and never changes the tick's outcome.
-  try {
-    const stale = await (deps.raiseStaleStayDisputeAlerts ??
-      raiseStaleStayDisputeAlerts)(admin as never);
-    if (stale.raised > 0 || stale.refreshed > 0) {
-      console.info(JSON.stringify({
-        event: "stale_stay_dispute_alerts_raised",
-        function_name: "payout-release-sweep",
-        raised: stale.raised,
-        refreshed: stale.refreshed,
-      }));
-    }
-  } catch (staleError) {
-    console.error(JSON.stringify({
-      event: "stale_stay_dispute_alerts_failed",
-      function_name: "payout-release-sweep",
-      reason: (staleError instanceof Error
-        ? staleError.message
-        : String(staleError)).slice(0, 200),
-    }));
-  }
+  // before the drain below, which delivers it in the same tick. Non-fatal.
+  // An earlier return skips both; the authenticated finally then runs them.
+  await raiseStaleStayDisputeAlertsNonFatal(admin, deps);
+  tick.outboxAlertsHandled = true;
 
   let alertDelivery;
   try {

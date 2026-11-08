@@ -32,6 +32,7 @@ const EMPTY_ROW_RPCS = new Set([
 function harness(
   alerts: Alert[],
   stale: () => Promise<{ data: unknown; error: { message: string } | null }>,
+  failing: string | null = null,
 ) {
   const rpcNames: string[] = [];
   const staleArgs: Array<Record<string, unknown>> = [];
@@ -46,6 +47,9 @@ function harness(
     createAdmin: (() => ({
       rpc: (name: string, args: Record<string, unknown>) => {
         rpcNames.push(name);
+        if (name === failing) {
+          return Promise.resolve({ data: null, error: { message: `${name} down` } });
+        }
         if (name === "claim_payout_release_alerts") {
           return Promise.resolve({ data: alerts, error: null });
         }
@@ -238,4 +242,47 @@ Deno.test("#3645 2c a failing stale raise never changes the tick", async () => {
       "the failure is logged as a structured event",
     );
   }
+});
+
+Deno.test("#3645 2c an early failure still raises and delivers ops alerts", async () => {
+  for (
+    const [failing, error] of [
+      ["list_missing_payout_source_fees", "fee_candidate_read_failed"],
+      ["run_payout_release_dark_sweep", "ledger_sweep_failed"],
+      ["surface_payout_releases_waiting_for_bank", "waiting_for_bank_surface_failed"],
+    ]
+  ) {
+    const { deps, rpcNames, staleArgs } = harness([{
+      alert_id: "s-early",
+      release_id: "rel-stay",
+      brand_id: "brand-stay",
+      alert_kind: "stay_dispute_hold_open",
+      error_message: "Stay payout held by a dispute open for over 90 days: du_1.",
+      idempotency_key: "stay_dispute_hold_open:rel-stay:r1",
+      claim_id: "c-early",
+    }], () => Promise.resolve({ data: { raised: 1, refreshed: 0 }, error: null }), failing);
+    const realError = console.error;
+    console.error = () => {};
+    let result: { response: Response; sent: Array<Record<string, unknown>> };
+    try {
+      result = await withNotifyCapture(() => handlePayoutReleaseSweep(request(), deps));
+    } finally {
+      console.error = realError;
+    }
+    assertEquals(result.response.status, 500, failing);
+    assertEquals((await result.response.json()).error, error);
+    assertEquals(staleArgs.length, 1, `${failing}: the stale raise must still run`);
+    const raise = rpcNames.indexOf("issue_3645_raise_stale_stay_dispute_alerts");
+    const drain = rpcNames.indexOf("claim_payout_release_alerts");
+    assert(raise >= 0 && drain > raise, `${failing}: raised, then drained`);
+    assertEquals(rpcNames.filter((n) => n === "claim_payout_release_alerts").length, 1);
+    assertEquals(result.sent.map((m) => m.idempotencyKey), ["stay_dispute_hold_open:rel-stay:r1"]);
+  }
+});
+
+Deno.test("#3645 2c a normal tick raises and drains exactly once", async () => {
+  const { deps, rpcNames } = harness([], () => Promise.resolve({ data: { raised: 0, refreshed: 0 }, error: null }));
+  await handlePayoutReleaseSweep(request(), deps);
+  assertEquals(rpcNames.filter((n) => n === "issue_3645_raise_stale_stay_dispute_alerts").length, 1);
+  assertEquals(rpcNames.filter((n) => n === "claim_payout_release_alerts").length, 1);
 });
