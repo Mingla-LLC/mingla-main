@@ -78,7 +78,8 @@ test('(c) the strip opens the sheet; Save takes effect and shows Saved; focus is
   assert.match(banner, /if \(choice\.analytics\) void posthogOptIn\(\)/)
   assert.match(banner, /<span aria-live="polite"[^>]*>\s*\{saved \? PRIVACY_SAVED_LABEL : PRIVACY_STRIP_LABEL\}/)
   assert.match(banner, /const SAVED_MS = 1800/)
-  assert.match(banner, /role="dialog"\s*aria-modal="true"/)
+  // #4318: a dialog only while open, so a closed sheet never reads as one.
+  assert.match(banner, /role=\{open \? 'dialog' : undefined\}\s*aria-modal=\{open \? true : undefined\}/)
   assert.match(banner, /if \(event\.key === 'Escape'\)/)
   assert.match(banner, /if \(event\.key !== 'Tab'\) return/)
   assert.match(banner, /window\.requestAnimationFrame\(\(\) => stripRef\.current\?\.focus\(\)\)/)

@@ -40,7 +40,12 @@ const SAVED_MS = 1800
 // the scrim close it) and marks any switch the visitor flips. It reads and
 // writes no choice: Save is the app's, and on hydration the app takes the open
 // sheet over (see takeOverPrehydrationSheet).
-const PREHYDRATION_SCRIPT = `(function(){var d=document,w=window;function q(t){return d.querySelector('[data-testid="'+t+'"]')}var strip=q("privacy-strip"),sheet=q("privacy-sheet"),scrim=q("privacy-scrim");if(!strip||!sheet||!scrim)return;function live(){return w.__minglaPrivacyHydrated!==true}function close(){sheet.hidden=true;scrim.hidden=true;strip.setAttribute("aria-expanded","false");strip.focus()}strip.addEventListener("click",function(){if(!live())return;if(!sheet.hidden){close();return}sheet.hidden=false;scrim.hidden=false;strip.setAttribute("aria-expanded","true");var f=sheet.querySelector("input");if(f)f.focus()});scrim.addEventListener("click",function(){if(live())close()});sheet.addEventListener("change",function(e){var t=e.target;if(live()&&t&&t.setAttribute)t.setAttribute("data-mpb-touched","")});d.addEventListener("keydown",function(e){if(live()&&!sheet.hidden&&e.key==="Escape")close()})})();`
+// While closed the sheet is not a dialog (no role, no aria-modal), so nothing
+// else on the page ever mistakes it for an open one. The handler acts on
+// Escape only while its own sheet is open, never prevents or stops an event,
+// and removes every listener once the app takes over
+// (window.__minglaPrivacyPrehydrationOff).
+const PREHYDRATION_SCRIPT = `(function(){var d=document,w=window;function q(t){return d.querySelector('[data-testid="'+t+'"]')}var strip=q("privacy-strip"),sheet=q("privacy-sheet"),scrim=q("privacy-scrim");if(!strip||!sheet||!scrim)return;function show(on){sheet.hidden=!on;scrim.hidden=!on;strip.setAttribute("aria-expanded",on?"true":"false");if(on){sheet.setAttribute("role","dialog");sheet.setAttribute("aria-modal","true")}else{sheet.removeAttribute("role");sheet.removeAttribute("aria-modal")}}function tap(){if(!sheet.hidden){show(false);strip.focus();return}show(true);var f=sheet.querySelector("input");if(f)f.focus()}function shut(){show(false);strip.focus()}function flip(e){var t=e.target;if(t&&t.setAttribute)t.setAttribute("data-mpb-touched","")}function key(e){if(e.key==="Escape"&&!sheet.hidden)shut()}strip.addEventListener("click",tap);scrim.addEventListener("click",shut);sheet.addEventListener("change",flip);d.addEventListener("keydown",key);w.__minglaPrivacyPrehydrationOff=function(){strip.removeEventListener("click",tap);scrim.removeEventListener("click",shut);sheet.removeEventListener("change",flip);d.removeEventListener("keydown",key);w.__minglaPrivacyPrehydrationOff=undefined}})();`
 
 type Draft = { analytics: boolean; ads: boolean }
 
@@ -115,8 +120,9 @@ export function ConsentBanner(): React.ReactElement {
   // #4318 — hydration: the inline handler stands down, and a sheet the visitor
   // already opened stays open, now the app's, before the next paint.
   useLayoutEffect(() => {
-    const flag = window as Window & { __minglaPrivacyHydrated?: boolean }
+    const flag = window as Window & { __minglaPrivacyHydrated?: boolean; __minglaPrivacyPrehydrationOff?: () => void }
     flag.__minglaPrivacyHydrated = true
+    flag.__minglaPrivacyPrehydrationOff?.()
     const snapshot = getMarketingPrivacySnapshot()
     const adopted = takeOverPrehydrationSheet(sheetRef.current, { analytics: snapshot.analytics, ads: snapshot.ads })
     if (adopted !== null) {
@@ -220,8 +226,8 @@ export function ConsentBanner(): React.ReactElement {
             hidden={!open}
             suppressHydrationWarning
             className="mpb ph-no-capture"
-            role="dialog"
-            aria-modal="true"
+            role={open ? 'dialog' : undefined}
+            aria-modal={open ? true : undefined}
             aria-labelledby="mingla-privacy-title"
             id={PANEL_ID}
             data-testid="privacy-sheet"

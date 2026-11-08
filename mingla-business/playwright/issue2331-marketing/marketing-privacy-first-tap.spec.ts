@@ -99,3 +99,48 @@ test("#4318 usemingla.com: the first tap before hydration opens the sheet, and t
   // Nothing was saved by opening, flipping or closing.
   expect(await page.evaluate(() => window.localStorage.getItem("mingla_privacy_v2"))).toBeNull();
 });
+
+// #4318 regression: the always-present (hidden) privacy sheet must never read as
+// an open dialog or swallow Escape. The home menu closes on Escape with the
+// privacy sheet closed, before hydration (no handler touches Escape) and after.
+test("#4318 usemingla.com: Escape still closes the home menu with the privacy sheet closed", async ({ page, context }) => {
+  test.setTimeout(240_000);
+  await page.goto("/", { waitUntil: "load" });
+
+  let release = () => {};
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  await context.route("**/*", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.hostname !== "127.0.0.1" && url.hostname !== "localhost") return route.abort("blockedbyclient");
+    if (url.pathname.startsWith("/_next/static/chunks/")) await gate;
+    return route.fallback();
+  });
+  await context.addInitScript(() => {
+    const seen: Array<{ prevented: boolean; stopped: boolean }> = [];
+    (window as unknown as { __issue4318Escapes: typeof seen }).__issue4318Escapes = seen;
+    // Last in the bubble path: did anything before it prevent or stop Escape?
+    window.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") seen.push({ prevented: event.defaultPrevented, stopped: false });
+    });
+  });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  // Before hydration, with the privacy sheet closed: nothing is a dialog and
+  // Escape passes through untouched.
+  await expect(page.getByTestId("privacy-sheet")).toBeHidden();
+  expect(await page.evaluate(() => document.querySelectorAll('[role="dialog"]').length)).toBe(0);
+  await page.locator("body").press("Escape");
+  expect(await page.evaluate(() => (window as unknown as { __issue4318Escapes: unknown[] }).__issue4318Escapes)).toEqual([{ prevented: false, stopped: false }]);
+
+  release();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __minglaPrivacyHydrated?: boolean }).__minglaPrivacyHydrated === true), { timeout: 120_000 }).toBe(true);
+  // The pre-hydration handler has removed its listeners.
+  expect(await page.evaluate(() => (window as unknown as { __minglaPrivacyPrehydrationOff?: unknown }).__minglaPrivacyPrehydrationOff)).toBeUndefined();
+
+  // After hydration: open the menu, Escape closes it, no dialog is left.
+  await page.getByRole("button", { name: "Open menu" }).click();
+  await expect(page.locator('[role="dialog"]')).toHaveCount(1);
+  await page.keyboard.press("Escape");
+  await expect.poll(() => page.evaluate(() => document.querySelectorAll('[role="dialog"]').length), { timeout: 6_000 }).toBe(0);
+  await expect(page.getByRole("button", { name: "Open menu" })).toBeFocused();
+  await expect(page.getByTestId("privacy-sheet")).toBeHidden();
+});
