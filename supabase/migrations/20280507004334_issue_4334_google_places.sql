@@ -1321,12 +1321,12 @@ CREATE OR REPLACE FUNCTION public.places_refresh_due_pins(
   p_limit integer DEFAULT 500, p_stale interval DEFAULT interval '20 days')
  RETURNS TABLE (
    pin_kind text, row_id uuid, place_id text, lat double precision, lng double precision,
-   refreshed_at timestamptz)
+   refreshed_at timestamptz, refresh_state text)
  LANGUAGE sql
  STABLE
  SET search_path = public, pg_temp
 AS $function$
-  SELECT p.pin_kind, p.row_id, p.place_id, p.lat, p.lng, p.refreshed_at
+  SELECT p.pin_kind, p.row_id, p.place_id, p.lat, p.lng, p.refreshed_at, p.refresh_state
     FROM public.places_refresh_pins() p
    WHERE p.in_scope
      AND (p.refreshed_at IS NULL OR p.refreshed_at < now() - p_stale)
