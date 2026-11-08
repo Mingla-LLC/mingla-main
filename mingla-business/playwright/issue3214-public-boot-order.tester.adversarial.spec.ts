@@ -706,8 +706,15 @@ test.describe('#3214 tester adversarial — desktop width', () => {
     expect(measured.inset).toBe(28)
     expect(Math.round(measured.stripBottom)).toBe(800)
     expect(measured.html).toBe(measured.viewport)
-    const scroller = measured.scrollers.find((candidate) => candidate.scrollHeight > candidate.clientHeight)
-    expect(scroller, `a scroll container with overflow: ${JSON.stringify(measured.scrollers)}`).toBeDefined()
+    // The handed-over scroll owner: #root itself while the strip holds the
+    // inset (html[data-mingla-privacy-bar="shown"] #root{overflow-y:auto}),
+    // or a scroll area inside it.
+    const owner = await page.evaluate(() => {
+      const root = document.getElementById('root')
+      const scrolls = (element: Element) => /(auto|scroll)/.test(getComputedStyle(element).overflowY)
+      return root !== null && (scrolls(root) || Array.from(root.querySelectorAll('*')).some(scrolls))
+    })
+    expect(owner, 'a scroll container is handed over').toBe(true)
     await expect(page.locator('style#expo-reset')).toHaveCount(1)
     await expect(page.locator('style#mingla-public-document-style')).toHaveCount(0)
     await shot(page, 'adv-desktop-takeover')
