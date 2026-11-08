@@ -108,11 +108,14 @@ function compact(amount: number): string {
     [1_000_000, 'M'],
     [1_000, 'K'],
   ];
-  for (const [size, suffix] of units) {
+  for (let i = 0; i < units.length; i += 1) {
+    const [size, suffix] = units[i];
     if (amount >= size) {
       const scaled = amount / size;
       const digits = scaled < 100 ? 1 : 0;
       const text = scaled.toFixed(digits).replace(/\.0$/, '');
+      // Rounding can reach the next unit (999,950 → "1000K"): roll up to it.
+      if (Number(text) >= 1_000 && i > 0) return `1${units[i - 1][1]}`;
       return `${text}${suffix}`;
     }
   }

@@ -157,7 +157,6 @@ Deno.test({
   // answer ({ ...FALLBACK_RATES, ...rates }), and getServableRate only checks
   // the fetch time, so NGN 1600 (months old) is served as live when the
   // provider's payload has no NGN. Un-ignore with the fix.
-  ignore: true,
   fn: async () => {
     const service = await freshCurrencyService();
     const { NGN: _omitted, ...withoutNaira } = LIVE;
@@ -248,7 +247,6 @@ Deno.test("#4347 adv 3b: rounding boundaries 99.5 / 999.5 / 9,999.5 / 10,000", (
 Deno.test({
   name: "#4347 adv 3c KNOWN DEFECT: 999,950 to 999,999 prints '1000K' instead of '1M'",
   // P3 on #4347: compact() picks the unit before rounding. Un-ignore with the fix.
-  ignore: true,
   fn: () => {
     assertEquals(formatApproxAmount(999_950, "NGN", RATES), "₦1M");
     assertEquals(formatApproxAmount(999_999_999, "NGN", RATES), "₦1B");

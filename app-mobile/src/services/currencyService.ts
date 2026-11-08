@@ -72,6 +72,9 @@ const FALLBACK_RATES: Record<string, number> = {
 };
 
 let cachedRates: Record<string, number> = { ...FALLBACK_RATES };
+// #4347: ONLY what the live provider answered, kept apart from the fallback
+// merge above, so a currency the provider omits is never served as live.
+let liveRates: Record<string, number> = {};
 let lastFetchedAt = 0;
 let fetchPromise: Promise<void> | null = null;
 
@@ -95,6 +98,7 @@ export async function fetchExchangeRates(): Promise<void> {
       const rates = data?.rates as Record<string, number> | undefined;
       if (rates && typeof rates.USD === "number") {
         cachedRates = { ...FALLBACK_RATES, ...rates };
+        liveRates = { ...rates };
         lastFetchedAt = Date.now();
       }
     } catch (_e) {
@@ -136,7 +140,7 @@ export function getServableRate(currencyCode: string): number | null {
   if (lastFetchedAt === 0 || Date.now() - lastFetchedAt > SERVABLE_RATE_MAX_AGE_MS) {
     return null;
   }
-  const rate = cachedRates[code];
+  const rate = liveRates[code];
   return typeof rate === "number" && Number.isFinite(rate) && rate > 0 ? rate : null;
 }
 
@@ -176,6 +180,19 @@ export function convertBetween(
  */
 export function getRates(): Record<string, number> {
   return { ...cachedRates };
+}
+
+/**
+ * #4347 — refresh when the app comes back to the foreground and the last
+ * LIVE fetch is older than 24 hours (or never happened). A phone left in the
+ * background for days otherwise keeps a rate that stops being servable at
+ * 48 hours, and prices fall back to their own currency for no reason.
+ * Returns whether a fetch was started.
+ */
+export function refreshRatesIfStale(nowMs: number = Date.now()): boolean {
+  if (lastFetchedAt !== 0 && nowMs - lastFetchedAt <= CACHE_TTL_MS) return false;
+  void fetchExchangeRates();
+  return true;
 }
 
 /**
