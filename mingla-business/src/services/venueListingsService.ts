@@ -23,7 +23,6 @@ import { normalizeThemeOverrides } from "./offeringTheme";
 import { brandHoursToRpcPayload } from "../utils/venueBrandHours";
 import { logAppsFlyerEvent } from "./appsFlyerService";
 import { SlugCollisionError } from "./brandsService";
-import { attachLocationPlaceId } from "./locationPlaceIdService";
 import { supabase } from "./supabase";
 
 export interface VenueListing {
@@ -236,6 +235,9 @@ export async function createVenueListing(
     p_theme_color: theme?.color ?? "",
     p_theme_font: theme?.font ?? "",
     p_theme_animation: theme?.animation ?? "",
+    // #4334 — the picked Google place id, written in the same insert as the
+    // pin (null when the venue has none).
+    p_location_place_id: input.locationProviderPlaceId ?? null,
   });
 
   if (error !== null) {
@@ -257,8 +259,6 @@ export async function createVenueListing(
   }
 
   const venueId = data;
-  // #4334 — the picked Google place id, for the 30-day coordinate refresh.
-  await attachLocationPlaceId("venue_listing", venueId, input.locationProviderPlaceId);
   logAppsFlyerEvent("mingla_venue_listing_submitted", { venue_id: venueId });
   await invokeVenueClaimSubmittedEmail(venueId);
   return venueId;

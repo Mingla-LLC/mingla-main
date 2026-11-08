@@ -254,13 +254,10 @@ BEGIN
     RAISE EXCEPTION 'T-18c: mapbox_id column still present';
   END IF;
 
-  -- ── biz_set_location_place_id: validates and refuses strangers ─────────
-  v_failed := false;
-  BEGIN
-    PERFORM public.biz_set_location_place_id('event', v_live, 'ChIJx0000000001');
-  EXCEPTION WHEN insufficient_privilege THEN v_failed := true;
-  END;
-  IF NOT v_failed THEN RAISE EXCEPTION 'T-19: an anonymous caller attached a place id'; END IF;
+  -- ── T-19 the post-save attach RPC is gone (A-2: the id rides the save) ─
+  IF to_regprocedure('public.biz_set_location_place_id(text,uuid,text)') IS NOT NULL THEN
+    RAISE EXCEPTION 'T-19: the separate attach RPC still exists';
+  END IF;
 
   -- ── §8 api-health tiles ─────────────────────────────────────────────
   IF EXISTS (SELECT 1 FROM public.api_health_services WHERE service_key = 'mapbox') THEN

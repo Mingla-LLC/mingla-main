@@ -1487,6 +1487,8 @@ interface CanonicalEventBodyFields {
   vibeTags: string[];
   musicGenres: string[];
   cityGeo: { lat: number; lng: number } | null;
+  /** #4334 — null when absent or withheld with the street (server-side gate). */
+  googlePlaceId: string | null;
 }
 
 const asStringArray = (value: unknown): string[] =>
@@ -1518,6 +1520,7 @@ export const fetchCanonicalEventBodyFields = async (
     vibeTags: [],
     musicGenres: [],
     cityGeo: null,
+    googlePlaceId: null,
   };
   const { data, error } = await supabase.rpc("pg_public_event_by_slug", {
     p_brand_slug: brandSlug,
@@ -1530,6 +1533,10 @@ export const fetchCanonicalEventBodyFields = async (
     vibeTags: asStringArray(payload.vibeTags),
     musicGenres: asStringArray(payload.musicGenres),
     cityGeo: asLatLng(payload.cityGeo),
+    googlePlaceId:
+      typeof payload.googlePlaceId === "string" && payload.googlePlaceId.length > 0
+        ? payload.googlePlaceId
+        : null,
   };
 };
 
@@ -1675,6 +1682,7 @@ const detailFromRow = async (
               ? canonical.musicGenres
               : event.musicGenres,
           cityGeo: canonical.cityGeo,
+          googlePlaceId: canonical.googlePlaceId,
         }
       : event;
   return {

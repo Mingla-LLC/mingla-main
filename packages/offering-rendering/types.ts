@@ -155,6 +155,12 @@ export interface PublicEventProps {
    * the address is hidden), so the host simply feeds whichever geo is present.
    */
   cityGeo?: { lat: number; lng: number } | null;
+  /**
+   * #4334 — the venue's Google place id (pg_public_event_by_slug `googlePlaceId`,
+   * withheld server-side with the street). Fed to selectVenueMapsTarget so the
+   * Google Maps link carries `query_place_id`; undefined/null → coordinates only.
+   */
+  googlePlaceId?: string | null;
 
   // Cover
   coverHue: number;

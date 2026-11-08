@@ -32,6 +32,11 @@ export interface VenueAddressValue {
   lat: number;
   lng: number;
   coordinatePrecision: CoordinatePrecision;
+  /**
+   * #4334 — the pin's Google place id (a pick, or the place a typed address
+   * resolved to). Sent with the pin so the server writes both in one statement.
+   */
+  locationProviderPlaceId?: string | null;
 }
 
 export interface VenueDetailsChangeRequest {
@@ -291,6 +296,10 @@ export function identityPatchToRpcArgs(
     p_lat: patch.address?.lat ?? null,
     p_lng: patch.address?.lng ?? null,
     p_coordinate_precision: patch.address?.coordinatePrecision ?? null,
+    // #4334 — only with a changed address; the RPC writes it beside the pin.
+    ...(patch.address !== undefined
+      ? { p_location_place_id: patch.address.locationProviderPlaceId ?? null }
+      : {}),
   };
 }
 

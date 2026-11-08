@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "packages/location-input/__tests__/issue_4334_google_maps_logo.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4334-google-maps-logo-packages",
+  "profile": "deno-2-unit"
+}

@@ -92,6 +92,7 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
         address: rawLabel,
         city: null,
         locationGeo: null,
+        locationProviderPlaceId: null,
         coordinatePrecision: null,
       });
       void (async () => {
@@ -118,6 +119,8 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
           updateDraft({
             city: approx.city,
             locationGeo: { lat: approx.lat, lng: approx.lng },
+            // #4334 — the place the typed address resolved to; saved with the pin.
+            locationProviderPlaceId: approx.placeId,
             coordinatePrecision: "approximate",
           });
           savedCityRef.current = approx.city;
@@ -204,6 +207,7 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
                   address: v,
                   city: null,
                   locationGeo: null,
+                  locationProviderPlaceId: null,
                   coordinatePrecision: null,
                 });
               }}
@@ -216,6 +220,8 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
                   address: label,
                   city: details.city,
                   locationGeo: details.location,
+                  // #4334 — the picked Google place id, saved in the same write.
+                  locationProviderPlaceId: details.placeId,
                   // Issue #1629 — READ the precision from the pick's own feature type
                   // instead of asserting it. This branch is a REAL PICK, so hardcoding
                   // "approximate" made `exact` unreachable everywhere (0 rows in prod).
@@ -232,6 +238,7 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
                 updateDraft({
                   city: null,
                   locationGeo: null,
+                  locationProviderPlaceId: null,
                   coordinatePrecision: null,
                 });
               }}
@@ -244,6 +251,7 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
                   address: null,
                   city: null,
                   locationGeo: null,
+                  locationProviderPlaceId: null,
                   coordinatePrecision: null,
                 });
               }}

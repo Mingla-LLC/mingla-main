@@ -566,6 +566,9 @@ module.exports = {
     // runtime. Babel changes module syntax only; the phone implementation and
     // assertions run unchanged.
     "^.+\\.mjs$": ["babel-jest", { presets: ["babel-preset-expo"] }],
+    // #4334 — bundled images (the Google Maps attribution logo in the shared
+    // address field) resolve to a file-specific stand-in, not raw PNG bytes.
+    "^.+\\.(png|jpe?g|gif)$": "<rootDir>/__manual_mocks__/imageAssetTransformer.cjs",
     // ORCH-1137 (rework) — the biz-web lucide shim deep-requires per-icon ESM
     // modules from `lucide-react/dist/esm/icons/<kebab>.js` (the tree-shakeable
     // import form that keeps the eager web `__common` chunk under the ORCH-1083

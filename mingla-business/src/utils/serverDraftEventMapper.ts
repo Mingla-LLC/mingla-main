@@ -166,6 +166,9 @@ export interface ServerDraftEventUpdate {
   music_genres: string[];
   city: string | null;
   location_geo: string | null;
+  // #4334 — the picked Google place id, written in the same RPC statement as
+  // location_geo so the 30-day coordinate refresh can re-fetch the pin.
+  location_provider_place_id: string | null;
   // ORCH-1006 — per-offering all-in pricing switches. Written every autosave
   // round-trip (like the taxonomy columns above) so the read mapper, which
   // reads top-level columns and does NOT fall back to theme, never zeroes the
@@ -200,6 +203,9 @@ export interface BusinessDraftPayload {
   // publish can promote it with the pin. Always a concrete value (never
   // undefined, which JSON.stringify would drop).
   coordinatePrecision: "exact" | "approximate" | null;
+  // #4334 — the picked Google place id of locationGeo. Rides the blob for the
+  // same echo reason, and only ever describes a pin that exists.
+  locationProviderPlaceId: string | null;
   requestedVisibility: DraftEventVisibility;
   coverHue: number;
   coverProvider: {
@@ -291,6 +297,19 @@ const asLatLng = (value: unknown): { lat: number; lng: number } | null => {
     ? { lat: point.lat, lng: point.lng }
     : null;
 };
+
+/**
+ * #4334 — the Google place id that belongs to the draft's pin: null when there
+ * is no pin (an id never outlives its coordinate) or nothing was picked.
+ */
+export const draftLocationPlaceId = (
+  draft: Pick<DraftEvent, "locationGeo" | "locationProviderPlaceId">,
+): string | null =>
+  draft.locationGeo === null ||
+  typeof draft.locationProviderPlaceId !== "string" ||
+  draft.locationProviderPlaceId.trim().length === 0
+    ? null
+    : draft.locationProviderPlaceId.trim();
 
 /** The events.location_geo write value: Postgres `point` text "(lng,lat)". */
 const locationGeoColumnValue = (
@@ -422,6 +441,7 @@ const buildBusinessDraftPayload = (
   city: draft.city,
   locationGeo: draft.locationGeo,
   coordinatePrecision: asCoordinatePrecision(draft.coordinatePrecision),
+  locationProviderPlaceId: draftLocationPlaceId(draft),
   requestedVisibility: draft.visibility,
   coverHue: draft.coverHue,
   coverProvider: {
@@ -591,6 +611,8 @@ export interface RsvpUpdatePayload {
   city?: string | null;
   location_geo?: string | null;
   coordinate_precision?: "exact" | "approximate" | null;
+  // #4334 — sent with location_geo, never without it.
+  location_provider_place_id?: string | null;
 }
 
 /**
@@ -743,6 +765,7 @@ export const buildRsvpUpdatePayloadDiff = (
       edited.locationGeo === null
         ? null
         : asCoordinatePrecision(edited.coordinatePrecision);
+    payload.location_provider_place_id = draftLocationPlaceId(edited);
   }
   if ((original.city ?? null) !== edited.city) {
     payload.city = edited.city;
@@ -908,6 +931,7 @@ export const draftToServerUpdate = (
   music_genres: Array.isArray(draft.musicGenres) ? draft.musicGenres : [],
   city: draft.city,
   location_geo: locationGeoColumnValue(draft.locationGeo),
+  location_provider_place_id: draftLocationPlaceId(draft),
   // ORCH-1006 — per-offering pricing switches. NULL = inherit brand default.
   // Draft rows are status=draft (unsold → never locked) so a direct column
   // write is safe; the post-sale lock guard only matters on live edits.
@@ -1008,6 +1032,10 @@ export const serverRowToDraft = (row: ServerDraftEventRow): DraftEvent => {
       locationGeo === null
         ? null
         : asCoordinatePrecision(businessDraft.coordinatePrecision),
+    locationProviderPlaceId:
+      locationGeo === null
+        ? null
+        : asStringOrNull(businessDraft.locationProviderPlaceId),
     onlineUrl: row.online_url,
     hideAddressUntilTicket: asBoolean(
       businessDraft.hideAddressUntilTicket,

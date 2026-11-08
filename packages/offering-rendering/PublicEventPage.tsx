@@ -387,6 +387,7 @@ const PublishedBody = ({
     address: event.address,
     addressHidden: event.hideAddressUntilTicket,
     locationGeo: event.locationGeo,
+    googlePlaceId: event.googlePlaceId ?? null,
   });
   const canOpenVenueMaps =
     canOpenMapsTarget(venueMapsTarget) && callbacks.onOpenMaps !== undefined;

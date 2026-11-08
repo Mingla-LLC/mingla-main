@@ -22,6 +22,7 @@ import {
   type PricingRunInput,
 } from '@/lib/growth-tools-submit'
 import { PricingReportView } from './PricingReportView'
+import { GoogleMapsAttribution } from '@/components/ui/google-maps-attribution'
 
 type Phase = 'intake' | 'running' | 'report'
 
@@ -414,6 +415,7 @@ export function PricingAuditExperience({ embedded = false }: { readonly embedded
                       ))}
                     </ul>
                   )}
+                  <GoogleMapsAttribution />
                 </div>
               ) : null}
               {!cityChosen && !geocodeDown && !citySearching && city.trim().length >= 2 &&

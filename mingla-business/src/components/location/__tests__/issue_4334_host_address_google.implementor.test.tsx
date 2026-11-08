@@ -9,7 +9,7 @@
  * Fails-on-revert:
  *   F-1 `if (!result.ok)` branch deleted (outage treated as rows)     → red
  *   F-2 handleRetry no longer re-runs the query                        → red
- *   F-3 PoweredByGoogle row removed                                    → red
+ *   F-3 the Google Maps logo Image removed or swapped for text          → red
  *   F-4 `code === "provider_id_retired"` → onClear() deleted           → red
  *   F-5 limit / types / country sent in the suggest body               → red
  *   F-6 errorCodeFromInvokeError returning message instead of body code→ red
@@ -18,7 +18,11 @@
 import React from "react";
 import { describe, expect, jest, test } from "@jest/globals";
 
-import { AddressInput as SharedField } from "../../../../../packages/location-input/src/AddressInput";
+import { StyleSheet } from "react-native";
+import {
+  AddressInput as SharedField,
+  GOOGLE_MAPS_LOGO,
+} from "../../../../../packages/location-input/src/AddressInput";
 import {
   autocompleteAddress,
   createThrottledReporter,
@@ -149,16 +153,25 @@ describe("#4334 — loud search failures (R-SRCH-5)", () => {
 });
 
 describe("#4334 — retired ids and attribution", () => {
-  test("F-3 rows are followed by 'Powered by Google' (non-interactive, labelled)", async () => {
+  test("F-3 rows are followed by Google's own Maps logo (unmodified file, 98×18, clear space, labelled, not tappable)", async () => {
     jest.useFakeTimers();
     const f = await mount(async () => ({
       data: { suggestions: [{ placeId: "ChIJdidi000001", displayName: "Didi Museum", fullAddress: "Akin Adesola St, Lagos", provider: "google" }] },
       error: null,
     }));
     await f.type("Didi");
-    const logo = f.tree.root.findAll((n) => n.props.testID === "powered-by-google")[0];
-    expect(logo.props.accessibilityLabel).toBe("Powered by Google");
+    const logos = f.tree.root.findAll((n) => n.props.testID === "google-maps-logo" && n.props.source !== undefined);
+    expect(logos.length).toBeGreaterThan(0);
+    const logo = logos[0];
+    expect(logo.props.accessibilityLabel).toBe("Google Maps");
+    // the Host field sits on a dark sheet → the White (non-outlined) logo
+    expect(logo.props.source).toBe(GOOGLE_MAPS_LOGO.dark);
+    expect(logo.props.style).toEqual({ width: 98, height: 18 });
+    expect(logo.props.resizeMode).toBe("contain");
     expect(logo.props.onPress).toBeUndefined();
+    const row = f.tree.root.findAll((n) => n.props.testID === "powered-by-google" && n.props.style !== undefined)[0];
+    const style = StyleSheet.flatten(row.props.style);
+    expect(style).toMatchObject({ paddingTop: 10, paddingBottom: 5, paddingHorizontal: 10 });
     jest.useRealTimers();
   });
 

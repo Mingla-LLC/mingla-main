@@ -65,6 +65,12 @@ export interface HierarchicalPlaceDetails {
   city: string | null;
   region: string | null;
   countryCode: string | null;
+  /**
+   * #4334 rework: the Google place id of the matched result. Saved with the pin
+   * in the same write so the 30-day refresh can re-fetch it. Null from an old
+   * proxy build.
+   */
+  placeId?: string | null;
 }
 
 export type HierarchicalForwardResult =

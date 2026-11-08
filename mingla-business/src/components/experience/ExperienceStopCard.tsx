@@ -148,6 +148,8 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
             lat: approx.lat,
             lng: approx.lng,
             coordinatePrecision: "approximate",
+            // #4334 — the place the typed address resolved to; saved with the pin.
+            placeId: approx.placeId,
           });
           savedContextRef.current = {
             city: approx.city,

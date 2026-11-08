@@ -227,6 +227,8 @@ export function VenueDetailsEditor({
               lat: approx.lat,
               lng: approx.lng,
               coordinatePrecision: "approximate",
+              // #4334 — the place the typed address resolved to.
+              locationProviderPlaceId: approx.placeId,
             },
           });
           setSelectionState("selected");
@@ -547,6 +549,8 @@ export function VenueDetailsEditor({
                   lat: place.lat,
                   lng: place.lng,
                   coordinatePrecision: precisionFromPlaceDetails(details),
+                  // #4334 — the picked Google place id, in its own column.
+                  locationProviderPlaceId: place.placeId,
                 },
               });
               setSelectionState("selected");

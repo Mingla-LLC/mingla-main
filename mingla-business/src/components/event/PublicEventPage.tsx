@@ -382,6 +382,8 @@ const mapLiveEventToPublicEvent = (
     // whichever geo the privacy gate left present (cityGeo when the street is
     // hidden, locationGeo when public). null → text venue card (rule 9).
     cityGeo: event.cityGeo ?? null,
+    // #4334 — the Google place id anchors the Google Maps link when present.
+    googlePlaceId: event.googlePlaceId ?? null,
     coverHue: event.coverHue,
     coverMediaUrl: safeCoverMediaUrl,
     coverMediaAlt: coverVideoUnsafe ? null : (event.coverMediaAlt ?? null),

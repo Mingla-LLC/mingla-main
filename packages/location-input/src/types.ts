@@ -97,7 +97,7 @@ export interface LocationInputTokens {
    */
   action?: LocationInputAction;
   /**
-   * #4334 (Seth decision D5) — the "Powered by Google" row under the list.
+   * #4334 (Seth decision D5) — the Google Maps logo row under the list.
    * "light" on light surfaces, "dark" on dark ones (Explorer city picker).
    */
   attribution?: LocationInputAttribution;

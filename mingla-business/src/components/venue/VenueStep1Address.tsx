@@ -94,6 +94,8 @@ export const VenueStep1Address: React.FC<VenueStep1AddressProps> = ({
             city: approx.city,
             countryCode: approx.countryCode,
             coordinatePrecision: "approximate",
+            // #4334 — the place the typed address resolved to; saved with the pin.
+            locationProviderPlaceId: approx.placeId,
           });
           savedContextRef.current = {
             city: approx.city,

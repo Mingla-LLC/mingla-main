@@ -265,6 +265,8 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
             departureCity: approx.city,
             departureCountryCode: approx.countryCode,
             departureCoordinatePrecision: "approximate",
+            // #4334 — the place the typed address resolved to; saved with the pin.
+            departurePlaceId: approx.placeId,
           });
           departureContextRef.current = {
             city: approx.city,
@@ -327,6 +329,8 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
             destinationCity: approx.city,
             destinationCountryCode: approx.countryCode,
             destinationCoordinatePrecision: "approximate",
+            // #4334 — the place the typed address resolved to; saved with the pin.
+            destinationPlaceId: approx.placeId,
           });
           destinationContextRef.current = {
             city: approx.city,

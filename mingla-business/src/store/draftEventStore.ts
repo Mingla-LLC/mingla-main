@@ -391,6 +391,13 @@ export interface DraftEvent {
    * is outside this issue's allowlist).
    */
   coordinatePrecision?: "exact" | "approximate" | null;
+  /**
+   * #4334 — the Google place id of locationGeo (a pick, or the place a typed
+   * address resolved to). Saved with the pin in the same write so the 30-day
+   * coordinate refresh can re-fetch it. Optional + default-safe like
+   * coordinatePrecision: absent ⇒ null.
+   */
+  locationProviderPlaceId?: string | null;
   /** Used when format ∈ {"online", "hybrid"}. */
   onlineUrl: string | null;
   /** When true (default), address hidden until ticket purchase. */
@@ -565,6 +572,7 @@ const DEFAULT_DRAFT_FIELDS: Omit<
   locationGeo: null,
   // Issue #1363 — precision of locationGeo (exact | approximate | null).
   coordinatePrecision: null,
+  locationProviderPlaceId: null,
   onlineUrl: null,
   hideAddressUntilTicket: true,
   coverHue: 25,

@@ -22,6 +22,7 @@ import {
   type TripVibe,
 } from '@/lib/growth-tools-submit'
 import { TripReportView } from './TripReportView'
+import { GoogleMapsAttribution } from '@/components/ui/google-maps-attribution'
 
 type Phase = 'intake' | 'running' | 'report'
 
@@ -395,6 +396,7 @@ export function TripQuoterExperience({ embedded = false }: { readonly embedded?:
                     ))}
                   </ul>
                 )}
+                <GoogleMapsAttribution />
               </div>
             ) : null}
             {!destChosen && !geocodeDown && !destSearching && destination.trim().length >= 2 &&

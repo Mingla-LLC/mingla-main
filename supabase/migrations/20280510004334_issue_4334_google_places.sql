@@ -10,8 +10,8 @@
 --      coordinates WITHOUT a new id drop the id (never refresh a pin from a
 --      place it did not come from). Writer-managed bookkeeping (the refresh job,
 --      the re-pin) is trusted.
---   3. biz_set_location_place_id: a Host save attaches the picked place id after
---      its normal save RPC (no surgery on the large publish/edit RPCs).
+--   3. Every Host save path writes the picked place id in the SAME statement as
+--      the coordinates (A-2 section at the end of this file).
 --   4. Chat plans: mapbox_id → provider_place_id; plan RPCs accept
 --      `providerPlaceId` and refuse the retired `mapboxId` key loudly; identity
 --      key 'google:<id>'.
@@ -517,59 +517,10 @@ REVOKE ALL ON FUNCTION public.places_refresh_chat_plan_in_scope(text, timestampt
 GRANT EXECUTE ON FUNCTION public.places_refresh_event_in_scope(uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.places_refresh_chat_plan_in_scope(text, timestamptz, timestamptz) TO service_role;
 
--- ── 4. Host saves attach the picked place id ────────────────────────────────
--- Called by the Host app right after its normal save RPC, so the large
--- publish/edit RPCs stay untouched. A null id clears it (free-text address).
--- The stamp trigger does the bookkeeping.
-CREATE OR REPLACE FUNCTION public.biz_set_location_place_id(
-  p_target text, p_row_id uuid, p_place_id text)
- RETURNS void
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path = public, pg_temp
-AS $function$
-DECLARE
-  v_brand uuid;
-  v_place text := NULLIF(btrim(COALESCE(p_place_id, '')), '');
-  v_user uuid := auth.uid();
-BEGIN
-  IF v_user IS NULL THEN
-    RAISE EXCEPTION 'auth_required' USING ERRCODE = '42501';
-  END IF;
-  IF p_target NOT IN ('event', 'venue_listing', 'brand') OR p_row_id IS NULL THEN
-    RAISE EXCEPTION 'invalid_input' USING ERRCODE = '22023', DETAIL = 'p_target';
-  END IF;
-  IF v_place IS NOT NULL AND NOT public.places_is_google_place_id(v_place) THEN
-    RAISE EXCEPTION 'invalid_input' USING ERRCODE = '22023', DETAIL = 'p_place_id';
-  END IF;
+-- ── 4. Host saves write the picked place id in the same statement as the pin ──
+-- (orchestrator review A-2): see the A-2 section at the end of this file. There
+-- is no separate attach call; a pin and its id are never written apart.
 
-  IF p_target = 'event' THEN
-    SELECT brand_id INTO v_brand FROM public.events WHERE id = p_row_id AND deleted_at IS NULL;
-    IF NOT FOUND THEN RAISE EXCEPTION 'not_found' USING ERRCODE = 'P0002'; END IF;
-    IF public.biz_brand_effective_rank(v_brand, v_user) < public.biz_role_rank('event_manager'::text) THEN
-      RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
-    END IF;
-    UPDATE public.events SET location_provider_place_id = v_place WHERE id = p_row_id;
-  ELSIF p_target = 'venue_listing' THEN
-    SELECT brand_id INTO v_brand FROM public.venue_listings WHERE id = p_row_id;
-    IF NOT FOUND THEN RAISE EXCEPTION 'not_found' USING ERRCODE = 'P0002'; END IF;
-    IF public.biz_brand_effective_rank(v_brand, v_user) < public.biz_role_rank('brand_admin'::text) THEN
-      RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
-    END IF;
-    UPDATE public.venue_listings SET location_provider_place_id = v_place WHERE id = p_row_id;
-  ELSE
-    SELECT id INTO v_brand FROM public.brands WHERE id = p_row_id AND deleted_at IS NULL;
-    IF NOT FOUND THEN RAISE EXCEPTION 'not_found' USING ERRCODE = 'P0002'; END IF;
-    IF public.biz_brand_effective_rank(v_brand, v_user) < public.biz_role_rank('brand_admin'::text) THEN
-      RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
-    END IF;
-    UPDATE public.brands SET location_provider_place_id = v_place WHERE id = p_row_id;
-  END IF;
-END;
-$function$;
-
-REVOKE ALL ON FUNCTION public.biz_set_location_place_id(text, uuid, text) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.biz_set_location_place_id(text, uuid, text) TO authenticated, service_role;
 
 -- ── 4b. chat plans: providerPlaceId; the retired mapboxId key fails loudly ──
 DROP FUNCTION IF EXISTS public.chat_plan_place_identity_key(text, uuid, text, text, text, text);

@@ -22,6 +22,7 @@ import {
   type GrowthToolsError,
 } from '@/lib/growth-tools-submit'
 import { EventReportView } from './EventReportView'
+import { GoogleMapsAttribution } from '@/components/ui/google-maps-attribution'
 
 type Phase = 'intake' | 'running' | 'report'
 type InOut = 'indoor' | 'outdoor' | 'mixed'
@@ -421,6 +422,7 @@ export function EventPredictorExperience({ embedded = false }: { readonly embedd
                       ))}
                     </ul>
                   )}
+                  <GoogleMapsAttribution />
                 </div>
               ) : null}
               {!cityChosen && !geocodeDown && !citySearching && city.trim().length >= 2 &&

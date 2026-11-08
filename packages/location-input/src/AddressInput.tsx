@@ -19,7 +19,7 @@
  * "No matches"). The HOST owns the sheet chrome + where the list mounts
  * (card-below vs inline) via the `dropdown.mode` token.
  *
- * Attribution (#4334, D5): a non-interactive "Powered by Google" row closes the
+ * Attribution (#4334, D5): a non-interactive Google Maps logo row closes the
  * list whenever rows, "No matches" or "unavailable" are showing.
  *
  * Gorhom awareness (DESIGN §3.3): consumer hosts are @gorhom bottom sheets, so
@@ -41,6 +41,7 @@ import React, {
 import {
   AccessibilityInfo,
   ActivityIndicator,
+  Image,
   Keyboard,
   Platform,
   Pressable,
@@ -1164,16 +1165,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  // Google's clear space around the logo: 10 dp left, right and top, 5 dp bottom.
   attributionRow: {
-    paddingVertical: 12,
-    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 5,
+    paddingHorizontal: 10,
     alignItems: "flex-end",
     justifyContent: "center",
-  },
-  attributionText: {
-    fontSize: 12,
-    lineHeight: 18,
-    fontWeight: "500",
   },
   cardShadow: {
     shadowColor: "#000",
@@ -1185,31 +1183,34 @@ const styles = StyleSheet.create({
 });
 
 /**
- * #4334 (Seth decision D5) — "Powered by Google" attribution row: the last,
- * non-interactive row of the suggestion list. 18 pt tall, 12 pt vertical
- * padding, right-aligned.
- *
- * [TRANSITIONAL] renders Google's attribution as text. Exit condition: Google's
- * official "Powered by Google" logo PNGs (on-white and on-non-white, @1x/2x/3x)
- * are committed to packages/location-input/assets/ and rendered here as an
- * <Image> (the assets need an approved download from Google's brand page).
+ * #4334 (Seth decision D5) — Google Maps attribution: the last, non-interactive
+ * row of the suggestion list. Google's own logo files, unmodified
+ * (packages/location-input/assets, from Google_Maps_Attribution_Assets.zip,
+ * approved by Seth 2026-11-08), drawn at 98×18 dp — their native aspect ratio
+ * and inside Google's 16–19 dp height rule — with the required clear space:
+ * 10 dp left, right and top, 5 dp bottom. Plain backgrounds only, so the
+ * non-outlined logo: DarkGray on light surfaces, White on dark ones (the dark
+ * Host sheets and the Explorer city picker).
+ * https://developers.google.com/maps/documentation/places/web-service/policies
  */
+export const GOOGLE_MAPS_LOGO = {
+  light: require("../assets/google-maps-logo-dark-gray.png"),
+  dark: require("../assets/google-maps-logo-white.png"),
+} as const;
+export const GOOGLE_MAPS_LOGO_SIZE = { width: 98, height: 18 } as const;
+
 export function PoweredByGoogle({ variant }: { variant: "light" | "dark" }): React.ReactElement {
   return (
-    <View
-      accessible
-      accessibilityLabel="Powered by Google"
-      style={styles.attributionRow}
-      testID="powered-by-google"
-    >
-      <Text
-        style={[
-          styles.attributionText,
-          { color: variant === "dark" ? "#FFFFFF" : "#5F6368" },
-        ]}
-      >
-        Powered by Google
-      </Text>
+    <View style={styles.attributionRow} testID="powered-by-google">
+      <Image
+        source={GOOGLE_MAPS_LOGO[variant]}
+        style={GOOGLE_MAPS_LOGO_SIZE}
+        resizeMode="contain"
+        accessible
+        accessibilityRole="image"
+        accessibilityLabel="Google Maps"
+        testID="google-maps-logo"
+      />
     </View>
   );
 }
