@@ -1,6 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { Suspense, useEffect, useMemo, useState } from "react";
 import {
-  Alert,
   Platform,
   Pressable,
   StyleSheet,
@@ -36,6 +35,17 @@ import { Button } from "../ui/Button";
 import { Sheet } from "../ui/Sheet";
 import { WebDateTimeInput } from "../ui/WebDateTimeInput";
 import { DiscountScopePicker } from "./DiscountScopePicker";
+
+/**
+ * #4304: Alert.alert with buttons is a no-op on react-native-web, so closing a
+ * changed discount did nothing on host.usemingla.com. ConfirmDialog works on
+ * web and native and loads only when it opens.
+ */
+const LazyConfirmDialog = React.lazy(() =>
+  import("../ui/ConfirmDialog").then((module) => ({
+    default: module.ConfirmDialog,
+  })),
+);
 import { isoFromLocalDateTime, localDateTimeValue } from "./discountDateTime";
 import {
   canCreateDiscountKind,
@@ -136,6 +146,7 @@ export const DiscountEditSheet: React.FC<DiscountEditSheetProps> = ({
     discount ? fromDiscount(discount) : defaultDraft(brandId, presetTarget),
   );
   const [dirty, setDirty] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSchedule, setShowSchedule] = useState(false);
   useEffect(() => {
@@ -221,10 +232,7 @@ export const DiscountEditSheet: React.FC<DiscountEditSheetProps> = ({
       onClose();
       return;
     }
-    Alert.alert("Discard changes?", "Your unsaved discount will be lost.", [
-      { text: "Keep editing", style: "cancel" },
-      { text: "Discard", style: "destructive", onPress: onClose },
-    ]);
+    setConfirmDiscard(true);
   };
   const percentText = useMemo(
     () => (draft.valueBps == null ? "" : String(draft.valueBps / 100)),
@@ -607,6 +615,27 @@ export const DiscountEditSheet: React.FC<DiscountEditSheetProps> = ({
           />
         </View>
       </View>
+      {confirmDiscard ? (
+        <Suspense fallback={null}>
+          <LazyConfirmDialog
+            visible
+            onClose={() => setConfirmDiscard(false)}
+            onConfirm={() => {
+              setConfirmDiscard(false);
+              onClose();
+            }}
+            title="Discard changes?"
+            description="Your unsaved discount will be lost."
+            cancelLabel="Keep editing"
+            confirmLabel="Discard"
+            destructive
+            initialFocus="cancel"
+            testID="discount-discard-confirm"
+            confirmTestID="discount-discard-confirm-yes"
+            cancelTestID="discount-discard-confirm-cancel"
+          />
+        </Suspense>
+      ) : null}
     </Sheet>
   );
 };

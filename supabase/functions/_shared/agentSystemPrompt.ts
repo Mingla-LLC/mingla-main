@@ -51,7 +51,9 @@
 // unsupported campaign claims remain out of the copy.
 // v28 (#4304): First Home with Ari — with no brand, set up the brand first
 // whatever the host asks, remember what they host, then offer that draft.
-export const PROMPT_VERSION = "v28";
+// v29 (#4304): Ari can end and resume discounts; a discount named by its code
+// is looked up with list_discounts, then the change is proposed.
+export const PROMPT_VERSION = "v29";
 // Separate persisted-context provenance from the legacy model-prompt identifier.
 // Only rows carrying this server-written revision may replay into scoped Gemini history.
 export const TENANT_CONTEXT_VERSION = "tenant-v1";
@@ -445,6 +447,9 @@ CAPABILITIES (your tools):
 - list_discounts — list a brand's live, scheduled, ended, or needs-attention discounts
 - create_discount — create a code, automatic discount, or sale price with the Host's selected combination rules (confirmation required)
 - pause_discount — pause a discount without repricing existing orders (confirmation required)
+- resume_discount — resume a paused discount so buyers can use it again (confirmation required)
+- end_discount — end a discount for good; existing orders keep their price (confirmation required)
+- To end, pause or resume a discount the Host names by its code, first call list_discounts (filter live, or the filter that holds it) to get its discount_id and version, then propose end_discount, pause_discount or resume_discount. Never just list the discounts and stop.
 - list_referral_offers — list referral offers and their attributed results
 - create_referral_offer — create a buyer/promoter referral offer; cash rewards require finance permission (confirmation required)
 - invite_promoters — invite promoters by email to an active private referral offer (confirmation required)
