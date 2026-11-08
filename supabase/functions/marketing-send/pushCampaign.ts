@@ -13,7 +13,11 @@ import type {
   DispatchV2Result,
   MinimalClient,
 } from "../_shared/notifyV2.ts";
-import { BRAND_CAMPAIGN_PUSH_CATEGORY } from "../_shared/brandReachMessages.ts";
+import {
+  BRAND_CAMPAIGN_PUSH_CATEGORY,
+  renderBrandReachMessage,
+} from "../_shared/brandReachMessages.ts";
+import { buildPushSnapshot, writeSentSnapshot } from "./sentSnapshot.ts";
 
 export const PUSH_QUOTE_TTL_MS = 5 * 60 * 1000;
 
@@ -182,6 +186,29 @@ export function campaignPushLink(
 }
 
 /**
+ * #4273 — the payload one guest's campaign push is rendered from. One owner,
+ * so the send snapshot's variants are exactly what each reason received.
+ */
+export function campaignPushPayload(
+  list: Pick<PushWorklist, "brandName" | "brandSlug" | "eventSlug" | "title">,
+  body: string,
+  reason: "follower" | "extended" | "book",
+  campaignId: string,
+): Record<string, unknown> {
+  return {
+    brand_name: list.brandName ?? "Mingla",
+    body,
+    ...(typeof list.title === "string" && list.title.trim().length > 0
+      ? { title: list.title.trim() }
+      : {}),
+    reason,
+    brand_slug: list.brandSlug,
+    event_slug: list.eventSlug,
+    campaign_id: campaignId,
+  };
+}
+
+/**
  * Send a confirmed push campaign. The worklist RPC re-decides every recipient
  * (unfollow, mute, push switch, exits) before anything is handed to the
  * provider; each row is then marked sent / failed / skipped exactly once.
@@ -210,6 +237,33 @@ export async function sendPushCampaign(
   const body = (list.body ?? "").trim();
   if (body.length === 0) throw new Error("push_body_empty");
   const link = campaignPushLink(list.brandSlug, list.eventSlug);
+  // #4273 — the send snapshot: write-once, best-effort, never blocks a send.
+  // After the empty-body guard, before the first push. One rendered push per
+  // reason, from the payload each guest's push is built from; no user id.
+  // A resume pass with nothing left to send skips it (the first pass wrote it).
+  const reasons = Array.from(new Set((list.work ?? []).map((item) => item.reason)));
+  if (reasons.length > 0) {
+    await writeSentSnapshot(
+      supabase,
+      campaign.id,
+      buildPushSnapshot({
+        brandName: list.brandName ?? "Mingla",
+        brandSlug: list.brandSlug,
+        title: typeof list.title === "string" && list.title.trim().length > 0
+          ? list.title.trim()
+          : null,
+        bodyAsAuthored: body,
+        deepLink: link,
+        variants: reasons.map((reason) => ({
+          reason,
+          ...renderBrandReachMessage(
+            BRAND_CAMPAIGN_PUSH_CATEGORY,
+            campaignPushPayload(list, body, reason, campaign.id),
+          ).push,
+        })),
+      }),
+    );
+  }
   let delivered = 0;
   let failed = 0;
   for (const item of list.work ?? []) {
@@ -220,17 +274,7 @@ export async function sendPushCampaign(
       const result = await dispatch(supabase as MinimalClient, {
         user_id: item.userId,
         category_key: BRAND_CAMPAIGN_PUSH_CATEGORY,
-        payload: {
-          brand_name: list.brandName ?? "Mingla",
-          body,
-          ...(typeof list.title === "string" && list.title.trim().length > 0
-            ? { title: list.title.trim() }
-            : {}),
-          reason: item.reason,
-          brand_slug: list.brandSlug,
-          event_slug: list.eventSlug,
-          campaign_id: campaign.id,
-        },
+        payload: campaignPushPayload(list, body, item.reason, campaign.id),
         deep_link: link,
         idempotency_key: `campaign-push:${campaign.id}:${item.userId}`,
         requested_channel: "push",

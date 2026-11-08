@@ -22,7 +22,12 @@
  *     - .github/ci-batch/MANIFEST.json (frozen workflow digests);
  *     - .github/scripts/ci-discovery/legacy-baseline.json (immutable, sealed
  *       candidate snapshot; deleted suites stay listed as history);
- *     - this gate.
+ *     - this gate and its registry descriptor.
+ *   ALLOWED FILE NAMES (the name only; the contents are still scanned):
+ *     - mingla-business/src/components/location/__tests__/
+ *       mapboxAddressInputKeyboardCap{,.adversarial}.1027.test.ts — their
+ *       jest commands are sealed, immutable assertion capabilities in
+ *       .github/ci-batch/MANIFEST.json (Phase 2), so the files keep the name.
  *   [TRANSITIONAL] ALLOWED UNTIL THE LIVE SECRET IS UNSET:
  *     - supabase/secrets.manifest.json and
  *       scripts/secrets/issue_1436_secret_capacity_exit.adversarial.test.mjs
@@ -60,8 +65,13 @@ export const ALLOWED_PATHS = [
   // [TRANSITIONAL] until MAPBOX_ACCESS_TOKEN is unset on the live project (see header).
   /^supabase\/secrets\.manifest\.json$/,
   /^scripts\/secrets\/issue_1436_secret_capacity_exit\.adversarial\.test\.mjs$/,
-  /^\.github\/scripts\/strict-grep\/i-no-mapbox\.mjs$/,
+  /^\.github\/scripts\/strict-grep\/i-no-mapbox\.mjs(\.gate\.json)?$/,
 ];
+
+export const ALLOWED_FILE_NAMES = new Set([
+  "mingla-business/src/components/location/__tests__/mapboxAddressInputKeyboardCap.1027.test.ts",
+  "mingla-business/src/components/location/__tests__/mapboxAddressInputKeyboardCap.adversarial.1027.test.ts",
+]);
 
 const SKIP_EXT = /\.(svg|png|jpg|jpeg|gif|webp|ico|pdf|ttf|otf|woff2?|mp4|mov|zip|lock)$|package-lock\.json$|deno\.lock$/i;
 
@@ -113,7 +123,7 @@ let failures = 0;
 for (const rel of files) {
   if (SKIP_EXT.test(rel) || pathAllowed(rel)) continue;
   const abs = path.join(REPO_ROOT, rel);
-  if (/mapbox/i.test(rel) && !/mapbox-geocode/.test(rel)) {
+  if (/mapbox/i.test(rel) && !/mapbox-geocode/.test(rel) && !ALLOWED_FILE_NAMES.has(rel)) {
     failures += 1;
     console.error(`FAIL [I-4334-NO-MAPBOX] file name mentions Mapbox: ${rel}`);
   }

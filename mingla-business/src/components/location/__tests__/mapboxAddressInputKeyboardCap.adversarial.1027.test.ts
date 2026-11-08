@@ -1,7 +1,7 @@
 /**
  * issue #1027 — Thread A (native keyboard/viewport) · Symptom 1 · TESTER
  * ADVERSARIAL regression. Different angle from the implementor's happy-path
- * suite (`addressInputKeyboardCap.1027.test.ts`), which only source-regexes
+ * suite (the 1027 keyboard-cap test beside this file), which only source-regexes
  * the formula's TEXT. This suite EXECUTES the REAL, shipped `computeDropdownMaxHeight`
  * across the boundary / over-constrain / no-keyboard matrix and asserts the
  * BEHAVIOUR the regex cannot prove.

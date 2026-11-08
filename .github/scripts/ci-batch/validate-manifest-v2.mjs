@@ -130,7 +130,8 @@ export const SUITES_FOLDED_SINCE_SEAL = Object.freeze([
 // runtime, deadline, routing, file inventory, exact command capabilities and
 // the digest of the workflow it replaced. A change to any of them is a reviewed
 // re-seal of THIS constant; the Phase 3A/3B/3C seals are never touched by it.
-const LOCKED_PHASE3D_CONTRACT_SHA256 = "a846f1a438bb88e06a6fb372d3fefb770d02241e63ceb9c26844774857059cdf";
+// #4334: register the Google places migration and its PostgreSQL proof, and point the issue-992 lane at the renamed server geocode helper.
+const LOCKED_PHASE3D_CONTRACT_SHA256 = "96c929094dbff13ee3549f562a10567c8c9ee11f5fb191a11c9cbc9e081135cc";
 // [#3643] The exact inert literal environment the folded origins set on a step,
 // byte for byte, keyed by the command that carries it. #2198's two Paystack maps
 // are test-mode strings that only satisfy env-presence guards at import time
@@ -396,7 +397,9 @@ export function phase3dContractDigest(manifest) {
 // #3645: the sell-and-publish migration joins the pre-#1931 and pre-#2117 replay skip lists by exact filename.
 // #4304: register the Brand group live migration and its PostgreSQL proof the same way.
 // #4270 W7: register the admin Brand group inbox suites; migration 20280502004270; re-sealed after merging origin/main (#4322).
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "c0fd6cd1d94a9d792b748cda77190d70ae0b4c869fba038d8651a8bf0fbf660b";
+// #4273 polish: register the sent-previews migration, its PostgreSQL proofs (implementor + tester) and the campaign-screen render proof.
+// #4334: register the Google places migration and its PostgreSQL proof, and point the issue-992 lane at the renamed server geocode helper.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "b387d0339117c873db6d2cf5352d5b578e47f469cca6f0815f2eba77ca0c7a10";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

@@ -4,7 +4,7 @@
 -- Built from the tester's probe (account-scope unsubscribe, account-keyed
 -- suppression). Runs on the fully applied migration chain and rolls back.
 --
--- MINGLA-INVARIANT: I-4273-ACCOUNT-OPT-OUT-WINS-AT-INGEST | issue #4273 | An account-scope unsubscribe or account-keyed suppression on any account the brand knows on a buyer's contact keeps that contact withheld and writes no automatic grant.
+-- MINGLA-INVARIANT: I-4273-ACCOUNT-OPT-OUT-WINS-AT-INGEST | issue #4273 | A suppression keyed to any account the brand knows on a buyer's contact, or an account-scope unsubscribe from the account that owns the sending brand (#4273 Q1: account scope is the sending host's account), keeps that contact withheld and writes no automatic grant.
 -- MINGLA-INVARIANT: I-4273-QUOTE-EQUALS-SEND-FOR-EVERY-RECIPIENT | issue #4273 | Book rows, buyers and graph-only people the send would refuse are quoted as plain unpriced suppressions, and every address is priced once, so the sealed reach equals what the send delivers.
 \set ON_ERROR_STOP on
 BEGIN;
@@ -84,9 +84,10 @@ VALUES ('  O01@EXAMPLE.test ', 'email', 'brand', pg_temp.u('b1'), 't');
 -- O02 unsubscribed from ANOTHER brand only.
 INSERT INTO public.marketing_unsubscribes(contact_email, channel, scope, brand_id, reason)
 VALUES ('o02@example.test', 'email', 'brand', pg_temp.u('b2'), 't');
--- O03 account-scope unsubscribe on the buyer's own account.
+-- O03 account-scope unsubscribe from the sending host's account (#4273 Q1:
+-- account scope is the host that owns the brand; 01 owns b1).
 INSERT INTO public.marketing_unsubscribes(contact_email, channel, scope, account_id, reason)
-VALUES ('o03@example.test', 'email', 'account', pg_temp.u('03'), 't');
+VALUES ('o03@example.test', 'email', 'account', pg_temp.u('01'), 't');
 -- O04 STOP on the phone; email suppression stored upper-case.
 INSERT INTO public.channel_suppressions(user_id, contact, channel, scope, reason) VALUES
   (NULL, '+2348031100004', 'sms', 'all', 'stop_keyword'),
@@ -136,7 +137,7 @@ DECLARE b uuid := pg_temp.u('b1');
 BEGIN
   PERFORM pg_temp.ingest(pg_temp.u('003')); PERFORM pg_temp.ingest(pg_temp.u('005'));
   PERFORM pg_temp.ingest(pg_temp.u('016')); PERFORM pg_temp.ingest(pg_temp.u('018'));
-  PERFORM pg_temp.chk('A-01 account-scope unsubscribe on the buyer''s own account withholds email',
+  PERFORM pg_temp.chk('A-01 an account-scope unsubscribe from the sending host''s account withholds email',
     pg_temp.st(b, 'email', 'o03@example.test') = 'withheld' AND pg_temp.autos('o03@example.test') = 0,
     pg_temp.st(b, 'email', 'o03@example.test') || ' autos=' || pg_temp.autos('o03@example.test'));
   PERFORM pg_temp.chk('A-02 a suppression keyed to the buyer''s account withholds email',

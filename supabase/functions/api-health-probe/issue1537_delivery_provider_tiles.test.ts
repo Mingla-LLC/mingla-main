@@ -82,11 +82,11 @@ const REGISTERED_SERVICE_KEYS = new Set([
   "ga4",
   "gemini",
   "giphy",
-  "google_geocoding", // migration 20280507004334 (#4334)
-  "google_place_details", // migration 20280507004334 (#4334)
-  "google_place_refresh", // migration 20280507004334 (#4334)
+  "google_geocoding", // migration 20280510004334 (#4334)
+  "google_place_details", // migration 20280510004334 (#4334)
+  "google_place_refresh", // migration 20280510004334 (#4334)
   "google_places",
-  "google_static_maps", // migration 20280507004334 (#4334)
+  "google_static_maps", // migration 20280510004334 (#4334)
   "mixpanel",
   "onesignal_business",
   "onesignal_consumer",

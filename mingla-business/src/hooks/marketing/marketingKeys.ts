@@ -18,6 +18,10 @@ export const marketingKeys = {
       ["marketing", "campaigns", "list", brandId, status ?? "all"] as const,
     byId: (campaignId: string): readonly unknown[] =>
       ["marketing", "campaigns", "byId", campaignId] as const,
+    // #4273 — every method of the campaign group this campaign belongs to.
+    // Under campaigns.all, so every invalidation of campaigns.all refreshes it.
+    group: (campaignId: string): readonly unknown[] =>
+      ["marketing", "campaigns", "group", campaignId] as const,
   },
   overview: {
     all: ["marketing", "overview"] as const,
