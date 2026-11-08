@@ -1,4 +1,11 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
+
+// #4339 round B: the 404 has its own title (the root default was the home title).
+export const metadata: Metadata = {
+  title: { absolute: 'Page not found — Mingla' },
+  robots: { index: false, follow: true },
+}
 
 export default function NotFound() {
   return (

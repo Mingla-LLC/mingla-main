@@ -334,7 +334,7 @@ export function CityThisWeekend({ cityName, citySlug, countryCode, model }: City
       <div className="wrap">
         <div className="wk-head">
           <h2 className="h2" id="city-weekend-title">
-            This <em>weekend.</em>
+            Things to do in {cityName} <em>this weekend.</em>
           </h2>
           <FilterChips label={`Filter ${cityName} listings`} options={KINDS} value={kind} onChange={selectKind} />
         </div>

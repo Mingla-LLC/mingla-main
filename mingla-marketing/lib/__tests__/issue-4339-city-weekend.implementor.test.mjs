@@ -283,7 +283,7 @@ test('strips render first and the empty-rule copy is verbatim', () => {
   const order = ['<CityHero', '<CityThisWeekend', '<CityWeekend', '<CityGuideBand', '<CityQuestions', '<CityHostBand'].map((tag) => page.indexOf(tag))
   assert.deepEqual([...order].sort((a, b) => a - b), order, 'hero, This weekend, the ranked places, plans, FAQ, host band')
   assert.ok(order.every((i) => i > 0))
-  assert.match(code(read('components/cities/city-weekend.tsx')), /Places in <em>\{cityName\}\.<\/em>/)
+  assert.match(code(read('components/cities/city-weekend.tsx')), /Top places <em>in \{cityName\}\.<\/em>/)
 })
 
 test('no /render/image anywhere, and place photos are the stored thumbnails on the public object endpoint', () => {

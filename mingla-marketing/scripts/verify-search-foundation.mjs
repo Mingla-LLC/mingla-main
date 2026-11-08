@@ -32,6 +32,11 @@ const SEARCH_READY_PATHS = [
   '/organiser-terms',
   // #4137 — the blog front page, now the last SEARCH_READY_ROUTES base contract.
   '/blog',
+  // #4339 round B — the programme pages and their agreements, registered.
+  '/locals',
+  '/creators',
+  '/creator-agreement',
+  '/local-agreement',
   // #3371 — the renamed Explorer core page. Core routes project after the base
   // contracts and before the help-video family, so it sits here in registry
   // emission order; its title carries a single Mingla mention.
@@ -62,7 +67,21 @@ const SEARCH_READY_PATHS = [
   '/help/referrals-and-earnings',
   '/help/become-a-mingla-creator',
   '/help/mingla-local-independent-reviews',
-  // #4137 — the four blog categories project after the help family.
+  // #4339 round B — the four blog categories are noindex and out of the
+  // sitemap while they hold no public post (always, without a database: see
+  // EMPTY_BLOG_CATEGORY_PATHS). The seven Host landing pages project last.
+  '/host/events',
+  '/host/trips',
+  '/host/experiences',
+  '/host/restaurants',
+  '/host/hotels',
+  '/host/art',
+  '/host/play',
+]
+
+// #4339 round B — a blog category with no public post is noindex (follow)
+// and keeps its canonical; it returns to the sitemap with its first post.
+const EMPTY_BLOG_CATEGORY_PATHS = [
   '/blog/category/going-out',
   '/blog/category/date-ideas',
   '/blog/category/host-playbook',
@@ -90,6 +109,11 @@ const SITEMAP_SEARCH_READY_PATHS = [
   '/organiser-terms',
   // #4137 — '/blog' is the next base contract, inserted the same way.
   '/blog',
+  // #4339 round B — then the programme pages and their agreements.
+  '/locals',
+  '/creators',
+  '/creator-agreement',
+  '/local-agreement',
   ...releaseSearchReadyPaths.slice(organiserTermsInsertionIndex),
   '/help/getting-the-apps',
   '/help/sign-up-and-create-a-brand',
@@ -117,11 +141,15 @@ const SITEMAP_SEARCH_READY_PATHS = [
   '/help/referrals-and-earnings',
   '/help/become-a-mingla-creator',
   '/help/mingla-local-independent-reviews',
-  // #4137 — the four blog categories project after the help family.
-  '/blog/category/going-out',
-  '/blog/category/date-ideas',
-  '/blog/category/host-playbook',
-  '/blog/category/product-news',
+  // #4339 round B — empty blog categories leave the sitemap; the seven Host
+  // landing pages project last.
+  '/host/events',
+  '/host/trips',
+  '/host/experiences',
+  '/host/restaurants',
+  '/host/hotels',
+  '/host/art',
+  '/host/play',
 ]
 
 const PUBLIC_NOINDEX_PATHS = [
@@ -353,6 +381,17 @@ async function main() {
       }
       pass(`${pathname} browser/Googlebot search contract`)
     }
+
+    for (const pathname of EMPTY_BLOG_CATEGORY_PATHS) {
+      const response = await request(port, pathname, { userAgent: CRAWLER_AGENT })
+      assert.equal(response.status, 200, `${pathname} status`)
+      const facts = pageFacts(response.body.toString('utf8'))
+      assert.match(facts.robots, /noindex/i, `${pathname} is noindex while empty`)
+      assert.match(facts.robots, /(?<!no)follow/i, `${pathname} still follows its links`)
+      assert.equal(facts.canonical, canonicalFor(pathname), `${pathname} keeps its canonical`)
+      assertSingleBrandMention(facts.title, pathname)
+    }
+    pass('empty blog categories are noindex until a post lands')
 
     const home = await request(port, '/')
     const homeFacts = pageFacts(home.body.toString('utf8'))

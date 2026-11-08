@@ -117,7 +117,7 @@ export function CityWeekend({ cityName, citySlug, countryCode, locale, cityPath,
       <div className="wrap">
         <div className="wk-head">
           <h2 className="h2" id="city-places-title">
-            Places in <em>{cityName}.</em>
+            Top places <em>in {cityName}.</em>
           </h2>
         </div>
 
@@ -132,6 +132,9 @@ export function CityWeekend({ cityName, citySlug, countryCode, locale, cityPath,
                   <li key={place.placePoolId} data-tags="Places" data-orphan={orphanTile(index, shownCount) ? '' : undefined}>
                     <a
                       href={place.detailHref}
+                      // #4339 round B: the detail URL is a query-string view of
+                      // this page; nofollow keeps ~500 parameter URLs out of crawls.
+                      rel="nofollow"
                       className="wk-card"
                       data-city-place-card=""
                       data-category={place.categorySlug}

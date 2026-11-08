@@ -32,22 +32,25 @@ import type { CityWeekendModel } from '@/lib/city-weekend'
 // build lane.
 
 function CityHero({ record }: { readonly record: CityHubRecord }) {
+  // #4339 round B (SEO audit, ship-blocker 1): the H1 is the search phrase
+  // "Things to do in <City>", set as the small pill; the brand line keeps the
+  // big serif look but is not a heading.
   return (
     <section className="lp-hero city-lp-hero" aria-labelledby="city-hub-title">
       <CityMedia slug={record.slug} hero />
       <div className="shade" aria-hidden="true" />
       <div className="in wrap">
         <div className="row">
-          <span className="pill glass">
-            <MapPin aria-hidden="true" /> {record.city}, {record.country}
-          </span>
+          <h1 className="pill glass city-h1" id="city-hub-title">
+            <MapPin aria-hidden="true" /> Things to do in {record.city}
+          </h1>
         </div>
-        <h1 id="city-hub-title">
+        <p className="city-brand-line">
           <span>{record.city}, what are we</span>
           <span>
             <em>outside for?</em>
           </span>
-        </h1>
+        </p>
         <div className="bottom">
           <p>Places, plans and side quests in {record.city}, on Mingla. Save the ones you like and pick a date.</p>
           <div className="glassbar">
@@ -57,6 +60,25 @@ function CityHero({ record }: { readonly record: CityHubRecord }) {
         </div>
       </div>
     </section>
+  )
+}
+
+/** The visible trail that matches the BreadcrumbList (Home › Cities › <City>). */
+function CityBreadcrumb({ record }: { readonly record: CityHubRecord }) {
+  return (
+    <nav className="city-crumbs wrap" aria-label="Breadcrumb">
+      <ol>
+        <li>
+          <Link href="/">Home</Link>
+        </li>
+        <li>
+          <Link href="/cities">Cities</Link>
+        </li>
+        <li>
+          <span aria-current="page">{record.city}</span>
+        </li>
+      </ol>
+    </nav>
   )
 }
 
@@ -163,6 +185,7 @@ export function CityPage({
       <CityHubImpression citySlug={record.slug} countryCode={record.countryCode} />
       <SitePage surface="explorer" current="cities">
         <CityHero record={record} />
+        <CityBreadcrumb record={record} />
         <CityLifecycleNotice record={record} />
         <CityThisWeekend cityName={record.city} citySlug={record.slug} countryCode={record.countryCode} model={weekend} />
         <CityWeekend

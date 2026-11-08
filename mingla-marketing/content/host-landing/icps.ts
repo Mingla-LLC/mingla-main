@@ -63,6 +63,12 @@ export interface IcpLanding {
   /** Headline line one (roman) and line two (italic). */
   readonly l1: string
   readonly l2: string
+  /**
+   * #4339 round B: the search title, keyword first, under 60 characters with
+   * " | Mingla Host" (icpLandingMeta). US spelling where US searchers type it.
+   */
+  readonly seoTitle: string
+  /** The hero line, and the meta description (140–160 characters). */
   readonly sub: string
   readonly intro: string
   readonly duo: readonly [string, string]
@@ -94,7 +100,8 @@ export const ICP_LANDINGS = {
     bg: "v:bg-events",
     l1: "Fill the room,",
     l2: "not just the timeline.",
-    sub: "Tickets, guest lists, door scanning and an AI demand forecast, in one place built for the people who throw the night.",
+    seoTitle: "Event ticketing & guest lists for organizers",
+    sub: "Tickets, guest lists, door scanning and an AI demand forecast, in one place built for the people who throw the night, from the first post to a packed room.",
     intro: "You bring the night. Mingla puts it where people are already deciding what to do this weekend, then gives you the tools to sell it, run the door and bring the same crowd back.",
     duo: ["Posted", "Packed"],
     big: "People don’t search for a category. They search for a plan. Put the *date, the place and the price* together, say what’s included in plain words, and give them *one link to book.*",
@@ -134,7 +141,8 @@ export const ICP_LANDINGS = {
     bg: "v:bg-trips",
     l1: "Plan the trip,",
     l2: "let the group pay in parts.",
-    sub: "Itineraries, instalments and a group chat that keeps everyone on the same page, from the first deposit to the last day.",
+    seoTitle: "Group trip payment plans & itineraries",
+    sub: "Itineraries, payment plans and a group chat that keeps everyone on the same page, from the first deposit to the last day of the trip you planned together.",
     intro: "Group trips fall apart in the chat. Mingla gives the plan a home: one page with the itinerary, the price and the way to pay, and one place to talk.",
     duo: ["Planned", "Paid"],
     big: "Price it *per person,* show the *whole day by day,* and let people pay *in parts.* The trip stops being a maybe in a group chat and becomes a plan with a date.",
@@ -173,7 +181,8 @@ export const ICP_LANDINGS = {
     bg: "v:bg-exp",
     l1: "Your class is the plan,",
     l2: "make it easy to book.",
-    sub: "Workshops, classes, tastings and tours: list the sessions, sell the spots and fill the next one from the last.",
+    seoTitle: "Class & workshop booking software",
+    sub: "Workshops, classes, tastings and tours: list the sessions, take bookings, sell the spots and fill the next one with the people who loved the last one.",
     intro: "Experiences sell when people can picture themselves there. Mingla shows the moment, the time and the price in one place, and makes the next step one tap.",
     duo: ["Booked", "Rebooked"],
     big: "Give people three things: *context,* what it is and why it matters; *vibe,* real moments and what to expect; and *a next step,* the date, place, price and one link to book.",
@@ -212,7 +221,8 @@ export const ICP_LANDINGS = {
     bg: "v:bg-rest",
     l1: "Get found by people",
     l2: "choosing where to eat.",
-    sub: "A venue listing that sells the room, reservations, table ordering, menu intelligence and a demand forecast for the nights ahead.",
+    seoTitle: "Restaurant reservations & venue listing",
+    sub: "A venue listing that sells the room, with reservations, table ordering, menu intelligence and a demand forecast for the nights ahead, all in one place.",
     intro: "People don’t pick a restaurant from a map pin. They pick a feeling. Mingla matches your place to the people already looking for it, then helps you run the service.",
     duo: ["Listed", "Recommended"],
     big: "Fill in the checklist once: a *hero cover,* at least *five photos,* your website, *typical spend,* the *“best for”* tags that match how people use your place, and a few quick yes-or-no answers. Then Mingla can *match you to the right people.*",
@@ -249,7 +259,8 @@ export const ICP_LANDINGS = {
     bg: "v:bg-hotel",
     l1: "Be the reason",
     l2: "they book the weekend.",
-    sub: "List the stay, the day passes and the events on your grounds, and market them to the people planning their next getaway.",
+    seoTitle: "Hotel day passes & resort events",
+    sub: "List the stay, the day passes and the events on your grounds, and market them to the people planning their next getaway or a day by the pool.",
     intro: "A getaway starts as a plan someone makes with friends. Mingla puts your property, your beach days and your events in front of them while they’re still deciding.",
     duo: ["Seen", "Stayed"],
     big: "Sell more than the room. *Beach days, pool parties, brunches* and *weekend packages* are plans people share, and every one of them is a way *back to your property.*",
@@ -286,7 +297,8 @@ export const ICP_LANDINGS = {
     bg: "v:bg-art",
     l1: "Culture is a plan,",
     l2: "make it the obvious one.",
-    sub: "Openings, exhibitions, talks and late nights, listed where people plan their weekend, with tickets or free RSVPs.",
+    seoTitle: "Gallery & museum ticketing and RSVPs",
+    sub: "Openings, exhibitions, talks and late nights, listed where people plan their weekend, with tickets or free RSVPs and a guest list that comes back.",
     intro: "People want more from a weekend than another dinner. Mingla puts your exhibitions and events in the plan, with the context that makes them easy to say yes to.",
     duo: ["Seen", "Visited"],
     big: "Local discovery is *bigger than restaurants.* Culture competes for the same weekend, and people are really asking: *is it worth leaving the house,* who is it for, and *how do I book?* Answer those and you’re in the plan.",
@@ -324,7 +336,8 @@ export const ICP_LANDINGS = {
     bg: "v:bg-play",
     l1: "Make your place",
     l2: "the group’s yes.",
-    sub: "Bowling, arcades, karaoke, escape rooms and game nights: be the answer when a group asks what to do tonight.",
+    seoTitle: "Bowling, arcade & escape room bookings",
+    sub: "Bowling, arcades, karaoke, escape rooms and game nights: take bookings for lanes, rooms and parties, and be the answer when a group asks what to do tonight.",
     intro: "Groups are the hardest plans to make and the best customers to win. Mingla puts your place in front of them with the details that get the whole chat to say yes.",
     duo: ["Open", "Booked out"],
     big: "Show the *fun,* not the floor plan. A *short video,* the *typical spend,* who it’s *best for* and one way to *book the group,* and you stop being a maybe.",
@@ -370,7 +383,7 @@ export function icpLandingPath(slug: IcpSlug): string {
 /** Search title and description, from the ICP's own approved copy. */
 export function icpLandingMeta(slug: IcpSlug): { title: string; description: string } {
   const d: IcpLanding = ICP_LANDINGS[slug]
-  return { title: `${d.l1} ${d.l2} | Mingla Host for ${d.name.toLowerCase()}`, description: d.sub }
+  return { title: `${d.seoTitle} | Mingla Host`, description: d.sub }
 }
 
 export interface ResolvedLandingMedia {

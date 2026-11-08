@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import type { Metadata } from 'next'
+import { searchRouteMetadata } from '@/lib/search/metadata'
 import type { ReactNode } from 'react'
 import {
   LOCAL_AGREEMENT_SHA256,
@@ -11,10 +12,9 @@ import {
 import { LegalShell } from '@/components/site/legal-shell'
 import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
 
+// #4339 round B: registered in lib/search/route-registry.ts (canonical, sitemap).
 export const metadata: Metadata = {
-  title: 'Mingla Local Agreement',
-  description: 'The complete agreement for the Mingla Local programme in Nigeria.',
-  alternates: { canonical: '/local-agreement' },
+  ...searchRouteMetadata('/local-agreement'),
   robots: { index: true, follow: true },
 }
 

@@ -71,9 +71,12 @@ for (const [slug, city] of Object.entries(CITY)) {
 
   // AC-P1 (#4339): one H1, the design's headline; no promise of events.
   const h1s = [...html.matchAll(/<h1\b[^>]*>([\s\S]*?)<\/h1>/g)].map((match) => text(match[1]))
-  assert.deepEqual(h1s, [`${city}, what are we outside for?`], `#4137/#4339 AC-P1: ${label} H1`)
+  // #4339 round B (SEO audit): the H1 is the search phrase, set as the pill;
+  // the brand line stays as styled text.
+  assert.deepEqual(h1s, [`Things to do in ${city}`], `#4137/#4339 AC-P1: ${label} H1`)
   const hero = between(main, 'class="lp-hero city-lp-hero"', '</section>')
-  assert(text(hero).includes(`${city}, ${CITY_COUNTRY[slug]}`), `#4339: ${label} hero carries the city pill`)
+  assert(text(hero).includes(`${city}, what are we outside for?`), `#4339: ${label} hero keeps the brand line`)
+  void CITY_COUNTRY
   assert.doesNotMatch(text(main), /events? (?:this|on) (?:week|weekend)/i, `#4137 AC-P1: ${label} promises no events`)
 
   // AC-P2 (#4339): the hero is the city's tile media (components/site/city-media.tsx):
@@ -104,7 +107,7 @@ for (const [slug, city] of Object.entries(CITY)) {
   assert.match(weekend, /data-weekend="fallback"/, `#4339: ${label} weekend without a database is the fallback`)
   assert(text(weekend).includes('Nothing is listed this week yet. Check back soon.'), `#4339: ${label} fallback line`)
   const placesSection = between(main, 'id="places"', '</section>')
-  assert(text(placesSection).includes(`Places in ${city}.`), `#4339: ${label} places heading`)
+  assert(text(placesSection).includes(`Top places in ${city}.`), `#4339: ${label} places heading`)
 
   // AC-P3 + AC-P5
   const cards = [...placesSection.matchAll(/<a\b[^>]*class="wk-card" data-city-place-card="" data-category="([a-z_]+)"[^>]*>([\s\S]*?)<\/a>/g)]

@@ -8,6 +8,7 @@ import { CORE_PAGES } from '../../content/core-pages'
 import { HELP_VIDEOS, helpVideoPath } from '../../content/help/registry'
 import { BLOG_CATEGORIES, blogCategoryPath } from '../../content/blog/categories'
 import { ICP_SLUGS, icpLandingMeta, icpLandingPath } from '../../content/host-landing/icps'
+import { cityMetaDescription } from '../../content/cities/meta-descriptions'
 
 export const ROUTE_LIFECYCLE_STATES = [
   'draft',
@@ -178,6 +179,43 @@ const SEARCH_READY_ROUTES = [
       'Going out, date ideas and the playbook for hosts, from the people building Mingla. Plans you can save in one tap.',
     lastModified: '2026-10-27',
   },
+  // #4339 round B (SEO audit 15) — the creator and local programme pages and
+  // their agreements, registered so each has one title (absolute: the root
+  // template adds no second "— Mingla"), a canonical and a sitemap row.
+  {
+    id: 'locals',
+    match: { type: 'exact', pathname: '/locals' },
+    lifecycle: 'search_ready',
+    title: 'Mingla Locals: one honest city review every month',
+    description:
+      'Apply to represent your city, choose one eligible place each month, publish a first-hand review and earn $150 after Mingla approves it.',
+    lastModified: '2026-11-08',
+  },
+  {
+    id: 'creators',
+    match: { type: 'exact', pathname: '/creators' },
+    lifecycle: 'search_ready',
+    title: 'Mingla Creators: get hired to film your city',
+    description:
+      'Create short videos for Mingla hosts, agree the work before the shoot, deliver privately and get paid through your connected payout provider.',
+    lastModified: '2026-11-08',
+  },
+  {
+    id: 'creator-agreement',
+    match: { type: 'exact', pathname: '/creator-agreement' },
+    lifecycle: 'search_ready',
+    title: 'Mingla Creator Program Agreement',
+    description: 'The complete agreement for the Mingla Creator programme.',
+    lastModified: '2026-11-01',
+  },
+  {
+    id: 'local-agreement',
+    match: { type: 'exact', pathname: '/local-agreement' },
+    lifecycle: 'search_ready',
+    title: 'Mingla Local Agreement',
+    description: 'The complete agreement for the Mingla Local programme in Nigeria.',
+    lastModified: '2026-10-29',
+  },
 ] as const satisfies readonly SearchReadyRouteContract[]
 
 const CORE_PUBLIC_NOINDEX_ROUTES = Object.values(CORE_PAGES).filter((record) => record.lifecycle === 'public_noindex')
@@ -287,7 +325,8 @@ export const CITY_ROUTE_CONTRACTS: readonly RouteContract[] = CITY_HUBS.map((rec
   match: { type: 'exact' as const, pathname: cityHubPath(record) },
   lifecycle: cityHubEffectiveLifecycle(record),
   title: `Things to do in ${record.city} — Mingla city guide`,
-  description: record.directAnswer,
+  // #4339 round B: a 140–155 character snippet; the direct answer stays on the page.
+  description: cityMetaDescription(record.slug, record.directAnswer),
   lastModified: record.sourcesCheckedAt,
 } as RouteContract))
 
@@ -325,6 +364,34 @@ export const BLOG_CATEGORY_ROUTE_CONTRACTS: readonly SearchReadyRouteContract[] 
 // entry in the sitemap. Title and description come from the ICP's own
 // approved copy (icpLandingMeta), so the page and the sitemap share one owner.
 export const HOST_LANDING_LAST_MODIFIED = '2026-11-08' as const
+
+/**
+ * #4339 round B — SITEMAP LASTMOD FOR THE REDESIGN.
+ *
+ * Every page the #4339 redesign rebuilt reports this date as its sitemap
+ * `lastmod` (sitemapLastModified below), unless its own contract carries a
+ * later one. It is the ONE value to bump: set it to the day the #4339 pull
+ * request merges (UTC, YYYY-MM-DD) in that same pull request, and the
+ * post-deploy IndexNow step (scripts/indexnow-submit.mjs) submits exactly the
+ * URLs whose lastmod moved. Pages whose words #4339 did not change keep their
+ * own dates: the legal texts in REDESIGN_UNCHANGED_ROUTE_IDS.
+ */
+export const SITE_REDESIGN_LAST_MODIFIED = '2026-11-08' as const
+
+/** Search routes whose content #4339 did not change (their lastmod stays their own). */
+export const REDESIGN_UNCHANGED_ROUTE_IDS: ReadonlySet<string> = new Set([
+  'privacy-policy',
+  'terms-of-service',
+  'organiser-terms',
+  'creator-agreement',
+  'local-agreement',
+])
+
+/** The sitemap `lastmod` of one search route (YYYY-MM-DD). */
+export function sitemapLastModified(route: SearchReadyRouteContract): string {
+  if (REDESIGN_UNCHANGED_ROUTE_IDS.has(route.id)) return route.lastModified
+  return route.lastModified > SITE_REDESIGN_LAST_MODIFIED ? route.lastModified : SITE_REDESIGN_LAST_MODIFIED
+}
 
 export const HOST_LANDING_ROUTE_CONTRACTS: readonly SearchReadyRouteContract[] = ICP_SLUGS.map((slug) => ({
   id: `host-landing-${slug}`,

@@ -37,6 +37,17 @@ export default function AboutPage() {
           </div>
         </section>
 
+        {/* #4339 round B (SEO audit 3): "What is Mingla?" and its direct
+            answer, visible, from the page's own record (answer engines quote it). */}
+        <section className="answer-sec" aria-labelledby="about-what">
+          <div className="wrap answer-block">
+            <h2 className="h2" id="about-what">
+              {record.directQuestion}
+            </h2>
+            <p className="lead">{record.directAnswer}</p>
+          </div>
+        </section>
+
         <section className="about-clip" aria-hidden="true">
           <div className="wrap">
             <div className="ph reveal">

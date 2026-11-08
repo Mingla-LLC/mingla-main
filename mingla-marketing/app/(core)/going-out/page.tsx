@@ -4,7 +4,7 @@ import { ArrowUpRight } from 'lucide-react'
 import { LandingMedia } from '@/components/landing/landing-media'
 import { FilterGrid, type FilterItem } from '@/components/site/filter-row'
 import { PageHero, SitePage } from '@/components/site/site-page'
-import { cityHubForSlug, cityHubPath } from '@/content/cities/registry'
+import { CITY_HUBS, cityHubForSlug, cityHubPath } from '@/content/cities/registry'
 import { CORE_PAGES } from '@/content/core-pages'
 import type { LandingMediaRef } from '@/content/host-landing/icps'
 import { corePageMetadata } from '@/lib/search/metadata'
@@ -81,6 +81,16 @@ export default function GoingOutPage() {
           }
           lead="Discover places, events, trips and experiences, inspect the details that change the decision, and save the useful options together."
         />
+        {/* #4339 round B (SEO audit 2): the direct question and answer that
+            search and answer engines quote, from the page's own record. */}
+        <section className="answer-sec" aria-labelledby="going-out-answer">
+          <div className="wrap answer-block">
+            <h2 className="h2" id="going-out-answer">
+              {record.directQuestion}
+            </h2>
+            <p className="lead">{record.directAnswer}</p>
+          </div>
+        </section>
         <section className="pb-100" aria-label="Guides">
           <div className="wrap">
             <FilterGrid
@@ -107,6 +117,24 @@ export default function GoingOutPage() {
                 </Link>
               }
             />
+          </div>
+        </section>
+        {/* #4339 round B (SEO audit 2): one internal link to every city page,
+            anchored on the phrase people search for. */}
+        <section className="sec city-links-sec" aria-labelledby="going-out-cities">
+          <div className="wrap">
+            <h2 className="h2" id="going-out-cities">
+              Plans, <em>city by city.</em>
+            </h2>
+            <ul className="city-links mt-24">
+              {CITY_HUBS.map((city) => (
+                <li key={city.slug}>
+                  <Link href={cityHubPath(city)}>
+                    Things to do in {city.city} <ArrowUpRight aria-hidden="true" />
+                  </Link>
+                </li>
+              ))}
+            </ul>
           </div>
         </section>
       </SitePage>

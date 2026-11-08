@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { searchRouteMetadata } from '@/lib/search/metadata'
 import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
 import { LandingMedia } from '@/components/landing/landing-media'
@@ -15,11 +16,8 @@ import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
 // (→ /creator-agreement), four clips and the three steps. The step copy is the
 // live page's programme facts.
 
-export const metadata: Metadata = {
-  title: 'Mingla Creators — Get hired to show people what a city feels like',
-  description:
-    'Create short videos for Mingla hosts, agree the work before the shoot, deliver privately and get paid through your connected payout provider.',
-}
+// #4339 round B: registered in lib/search/route-registry.ts (one absolute title).
+export const metadata: Metadata = searchRouteMetadata('/creators')
 
 const CREATOR_SETUP_HREF = hostWebPageHref('/creator/setup', siteAttribution('business_hero'))
 

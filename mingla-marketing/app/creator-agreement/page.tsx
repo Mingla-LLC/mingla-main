@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import type { Metadata } from 'next'
+import { searchRouteMetadata } from '@/lib/search/metadata'
 import {
   CREATOR_AGREEMENT_SECTIONS,
   CREATOR_AGREEMENT_SHA256,
@@ -10,10 +11,9 @@ import {
 import { LegalShell } from '@/components/site/legal-shell'
 import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
 
+// #4339 round B: registered in lib/search/route-registry.ts (canonical, sitemap).
 export const metadata: Metadata = {
-  title: 'Mingla Creator Program Agreement',
-  description: 'The complete agreement for the Mingla Creator programme.',
-  alternates: { canonical: '/creator-agreement' },
+  ...searchRouteMetadata('/creator-agreement'),
   robots: { index: true, follow: true },
 }
 

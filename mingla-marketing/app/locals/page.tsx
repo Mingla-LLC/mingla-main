@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { searchRouteMetadata } from '@/lib/search/metadata'
 import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
 import { ExplorerHandoffButton } from '@/components/landing/explorer-handoff'
@@ -13,11 +14,8 @@ import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
 // page's, word for word where they are terms (#3872 pins them): up to three
 // Locals per open city, $150 after approval, paid by Mingla, never by the place.
 
-export const metadata: Metadata = {
-  title: 'Mingla Locals — One honest city review every month',
-  description:
-    'Apply to represent your city, choose one eligible place each month, publish a first-hand review and earn $150 after Mingla approves it.',
-}
+// #4339 round B: registered in lib/search/route-registry.ts (one absolute title).
+export const metadata: Metadata = searchRouteMetadata('/locals')
 
 const STEPS = [
   {

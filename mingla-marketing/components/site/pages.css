@@ -263,6 +263,59 @@
 [data-landing] .city-lp-hero .row {
   gap: 8px;
 }
+/* #4339 round B: the H1 is the small pill ("Things to do in <City>"); the
+   brand line below keeps the hero headline look without being a heading. */
+[data-landing] .lp-hero h1.city-h1 {
+  font-family: var(--mono);
+  font-weight: 500;
+  font-size: 11px;
+  line-height: 1;
+  letter-spacing: 0.12em;
+  margin: 0;
+  max-width: none;
+}
+[data-landing] .lp-hero .city-brand-line {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: clamp(46px, 7.6vw, 120px);
+  line-height: 0.92;
+  letter-spacing: -0.025em;
+  margin-top: 18px;
+  max-width: 22ch;
+  color: inherit;
+}
+[data-landing] .lp-hero .city-brand-line span {
+  display: block;
+}
+[data-landing] .city-crumbs {
+  padding-top: 18px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+[data-landing] .city-crumbs ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+[data-landing] .city-crumbs li + li::before {
+  content: '/';
+  margin-right: 8px;
+  opacity: 0.5;
+}
+[data-landing] .city-crumbs a {
+  color: inherit;
+  text-decoration: none;
+  opacity: 0.7;
+}
+[data-landing] .city-crumbs a:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
 [data-landing] .city-lp-hero .pill.glass svg {
   width: 13px;
   height: 13px;
@@ -1919,4 +1972,49 @@
 }
 [data-landing] .art-sec .cut-media > button:hover {
   background: rgba(0, 0, 0, 0.3);
+}
+
+/* #4339 round B — the direct question and answer (Going out, About) and the
+   Going out row of city links. */
+[data-landing] .answer-sec {
+  padding: 8px 0 56px;
+}
+[data-landing] .answer-block {
+  max-width: 880px;
+}
+[data-landing] .answer-block .h2 {
+  font-size: clamp(28px, 3.4vw, 44px);
+}
+[data-landing] .answer-block .lead {
+  margin-top: 16px;
+  max-width: 68ch;
+}
+[data-landing] .city-links {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+  list-style: none;
+  padding: 0;
+}
+[data-landing] .city-links a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
+  padding: 12px 18px;
+  border: 1px solid var(--line, rgba(17, 17, 16, 0.14));
+  border-radius: 999px;
+  color: inherit;
+  text-decoration: none;
+  font-weight: 500;
+}
+[data-landing] .city-links a:hover {
+  background: var(--ink, #111110);
+  color: var(--paper, #fff);
+}
+[data-landing] .city-links svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
 }

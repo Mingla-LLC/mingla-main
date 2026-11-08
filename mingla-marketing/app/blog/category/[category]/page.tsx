@@ -7,7 +7,7 @@ import {
   blogCategoryPath,
   type BlogCategorySlug,
 } from '@/content/blog/categories'
-import { getBlogIndex } from '@/lib/blog/data'
+import { blogCategoryHasPosts, getBlogIndex } from '@/lib/blog/data'
 import { canonicalUrlForSearchRoute } from '@/lib/search/route-registry'
 import { searchRouteMetadata } from '@/lib/search/metadata'
 import { SitePage } from '@/components/site/site-page'
@@ -32,6 +32,11 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
   if (!category) return {}
   const path = blogCategoryPath(category.slug as BlogCategorySlug)
   const metadata = searchRouteMetadata(path)
+  // #4339 round B (SEO audit 14): a category with no public post is
+  // public_noindex until one lands (and is left out of the sitemap).
+  if (!(await blogCategoryHasPosts(category.slug))) {
+    return { ...metadata, robots: { index: false, follow: true } }
+  }
   if (blogPageFrom((await searchParams).page) > 1) {
     return {
       ...metadata,
