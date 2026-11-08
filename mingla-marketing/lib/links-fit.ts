@@ -100,12 +100,32 @@ export function leavesStripGap(input: {
  * must sit flush under the last one and still fit: `bottoms` are each strip's
  * bottom edge inside the box (in order), `room` the box height.
  */
+/** Sub-pixel slack: layout offsets round, so a strip within 2 px still counts as fitting. */
+export const FIT_TOLERANCE_PX = 2
+
 export function stripsThatFit(bottoms: readonly number[], room: number, moreHeight: number, gap: number): number {
   const limit = room - moreHeight - gap
   let n = 0
   for (const bottom of bottoms) {
-    if (bottom <= limit + 0.5) n++
+    if (bottom <= limit + FIT_TOLERANCE_PX) n++
     else break
   }
   return n
+}
+
+// ---------------------------------------------------------------- leftover
+
+export const FILL_CAP_PER_GAP_PX = 24
+
+/**
+ * After a maximal fit, the room left under the "more" link must not sit as one
+ * blank block: it is spread evenly over the vertical gaps between the page's
+ * sections (each grows by the same amount, at most 24 px), and anything beyond
+ * the cap goes to the very bottom.
+ */
+export function spreadLeftover(leftover: number, gaps: number, cap: number = FILL_CAP_PER_GAP_PX): { perGap: number; bottom: number } {
+  const room = Math.max(0, leftover)
+  if (gaps <= 0) return { perGap: 0, bottom: room }
+  const perGap = Math.min(cap, Math.floor((room / gaps) * 100) / 100)
+  return { perGap, bottom: Math.max(0, Math.floor((room - perGap * gaps) * 100) / 100) }
 }

@@ -350,3 +350,22 @@ test('the chip row never overflows: counts hide first, then the chips tighten', 
   }
   assert.deepEqual(levels, { '320x568': 2, '360x640': 0, '390x844': 1, '820x1180': 0, '1440x900': 0 })
 })
+
+test('leftover room never sits as one blank block: it spreads evenly over the section gaps, capped at 24 px, rest at the bottom', () => {
+  // Phones: banners, admin strips, city, chips, strip block, socials = 5 gaps.
+  for (const size of ['320x568', '360x640', '390x844', '820x1180']) {
+    const r = fitAt(size)
+    const spread = fit.spreadLeftover(r.leftover, 5)
+    assert.ok(spread.perGap > 0, `${size}: the ${r.leftover}px left must be spread, not left as one block`)
+    assert.ok(spread.perGap <= fit.FILL_CAP_PER_GAP_PX, `${size}: at most 24px extra per gap`)
+    assert.ok(Math.abs(spread.perGap * 5 + spread.bottom - r.leftover) < 0.06, `${size}: every pixel is placed`)
+    assert.ok(r.leftover - spread.perGap * 5 - spread.bottom < 2, `${size}: no blank block remains under the more link`)
+  }
+  // 360x640: 61px over 5 gaps → 12.2px each, nothing at the bottom.
+  assert.deepEqual(fit.spreadLeftover(61, 5), { perGap: 12.2, bottom: 0 })
+  // Past the cap the rest goes to the very bottom.
+  assert.deepEqual(fit.spreadLeftover(200, 5), { perGap: 24, bottom: 80 })
+  assert.deepEqual(fit.spreadLeftover(-3, 5), { perGap: 0, bottom: 0 })
+  // Sub-pixel: a strip 1.5px past the line still fits (2px tolerance).
+  assert.equal(fit.stripsThatFit([54, 118], 118 + 10 + 40 + 1.5 - 1.5 - 1.5, 40, 10), 2)
+})

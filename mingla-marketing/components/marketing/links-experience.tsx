@@ -49,6 +49,7 @@ import {
   moreLabel,
   pinsMoreLabel,
   SHORT_SCREEN_PX,
+  spreadLeftover,
   stripsThatFit,
   type ChipFitLevel,
   type LinksFit,
@@ -330,6 +331,10 @@ export function LinksExperience({ src, nowIso, cities, listings, pins, initialCi
     const wrap = wrapRef.current
     const moreButton = moreRef.current
     if (!root || !list || !wrap || !moreButton) return
+    const grid = wrap.closest<HTMLElement>('[data-pins]')
+    // Measure with no spread room, then spread what the maximal fit leaves.
+    grid?.style.setProperty('--fill', '0px')
+    grid?.style.setProperty('--fill-bottom', '0px')
 
     // Chips first (their row height is fixed): the first level that does not clip.
     const chips = chipsRef.current
@@ -383,6 +388,17 @@ export function LinksExperience({ src, nowIso, cities, listings, pins, initialCi
     strips.forEach((li, i) => {
       li.hidden = i >= result.listShown
     })
+    // Phones and tablet: spread the leftover over the section gaps (desktop
+    // centres its columns instead).
+    if (grid && left !== null && getComputedStyle(left).display === 'contents') {
+      const leftover = wrap.clientHeight - (moreButton.offsetTop + moreButton.offsetHeight)
+      const sections = Array.from(grid.querySelectorAll<HTMLElement>(':scope > div > *')).filter(
+        (el) => getComputedStyle(el).display !== 'none',
+      ).length
+      const spread = spreadLeftover(leftover, sections - 1)
+      grid.style.setProperty('--fill', `${spread.perGap}px`)
+      grid.style.setProperty('--fill-bottom', `${spread.bottom}px`)
+    }
     setFit((prev) => (prev.pinsShown === result.pinsShown && prev.listShown === result.listShown ? prev : result))
   }, [])
 
@@ -611,7 +627,11 @@ export function LinksExperience({ src, nowIso, cities, listings, pins, initialCi
         {/* eslint-disable-next-line @next/next/no-img-element -- a 7 KB brand SVG; the image optimiser does not serve SVG */}
         <img src="/brand/links/mingla-wordmark-white.svg" alt="Mingla" width={68} height={24} />
       </div>
-      <div className={cn(styles['lk-grid'], 'min-h-0 flex-1')} inert={sheet !== null}>
+      <div
+        className={cn(styles['lk-grid'], 'min-h-0 flex-1')}
+        data-pins={week.pins.length > 0 ? '1' : '0'}
+        inert={sheet !== null}
+      >
         <div className={styles['lk-left']} ref={leftRef}>
           <div className={styles['lk-ban']}>
             {banner('explorer')}

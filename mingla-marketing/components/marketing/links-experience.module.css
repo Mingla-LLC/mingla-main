@@ -70,12 +70,19 @@
   width: 100%;
   max-width: 640px;
   margin: 0 auto;
-  padding: 14px 16px 12px;
+  /* --fill / --fill-bottom: the room a maximal fit leaves, spread over the
+     section gaps (capped) and the rest at the very bottom (lib/links-fit.ts). */
+  padding: 14px 16px calc(12px + var(--fill-bottom, 0px));
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
   grid-template-areas: 'ban' 'pin' 'head' 'chips' 'list' 'foot';
-  row-gap: 14px;
+  row-gap: calc(14px + var(--fill, 0px));
+}
+/* No admin strips: no empty pin track, so no doubled gap. */
+.lk-grid[data-pins='0'] {
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  grid-template-areas: 'ban' 'head' 'chips' 'list' 'foot';
 }
 .lk-left,
 .lk-right {
@@ -525,8 +532,8 @@
     --banH: 98px;
     --cityF: 36px;
     --chipH: 32px;
-    padding: 12px 14px 8px;
-    row-gap: 10px;
+    padding: 12px 14px calc(8px + var(--fill-bottom, 0px));
+    row-gap: calc(10px + var(--fill, 0px));
   }
   .bn {
     border-radius: 26px;
@@ -561,8 +568,8 @@
     --banH: 170px;
     --cityF: 64px;
     --chipH: 38px;
-    padding: 28px 32px 22px;
-    row-gap: 18px;
+    padding: 28px 32px calc(22px + var(--fill-bottom, 0px));
+    row-gap: calc(18px + var(--fill, 0px));
   }
   .bn {
     border-radius: 36px;
@@ -612,6 +619,10 @@
     column-gap: 48px;
     row-gap: 0;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-areas: none;
+  }
+  .lk-grid[data-pins='0'] {
     grid-template-rows: minmax(0, 1fr);
     grid-template-areas: none;
   }
