@@ -187,7 +187,7 @@ begin
         v_bad := v_bad || format(' [%s %s done_since %s, want %s]', v_tz, v_today, v->>'done_since', v_ws);
       end if;
       if (select string_agg(replace(c->>'title', 'Y4270 Week ', ''), ',' order by c->>'title') from jsonb_array_elements(v->'cards') c)
-         is distinct from (case when v_ws <= now() then 'at,now' else null end) then
+         is distinct from (case when v_ws <= now() then 'at,now' else 'at' end) then
         v_bad := v_bad || format(' [%s %s cards %s]', v_tz, v_today,
           (select string_agg(c->>'title', ',') from jsonb_array_elements(v->'cards') c));
       end if;

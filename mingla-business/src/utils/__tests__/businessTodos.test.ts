@@ -235,6 +235,23 @@ describe("buildBusinessTodos — offering / stripe / draft", () => {
     });
   });
 
+  test("#4304: the finish_draft row names the draft (it replaced Home's draft card)", () => {
+    const named = buildBusinessTodos({
+      ...base,
+      counts: { total: 1, live: 0, draft: 1 },
+      draftRoute: "/event/d1/edit",
+      draftTitle: "  Live heck Supper ",
+    }).find((t) => t.id === "finish_draft");
+    expect(named?.sublabel).toBe("Live heck Supper · publish it to go live");
+    const unnamed = buildBusinessTodos({
+      ...base,
+      counts: { total: 1, live: 0, draft: 1 },
+      draftRoute: "/event/d1/edit",
+      draftTitle: "   ",
+    }).find((t) => t.id === "finish_draft");
+    expect(unnamed?.sublabel).toBe("Publish it to go live");
+  });
+
   test("draft present but draftRoute null → no finish_draft", () => {
     expect(
       ids({ ...base, counts: { total: 1, live: 0, draft: 1 }, draftRoute: null }),

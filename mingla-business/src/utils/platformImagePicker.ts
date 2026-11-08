@@ -5,6 +5,8 @@ export type PlatformImagePickerAsset = {
   fileSize?: number | null;
   duration?: number | null;
   type?: string | null;
+  width?: number | null;
+  height?: number | null;
 };
 
 export type PlatformImagePickerResult = {
