@@ -12,11 +12,15 @@ import { CITY_HERO_IMAGE } from '@/lib/city-hero-images'
 // live (lib/city-hero-images.ts) until Seth picks their clips (§11 picking
 // board): a photo where no clip exists yet, never a blank tile.
 
+// Cary: the downtown fountain at night (the licensed Unsplash photo already
+// live as the Cary city card, /marketing/cities/cards/cary-nc.jpg, recorded in
+// public/marketing/cities/asset-manifest.json). It replaced the old Cary cover,
+// which showed people holding drinks (no alcohol in shot, #4339 §11).
 export const CITY_MEDIA: Readonly<Partial<Record<CityHubSlug, LandingMediaRef>>> = {
   lagos: 'p:weekend-lagos-cover',
   'raleigh-nc': 'v:raleigh',
   'durham-nc': 'p:weekend-durham-cover',
-  'cary-nc': 'p:weekend-cary-cover',
+  'cary-nc': 'p:cary-fountain',
   brussels: 'v:grandplace',
 }
 

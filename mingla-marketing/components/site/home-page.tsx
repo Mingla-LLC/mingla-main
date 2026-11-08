@@ -50,7 +50,7 @@ const CITY_TILES: readonly { slug: string; media: LandingMediaRef }[] = [
   { slug: 'lagos', media: 'p:weekend-lagos-cover' },
   { slug: 'raleigh-nc', media: 'v:raleigh' },
   { slug: 'durham-nc', media: 'p:weekend-durham-cover' },
-  { slug: 'cary-nc', media: 'p:weekend-cary-cover' },
+  { slug: 'cary-nc', media: 'p:cary-fountain' },
   { slug: 'brussels', media: 'v:grandplace' },
 ]
 

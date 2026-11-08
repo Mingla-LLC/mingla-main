@@ -37,7 +37,7 @@ const GUIDES: readonly Guide[] = [
   { media: 'v:a-solo', title: 'Solo Saturday', line: 'Some of the best plans only need you.', tags: ['Solo'], city: null },
   { media: 'p:lagos-not-parties-stage', title: 'Lagos, not parties', line: 'Four plans this week that aren’t parties.', tags: ['With friends'], city: 'lagos' },
   { media: 'p:durham-underrated-arcade', title: 'Underrated Durham', line: 'The places people tell their friends about.', tags: ['With friends'], city: 'durham-nc' },
-  { media: 'p:weekend-cary-cover', title: 'Cary has range', line: 'Not the Cary you remember.', tags: ['Date ideas'], city: 'cary-nc' },
+  { media: 'p:cary-fountain', title: 'Cary has range', line: 'Not the Cary you remember.', tags: ['Date ideas'], city: 'cary-nc' },
   { media: 'v:a-family', title: 'With the grandparents', line: 'Plans for every age at the table.', tags: ['Family'], city: null },
   { media: 'p:lagos-quests-paint', title: 'Lagos side quests', line: 'Pottery, paint, galleries and more.', tags: ['Side quests'], city: 'lagos' },
 ]

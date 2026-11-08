@@ -42,6 +42,30 @@ export function LandingRoot({ children, slug }: { children: ReactNode; slug?: st
     root.querySelectorAll('.reveal').forEach((el) => reveal.observe(el))
     cleanups.push(() => reveal.disconnect())
 
+    // #4339 — a section the reader jumped past (a fast fling, an in-page
+    // anchor, a restored scroll position) never crosses the 15% line, so the
+    // observer never fires for it and it would stay an empty gap. Anything
+    // whose top is already above the bottom of the screen is shown.
+    let catchUpFrame = 0
+    const catchUp = () => {
+      catchUpFrame = 0
+      root.querySelectorAll<HTMLElement>('.reveal:not(.in)').forEach((el) => {
+        if (el.getBoundingClientRect().top < window.innerHeight) {
+          el.classList.add('in')
+          reveal.unobserve(el)
+        }
+      })
+    }
+    const onCatchUp = () => {
+      if (catchUpFrame === 0) catchUpFrame = window.requestAnimationFrame(catchUp)
+    }
+    window.addEventListener('scroll', onCatchUp, { passive: true })
+    catchUp()
+    cleanups.push(() => {
+      window.removeEventListener('scroll', onCatchUp)
+      if (catchUpFrame !== 0) window.cancelAnimationFrame(catchUpFrame)
+    })
+
     // Features: slide in at 15%, active at 60%.
     const feat = root.querySelector<HTMLElement>('[data-feat]')
     if (feat) {
