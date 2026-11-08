@@ -27,7 +27,7 @@ const SERVER_REFUSALS = Object.freeze({
   links_opens_invalid: { field: "opens", message: "Pick an option from the list." },
 });
 
-const STALE_MESSAGE = "The list changed. It's been refreshed.";
+const STALE_MESSAGE = "The list changed and has been reloaded.";
 
 function isNetworkFailure(error) {
   if (error?.code) return false;
