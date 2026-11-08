@@ -38,7 +38,8 @@
 -- Also exercises I-4294-5 (declared in supabase/functions/team-agent/__tests__/proxy.issue4294.implementor.happy.test.ts).
 
 \set ON_ERROR_STOP on
-\set t4294_selfcheck `sed -n '/^DO \$c4294\$/,/^\$c4294\$;/p' supabase/migrations/20280425004294_issue_4294_mingla_connector.sql`
+-- The self-check of 20280428024294 (company sign-in) supersedes the first one: it lists every mingla_connector_ function.
+\set t4294_selfcheck `sed -n '/^DO \$c4294s\$/,/^\$c4294s\$;/p' supabase/migrations/20280428024294_issue_4294_company_signin.sql`
 
 begin;
 
@@ -480,9 +481,10 @@ begin
   perform pg_temp.t4294_like('M-7', 'an admin cannot list company tools',
     pg_temp.t4294_as('admin', 'select public.mingla_connector_registry_list()::text'), 'ERR:42501:%');
   v := pg_temp.t4294_as('owner', 'select public.mingla_connector_registry_list()::text');
-  perform pg_temp.t4294_check('M-7', 'the owner sees the four seeded tools, all off, no key',
+  -- #4294 company sign-in: the key-kind seeded tools (the sign-in 'studio' row is proved in issue_4294_company_signin).
+  perform pg_temp.t4294_check('M-7', 'the owner sees the four seeded key tools, all off, no key',
     (select string_agg((r ->> 'slug') || ':' || (r ->> 'enabled') || ':' || (r ->> 'key_set') || ':' || (r -> 'allowed_roles')::text, ',' order by r ->> 'slug')
-       from jsonb_array_elements(v::jsonb -> 'rows') r),
+       from jsonb_array_elements(v::jsonb -> 'rows') r where r ->> 'auth_kind' = 'key'),
     'appsflyer:false:false:["owner"],metaads:false:false:["owner"],posthog:false:false:["owner"],sentry:false:false:["owner"]');
   perform pg_temp.t4294_check('M-7', 'a registry row never names a Vault id', (v like '%vault%')::text, 'false');
   perform pg_temp.t4294_like('M-7', 'a Vault id cannot be saved',

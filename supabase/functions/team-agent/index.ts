@@ -23,12 +23,16 @@
 // `/oauth/token`) and company tools. Both reach the database only through
 // the mingla_connector_ functions named below. No company key is a function
 // secret: keys live in Supabase Vault and are read for one allowed call.
+// Company sign-in (`/oauth/upstream-start` from Mingla Admin and
+// `/oauth/upstream-callback` from the tool's sign-in server) keeps the
+// company's sign-in in Vault the same way.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { createTeamAgentHandler } from "../_shared/teamAgentMcp.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 
 const server = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
@@ -74,6 +78,20 @@ const CONNECTOR_FUNCTIONS = new Set([
   "mingla_connector_call_begin",
   "mingla_connector_call_finish",
   "mingla_connector_upstream_key",
+  // Company sign-in (the callback and token renewal).
+  "mingla_connector_signin_claim",
+  "mingla_connector_signin_complete",
+  "mingla_connector_signin_credential",
+  "mingla_connector_signin_refresh_begin",
+  "mingla_connector_signin_refresh_store",
+  "mingla_connector_signin_refresh_fail",
+]);
+
+// Issue #4294: the only functions called with an owner's own Mingla Admin
+// session (Connect in Company tools). The database checks the owner.
+const OWNER_SIGNIN_FUNCTIONS = new Set([
+  "mingla_connector_signin_status",
+  "mingla_connector_signin_begin",
 ]);
 
 const handler = createTeamAgentHandler({
@@ -104,7 +122,22 @@ const handler = createTeamAgentHandler({
     rpc: async (fn, args) => {
       if (!CONNECTOR_FUNCTIONS.has(fn)) throw new Error("connector");
       const { data, error } = await server.rpc(fn, args);
-      if (error) throw new Error("connector");
+      // Only the SQLSTATE travels on (PT409 is a renewal clash); never the arguments.
+      if (error) throw Object.assign(new Error("connector"), { code: error.code ?? "" });
+      return data;
+    },
+    userRpc: async (jwt, fn, args) => {
+      if (!OWNER_SIGNIN_FUNCTIONS.has(fn) || !SUPABASE_ANON_KEY) throw new Error("connector");
+      const asOwner = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        auth: { persistSession: false, autoRefreshToken: false },
+        global: { headers: { Authorization: `Bearer ${jwt}` } },
+      });
+      const { data, error } = await asOwner.rpc(fn, args);
+      if (error) {
+        throw Object.assign(new Error(typeof error.message === "string" ? error.message : "connector"), {
+          code: error.code ?? "",
+        });
+      }
       return data;
     },
     // The address Claude is given for this connector, exactly.
