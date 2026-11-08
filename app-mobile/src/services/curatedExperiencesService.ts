@@ -24,6 +24,10 @@ interface GenerateCuratedParams {
   // Issue #4275: which client path started this call, logged by the function so
   // the next burst can be attributed.
   source?: 'deck' | 'map';
+  // #4347: the viewer's currency, so brand experiences on the curated path
+  // carry their price converted from the host's currency (never sent as a
+  // default: absent = the app shows the host's own currency).
+  displayCurrency?: string;
 }
 
 // ORCH-0677 RC-2: return shape now carries optional `summary` so deckService

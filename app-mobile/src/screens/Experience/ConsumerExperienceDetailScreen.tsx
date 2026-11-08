@@ -142,6 +142,8 @@ import { captureNativePurchaseCompleted } from "../../payments/nativeCheckoutRec
 import { resolveExplorerCheckoutContact } from "../../payments/explorerCheckoutContact.mjs";
 import { toastManager } from "../../components/ui/Toast";
 import { useAppStore } from "../../store/appStore";
+import { currencyName, formatDisplayPrice } from "../../components/utils/formatters";
+import { useTranslation } from "react-i18next";
 // #1708 — the same two pieces the place sheet uses. Open-Meteo needs no key and
 // no login; the travel figure is haversine and is labelled as an estimate.
 import { weatherService } from "../../services/weatherService";
@@ -268,6 +270,7 @@ export default function ConsumerExperienceDetailScreen({
   // public web page) → no travel row at all, which is the honest outcome.
   const { userLocation: viewerLocation } = useRecommendations();
   const profile = useAppStore((s) => s.profile);
+  const { t } = useTranslation(["cards"]);
   const explorerCheckoutContact = resolveExplorerCheckoutContact({
     authUserId: user?.id,
     authEmail: user?.email,
@@ -1372,7 +1375,31 @@ export default function ConsumerExperienceDetailScreen({
       </View>
     ) : null;
 
-  const barKicker = offeringCta.kind === "buy" ? "All-in, taxes included" : null;
+  // #4347 — the host's price, converted for THIS viewer. The bar's price stays
+  // the host's own money (what checkout charges); when the viewer's currency
+  // differs, the kicker says "≈ $74 · charged in naira at checkout". Consumer
+  // side only: the shared body and the web /exp page are unchanged.
+  const convertedPrice =
+    offeringCta.kind === "buy" && sellableTicket !== undefined && !sellableTicket.isFree
+      ? formatDisplayPrice({
+          min:
+            typeof sellableTicket.priceAllInGbp === "number" && sellableTicket.priceAllInGbp > 0
+              ? sellableTicket.priceAllInGbp
+              : sellableTicket.priceGbp ?? Number.NaN,
+          sourceCurrency: sellableTicket.currency ?? seed?.currency ?? "",
+          viewerCurrency: profile?.currency ?? null,
+        })
+      : null;
+  const barKicker =
+    convertedPrice !== null && convertedPrice.isApprox
+      ? t("cards:price.charged_in_at_checkout", {
+          defaultValue: "≈ {{amount}} · charged in {{currency}} at checkout",
+          amount: convertedPrice.text.replace(/^≈\s*/, ""),
+          currency: currencyName(convertedPrice.sourceCurrency, t),
+        })
+      : offeringCta.kind === "buy"
+        ? "All-in, taxes included"
+        : null;
   const REVEAL_MARGIN = 24;
   const floatingPillVisible =
     dockTopY === null || viewportH === 0
