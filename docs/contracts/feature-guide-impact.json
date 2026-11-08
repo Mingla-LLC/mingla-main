@@ -2168,6 +2168,12 @@
         "supabase/functions/admin-blog/index.ts",
         "supabase/functions/admin-blog/model.ts"
       ]
+    },
+    {
+      "capability_key": "web-download",
+      "paths": [
+        "supabase/migrations/20280516004318_issue_4318_links_places_fast.sql"
+      ]
     }
   ]
 }
