@@ -333,9 +333,13 @@ export async function buildMarketingBookQuote(
       fxSnapshotId = conversion.snapshotId;
     }
   }
+  // #4273 — an unpriced phone is skipped like a suppression, so the sealed
+  // execution keeps selected = reachable + suppressed + unavailable;
+  // unpricedCount says how many of the suppressed are that reason.
   const suppressedCount =
     candidates.filter((candidate) =>
-      hasDeliveryIdentity(candidate) && !candidate.allowed
+      hasDeliveryIdentity(candidate) &&
+      (!candidate.allowed || candidate.smsUnpriced)
     ).length;
   const unavailableCount =
     candidates.filter((candidate) => !hasDeliveryIdentity(candidate)).length;
@@ -360,7 +364,7 @@ export async function buildMarketingBookQuote(
     reachableCount: reachable.length,
     suppressedCount,
     unavailableCount,
-    /** #4273 — deliverable phones skipped because their country has no rate. */
+    /** #4273 — of suppressedCount: phones skipped because their country has no rate. */
     unpricedCount,
     smsSegments: candidates.reduce(
       (sum, candidate) => sum + candidate.segments,

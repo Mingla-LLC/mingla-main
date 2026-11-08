@@ -61,7 +61,7 @@ BEGIN
     'quotedAt', now(), 'brandId', e -> 'brandId', 'content', e -> 'content',
     'audienceId', e -> 'audienceId', 'audienceKind', e -> 'audienceKind',
     'audienceVersion', e -> 'audienceVersion', 'selectedCount', e -> 'selectedCount',
-    'reachableCount', 1, 'suppressedCount', 0, 'unavailableCount',
+    'reachableCount', 1, 'suppressedCount', 1, 'unavailableCount',
       (SELECT count(*) FROM jsonb_array_elements(e -> 'candidates') x2 WHERE x2 ->> 'normalizedContact' IS NULL),
     'unpricedCount', 1, 'smsSegments', 1, 'costKind', 'provider_estimate',
     'estimatedCostMinor', 1, 'currency', 'USD',

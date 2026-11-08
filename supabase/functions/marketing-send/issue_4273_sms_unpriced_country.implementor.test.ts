@@ -158,7 +158,13 @@ Deno.test("#4273 U-4 one Belgian number no longer fails the quote: it is skipped
   );
   assertEquals(quote.reachableCount, 1);
   assertEquals(quote.unpricedCount, 1);
-  assertEquals(quote.suppressedCount, 1);
+  // The sealed execution needs selected = reachable + suppressed + unavailable:
+  // the unpriced phone is one of the suppressed, alongside the opted-out one.
+  assertEquals(quote.suppressedCount, 2);
+  assertEquals(
+    quote.selectedCount,
+    quote.reachableCount + quote.suppressedCount + quote.unavailableCount,
+  );
   const us = quote.candidates.find((c) => c.personKey === "us")!;
   const be = quote.candidates.find((c) => c.personKey === "be")!;
   // Quote = send: the unpriced phone has no segments and no cost, so the
@@ -188,6 +194,7 @@ Deno.test("#4273 U-5 every SMS recipient unpriced: reach 0 with that reason, not
   );
   assertEquals(quote.reachableCount, 0);
   assertEquals(quote.unpricedCount, 2);
+  assertEquals(quote.suppressedCount, 2);
   assertEquals(quote.smsSegments, 0);
   assertEquals(quote.estimatedCostMinor, 0);
   assertEquals(quote.costBreakdown, []);
