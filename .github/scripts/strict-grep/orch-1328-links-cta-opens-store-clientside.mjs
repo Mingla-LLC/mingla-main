@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// MINGLA-INVARIANT: I-4318-LINKS-HANDOFF-THROUGH-SEAM | issue #4318 | Every /links banner and strip is a real anchor resolved through lib/links-handoff.ts on the #4137 device seam, carries its phone href, opens a sheet on a computer, and never hardcodes a store, OneLink or host URL.
 /**
  * ORCH-1328 [links-cta-soft-nav-blank-page] → ORCH-1399 → #4318 [links city week calendar].
  *
