@@ -398,7 +398,8 @@ export function phase3dContractDigest(manifest) {
 // #4270 W7: register the admin Brand group inbox suites; migration 20280502004270; re-sealed after merging origin/main (#4322).
 // #4273 polish: register the sent-previews migration, its PostgreSQL proofs (implementor + tester) and the campaign-screen render proof.
 // #4273 unpriced country: register the sms-unpriced-country migration and its PostgreSQL proof.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "3bcc5aa6f8e582ee0cdf32eb3e132bb27a483fd1255a484e97bbdf5c12e489d4";
+// #4273 unpriced country (tester): register the tester adversarial PostgreSQL proof.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "4856ad5f85dfb6c70bef55dc835becc4eadad2114ef1e9d11c7eb42785916fc7";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

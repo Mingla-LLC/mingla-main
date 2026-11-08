@@ -31,7 +31,11 @@ export function validatedSmsRates(
   suppliedRaw?: unknown[],
 ): SmsRateV1[] {
   const raw = suppliedRaw ?? resolveOfferingInviteSmsPriceBook();
-  if (!Array.isArray(raw)) {
+  // #4273 — a configured book with no rates prices nothing. Since an unpriced
+  // phone is now skipped rather than failing the quote, an empty book would
+  // read as "every number is in a country Mingla can't text": fail it closed
+  // as a missing book instead.
+  if (!Array.isArray(raw) || raw.length === 0) {
     throw new Error("cost_unavailable:sms_rate_book_missing");
   }
   return raw.map((entry) => {
