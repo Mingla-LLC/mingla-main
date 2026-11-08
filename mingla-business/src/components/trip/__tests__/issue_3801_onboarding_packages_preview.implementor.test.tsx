@@ -63,6 +63,8 @@ const BOUNDARY: Record<string, () => unknown> = {
   react: () => React,
   "react-native": () => jest.requireActual("react-native"),
   designSystem: () => designSystem,
+  // [TEST-MOD-APPROVED #1023] Harness registration only: the gradient-aware accent helpers (real).
+  themeAccentStyle: () => jest.requireActual("@mingla/offering-rendering/themeAccentStyle"),
   // The suite-wide mapping: REAL pure helpers, stubbed RN components.
   "@mingla/offering-rendering": () => jest.requireActual("@mingla/offering-rendering"),
   "@mingla/offering-rendering/currencyGlyph": () =>

@@ -397,9 +397,14 @@ export function phase3dContractDigest(manifest) {
 // #4304: register the Brand group live migration and its PostgreSQL proof the same way.
 // #4270 W7: register the admin Brand group inbox suites; migration 20280502004270; re-sealed after merging origin/main (#4322).
 // #4273 polish: register the sent-previews migration, its PostgreSQL proofs (implementor + tester) and the campaign-screen render proof.
-// #4273 unpriced country: register the sms-unpriced-country migration and its PostgreSQL proof.
-// #4273 unpriced country (tester): register the tester adversarial PostgreSQL proof.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "4856ad5f85dfb6c70bef55dc835becc4eadad2114ef1e9d11c7eb42785916fc7";
+// #1023: register the theme migrations (20280430001023, 20280430011023) and their proofs; skip wave 2 in the #1931/#2117 replays.
+// #1023: re-sealed after merging origin/main (#3645, #4294, #4271, #4304, #4270 W7 rows kept beside the #1023 rows).
+// #1023: re-sealed after merging origin/main 4ace6deafa (#4331 rows kept beside the #1023 rows).
+// #1023: re-sealed after merging origin/main 5dd7f103ca (#4273 polish rows kept beside the #1023 rows).
+// #1023: re-sealed after merging origin/main 6038982e1a.
+// #4318: register the /links migration (20280508004318) and its implementor and tester PostgreSQL proofs; it joins the pre-#1931 replay skip list by exact filename.
+// #4273 unpriced country: register the sms-unpriced-country migration and its PostgreSQL proofs (implementor + tester); re-sealed after merging origin/main.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "50cb55caa26031d6ae177602503de064bbc474c98fc7a056dc489e28f6b00fca";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
@@ -894,11 +899,15 @@ const PHASE3C_WRAPPER_SET = new Set(PHASE3C_WRAPPER_NAMES);
 // door pay code screen can reach full brightness. app-mobile is unchanged.
 // [TEST-MOD-APPROVED #3643] Re-banked both lockfiles after the transitive
 // node-forge 1.4.0 -> 1.4.2 security patch; package.json files are unchanged.
+// [TEST-MOD-APPROVED #1023] Re-banked after Host declared lottie-web 5.12.2 (exact pin),
+// the web player for the theme entrance motion, and its lockfile entries.
+// app-mobile is unchanged.
+// #1023: re-banked after merging origin/main (#3643 node-forge lock patch kept beside the #1023 lottie-web pin).
 export const PACKAGE_AUTHORITY_DIGESTS = Object.freeze({
   "app-mobile/package.json": "48af9d0cca47199b61b824a4fd80b87ec7e5bb12f07899994435031238834bbb",
   "app-mobile/package-lock.json": "3ca515d470c958f53d8ebd8c59cb35051ae7ea903b074f5b8c634e4aced9546f",
-  "mingla-business/package.json": "908439c00e8d25bc67db9cd181cfae5848ac6b7ee6f167057304b86a6a8c561a",
-  "mingla-business/package-lock.json": "b73ce2d534a052043ed37b7391b06ba8f3f91796adf7f32dd4f118e46872ec0f",
+  "mingla-business/package.json": "dd0a4f5b3c115aa06a13deb9ea8714671df5230ad166d052160b550eb324e931",
+  "mingla-business/package-lock.json": "6ffdfc9d07778bc6df106d10fb89434c8c1fcd77eacae3088492208b10044ccc",
 });
 // [#2439 SC-11.5] The seven Phase 3C records that hold a provider record and
 // transition retained-live-provider -> batched-provider at cutover. The other

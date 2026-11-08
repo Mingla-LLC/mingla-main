@@ -1,188 +1,92 @@
 import { describe, expect, test } from "@jest/globals";
 
 /**
- * #1022 — preset contrast contract (SPEC test case T-20, as AMENDED).
+ * #1022 preset contract, REWRITTEN for issue #1023 wave 2 (decision D-3,
+ * Seth 2026-11-07): the 12 #1022 presets were replaced by the approved
+ * design's 12 solids and 6 gradients. Invalidated assertions, named:
+ *   - "the six grandfathered hexes are unchanged" / "the six new hexes are the
+ *     accepted final set" — the strip is now the design's 12 solids;
+ *   - page-class / dark-ceiling / "beats the best grandfathered" sweeps — they
+ *     guarded small accent TEXT contrast through the fill accent. #1024
+ *     (closed by the same PR, D-2) gives small text its own text-safe accent,
+ *     so the strip no longer has to be chosen around that ceiling.
+ * What stays true and is pinned here: every swatch is named, there are no
+ * duplicates, lookups are case-insensitive, the fill-accent ceiling is still
+ * the proven 4.2624 (the palette maths did not move — RT-1), and every swatch's
+ * small text now clears AA through themeTextAccent.
  *
- * The SPEC originally required presets 7-12 to clear WCAG AA 4.5:1 for
- * accent-on-page. That is mathematically unreachable on dark pages:
- * `contrastAdjustedForWhiteText` caps accent relative luminance at 0.183333,
- * so the dark-page ceiling is 4.2624. A 16.7M-seed sweep proved it and the
- * orchestrator amended the criterion to "best achievable in its page class".
- *
- * This suite therefore asserts what is actually true and actually protective:
- *   1. light-page presets clear 4.5:1
- *   2. every NEW preset beats the best GRANDFATHERED preset of its own class
- *   3. dark-page presets sit at/below the proven ceiling (a value above it
- *      would mean the palette maths changed under us)
- *   4. preset 1 (#eb7825, the platform default) is pinned at its known 3.70
- *      with #1024 named — so nobody "fixes" it here by accident
- *
- * Contrast is measured through the REAL createThemePalette + contrastRatio,
- * never a reimplementation, so a change to the palette maths fails this.
+ * Contrast is measured through the REAL createThemePalette + contrastRatio.
  */
 
-// Deep imports, matching themeResolver.orch_0964.test.ts: the package INDEX
-// re-exports RN components (ParallaxCoverShell), which the node/ts-jest
-// project cannot typecheck. These two modules are pure.
-import { createThemePalette } from "../../../../packages/offering-rendering/themePalette";
+// Deep imports: the package INDEX re-exports RN components.
+import {
+  createThemePalette,
+  themeTextAccent,
+} from "../../../../packages/offering-rendering/themePalette";
 import { resolveTheme } from "../../../../packages/offering-rendering/themeResolver";
 import { contrastRatio } from "../buttonAccentContrast";
 import {
   DARK_PAGE_CONTRAST_CEILING,
-  GRANDFATHERED_PRESETS,
-  NEW_PRESETS,
+  GRADIENT_SWATCHES,
+  SOLID_SWATCHES,
   THEME_PRESETS,
   WCAG_AA_NORMAL_TEXT,
+  gradientSwatchFor,
   presetForHex,
-  type ThemePreset,
 } from "../../components/theme/themePresets";
 
-/** Accent-on-page contrast for a seed, through the real derivation chain. */
-const accentOnPage = (seedHex: string): number => {
-  const palette = createThemePalette(
-    resolveTheme(null, { color: seedHex, font: null, animation: null }),
-  );
-  return contrastRatio(palette.accent, palette.page);
-};
+const paletteFor = (seedHex: string) =>
+  createThemePalette(resolveTheme(null, { color: seedHex, font: null, animation: null }));
 
-/** Which canvas the palette actually derived — light pages are bright. */
-const derivedPageClass = (seedHex: string): "light" | "dark" => {
-  const palette = createThemePalette(
-    resolveTheme(null, { color: seedHex, font: null, animation: null }),
-  );
-  return palette.primaryText === "#000000" ? "light" : "dark";
-};
-
-const best = (presets: readonly ThemePreset[], cls: "light" | "dark"): number =>
-  Math.max(
-    ...presets.filter((p) => p.pageClass === cls).map((p) => accentOnPage(p.hex)),
-  );
-
-describe("T-20 — the strip is 12 presets, six familiar ones first", () => {
-  test("there are exactly 12 presets", () => {
-    expect(THEME_PRESETS).toHaveLength(12);
+describe("D-3 — the strip is the design's 12 solids and 6 gradients", () => {
+  test("12 solids, 6 gradients; THEME_PRESETS is the solid strip", () => {
+    expect(SOLID_SWATCHES).toHaveLength(12);
+    expect(GRADIENT_SWATCHES).toHaveLength(6);
+    expect(THEME_PRESETS).toBe(SOLID_SWATCHES);
+    expect(SOLID_SWATCHES[0]).toEqual({ name: "Mingla orange", hex: "#eb7825" });
   });
 
-  test("the six grandfathered hexes are unchanged", () => {
-    expect(GRANDFATHERED_PRESETS.map((p) => p.hex)).toEqual([
-      "#eb7825",
-      "#2563eb",
-      "#16a34a",
-      "#dc2626",
-      "#9333ea",
-      "#111827",
-    ]);
-  });
-
-  test("the six new hexes are the accepted final set", () => {
-    expect(NEW_PRESETS.map((p) => p.hex)).toEqual([
-      "#6b1420",
-      "#02697e",
-      "#5c3a21",
-      "#e0157b",
-      "#44541f",
-      "#665e00",
-    ]);
-  });
-
-  test("every preset is named — a swatch is never an unlabelled dot", () => {
-    for (const p of THEME_PRESETS) {
-      expect(p.name.length).toBeGreaterThan(0);
-      expect(p.colorWord.length).toBeGreaterThan(0);
+  test("every swatch is named and stored lower case, with no duplicates", () => {
+    for (const s of SOLID_SWATCHES) {
+      expect(s.name.length).toBeGreaterThan(0);
+      expect(s.hex).toBe(s.hex.toLowerCase());
     }
-  });
-
-  test("no duplicate hexes across the strip", () => {
-    const hexes = THEME_PRESETS.map((p) => p.hex.toLowerCase());
+    for (const g of GRADIENT_SWATCHES) {
+      expect(g.hex).toBe(g.hex.toLowerCase());
+      expect(g.hex2).toBe(g.hex2.toLowerCase());
+    }
+    const hexes = SOLID_SWATCHES.map((s) => s.hex);
     expect(new Set(hexes).size).toBe(hexes.length);
   });
 
-  test("presetForHex matches case-insensitively", () => {
-    expect(presetForHex("#EB7825")?.name).toBe("Sunset");
-    expect(presetForHex("#6B1420")?.name).toBe("Claret");
-    expect(presetForHex("#123456")).toBeNull();
+  test("lookups are case-insensitive; old preset hexes no longer match (they read as Custom)", () => {
+    expect(presetForHex("#FF5A5F")?.name).toBe("Coral");
+    expect(presetForHex("#2563eb")).toBeNull();
     expect(presetForHex(null)).toBeNull();
+    expect(gradientSwatchFor("#E8508F", "#7C5CFF")?.name).toBe("Berry");
+    expect(gradientSwatchFor("#e8508f", null)).toBeNull();
   });
 });
 
-describe("T-20 — declared page class matches what the palette actually derives", () => {
-  test.each(THEME_PRESETS.map((p) => [p.name, p] as const))(
-    "%s derives the page class it declares",
-    (_name, preset) => {
-      expect(derivedPageClass(preset.hex)).toBe(preset.pageClass);
-    },
-  );
-});
-
-describe("T-20 — light-page presets clear WCAG AA", () => {
-  test.each(
-    THEME_PRESETS.filter((p) => p.pageClass === "light").map(
-      (p) => [p.name, p] as const,
-    ),
-  )("%s clears 4.5:1 on its light page", (_name, preset) => {
-    expect(accentOnPage(preset.hex)).toBeGreaterThanOrEqual(WCAG_AA_NORMAL_TEXT);
-  });
-});
-
-describe("T-20 — dark-page presets sit at the proven ceiling, not above it", () => {
-  test.each(
-    THEME_PRESETS.filter((p) => p.pageClass === "dark").map(
-      (p) => [p.name, p] as const,
-    ),
-  )("%s does not exceed the 4.2624 dark-page ceiling", (_name, preset) => {
-    // Exceeding this would mean contrastAdjustedForWhiteText's luminance cap
-    // changed — i.e. the palette maths moved under us (that is #1024's file).
-    expect(accentOnPage(preset.hex)).toBeLessThanOrEqual(
-      DARK_PAGE_CONTRAST_CEILING + 0.01,
-    );
-  });
-
-  test("the three new dark presets reach at least 97% of the ceiling", () => {
-    for (const preset of NEW_PRESETS.filter((p) => p.pageClass === "dark")) {
-      const ratio = accentOnPage(preset.hex) / DARK_PAGE_CONTRAST_CEILING;
-      expect(ratio).toBeGreaterThanOrEqual(0.97);
-    }
-  });
-});
-
-describe("T-20 — every new preset beats the best grandfathered one of its class", () => {
-  test("new dark presets all beat the best grandfathered dark preset", () => {
-    const bar = best(GRANDFATHERED_PRESETS, "dark");
-    for (const preset of NEW_PRESETS.filter((p) => p.pageClass === "dark")) {
-      expect(accentOnPage(preset.hex)).toBeGreaterThan(bar);
+describe("contrast", () => {
+  test("the fill accent still respects the proven dark-page ceiling (palette maths unchanged)", () => {
+    for (const s of SOLID_SWATCHES) {
+      const p = paletteFor(s.hex);
+      if (p.primaryText === "#ffffff") {
+        expect(contrastRatio(p.accent, p.page)).toBeLessThanOrEqual(DARK_PAGE_CONTRAST_CEILING + 0.01);
+      }
     }
   });
 
-  // NOTE: the "beats the best grandfathered of its class" rule holds for DARK
-  // presets but is NOT achievable for LIGHT ones, and asserting it would be
-  // asserting another impossibility. The best grandfathered light preset is
-  // Ink (#111827) at ~15.8:1 — a near-black seed on a light canvas, an
-  // extreme no balanced mid-tone can beat. The protective, true statement is
-  // that the new light presets clear AA comfortably (asserted above) and that
-  // the new set RAISES THE FLOOR of the whole strip.
-  test("the new presets raise the contrast floor of the strip", () => {
-    const worst = (presets: readonly ThemePreset[]): number =>
-      Math.min(...presets.map((p) => accentOnPage(p.hex)));
-    // Grandfathered floor is Sunset at 3.70 (below AA). The new floor is
-    // higher, so adding these six cannot make the strip worse.
-    expect(worst(NEW_PRESETS)).toBeGreaterThan(worst(GRANDFATHERED_PRESETS));
-  });
-
-  test("every new light preset clears AA with margin", () => {
-    for (const preset of NEW_PRESETS.filter((p) => p.pageClass === "light")) {
-      expect(accentOnPage(preset.hex)).toBeGreaterThanOrEqual(WCAG_AA_NORMAL_TEXT);
+  test("#1024 — every swatch's small text clears AA through the text-safe accent", () => {
+    for (const s of [...SOLID_SWATCHES, ...GRADIENT_SWATCHES]) {
+      const p = paletteFor(s.hex);
+      expect(contrastRatio(themeTextAccent(p), p.page)).toBeGreaterThanOrEqual(WCAG_AA_NORMAL_TEXT);
     }
   });
-});
 
-describe("T-20 — the platform default is pinned, not silently 'fixed'", () => {
-  test("#eb7825 still measures ~3.70:1 and stays grandfathered", () => {
-    // Moving this means moving the platform accent floor, which is #1024's
-    // blast radius, NOT this build's. If this assertion fails, someone
-    // changed the default accent or the palette maths — stop and read #1024.
-    const sunset = THEME_PRESETS[0];
-    expect(sunset.hex).toBe("#eb7825");
-    expect(sunset.grandfathered).toBe(true);
-    expect(accentOnPage(sunset.hex)).toBeCloseTo(3.7, 1);
+  test("the platform default fill is unchanged (#eb7825 still paints ~3.70:1)", () => {
+    const p = paletteFor("#eb7825");
+    expect(contrastRatio(p.accent, p.page)).toBeCloseTo(3.7, 1);
   });
 });

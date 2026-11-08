@@ -90,6 +90,7 @@ import type {
 import type { BrandStripeStatus } from "../../store/currentBrandStore";
 // #3372 — naira shows "₦", not "NGN", in the trip preview (#3341 rule).
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
+import { accentFill, themeFontFace } from "@mingla/offering-rendering/themeAccentStyle";
 
 export interface TripPreviewBrand {
   id: string;
@@ -436,6 +437,7 @@ const FoundationTripPreview: React.FC<{
   const surface = offeringSurfaceStyles(palette);
   // ORCH-1138 Leg-1 (native-parity fix #2) — the BOLD (700-weight) loaded family.
   const boldFamily = boldFontFamily(theme);
+  const boldFace = themeFontFace(boldFamily);
 
   const callbacks: TripOfferingCallbacks = { onViewBrand, onReserve };
   const duration = data.durationLabel;
@@ -475,7 +477,7 @@ const FoundationTripPreview: React.FC<{
       </View>
       <View style={styles.brandTextCol}>
         <Text style={[styles.brandKicker, surface.tertiaryText]}>Presented by</Text>
-        <Text style={[styles.brandName, surface.primaryText, { fontFamily: boldFamily }]}>
+        <Text style={[styles.brandName, surface.primaryText, boldFace]}>
           {brand.name}
         </Text>
         <FollowerCountLine
@@ -492,7 +494,7 @@ const FoundationTripPreview: React.FC<{
 
   const stickyPanel = isDesktop ? (
     <View style={[styles.deskPanel, surface.cardStrong]}>
-      <View style={[styles.deskAccent, { backgroundColor: palette.accent }]} />
+      <View style={[styles.deskAccent, accentFill(palette)]} />
       <View style={styles.deskInner}>
         {brandChip}
         {offeringState.projectedSchedule !== null ? (

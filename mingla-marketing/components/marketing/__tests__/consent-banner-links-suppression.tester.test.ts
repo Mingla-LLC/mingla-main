@@ -37,10 +37,11 @@ const cases: ReadonlyArray<[string, () => void]> = [
   ['the document scroll area gets the same bottom padding', () => {
     assert(banner.includes('body{padding-bottom:var(${PRIVACY_INSET_PROPERTY},0px)}'), 'body must pad by the inset so the last line can scroll clear')
   }],
-  ['the collapsed row is one 44px line that never wraps', () => {
-    assert(banner.includes('.mpb-row{max-width:1200px;height:44px'), 'the row is exactly 44px')
-    assert(/\.mpb-text\{[^}]*white-space:nowrap[^}]*text-overflow:ellipsis/.test(banner), 'the sentence ends in an ellipsis, never a second line')
-    assert(banner.includes('.mpb{position:fixed;left:0;right:0;bottom:0;'), 'the bar is full-bleed at the bottom')
+  // #4318 (Seth): the collapsed 44px row is replaced by one 28px strip.
+  ['the strip is one full-bleed 28px line (plus the safe area) at the very bottom', () => {
+    assert(banner.includes('.mps{position:fixed;left:0;right:0;bottom:0;'), 'the strip is full-bleed at the bottom')
+    assert(banner.includes('height:calc(28px + env(safe-area-inset-bottom,0px))'), 'the strip is 28px plus the safe area')
+    assert(banner.includes(':root{${PRIVACY_INSET_PROPERTY}:calc(28px + env(safe-area-inset-bottom,0px))}'), 'the inset holds the strip height before hydration')
   }],
   ['the privacy policy link stays absolute (career.usemingla.com rewrites paths)', () => {
     assert(banner.includes('href={`${SITE_ORIGIN}/privacy-policy`}'), 'privacy policy must be absolute')

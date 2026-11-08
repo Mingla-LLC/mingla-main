@@ -56,6 +56,8 @@ import { BOTTOM_NAV_CONTENT_HEIGHT } from "../../hooks/useAppLayout";
 import { supabase } from "../../services/supabase";
 import type { ExperienceOccurrence } from "./ExperienceOccurrencePicker";
 import { ExperienceDayStep } from "./ExperienceDayStep";
+import { accentFill, accentOutline } from "@mingla/offering-rendering/themeAccentStyle";
+import { opaqueAccentWashColor } from "@mingla/offering-rendering/themePalette";
 
 function wallMinuteInZone(iso: string, timeZone: string): number | null {
   const d = new Date(iso);
@@ -703,8 +705,7 @@ export const ExperienceReservePicker: React.FC<
                         },
                         selected
                           ? {
-                              borderColor: palette.accent,
-                              backgroundColor: palette.accentWash,
+                              ...accentOutline(palette, { background: palette.accentWash, opaqueBackground: opaqueAccentWashColor(palette) }),
                             }
                           : null,
                       ]}
@@ -801,8 +802,7 @@ export const ExperienceReservePicker: React.FC<
                     },
                     selected
                       ? {
-                          borderColor: palette.accent,
-                          backgroundColor: palette.accentWash,
+                          ...accentOutline(palette, { background: palette.accentWash, opaqueBackground: opaqueAccentWashColor(palette) }),
                         }
                       : null,
                     full ? { opacity: 0.45 } : null,
@@ -862,8 +862,7 @@ export const ExperienceReservePicker: React.FC<
                         },
                         selected
                           ? {
-                              borderColor: palette.accent,
-                              backgroundColor: palette.accentWash,
+                              ...accentOutline(palette, { background: palette.accentWash, opaqueBackground: opaqueAccentWashColor(palette) }),
                             }
                           : null,
                       ]}
@@ -988,7 +987,7 @@ export const ExperienceReservePicker: React.FC<
           style={[
             styles.confirm,
             canConfirm
-              ? { backgroundColor: palette.accent }
+              ? accentFill(palette)
               : {
                   backgroundColor: palette.panelStrong,
                   borderColor: palette.panelBorder,

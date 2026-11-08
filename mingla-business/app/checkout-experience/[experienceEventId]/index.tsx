@@ -51,7 +51,6 @@ import { QuantityRow } from "../../../src/components/checkout/QuantityRow";
 // experience checkout too (the event checkout already does; trips/experiences
 // didn't, undercounting started checkouts). Web-only (native no-op via .web split).
 import { captureWeb, gaEvent } from "../../../src/analytics/webAnalytics";
-import { PrivacyChoicesLink } from "../../../src/analytics/PrivacyChoicesLink";
 import {
   CheckoutColumns,
   CheckoutOrderSummary,
@@ -442,8 +441,6 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
               })
             }
           />
-          {/* #2331 — end of content: reopens the privacy bar. */}
-          <PrivacyChoicesLink />
         </ScrollView>
 
         {/* Sticky bottom bar (narrow) / order summary (wide) — #4304 */}

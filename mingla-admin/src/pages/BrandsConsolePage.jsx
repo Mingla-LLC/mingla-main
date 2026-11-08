@@ -295,6 +295,7 @@ function buildBrandSections(detail, callbacks) {
         field("Theme color", b.theme_color),
         field("Theme font", b.theme_font),
         field("Theme animation", b.theme_animation),
+        field("Theme gradient", b.theme_gradient),
         field("Social links", null, () => jsonLinks(b.social_links)),
         field("Custom links", null, () => jsonLinks(b.custom_links)),
       ],
@@ -836,6 +837,7 @@ export function BrandsConsolePage() {
       { key: "theme_color", label: "Theme color", type: "text" },
       { key: "theme_font", label: "Theme font", type: "text" },
       { key: "theme_animation", label: "Theme animation", type: "text" },
+      { key: "theme_gradient", label: "Theme gradient (#RRGGBB,#RRGGBB)", type: "text" },
       { key: "social_links", label: "Social links (JSON)", type: "json" },
       { key: "custom_links", label: "Custom links (JSON)", type: "json" },
     ];
@@ -850,6 +852,7 @@ export function BrandsConsolePage() {
       theme_color: b.theme_color ?? "",
       theme_font: b.theme_font ?? "",
       theme_animation: b.theme_animation ?? "",
+      theme_gradient: b.theme_gradient ?? "",
       social_links: b.social_links ? JSON.stringify(b.social_links, null, 2) : "",
       custom_links: b.custom_links ? JSON.stringify(b.custom_links, null, 2) : "",
     };

@@ -35,6 +35,7 @@ import React, {
   type ReactElement,
 } from "react";
 import {
+  Animated,
   ActivityIndicator,
   Pressable,
   StyleSheet,
@@ -81,6 +82,7 @@ import {
   type ConsumerExperienceOccurrence,
 } from "../../hooks/useConsumerExperienceDetail";
 import { experienceSeatsLabel } from "@mingla/offering-rendering/experienceR3";
+import { color2FromColumn } from "@mingla/offering-rendering/themeResolver";
 
 import { Icon } from "../../components/ui/Icon";
 import { PresentedByFollowAndMessage } from "../../components/brandEnquiry/PresentedByFollowAndMessage";
@@ -149,6 +151,9 @@ import { useRecommendations } from "../../contexts/RecommendationsContext";
 import { glass } from "../../constants/designSystem";
 import { hueFromId } from "../../utils/hueFromId";
 import type { BusinessEventCard } from "../../types/mergedDiscover";
+import { CircleAlert } from "lucide-react-native";
+import { AccentLucideIcon } from "@mingla/offering-rendering/LucideIcons";
+import { themeFontFace } from "@mingla/offering-rendering/themeAccentStyle";
 
 const ACCENT = "#FF6B35";
 
@@ -342,11 +347,30 @@ export default function ConsumerExperienceDetailScreen({
   const handleDockLayout = useCallback((e: LayoutChangeEvent): void => {
     setDockTopY(e.nativeEvent.layout.y);
   }, []);
+  // issue #1023 — the details sheet's on-screen top edge, for the full-screen
+  // motion's text-safe zone: cover spacer height − seam − scroll offset.
+  const motionSheetTop = useRef(new Animated.Value(100000)).current;
+  const motionSpacerH = useRef(0);
+  const motionScrollY = useRef(0);
+  const syncMotionSheetTop = useCallback((): void => {
+    if (motionSpacerH.current > 0) {
+      motionSheetTop.setValue(motionSpacerH.current - SEAM - motionScrollY.current);
+    }
+  }, [motionSheetTop]);
+  const handleMotionSpacerLayout = useCallback(
+    (e: LayoutChangeEvent): void => {
+      motionSpacerH.current = e.nativeEvent.layout.height;
+      syncMotionSheetTop();
+    },
+    [syncMotionSheetTop],
+  );
   const handleScroll = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>): void => {
+      motionScrollY.current = e.nativeEvent.contentOffset.y;
+      syncMotionSheetTop();
       setScrollY(e.nativeEvent.contentOffset.y);
     },
-    [],
+    [syncMotionSheetTop],
   );
   const handleScrollLayout = useCallback((e: LayoutChangeEvent): void => {
     setViewportH(e.nativeEvent.layout.height);
@@ -468,10 +492,18 @@ export default function ConsumerExperienceDetailScreen({
   const seedTheme = useMemo(() => {
     const bt = seed?.brandTheme ?? null;
     if (bt === null) return resolveTheme(null, null);
+    // issue #1023 — the gradient's second stop only when its first stop is
+    // this level's colour (a gradient is one unit).
     return resolveTheme(
-      { color: bt.color ?? undefined, font: bt.font ?? undefined, animation: bt.animation ?? undefined },
+      {
+        color: bt.color ?? undefined,
+        color2: color2FromColumn(bt.color, bt.gradient),
+        font: bt.font ?? undefined,
+        animation: bt.animation ?? undefined,
+      },
       {
         color: bt.color_override ?? undefined,
+        color2: color2FromColumn(bt.color_override, bt.gradient_override),
         font: bt.font_override ?? undefined,
         animation: bt.animation_override ?? undefined,
       },
@@ -481,6 +513,7 @@ export default function ConsumerExperienceDetailScreen({
   const palette = useMemo(() => createThemePalette(theme), [theme]);
   const surface = useMemo(() => offeringSurfaceStyles(palette), [palette]);
   const boldFamily = boldFontFamily(theme);
+  const boldFace = themeFontFace(boldFamily);
   useConsumerThemeFont(theme.fontFamilyValue);
   useConsumerThemeFont(boldFamily);
 
@@ -1323,10 +1356,10 @@ export default function ConsumerExperienceDetailScreen({
         ]}
         testID="orch-1138-consumer-experience-state-banner"
       >
-        <Icon name="alert-circle" size={16} color={palette.accent} />
+        <AccentLucideIcon Icon={CircleAlert} size={16} palette={palette} />
         <View style={styles.stateBannerTextCol}>
           <Text
-            style={[styles.stateBannerTitle, { color: palette.primaryText, fontFamily: boldFamily }]}
+            style={[styles.stateBannerTitle, { color: palette.primaryText, ...boldFace }]}
           >
             {stateBanner.title}
           </Text>
@@ -1361,6 +1394,7 @@ export default function ConsumerExperienceDetailScreen({
     <TripReserveBar
       cta={offeringCta}
       palette={palette}
+      theme={theme}
       kicker={barKicker}
       fontFamily={boldFamily}
       onPress={beginBooking}
@@ -1374,6 +1408,7 @@ export default function ConsumerExperienceDetailScreen({
     <TripReserveBar
       cta={offeringCta}
       palette={palette}
+      theme={theme}
       kicker={barKicker}
       fontFamily={boldFamily}
       onPress={beginBooking}
@@ -1423,10 +1458,6 @@ export default function ConsumerExperienceDetailScreen({
             coverMediaNode
           )}
           <View style={styles.coverScrim} pointerEvents="none" />
-          <ThemeEntranceAnimation
-            theme={theme}
-            sessionKey={`experience:${seed.eventId}`}
-          />
         </View>
 
         {/* (2) the gorhom scroll host — DIRECT child of <BaseBottomSheet>. */}
@@ -1447,6 +1478,7 @@ export default function ConsumerExperienceDetailScreen({
           <View
             style={styles.coverSpacer}
             pointerEvents={galleryActive ? "none" : undefined}
+            onLayout={handleMotionSpacerLayout}
           />
           <View
             style={[
@@ -1500,6 +1532,26 @@ export default function ConsumerExperienceDetailScreen({
           </View>
         </BottomSheetScrollView>
 
+        {/* issue #1023 — the theme motion over the WHOLE screen (cover and
+            details), as in the approved reference. Above the scroll, below the
+            chrome; ignores touches; hidden from screen readers. It fades
+            below the details sheet's top edge, which it follows as the page
+            scrolls (motionSheetTop). */}
+        <View
+          style={styles.motionOverlay}
+          pointerEvents="none"
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          testID="issue-1023-motion-overlay"
+        >
+          <ThemeEntranceAnimation
+            theme={theme}
+            sessionKey={`experience:${seed.eventId}`}
+            pauseButton="none"
+            textZoneTop={motionSheetTop}
+          />
+        </View>
+
         {/* (3) chrome — absolute sibling above the cover + scroll */}
         <View style={[styles.nativeChrome, { top: insets.top + 12 }]} pointerEvents="box-none">
           <OfferingChrome
@@ -1512,6 +1564,12 @@ export default function ConsumerExperienceDetailScreen({
             closeAccessibilityLabel="Close"
             testID="orch-1138-consumer-experience-chrome"
           />
+        </View>
+        <View
+          style={[styles.motionPause, { top: insets.top + 64 }]}
+          pointerEvents="box-none"
+        >
+          <ThemeEntranceAnimation theme={theme} sessionKey={`experience:${seed.eventId}`} part="pauseButton" />
         </View>
 
         {/* (4) FLOATING reserve PILL — shown while the docked CTA is off-screen */}
@@ -1665,6 +1723,11 @@ const styles = StyleSheet.create({
   nativeScroll: { zIndex: 2 },
   nativeScrollContent: { flexGrow: 1 },
   coverSpacer: { width: "100%", aspectRatio: 4 / 5 },
+  // issue #1023 — the entrance motion's pause control over the cover.
+  motionPause: { position: "absolute", right: 12, zIndex: 70 },
+  // issue #1023 — full-screen motion: over the cover and the scroll (2), under
+  // the floating Buy/Reserve bar (6+), the chrome (70) and overlays (100)
+  motionOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 5 },
   nativeBody: {
     zIndex: 2,
     marginTop: -SEAM,

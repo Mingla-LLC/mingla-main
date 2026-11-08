@@ -21,6 +21,7 @@ import {
   resolveTheme,
   type ThemeInput,
 } from "@mingla/offering-rendering";
+import { paletteAccentGradient } from "@mingla/offering-rendering/themePalette";
 
 interface CheckoutAccentInputs {
   brandTheme: ThemeInput | null | undefined;
@@ -37,3 +38,15 @@ export const resolveCheckoutBrandAccent = (
   const theme = resolveTheme(inputs.brandTheme, inputs.eventThemeOverrides);
   return createThemePalette(theme).accent;
 };
+
+/**
+ * issue #1023 (D-6 reversed by Seth) — the checkout CTA follows the theme
+ * gradient too: the same two white-label-safe stops the public page's buttons
+ * paint, or null for a solid theme (the CTA is then exactly as before).
+ */
+export const resolveCheckoutBrandAccentGradient = (
+  inputs: CheckoutAccentInputs,
+): readonly [string, string] | null =>
+  paletteAccentGradient(
+    createThemePalette(resolveTheme(inputs.brandTheme, inputs.eventThemeOverrides)),
+  );

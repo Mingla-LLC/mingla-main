@@ -65,7 +65,10 @@ import {
 } from "../../../src/constants/designSystem";
 import { usePublicEventById } from "../../../src/hooks/usePublicEvents";
 // ORCH-1162 Bug 3 — brand-accent for the checkout Pay CTA, matching the public page.
-import { resolveCheckoutBrandAccent } from "../../../src/utils/checkoutBrandAccent";
+import {
+  resolveCheckoutBrandAccent,
+  resolveCheckoutBrandAccentGradient,
+} from "../../../src/utils/checkoutBrandAccent";
 import { isRequiredPhoneValid } from "../../../src/utils/phone";
 import { eventPublicPath } from "../../../src/constants/publicUrls";
 import {
@@ -103,7 +106,6 @@ import {
   writeCheckoutResumePayload,
 } from "../../../src/components/checkout/checkoutPersistence";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
-import { PrivacyChoicesLink } from "../../../src/analytics/PrivacyChoicesLink";
 
 // ORCH-0849 (2026-05-15): CHECKOUT_RETURN_URL_SCHEME removed — native
 // PaymentSheet handles return-URL internally via the StripeNativeProvider's
@@ -191,6 +193,14 @@ function CheckoutPaymentScreenContent({
           eventThemeOverrides: event.themeOverrides ?? null,
         }) ?? undefined)
       : undefined;
+  // issue #1023 — the CTA wears the theme gradient (D-6 reversed).
+  const ctaAccentGradient =
+    event !== null
+      ? resolveCheckoutBrandAccentGradient({
+          brandTheme: brand?.theme ?? null,
+          eventThemeOverrides: event.themeOverrides ?? null,
+        })
+      : null;
   // issue #2135 [multi-date public day picker] — `eventDateId` is the occurrence
   // the guest chose on the public page, seeded into the cart by the cart step.
   // null on every single-date checkout, which keeps the request byte-identical.
@@ -1047,8 +1057,6 @@ function CheckoutPaymentScreenContent({
             {EXTRAS_CHANGED_MESSAGE}
           </Text>
         ) : null}
-        {/* #2331 — end of content: reopens the privacy bar. */}
-        <PrivacyChoicesLink />
       </ScrollView>
 
       {/* Sticky bottom bar */}
@@ -1067,6 +1075,7 @@ function CheckoutPaymentScreenContent({
           onPress={() => void handlePay()}
           variant="primary"
           accentColor={ctaAccent}
+              accentGradient={ctaAccentGradient}
           size="lg"
           fullWidth
           loading={processing}

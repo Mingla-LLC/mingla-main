@@ -9,7 +9,6 @@ import {
   typography,
 } from "../../../src/constants/designSystem";
 import { Button } from "../../../src/components/ui/Button";
-import { PrivacyChoicesLink } from "../../../src/analytics/PrivacyChoicesLink";
 
 export default function VenueReservationCancelledRoute(): React.ReactElement {
   const router = useRouter();
@@ -43,8 +42,6 @@ export default function VenueReservationCancelledRoute(): React.ReactElement {
           }
         }}
       />
-        {/* #2331 — end of content: reopens the privacy bar. */}
-        <PrivacyChoicesLink />
       </ScrollView>
     </SafeAreaView>
   );

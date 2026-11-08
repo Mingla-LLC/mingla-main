@@ -22,8 +22,18 @@
  * react-native-web AND native RN.
  */
 
-import React from "react";
-import Svg, { Circle, Path, Rect } from "react-native-svg";
+import React, { useId } from "react";
+import Svg, {
+  Circle,
+  Defs,
+  LinearGradient,
+  Path,
+  Rect,
+  Stop,
+} from "react-native-svg";
+
+import { accentIcon } from "./themeAccentStyle";
+import type { ThemePalette } from "./themePalette";
 
 
 
@@ -35,7 +45,63 @@ export interface LucideIconProps {
   color: string;
   /** lucide's standard stroke width is 2; callers may thin/thicken it. */
   strokeWidth?: number;
+  /**
+   * issue #1023 — the theme gradient's two stops. When set, the stroke is a
+   * 135° gradient (first stop top-left); otherwise `color` as before.
+   */
+  gradient?: readonly [string, string];
 }
+
+/**
+ * issue #1023 — the stroke for an accent SVG: with a gradient, `url(#id)` plus
+ * the `<Defs>` to render inside the <Svg> (a 135° two-stop gradient, first stop
+ * top-left); without one, the plain colour and nothing to render.
+ */
+export const useAccentStroke = (
+  color: string,
+  gradient: readonly [string, string] | undefined,
+): { stroke: string; defs: React.ReactNode } => {
+  const id = `g${useId().replace(/[^A-Za-z0-9]/g, "")}`;
+  return gradient === undefined
+    ? { stroke: color, defs: null }
+    : {
+        stroke: `url(#${id})`,
+        defs: (
+          <Defs>
+            <LinearGradient id={id} x1="0" y1="0" x2="1" y2="1">
+              <Stop offset="0" stopColor={gradient[0]} />
+              <Stop offset="1" stopColor={gradient[1]} />
+            </LinearGradient>
+          </Defs>
+        ),
+      };
+};
+
+/** Any lucide-style icon: an SVG component taking size, color and children. */
+export type StrokeIconComponent = React.ComponentType<{
+  size?: number | string;
+  color?: string;
+  children?: React.ReactNode;
+}>;
+
+/**
+ * issue #1023 — a lucide icon component (lucide-react-native, passed in so
+ * this package never imports it) drawn in the theme accent: the gradient
+ * stroke when the theme has one, the first colour otherwise. lucide renders
+ * its children inside the <svg>, so the gradient definition rides along.
+ */
+export const AccentLucideIcon: React.FC<{
+  Icon: StrokeIconComponent;
+  size: number;
+  palette: ThemePalette;
+}> = ({ Icon, size, palette }) => {
+  const { stroke, defs } = useAccentStroke(palette.accent, accentIcon(palette).gradient);
+  return (
+    <Icon size={size} color={stroke}>
+      {defs}
+    </Icon>
+  );
+};
 
 /**
  * Shared lucide frame — a 24×24-viewBox SVG with `fill="none"` and the canonical
@@ -44,20 +110,24 @@ export interface LucideIconProps {
  */
 const LucideFrame: React.FC<
   LucideIconProps & { children: React.ReactNode }
-> = ({ size, color, strokeWidth = 2, children }) => (
-  <Svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke={color}
-    strokeWidth={strokeWidth}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    {children}
-  </Svg>
-);
+> = ({ size, color, strokeWidth = 2, gradient, children }) => {
+  const { stroke, defs } = useAccentStroke(color, gradient);
+  return (
+    <Svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={stroke}
+      strokeWidth={strokeWidth}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {defs}
+      {children}
+    </Svg>
+  );
+};
 
 // ───────────────────────────── the 9 icons ──────────────────────────────────
 // Each uses the REAL lucide path data (24×24 grid). Stroke styling is inherited

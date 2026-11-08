@@ -33,7 +33,7 @@ export const MARKETING_PRIVACY_STORAGE_KEY = 'mingla_privacy_v2'
 // Legacy key: read once, carried over (denied → both off, granted → both on), removed.
 export const MARKETING_LEGACY_CONSENT_STORAGE_KEY = 'mingla_consent_v1'
 const MARKETING_PRIVACY_EVENT = 'mingla:marketing-privacy'
-/** "Your privacy choices" asks the bar to reopen, expanded. */
+/** The folded privacy bar's "Privacy settings" button asks the bar to reopen, expanded (#4318). */
 export const PRIVACY_CHOICES_EVENT = 'mingla:privacy-choices'
 
 export interface MarketingPrivacyChoice {

@@ -58,6 +58,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 
 import type { CtaState, ThemePalette } from "@mingla/offering-rendering";
+import type { ResolvedTheme } from "@mingla/offering-rendering";
+import { ThemeAccentGradientLayer } from "@mingla/offering-rendering/ThemeAccentFill";
+import { accentFill, accentOutline } from "@mingla/offering-rendering/themeAccentStyle";
 
 /**
  * ORCH-1138 [trip-page-redesign] (Seth, 2026-06-15) — the SPLIT-CTA payload,
@@ -81,6 +84,11 @@ export interface ReserveSplitCtas {
 export interface TripReserveBarProps {
   cta: CtaState;
   palette: ThemePalette;
+  /**
+   * issue #1023 wave 2 — the resolved theme, so the primary fill can paint the
+   * theme gradient. Optional: without it the fill stays solid `palette.accent`.
+   */
+  theme?: ResolvedTheme;
   /** Page tone — drives the gradient fade base color (resolved, not hardcoded). */
   surface: "dark" | "light";
   /** Small line above the price ("All-in, taxes included" / "Due today · deposit"). */
@@ -113,6 +121,7 @@ export interface TripReserveBarProps {
 export const TripReserveBar: React.FC<TripReserveBarProps> = ({
   cta,
   palette,
+  theme,
   surface,
   kicker,
   fontFamily,
@@ -203,8 +212,10 @@ export const TripReserveBar: React.FC<TripReserveBarProps> = ({
           isPrimary ? styles.segmentPrimary : styles.segmentSecondary,
           isPrimary ? null : styles.segmentSecondaryBorder,
           {
-            backgroundColor: isPrimary ? palette.accent : SECONDARY_FILL,
-            borderColor: isPrimary ? undefined : palette.accent,
+            ...(isPrimary ? accentFill(palette) : { backgroundColor: SECONDARY_FILL }),
+            ...(isPrimary
+              ? {}
+              : accentOutline(palette, { opaqueBackground: SECONDARY_FILL })),
           },
           pressed ? styles.segmentPressed : null,
         ]}
@@ -284,11 +295,18 @@ export const TripReserveBar: React.FC<TripReserveBarProps> = ({
       }
       style={({ pressed }) => [
         styles.reserve,
-        { backgroundColor: palette.accent },
+        accentFill(palette),
         pressed ? styles.reservePressed : null,
       ]}
       testID={testID !== undefined ? `${testID}-action` : undefined}
     >
+      {theme !== undefined ? (
+        <ThemeAccentGradientLayer
+          theme={theme}
+          palette={palette}
+          borderRadius={styles.reserve.borderRadius}
+        />
+      ) : null}
       {kicker !== null || price.length > 0 ? (
         <View style={styles.rLeft}>
           {kicker !== null ? (
@@ -384,11 +402,18 @@ export const TripReserveBar: React.FC<TripReserveBarProps> = ({
       }
       style={({ pressed }) => [
         styles.floatButton,
-        { backgroundColor: palette.accent },
+        accentFill(palette),
         pressed ? styles.reservePressed : null,
       ]}
       testID={testID !== undefined ? `${testID}-action` : undefined}
     >
+      {theme !== undefined ? (
+        <ThemeAccentGradientLayer
+          theme={theme}
+          palette={palette}
+          borderRadius={styles.floatButton.borderRadius}
+        />
+      ) : null}
       <Text style={[styles.floatCta, { color: palette.accentText }, fontStyle]}>
         {cta.label} →
       </Text>

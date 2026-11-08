@@ -41,6 +41,11 @@ const CTA_CENTRE_TOLERANCE_PX = 1.5
 const MIN_GAP = 28
 const MAX_IMBALANCE = 16
 const MIN_PILL_CLEARANCE = 24
+// #4318 (Seth): re-baselined to the permanent 28px "Privacy & ad choices"
+// strip, which takes 28px from the one-screen home on every visit. At 375x667
+// the deck now sits 19.2px from the pill row (it was 45.6px with the bar
+// hidden): the floor there is the strip baseline less 1px, never lower.
+const PILL_CLEARANCE_FLOOR = { '375x667': 18 }
 const SAMPLES = 6
 const CDP_REQUEST_TIMEOUT_MS = 25_000
 const CHILD_STOP_TIMEOUT_MS = 2_000
@@ -160,7 +165,8 @@ function assertHomeGeometry(sample, label) {
   assert(sample.above >= MIN_GAP, `${label}: gap above Use Mingla is ${sample.above.toFixed(1)}px (< ${MIN_GAP}px)`)
   assert(sample.below >= MIN_GAP, `${label}: gap below Use Mingla is ${sample.below.toFixed(1)}px (< ${MIN_GAP}px)`)
   assert(Math.abs(sample.above - sample.below) <= MAX_IMBALANCE, `${label}: Use Mingla is off-centre by ${Math.abs(sample.above - sample.below).toFixed(1)}px (> ${MAX_IMBALANCE}px)`)
-  assert(sample.pillClearance >= MIN_PILL_CLEARANCE, `${label}: deck is ${sample.pillClearance.toFixed(1)}px from the hero pill row (< ${MIN_PILL_CLEARANCE}px)`)
+  const pillFloor = PILL_CLEARANCE_FLOOR[label] ?? MIN_PILL_CLEARANCE
+  assert(sample.pillClearance >= pillFloor, `${label}: deck is ${sample.pillClearance.toFixed(1)}px from the hero pill row (< ${pillFloor}px)`)
   assert.equal(sample.scrollHeight, sample.innerHeight, `${label}: home scrolls (document ${sample.scrollHeight}px, viewport ${sample.innerHeight}px)`)
   assert.equal(sample.cityGrid, false, `${label}: home renders the city guides module`)
 }
@@ -527,6 +533,8 @@ function selfTest() {
   }
   assert.throws(() => assertHomeGeometry(before['375x667'], '375x667'), /gap below Use Mingla/, 'the crowded small-phone action must prove RED')
   assert.throws(() => assertHomeGeometry(before['1280x800'], '1280x800'), /gap below Use Mingla is 27\.2px/, 'the 27px desktop gap must prove RED')
+  // #4318: the strip baseline floor at 375x667 still rejects a deck that crowds the pills further.
+  assert.throws(() => assertHomeGeometry({ above: 32, below: 31, pillClearance: 17.5, scrollHeight: 667, innerHeight: 667, cityGrid: false }, '375x667'), /deck is 17\.5px from the hero pill row \(< 18px\)/, 'a deck closer than the strip baseline must prove RED')
   process.stdout.write('RED proof: pre-#3371 menu, centred menu rows (source and geometry), a left-aligned bottom CTA, scrolling home with city grid, missing redirect and the measured crowded gaps were rejected\n')
 }
 

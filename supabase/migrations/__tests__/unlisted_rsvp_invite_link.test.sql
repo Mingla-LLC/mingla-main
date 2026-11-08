@@ -168,7 +168,8 @@ BEGIN
       'timezone','status','isOnline','onlineUrl','venueName','address','hideAddressUntilTicket',
       'format','city','locationGeo','cityGeo','coverMediaUrl','coverMediaType','coverMediaAlt',
       'coverGallery','coverMediaProvider','coverMediaCredit','currency','partyTypes','vibeTags',
-      'musicGenres','themeColorOverride','themeFontOverride','themeAnimationOverride','brand',
+      -- [TEST-MOD-APPROVED #1023] 20280430011023 adds themeGradientOverride after the animation.
+      'musicGenres','themeColorOverride','themeFontOverride','themeAnimationOverride','themeGradientOverride','brand',
       'rsvpGoingCount','rsvpCapacity','rsvpAllowPlusOnes','rsvpPlusOnesMax','rsvpWaitlistEnabled',
       'rsvpApprovalMode']::text[],
     'U-01e every pre-existing key keeps its name and position (got ' || array_to_string(v_keys, ',') || ')');

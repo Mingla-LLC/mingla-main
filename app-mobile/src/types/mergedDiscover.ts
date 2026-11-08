@@ -145,6 +145,9 @@ export interface BusinessEventCard {
     color_override: string | null;
     font_override: string | null;
     animation_override: string | null;
+    /** issue #1023 — "#first,#second" gradients, one unit with each colour. */
+    gradient?: string | null;
+    gradient_override?: string | null;
   } | null;
   /**
    * ORCH-1072 — present ONLY for brand experiences. The experience's upcoming

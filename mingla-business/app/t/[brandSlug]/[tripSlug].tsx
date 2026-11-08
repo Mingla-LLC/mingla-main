@@ -130,6 +130,7 @@ import {
 } from "@mingla/offering-rendering/priceDecimals";
 // issue #3284 — the refund ladder's chunk starts with this page's data fetch.
 import { loadOfferingRefundLadder } from "@mingla/offering-rendering/LazyOfferingRefundLadder";
+import { accentFill, themeFontFace } from "@mingla/offering-rendering/themeAccentStyle";
 
 export default function PublicTripRoute(): React.ReactElement {
   const router = useRouter();
@@ -514,6 +515,7 @@ const ResolvedTripPage: React.FC<{
   // ORCH-1138 R2 — load the resolved brand font (medium + bold) on demand.
   useThemeFont(theme.fontFamilyValue);
   const boldFamily = boldFontFamily(theme);
+  const boldFace = themeFontFace(boldFamily);
   useThemeFont(boldFamily);
 
   // META-ORCH-1174 Leg A — the ONE normalized body data + brand contract (one
@@ -760,7 +762,7 @@ const ResolvedTripPage: React.FC<{
         style={[
           styles.deskReserve,
           reserveTappable
-            ? { backgroundColor: palette.accent }
+            ? accentFill(palette)
             : { backgroundColor: palette.card, borderColor: palette.panelBorder, borderWidth: 1 },
         ]}
         testID="orch-1138-trip-desk-reserve"
@@ -769,7 +771,7 @@ const ResolvedTripPage: React.FC<{
           style={[
             styles.deskReserveText,
             { color: reserveTappable ? palette.accentText : palette.tertiaryText },
-            { fontFamily: boldFamily },
+            boldFace,
           ]}
         >
           {reserveTappable
@@ -798,6 +800,7 @@ const ResolvedTripPage: React.FC<{
       <TripReserveBar
         cta={accessGatedCta}
         palette={palette}
+        theme={theme}
         kicker={offeringState.barKicker}
         fontFamily={boldFamily}
         onPress={reserveSelected}
@@ -810,6 +813,7 @@ const ResolvedTripPage: React.FC<{
       <TripReserveBar
         cta={accessGatedCta}
         palette={palette}
+        theme={theme}
         kicker={offeringState.barKicker}
         fontFamily={boldFamily}
         onPress={reserveSelected}
@@ -914,6 +918,7 @@ const ResolvedTripPage: React.FC<{
           <TripReserveBar
             cta={accessGatedCta}
             palette={palette}
+            theme={theme}
             kicker={offeringState.barKicker}
             fontFamily={boldFamily}
             onPress={reserveSelected}
@@ -925,6 +930,7 @@ const ResolvedTripPage: React.FC<{
           <TripReserveBar
             cta={accessGatedCta}
             palette={palette}
+            theme={theme}
             kicker={offeringState.barKicker}
             fontFamily={boldFamily}
             onPress={reserveSelected}

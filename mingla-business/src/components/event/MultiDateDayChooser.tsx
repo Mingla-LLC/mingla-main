@@ -28,6 +28,8 @@ import type { PublicEventOccurrence } from "../../services/publicEventOccurrence
 import { formatOccurrenceLine } from "../../utils/eventDateDisplay";
 import { dayChooserCaptions } from "../../utils/dayChooserCaptions";
 import type { TicketStub } from "../../store/draftEventStore";
+import { accentFillWithBorder, accentOutline } from "@mingla/offering-rendering/themeAccentStyle";
+import { opaqueAccentWashColor } from "@mingla/offering-rendering/themePalette";
 
 export interface MultiDateDayChooserProps {
   /** The event's IANA zone, used only when an occurrence row carries none. */
@@ -233,7 +235,7 @@ export const MultiDateDayChooser: React.FC<MultiDateDayChooserProps> = ({
               onPress={onRetry}
               accessibilityRole="button"
               accessibilityLabel={recovery.action}
-              style={[styles.retry, { borderColor: palette.accent }]}
+              style={[styles.retry, accentOutline(palette, { opaqueBackground: palette.page })]}
             >
               <Text
                 style={[styles.retryText, { color: palette.accent }, fontStyle]}
@@ -258,6 +260,7 @@ export const MultiDateDayChooser: React.FC<MultiDateDayChooserProps> = ({
             status="ready"
             onRetry={onRetry}
             accentColor={palette.accent}
+            selectedFill={accentFillWithBorder(palette)}
             mutedColor={palette.tertiaryText}
             occurrenceTestIDPrefix="issue-2135-day-row"
             occurrenceNativeIDPrefix="issue-2160-day-row"
@@ -304,8 +307,7 @@ export const MultiDateDayChooser: React.FC<MultiDateDayChooserProps> = ({
                       : null,
                     selected
                       ? {
-                          borderColor: palette.accent,
-                          backgroundColor: palette.accentWash,
+                          ...accentOutline(palette, { background: palette.accentWash, opaqueBackground: opaqueAccentWashColor(palette) }),
                         }
                       : null,
                     row.soldOut ? styles.rowSoldOut : null,
@@ -316,11 +318,9 @@ export const MultiDateDayChooser: React.FC<MultiDateDayChooserProps> = ({
                   <View
                     style={[
                       styles.check,
-                      {
-                        borderColor: selected
-                          ? palette.accent
-                          : palette.panelBorder,
-                      },
+                      selected
+                        ? accentOutline(palette, { opaqueBackground: palette.page })
+                        : { borderColor: palette.panelBorder },
                     ]}
                   >
                     {selected ? (

@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_1023_theme_fonts_gradients.implementor.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-1023-theme-fonts-gradients-implementor",
+  "profile": "psql-pg17-post-replay",
+  "database": {
+    "database": "postgres",
+    "user": "postgres",
+    "reset": "suite-owned"
+  }
+}

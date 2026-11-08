@@ -187,16 +187,14 @@ function enforce(s) {
     'setChipInState("idle")',
     "stale-write chip-in closure",
   );
-  requireText(
-    s.eventFoundation,
-    'animation: "none"',
-    "ticket history animation suppression",
-  );
-  requireText(
-    s.rsvpFoundation,
-    'animation: "none"',
-    "RSVP history animation suppression",
-  );
+  // issue #1023 (Seth, 7 Nov) lifted the closed-state theme-motion suppression:
+  // ended, sold-out and unavailable pages keep the resolved animation. Only the
+  // motion is lifted; every other #1902 closed-state rule above stays. Inverted
+  // so the suppression cannot quietly come back.
+  for (const key of ["eventFoundation", "rsvpFoundation"]) {
+    if (s[key].includes('animation: "none"'))
+      throw new Error(`issue #1902/#1023 closed-state motion suppression returned in ${key}`);
+  }
   requireText(s.backendSql, "P1901", "backend ended dependency seal");
   requireText(s.backendSql, "P1902", "backend unavailable dependency seal");
   requireText(s.backendEdge, 'case "P1901"', "Edge 410 dependency seal");
@@ -275,10 +273,8 @@ if (process.argv.includes("--self-test")) {
     ["direct", "setWaitlistTicketId(null)"],
     ["rsvpBody", "acquisitionClosed || hideDecisionBox"],
     ["rsvpBody", "!acquisitionClosed && state.chipInInlinePanel"],
-    ["eventFoundation", 'animation: "none"'],
     ["rsvpBody", "setSuccessDetails(null)"],
     ["rsvpBody", 'setChipInState("idle")'],
-    ["rsvpFoundation", 'animation: "none"'],
     ["backendSql", "P1901"],
     ["backendSql", "P1902"],
     ["backendEdge", 'case "P1901"'],
@@ -296,6 +292,16 @@ if (process.argv.includes("--self-test")) {
       failed = true;
     }
     if (!failed) throw new Error(`self-test survived ${key}:${needle}`);
+  }
+  // issue #1023 — re-adding the closed-state motion suppression must fail.
+  for (const key of ["eventFoundation", "rsvpFoundation"]) {
+    let failed = false;
+    try {
+      enforce({ ...baseline, [key]: `${baseline[key]}\nconst x = { animation: "none" };` });
+    } catch {
+      failed = true;
+    }
+    if (!failed) throw new Error(`self-test survived motion suppression in ${key}`);
   }
 
   for (const [label, wrapper] of [
