@@ -245,6 +245,10 @@ END;
 $function$;
 REVOKE ALL ON FUNCTION public.links_page_week() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.links_page_week() TO anon, authenticated, service_role;
+-- links_page_week applies the shared #2489 address gate, so it joins the
+-- declared carrier set (#3081 pattern; the registry compares it both ways).
+INSERT INTO public.issue_2489_gate_carriers (object_name, object_kind)
+VALUES ('links_page_week', 'function') ON CONFLICT (object_name) DO NOTHING;
 COMMENT ON FUNCTION public.links_page_week() IS
   '#4318: /links listings: one row per occurrence date in [now, now + 7 days) of public, published, upcoming events, experiences and trips (discover_v2_items eligibility, cancelled dates excluded). Column allow-list only; a withheld address yields no place text and a one-decimal point. Capped at 500 rows.';
 

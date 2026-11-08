@@ -82,6 +82,7 @@ DECLARE
     'discover_v2_event_base',
     'events_public_view',
     'issue_2489_public_theme',
+    'links_page_week',  -- #4318: the /links week reader withholds addresses through the gate.
     'pg_direct_event_checkout_bundle',
     'pg_discover_business_events',
     'pg_public_brand_upcoming',
