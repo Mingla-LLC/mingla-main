@@ -11,6 +11,12 @@
 // outlives the form, not in a cache, not in a log, not in browser storage.
 // No server answer here ever holds a key.
 //
+// Company sign-in (issue #4294): a tool that refuses keys (Mingla Studio) is
+// connected by an owner pressing Connect. The page asks team-agent for the
+// tool's sign-in address with the owner's own admin session, then sends the
+// browser there. The tokens go from the tool's sign-in server straight to
+// Mingla's server and Supabase Vault: no answer here ever holds one.
+//
 // The database client is loaded only when a request is made, so the rules
 // below can be tested without it.
 
@@ -32,6 +38,10 @@ export const CONNECT_WORDS = Object.freeze({
   network: "We couldn't reach Mingla. Check your connection and try again.",
   ownerOnly: "Only an owner can manage company tools.",
   keyRefused: "That key wasn't saved. Paste the whole key, between 8 and 4096 characters, on one line, and try again.",
+  signinUnavailable: "The tool's sign-in could not start. Nothing changed. Try again later.",
+  sessionExpired: "Your admin session expired. Sign in again to continue.",
+  notConnected: "Not connected yet",
+  reconnectNeeded: "Reconnect needed. The company sign-in was refused, so calls are stopped until an owner presses Reconnect.",
 });
 
 const CONNECT_FIELDS = ["client_id", "redirect_uri", "code_challenge", "state", "resource", "scope"];
@@ -259,5 +269,114 @@ export async function setCompanyToolKey(slug, key) {
       token,
       message: token === "invalid_key" ? CONNECT_WORDS.keyRefused : token === "network" ? CONNECT_WORDS.network : "",
     });
+  }
+}
+
+/**
+ * A sign-in row's status line: "Connected as X on DATE by Y",
+ * "Reconnect needed. ..." or "Not connected yet". Never a token.
+ */
+export function signinStatusLine(row, formatDate = (d) => new Date(d).toLocaleDateString()) {
+  const s = row?.signin;
+  if (!s?.connected) return CONNECT_WORDS.notConnected;
+  if (s.reconnect_needed) return CONNECT_WORDS.reconnectNeeded;
+  const as = s.account ? ` as ${s.account}` : "";
+  const when = s.connected_at ? ` on ${formatDate(s.connected_at)}` : "";
+  const who = s.connected_by ? ` by ${s.connected_by}` : "";
+  return `Connected${as}${when}${who}`;
+}
+
+/** Can the On switch be used? A key row needs a key; a sign-in row a live sign-in. */
+export function canTurnOn(row) {
+  if (row?.auth_kind === "signin") return Boolean(row.signin?.connected && !row.signin?.reconnect_needed);
+  return Boolean(row?.key_set);
+}
+
+export const HIDE_WORD_RULE = /^[A-Za-z0-9](?:[A-Za-z0-9 .&'-]{0,38}[A-Za-z0-9])?$/;
+
+/** The hidden-words box: comma or line separated. Returns { words, errors }. */
+export function parseHideWords(text) {
+  const words = [];
+  const errors = [];
+  String(text ?? "").split(/[\n,]/).forEach((raw) => {
+    const w = raw.trim();
+    if (!w) return;
+    if (!HIDE_WORD_RULE.test(w)) errors.push(`"${w.slice(0, 40)}": use 1 to 40 letters, digits, spaces, dots, dashes or apostrophes.`);
+    else if (!words.some((x) => x.toLowerCase() === w.toLowerCase())) words.push(w);
+  });
+  if (words.length > 20) errors.push("At most 20 hidden words.");
+  return { words, errors };
+}
+
+/** The daily limit box: a whole number from 0 to 10000, or null. */
+export function parseDailyCap(text) {
+  const t = String(text ?? "").trim();
+  if (!/^[0-9]{1,5}$/.test(t)) return null;
+  const n = Number(t);
+  return n <= 10000 ? n : null;
+}
+
+export const disconnectCompanySignin = (slug) => call("mingla_connector_signin_disconnect", { p_slug: slug });
+export const companySigninStatus = (slug) => call("mingla_connector_signin_status", { p_slug: slug });
+
+/**
+ * Connect: asks team-agent, with this owner's admin session, where to sign
+ * in. Answers the tool's own sign-in address; the caller sends the browser
+ * there. No token is ever in this answer.
+ */
+export async function startCompanySignin(slug) {
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    throw new ConnectorError({ token: "network", message: CONNECT_WORDS.network });
+  }
+  const { invokeWithRefresh, isSessionExpiredError } = await import("../lib/supabase.js");
+  let result;
+  try {
+    result = await invokeWithRefresh("team-agent/oauth/upstream-start", { body: { slug } });
+  } catch (err) {
+    console.error("[connector] sign-in start failed:", err?.name || "error");
+    throw new ConnectorError({ token: "network", message: CONNECT_WORDS.network });
+  }
+  if (result?.error) {
+    if (isSessionExpiredError(result.error)) {
+      throw new ConnectorError({ token: "session", message: CONNECT_WORDS.sessionExpired });
+    }
+    let body = null;
+    try {
+      body = await result.error?.context?.json?.();
+    } catch {
+      body = null;
+    }
+    const token = typeof body?.error === "string" ? body.error : "unknown";
+    if (token === "forbidden") throw new ConnectorError({ token, message: CONNECT_WORDS.ownerOnly });
+    const message = typeof body?.message === "string" && body.message.length <= 300 ? body.message : CONNECT_WORDS.signinUnavailable;
+    throw new ConnectorError({ token, message });
+  }
+  const to = signinAddressOf(result?.data);
+  if (!to) throw new ConnectorError({ token: "unknown", message: CONNECT_WORDS.signinUnavailable });
+  return to;
+}
+
+/** The sign-in address in team-agent's answer, only if it is a plain https address. */
+export function signinAddressOf(data) {
+  const raw = typeof data?.authorize_url === "string" ? data.authorize_url : "";
+  try {
+    const u = new URL(raw);
+    return u.protocol === "https:" && !u.username && !u.password ? u.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The On switch: saves at once and answers what the server now has. A
+ * refused save answers the old position and the refusal, so the switch
+ * never shows On before the server has it on.
+ */
+export async function switchCompanyTool(slug, next, save = saveCompanyTool) {
+  try {
+    const saved = await save({ slug, enabled: next });
+    return { enabled: typeof saved?.enabled === "boolean" ? saved.enabled : next, error: null };
+  } catch (err) {
+    return { enabled: !next, error: err };
   }
 }

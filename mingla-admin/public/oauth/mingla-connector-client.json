@@ -1,0 +1,9 @@
+{
+  "client_id": "https://admin.usemingla.com/oauth/mingla-connector-client.json",
+  "client_name": "Mingla",
+  "client_uri": "https://usemingla.com",
+  "redirect_uris": ["https://gqnoajqerqhnvulmnyvv.supabase.co/functions/v1/team-agent/oauth/upstream-callback"],
+  "grant_types": ["authorization_code", "refresh_token"],
+  "response_types": ["code"],
+  "token_endpoint_auth_method": "none"
+}
