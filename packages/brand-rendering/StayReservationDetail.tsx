@@ -19,6 +19,8 @@ import {
   type BrandRenderingReactElement,
   type BrandRenderingReactNode,
 } from "./PublicVenueTabs";
+import { accentFill, accentOutline } from "@mingla/offering-rendering/themeAccentStyle";
+import { opaqueSurfaceColor } from "@mingla/offering-rendering/themePalette";
 
 export function StayReservationDetail({
   group,
@@ -216,7 +218,9 @@ export function StayReservationDetail({
               styles.line,
               {
                 backgroundColor: palette.card,
-                borderColor: checked ? palette.accent : palette.panelBorder,
+                ...(checked
+                  ? accentOutline(palette, { opaqueBackground: opaqueSurfaceColor(palette) })
+                  : { borderColor: palette.panelBorder }),
               },
             ]}
           >
@@ -512,7 +516,7 @@ function Action({
       onPress={onPress}
       style={[
         styles.action,
-        { backgroundColor: palette.accent },
+        accentFill(palette),
         disabled && styles.disabled,
       ]}
     >

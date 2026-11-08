@@ -67,8 +67,10 @@ import {
 import {
   boldFontFamily,
   offeringSurfaceStyles,
+  themeTextAccent,
   type ThemePalette,
 } from "./themePalette";
+import { ThemeAccentGradientLayer } from "./ThemeAccentFill";
 import { type ResolvedTheme } from "./designTokens";
 // #3372 — naira shows "₦", not "NGN", whatever the engine or locale (#3341 rule).
 import { withCurrencyGlyph } from "./currencyGlyph";
@@ -134,6 +136,7 @@ import {
   LazyOfferingRefundLadder as OfferingRefundLadder,
   LazySaleAvailabilityText,
 } from "./LazyOfferingRefundLadder";
+import { accentFill, accentIcon, themeFontFace } from "./themeAccentStyle";
 
 const ABOUT_COLLAPSE_THRESHOLD = 160;
 
@@ -338,7 +341,10 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
   testID,
 }) => {
   const surface = offeringSurfaceStyles(palette);
+  // issue #1023 — one accent-icon prop set (gradient stroke when themed).
+  const accentIconProps = accentIcon(palette);
   const boldFamily = boldFontFamily(theme);
+  const boldFace = themeFontFace(boldFamily);
   const isDesktop = variant === "desktop";
   const [aboutCollapsed, setAboutCollapsed] = useState<boolean>(true);
 
@@ -413,7 +419,7 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
       {!isDesktop ? (
         <View style={styles.leadBlock} testID="experience-body-title">
           {stopEyebrow !== null ? (
-            <Text style={[styles.eyebrowLead, { color: palette.accent }]}>
+            <Text style={[styles.eyebrowLead, { color: themeTextAccent(palette) }]}>
               {stopEyebrow}
             </Text>
           ) : null}
@@ -421,7 +427,7 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
             style={[
               styles.title,
               surface.primaryText,
-              { fontFamily: boldFamily },
+              boldFace,
             ]}
           >
             {data.title}
@@ -473,13 +479,13 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
                 },
               ]}
             >
-              <Sparkles size={13} color={palette.accent} />
+              <Sparkles size={13} {...accentIconProps} />
               {/* ORCH-1186 Fix 2 — label uses primaryText (icon stays accent) to
                   byte-match the standard trip/event MetaPill (no brown-on-brown). */}
               <Text
                 style={[
                   styles.vibeChipText,
-                  { color: palette.primaryText, fontFamily: boldFamily },
+                  { color: palette.primaryText, ...boldFace },
                 ]}
               >
                 {label}
@@ -525,7 +531,7 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
               style={[
                 styles.brandTile,
                 brand.coverMediaUrl === null
-                  ? { backgroundColor: palette.accent }
+                  ? accentFill(palette)
                   : null,
               ]}
             >
@@ -545,10 +551,15 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
                 />
               ) : (
                 <View style={styles.brandInitialWrap}>
+                  <ThemeAccentGradientLayer
+                    theme={theme}
+                    palette={palette}
+                    borderRadius={999}
+                  />
                   <Text
                     style={[
                       styles.brandInitial,
-                      { color: palette.accentText, fontFamily: boldFamily },
+                      { color: palette.accentText, ...boldFace },
                     ]}
                   >
                     {(brand.name.trim()[0] ?? "•").toUpperCase()}
@@ -565,13 +576,13 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
                   style={[
                     styles.brandName,
                     surface.primaryText,
-                    { fontFamily: boldFamily },
+                    boldFace,
                   ]}
                 >
                   {brand.name}
                 </Text>
                 {brand.verified ? (
-                  <BadgeCheck size={15} color={palette.accent} />
+                  <BadgeCheck size={15} {...accentIconProps} />
                 ) : null}
               </View>
               <PresentedByFollowerCount
@@ -612,13 +623,13 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
           ]}
           testID="experience-body-availability"
         >
-          <Clock size={18} color={palette.accent} />
+          <Clock size={18} {...accentIconProps} />
           <View style={styles.availabilityTextCol}>
             <Text
               style={[
                 styles.availabilityWhen,
                 surface.primaryText,
-                { fontFamily: boldFamily },
+                boldFace,
               ]}
             >
               {availability.primary}
@@ -654,7 +665,7 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
             style={[
               styles.secTitle,
               surface.primaryText,
-              { fontFamily: boldFamily },
+              boldFace,
             ]}
           >
             Right now
@@ -704,7 +715,7 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
             style={[
               styles.secTitle,
               surface.primaryText,
-              { fontFamily: boldFamily },
+              boldFace,
             ]}
           >
             About this experience
@@ -741,7 +752,7 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
             style={[
               styles.secTitle,
               surface.primaryText,
-              { fontFamily: boldFamily },
+              boldFace,
             ]}
           >
             {stopCount === 1 ? "What you'll do" : "The itinerary"}
@@ -764,7 +775,7 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
             style={[
               styles.secTitle,
               surface.primaryText,
-              { fontFamily: boldFamily },
+              boldFace,
             ]}
           >
             Where you&rsquo;ll start
@@ -782,7 +793,7 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
               resizeMode="cover"
               accessibilityLabel={`Map of ${mapStop.placeName ?? "the first stop"}`}
             />
-            <MapPin size={26} color={palette.accent} />
+            <MapPin size={26} {...accentIconProps} />
             {mapStop.placeName !== null ? (
               <View
                 style={[styles.mapCapPill, { backgroundColor: palette.page }]}
@@ -848,7 +859,7 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
             remaining={data.ticket?.saleRemaining}
             endsAt={data.ticket?.saleEndsAt}
             timezone={data.timezone}
-            style={[styles.saleAvailability, { color: palette.accent }]}
+            style={[styles.saleAvailability, { color: themeTextAccent(palette) }]}
           />
           {experienceOfferingOptions(data).length > 1 ? (
             <View
@@ -922,12 +933,12 @@ const MetaChip: React.FC<{
           : Clock;
   return (
     <View style={[styles.metaChip, surface.card]}>
-      <Glyph size={15} color={palette.accent} />
+      <Glyph size={15} {...accentIcon(palette)} />
       <Text
         style={[
           styles.metaChipText,
           surface.secondaryText,
-          { fontFamily: font },
+          themeFontFace(font),
         ]}
         numberOfLines={1}
       >

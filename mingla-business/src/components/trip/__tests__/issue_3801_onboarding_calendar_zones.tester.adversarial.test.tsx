@@ -261,6 +261,8 @@ function privateFunction<T>(file: string, name: string): T {
     react: () => React,
     "react-native": () => jest.requireActual("react-native"),
     designSystem: () => designSystem,
+    // [TEST-MOD-APPROVED #1023] Harness registration only: the gradient-aware accent helpers (real).
+    themeAccentStyle: () => jest.requireActual("@mingla/offering-rendering/themeAccentStyle"),
     // REAL: the helper under test.
     calendarDate: () => calendarDate,
     GlassCard: () => ({ GlassCard: leaf("GlassCardProbe") }),
@@ -540,6 +542,8 @@ function realScheduleDisplay(): React.ComponentType<Record<string, unknown>> {
     react: () => React,
     "react-native": () => jest.requireActual("react-native"),
     designSystem: () => designSystem,
+    // [TEST-MOD-APPROVED #1023] Harness registration only: the gradient-aware accent helpers (real).
+    themeAccentStyle: () => jest.requireActual("@mingla/offering-rendering/themeAccentStyle"),
     // REAL: the helper under test.
     calendarDate: () => calendarDate,
     GlassCard: () => ({ GlassCard: leaf("GlassCardProbe") }),

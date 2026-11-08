@@ -112,6 +112,8 @@ function boundaryFor(os: "web" | "ios"): Record<string, () => unknown> {
     }),
     ThemeControlRow: () => ({ ThemeControlRow: nothing }),
     ThemeSheet: () => ({ ThemeSheet: nothing }),
+    // [TEST-MOD-APPROVED #1023] Harness registration only: hosts import the on-intent sheet wrapper.
+    ThemeSheetLazy: () => ({ ThemeSheet: nothing }),
     MapboxAddressInput: () => ({ MapboxAddressInput: nothing }),
     resolveApproxLocation: () => ({
       advanceLocationRequestGeneration: (): void => undefined,

@@ -26,12 +26,10 @@
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 
 import {
-  isThemeAnimationSlug,
-  isThemeColor,
-  isThemeFontSlug,
   type OfferingGalleryImage,
   type ThemeInput,
 } from "@mingla/offering-rendering";
+import { themeInputFromFields } from "@mingla/offering-rendering/themeResolver";
 import { publicTripInstallmentSchedule } from "@mingla/offering-rendering/tripInstallmentCapability";
 
 import { supabase } from "../services/supabase";
@@ -50,17 +48,14 @@ import { sumTripPackageSpots } from "../services/tripPackages";
 // Mirrors publicEventsService.asThemeInput EXACTLY (reuses the package guards;
 // does NOT duplicate the hex/slug regex). Returns null when no valid field is
 // present so resolveTheme falls back to the brand color then MINGLA_DEFAULT.
+// issue #1023 wave 2 — one guard for every theme read (Google families and
+// the gradient's second stop included); see themeInputFromFields.
 const asThemeInput = (
   color: unknown,
   font: unknown,
   animation: unknown,
-): ThemeInput | null => {
-  const out: ThemeInput = {};
-  if (isThemeColor(color)) out.color = color;
-  if (isThemeFontSlug(font)) out.font = font;
-  if (isThemeAnimationSlug(animation)) out.animation = animation;
-  return Object.keys(out).length > 0 ? out : null;
-};
+  gradient?: unknown,
+): ThemeInput | null => themeInputFromFields(color, font, animation, gradient);
 
 // META-ORCH-1174 Leg A.2 — coerce the raw cover_media_type text (brand OR trip)
 // to the EventCoverMedia union. Unknown / null ⇒ null (the chip falls back to the
@@ -146,6 +141,7 @@ interface RpcTripBrand {
   themeColor: unknown;
   themeFont: unknown;
   themeAnimation: unknown;
+  themeGradient?: unknown;
 }
 interface RpcTripDay {
   id: string;
@@ -205,6 +201,7 @@ interface RpcTripPayload {
   themeColorOverride: unknown;
   themeFontOverride: unknown;
   themeAnimationOverride: unknown;
+  themeGradientOverride?: unknown;
   brand: RpcTripBrand;
   days: RpcTripDay[];
   inclusions: RpcTripInclusion[];
@@ -459,11 +456,13 @@ export const usePublicTripBySlug = (
         p.brand.themeColor,
         p.brand.themeFont,
         p.brand.themeAnimation,
+        p.brand.themeGradient,
       );
       const themeOverrides = asThemeInput(
         p.themeColorOverride,
         p.themeFontOverride,
         p.themeAnimationOverride,
+        p.themeGradientOverride,
       );
 
       return {

@@ -111,35 +111,9 @@ describe("F-2 — the drag band must never overlay consumer content", () => {
   });
 });
 
-describe("F-3 — the colour plane must render on web", () => {
-  test("the screen-reader auto-switch is gated OFF web", () => {
-    // react-native-web's isScreenReaderEnabled() resolves TRUE unconditionally
-    // for every browser and every user, so this forced numeric mode on 100% of
-    // web users and the plane never rendered on any browser at all.
-    // CODE only — the comment deliberately NAMES the API to explain why it is
-    // not trusted on web; matching that would invert the ordering check.
-    const s = stripComments(src(THEME_SHEET));
-    const effect = s.slice(
-      s.indexOf("const [screenReaderOn"),
-      s.indexOf("lastTierRef"),
-    );
-    expect(effect).toMatch(/Platform\.OS === "web"/);
-    // the web branch must return BEFORE the API is ever consulted
-    const webBranch = effect.indexOf('Platform.OS === "web"');
-    const apiCall = effect.indexOf("isScreenReaderEnabled");
-    expect(webBranch).toBeGreaterThan(-1);
-    expect(webBranch).toBeLessThan(apiCall);
-  });
-
-  test("the accessible numeric path is PRESERVED, not deleted", () => {
-    const s = src(THEME_SHEET);
-    // native still detects a real screen reader
-    expect(s).toContain("AccessibilityInfo.isScreenReaderEnabled()");
-    // and every user can still reach numeric mode deliberately
-    expect(s).toContain("Switch to numeric colour entry");
-    expect(s).toMatch(/accessibilityRole="adjustable"/);
-  });
-});
+// issue #1023 wave 2 — F-3 (the colour plane on web, numeric mode) is
+// retired with the plane itself: the design's swatches and hue sliders
+// replaced it and have no screen-reader mode switch to gate.
 
 describe("F-4 — the sheet must route through the platform-resolving entry point", () => {
   test("ThemeSheet imports ../ui/Sheet, never ../ui/SheetMobile", () => {
@@ -160,26 +134,15 @@ describe("F-4 — the sheet must route through the platform-resolving entry poin
   });
 });
 
-describe("F-5 — thumbs must be positioned from state, not a ref", () => {
-  test("measured widths are held in state so onLayout repaints", () => {
-    const s = src(THEME_SHEET);
-    expect(s).toMatch(/const \[planeWidth, setPlaneWidth\] = useState/);
-    expect(s).toMatch(/const \[railWidth, setRailWidth\] = useState/);
-  });
-
-  test("no thumb offset is computed from a .current ref read", () => {
-    // A ref assignment schedules NO re-render, so the first painted frame used
-    // width 1 and both thumbs opened clipped at the far-left edge while the
-    // committed colour was something else entirely.
-    const s = src(THEME_SHEET);
-    expect(s).not.toContain("planeWidthRef");
-    expect(s).not.toContain("railWidthRef");
-  });
-
-  test("thumbs do not paint until the container has been measured", () => {
-    const s = src(THEME_SHEET);
-    expect(s).toMatch(/\{planeWidth > 0 \? \(/);
-    expect(s).toMatch(/\{railWidth > 0 \? \(/);
+// issue #1023 wave 2 — F-5 (plane/rail thumbs from state) is retired with
+// the plane; the Custom hue slider keeps its measured width in state
+// (ThemeColourTab HueSlider `useState(0)` + onLayout), asserted below.
+describe("F-5 (#1023) — the hue slider thumb is placed from measured state", () => {
+  test("the slider width is state set by onLayout, and the thumb waits for it", () => {
+    const s = readFileSync(path.join(process.cwd(), "src/components/theme/ThemeColourTab.tsx"), "utf8");
+    expect(s).toContain("const [width, setWidth] = useState(0);");
+    expect(s).toContain("onLayout={(e) => setWidth(e.nativeEvent.layout.width)}");
+    expect(s).toContain("{width > 0 ? (");
   });
 });
 

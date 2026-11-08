@@ -4,6 +4,10 @@ import type {
   ThemeInput,
 } from "@mingla/offering-rendering";
 import { patchOfferingTheme, themeOverridesFromColumns } from "./offeringTheme";
+import {
+  canonicalThemeFont,
+  gradientToColumn,
+} from "@mingla/offering-rendering/themeResolver";
 import type {
   DraftEvent,
   DraftEventFormat,
@@ -117,6 +121,7 @@ interface BusinessManagementEventRow {
   theme_color_override?: string | null;
   theme_font_override?: string | null;
   theme_animation_override?: string | null;
+  theme_gradient_override?: string | null;
 }
 
 // ORCH-0792: derive YYYY-MM-DD + HH:MM in the event's IANA timezone from a
@@ -223,6 +228,7 @@ export interface PublishRpcResponse {
     theme_color_override?: string | null;
     theme_font_override?: string | null;
     theme_animation_override?: string | null;
+    theme_gradient_override?: string | null;
   };
   brand: {
     id: string;
@@ -1006,6 +1012,7 @@ export const eventFromPublishResponse = (
     theme_color_override: response.event.theme_color_override ?? null,
     theme_font_override: response.event.theme_font_override ?? null,
     theme_animation_override: response.event.theme_animation_override ?? null,
+    theme_gradient_override: response.event.theme_gradient_override ?? null,
   };
   const tickets = (response.tickets ?? []).map(ticketRowToTicketStub);
   return {
@@ -1291,6 +1298,27 @@ export interface AtomicPublishedEventPatch {
   gallery?: OfferingGalleryImage[];
 }
 
+// issue #1023 wave 2 — the server's theme branch writes the gradient from
+// `theme.gradient` ("#first,#second"), the same single value the columns store,
+// and the font as its canonical value (a bundled family saves as its slug).
+const withThemeGradient = (
+  patch: AtomicPublishedEventPatch,
+): AtomicPublishedEventPatch | (Omit<AtomicPublishedEventPatch, "theme"> & {
+  theme: Record<string, string | null> | null;
+}) => {
+  if (patch.theme === undefined || patch.theme === null) return patch;
+  const { color2, ...theme } = patch.theme;
+  return {
+    ...patch,
+    theme: {
+      color: theme.color ?? null,
+      font: canonicalThemeFont(theme.font ?? null),
+      animation: theme.animation ?? null,
+      gradient: gradientToColumn(theme.color, color2),
+    },
+  };
+};
+
 export const patchPublishedEventAtomically = (
   eventId: string,
   patch: AtomicPublishedEventPatch,
@@ -1299,7 +1327,7 @@ export const patchPublishedEventAtomically = (
 ): Promise<Record<string, unknown>> =>
   callLiveEventPatchRpc("business_update_live_event_atomic", {
     p_event_id: eventId,
-    p_patch: patch,
+    p_patch: withThemeGradient(patch),
     p_reason: reason,
     p_client_revision: clientRevision,
   });

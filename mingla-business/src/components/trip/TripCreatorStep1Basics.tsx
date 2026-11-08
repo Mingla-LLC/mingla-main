@@ -37,7 +37,7 @@ import {
 import { Button } from "../ui/Button";
 import { useBrand } from "../../hooks/useBrands";
 import { ThemeControlRow } from "../theme/ThemeControlRow";
-import { ThemeSheet } from "../theme/ThemeSheet";
+import { ThemeSheet } from "../theme/ThemeSheetLazy";
 // ORCH-1079 [Business-venue Google→Mapbox sweep] — swapped the legacy Google
 // address autocomplete for the shared Mapbox picker (drop-in, same props).
 // place.placeId now carries an opaque mapbox_id, stored in the SAME

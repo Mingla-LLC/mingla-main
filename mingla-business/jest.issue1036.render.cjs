@@ -41,8 +41,15 @@ module.exports = {
       { isolatedModules: true, tsconfig: { jsx: "react-jsx", esModuleInterop: true } },
     ],
   },
+  // issue #1023 — the shared event page now draws gradient accents with
+  // ThemeAccentFill (expo-linear-gradient) and react-native-svg. packages/*
+  // carry no node_modules, so resolve from the app's (one React instance),
+  // and stub the two native-only boundaries; nothing here asserts drawing.
+  modulePaths: [path.join(businessRoot, "node_modules")],
   moduleNameMapper: {
     // Render the deployed business WEB target's components.
     "^react-native$": "react-native-web",
+    "^expo-linear-gradient$": path.join(businessRoot, "__manual_mocks__/expo-linear-gradient.js"),
+    "^react-native-svg$": path.join(businessRoot, "jest.issue1561.svg-stub.cjs"),
   },
 };

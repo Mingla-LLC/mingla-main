@@ -121,7 +121,7 @@ import { CreatorStep2When } from "./LazyCreatorStep2When";
 import { CreatorStep3Where } from "./CreatorStep3Where";
 import { CreatorStep4Cover } from "./CreatorStep4Cover";
 import { ThemeControlRow } from "../theme/ThemeControlRow";
-import { ThemeSheet } from "../theme/ThemeSheet";
+import { ThemeSheet } from "../theme/ThemeSheetLazy";
 import { buildDraftThemePreview } from "../theme/themePreviewContent";
 import { CreatorStep5Tickets } from "./LazyCreatorStep5Tickets";
 // issue #3827 — the two settings steps load lazily (see lazySettingsSteps.tsx).

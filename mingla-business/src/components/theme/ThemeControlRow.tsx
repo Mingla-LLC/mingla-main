@@ -4,6 +4,7 @@ import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import type { ThemeInput } from "@mingla/offering-rendering";
 import { createThemePalette } from "../../../../packages/offering-rendering/themePalette";
 import { resolveTheme } from "../../../../packages/offering-rendering/themeResolver";
+import { ThemeAccentFill } from "../../../../packages/offering-rendering/ThemeAccentFill";
 
 import {
   androidOpaque,
@@ -77,13 +78,14 @@ export const ThemeControlRow: React.FC<ThemeControlRowProps> = ({
   const isError = brandThemeStatus === "error";
 
   // The DERIVED palette — what the guest actually sees.
-  const palette = useMemo(() => {
-    const resolved =
+  const resolved = useMemo(
+    () =>
       scope === "brand"
         ? resolveTheme(value ?? null, null)
-        : resolveTheme(brandTheme ?? null, value ?? null);
-    return createThemePalette(resolved);
-  }, [scope, value, brandTheme]);
+        : resolveTheme(brandTheme ?? null, value ?? null),
+    [scope, value, brandTheme],
+  );
+  const palette = useMemo(() => createThemePalette(resolved), [resolved]);
 
   const valueLine = useMemo(
     () => themeValueLine(value, scope, brandTheme),
@@ -126,7 +128,13 @@ export const ThemeControlRow: React.FC<ThemeControlRowProps> = ({
             { backgroundColor: palette.page, borderColor: palette.panelBorder },
           ]}
         >
-          <View style={[styles.chipDot, { backgroundColor: palette.accent }]} />
+          {/* issue #1023 — a gradient theme shows a gradient dot. */}
+          <ThemeAccentFill
+            theme={resolved}
+            palette={palette}
+            style={styles.chipDot}
+            testID={testID !== undefined ? `${testID}-chip-dot` : undefined}
+          />
         </View>
       )}
 

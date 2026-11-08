@@ -12,6 +12,8 @@ import {
   opaqueSurfaceColor,
   type ThemePalette,
 } from "@mingla/offering-rendering/themePalette";
+import type { ResolvedTheme } from "@mingla/offering-rendering/designTokens";
+import { ThemeAccentGradientLayer } from "@mingla/offering-rendering/ThemeAccentFill";
 
 import {
   followSizeStyle,
@@ -26,6 +28,12 @@ export type { FollowButtonSize, FollowVisualState };
 export type FollowButtonProps = {
   brandName: string;
   palette: ThemePalette;
+  /**
+   * issue #1023 — the resolved theme. The filled Follow state paints the theme
+   * gradient over the accent fill; Following, pending and disabled keep their
+   * own fills. Without it (or with a solid theme) the button is unchanged.
+   */
+  theme?: ResolvedTheme;
   /** Opaque hex behind the button (defaults to opaque card surface). */
   surface?: string;
   state?: FollowVisualState;
@@ -43,6 +51,7 @@ export type FollowButtonProps = {
 export const FollowButton: React.FC<FollowButtonProps> = ({
   brandName,
   palette,
+  theme,
   surface,
   state: stateProp,
   isFollowing,
@@ -146,6 +155,14 @@ export const FollowButton: React.FC<FollowButtonProps> = ({
       ]}
       hitSlop={size === "sm" ? { top: 4, bottom: 4 } : undefined}
     >
+      {theme !== undefined && !isFollowingLike && !isDisabled ? (
+        <ThemeAccentGradientLayer
+          theme={theme}
+          palette={palette}
+          borderRadius={sizeStyle.borderRadius}
+          testID={testID !== undefined ? `${testID}-gradient` : "follow-gradient"}
+        />
+      ) : null}
       <View style={styles.row}>
         {isBusy ? (
           <ActivityIndicator size="small" color={iconColor} />

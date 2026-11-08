@@ -104,5 +104,11 @@ module.exports = {
   modulePaths: [path.join(businessRoot, "node_modules")],
   moduleNameMapper: {
     "^react-native$": "react-native-web",
+    // issue #1023 — accent icons on the brand page draw their gradient stroke
+    // with react-native-svg (<Defs>/<LinearGradient>). jest does not apply the
+    // `.web` platform extension, so either svg entry drags in the native
+    // component registry; the suites here mock lucide and assert layout/a11y,
+    // not vector drawing, so the same host-element stub as #1561 is used.
+    "^react-native-svg$": path.join(businessRoot, "jest.issue1561.svg-stub.cjs"),
   },
 };

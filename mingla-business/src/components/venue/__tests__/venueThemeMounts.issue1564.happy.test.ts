@@ -76,7 +76,8 @@ describe("#1564 — four mounts, one existing component", () => {
       /import \{ ThemeControlRow \} from "\.\.\/(?:\.\.\/)?theme\/ThemeControlRow";/,
     );
     expect(s).toMatch(
-      /import \{ ThemeSheet \} from "\.\.\/(?:\.\.\/)?theme\/ThemeSheet";/,
+      // [TEST-MOD-APPROVED #1023] the same sheet, loaded on intent (ThemeSheetLazy).
+      /import \{ ThemeSheet \} from "\.\.\/(?:\.\.\/)?theme\/ThemeSheetLazy";/,
     );
   });
 
@@ -172,10 +173,12 @@ describe("#1564 — the draft carries the venue's theme to the submit", () => {
 
 describe("#1564 — the sheet treats a venue like an offering, not like a brand", () => {
   test("the brand swatch is offered to a venue too", () => {
-    const sheet = src("src/components/theme/ThemeSheet.tsx");
+    // issue #1023 wave 2 — the brand chip moved to ThemeColourTab and is now
+    // "Brand colours" (invalidated: the ThemeSheet source location).
+    const sheet = src("src/components/theme/ThemeColourTab.tsx");
     // Was `scope === "offering" && brandTheme?.color`, which would have hidden
-    // "Use my brand colour" from the one scope that most needs it.
-    expect(sheet).toContain('scope !== "brand" && brandTheme?.color');
+    // the brand's colour from the one scope that most needs it.
+    expect(sheet).toContain('scope !== "brand" && typeof brandTheme?.color === "string"');
     expect(sheet).not.toContain('scope === "offering" && brandTheme?.color');
   });
 

@@ -182,6 +182,9 @@ describe("C-9 / C-10 — geometry: width-agnostic, self-capping", () => {
     // with the raw hex would misrepresent what the guest sees.
     const s = src(ROW);
     expect(s).toContain("createThemePalette");
-    expect(s).toMatch(/backgroundColor: palette\.accent/);
+    // issue #1023 wave 2 — the dot is ThemeAccentFill (palette.accent, or the
+    // gradient built from it); invalidated assertion: the literal
+    // `backgroundColor: palette.accent` on the dot.
+    expect(s).toMatch(/<ThemeAccentFill\s+theme=\{resolved\}\s+palette=\{palette\}/);
   });
 });

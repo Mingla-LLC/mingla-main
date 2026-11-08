@@ -153,6 +153,7 @@
     "expo-video": "~3.0.16",
     "expo-web-browser": "~15.0.11",
     "lottie-react-native": "7.3.8",
+    "lottie-web": "5.12.2",
     "lucide-react": "0.577.0",
     "lucide-react-native": "^0.577.0",
     "mixpanel-react-native": "^3.3.0",
