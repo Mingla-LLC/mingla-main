@@ -1676,3 +1676,242 @@
     padding-bottom: 12px;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   #4339 phase 2c — leftovers moved onto the new frame: the help articles
+   (.art-*), the blog posts (.blog-post, brand type over the #4137 blog
+   styles) and the free tools' dark stage (.tools-stage). Content and
+   behaviour are unchanged; only the frame and the type move.
+--------------------------------------------------------------------------- */
+[data-landing] .art-sec {
+  padding: clamp(118px, 15vh, 160px) 0 clamp(72px, 9vw, 120px);
+}
+[data-landing] .art-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ink);
+}
+[data-landing] .art-back svg {
+  width: 17px;
+  height: 17px;
+}
+[data-landing] .art-back:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+[data-landing] .art-grid {
+  margin-top: 28px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: clamp(36px, 5vw, 64px);
+  align-items: start;
+}
+[data-landing] .art-grid > * {
+  min-width: 0;
+}
+[data-landing] .art-soon {
+  aspect-ratio: 16 / 9;
+  border-radius: 24px;
+  background: var(--soft);
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  text-align: center;
+  color: #4a4945;
+}
+[data-landing] .art-title {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: clamp(38px, 4.6vw, 64px);
+  line-height: 0.98;
+  letter-spacing: -0.02em;
+  margin: 32px 0 0;
+}
+[data-landing] .art-sec .lead {
+  max-width: 680px;
+}
+[data-landing] .art-meta {
+  margin-top: 18px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  font-size: 14px;
+  color: #5f5b54;
+}
+[data-landing] .art-meta > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+[data-landing] .art-meta svg {
+  width: 14px;
+  height: 14px;
+}
+[data-landing] .art-h6 {
+  font-family: var(--mono);
+  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #5f5b54;
+  margin: 0;
+}
+[data-landing] .art-steps {
+  list-style: none;
+  padding: 0;
+  margin: 24px 0 0;
+  display: grid;
+  gap: 24px;
+}
+[data-landing] .art-steps > li {
+  display: flex;
+  gap: 16px;
+}
+[data-landing] .art-steps .n {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  margin-top: 2px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 600;
+}
+[data-landing] .art-steps h3 {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.35;
+  margin: 0;
+}
+[data-landing] .art-steps p {
+  margin: 6px 0 0;
+  font-size: 15px;
+  line-height: 1.6;
+  color: #4a4945;
+}
+[data-landing] .art-links {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+[data-landing] .art-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #a8450e;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+[data-landing] .art-links svg {
+  width: 14px;
+  height: 14px;
+}
+[data-landing] .art-next {
+  margin-top: 40px;
+  padding-top: 28px;
+  border-top: 1px solid var(--line);
+}
+[data-landing] .art-next a {
+  display: block;
+  margin-top: 8px;
+  font-family: var(--serif);
+  font-size: 26px;
+  line-height: 1.1;
+  color: var(--ink);
+}
+[data-landing] .art-next a:hover {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+@media (max-width: 900px) {
+  [data-landing] .art-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Blog posts: the #4137 story styles, in the brand type. */
+[data-landing] .blog-post .blog-display,
+[data-landing] .blog-post .blog-prose h2,
+[data-landing] .blog-post .blog-prose h3 {
+  font-family: var(--serif);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+}
+[data-landing] .blog-post .blog-post-head h1 {
+  font-size: clamp(44px, 6.4vw, 84px);
+  line-height: 0.96;
+}
+[data-landing] .blog-post .blog-more h2 {
+  font-size: clamp(36px, 4.6vw, 60px);
+}
+[data-landing] .blog-post .blog-prose h2 {
+  font-size: clamp(30px, 3.2vw, 40px);
+}
+[data-landing] .blog-post .blog-prose h3 {
+  font-size: clamp(24px, 2.4vw, 30px);
+}
+[data-landing] .blog-post .blog-post-head,
+[data-landing] .blog-post .blog-crumbs,
+[data-landing] .blog-post .blog-post-meta,
+[data-landing] .blog-post .blog-byline,
+[data-landing] .blog-post .blog-prose,
+[data-landing] .blog-post .blog-card,
+[data-landing] .blog-post .blog-empty {
+  font-family: var(--sans);
+}
+[data-landing] .blog-post .blog-pill {
+  font-family: var(--mono);
+  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+[data-landing] .blog-post .blog-read,
+[data-landing] .blog-post .blog-wrap {
+  padding-left: max(24px, var(--g));
+  padding-right: max(24px, var(--gr));
+}
+[data-landing] .blog-post .blog-post-head {
+  padding-top: clamp(128px, 16vh, 170px);
+}
+@media (max-width: 640px) {
+  [data-landing] .blog-post .blog-post-dek {
+    font-size: 19px;
+  }
+}
+
+/* The free tools: their own dark stage, brand type. Outside the brand root
+   (see components/site/route-frame.tsx), so these rules are not scoped to it. */
+.tools-stage[data-tools-stage] {
+  --font-display: var(--font-landing-serif), Georgia, serif;
+  --font-sans: var(--font-landing-sans), system-ui, -apple-system, sans-serif;
+  font-family: var(--font-landing-sans), system-ui, -apple-system, sans-serif;
+  padding-top: clamp(96px, 12vh, 120px);
+  min-height: 70vh;
+}
+.tools-stage[data-tools-stage] .font-display {
+  font-weight: 400;
+  letter-spacing: -0.015em;
+}
+/* The help player's play overlay keeps its tint inside the brand root (whose
+   button reset is unlayered and would otherwise clear it). */
+[data-landing] .art-sec .cut-media > button {
+  background: rgba(0, 0, 0, 0.2);
+}
+[data-landing] .art-sec .cut-media > button:hover {
+  background: rgba(0, 0, 0, 0.3);
+}

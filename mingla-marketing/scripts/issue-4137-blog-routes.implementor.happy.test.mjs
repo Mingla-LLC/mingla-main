@@ -40,10 +40,12 @@ function sourceContract() {
     'app/api/blog/revalidate/route.ts', 'app/api/blog/posts/route.ts', 'lib/blog/data.ts', 'content/blog/categories.ts',
   ]) assert(fs.existsSync(path.join(ROOT, file)), `#4137: ${file} exists`)
   // #4339 phase 2b: the index and category pages are redesigned and bring their
-  // own <main> (components/site/site-page.tsx); the posts keep the layout's
-  // frame, whose <main> moved into components/site/route-frame.tsx.
-  assert.match(read('app/blog/layout.tsx'), /<RouteFrame[\s\S]*?bare=\{\['\/blog'\]\}[\s\S]*?barePrefixes=\{\['\/blog\/category\/'\]\}[\s\S]*?variant="cutout"/, '#4137/#4339: the blog layout frames the posts, not the redesigned index')
-  assert.match(read('components/site/route-frame.tsx'), /<main id="main">\{children\}<\/main>/, '#4137: the posts frame owns <main>')
+  // own <main> (components/site/site-page.tsx). #4339 phase 2c: the posts are
+  // redesigned too; only the staff preview keeps the layout's frame, whose
+  // <main> lives in components/site/route-frame.tsx.
+  assert.match(read('app/blog/layout.tsx'), /<RouteFrame[\s\S]*?bare=\{\['\/blog'\]\}[\s\S]*?barePrefixes=\{\['\/blog\/'\]\}[\s\S]*?framedPrefixes=\{\['\/blog\/preview\/'\]\}[\s\S]*?variant="cutout"/, '#4137/#4339: the blog layout frames only the staff preview')
+  assert.match(read('app/blog/[slug]/page.tsx'), /<SitePage surface="explorer">/, '#4339: the post brings the site nav, its <main> and the canonical footer')
+  assert.match(read('components/site/route-frame.tsx'), /<main id="main">\{children\}<\/main>/, '#4137: the preview frame owns <main>')
   assert.match(read('components/site/site-page.tsx'), /<main id="main">\{children\}<\/main>/, '#4339: the redesigned index owns <main>')
   for (const file of ['app/blog/page.tsx', 'app/blog/category/[category]/page.tsx', 'app/blog/[slug]/page.tsx', 'app/blog/preview/[token]/page.tsx']) {
     assert.match(read(file), /export const dynamic = 'force-dynamic'/, `#4137: ${file} renders per request`)

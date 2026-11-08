@@ -3,9 +3,16 @@ import { notFound } from 'next/navigation'
 import { BlogPostView } from '@/components/blog/blog-post-view'
 import { blogMediaUrl, getBlogPost, getBlogPostEmbeds } from '@/lib/blog/data'
 import { blogPostMetadata } from '@/lib/search/metadata'
+import { SitePage } from '@/components/site/site-page'
+import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
 
 // #4137 — one published story. Drafts, scheduled, unpublished and taken-down
 // posts are not public, so the RPC returns null and this 404s.
+//
+// #4339 phase 2c — the post is on the redesigned frame: the site nav, the
+// canonical footer and the brand type (Instrument Serif headings, Geist text;
+// components/site/pages.css `.blog-post`). The story itself, its blocks, share
+// row and More stories are unchanged (components/blog/blog-post-view.tsx).
 export const dynamic = 'force-dynamic'
 
 type Props = { readonly params: Promise<{ slug: string }> }
@@ -33,5 +40,13 @@ export default async function BlogPostPage({ params }: Props) {
   const { slug } = await params
   const [post, embeds] = await Promise.all([getBlogPost(slug), getBlogPostEmbeds(slug)])
   if (!post) notFound()
-  return <BlogPostView post={post} embeds={embeds} />
+  return (
+    <div className={`${landingSerif.variable} ${landingSans.variable} ${landingMono.variable}`}>
+      <SitePage surface="explorer">
+        <div className="blog-post">
+          <BlogPostView post={post} embeds={embeds} />
+        </div>
+      </SitePage>
+    </div>
+  )
 }

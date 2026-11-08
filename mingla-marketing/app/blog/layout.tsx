@@ -11,11 +11,16 @@ import { RouteFrame } from '@/components/site/route-frame'
 // (app/blog/page.tsx, app/blog/category/[category]/page.tsx), so they render
 // without this frame. The posts and previews keep it unchanged
 // (components/site/route-frame.tsx).
+//
+// #4339 phase 2c — the posts (/blog/<slug>) are on the new frame too
+// (app/blog/[slug]/page.tsx); only the staff preview (/blog/preview/<token>,
+// never public) keeps this frame.
 export default function BlogLayout({ children }: { readonly children: React.ReactNode }) {
   return (
     <RouteFrame
       bare={['/blog']}
-      barePrefixes={['/blog/category/']}
+      barePrefixes={['/blog/']}
+      framedPrefixes={['/blog/preview/']}
       variant="cutout"
       header={<CutoutNav surface="explorer" homeHref="/" />}
       footer={<CutoutFooter surface="explorer" />}

@@ -243,24 +243,6 @@ function assertMenuAlignment(sample, label) {
   }
 }
 
-async function openMenuGeometry(page, url, width, height) {
-  const label = `${new URL(url).pathname} ${width}x${height}`
-  await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: width < 768 })
-  await page.send('Page.navigate', { url })
-  await waitFor(() => page.evaluate(`location.pathname===${JSON.stringify(new URL(url).pathname)}&&document.readyState==='complete'&&!!document.querySelector('button[aria-label="Open menu"]')`), `${label}: page did not load`)
-  await page.evaluate(`(async()=>{await document.fonts.ready;document.querySelector('button[aria-label="Open menu"]').click();return true})()`)
-  await waitFor(() => page.evaluate(`document.querySelectorAll('[role="dialog"] nav[aria-label="Primary"] a').length===9`), `${label}: side menu did not open`)
-  let previous = null
-  await waitFor(async () => {
-    const left = await page.evaluate(`document.querySelector('[role="dialog"]').getBoundingClientRect().left`)
-    const stable = previous !== null && Math.abs(left - previous) < 0.1
-    previous = left
-    if (!stable) await sleep(150)
-    return stable
-  }, `${label}: side menu did not settle`)
-  return { label, sample: await page.evaluate(MENU_GEOMETRY) }
-}
-
 function artifactContract() {
   assert(fs.existsSync(path.join(ROOT, '.next/BUILD_ID')), 'run a production build before the #3371 built guard')
   const routes = JSON.parse(fs.readFileSync(path.join(ROOT, '.next/routes-manifest.json'), 'utf8'))
@@ -395,12 +377,6 @@ const SETTLED = `(()=>{
   return settled(h1)&&settled(deck)
 })()`
 
-async function openMenuItems(page) {
-  await page.evaluate(`(()=>{document.querySelector('button[aria-label="Open menu"]').click();return true})()`)
-  await waitFor(() => page.evaluate(`document.querySelectorAll('[role="dialog"] nav[aria-label="Primary"] a').length===9`), 'side menu did not open')
-  return page.evaluate(`[...document.querySelectorAll('[role="dialog"] nav[aria-label="Primary"] a')].map((a)=>{const c=a.cloneNode(true);c.querySelectorAll('.sr-only').forEach((n)=>n.remove());return [c.textContent.trim(),a.getAttribute('href'),a.getAttribute('aria-current')]})`)
-}
-
 async function runtimeContract() {
   const serverPort = await freePort()
   const server = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'start', '--hostname', '127.0.0.1', '--port', String(serverPort)], { cwd: ROOT, env: { ...process.env, NEXT_TELEMETRY_DISABLED: '1', MINGLA_HISTORICAL_2983_BUILD: '' }, stdio: 'ignore' })
@@ -452,27 +428,18 @@ async function runtimeContract() {
     // #4339: the one-screen home geometry and the side-menu check on `/` are
     // retired (the home is the scrolling redesign with the #4339 site nav).
     // #4339 phase 2b: /going-out is redesigned with the site nav, so the
-    // redirect is proven by the landing path and the side-menu geometry is
-    // measured on a help video page, which still carries the Cutout side menu
-    // (lit: Help).
+    // redirect is proven by the landing path.
+    // #4339 phase 2c: the help video pages moved onto the site nav too, and no
+    // public route carries the Cutout side menu any more (only the staff blog
+    // preview, behind a token). The side-menu geometry check is retired with
+    // it; the help video page is proven to carry the site nav with Help lit.
     await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false })
     await page.send('Page.navigate', { url: `${base}/explorer` })
     await waitFor(() => page.evaluate(`location.pathname==='/going-out'&&document.readyState==='complete'&&!!document.querySelector('[data-site-nav]')`), 'browser did not follow /explorer to /going-out')
     await page.send('Page.navigate', { url: `${base}${MENU_ROUTE}` })
-    await waitFor(() => page.evaluate(`location.pathname===${JSON.stringify(MENU_ROUTE)}&&document.readyState==='complete'&&!!document.querySelector('button[aria-label="Open menu"]')`), `${MENU_ROUTE} did not load`)
-    assert.deepEqual(await openMenuItems(page), [
-      ['Explorer', '/', null], ['Cities', '/cities', null], ['Going out', '/going-out', null],
-      ['Host', '/host', null], ['Free tools', '/tools', null], ['About', '/about', null],
-      ['Help', '/help', 'page'], ['Support', '/support', null], ['Careers', 'https://career.usemingla.com', null],
-    ], `on ${MENU_ROUTE} the menu must light Help`)
-
-    for (const [width, height] of MENU_VIEWPORTS) {
-      const { label, sample } = await openMenuGeometry(page, `${base}${MENU_ROUTE}`, width, height)
-      assertMenuAlignment(sample, label)
-      // Help is a chip, not a row, so no row is lit on this page (the lit chip is pinned above).
-      assert.equal(sample.items.find((item) => item.current === 'page'), undefined, `${label}: no row is lit on a Help page`)
-      process.stdout.write(`EVIDENCE #3371 menu ${label} iconOffset=${Math.max(...sample.items.map((item) => Math.abs(item.iconLeft - item.box.left - item.paddingLeft))).toFixed(2)}px iconLeftSpread=${spread(sample.items.map((item) => item.iconLeft)).toFixed(2)}px ctaCentreOffset=${sample.ctas.map((cta) => cta.centreOffset.toFixed(2)).join('/')}px scrollWidth=${sample.scrollWidth}/${sample.innerWidth} drawerOverflowY=${Math.max(0, sample.cardScrollHeight - sample.cardClientHeight)}px\n`)
-    }
+    await waitFor(() => page.evaluate(`location.pathname===${JSON.stringify(MENU_ROUTE)}&&document.readyState==='complete'&&!!document.querySelector('[data-site-nav]')`), `${MENU_ROUTE} did not load`)
+    assert.equal(await page.evaluate(`document.querySelector('[data-site-nav] a[aria-current="page"]')?.textContent.trim()`), 'Help', `on ${MENU_ROUTE} the site nav must light Help`)
+    assert.equal(await page.evaluate(`!!document.querySelector('button[aria-label="Open menu"][aria-expanded]')&&!document.querySelector('[role="dialog"] nav[aria-label="Primary"]')`), true, `${MENU_ROUTE} has the site nav menu, not the Cutout side menu`)
     for (const [width, height] of MENU_VIEWPORTS.filter(([width]) => width < 768)) {
       await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true })
       await page.send('Page.navigate', { url: `${base}/going-out` })
@@ -481,8 +448,8 @@ async function runtimeContract() {
       const overflow = await page.evaluate(`document.documentElement.scrollWidth-innerWidth`)
       assert.equal(overflow, 0, `/going-out ${width}x${height}: page overflows horizontally by ${overflow}px`)
     }
-    process.stdout.write(`PASS #3371 menu: ${MENU_VIEWPORTS.map(([w, h]) => `${w}x${h}`).join(', ')} rows left-aligned (icon at padding <=${ICON_TOLERANCE_PX}px, one icon column, text after icon, no wrap/truncation, identical active/inactive rows), bottom CTAs centred, drawer inside the viewport (content scrolls where taller); lit Help on ${MENU_ROUTE}; /going-out no horizontal overflow on phones\n`)
-    process.stdout.write('PASS #3371 browser: /explorer lands on /going-out; side menu highlight on a Help page (the one-screen home geometry and the /going-out side menu are retired by #4339)\n')
+    process.stdout.write(`PASS #3371 site nav lit Help on ${MENU_ROUTE}; /going-out no horizontal overflow on phones (${MENU_VIEWPORTS.filter(([w]) => w < 768).map(([w, h]) => `${w}x${h}`).join(', ')})\n`)
+    process.stdout.write('PASS #3371 browser: /explorer lands on /going-out; Help lit on a help video page (the one-screen home geometry and the side-menu geometry are retired by #4339)\n')
   } finally {
     try { if (page) await page.send('Browser.close', {}, 2_000) } catch { /* the owned Chrome is force-stopped below */ }
     page?.close()

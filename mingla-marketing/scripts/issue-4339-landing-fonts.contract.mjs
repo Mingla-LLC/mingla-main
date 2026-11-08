@@ -11,7 +11,10 @@
 // 2b adds every redesigned public page (Going out, Cities, the city page, Get
 // the app, Free tools, About, Locals, Creators, the careers index, Blog, Help,
 // Support, the six legal documents, Delete account and Unsubscribe); phase 3
-// adds Book a call (/schedule). They load and preload on those routes and
+// adds Book a call (/schedule); phase 2c adds the help articles, the blog
+// posts and the /tools layout (the four tools and their report pages). The
+// /tools hub takes the faces from that layout (Next emits a face once per
+// route tree), so the hub page no longer imports them itself. They load and preload on those routes and
 // nowhere else; /links keeps its own module.
 
 import assert from 'node:assert/strict'
@@ -23,6 +26,7 @@ export const LANDING_FONT_CONSUMERS = [
   'app/(core)/cities/page.tsx',
   'app/(core)/going-out/page.tsx',
   'app/(explorer)/page.tsx',
+  'app/blog/[slug]/page.tsx',
   'app/blog/category/[category]/page.tsx',
   'app/blog/page.tsx',
   'app/careers/page.tsx',
@@ -31,6 +35,7 @@ export const LANDING_FONT_CONSUMERS = [
   'app/creators/page.tsx',
   'app/delete-account/page.tsx',
   'app/download/page.tsx',
+  'app/help/[slug]/page.tsx',
   'app/help/page.tsx',
   'app/host/[icp]/page.tsx',
   'app/host/page.tsx',
@@ -42,7 +47,7 @@ export const LANDING_FONT_CONSUMERS = [
   'app/sms-terms/page.tsx',
   'app/support/page.tsx',
   'app/terms-of-service/page.tsx',
-  'app/tools/page.tsx',
+  'app/tools/layout.tsx',
   'app/unsubscribe/page.tsx',
 ]
 const escapeRe = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')

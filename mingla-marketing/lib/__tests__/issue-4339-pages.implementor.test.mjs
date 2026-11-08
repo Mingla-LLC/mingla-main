@@ -263,12 +263,16 @@ test('the redesigned pages use the site nav, one <main> and the canonical footer
   assert.match(shell, /<SiteFooter surface=\{surface\} origin=\{origin\} \/>/)
   for (const rel of PAGES) {
     const source = code(read(rel))
-    assert.match(source, /from '@\/app\/site-fonts'/, `${rel}: imports the brand faces`)
+    // #4339 phase 2c: the /tools hub takes the faces from app/tools/layout.tsx.
+    const fonts = rel === 'app/tools/page.tsx' ? code(read('app/tools/layout.tsx')) : source
+    assert.match(fonts, /from '@\/app\/site-fonts'/, `${rel}: imports the brand faces`)
     assert.match(source, /<SitePage\b|<LegalShell\b|<CityHub\b/, `${rel}: renders the redesigned shell`)
   }
   // Layouts that also frame untouched pages leave the redesigned ones bare.
-  assert.match(code(read('app/tools/layout.tsx')), /<RouteFrame\s+bare=\{\['\/tools'\]\}\s+variant="tools"/)
-  assert.match(code(read('app/blog/layout.tsx')), /<RouteFrame\s+bare=\{\['\/blog'\]\}\s+barePrefixes=\{\['\/blog\/category\/'\]\}/)
+  // (#4339 phase 2c moved the tools and the blog posts onto the new frame too;
+  // issue-4339-leftovers.implementor.test.mjs pins them.)
+  assert.match(code(read('app/tools/layout.tsx')), /<RouteFrame\s+bare=\{\['\/tools'\]\}\s+variant="site-tools"/)
+  assert.match(code(read('app/blog/layout.tsx')), /<RouteFrame\s+bare=\{\['\/blog'\]\}\s+barePrefixes=\{\['\/blog\/'\]\}\s+framedPrefixes=\{\['\/blog\/preview\/'\]\}/)
 })
 
 // ---- built mode ------------------------------------------------------------

@@ -4,16 +4,16 @@ import { LandingMedia } from '@/components/landing/landing-media'
 import { PageHero, SitePage } from '@/components/site/site-page'
 import type { LandingMediaRef } from '@/content/host-landing/icps'
 import { searchRouteMetadata } from '@/lib/search/metadata'
-import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
 
 // #1003 [Venue Website Grader — growth tools, test cut] — the /tools hub.
 //
 // #4339 phase 2b — redesigned ("Mingla, Edited"): the site nav, the headline
 // and four tool cards, each with its clip and opening its live tool page
 // (/tools/venues, /tools/events, /tools/trips, /tools/pricing), over the
-// canonical footer. Only the hub changed; the tool pages keep their frame
-// (app/tools/layout.tsx renders this page bare). The SEO contract is
-// unchanged: the search_ready metadata for "/tools".
+// canonical footer (app/tools/layout.tsx renders this page bare). The SEO
+// contract is unchanged: the search_ready metadata for "/tools".
+// #4339 phase 2c — the tool pages moved onto the same frame; the brand faces
+// now come from app/tools/layout.tsx for the whole /tools tree.
 
 export const metadata = searchRouteMetadata('/tools')
 
@@ -63,7 +63,7 @@ const TOOLS: readonly ToolCard[] = [
 
 export default function ToolsHubPage() {
   return (
-    <div className={`${landingSerif.variable} ${landingSans.variable} ${landingMono.variable}`}>
+    <div>
       <SitePage surface="host" current="tools">
         <PageHero
           title={

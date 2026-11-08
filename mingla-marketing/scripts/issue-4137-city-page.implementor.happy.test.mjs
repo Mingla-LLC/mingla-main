@@ -98,8 +98,16 @@ for (const [slug, city] of Object.entries(CITY)) {
   const chips = [...weekend.matchAll(/<button type="button" aria-pressed="(true|false)"[^>]*>([^<]+)<\/button>/g)].map((match) => [match[2], match[1]])
   assert.deepEqual(chips, [['All', 'true'], ['Events', 'false'], ['Experiences', 'false'], ['Places', 'false']], `#4339: ${label} weekend chips`)
 
+  // #4339 phase 4a: "This weekend" reads the live readers (the build has no
+  // database, so it shows the shared fallback line); the ranked places moved
+  // below it into "Places in <City>." (#places).
+  assert.match(weekend, /data-weekend="fallback"/, `#4339: ${label} weekend without a database is the fallback`)
+  assert(text(weekend).includes('Nothing is listed this week yet. Check back soon.'), `#4339: ${label} fallback line`)
+  const placesSection = between(main, 'id="places"', '</section>')
+  assert(text(placesSection).includes(`Places in ${city}.`), `#4339: ${label} places heading`)
+
   // AC-P3 + AC-P5
-  const cards = [...weekend.matchAll(/<a\b[^>]*class="wk-card" data-city-place-card="" data-category="([a-z_]+)"[^>]*>([\s\S]*?)<\/a>/g)]
+  const cards = [...placesSection.matchAll(/<a\b[^>]*class="wk-card" data-city-place-card="" data-category="([a-z_]+)"[^>]*>([\s\S]*?)<\/a>/g)]
   assert.equal(cards.length, 50, `#4137 AC-P3: ${label} renders 50 place cards`)
   const seen = new Map()
   cards.forEach(([whole, category, card], index) => {
@@ -129,7 +137,10 @@ for (const [slug, city] of Object.entries(CITY)) {
   const outsidePlans = main.replace(/<li class="list-item" data-city-plan-card=""[\s\S]*?<\/li>/g, '')
   assert.equal((outsidePlans.match(/data-cta-surface="explorer"/g) ?? []).length, 1, `#4137 AC-P4: ${label} has one page-level Explorer CTA`)
   assert.equal((hero.match(/data-cta-surface="explorer"/g) ?? []).length, 1, `#4137 AC-P4: ${label} Explorer CTA sits in the hero`)
-  assert.equal((main.match(/data-cta-surface="host"/g) ?? []).length, 0, `#4339: ${label} has no Host device CTA`)
+  // #4339 §4 rule 4: the empty week's "Host something in <City>" is the one Host hand-off, inside This weekend.
+  assert.equal((main.match(/data-cta-surface="host"/g) ?? []).length, 1, `#4339: ${label} has one Host device CTA`)
+  assert.equal((weekend.match(/data-cta-surface="host"/g) ?? []).length, 1, `#4339: ${label} Host hand-off sits in This weekend`)
+  assert(text(weekend).includes(`Host something in ${city}`), `#4339: ${label} Host something in ${city}`)
   const hostLinks = [...main.matchAll(/<a\b[^>]*href="\/host"[^>]*>([\s\S]*?)<\/a>/g)].map((match) => text(match[1]))
   assert.deepEqual(hostLinks, ['See Mingla Host'], `#4339 AC-P11: ${label} has one See Mingla Host button`)
   assert(text(main).includes(`Run a place in ${city}?`), `#4339 AC-P11: ${label} host heading`)

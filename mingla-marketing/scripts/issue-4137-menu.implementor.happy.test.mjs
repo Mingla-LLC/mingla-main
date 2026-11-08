@@ -35,7 +35,11 @@ assert(SOURCE_ONLY !== BUILT_ONLY, 'choose --source-only or --built-only')
 const code = (source) => source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
 
 // #4339 phase 2b: a page that still renders this side menu.
-const MENU_ROUTE = '/help/getting-the-apps'
+// #4339 phase 2c: the help video pages moved onto the site nav, so the only
+// routes left with this side menu are the staff blog preview (behind a token)
+// and the internal chart gallery. The runtime proof measures the latter, a
+// Host-surface page, so Host is lit.
+const MENU_ROUTE = '/internal/charts'
 const EXPECTED_LINKS = [
   ['Explorer', '/'], ['Cities', '/cities'], ['Going out', '/going-out'],
   ['Host', '/host'], ['Free tools', '/tools'],
@@ -216,12 +220,12 @@ async function runtimeContract() {
     // AC-M1, M4, M5 across viewports. #4339 phase 2a/2b: the redesigned pages
     // (/, /host, /going-out, /cities, the city pages, /about, /help, /support …)
     // carry the redesign's own site nav, not this side menu, so the side menu is
-    // measured on a help video page (lit: Help), a page that still renders it.
+    // measured on a page that still renders it (MENU_ROUTE, above).
     for (const [width, height] of [[1440, 900], [390, 844], [402, 874], [375, 667], [360, 780]]) {
       const label = `${MENU_ROUTE} ${width}x${height}`
       const state = await openMenu(page, base, MENU_ROUTE, width, height)
       assert.deepEqual(state.links.map((link) => [link.label, link.href]), EXPECTED_LINKS, `#4137 AC-M1: ${label} links`)
-      assert.deepEqual(state.links.map((link) => link.current), [null, null, null, null, null, null, 'page', null, null], `#4137 AC-M1: ${label} lights Help`)
+      assert.deepEqual(state.links.map((link) => link.current), [null, null, null, 'page', null, null, null, null, null], `#4137 AC-M1: ${label} lights Host (its nav surface)`)
       assert.deepEqual(state.groups, ['EXPLORE', 'HOST', 'COMPANY'], `#4137 AC-M1: ${label} group labels`)
       for (const link of state.links) {
         assert(link.box.height >= 44 - 0.5 && link.box.width >= 44 - 0.5, `#4137 AC-M4: ${label} "${link.label}" is ${link.box.width.toFixed(1)}x${link.box.height.toFixed(1)}`)
@@ -252,9 +256,12 @@ async function runtimeContract() {
     }
 
     // AC-M2 — one lit item per route.
-    for (const [route, lit] of [[MENU_ROUTE, 'Help']]) { // #4339 phase 2b: every other route in this list now carries the redesign's site nav (covered by lib/__tests__/issue-4339-*.implementor.test.mjs)
+    // #4339 phase 2b/2c: every route that used to be in this list now carries
+    // the redesign's site nav (covered by lib/__tests__/issue-4339-*.implementor.test.mjs);
+    // the remaining side-menu route is a Host-surface page, so Host is lit.
+    for (const [route, lit] of [[MENU_ROUTE, 'Host']]) {
       const state = await openMenu(page, base, route, 1440, 900)
-      assert.deepEqual(state.links.filter((link) => link.current === 'page').map((link) => link.label), [lit], `#4137 AC-M2: ${route} lights ${lit} only`)
+      assert.deepEqual(state.links.filter((link) => link.current === 'page').map((link) => link.label), lit ? [lit] : [], `#4137 AC-M2: ${route} lights ${lit ?? 'nothing'}`)
     }
 
     // AC-M7 — keyboard order, wrap, QR suspension and focus return (desktop).
