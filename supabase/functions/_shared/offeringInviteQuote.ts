@@ -1,6 +1,9 @@
 import { composeSmsBody, computeSegments } from "./adapters/smsAdapter.ts";
-import { countryFromE164 } from "./e164Country.ts";
-import { type SmsRateV1, validatedSmsRates } from "./smsPriceBook.ts";
+import {
+  smsRateForPhone,
+  type SmsRateV1,
+  validatedSmsRates,
+} from "./smsPriceBook.ts";
 
 export const OFFERING_INVITE_LINK_MARKER = "__MINGLA_OFFERING_INVITE_URL_V1__";
 const HEX = /^[0-9a-f]{64}$/;
@@ -463,15 +466,18 @@ export async function buildOfferingExecutionSnapshot(input: {
     if (source?.normalizedContact === null || source === undefined) {
       throw new Error("cost_unavailable");
     }
-    const country = countryFromE164(source.normalizedContact);
-    if (country === null) throw new Error("cost_unavailable");
-    // orch-strict-grep-allow stripe-country-out-of-scope — This selects the
-    // Nigeria SMS provider; it does not create or configure a Stripe account.
-    const provider = country === "NG" ? "termii" : "twilio";
-    const rate = rates.find((entry) =>
-      entry.country === country && entry.provider === provider
-    );
-    if (rate === undefined) throw new Error("cost_unavailable");
+    // #4273 — a phone whose country has no rate is SKIPPED, not a failed
+    // quote: it seals as suppressed (the reason the seal already accepts for
+    // an SMS the edge holds back), so it is never priced and never texted.
+    // offeringUnpricedSmsCount reports how many, for the host's copy.
+    const rate = smsRateForPhone(source.normalizedContact, rates);
+    if (rate === null) {
+      candidate.outcome = "suppressed";
+      candidate.safeReasonCode = "suppressed";
+      continue;
+    }
+    const country = rate.country;
+    const provider = rate.provider;
     if (source.eventUrl === undefined) throw new Error("cost_unavailable");
     const eventUrl = new URL(source.eventUrl);
     if (
@@ -686,4 +692,24 @@ export async function hashPushVector(input: {
     quoteHash,
     executionSnapshotHash,
   };
+}
+
+/**
+ * #4273 — how many SMS candidates the snapshot skipped because their phone has
+ * no rate: the Book allowed them (and the market is on), yet they sealed as
+ * suppressed. Counts only; never a phone or a person.
+ */
+export function offeringUnpricedSmsCount(
+  snapshot: ExecutionSnapshotV1,
+  rows: QuoteCandidateRow[],
+): number {
+  const allowed = new Set(
+    rows.filter((row) => row.channel === "sms" && row.allowed).map((row) =>
+      `${row.brandPersonId}:sms:${row.contactMethodId}`
+    ),
+  );
+  return snapshot.candidates.filter((candidate) =>
+    candidate.channel === "sms" && candidate.outcome === "suppressed" &&
+    allowed.has(candidate.candidateKey)
+  ).length;
 }

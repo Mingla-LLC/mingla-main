@@ -10,6 +10,7 @@ import {
 import {
   buildOfferingExecutionSnapshot,
   hashOfferingSelection,
+  offeringUnpricedSmsCount,
   type PersistedOfferingPushV1,
   type QuoteCandidateRow,
 } from "../_shared/offeringInviteQuote.ts";
@@ -979,6 +980,7 @@ export async function noMethodsWizardQuote(input: {
     canReceiveCount: 0,
     skippedCount: input.selectedCount,
     skipReasonCounts: {},
+    unpricedSmsCount: 0,
     perChannelReachable: { email: 0, sms: 0, push: 0 },
     smsSegments: 0,
     estimatedCostMinor: 0,
@@ -1250,6 +1252,8 @@ function publicQuote(
       result.selectedCount - canReceiveCount,
     ),
     skipReasonCounts: {},
+    /** #4273 — texts skipped because the phone's country has no rate yet. */
+    unpricedSmsCount: offeringUnpricedSmsCount(snapshot, result.candidates),
     perChannelReachable,
     smsSegments: snapshot.quote.smsSegments,
     estimatedCostMinor: snapshot.quote.estimatedCostMinor,

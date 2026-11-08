@@ -60,6 +60,59 @@ export function validatedSmsRates(
   });
 }
 
+/**
+ * #4273 — the honest reason a reachable phone is not texted: its country (or
+ * provider route) has no rate in the book, or no country can be read from it.
+ * The person is skipped, never a quote failure. An expired, missing, invalid
+ * or not-yet-effective BOOK still fails the whole quote (validatedSmsRates).
+ */
+export const SMS_UNPRICED_COUNTRY = "sms_unpriced_country";
+
+/**
+ * #4273 — THE one rule for "can Mingla price (and so text) this phone".
+ * Country from the handset; NG routes to Termii, everything else to Twilio.
+ * Null = unpriced. The Blast quote, the invite quote and the send guard all
+ * call this, so they skip exactly the same numbers.
+ * MINGLA-INVARIANT: I-4273-UNPRICED-ONE-RULE | issue #4273 | Whether a phone can be priced is decided only by smsRateForPhone; the Blast quote, the invite quote and the SMS send guard all read it, and an unpriced phone is skipped, never texted and never a quote failure.
+ */
+export function smsRateForPhone<
+  R extends Pick<SmsRateV1, "country" | "provider">,
+>(
+  normalizedPhone: string | null,
+  rates: readonly R[],
+): R | null {
+  if (normalizedPhone === null) return null;
+  const country = countryFromE164(normalizedPhone);
+  if (country === null) return null;
+  // orch-strict-grep-allow stripe-country-out-of-scope — messaging-provider selection, not Stripe/self-serve payout eligibility
+  const provider = country === "NG" ? "termii" : "twilio";
+  return rates.find((candidate) =>
+    candidate.country === country && candidate.provider === provider
+  ) ?? null;
+}
+
+/**
+ * #4273 — the send-time guard's view of the configured book: every entry with
+ * a country and provider, read WITHOUT the date checks (a sealed send must not
+ * fail because the book aged after confirm). Null when no book is configured:
+ * no quote can be sealed then, so the guard has nothing to protect.
+ */
+export function configuredSmsRoutes(
+  suppliedRaw?: unknown,
+): Array<Pick<SmsRateV1, "country" | "provider">> | null {
+  const raw = suppliedRaw === undefined
+    ? resolveOfferingInviteSmsPriceBook()
+    : suppliedRaw;
+  if (!Array.isArray(raw)) return null;
+  return raw.flatMap((entry) => {
+    const rate = entry as Partial<SmsRateV1> | null;
+    return typeof rate?.country === "string" &&
+        (rate.provider === "twilio" || rate.provider === "termii")
+      ? [{ country: rate.country, provider: rate.provider }]
+      : [];
+  });
+}
+
 export interface SmsCostSubtotal {
   currency: string;
   estimatedCostMinor: number;
@@ -84,6 +137,8 @@ export function allocateSmsCosts<T>(
   suppliedRates?: SmsRateV1[],
 ): {
   allocations: SmsCostAllocation<T>[];
+  /** #4273 — inputs whose phone has no rate: skipped, never priced. */
+  unpriced: SmsCostInput<T>[];
   subtotals: SmsCostSubtotal[];
   estimatedCostMinor: number | null;
   currency: string | null;
@@ -91,33 +146,40 @@ export function allocateSmsCosts<T>(
   if (inputs.length === 0) {
     return {
       allocations: [],
+      unpriced: [],
       subtotals: [],
       estimatedCostMinor: 0,
       currency: null,
     };
   }
   const rates = suppliedRates ?? validatedSmsRates(now);
-  const fractions = inputs.map((input) => {
-    const country = countryFromE164(input.normalizedPhone);
-    if (
-      country === null || !Number.isSafeInteger(input.segments) ||
-      input.segments < 1
-    ) throw new Error("cost_unavailable:sms_rate_unavailable");
-    // orch-strict-grep-allow stripe-country-out-of-scope — messaging-provider selection, not Stripe/self-serve payout eligibility
-    const provider = country === "NG" ? "termii" : "twilio";
-    const rate = rates.find((candidate) =>
-      candidate.country === country && candidate.provider === provider
-    );
-    if (rate === undefined) {
-      throw new Error("cost_unavailable:sms_rate_unavailable");
+  const unpriced: SmsCostInput<T>[] = [];
+  const fractions = inputs.flatMap((input) => {
+    if (!Number.isSafeInteger(input.segments) || input.segments < 1) {
+      throw new Error("cost_unavailable:sms_segments_invalid");
     }
-    return {
+    const rate = smsRateForPhone(input.normalizedPhone, rates);
+    if (rate === null) {
+      unpriced.push(input);
+      return [];
+    }
+    return [{
       input,
       rate,
       numerator: BigInt(input.segments) * BigInt(rate.minorNumerator),
       denominator: BigInt(rate.minorDenominator),
-    };
+    }];
   });
+  unpriced.sort((a, b) => a.key.localeCompare(b.key));
+  if (fractions.length === 0) {
+    return {
+      allocations: [],
+      unpriced,
+      subtotals: [],
+      estimatedCostMinor: 0,
+      currency: null,
+    };
+  }
   const currencies = [...new Set(fractions.map((entry) => entry.rate.currency))]
     .sort();
   const allocations: SmsCostAllocation<T>[] = [];
@@ -139,7 +201,10 @@ export function allocateSmsCosts<T>(
       allocatedCostMinor: Number(entry.numerator / entry.denominator),
     }));
     let remainder = Number(aggregate - floorTotal);
-    group.map((entry, index) => ({ entry, allocation: groupAllocations[index] }))
+    group.map((entry, index) => ({
+      entry,
+      allocation: groupAllocations[index],
+    }))
       .sort((left, right) => {
         const l = left.entry.numerator % left.entry.denominator,
           r = right.entry.numerator % right.entry.denominator;
@@ -162,6 +227,7 @@ export function allocateSmsCosts<T>(
   allocations.sort((a, b) => a.key.localeCompare(b.key));
   return {
     allocations,
+    unpriced,
     subtotals,
     estimatedCostMinor: subtotals.length === 1
       ? subtotals[0].estimatedCostMinor

@@ -181,6 +181,8 @@ export async function buildMarketingBookQuote(
   const candidates = input.candidates.map((candidate) => ({
     ...candidate,
     segments: 0,
+    /** #4273 — reachable by the Book's verdict, but no rate for this phone. */
+    smsUnpriced: false,
     allocatedCostMinor: null as number | null,
     rateId: null as string | null,
     sourceReference: null as string | null,
@@ -191,13 +193,18 @@ export async function buildMarketingBookQuote(
       candidate.normalizedContact !== null) ||
     (typeof candidate.buyerContactKey === "string" &&
       candidate.normalizedContact !== null);
-  const reachable = candidates.filter((candidate) =>
+  const deliverable = candidates.filter((candidate) =>
     candidate.allowed && hasDeliveryIdentity(candidate)
   );
+  // #4273 — the SMS reach: a deliverable phone with no rate is SKIPPED with
+  // SMS_UNPRICED_COUNTRY (its sealed target keeps segments = 0, which the
+  // seal turns into a suppressed target), never a whole-quote failure.
+  let reachable = deliverable;
+  let unpricedCount = 0;
   let estimatedCostMinor: number | null = null, currency: string | null = null;
   let costBreakdown: SmsFxConverted[] = [];
   let fxSnapshotId: string | null = null;
-  if (input.channel === "sms" && reachable.length > 0) {
+  if (input.channel === "sms" && deliverable.length > 0) {
     const authorBody = smsBlastBodyWithFollow(
       String(input.content.body ?? ""),
       options.followBrand?.name,
@@ -209,7 +216,7 @@ export async function buildMarketingBookQuote(
     );
     const segments = computeSegments(wireBody);
     const priced = allocateSmsCosts(
-      reachable.map((candidate) => {
+      deliverable.map((candidate) => {
         if (candidate.normalizedContact === null) {
           throw new Error("cost_unavailable");
         }
@@ -226,6 +233,9 @@ export async function buildMarketingBookQuote(
       now,
       options.smsRates,
     );
+    for (const skipped of priced.unpriced) skipped.target.smsUnpriced = true;
+    unpricedCount = priced.unpriced.length;
+    reachable = deliverable.filter((candidate) => !candidate.smsUnpriced);
     for (const allocation of priced.allocations) {
       allocation.target.segments = allocation.segments;
       allocation.target.allocatedCostMinor = allocation.allocatedCostMinor;
@@ -350,6 +360,8 @@ export async function buildMarketingBookQuote(
     reachableCount: reachable.length,
     suppressedCount,
     unavailableCount,
+    /** #4273 — deliverable phones skipped because their country has no rate. */
+    unpricedCount,
     smsSegments: candidates.reduce(
       (sum, candidate) => sum + candidate.segments,
       0,

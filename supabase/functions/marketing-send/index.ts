@@ -73,6 +73,10 @@ import {
 // #1529 — the single source of truth for E.164 → ISO-2. Replaces the
 // module-private copy that used to sit next to the SMS dispatch below.
 import { countryFromE164 } from "../_shared/e164Country.ts";
+import {
+  configuredSmsRoutes,
+  smsRateForPhone,
+} from "../_shared/smsPriceBook.ts";
 import { resolveDeliveryFlagValue } from "../_shared/secretBundle.ts";
 import {
   constantTimeTokenHashEquals,
@@ -1303,6 +1307,11 @@ async function claimCampaigns(
 interface DispatchOptions {
   live: boolean;
   resendApiKey: string;
+  /**
+   * #4273 — tests only: the rate routes the send guard reads. Omitted → the
+   * configured book (configuredSmsRoutes); null → no book configured.
+   */
+  smsRoutes?: ReturnType<typeof configuredSmsRoutes>;
 }
 
 interface DispatchOutcome {
@@ -2609,6 +2618,16 @@ async function sendSms(
   let failed = 0;
   let previewSkipped = 0;
   const now = new Date();
+  // #4273 — never attempt a phone the quote could not price. The quote sealed
+  // such a phone as skipped (sms_unpriced_country); this guard holds the same
+  // line at send with the same rule (smsRateForPhone), so a send can never
+  // text an unpriced number, even before that seal exists or if the book
+  // loses a country after confirm. No book configured → no quote could have
+  // been sealed, so there is nothing to hold (legacy sends keep working).
+  const smsRoutes = options.smsRoutes !== undefined
+    ? options.smsRoutes
+    : configuredSmsRoutes();
+  let unpricedSkipped = 0;
 
   for (let i = 0; i < deliverable.length; i += SMS_BATCH_SIZE) {
     const batch = deliverable.slice(i, i + SMS_BATCH_SIZE);
@@ -2617,6 +2636,12 @@ async function sendSms(
       if (phone === null || !isValidE164(phone.trim())) {
         // Non-E.164 phone — skip, do NOT write a row (mirrors email's
         // suppressed-skip discipline: report deliverable, not total).
+        continue;
+      }
+      if (
+        smsRoutes !== null && smsRateForPhone(phone.trim(), smsRoutes) === null
+      ) {
+        unpricedSkipped += 1;
         continue;
       }
       const countryCode = countryFromE164(phone);
@@ -2935,6 +2960,13 @@ async function sendSms(
     }
   }
 
+  if (unpricedSkipped > 0) {
+    console.info(JSON.stringify({
+      event: "marketing_sms_unpriced_skipped",
+      campaign_id: campaign.id,
+      count: unpricedSkipped,
+    }));
+  }
   return { delivered, deferred, failed, preview_skipped: previewSkipped };
 }
 
