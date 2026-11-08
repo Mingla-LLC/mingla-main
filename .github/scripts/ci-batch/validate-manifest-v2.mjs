@@ -403,9 +403,8 @@ export function phase3dContractDigest(manifest) {
 // #1023: re-sealed after merging origin/main 5dd7f103ca (#4273 polish rows kept beside the #1023 rows).
 // #1023: re-sealed after merging origin/main 6038982e1a.
 // #4318: register the /links migration (20280508004318) and its implementor and tester PostgreSQL proofs; it joins the pre-#1931 replay skip list by exact filename.
-// #4318: register the /links live-cities migration (20280514004318) and its implementor PostgreSQL proof.
-// #4318: register the /links strip end-date migration (20280515004318) and its PostgreSQL proof; it joins the pre-#1931 replay skip list by exact filename.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "bd4f8d86530ee43925536f43dff9704a73d829d17d4b0112d66f5d5678a5caf2";
+// #4318: register the /links live-cities (20280514004318) and strip end-date (20280515004318) migrations and their PostgreSQL proofs; the end-date migration joins the pre-#1931 replay skip list by exact filename.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "3c8961b0243d9fbe75e243c0039d0c7d73b6a54c6c0d5e6a2803142b4e5b9951";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
