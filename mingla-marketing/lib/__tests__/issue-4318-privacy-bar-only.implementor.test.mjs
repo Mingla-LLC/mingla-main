@@ -71,7 +71,9 @@ test('(c) the strip opens the sheet; Save takes effect and shows Saved; focus is
   assert.match(banner, /export const PRIVACY_STRIP_LABEL = 'Privacy & ad choices'/)
   assert.match(banner, /data-testid="privacy-strip"[\s\S]*onClick=\{\(\) => \(open \? close\(\) : window\.dispatchEvent\(new Event\(PRIVACY_CHOICES_EVENT\)\)\)\}/)
   assert.match(banner, /window\.addEventListener\(PRIVACY_CHOICES_EVENT, reopen\)/)
-  assert.match(banner, /if \(open\) setDraft\(\{ analytics: privacy\.analytics, ads: privacy\.ads \}\)/)
+  // The switches start from what is running (or, once, from a sheet the visitor
+  // opened before hydration, #4318).
+  assert.match(banner, /setDraft\(adopted \?\? \{ analytics: privacy\.analytics, ads: privacy\.ads \}\)/)
   assert.match(banner, /saveMarketingPrivacy\(choice\)/)
   assert.match(banner, /if \(choice\.analytics\) void posthogOptIn\(\)/)
   assert.match(banner, /<span aria-live="polite"[^>]*>\s*\{saved \? PRIVACY_SAVED_LABEL : PRIVACY_STRIP_LABEL\}/)
