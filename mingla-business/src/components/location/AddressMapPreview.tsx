@@ -6,7 +6,7 @@
  * Edit's address field shows the SAME preview instead of a fork.
  *
  * REAL static map (via the vendor-neutral `static-map` server proxy) for the
- * picked address's coords: buildStaticMapUrl(lat,lng,accent) → plain <Image>
+ * picked address's coords: buildStaticMapUrl(lat,lng,accent) → StaticMapImage
  * (no map SDK, works native + react-native-web). REAL-DATA-ONLY (rule 9):
  * until an address is picked (no coords) OR the proxy base URL is absent at
  * runtime, it shows the honest "pick an address" empty state — never a fake
@@ -18,7 +18,7 @@
  * precise.
  */
 import React from "react";
-import { Image, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
 import {
   accent,
@@ -28,7 +28,7 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
-import { buildStaticMapUrl } from "../../utils/staticMapImage";
+import { buildStaticMapUrl, StaticMapImage } from "../../utils/staticMapImage";
 import { Icon } from "../ui/Icon";
 
 export const ADDRESS_MAP_PREVIEW_EMPTY_COPY =
@@ -59,21 +59,21 @@ export const AddressMapPreview: React.FC<AddressMapPreviewProps> = ({
     zoom: approximate ? 11 : 14,
   });
   return mapUrl !== null ? (
-    <View style={styles.mapWrap} testID={testID}>
-      <Image
-        source={{ uri: mapUrl }}
-        style={StyleSheet.absoluteFill}
-        resizeMode="cover"
-        accessibilityLabel={accessibilityLabel}
-      />
-      <View style={styles.mapPin} />
+    // #4334 F-1 — sized to the box so Google's logo and attribution survive;
+    // F-10 — one pin only: Google's own marker (drawn by the proxy).
+    <StaticMapImage
+      uri={mapUrl}
+      style={styles.mapWrap}
+      accessibilityLabel={accessibilityLabel}
+      testID={testID}
+    >
       {approximate ? (
         <View style={styles.approxBadge}>
           <Icon name="location" size={12} color={textTokens.primary} />
           <Text style={styles.approxBadgeText}>Approximate location</Text>
         </View>
       ) : null}
-    </View>
+    </StaticMapImage>
   ) : (
     <View
       style={[styles.mapWrap, styles.mapEmpty]}
@@ -104,16 +104,6 @@ const styles = StyleSheet.create({
   mapEmptyText: {
     fontSize: typography.caption.fontSize,
     color: textTokens.quaternary,
-  },
-  // Themed center pin overlaid on the real static map (the static URL already
-  // draws a map pin; this is the consistent brand-accent dot the wizard used).
-  mapPin: {
-    width: 32,
-    height: 32,
-    borderRadius: 999,
-    backgroundColor: accent.warm,
-    borderWidth: 3,
-    borderColor: "#fff",
   },
   // Issue #1363 — "Approximate location" badge over an approximate-precision map.
   approxBadge: {

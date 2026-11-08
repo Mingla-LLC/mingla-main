@@ -570,6 +570,15 @@ export {
   getSupabaseFunctionsBaseUrl,
 } from "./staticMapImage";
 export type { StaticMapParams } from "./staticMapImage";
+// #4334 F-1 — the one static map renderer: requests the box's own aspect so
+// Google's logo and attribution are never cropped.
+export {
+  StaticMapImage,
+  staticMapUriForBox,
+  coverCropFraction,
+  STATIC_MAP_PROXY_MAX_SIDE,
+} from "./StaticMapFrame";
+export type { StaticMapImageProps } from "./StaticMapFrame";
 // issue #2468 — THE ONE "open in maps" deep-link builder. Sibling of the static
 // map builder above ON PURPOSE: the thumbnail and the link now read the SAME
 // stored coordinate, so they can no longer point at two different places.

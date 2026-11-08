@@ -118,9 +118,11 @@ const EXPECTED_PLAN = Object.freeze({
   // [TEST-MOD-APPROVED #4334] Re-derived after the old map-provider gates were
   // retired or renamed (five rows out) and six provider-neutral, provider-ban and
   // deck gates came in (+2 batch:A executions).
-  executions: 1053,
-  loadsSeconds: [385.4, 385.4, 385.5],
-  counts: [350, 351, 352],
+  // [TEST-MOD-APPROVED #4334] Re-derived again after the deck-untouched gate moved
+  // to the full-history class E job (tester F-2): −2 batch:A executions.
+  executions: 1051,
+  loadsSeconds: [385.3, 385.4, 385.4],
+  counts: [349, 351, 351],
 });
 
 const tempDir = (label) =>

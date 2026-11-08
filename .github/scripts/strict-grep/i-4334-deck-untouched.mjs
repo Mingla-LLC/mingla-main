@@ -13,10 +13,11 @@
  *   - supabase/functions/discover-cards/**
  *
  * It is a PR-scoped diff check (spec v2 §9): it needs a base ref. CI passes
- * one through GITHUB_BASE_REF; locally it uses origin/main. On main itself
- * (merge base = HEAD) or when no base can be resolved it prints why it is
- * skipping and passes — a missing base is said out loud, never read as a pass
- * of the diff. [TRANSITIONAL] Exit condition: delete this gate (and its
+ * one through GITHUB_BASE_REF; locally it uses origin/main. It runs in the
+ * class E full-clone job (fetch-depth 0), so the base is present. On main
+ * itself (merge base = HEAD) it says so and passes. With no resolvable base it
+ * FAILS on a pull_request event (a shallow checkout must never read as a clean
+ * diff — tester F-2) and only skips, out loud, outside CI. [TRANSITIONAL] Exit condition: delete this gate (and its
  * descriptor) once #4334's release record is complete; the R-DECK suites
  * keep guarding the deck after that.
  *
@@ -68,7 +69,11 @@ let mergeBase;
 try {
   mergeBase = git(["merge-base", "HEAD", baseRef]);
 } catch {
-  console.log(`SKIP [I-4334-DECK-UNTOUCHED] no merge base with ${baseRef} in this checkout; the PR-scoped diff did not run`);
+  if (process.env.GITHUB_EVENT_NAME === "pull_request" || process.env.GITHUB_EVENT_NAME === "pull_request_target") {
+    console.error(`FAIL [I-4334-DECK-UNTOUCHED] no merge base with ${baseRef} on a pull request: the deck diff cannot be checked (shallow checkout?). Run this gate with full history.`);
+    process.exit(1);
+  }
+  console.log(`SKIP [I-4334-DECK-UNTOUCHED] no merge base with ${baseRef} in this checkout (not a pull request); the PR-scoped diff did not run`);
   process.exit(0);
 }
 let head;

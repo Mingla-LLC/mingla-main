@@ -39,7 +39,6 @@
 
 import React, { useCallback, useState } from "react";
 import {
-  Image,
   LayoutAnimation,
   Platform,
   Pressable,
@@ -85,6 +84,7 @@ import {
 import { OfferingMomentum } from "./OfferingMomentum";
 import { type SocialProofSummary } from "./socialProofTypes";
 import { buildStaticMapUrl } from "./staticMapImage";
+import { StaticMapImage } from "./StaticMapFrame";
 import type {
   TripOfferingBrand,
   TripOfferingCallbacks,
@@ -958,19 +958,16 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
           >
             Where you&rsquo;ll be
           </Text>
-          <View
+          <StaticMapImage
+            uri={mapUrl}
             style={[
               styles.mapBlock,
               surface.card,
               { height: isDesktop ? 300 : 180 },
             ]}
+            accessibilityLabel={`Map of ${data.destinationText ?? "the destination"}`}
+            testID="trip-body-map"
           >
-            <Image
-              source={{ uri: mapUrl }}
-              style={styles.mapImage}
-              resizeMode="cover"
-              accessibilityLabel={`Map of ${data.destinationText ?? "the destination"}`}
-            />
             <View
               style={[styles.mapCapPill, { backgroundColor: palette.page }]}
             >
@@ -978,7 +975,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
                 {data.destinationText ?? "Destination"}
               </Text>
             </View>
-          </View>
+          </StaticMapImage>
         </View>
       ) : null}
 
@@ -1418,11 +1415,12 @@ const styles = StyleSheet.create({
     gap: 8,
     overflow: "hidden",
   },
-  mapImage: { ...StyleSheet.absoluteFillObject, opacity: 0.9 },
+  // #4334 F-1 — the caption pill sits top-left: Google's logo and "Map data
+  // ©Google" own the bottom corners and must stay visible.
   mapCapPill: {
     position: "absolute",
     left: 12,
-    bottom: 12,
+    top: 12,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,

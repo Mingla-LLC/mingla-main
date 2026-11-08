@@ -31,7 +31,7 @@ jest.mock("react-native", () => {
       ReactModule.createElement(name, props, children);
   return {
     Image: host("image"),
-    StyleSheet: { create: (styles: unknown) => styles, absoluteFill: {} },
+    StyleSheet: { create: (styles: unknown) => styles, absoluteFill: {}, absoluteFillObject: {} },
     Text: host("text"),
     View: host("view"),
   };
@@ -54,6 +54,10 @@ const buildStaticMapUrl = jest.fn(
 jest.mock("../../../utils/staticMapImage", () => ({
   buildStaticMapUrl: (params: { lat: number | null; lng: number | null; zoom: number }) =>
     buildStaticMapUrl(params),
+  // #4334 F-1 — the REAL shared renderer (it sizes the request to the box).
+  StaticMapImage: jest.requireActual(
+    "../../../../../packages/offering-rendering/StaticMapFrame",
+  ).StaticMapImage,
 }));
 
 const { AddressMapPreview, ADDRESS_MAP_PREVIEW_EMPTY_COPY } =
@@ -80,6 +84,14 @@ function mount(props: {
   return r;
 }
 
+/** Lay the map box out at a width (as the device would). */
+function layout(r: ReturnType<typeof mount>, width: number, height = 160): void {
+  const box = r.root.findAll((n) => n.type === "view" && n.props.testID === "map")[0];
+  TestRenderer.act(() => {
+    (box.props.onLayout as (e: unknown) => void)({ nativeEvent: { layout: { width, height } } });
+  });
+}
+
 const texts = (r: ReturnType<typeof mount>): unknown[] =>
   r.root.findAll((n) => n.type === "text").map((n) => n.props.children);
 
@@ -102,9 +114,12 @@ describe("#3355 — shared address map preview", () => {
     expect(buildStaticMapUrl).toHaveBeenCalledWith(
       expect.objectContaining({ lat: 51.5034, lng: -0.1276, zoom: 14 }),
     );
+    // #4334 F-1 — nothing is fetched until the box is measured
+    expect(r.root.findAll((n) => n.type === "image")).toHaveLength(0);
+    layout(r, 343);
     const [image] = r.root.findAll((n) => n.type === "image");
     expect(image.props.source).toEqual({
-      uri: "https://maps.test/static?c=-0.1276,51.5034&z=14",
+      uri: "https://maps.test/static?c=-0.1276%2C51.5034&z=14&w=343&h=160",
     });
     expect(image.props.accessibilityLabel).toBe("Map of 10 Downing Street");
     expect(texts(r)).not.toContain("Approximate location");
@@ -117,6 +132,31 @@ describe("#3355 — shared address map preview", () => {
       expect.objectContaining({ zoom: 11 }),
     );
     expect(texts(r)).toContain("Approximate location");
+    void TestRenderer.act(() => r.unmount());
+  });
+
+  test("#4334 F-1: at 320 / 375 / 430 pt the request has the box's own aspect (no cover crop of Google's logo or attribution)", () => {
+    for (const phone of [320, 375, 430]) {
+      const r = mount({ lat: 51.5034, lng: -0.1276 });
+      const boxWidth = phone - 32;
+      layout(r, boxWidth);
+      const [image] = r.root.findAll((n) => n.type === "image");
+      const q = new URL((image.props.source as { uri: string }).uri).searchParams;
+      const w = Number(q.get("w"));
+      const h = Number(q.get("h"));
+      expect(Math.abs(w / h - boxWidth / 160) / (boxWidth / 160)).toBeLessThan(0.02);
+      void TestRenderer.act(() => r.unmount());
+    }
+  });
+
+  test("#4334 F-10: one pin only — Google's marker; no second drawn pin", () => {
+    const r = mount({ lat: 51.5034, lng: -0.1276 });
+    layout(r, 343);
+    const views = r.root.findAll((n) => n.type === "view");
+    // the box itself and nothing pin-shaped (32×32 round dot) inside it
+    expect(
+      views.filter((v) => JSON.stringify(v.props.style ?? "").includes('"width":32')),
+    ).toHaveLength(0);
     void TestRenderer.act(() => r.unmount());
   });
 });

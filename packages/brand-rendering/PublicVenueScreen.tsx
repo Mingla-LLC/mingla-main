@@ -73,6 +73,7 @@ import {
 import {
   ParallaxCoverShell,
   buildStaticMapUrl,
+  StaticMapImage,
   createThemePalette,
   offeringSurfaceStyles,
   resolveTheme,
@@ -743,14 +744,17 @@ const VenueLocationSection: VenueSectionRenderer = ({
 
   const mapBlock =
     staticMapUrl !== null ? (
-      <View style={[styles.mapCard, { backgroundColor: palette.card }]}>
-        <Image
-          source={{ uri: staticMapUrl }}
-          resizeMode="cover"
-          style={[styles.mapImage, isDesktop && styles.mapImageDesktop]}
-          accessibilityLabel={`Map of ${venue.name}`}
-          accessibilityIgnoresInvertColors
-        />
+      <StaticMapImage
+        uri={staticMapUrl}
+        style={[
+          styles.mapCard,
+          styles.mapImage,
+          isDesktop && styles.mapImageDesktop,
+          { backgroundColor: palette.card },
+        ]}
+        accessibilityLabel={`Map of ${venue.name}`}
+        testID="venue-map"
+      >
         <View style={[styles.mapPill, { backgroundColor: palette.page }]}>
           <Text
             numberOfLines={1}
@@ -759,7 +763,7 @@ const VenueLocationSection: VenueSectionRenderer = ({
             {venue.name}
           </Text>
         </View>
-      </View>
+      </StaticMapImage>
     ) : null;
 
   const addressCard =
@@ -2450,10 +2454,11 @@ const styles = StyleSheet.create({
   mapImageDesktop: {
     height: 300,
   },
+  // #4334 F-1 — top-left: Google's logo and attribution own the bottom corners.
   mapPill: {
     position: "absolute",
     left: 12,
-    bottom: 12,
+    top: 12,
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 6,

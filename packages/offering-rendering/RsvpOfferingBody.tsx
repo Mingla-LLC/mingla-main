@@ -132,6 +132,7 @@ import type {
 } from "./RsvpSuccessPopup";
 import type { ChipInPanelState } from "./RsvpChipInPanel";
 import { accentFill, accentIcon, themeFontFace } from "./themeAccentStyle";
+import { StaticMapImage } from "./StaticMapFrame";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_RE = /^\+?[0-9\s()-]{7,20}$/;
@@ -2685,10 +2686,9 @@ export const RsvpOfferingBody: React.FC<
             Where you&rsquo;ll be
           </Text>
           {staticMapUrl !== null && !mapFailed ? (
-            <Image
-              source={{ uri: staticMapUrl }}
+            <StaticMapImage
+              uri={staticMapUrl}
               style={[styles.whereMap, { borderColor: palette.panelBorder }]}
-              resizeMode="cover"
               onError={() => setMapFailed(true)}
               accessibilityLabel={
                 event.venueName !== null ? `Map of ${event.venueName}` : "Map"

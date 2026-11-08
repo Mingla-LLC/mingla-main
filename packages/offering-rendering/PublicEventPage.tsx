@@ -85,6 +85,7 @@ import {
 // for the "Where you'll be" map. Returns null when coords/token are absent →
 // the renderer falls back to the honest text venue card (rule-9).
 import { buildStaticMapUrl } from "./staticMapImage";
+import { StaticMapImage } from "./StaticMapFrame";
 // issue #2468 — the ONE privacy gate + label composer for the venue card.
 import { canOpenMapsTarget, selectVenueMapsTarget } from "./mapsDeepLink";
 // issue #2508 — the shared "which map app?" chooser + copy-address button. Fed
@@ -768,19 +769,15 @@ const PublishedBody = ({
             });
             if (mapUrl === null) return null;
             return (
-              <View
+              <StaticMapImage
+                uri={mapUrl}
                 style={[
                   styles.whereMapBlock,
                   { backgroundColor: palette.card },
                 ]}
+                accessibilityLabel={`Map of ${event.venueName ?? "the venue"}`}
                 testID="orch-1162-event-where-map"
               >
-                <Image
-                  source={{ uri: mapUrl }}
-                  style={styles.whereMapImage}
-                  resizeMode="cover"
-                  accessibilityLabel={`Map of ${event.venueName ?? "the venue"}`}
-                />
                 <View
                   style={[
                     styles.whereMapPill,
@@ -796,7 +793,7 @@ const PublishedBody = ({
                     {event.venueName ?? "Where you'll be"}
                   </Text>
                 </View>
-              </View>
+              </StaticMapImage>
             );
           })()}
 
@@ -1561,14 +1558,12 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     justifyContent: "flex-end",
   },
-  whereMapImage: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.92,
-  },
+  // #4334 F-1 — the venue pill sits top-left: Google's logo (bottom-left) and
+  // "Map data ©Google" (bottom-right) must stay visible and unobscured.
   whereMapPill: {
     position: "absolute",
     left: 12,
-    bottom: 12,
+    top: 12,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
