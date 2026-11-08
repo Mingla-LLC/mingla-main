@@ -1,7 +1,7 @@
 -- Issue #4276 (live runs): implementor proof for
 -- 20280428004276_issue_4276_live_runs.sql.
 --
--- MINGLA-INVARIANT: I-4276-LIVE-RUNS-ADMIN-ONLY | issue #4276 | admin_city_pipeline_live shows every active and recently finished city run with in-stage progress, to admins only, in one read
+-- MINGLA-INVARIANT: I-4276-LIVE-RUNS-ADMIN-ONLY | issue #4276 | admin_city_pipeline_live shows every in-progress and recently finished city run with in-stage progress, to admins only, in one read
 -- MINGLA-INVARIANT: I-4276-RATE-LIMIT-WAIT-NOT-TICKED | issue #4276 | A run waiting out a function rate limit (next_attempt_at ahead) is neither claimed nor kicked until that time
 --
 --   T-REFUSE   a signed-in non-admin and an anonymous caller are refused (42501)

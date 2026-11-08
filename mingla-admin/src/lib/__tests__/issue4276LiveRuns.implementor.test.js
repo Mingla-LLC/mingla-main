@@ -1,7 +1,7 @@
 // Issue #4276 Live runs: the words and rules behind Place pool > Pipeline > Live runs.
 //
 // MINGLA-INVARIANT: I-4276-LIVE-RUNS-WAIT-IS-NOT-STALL | issue #4276 | A run that chose to wait (rate limit, Intelligence) reads as Waiting, never as stalled or failed; only 5+ min with no progress and no wait reads "No progress"
-// MINGLA-INVARIANT: I-4276-LIVE-RUNS-POLL-BUDGET | issue #4276 | Live runs reads one RPC every 5 s while a run is active, every 30 s otherwise, nothing while the tab is hidden, and shows an error only after 3 failures in a row
+// MINGLA-INVARIANT: I-4276-LIVE-RUNS-POLL-BUDGET | issue #4276 | Live runs reads one RPC every 5 s while a run is in progress, every 30 s otherwise, nothing while the tab is hidden, and shows an error only after 3 failures in a row
 //
 // FAILS-ON-REVERT: drop the wait branch from heartbeatState and the rate-limited run
 // reads "No progress"; move the moving/stalled lines and the 2 min / 5 min boundary
