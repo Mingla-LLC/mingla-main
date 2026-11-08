@@ -345,6 +345,55 @@ export function listingWhen(listing: LinksListing, today: string): { tonight: bo
   return { tonight: false, text: `${kind} · ${key === today ? 'Today' : shortDayLabel(key)}` }
 }
 
+// ---------------------------------------------------------------- recurring plans
+
+/**
+ * One strip per recurring plan (#4318, Seth 8 Nov): the week's rows that share
+ * brand_slug + item_slug are one plan. `dates` are its occurrences in order and
+ * `next` is the first, which the hand-off and the item sheet open.
+ */
+export interface LinksPlan {
+  id: string
+  next: LinksListing
+  dates: LinksListing[]
+}
+
+export function groupListings(listings: readonly LinksListing[]): LinksPlan[] {
+  const byKey = new Map<string, LinksListing[]>()
+  for (const listing of listings) {
+    const key = `${listing.kind}:${listing.brandSlug}/${listing.itemSlug}`
+    const dates = byKey.get(key)
+    if (dates) dates.push(listing)
+    else byKey.set(key, [listing])
+  }
+  return [...byKey.entries()]
+    .map(([key, dates]) => {
+      const sorted = [...dates].sort((a, b) => a.startsAt.localeCompare(b.startsAt))
+      return { id: key, next: sorted[0], dates: sorted }
+    })
+    .sort((a, b) => a.next.startsAt.localeCompare(b.next.startsAt) || a.next.title.localeCompare(b.next.title))
+}
+
+function weekdayShort(key: string): string {
+  return new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone: 'UTC' }).format(keyDate(key))
+}
+
+/**
+ * A plan's strip label. One date: as listingWhen ("Event · Sat 7", "Tonight").
+ * Several: the day span when the days run on ("Event · Mon–Fri"), else the
+ * days listed ("Event · Mon, Wed, Fri").
+ */
+export function planWhen(plan: LinksPlan, today: string): { tonight: boolean; text: string } {
+  const days = [...new Set(plan.dates.map(listingDayKey))].sort()
+  if (days.length <= 1) return listingWhen(plan.next, today)
+  const kind = plan.next.kind === 'event' ? 'Event' : plan.next.kind === 'trip' ? 'Trip' : 'Experience'
+  const runOn = days.every((key, i) => i === 0 || addDaysKey(days[i - 1], 1) === key)
+  const span = runOn
+    ? `${weekdayShort(days[0])}–${weekdayShort(days[days.length - 1])}`
+    : days.map(weekdayShort).join(', ')
+  return { tonight: false, text: `${kind} · ${span}` }
+}
+
 /** Admin strip label: "From Mingla · Thu 12". No time, no place. */
 export function pinWhen(pin: LinksPin, today: string): string {
   return `${pin.label} · ${pin.showsOn === today ? 'Today' : shortDayLabel(pin.showsOn)}`
@@ -364,7 +413,8 @@ export function liveCities(
   nowIso: string,
 ): Array<{ city: LinksCity; count: number }> {
   return cities
-    .map((city) => ({ city, count: cityWeek(city, listings, pins, nowIso).listings.length }))
+    // "N this week" counts plans, not dates (a recurring plan is one).
+    .map((city) => ({ city, count: groupListings(cityWeek(city, listings, pins, nowIso).listings).length }))
     .filter((c) => c.count > 0)
 }
 

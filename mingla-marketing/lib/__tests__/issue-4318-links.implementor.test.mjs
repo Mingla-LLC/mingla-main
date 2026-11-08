@@ -42,13 +42,14 @@ function emit(name, out, seen) {
 
 const out = fs.mkdtempSync(path.join(os.tmpdir(), 'issue-4318-'))
 const seen = new Set()
-for (const name of ['links-week', 'links-fit', 'links-handoff', 'store-links']) emit(name, out, seen)
+for (const name of ['links-week', 'links-fit', 'links-handoff', 'store-links', 'revalidate-tag']) emit(name, out, seen)
 after(() => fs.rmSync(out, { recursive: true, force: true }))
 const load = (name) => import(pathToFileURL(path.join(out, `${name}.mjs`)).href)
 const week = await load('links-week')
 const fit = await load('links-fit')
 const handoff = await load('links-handoff')
 const stores = await load('store-links')
+const revalidate = await load('revalidate-tag')
 
 // ---------------------------------------------------------------- fixtures
 
@@ -482,5 +483,47 @@ test('quiet week fit at 320x568 and 390x844: admin strips first, places fill, li
       false,
       `${size}: no strip-height gap while something is hidden`,
     )
+  }
+})
+
+// ---------------------------------------------------------------- recurring plans (one strip each)
+
+test('a recurring listing is one strip with its day span, opening its next date; counts are plans', () => {
+  // Live Lagos: "Crusaders Adventure Island" once per date, Mon 9 to Fri 13.
+  const crusaders = [9, 10, 11, 12, 13].map((d) =>
+    row({ title: 'Crusaders Adventure Island', tz: 'Africa/Lagos', lat: 6.45, lng: 3.42, brand_slug: 'crusaders', item_slug: 'adventure-island', starts_at: `2026-11-${String(d).padStart(2, "0")}T08:00:00Z` }),
+  )
+  const salsa = [9, 11, 13].map((d) =>
+    row({ title: 'Salsa night', tz: 'Africa/Lagos', lat: 6.45, lng: 3.42, brand_slug: 'salsa4life', item_slug: 'salsa', starts_at: `2026-11-${String(d).padStart(2, "0")}T19:00:00Z` }),
+  )
+  const once = row({ title: 'One night only', tz: 'Africa/Lagos', lat: 6.45, lng: 3.42, item_slug: 'once', starts_at: '2026-11-10T20:00:00Z' })
+  const listings = week.bucketListings([...salsa, ...crusaders, once], CITIES)
+  const w = week.cityWeek(city('lagos'), listings, [], NOW)
+  assert.equal(w.listings.length, 9, 'the week keeps one row per date (the full-week sheet)')
+  const plans = week.groupListings(w.listings)
+  assert.deepEqual(plans.map((p) => [p.next.title, p.dates.length]), [
+    ['Crusaders Adventure Island', 5],
+    ['Salsa night', 3],
+    ['One night only', 1],
+  ])
+  assert.deepEqual(week.planWhen(plans[0], w.today), { tonight: false, text: 'Event · Mon–Fri' })
+  assert.deepEqual(week.planWhen(plans[1], w.today), { tonight: false, text: 'Event · Mon, Wed, Fri' })
+  assert.deepEqual(week.planWhen(plans[2], w.today), { tonight: false, text: 'Event · Tue 10' })
+  assert.equal(week.timeLabel(plans[0].next.startsAt, plans[0].next.tz), '9 AM')
+  // The hand-off opens the next date (the listing's deep link).
+  const h = handoff.resolveLinksHandoff({ type: 'listing', listing: plans[0].next }, 'ios', 'instagram')
+  assert.equal(new URL(h.href).searchParams.get('deep_link_sub2'), 'adventure-island')
+  assert.equal(plans[0].next.startsAt, '2026-11-09T08:00:00.000Z')
+  // "N this week" counts plans, not dates.
+  assert.deepEqual(week.liveCities(CITIES, listings, [], NOW).map((l) => [l.city.slug, l.count]), [['lagos', 3]])
+})
+
+test('the revalidate route drops blog by default, links on {"tag":"links"}, and refuses anything else', () => {
+  assert.equal(revalidate.revalidateTargetFor(''), 'blog')
+  assert.equal(revalidate.revalidateTargetFor('{}'), 'blog')
+  assert.equal(revalidate.revalidateTargetFor('{"tag":"blog"}'), 'blog')
+  assert.equal(revalidate.revalidateTargetFor('{"tag":"links"}'), 'links')
+  for (const bad of ['{"tag":"all"}', '{"tag":["links"]}', '"links"', '[]', 'null', '{', '{"tag":"LINKS"}']) {
+    assert.equal(revalidate.revalidateTargetFor(bad), null, bad)
   }
 })

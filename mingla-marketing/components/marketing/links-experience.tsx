@@ -64,6 +64,8 @@ import {
   cityWeek,
   distanceLabel,
   emptyListText,
+  groupListings,
+  planWhen,
   quietWeek,
   listingDayKey,
   listingWhen,
@@ -76,6 +78,7 @@ import {
   type LinksCity,
   type LinksListing,
   type LinksListingKind,
+  type LinksPlan,
   type LinksPlace,
   type LinksPin,
   type LinksPoint,
@@ -320,7 +323,10 @@ export function LinksExperience({
   const city = cities.find((c) => c.slug === citySlug) ?? cities[0]
   const week = useMemo(() => cityWeek(city, listings, pins, nowIso), [city, listings, pins, nowIso])
   const shown = filter === 'all' ? week.listings : week.listings.filter((l) => l.kind === filter)
-  const [fit, setFit] = useState<LinksFit>({ pinsShown: week.pins.length, listShown: shown.length })
+  // The main list shows one strip per recurring plan; the full-week sheet keeps one row per date.
+  const plans = useMemo(() => groupListings(shown), [shown])
+  const allPlans = useMemo(() => groupListings(week.listings), [week.listings])
+  const [fit, setFit] = useState<LinksFit>({ pinsShown: week.pins.length, listShown: plans.length })
 
   const rootRef = useRef<HTMLElement>(null)
   const leftRef = useRef<HTMLDivElement>(null)
@@ -563,7 +569,7 @@ export function LinksExperience({
     return { href: platform !== null && isPhone(platform) ? d.phoneHref : d.computerHref, phoneHref: d.phoneHref }
   }
 
-  const strip = (target: StripTarget, key: string, role?: 'strip' | 'pin') => {
+  const strip = (target: StripTarget, key: string, role?: 'strip' | 'pin', plan?: LinksPlan) => {
     const { href, phoneHref } = hrefFor(target)
     const isPin = target.type === 'pin'
     const newTab = isPin && target.pin.opens === 'web'
@@ -593,7 +599,8 @@ export function LinksExperience({
       )
     } else {
       const l = target.listing
-      const when = listingWhen(l, week.today)
+      // A recurring plan shows its day span; it opens its next date.
+      const when = plan ? planWhen(plan, week.today) : listingWhen(l, week.today)
       thumb = l.cover ? (
         <span className={styles['st-th']} style={{ backgroundImage: cssUrl(l.cover) }} role="img" aria-label={l.place ?? l.title} />
       ) : (
@@ -666,8 +673,8 @@ export function LinksExperience({
     )
   }
 
-  const kindCount = (kind: LinksListingKind) => week.listings.filter((l) => l.kind === kind).length
-  const more = moreLabel(shown.length, fit.listShown)
+  const kindCount = (kind: LinksListingKind) => allPlans.filter((p) => p.next.kind === kind).length
+  const more = moreLabel(plans.length, fit.listShown)
   const pinsMore = pinsMoreLabel(week.pins.length, fit.pinsShown)
   const words = FILTERS.find((f) => f.id === filter) ?? FILTERS[0]
   const otherLiveCity = live.some((l) => l.city.slug !== city.slug && l.count > 0)
@@ -812,7 +819,7 @@ export function LinksExperience({
                   captureMarketing('links_filter_changed', { filter: f.id, city: city.slug })
                 }}
               >
-                {f.label} <span>{f.id === 'all' ? week.listings.length : kindCount(f.id)}</span>
+                {f.label} <span>{f.id === 'all' ? allPlans.length : kindCount(f.id)}</span>
               </button>
             ))}
           </div>
@@ -826,8 +833,8 @@ export function LinksExperience({
                   <b>A quiet one.</b>
                   {quiet.text}
                 </li>
-              ) : shown.length > 0 ? (
-                shown.map((listing) => strip({ type: 'listing', listing }, listing.id, 'strip'))
+              ) : plans.length > 0 ? (
+                plans.map((plan) => strip({ type: 'listing', listing: plan.next }, plan.id, 'strip', plan))
               ) : (
                 <li className={styles['lk-empty']}>
                   <b>A quiet one.</b>
@@ -860,7 +867,7 @@ export function LinksExperience({
                 ref={moreRef}
                 className={styles['lk-more']}
                 onClick={(event) => {
-                  captureMarketing('links_full_week_opened', { city: city.slug, plans: shown.length })
+                  captureMarketing('links_full_week_opened', { city: city.slug, plans: plans.length })
                   openSheet({ kind: 'all' }, event.currentTarget)
                 }}
               >
@@ -881,6 +888,7 @@ export function LinksExperience({
           src={src}
           week={week}
           shown={shown}
+          planCount={plans.length}
           words={words}
           hasVisitor={visitor.point !== null}
           renderStrip={strip}
@@ -901,6 +909,8 @@ interface SheetProps {
   src: string
   week: LinksWeek
   shown: LinksListing[]
+  /** Plans (a recurring plan counts once). */
+  planCount: number
   words: { plural: string; singular: string }
   hasVisitor: boolean
   renderStrip: (target: StripTarget, key: string) => ReactNode
@@ -940,7 +950,7 @@ function QrBlock({ value, title, body, children }: { value: string; title: strin
   )
 }
 
-function Sheet({ sheet, closeRef, onClose, city, src, week, shown, words, hasVisitor, renderStrip, renderCities }: SheetProps) {
+function Sheet({ sheet, closeRef, onClose, city, src, week, shown, planCount, words, hasVisitor, renderStrip, renderCities }: SheetProps) {
   let title: ReactNode = null
   let label = ''
   let sub = ''
@@ -1164,7 +1174,7 @@ function Sheet({ sheet, closeRef, onClose, city, src, week, shown, words, hasVis
         </>
       )
       label = `${city.name}, the full week`
-      sub = `${shown.length} ${shown.length === 1 ? words.singular : words.plural} from ${weekRange(week.keys)}`
+      sub = `${planCount} ${planCount === 1 ? words.singular : words.plural} from ${weekRange(week.keys)}`
       const groups = week.keys
         .map((key) => ({ key, items: shown.filter((l) => listingDayKey(l) === key) }))
         .filter((g) => g.items.length > 0)
