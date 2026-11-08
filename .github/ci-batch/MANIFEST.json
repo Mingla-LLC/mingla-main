@@ -20918,6 +20918,8 @@
         "supabase/migrations/__tests__/issue_4334_google_places.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4334_google_places.tester.adversarial.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4334_google_places.tester.adversarial.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4334_google_places.tester.retest2.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4334_google_places.tester.retest2.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4334_grants_restated.test.ts",
         "supabase/migrations/__tests__/issue_4334_grants_restated.test.ts.ci-suite.json",
         "supabase/migrations/__tests__/issue_4334_place_id_write_paths.implementor.pg17.test.sql",
@@ -26011,6 +26013,8 @@
         "supabase/migrations/__tests__/issue_4334_google_places.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4334_google_places.tester.adversarial.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4334_google_places.tester.adversarial.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4334_google_places.tester.retest2.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4334_google_places.tester.retest2.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4334_grants_restated.test.ts",
         "supabase/migrations/__tests__/issue_4334_grants_restated.test.ts.ci-suite.json",
         "supabase/migrations/__tests__/issue_4334_place_id_write_paths.implementor.pg17.test.sql",
@@ -53314,5 +53318,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "96c929094dbff13ee3549f562a10567c8c9ee11f5fb191a11c9cbc9e081135cc",
-  "phase3eContractSha256": "7ab1d98aa13d7e96cddc29843b228fc243401261e7cb0b007afabd268b314266"
+  "phase3eContractSha256": "864e9ab0e218a0f109658d7df7271215f60e213904559bc763b3737297724e03"
 }
