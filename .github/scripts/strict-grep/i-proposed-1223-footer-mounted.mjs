@@ -1,6 +1,20 @@
 #!/usr/bin/env node
 /**
- * ORCH-1223 [footer re-mount] — AMENDED by ORCH-1224, AMENDED AGAIN by #2902.
+ * ORCH-1223 [footer re-mount] — AMENDED by ORCH-1224, by #2902, and by #4339.
+ *
+ * #4339 SUPERSEDES THE EXPLORER HALF, NAMED HERE:
+ *   old: the explorer home (app/(explorer)/**) MUST NOT mount a footer,
+ *        because it was a one-viewport, non-scrolling deck hero (ORCH-1224,
+ *        #3371).
+ *   why: the #4339 redesign (approved design contract, spec §9) replaces that
+ *        hero with a scrolling home that closes with the ONE canonical footer,
+ *        like every other page. The explorer surface now MUST mount it too.
+ *   also: the canonical footer moved into components/marketing/footer.tsx
+ *        (<SiteFooter>); components/cutout/footer.tsx only delegates to it, so
+ *        the Privacy/Terms check reads the canonical file, and the redesigned
+ *        pages render it from components/site/{home,host}-page.tsx. The footer
+ *        must carry NO "Privacy choices" text or link (#4339 §9/§10: the #4318
+ *        bottom strip is the only privacy control).
  *
  * #2902 SUPERSEDES ONE ASSERTION, NAMED HERE:
  *   old: app/host/layout.tsx must import `Footer` from '@/components/marketing/
@@ -48,14 +62,17 @@ import { join } from "node:path";
 const EXPLORER_SOURCES = [
   "mingla-marketing/app/(explorer)/layout.tsx",
   "mingla-marketing/app/(explorer)/page.tsx",
+  "mingla-marketing/components/site/home-page.tsx",
 ];
 // The footer may be mounted by either the layout or the page, so the surface is
 // read as a whole. A silent un-mount still fails; that is the ORCH-1053 mode.
 const BUSINESS_SOURCES = [
   "mingla-marketing/app/host/layout.tsx",
   "mingla-marketing/app/host/page.tsx",
+  "mingla-marketing/components/site/host-page.tsx",
 ];
-const FOOTER_COMPONENT = "mingla-marketing/components/cutout/footer.tsx";
+// #4339: the canonical footer lives here; the Cutout footer delegates to it.
+const FOOTER_COMPONENT = "mingla-marketing/components/marketing/footer.tsx";
 const FOOTER_MODULE = "@/components/marketing/footer";
 
 const root = process.cwd().endsWith("mingla-business")
@@ -76,14 +93,15 @@ const importRe = new RegExp(
   `import\\s*\\{[^}]*\\bFooter\\b[^}]*\\}\\s*from\\s*(['"\`])${FOOTER_MODULE_RE}\\1`,
 );
 // any `<Footer surface="..." ...>` render (used for the MUST-NOT-MOUNT check too).
-const anyRenderRe = /<(?:Footer|CutoutFooter)\b[^>]*\bsurface\s*=\s*['"][^'"]*['"]/;
+const anyRenderRe = /<(?:Footer|CutoutFooter|SiteFooter)\b[^>]*\bsurface\s*=\s*['"][^'"]*['"]/;
 
 /**
  * Business layout satisfies the MUST-MOUNT invariant iff (after comment-stripping)
  * it imports `Footer` AND renders `<Footer surface="organiser" ...>`.
  */
 // Either footer counts as mounted: the legacy marketing one or the #2902 one.
-const anyFooterMountRe = /<(?:Footer|CutoutFooter)\b[^>]*\bsurface\s*=\s*['"][^'"]*['"]/;
+// #4339: <SiteFooter> is the canonical one; the other two delegate to it.
+const anyFooterMountRe = /<(?:Footer|CutoutFooter|SiteFooter)\b[^>]*\bsurface\s*=\s*['"][^'"]*['"]/;
 
 const evaluateMustMount = ({ label, code }) => {
   const failures = [];
@@ -110,6 +128,11 @@ const evaluateLegalLinks = ({ label, code }) => {
         `${label}: footer does not link ${name} (${href}) — the store launch needs it visible. I-PROPOSED-1223-FOOTER-MOUNTED.`,
       );
     }
+  }
+  if (/privacy choices|privacy-choices|PrivacyChoices/i.test(src)) {
+    failures.push(
+      `${label}: footer carries a "Privacy choices" text or link — the #4318 bottom strip is the only privacy control (#4339 §9). I-PROPOSED-1223-FOOTER-MOUNTED.`,
+    );
   }
   return failures;
 };
@@ -205,41 +228,65 @@ if (SELF_TEST) {
     }
   `;
 
+  // #4339: the redesigned explorer home mounts the canonical footer.
+  const GOOD_EXPLORER_SITE = `
+    import { SiteFooter } from '@/components/marketing/footer'
+    export function HomePage() { return (<div><SiteFooter surface="explorer" /></div>) }
+  `;
+  const BAD_FOOTER_PRIVACY_CHOICES = `
+    const COLUMNS = [{ links: [
+      { href: '/privacy-policy', label: 'Privacy' },
+      { href: '/terms-of-service', label: 'Terms' },
+      { href: '/privacy-choices', label: 'Privacy choices' },
+    ] }]
+  `;
+
   const goodB = evaluateMustMount({ label: "business", code: GOOD_BUSINESS });
   const goodBCutout = evaluateMustMount({ label: "business", code: GOOD_BUSINESS_CUTOUT });
   const goodLinks = evaluateLegalLinks({ label: "footer", code: GOOD_FOOTER_LINKS });
   const badLinks = evaluateLegalLinks({ label: "footer", code: BAD_FOOTER_LINKS_DROPPED });
-  const badECutout = evaluateMustNotMount({ label: "explorer", code: BAD_EXPLORER_CUTOUT });
-  const goodE = evaluateMustNotMount({ label: "explorer", code: GOOD_EXPLORER });
-  const goodEC = evaluateMustNotMount({ label: "explorer", code: GOOD_EXPLORER_COMMENTED });
+  const badChoices = evaluateLegalLinks({ label: "footer", code: BAD_FOOTER_PRIVACY_CHOICES });
+  // Explorer now MUST mount (#4339): the old "forbidden" fixtures are the good ones,
+  // and the footer-less shapes fail.
+  const goodESite = evaluateMustMount({ label: "explorer", code: GOOD_EXPLORER_SITE });
+  const goodECutout = evaluateMustMount({ label: "explorer", code: BAD_EXPLORER_CUTOUT });
+  const goodERemount = evaluateMustMount({ label: "explorer", code: BAD_EXPLORER_REMOUNTED });
+  const badE = evaluateMustMount({ label: "explorer", code: GOOD_EXPLORER });
+  const badEC = evaluateMustMount({ label: "explorer", code: GOOD_EXPLORER_COMMENTED });
   const badBNoRender = evaluateMustMount({ label: "business", code: BAD_BUSINESS_NO_RENDER });
   const badBCommented = evaluateMustMount({ label: "business", code: BAD_BUSINESS_COMMENTED });
-  const badERemount = evaluateMustNotMount({ label: "explorer", code: BAD_EXPLORER_REMOUNTED });
+  // The retired must-not-mount check still recognises a SiteFooter render.
+  const notMountSeesSite = evaluateMustNotMount({ label: "explorer", code: GOOD_EXPLORER_SITE });
 
   const ok =
     goodB.length === 0 &&
     goodBCutout.length === 0 &&
     goodLinks.length === 0 &&
     badLinks.length >= 2 &&
-    badECutout.length >= 1 &&
-    goodE.length === 0 &&
-    goodEC.length === 0 &&
+    badChoices.length === 1 &&
+    goodESite.length === 0 &&
+    goodECutout.length === 0 &&
+    goodERemount.length === 0 &&
+    badE.length >= 1 &&
+    badEC.length >= 1 &&
     badBNoRender.length >= 1 &&
     badBCommented.length >= 1 &&
-    badERemount.length >= 1;
+    notMountSeesSite.length >= 1;
 
   if (!ok) {
     console.error("ORCH-1223/1224 footer-mounted SELF-TEST failed:", {
       goodB,
-      goodE,
-      goodEC,
-      badBNoRender,
-      badBCommented,
-      badERemount,
       goodBCutout,
       goodLinks,
       badLinks,
-      badECutout,
+      badChoices,
+      goodESite,
+      goodECutout,
+      goodERemount,
+      badE,
+      badEC,
+      badBNoRender,
+      badBCommented,
     });
     process.exit(1);
   }
@@ -269,7 +316,8 @@ if (businessCode !== null) {
 
 const explorerCode = readSurface(EXPLORER_SOURCES, "explorer marketing surface");
 if (explorerCode !== null) {
-  failures.push(...evaluateMustNotMount({ label: EXPLORER_SOURCES.join(" / "), code: explorerCode }));
+  // #4339: the explorer surface now MUST mount the canonical footer too.
+  failures.push(...evaluateMustMount({ label: EXPLORER_SOURCES.join(" / "), code: explorerCode }));
 }
 
 const footerAbs = join(root, FOOTER_COMPONENT);

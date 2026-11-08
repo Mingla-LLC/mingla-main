@@ -55,17 +55,11 @@ await withNextBrowser(ROOT, async ({ page, baseUrl, consoleErrors }) => {
   const noJs = await page.evaluate(`[...document.querySelectorAll('a[data-cta-phone-href]')].map(a => ({href:a.getAttribute('href'),surface:a.dataset.ctaSurface}))`)
   assert(noJs.every((link) => link.surface === 'explorer' ? link.href === '/download' : link.href.startsWith('https://host.usemingla.com')), 'no-JavaScript CTAs must retain computer destinations')
 
+  // #4339 phase 2a: the expanding cards are no longer on /host (replaced in
+  // place by the approved redesign), so the keyboard/expanding-card check is
+  // retired. Reduced motion on the redesign: nothing keeps animating.
   await open(page, baseUrl, '/host?qa=keyboard', { width: 1280, height: 900, reducedMotion: true })
-  await page.evaluate(`document.body.focus()`)
-  await waitFor(async () => {
-    await press(page, 'Tab')
-    return page.evaluate(`document.activeElement?.classList.contains('cut-xcard-trigger')`)
-  }, 'keyboard did not reach an expanding card')
-  await press(page, 'Tab')
-  await waitFor(() => page.evaluate(`document.querySelectorAll('.cut-xcard-trigger')[1].getAttribute('aria-expanded') === 'true'`), 'keyboard focus did not expand the second card')
-  assert.equal(await page.evaluate(`document.querySelectorAll('.cut-xcard-trigger')[0].getAttribute('aria-expanded')`), 'false')
-  const focusVisible = await page.evaluate(`(() => { const s=getComputedStyle(document.querySelectorAll('.cut-xcard-trigger')[1]); return s.outlineStyle !== 'none' || s.boxShadow !== 'none'; })()`)
-  assert.equal(focusVisible, true, 'expanded-card trigger lost its visible focus treatment')
+  await new Promise((resolve) => setTimeout(resolve, 1200))
   assert.equal(await page.evaluate(`document.getAnimations().filter(a=>a.playState==='running').length`), 0, 'reduced-motion left an animation running')
 
   await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `window.__qaCls=0;new PerformanceObserver(l=>{for(const e of l.getEntries())if(!e.hadRecentInput)window.__qaCls+=e.value}).observe({type:'layout-shift',buffered:true})` })
@@ -78,4 +72,4 @@ await withNextBrowser(ROOT, async ({ page, baseUrl, consoleErrors }) => {
   assert.deepEqual(consoleErrors, [], `browser errors: ${consoleErrors.join('\n')}`)
 })
 
-process.stdout.write(`PASS #4137 Phase 1 tester: ${UAS.length} device classes, no-JS, keyboard, reduced motion, CLS and ${files.length} assets\n`)
+process.stdout.write(`PASS #4137 Phase 1 tester: ${UAS.length} device classes, no-JS, reduced motion (card keyboard check retired by #4339), CLS and ${files.length} assets\n`)

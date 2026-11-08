@@ -21,6 +21,17 @@ import { fileURLToPath } from 'node:url'
 //      The interim name from the first #3371 pass never shipped, so it has no
 //      redirect and must not exist anywhere.
 //
+// #4339 phase 2a SUPERSEDES decisions 2 and 3, deliberately: the approved
+// redesign (issue #4339 spec, design contract v7) replaces the one-screen deck
+// hero with a scrolling Reelmark home that closes with the canonical footer,
+// and its "Use Mingla" sits inside the hero ring (pinned by
+// lib/__tests__/issue-4339-site-chrome.implementor.test.mjs). The one-screen
+// source pins, the measured deck gaps and the side-menu checks ON `/` (the home
+// now carries the #4339 site nav, not the Cutout side menu) are retired. Still
+// binding here: decisions 1 and 4 — the Cutout side menu (checked on
+// /going-out, which still uses it), the /going-out rename and the permanent
+// /explorer redirect — plus "no city guides grid on the home".
+//
 // Modes: `--source-only` (before `next build`), `--built-only` (against the
 // final production build, including local Chrome geometry), `--self-test`
 // (proves the source and geometry guards reject the pre-#3371 state).
@@ -96,12 +107,12 @@ function sourceContract(overrides = {}) {
   const home = code(source(M('app/(explorer)/page.tsx')))
   assert.doesNotMatch(home, /RootCityGrid/, 'the home page must not mount the city guides grid')
   assert.doesNotMatch(home, /showCityLaunch|allCityHubsSearchReady/, 'the home page must not branch on the city launch')
-  assert.match(home, /<CutoutShell dark noScroll>/, 'the home page must always be the one-screen shell')
-  assert.match(home, /<div data-cut-deck className="relative h-full">/, 'the deck wrapper must fill the one-screen shell')
-  assert.doesNotMatch(home, /h-\[100svh\]/, 'the scrolling deck wrapper height must not return')
-  assert.match(home, /location="hero_above_deck"/, 'the Use Mingla action must stay between headline and deck')
-  assert.doesNotMatch(code(source(M('app/(explorer)/layout.tsx'))), /city-hubs\.css/, 'the one-screen home has no city module to style')
-  assert.match(code(source(M('app/host/page.tsx'))), /<HostStartCta\b/, '#4137: the Host page ends with the Start hosting call to action')
+  // #4339: the home is the redesigned page (one-screen pins retired, see top).
+  assert.match(home, /<HomePage \/>/, 'the home page renders the #4339 redesign')
+  assert.doesNotMatch(code(source(M('components/site/home-page.tsx'))), /RootCityGrid|allCityHubsSearchReady/, 'the home never mounts the readiness-gated city guides grid')
+  assert.doesNotMatch(code(source(M('app/(explorer)/layout.tsx'))), /city-hubs\.css/, 'the home has no city module to style')
+  // #4339: /host is the redesigned page; it ends with the "Get found. Get booked." band.
+  assert.match(code(source(M('app/host/page.tsx'))), /<HostPage \/>/, '#4339: /host renders the redesigned page')
 
   assert(fs.existsSync(path.join(REPO, M('app/(core)/going-out/page.tsx'))), '/going-out page must exist')
   assert(!fs.existsSync(path.join(REPO, M('app/(core)/explorer'))), 'the old /explorer page directory must be gone')
@@ -139,7 +150,9 @@ function sourceContract(overrides = {}) {
   assert(rights.outputs.find((row) => row.scene === 'explorer_saved_details').allowedSurfaces.includes('usemingla.com/going-out'))
   assert.doesNotMatch(JSON.stringify(rights), /usemingla\.com\/explorer"/, 'product-proof rights must follow the page to its new path')
 
-  for (const footer of [M('components/cutout/footer.tsx'), M('components/marketing/footer.tsx')]) {
+  // #4339 §9: the canonical footer owns the links; the Cutout footer delegates.
+  assert.match(code(source(M('components/cutout/footer.tsx'))), /return <SiteFooter surface=\{surface\} \/>/, 'the Cutout footer renders the canonical footer')
+  for (const footer of [M('components/marketing/footer.tsx')]) {
     const footerCode = code(source(footer))
     assert.match(footerCode, /\{ href: '\/going-out', label: 'Going out' \}/, `${footer} must link Going out to its new path`)
     assert.match(footerCode, /\{ href: '\/', label: 'Home' \}/, `${footer} keeps its Home link`)
@@ -408,9 +421,9 @@ async function runtimeContract() {
     assert.doesNotMatch(sitemap, /usemingla\.com\/explorer</, 'sitemap must not list the redirected path')
     assert.equal(sitemap.includes('usemingla.com/going-out<'), sitemap.includes('usemingla.com/about<'), '/going-out must share the core-page sitemap state')
     const host = (await request(serverPort, '/host')).body
-    // #4137: /host ends with the Start hosting card; the city list moved off it.
+    // #4137: the city list moved off /host. #4339: /host is the redesigned page.
     assert(!host.includes('city-root-module'), '#4137: the Host page no longer renders the city list')
-    assert(host.includes('class="cut-start'), '#4137: the Host page ends with the Start hosting card')
+    assert(host.includes('<span class="rm-lines"><span>Everything</span>'), '#4339: the Host page is the redesign')
     process.stdout.write('PASS #3371 runtime HTTP: 308 with query, /going-out title/H1, home without city guides, sitemap and Host list\n')
 
     if (process.env.VERCEL === '1') {
@@ -430,32 +443,9 @@ async function runtimeContract() {
     await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('mingla_consent_v1',JSON.stringify({value:'denied',ts:Date.now()}))` })
     const base = `http://127.0.0.1:${serverPort}`
 
-    for (const [width, height] of VIEWPORTS) {
-      const label = `${width}x${height}`
-      await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false })
-      await page.send('Page.navigate', { url: `${base}/` })
-      await waitFor(() => page.evaluate(`location.pathname==='/'`), `${label}: home did not load`)
-      await waitFor(() => page.evaluate(SETTLED), `${label}: home hero did not settle`)
-      await page.evaluate(`(async()=>{await document.fonts.ready;await new Promise((r)=>requestAnimationFrame(()=>requestAnimationFrame(r)));return true})()`)
-      const samples = []
-      // Samples span a full 2s deck rotation, so every card swap is measured.
-      for (let index = 0; index < SAMPLES; index += 1) {
-        samples.push(await page.evaluate(GEOMETRY))
-        await sleep(400)
-      }
-      for (const sample of samples) assertHomeGeometry(sample, label)
-      const worst = (key) => Math.min(...samples.map((sample) => sample[key])).toFixed(1)
-      process.stdout.write(`EVIDENCE #3371 ${label} above=${worst('above')}px below=${worst('below')}px pillClearance=${worst('pillClearance')}px scroll=${samples[0].scrollHeight}/${samples[0].innerHeight}\n`)
-    }
-
+    // #4339: the one-screen home geometry and the side-menu check on `/` are
+    // retired (the home is the scrolling redesign with the #4339 site nav).
     await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false })
-    await page.send('Page.navigate', { url: `${base}/` })
-    await waitFor(() => page.evaluate(SETTLED), 'home hero did not settle before the menu check')
-    assert.deepEqual(await openMenuItems(page), [
-      ['Explorer', '/', 'page'], ['Cities', '/cities', null], ['Going out', '/going-out', null],
-      ['Host', '/host', null], ['Free tools', '/tools', null], ['About', '/about', null],
-      ['Help', '/help', null], ['Support', '/support', null], ['Careers', 'https://career.usemingla.com', null],
-    ], 'on / the menu must light Explorer only, with no Home item')
     await page.send('Page.navigate', { url: `${base}/explorer` })
     await waitFor(() => page.evaluate(`location.pathname==='/going-out'&&document.readyState==='complete'&&!!document.querySelector('button[aria-label="Open menu"]')`), 'browser did not follow /explorer to /going-out')
     assert.deepEqual(await openMenuItems(page), [
@@ -464,10 +454,12 @@ async function runtimeContract() {
       ['Help', '/help', null], ['Support', '/support', null], ['Careers', 'https://career.usemingla.com', null],
     ], 'on /going-out the menu must light Going out, not Explorer')
 
+    // #4339: the side-menu geometry is measured on /going-out, which still
+    // carries the Cutout side menu (the home now has the #4339 site nav).
     for (const [width, height] of MENU_VIEWPORTS) {
-      const { label, sample } = await openMenuGeometry(page, `${base}/`, width, height)
+      const { label, sample } = await openMenuGeometry(page, `${base}/going-out`, width, height)
       assertMenuAlignment(sample, label)
-      assert.equal(sample.items.find((item) => item.current === 'page')?.label, 'Explorer', `${label}: Explorer must be the lit row`)
+      assert.equal(sample.items.find((item) => item.current === 'page')?.label, 'Going out', `${label}: Going out must be the lit row`)
       process.stdout.write(`EVIDENCE #3371 menu ${label} iconOffset=${Math.max(...sample.items.map((item) => Math.abs(item.iconLeft - item.box.left - item.paddingLeft))).toFixed(2)}px iconLeftSpread=${spread(sample.items.map((item) => item.iconLeft)).toFixed(2)}px ctaCentreOffset=${sample.ctas.map((cta) => cta.centreOffset.toFixed(2)).join('/')}px scrollWidth=${sample.scrollWidth}/${sample.innerWidth} drawerOverflowY=${Math.max(0, sample.cardScrollHeight - sample.cardClientHeight)}px\n`)
     }
     const goingOutMenu = await openMenuGeometry(page, `${base}/going-out`, 402, 874)
@@ -482,7 +474,7 @@ async function runtimeContract() {
       assert.equal(overflow, 0, `/going-out ${width}x${height}: page overflows horizontally by ${overflow}px`)
     }
     process.stdout.write(`PASS #3371 menu: ${MENU_VIEWPORTS.map(([w, h]) => `${w}x${h}`).join(', ')} rows left-aligned (icon at padding <=${ICON_TOLERANCE_PX}px, one icon column, text after icon, no wrap/truncation, identical active/inactive rows), bottom CTAs centred, drawer inside the viewport (content scrolls where taller); lit Going out on /going-out; /going-out no horizontal overflow on phones\n`)
-    process.stdout.write(`PASS #3371 browser: ${VIEWPORTS.map(([w, h]) => `${w}x${h}`).join(', ')} keep >=${MIN_GAP}px above and below Use Mingla (imbalance <=${MAX_IMBALANCE}px), >=${MIN_PILL_CLEARANCE}px deck-to-pills, no scroll; menu highlight on / and /going-out\n`)
+    process.stdout.write('PASS #3371 browser: side menu highlight on /going-out (the one-screen home geometry is retired by #4339)\n')
   } finally {
     try { if (page) await page.send('Browser.close', {}, 2_000) } catch { /* the owned Chrome is force-stopped below */ }
     page?.close()
@@ -516,12 +508,11 @@ function selfTest() {
   assert.throws(() => assertMenuAlignment(centredSample, 'centred rows'), /icon starts 50\.0px from its row's left padding/, 'centred menu geometry must prove RED')
   const leftSample = { ...centredSample, items: centredSample.items.map((item) => ({ ...item, iconLeft: 56, iconRight: 76, textLeft: 90 })), ctas: [{ label: 'Explore Your City', centreOffset: -60 }, centredSample.ctas[1]] }
   assert.throws(() => assertMenuAlignment(leftSample, 'left CTA'), /bottom CTA "Explore Your City" is no longer centred/, 'a left-aligned bottom CTA must prove RED')
-  const home = readRepo(homePath)
-  const scrollingHome = home
-    .replace('<CutoutShell dark noScroll>', "<CutoutShell dark noScroll={!showCityLaunch}>")
-    .replace('      </div>\n    </CutoutShell>', '      </div>\n      {showCityLaunch ? <RootCityGrid surface="explorer" /> : null}\n    </CutoutShell>')
-  assert.notEqual(scrollingHome, home, 'self-test must rebuild the scrolling home')
-  assert.throws(() => sourceContract({ [homePath]: scrollingHome }), /must not mount the city guides grid/, 'the scrolling home must prove RED')
+  // #4339: the "scrolling home" RED proof is retired with the one-screen home;
+  // a home that mounts the readiness-gated city grid still proves RED.
+  const homeWithGrid = readRepo(homePath).replace('<HomePage />', '<HomePage /><RootCityGrid surface="explorer" />')
+  assert.notEqual(homeWithGrid, readRepo(homePath), 'self-test must add the city grid to the home')
+  assert.throws(() => sourceContract({ [homePath]: homeWithGrid }), /must not mount the city guides grid/, 'a home with the city grid must prove RED')
   const registry = readRepo(registryPath)
   const noRedirect = registry.replace("source: '/explorer',", "source: '/explorer-removed',")
   assert.notEqual(noRedirect, registry, 'self-test must remove the registry redirect')
@@ -535,7 +526,7 @@ function selfTest() {
   assert.throws(() => assertHomeGeometry(before['1280x800'], '1280x800'), /gap below Use Mingla is 27\.2px/, 'the 27px desktop gap must prove RED')
   // #4318: the strip baseline floor at 375x667 still rejects a deck that crowds the pills further.
   assert.throws(() => assertHomeGeometry({ above: 32, below: 31, pillClearance: 17.5, scrollHeight: 667, innerHeight: 667, cityGrid: false }, '375x667'), /deck is 17\.5px from the hero pill row \(< 18px\)/, 'a deck closer than the strip baseline must prove RED')
-  process.stdout.write('RED proof: pre-#3371 menu, centred menu rows (source and geometry), a left-aligned bottom CTA, scrolling home with city grid, missing redirect and the measured crowded gaps were rejected\n')
+  process.stdout.write('RED proof: pre-#3371 menu, centred menu rows (source and geometry), a left-aligned bottom CTA, home with city grid, missing redirect and the measured crowded gaps were rejected\n')
 }
 
 assert(!(SOURCE_ONLY && BUILT_ONLY), 'choose only one #3371 guard mode')

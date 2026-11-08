@@ -40,7 +40,8 @@ const SLUGS = ['events', 'trips', 'experiences', 'restaurants', 'hotels', 'art',
 
 const NEW_FILES = [
   'app/host/[icp]/page.tsx',
-  'app/host/[icp]/fonts.ts',
+  'app/site-fonts.ts', // phase 2a moved the brand faces here from app/host/[icp]/fonts.ts
+  'components/landing/handoff-sheet.tsx',
   'content/host-landing/icps.ts',
   'lib/app-handoff.ts',
   'components/landing/icp-landing.tsx',

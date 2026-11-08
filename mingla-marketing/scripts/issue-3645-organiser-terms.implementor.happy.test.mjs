@@ -52,9 +52,11 @@ const COMPANY_FACTS = [
 const KEPT_SECTION_NUMBERS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 13, 14, 15, 16, 17, 18]
 const CARVE_OUT =
   'If you use Mingla Host to list, sell, message or advertise as an organiser, that use is commercial and is governed by the Mingla Organiser Terms at usemingla.com/organiser-terms, which apply alongside these Terms.'
+// #4339 §9: components/cutout/footer.tsx now renders the ONE canonical footer
+// (components/marketing/footer.tsx), so the footer link is checked once, on
+// the owner; the built /host and /tools pages below still prove it renders.
 const LINK_SURFACES = [
   'components/marketing/footer.tsx',
-  'components/cutout/footer.tsx',
   'components/page-system/page-system-shell.tsx',
   'app/support/page.tsx',
 ]
@@ -171,7 +173,7 @@ if (mode === 'source') {
     ['held ads section published', { 'lib/organiserTermsContent.ts': `${files['lib/organiserTermsContent.ts']}\n// title: 'Ads through Mingla'` }],
     ['editor note published', { 'lib/organiserTermsContent.ts': `${files['lib/organiserTermsContent.ts']}\n// [Legal review: media licence.]` }],
     ['company registration dropped', { 'lib/organiserTermsContent.ts': files['lib/organiserTermsContent.ts'].replaceAll('RC 9591121', 'RC') }],
-    ['footer link dropped', { 'components/cutout/footer.tsx': files['components/cutout/footer.tsx'].replace("{ href: '/organiser-terms', label: 'Organiser Terms' }, ", '') }],
+    ['footer link dropped', { 'components/marketing/footer.tsx': files['components/marketing/footer.tsx'].replace("{ href: '/organiser-terms', label: 'Organiser Terms' },", '') }],
     ['carve-out reverted', { 'lib/termsContent.ts': files['lib/termsContent.ts'].replaceAll(` ${CARVE_OUT}`, '') }],
     ['help copy reverted', { 'content/help/registry.ts': `${files['content/help/registry.ts']}\n// Mingla is the merchant of record for ticket sales` }],
   ]
@@ -179,7 +181,7 @@ if (mode === 'source') {
     assert.throws(() => verifySource({ ...files, ...override }), assert.AssertionError, `RED proof failed to reject: ${label}`)
   }
   process.stdout.write(`RED proof: ${reverts.length} reverted states rejected\n`)
-  process.stdout.write('PASS #3645 source: /organiser-terms search_ready/canonical, held clauses omitted, both companies named, four link surfaces, ToS carve-out, help copy corrected\n')
+  process.stdout.write('PASS #3645 source: /organiser-terms search_ready/canonical, held clauses omitted, both companies named, three link surfaces, ToS carve-out, help copy corrected\n')
 } else {
   const appDir = path.join(ROOT, '.next/server/app')
   const pages = Object.fromEntries(['organiser-terms', 'support', 'terms-of-service', 'host', 'tools'].map((name) => {

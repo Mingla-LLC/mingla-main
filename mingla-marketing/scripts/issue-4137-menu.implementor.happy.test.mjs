@@ -211,12 +211,14 @@ async function runtimeContract() {
     await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('mingla_consent_v1',JSON.stringify({value:'denied',ts:Date.now()}))` })
     const base = `http://127.0.0.1:${serverPort}`
 
-    // AC-M1, M4, M5 across viewports on /.
+    // AC-M1, M4, M5 across viewports. #4339 phase 2a: `/` and `/host` now carry
+    // the redesign's own site nav, not this side menu, so the side menu is
+    // measured on /going-out (lit: Going out), a page that still renders it.
     for (const [width, height] of [[1440, 900], [390, 844], [402, 874], [375, 667], [360, 780]]) {
-      const label = `/ ${width}x${height}`
-      const state = await openMenu(page, base, '/', width, height)
+      const label = `/going-out ${width}x${height}`
+      const state = await openMenu(page, base, '/going-out', width, height)
       assert.deepEqual(state.links.map((link) => [link.label, link.href]), EXPECTED_LINKS, `#4137 AC-M1: ${label} links`)
-      assert.deepEqual(state.links.map((link) => link.current), ['page', null, null, null, null, null, null, null, null], `#4137 AC-M1: ${label} lights Explorer`)
+      assert.deepEqual(state.links.map((link) => link.current), [null, null, 'page', null, null, null, null, null, null], `#4137 AC-M1: ${label} lights Going out`)
       assert.deepEqual(state.groups, ['EXPLORE', 'HOST', 'COMPANY'], `#4137 AC-M1: ${label} group labels`)
       for (const link of state.links) {
         assert(link.box.height >= 44 - 0.5 && link.box.width >= 44 - 0.5, `#4137 AC-M4: ${label} "${link.label}" is ${link.box.width.toFixed(1)}x${link.box.height.toFixed(1)}`)
@@ -247,7 +249,7 @@ async function runtimeContract() {
     }
 
     // AC-M2 — one lit item per route.
-    for (const [route, lit] of [['/going-out', 'Going out'], ['/cities/raleigh-nc', 'Cities'], ['/cities', 'Cities'], ['/host', 'Host'], ['/help', 'Help'], ['/about', 'About']]) { // /support renders its own layout with no side menu; its chip is proven in issue-4137-menu-blog-seam
+    for (const [route, lit] of [['/going-out', 'Going out'], ['/cities/raleigh-nc', 'Cities'], ['/cities', 'Cities'], ['/help', 'Help'], ['/about', 'About']]) { // #4339: /host carries the redesign's site nav // /support renders its own layout with no side menu; its chip is proven in issue-4137-menu-blog-seam
       const state = await openMenu(page, base, route, 1440, 900)
       assert.deepEqual(state.links.filter((link) => link.current === 'page').map((link) => link.label), [lit], `#4137 AC-M2: ${route} lights ${lit} only`)
     }

@@ -13,7 +13,9 @@ if (!process.argv.includes('--built-only')) {
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const VIEWPORTS = [[360, 780], [375, 667], [390, 844], [402, 874], [768, 1024], [1440, 900]]
-const ROUTES = ['/', '/going-out', '/cities', '/cities/raleigh-nc', '/host', '/tools', '/help', '/support', '/about']
+// #4339 phase 2a: `/` and `/host` carry the redesign's site nav (pinned by
+// lib/__tests__/issue-4339-site-chrome.*), not this grouped side menu.
+const ROUTES = ['/going-out', '/cities', '/cities/raleigh-nc', '/tools', '/help', '/support', '/about']
 
 for (const file of [
   'components/cities/city-top-places.tsx', 'components/cities/city-page.tsx',

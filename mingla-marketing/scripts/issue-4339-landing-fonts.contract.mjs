@@ -5,14 +5,18 @@
 //
 // The faces are the SAME pinned WOFF2 files as /links (#4318,
 // scripts/issue-4318-links-fonts.contract.mjs owns their bytes and licences).
-// They are defined in app/host/[icp]/fonts.ts and imported by
-// app/host/[icp]/page.tsx alone, so they load and preload on /host/<icp> and
-// nowhere else.
+// They are defined in app/site-fonts.ts and imported by the redesigned pages
+// alone (phase 2a moved the module up from app/host/[icp]/fonts.ts when Home
+// and Mingla Host joined the landing pages): /, /host and /host/<icp>. They
+// load and preload on those routes and nowhere else.
 
 import assert from 'node:assert/strict'
 
-export const LANDING_FONT_MODULE = 'app/host/[icp]/fonts.ts'
-export const LANDING_FONT_CONSUMER = 'app/host/[icp]/page.tsx'
+export const LANDING_FONT_MODULE = 'app/site-fonts.ts'
+/** The redesigned pages, sorted: the only modules that may import the brand faces. */
+export const LANDING_FONT_CONSUMERS = ['app/(explorer)/page.tsx', 'app/host/[icp]/page.tsx', 'app/host/page.tsx']
+/** Their app-router entries in the built font manifest. */
+export const LANDING_FONT_MANIFEST_ENTRIES = [/\/app\/\(explorer\)\/page$/, /\/app\/host\/\[icp\]\/page$/, /\/app\/host\/page$/]
 
 export const LANDING_FONT_DEFINITIONS = [
   {
@@ -55,7 +59,7 @@ export const LANDING_FONT_FILES = [...new Set(LANDING_FONT_DEFINITIONS.flatMap((
  */
 export function checkLandingFontSource(read, sourceFiles) {
   const source = read(LANDING_FONT_MODULE)
-  assert.equal((source.match(/localFont\s*\(/g) ?? []).length, 3, '#4339: app/host/[icp]/fonts.ts must define exactly three faces')
+  assert.equal((source.match(/localFont\s*\(/g) ?? []).length, 3, '#4339: app/site-fonts.ts must define exactly three faces')
   for (const definition of LANDING_FONT_DEFINITIONS) {
     const start = source.indexOf(`export const ${definition.exportName} = localFont(`)
     assert.notEqual(start, -1, `#4339: ${definition.exportName} must exist`)
@@ -63,7 +67,7 @@ export function checkLandingFontSource(read, sourceFiles) {
     assert.notEqual(end, -1, `#4339: ${definition.exportName} must end before ${definition.nextName}`)
     const block = source.slice(start, end)
     assert.deepEqual(
-      [...block.matchAll(/\{ path: '\.\.\/\.\.\/fonts\/([\w.-]+)', weight: '(\d+)', style: '(normal|italic)' \}/g)].map((m) => [m[1], m[2], m[3]]),
+      [...block.matchAll(/\{ path: '\.\/fonts\/([\w.-]+)', weight: '(\d+)', style: '(normal|italic)' \}/g)].map((m) => [m[1], m[2], m[3]]),
       definition.faces,
       `#4339: ${definition.exportName} must keep its exact pinned faces`,
     )
@@ -76,16 +80,15 @@ export function checkLandingFontSource(read, sourceFiles) {
       `#4339: ${definition.exportName} must keep its system fallback stack`,
     )
   }
-  const importers = sourceFiles.filter((file) => {
-    const text = read(file)
-    return file.startsWith('app/host/[icp]/')
-      ? /from '\.\/fonts'/.test(text)
-      : /host\/\[icp\]\/fonts/.test(text)
-  })
-  assert.deepEqual(importers, [LANDING_FONT_CONSUMER], '#4339: only the Host landing page may use the landing brand faces')
-  assert.match(
-    read(LANDING_FONT_CONSUMER),
-    /className=\{`\$\{landingSerif\.variable\} \$\{landingSans\.variable\} \$\{landingMono\.variable\}`\}/,
-    '#4339: the landing page applies the three face variables',
-  )
+  const importers = sourceFiles
+    .filter((file) => file !== LANDING_FONT_MODULE && /from '(?:@\/app\/site-fonts|\.\.?\/(?:\.\.\/)*site-fonts)'/.test(read(file)))
+    .sort()
+  assert.deepEqual(importers, LANDING_FONT_CONSUMERS, '#4339: only the redesigned pages (/, /host, /host/<icp>) may use the brand faces')
+  for (const consumer of LANDING_FONT_CONSUMERS) {
+    assert.match(
+      read(consumer),
+      /className=\{`\$\{landingSerif\.variable\} \$\{landingSans\.variable\} \$\{landingMono\.variable\}`\}/,
+      `#4339: ${consumer} applies the three face variables`,
+    )
+  }
 }

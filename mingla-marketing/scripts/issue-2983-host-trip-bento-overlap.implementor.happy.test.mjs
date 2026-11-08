@@ -15,12 +15,12 @@ const cutoutCss = read('components/cutout/cutout.css')
 const bentoContent = read('lib/design-preview/host-bento.ts')
 const packageJson = JSON.parse(read('package.json'))
 
-assert.equal(
-  // #4137: rows raised so the tiles fit their new photos.
-  (page.match(/<BentoGrid className="mt-14 lg:auto-rows-\[17rem\] xl:auto-rows-\[16rem\]">/g) ?? []).length,
-  1,
-  'the Host page must give the compact-desktop bento rows enough vertical room exactly once',
-)
+// #4339 phase 2a: /host was replaced in place by the approved redesign
+// (components/site/host-page.tsx) and no longer mounts the capability bento.
+// The page-level pins (row heights, figures, chip spacing) are retired; the
+// shared bento primitives below still guard the components that remain.
+assert.doesNotMatch(page + read('components/site/host-page.tsx'), /<BentoGrid\b|<HostFigure\b/, '#4339: /host no longer mounts the bento')
+assert.match(page, /<HostPage \/>/, '#4339: /host renders the redesigned page')
 assert.match(
   grid,
   /grid grid-cols-1 gap-4 lg:grid-cols-6 lg:auto-rows-\[14rem\]/,
@@ -34,14 +34,6 @@ assert.match(
   /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.cut-host-bento-card, \.cut-host-trip-figure \{[\s\S]*opacity: 1 !important;[\s\S]*transform: none !important;/,
   'reduced motion must force the Host bento and Trips figure visible without a hydration race',
 )
-assert.match(page, /<HostFigure id=\{card\.id\} ambient=\{card\.ambient\} photo=\{card\.photo\} \/>/, '#4137: Host figures must remain visible, with ambient motion and photos')
-assert.match(page, /mt-6 flex flex-wrap gap-2/, 'Host capability chips must keep their standard spacing and wrapping')
-assert.match(
-  page,
-  /card\.id === 'trips' && 'mt-7 sm:mt-6'/,
-  'only the Trips chip row must gain the narrow-screen spacing needed to clear its figure',
-)
-assert.match(page, /\{card\.points\.map\(\(p\) => \(/, 'all Host capability chips must remain rendered')
 assert.match(bentoContent, /id: 'trips'[\s\S]*points: \['Group chat', 'Instalments', 'Itineraries'\]/)
 assert.match(bentoContent, /id: 'trips'[\s\S]*span: 'lg:col-span-2 lg:row-span-2'/)
 assert.match(

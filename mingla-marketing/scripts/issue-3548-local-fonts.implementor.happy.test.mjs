@@ -137,12 +137,14 @@ for (const relativePath of productionAppFiles) {
 const fontDefinition = read('app/fonts.ts')
 // #4318: app/links/fonts.ts holds the /links-only brand faces (pinned in
 // scripts/issue-4318-links-fonts.contract.mjs); app/fonts.ts stays the site's.
-// #4339: app/host/[icp]/fonts.ts holds the same brand faces for the Host
-// landing pages (scripts/issue-4339-landing-fonts.contract.mjs).
+// #4339: app/site-fonts.ts holds the same brand faces for the redesigned pages
+// (/, /host and the Host landing pages; scripts/issue-4339-landing-fonts.contract.mjs).
+// Phase 2a moved it up from app/host/[icp]/fonts.ts when Home and Mingla Host
+// joined the redesign, deliberately: one module, three route consumers.
 assert.equal(
   productionAppFiles.filter((relativePath) => read(relativePath).includes('next/font/local')).sort().join(','),
-  'app/fonts.ts,app/host/[icp]/fonts.ts,app/links/fonts.ts',
-  'app/fonts.ts, the /links-scoped app/links/fonts.ts and the landing-scoped app/host/[icp]/fonts.ts must be the only local-font definition modules',
+  'app/fonts.ts,app/links/fonts.ts,app/site-fonts.ts',
+  'app/fonts.ts, the /links-scoped app/links/fonts.ts and the redesign-scoped app/site-fonts.ts must be the only local-font definition modules',
 )
 assert.equal((fontDefinition.match(/localFont\s*\(/g) ?? []).length, 4, 'exactly four local definitions must exist')
 
@@ -285,8 +287,8 @@ const collectLinksSources = (relativeDirectory) => {
 }
 for (const sourceRoot of ['app', 'components', 'lib']) collectLinksSources(sourceRoot)
 checkLinksFontSource((relativePath) => read(relativePath), linksSourceFiles)
-// #4339 — the Host landing brand faces: exact definitions over the pinned
-// /links files, scoped to the landing page.
+// #4339 — the redesign brand faces: exact definitions over the pinned
+// /links files, scoped to the redesigned pages.
 checkLandingFontSource((relativePath) => read(relativePath), linksSourceFiles)
 for (const file of LANDING_FONT_FILES) {
   assert.ok(LINKS_FONT_ASSETS.some((asset) => asset.localFile === file), `#4339: ${file} must be one of the pinned brand files`)
@@ -544,7 +546,7 @@ if (process.argv.includes('--built-only')) {
 
 console.log('PASS #3548 exact local font definitions, consumers, weights and class placement')
 console.log('PASS #4318 /links brand faces: exact definitions, pinned bytes and licences, /links page only')
-console.log('PASS #4339 Host landing brand faces: exact definitions over the pinned files, landing page only')
+console.log('PASS #4339 redesign brand faces: exact definitions over the pinned files, redesigned pages only')
 console.log('PASS #3548 pinned WOFF2 bytes, source manifest and exact OFL files')
 console.log('PASS #3548 exact manual Arial fallback descriptors, identities and source stacks')
 console.log('PASS #3548 dependency-free local fonts and both production build denials')

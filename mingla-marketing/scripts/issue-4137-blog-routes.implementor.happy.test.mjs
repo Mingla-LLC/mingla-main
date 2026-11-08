@@ -78,7 +78,10 @@ function sourceContract() {
   assert.match(fs.readFileSync(path.join(REPO, '.github/scripts/strict-grep/issue-2981-marketing-search-foundation.mjs'), 'utf8'), /'\/blog',\n\]/)
 
   // Footer (AC-P12) and image host (no Google host).
-  assert.match(read('components/cutout/footer.tsx'), /\{ href: '\/blog', label: 'Blog' \}/, '#4137 AC-P12: footer links to /blog')
+  // #4339 §9: the canonical footer (components/marketing/footer.tsx) owns the
+  // links; the Cutout footer the blog renders delegates to it.
+  assert.match(read('components/marketing/footer.tsx'), /\{ href: '\/blog', label: 'Blog' \}/, '#4137 AC-P12: footer links to /blog')
+  assert.match(read('components/cutout/footer.tsx'), /return <SiteFooter surface=\{surface\} \/>/, '#4137 AC-P12: the blog footer is the canonical one')
   const blogCss = read('components/blog/blog.css')
   const selectedTabRule = blogCss.match(/\[data-cutout\] \.blog-tabs a\[aria-current='page'\] \{([\s\S]*?)\}/)?.[1] ?? ''
   assert.match(selectedTabRule, /box-shadow:/, '#4137: selected category pill owns a compact shadow')

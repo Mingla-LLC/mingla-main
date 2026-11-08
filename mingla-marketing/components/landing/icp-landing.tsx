@@ -15,7 +15,9 @@ import {
   Ticket,
   Users,
 } from 'lucide-react'
-import { CutoutFooter, CutoutNav } from '@/components/cutout'
+import { SiteFooter } from '@/components/marketing/footer'
+import { SiteNav } from '@/components/site/site-nav'
+import '@/components/site/site.css'
 import {
   ICP_LANDINGS,
   TOOL_PATH,
@@ -80,7 +82,7 @@ export function IcpLandingPage({ slug }: { slug: IcpSlug }) {
 
   return (
     <LandingRoot slug={slug}>
-      <CutoutNav surface="host" homeHref="/host" />
+      <SiteNav surface="host" current="host" />
 
       {/* 1. Hero */}
       <section className="lp-hero" aria-labelledby="lp-title">
@@ -298,7 +300,7 @@ export function IcpLandingPage({ slug }: { slug: IcpSlug }) {
         </div>
       </section>
 
-      <CutoutFooter surface="host" />
+      <SiteFooter surface="host" />
     </LandingRoot>
   )
 }

@@ -6,7 +6,7 @@
    on (.wrap, .btn, .pill, .h2, .lead, .split, .field, .modal).
 
    Everything is scoped under [data-landing] so it cannot leak onto any other
-   page. The brand faces come from app/host/[icp]/fonts.ts (route-scoped).
+   page. The brand faces come from app/site-fonts.ts (route-scoped).
 
    Progressive enhancement: words that light up, cards that slide in and
    sections that reveal only start hidden once the page's script has run

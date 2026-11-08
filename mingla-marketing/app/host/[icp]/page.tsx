@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation'
 import { searchRouteMetadata } from '@/lib/search/metadata'
 import { ICP_SLUGS, icpLandingPath, isIcpSlug } from '@/content/host-landing/icps'
 import { IcpLandingPage } from '@/components/landing/icp-landing'
-import { landingMono, landingSans, landingSerif } from './fonts'
+import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
 
 // #4339 — the seven Host landing pages, one per ICP: /host/events, /host/trips,
 // /host/experiences, /host/restaurants, /host/hotels, /host/art, /host/play.

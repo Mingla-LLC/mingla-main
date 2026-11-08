@@ -16,7 +16,9 @@ function reducedMotion(): boolean {
   return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
 }
 
-export function LandingRoot({ children, slug }: { children: ReactNode; slug: string }) {
+// The same root carries Home and Mingla Host (#4339 phase 2a); only a landing
+// page has an ICP slug.
+export function LandingRoot({ children, slug }: { children: ReactNode; slug?: string }) {
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {

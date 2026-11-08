@@ -96,7 +96,11 @@ function sourceContract() {
   const deviceCta = read('components/cutout/device-cta.tsx')
   const hostBar = read('components/page-system/city-host-acquisition-bar.tsx')
   const css = read('components/cities/city-hubs.css')
-  const footer = read('components/cutout/footer.tsx')
+  // #4339 §9: the canonical footer lives in components/marketing/footer.tsx;
+  // the Cutout footer (city hubs) delegates to it.
+  const footer = read('components/marketing/footer.tsx')
+  const footerCss = read('components/marketing/site-footer.css')
+  const cutoutFooter = read('components/cutout/footer.tsx')
   const explorerRoot = read('app/(explorer)/page.tsx')
   const hostRoot = read('app/host/page.tsx')
   const packageJson = JSON.parse(read('package.json'))
@@ -198,20 +202,21 @@ function sourceContract() {
   assert.match(css, /\.city-breadcrumbs a \{[^}]*min-width: 44px;/)
   assert.match(css, /\.city-claim-sources a \{[^}]*min-width: 44px;/)
   assert.match(css, /@media print \{[\s\S]*\.city-faq-item \{ display: none !important; \}[\s\S]*\.city-hub-root \.city-faq-print-answer \{[\s\S]*display: block !important;/)
-  assert.match(footer, /size="md" className="min-h-11"/)
-  // Every footer link meets the 44px target. #4318 (Seth): the separate
-  // "Your privacy choices" link is gone; the privacy bar is the one place.
-  assert.equal((footer.match(/inline-flex min-h-11 min-w-11 items-center/g) ?? []).length, 3)
-  assert.doesNotMatch(footer, /PrivacyChoicesLink|privacy-choices-link/)
+  // Every footer link meets the 44px target (#4339: the canonical footer's
+  // links, brand and cross-link are min-height 44px). #4318 (Seth): the
+  // separate "Your privacy choices" link is gone; the privacy bar is the one place.
+  assert.match(cutoutFooter, /return <SiteFooter surface=\{surface\} \/>/, '#4339: city hubs render the canonical footer')
+  assert.equal((footerCss.match(/min-height: 44px;/g) ?? []).length, 3, 'brand, column links and cross-link are 44px targets')
+  assert.doesNotMatch(footer + cutoutFooter, /PrivacyChoicesLink|privacy-choices-link/)
 
-  // #3371: the Explorer home is one non-scrolling screen again (Seth, 2026-09-14),
-  // so the root gate is inverted there. #4137: the Host root ends with the
-  // Start hosting card instead of the city grid.
+  // #4339 phase 2a SUPERSEDES the #3371 inversion: the Explorer home is the
+  // redesigned scrolling page (components/site/home-page.tsx); it links the
+  // city hubs from its own cities row, never through the readiness-gated
+  // RootCityGrid. #4137: the Host root still mounts no city grid.
   assert.doesNotMatch(explorerRoot, /showCityLaunch = allCityHubsSearchReady\(\)/)
   assert.doesNotMatch(explorerRoot, /<RootCityGrid\b/)
-  assert.match(explorerRoot, /<CutoutShell dark noScroll>/)
-  assert.doesNotMatch(hostRoot, /<RootCityGrid\b/, '#4137: /host no longer mounts the city grid')
-  assert.match(hostRoot, /<HostStartCta\b/, '#4137: /host ends with the Start hosting card')
+  assert.match(explorerRoot, /<HomePage \/>/)
+  assert.doesNotMatch(hostRoot + read('components/site/host-page.tsx'), /<RootCityGrid\b/, '#4137: /host no longer mounts the city grid')
   assert(packageJson.scripts.build.includes('issue-2983-city-hubs.implementor.happy.test.mjs --source-only'))
   assert(packageJson.scripts.build.includes('next build && node scripts/issue-2983-city-hubs.implementor.happy.test.mjs --built-only'))
   assert(packageJson.scripts['test:city-hubs'].includes('issue-2983-city-hubs.implementor.happy.test.mjs'))
