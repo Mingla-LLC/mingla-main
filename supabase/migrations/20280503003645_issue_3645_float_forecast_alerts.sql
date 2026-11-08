@@ -20,10 +20,6 @@
 --
 -- No release, item, leg, debt or hold row is written; no money moves.
 
--- MINGLA-INVARIANT: I-3645-FLOAT-FORECAST-COUNTS-UNATTACHED | issue #3645 | The Nigerian float obligation includes every paid Paystack sale that matures inside the horizon, attached or not, from the same candidate text the dark sweeps attach from.
--- MINGLA-INVARIANT: I-3645-FLOAT-ALERT-NEEDS-NO-RELEASE | issue #3645 | A float shortfall made only of unattached sales raises one Mingla-wide outbox row; only that kind may have no release, and release and brand are both set or both NULL.
--- MINGLA-INVARIANT: I-3645-STALE-STAY-DISPUTE-ALERTS | issue #3645 | A stay dispute hold open for over 90 days is delivered to ops, and a changed set of stale disputes on a release is delivered again.
-
 BEGIN;
 
 -- §1. The outbox can hold one Mingla-wide float row.

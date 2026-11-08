@@ -7,6 +7,10 @@
 -- proves the behaviour on orders and Paystack stays, with the real sweeps as
 -- the oracle: what the forecast predicts is exactly what they then attach.
 --
+-- MINGLA-INVARIANT: I-3645-FLOAT-FORECAST-COUNTS-UNATTACHED | issue #3645 | The Nigerian float obligation includes every paid Paystack sale that matures inside the horizon, attached or not, from the same candidate text the dark sweeps attach from.
+-- MINGLA-INVARIANT: I-3645-FLOAT-ALERT-NEEDS-NO-RELEASE | issue #3645 | A float shortfall made only of unattached sales raises one Mingla-wide outbox row; only that kind may have no release, and release and brand are both set or both NULL.
+-- MINGLA-INVARIANT: I-3645-STALE-STAY-DISPUTE-ALERTS | issue #3645 | A stay dispute hold open for over 90 days is delivered to ops, and a changed set of stale disputes on a release is delivered again.
+--
 -- T1  unattached Paystack sales are counted at the net their release stores
 -- T2  exclusions: Stripe brand, before cutover, cancelled event, no fee
 --     snapshot, fully refunded
