@@ -414,4 +414,65 @@ BEGIN
 END
 $c3b$;
 
+-- Cleanup. Suite-owned suites share one database, and other suites (the
+-- Mingla-wide admin payout console, for one) aggregate every release, so
+-- nothing of this suite may outlive it. Payout rows are append-only, so the
+-- deletes run with triggers off, keyed on every id this suite created.
+BEGIN;
+SET LOCAL session_replication_role = replica;
+CREATE TEMP TABLE cc_ids(col text, id uuid) ON COMMIT DROP;
+INSERT INTO cc_ids SELECT 'brand_id', id FROM public.brands WHERE slug LIKE 'issue-3645-2dcc-%';
+INSERT INTO cc_ids SELECT 'release_id', id FROM public.brand_payout_releases
+  WHERE brand_id IN (SELECT id FROM cc_ids WHERE col = 'brand_id');
+INSERT INTO cc_ids SELECT 'debt_id', id FROM public.organiser_payout_debts
+  WHERE brand_id IN (SELECT id FROM cc_ids WHERE col = 'brand_id');
+INSERT INTO cc_ids SELECT 'event_id', id FROM public.events
+  WHERE brand_id IN (SELECT id FROM cc_ids WHERE col = 'brand_id');
+INSERT INTO cc_ids SELECT 'venue_id', id FROM public.venue_listings
+  WHERE brand_id IN (SELECT id FROM cc_ids WHERE col = 'brand_id');
+INSERT INTO cc_ids SELECT 'group_id', id FROM public.stay_reservation_groups
+  WHERE brand_id IN (SELECT id FROM cc_ids WHERE col = 'brand_id');
+INSERT INTO cc_ids SELECT 'reservation_line_id', l.id FROM public.stay_reservation_lines l
+  WHERE l.group_id IN (SELECT id FROM cc_ids WHERE col = 'group_id');
+INSERT INTO cc_ids SELECT 'line_id', id FROM cc_ids WHERE col = 'reservation_line_id';
+INSERT INTO cc_ids SELECT 'origin_release_id', id FROM cc_ids WHERE col = 'release_id';
+INSERT INTO cc_ids SELECT 'account_id', id FROM public.creator_accounts
+  WHERE email LIKE 'issue-3645-2dcc-%';
+DO $cleanup$
+DECLARE v record; v_n integer;
+BEGIN
+  -- Every public table that keys a row to one of these ids, then the ids'
+  -- own rows (stay lines and groups, venues, events, releases, debts, brands).
+  FOR v IN
+    SELECT c.table_name, c.column_name
+    FROM information_schema.columns c
+    JOIN information_schema.tables t
+      ON t.table_schema = c.table_schema AND t.table_name = c.table_name
+    WHERE c.table_schema = 'public' AND t.table_type = 'BASE TABLE'
+      AND c.data_type = 'uuid'
+      AND c.column_name IN (SELECT DISTINCT col FROM cc_ids)
+  LOOP
+    EXECUTE format('DELETE FROM public.%I WHERE %I IN (SELECT id FROM cc_ids WHERE col = %L)',
+      v.table_name, v.column_name, v.column_name);
+  END LOOP;
+  DELETE FROM public.stay_reservation_lines WHERE id IN (SELECT id FROM cc_ids WHERE col = 'reservation_line_id');
+  DELETE FROM public.stay_reservation_groups WHERE id IN (SELECT id FROM cc_ids WHERE col = 'group_id');
+  DELETE FROM public.venue_listings WHERE id IN (SELECT id FROM cc_ids WHERE col = 'venue_id');
+  DELETE FROM public.events WHERE id IN (SELECT id FROM cc_ids WHERE col = 'event_id');
+  DELETE FROM public.brand_payout_releases WHERE id IN (SELECT id FROM cc_ids WHERE col = 'release_id');
+  DELETE FROM public.organiser_payout_debts WHERE id IN (SELECT id FROM cc_ids WHERE col = 'debt_id');
+  DELETE FROM public.brands WHERE id IN (SELECT id FROM cc_ids WHERE col = 'brand_id');
+  DELETE FROM public.creator_accounts WHERE id IN (SELECT id FROM cc_ids WHERE col = 'account_id');
+  DELETE FROM auth.users WHERE id IN (SELECT id FROM cc_ids WHERE col = 'account_id');
+  SELECT count(*) INTO v_n FROM public.brand_payout_releases
+  WHERE brand_id IN (SELECT id FROM cc_ids WHERE col = 'brand_id');
+  IF v_n <> 0 OR EXISTS (SELECT 1 FROM public.brands WHERE slug LIKE 'issue-3645-2dcc-%') THEN
+    RAISE EXCEPTION '2d cc cleanup left rows behind';
+  END IF;
+END
+$cleanup$;
+COMMIT;
+RESET search_path;
+DROP SCHEMA issue_3645_2d_cc CASCADE;
+
 \echo 'issue #3645 2d two-session payout debt paths passed (C1-C4)'
