@@ -191,7 +191,7 @@ BEGIN
   END IF;
 
   -- ── X-4 malformed / retired ids refused on the venue paths ──────────────
-  FOREACH v_bad IN ARRAY ARRAY['dXJuOm1ieHBvaTpkaWRp', 'short', 'ChIJ has spaces inside', repeat('A', 257)] LOOP
+  FOREACH v_bad IN ARRAY ARRAY['dXJuOm1ieHBvaTpkaWRp', 'short', 'ChIJ has spaces inside', repeat('A', 1025)] LOOP  -- F-12: the cap is 1024
     v_failed := false;
     BEGIN
       PERFORM public.biz_create_venue_listing(

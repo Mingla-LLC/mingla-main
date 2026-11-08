@@ -17,7 +17,8 @@ import { recordApiCall } from "../_shared/apiHealthLog.ts";
 import { captureEdgeException } from "../_shared/sentryEdge.ts";
 import {
   classifyGeocodingStatus,
-  classifyPlacesHttpStatus,
+  classifyPlacesFailure,
+  readGoogleError,
   GOOGLE_GEOCODE_URL,
   GOOGLE_PLACES_BASE,
   googleFetch,
@@ -252,14 +253,15 @@ async function autocompleteOnce(
     };
   }
   if (!upstream.ok) {
+    const googleError = await readGoogleError(upstream);
     return {
       response: upstreamFailure({
         action,
         serviceKey: "google_places",
-        error: classifyPlacesHttpStatus(upstream.status),
+        error: classifyPlacesFailure(upstream.status, googleError.body),
         latencyMs: Date.now() - t0,
         upstreamStatus: upstream.status,
-        googleStatus: await googleErrorStatus(upstream),
+        googleStatus: googleError.status,
         extraBody: { suggestions: [] },
       }),
     };
@@ -285,15 +287,6 @@ async function autocompleteOnce(
 }
 
 /** Places (New) error bodies are `{ error: { status: "PERMISSION_DENIED" } }`. */
-async function googleErrorStatus(res: Response): Promise<string | null> {
-  try {
-    const body = await res.json() as { error?: { status?: unknown } };
-    return typeof body?.error?.status === "string" ? body.error.status : null;
-  } catch {
-    return null;
-  }
-}
-
 /** Business address search (Host). Filter-free. */
 export async function handleSuggest(
   key: string,
@@ -386,13 +379,14 @@ export async function handleRetrieve(
     return jsonResponse({ error: "no_location" }, 500);
   }
   if (!upstream.ok) {
+    const googleError = await readGoogleError(upstream);
     return upstreamFailure({
       action: "retrieve",
       serviceKey: "google_place_details",
-      error: classifyPlacesHttpStatus(upstream.status),
+      error: classifyPlacesFailure(upstream.status, googleError.body),
       latencyMs: Date.now() - t0,
       upstreamStatus: upstream.status,
-      googleStatus: await googleErrorStatus(upstream),
+      googleStatus: googleError.status,
     });
   }
   let place: GooglePlace;
@@ -451,7 +445,7 @@ export async function geocode(
       response: upstreamFailure({
         action,
         serviceKey: "google_geocoding",
-        error: classifyPlacesHttpStatus(upstream.status),
+        error: classifyPlacesFailure(upstream.status, (await readGoogleError(upstream)).body),
         latencyMs: Date.now() - t0,
         upstreamStatus: upstream.status,
         googleStatus: null,

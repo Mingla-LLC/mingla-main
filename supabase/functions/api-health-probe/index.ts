@@ -40,6 +40,7 @@ import {
   GOOGLE_PROBE_URLS,
   googleAutocompleteProbeOk,
   googleErrorStatusOf,
+  googleProbeErrorCode,
   googleGeocodingProbeOk,
   googlePlaceDetailsProbeOk,
   googleStaticProbeOk,
@@ -406,7 +407,7 @@ async function probeGooglePlaces(): Promise<ProbeResult> {
     });
     const body = await res.json().catch(() => null);
     const ok = googleAutocompleteProbeOk(res.status, body);
-    return { ok, latencyMs, httpStatus: res.status, status: bodyVerdict(ok, res.status), detail: { google_status: googleErrorStatusOf(body) } };
+    return { ok, latencyMs, httpStatus: res.status, status: bodyVerdict(ok, res.status), detail: { google_status: googleErrorStatusOf(body), provider_code: googleProbeErrorCode(res.status, body) } };
   } catch (e) {
     return { ok: false, latencyMs: null, status: "down", detail: { error: String(e) } };
   }
@@ -422,7 +423,7 @@ async function probeGooglePlaceDetails(): Promise<ProbeResult> {
     });
     const body = await res.json().catch(() => null);
     const ok = googlePlaceDetailsProbeOk(res.status, body);
-    return { ok, latencyMs, httpStatus: res.status, status: bodyVerdict(ok, res.status), detail: { google_status: googleErrorStatusOf(body) } };
+    return { ok, latencyMs, httpStatus: res.status, status: bodyVerdict(ok, res.status), detail: { google_status: googleErrorStatusOf(body), provider_code: googleProbeErrorCode(res.status, body) } };
   } catch (e) {
     return { ok: false, latencyMs: null, status: "down", detail: { error: String(e) } };
   }
@@ -437,7 +438,7 @@ async function probeGoogleGeocoding(): Promise<ProbeResult> {
     );
     const body = await res.json().catch(() => null) as { status?: string } | null;
     const ok = googleGeocodingProbeOk(res.status, body);
-    return { ok, latencyMs, httpStatus: res.status, status: bodyVerdict(ok, res.status), detail: { google_status: body?.status ?? null } };
+    return { ok, latencyMs, httpStatus: res.status, status: bodyVerdict(ok, res.status), detail: { google_status: body?.status ?? null, provider_code: googleProbeErrorCode(res.status, body) } };
   } catch (e) {
     return { ok: false, latencyMs: null, status: "down", detail: { error: String(e) } };
   }
@@ -453,7 +454,7 @@ async function probeGoogleStaticMaps(): Promise<ProbeResult> {
     const contentType = res.headers.get("content-type");
     await res.body?.cancel();
     const ok = googleStaticProbeOk(res.status, contentType);
-    return { ok, latencyMs, httpStatus: res.status, status: bodyVerdict(ok, res.status), detail: { content_type: contentType } };
+    return { ok, latencyMs, httpStatus: res.status, status: bodyVerdict(ok, res.status), detail: { content_type: contentType, provider_code: ok ? null : googleProbeErrorCode(res.status, null) } };
   } catch (e) {
     return { ok: false, latencyMs: null, status: "down", detail: { error: String(e) } };
   }

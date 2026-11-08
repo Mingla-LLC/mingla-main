@@ -17,6 +17,7 @@
  *   Google re-ided the place → new id + coordinates
  *   404 / NOT_FOUND          → place_gone (coordinates kept; one alert per pin)
  *   403 / 429                → failing, and the run STOPS (do not burn quota)
+ *   400 API_KEY_INVALID      → provider_denied, and the run STOPS (F-6)
  *   5xx / timeout / other    → failing
  * Text columns are never read or written (D9).
  *
@@ -28,6 +29,8 @@
  * Pure of Deno globals: everything external comes in through `RefreshDeps`, so
  * the run is tested with a fake fetch and a fake clock.
  */
+
+import { isApiKeyRejection } from "../_shared/googleKeyRejection.ts";
 
 export const DETAILS_FIELD_MASK = "id,location";
 export const MAX_PINS = 500;
@@ -156,7 +159,12 @@ async function lookupPlace(deps: RefreshDeps, placeId: string): Promise<LookupRe
     return { kind: "stop", status: res.status, code: res.status === 403 ? "provider_denied" : "provider_quota" };
   }
   if (!res.ok) {
-    await res.body?.cancel();
+    // #4334 F-6 — Google answers a bad or revoked key with 400 API_KEY_INVALID:
+    // that is a denied key, so the run STOPS (do not burn up to 500 calls).
+    const body = res.status === 400 ? await res.json().catch(() => null) : (await res.body?.cancel(), null);
+    if (res.status === 400 && isApiKeyRejection(body)) {
+      return { kind: "stop", status: res.status, code: "provider_denied" };
+    }
     return { kind: "failing", status: res.status, code: "provider_unavailable" };
   }
   const body = await res.json().catch(() => null) as
@@ -192,7 +200,12 @@ async function lookupAnchor(deps: RefreshDeps, placeId: string): Promise<LookupR
     return { kind: "stop", status: res.status, code: res.status === 403 ? "provider_denied" : "provider_quota" };
   }
   if (!res.ok) {
-    await res.body?.cancel();
+    // #4334 F-6 — Google answers a bad or revoked key with 400 API_KEY_INVALID:
+    // that is a denied key, so the run STOPS (do not burn up to 500 calls).
+    const body = res.status === 400 ? await res.json().catch(() => null) : (await res.body?.cancel(), null);
+    if (res.status === 400 && isApiKeyRejection(body)) {
+      return { kind: "stop", status: res.status, code: "provider_denied" };
+    }
     return { kind: "failing", status: res.status, code: "provider_unavailable" };
   }
   const body = await res.json().catch(() => null) as

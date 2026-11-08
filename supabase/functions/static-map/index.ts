@@ -33,6 +33,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { recordApiCall } from "../_shared/apiHealthLog.ts";
 import { captureEdgeException } from "../_shared/sentryEdge.ts";
+import { isApiKeyRejectionText } from "../_shared/googleKeyRejection.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -186,13 +187,16 @@ export function buildGoogleStaticFetchUrl(p: ValidatedStaticParams, key: string)
 }
 
 function mapUnavailable(reason: string, latencyMs: number, status?: number): Response {
+  // The client always sees 502 map_unavailable; Sentry and the health log get
+  // the real code (provider_denied for a rejected key, F-6).
+  const code = reason === "provider_denied" ? "provider_denied" : "map_unavailable";
   captureEdgeException(new Error(`static-map upstream failed: ${reason}`), {
     fn: "static-map",
-    tags: { issue: "4334", code: "map_unavailable" },
+    tags: { issue: "4334", code },
     extra: { upstream_status: status ?? null, reason },
   });
   void recordApiCall("google_static_maps", false, latencyMs, status, {
-    code: "map_unavailable",
+    code,
     text: reason,
   });
   return jsonError("map_unavailable", 502);
@@ -229,9 +233,17 @@ export async function handler(req: Request): Promise<Response> {
   const contentType = upstream.headers.get("Content-Type") ?? "";
   if (!upstream.ok || !contentType.toLowerCase().startsWith("image/")) {
     // Never forward Google's body: a 403 error image must not render as a map.
-    await upstream.body?.cancel();
+    // #4334 F-6 — a key Google rejects reads provider_denied (401/403, or a
+    // 400 whose text names the key), never a generic HTTP failure.
+    const text = !contentType.toLowerCase().startsWith("image/")
+      ? await upstream.text().catch(() => "")
+      : (await upstream.body?.cancel(), "");
+    const denied = upstream.status === 401 || upstream.status === 403 ||
+      (upstream.status === 400 && isApiKeyRejectionText(text));
     return mapUnavailable(
-      upstream.ok ? `non_image:${contentType || "none"}` : `http_${upstream.status}`,
+      denied
+        ? "provider_denied"
+        : upstream.ok ? `non_image:${contentType || "none"}` : `http_${upstream.status}`,
       Date.now() - t0,
       upstream.status,
     );

@@ -171,6 +171,21 @@ for (const status of [429, 403]) {
   });
 }
 
+// #4334 F-6 — a 400 API_KEY_INVALID is a denied key: the run stops at once
+// instead of marking up to 500 pins failing. Fails on revert of the 400 branch.
+Deno.test("T-8b 400 API_KEY_INVALID stops the run as provider_denied", async () => {
+  const pins = Array.from({ length: 20 }, (_, i) =>
+    pin({ row_id: `00000000-0000-0000-0000-0000000000${String(i).padStart(2, "0")}` }));
+  let n = 0;
+  const h = harness(pins, () => {
+    n += 1;
+    return new Response(JSON.stringify({ error: { code: 400, message: "API key not valid. Please pass a valid API key.", status: "INVALID_ARGUMENT", details: [{ "@type": "type.googleapis.com/google.rpc.ErrorInfo", reason: "API_KEY_INVALID", domain: "googleapis.com" }] } }), { status: 400 });
+  });
+  const s = await runRefresh(h.deps);
+  assertEquals(s.stopped, "provider_denied");
+  assert(n <= 5, `expected the run to stop, but it made ${n} requests`);
+});
+
 Deno.test("T-9 timeout → failing (coordinates untouched)", async () => {
   const h = harness([pin()], () => {
     throw new DOMException("timed out", "TimeoutError");

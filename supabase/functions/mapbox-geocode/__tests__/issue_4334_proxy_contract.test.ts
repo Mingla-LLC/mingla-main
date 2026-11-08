@@ -334,3 +334,24 @@ Deno.test("C-12 key missing → 500 provider_key_missing (loud)", async () => {
     Deno.env.set("GOOGLE_MAPS_API_KEY", "test-google-key-not-real");
   }
 });
+
+// #4334 F-6 — Google answers a bad or revoked key on Places API (New) with HTTP
+// 400 API_KEY_INVALID. That is a denied key (502 provider_denied), not a bad
+// request. Fails on revert: classifyPlacesFailure → classifyPlacesHttpStatus.
+const KEY_INVALID_BODY = JSON.stringify({ error: { code: 400, message: "API key not valid. Please pass a valid API key.", status: "INVALID_ARGUMENT", details: [{ "@type": "type.googleapis.com/google.rpc.ErrorInfo", reason: "API_KEY_INVALID", domain: "googleapis.com" }] } });
+Deno.test("C-13 F-6: 400 API_KEY_INVALID on suggest, suggest_places and retrieve → 502 provider_denied", async () => {
+  for (const body of [
+    { action: "suggest", query: "Lagos" },
+    { action: "suggest_places", query: "Lagos" },
+    { action: "retrieve", place_id: "ChIJdidiMuseum00001", session_token: "s-1" },
+  ]) {
+    __resetRateLimitForTests();
+    const r = await call(body, () => new Response(KEY_INVALID_BODY, { status: 400, headers: { "content-type": "application/json" } }));
+    assertEquals([r.status, r.json.error], [502, "provider_denied"], JSON.stringify(body));
+  }
+  // a genuine bad request stays provider_invalid_request
+  __resetRateLimitForTests();
+  const bad = await call({ action: "suggest", query: "Lagos" }, () =>
+    new Response(JSON.stringify({ error: { code: 400, message: "Invalid value", status: "INVALID_ARGUMENT" } }), { status: 400 }));
+  assertEquals([bad.status, bad.json.error], [400, "provider_invalid_request"]);
+});

@@ -13,8 +13,9 @@
 --   3. Every Host save path writes the picked place id in the SAME statement as
 --      the coordinates (A-2 section at the end of this file).
 --   4. Chat plans: mapbox_id → provider_place_id; plan RPCs accept
---      `providerPlaceId` and refuse the retired `mapboxId` key loudly; identity
---      key 'google:<id>'.
+--      `providerPlaceId` (and the legacy `mapboxId` key only when its value is a
+--      Google id — installed builds); a real retired-vendor id fails loudly;
+--      identity key 'google:<id>'.
 --   5. places_refresh_* (Branch B: Google coordinates are kept at most 30 days)
 --      and places_repin_* (D2) service-role functions used by the
 --      places-coordinate-refresh edge function and scripts/issue-4334.
@@ -23,6 +24,31 @@
 --   6. api-health: the retired map vendor's tile is removed; four Google tiles
 --      are registered.
 --   7. pg_cron job `places-coordinate-refresh-daily` at 03:20 UTC.
+--
+-- ROLLBACK (tester F-11). Reverting the PR does NOT undo this migration; the
+-- database stays forward. To roll the schema and data back, in one transaction
+-- and only after the edge functions are back on the pre-#4334 bundle:
+--   a. Pins: run `scripts/issue-4334/repin-to-google.ts --restore <applied.json>`
+--      (the file the --apply run wrote; it calls
+--      places_repin_restore, which copies every *_mapbox_lat/lng audit pair back
+--      onto its row and clears the Google id). Host text was never changed.
+--   b. Chat plans: ALTER TABLE chat_plans / chat_plan_place_options RENAME
+--      provider_place_id TO mapbox_id (and the two constraint names back), then
+--      re-apply the plan function bodies from 20280403054261 (they read
+--      `mapboxId`); rows created after #4334 carry Google ids, which the old
+--      bodies store as opaque strings.
+--   c. Re-apply the pre-#4334 bodies of the functions in the A-2/A-1 sections
+--      from their previous defining migrations (or production's
+--      pg_get_functiondef captured before apply), and re-create the three venue
+--      RPCs with their 22-/9-argument signatures (DROP the 23-/10-argument ones).
+--   d. SELECT cron.unschedule(jobid) FROM cron.job WHERE jobname =
+--      'places-coordinate-refresh-daily'; delete the Google api_health rows this
+--      file inserts and re-insert the vendor tile rows it deletes (section 8:
+--      api_health_services / checks / alert_state, service_key of the old vendor).
+--   e. The added columns, triggers and places_* functions can stay (inert once
+--      the trigger functions are dropped: DROP TRIGGER tg_4334_* on events,
+--      experience_stops, venue_listings, brands, preferences, chat_plans).
+-- Forward-fix is preferred; steps a–e are the full reverse path.
 --
 -- Static SQL only (no dynamic EXECUTE). Conflicts raise PT409, never 40001.
 -- Host-entered text (location_text, address, trip *LocationText, custom_location,
@@ -96,6 +122,15 @@ BEGIN
 END;
 $rename$;
 
+-- Google documents no maximum place-id length (tester F-12): 1024, as everywhere.
+ALTER TABLE public.chat_plans DROP CONSTRAINT IF EXISTS chat_plans_provider_place_id_length;
+ALTER TABLE public.chat_plans ADD CONSTRAINT chat_plans_provider_place_id_length
+  CHECK (char_length(provider_place_id) <= 1024);
+ALTER TABLE public.chat_plan_place_options
+  DROP CONSTRAINT IF EXISTS chat_plan_place_options_provider_place_id_length;
+ALTER TABLE public.chat_plan_place_options ADD CONSTRAINT chat_plan_place_options_provider_place_id_length
+  CHECK (char_length(provider_place_id) <= 1024);
+
 ALTER TABLE public.chat_plans
   ADD COLUMN IF NOT EXISTS place_geo_refreshed_at timestamptz NULL,
   ADD COLUMN IF NOT EXISTS place_geo_refresh_state text NULL,
@@ -104,7 +139,7 @@ ALTER TABLE public.chat_plans
 -- CHECKs (idempotent: drop then add).
 ALTER TABLE public.events DROP CONSTRAINT IF EXISTS events_location_provider_place_id_length;
 ALTER TABLE public.events ADD CONSTRAINT events_location_provider_place_id_length
-  CHECK (location_provider_place_id IS NULL OR char_length(location_provider_place_id) BETWEEN 1 AND 256);
+  CHECK (location_provider_place_id IS NULL OR char_length(location_provider_place_id) BETWEEN 1 AND 1024);
 ALTER TABLE public.events DROP CONSTRAINT IF EXISTS events_location_geo_refresh_state_check;
 ALTER TABLE public.events ADD CONSTRAINT events_location_geo_refresh_state_check
   CHECK (location_geo_refresh_state IN ('ok', 'failing', 'place_gone', 'expired'));
@@ -115,14 +150,14 @@ ALTER TABLE public.experience_stops ADD CONSTRAINT experience_stops_geo_refresh_
 
 ALTER TABLE public.venue_listings DROP CONSTRAINT IF EXISTS venue_listings_location_provider_place_id_length;
 ALTER TABLE public.venue_listings ADD CONSTRAINT venue_listings_location_provider_place_id_length
-  CHECK (location_provider_place_id IS NULL OR char_length(location_provider_place_id) BETWEEN 1 AND 256);
+  CHECK (location_provider_place_id IS NULL OR char_length(location_provider_place_id) BETWEEN 1 AND 1024);
 ALTER TABLE public.venue_listings DROP CONSTRAINT IF EXISTS venue_listings_location_geo_refresh_state_check;
 ALTER TABLE public.venue_listings ADD CONSTRAINT venue_listings_location_geo_refresh_state_check
   CHECK (location_geo_refresh_state IN ('ok', 'failing', 'place_gone', 'expired'));
 
 ALTER TABLE public.brands DROP CONSTRAINT IF EXISTS brands_location_provider_place_id_length;
 ALTER TABLE public.brands ADD CONSTRAINT brands_location_provider_place_id_length
-  CHECK (location_provider_place_id IS NULL OR char_length(location_provider_place_id) BETWEEN 1 AND 256);
+  CHECK (location_provider_place_id IS NULL OR char_length(location_provider_place_id) BETWEEN 1 AND 1024);
 ALTER TABLE public.brands DROP CONSTRAINT IF EXISTS brands_location_geo_refresh_state_check;
 ALTER TABLE public.brands ADD CONSTRAINT brands_location_geo_refresh_state_check
   CHECK (location_geo_refresh_state IN ('ok', 'failing', 'place_gone', 'expired'));
@@ -130,10 +165,10 @@ ALTER TABLE public.brands ADD CONSTRAINT brands_location_geo_refresh_state_check
 -- Preference anchors never expire (A2): 'expired' is not a legal state there.
 ALTER TABLE public.preferences DROP CONSTRAINT IF EXISTS preferences_custom_location_place_id_length;
 ALTER TABLE public.preferences ADD CONSTRAINT preferences_custom_location_place_id_length
-  CHECK (custom_location_place_id IS NULL OR char_length(custom_location_place_id) BETWEEN 1 AND 256);
+  CHECK (custom_location_place_id IS NULL OR char_length(custom_location_place_id) BETWEEN 1 AND 1024);
 ALTER TABLE public.preferences DROP CONSTRAINT IF EXISTS preferences_discover_city_place_id_length;
 ALTER TABLE public.preferences ADD CONSTRAINT preferences_discover_city_place_id_length
-  CHECK (discover_city_place_id IS NULL OR char_length(discover_city_place_id) BETWEEN 1 AND 256);
+  CHECK (discover_city_place_id IS NULL OR char_length(discover_city_place_id) BETWEEN 1 AND 1024);
 ALTER TABLE public.preferences DROP CONSTRAINT IF EXISTS preferences_custom_location_geo_refresh_state_check;
 ALTER TABLE public.preferences ADD CONSTRAINT preferences_custom_location_geo_refresh_state_check
   CHECK (custom_location_geo_refresh_state IN ('ok', 'failing', 'place_gone'));
@@ -177,7 +212,7 @@ CREATE OR REPLACE FUNCTION public.places_is_google_place_id(p_id text)
  SET search_path = public, pg_temp
 AS $function$
   SELECT p_id IS NOT NULL
-     AND length(p_id) BETWEEN 10 AND 256
+     AND length(p_id) BETWEEN 10 AND 1024  -- Google documents no maximum (tester F-12)
      AND p_id ~ '^[A-Za-z0-9_-]+$'
      AND p_id !~ '^dXJuOm';
 $function$;
@@ -586,14 +621,20 @@ BEGIN
       v_photo := NULL;
     END IF;
   ELSIF v_where = 'place' THEN
-    -- #4334: Google-era ids are retired; a client still sending one fails loudly.
-    IF p_place ? 'mapboxId' THEN
+    -- #4334 (tester F-5): installed builds still send the id under the legacy
+    -- key `mapboxId`; since the proxy moved to Google its value is a Google id.
+    -- Accept it ONLY when it is one (as providerPlaceId); a real retired-vendor
+    -- id still fails loudly.
+    IF p_place ? 'mapboxId'
+       AND NOT public.places_is_google_place_id(btrim(COALESCE(p_place ->> 'mapboxId', ''))) THEN
       RAISE EXCEPTION 'invalid_input' USING ERRCODE = '22023', DETAIL = 'p_place.mapboxId_retired';
     END IF;
-    v_provider_place_id := NULLIF(btrim(COALESCE(p_place ->> 'providerPlaceId', '')), '');
+    v_provider_place_id := COALESCE(
+      NULLIF(btrim(COALESCE(p_place ->> 'providerPlaceId', '')), ''),
+      NULLIF(btrim(COALESCE(p_place ->> 'mapboxId', '')), ''));
     v_name := NULLIF(btrim(COALESCE(p_place ->> 'name', '')), '');
     v_address := NULLIF(btrim(COALESCE(p_place ->> 'address', '')), '');
-    IF v_provider_place_id IS NULL OR char_length(v_provider_place_id) > 256 THEN
+    IF v_provider_place_id IS NULL OR char_length(v_provider_place_id) > 1024 THEN
       RAISE EXCEPTION 'invalid_input' USING ERRCODE = '22023', DETAIL = 'p_place.providerPlaceId';
     END IF;
     IF v_name IS NULL OR char_length(v_name) > 120 THEN
@@ -4335,5 +4376,26 @@ SELECT public.issue_3281_attach_public_extras(payload) FROM issue_3281_original;
 
 INSERT INTO public.issue_2489_gate_carriers (object_name, object_kind)
 VALUES ('pg_public_event_by_slug', 'function') ON CONFLICT (object_name) DO NOTHING;
+
+
+-- ── F-9 (tester): restate the grants of every re-emitted function, #1023 style.
+-- CREATE OR REPLACE keeps an ACL, but a reader (or a stricter check) must not
+-- depend on that carry-over. Values equal production's ACLs (2026-11-08).
+REVOKE ALL ON FUNCTION public.business_create_event_draft(uuid,jsonb) FROM PUBLIC,anon;
+REVOKE ALL ON FUNCTION public.business_update_event_draft(uuid,jsonb,integer) FROM PUBLIC,anon;
+REVOKE ALL ON FUNCTION public.business_update_rsvp_graph(uuid,jsonb,text,uuid) FROM PUBLIC,anon;
+REVOKE ALL ON FUNCTION public.business_update_live_event_atomic(uuid,jsonb,text,integer) FROM PUBLIC,anon;
+REVOKE ALL ON FUNCTION public.business_publish_event_draft(uuid,jsonb,integer) FROM PUBLIC,anon;
+REVOKE ALL ON FUNCTION public.admin_review_venue_details_change(uuid,uuid,text,text) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.business_create_event_draft(uuid,jsonb) TO authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.business_update_event_draft(uuid,jsonb,integer) TO authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.business_update_rsvp_graph(uuid,jsonb,text,uuid) TO authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.business_update_live_event_atomic(uuid,jsonb,text,integer) TO authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.business_publish_event_draft(uuid,jsonb,integer) TO authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.admin_review_venue_details_change(uuid,uuid,text,text) TO authenticated,service_role;
+-- the public event read stays readable by guests (#2489 carrier; production ACL)
+GRANT EXECUTE ON FUNCTION public.pg_public_event_by_slug(text,text) TO anon,authenticated,service_role;
+-- issue #3044: restate the RSVP graph marker on this re-emitting file.
+COMMENT ON FUNCTION public.business_update_rsvp_graph(uuid,jsonb,text,uuid) IS '#3044 db-push-reachable publish of the #1977 RSVP draft graph. Source definition 20270530001977 is version-shadowed by later-applied migrations and cannot be reached by `supabase db push`. #3065 revision-contract: rejects only a writer BEHIND the stored clientRevision.';
 
 COMMIT;

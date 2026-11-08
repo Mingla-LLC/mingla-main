@@ -51,6 +51,30 @@ export function classifyPlacesHttpStatus(status: number): ProviderError {
   return { code: "provider_unavailable", httpStatus: 502 };
 }
 
+export { isApiKeyRejection, isApiKeyRejectionText } from "./googleKeyRejection.ts";
+import { isApiKeyRejection } from "./googleKeyRejection.ts";
+
+/** Places API (New) non-2xx WITH its body → the proxy error contract (F-6). */
+export function classifyPlacesFailure(status: number, body: unknown): ProviderError {
+  if (status === 400 && isApiKeyRejection(body)) {
+    return { code: "provider_denied", httpStatus: 502 };
+  }
+  return classifyPlacesHttpStatus(status);
+}
+
+/** Read a Google error response once: its JSON body (or null) and error.status. */
+export async function readGoogleError(
+  res: Response,
+): Promise<{ body: unknown; status: string | null }> {
+  try {
+    const body = await res.json();
+    const status = (body as { error?: { status?: unknown } } | null)?.error?.status;
+    return { body, status: typeof status === "string" ? status : null };
+  } catch {
+    return { body: null, status: null };
+  }
+}
+
 export type GeocodingVerdict =
   | { kind: "ok" }
   | { kind: "zero_results" }
@@ -176,7 +200,7 @@ export async function forwardGeocodeLookup(
   }
 
   if (!upstream.ok) {
-    const err = classifyPlacesHttpStatus(upstream.status);
+    const err = classifyPlacesFailure(upstream.status, (await readGoogleError(upstream)).body);
     void recordApiCall("google_geocoding", false, Date.now() - t0, upstream.status, {
       code: err.code,
       text: `http ${upstream.status}`,

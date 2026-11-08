@@ -249,6 +249,41 @@ BEGIN
     v_failed := v_text_before = 'p_place.mapboxId_retired';
   END;
   IF NOT v_failed THEN RAISE EXCEPTION 'T-18b: a retired mapboxId was not refused loudly'; END IF;
+  -- T-18d (tester F-5): an installed build sends a GOOGLE id under the legacy
+  -- key; it is accepted as providerPlaceId with the google: identity.
+  v_json := public.chat_plan_parse_where('place',
+    jsonb_build_object('mapboxId', 'ChIJdidiMuseum00001', 'name', 'Didi Museum', 'lat', 6.43, 'lng', 3.42), NULL);
+  IF v_json ->> 'providerPlaceId' IS DISTINCT FROM 'ChIJdidiMuseum00001'
+     OR v_json ->> 'identityKey' IS DISTINCT FROM 'google:ChIJdidiMuseum00001' THEN
+    RAISE EXCEPTION 'T-18d: a Google id under the legacy key was not accepted (%)', v_json;
+  END IF;
+
+  -- ── T-20 (tester F-12): place ids up to 1024 characters are Google ids ─
+  IF NOT public.places_is_google_place_id('Ei' || repeat('a', 1022)) THEN
+    RAISE EXCEPTION 'T-20: a 1024-character place id was refused';
+  END IF;
+  IF public.places_is_google_place_id('Ei' || repeat('a', 1023)) THEN
+    RAISE EXCEPTION 'T-20b: a 1025-character id was accepted';
+  END IF;
+  UPDATE public.events SET location_provider_place_id = 'Ei' || repeat('a', 1022) WHERE id = v_live;
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname IN ('chat_plans_provider_place_id_length',
+              'chat_plan_place_options_provider_place_id_length')
+              AND pg_get_constraintdef(oid) NOT LIKE '%1024%') THEN
+    RAISE EXCEPTION 'T-20c: a chat plan id cap is not 1024';
+  END IF;
+
+  -- ── T-21 (tester F-9): re-emitted owners keep production's grants and the #3044 marker
+  IF has_function_privilege('anon', 'public.business_update_rsvp_graph(uuid,jsonb,text,uuid)', 'EXECUTE')
+     OR has_function_privilege('anon', 'public.business_create_event_draft(uuid,jsonb)', 'EXECUTE')
+     OR has_function_privilege('anon', 'public.business_publish_event_draft(uuid,jsonb,integer)', 'EXECUTE')
+     OR NOT has_function_privilege('authenticated', 'public.business_update_live_event_atomic(uuid,jsonb,text,integer)', 'EXECUTE')
+     OR NOT has_function_privilege('anon', 'public.pg_public_event_by_slug(text,text)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'T-21: a re-emitted owner has the wrong grants';
+  END IF;
+  IF obj_description('public.business_update_rsvp_graph(uuid,jsonb,text,uuid)'::regprocedure, 'pg_proc')
+     NOT LIKE '#3044 db-push-reachable%' THEN
+    RAISE EXCEPTION 'T-21b: the #3044 marker is gone';
+  END IF;
   IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public'
              AND table_name IN ('chat_plans', 'chat_plan_place_options') AND column_name = 'mapbox_id') THEN
     RAISE EXCEPTION 'T-18c: mapbox_id column still present';

@@ -2,6 +2,8 @@
 // testable without Deno.serve / network / env. The handler (index.ts) composes
 // these with the live probes + Supabase writes.
 
+import { isApiKeyRejection } from "../_shared/googleKeyRejection.ts";
+
 export type HealthStatus = "healthy" | "degraded" | "down" | "unknown";
 
 // ORCH-1201 — Safe numeric coercion for EXTERNALLY-SOURCED values. Vendor APIs
@@ -893,6 +895,25 @@ export const GOOGLE_PROBE_URLS = {
 export function googleErrorStatusOf(body: unknown): string | null {
   const status = (body as { error?: { status?: unknown } } | null)?.error?.status;
   return typeof status === "string" ? status : null;
+}
+
+/**
+ * #4334 F-6 — the provider code a failed Google probe reports in its detail:
+ * a rejected key is provider_denied whether Google says 401/403, 400
+ * API_KEY_INVALID (Places New) or 200 REQUEST_DENIED (Geocoding).
+ */
+export function googleProbeErrorCode(httpStatus: number, body: unknown): string | null {
+  if (httpStatus === 401 || httpStatus === 403) return "provider_denied";
+  if (httpStatus === 400 && isApiKeyRejection(body)) return "provider_denied";
+  if (httpStatus === 429) return "provider_quota";
+  const geocodingStatus = (body as { status?: unknown } | null)?.status;
+  if (httpStatus === 200 && geocodingStatus === "REQUEST_DENIED") return "provider_denied";
+  if (httpStatus === 200 && (geocodingStatus === "OVER_QUERY_LIMIT" || geocodingStatus === "OVER_DAILY_LIMIT")) {
+    return "provider_quota";
+  }
+  if (httpStatus === 400) return "provider_invalid_request";
+  if (httpStatus >= 500) return "provider_unavailable";
+  return null;
 }
 
 export function googleAutocompleteProbeOk(httpStatus: number, body: unknown): boolean {
