@@ -699,7 +699,15 @@ export function hierarchyResultMatches(params: {
 export function resultToHierarchyDetails(
   result: GeocodingResult,
   matchLevel: "place" | "city" | "country",
-): { lat: number; lng: number; city: string | null; region: string | null; countryCode: string | null } | null {
+): {
+  lat: number;
+  lng: number;
+  city: string | null;
+  region: string | null;
+  countryCode: string | null;
+  /** #4334 rework: the Google place id of the matched result, saved with the pin. */
+  placeId: string | null;
+} | null {
   const place = geocodingResultToPlace(result);
   const loc = validLocation(place.location);
   if (loc === null) return null;
@@ -718,6 +726,7 @@ export function resultToHierarchyDetails(
     city,
     region: typeof admin1?.longText === "string" ? admin1.longText : null,
     countryCode: countryCodeOf(comps),
+    placeId: typeof result.place_id === "string" && result.place_id.length > 0 ? result.place_id : null,
   };
 }
 

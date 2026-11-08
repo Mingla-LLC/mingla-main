@@ -6,6 +6,8 @@
 //   H-2 drop the HIERARCHY_CITY_TYPES filter in step 2 → a street result is
 //       accepted as the city, red.
 //   H-3 drop `components=country:` → the country step query changes, red.
+//   H-1 drop `placeId` from resultToHierarchyDetails → a free-text pin is saved
+//       without its Google place id and can never be refreshed, red.
 
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
@@ -70,6 +72,8 @@ Deno.test("H-1 place level: the full query's first result names a user-supplied 
   assertEquals(r.json.matchLevel, "place");
   assertEquals(r.json.details.city, "Lagos");
   assertEquals(r.json.details.countryCode, "NG");
+  // #4334 rework: the matched result's Google place id travels with the pin.
+  assertEquals(r.json.details.placeId, "ChIJroute_6.4476");
   assert(r.urls[0].includes("components=country%3ANG"));
 });
 
