@@ -24,12 +24,14 @@ const CATEGORY_PATHS: ReadonlySet<string> = new Set(BLOG_CATEGORY_ROUTE_CONTRACT
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const filled = await blogCategoriesWithPosts()
-  const routes = searchReadyRoutes()
-    .filter((route) => !CATEGORY_PATHS.has(route.match.pathname) || filled.has(route.match.pathname.slice('/blog/category/'.length)))
-    .map((route) => ({
-      url: canonicalUrlForSearchRoute(route.match.pathname),
-      lastModified: new Date(`${sitemapLastModified(route)}T00:00:00.000Z`),
-    }))
+  const listed = (pathname: string) => !CATEGORY_PATHS.has(pathname) || filled.has(pathname.slice('/blog/category/'.length))
+  const routes = searchReadyRoutes().map((route) => ({
+    pathname: route.match.pathname,
+    url: canonicalUrlForSearchRoute(route.match.pathname),
+    lastModified: new Date(`${sitemapLastModified(route)}T00:00:00.000Z`),
+  }))
+    .filter((entry) => listed(entry.pathname))
+    .map(({ url, lastModified }) => ({ url, lastModified }))
   const posts = (await listBlogSitemapEntries())
     .map((entry) => blogPostRouteContract({ slug: entry.slug, title: entry.slug, description: entry.slug, lastModified: entry.last_modified }))
     .map((contract) => ({

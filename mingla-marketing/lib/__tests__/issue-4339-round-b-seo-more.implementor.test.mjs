@@ -84,7 +84,8 @@ test('empty blog categories are noindex and leave the sitemap', () => {
   assert.match(page, /if \(!\(await blogCategoryHasPosts\(category\.slug\)\)\) \{\s*return \{ \.\.\.metadata, robots: \{ index: false, follow: true \} \}/)
   const sitemap = code(read('app/sitemap.ts'))
   assert.match(sitemap, /const filled = await blogCategoriesWithPosts\(\)/)
-  assert.match(sitemap, /\.filter\(\(route\) => !CATEGORY_PATHS\.has\(route\.match\.pathname\) \|\| filled\.has\(/)
+  assert.match(sitemap, /const listed = \(pathname: string\) => !CATEGORY_PATHS\.has\(pathname\) \|\| filled\.has\(/)
+  assert.match(sitemap, /\.filter\(\(entry\) => listed\(entry\.pathname\)\)/)
   const data = code(read('lib/blog/data.ts'))
   assert.match(data, /if \(!blogDataConfigured\(\)\) return new Set\(\)/, 'no database: no category is listed')
 })
@@ -194,4 +195,56 @@ test('built: share image, structured data and headings in the HTML', { skip: !BU
   assert.doesNotMatch(lagos, /<h2[^>]*>(Explore|Host|Company|Legal)<\/h2>/)
   assert.match(html('tools/events'), /"@type":"WebApplication"/)
   assert.match(html('index'), /"sameAs":\["https:\/\/www\.instagram\.com\/usemingla"/)
+})
+
+// ---- D. robots.txt stance (Seth, 8 Nov) ------------------------------------
+// RFC 9309 matching: the longest matching rule wins; `$` anchors the end;
+// Allow wins a tie.
+function allowedFor(rule, pathname) {
+  const toList = (v) => (v === undefined ? [] : Array.isArray(v) ? v : [v])
+  const match = (pattern) => {
+    const anchored = pattern.endsWith('$')
+    const body = anchored ? pattern.slice(0, -1) : pattern
+    return anchored ? pathname === body : pathname.startsWith(body)
+  }
+  let best = { len: -1, allow: true }
+  for (const [list, allow] of [[toList(rule.allow), true], [toList(rule.disallow), false]]) {
+    for (const p of list) {
+      if (!match(p)) continue
+      const len = p.length
+      if (len > best.len || (len === best.len && allow)) best = { len, allow }
+    }
+  }
+  return best.allow
+}
+
+test('D. robots: training crawlers read marketing pages only; scrapers blocked; search bots everywhere', async () => {
+  const mod = await loader.load('app/robots.ts')
+  const robots = mod.default()
+  assert.equal(robots.host, undefined, 'no Host line')
+  const ruleFor = (agent) => robots.rules.find((r) => (Array.isArray(r.userAgent) ? r.userAgent : [r.userAgent]).includes(agent))
+  for (const agent of ['GPTBot', 'ClaudeBot', 'Google-Extended', 'Applebot-Extended', 'CCBot']) {
+    const rule = ruleFor(agent)
+    assert.ok(rule, agent)
+    for (const p of ['/', '/host', '/host/events', '/host/play', '/cities', '/cities/lagos', '/going-out', '/help', '/help/getting-the-apps', '/blog', '/blog/some-post', '/blog/category/going-out', '/tools', '/about']) {
+      assert.equal(allowedFor(rule, p), true, `${agent} may read ${p}`)
+    }
+    for (const p of ['/c/abc', '/orders/1', '/chat', '/board/x', '/invite/x', '/api/blog/posts', '/tools/events', '/tools/events/report', '/schedule', '/event-preview', '/blog/preview/token', '/privacy-policy', '/terms-of-service', '/organiser-terms', '/delete-account', '/links', '/download', '/claim/earnings', '/about/x', '/going-out/x']) {
+      assert.equal(allowedFor(rule, p), false, `${agent} may not read ${p}`)
+    }
+  }
+  for (const agent of ['Bytespider', 'meta-externalagent', 'Diffbot', 'ImagesiftBot', 'Omgili']) {
+    const rule = ruleFor(agent)
+    assert.ok(rule, agent)
+    assert.equal(allowedFor(rule, '/'), false, `${agent} is blocked`)
+    assert.equal(allowedFor(rule, '/host'), false, `${agent} is blocked`)
+  }
+  for (const agent of ['Googlebot', 'Bingbot', 'OAI-SearchBot', 'ChatGPT-User', 'Claude-SearchBot', 'Claude-User', 'PerplexityBot', 'Perplexity-User']) {
+    const rule = ruleFor(agent)
+    for (const p of ['/', '/tools/events', '/privacy-policy', '/schedule']) assert.equal(allowedFor(rule, p), true, `${agent} reads ${p}`)
+  }
+  assert.equal(robots.sitemap, 'https://usemingla.com/sitemap.xml')
+  const md = fs.readFileSync(path.join(REPO, 'MARKETING.md'), 'utf8')
+  assert.match(md, /AI training crawlers \(GPTBot, ClaudeBot, Google-Extended, Applebot-Extended, CCBot\) may read the\s+marketing pages only/)
+  assert.doesNotMatch(md, /model-training-only crawlers are blocked by default/)
 })

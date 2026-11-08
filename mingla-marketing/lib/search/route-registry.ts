@@ -179,43 +179,6 @@ const SEARCH_READY_ROUTES = [
       'Going out, date ideas and the playbook for hosts, from the people building Mingla. Plans you can save in one tap.',
     lastModified: '2026-10-27',
   },
-  // #4339 round B (SEO audit 15) — the creator and local programme pages and
-  // their agreements, registered so each has one title (absolute: the root
-  // template adds no second "— Mingla"), a canonical and a sitemap row.
-  {
-    id: 'locals',
-    match: { type: 'exact', pathname: '/locals' },
-    lifecycle: 'search_ready',
-    title: 'Mingla Locals: one honest city review every month',
-    description:
-      'Apply to represent your city, choose one eligible place each month, publish a first-hand review and earn $150 after Mingla approves it.',
-    lastModified: '2026-11-08',
-  },
-  {
-    id: 'creators',
-    match: { type: 'exact', pathname: '/creators' },
-    lifecycle: 'search_ready',
-    title: 'Mingla Creators: get hired to film your city',
-    description:
-      'Create short videos for Mingla hosts, agree the work before the shoot, deliver privately and get paid through your connected payout provider.',
-    lastModified: '2026-11-08',
-  },
-  {
-    id: 'creator-agreement',
-    match: { type: 'exact', pathname: '/creator-agreement' },
-    lifecycle: 'search_ready',
-    title: 'Mingla Creator Program Agreement',
-    description: 'The complete agreement for the Mingla Creator programme.',
-    lastModified: '2026-11-01',
-  },
-  {
-    id: 'local-agreement',
-    match: { type: 'exact', pathname: '/local-agreement' },
-    lifecycle: 'search_ready',
-    title: 'Mingla Local Agreement',
-    description: 'The complete agreement for the Mingla Local programme in Nigeria.',
-    lastModified: '2026-10-29',
-  },
 ] as const satisfies readonly SearchReadyRouteContract[]
 
 const CORE_PUBLIC_NOINDEX_ROUTES = Object.values(CORE_PAGES).filter((record) => record.lifecycle === 'public_noindex')
@@ -438,6 +401,46 @@ export function blogPostRouteContract(row: BlogPostRouteRow): SearchReadyRouteCo
   }
 }
 
+const PROGRAMME_ROUTE_CONTRACTS = [
+  // #4339 round B (SEO audit 15) — the creator and local programme pages and
+  // their agreements, registered so each has one title (absolute: the root
+  // template adds no second "— Mingla"), a canonical and a sitemap row.
+  {
+    id: 'locals',
+    match: { type: 'exact', pathname: '/locals' },
+    lifecycle: 'search_ready',
+    title: 'Mingla Locals: one honest city review every month',
+    description:
+      'Apply to represent your city, choose one eligible place each month, publish a first-hand review and earn $150 after Mingla approves it.',
+    lastModified: '2026-11-08',
+  },
+  {
+    id: 'creators',
+    match: { type: 'exact', pathname: '/creators' },
+    lifecycle: 'search_ready',
+    title: 'Mingla Creators: get hired to film your city',
+    description:
+      'Create short videos for Mingla hosts, agree the work before the shoot, deliver privately and get paid through your connected payout provider.',
+    lastModified: '2026-11-08',
+  },
+  {
+    id: 'creator-agreement',
+    match: { type: 'exact', pathname: '/creator-agreement' },
+    lifecycle: 'search_ready',
+    title: 'Mingla Creator Program Agreement',
+    description: 'The complete agreement for the Mingla Creator programme.',
+    lastModified: '2026-11-01',
+  },
+  {
+    id: 'local-agreement',
+    match: { type: 'exact', pathname: '/local-agreement' },
+    lifecycle: 'search_ready',
+    title: 'Mingla Local Agreement',
+    description: 'The complete agreement for the Mingla Local programme in Nigeria.',
+    lastModified: '2026-10-29',
+  },
+] as const satisfies readonly SearchReadyRouteContract[]
+
 export const ROUTE_REGISTRY: readonly RouteContract[] = [
   ...SEARCH_READY_ROUTES,
   ...CORE_SEARCH_READY_ROUTES,
@@ -456,6 +459,7 @@ export const ROUTE_REGISTRY: readonly RouteContract[] = [
   ...HELP_ROUTE_CONTRACTS,
   ...BLOG_CATEGORY_ROUTE_CONTRACTS,
   ...HOST_LANDING_ROUTE_CONTRACTS,
+  ...PROGRAMME_ROUTE_CONTRACTS,
   ...REDIRECTED_ROUTES,
 ]
 

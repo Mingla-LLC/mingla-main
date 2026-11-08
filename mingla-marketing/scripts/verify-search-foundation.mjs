@@ -109,11 +109,6 @@ const SITEMAP_SEARCH_READY_PATHS = [
   '/organiser-terms',
   // #4137 — '/blog' is the next base contract, inserted the same way.
   '/blog',
-  // #4339 round B — then the programme pages and their agreements.
-  '/locals',
-  '/creators',
-  '/creator-agreement',
-  '/local-agreement',
   ...releaseSearchReadyPaths.slice(organiserTermsInsertionIndex),
   '/help/getting-the-apps',
   '/help/sign-up-and-create-a-brand',
@@ -142,7 +137,7 @@ const SITEMAP_SEARCH_READY_PATHS = [
   '/help/become-a-mingla-creator',
   '/help/mingla-local-independent-reviews',
   // #4339 round B — empty blog categories leave the sitemap; the seven Host
-  // landing pages project last.
+  // landing pages, then the programme pages and their agreements, project last.
   '/host/events',
   '/host/trips',
   '/host/experiences',
@@ -150,6 +145,10 @@ const SITEMAP_SEARCH_READY_PATHS = [
   '/host/hotels',
   '/host/art',
   '/host/play',
+  '/locals',
+  '/creators',
+  '/creator-agreement',
+  '/local-agreement',
 ]
 
 const PUBLIC_NOINDEX_PATHS = [
