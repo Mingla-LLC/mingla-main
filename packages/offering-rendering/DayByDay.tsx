@@ -17,6 +17,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { CountAwareGallery } from "./CountAwareGallery";
 import type { ThemePalette, OfferingSurfaceStyles } from "./themePalette";
 import type { TripOfferingDay } from "./tripOfferingTypes";
+import { accentFill } from "./themeAccentStyle";
 
 const LONG_ITINERARY_THRESHOLD = 5;
 const COLLAPSED_DAY_COUNT = 2;
@@ -50,7 +51,7 @@ export const DayByDay: React.FC<DayByDayProps> = ({
       <View style={[styles.itinSpine, { backgroundColor: palette.accentWash }]} />
       {visibleDays.map((day) => (
         <View key={day.id} style={styles.day}>
-          <View style={[styles.dayDot, { backgroundColor: palette.accent }]}>
+          <View style={[styles.dayDot, accentFill(palette)]}>
             <Text style={[styles.dayDotText, { color: palette.accentText }]}>
               {day.ordinal}
             </Text>

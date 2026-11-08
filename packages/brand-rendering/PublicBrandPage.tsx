@@ -90,7 +90,15 @@ import {
 // than as a stale mock. Importing from the module directly bypasses those
 // mocks entirely, which is why this stays a deep import and why `hexToRgba` is
 // deliberately NOT re-exported from the barrel (#2539 PR #2552 CI).
-import { hexToRgba } from "@mingla/offering-rendering/themePalette";
+import {
+  hexToRgba,
+  themeAccentFill,
+  themeTextAccent,
+} from "@mingla/offering-rendering/themePalette";
+import {
+  ThemeAccentFill,
+  ThemeAccentGradientLayer,
+} from "@mingla/offering-rendering/ThemeAccentFill";
 
 import { spacing } from "./designTokens";
 // #3188 — the socials-row sizing solver. A separate, pure, import-free module
@@ -115,6 +123,9 @@ import type {
   PublicBrandVenueSummary,
   PublicMediaType,
 } from "./types";
+import { accentFill, accentFillWithBorder, accentOutline, themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
+import { opaqueAccentWashColor } from "@mingla/offering-rendering/themePalette";
+import { AccentLucideIcon } from "@mingla/offering-rendering/LucideIcons";
 
 // #3426 — "past" is the date-decided Past tab (all four kinds). Happening now is
 // NOT a tab: it is a distinct block at the top of the Upcoming tab.
@@ -373,6 +384,9 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     [palette],
   );
   const themedFont = { fontFamily: resolvedTheme.fontFamilyValue };
+  // issue #1023 — heavy text names the bold face: React Native never picks a
+  // heavier face from fontWeight for a custom (Google) family.
+  const themedBoldFont = themeBoldFace(resolvedTheme);
 
   const upcomingEvents = useMemo(
     () =>
@@ -647,15 +661,15 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   // ---- shared sub-blocks ----
   const identityBlock = (
     <View style={styles.identityRow}>
-      <Avatar brand={brand} palette={palette} />
+      <Avatar brand={brand} palette={palette} theme={theme} />
       <View style={styles.identityCopy}>
         {isVerified ? (
-          <Text style={[styles.verifiedBadge, { color: palette.accent }]}>
+          <Text style={[styles.verifiedBadge, { color: themeTextAccent(palette) }]}>
             Verified venue
           </Text>
         ) : null}
         <Text
-          style={[styles.brandName, themedFont, { color: palette.primaryText }]}
+          style={[styles.brandName, themedBoldFont, { color: palette.primaryText }]}
         >
           {brand.displayName}
         </Text>
@@ -809,6 +823,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
           <BrandFollowControl
             brand={brand}
             palette={palette}
+            theme={theme}
             isFollowing={isFollowing}
             followPending={followPending}
             followState={followState}
@@ -838,15 +853,15 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   // ---- desktop sticky brand-summary panel (Share + Next-up only) ----
   const stickyPanel = isDesktop ? (
     <View style={[styles.deskPanel, surface.cardStrong]}>
-      <View style={[styles.deskAccent, { backgroundColor: palette.accent }]} />
+      <View style={[styles.deskAccent, accentFill(palette)]} />
       <View style={styles.deskInner}>
         <View style={styles.deskIdentity}>
-          <Avatar brand={brand} palette={palette} size={60} />
+          <Avatar brand={brand} palette={palette} theme={theme} size={60} />
           <View style={styles.identityCopy}>
             <Text
               style={[
                 styles.deskBrandName,
-                themedFont,
+                themedBoldFont,
                 { color: palette.primaryText },
               ]}
             >
@@ -863,6 +878,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         <BrandFollowControl
           brand={brand}
           palette={palette}
+          theme={theme}
           isFollowing={isFollowing}
           followPending={followPending}
           followState={followState}
@@ -938,7 +954,7 @@ const DeskShareRow = ({ palette, brandName, onShare, onMessage }: DeskShareRowPr
       style={({ pressed }) => [
         styles.deskShareBtn,
         onMessage !== undefined && styles.deskShareBtnHalf,
-        { backgroundColor: palette.accent },
+        accentFill(palette),
         pressed && styles.cardPressed,
       ]}
     >
@@ -956,7 +972,7 @@ const DeskShareRow = ({ palette, brandName, onShare, onMessage }: DeskShareRowPr
           styles.deskShareBtn,
           styles.deskShareBtnHalf,
           styles.deskMessageBtn,
-          { borderColor: palette.accent },
+          accentOutline(palette, { opaqueBackground: palette.page }),
           pressed && styles.cardPressed,
         ]}
       >
@@ -971,8 +987,44 @@ const DeskShareRow = ({ palette, brandName, onShare, onMessage }: DeskShareRowPr
 const Avatar: React.FC<{
   brand: PublicBrand;
   palette: ThemePalette;
+  /** issue #1023 wave 2 — a gradient theme draws the ring as a 2 px gradient. */
+  theme?: ResolvedTheme;
   size?: number;
-}> = ({ brand, palette, size = 84 }) => {
+}> = ({ brand, palette, theme, size = 84 }) => {
+  // issue #1023 wave 2 — a gradient cannot be a borderColor, so a gradient
+  // theme wraps the avatar in a gradient circle the same size and draws the
+  // avatar 2 px inside it with no border. A solid theme keeps today's ring.
+  const gradientRing =
+    theme !== undefined && themeAccentFill(theme, palette).kind === "gradient";
+  if (gradientRing && theme !== undefined) {
+    return (
+      <View
+        style={{
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          boxShadow: [
+            {
+              offsetX: 0,
+              offsetY: 10,
+              blurRadius: 18,
+              spreadDistance: 0,
+              color: hexToRgba(palette.accent, 0.26),
+            },
+          ],
+        }}
+      >
+        <ThemeAccentFill
+          theme={theme}
+          palette={palette}
+          style={[styles.avatarRing, { width: size, height: size, borderRadius: size / 2 }]}
+          testID="brand-avatar-gradient-ring"
+        >
+          <AvatarFace brand={brand} palette={palette} size={size - 4} bordered={false} />
+        </ThemeAccentFill>
+      </View>
+    );
+  }
   // #2539 — NO shadowColor here either. It is a shadow* prop like the other
   // three, and on web it reaches the SAME react-native-web <Image> that turns
   // the set into `filter: drop-shadow()` on the clipped inner layer.
@@ -1044,6 +1096,46 @@ const Avatar: React.FC<{
   );
 };
 
+// issue #1023 wave 2 — the avatar face alone (photo or initial), for the
+// gradient ring. Same styles as Avatar's own branches, minus the border.
+const AvatarFace: React.FC<{
+  brand: PublicBrand;
+  palette: ThemePalette;
+  size: number;
+  bordered: boolean;
+}> = ({ brand, palette, size, bordered }) => {
+  const faceStyle = [
+    styles.avatar,
+    {
+      width: size,
+      height: size,
+      borderRadius: size / 2,
+      backgroundColor: palette.panelStrong,
+      borderColor: palette.accent,
+    },
+    bordered ? null : styles.avatarNoBorder,
+  ];
+  return brand.photo !== undefined && brand.photo.length > 0 ? (
+    <Image
+      source={{ uri: brand.photo }}
+      style={faceStyle}
+      resizeMode="cover"
+      accessibilityLabel={`${brand.displayName} avatar`}
+    />
+  ) : (
+    <View style={faceStyle}>
+      <Text
+        style={[
+          styles.avatarInitial,
+          { fontSize: size * 0.42, color: palette.primaryText },
+        ]}
+      >
+        {(brand.displayName.charAt(0) || "?").toUpperCase()}
+      </Text>
+    </View>
+  );
+};
+
 // Issue #3188 [brand-page social icons wrap onto a second line] — the row now
 // fits ONE line at any entry count (the true maximum is 8: `SocialKind` has
 // eight members and email/phone render as full-width text rows, not chips).
@@ -1096,7 +1188,7 @@ const SocialLinksRow: React.FC<{
             {
               width: metrics.diameter,
               height: metrics.diameter,
-              backgroundColor: palette.accent,
+              ...accentFill(palette),
             },
           ]}
         >
@@ -1130,6 +1222,8 @@ const SocialIcon: React.FC<{
 type BrandFollowControlProps = {
   brand: PublicBrand;
   palette: ThemePalette;
+  /** issue #1023 — the filled Follow state paints the theme gradient. */
+  theme?: ResolvedTheme;
   isFollowing?: boolean;
   followPending?: boolean;
   /** #3682 Wave 2.5 — email-sheet Pending (not busy spinner). */
@@ -1145,6 +1239,7 @@ type BrandFollowControlProps = {
 const BrandFollowControl: React.FC<BrandFollowControlProps> = ({
   brand,
   palette,
+  theme,
   isFollowing,
   followPending,
   followState,
@@ -1173,6 +1268,7 @@ const BrandFollowControl: React.FC<BrandFollowControlProps> = ({
       <SharedFollowButton
         brandName={brand.displayName}
         palette={palette}
+        theme={theme}
         isFollowing={isFollowing}
         followPending={followPending}
         state={followState}
@@ -1286,15 +1382,24 @@ const TabBar: React.FC<TabBarProps> = ({
                 styles.tabChip,
                 surface.card,
                 active && {
-                  backgroundColor: palette.accent,
-                  borderColor: palette.accent,
+                  ...accentFillWithBorder(palette),
                 },
               ]}
             >
+              {/* issue #1023 — the active tab paints the theme gradient (a
+                  solid theme renders nothing here and looks as before). */}
+              {active ? (
+                <ThemeAccentGradientLayer
+                  theme={theme}
+                  palette={palette}
+                  borderRadius={styles.tabChip.borderRadius}
+                  testID={`brand-tab-gradient-${tab}`}
+                />
+              ) : null}
               <Text
                 style={[
                   styles.tabLabel,
-                  { fontFamily: theme.fontFamilyValue },
+                  themeBoldFace(theme),
                   {
                     color: active ? palette.accentText : palette.secondaryText,
                   },
@@ -1436,18 +1541,18 @@ const EventMiniCard: React.FC<EventMiniCardProps> = ({
       />
       <View style={styles.oCardBody}>
         <View style={styles.eventTypeRow}>
-          <TypeIcon size={14} color={palette.accent} />
-          <Text style={[styles.eventTypeLabel, { color: palette.accent }]}>
+          <AccentLucideIcon Icon={TypeIcon} size={14} palette={palette} />
+          <Text style={[styles.eventTypeLabel, { color: themeTextAccent(palette) }]}>
             {isRsvp ? "RSVP" : "TICKETS"}
           </Text>
         </View>
-        <Text style={[styles.oCardDate, { color: palette.accent }]}>
+        <Text style={[styles.oCardDate, { color: themeTextAccent(palette) }]}>
           {event.dateLine}
         </Text>
         <Text
           style={[
             styles.oCardTitle,
-            { fontFamily: theme.fontFamilyValue, color: palette.primaryText },
+            { ...themeBoldFace(theme), color: palette.primaryText },
           ]}
           numberOfLines={2}
         >
@@ -1480,7 +1585,12 @@ const EventMiniCard: React.FC<EventMiniCardProps> = ({
             ) : null}
           </View>
         ) : null}
-        <View style={[styles.buyPill, { backgroundColor: palette.accent }]}>
+        <View style={[styles.buyPill, accentFill(palette)]}>
+          <ThemeAccentGradientLayer
+            theme={theme}
+            palette={palette}
+            borderRadius={styles.buyPill.borderRadius}
+          />
           <Text style={[styles.buyPillLabel, { color: palette.accentText }]}>
             {action}
           </Text>
@@ -1509,7 +1619,7 @@ const NextOfferingTeaser: React.FC<{
       accessibilityLabel={`Next offering ${item.name}`}
       style={({ pressed }) => [
         styles.nextTeaser,
-        { backgroundColor: palette.accent },
+        accentFill(palette),
         pressed && styles.cardPressed,
       ]}
     >
@@ -1520,7 +1630,7 @@ const NextOfferingTeaser: React.FC<{
         <Text
           style={[
             styles.nextTeaserBody,
-            { fontFamily: theme.fontFamilyValue, color: palette.accentText },
+            { ...themeBoldFace(theme), color: palette.accentText },
           ]}
           numberOfLines={2}
         >
@@ -1645,14 +1755,14 @@ const TripMiniCard: React.FC<{
       />
       <View style={styles.oCardBody}>
         {dateLine.length > 0 ? (
-          <Text style={[styles.oCardDate, { color: palette.accent }]}>
+          <Text style={[styles.oCardDate, { color: themeTextAccent(palette) }]}>
             {dateLine}
           </Text>
         ) : null}
         <Text
           style={[
             styles.oCardTitle,
-            { fontFamily: theme.fontFamilyValue, color: palette.primaryText },
+            { ...themeBoldFace(theme), color: palette.primaryText },
           ]}
           numberOfLines={2}
         >
@@ -1769,13 +1879,13 @@ const OfferingMiniCard: React.FC<OfferingMiniCardProps> = ({
         mediaType={item.coverMediaType}
       />
       <View style={styles.oCardBody}>
-        <Text style={[styles.oCardDate, { color: palette.accent }]}>
+        <Text style={[styles.oCardDate, { color: themeTextAccent(palette) }]}>
           {formatUpcomingDateLine(item.startsAt)}
         </Text>
         <Text
           style={[
             styles.oCardTitle,
-            { fontFamily: theme.fontFamilyValue, color: palette.primaryText },
+            { ...themeBoldFace(theme), color: palette.primaryText },
           ]}
           numberOfLines={2}
         >
@@ -1935,13 +2045,13 @@ const SectionMiniCard: React.FC<SectionCardProps> = ({
         mediaType={card.coverMediaType}
       />
       <View style={styles.oCardBody}>
-        <Text style={[styles.oCardDate, { color: palette.accent }]}>
+        <Text style={[styles.oCardDate, { color: themeTextAccent(palette) }]}>
           {dateLine}
         </Text>
         <Text
           style={[
             styles.oCardTitle,
-            { fontFamily: theme.fontFamilyValue, color: palette.primaryText },
+            { ...themeBoldFace(theme), color: palette.primaryText },
           ]}
           numberOfLines={2}
         >
@@ -1983,11 +2093,11 @@ const HappeningNowBlock: React.FC<HappeningNowBlockProps> = ({
     testID="brand-happening-now"
     style={[
       styles.nowBlock,
-      { borderColor: palette.accent, backgroundColor: palette.accentWash },
+      accentOutline(palette, { background: palette.accentWash, opaqueBackground: opaqueAccentWashColor(palette) }),
     ]}
   >
     <View style={styles.nowHeadRow}>
-      <View style={[styles.nowDot, { backgroundColor: palette.accent }]} />
+      <View style={[styles.nowDot, accentFill(palette)]} />
       <Text
         accessibilityRole="header"
         style={[styles.nowHeadLabel, { color: palette.primaryText }]}
@@ -2153,14 +2263,14 @@ const ExperienceMiniCard: React.FC<{
       />
       <View style={styles.oCardBody}>
         {experience.nextOccurrenceAt !== null ? (
-          <Text style={[styles.oCardDate, { color: palette.accent }]}>
+          <Text style={[styles.oCardDate, { color: themeTextAccent(palette) }]}>
             {formatUpcomingDateLine(experience.nextOccurrenceAt)}
           </Text>
         ) : null}
         <Text
           style={[
             styles.oCardTitle,
-            { fontFamily: theme.fontFamilyValue, color: palette.primaryText },
+            { ...themeBoldFace(theme), color: palette.primaryText },
           ]}
           numberOfLines={2}
         >
@@ -2246,7 +2356,7 @@ const ReservationsPane = ({
           onPress={onRetry}
           accessibilityRole="button"
           accessibilityLabel="Try loading venues again"
-          style={[styles.retryButton, { backgroundColor: palette.accent }]}
+          style={[styles.retryButton, accentFill(palette)]}
         >
           <Text style={[styles.retryLabel, { color: palette.accentText }]}>
             Try again
@@ -2366,7 +2476,7 @@ const AboutTab: React.FC<{
         <Text
           style={[
             styles.tagline,
-            { fontFamily: theme.fontFamilyValue, color: palette.primaryText },
+            { ...themeBoldFace(theme), color: palette.primaryText },
           ]}
         >
           {tagline}
@@ -2397,7 +2507,7 @@ const ClampedBio: React.FC<{ text: string; palette: ThemePalette }> = ({
       text={text}
       collapsedLines={BIO_CLAMP_LINES}
       textStyle={[styles.bio, { color: palette.secondaryText }]}
-      toggleTextStyle={[styles.readMore, { color: palette.accent }]}
+      toggleTextStyle={[styles.readMore, { color: themeTextAccent(palette) }]}
       containerStyle={styles.bioWrap}
       testID="public-brand-bio-disclosure"
     />
@@ -2434,6 +2544,13 @@ const styles = StyleSheet.create({
   },
   avatarInitial: {
     fontWeight: "900",
+  },
+  avatarRing: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarNoBorder: {
+    borderWidth: 0,
   },
   verifiedBadge: {
     fontSize: 10,

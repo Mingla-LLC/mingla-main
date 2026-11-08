@@ -39,6 +39,8 @@ import { publicEnquiryKeys } from "../../hooks/publicEnquiryKeys";
 import { explorerAppUrl, openExternalUrl } from "./brandContactLinks";
 import { guestThreadModel, isGuestThreadToken, type GuestThreadLoad } from "./guestThreadModel";
 import { PINNED_BAR_IN_FLOW, PinnedBottomBar } from "./PinnedBottomBar";
+import { accentFill, accentOutline } from "@mingla/offering-rendering/themeAccentStyle";
+import { opaqueAccentWashColor } from "@mingla/offering-rendering/themePalette";
 
 const REPLY_MAX = 2000;
 const COMPOSER_SPACE = 92;
@@ -172,7 +174,7 @@ export default function GuestThreadScreen({ token }: GuestThreadScreenProps): Re
         testID={opts.testID}
         style={({ pressed }) => [
           primary ? styles.primaryBtn : styles.lineBtn,
-          primary ? { backgroundColor: palette.accent } : { borderColor: palette.accent },
+          primary ? accentFill(palette) : accentOutline(palette, { opaqueBackground: palette.page }),
           opts.busy === true && styles.dim,
           pressed && styles.pressed,
         ]}
@@ -313,7 +315,7 @@ export default function GuestThreadScreen({ token }: GuestThreadScreenProps): Re
             testID="guest-thread-send"
             style={({ pressed }) => [
               styles.sendBtn,
-              { backgroundColor: palette.accent },
+              accentFill(palette),
               (sending || draft.trim().length === 0) && styles.dim,
               pressed && styles.pressed,
             ]}
@@ -337,11 +339,11 @@ export default function GuestThreadScreen({ token }: GuestThreadScreenProps): Re
           {model.logoUrl !== null ? (
             <Image
               source={{ uri: model.logoUrl }}
-              style={[styles.avatar, { borderColor: palette.accent }]}
+              style={[styles.avatar, accentOutline(palette, { opaqueBackground: palette.page })]}
               accessibilityIgnoresInvertColors
             />
           ) : (
-            <View style={[styles.avatar, styles.avatarFallback, { borderColor: palette.accent, backgroundColor: palette.accentWash }]}>
+            <View style={[styles.avatar, styles.avatarFallback, accentOutline(palette, { background: palette.accentWash, opaqueBackground: opaqueAccentWashColor(palette) })]}>
               <Text style={[styles.avatarInitial, { color: palette.accent }]}>{initial}</Text>
             </View>
           )}
@@ -375,7 +377,7 @@ export default function GuestThreadScreen({ token }: GuestThreadScreenProps): Re
                 style={[
                   styles.bubble,
                   bubble.mine
-                    ? { backgroundColor: palette.accent }
+                    ? accentFill(palette)
                     : { backgroundColor: palette.card, borderColor: palette.panelBorder, borderWidth: 1 },
                 ]}
               >

@@ -89,7 +89,8 @@ Deno.test("T-2: NO checkout affordance tokens (I-PROPOSED-1157-NO-CHECKOUT-AFFOR
 Deno.test("T-2: theme dial — palette-only colors, NO 3/6-digit hex literal", () => {
   assert(!/#[0-9a-fA-F]{6}\b/.test(COMPONENT), "no 6-digit hex literal");
   assert(!/#[0-9a-fA-F]{3}\b/.test(COMPONENT), "no 3-digit hex literal");
-  assert(/backgroundColor: palette\.accent/.test(COMPONENT), "meter/cluster read palette.accent");
+  // issue #1023 (gradient everywhere): the accent paints through the gradient-aware helpers.
+  assert(/\.\.\.accentFill\(palette\)/.test(COMPONENT), "meter reads the accent fill");
 });
 
 Deno.test("T-2: Android-opaque card fill + overflow hidden (ANDROID_GLASS_USES_OPAQUE_FALLBACK)", () => {

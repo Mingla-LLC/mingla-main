@@ -118,6 +118,9 @@ const EVENT_COLUMNS = new Set([
   "party_types", "vibe_tags", "music_genres", "city", "location_geo",
   "pass_tax", "pass_mingla_fee", "pass_service_fee", "theme_color_override",
   "theme_font_override", "theme_animation_override", "event_type",
+  // issue #1023 wave 2 — the events table now has the gradient column (applied
+  // 2026-11-07); the draft select names it.
+  "theme_gradient_override",
 ]);
 
 const fromEvents = (): Record<string, unknown> => {
@@ -439,6 +442,7 @@ const seedServerRow = (format: Format): void => {
     theme_color_override: null,
     theme_font_override: null,
     theme_animation_override: null,
+    theme_gradient_override: null,
     event_type: format === "rsvp" ? "rsvp" : "event",
   });
 };

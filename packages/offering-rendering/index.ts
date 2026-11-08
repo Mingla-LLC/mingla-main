@@ -458,10 +458,19 @@ export {
   // component imports it. PublicBrandPage.tsx deep-imports it from
   // "./themePalette" instead, which no barrel mock can intercept.
 } from "./themePalette";
-export type { ThemePalette, OfferingSurfaceStyles } from "./themePalette";
+export type {
+  ThemePalette,
+  OfferingSurfaceStyles,
+  ThemeAccentFillSpec,
+} from "./themePalette";
 export { PublicEventNotFound } from "./PublicEventNotFound";
 export { EventCoverMedia } from "./EventCoverMedia";
 export { ThemeEntranceAnimation } from "./ThemeEntranceAnimation";
+export type { ThemeEntranceAnimationProps } from "./ThemeEntranceAnimation";
+// issue #1023 — text-safe zone + dev-only motion preview.
+// The dev-only motion override is deep-imported (./themeMotionDevOverride) so
+// production bundles never carry it.
+export type { TextSafeZone, TextSafeZoneProp } from "./themeMotion";
 export {
   computeForeground,
   isThemeAnimationSlug,
@@ -469,12 +478,24 @@ export {
   isThemeFontSlug,
   resolveTheme,
 } from "./themeResolver";
+export type {
+  ThemeAccentFillProps,
+  ThemeAccentGradientLayerProps,
+} from "./ThemeAccentFill";
+// issue #1023 — the theme font, gradient and motion-catalogue helpers are
+// deep-imported (./themeResolver, ./themePalette, ./ThemeAccentFill,
+// ./designTokens), not re-exported here: every barrel getter is boot-chunk
+// weight on buyer web, and partial barrel mocks never need them.
+// The Google font loader is deliberately NOT in this barrel: apps deep-import
+// "@mingla/offering-rendering/googleFontLoader" so partial barrel mocks in
+// app test suites never see an undefined loader.
 export {
   FONT_FAMILY_MAP,
   MINGLA_DEFAULT_THEME,
   THEME_ANIMATION_SLUGS,
   THEME_FONT_SLUGS,
 } from "./designTokens";
+export type { ThemeMotionGroup } from "./designTokens";
 export type {
   EventCoverMediaErrorEvent,
   EventCoverMediaProps,
@@ -652,9 +673,11 @@ export type {
   OfferingGalleryImage,
 } from "./types";
 export type {
+  GoogleFontFamily,
   ResolvedTheme,
   ThemeAnimationSlug,
   ThemeFontSlug,
+  ThemeFontValue,
   ThemeInput,
 } from "./designTokens";
 

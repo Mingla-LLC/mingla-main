@@ -25,6 +25,11 @@
  *       through its own package barrel, for the same reason.
  *   (2) CreatorStep5Tickets must load TicketTierEditSheet via React.lazy dynamic
  *       import (an on-demand chunk), never a static import.
+ *   (3) issue #1023 wave 2 — the Google Fonts catalogue (about 57 KB of JSON,
+ *       1,626 families) is loaded ONLY by the Theme sheet's Font tab through a
+ *       dynamic import(). No source file may import or require it statically:
+ *       the catalogue must never reach the eager chunk
+ *       (I-1023-ONLY-CHOSEN-FONT-DOWNLOADS).
  * Reverting either fails HERE (in seconds) instead of in the 10-minute export gate.
  *
  * #1559 — REPOINTED. Rule (1) used to pin
@@ -100,6 +105,40 @@ if (/import\s+\{\s*TicketTierEditSheet\s*\}\s+from/.test(step5)) {
   violations.push("CreatorStep5Tickets.tsx has a STATIC import of TicketTierEditSheet — it must be React.lazy only.");
 }
 
+// (3) issue #1023 — the font catalogue is a lazy chunk, never a static import.
+const CATALOG = "googleFontsCatalog.json";
+const FONT_TAB = "mingla-business/src/components/theme/ThemeFontTab.tsx";
+const SOURCE_ROOTS = ["mingla-business/src", "mingla-business/app", "packages", "app-mobile/src"];
+const walkSources = (rel) => {
+  const abs = path.join(REPO, rel);
+  if (!fs.existsSync(abs)) return [];
+  const out = [];
+  for (const entry of fs.readdirSync(abs, { withFileTypes: true })) {
+    if (entry.name === "node_modules" || entry.name === "__tests__") continue;
+    const child = path.posix.join(rel, entry.name);
+    if (entry.isDirectory()) out.push(...walkSources(child));
+    else if (/\.(ts|tsx|js|jsx|mjs)$/.test(entry.name)) out.push(child);
+  }
+  return out;
+};
+const staticCatalogImport = new RegExp(
+  `(^|\\n)\\s*import\\s[^;]*from\\s*["'][^"']*${CATALOG.replace(".", "\\.")}["']|require\\(\\s*["'][^"']*${CATALOG.replace(".", "\\.")}["']`,
+);
+for (const rel of SOURCE_ROOTS.flatMap(walkSources)) {
+  const src = stripComments(read(rel));
+  if (!src.includes(CATALOG)) continue;
+  if (staticCatalogImport.test(src)) {
+    violations.push(
+      `${rel} imports ${CATALOG} statically — the font catalogue must only load through ` +
+        "a dynamic import() in the Font tab, never in the eager chunk.",
+    );
+  }
+}
+const fontTab = stripComments(read(FONT_TAB));
+if (!/import\(\s*"[^"]*fonts\/googleFontsCatalog\.json"\s*\)/.test(fontTab)) {
+  violations.push(`${FONT_TAB} no longer loads the font catalogue through a dynamic import().`);
+}
+
 if (violations.length) {
   console.error("\nFAIL [I-1047-BIZ-BUNDLE-BUDGET-DEFERRAL]:");
   for (const v of violations) console.error(`  x ${v}`);
@@ -109,5 +148,5 @@ if (violations.length) {
 console.log(
   "OK [I-1047-BIZ-BUNDLE-BUDGET-DEFERRAL]: venue route deep-imports PublicVenueScreen, " +
     "the shared screen stays off its own barrel and carries no React.lazy, " +
-    "and TicketTierEditSheet is lazy.",
+    "TicketTierEditSheet is lazy, and the font catalogue loads only by dynamic import.",
 );

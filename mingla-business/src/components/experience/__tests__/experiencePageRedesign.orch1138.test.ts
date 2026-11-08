@@ -45,7 +45,8 @@ describe("ORCH-1138 Leg 3 — experience page redesign", () => {
       previewSrc.indexOf("const FoundationExperiencePreview"),
       previewSrc.indexOf("const LegacyExperiencePreview"),
     );
-    expect(foundationBlock).toMatch(/palette\.accent/);
+    // [TEST-MOD-APPROVED #1023] the accent may paint through the gradient-aware helpers.
+    expect(foundationBlock).toMatch(/palette\.accent|accentFill\(palette\)|accentIcon\(palette\)|accentOutline\(palette/);
     expect(foundationBlock).not.toMatch(/#0c0e12/);
     expect(foundationBlock).not.toMatch(/accent\.warm/);
   });

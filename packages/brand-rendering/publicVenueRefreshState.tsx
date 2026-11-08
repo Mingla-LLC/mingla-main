@@ -71,6 +71,8 @@ export interface PublicVenueRetryActionProps {
   readyLabel?: string;
   busyLabel?: string;
   backgroundColor: string;
+  /** issue #1023 — a full fill style (the theme gradient); wins over backgroundColor. */
+  fillStyle?: { backgroundColor: string };
   textColor: string;
   focusColor: string;
   focusOffset: number;
@@ -155,6 +157,7 @@ export const PublicVenueRetryAction = ({
   readyLabel = "Try again",
   busyLabel = "Trying…",
   backgroundColor,
+  fillStyle,
   textColor,
   focusColor,
   focusOffset,
@@ -208,7 +211,7 @@ export const PublicVenueRetryAction = ({
   };
   const actionStyle = [
     styles.action,
-    { backgroundColor },
+    fillStyle ?? { backgroundColor },
     pressed && !busy && styles.pressed,
     busy && styles.busy,
     Platform.OS === "web"
@@ -332,7 +335,7 @@ export const PublicVenueRetryAction = ({
       onBlur: handleBlur,
       style: ({ pressed }: { pressed: boolean }) => [
         styles.action,
-        { backgroundColor },
+        fillStyle ?? { backgroundColor },
         pressed && !busy && styles.pressed,
         busy && styles.busy,
       ],

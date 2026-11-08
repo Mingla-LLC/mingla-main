@@ -87,6 +87,8 @@ export interface ServerDraftEventRow {
   theme_color_override?: string | null;
   theme_font_override?: string | null;
   theme_animation_override?: string | null;
+  // issue #1023 wave 2 — "#first,#second", one unit with the colour column.
+  theme_gradient_override?: string | null;
 }
 
 export interface ServerDraftEventInsert {
@@ -126,6 +128,7 @@ export interface ServerDraftEventInsert {
   theme_color_override: string | null;
   theme_font_override: string | null;
   theme_animation_override: string | null;
+  theme_gradient_override: string | null;
 }
 
 export interface ServerDraftEventUpdate {
@@ -180,6 +183,7 @@ export interface ServerDraftEventUpdate {
   theme_color_override: string | null;
   theme_font_override: string | null;
   theme_animation_override: string | null;
+  theme_gradient_override: string | null;
 }
 
 export interface BusinessDraftPayload {

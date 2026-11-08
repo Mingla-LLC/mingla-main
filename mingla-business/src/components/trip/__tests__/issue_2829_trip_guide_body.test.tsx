@@ -59,6 +59,8 @@ const BOUNDARY: Record<string, () => unknown> = {
   react: () => React,
   "react-native": () => jest.requireActual("react-native"),
   "./themePalette": () => jest.requireActual("@mingla/offering-rendering/themePalette"),
+  // [TEST-MOD-APPROVED #1023] Harness registration only: the gradient-aware accent helpers (real).
+  "./themeAccentStyle": () => jest.requireActual("@mingla/offering-rendering/themeAccentStyle"),
   "./designTokens": () => ({}),
   "./EventCoverMedia": () => ({ EventCoverMedia: leaf("EventCoverMedia") }),
   "./ChipGroup": () => ({ ChipGroup: leaf("ChipGroup") }),

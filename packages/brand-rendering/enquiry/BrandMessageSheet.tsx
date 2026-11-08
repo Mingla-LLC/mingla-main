@@ -69,6 +69,8 @@ import {
   type EnquirySendRequest,
   type TableRequestDetails,
 } from "./enquiryTopics";
+import { accentEdgeOnFill, accentFill, accentFillWithBorder, accentOutline, themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
+import { AccentLucideIcon } from "@mingla/offering-rendering/LucideIcons";
 
 export type EnquiryViewer =
   | { kind: "signed_in"; name: string }
@@ -165,6 +167,8 @@ export const BrandMessageSheet = ({
   const { width, height } = useWindowDimensions();
   const wide = width >= 768;
   const themedFont = { fontFamily: theme.fontFamilyValue };
+  // issue #1023 — titles name the bold face (native ignores fontWeight here).
+  const themedBoldFont = themeBoldFace(theme);
   const signedIn = viewer.kind === "signed_in";
 
   const [step, setStep] = useState<Step>("topic");
@@ -317,7 +321,7 @@ export const BrandMessageSheet = ({
       style={({ pressed }) => [
         styles.primaryBtn,
         opts.flex === true && styles.flexBtn,
-        { backgroundColor: palette.accent },
+        accentFill(palette),
         (opts.disabled === true || opts.busy === true) && styles.dim,
         pressed && styles.pressed,
       ]}
@@ -345,7 +349,7 @@ export const BrandMessageSheet = ({
       style={({ pressed }) => [
         opts.compact === true ? styles.compactBtn : styles.secondaryBtn,
         opts.flex === true && styles.flexBtn,
-        { borderColor: palette.accent },
+        accentOutline(palette, { opaqueBackground: palette.page }),
         pressed && styles.pressed,
       ]}
     >
@@ -374,7 +378,7 @@ export const BrandMessageSheet = ({
         ]}
       >
         <View style={[styles.pickIcon, { backgroundColor: palette.accentWash }]}>
-          <Icon size={18} color={palette.accent} />
+          <AccentLucideIcon Icon={Icon} size={18} palette={palette} />
         </View>
         <View style={styles.pickCopy}>
           <Text numberOfLines={2} style={[styles.pickTitle, { color: palette.primaryText }]}>
@@ -441,7 +445,7 @@ export const BrandMessageSheet = ({
   // ---- step 1 ----------------------------------------------------------------
   const topicStep = (
     <View>
-      <Text style={[styles.title, themedFont, { color: palette.primaryText }]} accessibilityRole="header">
+      <Text style={[styles.title, themedBoldFont, { color: palette.primaryText }]} accessibilityRole="header">
         {`Message ${brandName}`}
       </Text>
       <Text style={[styles.sub, { color: palette.secondaryText }]}>What&apos;s this about?</Text>
@@ -613,8 +617,8 @@ export const BrandMessageSheet = ({
                 <View
                   style={[
                     styles.checkBox,
-                    { borderColor: okToCall ? palette.accent : palette.panelBorder },
-                    okToCall && { backgroundColor: palette.accent },
+                    { borderColor: okToCall ? accentEdgeOnFill(palette) : palette.panelBorder },
+                    okToCall && accentFill(palette),
                   ]}
                 >
                   {okToCall ? <Check size={14} color={palette.accentText} /> : null}
@@ -669,7 +673,7 @@ export const BrandMessageSheet = ({
             {pick.subtitle === null ? pick.title : `${pick.title} · ${pick.subtitle}`}
           </Text>
         </Pressable>
-        <Text style={[styles.title, themedFont, { color: palette.primaryText }]} accessibilityRole="header">
+        <Text style={[styles.title, themedBoldFont, { color: palette.primaryText }]} accessibilityRole="header">
           {pick.reasons.length > 0 ? "What do you need?" : pick.title}
         </Text>
         {pick.reasons.length > 0 ? (
@@ -690,7 +694,7 @@ export const BrandMessageSheet = ({
                   style={({ pressed }) => [
                     styles.chip,
                     on
-                      ? { backgroundColor: palette.accent, borderColor: palette.accent }
+                      ? accentFillWithBorder(palette)
                       : { backgroundColor: palette.card, borderColor: palette.panelBorder },
                     pressed && styles.pressed,
                   ]}
@@ -712,9 +716,9 @@ export const BrandMessageSheet = ({
     sent === null ? null : (
       <View style={styles.sentWrap} testID={`${testID}-sent`}>
         <View style={[styles.sentIcon, { backgroundColor: palette.accentWash }]}>
-          <Check size={26} color={palette.accent} />
+          <AccentLucideIcon Icon={Check} size={26} palette={palette} />
         </View>
-        <Text style={[styles.title, styles.center, themedFont, { color: palette.primaryText }]}>
+        <Text style={[styles.title, styles.center, themedBoldFont, { color: palette.primaryText }]}>
           {`Message sent to ${brandName}`}
         </Text>
         <Text style={[styles.sub, styles.center, { color: palette.secondaryText }]}>

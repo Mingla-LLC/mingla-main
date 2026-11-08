@@ -14,6 +14,7 @@ import type { EnquiryOffering } from "@mingla/brand-rendering/enquiry/enquiryTop
 
 import { PresentedByFollowButton } from "../brand/PresentedByFollowButton";
 import { useExplorerBrandMessage } from "./useExplorerBrandMessage";
+import { accentOutline } from "@mingla/offering-rendering/themeAccentStyle";
 
 export interface PresentedByFollowAndMessageProps {
   brandId: string;
@@ -54,7 +55,7 @@ export function PresentedByFollowAndMessage({
           style={({ pressed }) => [
             styles.cell,
             styles.message,
-            { borderColor: palette.accent },
+            accentOutline(palette, { opaqueBackground: palette.page }),
             pressed && styles.pressed,
           ]}
         >

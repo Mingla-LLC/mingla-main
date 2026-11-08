@@ -12,6 +12,8 @@ import type { ThemePalette } from "@mingla/offering-rendering";
 import { experienceRemainingChipText } from "@mingla/offering-rendering/experienceR3";
 
 import type { ExperienceOccurrence } from "./ExperienceOccurrencePicker";
+import { accentOutline } from "@mingla/offering-rendering/themeAccentStyle";
+import { opaqueAccentWashColor } from "@mingla/offering-rendering/themePalette";
 
 export interface ExperienceDayStepProps {
   mode: "slots" | "open-daily";
@@ -76,8 +78,7 @@ export const ExperienceDayStep: React.FC<ExperienceDayStepProps> = ({
                   },
                   selected
                     ? {
-                        borderColor: palette.accent,
-                        backgroundColor: palette.accentWash,
+                        ...accentOutline(palette, { background: palette.accentWash, opaqueBackground: opaqueAccentWashColor(palette) }),
                       }
                     : null,
                   soldOut ? styles.dateRowDisabled : null,

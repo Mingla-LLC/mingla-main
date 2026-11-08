@@ -74,6 +74,7 @@ import type {
 } from "../../services/publicExperienceService";
 // #3372 — naira shows "₦", not "NGN", in the experience preview (#3341 rule).
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
+import { accentFill, themeFontFace } from "@mingla/offering-rendering/themeAccentStyle";
 
 export interface ExperiencePreviewProps {
   experience: PublicExperience;
@@ -326,6 +327,7 @@ const FoundationExperiencePreview: React.FC<{
   const { isDesktop } = useResponsiveLayout();
   const surface = offeringSurfaceStyles(palette);
   const boldFamily = boldFontFamily(theme);
+  const boldFace = themeFontFace(boldFamily);
 
   const data = buildExperienceOfferingData(experience);
   const offeringBrand = buildExperienceOfferingBrand(brand);
@@ -360,7 +362,7 @@ const FoundationExperiencePreview: React.FC<{
       </View>
       <View style={styles.brandTextCol}>
         <Text style={[styles.brandKicker, surface.tertiaryText]}>Presented by</Text>
-        <Text style={[styles.brandName, surface.primaryText, { fontFamily: boldFamily }]}>
+        <Text style={[styles.brandName, surface.primaryText, boldFace]}>
           {brand.name}
         </Text>
       </View>
@@ -370,14 +372,14 @@ const FoundationExperiencePreview: React.FC<{
   // ---- desktop sticky booking panel ----
   const stickyPanel = isDesktop ? (
     <View style={[styles.deskPanel, surface.cardStrong]}>
-      <View style={[styles.deskAccent, { backgroundColor: palette.accent }]} />
+      <View style={[styles.deskAccent, accentFill(palette)]} />
       <View style={styles.deskInner}>
         {brandChip}
         <View style={styles.deskPriceRow}>
           <Text style={[styles.pricingLabel, surface.secondaryText]}>
             {isFree ? "Price" : "From"}
           </Text>
-          <Text style={[styles.pricingPrice, surface.primaryText, { fontFamily: boldFamily }]}>
+          <Text style={[styles.pricingPrice, surface.primaryText, boldFace]}>
             {priceLabel}
           </Text>
         </View>

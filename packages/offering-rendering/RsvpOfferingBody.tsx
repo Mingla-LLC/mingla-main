@@ -131,6 +131,7 @@ import type {
   RsvpPassCredential,
 } from "./RsvpSuccessPopup";
 import type { ChipInPanelState } from "./RsvpChipInPanel";
+import { accentFill, accentIcon, themeFontFace } from "./themeAccentStyle";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_RE = /^\+?[0-9\s()-]{7,20}$/;
@@ -545,6 +546,7 @@ export const useRsvpOfferingState = (
   const { renderPhoneField, defaultPhoneCountry } = props;
   const surface = offeringSurfaceStyles(palette);
   const boldFamily = boldFontFamily(theme);
+  const boldFace = themeFontFace(boldFamily);
 
   const contextKey = JSON.stringify([
     event.id,
@@ -1704,12 +1706,12 @@ export const useRsvpOfferingState = (
             ]}
             testID="orch-1157-rsvp-plus-minus"
           >
-            <Minus size={18} color={palette.accent} />
+            <Minus size={18} {...accentIcon(palette)} />
           </Pressable>
           <Text
             style={[
               styles.stepCount,
-              { color: palette.primaryText, fontFamily: boldFamily },
+              { color: palette.primaryText, ...boldFace },
             ]}
           >
             +{guests.length}
@@ -1728,7 +1730,7 @@ export const useRsvpOfferingState = (
             ]}
             testID="orch-1157-rsvp-plus-plus"
           >
-            <Plus size={18} color={palette.accent} />
+            <Plus size={18} {...accentIcon(palette)} />
           </Pressable>
         </View>
       </View>
@@ -2306,6 +2308,7 @@ export const RsvpOfferingBody: React.FC<
     state,
   } = props;
   const { surface, boldFamily } = state;
+  const boldFace = themeFontFace(boldFamily);
   const [aboutCollapsed, setAboutCollapsed] = useState(true);
   const acquisitionState = event.acquisitionState ?? {
     kind: "current" as const,
@@ -2416,7 +2419,7 @@ export const RsvpOfferingBody: React.FC<
           style={[
             styles.title,
             surface.primaryText,
-            { fontFamily: boldFamily },
+            boldFace,
           ]}
         >
           {event.name.length > 0 ? event.name : "Untitled event"}
@@ -2436,13 +2439,13 @@ export const RsvpOfferingBody: React.FC<
           ]}
           testID="orch-1167-date-row"
         >
-          <Calendar size={18} color={palette.accent} />
+          <Calendar size={18} {...accentIcon(palette)} />
           <View style={styles.dateTextCol}>
             {event.dateLine.length > 0 ? (
               <Text
                 style={[
                   styles.dateLine,
-                  { color: palette.primaryText, fontFamily: boldFamily },
+                  { color: palette.primaryText, ...boldFace },
                 ]}
                 testID="orch-1167-date-line"
               >
@@ -2453,7 +2456,7 @@ export const RsvpOfferingBody: React.FC<
               <Text
                 style={[
                   styles.dateSubline,
-                  { color: palette.secondaryText, fontFamily: boldFamily },
+                  { color: palette.secondaryText, ...boldFace },
                 ]}
               >
                 {event.dateSubline}
@@ -2463,7 +2466,7 @@ export const RsvpOfferingBody: React.FC<
               <Text
                 style={[
                   styles.dateSubline,
-                  { color: palette.secondaryText, fontFamily: boldFamily },
+                  { color: palette.secondaryText, ...boldFace },
                 ]}
                 testID="orch-1157-rsvp-doors"
               >
@@ -2546,7 +2549,7 @@ export const RsvpOfferingBody: React.FC<
             testID="orch-1157-rsvp-brand"
           >
             <View
-              style={[styles.brandTile, { backgroundColor: palette.accent }]}
+              style={[styles.brandTile, accentFill(palette)]}
             >
               {brand?.photo !== undefined && brand.photo.length > 0 ? (
                 <Image
@@ -2559,7 +2562,7 @@ export const RsvpOfferingBody: React.FC<
                   <Text
                     style={[
                       styles.brandInitial,
-                      { color: palette.accentText, fontFamily: boldFamily },
+                      { color: palette.accentText, ...boldFace },
                     ]}
                   >
                     {(brand?.displayName?.trim()[0] ?? "•").toUpperCase()}
@@ -2577,7 +2580,7 @@ export const RsvpOfferingBody: React.FC<
                 style={[
                   styles.brandName,
                   surface.primaryText,
-                  { fontFamily: boldFamily },
+                  boldFace,
                 ]}
                 numberOfLines={2}
               >
@@ -2610,7 +2613,7 @@ export const RsvpOfferingBody: React.FC<
             style={[
               styles.secTitle,
               surface.primaryText,
-              { fontFamily: boldFamily },
+              boldFace,
             ]}
           >
             About
@@ -2643,14 +2646,14 @@ export const RsvpOfferingBody: React.FC<
             style={[
               styles.secTitle,
               surface.primaryText,
-              { fontFamily: boldFamily },
+              boldFace,
             ]}
           >
             Where you&rsquo;ll be
           </Text>
           <View style={[styles.venueCard, surface.card]}>
             <View
-              style={[styles.venueDisk, { backgroundColor: palette.accent }]}
+              style={[styles.venueDisk, accentFill(palette)]}
             >
               <Globe size={18} color={palette.accentText} />
             </View>
@@ -2659,7 +2662,7 @@ export const RsvpOfferingBody: React.FC<
                 style={[
                   styles.venueName,
                   surface.primaryText,
-                  { fontFamily: boldFamily },
+                  boldFace,
                 ]}
               >
                 Online
@@ -2676,7 +2679,7 @@ export const RsvpOfferingBody: React.FC<
             style={[
               styles.secTitle,
               surface.primaryText,
-              { fontFamily: boldFamily },
+              boldFace,
             ]}
           >
             Where you&rsquo;ll be
@@ -2700,7 +2703,7 @@ export const RsvpOfferingBody: React.FC<
             style={[styles.venueCard, surface.card]}
           >
             <View
-              style={[styles.venueDisk, { backgroundColor: palette.accent }]}
+              style={[styles.venueDisk, accentFill(palette)]}
             >
               <MapPin size={18} color={palette.accentText} />
             </View>
@@ -2710,7 +2713,7 @@ export const RsvpOfferingBody: React.FC<
                   style={[
                     styles.venueName,
                     surface.primaryText,
-                    { fontFamily: boldFamily },
+                    boldFace,
                   ]}
                 >
                   {event.venueName}
@@ -2732,7 +2735,7 @@ export const RsvpOfferingBody: React.FC<
             </View>
             {canOpenVenueMaps ? (
               <View
-                style={[styles.venuePill, { backgroundColor: palette.accent }]}
+                style={[styles.venuePill, accentFill(palette)]}
               >
                 <Text
                   style={[styles.venuePillText, { color: palette.accentText }]}
@@ -2779,7 +2782,7 @@ const Pill: React.FC<{
     <Text
       style={[
         styles.pillText,
-        { color: palette.primaryText, fontFamily: font },
+        { color: palette.primaryText, ...themeFontFace(font) },
       ]}
     >
       {children}
