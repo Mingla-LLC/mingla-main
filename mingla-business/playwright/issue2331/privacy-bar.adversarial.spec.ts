@@ -114,7 +114,9 @@ for (const [choice, on] of [["denied", false], ["granted", true]] as const) {
     await page.waitForTimeout(5000);
     await expect(page.getByTestId("privacy-bar")).toHaveCount(0);
     expect(vendorsSeen(rec).size).toBe(on ? 6 : 0);
-    expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--mingla-privacy-inset").trim())).toBe("0px");
+    // #4318 — the folded bar (its "Privacy settings" button) holds the inset.
+    await expect(page.getByTestId("privacy-bar-folded")).toBeVisible();
+    expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--mingla-privacy-inset").trim())).toBe("45px");
     await context.close();
   });
 }

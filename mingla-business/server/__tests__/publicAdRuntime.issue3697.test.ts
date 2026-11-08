@@ -238,7 +238,7 @@ describe("#3697 / #2331 public arrival runtime", () => {
     expect(handoff).toBe(-1); // source function names are never leaked into HTML
   });
 
-  test("renders the slim privacy bar, its choices, the policy and the footer link", () => {
+  test("renders the slim privacy bar, its choices, the policy and its folded reopen button", () => {
     const html = publicSearch.renderVisibleDocument({
       facts,
       state: "search_ready",
@@ -250,7 +250,10 @@ describe("#3697 / #2331 public arrival runtime", () => {
     expect(html).toContain('aria-label="Privacy options"');
     expect(html).toContain("Lets Meta, TikTok, Snapchat and Reddit measure our ads.");
     expect(html).toContain(">Privacy policy</a>");
-    expect(html).toContain(">Your privacy choices</button>");
+    // #4318 — no "Your privacy choices" footer link; the folded bar reopens.
+    expect(html).not.toContain("data-mingla-privacy-choices");
+    expect(html).not.toContain(">Your privacy choices</button>");
+    expect(html).toContain('aria-label="Privacy settings"');
     expect(html).not.toContain("Ad privacy choices");
     expect(html).not.toContain("Opt out of ad tracking");
     expect(html).toContain(

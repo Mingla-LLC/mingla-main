@@ -341,7 +341,9 @@ describe("issue #3859 — buyer web public-host parity", () => {
     ];
     for (const fixture of expected) {
       expect(fixture.html).toContain('data-testid="privacy-bar"');
-      expect(fixture.html).toContain("data-mingla-privacy-choices");
+      // #4318 — no separate privacy link: the bar folds to its own reopen button.
+      expect(fixture.html).not.toContain("data-mingla-privacy-choices");
+      expect(fixture.html).toContain('data-testid="privacy-bar-reopen"');
       for (const off of [
         JSON.stringify({ choice: "denied" }),
         JSON.stringify({ analytics: false, ads: true, ts: 1 }),

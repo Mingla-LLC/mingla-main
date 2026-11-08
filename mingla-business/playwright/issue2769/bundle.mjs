@@ -31,7 +31,6 @@ config.resolver.extraNodeModules = {
   "@mingla/card-identity": path.resolve(business, "../packages/card-identity"),
   "issue2769-real-public-venue": path.resolve(business, "../packages/brand-rendering/PublicVenueScreen.tsx"),
   "issue2769-real-consent-banner": path.resolve(business, "src/analytics/ConsentBanner.web.tsx"),
-  "issue2769-real-privacy-link": path.resolve(business, "src/analytics/PrivacyChoicesLink.web.tsx"),
 };
 const previousResolveRequest = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {

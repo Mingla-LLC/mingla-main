@@ -180,7 +180,9 @@ export interface OcclusionReport {
  */
 export async function auditOcclusion(page: Page): Promise<OcclusionReport> {
   return page.evaluate(() => {
-    const bar = document.querySelector<HTMLElement>("[data-testid='privacy-bar']");
+    // #4318 — after a choice the bar folds to its "Privacy settings" button;
+    // the folded bar is held to the same never-occludes rule.
+    const bar = document.querySelector<HTMLElement>("[data-testid='privacy-bar'], [data-testid='privacy-bar-folded']");
     const barRect = bar?.getBoundingClientRect();
     const controls = Array.from(
       document.querySelectorAll<HTMLElement>("button, a[href], [role='button'], [role='link'], input[type='checkbox']"),
@@ -219,7 +221,7 @@ export async function auditOcclusion(page: Page): Promise<OcclusionReport> {
       if (hit === undefined || underBar) {
         covered.push({
           label: (node.getAttribute("aria-label") ?? node.textContent ?? node.tagName).trim().slice(0, 60),
-          hit: hit === undefined ? "none" : `${hit.tagName}${hit.closest("[data-testid='privacy-bar']") ? " (privacy bar)" : ""}`,
+          hit: hit === undefined ? "none" : `${hit.tagName}${hit.closest("[data-testid='privacy-bar'], [data-testid='privacy-bar-folded']") ? " (privacy bar)" : ""}`,
           x: Math.round(x),
           y: Math.round(y),
         });

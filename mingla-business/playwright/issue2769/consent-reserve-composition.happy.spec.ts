@@ -33,7 +33,10 @@ test("fresh phone visit: bar and reserve action coexist, the action owns its tap
   await page.getByTestId("privacy-bar-ok").click();
   await expect(bar).toHaveCount(0);
   await expect(page.getByTestId("privacy-toast")).toHaveText("Saved");
-  expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--mingla-privacy-inset").trim())).toBe("0px");
+  // #4318 — the folded bar ("Privacy settings") keeps a 45px inset and still
+  // never covers the reserve CTA.
+  expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--mingla-privacy-inset").trim())).toBe("45px");
+  expect(await hitOwnsCentre(page, "issue-2729-reserve-cta")).toBe(true);
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem("mingla_privacy_v2") ?? "null"))).toMatchObject({ analytics: true, ads: true });
 
   await page.getByTestId("issue-2729-reserve-cta").click();
@@ -136,12 +139,15 @@ test("keyboard: OK then Options; Options exposes aria-expanded and Esc returns f
   await expect(options).toBeFocused();
 });
 
-test("after a choice there is no floating control; the in-page link reopens the bar expanded", async ({ page }) => {
+// #4318 (Seth): no in-page "Your privacy choices" link. The bar folds to one
+// icon-only "Privacy settings" button that reopens it expanded.
+test("after a choice the bar folds to Privacy settings, which reopens it expanded", async ({ page }) => {
   await page.goto(harness);
   await page.getByTestId("privacy-bar-ok").click();
   await expect(page.getByRole("button", { name: "Ad privacy choices" })).toHaveCount(0);
   await expect(page.getByRole("region", { name: "Privacy choices" })).toHaveCount(0);
-  await page.getByTestId("privacy-choices-link").click();
+  await expect(page.getByTestId("privacy-choices-link")).toHaveCount(0);
+  await page.getByRole("button", { name: "Privacy settings" }).click();
   await expect(page.getByTestId("privacy-panel")).toBeVisible();
   await expect(page.getByTestId("privacy-switch-analytics")).toBeChecked();
   await expect(page.getByTestId("privacy-switch-ads")).toBeChecked();

@@ -34,7 +34,8 @@ async function record(context: BrowserContext): Promise<Hit[]> {
 
 async function underBar(page: Page): Promise<string[]> {
   return page.evaluate(() => {
-    const bar = document.querySelector<HTMLElement>("[data-testid='privacy-bar']");
+    // #4318 — the folded bar ("Privacy settings") is held to the same rule.
+    const bar = document.querySelector<HTMLElement>("[data-testid='privacy-bar'], [data-testid='privacy-bar-folded']");
     const out: string[] = [];
     for (const node of Array.from(document.querySelectorAll<HTMLElement>("a[href], button"))) {
       if (bar?.contains(node)) continue;
@@ -85,7 +86,9 @@ for (const size of SIZES) {
   });
 }
 
-test("home: first visit starts analytics; the privacy sheet reopens the bar; analytics off stops it", async ({ browser }) => {
+// #4318 (Seth): no "Your privacy choices" link anywhere (the privacy sheet's
+// link is gone); the folded bar's "Privacy settings" button reopens it.
+test("home: first visit starts analytics; the folded bar reopens itself; analytics off stops it", async ({ browser }) => {
   const context = await browser.newContext({ viewport: { width: 412, height: 718 } });
   const hits = await record(context);
   const page = await context.newPage();
@@ -95,8 +98,11 @@ test("home: first visit starts analytics; the privacy sheet reopens the bar; ana
   await page.getByTestId("privacy-bar-ok").click();
   await expect(page.getByTestId("privacy-bar")).toHaveCount(0);
   await page.getByRole("button", { name: "Privacy", exact: true }).click();
-  await page.getByRole("dialog").getByTestId("privacy-choices-link").click();
+  await expect(page.getByRole("dialog").getByTestId("privacy-choices-link")).toHaveCount(0);
+  await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
+  expect(await underBar(page)).toEqual([]);
+  await page.getByRole("button", { name: "Privacy settings" }).click();
   await expect(page.getByTestId("privacy-panel")).toBeVisible();
   await expect(page.getByTestId("privacy-switch-analytics")).toBeChecked();
   await page.getByTestId("privacy-switch-analytics").uncheck();

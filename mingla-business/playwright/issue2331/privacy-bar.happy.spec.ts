@@ -49,7 +49,10 @@ for (const size of SIZES) {
   });
 }
 
-test("the event page ends with Your privacy choices, above the bar, and it reopens the bar expanded", async ({ browser }) => {
+// #4318 (Seth): no separate "Your privacy choices" link on any page. After a
+// choice the bar folds to one icon-only "Privacy settings" button, which
+// covers nothing and reopens the bar expanded.
+test("after a choice the bar folds to Privacy settings, covers nothing, and reopens expanded", async ({ browser }) => {
   const context = await browser.newContext({ viewport: { width: 375, height: 667 } });
   await install(context);
   const page = await context.newPage();
@@ -57,8 +60,12 @@ test("the event page ends with Your privacy choices, above the bar, and it reope
   await page.getByTestId("privacy-bar-ok").click();
   await expect(page.getByTestId("privacy-bar")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Ad privacy choices" })).toHaveCount(0);
+  await expect(page.getByTestId("privacy-choices-link")).toHaveCount(0);
+  await expect(page.getByText("Your privacy choices")).toHaveCount(0);
+  await expect(page.getByTestId("privacy-bar-folded")).toBeVisible();
   await scrollToEnd(page);
-  await page.getByTestId("privacy-choices-link").first().click();
+  expect((await auditOcclusion(page)).covered).toEqual([]);
+  await page.getByRole("button", { name: "Privacy settings" }).click();
   await expect(page.getByTestId("privacy-panel")).toBeVisible();
   await expect(page.getByTestId("privacy-switch-analytics")).toBeChecked();
   await expect(page.getByTestId("privacy-switch-ads")).toBeChecked();
@@ -99,8 +106,7 @@ test("first visit: every vendor starts before any tap; analytics off stops PostH
   expect(afterReload.has("posthog")).toBe(false);
   expect(afterReload.has("ga")).toBe(false);
   for (const pixel of PIXELS) expect(afterReload.has(pixel), pixel).toBe(true);
-  await scrollToEnd(page);
-  await page.getByTestId("privacy-choices-link").first().click();
+  await page.getByTestId("privacy-bar-reopen").click();
   await expect(page.getByTestId("privacy-switch-analytics")).not.toBeChecked();
   await expect(page.getByTestId("privacy-switch-ads")).toBeChecked();
 
