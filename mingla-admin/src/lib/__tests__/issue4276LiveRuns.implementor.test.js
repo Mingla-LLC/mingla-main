@@ -25,6 +25,7 @@ import {
   liveStats,
   outcomeText,
   pauseNote,
+  pauseReasonText,
   problemNote,
   runRate,
   stageProgress,
@@ -132,6 +133,22 @@ test("every wait reason reads in plain words; an unknown one gets a safe generic
   assert.equal(waitReasonText("intelligence_city_busy"), "Another Intelligence run is using this city");
   assert.equal(waitReasonText("<script>quota_xyz</script>"), "Waiting for the next step");
   assert.equal(waitReasonText(null), "Waiting for the next step");
+});
+
+// #4276 (Abuja, 2026-11-08): Intelligence waits for the held places' photo thumbnails,
+// and pauses for a person when they haven't finished within an hour.
+test("the thumbnails-first wait and the thumbnails_stuck pause read in plain words", () => {
+  assert.equal(waitReasonText("thumbnails_first"), "Waiting for photo thumbnails before Intelligence");
+  assert.equal(waitReasonText("wait:thumbnails_first"), "Waiting for photo thumbnails before Intelligence");
+  assert.equal(
+    outcomeText({ kind: "wait", why: "thumbnails_first", calls: 1 }),
+    "Waited: Waiting for photo thumbnails before Intelligence · 1 call",
+  );
+  assert.equal(pauseReasonText("thumbnails_stuck"), "Photo thumbnails didn't finish within an hour; Intelligence needs them.");
+  assert.equal(
+    outcomeText({ kind: "pause", why: "thumbnails_stuck" }),
+    "Paused: Photo thumbnails didn't finish within an hour; Intelligence needs them.",
+  );
 });
 
 test("outcomeText covers every kind and never echoes an unknown one raw", () => {

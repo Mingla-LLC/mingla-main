@@ -383,9 +383,19 @@ export async function resolveCityId(db: SupabaseAdmin, cityName: string): Promis
 }
 
 /**
- * ORCH-1043 (C): scope = is_servable=true + has-photos + no-thumb (+ optional city_id).
+ * ORCH-1043 (C): scope = has-photos + no-thumb (+ optional city_id), over places that
+ * are servable OR held with a passed final check.
  * stored_photo_urls is text[] → use the existing array-length post-filter (NOT jsonb).
+ *
+ * #4276: a city pipeline run holds its new places (serving_hold) until Intelligence has
+ * judged them, and Intelligence builds a collage from each place's thumbnails. Selecting
+ * servable places only meant held places had no thumbnails when Intelligence ran, so
+ * the collage fell back to full-size originals and blew the edge CPU limit (Abuja,
+ * 2026-11-08, 840 places). Held places that passed the final check are eligible too;
+ * held places the final check rejected or never judged are not.
  */
+export const PENDING_PLACE_SCOPE = 'is_servable.eq.true,and(serving_hold.eq.true,held_final_check_passed.eq.true)';
+
 export async function loadPendingPlaces(
   db: SupabaseAdmin,
   opts: { limit?: number; cityId?: string } = {},
@@ -402,7 +412,7 @@ export async function loadPendingPlaces(
       // without it a place holding one permanently-dead photo is re-claimed
       // every ~10 minutes forever (77 places were pinned this way).
       .select('id, stored_photo_urls, thumbs_attempts')
-      .eq('is_servable', true)
+      .or(PENDING_PLACE_SCOPE)
       .is('thumbs_backfilled_at', null)
       .is('thumbs_failed_at', null)
       .not('stored_photo_urls', 'is', null)
