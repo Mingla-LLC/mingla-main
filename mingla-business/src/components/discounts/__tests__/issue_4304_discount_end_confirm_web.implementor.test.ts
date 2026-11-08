@@ -47,4 +47,15 @@ describe("#4304 End discount confirms on web", () => {
   test("pause, resume and delete_draft still write straight away", () => {
     expect(code).toMatch(/else action\.mutate\(\{ row, op \}\);/);
   });
+
+  test("the edit sheet's Discard changes confirm also works on web", () => {
+    const sheet = readFileSync(join(__dirname, "..", "DiscountEditSheet.tsx"), "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/\/\/.*$/gm, "");
+    expect(sheet).not.toMatch(/\bAlert\.alert\s*\(/);
+    expect(sheet).toMatch(/React\.lazy\(\(\)\s*=>\s*import\("\.\.\/ui\/ConfirmDialog"\)/);
+    expect(sheet).toContain('title="Discard changes?"');
+    expect(sheet).toContain('cancelLabel="Keep editing"');
+    expect(sheet).toMatch(/setConfirmDiscard\(false\);\s*onClose\(\);/);
+  });
 });
