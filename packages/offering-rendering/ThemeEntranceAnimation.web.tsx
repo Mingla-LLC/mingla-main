@@ -13,11 +13,9 @@
 
 import React, { useEffect, useState } from "react";
 
-import { getThemeMotionDevOverride } from "./themeMotionDevOverride";
-
-// Same value export as the native twin (i-1378 web-shim parity). It lives in
-// the eager themeMotion module, so exporting it here loads no player code.
-export { REDUCED_MOTION_PROGRESS } from "./themeMotionDevOverride";
+// Same value export as the native twin (i-1378 web-shim parity). The constant
+// lives in designTokens, so exporting it here loads no player or dev code.
+export { REDUCED_MOTION_PROGRESS } from "./designTokens";
 import type { ThemeEntranceAnimationProps } from "./ThemeEntranceAnimationWebImpl";
 
 export type { ThemeEntranceAnimationProps } from "./ThemeEntranceAnimationWebImpl";
@@ -66,6 +64,9 @@ export const ThemeEntranceAnimation: React.FC<ThemeEntranceAnimationProps> = (pr
 /** Dev only: `?motion=` or a sheet preview can turn motion on for a theme that has none. */
 function hasDevMotionOverride(): boolean {
   if (typeof __DEV__ === "undefined" || __DEV__ !== true) return false;
-  if (getThemeMotionDevOverride() !== null) return true;
+  // Required here, under __DEV__, so production never bundles the override.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const dev = require("./themeMotionDevOverride") as typeof import("./themeMotionDevOverride");
+  if (dev.getThemeMotionDevOverride() !== null) return true;
   return typeof window !== "undefined" && /[?&]motion=/.test(window.location?.search ?? "");
 }

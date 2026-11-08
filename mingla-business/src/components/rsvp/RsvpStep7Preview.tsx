@@ -33,7 +33,7 @@ import { Icon } from "../ui/Icon";
 import { createThemePalette } from "../../../../packages/offering-rendering/themePalette";
 import { resolveTheme } from "../../../../packages/offering-rendering/themeResolver";
 import { ThemeControlRow } from "../theme/ThemeControlRow";
-import { ThemeSheet } from "../theme/ThemeSheet";
+import { ThemeSheet } from "../theme/ThemeSheetLazy";
 import { buildDraftThemePreview } from "../theme/themePreviewContent";
 import { themedPreviewCardColors } from "../theme/themedPreviewCardColors";
 import { type StepBodyProps } from "../event/types";

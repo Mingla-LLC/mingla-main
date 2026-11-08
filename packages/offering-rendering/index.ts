@@ -452,9 +452,6 @@ export {
   // fontFamily at the 700-weight loaded family. boldFontFamily(theme) returns it.
   FONT_FAMILY_BOLD_MAP,
   boldFontFamily,
-  // issue #1023 wave 2 / #1024 — gradient fill spec and the text-safe accent.
-  themeAccentFill,
-  themeTextAccent,
   // #2539 — `hexToRgba` is deliberately NOT re-exported here. 18 test files
   // hand-build a PARTIAL mock of this barrel, so every NEW name added to it is
   // `undefined` inside those suites and blows up at render in whatever
@@ -471,7 +468,8 @@ export { EventCoverMedia } from "./EventCoverMedia";
 export { ThemeEntranceAnimation } from "./ThemeEntranceAnimation";
 export type { ThemeEntranceAnimationProps } from "./ThemeEntranceAnimation";
 // issue #1023 — text-safe zone + dev-only motion preview.
-export { setThemeMotionDevOverride } from "./themeMotionDevOverride";
+// The dev-only motion override is deep-imported (./themeMotionDevOverride) so
+// production bundles never carry it.
 export type { TextSafeZone, TextSafeZoneProp } from "./themeMotion";
 export {
   computeForeground,
@@ -479,33 +477,23 @@ export {
   isThemeColor,
   isThemeFontSlug,
   resolveTheme,
-  // issue #1023 wave 2 — Google fonts and gradients.
-  canonicalThemeFont,
-  color2FromColumn,
-  familyFromGoogleFontKey,
-  googleFontKey,
-  gradientToColumn,
-  isGoogleFontFamily,
-  isThemeFontValue,
 } from "./themeResolver";
-export { ThemeAccentFill, ThemeAccentGradientLayer } from "./ThemeAccentFill";
 export type {
   ThemeAccentFillProps,
   ThemeAccentGradientLayerProps,
 } from "./ThemeAccentFill";
+// issue #1023 — the theme font, gradient and motion-catalogue helpers are
+// deep-imported (./themeResolver, ./themePalette, ./ThemeAccentFill,
+// ./designTokens), not re-exported here: every barrel getter is boot-chunk
+// weight on buyer web, and partial barrel mocks never need them.
 // The Google font loader is deliberately NOT in this barrel: apps deep-import
 // "@mingla/offering-rendering/googleFontLoader" so partial barrel mocks in
 // app test suites never see an undefined loader.
 export {
   FONT_FAMILY_MAP,
-  GOOGLE_FONT_FAMILY_MAX,
-  GOOGLE_FONT_FAMILY_RE,
-  LEGACY_FONT_FAMILY_NAMES,
   MINGLA_DEFAULT_THEME,
-  THEME_ANIMATION_CATALOG,
   THEME_ANIMATION_SLUGS,
   THEME_FONT_SLUGS,
-  THEME_MOTION_GROUPS,
 } from "./designTokens";
 export type { ThemeMotionGroup } from "./designTokens";
 export type {

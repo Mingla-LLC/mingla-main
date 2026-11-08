@@ -17,7 +17,6 @@ import {
   THEME_ANIMATION_CATALOG,
   THEME_MOTION_GROUPS,
 } from "../../../../packages/offering-rendering/designTokens";
-import { setThemeMotionDevOverride } from "../../../../packages/offering-rendering/themeMotionDevOverride";
 import {
   createThemePalette,
   themeTextAccent,
@@ -200,7 +199,11 @@ export const ThemeSheet: React.FC<ThemeSheetProps> = ({
   // saved motion.
   const commitAnimation = useCallback(
     (slug: string | null): void => {
-      setThemeMotionDevOverride(null, typeof __DEV__ !== "undefined" && __DEV__);
+      // Dev-only tool: required under __DEV__ so production never carries it.
+      if (typeof __DEV__ !== "undefined" && __DEV__) {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        (require("../../../../packages/offering-rendering/themeMotionDevOverride") as typeof import("../../../../packages/offering-rendering/themeMotionDevOverride")).setThemeMotionDevOverride(null, true);
+      }
       onChange(withAxis(value, "animation", slug));
       setReplayNonce((n) => n + 1);
     },

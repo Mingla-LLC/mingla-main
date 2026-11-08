@@ -257,3 +257,10 @@ export const FONT_FAMILY_MAP: Record<ThemeFontSlug, string> = {
   caveat: "Caveat_500Medium",
   dancing_script: "DancingScript_500Medium",
 };
+
+/**
+ * issue #1023 — the one frame Reduce Motion shows (fraction of the entrance).
+ * Owned here (eager, tiny) so the native player, the web player and the web
+ * shim export one value without loading motion code.
+ */
+export const REDUCED_MOTION_PROGRESS = 0.5;

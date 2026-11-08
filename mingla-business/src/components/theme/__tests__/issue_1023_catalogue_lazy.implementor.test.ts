@@ -67,6 +67,50 @@ describe("the motion helpers stay lazy", () => {
       "utf8",
     );
     expect(split).toContain("export function setThemeMotionDevOverride(");
-    expect(split).toContain("export const REDUCED_MOTION_PROGRESS");
+    // The Reduce Motion frame lives in designTokens (eager, tiny); the dev
+    // override is only ever require()d under __DEV__ by eager code.
+    const tokens = await readFile(
+      path.join(repo, "packages/offering-rendering/designTokens.ts"),
+      "utf8",
+    );
+    expect(tokens).toContain("export const REDUCED_MOTION_PROGRESS = 0.5;");
+    for (const rel of [
+      "packages/offering-rendering/ThemeEntranceAnimation.web.tsx",
+      "packages/offering-rendering/index.ts",
+      "mingla-business/src/components/theme/ThemeSheet.tsx",
+      "mingla-business/app/_layout.tsx",
+    ]) {
+      const src = await readFile(path.join(repo, rel), "utf8");
+      expect({ rel, staticDevImport: /^import [^;]*themeMotionDevOverride"/m.test(src) }).toEqual({
+        rel,
+        staticDevImport: false,
+      });
+    }
+  });
+});
+
+// issue #1023 / #3493 — the Theme sheet loads ON INTENT. Host editors import
+// ThemeSheetLazy, which loads ./ThemeSheet only when the sheet is first opened;
+// a static import anywhere in app code puts the whole picker back into the
+// eager shared chunk (the movement gate's 1,024 B limit).
+describe("the Theme sheet loads on intent", () => {
+  test("no app module imports ./ThemeSheet statically; ThemeSheetLazy import()s it", async () => {
+    const appRoot = path.resolve(__dirname, "../../../..");
+    const { stdout } = await promisify(execFile)(
+      "git",
+      ["grep", "-lE", "from \"[./]*(theme/)?ThemeSheet\"", "--", "src", "app", ":!*__tests__*"],
+      { cwd: appRoot },
+    ).catch((error: { stdout?: string; code?: number }) => {
+      if (error.code === 1) return { stdout: "" };
+      throw error;
+    });
+    const staticImporters = stdout
+      .split("\n")
+      .filter((line) => line.length > 0)
+      .filter((file) => !file.endsWith("ThemeSheetLazy.tsx"));
+    expect(staticImporters).toEqual([]);
+    const lazy = await readFile(path.join(appRoot, "src/components/theme/ThemeSheetLazy.tsx"), "utf8");
+    expect(lazy).toContain('import("./ThemeSheet")');
+    expect(lazy).toMatch(/^import type \{ ThemeSheetProps \} from "\.\/ThemeSheet";$/m);
   });
 });

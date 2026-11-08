@@ -72,5 +72,5 @@ export function pickThemeMotionSlug(
  * The one frame Reduce Motion shows (fraction of the entrance). Owned here so
  * the native player, the web player and the web shim export one value.
  */
-export const REDUCED_MOTION_PROGRESS = 0.5;
+export { REDUCED_MOTION_PROGRESS } from "./designTokens";
 
