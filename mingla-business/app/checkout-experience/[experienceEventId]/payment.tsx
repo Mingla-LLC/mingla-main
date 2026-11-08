@@ -74,7 +74,6 @@ import {
   writeCheckoutResumePayload,
 } from "../../../src/components/checkout/checkoutPersistence";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
-import { PrivacyChoicesLink } from "../../../src/analytics/PrivacyChoicesLink";
 
 const formatQuoteMoney = (minor: number, currency: string): string => {
   try {
@@ -724,8 +723,6 @@ function CheckoutExperiencePaymentScreenContent({
         {paymentError !== null ? (
           <Text style={styles.errorText}>{paymentError}</Text>
         ) : null}
-        {/* #2331 — end of content: reopens the privacy bar. */}
-        <PrivacyChoicesLink />
       </ScrollView>
 
       {/* Sticky bottom bar */}

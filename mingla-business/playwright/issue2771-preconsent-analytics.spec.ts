@@ -56,7 +56,7 @@ async function storedChoice(page: Page): Promise<{ analytics: boolean; ads: bool
 }
 
 async function openChoices(page: Page): Promise<void> {
-  await page.getByTestId('privacy-bar-options').click()
+  await page.getByTestId('privacy-strip').click()
   await expect(page.getByTestId('privacy-panel')).toBeVisible()
 }
 
@@ -73,7 +73,7 @@ test.describe('#2771 → #2331 actual network and storage boundary (on unless tu
       const requests = await observe(page)
       await page.goto(surface.url, { waitUntil: 'domcontentloaded' })
       if (surface.waitsForNetworkIdle) await page.waitForLoadState('networkidle')
-      await expect(page.getByTestId('privacy-bar')).toBeVisible()
+      await expect(page.getByTestId('privacy-strip')).toBeVisible()
       await expect.poll(() => requests.analytics.length).toBeGreaterThan(0)
       if (surface.arrivalAds) await expect.poll(() => requests.ads.length).toBeGreaterThan(0)
       await openChoices(page)
@@ -93,7 +93,7 @@ test.describe('#2771 → #2331 actual network and storage boundary (on unless tu
       await openChoices(page)
       await page.getByTestId('privacy-switch-analytics').uncheck()
       await page.getByTestId('privacy-bar-save').click()
-      await expect(page.getByTestId('privacy-toast')).toHaveText('Analytics is off')
+      await expect(page.getByTestId('privacy-strip')).toHaveText('Saved')
       await expect.poll(() => storedChoice(page)).toMatchObject({ analytics: false, ads: true })
       const analyticsBeforeReload = requests.analytics.length
       await page.reload({ waitUntil: 'domcontentloaded' })
@@ -101,7 +101,7 @@ test.describe('#2771 → #2331 actual network and storage boundary (on unless tu
       await page.waitForTimeout(1_500)
       expect(requests.analytics.slice(analyticsBeforeReload)).toEqual([])
       expect(await trackingStorage(context, page, ANALYTICS_STORAGE)).toEqual([])
-      await expect(page.getByTestId('privacy-bar')).toHaveCount(0)
+      await expect(page.getByTestId('privacy-sheet')).toHaveCount(0)
       expect(await storedChoice(page)).toMatchObject({ analytics: false, ads: true })
       await context.close()
     })
@@ -114,8 +114,10 @@ test.describe('#2771 → #2331 actual network and storage boundary (on unless tu
       if (surface.waitsForNetworkIdle) await page.waitForLoadState('networkidle')
       await expect.poll(() => requests.analytics.length).toBeGreaterThan(0)
       await openChoices(page)
-      await page.getByTestId('privacy-bar-off-all').click()
-      await expect(page.getByTestId('privacy-toast')).toHaveText('Analytics and ads are off')
+      await page.getByTestId('privacy-switch-analytics').setChecked(false)
+      await page.getByTestId('privacy-switch-ads').setChecked(false)
+      await page.getByTestId('privacy-bar-save').click()
+      await expect(page.getByTestId('privacy-strip')).toHaveText('Saved')
       await expect.poll(() => storedChoice(page)).toMatchObject({ analytics: false, ads: false })
       const marker = { analytics: requests.analytics.length, ads: requests.ads.length }
       await page.reload({ waitUntil: 'domcontentloaded' })
@@ -132,7 +134,7 @@ test.describe('#2771 → #2331 actual network and storage boundary (on unless tu
     const page = await context.newPage()
     const requests = await observe(page)
     await page.goto(`${MARKETING}/links`, { waitUntil: 'domcontentloaded' })
-    await expect(page.getByTestId('privacy-bar')).toBeVisible()
+    await expect(page.getByTestId('privacy-strip')).toBeVisible()
     await expect.poll(() => requests.analytics.length).toBeGreaterThan(0)
     expect(requests.ads).toEqual([])
     await context.close()

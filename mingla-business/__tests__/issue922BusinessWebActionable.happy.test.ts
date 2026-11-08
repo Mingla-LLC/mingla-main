@@ -64,17 +64,19 @@ describe("issue #922 dedicated invitation entry", () => {
       expect(inviteRoute).toContain(copy);
       expect(builderSource).toContain(copy.replace(/'/g, "\\'"));
     }
-    // The shell carries the collapsed row only (its byte budget); the React
-    // owner carries the full choices, which Options opens expanded.
-    for (const copy of ["Mingla uses cookies for analytics and ads.", "Cookies for analytics and ads.", "OK", "Options"]) {
-      expect(consent).toContain(copy);
-      expect(output).toContain(copy);
+    // #4318 — the shell carries only the "Privacy & ad choices" strip (its
+    // byte budget); the React owner carries the choices sheet, which the strip
+    // opens straight away through the hand-off. No first-visit banner.
+    expect(consent).toContain('PRIVACY_STRIP_LABEL = "Privacy & ad choices"');
+    expect(output).toContain("Privacy &amp; ad choices");
+    for (const retired of ["Mingla uses cookies for analytics and ads.", "Cookies for analytics and ads.", ">OK<", "Turn off all", "Your privacy choices"]) {
+      expect(consent).not.toContain(retired);
+      expect(output).not.toContain(retired);
     }
     for (const copy of [
       "Helps us see which pages work and fix what doesn",
       "Lets Meta, TikTok, Snapchat and Reddit measure our ads.",
-      "Turn off all",
-      "Your privacy choices",
+      "Ads measurement",
       "https://usemingla.com/privacy-policy",
     ]) {
       expect(consent).toContain(copy);

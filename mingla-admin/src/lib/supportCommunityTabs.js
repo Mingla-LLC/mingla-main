@@ -14,6 +14,8 @@ export const SUPPORT_PAGE_TABS = Object.freeze([
   Object.freeze({ id: "support", label: "Inbox" }),
   Object.freeze({ id: "email", label: "Email" }),
   Object.freeze({ id: "blog", label: "Blog" }),
+  // #4318 — the custom strips on usemingla.com/links, directly after Blog.
+  Object.freeze({ id: "links", label: "Links page" }),
   Object.freeze({ id: "team", label: "People and roles" }),
 ]);
 

@@ -1,7 +1,8 @@
 /**
- * #2331 — "Your privacy choices" reopens the one privacy bar, already
- * expanded. The link and the bar talk through one window event so any page
- * (including the server-rendered public document) can ask for it.
+ * #2331 → #4318 — the one way to open the privacy choices sheet. The
+ * "Privacy & ad choices" strip calls it; the server-rendered public documents
+ * listen for the same window event. There is no separate privacy link on any
+ * page.
  */
 export const PRIVACY_CHOICES_EVENT = "mingla:privacy-choices";
 

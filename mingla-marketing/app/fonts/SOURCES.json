@@ -6,7 +6,9 @@
       "localFile": "MochiyPopOne-latin-400-normal.woff2",
       "family": "Mochiy Pop One",
       "style": "normal",
-      "representedWeights": ["400"],
+      "representedWeights": [
+        "400"
+      ],
       "subset": "latin",
       "googleFontsRepository": {
         "commit": "23e54b51ddffbc7713c583748e3bd86f62b1fa4a",
@@ -26,7 +28,12 @@
       "localFile": "NunitoSans-latin-wght-normal.woff2",
       "family": "Nunito Sans",
       "style": "normal",
-      "representedWeights": ["400", "500", "600", "700"],
+      "representedWeights": [
+        "400",
+        "500",
+        "600",
+        "700"
+      ],
       "subset": "latin",
       "googleFontsRepository": {
         "commit": "23e54b51ddffbc7713c583748e3bd86f62b1fa4a",
@@ -46,7 +53,14 @@
       "localFile": "Inter-latin-wght-normal.woff2",
       "family": "Inter",
       "style": "normal",
-      "representedWeights": ["400", "500", "600", "700", "800", "900"],
+      "representedWeights": [
+        "400",
+        "500",
+        "600",
+        "700",
+        "800",
+        "900"
+      ],
       "subset": "latin",
       "googleFontsRepository": {
         "commit": "23e54b51ddffbc7713c583748e3bd86f62b1fa4a",
@@ -61,6 +75,98 @@
       "sha256": "c940764593d0fe5d596be327ca7558855e018039fb78509aa21921fd3644c3e4",
       "copyright": "Copyright 2016 The Inter Project Authors (https://github.com/rsms/inter)",
       "oflFile": "OFL-Inter.txt"
+    }
+  ],
+  "linksRouteAssets": [
+    {
+      "localFile": "InstrumentSerif-latin-400-normal.woff2",
+      "family": "Instrument Serif",
+      "style": "normal",
+      "representedWeights": [
+        "400"
+      ],
+      "subset": "latin",
+      "brandPackSource": {
+        "pack": "Mingla brand pack \"Mingla, Edited\" (approved 2026-11-06), out/brand-pack/04-type/",
+        "file": "instrumentserif-regular.ttf",
+        "sha256": "498efd461f6ddfcb7a111bf9a565709d2085d48201d501ead960d93e84ffbb88"
+      },
+      "upstreamProject": {
+        "repositoryUrl": "https://github.com/Instrument/instrument-serif"
+      },
+      "conversion": "fontTools 4.68.0: latin subset (U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-2027, U+202A-206F, U+20A6, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD), all layout features, WOFF2",
+      "byteLength": 22104,
+      "sha256": "99d20a6f467784655629e070bcb7448b7975a11ce6d44ec592fd4897971b475d",
+      "copyright": "Copyright 2022 The Instrument Serif Project Authors (https://github.com/Instrument/instrument-serif)",
+      "oflFile": "OFL-Instrument-Serif.txt"
+    },
+    {
+      "localFile": "InstrumentSerif-latin-400-italic.woff2",
+      "family": "Instrument Serif",
+      "style": "italic",
+      "representedWeights": [
+        "400"
+      ],
+      "subset": "latin",
+      "brandPackSource": {
+        "pack": "Mingla brand pack \"Mingla, Edited\" (approved 2026-11-06), out/brand-pack/04-type/",
+        "file": "instrumentserif-italic.ttf",
+        "sha256": "08939b8bdf534afec24ae0ef5e03f948940cd9a8fe08e7fecbad040e62327385"
+      },
+      "upstreamProject": {
+        "repositoryUrl": "https://github.com/Instrument/instrument-serif"
+      },
+      "conversion": "fontTools 4.68.0: latin subset (U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-2027, U+202A-206F, U+20A6, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD), all layout features, WOFF2",
+      "byteLength": 22796,
+      "sha256": "f6ebf374abd171f0048790308921c489164d40c254c98d2a929af9bd144f0441",
+      "copyright": "Copyright 2022 The Instrument Serif Project Authors (https://github.com/Instrument/instrument-serif)",
+      "oflFile": "OFL-Instrument-Serif.txt"
+    },
+    {
+      "localFile": "Geist-latin-wght-normal.woff2",
+      "family": "Geist",
+      "style": "normal",
+      "representedWeights": [
+        "400",
+        "500",
+        "600"
+      ],
+      "subset": "latin",
+      "brandPackSource": {
+        "pack": "Mingla brand pack \"Mingla, Edited\" (approved 2026-11-06), out/brand-pack/04-type/",
+        "file": "geist.ttf",
+        "sha256": "73894e0448cae90a92b6c2f8732b7bb9acb7b94c418bff559dad4a18e1de9659"
+      },
+      "upstreamProject": {
+        "repositoryUrl": "https://github.com/vercel/geist-font"
+      },
+      "conversion": "fontTools 4.68.0: latin subset (U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-2027, U+202A-206F, U+20A6, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD), all layout features, WOFF2; wght axis limited to 400-600",
+      "byteLength": 23296,
+      "sha256": "c788a5996f13a0286455a948f16631982bf5a389187dec51f57d9255ff354d5a",
+      "copyright": "Copyright 2024 The Geist Project Authors (https://github.com/vercel/geist-font)",
+      "oflFile": "OFL-Geist.txt"
+    },
+    {
+      "localFile": "GeistMono-latin-500-normal.woff2",
+      "family": "Geist Mono",
+      "style": "normal",
+      "representedWeights": [
+        "500"
+      ],
+      "subset": "latin",
+      "brandPackSource": {
+        "pack": "Mingla brand pack \"Mingla, Edited\" (approved 2026-11-06), out/brand-pack/04-type/",
+        "file": "geistmono.ttf",
+        "sha256": "d00e590b8eb3a59acc329b2d044fd143ae935090b7da33199ebee27cc7de8196"
+      },
+      "upstreamProject": {
+        "repositoryUrl": "https://github.com/vercel/geist-font"
+      },
+      "conversion": "fontTools 4.68.0: latin subset (U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-2027, U+202A-206F, U+20A6, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD), all layout features, WOFF2; instanced at wght 500",
+      "byteLength": 16580,
+      "sha256": "dd0dadefa95da7d8c08d94d76322403571f2758f0c2e7731cffdcc67553b0d76",
+      "copyright": "Copyright 2024 The Geist Project Authors (https://github.com/vercel/geist-font)",
+      "oflFile": "OFL-Geist.txt"
     }
   ]
 }

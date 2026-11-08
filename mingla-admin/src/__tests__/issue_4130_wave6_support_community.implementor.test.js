@@ -116,7 +116,8 @@ describe("W6-2 Support and Community are real pages", () => {
   });
 
   it("each page reads and writes its own tab; the default tab has a bare address", () => {
-    assert.deepEqual(ids(SUPPORT_PAGE_TABS), ["support", "email", "blog", "team"]);
+    // #4318: Links page sits directly after Blog.
+    assert.deepEqual(ids(SUPPORT_PAGE_TABS), ["support", "email", "blog", "links", "team"]);
     assert.equal(pageTabFromHash("#/support", "support"), "support");
     assert.equal(pageTabFromHash("#/support?tab=email", "support"), "email");
     assert.equal(pageTabFromHash("#/support?tab=roadmap", "support"), "support");
@@ -143,9 +144,11 @@ describe("W6-3 access is unchanged", () => {
   // What each person saw in the console before the split, content tabs only,
   // plus (#4255) Email and Blog for every teammate.
   const BEFORE = {
-    admin: Object.keys(OLD_TAB_HOME).sort(),
-    supportTeammate: ["blog", "brand-groups", "email", "enquiry-reports", "feature-guide", "ideas", "moderation", "questions", "support"],
-    supportOnly: ["blog", "brand-groups", "email", "feature-guide", "support"],
+    // #4318: the Links page tab is new since the split; it follows the
+    // Support area, so Admins and Support teammates gain it and nobody else.
+    admin: [...Object.keys(OLD_TAB_HOME), "links"].sort(),
+    supportTeammate: ["blog", "brand-groups", "email", "enquiry-reports", "feature-guide", "ideas", "links", "moderation", "questions", "support"],
+    supportOnly: ["blog", "brand-groups", "email", "feature-guide", "links", "support"],
     communityOnly: ["blog", "email", "enquiry-reports", "ideas", "moderation", "questions"],
     salesOnly: ["blog", "email"],
   };

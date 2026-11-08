@@ -199,9 +199,10 @@ function sourceContract() {
   assert.match(css, /\.city-claim-sources a \{[^}]*min-width: 44px;/)
   assert.match(css, /@media print \{[\s\S]*\.city-faq-item \{ display: none !important; \}[\s\S]*\.city-hub-root \.city-faq-print-answer \{[\s\S]*display: block !important;/)
   assert.match(footer, /size="md" className="min-h-11"/)
-  // Every footer link meets the 44px target; #2331 adds "Your privacy choices".
-  assert.equal((footer.match(/inline-flex min-h-11 min-w-11 items-center/g) ?? []).length, 4)
-  assert.match(footer, /<PrivacyChoicesLink className="inline-flex min-h-11 min-w-11 items-center[^"]*"/)
+  // Every footer link meets the 44px target. #4318 (Seth): the separate
+  // "Your privacy choices" link is gone; the privacy bar is the one place.
+  assert.equal((footer.match(/inline-flex min-h-11 min-w-11 items-center/g) ?? []).length, 3)
+  assert.doesNotMatch(footer, /PrivacyChoicesLink|privacy-choices-link/)
 
   // #3371: the Explorer home is one non-scrolling screen again (Seth, 2026-09-14),
   // so the root gate is inverted there. #4137: the Host root ends with the

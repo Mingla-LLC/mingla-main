@@ -99,10 +99,14 @@ function validateEntry(source, entry) {
   invariant(entry.includes('window.location.replace("/auth?next="+encodeURIComponent("/accept-brand-invitation?token="+token))'), "sign-in resume contract drifted");
   invariant(entry.includes('/^sb-.+-auth-token$/.test(key)'), "Supabase-session fallback detector is missing");
   invariant(entry.includes('key==="mingla_consent_v1"'), "returning-consent (v1) fallback detector is missing");
-  // #2331 — a saved v2 choice also skips the shell, and the shell's own bar
-  // hands its saved choice to the app before boot.
+  // #2331 — a saved v2 choice also skips the shell. #4318 — the shell carries
+  // only the "Privacy & ad choices" strip; tapping it hands the open sheet to
+  // the app (no OK, so the shell itself never saves a choice).
   invariant(entry.includes('key==="mingla_privacy_v2"'), "returning-privacy (v2) fallback detector is missing");
-  invariant(entry.includes("window.__minglaPrebootPrivacy=c"), "same-document privacy handoff is missing");
+  invariant(entry.includes('data-testid="privacy-strip"'), "privacy strip is missing from the shell");
+  invariant(entry.includes("Privacy &amp; ad choices"), "privacy strip copy is missing from the shell");
+  invariant(entry.includes("window.__minglaPrivacyOpenExpanded=true"), "strip-to-app sheet handoff is missing");
+  invariant(!/Mingla uses cookies|privacy-bar-ok|data-mpb-act="ok"/.test(entry), "the retired first-visit banner is back in the shell");
   invariant(entry.includes('node.async=false'), "fallback scripts are not forced into ordered execution");
 }
 
@@ -123,10 +127,19 @@ function validateOwnerPins() {
   for (const copy of ["You're invited", "Sign in to accept this invitation. We'll bring you right back.", 'label="Sign in"']) {
     invariant(files["app/accept-brand-invitation.tsx"].includes(copy), `invitation owner drift: ${copy}`);
   }
-  // #2331 — the shell's bar comes from server/publicPrivacyRuntime.js; the
-  // React owner must carry the same words.
-  for (const pin of ["Mingla uses cookies for analytics and ads.", "Cookies for analytics and ads.", "OK", "Options", "Turn off all", "Privacy policy", "https://usemingla.com/privacy-policy"]) {
-    invariant(files["src/analytics/ConsentBanner.web.tsx"].includes(pin), `privacy bar owner drift: ${pin}`);
+  // #2331 → #4318 — one thin "Privacy & ad choices" strip is the single
+  // privacy owner. The shell's strip comes from server/publicPrivacyRuntime.js;
+  // the React owner must carry the same words, and the retired banner none.
+  const owner = files["src/analytics/ConsentBanner.web.tsx"];
+  const server = files["server/publicPrivacyRuntime.js"];
+  for (const pin of ['PRIVACY_STRIP_LABEL = "Privacy & ad choices"', 'PRIVACY_SAVED_LABEL = "Saved"', 'data-testid="privacy-strip"', 'aria-live="polite"', "height:calc(28px + env(safe-area-inset-bottom,0px))", "Ads measurement", "Privacy policy", "https://usemingla.com/privacy-policy"]) {
+    invariant(owner.includes(pin), `privacy strip owner drift: ${pin}`);
+  }
+  for (const pin of ['data-testid="privacy-strip"', "Privacy &amp; ad choices", "height:calc(28px + env(safe-area-inset-bottom,0px))", "Ads measurement"]) {
+    invariant(server.includes(pin), `privacy strip server copy drift: ${pin}`);
+  }
+  for (const retired of ["Mingla uses cookies", "Cookies for analytics and ads.", "privacy-bar-ok", "privacy-bar-options", "privacy-toast", "Turn off all", "Your privacy choices"]) {
+    invariant(!owner.includes(retired) && !server.includes(retired), `retired privacy banner copy is back: ${retired}`);
   }
   const analytics = files["src/analytics/webAnalytics.web.ts"];
   invariant(analytics.indexOf("window.__minglaPrebootPrivacy;") < analytics.indexOf("readPersistedChoice();"), "same-document privacy must be read before storage");
@@ -192,7 +205,7 @@ function selfTest() {
   const attrs = ["runtime", "common", "index"].map((name) => `<script src="/_expo/static/js/web/${name}.js" defer></script>`);
   const metadata = JSON.stringify(attrs.map(scriptAttributes));
   const source = `<div id="root"></div>${attrs.join("")}`;
-  const entry = `<div id="root"></div><script id="issue-922-critical-entry">var scripts=${metadata};var loaded=false;function protect(work){try{work()}catch(_error){boot()}}requestAnimationFrame(function(){requestAnimationFrame(function(){});});window.location.replace("/auth?next="+encodeURIComponent("/accept-brand-invitation?token="+token));/^sb-.+-auth-token$/.test(key);key==="mingla_consent_v1";key==="mingla_privacy_v2";window.__minglaPrebootPrivacy=c;node.async=false;</script>`;
+  const entry = `<div id="root"></div><script id="issue-922-critical-entry">var scripts=${metadata};var loaded=false;function protect(work){try{work()}catch(_error){boot()}}requestAnimationFrame(function(){requestAnimationFrame(function(){});});window.location.replace("/auth?next="+encodeURIComponent("/accept-brand-invitation?token="+token));/^sb-.+-auth-token$/.test(key);key==="mingla_consent_v1";key==="mingla_privacy_v2";window.__minglaPrivacyOpenExpanded=true;node.async=false;</script><button type="button" class="mps" data-testid="privacy-strip"><span>Privacy &amp; ad choices</span></button>`;
   validateEntry(source, entry);
   let caughtOrder = false;
   try {
@@ -203,7 +216,14 @@ function selfTest() {
   let caughtEager = false;
   try { validateEntry(source, entry.replace("</script>", `${attrs[0]}</script>`)); } catch { caughtEager = true; }
   invariant(caughtEager, "self-test failed to detect restored eager script");
-  console.log("issue #922 guard self-test PASS (entry fallthrough, .html destination, rewrite removal, script reordering, and eager-script restoration detected)");
+  // #4318 — the retired first-visit banner and a missing strip both fail.
+  let caughtBanner = false;
+  try { validateEntry(source, `${entry}<p>Mingla uses cookies for analytics and ads.</p>`); } catch { caughtBanner = true; }
+  invariant(caughtBanner, "self-test failed to detect the retired privacy banner");
+  let caughtNoStrip = false;
+  try { validateEntry(source, entry.replace('data-testid="privacy-strip"', 'data-testid="privacy-bar"')); } catch { caughtNoStrip = true; }
+  invariant(caughtNoStrip, "self-test failed to detect a missing privacy strip");
+  console.log("issue #922 guard self-test PASS (entry fallthrough, .html destination, rewrite removal, script reordering, and eager-script restoration, retired banner and missing strip detected)");
 }
 
 try {

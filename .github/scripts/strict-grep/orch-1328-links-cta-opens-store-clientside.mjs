@@ -1,66 +1,35 @@
 #!/usr/bin/env node
+// MINGLA-INVARIANT: I-4318-LINKS-HANDOFF-THROUGH-SEAM | issue #4318 | Every /links banner and strip is a real anchor resolved through lib/links-handoff.ts on the #4137 device seam, carries its phone href, opens a sheet on a computer, and never hardcodes a store, OneLink or host URL.
 /**
- * ORCH-1328 [links-cta-soft-nav-blank-page].
- * Invariant: I-PROPOSED-1328-LINKS-CTA-OPENS-STORE-CLIENT-SIDE (DRAFT until CLOSE).
+ * ORCH-1328 [links-cta-soft-nav-blank-page] → ORCH-1399 → #4318 [links city week calendar].
  *
- * ORCH-1399 AMENDMENT (three checks). The INVARIANT is unchanged — the CTA opens the
- * destination on the tap and /links stays mounted — but the MECHANISM changed, so the
- * checks that pinned the old mechanism were re-pointed:
- *   1. REQUIRED_CONSTS: APP_STORE_URL/PLAY_STORE_URL -> resolveExplorerAppTarget /
- *      resolveBusinessAppTarget. The explorer CTA now resolves an ATTRIBUTED OneLink
- *      through a decision module (the ORCH-1381 pattern, extended to explorer), so
- *      requiring the raw consts would FAIL the correct implementation and force back
- *      the triplication both ORCHs removed.
- *   2. `/<button/` -> a CTA-BOUND anchor check. The old token was DECORATIVE: it
- *      matched the TABLIST's `<button role="tab">` and therefore passed
- *      unconditionally, forever, having never once tested the CTA (ORCH-1399 §0.4 —
- *      the FOURTH decorative guard found in this repo). Now bound to the CTA's own
- *      `<a href={…installHref|webHref…}>` + target + rel.
- *   3. `onCtaClick(` -> `onCtaTrack(`. The anchor navigates; the handler only fires
- *      analytics, so the capture must be pinned separately or it can be dropped.
- * The `apps.apple.com` / `play.google.com` BANS stay and are now MORE meaningful: a
- * store literal on /links means someone bypassed the OneLink and killed attribution.
+ * HISTORY. ORCH-1328 (amended by ORCH-1381 and ORCH-1399) pinned the per-tab
+ * CTA of the old two-tab /links page: a real anchor to the attributed OneLink,
+ * opened on the tap, never a soft navigation and never a store literal. #4318
+ * replaced the page with the city week calendar, where EVERY banner and strip is
+ * a hand-off. The file keeps its name and MANIFEST row (gate count and self-test
+ * ratchets unchanged); the invariant is carried forward to the new page.
  *
- * The usemingla.com/links per-tab CTA must open the store / web app DIRECTLY on
- * the tap gesture (client-side, device-aware, from the store-links SSOT) so
- * /links stays mounted — it must NEVER again be a Next `<Link>` soft-navigation
- * into the /download or /host/download external-redirect route, which
- * stranded the tab on a blank (Explorer) / footer-only (Business) route shell
- * (INVESTIGATION_ORCH-1328).
+ * Invariant: I-4318-LINKS-HANDOFF-THROUGH-SEAM (the ORCH-1328 contract, widened).
  *
- * ORCH-1381 AMENDMENT: the BUSINESS branch no longer resolves BUSINESS_APP_STORE_URL
- * / BUSINESS_WEB_URL locally — it delegates to resolveBusinessAppTarget( (the single
- * decision module) and offers an explicit two-action choice. Those two consts were
- * therefore dropped from REQUIRED_CONSTS and replaced by a helper-delegation check.
- * The EXPLORER tab is untouched by ORCH-1381 and still resolves its own consts.
+ * Over mingla-marketing/components/marketing/links-experience.tsx (comment-stripped)
+ * REQUIRE:
+ *   1. the device is read at tap time: detectClientPlatform( .
+ *   2. every destination is resolved by lib/links-handoff.ts (resolveLinksHandoff(
+ *      and linksTargetHrefs( ), which sits on the #4137 device seam.
+ *   3. every hand-off anchor carries data-cta-phone-href={phoneHref}, so a phone tap
+ *      made before hydration still gets the attributed OneLink (boot script, #4137).
+ *   4. a computer opens a sheet in the page: `handoff.action === 'sheet'` with
+ *      event.preventDefault() (the page stays mounted, ORCH-1328's invariant).
+ *   5. a new-tab hand-off carries rel="noopener" with its target="_blank".
+ *   6. the taps are tracked: links_banner_tapped and links_strip_opened.
+ * Over mingla-marketing/lib/links-handoff.ts REQUIRE: it imports the seam
+ * ('./cta-destination') and never './store-links'.
  *
- * Over mingla-marketing/components/marketing/links-experience.tsx
- * (comment-stripped) REQUIRE:
- *   1. imports detectClientPlatform (from @/lib/device-platform).
- *   2. references the EXPLORER store consts APP_STORE_URL + PLAY_STORE_URL
- *      (lib/store-links SSOT), AND delegates the business decision to
- *      resolveBusinessAppTarget( (ORCH-1381).
- *   3. the CTA is a real control: a `<button` AND `onClick={() => onCtaClick(`.
- *   4. opens the store client-side on the tap gesture via openExternal( from
- *      lib/open-external (so /links stays mounted).
- *      AMENDED BY ORCH-1381 ADDENDUM D-B: this check previously required the tokens
- *      `window.open(` + `window.location.assign(`. It was BLIND — the shipped code
- *      satisfied it while VIOLATING this gate's own invariant. window.open with a
- *      noopener/noreferrer feature string returns null EVEN ON SUCCESS, so the
- *      "popup-blocked" fallback fired on every tap and /links did NOT stay mounted:
- *      a tab opened AND the page navigated away. The fallback guard now lives in the
- *      module that owns it (orch-1381-open-external-no-double-nav.mjs); here we
- *      require DELEGATION and BAN inlining window.open.
- *   5. fires `links_page_cta_clicked`.
- *   6. device-driven: branches on `platform ===` (not a single hardcode).
- *
- * BAN (the exact regression this ORCH kills):
- *   - a `next/link` import AND the `<Link` JSX element — the CTA must never
- *     soft-navigate again (this file needs no next/link).
- *   - `<a href="/download"` / `<a href="/host/download"` — no anchor
- *     navigation into the external-redirect routes.
- *   - hardcoded store literals: `apps.apple.com`, `play.google.com` (URLs only
- *     via the store-links consts).
+ * BAN on the page: next/link / <Link (no soft navigation), window.open(, an import
+ * of lib/store-links (URL constants live behind the seam), and any store, OneLink
+ * or host-web literal (apps.apple.com, play.google.com, go.usemingla.com,
+ * biz.usemingla.com, host.usemingla.com).
  *
  * --self-test injects fixtures (compliant → pass; each violation → fire; a banned
  * token inside a COMMENT is stripped and still passes).
@@ -73,377 +42,163 @@ const root = process.cwd().endsWith("mingla-marketing")
   : process.cwd();
 
 const TARGET = "mingla-marketing/components/marketing/links-experience.tsx";
+const HANDOFF = "mingla-marketing/lib/links-handoff.ts";
 
 const stripComments = (src) =>
   src
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/(^|[^:])\/\/.*$/gm, "$1");
 
-// Word-boundary anchored so `\bAPP_STORE_URL\b` does NOT match inside
-// `BUSINESS_APP_STORE_URL` (preceded by `_`, a word char → no boundary), i.e.
-// each const must be referenced in its own right.
-//
-// ORCH-1381 C1 — the BUSINESS_* consts were DROPPED from this list. The business
-// tab no longer resolves them locally: it delegates to resolveBusinessAppTarget(
-// (checked separately below), which is where the BUSINESS_* consts now live.
-// Requiring them here would force the very triplication ORCH-1381 removed. The
-// EXPLORER tab still resolves APP_STORE_URL / PLAY_STORE_URL locally and is out of
-// ORCH-1381's scope, so those two stay REQUIRED.
-// ORCH-1399 C1 — the EXPLORER consts were DROPPED from this list too. The explorer
-// CTA now resolves the attributed OneLink via resolveExplorerAppTarget( (the same
-// decision-module pattern ORCH-1381 established for business, extended to explorer:
-// the `platform === 'ios' ? APP_STORE_URL : PLAY_STORE_URL` ternary was copy-pasted
-// across glass-nav AND links-experience — the identical triplication bug class).
-// Requiring APP_STORE_URL/PLAY_STORE_URL here would FAIL the correct implementation
-// and force back the very duplication both ORCHs removed — a gate must never mandate
-// a worse implementation. What is required now is DELEGATION to both helpers.
-const REQUIRED_CONSTS = [
-  "\\bresolveExplorerAppTarget\\b",
-  "\\bresolveBusinessAppTarget\\b",
-];
-
-// Banned tokens — the soft-nav / hardcoded-store regression this ORCH kills.
 const BANNED = [
-  { re: /from\s+['"]next\/link['"]/, why: "imports next/link — the CTA must not soft-navigate" },
-  { re: /<Link[\s/>]/, why: "renders a next/link <Link> element — the CTA must not soft-navigate" },
-  { re: /<a\s+href="\/download"/, why: 'anchors <a href="/download"> into the external-redirect route' },
-  { re: /<a\s+href="\/host\/download"/, why: 'anchors <a href="/host/download"> into the external-redirect route' },
-  { re: /apps\.apple\.com/, why: "hardcodes an apps.apple.com store literal (use the store-links consts)" },
-  { re: /play\.google\.com/, why: "hardcodes a play.google.com store literal (use the store-links consts)" },
-  // ORCH-1381 ADDENDUM D-B — the double-navigation teeth.
-  { re: /window\.open\(/, why: "inlines window.open — must delegate to openExternal( from lib/open-external (ORCH-1381 ADDENDUM D-B)" },
-  // The half-fix trap: 'noreferrer' ALONE also nulls the return.
-  { re: /\.open\([^)\n]*\bno(?:opener|referrer)\b[^)\n]*\)/, why: "noopener/noreferrer makes window.open return null even on success → the fallback always fires → /links does NOT stay mounted, violating this gate's own invariant (ORCH-1381 ADDENDUM D-B)" },
+  { re: /from\s+['"]next\/link['"]/, why: "imports next/link — a hand-off must never soft-navigate" },
+  { re: /<Link[\s/>]/, why: "renders a next/link <Link> — a hand-off must never soft-navigate" },
+  { re: /window\.open\(/, why: "inlines window.open — hand-offs are real anchors" },
+  { re: /from\s+['"]@\/lib\/store-links['"]/, why: "imports lib/store-links directly — URL constants live behind the #4137 seam" },
+  { re: /apps\.apple\.com|play\.google\.com/, why: "hardcodes a store literal" },
+  { re: /go\.usemingla\.com|biz\.usemingla\.com/, why: "hardcodes a OneLink literal" },
+  { re: /host\.usemingla\.com/, why: "hardcodes the host web literal" },
 ];
 
-function checkCta(rawSrc, failures) {
+/** JSX opening tags `<tag …>`, brace-aware (an `=>` inside `{…}` does not end the tag). */
+function openingTags(src, tag) {
+  const out = [];
+  const re = new RegExp(`<${tag}\\s`, "g");
+  let m;
+  while ((m = re.exec(src)) !== null) {
+    let depth = 0;
+    let i = m.index + 1;
+    for (; i < src.length; i++) {
+      const c = src[i];
+      if (c === "{") depth++;
+      else if (c === "}") depth--;
+      else if (c === ">" && depth === 0) break;
+    }
+    out.push(src.slice(m.index, i + 1));
+  }
+  return out;
+}
+
+function checkPage(rawSrc, failures) {
   const src = stripComments(rawSrc);
-
-  // 1. device detection imported / called.
-  if (!/detectClientPlatform/.test(src)) {
-    failures.push(
-      `${TARGET}: the CTA handler must call detectClientPlatform() — the store ` +
-        `choice must be device-driven.`,
-    );
+  if (!/detectClientPlatform\(/.test(src)) {
+    failures.push(`${TARGET}: the hand-off must read the device at tap time via detectClientPlatform().`);
   }
-
-  // 2. BOTH decision helpers delegated to (ORCH-1399).
-  for (const token of REQUIRED_CONSTS) {
-    if (!new RegExp(token).test(src)) {
-      failures.push(
-        `${TARGET}: must resolve via ${token.replace(/\\b/g, "")}( — the ` +
-          `platform→destination decision lives in exactly ONE module per surface ` +
-          `(ORCH-1381 for business, ORCH-1399 for explorer), never re-derived here.`,
-      );
+  if (!/resolveLinksHandoff\(/.test(src) || !/linksTargetHrefs\(/.test(src)) {
+    failures.push(`${TARGET}: every destination must come from lib/links-handoff.ts (resolveLinksHandoff( + linksTargetHrefs().`);
+  }
+  const anchors = openingTags(src, "a");
+  const handoffAnchors = anchors.filter((a) => /onTap\(/.test(a));
+  if (handoffAnchors.length < 2) {
+    failures.push(`${TARGET}: the banners and strips must be real <a> anchors handled by onTap(.`);
+  }
+  for (const a of handoffAnchors) {
+    if (!/data-cta-phone-href=\{(?:\w+\.)?phoneHref\}/.test(a)) {
+      failures.push(`${TARGET}: a hand-off anchor is missing data-cta-phone-href={…phoneHref} (pre-hydration phone taps): ${a.replace(/\s+/g, " ").slice(0, 80)}…`);
+    }
+    if (/target=\{newTab \? '_blank'/.test(a) && !/rel=\{newTab \? 'noopener'/.test(a)) {
+      failures.push(`${TARGET}: a new-tab hand-off anchor is missing rel="noopener": ${a.replace(/\s+/g, " ").slice(0, 80)}…`);
     }
   }
-
-  // 2b. ORCH-1381 C2 — the BUSINESS branch must DELEGATE its decision to the one
-  // shared module rather than re-deriving a destination locally.
-  if (!/resolveBusinessAppTarget\(/.test(src)) {
-    failures.push(
-      `${TARGET}: the business branch must resolve via resolveBusinessAppTarget( from ` +
-        `lib/host-app-target — the platform→destination decision lives in exactly ONE ` +
-        `module (ORCH-1381), never re-derived here.`,
-    );
+  if (!/handoff\.action === 'sheet'/.test(src) || !/event\.preventDefault\(\)/.test(src)) {
+    failures.push(`${TARGET}: a computer tap must open a sheet in the page (handoff.action === 'sheet' + event.preventDefault()).`);
   }
-
-  // 3. ORCH-1399 — DECORATIVE-CHECK REPAIR (the fourth in this repo).
-  //
-  // WAS: `if (!/<button/.test(src))`. That check was DECORATIVE and had NEVER tested
-  // the CTA: links-experience.tsx renders its TABLIST with `<button role="tab">`, so
-  // the token was satisfied UNCONDITIONALLY, forever, regardless of what the CTA was.
-  // Proven by execution at SPEC time — a file whose CTA is a plain <div> (dead for
-  // keyboard) but which still has tab buttons PASSED it.
-  //
-  // The underlying property is real and worth keeping — "the CTA is a real,
-  // keyboard-activatable control" — so it is RE-EXPRESSED to bind to the CTA itself.
-  // After ORCH-1399 the store/web CTA is a real <a href={…}> (an anchor is natively
-  // keyboard-activatable and, unlike window.open, actually works inside the
-  // Instagram/TikTok in-app webviews that dominate /links traffic).
-  //
-  // ⚠ PER-ANCHOR, NOT FILE-LEVEL. A file-level `/rel="noopener/` check on THIS file is
-  // itself DECORATIVE: the socials row has carried rel="noopener noreferrer" since
-  // ORCH-1317, so a file-level check passes even when EVERY CTA anchor has lost its
-  // rel. That is the exact same bug class as the /<button/ check this replaced —
-  // caught by running the fails-on-revert proof, which is the only reason it was
-  // found. Each CTA anchor is therefore extracted and checked on its own.
-  const anchors = [...src.matchAll(/<a\s[\s\S]*?>/g)].map((m) => m[0]);
-  const ctaAnchors = anchors.filter((a) => /(?:installHref|oneLinkHref|webHref)/.test(a));
-  const CTA_ANCHOR = /<a\s+[^>]*href=\{[^}]*(?:installHref|oneLinkHref|webHref)[^}]*\}/;
-  if (!CTA_ANCHOR.test(src)) {
-    failures.push(
-      `${TARGET}: the store/web CTA must be a real <a href={…installHref|webHref…}> anchor — ` +
-        `a real link survives in-app webviews (where window.open is routinely blocked), ` +
-        `restores long-press/middle-click/copy-link + screen-reader link semantics, and is ` +
-        `natively keyboard-activatable. (This check REPLACES a decorative /<button/ token ` +
-        `check that only ever matched the TABLIST buttons and could never fail — ORCH-1399 §0.4.)`,
-    );
+  for (const event of ["links_banner_tapped", "links_strip_opened"]) {
+    if (!src.includes(`'${event}'`)) failures.push(`${TARGET}: missing the ${event} capture.`);
   }
-  for (const a of ctaAnchors) {
-    const shape = a.replace(/\s+/g, " ").slice(0, 72);
-    if (!/target="_blank"/.test(a)) {
-      failures.push(
-        `${TARGET}: a CTA anchor is missing target="_blank" — /links must stay mounted ` +
-          `(ORCH-1328's own invariant) and a same-tab navigation races the analytics flush. ` +
-          `Offending anchor: ${shape}…`,
-      );
-    }
-    // SECURITY — rel="noopener" on an ANCHOR is REQUIRED and is NOT the ORCH-1381
-    // window.open pathology. That ban is scoped to `.open(` FEATURE STRINGS, where
-    // either token makes open() return null even on success. On an <a>, rel="noopener"
-    // has no such behaviour and is mandatory anti-reverse-tabnabbing. An implementor
-    // "complying" with ORCH-1381 by stripping it would ship a real security regression.
-    if (!/rel="noopener/.test(a)) {
-      failures.push(
-        `${TARGET}: a CTA anchor is missing rel="noopener" — reverse-tabnabbing. NOTE: the ` +
-          `ORCH-1381 noopener BAN is scoped to window.open FEATURE STRINGS only; on an <a> ` +
-          `element rel="noopener" is MANDATORY, not forbidden. Offending anchor: ${shape}…`,
-      );
-    }
-  }
-  // 3b. ORCH-1399 — the store path no longer routes through onCtaClick (the anchor
-  // navigates); the ANALYTICS call does. Without this, a correct-looking anchor could
-  // silently drop the tap capture.
-  if (!/onClick=\{\(\) => onCtaTrack\(/.test(src)) {
-    failures.push(`${TARGET}: the CTA must fire onCtaTrack(…) on click — the tap analytics must not be silently dropped when the anchor navigates.`);
-  }
-
-  // 4. ORCH-1381 ADDENDUM D-B / ORCH-1399 — openExternal( survives here for exactly
-  // ONE genuine non-store destination: the Explorer DESKTOP /download QR page (a
-  // page, not a store hand-off). Every STORE/web destination is now an anchor.
-  if (!/openExternal\(/.test(src)) {
-    failures.push(
-      `${TARGET}: must open the destination via openExternal( from lib/open-external on ` +
-        `the tap gesture (so /links stays mounted) — the popup-block decision lives in ` +
-        `ONE module.`,
-    );
-  }
-
-  // 5. analytics preserved.
-  if (!/links_page_cta_clicked/.test(src)) {
-    failures.push(`${TARGET}: missing the links_page_cta_clicked capture — the tap analytics must not be silently dropped.`);
-  }
-
-  // 6. store choice branches on the resolved platform.
-  if (!/platform ===/.test(src)) {
-    failures.push(
-      `${TARGET}: the handler does not branch on \`platform ===\` — the store must be ` +
-        `chosen from the DETECTED platform, not a single hardcoded branch.`,
-    );
-  }
-
-  // BAN — no soft-nav / hardcoded store.
   for (const { re, why } of BANNED) {
-    if (re.test(src)) {
-      failures.push(`${TARGET}: ${why} (banned by ORCH-1328).`);
-    }
+    if (re.test(src)) failures.push(`${TARGET}: ${why}.`);
+  }
+}
+
+function checkHandoff(rawSrc, failures) {
+  const src = stripComments(rawSrc);
+  if (!/from '\.\/cta-destination'/.test(src)) {
+    failures.push(`${HANDOFF}: must resolve its destinations through './cta-destination' (the #4137 device seam).`);
+  }
+  if (/from '\.\/store-links'/.test(src)) {
+    failures.push(`${HANDOFF}: must not import './store-links' — URL constants stay behind the seam.`);
   }
 }
 
 // ---- Self-test
 if (process.argv.includes("--self-test")) {
   const selfFailures = [];
-  const run = (s) => { const f = []; checkCta(s, f); return f; };
+  const run = (page, handoff = "import { resolveCtaDestinations } from './cta-destination'") => {
+    const f = [];
+    checkPage(page, f);
+    checkHandoff(handoff, f);
+    return f;
+  };
 
-  // ORCH-1381 — the business branch delegates to the shared decision helper and
-  // offers two actions; the explorer branch is unchanged.
   const good = `
 import { detectClientPlatform } from '@/lib/device-platform'
-import { BUSINESS_APP_CHOICE_COPY, resolveBusinessAppTarget } from '@/lib/host-app-target'
-import { resolveExplorerAppTarget } from '@/lib/explorer-app-target'
-import { linksAttribution } from '@/lib/links-src'
-import { openExternal } from '@/lib/open-external'
-const businessTarget = resolveBusinessAppTarget(platform, linksAttribution(src, 'business_bio'))
-const explorerTarget = resolveExplorerAppTarget(platform, linksAttribution(src, 'explorer_bio'))
-const onCtaTrack = (tab, action) => {
-  const platform = detectClientPlatform()
-  if (tab.id === 'business') {
-    const target = resolveBusinessAppTarget(platform, linksAttribution(src, 'business_bio'))
-    const useWeb = action === 'use_web' || target.installHref === null
-    captureMarketing('links_page_cta_clicked', { tab: tab.id, action: useWeb ? 'use_web' : 'download', platform, store: useWeb ? 'business_web' : target.installStore, src })
-    return
-  }
-  if (platform === 'ios' || platform === 'android') {
-    const target = resolveExplorerAppTarget(platform, linksAttribution(src, 'explorer_bio'))
-    captureMarketing('links_page_cta_clicked', { tab: tab.id, platform, store: target.installStore, src })
-    return
-  }
-  captureMarketing('links_page_cta_clicked', { tab: tab.id, platform: 'other', store: 'qr_page', src })
+import { linksTargetHrefs, resolveLinksHandoff } from '@/lib/links-handoff'
+const onTap = (target, event) => {
+  const device = detectClientPlatform()
+  const handoff = resolveLinksHandoff(target, device, src)
+  captureMarketing(target.type === 'banner' ? 'links_banner_tapped' : 'links_strip_opened', {})
+  if (handoff.action === 'sheet') { event.preventDefault(); return }
 }
-const onCtaDesktop = (tab) => { onCtaTrack(tab); openExternal(tab.cta.href) }
-const tabs = LINKS_TABS.map((tab) => (<button role="tab" onClick={() => selectTab(tab.id)}>{tab.label}</button>))
-const bizCta = (
-  <a href={businessTarget.installHref} target="_blank" rel="noopener" onClick={() => onCtaTrack(activeTab, 'download')} className={cn(CTA_BASE, CTA_INTENT.primary)}>
-    {BUSINESS_APP_CHOICE_COPY.download}
-  </a>
-)
-const webCta = (
-  <a href={businessTarget.webHref} target="_blank" rel="noopener" onClick={() => onCtaTrack(activeTab, 'use_web')} className={cn(CTA_BASE, CTA_INTENT.glass)}>
-    {BUSINESS_APP_CHOICE_COPY.useWeb}
-  </a>
-)
-const explorerCta = (
-  <a href={explorerTarget.installHref} target="_blank" rel="noopener" onClick={() => onCtaTrack(activeTab)} className={cn(CTA_BASE, CTA_INTENT[activeTab.cta.intent])}>
-    {activeTab.cta.label}
-  </a>
-)
-const desktopCta = (<button type="button" onClick={() => onCtaDesktop(activeTab)}>{activeTab.cta.label}</button>)
+const hrefFor = (t) => linksTargetHrefs(t, src)
+const strip = <a href={href} data-cta-phone-href={phoneHref} target={newTab ? '_blank' : undefined} rel={newTab ? 'noopener' : undefined} onClick={(event) => onTap(target, event)}>x</a>
+const banner = <a href={href} data-cta-phone-href={phoneHref} onClick={(event) => onTap(target, event)}>y</a>
+const social = <a href={s.href} target="_blank" rel="noopener">z</a>
 `;
-  if (run(good).length !== 0) selfFailures.push("compliant CTA wrongly flagged: " + JSON.stringify(run(good)));
-
-  // Missing detectClientPlatform → fire.
-  const noDetect = good
-    .replace("const platform = detectClientPlatform()", "const platform = 'ios'")
-    .replace("import { detectClientPlatform } from '@/lib/device-platform'", "");
-  if (run(noDetect).length === 0) selfFailures.push("missing detectClientPlatform not flagged");
-
-  // ORCH-1399 — the EXPLORER branch stopped delegating to its helper → fire.
-  const noExplorerHelper = good.replace(/resolveExplorerAppTarget/g, "someLocalGuess");
-  if (run(noExplorerHelper).length === 0) selfFailures.push("explorer branch missing resolveExplorerAppTarget not flagged");
-
-  // ORCH-1399 — re-introducing a raw store const means the OneLink was bypassed and
-  // attribution is dead → the hardcoded-literal BAN must fire.
-  const reAddedConst = good + "\nconst store = platform === 'ios' ? 'https://apps.apple.com/app/id6760440898' : PLAY_STORE_URL\n";
-  if (run(reAddedConst).length === 0) selfFailures.push("re-introduced raw store literal not flagged");
-
-  // ORCH-1381 — the business branch stopped delegating to the shared helper → fire.
-  const noHelper = good.replace(/resolveBusinessAppTarget/g, "someLocalGuess");
-  if (run(noHelper).length === 0) selfFailures.push("business branch missing resolveBusinessAppTarget not flagged");
-
-  // Re-added next/link import + <Link> element → fire.
-  const softNav = good +
-    "\nimport Link from 'next/link'\nconst extra = <Link href=\"/x\">y</Link>\n";
-  if (run(softNav).length === 0) selfFailures.push("re-added next/link + <Link> not flagged");
-
-  // Hardcoded store literal → fire.
-  const hardcoded = good + "\nconst x = 'https://apps.apple.com/app/id6760440898'\n";
-  if (run(hardcoded).length === 0) selfFailures.push("hardcoded apps.apple.com literal not flagged");
-
-  // ORCH-1381 ADDENDUM D-B — stopped delegating to openExternal( → fire.
-  // (Replaces the old "missing window.location.assign fallback" case: that guard now
-  // lives in orch-1381-open-external-no-double-nav.mjs, on the module that owns it.)
-  const noDelegate = good.replace(/openExternal\(/g, "someLocalOpen(");
-  if (run(noDelegate).length === 0) selfFailures.push("missing openExternal( delegation not flagged");
-
-  // ORCH-1381 ADDENDUM D-B — re-inlined the SHIPPED double-nav bug → fire.
-  const inlinedBug = good.replace(
-    "import { openExternal } from '@/lib/open-external'",
-    "const openExternal = (dest) => {\n  const win = window.open(dest, '_blank', 'noopener,noreferrer')\n  if (!win) window.location.assign(dest)\n}",
+  const fixed = good.replace(
+    "captureMarketing(target.type === 'banner' ? 'links_banner_tapped' : 'links_strip_opened', {})",
+    "captureMarketing('links_banner_tapped', {}); captureMarketing('links_strip_opened', {})",
   );
-  if (run(inlinedBug).length === 0) selfFailures.push("re-inlined window.open(…,'noopener,noreferrer') double-nav bug not flagged");
+  if (run(fixed).length !== 0) selfFailures.push("compliant page wrongly flagged: " + JSON.stringify(run(fixed)));
 
-  // ORCH-1381 ADDENDUM D-B — THE HALF-FIX TRAP: 'noreferrer' alone still returns
-  // null → identical bug → must fire.
-  const halfFix = good.replace(
-    "import { openExternal } from '@/lib/open-external'",
-    "const openExternal = (dest) => {\n  const win = window.open(dest, '_blank', 'noreferrer')\n  if (win) { win.opener = null } else { window.location.assign(dest) }\n}",
-  );
-  if (run(halfFix).length === 0) selfFailures.push("HALF-FIX TRAP ('noreferrer' only, still returns null) not flagged");
-
-  // No `platform ===` (device branch removed) → fire.
-  const noBranch = good.replace(/platform ===/g, "platform ==");
-  if (run(noBranch).length === 0) selfFailures.push("missing `platform ===` branch not flagged");
-
-  // <a href="/download"> anchor into the redirect route → fire.
-  const anchorDownload = good + "\nconst y = <a href=\"/download\">z</a>\n";
-  if (run(anchorDownload).length === 0) selfFailures.push('<a href="/download"> not flagged');
-
-  // ── ORCH-1399 §0.4 — THE DECORATIVE-CHECK REPAIR, PROVEN ────────────────────
-  // THE case that proves the old /<button/ check is genuinely repaired. This file's
-  // CTA is a plain <div> (dead for keyboard, no href) but it STILL has the tablist
-  // <button role="tab"> elements. Under the OLD check this PASSED unconditionally.
-  // It must now FAIL.
-  const ctaIsADivButTabsAreButtons = `
-import { detectClientPlatform } from '@/lib/device-platform'
-import { BUSINESS_APP_CHOICE_COPY, resolveBusinessAppTarget } from '@/lib/host-app-target'
-import { resolveExplorerAppTarget } from '@/lib/explorer-app-target'
-import { openExternal } from '@/lib/open-external'
-const onCtaTrack = (tab) => { const platform = detectClientPlatform(); if (platform === 'ios') {} captureMarketing('links_page_cta_clicked', {}) }
-const tabs = LINKS_TABS.map((tab) => (<button role="tab" onClick={() => selectTab(tab.id)}>{tab.label}</button>))
-const cta = (<div onClick={() => onCtaTrack(activeTab)}>{activeTab.cta.label}</div>)
-`;
-  if (run(ctaIsADivButTabsAreButtons).length === 0) {
-    selfFailures.push("DECORATIVE-REPAIR REGRESSION: a <div> CTA in a file that still has tablist <button>s was NOT flagged — the check is decorative again (ORCH-1399 §0.4)");
+  const cases = [
+    ["device not read at tap time", fixed.replace("detectClientPlatform()", "'ios'").replace("import { detectClientPlatform } from '@/lib/device-platform'", "")],
+    ["destination re-derived on the page", fixed.replace(/resolveLinksHandoff\(/g, "guess(")],
+    ["phone href dropped from a strip", fixed.replace("data-cta-phone-href={phoneHref} target", "target")],
+    ["new-tab anchor without rel", fixed.replace(" rel={newTab ? 'noopener' : undefined}", "")],
+    ["computer tap navigates away", fixed.replace("event.preventDefault(); ", "")],
+    ["analytics dropped", fixed.replace("captureMarketing('links_strip_opened', {})", "")],
+    ["soft navigation", fixed + "\nimport Link from 'next/link'\nconst l = <Link href=\"/download\">x</Link>\n"],
+    ["store literal", fixed + "\nconst s = 'https://apps.apple.com/app/id6760440898'\n"],
+    ["OneLink literal", fixed + "\nconst s = 'https://go.usemingla.com/w36m'\n"],
+    ["host literal", fixed + "\nconst s = 'https://host.usemingla.com'\n"],
+    ["store-links imported on the page", fixed + "\nimport { APP_STORE_URL } from '@/lib/store-links'\n"],
+  ];
+  for (const [name, page] of cases) {
+    if (run(page).length === 0) selfFailures.push(`${name} not flagged`);
   }
-
-  // The CTA anchor lost its rel → fire (the §5.1 trap: an implementor 'complying'
-  // with the ORCH-1381 noopener ban by stripping rel from the anchor).
-  const noRel = good.replace(/ rel="noopener"/g, "");
-  if (run(noRel).length === 0) selfFailures.push("CTA anchor missing rel=\"noopener\" not flagged (the §5.1 trap)");
-
-  // The CTA anchor lost target="_blank" → fire.
-  const noTarget = good.replace(/ target="_blank"/g, "");
-  if (run(noTarget).length === 0) selfFailures.push('CTA anchor missing target="_blank" not flagged');
-
-  // ⭐ THE DECORATIVE-REL CASE. The CTA anchors lose their rel/target but the SOCIALS
-  // row keeps `rel="noopener noreferrer"` — which is how this file really looks
-  // (ORCH-1317). A FILE-LEVEL /rel="noopener/ check PASSES here, which is exactly the
-  // /<button/-matches-the-tablist bug in a new costume. The per-anchor check must FIRE.
-  const relOnlyOnSocials = good.replace(/ rel="noopener"/g, "").replace(/ target="_blank"/g, "") +
-    '\nconst socials = LINKS_SOCIALS.map((s) => (<a key={s.label} href={socialHref(s, activeId)} target="_blank" rel="noopener noreferrer">{s.label}</a>))\n';
-  const relFailures = run(relOnlyOnSocials);
-  if (!relFailures.some((f) => /missing rel="noopener"/.test(f))) {
-    selfFailures.push('DECORATIVE-REL REGRESSION: CTA anchors stripped of rel were NOT flagged because the SOCIALS row still carries rel="noopener noreferrer" — the rel check has gone file-level and is decorative (ORCH-1399)');
+  if (run(fixed, "import { APP_STORE_URL } from './store-links'").length === 0) {
+    selfFailures.push("links-handoff bypassing the seam not flagged");
   }
-  if (!relFailures.some((f) => /missing target="_blank"/.test(f))) {
-    selfFailures.push('DECORATIVE-TARGET REGRESSION: CTA anchors stripped of target were NOT flagged because the socials row still carries it');
-  }
-
-  // The CTA reverted to a <button onClick={() => onCtaClick(  → fire.
-  const revertedToButton = good
-    .replace(/<a href=\{explorerTarget\.installHref\}[^>]*>/, "<button type=\"button\" onClick={() => onCtaClick(activeTab)}>")
-    .replace(/onCtaTrack/g, "onCtaClick");
-  if (run(revertedToButton).length === 0) selfFailures.push("CTA reverted to <button onClick={() => onCtaClick( not flagged");
-
-  // ⭐ PINS §5.1 — an anchor carrying rel="noopener" must PASS. A future author who
-  // "helpfully" re-bans the token on anchors (pattern-matching the ORCH-1381 ban)
-  // would break this case, which is exactly the point.
-  if (run(good).some((f) => /noopener/.test(f) && /banned/i.test(f))) {
-    selfFailures.push('anchor rel="noopener" was WRONGLY flagged as banned — the ORCH-1381 ban is scoped to window.open FEATURE STRINGS; on an <a> rel="noopener" is REQUIRED (ORCH-1399 §5.1)');
-  }
-
-  // A banned token inside a COMMENT must be stripped → compliant still passes.
-  const commented = good +
-    "\n// legacy note: no more next/link, <Link>, apps.apple.com or play.google.com here\n" +
-    "/* the old <a href=\"/download\"> soft-nav is gone */\n";
-  if (run(commented).length !== 0) selfFailures.push("commented banned tokens wrongly flagged (comment-strip broken): " + JSON.stringify(run(commented)));
+  const commented = fixed + "\n// no apps.apple.com, go.usemingla.com or next/link here any more\n";
+  if (run(commented).length !== 0) selfFailures.push("commented banned tokens wrongly flagged (comment-strip broken)");
 
   if (selfFailures.length) {
-    console.error("ORCH-1328 links-cta-opens-store-clientside self-test FAIL:");
+    console.error("ORCH-1328/#4318 links hand-off self-test FAIL:");
     selfFailures.forEach((m) => console.error("  - " + m));
     process.exit(1);
   }
-  console.log("ORCH-1328 links-cta-opens-store-clientside self-test PASS (18/18 cases, ORCH-1399-amended: incl. the §0.4 decorative-repair proof + the §5.1 rel-on-anchor pin).");
+  console.log(`ORCH-1328/#4318 links hand-off self-test PASS (${cases.length + 3}/${cases.length + 3} cases).`);
   process.exit(0);
 }
 
 // ---- Live mode
-const abs = path.join(root, TARGET);
-if (!fs.existsSync(abs)) {
-  console.error(`ORCH-1328 FAIL — target not found at ${TARGET} (gate path out of sync).`);
-  process.exit(1);
-}
 const failures = [];
-checkCta(fs.readFileSync(abs, "utf8"), failures);
-
+for (const [rel, check] of [[TARGET, checkPage], [HANDOFF, checkHandoff]]) {
+  const abs = path.join(root, rel);
+  if (!fs.existsSync(abs)) {
+    console.error(`ORCH-1328/#4318 FAIL — target not found at ${rel}.`);
+    process.exit(1);
+  }
+  check(fs.readFileSync(abs, "utf8"), failures);
+}
 if (failures.length > 0) {
   console.error(
-    "ORCH-1328 (I-PROPOSED-1328-LINKS-CTA-OPENS-STORE-CLIENT-SIDE, ORCH-1399-amended) FAIL —\n" +
-      "the /links CTA must be a real <a href> anchor to the ATTRIBUTED OneLink (resolved by\n" +
-      "resolveExplorerAppTarget / resolveBusinessAppTarget), carrying target=\"_blank\" +\n" +
-      "rel=\"noopener\" and firing onCtaTrack( — so the store app opens with no intermediate\n" +
-      "web page, /links stays mounted, and the tap analytics survive. It must NEVER\n" +
-      "soft-navigate into the /download|/host/download route nor hardcode a store literal.\n\nFailures:\n  " +
+    "ORCH-1328/#4318 (I-4318-LINKS-HANDOFF-THROUGH-SEAM) FAIL — every /links banner and strip\n" +
+      "must be a real anchor resolved through lib/links-handoff.ts and the #4137 seam, carry its\n" +
+      "phone href for pre-hydration taps, open a sheet on a computer, and never soft-navigate or\n" +
+      "hardcode a store, OneLink or host URL.\n\nFailures:\n  " +
       failures.join("\n  "),
   );
   process.exit(1);
 }
-console.log(
-  "ORCH-1328 PASS (ORCH-1399-amended) — the /links CTA is a real <a href={…}> anchor to the\n" +
-    "attributed OneLink (target=\"_blank\" + rel=\"noopener\"), device-driven via\n" +
-    "detectClientPlatform, with BOTH decisions delegated (resolveExplorerAppTarget /\n" +
-    "resolveBusinessAppTarget); openExternal( survives for the desktop /download QR page;\n" +
-    "it fires links_page_cta_clicked via onCtaTrack( and never soft-navigates into the\n" +
-    "/download|/host/download route nor hardcodes a store literal.",
-);
+console.log("ORCH-1328/#4318 PASS — every /links hand-off is a real anchor through the #4137 seam, with its phone href, a computer sheet and no hardcoded destination.");

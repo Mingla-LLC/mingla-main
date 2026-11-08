@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-suite",
+  "ownerIssue": "#4318",
+  "suite": {
+    "id": "issue-4318-links-tester-adversarial",
+    "class": "node22-noinstall",
+    "originPaths": [
+      "mingla-marketing/app/links/page.tsx",
+      "mingla-marketing/components/marketing/links-experience.tsx",
+      "mingla-marketing/content/cities/registry.ts",
+      "mingla-marketing/lib/links-week.ts",
+      "mingla-marketing/lib/links-fit.ts",
+      "mingla-marketing/lib/links-handoff.ts",
+      "mingla-marketing/lib/links-data.ts",
+      "mingla-marketing/lib/links-config.ts",
+      "mingla-marketing/lib/cta-destination.ts",
+      "mingla-marketing/lib/links-src.ts",
+      "mingla-marketing/lib/store-links.ts",
+      "mingla-marketing/lib/search/route-registry.ts",
+      "mingla-marketing/lib/__tests__/issue-4318-links.tester.adversarial.test.mjs"
+    ],
+    "steps": [
+      {
+        "name": "Links page tester: hostile city input, geo edge cases, 60 km and Ibeju-Lekki bucketing, midnight and DST weeks, hand-off safety, fit extremes, data failures, socials and noindex",
+        "cwd": "mingla-marketing",
+        "run": "node --test lib/__tests__/issue-4318-links.tester.adversarial.test.mjs",
+        "commandId": "assert:issue-4318-links-tester-adversarial:01",
+        "invocation": {
+          "kind": "raw-shell",
+          "command": "bash",
+          "argv": [
+            "-c",
+            "node --test lib/__tests__/issue-4318-links.tester.adversarial.test.mjs"
+          ]
+        },
+        "exceptionRationale": "New self-registering execution replaces a legacy workflow registry edit."
+      }
+    ],
+    "lifecycle": "batched-active",
+    "ownerIssue": "#4318",
+    "runtime": {
+      "name": "node",
+      "version": "22"
+    },
+    "setupProfile": "node22-noinstall",
+    "cwd": "mingla-marketing",
+    "envNames": [],
+    "isolation": "clean-worktree",
+    "expectedFiles": [
+      "mingla-marketing/lib/__tests__/issue-4318-links.tester.adversarial.test.mjs"
+    ],
+    "externalReferenceFiles": [],
+    "requiredContext": "CI batch: node22-noinstall",
+    "timingSeconds": {
+      "p50": 1,
+      "p95": 2,
+      "evidence": "Local targeted run 2026-11-07"
+    },
+    "generatedPaths": [
+      "suite-results.json"
+    ],
+    "exceptionRationale": "Raw shell preserves the reviewed assertion while this self-registering suite replaces a legacy workflow registry edit.",
+    "timeoutSeconds": 60
+  }
+}

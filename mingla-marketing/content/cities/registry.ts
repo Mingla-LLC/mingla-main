@@ -54,6 +54,56 @@ export const CITY_HUB_SLUGS = [
 
 export type CityHubSlug = (typeof CITY_HUB_SLUGS)[number]
 
+// #4318 — where each live city sits, for usemingla.com/links: the city the page
+// opens on (nearest to the visitor) and which city a listing belongs to (its
+// nearest centre within 60 km). The registry is the one owner of these facts;
+// SQL never hardcodes a city. Kept OUT of the CityHubRecord objects on purpose,
+// so the #2983 readiness fingerprints and catalogue contracts do not move.
+// Centres are the commonly used city centre point (Lagos: Victoria Island, so
+// Lekki and Ikoyi listings fall inside the 60 km reach).
+export const CITY_HUB_CENTRES: Readonly<Record<CityHubSlug, Readonly<{ lat: number; lng: number }>>> = {
+  lagos: { lat: 6.4281, lng: 3.4219 },
+  'durham-nc': { lat: 35.994, lng: -78.8986 },
+  'cary-nc': { lat: 35.7915, lng: -78.7811 },
+  'raleigh-nc': { lat: 35.7796, lng: -78.6382 },
+  'new-york-city': { lat: 40.7128, lng: -74.006 },
+  brussels: { lat: 50.8467, lng: 4.3525 },
+  paris: { lat: 48.8566, lng: 2.3522 },
+  london: { lat: 51.5074, lng: -0.1278 },
+  'fort-lauderdale': { lat: 26.1224, lng: -80.1373 },
+  'washington-dc': { lat: 38.9072, lng: -77.0369 },
+}
+
+// #4318 — how far from its centre a listing still belongs to each city (km).
+// Lagos reaches 80 km because the metro and the Lekki coast sprawl (Ibeju-Lekki
+// and the Lekki Free Trade Zone); every other city reaches 60 km.
+export const CITY_HUB_REACH_KM: Readonly<Record<CityHubSlug, number>> = {
+  lagos: 80,
+  'durham-nc': 60,
+  'cary-nc': 60,
+  'raleigh-nc': 60,
+  'new-york-city': 60,
+  brussels: 60,
+  paris: 60,
+  london: 60,
+  'fort-lauderdale': 60,
+  'washington-dc': 60,
+}
+
+// #4318 — the region line under each city in the /links city picker.
+export const CITY_HUB_REGIONS: Readonly<Record<CityHubSlug, string>> = {
+  lagos: 'Nigeria',
+  'durham-nc': 'North Carolina',
+  'cary-nc': 'North Carolina',
+  'raleigh-nc': 'North Carolina',
+  'new-york-city': 'New York',
+  brussels: 'Belgium',
+  paris: 'France',
+  london: 'United Kingdom',
+  'fort-lauderdale': 'Florida',
+  'washington-dc': 'District of Columbia',
+}
+
 export interface CityJurisdictionContract {
   readonly identity: string
   readonly city: string

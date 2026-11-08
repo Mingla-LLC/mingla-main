@@ -30,6 +30,7 @@ import { IdeasPanel } from "../components/community/IdeasPanel";
 import { QuestionsPanel } from "../components/community/QuestionsPanel";
 import { FailedPushBanner } from "../components/community/FailedPushBanner";
 import { BlogPanel } from "../components/blog/BlogPanel";
+import { LinksPagePanel } from "../components/links/LinksPagePanel";
 import { CommunitySupportNavigation } from "../components/community/CommunitySupportNavigation";
 import { useAuth } from "../context/AuthContext";
 import { AREA } from "../lib/access";
@@ -253,6 +254,7 @@ export function SupportCommunityConsole({ pageId }) {
       )}
       {activeTab === "email" && capabilities.canEmail && <EmailPage embedded />}
       {activeTab === "blog" && capabilities.canBlog && <BlogPanel onCounts={onBlogCounts} />}
+      {activeTab === "links" && capabilities.canSupport && <LinksPagePanel />}
       {activeTab === "team" && capabilities.isAdmin && <TeamRolesPanel canInvite={canInvite} refreshKey={peopleRefreshKey} />}
 
       {activeTab === "announcements" && <AnnouncementsPanel />}
