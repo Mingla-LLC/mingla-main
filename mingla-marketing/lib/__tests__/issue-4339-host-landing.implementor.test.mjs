@@ -87,10 +87,24 @@ test('exactly the seven ICP pages, from one data file, and none shadows a /host 
   // One template: the page renders nothing ICP-specific itself.
   const template = code(read('components/landing/icp-landing.tsx'))
   for (const slug of SLUGS) assert.doesNotMatch(template, new RegExp(`['"]${slug}['"]`), `the template must not branch on ${slug}`)
-  // Registered as noindex search routes, one per slug.
+  // Registered as INDEXED search routes, one per slug (Seth, 8 Nov): the same
+  // search_ready class as /host, so each has a canonical URL, robots
+  // index/follow and a sitemap entry (app/sitemap.ts lists searchReadyRoutes()).
   const registry = code(read('lib/search/route-registry.ts'))
-  assert.match(registry, /HOST_LANDING_ROUTE_CONTRACTS[^=]*= ICP_SLUGS\.map[\s\S]*?lifecycle: 'public_noindex'/)
+  const block = registry.match(/HOST_LANDING_ROUTE_CONTRACTS[^=]*= ICP_SLUGS\.map[\s\S]*?\}\)\)/)?.[0] ?? ''
+  assert.match(block, /lifecycle: 'search_ready' as const/, 'the landing pages are search_ready (indexed)')
+  assert.doesNotMatch(block, /public_noindex/, 'no landing page is noindex')
+  assert.match(block, /\.\.\.icpLandingMeta\(slug\)/, 'title and description come from the ICP copy')
+  assert.match(block, /lastModified: HOST_LANDING_LAST_MODIFIED/)
   assert.match(registry, /\.\.\.HOST_LANDING_ROUTE_CONTRACTS,/)
+  assert.match(registry, /export function searchReadyRoutes\(\)[\s\S]*?contract\.lifecycle === 'search_ready'/)
+  assert.match(code(read('app/sitemap.ts')), /searchReadyRoutes\(\)\.map/, 'the sitemap lists every search_ready route')
+  assert.match(page, /return searchRouteMetadata\(icpLandingPath\(icp\)\)/, 'the page uses the indexed metadata (canonical + index)')
+  assert.doesNotMatch(page, /publicNoindexMetadata/)
+  for (const slug of SLUGS) {
+    const meta = icps.icpLandingMeta(slug)
+    assert.ok(meta.title.trim() !== '' && meta.description.trim() !== '', `${slug}: search title and description`)
+  }
 })
 
 test('every ICP carries the full approved format, with internal tools and real media', () => {
@@ -209,7 +223,7 @@ test('clips: poster first, no source in the server HTML, never loaded under redu
 })
 
 // ---- built HTML (after `next build`) ---------------------------------------
-test('built: all seven pages prerender with the two-line hero and no privacy link', { skip: !BUILT && 'set ISSUE_4339_BUILT=1 after next build' }, () => {
+test('built: all seven pages prerender indexed, with the two-line hero and no privacy link', { skip: !BUILT && 'set ISSUE_4339_BUILT=1 after next build' }, () => {
   for (const slug of SLUGS) {
     const file = path.join(MARKETING, '.next/server/app/host', `${slug}.html`)
     assert.ok(fs.existsSync(file), `${slug} must be prerendered`)
@@ -218,7 +232,8 @@ test('built: all seven pages prerender with the two-line hero and no privacy lin
     const esc = (s) => s.replaceAll('&', '&amp;').replaceAll('’', '’')
     assert.ok(html.includes(`<h1 id="lp-title"><span>${esc(d.l1)}</span><span><em>${esc(d.l2)}</em></span></h1>`), `${slug}: two-line hero`)
     assert.doesNotMatch(html, /privacy choices/i, `${slug}: no privacy choices text`)
-    assert.match(html, /<meta name="robots" content="noindex, follow"/)
+    assert.match(html, /<meta name="robots" content="index, follow"/, `${slug}: indexed`)
+    assert.ok(html.includes(`<link rel="canonical" href="https://usemingla.com/host/${slug}"`), `${slug}: canonical URL`)
     assert.doesNotMatch(html, /<video[^>]*\ssrc=/, `${slug}: no clip source before the script decides`)
     assert.ok(html.includes(`href="/schedule?icp=${slug}"`), `${slug}: Talk to the team`)
     assert.ok(html.includes(`href="${icps.TOOL_PATH[d.tool.n]}"`), `${slug}: tool link`)

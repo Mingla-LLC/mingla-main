@@ -7,7 +7,7 @@ import {
 import { CORE_PAGES } from '../../content/core-pages'
 import { HELP_VIDEOS, helpVideoPath } from '../../content/help/registry'
 import { BLOG_CATEGORIES, blogCategoryPath } from '../../content/blog/categories'
-import { ICP_SLUGS, icpLandingPath } from '../../content/host-landing/icps'
+import { ICP_SLUGS, icpLandingMeta, icpLandingPath } from '../../content/host-landing/icps'
 
 export const ROUTE_LIFECYCLE_STATES = [
   'draft',
@@ -320,10 +320,18 @@ export const BLOG_CATEGORY_ROUTE_CONTRACTS: readonly SearchReadyRouteContract[] 
 // #4339 — the seven Host landing pages (/host/<icp>), projected from the one
 // ICP data file. Paid ads point at them; they stay noindex until Seth decides
 // they should be search pages (flip the lifecycle here, nowhere else).
-export const HOST_LANDING_ROUTE_CONTRACTS: readonly RouteContract[] = ICP_SLUGS.map((slug) => ({
+// #4339 (Seth, 8 Nov): the seven Host landing pages are INDEXED, the same
+// search_ready class as /host: canonical URL, robots index/follow, and an
+// entry in the sitemap. Title and description come from the ICP's own
+// approved copy (icpLandingMeta), so the page and the sitemap share one owner.
+export const HOST_LANDING_LAST_MODIFIED = '2026-11-08' as const
+
+export const HOST_LANDING_ROUTE_CONTRACTS: readonly SearchReadyRouteContract[] = ICP_SLUGS.map((slug) => ({
   id: `host-landing-${slug}`,
   match: { type: 'exact' as const, pathname: icpLandingPath(slug) },
-  lifecycle: 'public_noindex' as const,
+  lifecycle: 'search_ready' as const,
+  ...icpLandingMeta(slug),
+  lastModified: HOST_LANDING_LAST_MODIFIED,
 }))
 
 // #4137 — WHY A PREFIX + NOINDEX FAMILY FOR /blog. Published posts live in the

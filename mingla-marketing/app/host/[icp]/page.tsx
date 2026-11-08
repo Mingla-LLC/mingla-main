@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
-import { publicNoindexMetadata } from '@/lib/search/metadata'
-import { ICP_SLUGS, icpLandingMeta, icpLandingPath, isIcpSlug } from '@/content/host-landing/icps'
+import { searchRouteMetadata } from '@/lib/search/metadata'
+import { ICP_SLUGS, icpLandingPath, isIcpSlug } from '@/content/host-landing/icps'
 import { IcpLandingPage } from '@/components/landing/icp-landing'
 import { landingMono, landingSans, landingSerif } from './fonts'
 
@@ -25,7 +25,8 @@ type Params = Promise<{ icp: string }>
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { icp } = await params
   if (!isIcpSlug(icp)) return {}
-  return publicNoindexMetadata(icpLandingPath(icp), { ...icpLandingMeta(icp), follow: true })
+  // Indexed (search_ready, #4339): canonical, index/follow, in the sitemap.
+  return searchRouteMetadata(icpLandingPath(icp))
 }
 
 export default async function HostIcpLandingPage({ params }: { params: Params }) {
