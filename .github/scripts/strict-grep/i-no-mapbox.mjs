@@ -53,6 +53,9 @@ export const ALLOWED_TOKENS = [
   /mapboxId_retired/g,
   /'mapboxId'/g,
   /\bmapbox_id\b/g,
+  // the pre-#4334 shared field's path, kept as a sealed Phase 2 CI origin path
+  // (byte-locked registry) and its reviewed liveness exemption.
+  /packages\/location-input\/src\/MapboxAddressInput\.tsx/g,
 ];
 
 export const ALLOWED_PATHS = [

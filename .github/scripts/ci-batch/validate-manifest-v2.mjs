@@ -399,7 +399,7 @@ export function phase3dContractDigest(manifest) {
 // #4270 W7: register the admin Brand group inbox suites; migration 20280502004270; re-sealed after merging origin/main (#4322).
 // #4273 polish: register the sent-previews migration, its PostgreSQL proofs (implementor + tester) and the campaign-screen render proof.
 // #4334: register the Google places migration and its PostgreSQL proof, and point the issue-992 lane at the renamed server geocode helper.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "a4a07647403ce8095308384fe1296d19b65e4af9f6c708cce30dd3b41631e9e1";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "3b0d6b6c877d3292622388f304c5439d66049da949c3cf1bc82325f4f873c35e";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
@@ -937,6 +937,11 @@ const STALE_PROVENANCE_ALLOWLIST = Object.freeze([
   Object.freeze({ suite: "issue-994-ota-env-resolution-app-mobile", pattern: REVIEWED_SPLIT_PATHS[1], issue: "#994" }),
   Object.freeze({ suite: "issue-994-ota-env-resolution-mingla-business", pattern: REVIEWED_SPLIT_PATHS[0], issue: "#994" }),
   Object.freeze({ suite: "issue-994-ota-env-resolution-mingla-business", pattern: REVIEWED_SPLIT_PATHS[1], issue: "#994" }),
+  // #4334 — the shared address field was renamed to AddressInput.tsx. This origin
+  // path sits in the byte-locked Phase 2 suite registry (PHASE2_SUITES_SHA256), so
+  // it cannot be rewritten; the suite still watches the business location
+  // components and its own keyboard-cap tests, which import the renamed file.
+  Object.freeze({ suite: "issue-1027-keyboard-and-datetime-tests", pattern: "packages/location-input/src/MapboxAddressInput.tsx", issue: "#4334" }),
 ]);
 const WORKFLOW_PROVENANCE_PREFIX = ".github/workflows/";
 
