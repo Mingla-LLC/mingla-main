@@ -17,7 +17,7 @@
  *                          the legacy request alias the proxy answers 410.
  *   ALLOWED PATHS (history and recorded evidence):
  *     - supabase/migrations/** (applied history, never edited);
- *     - REPORTS.md (ship log), docs/INVARIANT_REGISTRY.md (frozen);
+ *     - REPORTS.md (ship log) and the frozen invariant history file;
  *     - supabase/functions/mapbox-geocode/__tests__/fixtures/** (the recorded
  *       pre-#4334 answers kept as "before" values);
  *     - .github/ci-batch/MANIFEST.json (frozen workflow digests);
