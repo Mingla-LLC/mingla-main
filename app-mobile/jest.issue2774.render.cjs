@@ -109,5 +109,12 @@ module.exports = {
     // the smart chip in venue time and across midnight, claimed-venue keys,
     // the hint's logout sweep, locale plurals, the kicker's contrast floor.
     "**/__tests__/issue_4347_wave1.tester.adversarial.test.ts",
+    // issue #4347 wave 1 rework + wave 2 — tester adversarial: the collab
+    // route hand-off as its real host mounts it, card-local tap targets on
+    // every face layer, the 482pt scrim on iPhone SE at the largest text; the
+    // place sheet's gallery under parent re-renders, forecast / sunset /
+    // quieter-at edges, and pinned-bar parity with the old band.
+    "**/__tests__/issue_4347_wave1_rework.tester.adversarial.render.test.tsx",
+    "**/__tests__/issue_4347_place_sheet.tester.adversarial.render.test.tsx",
   ],
 };
