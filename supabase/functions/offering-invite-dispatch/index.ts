@@ -10,6 +10,7 @@ import {
 import {
   buildOfferingExecutionSnapshot,
   hashOfferingSelection,
+  offeringUnpricedSmsCount,
   type PersistedOfferingPushV1,
   type QuoteCandidateRow,
 } from "../_shared/offeringInviteQuote.ts";
@@ -21,7 +22,9 @@ import {
   resolveAlertRecipientValue,
   resolveDeliveryFlagValue,
 } from "../_shared/secretBundle.ts";
-import { countryFromE164 } from "../_shared/e164Country.ts";
+import { MAPPED_COUNTRIES } from "../_shared/e164Country.ts";
+import { smsCountryTextableNow } from "../_shared/smsPriceBook.ts";
+import { loadSmsRates } from "../_shared/smsPriceTable.ts";
 import {
   type OpsAlertEmailInput,
   type OpsAlertEmailResult,
@@ -152,14 +155,8 @@ function isWizardPreviewBody(value: unknown): value is WizardPreviewBody {
 }
 
 function deliveryFlagEnabled(
-  field:
-    | "marketing_send_live_enabled"
-    | "sms_live_enabled.ng"
-    | "sms_live_enabled.us",
-  legacyName:
-    | "MARKETING_SEND_LIVE_ENABLED"
-    | "SMS_LIVE_ENABLED_NG"
-    | "SMS_LIVE_ENABLED_US",
+  field: "marketing_send_live_enabled",
+  legacyName: "MARKETING_SEND_LIVE_ENABLED",
 ): boolean {
   const value = resolveDeliveryFlagValue(field, legacyName);
   return typeof value === "boolean" ? value : value === "true" || value === "1";
@@ -167,29 +164,23 @@ function deliveryFlagEnabled(
 
 function currentWizardDeliveryPolicy(): {
   channels: Channel[];
-  smsNg: boolean;
-  smsUs: boolean;
 } {
   const marketing = deliveryFlagEnabled(
     "marketing_send_live_enabled",
     "MARKETING_SEND_LIVE_ENABLED",
   );
-  const smsNg = deliveryFlagEnabled(
-    "sms_live_enabled.ng",
-    "SMS_LIVE_ENABLED_NG",
-  );
-  const smsUs = deliveryFlagEnabled(
-    "sms_live_enabled.us",
-    "SMS_LIVE_ENABLED_US",
+  // #4273 — one SMS switch per country. SMS is offered when any country is
+  // switched on; a number in a switched-off country is then skipped by the
+  // quote itself ("can't text their country yet"), never priced.
+  const anySmsCountry = MAPPED_COUNTRIES.some((country) =>
+    smsCountryTextableNow(country)
   );
   return {
     channels: [
       ...(marketing ? ["email" as const] : []),
       "push" as const,
-      ...(marketing && (smsNg || smsUs) ? ["sms" as const] : []),
+      ...(marketing && anySmsCountry ? ["sms" as const] : []),
     ].sort() as Channel[],
-    smsNg,
-    smsUs,
   };
 }
 
@@ -206,21 +197,6 @@ export function wizardChannelsFor(
   if (!Array.isArray(chosen)) throw new Error("wizard_invite_methods_invalid");
   const picked = new Set(chosen);
   return policyChannels.filter((channel) => picked.has(channel));
-}
-
-function applyWizardSmsMarketFlags(
-  rows: QuoteCandidateRow[],
-  policy: { smsNg: boolean; smsUs: boolean },
-): QuoteCandidateRow[] {
-  return rows.map((row) => {
-    if (row.channel !== "sms" || !row.allowed) return row;
-    const country = countryFromE164(row.normalizedContact);
-    // orch-strict-grep-allow stripe-country-out-of-scope — SMS market rollout flag selection, not Stripe payout eligibility.
-    const marketEnabled = country === "NG" ? policy.smsNg : policy.smsUs;
-    return marketEnabled
-      ? row
-      : { ...row, allowed: false, safeReasonCode: "suppressed" };
-  });
 }
 
 function observeWizardInvite(
@@ -701,11 +677,8 @@ export async function handleWizardWorker(
             brandId: string;
             candidates: QuoteCandidateRow[];
           };
-          candidates.candidates = applyWizardSmsMarketFlags(
-            candidates.candidates,
-            policy,
-          );
           const snapshot = await buildOfferingExecutionSnapshot({
+            smsRates: await loadSmsRates(service).catch(() => undefined),
             eventId: job.eventId,
             brandId: candidates.brandId,
             purpose: "invitation",
@@ -979,6 +952,7 @@ export async function noMethodsWizardQuote(input: {
     canReceiveCount: 0,
     skippedCount: input.selectedCount,
     skipReasonCounts: {},
+    unpricedSmsCount: 0,
     perChannelReachable: { email: 0, sms: 0, push: 0 },
     smsSegments: 0,
     estimatedCostMinor: 0,
@@ -1077,8 +1051,8 @@ async function handleWizardPreview(
       eligibleCount: number;
       candidates: QuoteCandidateRow[];
     };
-    quoted.candidates = applyWizardSmsMarketFlags(quoted.candidates, policy);
     const snapshot = await buildOfferingExecutionSnapshot({
+      smsRates: await loadSmsRates(service).catch(() => undefined),
       eventId: body.eventId,
       brandId: quoted.brandId,
       purpose: "invitation",
@@ -1250,6 +1224,8 @@ function publicQuote(
       result.selectedCount - canReceiveCount,
     ),
     skipReasonCounts: {},
+    /** #4273 — texts skipped because the phone's country has no rate yet. */
+    unpricedSmsCount: offeringUnpricedSmsCount(snapshot, result.candidates),
     perChannelReachable,
     smsSegments: snapshot.quote.smsSegments,
     estimatedCostMinor: snapshot.quote.estimatedCostMinor,
@@ -1355,6 +1331,7 @@ export async function handler(request: Request): Promise<Response> {
       retryPushPayload?: PersistedOfferingPushV1 | null;
     };
     const snapshot = await buildOfferingExecutionSnapshot({
+      smsRates: await loadSmsRates(service).catch(() => undefined),
       eventId: body.eventId,
       brandId: candidates.brandId,
       purpose: body.purpose,

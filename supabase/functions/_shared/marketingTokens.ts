@@ -162,6 +162,117 @@ export async function verifyUnsubscribeToken(
 }
 
 // ---------------------------------------------------------------------------
+// #4273 — SMS opt-out tokens (texts whose sender cannot take a "STOP" reply)
+// ---------------------------------------------------------------------------
+// The token names the MESSAGE, never the person: {campaign_id, brand_id,
+// channel:"sms", message_id, exp}. No phone, no email, no other contact. It is
+// stored in marketing_clicks.destination_url (the opt-out short link's target),
+// which campaign members can read, so it must carry nothing a host may not see.
+// marketing-unsubscribe resolves the number from marketing_messages by
+// (message_id, campaign_id) with the service role.
+//
+// FIXED LENGTH: three UUIDs, a fixed key order and a 10-digit exp, so every
+// token for every recipient is the same length (the text itself only carries
+// the short tracked link, but the destination stays uniform too).
+
+export interface SmsUnsubscribeTokenPayload {
+  campaign_id: string;
+  brand_id: string;
+  channel: "sms";
+  message_id: string;
+  /** Unix seconds. */
+  exp: number;
+}
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/**
+ * #4273 tester retest 3 — a text lives on a phone for years, so its opt-out
+ * link must keep working: 5 years, not the email token's 90 days. The token
+ * is message-scoped and carries no contact, so a long life exposes nothing.
+ */
+export const SMS_UNSUB_TTL_SECONDS = 60 * 60 * 24 * 365 * 5;
+
+export async function signSmsUnsubscribeToken(
+  payload: { campaign_id: string; brand_id: string; message_id: string },
+  options: { secretEnvKey?: string; ttlSeconds?: number; exp?: number } = {},
+): Promise<string> {
+  for (
+    const id of [payload.campaign_id, payload.brand_id, payload.message_id]
+  ) {
+    if (!UUID_RE.test(id)) throw new Error("sms_unsubscribe_token_id_invalid");
+  }
+  const secret = requireSecret(
+    options.secretEnvKey ?? "UNSUBSCRIBE_TOKEN_SECRET",
+  );
+  const exp = options.exp ??
+    Math.floor(Date.now() / 1000) +
+      (options.ttlSeconds ?? SMS_UNSUB_TTL_SECONDS);
+  const body: SmsUnsubscribeTokenPayload = {
+    campaign_id: payload.campaign_id,
+    brand_id: payload.brand_id,
+    channel: "sms",
+    message_id: payload.message_id,
+    exp,
+  };
+  const payloadEncoded = base64UrlEncode(ENCODER.encode(JSON.stringify(body)));
+  const key = await hmacKey(secret);
+  const sig = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    ENCODER.encode(payloadEncoded),
+  );
+  return `${payloadEncoded}.${base64UrlEncode(new Uint8Array(sig))}`;
+}
+
+/** Null when the token is well signed but is not an SMS opt-out token. */
+export async function verifySmsUnsubscribeToken(
+  token: string,
+  options: { secretEnvKey?: string; nowSeconds?: number } = {},
+): Promise<SmsUnsubscribeTokenPayload | null> {
+  const secret = requireSecret(
+    options.secretEnvKey ?? "UNSUBSCRIBE_TOKEN_SECRET",
+  );
+  const parts = token.split(".");
+  if (parts.length !== 2) throw new Error("unsubscribe_token_malformed");
+  const [payloadEncoded, sigEncoded] = parts;
+  const key = await hmacKey(secret);
+  const expected = new Uint8Array(
+    await crypto.subtle.sign("HMAC", key, ENCODER.encode(payloadEncoded)),
+  );
+  let provided: Uint8Array;
+  try {
+    provided = base64UrlDecode(sigEncoded);
+  } catch (_err) {
+    throw new Error("unsubscribe_token_signature_invalid");
+  }
+  if (!timingSafeEqual(expected, provided)) {
+    throw new Error("unsubscribe_token_signature_invalid");
+  }
+  let payload: Partial<SmsUnsubscribeTokenPayload>;
+  try {
+    payload = JSON.parse(DECODER.decode(base64UrlDecode(payloadEncoded)));
+  } catch (_err) {
+    throw new Error("unsubscribe_token_payload_invalid");
+  }
+  if (payload?.channel !== "sms") return null;
+  if (
+    typeof payload.campaign_id !== "string" ||
+    !UUID_RE.test(payload.campaign_id) ||
+    typeof payload.brand_id !== "string" || !UUID_RE.test(payload.brand_id) ||
+    typeof payload.message_id !== "string" ||
+    !UUID_RE.test(payload.message_id) ||
+    typeof payload.exp !== "number"
+  ) {
+    throw new Error("unsubscribe_token_payload_invalid");
+  }
+  const now = options.nowSeconds ?? Math.floor(Date.now() / 1000);
+  if (payload.exp < now) throw new Error("unsubscribe_token_expired");
+  return payload as SmsUnsubscribeTokenPayload;
+}
+
+// ---------------------------------------------------------------------------
 // Tracking IDs (opaque UUID, no signing)
 // ---------------------------------------------------------------------------
 

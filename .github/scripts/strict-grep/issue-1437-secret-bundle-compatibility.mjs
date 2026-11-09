@@ -86,7 +86,9 @@ function containsBundleResolutionCall(relativePath, source) {
   const withoutImports = source
     .replace(/^\s*import\s+[\s\S]*?;\s*$/gm, "")
     .replace(/^\s*export\s+[^;]*?\sfrom\s+[^;]*;\s*$/gm, "");
-  return /\b(?:resolveDeliveryFlagValue|resolvePaymentOperationFlagValue)\s*\(|\bresolvePaystackPayoutHoldOnboardFlip\b/.test(
+  // #4273 — resolveSmsCountryLive is the per-country SMS switch reader (it
+  // wraps resolveDeliveryFlagValue for US/NG), so it is a delivery-flag sink.
+  return /\b(?:resolveDeliveryFlagValue|resolvePaymentOperationFlagValue|resolveSmsCountryLive)\s*\(|\bresolvePaystackPayoutHoldOnboardFlip\b/.test(
     withoutImports,
   );
 }

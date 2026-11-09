@@ -11,7 +11,7 @@
 //
 // The trip data model carries ONLY free-text location strings (departureText /
 // destinationText / *LocationText) plus a placeId + lat/lng — there are NO
-// structured Mapbox city/country string fields on the trip payload (verified
+// structured city/country string fields on the trip payload (verified
 // against TripBusinessTrip / ConsumerTripDetail). The optional structured-field
 // inputs below are honored when a future caller can supply them (PREFER path),
 // otherwise we parse the free text (rule 9 — no fabrication: an unresolvable
@@ -19,7 +19,7 @@
 
 /**
  * Optional structured location parts. When a caller already holds a resolved
- * city / country (e.g. from a Mapbox structured field), pass them and the parser
+ * city / country (e.g. from the address search's structured field), pass them and the parser
  * is skipped. Absent fields fall back to free-text parsing.
  */
 export interface StructuredPlaceParts {

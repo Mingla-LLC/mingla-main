@@ -373,6 +373,11 @@ export type Brand = {
   googlePlaceId?: string;
   lat?: number;
   lng?: number;
+  /**
+   * #4334 — the Google place id of lat/lng (the picked address). Written in the
+   * same row write as the coordinates; never the pool identity above.
+   */
+  locationProviderPlaceId?: string | null;
   city?: string;
   countryCode?: string;
   /** Ve1 — Restaurant / Play / Creative & Arts from venue onboarding. */

@@ -39,11 +39,12 @@ serve(async (req) => {
   const supabase = serviceClient();
 
   // Single round-trip — pull the click row + the related message id.
+  // #4273 tester: select "*" rather than naming link_kind, so this read cannot
+  // fail (and send every click to the fallback) if this function is live
+  // before the migration that adds the column; a row without it is content.
   const { data: clickRow, error: clickErr } = await supabase
     .from("marketing_clicks")
-    .select(
-      "id, campaign_id, message_id, destination_url, clicked_at",
-    )
+    .select("*")
     .eq("tracking_id", trackingId)
     .maybeSingle();
 
@@ -57,6 +58,17 @@ serve(async (req) => {
   }
   if (clickRow === null) {
     return redirect(FALLBACK_URL);
+  }
+
+  // #4273 — the SMS opt-out link is not engagement: no click time, no
+  // click_count, no "clicked" status, no UTM tags. It goes straight to the
+  // opt-out confirm page (which itself changes nothing until its POST).
+  if ((clickRow as { link_kind?: string }).link_kind === "opt_out") {
+    try {
+      return redirect(new URL(clickRow.destination_url).toString());
+    } catch (_err) {
+      return redirect(FALLBACK_URL);
+    }
   }
 
   // First-click capture: only set clicked_at if it was null.

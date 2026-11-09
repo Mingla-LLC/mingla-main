@@ -3,7 +3,7 @@
 // parser is pure (no network, no env).
 //
 // PROTECTIVE COMMENT — the CONSUMER place search strips a recognized TRAILING
-// COUNTRY token from the query and re-applies it as a Mapbox `country` ISO bias
+// COUNTRY token from the query and re-applies it as an ISO region filter
 // (runtime-proven fix for "lekki nigeria" → Lekki Lagos #1; evidence probe G/N).
 // This parser is used ONLY by the `suggest_places` action; the BUSINESS `suggest`
 // path never imports it and stays byte-identical + filter-free (INV-3 / ORCH-1079).

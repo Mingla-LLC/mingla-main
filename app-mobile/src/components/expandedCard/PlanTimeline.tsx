@@ -51,7 +51,7 @@ export interface PlanTimelineLeg {
    * This is not decoration and it is not optional. Traffic was DELETED from this
    * sheet three weeks ago (see `busynessService`'s header) because its fallback
    * returned `${10 + extraMin} min` from nothing but the clock and rendered it
-   * beside a real Mapbox reading in the same row, unlabelled. A haversine figure
+   * beside a real third-party reading in the same row, unlabelled. A haversine figure
    * is a different thing — computed from two real coordinates, reproducible —
    * but it is still not a measurement, and the disclosure is the entire reason
    * it is allowed on the sheet at all (Constitution 9).

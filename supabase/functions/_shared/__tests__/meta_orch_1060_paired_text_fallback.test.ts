@@ -1,4 +1,4 @@
-// META-ORCH-1060 [Mapbox consumer migration] §4 — paired-view 4th fallback
+// META-ORCH-1060 [consumer location migration; Google Geocoding since #4334] §4 — paired-view 4th fallback
 // regression test.
 //
 // Proves: a paired friend with NO numeric coords (RPC returns []) but a non-empty
@@ -20,7 +20,7 @@ import {
   assertEquals,
 } from "https://deno.land/std@0.190.0/testing/asserts.ts";
 import { resolveFriendLocation } from "../personHeroCards.ts";
-import { __clearForwardGeocodeCacheForTests } from "../mapboxGeocode.ts";
+import { __clearForwardGeocodeCacheForTests } from "../placesGeocode.ts";
 
 const VIEWER = "11111111-1111-4111-8111-111111111111";
 const FRIEND = "22222222-2222-4222-8222-222222222222";
@@ -79,7 +79,8 @@ function withMockFetch(
 function brooklynForwardResponse(): Response {
   return new Response(
     JSON.stringify({
-      features: [{ geometry: { coordinates: [-73.9442, 40.6782] } }],
+      status: "OK",
+      results: [{ geometry: { location: { lat: 40.6782, lng: -73.9442 } } }],
     }),
     { status: 200, headers: { "Content-Type": "application/json" } },
   );
@@ -87,7 +88,7 @@ function brooklynForwardResponse(): Response {
 
 Deno.test("T-10 paired text fallback: RPC has no coords but profile has a city → resolves center", async () => {
   __clearForwardGeocodeCacheForTests();
-  Deno.env.set("MAPBOX_ACCESS_TOKEN", "test_token");
+  Deno.env.set("GOOGLE_MAPS_API_KEY", "test_key");
   const client = makeAdminClient({ rpcRow: null, profileLocation: "Brooklyn, NY" });
   await withMockFetch(
     () => brooklynForwardResponse(),
@@ -103,7 +104,7 @@ Deno.test("T-10 paired text fallback: RPC has no coords but profile has a city �
 
 Deno.test("T-10b paired consent: RPC IS the consent gate — no separate un-gated read path", async () => {
   __clearForwardGeocodeCacheForTests();
-  Deno.env.set("MAPBOX_ACCESS_TOKEN", "test_token");
+  Deno.env.set("GOOGLE_MAPS_API_KEY", "test_key");
   let rpcArgs: Record<string, string> | null = null;
   // A NON-paired friend: the consent-gated RPC returns [] (no row passes the
   // pairing check). The text fallback reads profiles ONLY after that gated RPC
@@ -128,11 +129,11 @@ Deno.test("T-10b paired consent: RPC IS the consent gate — no separate un-gate
 
 Deno.test("T-10c paired geocode fail: no usable feature → graceful null (no fabricated coords)", async () => {
   __clearForwardGeocodeCacheForTests();
-  Deno.env.set("MAPBOX_ACCESS_TOKEN", "test_token");
+  Deno.env.set("GOOGLE_MAPS_API_KEY", "test_key");
   const client = makeAdminClient({ rpcRow: null, profileLocation: "Atlantis" });
   await withMockFetch(
     () =>
-      new Response(JSON.stringify({ features: [] }), {
+      new Response(JSON.stringify({ status: "ZERO_RESULTS", results: [] }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       }),
@@ -145,7 +146,7 @@ Deno.test("T-10c paired geocode fail: no usable feature → graceful null (no fa
 
 Deno.test("paired empty text: no profile location → null (no geocode attempt)", async () => {
   __clearForwardGeocodeCacheForTests();
-  Deno.env.set("MAPBOX_ACCESS_TOKEN", "test_token");
+  Deno.env.set("GOOGLE_MAPS_API_KEY", "test_key");
   let fetched = false;
   const client = makeAdminClient({ rpcRow: null, profileLocation: null });
   await withMockFetch(
@@ -156,14 +157,14 @@ Deno.test("paired empty text: no profile location → null (no geocode attempt)"
     async () => {
       const result = await resolveFriendLocation(client, VIEWER, FRIEND);
       assertEquals(result, null);
-      assertEquals(fetched, false, "empty text must not hit Mapbox");
+      assertEquals(fetched, false, "empty text must not hit Google");
     },
   );
 });
 
-Deno.test("T-10d paired cache: same text twice → at most one Mapbox call", async () => {
+Deno.test("T-10d paired cache: same text twice → at most one Google call", async () => {
   __clearForwardGeocodeCacheForTests();
-  Deno.env.set("MAPBOX_ACCESS_TOKEN", "test_token");
+  Deno.env.set("GOOGLE_MAPS_API_KEY", "test_key");
   let calls = 0;
   const client = makeAdminClient({ rpcRow: null, profileLocation: "Brooklyn, NY" });
   await withMockFetch(
@@ -181,7 +182,7 @@ Deno.test("T-10d paired cache: same text twice → at most one Mapbox call", asy
 
 Deno.test("paired GPS present: RPC coords win — text fallback NOT reached", async () => {
   __clearForwardGeocodeCacheForTests();
-  Deno.env.set("MAPBOX_ACCESS_TOKEN", "test_token");
+  Deno.env.set("GOOGLE_MAPS_API_KEY", "test_key");
   let fetched = false;
   const fromCalled = { value: false };
   const client = makeAdminClient({

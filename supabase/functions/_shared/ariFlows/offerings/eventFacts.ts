@@ -247,7 +247,7 @@ export function parseTimezoneAnswer(text: string): string | null {
   return null;
 }
 
-/** A place picked on the Ari card (Mapbox address search). */
+/** A place picked on the Ari card (Google address search, #4334). */
 export interface PickedPlace {
   venue_name: string;
   address: string;
@@ -255,14 +255,14 @@ export interface PickedPlace {
   country_code: string | null;
   lat: number;
   lng: number;
-  /** Mapbox `feature_type`: "poi" for a named venue, "address" for a street address. */
+  /** Normalized `feature_type`: "poi" for a named venue, "address" for a street address. */
   feature_type: string | null;
   /** #3355 P9 — the address search's own id (an experience stop's place_id). */
   place_id?: string | null;
 }
 
 /**
- * Seth's decision 4: a place that looks like a home — a Mapbox street
+ * Seth's decision 4: a place that looks like a home — a street
  * address with no venue/POI name — gets the "show the address only to ticket
  * holders?" question.
  */

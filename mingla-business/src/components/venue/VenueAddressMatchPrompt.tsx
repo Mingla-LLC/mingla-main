@@ -15,8 +15,8 @@
  * which legitimately writes `googlePlaceId` (the pool row's own Google id — the
  * dedup key `biz_create_venue_brand_authoring` checks). ORCH-1079's pinned guard
  * asserts that NO `patch({...})` inside `VenueStep1Address.tsx` ever mentions
- * `googlePlaceId`, and that guard is load-bearing: it is what stops a Mapbox
- * `mapbox_id` being written into that column. Putting the conversion here keeps
+ * `googlePlaceId`, and that guard is load-bearing: it is what stops a picked place id
+ * being written into that column. Putting the conversion here keeps
  * both true — the address handlers stay dumb about identity, and the claim
  * prefill stays the only thing that sets it.
  *

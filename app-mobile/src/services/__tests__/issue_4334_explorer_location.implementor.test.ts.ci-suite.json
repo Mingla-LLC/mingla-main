@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/services/__tests__/issue_4334_explorer_location.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4334-explorer-location-implementor",
+  "profile": "deno-2-unit"
+}

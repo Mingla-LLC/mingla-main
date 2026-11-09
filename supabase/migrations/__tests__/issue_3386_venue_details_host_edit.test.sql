@@ -114,8 +114,8 @@ DECLARE
 BEGIN
   FOREACH v_sig IN ARRAY ARRAY[
     'public.biz_update_venue_contact(uuid,text,text,text)',
-    'public.biz_update_venue_identity_in_review(uuid,text,text,text,text,text,double precision,double precision,text)',
-    'public.biz_submit_venue_details_change_request(uuid,text,text,text,text,text,double precision,double precision,text)',
+    'public.biz_update_venue_identity_in_review(uuid,text,text,text,text,text,double precision,double precision,text,text)',
+    'public.biz_submit_venue_details_change_request(uuid,text,text,text,text,text,double precision,double precision,text,text)',
     'public.biz_withdraw_venue_details_change_request(uuid,uuid)',
     'public.admin_review_venue_details_change(uuid,uuid,text,text)'
   ] LOOP

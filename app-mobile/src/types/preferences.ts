@@ -25,6 +25,12 @@ export interface UserPreferences {
   custom_location?: string | null;
   custom_lat?: number | null;
   custom_lng?: number | null;
+  /**
+   * #4334 — Google place id of a picked or typed custom location (spec v2 A2/A3),
+   * so the anchor's coordinates can be refreshed. Null for GPS saves and for
+   * anchors saved before #4334.
+   */
+  custom_location_place_id?: string | null;
 
   // GPS toggle — NOT NULL DEFAULT TRUE in DB
   use_gps_location: boolean;
@@ -49,4 +55,6 @@ export interface UserPreferences {
   discover_city_country_code?: string | null;
   discover_city_lat?: number | null;
   discover_city_lng?: number | null;
+  /** #4334 — Google place id of the picked city (spec v2 §4.6). */
+  discover_city_place_id?: string | null;
 }

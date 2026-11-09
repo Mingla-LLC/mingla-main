@@ -24,6 +24,7 @@ import {
   resolvePaystackSecretKey,
 } from "../_shared/paystack.ts";
 import { sendOpsAlertEmail } from "../_shared/stripeOpsAlertEmail.ts";
+import { SMS_PRICE_TABLE, smsPriceStalenessAlert } from "../_shared/smsPriceTable.ts";
 import { logError, structuredLog } from "../_shared/structuredLog.ts";
 // META-ORCH-1270 (Phase 2) — Bunny Stream account usage read for the alarm.
 import {
@@ -37,6 +38,13 @@ import { resolveRuntimeConfigValue } from "../_shared/runtimeConfig.ts";
 import { runChatMediaStorageCheck } from "./chatMediaStorage.ts";
 import {
   bodyVerdict,
+  GOOGLE_PROBE_URLS,
+  googleAutocompleteProbeOk,
+  googleErrorStatusOf,
+  googleProbeErrorCode,
+  googleGeocodingProbeOk,
+  googlePlaceDetailsProbeOk,
+  googleStaticProbeOk,
   buildCheckRows,
   CLASS_B_DEPLETION,
   type ClassBHeader,
@@ -373,36 +381,81 @@ async function probePaystack(): Promise<ProbeResult> {
   }
 }
 
-async function probeMapbox(): Promise<ProbeResult> {
-  const token = Deno.env.get("MAPBOX_ACCESS_TOKEN");
-  if (!token) return { ok: false, latencyMs: null, status: "unknown", detail: { error: "MAPBOX_ACCESS_TOKEN missing" } };
+// #4334 — the four Google endpoints the address proxy, the static-map proxy
+// and the coordinate refresh job actually call. Each verdict is a BODY verdict
+// (logic.ts google*ProbeOk + bodyVerdict, #1620): Google answers 200 with
+// REQUEST_DENIED in the body, and Static Maps answers with an error IMAGE.
+// Invariant I-4334-GOOGLE-PROBES-BODY-VERDICT
+// (api-health-probe/issue_4334_google_probes.test.ts).
+function googleKeyOrUnknown(): string | ProbeResult {
+  const key = Deno.env.get("GOOGLE_MAPS_API_KEY");
+  if (!key) return { ok: false, latencyMs: null, status: "unknown", detail: { error: "GOOGLE_MAPS_API_KEY missing" } };
+  return key;
+}
+
+async function probeGooglePlaces(): Promise<ProbeResult> {
+  const key = googleKeyOrUnknown();
+  if (typeof key !== "string") return key;
   try {
-    const { res, latencyMs } = await timedFetch(
-      `https://api.mapbox.com/geocoding/v5/mapbox.places/test.json?limit=1&access_token=${token}`,
-    );
-    const body = await res.json().catch(() => null) as { features?: unknown[] } | null;
-    const ok = res.ok && Array.isArray(body?.features);
-    // #1620: bodyVerdict, NOT httpToStatus — a 200 without a `features` array is
-    // a failure and must never resolve to "healthy".
-    return { ok, latencyMs, httpStatus: res.status, status: bodyVerdict(ok, res.status), detail: {} };
+    const { res, latencyMs } = await timedFetch(GOOGLE_PROBE_URLS.autocomplete, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": key,
+        "X-Goog-FieldMask": "suggestions.placePrediction.placeId",
+      },
+      body: JSON.stringify({ input: "Lagos", languageCode: "en" }),
+    });
+    const body = await res.json().catch(() => null);
+    const ok = googleAutocompleteProbeOk(res.status, body);
+    return { ok, latencyMs, httpStatus: res.status, status: bodyVerdict(ok, res.status), detail: { google_status: googleErrorStatusOf(body), provider_code: googleProbeErrorCode(res.status, body) } };
   } catch (e) {
     return { ok: false, latencyMs: null, status: "down", detail: { error: String(e) } };
   }
 }
 
-async function probeGooglePlaces(): Promise<ProbeResult> {
-  const key = Deno.env.get("GOOGLE_MAPS_API_KEY");
-  if (!key) return { ok: false, latencyMs: null, status: "unknown", detail: { error: "GOOGLE_MAPS_API_KEY missing" } };
+async function probeGooglePlaceDetails(): Promise<ProbeResult> {
+  const key = googleKeyOrUnknown();
+  if (typeof key !== "string") return key;
+  try {
+    const { res, latencyMs } = await timedFetch(GOOGLE_PROBE_URLS.placeDetails, {
+      method: "GET",
+      headers: { "X-Goog-Api-Key": key, "X-Goog-FieldMask": "id,location" },
+    });
+    const body = await res.json().catch(() => null);
+    const ok = googlePlaceDetailsProbeOk(res.status, body);
+    return { ok, latencyMs, httpStatus: res.status, status: bodyVerdict(ok, res.status), detail: { google_status: googleErrorStatusOf(body), provider_code: googleProbeErrorCode(res.status, body) } };
+  } catch (e) {
+    return { ok: false, latencyMs: null, status: "down", detail: { error: String(e) } };
+  }
+}
+
+async function probeGoogleGeocoding(): Promise<ProbeResult> {
+  const key = googleKeyOrUnknown();
+  if (typeof key !== "string") return key;
   try {
     const { res, latencyMs } = await timedFetch(
-      `https://maps.googleapis.com/maps/api/place/textsearch/json?query=coffee&key=${key}`,
+      `${GOOGLE_PROBE_URLS.geocoding}&key=${encodeURIComponent(key)}`,
     );
     const body = await res.json().catch(() => null) as { status?: string } | null;
-    const ok = res.ok && (body?.status === "OK" || body?.status === "ZERO_RESULTS");
-    // #1620: bodyVerdict, NOT httpToStatus. Google answers HTTP 200 with
-    // `{status:"REQUEST_DENIED"}`; the old 2xx fallback logged 500 consecutive
-    // "healthy" rows over a dead API (2026-06-22 → 2026-08-05).
-    return { ok, latencyMs, httpStatus: res.status, status: bodyVerdict(ok, res.status), detail: { google_status: body?.status ?? null } };
+    const ok = googleGeocodingProbeOk(res.status, body);
+    return { ok, latencyMs, httpStatus: res.status, status: bodyVerdict(ok, res.status), detail: { google_status: body?.status ?? null, provider_code: googleProbeErrorCode(res.status, body) } };
+  } catch (e) {
+    return { ok: false, latencyMs: null, status: "down", detail: { error: String(e) } };
+  }
+}
+
+async function probeGoogleStaticMaps(): Promise<ProbeResult> {
+  const key = googleKeyOrUnknown();
+  if (typeof key !== "string") return key;
+  try {
+    const { res, latencyMs } = await timedFetch(
+      `${GOOGLE_PROBE_URLS.staticMap}&key=${encodeURIComponent(key)}`,
+    );
+    const contentType = res.headers.get("content-type");
+    await res.body?.cancel();
+    const ok = googleStaticProbeOk(res.status, contentType);
+    return { ok, latencyMs, httpStatus: res.status, status: bodyVerdict(ok, res.status), detail: { content_type: contentType, provider_code: ok ? null : googleProbeErrorCode(res.status, null) } };
   } catch (e) {
     return { ok: false, latencyMs: null, status: "down", detail: { error: String(e) } };
   }
@@ -932,8 +985,10 @@ serve(async (req) => {
       ["openai", probeOpenAI, null],
       ["stripe", probeStripe, null],
       ["paystack", probePaystack, null],
-      ["mapbox", probeMapbox, null],
       ["google_places", probeGooglePlaces, null],
+      ["google_place_details", probeGooglePlaceDetails, null],
+      ["google_geocoding", probeGoogleGeocoding, null],
+      ["google_static_maps", probeGoogleStaticMaps, null],
       ["ticketmaster", probeTicketmaster, null],
       ["serper", probeSerper, null],
       ["pexels", probePexels, null],
@@ -1410,6 +1465,33 @@ serve(async (req) => {
       }
     }
 
+    // #4273 item 10 — once a day, warn when an automatic SMS price has not
+    // refreshed for 7 days (quotes keep the last good price meanwhile).
+    // Its own try so it can never fail the tick.
+    let smsPriceStaleness: string | null = null;
+    if (new Date(nowMs).getUTCHours() === 13) {
+      try {
+        const { data, error } = await serviceClient
+          .from(SMS_PRICE_TABLE)
+          .select("country, source, fetched_at");
+        const alert = smsPriceStalenessAlert(new Date(nowMs), error ? null : (data ?? []));
+        if (alert === null) {
+          smsPriceStaleness = "quiet";
+        } else {
+          const result = await sendOpsAlertEmail({
+            subject: alert.subject,
+            paragraphs: alert.paragraphs,
+            recipients: alertRecipients(),
+            cta: { label: "Open API Health hub", url: `${adminUrl()}/#/api-health` },
+          });
+          smsPriceStaleness = result.succeeded > 0 ? "alerted" : "send_failed";
+        }
+      } catch (err) {
+        smsPriceStaleness = "error";
+        logError("sms price staleness check failed", err, { fn: "api-health-probe" });
+      }
+    }
+
     structuredLog("info", "api_health_probe tick", {
       fn: "api-health-probe",
       ticks: checkRows.length,
@@ -1423,6 +1505,7 @@ serve(async (req) => {
       alerts_sent: alertsSent,
       digest_sent: digestSent,
       chat_media_storage: chatMediaStorage,
+      sms_price_staleness: smsPriceStaleness,
       timestamp: new Date(nowMs).toISOString(),
     });
   } catch (err) {

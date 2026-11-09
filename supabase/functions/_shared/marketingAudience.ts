@@ -179,8 +179,22 @@ async function resolveSuppressedPhones(
     .not("contact_phone", "is", null)
     .in("channel", ["sms", "all"]);
   if (brandId !== null) {
+    // #4273 Q1 — an account-scope row is the SENDING HOST's account: it holds
+    // for every brand that account runs (the SMS opt-out link writes these).
+    const { data: brandRow, error: brandError } = await client
+      .from("brands")
+      .select("account_id")
+      .eq("id", brandId)
+      .maybeSingle();
+    if (brandError) {
+      throw new Error(`audience_brand_account_query_failed:${brandError.message}`);
+    }
+    const accountId = (brandRow as { account_id?: string | null } | null)
+      ?.account_id ?? null;
     unsubQuery = unsubQuery.or(
-      `scope.eq.global,and(scope.eq.brand,brand_id.eq.${brandId})`,
+      accountId === null
+        ? `scope.eq.global,and(scope.eq.brand,brand_id.eq.${brandId})`
+        : `scope.eq.global,and(scope.eq.brand,brand_id.eq.${brandId}),and(scope.eq.account,account_id.eq.${accountId})`,
     );
   } else {
     unsubQuery = unsubQuery.eq("scope", "global");

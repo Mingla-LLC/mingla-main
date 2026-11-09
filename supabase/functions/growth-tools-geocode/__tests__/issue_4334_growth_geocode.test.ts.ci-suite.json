@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/growth-tools-geocode/__tests__/issue_4334_growth_geocode.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4334-growth-geocode-supabase",
+  "profile": "deno-2-unit"
+}

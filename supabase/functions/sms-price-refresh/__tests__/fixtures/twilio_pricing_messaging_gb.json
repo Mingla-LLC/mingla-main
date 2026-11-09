@@ -1,0 +1,29 @@
+{
+  "country": "United Kingdom",
+  "iso_country": "GB",
+  "url": "https://pricing.twilio.com/v1/Messaging/Countries/GB",
+  "price_unit": "USD",
+  "outbound_sms_prices": [
+    {
+      "carrier": "EE",
+      "mcc": "234",
+      "mnc": "30",
+      "prices": [
+        { "number_type": "mobile", "base_price": "0.0560", "current_price": "0.0560" },
+        { "number_type": "alphanumeric", "base_price": "0.0560", "current_price": "0.0560" }
+      ]
+    },
+    {
+      "carrier": "Vodafone",
+      "mcc": "234",
+      "mnc": "15",
+      "prices": [
+        { "number_type": "mobile", "base_price": "0.0560", "current_price": "0.0548" },
+        { "number_type": "alphanumeric", "base_price": "0.0560", "current_price": "0.0560" }
+      ]
+    }
+  ],
+  "inbound_sms_prices": [
+    { "number_type": "mobile", "base_price": "0.0075", "current_price": "0.0075" }
+  ]
+}

@@ -403,9 +403,39 @@ test("A-5 a non-literal cron.unschedule is NOT modelled — frozen as a tripwire
       assert.doesNotMatch(between, /\bCOMMIT\s*;|\bEND\s*\$cron\$/i, `${file} must keep ${job}'s unschedule and reschedule in one DO block`);
     }
   }
+  // [TEST-MOD-APPROVED #4334] The Google coordinate refresh removes any existing
+  // places-coordinate-refresh-daily job by id (pg_cron's by-name form only sees the
+  // caller's own jobs, so a re-apply by another superuser would fail) and
+  // reschedules it in the same transaction (+1 → 22). Proven here like the pairs above.
+  {
+    const file = "supabase/migrations/20280521004334_issue_4334_google_places.sql";
+    const sql = stripSqlComments(fs.readFileSync(path.join(REPO_ROOT, file), "utf8"));
+    const job = "places-coordinate-refresh-daily";
+    const unschedule = sql.search(/cron\.unschedule\s*\(\s*jobid\s*\)/i);
+    const lookup = sql.search(new RegExp(`WHERE\\s+jobname\\s*=\\s*'${job}'`, "i"));
+    const schedule = sql.search(new RegExp(`cron\\.schedule\\s*\\(\\s*'${job}'`, "i"));
+    assert.ok(unschedule >= 0 && lookup > unschedule, `${file} must remove only ${job}, looked up by name`);
+    assert.ok(schedule > lookup, `${file} must reschedule ${job} after removing it`);
+    assert.doesNotMatch(sql.slice(unschedule, schedule), /\bCOMMIT\s*;/i, `${file} must keep the unschedule and reschedule in one transaction`);
+  }
+  // #4273: the daily SMS price refresh adds one guarded unschedule-then-
+  // reschedule pair in its own DO block (issue_4273_sms_price_refresh)
+  // (+1 → 23, after #4334). Its unschedule is proven to sit just before its reschedule.
+  {
+    const file = "supabase/migrations/20280522004273_issue_4273_sms_unpriced_country_skips.sql";
+    const sql = stripSqlComments(fs.readFileSync(path.join(REPO_ROOT, file), "utf8"));
+    const job = "issue_4273_sms_price_refresh";
+    const lookup = sql.search(new RegExp(`WHERE\\s+jobname\\s*=\\s*'${job}'`, "i"));
+    assert.ok(lookup >= 0, `${file} must look up ${job} by name before removing it`);
+    const schedule = sql.search(new RegExp(`cron\\.schedule\\s*\\(\\s*'${job}'`, "i"));
+    assert.ok(schedule > lookup, `${file} must reschedule ${job} after looking it up`);
+    const between = sql.slice(lookup, schedule);
+    assert.match(between, /cron\.unschedule\s*\(\s*v_job_id\s*\)/i, `${file} must remove only the ${job} it looked up`);
+    assert.doesNotMatch(between, /\bCOMMIT\s*;|\bEND\s*\$cron\$/i, `${file} must keep ${job}'s unschedule and reschedule in one DO block`);
+  }
   // #4339 calendar sync: the Book a call calendar sync is one guarded
   // unschedule-then-reschedule pair in its own DO block
-  // (issue_4339_book_call_calendar_sync, every 5 minutes) (+1 → 22). The jobid
+  // (issue_4339_book_call_calendar_sync, every 5 minutes) (+1 → 24, after #4334 and #4273). The jobid
   // lookup stays for the same reason as #4271's.
   {
     const file = "supabase/migrations/20280520004339_issue_4339_book_a_call_leads.sql";
@@ -427,7 +457,7 @@ test("A-5 a non-literal cron.unschedule is NOT modelled — frozen as a tripwire
   );
   assert.equal(
     repo.dynamicUnschedules,
-    22,
+    24,
     "the number of unmodelled dynamic cron.unschedule calls changed. Each one is a place " +
       "where this gate cannot see a job being removed. Confirm the new call is the " +
       "unschedule-then-reschedule idiom (and not a permanent removal of a live worker) " +

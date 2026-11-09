@@ -27,8 +27,8 @@ jest.mock("@mingla/phone-input/phoneNumber", () => ({
 jest.mock("../../../hooks/useCurrentBrand", () => ({
   useCurrentBrand: () => null,
 }));
-jest.mock("../../location/MapboxAddressInput", () => ({
-  MapboxAddressInput: "mapbox",
+jest.mock("../../location/AddressInput", () => ({
+  AddressInput: "address-input",
 }));
 jest.mock("../../ui/Button", () => ({ Button: "button" }));
 jest.mock("../../ui/Input", () => ({ Input: "input" }));

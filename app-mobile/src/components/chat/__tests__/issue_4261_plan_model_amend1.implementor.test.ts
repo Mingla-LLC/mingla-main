@@ -92,7 +92,7 @@ const placeOption = (id: string, over: Record<string, unknown> = {}) => ({
   id,
   kind: "place",
   poolId: null,
-  mapboxId: null,
+  providerPlaceId: null,
   name: id,
   address: null,
   lat: null,
@@ -314,19 +314,19 @@ Deno.test("planPhoto: pool photo first, then the link preview image", () => {
 });
 
 Deno.test("the form: an invalid place link blocks Post; the link goes only with a non-Mingla place", () => {
-  const mapbox = { source: "mapbox", name: "Skyline", area: "Lekki", mapboxId: "mb1", lat: 6.4, lng: 3.4 };
-  const form = { ...blankPlanForm(), where: "place", place: mapbox, when: "poll", openTimes: true };
+  const searched = { source: "google", name: "Skyline", area: "Lekki", providerPlaceId: "mb1", lat: 6.4, lng: 3.4 };
+  const form = { ...blankPlanForm(), where: "place", place: searched, when: "poll", openTimes: true };
   assertEquals(canPostPlan({ ...form, placeLink: "" }), true, "no link: fine");
   assertEquals(canPostPlan({ ...form, placeLink: "not a link" }), false, "invalid link blocks");
   assertEquals(canPostPlan({ ...form, placeLink: "skyline.ng/menu" }), true, "valid link");
   const input = planCreateInput({ ...form, placeLink: "skyline.ng/menu" }, "c1", "k1");
-  assertEquals([input.whereKind, input.linkUrl, input.place.mapboxId], ["place", "https://skyline.ng/menu", "mb1"], "mapbox + link");
+  assertEquals([input.whereKind, input.linkUrl, input.place.providerPlaceId], ["place", "https://skyline.ng/menu", "mb1"], "google + link");
   const typed = planCreateInput({ ...form, place: { source: "typed", name: "Mama's", area: null }, placeLink: "https://mamas.com" }, "c1", "k1");
   assertEquals([typed.whereKind, typed.linkUrl], ["address", "https://mamas.com"], "typed + link");
   const pool = planCreateInput({ ...form, place: { source: "pool", name: "Bar", area: null, poolId: "p1" }, placeLink: "https://bar.com" }, "c1", "k1");
   assertEquals([pool.whereKind, pool.linkUrl, pool.place], ["place", null, { poolId: "p1" }], "never a link on a Mingla place");
-  const suggestion = planAddPlaceInput("plan1", mapbox, "skyline.ng");
-  assertEquals(suggestion, { planId: "plan1", whereKind: "place", place: { mapboxId: "mb1", name: "Skyline", address: "Lekki", lat: 6.4, lng: 3.4 }, linkUrl: "https://skyline.ng" }, "suggestion input");
+  const suggestion = planAddPlaceInput("plan1", searched, "skyline.ng");
+  assertEquals(suggestion, { planId: "plan1", whereKind: "place", place: { providerPlaceId: "mb1", name: "Skyline", address: "Lekki", lat: 6.4, lng: 3.4 }, linkUrl: "https://skyline.ng" }, "suggestion input");
 });
 
 Deno.test("placeLinkTarget: Mingla card / own link / the map in Mingla", () => {
@@ -335,7 +335,7 @@ Deno.test("placeLinkTarget: Mingla card / own link / the map in Mingla", () => {
   assertEquals(
     placeLinkTarget({ poolId: null, name: "Skyline", address: null, lat: 1, lng: 2, link: { url: "https://skyline.ng", domain: "skyline.ng", title: "Skyline Menu" } }, maps),
     { kind: "link", url: "https://skyline.ng", label: "Skyline Menu" },
-    "mapbox with its own link",
+    "google with its own link",
   );
   assertEquals(placeLinkTarget({ poolId: null, name: "Mama's", address: null, lat: null, lng: null, link: null }, maps), { kind: "maps", url: "https://maps/?q=Mama's" }, "typed, no link");
   assertEquals(placeLinkTarget({ poolId: null, name: null, address: null, lat: null, lng: null, link: null }, maps), null, "nothing to open");

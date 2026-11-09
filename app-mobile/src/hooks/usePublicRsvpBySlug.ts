@@ -92,6 +92,9 @@ export const mapRsvpRpcPayload = (
     hideAddressUntilTicket: payload.hideAddressUntilTicket === true,
     locationGeo: asLatLng(payload.locationGeo),
     cityGeo: asLatLng(payload.cityGeo),
+    // #4334 N-1 — the venue's Google place id (withheld server-side with the
+    // street); anchors the Google Maps link with query_place_id.
+    googlePlaceId: asString(payload.googlePlaceId),
     coverHue: 0,
     coverMediaUrl: asString(payload.coverMediaUrl),
     coverMediaAlt: asString(payload.coverMediaAlt),

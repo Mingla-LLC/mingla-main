@@ -88,7 +88,7 @@ export const TERMS_SECTIONS = [
   {
     title: '9. Third-Party Services',
     paragraphs: [
-      'The Service integrates with third-party services, including but not limited to Supabase, Cloudinary, Twilio, Resend, Google, Apple, Mapbox, OpenWeatherMap, BestTime, Ticketmaster, Mixpanel, AppsFlyer, OneSignal, Sentry, RevenueCat, Stripe, and Expo. Your use of any third-party service is subject solely to the terms and privacy policy of that third party. Mingla is not responsible for and disclaims all liability for the availability, performance, content, accuracy, completeness, legality, decency, security, or quality of any third-party service.',
+      'The Service integrates with third-party services, including but not limited to Supabase, Cloudinary, Twilio, Resend, Google, Apple, OpenWeatherMap, BestTime, Ticketmaster, Mixpanel, AppsFlyer, OneSignal, Sentry, RevenueCat, Stripe, and Expo. Your use of any third-party service is subject solely to the terms and privacy policy of that third party. Mingla is not responsible for and disclaims all liability for the availability, performance, content, accuracy, completeness, legality, decency, security, or quality of any third-party service.',
       'If a third-party service becomes unavailable, changes its functionality, or terminates its relationship with Mingla, the corresponding feature of the Service may also become unavailable. Mingla has no obligation to maintain or replace any third-party service or any feature of the Service that depends on a third-party service.',
     ],
   },

@@ -59,9 +59,9 @@ function stripComments(src: string): string {
 }
 
 const ONBOARDING = stripComments(await read("../OnboardingFlow.tsx"));
-const WRAPPER = stripComments(await read("../location/MapboxAddressInput.tsx"));
+const WRAPPER = stripComments(await read("../location/AddressInput.tsx"));
 const SHARED = stripComments(
-  await read("../../../../packages/location-input/src/MapboxAddressInput.tsx"),
+  await read("../../../../packages/location-input/src/AddressInput.tsx"),
 );
 
 // ── A-1: the SHARED field is the missing consumer half of the no-crash chain ──
@@ -101,7 +101,7 @@ Deno.test("A-1: shared field falls back to RN on undefined AND imports no gorhom
 Deno.test("A-1b: consumer wrapper renders only the shared field, no gorhom node of its own", () => {
   assertMatch(
     WRAPPER,
-    /<SharedMapboxAddressInput/,
+    /<SharedAddressInput/,
     "wrapper must render the shared field",
   );
   assert(

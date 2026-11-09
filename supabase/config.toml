@@ -64,11 +64,11 @@ verify_jwt = false
 [functions.discover-merged-events]
 verify_jwt = false
 
-# ORCH-1079: the Google `places-autocomplete` proxy was RETIRED (business address
-# autocomplete now flows through `mapbox-geocode`). GOOGLE_MAPS_API_KEY is RETAINED
-# — six other edge fns still consume it (admin-seed-places / admin-refresh-places /
-# admin-place-search / backfill-place-photos / get-companion-stops /
-# get-picnic-grocery). Do NOT delete the key.
+# ORCH-1079: the Google `places-autocomplete` proxy was RETIRED; every address
+# search goes through the single address proxy (`mapbox-geocode`, name kept for
+# installed clients; Google behind it since #4334). GOOGLE_MAPS_API_KEY is the
+# key for the proxy, static-map, growth-tools-geocode, the coordinate refresh
+# and the seeding functions. Do NOT delete the key.
 
 # Ve2 — place_pool name search for venue claim comparison (public-safe fields).
 [functions.claim-search-pool]
@@ -79,11 +79,9 @@ verify_jwt = true
 # verify_jwt = true is mandatory, not cosmetic: every call spends money at
 # Google and reads the pool, so it can never be anonymous. Rate-limited per user
 # on the same bucket shape as claim-search-pool.
-# BOUNDARY (ORCH-1079): this does NOT autocomplete anything. Mapbox still owns
-# every suggestion the brand sees. Google is asked one question, once, AFTER the
-# brand has already picked — "which place is this?" — and the answer is used
-# only to look up our own directory.
-# GOOGLE MAY RESOLVE IDENTITY; IT MAY NEVER DRIVE SUGGESTIONS.
+# #4334: a picked Google place id is looked up directly (no Google call); a
+# free-text address asks Google once, AFTER the brand has picked — "which place
+# is this?" — and the answer is used only to look up our own directory.
 [functions.venue-address-pool-match]
 verify_jwt = true
 
@@ -235,25 +233,19 @@ verify_jwt = true
 [functions.get-paired-profile-cards]
 verify_jwt = true
 
-# META-ORCH-1059 Sub-A — Mapbox Search Box proxy for every business address
-# picker (experiences, events, trips, brand, venue claim). Keeps
-# MAPBOX_ACCESS_TOKEN server-side. Auth-gated: the creation wizards are always
-# authenticated; anonymous geocode traffic is not a legitimate use. ORCH-1079
-# retired the legacy Google places-autocomplete proxy — this is the sole
-# business address-autocomplete edge fn now.
+# META-ORCH-1059 Sub-A / #4334 — the single address proxy for every Host and
+# Explorer address and city picker. Name kept for installed clients; provider
+# Google (Places API (New) + Geocoding API). Keeps GOOGLE_MAPS_API_KEY
+# server-side. Auth-gated (JWT `sub` required, 120 requests/min/user).
 [functions.mapbox-geocode]
 verify_jwt = true
 
-# ORCH-1165 [Mapbox static map server-proxy]. Server-side proxy for the public
-# "Where you'll be"/"Where you'll start" static map (trip / event / experience).
-# verify_jwt = false: the buyer-web public page is anonymous (same posture as the
-# other public web fns); the strict input validation + style/zoom/size allowlists
-# in index.ts are the abuse guard in lieu of auth. Reuses the EXISTING
-# MAPBOX_ACCESS_TOKEN secret — keeps the token + the upstream map-vendor host out
-# of all client network traffic and strips the logo/attribution server-side.
-# NOTE: the PUBLIC function name is intentionally vendor-NEUTRAL (`static-map`),
-# so the client `<Image>` URL `/functions/v1/static-map?…` reveals nothing about
-# the upstream map vendor. Internal var/log names stay descriptive (server-side).
+# ORCH-1165 / #4334 — server-side proxy for the public "Where you'll be" static
+# map (Google Maps Static API, Mingla dark style). verify_jwt = false: the
+# buyer-web public page is anonymous; the strict input validation + allowlists
+# in index.ts are the abuse guard. GOOGLE_MAPS_API_KEY stays server-side; the
+# client only loads `/functions/v1/static-map?…`. Google's logo stays on the
+# image (Google terms).
 [functions.static-map]
 verify_jwt = false
 
@@ -707,10 +699,16 @@ verify_jwt = false
 [functions.growth-tools-events]
 verify_jwt = false
 
-# ISSUE-1096 — city autocomplete for the event predictor intake. POST {q}
-# proxies Mapbox Search Box /forward (server-side token) and returns real city
-# candidates so the city field is validated, not free text. No DB access.
+# ISSUE-1096 / #4334 — city autocomplete for the growth tools. POST {q} proxies
+# Google Places Autocomplete (New) server-side and returns real city candidates.
+# Public, so it is rate-limited per IP (30/min). No DB access.
 [functions.growth-tools-geocode]
+verify_jwt = false
+
+# #4334 — keeps stored Google coordinates under Google's 30-day cache limit
+# (daily pg_cron `places-coordinate-refresh-daily`). verify_jwt = false; the
+# caller must present the vault service-role bearer (_shared/cronCallerAuth.ts).
+[functions.places-coordinate-refresh]
 verify_jwt = false
 
 # ISSUE-1005 — Quote Any Trip. POST {action:"run", input} builds a fully-costed

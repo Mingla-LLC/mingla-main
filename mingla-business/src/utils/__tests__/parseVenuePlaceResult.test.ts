@@ -1,6 +1,6 @@
 // [TEST-MOD-APPROVED ORCH-1079] [TEST-RENAME-APPROVED ORCH-1079]
 import { describe, expect, test } from "@jest/globals";
-import type { PlaceDetails } from "../../services/mapboxGeocodeService";
+import type { PlaceDetails } from "../../services/placesService";
 import { parseVenuePlaceResult } from "../parseVenuePlaceResult";
 
 describe("parseVenuePlaceResult (Ve1)", () => {

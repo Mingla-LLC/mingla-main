@@ -265,7 +265,7 @@ BEGIN
     'public.biz_publish_stay(uuid,bigint,uuid)'::regprocedure
   ) INTO v_publish;
   SELECT pg_get_functiondef(
-    'public.biz_create_venue_listing(uuid,text,text,text,text,double precision,double precision,text,text,text,text,text,text,text,text,jsonb,uuid,text,text,text,text,text)'::regprocedure
+    'public.biz_create_venue_listing(uuid,text,text,text,text,double precision,double precision,text,text,text,text,text,text,text,text,jsonb,uuid,text,text,text,text,text,text)'::regprocedure
   ) INTO v_create;
   SELECT pg_get_functiondef(
     'public.issue_1387_stay_inventory_snapshot(uuid)'::regprocedure

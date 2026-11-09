@@ -338,10 +338,15 @@ BEGIN
     (length(v_src) - length(replace(v_src, v_cte_hunk, ''))) = length(v_cte_hunk)
       AND (length(v_src) - length(replace(v_src, v_key_hunk, ''))) = length(v_key_hunk),
     'H-07a the installed bundle carries each #3314 hunk exactly once');
-  PERFORM pg_temp.h3314_assert(md5(v_src) = '00c7efab5b85a2d9f68f2efe31c9cc42',
+  -- [TEST-MOD-APPROVED #4334] 20280521004334 re-emits the production body with one
+  -- projected column (location_provider_place_id) and one key (googlePlaceId,
+  -- withheld with the street, before cityGeo); md5 00c7efab5b85a2d9f68f2efe31c9cc42 ->
+  -- 1618f8ee62fad8b38da890b13968d472 (the peeled #3281 body); H-07c bb592bd96ba612ae11eade657ea819c2 ->
+  -- 06076c7b3a8acd24de76c50c43303e29. Every #3314 hunk is unchanged (H-07a).
+  PERFORM pg_temp.h3314_assert(md5(v_src) = '1618f8ee62fad8b38da890b13968d472',
     'H-07b the installed body is byte-identical to 20271124003281 (md5 ' || md5(v_src) || ')');
   -- Keep the CTE projection: #3281 schedule sold-out/placesLeft still read it.
-  PERFORM pg_temp.h3314_assert(md5(replace(v_src, v_key_hunk, '')) = 'bb592bd96ba612ae11eade657ea819c2',
+  PERFORM pg_temp.h3314_assert(md5(replace(v_src, v_key_hunk, '')) = '06076c7b3a8acd24de76c50c43303e29',
     'H-07c removing only the hideRemainingCount key gives the #3281 comparison body (md5 '
       || md5(replace(v_src, v_key_hunk, '')) || ')');
   v_before_src := replace(v_wrapper_src, v_key_hunk, '');

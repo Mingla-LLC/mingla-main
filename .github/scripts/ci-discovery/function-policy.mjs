@@ -9,8 +9,8 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(HERE, "../../..");
 export const CONTRACT_PATH = path.join(REPO_ROOT, "supabase/function-env.contract.json");
 export const CONFIG_PATH = path.join(REPO_ROOT, "supabase/config.toml");
-export const CONTRACT_SHA256 = "bb627ecf91f359911fd1b6af98b52567530df09fe9eab9eb002e81f9453e862a";
-export const CONFIG_SHA256 = "a6a0dc681a4054abd83c77613c1ea5ba1ca839bf6f989658c59c6addbfc4c771";
+export const CONTRACT_SHA256 = "b4e8a982a1d5302174b5d4801dd076f65a92ac61da3259292c9a7d02ec7c2f46";
+export const CONFIG_SHA256 = "cc9d8f5f5e8f4819d27c6ac97367bc5c74216e1925f4860aacfe69d55431e4cd";
 export const FUNCTION_POLICY_FILE = "function-policy.json";
 export const SHARED_POLICY_SUFFIX = ".function-policy.json";
 

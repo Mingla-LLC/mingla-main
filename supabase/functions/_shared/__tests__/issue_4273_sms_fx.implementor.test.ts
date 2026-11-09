@@ -97,7 +97,7 @@ function fakeFx(
   };
 }
 
-const OPTIONS = { smsRates: RATES, trackingOrigin: "https://x.test/m" };
+const OPTIONS = { smsCountryLive: () => true, smsRates: RATES, trackingOrigin: "https://x.test/m" };
 
 Deno.test("#4273 T-1 a mixed NGN + USD SMS quote converts to the brand currency and seals the snapshot", async () => {
   const quote = await buildMarketingBookQuote(MIXED as never, NOW, {
@@ -139,6 +139,7 @@ Deno.test("#4273 T-1b the price book returns per-currency subtotals instead of r
     ],
     NOW,
     RATES,
+    () => true,
   );
   assertEquals(priced.subtotals, [
     { currency: "NGN", estimatedCostMinor: 265 },

@@ -22,6 +22,7 @@ import {
   type GrowthToolsError,
 } from '@/lib/growth-tools-submit'
 import { EventReportView } from './EventReportView'
+import { GoogleMapsAttribution } from '@/components/ui/google-maps-attribution'
 
 type Phase = 'intake' | 'running' | 'report'
 type InOut = 'indoor' | 'outdoor' | 'mixed'
@@ -182,7 +183,7 @@ export function EventPredictorExperience({ embedded = false }: { readonly embedd
   const [runId, setRunId] = useState<string | null>(null)
   const [report, setReport] = useState<EventReport | null>(null)
 
-  // Debounced city autocomplete (validates the city against Mapbox). Skips while
+  // Debounced city autocomplete (validates the city against Google Places). Skips while
   // a suggestion is already chosen; degrades to free text if the geocoder is down.
   useEffect(() => {
     const q = city.trim()
@@ -421,6 +422,7 @@ export function EventPredictorExperience({ embedded = false }: { readonly embedd
                       ))}
                     </ul>
                   )}
+                  <GoogleMapsAttribution />
                 </div>
               ) : null}
               {!cityChosen && !geocodeDown && !citySearching && city.trim().length >= 2 &&

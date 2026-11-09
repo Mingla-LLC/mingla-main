@@ -96,9 +96,9 @@ jest.mock("../../src/components/ui/CoverPickerSheet", () => ({
     React.createElement("CoverPickerSheet", props),
 }));
 
-jest.mock("../../src/components/location/MapboxAddressInput", () => ({
-  MapboxAddressInput: (props: Record<string, unknown>) =>
-    React.createElement("MapboxAddressInput", props),
+jest.mock("../../src/components/location/AddressInput", () => ({
+  AddressInput: (props: Record<string, unknown>) =>
+    React.createElement("AddressInput", props),
 }));
 
 jest.mock("../../src/components/ui/EventCoverMedia", () => ({
@@ -198,7 +198,7 @@ describe("issue #881 partner Step 0 commitment", () => {
     expect(byLabel(tree.root, BRAND_CREATION_COPY.step1.title)[0]?.props.accessibilityRole)
       .toBe("header");
     expect(focusedLabels).toEqual([BRAND_CREATION_COPY.step1.title]);
-    expect(hostNodes(tree.root, (node) => node.type === "MapboxAddressInput")).toHaveLength(0);
+    expect(hostNodes(tree.root, (node) => node.type === "AddressInput")).toHaveLength(0);
 
     await TestRenderer.act(async () => tree.unmount());
   });
@@ -232,7 +232,7 @@ describe("issue #881 partner Step 0 commitment", () => {
     });
 
     expect(byLabel(tree.root, BRAND_CREATION_COPY.step1.titleClient)).toHaveLength(1);
-    expect(hostNodes(tree.root, (node) => node.type === "MapboxAddressInput")).toHaveLength(0);
+    expect(hostNodes(tree.root, (node) => node.type === "AddressInput")).toHaveLength(0);
     await TestRenderer.act(async () => tree.unmount());
   });
 

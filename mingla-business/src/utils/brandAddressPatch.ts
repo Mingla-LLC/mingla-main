@@ -3,29 +3,43 @@
  * (BrandEditAddressField). A placed address writes the address, its point,
  * and the city and country it carries, together.
  */
-import type { PlaceDetails } from "../services/mapboxGeocodeService";
+import type { PlaceDetails } from "../services/placesService";
 import type { Brand } from "../types/brand";
 import { parseVenuePlaceResult } from "./parseVenuePlaceResult";
 
 /** The brand fields this field owns. A key left out is left as it is. */
 export type BrandAddressPatch = Partial<
-  Pick<Brand, "address" | "city" | "countryCode" | "lat" | "lng">
+  Pick<Brand, "address" | "city" | "countryCode" | "lat" | "lng"> & {
+    /** #4334 — null clears a stale id when the pin has none. */
+    locationProviderPlaceId: string | null;
+  }
 >;
 
 /**
  * Pure: the patch a placed address writes — address, coordinates, and the
  * city and country the place carries (a place without one leaves that field
- * as it was). ORCH-1079 LOCKED: the Mapbox id is never written into
+ * as it was). ORCH-1079 LOCKED: the picked place id is never written into
  * brands.google_place_id, so it is not part of the patch at all.
  */
 export function brandAddressPatchFromLocation(
   label: string,
-  location: { lat: number; lng: number; city: string | null; countryCode: string | null },
+  location: {
+    lat: number;
+    lng: number;
+    city: string | null;
+    countryCode: string | null;
+    placeId?: string | null;
+  },
 ): BrandAddressPatch {
   return {
     address: label,
     lat: location.lat,
     lng: location.lng,
+    // #4334 — the pin's Google place id, written with it (null when none).
+    locationProviderPlaceId:
+      typeof location.placeId === "string" && location.placeId.length > 0
+        ? location.placeId
+        : null,
     ...(location.city !== null ? { city: location.city } : {}),
     ...(location.countryCode !== null
       ? { countryCode: location.countryCode.toUpperCase() }

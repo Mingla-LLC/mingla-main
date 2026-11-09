@@ -13,6 +13,11 @@ import type { CaptureResult } from 'posthog-js'
 import type { PostHog } from 'posthog-js'
 import { SITE_ORIGIN } from '@/lib/site'
 import {
+  analyticsSafePathname,
+  isAnalyticsPrivatePathname,
+  isAnalyticsPrivateUrl,
+} from '@/lib/analytics-private-routes'
+import {
   cleanCityHubPathname,
   isCityHubPathname,
   sanitizeCityHubAnalytics,
@@ -357,6 +362,11 @@ function postHogEventTouchesCityHub(event: CaptureResult | null): boolean {
 }
 
 function routeAwarePostHogBeforeSend(event: CaptureResult | null): CaptureResult | null {
+  // #4273 — nothing is sent from a page whose URL carries a private token.
+  if (
+    (typeof window !== 'undefined' && isAnalyticsPrivatePathname(window.location.pathname))
+    || isAnalyticsPrivateUrl(event?.properties?.$current_url)
+  ) return null
   return postHogEventTouchesCityHub(event) ? sanitizeCityHubPostHogEvent(event) : event
 }
 
@@ -450,6 +460,8 @@ export function captureMarketing(
 ): void {
   if (!isMarketingAnalyticsOn()) return
   try {
+    // #4273 — never measured: the URL carries a private token.
+    if (isAnalyticsPrivatePathname(window.location.pathname)) return
     if (isCityHubPathname(window.location.pathname)) {
       const sanitized = sanitizeCityHubAnalytics(event, properties)
       if (sanitized === null) return
@@ -492,6 +504,8 @@ export function captureSearchMeasurement(
   properties: SearchMeasurementProperties,
 ): void {
   if (!isMarketingAnalyticsOn()) return
+  // #4273 — never measured: the URL carries a private token.
+  if (typeof window !== 'undefined' && isAnalyticsPrivatePathname(window.location.pathname)) return
   const sanitized = sanitizeSearchMeasurement(event, properties)
   if (sanitized === null) return
   try {
@@ -517,7 +531,8 @@ function ManualGoogleAnalytics({ gaId, pathname }: { readonly gaId: string; read
   // #4339 round B: the canonical URL plus the allowlisted campaign parameters,
   // and the referrer's origin (the #2983 compatibility receipt for its source
   // guard was `page_referrer: ''`; city events keep their own sanitizer).
-  const pageLocation = gaPageLocation(new URL(pathname || '/', SITE_ORIGIN).toString())
+  // #4273 — a private-token path is configured as its token-free family.
+  const pageLocation = gaPageLocation(new URL(analyticsSafePathname(pathname || '/'), SITE_ORIGIN).toString())
   const pageReferrer = gaReferrerOrigin()
   const initialConfiguration = useRef({ gaId, pageLocation })
 
@@ -583,6 +598,8 @@ export function PostHogProvider({ children }: PostHogProviderProps): ReactNode {
 
   useEffect(() => {
     if (!enabled || !pathname) return
+    // #4273 — no page view for a page whose URL carries a private token.
+    if (isAnalyticsPrivatePathname(pathname)) return
     // #2983: a city hub emits only its own allowlisted city events. With
     // analytics on from the first visit (#2331), this generic page_view would
     // otherwise reach GA before the referrer-stripping config is applied.

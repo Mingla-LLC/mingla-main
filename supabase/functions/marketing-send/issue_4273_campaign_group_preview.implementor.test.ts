@@ -213,7 +213,7 @@ Deno.test("#4273 the SMS cost in the tile is exactly what the method's quote pri
   };
   const quote = await buildMarketingBookQuote(sms as never, NOW, {
     trackingOrigin: "https://x.test/m",
-    smsRates: RATES,
+    smsCountryLive: () => true, smsRates: RATES,
   });
   assertEquals(quote.reachableCount, 2);
   assert(quote.estimatedCostMinor !== null && quote.estimatedCostMinor > 0);
@@ -226,7 +226,7 @@ Deno.test("#4273 the SMS cost in the tile is exactly what the method's quote pri
           unlisted: [],
         }),
       candidates: () => Promise.resolve(sms),
-      smsRates: RATES,
+      smsCountryLive: () => true, smsRates: RATES,
     }),
     "lead",
     NOW,

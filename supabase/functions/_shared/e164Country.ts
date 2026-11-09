@@ -167,3 +167,182 @@ export function countryFromE164(raw: string | null | undefined): string | null {
   }
   return null;
 }
+
+// ===========================================================================
+// #4273 — MARKETING country resolution. SEPARATE from countryFromE164 above.
+// ===========================================================================
+// countryFromE164 is the TRANSACTIONAL authority (verification, tickets, RSVP,
+// notifications) and is byte-for-byte main's: NG, GB, FR, BE and all of NANP
+// as "US", gated by main's two switches. Marketing texts (Blast, offering
+// invites) resolve with smsMarketingCountry instead: every payout country a
+// host can pick (34 Stripe + NG), Canada split out by area code, and every
+// other NANP member (Caribbean, Bermuda, US territories Twilio prices
+// separately) resolved to ITS OWN country, which marketing does not text, so
+// it is honestly skipped. Ghana, South Africa, the Philippines and Kenya stay
+// unmapped (Seth, 2026-11-08). The SQL twin is
+// public.mingla_sms_marketing_country (parity: issue_4273_sms_all_countries
+// pg17 T-H and the Deno T-H that reads the same fixture rows).
+
+const MARKETING_CALLING_CODE_TO_ISO2: ReadonlyArray<readonly [string, string]> =
+  [
+    ["+234", "NG"], // Nigeria — the Termii route
+    ["+351", "PT"],
+    ["+352", "LU"],
+    ["+353", "IE"],
+    ["+354", "IS"],
+    ["+356", "MT"],
+    ["+357", "CY"],
+    ["+358", "FI"],
+    ["+359", "BG"],
+    ["+370", "LT"],
+    ["+371", "LV"],
+    ["+372", "EE"],
+    ["+385", "HR"],
+    ["+386", "SI"],
+    ["+420", "CZ"],
+    ["+421", "SK"],
+    ["+423", "LI"],
+    ["+30", "GR"],
+    ["+31", "NL"],
+    ["+32", "BE"],
+    ["+33", "FR"],
+    ["+34", "ES"],
+    ["+36", "HU"],
+    ["+39", "IT"],
+    ["+40", "RO"],
+    ["+41", "CH"],
+    ["+43", "AT"],
+    ["+44", "GB"],
+    ["+45", "DK"],
+    ["+46", "SE"],
+    ["+47", "NO"],
+    ["+48", "PL"],
+    ["+49", "DE"],
+    ["+1", "US"], // split below: CA by area code, other NANP members out
+  ];
+
+/**
+ * #4273 — Canadian geographic NANP area codes (CRTC). Mirrored in the SQL twin.
+ */
+export const CANADIAN_AREA_CODES: ReadonlyArray<string> = [
+  "204",
+  "226",
+  "236",
+  "249",
+  "250",
+  "257",
+  "263",
+  "289",
+  "306",
+  "343",
+  "354",
+  "365",
+  "367",
+  "368",
+  "382",
+  "403",
+  "416",
+  "418",
+  "428",
+  "431",
+  "437",
+  "438",
+  "450",
+  "468",
+  "474",
+  "506",
+  "514",
+  "519",
+  "548",
+  "579",
+  "581",
+  "584",
+  "587",
+  "604",
+  "613",
+  "639",
+  "647",
+  "672",
+  "683",
+  "705",
+  "709",
+  "742",
+  "753",
+  "778",
+  "780",
+  "782",
+  "807",
+  "819",
+  "825",
+  "867",
+  "873",
+  "879",
+  "902",
+  "905",
+  "942",
+];
+const CANADIAN_AREA_CODE_SET = new Set(CANADIAN_AREA_CODES);
+
+/**
+ * #4273 — NANP area codes that are NOT the 50 US states or Canada: the
+ * Caribbean and Atlantic members, plus the US territories Twilio prices as
+ * their own countries (PR, VI, GU, MP, AS). Each resolves to its own ISO-2,
+ * which marketing does not text. Mirrored in the SQL twin.
+ */
+export const NANP_OTHER_AREA_CODES: ReadonlyArray<readonly [string, string]> = [
+  ["242", "BS"],
+  ["246", "BB"],
+  ["264", "AI"],
+  ["268", "AG"],
+  ["284", "VG"],
+  ["340", "VI"],
+  ["345", "KY"],
+  ["441", "BM"],
+  ["473", "GD"],
+  ["649", "TC"],
+  ["658", "JM"],
+  ["664", "MS"],
+  ["670", "MP"],
+  ["671", "GU"],
+  ["684", "AS"],
+  ["721", "SX"],
+  ["758", "LC"],
+  ["767", "DM"],
+  ["784", "VC"],
+  ["787", "PR"],
+  ["809", "DO"],
+  ["829", "DO"],
+  ["849", "DO"],
+  ["868", "TT"],
+  ["869", "KN"],
+  ["876", "JM"],
+  ["939", "PR"],
+];
+const NANP_OTHER = new Map(NANP_OTHER_AREA_CODES);
+
+/** #4273 — every country marketing SMS can be priced, switched and sent to. */
+export const MAPPED_COUNTRIES: ReadonlyArray<string> = [
+  ...new Set([...MARKETING_CALLING_CODE_TO_ISO2.map(([, iso2]) => iso2), "CA"]),
+].sort();
+
+/**
+ * #4273 — the ISO-2 country a MARKETING text to this number goes to, or null.
+ * A non-null answer outside {@link MAPPED_COUNTRIES} (a Caribbean NANP number,
+ * for example) is a real country Mingla does not text: it reads "can't text
+ * their country yet" in the quote and is never attempted at send.
+ */
+export function smsMarketingCountry(
+  raw: string | null | undefined,
+): string | null {
+  const e164 = normalizeE164(raw);
+  if (e164 === null) return null;
+  if (e164.length - 1 < MIN_E164_DIGITS) return null;
+  for (const [prefix, iso2] of MARKETING_CALLING_CODE_TO_ISO2) {
+    if (!e164.startsWith(prefix)) continue;
+    if (iso2 !== "US") return iso2;
+    const areaCode = e164.slice(2, 5);
+    if (CANADIAN_AREA_CODE_SET.has(areaCode)) return "CA";
+    return NANP_OTHER.get(areaCode) ?? "US";
+  }
+  return null;
+}

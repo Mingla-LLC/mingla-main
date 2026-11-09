@@ -69,7 +69,7 @@ describe("ORCH-1076 — trip wizard gate + disabled Publish + toast (T-19)", () 
     const src = wizardSource();
     // [TEST-MOD-APPROVED ORCH-1062] DRIFT UPDATE (intended, cited): the dock
     // Publish disabled clause gained `!tripLocationValid` (ORCH-1118 trip-location
-    // Mapbox gate) and `!packagesValidation.ok` (META-ORCH-1174 Leg B2 multi-
+    // address-pick gate) and `!packagesValidation.ok` (META-ORCH-1174 Leg B2 multi-
     // package validity) and is now multi-line formatted (TripCreatorWizard.tsx
     // :1637-1642). tripNeedsStripe is still a disabling term (ORCH-1076 Stream B).
     // Assert the exact current gate at the same (all-terms) strength.

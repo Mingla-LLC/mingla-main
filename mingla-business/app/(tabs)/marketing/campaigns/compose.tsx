@@ -199,6 +199,8 @@ import {
   smsReachNote,
   pushTitleFromSubject,
   reconcileBlastChannels,
+  reviewSendHold,
+  reviewTotalCostLabel,
   sendByUnavailable,
   smsCostLabel,
   sourceKeyForOption,
@@ -206,6 +208,7 @@ import {
   sortBlastChannels,
   stripUnsupportedTokens,
   toggleBlastChannel,
+  type BlastChannel,
 } from "../../../../src/features/marketing/blastSendModel";
 import {
   confirmSiblingChannels,
@@ -221,6 +224,10 @@ import {
   type SiblingChannelState,
 } from "../../../../src/services/marketing/campaignChannelGroupService";
 import { listGroupDrafts } from "../../../../src/services/marketing/marketingBookSendService";
+import {
+  bookPricingErrorCopy,
+  unpricedSmsLine,
+} from "../../../../src/services/marketing/campaignSendCopy";
 import {
   getCombinedAudienceReach,
   getCombinedAudienceSummary,
@@ -709,6 +716,9 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     useState(0);
   const [bookFailedConfirmationCount, setBookFailedConfirmationCount] =
     useState(0);
+  // #4273 — texts skipped because Mingla can't text that country yet.
+  const [bookUnpricedConfirmationCount, setBookUnpricedConfirmationCount] =
+    useState(0);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
   useEffect(() => {
     if (!showReview || !isBookAudience) return;
@@ -734,14 +744,9 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     const code = error instanceof Error ? error.message : "BOOK_BLAST_FAILED";
     if (code.includes("PREVIEW_STALE") && isManualAudience)
       return "This group changed after preview. Refresh to get the current recipients and cost.";
-    if (code.includes("RATE_BOOK_EXPIRED"))
-      return "SMS pricing needs a fresh provider rate card before this campaign can be sent.";
-    if (code.includes("RATE_BOOK_UNAVAILABLE"))
-      return "SMS pricing is unavailable for one or more destinations. Mingla needs to refresh the provider rate card before sending.";
-    if (code.includes("COST"))
-      return "Provider cost could not be verified. Refresh the preview before confirming.";
-    if (code.includes("MMS"))
-      return "MMS media could not be verified. Fix the media or refresh the preview.";
+    // #4273 P2-a — the same words a method sent alongside this one shows.
+    const pricing = bookPricingErrorCopy(code);
+    if (pricing !== null) return pricing;
     if (code.includes("FORBIDDEN"))
       return "You no longer have permission to send this campaign.";
     if (code.includes("MONTHLY_CAP"))
@@ -1235,6 +1240,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
       setIsSendNowConfirmation(sendMode === "now");
       setBookDeferredConfirmationCount(0);
       setBookSkippedConfirmationCount(0);
+      setBookUnpricedConfirmationCount(0);
       setShowSentConfirmation(true);
     },
     onError: (err) => {
@@ -1246,11 +1252,27 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     },
   });
 
+  // #4273 — the SMS method's own quote, whether SMS leads or goes alongside.
+  const reviewSmsQuote: MarketingBookQuote | null = channel === "sms"
+    ? bookQuote
+    : siblings.find((row) => row.channel === "sms")?.quote ?? null;
+  // #4273 P2-a — Send waits for a priced preview of every ticked method.
+  const reviewHold = isBookAudience
+    ? reviewSendHold([...extraChannels].map((kind) => {
+        const row = siblings.find((item) => item.channel === kind);
+        return {
+          channel: kind,
+          priced: row?.quote != null,
+          pending: siblingsPending,
+        };
+      }))
+    : null;
+
   const openReviewRef = useRef<() => Promise<void>>(() => Promise.resolve());
   const handleConfirmSchedule = useCallback(() => {
     if (campaignId === null) return;
     if (isBookAudience) {
-      if (bookQuote === null || bookRequestId === null) return;
+      if (bookQuote === null || bookRequestId === null || reviewHold !== null) return;
       // #4273 — a method nobody can receive on must not hold back the others.
       // Its draft stays in Campaigns; the host is told in one line.
       if (leadStepsAside(bookQuote.reachableCount, siblings.map((row) => row.quote?.reachableCount ?? null))) {
@@ -1277,6 +1299,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
             setBookSkippedConfirmationCount(0);
             setBookDeliveredConfirmationCount(sent.reduce((sum, row) => sum + row.delivered, 0));
             setBookFailedConfirmationCount(sent.reduce((sum, row) => sum + row.failed, 0));
+            setBookUnpricedConfirmationCount(reviewSmsQuote?.unpricedCount ?? 0);
             setShowSentConfirmation(true);
           }
         });
@@ -1313,13 +1336,17 @@ export default function ComposeCampaignRoute(): React.ReactElement {
               });
               setSiblingsPending(false);
               setSiblings([]);
-              const failures = sent.filter((row) => !row.ok);
+              const failures = sent.filter((row) => !row.ok && row.retryable !== false);
+              // #4273 (tester P3) — a method that reaches nobody is not a
+              // retry case: say why, never "saved in Campaigns to retry".
+              const nobody = sent.filter((row) => !row.ok && row.retryable === false);
               const partial = sent.filter((row) => row.ok && row.message !== null);
               const notes: string[] = [];
               if (failures.length > 0) {
                 notes.push(`Not sent: ${failures.map((row) =>
                   row.message ?? CHANNEL_LABEL[row.channel]).join(" ")} It is saved in Campaigns to retry.`);
               }
+              for (const row of nobody) notes.push(`Not sent: ${row.message ?? CHANNEL_LABEL[row.channel]}`);
               // #3682 wave 3 — a channel where some people failed says so.
               for (const row of partial) notes.push(row.message as string);
               if (notes.length > 0) {
@@ -1338,6 +1365,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
             setBookSkippedConfirmationCount(result.skippedAfterConfirm);
             setBookDeliveredConfirmationCount(result.delivered);
             setBookFailedConfirmationCount(result.failed);
+            setBookUnpricedConfirmationCount(reviewSmsQuote?.unpricedCount ?? 0);
             setShowSentConfirmation(true);
           },
           onError: (error) => {
@@ -1409,6 +1437,8 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     bookConfirmMutation,
     channel,
     siblings,
+    reviewSmsQuote,
+    reviewHold,
     sendMode,
     scheduledForIso,
     campaignName,
@@ -1718,22 +1748,38 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the two maps are read from flags
     [bookBlastEnabled, buyerListNames, channel, isBookAudience, pickedKeys, followerEmailFlag.data, followerSmsFlag.data, circleRosterFlag.data, extendedEmailFlag.data, extendedSmsFlag.data, extendedPushFlag.data],
   );
-  const [fallbackSentence, setFallbackSentence] = useState<string | null>(null);
+  // #4273 P3-d — keep the automatic change, not its sentence: the sentence is
+  // read from what is ticked now, so it never names a method since unticked.
+  const [fallbackChange, setFallbackChange] = useState<
+    { before: BlastChannel[]; after: BlastChannel[] } | null
+  >(null);
   useEffect(() => {
     const current = sortBlastChannels(sendChannels);
     const next = reconcileBlastChannels(current, channelUnavailable);
     if (next.join() !== current.join()) {
-      setFallbackSentence(blastFallbackSentence(current, next, pickedKeys));
+      setFallbackChange(
+        blastFallbackSentence(current, next, pickedKeys) === null
+          ? null
+          : { before: current, after: next },
+      );
       setSendChannels(new Set(next));
     }
   }, [channelUnavailable, pickedKeys, sendChannels]);
+  const fallbackSentence = fallbackChange === null
+    ? null
+    : blastFallbackSentence(
+        fallbackChange.before,
+        fallbackChange.after,
+        pickedKeys,
+        sortBlastChannels(sendChannels),
+      );
   // The sentence belongs to the picks that caused it.
   const fallbackKey = pickedKeys.slice().sort().join("|");
   const lastFallbackKey = useRef(fallbackKey);
   useEffect(() => {
     if (lastFallbackKey.current === fallbackKey) return;
     lastFallbackKey.current = fallbackKey;
-    if (!pickedKeys.some(isBuyerSourceKey)) setFallbackSentence(null);
+    if (!pickedKeys.some(isBuyerSourceKey)) setFallbackChange(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fallbackKey stands for pickedKeys
   }, [fallbackKey]);
 
@@ -2621,15 +2667,20 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                         ? `${allowance.emailRemaining} of ${allowance.emailCap} emails left this month`
                         : "Unlimited",
                   error: kind === channel ? null : row?.error ?? null,
+                  note: kind === "sms" ? unpricedSmsLine(quote?.unpricedCount) ?? undefined : undefined,
+                  // #4273 P2-a — a method whose preview failed can be refreshed here.
+                  onRetry: kind !== channel && quote === null && !siblingsPending && campaignId !== null
+                    ? () => {
+                        void openReviewWithServerPreview();
+                      }
+                    : undefined,
                 };
               })
             : undefined}
           hasMedia={mmsMedia.length > 0}
           estimatedCostLabel={
             groupFigures !== null
-              ? groupFigures.costKind === "not_metered"
-                ? "Free"
-                : smsCostLabel(groupFigures, "total")
+              ? reviewTotalCostLabel(groupFigures, sendChannels.has("sms"), reviewSmsQuote !== null)
               : isBookAudience && bookQuote !== null && channel === "push"
               ? "Free · push is unlimited"
               : isBookAudience && bookQuote !== null
@@ -2647,7 +2698,12 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           }
           quoteExpiresAt={isBookAudience ? bookQuote?.expiresAt : undefined}
           staleWarning={bookStaleWarning}
-          disabledReason={isBookAudience ? bookDisabledReason : null}
+          disabledReason={isBookAudience ? bookDisabledReason ?? reviewHold : null}
+          unpricedNote={
+            isBookAudience
+              ? unpricedSmsLine(groupFigures?.unpricedSmsCount ?? reviewSmsQuote?.unpricedCount) ?? undefined
+              : undefined
+          }
           retryDisabled={isBookAudience && !bookOnline}
           staleDetail={bookStaleDetail}
           weekBlastWarning={bookWeekBlastWarning}
@@ -2718,6 +2774,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
               active={previewChannel}
               onSelect={setPreviewTab}
               pane={renderMethodPreview(previewChannel)}
+              surface="light"
             />
           </View>
         </Modal>
@@ -2733,6 +2790,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           skippedRecipientCount={bookSkippedConfirmationCount}
           deliveredRecipientCount={bookDeliveredConfirmationCount}
           failedRecipientCount={bookFailedConfirmationCount}
+          unpricedRecipientCount={bookUnpricedConfirmationCount}
           onDismiss={() => {
             setShowSentConfirmation(false);
             sanctionedExitRef.current = true;

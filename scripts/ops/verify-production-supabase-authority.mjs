@@ -316,7 +316,7 @@ export function validateRepositoryAuthority(repoRoot = REPO_ROOT) {
   // gate follows it rather than being relaxed around it.
   //
   // WHY IT MOVED. The shared static-map resolver
-  // (`packages/offering-rendering/mapboxFunctionsBase.ts`) reads the Supabase URL
+  // (`packages/offering-rendering/functionsBase.ts`) reads the Supabase URL
   // out of `Constants.expoConfig.extra`, which `app-mobile/app.config.js` never
   // emitted — so the map hid itself on four consumer surfaces. `app.config.js`
   // runs in plain Node at config time and cannot import a `.ts` module, so the

@@ -2,7 +2,7 @@
  * #3355 P7 — the address picker on Ari's "Where is it?" event card.
  *
  * The owner types the venue name and picks the address from the SAME Host
- * address search the event wizard's Where step uses (`MapboxAddressInput`),
+ * address search the event wizard's Where step uses (`AddressInput`),
  * so the city and point are structured exactly as the Host publish check
  * needs. Nothing is sent until an address is picked from the suggestions;
  * typed text alone is never an answer. The pick travels to the server as a
@@ -20,9 +20,9 @@ import {
 import type { AriFlowPlaceValue } from "../../services/agentChatService";
 import type { AriFlowPlaceMode } from "./ariFlowCards";
 import {
-  MapboxAddressInput,
+  AddressInput,
   type PlaceDetails,
-} from "../location/MapboxAddressInput";
+} from "../location/AddressInput";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
@@ -38,7 +38,7 @@ export interface AriFlowPlaceCardProps {
   mode?: AriFlowPlaceMode;
 }
 
-/** The place a Mapbox pick describes, or null when it has no city. */
+/** The place a picked place describes, or null when it has no city. */
 export function placeFromPick(
   details: PlaceDetails,
   venueName: string,
@@ -87,7 +87,7 @@ export const AriFlowPlaceCard: React.FC<AriFlowPlaceCardProps> = ({
           testID="ari-flow-place-venue"
         />
       )}
-      <MapboxAddressInput
+      <AddressInput
         value={query}
         // Issue #3291 — rank-only: the brand's saved point first, else its
         // country (shared resolver), like every Host address field.

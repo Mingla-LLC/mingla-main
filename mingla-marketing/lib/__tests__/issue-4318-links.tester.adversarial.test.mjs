@@ -344,10 +344,16 @@ test('the week turns over at the city’s own local midnight, not UTC', () => {
   // Same instant, Raleigh is still on Saturday.
   assert.equal(week.cityWeek(city('raleigh-nc'), listings, [], now).today, '2026-11-07')
 
-  // An every-city strip for Sat 7 has expired in Lagos but still shows in Raleigh.
+  // Admin strips are not cut by the city's own midnight (8 Nov live check: a
+  // strip posted Sunday evening in the US never showed in Lagos). A Sat 7
+  // strip shows in both until Saturday has ended in the last zone (UTC-12),
+  // then in neither.
   const pins = week.normalisePins([pinRow({ shows_on: '2026-11-07' })])
-  assert.equal(week.cityWeek(city('lagos'), listings, pins, now).pins.length, 0)
+  assert.equal(week.cityWeek(city('lagos'), listings, pins, now).pins.length, 1)
   assert.equal(week.cityWeek(city('raleigh-nc'), listings, pins, now).pins.length, 1)
+  const later = '2026-11-08T12:00:01.000Z'
+  assert.equal(week.cityWeek(city('lagos'), listings, pins, later).pins.length, 0)
+  assert.equal(week.cityWeek(city('raleigh-nc'), listings, pins, later).pins.length, 0)
 })
 
 test('the week across a DST change keeps seven calendar days and the right local day for each plan', () => {

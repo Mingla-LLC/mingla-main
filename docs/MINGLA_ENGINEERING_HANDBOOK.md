@@ -414,7 +414,7 @@ shipped five production incidents and fails two different ways:
 - **Missing key (silent, worse).** The consumer app carries no Stripe key in `extra` at all, so there is
   no mismatch to throw on — `resolvePublishableKey()` ends in `?? ""`, checkout is dead, and the app
   boots and looks completely normal. Shipped 2026-08-06, live ~40 minutes, nothing in Sentry or the
-  funnel. Same silent-default shape for `EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN` / `EXPO_PUBLIC_POSTHOG_KEY` /
+  funnel. Same silent-default shape for `EXPO_PUBLIC_POSTHOG_KEY` /
   `EXPO_PUBLIC_MIXPANEL_TOKEN`.
 
 **BOTH apps publish through their canonical wrapper script — never a bare `eas update`.** Each wrapper
@@ -499,9 +499,8 @@ while the app keeps running; in release it is the stuck splash screen (#990 §3)
 - **The first export in a fresh worktree can take about 14 minutes** of cold Metro bundling. It is not hung:
   check the process tree (Metro workers, then `hermesc`) before killing anything, and finish one platform
   before starting the other. Filter output with `grep -v`, not `tail`, which buffers everything until exit.
-- **The manifest verifier does not check every key.** For Host it deliberately skips
-  `EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN`, and an unset value serializes as `{}` without changing the `extra` key
-  count, so check Mapbox by hand in the served manifest. Explorer serving `GOOGLE_IOS_CLIENT_SECRET` and
+- **The manifest verifier does not check every key.** An unset value serializes as `{}` without
+  changing the `extra` key count, so check optional keys by hand in the served manifest. Explorer serving `GOOGLE_IOS_CLIENT_SECRET` and
   `GOOGLE_WEB_CLIENT_SECRET` as empty strings is CORRECT: client secrets must never ship in a bundle, so do not
   provision them.
 - **EAS GraphQL (`api.expo.dev/graphql`) returns 403 with Cloudflare error 1010 to a default script User-Agent**,

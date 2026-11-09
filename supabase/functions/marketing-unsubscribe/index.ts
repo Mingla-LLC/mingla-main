@@ -17,8 +17,12 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { serviceClient, ticketCorsHeaders } from "../_shared/ticketCheckout.ts";
-import { verifyUnsubscribeToken } from "../_shared/marketingTokens.ts";
+import {
+  verifySmsUnsubscribeToken,
+  verifyUnsubscribeToken,
+} from "../_shared/marketingTokens.ts";
 import { escapeHtml } from "../_shared/email/escape.ts";
+import { handleSmsOptOut } from "./smsOptOut.ts";
 
 // In-process 5-min brand-name cache (SPEC §7.3). Module-scope so it survives
 // across requests within the same edge-function isolate. Cold-start clears it.
@@ -46,6 +50,18 @@ serve(async (req) => {
       "This link appears to be missing its identifier.",
       400,
     );
+  }
+
+  // #4273 — an SMS opt-out link (a text whose sender cannot take a "STOP"
+  // reply). Its token names the message, never the number.
+  let smsPayload: Awaited<ReturnType<typeof verifySmsUnsubscribeToken>> = null;
+  try {
+    smsPayload = await verifySmsUnsubscribeToken(token);
+  } catch (_err) {
+    smsPayload = null; // not an SMS token, or invalid: the email path decides
+  }
+  if (smsPayload !== null) {
+    return await handleSmsOptOut(req, smsPayload, serviceClient(), token);
   }
 
   // Verify HS256 signature + expiration via shared helper.

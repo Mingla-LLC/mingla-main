@@ -11,7 +11,7 @@
  */
 import { describe, expect, test } from "@jest/globals";
 
-import type { PlaceDetails } from "../../../services/mapboxGeocodeService";
+import type { PlaceDetails } from "../../../services/placesService";
 import { mapUiToBrandUpdatePatch } from "../../../services/brandMapping";
 import type { Brand } from "../../../types/brand";
 import {
@@ -52,13 +52,15 @@ describe("#3355 P5 — Brand Edit structured address", () => {
       countryCode: "GB",
       lat: 51.3891,
       lng: 1.3863,
+      locationProviderPlaceId: margate.placeId,
     });
   });
 
-  test("ORCH-1079: a Mapbox id never reaches google_place_id", () => {
+  test("ORCH-1079: a picked place id never reaches google_place_id", () => {
     const patch = brandAddressPatchFromPlace(margate);
     expect(Object.keys(patch)).not.toContain("googlePlaceId");
-    expect(JSON.stringify(patch)).not.toContain(margate.placeId);
+    // #4334 — it is saved, but only in its own column beside the pin.
+    expect(patch.locationProviderPlaceId).toBe(margate.placeId);
   });
 
   test("a place with no country leaves the saved country alone (never blanks it)", () => {
@@ -69,7 +71,7 @@ describe("#3355 P5 — Brand Edit structured address", () => {
         city: null,
         countryCode: null,
       }),
-    ).toEqual({ address: "Somewhere", lat: 1, lng: 2 });
+    ).toEqual({ address: "Somewhere", lat: 1, lng: 2, locationProviderPlaceId: null });
   });
 
   test("the save patch carries city/country/point to the brands row", () => {

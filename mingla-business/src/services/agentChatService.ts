@@ -104,7 +104,7 @@ export interface AriFlowAnswerValues {
   place?: AriFlowPlaceValue;
 }
 
-/** #3355 P7 — the picked place (MapboxAddressInput) an Ari card submits. */
+/** #3355 P7 — the picked place (AddressInput) an Ari card submits. */
 export interface AriFlowPlaceValue {
   venue_name: string;
   address: string;

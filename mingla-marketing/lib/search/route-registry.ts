@@ -342,7 +342,7 @@ export const HOST_LANDING_LAST_MODIFIED = '2026-11-08' as const
  * URLs whose lastmod moved. Pages whose words #4339 did not change keep their
  * own dates: the legal texts in REDESIGN_UNCHANGED_ROUTE_IDS.
  */
-export const SITE_REDESIGN_LAST_MODIFIED = '2026-11-08' as const
+export const SITE_REDESIGN_LAST_MODIFIED = '2026-11-09' as const
 
 /** Search routes whose content #4339 did not change (their lastmod stays their own). */
 export const REDESIGN_UNCHANGED_ROUTE_IDS: ReadonlySet<string> = new Set([

@@ -439,7 +439,8 @@ Deno.test("#1556 ADV-6 — send() composes via composeSmsBody, and the estimate 
 
   // The single provider-bound composition in send().
   const sendCompose = adapterSrc.match(
-    /const body = composeSmsBody\(\s*input\.message,\s*input\.stopFooterOwnLine === true,\s*\);/,
+    // #4273 — the third argument is the opt-out link for a no-reply sender.
+    /const body = composeSmsBody\(\s*input\.message,\s*input\.stopFooterOwnLine === true,\s*input\.optOutLink,\s*\);/,
   );
   assert(
     sendCompose !== null,

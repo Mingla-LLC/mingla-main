@@ -108,6 +108,7 @@ export interface BrandRow {
   google_place_id?: string | null;
   lat?: number | null;
   lng?: number | null;
+  location_provider_place_id?: string | null;
   city?: string | null;
   country_code?: string | null;
   claim_status?: BrandClaimStatus | null;
@@ -153,6 +154,7 @@ export type BrandTableInsert = {
   google_place_id?: string | null;
   lat?: number | null;
   lng?: number | null;
+  location_provider_place_id?: string | null;
   city?: string | null;
   country_code?: string | null;
   claim_status?: BrandClaimStatus;
@@ -369,6 +371,7 @@ export function mapBrandRowToUi(row: BrandRow, options: MapBrandRowToUiOptions):
     googlePlaceId: row.google_place_id ?? undefined,
     lat: row.lat ?? undefined,
     lng: row.lng ?? undefined,
+    locationProviderPlaceId: row.location_provider_place_id ?? undefined,
     city: row.city ?? undefined,
     countryCode: row.country_code ?? undefined,
     venueCategory: (row.venue_category as VenueCategory | undefined) ?? undefined,
@@ -432,6 +435,10 @@ export function mapUiToBrandInsert(input: MapUiToBrandInsertInput): BrandTableIn
   }
   if (brand.lat !== undefined) row.lat = brand.lat ?? null;
   if (brand.lng !== undefined) row.lng = brand.lng ?? null;
+  // #4334 — the pin's Google place id rides the same insert as the pin.
+  if (brand.locationProviderPlaceId !== undefined) {
+    row.location_provider_place_id = brand.locationProviderPlaceId ?? null;
+  }
   if (brand.city !== undefined) row.city = brand.city ?? null;
   if (brand.countryCode !== undefined) {
     row.country_code = brand.countryCode ?? null;
@@ -530,6 +537,10 @@ export function mapUiToBrandUpdatePatch(
   }
   if (patch.lat !== undefined) out.lat = patch.lat ?? null;
   if (patch.lng !== undefined) out.lng = patch.lng ?? null;
+  // #4334 — the pin's Google place id rides the same update as the pin.
+  if (patch.locationProviderPlaceId !== undefined) {
+    out.location_provider_place_id = patch.locationProviderPlaceId ?? null;
+  }
   if (patch.city !== undefined) out.city = patch.city ?? null;
   if (patch.countryCode !== undefined) {
     out.country_code = patch.countryCode ?? null;

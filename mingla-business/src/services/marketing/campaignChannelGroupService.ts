@@ -28,7 +28,7 @@ import {
   previewMarketingBook,
   previewMarketingCampaignGroup,
 } from "./marketingBookSendService";
-import { partialSendLine } from "./campaignSendCopy";
+import { bookPricingErrorCopy, partialSendLine } from "./campaignSendCopy";
 
 export type CampaignChannel = "email" | "sms" | "push";
 
@@ -74,6 +74,11 @@ export function siblingErrorMessage(channel: CampaignChannel, error: unknown): s
   }
   if (code.includes("FLAG_DISABLED")) return `${label} isn't switched on for this audience yet.`;
   if (code.includes("FORBIDDEN")) return `You can't send ${label.toLowerCase()} for this brand.`;
+  // #4273 P2-a — a price failure reads exactly as it does for the lead method.
+  const pricing = bookPricingErrorCopy(code);
+  if (pricing !== null) {
+    return pricing.startsWith(label) ? pricing : `${label}: ${pricing}`;
+  }
   return `${label} preview is unavailable. Refresh before sending.`;
 }
 
@@ -255,6 +260,23 @@ export interface SiblingSendResult {
   delivered: number;
   failed: number;
   message: string | null;
+  /**
+   * #4273 (tester P3) — false when a retry cannot help: nobody in the
+   * audience can receive this method (for SMS, often because every number is
+   * in a country Mingla can't text yet). The banner then never says "retry".
+   */
+  retryable?: boolean;
+}
+
+/** #4273 — the words for a method that reaches nobody, so it is not sent. */
+export function siblingReachesNobodyMessage(
+  channel: CampaignChannel,
+  quote: MarketingBookQuote,
+): string {
+  const label = channel === "push" ? "Push" : channel === "sms" ? "SMS" : "Email";
+  return channel === "sms" && (quote.unpricedCount ?? 0) > 0
+    ? `${label}: nobody here can be texted. Mingla can't text their country yet.`
+    : `${label}: no one in this audience can receive it.`;
 }
 
 /** Confirm every previewed sibling after the lead succeeded, one at a time. */
@@ -266,7 +288,19 @@ export async function confirmSiblingChannels(input: {
   const results: SiblingSendResult[] = [];
   for (const sibling of input.siblings) {
     if (sibling.quote === null) {
-      results.push({ channel: sibling.channel, ok: false, delivered: 0, failed: 0, message: sibling.error });
+      results.push({ channel: sibling.channel, ok: false, delivered: 0, failed: 0, message: sibling.error, retryable: true });
+      continue;
+    }
+    if (sibling.quote.reachableCount === 0) {
+      // Nothing to send: confirming would only be refused. Not a retry case.
+      results.push({
+        channel: sibling.channel,
+        ok: false,
+        delivered: 0,
+        failed: 0,
+        message: siblingReachesNobodyMessage(sibling.channel, sibling.quote),
+        retryable: false,
+      });
       continue;
     }
     try {
@@ -293,6 +327,8 @@ export async function confirmSiblingChannels(input: {
         delivered: 0,
         failed: 0,
         message: siblingErrorMessage(sibling.channel, error),
+        retryable: !(error instanceof MarketingBookSendError &&
+          error.code.includes("ZERO_RECIPIENTS")),
       });
     }
   }

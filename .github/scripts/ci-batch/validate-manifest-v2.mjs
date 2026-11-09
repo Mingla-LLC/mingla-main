@@ -130,7 +130,8 @@ export const SUITES_FOLDED_SINCE_SEAL = Object.freeze([
 // runtime, deadline, routing, file inventory, exact command capabilities and
 // the digest of the workflow it replaced. A change to any of them is a reviewed
 // re-seal of THIS constant; the Phase 3A/3B/3C seals are never touched by it.
-const LOCKED_PHASE3D_CONTRACT_SHA256 = "a846f1a438bb88e06a6fb372d3fefb770d02241e63ceb9c26844774857059cdf";
+// #4334: register the Google places migration and its PostgreSQL proofs, and point the issue-992 lane at the renamed server geocode helper.
+const LOCKED_PHASE3D_CONTRACT_SHA256 = "96c929094dbff13ee3549f562a10567c8c9ee11f5fb191a11c9cbc9e081135cc";
 // [#3643] The exact inert literal environment the folded origins set on a step,
 // byte for byte, keyed by the command that carries it. #2198's two Paystack maps
 // are test-mode strings that only satisfy env-presence guards at import time
@@ -405,12 +406,22 @@ export function phase3dContractDigest(manifest) {
 // #4318: register the /links migration (20280508004318) and its implementor and tester PostgreSQL proofs; it joins the pre-#1931 replay skip list by exact filename.
 // #4318: register the /links live-cities (20280514004318) and strip end-date (20280515004318) migrations and their PostgreSQL proofs; the end-date migration joins the pre-#1931 replay skip list by exact filename.
 // #4318: register the /links per-city places migration (20280516004318) and its PostgreSQL proof the same way.
+// #4334: register the Google places migration and its PostgreSQL proofs, and point the issue-992 lane at the renamed server geocode helper.
+// #4273 unpriced country: register the sms-unpriced-country migration and its PostgreSQL proofs (implementor + tester); re-sealed after merging origin/main.
+// #4273 all countries: register the all-countries / automatic-prices PostgreSQL proof.
+// #4273 all countries (tester): register the tester adversarial PostgreSQL proof.
+// #4273: re-sealed for the SMS opt-out link suite.
+// #4273: re-sealed after merging origin/main (#4318) and moving the migration to 20280522004273.
+// #4273 tester retest 3: register the SMS opt-out scope PostgreSQL proof.
+// #4273: re-sealed after moving the migration to 20280522004273 (above production's 20280521004334).
+// #4273: re-sealed after merging origin/main (#4350).
 // #4339: register the Ari draft hand-off migration (20280512004339) and its implementor PostgreSQL proof in the #1857, #1931 and #2117 replay lanes, after merging origin/main 2e6e331749 (#4318).
 // #4339: the #1931 lane skips 20280512004339_issue_4339_site_prompt_drafts.sql by exact filename (#2492 closure guard: CREATE TABLE columns are not credited as definitions).
 // #4339 round A: register the Book a call leads migration (20280520004339) and its implementor PostgreSQL proof in the #1857, #1931 and #2117 replay lanes (the #2492 closure guard passes without a skip).
 // #4339 round B: register the ad marketing destinations migration (20280522004339) and its implementor PostgreSQL proof in the #1857, #1931 and #2117 replay lanes.
 // #4339: re-sealed after merging origin/main 85dba1f14e (#4349 /links rows kept beside the #4339 rows).
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "5b1e2bda220722c2a0305b60344476d9cab1a2c906ba79473d2db9e11965121c";
+// #4339: re-sealed after merging origin/main 28f88fea6d (#4334 and #4273 rows kept beside the #4339 rows; MANIFEST.json phase3eContractSha256 matches).
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "2e2500294986eab0dbfd02a7b8f826dcffb831378e412a5365a401e6ec07b551";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
@@ -952,6 +963,11 @@ const STALE_PROVENANCE_ALLOWLIST = Object.freeze([
   Object.freeze({ suite: "issue-994-ota-env-resolution-app-mobile", pattern: REVIEWED_SPLIT_PATHS[1], issue: "#994" }),
   Object.freeze({ suite: "issue-994-ota-env-resolution-mingla-business", pattern: REVIEWED_SPLIT_PATHS[0], issue: "#994" }),
   Object.freeze({ suite: "issue-994-ota-env-resolution-mingla-business", pattern: REVIEWED_SPLIT_PATHS[1], issue: "#994" }),
+  // #4334 — the shared address field was renamed to AddressInput.tsx. This origin
+  // path sits in the byte-locked Phase 2 suite registry (PHASE2_SUITES_SHA256), so
+  // it cannot be rewritten; the suite still watches the business location
+  // components and its own keyboard-cap tests, which import the renamed file.
+  Object.freeze({ suite: "issue-1027-keyboard-and-datetime-tests", pattern: "packages/location-input/src/MapboxAddressInput.tsx", issue: "#4334" }),
 ]);
 const WORKFLOW_PROVENANCE_PREFIX = ".github/workflows/";
 

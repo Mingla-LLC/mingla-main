@@ -834,6 +834,10 @@ export function InviteQuoteCard(props: {
       No selected people can receive an invite right now. You can still publish without sending invitations.
     </Text> : null}
     <Text style={styles.channelText}>{wizardInviteChannelLine(q.perChannelReachable, channels)}</Text>
+    {/* #4273 — skipped with its own reason, not an unavailable estimate. */}
+    {textChosen && (q.unpricedSmsCount ?? 0) > 0 ? <Text style={styles.muted} testID="invite-quote-unpriced">
+      {`${q.unpricedSmsCount} ${q.unpricedSmsCount === 1 ? "person" : "people"} can't be texted: Mingla can't text their country yet.`}
+    </Text> : null}
     <Text style={styles.cost}>{textChosen && q.estimatedCostMinor > 0 ? `Estimated text cost ${formatWizardInviteMoney(q.estimatedCostMinor, q.currency)}` : "No paid-channel cost"}</Text>
   </View>;
 }

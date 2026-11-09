@@ -5,13 +5,13 @@
 --   LP-03 grants: anon nothing on the three new tables; authenticated SELECT
 --         only on options/votes and nothing on previews; no TRUNCATE; the new
 --         RPCs are authenticated-only, the helpers and the store internal.
---   PL-08 plan_create: Mapbox place + link and typed address + link store the
+--   PL-08 plan_create: Google place + link and typed address + link store the
 --         link with its domain; pool place + link and a javascript: link ->
 --         invalid_input; the A2 where/when combinations still create.
 --   PL-01 the first suggestion on a pool-place plan seeds the original (with
 --         the creator's vote) and the new option (with the suggester's vote);
 --         exactly one place_added line carrying placeName and optionId.
---   PL-02 the same pool id / typed name+address / Mapbox id again ->
+--   PL-02 the same pool id / typed name+address / Google id again ->
 --         existed:true, the vote is added, no line.
 --   PL-03 the seventh place -> PT409 conflict_too_many_places.
 --   PL-04 plan_set_place_vote on/off is idempotent and posts no line.
@@ -24,7 +24,7 @@
 --   PL-10 chat_plans_for_conversation returns places, canAddPlace, link on a
 --         place plan, and preview fields only after a store; deck plans
 --         places = [] and canAddPlace = false.
---   PL-07 plan_lock with p_place_option_id copies that option (a Mapbox place
+--   PL-07 plan_lock with p_place_option_id copies that option (a Google place
 --         with a link) into the plan and its calendar card_data; with NULL it
 --         picks the leader (most votes; tie -> the original); the lock line
 --         carries placeName + placeVoted; the four old named arguments still
@@ -47,11 +47,14 @@
 -- is the migration itself; without it LP-03 fails on its first table
 -- (chat_plan_place_options does not exist) and PL-01 on plan_add_place.
 --
--- Run after the full migration chain on PostgreSQL 17. The two re-applies
--- prove the migration is idempotent; everything after them rolls back.
+-- Run after the full migration chain on PostgreSQL 17. #4334 renamed
+-- mapbox_id to provider_place_id and owns the current plan function bodies,
+-- so the re-applies are of 20280521004334_issue_4334_google_places.sql (the
+-- 4261 file can no longer re-run on top of the rename). The two re-applies
+-- prove that migration is idempotent; everything after them rolls back.
 
-\ir ../20280403054261_issue_4261_plan_places_and_link_previews.sql
-\ir ../20280403054261_issue_4261_plan_places_and_link_previews.sql
+\ir ../20280521004334_issue_4334_google_places.sql
+\ir ../20280521004334_issue_4334_google_places.sql
 
 BEGIN;
 
@@ -202,9 +205,9 @@ DECLARE
 BEGIN
   PERFORM pg_temp.t4261p_as('seth');
   SET LOCAL ROLE authenticated;
-  -- Mapbox place + its menu link.
+  -- Google place + its menu link.
   r := public.plan_create(pg_temp.t4261p_id('plain'), NULL, NULL, 'place',
-         jsonb_build_object('mapboxId', 'dXJuOm1ieHBvaTo0', 'name', 'Lekki Conservation Centre', 'address', 'Lekki, Lagos', 'lat', 6.44, 'lng', 3.53),
+         jsonb_build_object('providerPlaceId', 'ChIJlekkiConservation1', 'name', 'Lekki Conservation Centre', 'address', 'Lekki, Lagos', 'lat', 6.44, 'lng', 3.53),
          'https://www.LekkiCentre.example.com/menu', 'poll', NULL, ARRAY[now() + interval '2 days'], true, NULL);
   INSERT INTO t4261p_vals VALUES ('plan_mbx', r ->> 'planId');
   -- Typed address + link.
@@ -243,10 +246,10 @@ BEGIN
   RESET ROLE;
 
   SELECT * INTO v_plan FROM public.chat_plans WHERE id = pg_temp.t4261p_val('plan_mbx')::uuid;
-  IF v_plan.where_kind <> 'place' OR v_plan.mapbox_id <> 'dXJuOm1ieHBvaTo0' OR v_plan.place_pool_id IS NOT NULL
+  IF v_plan.where_kind <> 'place' OR v_plan.provider_place_id <> 'ChIJlekkiConservation1' OR v_plan.place_pool_id IS NOT NULL
      OR v_plan.link_url <> 'https://www.LekkiCentre.example.com/menu' OR v_plan.link_domain <> 'lekkicentre.example.com'
      OR v_plan.title <> 'Lekki Conservation Centre' THEN
-    RAISE EXCEPTION 'PL-08: Mapbox place + link (got %)', row_to_json(v_plan);
+    RAISE EXCEPTION 'PL-08: Google place + link (got %)', row_to_json(v_plan);
   END IF;
   SELECT * INTO v_plan FROM public.chat_plans WHERE id = pg_temp.t4261p_val('plan_addr_link')::uuid;
   IF v_plan.where_kind <> 'address' OR v_plan.link_url <> 'https://claystudio.example.com'
@@ -333,22 +336,22 @@ DECLARE
   v_before bigint;
   v_opts bigint;
 BEGIN
-  -- Two more new places (each posts its line): a typed address and a Mapbox place with a link.
+  -- Two more new places (each posts its line): a typed address and a Google place with a link.
   v_before := pg_temp.t4261p_msgs(pg_temp.t4261p_id('plain'));
   PERFORM pg_temp.t4261p_as('ada');
   SET LOCAL ROLE authenticated;
   r := public.plan_add_place(v_plan, 'address', jsonb_build_object('name', '12 Admiralty Way', 'address', 'Lekki'));
   INSERT INTO t4261p_vals VALUES ('opt_admiralty', r ->> 'optionId');
   r := public.plan_add_place(v_plan, 'place',
-         jsonb_build_object('mapboxId', 'mbx-terra-kulture', 'name', 'Terra Kulture', 'address', 'Victoria Island', 'lat', 6.43, 'lng', 3.42),
+         jsonb_build_object('providerPlaceId', 'ChIJterraKulture00001', 'name', 'Terra Kulture', 'address', 'Victoria Island', 'lat', 6.43, 'lng', 3.42),
          'https://terrakulture.example.com/menu');
-  INSERT INTO t4261p_vals VALUES ('opt_mapbox', r ->> 'optionId');
+  INSERT INTO t4261p_vals VALUES ('opt_google', r ->> 'optionId');
   RESET ROLE;
   IF pg_temp.t4261p_msgs(pg_temp.t4261p_id('plain')) - v_before <> 2 THEN
     RAISE EXCEPTION 'PL-02: two new places post two lines';
   END IF;
-  IF (SELECT link_domain FROM public.chat_plan_place_options WHERE id = pg_temp.t4261p_val('opt_mapbox')::uuid) <> 'terrakulture.example.com' THEN
-    RAISE EXCEPTION 'PL-02: a suggested Mapbox place keeps its link domain';
+  IF (SELECT link_domain FROM public.chat_plan_place_options WHERE id = pg_temp.t4261p_val('opt_google')::uuid) <> 'terrakulture.example.com' THEN
+    RAISE EXCEPTION 'PL-02: a suggested Google place keeps its link domain';
   END IF;
 
   v_before := pg_temp.t4261p_msgs(pg_temp.t4261p_id('plain'));
@@ -364,9 +367,9 @@ BEGIN
     RAISE EXCEPTION 'PL-02: the same typed name + address is existed (got %)', r;
   END IF;
   r := public.plan_add_place(v_plan, 'place',
-         jsonb_build_object('mapboxId', 'mbx-terra-kulture', 'name', 'Terra Kulture VI', 'lat', 6.43, 'lng', 3.42));
-  IF NOT (r ->> 'existed')::boolean OR r ->> 'optionId' <> pg_temp.t4261p_val('opt_mapbox') THEN
-    RAISE EXCEPTION 'PL-02: the same Mapbox id is existed (got %)', r;
+         jsonb_build_object('providerPlaceId', 'ChIJterraKulture00001', 'name', 'Terra Kulture VI', 'lat', 6.43, 'lng', 3.42));
+  IF NOT (r ->> 'existed')::boolean OR r ->> 'optionId' <> pg_temp.t4261p_val('opt_google') THEN
+    RAISE EXCEPTION 'PL-02: the same Google id is existed (got %)', r;
   END IF;
   -- The plan's own place, suggested again.
   r := public.plan_add_place(v_plan, 'place', jsonb_build_object('poolId', pg_temp.t4261p_id('pool_skyline')));
@@ -389,7 +392,7 @@ END $pl02$;
 DO $pl04$
 DECLARE
   v_before bigint := pg_temp.t4261p_msgs(pg_temp.t4261p_id('plain'));
-  v_opt uuid := pg_temp.t4261p_val('opt_mapbox')::uuid;
+  v_opt uuid := pg_temp.t4261p_val('opt_google')::uuid;
   v_err text;
 BEGIN
   PERFORM pg_temp.t4261p_as('seth');
@@ -615,10 +618,10 @@ BEGIN
      OR r -> 'link' <> 'null'::jsonb THEN
     RAISE EXCEPTION 'PL-10: places on the pool plan, original first (got %)', r -> 'places';
   END IF;
-  SELECT x INTO r FROM jsonb_array_elements(r -> 'places') x WHERE x ->> 'id' = pg_temp.t4261p_val('opt_mapbox');
+  SELECT x INTO r FROM jsonb_array_elements(r -> 'places') x WHERE x ->> 'id' = pg_temp.t4261p_val('opt_google');
   SELECT jsonb_agg(v.user_id ORDER BY v.created_at, v.user_id) INTO v_ids
-    FROM public.chat_plan_place_votes v WHERE v.option_id = pg_temp.t4261p_val('opt_mapbox')::uuid;
-  IF r ->> 'kind' <> 'place' OR r ->> 'mapboxId' <> 'mbx-terra-kulture' OR r ->> 'name' <> 'Terra Kulture'
+    FROM public.chat_plan_place_votes v WHERE v.option_id = pg_temp.t4261p_val('opt_google')::uuid;
+  IF r ->> 'kind' <> 'place' OR r ->> 'providerPlaceId' <> 'ChIJterraKulture00001' OR r ->> 'name' <> 'Terra Kulture'
      OR r ->> 'addedBy' <> pg_temp.t4261p_id('ada')::text OR (r ->> 'isOriginal')::boolean
      OR r -> 'voterIds' <> v_ids
      OR r -> 'link' <> jsonb_build_object('url', 'https://terrakulture.example.com/menu', 'domain', 'terrakulture.example.com',
@@ -627,11 +630,11 @@ BEGIN
   END IF;
 
   SELECT x INTO r FROM jsonb_array_elements(v_list -> 'plans') x WHERE x ->> 'id' = pg_temp.t4261p_val('plan_mbx');
-  IF r ->> 'whereKind' <> 'place' OR r -> 'place' ->> 'mapboxId' <> 'dXJuOm1ieHBvaTo0'
+  IF r ->> 'whereKind' <> 'place' OR r -> 'place' ->> 'providerPlaceId' <> 'ChIJlekkiConservation1'
      OR r -> 'link' <> jsonb_build_object('url', 'https://www.LekkiCentre.example.com/menu', 'domain', 'lekkicentre.example.com',
                                           'title', NULL, 'imageUrl', NULL, 'siteName', NULL, 'fetchedAt', NULL)
      OR r -> 'places' <> '[]'::jsonb OR NOT (r ->> 'canAddPlace')::boolean THEN
-    RAISE EXCEPTION 'PL-10: a Mapbox place plan carries its link, no places yet, canAddPlace (got %)', r;
+    RAISE EXCEPTION 'PL-10: a Google place plan carries its link, no places yet, canAddPlace (got %)', r;
   END IF;
 
   PERFORM pg_temp.t4261p_as('seth');
@@ -855,7 +858,7 @@ BEGIN
     RAISE EXCEPTION 'PL-07: pg_proc holds exactly one plan_lock';
   END IF;
 
-  -- a) The named option (a Mapbox place with a link) wins on plan_pool.
+  -- a) The named option (a Google place with a link) wins on plan_pool.
   v_opt := (SELECT id FROM public.chat_plan_time_options WHERE plan_id = pg_temp.t4261p_val('plan_pool')::uuid ORDER BY starts_at LIMIT 1);
   v_before := pg_temp.t4261p_msgs(pg_temp.t4261p_id('plain'));
   PERFORM pg_temp.t4261p_as('seth');
@@ -866,11 +869,11 @@ BEGIN
   IF v_err <> '22023:invalid_input' THEN
     RAISE EXCEPTION 'PL-07: a place option of another plan is invalid_input (got %)', v_err;
   END IF;
-  r := public.plan_lock(pg_temp.t4261p_val('plan_pool')::uuid, v_opt, NULL, 120, pg_temp.t4261p_val('opt_mapbox')::uuid);
+  r := public.plan_lock(pg_temp.t4261p_val('plan_pool')::uuid, v_opt, NULL, 120, pg_temp.t4261p_val('opt_google')::uuid);
   RESET ROLE;
   SELECT * INTO v_plan FROM public.chat_plans WHERE id = pg_temp.t4261p_val('plan_pool')::uuid;
   IF v_plan.status <> 'scheduled' OR v_plan.where_kind <> 'place' OR v_plan.place_pool_id IS NOT NULL
-     OR v_plan.mapbox_id <> 'mbx-terra-kulture' OR v_plan.place_name <> 'Terra Kulture' OR v_plan.place_address <> 'Victoria Island'
+     OR v_plan.provider_place_id <> 'ChIJterraKulture00001' OR v_plan.place_name <> 'Terra Kulture' OR v_plan.place_address <> 'Victoria Island'
      OR v_plan.place_lat <> 6.43 OR v_plan.place_lng <> 3.42 OR v_plan.place_photo_url IS NOT NULL
      OR v_plan.link_url <> 'https://terrakulture.example.com/menu' OR v_plan.link_domain <> 'terrakulture.example.com'
      OR v_plan.scheduled_at <> (SELECT starts_at FROM public.chat_plan_time_options WHERE id = v_opt) THEN
@@ -954,7 +957,7 @@ BEGIN
   SELECT * INTO v_plan FROM public.chat_plans WHERE id = pg_temp.t4261p_val('plan_mbx')::uuid;
   SELECT * INTO v_line FROM public.messages
    WHERE card_payload ->> 'event' = 'locked' AND card_payload ->> 'planId' = v_plan.id::text;
-  IF v_plan.mapbox_id <> 'dXJuOm1ieHBvaTo0' OR v_plan.link_url <> 'https://www.LekkiCentre.example.com/menu'
+  IF v_plan.provider_place_id <> 'ChIJlekkiConservation1' OR v_plan.link_url <> 'https://www.LekkiCentre.example.com/menu'
      OR v_line.card_payload ? 'placeVoted' OR v_line.card_payload ? 'placeName' THEN
     RAISE EXCEPTION 'PL-07d: no place options -> the plan''s own place, no placeVoted (got % / %)', row_to_json(v_plan), v_line.card_payload;
   END IF;
