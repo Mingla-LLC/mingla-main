@@ -274,5 +274,7 @@
   "exp.leave_now": "Parti ora.",
   "exp.note": "Il tempo di guida è una stima.",
   "exp.not_found_title": "Esperienza non trovata",
-  "exp.not_found_body": "Questa esperienza potrebbe non essere ancora pubblicata, oppure il link è errato."
+  "exp.not_found_body": "Questa esperienza potrebbe non essere ancora pubblicata, oppure il link è errato.",
+  "venue_page.experiences_here_one": "Esperienza qui",
+  "venue_page.experiences_here_other": "Esperienze qui"
 }

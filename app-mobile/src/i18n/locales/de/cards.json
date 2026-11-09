@@ -274,5 +274,7 @@
   "exp.leave_now": "Jetzt losfahren.",
   "exp.note": "Die Fahrzeit ist geschätzt.",
   "exp.not_found_title": "Erlebnis nicht gefunden",
-  "exp.not_found_body": "Dieses Erlebnis ist vielleicht noch nicht online, oder der Link ist falsch."
+  "exp.not_found_body": "Dieses Erlebnis ist vielleicht noch nicht online, oder der Link ist falsch.",
+  "venue_page.experiences_here_one": "Erlebnis hier",
+  "venue_page.experiences_here_other": "Erlebnisse hier"
 }

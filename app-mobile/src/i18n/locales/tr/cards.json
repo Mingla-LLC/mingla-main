@@ -274,5 +274,7 @@
   "exp.leave_now": "Şimdi çık.",
   "exp.note": "Sürüş süresi tahminidir.",
   "exp.not_found_title": "Deneyim bulunamadı",
-  "exp.not_found_body": "Bu deneyim henüz yayında olmayabilir ya da bağlantı yanlış."
+  "exp.not_found_body": "Bu deneyim henüz yayında olmayabilir ya da bağlantı yanlış.",
+  "venue_page.experiences_here_one": "Burada bir deneyim",
+  "venue_page.experiences_here_other": "Buradaki deneyimler"
 }

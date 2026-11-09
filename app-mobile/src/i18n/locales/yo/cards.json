@@ -274,5 +274,7 @@
   "exp.leave_now": "Kúrò báyìí.",
   "exp.note": "Àkókò ìwakọ̀ jẹ́ ìṣirò.",
   "exp.not_found_title": "A kò rí ìrírí yìí",
-  "exp.not_found_body": "Ó lè jẹ́ pé ìrírí yìí kò tíì jáde, tàbí ìjápọ̀ náà kò tọ̀nà."
+  "exp.not_found_body": "Ó lè jẹ́ pé ìrírí yìí kò tíì jáde, tàbí ìjápọ̀ náà kò tọ̀nà.",
+  "venue_page.experiences_here_one": "Ìrírí níbí",
+  "venue_page.experiences_here_other": "Àwọn ìrírí níbí"
 }

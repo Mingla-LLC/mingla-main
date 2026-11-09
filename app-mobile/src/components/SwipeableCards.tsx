@@ -100,6 +100,7 @@ import { deckKickerFor, useDeckFactLabels } from "./deckCard/useDeckFactLabels";
 import { useDeckTextScale, useMinuteClock, usePhotoTapHint, useTopCardPhotoPreload } from "./deckCard/deckCardHooks";
 import { useClaimedVenues } from "../hooks/useClaimedVenues";
 import { leaveDeckTo } from "./deckCard/deckNavigation";
+import { setDeckVenueHandoff } from "./venuePage/deckVenueHandoff";
 import { LinearGradient } from "expo-linear-gradient";
 import { ANDROID_GLASS_USES_OPAQUE_FALLBACK, colors, fontWeights, glass, radius, typography } from "../constants/designSystem";
 import { throttledReverseGeocode } from '../utils/throttledGeocode';
@@ -2440,6 +2441,35 @@ export default function SwipeableCards({
         category: currentRec.category,
         source: "home",
         destination: "venue_page",
+      });
+      // #4347 wave 4 — hand the venue page THIS card and the deck's own save
+      // path, so its Save / Schedule act exactly as the place sheet's would
+      // (same saved_card identity, same calendar entry, same collab vote, and
+      // the card leaves the deck on success).
+      const venueRec = currentRec;
+      setDeckVenueHandoff({
+        placePoolId: currentClaimedVenue.placePoolId,
+        card: recommendationToExpanded(venueRec),
+        currentMode,
+        isSaved: savedCards.some(
+          (savedCard) => savedCard?.id === venueRec.id || savedCard === venueRec.id,
+        ),
+        save: async () => {
+          setRemovedCards((prev) => new Set([...prev, venueRec.id]));
+          setCurrentCardIndex(0);
+          await handleSwipe("right", venueRec);
+        },
+        onCardRemoved: (cardId) => {
+          if (cardId !== venueRec.id) return;
+          setRemovedCards((prev) => new Set([...prev, cardId]));
+          setCurrentCardIndex(0);
+        },
+        canAccessCurated: canAccess('curated_cards'),
+        onPaywallRequired: () => {
+          setPaywallFeature('curated_cards');
+          setShowPaywall(true);
+        },
+        userPreferences,
       });
       leaveDeckTo(
         `/b/${encodeURIComponent(currentClaimedVenue.brandSlug)}/v/${encodeURIComponent(currentClaimedVenue.venueSlug)}`,

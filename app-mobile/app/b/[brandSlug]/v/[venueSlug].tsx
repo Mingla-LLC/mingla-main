@@ -73,10 +73,12 @@ import {
   PublicVenueRetryAction,
 } from "@mingla/brand-rendering/publicVenueRefreshState";
 import type {
+  PublicVenueActionBarContext,
   PublicVenueAnalyticsEvent,
   PublicVenueBookingSlotContext,
   PublicVenueOrderingSlotContext,
   PublicVenueReservationSheetContext,
+  PublicVenueThemedContext,
   PublicVenueViewModel,
 } from "@mingla/brand-rendering/PublicVenueScreen";
 
@@ -107,6 +109,10 @@ import {
   VenueMessageBoundary,
   type VenueMessageOpener,
 } from "../../../../src/components/brandEnquiry/venueMessageBoundary";
+// #4347 wave 4 — leaf modules only (React / types): the Explorer layer itself
+// loads lazily below, like the Message add-on.
+import { getDeckVenueHandoff } from "../../../../src/components/venuePage/deckVenueHandoff";
+import { VenueExplorerBoundary } from "../../../../src/components/venuePage/venueExplorerBoundary";
 
 // #4111 — the Message add-on loads on mount after first commit, via a deferred
 // require (Metro bundles it; jest harnesses without ESM import() can render it).
@@ -117,6 +123,33 @@ const VenueMessageController = React.lazy(async () => {
   const mod = require("../../../../src/components/brandEnquiry/VenueMessageController") as typeof import("../../../../src/components/brandEnquiry/VenueMessageController");
   return { default: mod.default };
 });
+
+/**
+ * #4347 wave 4 (decision 4) — the Explorer layer: "When you'd go" and
+ * "Experiences here" in the Overview, and, for a venue opened from the deck,
+ * the pinned Save · Schedule · Share · Reserve-or-Directions bar in place of
+ * the page's own reserve bar. Deferred require for the same reason as the
+ * Message add-on: requiring this route must not pull ActionButtons, the
+ * calendar stack or i18n into suites that mount it, and a load failure only
+ * hides the layer (VenueExplorerBoundary).
+ */
+const LazyVenueExplorerOverview = React.lazy(async () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const mod = require("../../../../src/components/venuePage/VenueExplorerLayer") as typeof import("../../../../src/components/venuePage/VenueExplorerLayer");
+  return { default: mod.VenueExplorerOverview };
+});
+const LazyVenueExplorerBar = React.lazy(async () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const mod = require("../../../../src/components/venuePage/VenueExplorerLayer") as typeof import("../../../../src/components/venuePage/VenueExplorerLayer");
+  return { default: mod.VenueExplorerBar };
+});
+const LazyVenueStateClose = React.lazy(async () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const mod = require("../../../../src/components/venuePage/VenueExplorerLayer") as typeof import("../../../../src/components/venuePage/VenueExplorerLayer");
+  return { default: mod.VenueStateClose };
+});
+/** Mirrors VENUE_EXPLORER_BAR_HEIGHT (pinned bar: 10 + 48 + 1) without importing the layer. */
+const EXPLORER_BAR_HEIGHT = 59;
 
 /** This app's ONE analytics surface tag for the public venue page. */
 const ANALYTICS_SURFACE = "consumer_native";
@@ -487,6 +520,84 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
 
   const venueName = venue?.name ?? "";
 
+  // #4347 wave 4 — the deck card this page was opened for, if any. Read by
+  // place: a page reached from a link or Discover finds none and keeps the
+  // shared reserve bar.
+  const deckHandoff = useMemo(
+    () => getDeckVenueHandoff(venue?.placePoolId ?? null),
+    [venue?.placePoolId],
+  );
+  const explorerVenue = useMemo(
+    () =>
+      venue === null
+        ? null
+        : {
+            name: venue.name,
+            address: venue.address,
+            lat: venue.lat,
+            lng: venue.lng,
+            placePoolId: venue.placePoolId,
+            venueCategory: venue.venueCategory,
+            hours: venue.hours,
+          },
+    [venue],
+  );
+  const handleExplorerError = useCallback(
+    (part: string, error: unknown): void => {
+      reportNonFatal(
+        "public-venue.explorer-layer",
+        error instanceof Error ? error : new Error(String(error)),
+        { surface: ANALYTICS_SURFACE, part, brand_slug: brandSlug, venue_slug: venueSlug },
+        ["public-venue-explorer-layer", ANALYTICS_SURFACE],
+      );
+    },
+    [brandSlug, venueSlug],
+  );
+  const handleOpenExperience = useCallback(
+    (experience: { brandSlug: string; eventSlug: string }): void => {
+      if (!experience.brandSlug || !experience.eventSlug) return;
+      router.push(
+        `/exp/${encodeURIComponent(experience.brandSlug)}/${encodeURIComponent(experience.eventSlug)}` as never,
+      );
+    },
+    [router],
+  );
+  const renderExplorerOverview = useCallback(
+    (context: PublicVenueThemedContext): React.ReactNode =>
+      explorerVenue === null ? null : (
+        <VenueExplorerBoundary part="overview" onError={handleExplorerError}>
+          <React.Suspense fallback={null}>
+            <LazyVenueExplorerOverview
+              context={context}
+              venue={explorerVenue}
+              handoff={deckHandoff}
+              onOpenExperience={handleOpenExperience}
+            />
+          </React.Suspense>
+        </VenueExplorerBoundary>
+      ),
+    [deckHandoff, explorerVenue, handleExplorerError, handleOpenExperience],
+  );
+
+  const renderExplorerBar = useCallback(
+    (context: PublicVenueActionBarContext): React.ReactNode =>
+      explorerVenue === null || deckHandoff === null ? null : (
+        <VenueExplorerBoundary part="action-bar" onError={handleExplorerError}>
+          <React.Suspense fallback={null}>
+            <LazyVenueExplorerBar
+              context={context}
+              venue={explorerVenue}
+              handoff={deckHandoff}
+              bottomInset={insets.bottom}
+              onShare={handleShare}
+              onLeave={handleClose}
+            />
+          </React.Suspense>
+        </VenueExplorerBoundary>
+      ),
+    [deckHandoff, explorerVenue, handleClose, handleExplorerError, handleShare, insets.bottom],
+  );
+
   /**
    * The Reservations pane body. The Stay body is the native PaymentSheet
    * experience. The table body is a themed prompt whose button raises
@@ -588,12 +699,23 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
   );
 
 
+  // #4347 wave 4 — loading, error and not-found are never a dead end: each
+  // carries the same Close the page has (back to the deck, or the brand page).
+  const stateClose = (
+    <VenueExplorerBoundary part="state-close" onError={handleExplorerError}>
+      <React.Suspense fallback={null}>
+        <LazyVenueStateClose onPress={handleClose} topInset={insets.top} />
+      </React.Suspense>
+    </VenueExplorerBoundary>
+  );
+
   if (routeState === "cold-loading") {
-    return <StateView title="Loading venue…" loading />;
+    return <StateView title="Loading venue…" loading close={stateClose} />;
   }
   if (routeState === "cold-error") {
     return (
       <StateView
+        close={stateClose}
         title="This venue could not load"
         body="Try the link again in a moment."
         retry={
@@ -613,7 +735,11 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
   }
   if (venue === null || venueViewModel === null) {
     return (
-      <StateView title="Venue not found" body="This venue is not public." />
+      <StateView
+        title="Venue not found"
+        body="This venue is not public."
+        close={stateClose}
+      />
     );
   }
 
@@ -728,6 +854,11 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
       onMessageBrand={venueMessageOpener === null ? undefined : venueMessageOpener.open}
       onOpenMaps={handleOpenMaps}
       onCopyAddress={handleCopyAddress}
+      overviewSlot={renderExplorerOverview}
+      // #4347 wave 4 — only a venue opened from the deck has the card that
+      // Save and Schedule act on; otherwise the page keeps its own reserve bar.
+      actionBar={deckHandoff === null ? undefined : renderExplorerBar}
+      actionBarHeight={EXPLORER_BAR_HEIGHT}
     />
     {venueMessageReady && venueMessageBrand !== null && venueEnquiry !== null ? (
       <VenueMessageBoundary>
@@ -749,14 +880,17 @@ function StateView({
   body,
   loading = false,
   retry,
+  close,
 }: {
   title: string;
   body?: string;
   loading?: boolean;
   retry?: React.ReactNode;
+  close?: React.ReactNode;
 }): React.ReactElement {
   return (
     <View style={styles.state}>
+      {close ?? null}
       {loading ? <ActivityIndicator /> : null}
       <Text style={styles.stateTitle}>{title}</Text>
       {body !== undefined ? <Text style={styles.stateBody}>{body}</Text> : null}

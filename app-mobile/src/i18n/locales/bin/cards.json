@@ -274,5 +274,7 @@
   "exp.leave_now": "Kpaye nia.",
   "exp.note": "Ẹghẹ ọkhian vbe moto ọre ẹmwẹ ne a hia.",
   "exp.not_found_title": "Ma miẹn ẹmwẹ na",
-  "exp.not_found_body": "Ọ sẹtin ne ẹmwẹ na i ma he rre otọ, ra odẹ ọni ma ghi ye ẹse."
+  "exp.not_found_body": "Ọ sẹtin ne ẹmwẹ na i ma he rre otọ, ra odẹ ọni ma ghi ye ẹse.",
+  "venue_page.experiences_here_one": "Emwi vbe ẹvba",
+  "venue_page.experiences_here_other": "Emwi vbe ẹvba"
 }

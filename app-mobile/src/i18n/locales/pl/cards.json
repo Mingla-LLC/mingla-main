@@ -282,5 +282,9 @@
   "exp.leave_now": "Wyjedź teraz.",
   "exp.note": "Czas jazdy jest szacunkowy.",
   "exp.not_found_title": "Nie znaleziono doświadczenia",
-  "exp.not_found_body": "To doświadczenie może jeszcze nie być opublikowane albo link jest błędny."
+  "exp.not_found_body": "To doświadczenie może jeszcze nie być opublikowane albo link jest błędny.",
+  "venue_page.experiences_here_one": "Doświadczenie tutaj",
+  "venue_page.experiences_here_few": "Doświadczenia tutaj",
+  "venue_page.experiences_here_many": "Doświadczenia tutaj",
+  "venue_page.experiences_here_other": "Doświadczenia tutaj"
 }

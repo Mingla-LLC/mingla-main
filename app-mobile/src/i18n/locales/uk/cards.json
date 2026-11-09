@@ -282,5 +282,9 @@
   "exp.leave_now": "Виїжджайте зараз.",
   "exp.note": "Час у дорозі — оцінка.",
   "exp.not_found_title": "Враження не знайдено",
-  "exp.not_found_body": "Можливо, це враження ще не опубліковане, або посилання неправильне."
+  "exp.not_found_body": "Можливо, це враження ще не опубліковане, або посилання неправильне.",
+  "venue_page.experiences_here_one": "Враження тут",
+  "venue_page.experiences_here_few": "Враження тут",
+  "venue_page.experiences_here_many": "Враження тут",
+  "venue_page.experiences_here_other": "Враження тут"
 }

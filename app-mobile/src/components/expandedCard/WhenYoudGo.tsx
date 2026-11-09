@@ -17,7 +17,7 @@
  * Motion: the bars ease to their heights (Reanimated, 240ms); under Reduce
  * Motion they are drawn at their final heights.
  */
-import React from 'react';
+import React, { useMemo } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Reanimated, { useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { useTranslation } from 'react-i18next';
@@ -34,6 +34,7 @@ import {
 import type { HourlyForecast } from '../../services/weatherService';
 import { formatTemperature } from '../utils/formatters';
 import { extractWeekdayText, isPlaceOpenAt } from '../../utils/openingHoursUtils';
+import type { WhenColors } from '../venuePage/venueExplorerModel';
 
 export interface WhenYoudGoProps {
   readonly chips: readonly WhenChip[];
@@ -51,6 +52,14 @@ export interface WhenYoudGoProps {
   /** Venue-local minute of day -> "7pm". */
   readonly clock: (minuteOfDay: number) => string;
   readonly reducedMotion?: boolean;
+  /**
+   * #4347 wave 4 — the host venue page draws this block inside the host's own
+   * page, as a card in that page's colours (`whenColorsFor`, contrast-checked,
+   * neutral fallback). Absent: the place sheet's paper section, unchanged.
+   */
+  readonly colors?: WhenColors;
+  /** The host's brand font for the heading (venue page only). */
+  readonly fontFamily?: string;
 }
 
 function minuteOfDay(at: Date, utcOffsetMinutes: number | null): number {
@@ -76,7 +85,10 @@ export function WhenYoudGo(props: WhenYoudGoProps): React.ReactElement | null {
     measurementSystem,
     clock,
     reducedMotion = false,
+    colors,
+    fontFamily,
   } = props;
+  const tone = useMemo(() => (colors ? toneStyles(colors, fontFamily) : null), [colors, fontFamily]);
   const chip = chips.find((c) => c.key === selected) ?? chips[0];
   if (!chip) return null;
 
@@ -117,8 +129,8 @@ export function WhenYoudGo(props: WhenYoudGoProps): React.ReactElement | null {
   if (quieter !== null) goodToKnow.push({ key: 'quieter', label: t('cards:sheet.quieter_at'), value: clock(quieter * 60) });
 
   return (
-    <View style={styles.section} testID="sheet-when">
-      <Text style={styles.heading} accessibilityRole="header">
+    <View style={[styles.section, tone?.section]} testID="sheet-when">
+      <Text style={[styles.heading, tone?.heading]} accessibilityRole="header">
         {t('cards:sheet.when_title')}
       </Text>
       <View style={styles.chips}>
@@ -131,9 +143,12 @@ export function WhenYoudGo(props: WhenYoudGoProps): React.ReactElement | null {
               onPress={() => onSelect(c.key)}
               accessibilityRole="button"
               accessibilityState={{ selected: on }}
-              style={[styles.chip, on ? styles.chipOn : null]}
+              style={[styles.chip, tone?.chip, on ? styles.chipOn : null, on ? tone?.chipOn : null]}
             >
-              <Text style={[styles.chipText, on ? styles.chipTextOn : null]} maxFontSizeMultiplier={1.3}>
+              <Text
+                style={[styles.chipText, tone?.chipText, on ? styles.chipTextOn : null, on ? tone?.chipTextOn : null]}
+                maxFontSizeMultiplier={1.3}
+              >
                 {chipLabel(c)}
               </Text>
             </TouchableOpacity>
@@ -143,9 +158,9 @@ export function WhenYoudGo(props: WhenYoudGoProps): React.ReactElement | null {
 
       <View style={styles.facts}>
         {weather ? (
-          <View style={styles.fact} testID="sheet-when-weather">
-            <Text style={styles.factLabel}>{t('cards:sheet.weather')}</Text>
-            <Text style={styles.factValue}>
+          <View style={[styles.fact, tone?.fact]} testID="sheet-when-weather">
+            <Text style={[styles.factLabel, tone?.muted]}>{t('cards:sheet.weather')}</Text>
+            <Text style={[styles.factValue, tone?.text]}>
               {`${formatTemperature(weather.temperature, measurementSystem)}${
                 typeof weather.precipitationProbability === 'number' && weather.precipitationProbability >= 30
                   ? ` · ${t('cards:sheet.rain_chance', { pct: Math.round(weather.precipitationProbability) })}`
@@ -154,14 +169,14 @@ export function WhenYoudGo(props: WhenYoudGoProps): React.ReactElement | null {
             </Text>
           </View>
         ) : null}
-        <View style={styles.fact} testID="sheet-when-crowd">
-          <Text style={styles.factLabel}>{t('cards:sheet.crowd')}</Text>
-          <Text style={styles.factValue}>{t(`cards:sheet.crowd_usually_${crowd.level}`)}</Text>
+        <View style={[styles.fact, tone?.fact]} testID="sheet-when-crowd">
+          <Text style={[styles.factLabel, tone?.muted]}>{t('cards:sheet.crowd')}</Text>
+          <Text style={[styles.factValue, tone?.text]}>{t(`cards:sheet.crowd_usually_${crowd.level}`)}</Text>
         </View>
         {drive ? (
-          <View style={styles.fact} testID="sheet-when-drive">
-            <Text style={styles.factLabel}>{t('cards:sheet.drive')}</Text>
-            <Text style={styles.factValue}>{t('cards:sheet.drive_estimate', { time: drive })}</Text>
+          <View style={[styles.fact, tone?.fact]} testID="sheet-when-drive">
+            <Text style={[styles.factLabel, tone?.muted]}>{t('cards:sheet.drive')}</Text>
+            <Text style={[styles.factValue, tone?.text]}>{t('cards:sheet.drive_estimate', { time: drive })}</Text>
           </View>
         ) : null}
       </View>
@@ -181,21 +196,22 @@ export function WhenYoudGo(props: WhenYoudGoProps): React.ReactElement | null {
               pct={Math.max(WHEN_BLOCK.barMinPct, value)}
               active={hour === crowd.hour}
               reducedMotion={reducedMotion}
+              colors={colors}
             />
           );
         })}
       </View>
-      <Text style={styles.note} testID="sheet-when-note">
+      <Text style={[styles.note, tone?.muted]} testID="sheet-when-note">
         {drive ? `${t('cards:sheet.crowd_note')} ${t('cards:sheet.drive_note')}` : t('cards:sheet.crowd_note')}
       </Text>
 
       {goodToKnow.length > 0 ? (
         <View style={styles.goodToKnow} testID="sheet-good-to-know">
-          <Text style={styles.subheading}>{t('cards:sheet.good_to_know')}</Text>
+          <Text style={[styles.subheading, tone?.text]}>{t('cards:sheet.good_to_know')}</Text>
           {goodToKnow.map((row) => (
             <View key={row.key} style={styles.row} testID={`sheet-good-${row.key}`}>
-              <Text style={styles.rowLabel}>{row.label}</Text>
-              <Text style={styles.rowValue}>{row.value}</Text>
+              <Text style={[styles.rowLabel, tone?.muted]}>{row.label}</Text>
+              <Text style={[styles.rowValue, tone?.text]}>{row.value}</Text>
             </View>
           ))}
         </View>
@@ -207,7 +223,17 @@ export function WhenYoudGo(props: WhenYoudGoProps): React.ReactElement | null {
 /** Exposed for tests: the crowd label for a popularity value. */
 export const crowdLabelKey = (popularity: number): string => `cards:sheet.crowd_usually_${crowdLevel(popularity)}`;
 
-function CrowdBar({ pct, active, reducedMotion }: { pct: number; active: boolean; reducedMotion: boolean }) {
+function CrowdBar({
+  pct,
+  active,
+  reducedMotion,
+  colors,
+}: {
+  pct: number;
+  active: boolean;
+  reducedMotion: boolean;
+  colors?: WhenColors;
+}) {
   const target = (pct / 100) * WHEN_BLOCK.barsHeight;
   const style = useAnimatedStyle(() => ({
     height: reducedMotion ? target : withTiming(target, { duration: 240 }),
@@ -216,10 +242,36 @@ function CrowdBar({ pct, active, reducedMotion }: { pct: number; active: boolean
     <View style={styles.barSlot}>
       <Reanimated.View
         testID={active ? 'sheet-when-bar-active' : 'sheet-when-bar'}
-        style={[styles.bar, active ? styles.barActive : null, style]}
+        style={[
+          styles.bar,
+          active ? styles.barActive : null,
+          colors ? { backgroundColor: active ? colors.barActiveFill : colors.barFill } : null,
+          style,
+        ]}
       />
     </View>
   );
+}
+
+/** #4347 wave 4 — the host-themed overrides (venue page). Built once per palette. */
+function toneStyles(c: WhenColors, fontFamily?: string) {
+  return StyleSheet.create({
+    section: {
+      backgroundColor: c.surface,
+      borderTopWidth: 0,
+      borderRadius: 16,
+      paddingHorizontal: 16,
+      paddingVertical: 16,
+    },
+    heading: { color: c.heading, ...(fontFamily ? { fontFamily } : null) },
+    chip: { backgroundColor: c.chipFill },
+    chipOn: { backgroundColor: c.chipActiveFill },
+    chipText: { color: c.text },
+    chipTextOn: { color: c.chipActiveText },
+    fact: { backgroundColor: c.tileFill },
+    text: { color: c.text },
+    muted: { color: c.muted },
+  });
 }
 
 const styles = StyleSheet.create({

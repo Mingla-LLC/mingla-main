@@ -274,5 +274,7 @@
   "exp.leave_now": "এখনই রওনা দিন।",
   "exp.note": "গাড়ির সময় আনুমানিক।",
   "exp.not_found_title": "অভিজ্ঞতা পাওয়া যায়নি",
-  "exp.not_found_body": "এই অভিজ্ঞতা হয়তো এখনও লাইভ নয়, অথবা লিংকটি ভুল।"
+  "exp.not_found_body": "এই অভিজ্ঞতা হয়তো এখনও লাইভ নয়, অথবা লিংকটি ভুল।",
+  "venue_page.experiences_here_one": "এখানে একটি অভিজ্ঞতা",
+  "venue_page.experiences_here_other": "এখানে অভিজ্ঞতাগুলো"
 }

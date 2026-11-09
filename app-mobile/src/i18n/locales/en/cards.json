@@ -302,5 +302,7 @@
   "exp.leave_now": "Leave now.",
   "exp.note": "Drive time is an estimate.",
   "exp.not_found_title": "Experience not found",
-  "exp.not_found_body": "This experience may not be live yet, or the link is wrong."
+  "exp.not_found_body": "This experience may not be live yet, or the link is wrong.",
+  "venue_page.experiences_here_one": "Experience here",
+  "venue_page.experiences_here_other": "Experiences here"
 }

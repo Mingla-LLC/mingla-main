@@ -282,5 +282,9 @@
   "exp.leave_now": "Выезжайте сейчас.",
   "exp.note": "Время в пути — оценка.",
   "exp.not_found_title": "Впечатление не найдено",
-  "exp.not_found_body": "Возможно, это впечатление ещё не опубликовано или ссылка неверна."
+  "exp.not_found_body": "Возможно, это впечатление ещё не опубликовано или ссылка неверна.",
+  "venue_page.experiences_here_one": "Впечатление здесь",
+  "venue_page.experiences_here_few": "Впечатления здесь",
+  "venue_page.experiences_here_many": "Впечатления здесь",
+  "venue_page.experiences_here_other": "Впечатления здесь"
 }

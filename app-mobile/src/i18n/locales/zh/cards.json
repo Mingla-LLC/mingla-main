@@ -270,5 +270,6 @@
   "exp.leave_now": "现在出发。",
   "exp.note": "车程为估算。",
   "exp.not_found_title": "未找到该体验",
-  "exp.not_found_body": "该体验可能尚未上线，或链接有误。"
+  "exp.not_found_body": "该体验可能尚未上线，或链接有误。",
+  "venue_page.experiences_here_other": "这里的体验"
 }

@@ -282,5 +282,9 @@
   "exp.leave_now": "צאו עכשיו.",
   "exp.note": "זמן הנסיעה הוא הערכה.",
   "exp.not_found_title": "החוויה לא נמצאה",
-  "exp.not_found_body": "ייתכן שהחוויה עדיין לא פורסמה, או שהקישור שגוי."
+  "exp.not_found_body": "ייתכן שהחוויה עדיין לא פורסמה, או שהקישור שגוי.",
+  "venue_page.experiences_here_one": "חוויה כאן",
+  "venue_page.experiences_here_two": "חוויות כאן",
+  "venue_page.experiences_here_many": "חוויות כאן",
+  "venue_page.experiences_here_other": "חוויות כאן"
 }

@@ -274,5 +274,7 @@
   "exp.leave_now": "Vertrek nu.",
   "exp.note": "De reistijd is een schatting.",
   "exp.not_found_title": "Ervaring niet gevonden",
-  "exp.not_found_body": "Deze ervaring staat misschien nog niet live, of de link klopt niet."
+  "exp.not_found_body": "Deze ervaring staat misschien nog niet live, of de link klopt niet.",
+  "venue_page.experiences_here_one": "Belevenis hier",
+  "venue_page.experiences_here_other": "Belevenissen hier"
 }

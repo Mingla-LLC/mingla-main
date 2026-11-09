@@ -290,5 +290,11 @@
   "exp.leave_now": "انطلق الآن.",
   "exp.note": "مدة القيادة تقديرية.",
   "exp.not_found_title": "التجربة غير موجودة",
-  "exp.not_found_body": "ربما لم تُنشر هذه التجربة بعد، أو أن الرابط خاطئ."
+  "exp.not_found_body": "ربما لم تُنشر هذه التجربة بعد، أو أن الرابط خاطئ.",
+  "venue_page.experiences_here_zero": "تجارب هنا",
+  "venue_page.experiences_here_one": "تجربة هنا",
+  "venue_page.experiences_here_two": "تجارب هنا",
+  "venue_page.experiences_here_few": "تجارب هنا",
+  "venue_page.experiences_here_many": "تجارب هنا",
+  "venue_page.experiences_here_other": "تجارب هنا"
 }

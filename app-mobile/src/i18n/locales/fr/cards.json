@@ -274,5 +274,7 @@
   "exp.leave_now": "Partez maintenant.",
   "exp.note": "Le temps de trajet est estimé.",
   "exp.not_found_title": "Expérience introuvable",
-  "exp.not_found_body": "Cette expérience n’est peut-être pas encore en ligne, ou le lien est incorrect."
+  "exp.not_found_body": "Cette expérience n’est peut-être pas encore en ligne, ou le lien est incorrect.",
+  "venue_page.experiences_here_one": "Expérience ici",
+  "venue_page.experiences_here_other": "Expériences ici"
 }

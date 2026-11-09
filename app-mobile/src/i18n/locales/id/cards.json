@@ -270,5 +270,6 @@
   "exp.leave_now": "Berangkat sekarang.",
   "exp.note": "Waktu berkendara adalah perkiraan.",
   "exp.not_found_title": "Pengalaman tidak ditemukan",
-  "exp.not_found_body": "Pengalaman ini mungkin belum tayang, atau tautannya salah."
+  "exp.not_found_body": "Pengalaman ini mungkin belum tayang, atau tautannya salah.",
+  "venue_page.experiences_here_other": "Pengalaman di sini"
 }

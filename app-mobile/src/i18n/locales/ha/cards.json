@@ -274,5 +274,7 @@
   "exp.leave_now": "Tashi yanzu.",
   "exp.note": "Lokacin tuƙi ƙiyasi ne.",
   "exp.not_found_title": "Ba a sami wannan abin ba",
-  "exp.not_found_body": "Wataƙila ba a fitar da wannan abin ba tukuna, ko kuma mahaɗin ba daidai ba ne."
+  "exp.not_found_body": "Wataƙila ba a fitar da wannan abin ba tukuna, ko kuma mahaɗin ba daidai ba ne.",
+  "venue_page.experiences_here_one": "Gogewa a nan",
+  "venue_page.experiences_here_other": "Gogewa a nan"
 }

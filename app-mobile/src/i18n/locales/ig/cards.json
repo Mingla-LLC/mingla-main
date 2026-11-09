@@ -274,5 +274,7 @@
   "exp.leave_now": "Pụọ ugbu a.",
   "exp.note": "Oge ịnya ụgbọ bụ atụmatụ.",
   "exp.not_found_title": "Ahụghị ahụmịhe a",
-  "exp.not_found_body": "Ọ nwere ike ịbụ na ahụmịhe a adịbeghị ndụ, ma ọ bụ njikọ ahụ ezighi ezi."
+  "exp.not_found_body": "Ọ nwere ike ịbụ na ahụmịhe a adịbeghị ndụ, ma ọ bụ njikọ ahụ ezighi ezi.",
+  "venue_page.experiences_here_one": "Ahụmịhe ebe a",
+  "venue_page.experiences_here_other": "Ahụmịhe ndị dị ebe a"
 }

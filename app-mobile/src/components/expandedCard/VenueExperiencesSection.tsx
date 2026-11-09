@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -23,6 +23,7 @@ import type { BusinessEventCard } from "../../types/mergedDiscover";
 import { useTranslation } from "react-i18next";
 import { formatDisplayPrice } from "../utils/formatters";
 import { SPINE } from "./spineTokens";
+import type { WhenColors } from "../venuePage/venueExplorerModel";
 
 interface VenueExperiencesSectionProps {
   /** Deck card id == place_pool.id (uuid). Non-uuid ids disable the fetch. */
@@ -36,16 +37,37 @@ interface VenueExperiencesSectionProps {
    * is open — the proven sub-sheet pattern.
    */
   onOpenExperience: (card: BusinessEventCard) => void;
+  /**
+   * #4347 wave 4 — on a host venue page the rows sit inside the host's page,
+   * in its measured colours (`whenColorsFor`). Absent: the place sheet's paper.
+   */
+  colors?: WhenColors;
+}
+
+type Tone = ReturnType<typeof toneStyles> | null;
+
+function toneStyles(c: WhenColors) {
+  return StyleSheet.create({
+    container: { paddingHorizontal: 0, paddingVertical: 0 },
+    headerText: { color: c.heading },
+    row: { backgroundColor: c.tileFill, borderColor: c.tileFill },
+    rowTitle: { color: c.text },
+    rowPrice: { color: c.text },
+  });
 }
 
 function ExperienceRow({
   row,
   currency,
   onPress,
+  tone,
+  chevron,
 }: {
   row: VenueExperienceRow;
   currency?: string | null;
   onPress: (row: VenueExperienceRow) => void;
+  tone: Tone;
+  chevron: string;
 }): React.ReactElement {
   const poster = posterFor(row);
   const isVideoCover =
@@ -58,7 +80,7 @@ function ExperienceRow({
   });
   return (
     <TouchableOpacity
-      style={styles.row}
+      style={[styles.row, tone?.row]}
       activeOpacity={0.7}
       onPress={() => onPress(row)}
       accessibilityRole="button"
@@ -77,16 +99,16 @@ function ExperienceRow({
         )}
       </View>
       <View style={styles.rowBody}>
-        <Text style={styles.rowTitle} numberOfLines={1}>
+        <Text style={[styles.rowTitle, tone?.rowTitle]} numberOfLines={1}>
           {row.title}
         </Text>
         {priceText ? (
-          <Text style={styles.rowPrice} numberOfLines={1}>
+          <Text style={[styles.rowPrice, tone?.rowPrice]} numberOfLines={1}>
             {priceText}
           </Text>
         ) : null}
       </View>
-      <Icon name="chevron-forward" size={16} color="#9ca3af" />
+      <Icon name="chevron-forward" size={16} color={chevron} />
     </TouchableOpacity>
   );
 }
@@ -95,8 +117,11 @@ export default function VenueExperiencesSection({
   placePoolId,
   currency,
   onOpenExperience,
+  colors,
 }: VenueExperiencesSectionProps): React.ReactElement | null {
   const { data } = useVenueExperiences(placePoolId);
+  const { t } = useTranslation(["cards"]);
+  const tone = useMemo<Tone>(() => (colors ? toneStyles(colors) : null), [colors]);
 
   // Emit the selection upward; ExpandedCardModal owns the ExpandedBusinessEventSheet
   // as a SIBLING of the root sheet (feedback_rn_sub_sheet_must_render_inside_parent
@@ -115,11 +140,11 @@ export default function VenueExperiencesSection({
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, tone?.container]} testID="venue-experiences">
       <View style={styles.header}>
-        <Icon name="sparkles-outline" size={14} color={SPINE.link} />
-        <Text style={styles.headerText}>
-          {data.length === 1 ? "Experience here" : "Experiences here"}
+        <Icon name="sparkles-outline" size={14} color={colors ? colors.heading : SPINE.link} />
+        <Text style={[styles.headerText, tone?.headerText]} accessibilityRole="header">
+          {t("cards:venue_page.experiences_here", { count: data.length })}
         </Text>
       </View>
       {data.map((row) => (
@@ -128,6 +153,8 @@ export default function VenueExperiencesSection({
           row={row}
           currency={currency}
           onPress={handleOpen}
+          tone={tone}
+          chevron={colors ? colors.muted : "#9ca3af"}
         />
       ))}
     </View>

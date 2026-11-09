@@ -270,5 +270,6 @@
   "exp.leave_now": "Đi ngay bây giờ.",
   "exp.note": "Thời gian lái xe là ước tính.",
   "exp.not_found_title": "Không tìm thấy trải nghiệm",
-  "exp.not_found_body": "Có thể trải nghiệm này chưa được đăng, hoặc liên kết bị sai."
+  "exp.not_found_body": "Có thể trải nghiệm này chưa được đăng, hoặc liên kết bị sai.",
+  "venue_page.experiences_here_other": "Các trải nghiệm tại đây"
 }

@@ -1405,7 +1405,9 @@
         "app-mobile/src/components/expandedCard/CardInfoSection.tsx",
         "app-mobile/src/components/expandedCard/SpineParts.tsx",
         "app-mobile/src/i18n/locales/en/common.json",
-        "app-mobile/src/utils/inAppLink.ts"
+        "app-mobile/src/utils/inAppLink.ts",
+        "app-mobile/src/components/expandedCard/VenueExperiencesSection.tsx",
+        "app-mobile/src/components/expandedCard/WhenYoudGo.tsx"
       ]
     },
     {
@@ -2045,7 +2047,12 @@
         "packages/brand-rendering/PublicVenueScreen.tsx",
         "packages/brand-rendering/PublicVenueTabs.tsx",
         "packages/brand-rendering/publicVenueRefreshState.tsx",
-        "packages/offering-rendering/VenueMapsActions.tsx"
+        "packages/offering-rendering/VenueMapsActions.tsx",
+        "app-mobile/app/b/[brandSlug]/v/[venueSlug].tsx",
+        "app-mobile/src/components/venuePage/VenueExplorerLayer.tsx",
+        "app-mobile/src/components/venuePage/deckVenueHandoff.ts",
+        "app-mobile/src/components/venuePage/venueExplorerBoundary.tsx",
+        "app-mobile/src/components/venuePage/venueExplorerModel.ts"
       ]
     },
     {

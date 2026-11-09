@@ -116,6 +116,12 @@ module.exports = {
     // that keep the whole plan clear, pulse-only body, identity reset, route
     // cap note, locale keys, "Leave now", count-from-shown.
     "**/__tests__/issue_4347_wave3_rework.implementor.render.test.tsx",
+    // issue #4347 wave 4 — the Explorer layer on a host venue page: "When
+    // you'd go" in the host's measured palette (neutral fallback), converted
+    // "Experiences here" prices, the pinned Save / Schedule / Share /
+    // Reserve-or-Directions bar acting on the deck card, the state Close.
+    "**/__tests__/issue_4347_venue_explorer_model.implementor.test.ts",
+    "**/__tests__/issue_4347_venue_explorer.implementor.render.test.tsx",
     // issue #4347 wave 1 — tester adversarial: the photo flip's gesture lease,
     // the smart chip in venue time and across midnight, claimed-venue keys,
     // the hint's logout sweep, locale plurals, the kicker's contrast floor.

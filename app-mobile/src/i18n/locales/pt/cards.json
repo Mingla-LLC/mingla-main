@@ -274,5 +274,7 @@
   "exp.leave_now": "Sai agora.",
   "exp.note": "O tempo de viagem é uma estimativa.",
   "exp.not_found_title": "Experiência não encontrada",
-  "exp.not_found_body": "Esta experiência pode ainda não estar publicada, ou o link está errado."
+  "exp.not_found_body": "Esta experiência pode ainda não estar publicada, ou o link está errado.",
+  "venue_page.experiences_here_one": "Experiência aqui",
+  "venue_page.experiences_here_other": "Experiências aqui"
 }

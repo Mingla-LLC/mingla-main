@@ -278,5 +278,8 @@
   "exp.leave_now": "Pleacă acum.",
   "exp.note": "Timpul de drum este estimat.",
   "exp.not_found_title": "Experiența nu a fost găsită",
-  "exp.not_found_body": "Este posibil ca această experiență să nu fie încă publicată sau linkul este greșit."
+  "exp.not_found_body": "Este posibil ca această experiență să nu fie încă publicată sau linkul este greșit.",
+  "venue_page.experiences_here_one": "Experiență aici",
+  "venue_page.experiences_here_few": "Experiențe aici",
+  "venue_page.experiences_here_other": "Experiențe aici"
 }

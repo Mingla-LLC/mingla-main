@@ -274,5 +274,7 @@
   "exp.leave_now": "Sal ya.",
   "exp.note": "El tiempo en coche es una estimación.",
   "exp.not_found_title": "Experiencia no encontrada",
-  "exp.not_found_body": "Puede que esta experiencia aún no esté publicada o que el enlace sea incorrecto."
+  "exp.not_found_body": "Puede que esta experiencia aún no esté publicada o que el enlace sea incorrecto.",
+  "venue_page.experiences_here_one": "Experiencia aquí",
+  "venue_page.experiences_here_other": "Experiencias aquí"
 }
