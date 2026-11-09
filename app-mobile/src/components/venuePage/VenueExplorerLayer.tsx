@@ -269,44 +269,7 @@ export function VenueExplorerBar({
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 3. Close on the loading / error / not-found states
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** The way back from a page that could not load: the same Close the page has. */
-export function VenueStateClose({
-  onPress,
-  topInset,
-}: {
-  onPress: () => void;
-  topInset: number;
-}): React.ReactElement {
-  const { t } = useTranslation(['common']);
-  return (
-    <TouchableOpacity
-      testID="venue-state-close"
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={t('common:close')}
-      hitSlop={8}
-      style={[styles.stateClose, { top: topInset + 8 }]}
-    >
-      <Icon name="close" size={22} color="#FFFFFF" />
-    </TouchableOpacity>
-  );
-}
-
 const styles = StyleSheet.create({
-  stateClose: {
-    position: 'absolute',
-    left: 16,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.14)',
-  },
   overview: {
     gap: 20,
   },

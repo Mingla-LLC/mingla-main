@@ -8,7 +8,7 @@
  *       checked state follows the sound, the label says the next action;
  *   S-3 paging away to a still hides the control; paging back shows it with
  *       the choice kept;
- *   S-4 Reduce Motion: the video does not start playing by itself — pinned, P3
+ *   S-4 Reduce Motion: the video does not start playing by itself — was pinned (P3), fixed in the rework
  *       (autoplay ignores reducedMotion; the place sheet passes it in);
  *   S-5 every new key is in all 29 locales, placeholders match, and
  *       "Experiences here" has every plural category each language needs.
@@ -183,8 +183,8 @@ describe("#4347 gallery Sound — tester adversarial", () => {
     expect(player(r).props.muted).toBe(false);
   });
 
-  // P3 (pinned): PlaceGallery takes reducedMotion but autoplay={active && index === 0}.
-  test.failing("S-4 (P3) under Reduce Motion the gallery video does not start by itself", () => {
+  // P3 (was pinned; fixed in the wave 4 rework): PlaceGallery takes reducedMotion but autoplay={active && index === 0}.
+  test("S-4 (P3) under Reduce Motion the gallery video does not start by itself", () => {
     const r = mount(<PlaceGallery media={sheetGalleryMedia([VIDEO])} title="Nok" onOpen={() => undefined} reducedMotion />);
     expect(player(r).props.autoplay).toBe(false);
   });

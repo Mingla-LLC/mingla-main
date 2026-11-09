@@ -119,6 +119,11 @@ export default function ActionButtons({
 }: ActionButtonsProps) {
   const { t } = useTranslation(['expanded_details', 'common']);
   const [isSaving, setIsSaving] = useState(false);
+  // #4347 rework (V-1) — the SYNCHRONOUS in-flight guard. `isSaving` is state,
+  // so two taps in one frame both read it as false before it renders; this ref
+  // flips on the first tap, so a double tap is one save (and, on the venue
+  // page, one return to the deck).
+  const savingRef = useRef(false);
   const [isScheduling, setIsScheduling] = useState(false);
   const [showDateTimePicker, setShowDateTimePicker] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -247,7 +252,7 @@ export default function ActionButtons({
    */
 
   const handleSave = async () => {
-    if (isSaving) {
+    if (isSaving || savingRef.current) {
       return; // Prevent multiple saves
     }
 
@@ -258,6 +263,7 @@ export default function ActionButtons({
       return;
     }
 
+    savingRef.current = true;
     setIsSaving(true);
     try {
       await onSave(card);
@@ -265,6 +271,7 @@ export default function ActionButtons({
       console.error('[ActionButtons.handleSave] save failed', error);
       Alert.alert(t('common:error'), t('expanded_details:action_buttons.error_save'));
     } finally {
+      savingRef.current = false;
       setIsSaving(false);
     }
   };

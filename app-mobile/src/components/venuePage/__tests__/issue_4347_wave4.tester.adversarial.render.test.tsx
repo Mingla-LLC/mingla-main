@@ -13,7 +13,7 @@
  *       translucent page) fall back to the neutral card, never throw.
  *   H-1 the hand-off store: one slot, keyed by place, empty ids never match.
  *   V-1 a double tap on Save calls the deck's save once and leaves once
- *       (pinned, P3).
+ *       (was pinned, P3; fixed in the rework).
  *   V-2 a save that fails does not leave the page (no false success).
  *   V-3 Directions with Null Island coordinates goes by the address.
  *
@@ -254,10 +254,10 @@ describe("#4347 wave 4 — tester adversarial: the Explorer layer", () => {
   const saveButton = (r: { root: Node }) =>
     r.root.findAll((n: Node) => isComposite(n) && n.props?.accessibilityLabel === "Save" && typeof n.props?.onPress === "function")[0];
 
-  // P3 (pinned): ActionButtons' isSaving guard is React state, so two taps in
+  // P3 (was pinned; fixed in the wave 4 rework): ActionButtons' isSaving guard is React state, so two taps in
   // one frame both pass it; on the venue page that is two deck saves (two
   // right-swipes / collab votes) and two router.back() calls.
-  test.failing("V-1 (P3) a double tap on Save saves once and leaves once", async () => {
+  test("V-1 (P3) a double tap on Save saves once and leaves once", async () => {
     const save = jest.fn(async () => {
       await new Promise((res) => setTimeout(res, 10));
     });

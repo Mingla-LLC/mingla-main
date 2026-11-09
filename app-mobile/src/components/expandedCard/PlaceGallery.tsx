@@ -4,7 +4,8 @@
  * A full-width pager (every photo, video cover in slot 1), a "1 / N" counter,
  * and a thumbnail row under it (only with 2+ slots). Tapping a photo opens the
  * existing ImageLightbox (full screen, pinch to zoom); the video plays muted in
- * slot 1 only and pauses as soon as it is swiped away.
+ * slot 1 only and pauses as soon as it is swiped away. Under Reduce Motion it
+ * does not start by itself: it waits on its cover with a Play button.
  *
  * It replaces BOTH the S7 hero photograph and the old 160 x 120 "Photos" strip
  * half way down the sheet. Both lists are `BottomSheetFlatList` (#1702: a plain
@@ -61,12 +62,16 @@ export function PlaceGallery({
   onClose,
   closeLabel,
 }: PlaceGalleryProps): React.ReactElement {
-  const { t } = useTranslation(['cards']);
+  const { t } = useTranslation(['cards', 'common']);
   const { width } = useWindowDimensions();
   const [index, setIndex] = React.useState(0);
   // #4347 retest P4 — the video slot plays muted; the person can turn sound on
   // (the deleted hero offered this). Back to muted for every new gallery.
   const [muted, setMuted] = React.useState(true);
+  // #4347 rework (S-4) — Reduce Motion: no autoplay. The video stays on its
+  // cover until the person taps Play; without Reduce Motion it plays as before.
+  const [playRequested, setPlayRequested] = React.useState(false);
+  const videoMayPlay = !reducedMotion || playRequested;
   const pagerRef = React.useRef<{ scrollToIndex?: (p: { index: number; animated: boolean }) => void } | null>(null);
   // A photo that fails to load leaves the gallery (the next one takes its
   // slot); when every one fails the gallery is the short neutral header.
@@ -153,8 +158,8 @@ export function PlaceGallery({
                     radius={0}
                     label={title}
                     videoContentFit="cover"
-                    autoplay={active && index === 0}
-                    playbackActive={active && index === 0}
+                    autoplay={active && index === 0 && videoMayPlay}
+                    playbackActive={active && index === 0 && videoMayPlay}
                     muted={muted}
                     loop
                     // The control is drawn by this gallery (translated, and
@@ -204,6 +209,18 @@ export function PlaceGallery({
             <Text style={styles.counterText} maxFontSizeMultiplier={1.3}>
               {muted ? t('cards:sheet.sound') : t('cards:sheet.mute')}
             </Text>
+          </TouchableOpacity>
+        ) : null}
+        {media[index]?.isVideo && !videoMayPlay ? (
+          <TouchableOpacity
+            testID="sheet-gallery-play"
+            style={styles.play}
+            onPress={() => setPlayRequested(true)}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={`${t('common:play')} · ${title}`}
+          >
+            <Icon name="play" size={22} color={SHEET_GALLERY.counterText} />
           </TouchableOpacity>
         ) : null}
         {close}
@@ -303,6 +320,17 @@ const styles = StyleSheet.create({
   },
   // #4347 retest P4 — the video's sound toggle, top-left (Close is top-right,
   // the counter bottom-right).
+  play: {
+    position: 'absolute',
+    alignSelf: 'center',
+    top: SHEET_GALLERY.height / 2 - 28,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: SHEET_GALLERY.counterFill,
+  },
   sound: {
     position: 'absolute',
     left: 12,

@@ -309,14 +309,21 @@ export type PublicVenueBookingSlotContext = PublicVenueThemedContext & {
 /**
  * #4347 wave 4 — a native host's OWN pinned action bar (the consumer app's
  * Explorer bar: Save · Schedule · Share · Reserve-or-Directions). When a host
- * passes `actionBar`, it replaces this page's phone reserve bar and the desktop
- * panel's reserve button, so a guest never sees two reserve bars. The sheet
- * keeps ONE owner: `openReservation` goes through the same reducer and the same
- * fail-closed gate as the shared CTA. Buyer web passes nothing and renders
- * exactly as before.
+ * bar renders, it replaces this page's own pinned reserve bar (the phone bar),
+ * so a guest never sees two reserve bars. The desktop sticky panel is not
+ * touched: no host passes a bar at desktop width (the consumer route is
+ * phone-only). `canReserve` follows the same display rule as the shared bar,
+ * so it is false on the Reservations tab, whose pane carries its own reserve
+ * button. The sheet keeps ONE owner: `openReservation` goes through the same
+ * reducer and the same fail-closed gate as the shared CTA. Buyer web passes
+ * nothing and renders exactly as before.
  */
 export interface PublicVenueActionBarContext extends PublicVenueThemedContext {
-  /** The shared reserve gate (`RESERVATION_READY` for this category). */
+  /**
+   * The shared reserve DISPLAY rule: the fail-closed gate (`RESERVATION_READY`
+   * for this category) AND not on the Reservations tab, exactly as the page's
+   * own reserve bar.
+   */
   canReserve: boolean;
   /** Which booking rail this category uses ("table" or "stay"). */
   bookingKind: VenueBookingBody;
@@ -2023,7 +2030,9 @@ export const PublicVenueScreen = ({
       ? null
       : actionBar({
           ...themedSlotContext,
-          canReserve: canOpenReservationSheet,
+          // #4347 rework (A-4) — the same display rule as the shared bar: on
+          // the Reservations tab the pane carries the reserve button.
+          canReserve: showReserveCta,
           bookingKind: profile.bookingBody,
           reserveAction: profile.reserveAction,
           openReservation: handleOpenReservationFromActionBar,

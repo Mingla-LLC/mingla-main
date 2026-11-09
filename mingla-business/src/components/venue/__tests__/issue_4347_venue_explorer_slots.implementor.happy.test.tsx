@@ -20,7 +20,7 @@
  */
 import React from "react";
 import { join } from "node:path";
-import { afterEach, describe, expect, jest, test } from "@jest/globals";
+import { afterEach, beforeAll, describe, expect, jest, test } from "@jest/globals";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
   true;
@@ -476,8 +476,6 @@ jest.mock(
           onReserve: props.context.openReservation,
         });
       },
-      VenueStateClose: (props: { onPress: () => void }) =>
-        ReactLocal.createElement("StateCloseStub", { onPress: props.onPress }),
     };
   },
 );
@@ -508,6 +506,16 @@ const mountSettled = async (data: CaseData): Promise<Mounted> => {
 };
 const host = (mounted: Mounted, type: string): TestInstance[] =>
   mounted.root.findAll((node) => node.type === type);
+
+// #4347 rework — X-2 order dependence. The route's Explorer chunks are
+// React.lazy; their FIRST resolution inside a synchronous act() while the deck
+// bar is also suspended spins act's microtask queue until the heap runs out (a
+// harness artifact). Warm them once, with no hand-off, before any case runs,
+// so every case (`-t X-2` on its own included) starts from resolved chunks.
+beforeAll(async () => {
+  const warm = await mountSettled({ venue: consumerVenue("restaurant"), stayDetail: null, stayState: "ready", tab: undefined });
+  warm.unmount();
+});
 
 afterEach(() => {
   handoffModule.clearDeckVenueHandoff();
@@ -575,7 +583,34 @@ describe("#4347 wave 4 — the Explorer slots on the shared venue page", () => {
   test("X-4 a venue that is not public still has a Close", async () => {
     const mounted = await mountSettled({ venue: null, stayDetail: null, stayState: "ready", tab: undefined });
     expect(mounted.json).toContain("Venue not found");
-    expect(host(mounted, "StateCloseStub")).toHaveLength(1);
+    // #4347 rework (A-6) — the Close is the route's STATIC leaf module now, so
+    // it is the real button here, not a stub of the lazy layer.
+    const close = mounted.root.findAll(
+      (n) => typeof n.type !== "string" && n.props?.testID === "venue-state-close",
+    );
+    expect(close).toHaveLength(1);
+    expect(close[0].props.accessibilityLabel).toBe("Close");
+    expect(typeof close[0].props.onPress).toBe("function");
+    mounted.unmount();
+  });
+
+  test("X-5 the deck hand-off is released when its visit closes", async () => {
+    handoffModule.setDeckVenueHandoff(handoffFor(PLACE));
+    const fromDeck = await mountSettled({ venue: consumerVenue("restaurant"), stayDetail: null, stayState: "ready", tab: undefined });
+    expect(host(fromDeck, "ExplorerBarStub")).toHaveLength(1);
+    fromDeck.unmount();
+    const again = await mountSettled({ venue: consumerVenue("restaurant"), stayDetail: null, stayState: "ready", tab: undefined });
+    expect(host(again, "ExplorerBarStub")).toHaveLength(0);
+    expect(again.root.findAll((n) => n.props?.testID === "issue-2729-reserve-bar").length).toBeGreaterThan(0);
+    again.unmount();
+  });
+
+  test("X-6 on the Reservations tab the Explorer bar offers no second Reserve", async () => {
+    handoffModule.setDeckVenueHandoff(handoffFor(PLACE));
+    const mounted = await mountSettled({ venue: consumerVenue("restaurant"), stayDetail: null, stayState: "ready", tab: "reservations" });
+    const bar = host(mounted, "ExplorerBarStub");
+    expect(bar).toHaveLength(1);
+    expect(bar[0].props.canReserve).toBe(false);
     mounted.unmount();
   });
 });

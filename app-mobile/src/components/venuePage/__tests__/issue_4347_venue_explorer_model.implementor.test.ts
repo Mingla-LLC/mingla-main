@@ -39,7 +39,13 @@ import {
   whenColorsFor,
   whenColorsPass,
 } from '../venueExplorerModel';
-import { clearDeckVenueHandoff, getDeckVenueHandoff, setDeckVenueHandoff } from '../deckVenueHandoff';
+import {
+  clearDeckVenueHandoff,
+  deckHandoffSave,
+  getDeckVenueHandoff,
+  releaseDeckVenueHandoff,
+  setDeckVenueHandoff,
+} from '../deckVenueHandoff';
 import { isPlaceOpenAt } from '../../../utils/openingHoursUtils';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -176,7 +182,47 @@ describe('#4347 wave 4 — venue Explorer model', () => {
     const block = fn.slice(handoffAt, leaveAt);
     expect(block).toMatch(/placePoolId: currentClaimedVenue\.placePoolId/);
     expect(block).toMatch(/card: recommendationToExpanded\(venueRec\)/);
-    expect(block).toMatch(/await handleSwipe\("right", venueRec\)/);
+    // #4347 rework (P4) — the save goes through the restoring helper.
+    expect(block).toMatch(/save: deckHandoffSave\(venueRec\.id,/);
+    expect(block).toMatch(/swipeRight: \(\) => handleSwipe\("right", venueRec\)/);
     expect(read('../../../utils/authCleanup.ts')).toMatch(/clearDeckVenueHandoff\(\);/);
+  });
+
+  test('D-2 a closing page releases only its own hand-off (#4347 rework A-2)', () => {
+    const entry = (placePoolId: string) => ({
+      placePoolId,
+      card: { id: placePoolId } as never,
+      currentMode: 'solo',
+      isSaved: false,
+      save: async () => undefined,
+      canAccessCurated: true,
+    });
+    const first = entry('p-1');
+    setDeckVenueHandoff(first);
+    releaseDeckVenueHandoff(first);
+    expect(getDeckVenueHandoff('p-1')).toBeNull();
+    // A newer deck tap (even for the same place) survives the older page closing.
+    const older = entry('p-1');
+    const newer = entry('p-1');
+    setDeckVenueHandoff(older);
+    setDeckVenueHandoff(newer);
+    releaseDeckVenueHandoff(older);
+    expect(getDeckVenueHandoff('p-1')).toBe(newer);
+    clearDeckVenueHandoff();
+  });
+
+  test('D-3 the hand-off save puts the card back on the deck when the save fails (#4347 rework P4)', async () => {
+    const removed = new Set<string>();
+    const deck = (swipeRight: () => Promise<void>) => ({
+      remove: (id: string) => removed.add(id),
+      restore: (id: string) => removed.delete(id),
+      swipeRight,
+    });
+    await deckHandoffSave('c-1', deck(async () => undefined))();
+    expect(removed.has('c-1')).toBe(true);
+    removed.clear();
+    const failure = new Error('save failed');
+    await expect(deckHandoffSave('c-2', deck(async () => { throw failure; }))()).rejects.toBe(failure);
+    expect(removed.has('c-2')).toBe(false);
   });
 });

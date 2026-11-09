@@ -27,6 +27,7 @@ jest.mock("react-i18next", () => {
   const interpolate = (value: string, o: Record<string, unknown> = {}) =>
     String(value).replace(/{{\s*(\w+)\s*}}/g, (_m: string, k: string) => (k in o ? String(o[k]) : `{{${k}}}`));
   const details = require("../../../i18n/locales/en/expanded_details.json");
+  const common = require("../../../i18n/locales/en/common.json");
   const nested = (obj: Record<string, unknown>, path: string): string | undefined => {
     const v = path.split(".").reduce<unknown>((acc, k) => (acc && typeof acc === "object" ? (acc as Record<string, unknown>)[k] : undefined), obj);
     return typeof v === "string" ? v : undefined;
@@ -34,6 +35,7 @@ jest.mock("react-i18next", () => {
   const t = (key: string, o: Record<string, unknown> = {}) => {
     const [ns, leafRaw] = key.includes(":") ? key.split(":") : ["cards", key];
     const leaf = leafRaw;
+    if (ns === "common") return interpolate(common[leaf] ?? key, o);
     if (ns === "expanded_details") return interpolate(nested(details, leaf) ?? (o.defaultValue as string | undefined) ?? key, o);
     const plural = typeof o.count === "number" ? `${leaf}_${o.count === 1 ? "one" : "other"}` : leaf;
     return interpolate(cards[plural] ?? cards[leaf] ?? (o.defaultValue as string | undefined) ?? key, o);
@@ -146,6 +148,22 @@ describe("#4347 retest extras", () => {
     expect(texts(r)).toContain("Mute");
     const stills = mount(<PlaceGallery media={sheetGalleryMedia(["s1", "s2"])} title="Nok" onOpen={() => undefined} />);
     expect(byTestId(stills, "sheet-gallery-sound")).toHaveLength(0);
+  });
+
+  test("A-2 under Reduce Motion the gallery video waits for Play, then plays (#4347 rework S-4)", () => {
+    const media = sheetGalleryMedia(["https://c/v.mp4", "s1"]);
+    const r = mount(<PlaceGallery media={media} title="Nok" onOpen={() => undefined} reducedMotion />);
+    const player = () => r.root.find((n: Node) => n.type === "EventCoverMedia");
+    expect([player().props.autoplay, player().props.playbackActive]).toEqual([false, false]);
+    const play = byTestId(r, "sheet-gallery-play")[0];
+    expect(play.props.accessibilityLabel).toBe("Play · Nok");
+    TestRenderer.act(() => play.props.onPress());
+    expect([player().props.autoplay, player().props.playbackActive]).toEqual([true, true]);
+    expect(byTestId(r, "sheet-gallery-play")).toHaveLength(0);
+    // Without Reduce Motion: plays by itself, no Play button.
+    const moving = mount(<PlaceGallery media={media} title="Nok" onOpen={() => undefined} />);
+    expect(moving.root.find((n: Node) => n.type === "EventCoverMedia").props.autoplay).toBe(true);
+    expect(byTestId(moving, "sheet-gallery-play")).toHaveLength(0);
   });
 
   test("K-1 the deck chip flags a stop that closes within 15 min of arrival", () => {

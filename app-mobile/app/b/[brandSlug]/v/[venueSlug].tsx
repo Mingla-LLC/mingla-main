@@ -111,8 +111,14 @@ import {
 } from "../../../../src/components/brandEnquiry/venueMessageBoundary";
 // #4347 wave 4 — leaf modules only (React / types): the Explorer layer itself
 // loads lazily below, like the Message add-on.
-import { getDeckVenueHandoff } from "../../../../src/components/venuePage/deckVenueHandoff";
+import {
+  getDeckVenueHandoff,
+  releaseDeckVenueHandoff,
+} from "../../../../src/components/venuePage/deckVenueHandoff";
 import { VenueExplorerBoundary } from "../../../../src/components/venuePage/venueExplorerBoundary";
+// #4347 rework (A-6) — the state views' Close is static: it is the only way out
+// of a page that could not load, so it cannot sit in a chunk that may fail.
+import { VenueStateClose } from "../../../../src/components/venuePage/venueStateClose";
 
 // #4111 — the Message add-on loads on mount after first commit, via a deferred
 // require (Metro bundles it; jest harnesses without ESM import() can render it).
@@ -142,11 +148,6 @@ const LazyVenueExplorerBar = React.lazy(async () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const mod = require("../../../../src/components/venuePage/VenueExplorerLayer") as typeof import("../../../../src/components/venuePage/VenueExplorerLayer");
   return { default: mod.VenueExplorerBar };
-});
-const LazyVenueStateClose = React.lazy(async () => {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const mod = require("../../../../src/components/venuePage/VenueExplorerLayer") as typeof import("../../../../src/components/venuePage/VenueExplorerLayer");
-  return { default: mod.VenueStateClose };
 });
 /** Mirrors VENUE_EXPLORER_BAR_HEIGHT (pinned bar: 10 + 48 + 1) without importing the layer. */
 const EXPLORER_BAR_HEIGHT = 59;
@@ -527,6 +528,19 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
     () => getDeckVenueHandoff(venue?.placePoolId ?? null),
     [venue?.placePoolId],
   );
+  // #4347 rework (A-2) — the hand-off is for THIS visit only. When the page
+  // that used it closes, it is released, so the same venue reached later from
+  // a link or Discover gets the shared reserve bar, never the old deck card.
+  // Released only if it is still this visit's entry (a newer deck tap wins).
+  useEffect(() => {
+    if (deckHandoff === null) return undefined;
+    return () => releaseDeckVenueHandoff(deckHandoff);
+  }, [deckHandoff]);
+  // #4347 rework (A-1) — the page claims a host bar only while that bar can
+  // render. If the lazy Explorer bar fails (load or render), the boundary
+  // reports it here and the page falls back to its own reserve bar, so a
+  // failure never leaves the venue without a way to book.
+  const [explorerBarFailed, setExplorerBarFailed] = useState(false);
   const explorerVenue = useMemo(
     () =>
       venue === null
@@ -550,6 +564,7 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
         { surface: ANALYTICS_SURFACE, part, brand_slug: brandSlug, venue_slug: venueSlug },
         ["public-venue-explorer-layer", ANALYTICS_SURFACE],
       );
+      if (part === "action-bar") setExplorerBarFailed(true);
     },
     [brandSlug, venueSlug],
   );
@@ -701,13 +716,7 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
 
   // #4347 wave 4 — loading, error and not-found are never a dead end: each
   // carries the same Close the page has (back to the deck, or the brand page).
-  const stateClose = (
-    <VenueExplorerBoundary part="state-close" onError={handleExplorerError}>
-      <React.Suspense fallback={null}>
-        <LazyVenueStateClose onPress={handleClose} topInset={insets.top} />
-      </React.Suspense>
-    </VenueExplorerBoundary>
-  );
+  const stateClose = <VenueStateClose onPress={handleClose} topInset={insets.top} />;
 
   if (routeState === "cold-loading") {
     return <StateView title="Loading venue…" loading close={stateClose} />;
@@ -857,7 +866,8 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
       overviewSlot={renderExplorerOverview}
       // #4347 wave 4 — only a venue opened from the deck has the card that
       // Save and Schedule act on; otherwise the page keeps its own reserve bar.
-      actionBar={deckHandoff === null ? undefined : renderExplorerBar}
+      // A bar that failed to load hands the edge back to that bar (A-1).
+      actionBar={deckHandoff === null || explorerBarFailed ? undefined : renderExplorerBar}
       actionBarHeight={EXPLORER_BAR_HEIGHT}
     />
     {venueMessageReady && venueMessageBrand !== null && venueEnquiry !== null ? (

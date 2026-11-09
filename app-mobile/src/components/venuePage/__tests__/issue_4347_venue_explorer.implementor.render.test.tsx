@@ -97,7 +97,9 @@ const mockOpenedMaps: unknown[][] = [];
 
 const { createThemePalette } = require("@mingla/offering-rendering/themePalette");
 const { resolveTheme } = require("@mingla/offering-rendering/themeResolver");
-const { VenueExplorerOverview, VenueExplorerBar, VenueStateClose } = require("../VenueExplorerLayer");
+const { VenueExplorerOverview, VenueExplorerBar } = require("../VenueExplorerLayer");
+// #4347 rework (A-6) — the state Close moved to a static leaf module.
+const { VenueStateClose } = require("../venueStateClose");
 const { NEUTRAL_WHEN_COLORS, whenColorsFor } = require("../venueExplorerModel");
 
 type Node = import("react-test-renderer").ReactTestInstance;

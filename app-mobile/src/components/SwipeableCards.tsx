@@ -100,7 +100,7 @@ import { deckKickerFor, useDeckFactLabels } from "./deckCard/useDeckFactLabels";
 import { useDeckTextScale, useMinuteClock, usePhotoTapHint, useTopCardPhotoPreload } from "./deckCard/deckCardHooks";
 import { useClaimedVenues } from "../hooks/useClaimedVenues";
 import { leaveDeckTo } from "./deckCard/deckNavigation";
-import { setDeckVenueHandoff } from "./venuePage/deckVenueHandoff";
+import { deckHandoffSave, setDeckVenueHandoff } from "./venuePage/deckVenueHandoff";
 import { LinearGradient } from "expo-linear-gradient";
 import { ANDROID_GLASS_USES_OPAQUE_FALLBACK, colors, fontWeights, glass, radius, typography } from "../constants/designSystem";
 import { throttledReverseGeocode } from '../utils/throttledGeocode';
@@ -2454,11 +2454,22 @@ export default function SwipeableCards({
         isSaved: savedCards.some(
           (savedCard) => savedCard?.id === venueRec.id || savedCard === venueRec.id,
         ),
-        save: async () => {
-          setRemovedCards((prev) => new Set([...prev, venueRec.id]));
-          setCurrentCardIndex(0);
-          await handleSwipe("right", venueRec);
-        },
+        // #4347 rework (P4) — restored to the deck if the save fails.
+        save: deckHandoffSave(venueRec.id, {
+          remove: (cardId) => {
+            setRemovedCards((prev) => new Set([...prev, cardId]));
+            setCurrentCardIndex(0);
+          },
+          restore: (cardId) => {
+            setRemovedCards((prev) => {
+              const next = new Set(prev);
+              next.delete(cardId);
+              return next;
+            });
+            setCurrentCardIndex(0);
+          },
+          swipeRight: () => handleSwipe("right", venueRec),
+        }),
         onCardRemoved: (cardId) => {
           if (cardId !== venueRec.id) return;
           setRemovedCards((prev) => new Set([...prev, cardId]));

@@ -6,18 +6,18 @@
  *
  *   A-1 a failing Explorer bar must not take the page's reserve action with it
  *       (the boundary renders nothing, but the page has already dropped its
- *       own reserve bar for it) — pinned, P2;
+ *       own reserve bar for it) — was pinned (P2), fixed in the rework;
  *   A-2 a deck hand-off is for ONE visit: after the page that used it closes,
  *       the same venue reached again (a shared link, Discover) must not show
- *       the deck bar acting on the old card — pinned, P2;
+ *       the deck bar acting on the old card — was pinned (P2), fixed in the rework;
  *   A-3 a second venue tapped on the deck replaces the first hand-off; the
  *       first venue's page keeps its own reserve bar;
  *   A-4 the Reservations tab: never two reserve buttons on screen (the pane's
- *       own CTA and the bar's) — pinned, P3;
+ *       own CTA and the bar's) — was pinned (P3), fixed in the rework;
  *   A-5 a Stay from the deck: the bar gets the Stay rail and its gate; the
  *       page's reserve bar is gone, and the Overview block still renders;
  *   A-6 the loading / error / not-found Close must survive the Explorer
- *       layer failing to load — pinned, P3.
+ *       layer failing to load — was pinned (P3), fixed in the rework.
  *
  * FAILS-ON-REVERT (verified by the tester in an isolated worktree, see #4347):
  *   - getDeckVenueHandoff without the placePoolId match -> A-3 fails;
@@ -548,10 +548,10 @@ afterEach(() => {
 });
 
 describe("#4347 wave 4 — tester adversarial: the Explorer layer on the shared venue page", () => {
-  // P2 (pinned): the route's actionBar returns the boundary ELEMENT, so the
+  // P2 (was pinned; fixed in the wave 4 rework): the route's actionBar returns the boundary ELEMENT, so the
   // shared screen sees a host bar and drops its own reserve bar; when the
   // lazy bar then fails, the boundary renders null and nothing books.
-  test.failing("A-1 (P2) a failing Explorer bar leaves the page a way to reserve", async () => {
+  test("A-1 (P2) a failing Explorer bar leaves the page a way to reserve", async () => {
     handoffModule.setDeckVenueHandoff(handoffFor(PLACE));
     failing.bar = true;
     const mounted = await mountSettled(restaurant());
@@ -560,8 +560,8 @@ describe("#4347 wave 4 — tester adversarial: the Explorer layer on the shared 
     mounted.unmount();
   });
 
-  // P2 (pinned): the hand-off is only cleared at sign-out, so it outlives the visit.
-  test.failing("A-2 (P2) after the deck's visit closes, the same venue from a link has no deck bar", async () => {
+  // P2 (was pinned; fixed in the wave 4 rework): the hand-off is only cleared at sign-out, so it outlives the visit.
+  test("A-2 (P2) after the deck's visit closes, the same venue from a link has no deck bar", async () => {
     handoffModule.setDeckVenueHandoff(handoffFor(PLACE));
     const fromDeck = await mountSettled(restaurant());
     expect(host(fromDeck, "ExplorerBarStub").length).toBe(1);
@@ -582,9 +582,9 @@ describe("#4347 wave 4 — tester adversarial: the Explorer layer on the shared 
     mounted.unmount();
   });
 
-  // P3 (pinned): the shared bar hides on the Reservations tab (its pane has the
+  // P3 (was pinned; fixed in the wave 4 rework): the shared bar hides on the Reservations tab (its pane has the
   // CTA); the Explorer bar gets canReserve = the sheet gate and stays.
-  test.failing("A-4 (P3) the Reservations tab never shows two reserve buttons", async () => {
+  test("A-4 (P3) the Reservations tab never shows two reserve buttons", async () => {
     handoffModule.setDeckVenueHandoff(handoffFor(PLACE));
     const mounted = await mountSettled(restaurant("reservations"));
     const bar = host(mounted, "ExplorerBarStub");
@@ -612,9 +612,9 @@ describe("#4347 wave 4 — tester adversarial: the Explorer layer on the shared 
     table.unmount();
   });
 
-  // P3 (pinned): VenueStateClose lives in the lazily loaded layer module, so a
+  // P3 (was pinned; fixed in the wave 4 rework): VenueStateClose lives in the lazily loaded layer module, so a
   // load failure there hides the only way out of a page that could not load.
-  test.failing("A-6 (P3) Venue not found keeps a Close when the Explorer layer fails to load", async () => {
+  test("A-6 (P3) Venue not found keeps a Close when the Explorer layer fails to load", async () => {
     failing.close = true;
     const mounted = await mountSettled({ venue: null, stayDetail: null, stayState: "ready", tab: undefined });
     expect(mounted.json).toContain("Venue not found");

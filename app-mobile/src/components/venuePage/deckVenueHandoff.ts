@@ -11,7 +11,9 @@
  * ONE slot, not a map: only the venue the person just tapped can be on screen.
  * The page reads it by `place_pool_id`; a page reached any other way (a shared
  * link, Discover stays) finds nothing and keeps the shared page's own reserve
- * bar. Cleared at sign-out with the rest of the client state.
+ * bar. It is for ONE visit: the page releases it when it closes
+ * (`releaseDeckVenueHandoff`), and it is cleared at sign-out with the rest of
+ * the client state.
  */
 import type { ExpandedCardData } from '../../types/expandedCardTypes';
 
@@ -45,4 +47,38 @@ export function getDeckVenueHandoff(placePoolId: string | null | undefined): Dec
 
 export function clearDeckVenueHandoff(): void {
   slot = null;
+}
+
+/**
+ * #4347 rework (A-2) — the page that used `entry` has closed. Clears the slot
+ * only when it still holds that same entry, so a newer deck tap (a different
+ * venue, or the same venue again) is never wiped by an older page unmounting.
+ */
+export function releaseDeckVenueHandoff(entry: DeckVenueHandoff): void {
+  if (slot === entry) slot = null;
+}
+
+/**
+ * #4347 rework (P4) — the deck's save for a venue page. The card leaves the
+ * deck at once (as it does from the place sheet), but if the save then fails
+ * it is put back, so a failed save never loses the card from the deck. The
+ * error still reaches the caller (ActionButtons shows it and the page stays).
+ */
+export function deckHandoffSave(
+  cardId: string,
+  deck: {
+    readonly remove: (cardId: string) => void;
+    readonly restore: (cardId: string) => void;
+    readonly swipeRight: () => Promise<void>;
+  },
+): () => Promise<void> {
+  return async () => {
+    deck.remove(cardId);
+    try {
+      await deck.swipeRight();
+    } catch (error) {
+      deck.restore(cardId);
+      throw error;
+    }
+  };
 }
