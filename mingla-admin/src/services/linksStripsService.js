@@ -4,7 +4,7 @@
 //
 // Each export names its RPC literally: the #3988 tab-contract suite reads the
 // exported bodies to list what the Links page tab reaches.
-import { supabase } from "../lib/supabase";
+import { invokeWithRefresh, supabase } from "../lib/supabase";
 
 export class LinksStripsError extends Error {
   constructor(code, message, { detail = null } = {}) {
@@ -21,6 +21,7 @@ const SERVER_REFUSALS = Object.freeze({
   links_title_invalid: { field: "title", message: "Add a title of up to 60 characters." },
   links_url_invalid: { field: "url", message: "Enter a web link like usemingla.com/host." },
   links_shows_on_invalid: { field: "showsOn", message: "Pick today or a later day." },
+  links_shows_until_invalid: { field: "showsUntil", message: "“Show until” can't be before “Shows on”." },
   links_blog_post_invalid: { field: "blog", message: "Choose a published blog post." },
   links_label_invalid: { field: "label", message: "Pick an option from the list." },
   links_opens_invalid: { field: "opens", message: "Pick an option from the list." },
@@ -119,4 +120,21 @@ export async function listPublishedBlogPostsForLinks() {
   if (error) throw toLinksStripsError(error);
   const posts = Array.isArray(data?.posts) ? data.posts : [];
   return posts.filter((post) => post?.derived_state === "published" && post.id && post.title);
+}
+
+/** Said when a change saved but the instant /links refresh did not happen. */
+export const LINKS_REFRESH_FALLBACK = "Saved. The links page may take a few minutes to update.";
+
+/**
+ * Asks the server to refresh usemingla.com/links now, after a save, delete or
+ * reorder. Throws when the refresh did not happen; callers treat that as
+ * "saved, the page catches up later", never as a failed save.
+ */
+export async function refreshLinksPage() {
+  // admin-blog "revalidate_links": 200 {ok:true} is the only success; 502
+  // {ok:false}, 503 revalidate_not_configured and 403 are all failures.
+  const { data, error } = await invokeWithRefresh("admin-blog", { body: { action: "revalidate_links" } });
+  if (error) throw new LinksStripsError("refresh_failed", String(error?.message || "links_refresh_failed"));
+  if (data?.ok !== true) throw new LinksStripsError("refresh_failed", String(data?.error || `links_refresh_status_${data?.status ?? "unknown"}`));
+  return data;
 }

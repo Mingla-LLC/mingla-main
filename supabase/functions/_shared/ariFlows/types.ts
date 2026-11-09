@@ -194,7 +194,7 @@ export interface FlowPlaceValue {
   lng: number;
   feature_type: string | null;
   /**
-   * #3355 P9 — the address search's own id for the pick (Mapbox), the same
+   * #3355 P9 — the address search's own id for the pick (a Google place id since #4334), the same
    * id the experience wizard stores as a stop's place_id. Absent on older
    * Host builds.
    */

@@ -234,7 +234,7 @@ function check(sources, migrationEntries, migrationSha) {
     "Emails sent before open tracking was enabled show — because those opens were never measured.",
   ]);
   requireAll("privacy", sources.privacy, [
-    "October 22, 2026",
+    "November 9, 2026",
     "Marketing email measurement",
     "campaigns.usemingla.com",
     "Resend",
@@ -335,7 +335,7 @@ if (process.argv.includes("--self-test")) {
   good.report =
     "recipientStats.opened / recipientStats.trackedDelivered What these numbers mean Opened is an estimate based on a tiny image in the email. Emails sent before open tracking was enabled show — because those opens were never measured.";
   good.privacy =
-    "October 22, 2026 Marketing email measurement campaigns.usemingla.com Resend";
+    "November 9, 2026 Marketing email measurement campaigns.usemingla.com Resend";
   good.ciManifest = migrationPath;
   good.overviewNoRevenueTest =
     "hasDeliveryCoverage hasOpenCoverage trackedDelivered openHealthy";

@@ -256,7 +256,7 @@ export interface BusynessData {
   // `trafficInfo` (currentTravelTime + trafficCondition) is DELETED — #1605
   // wave 4 rework. Its render site (`BusynessSection`'s Traffic row) went in
   // this wave; its heuristic arm fabricated `10 + n min` from the clock; and
-  // its Mapbox arm restated the distance span the plate already carries. The
+  // its routing-API arm restated the distance span the plate already carries. The
   // producer went with the row rather than paying a per-open Directions
   // round-trip for a field nobody reads. The busyness service itself was
   // deleted in #4347 wave 3; `S-8` in the #1605 gate fails if traffic returns.

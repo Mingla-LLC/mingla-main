@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
+// MINGLA-INVARIANT: I-CONSUMER-LOCATION-USES-SHARED-PICKER | issue #4334 | Explorer location fields use the shared address picker through the app wrapper, never a private geocoder.
 /**
- * Strict-grep gate — META-ORCH-1060 [Mapbox consumer migration]
- * INV-2 · I-CONSUMER-LOCATION-USES-SHARED-MAPBOX
+ * Strict-grep gate — META-ORCH-1060 / #4334
+ * INV-2 · I-CONSUMER-LOCATION-USES-SHARED-PICKER
  *
  * The consumer location entry points must go through the shared
  * @mingla/location-input package seam — never a hand-rolled or per-app
@@ -10,10 +11,11 @@
  *
  * REQUIRE: both
  *   - app-mobile/src/services/geocodingService.ts
- *   - app-mobile/src/components/location/MapboxAddressInput.tsx (consumer wrapper)
+ *   - app-mobile/src/components/location/AddressInput.tsx (consumer wrapper)
  *   import from "@mingla/location-input".
  *
- * FORBID: a direct provider geocoding fetch (api.mapbox.com OR a Nominatim
+ * FORBID: a direct provider geocoding fetch (maps.googleapis.com,
+ *   places.googleapis.com OR a Nominatim
  *   /search?/reverse? host) anywhere in those two consumer location files —
  *   consumer code must call the package/service, not a provider URL directly.
  *
@@ -45,13 +47,13 @@ const CONSUMER_WRAPPER = path.join(
   "src",
   "components",
   "location",
-  "MapboxAddressInput.tsx",
+  "AddressInput.tsx",
 );
 
 const SHARED_IMPORT_RE = /from\s+["']@mingla\/location-input["']/;
 // Direct provider geocoding fetch the consumer must NOT make itself.
 const DIRECT_PROVIDER_RE =
-  /(api\.mapbox\.com|nominatim\.openstreetmap\.org|nominatim[^"']*\/(search|reverse))/i;
+  /(maps\.googleapis\.com|places\.googleapis\.com|nominatim\.openstreetmap\.org|nominatim[^"']*\/(search|reverse))/i;
 
 let failures = 0;
 function fail(check, msg) {
@@ -73,9 +75,9 @@ function readSource(filePath) {
 
 function runSelfTest() {
   let selfFail = 0;
-  const goodImport = `import { forwardGeocodeMapbox } from "@mingla/location-input";`;
+  const goodImport = `import { forwardGeocode } from "@mingla/location-input";`;
   const badNoImport = `import { supabase } from "./supabase";`;
-  const badDirect = `const r = await fetch("https://api.mapbox.com/search/searchbox/v1/forward?q=" + q);`;
+  const badDirect = `const r = await fetch("https://maps.googleapis.com/maps/api/geocode/json?address=" + q);`;
   if (!SHARED_IMPORT_RE.test(goodImport)) {
     console.error("SELF-TEST FAIL: shared import not detected");
     selfFail++;
@@ -96,7 +98,7 @@ function runSelfTest() {
     console.error(`SELF-TEST: ${selfFail} expectation(s) failed`);
     process.exit(1);
   }
-  console.log("SELF-TEST OK: I-CONSUMER-LOCATION-USES-SHARED-MAPBOX detector behaves");
+  console.log("SELF-TEST OK: I-CONSUMER-LOCATION-USES-SHARED-PICKER detector behaves");
   process.exit(0);
 }
 
@@ -106,7 +108,7 @@ if (process.argv.includes("--self-test")) {
 
 for (const [label, file] of [
   ["geocodingService.ts", GEOCODING_SERVICE],
-  ["consumer MapboxAddressInput wrapper", CONSUMER_WRAPPER],
+  ["consumer AddressInput wrapper", CONSUMER_WRAPPER],
 ]) {
   if (!fs.existsSync(file)) {
     fail("INV-2: shared-import-present", `${label} missing at ${path.relative(REPO_ROOT, file)}`);

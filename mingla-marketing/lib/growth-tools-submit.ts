@@ -555,7 +555,7 @@ export type EventRunResponse =
   | { ok: true; run_id: string; report: EventReport }
   | { ok: false; error: GrowthToolsError }
 
-/** City autocomplete for the event intake — validates the city against Mapbox. */
+/** City autocomplete for the event intake — validates the city against Google Places. */
 export interface CitySuggestion {
   label: string
   city: string

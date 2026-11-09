@@ -150,6 +150,8 @@ export async function matchPoolByAddress(input: {
   formattedAddress: string;
   lat: number;
   lng: number;
+  /** #4334 §4.12 — the picked Google place id: a direct pool lookup, no Google call. */
+  googlePlaceId?: string | null;
 }): Promise<PoolMatch | null> {
   const { data, error } = await supabase.functions.invoke(
     "venue-address-pool-match",
@@ -158,6 +160,7 @@ export async function matchPoolByAddress(input: {
         formatted_address: input.formattedAddress,
         lat: input.lat,
         lng: input.lng,
+        ...(input.googlePlaceId ? { google_place_id: input.googlePlaceId } : {}),
       },
     },
   );

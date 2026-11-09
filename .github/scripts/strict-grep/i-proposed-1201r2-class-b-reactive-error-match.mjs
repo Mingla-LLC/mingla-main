@@ -7,7 +7,8 @@
  *  (a) every Class-B seed row in the R2 migration has a 'reactive' matcher OR a
  *      'header' signal in depletion_signal;
  *  (b) the CLASS_B_DEPLETION const in logic.ts has an entry for each of
- *      openai/gemini/serper/resend/pexels/ticketmaster/mapbox/google_places;
+ *      openai/gemini/serper/resend/pexels/ticketmaster/google_places, plus the
+ *      #4334 Google tiles (google_place_details/geocoding/static_maps/place_refresh);
  *  (c) the openai entry's match is exactly 'insufficient_quota' (NOT
  *      'rate_limit_exceeded') — the load-bearing disambiguation.
  */
@@ -26,7 +27,7 @@ if (!migFile) {
   failures.push("migration *_orch_1201_r2_api_health_classes.sql not found");
 } else {
   const sql = readFileSync(join(migDir, migFile), "utf8");
-  const classBKeys = ["openai", "gemini", "serper", "resend", "pexels", "ticketmaster", "mapbox", "google_places"];
+  const classBKeys = ["openai", "gemini", "serper", "resend", "pexels", "ticketmaster", "google_places"];
   for (const key of classBKeys) {
     const blockRe = new RegExp(
       `UPDATE\\s+public\\.api_health_services(?:(?!UPDATE\\s+public\\.api_health_services)[\\s\\S])*?WHERE\\s+service_key\\s*=\\s*'${key}'`,
@@ -58,7 +59,7 @@ if (!existsSync(logicPath)) {
     failures.push("logic.ts: CLASS_B_DEPLETION const not found.");
   } else {
     const block = m[1];
-    for (const key of ["openai", "gemini", "serper", "resend", "pexels", "ticketmaster", "mapbox", "google_places"]) {
+    for (const key of ["openai", "gemini", "serper", "resend", "pexels", "ticketmaster", "google_places", "google_place_details", "google_geocoding", "google_static_maps", "google_place_refresh"]) {
       if (!new RegExp(`\\b${key}\\s*:`).test(block)) {
         failures.push(`logic.ts CLASS_B_DEPLETION: missing entry for '${key}'.`);
       }

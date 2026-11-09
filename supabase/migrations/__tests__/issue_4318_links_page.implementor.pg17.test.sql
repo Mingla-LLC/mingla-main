@@ -524,14 +524,14 @@ DO $test$
 BEGIN
   IF NOT has_function_privilege('anon', 'public.links_page_week()', 'EXECUTE')
      OR NOT has_function_privilege('anon', 'public.links_page_strips()', 'EXECUTE')
-     OR NOT has_function_privilege('anon', 'public.links_page_places(double precision,double precision,integer,integer)', 'EXECUTE') THEN
+     OR NOT has_function_privilege('anon', 'public.links_page_places(double precision,double precision,integer,integer,uuid)', 'EXECUTE') THEN
     RAISE EXCEPTION 'catalog: anon cannot call the public readers';
   END IF;
   IF (SELECT prosecdef FROM pg_proc WHERE oid = 'public.links_page_strips()'::regprocedure) THEN
     RAISE EXCEPTION 'catalog: links_page_strips must be SECURITY INVOKER';
   END IF;
   IF has_function_privilege('anon', 'public.admin_links_strips_list()', 'EXECUTE')
-     OR has_function_privilege('anon', 'public.admin_links_strip_save(uuid,date,text,text,text,text,uuid)', 'EXECUTE')
+     OR has_function_privilege('anon', 'public.admin_links_strip_save(uuid,date,text,text,text,text,uuid,date)', 'EXECUTE')
      OR has_function_privilege('anon', 'public.admin_links_strip_delete(uuid)', 'EXECUTE')
      OR has_function_privilege('anon', 'public.admin_links_strips_reorder(uuid[])', 'EXECUTE') THEN
     RAISE EXCEPTION 'catalog: anon may call an admin RPC';

@@ -1,0 +1,853 @@
+{
+  "_provenance": "Generated from origin/main packages/offering-rendering/mapsDeepLink.ts (24de11973d) before #4334, for byte comparison. 12 targets shaped like production rows (labels as stored by the pre-#4334 address search, two on the Lagos centroid, one free-typed, one hidden).",
+  "rows": [
+    {
+      "target": {
+        "venueName": "Didi Museum",
+        "address": "Akin Adesola Street 175, Lagos 10, Lagos, Nigeria",
+        "locationGeo": {
+          "lat": 6.43273,
+          "lng": 3.423375
+        }
+      },
+      "copy": "Didi Museum, Akin Adesola Street 175, Lagos 10, Lagos, Nigeria",
+      "links": {
+        "ios": {
+          "default": {
+            "url": "maps://?ll=6.43273,3.423375&q=Didi%20Museum%2C%20Akin%20Adesola%20Street%20175%2C%20Lagos%2010%2C%20Lagos%2C%20Nigeria",
+            "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=6.43273,3.423375",
+            "coordinateAnchored": true
+          },
+          "choices": [
+            {
+              "id": "apple",
+              "label": "Apple Maps",
+              "url": "maps://?ll=6.43273,3.423375&q=Didi%20Museum%2C%20Akin%20Adesola%20Street%20175%2C%20Lagos%2010%2C%20Lagos%2C%20Nigeria",
+              "fallbackUrl": "https://maps.apple.com/?ll=6.43273,3.423375&q=Didi%20Museum%2C%20Akin%20Adesola%20Street%20175%2C%20Lagos%2010%2C%20Lagos%2C%20Nigeria",
+              "coordinateAnchored": true
+            },
+            {
+              "id": "google",
+              "label": "Google Maps",
+              "url": "https://www.google.com/maps/search/?api=1&query=6.43273,3.423375",
+              "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=6.43273,3.423375",
+              "coordinateAnchored": true
+            }
+          ]
+        },
+        "android": {
+          "default": {
+            "url": "geo:6.43273,3.423375?q=6.43273,3.423375(Didi%20Museum%2C%20Akin%20Adesola%20Street%20175%2C%20Lagos%2010%2C%20Lagos%2C%20Nigeria)",
+            "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=6.43273,3.423375",
+            "coordinateAnchored": true
+          },
+          "choices": [
+            {
+              "id": "google",
+              "label": "Google Maps",
+              "url": "geo:6.43273,3.423375?q=6.43273,3.423375(Didi%20Museum%2C%20Akin%20Adesola%20Street%20175%2C%20Lagos%2010%2C%20Lagos%2C%20Nigeria)",
+              "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=6.43273,3.423375",
+              "coordinateAnchored": true
+            }
+          ]
+        },
+        "web": {
+          "default": {
+            "url": "https://www.google.com/maps/search/?api=1&query=6.43273,3.423375",
+            "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=6.43273,3.423375",
+            "coordinateAnchored": true
+          },
+          "choices": [
+            {
+              "id": "google",
+              "label": "Google Maps",
+              "url": "https://www.google.com/maps/search/?api=1&query=6.43273,3.423375",
+              "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=6.43273,3.423375",
+              "coordinateAnchored": true
+            },
+            {
+              "id": "apple",
+              "label": "Apple Maps",
+              "url": "https://maps.apple.com/?ll=6.43273,3.423375&q=Didi%20Museum%2C%20Akin%20Adesola%20Street%20175%2C%20Lagos%2010%2C%20Lagos%2C%20Nigeria",
+              "fallbackUrl": "https://maps.apple.com/?ll=6.43273,3.423375&q=Didi%20Museum%2C%20Akin%20Adesola%20Street%20175%2C%20Lagos%2010%2C%20Lagos%2C%20Nigeria",
+              "coordinateAnchored": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "target": {
+        "venueName": "Quays Lagos",
+        "address": "Tokunbo Omisore Street 3, Lagos 10, Lagos, Nigeria",
+        "locationGeo": {
+          "lat": 6.4505,
+          "lng": 3.4562
+        }
+      },
+      "copy": "Quays Lagos, Tokunbo Omisore Street 3, Lagos 10, Lagos, Nigeria",
+      "links": {
+        "ios": {
+          "default": {
+            "url": "maps://?ll=6.4505,3.4562&q=Quays%20Lagos%2C%20Tokunbo%20Omisore%20Street%203%2C%20Lagos%2010%2C%20Lagos%2C%20Nigeria",
+            "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=6.4505,3.4562",
+            "coordinateAnchored": true
+          },
+          "choices": [
+            {
+              "id": "apple",
+              "label": "Apple Maps",
+              "url": "maps://?ll=6.4505,3.4562&q=Quays%20Lagos%2C%20Tokunbo%20Omisore%20Street%203%2C%20Lagos%2010%2C%20Lagos%2C%20Nigeria",
+              "fallbackUrl": "https://maps.apple.com/?ll=6.4505,3.4562&q=Quays%20Lagos%2C%20Tokunbo%20Omisore%20Street%203%2C%20Lagos%2010%2C%20Lagos%2C%20Nigeria",
+              "coordinateAnchored": true
+            },
+            {
+              "id": "google",
+              "label": "Google Maps",
+              "url": "https://www.google.com/maps/search/?api=1&query=6.4505,3.4562",
+              "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=6.4505,3.4562",
+              "coordinateAnchored": true
+            }
+          ]
+        },
+        "android": {
+          "default": {
+            "url": "geo:6.4505,3.4562?q=6.4505,3.4562(Quays%20Lagos%2C%20Tokunbo%20Omisore%20Street%203%2C%20Lagos%2010%2C%20Lagos%2C%20Nigeria)",
+            "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=6.4505,3.4562",
+            "coordinateAnchored": true
+          },
+          "choices": [
+            {
+              "id": "google",
+              "label": "Google Maps",
+              "url": "geo:6.4505,3.4562?q=6.4505,3.4562(Quays%20Lagos%2C%20Tokunbo%20Omisore%20Street%203%2C%20Lagos%2010%2C%20Lagos%2C%20Nigeria)",
+              "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=6.4505,3.4562",
+              "coordinateAnchored": true
+            }
+          ]
+        },
+        "web": {
+          "default": {
+            "url": "https://www.google.com/maps/search/?api=1&query=6.4505,3.4562",
+            "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=6.4505,3.4562",
+            "coordinateAnchored": true
+          },
+          "choices": [
+            {
+              "id": "google",
+              "label": "Google Maps",
+              "url": "https://www.google.com/maps/search/?api=1&query=6.4505,3.4562",
+              "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=6.4505,3.4562",
+              "coordinateAnchored": true
+            },
+            {
+              "id": "apple",
+              "label": "Apple Maps",
+              "url": "https://maps.apple.com/?ll=6.4505,3.4562&q=Quays%20Lagos%2C%20Tokunbo%20Omisore%20Street%203%2C%20Lagos%2010%2C%20Lagos%2C%20Nigeria",
+              "fallbackUrl": "https://maps.apple.com/?ll=6.4505,3.4562&q=Quays%20Lagos%2C%20Tokunbo%20Omisore%20Street%203%2C%20Lagos%2010%2C%20Lagos%2C%20Nigeria",
+              "coordinateAnchored": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "target": {
+        "venueName": "21 Bistro",
+        "address": "21 Ichie Mike Ejezie Street, Lekki Phase 1, Lagos",
+        "locationGeo": {
+          "lat": 6.4446,
+          "lng": 3.4775
+        }
+      },
+      "copy": "21 Bistro, 21 Ichie Mike Ejezie Street, Lekki Phase 1, Lagos",
+      "links": {
+        "ios": {
+          "default": {
+            "url": "maps://?ll=6.4446,3.4775&q=21%20Bistro%2C%2021%20Ichie%20Mike%20Ejezie%20Street%2C%20Lekki%20Phase%201%2C%20Lagos",
+            "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=6.4446,3.4775",
+            "coordinateAnchored": true
+          },
+          "choices": [
+            {
+              "id": "apple",
+              "label": "Apple Maps",
+              "url": "maps://?ll=6.4446,3.4775&q=21%20Bistro%2C%2021%20Ichie%20Mike%20Ejezie%20Street%2C%20Lekki%20Phase%201%2C%20Lagos",
+              "fallbackUrl": "https://maps.apple.com/?ll=6.4446,3.4775&q=21%20Bistro%2C%2021%20Ichie%20Mike%20Ejezie%20Street%2C%20Lekki%20Phase%201%2C%20Lagos",
+              "coordinateAnchored": true
+            },
+            {
+              "id": "google",
+              "label": "Google Maps",
+              "url": "https://www.google.com/maps/search/?api=1&query=6.4446,3.4775",
+              "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=6.4446,3.4775",
+              "coordinateAnchored": true
+            }
+          ]
+        },
+        "android": {
+          "default": {
+            "url": "geo:6.4446,3.4775?q=6.4446,3.4775(21%20Bistro%2C%2021%20Ichie%20Mike%20Ejezie%20Street%2C%20Lekki%20Phase%201%2C%20Lagos)",
+            "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=6.4446,3.4775",
+            "coordinateAnchored": true
+          },
+          "choices": [
+            {
+              "id": "google",
+              "label": "Google Maps",
+              "url": "geo:6.4446,3.4775?q=6.4446,3.4775(21%20Bistro%2C%2021%20Ichie%20Mike%20Ejezie%20Street%2C%20Lekki%20Phase%201%2C%20Lagos)",
+              "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=6.4446,3.4775",
+              "coordinateAnchored": true
+            }
+          ]
+        },
+        "web": {
+          "default": {
+            "url": "https://www.google.com/maps/search/?api=1&query=6.4446,3.4775",
+            "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=6.4446,3.4775",
+            "coordinateAnchored": true
+          },
+          "choices": [
+            {
+              "id": "google",
+              "label": "Google Maps",
+              "url": "https://www.google.com/maps/search/?api=1&query=6.4446,3.4775",
+              "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=6.4446,3.4775",
+              "coordinateAnchored": true
+            },
+            {
+              "id": "apple",
+              "label": "Apple Maps",
+              "url": "https://maps.apple.com/?ll=6.4446,3.4775&q=21%20Bistro%2C%2021%20Ichie%20Mike%20Ejezie%20Street%2C%20Lekki%20Phase%201%2C%20Lagos",
+              "fallbackUrl": "https://maps.apple.com/?ll=6.4446,3.4775&q=21%20Bistro%2C%2021%20Ichie%20Mike%20Ejezie%20Street%2C%20Lekki%20Phase%201%2C%20Lagos",
+              "coordinateAnchored": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "target": {
+        "venueName": "Kyma Beach",
+        "address": "Elegushi Beach, Lekki, Lagos",
+        "locationGeo": {
+          "lat": 6.453928,
+          "lng": 3.38975
+        }
+      },
+      "copy": "Kyma Beach, Elegushi Beach, Lekki, Lagos",
+      "links": {
+        "ios": {
+          "default": {
+            "url": "maps://?ll=6.453928,3.38975&q=Kyma%20Beach%2C%20Elegushi%20Beach%2C%20Lekki%2C%20Lagos",
+            "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=6.453928,3.38975",
+            "coordinateAnchored": true
+          },
+          "choices": [
+            {
+              "id": "apple",
+              "label": "Apple Maps",
+              "url": "maps://?ll=6.453928,3.38975&q=Kyma%20Beach%2C%20Elegushi%20Beach%2C%20Lekki%2C%20Lagos",
+              "fallbackUrl": "https://maps.apple.com/?ll=6.453928,3.38975&q=Kyma%20Beach%2C%20Elegushi%20Beach%2C%20Lekki%2C%20Lagos",
+              "coordinateAnchored": true
+            },
+            {
+              "id": "google",
+              "label": "Google Maps",
+              "url": "https://www.google.com/maps/search/?api=1&query=6.453928,3.38975",
+              "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=6.453928,3.38975",
+              "coordinateAnchored": true
+            }
+          ]
+        },
+        "android": {
+          "default": {
+            "url": "geo:6.453928,3.38975?q=6.453928,3.38975(Kyma%20Beach%2C%20Elegushi%20Beach%2C%20Lekki%2C%20Lagos)",
+            "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=6.453928,3.38975",
+            "coordinateAnchored": true
+          },
+          "choices": [
+            {
+              "id": "google",
+              "label": "Google Maps",
+              "url": "geo:6.453928,3.38975?q=6.453928,3.38975(Kyma%20Beach%2C%20Elegushi%20Beach%2C%20Lekki%2C%20Lagos)",
+              "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=6.453928,3.38975",
+              "coordinateAnchored": true
+            }
+          ]
+        },
+        "web": {
+          "default": {
+            "url": "https://www.google.com/maps/search/?api=1&query=6.453928,3.38975",
+            "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=6.453928,3.38975",
+            "coordinateAnchored": true
+          },
+          "choices": [
+            {
+              "id": "google",
+              "label": "Google Maps",
+              "url": "https://www.google.com/maps/search/?api=1&query=6.453928,3.38975",
+              "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=6.453928,3.38975",
+              "coordinateAnchored": true
+            },
+            {
+              "id": "apple",
+              "label": "Apple Maps",
+              "url": "https://maps.apple.com/?ll=6.453928,3.38975&q=Kyma%20Beach%2C%20Elegushi%20Beach%2C%20Lekki%2C%20Lagos",
+              "fallbackUrl": "https://maps.apple.com/?ll=6.453928,3.38975&q=Kyma%20Beach%2C%20Elegushi%20Beach%2C%20Lekki%2C%20Lagos",
+              "coordinateAnchored": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "target": {
+        "venueName": "Gameland",
+        "address": "Lekki Coliseum, Admiralty Way, Lekki Phase 1, Lagos",
+        "locationGeo": {
+          "lat": 6.453928,
+          "lng": 3.38975
+        }
+      },
+      "copy": "Gameland, Lekki Coliseum, Admiralty Way, Lekki Phase 1, Lagos",
+      "links": {
+        "ios": {
+          "default": {
+            "url": "maps://?ll=6.453928,3.38975&q=Gameland%2C%20Lekki%20Coliseum%2C%20Admiralty%20Way%2C%20Lekki%20Phase%201%2C%20Lagos",
+            "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=6.453928,3.38975",
+            "coordinateAnchored": true
+          },
+          "choices": [
+            {
+              "id": "apple",
+              "label": "Apple Maps",
+              "url": "maps://?ll=6.453928,3.38975&q=Gameland%2C%20Lekki%20Coliseum%2C%20Admiralty%20Way%2C%20Lekki%20Phase%201%2C%20Lagos",
+              "fallbackUrl": "https://maps.apple.com/?ll=6.453928,3.38975&q=Gameland%2C%20Lekki%20Coliseum%2C%20Admiralty%20Way%2C%20Lekki%20Phase%201%2C%20Lagos",
+              "coordinateAnchored": true
+            },
+            {
+              "id": "google",
+              "label": "Google Maps",
+              "url": "https://www.google.com/maps/search/?api=1&query=6.453928,3.38975",
+              "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=6.453928,3.38975",
+              "coordinateAnchored": true
+            }
+          ]
+        },
+        "android": {
+          "default": {
+            "url": "geo:6.453928,3.38975?q=6.453928,3.38975(Gameland%2C%20Lekki%20Coliseum%2C%20Admiralty%20Way%2C%20Lekki%20Phase%201%2C%20Lagos)",
+            "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=6.453928,3.38975",
+            "coordinateAnchored": true
+          },
+          "choices": [
+            {
+              "id": "google",
+              "label": "Google Maps",
+              "url": "geo:6.453928,3.38975?q=6.453928,3.38975(Gameland%2C%20Lekki%20Coliseum%2C%20Admiralty%20Way%2C%20Lekki%20Phase%201%2C%20Lagos)",
+              "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=6.453928,3.38975",
+              "coordinateAnchored": true
+            }
+          ]
+        },
+        "web": {
+          "default": {
+            "url": "https://www.google.com/maps/search/?api=1&query=6.453928,3.38975",
+            "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=6.453928,3.38975",
+            "coordinateAnchored": true
+          },
+          "choices": [
+            {
+              "id": "google",
+              "label": "Google Maps",
+              "url": "https://www.google.com/maps/search/?api=1&query=6.453928,3.38975",
+              "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=6.453928,3.38975",
+              "coordinateAnchored": true
+            },
+            {
+              "id": "apple",
+              "label": "Apple Maps",
+              "url": "https://maps.apple.com/?ll=6.453928,3.38975&q=Gameland%2C%20Lekki%20Coliseum%2C%20Admiralty%20Way%2C%20Lekki%20Phase%201%2C%20Lagos",
+              "fallbackUrl": "https://maps.apple.com/?ll=6.453928,3.38975&q=Gameland%2C%20Lekki%20Coliseum%2C%20Admiralty%20Way%2C%20Lekki%20Phase%201%2C%20Lagos",
+              "coordinateAnchored": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "target": {
+        "venueName": "Harmattan Club",
+        "address": "Ozumba Mbadiwe Rd 12, Lagos 10, Lagos, Nigeria",
+        "locationGeo": {
+          "lat": 6.4368,
+          "lng": 3.4469
+        }
+      },
+      "copy": "Harmattan Club, Ozumba Mbadiwe Rd 12, Lagos 10, Lagos, Nigeria",
+      "links": {
+        "ios": {
+          "default": {
+            "url": "maps://?ll=6.4368,3.4469&q=Harmattan%20Club%2C%20Ozumba%20Mbadiwe%20Rd%2012%2C%20Lagos%2010%2C%20Lagos%2C%20Nigeria",
+            "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=6.4368,3.4469",
+            "coordinateAnchored": true
+          },
+          "choices": [
+            {
+              "id": "apple",
+              "label": "Apple Maps",
+              "url": "maps://?ll=6.4368,3.4469&q=Harmattan%20Club%2C%20Ozumba%20Mbadiwe%20Rd%2012%2C%20Lagos%2010%2C%20Lagos%2C%20Nigeria",
+              "fallbackUrl": "https://maps.apple.com/?ll=6.4368,3.4469&q=Harmattan%20Club%2C%20Ozumba%20Mbadiwe%20Rd%2012%2C%20Lagos%2010%2C%20Lagos%2C%20Nigeria",
+              "coordinateAnchored": true
+            },
+            {
+              "id": "google",
+              "label": "Google Maps",
+              "url": "https://www.google.com/maps/search/?api=1&query=6.4368,3.4469",
+              "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=6.4368,3.4469",
+              "coordinateAnchored": true
+            }
+          ]
+        },
+        "android": {
+          "default": {
+            "url": "geo:6.4368,3.4469?q=6.4368,3.4469(Harmattan%20Club%2C%20Ozumba%20Mbadiwe%20Rd%2012%2C%20Lagos%2010%2C%20Lagos%2C%20Nigeria)",
+            "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=6.4368,3.4469",
+            "coordinateAnchored": true
+          },
+          "choices": [
+            {
+              "id": "google",
+              "label": "Google Maps",
+              "url": "geo:6.4368,3.4469?q=6.4368,3.4469(Harmattan%20Club%2C%20Ozumba%20Mbadiwe%20Rd%2012%2C%20Lagos%2010%2C%20Lagos%2C%20Nigeria)",
+              "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=6.4368,3.4469",
+              "coordinateAnchored": true
+            }
+          ]
+        },
+        "web": {
+          "default": {
+            "url": "https://www.google.com/maps/search/?api=1&query=6.4368,3.4469",
+            "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=6.4368,3.4469",
+            "coordinateAnchored": true
+          },
+          "choices": [
+            {
+              "id": "google",
+              "label": "Google Maps",
+              "url": "https://www.google.com/maps/search/?api=1&query=6.4368,3.4469",
+              "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=6.4368,3.4469",
+              "coordinateAnchored": true
+            },
+            {
+              "id": "apple",
+              "label": "Apple Maps",
+              "url": "https://maps.apple.com/?ll=6.4368,3.4469&q=Harmattan%20Club%2C%20Ozumba%20Mbadiwe%20Rd%2012%2C%20Lagos%2010%2C%20Lagos%2C%20Nigeria",
+              "fallbackUrl": "https://maps.apple.com/?ll=6.4368,3.4469&q=Harmattan%20Club%2C%20Ozumba%20Mbadiwe%20Rd%2012%2C%20Lagos%2010%2C%20Lagos%2C%20Nigeria",
+              "coordinateAnchored": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "target": {
+        "venueName": "DIOR Lounge",
+        "address": "226 Fayetteville Street, Raleigh, North Carolina 27601, United States",
+        "locationGeo": {
+          "lat": 35.7775,
+          "lng": -78.6396
+        }
+      },
+      "copy": "DIOR Lounge, 226 Fayetteville Street, Raleigh, North Carolina 27601, United States",
+      "links": {
+        "ios": {
+          "default": {
+            "url": "maps://?ll=35.7775,-78.6396&q=DIOR%20Lounge%2C%20226%20Fayetteville%20Street%2C%20Raleigh%2C%20North%20Carolina%2027601%2C%20United%20States",
+            "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=35.7775,-78.6396",
+            "coordinateAnchored": true
+          },
+          "choices": [
+            {
+              "id": "apple",
+              "label": "Apple Maps",
+              "url": "maps://?ll=35.7775,-78.6396&q=DIOR%20Lounge%2C%20226%20Fayetteville%20Street%2C%20Raleigh%2C%20North%20Carolina%2027601%2C%20United%20States",
+              "fallbackUrl": "https://maps.apple.com/?ll=35.7775,-78.6396&q=DIOR%20Lounge%2C%20226%20Fayetteville%20Street%2C%20Raleigh%2C%20North%20Carolina%2027601%2C%20United%20States",
+              "coordinateAnchored": true
+            },
+            {
+              "id": "google",
+              "label": "Google Maps",
+              "url": "https://www.google.com/maps/search/?api=1&query=35.7775,-78.6396",
+              "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=35.7775,-78.6396",
+              "coordinateAnchored": true
+            }
+          ]
+        },
+        "android": {
+          "default": {
+            "url": "geo:35.7775,-78.6396?q=35.7775,-78.6396(DIOR%20Lounge%2C%20226%20Fayetteville%20Street%2C%20Raleigh%2C%20North%20Carolina%2027601%2C%20United%20States)",
+            "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=35.7775,-78.6396",
+            "coordinateAnchored": true
+          },
+          "choices": [
+            {
+              "id": "google",
+              "label": "Google Maps",
+              "url": "geo:35.7775,-78.6396?q=35.7775,-78.6396(DIOR%20Lounge%2C%20226%20Fayetteville%20Street%2C%20Raleigh%2C%20North%20Carolina%2027601%2C%20United%20States)",
+              "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=35.7775,-78.6396",
+              "coordinateAnchored": true
+            }
+          ]
+        },
+        "web": {
+          "default": {
+            "url": "https://www.google.com/maps/search/?api=1&query=35.7775,-78.6396",
+            "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=35.7775,-78.6396",
+            "coordinateAnchored": true
+          },
+          "choices": [
+            {
+              "id": "google",
+              "label": "Google Maps",
+              "url": "https://www.google.com/maps/search/?api=1&query=35.7775,-78.6396",
+              "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=35.7775,-78.6396",
+              "coordinateAnchored": true
+            },
+            {
+              "id": "apple",
+              "label": "Apple Maps",
+              "url": "https://maps.apple.com/?ll=35.7775,-78.6396&q=DIOR%20Lounge%2C%20226%20Fayetteville%20Street%2C%20Raleigh%2C%20North%20Carolina%2027601%2C%20United%20States",
+              "fallbackUrl": "https://maps.apple.com/?ll=35.7775,-78.6396&q=DIOR%20Lounge%2C%20226%20Fayetteville%20Street%2C%20Raleigh%2C%20North%20Carolina%2027601%2C%20United%20States",
+              "coordinateAnchored": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "target": {
+        "venueName": "KōMANA Brewing",
+        "address": "1020 Ryan Road, Cary, North Carolina 27511, United States",
+        "locationGeo": {
+          "lat": 35.7762,
+          "lng": -78.7678
+        }
+      },
+      "copy": "KōMANA Brewing, 1020 Ryan Road, Cary, North Carolina 27511, United States",
+      "links": {
+        "ios": {
+          "default": {
+            "url": "maps://?ll=35.7762,-78.7678&q=K%C5%8DMANA%20Brewing%2C%201020%20Ryan%20Road%2C%20Cary%2C%20North%20Carolina%2027511%2C%20United%20States",
+            "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=35.7762,-78.7678",
+            "coordinateAnchored": true
+          },
+          "choices": [
+            {
+              "id": "apple",
+              "label": "Apple Maps",
+              "url": "maps://?ll=35.7762,-78.7678&q=K%C5%8DMANA%20Brewing%2C%201020%20Ryan%20Road%2C%20Cary%2C%20North%20Carolina%2027511%2C%20United%20States",
+              "fallbackUrl": "https://maps.apple.com/?ll=35.7762,-78.7678&q=K%C5%8DMANA%20Brewing%2C%201020%20Ryan%20Road%2C%20Cary%2C%20North%20Carolina%2027511%2C%20United%20States",
+              "coordinateAnchored": true
+            },
+            {
+              "id": "google",
+              "label": "Google Maps",
+              "url": "https://www.google.com/maps/search/?api=1&query=35.7762,-78.7678",
+              "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=35.7762,-78.7678",
+              "coordinateAnchored": true
+            }
+          ]
+        },
+        "android": {
+          "default": {
+            "url": "geo:35.7762,-78.7678?q=35.7762,-78.7678(K%C5%8DMANA%20Brewing%2C%201020%20Ryan%20Road%2C%20Cary%2C%20North%20Carolina%2027511%2C%20United%20States)",
+            "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=35.7762,-78.7678",
+            "coordinateAnchored": true
+          },
+          "choices": [
+            {
+              "id": "google",
+              "label": "Google Maps",
+              "url": "geo:35.7762,-78.7678?q=35.7762,-78.7678(K%C5%8DMANA%20Brewing%2C%201020%20Ryan%20Road%2C%20Cary%2C%20North%20Carolina%2027511%2C%20United%20States)",
+              "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=35.7762,-78.7678",
+              "coordinateAnchored": true
+            }
+          ]
+        },
+        "web": {
+          "default": {
+            "url": "https://www.google.com/maps/search/?api=1&query=35.7762,-78.7678",
+            "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=35.7762,-78.7678",
+            "coordinateAnchored": true
+          },
+          "choices": [
+            {
+              "id": "google",
+              "label": "Google Maps",
+              "url": "https://www.google.com/maps/search/?api=1&query=35.7762,-78.7678",
+              "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=35.7762,-78.7678",
+              "coordinateAnchored": true
+            },
+            {
+              "id": "apple",
+              "label": "Apple Maps",
+              "url": "https://maps.apple.com/?ll=35.7762,-78.7678&q=K%C5%8DMANA%20Brewing%2C%201020%20Ryan%20Road%2C%20Cary%2C%20North%20Carolina%2027511%2C%20United%20States",
+              "fallbackUrl": "https://maps.apple.com/?ll=35.7762,-78.7678&q=K%C5%8DMANA%20Brewing%2C%201020%20Ryan%20Road%2C%20Cary%2C%20North%20Carolina%2027511%2C%20United%20States",
+              "coordinateAnchored": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "target": {
+        "venueName": "American Underground",
+        "address": "213 Fayetteville Street, Raleigh, North Carolina 27601, United States",
+        "locationGeo": {
+          "lat": 35.7779,
+          "lng": -78.639
+        }
+      },
+      "copy": "American Underground, 213 Fayetteville Street, Raleigh, North Carolina 27601, United States",
+      "links": {
+        "ios": {
+          "default": {
+            "url": "maps://?ll=35.7779,-78.639&q=American%20Underground%2C%20213%20Fayetteville%20Street%2C%20Raleigh%2C%20North%20Carolina%2027601%2C%20United%20States",
+            "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=35.7779,-78.639",
+            "coordinateAnchored": true
+          },
+          "choices": [
+            {
+              "id": "apple",
+              "label": "Apple Maps",
+              "url": "maps://?ll=35.7779,-78.639&q=American%20Underground%2C%20213%20Fayetteville%20Street%2C%20Raleigh%2C%20North%20Carolina%2027601%2C%20United%20States",
+              "fallbackUrl": "https://maps.apple.com/?ll=35.7779,-78.639&q=American%20Underground%2C%20213%20Fayetteville%20Street%2C%20Raleigh%2C%20North%20Carolina%2027601%2C%20United%20States",
+              "coordinateAnchored": true
+            },
+            {
+              "id": "google",
+              "label": "Google Maps",
+              "url": "https://www.google.com/maps/search/?api=1&query=35.7779,-78.639",
+              "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=35.7779,-78.639",
+              "coordinateAnchored": true
+            }
+          ]
+        },
+        "android": {
+          "default": {
+            "url": "geo:35.7779,-78.639?q=35.7779,-78.639(American%20Underground%2C%20213%20Fayetteville%20Street%2C%20Raleigh%2C%20North%20Carolina%2027601%2C%20United%20States)",
+            "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=35.7779,-78.639",
+            "coordinateAnchored": true
+          },
+          "choices": [
+            {
+              "id": "google",
+              "label": "Google Maps",
+              "url": "geo:35.7779,-78.639?q=35.7779,-78.639(American%20Underground%2C%20213%20Fayetteville%20Street%2C%20Raleigh%2C%20North%20Carolina%2027601%2C%20United%20States)",
+              "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=35.7779,-78.639",
+              "coordinateAnchored": true
+            }
+          ]
+        },
+        "web": {
+          "default": {
+            "url": "https://www.google.com/maps/search/?api=1&query=35.7779,-78.639",
+            "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=35.7779,-78.639",
+            "coordinateAnchored": true
+          },
+          "choices": [
+            {
+              "id": "google",
+              "label": "Google Maps",
+              "url": "https://www.google.com/maps/search/?api=1&query=35.7779,-78.639",
+              "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=35.7779,-78.639",
+              "coordinateAnchored": true
+            },
+            {
+              "id": "apple",
+              "label": "Apple Maps",
+              "url": "https://maps.apple.com/?ll=35.7779,-78.639&q=American%20Underground%2C%20213%20Fayetteville%20Street%2C%20Raleigh%2C%20North%20Carolina%2027601%2C%20United%20States",
+              "fallbackUrl": "https://maps.apple.com/?ll=35.7779,-78.639&q=American%20Underground%2C%20213%20Fayetteville%20Street%2C%20Raleigh%2C%20North%20Carolina%2027601%2C%20United%20States",
+              "coordinateAnchored": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "target": {
+        "venueName": "Lantern Room (Brooklyn)",
+        "address": "61 Wythe Avenue, Brooklyn, New York 11249, United States",
+        "locationGeo": {
+          "lat": 40.722,
+          "lng": -73.9574
+        }
+      },
+      "copy": "Lantern Room (Brooklyn), 61 Wythe Avenue, Brooklyn, New York 11249, United States",
+      "links": {
+        "ios": {
+          "default": {
+            "url": "maps://?ll=40.722,-73.9574&q=Lantern%20Room%20(Brooklyn)%2C%2061%20Wythe%20Avenue%2C%20Brooklyn%2C%20New%20York%2011249%2C%20United%20States",
+            "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=40.722,-73.9574",
+            "coordinateAnchored": true
+          },
+          "choices": [
+            {
+              "id": "apple",
+              "label": "Apple Maps",
+              "url": "maps://?ll=40.722,-73.9574&q=Lantern%20Room%20(Brooklyn)%2C%2061%20Wythe%20Avenue%2C%20Brooklyn%2C%20New%20York%2011249%2C%20United%20States",
+              "fallbackUrl": "https://maps.apple.com/?ll=40.722,-73.9574&q=Lantern%20Room%20(Brooklyn)%2C%2061%20Wythe%20Avenue%2C%20Brooklyn%2C%20New%20York%2011249%2C%20United%20States",
+              "coordinateAnchored": true
+            },
+            {
+              "id": "google",
+              "label": "Google Maps",
+              "url": "https://www.google.com/maps/search/?api=1&query=40.722,-73.9574",
+              "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=40.722,-73.9574",
+              "coordinateAnchored": true
+            }
+          ]
+        },
+        "android": {
+          "default": {
+            "url": "geo:40.722,-73.9574?q=40.722,-73.9574(Lantern%20Room%20%28Brooklyn%29%2C%2061%20Wythe%20Avenue%2C%20Brooklyn%2C%20New%20York%2011249%2C%20United%20States)",
+            "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=40.722,-73.9574",
+            "coordinateAnchored": true
+          },
+          "choices": [
+            {
+              "id": "google",
+              "label": "Google Maps",
+              "url": "geo:40.722,-73.9574?q=40.722,-73.9574(Lantern%20Room%20%28Brooklyn%29%2C%2061%20Wythe%20Avenue%2C%20Brooklyn%2C%20New%20York%2011249%2C%20United%20States)",
+              "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=40.722,-73.9574",
+              "coordinateAnchored": true
+            }
+          ]
+        },
+        "web": {
+          "default": {
+            "url": "https://www.google.com/maps/search/?api=1&query=40.722,-73.9574",
+            "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=40.722,-73.9574",
+            "coordinateAnchored": true
+          },
+          "choices": [
+            {
+              "id": "google",
+              "label": "Google Maps",
+              "url": "https://www.google.com/maps/search/?api=1&query=40.722,-73.9574",
+              "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=40.722,-73.9574",
+              "coordinateAnchored": true
+            },
+            {
+              "id": "apple",
+              "label": "Apple Maps",
+              "url": "https://maps.apple.com/?ll=40.722,-73.9574&q=Lantern%20Room%20(Brooklyn)%2C%2061%20Wythe%20Avenue%2C%20Brooklyn%2C%20New%20York%2011249%2C%20United%20States",
+              "fallbackUrl": "https://maps.apple.com/?ll=40.722,-73.9574&q=Lantern%20Room%20(Brooklyn)%2C%2061%20Wythe%20Avenue%2C%20Brooklyn%2C%20New%20York%2011249%2C%20United%20States",
+              "coordinateAnchored": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "target": {
+        "venueName": "Free-typed venue",
+        "address": "Somewhere off Admiralty Way",
+        "locationGeo": null
+      },
+      "copy": "Free-typed venue, Somewhere off Admiralty Way",
+      "links": {
+        "ios": {
+          "default": {
+            "url": "maps://?q=Free-typed%20venue%2C%20Somewhere%20off%20Admiralty%20Way",
+            "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=Free-typed%20venue%2C%20Somewhere%20off%20Admiralty%20Way",
+            "coordinateAnchored": false
+          },
+          "choices": [
+            {
+              "id": "apple",
+              "label": "Apple Maps",
+              "url": "maps://?q=Free-typed%20venue%2C%20Somewhere%20off%20Admiralty%20Way",
+              "fallbackUrl": "https://maps.apple.com/?q=Free-typed%20venue%2C%20Somewhere%20off%20Admiralty%20Way",
+              "coordinateAnchored": false
+            },
+            {
+              "id": "google",
+              "label": "Google Maps",
+              "url": "https://www.google.com/maps/search/?api=1&query=Free-typed%20venue%2C%20Somewhere%20off%20Admiralty%20Way",
+              "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=Free-typed%20venue%2C%20Somewhere%20off%20Admiralty%20Way",
+              "coordinateAnchored": false
+            }
+          ]
+        },
+        "android": {
+          "default": {
+            "url": "geo:0,0?q=Free-typed%20venue%2C%20Somewhere%20off%20Admiralty%20Way",
+            "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=Free-typed%20venue%2C%20Somewhere%20off%20Admiralty%20Way",
+            "coordinateAnchored": false
+          },
+          "choices": [
+            {
+              "id": "google",
+              "label": "Google Maps",
+              "url": "geo:0,0?q=Free-typed%20venue%2C%20Somewhere%20off%20Admiralty%20Way",
+              "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=Free-typed%20venue%2C%20Somewhere%20off%20Admiralty%20Way",
+              "coordinateAnchored": false
+            }
+          ]
+        },
+        "web": {
+          "default": {
+            "url": "https://www.google.com/maps/search/?api=1&query=Free-typed%20venue%2C%20Somewhere%20off%20Admiralty%20Way",
+            "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=Free-typed%20venue%2C%20Somewhere%20off%20Admiralty%20Way",
+            "coordinateAnchored": false
+          },
+          "choices": [
+            {
+              "id": "google",
+              "label": "Google Maps",
+              "url": "https://www.google.com/maps/search/?api=1&query=Free-typed%20venue%2C%20Somewhere%20off%20Admiralty%20Way",
+              "fallbackUrl": "https://www.google.com/maps/search/?api=1&query=Free-typed%20venue%2C%20Somewhere%20off%20Admiralty%20Way",
+              "coordinateAnchored": false
+            },
+            {
+              "id": "apple",
+              "label": "Apple Maps",
+              "url": "https://maps.apple.com/?q=Free-typed%20venue%2C%20Somewhere%20off%20Admiralty%20Way",
+              "fallbackUrl": "https://maps.apple.com/?q=Free-typed%20venue%2C%20Somewhere%20off%20Admiralty%20Way",
+              "coordinateAnchored": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "target": {
+        "venueName": "Hidden address party",
+        "address": "12 Secret Lane",
+        "locationGeo": {
+          "lat": 6.5,
+          "lng": 3.4
+        },
+        "addressHidden": true
+      },
+      "copy": null,
+      "links": {
+        "ios": {
+          "default": null,
+          "choices": []
+        },
+        "android": {
+          "default": null,
+          "choices": []
+        },
+        "web": {
+          "default": null,
+          "choices": []
+        }
+      }
+    }
+  ]
+}

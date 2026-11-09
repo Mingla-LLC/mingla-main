@@ -34,16 +34,25 @@ import { usePreferencesData } from "../hooks/usePreferencesData";
 import {
   geocodingService,
   AutocompleteSuggestion,
+  LocationSearchUnavailableError,
 } from "../services/geocodingService";
-// ORCH-1361 [location-suggestions] — PlaceDetails is the shared Mapbox
-// retrieve shape the multi-row field emits on pick; the host stores
-// custom_lat/custom_lng from details.location.
-import { type PlaceDetails } from "./location/MapboxAddressInput";
+// ORCH-1361 [location-suggestions] — PlaceDetails is the shared retrieve shape
+// the multi-row field emits on pick; the host stores custom_lat/custom_lng
+// from details.location and (#4334) the Google place id.
+import { type PlaceDetails } from "./location/AddressInput";
 import { useQueryClient } from "@tanstack/react-query";
 import { mixpanelService } from "../services/mixpanelService";
 import { useAppStore } from "../store/appStore";
 import { normalizePreferencesForSave } from "../utils/preferencesConverter";
 import { toastManager } from "./ui/Toast";
+
+/**
+ * #4334 retest N-5 — said INLINE under the location field (a toast renders
+ * behind this sheet's modal on iOS). geocodingService already reported the
+ * proxy code to Sentry.
+ */
+export const LOCATION_SEARCH_UNAVAILABLE_COPY =
+  'Location search is unavailable right now. Try again, or turn on Use my location.';
 import { useTranslation } from 'react-i18next';
 
 import {
@@ -282,6 +291,12 @@ export default function PreferencesSheet({
   const [searchLocation, setSearchLocation] = useState<string>("");
   const [useGpsLocation, setUseGpsLocation] = useState<boolean>(true);
   const [selectedCoords, setSelectedCoords] = useState<{ lat: number; lng: number } | null>(null);
+  // #4334 (spec v2 A2/A3) — the Google place id behind selectedCoords, saved as
+  // custom_location_place_id so the anchor's coordinates can be refreshed.
+  // Null for GPS and for anchors saved before #4334 (left untouched).
+  const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
+  const selectedPlaceIdRef = useRef(selectedPlaceId);
+  selectedPlaceIdRef.current = selectedPlaceId;
   const searchLocationRef = useRef(searchLocation);
   searchLocationRef.current = searchLocation;
   const selectedCoordsRef = useRef(selectedCoords);
@@ -290,7 +305,8 @@ export default function PreferencesSheet({
   const savedCustomLocation = useRef<{
     text: string;
     coords: { lat: number; lng: number } | null;
-  }>({ text: '', coords: null });
+    placeId: string | null;
+  }>({ text: '', coords: null, placeId: null });
   const [isRequestingLocation, setIsRequestingLocation] = useState(false);
 
   // Auto-reset to GPS if user no longer has custom starting point access (downgrade)
@@ -299,13 +315,14 @@ export default function PreferencesSheet({
       setUseGpsLocation(true);
       setSearchLocation('');
       setSelectedCoords(null);
+      setSelectedPlaceId(null);
     }
   }, [canAccess, useGpsLocation]);
 
   // ORCH-1365 [location-search-relevance] — the device-proximity path for the
   // custom-location field is RETIRED (corrective to ORCH-1361). The field is
   // explicitly a "search a place you are NOT at" field (separate GPS toggle), so
-  // resolving the device anchor and biasing Mapbox toward it BURIED the target
+  // resolving the device anchor and biasing the search toward it BURIED the target
   // place for a non-local user (a London-region user searching "lekki nigeria"
   // got London POIs, not Lekki, Lagos — evidence/ORCH-1365 §3). The field now
   // routes through the `places` search mode (place-type filter + trailing-country
@@ -317,6 +334,8 @@ export default function PreferencesSheet({
   // deck toggle at handleGpsToggle), so its import stays.
   const locationSectionRef = useRef<View>(null);
   const locationSectionY = useRef<number>(0);
+  // #4334 N-5 — the inline "search is unavailable" message (not a toast).
+  const [locationUnavailable, setLocationUnavailable] = useState(false);
   const categoriesSectionRef = useRef<View>(null);
   const categoriesSectionY = useRef<number>(0);
   const travelSectionRef = useRef<View>(null);
@@ -536,6 +555,10 @@ export default function PreferencesSheet({
             lat: (effectiveLoadedPreferences).custom_lat,
             lng: (effectiveLoadedPreferences).custom_lng,
           });
+          setSelectedPlaceId(
+            (effectiveLoadedPreferences as { custom_location_place_id?: string | null })
+              .custom_location_place_id ?? null,
+          );
         }
       }
 
@@ -653,19 +676,23 @@ export default function PreferencesSheet({
     setCategoryToggle(newValue);
   }, [intentToggle, isEditable, t]);
 
-  // ORCH-1361 — plain setter. The shared MapboxAddressInput owns the
+  // ORCH-1361 — plain setter. The shared AddressInput owns the
   // suggest→retrieve list + debounce; while the user types there is no resolved
   // location, so selectedCoords is cleared (a pick re-sets it via onPick).
   const handleLocationInputChange = useCallback((text: string) => {
     if (!isEditable) return;
+    setLocationUnavailable(false);
     setSearchLocation(text);
     setSelectedCoords(null);
+    setSelectedPlaceId(null);
   }, [isEditable]);
 
   const handleClearLocation = useCallback(() => {
     if (!isEditable) return;
+    setLocationUnavailable(false);
     setSearchLocation('');
     setSelectedCoords(null);
+    setSelectedPlaceId(null);
   }, [isEditable]);
 
   // ORCH-1361 — the shared field fires onPick with the retrieved PlaceDetails
@@ -673,16 +700,20 @@ export default function PreferencesSheet({
   // point. The field's own retrieve step already validated the feature.
   const handlePickLocation = useCallback((details: PlaceDetails) => {
     if (!isEditable) return;
+    setLocationUnavailable(false);
     setSearchLocation(details.formattedAddress);
     const loc = details.location;
     if (loc && Math.abs(loc.lat) <= 90 && Math.abs(loc.lng) <= 180) {
       setSelectedCoords({ lat: loc.lat, lng: loc.lng });
+      setSelectedPlaceId(details.placeId || null);
     } else {
       setSelectedCoords(null);
+      setSelectedPlaceId(null);
     }
   }, [isEditable]);
 
   const handleGpsToggle = useCallback((value: boolean) => {
+    setLocationUnavailable(false);
     if (!isEditable) return;
     setUseGpsLocation(value);
     if (value) {
@@ -690,13 +721,16 @@ export default function PreferencesSheet({
       savedCustomLocation.current = {
         text: searchLocationRef.current,
         coords: selectedCoordsRef.current,
+        placeId: selectedPlaceIdRef.current,
       };
       setSearchLocation('');
       setSelectedCoords(null);
+      setSelectedPlaceId(null);
     } else {
       // Restore previously saved custom location
       setSearchLocation(savedCustomLocation.current.text);
       setSelectedCoords(savedCustomLocation.current.coords);
+      setSelectedPlaceId(savedCustomLocation.current.placeId);
     }
   }, [isEditable, user?.id, setProfile]);
 
@@ -865,6 +899,7 @@ export default function PreferencesSheet({
 
     let effectiveSearchLocation = searchLocation;
     let effectiveSelectedCoords = selectedCoords;
+    let effectivePlaceId = selectedPlaceId;
 
     // ORCH-0943 Fix B1: typed custom-location text must resolve to coords before
     // either solo or collab save can proceed. State updates below are only for UI;
@@ -887,7 +922,22 @@ export default function PreferencesSheet({
           }
         }
       } catch (err) {
-        console.warn('[ORCH-0943] auto-resolve failed', err);
+        // #4334 A3.4 — search is DOWN, which is not "no match": say so and save
+        // nothing. geocodingService reported the proxy code to Sentry.
+        isSavingRef.current = false;
+        if (!(err instanceof LocationSearchUnavailableError)) {
+          console.warn('[ORCH-0943] auto-resolve failed', err);
+        }
+        // #4334 N-5 — inline under the field, scrolled into view; a toast here
+        // renders behind the sheet's modal on iOS.
+        // #4334 R3-3 — Lock It In sits at the bottom of the sheet, so on a small
+        // phone the message appears above the visible area: scroll the sheet's
+        // own scroller (bound below via scrollProps.ref) up to it, and announce
+        // it so a screen-reader user hears it wherever focus is.
+        setLocationUnavailable(true);
+        scrollRef.current?.scrollTo?.({ y: Math.max(0, locationSectionY.current - 16), animated: true });
+        AccessibilityInfo.announceForAccessibility(LOCATION_SEARCH_UNAVAILABLE_COPY);
+        return;
       }
 
       if (!resolvedSuggestion || !resolvedCoords) {
@@ -901,8 +951,10 @@ export default function PreferencesSheet({
         resolvedSuggestion.displayName ||
         searchLocation.trim();
       effectiveSelectedCoords = resolvedCoords;
+      effectivePlaceId = resolvedSuggestion.placeId ?? null;
       setSearchLocation(effectiveSearchLocation);
       setSelectedCoords(effectiveSelectedCoords);
+      setSelectedPlaceId(effectivePlaceId);
     }
 
     const customLocationValue = useGpsLocation
@@ -936,6 +988,9 @@ export default function PreferencesSheet({
       custom_location: normalized.custom_location ?? customLocationValue,
       custom_lat: effectiveSelectedCoords?.lat ?? null,
       custom_lng: effectiveSelectedCoords?.lng ?? null,
+      // #4334 A2/A3 — the Google place id of a picked or typed custom location;
+      // null with GPS on.
+      custom_location_place_id: useGpsLocation ? null : (effectivePlaceId ?? null),
       intentToggle,
       categoryToggle,
     };
@@ -1104,6 +1159,7 @@ export default function PreferencesSheet({
     searchLocation,
     useGpsLocation,
     selectedCoords,
+    selectedPlaceId,
     isCollaborationMode,
     isEditable,
     updateBoardPreferences,
@@ -1183,6 +1239,16 @@ export default function PreferencesSheet({
                 setShowPaywall(true);
               }}
             />
+            {locationUnavailable && !useGpsLocation ? (
+              <View
+                style={styles.sectionWarningPill}
+                accessibilityRole="alert"
+                accessibilityLiveRegion="polite"
+                testID="preferences-location-unavailable"
+              >
+                <Text style={styles.sectionWarningText}>{LOCATION_SEARCH_UNAVAILABLE_COPY}</Text>
+              </View>
+            ) : null}
             {sectionWarnings.location && (
               <View style={styles.sectionWarningPill}>
                 <Text style={styles.sectionWarningText}>{sectionWarnings.location}</Text>
@@ -1491,9 +1557,16 @@ export default function PreferencesSheet({
           keyboardBehavior="interactive"
           keyboardBlurBehavior="restore"
           android_keyboardInputMode="adjustResize"
+          // #4334 R3-5 — typing lifts the sheet by the keyboard height; without a
+          // cap the grabber rode into the status bar. Same cap as the city sheet
+          // (#3872 W5.1): stop just below the safe area.
+          topInset={Math.max(0, insets.top) + 8}
           accessibilityLabel={t('preferences:sheet.title')}
           backgroundStyle={styles.sheetBackground}
           scrollProps={{
+            // #4334 R3-3 — bind the sheet's scroller so scrollRef.scrollTo works
+            // in sheet mode too (it was bound only in the legacy inline body).
+            ref: scrollRef,
             contentContainerStyle: styles.sheetScrollContent,
             keyboardShouldPersistTaps: 'handled',
             showsVerticalScrollIndicator: false,

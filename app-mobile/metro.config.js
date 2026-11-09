@@ -50,7 +50,7 @@ config.resolver.extraNodeModules = {
   // app-mobile auth onboarding (via thin re-export wrappers at
   // components/onboarding/) and by mingla-business public buyer form.
   "@mingla/phone-input": path.join(WORKSPACE_ROOT, "packages", "phone-input"),
-  // META-ORCH-1060 — shared Mapbox address/city picker (service + field).
+  // META-ORCH-1060 — shared address/city picker (service + field; Google since #4334).
   // Consumer app injects consumer tokens (light/dark variant); business app
   // injects its own tokens for the experience picker.
   "@mingla/location-input": path.join(

@@ -1,60 +1,39 @@
 /**
- * ORCH-1165 [Mapbox static map server-proxy]
+ * static-map — server-side proxy for the "Where you'll be" / "Where you'll
+ * start" map image on event, venue, experience, trip and RSVP pages (buyer web,
+ * Host app, Explorer app). Provider: Google Maps Static API (#4334).
  *
- * static-map (vendor-NEUTRAL public fn name) — server-side proxy for the "Where
- * you'll be"/"Where you'll start" static map on the public trip / event /
- * experience pages (buyer-web + business app + consumer app). Mirrors the
- * `mapbox-geocode` proxy: keeps MAPBOX_ACCESS_TOKEN strictly server-side, so the
- * client NEVER holds a Mapbox token and `api.mapbox.com` NEVER appears in client
- * network traffic. The Mapbox logo + attribution are stripped server-side
- * (`logo=false&attribution=false`). The PUBLIC fn name is deliberately
- * `static-map`, so the client `<Image>` URL `/functions/v1/static-map?…` carries
- * the substring "mapbox" NOWHERE — client traffic reveals nothing about the
- * upstream map vendor. (Internal var/log names below stay descriptive — they are
- * server-side only.)
+ * The Google key stays a server secret (GOOGLE_MAPS_API_KEY); the client only
+ * ever loads `<SUPABASE_URL>/functions/v1/static-map?…`. Google's logo is part
+ * of the image and is kept (Google terms; Seth decisions D5/D6).
  *
- * WHY a proxy (not a client `pk.*` token): Seth's requirement is to render the map
- * on ALL surfaces AND hide the tech stack — no Mapbox logo, no vendor host, no
- * "mapbox" in client traffic, no token in client traffic. A client token
- * (Approach A) cannot hide the host/token; only a server proxy that returns image
- * bytes from a *.supabase.co URL can.
- * (INVESTIGATE_ORCH-1162R_MAPBOX_RENDER_AND_STACK_HIDING.md, Approach B.)
- *
- * ── API surface (GET — it is an <Image source={{uri}}> target) ───────────────
+ * ── Public URL contract (unchanged for installed clients) ───────────────────
  *   GET /functions/v1/static-map
- *       ?lat=<-90..90>&lng=<-180..180>          (REQUIRED, finite)
- *       &accent=<6-hex>                          (optional pin color; default eb7825)
- *       &zoom=<0..22 step allowlist>             (optional; default 11)
- *       &w=<1..1280>&h=<1..1280>                 (optional; default 600x300; clamped)
- *       &style=<allowlisted style id>            (optional; default dark-v11)
- *     → 200 image/png (Mapbox tile bytes) + Cache-Control: public, max-age=43200
- *     → 400 { error } for any invalid/out-of-range input (strict — this is a
- *            PUBLIC, unauthenticated proxy; reject open-image-fetcher abuse)
- *     → 502 { error } when Mapbox itself fails (client <Image> then hides — rule 9)
+ *       ?lat=<-90..90>&lng=<-180..180>   (REQUIRED, finite)
+ *       &accent=<6-hex>                   (optional pin colour; default eb7825)
+ *       &zoom=<0..22 integer>             (optional; default 11; Google max 21)
+ *       &w=<1..1280>&h=<1..1280>          (optional; default 600x300)
+ *       &style=<allowlisted id>           (optional; old ids still accepted)
+ *     → 200 image/* + Cache-Control: public, max-age=86400
+ *     → 400 { error } for invalid input (public, unauthenticated: strict)
+ *     → 502 { error: "map_unavailable" } when Google fails or answers with
+ *       anything but an image (Google sends a 403 error IMAGE when the API is
+ *       off). The client <Image onError> then hides the map
+ *       (I-PROPOSED-1162-MAP-FAILSAFE-HIDES).
  *
- * Auth: verify_jwt = false (supabase/config.toml) — the buyer-web public page is
- * anonymous, exactly like mapbox-geocode's web peers. The strict input validation
- * + the allowlists below are the abuse guard in lieu of auth: the only thing this
- * proxy can ever fetch is a Mapbox static tile for in-range coords/size/zoom/style.
+ * Google sizes: at most 640×640 per side at scale=2, so a larger request is
+ * scaled down keeping its aspect ratio.
+ * https://developers.google.com/maps/documentation/maps-static/start
+ * Styling: https://developers.google.com/maps/documentation/maps-static/styling
  *
- * Secret: reuses the EXISTING MAPBOX_ACCESS_TOKEN (mapbox-geocode v58 already uses
- * it) — NO new secret, NO hardcoded token.
- *
- * Mapbox Static Images API (docs cited):
- *   GET /styles/v1/mapbox/<style>/static/pin-s+<hex>(<lng>,<lat>)/<lng>,<lat>,<zoom>/<w>x<h>@2x
- *       ?logo=false&attribution=false&access_token=<token>
- *   https://docs.mapbox.com/api/maps/static-images/
- *   logo / attribution suppression params:
- *   https://docs.mapbox.com/api/maps/static-images/#optional-parameters
- *
- * OQ-1 (Mapbox ToS attribution): `attribution=false` removes the on-image credit.
- * Mapbox's standard terms generally require attribution to appear SOMEWHERE; a
- * discreet text credit on a legal/about page may be needed to stay compliant while
- * keeping the stack hidden from the map surface. Flagged for Seth/legal — NOT
- * resolved in this fn.
+ * Caching: the image is not stored by us; a 24 h HTTP/CDN cache is far inside
+ * Google's 30-day caching limit (spec v2 §5).
  */
 
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { recordApiCall } from "../_shared/apiHealthLog.ts";
+import { captureEdgeException } from "../_shared/sentryEdge.ts";
+import { isApiKeyRejectionText } from "../_shared/googleKeyRejection.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -63,12 +42,9 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "GET, OPTIONS",
 };
 
-// https://docs.mapbox.com/api/maps/static-images/
-const MAPBOX_STATIC_BASE = "https://api.mapbox.com/styles/v1/mapbox";
+export const GOOGLE_STATIC_BASE = "https://maps.googleapis.com/maps/api/staticmap";
 
-// Allowlisted Mapbox style ids the proxy will fetch. dark-v11 is the page default
-// (matches the immersive chrome); the rest are the standard Mapbox core styles.
-// Any other style id is rejected (defense against open-proxy abuse / typos).
+/** Style ids installed clients may send. They are accepted, not forwarded. */
 const ALLOWED_STYLES = new Set<string>([
   "dark-v11",
   "light-v11",
@@ -80,17 +56,34 @@ const ALLOWED_STYLES = new Set<string>([
   "navigation-night-v1",
 ]);
 
-// Allowlisted integer zoom levels (Mapbox static supports 0..22). We accept the
-// integer levels only — the client never needs fractional zoom for a pin card.
+/**
+ * Mingla dark style (Seth decision D6), recreated with Static Maps `style=`
+ * parameters. Initial contract from spec v2 §5; the designer may refine the
+ * hex values from a screenshot of today's tiles.
+ */
+export const MINGLA_DARK_STYLE: ReadonlyArray<string> = [
+  "element:geometry|color:0x1d1f24",
+  "element:labels.text.fill|color:0x9aa0a6",
+  "element:labels.text.stroke|color:0x1d1f24",
+  "feature:road|element:geometry|color:0x2c2f36",
+  "feature:road.highway|element:geometry|color:0x3a3e46",
+  "feature:water|element:geometry|color:0x0e1013",
+  "feature:poi|visibility:off",
+  "feature:transit|visibility:off",
+  "feature:administrative|element:geometry.stroke|color:0x3a3e46",
+];
+
 const MIN_ZOOM = 0;
 const MAX_ZOOM = 22;
-
+export const GOOGLE_MAX_ZOOM = 21;
 const DEFAULT_STYLE = "dark-v11";
 const DEFAULT_ZOOM = 11;
 const DEFAULT_WIDTH = 600;
 const DEFAULT_HEIGHT = 300;
-const MAX_DIMENSION = 1280; // Mapbox static @1x hard cap per side.
-const FALLBACK_PIN_HEX = "eb7825"; // MINGLA_DEFAULT_THEME accent, '#'-stripped.
+const MAX_DIMENSION = 1280;
+export const GOOGLE_MAX_SIDE = 640;
+const FALLBACK_PIN_HEX = "eb7825";
+const TIMEOUT_MS = 6000;
 
 function jsonError(error: string, status: number): Response {
   return new Response(JSON.stringify({ error }), {
@@ -109,147 +102,161 @@ export interface ValidatedStaticParams {
   style: string;
 }
 
-/**
- * STRICT validation of the public query params. Returns the sanitized/clamped
- * params, or an `{ error }` code for any invalid input (caller → 400). Pure +
- * exported for unit testing — never trusts a single client value.
- */
+/** STRICT validation of the public query params (unchanged contract). */
 export function validateStaticParams(
   query: URLSearchParams,
 ): ValidatedStaticParams | { error: string } {
   const rawLat = query.get("lat");
   const rawLng = query.get("lng");
-  if (rawLat === null || rawLng === null) {
-    return { error: "coordinates_required" };
-  }
+  if (rawLat === null || rawLng === null) return { error: "coordinates_required" };
   const lat = Number(rawLat);
   const lng = Number(rawLng);
-  if (!Number.isFinite(lat) || lat < -90 || lat > 90) {
-    return { error: "lat_out_of_range" };
-  }
-  if (!Number.isFinite(lng) || lng < -180 || lng > 180) {
-    return { error: "lng_out_of_range" };
-  }
+  if (!Number.isFinite(lat) || lat < -90 || lat > 90) return { error: "lat_out_of_range" };
+  if (!Number.isFinite(lng) || lng < -180 || lng > 180) return { error: "lng_out_of_range" };
 
-  // accent: optional bare 6-hex (the client already strips '#'); else default.
   const rawAccent = query.get("accent");
   let pin = FALLBACK_PIN_HEX;
   if (rawAccent !== null && rawAccent.length > 0) {
-    if (!/^[0-9a-fA-F]{6}$/.test(rawAccent)) {
-      return { error: "invalid_accent" };
-    }
+    if (!/^[0-9a-fA-F]{6}$/.test(rawAccent)) return { error: "invalid_accent" };
     pin = rawAccent.toLowerCase();
   }
 
-  // zoom: optional integer in [0,22].
   let zoom = DEFAULT_ZOOM;
   const rawZoom = query.get("zoom");
   if (rawZoom !== null && rawZoom.length > 0) {
     const z = Number(rawZoom);
-    if (!Number.isInteger(z) || z < MIN_ZOOM || z > MAX_ZOOM) {
-      return { error: "invalid_zoom" };
-    }
+    if (!Number.isInteger(z) || z < MIN_ZOOM || z > MAX_ZOOM) return { error: "invalid_zoom" };
     zoom = z;
   }
 
-  // width / height: optional positive integers, clamped to [1, MAX_DIMENSION].
   const width = clampDimension(query.get("w"), DEFAULT_WIDTH);
   if (typeof width === "object") return width;
   const height = clampDimension(query.get("h"), DEFAULT_HEIGHT);
   if (typeof height === "object") return height;
 
-  // style: optional, allowlisted.
   let style = DEFAULT_STYLE;
   const rawStyle = query.get("style");
   if (rawStyle !== null && rawStyle.length > 0) {
-    if (!ALLOWED_STYLES.has(rawStyle)) {
-      return { error: "invalid_style" };
-    }
+    if (!ALLOWED_STYLES.has(rawStyle)) return { error: "invalid_style" };
     style = rawStyle;
   }
 
   return { lat, lng, pin, zoom, width, height, style };
 }
 
-/** Parse + clamp a dimension param; returns the number or an { error }. */
-function clampDimension(
-  raw: string | null,
-  fallback: number,
-): number | { error: string } {
+function clampDimension(raw: string | null, fallback: number): number | { error: string } {
   if (raw === null || raw.length === 0) return fallback;
   const n = Number(raw);
   if (!Number.isInteger(n) || n < 1) return { error: "invalid_dimension" };
   return Math.min(n, MAX_DIMENSION);
 }
 
+/** Scale both sides down proportionally so neither exceeds 640. */
+export function fitGoogleSize(width: number, height: number): { w: number; h: number } {
+  const scale = Math.min(1, GOOGLE_MAX_SIDE / width, GOOGLE_MAX_SIDE / height);
+  return {
+    w: Math.max(1, Math.round(width * scale)),
+    h: Math.max(1, Math.round(height * scale)),
+  };
+}
+
 /**
- * Compose the server-side Mapbox Static Images URL with logo + attribution OFF.
- * Pure + exported for unit testing. The token is the server secret (never the
- * client's). lng,lat order (Mapbox is lon-first) in both the overlay + center.
+ * Compose the Google Static Maps URL. Satellite ids map to Google's satellite
+ * and hybrid map types; every other id gets the Mingla dark style (D6).
+ * Google takes latitude first in `center` and `markers`.
  */
-export function buildMapboxStaticFetchUrl(
-  p: ValidatedStaticParams,
-  token: string,
-): string {
-  const overlay = `pin-s+${p.pin}(${p.lng},${p.lat})`;
-  const center = `${p.lng},${p.lat},${p.zoom}`;
-  const size = `${p.width}x${p.height}@2x`;
-  return (
-    `${MAPBOX_STATIC_BASE}/${p.style}/static/${overlay}/${center}/${size}` +
-    `?logo=false&attribution=false&access_token=${encodeURIComponent(token)}`
-  );
+export function buildGoogleStaticFetchUrl(p: ValidatedStaticParams, key: string): string {
+  const { w, h } = fitGoogleSize(p.width, p.height);
+  const zoom = Math.min(p.zoom, GOOGLE_MAX_ZOOM);
+  const point = `${p.lat},${p.lng}`;
+  const params = new URLSearchParams();
+  params.set("center", point);
+  params.set("zoom", String(zoom));
+  params.set("size", `${w}x${h}`);
+  params.set("scale", "2");
+  params.set("markers", `size:mid|color:0x${p.pin}|${point}`);
+  if (p.style === "satellite-v9") {
+    params.set("maptype", "satellite");
+  } else if (p.style === "satellite-streets-v12") {
+    params.set("maptype", "hybrid");
+  } else {
+    for (const rule of MINGLA_DARK_STYLE) params.append("style", rule);
+  }
+  params.set("key", key);
+  return `${GOOGLE_STATIC_BASE}?${params.toString()}`;
+}
+
+function mapUnavailable(reason: string, latencyMs: number, status?: number): Response {
+  // The client always sees 502 map_unavailable; Sentry and the health log get
+  // the real code (provider_denied for a rejected key, F-6).
+  const code = reason === "provider_denied" ? "provider_denied" : "map_unavailable";
+  captureEdgeException(new Error(`static-map upstream failed: ${reason}`), {
+    fn: "static-map",
+    tags: { issue: "4334", code },
+    extra: { upstream_status: status ?? null, reason },
+  });
+  void recordApiCall("google_static_maps", false, latencyMs, status, {
+    code,
+    text: reason,
+  });
+  return jsonError("map_unavailable", 502);
 }
 
 export async function handler(req: Request): Promise<Response> {
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
-  }
-  if (req.method !== "GET") {
-    return jsonError("method_not_allowed", 405);
-  }
-
-  const token = Deno.env.get("MAPBOX_ACCESS_TOKEN") ?? "";
-  if (!token) {
-    console.error("[mapbox-static] MAPBOX_ACCESS_TOKEN not configured");
-    return jsonError("mapbox_access_token_missing", 500);
-  }
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method !== "GET") return jsonError("method_not_allowed", 405);
 
   const url = new URL(req.url);
   const validated = validateStaticParams(url.searchParams);
-  if ("error" in validated) {
-    return jsonError(validated.error, 400);
+  if ("error" in validated) return jsonError(validated.error, 400);
+
+  const key = Deno.env.get("GOOGLE_MAPS_API_KEY") ?? "";
+  if (!key) {
+    captureEdgeException(new Error("GOOGLE_MAPS_API_KEY not configured"), {
+      fn: "static-map",
+      tags: { issue: "4334", code: "provider_key_missing" },
+    });
+    return jsonError("provider_key_missing", 500);
   }
 
-  const fetchUrl = buildMapboxStaticFetchUrl(validated, token);
-
+  const t0 = Date.now();
   let upstream: Response;
   try {
-    upstream = await fetch(fetchUrl, { method: "GET" });
-  } catch (e) {
-    console.error("[mapbox-static] fetch error:", e);
-    return jsonError("mapbox_fetch_exception", 502);
+    upstream = await fetch(buildGoogleStaticFetchUrl(validated, key), {
+      method: "GET",
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+  } catch {
+    return mapUnavailable("fetch_exception", Date.now() - t0);
   }
 
-  if (!upstream.ok) {
-    console.warn("[mapbox-static] mapbox non-OK:", upstream.status);
-    // Mapbox non-200 → return non-200 so the client <Image onError> hides the
-    // map (rule 9 — never a fabricated tile). Do NOT leak the Mapbox body.
-    return jsonError(
-      `mapbox_${upstream.status}`,
-      upstream.status >= 500 ? 502 : upstream.status,
+  const contentType = upstream.headers.get("Content-Type") ?? "";
+  if (!upstream.ok || !contentType.toLowerCase().startsWith("image/")) {
+    // Never forward Google's body: a 403 error image must not render as a map.
+    // #4334 F-6 — a key Google rejects reads provider_denied (401/403, or a
+    // 400 whose text names the key), never a generic HTTP failure.
+    const text = !contentType.toLowerCase().startsWith("image/")
+      ? await upstream.text().catch(() => "")
+      : (await upstream.body?.cancel(), "");
+    const denied = upstream.status === 401 || upstream.status === 403 ||
+      (upstream.status === 400 && isApiKeyRejectionText(text));
+    return mapUnavailable(
+      denied
+        ? "provider_denied"
+        : upstream.ok ? `non_image:${contentType || "none"}` : `http_${upstream.status}`,
+      Date.now() - t0,
+      upstream.status,
     );
   }
 
   const bytes = await upstream.arrayBuffer();
-  const contentType =
-    upstream.headers.get("Content-Type") ?? "image/png";
+  void recordApiCall("google_static_maps", true, Date.now() - t0, upstream.status);
   return new Response(bytes, {
     status: 200,
     headers: {
       ...corsHeaders,
       "Content-Type": contentType,
-      // 12h browser/CDN cache — the tile for a fixed venue never changes.
-      "Cache-Control": "public, max-age=43200",
+      "Cache-Control": "public, max-age=86400",
     },
   });
 }

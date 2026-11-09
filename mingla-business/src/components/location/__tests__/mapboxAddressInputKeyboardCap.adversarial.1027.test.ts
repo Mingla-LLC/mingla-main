@@ -1,7 +1,7 @@
 /**
  * issue #1027 — Thread A (native keyboard/viewport) · Symptom 1 · TESTER
  * ADVERSARIAL regression. Different angle from the implementor's happy-path
- * suite (`mapboxAddressInputKeyboardCap.1027.test.ts`), which only source-regexes
+ * suite (the 1027 keyboard-cap test beside this file), which only source-regexes
  * the formula's TEXT. This suite EXECUTES the REAL, shipped `computeDropdownMaxHeight`
  * across the boundary / over-constrain / no-keyboard matrix and asserts the
  * BEHAVIOUR the regex cannot prove.
@@ -10,7 +10,7 @@
  * from "react"`, which is unresolvable FROM `packages/` under the biz jest config
  * (mingla-business owns the only real react copy) — an import of the whole .tsx
  * fails at module load (independently verified by the tester: "Cannot find module
- * 'react' from '../packages/location-input/src/MapboxAddressInput.tsx'"). So this
+ * 'react' from '../packages/location-input/src/AddressInput.tsx'"). So this
  * suite reads the REAL package source, extracts the exact `computeDropdownMaxHeight`
  * body + its three constants VERBATIM (brace-matched, no reimplementation),
  * transpiles that isolated snippet with the repo's own TypeScript, and runs it.
@@ -46,7 +46,7 @@ import path from "node:path";
 // ── Extract the REAL constants + function body from the shipped package source ──
 const SOURCE_PATH = path.join(
   process.cwd(),
-  "../packages/location-input/src/MapboxAddressInput.tsx",
+  "../packages/location-input/src/AddressInput.tsx",
 );
 
 /** Brace-match a `{ … }` block starting at the first `{` after `bodyAnchor`. */

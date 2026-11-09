@@ -123,7 +123,7 @@ jest.mock("@mingla/offering-rendering", () => {
   const ReactLocal = require("react") as typeof React;
   const themeResolver = require("../../../../../packages/offering-rendering/themeResolver");
   const themePalette = require("../../../../../packages/offering-rendering/themePalette");
-  const mapboxStaticImage = require("../../../../../packages/offering-rendering/mapboxStaticImage");
+  const staticMapImage = require("../../../../../packages/offering-rendering/staticMapImage");
   // [TEST-MOD-APPROVED #2468] maps-deep-link-coordinates — the REAL deep-link
   // builder, in keeping with this factory's stated rule ("the REAL pure
   // helpers ... so every value asserted below is genuinely computed"). The
@@ -155,7 +155,7 @@ jest.mock("@mingla/offering-rendering", () => {
     __esModule: true,
     ...themeResolver,
     ...themePalette,
-    ...mapboxStaticImage,
+    ...staticMapImage,
     ...mapsDeepLink,
     ...venueMapsActions,
     // The consumer app is phone-only for this route (its `useResponsiveLayout`

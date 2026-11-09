@@ -160,7 +160,7 @@ module.exports = ({ config }) => ({
       "com.mingla.app.v2",
     ),
     // #1594 [consumer-map-url] — the Supabase project URL, which the SHARED
-    // static-map resolver (`packages/offering-rendering/mapboxFunctionsBase.ts`)
+    // static-map resolver (`packages/offering-rendering/functionsBase.ts`)
     // reads out of `extra` to build `<base>/functions/v1/static-map`. That
     // module's own comment has always claimed "every app already ships this in
     // Constants.expoConfig.extra"; `mingla-business` did, this app never did, so

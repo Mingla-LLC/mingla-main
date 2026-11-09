@@ -12,6 +12,9 @@
 //   - the one-screen fit rule: admin strips push the listings down to 3 (1 on
 //     short screens), then fold into "See N more from Mingla";
 //   - the hand-off per device and per strip target.
+//   - the live cities (8 Nov ruling): exactly the `links_page_cities()` rows,
+//     a newly live city with no code change, a city switched off, quiet
+//     cities in the picker, and `?city=` with an older guide slug.
 //
 // Run from mingla-marketing/ (Node 22.13+):
 //   node --test lib/__tests__/issue-4318-links.implementor.test.mjs
@@ -42,13 +45,14 @@ function emit(name, out, seen) {
 
 const out = fs.mkdtempSync(path.join(os.tmpdir(), 'issue-4318-'))
 const seen = new Set()
-for (const name of ['links-week', 'links-fit', 'links-handoff', 'store-links']) emit(name, out, seen)
+for (const name of ['links-week', 'links-fit', 'links-handoff', 'store-links', 'revalidate-tag']) emit(name, out, seen)
 after(() => fs.rmSync(out, { recursive: true, force: true }))
 const load = (name) => import(pathToFileURL(path.join(out, `${name}.mjs`)).href)
 const week = await load('links-week')
 const fit = await load('links-fit')
 const handoff = await load('links-handoff')
 const stores = await load('store-links')
+const revalidate = await load('revalidate-tag')
 
 // ---------------------------------------------------------------- fixtures
 
@@ -129,12 +133,17 @@ test('the page opens on ?city=, then the visitor location, then the remembered c
 
   // 1. ?city= always wins, even over location, and even for a quiet city.
   assert.deepEqual(resolve({ query: 'brussels', geo: { lat: 35.9, lng: -79 } }), { slug: 'brussels', source: 'query' })
-  // 2. location: the nearest LIVE city, however far (Berlin → London, Abuja → Lagos).
-  assert.deepEqual(resolve({ geo: { lat: 52.52, lng: 13.4 }, cookie: 'lagos' }), { slug: 'london', source: 'geo' })
+  // 2. location: the nearest live city, however far, quiet or not. Live cities
+  //    ruling (8 Nov): every city live in Explorer is a landing city, so Berlin
+  //    lands on quiet Brussels (its places and "Plans in London →"), no longer
+  //    on London just because London has plans; Abuja still lands on Lagos.
+  assert.deepEqual(resolve({ geo: { lat: 52.52, lng: 13.4 }, cookie: 'lagos' }), { slug: 'brussels', source: 'geo' })
   assert.deepEqual(resolve({ geo: { lat: 9.07, lng: 7.4 } }), { slug: 'lagos', source: 'geo' })
-  // 3. no location: the remembered city, when it is live.
+  // 3. no location: the remembered city, while it is live. Same ruling: a
+  //    remembered quiet city opens too (it is live in Explorer).
   assert.deepEqual(resolve({ cookie: 'lagos' }), { slug: 'lagos', source: 'cookie' })
-  assert.notEqual(resolve({ cookie: 'brussels' }).source, 'cookie', 'a remembered city with nothing on is skipped')
+  assert.deepEqual(resolve({ cookie: 'brussels' }), { slug: 'brussels', source: 'cookie' })
+  assert.notEqual(resolve({ cookie: 'atlanta' }).source, 'cookie', 'a remembered city that is not live is skipped')
   // 4. else the busiest live city.
   assert.deepEqual(resolve({}), { slug: 'raleigh-nc', source: 'busiest' })
   // Nothing live anywhere: still a real registry city, never a crash.
@@ -427,15 +436,18 @@ test('quiet week ladder: listings, places, plans elsewhere, nothing anywhere, a 
   assert.deepEqual(q.places.map((p) => p.name), ['Place 1', 'Place 2', 'Place 3'])
   assert.equal(q.plansIn.slug, 'raleigh-nc')
   assert.equal(q.hostCity, 'Cary')
-  // No listings, no places, another city live: heading and both links, no places.
+  // No listings and no places, another city live (conductor ruling, 8 Nov: a
+  // city with nothing to show says so, it no longer heads an empty place
+  // list): the fallback line, "Plans in Raleigh" and "Host something in Cary".
   const q2 = week.quietWeek({ city: cary, cityHasListings: false, places: [], live, readFailed: false })
-  assert.deepEqual([q2.mode, q2.places.length, q2.plansIn.slug], ['quiet', 0, 'raleigh-nc'])
+  assert.deepEqual([q2.mode, q2.text, q2.plansIn.slug, q2.hostCity], ['fallback', 'Nothing is listed this week yet. Check back soon.', 'raleigh-nc', 'Cary'])
   // No listings anywhere but places here: places and host, no "Plans in".
   const q3 = week.quietWeek({ city: cary, cityHasListings: false, places, live: [], readFailed: false })
   assert.deepEqual([q3.mode, q3.plansIn], ['quiet', null])
-  // 5. Nothing anywhere and no places, or a failed read: the fallback.
+  // 5. A failed read: the fallback line alone. 6. Nothing anywhere and no
+  //    places: the fallback line and "Host something in Cary".
   const fallback = { mode: 'fallback', text: 'Nothing is listed this week yet. Check back soon.' }
-  assert.deepEqual(week.quietWeek({ city: cary, cityHasListings: false, places: [], live: [], readFailed: false }), fallback)
+  assert.deepEqual(week.quietWeek({ city: cary, cityHasListings: false, places: [], live: [], readFailed: false }), { ...fallback, plansIn: null, hostCity: 'Cary' })
   assert.deepEqual(week.quietWeek({ city: cary, cityHasListings: false, places, live, readFailed: true }), fallback)
 })
 
@@ -483,4 +495,262 @@ test('quiet week fit at 320x568 and 390x844: admin strips first, places fill, li
       `${size}: no strip-height gap while something is hidden`,
     )
   }
+})
+
+// ---------------------------------------------------------------- recurring plans (one strip each)
+
+test('a recurring listing is one strip with its day span, opening its next date; counts are plans', () => {
+  // Live Lagos: "Crusaders Adventure Island" once per date, Mon 9 to Fri 13.
+  const crusaders = [9, 10, 11, 12, 13].map((d) =>
+    row({ title: 'Crusaders Adventure Island', tz: 'Africa/Lagos', lat: 6.45, lng: 3.42, brand_slug: 'crusaders', item_slug: 'adventure-island', starts_at: `2026-11-${String(d).padStart(2, "0")}T08:00:00Z` }),
+  )
+  const salsa = [9, 11, 13].map((d) =>
+    row({ title: 'Salsa night', tz: 'Africa/Lagos', lat: 6.45, lng: 3.42, brand_slug: 'salsa4life', item_slug: 'salsa', starts_at: `2026-11-${String(d).padStart(2, "0")}T19:00:00Z` }),
+  )
+  const once = row({ title: 'One night only', tz: 'Africa/Lagos', lat: 6.45, lng: 3.42, item_slug: 'once', starts_at: '2026-11-10T20:00:00Z' })
+  const listings = week.bucketListings([...salsa, ...crusaders, once], CITIES)
+  const w = week.cityWeek(city('lagos'), listings, [], NOW)
+  assert.equal(w.listings.length, 9, 'the week keeps one row per date (the full-week sheet)')
+  const plans = week.groupListings(w.listings)
+  assert.deepEqual(plans.map((p) => [p.next.title, p.dates.length]), [
+    ['Crusaders Adventure Island', 5],
+    ['Salsa night', 3],
+    ['One night only', 1],
+  ])
+  assert.deepEqual(week.planWhen(plans[0], w.today), { tonight: false, text: 'Event · Mon–Fri' })
+  assert.deepEqual(week.planWhen(plans[1], w.today), { tonight: false, text: 'Event · Mon, Wed, Fri' })
+  assert.deepEqual(week.planWhen(plans[2], w.today), { tonight: false, text: 'Event · Tue 10' })
+  assert.equal(week.timeLabel(plans[0].next.startsAt, plans[0].next.tz), '9 AM')
+  // The hand-off opens the next date (the listing's deep link).
+  const h = handoff.resolveLinksHandoff({ type: 'listing', listing: plans[0].next }, 'ios', 'instagram')
+  assert.equal(new URL(h.href).searchParams.get('deep_link_sub2'), 'adventure-island')
+  assert.equal(plans[0].next.startsAt, '2026-11-09T08:00:00.000Z')
+  // "N this week" counts plans, not dates.
+  assert.deepEqual(week.liveCities(CITIES, listings, [], NOW).map((l) => [l.city.slug, l.count]), [['lagos', 3]])
+})
+
+test('the revalidate route drops blog by default, links on {"tag":"links"}, and refuses anything else', () => {
+  assert.equal(revalidate.revalidateTargetFor(''), 'blog')
+  assert.equal(revalidate.revalidateTargetFor('{}'), 'blog')
+  assert.equal(revalidate.revalidateTargetFor('{"tag":"blog"}'), 'blog')
+  assert.equal(revalidate.revalidateTargetFor('{"tag":"links"}'), 'links')
+  for (const bad of ['{"tag":"all"}', '{"tag":["links"]}', '"links"', '[]', 'null', '{', '{"tag":"LINKS"}']) {
+    assert.equal(revalidate.revalidateTargetFor(bad), null, bad)
+  }
+})
+
+// ---------------------------------------------------------------- live cities (8 Nov ruling)
+
+// The ten `links_page_cities()` rows read from production on 8 Nov 2026 (ids,
+// names, country codes and centres as stored), with the design's photo counts.
+const LIVE_ROWS = [
+  ['42197b35-45e8-4cac-b40d-a548416d87d2', 'Brussels', 'BE', 50.8477029, 4.3572001, 2593],
+  ['9cff3a58-18cc-4c51-aa94-4c3e96ca1841', 'Cary', 'US', 35.7890402, -78.7797644, 959],
+  ['a9e110dd-c26c-4141-9fee-165fad1fd455', 'Durham', 'US', 35.9955684, -78.9002077, 839],
+  ['96d591c0-acb6-4605-884d-442cc261ea8d', 'Fort Lauderdale', 'US', 26.1224386, -80.1373174, 1302],
+  ['287cab01-4430-4930-983a-435aa194f33a', 'Lagos', 'NG', 6.6137395, 3.3552568, 1036],
+  ['c0bcef4f-82c1-44c6-9e9d-3329f5c860bf', 'London', 'GB', 51.5072178, -0.1275862, 11654],
+  ['72cd3c91-7a32-470b-8e59-a57af654d07f', 'New York', 'US', 40.7127753, -74.0059728, 9880],
+  ['13d9113a-4796-499e-9544-ae4d17c678db', 'Paris', 'FR', 48.8575475, 2.3513765, 4438],
+  ['0ccfcf20-21a9-4d7b-805d-cbe629dcfd2b', 'Raleigh', 'US', 35.7795897, -78.6381787, 2129],
+  ['e7b70cd8-d2c8-47f2-9112-08e86942bf96', 'Washington', 'US', 38.9072873, -77.0369274, 2682],
+].map(([city_id, name, country_code, center_lat, center_lng, place_count]) => ({ city_id, name, country_code, center_lat, center_lng, has_places: place_count > 0 }))
+// What the city guides know (content/cities/registry.ts): older slugs, regions, zones.
+const HINTS = CITIES.map((c) => ({ slug: c.slug, countryCode: { lagos: 'NG', brussels: 'BE', london: 'GB' }[c.slug] ?? 'US', region: c.region, timezone: c.timezone, lat: c.lat, lng: c.lng }))
+  .concat([{ slug: 'washington-dc', countryCode: 'US', region: 'District of Columbia', timezone: 'America/New_York', lat: 38.9072, lng: -77.0369 }])
+
+test('the live cities are exactly the database rows: slugs from names, older guide slugs kept, Lagos 80 km, the rest 60', () => {
+  const cities = week.linksCitiesFromRows(LIVE_ROWS, HINTS)
+  assert.deepEqual(cities.map((c) => c.slug), ['brussels', 'cary', 'durham', 'fort-lauderdale', 'lagos', 'london', 'new-york', 'paris', 'raleigh', 'washington'])
+  const by = Object.fromEntries(cities.map((c) => [c.slug, c]))
+  assert.deepEqual(by['new-york'].aliases, ['new-york-city'])
+  assert.deepEqual(by.washington.aliases, ['washington-dc'])
+  assert.deepEqual(by.lagos.aliases, [])
+  assert.equal(by.washington.region, 'District of Columbia')
+  assert.equal(by.durham.region, 'North Carolina')
+  // Paris has no guide hint in this fixture: its country is the region line.
+  assert.equal(by.paris.region, 'France')
+  assert.equal(by.paris.timezone, '')
+  for (const c of cities) assert.equal(c.reachKm, c.slug === 'lagos' ? 80 : 60, c.slug)
+  assert.equal(by.london.hasPlaces, true)
+  assert.equal(by.london.cityId, 'c0bcef4f-82c1-44c6-9e9d-3329f5c860bf')
+  // Slugs: lowercase, hyphenated, punctuation stripped.
+  assert.equal(week.citySlug('Washington, D.C.'), 'washington-dc')
+  assert.equal(week.citySlug("St. John's"), 'st-johns')
+  assert.equal(week.citySlug('Liège'), 'liege')
+  // Junk rows are dropped, never patched up; a duplicate slug takes its country.
+  const junk = week.linksCitiesFromRows(
+    [
+      { ...LIVE_ROWS[0], city_id: 'not-a-uuid' },
+      { ...LIVE_ROWS[1], name: '  ' },
+      { ...LIVE_ROWS[2], center_lat: 95 },
+      LIVE_ROWS[3],
+      { ...LIVE_ROWS[3], city_id: '00000000-0000-4000-8000-000000000001', country_code: 'GB' },
+    ],
+    [],
+  )
+  assert.deepEqual(junk.map((c) => c.slug), ['fort-lauderdale', 'fort-lauderdale-gb'])
+})
+
+test('a city switched live appears with no code change: listed, bucketed, its zone from its listings', () => {
+  const abuja = { city_id: '00000000-0000-4000-8000-0000000000ab', name: 'Abuja', country_code: 'NG', center_lat: 9.0765, center_lng: 7.3986, has_places: true }
+  const base = week.linksCitiesFromRows([...LIVE_ROWS, abuja], HINTS)
+  const listings = week.bucketListings(
+    [row({ lat: 9.06, lng: 7.49, tz: 'Africa/Lagos', starts_at: '2026-11-08T18:00:00Z', item_slug: 'abuja-1' })],
+    base,
+  )
+  const cities = week.withListingZones(base, listings)
+  const city2 = cities.find((c) => c.slug === 'abuja')
+  assert.deepEqual([city2.name, city2.region, city2.reachKm, city2.timezone], ['Abuja', 'Nigeria', 60, 'Africa/Lagos'])
+  assert.deepEqual(listings.map((l) => l.citySlug), ['abuja'])
+  const counts = week.cityCounts(cities, listings, [], NOW)
+  assert.equal(counts.length, 11)
+  assert.deepEqual(week.pickerOrder(counts, null)[0], { city: city2, count: 1, km: null })
+  assert.deepEqual(week.resolveCity({ cities, live: week.liveCities(cities, listings, [], NOW), query: 'abuja', geo: null, cookie: null }), { slug: 'abuja', source: 'query' })
+  // A new live city with no listings and no guide: UTC, still listed.
+  assert.equal(week.withListingZones(base, []).find((c) => c.slug === 'abuja').timezone, 'UTC')
+})
+
+test('a city switched off disappears: not listed, not bucketed, its ?city= and cookie no longer open it', () => {
+  const cities = week.linksCitiesFromRows(LIVE_ROWS.filter((r) => r.name !== 'Paris'), HINTS)
+  assert.equal(cities.some((c) => c.slug === 'paris'), false)
+  const listings = week.bucketListings([row({ lat: 48.86, lng: 2.35, tz: 'Europe/Paris', item_slug: 'p1' })], cities)
+  assert.deepEqual(listings, [], 'a Paris listing belongs to no live city (Brussels is 260 km away)')
+  const live = week.liveCities(cities, listings, [], NOW)
+  assert.notEqual(week.resolveCity({ cities, live, query: 'paris', geo: null, cookie: null }).source, 'query')
+  assert.notEqual(week.resolveCity({ cities, live, query: null, geo: null, cookie: 'paris' }).source, 'cookie')
+  // Geo near Paris lands on the nearest city still live.
+  assert.equal(week.resolveCity({ cities, live, query: null, geo: { lat: 48.85, lng: 2.35 }, cookie: null }).slug, 'brussels')
+})
+
+test('quiet cities are listed: every live city, nearest first, else most plans then name, "Places to explore"', () => {
+  const cities = week.withListingZones(week.linksCitiesFromRows(LIVE_ROWS, HINTS), [])
+  const listings = week.bucketListings(
+    [
+      row({ lat: 6.45, lng: 3.42, tz: 'Africa/Lagos', starts_at: '2026-11-08T18:00:00Z', item_slug: 'l1' }),
+      row({ lat: 6.45, lng: 3.42, tz: 'Africa/Lagos', starts_at: '2026-11-09T18:00:00Z', item_slug: 'l2' }),
+      row({ lat: 35.789, lng: -78.78, item_slug: 'c1' }),
+    ],
+    cities,
+  )
+  const counts = week.cityCounts(cities, listings, [], NOW)
+  assert.equal(counts.length, 10, 'all ten live cities, quiet ones included')
+  // No location: plans this week, then name.
+  assert.deepEqual(week.pickerOrder(counts, null).map((r) => r.city.slug), ['lagos', 'cary', 'brussels', 'durham', 'fort-lauderdale', 'london', 'new-york', 'paris', 'raleigh', 'washington'])
+  // From Chapel Hill: Durham, Cary, Raleigh first; Lagos last.
+  const fromChapelHill = week.pickerOrder(counts, { lat: 35.913, lng: -79.0558 }).map((r) => r.city.slug)
+  assert.deepEqual(fromChapelHill.slice(0, 3), ['durham', 'cary', 'raleigh'])
+  assert.equal(fromChapelHill.at(-1), 'lagos')
+  assert.equal(week.pickerCountLabel(2), '2 this week')
+  assert.equal(week.pickerCountLabel(0), 'Places to explore')
+  assert.equal(week.pickerCountLabel(0, true), 'Places to explore')
+  assert.equal(week.pickerCountLabel(3, false), '3 this week')
+  // A visitor in Chapel Hill lands on quiet Durham, which points at plans in Cary.
+  const live = week.liveCities(cities, listings, [], NOW)
+  const initial = week.resolveCity({ cities, live, query: null, geo: { lat: 35.913, lng: -79.0558 }, cookie: null })
+  assert.deepEqual(initial, { slug: 'durham', source: 'geo' })
+  const durham = cities.find((c) => c.slug === 'durham')
+  const q = week.quietWeek({ city: durham, cityHasListings: false, places: week.normalisePlaces([placeRow(1)], 'durham', STORAGE), live, readFailed: false })
+  assert.deepEqual([q.mode, q.heading, q.plansIn.slug], ['quiet', 'A quiet week in Durham.', 'cary'])
+})
+
+test('a quiet city with no photo places: "Nothing listed yet" in the picker, and the fallback line plus Host when picked', () => {
+  const rows = LIVE_ROWS.map((r) => (r.name === 'Fort Lauderdale' ? { ...r, has_places: false } : r))
+  const cities = week.withListingZones(week.linksCitiesFromRows(rows, HINTS), [])
+  const listings = week.bucketListings([row({ lat: 35.789, lng: -78.78, item_slug: 'c1' })], cities)
+  const counts = week.cityCounts(cities, listings, [], NOW)
+  const label = (slug) => {
+    const r = counts.find((c) => c.city.slug === slug)
+    return week.pickerCountLabel(r.count, r.city.hasPlaces)
+  }
+  assert.equal(cities.find((c) => c.slug === 'fort-lauderdale').hasPlaces, false)
+  assert.equal(label('fort-lauderdale'), 'Nothing listed yet')
+  assert.equal(label('cary'), '1 this week')
+  assert.equal(label('raleigh'), 'Places to explore')
+  // Picked, it shows the fallback line and "Host something in Fort Lauderdale" (and plans in Cary).
+  const fll = cities.find((c) => c.slug === 'fort-lauderdale')
+  const q = week.quietWeek({ city: fll, cityHasListings: false, places: [], live: week.liveCities(cities, listings, [], NOW), readFailed: false })
+  assert.deepEqual([q.mode, q.text, q.hostCity, q.plansIn.slug], ['fallback', 'Nothing is listed this week yet. Check back soon.', 'Fort Lauderdale', 'cary'])
+})
+
+test('quiet-week places are read by city_id (the fast index path); lat/lng alone only when no id is known', () => {
+  const cities = week.linksCitiesFromRows(LIVE_ROWS, HINTS)
+  const durham = cities.find((c) => c.slug === 'durham')
+  assert.deepEqual(week.linksPlacesArgs(durham, 3), {
+    p_lat: 35.9955684,
+    p_lng: -78.9002077,
+    p_radius_km: 60,
+    p_limit: 3,
+    p_city_id: 'a9e110dd-c26c-4141-9fee-165fad1fd455',
+  })
+  // A stand-in guide city (cities read down) has no id: the lat/lng path, Lagos at 80 km.
+  const noId = { slug: 'lagos', name: 'Lagos', region: 'Nigeria', timezone: 'Africa/Lagos', lat: 6.4281, lng: 3.4219, reachKm: 80 }
+  assert.deepEqual(week.linksPlacesArgs(noId, 3), { p_lat: 6.4281, p_lng: 3.4219, p_radius_km: 80, p_limit: 3 })
+  assert.equal('p_city_id' in week.linksPlacesArgs({ ...noId, cityId: 'not-a-uuid' }, 3), false)
+})
+
+test('?city= with an older guide slug opens the live city (washington-dc, new-york-city, durham-nc)', () => {
+  const cities = week.linksCitiesFromRows(LIVE_ROWS, HINTS)
+  const resolve = (query, cookie = null) => week.resolveCity({ cities, live: [], query, geo: null, cookie })
+  assert.deepEqual(resolve('washington-dc'), { slug: 'washington', source: 'query' })
+  assert.deepEqual(resolve('washington'), { slug: 'washington', source: 'query' })
+  assert.deepEqual(resolve('new-york-city'), { slug: 'new-york', source: 'query' })
+  assert.deepEqual(resolve('durham-nc'), { slug: 'durham', source: 'query' })
+  // The remembered-city cookie from before the change still opens its city.
+  assert.deepEqual(resolve(null, 'raleigh-nc'), { slug: 'raleigh', source: 'cookie' })
+  // Nothing on anywhere and nothing asked: the first live city.
+  assert.deepEqual(resolve(null), { slug: 'brussels', source: 'fallback' })
+})
+
+test('the white wordmark in the orange bar goes Home, with a 44px target and a visible focus ring', () => {
+  const ui = fs.readFileSync(path.join(MARKETING, 'components/marketing/links-experience.tsx'), 'utf8')
+  const css = fs.readFileSync(path.join(MARKETING, 'components/marketing/links-experience.module.css'), 'utf8')
+  const bar = ui.slice(ui.indexOf("styles['lk-bar']"), ui.indexOf("styles['lk-grid']"))
+  assert.match(bar, /<a href="\/" aria-label="Mingla home" className=\{styles\['lk-home'\]\}>[\s\S]*mingla-wordmark-white\.svg[\s\S]*<\/a>/)
+  const home = css.match(/\.lk-home \{([^}]*)\}/)
+  assert.ok(home, 'a .lk-home rule exists')
+  assert.match(home[1], /min-height: 44px/)
+  assert.match(home[1], /text-decoration: none/)
+  assert.match(css, /\.lk-home:focus-visible \{\s*outline: 2px solid #fff/)
+})
+
+test('an admin strip shows in every city until its day has ended everywhere, and "Show until" keeps it up to its last day', () => {
+  // Live check 8 Nov 2026: an admin in Cary posted "Today, Sunday 8 November"
+  // at 23:04 ET; Lagos was already on Monday and hid it. Admin dates are the
+  // admin's own day, so no city ahead of it may cut the strip early.
+  const pins = week.normalisePins([
+    { id: 'today', shows_on: '2026-11-08', title: 'Posted Sunday evening', label: 'From Mingla', opens: 'host', url: null, blog_slug: null, position: 0 },
+    { id: 'range', shows_on: '2026-11-08', shows_until: '2026-11-15', title: 'Runs all week', label: 'Giveaway', opens: 'explorer', url: null, blog_slug: null, position: 1 },
+    { id: 'later', shows_on: '2026-11-12', title: 'Starts Thursday', label: 'New', opens: 'host', url: null, blog_slug: null, position: 2 },
+    { id: 'bad-until', shows_on: '2026-11-08', shows_until: '2026-11-01', title: 'Until before start', label: 'New', opens: 'host', url: null, blog_slug: null, position: 3 },
+    { id: 'junk-until', shows_on: '2026-11-08', shows_until: 'soon', title: 'Junk until', label: 'New', opens: 'host', url: null, blog_slug: null, position: 4 },
+  ])
+  assert.deepEqual(pins.map((p) => [p.id, p.showsUntil]), [['today', null], ['range', '2026-11-15'], ['later', null], ['bad-until', null], ['junk-until', null]])
+  const shown = (slug, now) => week.cityWeek(city(slug), [], pins, now).pins.map((p) => p.id)
+
+  // Sun 8 Nov 23:04 in Cary = Mon 9 Nov 05:04 in Lagos: the strip shows in both.
+  const posted = '2026-11-09T04:04:00.000Z'
+  const all = ['today', 'range', 'later', 'bad-until', 'junk-until']
+  assert.deepEqual(shown('cary-nc', posted), all)
+  assert.deepEqual(shown('lagos', posted), all)
+  const lagos = week.cityWeek(city('lagos'), [], pins, posted)
+  assert.equal(lagos.today, '2026-11-09')
+  assert.equal(week.pinWhen(lagos.pins[0], lagos.today), 'From Mingla · Today')
+  assert.equal(week.pinWhen(lagos.pins[2], lagos.today), 'New · Thu 12')
+
+  // Once Sunday has ended in the last time zone (UTC-12), the one-day strips go everywhere.
+  const gone = '2026-11-09T12:00:01.000Z'
+  assert.deepEqual(shown('cary-nc', gone), ['range', 'later'])
+  assert.deepEqual(shown('lagos', gone), ['range', 'later'])
+  // Just before that, it still shows in Cary (Monday 7 AM there).
+  assert.deepEqual(shown('cary-nc', '2026-11-09T11:59:59.000Z'), all)
+
+  // "Show until" keeps the strip up through its last day: Thursday 12 it is running ("Today").
+  const thu = week.cityWeek(city('london'), [], pins, '2026-11-12T12:00:00.000Z')
+  assert.deepEqual(thu.pins.map((p) => p.id), ['range', 'later'])
+  assert.equal(week.pinWhen(thu.pins[0], thu.today), 'Giveaway · Today')
+  assert.equal(week.pinDaysLabel(thu.pins[0]), 'Sunday 8 November – Sunday 15 November')
+  assert.equal(week.pinDaysLabel(thu.pins[1]), 'Thursday 12 November')
+  assert.deepEqual(shown('lagos', '2026-11-16T11:59:59.000Z'), ['range'])
+  assert.deepEqual(shown('lagos', '2026-11-16T12:00:01.000Z'), [])
 })

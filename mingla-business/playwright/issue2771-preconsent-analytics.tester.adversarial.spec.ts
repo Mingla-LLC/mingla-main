@@ -231,7 +231,9 @@ test.describe('#2771 → #2331 independent browser privacy boundary', () => {
       await page.goto(`${MARKETING}/links${SIGNALS}`, { waitUntil: 'domcontentloaded' })
       await page.waitForLoadState('networkidle')
       if (seed === 'all-off') {
-        await expect(page.getByTestId('privacy-sheet'), seed).toHaveCount(0)
+        // #4318: the sheet stays in the page, hidden and not a dialog; none is shown.
+        await expect(page.getByTestId('privacy-sheet'), seed).toBeHidden()
+        await expect(page.locator('[data-testid="privacy-sheet"][role="dialog"], [data-testid="privacy-sheet"]:not([hidden])'), seed).toHaveCount(0)
         await assertAnalyticsDark(context, page, oracle)
         expect(requestIndexes(oracle, AD_REQUEST)).toEqual([])
       } else {

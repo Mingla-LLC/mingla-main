@@ -25,8 +25,8 @@ jest.mock("../../../constants/designSystem", () => ({
 jest.mock("../../../hooks/useCurrentBrand", () => ({
   useCurrentBrand: () => null,
 }));
-jest.mock("../../location/MapboxAddressInput", () => ({
-  MapboxAddressInput: "mapbox-address-input",
+jest.mock("../../location/AddressInput", () => ({
+  AddressInput: "address-input",
 }));
 jest.mock("../../ui/Button", () => ({ Button: "button" }));
 jest.mock("../../ui/Input", () => ({ Input: "input" }));
@@ -116,7 +116,7 @@ describe("#3355 P7 event flow cards", () => {
     );
   });
 
-  it("reads a Mapbox pick into the place, and refuses one with no city", () => {
+  it("reads an address pick into the place, and refuses one with no city", () => {
     const details = {
       placeId: "poi.1",
       formattedAddress: "380 Old Street, London EC1V 9LT",

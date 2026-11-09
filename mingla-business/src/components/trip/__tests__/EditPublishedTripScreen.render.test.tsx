@@ -1,5 +1,5 @@
 /**
- * ORCH-1118 [trip from/destination must be Mapbox-validated addresses] —
+ * ORCH-1118 [trip from/destination must be pick-validated addresses] —
  * RENDER-PROOF (mingla-tester, RETEST gap-closer).
  *
  * The prior CONDITIONAL PASS left ONE residual: the published-edit screen's
@@ -8,7 +8,7 @@
  * with a GENUINE RUNTIME EXECUTION: it mounts the REAL EditPublishedTripScreen
  * via @testing-library/react-native and asserts, at runtime:
  *
- *   a. Both "Departing from" and "Destination" render as MapboxAddressInput
+ *   a. Both "Departing from" and "Destination" render as AddressInput
  *      (real shared picker — combobox role), proving they MOUNT on the screen's
  *      OWN code path (the basics accordion content), not a dead/blank field and
  *      not the legacy plain TextInput. This kills the dead-tap /
@@ -22,7 +22,7 @@
  *
  *   c. The both-validly-picked path DOES proceed (modal opens).
  *
- * The MapboxAddressInput chain and the save handler are NOT mocked — only the
+ * The AddressInput chain and the save handler are NOT mocked — only the
  * network/native boundary (supabase invoke, expo-router, safe-area, the
  * non-basics accordion bodies, react-query mutation/hook) is stubbed. The save
  * gate (`handleSavePress` → `destinationLocationValidated` /
@@ -32,7 +32,7 @@
  *   npx jest --config jest.orch1118.render.cjs --runInBand
  *
  * Fails-on-revert: removing the gate in EditPublishedTripScreen.handleSavePress
- * (or reverting the MapboxAddressInput swap to a plain TextInput) makes (a) or
+ * (or reverting the AddressInput swap to a plain TextInput) makes (a) or
  * (b) fail. Verified in the RETEST report.
  */
 
@@ -97,10 +97,10 @@ jest.mock("../../../services/tripChangeNotifier", () => ({
   deriveTripChannelFlags: () => ({}),
 }));
 
-// supabase service — the MapboxAddressInput wrapper imports it for `invoke`.
+// supabase service — the AddressInput wrapper imports it for `invoke`.
 // We stub invoke so no real geocode network fires; the pick is simulated via
 // the picker's onPick prop directly (see helper below), which is the same code
-// path a real Mapbox suggestion tap takes.
+// path a real address suggestion tap takes.
 jest.mock("../../../services/supabase", () => ({
   supabase: { functions: { invoke: jest.fn(async () => ({ data: null, error: null })) } },
 }));
@@ -258,10 +258,10 @@ function makePickedTrip(): Trip {
 }
 
 describe("ORCH-1118 — EditPublishedTripScreen RENDER PROOF (runtime mount)", () => {
-  it("(a) MOUNTS both location fields as MapboxAddressInput on the basics path (combobox), NOT plain TextInput", async () => {
+  it("(a) MOUNTS both location fields as AddressInput on the basics path (combobox), NOT plain TextInput", async () => {
     await render(<EditPublishedTripScreen trip={makeTrip()} />);
 
-    // The shared MapboxAddressInput renders its TextInput with
+    // The shared AddressInput renders its TextInput with
     // accessibilityRole="combobox". A plain TextInput (the legacy field) has NO
     // combobox role. Exactly two comboboxes present ⇒ both swapped pickers
     // MOUNTED on the basics path (not a dead/blank field, not legacy TextInput).

@@ -184,9 +184,9 @@ import { captureExplorerSearchOutcome } from "../../services/searchOutcome";
 import { shareContent } from "../../services/contentShareAdapter";
 import { glass } from "../../constants/designSystem";
 import { EarnBySharingCard } from "../../components/wallet/EarnBySharingCard";
-// ORCH-1162 Bug 2 — shared static-Mapbox builder (re-exported from
+// ORCH-1162 Bug 2 — shared static map builder (re-exported from
 // @mingla/offering-rendering) for the consumer EVENT "Where you'll be" map.
-import { buildStaticMapUrl } from "../../utils/mapboxStaticImage";
+import { buildStaticMapUrl } from "../../utils/staticMapImage";
 import {
   formatEventDateLine,
   formatOccurrenceSummary,

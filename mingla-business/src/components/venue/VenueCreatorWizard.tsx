@@ -361,6 +361,8 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
           city: st.city,
           countryCode: st.countryCode,
           coordinatePrecision: st.coordinatePrecision ?? null,
+          // #4334 — the picked Google place id, for the coordinate refresh.
+          locationProviderPlaceId: st.locationProviderPlaceId ?? null,
           address: st.formattedAddress.trim(),
           venueCategory,
           contact: {

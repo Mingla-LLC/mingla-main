@@ -140,7 +140,7 @@ function buildSyntheticTree() {
     "mingla-business/app.config.js",
     [
       "export default { extra: {",
-      "  EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN: process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ?? null,",
+      "  EXPO_PUBLIC_ONESIGNAL_APP_ID: process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID ?? null,",
       "} };",
       FILLER_JS,
     ].join("\n"),

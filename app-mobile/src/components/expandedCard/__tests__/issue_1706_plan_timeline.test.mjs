@@ -24,7 +24,7 @@
  *
  * WHY THE DISCLOSURE IS LOAD-BEARING. Traffic was deleted from this sheet three
  * weeks ago because `getTrafficHeuristic` returned `${10 + extraMin} min` from
- * nothing but the clock and rendered it UNLABELLED beside a real Mapbox reading
+ * nothing but the clock and rendered it UNLABELLED beside a real third-party reading
  * in the identical row. A haversine figure is a different thing — computed from
  * two real coordinates, reproducible — but it is still not a measurement.
  */

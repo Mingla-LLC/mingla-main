@@ -1378,12 +1378,12 @@ test('S-8 nothing produces, types, fetches or translates traffic any more', () =
   //
   // `main` rendered a Traffic row — car icon, condition chip, travel time, its
   // own loading state. Wave 4 deleted the ROW and left the PRODUCER, so a
-  // Mapbox Directions round-trip fired on every expanded-card open for a row
+  // third-party Directions round-trip fired on every expanded-card open for a row
   // nobody saw, and the field sat in two type files with zero consumers.
   //
   // Restoring it would have restored a fabrication: the fallback arm returned
   // `${10 + extraMin} min` from the clock alone, and it fired whenever the
-  // Mapbox token was unset, location permission was denied or the request
+  // routing token was unset, location permission was denied or the request
   // failed. The real arm restated the distance span the plate already carries
   // (D-2: "14 min" beside "6.7 mi" is the same fact twice). So the producer
   // went with the row, and this rule keeps both ends deleted together.
@@ -1395,14 +1395,14 @@ test('S-8 nothing produces, types, fetches or translates traffic any more', () =
     [],
     'S-8: the deleted busyness service is back. Its only reader is gone; a revived service fetches for nobody.',
   );
-  const directions = [...TREE].filter(([, src]) => /api\.mapbox\.com\/directions/.test(src)).map(([file]) => file);
+  const directions = [...TREE].filter(([, src]) => /\/directions\//.test(src)).map(([file]) => file);
   assert.deepEqual(
     directions,
     [],
-    'S-8: something fetches a Mapbox Directions route again. That was one third-party round-trip per '
+    'S-8: something fetches a Directions route again. That was one third-party round-trip per '
     + 'expanded-card open, for a row that does not exist.',
   );
-  for (const dead of ['fetchMapboxTraffic', 'getTrafficHeuristic', 'TrafficInfo']) {
+  for (const dead of ['fetchTraffic', 'getTrafficHeuristic', 'TrafficInfo']) {
     const back = [...TREE].filter(([, src]) => src.includes(dead)).map(([file]) => file);
     assert.deepEqual(back, [], `S-8: \`${dead}\` is back in ${back.join(', ')}.`);
   }

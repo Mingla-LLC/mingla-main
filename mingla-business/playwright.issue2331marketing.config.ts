@@ -4,7 +4,7 @@ import { defineConfig, devices } from "@playwright/test";
 // Vendor ids are fixtures; vendor requests are fulfilled locally and recorded.
 export default defineConfig({
   testDir: "./playwright/issue2331-marketing",
-  testMatch: /marketing-privacy-bar\.spec\.ts$/,
+  testMatch: /marketing-privacy-(bar|first-tap)\.spec\.ts$/,
   fullyParallel: false,
   forbidOnly: true,
   retries: 0,

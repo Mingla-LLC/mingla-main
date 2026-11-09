@@ -81,10 +81,11 @@ import {
   themeTextAccent,
   type ThemePalette,
 } from "./themePalette";
-// ORCH-1162 Bug 2 — the shared static-Mapbox builder (single owner, this package)
+// ORCH-1162 Bug 2 — the shared static map builder (single owner, this package)
 // for the "Where you'll be" map. Returns null when coords/token are absent →
 // the renderer falls back to the honest text venue card (rule-9).
-import { buildStaticMapUrl } from "./mapboxStaticImage";
+import { buildStaticMapUrl } from "./staticMapImage";
+import { StaticMapImage } from "./StaticMapFrame";
 // issue #2468 — the ONE privacy gate + label composer for the venue card.
 import { canOpenMapsTarget, selectVenueMapsTarget } from "./mapsDeepLink";
 // issue #2508 — the shared "which map app?" chooser + copy-address button. Fed
@@ -394,6 +395,7 @@ const PublishedBody = ({
     address: event.address,
     addressHidden: event.hideAddressUntilTicket,
     locationGeo: event.locationGeo,
+    googlePlaceId: event.googlePlaceId ?? null,
   });
   const canOpenVenueMaps =
     canOpenMapsTarget(venueMapsTarget) && callbacks.onOpenMaps !== undefined;
@@ -738,7 +740,7 @@ const PublishedBody = ({
             ) : null}
           </Pressable>
 
-          {/* ORCH-1162 Bug 2 — "Where you'll be" static-Mapbox map. Modeled on
+          {/* ORCH-1162 Bug 2 — "Where you'll be" static map. Modeled on
               TripPreview's reference block. Renders ONLY for in-person events
               that carry finite venue geo AND when buildStaticMapUrl resolves a
               URL (token present at runtime). Rule-9 fail-safe: when the URL is
@@ -767,19 +769,15 @@ const PublishedBody = ({
             });
             if (mapUrl === null) return null;
             return (
-              <View
+              <StaticMapImage
+                uri={mapUrl}
                 style={[
                   styles.whereMapBlock,
                   { backgroundColor: palette.card },
                 ]}
+                accessibilityLabel={`Map of ${event.venueName ?? "the venue"}`}
                 testID="orch-1162-event-where-map"
               >
-                <Image
-                  source={{ uri: mapUrl }}
-                  style={styles.whereMapImage}
-                  resizeMode="cover"
-                  accessibilityLabel={`Map of ${event.venueName ?? "the venue"}`}
-                />
                 <View
                   style={[
                     styles.whereMapPill,
@@ -795,7 +793,7 @@ const PublishedBody = ({
                     {event.venueName ?? "Where you'll be"}
                   </Text>
                 </View>
-              </View>
+              </StaticMapImage>
             );
           })()}
 
@@ -1549,7 +1547,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: glass.border.profileBase,
   },
-  // ORCH-1162 Bug 2 — "Where you'll be" static-Mapbox block (mirrors the trip
+  // ORCH-1162 Bug 2 — "Where you'll be" static map block (mirrors the trip
   // reference: a fixed-height rounded card with the map filling it + an accent
   // caption pill overlaid bottom-left). overflow:'hidden' clips the image to the
   // radius (Android glass policy — opaque clip, no translucent fill).
@@ -1560,14 +1558,12 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     justifyContent: "flex-end",
   },
-  whereMapImage: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.92,
-  },
+  // #4334 F-1 — the venue pill sits top-left: Google's logo (bottom-left) and
+  // "Map data ©Google" (bottom-right) must stay visible and unobscured.
   whereMapPill: {
     position: "absolute",
     left: 12,
-    bottom: 12,
+    top: 12,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,

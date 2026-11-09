@@ -3,7 +3,7 @@
  * host_estimate), per brand AND per user, on the database clock. The old
  * limit lived in one edge isolate's memory, so it held nothing across
  * instances while every call could hit the shared Mingla ad accounts'
- * estimate quota (and Mapbox for Snapchat and pins).
+ * estimate quota (and Google Geocoding for Snapchat and pins).
  *
  * Same pattern as biz_web_follow_rate_hit (#3682): one atomic upsert per
  * bucket in public.ad_host_estimate_rate (ad_host_estimate_rate_hit).

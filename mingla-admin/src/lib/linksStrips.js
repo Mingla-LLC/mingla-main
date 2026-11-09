@@ -36,6 +36,7 @@ export const LINKS_STRIP_MESSAGES = Object.freeze({
   title: "Add a title so people know what the strip is.",
   titleTooLong: `Keep the title to ${LINKS_STRIP_TITLE_MAX} characters.`,
   showsOn: "Choose the day the strip shows on.",
+  showsUntil: "“Show until” can't be before “Shows on”. Pick the same day or a later one, or leave it empty.",
   label: "Choose a label.",
   opens: "Choose what the strip opens.",
   blog: "Choose the blog post this strip opens.",
@@ -57,6 +58,12 @@ export function validateStripDraft(draft) {
   const value = draft || {};
   const title = String(value.title ?? "").trim();
   if (!ISO_DAY.test(String(value.showsOn ?? ""))) return { field: "showsOn", message: LINKS_STRIP_MESSAGES.showsOn };
+  // "Show until" is optional: empty keeps the strip to its one day. ISO days
+  // compare correctly as strings.
+  const until = String(value.showsUntil ?? "").trim();
+  if (until && (!ISO_DAY.test(until) || until < value.showsOn)) {
+    return { field: "showsUntil", message: LINKS_STRIP_MESSAGES.showsUntil };
+  }
   if (!title) return { field: "title", message: LINKS_STRIP_MESSAGES.title };
   if (title.length > LINKS_STRIP_TITLE_MAX) return { field: "title", message: LINKS_STRIP_MESSAGES.titleTooLong };
   if (!LINKS_STRIP_LABELS.includes(value.label)) return { field: "label", message: LINKS_STRIP_MESSAGES.label };
@@ -82,6 +89,8 @@ export function stripSaveArgs(draft) {
     p_opens: draft.opens,
     p_url: draft.opens === "web" ? normalizeStripUrl(draft.url) : null,
     p_blog_post_id: draft.opens === "blog" ? draft.blogPostId : null,
+    // Empty means the strip shows on its one day only.
+    p_shows_until: String(draft.showsUntil ?? "").trim() || null,
   };
 }
 
@@ -153,7 +162,22 @@ export function stripMetaLine(label, showsOn, today = new Date()) {
   return `${label} · ${when}`;
 }
 
-/** The day in words for the strips list ("Thursday 12 November"). */
+/**
+ * The days a strip shows, for the strips list: "Mon 9 – Fri 13", the month
+ * added when the range crosses one ("Fri 30 Oct – Mon 2 Nov"), or the single
+ * day ("Thu 12") when there is no end date.
+ */
+export function stripDateRange(showsOn, showsUntil) {
+  const start = dayFromIso(showsOn);
+  if (!start) return "No day";
+  const short = (day, withMonth) => `${day.toLocaleDateString("en-GB", { weekday: "short" })} ${day.getDate()}${withMonth ? ` ${day.toLocaleDateString("en-GB", { month: "short" })}` : ""}`;
+  const end = dayFromIso(showsUntil);
+  if (!end || isoDay(end) <= isoDay(start)) return short(start, false);
+  const crossesMonth = start.getMonth() !== end.getMonth() || start.getFullYear() !== end.getFullYear();
+  return `${short(start, crossesMonth)} – ${short(end, crossesMonth)}`;
+}
+
+/** The day in words ("Thursday 12 November"). */
 export function stripDayLabel(showsOn) {
   const day = dayFromIso(showsOn);
   return day ? day.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" }) : "No day";

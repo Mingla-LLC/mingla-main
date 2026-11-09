@@ -56,11 +56,6 @@
 #                                   correct publishes over a variable the app never
 #                                   reads. (mingla-business DOES read it from the
 #                                   environment — hence the asymmetry.)
-#   EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN NO live consumer in app-mobile. The producer was
-#                                   deleted (the busyness service, removed in #4347
-#                                   wave 3; see git history). The only other
-#                                   tracked mentions are .env.example and a test
-#                                   fixture. (mingla-business DOES consume it.)
 #   EXPO_PUBLIC_APPSFLYER_*         NOT CHECKED. These are secret-visibility EAS
 #                                   variables, which are builder-only and absent from
 #                                   ANY locally-published OTA (#990 addendum). That is

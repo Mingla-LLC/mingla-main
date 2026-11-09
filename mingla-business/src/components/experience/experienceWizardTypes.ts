@@ -122,7 +122,7 @@ export const labelForIndex = (i: number, n: number): string => {
  *
  * Issue #1363 (OQ-2, Seth-approved 2026-07-29) — SUPERSEDES the prior pick-only
  * predicate (placeId required). The invariant's intent — every stop carries a
- * real coordinate — is PRESERVED (lat/lng still required); only the Mapbox-
+ * real coordinate — is PRESERVED (lat/lng still required); only the pick-
  * placeId-required MECHANISM is dropped, so an un-indexed selected address is
  * valid. (Revises I-PROPOSED-1363-COORD-FROM-ANY-TIER.)
  *

@@ -10,7 +10,7 @@
  * be read either from `Constants.expoConfig.extra` (which the app.config.js
  * emits and survives Hermes/OTA) or via a STATIC `process.env.EXPO_PUBLIC_*`
  * member access (which IS inlined) — never a dynamic bracket lookup. This mirrors
- * the supabase/giphy/mapbox key-reachability contract.
+ * the supabase/giphy key-reachability contract.
  *
  * GATE: in the native postHogService modules (app-mobile + mingla-business), the
  * PostHog key/host MUST NOT be read via a dynamic `process.env[...]` bracket

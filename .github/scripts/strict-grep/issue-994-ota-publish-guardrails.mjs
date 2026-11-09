@@ -63,7 +63,8 @@
  *   4. TRIPWIRE INTEGRITY. `app-mobile/app.config.js` must keep
  *      `EXPO_PUBLIC_POSTHOG_KEY: process.env.… ?? null` — with NO string
  *      literal fallback — and `mingla-business/app.config.js` must keep
- *      `EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN: process.env.… ?? null`.
+ *      `EXPO_PUBLIC_ONESIGNAL_APP_ID: process.env.… ?? null` (#4334 retired the
+ *      map token that used to be this tripwire).
  *   5. THE HANDBOOK KEEPS POINTING AT THE TRUTH. §7.6 must name BOTH wrapper
  *      scripts and must keep the literal `"EXPO_PUBLIC_POSTHOG_KEY":{}` — the
  *      unset signature a human has to be able to recognise.
@@ -616,7 +617,7 @@ const TRIPWIRE_REQUIRED = {
     "EXPO_PUBLIC_POSTHOG_KEY:process.env.EXPO_PUBLIC_POSTHOG_KEY??null",
   ],
   bizConfig: [
-    "EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN:process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN??null",
+    "EXPO_PUBLIC_ONESIGNAL_APP_ID:process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID??null",
   ],
 };
 /** Rule 4 — a literal fallback on the consumer tripwire disarms everything. */
@@ -961,8 +962,8 @@ if (process.argv.includes("--self-test")) {
     [
       "export default {",
       "  extra: {",
-      "    EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN:",
-      "      process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ?? null,",
+      "    EXPO_PUBLIC_ONESIGNAL_APP_ID:",
+      "      process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID ?? null,",
       '    EXPO_PUBLIC_POSTHOG_KEY: process.env.EXPO_PUBLIC_POSTHOG_KEY ?? "phc_committedliteral",',
       "  },",
       "};",
@@ -1195,14 +1196,14 @@ if (process.argv.includes("--self-test")) {
   }
 
   // ---- Rule 4 / Rule 5 ----
-  // 19 — the business Mapbox tripwire loses its null fallback.
+  // 19 — the business tripwire (OneSignal app id since #4334) loses its null fallback.
   {
     const f = clean();
     f.targets.bizConfig = f.targets.bizConfig.replace(
-      "process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ?? null",
-      'process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ?? "pk.committed"',
+      "process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID ?? null",
+      'process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID ?? "4505e476-committed"',
     );
-    expect("19 business mapbox tripwire loses null", runGate(sync(f)).code, 1);
+    expect("19 business tripwire loses null", runGate(sync(f)).code, 1);
   }
   // 20 — the handbook stops naming a wrapper script.
   {

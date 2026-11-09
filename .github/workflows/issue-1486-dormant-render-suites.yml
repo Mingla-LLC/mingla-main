@@ -89,7 +89,7 @@ jobs:
       # factory predates the screen's import of `makePackageKey`, so the mount threw
       # "makePackageKey is not a function". Nothing noticed for months, because
       # nothing ran them.
-      - name: "ORCH-1118 — EditPublishedTripScreen Mapbox pickers + save gate"
+      - name: "ORCH-1118 — EditPublishedTripScreen address pickers + save gate"
         if: always()
         run: npx jest --config jest.orch1118.render.cjs --runInBand --ci
       - name: "ORCH-1122 — EditPublishedTripScreen cover dead-tap"

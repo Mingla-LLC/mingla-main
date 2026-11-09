@@ -149,6 +149,8 @@ export async function findOwnListingForPlace(
 }
 
 export interface CreateVenueListingInput {
+  /** #4334 — the picked Google place id (not the pool identity). */
+  locationProviderPlaceId?: string | null;
   brandId: string;
   name: string;
   slug: string;
@@ -233,6 +235,9 @@ export async function createVenueListing(
     p_theme_color: theme?.color ?? "",
     p_theme_font: theme?.font ?? "",
     p_theme_animation: theme?.animation ?? "",
+    // #4334 — the picked Google place id, written in the same insert as the
+    // pin (null when the venue has none).
+    p_location_place_id: input.locationProviderPlaceId ?? null,
   });
 
   if (error !== null) {

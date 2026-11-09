@@ -115,7 +115,7 @@ on:
       - "packages/location-input/**"
       - "app-mobile/src/components/PreferencesSheet.tsx"
       - "app-mobile/src/components/PreferencesSheet/PreferencesSectionsAdvanced.tsx"
-      - "app-mobile/src/components/location/MapboxAddressInput.tsx"
+      - "app-mobile/src/components/location/AddressInput.tsx"
       - "app-mobile/src/components/discover/CityPickerSheet.tsx"
       - "app-mobile/src/components/__tests__/orch-1361-preferences-location-multirow-bias.test.tsx"
       # ORCH-1365 [location-search-relevance] — consumer place-search corrective:
@@ -542,7 +542,7 @@ on:
       - "packages/location-input/**"
       - "app-mobile/src/components/PreferencesSheet.tsx"
       - "app-mobile/src/components/PreferencesSheet/PreferencesSectionsAdvanced.tsx"
-      - "app-mobile/src/components/location/MapboxAddressInput.tsx"
+      - "app-mobile/src/components/location/AddressInput.tsx"
       - "app-mobile/src/components/discover/CityPickerSheet.tsx"
       - "app-mobile/src/components/__tests__/orch-1361-preferences-location-multirow-bias.test.tsx"
       # ORCH-1365 [location-search-relevance] — same guarded trees as the push filter.
@@ -1848,8 +1848,6 @@ jobs:
           # url-injection defense. Fails-on-revert of the service `bias?.x ?`
           # merge guards, clampSuggestLimit, or the edge append guards.
           DENO_TEST_FILES=(
-            supabase/functions/mapbox-geocode/__tests__/mapboxGeocodeBias.orch1361.test.ts
-            supabase/functions/mapbox-geocode/__tests__/mapboxGeocodeBias.orch1361.adversarial.test.ts
             app-mobile/src/components/__tests__/orch-1361-preferences-location-multirow-bias.test.tsx
           )
           for attempt in 1 2 3; do
@@ -1887,7 +1885,6 @@ jobs:
       - name: Run issue #1363 hierarchy Deno regression
         run: >-
           deno test --allow-read --allow-net --no-check
-          supabase/functions/mapbox-geocode/__tests__/mapboxHierarchicalForward.issue1363.test.ts
           supabase/migrations/__tests__/issue_1363_publish_precision_g1_g2.test.ts
 
   orch-1363-curated-stroll-deno-tests:
@@ -1950,58 +1947,16 @@ jobs:
           # job is the sole CI enforcement of the corrective fix.
           #  - countryNames: trailing-country strip (T-3/T-4) — fails-on-revert of
           #    the strip / ≥2-token safety guard.
-          #  - mapboxPlaceSuggest: the consumer place builder (T-1/T-2) + the
-          #    BUSINESS byte-identical + isolation guard (T-5) — fails-on-revert if
-          #    a types/country leaks into buildSuggestUrl or handleSuggest borrows
-          #    the filtered place builder (protects ORCH-1079 INV-3 + SC-5).
-          #  - mapboxPlacesService: the shared service posts action "suggest_places"
-          #    (T-7) while the business autocompleteMapbox still posts "suggest".
+          #  - #4334: the provider-side suites (suggest builders, bias, fallback,
+          #    feature_type precision, the hierarchy forward) moved to Google and
+          #    now run in the discovered Deno 2 lane as issue_4334_* suites beside
+          #    the proxy (golden normalizers, §4.4 precision table, proxy contract,
+          #    hierarchy). This job keeps the provider-neutral suites.
           #  - orch-1365 app-mobile source-structure (T-8/T-9): Preferences uses
-          #    places mode + threads NO proximity (the exact "non-Lagos user finds
-          #    Lekki Lagos" gap that let ORCH-1361 through) — fails-on-revert if
-          #    proximity is reintroduced or the places routing is reverted.
-          #  - orch1365-collision-and-switch-isolation.adversarial (TESTER-owned):
-          #    country/state-name COLLISION matrix (over-strip locked + non-country
-          #    trailing-word guards + casing/diacritics/whitespace) AND the
-          #    SWITCH-level isolation the static gate + T-5 both miss (a reroute of
-          #    `case "suggest" → handleSuggestPlaces` regresses ORCH-1079 INV-3 but
-          #    is invisible to the body-scoped gate/T-5). Fails-on-revert proven by
-          #    the tester (QA report Step 5). Append-only; no gate logic modified.
-          #  - orch1365-inc1-collision-fallback (INC-1, implementor-owned, §12.6):
-          #    drives the exported `handler` with a stubbed fetch/Deno.env to prove
-          #    the ZERO-RESULT FALLBACK (T-14 "atlanta georgia" → 2 calls, full-query
-          #    fallback recovers Atlanta, session_token reused) AND the one-call
-          #    guard (T-15 "lekki nigeria" → 1 call, no retry) + genuine-country/
-          #    non-stripped single-call (T-16) + non-OK-not-masked (T-17). Needs
-          #    --allow-env (the handler reads MAPBOX_ACCESS_TOKEN).
-          #  - orch1365-inc1-fallback-failuremodes.adversarial (INC-1, TESTER-owned):
-          #    attacks the fallback's UNtested failure modes on angles T-14..T-17
-          #    miss — ADV-INC1-1 the `country &&` conjunct (no-strip EMPTY must NOT
-          #    retry; UNIQUELY red when the `country` guard is dropped while all of
-          #    T-14..T-17 stay green), ADV-INC1-2 both-empty graceful terminal, and
-          #    ADV-INC1-3 the FALLBACK's own 5xx swallowed to 200-empty (§12.4; T-17
-          #    only covers the BIASED error). Fails-on-revert proven in the QA report.
-          #  - issue1629_feature_type_precision (#1629): coordinate precision must
-          #    be READ from Mapbox's `properties.feature_type`, never asserted by
-          #    the client. Every business address surface hardcoded
-          #    `coordinatePrecision: "approximate"` inside onPick — the branch that
-          #    fires on a REAL pick — so `"exact"` was unreachable and production
-          #    carried 0 exact rows across events/venue_listings/experience_stops.
-          #    #1373's "Approximate location" caption would have appeared on every
-          #    venue, event and trip including precise ones. T-5 is the adversarial
-          #    edge: an unknown/missing feature_type must NEVER resolve to exact,
-          #    because over-claiming precision is fabricated data the user cannot
-          #    detect (Constitution rule 9) — the OPPOSITE default to #1622's
-          #    classifier, same principle, inverted inputs. T-1 carries a vacuity
-          #    guard so emptying the type lists fails rather than passing hollow.
+          #    places mode + threads NO proximity — fails-on-revert if proximity is
+          #    reintroduced or the places routing is reverted.
           DENO_TEST_FILES=(
-            supabase/functions/mapbox-geocode/__tests__/issue1629_feature_type_precision.test.ts
             supabase/functions/mapbox-geocode/__tests__/countryNames.orch1365.test.ts
-            supabase/functions/mapbox-geocode/__tests__/mapboxPlaceSuggest.orch1365.test.ts
-            supabase/functions/mapbox-geocode/__tests__/mapboxPlacesService.orch1365.test.ts
-            supabase/functions/mapbox-geocode/__tests__/orch1365-collision-and-switch-isolation.adversarial.test.ts
-            supabase/functions/mapbox-geocode/__tests__/orch1365-inc1-collision-fallback.test.ts
-            supabase/functions/mapbox-geocode/__tests__/orch1365-inc1-fallback-failuremodes.adversarial.test.ts
             app-mobile/src/components/__tests__/orch-1365-preferences-places-no-proximity.test.tsx
           )
           for attempt in 1 2 3; do
@@ -2032,7 +1987,7 @@ jobs:
           # I-CLOSE regression-protection): this source-structure suite runs in NO
           # other workflow, so THIS job is the sole CI enforcement of the swap.
           #  - T-1/T-6 (fails-on-revert): onboarding renders the shared
-          #    MapboxAddressInput in searchMode="places" + inBottomSheet={false};
+          #    AddressInput in searchMode="places" + inBottomSheet={false};
           #    the retired geocodingService.autocomplete() + debounce dropdown are
           #    GONE (revert → RED).
           #  - T-2/T-3: the consumer wrapper gates gorhom injection on

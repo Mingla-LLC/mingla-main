@@ -54,7 +54,6 @@
 
 import React, { useCallback, useState } from "react";
 import {
-  Image,
   LayoutAnimation,
   Platform,
   Pressable,
@@ -126,7 +125,8 @@ export interface RightNowFacts {
   /** Replaces the estimate line when present (e.g. "Leave by 5:35pm. …"). */
   readonly footnote?: string | null;
 }
-import { buildStaticMapUrl } from "./mapboxStaticImage";
+import { buildStaticMapUrl } from "./staticMapImage";
+import { StaticMapImage } from "./StaticMapFrame";
 import {
   experienceAvailabilityBanner as computeAvailabilityBanner,
   type AvailabilityBanner,
@@ -797,20 +797,17 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
           >
             Where you&rsquo;ll start
           </Text>
-          <View
+          <StaticMapImage
+            uri={mapUrl}
             style={[
               styles.mapBlock,
               surface.card,
               { height: isDesktop ? 300 : 180 },
             ]}
+            accessibilityLabel={`Map of ${mapStop.placeName ?? "the first stop"}`}
+            testID="experience-body-map"
           >
-            <Image
-              source={{ uri: mapUrl }}
-              style={styles.mapImage}
-              resizeMode="cover"
-              accessibilityLabel={`Map of ${mapStop.placeName ?? "the first stop"}`}
-            />
-            <MapPin size={26} {...accentIconProps} />
+            {/* #4334 N-6 — one pin only: Google's marker (drawn by the proxy). */}
             {mapStop.placeName !== null ? (
               <View
                 style={[styles.mapCapPill, { backgroundColor: palette.page }]}
@@ -820,7 +817,7 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
                 </Text>
               </View>
             ) : null}
-          </View>
+          </StaticMapImage>
         </View>
       ) : null}
 
@@ -1081,11 +1078,12 @@ const styles = StyleSheet.create({
     gap: 8,
     overflow: "hidden",
   },
-  mapImage: { ...StyleSheet.absoluteFillObject, opacity: 0.9 },
+  // #4334 F-1 — the caption pill sits top-left: Google's logo and "Map data
+  // ©Google" own the bottom corners and must stay visible.
   mapCapPill: {
     position: "absolute",
     left: 12,
-    bottom: 12,
+    top: 12,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,

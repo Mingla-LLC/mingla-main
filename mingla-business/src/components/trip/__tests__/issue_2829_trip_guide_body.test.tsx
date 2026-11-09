@@ -76,7 +76,9 @@ const BOUNDARY: Record<string, () => unknown> = {
   "./PresentedByFollowerCount": () => ({ PresentedByFollowerCount: leaf("PresentedByFollowerCount") }),
   "./OfferingMomentum": () => ({ OfferingMomentum: leaf("OfferingMomentum") }),
   "./socialProofTypes": () => ({}),
-  "./mapboxStaticImage": () => ({ buildStaticMapUrl: () => "https://map.fixture/static.png" }),
+  "./staticMapImage": () => ({ buildStaticMapUrl: () => "https://map.fixture/static.png" }),
+  // #4334 F-1 — the shared map renderer (sizes the request to its box).
+  "./StaticMapFrame": () => jest.requireActual("../../../../../packages/offering-rendering/StaticMapFrame"),
   "./tripOfferingTypes": () => ({}),
   "./useTripOfferingState": () => jest.requireActual("@mingla/offering-rendering/useTripOfferingState"),
   "./tripGuide": () => jest.requireActual("@mingla/offering-rendering/tripGuide"),

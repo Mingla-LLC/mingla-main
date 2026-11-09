@@ -150,7 +150,8 @@ Deno.test("#3526 TESTER — widening gemini regresses no other live depletion_si
   const LIVE = {
     openai: { reactive: { http: 429, field: "type", match: "insufficient_quota" } },
     resend: { reactive: { http: 429, field: "type", match: "quota_exceeded" } },
-    mapbox: { reactive: { http: 429, field: "status_text", match: "429" } },
+    // #4334 removed the map-vendor row; its shape (numeric http + status_text) stays covered.
+    numeric_status_text: { reactive: { http: 429, field: "status_text", match: "429" } },
     google_places: { reactive: { http: [429], field: "status_text", match: "RESOURCE_EXHAUSTED" } },
     serper: { reactive: { http: [400, 401, 402, 403, 429], field: "body", match: "Not enough credits" } },
     pexels: { header: { name: "x-ratelimit-remaining", warn: 2500 } },
@@ -168,7 +169,7 @@ Deno.test("#3526 TESTER — widening gemini regresses no other live depletion_si
   assertEquals(m(LIVE.openai, obs(429, "insufficient_quota", null)).depleted, true);
   assertEquals(m(LIVE.openai, obs(429, "rate_limit_exceeded", null)).depleted, false);
   assertEquals(m(LIVE.resend, obs(429, "quota_exceeded", null)).depleted, true);
-  assertEquals(m(LIVE.mapbox, obs(429, null, "429 Too Many Requests")).depleted, true);
+  assertEquals(m(LIVE.numeric_status_text, obs(429, null, "429 Too Many Requests")).depleted, true);
   assertEquals(m(LIVE.google_places, obs(429, null, "RESOURCE_EXHAUSTED")).depleted, true);
   assertEquals(m(LIVE.serper, obs(402, null, "Not enough credits")).depleted, true);
   assertEquals(m(LIVE.serper, obs(500, null, "Not enough credits")).depleted, false);

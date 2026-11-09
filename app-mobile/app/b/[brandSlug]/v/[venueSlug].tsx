@@ -209,6 +209,8 @@ const toVenueViewModel = (
   timezone: venue.timezone,
   galleryPhotoUrls: venue.galleryPhotoUrls,
   pitch: venue.pitch,
+  // #4334 — the Google Maps link opens the named place.
+  googlePlaceId: venue.googlePlaceId,
 });
 
 export default function ConsumerPublicVenueRoute(): React.ReactElement {

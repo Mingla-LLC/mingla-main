@@ -11,9 +11,9 @@
 //   admin, server-decided) → the lock gating case fails.
 // - a vote / RSVP / thumbs mutation or service that posts a chat line
 //   (sendMessage, messages insert, notify) → the "votes post no chat line" case fails.
-// - mergePlaceResults putting Mapbox rows (or the typed row) before pool rows
+// - mergePlaceResults putting Google rows (or the typed row) before pool rows
 //   → the place order case fails.
-// MINGLA-INVARIANT: I-4261-PLACE-SEARCH-POOL-FIRST | issue #4261 | Place results list Mingla pool rows before Mapbox rows, and the typed address row last.
+// MINGLA-INVARIANT: I-4261-PLACE-SEARCH-POOL-FIRST | issue #4261 | Place results list Mingla pool rows before Google rows, and the typed address row last.
 
 import {
   applyReactionPatch,
@@ -264,18 +264,18 @@ Deno.test("chatPlanKindOf for every chat kind", () => {
   assertEquals(chatPlanKindOf({ isGroupChat: false, isEnquiry: true }), null, "brand enquiry");
 });
 
-Deno.test("place results: pool first, Mapbox next (de-duped), typed row last", () => {
+Deno.test("place results: pool first, Google next (de-duped), typed row last", () => {
   const rows = mergePlaceResults(
     [{ id: "p1", name: "Skyline Terrace", area: "Victoria Island, Lagos", lat: 6.4, lng: 3.4 }],
     [
-      { mapboxId: "m1", name: "Skyline terrace", area: "Victoria Island, Lagos" },
-      { mapboxId: "m2", name: "Terrace Park", area: "Ozumba Mbadiwe Ave" },
+      { providerPlaceId: "m1", name: "Skyline terrace", area: "Victoria Island, Lagos" },
+      { providerPlaceId: "m2", name: "Terrace Park", area: "Ozumba Mbadiwe Ave" },
     ],
     "sky",
   );
-  assertEquals(rows.map((r) => r.kind), ["pool", "mapbox", "typed"], "order");
+  assertEquals(rows.map((r) => r.kind), ["pool", "google", "typed"], "order");
   assertEquals(rows[0].onMingla, true, "pool rows are On Mingla");
-  assertEquals(rows[1].name, "Terrace Park", "the Mapbox copy of a pool place is dropped");
+  assertEquals(rows[1].name, "Terrace Park", "the Google copy of a pool place is dropped");
   assertEquals(mergePlaceResults([], [], "  "), [], "no typed row for an empty query");
 });
 

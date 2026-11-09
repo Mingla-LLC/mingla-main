@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/api-health-probe/issue_4334_google_probes.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4334-google-probes-supabase",
+  "profile": "deno-2-unit"
+}

@@ -6,9 +6,9 @@
  * CONTEXT: ORCH-1158 added a REAL static-map preview to the wizard's Where step,
  * replacing the striped placeholder, with an honest "pick an address" empty state
  * when there are no coords. The ORCH-1158 branch test asserted the PRE-ORCH-1165
- * client-token URL contract (api.mapbox.com + access_token). On current `main`
+ * client-token URL contract (a vendor host + access_token). On current `main`
  * the static map is fetched through the vendor-NEUTRAL `static-map` Supabase edge
- * proxy (ORCH-1165): the URL is token-less and the substring "mapbox" appears
+ * proxy (ORCH-1165): the URL is token-less and no provider host appears
  * NOWHERE. This test asserts the CURRENT proxy contract + the wizard wiring.
  *
  * Two assertion styles, both fails-on-revert under TRUE LINE DELETION:
@@ -32,7 +32,7 @@ import path from "node:path";
 import {
   buildProxyStaticMapUrl,
   type StaticMapParams,
-} from "../../../../../packages/offering-rendering/mapboxStaticProxyUrl";
+} from "../../../../../packages/offering-rendering/staticMapProxyUrl";
 
 const BASE = "https://gqnoajqerqhnvulmnyvv.supabase.co/functions/v1";
 const ACCENT = "#eb7825"; // accent.warm — the exact value the wizard passes.
@@ -73,7 +73,7 @@ describe("ORCH-1186 wizard map preview — buildStaticMapUrl contract", () => {
     expect(u).toContain("accent=eb7825"); // '#' stripped, lowercased
     // Vendor-neutral (Seth's hard requirement): no token, no upstream host.
     expect(u.includes("access_token")).toBe(false);
-    expect(u.toLowerCase().includes("mapbox")).toBe(false);
+    expect(u.includes("googleapis.com")).toBe(false);
   });
 
   test("absent coords → null (the wizard renders the honest empty state)", () => {
@@ -123,7 +123,11 @@ describe("ORCH-1186 wizard map preview — CreatorStep3Where wiring", () => {
 
   test("renders the real map <Image> when a URL resolves", () => {
     expect(PREVIEW).toMatch(/mapUrl !== null \?/);
-    expect(PREVIEW).toContain("<Image");
+    // [TEST-MOD-APPROVED #4334] F-1: the real map <Image> is drawn by the shared
+    // StaticMapImage, which requests it at the box's own size (Google's logo and
+    // attribution stay uncropped).
+    expect(PREVIEW).toContain("<StaticMapImage");
+    expect(PREVIEW).toContain("uri={mapUrl}");
   });
 
   test("renders the honest empty state (no fabricated tile) when no URL", () => {

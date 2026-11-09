@@ -22,6 +22,7 @@ import {
   type TripVibe,
 } from '@/lib/growth-tools-submit'
 import { TripReportView } from './TripReportView'
+import { GoogleMapsAttribution } from '@/components/ui/google-maps-attribution'
 
 type Phase = 'intake' | 'running' | 'report'
 
@@ -178,7 +179,7 @@ export function TripQuoterExperience({ embedded = false }: { readonly embedded?:
   const [runId, setRunId] = useState<string | null>(null)
   const [report, setReport] = useState<TripReport | null>(null)
 
-  // Debounced destination autocomplete (validates against Mapbox). Skips while a
+  // Debounced destination autocomplete (validates against Google Places). Skips while a
   // suggestion is chosen; degrades to free text if the geocoder is down.
   useEffect(() => {
     const q = destination.trim()
@@ -395,6 +396,7 @@ export function TripQuoterExperience({ embedded = false }: { readonly embedded?:
                     ))}
                   </ul>
                 )}
+                <GoogleMapsAttribution />
               </div>
             ) : null}
             {!destChosen && !geocodeDown && !destSearching && destination.trim().length >= 2 &&
