@@ -164,7 +164,7 @@ test('careers: one title template, JobPosting, own robots.txt and sitemap', asyn
   assert.doesNotMatch(robots, /^Host:/m)
   const sm = seo.careersSitemapXml([role])
   assert.match(sm, /<loc>https:\/\/career\.usemingla\.com\/roles\/founding-engineer<\/loc><lastmod>2026-10-01<\/lastmod>/)
-  assert.match(code(read('app/careers/layout.tsx')), /title: \{ default: CAREERS_DEFAULT_TITLE, template: CAREERS_TITLE_TEMPLATE \}/)
+  assert.match(code(read('app/careers/layout.tsx')), /title: \{ absolute: CAREERS_DEFAULT_TITLE, template: CAREERS_TITLE_TEMPLATE \}/)
   assert.match(code(read('app/careers/roles/[slug]/page.tsx')), /serializeJobPosting\(jobPostingStructuredData\(role\)\)/)
   const mw = code(read('middleware.ts'))
   assert.match(mw, /if \(pathname === '\/robots\.txt' \|\| pathname === '\/sitemap\.xml'\) \{\s*const url = req\.nextUrl\.clone\(\)\s*url\.pathname = `\$\{CAREERS_PREFIX\}\$\{pathname\}`/)

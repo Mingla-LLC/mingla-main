@@ -295,8 +295,10 @@ const WORDMARKS = `(() => {
   return marks.filter((m) => !m.closest('.vcard')).map((m) => { const a = m.closest('a'); return a ? a.getAttribute('href') : null })
 })()`
 
+// #4339 round B: a clip below the first screen carries its poster in
+// data-poster until it nears the screen (lazy poster), so either counts.
 const CLIP_RULES = `(() => [...document.querySelectorAll('video[data-landing-clip]')].map((v) => ({
-  poster: !!(v.getAttribute('poster') || v.getAttribute('data-poster')), // #4339 round B: lazy posters below the fold muted: v.muted, inline: v.hasAttribute('playsinline'), preloadNone: v.getAttribute('preload') === 'none' || v.getAttribute('src') !== null,
+  poster: !!(v.getAttribute('poster') || v.getAttribute('data-poster')), muted: v.muted, inline: v.hasAttribute('playsinline'), preloadNone: v.getAttribute('preload') === 'none' || v.getAttribute('src') !== null,
 })))()`
 
 test('built: at 375 px no orphan tiles, the footer is a symmetrical 2×2, every wordmark goes Home', { skip: !(BUILT && CHROME) && 'set ISSUE_4339_BUILT=1 after next build (Chrome needed)' }, async () => {

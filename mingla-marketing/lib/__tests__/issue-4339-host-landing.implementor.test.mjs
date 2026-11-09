@@ -215,7 +215,8 @@ test('clips: poster first, no source in the server HTML, never loaded under redu
   assert.ok(video !== '', 'the clip renders a <video>')
   assert.doesNotMatch(video, /\ssrc=/, 'no src in the server HTML')
   assert.doesNotMatch(media, /<source/)
-  for (const attr of ['muted', 'loop', 'playsInline', 'preload="none"', 'poster={poster}']) assert.ok(video.includes(attr), attr)
+  // #4339 round B: a lazy poster waits in data-poster (landing-media.tsx).
+  for (const attr of ['muted', 'loop', 'playsInline', 'preload="none"', 'poster={lazyPoster ? undefined : poster}']) assert.ok(video.includes(attr), attr)
   assert.match(media, /prefers-reduced-motion: reduce/)
   assert.match(media, /saveData === true/)
   assert.match(media, /if \(!video \|\| src === '' \|\| prefersStillMedia\(\)\) return/)

@@ -152,5 +152,6 @@ test('built: the Cary page and tile use the c-cary loop', { skip: !BUILT }, () =
     const html = built(rel)
     assert.doesNotMatch(html, /weekend-cary-cover/, rel)
   }
-  assert.match(built('cities/cary-nc.html'), /\/marketing\/site\/m\/c-cary\.jpg/)
+  // #4339 round B: the poster is the WebP beside the JPEG.
+  assert.match(built('cities/cary-nc.html'), /\/marketing\/site\/m\/c-cary\.webp/)
 })

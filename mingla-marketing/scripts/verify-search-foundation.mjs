@@ -519,7 +519,9 @@ async function main() {
 
     const careers = await request(port, '/', { host: 'career.usemingla.com' })
     assert.equal(careers.status, 200, 'careers host remains reachable')
-    assert.match(textContent(careers.body.toString('utf8')), /Build Mingla with us\./)
+    // #4339 (round A redesign): the careers hero reads "Build the app for what to do."
+    assert.match(textContent(careers.body.toString('utf8')), /Build the app for what to do\./)
+    assert.match(careers.body.toString('utf8'), /<title>Careers at Mingla<\/title>/, 'one careers title, no doubled brand')
     assert.notEqual(careers.headers.location, `${APEX_ORIGIN}/`)
     const aasa = await request(port, '/.well-known/apple-app-site-association', { host: 'www.usemingla.com' })
     assert.equal(aasa.status, 200, '.well-known remains reachable on its owner')

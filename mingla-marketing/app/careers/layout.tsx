@@ -13,7 +13,7 @@ import { CAREERS_DEFAULT_TITLE, CAREERS_TITLE_TEMPLATE } from '@/lib/careers-seo
 // #4339 round B: ONE title template for the careers host ("<page> | Mingla
 // Careers"); the index has its own absolute title, never a doubled brand.
 export const metadata: Metadata = {
-  title: { default: CAREERS_DEFAULT_TITLE, template: CAREERS_TITLE_TEMPLATE },
+  title: { absolute: CAREERS_DEFAULT_TITLE, template: CAREERS_TITLE_TEMPLATE },
   description:
     "Build Mingla with us. Open roles on a small, fast team making it easier to find something to do — in the US and Nigeria.",
   metadataBase: new URL('https://career.usemingla.com'),
