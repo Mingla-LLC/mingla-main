@@ -22,6 +22,7 @@ const DRAWER = readAdmin("components/contentCalendar/ContentDrawer.jsx");
 const CARD = readAdmin("components/contentCalendar/ContentCard.jsx");
 const MODAL = readAdmin("components/ui/Modal.jsx");
 const SHELL = readAdmin("components/ui/Drawer.jsx");
+const CALLS = readAdmin("lib/calendarCalls.js");
 
 Deno.test("#3802 Wave 2 rework: Add is one stable single-flight request", async () => {
   let resolve!: () => void;
@@ -91,7 +92,12 @@ Deno.test("#3802 Wave 2 rework: calendar is Monday-first and mobile becomes a se
   assertMatch(PAGE, /data-calendar-day-dense=\{key\}[\s\S]*onClick=\{\(\) => onDay\(key\)\}/);
   assertMatch(PAGE, /min-h-16 min-w-0 flex-col gap-1 border-b border-r/);
   assertMatch(PAGE, /Nothing on this day\./);
-  assertMatch(PAGE, /resolvedOptions\(\)\.timeZone/);
+  // #4339: the zone footnote moved into lib/calendarCalls.js when the Calls
+  // layer landed (Seth approved, 9 Nov: "the footnote names that zone"). The
+  // page still names the viewer's own zone, now read through viewerTimeZone().
+  assertMatch(PAGE, /const zone = viewerTimeZone\(\) \|\| undefined;/);
+  assertMatch(PAGE, /data-calendar-zone-note="">\{calendarZoneNote\(zone\)\}/);
+  assertMatch(CALLS, /export function viewerTimeZone\(\) \{\s*try \{\s*return Intl\.DateTimeFormat\(\)\.resolvedOptions\(\)\.timeZone/);
   // [TEST-MOD-APPROVED #3980] synced Wave 3 rework 2 (N1): the month box became 640px
   // of container (the design's dense-day line), so the titles show from 640px.
   assertMatch(PAGE, /hidden min-w-0 flex-col gap-0\.5 @min-\[640px\]:flex/);
