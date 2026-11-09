@@ -284,6 +284,31 @@ describe("R — Route all stops", () => {
     }
   });
 
+  test("R-6 Google place ids: the destination's always, the waypoints' only when every waypoint has one (#4334)", () => {
+    const A = "ChIJAAAAAAAAAAAAAAAAAAAAAA";
+    const B = "ChIJBBBBBBBBBBBBBBBBBBBBBB";
+    const C = "ChIJCCCCCCCCCCCCCCCCCCCCCC";
+    const all = new URLSearchParams(
+      (routeAllStopsUrl([
+        { lat: 6.1, lng: 3.1, googlePlaceId: A },
+        { lat: 6.2, lng: 3.2, googlePlaceId: B },
+        { lat: 6.3, lng: 3.3, googlePlaceId: C },
+      ]) as string).split("?")[1],
+    );
+    expect([all.get("destination_place_id"), all.get("waypoint_place_ids")]).toEqual([C, `${A}|${B}`]);
+    const partial = new URLSearchParams(
+      (routeAllStopsUrl([
+        { lat: 6.1, lng: 3.1, googlePlaceId: A },
+        { lat: 6.2, lng: 3.2, googlePlaceId: "33333333-3333-4333-8333-333333333333" },
+        { lat: 6.3, lng: 3.3 },
+      ]) as string).split("?")[1],
+    );
+    expect([partial.get("destination_place_id"), partial.get("waypoint_place_ids")]).toEqual([null, null]);
+    // The shared Maps target's coordinate rule: out-of-range or 0,0 falls back to the name.
+    const fallback = new URLSearchParams((routeAllStopsUrl([{ lat: 95, lng: 3, label: "Nok" }, { lat: 0, lng: 0, label: "Ìtàn" }]) as string).split("?")[1]);
+    expect([fallback.get("waypoints"), fallback.get("destination")]).toEqual(["Nok", "Ìtàn"]);
+  });
+
   test("R-4 a long plan is cut to Google's 9 waypoints, keeping the order and the last stop", () => {
     const stops = Array.from({ length: 12 }, (_, i) => ({ label: `Stop ${i + 1}` }));
     const query = new URLSearchParams((routeAllStopsUrl(stops, "driving") as string).split("?")[1]);
