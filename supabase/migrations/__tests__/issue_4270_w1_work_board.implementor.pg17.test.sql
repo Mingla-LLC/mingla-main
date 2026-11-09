@@ -357,7 +357,9 @@ set local session_replication_role = origin;
 do $order$
 declare v jsonb; v_c jsonb;
 begin
-  v := pg_temp.tw_j(pg_temp.tw_person('owner', $q$select public.ops_work_list('{"owner":"oona.w4270@test.local"}'::jsonb)::text$q$));
+  -- done_days 7 keeps the two done cards (closed 1 and 2 days ago) in the list
+  -- on every weekday; the default window is "closed since Monday" (#4270).
+  v := pg_temp.tw_j(pg_temp.tw_person('owner', $q$select public.ops_work_list('{"owner":"oona.w4270@test.local","done_days":7}'::jsonb)::text$q$));
   perform pg_temp.tw_check('M-ORDER', 'To do earliest due first, then In progress, then Done latest due first',
     (select string_agg(c->>'title', '|' order by o) from jsonb_array_elements(v->'cards') with ordinality t(c, o)),
     'T4270 Two days late|T4270 Due today|T4270 Due in three days|T4270 Doing tomorrow|T4270 Done due later|T4270 Done due earlier');
