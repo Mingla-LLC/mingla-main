@@ -1,6 +1,5 @@
 'use client'
 import { useState, type ReactNode } from 'react'
-import QRCode from 'react-qr-code'
 import { FilterChips } from './filter-row'
 import { captureMarketing } from '@/components/marketing/posthog-provider'
 
@@ -35,9 +34,4 @@ export function DownloadToggle({ initial, explorer, host }: DownloadToggleProps)
       {app === 'host' ? host : explorer}
     </div>
   )
-}
-
-/** A QR code for an app link (the Host OneLink), near-black on white. */
-export function AppQr({ value, title, size = 152 }: { value: string; title: string; size?: number }) {
-  return <QRCode value={value} size={size} title={title} fgColor="#111110" bgColor="#FFFFFF" level="M" />
 }

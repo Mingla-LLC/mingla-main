@@ -11,7 +11,10 @@
       "mingla-marketing/app/**",
       "mingla-marketing/components/**",
       "mingla-marketing/lib/**",
-      "mingla-marketing/public/marketing/site/**"
+      "mingla-marketing/public/marketing/site/**",
+      "mingla-marketing/scripts/issue-4339-first-load-budget.mjs",
+      "mingla-marketing/next.config.ts",
+      "mingla-marketing/package.json"
     ],
     "steps": [
       {

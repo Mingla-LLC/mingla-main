@@ -17,6 +17,8 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
+import { execFileSync } from 'node:child_process'
+import { pathToFileURL } from 'node:url'
 import { after, test } from 'node:test'
 import { MARKETING, makeLoader } from './issue-4339-round-b-load.mjs'
 
@@ -142,4 +144,30 @@ test('built: no legacy font preload, hero poster preloaded, first-load JS', { sk
     assert.ok(preloads.length <= 4, `${route}: at most the four brand faces are preloaded (${preloads.length})`)
   }
   assert.match(html('host/events'), /<link rel="preload" as="image" href="\/marketing\/site\/m\/crowd\.webp" fetchPriority="high"\/>|<link rel="preload" href="\/marketing\/site\/m\/crowd\.webp" as="image" fetchPriority="high"\/>/)
+})
+
+test('speed fix: the first-load budget runs in the build, and city routes leave the historical layout behind', async () => {
+  const pkg = JSON.parse(read('package.json'))
+  assert.match(pkg.scripts.build, /issue-4339-built-output-anti-copy\.mjs --built && node scripts\/issue-4339-first-load-budget\.mjs --self-test && node scripts\/issue-4339-first-load-budget\.mjs$/, 'the budget closes the release build')
+  const budget = await import(pathToFileURL(path.join(MARKETING, 'scripts/issue-4339-first-load-budget.mjs')).href)
+  assert.equal(budget.FIRST_LOAD_BUDGET_BYTES, 130_000)
+  for (const entry of ['/(explorer)/page', '/host/page', '/host/[icp]/page', '/cities/[city]/page', '/(core)/going-out/page', '/schedule/page', '/help/page']) {
+    assert.ok(budget.BUDGET_ROUTES.some(([e]) => e === entry), `${entry} is budgeted`)
+  }
+  // The release city route renders the redesigned page only.
+  const page = code(read('app/cities/[city]/page.tsx'))
+  assert.match(page, /import \{ CityHub \} from '@\/components\/cities\/city-route'/)
+  const route = code(read('components/cities/city-route.tsx'))
+  assert.doesNotMatch(route, /city-hub'|framer-motion|city-catalogue|device-cta/)
+  assert.match(code(read('next.config.ts')), /if \(process\.env\.MINGLA_HISTORICAL_2983_BUILD === '1'\) webpackConfig\.plugins\.push\(new HistoricalCityLayoutPlugin\(\)\)/)
+  for (const rel of ['components/cities/city-page.tsx', 'components/cities/city-weekend.tsx', 'components/cities/city-this-weekend.tsx', 'components/cities/city-actions.tsx']) {
+    // Type-only imports erase at build time; only value imports ship.
+    const src = code(read(rel)).replace(/^import type .*$/gm, '')
+    assert.doesNotMatch(src, /from '\.\/city-hub'|from 'framer-motion'|from '@\/components\/cutout\/device-cta'|from '@\/components\/page-system\/catalogue-detail'/, `${rel}: no historical layout, motion, device CTA or eager detail sheet`)
+  }
+})
+
+test('speed fix (built): every redesigned route under the first-load budget, none with framer-motion', { skip: !process.env.ISSUE_4339_BUILT && 'set ISSUE_4339_BUILT=1 after npm run build' }, () => {
+  const out = execFileSync(process.execPath, [path.join(MARKETING, 'scripts/issue-4339-first-load-budget.mjs')], { cwd: MARKETING, encoding: 'utf8' })
+  assert.match(out, /PASS #4339 speed budget/)
 })

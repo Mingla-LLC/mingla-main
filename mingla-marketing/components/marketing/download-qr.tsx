@@ -1,4 +1,3 @@
-'use client'
 // ORCH-1319 — the device-smart download QR. Reused by the nav QR panel AND the
 // /download desktop page.
 //
@@ -9,6 +8,10 @@
 //
 // react-qr-code renders a PURE inline <svg> with NO network calls, so it is safe
 // in a client component and inside the server /download page alike.
+//
+// #4339 speed fix: no 'use client' here. The nav QR panel (a client module)
+// still bundles it; the server /download page now renders the SVG itself and
+// ships none of the QR encoder.
 
 import QRCode from 'react-qr-code'
 import { DOWNLOAD_URL } from '@/lib/site'
