@@ -283,7 +283,13 @@ export function VenueDetailsEditor({
     const onError = (error: Error): void => setFormError(error.message);
     if (identityMode === "direct") {
       updateIdentity.mutate(identityPatch, {
-        onSuccess: () => {
+        onSuccess: ({ changed }) => {
+          // #4334 — the server compares again and may write nothing
+          // (changed:false). Never claim a save that did not happen.
+          if (!changed) {
+            setFormError("Nothing has changed yet.");
+            return;
+          }
           closeForm();
           setNotice("Saved. Mingla checks these details when it reviews your venue.");
         },
