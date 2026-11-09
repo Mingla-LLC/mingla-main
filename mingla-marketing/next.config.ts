@@ -41,6 +41,10 @@ const CSP_SCRIPT_SRC = [
   'https://*.googletagmanager.com',
   'https://us-assets.i.posthog.com',
 ]
+// `next dev` only: its webpack runtime and Fast Refresh evaluate strings, so
+// without this nothing hydrates in development (the #2331 marketing privacy
+// specs run on `next dev`). Production builds never get it.
+const CSP_DEV_SCRIPT_SRC = process.env.NODE_ENV === 'production' ? '' : " 'unsafe-eval'"
 
 function contentSecurityPolicy(): { enforced: string; reportOnly: string } {
   const base = [
@@ -48,7 +52,7 @@ function contentSecurityPolicy(): { enforced: string; reportOnly: string } {
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
-    `script-src ${CSP_SCRIPT_SRC.join(' ')}`,
+    `script-src ${CSP_SCRIPT_SRC.join(' ')}${CSP_DEV_SCRIPT_SRC}`,
   ]
   const full = [
     "default-src 'self'",
@@ -176,10 +180,12 @@ const config: NextConfig = {
   poweredByHeader: false,
   // #4339 round B (anti-copy): test ids never ship (the gate
   // .github/scripts/strict-grep/issue-4339-built-output-anti-copy.mjs fails a
-  // build that still contains one).
-  compiler: {
-    reactRemoveProperties: { properties: ['^data-testid$'] },
-  },
+  // build that still contains one). Production builds only: `next dev` keeps
+  // them for the #2331 marketing privacy Playwright specs, which select by test id.
+  compiler:
+    process.env.NODE_ENV === 'production'
+      ? { reactRemoveProperties: { properties: ['^data-testid$'] } }
+      : {},
   reactStrictMode: true,
   devIndicators: false,
   // Pin trace root to this app so Next does not climb into the parent monorepo

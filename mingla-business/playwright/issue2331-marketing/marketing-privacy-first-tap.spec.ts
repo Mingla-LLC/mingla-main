@@ -137,10 +137,14 @@ test("#4318 usemingla.com: Escape still closes the home menu with the privacy sh
   expect(await page.evaluate(() => (window as unknown as { __minglaPrivacyPrehydrationOff?: unknown }).__minglaPrivacyPrehydrationOff)).toBeUndefined();
 
   // After hydration: open the menu, Escape closes it, no dialog is left.
+  // #4339: the redesigned site menu is a disclosure (aria-expanded on its
+  // button, "Open menu" / "Close menu"), not a dialog; Escape closes it and
+  // puts focus back on the button, with the privacy sheet still closed.
   await page.getByRole("button", { name: "Open menu" }).click();
-  await expect(page.locator('[role="dialog"]')).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Close menu" })).toHaveAttribute("aria-expanded", "true");
   await page.keyboard.press("Escape");
-  await expect.poll(() => page.evaluate(() => document.querySelectorAll('[role="dialog"]').length), { timeout: 6_000 }).toBe(0);
+  await expect(page.getByRole("button", { name: "Open menu" })).toHaveAttribute("aria-expanded", "false", { timeout: 6_000 });
+  expect(await page.evaluate(() => document.querySelectorAll('[role="dialog"]').length)).toBe(0);
   await expect(page.getByRole("button", { name: "Open menu" })).toBeFocused();
   await expect(page.getByTestId("privacy-sheet")).toBeHidden();
 });

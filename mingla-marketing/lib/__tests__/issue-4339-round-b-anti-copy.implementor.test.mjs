@@ -27,6 +27,8 @@ const BUILT = process.env.ISSUE_4339_BUILT === '1'
 test('next.config: no x-powered-by, no test ids, issue refs stripped from emitted JS', () => {
   assert.match(config, /poweredByHeader: false,/)
   assert.match(config, /reactRemoveProperties: \{ properties: \['\^data-testid\$'\] \}/)
+  // Production builds only: `next dev` keeps test ids for the #2331 marketing privacy specs.
+  assert.match(config, /process\.env\.NODE_ENV === 'production'\s*\?\s*\{ reactRemoveProperties:/)
   assert.match(config, /webpackConfig\.plugins = \[\.\.\.\(webpackConfig\.plugins \?\? \[\]\), new StripIssueRefsPlugin\(\)\]/)
   assert.match(config, /stage: Compilation\.PROCESS_ASSETS_STAGE_SUMMARIZE/, 'runs after minification')
   const literal = /const ISSUE_REF_IN_STRING = (\/.+\/g)\n/.exec(config)?.[1]
@@ -44,6 +46,8 @@ test('Content-Security-Policy: enforced script-src allowlist, frame-ancestors ke
   assert.match(config, /\{ key: 'Content-Security-Policy-Report-Only', value: csp\.reportOnly \}/)
   const scriptSrc = /const CSP_SCRIPT_SRC = \[([\s\S]*?)\]/.exec(config)[1].match(/'[^']+'|"[^"]+"/g).map((s) => s.slice(1, -1))
   assert.deepEqual(scriptSrc, ["'self'", "'unsafe-inline'", 'https://www.googletagmanager.com', 'https://*.googletagmanager.com', 'https://us-assets.i.posthog.com'])
+  // 'unsafe-eval' is added for `next dev` only, never for a production build.
+  assert.match(config, /const CSP_DEV_SCRIPT_SRC = process\.env\.NODE_ENV === 'production' \? '' : " 'unsafe-eval'"/)
   for (const directive of ["\"frame-ancestors 'self'\"", "\"object-src 'none'\"", "\"base-uri 'self'\"", "\"form-action 'self'\""]) assert.ok(config.includes(directive), directive)
   assert.match(config, /connect-src 'self' \$\{supabaseOrigins\(\)\.join\(' '\)\} https:\/\/us\.i\.posthog\.com/)
   assert.match(config, /"frame-src 'self' https:\/\/www\.youtube-nocookie\.com https:\/\/player\.vimeo\.com"/)
@@ -100,6 +104,7 @@ test('built: the gate passes on .next and the live headers', { skip: !BUILT && '
     const csp = res.headers.get('content-security-policy') ?? ''
     assert.match(csp, /frame-ancestors 'self'/)
     assert.match(csp, /script-src 'self' 'unsafe-inline' https:\/\/www\.googletagmanager\.com/)
+    assert.doesNotMatch(csp, /unsafe-eval/, 'production never allows eval')
     assert.match(res.headers.get('content-security-policy-report-only') ?? '', /connect-src 'self'/)
     const html = await res.text()
     assert.doesNotMatch(html, /data-testid/)
