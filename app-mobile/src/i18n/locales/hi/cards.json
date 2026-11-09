@@ -148,5 +148,6 @@
   "price.currency_PLN": "पोलिश ज़्लॉटी",
   "price.currency_RON": "रोमानियाई लेउ",
   "price.currency_SEK": "स्वीडिश क्रोना",
-  "price.currency_USD": "अमेरिकी डॉलर"
+  "price.currency_USD": "अमेरिकी डॉलर",
+  "price.from": "{{price}} से शुरू"
 }

@@ -148,5 +148,6 @@
   "price.currency_PLN": "zloty Polandia",
   "price.currency_RON": "leu Rumania",
   "price.currency_SEK": "krona Swedia",
-  "price.currency_USD": "dolar AS"
+  "price.currency_USD": "dolar AS",
+  "price.from": "Mulai {{price}}"
 }

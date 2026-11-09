@@ -12,7 +12,7 @@
 //
 // Run: deno test --allow-read --no-check app-mobile/src/utils/__tests__/issue_4347_display_price.implementor.test.ts
 
-import { buildDisplayPrice, isFreePrice, roundApproxAmount, trustedServerPrice } from "../displayPrice.ts";
+import { buildDisplayPrice, formatFromPrice, isFreePrice, roundApproxAmount, trustedServerPrice } from "../displayPrice.ts";
 import { curatedSpendLevel } from "../curatedPriceRange.ts";
 
 function assertEquals(actual: unknown, expected: unknown, message = "mismatch"): void {
@@ -156,4 +156,18 @@ Deno.test("#4347 rework: server fields are trusted only from THIS session's live
   if (!deck.includes("? LIVE_DISPLAY_PRICE_SESSION : null")) {
     throw new Error("deckService no longer stamps live display fields");
   }
+});
+
+Deno.test("#4347 venue experience rows: From ≈ $74 converted, exact when same currency, own symbol with no rate", () => {
+  const labels = { free: "Gratis", from: (price: string) => `Desde ${price}` };
+  const withRates = (p) => buildDisplayPrice(p, deps);
+  const withoutRates = (p) => buildDisplayPrice(p, noRates);
+  // ₦100,000 = 10,000,000 kobo, viewer in dollars.
+  const row = { isFree: false, fromMinor: 10_000_000, currency: "NGN", viewerCurrency: "USD" };
+  assertEquals(formatFromPrice(row, withRates, labels), "Desde ≈ $74", "the row printed naira as dollars, or did not convert");
+  assertEquals(formatFromPrice({ ...row, viewerCurrency: "NGN" }, withRates, labels), "Desde ₦100,000");
+  assertEquals(formatFromPrice(row, withoutRates, labels), "Desde ₦100,000", "no rate: own currency, own symbol");
+  assertEquals(formatFromPrice({ ...row, isFree: true }, withRates, labels), "Gratis");
+  assertEquals(formatFromPrice({ ...row, fromMinor: null }, withRates, labels), "", "no priced tier: nothing");
+  assertEquals(formatFromPrice({ ...row, currency: null }, withRates, labels), "", "no currency: never a USD guess");
 });

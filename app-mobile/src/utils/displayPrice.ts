@@ -243,3 +243,39 @@ export function buildDisplayPrice(
 export function isFreePrice(min: unknown, max: unknown): boolean {
   return finiteNonNegative(min) === 0 && (max === null || max === undefined || finiteNonNegative(max) === 0);
 }
+
+export interface FromPriceInput {
+  readonly isFree: boolean;
+  /** Lowest tier in MINOR units of `currency` (2-exponent cents). */
+  readonly fromMinor: number | null;
+  /** The experience's own currency. Missing = no price shown. */
+  readonly currency: string | null | undefined;
+  readonly viewerCurrency: string | null | undefined;
+}
+
+export interface FromPriceLabels {
+  readonly free: string;
+  /** i18n'd "From {{price}}". */
+  readonly from: (price: string) => string;
+}
+
+/**
+ * #4347 — "experiences at this venue" rows: "Free", "From ≈ $74" (converted),
+ * "From ₦100,000" (same currency, or no servable rate), or "" (no priced tier
+ * or no currency). The amount is converted from the experience's OWN currency,
+ * never shown in the viewer's symbol unconverted.
+ */
+export function formatFromPrice(
+  input: FromPriceInput,
+  format: (price: DisplayPriceInput) => DisplayPrice | null,
+  labels: FromPriceLabels,
+): string {
+  if (input.isFree) return labels.free;
+  if (typeof input.fromMinor !== 'number' || !Number.isFinite(input.fromMinor)) return '';
+  const price = format({
+    min: input.fromMinor / 100,
+    sourceCurrency: typeof input.currency === 'string' ? input.currency : '',
+    viewerCurrency: input.viewerCurrency,
+  });
+  return price === null ? '' : labels.from(price.text);
+}

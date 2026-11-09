@@ -148,5 +148,6 @@
   "price.currency_PLN": "złoty Ba Lan",
   "price.currency_RON": "leu Romania",
   "price.currency_SEK": "krona Thụy Điển",
-  "price.currency_USD": "đô la Mỹ"
+  "price.currency_USD": "đô la Mỹ",
+  "price.from": "Từ {{price}}"
 }

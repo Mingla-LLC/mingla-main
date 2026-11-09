@@ -148,5 +148,6 @@
   "price.currency_PLN": "zloty na Poland",
   "price.currency_RON": "leu na Romania",
   "price.currency_SEK": "krona na Sweden",
-  "price.currency_USD": "dalar Amurka"
+  "price.currency_USD": "dalar Amurka",
+  "price.from": "Daga {{price}}"
 }

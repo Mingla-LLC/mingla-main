@@ -148,5 +148,6 @@
   "price.currency_PLN": "זלוטי פולני",
   "price.currency_RON": "לאו רומני",
   "price.currency_SEK": "כתר שוודי",
-  "price.currency_USD": "דולר אמריקאי"
+  "price.currency_USD": "דולר אמריקאי",
+  "price.from": "החל מ-{{price}}"
 }

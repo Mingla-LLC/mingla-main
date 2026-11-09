@@ -148,5 +148,6 @@
   "price.currency_PLN": "波兰兹罗提",
   "price.currency_RON": "罗马尼亚列伊",
   "price.currency_SEK": "瑞典克朗",
-  "price.currency_USD": "美元"
+  "price.currency_USD": "美元",
+  "price.from": "{{price}}起"
 }

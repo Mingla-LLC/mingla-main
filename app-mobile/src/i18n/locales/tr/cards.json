@@ -148,5 +148,6 @@
   "price.currency_PLN": "Polonya zlotisi",
   "price.currency_RON": "Rumen leyi",
   "price.currency_SEK": "İsveç kronu",
-  "price.currency_USD": "ABD doları"
+  "price.currency_USD": "ABD doları",
+  "price.from": "En düşük {{price}}"
 }

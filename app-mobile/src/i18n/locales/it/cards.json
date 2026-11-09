@@ -148,5 +148,6 @@
   "price.currency_PLN": "złoty polacchi",
   "price.currency_RON": "lei rumeni",
   "price.currency_SEK": "corone svedesi",
-  "price.currency_USD": "dollari statunitensi"
+  "price.currency_USD": "dollari statunitensi",
+  "price.from": "Da {{price}}"
 }

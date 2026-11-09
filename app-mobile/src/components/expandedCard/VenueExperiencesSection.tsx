@@ -20,11 +20,13 @@ import {
   experienceToBusinessEventCard,
 } from "../../utils/venueExperienceMapping";
 import type { BusinessEventCard } from "../../types/mergedDiscover";
+import { useTranslation } from "react-i18next";
+import { formatDisplayPrice } from "../utils/formatters";
 
 interface VenueExperiencesSectionProps {
   /** Deck card id == place_pool.id (uuid). Non-uuid ids disable the fetch. */
   placePoolId: string | null | undefined;
-  /** Account-preference currency, used as the display fallback. */
+  /** The viewer's account currency; prices convert into it (#4347). */
   currency?: string | null;
   /**
    * Called with the experience mapped to the BusinessEventCard shape when a row
@@ -47,7 +49,12 @@ function ExperienceRow({
   const poster = posterFor(row);
   const isVideoCover =
     row.cover_media_type === "video" || isVideoUrl(row.cover_media_url);
-  const priceText = formatExperiencePrice(row, currency);
+  const { t } = useTranslation(["cards"]);
+  // #4347: converted from the experience's own currency for this viewer.
+  const priceText = formatExperiencePrice(row, currency, formatDisplayPrice, {
+    free: t("cards:swipeable.free", { defaultValue: "Free" }),
+    from: (price) => t("cards:price.from", { defaultValue: "From {{price}}", price }),
+  });
   return (
     <TouchableOpacity
       style={styles.row}

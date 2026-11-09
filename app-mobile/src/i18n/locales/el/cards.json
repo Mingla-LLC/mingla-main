@@ -148,5 +148,6 @@
   "price.currency_PLN": "ζλότι Πολωνίας",
   "price.currency_RON": "λέου Ρουμανίας",
   "price.currency_SEK": "κορόνα Σουηδίας",
-  "price.currency_USD": "δολάριο ΗΠΑ"
+  "price.currency_USD": "δολάριο ΗΠΑ",
+  "price.from": "Από {{price}}"
 }

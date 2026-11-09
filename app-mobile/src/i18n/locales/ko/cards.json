@@ -148,5 +148,6 @@
   "price.currency_PLN": "폴란드 즐로티",
   "price.currency_RON": "루마니아 레우",
   "price.currency_SEK": "스웨덴 크로나",
-  "price.currency_USD": "미국 달러"
+  "price.currency_USD": "미국 달러",
+  "price.from": "{{price}}부터"
 }

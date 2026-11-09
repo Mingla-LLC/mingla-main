@@ -148,5 +148,6 @@
   "price.currency_PLN": "পোলিশ জলোটি",
   "price.currency_RON": "রোমানিয়ান লেউ",
   "price.currency_SEK": "সুইডিশ ক্রোনা",
-  "price.currency_USD": "মার্কিন ডলার"
+  "price.currency_USD": "মার্কিন ডলার",
+  "price.from": "{{price}} থেকে শুরু"
 }

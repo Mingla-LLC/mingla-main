@@ -176,5 +176,6 @@
   "price.currency_PLN": "złoty",
   "price.currency_RON": "lei",
   "price.currency_SEK": "Swedish kronor",
-  "price.currency_USD": "US dollars"
+  "price.currency_USD": "US dollars",
+  "price.from": "From {{price}}"
 }

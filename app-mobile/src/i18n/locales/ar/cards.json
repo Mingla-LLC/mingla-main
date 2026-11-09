@@ -148,5 +148,6 @@
   "price.currency_PLN": "الزلوتي البولندي",
   "price.currency_RON": "الليو الروماني",
   "price.currency_SEK": "الكرونة السويدية",
-  "price.currency_USD": "الدولار الأمريكي"
+  "price.currency_USD": "الدولار الأمريكي",
+  "price.from": "ابتداءً من {{price}}"
 }

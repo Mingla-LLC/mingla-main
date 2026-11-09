@@ -67,6 +67,9 @@ const PRICE_SURFACES = [
   "services/deviceCalendarService.ts",
   "constants/priceTiers.ts",
   "screens/Experience/ConsumerExperienceDetailScreen.tsx",
+  // "Experiences at this venue" rows on an expanded host venue card.
+  "utils/venueExperienceMapping.ts",
+  "components/expandedCard/VenueExperiencesSection.tsx",
 ];
 
 /** Split a call's argument list at top-level commas. */
@@ -141,6 +144,20 @@ Deno.test("#4347 no Explorer price surface writes a literal $ next to an amount"
     });
   }
   assert(offenders.length === 0, `literal-dollar Explorer prices:\n  ${offenders.join("\n  ")}`);
+});
+
+Deno.test("#4347 venue experience rows convert from the experience's own currency", async () => {
+  const mapping = await read("utils/venueExperienceMapping.ts");
+  const fn = mapping.slice(mapping.indexOf("export function formatExperiencePrice("), mapping.indexOf("function venueStopLabel("));
+  assert(fn.includes("formatFromPrice("), "formatExperiencePrice must go through the shared formatFromPrice rule");
+  assert(fn.includes("currency: row.currency,"), "the row's OWN currency must be the source");
+  assert(!/new Intl\.NumberFormat/.test(fn), "the row formats money itself again (unconverted)");
+  assert(!/["']From |["']Free["']/.test(fn), "hard-coded English From / Free is back");
+  const section = await read("components/expandedCard/VenueExperiencesSection.tsx");
+  assert(/formatExperiencePrice\(row, currency, formatDisplayPrice, \{/.test(section),
+    "the venue rows must bind formatDisplayPrice and the viewer's currency");
+  assert(section.includes('t("cards:price.from"') && section.includes('t("cards:swipeable.free"'),
+    "the venue rows must use the translated From / Free");
 });
 
 Deno.test("#4347 the plan price is formatted with the experience's own currency", async () => {
