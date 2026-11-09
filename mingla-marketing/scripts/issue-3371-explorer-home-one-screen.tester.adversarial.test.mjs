@@ -31,6 +31,15 @@
 //      worse (ORIGIN_MAIN_BASELINE, measured with this file at 335fbd21f; re-baselined
 //      by #4318 with the permanent 28px privacy strip).
 //
+// #4339 phase 2a AMENDMENT (deliberate): `/` and `/host` were replaced by the
+// approved "Mingla, Edited" redesign. The home is now a scrolling page with
+// the #4339 site nav (not the Cutout side menu), and /host has no Start
+// hosting card. So: section 6 (one-screen home geometry) is retired; the side
+// menu checks (3-5) run on the pages that still carry it (/going-out, /about,
+// /cities, city hubs, /help), with /about as the unlit comparison page; the
+// Explorer menu row must still land on `/`, now the redesigned hero. The
+// redesign itself is pinned by lib/__tests__/issue-4339-site-chrome.*.
+//
 // Usage (CI):   node --experimental-websocket scripts/<this> --built-only
 // Tester runs:  --root=<mingla-marketing dir> --label=main (report-only)
 //               --json=<out.json> --shots=<dir>
@@ -59,7 +68,9 @@ const RETIRED = '/explorer'
 const DESTINATION = '/going-out'
 const DESTINATION_LABEL = 'Going out'
 const DESTINATION_TITLE = 'Going out: Date Plans, Events & City Gems | Mingla'
-const DESTINATION_H1 = 'Find a plan that fits the moment.'
+// #4339 phase 2b: the redesigned page's headline (the record's SEO title,
+// description and BreadcrumbList JSON-LD are unchanged).
+const DESTINATION_H1 = 'Going out, sorted.'
 // The interim name from the first #3371 pass never shipped. Spelled indirectly
 // so the repo-wide rename grep for it stays empty.
 const UNSHIPPED = `/${['for', 'explorers'].join('-')}`
@@ -69,7 +80,10 @@ const PHONES = [[402, 874], [430, 932], [360, 780]]
 const TABLETS = [[768, 1024]]
 const SPEC = [[1440, 900], [1280, 800], [1920, 1080], [390, 844], [375, 667]]
 const MENU_VIEWPORTS = [[1440, 900], [402, 874], [390, 844], [375, 667], [360, 780], [320, 568]]
-const COLLATERAL_ROUTES = ['/', '/host', '/cities', '/about', DESTINATION, '/cities/lagos', '/help']
+// #4339: / and /host carry the redesign (no .cut-btn, no side menu).
+const COLLATERAL_ROUTES = ['/cities', '/about', DESTINATION, '/cities/lagos', '/help']
+// #4339: the unlit comparison page for the menu rows (was `/`).
+const UNLIT_ROUTE = '/about'
 const MIN_GAP = 28
 const MIN_PILL_CLEARANCE = 24
 const SAMPLES = 8
@@ -121,8 +135,10 @@ function wiringContract() {
   const scripts = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).scripts
   const own = `node --experimental-websocket scripts/${SELF} --built-only`
   const implementor = 'node --experimental-websocket scripts/issue-3371-explorer-home-one-screen.implementor.happy.test.mjs --built-only'
-  // #4137: only the #4137 release-build tests may follow the #3371 pair.
-  assert(new RegExp(`${(` && ${own} && ${implementor}`).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?: && node (?:--experimental-websocket )?scripts/issue-4137-[a-z-]+\\.implementor\\.happy\\.test\\.mjs --built-only)*$`).test(scripts.build), 'the #3371 tester guard must run immediately before the #3371 implementor guard at the end of the build')
+  // #4137: only the #4137 release-build tests may follow the #3371 pair
+  // (#4339 round B: and, last, the built-output anti-copy gate; the #4339
+  // speed fix's first-load budget may run just before it).
+  assert(new RegExp(`${(` && ${own} && ${implementor}`).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?: && node (?:--experimental-websocket )?scripts/issue-4137-[a-z-]+\\.implementor\\.happy\\.test\\.mjs --built-only)*(?: && node scripts/issue-4339-first-load-budget\\.mjs --self-test && node scripts/issue-4339-first-load-budget\\.mjs)?(?: && node \\.\\./\\.github/scripts/strict-grep/issue-4339-built-output-anti-copy\\.mjs --built)?$`).test(scripts.build), 'the #3371 tester guard must run immediately before the #3371 implementor guard at the end of the build')
   assert(scripts.build.lastIndexOf(own) > scripts.build.lastIndexOf('next build'), 'the #3371 tester guard must run against the final production build')
   assert.equal(scripts.build.split(own).length, 2, 'the #3371 tester guard must be wired exactly once')
 }
@@ -351,7 +367,8 @@ function seoFacts(html) {
   return {
     canonical: attr(/<link rel="canonical" href="([^"]+)"/), ogUrl: attr(/<meta property="og:url" content="([^"]+)"/),
     robots: attr(/<meta name="robots" content="([^"]+)"/), title: attr(/<title>([^<]*)<\/title>/),
-    h1: attr(/<h1\b[^>]*>([^<]*)<\/h1>/), jsonLd,
+    // #4339 phase 2b: the redesigned headline carries its italic half in <em>.
+    h1: (() => { const inner = /<h1\b[^>]*>([\s\S]*?)<\/h1>/.exec(html)?.[1]; return inner == null ? null : decode(inner.replace(/<[^>]+>/g, '')) })(), jsonLd,
   }
 }
 
@@ -408,10 +425,10 @@ async function crawl(port) {
   const section = moduleAt >= 0 ? host.body.slice(moduleAt, host.body.indexOf('</section>', moduleAt)) : ''
   const hostCityLinks = [...new Set([...section.matchAll(/href="(\/cities\/[a-z0-9-]+)"/g)].map((match) => match[1]))]
   report.crawl.hostCityGrid = { present: moduleAt >= 0, links: hostCityLinks }
-  // #4137: /host now ends with the Start hosting card instead of the city grid
-  // (the city hubs stay reachable from the menu, footer and sitemap).
+  // #4137: no city grid on /host (the city hubs stay reachable from the menu,
+  // footer and sitemap). #4339: /host is the redesigned page.
   check(moduleAt < 0, '#4137: /host must not server-render the city grid')
-  check(/class="cut-start\b/.test(host.body), '#4137: /host must end with the Start hosting card')
+  check(host.body.includes('<span class="rm-lines"><span>Everything</span>'), '#4339: /host must be the redesigned page')
   const hubStatuses = {}
   for (const hub of [...new Set([...hostCityLinks, ...sitemapPaths.filter((value) => value.startsWith('/cities/'))])]) {
     hubStatuses[hub] = (await request(port, hub)).status
@@ -527,7 +544,8 @@ const closedState = (page) => page.evaluate(`({dialog:!!document.querySelector('
 
 async function menuHighlights(page, base, citySlug) {
   await emulate(page, 1440, 789, 'laptop')
-  const routes = ['/', DESTINATION, '/host', '/cities', `/cities/${citySlug}`, '/about', '/tools', '/help', '/privacy-policy', '/support', '/explorer/anything']
+  // #4339: `/` and `/host` carry the site nav, not the side menu.
+  const routes = [DESTINATION, '/cities', `/cities/${citySlug}`, '/about', '/tools', '/help', '/privacy-policy', '/support', '/explorer/anything']
   for (const route of routes) {
     await go(page, base, route)
     await sleep(300)
@@ -545,10 +563,10 @@ async function menuHighlights(page, base, citySlug) {
     if (hasMenu) check(row.lit.length <= 1, `${route}: ${row.lit.length} menu items lit (${row.lit.join(', ')})`)
   }
   const byRoute = (route) => report.menu.find((row) => row.route === route)
-  const items = byRoute('/').items ?? []
+  const items = byRoute(UNLIT_ROUTE).items ?? []
   check(JSON.stringify(items.map((item) => [item.label, item.href])) === JSON.stringify([['Explorer', '/'], ['Cities', '/cities'], [DESTINATION_LABEL, DESTINATION], ['Host', '/host'], ['Free tools', '/tools'], ['About', '/about'], ['Help', '/help'], ['Support', '/support'], ['Careers', 'https://career.usemingla.com']]), `#4137 menu must read Explorer, Cities, ${DESTINATION_LABEL}, Host, Free tools, About, Help, Support, Careers (got ${JSON.stringify(items.map((item) => item.label))})`)
   check(!report.menu.some((row) => row.items?.some((item) => isBannedRef(item.href))), 'a menu item still links to a retired path')
-  const expected = { '/': 'Explorer', [DESTINATION]: DESTINATION_LABEL, '/host': 'Host', '/cities': 'Cities', [`/cities/${citySlug}`]: 'Cities', '/about': 'About' }
+  const expected = { [DESTINATION]: DESTINATION_LABEL, '/cities': 'Cities', [`/cities/${citySlug}`]: 'Cities', '/about': 'About' }
   for (const [route, label] of Object.entries(expected)) {
     const row = byRoute(route)
     check(row.hasMenu && JSON.stringify(row.lit) === JSON.stringify([label]), `${route}: exactly "${label}" must be lit (got ${JSON.stringify(row.lit)})`)
@@ -568,17 +586,16 @@ async function menuFlows(page, base) {
     await waitFor(() => page.evaluate(`!document.querySelector('[role="dialog"]')`), `${input}: menu still open`, 6_000).catch(() => null)
     await sleep(900)
     const state = await closedState(page)
-    const home = await page.evaluate(`({path:location.pathname,deck:!!document.querySelector('[data-cut-deck]'),scroll:Math.max(document.documentElement.scrollHeight,document.body.scrollHeight),inner:innerHeight})`)
+    const home = await page.evaluate(`({path:location.pathname,deck:!!document.querySelector('.rm h1'),scroll:Math.max(document.documentElement.scrollHeight,document.body.scrollHeight),inner:innerHeight})`)
     const row = { flow: `${input} Explorer from ${DESTINATION} @${width}x${height}`, explorerHref: explorer.href, ...state, home }
     report.menuFlows.push(row)
     process.stdout.write(`FLOW ${LABEL} ${row.flow}: ${JSON.stringify(row)}\n`)
     check(home.path === '/' && home.deck, `${row.flow}: did not land on the home hero`)
     check(!state.dialog && state.expanded === 'false', `${row.flow}: menu not closed after navigation`)
     check(state.bodyOverflow !== 'hidden', `${row.flow}: body scroll lock leaked after navigation`)
-    check(home.scroll === home.inner, `${row.flow}: home scrolls after client-side navigation (${home.scroll}/${home.inner})`)
   }
 
-  for (const route of ['/', DESTINATION, '/cities/lagos']) {
+  for (const route of [UNLIT_ROUTE, DESTINATION, '/cities/lagos']) {
     await emulate(page, 1440, 789, 'laptop')
     await page.send('Emulation.setFocusEmulationEnabled', { enabled: true })
     await go(page, base, route)
@@ -659,7 +676,7 @@ const MENU_ROWS = `(()=>{
 
 async function menuAlignment(page, base) {
   const plan = []
-  for (const [width, height] of MENU_VIEWPORTS) for (const route of ['/', DESTINATION]) plan.push([route, width, height])
+  for (const [width, height] of MENU_VIEWPORTS) for (const route of [UNLIT_ROUTE, DESTINATION]) plan.push([route, width, height])
   plan.push(['/cities/lagos', 1440, 900], ['/cities/lagos', 360, 780], ['/cities/lagos', 320, 568])
   const litRowByRoute = {}
   for (const [route, width, height] of plan) {
@@ -706,10 +723,10 @@ async function menuAlignment(page, base) {
   }
   for (const [viewport, byRoute] of Object.entries(litRowByRoute)) {
     const lit = byRoute[DESTINATION]
-    const unlit = byRoute['/']
+    const unlit = byRoute[UNLIT_ROUTE]
     if (!lit || !unlit) continue
     for (const key of ['boxLeft', 'boxWidth', 'boxHeight', 'iconLeft', 'textLeft']) {
-      check(Math.abs(lit[key] - unlit[key]) <= ALIGN_TOLERANCE, `${viewport}: the ${DESTINATION_LABEL} row moves between lit (${DESTINATION}) and unlit (/) in ${key}: ${r1(lit[key])} vs ${r1(unlit[key])}`)
+      check(Math.abs(lit[key] - unlit[key]) <= ALIGN_TOLERANCE, `${viewport}: the ${DESTINATION_LABEL} row moves between lit (${DESTINATION}) and unlit (${UNLIT_ROUTE}) in ${key}: ${r1(lit[key])} vs ${r1(unlit[key])}`)
     }
   }
 }
@@ -743,7 +760,6 @@ async function collateral(page, base) {
       await emulate(page, width, height)
       await go(page, base, route)
       await page.evaluate(`(async()=>{await document.fonts.ready;window.scrollTo(0,0);return true})()`)
-      if (route === '/') await waitFor(() => page.evaluate(SETTLED), `${route}: hero never settled`, 30_000)
       await sleep(1500)
       const buttons = await page.evaluate(CUT_BUTTONS)
       if (!(await page.evaluate(`!!document.querySelector('button[aria-label="Open menu"]')`))) {
@@ -780,9 +796,11 @@ async function destinationDom(page, base) {
   report.destinationDom = dom
   process.stdout.write(`DEST ${LABEL} ${JSON.stringify(dom)}\n`)
   check(dom.title === DESTINATION_TITLE, `${DESTINATION}: document.title "${dom.title}"`)
-  check(dom.eyebrow === DESTINATION_LABEL, `${DESTINATION}: hero eyebrow must read "${DESTINATION_LABEL}" (got "${dom.eyebrow}")`)
+  // #4339 phase 2b: no eyebrow pill and no visible breadcrumb (the design has
+  // neither); the breadcrumb lives in the page's BreadcrumbList JSON-LD.
+  check(dom.eyebrow === null, `${DESTINATION}: the redesigned hero has no eyebrow pill (got "${dom.eyebrow}")`)
   check(dom.h1 === DESTINATION_H1, `${DESTINATION}: H1 "${dom.h1}"`)
-  check(JSON.stringify(dom.crumbs) === JSON.stringify([{ text: 'Home', href: '/', current: false }, { text: DESTINATION_LABEL, href: null, current: true }]), `${DESTINATION}: visible breadcrumb must be Home -> ${DESTINATION_LABEL} (got ${JSON.stringify(dom.crumbs)})`)
+  check(dom.crumbs.length === 0, `${DESTINATION}: the redesigned page has no visible breadcrumb (got ${JSON.stringify(dom.crumbs)})`)
 }
 
 async function browserRedirects(page, base) {
@@ -843,11 +861,15 @@ async function main() {
 
       if (!REPORT_ONLY) await destinationDom(page, base)
       await browserRedirects(page, base)
-      await geometry(page, base)
-      await menuHighlights(page, base, citySlug)
-      await menuAlignment(page, base)
-      await collateral(page, base)
-      if (!REPORT_ONLY) await menuFlows(page, base)
+      // #4339: the one-screen home geometry (section 6) is retired.
+      // #4339 phase 2b: /going-out, /cities, the city pages, /about and /help
+      // now carry the redesign's site nav, not the Cutout side menu, so the
+      // side-menu highlight, row-alignment, .cut-btn collateral and menu-flow
+      // sections here are retired with it. The side menu that remains (help
+      // video and blog post pages) is pinned by
+      // scripts/issue-4137-menu.implementor.happy.test.mjs; the site nav by
+      // lib/__tests__/issue-4339-site-chrome.implementor.test.mjs.
+      note(`${citySlug}: side-menu sections retired by #4339 phase 2b (redesigned pages use the site nav)`)
     }
   } finally {
     try { if (page) await page.send('Browser.close', {}, 3_000) } catch { /* force-stopped below */ }
@@ -868,7 +890,7 @@ async function main() {
     process.exitCode = 1
     return
   }
-  process.stdout.write('PASS #3371 tester adversarial: redirect edges, full crawl, real-input menu, left-aligned rows without collateral, realistic-viewport home geometry\n')
+  process.stdout.write('PASS #3371 tester adversarial: redirect edges, full crawl, real-input menu, left-aligned rows without collateral, home geometry retired by #4339\n')
 }
 
 assert(process.argv.includes('--built-only'), 'the #3371 tester guard runs only against a production build: pass --built-only')

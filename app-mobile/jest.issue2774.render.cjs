@@ -93,5 +93,68 @@ module.exports = {
     // issue #4347 — a paid brand experience that lost its cardType never
     // writes "Spend level: Free" into the phone calendar.
     "**/__tests__/issue_4347_device_calendar_spend_level.implementor.happy.test.ts",
+    // issue #4347 wave 1 — the redesigned deck card: pager, tap zones, fact
+    // line, curated line, smart chip, claimed-venue chunking (pure), and every
+    // deck-card state rendered.
+    "**/__tests__/issue_4347_deck_card_model.implementor.test.ts",
+    "**/__tests__/issue_4347_deck_card_states.implementor.render.test.tsx",
+    // issue #4347 wave 1 rework — smart chip after midnight, collab route
+    // hand-off, kicker at large text, card-local tap zones, poster parity.
+    "**/__tests__/issue_4347_wave1_rework.implementor.test.ts",
+    // issue #4347 wave 2 — the expanded single place: gallery, basics tiles,
+    // When you'd go, pinned bar, directions helper, night-out ticket bar.
+    "**/__tests__/issue_4347_place_sheet_model.implementor.test.ts",
+    "**/__tests__/issue_4347_place_sheet_states.implementor.render.test.tsx",
+    // issue #4347 wave 3 — the expanded curated plan: arrival model, warning,
+    // stop cards, navigator, Route all stops, On the night.
+    "**/__tests__/issue_4347_plan_model.implementor.test.ts",
+    "**/__tests__/issue_4347_plan_sheet_states.implementor.render.test.tsx",
+    // issue #4347 wave 3 follow-ups — live font scale for the tap zones, one
+    // overnight-hours model for the schedule check, one primary-button colour.
+    "**/__tests__/issue_4347_wave3_followups.implementor.render.test.tsx",
+    // issue #4347 wave 3 rework after the retest — one 15-minute rule, fixes
+    // that keep the whole plan clear, pulse-only body, identity reset, route
+    // cap note, locale keys, "Leave now", count-from-shown.
+    "**/__tests__/issue_4347_wave3_rework.implementor.render.test.tsx",
+    // issue #4347 wave 4 — the Explorer layer on a host venue page: "When
+    // you'd go" in the host's measured palette (neutral fallback), converted
+    // "Experiences here" prices, the pinned Save / Schedule / Share /
+    // Reserve-or-Directions bar acting on the deck card, the state Close.
+    "**/__tests__/issue_4347_venue_explorer_model.implementor.test.ts",
+    "**/__tests__/issue_4347_venue_explorer.implementor.render.test.tsx",
+    // issue #4347 wave 3 retest extras — the gallery video's Sound control,
+    // and the deck chip on the schedule check's 15-minute rule.
+    "**/__tests__/issue_4347_retest_extras.implementor.render.test.tsx",
+    // issue #4347 wave 1 — tester adversarial: the photo flip's gesture lease,
+    // the smart chip in venue time and across midnight, claimed-venue keys,
+    // the hint's logout sweep, locale plurals, the kicker's contrast floor.
+    "**/__tests__/issue_4347_wave1.tester.adversarial.test.ts",
+    // issue #4347 wave 1 rework + wave 2 — tester adversarial: the collab
+    // route hand-off as its real host mounts it, card-local tap targets on
+    // every face layer, the 482pt scrim on iPhone SE at the largest text; the
+    // place sheet's gallery under parent re-renders, forecast / sunset /
+    // quieter-at edges, and pinned-bar parity with the old band.
+    "**/__tests__/issue_4347_wave1_rework.tester.adversarial.render.test.tsx",
+    "**/__tests__/issue_4347_place_sheet.tester.adversarial.render.test.tsx",
+    // issue #4347 wave 3 + follow-ups — tester adversarial: the one overnight
+    // model with Google's real separators, arrivals across midnight and venue
+    // clocks, the warning's fix, Route all stops encoding / cap, the scroll
+    // store's publish budget; the plan sheet's route label on iPhone, the
+    // swap and start-time count, the navigator and the pinned plan bar.
+    "**/__tests__/issue_4347_wave3.tester.adversarial.test.ts",
+    "**/__tests__/issue_4347_wave3.tester.adversarial.render.test.tsx",
+    // issue #4347 wave 3 rework — tester retest: every offered start fix
+    // clears the whole plan (seeded sweep), one 15-minute rule for the sheet
+    // and the schedule check, the route cap note, the identity-keyed reset.
+    "**/__tests__/issue_4347_wave3_retest.tester.adversarial.test.tsx",
+    // issue #4347 wave 4 — tester adversarial: "When you'd go" against every
+    // production brand theme, hostile palettes, the hand-off store, the bar's
+    // Save (double tap, failure), Null Island directions; the gallery's Sound
+    // control (per gallery, re-render, a11y, Reduce Motion).
+    "**/__tests__/issue_4347_wave4.tester.adversarial.render.test.tsx",
+    "**/__tests__/issue_4347_gallery_sound.tester.adversarial.render.test.tsx",
+    // issue #4347 × #4334 — tester final retest: the sheet's Directions and
+    // Route all stops on #4334's Maps target (bytes, refused ids, pairing).
+    "**/__tests__/issue_4347_maps_routing.tester.adversarial.test.ts",
   ],
 };

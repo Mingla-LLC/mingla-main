@@ -58,6 +58,24 @@ const MARKETING_ENTITY_SLUGS = new Set([
   "tools-venues",
   "tools-trips",
   "tools-pricing",
+  // #4339 round B — Host landing and city pages (MARKETING_ROUTES).
+  "host-events",
+  "host-trips",
+  "host-experiences",
+  "host-restaurants",
+  "host-hotels",
+  "host-art",
+  "host-play",
+  "city-lagos",
+  "city-durham-nc",
+  "city-cary-nc",
+  "city-raleigh-nc",
+  "city-new-york-city",
+  "city-brussels",
+  "city-paris",
+  "city-london",
+  "city-fort-lauderdale",
+  "city-washington-dc",
 ]);
 
 const ADAPTER_REGISTRY: Record<Platform, ChannelAdapter> = {

@@ -59,6 +59,20 @@ export interface CataloguePlace {
   readonly detailHref: string
 }
 
+/**
+ * #4339 speed fix — the fields a public city page's place cards and detail
+ * sheet read. The city page hands its client islands this view, not the full
+ * catalogue record: the provenance receipts (boundary hash, media receipt,
+ * signal version, coordinates) stay on the server instead of riding in the
+ * page's payload for every place.
+ */
+export type CataloguePlaceView = Omit<CataloguePlace, 'signalVersionId' | 'mediaReceipt' | 'lat' | 'lng' | 'boundaryReceipt' | 'googleMapsUri'>
+
+export function cataloguePlaceView(place: CataloguePlace): CataloguePlaceView {
+  const { signalVersionId: _signal, mediaReceipt: _media, lat: _lat, lng: _lng, boundaryReceipt: _boundary, googleMapsUri: _maps, ...view } = place
+  return view
+}
+
 export interface CataloguePlanStop {
   readonly id: string
   readonly name: string

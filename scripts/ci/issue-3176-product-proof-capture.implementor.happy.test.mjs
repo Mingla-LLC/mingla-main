@@ -75,7 +75,10 @@ function validateNetworkDeny(value) {
   assert.match(value, /blockedAttempts\.push/)
 }
 
-function validateAboutProofs(about, css, manifest) {
+// #4339 phase 2b — /about is redesigned (two video text cards, no product
+// screenshots), so the page no longer shows these captures. Their approved
+// rights rows stay pinned here; the page-placement checks are retired.
+function validateAboutProofs(manifest) {
   for (const [scene, expected] of Object.entries(ABOUT_PROOFS)) {
     const output = manifest.outputs.find((row) => row.scene === scene)
     assert(output, `/about proof manifest lost ${scene}`)
@@ -83,12 +86,7 @@ function validateAboutProofs(about, css, manifest) {
     assert.deepEqual(output.allowedSurfaces, expected.allowedSurfaces, `${scene} changed approved surface rights`)
     assert.deepEqual(output.redactions, [], `${scene} gained an unreviewed redaction`)
     assert.match(output.approvedBy, /independent tester pending/, `${scene} changed its review owner`)
-    assert(about.includes(`/${expected.path.split('/public/')[1]}`), `/about omits approved ${scene} capture`)
-    assert(about.includes(`alt="${expected.altText}"`), `/about changed approved ${scene} alt text`)
   }
-  assert.equal((about.match(/className="core-product-proof core-product-proof--/g) ?? []).length, 2, '/about proofs do not share the neutral frame')
-  assert.doesNotMatch(about, /core-host-proof/, '/about retained the Host-specific proof class')
-  for (const token of ['.core-product-story { display:flex; flex-direction:column; }', '.core-product-proof { width:min(100%,24rem); aspect-ratio:1206/2050;', '.core-product-proof--explorer img { object-position:top; }', '.core-product-proof--host img { object-position:bottom; }', '.core-product-proof{width:min(100%,13rem);margin:0 auto 1rem}']) assert(css.includes(token), `/about balanced proof CSS lost ${token}`)
 }
 
 function pngSize(relative) {
@@ -144,11 +142,12 @@ function sourceContract() {
     assert.equal(output.sampleStateVisible, true)
     assert.match(output.approvedBy, /independent tester pending/)
   }
-  const proofGrid = read('mingla-marketing/components/core-pages/explorer-proof-grid.tsx')
-  for (const output of manifest.outputs.filter((row) => row.surface === 'explorer')) assert(proofGrid.includes(`/${output.path.split('/public/')[1]}`), `Explorer page omits ${output.path}`)
+  // #4339 phase 2b: /going-out and /about no longer show product screenshots
+  // (the redesign uses picked clips), so the page-placement checks are retired;
+  // the captures and their approved rights stay pinned above and below.
   const about = read('mingla-marketing/app/(core)/about/page.tsx')
-  validateAboutProofs(about, read('mingla-marketing/components/core-pages/core-pages.css'), manifest)
-  const publicCore = about + proofGrid
+  validateAboutProofs(manifest)
+  const publicCore = about + read('mingla-marketing/app/(core)/going-out/page.tsx')
   assert.doesNotMatch(publicCore, /illustrative concept|not a real (?:event|customer)|concept image/i)
 }
 
@@ -175,13 +174,10 @@ if (SELF_TEST) {
   assert.throws(() => validateCaptureBundle('ordinary application bundle', 'mutant'), /capture-only sentinel/)
   const deny = read('tools/product-proof-capture/shared/networkDeny.ts')
   assert.throws(() => validateNetworkDeny(deny.replace('globalThis.fetch =', 'globalThis.__escapedFetch =')), /fetch can escape/)
-  const about = read('mingla-marketing/app/(core)/about/page.tsx')
-  const css = read('mingla-marketing/components/core-pages/core-pages.css')
   const manifest = JSON.parse(read('tools/product-proof-capture/rights-manifest.json'))
-  assert.throws(() => validateAboutProofs(about.replace('/product-proof/explorer-saved-details.png', ''), css, manifest), /omits approved explorer_saved_details/)
   const rightsMutant = structuredClone(manifest)
   rightsMutant.outputs.find((row) => row.scene === 'explorer_saved_details').sha256 = '0'.repeat(64)
-  assert.throws(() => validateAboutProofs(about, css, rightsMutant), /changed approved sha256/)
+  assert.throws(() => validateAboutProofs(rightsMutant), /changed approved sha256/)
   process.stdout.write('RED proof: production import, sentinel leak, remote fixture, missing capture sentinel and network escape mutants were rejected\n')
 }
 process.stdout.write('PASS #3176 controlled product-proof capture isolation and retained-asset contract\n')

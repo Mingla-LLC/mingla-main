@@ -104,13 +104,27 @@ Deno.test("#4273 W-5 (retest 4) the opt-out page is never measured; no sink sees
       .includes("isAnalyticsPrivateUrl(event?.properties?.$current_url)"),
     "PostHog drops any event from a private URL",
   );
+  // #4339: captureMarketing and captureSearchMeasurement moved out of the
+  // provider into components/marketing/marketing-capture.ts (so pages that
+  // only send events do not load the analytics SDK); the provider re-exports
+  // them. The same private-page stops are asserted there, and the provider
+  // must not define a second copy that skips them.
+  const capture = await repo("mingla-marketing/components/marketing/marketing-capture.ts");
+  const captureSection = (start: string, end: string) =>
+    capture.slice(capture.indexOf(start), capture.indexOf(end, capture.indexOf(start)));
+  assert(!provider.includes("export function captureMarketing"), "one captureMarketing, in marketing-capture.ts");
+  assert(!provider.includes("export function captureSearchMeasurement"), "one captureSearchMeasurement, in marketing-capture.ts");
   assert(
-    section("export function captureMarketing", "export function captureSearchMeasurement")
+    /export \{[^}]*\bcaptureMarketing\b[^}]*\bcaptureSearchMeasurement\b[^}]*\} from '@\/components\/marketing\/marketing-capture'/.test(provider),
+    "the provider re-exports the capture entry points",
+  );
+  assert(
+    captureSection("export function captureMarketing", "export function captureSearchMeasurement")
       .includes("if (isAnalyticsPrivatePathname(window.location.pathname)) return"),
     "custom events stop on a private page",
   );
   assert(
-    section("export function captureSearchMeasurement", "interface PostHogProviderProps")
+    captureSection("export function captureSearchMeasurement", "\n}\n")
       .includes("isAnalyticsPrivatePathname(window.location.pathname)) return"),
     "search measurement (GA + PostHog) stops on a private page",
   );

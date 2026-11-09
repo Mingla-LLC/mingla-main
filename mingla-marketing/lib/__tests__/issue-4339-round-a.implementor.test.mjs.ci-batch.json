@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-suite",
+  "ownerIssue": "#4339",
+  "suite": {
+    "id": "issue-4339-round-a",
+    "class": "node22-noinstall",
+    "originPaths": [
+      "mingla-marketing/lib/__tests__/issue-4339-round-a.implementor.test.mjs",
+      "mingla-marketing/app/**",
+      "mingla-marketing/components/**",
+      "mingla-marketing/content/host-landing/**",
+      "mingla-marketing/public/marketing/site/**"
+    ],
+    "steps": [
+      {
+        "name": "Marketing: round A clips, wordmark home links, no orphan tiles and the symmetrical footer",
+        "cwd": "mingla-marketing",
+        "run": "node --test lib/__tests__/issue-4339-round-a.implementor.test.mjs",
+        "commandId": "assert:issue-4339-round-a:01",
+        "invocation": {
+          "kind": "raw-shell",
+          "command": "bash",
+          "argv": [
+            "-c",
+            "node --test lib/__tests__/issue-4339-round-a.implementor.test.mjs"
+          ]
+        },
+        "exceptionRationale": "New self-registering execution replaces a legacy workflow registry edit."
+      }
+    ],
+    "lifecycle": "batched-active",
+    "ownerIssue": "#4339",
+    "runtime": {
+      "name": "node",
+      "version": "22"
+    },
+    "setupProfile": "node22-noinstall",
+    "cwd": "mingla-marketing",
+    "envNames": [],
+    "isolation": "clean-worktree",
+    "expectedFiles": [
+      "mingla-marketing/lib/__tests__/issue-4339-round-a.implementor.test.mjs"
+    ],
+    "externalReferenceFiles": [],
+    "requiredContext": "CI batch: node22-noinstall",
+    "timingSeconds": {
+      "p50": 1,
+      "p95": 2,
+      "evidence": "Local targeted run 2026-11-08"
+    },
+    "generatedPaths": [
+      "suite-results.json"
+    ],
+    "exceptionRationale": "Raw shell preserves the reviewed assertion while this self-registering suite replaces a legacy workflow registry edit.",
+    "timeoutSeconds": 60
+  }
+}

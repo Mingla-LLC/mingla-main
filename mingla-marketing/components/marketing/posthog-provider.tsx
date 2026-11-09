@@ -18,34 +18,58 @@ import {
   isAnalyticsPrivateUrl,
 } from '@/lib/analytics-private-routes'
 import {
-  cleanCityHubPathname,
   isCityHubPathname,
   sanitizeCityHubAnalytics,
 } from '@/lib/city-hub-analytics'
+import { cleanReferrerOrigin } from '@mingla/search-measurement'
+import { pageMeasurement } from '@/lib/page-measurement'
+import { rememberLandingCampaign } from '@/lib/landing-campaign'
+// #4339 speed budget: the privacy read and the capture facades live in
+// marketing-capture.ts so pages import them without this provider; they are
+// re-exported here unchanged for every existing importer.
 import {
-  cleanReferrerOrigin,
-  sanitizeSearchMeasurement,
-  type SearchEventName,
-  type SearchMeasurementProperties,
-} from '@mingla/search-measurement'
+  MARKETING_LEGACY_CONSENT_STORAGE_KEY,
+  MARKETING_PRIVACY_EVENT,
+  MARKETING_PRIVACY_STORAGE_KEY,
+  captureSearchMeasurement,
+  gaPageLocation,
+  gaReferrerOrigin,
+  isMarketingAdsOn,
+  isMarketingAnalyticsOn,
+  marketingGlobalPrivacyControlOn,
+  marketingPostHogState,
+  persistMarketingPrivacyChoice,
+  readMarketingPrivacy,
+  registerMarketingAnalyticsStart,
+  setMarketingPageChoice,
+  setMarketingPostHogState,
+  type MarketingPrivacyChoice,
+} from '@/components/marketing/marketing-capture'
+
+export {
+  MARKETING_LEGACY_CONSENT_STORAGE_KEY,
+  MARKETING_PRIVACY_STORAGE_KEY,
+  captureMarketing,
+  captureSearchMeasurement,
+  gaPageLocation,
+  gaReferrerOrigin,
+  isMarketingAdsOn,
+  isMarketingAnalyticsOn,
+  isPostHogReady,
+  marketingGlobalPrivacyControlOn,
+  parseLegacyMarketingConsent,
+  posthogOptIn,
+  readMarketingPrivacy,
+  subscribeMarketingConsent,
+  type MarketingPrivacyChoice,
+} from '@/components/marketing/marketing-capture'
 
 const POSTHOG_HOST =
   process.env.NEXT_PUBLIC_POSTHOG_HOST ?? 'https://us.i.posthog.com'
 
 export const PH_REPLAY_SAMPLE_RATE = 0.2
-// Shared in shape with buyer web: { analytics, ads, ts }.
-export const MARKETING_PRIVACY_STORAGE_KEY = 'mingla_privacy_v2'
-// Legacy key: read once, carried over (denied → both off, granted → both on), removed.
-export const MARKETING_LEGACY_CONSENT_STORAGE_KEY = 'mingla_consent_v1'
-const MARKETING_PRIVACY_EVENT = 'mingla:marketing-privacy'
 /** The folded privacy bar's "Privacy settings" button asks the bar to reopen, expanded (#4318). */
 export const PRIVACY_CHOICES_EVENT = 'mingla:privacy-choices'
-
-export interface MarketingPrivacyChoice {
-  analytics: boolean
-  ads: boolean
-  ts: number
-}
 
 export interface MarketingPrivacySnapshot {
   saved: boolean
@@ -59,95 +83,9 @@ interface GtagTarget {
   gtag?: (...args: unknown[]) => void
 }
 
-let pageChoice: MarketingPrivacyChoice | null | undefined
 let lastSnapshot: MarketingPrivacySnapshot | null = null
 let bootPromise: Promise<void> | null = null
-let posthogClient: PostHog | null = null
-let posthogOptedOut = false
 let gaMeasurementId: string | null = null
-
-function isChoice(value: unknown): value is MarketingPrivacyChoice {
-  if (value === null || typeof value !== 'object') return false
-  const record = value as Partial<MarketingPrivacyChoice>
-  return typeof record.analytics === 'boolean' && typeof record.ads === 'boolean'
-}
-
-function parseChoice(raw: string | null): MarketingPrivacyChoice | null {
-  if (raw === null) return null
-  try {
-    const parsed: unknown = JSON.parse(raw)
-    if (!isChoice(parsed)) return null
-    return { analytics: parsed.analytics, ads: parsed.ads, ts: typeof parsed.ts === 'number' ? parsed.ts : 0 }
-  } catch {
-    return null
-  }
-}
-
-/** v1 carried over: usemingla.com wrote `value`, buyer web wrote `choice`. */
-export function parseLegacyMarketingConsent(raw: string | null): MarketingPrivacyChoice | null {
-  if (raw === null) return null
-  try {
-    const parsed = JSON.parse(raw) as { value?: unknown; choice?: unknown; ts?: unknown }
-    const value = parsed?.value ?? parsed?.choice
-    if (value !== 'granted' && value !== 'denied') return null
-    const on = value === 'granted'
-    return { analytics: on, ads: on, ts: typeof parsed.ts === 'number' ? parsed.ts : 0 }
-  } catch {
-    return null
-  }
-}
-
-function persistChoice(choice: MarketingPrivacyChoice): void {
-  try {
-    window.localStorage.setItem(MARKETING_PRIVACY_STORAGE_KEY, JSON.stringify(choice))
-    window.localStorage.removeItem(MARKETING_LEGACY_CONSENT_STORAGE_KEY)
-  } catch (error) {
-    // The choice still applies to this page through pageChoice.
-    console.warn('[marketing privacy] choice not persisted:', error)
-  }
-}
-
-/** The visitor's saved choice, or null while they have not chosen. */
-export function readMarketingPrivacy(): MarketingPrivacyChoice | null {
-  if (typeof window === 'undefined') return null
-  if (pageChoice !== undefined) return pageChoice
-  try {
-    const current = parseChoice(window.localStorage.getItem(MARKETING_PRIVACY_STORAGE_KEY))
-    if (current !== null) {
-      pageChoice = current
-    } else {
-      const legacy = parseLegacyMarketingConsent(
-        window.localStorage.getItem(MARKETING_LEGACY_CONSENT_STORAGE_KEY),
-      )
-      if (legacy !== null) persistChoice(legacy)
-      pageChoice = legacy
-    }
-  } catch {
-    pageChoice = null
-  }
-  return pageChoice
-}
-
-export function marketingGlobalPrivacyControlOn(): boolean {
-  return (
-    typeof navigator !== 'undefined' &&
-    (navigator as Navigator & { globalPrivacyControl?: boolean }).globalPrivacyControl === true
-  )
-}
-
-/** I-PRIVACY-ON-UNLESS-VISITOR-TURNED-OFF — analytics half. */
-export function isMarketingAnalyticsOn(): boolean {
-  if (typeof window === 'undefined') return false
-  const choice = readMarketingPrivacy()
-  return choice === null ? true : choice.analytics
-}
-
-/** I-PRIVACY-ON-UNLESS-VISITOR-TURNED-OFF — ads half (GPC starts it off). */
-export function isMarketingAdsOn(): boolean {
-  if (typeof window === 'undefined') return false
-  const choice = readMarketingPrivacy()
-  return choice === null ? !marketingGlobalPrivacyControlOn() : choice.ads
-}
 
 export function getMarketingPrivacySnapshot(): MarketingPrivacySnapshot {
   const next: MarketingPrivacySnapshot = {
@@ -169,13 +107,6 @@ export function getMarketingPrivacySnapshot(): MarketingPrivacySnapshot {
   return next
 }
 
-/** Subscribe to privacy changes from this tab and from other tabs. */
-export function subscribeMarketingConsent(listener: () => void): () => void {
-  if (typeof window === 'undefined') return () => undefined
-  window.addEventListener(MARKETING_PRIVACY_EVENT, listener)
-  return () => window.removeEventListener(MARKETING_PRIVACY_EVENT, listener)
-}
-
 /**
  * Save OK / Save / Turn off all. Whatever was turned off stops now and its
  * cookies are removed; whatever was turned on starts again on this page.
@@ -183,8 +114,8 @@ export function subscribeMarketingConsent(listener: () => void): () => void {
 export function saveMarketingPrivacy(input: { analytics: boolean; ads: boolean }): void {
   if (typeof window === 'undefined') return
   const choice: MarketingPrivacyChoice = { analytics: input.analytics, ads: input.ads, ts: Date.now() }
-  pageChoice = choice
-  persistChoice(choice)
+  setMarketingPageChoice(choice)
+  persistMarketingPrivacyChoice(choice)
   applyMarketingPrivacy()
   window.dispatchEvent(new Event(MARKETING_PRIVACY_EVENT))
 }
@@ -207,7 +138,7 @@ if (typeof window !== 'undefined' && typeof window.addEventListener === 'functio
     ) {
       return
     }
-    pageChoice = undefined
+    setMarketingPageChoice(undefined)
     applyMarketingPrivacy()
     window.dispatchEvent(new Event(MARKETING_PRIVACY_EVENT))
   })
@@ -263,12 +194,13 @@ function isAnalyticsStorageName(name: string): boolean {
 
 /** Analytics turned off: stop PostHog + GA now and remove their cookies. */
 function stopMarketingAnalytics(): void {
+  const { client: posthogClient, optedOut: posthogOptedOut } = marketingPostHogState()
   if (posthogClient !== null && !posthogOptedOut) {
     try {
       posthogClient.opt_out_capturing()
       posthogClient.stopSessionRecording()
       posthogClient.set_config({ disable_persistence: true })
-      posthogOptedOut = true
+      setMarketingPostHogState(posthogClient, true)
     } catch (error) {
       console.warn('[marketing analytics] PostHog stop failed (non-fatal):', error)
     }
@@ -304,11 +236,6 @@ function stopMarketingAnalytics(): void {
     // Nothing readable means nothing to clear.
   }
   bootPromise = null
-}
-
-function cityHubGaLocation(pathname: string): string | null {
-  const cleanPathname = cleanCityHubPathname(pathname)
-  return cleanPathname === null ? null : new URL(cleanPathname, SITE_ORIGIN).toString()
 }
 
 function sanitizeCityHubPostHogEvent(event: CaptureResult | null): CaptureResult | null {
@@ -379,12 +306,13 @@ async function bootGrantedMarketingAnalytics(): Promise<void> {
 
   const key = process.env.NEXT_PUBLIC_POSTHOG_KEY
   if (!key) return
+  const { client: posthogClient } = marketingPostHogState()
   if (posthogClient !== null) {
     // Turned back on after a turn-off on this page: resume the same client.
     try {
       posthogClient.set_config({ disable_persistence: false })
       posthogClient.opt_in_capturing()
-      posthogOptedOut = false
+      setMarketingPostHogState(posthogClient, false)
     } catch (error) {
       console.warn('[marketing analytics] PostHog resume failed (non-fatal):', error)
     }
@@ -407,8 +335,7 @@ async function bootGrantedMarketingAnalytics(): Promise<void> {
         sampleRate: PH_REPLAY_SAMPLE_RATE,
       },
     })
-    posthogClient = posthog
-    posthogOptedOut = false
+    setMarketingPostHogState(posthog, false)
     if (!isMarketingAnalyticsOn()) {
       stopMarketingAnalytics()
       return
@@ -420,66 +347,13 @@ async function bootGrantedMarketingAnalytics(): Promise<void> {
 }
 
 /** Start (or resume) analytics while it is on. Single flight. */
-export function posthogOptIn(): Promise<void> {
+function startMarketingAnalytics(): Promise<void> {
   if (!isMarketingAnalyticsOn()) return Promise.resolve()
   if (bootPromise === null) bootPromise = bootGrantedMarketingAnalytics()
   return bootPromise
 }
 
-export function isPostHogReady(): boolean {
-  return isMarketingAnalyticsOn() && posthogClient !== null && !posthogOptedOut
-}
-
-export function captureMarketing(
-  event: string,
-  properties?: Record<string, unknown>,
-): void {
-  if (!isMarketingAnalyticsOn()) return
-  try {
-    // #4273 — never measured: the URL carries a private token.
-    if (isAnalyticsPrivatePathname(window.location.pathname)) return
-    if (isCityHubPathname(window.location.pathname)) {
-      const sanitized = sanitizeCityHubAnalytics(event, properties)
-      if (sanitized === null) return
-      posthogClient?.capture(sanitized.event, sanitized.properties, {
-        send_instantly: true,
-        transport: 'XHR',
-      })
-      const pageLocation = cityHubGaLocation(window.location.pathname)
-      if (pageLocation !== null) {
-        ;(window as unknown as GtagTarget).gtag?.('event', sanitized.event, {
-          ...sanitized.properties,
-          page_location: pageLocation,
-          page_referrer: '',
-        })
-      }
-      return
-    }
-    if (posthogClient === null || posthogOptedOut) return
-    posthogClient.capture(event, properties)
-  } catch (error) {
-    console.warn('[marketing analytics] capture failed (non-fatal):', error)
-  }
-}
-
-/** The only search/outcome measurement entry point. Unknown or unsafe payloads
- * fail closed before either web sink is called. */
-export function captureSearchMeasurement(
-  event: SearchEventName,
-  properties: SearchMeasurementProperties,
-): void {
-  if (!isMarketingAnalyticsOn()) return
-  // #4273 — never measured: the URL carries a private token.
-  if (typeof window !== 'undefined' && isAnalyticsPrivatePathname(window.location.pathname)) return
-  const sanitized = sanitizeSearchMeasurement(event, properties)
-  if (sanitized === null) return
-  try {
-    posthogClient?.capture(sanitized.event, sanitized.properties, { send_instantly: true, transport: 'XHR' })
-    ;(window as unknown as GtagTarget).gtag?.('event', sanitized.event, sanitized.properties)
-  } catch (error) {
-    console.warn('[marketing analytics] search measurement failed (non-fatal):', error)
-  }
-}
+registerMarketingAnalyticsStart(startMarketingAnalytics)
 
 interface PostHogProviderProps {
   children: ReactNode
@@ -493,8 +367,12 @@ function GrantedAnalyticsChildren({
 }
 
 function ManualGoogleAnalytics({ gaId, pathname }: { readonly gaId: string; readonly pathname: string }) {
+  // #4339 round B: the canonical URL plus the allowlisted campaign parameters,
+  // and the referrer's origin (the #2983 compatibility receipt for its source
+  // guard was `page_referrer: ''`; city events keep their own sanitizer).
   // #4273 — a private-token path is configured as its token-free family.
-  const pageLocation = new URL(analyticsSafePathname(pathname || '/'), SITE_ORIGIN).toString()
+  const pageLocation = gaPageLocation(new URL(analyticsSafePathname(pathname || '/'), SITE_ORIGIN).toString())
+  const pageReferrer = gaReferrerOrigin()
   const initialConfiguration = useRef({ gaId, pageLocation })
 
   useEffect(() => {
@@ -506,16 +384,16 @@ function ManualGoogleAnalytics({ gaId, pathname }: { readonly gaId: string; read
     ;(window as unknown as GtagTarget).gtag?.('config', gaId, {
       send_page_view: false,
       page_location: pageLocation,
-      page_referrer: '',
+      page_referrer: pageReferrer,
     })
-  }, [gaId, pageLocation])
+  }, [gaId, pageLocation, pageReferrer])
 
   if (!/^G-[A-Z0-9-]+$/.test(gaId)) return null
   gaMeasurementId = gaId
   const config = JSON.stringify({
     send_page_view: false,
     page_location: pageLocation,
-    page_referrer: '',
+    page_referrer: pageReferrer,
   })
   return (
     <>
@@ -538,11 +416,14 @@ export function PostHogProvider({ children }: PostHogProviderProps): ReactNode {
     // On unless this visitor turned analytics off: boot on arrival, stop on a
     // turn-off, start again on a turn-on (no reload).
     const resolve = (): void => {
+      // #4339 round B: keep the landing campaign for the app hand-off while
+      // ads are on (cleared when they are turned off).
+      rememberLandingCampaign(window.location.search, isMarketingAdsOn())
       if (!isMarketingAnalyticsOn()) {
         setEnabled(false)
         return
       }
-      void posthogOptIn().finally(() => setEnabled(isMarketingAnalyticsOn()))
+      void startMarketingAnalytics().finally(() => setEnabled(isMarketingAnalyticsOn()))
     }
     resolve()
     window.addEventListener(MARKETING_PRIVACY_EVENT, resolve)
@@ -550,6 +431,7 @@ export function PostHogProvider({ children }: PostHogProviderProps): ReactNode {
   }, [])
 
   useEffect(() => {
+    const { client: posthogClient, optedOut: posthogOptedOut } = marketingPostHogState()
     if (!enabled || posthogClient === null || posthogOptedOut) return
     posthogClient.set_config(cityHubPostHogConfig(pathname ?? ''))
   }, [enabled, pathname])
@@ -562,13 +444,14 @@ export function PostHogProvider({ children }: PostHogProviderProps): ReactNode {
     // analytics on from the first visit (#2331), this generic page_view would
     // otherwise reach GA before the referrer-stripping config is applied.
     if (isCityHubPathname(pathname)) return
-    const audience = pathname === '/host' || pathname.startsWith('/host/') ? 'host' : pathname === '/going-out' || pathname.startsWith('/cities/') ? 'explorer' : 'neutral'
-    const pageFamily = pathname.startsWith('/cities/') ? 'city_hub' : pathname.startsWith('/tools') ? 'tools' : pathname === '/going-out' ? 'explorer_pillar' : pathname === '/host' ? 'host_pillar' : 'brand_core'
+    // #4339 round B: audience, page family and (Host landing pages) the ICP
+    // come from one table (lib/page-measurement.ts); page_location keeps the
+    // allowlisted campaign parameters.
+    const page = pageMeasurement(pathname)
     const referrerOrigin = typeof document === 'undefined' ? null : cleanReferrerOrigin(document.referrer)
     captureSearchMeasurement('page_view', {
-      audience,
-      page_family: pageFamily,
-      page_location: new URL(pathname, SITE_ORIGIN).toString(),
+      ...page,
+      page_location: gaPageLocation(new URL(pathname, SITE_ORIGIN).toString()),
       source_kind: referrerOrigin ? 'referrer' : 'direct',
       ...(referrerOrigin ? { page_referrer_origin: referrerOrigin } : {}),
     })

@@ -48,6 +48,10 @@ function stripComments(src) {
 const MODAL_RAW = read('app-mobile/src/components/ExpandedCardModal.tsx');
 const MODAL = stripComments(MODAL_RAW);
 const BASE = stripComments(read('app-mobile/src/components/ui/BaseBottomSheet.tsx'));
+// #4347 wave 2 — the single place's photos moved out of the body strip into
+// PlaceGallery at the TOP of the sheet (a full-width pager + a thumbnail row).
+// Every protection below now applies to that file, where the lists live.
+const GALLERY = stripComments(read('app-mobile/src/components/expandedCard/PlaceGallery.tsx'));
 
 test('P-0 the stripper strips, and the needle is real', () => {
   assert.ok(MODAL.length < MODAL_RAW.length, 'P-0: nothing was stripped');
@@ -77,11 +81,13 @@ test('P-1 no plain React Native list is mounted inside the sheet', () => {
 });
 
 test('P-2 the gallery mounts the sheet-aware list', () => {
-  assert.match(
-    MODAL, /<BottomSheetFlatList/,
-    'P-2: the photo strip is not a BottomSheetFlatList, so it cannot coordinate with the sheet',
-  );
-  assert.match(MODAL, /horizontal/, 'P-2: the photo strip is no longer horizontal');
+  // REWRITTEN (#4347 wave 2), same protection: BOTH of the gallery's lists
+  // (the pager and the thumbnail row) are the sheet-aware list, horizontal.
+  const lists = GALLERY.match(/<BottomSheetFlatList/g) ?? [];
+  assert.equal(lists.length, 2, 'P-2: the gallery lists are not both BottomSheetFlatList');
+  assert.equal((GALLERY.match(/\bhorizontal\b/g) ?? []).length, 2, 'P-2: the gallery lists are no longer horizontal');
+  assert.equal(/<FlatList[\s>]|<ScrollView[\s>]/.test(GALLERY), false, 'P-2: a raw list is in the gallery');
+  assert.match(MODAL, /<PlaceGallery\b/, 'P-2: the sheet no longer mounts the gallery');
 });
 
 test('P-3 it comes through the ONE permitted importer, not straight from gorhom', () => {
@@ -89,9 +95,10 @@ test('P-3 it comes through the ONE permitted importer, not straight from gorhom'
   // Importing the list directly would work and would also quietly break that
   // rule, which exists so the sheet's configuration has one owner.
   assert.match(
-    MODAL, /import \{[^}]*BottomSheetFlatList[^}]*\} from ["']\.\/ui\/BaseBottomSheet["']/,
+    GALLERY, /import \{[^}]*BottomSheetFlatList[^}]*\} from ["']\.\.\/ui\/BaseBottomSheet["']/,
     'P-3: BottomSheetFlatList is not imported from BaseBottomSheet',
   );
+  assert.equal(/from ["']@gorhom\/bottom-sheet["']/.test(GALLERY), false, 'P-3: PlaceGallery imports gorhom directly');
   assert.equal(
     /from ["']@gorhom\/bottom-sheet["']/.test(MODAL), false,
     'P-3: ExpandedCardModal imports @gorhom/bottom-sheet directly',
@@ -106,7 +113,12 @@ test('P-4 the lightbox still opens on tap — scrolling did not eat the press', 
   // The strip's items are TouchableOpacity, and a horizontal list that claims
   // the drag must still pass a tap through. Regressing this would trade one
   // broken gesture for another.
-  const strip = MODAL.slice(MODAL.indexOf('<BottomSheetFlatList'), MODAL.indexOf('<BottomSheetFlatList') + 1400);
-  assert.match(strip, /<TouchableOpacity/, 'P-4: the strip items are no longer pressable');
-  assert.match(strip, /setCuratedLightbox/, 'P-4: tapping a thumbnail no longer opens the lightbox');
+  // REWRITTEN (#4347 wave 2): a pager page is a TouchableOpacity that calls
+  // onOpen, and the sheet's onOpen opens the ImageLightbox.
+  const pager = GALLERY.slice(GALLERY.indexOf('<BottomSheetFlatList'), GALLERY.indexOf('<BottomSheetFlatList') + 1600);
+  assert.match(pager, /<TouchableOpacity/, 'P-4: the gallery pages are no longer pressable');
+  // #4347 rework: onOpen also receives the media still in the gallery.
+  assert.match(pager, /onPress=\{\(\) => onOpen\(item\.uri, media\)\}/, 'P-4: tapping a page no longer reaches onOpen');
+  const mount = MODAL.slice(MODAL.indexOf('<PlaceGallery'), MODAL.indexOf('<PlaceGallery') + 800);
+  assert.match(mount, /setCuratedLightbox\(\{ visible: true/, 'P-4: the gallery no longer opens the lightbox');
 });

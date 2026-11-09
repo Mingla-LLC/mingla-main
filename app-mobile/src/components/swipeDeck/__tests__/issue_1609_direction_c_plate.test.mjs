@@ -174,6 +174,8 @@ test('T-2 the scrims are absolute points from the package, with no percentage an
       CI.plateTopDepthForLines('s1Single', tallest),
       CI.titleTopDepthForLines('s1Single', tallest),
       s1.h,
+      // #4347 — the deck card's kicker clause (see KICKER in the package).
+      CI.kickerSolveDepthForLines('s1Single', tallest),
     ),
     "T-2: S1's scrim is not the height solved from its tallest silhouette",
   );

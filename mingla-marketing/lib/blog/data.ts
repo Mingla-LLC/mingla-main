@@ -16,6 +16,7 @@
 // instead of a false "no stories" (Constitution #3, #9).
 
 import type { BlogDocument } from '@mingla/blog-document'
+import { BLOG_CATEGORIES } from '../../content/blog/categories'
 
 // The transport reads the environment at RUNTIME (a computed key is never
 // inlined by the bundler), so the same build can be pointed at another
@@ -184,6 +185,27 @@ export async function getBlogPostEmbeds(slug: string): Promise<BlogEmbeds> {
   if (!blogDataConfigured() || !SLUG.test(slug) || slug.length > 80) return EMPTY_EMBEDS
   const value = await rpc<Partial<BlogEmbeds>>('embeds', 'blog_public_post_embeds', { p_slug: slug })
   return { places: value.places ?? {}, offerings: value.offerings ?? {} }
+}
+
+/**
+ * #4339 round B — the category slugs that have at least one public post. An
+ * empty category is noindex and leaves the sitemap. No database configured:
+ * no posts are known, so no category is listed (fails closed to noindex).
+ */
+export async function blogCategoriesWithPosts(): Promise<ReadonlySet<string>> {
+  if (!blogDataConfigured()) return new Set()
+  const counts = await Promise.all(
+    BLOG_CATEGORIES.map(async (category) => {
+      const index = await getBlogIndex(category.slug, 1)
+      return [category.slug, index.total > 0 || index.featured !== null || index.posts.length > 0] as const
+    }),
+  )
+  return new Set(counts.filter(([, filled]) => filled).map(([slug]) => slug))
+}
+
+/** True when the category has at least one public post (see blogCategoriesWithPosts). */
+export async function blogCategoryHasPosts(slug: string): Promise<boolean> {
+  return (await blogCategoriesWithPosts()).has(slug)
 }
 
 export async function listBlogSitemapEntries(): Promise<readonly BlogSitemapEntry[]> {

@@ -1,6 +1,7 @@
 {
   "action_buttons": {
     "save": "Salvar",
+    "website": "Site",
     "saved": "Salvo",
     "schedule": "Agendar",
     "scheduled": "Agendado",

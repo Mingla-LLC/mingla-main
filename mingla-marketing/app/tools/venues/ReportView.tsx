@@ -18,7 +18,7 @@ import Link from 'next/link'
 import { motion, useReducedMotion } from 'framer-motion'
 import { cn } from '@/lib/cn'
 import { buttonClasses } from '@/components/ui/button'
-import { captureMarketing } from '@/components/marketing/posthog-provider'
+import { captureMarketing } from '@/components/marketing/marketing-capture'
 import { DeviceLink } from '@/components/cutout/device-link'
 import { toolAttribution } from '@/lib/links-src'
 import {
@@ -965,7 +965,7 @@ export function ReportView({
                       }
                       className={buttonClasses({ variant: 'primary', className: 'mt-5 w-full' })}
                     >
-                      View on Mingla app
+                      View in Mingla Host
                     </DeviceLink>
                     {!emailOpen ? (
                       <button

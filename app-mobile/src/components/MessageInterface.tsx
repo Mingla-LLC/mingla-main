@@ -4002,7 +4002,12 @@ function MessageInterfaceInner({
           (Animated.View, not native Modal portal). The notifications panel below
           (around line 1632) remains as the canonical single mount point. */}
 
-      {isCollabChat && showCollabDeckSheet && collabSessionId ? (
+      {/* #4347 rework (P1-2) — KEPT MOUNTED; only `visible` flips. The sheet's
+          route hand-off (a claimed venue / brand page tapped in the collab deck)
+          pushes on the close edge — iOS Modal onDismiss, Android visible->false —
+          and an unmounted sheet runs neither, which dropped the route. The RN
+          Modal renders nothing while hidden, so this costs no deck. */}
+      {isCollabChat && collabSessionId ? (
         <CollabDeckSheet
           visible={showCollabDeckSheet}
           onClose={() => setShowCollabDeckSheet(false)}

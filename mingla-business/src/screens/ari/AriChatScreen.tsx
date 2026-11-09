@@ -115,6 +115,12 @@ import {
 } from "../../utils/firstRunState";
 import type { AriFirstRunHint } from "../../services/agentChatService";
 import {
+  carrySitePromptMessage,
+  takeCarriedSitePromptMessage,
+  useSitePromptDraftHandoff,
+} from "../../hooks/useSitePromptDraftHandoff";
+import { parseSitePromptDraftId } from "../../utils/sitePromptDraft";
+import {
   ariConversationScopeKey,
   ariWebsiteSetupConversationScopeKey,
   hasStoredAriConversationSelection,
@@ -322,6 +328,8 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     sitesIntent?: string | string[];
     brandId?: string | string[];
     setupPart?: string | string[];
+    /** #4339 — a usemingla.com website description waiting to be claimed. */
+    draft?: string | string[];
   }>();
   const sitesIntent = Array.isArray(sitesParams.sitesIntent)
     ? sitesParams.sitesIntent[0]
@@ -716,6 +724,62 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
       });
     return true;
   };
+
+  // #4339 §5 — "Prompt your website into existence". A visitor who typed a
+  // description on usemingla.com arrives here as /ari?draft=<id> after sign-in
+  // or sign-up. Once the account, the AI disclosure, the brand list and the
+  // brand's last conversation have settled, the draft is claimed once and its
+  // description is sent as the host's first message in a NEW conversation, so
+  // Ari starts the website build straight away (with no brand, Ari's website
+  // rules make creating the brand part zero). A missing, expired or claimed
+  // draft opens Ari normally. The id is dropped from the address afterwards.
+  const sitePromptDraftId =
+    setup === undefined && !websiteSplit ? parseSitePromptDraftId(sitesParams.draft) : null;
+  const brandCount = brands.data?.length ?? 0;
+  const sitePromptReady =
+    sitePromptDraftId !== null &&
+    accountId !== null &&
+    online &&
+    !prefs.isLoading &&
+    !disclosureNeeded &&
+    brands.isSuccess &&
+    (brandCount === 0 || (selectedBrandId !== null && conversationRestored));
+  const handleSendRef = useRef(handleSend);
+  handleSendRef.current = handleSend;
+  useSitePromptDraftHandoff({
+    draftId: sitePromptDraftId,
+    ready: sitePromptReady,
+    onMessage: (message) => {
+      chat.setConversationId(null);
+      // No brand yet: the request also rides across brand creation (below).
+      if (brandCount === 0) carrySitePromptMessage(message);
+      // A send that cannot go now (rate limit) keeps the words in the composer.
+      if (!handleSendRef.current(message)) setDraftText(message);
+    },
+    onSettled: () => router.setParams({ draft: undefined } as never),
+  });
+  // The brand Ari just created is selected and its own conversation restored
+  // (State B): send the carried website request there once, so the build
+  // continues without the host retyping or re-sending it.
+  React.useEffect(() => {
+    if (
+      firstRunStage !== "empty_brand" ||
+      selectedBrandId === null ||
+      !conversationRestored ||
+      rememberedFirstRunText === null ||
+      !takeCarriedSitePromptMessage(rememberedFirstRunText)
+    )
+      return;
+    firstRunPrefilledBrandRef.current = selectedBrandId;
+    chat.setConversationId(null);
+    if (!handleSendRef.current(rememberedFirstRunText)) setDraftText(rememberedFirstRunText);
+  }, [
+    chat.setConversationId,
+    conversationRestored,
+    firstRunStage,
+    rememberedFirstRunText,
+    selectedBrandId,
+  ]);
 
   // #4304 — a greeting chip is sent as the host's own message, with the chip's
   // intent as context. In State A a kind ("I host events") is remembered so the

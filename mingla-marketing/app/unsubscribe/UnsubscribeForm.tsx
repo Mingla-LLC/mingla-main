@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { cn } from '@/lib/cn'
 import {
   submitUnsubscribe,
   type UnsubscribeSubmitResult,
@@ -83,21 +82,18 @@ export function UnsubscribeForm() {
       <div
         role="status"
         aria-live="polite"
-        className="rounded-2xl border border-warm/30 bg-warm/10 p-5 text-white/85"
+        className="form-ok"
       >
-        <p className="font-display text-xl text-white">You’re opted out.</p>
-        <p className="mt-2 text-sm leading-7 text-white/76 sm:text-base">
+        <p className="h3">You’re opted out.</p>
+        <p>
           {successScope === 'all'
             ? 'You won’t receive marketing or non-essential messages from Mingla or the businesses you’ve booked with anymore.'
             : 'You won’t receive marketing messages from Mingla or the businesses you’ve booked with anymore. You may still get essential messages about bookings you make (confirmations, changes, refunds).'}
         </p>
-        <p className="mt-3 text-sm leading-7 text-white/60">
+        <p className="hint">
           Your request is honored immediately. If you opted out by mistake or
           have questions, email{' '}
-          <a
-            href="mailto:support@usemingla.com"
-            className="font-semibold text-warm underline-offset-4 hover:underline focus-ring"
-          >
+          <a href="mailto:support@usemingla.com">
             support@usemingla.com
           </a>
           .
@@ -107,17 +103,16 @@ export function UnsubscribeForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} noValidate className="space-y-6">
-      <p className="text-sm leading-7 text-white/72 sm:text-base">
+    <form onSubmit={onSubmit} noValidate className="account-form">
+      <p className="muted">
         Enter the email address or phone number you’d like to opt out, choose
         what to stop, and we’ll honor it right away. You don’t need an account or
         to log in.
       </p>
 
-      <div className="space-y-2">
+      <div className="field">
         <label
           htmlFor="unsub-email"
-          className="block text-xs font-semibold uppercase tracking-[0.16em] text-white/60"
         >
           Email address
         </label>
@@ -130,17 +125,13 @@ export function UnsubscribeForm() {
           onChange={(e) => setEmail(e.target.value)}
           placeholder="you@example.com"
           aria-invalid={!emailValid}
-          className={cn(
-            'min-h-12 w-full rounded-2xl border bg-black/30 px-4 text-base text-white placeholder:text-white/35 focus-ring',
-            emailValid ? 'border-white/14' : 'border-red-400/60',
-          )}
+          className={emailValid ? undefined : 'invalid'}
         />
       </div>
 
-      <div className="space-y-2">
+      <div className="field">
         <label
           htmlFor="unsub-phone"
-          className="block text-xs font-semibold uppercase tracking-[0.16em] text-white/60"
         >
           Phone number (international format)
         </label>
@@ -153,47 +144,42 @@ export function UnsubscribeForm() {
           onChange={(e) => setPhone(e.target.value)}
           placeholder="+19195551234"
           aria-invalid={!phoneValid}
-          className={cn(
-            'min-h-12 w-full rounded-2xl border bg-black/30 px-4 text-base text-white placeholder:text-white/35 focus-ring',
-            phoneValid ? 'border-white/14' : 'border-red-400/60',
-          )}
+          className={phoneValid ? undefined : 'invalid'}
         />
-        <p className="text-xs text-white/45">
+        <p className="hint">
           Enter at least one — email or phone. Phone must start with + and your
           country code.
         </p>
       </div>
 
-      <fieldset className="space-y-3">
-        <legend className="text-xs font-semibold uppercase tracking-[0.16em] text-white/60">
+      <fieldset className="choice">
+        <legend>
           What would you like to stop?
         </legend>
-        <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-white/12 bg-black/20 p-4 text-sm text-white/80 has-[:checked]:border-warm/40 has-[:checked]:bg-warm/10">
+        <label className="radio">
           <input
             type="radio"
             name="scope"
             value="marketing"
             checked={scope === 'marketing'}
             onChange={() => setScope('marketing')}
-            className="mt-1 accent-warm"
           />
           <span>
-            <span className="font-semibold text-white">Marketing only</span> —
+            <span className="strong">Marketing only</span> —
             stop promotions and announcements. You’ll still get essential
             messages about bookings you make.
           </span>
         </label>
-        <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-white/12 bg-black/20 p-4 text-sm text-white/80 has-[:checked]:border-warm/40 has-[:checked]:bg-warm/10">
+        <label className="radio">
           <input
             type="radio"
             name="scope"
             value="all"
             checked={scope === 'all'}
             onChange={() => setScope('all')}
-            className="mt-1 accent-warm"
           />
           <span>
-            <span className="font-semibold text-white">All messages</span> — stop
+            <span className="strong">All messages</span> — stop
             all non-essential messages on this email/phone.
           </span>
         </label>
@@ -202,7 +188,7 @@ export function UnsubscribeForm() {
       {status === 'error' && errorKey ? (
         <p
           role="alert"
-          className="rounded-2xl border border-red-400/40 bg-red-500/10 px-4 py-3 text-sm text-red-200"
+          className="form-error"
         >
           {ERROR_COPY[errorKey]}
         </p>
@@ -211,12 +197,12 @@ export function UnsubscribeForm() {
       <button
         type="submit"
         disabled={!canSubmit}
-        className="inline-flex min-h-12 w-full items-center justify-center rounded-full bg-warm px-6 text-base font-semibold text-black transition hover:bg-warm/90 focus-ring disabled:cursor-not-allowed disabled:opacity-50"
+        className="btn ink full"
       >
         {status === 'submitting' ? 'Opting you out…' : 'Opt out'}
       </button>
 
-      <p className="text-center text-xs leading-6 text-white/45">
+      <p className="hint center">
         Opt-out requests are honored immediately. Mingla LLC, 700 Corporate
         Center Dr, Raleigh, NC 27607, USA.
       </p>

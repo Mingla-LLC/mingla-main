@@ -58,10 +58,20 @@ for (const page of PAGES) {
     .filter((button) => /Use Mingla|Get the app|Explore Your City/.test(button))
   assert.deepEqual(dialogButtons, [], `#4137 AC-D1: ${page} renders an app CTA as a dialog button`)
   // F-7: both labels and the three marks ship in the server HTML.
-  if (/data-cta-surface="[a-z]+"[^>]*class="cut-btn/.test(html) || /class="cut-btn[^"]*"[^>]*data-cta/.test(html)) {
-    assert.match(html, /data-cta-when="phone"/, `#4137 F-7: ${page} phone label`)
-    assert.match(html, /data-cta-when="computer"/, `#4137 F-7: ${page} computer label`)
-    for (const mark of ['ios', 'android', 'other']) assert.match(html, new RegExp(`data-cta-mark="${mark}"`), `#4137 F-7: ${page} ${mark} mark`)
+  // #4339: checked per CTA, not per page. The page-level form passed only
+  // because the old Cutout footer's DeviceCta carried both labels on every
+  // page; the canonical footer (#4339 §9) has no CTA, which exposed that a
+  // CTA with a deliberate single `label` (city pages) never needs two. A CTA
+  // that ships a device label or mark must ship the full set.
+  const anchors = html.match(/<a\b[^>]*data-cta-phone-href="[^"]*"[^>]*>[\s\S]*?<\/a>/g) ?? []
+  for (const anchor of anchors) {
+    if (/data-cta-when=/.test(anchor)) {
+      assert.match(anchor, /data-cta-when="phone"/, `#4137 F-7: ${page} phone label`)
+      assert.match(anchor, /data-cta-when="computer"/, `#4137 F-7: ${page} computer label`)
+    }
+    if (/data-cta-mark=/.test(anchor)) {
+      for (const mark of ['ios', 'android', 'other']) assert.match(anchor, new RegExp(`data-cta-mark="${mark}"`), `#4137 F-7: ${page} ${mark} mark`)
+    }
   }
   // The boot script ships in <head> on every page.
   assert.match(html, /<head>[\s\S]*?setAttribute\('data-platform',p\)[\s\S]*?<\/head>/, `#4137 F-7: ${page} boot script in <head>`)

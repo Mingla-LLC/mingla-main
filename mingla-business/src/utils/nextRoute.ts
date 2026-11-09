@@ -93,6 +93,16 @@ const PUBLIC_OFFERING_NEXT_ROUTE_PREFIXES: readonly string[] = [
   "/b",
 ] as const;
 
+/**
+ * #4339 §5 — the Ari tab, EXACT path only (`/ari`, never `/ari/settings`). The
+ * usemingla.com website prompt sends a visitor to `/auth?next=/ari?draft=<id>`
+ * so the draft id survives email sign-in, Google/Apple and sign-up. The id is
+ * an opaque pointer to a server-side description; the description itself is
+ * never in the URL, and the Ari tab claims it for the signed-in user only.
+ * Same validator, same decision owner, not exported (the #2101 rule).
+ */
+const ARI_NEXT_ROUTE_EXACT: readonly string[] = ["/ari"] as const;
+
 /** Bound the surface — nothing legitimate is anywhere near this long. */
 const MAX_NEXT_LENGTH = 2048;
 
@@ -179,6 +189,7 @@ const isAllowlistedPath = (path: string): boolean => {
     ...NEXT_ROUTE_ALLOWLIST,
     ...PUBLIC_OFFERING_NEXT_ROUTE_PREFIXES,
   ];
+  if (ARI_NEXT_ROUTE_EXACT.includes(normalized)) return true;
   return authorized.some((prefix) => {
     const base = prefix.endsWith("/") ? prefix.slice(0, -1) : prefix;
     return normalized === base || normalized.startsWith(`${base}/`);

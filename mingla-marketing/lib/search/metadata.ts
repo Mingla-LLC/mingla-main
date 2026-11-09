@@ -13,6 +13,7 @@ import { canonicalMarketingUrl } from '@/lib/site'
 import type { CorePageRecord } from '@/content/core-pages'
 import type { HelpVideoRecord } from '@/content/help/registry'
 import { bambooPosterUrl, helpVideoPath } from '@/content/help/registry'
+import { OG_IMAGE_SIZE, ogImageNameForPath, ogImageUrl } from '@/lib/search/og-images'
 
 export interface PublicNoindexMetadataInput {
   readonly title: string
@@ -23,6 +24,9 @@ export interface PublicNoindexMetadataInput {
 export function searchRouteMetadata(pathname: string): Metadata {
   const contract = requireRouteContract(pathname, 'search_ready') as SearchReadyRouteContract
   const canonical = canonicalUrlForSearchRoute(pathname)
+  // #4339 round B: a 1200×630 share image per page (lib/search/og-images.ts)
+  // and the large Twitter/X card.
+  const image = { url: ogImageUrl(ogImageNameForPath(contract.match.pathname)), ...OG_IMAGE_SIZE, alt: contract.title }
   return {
     title: { absolute: contract.title },
     description: contract.description,
@@ -34,11 +38,13 @@ export function searchRouteMetadata(pathname: string): Metadata {
       title: contract.title,
       description: contract.description,
       url: canonical,
+      images: [image],
     },
     twitter: {
-      card: 'summary',
+      card: 'summary_large_image',
       title: contract.title,
       description: contract.description,
+      images: [image.url],
     },
   }
 }

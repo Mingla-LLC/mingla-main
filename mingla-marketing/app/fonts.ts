@@ -8,7 +8,10 @@ export const mochiy = localFont({
   ],
   variable: '--font-mochiy',
   display: 'swap',
-  preload: true,
+  // #4339 round B (speed): not preloaded. These faces are declared for the
+  // whole site but only the legacy pages use them; a preload would put ~97 KB
+  // of fonts ahead of the LCP on every redesigned page. They load on use.
+  preload: false,
   adjustFontFallback: false,
   fallback: ['MinglaMochiyArialFallback'],
 })
@@ -23,7 +26,10 @@ export const nunito = localFont({
   ],
   variable: '--font-nunito',
   display: 'swap',
-  preload: true,
+  // #4339 round B (speed): not preloaded. These faces are declared for the
+  // whole site but only the legacy pages use them; a preload would put ~97 KB
+  // of fonts ahead of the LCP on every redesigned page. They load on use.
+  preload: false,
   adjustFontFallback: false,
   fallback: ['MinglaNunitoArialFallback'],
 })
@@ -40,7 +46,10 @@ export const inter = localFont({
   ],
   variable: '--font-inter',
   display: 'swap',
-  preload: true,
+  // #4339 round B (speed): not preloaded. These faces are declared for the
+  // whole site but only the legacy pages use them; a preload would put ~97 KB
+  // of fonts ahead of the LCP on every redesigned page. They load on use.
+  preload: false,
   adjustFontFallback: false,
   fallback: ['MinglaInterRootArialFallback'],
 })
@@ -56,7 +65,10 @@ export const previewInter = localFont({
     { path: './fonts/Inter-latin-wght-normal.woff2', weight: '900', style: 'normal' },
   ],
   display: 'swap',
-  preload: true,
+  // #4339 round B (speed): not preloaded. These faces are declared for the
+  // whole site but only the legacy pages use them; a preload would put ~97 KB
+  // of fonts ahead of the LCP on every redesigned page. They load on use.
+  preload: false,
   adjustFontFallback: false,
   fallback: ['MinglaInterPreviewArialFallback'],
 })

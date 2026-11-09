@@ -97,9 +97,9 @@ function EmailSettings({ open, onClose }) {
             ))}
           </ul>
         )}
-        {/* #4130: the old line said every alert "starts on" and that email is
-            off until you opt in, which contradicted itself. */}
-        <p className="text-xs text-[var(--color-text-tertiary)]">Every alert except Mentions emails you unless you switch it off. Mentions email you only after you switch them on here.</p>
+        {/* #4255: Mentions (work card) email is on by default too, so one
+            rule covers every alert. */}
+        <p className="text-xs text-[var(--color-text-tertiary)]">Every alert emails you unless you switch it off here.</p>
       </div>
     </Drawer>
   );

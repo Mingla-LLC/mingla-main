@@ -1,6 +1,6 @@
 // #4137 F-7 — the pre-hydration device boot script.
 //
-// Before this, a phone saw the computer label ("Use Mingla Web" + arrow) and the
+// Before this, a phone saw the computer label ("Use Mingla Host" + arrow) and the
 // computer href from first paint until React hydrated, and a tap in that window
 // landed on the computer destination with no install attribution. This inline
 // script runs in <head> before any paint:

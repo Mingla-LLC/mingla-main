@@ -121,21 +121,25 @@ test('E-5 the chevron survives — Details is an addition, not a replacement', (
 });
 
 test('E-6 travel time is a span like any other, in the same order everywhere', () => {
-  // The span order is truncation priority turned into wrap priority (#1700):
-  // rating, distance, travel time, price, category. If two card trees ordered
-  // them differently the same place would read differently on two screens.
-  const fn = /function metaSpansForCard\([\s\S]*?\n\}/.exec(DECK)[0];
-  const order = [...fn.matchAll(/spans\.push\(\{ kind: '(\w+)', text: ([^}]+)\}/g)]
-    .map((m) => m[2].trim());
-  const idx = (needle) => order.findIndex((t) => t.includes(needle));
-  assert.ok(idx('rating') < idx('d') || idx('★') >= 0, 'E-6: the rating is no longer first');
+  // #4347 wave 1 — REWRITTEN, SAME PROTECTION. The approved order is now open
+  // status, rating with count, travel time, price (the category moved to the
+  // kicker; distance is only travel time's GPS-less fallback). The order still
+  // lives in ONE producer (`placeFactSpans`), which the deck's metaSpansForCard
+  // delegates to, and the curated face still builds no facts line of its own.
+  const MODEL = strip(read('app-mobile/src/components/deckCard/deckCardModel.ts'));
+  const fn = /export function placeFactSpans\([\s\S]*?\n\}/.exec(MODEL);
+  assert.ok(fn, 'E-6: placeFactSpans is gone');
+  const at = (needle) => fn[0].indexOf(needle);
+  assert.ok(at('statusSpan(') >= 0 && at('ratingText(') > at('statusSpan('), 'E-6: the open status no longer leads');
+  assert.ok(at('card.travelTime') > at('ratingText('), 'E-6: travel time is not after the rating');
   assert.ok(
-    idx('travelTime') > idx('d,'),
-    'E-6: travel time is not placed after distance — the two are read together',
-  );
-  assert.ok(
-    idx('travelTime') < idx('priceRange'),
+    at('card.priceRange') > at('card.travelTime'),
     'E-6: travel time is placed after price, so it is sacrificed to the wrap before price is',
+  );
+  assert.match(
+    /function metaSpansForCard\([\s\S]*?\n\}/.exec(DECK)[0],
+    /return placeFactSpans\(/,
+    'E-6: the deck builds its own facts line instead of the one producer',
   );
   // ONE producer. The curated card must not build its own facts line.
   assert.equal(

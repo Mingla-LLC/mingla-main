@@ -253,7 +253,7 @@ export function EventPreviewClient() {
             List it on Mingla and we’ll put it in front of people planning their week.
           </p>
           <DeviceLink surface="host" attribution={toolAttribution('tool_events')} sameTab style={{ display: 'inline-flex', marginTop: 16, minHeight: 44, alignItems: 'center', padding: '0 24px', borderRadius: 999, background: T.accent, color: T.inverse, fontWeight: 800, textDecoration: 'none' }}>
-            List it on Mingla
+            List it on Mingla Host
           </DeviceLink>
         </div>
       </div>

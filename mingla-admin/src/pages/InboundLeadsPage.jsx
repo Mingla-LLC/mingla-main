@@ -10,8 +10,16 @@
 //     its email as a contact detail. A lead already in Hosts opens its card.
 //   - Competitor Ops (it was a tab of Tool leads) moves to Settings
 //     (Wave 4b renders it; pages/ToolLeadsPage.jsx exports it).
+//   - Issue #4339 round A: every confirmed "Book a call" booking is a lead too.
+//     Its row shows what they run, their social as a profile link, their
+//     website and the call time; Add to Hosts makes a Prospect card with the
+//     email and social as contact details.
+//   - Issue #4339 Creators and Locals calls: a booking reads Host call,
+//     Creator call or Local call, with its city and what they make or their
+//     first place; a filter shows one audience's calls; only a Host call can
+//     go to Hosts. `?lead=<id>` (Open lead on the Calendar) marks that row.
 // A failed load is an error with Retry, never an empty list or zeros.
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { UserPlus } from "lucide-react";
 import { PageHeader } from "../components/ui/PageHeader";
 import { AlertCard, SectionCard } from "../components/ui/Card";
@@ -25,9 +33,11 @@ import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { canOpenPage } from "../lib/access";
 import { errorWords } from "../lib/crmModel";
-import { formatDate } from "../lib/formatters";
-import { leadView, quietWarning, toolLeadHostFields } from "../lib/inboundLeads";
-import { getToolLead, listInboundLeads } from "../services/dashboardService";
+import { formatDate, formatDateTime } from "../lib/formatters";
+import { LEAD_FILTERS, bookCallHostFields, filterLeads, leadView, quietWarning, toolLeadHostFields } from "../lib/inboundLeads";
+import { FilterSelect } from "../components/ui/FilterSelect";
+import { useHashQuery } from "../hooks/useHashQuery";
+import { getBookCallLead, getToolLead, listInboundLeads } from "../services/dashboardService";
 import { betaLeadToHost, createRecord, newRequestKey } from "../services/crmService";
 import { useServerRead } from "../hooks/useServerRead";
 
@@ -43,6 +53,48 @@ function Kpi({ label, value, note, tone }) {
   );
 }
 
+/** A Book a call row's details: what they run, their social, website and call time. */
+function BookingDetails({ booking }) {
+  const linkClass = "font-medium text-[var(--color-brand-700)] hover:underline";
+  return (
+    <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs font-normal text-[var(--color-text-secondary)]" data-booking-details="">
+      {booking.icp && <span>Runs: {booking.icp}</span>}
+      {booking.city && <span data-booking-city="">City: {booking.city}</span>}
+      {booking.makes && <span>Makes: {booking.makes}</span>}
+      {booking.firstPlace && <span>First place: {booking.firstPlace}</span>}
+      {booking.socialUrl ? (
+        <a href={booking.socialUrl} target="_blank" rel="noopener noreferrer" className={linkClass} data-booking-social="">
+          {booking.socialLabel}: {booking.socialHandle || booking.socialUrl}
+        </a>
+      ) : null}
+      {booking.audience === "creator" ? (
+        booking.workUrl ? (
+          <a href={booking.workUrl} target="_blank" rel="noopener noreferrer" className={linkClass} data-booking-work="">
+            Best work
+          </a>
+        ) : null
+      ) : booking.audience === "local" ? null : booking.website ? (
+        <a href={booking.website} target="_blank" rel="noopener noreferrer" className={linkClass} data-booking-website="">
+          Website
+        </a>
+      ) : (
+        <span className="text-[var(--color-text-tertiary)]">No website</span>
+      )}
+      {booking.callAt && <span data-booking-call="" className={booking.status === "cancelled" || booking.status === "declined" ? "line-through" : undefined}>Call: {formatDateTime(booking.callAt)}</span>}
+      {/* #4339 calendar sync: the call's status from Google Calendar. */}
+      <span
+        data-booking-status={booking.status}
+        className={`rounded-full px-1.5 font-semibold ${booking.status === "booked" ? "bg-[var(--gray-100)] text-[var(--color-text-secondary)]" : booking.status === "moved" ? "bg-[var(--color-warning-50)] text-[var(--color-warning-700)]" : "bg-[var(--color-error-50)] text-[var(--color-error-700)]"}`}
+      >
+        {booking.statusLabel}
+        {booking.status !== "booked" && booking.statusChangedAt ? ` ${formatDateTime(booking.statusChangedAt)}` : ""}
+      </span>
+      {booking.originalCallAt && <span data-booking-original="">Was: {formatDateTime(booking.originalCallAt)}</span>}
+      {booking.cameFrom && <span>From: {booking.cameFrom}</span>}
+    </div>
+  );
+}
+
 export function InboundLeadsPage() {
   const { access } = useAuth();
   const { addToast } = useToast();
@@ -51,6 +103,15 @@ export function InboundLeadsPage() {
   const [confirm, setConfirm] = useState(null);
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState("");
+  const [search, setSearch] = useHashQuery("inbound");
+  const query = useMemo(() => new URLSearchParams(search || ""), [search]);
+  const audience = LEAD_FILTERS.some((f) => f.value === query.get("audience")) ? query.get("audience") : "";
+  const focusLead = /^[0-9a-f-]{36}$/i.test(query.get("lead") || "") ? query.get("lead") : null;
+  const setAudience = (value) => {
+    const p = new URLSearchParams(search || "");
+    if (value) p.set("audience", value); else p.delete("audience");
+    setSearch(p.toString(), { replace: true });
+  };
 
   const loadLeads = useCallback(() => listInboundLeads(showTest), [showTest]);
   const state = useServerRead(loadLeads);
@@ -58,7 +119,12 @@ export function InboundLeadsPage() {
 
   const data = state.data;
   const summary = data?.summary || null;
-  const rows = useMemo(() => (Array.isArray(data?.rows) ? data.rows.map(leadView) : []), [data]);
+  // #4339: the audience filter keeps each raw row beside what it shows.
+  const shown = useMemo(() => filterLeads(data?.rows, audience).map((raw) => ({ raw, lead: leadView(raw) })), [data, audience]);
+  useEffect(() => {
+    if (!focusLead || !shown.length) return;
+    document.querySelector(`[data-lead-id="${focusLead}"]`)?.scrollIntoView({ block: "center" });
+  }, [focusLead, shown.length]);
   const quiet = quietWarning(summary);
   const seesTools = !!data?.can_see?.tools;
 
@@ -74,6 +140,12 @@ export function InboundLeadsPage() {
         const res = await betaLeadToHost(lead.id);
         record = res?.record || null;
         duplicate = res?.status === "duplicate" || res?.status === "exists";
+      } else if (lead.raw.source === "book_a_call") {
+        const detail = await getBookCallLead(lead.id);
+        if (!detail) throw new Error("This booking could not be found.");
+        const res = await createRecord("hosts", bookCallHostFields(lead, detail), newRequestKey());
+        record = res?.status === "duplicate" ? res.existing : res?.record;
+        duplicate = res?.status === "duplicate";
       } else {
         const detail = await getToolLead(lead.id);
         const fields = toolLeadHostFields(lead, Array.isArray(detail) ? detail[0] : detail);
@@ -100,7 +172,7 @@ export function InboundLeadsPage() {
     <div className="flex min-w-0 flex-col gap-6">
       <PageHeader
         title="Inbound leads"
-        description="Businesses that came to us: free-tool users on the website and early-access requests."
+        description="Businesses that came to us: calls booked on the website, free-tool users and early-access requests."
       />
 
       {state.status === "error" && !state.data ? (
@@ -127,7 +199,11 @@ export function InboundLeadsPage() {
             <Kpi
               label="Leads, all time"
               value={Number(summary?.total || 0).toLocaleString()}
-              note={seesTools ? `${Number(summary?.tools || 0)} tool · ${Number(summary?.beta || 0)} beta` : `${Number(summary?.beta || 0)} beta`}
+              note={[
+                `${Number(summary?.book_a_call || 0)} call`,
+                seesTools ? `${Number(summary?.tools || 0)} tool` : null,
+                `${Number(summary?.beta || 0)} beta`,
+              ].filter(Boolean).join(" · ")}
             />
             <Kpi label="With an email" value={Number(summary?.with_email || 0).toLocaleString()} />
             <Kpi
@@ -147,15 +223,20 @@ export function InboundLeadsPage() {
             title="Leads"
             subtitle="Newest first"
             action={
-              Number(summary?.test_hidden || 0) > 0 || showTest ? (
-                <Toggle label={`Show staff and test rows (${Number(summary?.test_hidden || 0)})`} checked={showTest} onChange={setShowTest} />
-              ) : null
+              <div className="flex flex-wrap items-center gap-3">
+                <FilterSelect name="audience" label="Show" value={audience} options={LEAD_FILTERS} onChange={setAudience} />
+                {Number(summary?.test_hidden || 0) > 0 || showTest ? (
+                  <Toggle label={`Show staff and test rows (${Number(summary?.test_hidden || 0)})`} checked={showTest} onChange={setShowTest} />
+                ) : null}
+              </div>
             }
             noPadding
           >
-            {rows.length === 0 ? (
+            {shown.length === 0 ? (
               <p className="p-5 text-sm text-[var(--color-text-secondary)]">
-                No inbound leads yet. Early-access requests and free-tool users on the website show here.
+                {audience
+                  ? `No ${LEAD_FILTERS.find((f) => f.value === audience).label.toLowerCase()} yet.`
+                  : "No inbound leads yet. Calls booked on the website, early-access requests and free-tool users show here."}
               </p>
             ) : (
               <div className="overflow-x-auto">
@@ -174,16 +255,18 @@ export function InboundLeadsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map((lead, i) => {
-                      const raw = data.rows[i];
+                    {shown.map(({ raw, lead }) => {
                       return (
-                        <tr key={`${raw.source}-${lead.id}`} data-lead-source={raw.source} className="border-b border-[var(--gray-100)] last:border-b-0">
+                        <tr key={`${raw.source}-${lead.id}`} data-lead-source={raw.source} data-lead-id={lead.id} data-lead-audience={lead.booking ? lead.booking.audience : undefined} aria-current={focusLead === lead.id ? "true" : undefined} className="border-b border-[var(--gray-100)] last:border-b-0 aria-[current=true]:bg-[var(--color-brand-50)]">
                           <td className="whitespace-nowrap px-4 py-2.5 text-[var(--color-text-secondary)] sm:px-5">{formatDate(raw.created_at)}</td>
                           <td className="px-3 py-2.5">
                             {lead.source}
                             {lead.isTest && <span className="ml-2"><Badge variant="outline">Test</Badge></span>}
                           </td>
-                          <td className="px-3 py-2.5 font-medium text-[var(--color-text-primary)]">{lead.business || <span className="font-normal text-[var(--color-text-tertiary)]">No business name</span>}</td>
+                          <td className="px-3 py-2.5 font-medium text-[var(--color-text-primary)]">
+                            {lead.business || <span className="font-normal text-[var(--color-text-tertiary)]">No business name</span>}
+                            {lead.booking && <BookingDetails booking={lead.booking} />}
+                          </td>
                           <td className="px-3 py-2.5 text-[var(--color-text-secondary)]">{lead.tool || "–"}</td>
                           <td className="px-3 py-2.5 text-[var(--color-text-secondary)]">{lead.city || "–"}</td>
                           <td className="px-3 py-2.5">{lead.hasEmail ? <span aria-label="Has an email">✓</span> : <span className="text-[var(--color-text-tertiary)]">No</span>}</td>
@@ -221,6 +304,7 @@ export function InboundLeadsPage() {
           <p className="text-sm text-[var(--color-text-secondary)]">
             Add <span className="font-semibold text-[var(--color-text-primary)]">{confirm?.business}</span> to Hosts at Prospect?
             {confirm?.raw?.source === "tool" && confirm?.hasEmail ? " Their email goes on the card as a contact detail." : ""}
+            {confirm?.raw?.source === "book_a_call" ? " Their email and social go on the card as contact details." : ""}
             {" "}If it is already in Hosts, nothing new is made and you can open that card.
           </p>
           {addError && <p role="alert" className="mt-3 text-sm text-[var(--color-error-700)]">{addError}</p>}

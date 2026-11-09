@@ -90,6 +90,11 @@ describe("META-ORCH-1187 P2 ADVERSARIAL / #2331 — a turn-off is scope-bounded 
   const marketingProvider = readRepo(
     "mingla-marketing/components/marketing/posthog-provider.tsx",
   );
+  // #4339: the capture facades moved to marketing-capture.ts (the provider
+  // re-exports them) so pages can send events without loading the SDK.
+  const marketingCapture = readRepo(
+    "mingla-marketing/components/marketing/marketing-capture.ts",
+  );
 
   it("buyer-web: boot re-checks the choice after the dynamic import and opts in before exposing the client", () => {
     const bootBody = extractFnBody(
@@ -108,14 +113,16 @@ describe("META-ORCH-1187 P2 ADVERSARIAL / #2331 — a turn-off is scope-bounded 
   });
 
   it("marketing: every capture facade fails closed while analytics is off", () => {
+    // #4339: one definition of each facade, in marketing-capture.ts.
+    expect(marketingProvider).not.toMatch(/export\s+function\s+capture(?:Marketing|SearchMeasurement)\s*\(/);
     const eventFacadeBody = extractFnBody(
-      marketingProvider,
+      marketingCapture,
       /export\s+function\s+captureMarketing\s*\(/,
     );
     expect(eventFacadeBody).toContain("if (!isMarketingAnalyticsOn()) return");
     expect(eventFacadeBody).toContain("posthogOptedOut");
     const searchBody = extractFnBody(
-      marketingProvider,
+      marketingCapture,
       /export\s+function\s+captureSearchMeasurement\s*\(/,
     );
     expect(searchBody).toContain("if (!isMarketingAnalyticsOn()) return");

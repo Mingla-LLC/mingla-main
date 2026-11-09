@@ -17,6 +17,24 @@ export const MARKETING_ROUTES = [
   { slug: 'tools-venues', path: '/tools/venues' },
   { slug: 'tools-trips', path: '/tools/trips' },
   { slug: 'tools-pricing', path: '/tools/pricing' },
+  // #4339 round B — the seven Host landing pages and the ten city pages.
+  { slug: 'host-events', path: '/host/events' },
+  { slug: 'host-trips', path: '/host/trips' },
+  { slug: 'host-experiences', path: '/host/experiences' },
+  { slug: 'host-restaurants', path: '/host/restaurants' },
+  { slug: 'host-hotels', path: '/host/hotels' },
+  { slug: 'host-art', path: '/host/art' },
+  { slug: 'host-play', path: '/host/play' },
+  { slug: 'city-lagos', path: '/cities/lagos' },
+  { slug: 'city-durham-nc', path: '/cities/durham-nc' },
+  { slug: 'city-cary-nc', path: '/cities/cary-nc' },
+  { slug: 'city-raleigh-nc', path: '/cities/raleigh-nc' },
+  { slug: 'city-new-york-city', path: '/cities/new-york-city' },
+  { slug: 'city-brussels', path: '/cities/brussels' },
+  { slug: 'city-paris', path: '/cities/paris' },
+  { slug: 'city-london', path: '/cities/london' },
+  { slug: 'city-fort-lauderdale', path: '/cities/fort-lauderdale' },
+  { slug: 'city-washington-dc', path: '/cities/washington-dc' },
 ] as const
 
 /** Map a browser pathname on usemingla.com to an allowlisted marketing slug. */

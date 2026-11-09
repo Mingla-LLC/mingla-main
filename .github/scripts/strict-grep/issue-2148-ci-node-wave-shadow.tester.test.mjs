@@ -122,6 +122,19 @@ orch-1386-tester-adversarial.yml f0d49800ed79ccf9a0dd51a0c6fef8cf236ad199da41a90
 // at its own dependency list (it gained `runAfterOpen`). Paths, order, the
 // other hashes, and both lock call sites remain unchanged; both values were
 // derived from the files on disk.
+// [TEST-MOD-APPROVED #4347] Seth approved the wave 1 deck-card redesign spec
+// (2026-11-08), whose build contract rewrites the deck's source-shape guards
+// to assert behaviour. 6 lock VALUES re-banked for exactly the files that
+// rewrite touched (the photo pager's poster shape and bounded preload, the
+// kicker scrim clause, the kicker + title column, the deleted stock fallback
+// photo). Paths, order, the other hashes, and both lock call sites remain
+// unchanged; every value was derived from the file on disk. The wave 1 rework
+// (tester P2: the kicker clause solved at the largest text size) re-banked
+// the same files' values again, the same way.
+// [TEST-MOD-APPROVED #4347] Wave 3 deleted the expanded hero; the card-identity
+// single-source suite's comment that names it was reworded (no assertion
+// changed), so its ONE lock value was re-banked from the file on disk. Paths,
+// order, the other hashes, and both lock call sites remain unchanged.
 const REFERENCE_SHA256 = locks(`
 .github/scripts/__tests__/issue-2207-merged-checkout-workflow.tester.test.mjs fc65e60b8636d7dc23190e10e8b0372cf6f033dca4cf060fb3e67d5f0ce21e06
 .github/scripts/strict-grep/__tests__/issue-1607-explorer-guard-integrity.adversarial.test.mjs a6dba7a4a109956b82acae0beb2eb6eb28bdc1c1522d5793452cbcc4885d3652
@@ -130,17 +143,17 @@ const REFERENCE_SHA256 = locks(`
 .github/scripts/strict-grep/issue-1860-public-tables-rls-enabled.mjs 6c85c55d3a6d4b5027bd9cdf0b23535755c9cff734392bdca5995b231bd4bed8
 .github/scripts/strict-grep/issue-2084-credential-output-safety.mjs 904d78e5e171247af178881a622c97e1485caea2da06969e38be7001f2bcd635
 app-mobile/src/components/__tests__/issue-1638-tab-switch-quickwins.test.mjs cb62ddb696eef37dc70def9c9c092608986d4985eeec348a6fbcfa5728f80188
-app-mobile/src/components/deckHeroConstants.ts bdb476b046e64fa2601f9081abfc1919a589a079a4b248ca5aeb38324d1e6749
-app-mobile/src/components/swipeDeck/__tests__/issue_1481_performance_hotpath.test.mjs 075bc8e558fdca1d993d99f8ba7ada4e4b3fbfc400d6ec72acd922610688c04d
-app-mobile/src/components/swipeDeck/__tests__/issue_1481_swipe_lifecycle.test.mjs 6f2cee42857f5f6d6c6f42fc466dbb310272fc3d6b9b129bd12cda583557e565
+app-mobile/src/components/deckHeroConstants.ts b150c055b8c0acc7c27c874bdd8f3024b8293ee9c3efc6ba3f563dabf603aaa4
+app-mobile/src/components/swipeDeck/__tests__/issue_1481_performance_hotpath.test.mjs 655cb44dfd43dd5b8a011809bd3074db30446f21af0c386271c50884716eecd1
+app-mobile/src/components/swipeDeck/__tests__/issue_1481_swipe_lifecycle.test.mjs 8651f9a1ca0658131bc15b2d39d34856ac663b344dd981aed2d26172f7e21688
 app-mobile/src/components/swipeDeck/__tests__/issue_1576_promoted_card_opacity.adversarial.test.mjs a7c8e04e6b6d849d37a01a0009cde1b61f6eacf87de8e88c64a73ea093fa2309
 app-mobile/src/components/swipeDeck/__tests__/issue_1576_promoted_card_opacity.test.mjs 31becd6159e34347f43ba36911d643e57120af4bdb33947c68b4d9449385da34
 app-mobile/src/components/swipeDeck/__tests__/issue_1579_tap_expand_admission.adversarial.test.mjs 5176095fc28f2985e224576c8741eb3880f381a5ae6be4f717fbdc3e6d71db52
 app-mobile/src/components/swipeDeck/__tests__/issue_1579_tap_expand_admission.test.mjs e6dab667b68f6683dec748cb1fb4736bcda9f6b40f750d5045028fd0cdca171d
 app-mobile/src/components/swipeDeck/__tests__/issue_1593_poster_hole_geometry.adversarial.test.mjs d8ca0f473606a0b73328a94ce75ddb7fa222c9d228cab1572ba210ee0cd9e0b8
 app-mobile/src/components/swipeDeck/__tests__/issue_1593_poster_hole_geometry.test.mjs 32dbc515c7f62df2ae0d3d6072474fa89d00ac032d16307e6793c8419a43cf93
-app-mobile/src/components/swipeDeck/__tests__/issue_1609_direction_c_plate.test.mjs d3793c221ecbe01e7bb2bc0c3e8c70e5f38ee33b973d067e7d8e038adaee4fae
-app-mobile/src/components/swipeDeck/__tests__/issue_1609_plate_anchor_wiring.test.mjs f478a1a1a209263d3bd117a15907b5a73bb297f15b6d5ba86f2db42c47693169
+app-mobile/src/components/swipeDeck/__tests__/issue_1609_direction_c_plate.test.mjs 523b4a120aa95b08ce4dd3f4dbf3bb79998cdd0e92689608b7753b78ec442417
+app-mobile/src/components/swipeDeck/__tests__/issue_1609_plate_anchor_wiring.test.mjs 0081e006457db901d88152047975a4b87ed11718ac5d9b8e84ddf52a780531fb
 app-mobile/src/components/swipeDeck/__tests__/issue_1609_short_plate_keeps_chevron.test.mjs 38517a765c89a0548ca3e330b0c809dcdd87cefb0e73fd1c10c533512eff2f6f
 app-mobile/src/components/swipeDeck/__tests__/issue_1609_silhouette_anchor_drift.adversarial.test.mjs d8da901fd243dd1d375712e21db88dd69559c8898354860c006bfa8f2a00acde
 app-mobile/src/hooks/__tests__/issue_1642_been_here_offline_write_bound.test.mjs 7de49d59fbeae670bce9f6b94a666c2ce201fc4b4c736fe5d762cee143f0818d
@@ -148,7 +161,7 @@ app-mobile/src/hooks/__tests__/issue_1661_completed_write_unparks_invalidation.t
 app-mobile/src/hooks/__tests__/issue_1661_parked_invalidation_fanout.adversarial.test.mjs 66a87430d62e2e0c110240f2b9c8314e661fbd5c66c437caad520171bd217d4e
 mingla-business/scripts/ci/__tests__/issue2058_bundle_baseline_handoff.happy.test.mjs 487c099f5407ff1c8304418046fd33ef6e228ef17725c26c8eabf00d6ba37ae2
 packages/card-identity/__tests__/card_identity_isolation.test.mjs 7c12a6bb9e90662357992fa8a24142bc0caa8d8b61c9bb5c00d14ea4eaa8640e
-packages/card-identity/__tests__/card_identity_single_source.test.mjs 537507cbf17a718d1a75c644850b02e8b6bc0789255906c4ea74550a5f71eec4
+packages/card-identity/__tests__/card_identity_single_source.test.mjs 56fd094b14ccde2d2469a104db5ca7fa9697af089603c70703a6cd8813c96ca7
 scripts/ci/__tests__/issue-2062-expo-config-node20.tester.adversarial.test.mjs 3c377ee6bd6860704961477c2512482628848e895f6a65d23081915afa6f7022
 scripts/ci/issue-2062-expo-config-node20.mjs 9abac62742457bce556e2c3fbb21d512cd77b95f091769d92a315d6e248dba7d
 scripts/issue-1615/curated-composition-terminal-ui.implementor.happy.test.mjs f1f3a94262faab8f998b27bccba420ed90085cfd6f9926334bd22408fce0d1a8

@@ -3,6 +3,15 @@
 // redesigned /cities/<slug> pages, read from .next/server/app/cities/*.html for
 // all ten cities.
 //
+// #4339 phase 2b re-pinned the layout to the approved redesign (AC-P1, AC-P2,
+// AC-P4, AC-P10 and AC-P11 below now describe it: the "<City>, what are we
+// outside for?" hero with the city pill and Use Mingla, "This weekend" with
+// the Events / Experiences / Places chips, the "More than one mode." guide
+// band, the FAQ and ONE See Mingla Host button). The data contracts are
+// unchanged: 50 ranked places with stored thumbnails, plans only where real,
+// FAQ parity, no score, no blog.
+//
+// The #4137 wave 2 acceptance list as first written:
 //   AC-P1  one H1 "Things to do in {city}."; the true-parts lede (plans
 //          sentence only where plans exist).
 //   AC-P2  hero = the licensed /marketing/cities/cards/<slug>.jpg (manifest:
@@ -38,6 +47,12 @@ const CITY = {
   lagos: 'Lagos', 'durham-nc': 'Durham', 'cary-nc': 'Cary', 'raleigh-nc': 'Raleigh', 'new-york-city': 'New York City',
   brussels: 'Brussels', paris: 'Paris', london: 'London', 'fort-lauderdale': 'Fort Lauderdale', 'washington-dc': 'Washington, DC',
 }
+const CITY_COUNTRY = {
+  lagos: 'Nigeria', 'durham-nc': 'United States', 'cary-nc': 'United States', 'raleigh-nc': 'United States', 'new-york-city': 'United States',
+  brussels: 'Belgium', paris: 'France', london: 'United Kingdom', 'fort-lauderdale': 'United States', 'washington-dc': 'United States',
+}
+// Cities whose hero is a picked clip or redesign photo (components/site/city-media.tsx).
+const MEDIA_CITIES = new Set([...read('components/site/city-media.tsx').matchAll(/^\s+'?([a-z-]+)'?: '[vp]:[a-z0-9-]+',$/gm)].map((match) => match[1]))
 const THUMB = /^https:\/\/gqnoajqerqhnvulmnyvv\.supabase\.co\/storage\/v1\/object\/public\/place-photos\/[A-Za-z0-9_-]+\/0_thumb\.jpg$/
 const decode = (value) => value.replace(/&amp;/g, '&').replace(/&#x27;|&#39;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
 const text = (html) => decode(html.replace(/<!--[\s\S]*?-->/g, '').replace(/<(script|style|noscript)\b[\s\S]*?<\/\1>/gi, ' ').replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim()
@@ -53,38 +68,79 @@ for (const [slug, city] of Object.entries(CITY)) {
   const places = catalogue.cities[slug].places
   const hasPlans = slug === 'lagos'
   const label = `/cities/${slug}`
+  // #4339 (release fix): the page's own copy, without the live data a host or
+  // admin wrote (admin strips and This weekend listing titles), which only a
+  // build with the Supabase env renders.
+  const pageCopy = main
+    .replace(/<ul class="astrips" data-weekend-strips="">[\s\S]*?<\/ul>/, '')
+    .replace(/<ul class="wk-grid" data-weekend-listings=""[\s\S]*?<\/ul>/, '')
 
-  // AC-P1
+  // AC-P1 (#4339): one H1, the design's headline; no promise of events.
   const h1s = [...html.matchAll(/<h1\b[^>]*>([\s\S]*?)<\/h1>/g)].map((match) => text(match[1]))
-  assert.deepEqual(h1s, [`Things to do in ${city}.`], `#4137 AC-P1: ${label} H1`)
-  const lede = text(between(main, 'class="city-v2-hero-lede"', '</p>').replace(/^[^>]*>/, ''))
-  assert.equal(lede, `The top 50 places in ${city}, ranked by Mingla, not by who paid.${hasPlans ? ' Plus ready-made plans to send to the group.' : ''}`, `#4137 AC-P1: ${label} lede`)
-  assert.doesNotMatch(text(main), /this week/i, `#4137 AC-P1: ${label} promises no events`)
+  // #4339 round B (SEO audit): the H1 is the search phrase, set as the pill;
+  // the brand line stays as styled text.
+  assert.deepEqual(h1s, [`Things to do in ${city}`], `#4137/#4339 AC-P1: ${label} H1`)
+  const hero = between(main, 'class="lp-hero city-lp-hero"', '</section>')
+  assert(text(hero).includes(`${city}, what are we outside for?`), `#4339: ${label} hero keeps the brand line`)
+  void CITY_COUNTRY
+  assert.doesNotMatch(text(pageCopy), /events? (?:this|on) (?:week|weekend)/i, `#4137 AC-P1: ${label} promises no events`)
 
-  // AC-P2
+  // AC-P2 (#4339): the hero is the city's tile media (components/site/city-media.tsx):
+  // a picked clip or redesign photo, else the licensed city photo; never captioned.
   const heroSrc = `/marketing/cities/cards/${slug}.jpg`
-  const heroImg = /<img\b[^>]*class="city-v2-hero-photo"[^>]*>/.exec(main)?.[0] ?? assert.fail(`#4137 AC-P2: ${label} hero image`)
-  assert.match(heroImg, /\balt=""/, `#4137 AC-P2: ${label} decorative hero`)
-  assert(heroImg.includes(`/_next/image?url=${encodeURIComponent(heroSrc)}`), `#4137 AC-P2: ${label} hero src ${heroSrc}`)
-  assert.match(html, new RegExp(`<link rel="preload" as="image"[^>]*${encodeURIComponent(heroSrc).replace(/[.*+?^${}()|[\]\\%]/g, '\\$&')}`), `#4137 AC-P2: ${label} hero preloaded (priority)`)
-  const asset = manifest.assets.find((entry) => entry.path === heroSrc) ?? assert.fail(`#4137: ${heroSrc} missing from the asset manifest`)
-  assert.equal(asset.aiGenerated, false, `#4137: ${heroSrc} must be a real licensed photo`)
-  assert(asset.license, `#4137: ${heroSrc} must carry a licence`)
-  assert(heroSource.includes(`src: '${heroSrc}'`), `#4137: CITY_HERO_IMAGE.${slug}`)
+  if (MEDIA_CITIES.has(slug)) {
+    assert.match(hero, /data-landing-clip="\/marketing\/site\/m\/|src="\/marketing\/site\/p\//, `#4339 AC-P2: ${label} hero uses its picked city media`)
+  } else {
+    const heroImg = new RegExp(`<img\\b[^>]*src="${heroSrc.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"[^>]*>`).exec(hero)?.[0] ?? assert.fail(`#4137 AC-P2: ${label} hero image`)
+    assert.match(heroImg, /\balt=""/, `#4137 AC-P2: ${label} decorative hero`)
+    assert.match(heroImg, /fetchPriority="high"|fetchpriority="high"/, `#4137 AC-P2: ${label} hero is the priority image`)
+    const asset = manifest.assets.find((entry) => entry.path === heroSrc) ?? assert.fail(`#4137: ${heroSrc} missing from the asset manifest`)
+    assert.equal(asset.aiGenerated, false, `#4137: ${heroSrc} must be a real licensed photo`)
+    assert(asset.license, `#4137: ${heroSrc} must carry a licence`)
+    assert(heroSource.includes(`src: '${heroSrc}'`), `#4137: CITY_HERO_IMAGE.${slug}`)
+  }
   assert.doesNotMatch(main, /<figcaption/i, `#4137 AC-P2: ${label} has no figcaption`)
-  for (const phrase of ['Photo:', 'Photo by', 'Unsplash', 'Google Maps']) assert(!text(main).includes(phrase), `#4137: ${label} shows no credit or attribution ("${phrase}")`)
+  for (const phrase of ['Photo:', 'Photo by', 'Unsplash', 'Google Maps']) assert(!text(pageCopy).includes(phrase), `#4137: ${label} shows no credit or attribution ("${phrase}")`)
+
+  // #4339: "This weekend" with the four chips, each a button.
+  const weekend = between(main, 'id="weekend"', '</section>')
+  const chips = [...weekend.matchAll(/<button type="button" aria-pressed="(true|false)"[^>]*>([^<]+)<\/button>/g)].map((match) => [match[2], match[1]])
+  assert.deepEqual(chips, [['All', 'true'], ['Events', 'false'], ['Experiences', 'false'], ['Places', 'false']], `#4339: ${label} weekend chips`)
+
+  // #4339 phase 4a: "This weekend" reads the live readers; the ranked places
+  // moved below it into "Places in <City>." (#places).
+  // #4339 (release fix): a local or CI build has no database and renders the
+  // fallback, but the Vercel production build HAS the public Supabase env, so
+  // the section renders whichever mode the live data gives (weekend, weekday,
+  // quiet or fallback). Each mode is checked on its own terms; any other mode
+  // fails. Pinning "fallback" failed the 9 Nov production build of #4354.
+  const mode = /data-weekend="([a-z]+)"/.exec(weekend)?.[1] ?? assert.fail(`#4339: ${label} weekend mode`)
+  const hasDatabase = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim())
+  if (!hasDatabase) assert.equal(mode, 'fallback', `#4339: ${label} weekend without a database is the fallback`)
+  if (mode === 'fallback') {
+    assert(text(weekend).includes('Nothing is listed this week yet. Check back soon.'), `#4339: ${label} fallback line`)
+  } else if (mode === 'weekend' || mode === 'weekday') {
+    assert.match(weekend, /data-weekend-listings=""/, `#4339: ${label} ${mode} renders its listings`)
+    assert(!text(weekend).includes('Nothing is listed this week yet.'), `#4339: ${label} ${mode} shows no fallback line`)
+  } else if (mode === 'quiet') {
+    assert.match(weekend, /data-weekend-mode="quiet"/, `#4339: ${label} quiet week renders its places`)
+  } else {
+    assert.fail(`#4339: ${label} unknown weekend mode "${mode}"`)
+  }
+  const placesSection = between(main, 'id="places"', '</section>')
+  assert(text(placesSection).includes(`Top places in ${city}.`), `#4339: ${label} places heading`)
 
   // AC-P3 + AC-P5
-  const cards = [...main.matchAll(/<article class="city-v2-place" data-city-place-card="true" data-category="([a-z_]+)">([\s\S]*?)<\/article>/g)]
+  const cards = [...placesSection.matchAll(/<a\b[^>]*class="wk-card" data-city-place-card="" data-category="([a-z_]+)"[^>]*>([\s\S]*?)<\/a>/g)]
   assert.equal(cards.length, 50, `#4137 AC-P3: ${label} renders 50 place cards`)
   const seen = new Map()
-  cards.forEach(([, category, card], index) => {
+  cards.forEach(([whole, category, card], index) => {
     const place = places[index]
     assert.equal(category, place.categorySlug, `#4137 AC-P3: ${label} card ${index + 1} category`)
     assert.equal(text(/<h3>([\s\S]*?)<\/h3>/.exec(card)?.[1] ?? ''), place.name, `#4137 AC-P3: ${label} card ${index + 1} is ${place.name}`)
     seen.set(category, (seen.get(category) ?? 0) + 1)
-    assert.equal(text(/class="city-v2-rank"[^>]*>([\s\S]*?)<\/span>/.exec(card)?.[1] ?? ''), `#${seen.get(category)} · ${place.categoryLabel}`, `#4137 AC-P5: ${label} ${place.name} rank pill`)
-    assert(decode(card).includes(`href="/cities/${slug}?type=places&detail=place:${place.placePoolId}"`), `#4137: ${label} ${place.name} opens its detail`)
+    assert.equal(text(/class="kind"[^>]*>([\s\S]*?)<\/span>/.exec(card)?.[1] ?? ''), `Place · #${seen.get(category)} · ${place.categoryLabel}`, `#4137 AC-P5: ${label} ${place.name} rank`)
+    assert(decode(whole).includes(`href="/cities/${slug}?type=places&detail=place:${place.placePoolId}"`), `#4137: ${label} ${place.name} opens its detail`)
     // AC-P6 — the stored thumbnail, nothing else.
     const imgs = [...card.matchAll(/<img\b[^>]*src="([^"]+)"/g)].map((match) => decode(match[1]))
     assert.deepEqual(imgs, [`https://gqnoajqerqhnvulmnyvv.supabase.co/storage/v1/object/public/place-photos/${place.googlePlaceId}/0_thumb.jpg`], `#4137 AC-P6: ${label} ${place.name} shows its stored thumbnail`)
@@ -98,37 +154,48 @@ for (const [slug, city] of Object.entries(CITY)) {
     if (value.includes('place-photos')) assert.match(value, THUMB, `#4137 AC-P6: ${label} stored photos must be thumbnails (${value})`)
   }
 
-  // AC-P4
-  assert(!html.includes('>Get the app<'), `#4137 AC-P4: ${label} has no per-card "Get the app"`)
+  // AC-P4 (#4339): no per-card CTA, no score; the one Explorer CTA sits in the
+  // hero (plan "Save" buttons aside); no Host device CTA; ONE See Mingla Host → /host.
+  assert(!main.includes('>Get the app<'), `#4137 AC-P4: ${label} has no per-card "Get the app"`)
   assert(!text(html).includes('Mingla score'), `#4137 AC-P4: ${label} has no Mingla score`)
-  const outsidePlans = main.replace(/<article class="city-v2-plan"[\s\S]*?<\/article>/g, '')
-  assert.equal((outsidePlans.match(/data-cta-surface="explorer"/g) ?? []).length, 1, `#4137 AC-P4: ${label} has one page-level Explorer CTA`)
-  assert.equal((outsidePlans.match(/data-cta-surface="host"/g) ?? []).length, 2, `#4137 AC-P4: ${label} has hero + band Host CTAs`)
-  assert.equal((between(main, 'class="city-v2-hero"', '</section>').match(/data-cta-surface="explorer"/g) ?? []).length, 1, `#4137 AC-P4: ${label} Explorer CTA sits in the hero`)
+  // #4339 (release fix): admin strips are live data (none without a database);
+  // a strip may open Explorer or Host through the hand-off seam, so its CTAs are
+  // counted against the strips, never against the page's own buttons.
+  const stripsHtml = /<ul class="astrips" data-weekend-strips="">[\s\S]*?<\/ul>/.exec(weekend)?.[0] ?? ''
+  if (!hasDatabase) assert.equal(stripsHtml, '', `#4339: ${label} has no admin strips without a database`)
+  const count = (html, surface) => (html.match(new RegExp(`data-cta-surface="${surface}"`, 'g')) ?? []).length
+  const mainNoStrips = stripsHtml ? main.replace(stripsHtml, '') : main
+  const outsidePlans = mainNoStrips.replace(/<li class="list-item" data-city-plan-card=""[\s\S]*?<\/li>/g, '')
+  assert.equal(count(outsidePlans, 'explorer'), 1, `#4137 AC-P4: ${label} has one page-level Explorer CTA`)
+  assert.equal(count(hero, 'explorer'), 1, `#4137 AC-P4: ${label} Explorer CTA sits in the hero`)
+  // #4339 §4 rule 4: an empty week (quiet or fallback) carries "Host something
+  // in <City>", the one Host hand-off, inside This weekend; a week with plans
+  // (weekend or weekday) carries none. Host CTAs from admin strips aside, the
+  // page has no other Host device CTA.
+  const emptyWeek = mode === 'quiet' || mode === 'fallback'
+  const hostButtons = emptyWeek ? 1 : 0
+  assert.equal(count(mainNoStrips, 'host'), hostButtons, `#4339: ${label} (${mode}) has ${hostButtons} page-level Host device CTA`)
+  assert.equal(count(weekend.replace(stripsHtml, ''), 'host'), hostButtons, `#4339: ${label} (${mode}) Host hand-off sits in This weekend`)
+  assert.equal(text(weekend).includes(`Host something in ${city}`), emptyWeek, `#4339: ${label} (${mode}) Host something in ${city} only on an empty week`)
+  const hostLinks = [...main.matchAll(/<a\b[^>]*href="\/host"[^>]*>([\s\S]*?)<\/a>/g)].map((match) => text(match[1]))
+  assert.deepEqual(hostLinks, ['See Mingla Host'], `#4339 AC-P11: ${label} has one See Mingla Host button`)
+  assert(text(main).includes(`Run a place in ${city}?`), `#4339 AC-P11: ${label} host heading`)
 
-  // AC-P10
-  const plans = [...main.matchAll(/<article class="city-v2-plan" data-city-plan-card="true"[\s\S]*?<\/article>/g)].map((match) => match[0])
+  // AC-P10 (#4339): plans only where real, in the guide band, one Save each.
+  const plans = [...main.matchAll(/<li class="list-item" data-city-plan-card=""[\s\S]*?<\/li>/g)].map((match) => match[0])
+  assert(text(main).includes('More than one mode.'), `#4339: ${label} guide band`)
   if (hasPlans) {
     assert.equal(plans.length, 6, '#4137 AC-P10: Lagos renders six plans')
-    assert.match(main, /<h2 id="plans">Pick a plan, send it to the group\.<\/h2>/)
     for (const plan of plans) {
-      assert.equal((plan.match(/<(a|button)\b/g) ?? []).length, 1, '#4137 AC-P10: one interactive element per plan card')
-      assert.match(plan, /data-cta-surface="explorer"[\s\S]*Open in Mingla|Open in Mingla[\s\S]*data-cta-surface="explorer"/, '#4137 AC-P10: the card opens Mingla')
-      for (const [, src] of plan.matchAll(/<img\b[^>]*src="([^"]+)"/g)) assert.match(decode(src), THUMB, '#4137 AC-P10: plan tiles use stored thumbnails only')
+      assert.equal((plan.match(/<(a|button)\b/g) ?? []).length, 1, '#4137 AC-P10: one interactive element per plan')
+      assert.match(plan, /data-cta-surface="explorer"/, '#4137 AC-P10: Save opens Mingla')
     }
   } else {
     assert.equal(plans.length, 0, `#4137 AC-P10: ${label} has no plans`)
-    assert(!main.includes('Ready-made plans') && !main.includes('id="plans"'), `#4137 AC-P10: ${label} renders no plans section`)
   }
 
-  // AC-P11
-  const band = text(between(main, 'class="city-v2-host"', '</section>'))
-  assert(band.includes(`Run a venue, event or trip in ${city}?`), `#4137 AC-P11: ${label} host band heading`)
-  assert(band.includes(`Get in front of the people planning their weekend in ${city}.`), `#4137 AC-P11: ${label} host band copy`)
-  assert(!band.includes('Get on this page'), `#4137 AC-P11: ${label} promises no host listing`)
-
   // AC-P12
-  const faqs = [...main.matchAll(/<details class="city-faq-item"><summary>([\s\S]*?)<\/summary>/g)].map((match) => text(match[1]))
+  const faqs = [...main.matchAll(/<details><summary>([\s\S]*?)<span class="pl"/g)].map((match) => text(match[1]))
   const ld = [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map((match) => JSON.parse(match[1]))
   const faqPage = JSON.stringify(ld).includes('"FAQPage"')
     ? ld.flatMap((doc) => doc['@graph'] ?? [doc]).find((node) => node['@type'] === 'FAQPage')
@@ -137,9 +204,9 @@ for (const [slug, city] of Object.entries(CITY)) {
   assert.deepEqual(faqs, faqPage.mainEntity.map((question) => question.name), `#4137 AC-P12: ${label} visible questions equal the FAQPage questions`)
 
   // AC-P13
-  assert.doesNotMatch(text(main), /Latest stor|Guides|Blog/, `#4137 AC-P13: ${label} has no blog block`)
-  assert(!main.includes('href="/blog'), `#4137 AC-P13: ${label} links no blog`)
+  assert.doesNotMatch(text(pageCopy), /Latest stor|Blog/, `#4137 AC-P13: ${label} has no blog block`)
+  assert(!pageCopy.includes('href="/blog'), `#4137 AC-P13: ${label} links no blog`)
   assert(!main.includes('ps-catalogue-card'), `#4137: ${label} no longer renders the old catalogue cards`)
 }
 
-process.stdout.write('PASS #4137 city pages (10 cities, release build): H1 + true lede, licensed hero, 50 ranked cards with stored thumbnails and no credit lines, one Explorer CTA, plans only where real, host band, FAQ parity, no blog\n')
+process.stdout.write('PASS #4137/#4339 city pages (10 cities, release build): redesigned hero with the city pill, This weekend chips, 50 ranked cards with stored thumbnails, one Explorer CTA, one See Mingla Host, plans only where real, FAQ parity, no blog\n')

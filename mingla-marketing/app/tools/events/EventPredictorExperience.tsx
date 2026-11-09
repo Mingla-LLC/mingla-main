@@ -10,7 +10,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/cn'
 import { buttonClasses } from '@/components/ui/button'
-import { captureMarketing } from '@/components/marketing/posthog-provider'
+import { captureMarketing } from '@/components/marketing/marketing-capture'
 import { DeviceLink } from '@/components/cutout/device-link'
 import { toolAttribution } from '@/lib/links-src'
 import {
@@ -108,7 +108,7 @@ function RunningTheater({
               onActivate={() => captureMarketing('tool_ratelimit_cta_click', { tool: 'events' })}
               className={buttonClasses({ variant: 'primary' })}
             >
-              Create your event on Mingla
+              Create your event in Mingla Host
             </DeviceLink>
           ) : (
             <button type="button" onClick={onRetry} className={buttonClasses({ variant: 'primary' })}>

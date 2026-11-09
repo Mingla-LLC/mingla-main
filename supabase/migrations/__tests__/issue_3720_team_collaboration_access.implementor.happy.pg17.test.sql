@@ -2,7 +2,9 @@
 -- MINGLA-INVARIANT: I-3720-TEAM-ACTIVE-IDENTITY | issue #3720 | Collaboration capabilities are derived from an accepted, non-removed, named team record without widening full-admin authority.
 -- [TEST-MOD-APPROVED #3988] Support is an explicit role: a teammate without an
 -- enabled Support row is not Support staff (supersedes the all-roles rule).
--- MINGLA-INVARIANT: I-3720-MENTION-EMAIL-OPT-IN | issue #3720 | Team mentions are available in-app by default, while email is sent only after that recipient explicitly opts in.
+-- [TEST-MOD-APPROVED #4255] Seth (9 Nov 2026): work card / mention email is on by default for active staff,
+-- so I-3720-MENTION-EMAIL-OPT-IN is superseded by I-4255-CARD-EMAIL-DEFAULT-ON
+-- (issue_4255_work_card_email.implementor.pg17.test.sql). An explicit off still wins.
 \set ON_ERROR_STOP on
 BEGIN;
 
@@ -39,8 +41,8 @@ BEGIN
      OR (v_result->'operational_areas') ? 'admin_console' THEN
     RAISE EXCEPTION 'growth_permission_matrix_invalid:%',v_result;
   END IF;
-  IF public.can_send(v_growth,'admin.team_mention','email','wave6-growth@test.local') THEN
-    RAISE EXCEPTION 'mention_email_was_default_on';
+  IF NOT public.can_send(v_growth,'admin.team_mention','email','wave6-growth@test.local') THEN
+    RAISE EXCEPTION 'mention_email_not_default_on';
   END IF;
   IF NOT public.can_send(v_growth,'offering_invitation','email','wave6-growth@test.local') THEN
     RAISE EXCEPTION 'legacy_default_on_marketing_semantics_changed';
@@ -48,10 +50,19 @@ BEGIN
   RESET ROLE;
   SET LOCAL ROLE service_role;
   PERFORM set_config('request.jwt.claim.role','service_role',true);
-  IF public.issue_3720_notification_denial_reason(
-    v_growth,'admin.team_mention','email','wave6-growth@test.local'
-  ) <> 'preference_off' THEN
-    RAISE EXCEPTION 'mention_email_opt_in_reason_missing';
+  RESET ROLE;
+  SET LOCAL ROLE authenticated;
+  PERFORM set_config('request.jwt.claim.sub',v_growth::text,true);
+  PERFORM set_config('request.jwt.claim.role','authenticated',true);
+  PERFORM public.issue_3720_set_team_mention_email(false);
+  RESET ROLE;
+  SET LOCAL ROLE service_role;
+  PERFORM set_config('request.jwt.claim.role','service_role',true);
+  IF public.can_send(v_growth,'admin.team_mention','email','wave6-growth@test.local')
+     OR public.issue_3720_notification_denial_reason(
+       v_growth,'admin.team_mention','email','wave6-growth@test.local'
+     ) <> 'preference_off' THEN
+    RAISE EXCEPTION 'mention_email_opt_out_ignored';
   END IF;
   RESET ROLE;
   SET LOCAL ROLE authenticated;
@@ -59,7 +70,7 @@ BEGIN
   PERFORM set_config('request.jwt.claim.role','authenticated',true);
   PERFORM public.issue_3720_set_team_mention_email(true);
   IF NOT public.can_send(v_growth,'admin.team_mention','email','wave6-growth@test.local') THEN
-    RAISE EXCEPTION 'mention_email_opt_in_ignored';
+    RAISE EXCEPTION 'mention_email_opt_back_in_ignored';
   END IF;
   v_result := public.content_calendar_create('Wave Six Mention Card','wave6create01');
   v_card := (v_result->'item'->>'id')::uuid;

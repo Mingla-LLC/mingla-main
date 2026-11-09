@@ -188,32 +188,32 @@ async function runtimeContract() {
         await page.send('Page.navigate', { url: `http://127.0.0.1:${appPort}/cities` })
         citiesLoaded = true
       }
-      await waitFor(() => page.evaluate("document.readyState==='complete'&&document.querySelectorAll('[data-city-pill]').length===10"), `${width}px /cities did not settle`)
+      // #4339 phase 2b: /cities is the redesigned tile grid (one tile per
+      // registry city, picked clip or licensed photo). The #3176 hero/pill
+      // geometry is retired with that hero; the tile grid is held to the same
+      // bars: no overflow, canonical names in order, 44px targets, the 16px
+      // gutters, and no motion under prefers-reduced-motion.
+      await waitFor(() => page.evaluate("document.readyState==='complete'&&document.querySelectorAll('.city-tiles a').length===10"), `${width}px /cities did not settle`)
       await page.evaluate('(async()=>{await document.fonts.ready;await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))})()')
       const geometry = await page.evaluate(`(()=>{
         const box=e=>{const r=e.getBoundingClientRect();return {top:r.top,bottom:r.bottom,left:r.left,right:r.right,width:r.width,height:r.height}}
-        const hero=document.querySelector('.core-cities-hero'),scroll=document.querySelector('.core-cities-scroll'),cards=[...document.querySelectorAll('[data-city-card]')],pills=[...document.querySelectorAll('[data-city-pill]')]
-        const textBoxes=[hero.querySelector('h1'),hero.querySelector('p')].map(e=>{const range=document.createRange();range.selectNodeContents(e);return {...box(e),clientWidth:e.clientWidth,scrollWidth:e.scrollWidth,clientHeight:e.clientHeight,scrollHeight:e.scrollHeight,rangeRects:[...range.getClientRects()].map(r=>({top:r.top,bottom:r.bottom,left:r.left,right:r.right,width:r.width,height:r.height}))}})
-        const grid=getComputedStyle(document.querySelector('.core-city-directory')).gridTemplateColumns.split(' ').filter(Boolean).length
-        const image=getComputedStyle(document.querySelector('.core-city-directory img'))
-        return {hero:box(hero),scroll:box(scroll),cards:cards.map(box),cardText:cards.map(card=>card.innerText.trim()),pills:pills.map(box),textBoxes,grid,viewport:innerHeight,overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,imageTransition:image.transitionDuration,imageAnimation:image.animationName}
+        const tiles=[...document.querySelectorAll('.city-tiles a')]
+        const h1=document.querySelector('main h1')
+        const grid=getComputedStyle(document.querySelector('.city-tiles')).gridTemplateColumns.split(' ').filter(Boolean).length
+        const media=getComputedStyle(document.querySelector('.city-tiles .ph > *'))
+        return {tiles:tiles.map(box),tileText:tiles.map(t=>t.innerText.trim()),h1:{...box(h1),clientWidth:h1.clientWidth,scrollWidth:h1.scrollWidth},grid,overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,mediaTransition:media.transitionDuration,mediaAnimation:media.animationName}
       })()`)
       assert.equal(geometry.overflow, 0, `${width}px /cities has horizontal overflow`)
-      assert.equal(geometry.pills.length, 10, `${width}px /cities needs ten pills`)
-      assert.equal(geometry.cards.length, 10, `${width}px /cities needs ten cards`)
-      assert.deepEqual(geometry.cardText, CITY_NAMES, `${width}px cards must expose only the canonical city names in order`)
-      assert(geometry.textBoxes.every((box) => box.scrollWidth <= box.clientWidth + 1 && box.rangeRects.every((line) => line.left >= geometry.hero.left && line.right <= geometry.hero.width + geometry.hero.left)), `${width}px hero text is internally clipped: ${JSON.stringify(geometry.textBoxes)}`)
-      assert(Math.abs(geometry.hero.height - geometry.viewport) <= 1, `${width}px hero must remain one 100svh viewport; got ${geometry.hero.height}px`)
-      assert(geometry.pills.every((pill) => pill.height >= 43.5), `${width}px city pill lost its 44px target`)
-      assert(geometry.pills.every((pill) => pill.top >= geometry.hero.top && pill.bottom <= geometry.scroll.top - 4), `${width}px hero pills must all fit above the visible scroll cue`)
-      assert(geometry.scroll.top >= geometry.hero.top && geometry.scroll.bottom <= geometry.hero.bottom + 1, `${width}px scroll cue must remain inside the hero`)
-      const expectedColumns = width >= 1024 ? 5 : width >= 520 ? 2 : 1
-      const expectedRatio = width >= 1024 ? 4 / 5 : width >= 520 ? 4 / 3 : 16 / 10
+      assert.equal(geometry.tiles.length, 10, `${width}px /cities needs ten tiles`)
+      assert.deepEqual(geometry.tileText, CITY_NAMES, `${width}px tiles must expose only the canonical city names in order`)
+      assert(geometry.h1.scrollWidth <= geometry.h1.clientWidth + 1 && geometry.h1.left >= 16 && geometry.h1.right <= width - 16, `${width}px headline is clipped or inside the 16px gutter: ${JSON.stringify(geometry.h1)}`)
+      assert(geometry.tiles.every((tile) => tile.height >= 44 && tile.width >= 44 && tile.left >= 16 && tile.right <= width - 16), `${width}px a city tile lost its 44px target or the 16px gutter`)
+      const expectedColumns = width > 1000 ? 5 : width > 640 ? 3 : 2
       assert.equal(geometry.grid, expectedColumns, `${width}px city grid column count`)
-      assert(Math.abs(geometry.cards[0].width / geometry.cards[0].height - expectedRatio) < 0.015, `${width}px city card aspect ratio`)
-      assert.equal(geometry.imageAnimation, 'none', `${width}px reduced-motion image animation`)
-      assert(['0s', '0.00001s', '1e-05s'].includes(geometry.imageTransition), `${width}px reduced-motion transition remained ${geometry.imageTransition}`)
-      if (width === 320) process.stdout.write(`EVIDENCE #3176 tester 320px hero ${JSON.stringify({ hero: geometry.hero, scroll: geometry.scroll, textBoxes: geometry.textBoxes, pills: geometry.pills })}\n`)
+      assert(Math.abs(geometry.tiles[0].width / geometry.tiles[0].height - 3 / 4) < 0.015, `${width}px city tile aspect ratio`)
+      assert.equal(geometry.mediaAnimation, 'none', `${width}px reduced-motion tile animation`)
+      assert(['0s', '0.00001s', '1e-05s'].includes(geometry.mediaTransition), `${width}px reduced-motion transition remained ${geometry.mediaTransition}`)
+      if (width === 320) process.stdout.write(`EVIDENCE #3176/#4339 tester 320px tiles ${JSON.stringify({ h1: geometry.h1, tiles: geometry.tiles.slice(0, 2) })}\n`)
       if (SCREENSHOT_DIR && [320, 1440].includes(width)) {
         fs.mkdirSync(SCREENSHOT_DIR, { recursive: true })
         const capture = await page.send('Page.captureScreenshot', { format: 'png', fromSurface: true, captureBeyondViewport: false })
@@ -250,8 +250,8 @@ async function runtimeContract() {
     }
     const directoryHtml = await (await request(appPort, '/cities')).text()
     const links = [...directoryHtml.matchAll(/<a\b[^>]*href="(\/cities\/[^"]+)"[^>]*>/g)].map((match) => match[1])
-    assert.equal(links.length, 20, '/cities must expose exactly ten pills plus ten cards')
-    for (const slug of SLUGS) assert.equal(links.filter((href) => href === `/cities/${slug}`).length, 2, `/cities/${slug} must appear once in each directory control`)
+    assert.equal(links.length, 10, '/cities must expose exactly ten city tiles (#4339 phase 2b)')
+    for (const slug of SLUGS) assert.equal(links.filter((href) => href === `/cities/${slug}`).length, 1, `/cities/${slug} must appear once`)
   } finally {
     page?.close()
     await stopOwned(chrome)

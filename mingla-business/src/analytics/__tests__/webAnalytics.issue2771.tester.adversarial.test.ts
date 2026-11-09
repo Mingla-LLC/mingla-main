@@ -7,10 +7,17 @@ import { join } from "node:path";
 
 const ROOT = join(__dirname, "../../..");
 const read = (rel: string): string => readFileSync(join(ROOT, rel), "utf8");
+// #4339: the marketing root's privacy read and capture facades moved from
+// posthog-provider.tsx into marketing-capture.ts (the provider re-exports
+// them), so the marketing root is read as both files together.
+const readMarketingRoot = (): string =>
+  read("../mingla-marketing/components/marketing/posthog-provider.tsx") +
+  "\n" +
+  read("../mingla-marketing/components/marketing/marketing-capture.ts");
 
 test("#2331 malformed or partial records cannot read as a saved choice in either root", () => {
   const business = read("src/analytics/webAnalytics.web.ts");
-  const marketing = read("../mingla-marketing/components/marketing/posthog-provider.tsx");
+  const marketing = readMarketingRoot();
   expect(business).toContain('typeof record.analytics === "boolean" && typeof record.ads === "boolean"');
   expect(marketing).toContain("typeof record.analytics === 'boolean' && typeof record.ads === 'boolean'");
   expect(business).toContain('PRIVACY_STORAGE_KEY = "mingla_privacy_v2"');
@@ -19,7 +26,7 @@ test("#2331 malformed or partial records cannot read as a saved choice in either
 
 test("#2331 event intents after a turn-off are discarded rather than buffered", () => {
   const business = read("src/analytics/webAnalytics.web.ts");
-  const marketing = read("../mingla-marketing/components/marketing/posthog-provider.tsx");
+  const marketing = readMarketingRoot();
   expect(business).not.toMatch(/pendingEvents|eventQueue|replayPending/);
   expect(marketing).not.toMatch(/pendingEvents|eventQueue|replayPending/);
   expect(business).toMatch(/export function captureWeb[\s\S]{0,120}if \(!isAnalyticsOn\(\) \|\| posthogClient === null\) return;/);
@@ -35,6 +42,7 @@ test("#2331 neither root reads a per-country mode or says nothing is tracked unt
     "scripts/build-invite-critical-entry.mjs",
     "../mingla-marketing/components/marketing/consent-banner.tsx",
     "../mingla-marketing/components/marketing/posthog-provider.tsx",
+    "../mingla-marketing/components/marketing/marketing-capture.ts",
   ]) {
     const source = read(rel);
     expect(source).not.toContain("/api/ad-pixel-config");

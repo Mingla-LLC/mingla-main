@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { SurfaceToggle } from '@/components/marketing/surface-toggle'
 import { AppQrPanel } from '@/components/marketing/app-qr-panel'
 import { cn } from '@/lib/cn'
-import { captureMarketing } from '@/components/marketing/posthog-provider'
+import { captureMarketing } from '@/components/marketing/marketing-capture'
 // ORCH-1319 — the explorer "Get the app" CTA is now a device-aware DIRECT action:
 // iOS → App Store, Android → Play, desktop/other → the QR panel. No lead form.
 // ORCH-1381 — the organiser surface no longer guesses: it presents an explicit
@@ -33,8 +33,6 @@ export function GlassNav() {
   const surface: 'explorer' | 'organiser' = pathname.startsWith('/host')
     ? 'organiser'
     : 'explorer'
-
-  const homeHref = surface === 'organiser' ? '/host' : '/'
 
   // ORCH-1010 — the logo + toggle + CTA float over the hero with NO background.
   // Once the page scrolls off the hero, a frosted band fades in behind the nav
@@ -163,8 +161,9 @@ export function GlassNav() {
               logo + BOTH pinned-copy pills cannot fit at 360px (hence the
               one-action mobile nav below). */}
           <Link
-            href={homeHref}
-            aria-label={surface === 'organiser' ? 'Mingla Host home' : 'Mingla home'}
+            /* #4339: every Mingla logo goes Home, on either surface. */
+            href="/"
+            aria-label="Mingla home"
             className="inline-flex shrink-0 items-center gap-2 rounded-md px-0.5 transition-all duration-200 ease-out-quart hover:-translate-y-0.5 hover:brightness-110 active:translate-y-0 active:brightness-100 focus-ring"
           >
             {surface === 'organiser' ? (

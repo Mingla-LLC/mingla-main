@@ -169,7 +169,7 @@ Deno.test("#3980 rework 2: closing an event or a day returns focus to what opene
   const page = code("pages/ContentCalendarPage.jsx");
   assertNotMatch(page, /data-runway-row|rememberOpener|Back to runway/);
   assertMatch(page, /<Drawer open onClose=\{closeFirst\} title=\{route\.event\.kind === "expected" \? "Promised event" : "Event"\}>/);
-  assertMatch(page, /<DayPanel day=\{route\.day\} entries=\{dayItems\} onClose=\{closeFirst\} \/>/);
+  assertMatch(page, /<DayPanel day=\{route\.day\} entries=\{dayItems\} onClose=\{closeFirst\} onCall=\{openCall\} \/>/);
   const drawer = code("components/ui/Drawer.jsx");
   assertMatch(drawer, /previousFocusRef\.current = document\.activeElement;/);
   assertMatch(drawer, /if \(previousFocusRef\.current\?\.focus\) previousFocusRef\.current\.focus\(\);/);

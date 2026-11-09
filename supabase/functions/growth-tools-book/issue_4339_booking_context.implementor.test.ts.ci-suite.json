@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/growth-tools-book/issue_4339_booking_context.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4339-booking-context",
+  "profile": "deno-2-unit"
+}

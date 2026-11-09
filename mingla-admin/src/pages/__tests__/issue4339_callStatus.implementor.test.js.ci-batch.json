@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-suite",
+  "ownerIssue": "#4339",
+  "suite": {
+    "id": "issue-4339-admin-call-status",
+    "class": "admin-node20-install",
+    "originPaths": [
+      "mingla-admin/src/**",
+      "supabase/migrations/20280520004339_issue_4339_book_a_call_leads.sql"
+    ],
+    "steps": [
+      {
+        "name": "Admin Calendar and Inbound leads: moved, cancelled and declined calls from the Google Calendar sync",
+        "cwd": "mingla-admin",
+        "run": "node --test src/pages/__tests__/issue4339_callStatus.implementor.test.js",
+        "commandId": "assert:issue-4339-admin-call-status:01",
+        "invocation": {
+          "kind": "raw-shell",
+          "command": "bash",
+          "argv": [
+            "-c",
+            "node --test src/pages/__tests__/issue4339_callStatus.implementor.test.js"
+          ]
+        },
+        "exceptionRationale": "New self-registering execution replaces a legacy workflow registry edit."
+      }
+    ],
+    "lifecycle": "batched-active",
+    "ownerIssue": "#4339",
+    "runtime": {
+      "name": "node",
+      "version": "20"
+    },
+    "setupProfile": "admin-node20-install",
+    "cwd": "mingla-admin",
+    "envNames": [],
+    "isolation": "clean-worktree",
+    "expectedFiles": [
+      "mingla-admin/src/pages/__tests__/issue4339_callStatus.implementor.test.js"
+    ],
+    "externalReferenceFiles": [],
+    "requiredContext": "CI batch: admin-node20-install",
+    "timingSeconds": {
+      "p50": 3,
+      "p95": 8,
+      "evidence": "Local targeted run 2026-11-09"
+    },
+    "generatedPaths": [
+      "suite-results.json"
+    ],
+    "exceptionRationale": "Raw shell preserves the reviewed assertion while this self-registering suite replaces a legacy workflow registry edit.",
+    "timeoutSeconds": 60
+  }
+}

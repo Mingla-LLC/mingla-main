@@ -64,37 +64,25 @@ function verifySource(overrides = {}) {
   const about = source('mingla-marketing/app/(core)/about/page.tsx')
   const explorer = source('mingla-marketing/app/(core)/going-out/page.tsx')
   const cities = source('mingla-marketing/app/(core)/cities/page.tsx')
-  const directory = source('mingla-marketing/components/core-pages/city-directory.tsx')
-  const hero = source('mingla-marketing/components/core-pages/cities-hero.tsx')
+  const media = source('mingla-marketing/components/site/city-media.tsx')
   const answer = source('mingla-marketing/components/cutout/answer.tsx')
-  const hub = source('mingla-marketing/components/cities/city-hub.tsx')
-  const css = source('mingla-marketing/components/core-pages/core-pages.css')
+  // #4339 speed fix: the lifecycle notice moved from city-hub.tsx to
+  // city-lifecycle.tsx (shared by both city layouts).
+  const hub = `${source('mingla-marketing/components/cities/city-hub.tsx')}\n${source('mingla-marketing/components/cities/city-lifecycle.tsx')}`
   const manifestRelative = 'mingla-marketing/public/marketing/cities/asset-manifest.json'
   const manifest = JSON.parse(source(manifestRelative))
 
-  assert.match(cities, /<CitiesHero\s*\/>/, '/cities must use the dedicated cinematic hero')
-  assert.equal((cities.match(/<CityDirectory/g) ?? []).length, 1, '/cities must render one city grid')
-  assert.match(cities, /<h2>Choose your city\.<\/h2>/)
-  assert.match(hero, /Explore Mingla city by city\./)
-  assert.match(hero, /Pick a city to discover its top-ranked places and turn what sounds good into a plan\./)
-  assert.equal((hero.match(/data-city-pill/g) ?? []).length, 1, 'hero needs the shared ten-pill mapping')
-  assert.match(hero, /min-h-\[100svh\]/)
-  assert.doesNotMatch(hero, /CutReveal|motion\./, 'hero meaning must render in its final position without client-only reveal')
-  assert.match(hero, /<nav aria-label="Choose a Mingla city"[\s\S]*?<ul>[\s\S]*?CITY_HUBS\.map/)
-  assert.match(directory, /data-city-card/)
-  assert.match(directory, /aria-label=\{`Explore \$\{city\.city\}`\}/)
-  assert.match(directory, /<Image[\s\S]*?alt=""[\s\S]*?fill/)
-  assert.doesNotMatch(directory, /country|scopeLabel|review|status|ready/i)
-  for (const [name, pathname, image] of CITIES) {
-    assert(directory.includes(`'${image}'`), `missing ${name} card image`)
-    assert(hero.includes('CITY_HUBS.map'), 'hero pills must use the canonical city registry')
-    assert(cities.includes('<CityDirectory />'), '/cities must use the shared directory')
-    assert(pathname.startsWith('/cities/'))
-  }
-  assert.match(about, /<CityDirectory\s*\/>/)
-  assert.match(explorer, /<CityDirectory\s*\/>/)
-  assert.match(about, /Lagos, Durham, Cary, Raleigh, New York City, Brussels, Paris, London, Fort Lauderdale and Washington, DC each have their own Mingla city page\./)
-  assert.match(explorer, /Pick the city you are in—or the one you are heading to\./)
+  // #4339 phase 2b — /cities, /about and /going-out are the approved redesign.
+  // /cities is one tile per registry city (CityMedia: the city's picked clip),
+  // each opening its city page. The #3176 cinematic
+  // hero, pills and CityDirectory were replaced on purpose; the provenance
+  // of the licensed city photos and the removed-copy rules stay pinned.
+  assert.match(cities, /CITY_HUBS\.map\(\(city\) =>[\s\S]*?<CityMedia slug=\{city\.slug\} \/>[\s\S]*?cityHubPath\(city\)|CITY_HUBS\.map\(\(city\) =>[\s\S]*?cityHubPath\(city\)[\s\S]*?<CityMedia slug=\{city\.slug\} \/>/, '/cities must render one tile per registry city')
+  // #4339 round A (Seth, 8 Nov): every city now has its own picked loop, so
+  // CITY_MEDIA is a full Record over the registry slugs and the licensed-photo
+  // fallback is gone; the photos stay registered below for their provenance.
+  assert.match(media, /CITY_MEDIA: Readonly<Record<CityHubSlug, LandingMediaRef>>/, 'every registry city must have a picked clip')
+  assert.match(media, /<LandingMedia media=\{CITY_MEDIA\[slug\]\} hero=\{hero\} \/>/, 'a city tile and its page hero must share the city clip')
   for (const phrase of REMOVED_COPY) {
     assert(![about, explorer, cities, answer].join('\n').includes(phrase), `removed public copy remains: ${phrase}`)
   }
@@ -103,12 +91,6 @@ function verifySource(overrides = {}) {
   assert.match(hub, /historicalCityBuildEnabled\(\)/)
   assert.match(hub, /lifecycle === 'public_noindex' && !historical/)
   assert.match(hub, /if \(!historicalCityBuildEnabled\(\)\) return null/)
-  assert.match(css, /aspect-ratio:\s*4\s*\/\s*5/)
-  assert.match(css, /@media \(max-width:1023px\)[\s\S]*aspect-ratio:\s*4\s*\/\s*3/)
-  assert.match(css, /@media \(max-width:519px\)[\s\S]*aspect-ratio:\s*16\s*\/\s*10/)
-  assert.doesNotMatch(css, /\.core-city-pills\s+(?:li|a)[^{]*\{[^}]*width:\s*100%/, 'narrow screens must keep city pills wrapping instead of stacking ten full-width rows')
-  assert.match(css, /\.core-city-pills a\s*\{[^}]*min-height:\s*44px/, 'city pills must retain 44px touch targets')
-  assert.match(css, /@media \(prefers-reduced-motion:reduce\)/)
 
   assert.equal(manifest.schemaVersion, 1, 'city asset manifest needs its supported schema')
   assert.equal(manifest.assets.length, 11, 'city asset manifest needs one hero and ten card images')
@@ -351,28 +333,24 @@ async function verifyNarrowHeroGeometry(port) {
     await page.send('Runtime.enable')
     await page.send('Emulation.setDeviceMetricsOverride', { width: 320, height: 844, deviceScaleFactor: 1, mobile: false })
     await page.send('Page.navigate', { url: `http://127.0.0.1:${port}/cities` })
-    await waitFor(() => page.evaluate("document.readyState === 'complete' && !!document.querySelector('.core-cities-hero')"), '/cities did not load for 320px geometry proof')
+    await waitFor(() => page.evaluate("document.readyState === 'complete' && document.querySelectorAll('.city-tiles a').length === 10"), '/cities did not load for 320px geometry proof')
     await page.evaluate('(async()=>{await document.fonts.ready;await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));})()')
+    // #4339 phase 2b: the redesigned /cities is a tile grid, so the 320px
+    // proof is ten full tiles, each a 44px+ target inside the 16px gutters,
+    // and no sideways scroll.
     const geometry = await page.evaluate(`(()=>{
-      const rect=(element)=>{const r=element.getBoundingClientRect();return {top:r.top,bottom:r.bottom,left:r.left,right:r.right,width:r.width,height:r.height}}
-      const hero=rect(document.querySelector('.core-cities-hero'))
-      const nav=rect(document.querySelector('.core-city-pills'))
-      const cue=rect(document.querySelector('.core-cities-scroll'))
-      const pills=[...document.querySelectorAll('[data-city-pill]')].map(rect)
-      return {hero,nav,cue,pills,innerHeight,overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth}
+      const rect=(element)=>{const r=element.getBoundingClientRect();return {left:r.left,right:r.right,width:r.width,height:r.height}}
+      const tiles=[...document.querySelectorAll('.city-tiles a')].map(rect)
+      return {tiles,overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth}
     })()`)
     const geometryEvidence = JSON.stringify(geometry)
-    assert.equal(geometry.pills.length, 10, '320px hero must show all ten city pills')
-    assert.equal(geometry.overflow, 0, '320px hero must not create horizontal overflow')
-    assert(Math.abs(geometry.hero.height - geometry.innerHeight) <= 1, `320px hero must remain exactly 100svh: ${geometryEvidence}`)
-    assert(geometry.cue.top >= geometry.hero.top && geometry.cue.bottom <= geometry.hero.bottom && geometry.cue.top < geometry.innerHeight, `320px scroll cue must remain visible and inside the hero: ${geometryEvidence}`)
-    assert(geometry.nav.bottom <= geometry.cue.top - 12, `320px city pills need at least 12px clearance above the scroll cue: ${geometryEvidence}`)
-    for (const [index, pill] of geometry.pills.entries()) {
-      assert(pill.width >= 44 && pill.height >= 44, `320px pill ${index + 1} lost its 44px target`)
-      assert(pill.left >= 0 && pill.right <= 320, `320px pill ${index + 1} overflows horizontally`)
-      assert(pill.top >= 0 && pill.bottom <= geometry.cue.top - 12, `320px pill ${index + 1} is clipped or overlaps the scroll cue`)
+    assert.equal(geometry.tiles.length, 10, '320px /cities must show all ten city tiles')
+    assert.equal(geometry.overflow, 0, '320px /cities must not create horizontal overflow')
+    for (const [index, tile] of geometry.tiles.entries()) {
+      assert(tile.width >= 44 && tile.height >= 44, `320px tile ${index + 1} lost its 44px target`)
+      assert(tile.left >= 16 && tile.right <= 304, `320px tile ${index + 1} breaks the 16px gutter: ${geometryEvidence}`)
     }
-    process.stdout.write(`PASS #3176 320px/400%-equivalent hero geometry ${geometryEvidence}\n`)
+    process.stdout.write(`PASS #3176/#4339 320px city tile geometry ${geometryEvidence}\n`)
   } catch (error) {
     primaryError = error
   } finally {
@@ -419,11 +397,10 @@ async function verifyRuntime() {
     }
     const directory = await request(port, '/cities')
     assert.equal((directory.body.match(/<h1\b/gi) ?? []).length, 1, '/cities needs one H1')
-    assert.equal((directory.body.match(/data-city-pill="/g) ?? []).length, 10, '/cities needs ten pills')
-    assert.equal((directory.body.match(/data-city-card="/g) ?? []).length, 10, '/cities needs ten cards')
+    const main = directory.body.match(/<main\b[\s\S]*?<\/main>/i)?.[0] ?? ''
     for (const [, pathname] of CITIES) {
       const escaped = pathname.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      assert.equal((directory.body.match(new RegExp(`href="${escaped}"`, 'g')) ?? []).length, 2, `${pathname} needs one pill and one card`)
+      assert.equal((main.match(new RegExp(`href="${escaped}"`, 'g')) ?? []).length, 1, `${pathname} needs one tile on /cities`)
     }
     for (const [, pathname] of CITIES) {
       const hub = await request(port, pathname)
@@ -445,8 +422,8 @@ if (!BUILT_ONLY) verifySource()
 if (!SOURCE_ONLY) await verifyRuntime()
 if (SELF_TEST) {
   const relative = 'mingla-marketing/app/(core)/cities/page.tsx'
-  const reverted = read(relative).replace('<CitiesHero />', '')
-  assert.throws(() => verifySource({ [relative]: reverted }), /dedicated cinematic hero/, 'removing the approved cities hero must prove RED')
-  process.stdout.write('RED proof: removing the approved cities hero was rejected\n')
+  const reverted = read(relative).replace('<CityMedia slug={city.slug} />', '')
+  assert.throws(() => verifySource({ [relative]: reverted }), /one tile per registry city/, 'removing the city tiles must prove RED')
+  process.stdout.write('RED proof: removing the city tiles was rejected\n')
 }
 process.stdout.write('PASS #3176 simplified core pages and cinematic city directory\n')

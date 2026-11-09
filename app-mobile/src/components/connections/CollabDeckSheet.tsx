@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useState } from "react";
 import {
+  Platform,
   Modal,
   Pressable,
   StyleSheet,
@@ -8,6 +9,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
+import { useRouter } from "expo-router";
 import SwipeableCards from "../SwipeableCards";
 import PreferencesSheet from "../PreferencesSheet";
 import { Icon } from "../ui/Icon";
@@ -75,6 +77,33 @@ export function CollabDeckSheet({
     onClose();
   }, [onClose]);
 
+  /*
+    #4347 rework (tester P1-2) — a route out of the deck (a claimed venue's
+    page, a host's brand page) would open BEHIND this full-screen modal. The
+    deck hands it here instead: close the sheet, then push once the modal is
+    gone (iOS `onDismiss`; Android has no onDismiss, so its effect flushes on
+    the visible -> false edge).
+  */
+  const router = useRouter();
+  const pendingRouteRef = React.useRef<string | null>(null);
+  const flushPendingRoute = useCallback(() => {
+    const path = pendingRouteRef.current;
+    if (path === null) return;
+    pendingRouteRef.current = null;
+    router.push(path as never);
+  }, [router]);
+  const handleExternalRoute = useCallback(
+    (path: string) => {
+      pendingRouteRef.current = path;
+      setShowPrefsSheet(false);
+      onClose();
+    },
+    [onClose],
+  );
+  React.useEffect(() => {
+    if (!visible && Platform.OS !== "ios") flushPendingRoute();
+  }, [visible, flushPendingRoute]);
+
   if (!sessionId) {
     return null;
   }
@@ -86,6 +115,7 @@ export function CollabDeckSheet({
       presentationStyle="fullScreen"
       accessibilityViewIsModal
       onRequestClose={handleClose}
+      onDismiss={flushPendingRoute}
     >
       <View style={styles.container}>
         <View style={[styles.header, { paddingTop: insets.top }]}>
@@ -146,6 +176,7 @@ export function CollabDeckSheet({
               onOpenPreferences={onOpenPreferences}
               onOpenCollabPreferences={handleOpenPreferences}
               onAfterNotify={handleAfterNotify}
+              onExternalRoute={handleExternalRoute}
               generateNewMockCard={noop}
               refreshKey={0}
               savedCards={savedCards}

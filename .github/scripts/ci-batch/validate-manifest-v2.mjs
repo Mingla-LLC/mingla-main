@@ -415,8 +415,16 @@ export function phase3dContractDigest(manifest) {
 // #4273 tester retest 3: register the SMS opt-out scope PostgreSQL proof.
 // #4273: re-sealed after moving the migration to 20280522004273 (above production's 20280521004334).
 // #4273: re-sealed after merging origin/main (#4350).
+// #4339: register the Ari draft hand-off migration (20280512004339) and its implementor PostgreSQL proof in the #1857, #1931 and #2117 replay lanes, after merging origin/main 2e6e331749 (#4318).
+// #4339: the #1931 lane skips 20280512004339_issue_4339_site_prompt_drafts.sql by exact filename (#2492 closure guard: CREATE TABLE columns are not credited as definitions).
+// #4339 round A: register the Book a call leads migration (20280520004339) and its implementor PostgreSQL proof in the #1857, #1931 and #2117 replay lanes (the #2492 closure guard passes without a skip).
+// #4339 round B: register the ad marketing destinations migration (20280522004339) and its implementor PostgreSQL proof in the #1857, #1931 and #2117 replay lanes.
+// #4339: re-sealed after merging origin/main 85dba1f14e (#4349 /links rows kept beside the #4339 rows).
+// #4339: re-sealed after merging origin/main 28f88fea6d (#4334 and #4273 rows kept beside the #4339 rows) and adding marketing-capture.ts to the issue-905 path scope; MANIFEST.json phase3eContractSha256 matches.
+// #4255: register the work card email migration (20280524004255) and its implementor PostgreSQL proof in the #1857, #1931 and #2117 replay lanes.
 // #4273 country switches: register the sms-country-switches migration and its PostgreSQL proof.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "203978272af82ff626b12081d9fdc77e399ce7a243b675f8774f80bc1190f993";
+// #4273: re-sealed after merging origin/main be7ffb3fbd (#4255 and #4353 rows kept beside the #4273 rows).
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "e3738dbccf174291057c52bb891be37dea141ced85b11ec283068f1a4a2e2063";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

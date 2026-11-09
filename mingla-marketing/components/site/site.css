@@ -1,0 +1,969 @@
+/* ---------------------------------------------------------------------------
+   #4339 phase 2a — site chrome and the Home / Mingla Host sections, ported
+   from the approved design contract: the floating pill nav, the Reelmark hero
+   (.rm), and .step, .tile, .cityrow, .marq, .gen, .list-item, .grid3/4.
+   The shared pieces (.wrap, .btn, .pill, .h2, .lead, .split, .band, .vcard,
+   .reveal …) come from components/landing/landing.css.
+
+   Everything is scoped under [data-landing] (the brand root that carries the
+   route-scoped faces from app/site-fonts.ts), so nothing leaks onto the
+   older pages. The nav is the only fixed element; it sits at the top and
+   never covers the #4318 privacy strip at the bottom.
+--------------------------------------------------------------------------- */
+
+/* ============ floating pill nav ============ */
+[data-landing] .site-nav {
+  position: fixed;
+  z-index: 60;
+  top: max(14px, env(safe-area-inset-top));
+  left: 0;
+  right: 0;
+  padding: 0 max(16px, var(--gr)) 0 max(16px, var(--g));
+  pointer-events: none;
+}
+[data-landing] .nav-in {
+  pointer-events: auto;
+  max-width: 1180px;
+  margin: 0 auto;
+  background: #fff;
+  border-radius: 999px;
+  height: 58px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 0 22px;
+  box-shadow: 0 8px 30px rgba(17, 17, 16, 0.12), 0 0 0 1px rgba(17, 17, 16, 0.08);
+  position: relative;
+  color: var(--ink);
+}
+[data-landing] .site-nav .brand {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--ink);
+  margin-right: auto;
+}
+[data-landing] .site-nav .brand svg {
+  display: block;
+  height: 24px;
+  width: auto;
+}
+[data-landing] .nav-links {
+  display: flex;
+  gap: 2px;
+}
+[data-landing] .nav-links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-size: 14px;
+  font-weight: 500;
+  padding: 0 14px;
+  border-radius: 999px;
+  color: #3b3a37;
+}
+[data-landing] .nav-links a:hover,
+[data-landing] .nav-links a.on {
+  background: var(--soft);
+  color: var(--ink);
+}
+[data-landing] .site-nav .btn.cta.nav-cta {
+  min-height: 44px;
+  height: 44px;
+  padding: 0 16px;
+  font-size: 14px;
+  box-shadow: 0 0 0 3px var(--orange);
+  margin: 0 6px;
+}
+[data-landing] .burger {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--ink);
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: #fff;
+}
+[data-landing] .burger span {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+}
+[data-landing] .burger i {
+  position: absolute;
+  width: 16px;
+  height: 1.6px;
+  background: #fff;
+  border-radius: 2px;
+  transition: transform 0.3s cubic-bezier(0.77, 0, 0.175, 1);
+}
+[data-landing] .burger i:nth-child(1) {
+  transform: translateY(-3.5px);
+}
+[data-landing] .burger i:nth-child(2) {
+  transform: translateY(3.5px);
+}
+[data-landing] .site-nav.open .burger i:nth-child(1) {
+  transform: rotate(45deg);
+}
+[data-landing] .site-nav.open .burger i:nth-child(2) {
+  transform: rotate(-45deg);
+}
+[data-landing] .drop {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 66px;
+  background: #fff;
+  border-radius: 28px;
+  box-shadow: 0 24px 60px rgba(17, 17, 16, 0.18), 0 0 0 1px rgba(17, 17, 16, 0.06);
+  padding: 28px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 24px;
+  clip-path: inset(0 0 100% 0 round 28px);
+  opacity: 0;
+  visibility: hidden;
+  transition: clip-path 0.3s cubic-bezier(0.77, 0, 0.175, 1), opacity 0.3s cubic-bezier(0.77, 0, 0.175, 1),
+    visibility 0s linear 0.3s;
+  pointer-events: none;
+  max-height: calc(100svh - 110px);
+  overflow: auto;
+}
+[data-landing] .site-nav.open .drop {
+  clip-path: inset(0 0 0 0 round 28px);
+  opacity: 1;
+  visibility: visible;
+  transition: clip-path 0.3s cubic-bezier(0.77, 0, 0.175, 1), opacity 0.3s cubic-bezier(0.77, 0, 0.175, 1),
+    visibility 0s;
+  pointer-events: auto;
+}
+[data-landing] .drop .drop-label {
+  font-family: var(--mono);
+  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #6b675f;
+  margin: 0 0 6px;
+}
+[data-landing] .drop ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+[data-landing] .drop li a {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  font-size: 15px;
+  color: #2a2a28;
+}
+[data-landing] .drop li a:hover {
+  color: #b5541a;
+}
+[data-landing] .drop .feat-card {
+  border-radius: 18px;
+  overflow: hidden;
+  position: relative;
+  min-height: 180px;
+  color: #fff;
+  display: flex;
+  align-items: flex-end;
+  padding: 16px;
+  isolation: isolate;
+}
+[data-landing] .drop .feat-card img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: -2;
+}
+[data-landing] .drop .feat-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0) 30%, rgba(0, 0, 0, 0.72));
+}
+[data-landing] .drop .feat-card span {
+  font-family: var(--serif);
+  font-size: 24px;
+  line-height: 1.05;
+}
+
+/* ============ Reelmark hero ============ */
+[data-landing] .rm {
+  --u: 0.8;
+  position: relative;
+  padding-top: clamp(120px, 14vh, 170px);
+  overflow: hidden;
+  background: var(--paper);
+  color: var(--ink);
+}
+[data-landing] .rm-head {
+  text-align: center;
+  position: relative;
+  z-index: 3;
+}
+[data-landing] .rm h1 {
+  font-family: var(--serif);
+  font-weight: 400;
+  /* Three lines at every width: the longest line ("that fit the vibe.") must
+     fit 320px minus the gutters, so the floor scales with the viewport. */
+  font-size: clamp(34px, 8.4vw, 128px);
+  line-height: 0.94;
+  letter-spacing: -0.025em;
+  margin: 0 auto;
+}
+[data-landing] .rm h1 .rm-lines > span {
+  display: block;
+  white-space: nowrap;
+}
+[data-landing] .rm h1 em {
+  font-style: italic;
+}
+[data-landing] .rm .swap {
+  display: inline-block;
+  transition: opacity 0.35s, transform 0.45s var(--out);
+}
+[data-landing] .rm .swap.out {
+  opacity: 0;
+  transform: translateY(0.25em);
+}
+[data-landing] .rm .sub {
+  max-width: 520px;
+  margin: 20px auto 0;
+  color: #4a4945;
+  font-size: clamp(16px, 1.4vw, 18px);
+}
+[data-landing] .ring {
+  display: inline-flex;
+  padding: 10px;
+  border-radius: 999px;
+  border: 1.5px dashed rgba(17, 17, 16, 0.35);
+  margin-top: 28px;
+  position: relative;
+}
+[data-landing] .ring .arr {
+  position: absolute;
+  left: calc(100% + 4px);
+  bottom: 46%;
+  width: clamp(72px, 16vw, 240px);
+  height: auto;
+  fill: none;
+  stroke: var(--orange);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  overflow: visible;
+  pointer-events: none;
+}
+[data-landing] .ring .arr path {
+  stroke-dasharray: 420;
+  stroke-dashoffset: 420;
+  animation: site-draw 1.4s 0.7s var(--out) forwards;
+}
+@keyframes site-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+[data-landing] .rm-stage {
+  position: relative;
+  height: calc(var(--u) * 430px);
+  margin-top: clamp(34px, 5vh, 60px);
+  touch-action: pan-y;
+  /* Own stacking context: the cards' z-order stays below the fixed nav. */
+  isolation: isolate;
+  z-index: 0;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+[data-landing] .rm-stage.drag {
+  cursor: grabbing;
+}
+/* #4339 round B: a fixed box per card; frames move only transform and
+   clip-path (reel-stage.tsx). The clip carries the rounded corner. */
+[data-landing] .rm-card {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  overflow: hidden;
+  background: #ddd;
+  transform-origin: 50% 50%;
+  will-change: transform;
+  opacity: 0;
+  transition: opacity 0.5s var(--out);
+}
+[data-landing] .rm-stage[data-ready] .rm-card {
+  opacity: 1;
+}
+[data-landing] .rm-card img,
+[data-landing] .rm-card video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+/* The caption keeps its on-screen size and inset while the card scales:
+   counter-scaled, and moved in by the trimmed side. */
+[data-landing] .rm-card .cap {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  display: flex;
+  max-width: 100%;
+  transform-origin: 0 100%;
+  transform: translate(calc(var(--side, 0px) + 10px / var(--s, 1)), calc(-10px / var(--s, 1))) scale(calc(1 / var(--s, 1)));
+}
+[data-landing] .rm-card .cap .pill {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+  font-size: 9.5px;
+  padding: 6px 9px;
+  background: rgba(17, 17, 16, 0.42);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+[data-landing] .rm-foot {
+  height: clamp(48px, 7vw, 80px);
+}
+[data-landing] .rm.dark {
+  background: var(--night);
+  color: #fff;
+}
+[data-landing] .rm.dark h1 {
+  color: #fff;
+}
+[data-landing] .rm.dark .sub {
+  color: rgba(255, 255, 255, 0.74);
+}
+[data-landing] .rm.dark .ring {
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+/* ============ sections ============ */
+[data-landing] .sec.dark {
+  background: var(--night);
+  color: #fff;
+}
+[data-landing] .sec.dark .lead {
+  color: rgba(255, 255, 255, 0.72);
+}
+[data-landing] .sec.sandbg {
+  background: var(--cream);
+}
+[data-landing] .muted {
+  color: #6b675f;
+}
+[data-landing] .grid3,
+[data-landing] .grid4 {
+  display: grid;
+  gap: 20px;
+}
+[data-landing] .grid3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+[data-landing] .grid4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+[data-landing] .grid3 > *,
+[data-landing] .grid4 > * {
+  min-width: 0;
+}
+[data-landing] .mt-56 {
+  margin-top: 56px;
+}
+[data-landing] .step {
+  padding: 28px;
+  border-radius: 24px;
+  background: #fff;
+  border: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 280px;
+}
+[data-landing] .step .n {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: #6b675f;
+}
+[data-landing] .step h3 {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: 34px;
+  line-height: 1;
+  margin: 0;
+}
+[data-landing] .step p {
+  margin: 0;
+}
+[data-landing] .step .vis {
+  margin-top: auto;
+  border-radius: 16px;
+  background: var(--paper);
+  min-height: 120px;
+  flex-wrap: wrap;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 14px;
+}
+[data-landing] .pill.ink {
+  background: var(--ink);
+  color: #fff;
+}
+[data-landing] .pill.paper {
+  background: #fff;
+  color: var(--ink);
+  border: 1px solid var(--line);
+}
+[data-landing] .mini {
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 6px 18px rgba(17, 17, 16, 0.08);
+  padding: 10px 12px;
+  font-size: 12.5px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+[data-landing] .mini svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+
+/* media tiles (audience, host types) */
+[data-landing] .tile {
+  border-radius: 24px;
+  overflow: hidden;
+  position: relative;
+  display: block;
+  color: #fff;
+  isolation: isolate;
+}
+[data-landing] .tile .ph {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 4 / 5;
+  background: #ccc;
+}
+[data-landing] .tile .ph img,
+[data-landing] .tile .ph video,
+[data-landing] .cityrow .ph img,
+[data-landing] .cityrow .ph video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.9s var(--out);
+}
+[data-landing] .tile:hover .ph img,
+[data-landing] .tile:hover .ph video,
+[data-landing] .cityrow a:hover .ph img,
+[data-landing] .cityrow a:hover .ph video {
+  transform: scale(1.04);
+}
+[data-landing] .scrim::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0) 30%, rgba(0, 0, 0, 0.76));
+}
+[data-landing] .ov {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 20px;
+  color: #fff;
+  z-index: 2;
+}
+[data-landing] .tile h3,
+[data-landing] .cityrow h3 {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: clamp(28px, 2.6vw, 38px);
+  line-height: 1;
+  margin: 0;
+}
+[data-landing] .tile p {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.86);
+  margin: 6px 0 0;
+}
+[data-landing] .tile .go {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 2;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #fff;
+  color: var(--ink);
+  display: grid;
+  place-items: center;
+  transform: scale(0.8);
+  opacity: 0;
+  transition: 0.35s var(--out);
+}
+[data-landing] .tile .go svg {
+  width: 18px;
+  height: 18px;
+}
+[data-landing] .tile:hover .go,
+[data-landing] .tile:focus-visible .go {
+  transform: none;
+  opacity: 1;
+}
+/* Free tools: a clip under the same ink wash (.scrim) as the host-type tiles
+   beside it; the ink shows only until the poster paints. */
+[data-landing] .tile.tools .ph {
+  background: var(--ink);
+}
+
+/* city row */
+[data-landing] .cityrow {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 48px;
+}
+[data-landing] .cityrow a {
+  border-radius: 20px;
+  overflow: hidden;
+  position: relative;
+  aspect-ratio: 3 / 4;
+  display: block;
+  color: #fff;
+  background: var(--moss);
+}
+[data-landing] .cityrow .ph {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+/* marquee */
+[data-landing] .marq-sec {
+  overflow: hidden;
+  padding: 20px 0 90px;
+}
+[data-landing] .marq {
+  display: flex;
+  gap: 56px;
+  white-space: nowrap;
+  animation: site-marq 40s linear infinite;
+  width: max-content;
+}
+@keyframes site-marq {
+  to {
+    transform: translateX(-50%);
+  }
+}
+[data-landing] .marq span {
+  font-family: var(--serif);
+  font-size: clamp(34px, 4vw, 56px);
+  display: inline-flex;
+  align-items: center;
+  gap: 56px;
+}
+[data-landing] .marq span::after {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--orange);
+}
+
+/* home band copy */
+[data-landing] .band .band-copy p {
+  max-width: 440px;
+  margin: 14px 0 0;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+/* Ari video cards: the text-card wash sits in landing.css (.vcard) */
+[data-landing] .ari-card {
+  border-radius: 24px;
+  padding: 28px;
+  min-height: 300px;
+  display: flex;
+  flex-direction: column;
+}
+[data-landing] .ari-card h3 {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: clamp(28px, 3vw, 40px);
+  line-height: 1;
+  margin: auto 0 0;
+}
+[data-landing] .ari-card p {
+  margin: 8px 0 0;
+  color: rgba(255, 255, 255, 0.86);
+}
+
+/* toolkit list */
+[data-landing] .list {
+  margin-top: 40px;
+}
+[data-landing] .list-item {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: center;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--line);
+}
+[data-landing] .list-item .n {
+  font-family: var(--serif);
+  font-size: 34px;
+  color: #6b675f;
+}
+[data-landing] .list-item h3 {
+  font-size: 18px;
+  font-weight: 500;
+  margin: 0;
+}
+[data-landing] .list-item p {
+  font-size: 14px;
+  color: #6b675f;
+  margin: 2px 0 0;
+}
+[data-landing] .list-item .go {
+  min-height: 42px;
+  padding: 0 20px;
+  font-size: 14px;
+}
+
+/* website prompt demo */
+[data-landing] .gen {
+  position: relative;
+  padding: 18px;
+  border-radius: 28px;
+  background: #fff;
+  border: 1px solid var(--line);
+  min-height: 330px;
+}
+[data-landing] .gen .ask {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+[data-landing] .gen .field textarea {
+  height: 140px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: #fff;
+  padding: 14px 16px;
+  font: inherit;
+  font-size: 15px;
+  width: 100%;
+  resize: vertical;
+  color: inherit;
+}
+[data-landing] .gen .stage {
+  display: grid;
+  gap: 14px;
+}
+[data-landing] .steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 14px;
+  margin: 0;
+  padding: 0;
+}
+[data-landing] .steps li {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #6b675f;
+  transition: color 0.3s;
+}
+[data-landing] .steps li i {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1.5px solid var(--line);
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+[data-landing] .steps li.on,
+[data-landing] .steps li.ok {
+  color: var(--ink);
+}
+[data-landing] .steps li.on i {
+  border-color: var(--orange);
+  border-top-color: transparent;
+  animation: site-spin 0.8s linear infinite;
+}
+[data-landing] .steps li.ok i {
+  background: var(--ink);
+  border-color: var(--ink);
+}
+[data-landing] .steps li.ok i::after {
+  content: '';
+  width: 8px;
+  height: 4px;
+  border-left: 2px solid #fff;
+  border-bottom: 2px solid #fff;
+  transform: rotate(-45deg) translate(1px, -1px);
+}
+@keyframes site-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+[data-landing] .brw {
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  overflow: hidden;
+  background: var(--paper);
+}
+[data-landing] .brw .bar0 {
+  height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  background: #fff;
+  border-bottom: 1px solid var(--line);
+}
+[data-landing] .brw .bar0 i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--line);
+}
+[data-landing] .brw .bar0 span {
+  margin-left: 10px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: #6b675f;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+[data-landing] .brw .pg {
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+}
+[data-landing] .blk {
+  border-radius: 10px;
+  background: #e7e3da;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.5s, transform 0.6s var(--out);
+}
+[data-landing] .blk.in {
+  opacity: 1;
+  transform: none;
+}
+[data-landing] .blk.hero {
+  min-height: 96px;
+  background: linear-gradient(135deg, var(--moss), var(--clay));
+  color: #fff;
+  padding: 14px;
+  display: flex;
+  align-items: flex-end;
+  font-family: var(--serif);
+  font-size: 22px;
+  line-height: 1;
+  overflow-wrap: anywhere;
+}
+[data-landing] .blk.row3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  background: none;
+}
+[data-landing] .blk.row3 b {
+  height: 54px;
+  border-radius: 8px;
+  background: #e7e3da;
+}
+[data-landing] .blk.line {
+  height: 12px;
+}
+[data-landing] .blk.btnr {
+  height: 30px;
+  width: 46%;
+  background: var(--ink);
+  border-radius: 999px;
+}
+
+/* Ari hand-off sheet: reuses the [data-landing-sheet] shell from landing.css */
+[data-landing-sheet] .sheet-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 48px;
+  padding: 0 24px;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink);
+  font-weight: 500;
+  font-size: 15px;
+  margin-top: 22px;
+  box-shadow: 0 0 0 4px var(--orange), 0 10px 32px rgba(235, 120, 37, 0.38);
+}
+
+/* ============ responsive ============ */
+@media (max-width: 1000px) {
+  [data-landing] .nav-links {
+    display: none;
+  }
+  [data-landing] .drop {
+    grid-template-columns: 1fr 1fr;
+  }
+  [data-landing] .drop .feat-card {
+    display: none;
+  }
+  [data-landing] .grid3,
+  [data-landing] .grid4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  [data-landing] .cityrow {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 640px) {
+  [data-landing] .site-nav .btn.cta.nav-cta {
+    display: none;
+  }
+  [data-landing] .nav-in {
+    height: 54px;
+    padding-left: 18px;
+  }
+  [data-landing] .drop {
+    grid-template-columns: 1fr;
+    padding: 22px;
+    top: 62px;
+    gap: 16px;
+  }
+  [data-landing] .grid3,
+  [data-landing] .grid4 {
+    grid-template-columns: 1fr;
+  }
+  [data-landing] .cityrow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  /* No orphan tiles on phones (Seth, 8 Nov): in a 2-column tile grid with an
+     odd count, the last tile spans both columns at a wider 16:10, so it is not
+     taller than the pair above it. Static grids use :last-child:nth-child(odd);
+     grids whose shown count changes at runtime (the weekend and places grids)
+     mark their last shown tile [data-orphan] instead. Tablet and desktop keep
+     their 3+ columns and are unchanged. */
+  [data-landing] .cityrow > :last-child:nth-child(odd),
+  [data-landing] .reel-grid > :last-child:nth-child(odd),
+  [data-landing] .wk-grid > li[data-orphan] {
+    grid-column: 1 / -1;
+  }
+  [data-landing] .cityrow > a:last-child:nth-child(odd),
+  [data-landing] .cityrow > li:last-child:nth-child(odd) > a,
+  [data-landing] .reel-grid > :last-child:nth-child(odd) .ph,
+  [data-landing] .wk-grid > li[data-orphan] .wk-card .ph {
+    aspect-ratio: 16 / 10;
+  }
+  [data-landing] .list-item {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+  [data-landing] .list-item .go {
+    display: none;
+  }
+  /* #4339 (Seth): a row that goes to Mingla Host keeps its "Use Mingla Host"
+     pill on a phone, so the row still says where it goes. */
+  [data-landing] .list-item .go.to-host {
+    display: inline-flex;
+    grid-column: 2;
+    justify-self: start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-landing] .ring .arr path {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+  [data-landing] .marq {
+    animation: none;
+  }
+  [data-landing] .burger i,
+  [data-landing] .drop {
+    transition: none;
+  }
+}
+
+[data-landing] .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+[data-landing] .gen-actions {
+  justify-content: flex-end;
+}
+[data-landing] .gen .btn.sm {
+  min-height: 44px;
+  padding: 0 20px;
+  font-size: 14px;
+}
+[data-landing] .gen-error {
+  color: #a3401a;
+  font-size: 13px;
+}
+[data-landing-sheet] .sheet-cta svg {
+  margin-left: 8px;
+  flex: none;
+}
+[data-landing] .split.split-center {
+  align-items: center;
+}
+[data-landing] .vc-top {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  color: #fff;
+}
+[data-landing] .vc-top svg {
+  display: block;
+  height: 18px;
+  width: auto;
+}
+[data-landing] .list {
+  list-style: none;
+  padding: 0;
+}
+[data-landing] a.list-item {
+  color: var(--ink);
+}
+@media (max-width: 640px) {
+  /* Phones: the headline reads larger while its longest line still fits 320px. */
+  [data-landing] .rm h1 {
+    font-size: clamp(34px, 11.5vw, 46px);
+  }
+}

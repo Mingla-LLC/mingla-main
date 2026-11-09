@@ -223,6 +223,15 @@ jest.mock("../../../../../app-mobile/src/components/expandedCard/VenueReserveShe
 jest.mock("../../../../../app-mobile/src/components/stay/ConsumerStayGuestExperience", () => ({
   ConsumerStayGuestExperience: () => null,
 }));
+// #4347 wave 4 — harness registration only: the consumer route now lazily
+// loads the Explorer layer, whose app-mobile chain this business run cannot
+// load. Stubbed like the other consumer leaves so this suite's diagnostics
+// count stays about the background refresh. No assertion changed.
+jest.mock("../../../../../app-mobile/src/components/venuePage/VenueExplorerLayer", () => ({
+  VenueExplorerOverview: () => null,
+  VenueExplorerBar: () => null,
+  VenueStateClose: () => null,
+}));
 
 const businessVenue = (name = "Gogi"): Record<string, unknown> => ({
   id: "venue-1",

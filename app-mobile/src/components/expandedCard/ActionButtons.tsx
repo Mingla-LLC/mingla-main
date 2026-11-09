@@ -6,7 +6,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   Alert,
-  Linking,
   ActivityIndicator,
   Platform,
 } from "react-native";
@@ -20,7 +19,6 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import { ExpandedCardData } from "../../types/expandedCardTypes";
 // #1703 — relative, like the other card-identity imports in this tree: the CI
 // guards import it under plain `node --test` with no `npm install`.
-import { dialablePhone } from "../../../../packages/card-identity/phone.mjs";
 import { savedCardsService } from "../../services/savedCardsService";
 import { CalendarService } from "../../services/calendarService";
 import { useAppStore } from "../../store/appStore";
@@ -34,7 +32,8 @@ import {
 } from "../../utils/singleCardAvailability";
 import { canonicalDiscoveryPriceFields } from "../../utils/priceTiers";
 import { useTranslation } from "react-i18next";
-import { ACTION_BAND, SPINE } from "./spineTokens";
+import { PINNED_BAR, PINNED_PRIMARY, SPINE } from "./spineTokens";
+import { pinnedPrimaryStyles } from "./pinnedPrimary";
 
 
 // META-ORCH-0991 Wave B Batch 4: the iOS date/time picker <Modal> (a flex-end
@@ -71,6 +70,29 @@ interface ActionButtonsProps {
   onPaywallRequired?: () => void;
   /** Whether the current user can access curated card actions (save/schedule) */
   canAccessCurated?: boolean;
+  /**
+   * #4347 wave 2/3 — the bar is PINNED to the bottom of the sheet: Save ·
+   * Schedule · Share · one main button (the `reserve` slot: "Reserve a table"
+   * or Directions), or for a plan Save · Route all stops · Share · "Schedule
+   * this plan". The in-flow band it replaced is gone (the plan was its last
+   * user). Call lives on the Details phone row / a stop's More.
+   */
+  variant?: 'pinned';
+  onShare?: () => void;
+  shareLabel?: string;
+  shareBusy?: boolean;
+  shareControlRef?: React.Ref<View>;
+  /**
+   * #4347 wave 3 — the PLAN's pinned bar: Save plan · Route all stops · Share ·
+   * "Schedule this plan". With this label the Schedule action becomes the main
+   * button (same paywall, same arrival-time safety check, same picker); the
+   * small Schedule button is not drawn.
+   */
+  primaryScheduleLabel?: string;
+  /** A control drawn right after Save (the plan's "Route all stops"). */
+  afterSave?: React.ReactNode;
+  /** The picker opens on this time when it is still ahead (the plan's chosen start). */
+  initialScheduleAt?: Date | null;
 }
 
 export default function ActionButtons({
@@ -86,9 +108,22 @@ export default function ActionButtons({
   reserve,
   onPaywallRequired,
   canAccessCurated = true,
+  variant: _variant = 'pinned',
+  onShare,
+  shareLabel,
+  shareBusy = false,
+  shareControlRef,
+  primaryScheduleLabel,
+  afterSave = null,
+  initialScheduleAt = null,
 }: ActionButtonsProps) {
   const { t } = useTranslation(['expanded_details', 'common']);
   const [isSaving, setIsSaving] = useState(false);
+  // #4347 rework (V-1) — the SYNCHRONOUS in-flight guard. `isSaving` is state,
+  // so two taps in one frame both read it as false before it renders; this ref
+  // flips on the first tap, so a double tap is one save (and, on the venue
+  // page, one return to the deck).
+  const savingRef = useRef(false);
   const [isScheduling, setIsScheduling] = useState(false);
   const [showDateTimePicker, setShowDateTimePicker] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -215,14 +250,9 @@ export default function ActionButtons({
    * exists. A separate `present(card.phone)` test would let the button render
    * for a number the link could not be built from.
    */
-  const dialable = React.useMemo(
-    () => dialablePhone((card as { phone?: string | null }).phone ?? null,
-      (card as { countryCode?: string | null }).countryCode ?? null),
-    [card],
-  );
 
   const handleSave = async () => {
-    if (isSaving) {
+    if (isSaving || savingRef.current) {
       return; // Prevent multiple saves
     }
 
@@ -233,6 +263,7 @@ export default function ActionButtons({
       return;
     }
 
+    savingRef.current = true;
     setIsSaving(true);
     try {
       await onSave(card);
@@ -240,6 +271,7 @@ export default function ActionButtons({
       console.error('[ActionButtons.handleSave] save failed', error);
       Alert.alert(t('common:error'), t('expanded_details:action_buttons.error_save'));
     } finally {
+      savingRef.current = false;
       setIsSaving(false);
     }
   };
@@ -260,8 +292,10 @@ export default function ActionButtons({
     setSelectedDateTime(null);
 
     const now = new Date();
-    setSelectedDate(now);
-    setSelectedTime(now);
+    const opening =
+      initialScheduleAt instanceof Date && initialScheduleAt.getTime() > now.getTime() ? initialScheduleAt : now;
+    setSelectedDate(opening);
+    setSelectedTime(opening);
     setPickerMode("date");
     setDateTimePickerVisible(true);
   };
@@ -627,8 +661,22 @@ export default function ActionButtons({
    * pre-flighted with `canOpenURL`.
    */
 
+  const closedMessage =
+    hasCheckedAvailability &&
+    availabilityCheck &&
+    !availabilityCheck.isOpen &&
+    !availabilityCheck.isAssumption ? (
+      <View style={styles.closedMessageContainer} testID="action-closed-message">
+        <Icon name="alert-circle" size={16} color="#9a3412" />
+        <Text style={styles.closedMessage}>
+          {availabilityCheck.reason ?? t('expanded_details:action_buttons.closed_message')}
+        </Text>
+      </View>
+    ) : null;
+
   return (
-    <View>
+    <View style={styles.pinnedWrap} testID="sheet-action-bar">
+      {closedMessage}
       {/* Date/Time Picker Modal */}
       {showDateTimePicker && (
         <>
@@ -725,11 +773,11 @@ export default function ActionButtons({
         #374151 icon at 10.31:1, which is a stronger identification than the fill
         ever was.
       */}
-      <View style={styles.band}>
+      <View style={styles.pinnedRow}>
         <TrackedTouchableOpacity
           logComponent="ActionButtons"
           logId="save"
-          style={[styles.bandButton, (isSaving || isSaved) && styles.bandButtonDisabled]}
+          style={[styles.pinnedButton, (isSaving || isSaved) && styles.bandButtonDisabled]}
           onPress={handleSave}
           activeOpacity={0.55}
           disabled={isSaving || isSaved}
@@ -747,11 +795,11 @@ export default function ActionButtons({
             <>
               <Icon
                 name={isSaved ? 'bookmark' : 'bookmark-outline'}
-                size={ACTION_BAND.iconSize}
+                size={PINNED_BAR.iconSize}
                 color={SPINE.prose}
               />
               <Text
-                style={[styles.bandLabel, (isSaving || isSaved) && styles.bandLabelDisabled]}
+                style={[styles.pinnedLabel, (isSaving || isSaved) && styles.bandLabelDisabled]}
                 numberOfLines={1}
                 maxFontSizeMultiplier={1.2}
               >
@@ -763,10 +811,13 @@ export default function ActionButtons({
           )}
         </TrackedTouchableOpacity>
 
+        {afterSave}
+
+        {primaryScheduleLabel ? null : (
         <TrackedTouchableOpacity
           logComponent="ActionButtons"
           logId="schedule"
-          style={[styles.bandButton, (isScheduling || isScheduled) && styles.bandButtonDisabled]}
+          style={[styles.pinnedButton, (isScheduling || isScheduled) && styles.bandButtonDisabled]}
           onPress={handleSchedule}
           activeOpacity={0.55}
           disabled={isScheduling || isScheduled}
@@ -784,12 +835,12 @@ export default function ActionButtons({
             <>
               <Icon
                 name={isScheduled ? 'checkmark-circle' : 'calendar-outline'}
-                size={ACTION_BAND.iconSize}
+                size={PINNED_BAR.iconSize}
                 color={SPINE.prose}
               />
               <Text
                 style={[
-                  styles.bandLabel,
+                  styles.pinnedLabel,
                   (isScheduling || isScheduled) && styles.bandLabelDisabled,
                 ]}
                 numberOfLines={1}
@@ -802,93 +853,94 @@ export default function ActionButtons({
             </>
           )}
         </TrackedTouchableOpacity>
+        )}
 
-        {/*
-          #1703 — CALL. Seth: "If there is number, show the button, if not dont
-          show the button at all."
-
-          ABSENT, NOT DISABLED. A greyed button is still a dead tap and still
-          costs a slot in a band whose width is shared three or four ways. 63% of
-          the pool has no number (32,332 of 88,367), so this is the common case,
-          not the edge case — Yonder Coffee, the card Seth reviewed on, is one of
-          them.
-
-          `dialablePhone` composes the country code and refuses to guess one, so
-          a number this button offers is a number that connects.
-        */}
-        {dialable !== null ? (
+        {onShare ? (
+          <View ref={shareControlRef} collapsable={false}>
           <TrackedTouchableOpacity
             logComponent="ActionButtons"
-            logId="call"
-            style={styles.bandButton}
-            onPress={() => {
-              Linking.openURL(`tel:${dialable.tel}`).catch(() => {
-                // A device with no dialler (a tablet, an emulator) rejects the
-                // url. Say so rather than failing silently — Constitution rule 3.
-                Alert.alert(
-                  t('expanded_details:action_buttons.call', { defaultValue: 'Call' }),
-                  dialable.display,
-                );
-              });
-            }}
+            logId="share"
+            style={[styles.pinnedButton, shareBusy && styles.bandButtonDisabled]}
+            onPress={onShare}
             activeOpacity={0.55}
+            disabled={shareBusy}
             accessibilityRole="button"
-            accessibilityLabel={t('expanded_details:action_buttons.call_place', {
-              defaultValue: 'Call {{name}}',
-              name: card.title,
-            })}
+            accessibilityState={shareBusy ? { disabled: true, busy: true } : undefined}
+            accessibilityLabel={shareLabel}
           >
-            <Icon name="call-outline" size={ACTION_BAND.iconSize} color={SPINE.prose} />
-            <Text style={styles.bandLabel} numberOfLines={1} maxFontSizeMultiplier={1.2}>
-              {t('expanded_details:action_buttons.call', { defaultValue: 'Call' })}
-            </Text>
+            {shareBusy ? (
+              <ActivityIndicator size="small" color={SPINE.factValue} />
+            ) : (
+              <>
+                <Icon name="share-outline" size={PINNED_BAR.iconSize} color={SPINE.prose} />
+                <Text style={styles.pinnedLabel} numberOfLines={1} maxFontSizeMultiplier={1.2}>
+                  {t('cards:sheet.share')}
+                </Text>
+              </>
+            )}
+          </TrackedTouchableOpacity>
+          </View>
+        ) : null}
+
+
+        {primaryScheduleLabel ? (
+          <TrackedTouchableOpacity
+            logComponent="ActionButtons"
+            logId="schedule_plan"
+            testID="sheet-primary-schedule"
+            style={[pinnedPrimaryStyles.button, (isScheduling || isScheduled) && styles.bandButtonDisabled]}
+            onPress={handleSchedule}
+            activeOpacity={0.85}
+            disabled={isScheduling || isScheduled}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: isScheduling || isScheduled, selected: isScheduled }}
+            accessibilityLabel={isScheduled ? t('expanded_details:action_buttons.scheduled') : primaryScheduleLabel}
+          >
+            {isScheduling ? (
+              <ActivityIndicator size="small" color={PINNED_PRIMARY.label} />
+            ) : (
+              <>
+                <Icon name={isScheduled ? 'checkmark-circle' : 'calendar-outline'} size={18} color={PINNED_PRIMARY.label} />
+                <Text style={pinnedPrimaryStyles.label} numberOfLines={1} maxFontSizeMultiplier={1.2}>
+                  {isScheduled ? t('expanded_details:action_buttons.scheduled') : primaryScheduleLabel}
+                </Text>
+              </>
+            )}
           </TrackedTouchableOpacity>
         ) : null}
 
         {reserve}
       </View>
 
-      {/* Availability Messages */}
-      {hasCheckedAvailability &&
-        availabilityCheck &&
-        !availabilityCheck.isOpen &&
-        !availabilityCheck.isAssumption && (
-          <View style={styles.closedMessageContainer}>
-            <Icon name="alert-circle" size={16} color="#9a3412" />
-            <Text style={styles.closedMessage}>
-              {availabilityCheck.reason ?? t('expanded_details:action_buttons.closed_message')}
-            </Text>
-          </View>
-        )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  /**
-   * The band. NOTHING above it and nothing below it — no top border, no card, no
-   * background of its own. It sits on the paper directly under the hero, so the
-   * hero's bottom edge is the only boundary the eye needs.
-   */
-  band: {
-    height: ACTION_BAND.height,
-    paddingHorizontal: ACTION_BAND.padding,
-    paddingVertical: ACTION_BAND.padding,
-    flexDirection: "row",
-    gap: ACTION_BAND.gap,
+  bandButtonDisabled: { opacity: 0.4 },
+  // #4347 wave 2 — the pinned bar (single place).
+  pinnedWrap: {
+    paddingHorizontal: PINNED_BAR.paddingH,
+    paddingTop: PINNED_BAR.paddingTop,
+    borderTopWidth: 1,
+    borderTopColor: PINNED_BAR.border,
+    backgroundColor: SPINE.paper,
   },
-  bandButton: {
-    flex: 1,
-    height: ACTION_BAND.buttonHeight,
-    borderRadius: ACTION_BAND.buttonRadius,
+  pinnedRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
+    gap: PINNED_BAR.gap,
   },
-  bandButtonDisabled: { opacity: 0.4 },
-  bandLabel: {
-    fontSize: ACTION_BAND.labelSize,
+  pinnedButton: {
+    minWidth: 52,
+    height: PINNED_BAR.buttonHeight,
+    paddingHorizontal: 6,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 2,
+  },
+  pinnedLabel: {
+    fontSize: PINNED_BAR.labelSize,
     fontWeight: "600",
     color: SPINE.factValue,
   },
