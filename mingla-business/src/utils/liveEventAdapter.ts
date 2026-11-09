@@ -34,7 +34,7 @@ import {
   refundPoliciesEqual,
   refundPolicyDisplayName,
 } from "./refundPolicyTerms";
-import { locationPinChanged } from "./serverDraftEventMapper";
+import { locationPinChanged } from "./locationPin";
 
 // ---- Adapter (LiveEvent → DraftEvent view) --------------------------
 
