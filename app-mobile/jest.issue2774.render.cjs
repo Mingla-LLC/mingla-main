@@ -98,5 +98,9 @@ module.exports = {
     // deck-card state rendered.
     "**/__tests__/issue_4347_deck_card_model.implementor.test.ts",
     "**/__tests__/issue_4347_deck_card_states.implementor.render.test.tsx",
+    // issue #4347 wave 1 — tester adversarial: the photo flip's gesture lease,
+    // the smart chip in venue time and across midnight, claimed-venue keys,
+    // the hint's logout sweep, locale plurals, the kicker's contrast floor.
+    "**/__tests__/issue_4347_wave1.tester.adversarial.test.ts",
   ],
 };
