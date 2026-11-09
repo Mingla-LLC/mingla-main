@@ -196,6 +196,29 @@ export const DETAILS: {
   labelSize: number; labelWeight: string;
   border: string; androidBorder: string; gapFromBeenHere: number;
 };
+/** #4347 round 2 — the AI plan's collapsed plate (Direction B). */
+export const PLAN_PLATE: {
+  handle: { width: number; height: number; radius: number; top: number; color: string };
+  handleRow: number;
+  routeRow: number;
+  sectionGap: number;
+  paddingH: number;
+  thumb: { size: number; overlap: number; ring: number; ringColor: string; max: number };
+  route: { size: number; weight: string; color: string; gap: number };
+  tiles: {
+    height: number; gap: number; radius: number; paddingH: number;
+    fill: string; androidFill: string;
+    labelSize: number; labelLetterSpacing: number; labelColor: string;
+    valueSize: number; valueWeight: string; valueColor: string; spendColor: string;
+  };
+  controlRow: number;
+  controlGap: number;
+  details: {
+    fill: string; fillPressed: string; label: string; labelSize: number; labelWeight: string;
+    radius: number; height: number; glyphSize: number;
+  };
+  height: number;
+};
 export const PLATE_ALPHA_FLOOR: number;
 export const TITLE_ALPHA_FLOOR: number;
 export const K_PLATE: number;

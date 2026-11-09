@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_4255_work_card_email.implementor.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-4255-work-card-email-pg",
+  "profile": "psql-pg17-post-replay",
+  "database": { "database": "postgres", "user": "supabase_admin", "reset": "suite-owned" }
+}

@@ -233,7 +233,8 @@ export const PLAN_SHEET = {
   routeLabelSize: 10,
   routeLegLabelSize: 10,
   /** Sticky navigator. */
-  navFill: 'rgba(255,255,255,0.97)',
+  // #4347 round 2 — solid: at 0.97 the section heading scrolling under it showed through.
+  navFill: '#FFFFFF',
   navBorder: '#E5E7EB',
   navDot: 22,
   navDotBorder: '#CFCFCF',

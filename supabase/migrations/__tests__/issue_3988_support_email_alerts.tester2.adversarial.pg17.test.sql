@@ -15,7 +15,8 @@
 --   H. bulk/backfill writes that do not change an assignee, owner or state
 --      enqueue nothing (no alert storm from maintenance updates)
 --   I. preferences: toggling email off after enqueue denies email at send
---      time only for that person and category; mentions stay opt-in; the
+--      time only for that person and category; mentions are on by default
+--      (#4255) and an explicit off wins; the
 --      category key is matched exactly; nobody can write another person's
 --      preference row, through the RPC or the table
 --   J. exactly one overdue cron job, on the 15-minute schedule
@@ -453,15 +454,14 @@ BEGIN
     RAISE EXCEPTION 'opt_back_in_ignored';
   END IF;
 
-  -- Mentions: off with no row, on only after an explicit true, off again after false.
-  IF public.can_send(pg_temp.t3988c_id('mate'), 'admin.team_mention', 'email', 'issue3988c-mate@test.local')
-     OR public.issue_3720_notification_denial_reason(pg_temp.t3988c_id('mate'), 'admin.team_mention', 'email', NULL) <> 'preference_off' THEN
-    RAISE EXCEPTION 'mention_email_not_opt_in';
+  -- [TEST-MOD-APPROVED #4255] Mentions: on with no row (Seth, 9 Nov 2026), on after an explicit true, off after false.
+  IF public.can_send(pg_temp.t3988c_id('mate'), 'admin.team_mention', 'email', 'issue3988c-mate@test.local') IS NOT TRUE THEN
+    RAISE EXCEPTION 'mention_email_not_default_on';
   END IF;
   v := pg_temp.t3988c_as('mate', 'public.issue_3988_my_email_alert_preferences()');
-  IF (v::jsonb @> '[{"category_key":"admin.team_mention","email_enabled":false}]'::jsonb) IS NOT TRUE
+  IF (v::jsonb @> '[{"category_key":"admin.team_mention","email_enabled":true}]'::jsonb) IS NOT TRUE
      OR jsonb_array_length(v::jsonb) <> 8 THEN
-    RAISE EXCEPTION 'mention_default_shown_on:%', v;
+    RAISE EXCEPTION 'mention_default_shown_off:%', v;
   END IF;
   PERFORM pg_temp.t3988c_as('mate', 'public.issue_3988_set_email_alert_preference(''admin.team_mention'', true)');
   IF public.can_send(pg_temp.t3988c_id('mate'), 'admin.team_mention', 'email', 'issue3988c-mate@test.local') IS NOT TRUE THEN

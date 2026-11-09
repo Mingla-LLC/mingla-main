@@ -344,6 +344,25 @@ export function renderCategoryMessage(
         sms: "Mingla: A Host replied on a support ticket.",
       };
     }
+    case "admin.team_mention": {
+      // #4255 — the subject names the card ("Seth tagged you: <card>") so
+      // every card is its own email and Gmail conversation. The producer
+      // (ops_notify_people) builds the title; this only falls back.
+      const cardTitle = str(payload.card_title).trim();
+      const subject = str(payload.title).trim() ||
+        (cardTitle ? `Work card: ${cardTitle}` : "A Mingla work card changed");
+      const body = str(payload.body).trim() || "A work card changed.";
+      const link = str(payload.deep_link).trim();
+      const safeLink = link.startsWith("https://admin.usemingla.com/") ? link : "";
+      return {
+        push: { title: subject, body },
+        email: {
+          subject,
+          body: safeLink ? `${body}\n\nOpen the card: ${safeLink}` : body,
+        },
+        sms: "",
+      };
+    }
     case "admin.support_staff_ticket": {
       const subject = communityMarkdownToPlainText(payload.subject);
       return {

@@ -1,7 +1,8 @@
 /**
  * #4347 wave 3 — the plan's smaller sections: the ONE warning card (only when
  * action is needed, always with a fix), "Conditions at your stops", "Getting
- * there" (one row per leg, "You → stop 1" only with a location) and "Ends near".
+ * there" (one row per leg, "You → stop 1" only with a location), "Ends near"
+ * and (#4347 round 2) "Price per stop".
  * Every string arrives translated; these only lay it out.
  */
 import React from 'react';
@@ -63,15 +64,33 @@ export interface TableRow {
   readonly warn?: boolean;
 }
 
-function Rows({ rows, testIDPrefix }: { rows: readonly TableRow[]; testIDPrefix: string }): React.ReactElement {
+/**
+ * `inline` (#4347 round 2) keeps the value beside its label however long the
+ * label is — the label wraps in its own column — so one long stop name no longer
+ * drops its weather onto a line of its own while the other rows keep theirs.
+ * The legs keep `wrap` (route over minutes reads as a pair).
+ */
+function Rows({
+  rows,
+  testIDPrefix,
+  layout = 'wrap',
+}: {
+  rows: readonly TableRow[];
+  testIDPrefix: string;
+  layout?: 'wrap' | 'inline';
+}): React.ReactElement {
+  const inline = layout === 'inline';
   return (
     <>
       {rows.map((row) => (
-        <View key={row.key} style={styles.row} testID={`${testIDPrefix}-${row.key}`}>
-          <Text style={styles.rowLabel} maxFontSizeMultiplier={1.4}>
+        <View key={row.key} style={[styles.row, inline ? styles.rowInline : null]} testID={`${testIDPrefix}-${row.key}`}>
+          <Text style={[styles.rowLabel, inline ? styles.rowLabelInline : null]} maxFontSizeMultiplier={1.4}>
             {row.label}
           </Text>
-          <Text style={[styles.rowValue, row.warn ? styles.rowWarn : null]} maxFontSizeMultiplier={1.4}>
+          <Text
+            style={[styles.rowValue, inline ? styles.rowValueInline : null, row.warn ? styles.rowWarn : null]}
+            maxFontSizeMultiplier={1.4}
+          >
             {row.value}
           </Text>
         </View>
@@ -95,7 +114,7 @@ export function PlanConditions({
       <Text style={styles.heading} accessibilityRole="header">
         {title}
       </Text>
-      <Rows rows={rows} testIDPrefix="plan-conditions-row" />
+      <Rows rows={rows} testIDPrefix="plan-conditions-row" layout="inline" />
       <Text style={styles.note} testID="plan-conditions-note">
         {note}
       </Text>
@@ -143,6 +162,35 @@ export function PlanGettingThere({
         </Text>
       ) : null}
       <Rows rows={rows} testIDPrefix="plan-leg" />
+    </View>
+  );
+}
+
+/**
+ * #4347 round 2 — "Price per stop": each stop's Google per-person estimate,
+ * converted for the viewer, "Free" only when Google says so, and "No price
+ * listed" when there is none. Rendered only when at least one stop has a price
+ * or is free (otherwise the section would say nothing).
+ */
+export function PlanPrices({
+  title,
+  rows,
+  note,
+}: {
+  title: string;
+  rows: readonly TableRow[];
+  note: string;
+}): React.ReactElement | null {
+  if (rows.length === 0) return null;
+  return (
+    <View style={styles.section} testID="plan-prices">
+      <Text style={styles.heading} accessibilityRole="header">
+        {title}
+      </Text>
+      <Rows rows={rows} testIDPrefix="plan-price-row" layout="inline" />
+      <Text style={styles.note} testID="plan-prices-note">
+        {note}
+      </Text>
     </View>
   );
 }
@@ -246,6 +294,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: SPINE.factValue,
+  },
+  rowInline: {
+    flexWrap: 'nowrap',
+    alignItems: 'flex-start',
+  },
+  rowLabelInline: {
+    flex: 1,
+    minWidth: 0,
+  },
+  rowValueInline: {
+    flexShrink: 0,
+    textAlign: 'right',
   },
   rowWarn: {
     color: PLAN_SHEET.chipWarnText,

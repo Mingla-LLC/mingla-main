@@ -92,7 +92,7 @@ import type { MetaSpanInput } from '../deckCardPlate';
 import { parseAndFormatDistance } from '../utils/formatters';
 import { tierLabel, TIER_BY_SLUG, type PriceTierSlug } from '../../constants/priceTiers';
 import { getReadableCategoryName } from '../../utils/categoryUtils';
-import { curatedSpendLevel, sumPriceSpans, type SpendLevel } from '../../utils/curatedPriceRange';
+import { curatedPlanEstimate, curatedSpendLevel, sumPriceSpans, type SpendLevel } from '../../utils/curatedPriceRange';
 import type { DisplayPriceInput } from '../../utils/displayPrice';
 
 export interface FactsOptions {
@@ -131,6 +131,11 @@ export interface CuratedFactsOptions {
   readonly spendLevelLabel: (level: Exclude<SpendLevel, 'free'>) => string;
   /** i18n'd "Free". */
   readonly freeLabel: string;
+  /**
+   * #4347 round 2 — i18n'd "From {{price}} pp" for an AI plan's real estimate.
+   * Absent = the caller shows only the spend level (it has nowhere to explain an estimate).
+   */
+  readonly planEstimateLabel?: (price: string) => string;
   /** i18n'd "{{count}} stops". */
   readonly stopCountLabel: (count: number) => string;
   /** i18n'd `common:intent_<slug>`. */
@@ -173,6 +178,10 @@ interface PlanStopLike {
   readonly priceMin?: number;
   readonly priceMax?: number;
   readonly priceOpenEnded?: boolean;
+  readonly priceCurrency?: string | null;
+  readonly priceLevel?: string | null;
+  readonly placeType?: string | null;
+  readonly comboCategory?: string | null;
   readonly distanceFromUserKm?: number;
 }
 
@@ -381,6 +390,25 @@ function curatedPriceLabel(
     );
   }
 
+  return aiPlanPriceLabel(visibleStops, options);
+}
+
+/**
+ * #4347 round 2 — an AI plan's price: the real "From ≈ ₦100K pp" estimate when
+ * every paying stop has a Google price in one currency, else the spend level.
+ * One function for the deck tiles and the plan sheet's Spend tile.
+ */
+export function aiPlanPriceLabel(
+  visibleStops: readonly PlanStopLike[],
+  options: Pick<CuratedFactsOptions, 'formatMoney' | 'spendLevelLabel' | 'freeLabel' | 'planEstimateLabel'>,
+): string | null {
+  if (options.planEstimateLabel) {
+    const estimate = curatedPlanEstimate(visibleStops);
+    if (estimate !== null) {
+      const money = trimmed(options.formatMoney({ min: estimate.min, sourceCurrency: estimate.currency }));
+      if (money !== null) return trimmed(options.planEstimateLabel(money));
+    }
+  }
   const level = curatedSpendLevel(visibleStops);
   if (level === null) return null;
   if (level === 'free') return trimmed(options.freeLabel);
@@ -394,7 +422,7 @@ function curatedPriceLabel(
  */
 export function curatedPlanPriceLabel(
   card: CuratedExperienceCard,
-  options: Pick<CuratedFactsOptions, 'formatMoney' | 'spendLevelLabel' | 'freeLabel' | 'isBrandExperience'>,
+  options: Pick<CuratedFactsOptions, 'formatMoney' | 'spendLevelLabel' | 'freeLabel' | 'isBrandExperience' | 'planEstimateLabel'>,
 ): string | null {
   return curatedPriceLabel(card, planVisibleStops(card.stops), options as CuratedFactsOptions);
 }

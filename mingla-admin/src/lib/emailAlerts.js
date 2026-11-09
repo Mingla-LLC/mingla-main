@@ -42,7 +42,7 @@ export const EMAIL_ALERTS = Object.freeze([
   {
     key: "admin.team_mention",
     label: "Mentions",
-    description: "A teammate mentions you.",
+    description: "A teammate adds you to a work card, tags you in a note or sends one back to you. Automatic cards stay in the app.",
   },
 ]);
 

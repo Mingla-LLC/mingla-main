@@ -290,5 +290,20 @@
   "sheet.sound": "Dźwięk",
   "sheet.mute": "Wycisz",
   "sheet.sound_on_a11y": "Włącz dźwięk",
-  "sheet.sound_off_a11y": "Wycisz dźwięk"
+  "sheet.sound_off_a11y": "Wycisz dźwięk",
+  "plan.route_short": "Trasa",
+  "plan.schedule_short": "Zaplanuj",
+  "plan.addon": "Dodatek",
+  "plan.conditions_row_addon": "{{name}} (dodatek), {{time}}",
+  "plan.price_from_pp": "Od {{price}} za osobę",
+  "plan.spend_estimate_sub": "Szacunek Google, za osobę",
+  "plan.prices_title": "Cena za przystanek",
+  "plan.prices_note": "Szacunki Google za osobę, bez napojów i napiwków. Dodatki nie są wliczane.",
+  "plan.price_pp": "{{price}} za osobę",
+  "plan.price_row": "{{number}} · {{name}}",
+  "plan.price_none": "Brak ceny",
+  "deck.tile_time": "Czas",
+  "deck.tile_away": "Odległość",
+  "deck.away_value": "{{minutes}} min",
+  "deck.price_plus": "{{price}}+"
 }

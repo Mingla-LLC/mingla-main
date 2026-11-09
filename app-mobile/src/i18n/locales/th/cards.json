@@ -275,5 +275,20 @@
   "sheet.sound": "เสียง",
   "sheet.mute": "ปิดเสียง",
   "sheet.sound_on_a11y": "เปิดเสียง",
-  "sheet.sound_off_a11y": "ปิดเสียง"
+  "sheet.sound_off_a11y": "ปิดเสียง",
+  "plan.route_short": "เส้นทาง",
+  "plan.schedule_short": "นัดหมาย",
+  "plan.addon": "เสริม",
+  "plan.conditions_row_addon": "{{name}} (เสริม), {{time}}",
+  "plan.price_from_pp": "เริ่มต้น {{price}} ต่อคน",
+  "plan.spend_estimate_sub": "ประมาณการจาก Google ต่อคน",
+  "plan.prices_title": "ราคาแต่ละจุด",
+  "plan.prices_note": "ราคาประมาณต่อคนจาก Google ไม่รวมเครื่องดื่มและทิป ไม่นับจุดเสริม",
+  "plan.price_pp": "{{price}} ต่อคน",
+  "plan.price_row": "{{number}} · {{name}}",
+  "plan.price_none": "ไม่มีราคา",
+  "deck.tile_time": "เวลา",
+  "deck.tile_away": "ระยะทาง",
+  "deck.away_value": "{{minutes}} นาที",
+  "deck.price_plus": "{{price}}+"
 }

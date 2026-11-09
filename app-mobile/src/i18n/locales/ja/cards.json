@@ -275,5 +275,20 @@
   "sheet.sound": "サウンド",
   "sheet.mute": "ミュート",
   "sheet.sound_on_a11y": "サウンドをオン",
-  "sheet.sound_off_a11y": "サウンドをミュート"
+  "sheet.sound_off_a11y": "サウンドをミュート",
+  "plan.route_short": "ルート",
+  "plan.schedule_short": "予定に追加",
+  "plan.addon": "オプション",
+  "plan.conditions_row_addon": "{{name}}（オプション）、{{time}}",
+  "plan.price_from_pp": "1人 {{price}}〜",
+  "plan.spend_estimate_sub": "Googleの目安（1人あたり）",
+  "plan.prices_title": "スポットごとの料金",
+  "plan.prices_note": "Googleによる1人あたりの目安です（飲み物・チップ別）。オプションは含みません。",
+  "plan.price_pp": "1人 {{price}}",
+  "plan.price_row": "{{number}} · {{name}}",
+  "plan.price_none": "料金情報なし",
+  "deck.tile_time": "所要時間",
+  "deck.tile_away": "距離",
+  "deck.away_value": "{{minutes}}分",
+  "deck.price_plus": "{{price}}〜"
 }

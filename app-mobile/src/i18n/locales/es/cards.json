@@ -280,5 +280,20 @@
   "sheet.sound": "Sonido",
   "sheet.mute": "Silenciar",
   "sheet.sound_on_a11y": "Activar sonido",
-  "sheet.sound_off_a11y": "Silenciar sonido"
+  "sheet.sound_off_a11y": "Silenciar sonido",
+  "plan.route_short": "Ruta",
+  "plan.schedule_short": "Programar",
+  "plan.addon": "Extra",
+  "plan.conditions_row_addon": "{{name}} (extra), {{time}}",
+  "plan.price_from_pp": "Desde {{price}} p. p.",
+  "plan.spend_estimate_sub": "Estimación de Google, por persona",
+  "plan.prices_title": "Precio por parada",
+  "plan.prices_note": "Estimaciones de Google por persona, sin bebidas ni propinas. Los extras no cuentan.",
+  "plan.price_pp": "{{price}} p. p.",
+  "plan.price_row": "{{number}} · {{name}}",
+  "plan.price_none": "Sin precio",
+  "deck.tile_time": "Duración",
+  "deck.tile_away": "Distancia",
+  "deck.away_value": "{{minutes}} min",
+  "deck.price_plus": "{{price}}+"
 }

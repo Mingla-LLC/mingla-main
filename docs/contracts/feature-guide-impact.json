@@ -1191,7 +1191,10 @@
         "supabase/functions/_shared/teamAgentWorkTools.ts",
         "supabase/migrations/20280323004255_issue_4255_work_list_closed_range.sql",
         "supabase/migrations/20280323004256_issue_4256_no_auto_promo_cards.sql",
-        "supabase/migrations/20280427004270_issue_4270_w1_work_board_three_columns.sql"
+        "supabase/migrations/20280427004270_issue_4270_w1_work_board_three_columns.sql",
+        "mingla-admin/src/lib/emailAlerts.js",
+        "mingla-admin/src/pages/NotificationsPage.jsx",
+        "supabase/migrations/20280524004255_issue_4255_work_card_email.sql"
       ]
     },
     {

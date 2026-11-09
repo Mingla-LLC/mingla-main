@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/generate-curated-experiences/__tests__/issue_4347_stop_price_currency.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4347-stop-price-currency-implementor",
+  "profile": "deno-2-unit"
+}
