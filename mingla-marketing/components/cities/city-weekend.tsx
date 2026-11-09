@@ -1,11 +1,9 @@
 'use client'
 
 import { orphanTile } from '@/components/site/orphan-tile'
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { createPortal } from 'react-dom'
-import dynamic from 'next/dynamic'
 import { captureMarketing } from '@/components/marketing/posthog-provider'
-import type { CatalogueDetail as CatalogueDetailComponent } from '@/components/page-system/catalogue-detail'
 import { CurrentPlacePhoto } from '@/components/page-system/current-place-photo'
 import type { CataloguePlace } from '@/content/page-system/shared'
 import { storedPlaceThumbSrc } from '@/lib/city-place-photo'
@@ -35,10 +33,7 @@ const COLLAPSED_COUNT = 12
 // ?detail= link — never with the page. The card's pointer-down starts the
 // download so the sheet is usually ready by the click.
 const loadCatalogueDetail = () => import('@/components/page-system/catalogue-detail')
-const CatalogueDetail = dynamic<Parameters<typeof CatalogueDetailComponent>[0]>(
-  () => loadCatalogueDetail().then((module) => module.CatalogueDetail),
-  { ssr: false },
-)
+const CatalogueDetail = lazy(() => loadCatalogueDetail().then((module) => ({ default: module.CatalogueDetail })))
 
 interface CityWeekendProps {
   readonly cityName: string
@@ -194,7 +189,7 @@ export function CityWeekend({ cityName, citySlug, countryCode, locale, cityPath,
           <p className="filter-note">{`No places are listed in ${cityName} yet. Check back soon.`}</p>
         )}
       </div>
-      {sheet && portal ? createPortal(sheet, portal) : null}
+      {sheet && portal ? createPortal(<Suspense fallback={null}>{sheet}</Suspense>, portal) : null}
     </section>
   )
 }

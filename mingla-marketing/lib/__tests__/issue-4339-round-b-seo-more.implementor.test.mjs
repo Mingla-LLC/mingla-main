@@ -110,7 +110,11 @@ test('city place cards are nofollow; event covers have size, alt and next/image 
   const tw = code(read('components/cities/city-this-weekend.tsx'))
   assert.match(tw, /<EventCover src=\{l\.cover\} title=\{l\.title\} \/>/)
   assert.match(tw, /export const EVENT_COVER_SIZE = \{ width: 640, height: 400 \} as const/)
-  assert.match(tw, /<Image src=\{src\} alt=\{title\} \{\.\.\.EVENT_COVER_SIZE\}/)
+  // #4339 speed fix: the optimiser's srcset on a plain <img> (no next/image
+  // component in the city page's JavaScript).
+  assert.match(tw, /const optimised = optimisedImageSources\(src, \[384, 640, 828\]\)/)
+  assert.match(tw, /<img src=\{optimised\.src\} srcSet=\{optimised\.srcSet\} alt=\{title\} \{\.\.\.EVENT_COVER_SIZE\}/)
+  assert.doesNotMatch(tw, /from 'next\/image'/)
   assert.match(tw, /<img src=\{src\} alt=\{title\} \{\.\.\.EVENT_COVER_SIZE\} loading="lazy"/)
   assert.doesNotMatch(tw, /render\/image/)
   const config = read('next.config.ts')

@@ -1,9 +1,8 @@
 'use client'
 
 import { orphanTile } from '@/components/site/orphan-tile'
-import { useCallback, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react'
-import dynamic from 'next/dynamic'
-import Image from 'next/image'
+import { lazy, Suspense, useCallback, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react'
+import { optimisedImageSources } from '@/lib/optimised-image'
 import { ArrowRight } from 'lucide-react'
 import { captureMarketing } from '@/components/marketing/posthog-provider'
 import { ExplorerHandoffButton } from '@/components/landing/explorer-handoff'
@@ -16,8 +15,9 @@ import { CITY_LISTING_KIND_LABEL, listingChip, type CityItemTarget, type CityWee
 
 // #4339 speed fix: the item sheet (its frame, QR code and store buttons)
 // renders only after a tap on a computer, so it loads then, not with the page
-// (first-load JS). See city-item-sheet.tsx.
-const ItemSheet = dynamic(() => import('./city-item-sheet').then((module) => module.CityItemSheet), { ssr: false })
+// (first-load JS). See city-item-sheet.tsx. React.lazy: it never renders on
+// the server, and next/dynamic would add its loader runtime to the page.
+const ItemSheet = lazy(() => import('./city-item-sheet').then((module) => ({ default: module.CityItemSheet })))
 
 // #4339 phase 4a (§4) — "This weekend" on the city page, from live data.
 //
@@ -113,7 +113,11 @@ export const EVENT_COVER_SIZE = { width: 640, height: 400 } as const
 
 export function EventCover({ src, title }: { src: string; title: string }) {
   if (EVENT_COVERS.test(src)) {
-    return <Image src={src} alt={title} {...EVENT_COVER_SIZE} sizes="(min-width: 1024px) 25vw, 50vw" loading="lazy" />
+    // #4339 speed fix: next/image's optimiser through a plain <img> srcset
+    // (lib/optimised-image.ts), so the page ships no image component.
+    const optimised = optimisedImageSources(src, [384, 640, 828])
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={optimised.src} srcSet={optimised.srcSet} alt={title} {...EVENT_COVER_SIZE} sizes="(min-width: 1024px) 25vw, 50vw" loading="lazy" decoding="async" />
   }
   // eslint-disable-next-line @next/next/no-img-element
   return <img src={src} alt={title} {...EVENT_COVER_SIZE} loading="lazy" decoding="async" />
@@ -317,7 +321,11 @@ export function CityThisWeekend({ cityName, citySlug, countryCode, model }: City
         ) : null}
         {body}
       </div>
-      {sheet ? <ItemSheet target={sheet} cityName={cityName} onClose={closeSheet} /> : null}
+      {sheet ? (
+        <Suspense fallback={null}>
+          <ItemSheet target={sheet} cityName={cityName} onClose={closeSheet} />
+        </Suspense>
+      ) : null}
     </section>
   )
 }

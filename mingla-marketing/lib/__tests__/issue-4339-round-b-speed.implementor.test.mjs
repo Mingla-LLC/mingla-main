@@ -93,10 +93,15 @@ test('LCP: priority and lazy posters, lazy city place photos, sized help thumbna
   assert.match(goingOut, /<LandingMedia media="v:cozy" priority \/>/)
   assert.match(code(read('components/cities/city-weekend.tsx')), /eager=\{false\}/)
   // #4339 speed fix: the cards render on the server (help-video-grid.tsx);
-  // thumbnails are sized next/image, the first one preloaded (the LCP), the
-  // rest lazy.
+  // thumbnails are srcsets over next/image's optimiser built on the server
+  // (no client image component), the first one preloaded (the LCP), the rest
+  // lazy.
   const grid = code(read('components/help/help-video-grid.tsx'))
-  assert.match(grid, /<Image\s+src=\{bambooPosterUrl\(video\.bambooEntryId, 960\)\}\s+alt=""\s+width=\{480\}\s+height=\{270\}\s+sizes=\{CARD_SIZES\}\s+priority=\{lcp\}\s+loading=\{lcp \? undefined : 'lazy'\}/)
+  assert.match(grid, /const \{ src, srcSet \} = optimisedImageSources\(bambooPosterUrl\(entryId, 960\)\)/)
+  assert.match(grid, /if \(lcp\) preload\(src, \{ as: 'image', fetchPriority: 'high', imageSrcSet: srcSet, imageSizes: CARD_SIZES \}\)/)
+  assert.match(grid, /\.\.\.\(lcp \? \{ fetchPriority: 'high' as const \} : \{ loading: 'lazy' as const \}\)/)
+  assert.doesNotMatch(grid, /from 'next\/image'/, 'no image component on the help page')
+  assert.doesNotMatch(grid, /^'use client'/, 'the help cards render on the server')
 })
 
 test('fonts: serif fallback metrics; legacy faces not preloaded site-wide', () => {

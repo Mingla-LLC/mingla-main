@@ -7,13 +7,14 @@ import { readLandingCampaign } from '@/lib/landing-campaign'
 import { pageMeasurement } from '@/lib/page-measurement'
 import { siteAttribution } from '@/lib/links-src'
 import { resolveAppHandoff, withLandingCampaignHref } from '@/lib/app-handoff'
-import { useState } from 'react'
-import dynamic from 'next/dynamic'
+import { lazy, Suspense, useState } from 'react'
 import { isPlainClick, useHandoffSheet } from './handoff-trigger'
 
 // #4339 speed fix: the sheet opens only on a computer, after a tap, so it (and
-// its QR code) loads then, not with the page (first-load JS).
-const HandoffSheet = dynamic(() => import('./handoff-sheet').then((module) => module.HandoffSheet), { ssr: false })
+// its QR code) loads then, not with the page (first-load JS). React.lazy, not
+// next/dynamic: the sheet never renders on the server, and next/dynamic would
+// add its loader runtime to every page.
+const HandoffSheet = lazy(() => import('./handoff-sheet').then((module) => ({ default: module.HandoffSheet })))
 
 // #4339 §3 — "Use Mingla Web", the Host hand-off, on every redesigned page.
 //
@@ -92,7 +93,9 @@ export function HostHandoffButton({ location, className, withArrow = false, chil
         {withArrow ? <ArrowRight aria-hidden="true" /> : null}
       </DeviceLink>
       {sheet.open ? (
-        <HandoffSheet sheet="host" attribution={attribution} onClose={sheet.close} icp={opened.icp} sourceKind={opened.sourceKind} />
+        <Suspense fallback={null}>
+          <HandoffSheet sheet="host" attribution={attribution} onClose={sheet.close} icp={opened.icp} sourceKind={opened.sourceKind} />
+        </Suspense>
       ) : null}
     </>
   )
