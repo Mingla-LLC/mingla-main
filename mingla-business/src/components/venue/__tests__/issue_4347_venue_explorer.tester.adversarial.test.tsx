@@ -15,7 +15,9 @@
  *   A-4 the Reservations tab: never two reserve buttons on screen (the pane's
  *       own CTA and the bar's) — was pinned (P3), fixed in the rework;
  *   A-5 a Stay from the deck: the bar gets the Stay rail and its gate; the
- *       page's reserve bar is gone, and the Overview block still renders;
+ *       page's reserve bar is gone, and the Overview block still renders; a
+ *       NEW deck tap on a table venue (the Stay visit released its hand-off)
+ *       shows the deck bar and not the page's own;
  *   A-6 the loading / error / not-found Close must survive the Explorer
  *       layer failing to load — was pinned (P3), fixed in the rework.
  *
@@ -608,9 +610,13 @@ describe("#4347 wave 4 — tester adversarial: the Explorer layer on the shared 
     expect(byTestId(mounted, "issue-2729-reserve-bar").length).toBe(0);
     expect(host(mounted, "ExplorerOverviewStub").length).toBe(1);
     mounted.unmount();
-    // And a table venue from the deck: exactly one bar with a reserve action.
+    // The Stay visit released its hand-off (A-2). A NEW deck tap on a table
+    // venue: the deck bar shows and the page's own reserve bar does not, so
+    // there is exactly one bar carrying the reserve action.
+    handoffModule.setDeckVenueHandoff(handoffFor(PLACE));
     const table = await mountSettled(restaurant());
-    expect(host(table, "ExplorerBarStub").length + byTestId(table, "issue-2729-reserve-bar").length).toBe(1);
+    expect(host(table, "ExplorerBarStub").length).toBe(1);
+    expect(byTestId(table, "issue-2729-reserve-bar").length).toBe(0);
     table.unmount();
   });
 

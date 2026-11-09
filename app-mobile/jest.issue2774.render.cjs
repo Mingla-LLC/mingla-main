@@ -153,5 +153,8 @@ module.exports = {
     // control (per gallery, re-render, a11y, Reduce Motion).
     "**/__tests__/issue_4347_wave4.tester.adversarial.render.test.tsx",
     "**/__tests__/issue_4347_gallery_sound.tester.adversarial.render.test.tsx",
+    // issue #4347 × #4334 — tester final retest: the sheet's Directions and
+    // Route all stops on #4334's Maps target (bytes, refused ids, pairing).
+    "**/__tests__/issue_4347_maps_routing.tester.adversarial.test.ts",
   ],
 };
