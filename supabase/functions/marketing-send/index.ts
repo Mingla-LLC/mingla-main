@@ -114,7 +114,6 @@ import {
   SAMPLE_TRACKING_ID,
   writeSentSnapshot,
 } from "./sentSnapshot.ts";
-import { sendOpsAlertEmail } from "../_shared/stripeOpsAlertEmail.ts";
 import { resolveAlertRecipientValue } from "../_shared/secretBundle.ts";
 
 const BATCH_LIMIT = 10;
@@ -1363,6 +1362,12 @@ async function alertSmsPriceTableUnreadable(
   const recipients = Array.isArray(value)
     ? value
     : (value ?? "").split(",").map((entry) => entry.trim()).filter(Boolean);
+  // Loaded at first use, like pushCampaign's notifyV2: the ops-alert module
+  // resolves the email senders at import time, and marketing-send must load
+  // without env access (its CI suites run without --allow-env).
+  const { sendOpsAlertEmail } = await import(
+    "../_shared/stripeOpsAlertEmail.ts"
+  );
   await sendOpsAlertEmail({ subject, paragraphs, recipients });
 }
 
