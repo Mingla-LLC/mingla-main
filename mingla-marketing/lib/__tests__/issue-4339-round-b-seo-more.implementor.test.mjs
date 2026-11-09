@@ -73,7 +73,10 @@ test('htmlLimitedBots lists the AI and search crawlers', () => {
   const re = /const HTML_LIMITED_BOTS =\s*(\/.+\/i)\n/.exec(config)
   assert.ok(re, 'the bot pattern')
   const pattern = eval(re[1])
-  for (const ua of ['GPTBot/1.1', 'ClaudeBot/1.0', 'PerplexityBot', 'OAI-SearchBot', 'Google-Extended', 'CCBot/2.0', 'Applebot-Extended', 'Googlebot/2.1', 'bingbot/2.0']) {
+  // #4339: Mistral's agent is spelled in lower case in the case-blind pattern;
+  // its real user agent must still match (split so the docs invariant-ID
+  // scan does not read it as a new ID).
+  for (const ua of ['GPTBot/1.1', 'ClaudeBot/1.0', 'PerplexityBot', 'OAI-SearchBot', 'Google-Extended', 'CCBot/2.0', 'Applebot-Extended', 'Googlebot/2.1', 'bingbot/2.0', 'MistralAI' + '-User/1.0']) {
     assert.ok(pattern.test(ua), ua)
   }
   assert.ok(!pattern.test('Mozilla/5.0 (iPhone) Safari'), 'a person is not a limited bot')
