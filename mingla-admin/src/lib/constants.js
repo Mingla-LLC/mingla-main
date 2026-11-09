@@ -202,6 +202,8 @@ export const NAV_GROUPS = [
     items: [
       { id: "platform-health",           label: "Platform health",    icon: "HeartPulse" },
       { id: "feature-flags",             label: "Feature flags",      icon: "Flag" },
+      // Issue #4273: marketing SMS per country (owner and admins; the page says so to anyone else).
+      { id: "sms-countries",             label: "SMS countries",      icon: "MessageSquare" },
       { id: "ari-improvement-lab",       label: "Ari Improvement Lab", icon: "BrainCircuit" },
       { id: "settings",                  label: "Settings",           icon: "Settings" },
       // Issue #4294: owner only; the page says so to anyone else.

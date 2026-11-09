@@ -22,6 +22,7 @@ import { InboundLeadsPage } from "./pages/InboundLeadsPage";
 import { PlacePoolPage } from "./pages/PlacePoolPage";
 import { PlatformHealthPage } from "./pages/PlatformHealthPage";
 import { FeatureFlagsPage } from "./pages/FeatureFlagsPage";
+import { SmsCountriesPage } from "./pages/SmsCountriesPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { AdminPage } from "./pages/AdminPage";
 import { INVITE_ROUTE, parseInviteHash } from "./lib/inviteLink";
@@ -143,6 +144,7 @@ const PAGES = {
   // their own page (Wave 4b).
   "platform-health": PlatformHealthPage,
   "feature-flags": FeatureFlagsPage,
+  "sms-countries": SmsCountriesPage,
   "ari-improvement-lab": AriImprovementLabPage,
   settings: SettingsPage,
   // Issue #4294: owner only (the page says so to anyone else).
