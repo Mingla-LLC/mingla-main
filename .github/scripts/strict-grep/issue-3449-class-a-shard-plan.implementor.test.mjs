@@ -118,7 +118,7 @@ const EXPECTED_PLAN = Object.freeze({
   // [TEST-MOD-APPROVED #4334] Re-derived after #4334 added the locally declared
   // provider-ban gate (i-no-mapbox, +2 batch:A executions: self-test and plain).
   // The five sealed map-provider gates keep their sealed rows (their checks are
-  // provider-neutral now) and the deck-untouched gate runs in class E.
+  // provider-neutral now). (#4334's deck-untouched gate ran in class E and is retired.)
   executions: 1053,
   loadsSeconds: [385.4, 385.4, 385.5],
   counts: [350, 351, 352],
