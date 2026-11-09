@@ -2,8 +2,8 @@
 // R-DECK-5/6, R-CITY-4/5, R-ONB-1, R-LOC-1). Deno source-structure + pure
 // checks (these files import React Native and cannot run under Deno).
 //
-// Invariant I-4334-DECK-UNTOUCHED (client half): the deck's location helpers
-// keep their imports; the proxy never reaches the deck's "no matches" text.
+// The deck's location helpers keep their imports; the proxy never reaches the
+// deck's "no matches" text (the R-DECK suites guard deck behaviour).
 //
 // Fails-on-revert (line deleted → red):
 //   E-1 geocodingService: `throw new LocationSearchUnavailableError(code)`
