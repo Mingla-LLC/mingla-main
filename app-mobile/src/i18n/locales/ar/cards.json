@@ -300,5 +300,20 @@
   "sheet.sound": "الصوت",
   "sheet.mute": "كتم",
   "sheet.sound_on_a11y": "تشغيل الصوت",
-  "sheet.sound_off_a11y": "كتم الصوت"
+  "sheet.sound_off_a11y": "كتم الصوت",
+  "plan.route_short": "المسار",
+  "plan.schedule_short": "جدولة",
+  "plan.addon": "إضافي",
+  "plan.conditions_row_addon": "{{name}} (إضافي)، {{time}}",
+  "plan.price_from_pp": "من {{price}} للشخص",
+  "plan.spend_estimate_sub": "تقدير Google، للشخص الواحد",
+  "plan.prices_title": "السعر لكل محطة",
+  "plan.prices_note": "تقديرات Google للشخص الواحد، دون المشروبات والإكرامية. لا تُحتسب المحطات الإضافية.",
+  "plan.price_pp": "{{price}} للشخص",
+  "plan.price_row": "{{number}} · {{name}}",
+  "plan.price_none": "لا يوجد سعر",
+  "deck.tile_time": "المدة",
+  "deck.tile_away": "المسافة",
+  "deck.away_value": "{{minutes}} د",
+  "deck.price_plus": "{{price}}+"
 }

@@ -290,5 +290,20 @@
   "sheet.sound": "Звук",
   "sheet.mute": "Без звука",
   "sheet.sound_on_a11y": "Включить звук",
-  "sheet.sound_off_a11y": "Выключить звук"
+  "sheet.sound_off_a11y": "Выключить звук",
+  "plan.route_short": "Маршрут",
+  "plan.schedule_short": "Запланировать",
+  "plan.addon": "Дополнительно",
+  "plan.conditions_row_addon": "{{name}} (доп.), {{time}}",
+  "plan.price_from_pp": "От {{price}} с человека",
+  "plan.spend_estimate_sub": "Оценка Google, на человека",
+  "plan.prices_title": "Цена по остановкам",
+  "plan.prices_note": "Оценки Google на человека, без напитков и чаевых. Дополнительные остановки не учитываются.",
+  "plan.price_pp": "{{price}} с человека",
+  "plan.price_row": "{{number}} · {{name}}",
+  "plan.price_none": "Цена не указана",
+  "deck.tile_time": "Время",
+  "deck.tile_away": "Ехать",
+  "deck.away_value": "{{minutes}} мин",
+  "deck.price_plus": "{{price}}+"
 }

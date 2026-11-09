@@ -12,6 +12,13 @@ import { PINNED_BAR, PINNED_PRIMARY } from './spineTokens';
 export const pinnedPrimaryStyles = StyleSheet.create({
   button: {
     flex: 1,
+    // #4347 round 2 — the button may be narrower than its label (three side
+    // buttons, a long language). It keeps its own width and the label shrinks
+    // INSIDE it with an ellipsis; before, the label kept its full width and
+    // pushed the icon out of the left edge and the text off the screen.
+    minWidth: 0,
+    overflow: 'hidden',
+    paddingHorizontal: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -21,6 +28,8 @@ export const pinnedPrimaryStyles = StyleSheet.create({
     backgroundColor: PINNED_PRIMARY.fill,
   },
   label: {
+    flexShrink: 1,
+    minWidth: 0,
     color: PINNED_PRIMARY.label,
     fontSize: PINNED_BAR.primaryLabelSize,
     fontWeight: '700',

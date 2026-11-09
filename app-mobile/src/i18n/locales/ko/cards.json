@@ -275,5 +275,20 @@
   "sheet.sound": "소리",
   "sheet.mute": "음소거",
   "sheet.sound_on_a11y": "소리 켜기",
-  "sheet.sound_off_a11y": "소리 끄기"
+  "sheet.sound_off_a11y": "소리 끄기",
+  "plan.route_short": "경로",
+  "plan.schedule_short": "일정 추가",
+  "plan.addon": "추가",
+  "plan.conditions_row_addon": "{{name}}(추가), {{time}}",
+  "plan.price_from_pp": "1인 {{price}}부터",
+  "plan.spend_estimate_sub": "Google 추정치, 1인 기준",
+  "plan.prices_title": "장소별 가격",
+  "plan.prices_note": "Google의 1인 기준 추정치이며 음료와 팁은 제외됩니다. 추가 장소는 포함되지 않습니다.",
+  "plan.price_pp": "1인 {{price}}",
+  "plan.price_row": "{{number}} · {{name}}",
+  "plan.price_none": "가격 정보 없음",
+  "deck.tile_time": "시간",
+  "deck.tile_away": "거리",
+  "deck.away_value": "{{minutes}}분",
+  "deck.price_plus": "{{price}}+"
 }

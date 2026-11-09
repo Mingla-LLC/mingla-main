@@ -280,5 +280,20 @@
   "sheet.sound": "Ton",
   "sheet.mute": "Stumm",
   "sheet.sound_on_a11y": "Ton einschalten",
-  "sheet.sound_off_a11y": "Ton ausschalten"
+  "sheet.sound_off_a11y": "Ton ausschalten",
+  "plan.route_short": "Route",
+  "plan.schedule_short": "Planen",
+  "plan.addon": "Extra",
+  "plan.conditions_row_addon": "{{name}} (Extra), {{time}}",
+  "plan.price_from_pp": "Ab {{price}} p. P.",
+  "plan.spend_estimate_sub": "Google-Schätzung, pro Person",
+  "plan.prices_title": "Preis pro Stopp",
+  "plan.prices_note": "Google-Schätzungen pro Person, ohne Getränke und Trinkgeld. Extras zählen nicht mit.",
+  "plan.price_pp": "{{price}} p. P.",
+  "plan.price_row": "{{number}} · {{name}}",
+  "plan.price_none": "Kein Preis angegeben",
+  "deck.tile_time": "Dauer",
+  "deck.tile_away": "Entfernt",
+  "deck.away_value": "{{minutes}} Min.",
+  "deck.price_plus": "{{price}}+"
 }
