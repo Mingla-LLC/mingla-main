@@ -20,7 +20,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { BOOKING_ICP_TO_HOST_ICP, bookCallHostFields, bookingView, leadView } from "../../lib/inboundLeads.js";
+import { bookCallHostFields, bookingView, leadView } from "../../lib/inboundLeads.js";
 
 const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const read = (rel) => fs.readFileSync(path.join(SRC, rel), "utf8");
@@ -96,6 +96,7 @@ describe("#4339 BC-2: Add to Hosts", () => {
       name: " Ada Lovelace ",
       email: " ada@bluenote.example ",
       icp: "restaurants",
+      host_icp: "restaurant_bar",
       social_platform: "instagram",
       social_url: "https://instagram.com/bluenote",
     });
@@ -113,12 +114,21 @@ describe("#4339 BC-2: Add to Hosts", () => {
     assert.ok(!("stage" in fields), "the server starts every new card at its first stage (Prospect)");
   });
 
-  it("every booking ICP maps to a real Hosts ICP or to none", () => {
+  // #4339: the booking-to-Hosts ICP map moved to the server
+  // (admin_book_call_lead_get returns host_icp; #3802 C-8 keeps every ICP id
+  // out of the admin client). The map's values are checked against the Hosts
+  // ICP list in the migration.
+  it("the Hosts ICP is the server's, never a client guess", () => {
+    assert.equal(bookCallHostFields({ business: "Somewhere" }, { icp: "other", host_icp: null }).icp, undefined);
+    assert.equal(bookCallHostFields({ business: "Somewhere" }, { icp: "restaurants" }).icp, undefined, "no host_icp, no ICP");
+    assert.equal(bookCallHostFields({ business: "Somewhere" }, { icp: "events", host_icp: "event_organizer" }).icp, "event_organizer");
     const hostIcps = new Set(["restaurant_bar", "venue_gallery", "event_organizer", "community_host", "trip_stay_host", "experience_host", "partner_org"]);
-    for (const [icp, hostIcp] of Object.entries(BOOKING_ICP_TO_HOST_ICP)) {
-      assert.ok(hostIcp === null || hostIcps.has(hostIcp), `${icp} → ${hostIcp}`);
-    }
-    assert.equal(bookCallHostFields({ business: "Somewhere" }, { icp: "other" }).icp, undefined);
+    const body = MIGRATION.slice(MIGRATION.indexOf("CREATE OR REPLACE FUNCTION public.admin_book_call_lead_get("));
+    const map = body.slice(body.indexOf("'host_icp', CASE k.icp"), body.indexOf("END)"));
+    const pairs = [...map.matchAll(/WHEN '([a-z]+)'\s+THEN '([a-z_]+)'/g)].map((m) => [m[1], m[2]]);
+    assert.deepEqual(pairs.map(([b]) => b), ["events", "trips", "experiences", "restaurants", "hotels", "art", "play"]);
+    for (const [icp, hostIcp] of pairs) assert.ok(hostIcps.has(hostIcp), `${icp} → ${hostIcp}`);
+    assert.match(map, /ELSE NULL/);
   });
 });
 

@@ -17,7 +17,8 @@
 -- I-02  a growth teammate (beta_leads area) sees bookings; an outsider is
 --       refused both RPCs.
 -- I-03  admin_book_call_lead_get returns the email and social for Add to
---       Hosts; null for an unknown id.
+--       Hosts and the Hosts ICP the booking files under (host_icp); null for
+--       an unknown id.
 -- I-04  a staff/test booking is hidden unless asked for.
 -- I-05  the #4130 rows are unchanged: beta and web tool leads still listed.
 -- #4339 Creators and Locals calls:
@@ -223,6 +224,7 @@ BEGIN
   RESET ROLE;
   PERFORM pg_temp.bc_assert(v ->> 'email' = 'ada@bc4339-bluenote.org' AND v ->> 'social_url' = 'https://instagram.com/bluenote'
                         AND v ->> 'name' = 'Ada Lovelace', 'I-03 the email and social for Add to Hosts');
+  PERFORM pg_temp.bc_assert(v ->> 'host_icp' = 'restaurant_bar', 'I-03 the server names the Hosts ICP a restaurant booking files under');
   SET LOCAL ROLE authenticated;
   PERFORM pg_temp.bc_as(v_admin);
   v := public.admin_book_call_lead_get(gen_random_uuid());

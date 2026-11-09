@@ -72,21 +72,6 @@ export const SOCIAL_LABELS = Object.freeze({
   linkedin: "LinkedIn",
 });
 
-/**
- * The Hosts pipeline ICP for a booking's ICP (crm_records_icp_check); null
- * when none fits, so the card is made without one rather than with a guess.
- */
-export const BOOKING_ICP_TO_HOST_ICP = Object.freeze({
-  events: "event_organizer",
-  trips: "trip_stay_host",
-  experiences: "experience_host",
-  restaurants: "restaurant_bar",
-  hotels: "trip_stay_host",
-  art: "venue_gallery",
-  play: "venue_gallery",
-  other: null,
-});
-
 /** Only a real https profile or http(s) site is ever rendered as a link. */
 function safeLink(url, allowHttp) {
   if (typeof url !== "string") return null;
@@ -192,7 +177,8 @@ export function toolLeadHostFields(lead, detail) {
 /**
  * The fields a Book a call booking carries into a new host card at Prospect:
  * the email and the social profile as contact details (so the pipeline's
- * duplicate check sees them), the booker as the contact, and the ICP.
+ * duplicate check sees them), the booker as the contact, and the Hosts ICP
+ * the server mapped the booking's ICP to.
  */
 export function bookCallHostFields(lead, detail) {
   const fields = { name: lead.business, source: "inbound" };
@@ -208,7 +194,10 @@ export function bookCallHostFields(lead, detail) {
   if (email) fields.channel = "email";
   const contact = typeof detail?.name === "string" && detail.name.trim() ? detail.name.trim() : null;
   if (contact) fields.contact = contact;
-  const icp = BOOKING_ICP_TO_HOST_ICP[detail?.icp] || null;
+  // The server names the Hosts ICP the booking files under (host_icp from
+  // admin_book_call_lead_get), or none; the client never writes an ICP id
+  // itself (#3802 C-8).
+  const icp = typeof detail?.host_icp === "string" && detail.host_icp.trim() ? detail.host_icp.trim() : null;
   if (icp) fields.icp = icp;
   return fields;
 }

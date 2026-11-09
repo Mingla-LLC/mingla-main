@@ -290,7 +290,21 @@ BEGIN
            'social_url', k.social_url, 'website', k.website, 'call_at', k.call_at,
            'status', k.status, 'status_changed_at', k.status_changed_at, 'original_call_at', k.original_call_at,
            'booker_time_zone', k.booker_time_zone, 'meet_url', k.meet_url,
-           'source', k.source, 'created_at', k.created_at)
+           'source', k.source, 'created_at', k.created_at,
+           -- The Hosts pipeline ICP the booking's ICP files under, or null when
+           -- none fits (the card is made without one rather than with a
+           -- guess). The server owns every Hosts ICP id (#3802): the admin
+           -- client never writes one itself.
+           'host_icp', CASE k.icp
+                         WHEN 'events'      THEN 'event_organizer'
+                         WHEN 'trips'       THEN 'trip_stay_host'
+                         WHEN 'experiences' THEN 'experience_host'
+                         WHEN 'restaurants' THEN 'restaurant_bar'
+                         WHEN 'hotels'      THEN 'trip_stay_host'
+                         WHEN 'art'         THEN 'venue_gallery'
+                         WHEN 'play'        THEN 'venue_gallery'
+                         ELSE NULL
+                       END)
     INTO v_out
     FROM public.book_call_leads k
    WHERE k.id = p_id;
