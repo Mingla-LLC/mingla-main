@@ -62,6 +62,9 @@ export interface StopAlternative {
   priceMax: number;
   /** #4265: the place has no known max ("$100+"); priceMax then equals priceMin. */
   priceOpenEnded?: boolean;
+  /** #4347 round 2 — absent from servers that predate round 2. */
+  priceCurrency?: string | null;
+  priceLevel?: string | null;
   openingHours: Record<string, unknown>;
   website: string | null;
   lat: number;
@@ -116,6 +119,9 @@ export function buildReplacementStop(
     priceMin: alternative.priceMin,
     priceMax: alternative.priceMax,
     priceOpenEnded: alternative.priceOpenEnded === true ? true : undefined,
+    // #4347 round 2 — the swapped-in stop is priced like the rest of the plan.
+    ...('priceCurrency' in alternative ? { priceCurrency: alternative.priceCurrency ?? null } : {}),
+    ...('priceLevel' in alternative ? { priceLevel: alternative.priceLevel ?? null } : {}),
     openingHours: alternative.openingHours as Record<string, string>,
     // ORCH-0677.QA-1: honest unknown (Constitution #9). StopAlternative
     // doesn't carry openingHours.openNow, so we cannot derive truthfully

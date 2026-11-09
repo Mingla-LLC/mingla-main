@@ -275,5 +275,20 @@
   "sheet.sound": "Suara",
   "sheet.mute": "Bisukan",
   "sheet.sound_on_a11y": "Nyalakan suara",
-  "sheet.sound_off_a11y": "Bisukan suara"
+  "sheet.sound_off_a11y": "Bisukan suara",
+  "plan.route_short": "Rute",
+  "plan.schedule_short": "Jadwalkan",
+  "plan.addon": "Tambahan",
+  "plan.conditions_row_addon": "{{name}} (tambahan), {{time}}",
+  "plan.price_from_pp": "Mulai {{price}} per orang",
+  "plan.spend_estimate_sub": "Perkiraan Google, per orang",
+  "plan.prices_title": "Harga per perhentian",
+  "plan.prices_note": "Perkiraan Google per orang, belum termasuk minuman dan tip. Perhentian tambahan tidak dihitung.",
+  "plan.price_pp": "{{price}} per orang",
+  "plan.price_row": "{{number}} · {{name}}",
+  "plan.price_none": "Harga tidak tersedia",
+  "deck.tile_time": "Waktu",
+  "deck.tile_away": "Jarak",
+  "deck.away_value": "{{minutes}} mnt",
+  "deck.price_plus": "{{price}}+"
 }

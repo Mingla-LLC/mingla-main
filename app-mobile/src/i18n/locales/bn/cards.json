@@ -280,5 +280,20 @@
   "sheet.sound": "শব্দ",
   "sheet.mute": "মিউট",
   "sheet.sound_on_a11y": "শব্দ চালু করুন",
-  "sheet.sound_off_a11y": "শব্দ মিউট করুন"
+  "sheet.sound_off_a11y": "শব্দ মিউট করুন",
+  "plan.route_short": "রুট",
+  "plan.schedule_short": "সময় ঠিক করুন",
+  "plan.addon": "অতিরিক্ত",
+  "plan.conditions_row_addon": "{{name}} (অতিরিক্ত), {{time}}",
+  "plan.price_from_pp": "জনপ্রতি {{price}} থেকে",
+  "plan.spend_estimate_sub": "Google-এর আনুমানিক, জনপ্রতি",
+  "plan.prices_title": "প্রতি স্টপের দাম",
+  "plan.prices_note": "Google-এর জনপ্রতি আনুমানিক দাম, পানীয় ও টিপ ছাড়া। অতিরিক্ত স্টপ ধরা হয় না।",
+  "plan.price_pp": "জনপ্রতি {{price}}",
+  "plan.price_row": "{{number}} · {{name}}",
+  "plan.price_none": "কোনো দাম নেই",
+  "deck.tile_time": "সময়",
+  "deck.tile_away": "দূরত্ব",
+  "deck.away_value": "{{minutes}} মিনিট",
+  "deck.price_plus": "{{price}}+"
 }

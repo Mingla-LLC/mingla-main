@@ -280,5 +280,20 @@
   "sheet.sound": "Ήχος",
   "sheet.mute": "Σίγαση",
   "sheet.sound_on_a11y": "Ενεργοποίηση ήχου",
-  "sheet.sound_off_a11y": "Σίγαση ήχου"
+  "sheet.sound_off_a11y": "Σίγαση ήχου",
+  "plan.route_short": "Διαδρομή",
+  "plan.schedule_short": "Προγραμματισμός",
+  "plan.addon": "Προαιρετικό",
+  "plan.conditions_row_addon": "{{name}} (προαιρετικό), {{time}}",
+  "plan.price_from_pp": "Από {{price}} το άτομο",
+  "plan.spend_estimate_sub": "Εκτίμηση Google, ανά άτομο",
+  "plan.prices_title": "Τιμή ανά στάση",
+  "plan.prices_note": "Εκτιμήσεις Google ανά άτομο, χωρίς ποτά και φιλοδωρήματα. Τα προαιρετικά δεν μετρούν.",
+  "plan.price_pp": "{{price}} το άτομο",
+  "plan.price_row": "{{number}} · {{name}}",
+  "plan.price_none": "Δεν αναφέρεται τιμή",
+  "deck.tile_time": "Διάρκεια",
+  "deck.tile_away": "Απόσταση",
+  "deck.away_value": "{{minutes}} λ.",
+  "deck.price_plus": "{{price}}+"
 }

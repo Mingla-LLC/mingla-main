@@ -280,5 +280,20 @@
   "sheet.sound": "Ljud",
   "sheet.mute": "Stäng av",
   "sheet.sound_on_a11y": "Slå på ljud",
-  "sheet.sound_off_a11y": "Stäng av ljud"
+  "sheet.sound_off_a11y": "Stäng av ljud",
+  "plan.route_short": "Rutt",
+  "plan.schedule_short": "Planera",
+  "plan.addon": "Tillval",
+  "plan.conditions_row_addon": "{{name}} (tillval), {{time}}",
+  "plan.price_from_pp": "Från {{price}} per person",
+  "plan.spend_estimate_sub": "Googles uppskattning, per person",
+  "plan.prices_title": "Pris per stopp",
+  "plan.prices_note": "Googles uppskattningar per person, utan dryck och dricks. Tillval räknas inte.",
+  "plan.price_pp": "{{price}} per person",
+  "plan.price_row": "{{number}} · {{name}}",
+  "plan.price_none": "Inget pris angivet",
+  "deck.tile_time": "Tid",
+  "deck.tile_away": "Bort",
+  "deck.away_value": "{{minutes}} min",
+  "deck.price_plus": "{{price}}+"
 }

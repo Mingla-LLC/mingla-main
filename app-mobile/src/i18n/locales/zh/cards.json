@@ -275,5 +275,20 @@
   "sheet.sound": "声音",
   "sheet.mute": "静音",
   "sheet.sound_on_a11y": "打开声音",
-  "sheet.sound_off_a11y": "关闭声音"
+  "sheet.sound_off_a11y": "关闭声音",
+  "plan.route_short": "路线",
+  "plan.schedule_short": "安排",
+  "plan.addon": "附加",
+  "plan.conditions_row_addon": "{{name}}（附加），{{time}}",
+  "plan.price_from_pp": "人均 {{price}} 起",
+  "plan.spend_estimate_sub": "Google 估算，人均",
+  "plan.prices_title": "每站价格",
+  "plan.prices_note": "Google 人均估算，不含饮品和小费。附加站点不计入。",
+  "plan.price_pp": "人均 {{price}}",
+  "plan.price_row": "{{number}} · {{name}}",
+  "plan.price_none": "暂无价格",
+  "deck.tile_time": "时长",
+  "deck.tile_away": "距离",
+  "deck.away_value": "{{minutes}} 分钟",
+  "deck.price_plus": "{{price}}+"
 }
