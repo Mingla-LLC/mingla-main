@@ -6,7 +6,7 @@
  *
  *   L-1 the plan's route link on iPhone: the follow-up made "Route all stops"
  *       open the WHOLE route on both platforms, so the label must say so
- *       everywhere (the sheet still says "Next stop" on iOS — pinned, P2).
+ *       everywhere (was "Next stop" on iOS; fixed in 0dcb35d214).
  *   L-2 the route link hands the plan's own travel mode (first leg), not a
  *       default, and the next stop index from the arrival model.
  *   C-1 a start-time change under Reduce Motion: every clock time is the new
@@ -20,7 +20,7 @@
  *       do not re-enter; under Reduce Motion nothing animates.
  *   N-1 render budget: 2,000 scroll frames re-render the navigator a bounded
  *       number of times, and the PLAN BODY (gallery, warning maths, every
- *       stop card) not at all except for a pulse (pinned, P2: the body
+ *       stop card) not at all except for a pulse (fixed in 0dcb35d214: the body
  *       subscribes to the whole scroll snapshot).
  *   N-2 the navigator is untouchable and hidden from screen readers until it
  *       pins, at every scroll position before the route bottom.
@@ -262,8 +262,7 @@ const contrast = (a: string, b: string) => {
 };
 
 describe("#4347 wave 3 — tester adversarial (rendered)", () => {
-  // P2 (pinned): the follow-up routes ALL stops on iPhone too, but the label
-  // still reads "Next stop" there (CuratedPlanBody.tsx:501, ExpandedCardModal.tsx:2035/2039).
+  // Was P2 in wave 3: the label read "Next stop" on iOS. Fixed in the rework.
   test("L-1 (P2) on iPhone the route link says it routes every stop", () => {
     const prev = RN.Platform.OS;
     Object.defineProperty(RN.Platform, "OS", { configurable: true, get: () => "ios" });
@@ -379,8 +378,7 @@ describe("#4347 wave 3 — tester adversarial (rendered)", () => {
     expect(mockTimings).toHaveLength(0);
   });
 
-  // P2 (pinned): CuratedPlanBody calls usePlanScroll(scroll) for the pulse, so
-  // every navigator fill / active change re-renders the whole plan body.
+  // Was P2 in wave 3: the body subscribed to the whole snapshot. Fixed (usePlanPulse).
   test("N-1 (P2) a long scroll never re-renders the plan body (only the navigator)", () => {
     const store = new PlanScrollStore();
     const commits: Record<string, number> = { body: 0, nav: 0 };

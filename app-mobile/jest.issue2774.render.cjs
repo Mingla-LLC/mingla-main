@@ -134,5 +134,9 @@ module.exports = {
     // swap and start-time count, the navigator and the pinned plan bar.
     "**/__tests__/issue_4347_wave3.tester.adversarial.test.ts",
     "**/__tests__/issue_4347_wave3.tester.adversarial.render.test.tsx",
+    // issue #4347 wave 3 rework — tester retest: every offered start fix
+    // clears the whole plan (seeded sweep), one 15-minute rule for the sheet
+    // and the schedule check, the route cap note, the identity-keyed reset.
+    "**/__tests__/issue_4347_wave3_retest.tester.adversarial.test.tsx",
   ],
 };

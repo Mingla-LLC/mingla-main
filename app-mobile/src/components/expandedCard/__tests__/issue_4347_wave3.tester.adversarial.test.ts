@@ -25,12 +25,10 @@
  *
  * Runs under app-mobile/jest.issue2774.render.cjs.
  *
- * Known defects are pinned with test.failing (they pass once fixed):
- *   W-5  a "Start at …" fix can move the plan onto a start where an EARLIER
- *        stop is closed (the fix clears one stop by breaking another);
- *   T-4  a stop that closes 10 minutes after you arrive: the sheet says
- *        "Closed at …" and warns, while the schedule check says every stop is
- *        open and schedules it.
+ * Pinned in wave 3 and flipped after the rework (0dcb35d214): W-5 (a fix is
+ * offered only when the whole plan clears at that start; otherwise Swap only)
+ * and T-4 (one 15-minute "worth arriving" rule for the sheet and the
+ * schedule check).
  *
  * FAILS-ON-REVERT (verified by the tester in an isolated worktree, see #4347):
  *   - isPlaceOpenAt restored to the pre-follow-up body (the arrival day's own
@@ -40,7 +38,9 @@
  *   - the (0,0) guard dropped from stopToken -> R-3 fails;
  *   - planWarning returning a fix-less warning -> W-3 fails;
  *   - the store's `same` guard removed (publish every frame) -> S-1 fails;
- *   - fixStartFor without the minStart floor -> W-2 fails.
+ *   - fixStartFor without the minStart floor -> W-2 fails;
+ *   - planClearAt short-circuited to true -> W-5 fails;
+ *   - the schedule check's MIN_USEFUL_OPEN_MINUTES refusal removed -> T-4 fails.
  */
 import * as fs from "fs";
 import * as path from "path";
@@ -229,8 +229,7 @@ describe("T — one arrival model", () => {
     expect(checkAllCuratedStopsOpen([ny], atFour, "en-US").allOpen).toBe(false);
   });
 
-  // P3 (pinned): MIN_USEFUL_MINUTES makes the sheet call a stop "closed" when
-  // fewer than 15 minutes remain; the schedule check has no such window.
+  // Was P3 in wave 3. Fixed: one MIN_USEFUL_OPEN_MINUTES for both readers.
   test("T-4 (P3) a stop that closes 10 min after arrival: the schedule check and the sheet agree", () => {
     const closingSoon = [stop({ placeName: "Bakery", openingHours: { weekdayDescriptions: week(g("8:00 AM", "8:00 PM")) } })];
     const at = venue(13, 19, 50);
@@ -304,17 +303,24 @@ describe("W — the one warning", () => {
     expect(planWarning({ stops: named, start: venue(14, 15, 0), now: venue(14, 9, 0), forecasts: [forecastFor(14, [15])] })).toBeNull();
   });
 
-  // P2 (pinned): the fix is searched for THIS stop only.
-  test.failing("W-5 (P2) applying the offered 'Start at' fix never leaves the plan with a closed stop", () => {
+  test("W-5 no start clears both stops: no 'Start at' fix, Swap only; and any fix offered leaves the whole plan clear", () => {
     const stops = [
       stop({ placeName: "Gallery", openingHours: { weekdayDescriptions: week(g("6:00 PM", "11:00 PM")) }, estimatedDurationMinutes: 120 }),
       stop({ placeName: "Bakery", openingHours: { weekdayDescriptions: week(g("8:00 AM", "8:00 PM")) } }),
     ];
     const input = { stops, start: venue(14, 18, 0), now: venue(14, 12, 0), forecasts: [null, null] };
     const w = planWarning(input);
-    expect(w).toMatchObject({ kind: "closed", index: 1 });
-    expect(w!.fixStart).not.toBeNull(); // offered: 17:30
-    expect(planWarning({ ...input, start: w!.fixStart! })).toBeNull(); // ...but at 17:30 the Gallery is closed
+    // Gallery needs arrival >= 18:00, the Bakery needs arrival <= 19:45 = start + 120: impossible.
+    expect(w).toMatchObject({ kind: "closed", index: 1, fixStart: null, canSwap: true });
+    // Converse: a plan that CAN be cleared gets a fix, and at that fix the plan is clear.
+    const roomy = [
+      stop({ placeName: "Gallery", openingHours: { weekdayDescriptions: week(g("4:00 PM", "11:00 PM")) }, estimatedDurationMinutes: 120 }),
+      stop({ placeName: "Bakery", openingHours: { weekdayDescriptions: week(g("8:00 AM", "8:00 PM")) } }),
+    ];
+    const r = planWarning({ ...input, stops: roomy });
+    expect(r).toMatchObject({ kind: "closed", index: 1 });
+    expect(r!.fixStart).not.toBeNull();
+    expect(planWarning({ ...input, stops: roomy, start: r!.fixStart! })).toBeNull();
   });
 });
 
