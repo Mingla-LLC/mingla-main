@@ -35,5 +35,26 @@
     ["instagram", "https://instagram.com.evil.example/bluenote"],
     ["instagram", "javascript:alert(1)"],
     ["myspace", "bluenote"]
+  ],
+  "audiences_about": "#4339 Creators and Locals calls: one row per case, [audience, the request fields, the field that is refused or null]. Name and email are always valid here. Asserted by the marketing test (programBookingErrors) and the growth-tools-book Deno suite (parseBookingContext).",
+  "audiences": [
+    ["creator", {"city": "Lagos", "social_platform": "tiktok", "social_handle": "@adashoots", "makes": "video"}, null],
+    ["creator", {"city": "Lagos", "social_platform": "tiktok", "social_handle": "@adashoots", "makes": "both", "work_url": "https://www.tiktok.com/@adashoots/video/1"}, null],
+    ["creator", {"city": "Lagos", "social_platform": "tiktok", "social_handle": "@adashoots", "makes": "photo", "work_url": "adashoots.com"}, null],
+    ["creator", {"city": "Somewhere else", "social_platform": "tiktok", "social_handle": "@adashoots", "makes": "video"}, null],
+    ["creator", {"social_platform": "tiktok", "social_handle": "@adashoots", "makes": "video"}, "city"],
+    ["creator", {"city": " ", "social_platform": "tiktok", "social_handle": "@adashoots", "makes": "video"}, "city"],
+    ["creator", {"city": "Lagos", "social_platform": "tiktok", "social_handle": "", "makes": "video"}, "social"],
+    ["creator", {"city": "Lagos", "social_platform": "tiktok", "social_handle": "ada shoots", "makes": "video"}, "social"],
+    ["creator", {"city": "Lagos", "social_platform": "tiktok", "social_handle": "@adashoots"}, "makes"],
+    ["creator", {"city": "Lagos", "social_platform": "tiktok", "social_handle": "@adashoots", "makes": "audio"}, "makes"],
+    ["creator", {"city": "Lagos", "social_platform": "tiktok", "social_handle": "@adashoots", "makes": "video", "work_url": "not a link"}, "work_url"],
+    ["creator", {"city": "Lagos", "social_platform": "tiktok", "social_handle": "@adashoots", "makes": "video", "work_url": "javascript:alert(1)"}, "work_url"],
+    ["local", {"city": "Raleigh", "social_platform": "instagram", "social_handle": "@tobieats"}, null],
+    ["local", {"city": "Raleigh", "social_platform": "instagram", "social_handle": "@tobieats", "first_place": "Bida Manda"}, null],
+    ["local", {"social_platform": "instagram", "social_handle": "@tobieats"}, "city"],
+    ["local", {"city": "Raleigh", "social_platform": "myspace", "social_handle": "@tobieats"}, "social"],
+    ["local", {"city": "Raleigh", "social_platform": "instagram", "social_handle": ""}, "social"],
+    ["local", {"city": "Raleigh", "social_platform": "instagram", "social_handle": "@tobieats", "first_place": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}, "first_place"]
   ]
 }

@@ -191,6 +191,9 @@ const PUBLIC_NOINDEX_ROUTES = [
   ['/host/download', 'host-download'],
   ['/unsubscribe', 'unsubscribe'],
   ['/schedule', 'schedule'],
+  // #4339 Creators and Locals calls: the /schedule flow per audience, noindex like /schedule.
+  ['/schedule/creators', 'schedule-creators'],
+  ['/schedule/locals', 'schedule-locals'],
   ['/sms-terms', 'sms-terms'],
   ['/delete-account', 'delete-account'],
   ['/event-preview', 'event-preview'],

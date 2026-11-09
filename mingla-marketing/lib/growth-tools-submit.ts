@@ -386,19 +386,40 @@ export async function fetchBookingSlots(): Promise<
  * function refuses a booking without them); `website` is optional. On a refusal
  * the function names the field, returned here as `field`.
  */
-export async function bookCall(input: {
+// #4339 Creators and Locals calls: one booking function for three audiences.
+// Host (/schedule, `audience` absent) sends icp + social (+ venue, website,
+// report_url); a Creators or Locals call sends `audience`, city and social
+// (+ makes and work_url, or first_place). `time_zone` is the booker's IANA zone,
+// so the team sees their local time.
+export type BookCallInput = {
   start: string
   name: string
   email: string
-  icp: string
-  social_platform: string
-  social_handle: string
-  venue?: string
-  website?: string
-  report_url?: string
   /** #3601 — funnel/standalone-link origin tag; renders on the calendar invite. */
   source?: string
-}): Promise<
+  time_zone?: string
+} & (
+  | {
+      audience?: undefined
+      icp: string
+      social_platform: string
+      social_handle: string
+      venue?: string
+      website?: string
+      report_url?: string
+    }
+  | {
+      audience: 'creator' | 'local'
+      city: string
+      social_platform: string
+      social_handle: string
+      makes?: string
+      work_url?: string
+      first_place?: string
+    }
+)
+
+export async function bookCall(input: BookCallInput): Promise<
   | { ok: true; event_url: string | null; meet_url: string | null; start: string }
   | { ok: false; error: GrowthToolsError; field?: string }
 > {

@@ -142,3 +142,105 @@ export function bookingErrors(details: BookingDetails): Partial<Record<BookingFi
   if (!websiteIsValid(details.website)) errors.website = 'Use a web address, like yourplace.com.'
   return errors
 }
+
+// ---------------------------------------------------------------------------
+// #4339 Creators and Locals calls (Seth approved, 9 Nov): /schedule/creators
+// and /schedule/locals book through the same function with `audience`
+// creator | local (host, the default, is the /schedule form above and is
+// unchanged). The server checks the same rules per audience
+// (supabase/functions/growth-tools-book/bookingContext.ts
+// parseBookingContext), and the fixture table's `audiences` rows pin both.
+//
+//   creator: name, email, city, main social and "What do you make?" (video,
+//            photo or both) required; "Link to your best work" optional, a
+//            public http(s) address when given.
+//   local:   name, email, city and main social required; "A place you'd
+//            review first" optional.
+//
+// The city list is every live Mingla city, read at request time from
+// `links_page_cities()` (lib/links-data.ts, #4318) and never written here,
+// sorted by name, with "Somewhere else" last (cityOptions).
+// ---------------------------------------------------------------------------
+
+export const BOOKING_AUDIENCES = ['host', 'creator', 'local'] as const
+export type BookingAudience = (typeof BOOKING_AUDIENCES)[number]
+export type ProgramAudience = Exclude<BookingAudience, 'host'>
+
+export const CREATOR_MAKES = [
+  { value: 'video', label: 'Video' },
+  { value: 'photo', label: 'Photos' },
+  { value: 'both', label: 'Both' },
+] as const
+export type CreatorMakes = (typeof CREATOR_MAKES)[number]['value']
+
+/** The last city option, always offered, so nobody is blocked. */
+export const SOMEWHERE_ELSE = 'Somewhere else'
+
+export const MAX_CITY_INPUT = 80
+export const MAX_FIRST_PLACE_INPUT = 120
+
+const CONTROL_CHARS = /[\u0000-\u001F\u007F-\u009F\u2028\u2029]/
+
+/**
+ * The "Your city" options: every live city's name from `links_page_cities()`
+ * rows, de-duplicated, sorted by name, then "Somewhere else". With no rows
+ * (the read failed, or no database) it is "Somewhere else" alone, and the page
+ * adds a free-text city field.
+ */
+export function cityOptions(rows: ReadonlyArray<{ name?: unknown }>): string[] {
+  const names = new Set<string>()
+  for (const row of rows) {
+    const name = typeof row?.name === 'string' ? row.name.trim() : ''
+    if (name !== '' && name.length <= MAX_CITY_INPUT && !CONTROL_CHARS.test(name) && name !== SOMEWHERE_ELSE) names.add(name)
+  }
+  const sorted = [...names].sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' }))
+  return [...sorted, SOMEWHERE_ELSE]
+}
+
+/** True when the city is a real single-line value (2 to 80 characters). */
+export function cityIsValid(raw: string): boolean {
+  const value = raw.trim()
+  return value.length >= 2 && value.length <= MAX_CITY_INPUT && !CONTROL_CHARS.test(value)
+}
+
+export function isCreatorMakes(raw: string): raw is CreatorMakes {
+  return CREATOR_MAKES.some((m) => m.value === raw)
+}
+
+export interface ProgramBookingDetails {
+  audience: ProgramAudience
+  name: string
+  email: string
+  city: string
+  socialPlatform: string
+  socialHandle: string
+  /** Creator only. */
+  makes: string
+  /** Creator only, optional. */
+  workUrl: string
+  /** Local only, optional. */
+  firstPlace: string
+}
+
+export type ProgramBookingField = 'name' | 'email' | 'city' | 'social' | 'makes' | 'work_url' | 'first_place'
+
+/** Each field's problem for a Creators or Locals call, in form order; empty when it can be booked. */
+export function programBookingErrors(details: ProgramBookingDetails): Partial<Record<ProgramBookingField, string>> {
+  const errors: Partial<Record<ProgramBookingField, string>> = {}
+  if (details.name.trim().length < 2) errors.name = 'Add your name.'
+  if (!EMAIL_REGEX.test(details.email.trim()) || details.email.trim().length > 254) errors.email = 'Add an email we can send the invite to.'
+  if (!cityIsValid(details.city)) errors.city = 'Choose your city.'
+  if (socialProfileUrl(details.socialPlatform, details.socialHandle) === null) {
+    const label = SOCIAL_PLATFORMS.find((p) => p.value === details.socialPlatform)?.label ?? 'social'
+    errors.social = details.socialHandle.trim() === ''
+      ? `Add your ${label} handle.`
+      : `That doesn’t look like a handle for ${label}. Use the handle, like @yourname, or paste your profile link.`
+  }
+  if (details.audience === 'creator') {
+    if (!isCreatorMakes(details.makes)) errors.makes = 'Choose what you make.'
+    if (!websiteIsValid(details.workUrl)) errors.work_url = 'Use a web address, like a link to a post or your portfolio.'
+  } else if (details.firstPlace.trim().length > MAX_FIRST_PLACE_INPUT || CONTROL_CHARS.test(details.firstPlace)) {
+    errors.first_place = 'Keep it to one place name.'
+  }
+  return errors
+}

@@ -42,6 +42,8 @@ export const BUDGET_ROUTES = [
   ['/(core)/going-out/page', '/going-out'],
   ['/(core)/about/page', '/about'],
   ['/schedule/page', '/schedule'],
+  ['/schedule/creators/page', '/schedule/creators'],
+  ['/schedule/locals/page', '/schedule/locals'],
   ['/help/page', '/help'],
   ['/help/[slug]/page', '/help/<video>'],
   ['/download/page', '/download'],

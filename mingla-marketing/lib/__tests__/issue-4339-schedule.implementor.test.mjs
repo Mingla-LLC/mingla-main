@@ -90,7 +90,9 @@ test('the page sends the new fields and the #3601 source through bookCall, and r
   assert.match(client, /const source = \(params\.get\('source'\) \?\? 'direct'\)\.slice\(0, 40\)/, '#3601 source default kept')
   assert.match(client, /fetchBookingSlots\(\)/, 'live slots')
   const submit = code(read('lib/growth-tools-submit.ts'))
-  assert.match(submit, /export async function bookCall\(input: \{[\s\S]*icp: string\s+social_platform: string\s+social_handle: string[\s\S]*website\?: string/)
+  // #4339 calls: the host shape is one arm of BookCallInput (audience absent).
+  assert.match(submit, /export async function bookCall\(input: BookCallInput\)/)
+  assert.match(submit, /audience\?: undefined\s+icp: string\s+social_platform: string\s+social_handle: string[\s\S]*website\?: string/)
   // The design's flow and states.
   for (const marker of ['data-schedule-days', 'data-schedule-slots', 'data-schedule-form', 'data-schedule-confirm', 'data-schedule-done']) {
     assert.match(client, new RegExp(marker), marker)

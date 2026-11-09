@@ -157,6 +157,8 @@ const PUBLIC_NOINDEX_PATHS = [
   '/host/download',
   '/unsubscribe',
   '/schedule',
+  '/schedule/creators',
+  '/schedule/locals',
   '/sms-terms',
   '/delete-account',
   '/event-preview',
