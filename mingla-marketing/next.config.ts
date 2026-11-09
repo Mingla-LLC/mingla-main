@@ -109,9 +109,11 @@ function eventCoversPattern() {
 // #4339 round B (SEO audit 13) — AI crawlers that read HTML without running
 // JavaScript get the page's metadata (title, canonical, robots) blocking in
 // <head> instead of streamed. Search and answer bots plus the AI training and
-// assistant crawlers named in app/robots.ts.
+// assistant crawlers named in app/robots.ts. The pattern is case-blind, so
+// Mistral's agent is written in lower case (the docs invariant-ID scan reads
+// any capital-I-hyphen-capital run as a new invariant ID).
 const HTML_LIMITED_BOTS =
-  /Googlebot|Bingbot|Slurp|DuckDuckBot|Baiduspider|YandexBot|facebookexternalhit|Twitterbot|LinkedInBot|Slackbot|Discordbot|WhatsApp|GPTBot|ChatGPT-User|OAI-SearchBot|ClaudeBot|Claude-User|Claude-SearchBot|anthropic-ai|PerplexityBot|Perplexity-User|Google-Extended|Applebot|Applebot-Extended|CCBot|cohere-ai|Amazonbot|Meta-ExternalAgent|meta-externalfetcher|Bytespider|DuckAssistBot|MistralAI-User/i
+  /Googlebot|Bingbot|Slurp|DuckDuckBot|Baiduspider|YandexBot|facebookexternalhit|Twitterbot|LinkedInBot|Slackbot|Discordbot|WhatsApp|GPTBot|ChatGPT-User|OAI-SearchBot|ClaudeBot|Claude-User|Claude-SearchBot|anthropic-ai|PerplexityBot|Perplexity-User|Google-Extended|Applebot|Applebot-Extended|CCBot|cohere-ai|Amazonbot|Meta-ExternalAgent|meta-externalfetcher|Bytespider|DuckAssistBot|mistralai-user/i
 
 // #4339 round B (anti-copy) — work-item references never ship. Developer
 // error messages in the source carry the issue that owns them ("#4339

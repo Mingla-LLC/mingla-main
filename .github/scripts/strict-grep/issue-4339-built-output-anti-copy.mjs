@@ -15,7 +15,8 @@
 //                  markers and Next's build-id marker, or a JS block comment
 //                  other than a /*! licence */ or /*#__PURE__*/ annotation.
 //
-// Modes (I-PROPOSED-1383 registry, local descriptor beside this file):
+// Modes (I-PROPOSED-1383-GATE-MANIFEST-TOTALITY registry, local descriptor
+// beside this file):
 //   --self-test   the detector against fixtures (bad output is caught, the
 //                 real exemptions pass);
 //   plain         the wiring: the marketing build runs this gate with
