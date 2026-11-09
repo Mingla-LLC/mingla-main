@@ -42,6 +42,10 @@ interface EventDetailLayoutProps {
   openDirections: () => void;
   /** #4347 wave 2 — the gallery opens the sheet's ImageLightbox. */
   onOpenLightbox?: (images: string[], initialIndex: number) => void;
+  /** #4347 rework (N-1) — false while the sheet is hidden: the cover video pauses. */
+  active?: boolean;
+  /** #4347 rework (N-1) — Reduce Motion: thumbnail jumps land instantly. */
+  reducedMotion?: boolean;
 }
 
 /**
@@ -151,6 +155,8 @@ export default function EventDetailLayout({
   setSeatMapFailed,
   openDirections,
   onOpenLightbox,
+  active = true,
+  reducedMotion = false,
 }: EventDetailLayoutProps): React.ReactElement {
   const { t } = useTranslation(["cards", "common"]);
   const insets = useSafeAreaInsets();
@@ -248,8 +254,10 @@ export default function EventDetailLayout({
       <PlaceGallery
         media={eventMedia}
         title={eventName}
-        onOpen={(uri) => {
-          const target = lightboxFor(eventMedia, eventMedia.findIndex((m) => m.uri === uri));
+        active={active}
+        reducedMotion={reducedMotion}
+        onOpen={(uri, shown) => {
+          const target = lightboxFor(shown, shown.findIndex((m) => m.uri === uri));
           if (target.images.length > 0) onOpenLightbox?.(target.images, target.initialIndex);
         }}
       />

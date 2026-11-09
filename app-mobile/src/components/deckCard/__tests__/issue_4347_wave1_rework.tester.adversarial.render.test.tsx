@@ -190,7 +190,7 @@ describe("C — a route out of the collab deck lands exactly once", () => {
     expect(typeof hostUnmountsOnClose).toBe("boolean");
   });
 
-  test.failing("C-1 (P1, Android) mounted like MessageInterface, a claimed-venue tap opens the venue page", () => {
+  test("C-1 (P1, Android) mounted like MessageInterface, a claimed-venue tap opens the venue page", () => {
     mockPlatformOS = "android";
     mount(<RealHost unmountOnClose={hostUnmountsOnClose} />);
     tapClaimedVenue("/b/itan/v/garden");
@@ -198,7 +198,7 @@ describe("C — a route out of the collab deck lands exactly once", () => {
     expect(mockPush).toHaveBeenCalledWith("/b/itan/v/garden");
   });
 
-  test.failing("C-1i (P1, iOS) mounted like MessageInterface, the push waits for onDismiss and then lands", () => {
+  test("C-1i (P1, iOS) mounted like MessageInterface, the push waits for onDismiss and then lands", () => {
     mockPlatformOS = "ios";
     mount(<RealHost unmountOnClose={hostUnmountsOnClose} />);
     tapClaimedVenue("/b/itan/v/garden");
@@ -368,7 +368,7 @@ describe("Z — the tap path's locationX/Y is always card-local", () => {
     expect(offendingTargets(root.root)).toEqual([]);
   });
 
-  test.failing("Z-3 (P3) at the largest title size, no part of the title sits inside a flip zone", () => {
+  test("Z-3 (P3) at the largest title size, no part of the title sits inside a flip zone", () => {
     // A two-line title at its 1.4x cap plus the kicker at 1.3x, curated with a chip.
     const S1 = CI.SURFACES.s1Single;
     const titleBottom = platePresentation([{ kind: "fact", text: "·" }], 2).titleBottom;

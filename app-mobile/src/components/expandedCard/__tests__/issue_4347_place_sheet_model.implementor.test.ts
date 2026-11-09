@@ -126,7 +126,8 @@ describe("#4347 wave 2 When you'd go", () => {
     const crowd = { hourly, hour: 19, level: crowdLevel(90) } as const;
     expect(quieterHour(crowd, () => true)).toBe(21);
     expect(quieterHour(crowd, (h) => h < 21)).toBeNull();
-    expect(quieterHour(crowd, () => null)).toBe(21);
+    // Rework (W-7): an hour we cannot say is open is not offered.
+    expect(quieterHour(crowd, () => null)).toBeNull();
     expect(quieterHour({ hourly, hour: 22, level: "quiet" }, () => true)).toBeNull();
   });
 

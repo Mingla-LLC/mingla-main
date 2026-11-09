@@ -158,7 +158,7 @@ describe("#4347 wave 2 — gallery", () => {
   test("S-2 tapping a photo opens the lightbox on THAT photo", () => {
     const opened: string[] = [];
     const root = mount(<PlaceGallery media={sheetGalleryMedia(["a", "b"])} title="Nok" onOpen={(u: string) => opened.push(u)} />);
-    const page = root.root.findAll((n: Node) => isComposite(n) && typeof n.props?.onPress === "function" && String(n.props?.accessibilityLabel ?? "").startsWith("Photo 2 ·"))[0];
+    const page = root.root.findAll((n: Node) => isComposite(n) && typeof n.props?.onPress === "function" && String(n.props?.accessibilityLabel ?? "").startsWith("Photo 2 of 2 ·"))[0];
     TestRenderer.act(() => page.props.onPress());
     expect(opened).toEqual(["b"]);
   });
@@ -316,5 +316,41 @@ describe("#4347 wave 2 — night out", () => {
     expect(opened).toEqual(["https://tm/x"]);
     const sold = mount(<NightOutTicketBar card={card} nightOut={t("offsale", "https://tm/x")} onOpenBrowser={() => undefined} bottomInset={0} />);
     expect(sold.root.findAll((n: Node) => isComposite(n) && n.props?.accessibilityRole === "button")[0].props.disabled).toBe(true);
+  });
+});
+
+describe("#4347 wave 1+2 rework after retest", () => {
+  const lum = (hex: string): number => {
+    const c = hex.replace("#", "").match(/../g)!.map((h) => parseInt(h, 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  };
+  const ratio = (a: string, b: string): number => {
+    const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p);
+    return (x + 0.05) / (y + 0.05);
+  };
+  const flat = (style: unknown): Record<string, unknown> => RN.StyleSheet.flatten(style) ?? {};
+
+  test("R-1 (P2-c) tile and When labels reach 4.5:1 on their fill; crowd bars reach 3:1 on white", () => {
+    const tiles = mount(<PlaceBasics kicker={null} title="Nok" tiles={[{ key: "hours", value: "Open until 11pm", tone: "open" }]} />);
+    const label = tiles.root.findAll((n: Node) => isComposite(n) && n.props?.children === "Hours")[0];
+    expect(ratio(String(flat(label.props.style).color), "#F3F4F6")).toBeGreaterThanOrEqual(4.5);
+    expect(ratio(WHEN_BLOCK.barFill, "#FFFFFF")).toBeGreaterThanOrEqual(3);
+    expect(ratio(WHEN_BLOCK.barActiveFill, "#FFFFFF")).toBeGreaterThanOrEqual(3);
+  });
+
+  test("R-2 the lightbox opens from the media still in the gallery (a failed photo is not paged to)", () => {
+    const calls: Array<{ uri: string; shown: string[] }> = [];
+    const root = mount(
+      <PlaceGallery
+        media={sheetGalleryMedia(["a", "b", "c"])}
+        title="Nok"
+        onOpen={(uri: string, shown: Array<{ uri: string }>) => calls.push({ uri, shown: shown.map((m) => m.uri) })}
+      />,
+    );
+    const failing = root.root.findAll((n: Node) => n.type === "ExpoImage" && n.props.source?.uri === "b" && n.props.transition !== undefined)[0];
+    TestRenderer.act(() => failing.props.onError());
+    const page = root.root.findAll((n: Node) => isComposite(n) && typeof n.props?.onPress === "function" && String(n.props?.accessibilityLabel ?? "").startsWith("Photo 2 of 2 ·"))[0];
+    TestRenderer.act(() => page.props.onPress());
+    expect(calls).toEqual([{ uri: "c", shown: ["a", "c"] }]);
   });
 });

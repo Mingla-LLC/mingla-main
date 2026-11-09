@@ -28,8 +28,12 @@ import { Icon } from '../ui/Icon';
 export interface PlaceGalleryProps {
   readonly media: readonly SheetMedia[];
   readonly title: string;
-  /** Opens the lightbox on this photo (stills only — the caller maps it). */
-  readonly onOpen: (uri: string) => void;
+  /**
+   * Opens the lightbox on this photo (stills only — the caller maps it). The
+   * second argument is the media still IN the gallery (failed photos removed),
+   * so the lightbox never pages to a photo the gallery dropped.
+   */
+  readonly onOpen: (uri: string, shown: readonly SheetMedia[]) => void;
   /** Reduce Motion: thumbnail jumps land instantly. */
   readonly reducedMotion?: boolean;
   /** False while the sheet is hidden behind a child modal: the video pauses. */
@@ -61,15 +65,24 @@ export function PlaceGallery({
   // A photo that fails to load leaves the gallery (the next one takes its
   // slot); when every one fails the gallery is the short neutral header.
   const [failed, setFailed] = React.useState<ReadonlySet<string>>(() => new Set());
-  const media = React.useMemo(() => allMedia.filter((m) => !failed.has(m.uri)), [allMedia, failed]);
+  // #4347 rework (P2-a) — keyed on CONTENT, not array identity. Callers rebuild
+  // the media array every render (the sheet re-renders for unrelated reasons),
+  // and an identity reset threw the viewer back to photo 1 and re-admitted a
+  // photo that had already failed.
+  const contentKey = allMedia.map((m) => `${m.isVideo ? 'v' : 'p'}:${m.uri}`).join('|');
+  const stableMedia = React.useMemo(() => allMedia, [contentKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const media = React.useMemo(() => stableMedia.filter((m) => !failed.has(m.uri)), [stableMedia, failed]);
   const markFailed = React.useCallback((uri: string) => {
     setFailed((prev) => (prev.has(uri) ? prev : new Set([...prev, uri])));
   }, []);
 
+  const firstKey = React.useRef(contentKey);
   React.useEffect(() => {
+    if (firstKey.current === contentKey) return;
+    firstKey.current = contentKey;
     setIndex(0);
     setFailed(new Set());
-  }, [allMedia]);
+  }, [contentKey]);
 
   const close = onClose ? (
     <TouchableOpacity
@@ -118,10 +131,11 @@ export function PlaceGallery({
           renderItem={({ item, index: i }: { item: SheetMedia; index: number }) => (
             <TouchableOpacity
               activeOpacity={0.9}
-              onPress={() => onOpen(item.uri)}
+              onPress={() => onOpen(item.uri, media)}
               disabled={item.isVideo}
               accessibilityRole={item.isVideo ? 'image' : 'button'}
-              accessibilityLabel={t('cards:expanded.photo_a11y', { n: i + 1 }) + ` · ${title}`}
+              // #4347 rework (P3) — the page announces its position.
+              accessibilityLabel={t('cards:deck.photo_position', { index: i + 1, count: media.length }) + ` · ${title}`}
               style={{ width, height: SHEET_GALLERY.height }}
             >
               {item.isVideo ? (
@@ -156,7 +170,7 @@ export function PlaceGallery({
         {media.length > 1 ? (
           <View style={styles.counter} pointerEvents="none" testID="sheet-gallery-counter">
             <Text style={styles.counterText} accessibilityLiveRegion="polite">
-              {`${index + 1} / ${media.length}`}
+              {`${Math.min(index, media.length - 1) + 1} / ${media.length}`}
             </Text>
           </View>
         ) : null}

@@ -121,7 +121,8 @@ const styles = StyleSheet.create({
   },
   tileLabel: {
     fontSize: BASICS.tileLabelSize,
-    color: SPINE.factLabel,
+    // #4347 rework (P2-c) — 4.5:1 on the tile fill (#6B7280 was 4.39:1).
+    color: SPINE.muted,
     marginBottom: 2,
   },
   tileValue: {

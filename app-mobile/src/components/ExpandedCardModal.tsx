@@ -608,6 +608,8 @@ export default function ExpandedCardModal({
   // In solo mode, fall back to the user's own preference.
   const effectiveTravelMode = collabTravelMode ?? userPreferences?.travel_mode ?? 'driving';
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
+  /** #4347 rework (P2-b) — only the latest forecast request may write. */
+  const weatherRequestRef = useRef(0);
   const [busynessData, setBusynessData] = useState<BusynessData | null>(null);
   const [viewerTravelTime, setViewerTravelTime] = useState<string | null>(null);
   const [viewerDistance, setViewerDistance] = useState<number | null>(null);
@@ -993,6 +995,10 @@ export default function ExpandedCardModal({
   // Fetch additional data when modal opens
   useEffect(() => {
     if (visible && card) {
+      // #4347 rework (P2-b) — the previous card's forecast never shows on this
+      // one (review mode switches cards without closing the sheet), and a slow
+      // response for the previous card is dropped (weatherRequestRef).
+      setWeatherData(null);
       fetchAdditionalData();
       if ((card as any).cardType !== 'curated') {
         setStrollData(card.strollData);
@@ -1097,6 +1103,7 @@ export default function ExpandedCardModal({
 
     // Fetch weather first (provides utcOffsetSeconds for busyness timezone)
     let weather: WeatherData | null = null;
+    const request = ++weatherRequestRef.current;
     if (card.location) {
       setLoadingWeather(true);
       try {
@@ -1104,10 +1111,10 @@ export default function ExpandedCardModal({
           card.location.lat,
           card.location.lng
         );
-        setWeatherData(weather);
+        if (request === weatherRequestRef.current) setWeatherData(weather);
       } catch (error) {
         console.error("Error fetching weather in modal:", error);
-        setWeatherData(null);
+        if (request === weatherRequestRef.current) setWeatherData(null);
       } finally {
         setLoadingWeather(false);
       }
@@ -1478,7 +1485,16 @@ export default function ExpandedCardModal({
     const at = new Date(raw);
     return Number.isNaN(at.getTime()) ? null : at;
   })();
-  const sheetWhenChips = whenChips(sheetNow, cardUtcOffsetMinutes, sheetScheduledAt);
+  /*
+    #4347 rework — "When you'd go" reads ONE clock. With no venue offset on the
+    card, the chips and the crowd take the forecast's own offset (Open-Meteo's
+    timezone=auto is the venue's zone), never the device clock beside a
+    venue-local forecast.
+  */
+  const whenUtcOffsetMinutes: number | null =
+    cardUtcOffsetMinutes ??
+    (typeof weatherData?.utcOffsetSeconds === 'number' ? Math.round(weatherData.utcOffsetSeconds / 60) : null);
+  const sheetWhenChips = whenChips(sheetNow, whenUtcOffsetMinutes, sheetScheduledAt);
   const sheetKicker = card.category ? getReadableCategoryName(card.category) : null;
   const sheetDirections = (): void =>
     openPlaceDirections(
@@ -2147,6 +2163,8 @@ export default function ExpandedCardModal({
                   onOpenLightbox={(images, initialIndex) =>
                     setCuratedLightbox({ visible: true, images, initialIndex })
                   }
+                  active={visible && !anyChildModalOpen}
+                  reducedMotion={reducedMotion}
                 />
               </>
             ) : (
@@ -2467,8 +2485,9 @@ export default function ExpandedCardModal({
               active={visible && !anyChildModalOpen}
               onClose={onClose}
               closeLabel={t('common:close', { defaultValue: 'Close' })}
-              onOpen={(uri) => {
-                const target = lightboxFor(sheetMedia, sheetMedia.findIndex((m) => m.uri === uri));
+              onOpen={(uri, shown) => {
+                // #4347 rework — from the media STILL in the gallery (failed photos gone).
+                const target = lightboxFor(shown, shown.findIndex((m) => m.uri === uri));
                 if (target.images.length === 0) return;
                 setCuratedLightbox({ visible: true, images: target.images, initialIndex: target.initialIndex });
               }}
@@ -2608,7 +2627,7 @@ export default function ExpandedCardModal({
               hourly={weatherData?.hourlyForecast ?? null}
               weatherUtcOffsetSeconds={weatherData?.utcOffsetSeconds ?? null}
               category={card.category}
-              utcOffsetMinutes={cardUtcOffsetMinutes}
+              utcOffsetMinutes={whenUtcOffsetMinutes}
               openingHours={card.openingHours}
               driveTime={viewerTravelTime ?? card.travelTime ?? null}
               lat={card.location?.lat ?? null}

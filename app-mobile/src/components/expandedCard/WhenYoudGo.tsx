@@ -275,7 +275,9 @@ const styles = StyleSheet.create({
   },
   factLabel: {
     fontSize: 12,
-    color: SPINE.factLabel,
+    // #4347 rework (P2-c) — 12pt on the #F3F4F6 tile needs 4.5:1; #6B7280
+    // measured 4.39:1, SPINE.muted (#4B5563) is 6.9:1.
+    color: SPINE.muted,
   },
   factValue: {
     fontSize: 15,

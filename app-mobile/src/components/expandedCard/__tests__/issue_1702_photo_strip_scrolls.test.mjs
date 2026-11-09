@@ -117,7 +117,8 @@ test('P-4 the lightbox still opens on tap — scrolling did not eat the press', 
   // onOpen, and the sheet's onOpen opens the ImageLightbox.
   const pager = GALLERY.slice(GALLERY.indexOf('<BottomSheetFlatList'), GALLERY.indexOf('<BottomSheetFlatList') + 1600);
   assert.match(pager, /<TouchableOpacity/, 'P-4: the gallery pages are no longer pressable');
-  assert.match(pager, /onPress=\{\(\) => onOpen\(item\.uri\)\}/, 'P-4: tapping a page no longer reaches onOpen');
+  // #4347 rework: onOpen also receives the media still in the gallery.
+  assert.match(pager, /onPress=\{\(\) => onOpen\(item\.uri, media\)\}/, 'P-4: tapping a page no longer reaches onOpen');
   const mount = MODAL.slice(MODAL.indexOf('<PlaceGallery'), MODAL.indexOf('<PlaceGallery') + 800);
   assert.match(mount, /setCuratedLightbox\(\{ visible: true/, 'P-4: the gallery no longer opens the lightbox');
 });

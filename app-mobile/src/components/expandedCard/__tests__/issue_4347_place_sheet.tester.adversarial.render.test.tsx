@@ -186,14 +186,14 @@ describe("G — the gallery survives the sheet re-rendering", () => {
     expect(counter(root)).toBe("3 / 3");
   });
 
-  test.failing("G-1 (P2) after a jump to photo 3, an unrelated sheet re-render keeps '3 / 3'", () => {
+  test("G-1 (P2) after a jump to photo 3, an unrelated sheet re-render keeps '3 / 3'", () => {
     const root = mount(<SheetLike images={IMAGES} tick={0} />);
     TestRenderer.act(() => thumb(root, 3).props.onPress());
     TestRenderer.act(() => root.update(<SheetLike images={IMAGES} tick={1} />));
     expect(counter(root)).toBe("3 / 3");
   });
 
-  test.failing("G-2 (P2) a photo that failed stays out after an unrelated sheet re-render", () => {
+  test("G-2 (P2) a photo that failed stays out after an unrelated sheet re-render", () => {
     const root = mount(<SheetLike images={IMAGES} tick={0} />);
     const failing = root.root.findAll((n: Node) => n.type === "ExpoImage" && n.props.source?.uri === IMAGES[1] && n.props.transition !== undefined)[0];
     TestRenderer.act(() => failing.props.onError());
@@ -226,7 +226,7 @@ describe("G — the gallery survives the sheet re-rendering", () => {
     expect(empty.root.findAll((n: Node) => isComposite(n) && typeof n.props?.onPress === "function")).toHaveLength(0);
   });
 
-  test.failing("G-5 (P3) a page announces its position: 'Photo 2 of 3' (spec: gallery announces position)", () => {
+  test("G-5 (P3) a page announces its position: 'Photo 2 of 3' (spec: gallery announces position)", () => {
     const root = mount(<PlaceGallery media={sheetGalleryMedia(IMAGES)} title="Nok" onOpen={() => undefined} />);
     const labels = root.root.findAll((n: Node) => isComposite(n) && typeof n.props?.onPress === "function").map((n: Node) => String(n.props.accessibilityLabel));
     expect(labels.some((l) => /Photo 2 of 3/.test(l))).toBe(true);
@@ -351,7 +351,7 @@ describe("W — forecast, sunset and 'quieter at' at the edges", () => {
     expect(shown).toBeGreaterThan(20);
   });
 
-  test.failing("W-7 (P3) with no opening hours, 'Quieter at' is hidden (an hour we cannot say is open is not offered)", () => {
+  test("W-7 (P3) with no opening hours, 'Quieter at' is hidden (an hour we cannot say is open is not offered)", () => {
     const at = new Date("2026-11-13T11:30:00Z"); // Fri 12:30 venue (+60): casual_eats 70 -> 35 at 14:00
     const root = mount(<WhenYoudGo {...base} chips={[{ key: "now", at }]} selected="now" hourly={null} utcOffsetMinutes={60} openingHours={undefined} />);
     expect(quieterShown(root)).toBeNull();
@@ -554,7 +554,7 @@ describe("D / N / S", () => {
     }
   });
 
-  test.failing("N-1 (P3) the night-out gallery is told when the sheet is hidden and when Reduce Motion is on", () => {
+  test("N-1 (P3) the night-out gallery is told when the sheet is hidden and when Reduce Motion is on", () => {
     const src = read("components/expandedCard/EventDetailLayout.tsx");
     const at = src.indexOf("<PlaceGallery");
     const tag = src.slice(at, src.indexOf("/>", at));
@@ -562,7 +562,7 @@ describe("D / N / S", () => {
     expect(tag).toMatch(/\breducedMotion=/);
   });
 
-  test.failing("S-1 (P2) switching cards while the sheet is open drops the previous card's forecast before fetching", () => {
+  test("S-1 (P2) switching cards while the sheet is open drops the previous card's forecast before fetching", () => {
     const at = MODAL.indexOf("// Fetch additional data when modal opens");
     const effect = MODAL.slice(at, MODAL.indexOf("}, [visible, card", at));
     const openBranch = effect.slice(effect.indexOf("if (visible && card)"), effect.indexOf("} else {"));

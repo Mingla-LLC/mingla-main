@@ -48,12 +48,20 @@ export function photoLabelTop(safeTopInset: number): number {
 export function tapZoneBottomY(
   cardHeight: number,
   titleBottom: number,
-  extras: { smartChip?: boolean; stack?: boolean } = {},
+  extras: { smartChip?: boolean; stack?: boolean; fontScale?: number } = {},
 ): number {
-  let column = S1.titleLines * S1.titleLH + KICKER.gap + KICKER.lineHeight;
+  // #4347 rework (Z-3) — the column is measured at the ACTIVE text size, capped
+  // where the text itself is capped (title 1.4x, kicker / chip 1.3x). Without a
+  // known scale the caps are used, so a zone can never reach into the title at
+  // any text size (at 1.0x the middle "open" area is simply a little taller).
+  const scale = typeof extras.fontScale === 'number' && extras.fontScale > 0 ? extras.fontScale : Infinity;
+  const titleScale = Math.max(1, Math.min(scale, MAX_FONT_SCALE.title));
+  const metaScale = Math.max(1, Math.min(scale, MAX_FONT_SCALE.meta));
+  let column = S1.titleLines * S1.titleLH * titleScale + KICKER.gap + KICKER.lineHeight * metaScale;
   if (extras.stack) column += STOP_STACK.size + STOP_STACK.marginBottom;
-  if (extras.smartChip) column += SMART_CHIP.lineHeight + 2 * SMART_CHIP.paddingV + SMART_CHIP.marginBottom;
-  return Math.max(0, cardHeight - titleBottom - column);
+  if (extras.smartChip) column += SMART_CHIP.lineHeight * metaScale + 2 * SMART_CHIP.paddingV + SMART_CHIP.marginBottom;
+  // Floored: a fractional point is never handed to a flip zone.
+  return Math.max(0, Math.floor(cardHeight - titleBottom - column));
 }
 
 export function PhotoPagerBars({

@@ -244,7 +244,9 @@ export function quieterHour(
   if (crowdLevel(now) === 'quiet') return null;
   for (let h = crowd.hour + 1; h <= lastHour; h += 1) {
     const value = crowd.hourly[h] ?? 0;
-    if (now - value >= 25 && isOpenAtHour(h) !== false) return h;
+    // #4347 rework (W-7) — only an hour we can SAY is open is offered; with no
+    // readable hours the hint is hidden, never guessed.
+    if (now - value >= 25 && isOpenAtHour(h) === true) return h;
   }
   return null;
 }

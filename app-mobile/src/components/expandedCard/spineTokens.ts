@@ -203,8 +203,11 @@ export const WHEN_BLOCK = {
   chipActiveText: '#FFFFFF',
   barsHeight: 64,
   barGap: 3,
-  barFill: '#D1D5DB',
-  barActiveFill: '#EB7825',
+  // #4347 rework (P2-c) — non-text graphics need 3:1 on white: #D1D5DB was
+  // 1.47:1; #8A909A is 3.2:1. The chosen hour is the link accent (5.18:1),
+  // since the #EB7825 fill is only 2.90:1.
+  barFill: '#8A909A',
+  barActiveFill: '#C2410C',
   barMinPct: 6,
   /** The chart's hours (inclusive). */
   firstHour: 10,
