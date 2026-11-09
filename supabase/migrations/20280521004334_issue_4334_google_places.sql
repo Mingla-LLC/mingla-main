@@ -25,51 +25,46 @@
 --      are registered.
 --   7. pg_cron job `places-coordinate-refresh-daily` at 03:20 UTC.
 --
--- ROLLBACK (tester F-11). Reverting the PR does NOT undo this migration; the
--- database stays forward. To roll the schema and data back, in one transaction
--- and only after the edge functions are back on the pre-#4334 bundle:
---   a. Pins: run `scripts/issue-4334/repin-to-google.ts --restore <applied.json>`
---      (the file the --apply run wrote; it calls
---      places_repin_restore, which copies every *_mapbox_lat/lng audit pair back
---      onto its row and clears the Google id). Host text was never changed.
---   b. Chat plans: ALTER TABLE chat_plans / chat_plan_place_options RENAME
---      provider_place_id TO mapbox_id (and the two constraint names back), then
---      re-apply the plan function bodies from 20280403054261 (they read
---      `mapboxId`); rows created after #4334 carry Google ids, which the old
---      bodies store as opaque strings.
---   c. Re-apply the pre-#4334 bodies of the functions in the A-2/A-1 sections
---      from their previous defining migrations (or production's
---      pg_get_functiondef captured before apply), and re-create the three venue
---      RPCs with their 22-/9-argument signatures (DROP the 23-/10-argument ones).
---   d. SELECT cron.unschedule(jobid) FROM cron.job WHERE jobname =
---      'places-coordinate-refresh-daily'. api-health tiles (section 8), values
---      read from production 2026-11-08 before apply:
---        DELETE FROM api_health_alert_state WHERE service_key IN ('google_place_details',
---          'google_geocoding','google_static_maps','google_place_refresh');
---        DELETE FROM api_health_checks WHERE service_key IN (same four);
---        DELETE FROM api_health_services WHERE service_key IN (same four);
---        INSERT INTO api_health_services (service_key, display_name, category,
---          sort_order, monitoring_class, depletion_signal) VALUES ('mapbox', 'Mapbox',
---          'maps', 30, 'B', '{"status_feed":"https://status.mapbox.com/api/v2/status.json",
---          "reactive":{"http":429,"field":"status_text","match":"429"}}');
---        INSERT INTO api_health_alert_state (service_key) VALUES ('mapbox');
---          (production's row was current_state 'ok', no alerts, 0 failures)
---        UPDATE api_health_services SET display_name = 'Google Places',
---          depletion_signal = '{"status_feed":null,"reactive_source":"probe_only",
---          "reactive":{"http":[429],"field":"status_text","match":"RESOURCE_EXHAUSTED"}}'
---          WHERE service_key = 'google_places';
---      The old vendor's api_health_checks history (1,553 rows on 2026-11-08) is
---      deleted by this file and is NOT restorable; export it before apply if it is
---      wanted.
---   e. The added columns, triggers and places_* functions can stay (inert once
---      the trigger functions are dropped: DROP TRIGGER tg_4334_* on events,
---      experience_stops, venue_listings, brands, preferences, chat_plans).
---   f. Grants: every function re-created in steps b–c (CREATE, or DROP + CREATE
---      for the venue RPCs) must have its REVOKE/GRANT restated in the same
---      transaction, matching production's ACL captured before apply (see the F-9
---      and N-1 grant blocks at the end of this file for the current values); a
---      DROP + CREATE otherwise falls back to PUBLIC EXECUTE.
--- Forward-fix is preferred; steps a–f are the full reverse path.
+-- ROLLBACK (tester F-11, R3-4). Reverting the PR does NOT undo this migration; the
+-- database stays forward. The reverse path is generated, not hand-written, and was
+-- rehearsed end to end on a local replay (result on #4334):
+--   0. BEFORE apply, read-only against production, as postgres:
+--        psql -X -q -At -v ON_ERROR_STOP=1 -f scripts/issue-4334/capture-rollback.sql > rollback-4334.sql
+--      It captures every object this file re-emits exactly as production has it
+--      (function bodies, owners, ACLs, comments; the business_public_events_view
+--      body, options, owner and ACL; the mapbox and google_places api-health rows).
+--      Optionally export api_health_checks WHERE service_key = 'mapbox' too: this
+--      file deletes that history (1,553 rows on 2026-11-08, and growing) and the
+--      rollback cannot restore it.
+--   To roll back, put the edge functions back on the pre-#4334 bundle, then:
+--   a. Pins: `scripts/issue-4334/repin-to-google.ts --restore <applied.json>` (the
+--      file the --apply run wrote). places_repin_restore copies every
+--      *_mapbox_lat/lng audit pair back and clears the Google id; host text was
+--      never changed. This must run first: step f drops places_repin_restore.
+--   b–f. Run rollback-4334.sql as postgres. In one transaction it:
+--   d. unschedules places-coordinate-refresh-daily (by job id), deletes the four
+--      Google api-health tiles, and restores the captured mapbox and google_places
+--      rows and the mapbox alert-state row;
+--   e. drops the six tg_4334_* stamp triggers;
+--   b. renames chat_plans / chat_plan_place_options provider_place_id → mapbox_id
+--      and both length constraints back, and DROPs
+--      chat_plan_place_identity_key(text, uuid, text, text, text, text) first: its
+--      third argument was renamed, which CREATE OR REPLACE cannot undo
+--      ("cannot change name of input parameter");
+--   c. drops the overloads this file added (the 23-argument biz_create_venue_listing
+--      and the 10-argument venue identity / change-request RPCs), re-creates every
+--      captured function from its captured body — the A-2 Host save paths, A-1
+--      pg_public_event_by_slug, N-1 pg_direct_event_checkout_bundle and
+--      pg_public_rsvp_by_slug, the 20280403054261 chat-plan functions — and
+--      restates each one's owner, ACL and comment (a DROP + CREATE would otherwise
+--      fall back to PUBLIC EXECUTE). business_public_events_view: DROP VIEW +
+--      CREATE from the captured 75-column body (CREATE OR REPLACE VIEW cannot drop
+--      the appended column; no other object depends on the view), then its
+--      captured security_invoker option, owner, ACL and comment;
+--   f. drops the places_* functions this file added (inert after d and e).
+--   Kept on purpose: the added columns, indexes and CHECKs (inert), the looser
+--   1024-character place-id cap, and the #2489 carrier rows (append-only data).
+-- Forward-fix is preferred; steps 0 and a–f are the full reverse path.
 --
 -- Static SQL only (no dynamic EXECUTE). Conflicts raise PT409, never 40001.
 -- Host-entered text (location_text, address, trip *LocationText, custom_location,
