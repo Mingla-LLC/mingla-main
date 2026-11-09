@@ -195,6 +195,10 @@ const config: NextConfig = {
       { protocol: 'https', hostname: 'framerusercontent.com' },
       blogMediaPattern(),
       eventCoversPattern(),
+      // #4339 speed fix — the help centre's video thumbnails (Bamboo's public
+      // poster frames), resized to the card by next/image on Vercel instead
+      // of a 480 px cross-origin JPEG. Not Supabase: hold #1643 is untouched.
+      { protocol: 'https', hostname: 'cdnapi.bamboo-cloud.com', pathname: '/p/0/sp/000/thumbnail/entry_id/**' },
     ],
   },
   experimental: {

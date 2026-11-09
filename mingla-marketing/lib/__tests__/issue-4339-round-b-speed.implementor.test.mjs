@@ -92,7 +92,11 @@ test('LCP: priority and lazy posters, lazy city place photos, sized help thumbna
   assert.match(goingOut, /<LandingMedia media=\{guide\.media\} lazyPoster \/>/)
   assert.match(goingOut, /<LandingMedia media="v:cozy" priority \/>/)
   assert.match(code(read('components/cities/city-weekend.tsx')), /eager=\{false\}/)
-  assert.match(code(read('components/help/help-browser.tsx')), /<img src=\{bambooPosterUrl\(v\.bambooEntryId, 480\)\} alt="" width=\{480\} height=\{270\} loading="lazy" decoding="async" \/>/)
+  // #4339 speed fix: the cards render on the server (help-video-grid.tsx);
+  // thumbnails are sized next/image, the first one preloaded (the LCP), the
+  // rest lazy.
+  const grid = code(read('components/help/help-video-grid.tsx'))
+  assert.match(grid, /<Image\s+src=\{bambooPosterUrl\(video\.bambooEntryId, 960\)\}\s+alt=""\s+width=\{480\}\s+height=\{270\}\s+sizes=\{CARD_SIZES\}\s+priority=\{lcp\}\s+loading=\{lcp \? undefined : 'lazy'\}/)
 })
 
 test('fonts: serif fallback metrics; legacy faces not preloaded site-wide', () => {
@@ -111,7 +115,9 @@ test('fonts: serif fallback metrics; legacy faces not preloaded site-wide', () =
 
 test('lazy nav image, QR with its sheet, no cutout barrel on help and cities, /schedule holds its room', () => {
   assert.match(code(read('components/site/site-nav.tsx')), /<img src="\/marketing\/site\/p\/lagos-quests-gallery\.jpg" alt="" loading="lazy" decoding="async" width=\{900\} height=\{599\} \/>/)
-  for (const file of ['components/landing/handoff-sheet.tsx', 'components/cities/city-this-weekend.tsx']) {
+  // #4339 speed fix: the weekend's item sheet (with its QR) moved to
+  // city-item-sheet.tsx, which city-this-weekend.tsx itself loads on a tap.
+  for (const file of ['components/landing/handoff-sheet.tsx', 'components/cities/city-item-sheet.tsx']) {
     const src = code(read(file))
     assert.match(src, /const QRCode = dynamic\(\(\) => import\('react-qr-code'\), \{ ssr: false \}\)/, file)
     assert.doesNotMatch(src, /import QRCode from 'react-qr-code'/, file)

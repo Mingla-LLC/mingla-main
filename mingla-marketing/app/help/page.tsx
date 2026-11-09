@@ -5,8 +5,9 @@ import { searchRouteMetadata } from '@/lib/search/metadata'
 // barrel pulls framer-motion into every route that touches it).
 import { BreadcrumbSchema } from '@/components/cutout/schema'
 import { HelpBrowser } from '@/components/help/help-browser'
+import { HelpChapters } from '@/components/help/help-video-grid'
 import { PageHero, SitePage } from '@/components/site/site-page'
-import { HELP_VIDEOS } from '@/content/help/registry'
+import { HELP_INTENTS, HELP_VIDEOS } from '@/content/help/registry'
 import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
 
 // The help centre. Every feature of the platform, shown rather than described.
@@ -44,7 +45,11 @@ export default function HelpCentrePage() {
         />
         <section className="pb-100" aria-label="Help centre">
           <div className="wrap">
-            <HelpBrowser videos={HELP_VIDEOS} />
+            {/* #4339 speed fix: the cards render here, on the server; the
+                browser island only filters them (no registry in the payload). */}
+            <HelpBrowser intents={HELP_INTENTS}>
+              <HelpChapters videos={HELP_VIDEOS} />
+            </HelpBrowser>
           </div>
         </section>
         <section className="pb-100" aria-labelledby="help-stuck">

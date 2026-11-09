@@ -1,10 +1,9 @@
-'use client'
-import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import Link from 'next/link'
 import { ICP_LANDINGS, ICP_SLUGS, icpLandingPath } from '@/content/host-landing/icps'
 import { ExplorerHandoffButton } from '@/components/landing/explorer-handoff'
 import { HostHandoffButton } from '@/components/landing/host-handoff'
 import { Wordmark } from './wordmark'
+import { SiteNavMenu } from './site-nav-menu'
 
 // #4339 — the site nav on every redesigned page: a floating white pill.
 //
@@ -18,7 +17,12 @@ import { Wordmark } from './wordmark'
 // shadow, so it reads the same over paper, ink and video sections.
 //
 // The menu closes on Escape (focus returns to the menu button), on a click
-// outside, and when a link in it is followed.
+// outside, and when a link in it is followed (site-nav-menu.tsx).
+//
+// #4339 speed fix: this is a server component. The links, the menu groups (all
+// seven landing pages, read from content/host-landing/icps.ts) and the
+// wordmark render here, so none of that ships as JavaScript; the small client
+// island site-nav-menu.tsx owns only the open state.
 
 export type SiteNavSurface = 'explorer' | 'host'
 
@@ -86,98 +90,49 @@ interface SiteNavProps {
 
 export function SiteNav({ surface, current, origin }: SiteNavProps) {
   const abs = (href: string) => (origin && href.startsWith('/') ? `${origin}${href}` : href)
-  const [open, setOpen] = useState(false)
-  const navRef = useRef<HTMLElement>(null)
-  const burgerRef = useRef<HTMLButtonElement>(null)
-  const menuId = useId()
-
-  const close = useCallback((returnFocus: boolean) => {
-    setOpen(false)
-    if (returnFocus) burgerRef.current?.focus({ preventScroll: true })
-  }, [])
-
-  useEffect(() => {
-    if (!open) return
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault()
-        close(true)
-      }
-    }
-    const onPointer = (event: PointerEvent) => {
-      const nav = navRef.current
-      if (nav && event.target instanceof Node && !nav.contains(event.target)) close(false)
-    }
-    document.addEventListener('keydown', onKey)
-    document.addEventListener('pointerdown', onPointer)
-    return () => {
-      document.removeEventListener('keydown', onKey)
-      document.removeEventListener('pointerdown', onPointer)
-    }
-  }, [open, close])
-
   return (
-    <header ref={navRef} className={open ? 'site-nav open' : 'site-nav'} data-site-nav="" data-surface={surface}>
-      <div className="nav-in">
-        <Link className="brand" href={abs('/')} aria-label="Mingla home">
-          <Wordmark height={24} title={null} />
-        </Link>
-        <nav className="nav-links" aria-label="Main">
-          {TOP_LINKS.map((l) => (
-            <Link key={l.key} href={abs(l.href)} className={current === l.key ? 'on' : undefined} aria-current={current === l.key ? 'page' : undefined}>
-              {l.label}
-            </Link>
-          ))}
-        </nav>
-        {origin ? null : surface === 'host' ? (
-          <HostHandoffButton location="nav" className="btn cta nav-cta" />
-        ) : (
-          <ExplorerHandoffButton location="nav" className="btn cta nav-cta" />
-        )}
-        <button
-          ref={burgerRef}
-          type="button"
-          className="burger"
-          aria-expanded={open}
-          aria-controls={menuId}
-          aria-label={open ? 'Close menu' : 'Open menu'}
-          onClick={() => setOpen((v) => !v)}
-        >
-          <span aria-hidden="true">
-            <i />
-            <i />
-          </span>
-        </button>
-        <div
-          id={menuId}
-          className="drop"
-          inert={!open}
-          onClick={(event) => {
-            if ((event.target as HTMLElement).closest('a')) setOpen(false)
-          }}
-        >
-          {MENU_GROUPS.map((group) => (
-            <div key={group.title}>
-              {/* #4339 round B: a menu label, not a page heading. */}
-              <p className="drop-label">{group.title}</p>
-              <ul>
-                {group.links.map((l) => (
-                  <li key={l.href}>
-                    {l.external ? <a href={l.href}>{l.label}</a> : <Link href={abs(l.href)}>{l.label}</Link>}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-          <Link className="feat-card" href={abs('/host')}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/marketing/site/p/lagos-quests-gallery.jpg" alt="" loading="lazy" decoding="async" width={900} height={599} />
-            <span>
-              Run a place <em>with soul?</em>
-            </span>
+    <SiteNavMenu
+      surface={surface}
+      lead={
+        <>
+          <Link className="brand" href={abs('/')} aria-label="Mingla home">
+            <Wordmark height={24} title={null} />
           </Link>
+          <nav className="nav-links" aria-label="Main">
+            {TOP_LINKS.map((l) => (
+              <Link key={l.key} href={abs(l.href)} className={current === l.key ? 'on' : undefined} aria-current={current === l.key ? 'page' : undefined}>
+                {l.label}
+              </Link>
+            ))}
+          </nav>
+          {origin ? null : surface === 'host' ? (
+            <HostHandoffButton location="nav" className="btn cta nav-cta" />
+          ) : (
+            <ExplorerHandoffButton location="nav" className="btn cta nav-cta" />
+          )}
+        </>
+      }
+    >
+      {MENU_GROUPS.map((group) => (
+        <div key={group.title}>
+          {/* #4339 round B: a menu label, not a page heading. */}
+          <p className="drop-label">{group.title}</p>
+          <ul>
+            {group.links.map((l) => (
+              <li key={l.href}>
+                {l.external ? <a href={l.href}>{l.label}</a> : <Link href={abs(l.href)}>{l.label}</Link>}
+              </li>
+            ))}
+          </ul>
         </div>
-      </div>
-    </header>
+      ))}
+      <Link className="feat-card" href={abs('/host')}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/marketing/site/p/lagos-quests-gallery.jpg" alt="" loading="lazy" decoding="async" width={900} height={599} />
+        <span>
+          Run a place <em>with soul?</em>
+        </span>
+      </Link>
+    </SiteNavMenu>
   )
 }

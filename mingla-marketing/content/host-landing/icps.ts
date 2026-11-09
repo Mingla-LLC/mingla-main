@@ -15,7 +15,13 @@
 // No store, host or OneLink URL lives here: every "Use Mingla Web" button goes
 // through lib/app-handoff.ts, which asks lib/cta-destination.ts (#4137).
 
-export type LandingMediaRef = `v:${string}` | `p:${string}`
+// #4339 speed fix: the media reference and its resolver live in
+// lib/landing-media-ref.ts, so the client media player does not ship this
+// whole file (every landing page's copy). Re-exported here for its callers.
+import type { LandingMediaRef } from '../../lib/landing-media-ref'
+import { resolveLandingMedia } from '../../lib/landing-media-ref'
+export type { LandingMediaRef, ResolvedLandingMedia } from '../../lib/landing-media-ref'
+export { resolveLandingMedia } from '../../lib/landing-media-ref'
 
 export type LandingIcon =
   | 'ticket'
@@ -384,25 +390,6 @@ export function icpLandingPath(slug: IcpSlug): string {
 export function icpLandingMeta(slug: IcpSlug): { title: string; description: string } {
   const d: IcpLanding = ICP_LANDINGS[slug]
   return { title: `${d.seoTitle} | Mingla Host`, description: d.sub }
-}
-
-export interface ResolvedLandingMedia {
-  readonly kind: 'video' | 'photo'
-  /** The clip (video only). */
-  readonly src: string | null
-  /** The still: the clip's poster, or the photo itself. */
-  readonly poster: string
-}
-
-const MEDIA_ROOT = '/marketing/site'
-
-export function resolveLandingMedia(ref: LandingMediaRef): ResolvedLandingMedia {
-  const name = ref.slice(2)
-  if (!/^[a-z0-9-]+$/.test(name)) throw new Error(`#4339 landing media name is not a plain slug: ${ref}`)
-  if (ref.startsWith('v:')) {
-    return { kind: 'video', src: `${MEDIA_ROOT}/m/${name}.mp4`, poster: `${MEDIA_ROOT}/m/${name}.jpg` }
-  }
-  return { kind: 'photo', src: null, poster: `${MEDIA_ROOT}/p/${name}.jpg` }
 }
 
 /** The features background as a media reference: `v:<name>` stays a clip, a plain name is a still. */

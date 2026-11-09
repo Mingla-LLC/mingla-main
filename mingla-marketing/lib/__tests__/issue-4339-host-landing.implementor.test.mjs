@@ -52,7 +52,9 @@ const NEW_FILES = [
 ]
 
 // ---- strip-types loader: one module and its relative lib imports ----------
-const IMPORT = /from\s+'(@\/lib\/|\.\/)([\w-]+)'/g
+// #4339 speed fix: icps.ts reaches lib/landing-media-ref.ts relatively (it is
+// also loaded by next.config.ts, where `@/` does not resolve).
+const IMPORT = /from\s+'(@\/lib\/|\.\/|\.\.\/\.\.\/lib\/)([\w-]+)'/g
 function emit(sourcePath, outName, out, seen) {
   if (seen.has(outName)) return
   seen.add(outName)

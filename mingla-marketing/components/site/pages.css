@@ -2024,3 +2024,18 @@
   height: 16px;
   flex: none;
 }
+
+/* #4339 speed fix — the help filter hides server-rendered cards and empty
+   chapters (help-browser.tsx); while filtering, the chapter headings step
+   aside so the matches read as one list. */
+[data-landing] [data-help-slug][hidden],
+[data-landing] [data-help-chapter][hidden] {
+  display: none;
+}
+[data-landing] [data-help-filtering] .help-chapter > h2,
+[data-landing] [data-help-filtering] .help-chapter > .lead {
+  display: none;
+}
+[data-landing] [data-help-filtering] .help-chapter + .help-chapter {
+  margin-top: 24px;
+}

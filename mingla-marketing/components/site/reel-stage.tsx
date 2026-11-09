@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useRef } from 'react'
-import { resolveLandingMedia, type LandingMediaRef } from '@/content/host-landing/icps'
+import { resolveLandingMedia, type LandingMediaRef } from '@/lib/landing-media-ref'
 import { prefersStillMedia } from '@/components/landing/landing-media'
 import { afterLoadAndIdle, clipEnvironment, clipSourceFor, webpPoster } from '@/lib/clip-sources'
 

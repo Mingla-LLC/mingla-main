@@ -47,6 +47,7 @@ const NEW_FILES = [
   'components/site/home-page.tsx',
   'components/site/host-page.tsx',
   'components/site/site-nav.tsx',
+  'components/site/site-nav-menu.tsx',
   'components/site/reel-hero.tsx',
   'components/site/reel-stage.tsx',
   'components/site/rotating-phrase.tsx',
@@ -55,6 +56,7 @@ const NEW_FILES = [
   'components/site/site.css',
   'components/landing/explorer-handoff.tsx',
   'components/landing/handoff-sheet.tsx',
+  'components/landing/handoff-trigger.ts',
   'components/landing/host-handoff.tsx',
   'components/marketing/footer.tsx',
   'components/marketing/site-footer.css',
@@ -197,7 +199,10 @@ test('no store, OneLink or host URL is hard-coded in the new files', () => {
 })
 
 test('site nav: wordmark, five links, surface CTA, the 300ms ink menu with every landing page', () => {
-  const nav = code(read('components/site/site-nav.tsx'))
+  // #4339 speed fix: site-nav.tsx is a server component (links, menu groups,
+  // wordmark); the open state lives in the client island site-nav-menu.tsx.
+  const nav = `${code(read('components/site/site-nav.tsx'))}\n${code(read('components/site/site-nav-menu.tsx'))}`
+  assert.doesNotMatch(code(read('components/site/site-nav.tsx')), /^'use client'/, 'the nav renders on the server')
   assert.deepEqual(
     [...nav.matchAll(/\{ key: '[\w-]+', href: '([^']+)', label: '([^']+)' \}/g)].map((m) => [m[1], m[2]]),
     [

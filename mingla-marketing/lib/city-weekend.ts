@@ -41,6 +41,7 @@ import {
   type LinksStripRow,
   type LinksWeekRow,
 } from './links-week'
+import type { LinksTarget } from './links-handoff'
 
 export const FALLBACK_TEXT = 'Nothing is listed this week yet. Check back soon.'
 
@@ -65,6 +66,12 @@ export function weekendKeys(today: string): string[] {
 }
 
 export type CityWeekendKind = 'Events' | 'Experiences' | 'Places'
+
+/** The small label a listing card and its sheet show for its kind. */
+export const CITY_LISTING_KIND_LABEL: Record<LinksListing['kind'], string> = { event: 'Event', trip: 'Trip', experience: 'Experience' }
+
+/** What a "This weekend" card opens on a computer: a listing or a place sheet. */
+export type CityItemTarget = Extract<LinksTarget, { type: 'listing' } | { type: 'place' }>
 
 /** The chip a listing sits under. Trips are experiences you travel for, so they sit under Experiences. */
 export function listingChip(listing: LinksListing): CityWeekendKind {

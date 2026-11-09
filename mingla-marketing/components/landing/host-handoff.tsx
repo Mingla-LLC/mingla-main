@@ -8,7 +8,12 @@ import { pageMeasurement } from '@/lib/page-measurement'
 import { siteAttribution } from '@/lib/links-src'
 import { resolveAppHandoff, withLandingCampaignHref } from '@/lib/app-handoff'
 import { useState } from 'react'
-import { HandoffSheet, isPlainClick, useHandoffSheet } from './handoff-sheet'
+import dynamic from 'next/dynamic'
+import { isPlainClick, useHandoffSheet } from './handoff-trigger'
+
+// #4339 speed fix: the sheet opens only on a computer, after a tap, so it (and
+// its QR code) loads then, not with the page (first-load JS).
+const HandoffSheet = dynamic(() => import('./handoff-sheet').then((module) => module.HandoffSheet), { ssr: false })
 
 // #4339 §3 — "Use Mingla Web", the Host hand-off, on every redesigned page.
 //

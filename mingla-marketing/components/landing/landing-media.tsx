@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useRef } from 'react'
 import { preload } from 'react-dom'
-import { resolveLandingMedia, type LandingMediaRef } from '@/content/host-landing/icps'
+import { resolveLandingMedia, type LandingMediaRef } from '@/lib/landing-media-ref'
 import { afterFirstPaint, afterLoadAndIdle, clipEnvironment, clipSourceFor, webpPoster } from '@/lib/clip-sources'
 
 // #4339 §11 — video-first media, fast-load rules:
