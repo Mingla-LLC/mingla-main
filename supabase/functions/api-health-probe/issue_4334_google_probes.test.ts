@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-4334-GOOGLE-PROBES-BODY-VERDICT | issue #4334 | Each Google api-health probe calls the endpoint the product calls and decides on the response body, never on the HTTP status alone.
 // #4334 §8 — the four Google probes test the endpoints we actually call, and
 // every verdict is a BODY verdict (matrix R-HEALTH-2).
 // Invariant I-4334-GOOGLE-PROBES-BODY-VERDICT.

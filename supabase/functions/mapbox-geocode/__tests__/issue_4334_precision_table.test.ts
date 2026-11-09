@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-4334-FEATURETYPE-VOCABULARY | issue #4334 | featureType stays within the legacy vocabulary (poi, address, street, neighborhood, locality, place, district, region, country) and maps to coordinate precision by one table.
 // #4334 — every row of spec v1 §4.4: Google `types` → legacy featureType →
 // coordinate precision (matrix R-PREC-1). Successor of the #1629
 // feature_type test.

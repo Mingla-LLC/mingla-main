@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
+// MINGLA-INVARIANT: I-4334-NO-MAPBOX | issue #4334 | No tracked file names or references the former map vendor outside the reviewed allowlist (sealed names, migrations, the rollback generator).
 /**
  * Strict-grep gate — #4334 · I-4334-NO-MAPBOX
  *

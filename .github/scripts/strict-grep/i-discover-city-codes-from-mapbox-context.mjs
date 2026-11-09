@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
+// MINGLA-INVARIANT: I-DISCOVER-CITY-CODES-FROM-STRUCTURED-CONTEXT | issue #4334 | Discover city and country codes come from the provider structured context fields, never from parsing display text.
 /**
  * Strict-grep gate — META-ORCH-1060 / #4334
  * INV-3 · I-DISCOVER-CITY-CODES-FROM-STRUCTURED-CONTEXT

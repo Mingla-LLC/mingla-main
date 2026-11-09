@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-4334-PROVIDER-NEUTRAL-CONTRACT | issue #4334 | Clients only ever see the provider-neutral PlaceDetails shape; no provider field name or raw response leaks through the proxy.
 // #4334 — golden normalizer tests (spec v1 §7.2, v2 §3.3; matrix R-CITY-1,
 // R-COPY-2, R-DIST-1, the D1 Lagos rule).
 //

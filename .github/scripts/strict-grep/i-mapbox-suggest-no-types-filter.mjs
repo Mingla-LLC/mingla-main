@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
+// MINGLA-INVARIANT: I-ADDRESS-SUGGEST-NO-TYPE-FILTER | issue #4334 | The Host address suggest request carries no types, country or limit filter; ranking comes from proximity bias only.
 /**
  * Strict-grep gate — ORCH-1079 INV-3, Google since #4334
  * I-ADDRESS-SUGGEST-NO-TYPE-FILTER

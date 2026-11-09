@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
+// MINGLA-INVARIANT: I-BIZ-ADDRESS-INPUT-USES-SHARED-PICKER | issue #4334 | The Host venue, brand and trip address fields import the shared AddressInput wrapper and never the removed direct-autocomplete path.
 /**
  * Strict-grep gate — ORCH-1079 / #4334
  * INV-1 · I-BIZ-ADDRESS-INPUT-USES-SHARED-PICKER

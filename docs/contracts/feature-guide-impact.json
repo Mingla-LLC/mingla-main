@@ -1602,7 +1602,9 @@
         "supabase/functions/mapbox-geocode/index.ts",
         "supabase/functions/mapbox-geocode/iso3166_2.ts",
         "supabase/functions/mapbox-geocode/namedAreaAddress.ts",
-        "supabase/migrations/20280521004334_issue_4334_google_places.sql"
+        "supabase/migrations/20280521004334_issue_4334_google_places.sql",
+        "mingla-business/src/components/location/sharedAddressField.tsx",
+        "mingla-business/src/components/location/sharedAddressField.web.tsx"
       ]
     },
     {

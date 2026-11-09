@@ -1,3 +1,5 @@
+// MINGLA-INVARIANT: I-4334-PROVIDER-ERRORS-ARE-LOUD | issue #4334 | No upstream provider failure becomes an empty suggestion list; the proxy returns a typed error code the client shows as search unavailable.
+// MINGLA-INVARIANT: I-4334-RETIRED-IDS-FAIL-LOUD | issue #4334 | A pre-Google place id sent to the proxy returns 410 provider_id_retired without any upstream call.
 // #4334 — the address proxy's request and error contract, driven through the
 // exported `handler` with a stubbed fetch (no network). Matrix rows R-RETIRE-1,
 // R-SRCH-1/3/4/5/6/8, R-PREF-1/4/5/6, R-HIER-1.

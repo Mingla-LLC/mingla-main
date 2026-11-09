@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
+// MINGLA-INVARIANT: I-CONSUMER-LOCATION-USES-SHARED-PICKER | issue #4334 | Explorer location fields use the shared address picker through the app wrapper, never a private geocoder.
 /**
  * Strict-grep gate — META-ORCH-1060 / #4334
  * INV-2 · I-CONSUMER-LOCATION-USES-SHARED-PICKER

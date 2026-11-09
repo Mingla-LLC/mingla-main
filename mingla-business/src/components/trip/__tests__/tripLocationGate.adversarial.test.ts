@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-PROPOSED-TRIP-LOCATION-PICK-VALIDATED | issue #4334 | Trip from and destination addresses publish only as picked, validated places with coordinates; a typed address without a pick never passes the gate.
 /**
  * ORCH-1118 [trip from/destination fields must be pick-validated addresses]
  * TESTER adversarial regression test (mingla-tester) — DIFFERENT ANGLE from the
