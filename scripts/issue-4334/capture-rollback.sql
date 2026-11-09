@@ -31,6 +31,11 @@
 --      captured body with its captured options, ACL and comment (CREATE OR
 --      REPLACE cannot drop the appended column).
 --   f  drop the places_* functions the migration added (inert after d and e).
+-- Secret: the pre-#4334 edge bundle a rollback puts back reads MAPBOX_ACCESS_TOKEN,
+-- so that secret stays set (and declared in supabase/secrets.manifest.json, with
+-- this file as its reader) until the rollback window closes. The unset, the
+-- manifest row and this note go together in the PR that records the unset; the
+-- deploy readiness preflight requires the live set to equal the manifest.
 -- Kept on purpose: the added columns, indexes and CHECKs (inert), the looser
 -- 1024-character place-id cap, and the #2489 carrier rows (append-only data).
 SET search_path = '';

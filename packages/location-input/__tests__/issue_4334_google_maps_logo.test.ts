@@ -53,8 +53,10 @@ Deno.test("L-1 the logo files are Google's own, byte for byte, at Google's aspec
 
 Deno.test("L-2 the shared field draws the logo at 98×18 with Google's clear space, labelled Google Maps", async () => {
   const src = await read("packages/location-input/src/AddressInput.tsx");
-  assert(src.includes('light: require("../assets/google-maps-logo-dark-gray.png")'));
-  assert(src.includes('dark: require("../assets/google-maps-logo-white.png")'));
+  // lazy getters: the PNGs load only when a logo row renders (#1486 render batch)
+  assert(/get light\(\): number \{\s*return require\("\.\.\/assets\/google-maps-logo-dark-gray\.png"\)/.test(src));
+  assert(/get dark\(\): number \{\s*return require\("\.\.\/assets\/google-maps-logo-white\.png"\)/.test(src));
+  assertEquals(/^\s*(light|dark): require\(/m.test(src), false, "no module-scope image require");
   assert(src.includes("GOOGLE_MAPS_LOGO_SIZE = { width: 98, height: 18 }"));
   assert(/attributionRow: \{\s*paddingTop: 10,\s*paddingBottom: 5,\s*paddingHorizontal: 10,/.test(src));
   assert(src.includes('accessibilityLabel="Google Maps"'));

@@ -125,14 +125,22 @@ export function computeDropdownMaxHeight(params: {
   cardTopY: number | null;
   tokenMaxHeight: number;
   isIOS: boolean;
+  /**
+   * #4334 N-2 — height of a fixed row inside the card ABOVE the list (Google's
+   * logo row). The list's viewport gives it up so the list bottom stays above
+   * the keyboard. Default 0 = the #1027 result unchanged.
+   */
+  reservedHeight?: number;
 }): number {
-  const { keyboardScreenY, cardTopY, tokenMaxHeight, isIOS } = params;
+  const { keyboardScreenY, cardTopY, isIOS } = params;
+  const reserved = Math.max(0, params.reservedHeight ?? 0);
+  const tokenMaxHeight = Math.max(0, params.tokenMaxHeight - reserved);
   if (!Number.isFinite(keyboardScreenY) || cardTopY === null) {
     return tokenMaxHeight;
   }
   const accessory = isIOS ? DROPDOWN_KEYBOARD_ACCESSORY_ALLOWANCE : 0;
   const availableBelow =
-    keyboardScreenY - cardTopY - DROPDOWN_SAFETY_MARGIN - accessory;
+    keyboardScreenY - cardTopY - DROPDOWN_SAFETY_MARGIN - accessory - reserved;
   return Math.max(MIN_DROPDOWN_HEIGHT, Math.min(tokenMaxHeight, availableBelow));
 }
 
@@ -814,15 +822,13 @@ export const AddressInput: React.FC<AddressInputProps> = ({
   // (falls back to the token unchanged when the keyboard is hidden / not measured).
   // #4334 N-2 — the logo row sits inside the card above the list, so the list's
   // viewport gives up that row's height to keep its bottom above the keyboard.
-  const dropdownMaxHeight = Math.max(
-    0,
-    computeDropdownMaxHeight({
-      keyboardScreenY,
-      cardTopY,
-      tokenMaxHeight: tokens.dropdown.maxHeight,
-      isIOS: Platform.OS === "ios",
-    }) - (showAttribution ? GOOGLE_MAPS_ATTRIBUTION_ROW_HEIGHT : 0),
-  );
+  const dropdownMaxHeight = computeDropdownMaxHeight({
+    keyboardScreenY,
+    cardTopY,
+    tokenMaxHeight: tokens.dropdown.maxHeight,
+    isIOS: Platform.OS === "ios",
+    reservedHeight: showAttribution ? GOOGLE_MAPS_ATTRIBUTION_ROW_HEIGHT : 0,
+  });
 
   const wrappedList =
     tokens.dropdown.mode === "card" ? (
@@ -1203,10 +1209,19 @@ const styles = StyleSheet.create({
  * Host sheets and the Explorer city picker).
  * https://developers.google.com/maps/documentation/places/web-service/policies
  */
+// The image requires are GETTERS, so they run only when a logo row renders (an
+// open suggestion list) — not when any screen merely imports the field. A
+// module-scope image require pulled the PNGs into every importer's graph and
+// broke jest configs that have no image transform (#1486 render batch).
+// Metro still resolves both: a static require string inside a getter is bundled.
 export const GOOGLE_MAPS_LOGO = {
-  light: require("../assets/google-maps-logo-dark-gray.png"),
-  dark: require("../assets/google-maps-logo-white.png"),
-} as const;
+  get light(): number {
+    return require("../assets/google-maps-logo-dark-gray.png") as number;
+  },
+  get dark(): number {
+    return require("../assets/google-maps-logo-white.png") as number;
+  },
+};
 export const GOOGLE_MAPS_LOGO_SIZE = { width: 98, height: 18 } as const;
 /** The logo row's full height: 10 dp clear space above + 18 dp logo + 5 dp below. */
 export const GOOGLE_MAPS_ATTRIBUTION_ROW_HEIGHT = 33;

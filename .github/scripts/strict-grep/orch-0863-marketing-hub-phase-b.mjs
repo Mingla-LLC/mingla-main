@@ -1990,8 +1990,8 @@ function checkNoNewBackendFiles() {
     "supabase/functions/_shared/personHeroCards.ts",
     "supabase/functions/_shared/__tests__/meta_orch_1060_paired_text_fallback.test.ts",
     ".github/scripts/strict-grep/i-consumer-location-no-nominatim.mjs",
-    ".github/scripts/strict-grep/i-consumer-location-uses-shared-picker.mjs",
-    ".github/scripts/strict-grep/i-discover-city-codes-from-structured-context.mjs",
+    ".github/scripts/strict-grep/i-consumer-location-uses-shared-mapbox.mjs",
+    ".github/scripts/strict-grep/i-discover-city-codes-from-mapbox-context.mjs",
   ];
   // ORCH-1082 [business notification deep-link handlers — residual routing fixes]:
   // MODIFIES partner-stripe-detach (re-prefix type → stripe.* so it reaches the

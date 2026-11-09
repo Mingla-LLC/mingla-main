@@ -14,7 +14,9 @@ import {
   type PlaceAutocompleteSuggestion,
   type PlaceDetails,
   type SavedLocationContext,
-} from "@mingla/location-input";
+  // #4334 — the service file, not the package index (the index pulls the
+  // address field into every importer; on web the field loads lazily).
+} from "@mingla/location-input/src/placesService";
 import { supabase } from "./supabase";
 
 export type { AutocompleteResult, PlaceAutocompleteSuggestion, PlaceDetails };

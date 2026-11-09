@@ -151,7 +151,7 @@ export function proximityToCenter(
 
 /**
  * Body for the business `suggest`: filter-free so venue names (POIs) resolve
- * (INV-3 / ORCH-1079 intent). Gate `i-address-suggest-no-type-filter.mjs`
+ * (INV-3 / ORCH-1079 intent). Gate `i-mapbox-suggest-no-types-filter.mjs`
  * forbids type and region filters in this builder.
  */
 export function buildSuggestBody(params: {

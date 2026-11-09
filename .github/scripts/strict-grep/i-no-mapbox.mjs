@@ -59,6 +59,9 @@ export const ALLOWED_TOKENS = [
   // the pre-#4334 shared field's path, kept as a sealed Phase 2 CI origin path
   // (byte-locked registry) and its reviewed liveness exemption.
   /packages\/location-input\/src\/MapboxAddressInput\.tsx/g,
+  // the sealed #3643 strict-grep members' file names and job keys, and this gate's own name
+  /(?:biz-venue-input-uses-mapbox|consumer-location-uses-shared-mapbox|discover-city-codes-from-mapbox-context|mapbox-suggest-no-types-filter)\b/g,
+  /\bi-no-mapbox\b/g,
 ];
 
 export const ALLOWED_PATHS = [
@@ -71,9 +74,16 @@ export const ALLOWED_PATHS = [
   // [TRANSITIONAL] until MAPBOX_ACCESS_TOKEN is unset on the live project (see header).
   /^supabase\/secrets\.manifest\.json$/,
   /^scripts\/secrets\/issue_1436_secret_capacity_exit\.adversarial\.test\.mjs$/,
+  // The Feature Guide path registry names the files #4334 deleted (the PR links
+  // check counts deleted paths too).
+  /^docs\/contracts\/feature-guide-impact\.json$/,
   // The rollback generator restores the pre-#4334 `mapbox` rows by name.
   /^scripts\/issue-4334\/capture-rollback\.sql$/,
   /^\.github\/scripts\/strict-grep\/i-no-mapbox\.mjs(\.gate\.json)?$/,
+  // Sealed #3643 strict-grep bootstrap members keep their sealed file names (the
+  // bootstrap is byte-locked and every sealed member must stay); their checks are
+  // the provider-neutral #4334 ones.
+  /^\.github\/scripts\/strict-grep\/(i-biz-venue-input-uses-mapbox|i-consumer-location-uses-shared-mapbox|i-discover-city-codes-from-mapbox-context|i-mapbox-suggest-no-types-filter|i-no-biz-google-places-autocomplete)\.mjs$/,
 ];
 
 export const ALLOWED_FILE_NAMES = new Set([

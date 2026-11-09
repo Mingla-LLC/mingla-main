@@ -146,7 +146,8 @@ import {
 // ORCH-1118 — published-edit departure + destination must be confirmed address
 // picks before save. Swap the legacy plain TextInputs for the shared picker.
 import { AddressInput } from "../location/AddressInput";
-import { precisionFromPlaceDetails } from "@mingla/location-input";
+// #4334 — from its own file: the package index would pull the address field into this screen.
+import { precisionFromPlaceDetails } from "@mingla/location-input/src/placesService";
 import {
   advanceLocationRequestGeneration,
   isFreeTextResolveStale,

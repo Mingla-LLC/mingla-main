@@ -2,22 +2,25 @@
  * #4334 — the Host AddressInput wrapper (D4, D5, D7).
  * Fails-on-revert: re-add `suggestLimit` → H-1 red; drop
  * `onSearchUnavailable={reportSearchUnavailable}` → H-2 red; drop the
- * attribution token → H-3 red.
+ * attribution token → H-3 red; import the shared field statically on web → H-4;
+ * a value import from the package index in an eager Host file → H-5.
  */
 import React from "react";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, jest, test } from "@jest/globals";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const reportNonFatal = jest.fn();
 jest.mock("../../../diagnostics/reportNonFatal", () => ({ __esModule: true, reportNonFatal: (...a: unknown[]) => reportNonFatal(...a) }));
-jest.mock("@mingla/location-input", () => {
+// The wrapper loads the shared field through ./sharedAddressField (static on
+// native and here; its own chunk on web — see sharedAddressField.web.tsx).
+jest.mock("../sharedAddressField", () => {
   const ReactActual = require("react") as typeof React;
-  const actual = jest.requireActual("../../../../../packages/location-input/src/placesService") as Record<string, unknown>;
   return {
     __esModule: true,
-    createThrottledReporter: actual.createThrottledReporter,
-    AddressInput: (props: Record<string, unknown>) => ReactActual.createElement("SharedAddressInput", props),
+    SharedAddressInput: (props: Record<string, unknown>) => ReactActual.createElement("SharedAddressInput", props),
   };
 });
 jest.mock("../../ui/Icon", () => ({ __esModule: true, Icon: () => null }));
@@ -62,5 +65,48 @@ describe("#4334 — Host wrapper", () => {
       "Address search isn't working right now. Tap to try again.",
     );
     expect((props.tokens as { attribution?: { variant: string } }).attribution).toEqual({ variant: "dark" });
+  });
+});
+
+// ── #4334 (#2099 ceiling) — the web field loads from its own chunk ──────────
+
+describe("#4334 — the shared field stays off the eager web boot payload", () => {
+  const read = (rel: string) =>
+    readFileSync(path.join(__dirname, "..", rel), "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/(^|[^:"'`])\/\/.*$/gm, "$1");
+
+  test("H-4 web: React.lazy + dynamic import of the shared field, behind a field-height box", () => {
+    const web = read("sharedAddressField.web.tsx");
+    expect(web).toMatch(/React\.lazy\(async \(\) => \{\s*const mod = await import\("@mingla\/location-input\/src\/AddressInput"\);/);
+    expect(web).toContain("<Suspense fallback={<View style={{ minHeight: FIELD_PLACEHOLDER_HEIGHT }} />}>");
+    expect(web).not.toMatch(/^import [^;]*\{[^}]*\bAddressInput\b[^}]*\}[^;]*from "@mingla\/location-input/m);
+    // native keeps the static import
+    expect(read("sharedAddressField.tsx")).toContain(
+      'export { AddressInput as SharedAddressInput } from "@mingla/location-input/src/AddressInput";',
+    );
+  });
+
+  test("H-5 the wrapper and every eager Host importer take values from their own files, never the package index", () => {
+    const wrapper = read("AddressInput.tsx");
+    expect(wrapper).toContain('import { SharedAddressInput } from "./sharedAddressField";');
+    expect(wrapper).not.toMatch(/import \{[^}]*\bAddressInput as SharedAddressInput\b[^}]*\} from "@mingla\/location-input"/);
+    const root = path.join(__dirname, "../../../..");
+    const files = [
+      "src/components/event/CreatorStep3Where.tsx",
+      "src/components/experience/ExperienceStopCard.tsx",
+      "src/components/trip/EditPublishedTripScreen.tsx",
+      "src/components/trip/TripCreatorStep1Basics.tsx",
+      "src/components/venue/VenueDetailsEditor.tsx",
+      "src/components/venue/VenueStep1Address.tsx",
+      "src/services/placesService.ts",
+      "src/components/location/AddressInput.tsx",
+    ];
+    for (const rel of files) {
+      const src = readFileSync(path.join(root, rel), "utf8");
+      // only `import type` may name the index
+      const valueImports = src.match(/^import (?!type )[^;]*from "@mingla\/location-input";/gm) ?? [];
+      expect({ rel, valueImports }).toEqual({ rel, valueImports: [] });
+    }
   });
 });

@@ -16,14 +16,17 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
-import {
-  AddressInput as SharedAddressInput,
-  createThrottledReporter,
-  type LocationInputCopy,
-  type LocationSelectionState,
-  type LocationInputTokens,
-  type PlaceDetails,
+import type {
+  LocationInputCopy,
+  LocationSelectionState,
+  LocationInputTokens,
+  PlaceDetails,
 } from "@mingla/location-input";
+// #4334 — value imports come from their own files, never the package index:
+// the index re-exports the field, which on web loads from its own chunk
+// (sharedAddressField.web.tsx) to keep the Host boot payload small.
+import { createThrottledReporter } from "@mingla/location-input/src/placesService";
+import { SharedAddressInput } from "./sharedAddressField";
 
 import {
   accent,
@@ -36,7 +39,6 @@ import {
 } from "../../constants/designSystem";
 import { Icon, type IconName } from "../ui/Icon";
 import { supabase } from "../../services/supabase";
-import { reportNonFatal } from "../../diagnostics/reportNonFatal";
 import type {
   HostAddressProximitySources,
   ProximityMemory,
@@ -189,8 +191,16 @@ const BUSINESS_COPY: LocationInputCopy = {
   pickError: "Couldn't fetch address details. Tap to try again.",
 };
 
+type ReportNonFatalModule = typeof import("../../diagnostics/reportNonFatal");
+
 // #4334 — throttled Sentry report when address search is unavailable.
+// Lazy require (same pattern as copyAddressText / sharePublicUrl): the reporter
+// pulls in the Sentry SDK, which must not join this field's module-scope import
+// graph — every screen with an address field (and its render suites) loads it,
+// and some web/Jest environments cannot parse the SDK's ESM entry.
 const reportSearchUnavailable = createThrottledReporter((code: string) => {
+  const { reportNonFatal } =
+    require("../../diagnostics/reportNonFatal") as ReportNonFatalModule;
   reportNonFatal("address_search", new Error(`address_search_unavailable:${code}`), { code });
 });
 

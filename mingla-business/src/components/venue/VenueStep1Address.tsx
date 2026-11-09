@@ -6,7 +6,8 @@
  */
 
 import React from "react";
-import { precisionFromPlaceDetails } from "@mingla/location-input";
+// #4334 — from its own file: the package index would pull the address field into this screen.
+import { precisionFromPlaceDetails } from "@mingla/location-input/src/placesService";
 import { StyleSheet, Text, View } from "react-native";
 
 import { spacing, text as textTokens, typography } from "../../constants/designSystem";

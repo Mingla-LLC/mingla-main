@@ -6,7 +6,10 @@ import { fileURLToPath } from "node:url";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(HERE, "../../..");
 export const DISPLAY_NAME = "Supabase Migrations + Stripe Deno Tests (B2a Path C V3)";
-export const FIXED_PROJECTION_SHA256 = "43e9ab0a1685c99ab19df3a56882335147c4a73e77d90995f661894c65d5435f";
+// #4334: the nine retired map-provider suites were deleted with the provider and left the
+// ORCH-1361/1363/1365 jobs (their Google replacements are discovered issue_4334_* suites),
+// so the fixed projection and the specialized-Deno census shrink 56 → 47.
+export const FIXED_PROJECTION_SHA256 = "f26e9e7898852aa400081f10cd62a598815b331a4ba9507796102ee03e9002f7";
 
 function fail(code, detail = "") {
   throw new Error(`ci-discovery:workflow-policy:${code}${detail ? `:${detail}` : ""}`);
@@ -131,7 +134,7 @@ export function verifyWorkflowLiteralPolicy({ root = ROOT, expectedSha = FIXED_P
   const teamAgentNode = paths.filter((entry) => entry.includes("supabase/functions/team-agent/__tests__/"));
   const specializedDeno = paths.filter((entry) => entry.endsWith(".test.ts") && !teamAgentNode.includes(entry));
   const fixedNodeMjs = paths.filter((entry) => entry.endsWith(".test.mjs"));
-  if (sql.length !== 4 || teamAgentNode.length !== 6 || specializedDeno.length !== 56 || fixedNodeMjs.length !== 10) {
+  if (sql.length !== 4 || teamAgentNode.length !== 6 || specializedDeno.length !== 47 || fixedNodeMjs.length !== 10) {
     fail("fixed_census", `sql=${sql.length}:team-agent=${teamAgentNode.length}:specialized-deno=${specializedDeno.length}:node-mjs=${fixedNodeMjs.length}`);
   }
   const digest = crypto.createHash("sha256").update(JSON.stringify(projection)).digest("hex");

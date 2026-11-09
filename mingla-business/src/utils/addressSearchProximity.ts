@@ -8,7 +8,7 @@
  *
  * RANK-ONLY. Proximity reorders results; it never removes any. The request
  * still carries no `types` and no `country` (INV-3 / ORCH-1079,
- * `i-address-suggest-no-type-filter.mjs`), so a Lagos host searching "London"
+ * `i-mapbox-suggest-no-types-filter.mjs`), so a Lagos host searching "London"
  * still gets London.
  *
  * Source order (first valid wins):

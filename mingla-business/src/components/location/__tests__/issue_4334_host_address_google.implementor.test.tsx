@@ -15,6 +15,7 @@
  *   F-5 limit / types / country sent in the suggest body               → red
  *   F-6 errorCodeFromInvokeError returning message instead of body code→ red
  *   F-7 Host wrapper stops forwarding onSearchUnavailable              → red
+ *   F-8 the logo row's height no longer reserved through computeDropdownMaxHeight → red
  */
 import React from "react";
 import { describe, expect, jest, test } from "@jest/globals";
@@ -22,6 +23,8 @@ import { describe, expect, jest, test } from "@jest/globals";
 import { StyleSheet } from "react-native";
 import {
   AddressInput as SharedField,
+  computeDropdownMaxHeight,
+  GOOGLE_MAPS_ATTRIBUTION_ROW_HEIGHT,
   GOOGLE_MAPS_LOGO,
 } from "../../../../../packages/location-input/src/AddressInput";
 import {
@@ -257,5 +260,25 @@ describe("#4334 — the request (R-SRCH-4, R-SRCH-6)", () => {
     now = 61_000;
     report("provider_quota");
     expect(sent).toEqual(["provider_quota", "network", "provider_quota"]);
+  });
+});
+
+describe("#4334 N-2 — the logo row's height is reserved inside the one pure cap", () => {
+  test("F-8 reservedHeight comes off the #1027 cap, defaults to 0, keeps the #1027 floor", () => {
+    const base = { keyboardScreenY: 600, cardTopY: 200, tokenMaxHeight: 320, isIOS: false };
+    const plain = computeDropdownMaxHeight(base);
+    expect(computeDropdownMaxHeight({ ...base, reservedHeight: 0 })).toBe(plain);
+    expect(computeDropdownMaxHeight({ ...base, reservedHeight: GOOGLE_MAPS_ATTRIBUTION_ROW_HEIGHT })).toBe(
+      plain - GOOGLE_MAPS_ATTRIBUTION_ROW_HEIGHT,
+    );
+    // keyboard hidden: the token minus the row
+    expect(
+      computeDropdownMaxHeight({ ...base, keyboardScreenY: Number.NaN, reservedHeight: 33 }),
+    ).toBe(320 - 33);
+    // keyboard up: a reservation larger than the space keeps the #1027 minimum (96);
+    // keyboard hidden: it floors at 0
+    expect(computeDropdownMaxHeight({ ...base, reservedHeight: 10_000 })).toBe(96);
+    expect(computeDropdownMaxHeight({ ...base, keyboardScreenY: Number.NaN, reservedHeight: 10_000 })).toBe(0);
+    expect(GOOGLE_MAPS_ATTRIBUTION_ROW_HEIGHT).toBe(33);
   });
 });

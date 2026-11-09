@@ -1,7 +1,7 @@
 -- #4334 — Google place ids and the 30-day coordinate refresh (spec v2 §6.2–6.8,
 -- amendments A1 + A2), the re-pin (§7), chat plans (§6.2) and the api-health
 -- tiles (§8), against the replayed schema.
--- MINGLA-INVARIANT: I-4334-GOOGLE-COORDS-UNDER-30-DAYS | issue #4334 | Every stored Google coordinate carries geo_refreshed_at; the refresh keeps in-scope pins under 30 days; only PAST offerings lose coordinates (day 29); live, upcoming and draft offerings and preference anchors are never cleared.
+-- MINGLA-INVARIANT: I-4334-GOOGLE-COORDS-UNDER-30-DAYS | issue #4334 | Every stored Google coordinate carries geo_refreshed_at; the refresh keeps in-scope pins under 30 days; only PAST offerings lose coordinates (day 29); live, upcoming and unpublished offerings and preference anchors are never cleared.
 -- MINGLA-INVARIANT: I-4334-HOST-TEXT-PERMANENT | issue #4334 | Host-entered address text is never written by the refresh, the expiry or the re-pin.
 --
 -- Fails-on-revert (line deleted → red):

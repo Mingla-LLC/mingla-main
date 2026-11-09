@@ -99,6 +99,9 @@ function boundaryFor(os: "web" | "ios"): Record<string, () => unknown> {
       Platform: { ...(reactNative.Platform as Record<string, unknown>), OS: os },
     }),
     "@mingla/location-input": () => ({ precisionFromPlaceDetails: () => null }),
+    // [TEST-MOD-APPROVED #4334] the screen takes precisionFromPlaceDetails from the
+    // service file (the package index would pull the address field into the eager web chunk).
+    "@mingla/location-input/src/placesService": () => ({ precisionFromPlaceDetails: () => null }),
     "@react-native-community/datetimepicker": () => ({
       __esModule: true,
       default: leaf("DateTimePickerProbe"),

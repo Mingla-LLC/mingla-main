@@ -115,14 +115,13 @@ const EXPECTED_PLAN = Object.freeze({
   // reviewed tool from seven 2026-11 class-a-shard-aggregate artifacts. The old
   // table understated the heaviest rows by up to seven times, so shard 3 reached
   // 544 s against the 540 s ceiling while shard 1 ran about 300 s.
-  // [TEST-MOD-APPROVED #4334] Re-derived after the old map-provider gates were
-  // retired or renamed (five rows out) and six provider-neutral, provider-ban and
-  // deck gates came in (+2 batch:A executions).
-  // [TEST-MOD-APPROVED #4334] Re-derived again after the deck-untouched gate moved
-  // to the full-history class E job (tester F-2): −2 batch:A executions.
-  executions: 1051,
-  loadsSeconds: [385.3, 385.4, 385.4],
-  counts: [349, 351, 351],
+  // [TEST-MOD-APPROVED #4334] Re-derived after #4334 added the locally declared
+  // provider-ban gate (i-no-mapbox, +2 batch:A executions: self-test and plain).
+  // The five sealed map-provider gates keep their sealed rows (their checks are
+  // provider-neutral now) and the deck-untouched gate runs in class E.
+  executions: 1053,
+  loadsSeconds: [385.4, 385.4, 385.5],
+  counts: [350, 351, 352],
 });
 
 const tempDir = (label) =>
