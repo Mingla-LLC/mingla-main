@@ -147,5 +147,11 @@ module.exports = {
     // clears the whole plan (seeded sweep), one 15-minute rule for the sheet
     // and the schedule check, the route cap note, the identity-keyed reset.
     "**/__tests__/issue_4347_wave3_retest.tester.adversarial.test.tsx",
+    // issue #4347 wave 4 — tester adversarial: "When you'd go" against every
+    // production brand theme, hostile palettes, the hand-off store, the bar's
+    // Save (double tap, failure), Null Island directions; the gallery's Sound
+    // control (per gallery, re-render, a11y, Reduce Motion).
+    "**/__tests__/issue_4347_wave4.tester.adversarial.render.test.tsx",
+    "**/__tests__/issue_4347_gallery_sound.tester.adversarial.render.test.tsx",
   ],
 };
