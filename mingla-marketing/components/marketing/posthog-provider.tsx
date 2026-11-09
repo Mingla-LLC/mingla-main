@@ -13,6 +13,11 @@ import type { CaptureResult } from 'posthog-js'
 import type { PostHog } from 'posthog-js'
 import { SITE_ORIGIN } from '@/lib/site'
 import {
+  analyticsSafePathname,
+  isAnalyticsPrivatePathname,
+  isAnalyticsPrivateUrl,
+} from '@/lib/analytics-private-routes'
+import {
   cleanCityHubPathname,
   isCityHubPathname,
   sanitizeCityHubAnalytics,
@@ -333,6 +338,11 @@ function postHogEventTouchesCityHub(event: CaptureResult | null): boolean {
 }
 
 function routeAwarePostHogBeforeSend(event: CaptureResult | null): CaptureResult | null {
+  // #4273 — nothing is sent from a page whose URL carries a private token.
+  if (
+    (typeof window !== 'undefined' && isAnalyticsPrivatePathname(window.location.pathname))
+    || isAnalyticsPrivateUrl(event?.properties?.$current_url)
+  ) return null
   return postHogEventTouchesCityHub(event) ? sanitizeCityHubPostHogEvent(event) : event
 }
 
@@ -425,6 +435,8 @@ export function captureMarketing(
   properties?: Record<string, unknown>,
 ): void {
   if (!isMarketingAnalyticsOn()) return
+  // #4273 — never measured: the URL carries a private token.
+  if (isAnalyticsPrivatePathname(window.location.pathname)) return
   try {
     if (isCityHubPathname(window.location.pathname)) {
       const sanitized = sanitizeCityHubAnalytics(event, properties)
@@ -457,6 +469,8 @@ export function captureSearchMeasurement(
   properties: SearchMeasurementProperties,
 ): void {
   if (!isMarketingAnalyticsOn()) return
+  // #4273 — never measured: the URL carries a private token.
+  if (typeof window !== 'undefined' && isAnalyticsPrivatePathname(window.location.pathname)) return
   const sanitized = sanitizeSearchMeasurement(event, properties)
   if (sanitized === null) return
   try {
@@ -479,7 +493,8 @@ function GrantedAnalyticsChildren({
 }
 
 function ManualGoogleAnalytics({ gaId, pathname }: { readonly gaId: string; readonly pathname: string }) {
-  const pageLocation = new URL(pathname || '/', SITE_ORIGIN).toString()
+  // #4273 — a private-token path is configured as its token-free family.
+  const pageLocation = new URL(analyticsSafePathname(pathname || '/'), SITE_ORIGIN).toString()
   const initialConfiguration = useRef({ gaId, pageLocation })
 
   useEffect(() => {
@@ -545,6 +560,8 @@ export function PostHogProvider({ children }: PostHogProviderProps): ReactNode {
     // analytics on from the first visit (#2331), this generic page_view would
     // otherwise reach GA before the referrer-stripping config is applied.
     if (isCityHubPathname(pathname)) return
+    // #4273 — no page view for a page whose URL carries a private token.
+    if (isAnalyticsPrivatePathname(pathname)) return
     const audience = pathname === '/host' || pathname.startsWith('/host/') ? 'host' : pathname === '/going-out' || pathname.startsWith('/cities/') ? 'explorer' : 'neutral'
     const pageFamily = pathname.startsWith('/cities/') ? 'city_hub' : pathname.startsWith('/tools') ? 'tools' : pathname === '/going-out' ? 'explorer_pillar' : pathname === '/host' ? 'host_pillar' : 'brand_core'
     const referrerOrigin = typeof document === 'undefined' ? null : cleanReferrerOrigin(document.referrer)

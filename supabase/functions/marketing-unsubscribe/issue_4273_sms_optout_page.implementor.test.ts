@@ -78,3 +78,50 @@ Deno.test("#4273 W-4 the email one-click route is untouched", async () => {
   const form = await repo("mingla-marketing/app/unsubscribe/page.tsx");
   assert(form.includes("<UnsubscribeForm />"), "the manual form still renders");
 });
+
+Deno.test("#4273 W-5 (retest 4) the opt-out page is never measured; no sink sees its token", async () => {
+  const lib = await import(
+    "../../../mingla-marketing/lib/analytics-private-routes.ts"
+  );
+  const token = "eyJhIjoxfQ.c2ln";
+  assertEquals(lib.isAnalyticsPrivatePathname(`/unsubscribe/sms/${token}`), true);
+  assertEquals(lib.isAnalyticsPrivatePathname("/unsubscribe"), false);
+  assertEquals(lib.isAnalyticsPrivatePathname("/unsubscribe/abc"), false);
+  assertEquals(lib.isAnalyticsPrivatePathname("/cities/lagos"), false);
+  assertEquals(lib.analyticsSafePathname(`/unsubscribe/sms/${token}`), "/unsubscribe/sms");
+  assertEquals(lib.analyticsSafePathname("/host"), "/host");
+  assertEquals(
+    lib.isAnalyticsPrivateUrl(`https://usemingla.com/unsubscribe/sms/${token}?x=1`),
+    true,
+  );
+  assertEquals(lib.isAnalyticsPrivateUrl("not a url"), false);
+  // Every sink in the provider is wired to it.
+  const provider = await repo("mingla-marketing/components/marketing/posthog-provider.tsx");
+  const section = (start: string, end: string) =>
+    provider.slice(provider.indexOf(start), provider.indexOf(end, provider.indexOf(start)));
+  assert(
+    section("function routeAwarePostHogBeforeSend", "function cityHubPostHogConfig")
+      .includes("isAnalyticsPrivateUrl(event?.properties?.$current_url)"),
+    "PostHog drops any event from a private URL",
+  );
+  assert(
+    section("export function captureMarketing", "export function captureSearchMeasurement")
+      .includes("if (isAnalyticsPrivatePathname(window.location.pathname)) return"),
+    "custom events stop on a private page",
+  );
+  assert(
+    section("export function captureSearchMeasurement", "interface PostHogProviderProps")
+      .includes("isAnalyticsPrivatePathname(window.location.pathname)) return"),
+    "search measurement (GA + PostHog) stops on a private page",
+  );
+  assert(
+    section("function ManualGoogleAnalytics", "export function PostHogProvider")
+      .includes("analyticsSafePathname(pathname || '/')"),
+    "GA's page_location is the token-free path",
+  );
+  assert(
+    section("export function PostHogProvider", "/* #2771")
+      .includes("if (isAnalyticsPrivatePathname(pathname)) return"),
+    "no page_view on a private page",
+  );
+});

@@ -21,8 +21,10 @@ import {
   SMS_PRICE_HISTORY_RETENTION_MS,
   SMS_PRICE_STABLE_DAYS,
   SMS_PRICE_TABLE,
+  SMS_REFERENCE_PRICE_CENTS,
   type SmsCountryPriceRow,
   smsPriceAnchor,
+  smsPriceBandRejection,
   smsPriceRejection,
   smsPriceStableStep,
   twilioPricedCountries,
@@ -116,10 +118,22 @@ export async function refreshSmsPrices(
     const accepted = (acceptedRows ?? []) as HistoryRow[];
     const lastAcceptedAt = accepted[0]?.recorded_at ?? "1970-01-01T00:00:00Z";
     const anchor = smsPriceAnchor(accepted);
-    let rejection = smsPriceRejection(parsed, last.get(country) ?? null) ??
-      (smsPriceRejection(parsed, anchor) === null
-        ? null
-        : "drifted_over_50_percent_from_7_price_median");
+    const lastGood = last.get(country) ?? null;
+    let rejection: string | null;
+    if (lastGood === null && anchor === null) {
+      // #4273 retest 4 — cold start: nothing to compare with yet, so the
+      // fetched price must sit within ×0.33–×3 of Twilio's list price.
+      rejection = smsPriceBandRejection(
+        parsed,
+        SMS_REFERENCE_PRICE_CENTS[country],
+        "outside_reference_band_needs_manual_accept",
+      );
+    } else {
+      rejection = smsPriceRejection(parsed, lastGood) ??
+        (smsPriceRejection(parsed, anchor) === null
+          ? null
+          : "drifted_over_50_percent_from_7_price_median");
+    }
     let stableStep = false;
     if (rejection !== null && parsed.currency === "USD") {
       const { data: refusedRows, error: refusedError } = await deps.db
@@ -138,8 +152,28 @@ export async function refreshSmsPrices(
           deps.now(),
         )
       ) {
-        stableStep = true;
-        rejection = null;
+        // #4273 retest 4 — a stable step is taken only within ×3 of the
+        // anchor (or of the list price when there is no history). Beyond
+        // that it stays refused and asks a person to accept it by hand.
+        //
+        // MANUAL ACCEPT (after checking the price in Twilio Console), one
+        // statement in the SQL editor; replace GB / 1120 / 100 (USD 0.1120 =
+        // 11.20 cents = 1120/100) and the note. It sets the live price and
+        // writes it 7 times into the history, so it is also the new anchor:
+        //
+        //   WITH v AS (INSERT INTO public.sms_country_prices (country, provider, currency, minor_numerator, minor_denominator, source, source_reference, fetched_at) VALUES ('GB', 'twilio', 'USD', 1120, 100, 'twilio_pricing_api', 'manual accept: <who>, <date>, <why>', now()) ON CONFLICT (country) DO UPDATE SET currency = EXCLUDED.currency, minor_numerator = EXCLUDED.minor_numerator, minor_denominator = EXCLUDED.minor_denominator, source = EXCLUDED.source, source_reference = EXCLUDED.source_reference, fetched_at = EXCLUDED.fetched_at, updated_at = now() RETURNING country, currency, minor_numerator, minor_denominator, source, fetched_at) INSERT INTO public.sms_country_price_history (country, currency, minor_numerator, minor_denominator, source, outcome, recorded_at) SELECT v.country, v.currency, v.minor_numerator, v.minor_denominator, v.source, 'accepted', v.fetched_at FROM v CROSS JOIN generate_series(1, 7);
+        const capBase = anchor !== null
+          ? anchor.minor_numerator / anchor.minor_denominator
+          : SMS_REFERENCE_PRICE_CENTS[country];
+        if (
+          smsPriceBandRejection(parsed, capBase, "needs_manual_accept") ===
+            null
+        ) {
+          stableStep = true;
+          rejection = null;
+        } else {
+          rejection = "stable_step_beyond_3x_needs_manual_accept";
+        }
       }
     }
     if (rejection !== null) {
@@ -237,7 +271,7 @@ export async function refreshSmsPrices(
         lines.length === 1 ? "y" : "ies"
       }`,
       [
-        "Quotes keep using the last good price for these countries:",
+        "Quotes keep using the last good price for these countries (a reason ending in needs_manual_accept waits for a person: see MANUAL ACCEPT in supabase/functions/sms-price-refresh/index.ts):",
         lines.join("; "),
         `Updated: ${outcome.updated.length}.`,
       ],

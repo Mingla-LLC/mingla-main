@@ -143,6 +143,20 @@ BEGIN
     (SELECT count(DISTINCT country) FROM public.sms_country_price_history WHERE country IN ('US', 'NG')) = 2, '');
 END $o10$;
 
+-- ── O-11 the documented MANUAL ACCEPT statement works (sms-price-refresh) ──
+-- Copied verbatim from the comment beside the stable-step cap in
+-- supabase/functions/sms-price-refresh/index.ts.
+WITH v AS (INSERT INTO public.sms_country_prices (country, provider, currency, minor_numerator, minor_denominator, source, source_reference, fetched_at) VALUES ('GB', 'twilio', 'USD', 1120, 100, 'twilio_pricing_api', 'manual accept: <who>, <date>, <why>', now()) ON CONFLICT (country) DO UPDATE SET currency = EXCLUDED.currency, minor_numerator = EXCLUDED.minor_numerator, minor_denominator = EXCLUDED.minor_denominator, source = EXCLUDED.source, source_reference = EXCLUDED.source_reference, fetched_at = EXCLUDED.fetched_at, updated_at = now() RETURNING country, currency, minor_numerator, minor_denominator, source, fetched_at) INSERT INTO public.sms_country_price_history (country, currency, minor_numerator, minor_denominator, source, outcome, recorded_at) SELECT v.country, v.currency, v.minor_numerator, v.minor_denominator, v.source, 'accepted', v.fetched_at FROM v CROSS JOIN generate_series(1, 7);
+DO $o11$
+BEGIN
+  PERFORM pg_temp.chk('O-11 manual accept sets the live price',
+    EXISTS (SELECT 1 FROM public.sms_country_prices WHERE country = 'GB' AND minor_numerator = 1120
+              AND minor_denominator = 100 AND source_reference LIKE 'manual accept:%'), '');
+  PERFORM pg_temp.chk('O-11 and becomes the anchor (7 accepted rows)',
+    (SELECT count(*) FROM public.sms_country_price_history WHERE country = 'GB' AND outcome = 'accepted'
+       AND minor_numerator = 1120) = 7, '');
+END $o11$;
+
 -- ── O-01..O-03 what a campaign member reads ─────────────────────────────────
 SELECT set_config('request.jwt.claim.sub', pg_temp.u('03')::text, true);
 SELECT set_config('request.jwt.claims', json_build_object('sub', pg_temp.u('03'), 'role', 'authenticated')::text, true);

@@ -329,6 +329,71 @@ export function smsPriceStableStep(
   return true;
 }
 
+/**
+ * #4273 tester retest 4 — the ceiling. Twilio's public list price per outbound
+ * segment on 2026-11-08 (spec §4), in US cents. A fetched price for a country
+ * with no last price and no history must sit within ×0.33–×3 of this, and a
+ * stable-step change is never taken above ×3 (or below ×0.33) of the anchor;
+ * anything outside stays refused and alerts "needs manual accept".
+ */
+export const SMS_REFERENCE_PRICE_CENTS: Readonly<Record<string, number>> = {
+  US: 0.83,
+  CA: 0.83,
+  GB: 5.60,
+  IE: 7.79,
+  FR: 7.98,
+  BE: 11.13,
+  DE: 11.20,
+  ES: 8.75,
+  NL: 11.43,
+  IT: 9.27,
+  PT: 5.01,
+  AT: 9.79,
+  CH: 7.69,
+  BG: 14.66,
+  CY: 8.64,
+  CZ: 7.06,
+  DK: 5.92,
+  EE: 9.58,
+  FI: 8.61,
+  GR: 6.57,
+  HR: 13.79,
+  HU: 9.10,
+  IS: 7.19,
+  LI: 3.62,
+  LT: 5.78,
+  LU: 8.18,
+  LV: 8.01,
+  MT: 6.89,
+  NO: 6.97,
+  PL: 4.57,
+  RO: 7.81,
+  SE: 6.46,
+  SI: 20.51,
+  SK: 8.83,
+};
+export const SMS_PRICE_BAND_LOW = 0.33;
+export const SMS_PRICE_BAND_HIGH = 3;
+
+/**
+ * Null when `next` (USD) is within ×0.33–×3 of `base` cents; otherwise the
+ * refusal reason. A missing base refuses (there is nothing to judge against).
+ */
+export function smsPriceBandRejection(
+  next: { currency: string; numerator: number; denominator: number },
+  baseCents: number | null | undefined,
+  reason: string,
+): string | null {
+  if (next.currency !== "USD") return "wrong_currency";
+  if (typeof baseCents !== "number" || !(baseCents > 0)) {
+    return "no_reference_price";
+  }
+  const ratio = next.numerator / next.denominator / baseCents;
+  return ratio >= SMS_PRICE_BAND_LOW && ratio <= SMS_PRICE_BAND_HIGH
+    ? null
+    : reason;
+}
+
 /** Countries whose Twilio price is refreshed (every Twilio-routed country). */
 export function twilioPricedCountries(): string[] {
   return MAPPED_COUNTRIES.filter((country) =>

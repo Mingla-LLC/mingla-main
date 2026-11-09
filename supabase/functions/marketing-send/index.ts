@@ -2427,6 +2427,23 @@ async function sendSms(
         Number.isFinite(scheduledAt) &&
         nowMs - scheduledAt > SMS_PRICE_RETRY_LIMIT_MS
       ) {
+        // Retest 4: ops also hear when the wait ends (the first-park alert
+        // can be missed when quiet hours had already moved the campaign's
+        // time; no per-execution "alerted" marker exists to key it on).
+        try {
+          await (options.opsAlert ?? alertSmsPriceTableUnreadable)(
+            "[SMS] A Blast failed: SMS prices could not be read for 24 hours",
+            [
+              `Campaign ${campaign.id} could not read public.sms_country_prices for 24 hours after its scheduled time, so it was marked failed and nothing was texted.`,
+              "The host sees it as failed and can send it again once prices can be read.",
+            ],
+          );
+        } catch {
+          console.error(JSON.stringify({
+            event: "marketing_sms_price_alert_failed",
+            campaign_id: campaign.id,
+          }));
+        }
         throw new Error("sms_price_table_unreadable_24h");
       }
       const parkedAt = campaign.scheduled_for === null

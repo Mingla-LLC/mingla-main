@@ -394,6 +394,10 @@ Deno.test("#4273 L-6 (retest 3) a day past its time, the send fails so the host 
   });
   assertEquals(sent, []);
   assertEquals(summary.failed, 1);
+  // Retest 4: ops hear when the 24 h wait fails a send, even with no
+  // first-park alert (quiet hours had already moved the campaign's time).
+  assertEquals(alerts.length, 1);
+  assert(alerts[0][0].includes("A Blast failed"), alerts[0][0]);
   assert(
     JSON.stringify(summary.errors).includes("sms_price_table_unreadable_24h"),
   );

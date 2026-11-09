@@ -19,6 +19,7 @@ import {
   assertRejects,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
+  SMS_REFERENCE_PRICE_CENTS,
   decimalToMinorFraction,
   smsPriceAnchor,
   loadSmsRates,
@@ -263,6 +264,13 @@ Deno.test("#4273 P-3 the refresh writes good prices and keeps the last good one,
       }
       const body = structuredClone(FIXTURE);
       body.iso_country = iso;
+      if (iso !== "GB") {
+        // Every other country offers exactly its list price (cold start).
+        const usd = (SMS_REFERENCE_PRICE_CENTS[iso] / 100).toFixed(4);
+        for (const carrier of body.outbound_sms_prices) {
+          carrier.prices = [{ number_type: "mobile", base_price: usd, current_price: usd }];
+        }
+      }
       return Promise.resolve(
         new Response(JSON.stringify(body), { status: 200 }),
       );
@@ -291,7 +299,7 @@ Deno.test("#4273 P-3 the refresh writes good prices and keeps the last good one,
     fr.minor_numerator,
     fr.minor_denominator,
     fr.source,
-  ], ["twilio", "USD", 28, 5, "twilio_pricing_api"]);
+  ], ["twilio", "USD", 399, 50, "twilio_pricing_api"]); // 7.98 cents
   assertEquals(
     db.writes.some((row) => row.country === "NG"),
     false,
@@ -354,6 +362,53 @@ Deno.test("#4273 P-8 (tester retest 3) a real step change above 50% is accepted 
   await day(db2, "2026-11-11T06:17:00.000Z", 9);
   await day(db2, "2026-11-13T06:17:00.000Z", 9);
   assertEquals(gbCents(db2), 4);
+});
+
+Deno.test("#4273 P-10 (retest 4) cold start: a 10x or 1000x price is refused against the list price", async () => {
+  for (const multiple of [10, 1000, 0.1]) {
+    const db = fakeDb([]); // no last price, no history anywhere
+    const alerts: string[][] = [];
+    await day(db, "2026-11-10T06:17:00.000Z", 5.6 * multiple, alerts);
+    assertEquals(
+      db.rows.some((row) => row.country === "GB"),
+      false,
+      `GB at ${multiple}x the list price is not taken`,
+    );
+    assert(
+      alerts.some((a) =>
+        a.join(" ").includes("GB: refused (outside_reference_band_needs_manual_accept)")
+      ),
+      JSON.stringify(alerts),
+    );
+  }
+  // The list price itself (and anything within x0.33-x3) is taken.
+  const ok = fakeDb([]);
+  await day(ok, "2026-11-10T06:17:00.000Z", 5.6 * 2.5);
+  assertEquals(gbCents(ok), 14);
+});
+
+Deno.test("#4273 P-11 (retest 4) a stable step is capped at x3 of the anchor; x1.8 is still taken on day 3", async () => {
+  const price = { country: "GB", currency: "USD", minor_numerator: 400, minor_denominator: 100 };
+  for (const multiple of [10, 1000]) {
+    const db = fakeDb([{ ...price }], Array.from({ length: 7 }, () => ({ ...price })));
+    const alerts: string[][] = [];
+    for (const d of [10, 11, 12, 13]) {
+      await day(db, `2026-11-${d}T06:17:00.000Z`, 4 * multiple, alerts);
+    }
+    assertEquals(gbCents(db), 4, `${multiple}x is never taken on its own`);
+    assert(
+      alerts.some((a) =>
+        a.join(" ").includes("GB: refused (stable_step_beyond_3x_needs_manual_accept)")
+      ),
+      "and it asks for a manual accept",
+    );
+  }
+  const real = fakeDb([{ ...price }], Array.from({ length: 7 }, () => ({ ...price })));
+  await day(real, "2026-11-10T06:17:00.000Z", 7.2);
+  await day(real, "2026-11-11T06:17:00.000Z", 7.2);
+  assertEquals(gbCents(real), 4, "x1.8 is refused on days 1 and 2");
+  await day(real, "2026-11-12T06:17:00.000Z", 7.2);
+  assertEquals(gbCents(real), 7.2, "and accepted on day 3");
 });
 
 Deno.test("#4273 P-9 (tester retest 3) history older than 180 days is pruned, the latest 7 accepted stay", async () => {
