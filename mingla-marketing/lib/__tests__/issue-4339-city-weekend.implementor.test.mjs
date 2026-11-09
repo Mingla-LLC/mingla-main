@@ -23,7 +23,12 @@
 //   - every tap goes through the seam (lib/app-handoff.ts → cta-destination);
 //   - no /render/image anywhere; place photos are the stored thumbnails on
 //     the public object endpoint;
-//   - #4318's files are imported, not edited.
+//   - #4318's files are imported, not edited;
+//   - #4349: one card per plan (brand_slug + item_slug) AFTER the Friday–Sunday
+//     filter, labelled with its day span, counts per plan (the Lagos boat
+//     charter listed 6 times is one card); the page's city resolves to its
+//     `city_id` through `links_page_cities()` and the places read passes
+//     `p_city_id` (the fast path; London timed out without it).
 //
 // Run from mingla-marketing/ (Node 22.13+):
 //   node --test lib/__tests__/issue-4339-city-weekend.implementor.test.mjs
@@ -156,8 +161,8 @@ test('Raleigh: Friday to Sunday in New York time (UTC-5), at both edges', () => 
   assert.deepEqual(m.listings.map((l) => l.startsAt), ['2026-11-13T05:30:00.000Z', '2026-11-16T04:30:00.000Z'])
   // The same rows seen from Lagos belong to no one there: rows go to their owning city by centre and reach.
   const lagos = model('lagos', rows)
-  assert.equal(lagos.mode, 'quiet')
-  assert.equal(lagos.plansIn.slug, 'raleigh-nc')
+  assert.equal(lagos.mode, 'fallback', 'no places to show: the fallback line (#4349 rule)')
+  assert.equal(lagos.plansIn.slug, 'raleigh-nc', '… then Plans in the nearest live city')
 })
 
 test('rows are assigned to a city by the registry centre and reach, the #4318 rule', () => {
@@ -206,10 +211,9 @@ test('rules 3 and 4: a quiet week → "A quiet week in <City>." + up to 3 places
   const alone = model('cary-nc', [], { places: PLACES })
   assert.equal(alone.mode, 'quiet')
   assert.equal(alone.plansIn, null)
-  // A quiet week with no places but another live city shows "Plans in".
+  // #4349 (mirrors /links): no places to show → the fallback line, then "Plans in" the nearest live city and Host.
   const noPlaces = model('cary-nc', rows, { places: [] })
-  assert.equal(noPlaces.mode, 'quiet')
-  assert.equal(noPlaces.places.length, 0)
+  assert.deepEqual([noPlaces.mode, noPlaces.text, noPlaces.hostCity], ['fallback', 'Nothing is listed this week yet. Check back soon.', 'Cary'])
   assert.equal(noPlaces.plansIn.slug, 'raleigh-nc')
 })
 
@@ -218,6 +222,8 @@ test('rule 5: nothing live anywhere and no places, or a failed read → "Nothing
   assert.deepEqual([nothing.mode, nothing.text, nothing.hostCity], ['fallback', 'Nothing is listed this week yet. Check back soon.', 'Paris'])
   const failed = model('raleigh-nc', [row('raleigh-nc', '2026-11-14T15:00:00Z')], { readFailed: true, places: PLACES })
   assert.deepEqual([failed.mode, failed.text], ['fallback', 'Nothing is listed this week yet. Check back soon.'], 'a failed read never shows stale or partial plans')
+  assert.equal(failed.plansIn, null, 'a failed read offers no other city')
+  assert.equal(nothing.plansIn, null, 'nothing live anywhere: no "Plans in"')
   assert.equal(weekend.FALLBACK_TEXT, 'Nothing is listed this week yet. Check back soon.')
 })
 
@@ -227,7 +233,7 @@ test('the chips filter by kind: events under Events, experiences and trips under
   const ui = code(read('components/cities/city-this-weekend.tsx'))
   assert.match(ui, /const KINDS = \['All', 'Events', 'Experiences', 'Places'\] as const/)
   assert.match(ui, /<FilterChips label=\{`Filter \$\{cityName\} listings`\} options=\{KINDS\} value=\{kind\} onChange=\{selectKind\} \/>/)
-  assert.match(ui, /kind === 'All' \? listings : kind === 'Places' \? \[\] : listings\.filter\(\(l\) => listingChip\(l\) === kind\)/)
+  assert.match(ui, /kind === 'All' \? plans : kind === 'Places' \? \[\] : plans\.filter\(\(p\) => planChip\(p\) === kind\)/)
   assert.match(ui, /const shownPlaces = kind === 'All' \|\| kind === 'Places' \? places : \[\]/)
 })
 
@@ -277,7 +283,7 @@ test('strips render first and the empty-rule copy is verbatim', () => {
   assert.ok(strips > 0 && strips < ui.lastIndexOf('{body}'), 'the strips render before every branch body')
   assert.match(ui, /A quiet week in <em>\{cityName\}\.<\/em>/)
   assert.match(ui, /Plans in \{model\.plansIn\.name\} <ArrowRight/)
-  assert.match(ui, /<p className="filter-note">\{model\.text\}<\/p>/)
+  assert.match(ui, /<p className="filter-note">\{model\.text\}<\/p>\s*<div className="row quiet-row">\s*\{model\.plansIn \? \(/, 'the fallback line, then Plans in')
   // The page keeps its existing content below "This weekend".
   const page = code(read('components/cities/city-page.tsx'))
   const order = ['<CityHero', '<CityThisWeekend', '<CityWeekend', '<CityGuideBand', '<CityQuestions', '<CityHostBand'].map((tag) => page.indexOf(tag))
@@ -301,8 +307,131 @@ test('the server read uses #4318’s data layer (same cache and tag) and does no
   const data = code(read('lib/city-weekend-data.ts'))
   assert.match(data, /import \{ getLinksData, getLinksPlaces \} from '\.\/links-data'/)
   assert.match(data, /const places = quiet \? \(await getLinksPlaces\(\[city\]\)\)\.places\[city\.slug\] \?\? \[\] : \[\]/, 'places are read only for a quiet week')
+  assert.match(data, /const city = withLiveCityId\(registryCity, linksCitiesFromRows\(data\.cities, registryLinksHints\(\)\)\)/, 'the city is resolved to its city_id before the places read')
   assert.match(code(read('app/cities/[city]/page.tsx')), /await getCityWeekend\(record\.slug, new Date\(\)\.toISOString\(\)\)/)
   assert.match(code(read('lib/links-data.ts')), /next: \{ revalidate: LINKS_REVALIDATE_SECONDS, tags: \[LINKS_CACHE_TAG\] \}/)
+})
+
+// ---- #4349: one card per plan, and the places read by city_id ---------------------
+test('#4349 Lagos: the same plan listed 6 times this week is ONE weekend card, "Event · Fri–Sun", opening its next date', () => {
+  const charter = (startsAt) => row('lagos', startsAt, 'event', { title: 'Sunset boat charter', brand_slug: 'blue-boat', item_slug: 'sunset-charter' })
+  const rows = [
+    charter('2026-11-12T15:00:00Z'), // Thu: in the week, not the weekend
+    charter('2026-11-13T15:00:00Z'), // Fri
+    charter('2026-11-14T09:00:00Z'), // Sat morning
+    charter('2026-11-14T15:00:00Z'), // Sat afternoon
+    charter('2026-11-15T15:00:00Z'), // Sun
+    charter('2026-11-16T15:00:00Z'), // Mon: in the week, not the weekend
+    row('lagos', '2026-11-14T18:00:00Z', 'experience', { brand_slug: 'lekki-art', item_slug: 'paint-night' }),
+  ]
+  const m = model('lagos', rows)
+  assert.equal(m.mode, 'weekend')
+  assert.equal(m.listings.length, 5, 'the weekend dates are all still there underneath')
+  assert.equal(m.plans.length, 2, 'one card per (brand_slug, item_slug) plan, not one per date')
+  const [boat, art] = m.plans
+  assert.equal(boat.next.title, 'Sunset boat charter')
+  assert.equal(boat.dates.length, 4, 'the plan carries its four weekend dates (Thu and Mon are outside the weekend)')
+  assert.equal(boat.next.startsAt, '2026-11-13T15:00:00.000Z', 'a tap opens the next date')
+  assert.deepEqual(week.planWhen(boat, m.today), { tonight: false, text: 'Event · Fri–Sun' })
+  assert.equal(week.planWhen(art, m.today).text, 'Experience · Sat 14')
+  // Weekday mode groups the same way.
+  const weekday = model('lagos', [charter('2026-11-12T15:00:00Z'), charter('2026-11-16T15:00:00Z'), charter('2026-11-17T15:00:00Z')])
+  assert.equal(weekday.mode, 'weekday')
+  assert.equal(weekday.plans.length, 1)
+  assert.equal(week.planWhen(weekday.plans[0], weekday.today).text, 'Event · Thu, Mon, Tue')
+})
+
+test('#4349 the card list renders one card per plan with the planWhen label, and counts plans', () => {
+  const ui = code(read('components/cities/city-this-weekend.tsx'))
+  assert.match(ui, /\{shownPlans\.map\(\(plan, index\) => \{/, 'one card per plan')
+  assert.match(ui, /const l = plan\.next/, 'a card opens its next date')
+  assert.match(ui, /const when = planWhen\(plan, model\.today\)/)
+  assert.match(ui, /<li key=\{plan\.id\}/)
+  assert.doesNotMatch(ui, /listings\.map\(|listingWhen\(/, 'no card per date')
+  assert.match(ui, /\? plans\.length \+ places\.length/, 'the chip announcement counts plans')
+  assert.match(ui, /plans\.filter\(\(p\) => planChip\(p\) === value\)\.length/)
+})
+
+test('#4349 the page city resolves to its city_id by slug or older registry slug, never by distance', () => {
+  const ID = (n) => `0000000${n}-aaaa-4bbb-8ccc-dddddddddddd`
+  const hints = CITIES.map((c) => ({ slug: c.slug, countryCode: c.slug === 'lagos' ? 'NG' : c.slug === 'london' ? 'GB' : c.slug === 'paris' ? 'FR' : c.slug === 'brussels' ? 'BE' : 'US', region: '', timezone: c.timezone, lat: c.lat, lng: c.lng }))
+  const live = week.linksCitiesFromRows([
+    { city_id: ID(1), name: 'Lagos', country_code: 'NG', center_lat: city('lagos').lat, center_lng: city('lagos').lng, has_places: true },
+    { city_id: ID(2), name: 'Raleigh', country_code: 'US', center_lat: city('raleigh-nc').lat, center_lng: city('raleigh-nc').lng, has_places: true },
+    { city_id: ID(3), name: 'London', country_code: 'GB', center_lat: city('london').lat, center_lng: city('london').lng, has_places: false },
+  ], hints)
+  assert.equal(weekend.withLiveCityId(city('lagos'), live).cityId, ID(1))
+  assert.equal(weekend.withLiveCityId(city('raleigh-nc'), live).cityId, ID(2), 'raleigh-nc is the live "raleigh" through its alias')
+  assert.equal(weekend.withLiveCityId(city('london'), live).hasPlaces, false)
+  const cary = weekend.withLiveCityId(city('cary-nc'), live)
+  assert.equal(cary.cityId, undefined, 'Cary is 15 km from Raleigh: never matched by distance')
+  assert.equal(cary.slug, 'cary-nc', 'the registry city keeps its own slug (Plans in / links stay /cities/<slug>)')
+  // The places arguments then carry p_city_id (the fast per-city path); without an id, lat/lng only.
+  assert.equal(week.linksPlacesArgs(weekend.withLiveCityId(city('lagos'), live), 3).p_city_id, ID(1))
+  assert.equal('p_city_id' in week.linksPlacesArgs(cary, 3), false)
+})
+
+test('#4349 the server read: links_page_places is called with p_city_id from links_page_cities()', async () => {
+  // Load the real lib/city-weekend-data.ts (registry and #4318 data layer included) and stub PostgREST.
+  const dataOut = fs.mkdtempSync(path.join(os.tmpdir(), 'issue-4339-city-weekend-data-'))
+  after(() => fs.rmSync(dataOut, { recursive: true, force: true }))
+  const dataSeen = new Set()
+  emit(path.join(MARKETING, 'lib/city-weekend.ts'), 'city-weekend', dataOut, dataSeen)
+  emit(path.join(MARKETING, 'lib/links-data.ts'), 'links-data', dataOut, dataSeen)
+  fs.writeFileSync(
+    path.join(dataOut, 'historical-city-build.mjs'),
+    stripTypeScriptTypes(read('lib/search/historical-city-build.ts')),
+  )
+  fs.writeFileSync(
+    path.join(dataOut, 'registry.mjs'),
+    stripTypeScriptTypes(read('content/cities/registry.ts')).replace("'../../lib/search/historical-city-build'", "'./historical-city-build.mjs'"),
+  )
+  fs.writeFileSync(
+    path.join(dataOut, 'city-weekend-data.mjs'),
+    stripTypeScriptTypes(read('lib/city-weekend-data.ts'))
+      .replace("'@/content/cities/registry'", "'./registry.mjs'")
+      .replace(IMPORT, (_m, _p, name) => `from './${name}.mjs'`),
+  )
+  const data = await import(pathToFileURL(path.join(dataOut, 'city-weekend-data.mjs')).href)
+  const LONDON_ID = '11111111-2222-4333-8444-555555555555'
+  const calls = []
+  const realFetch = globalThis.fetch
+  const env = { url: process.env.NEXT_PUBLIC_SUPABASE_URL, key: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY }
+  process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://stub.supabase.co'
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'stub-anon'
+  globalThis.fetch = async (url, init) => {
+    const name = String(url).split('/rpc/')[1]
+    const body = JSON.parse(init.body)
+    calls.push({ name, body })
+    const reply = {
+      links_page_week: [],
+      links_page_strips: [],
+      links_page_cities: [{ city_id: LONDON_ID, name: 'London', country_code: 'GB', center_lat: city('london').lat, center_lng: city('london').lng, has_places: true }],
+      links_page_places: [{ place_id: 'ChIJplace0001', name: 'Sky Garden', category: 'Viewpoint', area_label: 'City of London', lat: 51.51, lng: -0.08, photo_path: 'ChIJplace0001/0_thumb.jpg' }],
+    }[name]
+    return new Response(JSON.stringify(reply), { status: 200, headers: { 'Content-Type': 'application/json' } })
+  }
+  try {
+    const m = await data.getCityWeekend('london', NOW)
+    const places = calls.filter((c) => c.name === 'links_page_places')
+    assert.equal(places.length, 1)
+    assert.equal(places[0].body.p_city_id, LONDON_ID, 'the fast per-city path')
+    assert.equal(places[0].body.p_limit, 3)
+    assert.equal(m.mode, 'quiet')
+    assert.equal(m.heading, 'A quiet week in London.')
+    assert.deepEqual(m.places.map((p) => p.name), ['Sky Garden'])
+    // Paris is not in the live list: no id, the centre-and-reach path.
+    calls.length = 0
+    await data.getCityWeekend('paris', NOW)
+    const paris = calls.find((c) => c.name === 'links_page_places')
+    assert.ok(paris && !('p_city_id' in paris.body) && paris.body.p_radius_km === 60, JSON.stringify(paris))
+  } finally {
+    globalThis.fetch = realFetch
+    for (const [k, v] of [['NEXT_PUBLIC_SUPABASE_URL', env.url], ['NEXT_PUBLIC_SUPABASE_ANON_KEY', env.key]]) {
+      if (v === undefined) delete process.env[k]
+      else process.env[k] = v
+    }
+  }
 })
 
 // ---- built mode ---------------------------------------------------------------

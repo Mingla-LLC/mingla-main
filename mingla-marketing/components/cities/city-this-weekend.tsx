@@ -10,8 +10,8 @@ import { HostHandoffButton } from '@/components/landing/host-handoff'
 import { FilterChips } from '@/components/site/filter-row'
 import { detectClientPlatform } from '@/lib/device-platform'
 import { resolveSiteTargetHandoff, siteTargetHrefs } from '@/lib/app-handoff'
-import { listingWhen, timeLabel, type LinksPin, type LinksPlace } from '@/lib/links-week'
-import { CITY_LISTING_KIND_LABEL, listingChip, type CityItemTarget, type CityWeekendModel } from '@/lib/city-weekend'
+import { planWhen, timeLabel, type LinksPin, type LinksPlace } from '@/lib/links-week'
+import { CITY_LISTING_KIND_LABEL, planChip, type CityItemTarget, type CityWeekendModel } from '@/lib/city-weekend'
 
 // #4339 speed fix: the item sheet (its frame, QR code and store buttons)
 // renders only after a tap on a computer, so it loads then, not with the page
@@ -29,11 +29,15 @@ const ItemSheet = lazy(() => import('./city-item-sheet').then((module) => ({ def
 //      .astrip style (dot, "FROM MINGLA · FRI 20", title, arrow). It opens per
 //      its `opens`: a web address or a blog post as a link, the Explorer or Host
 //      app through the hand-off seam;
-//   2. the city's local Friday–Sunday listings, or this week's weekday plans
-//      when the weekend is empty;
+//   2. the city's local Friday–Sunday plans, or this week's weekday plans
+//      when the weekend is empty: ONE card per plan (#4349 groupListings; a
+//      charter listed every day is one card labelled "Event · Fri–Sun"),
+//      opening its next date; every count is a count of plans;
 //   3. a quiet week: "A quiet week in <City>." with up to 3 real places, then
 //      "Plans in <nearest live city> →" and "Host something in <City> →";
-//   4. otherwise "Nothing is listed this week yet. Check back soon."
+//   4. no places to show: "Nothing is listed this week yet. Check back soon.",
+//      then "Plans in <nearest live city> →" when one is live, and "Host
+//      something in <City> →" (a failed read: the line and Host only).
 //
 // The Events / Experiences / Places chips filter by kind (trips sit under
 // Experiences). A listing or place on a phone goes straight to the Explorer
@@ -129,11 +133,11 @@ export function CityThisWeekend({ cityName, citySlug, countryCode, model }: City
   const [sheet, setSheet] = useState<ItemTarget | null>(null)
   const openerRef = useRef<HTMLElement | null>(null)
 
-  const listings = model.mode === 'weekend' || model.mode === 'weekday' ? model.listings : []
+  const plans = useMemo(() => (model.mode === 'weekend' || model.mode === 'weekday' ? model.plans : []), [model])
   const places = model.mode === 'quiet' ? model.places : []
-  const shownListings = useMemo(
-    () => (kind === 'All' ? listings : kind === 'Places' ? [] : listings.filter((l) => listingChip(l) === kind)),
-    [kind, listings],
+  const shownPlans = useMemo(
+    () => (kind === 'All' ? plans : kind === 'Places' ? [] : plans.filter((p) => planChip(p) === kind)),
+    [kind, plans],
   )
   const shownPlaces = kind === 'All' || kind === 'Places' ? places : []
 
@@ -142,10 +146,10 @@ export function CityThisWeekend({ cityName, citySlug, countryCode, model }: City
     setKind(value)
     const count =
       value === 'All'
-        ? listings.length + places.length
+        ? plans.length + places.length
         : value === 'Places'
           ? places.length
-          : listings.filter((l) => listingChip(l) === value).length
+          : plans.filter((p) => planChip(p) === value).length
     setAnnouncement(`Showing ${count} ${value === 'All' ? 'listings' : value.toLowerCase()}`)
   }
 
@@ -200,13 +204,15 @@ export function CityThisWeekend({ cityName, citySlug, countryCode, model }: City
             Nothing is on this weekend yet. Here’s what’s on in {cityName} this week.
           </p>
         ) : null}
-        {shownListings.length ? (
+        {shownPlans.length ? (
           <ul className="wk-grid" data-weekend-listings="" data-filter={kind}>
-            {shownListings.map((l, index) => {
+            {shownPlans.map((plan, index) => {
+              // A recurring plan is one card: its day span, its next date's time and place; a tap opens that date.
+              const l = plan.next
               const hrefs = siteTargetHrefs({ type: 'listing', listing: l })
-              const when = listingWhen(l, model.today)
+              const when = planWhen(plan, model.today)
               return (
-                <li key={l.id} data-kind={listingChip(l)} data-orphan={orphanTile(index, shownListings.length) ? '' : undefined}>
+                <li key={plan.id} data-kind={planChip(plan)} data-plan-dates={plan.dates.length} data-orphan={orphanTile(index, shownPlans.length) ? '' : undefined}>
                   <a
                     className="wk-card"
                     href={hrefs.computerHref}
@@ -290,6 +296,11 @@ export function CityThisWeekend({ cityName, citySlug, countryCode, model }: City
       <div data-weekend-mode="fallback">
         <p className="filter-note">{model.text}</p>
         <div className="row quiet-row">
+          {model.plansIn ? (
+            <a className="btn soft" href={`/cities/${model.plansIn.slug}`} data-plans-in={model.plansIn.slug}>
+              Plans in {model.plansIn.name} <ArrowRight aria-hidden="true" />
+            </a>
+          ) : null}
           <HostHandoffButton location="city_quiet" className="btn soft">
             Host something in {model.hostCity} <ArrowRight aria-hidden="true" />
           </HostHandoffButton>

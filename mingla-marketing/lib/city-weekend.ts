@@ -9,7 +9,13 @@
 //   - `normalisePins` keeps the valid admin strips in admin order (strips are
 //     not by city: every published strip shows on every city page);
 //   - `cityWeek` is the city's [today, today+6] in its own zone;
-//   - `quietWeek` is the shared "nothing this week" rule.
+//   - `quietWeek` is the shared "nothing this week" rule;
+//   - `groupListings` / `planWhen` (#4349): one card per recurring plan
+//     (brand_slug + item_slug), labelled with its day span ("Event · Fri–Sun"),
+//     opening its next date. Applied AFTER the Friday–Sunday filter, so the
+//     span is the weekend's own and every count is a count of plans;
+//   - `cityForSlug` over `links_page_cities()` rows resolves the page's city to
+//     its `city_id`, so its quiet-week places use the fast per-city read.
 //
 // What this module adds is the city page's weekend: the city's local Friday to
 // Sunday, each listing's day taken in the listing's own `tz`.
@@ -20,15 +26,19 @@
 //   3. nothing this week: "A quiet week in <City>." + up to 3 real places;
 //   4. then "Plans in <nearest live city> →" when another city is live, and
 //      "Host something in <City> →";
-//   5. nothing live anywhere and no places, or a failed read: "Nothing is
-//      listed this week yet. Check back soon."
+//   5. no places to show: "Nothing is listed this week yet. Check back soon.",
+//      then "Plans in <nearest live city> →" when another city is live and
+//      "Host something in <City> →" (#4349 made /links do the same);
+//   6. a failed read: the fallback line and the Host banner only.
 //
 // Constitution #9: nothing here invents a plan, a price or a photo.
 
 import {
   addDaysKey,
   bucketListings,
+  cityForSlug,
   cityWeek,
+  groupListings,
   listingDayKey,
   liveCities,
   normalisePins,
@@ -37,6 +47,7 @@ import {
   type LinksCity,
   type LinksListing,
   type LinksPin,
+  type LinksPlan,
   type LinksPlace,
   type LinksStripRow,
   type LinksWeekRow,
@@ -73,6 +84,25 @@ export const CITY_LISTING_KIND_LABEL: Record<LinksListing['kind'], string> = { e
 /** What a "This weekend" card opens on a computer: a listing or a place sheet. */
 export type CityItemTarget = Extract<LinksTarget, { type: 'listing' } | { type: 'place' }>
 
+/** The chip a plan sits under: its kind, the same for every date. */
+export function planChip(plan: LinksPlan): CityWeekendKind {
+  return listingChip(plan.next)
+}
+
+/**
+ * The registry city with its `city_id` and `has_places` from the live cities
+ * (`links_page_cities()` rows through linksCitiesFromRows), matched by slug or
+ * by the older registry slug the live city carries as an alias (`raleigh-nc`
+ * opens Raleigh). Never matched by distance: Cary and Raleigh sit 15 km apart.
+ * A city that is not live (or an unread cities list) keeps no id, and its
+ * places are read around its centre instead.
+ */
+export function withLiveCityId(city: LinksCity, live: readonly LinksCity[]): LinksCity {
+  const match = cityForSlug(live, city.slug)
+  if (!match || !match.cityId) return city
+  return { ...city, cityId: match.cityId, hasPlaces: match.hasPlaces ?? null }
+}
+
 /** The chip a listing sits under. Trips are experiences you travel for, so they sit under Experiences. */
 export function listingChip(listing: LinksListing): CityWeekendKind {
   return listing.kind === 'event' ? 'Events' : 'Experiences'
@@ -91,10 +121,10 @@ export type CityWeekendModel = {
   today: string
   weekend: string[]
 } & (
-  | { mode: 'weekend'; listings: LinksListing[] }
-  | { mode: 'weekday'; listings: LinksListing[] }
+  | { mode: 'weekend'; listings: LinksListing[]; plans: LinksPlan[] }
+  | { mode: 'weekday'; listings: LinksListing[]; plans: LinksPlan[] }
   | { mode: 'quiet'; heading: string; places: LinksPlace[]; plansIn: LinksCity | null; hostCity: string }
-  | { mode: 'fallback'; text: string; hostCity: string }
+  | { mode: 'fallback'; text: string; hostCity: string; plansIn: LinksCity | null }
 )
 
 export interface CityWeekendInput {
@@ -126,8 +156,12 @@ export function cityWeekendModel(input: CityWeekendInput): CityWeekendModel {
   if (!input.readFailed) {
     const inWeekend = new Set(weekend)
     const weekendListings = week.listings.filter((l) => inWeekend.has(listingDayKey(l)))
-    if (weekendListings.length > 0) return { ...base, mode: 'weekend', listings: weekendListings }
-    if (week.listings.length > 0) return { ...base, mode: 'weekday', listings: week.listings }
+    // One card per plan (#4349): grouped after the Friday–Sunday filter, so a
+    // boat charter listed every day this week is one weekend card ("Fri–Sun").
+    if (weekendListings.length > 0) {
+      return { ...base, mode: 'weekend', listings: weekendListings, plans: groupListings(weekendListings) }
+    }
+    if (week.listings.length > 0) return { ...base, mode: 'weekday', listings: week.listings, plans: groupListings(week.listings) }
   }
 
   const live = liveCities(input.cities, listings, pins, input.nowIso)
@@ -141,6 +175,8 @@ export function cityWeekendModel(input: CityWeekendInput): CityWeekendModel {
   if (rule.mode === 'quiet') {
     return { ...base, mode: 'quiet', heading: rule.heading, places: rule.places, plansIn: rule.plansIn, hostCity: rule.hostCity }
   }
-  // Nothing live anywhere (so no "Plans in"), or the read failed: the line and the Host banner.
-  return { ...base, mode: 'fallback', text: FALLBACK_TEXT, hostCity: input.city.name }
+  // No places to show: the line, "Plans in <nearest live city>" when there is one, and the Host banner.
+  // A failed read: the line and the Host banner only.
+  const plansIn = rule.mode === 'fallback' && !input.readFailed ? rule.plansIn ?? null : null
+  return { ...base, mode: 'fallback', text: FALLBACK_TEXT, hostCity: input.city.name, plansIn }
 }
