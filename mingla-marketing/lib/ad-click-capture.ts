@@ -9,7 +9,7 @@
 import {
   isMarketingAdsOn,
   readMarketingPrivacy,
-} from '@/components/marketing/posthog-provider'
+} from '@/components/marketing/marketing-capture'
 import {
   MARKETING_BRAND_SLUG,
   marketingSlugFromPathname,

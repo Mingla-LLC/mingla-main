@@ -2,7 +2,7 @@
 
 import type { ReactNode } from 'react'
 import { ArrowUpRight } from 'lucide-react'
-import { captureMarketing } from '@/components/marketing/posthog-provider'
+import { captureMarketing } from '@/components/marketing/marketing-capture'
 import { DeviceCta, type CutoutSurface } from '@/components/cutout/device-cta'
 import { DeviceLink } from '@/components/cutout/device-link'
 import { HOST_DESTINATIONS } from '@/components/page-system/city-host-acquisition-bar'

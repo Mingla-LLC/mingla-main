@@ -12,7 +12,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/cn'
 import { buttonClasses } from '@/components/ui/button'
-import { captureMarketing } from '@/components/marketing/posthog-provider'
+import { captureMarketing } from '@/components/marketing/marketing-capture'
 import {
   runVenueGrader,
   searchGrowthToolsPlaces,

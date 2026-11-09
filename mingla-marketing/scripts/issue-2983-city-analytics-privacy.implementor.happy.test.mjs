@@ -95,7 +95,8 @@ function sourceContract() {
   assert.equal(analytics.isCityHubPathname('/cities/Lagos'), false)
   assert.equal(analytics.isCityHubPathname('/cities/lagos?secret_query=never_send'), false)
 
-  const provider = read('components/marketing/posthog-provider.tsx')
+  // #4339: the capture facades (transport: 'XHR') moved to marketing-capture.ts for the speed budget; the provider re-exports them.
+  const provider = `${read('components/marketing/posthog-provider.tsx')}\n${read('components/marketing/marketing-capture.ts')}`
   const actions = read('components/cities/city-actions.tsx')
   const layout = read('app/layout.tsx')
   const packageJson = JSON.parse(read('package.json'))

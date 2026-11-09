@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { SurfaceToggle } from '@/components/marketing/surface-toggle'
 import { AppQrPanel } from '@/components/marketing/app-qr-panel'
 import { cn } from '@/lib/cn'
-import { captureMarketing } from '@/components/marketing/posthog-provider'
+import { captureMarketing } from '@/components/marketing/marketing-capture'
 // ORCH-1319 — the explorer "Get the app" CTA is now a device-aware DIRECT action:
 // iOS → App Store, Android → Play, desktop/other → the QR panel. No lead form.
 // ORCH-1381 — the organiser surface no longer guesses: it presents an explicit

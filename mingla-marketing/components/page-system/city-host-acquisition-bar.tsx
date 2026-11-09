@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { ArrowUpRight, X } from 'lucide-react'
-import { captureMarketing } from '@/components/marketing/posthog-provider'
+import { captureMarketing } from '@/components/marketing/marketing-capture'
 import { DeviceLink } from '@/components/cutout/device-link'
 import { siteAttribution } from '@/lib/links-src'
 

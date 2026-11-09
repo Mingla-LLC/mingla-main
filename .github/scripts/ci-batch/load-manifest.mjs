@@ -210,8 +210,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4339 round A: register the Book a call leads migration (20280520004339) and its implementor PostgreSQL proof in the #1857, #1931 and #2117 replay lanes (the #2492 closure guard passes without a skip).
 // #4339 round B: register the ad marketing destinations migration (20280522004339) and its implementor PostgreSQL proof in the #1857, #1931 and #2117 replay lanes.
 // #4339: re-sealed after merging origin/main 85dba1f14e (#4349 /links rows kept beside the #4339 rows).
-// #4339: re-sealed after merging origin/main 28f88fea6d (#4334 and #4273 rows kept beside the #4339 rows).
-export const BOOTSTRAP_SHA256 = "a20419947c29d0d2a40958e17f5276330246d95da90d22cfdd28e40b3e89767f";
+// #4339: re-sealed after merging origin/main 28f88fea6d (#4334 and #4273 rows kept beside the #4339 rows) and adding marketing-capture.ts to the issue-905 path scope.
+export const BOOTSTRAP_SHA256 = "b08d2cf24cf93dfd4ef04324dc981cf56eac19a9580b4db94d41e7b426643a82";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

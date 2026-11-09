@@ -50,11 +50,13 @@ test('6. GA4 attribution: allowlisted campaign query and the referrer origin', a
   assert.ok(sm.sanitizeSearchMeasurement('page_view', { audience: 'host', page_family: 'host_landing', icp: 'event_promoter', page_location: 'https://usemingla.com/host/events?utm_source=google', source_kind: 'direct' }))
   assert.equal(sm.sanitizeSearchMeasurement('page_view', { audience: 'host', page_family: 'host_landing', page_location: 'https://usemingla.com/host/events?email=x', source_kind: 'direct' }), null)
 
-  const provider = code(read('components/marketing/posthog-provider.tsx'))
+  // #4339: gaPageLocation, gaReferrerOrigin and the capture facades moved to marketing-capture.ts (speed budget).
+  const provider = code(`${read('components/marketing/posthog-provider.tsx')}\n${read('components/marketing/marketing-capture.ts')}`)
   assert.match(provider, /return attributedPageLocation\(withQuery, \{ clickIds: isMarketingAdsOn\(\) \}\) \?\? canonical/)
   assert.match(provider, /const origin = cleanReferrerOrigin\(document\.referrer\)/)
   // The GA config and the page_view both use them; the city events too.
-  assert.match(provider, /const pageLocation = gaPageLocation\(new URL\(pathname \|\| '\/', SITE_ORIGIN\)\.toString\(\)\)/)
+  // #4339: after merging origin/main, #4273's token-free path family feeds the canonical URL.
+  assert.match(provider, /const pageLocation = gaPageLocation\(new URL\(analyticsSafePathname\(pathname \|\| '\/'\), SITE_ORIGIN\)\.toString\(\)\)/)
   assert.equal((provider.match(/page_referrer: pageReferrer/g) ?? []).length, 2, 'config call and inline config')
   assert.match(provider, /page_referrer: gaReferrerOrigin\(\)/)
   assert.match(provider, /page_location: gaPageLocation\(new URL\(pathname, SITE_ORIGIN\)\.toString\(\)\)/)
@@ -80,7 +82,8 @@ test('7. page families and ICPs: host_landing, icp on page_view and both hand-of
   assert.equal(pm.landingIcp('constructor'), undefined)
   for (const tool of Object.keys(pm.TOOL_ICP)) assert.ok(sm.SEARCH_ICPS.includes(pm.TOOL_ICP[tool]), tool)
 
-  const provider = code(read('components/marketing/posthog-provider.tsx'))
+  // #4339: gaPageLocation, gaReferrerOrigin and the capture facades moved to marketing-capture.ts (speed budget).
+  const provider = code(`${read('components/marketing/posthog-provider.tsx')}\n${read('components/marketing/marketing-capture.ts')}`)
   assert.match(provider, /const page = pageMeasurement\(pathname\)[\s\S]*captureSearchMeasurement\('page_view', \{\s*\.\.\.page,/)
   for (const [file, event] of [['components/landing/explorer-handoff.tsx', 'explorer_install_click'], ['components/landing/host-handoff.tsx', 'host_start_click']]) {
     const src = code(read(file))
@@ -180,7 +183,8 @@ test('10. funnel events fire where they should and every event is allowlisted', 
   const schedule = code(read('app/schedule/ScheduleClient.tsx'))
   // #4339 calls: only a Host booking is a GA4 lead (isHost); issue-4339-calls pins the rest.
   assert.match(schedule, /captureMarketing\('tool_book_confirmed'[\s\S]*const leadIcp = isHost \? landingIcp\(icp\) : null\s*if \(leadIcp\) \{\s*captureSearchMeasurement\('generate_lead', \{ audience: 'host', page_family: 'host_pillar', icp: leadIcp, action_state: 'succeeded' \}\)/)
-  const provider = code(read('components/marketing/posthog-provider.tsx'))
+  // #4339: gaPageLocation, gaReferrerOrigin and the capture facades moved to marketing-capture.ts (speed budget).
+  const provider = code(`${read('components/marketing/posthog-provider.tsx')}\n${read('components/marketing/marketing-capture.ts')}`)
   assert.match(provider, /if \(event === 'tool_report_ready'\) \{[\s\S]*captureSearchMeasurement\('tool_interaction', \{ audience: 'host', page_family: 'tools', icp, action_state: 'succeeded' \}\)/)
   assert.match(provider, /if \(!isMarketingEventName\(event\)\) \{[\s\S]*return\s*\}/, 'unlisted events never reach PostHog')
   // Consent: every new event goes through captureMarketing / captureSearchMeasurement,

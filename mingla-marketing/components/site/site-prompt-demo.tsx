@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom'
 import { ArrowRight, Sparkles, X } from 'lucide-react'
 import { siteAttribution } from '@/lib/links-src'
 import { ariDraftContinueHref, draftTransportFromEnv, postSitePromptDraft } from '@/lib/site-prompt-draft'
-import { captureMarketing } from '@/components/marketing/posthog-provider'
+import { captureMarketing } from '@/components/marketing/marketing-capture'
 
 // #4339 §5 — "Prompt your website into existence". The visitor describes their
 // place and taps Generate; five build steps tick by while a small site preview

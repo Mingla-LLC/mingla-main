@@ -2,7 +2,7 @@
 import type { MouseEvent, ReactNode } from 'react'
 import { ArrowRight } from 'lucide-react'
 import { DeviceLink } from '@/components/cutout/device-link'
-import { captureSearchMeasurement, isMarketingAdsOn } from '@/components/marketing/posthog-provider'
+import { captureSearchMeasurement, isMarketingAdsOn } from '@/components/marketing/marketing-capture'
 import { readLandingCampaign } from '@/lib/landing-campaign'
 import { pageMeasurement } from '@/lib/page-measurement'
 import { siteAttribution } from '@/lib/links-src'

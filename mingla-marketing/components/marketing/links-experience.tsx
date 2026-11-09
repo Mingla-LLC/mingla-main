@@ -32,7 +32,7 @@ import {
   type RefObject,
 } from 'react'
 import QRCode from 'react-qr-code'
-import { captureMarketing } from '@/components/marketing/posthog-provider'
+import { captureMarketing } from '@/components/marketing/marketing-capture'
 import { cn } from '@/lib/cn'
 import { detectClientPlatform, type Platform } from '@/lib/device-platform'
 import { resolveStoreListingHrefs } from '@/lib/cta-destination'

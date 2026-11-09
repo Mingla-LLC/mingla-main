@@ -55,9 +55,10 @@ const BUILT = process.env.ISSUE_4339_BUILT === '1'
 // PRIVACY_EFFECTIVE_DATE from 'October 22, 2026' to 'November 9, 2026'; the
 // redesign itself still changes no legal word (the article text with the old
 // date put back still hashes to c8e76e28…, the pre-redesign pin).
+// #4339: re-pinned (privacy and terms) after merging origin/main 28f88fea6d: #4334 (#4350) replaced the Mapbox processor line with Google's address, geocoding and map-image services in lib/privacyContent.ts. That is main's approved legal change, not the redesign's.
 const LEGAL = {
-  'privacy-policy': { key: 'privacy', module: 'lib/privacyContent.ts', text: '7e777a6ffe4db46c9242027a947fb6e698a64814dee24d901f95220a6c6a6301', moduleSha: 'f609eddfe6fb729b6b390c546fdf275aa978a94ac2b90c620437d6bcabe6a85a' },
-  'terms-of-service': { key: 'terms', module: 'lib/termsContent.ts', text: '8befcefabbc503b89b54fad087bdf11f3666bc632c622bf2a03658fef5a42a6c', moduleSha: '0295f3cd79328ce1edb6451401dcac15ab6398242298f85b4c1c513402ca4063' },
+  'privacy-policy': { key: 'privacy', module: 'lib/privacyContent.ts', text: 'ac7e165cfb62ebc598371efe8e52f3aab91989848032430d90bf4369e44678f3', moduleSha: 'd76f0d71069e7d33cec417f790c8bf9699c80f144929bb77e29f9e01c7e862e7' },
+  'terms-of-service': { key: 'terms', module: 'lib/termsContent.ts', text: '4a54ce1728ae12f75c349f3f39b1f5b2b0bfd99fa5b6828f90786fdfdf5a3fe9', moduleSha: '4d5c225a822ecb8e631b40820e5eebbabf0c7f96ce574189399943a34d383674' },
   'organiser-terms': { key: 'organiser', module: 'lib/organiserTermsContent.ts', text: '39f27a554b33a65e4433770b067b6593c78833feab64992ab837c107abcb64b8', moduleSha: '20e189ed504b312ee689516957a0db970d787413c741df70cfd8e0ba3451dde3' },
   'sms-terms': { key: 'sms', module: 'lib/smsTermsContent.ts', text: 'a9da87ccc105805c96a254ca6aa28d55071bf598ec9205d35be7d7a90f627fd0', moduleSha: '5e5bc19c3e54739c8ee4eeed7b2f36549843099b6d7c6b03fb77867fd72abbad' },
   'creator-agreement': { key: 'creator', module: 'lib/creatorAgreementContent.ts', text: 'b94c973ab5d7e82bad68f8a415ee738a08645248f65ddb8f107fba680ec631cc', moduleSha: '3cb320d01602848ea026acd6ecaa8d48b63929d84938daca6664606fcd436c9d' },

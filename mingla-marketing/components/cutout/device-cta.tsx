@@ -2,7 +2,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { ArrowRight } from 'lucide-react'
 import { cn } from '@/lib/cn'
-import { captureSearchMeasurement } from '@/components/marketing/posthog-provider'
+import { captureSearchMeasurement } from '@/components/marketing/marketing-capture'
 import { AppQrPanel } from '@/components/marketing/app-qr-panel'
 import { AppleMark, PlayMark } from '@/components/ui/store-marks'
 import { siteAttribution, type SiteCampaign } from '@/lib/links-src'

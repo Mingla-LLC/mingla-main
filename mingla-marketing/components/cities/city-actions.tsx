@@ -5,7 +5,7 @@ import {
   captureMarketing,
   posthogOptIn,
   subscribeMarketingConsent,
-} from '@/components/marketing/posthog-provider'
+} from '@/components/marketing/marketing-capture'
 import type { CutoutSurface } from '@/components/cutout/device-cta'
 import type { CityHubAnalyticsEvent, CityHubDestinationType } from '@/lib/city-hub-analytics'
 

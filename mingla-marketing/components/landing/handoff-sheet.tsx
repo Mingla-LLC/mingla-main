@@ -6,7 +6,7 @@ import { X } from 'lucide-react'
 import { AppleMark, PlayMark } from '@/components/ui/store-marks'
 import type { OneLinkAttribution } from '@/lib/links-src'
 import { appHandoffHrefs, hostWebLabel, withLandingCampaign, type AppHandoffSheet } from '@/lib/app-handoff'
-import { captureMarketing, isMarketingAdsOn } from '@/components/marketing/posthog-provider'
+import { captureMarketing, isMarketingAdsOn } from '@/components/marketing/marketing-capture'
 import { readLandingCampaign } from '@/lib/landing-campaign'
 import type { SearchIcp } from '@/lib/page-measurement'
 

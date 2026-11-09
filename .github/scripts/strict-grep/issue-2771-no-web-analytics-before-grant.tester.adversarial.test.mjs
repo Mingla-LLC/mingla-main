@@ -42,8 +42,9 @@ test('independent mutations cannot leak a vendor past a turn-off or restore a gr
     { business: sources.business.replace('posthogClient.opt_out_capturing();', '') },
     { business: sources.business.replace('if (!adsOn) stopAdPixels();', '') },
     { business: sources.business.replace('if (!isAnalyticsOn()) return Promise.resolve();', 'if (readStoredConsent() !== "granted") return Promise.resolve();') },
-    { marketingProvider: sources.marketingProvider.replace("): void {\n  if (!isMarketingAnalyticsOn()) return\n  try {", "): void {\n  try {") },
-    { marketingProvider: sources.marketingProvider.replace("return choice === null ? true : choice.analytics", "return choice === null ? false : choice.analytics") },
+    // #4339: captureMarketing and isMarketingAnalyticsOn moved to marketing-capture.ts (speed budget).
+    { marketingCapture: sources.marketingCapture.replace("): void {\n  if (!isMarketingAnalyticsOn()) return\n  try {", "): void {\n  try {") },
+    { marketingCapture: sources.marketingCapture.replace("return choice === null ? true : choice.analytics", "return choice === null ? false : choice.analytics") },
     { marketingLayout: sources.marketingLayout.replace('<PostHogProvider>', '<PostHogProvider>{null}</PostHogProvider>\n        ').replace('</PostHogProvider>', '') },
     { business: sources.business.replace('      cross_subdomain_cookie: false,\n', '') },
     { marketingProvider: sources.marketingProvider.replace('      cross_subdomain_cookie: false,\n', '') },

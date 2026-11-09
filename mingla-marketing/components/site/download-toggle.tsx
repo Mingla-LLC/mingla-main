@@ -1,7 +1,7 @@
 'use client'
 import { useState, type ReactNode } from 'react'
 import { FilterChips } from './filter-row'
-import { captureMarketing } from '@/components/marketing/posthog-provider'
+import { captureMarketing } from '@/components/marketing/marketing-capture'
 
 // #4339 phase 2b — the Get the app toggle: Mingla (Explorer) or Mingla Host.
 // Both panels are server-rendered by app/download/page.tsx; this only chooses

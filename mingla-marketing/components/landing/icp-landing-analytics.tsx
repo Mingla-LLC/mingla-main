@@ -1,6 +1,6 @@
 'use client'
 import { useEffect } from 'react'
-import { captureMarketing } from '@/components/marketing/posthog-provider'
+import { captureMarketing } from '@/components/marketing/marketing-capture'
 import { landingIcp } from '@/lib/page-measurement'
 
 // #4339 round B — the Host landing page's own events, from one delegated

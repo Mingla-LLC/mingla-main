@@ -33,7 +33,7 @@ import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type React
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { ArrowRight, Check, Mail } from 'lucide-react'
-import { captureMarketing, captureSearchMeasurement } from '@/components/marketing/posthog-provider'
+import { captureMarketing, captureSearchMeasurement } from '@/components/marketing/marketing-capture'
 import { ExplorerHandoffButton } from '@/components/landing/explorer-handoff'
 import { landingIcp } from '@/lib/page-measurement'
 import { bookCall, fetchBookingSlots, type BookingSlot } from '@/lib/booking-call'

@@ -3,7 +3,7 @@
 import { orphanTile } from '@/components/site/orphan-tile'
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { captureMarketing } from '@/components/marketing/posthog-provider'
+import { captureMarketing } from '@/components/marketing/marketing-capture'
 import { CurrentPlacePhoto } from '@/components/page-system/current-place-photo'
 import type { CataloguePlaceView } from '@/content/page-system/shared'
 import { storedPlaceThumbSrc } from '@/lib/city-place-photo'
