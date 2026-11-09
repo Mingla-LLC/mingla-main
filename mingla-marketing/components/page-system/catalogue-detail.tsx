@@ -5,11 +5,11 @@ import { ArrowLeft, Sparkles, Star, X } from 'lucide-react'
 // #4339 round B (speed): direct module imports, not the barrel (the
 // barrel pulls framer-motion into every route that touches it).
 import { DeviceCta } from '@/components/cutout/device-cta'
-import type { CataloguePlace, CataloguePlan } from '@/content/page-system/shared'
+import type { CataloguePlace, CataloguePlaceView, CataloguePlan } from '@/content/page-system/shared'
 import { CurrentPlacePhoto } from './current-place-photo'
 
 interface CatalogueDetailProps {
-  readonly item: CataloguePlace | CataloguePlan
+  readonly item: CataloguePlaceView | CataloguePlan
   readonly cityName: string
   readonly backHref: string
   readonly onClose: () => void

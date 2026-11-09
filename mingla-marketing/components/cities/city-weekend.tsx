@@ -5,7 +5,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type
 import { createPortal } from 'react-dom'
 import { captureMarketing } from '@/components/marketing/posthog-provider'
 import { CurrentPlacePhoto } from '@/components/page-system/current-place-photo'
-import type { CataloguePlace } from '@/content/page-system/shared'
+import type { CataloguePlaceView } from '@/content/page-system/shared'
 import { storedPlaceThumbSrc } from '@/lib/city-place-photo'
 import { categoryRank, rankLabel, ratingLine } from '@/lib/city-place-rank'
 
@@ -41,7 +41,7 @@ interface CityWeekendProps {
   readonly countryCode: string
   readonly locale: string
   readonly cityPath: string
-  readonly places: readonly CataloguePlace[]
+  readonly places: readonly CataloguePlaceView[]
 }
 
 export function CityWeekend({ cityName, citySlug, countryCode, locale, cityPath, places }: CityWeekendProps) {
@@ -76,7 +76,7 @@ export function CityWeekend({ cityName, citySlug, countryCode, locale, cityPath,
     gridRef.current?.querySelectorAll<HTMLAnchorElement>('.wk-card')[COLLAPSED_COUNT]?.focus()
   }, [collapsed])
 
-  function openPlace(event: MouseEvent<HTMLAnchorElement>, place: CataloguePlace) {
+  function openPlace(event: MouseEvent<HTMLAnchorElement>, place: CataloguePlaceView) {
     if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
     event.preventDefault()
     openerRef.current = event.currentTarget

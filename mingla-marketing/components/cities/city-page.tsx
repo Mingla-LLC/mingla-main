@@ -9,6 +9,7 @@ import { CityLifecycleNotice, type CityHubCatalogue } from './city-lifecycle'
 import { CityWeekend } from './city-weekend'
 import { CityThisWeekend } from './city-this-weekend'
 import type { CityWeekendModel } from '@/lib/city-weekend'
+import { cataloguePlaceView } from '@/content/page-system/shared'
 
 // #4339 phase 2b — the release layout of /cities/[city] (one template for
 // every city), in the approved design:
@@ -194,7 +195,9 @@ export function CityPage({
           countryCode={record.countryCode}
           locale={record.locale}
           cityPath={cityHubPath(record)}
-          places={catalogue.places}
+          // #4339 speed fix: the card/detail view of each place, not the full
+          // catalogue record (its receipts stay on the server).
+          places={catalogue.places.map(cataloguePlaceView)}
         />
         <CityGuideBand record={record} catalogue={catalogue} />
         <CityQuestions record={record} />
