@@ -455,6 +455,8 @@ test('T-1 the REAL scrimHeight() reproduces every surface height from first prin
         CI.plateTopDepthForLines(key, tallest),
         CI.titleTopDepthForLines(key, tallest),
         s.h,
+        // #4347 — the kicker clause; 0 (self-disabled) on every surface without one.
+        CI.kickerTopDepthForLines(key, tallest),
       ),
       `T-1 ${key}: surfaceScrimHeight is not the height solved from its tallest silhouette`,
     );
@@ -487,6 +489,23 @@ test('T-1 the REAL scrimHeight() reproduces every surface height from first prin
         );
       } else {
         assert.equal(dTitle, 0, `T-1 ${key}: title is on the plate, so dTitleTop must self-disable to 0`);
+      }
+
+      // Clause 3 (#4347): the kicker's top edge clears the small-text floor.
+      // Recomputed here from the independent ramp evaluator, not the package's
+      // inverse: white 12/700 type over a pure-white photo needs ramp alpha
+      // >= 0.5345 for 4.5:1, and the package's floor must sit above that.
+      const dKicker = CI.kickerTopDepthForLines(key, lines);
+      if (s.kicker === true) {
+        assert.ok(dKicker > dTitle, `T-1 ${key}: the kicker must sit ABOVE the title's top edge`);
+        const aKicker = CI.rampAlphaAtDepth(dKicker, H);
+        assert.ok(
+          aKicker >= CI.KICKER_ALPHA_FLOOR - 1e-9 && CI.KICKER_ALPHA_FLOOR > 0.5345,
+          `T-1 ${key} @${lines} line(s): scrim alpha at the kicker's top edge is ${aKicker.toFixed(4)}, `
+          + `below the ${CI.KICKER_ALPHA_FLOOR} small-text floor`,
+        );
+      } else {
+        assert.equal(dKicker, 0, `T-1 ${key}: no kicker, so dKickerTop must self-disable to 0`);
       }
     }
   }
@@ -1001,13 +1020,22 @@ test('T-11 S7 and S1 are the SAME plate, measured — not the same numbers retyp
     CI.titleTopDepth('s7Expanded'), CI.titleTopDepth('s1Single'),
     'T-11: the title no longer sits at the same depth on both surfaces',
   );
-  assert.equal(
-    CI.surfaceScrimHeight('s7Expanded'), CI.surfaceScrimHeight('s1Single'),
-    'T-11: the two surfaces resolve different scrim heights',
+  // #4347 wave 1 — the deck card prints a kicker above its title and the sheet
+  // hero does not (yet), so the DECK's scrim is solved one clause deeper and is
+  // the taller of the two. Every number the continuity rests on below the title
+  // (plate depth, title depth, plate tone) is still asserted equal; only the
+  // scrim and the under-layer alpha re-derived FROM it may differ, and the deck
+  // may only ever be the darker (more legible) of the two.
+  assert.equal(CI.SURFACES.s1Single.kicker, true, 'T-11: the deck card lost its kicker flag');
+  assert.notEqual(CI.SURFACES.s7Expanded.kicker, true, 'T-11: the sheet hero gained a kicker it does not render');
+  assert.ok(
+    CI.surfaceScrimHeight('s1Single') >= CI.surfaceScrimHeight('s7Expanded'),
+    'T-11: the deck scrim is shallower than the sheet scrim',
   );
   assert.equal(
-    CI.surfacePlateUnder('s7Expanded'), CI.surfacePlateUnder('s1Single'),
-    'T-11: the derived under-layer alphas differ, so the two plates are different tones',
+    CI.surfaceScrimHeight('s7Expanded'),
+    CI.scrimHeight(CI.plateTopDepthForLines('s7Expanded', 2), CI.titleTopDepthForLines('s7Expanded', 2), CI.SURFACES.s7Expanded.h),
+    'T-11: the sheet scrim is no longer the two-clause solve',
   );
 
   // And the measured composite, through the independent oracle, not through the
@@ -1016,8 +1044,19 @@ test('T-11 S7 and S1 are the SAME plate, measured — not the same numbers retyp
     const alpha = CI.rampAlphaAtDepth(CI.plateTopDepth(key), CI.surfaceScrimHeight(key));
     return lStar(luminance(plateOver(backdropAt(255, alpha), CI.plateUnderAlpha(alpha))));
   };
+  // #4347 wave 1 — the two scrims now differ (deck kicker clause), so the two
+  // under-layer alphas are solved from different inputs and each is rounded to
+  // the package's 3dp. Both must still land on the target tone, and on each
+  // other, within the rounding a 3dp alpha can introduce (well under 0.1 L*,
+  // against a ~2-3 L* just-noticeable difference).
+  for (const key of ['s1Single', 's7Expanded']) {
+    assert.ok(
+      Math.abs(l(key) - CI.PLATE.targetLstar) < 0.05,
+      `T-11: ${key}'s plate measures L* ${l(key).toFixed(4)}, off the ${CI.PLATE.targetLstar} target`,
+    );
+  }
   assert.ok(
-    Math.abs(l('s7Expanded') - l('s1Single')) < 1e-9,
+    Math.abs(l('s7Expanded') - l('s1Single')) < 0.05,
     `T-11: the plate measures L* ${l('s7Expanded').toFixed(4)} on the sheet and `
     + `${l('s1Single').toFixed(4)} on the deck card. The continuity argument is arithmetic; if these `
     + 'differ, something re-tuned a value that is supposed to be derived.',

@@ -294,7 +294,10 @@ test('A-2 the sheet and the deck card resolve the same plate at every span count
 });
 
 test('A-2b the variable hero height cannot invalidate the scrim, at any sheet height', () => {
-  const want = CI.surfaceScrimHeight('s1Single');
+  // #4347 wave 1 — the sheet's OWN scrim. The deck card (kicker clause) now
+  // solves deeper; what this guards is that the hero height never moves the
+  // sheet's scrim, which is unchanged.
+  const want = CI.surfaceScrimHeight('s7Expanded');
   // #1700 — the TALLEST silhouette's depths, not the canonical plate's. The
   // scrim is solved from the deepest-reaching composition a surface can render
   // (a two-line facts row), so comparing against the canonical depths here made

@@ -149,6 +149,167 @@ const K_PLATE = 1.4286;
 const K_TITLE = 1.5464;
 
 /**
+ * #4347 wave 1 — THE KICKER CLAUSE. The deck card now prints a one-line
+ * kicker ("RESTAURANT", "EXPERIENCE · SAT 15 NOV, 6PM") directly above the
+ * title. It is SMALL text, so its floor is SC 1.4.3's 4.5:1, not the 3:1 the
+ * 30/700 title gets. White text over a pure-white photo under the bottom ramp
+ * reaches 4.5:1 at ramp alpha 0.5345; 0.56 keeps the same kind of margin the
+ * title clause keeps. K_KICKER is back-solved from that floor by the ramp's
+ * own inverse (`rampFractionForAlpha`) rather than typed in, so a ramp retune
+ * cannot silently strand it.
+ */
+const KICKER_ALPHA_FLOOR = 0.56;
+
+/** The bottom ramp's inverse: the gradient fraction t at which alpha first reaches `alpha`. */
+function rampFractionForAlpha(alpha) {
+  const loc = RAMP.bottom.locations;
+  const a = RAMP.bottom.alphas;
+  if (alpha <= a[0]) return loc[0];
+  for (let i = 1; i < loc.length; i += 1) {
+    if (alpha <= a[i]) return loc[i - 1] + ((alpha - a[i - 1]) / (a[i] - a[i - 1])) * (loc[i] - loc[i - 1]);
+  }
+  return loc[loc.length - 1];
+}
+
+const K_KICKER = Math.round((1 / (1 - rampFractionForAlpha(KICKER_ALPHA_FLOOR))) * 10000) / 10000;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #4347 wave 1 — the redesigned deck card's new pieces. Every number the deck
+// card adds lives here, beside the plate it sits on, and nowhere else.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The one-line kicker above the title: category (and date, for a host experience). */
+const KICKER = Object.freeze({
+  size: 12,
+  lineHeight: 16,
+  weight: '700',
+  letterSpacing: 0.6,
+  gap: 4,
+  lines: 1,
+  color: '#FFFFFF',
+  /** No-photo card: neutral fill, dark type. */
+  darkColor: '#3F3F46',
+});
+
+/**
+ * The photo pager on the top deck card. Up to `maxPhotos` photos; segment bars
+ * at the top (none when there is one photo); the left and right `zoneSide` of
+ * the photo flip, the middle opens. The vertical extent of the zones stops at
+ * the kicker: taps on the title, the facts and the plate always open.
+ */
+const PHOTO_PAGER = Object.freeze({
+  maxPhotos: 6,
+  zoneSide: 0.3,
+  crossfadeMs: 180,
+  /** The top card preloads this many photos ahead; behind cards load photo 1 only. */
+  preloadAhead: 2,
+  bar: Object.freeze({
+    height: 3,
+    radius: 1.5,
+    gap: 4,
+    side: 12,
+    /** Card-local offset BELOW the deck chrome band (safe-area top + 44). */
+    belowChrome: 8,
+    on: '#FFFFFF',
+    off: 'rgba(255,255,255,0.38)',
+    /** No-photo / light backdrop is never paged (one photo = no bars). */
+  }),
+  /** "Stop 2 · Café Neo" on a curated card, and the one-time tap hint. */
+  label: Object.freeze({
+    size: 11,
+    lineHeight: 14,
+    weight: '600',
+    paddingH: 9,
+    paddingV: 3,
+    radius: 99,
+    fill: 'rgba(0,0,0,0.45)',
+    color: '#FFFFFF',
+    belowBars: 10,
+  }),
+});
+
+/**
+ * The fact line (it lives in the plate's meta row and wraps to at most
+ * META_LINES_MAX lines). Order is fixed: open status, rating with count,
+ * travel time, price. The status span is coloured by state.
+ */
+const FACT_LINE = Object.freeze({
+  order: Object.freeze(['status', 'rating', 'travel', 'price']),
+  status: Object.freeze({
+    open: '#4ADE80',
+    closingSoon: '#FBBF24',
+    closed: 'rgba(255,255,255,0.72)',
+    weight: '600',
+  }),
+  /** "Closes in 30 min" fires inside this many minutes of closing. */
+  closingSoonMinutes: 60,
+});
+
+/** The curated plan's stop stack: up to 4 thumbs, overlapped, then the route line. */
+const STOP_STACK = Object.freeze({
+  max: 4,
+  size: 30,
+  radius: 10,
+  borderWidth: 2,
+  border: 'rgba(255,255,255,0.9)',
+  overlap: 8,
+  gapToRoute: 8,
+  /** Space between the stack row and the title above the plate. */
+  marginBottom: 8,
+  routeSize: 13,
+  routeWeight: '500',
+  routeColor: 'rgba(255,255,255,0.92)',
+});
+
+/** At most ONE smart chip per card, above the kicker, only when it changes the decision. */
+const SMART_CHIP = Object.freeze({
+  size: 12,
+  lineHeight: 16,
+  weight: '600',
+  paddingH: 10,
+  paddingV: 4,
+  radius: 99,
+  marginBottom: 8,
+  fill: 'rgba(0,0,0,0.42)',
+  warnFill: 'rgba(146,64,14,0.86)',
+  color: '#FFFFFF',
+});
+
+/** The host chip on a claimed venue (top-left), matching the experience brand chip. */
+const HOST_CHIP = Object.freeze({
+  size: 13,
+  weight: '600',
+  gap: 6,
+  discSize: 22,
+  discFill: '#FFFFFF',
+  discTextSize: 9.5,
+  discTextColor: '#111111',
+  paddingL: 4,
+  paddingR: 10,
+  paddingV: 4,
+  radius: 99,
+  fill: 'rgba(0,0,0,0.42)',
+  color: '#FFFFFF',
+});
+
+/** "From ≈ $74" on a host experience's plate: the orange price pill. */
+const FROM_PILL = Object.freeze({
+  height: 44,
+  radius: 22,
+  paddingH: 14,
+  size: 13,
+  weight: '700',
+  fill: '#EB7825',
+  color: '#FFFFFF',
+});
+
+/** No photo at all: a warm neutral fill and dark type, no scrims, no bars. */
+const NO_PHOTO = Object.freeze({
+  fill: '#E7E5E0',
+  titleColor: '#18181B',
+});
+
+/**
  * Shared-card facts are ordered domain presentation, not JSON object order.
  * S4/S5/S6 server and S6 native all consume this selector.
  */
@@ -174,8 +335,10 @@ function selectSharedCardFacts(metadata, limit = 2) {
  * Rounded UP to an even number of points so a 2x/3x raster never lands the
  * gradient's last row on a half-pixel, then clamped to the card.
  */
-function scrimHeight(dPlateTop, dTitleTop, cardH) {
-  const h = Math.ceil(Math.max(K_PLATE * dPlateTop, K_TITLE * dTitleTop));
+function scrimHeight(dPlateTop, dTitleTop, cardH, dKickerTop = 0) {
+  const h = Math.ceil(
+    Math.max(K_PLATE * dPlateTop, K_TITLE * dTitleTop, K_KICKER * (dKickerTop > 0 ? dKickerTop : 0)),
+  );
   return Math.min(h + (h % 2), cardH - (cardH % 2));
 }
 
@@ -773,6 +936,8 @@ const SURFACES = {
     metaSize: 14,
     metaLines: 2,
     gap: 20,
+    // #4347 — the deck card prints a kicker above the title (see KICKER).
+    kicker: true,
     titleOnPlate: false,
     controls: true,
     topScrim: true,
@@ -790,6 +955,8 @@ const SURFACES = {
     metaSize: 14,
     metaLines: 2,
     gap: 20,
+    // #4347 — the deck card prints a kicker above the title (see KICKER).
+    kicker: true,
     titleOnPlate: false,
     controls: true,
     topScrim: true,
@@ -1027,6 +1194,20 @@ function titleTopDepthForLines(surfaceKey, lines) {
   return plateTopDepthForLines(surfaceKey, lines) + s.gap + s.titleLines * s.titleLH;
 }
 
+/**
+ * #4347 — the kicker's TOP edge, in points up from the card's bottom edge, for a
+ * silhouette. 0 on a surface that prints no kicker, which self-disables the
+ * kicker clause of `scrimHeight` exactly like `titleTopDepthForLines` does for
+ * a title-on-plate surface. Solved against a TWO-line title, the worst case:
+ * a one-line title only lowers the kicker into deeper scrim.
+ */
+function kickerTopDepthForLines(surfaceKey, lines) {
+  const s = SURFACES[surfaceKey];
+  if (!s) throw new Error(`@mingla/card-identity: unknown surface "${surfaceKey}"`);
+  if (!s.kicker || s.titleOnPlate) return 0;
+  return titleTopDepthForLines(surfaceKey, lines) + KICKER.gap + KICKER.lineHeight;
+}
+
 /** Every silhouette a surface can render, shallowest plate first: [0, 1, ... metaLines]. */
 function surfaceSilhouettes(surfaceKey) {
   const s = SURFACES[surfaceKey];
@@ -1069,6 +1250,7 @@ function surfaceScrimHeight(surfaceKey) {
     plateTopDepthForLines(surfaceKey, s.metaLines),
     titleTopDepthForLines(surfaceKey, s.metaLines),
     s.h,
+    kickerTopDepthForLines(surfaceKey, s.metaLines),
   );
 }
 
@@ -1131,6 +1313,18 @@ DETAILS.gapFromBeenHere = 8;
 Object.freeze(DETAILS);
 
 module.exports = {
+  KICKER,
+  KICKER_ALPHA_FLOOR,
+  K_KICKER,
+  PHOTO_PAGER,
+  FACT_LINE,
+  STOP_STACK,
+  SMART_CHIP,
+  HOST_CHIP,
+  FROM_PILL,
+  NO_PHOTO,
+  rampFractionForAlpha,
+  kickerTopDepthForLines,
   RAMP,
   PLATE,
   META,

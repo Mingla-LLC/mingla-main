@@ -152,6 +152,8 @@ export interface SurfaceDescriptor {
   readonly controls: boolean;
   readonly topScrim: boolean;
   readonly curated: boolean;
+  /** #4347 — the surface prints a one-line kicker above the title. */
+  readonly kicker?: boolean;
   readonly opaqueOnly?: boolean;
   readonly plateBoundary: PlateBoundaryKey;
   readonly sliverBoundary: SliverBoundaryKey;
@@ -206,8 +208,57 @@ export function selectSharedCardFacts(
   limit?: number,
 ): string[];
 
-/** H = ceil2(max(K_PLATE * dPlateTop, K_TITLE * dTitleTop)), clamped to the card. */
-export function scrimHeight(dPlateTop: number, dTitleTop: number, cardH: number): number;
+/** H = ceil2(max(K_PLATE * dPlateTop, K_TITLE * dTitleTop, K_KICKER * dKickerTop)), clamped to the card. */
+export function scrimHeight(dPlateTop: number, dTitleTop: number, cardH: number, dKickerTop?: number): number;
+
+// ── #4347 wave 1 — the redesigned deck card ────────────────────────────────
+export const KICKER_ALPHA_FLOOR: number;
+export const K_KICKER: number;
+export function rampFractionForAlpha(alpha: number): number;
+export function kickerTopDepthForLines(surfaceKey: SurfaceKey, lines: number): number;
+export const KICKER: {
+  readonly size: number; readonly lineHeight: number; readonly weight: string;
+  readonly letterSpacing: number; readonly gap: number; readonly lines: number;
+  readonly color: string; readonly darkColor: string;
+};
+export const PHOTO_PAGER: {
+  readonly maxPhotos: number; readonly zoneSide: number; readonly crossfadeMs: number;
+  readonly preloadAhead: number;
+  readonly bar: {
+    readonly height: number; readonly radius: number; readonly gap: number; readonly side: number;
+    readonly belowChrome: number; readonly on: string; readonly off: string;
+  };
+  readonly label: {
+    readonly size: number; readonly lineHeight: number; readonly weight: string;
+    readonly paddingH: number; readonly paddingV: number; readonly radius: number;
+    readonly fill: string; readonly color: string; readonly belowBars: number;
+  };
+};
+export const FACT_LINE: {
+  readonly order: readonly ['status', 'rating', 'travel', 'price'];
+  readonly status: { readonly open: string; readonly closingSoon: string; readonly closed: string; readonly weight: string };
+  readonly closingSoonMinutes: number;
+};
+export const STOP_STACK: {
+  readonly max: number; readonly size: number; readonly radius: number; readonly borderWidth: number;
+  readonly border: string; readonly overlap: number; readonly gapToRoute: number;
+  readonly marginBottom: number; readonly routeSize: number; readonly routeWeight: string; readonly routeColor: string;
+};
+export const SMART_CHIP: {
+  readonly size: number; readonly lineHeight: number; readonly weight: string;
+  readonly paddingH: number; readonly paddingV: number; readonly radius: number;
+  readonly marginBottom: number; readonly fill: string; readonly warnFill: string; readonly color: string;
+};
+export const HOST_CHIP: {
+  readonly size: number; readonly weight: string; readonly gap: number; readonly discSize: number;
+  readonly discFill: string; readonly discTextSize: number; readonly discTextColor: string; readonly paddingL: number; readonly paddingR: number;
+  readonly paddingV: number; readonly radius: number; readonly fill: string; readonly color: string;
+};
+export const FROM_PILL: {
+  readonly height: number; readonly radius: number; readonly paddingH: number;
+  readonly size: number; readonly weight: string; readonly fill: string; readonly color: string;
+};
+export const NO_PHOTO: { readonly fill: string; readonly titleColor: string };
 
 /** Piecewise-linear ramp alpha at depth `d` (points from the card's bottom edge). */
 export function rampAlphaAtDepth(d: number, scrimH: number): number;

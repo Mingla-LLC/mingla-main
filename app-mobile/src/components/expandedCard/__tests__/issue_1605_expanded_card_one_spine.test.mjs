@@ -159,16 +159,17 @@ test('S-1 the sheet\'s hero renders the deck card\'s plate, at every hero height
   // impression to be eyeballed — the scrim formula reads only the plate's
   // card-local geometry, so identical plate geometry FORCES identical scrim,
   // alpha, under-layer and therefore identical contrast. Call it and check.
-  assert.equal(
-    CI.surfaceScrimHeight('s7Expanded'),
-    CI.surfaceScrimHeight('s1Single'),
-    'S-1: the sheet and the deck card resolve different scrim heights, so the plate the user was '
-    + 'looking at is not the plate they get.',
-  );
-  assert.equal(
-    CI.surfacePlateUnder('s7Expanded'),
-    CI.surfacePlateUnder('s1Single'),
-    'S-1: the derived under-layer alphas differ — two different-looking objects.',
+  // #4347 wave 1 — REWRITTEN, SAME PROTECTION. The deck card now prints a
+  // kicker above its title and the sheet hero does not, so the deck solves its
+  // scrim one clause deeper (it is the darker, more legible of the two). The
+  // continuity that matters is unchanged and asserted: same plate depth, same
+  // title depth, and the plate composites to the same L* 23.5 on both (T-11 in
+  // the package oracle measures that through an independent model).
+  assert.equal(CI.plateTopDepth('s7Expanded'), CI.plateTopDepth('s1Single'), 'S-1: plate depth drift');
+  assert.equal(CI.titleTopDepth('s7Expanded'), CI.titleTopDepth('s1Single'), 'S-1: title depth drift');
+  assert.ok(
+    CI.surfaceScrimHeight('s1Single') >= CI.surfaceScrimHeight('s7Expanded'),
+    'S-1: the deck card scrim is shallower than the sheet\'s — the deck lost its kicker clause.',
   );
 
   // And it must hold at EVERY hero height the clamp can produce, because S7 is
@@ -187,8 +188,8 @@ test('S-1 the sheet\'s hero renders the deck card\'s plate, at every hero height
   for (const h of heights) {
     assert.equal(
       CI.scrimHeight(dPlate, dTitle, h),
-      CI.surfaceScrimHeight('s1Single'),
-      `S-1: at heroH ${h} the sheet's scrim stops matching the deck card's.`,
+      CI.surfaceScrimHeight('s7Expanded'),
+      `S-1: at heroH ${h} the sheet's scrim stops being one device-invariant number.`,
     );
     assert.ok(h >= CI.S7_HERO_MIN && h <= CI.S7_HERO_MAX, `S-1: heroH ${h} escaped its clamp`);
   }
