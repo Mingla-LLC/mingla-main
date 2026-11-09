@@ -6,6 +6,12 @@ import { hueFromId } from "./hueFromId";
 import { isVideoUrl } from "./videoUrl";
 import type { VenueExperienceRow } from "../hooks/useVenueExperiences";
 import type { BusinessEventCard } from "../types/mergedDiscover";
+import {
+  formatFromPrice,
+  type DisplayPrice,
+  type DisplayPriceInput,
+  type FromPriceLabels,
+} from "./displayPrice";
 
 /**
  * ORCH-1157 [rsvp-public-redesign] Round-3 [consumer-hide-address] — single
@@ -53,25 +59,31 @@ export function posterFor(row: VenueExperienceRow): string | null {
   return null;
 }
 
-/** "Free" | "From $70" | "" (no priced tier). */
+/**
+ * #4347 — the row's price: "Free" | "From ≈ $74" | "From ₦100,000" | "".
+ *
+ * The amount is in the experience's OWN currency (`row.currency`) and is
+ * converted for the viewer by the injected formatter (`formatDisplayPrice` in
+ * the app; kept injected so this module stays free of React-Native imports).
+ * It used to print `row.currency` money unconverted, defaulted a missing
+ * currency to USD, and hard-coded English "From" / "Free".
+ */
 export function formatExperiencePrice(
   row: VenueExperienceRow,
-  fallbackCurrency?: string | null,
+  viewerCurrency: string | null | undefined,
+  format: (price: DisplayPriceInput) => DisplayPrice | null,
+  labels: FromPriceLabels,
 ): string {
-  if (row.is_free) return "Free";
-  if (row.price_from_cents === null) return "";
-  const code = row.currency ?? fallbackCurrency ?? "USD";
-  const major = row.price_from_cents / 100;
-  try {
-    const formatted = new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency: code,
-      maximumFractionDigits: major % 1 === 0 ? 0 : 2,
-    }).format(major);
-    return `From ${formatted}`;
-  } catch {
-    return `From ${major.toFixed(0)} ${code}`;
-  }
+  return formatFromPrice(
+    {
+      isFree: row.is_free === true,
+      fromMinor: row.price_from_cents,
+      currency: row.currency,
+      viewerCurrency,
+    },
+    format,
+    labels,
+  );
 }
 
 /**

@@ -92,7 +92,8 @@ import type { MetaSpanInput } from '../deckCardPlate';
 import { parseAndFormatDistance } from '../utils/formatters';
 import { tierLabel, TIER_BY_SLUG, type PriceTierSlug } from '../../constants/priceTiers';
 import { getReadableCategoryName } from '../../utils/categoryUtils';
-import { sumPriceSpans } from '../../utils/curatedPriceRange';
+import { curatedSpendLevel, sumPriceSpans, type SpendLevel } from '../../utils/curatedPriceRange';
+import type { DisplayPriceInput } from '../../utils/displayPrice';
 
 export interface FactsOptions {
   readonly measurementSystem?: 'Metric' | 'Imperial';
@@ -119,8 +120,15 @@ export interface FactsOptions {
  */
 export interface CuratedFactsOptions {
   readonly measurementSystem?: 'Metric' | 'Imperial';
-  /** `formatCurrency` already bound to the viewer's currency code. */
-  readonly formatMoney: (amount: number) => string;
+  /**
+   * #4347 — `formatDisplayPrice` bound to the VIEWER's currency. The producer
+   * supplies the amount, the currency it is in (the experience's own
+   * `currency`) and the server's display fields; the caller supplies only who
+   * is looking. Returns null to hide the span.
+   */
+  readonly formatMoney: (price: Omit<DisplayPriceInput, 'viewerCurrency'>) => string | null;
+  /** #4347 Decision 2 — i18n'd spend level ("Budget") for an AI-curated plan. */
+  readonly spendLevelLabel: (level: Exclude<SpendLevel, 'free'>) => string;
   /** i18n'd "Free". */
   readonly freeLabel: string;
   /** i18n'd "{{count}} stops". */
@@ -283,43 +291,45 @@ export function curatedPlanSpans(
 }
 
 /**
- * The plan's price, by the rule the deck has shipped since ORCH-0629.
+ * The plan's price. #4347 splits it by what the numbers ARE.
  *
- * A CURATED card's per-stop prices are the source of truth — its card-level
- * totals go stale or are left at 0 by the generator. A BRAND EXPERIENCE is the
- * exact inverse (ORCH-1065 BUG-1): the all-in price is the envelope total and
- * every stop carries `price_cents: 0`, so summing the stops would print "Free"
- * over a paid experience. A 0 envelope total on an experience still prints
- * "Free" honestly, because that is what the brand set.
+ * A BRAND EXPERIENCE is real money in the host's currency (ORCH-1065 BUG-1:
+ * the all-in price is the ENVELOPE total and every stop carries
+ * `price_cents: 0`, so summing the stops would print "Free" over a paid
+ * experience). It is formatted with its OWN currency through
+ * `formatDisplayPrice`, so ₦100,000 reads "≈ $74" to a dollar viewer and never
+ * "$100,000". A 0 envelope total still prints "Free" honestly.
+ *
+ * An AI curated plan's stop prices are fixed USD tier constants, not prices
+ * anyone charges (Decision 2, approved 2026-11-08): it shows a SPEND LEVEL —
+ * Free / Budget / Moderate / Upscale — and no amount at all.
  */
 function curatedPriceLabel(
   card: CuratedExperienceCard,
   visibleStops: readonly PlanStopLike[],
   options: CuratedFactsOptions,
 ): string | null {
-  // #4265: a span whose max is below its min is open-ended ("$100+" stored
-  // with no max) — show "from" instead of "$100.00–$0.00". See curatedPriceRange.
-  const { min, max, openEnded } = sumPriceSpans(
-    options.isBrandExperience === true
-      ? [{ min: finite(card.totalPriceMin), max: finite(card.totalPriceMax), openEnded: card.totalPriceOpenEnded }]
-      : visibleStops.map((stop) => ({
-          min: finite(stop.priceMin),
-          max: finite(stop.priceMax),
-          openEnded: stop.priceOpenEnded,
-        })),
-  );
-
-  if (min === 0 && max === 0) return trimmed(options.freeLabel);
-  if (openEnded) {
-    const from = trimmed(options.formatMoney(min));
-    return from === null ? null : `${from}+`;
+  if (options.isBrandExperience === true) {
+    // #4265: a span whose max is below its min is open-ended ("₦100+").
+    const { min, max, openEnded } = sumPriceSpans([
+      { min: finite(card.totalPriceMin), max: finite(card.totalPriceMax), openEnded: card.totalPriceOpenEnded },
+    ]);
+    if (min === 0 && max === 0) return trimmed(options.freeLabel);
+    return trimmed(
+      options.formatMoney({
+        min,
+        max,
+        openEnded,
+        sourceCurrency: typeof card.currency === 'string' ? card.currency : '',
+        server: card,
+      }),
+    );
   }
-  if (min === max) return trimmed(options.formatMoney(min));
-  // U+2013 en-dash (not hyphen) — typographic convention for ranges.
-  const lo = trimmed(options.formatMoney(min));
-  const hi = trimmed(options.formatMoney(max));
-  if (lo === null || hi === null) return lo ?? hi;
-  return `${lo}–${hi}`;
+
+  const level = curatedSpendLevel(visibleStops);
+  if (level === null) return null;
+  if (level === 'free') return trimmed(options.freeLabel);
+  return trimmed(options.spendLevelLabel(level));
 }
 
 /**

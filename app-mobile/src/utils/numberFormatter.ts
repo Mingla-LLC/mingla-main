@@ -104,17 +104,6 @@ export function roundToDecimals(value: number, decimals: number = 2): number {
 }
 
 /**
- * Formats currency values consistently
- */
-export function formatCurrency(value: number, currency: string = '$'): string {
-  if (isNaN(value) || !isFinite(value)) {
-    return `${currency}0.00`;
-  }
-  
-  return `${currency}${formatToTwoDecimals(value)}`;
-}
-
-/**
  * Formats distance values with appropriate units
  */
 export function formatDistance(distance: number, unit: 'km' | 'miles' = 'km'): string {

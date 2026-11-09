@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/utils/__tests__/issue_4347_display_price.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4347-display-price-implementor",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

@@ -28,7 +28,8 @@ import { Icon } from "../ui/Icon";
 import { glass, ANDROID_GLASS_USES_OPAQUE_FALLBACK } from "../../constants/designSystem";
 import { resolvePlacePhotoThumbSource } from "../../utils/placePhotoThumb";
 import { getReadableCategoryName } from "../../utils/categoryUtils";
-import { formatCurrency } from "../utils/formatters";
+import { curatedSpendLevel } from "../../utils/curatedPriceRange";
+import { planVisibleStops } from "../expandedCard/expandedCardFacts";
 import { formatEventDateChip } from "../../utils/eventDateDisplay";
 import { isPlaceOpenNow, extractWeekdayText } from "../../utils/openingHoursUtils";
 import { HapticFeedback } from "../../utils/hapticFeedback";
@@ -90,6 +91,9 @@ interface CuratedStopLike {
   placeName?: string;
   imageUrl?: string;
   rating?: number;
+  optional?: boolean;
+  priceMin?: number;
+  priceMax?: number;
 }
 
 function stopsOf(card: SavedGridCardData): CuratedStopLike[] {
@@ -169,13 +173,13 @@ export function buildSavedGridFacts(
     }
     const duration = curatedDurationLabel(card);
     if (duration) parts.push(duration);
-    const min = typeof card.totalPriceMin === "number" ? card.totalPriceMin : 0;
-    const max = typeof card.totalPriceMax === "number" ? card.totalPriceMax : 0;
-    parts.push(
-      min === 0 && max === 0
-        ? t("common:free")
-        : `${formatCurrency(min, opts.currencyCode)}–${formatCurrency(max, opts.currencyCode)}`,
-    );
+    // #4347 Decision 2: an AI plan's totals are sums of USD tier constants —
+    // a spend level, never an amount (the old line printed them as if they
+    // were the viewer's own currency, unconverted).
+    const level = curatedSpendLevel(planVisibleStops(stops));
+    if (level !== null) {
+      parts.push(level === "free" ? t("common:free") : t(`cards:price.spend_${level}`));
+    }
     return parts.join(" · ");
   }
 
