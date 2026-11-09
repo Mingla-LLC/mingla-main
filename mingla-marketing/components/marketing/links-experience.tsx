@@ -75,6 +75,7 @@ import {
   pickerCountLabel,
   pickerOrder,
   pinWebHref,
+  pinDaysLabel,
   pinWhen,
   timeLabel,
   type LinksCity,
@@ -1161,7 +1162,7 @@ function Sheet({ sheet, closeRef, onClose, city, src, week, shown, planCount, wo
             <ul className={styles.meta}>
               <li>
                 <Icon name="cal" />
-                {longDayLabel(p.showsOn)}
+                {pinDaysLabel(p)}
               </li>
             </ul>
             {action}
