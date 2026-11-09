@@ -128,7 +128,9 @@ orch-1386-tester-adversarial.yml f0d49800ed79ccf9a0dd51a0c6fef8cf236ad199da41a90
 // rewrite touched (the photo pager's poster shape and bounded preload, the
 // kicker scrim clause, the kicker + title column, the deleted stock fallback
 // photo). Paths, order, the other hashes, and both lock call sites remain
-// unchanged; every value was derived from the file on disk.
+// unchanged; every value was derived from the file on disk. The wave 1 rework
+// (tester P2: the kicker clause solved at the largest text size) re-banked
+// the same files' values again, the same way.
 const REFERENCE_SHA256 = locks(`
 .github/scripts/__tests__/issue-2207-merged-checkout-workflow.tester.test.mjs fc65e60b8636d7dc23190e10e8b0372cf6f033dca4cf060fb3e67d5f0ce21e06
 .github/scripts/strict-grep/__tests__/issue-1607-explorer-guard-integrity.adversarial.test.mjs a6dba7a4a109956b82acae0beb2eb6eb28bdc1c1522d5793452cbcc4885d3652
@@ -146,7 +148,7 @@ app-mobile/src/components/swipeDeck/__tests__/issue_1579_tap_expand_admission.ad
 app-mobile/src/components/swipeDeck/__tests__/issue_1579_tap_expand_admission.test.mjs e6dab667b68f6683dec748cb1fb4736bcda9f6b40f750d5045028fd0cdca171d
 app-mobile/src/components/swipeDeck/__tests__/issue_1593_poster_hole_geometry.adversarial.test.mjs d8ca0f473606a0b73328a94ce75ddb7fa222c9d228cab1572ba210ee0cd9e0b8
 app-mobile/src/components/swipeDeck/__tests__/issue_1593_poster_hole_geometry.test.mjs 32dbc515c7f62df2ae0d3d6072474fa89d00ac032d16307e6793c8419a43cf93
-app-mobile/src/components/swipeDeck/__tests__/issue_1609_direction_c_plate.test.mjs 4cee9a66c39290c424540f8e45c5a3a38e0cde1bbd2bd1705df1eed641ccd9d0
+app-mobile/src/components/swipeDeck/__tests__/issue_1609_direction_c_plate.test.mjs 523b4a120aa95b08ce4dd3f4dbf3bb79998cdd0e92689608b7753b78ec442417
 app-mobile/src/components/swipeDeck/__tests__/issue_1609_plate_anchor_wiring.test.mjs 0081e006457db901d88152047975a4b87ed11718ac5d9b8e84ddf52a780531fb
 app-mobile/src/components/swipeDeck/__tests__/issue_1609_short_plate_keeps_chevron.test.mjs 38517a765c89a0548ca3e330b0c809dcdd87cefb0e73fd1c10c533512eff2f6f
 app-mobile/src/components/swipeDeck/__tests__/issue_1609_silhouette_anchor_drift.adversarial.test.mjs d8da901fd243dd1d375712e21db88dd69559c8898354860c006bfa8f2a00acde
@@ -155,7 +157,7 @@ app-mobile/src/hooks/__tests__/issue_1661_completed_write_unparks_invalidation.t
 app-mobile/src/hooks/__tests__/issue_1661_parked_invalidation_fanout.adversarial.test.mjs 66a87430d62e2e0c110240f2b9c8314e661fbd5c66c437caad520171bd217d4e
 mingla-business/scripts/ci/__tests__/issue2058_bundle_baseline_handoff.happy.test.mjs 487c099f5407ff1c8304418046fd33ef6e228ef17725c26c8eabf00d6ba37ae2
 packages/card-identity/__tests__/card_identity_isolation.test.mjs 7c12a6bb9e90662357992fa8a24142bc0caa8d8b61c9bb5c00d14ea4eaa8640e
-packages/card-identity/__tests__/card_identity_single_source.test.mjs 69127774f041ee94aa5b1fb584acf139e8ee856c5787d09ff520e2eea60b3403
+packages/card-identity/__tests__/card_identity_single_source.test.mjs 354f932972f84b4bcf47d084e3c6143772434f29fbb29db05add4144d15cff5b
 scripts/ci/__tests__/issue-2062-expo-config-node20.tester.adversarial.test.mjs 3c377ee6bd6860704961477c2512482628848e895f6a65d23081915afa6f7022
 scripts/ci/issue-2062-expo-config-node20.mjs 9abac62742457bce556e2c3fbb21d512cd77b95f091769d92a315d6e248dba7d
 scripts/issue-1615/curated-composition-terminal-ui.implementor.happy.test.mjs f1f3a94262faab8f998b27bccba420ed90085cfd6f9926334bd22408fce0d1a8

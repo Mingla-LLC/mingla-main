@@ -207,11 +207,11 @@ describe("#4347 adv T — 'Closed when you arrive' is judged in venue time", () 
   // range running past midnight. The card then reads "Open until 2am" AND
   // "Closed when you arrive". Fix: decide arrival with getOpenStatusAt (the
   // status line's own parser). Flip to `test` when fixed.
-  test.failing("T-3 KNOWN DEFECT: no 'Closed when you arrive' on a bar open until 2am, arriving 00:15", () => {
+  test("T-3 KNOWN DEFECT: no 'Closed when you arrive' on a bar open until 2am, arriving 00:15", () => {
     expect(placeSmartChip({ openingHours: BAR, utcOffsetMinutes: LAGOS, travelTime: "45 min" }, SAT_2330)).toBeNull();
   });
 
-  test.failing("T-3b KNOWN DEFECT: the same for a curated stop reached after midnight", () => {
+  test("T-3b KNOWN DEFECT: the same for a curated stop reached after midnight", () => {
     expect(
       curatedSmartChip([{ openingHours: BAR, utcOffsetMinutes: LAGOS, travelTimeFromUserMin: 45 }], SAT_2330),
     ).toBeNull();
@@ -366,7 +366,7 @@ describe("#4347 adv K — the kicker over a white photo", () => {
   // ~26pt into thinner scrim (≈3.9:1), and the title cap is 1.4x (≈3.6:1).
   // The kicker has no text shadow. Fix: solve K_KICKER at the max scale, or
   // give the kicker the title's shadow. Flip to `test` when fixed.
-  test.failing("K-2 KNOWN DEFECT: at 1.3x text the kicker still clears 4.5:1", () => {
+  test("K-2 KNOWN DEFECT: at 1.3x text the kicker still clears 4.5:1", () => {
     expect(contrastAtDepth(kickerDepth(1.3, 1.3))).toBeGreaterThanOrEqual(4.5);
   });
 });

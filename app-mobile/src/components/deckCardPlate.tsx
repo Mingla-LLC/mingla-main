@@ -626,12 +626,16 @@ export function DeckCardPlate({
       // through the composed label on the face and the two real buttons below.
       accessibilityRole="none"
       accessible={false}
+      // #4347 rework — the plate's own background passes touches through to the
+      // card (it opens the card exactly as before), so the card's tap path reads
+      // card-local coordinates; its buttons still claim their own presses.
+      pointerEvents="box-none"
     >
       <PlateMaterial underFill={silhouette.underFill} opaque={opaque} />
       <View pointerEvents="none" style={styles.plateTopHighlight} />
 
       {withMeta ? (
-        <View style={[styles.metaRow, { height: rows.meta }]}>{meta}</View>
+        <View style={[styles.metaRow, { height: rows.meta }]} pointerEvents="none">{meta}</View>
       ) : null}
 
       {/*
@@ -681,7 +685,7 @@ export function DeckCardPlate({
         <View style={styles.dividerSegment} />
       </View>
 
-      <View style={[styles.controlRow, { height: rows.control }]}>
+      <View style={[styles.controlRow, { height: rows.control }]} pointerEvents="box-none">
         {/*
           NO `?? <View />` FALLBACK. It looked like a reserved slot and was not
           one, twice over: `beenHere` is always SUPPLIED (a <BeenHereControl />

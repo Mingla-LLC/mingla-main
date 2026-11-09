@@ -456,7 +456,7 @@ test('T-5 the top and bottom scrims never overlap, so the shipped bottom ramp ma
   // strictly ABOVE the deepest measured point (the kicker's top edge at the
   // tallest silhouette) on the shortest card. A stacked band higher up only
   // darkens photograph, and never touches a measured number.
-  const DEEPEST_MEASURED_DEPTH_PT = CI.kickerTopDepthForLines('s1Single', CI.SURFACES.s1Single.metaLines);
+  const DEEPEST_MEASURED_DEPTH_PT = CI.kickerSolveDepthForLines('s1Single', CI.SURFACES.s1Single.metaLines);
   assert.ok(DEEPEST_MEASURED_DEPTH_PT > 0, 'top-and-bottom-scrims-never-overlap: the kicker depth is vacuous');
   const overlapBottomY = DECK_TOP_SCRIM_HEIGHT_PT; // card-local y where the top ramp ends
   const deepestMeasuredY = SHORTEST_SUPPORTED_CARD_PT - DEEPEST_MEASURED_DEPTH_PT;

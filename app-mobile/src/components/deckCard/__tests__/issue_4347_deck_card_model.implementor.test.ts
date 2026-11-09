@@ -373,7 +373,8 @@ describe("#4347 claimed venue routing (wiring)", () => {
     const path = require("path");
     const src: string = fs.readFileSync(path.join(__dirname, "../../SwipeableCards.tsx"), "utf8");
     const fn = src.slice(src.indexOf("const handleCardExpand = async () => {"), src.indexOf("const handleCloseExpandedModal"));
-    const route = fn.indexOf("router.push(\n        `/b/${encodeURIComponent(currentClaimedVenue.brandSlug)}/v/${encodeURIComponent(currentClaimedVenue.venueSlug)}`");
+    // #4347 rework — through leaveDeckTo, so the collab modal can close first.
+    const route = fn.indexOf("leaveDeckTo(\n        `/b/${encodeURIComponent(currentClaimedVenue.brandSlug)}/v/${encodeURIComponent(currentClaimedVenue.venueSlug)}`");
     const sheet = fn.indexOf("setIsExpandedModalVisible(true)");
     expect(route).toBeGreaterThan(0);
     expect(sheet).toBeGreaterThan(route);

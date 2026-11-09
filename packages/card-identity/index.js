@@ -1208,6 +1208,24 @@ function kickerTopDepthForLines(surfaceKey, lines) {
   return titleTopDepthForLines(surfaceKey, lines) + KICKER.gap + KICKER.lineHeight;
 }
 
+/**
+ * #4347 rework (tester P2) — the depth the kicker clause is SOLVED at: the
+ * kicker's top edge at the LARGEST text the deck renders, not at 1.0x. React
+ * Native scales a line box with the font, so a two-line title at its 1.4x cap
+ * lifts the kicker by 2 x 36 x 0.4pt, and the kicker's own 1.3x cap adds
+ * 16 x 0.3pt. Solved at 1.0x the clause measured 4.5:1 and fell to 3.88:1 at
+ * 1.3x on a white photo; solved here, every supported text size clears it.
+ */
+function kickerSolveDepthForLines(surfaceKey, lines) {
+  const s = SURFACES[surfaceKey];
+  if (!s) throw new Error(`@mingla/card-identity: unknown surface "${surfaceKey}"`);
+  const base = kickerTopDepthForLines(surfaceKey, lines);
+  if (base === 0) return 0;
+  const titleGrowth = s.titleLines * s.titleLH * (MAX_FONT_SCALE.title - 1);
+  const kickerGrowth = KICKER.lineHeight * (MAX_FONT_SCALE.meta - 1);
+  return base + titleGrowth + kickerGrowth;
+}
+
 /** Every silhouette a surface can render, shallowest plate first: [0, 1, ... metaLines]. */
 function surfaceSilhouettes(surfaceKey) {
   const s = SURFACES[surfaceKey];
@@ -1250,7 +1268,7 @@ function surfaceScrimHeight(surfaceKey) {
     plateTopDepthForLines(surfaceKey, s.metaLines),
     titleTopDepthForLines(surfaceKey, s.metaLines),
     s.h,
-    kickerTopDepthForLines(surfaceKey, s.metaLines),
+    kickerSolveDepthForLines(surfaceKey, s.metaLines),
   );
 }
 
@@ -1325,6 +1343,7 @@ module.exports = {
   NO_PHOTO,
   rampFractionForAlpha,
   kickerTopDepthForLines,
+  kickerSolveDepthForLines,
   RAMP,
   PLATE,
   META,

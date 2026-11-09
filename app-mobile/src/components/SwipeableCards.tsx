@@ -99,6 +99,7 @@ import {
 import { deckKickerFor, useDeckFactLabels } from "./deckCard/useDeckFactLabels";
 import { useMinuteClock, usePhotoTapHint, useTopCardPhotoPreload } from "./deckCard/deckCardHooks";
 import { useClaimedVenues } from "../hooks/useClaimedVenues";
+import { leaveDeckTo } from "./deckCard/deckNavigation";
 import { LinearGradient } from "expo-linear-gradient";
 import { ANDROID_GLASS_USES_OPAQUE_FALLBACK, colors, fontWeights, glass, radius, typography } from "../constants/designSystem";
 import { throttledReverseGeocode } from '../utils/throttledGeocode';
@@ -288,6 +289,9 @@ const S1 = SURFACES.s1Single;
 
 /** The behind face is `pointerEvents="none"`; its plate can never be pressed. */
 const NOOP = (): void => {};
+
+/** A card with no known photo failures (the behind card has never been shown). */
+const NO_FAILED_PHOTOS: ReadonlySet<string> = new Set();
 
 /**
  * #4347 wave 1 — the single place's fact line, in the APPROVED order:
@@ -806,6 +810,12 @@ interface SwipeableCardsProps {
    * even when the surrounding app mode points elsewhere.
    */
   sessionIdOverride?: string;
+  /**
+   * #4347 rework (tester P1-2) — set by a host that presents the deck in its
+   * own modal (CollabDeckSheet). A route that leaves the deck is handed to it,
+   * so it can close itself first; a plain push would land behind the modal.
+   */
+  onExternalRoute?: (path: string) => void;
   generateNewMockCard?: () => any;
   onboardingData?: any;
   refreshKey?: number | string; // Key that changes to trigger refresh
@@ -990,6 +1000,7 @@ export default function SwipeableCards({
   onOpenCollabPreferences,
   onAfterNotify,
   sessionIdOverride,
+  onExternalRoute,
   generateNewMockCard,
   onboardingData,
   refreshKey,
@@ -1116,11 +1127,13 @@ export default function SwipeableCards({
   const deckNow = useMinuteClock();
   const deckFactLabels = useDeckFactLabels(deckNow);
   const photoTapHint = usePhotoTapHint();
-  // The tap path's geometry: where the finger went down (page coords) and the
-  // card's page frame, measured at press-in. Read only on the discrete press.
-  const cardTouchRef = useRef<View | null>(null);
-  const tapPointRef = useRef<{ pageX: number; pageY: number } | null>(null);
-  const cardFrameRef = useRef<{ pageX: number; pageY: number; width: number; height: number } | null>(null);
+  // The tap path's geometry (#4347 rework, tester P3-1): where the finger went
+  // down in CARD-LOCAL points (`locationX/Y` — every face layer that can be the
+  // touch target is a full-card absolute fill at 0,0, and the plate passes its
+  // background touches through), and the card's size from its own onLayout.
+  // No async measure(), so nothing can be stale after a layout change.
+  const tapPointRef = useRef<{ x: number; y: number } | null>(null);
+  const cardSizeRef = useRef<{ width: number; height: number } | null>(null);
 
   const [expandedBrandExperience, setExpandedBrandExperience] =
     useState<BusinessEventCard | null>(null);
@@ -1564,6 +1577,24 @@ export default function SwipeableCards({
     },
     [currentRec, currentFailedPhotos, currentPhotos, currentPhotoIndex, setCardPhotoIndex],
   );
+
+  // #4347 rework (tester P4) — a card that leaves the top of the deck forgets
+  // its photo page, so if it comes back (review, reset, a re-served batch) it
+  // opens on photo 1 again, the photo its behind face showed. This also keeps
+  // the map bounded to the cards actually being looked at.
+  const previousTopCardIdRef = useRef<string | null>(null);
+  const currentTopId = currentRec?.id ?? null;
+  useEffect(() => {
+    const previous = previousTopCardIdRef.current;
+    previousTopCardIdRef.current = currentTopId;
+    if (previous === null || previous === currentTopId) return;
+    setPhotoIndexByCard((prev) => {
+      if (!(previous in prev)) return prev;
+      const next = { ...prev };
+      delete next[previous];
+      return next;
+    });
+  }, [currentTopId]);
 
   // The one-time hint counts as seen once a card that showed it leaves the top
   // of the deck, even if the person never flipped.
@@ -2407,8 +2438,9 @@ export default function SwipeableCards({
         source: "home",
         destination: "venue_page",
       });
-      router.push(
-        `/b/${encodeURIComponent(currentClaimedVenue.brandSlug)}/v/${encodeURIComponent(currentClaimedVenue.venueSlug)}` as never,
+      leaveDeckTo(
+        `/b/${encodeURIComponent(currentClaimedVenue.brandSlug)}/v/${encodeURIComponent(currentClaimedVenue.venueSlug)}`,
+        { onExternalRoute, push: (path) => router.push(path as never) },
       );
       return;
     }
@@ -3490,8 +3522,11 @@ export default function SwipeableCards({
                 id: nextRec.id,
                 role: 'behind' as const,
                 poster: (
+                  // #4347 rework (tester P3-2) — the SAME first photo the front
+                  // face will show once this card is promoted, so promotion
+                  // never swaps the picture.
                   <CardHeroImage
-                    uri={nextRec.image}
+                    uri={nextRec.cardType ? nextRec.image : pagerPresentation(deckPhotosForCard(nextRec), 0, NO_FAILED_PHOTOS).posterUri}
                     style={styles.cardImage}
                     decodeTarget={heroDecodeTarget}
                   />
@@ -3741,27 +3776,26 @@ export default function SwipeableCards({
             </Reanimated.View>
 
             <TouchableOpacity
-              ref={cardTouchRef}
               activeOpacity={1}
+              onLayout={({ nativeEvent }) => {
+                cardSizeRef.current = { width: nativeEvent.layout.width, height: nativeEvent.layout.height };
+              }}
               onPressIn={(event) => {
-                // #4347 — where the finger went down, and the card's page frame,
-                // read once per press; nothing here runs on a drag frame.
-                tapPointRef.current = { pageX: event.nativeEvent.pageX, pageY: event.nativeEvent.pageY };
-                cardTouchRef.current?.measure((_x, _y, width, height, pageX, pageY) => {
-                  cardFrameRef.current = { pageX, pageY, width, height };
-                });
+                // #4347 — where the finger went down, card-local, read once per
+                // press; nothing here runs on a drag frame.
+                tapPointRef.current = { x: event.nativeEvent.locationX, y: event.nativeEvent.locationY };
               }}
               onPress={() => {
                 const point = tapPointRef.current;
-                const frame = cardFrameRef.current;
+                const size = cardSizeRef.current;
                 tapPointRef.current = null;
                 const zone =
-                  point && frame
+                  point && size
                     ? classifyDeckTap({
-                        x: point.pageX - frame.pageX,
-                        y: point.pageY - frame.pageY,
-                        width: frame.width,
-                        zoneBottomY: currentTapZoneBottomFor(frame.height),
+                        x: point.x,
+                        y: point.y,
+                        width: size.width,
+                        zoneBottomY: currentTapZoneBottomFor(size.height),
                         photoCount: currentPagerCount,
                       })
                     : 'open';
@@ -3799,7 +3833,8 @@ export default function SwipeableCards({
                     onBrandPress={() => {
                       const s = (currentRec as any).brandSlug;
                       if (typeof s === 'string' && s.length > 0) {
-                        router.push(`/b/${s}` as never);
+                        // #4347 rework — same hand-off as the venue page (collab modal).
+                        leaveDeckTo(`/b/${s}`, { onExternalRoute, push: (path) => router.push(path as never) });
                       }
                     }}
                     // ORCH-1072: real cover → card hero (image/video) with the

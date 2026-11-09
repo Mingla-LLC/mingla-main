@@ -216,6 +216,8 @@ export const KICKER_ALPHA_FLOOR: number;
 export const K_KICKER: number;
 export function rampFractionForAlpha(alpha: number): number;
 export function kickerTopDepthForLines(surfaceKey: SurfaceKey, lines: number): number;
+/** The kicker's top edge at the largest supported text — the depth the kicker clause is solved at. */
+export function kickerSolveDepthForLines(surfaceKey: SurfaceKey, lines: number): number;
 export const KICKER: {
   readonly size: number; readonly lineHeight: number; readonly weight: string;
   readonly letterSpacing: number; readonly gap: number; readonly lines: number;

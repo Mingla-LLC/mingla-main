@@ -139,10 +139,10 @@ test('H-3 every descriptor reproduces the approved 41-point measurements', () =>
   // portrait; these are its published boundary/sliver measurements.
   const expected = {
     // #4347 wave 1 — the deck card's kicker clause deepens S1's scrim (346 ->
-    // 424pt), so every S1 boundary measures HIGHER than before; S7 (no kicker)
-    // keeps its numbers.
-    s1Single: [3.360051, 3.9794, 3.939825],
-    s1Curated: [3.360051, 3.9794, 3.939825],
+    // 482pt once solved at the largest text size, rework P2), so every S1
+    // boundary measures HIGHER than before; S7 (no kicker) keeps its numbers.
+    s1Single: [3.385604, 4.065667, 4.033233],
+    s1Curated: [3.385604, 4.065667, 4.033233],
     s2Grid: [3.239219, 3.295325, 3.300602],
     s3Chat: [3.217715, 3.254745, 3.263288],
     s4Snippet: [3.380046, 3.503273, 3.348354],
@@ -174,7 +174,7 @@ test('H-5 S1 and S7 retain their standard boundary and measured continuity', () 
   // #4347 wave 1 — S1 carries a kicker and S7 does not, so their scrims differ
   // and the S1 boundary now measures higher. Continuity is the plate's TONE
   // (L* 23.5 on both, asserted by T-11) and both boundaries clearing 3:1.
-  const expected = { s1Single: 3.360051, s1Curated: 3.360051, s7Expanded: 3.240777 };
+  const expected = { s1Single: 3.385604, s1Curated: 3.385604, s7Expanded: 3.240777 };
   for (const [surfaceKey, value] of Object.entries(expected)) {
     assert.equal(CI.SURFACES[surfaceKey].plateBoundary, 'standard');
     assert.equal(Number(measuredSurface(surfaceKey).plate.toFixed(6)), value);

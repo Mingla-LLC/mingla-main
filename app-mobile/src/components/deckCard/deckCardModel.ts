@@ -13,7 +13,7 @@
  */
 import { FACT_LINE, PHOTO_PAGER } from '../../../../packages/card-identity/index.js';
 import { isVideoUrl } from '../../utils/videoUrl';
-import { extractWeekdayText, getOpenStatusAt, isPlaceOpenAt, type OpenStatus } from '../../utils/openingHoursUtils';
+import { extractWeekdayText, getOpenStatusAt, type OpenStatus } from '../../utils/openingHoursUtils';
 import type { MetaSpanInput } from '../deckCardPlate';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -352,6 +352,11 @@ export function pickSmartChip(candidates: readonly (SmartChip | null)[]): SmartC
   return best;
 }
 
+/** Open now by the status line's own reading (open, closing soon, or 24 hours). */
+function isOpenStatus(status: OpenStatus | null): boolean {
+  return status !== null && status.kind !== 'closed';
+}
+
 /** Minutes out of "12 min" / "1 hr 5 min" / "1h 5m"; null when unreadable. */
 export function parseTravelMinutes(value: unknown): number | null {
   if (typeof value !== 'string') return null;
@@ -371,9 +376,14 @@ export function placeSmartChip(card: PlaceFactInput, now: Date): SmartChip | nul
   const travel = parseTravelMinutes(card.travelTime);
   if (weekday === null || travel === null || travel <= 0) return null;
   const offset = card.utcOffsetMinutes ?? null;
-  if (isPlaceOpenAt(weekday, now, offset) !== true) return null;
+  // #4347 rework (tester P1-1) — decided by getOpenStatusAt, THE SAME parser
+  // the status line uses, so an overnight range ("Saturday: 6:00 PM – 2:00 AM")
+  // that runs past midnight counts at a 00:15 arrival. isPlaceOpenAt reads only
+  // the arrival day's own line and said "closed" while the line said "Open
+  // until 2am".
+  if (!isOpenStatus(getOpenStatusAt(weekday, now, offset))) return null;
   const arrival = new Date(now.getTime() + travel * 60_000);
-  return isPlaceOpenAt(weekday, arrival, offset) === false
+  return getOpenStatusAt(weekday, arrival, offset)?.kind === 'closed'
     ? { kind: 'closedAtArrival', tone: 'warn' }
     : null;
 }
@@ -401,7 +411,7 @@ export function curatedSmartChip(stops: readonly ArrivalStop[] | null | undefine
     const stop = list[i];
     const arrival = new Date(now.getTime() + minutes * 60_000);
     const weekday = extractWeekdayText(stop.openingHours as Parameters<typeof extractWeekdayText>[0]);
-    if (weekday !== null && isPlaceOpenAt(weekday, arrival, stop.utcOffsetMinutes ?? null) === false) {
+    if (weekday !== null && getOpenStatusAt(weekday, arrival, stop.utcOffsetMinutes ?? null)?.kind === 'closed') {
       return { kind: 'stopClosedAtArrival', stopNumber: i + 1, tone: 'warn' };
     }
     minutes += typeof stop.estimatedDurationMinutes === 'number' && stop.estimatedDurationMinutes > 0

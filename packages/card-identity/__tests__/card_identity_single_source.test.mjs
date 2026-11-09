@@ -460,7 +460,7 @@ test('T-1 the REAL scrimHeight() reproduces every surface height from first prin
         CI.titleTopDepthForLines(key, tallest),
         s.h,
         // #4347 — the kicker clause; 0 (self-disabled) on every surface without one.
-        CI.kickerTopDepthForLines(key, tallest),
+        CI.kickerSolveDepthForLines(key, tallest),
       ),
       `T-1 ${key}: surfaceScrimHeight is not the height solved from its tallest silhouette`,
     );
@@ -499,7 +499,9 @@ test('T-1 the REAL scrimHeight() reproduces every surface height from first prin
       // Recomputed here from the independent ramp evaluator, not the package's
       // inverse: white 12/700 type over a pure-white photo needs ramp alpha
       // >= 0.5345 for 4.5:1, and the package's floor must sit above that.
-      const dKicker = CI.kickerTopDepthForLines(key, lines);
+      // #4347 rework — measured at the LARGEST supported text (the solve depth),
+      // which is the worst case; 1.0x sits deeper in the scrim.
+      const dKicker = CI.kickerSolveDepthForLines(key, lines);
       if (s.kicker === true) {
         assert.ok(dKicker > dTitle, `T-1 ${key}: the kicker must sit ABOVE the title's top edge`);
         const aKicker = CI.rampAlphaAtDepth(dKicker, H);
@@ -791,8 +793,11 @@ test('T-9 the oracle REJECTS known-bad values — it is not a rubber stamp', () 
   assert.ok(worst < 3.0, `T-9: the oracle ACCEPTED a 0.30 border (${worst.toFixed(2)}:1) — it does not discriminate`);
 
   // The sliver alphas the design first proposed.
+  // #4347 rework — measured against the SHALLOWER of the two plate surfaces'
+  // scrims (S7; the deck's is deepened by its kicker clause, which would let a
+  // weak sliver pass for the wrong reason). The control is about the sliver.
   const depth = CI.SURFACES.s1Single.bottomInset + CI.SURFACES.s1Single.plateH + 2;
-  const bd = backdropAt(255, CI.rampAlphaAtDepth(depth, H));
+  const bd = backdropAt(255, CI.rampAlphaAtDepth(depth, CI.surfaceScrimHeight('s7Expanded')));
   assert.ok(ratio(composite(WHITE, 0.34, bd), bd) < 3.0, 'T-9: the oracle ACCEPTED the rejected 0.34 sliver');
   assert.ok(ratio(composite(WHITE, 0.22, bd), bd) < 3.0, 'T-9: the oracle ACCEPTED the rejected 0.22 sliver');
 
