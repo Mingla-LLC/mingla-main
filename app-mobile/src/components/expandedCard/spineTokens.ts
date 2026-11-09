@@ -181,6 +181,19 @@ export const PINNED_BAR = {
   border: '#E5E7EB',
 } as const;
 
+/**
+ * #4347 wave 3 follow-up — THE main button of every expanded sheet: the
+ * place's "Reserve a table" / "Directions" and the plan's "Schedule this
+ * plan". One token pair, so the two sheets' primary buttons look identical.
+ * #EA580C with a white label (3.56:1) was rejected in #1605 ("collapsed onto
+ * the one accent token", issue_1605 S-4d); white on #EB7825 is 2.90:1. The
+ * near-black label on the accent fill measures 6.47:1.
+ */
+export const PINNED_PRIMARY = {
+  fill: SPINE.accentFill,
+  label: SPINE.onAccent,
+} as const;
+
 export const WHEN_BLOCK = {
   chipHeight: 34,
   chipRadius: 17,

@@ -97,7 +97,7 @@ import {
   tapZoneBottomY,
 } from "./deckCard/DeckCardChrome";
 import { deckKickerFor, useDeckFactLabels } from "./deckCard/useDeckFactLabels";
-import { useMinuteClock, usePhotoTapHint, useTopCardPhotoPreload } from "./deckCard/deckCardHooks";
+import { useDeckTextScale, useMinuteClock, usePhotoTapHint, useTopCardPhotoPreload } from "./deckCard/deckCardHooks";
 import { useClaimedVenues } from "../hooks/useClaimedVenues";
 import { leaveDeckTo } from "./deckCard/deckNavigation";
 import { LinearGradient } from "expo-linear-gradient";
@@ -1014,6 +1014,9 @@ export default function SwipeableCards({
   // ORCH-0589 v4 (V4): safe-area insets used to position the "View Previous" batchChip
   // below the floating top-bar chrome on the Swipe page (insets.top + ~62pt).
   const safeAreaInsets = useSafeAreaInsets();
+  // #4347 wave 3 follow-up — the live text size, so the tap zones end where the
+  // text column actually starts at this size (capped like the text itself).
+  const deckTextScale = useDeckTextScale();
   // Use recommendations from context
 
   const {
@@ -3375,7 +3378,7 @@ export default function SwipeableCards({
       currentRec.cardType
         ? platePresentation([{ kind: 'fact', text: '·' }], 2).titleBottom
         : currentPresentation.titleBottom,
-      { smartChip: currentSmartChip !== null, stack: currentRec.cardType === 'curated' },
+      { smartChip: currentSmartChip !== null, stack: currentRec.cardType === 'curated', fontScale: deckTextScale },
     );
 
   /**

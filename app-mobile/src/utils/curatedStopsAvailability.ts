@@ -21,6 +21,11 @@
  *   isPlaceOpenAt === null  → honest-unknown (no parseable hours) → NOT safe
  *                             to schedule. Curated plans only get an "all open"
  *                             verdict when every stop is proven open.
+ *
+ * #4347 wave 3 follow-up: `isPlaceOpenAt` is now the yes/no projection of
+ * `getOpenStatusAt` (one overnight-hours model), so this check, the plan
+ * sheet's at-arrival chips and its warning agree after midnight: a stop open
+ * "6:00 PM – 2:00 AM" on Saturday is open at a Sunday 01:00 arrival.
  */
 
 import { extractWeekdayText, isPlaceOpenAt } from './openingHoursUtils';

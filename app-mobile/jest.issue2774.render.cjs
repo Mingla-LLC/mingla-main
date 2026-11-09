@@ -109,6 +109,9 @@ module.exports = {
     // stop cards, navigator, Route all stops, On the night.
     "**/__tests__/issue_4347_plan_model.implementor.test.ts",
     "**/__tests__/issue_4347_plan_sheet_states.implementor.render.test.tsx",
+    // issue #4347 wave 3 follow-ups — live font scale for the tap zones, one
+    // overnight-hours model for the schedule check, one primary-button colour.
+    "**/__tests__/issue_4347_wave3_followups.implementor.render.test.tsx",
     // issue #4347 wave 1 — tester adversarial: the photo flip's gesture lease,
     // the smart chip in venue time and across midnight, claimed-venue keys,
     // the hint's logout sweep, locale plurals, the kicker's contrast floor.

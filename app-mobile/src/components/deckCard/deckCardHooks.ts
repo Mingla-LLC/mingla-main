@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useWindowDimensions } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
+import { MAX_FONT_SCALE } from '../../../../packages/card-identity/index.js';
 import { photosToPreload, type DeckPhoto } from './deckCardModel';
 
 /** A Date that moves once a minute, so "Closes in 30 min" stays true while you look. */
@@ -11,6 +13,23 @@ export function useMinuteClock(): Date {
     return () => clearInterval(id);
   }, []);
   return now;
+}
+
+/**
+ * #4347 wave 3 follow-up — the person's text size for the deck's tap zones,
+ * capped where the deck's text is capped (MAX_FONT_SCALE.title, the largest
+ * cap; `tapZoneBottomY` applies the per-row title / meta caps itself). Below
+ * 1.0x the column never shrinks under its 1.0x height. An unreadable value
+ * falls back to the cap, so a zone can never reach into the words.
+ */
+export function capDeckTextScale(fontScale: number | null | undefined): number {
+  if (typeof fontScale !== 'number' || !Number.isFinite(fontScale) || fontScale <= 0) return MAX_FONT_SCALE.title;
+  return Math.max(1, Math.min(fontScale, MAX_FONT_SCALE.title));
+}
+
+/** The LIVE text size (it changes when the person changes it in Settings). */
+export function useDeckTextScale(): number {
+  return capDeckTextScale(useWindowDimensions().fontScale);
 }
 
 /**

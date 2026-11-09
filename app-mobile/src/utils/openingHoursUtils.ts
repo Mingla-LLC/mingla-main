@@ -91,6 +91,21 @@ const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frid
 /**
  * Checks if a place is open at a specific date/time.
  * Returns true (open), false (closed), or null (cannot determine — no hours data).
+ *
+ * #4347 wave 3 follow-up — ONE overnight-hours model. This is the yes/no
+ * projection of `getOpenStatusAt`: the same day parser (`parseDayRanges`), the
+ * same venue clock and the same merged intervals. So an overnight range is
+ * attributed to the night it starts on: "Saturday: 6:00 PM – 2:00 AM" is open
+ * at Sunday 01:00 (Saturday night still running) and a Friday 01:00 is decided
+ * by THURSDAY's line, not Friday's evening range. Before this, the schedule
+ * check read only the arrival day's own line and refused a 01:00 arrival the
+ * sheet showed as "Open until 2am".
+ *
+ * Unknown stays unknown: no line (or no readable range) for the target day →
+ * null. One difference from `getOpenStatusAt`, on purpose: an unreadable or
+ * missing PREVIOUS day only means "no carry-over from last night" here, not
+ * "unknown", so a record that lists only the target day still gets a verdict
+ * (the schedule safety check has always decided those).
  */
 export function isPlaceOpenAt(
   weekdayText: string[] | undefined | null,
@@ -98,80 +113,10 @@ export function isPlaceOpenAt(
   utcOffsetMinutes?: number | null,
 ): boolean | null {
   if (!weekdayText || weekdayText.length === 0) return null;
-
-  // When venue timezone offset is known, shift targetDate to venue local time.
-  // Otherwise use targetDate as-is (device local time).
-  let checkDate: Date;
-  if (utcOffsetMinutes != null) {
-    const utcMs = targetDate.getTime();
-    const venueMs = utcMs + utcOffsetMinutes * 60_000;
-    checkDate = new Date(venueMs);
-    // Use UTC methods since we manually shifted to venue time
-  } else {
-    checkDate = targetDate;
-  }
-
-  const dayName = utcOffsetMinutes != null
-    ? DAY_NAMES[checkDate.getUTCDay()]
-    : DAY_NAMES[checkDate.getDay()];
-
-  // Find the matching day's line (case-insensitive match on the day prefix before the colon)
-  const dayLine = weekdayText.find((line) => {
-    const colonIdx = line.indexOf(':');
-    if (colonIdx === -1) return false;
-    return line.substring(0, colonIdx).trim().toLowerCase() === dayName.toLowerCase();
-  });
-
-  if (!dayLine) return null;
-
-  // Extract hours portion (everything after the first ": ")
-  const colonIdx = dayLine.indexOf(':');
-  const hoursPortion = dayLine.substring(colonIdx + 1).trim();
-
-  if (!hoursPortion) return null;
-
-  // Special cases
-  if (/^closed$/i.test(hoursPortion)) return false;
-  if (/^open\s+24\s+hours?$/i.test(hoursPortion)) return true;
-
-  // Split by ", " for multiple ranges (e.g. "11:00 AM – 2:00 PM, 5:00 PM – 10:00 PM")
-  const ranges = hoursPortion.split(/,\s*/);
-  const checkMinutes = utcOffsetMinutes != null
-    ? checkDate.getUTCHours() * 60 + checkDate.getUTCMinutes()
-    : checkDate.getHours() * 60 + checkDate.getMinutes();
-
-  let allRangesFailedToParse = true;
-
-  for (const range of ranges) {
-    // Split by en-dash with spaces, or regular dash with spaces
-    const parts = range.split(/\s+[–\-]\s+/);
-    if (parts.length !== 2) continue;
-
-    const openMinutes = parseTimeToMinutes(parts[0], inferOpenPeriod(parts[0], parts[1]));
-    const closeMinutes = parseTimeToMinutes(parts[1]);
-
-    if (openMinutes === null || closeMinutes === null) continue;
-
-    allRangesFailedToParse = false;
-
-    if (closeMinutes <= openMinutes) {
-      // Crosses midnight: e.g. 8:00 PM – 2:00 AM
-      if (checkMinutes >= openMinutes || checkMinutes < closeMinutes) {
-        return true;
-      }
-    } else {
-      // Normal range: e.g. 9:00 AM – 10:00 PM
-      if (checkMinutes >= openMinutes && checkMinutes < closeMinutes) {
-        return true;
-      }
-    }
-  }
-
-  // If every range failed to parse, we can't determine status
-  if (allRangesFailedToParse) return null;
-
-  // Parsed at least one range but none matched → closed
-  return false;
+  const { day, now } = venueClock(targetDate, utcOffsetMinutes);
+  const built = openIntervalsAround(weekdayText, day, false);
+  if (built === null) return null;
+  return built.merged.some(([open, close]) => open <= now && now < close);
 }
 
 /**
@@ -224,31 +169,33 @@ function parseDayRanges(weekdayText: readonly string[], dayIndex: number): DayRa
   return ranges.length > 0 ? { allDay: false, ranges } : null;
 }
 
-export function getOpenStatusAt(
-  weekdayText: readonly string[] | undefined | null,
-  targetDate: Date,
-  utcOffsetMinutes?: number | null,
-  closingSoonMinutes = 60,
-): OpenStatus | null {
-  if (!weekdayText || weekdayText.length === 0) return null;
-  const local = utcOffsetMinutes != null
-    ? new Date(targetDate.getTime() + utcOffsetMinutes * 60_000)
-    : targetDate;
-  const day = utcOffsetMinutes != null ? local.getUTCDay() : local.getDay();
-  const now = utcOffsetMinutes != null
-    ? local.getUTCHours() * 60 + local.getUTCMinutes()
-    : local.getHours() * 60 + local.getMinutes();
+/** Venue-local day of week and minute of day for `targetDate`. */
+function venueClock(targetDate: Date, utcOffsetMinutes?: number | null): { day: number; now: number } {
+  if (utcOffsetMinutes != null) {
+    const local = new Date(targetDate.getTime() + utcOffsetMinutes * 60_000);
+    return { day: local.getUTCDay(), now: local.getUTCHours() * 60 + local.getUTCMinutes() };
+  }
+  return { day: targetDate.getDay(), now: targetDate.getHours() * 60 + targetDate.getMinutes() };
+}
 
-  // Yesterday (for an overnight range still running) through six days ahead,
-  // as absolute minutes from the start of today.
+/**
+ * Every opening from yesterday (an overnight range still running) through
+ * seven days ahead, as merged absolute minutes from the start of today. null
+ * when today's line is unreadable — or yesterday's, when `yesterdayRequired`.
+ */
+function openIntervalsAround(
+  weekdayText: readonly string[],
+  day: number,
+  yesterdayRequired: boolean,
+): { merged: Array<[number, number]>; allDayToday: boolean } | null {
   const intervals: Array<[number, number]> = [];
   let allDayToday = false;
   for (let offset = -1; offset <= 7; offset += 1) {
     const parsed = parseDayRanges(weekdayText, day + offset);
     if (parsed === null) {
-      // Today and yesterday must be readable; a later unreadable day only
-      // limits how far ahead "Opens …" can look.
-      if (offset <= 0) return null;
+      // Today (and, for the status line, yesterday) must be readable; a later
+      // unreadable day only limits how far ahead "Opens …" can look.
+      if (offset === 0 || (offset === -1 && yesterdayRequired)) return null;
       continue;
     }
     if (offset === 0 && parsed.allDay) allDayToday = true;
@@ -265,6 +212,20 @@ export function getOpenStatusAt(
     if (last && interval[0] <= last[1]) last[1] = Math.max(last[1], interval[1]);
     else merged.push([interval[0], interval[1]]);
   }
+  return { merged, allDayToday };
+}
+
+export function getOpenStatusAt(
+  weekdayText: readonly string[] | undefined | null,
+  targetDate: Date,
+  utcOffsetMinutes?: number | null,
+  closingSoonMinutes = 60,
+): OpenStatus | null {
+  if (!weekdayText || weekdayText.length === 0) return null;
+  const { day, now } = venueClock(targetDate, utcOffsetMinutes);
+  const built = openIntervalsAround(weekdayText, day, true);
+  if (built === null) return null;
+  const { merged, allDayToday } = built;
 
   const current = merged.find(([open, close]) => open <= now && now < close);
   if (current) {

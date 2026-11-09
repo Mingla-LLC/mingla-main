@@ -32,7 +32,8 @@ import {
 } from "../../utils/singleCardAvailability";
 import { canonicalDiscoveryPriceFields } from "../../utils/priceTiers";
 import { useTranslation } from "react-i18next";
-import { PINNED_BAR, SPINE } from "./spineTokens";
+import { PINNED_BAR, PINNED_PRIMARY, SPINE } from "./spineTokens";
+import { pinnedPrimaryStyles } from "./pinnedPrimary";
 
 
 // META-ORCH-0991 Wave B Batch 4: the iOS date/time picker <Modal> (a flex-end
@@ -880,7 +881,7 @@ export default function ActionButtons({
             logComponent="ActionButtons"
             logId="schedule_plan"
             testID="sheet-primary-schedule"
-            style={[styles.primaryButton, (isScheduling || isScheduled) && styles.bandButtonDisabled]}
+            style={[pinnedPrimaryStyles.button, (isScheduling || isScheduled) && styles.bandButtonDisabled]}
             onPress={handleSchedule}
             activeOpacity={0.85}
             disabled={isScheduling || isScheduled}
@@ -889,11 +890,11 @@ export default function ActionButtons({
             accessibilityLabel={isScheduled ? t('expanded_details:action_buttons.scheduled') : primaryScheduleLabel}
           >
             {isScheduling ? (
-              <ActivityIndicator size="small" color={SPINE.onAccent} />
+              <ActivityIndicator size="small" color={PINNED_PRIMARY.label} />
             ) : (
               <>
-                <Icon name={isScheduled ? 'checkmark-circle' : 'calendar-outline'} size={18} color={SPINE.onAccent} />
-                <Text style={styles.primaryLabel} numberOfLines={1} maxFontSizeMultiplier={1.2}>
+                <Icon name={isScheduled ? 'checkmark-circle' : 'calendar-outline'} size={18} color={PINNED_PRIMARY.label} />
+                <Text style={pinnedPrimaryStyles.label} numberOfLines={1} maxFontSizeMultiplier={1.2}>
                   {isScheduled ? t('expanded_details:action_buttons.scheduled') : primaryScheduleLabel}
                 </Text>
               </>
@@ -930,23 +931,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 2,
-  },
-  // #4347 wave 3 — the plan's "Schedule this plan" main button.
-  primaryButton: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    height: PINNED_BAR.buttonHeight,
-    borderRadius: PINNED_BAR.buttonRadius,
-    // The ONE accent fill, with its on-accent label (6.47:1).
-    backgroundColor: SPINE.accentFill,
-  },
-  primaryLabel: {
-    color: SPINE.onAccent,
-    fontSize: PINNED_BAR.primaryLabelSize,
-    fontWeight: "700",
   },
   pinnedLabel: {
     fontSize: PINNED_BAR.labelSize,

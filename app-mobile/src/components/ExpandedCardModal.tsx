@@ -64,7 +64,7 @@ import { occasionFromCategory, stopPurpose } from "./expandedCard/stopPurpose";
 // spec's deletion list; five producers still carry `shoppingList`.
 import SuppliesList from "./expandedCard/SuppliesList";
 import { SectionError } from "./expandedCard/SpineParts";
-import { SPINE } from "./expandedCard/spineTokens";
+import { PINNED_PRIMARY, SPINE } from "./expandedCard/spineTokens";
 import { companionStopMeta } from "./expandedCard/expandedCardFacts";
 // The ONE Been-here state machine in the app. Declared in SwipeableCards.tsx (the
 // #1687 gate delimits it there); imported here so the sheet mounts the SAME
@@ -87,6 +87,7 @@ import { ImageLightbox } from "./ImageLightbox";
 // expandedCard/placeDirections (openPlaceDirections), which wraps the ONE host
 // effect, openMapsTarget.
 import ActionButtons from "./expandedCard/ActionButtons";
+import { pinnedPrimaryStyles } from "./expandedCard/pinnedPrimary";
 import InAppBrowserModal from "./InAppBrowserModal";
 // #4261: rows inside the sheet (LinkRow, price attribution) open links through
 // this provider, mounted INSIDE the sheet's own RN Modal window.
@@ -1961,28 +1962,28 @@ export default function ExpandedCardModal({
                   venueReservable.venue_id !== null ? (
                     <TouchableOpacity
                       testID="sheet-primary-reserve"
-                      style={[reserveStyles.reserveButton, styles.pinnedPrimary]}
+                      style={pinnedPrimaryStyles.button}
                       activeOpacity={0.85}
                       onPress={() => setIsReserveSheetOpen(true)}
                       accessibilityRole="button"
                       accessibilityLabel={t('cards:sheet.reserve_a11y', { name: card.title })}
                     >
-                      <Icon name="restaurant-outline" size={18} color={SPINE.onAccent} />
-                      <Text style={reserveStyles.reserveButtonText} numberOfLines={1}>
+                      <Icon name="restaurant-outline" size={18} color={PINNED_PRIMARY.label} />
+                      <Text style={pinnedPrimaryStyles.label} numberOfLines={1} maxFontSizeMultiplier={1.2}>
                         {t('cards:sheet.reserve')}
                       </Text>
                     </TouchableOpacity>
                   ) : (
                     <TouchableOpacity
                       testID="sheet-primary-directions"
-                      style={[reserveStyles.reserveButton, styles.pinnedPrimary]}
+                      style={pinnedPrimaryStyles.button}
                       activeOpacity={0.85}
                       onPress={sheetDirections}
                       accessibilityRole="button"
                       accessibilityLabel={t('cards:sheet.directions_a11y', { name: card.title })}
                     >
-                      <Icon name="navigate-outline" size={18} color={SPINE.onAccent} />
-                      <Text style={reserveStyles.reserveButtonText} numberOfLines={1}>
+                      <Icon name="navigate-outline" size={18} color={PINNED_PRIMARY.label} />
+                      <Text style={pinnedPrimaryStyles.label} numberOfLines={1} maxFontSizeMultiplier={1.2}>
                         {t('cards:sheet.directions')}
                       </Text>
                     </TouchableOpacity>
@@ -2477,10 +2478,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: SPINE.factValue,
   },
-  // #4347 wave 2 — the pinned bar's main button takes the remaining width.
-  pinnedPrimary: {
-    flex: 1,
-  },
 
   reviewNavBar: {
     flexDirection: 'row',
@@ -2644,26 +2641,4 @@ const styles = StyleSheet.create({
   },
   altName: { fontSize: 14, fontWeight: '600', color: SPINE.factValue },
   altMeta: { fontSize: 13, color: SPINE.muted },
-});
-
-// META-ORCH-1148 2.2b — the consumer "Reserve a table" affordance in the
-// nightOut expanded card (alongside VenueExperiencesSection).
-const reserveStyles = StyleSheet.create({
-  reserveButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    marginHorizontal: 16,
-    marginTop: 8,
-    paddingVertical: 13,
-    borderRadius: 14,
-    backgroundColor: "#ea580c",
-  },
-  reserveButtonText: {
-    color: "#ffffff",
-    fontSize: 15,
-    fontWeight: "700",
-    letterSpacing: 0.2,
-  },
 });

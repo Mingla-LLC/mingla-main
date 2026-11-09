@@ -40,7 +40,7 @@ import {
 } from "../curatedPlanModel";
 import { checkAllCuratedStopsOpen, curatedArrivalTimes } from "../../../utils/curatedStopsAvailability";
 import { curatedSmartChip } from "../../deckCard/deckCardModel";
-import { routeAllStopsAction, routeAllStopsUrl } from "../placeDirections";
+import { GOOGLE_MAPS_MAX_WAYPOINTS, routeAllStopsAction, routeAllStopsUrl } from "../placeDirections";
 import { PLAN_MOTION, routeDrawTotalMs, routeStaggerMs } from "../motionTokens";
 import { PlanScrollStore, NAVIGATOR_HEIGHT } from "../planScroll";
 import { onTheNightFacts } from "../../../screens/Experience/onTheNight";
@@ -255,11 +255,51 @@ describe("R — Route all stops", () => {
     expect(routeAllStopsUrl([])).toBeNull();
   });
 
-  test("R-2 iPhone (Apple Maps) gets the next stop; Android and web get the route", () => {
-    const stops = [{ lat: 6.1, lng: 3.1 }, { lat: 6.2, lng: 3.2 }];
-    expect(routeAllStopsAction(stops, "ios")).toEqual({ kind: "next" });
-    expect(routeAllStopsAction(stops, "android")?.kind).toBe("route");
-    expect(routeAllStopsAction(stops, "web")?.kind).toBe("route");
+  test("R-2 every platform, iPhone included, gets the full route as one https universal link", () => {
+    // #4347 wave 3 follow-up: no platform branch any more. The https link opens
+    // the Google Maps app on iPhone when installed, else the browser.
+    const stops = [{ lat: 6.1, lng: 3.1 }, { lat: 6.2, lng: 3.2 }, { lat: 6.3, lng: 3.3, label: "Café & Bar" }];
+    expect(routeAllStopsAction(stops, "transit")).toEqual({
+      kind: "route",
+      url: "https://www.google.com/maps/dir/?api=1&destination=6.3%2C3.3&waypoints=6.1%2C3.1%7C6.2%2C3.2&travelmode=transit",
+    });
+    expect(routeAllStopsAction([])).toBeNull();
+  });
+
+  test("R-3 openRouteAllStops opens the route link on iOS (not the next stop)", () => {
+    const RN = require("react-native");
+    const original = RN.Platform.OS;
+    const openURL = jest.spyOn(RN.Linking, "openURL").mockResolvedValue(true);
+    try {
+      RN.Platform.OS = "ios";
+      const { openRouteAllStops } = require("../placeDirections");
+      openRouteAllStops([{ lat: 6.1, lng: 3.1 }, { lat: 6.2, lng: 3.2 }], { nextIndex: 1, mode: "walking" });
+      expect(openURL).toHaveBeenCalledTimes(1);
+      expect(openURL).toHaveBeenCalledWith(
+        "https://www.google.com/maps/dir/?api=1&destination=6.2%2C3.2&waypoints=6.1%2C3.1&travelmode=walking",
+      );
+    } finally {
+      RN.Platform.OS = original;
+      openURL.mockRestore();
+    }
+  });
+
+  test("R-4 a long plan is cut to Google's 9 waypoints, keeping the order and the last stop", () => {
+    const stops = Array.from({ length: 12 }, (_, i) => ({ label: `Stop ${i + 1}` }));
+    const query = new URLSearchParams((routeAllStopsUrl(stops, "driving") as string).split("?")[1]);
+    expect(GOOGLE_MAPS_MAX_WAYPOINTS).toBe(9);
+    expect(query.get("destination")).toBe("Stop 12");
+    expect(query.get("waypoints")?.split("|")).toEqual(Array.from({ length: 9 }, (_, i) => `Stop ${i + 1}`));
+  });
+
+  test("R-5 names with reserved characters are URL-encoded and cannot split the link", () => {
+    const url = routeAllStopsUrl([{ label: "Tom & Jerry's | Bar" }, { label: "Café #2?" }]) as string;
+    expect(url.split("?")).toHaveLength(2);
+    expect(url).not.toMatch(/[ #|]/);
+    const query = new URLSearchParams(url.split("?")[1]);
+    expect(query.get("waypoints")).toBe("Tom & Jerry's | Bar");
+    expect(query.get("destination")).toBe("Café #2?");
+    expect([...query.keys()]).toEqual(["api", "destination", "waypoints", "travelmode"]);
   });
 });
 

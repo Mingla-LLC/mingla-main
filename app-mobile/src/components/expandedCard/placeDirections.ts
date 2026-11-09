@@ -13,7 +13,7 @@
  * lands, this helper routes through `packages/offering-rendering/mapsDeepLink.ts`
  * with the Google place id (agreed with the #4334 chat); no caller changes.
  */
-import { Linking, Platform } from 'react-native';
+import { Linking } from 'react-native';
 import { openMapsTarget } from '../../utils/openMapsTarget';
 
 export interface DirectionsTarget {
@@ -54,25 +54,33 @@ export function openPlaceDirections(target: DirectionsTarget, options: Direction
 export type RouteTravelMode = 'driving' | 'walking' | 'transit' | 'bicycling';
 
 /**
- * What "Route all stops" does on this platform:
- *   - `route`: ONE Google Maps directions link with every stop in order — the
- *     last stop is the destination, the others are waypoints, and the origin is
- *     left out so Google starts from wherever the phone is. On Android and the
- *     web it opens Google Maps (app link / browser).
- *   - `next`: on iPhone the system maps app is Apple Maps, which cannot take
- *     several stops in one link, so it opens the NEXT stop instead (the caller
- *     picks which stop that is).
+ * "Route all stops": ONE Google Maps directions link with every stop in order —
+ * the last stop is the destination, the others are waypoints, and the origin is
+ * left out so Google starts from wherever the phone is.
+ *
+ * The SAME https universal link on every platform (#4347 wave 3 follow-up).
+ * On iPhone it opens in the Google Maps app when it is installed and in the
+ * browser otherwise — no canOpenURL check and no LSApplicationQueriesSchemes
+ * entry, so no native change. (Before, iPhone opened only the next stop in
+ * Apple Maps, which cannot take several stops in one link.)
  *
  * Each stop is anchored on its coordinates; a stop without them falls back to
- * its label. Null when no stop can be placed at all.
+ * its label. Every token is URL-encoded and the waypoints are joined by an
+ * encoded "|". Null when no stop can be placed at all.
  *
  * [TRANSITIONAL] when #4334 lands this routes through
  * `packages/offering-rendering/mapsDeepLink.ts` with each stop's Google place
  * id (`waypoint_place_ids` / `destination_place_id`); no caller changes.
  */
-export type RouteAllStopsAction =
-  | { readonly kind: 'route'; readonly url: string }
-  | { readonly kind: 'next' };
+export type RouteAllStopsAction = { readonly kind: 'route'; readonly url: string };
+
+/**
+ * Google Maps URLs accept at most 9 waypoints (the app and desktop; a mobile
+ * browser honours fewer). A longer plan keeps its FIRST 9 intermediate stops
+ * plus the final stop as the destination; the stops past the limit are left
+ * out of the link rather than making Google reject or silently mangle it.
+ */
+export const GOOGLE_MAPS_MAX_WAYPOINTS = 9;
 
 function stopToken(target: DirectionsTarget): string | null {
   const { geo, label } = directionsTarget(target);
@@ -84,7 +92,8 @@ export function routeAllStopsUrl(stops: readonly DirectionsTarget[], mode: Route
   const tokens = stops.map(stopToken).filter((t): t is string => t !== null);
   if (tokens.length === 0) return null;
   const destination = tokens[tokens.length - 1];
-  const waypoints = tokens.slice(0, -1);
+  // Truncated to Google's limit — see GOOGLE_MAPS_MAX_WAYPOINTS.
+  const waypoints = tokens.slice(0, -1).slice(0, GOOGLE_MAPS_MAX_WAYPOINTS);
   const params = [`api=1`, `destination=${encodeURIComponent(destination)}`];
   if (waypoints.length > 0) params.push(`waypoints=${waypoints.map((w) => encodeURIComponent(w)).join('%7C')}`);
   params.push(`travelmode=${mode}`);
@@ -93,30 +102,25 @@ export function routeAllStopsUrl(stops: readonly DirectionsTarget[], mode: Route
 
 export function routeAllStopsAction(
   stops: readonly DirectionsTarget[],
-  platform: string,
   mode: RouteTravelMode = 'driving',
 ): RouteAllStopsAction | null {
-  if (platform === 'ios') return stops.length > 0 ? { kind: 'next' } : null;
   const url = routeAllStopsUrl(stops, mode);
   return url === null ? null : { kind: 'route', url };
 }
 
 /**
- * Run "Route all stops". On iPhone (`next`) it opens `stops[nextIndex]` through
- * the same coordinate-anchored helper every Directions button uses.
+ * Run "Route all stops": opens the full route link on every platform.
+ * `nextIndex` is no longer read (iPhone used to open only that stop); it stays
+ * in the options so the caller in ExpandedCardModal needs no change in this
+ * follow-up.
  */
 export function openRouteAllStops(
   stops: readonly DirectionsTarget[],
   options: { mode?: RouteTravelMode; nextIndex?: number; onUnavailable?: (() => void) | null } = {},
 ): void {
-  const action = routeAllStopsAction(stops, Platform.OS, options.mode ?? 'driving');
+  const action = routeAllStopsAction(stops, options.mode ?? 'driving');
   if (action === null) {
     options.onUnavailable?.();
-    return;
-  }
-  if (action.kind === 'next') {
-    const target = stops[Math.max(0, Math.min(stops.length - 1, options.nextIndex ?? 0))];
-    openPlaceDirections(target, { onUnavailable: options.onUnavailable ?? null });
     return;
   }
   void Linking.openURL(action.url).catch(() => options.onUnavailable?.());
