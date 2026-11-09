@@ -9,7 +9,9 @@ import { SmsOptOutButton } from './SmsOptOutButton'
 // number out of this host's marketing texts only.
 export const dynamic = 'force-dynamic'
 
-export const metadata = publicNoindexMetadata('/unsubscribe/sms', {
+// Registered under the /unsubscribe opt-out contract (never indexed); a
+// token path is not a page of its own for search.
+export const metadata = publicNoindexMetadata('/unsubscribe', {
   title: 'Stop marketing texts',
   description: 'Stop marketing texts from this host on Mingla.',
 })

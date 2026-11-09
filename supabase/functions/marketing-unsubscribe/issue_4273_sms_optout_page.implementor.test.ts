@@ -3,7 +3,7 @@
 // Supabase serves an edge function's GET response as text/plain, so a confirm
 // page rendered by marketing-unsubscribe showed raw HTML and nobody could opt
 // out. The page now lives at usemingla.com/unsubscribe/sms/<token>:
-//   W-1 the page exists, is never indexed, and its family is registered.
+//   W-1 the page exists and is never indexed (the /unsubscribe contract).
 //   W-2 opening it changes nothing: the only request is the button's POST
 //       (no effect hook, no form auto-submit), to /unsubscribe/<token>.
 //   W-3 the text's link goes there: marketing-send builds /unsubscribe/sms/,
@@ -23,12 +23,12 @@ const repo = (path: string) =>
 const PAGE = "mingla-marketing/app/unsubscribe/sms/[token]/page.tsx";
 const BUTTON = "mingla-marketing/app/unsubscribe/sms/[token]/SmsOptOutButton.tsx";
 
-Deno.test("#4273 W-1 the page exists, is noindex, and its family is registered", async () => {
+Deno.test("#4273 W-1 the page exists and is noindex", async () => {
   const page = await repo(PAGE);
-  assert(page.includes("publicNoindexMetadata('/unsubscribe/sms'"), "noindex");
+  assert(page.includes("publicNoindexMetadata('/unsubscribe'"), "noindex");
   assert(page.includes("<SmsOptOutButton"), "renders the one button");
   const registry = await repo("mingla-marketing/lib/search/route-registry.ts");
-  assert(registry.includes("['/unsubscribe/sms', 'sms-opt-out-family']"));
+  assert(registry.includes("['/unsubscribe', 'unsubscribe']"), "the opt-out contract is noindex");
 });
 
 Deno.test("#4273 W-2 opening the page sends nothing; only the button POSTs", async () => {
