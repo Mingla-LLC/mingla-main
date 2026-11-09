@@ -1,4 +1,4 @@
-export const PRIVACY_EFFECTIVE_DATE = 'October 22, 2026'
+export const PRIVACY_EFFECTIVE_DATE = 'November 9, 2026'
 
 export const PRIVACY_SECTIONS = [
   {

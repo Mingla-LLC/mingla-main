@@ -14,6 +14,9 @@
 //     `?src=` on every listing hand-off, and no store/host URL outside #4137;
 //   - fit edge cases (0 / 1 / 40 listings, 0 / 10 admin strips);
 //   - the data layer when the database errors or returns nothing;
+//   - the live cities (8 Nov ruling): hostile `links_page_cities()` rows, the
+//     REAL guide registry lending older slugs, regions and zones (never adding
+//     a city), and the page never rebuilding its list from the registry;
 //   - socials (exactly 7 @usemingla, no X, no @minglahost), no Privacy
 //     choices link, and noindex.
 //
@@ -61,30 +64,29 @@ const stores = await load('store-links')
 
 // ---------------------------------------------------------------- the REAL registry
 
-// Read the live cities straight from content/cities/registry.ts (the one owner),
-// so this test can never drift onto a friendlier fixture.
+// Read the city guides straight from content/cities/registry.ts, so this test
+// can never drift onto a friendlier fixture. Live cities ruling (8 Nov): /links
+// lists the cities live in Explorer (`links_page_cities()`); the guides only
+// lend an older slug, region and zone, and stand in while that read is down.
+// Reach is no longer a registry fact: lib/links-week.ts cityReachKm (Lagos 80).
 const REGISTRY = read('content/cities/registry.ts')
 function registryCities() {
   const centres = REGISTRY.match(/CITY_HUB_CENTRES[^=]*=\s*\{([\s\S]*?)\n\}/)[1]
   const regions = REGISTRY.match(/CITY_HUB_REGIONS[^=]*=\s*\{([\s\S]*?)\n\}/)[1]
-  // Conductor ruling (#4318, 3): each city owns its reach in the registry (Lagos 80 km).
-  const reaches = REGISTRY.match(/CITY_HUB_REACH_KM[^=]*=\s*\{([\s\S]*?)\n\}/)[1]
   const cities = []
   for (const m of centres.matchAll(/'?([a-z0-9-]+)'?:\s*\{\s*lat:\s*(-?[\d.]+),\s*lng:\s*(-?[\d.]+)\s*\}/g)) {
     const slug = m[1]
-    const rec = REGISTRY.match(new RegExp(`slug: '${slug}', city: '([^']+)'[^\\n]*?timezone: '([^']+)'`))
+    const rec = REGISTRY.match(new RegExp(`slug: '${slug}', city: '([^']+)', country: '[^']+', countryCode: '([A-Z]{2})'[^\\n]*?timezone: '([^']+)'`))
     const region = regions.match(new RegExp(`'?${slug}'?:\\s*'([^']+)'`))
     assert.ok(rec && region, `registry record for ${slug}`)
-    const reach = reaches.match(new RegExp(`'?${slug}'?:\\s*(\\d+)`))
-    assert.ok(reach, `registry reach for ${slug}`)
-    cities.push({ slug, name: rec[1], region: region[1], timezone: rec[2], lat: Number(m[2]), lng: Number(m[3]), reachKm: Number(reach[1]) })
+    cities.push({ slug, name: rec[1], countryCode: rec[2], region: region[1], timezone: rec[3], lat: Number(m[2]), lng: Number(m[3]), reachKm: week.cityReachKm(slug) })
   }
   return cities
 }
 const CITIES = registryCities()
 const city = (slug) => CITIES.find((c) => c.slug === slug)
 
-test('the registry the page reads has the 10 live cities, each with a centre and a real time zone', () => {
+test('the city guides the page borrows from (and stands in with) have 10 cities, each with a centre and a real time zone', () => {
   assert.equal(CITIES.length, 10)
   for (const c of CITIES) {
     assert.ok(Math.abs(c.lat) <= 90 && Math.abs(c.lng) <= 180, c.slug)
@@ -211,9 +213,9 @@ test('geo headers — missing, malformed, out of range, and the middle of the oc
     CITIES,
   )
   const live = week.liveCities(CITIES, listings, [], NOW)
-  const liveSlugs = live.map((l) => l.city.slug)
-  // Mid-Atlantic, the Gulf of Guinea, the South Pacific, Null Island: always a
-  // LIVE city (the nearest one), never a quiet city and never a crash.
+  // Mid-Atlantic, the Gulf of Guinea, the South Pacific, Null Island: always the
+  // nearest live city, never a crash. Live cities ruling (8 Nov): every city
+  // live in Explorer is a landing city, quiet or not (it shows its places).
   for (const point of [
     { lat: 30, lng: -40 },
     { lat: 0, lng: 0 },
@@ -222,32 +224,34 @@ test('geo headers — missing, malformed, out of range, and the middle of the oc
   ]) {
     const r = week.resolveCity({ cities: CITIES, live, query: null, geo: point, cookie: null })
     assert.equal(r.source, 'geo')
-    assert.ok(liveSlugs.includes(r.slug), `${JSON.stringify(point)} opened on quiet city ${r.slug}`)
-    assert.equal(r.slug, week.nearestCity(live.map((l) => l.city), point).city.slug)
+    assert.equal(r.slug, week.nearestCity(CITIES, point).city.slug)
   }
   // Gulf of Guinea → Lagos; North Atlantic off Ireland → London.
   assert.equal(week.resolveCity({ cities: CITIES, live, query: null, geo: { lat: 2, lng: 3 }, cookie: null }).slug, 'lagos')
   assert.equal(week.resolveCity({ cities: CITIES, live, query: null, geo: { lat: 53, lng: -15 }, cookie: null }).slug, 'london')
 })
 
-test('a remembered cookie for a city that is no longer live is ignored, unless nothing is live at all', () => {
+test('a remembered cookie opens its city while it is live in Explorer, quiet or not; a gone city is ignored', () => {
   const listings = week.bucketListings([row({}), row({}), row({ lat: 6.45, lng: 3.42, tz: 'Africa/Lagos' })], CITIES)
   const live = week.liveCities(CITIES, listings, [], NOW)
-  // Brussels had plans last month; this week it has none.
+  // Live cities ruling (8 Nov): Brussels has nothing on this week but is live
+  // in Explorer, so the remembered city opens (its places, "Plans in …").
   const r = week.resolveCity({ cities: CITIES, live, query: null, geo: null, cookie: oneParam('brussels') })
-  assert.deepEqual(r, { slug: 'raleigh-nc', source: 'busiest' })
-  // A cookie for a city that left the registry entirely.
+  assert.deepEqual(r, { slug: 'brussels', source: 'cookie' })
+  // A cookie for a city that is not live (switched off, or never live).
   assert.equal(week.resolveCity({ cities: CITIES, live, query: null, geo: null, cookie: oneParam('atlanta') }).source, 'busiest')
-  // A tampered cookie never reaches the resolver.
-  assert.equal(oneParam('lagos; Path=/'), null)
-  // #4318 addendum 2: admin strips are not by city and show in every city, so a
-  // strip never makes a city live; a remembered quiet city is still skipped.
-  const pins = week.normalisePins([pinRow({ shows_on: '2026-11-09' })])
-  const live2 = week.liveCities(CITIES, listings, pins, NOW)
-  assert.deepEqual(week.resolveCity({ cities: CITIES, live: live2, query: null, geo: null, cookie: 'brussels' }), {
+  const withoutBrussels = CITIES.filter((c) => c.slug !== 'brussels')
+  assert.deepEqual(week.resolveCity({ cities: withoutBrussels, live, query: null, geo: null, cookie: 'brussels' }), {
     slug: 'raleigh-nc',
     source: 'busiest',
   })
+  // A tampered cookie never reaches the resolver.
+  assert.equal(oneParam('lagos; Path=/'), null)
+  // #4318 addendum 2: admin strips are not by city and show in every city, so a
+  // strip never makes a city busy.
+  const pins = week.normalisePins([pinRow({ shows_on: '2026-11-09' })])
+  const live2 = week.liveCities(CITIES, listings, pins, NOW)
+  assert.deepEqual(live2.map((l) => l.city.slug), live.map((l) => l.city.slug))
   // Nothing live anywhere: the remembered city still opens (it is a real registry city).
   assert.deepEqual(week.resolveCity({ cities: CITIES, live: [], query: null, geo: null, cookie: 'brussels' }), {
     slug: 'brussels',
@@ -258,7 +262,7 @@ test('a remembered cookie for a city that is no longer live is ignored, unless n
 // ================================================================= 2. nearest-city bucketing
 
 test('each city\u2019s reach edge (60 km, Lagos 80 km): just inside is kept, just outside is dropped', () => {
-  // Conductor ruling (#4318, 3): the edge is the city's own registry reach.
+  // Live cities ruling (8 Nov): reach is cityReachKm, an override map (Lagos 80).
   assert.equal(city('lagos').reachKm, 80)
   for (const c of CITIES) {
     if (c.slug !== 'lagos') assert.equal(c.reachKm, 60, c.slug)
@@ -692,7 +696,7 @@ test('the empty state: database errors or empty answers give empty lists and a l
     // Not configured: empty, nothing logged.
     delete process.env.NEXT_PUBLIC_SUPABASE_URL
     delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-    assert.deepEqual(await data.getLinksData(), { rows: [], strips: [], failed: [] })
+    assert.deepEqual(await data.getLinksData(), { rows: [], strips: [], cities: [], failed: [] })
 
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://db.example.test/'
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'anon'
@@ -702,18 +706,18 @@ test('the empty state: database errors or empty answers give empty lists and a l
       return new Response(typeof body === 'string' ? body : JSON.stringify(body), { status })
     }
     const scenarios = [
-      ['network down', async () => { throw new TypeError('fetch failed') }, ['week', 'strips']],
-      ['500', respond(500, { message: 'boom' }), ['week', 'strips']],
-      ['404 function missing', respond(404, { code: 'PGRST202' }), ['week', 'strips']],
-      ['not a list', respond(200, { rows: [] }), ['week', 'strips']],
-      ['bad JSON', respond(200, '<html>'), ['week', 'strips']],
+      ['network down', async () => { throw new TypeError('fetch failed') }, ['week', 'strips', 'cities']],
+      ['500', respond(500, { message: 'boom' }), ['week', 'strips', 'cities']],
+      ['404 function missing', respond(404, { code: 'PGRST202' }), ['week', 'strips', 'cities']],
+      ['not a list', respond(200, { rows: [] }), ['week', 'strips', 'cities']],
+      ['bad JSON', respond(200, '<html>'), ['week', 'strips', 'cities']],
       ['empty', respond(200, []), []],
     ]
     for (const [name, impl, failed] of scenarios) {
       logged.length = 0
       globalThis.fetch = impl
       const got = await data.getLinksData()
-      assert.deepEqual(got, { rows: [], strips: [], failed }, name)
+      assert.deepEqual(got, { rows: [], strips: [], cities: [], failed }, name)
       assert.equal(logged.length, failed.length, `${name}: each failed read is logged once`)
     }
     // One read fails, the other still shows.
@@ -724,9 +728,9 @@ test('the empty state: database errors or empty answers give empty lists and a l
     const half = await data.getLinksData()
     assert.deepEqual(half.failed, ['week'])
     assert.equal(half.strips.length, 1)
-    // The anon key, never a service key, and POST to the two RPCs only.
+    // The anon key, never a service key, and POST to the three readers only.
     assert.ok(calls.every((c) => c.init.method === 'POST' && c.init.headers.apikey === 'anon'))
-    assert.ok(calls.every((c) => /\/rest\/v1\/rpc\/links_page_(week|strips)$/.test(c.url)), calls.map((c) => c.url).join())
+    assert.ok(calls.every((c) => /\/rest\/v1\/rpc\/links_page_(week|strips|cities)$/.test(c.url)), calls.map((c) => c.url).join())
     assert.ok(calls.every((c) => !c.url.includes('//rest')), 'the trailing slash on the URL is trimmed')
 
     // The model turns garbage rows into nothing rather than a crash.
@@ -741,6 +745,109 @@ test('the empty state: database errors or empty answers give empty lists and a l
   // The page shows the designed empty state when its city has nothing on.
   const ui = read('components/marketing/links-experience.tsx')
   assert.match(ui, /A quiet one\./)
+})
+
+// ================================================================= 6b. live cities (8 Nov ruling)
+
+const LIVE_ROWS = [
+  ['42197b35-45e8-4cac-b40d-a548416d87d2', 'Brussels', 'BE', 50.8477029, 4.3572001, 2593],
+  ['9cff3a58-18cc-4c51-aa94-4c3e96ca1841', 'Cary', 'US', 35.7890402, -78.7797644, 959],
+  ['a9e110dd-c26c-4141-9fee-165fad1fd455', 'Durham', 'US', 35.9955684, -78.9002077, 839],
+  ['96d591c0-acb6-4605-884d-442cc261ea8d', 'Fort Lauderdale', 'US', 26.1224386, -80.1373174, 1302],
+  ['287cab01-4430-4930-983a-435aa194f33a', 'Lagos', 'NG', 6.6137395, 3.3552568, 1036],
+  ['c0bcef4f-82c1-44c6-9e9d-3329f5c860bf', 'London', 'GB', 51.5072178, -0.1275862, 11654],
+  ['72cd3c91-7a32-470b-8e59-a57af654d07f', 'New York', 'US', 40.7127753, -74.0059728, 9880],
+  ['13d9113a-4796-499e-9544-ae4d17c678db', 'Paris', 'FR', 48.8575475, 2.3513765, 4438],
+  ['0ccfcf20-21a9-4d7b-805d-cbe629dcfd2b', 'Raleigh', 'US', 35.7795897, -78.6381787, 2129],
+  ['e7b70cd8-d2c8-47f2-9112-08e86942bf96', 'Washington', 'US', 38.9072873, -77.0369274, 2682],
+].map(([city_id, name, country_code, center_lat, center_lng, place_count]) => ({ city_id, name, country_code, center_lat, center_lng, has_places: place_count > 0 }))
+
+test('live cities against the REAL guides: every guide matches its live city, older slugs open it, nothing is added', () => {
+  const cities = week.linksCitiesFromRows(LIVE_ROWS, CITIES)
+  assert.equal(cities.length, 10, 'the guides never add a city')
+  // Every guide finds its live city (centres within 30 km in the same country),
+  // so every older slug in a bio link keeps working.
+  for (const guide of CITIES) {
+    const r = week.resolveCity({ cities, live: [], query: oneParam(guide.slug), geo: null, cookie: null })
+    assert.equal(r.source, 'query', `?city=${guide.slug}`)
+    const live = cities.find((c) => c.slug === r.slug)
+    assert.equal(live.region, guide.region, guide.slug)
+    assert.equal(live.timezone, guide.timezone, guide.slug)
+  }
+  // Every slug the page makes passes the page's own ?city= parser.
+  for (const c of cities) assert.equal(oneParam(c.slug), c.slug)
+  // A guide in another country, or more than 30 km away, lends nothing.
+  const far = week.linksCitiesFromRows([{ ...LIVE_ROWS[7], center_lat: 49.2 }], CITIES)
+  assert.deepEqual([far[0].aliases, far[0].region, far[0].timezone], [[], 'France', ''])
+  const wrongCountry = week.linksCitiesFromRows([{ ...LIVE_ROWS[7], country_code: 'BE' }], CITIES)
+  assert.deepEqual(wrongCountry[0].aliases, [])
+})
+
+test('hostile links_page_cities() rows: junk dropped, names never break the slug, zero and odd counts handled', () => {
+  const base = LIVE_ROWS[0]
+  const got = week.linksCitiesFromRows(
+    [
+      null,
+      {},
+      { ...base, city_id: "1' OR '1'='1" },
+      { ...base, city_id: '00000000-0000-4000-8000-000000000001', name: '"><script>alert(1)</script>' },
+      { ...base, city_id: '00000000-0000-4000-8000-000000000002', name: '!!!' },
+      { ...base, city_id: '00000000-0000-4000-8000-000000000003', name: 'Zürich', country_code: 'ch' },
+      { ...base, city_id: '00000000-0000-4000-8000-000000000004', name: 'Nowhere', center_lng: 'abc' },
+      { ...base, city_id: '00000000-0000-4000-8000-000000000005', name: 'Ghost', country_code: null, has_places: 'yes' },
+      { ...base, city_id: '00000000-0000-4000-8000-000000000006', name: 'x'.repeat(200), has_places: false },
+    ].filter(Boolean),
+    CITIES,
+  )
+  const slugs = got.map((c) => c.slug)
+  assert.deepEqual(slugs.slice(0, 3), ['script-alert-1-script', 'zurich', 'ghost'])
+  for (const c of got) assert.equal(oneParam(c.slug), c.slug, `slug ${c.slug} passes the page parser`)
+  // The display name is kept as text (React escapes it); the slug is clean.
+  assert.equal(got[0].name, '"><script>alert(1)</script>')
+  assert.deepEqual([got[1].region, got[2].region, got[2].hasPlaces, got[3].hasPlaces], ['Switzerland', '', null, false])
+  // An empty city list never crashes the resolver silently: it throws loudly.
+  assert.throws(() => week.resolveCity({ cities: [], live: [], query: null, geo: null, cookie: null }))
+})
+
+test('the quiet-week request sends p_city_id to links_page_places (and lat/lng only as the fallback)', async () => {
+  const realFetch = globalThis.fetch
+  const env = { ...process.env }
+  const bodies = []
+  try {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://db.example.test'
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'anon'
+    globalThis.fetch = async (url, init) => {
+      bodies.push({ url: String(url), body: JSON.parse(init.body) })
+      return new Response('[]', { status: 200 })
+    }
+    const [paris] = week.linksCitiesFromRows([LIVE_ROWS[7]], CITIES)
+    const guide = city('lagos')
+    await data.getLinksPlaces([paris, guide])
+    assert.deepEqual(bodies.map((b) => b.url), Array(2).fill('https://db.example.test/rest/v1/rpc/links_page_places'))
+    assert.equal(bodies[0].body.p_city_id, '13d9113a-4796-499e-9544-ae4d17c678db')
+    assert.equal('p_city_id' in bodies[1].body, false, 'a city with no id uses the lat/lng path')
+    assert.equal(bodies[1].body.p_radius_km, 80)
+  } finally {
+    globalThis.fetch = realFetch
+    for (const key of Object.keys(process.env)) if (!(key in env)) delete process.env[key]
+    Object.assign(process.env, env)
+  }
+})
+
+test('the page builds its list from links_page_cities() only; the guides stand in only while that read is down', () => {
+  const page = read('app/links/page.tsx')
+  assert.match(page, /linksCitiesFromRows\(data\.cities, hints\)/)
+  assert.doesNotMatch(page, /CITY_HUB_REACH_KM/)
+  assert.match(page, /const outage = dbCities\.length === 0/)
+  assert.match(page, /outage \? outageCities\(hints\) : dbCities/)
+  // In the stand-in mode nothing is listed and the read counts as failed.
+  assert.match(page, /const listings = outage \? \[\] : bucketListings/)
+  assert.match(page, /const readFailed = outage \|\| data\.failed\.includes\('week'\)/)
+  // The city guides are left exactly as they are (#4137 city pages unchanged).
+  // The picker lists every live city with "Places to explore" for a quiet one.
+  const ui = read('components/marketing/links-experience.tsx')
+  assert.match(ui, /pickerOrder\(counts, visitor\.point\)/)
+  assert.match(ui, /pickerCountLabel\(count, c\.hasPlaces\)/)
 })
 
 // ================================================================= 7 + 8. socials, privacy link, noindex

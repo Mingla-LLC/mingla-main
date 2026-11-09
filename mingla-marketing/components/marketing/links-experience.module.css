@@ -62,6 +62,22 @@
   height: 24px;
   width: auto;
 }
+/* The wordmark is the Home link: same look, a 44px tap target, and a white
+   focus ring (the orange site ring would vanish on the orange bar). */
+.lk-home {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 10px;
+  border-radius: 999px;
+  text-decoration: none;
+}
+.lk .lk-home:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
 .lk-grid {
   --stH: 60px;
   --banH: 120px;

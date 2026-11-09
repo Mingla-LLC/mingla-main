@@ -3,7 +3,6 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useQueryClient } from "@tanstack/react-query";
 import { savedCardKeys } from "../hooks/queryKeys";
 import { useRef } from "react";
-import { formatCurrency } from "./utils/formatters";
 import { PreferencesService } from "../services/preferencesService";
 import { savedCardsService } from "../services/savedCardsService";
 // BoardCardService removed from AppHandlers imports (ORCH-0532) —

@@ -1286,7 +1286,49 @@
         "app-mobile/src/services/deckService.ts",
         "app-mobile/src/utils/deckSnapshot.ts",
         "app-mobile/src/utils/queryPersistence.ts",
-        "app-mobile/src/utils/queryPersistenceBudget.ts"
+        "app-mobile/src/utils/queryPersistenceBudget.ts",
+        "app-mobile/src/components/CuratedExperienceSwipeCard.tsx",
+        "app-mobile/src/components/board/SwipeableSessionCards.tsx",
+        "app-mobile/src/components/utils/formatters.ts",
+        "app-mobile/src/components/utils/preferences.ts",
+        "app-mobile/src/constants/priceTiers.ts",
+        "app-mobile/src/services/currencyService.ts",
+        "app-mobile/src/utils/currency.ts",
+        "app-mobile/src/utils/displayPrice.ts",
+        "app-mobile/src/utils/liveDisplayPriceSession.ts",
+        "app-mobile/src/utils/numberFormatter.ts",
+        "app-mobile/src/utils/priceTiers.ts",
+        "app-mobile/src/components/AppHandlers.tsx",
+        "supabase/functions/_shared/experienceDisplayPrice.ts",
+        "app-mobile/src/i18n/locales/ar/cards.json",
+        "app-mobile/src/i18n/locales/bin/cards.json",
+        "app-mobile/src/i18n/locales/bn/cards.json",
+        "app-mobile/src/i18n/locales/de/cards.json",
+        "app-mobile/src/i18n/locales/el/cards.json",
+        "app-mobile/src/i18n/locales/en/cards.json",
+        "app-mobile/src/i18n/locales/es/cards.json",
+        "app-mobile/src/i18n/locales/fr/cards.json",
+        "app-mobile/src/i18n/locales/ha/cards.json",
+        "app-mobile/src/i18n/locales/he/cards.json",
+        "app-mobile/src/i18n/locales/hi/cards.json",
+        "app-mobile/src/i18n/locales/id/cards.json",
+        "app-mobile/src/i18n/locales/ig/cards.json",
+        "app-mobile/src/i18n/locales/it/cards.json",
+        "app-mobile/src/i18n/locales/ja/cards.json",
+        "app-mobile/src/i18n/locales/ko/cards.json",
+        "app-mobile/src/i18n/locales/ms/cards.json",
+        "app-mobile/src/i18n/locales/nl/cards.json",
+        "app-mobile/src/i18n/locales/pl/cards.json",
+        "app-mobile/src/i18n/locales/pt/cards.json",
+        "app-mobile/src/i18n/locales/ro/cards.json",
+        "app-mobile/src/i18n/locales/ru/cards.json",
+        "app-mobile/src/i18n/locales/sv/cards.json",
+        "app-mobile/src/i18n/locales/th/cards.json",
+        "app-mobile/src/i18n/locales/tr/cards.json",
+        "app-mobile/src/i18n/locales/uk/cards.json",
+        "app-mobile/src/i18n/locales/vi/cards.json",
+        "app-mobile/src/i18n/locales/yo/cards.json",
+        "app-mobile/src/i18n/locales/zh/cards.json"
       ]
     },
     {
@@ -1405,7 +1447,12 @@
         "app-mobile/src/components/expandedCard/CardInfoSection.tsx",
         "app-mobile/src/components/expandedCard/SpineParts.tsx",
         "app-mobile/src/i18n/locales/en/common.json",
-        "app-mobile/src/utils/inAppLink.ts"
+        "app-mobile/src/utils/inAppLink.ts",
+        "app-mobile/src/components/expandedCard/EventDetailLayout.tsx",
+        "app-mobile/src/components/expandedCard/TimelineSection.tsx",
+        "app-mobile/src/components/expandedCard/VenueExperiencesSection.tsx",
+        "app-mobile/src/types/expandedCardTypes.ts",
+        "app-mobile/src/utils/venueExperienceMapping.ts"
       ]
     },
     {
@@ -2142,6 +2189,37 @@
         "packages/offering-rendering/ParallaxCoverShell.tsx",
         "packages/offering-rendering/index.ts",
         "packages/offering-rendering/pageFooterAccessory.ts"
+      ]
+    },
+    {
+      "capability_key": "web-legal",
+      "paths": [
+        "mingla-business/playwright.issue2331marketing.config.ts",
+        "mingla-business/playwright.issue2771.config.ts",
+        "mingla-business/playwright.issue3214.config.ts",
+        "mingla-business/server/publicAdRuntime.js"
+      ]
+    },
+    {
+      "capability_key": "web-download",
+      "paths": [
+        "mingla-marketing/app/api/blog/revalidate/route.ts",
+        "mingla-marketing/lib/revalidate-tag.ts",
+        "supabase/migrations/20280514004318_issue_4318_links_live_cities.sql",
+        "supabase/migrations/20280515004318_issue_4318_links_strip_show_until.sql"
+      ]
+    },
+    {
+      "capability_key": "staff-community-support",
+      "paths": [
+        "supabase/functions/admin-blog/index.ts",
+        "supabase/functions/admin-blog/model.ts"
+      ]
+    },
+    {
+      "capability_key": "web-download",
+      "paths": [
+        "supabase/migrations/20280516004318_issue_4318_links_places_fast.sql"
       ]
     }
   ]

@@ -10,6 +10,7 @@
  * Performance: 1 HTTP call + 0-N curated calls, down from 11+ HTTP calls.
  * Latency: <500ms from pool, <2s from Google API cold start.
  */
+import { LIVE_DISPLAY_PRICE_SESSION } from '../utils/liveDisplayPriceSession';
 import { supabase, trackedInvoke } from './supabase';
 import { curatedExperiencesService } from './curatedExperiencesService';
 import {
@@ -432,6 +433,16 @@ function experienceCardToRecommendation(card: any): Recommendation {
     brandLogoUrl: typeof card?.brandLogoUrl === 'string' ? card.brandLogoUrl : null,
     eventSlug: typeof card?.eventSlug === 'string' ? card.eventSlug : '',
     currency: typeof card?.currency === 'string' ? card.currency : 'USD',
+    // #4347: the server's conversion of the envelope into the viewer's
+    // currency (null when it had none — the app then shows `currency` money).
+    displayPriceMin: typeof card?.displayPriceMin === 'number' ? card.displayPriceMin : null,
+    displayPriceMax: typeof card?.displayPriceMax === 'number' ? card.displayPriceMax : null,
+    displayCurrency: typeof card?.displayCurrency === 'string' ? card.displayCurrency : null,
+    priceIsApprox: card?.priceIsApprox === true,
+    // #4347 rework: stamp the fields as received live in THIS app session;
+    // persisted copies (Likes, Calendar, deck snapshots) fail the stamp later.
+    displayPriceSession:
+      typeof card?.displayCurrency === 'string' ? LIVE_DISPLAY_PRICE_SESSION : null,
     masterDateUtc: card?.masterDateUtc ?? null,
     masterEndAtUtc: card?.masterEndAtUtc ?? null,
     timezone: typeof card?.timezone === 'string' ? card.timezone : 'UTC',
@@ -843,6 +854,9 @@ export class DeckService {
               limit: curatedLimit,
               skipDescriptions: true,
               source: 'deck',
+              // #4347: brand experiences on this path convert into the viewer's
+              // currency server-side, like the places path.
+              ...(params.displayCurrency ? { displayCurrency: params.displayCurrency } : {}),
             });
             if (__DEV__) {
               console.log(

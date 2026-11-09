@@ -71,12 +71,15 @@ test('(c) the strip opens the sheet; Save takes effect and shows Saved; focus is
   assert.match(banner, /export const PRIVACY_STRIP_LABEL = 'Privacy & ad choices'/)
   assert.match(banner, /data-testid="privacy-strip"[\s\S]*onClick=\{\(\) => \(open \? close\(\) : window\.dispatchEvent\(new Event\(PRIVACY_CHOICES_EVENT\)\)\)\}/)
   assert.match(banner, /window\.addEventListener\(PRIVACY_CHOICES_EVENT, reopen\)/)
-  assert.match(banner, /if \(open\) setDraft\(\{ analytics: privacy\.analytics, ads: privacy\.ads \}\)/)
+  // The switches start from what is running (or, once, from a sheet the visitor
+  // opened before hydration, #4318).
+  assert.match(banner, /setDraft\(adopted \?\? \{ analytics: privacy\.analytics, ads: privacy\.ads \}\)/)
   assert.match(banner, /saveMarketingPrivacy\(choice\)/)
   assert.match(banner, /if \(choice\.analytics\) void posthogOptIn\(\)/)
   assert.match(banner, /<span aria-live="polite"[^>]*>\s*\{saved \? PRIVACY_SAVED_LABEL : PRIVACY_STRIP_LABEL\}/)
   assert.match(banner, /const SAVED_MS = 1800/)
-  assert.match(banner, /role="dialog"\s*aria-modal="true"/)
+  // #4318: a dialog only while open, so a closed sheet never reads as one.
+  assert.match(banner, /role=\{open \? 'dialog' : undefined\}\s*aria-modal=\{open \? true : undefined\}/)
   assert.match(banner, /if \(event\.key === 'Escape'\)/)
   assert.match(banner, /if \(event\.key !== 'Tab'\) return/)
   assert.match(banner, /window\.requestAnimationFrame\(\(\) => stripRef\.current\?\.focus\(\)\)/)

@@ -50,14 +50,32 @@ export function sumPriceSpans(spans: readonly PriceSpan[]): PriceTotal {
   return { min, max, openEnded };
 }
 
-/** "$min–$max", or "$min+" when the max is unknown (flagged, or below the min). */
-export function curatedTotalPriceRange(
-  totalPriceMin: number | null | undefined,
-  totalPriceMax: number | null | undefined,
-  totalPriceOpenEnded?: boolean | null,
-): string {
-  const total = sumPriceSpans([
-    { min: totalPriceMin ?? 0, max: totalPriceMax ?? 0, openEnded: totalPriceOpenEnded },
-  ]);
-  return total.openEnded ? `$${total.min}+` : `$${total.min}–$${total.max}`;
+/**
+ * #4347 Decision 2 — an AI-curated plan's SPEND LEVEL.
+ *
+ * The stop prices of an AI plan are not money: `admin-seed-places` writes fixed
+ * USD tier constants (0/50/150/300/500) from Google's price level. Converting
+ * them would print an exact-looking figure in naira or euros that nobody
+ * charges. So an AI plan shows how expensive it is, never how much: the
+ * priciest visible stop decides the level (a plan is as upscale as its most
+ * upscale stop). Brand experiences are real money and never come through here.
+ */
+export type SpendLevel = 'free' | 'budget' | 'moderate' | 'upscale';
+
+export interface SpendStop {
+  priceMin?: number | null;
+  priceMax?: number | null;
+}
+
+export function curatedSpendLevel(stops: readonly SpendStop[]): SpendLevel | null {
+  if (!Array.isArray(stops) || stops.length === 0) return null;
+  let top = 0;
+  for (const stop of stops) {
+    top = Math.max(top, finiteAmount(stop.priceMin), finiteAmount(stop.priceMax));
+  }
+  if (top <= 0) return 'free';
+  // The tier ceilings the constants come from: chill ≤ 50, comfy ≤ 150.
+  if (top <= 50) return 'budget';
+  if (top <= 150) return 'moderate';
+  return 'upscale';
 }

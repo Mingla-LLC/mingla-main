@@ -15,8 +15,9 @@ import {
 } from "react-native";
 import { useTranslation } from 'react-i18next';
 import { Icon } from "../ui/Icon";
-import { parseAndFormatDistance, getCurrencySymbol, getCurrencyRate } from "../utils/formatters";
-import { PriceTierSlug, TIER_BY_SLUG, formatTierLabel } from '../../constants/priceTiers';
+import { parseAndFormatDistance } from "../utils/formatters";
+import { curatedSpendLevel } from "../../utils/curatedPriceRange";
+import { planVisibleStops } from "../expandedCard/expandedCardFacts";
 import type { CuratedStop } from '../../types/curatedExperience';
 import { useSessionVoting } from "../../hooks/useSessionVoting";
 import { supabase } from "../../services/supabase";
@@ -352,17 +353,15 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
                 ? (cardData.estimatedDurationMinutes / 60).toFixed(1)
                 : null;
 
-              // Currency-aware pricing: use first stop's tier label, fallback to price range
-              const currencySymbol = getCurrencySymbol(accountPreferences?.currency);
-              const currencyRate = getCurrencyRate(accountPreferences?.currency);
-              const firstStopTier = stops[0]?.priceTier;
-              const priceText = firstStopTier && TIER_BY_SLUG[firstStopTier]
-                ? formatTierLabel(firstStopTier, currencySymbol, currencyRate)
-                : cardData.totalPriceMin != null && cardData.totalPriceMax != null
-                  ? cardData.totalPriceMin === 0 && cardData.totalPriceMax === 0
-                    ? t('common:free')
-                    : `${currencySymbol}${Math.round(cardData.totalPriceMin * currencyRate)}–${currencySymbol}${Math.round(cardData.totalPriceMax * currencyRate)}`
-                  : "";
+              // #4347 Decision 2: an AI plan's stop prices are USD tier constants,
+              // so the plan shows a SPEND LEVEL, never an amount. The old code
+              // printed the first stop's tier bracket times the USD rate.
+              const spendLevel = curatedSpendLevel(planVisibleStops(stops));
+              const priceText = spendLevel === null
+                ? ""
+                : spendLevel === 'free'
+                  ? t('common:free')
+                  : t(`cards:price.spend_${spendLevel}`);
 
               const isSingleStop = stops.length === 1;
               const rawCuratedIntentKey = (cardData.experienceType || 'adventurous').replace(/-/g, '_');

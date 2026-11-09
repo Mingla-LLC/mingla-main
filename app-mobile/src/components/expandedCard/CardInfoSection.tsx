@@ -48,6 +48,7 @@ import {
 } from "../../utils/priceTiers";
 import { FactRow, Section, present } from "./SpineParts";
 import { SPINE } from "./spineTokens";
+import { formatChargedInLine } from "../utils/formatters";
 
 /** Five lines, then a Read more. Long enough to be a paragraph, short enough to be a fold. */
 const DESCRIPTION_CLAMP_LINES = 5;
@@ -75,6 +76,11 @@ export default function CardInfoSection({
   const priceDetail = canonicalDiscoveryPriceDetail(
     discoveryPrice as CanonicalDiscoveryPrice | undefined,
   );
+
+  const sourceCurrency =
+    typeof discoveryPrice?.sourceCurrencyCode === "string"
+      ? discoveryPrice.sourceCurrencyCode
+      : null;
 
   const hasDescription = present(description);
   const hasTip = present(tip);
@@ -127,9 +133,22 @@ export default function CardInfoSection({
             label={t("expanded_details:action_buttons.per_person", {
               defaultValue: "Per person",
             })}
-            value={priceDetail.source}
-            tail={present(priceDetail.approximate) ? `≈ ${priceDetail.approximate}` : null}
+            value={
+              // #4347: the viewer reads their own currency first (the ≈ figure)
+              // and the venue's own money second, as what it is charged in.
+              present(priceDetail.approximate)
+                ? `≈ ${priceDetail.approximate}`
+                : priceDetail.source
+            }
+            tail={null}
           />
+          {present(priceDetail.approximate) && sourceCurrency !== null ? (
+            <View style={styles.provenance}>
+              <Text style={styles.provenanceText}>
+                {formatChargedInLine(priceDetail.source, sourceCurrency, t)}
+              </Text>
+            </View>
+          ) : null}
           {present(priceDetail.ratesDate) || present(priceDetail.attributionUrl) ? (
             <View style={styles.provenance}>
               {present(priceDetail.ratesDate) ? (

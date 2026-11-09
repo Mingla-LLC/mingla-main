@@ -106,12 +106,17 @@ check(
   !!fmt && !/amount\s*\*\s*rate\b/.test(fmt) && /convertBetween\(/.test(fmt),
   "the USD-base `amount * rate` form must be gone, replaced by convertBetween",
 );
+// [#4347] G4 RE-POINTED, protection kept. preferences.ts carried a second,
+// unimported exchange-rate table + convertCurrency + formatCurrency; #4347
+// deleted them (one currency path: currencyService.convertBetween, pinned by
+// G1–G3). The single-leg converter this check guarded against cannot return
+// if the duplicate converter cannot return at all.
 check(
-  "G4: preferences.convertCurrency takes a sourceCurrency + same-currency identity",
+  "G4: preferences.ts carries no second currency converter or formatter",
   !!prefs &&
-    /convertCurrency\([^)]*sourceCurrency/.test(prefs) &&
-    /sourceCurrency === targetCurrency\) return amount/.test(prefs),
-  "convertCurrency must accept sourceCurrency and short-circuit same-currency",
+    !/export (?:function|const) (?:convertCurrency|formatCurrency)\b/.test(prefs) &&
+    !/export const exchangeRates\b/.test(prefs),
+  "the duplicate rate table / convertCurrency / formatCurrency must stay deleted",
 );
 
 let failed = 0;

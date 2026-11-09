@@ -7,10 +7,16 @@
 // below its min has no known max, so the plan reads "from $100" ("$100+").
 //
 // FAILS-ON-REVERT: dropping the `hi < lo` open-ended branch in
-// curatedPriceRange.ts, or going back to the raw "$min–$max" template in
-// cardConverters.ts / the plain stop sums in expandedCardFacts.ts, fails here.
+// curatedPriceRange.ts, or going back to the plain stop sums in
+// expandedCardFacts.ts, fails here.
+//
+// [#4347] curatedTotalPriceRange ("$30–$70", "$100+") was DELETED: an AI plan's
+// totals are USD tier constants and now show a spend level (Decision 2), and a
+// brand experience's envelope is formatted in its own currency. The open-ended
+// rule this suite pins is unchanged and still owned by sumPriceSpans; the
+// assertions on the deleted string formatter moved to the sums they wrapped.
 
-import { curatedTotalPriceRange, sumPriceSpans } from "../curatedPriceRange.ts";
+import { sumPriceSpans } from "../curatedPriceRange.ts";
 
 function assertEquals(actual: unknown, expected: unknown, message = "mismatch"): void {
   const a = JSON.stringify(actual);
@@ -31,15 +37,13 @@ const SECOND_EMPIRE_STOPS = [
 Deno.test("an open-ended stop makes the plan read 'from', never max below min", () => {
   const total = sumPriceSpans(SECOND_EMPIRE_STOPS);
   assertEquals(total, { min: 100, max: 100, openEnded: true });
-  assertEquals(curatedTotalPriceRange(100, 0), "$100+", "card-level totals 100/0 must not print $100–$0");
-  assertEquals(curatedTotalPriceRange(150, 100), "$150+", "any total with max below min is open-ended");
+  assertEquals(sumPriceSpans([{ min: 100, max: 0 }]), { min: 100, max: 100, openEnded: true }, "card-level totals 100/0 are open-ended, never 100–0");
+  assertEquals(sumPriceSpans([{ min: 150, max: 100 }]), { min: 150, max: 150, openEnded: true }, "any total with max below min is open-ended");
 });
 
 Deno.test("ordinary ranges, single prices and free plans are unchanged", () => {
   assertEquals(sumPriceSpans([{ min: 20, max: 40 }, { min: 10, max: 30 }]), { min: 30, max: 70, openEnded: false });
-  assertEquals(curatedTotalPriceRange(30, 70), "$30–$70");
-  assertEquals(curatedTotalPriceRange(0, 0), "$0–$0", "free plan string unchanged (the plate prints Free)");
-  assertEquals(curatedTotalPriceRange(undefined, undefined), "$0–$0");
+  assertEquals(sumPriceSpans([{ min: 0, max: 0 }]), { min: 0, max: 0, openEnded: false }, "a free plan stays 0–0 (the plate prints Free)");
   assertEquals(sumPriceSpans([{ min: 25, max: 25 }]), { min: 25, max: 25, openEnded: false });
 });
 
@@ -50,16 +54,17 @@ const converters = await Deno.readTextFile(new URL("../cardConverters.ts", impor
 
 Deno.test("the deck plate and the card conversion use the shared rule", () => {
   assert(facts.includes("sumPriceSpans("), "curatedPriceLabel must total stops with sumPriceSpans");
-  assert(facts.includes("if (openEnded)"), "curatedPriceLabel must print an open-ended total as 'from'");
+  // #4347: the open-ended flag now travels into formatDisplayPrice, which
+  // prints "from" ("₦100+") — pinned behaviourally in issue_4347_display_price.
+  assert(/formatMoney\(\{[\s\S]*?openEnded,/.test(facts), "curatedPriceLabel must pass the open-ended flag to the formatter");
   assert(
     !converters.includes("`$${card.totalPriceMin ?? 0}–$${card.totalPriceMax ?? 0}`"),
     "cardConverters must not print the raw min–max template",
   );
   assert(
-    converters.includes("curatedTotalPriceRange(card.totalPriceMin, card.totalPriceMax, card.totalPriceOpenEnded)"),
-    "cardConverters uses the shared rule and the server's open-ended flag",
+    !/\$\$\{|\$\d/.test(converters),
+    "#4347: cardConverters must not write a literal $ in front of an amount",
   );
-  assert(facts.includes("openEnded: stop.priceOpenEnded"), "the plate reads each stop's open-ended flag");
   assert(facts.includes("openEnded: card.totalPriceOpenEnded"), "the brand total reads the card's open-ended flag");
 });
 
@@ -71,10 +76,10 @@ Deno.test("the server's explicit open-ended flag prints 'from' even when max equ
     sumPriceSpans([{ min: 0, max: 0 }, { min: 100, max: 100, openEnded: true }]),
     { min: 100, max: 100, openEnded: true },
   );
-  assertEquals(curatedTotalPriceRange(100, 100, true), "$100+");
-  assertEquals(curatedTotalPriceRange(150, 170, true), "$150+");
-  assertEquals(curatedTotalPriceRange(30, 70, false), "$30–$70");
-  assertEquals(curatedTotalPriceRange(30, 70, null), "$30–$70");
+  assertEquals(sumPriceSpans([{ min: 100, max: 100, openEnded: true }]), { min: 100, max: 100, openEnded: true });
+  assertEquals(sumPriceSpans([{ min: 150, max: 170, openEnded: true }]), { min: 150, max: 150, openEnded: true });
+  assertEquals(sumPriceSpans([{ min: 30, max: 70, openEnded: false }]), { min: 30, max: 70, openEnded: false });
+  assertEquals(sumPriceSpans([{ min: 30, max: 70, openEnded: null }]), { min: 30, max: 70, openEnded: false });
 });
 
 Deno.test("replacing a stop recomputes the open-ended total with the shared rule", async () => {

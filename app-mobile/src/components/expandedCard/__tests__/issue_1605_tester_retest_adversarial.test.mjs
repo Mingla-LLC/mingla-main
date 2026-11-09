@@ -251,7 +251,9 @@ test('A-4 a paid brand experience saved from the deck never prints Free on the s
   // ── 3 · the REAL span producer, with the DERIVED flag ──────────────────────
   const options = {
     measurementSystem: 'Imperial',
-    formatMoney: (amount) => `USD ${amount}`,
+    // [#4347] the producer passes { min, max, openEnded, sourceCurrency, server }.
+    formatMoney: (price) => `USD ${price.min}`,
+    spendLevelLabel: (level) => level,
     freeLabel: 'Free',
     stopCountLabel: (count) => `${count} stops`,
     intentLabel: (slug) => slug,

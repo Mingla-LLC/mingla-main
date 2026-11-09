@@ -404,8 +404,10 @@ export function phase3dContractDigest(manifest) {
 // #1023: re-sealed after merging origin/main 5dd7f103ca (#4273 polish rows kept beside the #1023 rows).
 // #1023: re-sealed after merging origin/main 6038982e1a.
 // #4318: register the /links migration (20280508004318) and its implementor and tester PostgreSQL proofs; it joins the pre-#1931 replay skip list by exact filename.
+// #4318: register the /links live-cities (20280514004318) and strip end-date (20280515004318) migrations and their PostgreSQL proofs; the end-date migration joins the pre-#1931 replay skip list by exact filename.
+// #4318: register the /links per-city places migration (20280516004318) and its PostgreSQL proof the same way.
 // #4334: register the Google places migration and its PostgreSQL proofs, and point the issue-992 lane at the renamed server geocode helper.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "fb9e25f982c08818a5b70f64a1b5b5d83b6bfa8c0605da778d041f1a07849cb2";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "c47608bf96d7ff506f7ee53bf51d7004f9d35ed833f1c3e2e633430352928a97";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
