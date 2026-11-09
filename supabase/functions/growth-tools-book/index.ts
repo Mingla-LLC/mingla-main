@@ -54,10 +54,9 @@ import { corsHeaders } from "../_shared/cors.ts";
 import { renderShell, SHELL_TOKENS } from "../_shared/email/shell.ts";
 import { escapeHtml } from "../_shared/email/escape.ts";
 import {
-  assertNotResendSandbox,
-  EMAIL_SENDERS,
-  formatSenderHeader,
-} from "../_shared/email/senders.ts";
+  type GrowthToolsEmail,
+  sendGrowthToolsEmail,
+} from "../_shared/growthToolsResend.ts";
 import { minglaLogoUrl } from "../_shared/brandAssets.ts";
 import { resolveRuntimeString } from "../_shared/runtimeConfig.ts";
 // #3601 — pure, zero-import builders for the calendar description, the guest
@@ -83,6 +82,11 @@ import {
   SOCIAL_LABELS,
 } from "./bookingContext.ts";
 import { buildBookingLead, recordBookingLead } from "./bookingLead.ts";
+import {
+  type CalendarKeys,
+  parseCalendarKeys,
+  refreshCalendarAccessToken,
+} from "../_shared/googleCalendarAuth.ts";
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -163,39 +167,20 @@ function tzYmd(date: Date, tz: string): { y: number; mo: number; d: number; wd: 
 }
 
 // ── Google OAuth (refresh token → access token) ──────────────────────────────
-export function parseCalendarKeys(packed: string): { clientId: string; clientSecret: string; refresh: string } | null {
-  // Governed manifest fields: calendar_client_id, calendar_client_secret,
-  // calendar_refresh_token.
-  const parts = packed.split("|");
-  // #3720 extends this governed bundle with one opaque Drive segment. Calendar
-  // deliberately keeps consuming exactly its original first three values.
-  if (![3, 4].includes(parts.length) || parts.slice(0, 3).some((s) => s.length === 0)) return null;
-  return { clientId: parts[0], clientSecret: parts[1], refresh: parts[2] };
-}
+// #4339 calendar sync — the parser and the refresh are shared with
+// growth-tools-calendar-sync (../_shared/googleCalendarAuth.ts); this function
+// still reads its own GOOGLE_CALENDAR_KEYS. Governed manifest fields:
+// calendar_client_id, calendar_client_secret, calendar_refresh_token.
+export { parseCalendarKeys };
 
-function calendarKeys(): { clientId: string; clientSecret: string; refresh: string } | null {
+function calendarKeys(): CalendarKeys | null {
   return parseCalendarKeys(Deno.env.get("GOOGLE_CALENDAR_KEYS") ?? "");
 }
 
 async function getAccessToken(): Promise<string | null> {
   const keys = calendarKeys();
   if (!keys) return null;
-  const res = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: keys.clientId,
-      client_secret: keys.clientSecret,
-      refresh_token: keys.refresh,
-      grant_type: "refresh_token",
-    }),
-  });
-  if (!res.ok) {
-    console.error("[growth-tools-book] token refresh failed", res.status);
-    return null;
-  }
-  const body = await res.json() as { access_token?: string };
-  return body.access_token ?? null;
+  return await refreshCalendarAccessToken(keys, { logTag: "growth-tools-book" });
 }
 
 interface Busy {
@@ -286,50 +271,12 @@ function emailButton(href: string, label: string): string {
   return `<a href="${escapeHtml(href)}" style="display:inline-block;background:${BRAND_ORANGE_BUTTON};color:#ffffff;text-decoration:none;font-weight:700;padding:12px 22px;border-radius:9999px;font-size:15px;">${escapeHtml(label)}</a>`;
 }
 
-async function sendResend(input: {
-  to: string[];
-  subject: string;
-  html: string;
-  text: string;
-  replyTo: string;
-}): Promise<boolean> {
-  const resendKey = Deno.env.get("RESEND_API_KEY") ?? "";
-  if (!resendKey) {
-    console.error("[growth-tools-book] RESEND_API_KEY missing — skipping email");
-    return false;
-  }
-  // #1154 — the growth-tools funnel gets its own no-reply identity instead of the
-  // shared `system` sender (a payments@ identity in prod). reply_to below still
-  // routes replies (to the lead / support@).
-  const sender = EMAIL_SENDERS.noreply;
-  try {
-    assertNotResendSandbox(sender);
-  } catch (e) {
-    console.error("[growth-tools-book] sandbox sender rejected", String(e));
-    return false;
-  }
-  // no-attachment: booking confirmation/notification is plain transactional HTML.
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${resendKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: formatSenderHeader(sender),
-      to: input.to,
-      reply_to: input.replyTo,
-      subject: input.subject,
-      html: input.html,
-      text: input.text,
-    }),
+// #4339 calendar sync — the send itself is shared with growth-tools-calendar-sync.
+async function sendResend(input: GrowthToolsEmail): Promise<boolean> {
+  return await sendGrowthToolsEmail(input, {
+    apiKey: Deno.env.get("RESEND_API_KEY") ?? "",
+    logTag: "growth-tools-book",
   });
-  if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    console.error("[growth-tools-book] resend failed", res.status, detail.slice(0, 160));
-    return false;
-  }
-  return true;
 }
 
 // Fire both emails. Never throws — a mail failure must not fail the booking

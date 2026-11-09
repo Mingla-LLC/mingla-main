@@ -403,6 +403,22 @@ test("A-5 a non-literal cron.unschedule is NOT modelled — frozen as a tripwire
       assert.doesNotMatch(between, /\bCOMMIT\s*;|\bEND\s*\$cron\$/i, `${file} must keep ${job}'s unschedule and reschedule in one DO block`);
     }
   }
+  // #4339 calendar sync: the Book a call calendar sync is one guarded
+  // unschedule-then-reschedule pair in its own DO block
+  // (issue_4339_book_call_calendar_sync, every 5 minutes) (+1 → 22). The jobid
+  // lookup stays for the same reason as #4271's.
+  {
+    const file = "supabase/migrations/20280520004339_issue_4339_book_a_call_leads.sql";
+    const sql = stripSqlComments(fs.readFileSync(path.join(REPO_ROOT, file), "utf8"));
+    const job = "issue_4339_book_call_calendar_sync";
+    const lookup = sql.search(new RegExp(`WHERE\\s+jobname\\s*=\\s*'${job}'`, "i"));
+    assert.ok(lookup >= 0, `${file} must look up ${job} by name before removing it`);
+    const schedule = sql.search(new RegExp(`cron\\.schedule\\s*\\(\\s*'${job}'`, "i"));
+    assert.ok(schedule > lookup, `${file} must reschedule ${job} after looking it up`);
+    const between = sql.slice(lookup, schedule);
+    assert.match(between, /cron\.unschedule\s*\(\s*v_job\s*\)/i, `${file} must remove only the ${job} it looked up`);
+    assert.doesNotMatch(between, /\bCOMMIT\s*;|\bEND\s*\$cron\$/i, `${file} must keep ${job}'s unschedule and reschedule in one DO block`);
+  }
   // A NEW one must force a human to confirm it is not a permanent kill.
   const repo = cronReachability(loadMigrations());
   assert.ok(
@@ -411,7 +427,7 @@ test("A-5 a non-literal cron.unschedule is NOT modelled — frozen as a tripwire
   );
   assert.equal(
     repo.dynamicUnschedules,
-    21,
+    22,
     "the number of unmodelled dynamic cron.unschedule calls changed. Each one is a place " +
       "where this gate cannot see a job being removed. Confirm the new call is the " +
       "unschedule-then-reschedule idiom (and not a permanent removal of a live worker) " +

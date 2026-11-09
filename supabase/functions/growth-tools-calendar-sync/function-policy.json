@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy",
+  "name": "growth-tools-calendar-sync",
+  "verify_jwt": true,
+  "gateway_reason": "Service-role-only 5-minute Book a call calendar sync (#4339): pg_cron posts with the vault service_role_key and the bearer is compared to SUPABASE_SERVICE_ROLE_KEY in code.",
+  "env": {
+    "migration_fallback_top_level": [],
+    "optional_top_level": [],
+    "required_bundle_fields": {
+      "GOOGLE_CALENDAR_KEYS": [
+        "calendar_client_id",
+        "calendar_client_secret",
+        "calendar_refresh_token"
+      ]
+    },
+    "required_top_level": [
+      "RESEND_API_KEY"
+    ]
+  }
+}
