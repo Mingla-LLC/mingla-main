@@ -402,3 +402,229 @@ BEGIN
 END
 $calls$;
 ROLLBACK;
+
+-- ═══ #4339 calendar sync: moved, cancelled and declined calls ════════════════
+-- S-01  book_call_calendar_sync: RLS on, no policies; anon and signed-in have
+--       nothing; the service role may only read it. The six sync functions
+--       are SECURITY DEFINER and run by the service role only.
+-- S-02  a new start time moves the call: call_at is the new time,
+--       original_call_at keeps the booked time, status moved, stamped; the
+--       same change again changes nothing; moving back to the booked time is
+--       booked again.
+-- S-03  a cancelled event marks the call cancelled and keeps its time; the
+--       booker declining marks it declined; an unknown event id touches
+--       nothing; book_call_calendar_bookings names only booking events.
+-- S-04  each change is claimed for its email once; a released claim comes
+--       back; a call long past is never emailed.
+-- S-05  the sync state: begin takes a lease (a second begin is busy), finish
+--       stores the tokens and releases it, a new calendar id starts over.
+-- S-06  admin_calendar_calls and admin_inbound_leads return the status, when
+--       it changed and the booked time of a moved call; a cancelled call is
+--       still listed; an outsider is still refused.
+-- FAILS-ON-REVERT: dropping the `call_at = v_call_at` assignment fails S-02;
+-- dropping the `WHEN v_cancelled THEN 'cancelled'` branch fails S-03;
+-- granting EXECUTE on book_call_apply_calendar_changes to authenticated fails
+-- S-01.
+BEGIN;
+ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS email_confirmed_at timestamptz;
+DO $sync$
+DECLARE
+  v_admin    constant uuid := '43390000-0000-4000-c000-000000000021';
+  v_outsider constant uuid := '43390000-0000-4000-c000-000000000022';
+  v_booked   constant timestamptz := date_trunc('hour', now()) + interval '3 days';
+  v_new      constant timestamptz := date_trunc('hour', now()) + interval '4 days 2 hours';
+  v_fn text; v_role text;
+  v_move uuid; v_cancel uuid; v_decline uuid; v_past uuid;
+  v jsonb; v_row public.book_call_leads%ROWTYPE; v_stamp timestamptz; v_err text; v_n integer;
+BEGIN
+  -- ── S-01 ─────────────────────────────────────────────────────────────────
+  PERFORM pg_temp.bc_assert((SELECT relrowsecurity FROM pg_class WHERE oid = 'public.book_call_calendar_sync'::regclass), 'S-01 sync state RLS is on');
+  PERFORM pg_temp.bc_assert((SELECT count(*) FROM pg_policies WHERE schemaname = 'public' AND tablename = 'book_call_calendar_sync') = 0, 'S-01 sync state has no policies');
+  FOREACH v_role IN ARRAY ARRAY['anon', 'authenticated'] LOOP
+    PERFORM pg_temp.bc_assert(NOT has_table_privilege(v_role, 'public.book_call_calendar_sync', 'SELECT')
+                          AND NOT has_table_privilege(v_role, 'public.book_call_calendar_sync', 'INSERT')
+                          AND NOT has_table_privilege(v_role, 'public.book_call_calendar_sync', 'UPDATE')
+                          AND NOT has_table_privilege(v_role, 'public.book_call_calendar_sync', 'DELETE'), 'S-01 ' || v_role || ' has nothing on the sync state');
+  END LOOP;
+  PERFORM pg_temp.bc_assert(has_table_privilege('service_role', 'public.book_call_calendar_sync', 'SELECT')
+                        AND NOT has_table_privilege('service_role', 'public.book_call_calendar_sync', 'UPDATE')
+                        AND NOT has_table_privilege('service_role', 'public.book_call_calendar_sync', 'INSERT'), 'S-01 the service role only reads the sync state');
+  FOREACH v_fn IN ARRAY ARRAY[
+    'public.book_call_calendar_sync_begin(text,integer)',
+    'public.book_call_calendar_sync_finish(text,text,text,boolean,text,jsonb)',
+    'public.book_call_calendar_bookings(text[])',
+    'public.book_call_apply_calendar_changes(jsonb)',
+    'public.book_call_claim_change_notices(integer)',
+    'public.book_call_release_change_notice(uuid,text,text)'] LOOP
+    PERFORM pg_temp.bc_assert(to_regprocedure(v_fn) IS NOT NULL AND (SELECT p.prosecdef FROM pg_proc p WHERE p.oid = v_fn::regprocedure), 'S-01 definer ' || v_fn);
+    PERFORM pg_temp.bc_assert(NOT has_function_privilege('anon', v_fn, 'EXECUTE') AND NOT has_function_privilege('authenticated', v_fn, 'EXECUTE'),
+      'S-01 anon and signed-in cannot run ' || v_fn);
+    PERFORM pg_temp.bc_assert(has_function_privilege('service_role', v_fn, 'EXECUTE'), 'S-01 the service role runs ' || v_fn);
+  END LOOP;
+  SET LOCAL ROLE authenticated;
+  BEGIN
+    PERFORM public.book_call_apply_calendar_changes('[]'::jsonb);
+    v_err := 'none';
+  EXCEPTION WHEN insufficient_privilege THEN v_err := 'denied';
+  END;
+  RESET ROLE;
+  PERFORM pg_temp.bc_assert(v_err = 'denied', 'S-01 a signed-in caller is refused the apply function');
+
+  -- Fixtures: what growth-tools-book writes.
+  SET LOCAL ROLE service_role;
+  INSERT INTO public.book_call_leads (booking_key, calendar_event_id, audience, name, email, venue, icp, social_platform, social_url, call_at)
+  VALUES ('gcal:sy4339move', 'sy4339move', 'host', 'Mover Host', 'mover@sy4339.org', 'Sy Supper', 'events', 'instagram', 'https://instagram.com/mover', v_booked);
+  INSERT INTO public.book_call_leads (booking_key, calendar_event_id, audience, name, email, city, creator_makes, social_platform, social_url, call_at)
+  VALUES ('gcal:sy4339cancel', 'sy4339cancel', 'creator', 'Cancel Creator', 'cancel@sy4339.org', 'Lagos', 'video', 'tiktok', 'https://tiktok.com/@c', v_booked);
+  INSERT INTO public.book_call_leads (booking_key, calendar_event_id, audience, name, email, city, social_platform, social_url, call_at)
+  VALUES ('gcal:sy4339decline', 'sy4339decline', 'local', 'Decline Local', 'Decline@sy4339.org', 'Raleigh', 'instagram', 'https://instagram.com/d', v_booked);
+  INSERT INTO public.book_call_leads (booking_key, calendar_event_id, audience, name, email, city, social_platform, social_url, call_at)
+  VALUES ('gcal:sy4339past', 'sy4339past', 'local', 'Past Local', 'past@sy4339.org', 'Raleigh', 'instagram', 'https://instagram.com/p', now() - interval '10 days');
+  RESET ROLE;
+  SELECT id INTO v_move FROM public.book_call_leads WHERE booking_key = 'gcal:sy4339move';
+  SELECT id INTO v_cancel FROM public.book_call_leads WHERE booking_key = 'gcal:sy4339cancel';
+  SELECT id INTO v_decline FROM public.book_call_leads WHERE booking_key = 'gcal:sy4339decline';
+  SELECT id INTO v_past FROM public.book_call_leads WHERE booking_key = 'gcal:sy4339past';
+  PERFORM pg_temp.bc_assert((SELECT status FROM public.book_call_leads WHERE id = v_move) = 'booked'
+                        AND (SELECT original_call_at FROM public.book_call_leads WHERE id = v_move) IS NULL, 'S-02 a new booking is booked with no original time');
+
+  -- ── S-02: moved ──────────────────────────────────────────────────────────
+  SET LOCAL ROLE service_role;
+  v := public.book_call_apply_calendar_changes(jsonb_build_array(jsonb_build_object(
+         'event_id', 'sy4339move', 'cancelled', false, 'booker_declined', false,
+         'start_at', to_char(v_new AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'))));
+  RESET ROLE;
+  SELECT * INTO v_row FROM public.book_call_leads WHERE id = v_move;
+  PERFORM pg_temp.bc_assert((v ->> 'matched')::int = 1 AND (v ->> 'updated')::int = 1, 'S-02 the move matched and updated one booking');
+  PERFORM pg_temp.bc_assert(v_row.call_at = v_new, 'S-02 call_at is the new time');
+  PERFORM pg_temp.bc_assert(v_row.original_call_at = v_booked, 'S-02 original_call_at keeps the booked time');
+  PERFORM pg_temp.bc_assert(v_row.status = 'moved' AND v_row.status_changed_at IS NOT NULL, 'S-02 status moved, stamped');
+  v_stamp := v_row.status_changed_at;
+  SET LOCAL ROLE service_role;
+  v := public.book_call_apply_calendar_changes(jsonb_build_array(jsonb_build_object(
+         'event_id', 'sy4339move', 'start_at', to_char(v_new AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'))));
+  RESET ROLE;
+  SELECT * INTO v_row FROM public.book_call_leads WHERE id = v_move;
+  PERFORM pg_temp.bc_assert((v ->> 'updated')::int = 0 AND v_row.call_at = v_new AND v_row.original_call_at = v_booked
+                        AND v_row.status = 'moved' AND v_row.status_changed_at = v_stamp, 'S-02 the same change again changes nothing');
+
+  -- ── S-04 (first half): the move is emailed once ──────────────────────────
+  SET LOCAL ROLE service_role;
+  v := public.book_call_claim_change_notices(20);
+  RESET ROLE;
+  PERFORM pg_temp.bc_assert((SELECT count(*) FROM jsonb_array_elements(v) r WHERE r ->> 'id' = v_move::text AND r ->> 'status' = 'moved'
+                               AND (r ->> 'original_call_at')::timestamptz = v_booked) = 1, 'S-04 the move is claimed for its email, with the booked time');
+  SET LOCAL ROLE service_role;
+  v := public.book_call_claim_change_notices(20);
+  RESET ROLE;
+  PERFORM pg_temp.bc_assert(NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v) r WHERE r ->> 'id' = v_move::text), 'S-04 a second claim does not pick the move again');
+
+  -- Moving back to the booked time: booked again.
+  SET LOCAL ROLE service_role;
+  v := public.book_call_apply_calendar_changes(jsonb_build_array(jsonb_build_object(
+         'event_id', 'sy4339move', 'start_at', to_char(v_booked AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'))));
+  RESET ROLE;
+  SELECT * INTO v_row FROM public.book_call_leads WHERE id = v_move;
+  PERFORM pg_temp.bc_assert(v_row.call_at = v_booked AND v_row.status = 'booked', 'S-02 moved back to the booked time is booked again');
+
+  -- ── S-03: cancelled, declined, unknown ───────────────────────────────────
+  SET LOCAL ROLE service_role;
+  v := public.book_call_apply_calendar_changes(jsonb_build_array(
+         jsonb_build_object('event_id', 'sy4339cancel', 'cancelled', true),
+         jsonb_build_object('event_id', 'sy4339decline', 'cancelled', false, 'booker_declined', true,
+                            'start_at', to_char(v_booked AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')),
+         jsonb_build_object('event_id', 'sy4339-not-a-booking', 'cancelled', true)));
+  RESET ROLE;
+  PERFORM pg_temp.bc_assert((v ->> 'matched')::int = 2 AND (v ->> 'updated')::int = 2, 'S-03 two bookings matched; the unknown event touched nothing');
+  SELECT * INTO v_row FROM public.book_call_leads WHERE id = v_cancel;
+  PERFORM pg_temp.bc_assert(v_row.status = 'cancelled' AND v_row.call_at = v_booked AND v_row.status_changed_at IS NOT NULL, 'S-03 a cancelled event marks the call cancelled and keeps its time');
+  PERFORM pg_temp.bc_assert((SELECT status FROM public.book_call_leads WHERE id = v_decline) = 'declined', 'S-03 the booker declining marks it declined');
+  SET LOCAL ROLE service_role;
+  v := public.book_call_apply_calendar_changes(jsonb_build_array(jsonb_build_object('event_id', 'sy4339cancel', 'cancelled', true)));
+  RESET ROLE;
+  PERFORM pg_temp.bc_assert((v ->> 'updated')::int = 0, 'S-03 cancelling again changes nothing');
+  SET LOCAL ROLE service_role;
+  SELECT count(*) INTO v_n FROM public.book_call_calendar_bookings(ARRAY['sy4339cancel', 'sy4339-not-a-booking', 'sy4339decline']);
+  PERFORM pg_temp.bc_assert(v_n = 2, 'S-03 book_call_calendar_bookings names only booking events');
+  PERFORM pg_temp.bc_assert((SELECT email FROM public.book_call_calendar_bookings(ARRAY['sy4339decline'])) = 'Decline@sy4339.org', 'S-03 with the booker email');
+  RESET ROLE;
+
+  -- ── S-04 (second half): cancelled and declined emailed once; release; past ─
+  UPDATE public.book_call_leads SET status = 'cancelled', status_changed_at = now() WHERE id = v_past;
+  SET LOCAL ROLE service_role;
+  v := public.book_call_claim_change_notices(20);
+  RESET ROLE;
+  PERFORM pg_temp.bc_assert(EXISTS (SELECT 1 FROM jsonb_array_elements(v) r WHERE r ->> 'id' = v_cancel::text AND r ->> 'notice_key' = 'cancelled')
+                        AND EXISTS (SELECT 1 FROM jsonb_array_elements(v) r WHERE r ->> 'id' = v_decline::text AND r ->> 'notice_key' = 'declined'),
+    'S-04 the cancelled and declined calls are claimed');
+  PERFORM pg_temp.bc_assert(NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v) r WHERE r ->> 'id' = v_past::text), 'S-04 a call long past is never emailed');
+  PERFORM pg_temp.bc_assert(position('@sy4339' IN v::text) = 0, 'S-04 a claimed notice carries no email address');
+  SET LOCAL ROLE service_role;
+  PERFORM pg_temp.bc_assert(public.book_call_release_change_notice(v_cancel, 'cancelled', NULL), 'S-04 a failed send gives the claim back');
+  v := public.book_call_claim_change_notices(20);
+  RESET ROLE;
+  PERFORM pg_temp.bc_assert((SELECT count(*) FROM jsonb_array_elements(v) r WHERE r ->> 'id' = v_cancel::text) = 1
+                        AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v) r WHERE r ->> 'id' = v_decline::text), 'S-04 only the released notice comes back');
+
+  -- ── S-05: the sync state ─────────────────────────────────────────────────
+  DELETE FROM public.book_call_calendar_sync;
+  SET LOCAL ROLE service_role;
+  v := public.book_call_calendar_sync_begin('primary', 240);
+  PERFORM pg_temp.bc_assert(v = jsonb_build_object('busy', false, 'sync_token', NULL, 'page_token', NULL), 'S-05 a first run starts with no tokens');
+  v := public.book_call_calendar_sync_begin('primary', 240);
+  PERFORM pg_temp.bc_assert((v ->> 'busy')::boolean, 'S-05 an overlapping run is busy');
+  PERFORM public.book_call_calendar_sync_finish('primary', 'tok-1', NULL, true, NULL, '{"pages":1}'::jsonb);
+  v := public.book_call_calendar_sync_begin('primary', 240);
+  PERFORM pg_temp.bc_assert(v ->> 'busy' = 'false' AND v ->> 'sync_token' = 'tok-1', 'S-05 the next run resumes from the stored syncToken');
+  PERFORM public.book_call_calendar_sync_finish('primary', 'tok-1', NULL, false, 'list_failed:500', NULL);
+  RESET ROLE;
+  PERFORM pg_temp.bc_assert((SELECT last_error = 'list_failed:500' AND lease_until IS NULL AND last_full_sync_at IS NOT NULL AND last_success_at IS NOT NULL
+                               FROM public.book_call_calendar_sync), 'S-05 an error is recorded and the lease released');
+  SET LOCAL ROLE service_role;
+  v := public.book_call_calendar_sync_begin('other@group.calendar.google.com', 240);
+  RESET ROLE;
+  PERFORM pg_temp.bc_assert(v ->> 'sync_token' IS NULL, 'S-05 a new calendar id starts over with a full sync');
+
+  -- ── S-06: the admin reads ────────────────────────────────────────────────
+  SET LOCAL ROLE service_role;
+  PERFORM public.book_call_apply_calendar_changes(jsonb_build_array(jsonb_build_object(
+         'event_id', 'sy4339move', 'start_at', to_char(v_new AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'))));
+  RESET ROLE;
+  INSERT INTO auth.users(id, email, email_confirmed_at) VALUES
+    (v_admin, 'sy4339-admin@mingla-fixture.org', now()),
+    (v_outsider, 'sy4339-outsider@mingla-fixture.org', now());
+  INSERT INTO public.admin_users(email, role, status) VALUES ('sy4339-admin@mingla-fixture.org', 'admin', 'active')
+  ON CONFLICT (email) DO UPDATE SET role = EXCLUDED.role, status = EXCLUDED.status;
+  SET LOCAL ROLE authenticated;
+  PERFORM pg_temp.bc_as(v_admin);
+  v := public.admin_calendar_calls(v_booked - interval '1 day', v_new + interval '1 day', true);
+  RESET ROLE;
+  PERFORM pg_temp.bc_assert(EXISTS (SELECT 1 FROM jsonb_array_elements(v -> 'rows') r
+                                     WHERE r ->> 'id' = v_move::text AND r ->> 'status' = 'moved'
+                                       AND (r ->> 'call_at')::timestamptz = v_new
+                                       AND (r ->> 'original_call_at')::timestamptz = v_booked
+                                       AND r ->> 'status_changed_at' IS NOT NULL), 'S-06 the Calendar has the moved call at its new time with its booked time');
+  PERFORM pg_temp.bc_assert(EXISTS (SELECT 1 FROM jsonb_array_elements(v -> 'rows') r WHERE r ->> 'id' = v_cancel::text AND r ->> 'status' = 'cancelled'),
+    'S-06 a cancelled call is still listed, as cancelled');
+  PERFORM pg_temp.bc_assert(EXISTS (SELECT 1 FROM jsonb_array_elements(v -> 'rows') r WHERE r ->> 'id' = v_decline::text AND r ->> 'status' = 'declined'),
+    'S-06 a declined call is still listed, as declined');
+  SET LOCAL ROLE authenticated;
+  PERFORM pg_temp.bc_as(v_admin);
+  v := public.admin_inbound_leads(true, 1000);
+  RESET ROLE;
+  PERFORM pg_temp.bc_assert(EXISTS (SELECT 1 FROM jsonb_array_elements(v -> 'rows') r WHERE r ->> 'id' = v_cancel::text AND r #>> '{booking,status}' = 'cancelled'
+                                       AND r #>> '{booking,status_changed_at}' IS NOT NULL), 'S-06 Inbound leads carries a booking''s status and when it changed');
+  PERFORM pg_temp.bc_assert(EXISTS (SELECT 1 FROM jsonb_array_elements(v -> 'rows') r WHERE r ->> 'id' = v_move::text AND r #>> '{booking,status}' = 'moved'
+                                       AND (r #>> '{booking,original_call_at}')::timestamptz = v_booked), 'S-06 Inbound leads carries a moved call''s booked time');
+  SET LOCAL ROLE authenticated;
+  PERFORM pg_temp.bc_as(v_outsider);
+  BEGIN
+    PERFORM public.admin_calendar_calls(v_booked - interval '1 day', v_new + interval '1 day', true);
+    v_err := 'none';
+  EXCEPTION WHEN OTHERS THEN v_err := SQLERRM;
+  END;
+  RESET ROLE;
+  PERFORM pg_temp.bc_assert(v_err = 'not_authorized', 'S-06 an outsider is still refused the calls');
+END
+$sync$;
+ROLLBACK;
