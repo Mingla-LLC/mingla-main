@@ -16,7 +16,7 @@ import * as Haptics from "expo-haptics";
 import { useTranslation } from "react-i18next";
 import { Icon } from "../ui/Icon";
 import { ExpandedCardData } from "../../types/expandedCardTypes";
-import { formatPriceRange } from "../utils/formatters";
+import { formatDisplayPrice } from "../utils/formatters";
 import { glass, radius, spacing } from "../../constants/designSystem";
 import { colors } from "../../constants/colors";
 import { toastManager } from "../ui/Toast";
@@ -168,9 +168,21 @@ export default function EventDetailLayout({
     }
   };
 
+  const nightOutPriceLabel: string =
+    typeof nightOut.priceMinMajor === "number" && typeof nightOut.priceCurrency === "string"
+      ? formatDisplayPrice({
+          min: nightOut.priceMinMajor,
+          max: nightOut.priceMaxMajor ?? null,
+          sourceCurrency: nightOut.priceCurrency,
+          viewerCurrency: accountPreferences?.currency,
+        })?.text ?? nightOut.price
+      : nightOut.price;
+
   const ctaLabel = isOnsale && hasTicketUrl
     ? t("cards:expanded.get_tickets", {
-        price: formatPriceRange(nightOut.price, accountPreferences?.currency),
+        // #4347: converted from the event's OWN currency (≈ when it differs);
+        // with no structured price the CTA keeps the source label as-is.
+        price: nightOutPriceLabel,
       })
     : isOffsale
     ? t("cards:expanded.sold_out")
