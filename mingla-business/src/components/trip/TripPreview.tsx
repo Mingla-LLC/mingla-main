@@ -1051,7 +1051,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
     overflow: "hidden",
   },
-  // Mapbox static image fills the card as a background; the accent pin + caption
+  // static map image fills the card as a background; the accent pin + caption
   // pill overlay it (mockup `.map img` — width/height 100%, object-fit cover).
   mapImage: {
     ...StyleSheet.absoluteFillObject,

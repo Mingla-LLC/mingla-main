@@ -6,10 +6,10 @@
  *
  * WHY (runtime-proven — evidence/ORCH-1365/live_edge_fn_reproduction.txt, probes
  * C/D/G/J/K): a non-Lagos user typing "lekki nigeria" gets literal "Nigeria"
- * places + POIs and NO Lekki, Lagos — Mapbox Search Box fuzzy-matches the
+ * places + POIs and NO Lekki, Lagos — the search provider fuzzy-matches the
  * trailing country WORD instead of reading it as context. A `country=` filter
  * alone (without stripping the word) does NOT rescue it (probe J); the word must
- * be STRIPPED from `q` and re-applied as a Mapbox `country` ISO 3166-1 alpha-2
+ * be STRIPPED from the query and re-applied as an ISO 3166-1 alpha-2 region
  * bias (probe G/N → Lekki Lagos #1). Comma insertion (K) and /forward (H/I) also
  * fail.
  *
@@ -19,8 +19,8 @@
  * and a SINGLE-token query ("lekki") is never stripped (there must be ≥1 leading
  * token remaining). English-only trailing token for v1 (no locale/translation).
  *
- * Mapbox `country` format verified vs live docs
- * (https://docs.mapbox.com/api/search/search-box/): ISO 3166-1 alpha-2, lowercase.
+ * #4334: the region filter is Google's `includedRegionCodes` (ISO 3166-1
+ * alpha-2, lowercase), applied in google.ts.
  */
 
 /**

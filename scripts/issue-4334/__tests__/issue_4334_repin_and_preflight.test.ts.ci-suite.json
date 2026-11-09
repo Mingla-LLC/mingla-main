@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "scripts/issue-4334/__tests__/issue_4334_repin_and_preflight.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4334-repin-and-preflight",
+  "profile": "deno-2-unit"
+}

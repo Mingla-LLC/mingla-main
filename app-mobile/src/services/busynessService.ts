@@ -8,7 +8,7 @@
  * ---------------------------------------------------------------------------
  * TRAFFIC IS DELETED, DELIBERATELY — #1605 wave 4 rework
  *
- * This service used to fetch a Mapbox Directions `driving-traffic` route from
+ * This service used to fetch a third-party Directions `driving-traffic` route from
  * the viewer's GPS to the venue on EVERY expanded-card open, and `main`'s
  * `BusynessSection` rendered the result as a Traffic row: car icon, condition
  * chip, travel time. Wave 4 deleted the row and left the producer running, so
@@ -18,8 +18,8 @@
  *
  *   1. THE FALLBACK FABRICATED (Constitution 9). `getTrafficHeuristic` returned
  *      `${10 + extraMin} min` from nothing but the clock — a literal 10, 17 or
- *      25 minutes presented beside a real Mapbox reading in the identical row,
- *      with no disclosure. It fired whenever `EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN`
+ *      25 minutes presented beside a real routing-API reading in the identical row,
+ *      with no disclosure. It fired whenever the routing token
  *      was unset, location permission was denied, or the request failed — i.e.
  *      for every user who declines location, always. This is the "15 min travel
  *      time" already on this programme's fabricated-value list.
@@ -32,7 +32,7 @@
  *      not the place to answer — Directions is one tap away and authoritative.
  *
  * Deleted with it: `TrafficInfo`, `BusynessData.trafficInfo`,
- * `ExpandedCardData.trafficInfo`, `fetchMapboxTraffic`, `getTrafficHeuristic`,
+ * `ExpandedCardData.trafficInfo`, the traffic fetcher, `getTrafficHeuristic`,
  * the route cache, and `expanded_details:busyness.{traffic,clear_roads,clear,
  * moderate,heavy}` in all 29 locales. Nothing in the tree reads a traffic
  * field after this change, and `S-8` in the wave's gate fails if one comes
@@ -128,7 +128,7 @@ class BusynessService {
     const venueNow = this.getVenueLocalDate(utcOffsetSeconds);
 
     // ── Build venue-type-aware busyness ──
-    // No network call. The Mapbox Directions round-trip that used to run here
+    // No network call. The Directions round-trip that used to run here
     // on every expanded-card open is deleted — see the file header.
     const busynessResult = this.getVenueTypeHeuristic(category, venueNow);
 

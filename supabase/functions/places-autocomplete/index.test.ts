@@ -1,8 +1,8 @@
 // [TEST-MOD-APPROVED ORCH-1079] places-autocomplete RETIRED.
 //
-// ORCH-1079 [Business-venue Google→Mapbox sweep] deleted the Google
+// ORCH-1079 [Business-venue address sweep] deleted the Google
 // `places-autocomplete/index.ts` edge fn — all business address autocomplete now
-// flows through `mapbox-geocode`. The append-only-CI policy (ORCH-0840) forbids
+// flows through the single address proxy (#4334: Google behind it). The append-only-CI policy (ORCH-0840) forbids
 // DELETING a test file outright, so instead of deleting this test alongside its
 // now-removed unit-under-test, we replace its body with a retirement marker:
 //   • it no longer imports the deleted ./index.ts (which would not compile), and
@@ -23,6 +23,6 @@ Deno.test("ORCH-1079: places-autocomplete edge fn is retired (source deleted)", 
   }
   assert(
     !exists,
-    "places-autocomplete/index.ts must NOT exist — it was retired by ORCH-1079 (use mapbox-geocode)",
+    "places-autocomplete/index.ts must NOT exist — it was retired by ORCH-1079 (use the address proxy)",
   );
 });

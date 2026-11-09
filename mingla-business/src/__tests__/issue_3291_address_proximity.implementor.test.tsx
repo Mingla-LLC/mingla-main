@@ -1,7 +1,7 @@
 /**
  * Issue #3291 — Host address search ranks results near the host, RANK-ONLY.
  *
- * THE DEFECT: the business picker never sent a location, so Mapbox ranked from
+ * THE DEFECT: the business picker never sent a location, so the provider ranked from
  * the edge server's own IP in the United States — typing "Lagos" surfaced a
  * restaurant in Virginia before Lagos, Nigeria.
  *
@@ -44,9 +44,9 @@ jest.mock("../services/supabase", () => ({
 jest.mock("../components/ui/Icon", () => ({ Icon: () => null }));
 
 import {
-  MapboxAddressInput,
+  AddressInput,
   useAddressSearchProximity,
-} from "../components/location/MapboxAddressInput";
+} from "../components/location/AddressInput";
 import {
   approximatePointForTimeZone,
   deviceTimeZone,
@@ -105,7 +105,7 @@ describe("Issue #3291 — where ranking comes from", () => {
     expect(resolveAddressSearchProximity({})).toBeUndefined();
   });
 
-  test("Mapbox order is longitude,latitude", () => {
+  test("the proximity contract is longitude,latitude", () => {
     expect(resolveAddressSearchProximity({ brandPoint: { lat: 51.5, lng: -0.12 } })).toBe(
       "-0.12,51.5",
     );
@@ -214,7 +214,7 @@ describe("Issue #3291 — the lazy hook", () => {
 
   test("the resolver stays behind a dynamic import — no Host file value-imports it", () => {
     const wrapper = fs.readFileSync(
-      path.resolve(ROOT, "mingla-business/src/components/location/MapboxAddressInput.tsx"),
+      path.resolve(ROOT, "mingla-business/src/components/location/AddressInput.tsx"),
       "utf8",
     );
     expect(wrapper).toContain('import("../../utils/addressSearchProximity")');
@@ -249,7 +249,7 @@ async function typeIntoBusinessPicker(
   let tree: Tree | undefined;
   await TestRenderer.act(() => {
     tree = TestRenderer.create(
-      <MapboxAddressInput
+      <AddressInput
         value=""
         onChangeText={() => undefined}
         onPick={() => undefined}

@@ -35,7 +35,7 @@ import { throttledReverseGeocode, clearGeocodeCache } from '../utils/throttledGe
 // zero-result fallback), replacing the hand-rolled geocodingService.autocomplete
 // forward/limit=1 single-shot. inBottomSheet={false} because onboarding is a
 // plain SafeAreaView+ScrollView, not a gorhom <BottomSheet>.
-import { MapboxAddressInput, type PlaceDetails } from './location/MapboxAddressInput'
+import { AddressInput, type PlaceDetails } from './location/AddressInput'
 import { sendOtp, verifyOtp, OtpChannel } from '../services/otpService'
 // META-ORCH-1161 Sub-A.2 (DEC-186) — bundled-mandatory consent writer + verbatim disclosure.
 import { recordConsent } from '../services/consentService'
@@ -50,7 +50,7 @@ import { logger } from '../utils/logger'
 // (fail-open), so this can't hang.
 import { whenAttResolved } from '../services/permissionOrchestrator'
 import { saveOnboardingData, clearOnboardingData } from '../utils/onboardingPersistence'
-import { resolveOnboardingLocationOverride } from '../utils/onboardingLocationOverride'
+import { resolveOnboardingLocationOverride, resolveOnboardingPlaceId } from '../utils/onboardingLocationOverride'
 import { detectLocaleFromCoordinates, detectLocaleFromCountryName } from '../utils/localeDetection'
 
 // Legacy saved_people + audio services removed — pairing uses real behavior data.
@@ -1055,7 +1055,7 @@ const OnboardingFlow = ({
   const [manualLocationText, setManualLocationText] = useState(initialData.manualLocation ?? '')
   // ORCH-1362: the picked place. Suggestion-list state (loading / show / has-
   // searched / suggestions / debounce timer) is GONE — the shared
-  // MapboxAddressInput now owns the suggest→retrieve state machine internally.
+  // AddressInput now owns the suggest→retrieve state machine internally.
   const [selectedLocation, setSelectedLocation] = useState<import('../services/geocodingService').AutocompleteSuggestion | null>(
     initialData.manualLocation
       ? { displayName: initialData.manualLocation, fullAddress: initialData.manualLocation }
@@ -1106,7 +1106,7 @@ const OnboardingFlow = ({
   }, [navState.subStep])
 
   // ORCH-1362: the debounced geocodingService.autocomplete() search effect is
-  // REMOVED — the shared MapboxAddressInput (searchMode="places") owns debounce,
+  // REMOVED — the shared AddressInput (searchMode="places") owns debounce,
   // suggest→retrieve, and all list states internally.
 
   // ─── Animations ───
@@ -1886,7 +1886,7 @@ const OnboardingFlow = ({
   }, [captureLocation])
 
   // ─── Location Suggestion Selection ───
-  // ─── Pick a place from the shared MapboxAddressInput (ORCH-1362) ───
+  // ─── Pick a place from the shared AddressInput (ORCH-1362) ───
   // The shared field resolves the full PlaceDetails (via `retrieve`) before
   // calling onPick, so coords are always present here. Map PlaceDetails → the
   // existing `selectedLocation` shape so handleManualLocation stays UNCHANGED.
@@ -1896,6 +1896,8 @@ const OnboardingFlow = ({
       displayName: details.city || details.formattedAddress,
       fullAddress: details.formattedAddress,
       location: { lat: details.location.lat, lng: details.location.lng },
+      // #4334 — kept so the anchor's coordinates can be refreshed (spec v2 A2).
+      ...(details.placeId ? { placeId: details.placeId } : {}),
     })
     setManualLocationText(details.city || details.formattedAddress)
     logger.action('Onboarding location picked', { displayName: details.city || details.formattedAddress })
@@ -1920,6 +1922,7 @@ const OnboardingFlow = ({
         setData((prev) => ({
           ...prev,
           manualLocation: selectedLocation.displayName,
+          manualLocationPlaceId: selectedLocation.placeId ?? null,
           coordinates: { lat: lat!, lng: lng! },
         }))
 
@@ -1957,6 +1960,8 @@ const OnboardingFlow = ({
           setData((prev) => ({
             ...prev,
             manualLocation: selectedLocation.displayName,
+            // the phone's geocoder, not Google: nothing to refresh
+            manualLocationPlaceId: null,
             coordinates: { lat: nLat, lng: nLng },
           }))
           goNext()
@@ -2030,6 +2035,8 @@ const OnboardingFlow = ({
           custom_location: resolvedCustomLocation,
           custom_lat: resolvedCustomLat,
           custom_lng: resolvedCustomLng,
+          // #4334 — the picked city's Google place id (null for GPS / launch city).
+          custom_location_place_id: resolveOnboardingPlaceId(data),
           intent_toggle: true,
           category_toggle: true,
         }),
@@ -3054,8 +3061,8 @@ const OnboardingFlow = ({
                   BottomSheet* throw outside a <BottomSheet>). searchMode="places"
                   gives the multi-row, POI-free, trailing-country-aware list. NO
                   proximity (§6/SC-4). The field owns loading / no-results /
-                  offline / pick states internally (CONSUMER_COPY). */}
-              <MapboxAddressInput
+                  unavailable / pick states internally (CONSUMER_COPY). */}
+              <AddressInput
                 variant="light"
                 inBottomSheet={false}
                 searchMode="places"
@@ -3067,7 +3074,6 @@ const OnboardingFlow = ({
                 accessibilityLabel={t('onboarding:location.manual_placeholder')}
                 leadingIcon="location"
                 minQueryLength={3}
-                suggestLimit={8}
               />
             </View>
           )}
@@ -4577,7 +4583,7 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   // ORCH-1362: the hand-rolled search-input + dropdown + suggestion-row + no-
-  // results styles were deleted — the shared MapboxAddressInput owns its own
+  // results styles were deleted — the shared AddressInput owns its own
   // field, card list, and status styling (LIGHT_TOKENS / CONSUMER_COPY).
   locationSelectedCard: {
     borderRadius: radius.md,

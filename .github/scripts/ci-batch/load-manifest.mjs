@@ -204,7 +204,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4273: re-sealed after merging origin/main (#4318) and moving the migration to 20280522004273.
 // #4273 tester retest 3: register the SMS opt-out scope PostgreSQL proof.
 // #4273: re-sealed after moving the migration to 20280522004273 (above production's 20280521004334).
-export const BOOTSTRAP_SHA256 = "359c36a1bde32c6fb9b52aeed814acb323f9d36a38c2858556315fec0ed4c62a";
+// #4273: re-sealed after merging origin/main (#4350).
+export const BOOTSTRAP_SHA256 = "5bb864f1dd59f98be5f3617f14c7bbaa3ef30389cb8b40e32d8d80651b347c10";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

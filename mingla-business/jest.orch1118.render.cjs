@@ -1,7 +1,7 @@
 // ORCH-1118 render-proof — worktree-local jest config (NOT committed).
 //
 // Stands up a REAL react-native-testing-library mount of the production
-// EditPublishedTripScreen so the swapped MapboxAddressInput pickers + the save
+// EditPublishedTripScreen so the swapped AddressInput pickers + the save
 // gate are proven to FIRE at runtime (kills the dead-tap / conditional-unmount
 // class). Uses the RN jest preset (babel-jest transform of the RN tree) + the
 // worktree-local .orch1118-testdeps overlay for react-test-renderer + RTL, with
@@ -78,7 +78,7 @@ module.exports = {
     "^react-native-svg$": path.join(businessRoot, "jest.issue1561.svg-stub.cjs"),
     "^expo-constants$": path.join(businessRoot, "__manual_mocks__", "expo-constants.js"),
     "^expo-modules-core$": path.join(businessRoot, "__manual_mocks__", "expo-modules-core.js"),
-    // Workspace alias used by the REAL MapboxAddressInput wrapper.
+    // Workspace alias used by the REAL AddressInput wrapper.
     "^@mingla/location-input$": path.join(
       businessRoot,
       "..",

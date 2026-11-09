@@ -1,10 +1,11 @@
+// MINGLA-INVARIANT: I-PROPOSED-TRIP-LOCATION-PICK-VALIDATED | issue #4334 | Trip from and destination addresses publish only as picked, validated places with coordinates; a typed address without a pick never passes the gate.
 /**
- * ORCH-1118 [trip from/destination fields must be Mapbox-validated addresses]
+ * ORCH-1118 [trip from/destination fields must be pick-validated addresses]
  * TESTER adversarial regression test (mingla-tester) — DIFFERENT ANGLE from the
  * implementor's source-character/regex tests.
  *
- * Where the implementor's `EditPublishedTripScreen.mapbox.test.ts` and
- * `TripCreatorStep1Basics.mapbox.test.ts` grep the file SOURCE for the presence
+ * Where the implementor's `EditPublishedTripScreen.addressPicker.test.ts` and
+ * `TripCreatorStep1Basics.addressPicker.test.ts` grep the file SOURCE for the presence
  * of the gate, this test BEHAVIOURALLY exercises the exported predicates the way
  * the two real gates COMPOSE them, and pins the exact boolean the save/publish
  * gate evaluates for the production "dirty row" shapes pulled live from
@@ -85,7 +86,7 @@ describe("ORCH-1118 adversarial — the save/publish gate blocks the real dirty 
 
   test("FAILS-ON-REVERT pin: valid-picked destination + EMPTY departure STILL blocks (departure hard-required)", () => {
     // This is the exact case that flips if departure is loosened back to
-    // "empty is valid": destination is a real Mapbox pick, but departure is
+    // "empty is valid": destination is a real address pick, but departure is
     // empty. Under the REVISED contract the gate must STILL block on departure.
     expect(
       gateBlocks({

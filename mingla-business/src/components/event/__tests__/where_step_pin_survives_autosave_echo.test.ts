@@ -79,7 +79,7 @@ import { publishBusinessEventDraft } from "../../../services/businessEvents";
 import {
   buildProxyStaticMapUrl,
   type StaticMapParams,
-} from "../../../../../packages/offering-rendering/mapboxStaticProxyUrl";
+} from "../../../../../packages/offering-rendering/staticMapProxyUrl";
 
 const BRAND_ID = "64cb8e35-5b53-4633-8780-d7769bead244";
 const DRAFT_ID = "0d5a1b3c-9c2e-4f61-8a7e-3b2d1c0e9f88";

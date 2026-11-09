@@ -65,7 +65,9 @@
         "app-mobile/src/i18n/locales/uk/modals.json",
         "app-mobile/src/i18n/locales/vi/modals.json",
         "app-mobile/src/i18n/locales/yo/modals.json",
-        "app-mobile/src/i18n/locales/zh/modals.json"
+        "app-mobile/src/i18n/locales/zh/modals.json",
+        "app-mobile/src/types/onboarding.ts",
+        "app-mobile/src/utils/onboardingLocationOverride.ts"
       ]
     },
     {
@@ -172,7 +174,10 @@
         "mingla-business/src/payments/nativeCheckoutFlow.native.ts",
         "supabase/migrations/20280422004273_issue_4273_buyer_and_follower_auto_optin.sql",
         "supabase/migrations/20280424004273_issue_4273_quote_judges_everyone_and_account_optouts.sql",
-        "supabase/migrations/20280428003645_issue_3645_sell_publish_integrity.sql"
+        "supabase/migrations/20280428003645_issue_3645_sell_publish_integrity.sql",
+        "mingla-business/src/utils/mapboxStaticImage.ts",
+        "mingla-business/src/utils/staticMapImage.ts",
+        "mingla-business/src/utils/openMapsTarget.ts"
       ]
     },
     {
@@ -331,10 +336,11 @@
         "supabase/migrations/20280329004238_issue_4238_ads_media_buyer.sql",
         "supabase/functions/_shared/adHostEstimateRate.ts",
         "supabase/functions/_shared/adProviderEstimate.ts",
-        "supabase/functions/_shared/mapboxGeocode.ts",
+        "supabase/functions/_shared/placesGeocode.ts",
         "supabase/functions/_shared/google.ts",
         "supabase/functions/_shared/reddit.ts",
-        "supabase/functions/_shared/snapchat.ts"
+        "supabase/functions/_shared/snapchat.ts",
+        "supabase/functions/ad-plan/function-policy.json"
       ]
     },
     {
@@ -505,7 +511,10 @@
         "supabase/migrations/20280320003281_issue_3281_explorer_hides_unbuyable_events.sql",
         "supabase/migrations/20280324003281_issue_3281_explorer_listing_fast.sql",
         "supabase/migrations/20280327003281_issue_3281_explorer_listing_per_date.sql",
-        "supabase/migrations/20280402004265_issue_3281_discover_card_price_and_experience_bookable.sql"
+        "supabase/migrations/20280402004265_issue_3281_discover_card_price_and_experience_bookable.sql",
+        "app-mobile/src/hooks/useConsumerEventFoundation.ts",
+        "app-mobile/src/hooks/usePublicRsvpBySlug.ts",
+        "packages/offering-rendering/normalizeCityCountry.ts"
       ]
     },
     {
@@ -1074,7 +1083,7 @@
         "mingla-business/src/utils/businessTodoDispatch.ts",
         "mingla-business/src/utils/businessTodos.ts",
         "mingla-business/src/utils/homeBrandReadiness.ts",
-        "packages/location-input/src/MapboxAddressInput.tsx",
+        "packages/location-input/src/AddressInput.tsx",
         "mingla-business/src/components/brand/LazyBrandAvatarPickerSheet.tsx",
         "mingla-business/src/components/location/LazyAddressMapPreview.tsx",
         "packages/offering-rendering/GlassBlur.tsx"
@@ -1440,7 +1449,8 @@
         "app-mobile/src/services/curatedRequestGate.ts",
         "supabase/functions/_shared/personHeroCards.ts",
         "supabase/functions/_shared/signalRankFetch.ts",
-        "supabase/migrations/20280406004275_issue_4275_signal_rank_batch.sql"
+        "supabase/migrations/20280406004275_issue_4275_signal_rank_batch.sql",
+        "app-mobile/src/components/expandedCard/PlanTimeline.tsx"
       ]
     },
     {
@@ -1472,7 +1482,26 @@
         "app-mobile/src/components/expandedCard/TimelineSection.tsx",
         "app-mobile/src/components/expandedCard/VenueExperiencesSection.tsx",
         "app-mobile/src/types/expandedCardTypes.ts",
-        "app-mobile/src/utils/venueExperienceMapping.ts"
+        "app-mobile/src/utils/venueExperienceMapping.ts",
+        "app-mobile/.env.example",
+        "app-mobile/app.config.js",
+        "app-mobile/metro.config.js",
+        "app-mobile/scripts/ota/publish-production-ota.sh",
+        "app-mobile/src/config/supabaseProject.js",
+        "app-mobile/src/utils/mapboxStaticImage.ts",
+        "app-mobile/src/utils/staticMapImage.ts",
+        "app-mobile/src/utils/openMapsTarget.ts",
+        "packages/offering-rendering/StaticMapFrame.tsx",
+        "packages/offering-rendering/functionsBase.ts",
+        "packages/offering-rendering/mapboxFunctionsBase.ts",
+        "packages/offering-rendering/mapboxStaticImage.ts",
+        "packages/offering-rendering/mapboxStaticUrl.ts",
+        "packages/offering-rendering/mapboxToken.ts",
+        "packages/offering-rendering/mapsDeepLink.ts",
+        "packages/offering-rendering/staticMapImage.ts",
+        "packages/offering-rendering/staticMapProxyUrl.ts",
+        "packages/offering-rendering/staticMapSizing.ts",
+        "supabase/functions/static-map/index.ts"
       ]
     },
     {
@@ -1554,7 +1583,10 @@
       "paths": [
         "supabase/migrations/20280406024275_issue_4275_cron_stagger_more.sql",
         "supabase/functions/api-health-probe/logic.ts",
-        "supabase/functions/api-health-probe/index.ts"
+        "supabase/functions/api-health-probe/index.ts",
+        "supabase/functions/_shared/googleKeyRejection.ts",
+        "supabase/functions/places-coordinate-refresh/index.ts",
+        "supabase/functions/places-coordinate-refresh/refresh.ts"
       ]
     },
     {
@@ -1562,7 +1594,38 @@
       "paths": [
         "mingla-business/app/event/[id]/edit.tsx",
         "mingla-business/app/event/create.tsx",
-        "mingla-business/app/rsvp/[id]/edit.tsx"
+        "mingla-business/app/rsvp/[id]/edit.tsx",
+        "mingla-business/.env.example",
+        "mingla-business/__manual_mocks__/expo-constants.js",
+        "mingla-business/__manual_mocks__/imageAssetTransformer.cjs",
+        "mingla-business/jest.orch1118.render.cjs",
+        "mingla-business/scripts/ota/publish-production-ota.sh",
+        "mingla-business/src/components/location/AddressInput.tsx",
+        "mingla-business/src/services/mapboxGeocodeService.ts",
+        "mingla-business/src/services/placesService.ts",
+        "mingla-business/src/utils/resolveApproxLocation.ts",
+        "packages/location-input/assets/google-maps-logo-dark-gray.png",
+        "packages/location-input/assets/google-maps-logo-dark-gray@2x.png",
+        "packages/location-input/assets/google-maps-logo-dark-gray@3x.png",
+        "packages/location-input/assets/google-maps-logo-white.png",
+        "packages/location-input/assets/google-maps-logo-white@2x.png",
+        "packages/location-input/assets/google-maps-logo-white@3x.png",
+        "packages/location-input/index.ts",
+        "packages/location-input/package.json",
+        "packages/location-input/src/assistFooter.ts",
+        "packages/location-input/src/mapboxGeocodeService.ts",
+        "packages/location-input/src/placesService.ts",
+        "packages/location-input/src/types.ts",
+        "supabase/functions/_shared/mapboxGeocode.ts",
+        "supabase/functions/mapbox-geocode/countryNames.ts",
+        "supabase/functions/mapbox-geocode/google.ts",
+        "supabase/functions/mapbox-geocode/googleNormalize.ts",
+        "supabase/functions/mapbox-geocode/index.ts",
+        "supabase/functions/mapbox-geocode/iso3166_2.ts",
+        "supabase/functions/mapbox-geocode/namedAreaAddress.ts",
+        "supabase/migrations/20280521004334_issue_4334_google_places.sql",
+        "mingla-business/src/components/location/sharedAddressField.tsx",
+        "mingla-business/src/components/location/sharedAddressField.web.tsx"
       ]
     },
     {
@@ -1570,14 +1633,18 @@
       "paths": [
         "mingla-business/app/experience/create.tsx",
         "mingla-business/src/components/experience/ExperienceCreatorWizard.tsx",
-        "supabase/migrations/20280428003645_issue_3645_sell_publish_integrity.sql"
+        "supabase/migrations/20280428003645_issue_3645_sell_publish_integrity.sql",
+        "mingla-business/src/components/experience/ExperienceStopCard.tsx",
+        "mingla-business/src/components/experience/experienceWizardTypes.ts"
       ]
     },
     {
       "capability_key": "trips-create",
       "paths": [
         "mingla-business/app/trip/[id]/edit.tsx",
-        "mingla-business/app/trip/create.tsx"
+        "mingla-business/app/trip/create.tsx",
+        "mingla-business/src/components/trip/EditPublishedTripScreen.tsx",
+        "mingla-business/src/components/trip/tripLocationValidated.ts"
       ]
     },
     {
@@ -2113,7 +2180,23 @@
         "packages/brand-rendering/PublicVenueScreen.tsx",
         "packages/brand-rendering/PublicVenueTabs.tsx",
         "packages/brand-rendering/publicVenueRefreshState.tsx",
-        "packages/offering-rendering/VenueMapsActions.tsx"
+        "packages/offering-rendering/VenueMapsActions.tsx",
+        "app-mobile/app/b/[brandSlug]/v/[venueSlug].tsx",
+        "mingla-business/app/b/[brandSlug]/v/[venueSlug].tsx",
+        "mingla-admin/package.json",
+        "mingla-admin/src/lib/claimsMapsLink.js",
+        "mingla-admin/src/pages/ClaimsPage.jsx",
+        "mingla-admin/src/services/adminVenueDetailsChangeService.js",
+        "mingla-business/src/components/venue/VenueAddressMatchPrompt.tsx",
+        "mingla-business/src/components/venue/VenueCreatorWizard.tsx",
+        "mingla-business/src/components/venue/venueAddressMatchPolicy.ts",
+        "mingla-business/src/hooks/useVenueAddressPoolMatch.ts",
+        "mingla-business/src/services/poolSearchService.ts",
+        "mingla-business/src/services/venueDetailsEditService.ts",
+        "mingla-business/src/services/venueListingsService.ts",
+        "mingla-business/src/store/draftVenueStore.ts",
+        "mingla-business/src/utils/parseVenuePlaceResult.ts",
+        "supabase/functions/venue-address-pool-match/index.ts"
       ]
     },
     {
@@ -2209,7 +2292,8 @@
         "mingla-marketing/lib/privacyContent.ts",
         "packages/offering-rendering/ParallaxCoverShell.tsx",
         "packages/offering-rendering/index.ts",
-        "packages/offering-rendering/pageFooterAccessory.ts"
+        "packages/offering-rendering/pageFooterAccessory.ts",
+        "mingla-marketing/lib/termsContent.ts"
       ]
     },
     {
@@ -2241,6 +2325,31 @@
       "capability_key": "web-download",
       "paths": [
         "supabase/migrations/20280516004318_issue_4318_links_places_fast.sql"
+      ]
+    },
+    {
+      "capability_key": "discover-preferences",
+      "paths": [
+        "app-mobile/src/components/PreferencesSheet/PreferencesSectionsAdvanced.tsx",
+        "app-mobile/src/components/discover/CityPickerSheet.tsx",
+        "app-mobile/src/components/location/AddressInput.tsx",
+        "app-mobile/src/services/addressSearchTelemetry.ts",
+        "app-mobile/src/services/geocodingService.ts",
+        "app-mobile/src/types/preferences.ts",
+        "app-mobile/src/utils/localeDetection.ts"
+      ]
+    },
+    {
+      "capability_key": "web-free-tools",
+      "paths": [
+        "mingla-marketing/app/tools/pricing/PricingAuditExperience.tsx",
+        "mingla-marketing/app/tools/trips/TripQuoterExperience.tsx",
+        "mingla-marketing/components/ui/google-maps-attribution.tsx",
+        "mingla-marketing/lib/growth-tools-submit.ts",
+        "mingla-marketing/public/brand/google-maps-logo-white.png",
+        "mingla-marketing/public/brand/google-maps-logo-white@2x.png",
+        "mingla-marketing/public/brand/google-maps-logo-white@4x.png",
+        "supabase/functions/growth-tools-geocode/index.ts"
       ]
     }
   ]

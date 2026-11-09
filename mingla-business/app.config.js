@@ -528,26 +528,11 @@ module.exports = ({ config }) => {
         }
         return fromEnv;
       })(),
-      // ORCH-1138 Leg 1: client-safe PUBLIC Mapbox token for the public trip
-      // page "Where you'll be" STATIC map image (Mapbox Static Images API). A
-      // `pk.*` token is client-safe by design (publishable, scoped) — unlike the
-      // server-only MAPBOX_ACCESS_TOKEN behind the `mapbox-geocode` edge fn. This
-      // is the ONLY runtime-safe path: a DYNAMIC process.env read is NOT inlined
-      // by babel-preset-expo and is undefined in Hermes standalone/OTA builds, so
-      // we emit it into `extra` here and read it via
-      // Constants.expoConfig.extra.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN FIRST (mirrors
-      // the GIPHY/supabase pattern above). NO hardcoded literal — the value is
-      // provisioned to the EAS/Vercel env + OTA shell by the operator. Absent at
-      // runtime → the trip page HIDES the map gracefully (honest pin+caption
-      // fallback), never crashes. Do NOT throw here: a missing token degrades a
-      // single page, it does not break the build.
-      EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN:
-        process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ?? null,
       // META-ORCH-1187 [Growth Analytics Hub] LEG 2 — buyer-web analytics keys.
       // Emitted into `extra` (the reachable-everywhere path; a DYNAMIC
       // process.env read is NOT inlined by babel-preset-expo and would be
       // undefined in the web export — only `extra` survives, same lesson as the
-      // GIPHY/Mapbox/supabase blocks above). All three values are PUBLIC by
+      // GIPHY/supabase blocks above). All three values are PUBLIC by
       // design and safe in the client bundle:
       //   · the phc_ PostHog project key is the client/ingestion key (NOT the
       //     phx_ personal/MCP key, which must NEVER appear in any client source);

@@ -324,11 +324,13 @@ DO $t7$
 DECLARE
   v_last text;
 BEGIN
-  SELECT string_agg(attname, ',' ORDER BY attnum DESC) FILTER (WHERE rn <= 2) INTO v_last
+  -- [TEST-MOD-APPROVED #4334] 20280521004334 appends location_provider_place_id after
+  -- the gradient pair; the pair keeps its positions (74, 75), now checked one deeper.
+  SELECT string_agg(attname, ',' ORDER BY attnum DESC) FILTER (WHERE rn <= 3) INTO v_last
   FROM (SELECT attname, attnum, row_number() OVER (ORDER BY attnum DESC) rn
         FROM pg_attribute WHERE attrelid = 'public.business_public_events_view'::regclass
           AND attnum > 0 AND NOT attisdropped) a;
-  IF v_last IS DISTINCT FROM 'theme_gradient_override,brand_theme_gradient' THEN
+  IF v_last IS DISTINCT FROM 'location_provider_place_id,theme_gradient_override,brand_theme_gradient' THEN
     RAISE EXCEPTION 'T-7 FAIL: business_public_events_view ends with %', v_last;
   END IF;
   IF (SELECT attname FROM pg_attribute WHERE attrelid = 'public.business_public_brands_view'::regclass

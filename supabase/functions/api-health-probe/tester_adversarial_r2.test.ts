@@ -16,7 +16,7 @@
 //      / undefined cached ⇒ NOT depleted (never fabricate from a missing number).
 //   6. CLASS-A balance boundary + no-fabrication — exactly-at-warn, crit boundary,
 //      missing detail field ⇒ null (not a fake low); unknown kind ⇒ null.
-//   7. MAPBOX status_text 429 + GOOGLE_PLACES RESOURCE_EXHAUSTED on status_text.
+//   7. GOOGLE_PLACES RESOURCE_EXHAUSTED on status_text (the retired map vendor's row removed by #4334).
 //
 // APPEND-ONLY, IMMUTABLE: do not edit to make a regression pass. This is a NEW
 // file on a different angle (not a renamed copy of class_routing.test.ts).
@@ -254,13 +254,9 @@ Deno.test("ADV-R2 A5: sentry token-gated — absent ratio ⇒ null (grey/unknown
 });
 
 // ════════════════════════════════════════════════════════════════════════
-// 7. MAPBOX + GOOGLE_PLACES status_text matchers.
+// 7. GOOGLE_PLACES status_text matchers. (#4334 removed the retired map
+//    vendor's G1 case together with its service row.)
 // ════════════════════════════════════════════════════════════════════════
-Deno.test("ADV-R2 G1: mapbox 429 on status_text ⇒ depleted; non-429 ⇒ not", () => {
-  const sig = CLASS_B_DEPLETION.mapbox; // http 429, field status_text, match "429"
-  assertEquals(matchClassBDepletion(sig, [row(429, null, "429 rate_limited")]).depleted, true);
-  assertEquals(matchClassBDepletion(sig, [row(401, null, "401 unauthorized")]).depleted, false);
-});
 
 Deno.test("ADV-R2 G2: google_places RESOURCE_EXHAUSTED on status_text (429 only)", () => {
   const sig = CLASS_B_DEPLETION.google_places; // http [429], field status_text, match RESOURCE_EXHAUSTED

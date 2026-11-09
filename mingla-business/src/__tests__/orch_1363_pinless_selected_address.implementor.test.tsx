@@ -6,7 +6,7 @@ import { useDraftVenueStore } from "../store/draftVenueStore";
 
 const ROOT = path.resolve(__dirname, "../../..");
 const sharedSource = fs.readFileSync(
-  path.resolve(ROOT, "packages/location-input/src/MapboxAddressInput.tsx"),
+  path.resolve(ROOT, "packages/location-input/src/AddressInput.tsx"),
   "utf8",
 );
 const venueSource = fs.readFileSync(

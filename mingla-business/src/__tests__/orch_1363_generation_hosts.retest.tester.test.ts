@@ -30,7 +30,7 @@ const hosts: HostContract[] = [
   {
     name: "venue",
     file: "mingla-business/src/components/venue/VenueStep1Address.tsx",
-    fieldStart: "<MapboxAddressInput",
+    fieldStart: "<AddressInput",
     fieldEnd: "error={error}",
     generationRef: "requestGenerationRef",
     resolveName: "resolveCommittedText",

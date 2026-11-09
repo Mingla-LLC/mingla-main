@@ -1,7 +1,7 @@
 /**
- * ORCH-1118 [trip from/destination fields must be Mapbox-validated addresses]
+ * ORCH-1118 [trip from/destination fields must be pick-validated addresses]
  *
- * Single source of truth for "a trip location field carries a confirmed Mapbox
+ * Single source of truth for "a trip location field carries a confirmed address
  * pick". Mirrors the experiences family predicate
  * `stopHasValidatedLocation` (experienceWizardTypes.ts) — a field is only valid
  * when placeId + lat + lng are all non-null (i.e. a suggestion was picked, not
@@ -14,7 +14,7 @@
  * single truth; both field-level helpers delegate to it.
  *
  * Consumed by: TripCreatorStep1Basics, TripCreatorWizard, EditPublishedTripScreen
- * + their tests. Do not loosen (I-PROPOSED-TRIP-LOCATION-MAPBOX-VALIDATED).
+ * + their tests. Do not loosen (I-PROPOSED-TRIP-LOCATION-PICK-VALIDATED).
  */
 
 /**
@@ -26,7 +26,7 @@
  * intent — every trip departure/destination carries a real coordinate — is
  * PRESERVED (lat/lng still required); authoring validators now use coordinates
  * rather than placeId as their mechanism. (Revises
- * I-PROPOSED-TRIP-LOCATION-MAPBOX-VALIDATED /
+ * I-PROPOSED-TRIP-LOCATION-PICK-VALIDATED /
  * I-PROPOSED-1363-COORD-FROM-ANY-TIER.) The trip PUBLISH RPC gates only on
  * destination TEXT, so this loosening works end-to-end with no server change.
  */

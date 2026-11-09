@@ -795,7 +795,7 @@ export const ExperienceCreatorWizard: React.FC<
   );
 
   // Seed stop 1 from the brand venue default (design §2.7): name/address text
-  // only; placeId stays null so the brand must confirm a real Mapbox pick.
+  // only; placeId stays null so the brand must confirm a real address pick.
   useEffect(() => {
     if (
       venueDefault.hasPrefill &&

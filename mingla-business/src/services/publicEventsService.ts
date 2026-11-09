@@ -124,8 +124,10 @@ interface BusinessPublicEventViewRow {
   // ORCH-1162 Bug 2 — venue geo exposed by business_public_events_view (a
   // `point` column; PostgREST serializes it as a "(lng,lat)" string for anon
   // reads). Threaded into PublicEventRecord.locationGeo so the buyer-web +
-  // consumer public event page can draw the "Where you'll be" static-Mapbox map.
+  // consumer public event page can draw the "Where you'll be" static map map.
   location_geo?: string | { x: number; y: number } | null;
+  // #4334 — the picked Google place id; the view NULLs it when the street is withheld.
+  location_provider_place_id?: string | null;
   online_url: string | null;
   is_online: boolean;
   is_recurring: boolean;
@@ -339,6 +341,8 @@ export interface PublicVenue {
   coverMediaUrl: string | null;
   coverMediaType: "image" | "video" | "gif" | null;
   placePoolId: string | null;
+  /** #4334 — the venue's Google place id; anchors the Google Maps link. */
+  googlePlaceId?: string | null;
   theme: ThemeInput | null;
   coverHue: number;
   defaultCurrency: string | null;
@@ -943,6 +947,7 @@ export const venuePublicViewRowToPublicVenue = (
   coverMediaUrl: asStringOrNull(row.cover_media_url),
   coverMediaType: row.cover_media_type ?? null,
   placePoolId: row.place_pool_id ?? null,
+  googlePlaceId: asStringOrNull(row.google_place_id),
   theme: asThemeInput(row.theme_color, row.theme_font, row.theme_animation),
   coverHue: typeof row.cover_hue === "number" ? row.cover_hue : 25,
   defaultCurrency: asStringOrNull(row.default_currency),
@@ -1345,6 +1350,8 @@ export const publicEventViewRowToEvent = (
     // the "Where you'll be" map. Mirrors the proven parser at businessEvents.ts.
     // null → no map (rule-9 text-card fallback).
     locationGeo: parseLocationGeoPoint(row.location_geo),
+    // #4334 — public RSVP pages read this view; the Maps link opens the picked place.
+    googlePlaceId: asStringOrNull(row.location_provider_place_id),
     onlineUrl: row.online_url,
     hideAddressUntilTicket: asBoolean(
       businessEvent.hideAddressUntilTicket,
@@ -1498,6 +1505,8 @@ interface CanonicalEventBodyFields {
   vibeTags: string[];
   musicGenres: string[];
   cityGeo: { lat: number; lng: number } | null;
+  /** #4334 — null when absent or withheld with the street (server-side gate). */
+  googlePlaceId: string | null;
 }
 
 const asStringArray = (value: unknown): string[] =>
@@ -1529,6 +1538,7 @@ export const fetchCanonicalEventBodyFields = async (
     vibeTags: [],
     musicGenres: [],
     cityGeo: null,
+    googlePlaceId: null,
   };
   const { data, error } = await supabase.rpc("pg_public_event_by_slug", {
     p_brand_slug: brandSlug,
@@ -1541,6 +1551,10 @@ export const fetchCanonicalEventBodyFields = async (
     vibeTags: asStringArray(payload.vibeTags),
     musicGenres: asStringArray(payload.musicGenres),
     cityGeo: asLatLng(payload.cityGeo),
+    googlePlaceId:
+      typeof payload.googlePlaceId === "string" && payload.googlePlaceId.length > 0
+        ? payload.googlePlaceId
+        : null,
   };
 };
 
@@ -1686,6 +1700,7 @@ const detailFromRow = async (
               ? canonical.musicGenres
               : event.musicGenres,
           cityGeo: canonical.cityGeo,
+          googlePlaceId: canonical.googlePlaceId,
         }
       : event;
   return {
@@ -1940,6 +1955,12 @@ const detailFromDirectBundle = async (
   };
   const event = publicEventViewRowToEvent(row, tickets, terminalSource);
   event.cityGeo = asLatLng(payload.cityGeo);
+  // #4334 N-1 — the bundle is the buyer page's primary read; its googlePlaceId
+  // (withheld server-side with the street) anchors the Google Maps link.
+  event.googlePlaceId =
+    typeof payload.googlePlaceId === "string" && payload.googlePlaceId.length > 0
+      ? payload.googlePlaceId
+      : null;
   const bookable = await resolveEventBookable(
     String(payload.brandId),
     ticketsArePaidOnline(tickets),

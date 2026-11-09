@@ -61,3 +61,19 @@ export function resolveOnboardingLocationOverride(
     custom_lng: state.coordinates?.lng ?? null,
   }
 }
+
+/**
+ * #4334 (spec v2 A2, §4.6) — the Google place id to save as
+ * custom_location_place_id at the end of onboarding: only for a non-GPS user
+ * whose location came from the "Choose your city" pick (the launch-city gate
+ * writes a city centroid, not a Google place). Null otherwise.
+ */
+export function resolveOnboardingPlaceId(state: {
+  useGpsLocation: boolean
+  cityName: string | null
+  manualLocationPlaceId?: string | null
+}): string | null {
+  if (state.useGpsLocation || state.cityName) return null
+  const id = state.manualLocationPlaceId?.trim()
+  return id ? id : null
+}

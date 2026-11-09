@@ -118,8 +118,8 @@ import {
   TripCreatorStep1Basics,
   type Step1Draft,
 } from "./TripCreatorStep1Basics";
-// ORCH-1118 — trip departure + destination must be confirmed Mapbox picks before
-// publish (I-PROPOSED-TRIP-LOCATION-MAPBOX-VALIDATED). Do not loosen.
+// ORCH-1118 — trip departure + destination must be confirmed address picks before
+// publish (I-PROPOSED-TRIP-LOCATION-PICK-VALIDATED). Do not loosen.
 import {
   departureLocationValidated,
   destinationLocationValidated,
@@ -948,10 +948,10 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
     [step4Draft.packages],
   );
 
-  // ORCH-1118 — BOTH departure and destination must be confirmed Mapbox picks
+  // ORCH-1118 — BOTH departure and destination must be confirmed address picks
   // (placeId + lat + lng) before publish. Empty or dirty (typed-but-unpicked)
   // text on EITHER field blocks publish. Do not loosen
-  // (I-PROPOSED-TRIP-LOCATION-MAPBOX-VALIDATED).
+  // (I-PROPOSED-TRIP-LOCATION-PICK-VALIDATED).
   const tripLocationValid = useMemo(
     () =>
       destinationLocationValidated(
@@ -1999,11 +1999,11 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
 
   // ----- Publish -----
   const handlePublishTap = useCallback(async (): Promise<void> => {
-    // ORCH-1118 — trip location must be a confirmed Mapbox pick before publish
+    // ORCH-1118 — trip location must be a confirmed address pick before publish
     // (belt; the dock Publish disabled is the suspenders). Both departure AND
     // destination are hard-required — empty or dirty text blocks publish. Reveal
     // the inline errors + jump back to Step 1. Do not loosen
-    // (I-PROPOSED-TRIP-LOCATION-MAPBOX-VALIDATED).
+    // (I-PROPOSED-TRIP-LOCATION-PICK-VALIDATED).
     if (!tripLocationValid) {
       setShowStep1AddressErrors(true);
       setStep(1);
@@ -2732,7 +2732,7 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
                   // ORCH-1076 Stream B — disable Publish for a paid trip on a
                   // Stripe-unready brand (proactive gate; mirrors events).
                   // ORCH-1118 — also disable until departure + destination are
-                  // confirmed Mapbox picks (suspenders; belt in handlePublishTap).
+                  // confirmed address picks (suspenders; belt in handlePublishTap).
                   // META-ORCH-1174 Leg B2 — and until every package is valid.
                   disabled={
                     submitting ||

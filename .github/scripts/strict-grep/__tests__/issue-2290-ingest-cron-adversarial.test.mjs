@@ -403,9 +403,24 @@ test("A-5 a non-literal cron.unschedule is NOT modelled — frozen as a tripwire
       assert.doesNotMatch(between, /\bCOMMIT\s*;|\bEND\s*\$cron\$/i, `${file} must keep ${job}'s unschedule and reschedule in one DO block`);
     }
   }
+  // [TEST-MOD-APPROVED #4334] The Google coordinate refresh removes any existing
+  // places-coordinate-refresh-daily job by id (pg_cron's by-name form only sees the
+  // caller's own jobs, so a re-apply by another superuser would fail) and
+  // reschedules it in the same transaction (+1 → 22). Proven here like the pairs above.
+  {
+    const file = "supabase/migrations/20280521004334_issue_4334_google_places.sql";
+    const sql = stripSqlComments(fs.readFileSync(path.join(REPO_ROOT, file), "utf8"));
+    const job = "places-coordinate-refresh-daily";
+    const unschedule = sql.search(/cron\.unschedule\s*\(\s*jobid\s*\)/i);
+    const lookup = sql.search(new RegExp(`WHERE\\s+jobname\\s*=\\s*'${job}'`, "i"));
+    const schedule = sql.search(new RegExp(`cron\\.schedule\\s*\\(\\s*'${job}'`, "i"));
+    assert.ok(unschedule >= 0 && lookup > unschedule, `${file} must remove only ${job}, looked up by name`);
+    assert.ok(schedule > lookup, `${file} must reschedule ${job} after removing it`);
+    assert.doesNotMatch(sql.slice(unschedule, schedule), /\bCOMMIT\s*;/i, `${file} must keep the unschedule and reschedule in one transaction`);
+  }
   // #4273: the daily SMS price refresh adds one guarded unschedule-then-
   // reschedule pair in its own DO block (issue_4273_sms_price_refresh)
-  // (+1 → 22). Its unschedule is proven to sit just before its reschedule.
+  // (+1 → 23, after #4334). Its unschedule is proven to sit just before its reschedule.
   {
     const file = "supabase/migrations/20280522004273_issue_4273_sms_unpriced_country_skips.sql";
     const sql = stripSqlComments(fs.readFileSync(path.join(REPO_ROOT, file), "utf8"));
@@ -426,7 +441,7 @@ test("A-5 a non-literal cron.unschedule is NOT modelled — frozen as a tripwire
   );
   assert.equal(
     repo.dynamicUnschedules,
-    22,
+    23,
     "the number of unmodelled dynamic cron.unschedule calls changed. Each one is a place " +
       "where this gate cannot see a job being removed. Confirm the new call is the " +
       "unschedule-then-reschedule idiom (and not a permanent removal of a live worker) " +

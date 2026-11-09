@@ -462,7 +462,7 @@ const stopPlaceStep: StepDefinition = {
       return Promise.resolve(done("stop_added", stopsOf(run).length));
     }
     const problem = problemOf(ctx);
-    // The Host shows its address search (MapboxAddressInput) on this card.
+    // The Host shows its address search (AddressInput) on this card.
     return Promise.resolve({
       done: false,
       ask: {

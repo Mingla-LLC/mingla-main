@@ -551,6 +551,8 @@ const DRAFT_EVENT_KEY_CLASS = {
   // Excluded: event wizard never sets it; round-trip gap recorded as #3287 D-2.
   coordinatePrecision: "excluded",
   // Round-trip: must come back from the server copy equal to what was saved.
+  // #4334 — the pin's Google place id rides the blob beside locationGeo.
+  locationProviderPlaceId: "roundtrip",
   brandId: "roundtrip",
   name: "roundtrip",
   description: "roundtrip",
@@ -725,6 +727,7 @@ describe("#3287 — multi-day pricing choice survives the draft save round-trip"
       city: "Brooklyn",
       locationGeo: { lat: 40.72, lng: -73.96 },
       coordinatePrecision: "approximate",
+      locationProviderPlaceId: "ChIJ0Wq9hS_1OxARsFOw5qkW6Y0",
       onlineUrl: "https://example.com/stream",
       hideAddressUntilTicket: false,
       coverHue: 300,

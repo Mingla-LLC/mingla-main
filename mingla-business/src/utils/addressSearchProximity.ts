@@ -1,7 +1,7 @@
 /**
  * Issue #3291 — where should Host address search RANK results from?
  *
- * The business picker never sent a location, so Mapbox ranked from the edge
+ * The business picker never sent a location, so the provider ranked from the edge
  * server's own IP (the United States): typing "Lagos" surfaced a US restaurant
  * before Lagos, Nigeria. The edge `suggest` action already forwards an optional
  * `proximity` ("longitude,latitude") — this module decides the point.
@@ -19,7 +19,7 @@
  *      because ranking fell through to a US device's time zone)
  *   4. an approximate point for the draft's time zone (device zone where the
  *      draft has none)
- *   5. nothing — Mapbox falls back to its default
+ *   5. nothing — the provider falls back to its default
  *
  * No fabricated data (Constitution #9): an unknown zone, or `UTC`, yields NO
  * point rather than a guess. The table below names each zone's own IANA city,
@@ -305,7 +305,7 @@ export const deviceTimeZone = (): string | null => {
   }
 };
 
-/** Mapbox proximity format: "longitude,latitude". */
+/** Proximity client contract: "longitude,latitude" (the proxy swaps it for Google). */
 export const formatProximity = (point: GeoPoint): string =>
   `${point.lng},${point.lat}`;
 

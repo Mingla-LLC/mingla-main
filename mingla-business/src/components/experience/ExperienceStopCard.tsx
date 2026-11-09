@@ -5,7 +5,7 @@
  * a photo / GIF / Pexels"): previously every stop was rendered inline inside
  * ExperienceStopsStep via `stops.map(...)`. A keystroke called updateStop →
  * setStops (new array + new object) → re-rendered the WHOLE step, which re-ran
- * every stop card's <GlassCard> + <MapboxAddressInput> + <Input>s + <Image>s.
+ * every stop card's <GlassCard> + <AddressInput> + <Input>s + <Image>s.
  * Device profiling on a physical Galaxy A72 (R58R54YV7JT) showed 70% janky
  * frames typing into a single field with only 2 stops; with 5 stops + photos it
  * compounds into the visible freeze.
@@ -16,7 +16,8 @@
  */
 
 import React from "react";
-import { precisionFromPlaceDetails } from "@mingla/location-input";
+// #4334 — from its own file: the package index would pull the address field into this screen.
+import { precisionFromPlaceDetails } from "@mingla/location-input/src/placesService";
 import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import {
@@ -31,14 +32,14 @@ import {
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
-import { MapboxAddressInput } from "../location/MapboxAddressInput";
+import { AddressInput } from "../location/AddressInput";
 import {
   advanceLocationRequestGeneration,
   isFreeTextResolveStale,
   isLocationRequestGenerationCurrent,
   resolveFreeTextLocation,
 } from "../../utils/resolveApproxLocation";
-import type { PlaceDetails } from "../../services/mapboxGeocodeService";
+import type { PlaceDetails } from "../../services/placesService";
 import type { LocationSelectionState } from "@mingla/location-input";
 import {
   labelForIndex,
@@ -148,6 +149,8 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
             lat: approx.lat,
             lng: approx.lng,
             coordinatePrecision: "approximate",
+            // #4334 — the place the typed address resolved to; saved with the pin.
+            placeId: approx.placeId,
           });
           savedContextRef.current = {
             city: approx.city,
@@ -244,7 +247,7 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
             <Text style={styles.fieldLabel}>
               {locationMode === "single" ? "Location (shared by all stops)" : "Address"}
             </Text>
-            <MapboxAddressInput
+            <AddressInput
               value={stop.address}
               accessibilityLabel={`Stop ${i + 1} address`}
               allowFreeText
@@ -279,7 +282,7 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
                   countryCode: d.countryCode,
                   lat: d.location.lat,
                   lng: d.location.lng,
-                  // Issue #1629 — READ the precision from Mapbox's own feature_type
+                  // Issue #1629 — READ the precision from the pick's own feature type
                   // instead of asserting it. This branch is a REAL PICK, so hardcoding
                   // "approximate" made `exact` unreachable everywhere (0 rows in prod).
                   coordinatePrecision: precisionFromPlaceDetails(d),

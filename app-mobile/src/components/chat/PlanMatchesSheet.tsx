@@ -140,7 +140,7 @@ function MatchCard({
   const ownOffMinglaPlace = offMinglaPlace ? plan.place : null;
 
   /** Opens a place inside Mingla: a Mingla place its card, any other its own link or the map. */
-  const openPlace = (place: Pick<ChatPlanPlaceOption, "poolId" | "name" | "address" | "lat" | "lng" | "photoUrl" | "link">) => {
+  const openPlace = (place: Pick<ChatPlanPlaceOption, "poolId" | "name" | "address" | "lat" | "lng" | "photoUrl" | "link"> & { providerPlaceId?: string | null }) => {
     const target = placeLinkTarget(place, mapsWebUrl);
     if (!target) return;
     if (target.kind === "mingla") {

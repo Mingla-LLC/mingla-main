@@ -92,9 +92,10 @@ Deno.test("#4261 B0: every spec 5.10 key exists in en with its placeholders", as
   await checkNamespace("connections.json", CONNECTIONS_KEYS);
 });
 
-Deno.test("#4261 B0: attribution copy names Mapbox, never Google (spec O-7)", async () => {
+// #4334 §4.4 — the search results are Google's now (D5).
+Deno.test("#4261 B0 / #4334: attribution copy says powered by Google", async () => {
   const chat = JSON.parse(await Deno.readTextFile(new URL("../../i18n/locales/en/chat.json", import.meta.url)));
-  if (!/Mapbox/.test(chat.plan_search_attribution) || /Google/.test(chat.plan_search_attribution)) {
+  if (chat.plan_search_attribution !== "Places on Mingla first · more results powered by Google") {
     throw new Error(`attribution: ${chat.plan_search_attribution}`);
   }
 });

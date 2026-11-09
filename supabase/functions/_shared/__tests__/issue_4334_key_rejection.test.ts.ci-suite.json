@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_4334_key_rejection.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4334-key-rejection-supabase",
+  "profile": "deno-2-unit"
+}

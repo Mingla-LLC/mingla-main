@@ -22,7 +22,7 @@ import {
   type AddressMatchDraft,
 } from "../venueAddressMatchPolicy";
 
-/** A brand who has picked a real building from the Mapbox suggestions. */
+/** A brand who has picked a real building from the address suggestions. */
 const pickedDraft = (over: Partial<AddressMatchDraft> = {}): AddressMatchDraft => ({
   formattedAddress: "440 W Hargett St, Raleigh, North Carolina 27603, United States",
   lat: 35.7787,

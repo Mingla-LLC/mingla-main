@@ -158,7 +158,7 @@ jest.mock("@mingla/offering-rendering", () => {
   const ReactLocal = require("react") as typeof React;
   const themeResolver = require("../../../../../packages/offering-rendering/themeResolver");
   const themePalette = require("../../../../../packages/offering-rendering/themePalette");
-  const mapboxStaticImage = require("../../../../../packages/offering-rendering/mapboxStaticImage");
+  const staticMapImage = require("../../../../../packages/offering-rendering/staticMapImage");
   // [TEST-MOD-APPROVED #2468] Harness registration only — ADDITION, no
   // assertion changed. maps-deep-link-coordinates gave every "open in maps"
   // URL one owner (packages/offering-rendering/mapsDeepLink), and the shared
@@ -194,7 +194,9 @@ jest.mock("@mingla/offering-rendering", () => {
     __esModule: true,
     ...themeResolver,
     ...themePalette,
-    ...mapboxStaticImage,
+    ...staticMapImage,
+    // #4334 F-1 — the REAL shared map renderer (sizes the request to its box).
+    StaticMapImage: require("../../../../../packages/offering-rendering/StaticMapFrame").StaticMapImage,
     ...mapsDeepLink,
     ...venueMapsActions,
     useResponsiveLayout: () => ({

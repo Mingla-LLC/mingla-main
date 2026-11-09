@@ -1,43 +1,46 @@
 /**
- * geocodingService — META-ORCH-1060 [Mapbox consumer migration] §3.9
+ * geocodingService — META-ORCH-1060 §3.9; Google Maps Platform since #4334.
  *
- * Thin Mapbox adapter over the shared @mingla/location-input service. ALL
- * legacy free-OSM geocoding usage has been removed (clean sweep — INV-1).
- * The public signatures + caches are PRESERVED so every script-style caller
- * (localeDetection, DiscoverScreen night-out, useUserLocation legacy fallback,
- * PreferencesSheet ORCH-0943 auto-resolve, OnboardingFlow) keeps compiling and
- * moves to Mapbox at once.
+ * Thin adapter over the shared @mingla/location-input places service. The
+ * public signatures + caches are kept so every script-style caller
+ * (localeDetection, DiscoverScreen device city, useUserLocation legacy
+ * fallback, PreferencesSheet ORCH-0943 auto-resolve) keeps working.
  *
- * Adapter mapping (SPEC §3.9):
- *   - autocomplete(query)  → Mapbox FORWARD geocode (edge `forward` action,
- *     ONE call per query, returns the best match WITH coords). We do NOT
- *     eager-retrieve top-N (that would be N billed sessions). Surfaces that
- *     need a full multi-row suggest→retrieve dropdown (CityPicker) use the
- *     shared MapboxAddressInput field directly, bypassing this adapter.
- *   - reverseGeocode(lat,lng) → Mapbox REVERSE geocode (edge `reverse` action).
+ *   - autocomplete(query)     → proxy `forward` (Google Geocoding, English):
+ *     the single best match WITH coordinates AND its Google placeId (spec v2
+ *     A3.3), so a typed-and-saved anchor can be refreshed.
+ *   - reverseGeocode(lat,lng) → proxy `reverse` (Google Geocoding, the D1
+ *     city rule: every Lagos State point is "Lagos").
  *
- * Calls proxy through the `mapbox-geocode` Supabase edge fn (token stays
- * server-side). Mapbox docs:
- *   forward https://docs.mapbox.com/api/search/search-box/
- *   reverse https://docs.mapbox.com/api/search/search-box/
- *   v6 fallback https://docs.mapbox.com/api/search/geocoding/
+ * Loud failures (spec v2 A3.4, D7): autocomplete returns [] ONLY when nothing
+ * matched; when search itself is down it throws LocationSearchUnavailableError
+ * (and reports it, throttled, to Sentry). useUserLocation already catches, so
+ * its behaviour is unchanged. The 5-minute autocomplete cache and its key are
+ * unchanged (A3.6).
  */
 
 import {
-  forwardGeocodeMapbox,
-  reverseGeocodeMapbox,
+  forwardGeocode,
+  PlacesServiceError,
+  reverseGeocode,
   type InvokeFn,
   type PlaceDetails,
 } from "@mingla/location-input";
 import { supabase } from "./supabase";
+import { reportAddressSearchUnavailable } from "./addressSearchTelemetry";
 import { formatCoordinates } from "../utils/numberFormatter";
 
 interface GeocodingResult {
   city?: string;
   state?: string;
   country?: string;
-  /** META-ORCH-1060: ISO 3166-1 alpha-2 (e.g. "GB") — structured from Mapbox. */
+  /** ISO 3166-1 alpha-2 (e.g. "GB") — structured, never parsed. */
   countryCode?: string;
+  /**
+   * #4334 F-10 — ISO 3166-2 subdivision code (e.g. "NC", "LA"), or undefined.
+   * `state` is the region's display NAME; a code column must read this.
+   */
+  stateCode?: string;
   formattedAddress?: string;
   error?: string;
 }
@@ -46,7 +49,22 @@ export interface AutocompleteSuggestion {
   displayName: string;
   fullAddress: string;
   location?: { lat: number; lng: number };
+  /** #4334 A3.3 — the Google place id, persisted as custom_location_place_id. */
+  placeId?: string;
 }
+
+/** #4334 A3.4 — location search is down (not "no match"). */
+export class LocationSearchUnavailableError extends Error {
+  readonly code: string;
+  constructor(code: string) {
+    super(`location_search_unavailable:${code}`);
+    this.name = "LocationSearchUnavailableError";
+    this.code = code;
+  }
+}
+
+/** Proxy codes that mean "nothing matched" rather than "search is down". */
+const NO_MATCH_CODES: ReadonlySet<string> = new Set(["no_location", "no_locality", "query_required"]);
 
 const invoke: InvokeFn = (fn, options) =>
   supabase.functions.invoke(fn, options);
@@ -93,19 +111,15 @@ class GeocodingService {
         return result;
       }
 
-      // META-ORCH-1060: Mapbox reverse geocode via the edge fn (replaces the
-      // legacy OSM reverse path). Returns structured city/region/regionCode/countryCode.
-      const details: PlaceDetails = await reverseGeocodeMapbox(
-        latitude,
-        longitude,
-        { invoke }
-      );
+      // Reverse geocode through the proxy (Google Geocoding, English).
+      const details: PlaceDetails = await reverseGeocode(latitude, longitude, { invoke });
 
       const result: GeocodingResult = {
         city: details.city || undefined,
         state: details.region || undefined,
         country: details.countryCode || undefined, // ISO code (callers prefer countryCode)
         countryCode: details.countryCode || undefined,
+        stateCode: details.regionCode || undefined,
         formattedAddress: details.formattedAddress || undefined,
       };
 
@@ -193,12 +207,10 @@ class GeocodingService {
   }
 
   /**
-   * Autocomplete location suggestions.
-   *
-   * META-ORCH-1060: uses Mapbox FORWARD geocode (one edge call per query) and
-   * returns the single best match WITH coords. Multi-row suggest→retrieve UX is
-   * served by the shared MapboxAddressInput field (CityPicker), not this adapter
-   * — keeping this path to ONE billed Mapbox request per query (SPEC §3.9/§10).
+   * Autocomplete location suggestions: the single best match for typed text,
+   * with coordinates and its Google placeId (one proxy `forward` call).
+   * Returns [] when nothing matched; THROWS LocationSearchUnavailableError when
+   * search is down (#4334 A3.4) — never an empty list for an outage.
    */
   async autocomplete(query: string): Promise<AutocompleteSuggestion[]> {
     if (!query || query.length < 3) {
@@ -212,25 +224,25 @@ class GeocodingService {
       return cached.results;
     }
 
+    let details: PlaceDetails;
     try {
-      const details: PlaceDetails = await forwardGeocodeMapbox(query, { invoke });
-      const results: AutocompleteSuggestion[] = [
-        {
-          displayName: details.city || details.formattedAddress,
-          fullAddress: details.formattedAddress,
-          location: { lat: details.location.lat, lng: details.location.lng },
-        },
-      ];
-
-      if (results.length > 0) {
-        this.cacheAutocompleteResult(cacheKey, results);
-      }
-
-      return results;
+      details = await forwardGeocode(query, { invoke });
     } catch (error) {
-      console.error("Autocomplete error:", error);
-      return [];
+      const code = error instanceof PlacesServiceError ? error.code : "network";
+      if (NO_MATCH_CODES.has(code)) return [];
+      reportAddressSearchUnavailable(code);
+      throw new LocationSearchUnavailableError(code);
     }
+    const results: AutocompleteSuggestion[] = [
+      {
+        displayName: details.city || details.formattedAddress,
+        fullAddress: details.formattedAddress,
+        location: { lat: details.location.lat, lng: details.location.lng },
+        ...(details.placeId ? { placeId: details.placeId } : {}),
+      },
+    ];
+    this.cacheAutocompleteResult(cacheKey, results);
+    return results;
   }
 
   // Store autocomplete result in cache with LRU eviction

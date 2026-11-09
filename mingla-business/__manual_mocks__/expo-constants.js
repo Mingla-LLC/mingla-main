@@ -1,14 +1,14 @@
 // Lightweight expo-constants mock — #1062 [biz-jest-residual-burndown] Wave 1 / B3a.
 //
 // The real package is native-bridge ESM; node-env unit tests that transitively
-// import it (e.g. via @mingla/offering-rendering's mapboxToken /
-// mapboxFunctionsBase, or postHogService / supabase.ts config reads) fail to LOAD
+// import it (e.g. via @mingla/offering-rendering's functionsBase, or
+// postHogService / supabase.ts config reads) fail to LOAD
 // under the default node/ts-jest config. Those readers walk
 // `Constants.expoConfig.extra -> process.env` for inlining-safe config values, so
 // the mock provides that SHAPE with an EMPTY `extra` — a real config-less read
 // (env fallback / null), NOT a fabricated value. Suites that need specific
 // Constants values self-mock expo-constants with jest.mock(), which overrides
-// this map (e.g. mapboxStaticImage.orch1138 already does).
+// this map.
 //
 // Activated ONLY via an explicit moduleNameMapper entry in jest.config.cjs.
 

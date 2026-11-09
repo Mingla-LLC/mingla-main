@@ -35,7 +35,7 @@ import {
   fetchProviderAudienceEstimate,
 } from "../_shared/adProviderEstimate.ts";
 import type { AdConnectionRow, Platform } from "../_shared/adChannelCore.ts";
-import { forwardGeocodeLookup } from "../_shared/mapboxGeocode.ts";
+import { forwardGeocodeLookup } from "../_shared/placesGeocode.ts";
 import { checkHostEstimateRate } from "../_shared/adHostEstimateRate.ts";
 import { buildCreativeLibrary } from "../_shared/adCreativeLibrary.ts";
 import { withHostCreativeFit } from "../_shared/adCreativeFit.ts";
