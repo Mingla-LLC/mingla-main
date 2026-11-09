@@ -80,6 +80,7 @@
 import React from 'react';
 import {
   ActivityIndicator,
+  Image,
   type LayoutChangeEvent,
   Platform,
   Pressable,
@@ -104,6 +105,7 @@ import {
   META_LINES_MAX,
   PLATE,
   PLATE_H_NO_META,
+  PLAN_PLATE,
   SHARE_GLYPH,
   SLIVER,
   STATE_DISC,
@@ -196,6 +198,49 @@ function PlateMaterial({ underFill, opaque = false }: { underFill?: string; opaq
       <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: PLATE.lift }]} />
     </>
   );
+}
+
+/**
+ * #4347 round 2 — the AI plan's plate (Direction B). ONE more silhouette, for
+ * plans only; its under-layer is re-solved at its own top edge like the others.
+ */
+const PLAN_SILHOUETTE = (() => {
+  const plateH = PLAN_PLATE.height;
+  const underAlpha = plateUnderForHeight('s1Single', plateH);
+  return {
+    plateH,
+    underFill: `rgba(${PLATE.underRgb[0]},${PLATE.underRgb[1]},${PLATE.underRgb[2]},${underAlpha})`,
+  };
+})();
+
+/** One tile on a plan plate: "TIME · 2h 33m". `accent` marks the Spend tile. */
+export interface PlanPlateTile {
+  readonly key: 'time' | 'away' | 'spend';
+  readonly label: string;
+  readonly value: string;
+  readonly accent?: boolean;
+}
+
+/** What a plan plate shows above its controls. */
+export interface PlanPlateContent {
+  /** "Nike Art Gallery → The Burgundy"; null hides the route row's text. */
+  readonly route: string | null;
+  /** Up to PLAN_PLATE.thumb.max stop photos. */
+  readonly photos: readonly string[];
+  /** One to three tiles; a fact with no value is left out, never faked. */
+  readonly tiles: readonly PlanPlateTile[];
+}
+
+/**
+ * The plan plate's anchors, from the package — the title sits above it exactly
+ * the way it sits above the place plate (`surfaceTitleBottom`).
+ */
+export function planPlatePresentation(): { plateH: number; plateTop: number; titleBottom: number } {
+  return {
+    plateH: PLAN_SILHOUETTE.plateH,
+    plateTop: S1.bottomInset + PLAN_SILHOUETTE.plateH,
+    titleBottom: surfaceTitleBottom('s1Single', PLAN_SILHOUETTE.plateH),
+  };
 }
 
 /**
@@ -566,6 +611,12 @@ export interface DeckCardPlateProps {
   readonly fromPriceLabel?: string | null;
   /** #4347 — no photo behind the plate: render the opaque solid, not glass. */
   readonly opaque?: boolean;
+  /**
+   * #4347 round 2 — an AI PLAN's plate (Direction B): handle, route line with
+   * stop photos, Time / Away / Spend tiles, then a wide Details, a round
+   * Been-here and Share. `spans`, `metaLines` and the chevron are not drawn.
+   */
+  readonly plan?: PlanPlateContent | null;
 }
 
 /**
@@ -610,7 +661,24 @@ export function DeckCardPlate({
   detailsLabel,
   fromPriceLabel,
   opaque = false,
+  plan = null,
 }: DeckCardPlateProps): React.ReactElement {
+  if (plan) {
+    return (
+      <PlanPlate
+        plan={plan}
+        beenHere={beenHere}
+        onSharePress={onSharePress}
+        shareLabel={shareLabel}
+        shareHandoffEnabled={shareHandoffEnabled}
+        shareBusy={shareBusy}
+        shareControlRef={shareControlRef}
+        onDetailsPress={onDetailsPress}
+        detailsLabel={detailsLabel}
+        opaque={opaque}
+      />
+    );
+  }
   // #1700 — ONE resolution of the silhouette, read by the height, the row
   // heights AND the material. Three reads of one object; never three parallel
   // ternaries that can disagree (I-PROPOSED-1593-LAYER-GEOMETRY-SINGLE-SOURCE).
@@ -774,6 +842,129 @@ export function DeckCardPlate({
 }
 
 /**
+ * #4347 round 2 — the AI plan's plate. Same object as the place plate (same
+ * insets, radius, border, ONE PlateMaterial) with a plan's content: where the
+ * night goes, how long, how far and what it costs.
+ */
+function PlanPlate({
+  plan,
+  beenHere,
+  onSharePress,
+  shareLabel,
+  shareHandoffEnabled,
+  shareBusy,
+  shareControlRef,
+  onDetailsPress,
+  detailsLabel,
+  opaque,
+}: {
+  plan: PlanPlateContent;
+  beenHere?: React.ReactNode;
+  onSharePress: () => void;
+  shareLabel: string;
+  shareHandoffEnabled: boolean;
+  shareBusy: boolean;
+  shareControlRef?: React.Ref<View>;
+  onDetailsPress?: () => void;
+  detailsLabel?: string;
+  opaque: boolean;
+}): React.ReactElement {
+  const photos = plan.photos.slice(0, PLAN_PLATE.thumb.max);
+  return (
+    <View
+      testID="deck-plan-plate"
+      style={[styles.plate, { height: PLAN_SILHOUETTE.plateH }]}
+      accessibilityRole="none"
+      accessible={false}
+      pointerEvents="box-none"
+    >
+      <PlateMaterial underFill={PLAN_SILHOUETTE.underFill} opaque={opaque} />
+      <View pointerEvents="none" style={styles.plateTopHighlight} />
+
+      <View style={styles.planHandleRow} pointerEvents="none">
+        <View style={styles.planHandle} />
+      </View>
+
+      <View style={styles.planRouteRow} pointerEvents="none" testID="deck-plan-route">
+        {photos.length > 0 ? (
+          <View style={styles.planThumbs}>
+            {photos.map((uri, i) => (
+              <Image
+                key={`${uri}_${i}`}
+                source={{ uri }}
+                style={[styles.planThumb, i > 0 ? styles.planThumbOverlap : null]}
+                accessibilityIgnoresInvertColors
+              />
+            ))}
+          </View>
+        ) : null}
+        {plan.route ? (
+          <Text style={styles.planRoute} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE.controlLabel}>
+            {plan.route}
+          </Text>
+        ) : null}
+      </View>
+
+      <View style={styles.planTiles} pointerEvents="none" testID="deck-plan-tiles">
+        {plan.tiles.map((tile) => (
+          <View key={tile.key} style={styles.planTile} testID={`deck-plan-tile-${tile.key}`}>
+            <Text style={styles.planTileLabel} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE.controlLabel}>
+              {tile.label}
+            </Text>
+            <Text
+              style={[styles.planTileValue, tile.accent ? styles.planTileValueAccent : null]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.75}
+              maxFontSizeMultiplier={MAX_FONT_SCALE.controlLabel}
+            >
+              {tile.value}
+            </Text>
+          </View>
+        ))}
+      </View>
+
+      <View style={styles.planControlRow} pointerEvents="box-none">
+        {onDetailsPress ? (
+          <Pressable
+            testID="deck-plan-details"
+            onPress={onDetailsPress}
+            style={({ pressed }) => [styles.planDetails, pressed ? styles.planDetailsPressed : null]}
+            hitSlop={6}
+            accessibilityRole="button"
+            accessibilityLabel={detailsLabel}
+          >
+            <Icon name="eye-outline" size={PLAN_PLATE.details.glyphSize} color={PLAN_PLATE.details.label} />
+            <Text style={styles.planDetailsLabel} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE.controlLabel}>
+              {detailsLabel}
+            </Text>
+          </Pressable>
+        ) : (
+          <View style={styles.planDetailsSpacer} />
+        )}
+        {beenHere}
+        <Pressable
+          ref={shareControlRef}
+          onPress={onSharePress}
+          style={({ pressed }) => [styles.planShare, shareHandoffEnabled && pressed ? styles.shareButtonPressed : null]}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={shareLabel}
+          accessibilityState={shareBusy ? { disabled: true, busy: true } : undefined}
+          disabled={shareBusy}
+        >
+          {shareBusy ? (
+            <ActivityIndicator size="small" color={SHARE_GLYPH.color} />
+          ) : (
+            <Icon name="share-outline" size={SHARE_GLYPH.size} color={SHARE_GLYPH.color} />
+          )}
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+/**
  * The Been-here control's visual body, shared by both card trees.
  *
  * The STATE MACHINE and the mutation live with the caller (SwipeableCards'
@@ -791,11 +982,23 @@ export function BeenHereBody({
   state,
   label,
   showSpinner,
+  compact = false,
 }: {
   state: BeenHereVisualState;
   label: string;
   showSpinner: boolean;
+  /** #4347 round 2 — the plan plate's round control: the glyph only (the a11y label keeps the words). */
+  compact?: boolean;
 }): React.ReactElement {
+  if (compact) {
+    const g =
+      state === 'failed' ? 'alert-circle' : state === 'flash' || state === 'settled' ? 'checkmark-circle' : 'checkmark';
+    return showSpinner ? (
+      <ActivityIndicator size="small" color="#FFFFFF" style={styles.beenHereSpinner} />
+    ) : (
+      <Icon name={g} size={BEEN_HERE.glyphSize.active} color="#FFFFFF" />
+    );
+  }
   const glyph =
     state === 'failed' ? 'alert-circle' : state === 'flash' || state === 'settled' ? 'checkmark-circle' : 'checkmark';
   const glyphSize = state === 'rest' || state === 'pressed' ? BEEN_HERE.glyphSize.rest : BEEN_HERE.glyphSize.active;
@@ -1013,6 +1216,114 @@ const styles = StyleSheet.create({
   },
   shareButtonPressed: {
     opacity: 0.55,
+  },
+  // #4347 round 2 — the plan plate (Direction B). Every number from PLAN_PLATE.
+  planHandleRow: {
+    height: PLAN_PLATE.handleRow,
+    alignItems: 'center',
+    paddingTop: PLAN_PLATE.handle.top,
+  },
+  planHandle: {
+    width: PLAN_PLATE.handle.width,
+    height: PLAN_PLATE.handle.height,
+    borderRadius: PLAN_PLATE.handle.radius,
+    backgroundColor: PLAN_PLATE.handle.color,
+  },
+  planRouteRow: {
+    height: PLAN_PLATE.routeRow,
+    paddingHorizontal: PLAN_PLATE.paddingH,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: PLAN_PLATE.route.gap,
+  },
+  planThumbs: {
+    flexDirection: 'row',
+    flexShrink: 0,
+  },
+  planThumb: {
+    width: PLAN_PLATE.thumb.size,
+    height: PLAN_PLATE.thumb.size,
+    borderRadius: PLAN_PLATE.thumb.size / 2,
+    borderWidth: PLAN_PLATE.thumb.ring,
+    borderColor: PLAN_PLATE.thumb.ringColor,
+  },
+  planThumbOverlap: {
+    marginLeft: -PLAN_PLATE.thumb.overlap,
+  },
+  planRoute: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: PLAN_PLATE.route.size,
+    fontWeight: PLAN_PLATE.route.weight as '700',
+    color: PLAN_PLATE.route.color,
+  },
+  planTiles: {
+    marginTop: PLAN_PLATE.sectionGap,
+    height: PLAN_PLATE.tiles.height,
+    paddingHorizontal: PLAN_PLATE.paddingH,
+    flexDirection: 'row',
+    gap: PLAN_PLATE.tiles.gap,
+  },
+  planTile: {
+    flex: 1,
+    minWidth: 0,
+    borderRadius: PLAN_PLATE.tiles.radius,
+    paddingHorizontal: PLAN_PLATE.tiles.paddingH,
+    justifyContent: 'center',
+    backgroundColor: ANDROID_GLASS_USES_OPAQUE_FALLBACK ? PLAN_PLATE.tiles.androidFill : PLAN_PLATE.tiles.fill,
+  },
+  planTileLabel: {
+    fontSize: PLAN_PLATE.tiles.labelSize,
+    letterSpacing: PLAN_PLATE.tiles.labelLetterSpacing,
+    textTransform: 'uppercase',
+    fontWeight: '600',
+    color: PLAN_PLATE.tiles.labelColor,
+  },
+  planTileValue: {
+    fontSize: PLAN_PLATE.tiles.valueSize,
+    fontWeight: PLAN_PLATE.tiles.valueWeight as '700',
+    color: PLAN_PLATE.tiles.valueColor,
+  },
+  planTileValueAccent: {
+    color: PLAN_PLATE.tiles.spendColor,
+  },
+  planControlRow: {
+    marginTop: PLAN_PLATE.sectionGap,
+    height: PLAN_PLATE.controlRow,
+    paddingHorizontal: PLAN_PLATE.paddingH,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: PLAN_PLATE.controlGap,
+  },
+  planDetails: {
+    flex: 1,
+    minWidth: 0,
+    height: PLAN_PLATE.details.height,
+    borderRadius: PLAN_PLATE.details.radius,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: DETAILS.gap,
+    paddingHorizontal: DETAILS.paddingH,
+    backgroundColor: PLAN_PLATE.details.fill,
+  },
+  planDetailsPressed: {
+    backgroundColor: PLAN_PLATE.details.fillPressed,
+  },
+  planDetailsLabel: {
+    flexShrink: 1,
+    fontSize: PLAN_PLATE.details.labelSize,
+    fontWeight: PLAN_PLATE.details.labelWeight as '700',
+    color: PLAN_PLATE.details.label,
+  },
+  planDetailsSpacer: {
+    flex: 1,
+  },
+  planShare: {
+    width: SHARE_GLYPH.target,
+    height: SHARE_GLYPH.target,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   beenHereText: {
     fontSize: BEEN_HERE.labelSize,
