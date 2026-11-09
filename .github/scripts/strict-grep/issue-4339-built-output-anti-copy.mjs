@@ -125,6 +125,8 @@ function wiring() {
   if (!build.endsWith(` && ${own}`) || build.lastIndexOf(own) < build.lastIndexOf('next build')) {
     failures.push('package.json build does not end by running this gate with --built after the final next build')
   }
+  // The test-only keep switch (the #2771 Playwright build) never reaches the release build.
+  if (/MINGLA_KEEP_TEST_IDS/.test(build)) failures.push('package.json build must not set MINGLA_KEEP_TEST_IDS (test builds only)')
   const config = fs.readFileSync(path.join(MARKETING, 'next.config.ts'), 'utf8')
   if (!/poweredByHeader:\s*false/.test(config)) failures.push('next.config.ts must set poweredByHeader: false')
   if (!/reactRemoveProperties:\s*\{\s*properties:\s*\['\^data-testid\$'\]\s*\}/.test(config)) failures.push('next.config.ts must strip data-testid')

@@ -183,9 +183,13 @@ const config: NextConfig = {
   // #4339 round B (anti-copy): test ids never ship (the gate
   // .github/scripts/strict-grep/issue-4339-built-output-anti-copy.mjs fails a
   // build that still contains one). Production builds only: `next dev` keeps
-  // them for the #2331 marketing privacy Playwright specs, which select by test id.
+  // them. The #2771/#2331 marketing privacy Playwright specs select by test id
+  // against a real `next build` (mingla-business/playwright.issue2771.config.ts),
+  // so that one test build sets MINGLA_KEEP_TEST_IDS=1. The release build
+  // (`npm run build`) never sets it and ends with the anti-copy gate's --built
+  // scan, which fails any build that still carries a test id.
   compiler:
-    process.env.NODE_ENV === 'production'
+    process.env.NODE_ENV === 'production' && process.env.MINGLA_KEEP_TEST_IDS !== '1'
       ? { reactRemoveProperties: { properties: ['^data-testid$'] } }
       : {},
   reactStrictMode: true,

@@ -28,7 +28,12 @@ test('next.config: no x-powered-by, no test ids, issue refs stripped from emitte
   assert.match(config, /poweredByHeader: false,/)
   assert.match(config, /reactRemoveProperties: \{ properties: \['\^data-testid\$'\] \}/)
   // Production builds only: `next dev` keeps test ids for the #2331 marketing privacy specs.
-  assert.match(config, /process\.env\.NODE_ENV === 'production'\s*\?\s*\{ reactRemoveProperties:/)
+  // #4339: so does the one Playwright test build that sets MINGLA_KEEP_TEST_IDS=1
+  // (those specs run against a real `next build`); the release build never sets it.
+  assert.match(config, /process\.env\.NODE_ENV === 'production' && process\.env\.MINGLA_KEEP_TEST_IDS !== '1'\s*\?\s*\{ reactRemoveProperties:/)
+  const pkg = JSON.parse(fs.readFileSync(path.join(MARKETING, 'package.json'), 'utf8'))
+  assert.doesNotMatch(pkg.scripts.build, /MINGLA_KEEP_TEST_IDS/, 'the release build strips test ids')
+  assert.match(fs.readFileSync(path.join(REPO, 'mingla-business/playwright.issue2771.config.ts'), 'utf8'), /MINGLA_KEEP_TEST_IDS=1 npm exec -- next build/)
   assert.match(config, /webpackConfig\.plugins = \[\.\.\.\(webpackConfig\.plugins \?\? \[\]\), new StripIssueRefsPlugin\(\)\]/)
   assert.match(config, /stage: Compilation\.PROCESS_ASSETS_STAGE_SUMMARIZE/, 'runs after minification')
   const literal = /const ISSUE_REF_IN_STRING = (\/.+\/g)\n/.exec(config)?.[1]
