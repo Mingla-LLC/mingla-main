@@ -27,6 +27,10 @@
 // footnote names that zone. Selecting one opens its panel (name, when in the
 // viewer's zone, the booker's own time, what they run or make, city, social,
 // Join video call and Open lead). On a phone a call is one dot like an event.
+// #4339 calendar sync: a moved call sits at its new time with a "Moved" badge
+// (the panel names the booked time); a cancelled or declined call stays,
+// struck through, with a "Cancelled" / "Declined" badge and a hollow phone
+// dot. The panel names the status and when it changed.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, ClipboardList, Plus, Search, X } from "lucide-react";
 import { PageHeader } from "../components/ui/PageHeader";
@@ -139,31 +143,41 @@ function dayEntries(key, data, items, show, calls = [], zone = undefined) {
   return out;
 }
 
-/** A call's chip on the month: time first, then its badge, then the name. */
+/** #4339 calendar sync: "Moved" (amber) or "Cancelled" / "Declined" (red) beside a call. */
+function CallStatusBadge({ status, label }) {
+  if (!label) return null;
+  const tone = status === "moved" ? "bg-[var(--color-warning-50)] text-[var(--color-warning-700)]" : "bg-[var(--color-error-50)] text-[var(--color-error-700)]";
+  return <span className={`whitespace-nowrap rounded-full px-1.5 text-[10.5px] font-semibold no-underline ${tone}`} data-call-status={status}>{label}</span>;
+}
+
+/** A call's chip on the month: time first, then its badge, then the name. A cancelled or declined call is struck through. */
 function CallChip({ e, past, current, onOpen }) {
+  const words = [e.time, e.badge, e.statusLabel, e.title].filter(Boolean);
   return (
     <button
       type="button"
       data-calendar-call={e.callId}
       data-call-audience={e.audience}
+      data-call-state={e.status}
       aria-current={current ? "true" : undefined}
       onClick={() => onOpen(e.callId)}
-      aria-label={`${e.time}, ${e.badge}, ${e.title}`}
-      title={`${e.time} · ${e.badge} · ${e.title}`}
-      className={`block min-h-6 w-full min-w-0 rounded-md px-1 py-0.5 text-left text-[11.5px] leading-tight text-[var(--color-text-primary)] hover:bg-[var(--gray-100)] aria-[current=true]:bg-[var(--color-brand-50)] aria-[current=true]:ring-2 aria-[current=true]:ring-[var(--color-brand-700)] ${past ? "opacity-60" : ""} ${FOCUS}`}
+      aria-label={words.join(", ")}
+      title={words.join(" · ")}
+      className={`block min-h-6 w-full min-w-0 rounded-md px-1 py-0.5 text-left text-[11.5px] leading-tight text-[var(--color-text-primary)] hover:bg-[var(--gray-100)] aria-[current=true]:bg-[var(--color-brand-50)] aria-[current=true]:ring-2 aria-[current=true]:ring-[var(--color-brand-700)] ${past || e.off ? "opacity-60" : ""} ${FOCUS}`}
     >
       <span className="flex min-w-0 flex-wrap items-center gap-1">
-        <b className="whitespace-nowrap tabular-nums" data-call-time="">{e.time}</b>
+        <b className={`whitespace-nowrap tabular-nums ${e.off ? "line-through" : ""}`} data-call-time="">{e.time}</b>
         <span className="whitespace-nowrap rounded-full bg-[var(--color-brand-50)] px-1.5 text-[10.5px] font-semibold text-[var(--color-brand-700)]" data-call-badge="">{e.badge}</span>
+        <CallStatusBadge status={e.status} label={e.statusLabel} />
       </span>
-      <span className="block font-semibold"><ChipWords text={e.title} /></span>
+      <span className={`block font-semibold ${e.off ? "line-through" : ""}`} data-call-title=""><ChipWords text={e.title} /></span>
     </button>
   );
 }
 
-/** The phone dot for a call: brand coloured, beside the event dots. */
-function CallDot({ size = 10 }) {
-  return <i aria-hidden="true" data-call-dot="" style={{ width: size, height: size }} className="inline-block shrink-0 rounded-[3px] bg-[var(--color-brand-600)] not-italic" />;
+/** The phone dot for a call: brand coloured, beside the event dots; a cancelled or declined call's dot is hollow. */
+function CallDot({ size = 10, off = false }) {
+  return <i aria-hidden="true" data-call-dot="" style={{ width: size, height: size }} className={`inline-block shrink-0 rounded-[3px] not-italic ${off ? "border-2 border-[var(--color-brand-600)] bg-transparent" : "bg-[var(--color-brand-600)]"}`} />;
 }
 
 function MonthGrid({ month, data, items, show, today, open, selectEvent, currentEvent, onDay, openDay, reschedule, coarse, calls, zone, openCall, currentCall }) {
@@ -214,11 +228,11 @@ function MonthGrid({ month, data, items, show, today, open, selectEvent, current
                   type="button"
                   data-calendar-day-dense={key}
                   onClick={() => onDay(key)}
-                  aria-label={`${dayWords}: ${events.map((e) => (e.type === "call" ? `${e.time}, ${e.badge}, ${e.title}` : `${e.title}, ${stateName(e.state)}`)).join("; ")}`}
+                  aria-label={`${dayWords}: ${events.map((e) => (e.type === "call" ? [e.time, e.badge, e.statusLabel, e.title].filter(Boolean).join(", ") : `${e.title}, ${stateName(e.state)}`)).join("; ")}`}
                   title={events.map((e) => e.title).join(", ")}
                   className={`-mx-1 flex min-h-11 w-[calc(100%+0.5rem)] flex-wrap content-start items-start gap-1 rounded-md px-1.5 py-1 hover:bg-[var(--gray-50)] @min-[640px]:hidden ${past ? "opacity-60" : ""} ${FOCUS}`}
                 >
-                  {events.slice(0, 6).map((e) => (e.type === "call" ? <CallDot key={e.id} /> : <StateDot key={e.id} k={e.state?.k} size={10} />))}
+                  {events.slice(0, 6).map((e) => (e.type === "call" ? <CallDot key={e.id} off={e.off} /> : <StateDot key={e.id} k={e.state?.k} size={10} />))}
                 </button>
               )}
               {/* Wide: dot and title, two lines, whole words; at most two, then "+N more". */}
@@ -271,6 +285,7 @@ function Legend({ undated, onUndated, show, zone }) {
       {STATE_LEGEND.map((k) => <span key={k} className="inline-flex items-center gap-1.5 whitespace-nowrap"><StateDot k={k} />{PLAIN_STATES[k]}</span>)}
       {show !== "events" && show !== "calls" && <Button type="button" variant="secondary" size="sm" className="ml-auto min-h-11" onClick={onUndated}>{undated} {undated === 1 ? "post" : "posts"} with no date</Button>}
       <span className="inline-flex items-center gap-1.5 whitespace-nowrap"><CallDot size={8} />Booked call</span>
+      <span className="inline-flex items-center gap-1.5 whitespace-nowrap"><CallDot size={8} off />Cancelled or declined</span>
       <p className="w-full text-[11.5px] text-[var(--color-text-tertiary)]" data-calendar-zone-note="">{calendarZoneNote(zone)}</p>
     </div>
   );
@@ -290,9 +305,10 @@ function DayPanel({ day, entries, onClose, onCall }) {
             <li key={e.id}>
               <button type="button" data-day-call={e.callId} onClick={() => onCall(e.callId)} className={`flex min-h-11 w-full min-w-0 flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--gray-200)] px-3 py-2 text-left hover:bg-[var(--gray-50)] ${FOCUS}`}>
                 <span className="min-w-0 flex-1">
-                  <span className={`block text-[13.5px] font-semibold text-[var(--color-text-primary)] ${WORDS}`}>{e.time} · {e.title}</span>
+                  <span className={`block text-[13.5px] font-semibold text-[var(--color-text-primary)] ${e.off ? "line-through" : ""} ${WORDS}`}>{e.time} · {e.title}</span>
                   <span className={`block text-[12px] text-[var(--color-text-tertiary)] ${WORDS}`}>{e.badge}</span>
                 </span>
+                <CallStatusBadge status={e.status} label={e.statusLabel} />
               </button>
             </li>
           ) : (
@@ -333,11 +349,19 @@ function CallPanel({ call, zone, loading, onClose }) {
       ) : (
         <div data-call-panel={v.id} className="flex min-w-0 flex-col gap-4 text-[13.5px]">
           <div>
-            <p className="text-[17px] font-semibold text-[var(--color-text-primary)]">{v.name}</p>
-            <p className="text-[var(--color-text-secondary)]" data-call-when="">{v.when}</p>
+            <p className={`text-[17px] font-semibold text-[var(--color-text-primary)] ${v.off ? "line-through" : ""}`}>{v.name}</p>
+            <p className={`text-[var(--color-text-secondary)] ${v.off ? "line-through" : ""}`} data-call-when="">{v.when}</p>
             {v.isTest && <p className="mt-1 text-[12px] text-[var(--color-text-tertiary)]">Staff or test booking</p>}
           </div>
           <dl className="flex min-w-0 flex-col gap-2">
+            {row("Status", (
+              <span className="inline-flex min-w-0 flex-wrap items-center gap-2" data-call-panel-status={v.status}>
+                {v.status === "booked" ? "Booked" : <CallStatusBadge status={v.status} label={v.statusLabel} />}
+                {v.status !== "booked" && <span className="text-[var(--color-text-secondary)]">{v.status === "moved" ? "Moved in Google Calendar" : v.status === "cancelled" ? "Cancelled in Google Calendar" : "They declined the invite"}</span>}
+              </span>
+            ))}
+            {row("Changed", v.statusChangedWhen ? <span data-call-changed="">{v.statusChangedWhen}</span> : null)}
+            {row("Booked for", v.originalWhen ? <span className="line-through" data-call-original="">{v.originalWhen}</span> : null)}
             {row("Their time", v.bookerWhen)}
             {row(v.badge === CALL_LABELS.host ? "What they run" : v.badge === CALL_LABELS.creator ? "What they make" : "First place", v.what ? v.what.replace(/^[^:]+: /, "") : null)}
             {row("Place or brand", v.venue)}

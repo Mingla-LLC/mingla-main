@@ -69,6 +69,11 @@ describe("#4339 BC-1: a booking row", () => {
       socialUrl: "https://instagram.com/bluenote",
       website: "https://bluenote.example",
       callAt: "2026-11-12T15:00:00Z",
+      // #4339 calendar sync: a row with no status reads as booked.
+      status: "booked",
+      statusLabel: "Booked",
+      statusChangedAt: null,
+      originalCallAt: null,
       cameFrom: "venue_grader",
     });
   });

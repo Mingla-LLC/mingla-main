@@ -80,7 +80,16 @@ function BookingDetails({ booking }) {
       ) : (
         <span className="text-[var(--color-text-tertiary)]">No website</span>
       )}
-      {booking.callAt && <span data-booking-call="">Call: {formatDateTime(booking.callAt)}</span>}
+      {booking.callAt && <span data-booking-call="" className={booking.status === "cancelled" || booking.status === "declined" ? "line-through" : undefined}>Call: {formatDateTime(booking.callAt)}</span>}
+      {/* #4339 calendar sync: the call's status from Google Calendar. */}
+      <span
+        data-booking-status={booking.status}
+        className={`rounded-full px-1.5 font-semibold ${booking.status === "booked" ? "bg-[var(--gray-100)] text-[var(--color-text-secondary)]" : booking.status === "moved" ? "bg-[var(--color-warning-50)] text-[var(--color-warning-700)]" : "bg-[var(--color-error-50)] text-[var(--color-error-700)]"}`}
+      >
+        {booking.statusLabel}
+        {booking.status !== "booked" && booking.statusChangedAt ? ` ${formatDateTime(booking.statusChangedAt)}` : ""}
+      </span>
+      {booking.originalCallAt && <span data-booking-original="">Was: {formatDateTime(booking.originalCallAt)}</span>}
       {booking.cameFrom && <span>From: {booking.cameFrom}</span>}
     </div>
   );

@@ -8,10 +8,22 @@
 // its local time in the VIEWER's time zone (their device's zone), and the
 // footnote names that zone. Events keep their own local day and time.
 //
-// There is no cancel or move path for a booking today, so every call's
-// status is "booked".
+// #4339 calendar sync (Seth approved, 9 Nov): growth-tools-calendar-sync reads
+// the booking calendar's changes back every 5 minutes. A moved call is drawn at
+// its NEW time with a "Moved" note (the panel names the booked time); a
+// cancelled or declined call stays on the Calendar, struck through, with a
+// "Cancelled" / "Declined" badge, so the team sees what changed. The panel
+// names the status and when it changed.
 
-import { BOOKING_ICP_LABELS, SOCIAL_LABELS } from "./inboundLeads.js";
+import { BOOKING_ICP_LABELS, CALL_STATUS_LABELS, SOCIAL_LABELS, callStatus } from "./inboundLeads.js";
+
+export { CALL_STATUS_LABELS, callStatus };
+
+/** A cancelled or declined call: still shown, struck through. */
+export function callIsOff(status) {
+  const s = callStatus(status);
+  return s === "cancelled" || s === "declined";
+}
 
 export const CALL_LABELS = Object.freeze({ host: "Host call", creator: "Creator call", local: "Local call" });
 export const MAKES_LABELS = Object.freeze({ video: "Video", photo: "Photos", both: "Video and photos" });
@@ -92,6 +104,7 @@ export function callEntriesOn(dayKey, calls, timeZone) {
   const out = [];
   for (const call of Array.isArray(calls) ? calls : []) {
     if (!call || !CALL_LABELS[call.audience] || callDayKey(call.call_at, timeZone) !== dayKey) continue;
+    const status = callStatus(call.status);
     out.push({
       type: "call",
       id: `call-${call.id}`,
@@ -101,6 +114,10 @@ export function callEntriesOn(dayKey, calls, timeZone) {
       badge: CALL_LABELS[call.audience],
       audience: call.audience,
       at: call.call_at,
+      status,
+      // "Moved", "Cancelled" or "Declined"; null for a call still as booked.
+      statusLabel: status === "booked" ? null : CALL_STATUS_LABELS[status],
+      off: callIsOff(status),
     });
   }
   return out.sort((a, b) => String(a.at).localeCompare(String(b.at)));
@@ -131,7 +148,13 @@ export function callView(call, timeZone) {
     meetUrl: httpsLink(call.meet_url),
     eventUrl: httpsLink(call.event_url),
     leadHash: `#/inbound?lead=${encodeURIComponent(call.lead_id || call.id)}`,
-    status: call.status || "booked",
+    status: callStatus(call.status),
+    statusLabel: CALL_STATUS_LABELS[callStatus(call.status)],
+    off: callIsOff(call.status),
+    // When Google Calendar said it changed, in the viewer's zone.
+    statusChangedWhen: callStatus(call.status) !== "booked" ? callWhen(call.status_changed_at, timeZone) || null : null,
+    // A moved call's booked time, in the viewer's zone.
+    originalWhen: callStatus(call.status) === "moved" ? callWhen(call.original_call_at, timeZone) || null : null,
     isTest: !!call.is_test,
   };
 }

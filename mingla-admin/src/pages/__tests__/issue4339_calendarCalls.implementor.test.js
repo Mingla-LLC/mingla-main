@@ -124,8 +124,8 @@ describe("#4339 CC-3: the Calendar page", () => {
     assert.match(page, /\{calendarZoneNote\(zone\)\}/);
   });
   it("a call chip opens its panel; a phone shows it as a dot", () => {
-    assert.match(page, /<b className="whitespace-nowrap tabular-nums" data-call-time="">\{e\.time\}<\/b>\s*<span[^>]*data-call-badge="">\{e\.badge\}<\/span>[\s\S]*?<ChipWords text=\{e\.title\} \/>/, "time, badge, name");
-    assert.match(page, /e\.type === "call" \? <CallDot key=\{e\.id\} \/> : <StateDot/);
+    assert.match(page, /<b className=\{`whitespace-nowrap tabular-nums [^`]*`\} data-call-time="">\{e\.time\}<\/b>\s*<span[^>]*data-call-badge="">\{e\.badge\}<\/span>[\s\S]*?<ChipWords text=\{e\.title\} \/>/, "time, badge, name");
+    assert.match(page, /e\.type === "call" \? <CallDot key=\{e\.id\} off=\{e\.off\} \/> : <StateDot/);
     assert.match(page, /const openCall = \(id\) => openFirst\("call", id\);/);
     assert.match(page, /route\.call \? \(\s*<CallPanel call=\{openCallRow\} zone=\{zone\}/);
     assert.match(page, />Join video call<\/a>/);

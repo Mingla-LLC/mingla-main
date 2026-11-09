@@ -94,6 +94,20 @@ function safeLink(url, allowHttp) {
   return (allowHttp ? /^https?:\/\/[^\s]+$/i : /^https:\/\/[^\s]+$/i).test(value) ? value : null;
 }
 
+// #4339 calendar sync: what Google Calendar says happened to a booked call
+// (growth-tools-calendar-sync). Unknown or missing reads as booked.
+export const CALL_STATUS_LABELS = Object.freeze({ booked: "Booked", moved: "Moved", cancelled: "Cancelled", declined: "Declined" });
+
+/** A call's status: booked, moved, cancelled or declined. */
+export function callStatus(value) {
+  return typeof value === "string" && Object.hasOwn(CALL_STATUS_LABELS, value) ? value : "booked";
+}
+
+/** An ISO instant, or null. */
+function instant(value) {
+  return typeof value === "string" && !Number.isNaN(new Date(value).getTime()) ? value : null;
+}
+
 /** A booking row's details, or null for the other kinds. */
 export function bookingView(booking) {
   if (!booking || typeof booking !== "object") return null;
@@ -112,7 +126,11 @@ export function bookingView(booking) {
     socialHandle: typeof booking.social_handle === "string" && booking.social_handle.trim() ? booking.social_handle.trim() : null,
     socialUrl: safeLink(booking.social_url, false),
     website: safeLink(booking.website, true),
-    callAt: typeof booking.call_at === "string" && !Number.isNaN(new Date(booking.call_at).getTime()) ? booking.call_at : null,
+    callAt: instant(booking.call_at),
+    status: callStatus(booking.status),
+    statusLabel: CALL_STATUS_LABELS[callStatus(booking.status)],
+    statusChangedAt: instant(booking.status_changed_at),
+    originalCallAt: callStatus(booking.status) === "moved" ? instant(booking.original_call_at) : null,
     cameFrom: typeof booking.source === "string" && booking.source.trim() ? booking.source.trim() : null,
   };
 }
