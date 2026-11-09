@@ -228,7 +228,6 @@ export const CA_AREACODE_TZ: Readonly<Record<string, readonly string[]>> =
       "354",
       "367",
       "418",
-      "428",
       "438",
       "450",
       "468",
@@ -239,7 +238,8 @@ export const CA_AREACODE_TZ: Readonly<Record<string, readonly string[]>> =
       "873",
     ]);
     add(["America/Toronto", "America/Winnipeg"], ["807"]);
-    add(["America/Halifax"], ["506", "782", "902"]);
+    // #4273 tester: 428 is the New Brunswick overlay of 506 (Atlantic time).
+    add(["America/Halifax"], ["428", "506", "782", "902"]);
     add(["America/St_Johns"], ["709", "879"]);
     add([
       "America/Whitehorse",

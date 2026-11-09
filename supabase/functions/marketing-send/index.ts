@@ -2384,7 +2384,14 @@ async function sendSms(
         : null;
       if (unpricedReason !== null) {
         unpricedSkipped += 1;
-        if (!sealedSend) {
+        // #4273 tester: a sealed recipient who already has a row (deferred by
+        // quiet hours on an earlier pass) must be closed out, or the deferred
+        // row keeps the campaign re-scheduled forever once their country can
+        // no longer be texted. A fresh sealed recipient still writes nothing.
+        // An unreadable price table is transient: leave the row for a retry.
+        const closeOutSealed = existing !== null && existing !== undefined &&
+          unpricedReason === SMS_UNPRICED_COUNTRY;
+        if (!sealedSend || closeOutSealed) {
           const { error: skipErr } = await supabase
             .from("marketing_messages")
             .upsert(

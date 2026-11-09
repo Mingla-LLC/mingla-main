@@ -197,7 +197,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4318: register the /links migration (20280508004318) and its implementor and tester PostgreSQL proofs; it joins the pre-#1931 replay skip list by exact filename.
 // #4273 unpriced country: register the sms-unpriced-country migration and its PostgreSQL proofs (implementor + tester); re-sealed after merging origin/main.
 // #4273 all countries: register the all-countries / automatic-prices PostgreSQL proof.
-export const BOOTSTRAP_SHA256 = "4057154c50da577fbae9dc73029e7c327cbde48dc0977ff077e7ec53087e8b17";
+// #4273 all countries (tester): register the tester adversarial PostgreSQL proof.
+export const BOOTSTRAP_SHA256 = "4080a46ea0156679b3806fa30cd728629858116dbf916912ff1fc2ac1cb769ae";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
