@@ -59,28 +59,29 @@ Deno.test("#3720 Data room is independently capability-gated", () => {
   });
 });
 
-Deno.test("#3720 mention UI uses one RPC and email is explicitly opt-in", async () => {
+Deno.test("#3720 mention UI uses one RPC; #4255 mention email is on unless switched off", async () => {
   const [drawer, service, page, migration] = await Promise.all([
     read("components/contentCalendar/ContentDrawer.jsx"),
     read("services/contentCalendarService.js"),
     read("pages/NotificationsPage.jsx"),
     Deno.readTextFile(
       new URL(
-        "../../../supabase/migrations/20271102003720_issue_3720_team_collaboration_access.sql",
+        "../../../supabase/migrations/20280524004255_issue_4255_work_card_email.sql",
         import.meta.url,
       ),
     ),
   ]);
   assertMatch(drawer, /Mention teammates/);
   assertMatch(service, /content_calendar_comment_add_with_mentions/);
-  // #4130: the old line contradicted itself ("every alert starts on" and
-  // "email is off until you opt in"); mention email is still opt-in.
-  assertMatch(page, /Mentions email you only after you switch them on here\./);
-  assertMatch(
-    migration,
-    /p_category_key = 'admin[.]team_mention' AND p_channel = 'email'/,
+  // #4255 (Seth, 9 Nov): work card email is on by default for active staff.
+  assertMatch(page, /Every alert emails you unless you switch it off here\./);
+  assertNotMatch(page, /Mentions email you only after you switch them on/);
+  const canSend = migration.slice(
+    migration.indexOf("FUNCTION public.can_send("),
+    migration.indexOf("REVOKE ALL ON FUNCTION public.can_send("),
   );
-  assertMatch(migration, /v_pref_enabled IS DISTINCT FROM true/);
+  assertNotMatch(canSend, /v_pref_enabled IS DISTINCT FROM true/);
+  assertMatch(canSend, /v_pref_enabled IS NOT NULL AND v_pref_enabled = false/);
 });
 
 Deno.test("#3720 Data room browser code receives only brokered manifest and document bytes", async () => {
