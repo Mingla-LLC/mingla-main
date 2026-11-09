@@ -17,8 +17,10 @@ import { resolveAlertRecipientValue } from "../_shared/secretBundle.ts";
 import { sendOpsAlertEmail } from "../_shared/stripeOpsAlertEmail.ts";
 import {
   parseTwilioMessagingPrice,
+  SMS_PRICE_ANCHOR_WINDOW,
   SMS_PRICE_TABLE,
   type SmsCountryPriceRow,
+  smsPriceAnchor,
   smsPriceRejection,
   twilioPricedCountries,
 } from "../_shared/smsPriceTable.ts";
@@ -58,6 +60,29 @@ export async function refreshSmsPrices(
   >(
     ((existing ?? []) as SmsCountryPriceRow[]).map((row) => [row.country, row]),
   );
+  // #4273 tester P3 — the long anchor: the last accepted prices per country.
+  const { data: historyRows, error: historyError } = await deps.db
+    .from("sms_country_price_history")
+    .select(
+      "country, currency, minor_numerator, minor_denominator, accepted_at",
+    )
+    .order("accepted_at", { ascending: false })
+    .limit(SMS_PRICE_ANCHOR_WINDOW * 60);
+  if (historyError) throw new Error("sms_price_history_unreadable");
+  const history = new Map<
+    string,
+    Array<
+      Pick<
+        SmsCountryPriceRow,
+        "currency" | "minor_numerator" | "minor_denominator"
+      >
+    >
+  >();
+  for (const row of (historyRows ?? []) as SmsCountryPriceRow[]) {
+    const list = history.get(row.country) ?? [];
+    list.push(row);
+    history.set(row.country, list);
+  }
   const auth = `Basic ${btoa(`${deps.accountSid}:${deps.authToken}`)}`;
   for (const country of twilioPricedCountries()) {
     let parsed;
@@ -80,25 +105,44 @@ export async function refreshSmsPrices(
       });
       continue;
     }
-    const rejection = smsPriceRejection(parsed, last.get(country) ?? null);
+    const anchor = smsPriceAnchor(history.get(country) ?? []);
+    const rejection = smsPriceRejection(parsed, last.get(country) ?? null) ??
+      (smsPriceRejection(parsed, anchor) === null
+        ? null
+        : "drifted_over_50_percent_from_7_price_median");
     if (rejection !== null) {
       outcome.refused.push({ country, reason: rejection });
       continue;
     }
-    const { error: writeError } = await deps.db.from("sms_country_prices").upsert({
-      country,
-      provider: "twilio",
-      currency: parsed.currency,
-      minor_numerator: parsed.numerator,
-      minor_denominator: parsed.denominator,
-      source: "twilio_pricing_api",
-      source_reference:
-        `${PRICING_URL}/${country} current_price ${parsed.price} (highest outbound)`,
-      fetched_at: deps.now().toISOString(),
-    }, { onConflict: "country" });
+    const { error: writeError } = await deps.db.from("sms_country_prices")
+      .upsert({
+        country,
+        provider: "twilio",
+        currency: parsed.currency,
+        minor_numerator: parsed.numerator,
+        minor_denominator: parsed.denominator,
+        source: "twilio_pricing_api",
+        source_reference:
+          `${PRICING_URL}/${country} current_price ${parsed.price} (highest outbound)`,
+        fetched_at: deps.now().toISOString(),
+      }, { onConflict: "country" });
     if (writeError) {
       outcome.failed.push({ country, reason: "write_failed" });
       continue;
+    }
+    const { error: historyWriteError } = await deps.db
+      .from("sms_country_price_history")
+      .insert({
+        country,
+        currency: parsed.currency,
+        minor_numerator: parsed.numerator,
+        minor_denominator: parsed.denominator,
+        source: "twilio_pricing_api",
+        accepted_at: deps.now().toISOString(),
+      });
+    if (historyWriteError) {
+      // The price is live; only the anchor missed a point. Say so.
+      outcome.failed.push({ country, reason: "history_write_failed" });
     }
     outcome.updated.push(country);
   }

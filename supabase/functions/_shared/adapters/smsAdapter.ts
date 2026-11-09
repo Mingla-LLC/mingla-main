@@ -69,19 +69,26 @@
 // "generic") and revert the invariant + strict-grep gate with it. The DND route
 // remains the correct design; this interim exists only because it is unavailable.
 // ===========================================================================
-import { resolveSmsCountryLive } from "../secretBundle.ts";
+import {
+  resolveDeliveryFlagValue,
+  resolveSmsCountryLive,
+} from "../secretBundle.ts";
 import { resolveRuntimeConfigValue } from "../runtimeConfig.ts";
 // #2218 — the ONE definition of the Nigerian `generic` operator embargo. Both
 // rails read it from here; see the essay at the top of that file.
 import {
   isNgGenericEmbargoed,
   isReconcilableTermiiMessageId,
-  ngEmbargoNow,
   nextNgGenericWindowOpen,
+  ngEmbargoNow,
 } from "../ngSmsEmbargo.ts";
 // #1529 — the single source of truth for E.164 → ISO-2. The DESTINATION NUMBER
 // is the routing authority (operator decision, Seth 2026-08-03).
-import { countryFromE164, MAPPED_COUNTRIES } from "../e164Country.ts";
+import {
+  countryFromE164,
+  MAPPED_COUNTRIES,
+  smsMarketingCountry,
+} from "../e164Country.ts";
 
 export interface AdapterResult {
   // #2218 — `deferred` joins the vocabulary: HELD, not sent, not skipped, not
@@ -334,15 +341,20 @@ export function composeSmsBody(
 // ===========================================================================
 export function resolveMarketKillSwitch(
   countryCode: string | null | undefined,
+  messageType: "transactional" | "marketing" = "transactional",
 ): string | null {
   // #1529 — no country means NO MARKET, not the US market.
   if (countryCode === null || countryCode === undefined) return null;
-  // #4273 — ONE SWITCH PER COUNTRY (Seth, 2026-11-08). The US switch no longer
-  // carries every non-NG country: each mapped country has its own
-  // `sms_live_enabled.<cc>`, OFF until set. An unmapped country has none.
   const cc = countryCode.toUpperCase();
-  if (!MAPPED_COUNTRIES.includes(cc)) return null;
-  return `SMS_LIVE_ENABLED_${cc}`;
+  // #4273 — ONE SWITCH PER COUNTRY for MARKETING only (Seth, 2026-11-08):
+  // each payout country has its own `sms_live_enabled.<cc>`, OFF until set; a
+  // country outside the 35 has none. Transactional texts keep main's two
+  // switches below, unchanged.
+  if (messageType === "marketing") {
+    return MAPPED_COUNTRIES.includes(cc) ? `SMS_LIVE_ENABLED_${cc}` : null;
+  }
+  if (cc === "NG") return "SMS_LIVE_ENABLED_NG";
+  return "SMS_LIVE_ENABLED_US";
 }
 
 // ===========================================================================
@@ -387,9 +399,12 @@ export function smsProviderForDestination(
 }
 
 function envTrue(name: string): boolean {
-  // #4273 — the switch name carries its country; the per-country resolver
-  // keeps the legacy env fallback for US and NG only.
-  return resolveSmsCountryLive(name.replace(/^SMS_LIVE_ENABLED_/, ""));
+  const field = name === "SMS_LIVE_ENABLED_NG"
+    ? "sms_live_enabled.ng"
+    : "sms_live_enabled.us";
+  const raw = resolveDeliveryFlagValue(field, name);
+  if (typeof raw === "boolean") return raw;
+  return raw === "true" || raw === "1";
 }
 
 // #1537 — every sender NAMES ITSELF on every return path. `provider` is required
@@ -577,7 +592,12 @@ export const smsAdapter = {
     // #1529 — resolve the market from the DESTINATION NUMBER. `to` has already
     // passed isValidE164 immediately above, so this derives from a value the
     // adapter has itself validated rather than from a caller-supplied label.
-    const derived = countryFromE164(to);
+    // #4273 — a MARKETING text resolves on the marketing table (35 payout
+    // countries, Canada and the other NANP members split out); a
+    // transactional text keeps main's resolution exactly.
+    const derived = input.messageType === "marketing"
+      ? smsMarketingCountry(to)
+      : countryFromE164(to);
     if (derived === null) {
       // Unreachable for any mapped calling code, because isValidE164 has
       // already passed — this fires only for a well-formed E.164 whose calling
@@ -621,8 +641,12 @@ export const smsAdapter = {
 
     // Per-market kill-switch — return skipped WITHOUT any HTTP call when off.
     // Same single normalization feeds BOTH this and the provider choice below.
-    const killSwitch = resolveMarketKillSwitch(cc);
-    if (killSwitch === null || !envTrue(killSwitch)) {
+    const killSwitch = resolveMarketKillSwitch(cc, input.messageType);
+    const switchedOn = killSwitch !== null &&
+      (input.messageType === "marketing"
+        ? resolveSmsCountryLive(cc)
+        : envTrue(killSwitch));
+    if (!switchedOn) {
       return {
         ok: false,
         status: "skipped",

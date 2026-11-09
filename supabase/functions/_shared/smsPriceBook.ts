@@ -1,4 +1,4 @@
-import { countryFromE164, MAPPED_COUNTRIES } from "./e164Country.ts";
+import { MAPPED_COUNTRIES, smsMarketingCountry } from "./e164Country.ts";
 import { resolveOfferingInviteSmsPriceBook } from "./runtimeConfig.ts";
 import { smsProviderForCountry } from "./adapters/smsAdapter.ts";
 import { resolveSmsCountryLive } from "./secretBundle.ts";
@@ -97,7 +97,7 @@ export function smsRateForPhone<
   isLive: (country: string) => boolean = () => true,
 ): R | null {
   if (normalizedPhone === null) return null;
-  const country = countryFromE164(normalizedPhone);
+  const country = smsMarketingCountry(normalizedPhone);
   if (country === null || !isLive(country)) return null;
   // #4273 — the ONE provider rule, shared with the adapter's sender choice.
   const provider = smsProviderForCountry(country);

@@ -552,5 +552,15 @@ Deno.test("#4273 U-11 (tester P3) no readable prices: nothing is texted, and a l
   assertEquals(failedRows(legacy.writes), ["sms_rate_book_unavailable", "sms_rate_book_unavailable"]);
   const sealed = await runSend({ smsRoutes: null }, true);
   assertEquals(sealed.sentTo, []);
-  assertEquals(failedRows(sealed.writes), [], "a sealed Blast adds no rows: its unsent people already read as couldn't be reached");
+  assertEquals(failedRows(sealed.writes), [], "a sealed Blast adds no rows");
+  // #4273 tester retest: a sealed Blast is re-parked for a later pass, not
+  // finalized as reaching nobody (issue_4273_sms_optout_link L-2).
+  assertEquals(
+    sealed.writes.filter((w) => w.table === "marketing_campaigns").at(-1)
+      ?.payload as unknown as { status: string } | undefined
+      ? (sealed.writes.filter((w) => w.table === "marketing_campaigns").at(-1)
+        ?.payload as { status: string }).status
+      : null,
+    "scheduled",
+  );
 });

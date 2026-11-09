@@ -406,7 +406,8 @@ export function phase3dContractDigest(manifest) {
 // #4273 unpriced country: register the sms-unpriced-country migration and its PostgreSQL proofs (implementor + tester); re-sealed after merging origin/main.
 // #4273 all countries: register the all-countries / automatic-prices PostgreSQL proof.
 // #4273 all countries (tester): register the tester adversarial PostgreSQL proof.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "26cf629202457553360ba79ea8ae6a767c115f9d74518fe3f661303ec9aee1b6";
+// #4273: re-sealed for the SMS opt-out link suite.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "e2e0846a20db8dc553c7594cf74b4671d4f1ec8095cd68fb953d05db1e36d6d3";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

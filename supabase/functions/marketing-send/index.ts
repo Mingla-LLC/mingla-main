@@ -73,7 +73,7 @@ import {
 } from "../_shared/adapters/smsAdapter.ts";
 // #1529 — the single source of truth for E.164 → ISO-2. Replaces the
 // module-private copy that used to sit next to the SMS dispatch below.
-import { countryFromE164 } from "../_shared/e164Country.ts";
+import { smsMarketingCountry } from "../_shared/e164Country.ts";
 import {
   isWithinSmsWindow,
   smsCountryProfile,
@@ -1328,7 +1328,16 @@ interface DispatchOutcome {
   preview_skipped: number;
   /** #2509 — true when the pass stopped on its wall-clock budget, not on completion. */
   budget_paused?: boolean;
+  /**
+   * #4273 — the pass could not run at all (a sealed SMS send whose price table
+   * could not be read) and touched no recipient: re-park the campaign for a
+   * later pass instead of finalizing it as reaching nobody.
+   */
+  retry_later?: boolean;
 }
+
+/** #4273 — how long a sealed SMS send waits before retrying an unreadable price table. */
+export const SMS_PRICE_RETRY_MS = 10 * 60 * 1000;
 
 type CampaignDispatcher = (
   // deno-lint-ignore no-explicit-any
@@ -1367,6 +1376,29 @@ export async function processClaimedCampaigns(
   for (const campaign of campaigns) {
     try {
       const outcome = await dispatcher(supabase, campaign, options);
+      if (outcome.retry_later === true) {
+        // #4273 — nothing was attempted: back to scheduled, no finalize.
+        const { error: retryErr } = await supabase
+          .from("marketing_campaigns")
+          .update({
+            status: "scheduled",
+            scheduled_for: new Date(Date.now() + SMS_PRICE_RETRY_MS)
+              .toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", campaign.id);
+        if (retryErr) throw new Error(`retry_park:${retryErr.message}`);
+        results.push({
+          campaign_id: campaign.id,
+          status: "succeeded",
+          delivered: 0,
+          deferred: 0,
+          failed: 0,
+          preview_skipped: 0,
+        });
+        succeeded += 1;
+        continue;
+      }
       deliveredTotal += outcome.delivered;
       deferredTotal += outcome.deferred;
       recipientFailedTotal += outcome.failed;
@@ -2320,15 +2352,38 @@ async function sendSms(
   // Unpriced numbers on a legacy send are recorded too
   // ('sms_unpriced_country'), so the host sees them (tester P3). A sealed
   // Blast never reaches here with them once the seal migration is applied.
-  const smsRoutes = options.smsRoutes !== undefined
+  //
+  // #4273 tester P3: an unreadable price table is transient. It is read up to
+  // three times; if it still cannot be read on a SEALED send, the pass stops
+  // before any recipient and the campaign is re-parked for a later pass
+  // (retry_later), instead of skipping everyone and finalizing as failed.
+  let smsRoutes = options.smsRoutes !== undefined
     ? options.smsRoutes
     : await loadSmsRoutes(supabase);
+  for (
+    let attempt = 1;
+    smsRoutes === null && options.smsRoutes === undefined && attempt < 3;
+    attempt += 1
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
+    smsRoutes = await loadSmsRoutes(supabase);
+  }
   const sealedSend = await isSealedBookSend(supabase, campaign.id);
   if (smsRoutes === null) {
     console.error(JSON.stringify({
       event: "marketing_sms_rate_book_unreadable",
       campaign_id: campaign.id,
+      retry: sealedSend,
     }));
+    if (sealedSend) {
+      return {
+        delivered: 0,
+        deferred: 0,
+        failed: 0,
+        preview_skipped: 0,
+        retry_later: true,
+      };
+    }
   }
   // A supplied (test) route list is taken as switched on; production reads
   // each country's own switch.
@@ -2346,7 +2401,7 @@ async function sendSms(
         // suppressed-skip discipline: report deliverable, not total).
         continue;
       }
-      const countryCode = countryFromE164(phone);
+      const countryCode = smsMarketingCountry(phone);
       const inviteContext = offeringContext(
         contact as ResolvedContact,
         audience.query_definition,
@@ -2501,23 +2556,15 @@ async function sendSms(
         : replaceSingleMarker(rewritten, inertOfferingUrl(eventUrl));
       // #4273 — a number whose sender cannot take a "STOP" reply gets a
       // branded, fixed-length opt-out link instead (the quote measured the
-      // same length, so quote = send). It is a tracked short link whose
-      // destination is the signed SMS unsubscribe URL.
-      const optOut = smsCountryProfile(countryCode)?.replyable === false
-        ? {
-          trackingId: generateTrackingId(),
-          destination: `${getUnsubscribeOrigin()}/${await signSmsUnsubscribeToken(
-            {
-              campaign_id: campaign.id,
-              recipient_phone: phone.trim(),
-              brand_id: campaign.brand_id,
-            },
-          )}`,
-        }
+      // same length, so quote = send). It is a tracked short link; its
+      // destination (the signed opt-out URL) is built below once the message
+      // id is known, and names the message, never the number.
+      const optOutTrackingId = smsCountryProfile(countryCode)?.replyable === false
+        ? generateTrackingId()
         : null;
-      const optOutLink = optOut === null
+      const optOutLink = optOutTrackingId === null
         ? undefined
-        : `${resolveMarketingTrackingOrigin()}/${optOut.trackingId}`;
+        : `${resolveMarketingTrackingOrigin()}/${optOutTrackingId}`;
       const segments = computeSegments(
         composeSmsBody(segmentBody, true, optOutLink),
       );
@@ -2542,9 +2589,25 @@ async function sendSms(
       if (upQueuedErr) throw new Error(`message_upsert:${upQueuedErr.message}`);
       const messageId = (upserted as { id: string }).id;
 
-      const clickLinks = optOut === null ? links : [
+      // #4273 P1 — the opt-out destination carries {campaign, brand,
+      // message} only: campaign members can read marketing_clicks, so no
+      // contact may land in it. It is stored as link_kind 'opt_out', which the
+      // members' read and the engagement counts never see.
+      const clickLinks: Array<
+        { tracking_id: string; destination_url: string; link_kind?: "opt_out" }
+      > = optOutTrackingId === null ? links : [
         ...links,
-        { tracking_id: optOut.trackingId, destination_url: optOut.destination },
+        {
+          tracking_id: optOutTrackingId,
+          destination_url: `${getUnsubscribeOrigin()}/${await signSmsUnsubscribeToken(
+            {
+              campaign_id: campaign.id,
+              brand_id: campaign.brand_id,
+              message_id: messageId,
+            },
+          )}`,
+          link_kind: "opt_out",
+        },
       ];
       if (clickLinks.length > 0) {
         // Clicks are written only on the actual send pass (a deferred row wrote
@@ -2558,6 +2621,9 @@ async function sendSms(
               message_id: messageId,
               destination_url: link.destination_url,
               tracking_id: link.tracking_id,
+              ...(link.link_kind === undefined
+                ? {}
+                : { link_kind: link.link_kind }),
             })),
           );
         if (insClicksErr) {

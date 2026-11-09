@@ -1,9 +1,13 @@
 -- #4273 — SMS to every payout country, honestly.
 --   (1) a phone whose country has no SMS rate is skipped, not a failed quote;
---   (2) every payout country (34 Stripe + NG) maps from its calling code, in
---       the SQL twin of _shared/e164Country.ts (Canada split from +1);
+--   (2) every payout country (34 Stripe + NG) maps from its calling code for
+--       marketing, in a new SQL twin of smsMarketingCountry (Canada and the
+--       other NANP members split from +1); the transactional mapping is unchanged;
 --   (3) SMS prices are automatic: public.sms_country_prices, refreshed daily
---       from Twilio's Pricing API, NG fixed, seeded so US/NG price at once.
+--       from Twilio's Pricing API, NG fixed, seeded so US/NG price at once;
+--       public.sms_country_price_history anchors the refresh guard;
+--   (4) the SMS opt-out link's click row is link_kind 'opt_out', which campaign
+--       members cannot read and which never counts as a click.
 --
 -- (1) a phone whose country has no SMS rate is skipped, not a failed quote.
 --
@@ -70,13 +74,19 @@ COMMENT ON FUNCTION public.issue_4273_seal_unpriced_sms_target() IS
   '#4273: a queued SMS target sealed with 0 segments is one the quote could not price (no rate for the phone''s country); it is written as suppressed / sms_unpriced_country so the send never attempts it.';
 
 
--- ── (2) Every payout country maps from its calling code ─────────────────────
+-- ── (2) Every payout country maps from its calling code, for MARKETING ──────
 -- #4273 (Seth, 2026-11-08): the 35 payout countries (34 Stripe + NG), and only
 -- those: Ghana, South Africa, the Philippines and Kenya stay unmapped ("can't
--- text their country yet"). Canada splits from +1 by area code. This is the
--- SQL twin of supabase/functions/_shared/e164Country.ts; the parity fixtures
--- in __tests__/issue_1529_e164_parity.test.sql keep the two identical.
-CREATE OR REPLACE FUNCTION public.mingla_e164_country(p_contact text)
+-- text their country yet"). Canada splits from +1 by area code, and every other
+-- NANP member (Caribbean, Bermuda, the US territories Twilio prices on their
+-- own) resolves to its own country, which marketing does not text.
+-- This is a NEW function, the SQL twin of smsMarketingCountry in
+-- supabase/functions/_shared/e164Country.ts. public.mingla_e164_country (the
+-- transactional twin of countryFromE164) is NOT changed: verification, ticket
+-- and RSVP texts keep main's behaviour. Parity: the T-H fixture rows in
+-- __tests__/issue_4273_sms_all_countries.implementor.pg17.test.sql, which the
+-- Deno T-H reads and checks against the TypeScript resolver.
+CREATE OR REPLACE FUNCTION public.mingla_sms_marketing_country(p_contact text)
 RETURNS text
 LANGUAGE plpgsql
 IMMUTABLE
@@ -131,12 +141,26 @@ BEGIN
     IF pg_catalog.substr(v_e164, 3, 3) = ANY (ARRAY['204','226','236','249','250','257','263','289','306','343','354','365','367','368','382','403','416','418','428','431','437','438','450','468','474','506','514','519','548','579','581','584','587','604','613','639','647','672','683','705','709','742','753','778','780','782','807','819','825','867','873','879','902','905','942']) THEN
       RETURN 'CA';
     END IF;
-    RETURN 'US';
+    RETURN CASE pg_catalog.substr(v_e164, 3, 3)
+      WHEN '242' THEN 'BS' WHEN '246' THEN 'BB' WHEN '264' THEN 'AI'
+      WHEN '268' THEN 'AG' WHEN '284' THEN 'VG' WHEN '340' THEN 'VI'
+      WHEN '345' THEN 'KY' WHEN '441' THEN 'BM' WHEN '473' THEN 'GD'
+      WHEN '649' THEN 'TC' WHEN '658' THEN 'JM' WHEN '664' THEN 'MS'
+      WHEN '670' THEN 'MP' WHEN '671' THEN 'GU' WHEN '684' THEN 'AS'
+      WHEN '721' THEN 'SX' WHEN '758' THEN 'LC' WHEN '767' THEN 'DM'
+      WHEN '784' THEN 'VC' WHEN '787' THEN 'PR' WHEN '809' THEN 'DO'
+      WHEN '829' THEN 'DO' WHEN '849' THEN 'DO' WHEN '868' THEN 'TT'
+      WHEN '869' THEN 'KN' WHEN '876' THEN 'JM' WHEN '939' THEN 'PR'
+      ELSE 'US' END;
   END IF;
   -- Unmapped calling code — honest unknown. NEVER default to a country.
   RETURN NULL;
 END;
 $function$;
+
+REVOKE ALL ON FUNCTION public.mingla_sms_marketing_country(text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.mingla_sms_marketing_country(text)
+  TO authenticated, service_role;
 
 -- ── (3) SMS prices are automatic ────────────────────────────────────────────
 -- #4273 item 10. One row per country, read only by the edge (service role).
@@ -178,6 +202,62 @@ VALUES
    'Termii NG NGN 5.00/segment (#4080 account evidence); fixed, no expiry',
    '2026-10-23T00:00:00Z')
 ON CONFLICT (country) DO NOTHING;
+
+-- Every accepted price, in order (#4273 tester P3: the guard's anchor). The
+-- refresh compares a fetched price with the median of the last 7 accepted
+-- prices for that country, not only with yesterday's, so a feed that drifts
+-- up 1.5x a day cannot walk the price up: it is refused until most of the
+-- last week agrees. Service role only, like the price table.
+CREATE TABLE IF NOT EXISTS public.sms_country_price_history (
+  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  country text NOT NULL CHECK (country ~ '^[A-Z]{2}$'),
+  currency text NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
+  minor_numerator bigint NOT NULL CHECK (minor_numerator > 0),
+  minor_denominator bigint NOT NULL CHECK (minor_denominator > 0),
+  source text NOT NULL CHECK (source IN ('twilio_pricing_api', 'termii_fixed', 'seed_4080')),
+  accepted_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS sms_country_price_history_country_at
+  ON public.sms_country_price_history (country, accepted_at DESC);
+
+ALTER TABLE public.sms_country_price_history ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.sms_country_price_history FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT ON public.sms_country_price_history TO service_role;
+
+COMMENT ON TABLE public.sms_country_price_history IS
+  '#4273: every accepted SMS price per country; the refresh guard anchors on the median of the last 7. Service role only.';
+
+INSERT INTO public.sms_country_price_history
+  (country, currency, minor_numerator, minor_denominator, source, accepted_at)
+SELECT p.country, p.currency, p.minor_numerator, p.minor_denominator, p.source, p.fetched_at
+  FROM public.sms_country_prices p
+ WHERE NOT EXISTS (SELECT 1 FROM public.sms_country_price_history h WHERE h.country = p.country);
+
+-- ── (4) The SMS opt-out link is not a link a host reads (#4273 tester P1/P3) ─
+-- marketing-send stores the opt-out short link's target (a signed token that
+-- names the message, never the number) in marketing_clicks with link_kind
+-- 'opt_out'. Campaign members read only 'content' links, so the opt-out row
+-- is neither visible to them nor counted as a click (marketing-track-click
+-- also leaves it out of click_count and the "clicked" status).
+ALTER TABLE public.marketing_clicks
+  ADD COLUMN IF NOT EXISTS link_kind text NOT NULL DEFAULT 'content';
+ALTER TABLE public.marketing_clicks
+  DROP CONSTRAINT IF EXISTS marketing_clicks_link_kind_check;
+ALTER TABLE public.marketing_clicks
+  ADD CONSTRAINT marketing_clicks_link_kind_check CHECK (link_kind IN ('content', 'opt_out'));
+
+DROP POLICY IF EXISTS marketing_clicks_select ON public.marketing_clicks;
+CREATE POLICY marketing_clicks_select ON public.marketing_clicks
+  FOR SELECT TO authenticated
+  USING (
+    link_kind = 'content'
+    AND EXISTS (
+      SELECT 1 FROM public.marketing_campaigns c
+      WHERE c.id = marketing_clicks.campaign_id
+        AND (c.account_id = auth.uid()
+             OR public.mkt_brand_min_rank(c.brand_id, 'brand_member'))
+    )
+  );
 
 -- Daily refresh at 06:17 UTC (the repo's pg_cron + pg_net pattern).
 DO $cron$

@@ -17,8 +17,12 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { serviceClient, ticketCorsHeaders } from "../_shared/ticketCheckout.ts";
-import { verifyUnsubscribeToken } from "../_shared/marketingTokens.ts";
+import {
+  verifySmsUnsubscribeToken,
+  verifyUnsubscribeToken,
+} from "../_shared/marketingTokens.ts";
 import { escapeHtml } from "../_shared/email/escape.ts";
+import { handleSmsOptOut } from "./smsOptOut.ts";
 
 // In-process 5-min brand-name cache (SPEC §7.3). Module-scope so it survives
 // across requests within the same edge-function isolate. Cold-start clears it.
@@ -48,6 +52,18 @@ serve(async (req) => {
     );
   }
 
+  // #4273 — an SMS opt-out link (a text whose sender cannot take a "STOP"
+  // reply). Its token names the message, never the number.
+  let smsPayload: Awaited<ReturnType<typeof verifySmsUnsubscribeToken>> = null;
+  try {
+    smsPayload = await verifySmsUnsubscribeToken(token);
+  } catch (_err) {
+    smsPayload = null; // not an SMS token, or invalid: the email path decides
+  }
+  if (smsPayload !== null) {
+    return await handleSmsOptOut(req, smsPayload, serviceClient());
+  }
+
   // Verify HS256 signature + expiration via shared helper.
   let payload: Awaited<ReturnType<typeof verifyUnsubscribeToken>>;
   try {
@@ -71,37 +87,6 @@ serve(async (req) => {
         "unsubscribed and we'll honour it manually.",
       400,
     );
-  }
-
-  // #4273 — an SMS opt-out link (texts whose sender cannot take a "STOP"
-  // reply). It stands in for STOP, so it records what STOP records: an SMS
-  // suppression for the number across Mingla (scope 'all'), which every
-  // marketing and transactional SMS reader already honours.
-  if (payload.channel === "sms" && typeof payload.recipient_phone === "string") {
-    const admin = serviceClient();
-    const { error: smsErr } = await admin.from("channel_suppressions").insert({
-      user_id: null,
-      contact: payload.recipient_phone,
-      channel: "sms",
-      scope: "all",
-      reason: "unsubscribe",
-      brand_id: null,
-    });
-    if (smsErr && !isUniqueViolation(smsErr)) {
-      console.error("[marketing-unsubscribe] sms suppression failed", smsErr.message);
-      return htmlError(
-        "Unsubscribe failed",
-        "Something went wrong on our side. Email support@usemingla.com " +
-          "and we'll stop texting you manually.",
-        500,
-      );
-    }
-    await admin
-      .from("marketing_messages")
-      .update({ status: "unsubscribed" })
-      .eq("campaign_id", payload.campaign_id)
-      .eq("recipient_phone", payload.recipient_phone);
-    return htmlSmsConfirmation();
   }
 
   // ?scope=global escalates from brand-scope to global suppression.
@@ -238,15 +223,6 @@ function htmlConfirmation(
       "Cache-Control": "no-store",
     },
   });
-}
-
-function htmlSmsConfirmation(): Response {
-  return htmlError(
-    "You won't get marketing texts from Mingla anymore.",
-    "This number is opted out of texts from every brand on Mingla. If this " +
-      "was a mistake, email support@usemingla.com.",
-    200,
-  );
 }
 
 function htmlError(title: string, body: string, status: number): Response {

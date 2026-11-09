@@ -1,7 +1,7 @@
 import { composeSmsBody, computeSegments } from "./adapters/smsAdapter.ts";
 import { smsBlastBodyWithFollow } from "./marketingBlastFollow.ts";
 import { allocateSmsCosts } from "./smsPriceBook.ts";
-import { countryFromE164 } from "./e164Country.ts";
+import { smsMarketingCountry } from "./e164Country.ts";
 import { smsCountryProfile } from "./smsCountries.ts";
 import type { SmsRateV1 } from "./smsPriceBook.ts";
 import {
@@ -87,7 +87,7 @@ export function marketingBookSmsWireBody(
 
 /** #4273 — true when a text to this number carries the opt-out link. */
 export function smsNeedsOptOutLink(normalizedPhone: string | null): boolean {
-  return smsCountryProfile(countryFromE164(normalizedPhone))?.replyable ===
+  return smsCountryProfile(smsMarketingCountry(normalizedPhone))?.replyable ===
     false;
 }
 export interface MarketingBookCandidate {

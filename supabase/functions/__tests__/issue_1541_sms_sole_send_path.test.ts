@@ -96,7 +96,7 @@ const TERMII_BASE = `https://${TERMII_HOST}`;
 const NG_NUMBER = "+2348012345678";
 const US_NUMBER = "+12015550199";
 const GB_NUMBER = "+447700900123";
-const UNMAPPED_NUMBER = "+233241234567"; // GH — deliberately not in the table (#4273: DE now maps)
+const UNMAPPED_NUMBER = "+4915112345678"; // DE — deliberately not in the table
 
 // Env this suite owns. Snapshotted and hard-reset per case so no ambient CI
 // value can silently change a verdict.
@@ -135,8 +135,7 @@ function deliveryBundle(ng: boolean, us: boolean): string {
   return JSON.stringify({
     schema_version: 1,
     marketing_send_live_enabled: false,
-    // #4273 — GB has its own switch now; these sweeps light it with US.
-    sms_live_enabled: { ng, us, gb: us },
+    sms_live_enabled: { ng, us },
   });
 }
 

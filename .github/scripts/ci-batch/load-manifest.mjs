@@ -198,7 +198,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4273 unpriced country: register the sms-unpriced-country migration and its PostgreSQL proofs (implementor + tester); re-sealed after merging origin/main.
 // #4273 all countries: register the all-countries / automatic-prices PostgreSQL proof.
 // #4273 all countries (tester): register the tester adversarial PostgreSQL proof.
-export const BOOTSTRAP_SHA256 = "4080a46ea0156679b3806fa30cd728629858116dbf916912ff1fc2ac1cb769ae";
+// #4273: re-sealed for the SMS opt-out link suite.
+export const BOOTSTRAP_SHA256 = "16a89e5e57452a6d4d01df46e31cea52253e86d6466cc8145366b7ab5f1e1141";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

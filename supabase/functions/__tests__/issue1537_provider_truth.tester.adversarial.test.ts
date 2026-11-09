@@ -461,8 +461,7 @@ function flags(ng: boolean, us: boolean): void {
     JSON.stringify({
       schema_version: 1,
       marketing_send_live_enabled: false,
-      // #4273 — GB has its own switch now; these sweeps light it with US.
-    sms_live_enabled: { ng, us, gb: us },
+      sms_live_enabled: { ng, us },
     }),
   );
 }

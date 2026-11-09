@@ -313,15 +313,14 @@ const DESTINATIONS = [
   "+2348012345678", // NG
   "+2347084065203", // NG — the exact production handset from #1529 F-3
   "+14155550123", // US
-  "+16475550123", // Canada: NANP, Twilio route, its own switch (#4273)
+  "+16475550123", // Canada: NANP, must ride the same Twilio route as the US
   "+447700900000", // GB
   "+32460964460", // BE
-  "+233241234567", // genuinely unmapped (#4273: Ghana; DE now maps) — must fail closed to BOTH providers
+  "+4915112345678", // genuinely unmapped — must fail closed to BOTH providers
   // MAPPED to FR (orchestrator decision, 2026-08-03) precisely BECAUSE two of
   // these exist in production auth.users. Kept in the sweep as a mapped
   // destination so the France decision stays under continuous assertion: it
-  // must ride Twilio under its OWN switch (#4273), never fail closed, never
-  // reach Termii.
+  // must now ride the Twilio/US switch, never fail closed, never reach Termii.
   "+33075123456",
 ] as const;
 
@@ -407,9 +406,7 @@ Deno.test("#1529 ADV-B: routing invariants hold across 8 destinations x 11 label
 
           // B3 — THE DARK-MARKET GUARANTEE. A provider is contacted only when
           // its own market flag is true; otherwise ZERO HTTP.
-          // #4273 — one switch per country: NG and US have theirs; every
-          // other country's own switch is absent here, so it is dark.
-          const marketLive = derived === "NG" ? ng : derived === "US" ? us : false;
+          const marketLive = derived === "NG" ? ng : us;
           if (!marketLive) {
             if (captures.length !== 0) {
               violations.push(

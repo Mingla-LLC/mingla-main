@@ -20,6 +20,7 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   decimalToMinorFraction,
+  smsPriceAnchor,
   loadSmsRates,
   parseTwilioMessagingPrice,
   smsPriceRejection,
@@ -124,15 +125,34 @@ Deno.test("#4273 P-2 the sanity guard", () => {
   );
 });
 
-function fakeDb(rows: Array<Record<string, unknown>>) {
+function fakeDb(
+  rows: Array<Record<string, unknown>>,
+  historyRows: Array<Record<string, unknown>> = [],
+) {
   const writes: Array<Record<string, unknown>> = [];
+  const historyWrites: Array<Record<string, unknown>> = [];
+  const query = (data: unknown) => {
+    const chain = {
+      order: () => chain,
+      limit: () => chain,
+      then: (resolve: (v: unknown) => unknown) =>
+        Promise.resolve({ data, error: null }).then(resolve),
+    };
+    return chain;
+  };
   return {
     writes,
+    historyWrites,
     rows,
-    from: () => ({
-      select: () => Promise.resolve({ data: rows, error: null }),
+    from: (table: string) => ({
+      select: () =>
+        query(table === "sms_country_price_history" ? historyRows : rows),
       upsert: (row: Record<string, unknown>) => {
         writes.push(row);
+        return Promise.resolve({ error: null });
+      },
+      insert: (row: Record<string, unknown>) => {
+        historyWrites.push(row);
         return Promise.resolve({ error: null });
       },
     }),
@@ -197,9 +217,70 @@ Deno.test("#4273 P-3 the refresh writes good prices and keeps the last good one,
     false,
     "Termii is never fetched",
   );
+  assertEquals(
+    db.historyWrites.map((row) => row.country).sort(),
+    db.writes.map((row) => row.country).sort(),
+    "every accepted price joins the anchor history",
+  );
   assertEquals(alerts.length, 1);
   assert(alerts[0].join(" ").includes("GB: refused (changed_over_50_percent)"));
   assert(!alerts[0].join(" ").includes("ACxx"), "never the account SID");
+});
+
+Deno.test("#4273 P-6 (tester P3) a feed creeping up 1.5x a day stalls against the 7-price median", async () => {
+  // GB has been 4.00 cents for a week. The feed then offers 1.5x more each day.
+  const price = (cents: number) => ({
+    country: "GB",
+    currency: "USD",
+    minor_numerator: Math.round(cents * 100),
+    minor_denominator: 100,
+  });
+  let current = price(4);
+  const history: Array<Record<string, unknown>> = Array.from(
+    { length: 7 },
+    () => price(4),
+  );
+  const accepted: number[] = [];
+  let offered = 4;
+  for (let day = 1; day <= 6; day += 1) {
+    offered = offered * 1.5;
+    const db = fakeDb([current], [...history]);
+    await refreshSmsPrices({
+      db,
+      accountSid: "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      authToken: "redacted",
+      now: () => new Date(`2026-11-1${day}T06:17:00.000Z`),
+      alert: () => Promise.resolve(),
+      fetch: ((url: string | URL) => {
+        const iso = String(url).split("/").pop() as string;
+        const body = structuredClone(FIXTURE);
+        body.iso_country = iso;
+        for (const carrier of body.outbound_sms_prices) {
+          carrier.prices = [{
+            number_type: "mobile",
+            base_price: offered.toFixed(4),
+            current_price: (offered / 100).toFixed(6),
+          }];
+        }
+        return Promise.resolve(
+          new Response(JSON.stringify(body), { status: 200 }),
+        );
+      }) as typeof fetch,
+    });
+    const gb = db.writes.find((row) => row.country === "GB");
+    if (gb !== undefined) {
+      const cents = (gb.minor_numerator as number) /
+        (gb.minor_denominator as number);
+      accepted.push(cents);
+      current = price(cents);
+      history.unshift(price(cents));
+    }
+  }
+  // Day 1 (6.00) is within 50% of the 4.00 median and is taken; day 2 (9.00)
+  // is +125% from that median and every later offer is further still.
+  assertEquals(accepted, [6]);
+  assertEquals(current.minor_numerator, 600);
+  // With only "the last good price" as the anchor this feed walks to 45.56.
 });
 
 Deno.test("#4273 P-4 the staleness alert", () => {
@@ -237,6 +318,18 @@ Deno.test("#4273 P-4 the staleness alert", () => {
     JSON.stringify(stale),
   );
   assert(smsPriceStalenessAlert(now, null)?.subject.includes("can't be read"));
+});
+
+Deno.test("#4273 P-7 the anchor is the lower median of the last 7", () => {
+  const p = (n: number) => ({ currency: "USD", minor_numerator: n, minor_denominator: 1 });
+  assertEquals(smsPriceAnchor([]), null);
+  assertEquals(smsPriceAnchor([p(9), p(4)])?.minor_numerator, 4);
+  assertEquals(
+    smsPriceAnchor([p(9), p(9), p(9), p(4), p(4), p(4), p(4), p(1)])
+      ?.minor_numerator,
+    4,
+    "only the newest 7 count",
+  );
 });
 
 Deno.test("#4273 P-5 rows → rates that never expire; one bad row drops only its country; quote = send", async () => {

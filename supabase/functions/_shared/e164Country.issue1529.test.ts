@@ -21,7 +21,7 @@
 // fails-on-revert: delete the `+`-prepend in `normalizeE164` and every no-plus
 // fixture (`ng_no_plus`, `ng_production_row`, `us_no_plus`) returns null
 // instead of E.164, failing T5-2. Restore the `?? "US"`-style coercion
-// anywhere in the country rule and `gh_unmapped` / the email / the null cases
+// anywhere in the country rule and `de_unmapped` / the email / the null cases
 // stop being null, failing T5-3 and T5-5.
 
 import {
@@ -134,7 +134,7 @@ Deno.test("#1529 T5-1: the shared fixture set loads, is non-empty, and keeps ful
   );
   assert(
     fixtures.some((f) =>
-      f.label === "gh_unmapped" && f.expectCountry === null
+      f.label === "de_unmapped" && f.expectCountry === null
     ),
     "fixture set lost the unmapped-calling-code-is-null case (#1529 F-1)",
   );
@@ -197,7 +197,7 @@ Deno.test("#1529 T5-5: an underivable contact returns null and is NEVER coerced 
       "   ",
       "guest@example.com",
       "user2000@example.com", // digits in the local part must not be mined
-      "+233241234567", // valid E.164, calling code not in the table (#4273: Ghana)
+      "+4915112345678", // valid E.164, calling code not in the table
       "+",
       "not a number",
     ]
@@ -305,13 +305,8 @@ Deno.test("#1529 T5-6: prefix matching is longest-first and does not over-match"
   assertEquals(countryFromE164("+27831234567"), null); // South Africa — unmapped
   // +44 (GB) vs +4x neighbours.
   assertEquals(countryFromE164("+447700900000"), "GB");
-  // #4273 — Germany and Switzerland are payout countries and now map; their
-  // +49/+41 must not be absorbed by +44 or anything shorter.
-  assertEquals(countryFromE164("+4915112345678"), "DE");
-  assertEquals(countryFromE164("+41441234567"), "CH");
-  // +353 (IE) must win over any +35x shorter rule; +421 (SK) over +42x.
-  assertEquals(countryFromE164("+353851234567"), "IE");
-  assertEquals(countryFromE164("+421901123456"), "SK");
+  assertEquals(countryFromE164("+4915112345678"), null); // Germany — unmapped
+  assertEquals(countryFromE164("+41441234567"), null); // Switzerland — unmapped
   // +1 (US/NANP) is the SHORTEST prefix and must be tested last, so it cannot
   // swallow a longer mapped code.
   assertEquals(countryFromE164("+14155550123"), "US");

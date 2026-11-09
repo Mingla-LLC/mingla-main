@@ -252,6 +252,36 @@ export function smsPriceRejection(
   return change > SMS_PRICE_MAX_CHANGE ? "changed_over_50_percent" : null;
 }
 
+/** How many recent accepted prices the guard's anchor is the median of. */
+export const SMS_PRICE_ANCHOR_WINDOW = 7;
+
+/**
+ * #4273 tester P3 — the guard's long anchor: the LOWER median of the last
+ * {@link SMS_PRICE_ANCHOR_WINDOW} accepted prices for one country (newest
+ * first in `history`). Comparing only with yesterday's price lets a bad feed
+ * creep up 1.5x a day forever; against this median a drift is refused until
+ * most of the last week's accepted prices already agree with it, so a creep
+ * stalls and the refusals alert ops every day it is tried. A real Twilio
+ * price change (one step, then stable) is still taken on the first day it is
+ * within 50% of the median, which every real change we have seen is.
+ * Null when there is no history (then only the last good price is checked).
+ */
+export function smsPriceAnchor(
+  history: ReadonlyArray<
+    { currency: string; minor_numerator: number; minor_denominator: number }
+  >,
+):
+  | { currency: string; minor_numerator: number; minor_denominator: number }
+  | null {
+  const recent = history.slice(0, SMS_PRICE_ANCHOR_WINDOW);
+  if (recent.length === 0) return null;
+  const sorted = [...recent].sort((a, b) =>
+    a.minor_numerator / a.minor_denominator -
+    b.minor_numerator / b.minor_denominator
+  );
+  return sorted[Math.floor((sorted.length - 1) / 2)];
+}
+
 /** Countries whose Twilio price is refreshed (every Twilio-routed country). */
 export function twilioPricedCountries(): string[] {
   return MAPPED_COUNTRIES.filter((country) =>

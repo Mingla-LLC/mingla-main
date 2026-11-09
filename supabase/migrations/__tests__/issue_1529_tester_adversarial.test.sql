@@ -79,8 +79,7 @@ INSERT INTO issue_1529_adv_fixtures (label, raw, expect_e164, expect_country) VA
   -- NANP is ONE calling code shared by many sovereign states. All of them must
   -- resolve to the same Twilio route; none may resolve to NULL and fail closed.
   ('nanp_us_california', '+14155550123', '+14155550123', 'US'),
-  -- #4273: Canada splits from +1 by area code (its own switch).
-  ('nanp_canada_toronto', '+16475550123', '+16475550123', 'CA'),
+  ('nanp_canada_toronto', '+16475550123', '+16475550123', 'US'),
   ('nanp_jamaica', '+18765550123', '+18765550123', 'US'),
   ('nanp_dominican', '+18095550123', '+18095550123', 'US'),
   -- +44 crown dependency (Jersey). Must not fall out of the GB branch.
@@ -105,7 +104,7 @@ INSERT INTO issue_1529_adv_fixtures (label, raw, expect_e164, expect_country) VA
   ('mapped_france_2_production_users', '+33075123456', '+33075123456', 'FR'),
   -- Genuinely unmapped calling codes MUST still be NULL, never a guess. These
   -- two carry that half of the contract now that France no longer does.
-  ('unmapped_ghana', '+233241234567', '+233241234567', NULL),
+  ('unmapped_germany', '+4915112345678', '+4915112345678', NULL),
   ('unmapped_russia_kazakh_shared', '+79001234567', '+79001234567', NULL),
   -- The P3-1 minimum-length floor, pinned from the tester side. Both of these
   -- resolved to a COUNTRY before that fix — '+234' derived NG, and a vanity
@@ -656,9 +655,9 @@ INSERT INTO public.reservations (
    '00000000-1529-4dd0-8000-000000000011',
    now() + interval '10 days', 2, 'confirmed', 'website', 'guest',
    'NG Guest', '+2348012345678', 'adv-ng@example.test'),
-  -- Canada rides the NANP calling code and is told apart by area code
-  -- (#4273): CA, never NULL (NULL would fail closed and silently stop a
-  -- working Canadian text). Routing is still Twilio.
+  -- Canada rides the NANP calling code. Correct ROUTING is Twilio/US; the
+  -- documented imprecision must be US, never NULL (NULL would fail closed and
+  -- silently stop a working Canadian text).
   ('00000000-1529-4dd0-8000-000000000051',
    '00000000-1529-4dd0-8000-000000000010',
    '00000000-1529-4dd0-8000-000000000011',
@@ -692,7 +691,7 @@ INSERT INTO public.reservations (
    '00000000-1529-4dd0-8000-000000000010',
    '00000000-1529-4dd0-8000-000000000011',
    now() + interval '15 days', 2, 'confirmed', 'website', 'guest',
-   'GH Guest', '+233241234567', 'adv-gh@example.test');
+   'DE Guest', '+4915112345678', 'adv-de@example.test');
 
 DO $adv_reservation_matrix$
 DECLARE
@@ -706,13 +705,13 @@ BEGIN
   FOR v_id, v_expected IN
     SELECT * FROM (VALUES
       ('00000000-1529-4dd0-8000-000000000050', 'NG'),
-      ('00000000-1529-4dd0-8000-000000000051', 'CA'),
+      ('00000000-1529-4dd0-8000-000000000051', 'US'),
       ('00000000-1529-4dd0-8000-000000000052', 'GB'),
       -- France: MAPPED (orchestrator decision, 2026-08-03). This row asserted
       -- NULL until the production probe found two real +33 users.
       ('00000000-1529-4dd0-8000-000000000053', 'FR'),
       ('00000000-1529-4dd0-8000-000000000054', NULL),
-      -- Ghana: genuinely unmapped (#4273: Germany now maps). NULL, never US.
+      -- Germany: genuinely unmapped. NULL, never US.
       ('00000000-1529-4dd0-8000-000000000055', NULL)
     ) AS t(rid, expected)
   LOOP

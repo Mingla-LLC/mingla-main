@@ -25,6 +25,8 @@ import {
   CANADIAN_AREA_CODES,
   countryFromE164,
   MAPPED_COUNTRIES,
+  NANP_OTHER_AREA_CODES,
+  smsMarketingCountry,
 } from "../e164Country.ts";
 import {
   isWithinSmsWindow,
@@ -52,6 +54,7 @@ import {
 } from "../marketingBookQuote.ts";
 import {
   signSmsUnsubscribeToken,
+  verifySmsUnsubscribeToken,
   verifyUnsubscribeToken,
 } from "../marketingTokens.ts";
 
@@ -141,15 +144,22 @@ const flags = (sms: Record<string, boolean>) => (name: string) =>
     ? "MGtest"
     : undefined;
 
-Deno.test("#4273 T-A every payout country maps, Canada splits from +1, the four excluded stay unmapped", () => {
+Deno.test("#4273 T-A every payout country maps for marketing, Canada and the other NANP members split from +1, the four excluded stay unmapped", () => {
   assertEquals([...MAPPED_COUNTRIES].sort(), PAYOUT);
   for (const country of PAYOUT) {
-    assertEquals(countryFromE164(SAMPLE[country]), country, country);
+    assertEquals(smsMarketingCountry(SAMPLE[country]), country, country);
   }
   for (const code of CANADIAN_AREA_CODES) {
-    assertEquals(countryFromE164(`+1${code}5550142`), "CA", code);
+    assertEquals(smsMarketingCountry(`+1${code}5550142`), "CA", code);
   }
-  assertEquals(countryFromE164("+12125550142"), "US");
+  assertEquals(smsMarketingCountry("+12125550142"), "US");
+  // Tester P3: Caribbean and other non-US NANP numbers are their own country,
+  // which marketing does not text — never "US".
+  for (const [code, iso2] of NANP_OTHER_AREA_CODES) {
+    const country = smsMarketingCountry(`+1${code}5550142`);
+    assertEquals(country, iso2, code);
+    assert(!MAPPED_COUNTRIES.includes(country as string), code);
+  }
   for (
     const excluded of [
       "+233241234567",
@@ -158,7 +168,37 @@ Deno.test("#4273 T-A every payout country maps, Canada splits from +1, the four 
       "+254712345678",
     ]
   ) {
-    assertEquals(countryFromE164(excluded), null, excluded);
+    assertEquals(smsMarketingCountry(excluded), null, excluded);
+  }
+});
+
+Deno.test("#4273 T-A2 transactional country resolution is main's, unchanged", () => {
+  // countryFromE164 routes verification, ticket and RSVP texts: all of NANP
+  // is "US", only NG/GB/FR/BE are mapped, everything else is unmapped.
+  assertEquals(countryFromE164("+14165550142"), "US", "Toronto stays US");
+  assertEquals(countryFromE164("+18765550142"), "US", "Jamaica stays US");
+  assertEquals(countryFromE164("+4915112345678"), null, "Germany unmapped");
+  assertEquals(countryFromE164("+447700900142"), "GB");
+  assertEquals(countryFromE164("+2348031104273"), "NG");
+  assertEquals(resolveMarketKillSwitch("GB"), "SMS_LIVE_ENABLED_US");
+  assertEquals(resolveMarketKillSwitch("CA"), "SMS_LIVE_ENABLED_US");
+  assertEquals(resolveMarketKillSwitch("NG"), "SMS_LIVE_ENABLED_NG");
+});
+
+Deno.test("#4273 T-A3 SQL parity: the pg17 fixture rows resolve the same in TypeScript", async () => {
+  // The rows in the pg17 T-H block are the fixtures for the SQL twin
+  // public.mingla_sms_marketing_country; the same rows must hold here.
+  const sql = await Deno.readTextFile(
+    new URL(
+      "../../../migrations/__tests__/issue_4273_sms_all_countries.implementor.pg17.test.sql",
+      import.meta.url,
+    ),
+  );
+  const block = sql.slice(sql.indexOf("$map$"), sql.lastIndexOf("$map$"));
+  const rows = [...block.matchAll(/\('(\+\d+)', (?:'([A-Z]{2})'|NULL)\)/g)];
+  assert(rows.length >= 55, `found ${rows.length} fixture rows`);
+  for (const [, phone, expected] of rows) {
+    assertEquals(smsMarketingCountry(phone), expected ?? null, phone);
   }
 });
 
@@ -189,10 +229,11 @@ Deno.test("#4273 T-C one switch per country; absent is off; US carries nobody el
   assertEquals(resolveSmsCountryLive("FR", env), false, "absent key is off");
   assertEquals(resolveSmsCountryLive(null, env), false);
   assertEquals(resolveSmsCountryLive("GH", env), false);
-  assertEquals(resolveMarketKillSwitch("GB"), "SMS_LIVE_ENABLED_GB");
-  assertEquals(resolveMarketKillSwitch("CA"), "SMS_LIVE_ENABLED_CA");
-  assertEquals(resolveMarketKillSwitch(null), null);
-  assertEquals(resolveMarketKillSwitch("ZA"), null);
+  assertEquals(resolveMarketKillSwitch("GB", "marketing"), "SMS_LIVE_ENABLED_GB");
+  assertEquals(resolveMarketKillSwitch("CA", "marketing"), "SMS_LIVE_ENABLED_CA");
+  assertEquals(resolveMarketKillSwitch(null, "marketing"), null);
+  assertEquals(resolveMarketKillSwitch("ZA", "marketing"), null);
+  assertEquals(resolveMarketKillSwitch("JM", "marketing"), null);
   // An unknown key invalidates the bundle (all-or-nothing): nothing new is on.
   const bad = (name: string) =>
     name === "MINGLA_DELIVERY_FLAGS_JSON"
@@ -356,22 +397,51 @@ Deno.test("#4273 T-F the opt-out link replaces STOP where no reply works, and th
   assert(gb.segments > us.segments, "the link is counted");
 });
 
-Deno.test("#4273 T-F2 the SMS opt-out token names the number and nothing else", async () => {
+Deno.test("#4273 T-F2 the SMS opt-out token names the message, never the person, and is fixed length", async () => {
   const previous = Deno.env.get("UNSUBSCRIBE_TOKEN_SECRET");
   Deno.env.set(
     "UNSUBSCRIBE_TOKEN_SECRET",
     "issue-4273-test-secret-not-a-real-key-0123456789",
   );
   try {
-    const token = await signSmsUnsubscribeToken({
-      campaign_id: "c",
-      recipient_phone: SAMPLE.GB,
-      brand_id: "b",
+    const ids = {
+      campaign_id: "42730000-0000-4000-8000-0000000000c1",
+      brand_id: "42730000-0000-4000-8000-0000000000b1",
+      message_id: "42730000-0000-4000-8000-0000000000e1",
+    };
+    const token = await signSmsUnsubscribeToken(ids);
+    const decoded = atob(
+      token.split(".")[0].replace(/-/g, "+").replace(/_/g, "/"),
+    );
+    assertEquals(
+      Object.keys(JSON.parse(decoded)),
+      ["campaign_id", "brand_id", "channel", "message_id", "exp"],
+    );
+    assert(!/\+\d{6,}|@/.test(decoded), "no phone, no email");
+    const payload = await verifySmsUnsubscribeToken(token);
+    assertEquals(payload?.message_id, ids.message_id);
+    // Fixed length: another message gives a token of the same length.
+    const other = await signSmsUnsubscribeToken({
+      ...ids,
+      message_id: "ffffffff-ffff-4fff-bfff-ffffffffffff",
     });
-    const payload = await verifyUnsubscribeToken(token);
-    assertEquals(payload.channel, "sms");
-    assertEquals(payload.recipient_phone, SAMPLE.GB);
-    assertEquals(payload.recipient_email, "");
+    assertEquals(other.length, token.length);
+    // An SMS token is not an email unsubscribe token, and vice versa.
+    let emailVerifyRefused = false;
+    try {
+      await verifyUnsubscribeToken(token);
+    } catch {
+      emailVerifyRefused = true;
+    }
+    assert(emailVerifyRefused, "the email path refuses an SMS token");
+    // A phone where a message id belongs is refused at signing.
+    let refused = false;
+    try {
+      await signSmsUnsubscribeToken({ ...ids, message_id: SAMPLE.GB });
+    } catch {
+      refused = true;
+    }
+    assert(refused);
   } finally {
     if (previous === undefined) Deno.env.delete("UNSUBSCRIBE_TOKEN_SECRET");
     else Deno.env.set("UNSUBSCRIBE_TOKEN_SECRET", previous);
