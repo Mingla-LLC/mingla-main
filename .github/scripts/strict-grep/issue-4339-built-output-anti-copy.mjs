@@ -35,10 +35,28 @@ const MARKETING = path.join(ROOT, 'mingla-marketing')
 
 const ADDRESS_BEFORE = /(?:St|Ave|Rd|Blvd|Dr|Hwy|Pkwy|Ln|Ct|Pl|Way|Suite|Ste|Unit|Street|Avenue|Road|Floor)\.?\s*$/i
 
+// #4339 (release fix): on a Vercel PREVIEW build, Next.js points file-based
+// og:image / twitter:image URLs at the deployment's own preview host on purpose
+// (it overrides metadataBase for social images so link previews resolve on the
+// preview). Production builds use metadataBase (usemingla.com). So, only when
+// VERCEL_ENV is "preview", the deployment's OWN host (VERCEL_URL or
+// VERCEL_BRANCH_URL) is allowed, and only inside an og:image / twitter:image
+// value. Any other *.vercel.app host, and every host on a production or local
+// build, still fails.
+export function ownPreviewHosts(env = process.env) {
+  if (env.VERCEL_ENV !== 'preview') return []
+  return [env.VERCEL_URL, env.VERCEL_BRANCH_URL].filter((host) => typeof host === 'string' && host.length > 0)
+}
+
+function isOwnPreviewSocialImage(text, index, match, env = process.env) {
+  if (!ownPreviewHosts(env).includes(match)) return false
+  return /(?:og|twitter):image(?::url|:secure_url)?\W{1,12}content\W{1,12}https:\/\/$/.test(text.slice(Math.max(0, index - 60), index))
+}
+
 export const RULES = [
   { id: 'ISSUE_REF', re: /#[1-9]\d{2,3}\b(?![,;}!0-9a-fA-F])/g, skipIn: /\.css$/, keep: (text, index) => ADDRESS_BEFORE.test(text.slice(Math.max(0, index - 12), index)) || /[a-fA-F0-9]$/.test(text.slice(index - 1, index)) || /^#[1-9]\d{2,3}["')\]]/.test(text.slice(index, index + 6)) },
   { id: 'TODO', re: /\b(?:TODO|FIXME)\b/g },
-  { id: 'INTERNAL_HOST', re: /\b[a-z0-9-]+\.vercel\.app\b|\blocalhost:\d{2,5}\b|\b127\.0\.0\.1:\d{2,5}\b|\b[a-z0-9-]+\.(?:internal|local)\b(?!\w)|\b[a-z0-9]+\.supabase\.in\b/g },
+  { id: 'INTERNAL_HOST', re: /\b[a-z0-9-]+\.vercel\.app\b|\blocalhost:\d{2,5}\b|\b127\.0\.0\.1:\d{2,5}\b|\b[a-z0-9-]+\.(?:internal|local)\b(?!\w)|\b[a-z0-9]+\.supabase\.in\b/g, keep: (text, index, match) => isOwnPreviewSocialImage(text, index, match) },
   { id: 'TEST_ID', re: /data-testid/g },
   {
     id: 'DEV_COMMENT',
@@ -114,7 +132,28 @@ function selfTest() {
     const hits = scanText(sample)
     if (hits.length) throw new Error(`self-test: false positive ${hits[0].rule} in ${sample}`)
   }
-  process.stdout.write(`PASS #4339 built-output anti-copy self-test (${bad.length} caught, ${good.length} exempt)\n`)
+  // #4339 (release fix): the preview build's own social-image host is allowed;
+  // nothing else is, and nothing on a production or local build.
+  const own = 'mingla-marketing-git-4339-x-seth-ogievas-projects.vercel.app'
+  const html = `<meta property="og:image" content="https://${own}/opengraph-image.jpg">`
+  const rsc = String.raw`[\"$\",\"meta\",\"5\",{\"property\":\"og:image\",\"content\":\"https://${own}/opengraph-image.jpg\"}]`
+  const escaped = String.raw`\\\"twitter:image\\\",\\\"content\\\":\\\"https://${own}/twitter-image.jpg`
+  const saved = { VERCEL_ENV: process.env.VERCEL_ENV, VERCEL_URL: process.env.VERCEL_URL, VERCEL_BRANCH_URL: process.env.VERCEL_BRANCH_URL }
+  const setEnv = (values) => { for (const [k, v] of Object.entries(values)) { if (v === undefined) delete process.env[k]; else process.env[k] = v } }
+  const internal = (sample) => scanText(sample).some((h) => h.rule === 'INTERNAL_HOST')
+  try {
+    setEnv({ VERCEL_ENV: 'preview', VERCEL_URL: undefined, VERCEL_BRANCH_URL: own })
+    for (const sample of [html, rsc, escaped]) if (internal(sample)) throw new Error(`self-test: preview own social-image host flagged in ${sample}`)
+    if (!internal(`<a href="https://${own}/x">`)) throw new Error('self-test: preview own host outside a social image must still fail')
+    if (!internal(html.replace(own, 'other-app.vercel.app'))) throw new Error('self-test: another preview host must still fail')
+    setEnv({ VERCEL_ENV: 'production', VERCEL_URL: own, VERCEL_BRANCH_URL: own })
+    if (!internal(html)) throw new Error('self-test: a production build must reject any vercel.app social image')
+    setEnv({ VERCEL_ENV: undefined, VERCEL_URL: undefined, VERCEL_BRANCH_URL: undefined })
+    if (!internal(html)) throw new Error('self-test: a local build must reject any vercel.app social image')
+  } finally {
+    setEnv(saved)
+  }
+  process.stdout.write(`PASS #4339 built-output anti-copy self-test (${bad.length} caught, ${good.length} exempt, preview social-image host scoped)\n`)
 }
 
 function wiring() {
