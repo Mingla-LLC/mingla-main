@@ -291,10 +291,11 @@ describe("#4347 wave 2 — pinned action bar", () => {
     expect(texts(root)).toEqual(expect.arrayContaining(["Save", "Schedule", "Share", "Directions"]));
   });
 
-  test("A-2 Call leaves the pinned bar (the Details phone row dials the same number); the band keeps it", () => {
+  test("A-2 Call is on no action bar (the Details phone row / a stop's More dial the number)", () => {
+    // #4347 wave 3 — the in-flow band (the last bar that dialled) is gone.
     expect(texts(bar())).not.toContain("Call");
-    const band = mount(<ActionButtons card={card} onSave={() => undefined} />);
-    expect(texts(band)).toContain("Call");
+    const plain = mount(<ActionButtons card={card} onSave={() => undefined} />);
+    expect(texts(plain)).not.toContain("Call");
   });
 
   test("A-3 saved and scheduled show their filled state", () => {

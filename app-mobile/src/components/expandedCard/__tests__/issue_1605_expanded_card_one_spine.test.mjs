@@ -57,13 +57,15 @@ const CI = require_(path.join(REPO, 'packages/card-identity/index.js'));
 
 const SRC = {
   modal: 'app-mobile/src/components/ExpandedCardModal.tsx',
-  hero: 'app-mobile/src/components/expandedCard/ExpandedCardHero.tsx',
+  // #4347 wave 3 — the plan's body and its stop card replace the hero, the
+  // plan's StopList rows, PlanTimeline and ConditionsSection (all deleted).
+  planbody: 'app-mobile/src/components/expandedCard/CuratedPlanBody.tsx',
+  stopcard: 'app-mobile/src/components/expandedCard/PlanStopCard.tsx',
   plate: 'app-mobile/src/components/deckCardPlate.tsx',
   facts: 'app-mobile/src/components/expandedCard/expandedCardFacts.ts',
   actions: 'app-mobile/src/components/expandedCard/ActionButtons.tsx',
   stops: 'app-mobile/src/components/expandedCard/StopList.tsx',
   details: 'app-mobile/src/components/expandedCard/PracticalDetailsSection.tsx',
-  conditions: 'app-mobile/src/components/expandedCard/ConditionsSection.tsx',
   swipeable: 'app-mobile/src/components/SwipeableCards.tsx',
   // The collapsed deck card — the OTHER caller of the one span producer (S-5).
   swipecurated: 'app-mobile/src/components/CuratedExperienceSwipeCard.tsx',
@@ -197,44 +199,7 @@ test('S-1 the sheet\'s hero renders the deck card\'s plate, at every hero height
   }
 });
 
-test('S-1b the hero MOUNTS, on both branches, from one call site', () => {
-  const modal = stripComments(read('modal'));
-  const mounts = modal.match(/<ExpandedCardHero\b/g) ?? [];
-  assert.equal(
-    mounts.length,
-    1,
-    `S-1b: the modal mounts <ExpandedCardHero> ${mounts.length} times. ONE mount is the entire point: `
-    + 'two mounts is two compositions again, and zero means a curated plan is back to having no hero '
-    + 'image at all (it had none before this wave — ImageGallery was gated behind !isCuratedCard).',
-  );
-  // #4347 wave 2 — REWRITTEN. Seth approved a different composition for the
-  // single place: it OPENS ON ITS GALLERY (PlaceGallery), so the S7 hero is now
-  // the PLAN's. What this rule still protects: one mount each (never a second
-  // copy of either), and a plan is never back to having no hero image.
-  assert.equal((modal.match(/<PlaceGallery\b/g) ?? []).length, 1, 'S-1b: the single place lost its gallery, or gained a second');
-  const at = modal.indexOf('<ExpandedCardHero');
-  const branch = modal.lastIndexOf('{isCuratedCard ? (', at);
-  assert.ok(branch >= 0 && at - branch < 4000, 'S-1b: the plan hero is no longer inside the plan branch');
-  assert.ok(modal.indexOf('<PlaceGallery') > at, 'S-1b: the gallery is not the other (single-place) branch');
-  assert.match(
-    modal,
-    /curated=\{isCuratedCard\}/,
-    'S-1b: curated is no longer passed as DATA to the hero, so the sliver stack cannot be the whole '
-    + 'curated identity.',
-  );
-});
 
-test('S-1c the plate inverts its chevron on the sheet and only on the sheet', () => {
-  const hero = stripComments(read('hero'));
-  const plate = stripComments(read('plate'));
-  assert.match(hero, /chevron="down"/, 'S-1c: the expanded hero no longer inverts the chevron. On the '
-    + 'collapsed card it means "this opens"; on the sheet it must mean "this closes" — it is the only '
-    + 'element whose MEANING differs between the two surfaces.');
-  // Both literals must exist in the plate, or one of the two surfaces is drawing
-  // an affordance that points the wrong way.
-  assert.ok(plate.includes('name="chevron-up"'), 'S-1c: the plate lost the collapsed-card chevron');
-  assert.ok(plate.includes('name="chevron-down"'), 'S-1c: the plate lost the expanded-sheet chevron');
-});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // S-2 · THE VACUITY PREDICATES, EXTRACTED AND EXECUTED
@@ -865,74 +830,42 @@ test('S-3b the control the sheet mounts is the SAME component, not a lookalike',
   );
 });
 
-test('S-3c ActionButtons renders the BAND and nothing that moved off it', () => {
+test('S-3c ActionButtons renders the pinned bar and nothing that moved off it', () => {
   const actions = stripComments(read('actions'));
-
-  // The band itself must be there and fixed-height.
-  assert.match(actions, /styles\.band\b/, 'S-3c: the action band is gone');
-  assert.match(actions, /\{reserve\}/, 'S-3c: the Reserve slot is gone from the band');
-
-  // And the four things that moved off it must not have come back HERE. Each is
-  // asserted structurally rather than by its old copy string, because the copy
-  // is the easiest thing to change while re-adding the element.
-  assert.equal(
-    /showVisitButton|onVisitPress|onRemoveVisitPress|visitScaleAnim/.test(actions),
-    false,
-    'S-3c: the never-rendered Been-there button is back in ActionButtons.',
-  );
-  assert.equal(
-    /openingHoursSection|showAllHours|parsedOpeningHours/.test(actions),
-    false,
-    'S-3c: the hours table is back in the action component. Hours are a practical detail; they render '
-    + 'in Details, which has ALWAYS accepted an openingHours prop it never rendered.',
-  );
-  assert.equal(
-    /policiesButton|handlePoliciesAndReservations/.test(actions),
-    false,
-    'S-3c: the "Policies & Reservations" slab is back. It was a website link wearing a costume, and '
-    + 'its handler bailed when normalizeWebsiteUrl returned null — a VISIBLE DEAD BUTTON.',
-  );
-  assert.equal(
-    /shareIconButton|handleShare/.test(actions),
-    false,
-    'S-3c: Share is back in the band. It is an identity action and it lives on the plate.',
-  );
-
-  // The scheduling machinery must SURVIVE — this rule is about what moved, not
-  // about gutting the component.
+  // #4347 wave 2/3 — REWRITTEN: the in-flow band is gone (the plan was its last
+  // user); the bar is the pinned row, and it still carries the Reserve slot.
+  assert.match(actions, /styles\.pinnedRow\b/, 'S-3c: the pinned action row is gone');
+  assert.equal(/styles\.band\b/.test(actions), false, 'S-3c: the retired in-flow band is back');
+  assert.match(actions, /\{reserve\}/, 'S-3c: the Reserve slot is gone from the bar');
+  assert.equal(/showVisitButton|onVisitPress|onRemoveVisitPress|visitScaleAnim/.test(actions), false,
+    'S-3c: the never-rendered Been-there button is back in ActionButtons.');
+  assert.equal(/openingHoursSection|showAllHours|parsedOpeningHours/.test(actions), false,
+    'S-3c: the hours table is back in the action component.');
+  assert.equal(/policiesButton|handlePoliciesAndReservations/.test(actions), false,
+    'S-3c: the "Policies & Reservations" slab is back.');
   assert.match(actions, /handleSchedule\b/, 'S-3c (vacuity): scheduling was removed, not re-homed');
   assert.match(actions, /handleSave\b/, 'S-3c (vacuity): saving was removed, not re-homed');
 });
-
 // ─────────────────────────────────────────────────────────────────────────────
 // S-4 · ONE SPINE, ONE POSITION, NO NESTED SCROLLABLES
 // ─────────────────────────────────────────────────────────────────────────────
 
 test('S-4 the commitment actions sit in the SAME place on both branches', () => {
   const modal = stripComments(read('modal'));
-  // #4347 wave 2 — REWRITTEN. The defect this rule exists for is the actions
-  // landing MID-SCROLL (below reading sections). The approved design pins the
-  // single place's actions to the sheet's bottom edge (stickyFooter), which is
-  // the one position that can never be mid-scroll; the plan keeps its band
-  // directly under its hero until wave 3. So: exactly one pinned mount (in the
-  // sticky footer, not the scroll body) and exactly one band mount, which still
-  // precedes every one of the plan's reading sections.
+  // #4347 wave 3 — REWRITTEN. The defect is the actions landing MID-SCROLL.
+  // Both branches now pin them to the sheet's bottom edge: exactly two mounts
+  // (place bar, plan bar), both pinned, both inside the sticky footer, and
+  // NONE in the scroll body.
   const mounts = modal.match(/<ActionButtons\b/g) ?? [];
-  assert.equal(mounts.length, 2, `S-4: the modal mounts <ActionButtons> ${mounts.length} times (pinned + plan band expected)`);
+  assert.equal(mounts.length, 2, `S-4: the modal mounts <ActionButtons> ${mounts.length} times (place + plan pinned bars expected)`);
+  const pinned = modal.match(/<ActionButtons\s+variant="pinned"/g) ?? [];
+  assert.equal(pinned.length, 2, 'S-4: an ActionButtons mount is not the pinned bar');
   const footer = modal.indexOf('stickyFooter={');
-  const pinned = modal.indexOf('variant="pinned"');
-  assert.ok(footer >= 0 && pinned > footer && pinned - footer < 1500, 'S-4: the pinned bar is not the sheet\'s sticky footer');
-  const planBranch = modal.indexOf('{isCuratedCard ? (', modal.indexOf('<InAppBrowserProvider>'));
-  const band = modal.indexOf('<ActionButtons', planBranch);
-  const singleBranch = modal.indexOf('<PlaceGallery');
-  assert.ok(band > planBranch && band < singleBranch, 'S-4: the plan band left the plan branch');
-  for (const later of ['<CardInfoSection', '<ConditionsSection', '<PracticalDetailsSection', '<StopList']) {
-    const at = modal.indexOf(later, planBranch);
-    assert.ok(at > band, `S-4: ${later} renders BEFORE the plan's action band, so the band is mid-scroll again.`);
+  const body = modal.indexOf('<InAppBrowserProvider>');
+  for (let at = modal.indexOf('<ActionButtons'); at >= 0; at = modal.indexOf('<ActionButtons', at + 1)) {
+    assert.ok(at > footer && at < body, 'S-4: an action bar renders inside the scroll body (mid-scroll again)');
   }
-  assert.ok(modal.indexOf('<ExpandedCardHero') < band, 'S-4: the action band renders above the hero.');
 });
-
 test('S-4b one section component per job — the curated fork is gone', () => {
   const modal = stripComments(read('modal'));
   for (const gone of ['CuratedPlanView', 'MultiStopPlanView', 'curatedStyles', 'StopOpenBadge']) {
@@ -944,7 +877,7 @@ test('S-4b one section component per job — the curated fork is gone', () => {
     );
   }
   // The dark header's fill must not reappear anywhere in the sheet's tree.
-  for (const key of ['modal', 'hero', 'stops', 'details', 'conditions', 'actions']) {
+  for (const key of ['modal', 'planbody', 'stopcard', 'stops', 'details', 'actions']) {
     assert.equal(
       /#1C1C1E/i.test(stripComments(read(key))),
       false,
@@ -984,7 +917,7 @@ test('S-4d the body carries no rejected colour', () => {
     ['#EA580C', 'collapsed onto the one accent token'],
     ['#fef7f0', 'the orange section tint — four sections shouting in the same voice'],
   ];
-  for (const key of ['stops', 'details', 'conditions', 'actions']) {
+  for (const key of ['stops', 'details', 'planbody', 'stopcard', 'actions']) {
     const src = stripComments(read(key));
     for (const [hex, why] of REJECTED) {
       assert.equal(
@@ -1020,7 +953,8 @@ const S6_CARRIED = [
   {
     what: 'the picnic Shopping List',
     producer: /\bshoppingList\s*[:,]/,
-    consumer: 'app-mobile/src/components/ExpandedCardModal.tsx',
+    // #4347 wave 3 — the plan's supplies render in the plan body.
+    consumer: 'app-mobile/src/components/expandedCard/CuratedPlanBody.tsx',
     renders: /<SuppliesList\b[\s\S]{0,80}items=\{/,
     why:
       'It rendered on `main` at :990-992 via PicnicShoppingList, is NOT in the spec\'s deletion list, '
@@ -1030,19 +964,21 @@ const S6_CARRIED = [
       + 'available outcomes.',
   },
   {
-    what: "the busyness estimate's disclosure",
-    producer: /\bisEstimated\s*[:,]/,
-    consumer: 'app-mobile/src/components/expandedCard/ConditionsSection.tsx',
-    renders: /busyness\.isEstimated/,
+    // #4347 wave 3 — the crowd is no longer BusynessData (nothing renders it):
+    // it is the typical curve, and its disclosure is the "Usually …" wording
+    // and the "typical, not live" note on every surface that shows it.
+    what: "the typical crowd's disclosure",
+    producer: /\bcrowd_then_\$\{|\bcrowdLevel\(/,
+    consumer: 'app-mobile/src/components/expandedCard/CuratedPlanBody.tsx',
+    renders: [/cards:plan\.crowd_then_\$\{/, /cards:plan\.conditions_note/],
     why:
-      'busynessService sets `isEstimated: true` on EVERY busyness value the app produces — there is '
-      + 'no measured path. A compile-time VENUE_POPULARITY curve rendered with no disclosure is a '
-      + 'fabrication with a sparkline next to it (Constitution 9).',
+      'The crowd is a compile-time VENUE_POPULARITY curve. Rendered without "Usually" and the '
+      + '"typical, not live" note it would be a fabrication that reads as a measurement (Constitution 9).',
   },
   {
     what: "a curated stop's own booking page",
     producer: /\bwebsite\s*:/,
-    consumer: 'app-mobile/src/components/expandedCard/StopList.tsx',
+    consumer: 'app-mobile/src/components/expandedCard/CuratedPlanBody.tsx',
     renders: /stop\.website/,
     why:
       'CuratedStop.website is populated by the generator and rendered on `main` as a per-stop '
@@ -1051,7 +987,7 @@ const S6_CARRIED = [
   {
     what: "a curated stop's photos past the first",
     producer: /\bimageUrls\s*[:?]/,
-    consumer: 'app-mobile/src/components/expandedCard/StopList.tsx',
+    consumer: 'app-mobile/src/components/expandedCard/curatedPlanModel.ts',
     renders: /stop\.imageUrls/,
     why:
       'A stop carries up to five photos. The deleted StopImageGallery was ImageLightbox\'s only '
@@ -1091,7 +1027,7 @@ const S6_CARRIED = [
   {
     what: "a curated stop's OPTIONAL flag",
     producer: /\boptional:\s*(?:true|original\.optional|stopDef\.optional)\b/,
-    consumer: 'app-mobile/src/components/expandedCard/StopList.tsx',
+    consumer: 'app-mobile/src/components/expandedCard/CuratedPlanBody.tsx',
     /*
       BOTH render sites, and the pair is the point. The visible Chip is what a
       sighted user reconciles "2 stops" against; the accessibility branch is
@@ -1101,7 +1037,9 @@ const S6_CARRIED = [
       deleted — which is exactly what happened the first time this row was
       written, and the revert harness caught it.
     */
-    renders: [/stop\.optional[\s\S]{0,60}<Chip/, /stop\.optional\s*\?[\s\S]{0,80}stop_optional_a11y/],
+    // #4347 wave 3 — the stop card's "Optional" tag, and the unnumbered
+    // route / navigator label (an optional stop announces its NAME, no ordinal).
+    renders: [/ordinal === null\) tags\.push\(t\('cards:expanded\.optional'\)\)/, /ordinal: timeline\[i\]\?\.ordinal \?\? null/],
     why:
       '`generate-curated-experiences` emits `optional: true` stops (:501/:529/:575) and the plate '
       + 'counts `planVisibleStops`, which excludes them. The list rendered every stop identically, so '
@@ -1116,7 +1054,8 @@ const S6_CARRIED = [
     // it. Every other row's producer must be a different file.
     producedInPlace: true,
     consumer: 'app-mobile/src/components/ExpandedCardModal.tsx',
-    renders: /viewerDistanceKm:\s*viewerDistance/,
+    // #4347 wave 2/3 — the place's "From you" tile reads it (the plate is gone).
+    renders: /viewerDistance !== null\s*\?\s*parseAndFormatDistance\(`\$\{viewerDistance\} km`/,
     why:
       'A chat-mounted card is BY DEFINITION one with no `card.distance` (`isChatMounted` is defined '
       + 'as `!card.travelTime && !card.distance`), so those cards showed no distance at all while the '
@@ -1321,31 +1260,10 @@ function typeBody(source, openerRe, label) {
   return '';
 }
 
+// #4347 wave 3 — BusynessData left this ledger: ConditionsSection (its only
+// reader) is deleted and nothing on the sheet renders that shape any more; the
+// crowd is the typical curve via placeSheetModel / curatedPlanModel (see S-7).
 const S6B_SHAPES = [
-  {
-    label: 'BusynessData (busynessService.ts)',
-    src: 'busyness',
-    opener: /export interface BusynessData\s*\{/,
-    rendered: {
-      busynessLevel: ['conditions', /busyness\.busynessLevel/],
-      currentPopularity: ['conditions', /clampPercent\(busyness\.currentPopularity\)/],
-      isEstimated: ['conditions', /busyness\.isEstimated/],
-    },
-    notRendered: {
-      isBusy:
-        'A boolean derived from `currentPopularity > 50` by the same compile-time curve the band '
-        + 'word already states. Rendering both would be the same estimate twice, once as a word and '
-        + 'once as a flag. Kept because the producer is shared; read by nothing on this sheet.',
-      popularTimes:
-        'The 24-hour curve behind the sparkline. §6.6 replaced the popular-times chart with a 48x5 '
-        + 'track precisely because a chart of a COMPILE-TIME curve is a chart of a constant. The '
-        + 'array stays on the type for the day a measured provider returns one.',
-      message:
-        'S-7 forbids it: "Not busy (3%) — great time to visit!" is a synthesised percentage plus '
-        + 'advice, and the row renders the qualitative band instead. This is the ONE field on this '
-        + 'sheet whose non-rendering is itself gated.',
-    },
-  },
   {
     label: 'the companion-stop element (expandedCardTypes.ts)',
     src: 'cardtypes',
@@ -1715,383 +1633,74 @@ test('S-9 a rendered "N min here" is a value a producer really carried', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 test('S-7 no synthesised busyness percentage renders as a measurement', () => {
-  // Constitution 9, and the FIFTH fabricated value this week: the 4.5 rating,
-  // the 0.0 rating, the "15 min" travel time, the longitude-derived timezone —
-  // and then a compile-time popularity curve rendered at 17.74:1 with a
-  // sparkline and no indication it was estimated. Two unrelated venues read
-  // "Not busy (3%) — great time to visit!" forty minutes apart on both
-  // platforms, because `weekday[1]` is a constant.
-  const conditions = stripComments(read('conditions'));
-  const service = stripComments(
-    fs.readFileSync(path.join(REPO, 'app-mobile/src/services/busynessService.ts'), 'utf8'),
-  );
-
-  // (1) The producer really does synthesise, and really does flag it. If it
-  // ever stops, this rule must be re-pointed rather than deleted.
-  assert.match(
-    service,
-    /VENUE_POPULARITY\s*\[/,
-    'S-7 (vacuity): busyness no longer comes from a compile-time popularity curve, so the premise of '
-    + 'this rule has changed.',
-  );
-  assert.match(
-    service,
-    /isEstimated:\s*true/,
-    'S-7 (vacuity): the service no longer marks its heuristic output as estimated.',
-  );
-
-  // (2) `busyness.message` embeds the percentage AND an exhortation
-  // ("Not busy (3%) — great time to visit!"). It must not be rendered.
-  assert.equal(
-    /\{\s*busyness\.message\s*\}/.test(conditions),
-    false,
-    'S-7: the busyness row renders `busyness.message` again. That string is a synthesised percentage '
-    + 'plus advice, and §6.6\'s design is a qualitative WORD — the number is what makes the '
-    + 'fabrication concrete.',
-  );
-  // `currentPopularity` may survive in exactly ONE place: the sparkline's
-  // WIDTH. A bar is not a number — it carries no digits and it is hidden from
-  // the accessibility tree — but the moment the value reaches a <Text> it is a
-  // measurement again.
-  const popUses = [...conditions.matchAll(/currentPopularity/g)];
-  assert.equal(
-    popUses.length,
-    1,
-    `S-7: currentPopularity is referenced ${popUses.length} times. Exactly one is sanctioned — the `
-    + 'sparkline width.',
-  );
-  const around = conditions.slice(
-    Math.max(0, popUses[0].index - 120),
-    popUses[0].index + 40,
-  );
-  assert.match(
-    around,
-    /width:/,
-    `S-7: the popularity value is used outside the sparkline width: ...${around.trim()}...`,
-  );
-  const texts = [...conditions.matchAll(/<Text\b[\s\S]{0,400}?<\/Text>/g)].map((m) => m[0]);
-  assert.equal(
-    texts.some((t) => /currentPopularity|busyness\.message/.test(t)),
-    false,
-    'S-7: a <Text> renders the synthesised percentage or the advice string.',
-  );
-
-  // (3) The band word is what renders, and it is chosen BY `isEstimated`.
-  assert.match(
-    conditions,
-    /bandLabel\(busyness,\s*t\)/,
-    'S-7: the row no longer renders the qualitative band.',
-  );
-  const band = conditions.slice(conditions.indexOf('function bandLabel'));
-  assert.ok(band.length > 200, 'S-7 (vacuity): bandLabel could not be delimited');
-  assert.match(
-    band,
-    /busyness\.isEstimated/,
-    'S-7: the band word no longer depends on whether the value is estimated, so an ESTIMATE and a '
-    + 'MEASUREMENT would read identically.',
-  );
-  for (const level of ['Very Busy', 'Busy', 'Moderate', 'Not Busy']) {
-    assert.ok(
-      band.includes(`"${level}"`),
-      `S-7: the band "${level}" has no word, so it would fall through to something else.`,
-    );
+  // #4347 wave 3 — REWRITTEN. ConditionsSection (the only reader of
+  // BusynessData) is deleted; every crowd value on the sheet is now the typical
+  // curve, turned into a WORD by `crowdLevel` and shown as "Usually …". The
+  // fabrication this rule exists for is a percentage or the advice string
+  // ("Not busy (3%) — great time to visit!") reaching the screen, so: no file
+  // that renders crowd reads BusynessData at all, and every crowd string a
+  // surface can show starts with the typical-not-live wording.
+  const surfaces = [
+    'app-mobile/src/components/expandedCard/WhenYoudGo.tsx',
+    'app-mobile/src/components/expandedCard/CuratedPlanBody.tsx',
+    'app-mobile/src/components/expandedCard/PlanSections.tsx',
+    'app-mobile/src/components/expandedCard/PlanStopCard.tsx',
+    'app-mobile/src/components/expandedCard/curatedPlanModel.ts',
+  ];
+  for (const rel of surfaces) {
+    const src = stripComments(fs.readFileSync(path.join(REPO, rel), 'utf8'));
+    assert.ok(src.length > 400, `S-7 (vacuity): ${rel} was not read`);
+    assert.equal(/currentPopularity|busyness\.message|busynessService/.test(src), false,
+      `S-7: ${rel} reads the synthesised busyness percentage / advice again.`);
   }
-  assert.equal(
-    /\d+\s*%/.test(band),
-    false,
-    'S-7: a percentage crept back into the band vocabulary.',
-  );
-
-  // (4) …and the disclosure renders, gated on the same flag.
-  assert.match(
-    conditions,
-    /busyness\.isEstimated\s*\?[\s\S]{0,400}estimated_disclosure/,
-    'S-7: the "Estimated" disclosure is gone again. The shipped one failed AA (9pt, 2.20:1) and '
-    + 'deleting it was defensible; deleting it AND keeping the number was not.',
-  );
+  const en = JSON.parse(fs.readFileSync(path.join(APP, 'src/i18n/locales/en/cards.json'), 'utf8'));
+  for (const level of ['quiet', 'steady', 'busy', 'packed']) {
+    assert.match(en[`plan.crowd_then_${level}`], /^Usually /, `S-7: the plan's crowd chip for ${level} is not worded as typical`);
+    assert.match(en[`sheet.crowd_usually_${level}`], /^Usually /, `S-7: the place's crowd for ${level} is not worded as typical`);
+  }
+  assert.match(en['plan.conditions_note'], /typical, not live/, 'S-7: the plan no longer says its crowd is typical, not live');
 });
-
 // ─────────────────────────────────────────────────────────────────────────────
-// S-5 · THE META LINE IS CONTINUOUS — one producer, called from both surfaces
+// S-5 · THE STOP COUNT IS CONTINUOUS — deck and sheet count a plan the same way
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Pull the object literal passed as a function's Nth argument, by brace
- * matching. Fails loudly if the call moved, so this rule cannot pass vacuously.
- */
-function optionsLiteral(source, callee, label) {
-  const at = source.indexOf(`${callee}(`);
-  assert.notEqual(at, -1, `${label}: \`${callee}(\` does not appear at all.`);
-  const open = source.indexOf('{', at);
-  assert.notEqual(open, -1, `${label}: the call has no options object.`);
-  let depth = 0;
-  for (let i = open; i < source.length; i += 1) {
-    if (source[i] === '{') depth += 1;
-    else if (source[i] === '}') {
-      depth -= 1;
-      if (depth === 0) return source.slice(open, i + 1);
-    }
-  }
-  assert.fail(`${label}: the options object literal is unbalanced.`);
-  return '';
-}
-
-/**
- * The stubs BOTH call sites are evaluated against.
- *
- * IDENTICAL FOR BOTH, ON PURPOSE — any surviving difference in the resulting
- * spans is a difference the CALLERS introduced, which is exactly the class of
- * defect this rule exists for. The two surfaces read viewer state through
- * different local names (`accountPreferences?.measurementSystem` on the sheet,
- * a `measurementSystem` prop on the deck), so every name either one can bind is
- * supplied here with the SAME underlying value.
- *
- * TWO PARAMETERS, AND BOTH ARE LESSONS:
- *
- *   system            the rule used to run at `Imperial` only, and
- *                     `parseAndFormatDistance` DEFAULTS to Imperial. So deleting
- *                     `measurementSystem` from a call site left the suite green
- *                     — the fixture and the default agreed. At Metric the same
- *                     omission is `9.3 km` against `5.8 mi`, which is the whole
- *                     of the divergence made visible. Both are run.
- *   brandExperience   the deck passed `isBrandExperience` into the producer and
- *                     the sheet did not, so the ONE producer could still be
- *                     asked two different questions. It decides ONE span and it
- *                     is the money one (ORCH-1065 BUG-1): an experience's all-in
- *                     price is the ENVELOPE total while every stop carries 0, so
- *                     a caller that omits the flag prints "Free" over a paid
- *                     experience. Executed rather than grepped — a call site
- *                     that drops the option simply produces a different array.
- */
-function s5Deps(system, brandExperience) {
-  return {
-    accountPreferences: { currency: 'USD', measurementSystem: system },
-    measurementSystem: system,
-    currencyCode: 'USD',
-    // Both surfaces' local names for the same fact.
-    isBrandExperience: brandExperience,
-    isBrandExperiencePlan: brandExperience,
-    // [#4347] both call sites now bind `formatDisplayPrice` (the amount arrives
-    // WITH its own currency from the producer). The stub prints the source
-    // currency and amount so the parity sweep still compares real arguments.
-    formatDisplayPrice: (price) => ({ text: `${price.sourceCurrency} ${price.min}` }),
-    t: (key, opts) => {
-      if (key === 'cards:swipeable.free') return 'Free';
-      if (key === 'cards:expanded.stop_count') return `${opts?.count ?? 0} stops`;
-      if (key === 'common:intent_picnic_dates') return 'Picnic Dates';
-      if (key === 'common:intent_adventurous') return 'Adventurous';
-      return opts?.defaultValue ?? key;
-    },
-  };
-}
-
-/** A plan with an OPTIONAL third stop — the exact shape that diverged. */
-const S5_FIXTURE = {
-  experienceType: 'picnic-dates',
-  estimatedDurationMinutes: 104,
-  totalPriceMin: 0,
-  totalPriceMax: 0,
-  stops: [
-    { optional: false, priceMin: 0, priceMax: 0, distanceFromUserKm: 9.33 },
-    { optional: false, priceMin: 0, priceMax: 0, distanceFromUserKm: 11.0 },
-    { optional: true, priceMin: 12, priceMax: 20, distanceFromUserKm: 12.0 },
-  ],
-};
-
-/**
- * A BRAND EXPERIENCE, in the shape `deckService.experienceCardToRecommendation`
- * actually produces: the price is the envelope total and every stop carries 0.
- * Summing the stops yields `Free`; reading the envelope yields `USD 4500`. The
- * two answers are as far apart as a meta line can get.
- */
-const S5_EXPERIENCE = {
-  experienceType: 'adventurous',
-  // [#4347] the experience's own currency; the producer hands it to the formatter.
-  currency: 'USD',
-  estimatedDurationMinutes: 150,
-  totalPriceMin: 4500,
-  totalPriceMax: 4500,
-  stops: [
-    { optional: false, priceMin: 0, priceMax: 0, distanceFromUserKm: 9.33 },
-    { optional: false, priceMin: 0, priceMax: 0, distanceFromUserKm: 11.0 },
-  ],
-};
-
-test('S-5 the curated meta line is produced ONCE and both surfaces render the same array', async () => {
-  // THE CLAIM THE WHOLE WAVE RESTS ON IS THAT OPENING A CARD CONTINUES IT.
-  //
-  // The plate's GEOMETRY was gated (S-1, T-11) and measured identical on
-  // device. Its CONTENTS were gated by nothing, and the tester caught them
-  // changing on the very tap that is supposed to prove continuity:
-  //
-  //     collapsed   2 stops · 5.8 mi · 1h 23m · Free · Picnic Dates
-  //     expanded    3 stops ·          1h 44m · Free · Picnic Dates
-  //
-  // Two builders — five spans from the non-optional stops in
-  // CuratedExperienceSwipeCard, four from ALL of them in expandedCardFacts,
-  // different duration and price rules, no distance. This rule closes it three
-  // ways: exactly one producer exists, both surfaces call it, and BOTH CALL
-  // SITES' OPTION OBJECTS are executed against the same card and compared.
-  const modal = stripComments(read('modal'));
-  const deck = stripComments(read('swipecurated'));
-  const facts = stripComments(read('facts'));
-
-  // (1) EXACTLY ONE PRODUCER, in the whole tree.
-  const definers = [...TREE]
-    .filter(([, src]) => /export\s+function\s+curatedPlanSpans\b/.test(src))
-    .map(([file]) => file);
-  assert.deepEqual(
-    definers,
-    ['app-mobile/src/components/expandedCard/expandedCardFacts.ts'],
-    `S-5: ${definers.length} module(s) define curatedPlanSpans: ${definers.join(', ')}. Two producers `
-    + 'is how the meta line diverged in the first place.',
-  );
-
-  // #4347 wave 1 — REWRITTEN. The approved redesign gives the DECK its own fact
-  // line ("2 stops · 1h 44m · 8 min away · Moderate"; an experience's price on
-  // the plate's From pill), while the sheet keeps curatedPlanSpans until waves
-  // 2-3 rebuild it. What this rule still protects, and how:
-  //   - ONE producer per surface, both in expandedCardFacts, neither caller
-  //     assembling spans of its own;
-  //   - the sheet's array is executed and pinned exactly as before;
-  //   - the deck's array is executed and pinned;
-  //   - the defect this rule was written for — the deck and the sheet COUNTING
-  //     A PLAN'S STOPS DIFFERENTLY — is executed across both shapes and both
-  //     measurement systems and must stay equal.
-  const face = stripComments(read('curatedface'));
-  assert.match(modal, /curatedPlanSpans\s*\(/, 'S-5: the expanded sheet no longer calls the shared span producer.');
-  assert.match(face, /curatedDeckSpans\s*\(/, 'S-5: the deck face no longer calls the deck span producer.');
-  assert.match(deck, /curatedFaceFacts\s*\(/, 'S-5: the collapsed deck card no longer reads its facts from the one binding.');
-  for (const [label, src] of [['the expanded sheet', modal], ['the collapsed deck card', deck], ['the deck face binding', face]]) {
-    assert.equal(
-      /(?:const|let)\s+\w*[Ss]pans\w*\s*:\s*MetaSpanInput\[\]\s*=\s*\[\s*\]/.test(src),
-      false,
-      `S-5: ${label} assembles its own MetaSpanInput array again.`,
-    );
-  }
-  assert.equal(
-    /filter\s*\(\s*\w+\s*=>\s*!\w+\.optional\s*\)/.test(deck + face),
-    false,
-    'S-5: the deck card re-implements the non-optional filter inline.',
-  );
+test('S-5 the deck and the sheet count a plan\'s stops the same way', async () => {
+  // #4347 wave 3 — REWRITTEN. The sheet no longer draws the plate (it opens on
+  // the gallery), so "the same span array on both surfaces" has no second
+  // surface. The defect this rule was written for — the deck saying "2 stops"
+  // and the opened sheet saying "3 stops" for the same plan — is still real,
+  // and it is executed here: the deck's count (curatedDeckSpans, over
+  // planVisibleStops) and the sheet's count (countedStops / stopOrdinals, the
+  // Stops tile and the numbers on the stop cards) must agree on every shape.
+  const body = stripComments(read('planbody'));
+  assert.match(body, /const counted = countedStops\(stops\)/, 'S-5: the Stops tile no longer counts through countedStops');
+  assert.match(body, /ordinal: timeline\[i\]\?\.ordinal \?\? null/, 'S-5: the route strip no longer numbers through the timeline ordinals');
   const deckDefiners = [...TREE]
     .filter(([, src]) => /export\s+function\s+curatedDeckSpans\b/.test(src))
     .map(([file]) => file);
   assert.deepEqual(deckDefiners, ['app-mobile/src/components/expandedCard/expandedCardFacts.ts'],
     `S-5: ${deckDefiners.length} module(s) define curatedDeckSpans`);
 
-  // (3) EXECUTED. Import the REAL producers and run each surface's own options.
-  const { curatedPlanSpans, curatedDeckSpans } = await import(
-    pathToFileURL(path.join(REPO, SRC.facts)).href
+  const { curatedDeckSpans } = await import(pathToFileURL(path.join(REPO, SRC.facts)).href);
+  const { countedStops, stopOrdinals } = await import(
+    pathToFileURL(path.join(REPO, 'app-mobile/src/components/expandedCard/curatedPlanModel.ts')).href
   );
-
-  const modalOpts = optionsLiteral(modal, 'curatedPlanSpans', 'S-5 sheet call site');
-  const deckOpts = optionsLiteral(face, 'curatedDeckSpans', 'S-5 deck call site');
-  assert.ok(
-    modalOpts.includes('stopCountLabel') && modalOpts.includes('formatMoney'),
-    `S-5 (vacuity): the sheet options literal does not look like the producer's options. Got: ${modalOpts.slice(0, 120)}`,
-  );
-  assert.ok(
-    deckOpts.includes('stopCountLabel') && deckOpts.includes('spendLevelLabel'),
-    `S-5 (vacuity): the deck options literal does not look like the producer's options. Got: ${deckOpts.slice(0, 120)}`,
-  );
-
-  const build = (literal, label, deps) => {
-    const names = Object.keys(deps);
-    let fn;
-    try {
-      // eslint-disable-next-line no-new-func
-      fn = new Function(...names, `return (${literal});`);
-    } catch (e) {
-      assert.fail(`S-5: the ${label} options literal is not evaluable: ${e.message}`);
-    }
-    return fn(...names.map((n) => deps[n]));
+  const stop = (optional) => ({ placeName: 'x', optional, priceMin: 0, priceMax: 0, priceTier: 'chill', estimatedDurationMinutes: 30 });
+  const shapes = {
+    mixed: [stop(false), stop(true), stop(false)],
+    allOptional: [stop(true), stop(true), stop(true)],
+    plain: [stop(false), stop(false)],
   };
-
-  const EXPECTED = {
-    'Imperial|plan': ['2 stops', '5.8 mi', '1h 44m', 'Free', 'Picnic Dates'],
-    'Metric|plan': ['2 stops', '9.3 km', '1h 44m', 'Free', 'Picnic Dates'],
-    'Imperial|experience': ['2 stops', '5.8 mi', '2h 30m', 'USD 4500', 'Adventurous'],
-    'Metric|experience': ['2 stops', '9.3 km', '2h 30m', 'USD 4500', 'Adventurous'],
-  };
-  const EXPECTED_DECK = {
-    plan: ['2 stops', '1h 44m', 'Free'],
-    experience: ['2 stops', '2h 30m'],
-  };
-
-  let sheetPlanImperial = null;
-  for (const system of ['Imperial', 'Metric']) {
-    for (const [shape, card, brand] of [
-      ['plan', S5_FIXTURE, false],
-      ['experience', S5_EXPERIENCE, true],
-    ]) {
-      const deps = s5Deps(system, brand);
-      const fromSheet = curatedPlanSpans(card, build(modalOpts, 'sheet', deps));
-      const fromDeck = curatedDeckSpans(card, build(deckOpts, 'deck', deps));
-      if (system === 'Imperial' && shape === 'plan') sheetPlanImperial = fromSheet;
-
-      assert.ok(
-        fromSheet.length >= 4,
-        `S-5 (vacuity): the producer returned ${fromSheet.length} spans for the full ${shape} fixture `
-        + `at ${system} — it is not producing anything, so the equality below would be trivially true.`,
-      );
-      assert.equal(
-        fromDeck[0]?.text,
-        fromSheet[0]?.text,
-        `S-5: at ${system}, the SAME ${shape} counts its stops differently on the deck ("${fromDeck[0]?.text}") `
-        + `and on the sheet ("${fromSheet[0]?.text}"). One tap apart, a plan must be the same size.`,
-      );
-      assert.deepEqual(
-        fromDeck.map((s) => s.text),
-        EXPECTED_DECK[shape],
-        `S-5: at ${system} the deck ${shape} does not produce the approved line.`,
-      );
-      assert.deepEqual(
-        fromSheet.map((s) => s.text),
-        EXPECTED[`${system}|${shape}`],
-        `S-5: at ${system} the ${shape} does not produce the specified line. A 3 in the count means `
-        + "the optional stop is being counted against the card's own title; a missing distance means "
-        + 'the sheet lost it again; "Free" on the experience means the envelope price was replaced by '
-        + 'a sum over stops that all carry zero.',
-      );
-    }
-  }
-
-  assert.deepEqual(
-    sheetPlanImperial.map((s) => s.kind),
-    ['rating', 'fact', 'fact', 'fact', 'tail'],
-    'S-5: the span WEIGHTS changed. The leading 700 slot belongs to the fact that characterises a '
-    + 'plan, and the tail is the vibe.',
-  );
-
-  // A single-stop plan has no count worth stating and falls back to distance;
-  // a stopless one states neither rather than "0 stops" (Constitution 9).
-  const imperialPlanDeps = s5Deps('Imperial', false);
-  const single = curatedPlanSpans(
-    { ...S5_FIXTURE, stops: [S5_FIXTURE.stops[0]] },
-    build(modalOpts, 'sheet', imperialPlanDeps),
-  );
-  assert.equal(single[0].text, '5.8 mi', 'S-5: a single-stop plan still leads with a stop count.');
-  for (const [label, produce] of [
-    ['sheet', (c) => curatedPlanSpans(c, build(modalOpts, 'sheet', imperialPlanDeps))],
-    ['deck', (c) => curatedDeckSpans(c, build(deckOpts, 'deck', imperialPlanDeps))],
-  ]) {
-    const none = produce({ ...S5_FIXTURE, stops: [] });
-    assert.equal(
-      none.some((s) => /stops?/.test(s.text)),
-      false,
-      `S-5: on the ${label}, a plan with no stops renders "${none.map((s) => s.text).join(' · ')}" — "0 stops" is a `
-      + 'fabricated fact about a plan that has none.',
-    );
-  }
-
-  // Anti-vacuity on the producer itself: the file must still name the four
-  // derivations, or the executed array above is coming from somewhere else.
-  for (const needle of ['planVisibleStops', 'formatPlanDuration', 'curatedPriceLabel', 'distanceFromUserKm']) {
-    assert.ok(facts.includes(needle), `S-5 (vacuity): the producer no longer contains ${needle}`);
+  for (const [name, stops] of Object.entries(shapes)) {
+    const spans = curatedDeckSpans({ stops, estimatedDurationMinutes: 90, experienceType: 'romantic' }, {
+      spendLevelLabel: (l) => l, freeLabel: 'Free', stopCountLabel: (n) => `${n} stops`, awayLabel: (m) => `${m} away`,
+    });
+    const deckCount = Number(/^(\d+) stops$/.exec(spans[0].text)[1]);
+    assert.equal(countedStops(stops), deckCount, `S-5: ${name} — the sheet counts ${countedStops(stops)} stops, the deck ${deckCount}`);
+    const max = Math.max(...stopOrdinals(stops).map((n) => n ?? 0));
+    assert.equal(max, deckCount, `S-5: ${name} — the largest stop number on the sheet (${max}) is not the count the deck states`);
   }
 });
-
 // ─────────────────────────────────────────────────────────────────────────────
 // S-11 · THE ORDINAL MACHINE, EXECUTED — every statement of it, from source
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2125,140 +1734,22 @@ test('S-5 the curated meta line is produced ONCE and both surfaces render the sa
  * directly, which makes the guard live; restoring the fallback makes this rule
  * red rather than making the divergence latent again.
  */
-test('S-11 the rows the list numbers are exactly the stops the plate counts', async () => {
-  const { planVisibleStops } = await import(pathToFileURL(path.join(REPO, SRC.facts)).href);
-  const modal = stripComments(read('modal'));
-
-  const mCount = /const\s+planMainStopCount\s*=\s*([^;]+);/.exec(modal);
-  assert.ok(
-    mCount,
-    'S-11 (vacuity): the sheet no longer computes a main-stop count for the plan list. Re-point this '
-    + 'rule; do not delete it.',
+test('S-11 the stops the sheet numbers are exactly the stops it counts', async () => {
+  // #4347 wave 3 — RE-POINTED (not deleted): the plan's numbering moved from
+  // StopList rows to the stop cards, route strip and navigator, all of which
+  // read `stopOrdinals`. Optional stops carry NO number (they are tagged
+  // Optional), main stops are 1..N contiguous, and an all-optional plan
+  // numbers every stop.
+  const { stopOrdinals, countedStops } = await import(
+    pathToFileURL(path.join(REPO, 'app-mobile/src/components/expandedCard/curatedPlanModel.ts')).href
   );
-  const mOptional = /const\s+isOptional\s*=\s*([^;]+);/.exec(modal);
-  assert.ok(
-    mOptional,
-    'S-11 (vacuity): the sheet no longer decides which plan rows are optional, so either the marker '
-    + 'was deleted (the plate and the list disagree again) or it moved.',
-  );
-  assert.match(
-    mOptional[1],
-    /optional/,
-    'S-11 (vacuity): the lifted `isOptional` expression does not mention `optional`.',
-  );
-  const mBump = /if\s*\(!isOptional\)\s*([A-Za-z_$][\w$]*)\s*\+=\s*1;/.exec(modal);
-  assert.ok(
-    mBump,
-    'S-11 (vacuity): the ordinal counter no longer advances only on non-optional rows.',
-  );
-  const counter = mBump[1];
-  // The FIRST `indexLabel:` in the modal is the plan row's; the grocery `SHOP`
-  // chip and the companion rows set theirs later. Asserted rather than assumed —
-  // if they ever reorder, this rule must go red, not slice the wrong row.
-  const mLabel = /indexLabel:\s*([^,\n]+),/.exec(modal);
-  assert.ok(mLabel, 'S-11 (vacuity): the plan row no longer sets an index label.');
-  assert.match(
-    mLabel[1],
-    /isOptional/,
-    'S-11 (vacuity): the first index label in the sheet is no longer the PLAN row\'s (it does not read '
-    + `\`isOptional\`; got \`${mLabel[1]}\`). Re-point this rule at the plan row — slicing the grocery `
-    + 'or companion row instead would make every assertion below about the wrong list.',
-  );
-  assert.match(
-    mLabel[1],
-    new RegExp(`\\b${counter}\\b`),
-    `S-11: the row's index chip does not read the ordinal counter (\`${counter}\`). Numbering from the `
-    + 'ARRAY INDEX instead leaves a hole where the optional row is — the rows read 1, (Optional), 3 '
-    + 'while the plate says "2 stops". That is the pre-fix numbering and it is the whole defect.',
-  );
-
-  const detype = (expr) => expr
-    .replace(/\s+as\s+\{[^{}]*\}/g, '')
-    .replace(/\s+as\s+[A-Za-z_$][\w$.]*/g, '');
-
-  // The machine, assembled from source. `planVisibleStops` is supplied so that a
-  // count expression which goes back through the fallback still RUNS — and then
-  // fails on its answer rather than on a ReferenceError.
-  let run;
-  try {
-    // eslint-disable-next-line no-new-func
-    run = new Function(
-      'planStops', 'planVisibleStops',
-      `const planMainStopCount = ${detype(mCount[1])};\n`
-      + `let ${counter} = 0;\n`
-      + 'return planStops.map((stop, i) => {\n'
-      + `  const isOptional = ${detype(mOptional[1])};\n`
-      + `  if (!isOptional) ${counter} += 1;\n`
-      + `  return { indexLabel: ${detype(mLabel[1])}, optional: isOptional };\n`
-      + '});',
-    );
-  } catch (e) {
-    assert.fail(`S-11: the lifted ordinal machine is not evaluable: ${e.message}`);
-  }
-
-  const DOMAIN = [
-    [],
-    [false],
-    [true],
-    [false, false],
-    [false, true],
-    [true, false],
-    [true, true],
-    [false, true, false],
-    [true, false, true],
-    [true, true, true],
-    [false, false, true, false, true],
-  ];
-
-  let sawOptionalRow = false;
-  let sawAllOptionalPlan = false;
-
-  for (const flags of DOMAIN) {
-    const stops = flags.map((optional, i) => ({ placeId: `p${i}`, optional, priceMin: 0, priceMax: 0 }));
-    const plateCount = planVisibleStops(stops).length;
-    const rows = run(stops, planVisibleStops);
-    const numbered = rows.filter((r) => r.indexLabel !== '').map((r) => r.indexLabel);
-    if (rows.some((r) => r.optional === true)) sawOptionalRow = true;
-    if (flags.length > 0 && flags.every((optional) => optional === true)) sawAllOptionalPlan = true;
-
-    assert.equal(
-      numbered.length,
-      plateCount,
-      `S-11: [${flags.join(',')}] — the plate says ${plateCount} and the list numbers ${numbered.length} `
-      + `rows (${JSON.stringify(rows.map((r) => r.indexLabel))}). Two numbers about one plan, on one `
-      + 'screen, that cannot both be read as true. An ALL-OPTIONAL plan failing here means the '
-      + "main-stop count went back through `planVisibleStops`'s all-optional fallback, which makes the "
-      + '`planMainStopCount > 0` guard dead again.',
-    );
-    assert.deepEqual(
-      numbered,
-      Array.from({ length: plateCount }, (_, i) => String(i + 1)),
-      `S-11: [${flags.join(',')}] — the numbered rows are not the contiguous 1..${plateCount} the `
-      + `plate's count is about. Got ${JSON.stringify(rows.map((r) => r.indexLabel))}. A gap means the `
-      + 'label is coming from the array index instead of the ordinal counter.',
-    );
-    // An optional row is never numbered, whatever else is true.
-    for (const row of rows) {
-      if (row.optional === true) {
-        assert.equal(
-          row.indexLabel,
-          '',
-          `S-11: [${flags.join(',')}] — a row marked optional still carries the ordinal `
-          + `"${row.indexLabel}". The plate's count does not include it, so a number on it is a `
-          + 'position in a sequence it is not in.',
-        );
-      }
-    }
-  }
-
-  assert.ok(sawOptionalRow, 'S-11 (vacuity): no row in the swept domain was ever optional.');
-  assert.ok(
-    sawAllOptionalPlan,
-    'S-11 (vacuity): the domain no longer contains an all-optional plan, which is the one shape the '
-    + 'dead conjunct used to break.',
-  );
+  assert.deepEqual(stopOrdinals([{}, { optional: true }, {}]), [1, null, 2]);
+  assert.deepEqual(stopOrdinals([{ optional: true }, { optional: true }]), [1, 2]);
+  assert.deepEqual(stopOrdinals([{ optional: true }, {}, { optional: true }, {}]), [null, 1, null, 2]);
+  assert.equal(countedStops([{}, { optional: true }, {}]), 2);
+  const nav = stripComments(read('modal'));
+  assert.match(nav, /ordinal: planOrdinals\[i\] \?\? null/, 'S-11: the navigator numbers stops some other way');
 });
-
 // ─────────────────────────────────────────────────────────────────────────────
 // S-5b · THE BRAND-EXPERIENCE FLAG IS DERIVED, NOT ASSUMED
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2286,132 +1777,29 @@ test('S-11 the rows the list numbers are exactly the stops the plate counts', as
  * `false` fails the first row; one pinned to `true` fails the negative rows; a
  * derivation that stops reading the brand attribution fails the structural row.
  */
-test('S-5b the sheet DERIVES the brand-experience flag, and the money span follows it', async () => {
+test('S-5b the sheet DERIVES the brand-experience flag, and the Spend tile follows it', async () => {
+  // #4347 wave 3 — RE-POINTED from the plate's money span to the Spend tile.
+  // ORCH-1065 BUG-1: a brand experience's stops carry price 0, so summing
+  // them prints "Free" over a paid experience. The sheet derives the flag from
+  // the brand attribution (Likes re-tags a saved experience `curated`) and
+  // hands it to the same price decision the plate used.
   const modal = stripComments(read('modal'));
-
-  const at = modal.indexOf('isBrandExperiencePlan');
-  assert.notEqual(
-    at,
-    -1,
-    'S-5b (vacuity): `isBrandExperiencePlan` is gone from the sheet. Either the structural recovery was '
-    + 'deleted — in which case a paid experience opened from Likes prints "Free" again, because the '
-    + 'Likes mapper stamps `cardType: "curated"` over the `experience` tag — or it was renamed. '
-    + 'Re-point this rule; do not delete it.',
-  );
-  const open = modal.indexOf('{', at);
-  assert.notEqual(open, -1, 'S-5b (vacuity): the derivation has no body.');
-  let depth = 0;
-  let body = null;
-  for (let i = open; i < modal.length; i += 1) {
-    if (modal[i] === '{') depth += 1;
-    else if (modal[i] === '}') {
-      depth -= 1;
-      if (depth === 0) { body = modal.slice(open + 1, i); break; }
-    }
-  }
-  assert.ok(body, 'S-5b (vacuity): the derivation body is unbalanced.');
-  assert.match(
-    body,
-    /return/,
-    'S-5b (vacuity): the sliced derivation has no `return`, so executing it would assert nothing.',
-  );
-
-  // Enough TypeScript removed for `new Function` to accept the lifted block.
-  // Deliberately narrow — a general stripper here would be a second compiler.
-  const runnable = body
-    .replace(/\s+as\s+\{[^{}]*\}/g, '')
-    .replace(/\s+as\s+[A-Za-z_$][\w$.]*/g, '');
-  let derive;
-  try {
-    // eslint-disable-next-line no-new-func
-    derive = new Function('card', 'planStops', runnable);
-  } catch (e) {
-    assert.fail(`S-5b: the lifted derivation is not evaluable: ${e.message}`);
-  }
-
-  /*
-    THE TRUTH TABLE THE RECOVERY IS SUPPOSED TO IMPLEMENT. Explicit tag first,
-    brand attribution beside a stops array second, nothing else. Every row is
-    a shape the pipeline really produces — the first is a card that reached the
-    sheet with its tag intact, the second is the same card AFTER
-    `savedCardToExpandedCardData` overwrote the tag, and the rest are the AI
-    plans that must never be read as brand-authored.
-  */
-  const TWO_STOPS = [{ optional: false }, { optional: false }];
-  const TRUTH = [
-    ['explicit experience tag', { cardType: 'experience' }, [], true],
-    ['tag destroyed, attribution intact', { cardType: 'curated', brandId: 'b1', eventId: 'e1' }, TWO_STOPS, true],
-    ['attribution with NO stops', { cardType: 'curated', brandId: 'b1', eventId: 'e1' }, [], false],
-    ['empty brandId', { cardType: 'curated', brandId: '', eventId: 'e1' }, TWO_STOPS, false],
-    ['no eventId at all', { cardType: 'curated', brandId: 'b1' }, TWO_STOPS, false],
-    ['a plain AI plan', { cardType: 'curated' }, TWO_STOPS, false],
-  ];
-  for (const [label, card, stops, expected] of TRUTH) {
-    assert.equal(
-      derive(card, stops),
-      expected,
-      `S-5b: the sheet's recovery answers ${!expected} for "${label}" and it must answer ${expected}.\n\n`
-      + 'Answering FALSE for a brand experience is ORCH-1065 BUG-1: `curatedPriceLabel` then sums stops '
-      + 'that all carry 0 and the plate prints "Free" over a paid experience. Answering TRUE for an AI '
-      + "plan reads the plan's envelope totals as an all-in price nobody charges.",
-    );
-  }
-  assert.equal(
-    new Set(TRUTH.map(([, , , expected]) => expected)).size,
-    2,
-    'S-5b (vacuity): the truth table has only one answer in it, so a constant derivation would pass.',
-  );
-
-  // ── the DERIVED answer, through the real producer, at the real call site ────
-  const { curatedPlanSpans } = await import(pathToFileURL(path.join(REPO, SRC.facts)).href);
-  const literal = optionsLiteral(modal, 'curatedPlanSpans', 'S-5b sheet call site');
-  assert.match(
-    literal,
-    /isBrandExperience\s*:\s*isBrandExperiencePlan/,
-    'S-5b: the sheet derives the flag and then does not hand it to the producer. Deriving it is half '
-    + 'the fix — the span is built from what the CALL SITE passes.',
-  );
-
-  // The SAME object is the derivation's input and the producer's input, so the
-  // two halves cannot be tested against two different cards.
-  const experience = { ...S5_EXPERIENCE, cardType: 'curated', brandId: 'b1', eventId: 'e1' };
-  const derived = derive(experience, experience.stops);
-  assert.equal(
-    derived,
-    true,
-    'S-5b: the sheet cannot tell that a saved brand experience IS one. The Likes mapper overwrites '
-    + '`cardType`, so `brandId` + `eventId` beside a stops array is the only recovery left.',
-  );
-
-  const deps = s5Deps('Imperial', derived);
-  const names = Object.keys(deps);
-  // eslint-disable-next-line no-new-func
-  const options = new Function(...names, `return (${literal});`)(...names.map((n) => deps[n]));
-  const spans = curatedPlanSpans(experience, options).map((s) => s.text);
-  assert.ok(
-    spans.includes('USD 4500'),
-    `S-5b: the plate does not carry the experience's envelope price. spans = ${JSON.stringify(spans)}`,
-  );
-  assert.equal(
-    spans.includes('Free'),
-    false,
-    `S-5b: the plate says FREE over a 4500-unit experience. spans = ${JSON.stringify(spans)}`,
-  );
-
-  // …and the fixture really can tell the two answers apart.
-  const wrongDeps = s5Deps('Imperial', false);
-  const wrongNames = Object.keys(wrongDeps);
-  // eslint-disable-next-line no-new-func
-  const wrongOptions = new Function(...wrongNames, `return (${literal});`)(
-    ...wrongNames.map((n) => wrongDeps[n]),
-  );
-  assert.ok(
-    curatedPlanSpans(experience, wrongOptions).map((s) => s.text).includes('Free'),
-    'S-5b (vacuity): with the flag forced false the plate STILL does not say Free, so this fixture '
-    + 'cannot distinguish the two answers and every assertion above proves nothing.',
-  );
+  assert.match(modal, /const isBrandExperiencePlan: boolean = \(\(\) => \{/, 'S-5b: the sheet no longer derives the flag');
+  assert.match(modal, /curatedPlanPriceLabel\(planCard, \{[\s\S]{0,400}isBrandExperience: isBrandExperiencePlan/, 'S-5b: the Spend tile ignores the flag');
+  const { curatedPlanPriceLabel } = await import(pathToFileURL(path.join(REPO, SRC.facts)).href);
+  const experience = {
+    stops: [{ priceMin: 0, priceMax: 0, priceTier: 'chill' }, { priceMin: 0, priceMax: 0, priceTier: 'chill' }],
+    totalPriceMin: 100000, totalPriceMax: 100000, currency: 'NGN',
+  };
+  const opts = (brand) => ({
+    formatMoney: (p) => `money:${p.min}:${p.sourceCurrency}`,
+    spendLevelLabel: (l) => `level:${l}`,
+    freeLabel: 'Free',
+    isBrandExperience: brand,
+  });
+  assert.equal(curatedPlanPriceLabel(experience, opts(true)), 'money:100000:NGN', 'S-5b: a paid experience does not show its own money');
+  assert.notEqual(curatedPlanPriceLabel(experience, opts(true)), 'Free');
 });
-
 test('S-4e a plan gets Starts at / Ends near, and never a borrowed phone', () => {
   const details = stripComments(read('details'));
   assert.match(details, /plan\.startsAt/, 'S-4e: the plan branch lost Starts at');

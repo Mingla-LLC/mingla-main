@@ -889,10 +889,10 @@ export default function ActionButtons({
             accessibilityLabel={isScheduled ? t('expanded_details:action_buttons.scheduled') : primaryScheduleLabel}
           >
             {isScheduling ? (
-              <ActivityIndicator size="small" color="#ffffff" />
+              <ActivityIndicator size="small" color={SPINE.onAccent} />
             ) : (
               <>
-                <Icon name={isScheduled ? 'checkmark-circle' : 'calendar-outline'} size={18} color="#ffffff" />
+                <Icon name={isScheduled ? 'checkmark-circle' : 'calendar-outline'} size={18} color={SPINE.onAccent} />
                 <Text style={styles.primaryLabel} numberOfLines={1} maxFontSizeMultiplier={1.2}>
                   {isScheduled ? t('expanded_details:action_buttons.scheduled') : primaryScheduleLabel}
                 </Text>
@@ -940,12 +940,11 @@ const styles = StyleSheet.create({
     gap: 8,
     height: PINNED_BAR.buttonHeight,
     borderRadius: PINNED_BAR.buttonRadius,
-    backgroundColor: "#ea580c",
+    // The ONE accent fill, with its on-accent label (6.47:1).
+    backgroundColor: SPINE.accentFill,
   },
   primaryLabel: {
-    // The same white-on-#ea580c as the sheet's Reserve / Directions button
-    // (15pt bold is large text: 3.56:1 clears the 3:1 floor).
-    color: "#ffffff",
+    color: SPINE.onAccent,
     fontSize: PINNED_BAR.primaryLabelSize,
     fontWeight: "700",
   },

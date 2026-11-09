@@ -59,6 +59,8 @@ const REPO = path.resolve(APP, '..');
 const SRC = {
   modal: 'app-mobile/src/components/ExpandedCardModal.tsx',
   stops: 'app-mobile/src/components/expandedCard/StopList.tsx',
+  // #4347 wave 3 — the plan's route strip / navigator announce the plan's stops.
+  summary: 'app-mobile/src/components/expandedCard/PlanSummary.tsx',
   busyness: 'app-mobile/src/services/busynessService.ts',
   cardtypes: 'app-mobile/src/types/expandedCardTypes.ts',
   suite: 'app-mobile/src/components/expandedCard/__tests__/issue_1605_expanded_card_one_spine.test.mjs',
@@ -165,10 +167,6 @@ test('A-4 a paid brand experience saved from the deck never prints Free on the s
   const { savedCardToExpandedCardData } = await import(
     path.join(APP, 'src/components/utils/savedCardToExpandedCardData.ts')
   );
-  const { curatedPlanSpans } = await import(
-    path.join(APP, 'src/components/expandedCard/expandedCardFacts.ts')
-  );
-
   // The shape `experienceCardToRecommendation` produces, spread by `saveCard`.
   const ENVELOPE = 45;
   const experienceCard = {
@@ -248,46 +246,31 @@ test('A-4 a paid brand experience saved from the deck never prints Free on the s
     + 'over a paid experience — ORCH-1065 BUG-1, on the money span.',
   );
 
-  // ── 3 · the REAL span producer, with the DERIVED flag ──────────────────────
+  // ── 3 · the REAL price decision, with the DERIVED flag ─────────────────────
+  // #4347 wave 3 — RE-POINTED: the plan sheet shows the price in its Spend
+  // tile through `curatedPlanPriceLabel` (the plate is gone from the sheet).
+  const { curatedPlanPriceLabel } = await import(
+    path.join(APP, 'src/components/expandedCard/expandedCardFacts.ts')
+  );
   const options = {
-    measurementSystem: 'Imperial',
-    // [#4347] the producer passes { min, max, openEnded, sourceCurrency, server }.
     formatMoney: (price) => `USD ${price.min}`,
     spendLevelLabel: (level) => level,
     freeLabel: 'Free',
-    stopCountLabel: (count) => `${count} stops`,
-    intentLabel: (slug) => slug,
     isBrandExperience: derived,
   };
-  const spans = curatedPlanSpans(mapped, options).map((s) => s.text);
-
-  assert.ok(
-    spans.includes(`USD ${ENVELOPE}`),
-    `A-4: the plate does not carry the experience's price. spans = ${JSON.stringify(spans)}`,
-  );
-  assert.ok(
-    !spans.includes('Free'),
-    `A-4: the plate says FREE over a ${ENVELOPE}-dollar experience. spans = ${JSON.stringify(spans)}`,
-  );
+  const shown = curatedPlanPriceLabel(mapped, options);
+  assert.equal(shown, `USD ${ENVELOPE}`, `A-4: the Spend tile does not carry the experience's price. Got ${shown}`);
 
   // ── 4 · the negative control — the fixture really is discriminating ────────
-  const wrong = curatedPlanSpans(mapped, { ...options, isBrandExperience: false }).map((s) => s.text);
-  assert.ok(
-    wrong.includes('Free'),
-    'A-4 (vacuity): with the flag forced false the plate STILL does not say Free, so this fixture cannot '
-    + 'distinguish the two answers and the assertion above proves nothing.',
-  );
+  const wrong = curatedPlanPriceLabel(mapped, { ...options, isBrandExperience: false });
+  assert.notEqual(wrong, shown, 'A-4 (vacuity): with the flag forced false the tile shows the same thing, so the fixture proves nothing.');
 
   // ── 5 · and the sheet must actually PASS the derived flag ──────────────────
-  const call = modal.indexOf('curatedPlanSpans(');
-  assert.notEqual(call, -1, 'A-4 (vacuity): the sheet no longer calls `curatedPlanSpans`.');
-  const literal = balanced(modal, call, '{', '}', 'A-4 span options').text;
-  assert.match(
-    literal,
-    /isBrandExperience\s*:\s*isBrandExperiencePlan/,
-    'A-4: the sheet derives the flag and then does not pass it to the producer. Deriving it is only half '
-    + 'the fix — the span is built from what the call site hands over.',
-  );
+  const call = modal.indexOf('curatedPlanPriceLabel(');
+  assert.notEqual(call, -1, 'A-4 (vacuity): the sheet no longer prices the plan through `curatedPlanPriceLabel`.');
+  const literal = balanced(modal, call, '{', '}', 'A-4 price options').text;
+  assert.match(literal, /isBrandExperience\s*:\s*isBrandExperiencePlan/,
+    'A-4: the sheet derives the flag and then does not pass it to the price decision.');
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -377,15 +360,8 @@ test('A-5 every field of the two classified shapes is named in the gate, modifie
   );
 
   const shapes = [
-    {
-      label: 'BusynessData (busynessService.ts)',
-      body: tolerantTypeBody(
-        stripComments(read('busyness')),
-        /export interface BusynessData\s*\{/,
-        'BusynessData',
-      ),
-      known: ['isBusy', 'busynessLevel', 'currentPopularity', 'popularTimes', 'message', 'isEstimated'],
-    },
+    // #4347 wave 3 — BusynessData left the S-6b ledger: nothing on the sheet
+    // renders it (ConditionsSection is deleted; the crowd is the typical curve).
     {
       label: 'the companion-stop element (expandedCardTypes.ts)',
       body: tolerantTypeBody(
@@ -445,246 +421,56 @@ function interpolate(template, opts) {
 }
 
 test('A-6 no row announces an ordinal it does not have', () => {
+  // #4347 wave 3 — RE-POINTED. Optional stops left StopList with the plan:
+  // the plan announces its stops on the route strip / navigator (PlanSummary)
+  // and StopList now serves the companion rows (numbered, or the SHOP word).
+  // Both label expressions are lifted from source and RUN.
+  const t = (_key, opts) => interpolate(opts?.defaultValue ?? (_key === 'cards:plan.route_stop_a11y' ? 'Go to stop {{number}}, {{name}}' : ''), opts);
+  const present = (v) => typeof v === 'string' && v.trim().length > 0;
+
   const stops = stripComments(read('stops'));
   const at = stops.indexOf('accessibilityLabel=');
-  assert.notEqual(
-    at,
-    -1,
-    'A-6 (vacuity): the stop row has no `accessibilityLabel` at all — every row would announce its raw '
-    + 'subtree, which is the nested-Pressable failure this component was built to avoid.',
-  );
+  assert.notEqual(at, -1, 'A-6 (vacuity): the companion row has no `accessibilityLabel` at all.');
   const expr = balanced(stops, at, '{', '}', 'A-6 accessibilityLabel').text;
-  assert.match(expr, /stop\.optional/, 'A-6 (vacuity): the sliced label expression does not branch on `optional`.');
   assert.match(expr, /indexLabel/, 'A-6 (vacuity): the sliced label expression does not read `indexLabel`.');
-
-  const t = (_key, opts) => interpolate(opts?.defaultValue ?? '', opts);
-  const present = (v) => typeof v === 'string' && v.trim().length > 0;
-  const label = new Function('stop', 't', 'present', `return (${detype(expr)});`);
-
-  // ── a numbered row announces its OWN digit ────────────────────────────────
-  const numbered = label(
-    { optional: false, indexLabel: '3', name: 'Knightdale Station Park', meta: '★ 4.8 · 60 min here' },
-    t, present,
-  );
-  assert.match(
-    numbered,
-    /Stop 3\b/,
-    `A-6: a numbered row must announce its ordinal. Got ${JSON.stringify(numbered)}`,
-  );
-  assert.match(numbered, /Knightdale Station Park/, 'A-6: the numbered row does not announce its name.');
-
-  // ── an OPTIONAL row announces the word, and NEVER an ordinal ──────────────
-  const optional = label(
-    { optional: true, indexLabel: '', name: 'Fresh Petals', meta: '★ 4.6' },
-    t, present,
-  );
-  assert.doesNotMatch(
-    optional,
-    /Stop\s*\d/,
-    'A-6: an OPTIONAL stop announces an ordinal. The plate counts non-optional stops only, so a row that '
-    + 'announces "Stop 3" against a plate saying "2 stops" gives a screen-reader user two numbers that '
-    + `cannot be reconciled. Got ${JSON.stringify(optional)}`,
-  );
-  assert.match(
-    optional,
-    /Optional/i,
-    `A-6: an optional stop must say so. Got ${JSON.stringify(optional)}`,
-  );
-  assert.match(optional, /Fresh Petals/, 'A-6: the optional row does not announce its name.');
-
-  // ── a WORD-CHIPPED row (the picnic grocery `SHOP`) announces no ordinal ───
-  const shop = label(
-    { optional: false, indexLabel: 'SHOP', name: 'Lowes Foods of Knightdale', meta: '★ 4.4 (128 reviews)' },
-    t, present,
-  );
-  assert.doesNotMatch(
-    shop,
-    /Stop\s*\d/,
-    'A-6: the picnic grocery row announces an ordinal. It carries `index: 0`, so the pre-rework label '
-    + `said "Stop 0" — a position in a sequence it is not in. Got ${JSON.stringify(shop)}`,
-  );
+  const rowLabel = new Function('stop', 't', 'meta', `return (${detype(expr)});`);
+  const numbered = rowLabel({ indexLabel: '3', name: 'Knightdale Station Park' }, t, ', ★ 4.8');
+  assert.match(numbered, /Stop 3\b/, `A-6: a numbered row must announce its ordinal. Got ${JSON.stringify(numbered)}`);
+  const shop = rowLabel({ indexLabel: 'SHOP', name: 'Lowes Foods of Knightdale' }, t, ', ★ 4.4');
+  assert.doesNotMatch(shop, /Stop\s*\d/, `A-6: the picnic grocery row announces an ordinal. Got ${JSON.stringify(shop)}`);
   assert.match(shop, /Lowes Foods of Knightdale/, 'A-6: the shop row does not announce its name.');
 
-  // ── the fixture is discriminating: the three arms are three answers ───────
-  assert.equal(
-    new Set([numbered, optional, shop]).size,
-    3,
-    'A-6 (vacuity): the three row kinds produce the same announcement, so the branch under test is not '
-    + 'branching and every assertion above is satisfied by one string.',
-  );
+  const summary = stripComments(read('summary'));
+  const rat = summary.indexOf('accessibilityLabel={', summary.indexOf('function RouteStop'));
+  assert.notEqual(rat, -1, 'A-6 (vacuity): the route stop has no accessibilityLabel.');
+  const rexpr = balanced(summary, rat, '{', '}', 'A-6 route label').text;
+  assert.match(rexpr, /ordinal !== null/, 'A-6 (vacuity): the route label does not branch on the ordinal.');
+  const routeLabel = new Function('stop', 't', `return (${detype(rexpr)});`);
+  const main = routeLabel({ ordinal: 2, name: 'Nike Art' }, t);
+  assert.match(main, /stop 2\b/i, `A-6: a numbered plan stop does not announce its number. Got ${JSON.stringify(main)}`);
+  const optional = routeLabel({ ordinal: null, name: 'Fresh Petals' }, t);
+  assert.doesNotMatch(optional, /\d/, `A-6: an OPTIONAL plan stop announces an ordinal. Got ${JSON.stringify(optional)}`);
+  assert.match(optional, /Fresh Petals/, 'A-6: the optional stop does not announce its name.');
+  assert.equal(new Set([numbered, shop, main, optional]).size, 4, 'A-6 (vacuity): the arms are not branching.');
 });
-
-// ═════════════════════════════════════════════════════════════════════════════
-// A-7 · THE PLATE'S COUNT AND THE LIST'S ORDINALS ARE ONE CLAIM
-// ═════════════════════════════════════════════════════════════════════════════
-
-/**
- * "2 stops" over three rows numbered 1, 2, 3 is the defect this wave's optional
- * chip exists to close, and it is a defect only because two rules disagreed. The
- * plate uses the REAL `planVisibleStops`; the list numbers with the modal's own
- * `isOptional` rule. This rule runs BOTH — the real function and the real
- * predicate lifted from the modal — across the whole small domain, and requires
- * the highest ordinal on screen to equal the number on the plate.
- *
- * SWEEPING FOUND A GAP, AND IT IS PINNED HERE RATHER THAN ASSUMED AWAY.
- *
- * The modal guards the marker with `stop.optional === true && planMainStopCount
- * > 0`, and `planMainStopCount` is `planVisibleStops(planStops).length`. That
- * guard reads as "do not mark rows optional when there are no MAIN stops" — but
- * `planVisibleStops` ends in `main.length > 0 ? main : all`, so for a non-empty
- * plan it never returns 0 and the second conjunct is unreachable-false. On an
- * ALL-optional plan the plate therefore says "3 stops" while all three rows are
- * chipped `Optional` and none is numbered — the same two-numbers-one-screen
- * defect the chip exists to close, inverted.
- *
- * The generator does not emit such a plan today (every type definition pairs the
- * optional Flowers stop with two required ones, and required stops are not
- * `dismissible`), so this is latent, not live. The equality is therefore
- * asserted over the reachable domain — every plan with at least one main stop —
- * and the dead conjunct is pinned separately, so it cannot be "fixed" by
- * accident or lost.
- */
-test('A-7 the largest ordinal in the list always equals the count on the plate', async () => {
-  const { planVisibleStops } = await import(
-    path.join(APP, 'src/components/expandedCard/expandedCardFacts.ts')
-  );
-
-  const modal = stripComments(read('modal'));
-
-  /*
-    THE WHOLE ORDINAL MACHINE IS LIFTED, not modelled. Slicing only the
-    `isOptional` predicate and re-implementing the counter around it is how a
-    rule ends up agreeing with itself: reverting `String(planOrdinal)` to
-    `String(i + 1)` — the pre-fix numbering, which skips a digit after an
-    optional row — would then pass. All three statements come from source.
-  */
-  const mOptional = /const\s+isOptional\s*=\s*([^;]+);/.exec(modal);
-  assert.ok(
-    mOptional,
-    'A-7 (vacuity): the modal no longer computes `isOptional` for a plan row, so either the optional '
-    + 'marker was deleted (the plate and the list disagree again) or it moved. Re-point this rule.',
-  );
-  assert.match(
-    mOptional[1],
-    /optional/,
-    'A-7 (vacuity): the sliced `isOptional` expression does not mention `optional`.',
-  );
-
-  const mBump = /if\s*\(!isOptional\)\s*([A-Za-z_$][\w$]*)\s*\+=\s*1;/.exec(modal);
-  assert.ok(
-    mBump,
-    'A-7 (vacuity): the ordinal counter no longer advances only on non-optional rows. Re-point this rule.',
-  );
-  const counter = mBump[1];
-
-  const mLabel = /indexLabel:\s*(isOptional[^,\n]+),/.exec(modal);
-  assert.ok(
-    mLabel,
-    'A-7 (vacuity): the plan row no longer derives `indexLabel` from `isOptional`. Re-point this rule.',
-  );
-  assert.match(
-    mLabel[1],
-    new RegExp(`\\b${counter}\\b`),
-    `A-7: the row's index chip does not read the ordinal counter (\`${counter}\`). If it numbers from the `
-    + 'ARRAY INDEX instead, an optional row leaves a hole — rows read 1, (Optional), 3 while the plate '
-    + 'says "2 stops". That is the pre-fix numbering.',
-  );
-
-  const ordinals = new Function(
-    'stops', 'planMainStopCount',
-    `let ${counter} = 0;\n`
-    + 'return stops.map((stop, i) => {\n'
-    + `  ${detype(`const isOptional = ${mOptional[1]};`)}\n`
-    + `  if (!isOptional) ${counter} += 1;\n`
-    + `  return ${detype(mLabel[1])};\n`
-    + '});',
-  );
-  const isOptional = new Function('stop', 'planMainStopCount', `return (${detype(mOptional[1])});`);
-
-  const mk = (flags) => flags.map((optional, i) => ({
-    placeId: `p${i}`,
-    optional,
-    priceMin: 0,
-    priceMax: 0,
-  }));
-
-  const DOMAIN = [
-    [],
-    [false],
-    [true],
-    [false, false],
-    [false, true],
-    [true, false],
-    [true, true],
-    [false, true, false],
-    [true, true, true],
-    [false, false, true, false, true],
-  ];
-
-  let sawOptionalRow = false;
-  let sawReachablePlan = false;
-
+test('A-7 the largest ordinal on the plan always equals the count the deck states', async () => {
+  // #4347 wave 3 — RE-POINTED from the modal's ordinal loop to `stopOrdinals`,
+  // which numbers the stop cards, the route strip and the navigator. The deck
+  // counts with `planVisibleStops`. Swept over the whole small domain — and the
+  // all-optional plan is now INSIDE the equality (stopOrdinals numbers every
+  // stop there), which closes the latent gap the previous version pinned.
+  const { planVisibleStops } = await import(path.join(APP, 'src/components/expandedCard/expandedCardFacts.ts'));
+  const { stopOrdinals } = await import(path.join(APP, 'src/components/expandedCard/curatedPlanModel.ts'));
+  const DOMAIN = [[], [false], [true], [false, false], [false, true], [true, false], [true, true], [false, true, false], [true, true, true], [false, false, true, false, true]];
+  let sawOptional = false;
   for (const flags of DOMAIN) {
-    const stopsArr = mk(flags);
+    const stopsArr = flags.map((optional, i) => ({ placeId: `p${i}`, optional }));
     const plateCount = planVisibleStops(stopsArr).length;
-
-    // The modal's own ordinal loop — its statements, executed.
-    const labels = ordinals(stopsArr, plateCount);
-    if (stopsArr.some((stop) => isOptional(stop, plateCount))) sawOptionalRow = true;
-    const numbered = labels.filter((l) => l !== '');
-
-    // Every plan the generator can actually produce has at least one main stop.
-    if (flags.some((optional) => optional === false)) {
-      sawReachablePlan = true;
-      assert.equal(
-        numbered.length,
-        plateCount,
-        `A-7: [${flags.join(',')}] — the plate says ${plateCount} and the list numbers `
-        + `${numbered.length} rows (${JSON.stringify(labels)}). Two numbers about the same plan, on one `
-        + 'screen, that cannot both be read as true.',
-      );
-      assert.deepEqual(
-        numbered,
-        Array.from({ length: plateCount }, (_, i) => String(i + 1)),
-        `A-7: [${flags.join(',')}] — the numbered rows are not the contiguous 1..${plateCount} the `
-        + `plate's count is about. Got ${JSON.stringify(labels)}.`,
-      );
-    }
-
-    // Whatever the shape, the ordinals that ARE handed out are a contiguous run
-    // from 1 — an off-by-one here is what makes a row's chip and its
-    // announcement disagree.
-    assert.deepEqual(
-      numbered,
-      Array.from({ length: numbered.length }, (_, i) => String(i + 1)),
-      `A-7: [${flags.join(',')}] — the ordinals are not contiguous from 1. Got ${JSON.stringify(labels)}.`,
-    );
+    const ordinals = stopOrdinals(stopsArr);
+    if (ordinals.includes(null)) sawOptional = true;
+    const numbered = ordinals.filter((n) => n !== null);
+    assert.equal(numbered.length, plateCount, `A-7: [${flags.join(',')}] — the deck says ${plateCount} and the plan numbers ${numbered.length}`);
+    assert.deepEqual(numbered, Array.from({ length: plateCount }, (_, i) => i + 1), `A-7: [${flags.join(',')}] — not a contiguous 1..N`);
   }
-
-  assert.ok(sawOptionalRow, 'A-7 (vacuity): no row in the swept domain was ever optional.');
-  assert.ok(sawReachablePlan, 'A-7 (vacuity): no plan in the swept domain had a main stop.');
-
-  /*
-    THE DEAD CONJUNCT, PINNED.
-
-    `planMainStopCount > 0` is written as though it could be false. It cannot:
-    `planVisibleStops` falls back to the full set, so a non-empty plan always
-    yields a positive count. Asserting the fallback here means that if anyone
-    ever removes it — making the guard live and an all-optional plan number its
-    rows — this rule tells them the guard's meaning just changed, instead of the
-    change landing silently.
-  */
-  assert.equal(
-    planVisibleStops([{ optional: true }, { optional: true }]).length,
-    2,
-    'A-7: `planVisibleStops` no longer falls back to the full set for an all-optional plan. That makes '
-    + "the modal's `planMainStopCount > 0` conjunct LIVE for the first time, which changes what an "
-    + 'all-optional plan renders. Intended or not, it is a behaviour change and it needs its own row.',
-  );
-  assert.ok(
-    isOptional({ optional: true }, planVisibleStops([{ optional: true }]).length) === true,
-    'A-7: an all-optional plan now numbers its rows. If that is the deliberate fix for the plate/list '
-    + 'divergence on such a plan, extend the equality assertion above to the whole domain and delete '
-    + 'this pin — do not leave both.',
-  );
+  assert.ok(sawOptional, 'A-7 (vacuity): no stop in the swept domain was ever unnumbered.');
 });

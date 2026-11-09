@@ -1691,6 +1691,11 @@ export default function ExpandedCardModal({
   */
   const planStart: Date = planStartOverride ?? defaultPlanStart(sheetNow, sheetScheduledAt);
   const planOrdinals = stopOrdinals(planStops);
+  /**
+   * The card the pinned bar acts on: the place, or the plan AS EDITED (a
+   * swapped stop is what Save and Schedule must keep — #1707). One cast site.
+   */
+  const actionCard = (isCuratedCard && planCard ? planCard : card) as unknown as ExpandedCardData;
   const planSpend: { value: string; sub: string | null } | null = (() => {
     if (!isCuratedCard || !planCard) return null;
     const value = curatedPlanPriceLabel(planCard, {
@@ -1935,7 +1940,7 @@ export default function ExpandedCardModal({
             <View style={{ paddingBottom: Math.max(insets.bottom, 12) }}>
               <ActionButtons
                 variant="pinned"
-                card={card as ExpandedCardData}
+                card={actionCard}
                 onSave={onSave}
                 onClose={onClose}
                 isSaved={isSaved}
@@ -1997,7 +2002,7 @@ export default function ExpandedCardModal({
             <View style={{ paddingBottom: Math.max(insets.bottom, 12) }}>
               <ActionButtons
                 variant="pinned"
-                card={planCard as unknown as ExpandedCardData}
+                card={actionCard}
                 onSave={onSave}
                 onClose={onClose}
                 isSaved={isSaved}
@@ -2012,6 +2017,8 @@ export default function ExpandedCardModal({
                 shareLabel={t('cards:swipeable.share_card', { defaultValue: 'Share {{title}}', title: card.title })}
                 shareBusy={shareHandoffBusy}
                 shareControlRef={shareControlRef}
+                // A plan has no reservation of its own (its stops are not one venue).
+                reserve={null}
                 primaryScheduleLabel={t('cards:plan.schedule_cta')}
                 initialScheduleAt={planStart}
                 afterSave={

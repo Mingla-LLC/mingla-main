@@ -47,6 +47,10 @@ const MAPPER = strip(read('app-mobile/src/components/utils/savedCardToExpandedCa
 const DETAILS = strip(read('app-mobile/src/components/expandedCard/PracticalDetailsSection.tsx'));
 const ACTIONS = strip(read('app-mobile/src/components/expandedCard/ActionButtons.tsx'));
 const SHEET = strip(read('app-mobile/src/components/ExpandedCardModal.tsx'));
+// #4347 wave 3 — Call moved off the action bar entirely: a place dials from its
+// Details phone row, a plan's stop dials from the stop card's More.
+const PLAN = strip(read('app-mobile/src/components/expandedCard/CuratedPlanBody.tsx'));
+const STOPCARD = strip(read('app-mobile/src/components/expandedCard/PlanStopCard.tsx'));
 
 test('R-0 the stripper strips, and the needles are real', () => {
   assert.ok(EDGE.length < read('supabase/functions/discover-cards/index.ts').length);
@@ -91,75 +95,47 @@ test('R-2 hops 2 and 3 — the client mappers carry both fields', () => {
 });
 
 test('R-3 hop 4 — the sheet hands the country to the row that needs it', () => {
-  assert.match(SHEET, /countryCode=\{/, 'R-3: the sheet does not pass countryCode to PracticalDetailsSection');
-  // A plan has no phone of its own (its STOPS do), so it must pass undefined —
-  // promoting a stop's number to "the plan's number" is a lie.
-  assert.match(
-    SHEET, /countryCode=\{isCuratedCard \? undefined :/,
-    'R-3: a curated plan is being given a country code for a phone it does not have',
-  );
+  // A place: its own number and country go to the Details row.
+  assert.match(SHEET, /countryCode=\{card\.countryCode\}/, 'R-3: the sheet does not pass countryCode to PracticalDetailsSection');
+  // A plan has no phone of its own (its STOPS do): the plan body never mounts
+  // the place Details, and each stop resolves its OWN number and country.
+  assert.equal(/<PracticalDetailsSection/.test(PLAN), false, 'R-3: a curated plan is given a place Details (and a borrowed phone)');
+  assert.match(PLAN, /dialablePhone\(stop\.phone \?\? null, stop\.countryCode \?\? null\)/, 'R-3: a stop is dialled without its own country');
 });
-
 test('R-4 no raw tel: url survives anywhere in the card tree', () => {
-  // The defect in one line: `tel:${phone.replace(/[^0-9+]/g, "")}`. Any tel: not
-  // built from a resolved `dialablePhone` result is the bug again.
-  for (const [name, code] of [['PracticalDetailsSection', DETAILS], ['ActionButtons', ACTIONS]]) {
-    const tels = [...code.matchAll(/tel:\$\{([^}]*)\}/g)].map((m) => m[1].trim());
-    assert.ok(tels.length > 0, `R-4 (vacuity): ${name} builds no tel: url at all`);
-    for (const expr of tels) {
-      assert.match(
-        expr, /^dialable\.tel$/,
-        `R-4: ${name} builds "tel:\${${expr}}" instead of the resolved E.164`,
-      );
-    }
-    assert.equal(
-      /replace\(\/\[\^0-9\+\]\/g/.test(code), false,
-      `R-4: ${name} still strips punctuation off a raw number to dial it`,
-    );
+  const tels = [...DETAILS.matchAll(/tel:\$\{([^}]*)\}/g)].map((m) => m[1].trim());
+  assert.ok(tels.length > 0, 'R-4 (vacuity): PracticalDetailsSection builds no tel: url at all');
+  for (const expr of tels) assert.match(expr, /^dialable\.tel$/, `R-4: PracticalDetailsSection builds "tel:\${${expr}}" instead of the resolved E.164`);
+  assert.equal(/tel:/.test(ACTIONS), false, 'R-4: the action bar dials again (Call left it in #4347 wave 2/3)');
+  // The plan: the stop card hands up the RESOLVED number, the sheet dials it.
+  assert.match(PLAN, /onCall\(dial\.tel, dial\.display\)/, 'R-4: a stop is dialled with something other than its resolved E.164');
+  assert.match(SHEET, /Linking\.openURL\(`tel:\$\{tel\}`\)/, 'R-4 (vacuity): the plan stop call is not wired');
+  for (const [name, code] of [['PracticalDetailsSection', DETAILS], ['CuratedPlanBody', PLAN], ['ExpandedCardModal', SHEET]]) {
+    assert.equal(/replace\(\/\[\^0-9\+\]\/g/.test(code), false, `R-4: ${name} still strips punctuation off a raw number to dial it`);
   }
 });
-
 test('R-5 no number means the button is ABSENT, never disabled', () => {
-  // Seth: "if not dont show the button at all." 63% of the pool has no number,
-  // so a greyed button would be the common case, not the edge case.
-  // #4347 wave 2 — the band (a plan) keeps its Call button; the single
-  // place's PINNED bar leaves Call to the Details phone row, which dials the
-  // same composed number (R-6). The gate is still the resolution, never a
-  // disabled state.
-  assert.match(
-    ACTIONS, /\{dialable !== null && !pinned \? \(/,
-    'R-5: the Call button is not gated on a resolvable number',
-  );
-  assert.match(DETAILS, /value=\{dialable === null \? null : dialable\.display\}/, 'R-5: the Details phone row is gone, so a pinned-bar place cannot be called');
-  const btn = ACTIONS.slice(ACTIONS.indexOf('logId="call"'), ACTIONS.indexOf('logId="call"') + 900);
-  assert.ok(btn.length > 0, 'R-5: the Call button is gone');
-  assert.equal(
-    /disabled=/.test(btn), false,
-    'R-5: the Call button has a disabled state. It must not exist rather than exist and refuse.',
-  );
+  // Seth: "if not dont show the button at all."
+  assert.match(DETAILS, /value=\{dialable === null \? null : dialable\.display\}/, 'R-5: the Details phone row is gone, so a place cannot be called');
+  assert.match(PLAN, /onCall=\{dial \? \(\) => onCall\(dial\.tel, dial\.display\) : undefined\}/, 'R-5: a stop with no resolvable number still gets a Call handler');
+  assert.match(STOPCARD, /more\.phone && onCall \? \(/, 'R-5: the stop Call is not gated on a resolvable number');
+  const btn = STOPCARD.slice(STOPCARD.indexOf("-call`"), STOPCARD.indexOf("-call`") + 400);
+  assert.ok(btn.length > 0, 'R-5: the stop Call button is gone');
+  assert.equal(/disabled=/.test(btn), false, 'R-5: the stop Call button has a disabled state.');
 });
-
 test('R-6 one resolution, read by both the gate and the link', () => {
-  // Two independent presence tests is how a button renders for a number the
-  // link cannot be built from.
-  for (const [name, code] of [['PracticalDetailsSection', DETAILS], ['ActionButtons', ACTIONS]]) {
+  for (const [name, code] of [['PracticalDetailsSection', DETAILS], ['CuratedPlanBody', PLAN]]) {
     const resolutions = [...code.matchAll(/dialablePhone\(/g)];
-    assert.equal(
-      resolutions.length, 1,
-      `R-6: ${name} calls dialablePhone ${resolutions.length} times; one resolution must serve every reader`,
-    );
+    assert.equal(resolutions.length, 1, `R-6: ${name} calls dialablePhone ${resolutions.length} times; one resolution must serve every reader`);
   }
-  // The details section's own presence guard must read the resolution, not the
-  // raw field.
-  assert.match(
-    DETAILS, /present\(address\) \|\| dialable !== null/,
-    'R-6: the section renders on a raw phone value rather than a resolvable one',
-  );
+  assert.match(DETAILS, /present\(address\) \|\| dialable !== null/, 'R-6: the section renders on a raw phone value rather than a resolvable one');
+  // The stop's gate (`phone: dial ? …`) and its link (`dial.tel`) read the same `dial`.
+  assert.match(PLAN, /phone: dial \? \{ display: dial\.display \} : null/, 'R-6: the stop gate reads a raw phone value');
 });
-
 test('R-7 a dialler that refuses is surfaced, not swallowed', () => {
   // Constitution rule 3 — no silent failures. Tablets and emulators reject tel:.
-  const btn = ACTIONS.slice(ACTIONS.indexOf('logId="call"'), ACTIONS.indexOf('logId="call"') + 900);
-  assert.match(btn, /\.catch\(/, 'R-7: openURL is fired without a rejection handler');
-  assert.match(btn, /Alert\.alert|toast|Toast/, 'R-7: a rejected dial fails silently');
+  const call = SHEET.slice(SHEET.indexOf('onCall={(tel, display)'), SHEET.indexOf('onCall={(tel, display)') + 300);
+  assert.ok(call.length > 20, 'R-7 (vacuity): the plan stop call handler is gone');
+  assert.match(call, /\.catch\(/, 'R-7: openURL is fired without a rejection handler');
+  assert.match(call, /toastManager\.show|Alert\.alert/, 'R-7: a rejected dial fails silently');
 });
