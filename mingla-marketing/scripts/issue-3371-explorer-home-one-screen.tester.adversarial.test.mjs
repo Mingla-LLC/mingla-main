@@ -136,8 +136,9 @@ function wiringContract() {
   const own = `node --experimental-websocket scripts/${SELF} --built-only`
   const implementor = 'node --experimental-websocket scripts/issue-3371-explorer-home-one-screen.implementor.happy.test.mjs --built-only'
   // #4137: only the #4137 release-build tests may follow the #3371 pair
-  // (#4339 round B: and, last, the built-output anti-copy gate).
-  assert(new RegExp(`${(` && ${own} && ${implementor}`).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?: && node (?:--experimental-websocket )?scripts/issue-4137-[a-z-]+\\.implementor\\.happy\\.test\\.mjs --built-only)*(?: && node \\.\\./\\.github/scripts/strict-grep/issue-4339-built-output-anti-copy\\.mjs --built)?$`).test(scripts.build), 'the #3371 tester guard must run immediately before the #3371 implementor guard at the end of the build')
+  // (#4339 round B: and, last, the built-output anti-copy gate; the #4339
+  // speed fix's first-load budget may run just before it).
+  assert(new RegExp(`${(` && ${own} && ${implementor}`).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?: && node (?:--experimental-websocket )?scripts/issue-4137-[a-z-]+\\.implementor\\.happy\\.test\\.mjs --built-only)*(?: && node scripts/issue-4339-first-load-budget\\.mjs --self-test && node scripts/issue-4339-first-load-budget\\.mjs)?(?: && node \\.\\./\\.github/scripts/strict-grep/issue-4339-built-output-anti-copy\\.mjs --built)?$`).test(scripts.build), 'the #3371 tester guard must run immediately before the #3371 implementor guard at the end of the build')
   assert(scripts.build.lastIndexOf(own) > scripts.build.lastIndexOf('next build'), 'the #3371 tester guard must run against the final production build')
   assert.equal(scripts.build.split(own).length, 2, 'the #3371 tester guard must be wired exactly once')
 }
