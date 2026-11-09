@@ -27,7 +27,9 @@
 
 import { MAPPED_COUNTRIES } from "./e164Country.ts";
 import { resolveDeliveryFlagValue } from "./secretBundle.ts";
-import { smsCountryProfile } from "./smsCountries.ts";
+import { smsCountryProfile, TRANSACTIONAL_SERVICE_SID } from "./smsCountries.ts";
+
+export { TRANSACTIONAL_SERVICE_SID };
 
 export type SmsSwitchSender =
   | "toll_free"
@@ -53,8 +55,6 @@ export interface SmsCountrySwitchesSnapshot {
 export type SmsMarketingRoute = "toll_free" | "marketing" | "termii";
 
 const SID_RE = /^MG[0-9a-f]{32}$/;
-/** The transactional "Mingla Verification" service: never a marketing sender. */
-export const TRANSACTIONAL_SERVICE_SID = "MG1942fbb549187fcf77c0e860405abf58";
 const SENDERS: ReadonlySet<string> = new Set([
   "toll_free",
   "marketing_service",

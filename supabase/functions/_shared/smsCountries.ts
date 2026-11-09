@@ -72,6 +72,13 @@ const eu = (
 });
 const REG = { registrationRequired: true } as const;
 
+/**
+ * #4273 — the transactional "Mingla Verification" Messaging Service SID.
+ * Never a marketing sender: the switches parser drops it as the marketing
+ * SID and the SMS adapter refuses a marketing send that carries it.
+ */
+export const TRANSACTIONAL_SERVICE_SID = "MG1942fbb549187fcf77c0e860405abf58";
+
 export const SMS_COUNTRIES: Readonly<Record<string, SmsCountryProfile>> = {
   US: {
     zones: "nanp_area_code",

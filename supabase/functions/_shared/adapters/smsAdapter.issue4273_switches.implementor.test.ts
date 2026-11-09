@@ -18,7 +18,7 @@ import {
   assertEquals,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { smsAdapter, type SmsSendInput } from "./smsAdapter.ts";
-import { TRANSACTIONAL_SERVICE_SID } from "../smsCountrySwitches.ts";
+import { TRANSACTIONAL_SERVICE_SID } from "../smsCountries.ts";
 
 const MARKETING_SID = "MG9d42785c51834395018b52144736b9a7";
 const OWNED_KEYS = [

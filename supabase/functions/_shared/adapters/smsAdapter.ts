@@ -72,10 +72,9 @@
 import { resolveDeliveryFlagValue } from "../secretBundle.ts";
 // #4273 — the sender CLASS a country's marketing text must use (toll-free,
 // Termii or the marketing service); the guard below refuses any other pairing.
-import { smsCountryProfile } from "../smsCountries.ts";
-// #4273 — the transactional "Mingla Verification" service SID: never a
-// marketing sender (one home, in smsCountrySwitches).
-import { TRANSACTIONAL_SERVICE_SID } from "../smsCountrySwitches.ts";
+// #4273 — TRANSACTIONAL_SERVICE_SID, the "Mingla Verification" service: a
+// marketing send carrying it is refused below.
+import { smsCountryProfile, TRANSACTIONAL_SERVICE_SID } from "../smsCountries.ts";
 import { resolveRuntimeConfigValue } from "../runtimeConfig.ts";
 // #2218 — the ONE definition of the Nigerian `generic` operator embargo. Both
 // rails read it from here; see the essay at the top of that file.
