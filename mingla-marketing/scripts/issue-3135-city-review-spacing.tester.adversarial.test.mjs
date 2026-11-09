@@ -35,7 +35,9 @@ function sourceContract() {
   assert(shellBlocks.some(block => /(?:^|;)\s*display\s*:\s*flow-root\s*(?:;|$)/.test(block)), 'REGRESSION: city shell lost the flow-root that contains the notice margin')
   assert.doesNotMatch(read('components/cutout/cutout.css'), /\.cut-shell\s*\{[^}]*display\s*:\s*flow-root/, 'containment must stay city-scoped')
 
-  const component = read('components/cities/city-hub.tsx')
+  // #4339 speed fix: the notice moved to city-lifecycle.tsx (shared by both
+  // city layouts) so the release route no longer imports city-hub.tsx.
+  const component = `${read('components/cities/city-hub.tsx')}\n${read('components/cities/city-lifecycle.tsx')}`
   for (const copy of ['City guide in review', 'This city guide is being refreshed.', 'This city guide is no longer actively updated.']) {
     assert(component.includes(copy), `missing lifecycle state: ${copy}`)
   }

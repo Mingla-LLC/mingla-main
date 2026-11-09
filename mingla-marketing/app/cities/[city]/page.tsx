@@ -1,6 +1,8 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
-import { CityHub } from '@/components/cities/city-hub'
+// #4339 speed fix: the release layout only; the #2983 historical build swaps
+// this module for city-hub.tsx (next.config.ts, CITY_ROUTE_MODULE).
+import { CityHub } from '@/components/cities/city-route'
 import { CITY_HUBS, cityHubForSlug } from '@/content/cities/registry'
 import { getCityCatalogueSnapshot, getLagosCatalogueSnapshot } from '@/lib/page-system/city-catalogue.server'
 import { cityHubMetadata } from '@/lib/search/metadata'

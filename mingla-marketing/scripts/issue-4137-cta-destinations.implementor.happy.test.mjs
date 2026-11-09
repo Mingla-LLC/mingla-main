@@ -111,7 +111,7 @@ assert.deepEqual(offenders, [], '#4137 AC-D8: CTAs must resolve through lib/cta-
 for (const file of ['app/tools/events/EventPredictorExperience.tsx', 'app/tools/trips/TripQuoterExperience.tsx',
   'app/tools/pricing/PricingAuditExperience.tsx', 'app/tools/venues/ReportView.tsx',
   'app/event-preview/EventPreviewClient.tsx', 'app/trip-preview/TripPreviewClient.tsx',
-  'components/page-system/city-host-acquisition-bar.tsx', 'components/cities/city-actions.tsx',
+  'components/page-system/city-host-acquisition-bar.tsx', 'components/cities/city-hub-actions.tsx',
   'components/page-system/host-selling-guide.tsx', 'components/cutout/device-cta.tsx']) {
   assert.match(read(file), /<DeviceLink\b/, `#4137: ${file} must render its CTA through DeviceLink`)
 }

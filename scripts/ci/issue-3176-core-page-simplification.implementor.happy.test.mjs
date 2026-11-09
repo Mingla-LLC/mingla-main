@@ -66,7 +66,9 @@ function verifySource(overrides = {}) {
   const cities = source('mingla-marketing/app/(core)/cities/page.tsx')
   const media = source('mingla-marketing/components/site/city-media.tsx')
   const answer = source('mingla-marketing/components/cutout/answer.tsx')
-  const hub = source('mingla-marketing/components/cities/city-hub.tsx')
+  // #4339 speed fix: the lifecycle notice moved from city-hub.tsx to
+  // city-lifecycle.tsx (shared by both city layouts).
+  const hub = `${source('mingla-marketing/components/cities/city-hub.tsx')}\n${source('mingla-marketing/components/cities/city-lifecycle.tsx')}`
   const manifestRelative = 'mingla-marketing/public/marketing/cities/asset-manifest.json'
   const manifest = JSON.parse(source(manifestRelative))
 

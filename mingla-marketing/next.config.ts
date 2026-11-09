@@ -142,9 +142,33 @@ class StripIssueRefsPlugin {
   }
 }
 
+// #4339 speed fix — the city route imports components/cities/city-route.tsx
+// (the redesigned page only). The #2983 append-only build lane
+// (MINGLA_HISTORICAL_2983_BUILD=1, see lib/search/historical-city-build.ts)
+// renders the historical layout instead, so in that build alone the module is
+// swapped for city-hub.tsx. The release build never sees city-hub.tsx, so the
+// city route ships none of its client islands (framer-motion among them).
+const CITY_ROUTE_MODULE = /[\\/]components[\\/]cities[\\/]city-route\.tsx$/
+const HISTORICAL_CITY_LAYOUT = path.join(__dirname, 'components/cities/city-hub.tsx')
+
+class HistoricalCityLayoutPlugin {
+  apply(compiler: { hooks: { normalModuleFactory: { tap: (name: string, fn: (factory: never) => void) => void } } }) {
+    compiler.hooks.normalModuleFactory.tap('HistoricalCityLayoutPlugin', (factory: never) => {
+      const f = factory as unknown as {
+        hooks: { afterResolve: { tap: (name: string, fn: (data: { createData?: { resource?: string } }) => void) => void } }
+      }
+      f.hooks.afterResolve.tap('HistoricalCityLayoutPlugin', (data) => {
+        const created = data.createData
+        if (created?.resource && CITY_ROUTE_MODULE.test(created.resource)) created.resource = HISTORICAL_CITY_LAYOUT
+      })
+    })
+  }
+}
+
 const config: NextConfig = {
   webpack(webpackConfig) {
     webpackConfig.plugins = [...(webpackConfig.plugins ?? []), new StripIssueRefsPlugin()]
+    if (process.env.MINGLA_HISTORICAL_2983_BUILD === '1') webpackConfig.plugins.push(new HistoricalCityLayoutPlugin())
     return webpackConfig
   },
   htmlLimitedBots: HTML_LIMITED_BOTS,

@@ -16,20 +16,16 @@ import { CutoutFooter } from '@/components/cutout/footer'
 import { PageSystemNav } from '@/components/page-system/page-system-nav'
 import { CityHostAcquisitionBar } from '@/components/page-system/city-host-acquisition-bar'
 import { CityCatalogue } from '@/components/page-system/city-catalogue'
-import type { CataloguePlace, CataloguePlan, ExplorerCategorySlug } from '@/content/page-system/shared'
-import { CityDeviceAction, CityHostCreationLinks, CityHubImpression, CityTrackedLink } from './city-actions'
+import { CityHubImpression, CityTrackedLink } from './city-actions'
+import { CityDeviceAction, CityHostCreationLinks } from './city-hub-actions'
 import { historicalCityBuildEnabled } from '@/lib/search/historical-city-build'
 import { CityPage } from './city-page'
 import type { CityWeekendModel } from '@/lib/city-weekend'
+import { CityLifecycleNotice, type CityHubCatalogue } from './city-lifecycle'
 
-export interface CityHubCatalogue {
-  readonly places: readonly CataloguePlace[]
-  readonly plans: readonly CataloguePlan[]
-  readonly initialType: 'places' | 'plans'
-  readonly initialCategories: readonly ExplorerCategorySlug[]
-  readonly initialIntents: readonly string[]
-  readonly initialDetail: string | null
-}
+// #4339 speed fix: the shared notice and catalogue type moved to
+// city-lifecycle.tsx; re-exported for the historical lane's callers.
+export { CityLifecycleNotice, type CityHubCatalogue }
 
 function formatDate(date: string, locale: string): string {
   return new Intl.DateTimeFormat(locale, {
@@ -61,23 +57,6 @@ function EvidenceLinks({
         </span>
       ))}
     </p>
-  )
-}
-
-export function CityLifecycleNotice({ record }: { readonly record: CityHubRecord }) {
-  const lifecycle = cityHubEffectiveLifecycle(record)
-  const historical = historicalCityBuildEnabled()
-  if (lifecycle === 'search_ready') return null
-  if (lifecycle === 'public_noindex' && !historical) return null
-  const content = lifecycle === 'public_noindex'
-    ? ['City guide in review', 'Local details are being verified; some sections may be withheld.']
-    : lifecycle === 'stale'
-      ? ['This city guide is being refreshed.', 'Current details are being checked before this guide returns to search.']
-      : ['This city guide is no longer actively updated.', 'Current events and availability are not shown.']
-  return (
-    <div className="city-lifecycle-notice" role="status">
-      <strong>{content[0]}</strong><span>{content[1]}</span>
-    </div>
   )
 }
 

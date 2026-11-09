@@ -3,8 +3,9 @@
 import { orphanTile } from '@/components/site/orphan-tile'
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { createPortal } from 'react-dom'
+import dynamic from 'next/dynamic'
 import { captureMarketing } from '@/components/marketing/posthog-provider'
-import { CatalogueDetail } from '@/components/page-system/catalogue-detail'
+import type { CatalogueDetail as CatalogueDetailComponent } from '@/components/page-system/catalogue-detail'
 import { CurrentPlacePhoto } from '@/components/page-system/current-place-photo'
 import type { CataloguePlace } from '@/content/page-system/shared'
 import { storedPlaceThumbSrc } from '@/lib/city-place-photo'
@@ -28,6 +29,16 @@ import { categoryRank, rankLabel, ratingLine } from '@/lib/city-place-rank'
 // own styles apply.
 
 const COLLAPSED_COUNT = 12
+
+// #4339 speed fix: the place detail sheet (and the device CTA, QR panel and
+// motion it carries) loads only when a place is opened — a tap, or a shared
+// ?detail= link — never with the page. The card's pointer-down starts the
+// download so the sheet is usually ready by the click.
+const loadCatalogueDetail = () => import('@/components/page-system/catalogue-detail')
+const CatalogueDetail = dynamic<Parameters<typeof CatalogueDetailComponent>[0]>(
+  () => loadCatalogueDetail().then((module) => module.CatalogueDetail),
+  { ssr: false },
+)
 
 interface CityWeekendProps {
   readonly cityName: string
@@ -139,6 +150,7 @@ export function CityWeekend({ cityName, citySlug, countryCode, locale, cityPath,
                       data-city-place-card=""
                       data-category={place.categorySlug}
                       aria-label={`${place.name}, ${label}${rating ? `, ${rating}` : ''}. View place`}
+                      onPointerDown={() => void loadCatalogueDetail()}
                       onClick={(event) => openPlace(event, place)}
                     >
                       <div className="ph">
