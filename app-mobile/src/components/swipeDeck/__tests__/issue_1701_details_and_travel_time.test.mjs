@@ -127,29 +127,40 @@ function stripComments(src) {
 }
 
 test('D-5 travel time is read from the card, and never invented', () => {
+  // #4347 wave 1 — REWRITTEN, SAME PROTECTION. The facts line is produced by
+  // `placeFactSpans` (deckCardModel.ts); the deck passes the card's own
+  // travelTime through untouched. Both are scanned STRIPPED (see below).
+  //
   // STRIPPED. The comment beside this code quotes the deleted
   // `travelTime || "15 min"` verbatim, so a raw scan finds the defect inside the
   // sentence that records its deletion — a guard tripped by its own prose.
   const deck = stripComments(read('app-mobile/src/components/SwipeableCards.tsx'));
   const fn = /function metaSpansForCard\([\s\S]*?\n\}/.exec(deck);
   assert.ok(fn, 'D-5: metaSpansForCard is gone');
-  assert.match(fn[0], /card\.travelTime/, 'D-5: the facts line does not read travelTime');
+  assert.match(fn[0], /travelTime: card\.travelTime \?\? null/, 'D-5: the facts line does not read travelTime');
+  const model = stripComments(read('app-mobile/src/components/deckCard/deckCardModel.ts'));
+  const producer = /export function placeFactSpans\([\s\S]*?\n\}/.exec(model);
+  assert.ok(producer, 'D-5: placeFactSpans is gone');
 
   // Constitution 9 — no default. #1669 found and deleted a `travelTime || "15 min"`
   // that was being PERSISTED into calendar rows. It must not return here.
-  assert.equal(
-    /travelTime\s*\|\|/.test(fn[0]), false,
-    'D-5: travelTime has a fallback default again — the fabricated "15 min" #1669 deleted',
-  );
-  assert.equal(
-    /travelTime[^;]*\?\?\s*['"]/.test(fn[0]), false,
-    'D-5: travelTime falls back to a string literal',
-  );
-  // Present-only, like every other span.
+  for (const [where, body] of [['metaSpansForCard', fn[0]], ['placeFactSpans', producer[0]]]) {
+    assert.equal(
+      /travelTime\s*\|\|/.test(body), false,
+      `D-5: travelTime has a fallback default again in ${where} — the fabricated "15 min" #1669 deleted`,
+    );
+    assert.equal(
+      /travelTime[^;]*\?\?\s*['"]/.test(body), false,
+      `D-5: travelTime falls back to a string literal in ${where}`,
+    );
+  }
+  // Present-only, like every other span: `trimmed()` returns null for an empty
+  // or whitespace string, and a null span is never pushed.
   assert.match(
-    fn[0], /typeof card\.travelTime === 'string' && card\.travelTime\.trim\(\)\.length > 0/,
+    producer[0], /const travel = trimmed\(card\.travelTime\) \?\? trimmed\(card\.distanceLabel\);\s*if \(travel !== null\)/,
     'D-5: the travel-time span is not vacuity-guarded, so an empty string renders an orphan separator',
   );
+  assert.match(model, /function trimmed\(value: unknown\): string \| null \{\s*return typeof value === 'string' && value\.trim\(\)\.length > 0 \? value\.trim\(\) : null;/);
 });
 
 test('D-6 the Details label exists in every shipped locale', () => {

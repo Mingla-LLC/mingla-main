@@ -364,16 +364,27 @@ describe("META-ORCH-1290 Leg C — consumer swipe card pitch (§5a)", () => {
     // must still be the real thing, or "no blurb" is true for the wrong reason.
     // These are the four things Direction C says the front face DOES render.
     expect(live).toContain("styles.faceOverlay");
-    expect(live).toContain("styles.cardTitle");
-    expect(live).toContain(
-      "{currentRec.title || t('cards:swipeable.experience')}",
+    // [TEST-MOD-APPROVED #4347] RE-POINTED, protection unchanged. #4347 wave 1
+    // moved the face's name out of an inline `styles.cardTitle` Text into the
+    // shared kicker + title column (`DeckTextColumn`, deckCard/DeckCardChrome).
+    // The guard now pins THAT title render, and the absence claim below reads
+    // the column's source too, so a blurb re-added in its new home still fails.
+    expect(live).toMatch(
+      /<DeckTextColumn\s+title=\{currentRec\.title \|\| t\('cards:swipeable\.experience'\)\}/,
     );
     expect(live).toContain("<DeckCardPlate");
+    const columnLive = liveCodeOf(
+      read("app-mobile/src/components/deckCard/DeckCardChrome.tsx"),
+      5_000,
+    );
+    expect(columnLive).toContain("export function DeckTextColumn(");
 
     // THE CLAIM: zero LIVE references to the deleted face blurb or its
     // title-tightening style. Fails-on-revert: re-adding the `oneLiner` render
-    // (or the `cardTitleWithBlurb` style) to the face puts a hit back here.
+    // (or the `cardTitleWithBlurb` style) to the face — in the deck or in the
+    // title column it now draws through — puts a hit back here.
     expect(live.match(/oneLiner|cardTitleWithBlurb/g) ?? []).toEqual([]);
+    expect(columnLive.match(/oneLiner|cardTitleWithBlurb/g) ?? []).toEqual([]);
   });
 
   test("T-B the pitch still reaches the buyer — origin to rendered text", () => {
@@ -406,14 +417,15 @@ describe("META-ORCH-1290 Leg C — consumer swipe card pitch (§5a)", () => {
       10_000,
     );
     // #1605 wave 4 [TEST-MOD-APPROVED #1605] — RE-POINTED, behaviour unchanged.
-    // The pitch still reaches the same slot; it now travels through a NAMED
-    // derivation because the expanded card is one spine and a curated plan's
-    // prose is its tagline. Both halves of the hop are still asserted: the
-    // derivation must READ card.description, and the slot must RECEIVE it.
+    // [TEST-MOD-APPROVED #4347] RE-POINTED again, protection unchanged. #4347
+    // wave 3 gave a curated plan its own expanded body (its tagline no longer
+    // shares this slot), so the `bodyDescription` derivation was deleted and
+    // the single place hands `card.description` straight to the info section.
+    // The hop is still asserted end to end: the info section must RECEIVE
+    // card.description, and nothing may stand in for it.
     expect(modalSrc).toMatch(
-      /const bodyDescription[\s\S]{0,120}card\.description/,
+      /<CardInfoSection\s+description=\{card\.description\}/,
     );
-    expect(modalSrc).toMatch(/description=\{bodyDescription\}/);
 
     // HOP 4 — RENDER. The info section prints it, gated on presence (honest
     // empty: a venue with no pitch shows nothing, never placeholder text).
@@ -430,9 +442,8 @@ describe("META-ORCH-1290 Leg C — consumer swipe card pitch (§5a)", () => {
 
   test("expanded modal renders the full pitch via the description slot", () => {
     const modal = read("app-mobile/src/components/ExpandedCardModal.tsx");
-    // [TEST-MOD-APPROVED #1605] — see the note in T-B above.
-    expect(modal).toMatch(/const bodyDescription[\s\S]{0,120}card\.description/);
-    expect(modal).toMatch(/description=\{bodyDescription\}/);
+    // [TEST-MOD-APPROVED #1605] [TEST-MOD-APPROVED #4347] — see the notes in T-B above.
+    expect(modal).toMatch(/<CardInfoSection\s+description=\{card\.description\}/);
     const info = read(
       "app-mobile/src/components/expandedCard/CardInfoSection.tsx",
     );

@@ -8,11 +8,24 @@
  * The pool's own Maps URI wins. Otherwise: the place id anchors, and `query`
  * is the venue's coordinates when known (exact), else its name and address.
  */
+/**
+ * #4334 — a Google place id, or "" — the same rule as the apps'
+ * normalizeGooglePlaceId: Google's id alphabet, 10–1024 characters, never a
+ * pre-#4334 id (dXJuOm…) and never a UUID (a Mingla row id, #4347).
+ */
+export function googlePlaceIdOrEmpty(value) {
+  const id = typeof value === "string" ? value.trim() : "";
+  if (!/^[A-Za-z0-9_-]{10,1024}$/.test(id)) return "";
+  if (/^dXJuOm/.test(id)) return "";
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return "";
+  return id;
+}
+
 export function claimMapsUri(detail) {
   if (!detail) return null;
   const poolUri = detail.place_pool?.google_maps_uri;
   if (typeof poolUri === "string" && poolUri.length > 0) return poolUri;
-  const placeId = typeof detail.google_place_id === "string" ? detail.google_place_id.trim() : "";
+  const placeId = googlePlaceIdOrEmpty(detail.google_place_id);
   if (placeId.length === 0) return null;
   const lat = Number(detail.lat ?? detail.place_pool?.lat);
   const lng = Number(detail.lng ?? detail.place_pool?.lng);
@@ -38,6 +51,6 @@ export function claimMapsUri(detail) {
 export function googleMapsPinUrl(lat, lng, placeId) {
   if (typeof lat !== "number" || typeof lng !== "number") return null;
   const base = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
-  const id = typeof placeId === "string" ? placeId.trim() : "";
-  return /^[A-Za-z0-9_-]{10,}$/.test(id) ? `${base}&query_place_id=${encodeURIComponent(id)}` : base;
+  const id = googlePlaceIdOrEmpty(placeId);
+  return id ? `${base}&query_place_id=${encodeURIComponent(id)}` : base;
 }

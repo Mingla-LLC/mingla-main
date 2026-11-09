@@ -1,6 +1,10 @@
+import CI_ID from '../../../../../packages/card-identity/index.js';
+import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+// #4347 — the pager's preload bound, read from the single geometry source.
+const CI_PAGER = CI_ID.PHOTO_PAGER;
 
 // [TEST-MOD-APPROVED ORCH-1481 AMENDMENT-5]
 
@@ -416,12 +420,31 @@ test('current and behind are the only stable bounded poster loads', () => {
   assert.match(source.swipeable, /const CardHeroImage = React\.memo/);
   assert.match(
     source.swipeable,
-    /const source = React\.useMemo\([\s\S]*uri: src, width: decodeTarget\.width, height: decodeTarget\.height/,
+    /const source = React\.useMemo\([\s\S]*uri, width: decodeTarget\.width, height: decodeTarget\.height/,
   );
   assert.match(source.swipeable, /source=\{source\}/);
   assert.match(source.swipeable, /cachePolicy=\{DECK_VISIBLE_POSTER_CACHE_POLICY\}/);
   assert.match(source.swipeable, /allowDownscaling/);
-  assert.match(source.swipeable, /recyclingKey=\{src\}/);
+  // #4347 — no per-src recyclingKey: the uri change on one mounted ExpoImage is
+  // the pager's cross-fade (a changing recyclingKey blanks the view first).
+  assert.doesNotMatch(source.swipeable.slice(source.swipeable.indexOf('const CardHeroImage'), source.swipeable.indexOf('function CardHero(')), /recyclingKey/);
+  // #4347 wave 1 — REWRITTEN, SAME PROTECTION. The approved pager preloads the
+  // next 2 photos of the TOP card. SwipeableCards itself still performs NO
+  // explicit load; the deck's ONE explicit load is `useTopCardPhotoPreload`,
+  // bounded by `photosToPreload` (PHOTO_PAGER.preloadAhead = 2), disk-only, and
+  // fed the current card's pager only. Asserted here so the bound cannot grow.
+  {
+    const hooks = readFileSync(new URL('../../deckCard/deckCardHooks.ts', import.meta.url), 'utf8');
+    const model = readFileSync(new URL('../../deckCard/deckCardModel.ts', import.meta.url), 'utf8');
+    assert.equal((hooks.match(/ExpoImage\.prefetch\(/g) ?? []).length, 1, 'exactly one explicit preload site');
+    assert.match(hooks, /photosToPreload\(photos, index\)/);
+    assert.match(hooks, /ExpoImage\.prefetch\(key\.split\('\|'\), 'disk'\)/);
+    assert.match(model, /\.slice\(index \+ 1, index \+ 1 \+ PHOTO_PAGER\.preloadAhead\)/);
+    assert.equal(CI_PAGER.preloadAhead, 2);
+    assert.match(source.swipeable, /useTopCardPhotoPreload\(currentPhotos, currentPhotoIndex, currentFailedPhotos\)/);
+    assert.equal((source.swipeable.match(/useTopCardPhotoPreload\(/g) ?? []).length, 1, 'the behind card must never preload');
+  }
+
   const preview = source.swipeable.slice(
     source.swipeable.indexOf('Next card is a poster-only'),
     source.swipeable.indexOf('{/* Current Card */}'),

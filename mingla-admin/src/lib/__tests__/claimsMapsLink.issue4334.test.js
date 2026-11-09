@@ -2,7 +2,7 @@
 // Fails on revert: drop `&query=` (the pre-#4334 link was query_place_id only).
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { claimMapsUri, googleMapsPinUrl } from "../claimsMapsLink.js";
+import { claimMapsUri, googleMapsPinUrl, googlePlaceIdOrEmpty } from "../claimsMapsLink.js";
 import { readFileSync } from "node:fs";
 
 describe("claimMapsUri", () => {
@@ -12,10 +12,12 @@ describe("claimMapsUri", () => {
       "https://www.google.com/maps/search/?api=1&query=6.4325387%2C3.4236889&query_place_id=ChIJ0Wq9hS_1OxARsFOw5qkW6Y0",
     );
   });
+  // [TEST-MOD-APPROVED #4334] fixture id lengthened to a real-length Google id: the
+  // shared rule (googlePlaceIdOrEmpty) needs 10+ characters, as the apps do.
   it("without coordinates the query is the venue's name and address", () => {
     assert.equal(
-      claimMapsUri({ google_place_id: "ChIJabc", name: "Didi Museum", address: "175 Akin Adesola St" }),
-      "https://www.google.com/maps/search/?api=1&query=Didi%20Museum%2C%20175%20Akin%20Adesola%20St&query_place_id=ChIJabc",
+      claimMapsUri({ google_place_id: "ChIJabcdefghij", name: "Didi Museum", address: "175 Akin Adesola St" }),
+      "https://www.google.com/maps/search/?api=1&query=Didi%20Museum%2C%20175%20Akin%20Adesola%20St&query_place_id=ChIJabcdefghij",
     );
   });
   it("the pool's own Maps URI wins; no id and no URI → no link", () => {
@@ -49,5 +51,22 @@ describe("googleMapsPinUrl (venue change review proposed pin)", () => {
     const src = readFileSync(new URL("../../services/adminVenueDetailsChangeService.js", import.meta.url), "utf8");
     assert.match(src, /googleMapsPinUrl\(\s*request\?\.details_change_lat,\s*request\?\.details_change_lng,\s*request\?\.details_change_place_id,?\s*\)/);
     assert.match(src, /details_change_place_id,\n\s*details_change_requested_at/);
+  });
+});
+
+// #4334 follow-up — a Mingla UUID never becomes query_place_id (#4347).
+// Fails on revert: drop the UUID refusal in googlePlaceIdOrEmpty.
+describe("googlePlaceIdOrEmpty", () => {
+  const UUID = "0b6f7a1e-3314-4c1a-9d2e-5f0a3314b001";
+  it("refuses UUIDs everywhere the admin builds a Google link", () => {
+    assert.equal(googlePlaceIdOrEmpty(UUID), "");
+    assert.equal(googleMapsPinUrl(6.4325, 3.4236, UUID), "https://www.google.com/maps/search/?api=1&query=6.4325,3.4236");
+    assert.equal(claimMapsUri({ google_place_id: UUID, lat: 6.4325, lng: 3.4236, name: "Didi Museum" }), null);
+  });
+  it("keeps ChIJ and long Ej ids up to 1024 characters", () => {
+    assert.equal(googlePlaceIdOrEmpty("ChIJS9Q72lL0OxARKJ3cGrQfM0c"), "ChIJS9Q72lL0OxARKJ3cGrQfM0c");
+    const long = "Ej" + "A".repeat(1022);
+    assert.equal(googlePlaceIdOrEmpty(long), long);
+    assert.equal(googlePlaceIdOrEmpty(long + "A"), "");
   });
 });

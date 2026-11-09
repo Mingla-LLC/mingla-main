@@ -132,6 +132,7 @@ const ALLOW: ReadonlyArray<{ re: RegExp; why: string }> = [
   { re: /backgroundColor=\{palette\.accent\}/, why: "fallback prop; fillStyle={accentFill(palette)} on the same element wins" },
   { re: /^\s*borderColor: palette\.accent,$/, why: "brand avatar ring in the SOLID branch only; a gradient theme draws the ring with ThemeAccentFill" },
   { re: /const followFill = palette\.accent|contrastRatio\(palette\.accent|\? palette\.accent$/, why: "colour tokens / contrast maths, not drawing (the follow fill is painted with the gradient layer)" },
+  { re: /const accentFill = flatten\(palette\.accent, surface\)/, why: "#4347 venue When block: the accent flattened to one opaque colour for its 3:1 contrast check; a dark accent falls back to the text colour (a gradient cannot be contrast-checked)" },
 ];
 
 const SKIP_FILES = /themePalette\.ts$|themeAccentStyle\.ts$|ThemeAccentFill\.tsx$|LucideIcons\.tsx$|types\.ts$|themeColorModel\.ts$|themedPreviewCardColors\.ts$/;

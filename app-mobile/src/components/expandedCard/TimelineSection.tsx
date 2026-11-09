@@ -9,7 +9,7 @@ import { Icon } from "../ui/Icon";
 import { TimelineData } from "../../types/expandedCardTypes";
 import { generateTimeline } from "../../utils/timelineGenerator";
 // issue #2468 — the ONE host effect that opens a maps deep link.
-import { openMapsTarget } from "../../utils/openMapsTarget";
+import { openPlaceDirections } from "./placeDirections";
 import { useTranslation } from "react-i18next";
 
 interface TimelineSectionProps {
@@ -162,10 +162,8 @@ export default function TimelineSection({
   }): void => {
     const lat = location.lat;
     const lng = location.lng;
-    openMapsTarget({
-      label: location.address || location.name || null,
-      geo: lat != null && lng != null ? { lat, lng } : null,
-    });
+    // #4347 wave 2 — the sheet's ONE directions helper.
+    openPlaceDirections({ lat: lat ?? null, lng: lng ?? null, label: location.address || location.name || null });
   };
 
   return (

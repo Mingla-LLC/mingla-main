@@ -24,11 +24,45 @@ export interface WeatherData {
 }
 
 export interface HourlyForecast {
+  /** Venue-local wall clock, as Open-Meteo returns it with timezone=auto: "2026-11-09T19:00". */
   time: string;
   temperature: number;
   condition: string;
   icon: string;
   precipitation: number;
+  /** #4347 wave 2 — chance of precipitation that hour, 0-100. */
+  precipitationProbability?: number;
+}
+
+/**
+ * #4347 wave 2 — Open-Meteo's `hourly` block into HourlyForecast[]. Pure, so a
+ * test can feed it a recorded response. Rows with no time or temperature are
+ * dropped rather than filled in.
+ */
+export function parseHourlyForecast(hourly: unknown): HourlyForecast[] {
+  const h = hourly as Record<string, unknown> | null | undefined;
+  if (!h || !Array.isArray(h.time)) return [];
+  const times = h.time as unknown[];
+  const temps = Array.isArray(h.temperature_2m) ? (h.temperature_2m as unknown[]) : [];
+  const codes = Array.isArray(h.weather_code) ? (h.weather_code as unknown[]) : [];
+  const precip = Array.isArray(h.precipitation) ? (h.precipitation as unknown[]) : [];
+  const prob = Array.isArray(h.precipitation_probability) ? (h.precipitation_probability as unknown[]) : [];
+  const isDay = Array.isArray(h.is_day) ? (h.is_day as unknown[]) : [];
+  const out: HourlyForecast[] = [];
+  times.forEach((time, i) => {
+    const temp = temps[i];
+    if (typeof time !== 'string' || typeof temp !== 'number' || !Number.isFinite(temp)) return;
+    const code = typeof codes[i] === 'number' ? (codes[i] as number) : 0;
+    out.push({
+      time,
+      temperature: Math.round(temp),
+      condition: WMO_CONDITION_MAP[code] || 'Clear',
+      icon: getWmoIcon(code, typeof isDay[i] === 'number' ? (isDay[i] as number) : 1),
+      precipitation: typeof precip[i] === 'number' ? (precip[i] as number) : 0,
+      precipitationProbability: typeof prob[i] === 'number' ? (prob[i] as number) : undefined,
+    });
+  });
+  return out;
 }
 
 export interface ActivityRecommendation {
@@ -138,9 +172,11 @@ class WeatherService {
    * time-of-day-aware. It never was — this method requests `current=…`, returns
    * `hourlyForecast: []`, and caches on `lat_lng` with no date in the key.
    *
-   * Making it time-aware means an `hourly=…` request, an hour-selection rule and
-   * a date-keyed cache. That is a feature; it is registered as one rather than
-   * implied by an unread argument.
+   * #4347 wave 2 — THAT FEATURE NOW EXISTS, in the shape described here: the
+   * same request also asks for `hourly=…` (3 days), `hourlyForecast` carries
+   * it, and the hour-selection rule is `forecastAt` in
+   * expandedCard/placeSheetModel.ts. The `current` block is unchanged, and the
+   * lat_lng cache key stays correct because the hourly series is absolute.
    */
   async getWeatherForecast(
     lat: number,
@@ -158,6 +194,11 @@ class WeatherService {
         `latitude=${lat}`,
         `longitude=${lng}`,
         `current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,uv_index,precipitation,is_day`,
+        // #4347 wave 2 — the HOURLY forecast, so "When you'd go" can say what
+        // it will be like at the time you pick (3 days covers Now / Tonight /
+        // Tomorrow and a near scheduled time).
+        `hourly=temperature_2m,weather_code,precipitation,precipitation_probability,is_day`,
+        `forecast_days=3`,
         `temperature_unit=fahrenheit`,
         `wind_speed_unit=mph`,
         `precipitation_unit=inch`,
@@ -209,7 +250,7 @@ class WeatherService {
         uvIndex: current.uv_index,
         precipitation: current.precipitation,
         recommendation,
-        hourlyForecast: [],
+        hourlyForecast: parseHourlyForecast(data.hourly),
         timezone: data.timezone,
         utcOffsetSeconds: data.utc_offset_seconds,
       };

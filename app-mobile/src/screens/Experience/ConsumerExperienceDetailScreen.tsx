@@ -146,9 +146,9 @@ import { currencyName, formatDisplayPrice } from "../../components/utils/formatt
 import { useTranslation } from "react-i18next";
 // #1708 — the same two pieces the place sheet uses. Open-Meteo needs no key and
 // no login; the travel figure is haversine and is labelled as an estimate.
-import { weatherService } from "../../services/weatherService";
+import { weatherService, type WeatherData } from "../../services/weatherService";
+import { onTheNightFacts } from "./onTheNight";
 import { shareContent } from "../../services/contentShareAdapter";
-import { estimateTravelMinutes, haversineKm } from "../../utils/mutateCuratedCard";
 import { useRecommendations } from "../../contexts/RecommendationsContext";
 import { glass } from "../../constants/designSystem";
 import { hueFromId } from "../../utils/hueFromId";
@@ -270,7 +270,7 @@ export default function ConsumerExperienceDetailScreen({
   // public web page) → no travel row at all, which is the honest outcome.
   const { userLocation: viewerLocation } = useRecommendations();
   const profile = useAppStore((s) => s.profile);
-  const { t } = useTranslation(["cards"]);
+  const { t, i18n } = useTranslation(["cards"]);
   const explorerCheckoutContact = resolveExplorerCheckoutContact({
     authUserId: user?.id,
     authEmail: user?.email,
@@ -979,44 +979,61 @@ export default function ConsumerExperienceDetailScreen({
     seed?.locationGeo?.lat ?? (seed?.experienceStops?.[0] as { lat?: number | null } | undefined)?.lat ?? null;
   const rightNowLng =
     seed?.locationGeo?.lng ?? (seed?.experienceStops?.[0] as { lng?: number | null } | undefined)?.lng ?? null;
-  const [rightNowWeather, setRightNowWeather] = useState<string | null>(null);
+  const [rightNowForecast, setRightNowForecast] = useState<WeatherData | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     if (rightNowLat == null || rightNowLng == null) {
-      setRightNowWeather(null);
+      setRightNowForecast(null);
       return () => { cancelled = true; };
     }
     weatherService
       .getWeatherForecast(rightNowLat, rightNowLng)
       .then((w) => {
-        if (cancelled || !w) return;
-        setRightNowWeather(`${w.condition}, ${Math.round(w.temperature)}\u00B0`);
+        if (!cancelled) setRightNowForecast(w ?? null);
       })
       .catch(() => {
         // Non-fatal. A missing row is the honest outcome; a placeholder is not.
-        if (!cancelled) setRightNowWeather(null);
+        if (!cancelled) setRightNowForecast(null);
       });
     return () => { cancelled = true; };
   }, [rightNowLat, rightNowLng]);
 
-  const rightNow = useMemo(() => {
-    let travel: string | null = null;
-    if (viewerLocation?.lat != null && viewerLocation?.lng != null
-      && rightNowLat != null && rightNowLng != null) {
-      const km = haversineKm(viewerLocation.lat, viewerLocation.lng, rightNowLat, rightNowLng);
-      travel = `${estimateTravelMinutes(km, 'driving')} min`;
-    }
-    if (!rightNowWeather && !travel) return null;
-    return {
-      weather: rightNowWeather,
-      travel,
-      // The travel figure is haversine, never a measurement. The disclosure is
-      // the condition of it being shown at all — see #1706 and the traffic
-      // deletion it refers to.
-      estimated: travel !== null,
-    };
-  }, [rightNowWeather, rightNowLat, rightNowLng, viewerLocation]);
+  /*
+    #4347 wave 3 — "ON THE NIGHT". When the experience has a time (the picked
+    slot, else the next occurrence, else its master date) the block answers
+    for THAT time: the hourly forecast at it (hidden when the 3-day forecast
+    does not reach it), the estimated drive, and when to leave. The typical
+    crowd row stays hidden: a host stop carries no category, and the generic
+    curve would be a guess (Constitution 9). Without a time it is today's
+    "Right now". The shared body only renders the words it is handed.
+  */
+  const nightAt: Date | null = useMemo(() => {
+    const picked =
+      selectedBookedStartAt ??
+      occurrences.find((o) => o.eventDateId === selectedEventDateId)?.startAt ??
+      occurrences[0]?.startAt ??
+      seed?.masterDateUtc ??
+      null;
+    if (typeof picked !== "string") return null;
+    const at = new Date(picked);
+    return Number.isNaN(at.getTime()) ? null : at;
+  }, [selectedBookedStartAt, selectedEventDateId, occurrences, seed?.masterDateUtc]);
+
+  const rightNow = useMemo(
+    () =>
+      onTheNightFacts({
+        at: nightAt,
+        now: new Date(),
+        forecast: rightNowForecast,
+        timeZone: seed?.timezone ?? null,
+        viewer: viewerLocation ?? null,
+        place: rightNowLat != null && rightNowLng != null ? { lat: rightNowLat, lng: rightNowLng } : null,
+        language: i18n?.language ?? "en",
+        t,
+      }),
+    [nightAt, rightNowForecast, seed?.timezone, viewerLocation, rightNowLat, rightNowLng, i18n?.language, t],
+  );
 
   const chrome = (
     <View
