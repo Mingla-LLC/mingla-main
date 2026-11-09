@@ -23,6 +23,25 @@
 --
 -- Fails-on-revert: run against 20280521004334's definitions of the three RPCs
 -- (this migration's functions restored) → T-1 (venue), T-3 and T-4 red.
+--
+-- Section 3 (refined coordinates keep a confirmed id), second block:
+--   R-1 the confirmation is consumed: a same-id refinement in review keeps the
+--       id, the record is empty afterwards, and a later direct move of the
+--       same row (no id sent) clears it.
+--   R-2 a recorded id that differs from the row's id never keeps it, and is
+--       consumed by that write.
+--   R-3 a rolled-back savepoint (a bare places_checked_place_id call, and an
+--       RPC that validated an id and then failed) leaves no record behind.
+--   R-4 a multi-row UPDATE after one assertion keeps the id on at most one
+--       row and leaves no record.
+--   R-5 trip departure/destination pins ignore the record: a moved trip pin
+--       still drops its place id while a matching id is recorded.
+--   R-6 places_checked_place_id is VOLATILE and no constraint, index, column
+--       default, policy or view expression depends on it.
+--   R-7 approval: a refined request carrying a different id stores that id;
+--       a moved request with no id clears the stored id.
+-- Fails-on-revert: run against the pre-section-3 triggers and validator
+-- (20280525004334 sections 1-2 only) → R-1, R-2 and R-6 red.
 \set ON_ERROR_STOP on
 BEGIN;
 
@@ -281,5 +300,171 @@ BEGIN
   RAISE NOTICE 'issue_4334_place_id_repick tester: all checks passed';
 END;
 $test$;
+
+
+DO $section3$
+DECLARE
+  v_owner uuid := '43342610-0000-4000-8400-000000000001';
+  v_admin uuid := '43342610-0000-4000-8400-000000000003';
+  v_brand uuid := '43342610-0000-4000-8400-000000000011';
+  X text := 'ChIJ0Wq9hS_1OxARsFOw5qkW6Y0';
+  Y text := 'ChIJ8bF1g3T1OxAR5Yx0Qn5pLk8';
+  v_hours jsonb := '[
+    {"weekday":0,"open_time":"09:00","close_time":"17:00","is_closed":false},
+    {"weekday":1,"open_time":"09:00","close_time":"17:00","is_closed":false},
+    {"weekday":2,"open_time":"09:00","close_time":"17:00","is_closed":false},
+    {"weekday":3,"open_time":"09:00","close_time":"17:00","is_closed":false},
+    {"weekday":4,"open_time":"09:00","close_time":"17:00","is_closed":false},
+    {"weekday":5,"open_time":"10:00","close_time":"16:00","is_closed":false},
+    {"weekday":6,"open_time":null,"close_time":null,"is_closed":true}]'::jsonb;
+  v_a uuid;
+  v_b uuid;
+  v_event uuid;
+  v_result jsonb;
+  v_kept integer;
+  v_row record;
+  v_deps integer;
+BEGIN
+  INSERT INTO auth.users(id, email) VALUES
+    (v_owner, 'repick-s3-4334@example.test'), (v_admin, 'repick-s3-admin-4334@example.test');
+  INSERT INTO public.creator_accounts(id, email) VALUES (v_owner, 'repick-s3-4334@example.test');
+  SET LOCAL session_replication_role = replica;
+  INSERT INTO public.admin_users(email, role, status) VALUES ('repick-s3-admin-4334@example.test', 'admin', 'active');
+  SET LOCAL session_replication_role = origin;
+  INSERT INTO public.brands(id, account_id, name, slug, default_currency, payment_provider, payment_country, pricing_region, pricing_currency)
+    VALUES (v_brand, v_owner, 'Repick s3 4334', 'repick-s3-4334', 'NGN', 'paystack', 'NG', 'NG', 'NGN');
+  PERFORM set_config('request.jwt.claim.sub', v_owner::text, true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub', v_owner, 'role', 'authenticated')::text, true);
+  v_a := public.biz_create_venue_listing(
+    v_brand, 'S3 venue A', 'repicks3a4334', 'A venue.', '', 6.4325, 3.4236, 'Lagos', 'NG',
+    '175 Akin Adesola St', 'restaurant', 'repick-s3a-4334@example.test', '+2348031234567', '', '', v_hours,
+    NULL, 'approximate', p_location_place_id => X);
+  v_b := public.biz_create_venue_listing(
+    v_brand, 'S3 venue B', 'repicks3b4334', 'B venue.', '', 6.5, 3.5, 'Lagos', 'NG',
+    '1 Other Street', 'restaurant', 'repick-s3b-4334@example.test', '+2348031234568', '', '', v_hours,
+    NULL, 'exact', p_location_place_id => X);
+  PERFORM set_config('mingla.place_id_confirmed', '', true);
+
+  -- ── R-1 refinement keeps the id; the record is consumed ──────────────────
+  v_result := public.biz_update_venue_identity_in_review(v_a, p_address => '175 Akin Adesola St',
+    p_city => 'Lagos', p_country_code => 'NG', p_lat => 6.43251, p_lng => 3.42362,
+    p_coordinate_precision => 'exact', p_location_place_id => X);
+  SELECT location_provider_place_id, lat, location_geo_refresh_state INTO v_row FROM public.venue_listings WHERE id = v_a;
+  IF (v_result ->> 'changed')::boolean IS NOT TRUE OR v_row.location_provider_place_id IS DISTINCT FROM X
+     OR v_row.lat <> 6.43251 OR v_row.location_geo_refresh_state IS DISTINCT FROM 'ok' THEN
+    RAISE EXCEPTION 'R-1a: refining the same place in review lost the id (%)', row_to_json(v_row);
+  END IF;
+  IF coalesce(current_setting('mingla.place_id_confirmed', true), '') <> '' THEN
+    RAISE EXCEPTION 'R-1b: the record survived the write that used it';
+  END IF;
+  UPDATE public.venue_listings SET lat = 6.4326 WHERE id = v_a;
+  IF (SELECT location_provider_place_id FROM public.venue_listings WHERE id = v_a) IS NOT NULL THEN
+    RAISE EXCEPTION 'R-1c: a later direct move kept the id';
+  END IF;
+
+  -- ── R-2 a different recorded id never keeps the row's id ─────────────────
+  PERFORM set_config('mingla.place_id_confirmed', Y, true);
+  UPDATE public.venue_listings SET lat = 6.501 WHERE id = v_b;
+  IF (SELECT location_provider_place_id FROM public.venue_listings WHERE id = v_b) IS NOT NULL
+     OR coalesce(current_setting('mingla.place_id_confirmed', true), '') <> '' THEN
+    RAISE EXCEPTION 'R-2: a different recorded id kept the row id, or was not consumed';
+  END IF;
+
+  -- ── R-3 a rolled-back savepoint leaves no record ─────────────────────────
+  UPDATE public.venue_listings SET location_provider_place_id = X WHERE id = v_b;
+  PERFORM set_config('mingla.place_id_confirmed', '', true);
+  BEGIN
+    PERFORM public.places_checked_place_id(X);
+    RAISE EXCEPTION 'r3_abort';
+  EXCEPTION WHEN raise_exception THEN NULL;
+  END;
+  BEGIN
+    PERFORM public.biz_update_venue_identity_in_review(v_b, p_address => '1 Other Street',
+      p_city => 'Lagos', p_country_code => 'NG', p_lat => 6.6, p_lng => 3.6,
+      p_coordinate_precision => 'bogus', p_location_place_id => X);
+  EXCEPTION WHEN invalid_parameter_value THEN NULL;
+  END;
+  IF coalesce(current_setting('mingla.place_id_confirmed', true), '') <> '' THEN
+    RAISE EXCEPTION 'R-3a: a rolled-back call left the record [%]', current_setting('mingla.place_id_confirmed', true);
+  END IF;
+  UPDATE public.venue_listings SET lat = 6.502 WHERE id = v_b;
+  IF (SELECT location_provider_place_id FROM public.venue_listings WHERE id = v_b) IS NOT NULL THEN
+    RAISE EXCEPTION 'R-3b: a move after a rolled-back assertion kept the id';
+  END IF;
+
+  -- ── R-4 a multi-row update keeps the id on at most one row ───────────────
+  UPDATE public.venue_listings SET location_provider_place_id = X WHERE id IN (v_a, v_b);
+  PERFORM public.places_checked_place_id(X);
+  UPDATE public.venue_listings SET lat = lat + 0.001 WHERE id IN (v_a, v_b);
+  SELECT count(*) INTO v_kept FROM public.venue_listings WHERE id IN (v_a, v_b) AND location_provider_place_id = X;
+  IF v_kept > 1 OR coalesce(current_setting('mingla.place_id_confirmed', true), '') <> '' THEN
+    RAISE EXCEPTION 'R-4: one assertion kept the id on % rows, or left a record', v_kept;
+  END IF;
+
+  -- ── R-5 trip pins ignore the record ──────────────────────────────────────
+  v_result := public.business_create_event_draft(v_brand, jsonb_build_object(
+    'title', 'Repick s3 event', 'location_text', 'Didi Museum', 'timezone', 'Africa/Lagos', 'currency', 'NGN',
+    'theme', '{"business_draft":{"requestedVisibility":"public"}}'::jsonb));
+  v_event := (v_result #>> '{event,id}')::uuid;
+  UPDATE public.events SET theme = jsonb_set(coalesce(theme, '{}'::jsonb), '{business_trip}',
+    jsonb_build_object('departurePlaceId', X, 'departureLat', 6.4325, 'departureLng', 3.4236), true)
+  WHERE id = v_event;
+  IF (SELECT theme #>> '{business_trip,departurePlaceId}' FROM public.events WHERE id = v_event) IS DISTINCT FROM X THEN
+    RAISE EXCEPTION 'R-5 setup: the trip pin did not hold its id before the move';
+  END IF;
+  PERFORM public.places_checked_place_id(X);
+  UPDATE public.events SET theme = jsonb_set(theme, '{business_trip,departureLat}', '6.44'::jsonb) WHERE id = v_event;
+  IF (SELECT theme #>> '{business_trip,departurePlaceId}' FROM public.events WHERE id = v_event) IS NOT NULL THEN
+    RAISE EXCEPTION 'R-5: a moved trip pin kept its id because a matching id was recorded';
+  END IF;
+  PERFORM set_config('mingla.place_id_confirmed', '', true);
+
+  -- ── R-6 VOLATILE and nothing structural depends on it ────────────────────
+  IF (SELECT provolatile FROM pg_proc WHERE oid = 'public.places_checked_place_id(text)'::regprocedure) <> 'v' THEN
+    RAISE EXCEPTION 'R-6a: places_checked_place_id is not VOLATILE';
+  END IF;
+  SELECT (SELECT count(*) FROM pg_constraint WHERE pg_get_constraintdef(oid) ILIKE '%places_checked_place_id%')
+       + (SELECT count(*) FROM pg_index WHERE pg_get_indexdef(indexrelid) ILIKE '%places_checked_place_id%')
+       + (SELECT count(*) FROM pg_attrdef WHERE pg_get_expr(adbin, adrelid) ILIKE '%places_checked_place_id%')
+       + (SELECT count(*) FROM pg_policies WHERE coalesce(qual, '') || coalesce(with_check, '') ILIKE '%places_checked_place_id%')
+       + (SELECT count(*) FROM pg_views WHERE definition ILIKE '%places_checked_place_id%')
+       + (SELECT count(*) FROM pg_matviews WHERE definition ILIKE '%places_checked_place_id%')
+    INTO v_deps;
+  IF v_deps <> 0 THEN
+    RAISE EXCEPTION 'R-6b: % structural object(s) depend on places_checked_place_id', v_deps;
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace
+               AND p.provolatile <> 'v' AND p.prosrc ILIKE '%places_checked_place_id(%'
+               AND p.proname <> 'places_checked_place_id') THEN
+    RAISE EXCEPTION 'R-6c: a STABLE or IMMUTABLE function calls places_checked_place_id';
+  END IF;
+
+  -- ── R-7 approval: a different id is stored; no id on a moved pin clears ──
+  UPDATE public.venue_listings SET claim_status = 'verified', lat = 6.4325, lng = 3.4236,
+    location_provider_place_id = X WHERE id = v_a;
+  v_result := public.biz_submit_venue_details_change_request(v_a, p_address => '175 Akin Adesola St',
+    p_city => 'Lagos', p_country_code => 'NG', p_lat => 6.43252, p_lng => 3.42363,
+    p_coordinate_precision => 'exact', p_location_place_id => Y);
+  PERFORM set_config('request.jwt.claim.sub', v_admin::text, true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
+  PERFORM public.admin_review_venue_details_change(v_a, (v_result ->> 'request_id')::uuid, 'approve');
+  IF (SELECT location_provider_place_id FROM public.venue_listings WHERE id = v_a) IS DISTINCT FROM Y THEN
+    RAISE EXCEPTION 'R-7a: approving a refined request with a new id did not store it';
+  END IF;
+  PERFORM set_config('request.jwt.claim.sub', v_owner::text, true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub', v_owner, 'role', 'authenticated')::text, true);
+  v_result := public.biz_submit_venue_details_change_request(v_a, p_address => '175 Akin Adesola St',
+    p_city => 'Lagos', p_country_code => 'NG', p_lat => 6.44, p_lng => 3.43,
+    p_coordinate_precision => 'approximate');
+  PERFORM set_config('request.jwt.claim.sub', v_admin::text, true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
+  PERFORM public.admin_review_venue_details_change(v_a, (v_result ->> 'request_id')::uuid, 'approve');
+  IF (SELECT location_provider_place_id FROM public.venue_listings WHERE id = v_a) IS NOT NULL THEN
+    RAISE EXCEPTION 'R-7b: approving a moved request with no id kept the old id';
+  END IF;
+
+  RAISE NOTICE 'issue_4334_place_id_repick tester section 3: all checks passed';
+END;
+$section3$;
 
 ROLLBACK;
