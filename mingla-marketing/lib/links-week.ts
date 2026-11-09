@@ -43,6 +43,8 @@ export interface LinksWeekRow {
 export interface LinksStripRow {
   id: string
   shows_on: string
+  /** Optional last day (Admin "Show until"); never before shows_on. */
+  shows_until?: string | null
   title: string
   label: string
   opens: string
@@ -110,8 +112,10 @@ export interface LinksListing {
 
 export interface LinksPin {
   id: string
-  /** YYYY-MM-DD, the day shown on the strip. */
+  /** YYYY-MM-DD, the day shown on the strip (its first day). */
   showsOn: string
+  /** YYYY-MM-DD, the last day when Admin set "Show until"; null for a one-day strip. */
+  showsUntil: string | null
   title: string
   label: LinksPinLabel
   opens: LinksPinOpens
@@ -435,9 +439,11 @@ export function normalisePins(rows: readonly LinksStripRow[]): LinksPin[] {
     if (title === '' || !DATE_KEY.test(row.shows_on ?? '')) continue
     if (row.opens === 'web' && pinWebHref(row.url) === null) continue
     if (row.opens === 'blog' && (!row.blog_slug || !SLUG.test(row.blog_slug))) continue
+    const until = row.shows_until ?? null
     out.push({
       id: row.id,
       showsOn: row.shows_on,
+      showsUntil: until !== null && DATE_KEY.test(until) && until > row.shows_on ? until : null,
       title,
       label: row.label,
       opens: row.opens,
@@ -489,7 +495,7 @@ export function cityWeek(
   const days = keys
     .map((key) => ({ key, listings: mine.filter((l) => listingDayKey(l) === key) }))
     .filter((d) => d.listings.length > 0)
-  const cityPins = pins.filter((p) => p.showsOn >= today)
+  const cityPins = pins.filter((p) => pinLive(p, nowIso))
   return { today, keys, listings: mine, days, pins: cityPins }
 }
 
@@ -550,9 +556,39 @@ export function planWhen(plan: LinksPlan, today: string): { tonight: boolean; te
   return { tonight: false, text: `${kind} · ${span}` }
 }
 
-/** Admin strip label: "From Mingla · Thu 12". No time, no place. */
+/**
+ * The zone whose calendar is furthest behind (UTC-12). Admin dates are typed
+ * in the admin's own day, which can be a day behind a viewer's city (a strip
+ * posted on a US evening is already "yesterday" in Lagos), so a strip stays
+ * up until its last day has ended everywhere, never cut early in a city that
+ * is ahead. Same idea as the database cut-off in `links_page_strips()`.
+ */
+const LATEST_ZONE = 'Etc/GMT+12'
+
+/** The strip's last day: "Show until" when set, else its one day. */
+export function pinLastDay(pin: LinksPin): string {
+  return pin.showsUntil ?? pin.showsOn
+}
+
+/** True while the strip's last day has not ended in every time zone. */
+export function pinLive(pin: LinksPin, nowIso: string): boolean {
+  return pinLastDay(pin) >= localDateKey(nowIso, LATEST_ZONE)
+}
+
+/**
+ * Admin strip label: "From Mingla · Thu 12" before it starts, "From Mingla ·
+ * Today" once it is running (in this city or still in the admin's day). No
+ * time, no place.
+ */
 export function pinWhen(pin: LinksPin, today: string): string {
-  return `${pin.label} · ${pin.showsOn === today ? 'Today' : shortDayLabel(pin.showsOn)}`
+  return `${pin.label} · ${pin.showsOn > today ? shortDayLabel(pin.showsOn) : 'Today'}`
+}
+
+/** The strip sheet's date line: "Sunday 8 November", or a range with "Show until". */
+export function pinDaysLabel(pin: LinksPin): string {
+  return !pin.showsUntil
+    ? longDayLabel(pin.showsOn)
+    : `${longDayLabel(pin.showsOn)} – ${longDayLabel(pin.showsUntil)}`
 }
 
 // ---------------------------------------------------------------- cities
