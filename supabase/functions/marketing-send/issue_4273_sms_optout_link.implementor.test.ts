@@ -26,7 +26,12 @@ const BRAND = "42730000-0000-4000-8000-0000000000b1";
 const CAMPAIGN = "42730000-0000-4000-8000-0000000000c1";
 type Write = { table: string; op: string; payload: unknown };
 
-function fakeDb(writes: Write[], phones: string[], sealed: boolean) {
+function fakeDb(
+  writes: Write[],
+  phones: string[],
+  sealed: boolean,
+  execScheduledFor: string | null = null,
+) {
   let messageSeq = 0;
   const row = (phone: string) => ({
     contact_key: phone,
@@ -77,7 +82,10 @@ function fakeDb(writes: Write[], phones: string[], sealed: boolean) {
       }
       if (table === "marketing_messages") return { data: null, error: null };
       if (table === "marketing_book_send_executions") {
-        return { data: sealed ? { id: "exec" } : null, error: null };
+        return {
+          data: sealed ? { id: "exec", scheduled_for: execScheduledFor } : null,
+          error: null,
+        };
       }
       return { data: [], error: null };
     };
@@ -136,6 +144,11 @@ async function send(
   phones: string[],
   smsRoutes: Array<{ country: string; provider: "twilio" | "termii" }> | null,
   sealed = true,
+  timing: {
+    execScheduledFor?: string | null;
+    campaignScheduledFor?: string | null;
+    alerts?: string[][];
+  } = {},
 ) {
   const writes: Write[] = [];
   const sent: Array<{ to: string; optOutLink?: string }> = [];
@@ -158,7 +171,7 @@ async function send(
   try {
     const summary = await processClaimedCampaigns(
       // deno-lint-ignore no-explicit-any
-      fakeDb(writes, phones, sealed) as any,
+      fakeDb(writes, phones, sealed, timing.execScheduledFor ?? null) as any,
       [{
         id: CAMPAIGN,
         account_id: "42730000-0000-4000-8000-0000000000d1",
@@ -168,10 +181,18 @@ async function send(
         // deno-lint-ignore no-explicit-any
         channel_payload: { kind: "sms", body: "Doors at 9. https://example.test/lineup" } as any,
         name: "Opt-out link",
-        scheduled_for: null,
+        scheduled_for: timing.campaignScheduledFor ?? null,
         // deno-lint-ignore no-explicit-any
       }] as any,
-      { live: true, resendApiKey: "re_test_key", smsRoutes },
+      {
+        live: true,
+        resendApiKey: "re_test_key",
+        smsRoutes,
+        opsAlert: (subject: string, paragraphs: string[]) => {
+          timing.alerts?.push([subject, ...paragraphs]);
+          return Promise.resolve();
+        },
+      },
     );
     return { summary, writes, sent };
   } finally {
@@ -219,6 +240,10 @@ Deno.test("#4273 L-1 (P1) every stored click destination holds no phone or email
   }
   const optOut = clicks.filter((c) => c.link_kind === "opt_out");
   assertEquals(optOut.length, 1);
+  assert(
+    optOut[0].destination_url.startsWith("https://usemingla.com/unsubscribe/sms/"),
+    "the opt-out link lands on the web page, not the function",
+  );
   assert(gb.optOutLink!.endsWith(`/${optOut[0].tracking_id}`));
   Deno.env.set("UNSUBSCRIBE_TOKEN_SECRET", SECRET);
   try {
@@ -339,4 +364,57 @@ Deno.test("#4273 L-4 (P3) transactional routing is main's; marketing is per coun
       else Deno.env.set(k, v);
     }
   }
+});
+
+Deno.test("#4273 L-5 (retest 3) ops hear about an unreadable price table once, on the first re-park", async () => {
+  const alerts: string[][] = [];
+  // First pass: the campaign is still at its execution's own time.
+  await send([GB], null, true, {
+    execScheduledFor: "2026-11-09T16:55:00Z",
+    campaignScheduledFor: "2026-11-09T16:55:00Z",
+    alerts,
+  });
+  assertEquals(alerts.length, 1);
+  assert(alerts[0][0].includes("SMS prices can't be read"), alerts[0][0]);
+  // A later pass: the campaign was re-parked 10 minutes on. No second alert.
+  await send([GB], null, true, {
+    execScheduledFor: "2026-11-09T16:55:00Z",
+    campaignScheduledFor: "2026-11-09T16:55:00Z".replace("16:55", "17:05"),
+    alerts,
+  });
+  assertEquals(alerts.length, 1, "alerted once, not on every re-park");
+});
+
+Deno.test("#4273 L-6 (retest 3) a day past its time, the send fails so the host sees it", async () => {
+  const alerts: string[][] = [];
+  const { summary, writes, sent } = await send([GB], null, true, {
+    execScheduledFor: "2026-11-08T16:59:00Z", // 24 h 1 min before "now"
+    campaignScheduledFor: "2026-11-09T16:50:00Z",
+    alerts,
+  });
+  assertEquals(sent, []);
+  assertEquals(summary.failed, 1);
+  assert(
+    JSON.stringify(summary.errors).includes("sms_price_table_unreadable_24h"),
+  );
+  const last = writes.filter((w) =>
+    w.table === "marketing_campaigns" && w.op === "update"
+  ).at(-1);
+  assertEquals((last?.payload as { status: string }).status, "failed");
+  assert(
+    writes.some((w) =>
+      w.table === "rpc:biz_record_marketing_book_send_failure_v1"
+    ),
+    "the Book failure marker is written",
+  );
+  assertEquals(
+    writes.some((w) => w.table === "rpc:mkt_finalize_campaign"),
+    false,
+  );
+  // Just inside the day it still waits.
+  const inside = await send([GB], null, true, {
+    execScheduledFor: "2026-11-08T17:01:00Z",
+    campaignScheduledFor: "2026-11-09T16:50:00Z",
+  });
+  assertEquals(inside.summary.failed, 0);
 });

@@ -678,7 +678,7 @@ export async function handleWizardWorker(
             candidates: QuoteCandidateRow[];
           };
           const snapshot = await buildOfferingExecutionSnapshot({
-      smsRates: await loadSmsRates(service).catch(() => undefined),
+            smsRates: await loadSmsRates(service).catch(() => undefined),
             eventId: job.eventId,
             brandId: candidates.brandId,
             purpose: "invitation",

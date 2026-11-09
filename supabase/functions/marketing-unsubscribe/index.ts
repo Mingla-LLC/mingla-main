@@ -61,7 +61,7 @@ serve(async (req) => {
     smsPayload = null; // not an SMS token, or invalid: the email path decides
   }
   if (smsPayload !== null) {
-    return await handleSmsOptOut(req, smsPayload, serviceClient());
+    return await handleSmsOptOut(req, smsPayload, serviceClient(), token);
   }
 
   // Verify HS256 signature + expiration via shared helper.

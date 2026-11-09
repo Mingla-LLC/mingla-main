@@ -187,6 +187,13 @@ export interface SmsUnsubscribeTokenPayload {
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
+/**
+ * #4273 tester retest 3 — a text lives on a phone for years, so its opt-out
+ * link must keep working: 5 years, not the email token's 90 days. The token
+ * is message-scoped and carries no contact, so a long life exposes nothing.
+ */
+export const SMS_UNSUB_TTL_SECONDS = 60 * 60 * 24 * 365 * 5;
+
 export async function signSmsUnsubscribeToken(
   payload: { campaign_id: string; brand_id: string; message_id: string },
   options: { secretEnvKey?: string; ttlSeconds?: number; exp?: number } = {},
@@ -201,7 +208,7 @@ export async function signSmsUnsubscribeToken(
   );
   const exp = options.exp ??
     Math.floor(Date.now() / 1000) +
-      (options.ttlSeconds ?? UNSUB_DEFAULT_TTL_SECONDS);
+      (options.ttlSeconds ?? SMS_UNSUB_TTL_SECONDS);
   const body: SmsUnsubscribeTokenPayload = {
     campaign_id: payload.campaign_id,
     brand_id: payload.brand_id,

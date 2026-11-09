@@ -114,6 +114,8 @@ import {
   SAMPLE_TRACKING_ID,
   writeSentSnapshot,
 } from "./sentSnapshot.ts";
+import { sendOpsAlertEmail } from "../_shared/stripeOpsAlertEmail.ts";
+import { resolveAlertRecipientValue } from "../_shared/secretBundle.ts";
 
 const BATCH_LIMIT = 10;
 
@@ -1312,6 +1314,8 @@ interface DispatchOptions {
    * configured book (configuredSmsRoutes); null → no book configured.
    */
   smsRoutes?: ReturnType<typeof configuredSmsRoutes>;
+  /** #4273 — tests only: the ops alert (default: the api-health recipients). */
+  opsAlert?: (subject: string, paragraphs: string[]) => Promise<void>;
 }
 
 interface DispatchOutcome {
@@ -1338,6 +1342,29 @@ interface DispatchOutcome {
 
 /** #4273 — how long a sealed SMS send waits before retrying an unreadable price table. */
 export const SMS_PRICE_RETRY_MS = 10 * 60 * 1000;
+/**
+ * #4273 tester retest 3 — a sealed SMS send stops waiting for the price table
+ * this long after its own scheduled time: it fails (and the Book failure
+ * marker is written) so the host sees it and can send again.
+ */
+export const SMS_PRICE_RETRY_LIMIT_MS = 24 * 60 * 60 * 1000;
+/** A re-park this close to the execution's own time is the first one. */
+const SMS_PRICE_FIRST_PARK_WINDOW_MS = 5 * 60 * 1000;
+
+async function alertSmsPriceTableUnreadable(
+  subject: string,
+  paragraphs: string[],
+): Promise<void> {
+  // The api-health recipients and the ops alert path sms-price-refresh uses.
+  const value = resolveAlertRecipientValue(
+    "api_health",
+    "API_HEALTH_ALERT_EMAILS",
+  );
+  const recipients = Array.isArray(value)
+    ? value
+    : (value ?? "").split(",").map((entry) => entry.trim()).filter(Boolean);
+  await sendOpsAlertEmail({ subject, paragraphs, recipients });
+}
 
 type CampaignDispatcher = (
   // deno-lint-ignore no-explicit-any
@@ -2192,22 +2219,27 @@ function isWithinQuietHours(
 /**
  * #4273 — is this campaign a sealed Blast (it has a confirmed execution)?
  * A read error counts as sealed: the cautious answer writes no extra rows.
+ * `scheduledFor` is the execution's own scheduled time (null when unknown).
  */
-async function isSealedBookSend(
+async function sealedBookSend(
   // deno-lint-ignore no-explicit-any
   supabase: any,
   campaignId: string,
-): Promise<boolean> {
+): Promise<{ sealed: boolean; scheduledFor: string | null }> {
   try {
     const { data, error } = await supabase
       .from("marketing_book_send_executions")
-      .select("id")
+      .select("id, scheduled_for")
       .eq("campaign_id", campaignId)
       .maybeSingle();
-    if (error) return true;
-    return data !== null && data !== undefined;
+    if (error) return { sealed: true, scheduledFor: null };
+    if (data === null || data === undefined) {
+      return { sealed: false, scheduledFor: null };
+    }
+    const at = (data as { scheduled_for?: unknown }).scheduled_for;
+    return { sealed: true, scheduledFor: typeof at === "string" ? at : null };
   } catch {
-    return true;
+    return { sealed: true, scheduledFor: null };
   }
 }
 
@@ -2357,6 +2389,12 @@ async function sendSms(
   // three times; if it still cannot be read on a SEALED send, the pass stops
   // before any recipient and the campaign is re-parked for a later pass
   // (retry_later), instead of skipping everyone and finalizing as failed.
+  //
+  // A legacy (unsealed buyer-list) send is NOT re-parked, deliberately: it has
+  // no execution and so no fixed time to cap the wait against (re-parking
+  // moves the campaign's own time), so parking it could wait forever. It
+  // records each number as failed 'sms_rate_book_unavailable' instead, which
+  // the host sees on the campaign and can resend from; nothing is texted.
   let smsRoutes = options.smsRoutes !== undefined
     ? options.smsRoutes
     : await loadSmsRoutes(supabase);
@@ -2368,7 +2406,8 @@ async function sendSms(
     await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
     smsRoutes = await loadSmsRoutes(supabase);
   }
-  const sealedSend = await isSealedBookSend(supabase, campaign.id);
+  const sealed = await sealedBookSend(supabase, campaign.id);
+  const sealedSend = sealed.sealed;
   if (smsRoutes === null) {
     console.error(JSON.stringify({
       event: "marketing_sms_rate_book_unreadable",
@@ -2376,6 +2415,42 @@ async function sendSms(
       retry: sealedSend,
     }));
     if (sealedSend) {
+      // #4273 tester retest 3 — not forever. A day past the execution's own
+      // time the send fails (the catch in processClaimedCampaigns marks it
+      // failed and writes the Book failure marker), so the host sees it and
+      // can send again. Ops hear about it once, on the first re-park.
+      const scheduledAt = sealed.scheduledFor === null
+        ? Number.NaN
+        : Date.parse(sealed.scheduledFor);
+      const nowMs = Date.now();
+      if (
+        Number.isFinite(scheduledAt) &&
+        nowMs - scheduledAt > SMS_PRICE_RETRY_LIMIT_MS
+      ) {
+        throw new Error("sms_price_table_unreadable_24h");
+      }
+      const parkedAt = campaign.scheduled_for === null
+        ? Number.NaN
+        : Date.parse(campaign.scheduled_for);
+      const firstPark = !Number.isFinite(scheduledAt) ||
+        !Number.isFinite(parkedAt) ||
+        parkedAt - scheduledAt < SMS_PRICE_FIRST_PARK_WINDOW_MS;
+      if (firstPark) {
+        try {
+          await (options.opsAlert ?? alertSmsPriceTableUnreadable)(
+            "[SMS] A Blast is waiting: SMS prices can't be read",
+            [
+              `Campaign ${campaign.id} could not read public.sms_country_prices, so nothing was texted. It retries every 10 minutes.`,
+              "If prices still can't be read 24 hours after its scheduled time, it fails and the host is told.",
+            ],
+          );
+        } catch {
+          console.error(JSON.stringify({
+            event: "marketing_sms_price_alert_failed",
+            campaign_id: campaign.id,
+          }));
+        }
+      }
       return {
         delivered: 0,
         deferred: 0,
@@ -2599,7 +2674,9 @@ async function sendSms(
         ...links,
         {
           tracking_id: optOutTrackingId,
-          destination_url: `${getUnsubscribeOrigin()}/${await signSmsUnsubscribeToken(
+          // #4273 retest 3: the human page in mingla-marketing, not the
+          // function (Supabase serves function GETs as text/plain).
+          destination_url: `${getUnsubscribeOrigin()}/sms/${await signSmsUnsubscribeToken(
             {
               campaign_id: campaign.id,
               brand_id: campaign.brand_id,

@@ -282,6 +282,53 @@ export function smsPriceAnchor(
   return sorted[Math.floor((sorted.length - 1) / 2)];
 }
 
+/** History older than this is pruned (the latest 7 accepted always stay). */
+export const SMS_PRICE_HISTORY_RETENTION_MS = 180 * 24 * 60 * 60 * 1000;
+/** Refused fetches of the same value that make a real step change. */
+export const SMS_PRICE_STABLE_DAYS = 3;
+/** "The same value": within this fraction. */
+export const SMS_PRICE_STABLE_TOLERANCE = 0.01;
+
+const utcDay = (iso: string) => iso.slice(0, 10);
+
+/**
+ * #4273 tester retest 3 — a real price change above 50% must not be refused
+ * forever. True when today's refused value and the refused values recorded on
+ * each of the previous (SMS_PRICE_STABLE_DAYS - 1) UTC days, all since the
+ * last accepted price, are the same price within 1% (same currency). A feed
+ * that keeps moving never qualifies; a stable step is taken on day 3.
+ */
+export function smsPriceStableStep(
+  next: { currency: string; numerator: number; denominator: number },
+  refusedSinceAccepted: ReadonlyArray<
+    {
+      currency: string;
+      minor_numerator: number;
+      minor_denominator: number;
+      recorded_at: string;
+    }
+  >,
+  now: Date,
+): boolean {
+  const value = next.numerator / next.denominator;
+  for (let back = 1; back < SMS_PRICE_STABLE_DAYS; back += 1) {
+    const day = utcDay(
+      new Date(now.getTime() - back * 24 * 60 * 60 * 1000).toISOString(),
+    );
+    const sameDay = refusedSinceAccepted.filter((row) =>
+      utcDay(row.recorded_at) === day
+    );
+    if (sameDay.length === 0) return false;
+    const ok = sameDay.every((row) =>
+      row.currency === next.currency &&
+      Math.abs(row.minor_numerator / row.minor_denominator - value) / value <=
+        SMS_PRICE_STABLE_TOLERANCE
+    );
+    if (!ok) return false;
+  }
+  return true;
+}
+
 /** Countries whose Twilio price is refreshed (every Twilio-routed country). */
 export function twilioPricedCountries(): string[] {
   return MAPPED_COUNTRIES.filter((country) =>

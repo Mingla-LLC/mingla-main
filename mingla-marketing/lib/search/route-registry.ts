@@ -224,6 +224,8 @@ const CORE_SEARCH_READY_ROUTES = Object.values(CORE_PAGES)
 
 const PUBLIC_NOINDEX_FAMILIES = [
   ['/c', 'claim-link-family'],
+  // #4273 — the SMS opt-out page a text's "Stop:" link opens. Never indexed.
+  ['/unsubscribe/sms', 'sms-opt-out-family'],
   ['/orders', 'orders-family'],
   ['/chat', 'chat-family'],
   ['/board', 'board-family'],

@@ -420,6 +420,17 @@ Deno.test("#4273 T-F2 the SMS opt-out token names the message, never the person,
     assert(!/\+\d{6,}|@/.test(decoded), "no phone, no email");
     const payload = await verifySmsUnsubscribeToken(token);
     assertEquals(payload?.message_id, ids.message_id);
+    // Retest 3: a text lives on a phone for years; its link lasts 5 years.
+    const years = ((payload?.exp ?? 0) - Date.now() / 1000) /
+      (365 * 24 * 60 * 60);
+    assert(years > 4.99 && years <= 5, `token lifetime ${years} years`);
+    assertEquals(
+      await verifySmsUnsubscribeToken(token, {
+        nowSeconds: Math.floor(Date.now() / 1000) + 4 * 365 * 24 * 60 * 60,
+      }).then((p) => p?.message_id),
+      ids.message_id,
+      "still valid 4 years on",
+    );
     // Fixed length: another message gives a token of the same length.
     const other = await signSmsUnsubscribeToken({
       ...ids,

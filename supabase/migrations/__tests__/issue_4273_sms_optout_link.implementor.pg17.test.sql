@@ -129,7 +129,16 @@ BEGIN
     (SELECT relrowsecurity FROM pg_class WHERE oid = 'public.sms_country_price_history'::regclass)
     AND NOT has_table_privilege('authenticated', 'public.sms_country_price_history', 'SELECT')
     AND NOT has_table_privilege('anon', 'public.sms_country_price_history', 'SELECT')
-    AND has_table_privilege('service_role', 'public.sms_country_price_history', 'INSERT'), '');
+    AND has_table_privilege('service_role', 'public.sms_country_price_history', 'INSERT')
+    AND has_table_privilege('service_role', 'public.sms_country_price_history', 'DELETE'), '');
+  PERFORM pg_temp.chk('O-10 the seed rows are accepted prices',
+    NOT EXISTS (SELECT 1 FROM public.sms_country_price_history WHERE outcome <> 'accepted'), '');
+  BEGIN
+    INSERT INTO public.sms_country_price_history(country, currency, minor_numerator, minor_denominator, source, outcome)
+    VALUES ('GB', 'USD', 5, 1, 'twilio_pricing_api', 'maybe');
+    PERFORM pg_temp.chk('O-10 an unknown outcome is refused', false, 'inserted');
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
   PERFORM pg_temp.chk('O-10 the seeded prices start the history',
     (SELECT count(DISTINCT country) FROM public.sms_country_price_history WHERE country IN ('US', 'NG')) = 2, '');
 END $o10$;

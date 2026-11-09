@@ -203,11 +203,14 @@ VALUES
    '2026-10-23T00:00:00Z')
 ON CONFLICT (country) DO NOTHING;
 
--- Every accepted price, in order (#4273 tester P3: the guard's anchor). The
--- refresh compares a fetched price with the median of the last 7 accepted
--- prices for that country, not only with yesterday's, so a feed that drifts
--- up 1.5x a day cannot walk the price up: it is refused until most of the
--- last week agrees. Service role only, like the price table.
+-- Every fetched price, accepted or refused, in order (#4273 tester P3 and
+-- retest 3). The refresh compares a fetched price with the median of the
+-- last 7 ACCEPTED prices for that country, not only with yesterday's, so a
+-- feed that drifts up 1.5x a day cannot walk the price up. A real step
+-- change above 50% is accepted once three consecutive daily fetches return
+-- the same refused value (within 1%), with an ops alert. The refresh prunes
+-- rows older than 180 days, always keeping the latest 7 accepted per country.
+-- Service role only, like the price table.
 CREATE TABLE IF NOT EXISTS public.sms_country_price_history (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   country text NOT NULL CHECK (country ~ '^[A-Z]{2}$'),
@@ -215,21 +218,22 @@ CREATE TABLE IF NOT EXISTS public.sms_country_price_history (
   minor_numerator bigint NOT NULL CHECK (minor_numerator > 0),
   minor_denominator bigint NOT NULL CHECK (minor_denominator > 0),
   source text NOT NULL CHECK (source IN ('twilio_pricing_api', 'termii_fixed', 'seed_4080')),
-  accepted_at timestamptz NOT NULL DEFAULT now()
+  outcome text NOT NULL DEFAULT 'accepted' CHECK (outcome IN ('accepted', 'refused')),
+  recorded_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS sms_country_price_history_country_at
-  ON public.sms_country_price_history (country, accepted_at DESC);
+  ON public.sms_country_price_history (country, outcome, recorded_at DESC);
 
 ALTER TABLE public.sms_country_price_history ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.sms_country_price_history FROM PUBLIC, anon, authenticated;
-GRANT SELECT, INSERT ON public.sms_country_price_history TO service_role;
+GRANT SELECT, INSERT, DELETE ON public.sms_country_price_history TO service_role;
 
 COMMENT ON TABLE public.sms_country_price_history IS
-  '#4273: every accepted SMS price per country; the refresh guard anchors on the median of the last 7. Service role only.';
+  '#4273: every fetched SMS price per country (accepted or refused); the refresh guard anchors on the median of the last 7 accepted. Pruned after 180 days, keeping the latest 7 accepted. Service role only.';
 
 INSERT INTO public.sms_country_price_history
-  (country, currency, minor_numerator, minor_denominator, source, accepted_at)
-SELECT p.country, p.currency, p.minor_numerator, p.minor_denominator, p.source, p.fetched_at
+  (country, currency, minor_numerator, minor_denominator, source, outcome, recorded_at)
+SELECT p.country, p.currency, p.minor_numerator, p.minor_denominator, p.source, 'accepted', p.fetched_at
   FROM public.sms_country_prices p
  WHERE NOT EXISTS (SELECT 1 FROM public.sms_country_price_history h WHERE h.country = p.country);
 

@@ -80,7 +80,10 @@ const config: NextConfig = {
   // `/unsubscribe` itself stays exactly as it is: a human-facing opt-out form.
   // Only the tokenised sub-path is proxied, which previously 404'd.
   async rewrites() {
-    const functions = 'https://gqnoajqerqhnvulmnyvv.supabase.co/functions/v1'
+    // #4273 — overridable for local runs only (a stub or local function), so
+    // the SMS opt-out page can be exercised without touching production.
+    const functions =
+      process.env.MINGLA_LOCAL_FUNCTIONS_ORIGIN ?? 'https://gqnoajqerqhnvulmnyvv.supabase.co/functions/v1'
     return [
       { source: '/m/:trackingId', destination: `${functions}/marketing-track-click/:trackingId` },
       { source: '/unsubscribe/:token', destination: `${functions}/marketing-unsubscribe/:token` },

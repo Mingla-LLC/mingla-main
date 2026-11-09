@@ -1,6 +1,8 @@
 // #4273 tester P2 — the SMS opt-out page.
-//   S-1 a GET (a link scanner, a preview, a person opening it) changes nothing
-//       and shows one button that POSTs.
+//   S-1 a GET (a link scanner, a preview, an old link) changes nothing: it
+//       redirects to the mingla-marketing page, which has the one button that
+//       POSTs (Supabase serves function GETs as text/plain, so the page cannot
+//       be rendered here; tester retest 3).
 //   S-2 the POST writes a marketing_unsubscribes row: the number (looked up by
 //       message id and campaign, never carried in the link), channel sms,
 //       scope 'account' keyed to the host account that owns the sending brand
@@ -73,17 +75,25 @@ function fakeAdmin(
 
 const url = "https://usemingla.com/unsubscribe/token";
 
-Deno.test("#4273 S-1 a GET changes nothing and offers one POST button", async () => {
+Deno.test("#4273 S-1 a GET changes nothing and sends the person to the web page", async () => {
   const writes: Write[] = [];
   const admin = fakeAdmin(writes);
-  const response = await handleSmsOptOut(new Request(url), PAYLOAD, admin);
-  assertEquals(response.status, 200);
-  const html = await response.text();
-  assert(html.includes('<form method="post">'), html);
-  assertEquals((html.match(/<button/g) ?? []).length, 1);
+  const response = await handleSmsOptOut(new Request(url), PAYLOAD, admin, "tok.en");
+  assertEquals(response.status, 302);
+  assertEquals(
+    response.headers.get("location"),
+    "https://usemingla.com/unsubscribe/sms/tok.en",
+  );
   assertEquals(writes, [], "no write on GET");
   assertEquals(admin.reads, [], "not even a read on GET");
-  assert(!html.includes(PHONE));
+  const head = await handleSmsOptOut(
+    new Request(url, { method: "HEAD" }),
+    PAYLOAD,
+    admin,
+    "tok.en",
+  );
+  assertEquals(head.status, 302);
+  assertEquals(writes, []);
 });
 
 Deno.test("#4273 S-2 the POST opts the number out of this host's marketing only", async () => {
@@ -92,11 +102,13 @@ Deno.test("#4273 S-2 the POST opts the number out of this host's marketing only"
     new Request(url, { method: "POST" }),
     PAYLOAD,
     fakeAdmin(writes),
+    "tok.en",
   );
   assertEquals(response.status, 200);
-  const html = await response.text();
-  assert(html.includes("from this host"), html);
-  assert(!html.includes(PHONE), "the page never shows the number");
+  assertEquals(response.headers.get("content-type"), "application/json");
+  const body = await response.text();
+  assertEquals(JSON.parse(body), { ok: true, state: "opted_out" });
+  assert(!body.includes(PHONE), "the answer never carries the number");
   const inserts = writes.filter((w) => w.op === "insert");
   assertEquals(inserts, [{
     table: "marketing_unsubscribes",
@@ -126,6 +138,7 @@ Deno.test("#4273 S-3 a second POST adds no second row", async () => {
     new Request(url, { method: "POST" }),
     PAYLOAD,
     fakeAdmin(writes, { existing: true }),
+    "tok.en",
   );
   assertEquals(writes.filter((w) => w.op === "insert"), []);
 });
@@ -136,7 +149,9 @@ Deno.test("#4273 S-4 a message from another campaign is refused", async () => {
     new Request(url, { method: "POST" }),
     PAYLOAD,
     fakeAdmin(writes, { messageCampaign: "42730000-0000-4000-8000-0000000000c9" }),
+    "tok.en",
   );
   assertEquals(response.status, 400);
+  assertEquals(await response.json(), { ok: false, error: "link_invalid" });
   assertEquals(writes, []);
 });

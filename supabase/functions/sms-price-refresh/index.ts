@@ -18,10 +18,13 @@ import { sendOpsAlertEmail } from "../_shared/stripeOpsAlertEmail.ts";
 import {
   parseTwilioMessagingPrice,
   SMS_PRICE_ANCHOR_WINDOW,
+  SMS_PRICE_HISTORY_RETENTION_MS,
+  SMS_PRICE_STABLE_DAYS,
   SMS_PRICE_TABLE,
   type SmsCountryPriceRow,
   smsPriceAnchor,
   smsPriceRejection,
+  smsPriceStableStep,
   twilioPricedCountries,
 } from "../_shared/smsPriceTable.ts";
 
@@ -41,12 +44,26 @@ export interface RefreshOutcome {
   updated: string[];
   refused: Array<{ country: string; reason: string }>;
   failed: Array<{ country: string; reason: string }>;
+  /** Prices accepted as a stable step change above 50% (3 same days). */
+  stepChanges: string[];
 }
+
+type HistoryRow = {
+  currency: string;
+  minor_numerator: number;
+  minor_denominator: number;
+  recorded_at: string;
+};
 
 export async function refreshSmsPrices(
   deps: RefreshDeps,
 ): Promise<RefreshOutcome> {
-  const outcome: RefreshOutcome = { updated: [], refused: [], failed: [] };
+  const outcome: RefreshOutcome = {
+    updated: [],
+    refused: [],
+    failed: [],
+    stepChanges: [],
+  };
   const { data: existing, error: readError } = await deps.db
     .from(SMS_PRICE_TABLE)
     .select("country, currency, minor_numerator, minor_denominator");
@@ -60,29 +77,6 @@ export async function refreshSmsPrices(
   >(
     ((existing ?? []) as SmsCountryPriceRow[]).map((row) => [row.country, row]),
   );
-  // #4273 tester P3 — the long anchor: the last accepted prices per country.
-  const { data: historyRows, error: historyError } = await deps.db
-    .from("sms_country_price_history")
-    .select(
-      "country, currency, minor_numerator, minor_denominator, accepted_at",
-    )
-    .order("accepted_at", { ascending: false })
-    .limit(SMS_PRICE_ANCHOR_WINDOW * 60);
-  if (historyError) throw new Error("sms_price_history_unreadable");
-  const history = new Map<
-    string,
-    Array<
-      Pick<
-        SmsCountryPriceRow,
-        "currency" | "minor_numerator" | "minor_denominator"
-      >
-    >
-  >();
-  for (const row of (historyRows ?? []) as SmsCountryPriceRow[]) {
-    const list = history.get(row.country) ?? [];
-    list.push(row);
-    history.set(row.country, list);
-  }
   const auth = `Basic ${btoa(`${deps.accountSid}:${deps.authToken}`)}`;
   for (const country of twilioPricedCountries()) {
     let parsed;
@@ -105,13 +99,60 @@ export async function refreshSmsPrices(
       });
       continue;
     }
-    const anchor = smsPriceAnchor(history.get(country) ?? []);
-    const rejection = smsPriceRejection(parsed, last.get(country) ?? null) ??
+    const nowIso = deps.now().toISOString();
+    // #4273 tester retest 3 — the anchor reads this country's own latest 7
+    // accepted prices, and the refused fetches since the last accepted one.
+    const { data: acceptedRows, error: acceptedError } = await deps.db
+      .from("sms_country_price_history")
+      .select("currency, minor_numerator, minor_denominator, recorded_at")
+      .eq("country", country)
+      .eq("outcome", "accepted")
+      .order("recorded_at", { ascending: false })
+      .limit(SMS_PRICE_ANCHOR_WINDOW);
+    if (acceptedError) {
+      outcome.failed.push({ country, reason: "history_unreadable" });
+      continue;
+    }
+    const accepted = (acceptedRows ?? []) as HistoryRow[];
+    const lastAcceptedAt = accepted[0]?.recorded_at ?? "1970-01-01T00:00:00Z";
+    const anchor = smsPriceAnchor(accepted);
+    let rejection = smsPriceRejection(parsed, last.get(country) ?? null) ??
       (smsPriceRejection(parsed, anchor) === null
         ? null
         : "drifted_over_50_percent_from_7_price_median");
+    let stableStep = false;
+    if (rejection !== null && parsed.currency === "USD") {
+      const { data: refusedRows, error: refusedError } = await deps.db
+        .from("sms_country_price_history")
+        .select("currency, minor_numerator, minor_denominator, recorded_at")
+        .eq("country", country)
+        .eq("outcome", "refused")
+        .gt("recorded_at", lastAcceptedAt)
+        .order("recorded_at", { ascending: false })
+        .limit(SMS_PRICE_STABLE_DAYS * 4);
+      if (
+        !refusedError &&
+        smsPriceStableStep(
+          parsed,
+          (refusedRows ?? []) as HistoryRow[],
+          deps.now(),
+        )
+      ) {
+        stableStep = true;
+        rejection = null;
+      }
+    }
     if (rejection !== null) {
       outcome.refused.push({ country, reason: rejection });
+      await deps.db.from("sms_country_price_history").insert({
+        country,
+        currency: parsed.currency,
+        minor_numerator: parsed.numerator,
+        minor_denominator: parsed.denominator,
+        source: "twilio_pricing_api",
+        outcome: "refused",
+        recorded_at: nowIso,
+      });
       continue;
     }
     const { error: writeError } = await deps.db.from("sms_country_prices")
@@ -124,7 +165,7 @@ export async function refreshSmsPrices(
         source: "twilio_pricing_api",
         source_reference:
           `${PRICING_URL}/${country} current_price ${parsed.price} (highest outbound)`,
-        fetched_at: deps.now().toISOString(),
+        fetched_at: nowIso,
       }, { onConflict: "country" });
     if (writeError) {
       outcome.failed.push({ country, reason: "write_failed" });
@@ -138,13 +179,49 @@ export async function refreshSmsPrices(
         minor_numerator: parsed.numerator,
         minor_denominator: parsed.denominator,
         source: "twilio_pricing_api",
-        accepted_at: deps.now().toISOString(),
+        outcome: "accepted",
+        recorded_at: nowIso,
       });
     if (historyWriteError) {
       // The price is live; only the anchor missed a point. Say so.
       outcome.failed.push({ country, reason: "history_write_failed" });
     }
+    if (stableStep) outcome.stepChanges.push(`${country} ${parsed.price}`);
     outcome.updated.push(country);
+  }
+  // #4273 tester retest 3 P3 — prune history older than 180 days, keeping
+  // each country's latest 7 accepted prices whatever their age.
+  const cutoff = new Date(
+    deps.now().getTime() - SMS_PRICE_HISTORY_RETENTION_MS,
+  ).toISOString();
+  for (const country of twilioPricedCountries()) {
+    const { data: keepRows, error: keepError } = await deps.db
+      .from("sms_country_price_history")
+      .select("id")
+      .eq("country", country)
+      .eq("outcome", "accepted")
+      .order("recorded_at", { ascending: false })
+      .limit(SMS_PRICE_ANCHOR_WINDOW);
+    if (keepError) continue;
+    const keep = ((keepRows ?? []) as Array<{ id: number }>).map((row) =>
+      row.id
+    );
+    let prune = deps.db.from("sms_country_price_history").delete()
+      .eq("country", country)
+      .lt("recorded_at", cutoff);
+    if (keep.length > 0) prune = prune.not("id", "in", `(${keep.join(",")})`);
+    await prune;
+  }
+  if (outcome.stepChanges.length > 0) {
+    await deps.alert(
+      `[SMS] Accepted a price change above 50% for ${outcome.stepChanges.length} countr${
+        outcome.stepChanges.length === 1 ? "y" : "ies"
+      }`,
+      [
+        "Twilio returned the same new price on 3 consecutive days, so it is now the price quotes use:",
+        outcome.stepChanges.join("; "),
+      ],
+    );
   }
   if (outcome.refused.length > 0 || outcome.failed.length > 0) {
     const lines = [

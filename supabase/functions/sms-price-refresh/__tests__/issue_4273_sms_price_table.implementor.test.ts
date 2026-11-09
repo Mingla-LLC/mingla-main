@@ -125,39 +125,119 @@ Deno.test("#4273 P-2 the sanity guard", () => {
   );
 });
 
-function fakeDb(
-  rows: Array<Record<string, unknown>>,
-  historyRows: Array<Record<string, unknown>> = [],
-) {
-  const writes: Array<Record<string, unknown>> = [];
-  const historyWrites: Array<Record<string, unknown>> = [];
-  const query = (data: unknown) => {
-    const chain = {
+type Row = Record<string, unknown>;
+
+/** An in-memory stand-in for the two tables the refresh reads and writes. */
+function fakeDb(rows: Row[], historyRows: Row[] = []) {
+  const writes: Row[] = [];
+  let nextId = 1;
+  const history: Row[] = historyRows.map((row) => ({
+    id: nextId++,
+    outcome: "accepted",
+    recorded_at: "2026-11-01T06:17:00.000Z",
+    ...row,
+  }));
+  const historyWrites: Row[] = [];
+  const table = (name: string) => {
+    const filters: Array<(row: Row) => boolean> = [];
+    let limit = Infinity;
+    let mode: "select" | "delete" = "select";
+    const source = () => name === "sms_country_price_history" ? history : rows;
+    const run = () => {
+      const matched = source().filter((row) => filters.every((f) => f(row)))
+        .sort((a, b) =>
+          String(b.recorded_at ?? "").localeCompare(String(a.recorded_at ?? ""))
+        );
+      if (mode === "delete") {
+        for (const row of matched) history.splice(history.indexOf(row), 1);
+        return { data: null, error: null };
+      }
+      return { data: matched.slice(0, limit), error: null };
+    };
+    const chain: Record<string, unknown> = {
+      select: () => chain,
+      delete: () => {
+        mode = "delete";
+        return chain;
+      },
+      eq: (col: string, value: unknown) => {
+        filters.push((row) => row[col] === value);
+        return chain;
+      },
+      gt: (col: string, value: string) => {
+        filters.push((row) => String(row[col]) > value);
+        return chain;
+      },
+      lt: (col: string, value: string) => {
+        filters.push((row) => String(row[col]) < value);
+        return chain;
+      },
+      not: (col: string, _op: string, list: string) => {
+        const ids = list.replace(/[()]/g, "").split(",").map(Number);
+        filters.push((row) => !ids.includes(row[col] as number));
+        return chain;
+      },
       order: () => chain,
-      limit: () => chain,
+      limit: (n: number) => {
+        limit = n;
+        return chain;
+      },
       then: (resolve: (v: unknown) => unknown) =>
-        Promise.resolve({ data, error: null }).then(resolve),
+        Promise.resolve(run()).then(resolve),
+      upsert: (row: Row) => {
+        writes.push(row);
+        const at = rows.findIndex((r) => r.country === row.country);
+        if (at >= 0) rows[at] = { ...rows[at], ...row };
+        else rows.push(row);
+        return Promise.resolve({ error: null });
+      },
+      insert: (row: Row) => {
+        const stored = { id: nextId++, ...row };
+        history.push(stored);
+        historyWrites.push(stored);
+        return Promise.resolve({ error: null });
+      },
     };
     return chain;
   };
-  return {
-    writes,
-    historyWrites,
-    rows,
-    from: (table: string) => ({
-      select: () =>
-        query(table === "sms_country_price_history" ? historyRows : rows),
-      upsert: (row: Record<string, unknown>) => {
-        writes.push(row);
-        return Promise.resolve({ error: null });
-      },
-      insert: (row: Record<string, unknown>) => {
-        historyWrites.push(row);
-        return Promise.resolve({ error: null });
-      },
-    }),
-  };
+  return { writes, historyWrites, history, rows, from: table };
 }
+
+/** One daily refresh where the feed offers `cents` for every country. */
+async function day(
+  db: ReturnType<typeof fakeDb>,
+  iso: string,
+  cents: number,
+  alerts: string[][] = [],
+) {
+  return await refreshSmsPrices({
+    db,
+    accountSid: "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    authToken: "redacted",
+    now: () => new Date(iso),
+    alert: (subject, paragraphs) => {
+      alerts.push([subject, ...paragraphs]);
+      return Promise.resolve();
+    },
+    fetch: ((url: string | URL) => {
+      const body = structuredClone(FIXTURE);
+      body.iso_country = String(url).split("/").pop();
+      for (const carrier of body.outbound_sms_prices) {
+        carrier.prices = [{
+          number_type: "mobile",
+          base_price: (cents / 100).toFixed(6),
+          current_price: (cents / 100).toFixed(6),
+        }];
+      }
+      return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
+    }) as typeof fetch,
+  });
+}
+
+const gbCents = (db: ReturnType<typeof fakeDb>) => {
+  const gb = db.rows.find((row) => row.country === "GB")!;
+  return (gb.minor_numerator as number) / (gb.minor_denominator as number);
+};
 
 Deno.test("#4273 P-3 the refresh writes good prices and keeps the last good one, alerting once", async () => {
   const db = fakeDb([{
@@ -218,69 +298,95 @@ Deno.test("#4273 P-3 the refresh writes good prices and keeps the last good one,
     "Termii is never fetched",
   );
   assertEquals(
-    db.historyWrites.map((row) => row.country).sort(),
+    db.historyWrites.filter((row) => row.outcome === "accepted").map((row) =>
+      row.country
+    ).sort(),
     db.writes.map((row) => row.country).sort(),
     "every accepted price joins the anchor history",
+  );
+  assertEquals(
+    db.historyWrites.filter((row) => row.outcome === "refused").map((row) =>
+      row.country
+    ),
+    ["GB"],
+    "a refused fetch is recorded for the stable-step rule",
   );
   assertEquals(alerts.length, 1);
   assert(alerts[0].join(" ").includes("GB: refused (changed_over_50_percent)"));
   assert(!alerts[0].join(" ").includes("ACxx"), "never the account SID");
 });
 
-Deno.test("#4273 P-6 (tester P3) a feed creeping up 1.5x a day stalls against the 7-price median", async () => {
-  // GB has been 4.00 cents for a week. The feed then offers 1.5x more each day.
-  const price = (cents: number) => ({
+Deno.test("#4273 P-6 (tester P3) a feed creeping up 1.5x a day stays refused", async () => {
+  // GB has been 4.00 cents for a week; the feed then offers 1.5x more daily.
+  const price = { country: "GB", currency: "USD", minor_numerator: 400, minor_denominator: 100 };
+  const db = fakeDb([{ ...price }], Array.from({ length: 7 }, () => ({ ...price })));
+  let offered = 4;
+  const seen: number[] = [];
+  for (let d = 10; d <= 19; d += 1) {
+    offered *= 1.5;
+    await day(db, `2026-11-${d}T06:17:00.000Z`, offered);
+    seen.push(gbCents(db));
+  }
+  // Day 1 (6.00) is within 50% of the 4.00 median and is taken; every later
+  // offer is more than 50% from the median, never the same value twice, so
+  // the stable-step rule never fires either.
+  assertEquals(seen, [6, 6, 6, 6, 6, 6, 6, 6, 6, 6]);
+});
+
+Deno.test("#4273 P-8 (tester retest 3) a real step change above 50% is accepted on day 3, with an alert", async () => {
+  const price = { country: "GB", currency: "USD", minor_numerator: 400, minor_denominator: 100 };
+  const db = fakeDb([{ ...price }], Array.from({ length: 7 }, () => ({ ...price })));
+  const alerts: string[][] = [];
+  await day(db, "2026-11-10T06:17:00.000Z", 9.0, alerts);
+  assertEquals(gbCents(db), 4, "day 1: refused");
+  await day(db, "2026-11-11T06:17:00.000Z", 9.05, alerts);
+  assertEquals(gbCents(db), 4, "day 2: refused (same value within 1%)");
+  alerts.length = 0;
+  await day(db, "2026-11-12T06:17:00.000Z", 9.02, alerts);
+  assertEquals(gbCents(db), 9.02, "day 3: accepted");
+  assert(
+    alerts.some((a) => a[0].includes("Accepted a price change above 50%")),
+    JSON.stringify(alerts),
+  );
+  // A gap day breaks the run: refused, refused, (no fetch), refused → still 4.
+  const db2 = fakeDb([{ ...price }], Array.from({ length: 7 }, () => ({ ...price })));
+  await day(db2, "2026-11-10T06:17:00.000Z", 9);
+  await day(db2, "2026-11-11T06:17:00.000Z", 9);
+  await day(db2, "2026-11-13T06:17:00.000Z", 9);
+  assertEquals(gbCents(db2), 4);
+});
+
+Deno.test("#4273 P-9 (tester retest 3) history older than 180 days is pruned, the latest 7 accepted stay", async () => {
+  const old = (iso: string) => ({
     country: "GB",
     currency: "USD",
-    minor_numerator: Math.round(cents * 100),
+    minor_numerator: 400,
     minor_denominator: 100,
+    recorded_at: iso,
   });
-  let current = price(4);
-  const history: Array<Record<string, unknown>> = Array.from(
-    { length: 7 },
-    () => price(4),
+  const ancient = Array.from({ length: 9 }, (_, i) =>
+    old(`2025-01-0${i + 1}T06:17:00.000Z`)
   );
-  const accepted: number[] = [];
-  let offered = 4;
-  for (let day = 1; day <= 6; day += 1) {
-    offered = offered * 1.5;
-    const db = fakeDb([current], [...history]);
-    await refreshSmsPrices({
-      db,
-      accountSid: "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-      authToken: "redacted",
-      now: () => new Date(`2026-11-1${day}T06:17:00.000Z`),
-      alert: () => Promise.resolve(),
-      fetch: ((url: string | URL) => {
-        const iso = String(url).split("/").pop() as string;
-        const body = structuredClone(FIXTURE);
-        body.iso_country = iso;
-        for (const carrier of body.outbound_sms_prices) {
-          carrier.prices = [{
-            number_type: "mobile",
-            base_price: offered.toFixed(4),
-            current_price: (offered / 100).toFixed(6),
-          }];
-        }
-        return Promise.resolve(
-          new Response(JSON.stringify(body), { status: 200 }),
-        );
-      }) as typeof fetch,
-    });
-    const gb = db.writes.find((row) => row.country === "GB");
-    if (gb !== undefined) {
-      const cents = (gb.minor_numerator as number) /
-        (gb.minor_denominator as number);
-      accepted.push(cents);
-      current = price(cents);
-      history.unshift(price(cents));
-    }
-  }
-  // Day 1 (6.00) is within 50% of the 4.00 median and is taken; day 2 (9.00)
-  // is +125% from that median and every later offer is further still.
-  assertEquals(accepted, [6]);
-  assertEquals(current.minor_numerator, 600);
-  // With only "the last good price" as the anchor this feed walks to 45.56.
+  const db = fakeDb([{ ...old("x"), recorded_at: undefined }], [
+    ...ancient,
+    { ...old("2025-02-01T06:17:00.000Z"), outcome: "refused" },
+  ]);
+  // A feed failure that day: nothing new accepted, only the prune runs.
+  await refreshSmsPrices({
+    db,
+    accountSid: "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    authToken: "redacted",
+    now: () => new Date("2026-11-10T06:17:00.000Z"),
+    alert: () => Promise.resolve(),
+    fetch: (() => Promise.resolve(new Response("x", { status: 503 }))) as typeof fetch,
+  });
+  const gb = db.history.filter((row) => row.country === "GB");
+  assertEquals(gb.length, 7, "only the latest 7 accepted survive");
+  assert(gb.every((row) => row.outcome === "accepted"));
+  assertEquals(
+    gb.map((row) => row.recorded_at).sort()[0],
+    "2025-01-03T06:17:00.000Z",
+  );
 });
 
 Deno.test("#4273 P-4 the staleness alert", () => {

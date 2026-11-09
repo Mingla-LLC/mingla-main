@@ -1027,6 +1027,8 @@
         "supabase/functions/_shared/smsPriceTable.ts",
         "supabase/functions/marketing-unsubscribe/index.ts",
         "supabase/functions/marketing-unsubscribe/smsOptOut.ts",
+        "mingla-marketing/app/unsubscribe/sms/[token]/page.tsx",
+        "mingla-marketing/app/unsubscribe/sms/[token]/SmsOptOutButton.tsx",
         "supabase/functions/marketing-track-click/index.ts",
         "supabase/functions/sms-price-refresh/index.ts",
         "supabase/migrations/20280517004273_issue_4273_sms_unpriced_country_skips.sql",
