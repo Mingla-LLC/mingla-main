@@ -29,6 +29,15 @@
 //   X8 a flaky RPC (error, then a good answer) recovers on the retry and sends
 //      on the fresh snapshot; a country switched OFF between the quote and the
 //      send is not texted (the send reads its own snapshot).
+//   X9 the ADAPTER itself (no marketing-send in front of it): a marketing text
+//      carrying the transactional SID — plain, space/tab/newline/NBSP padded —
+//      to GB, FR, DE (an unmapped calling code is refused earlier), or on a toll-free/termii-shaped
+//      route, is refused (marketing_sender_mismatch) with zero HTTP and before
+//      beforeProviderIo. Controls in the same pass: the real marketing SID and a
+//      one-character near-miss of MG1942 both send (the guard is exact, not a
+//      prefix match), and a TRANSACTIONAL text carrying MG1942 still sends on it
+//      (the transactional branch is untouched). (fails on revert of
+//      `sid !== TRANSACTIONAL_SERVICE_SID` in smsAdapter.ts, 3aceac00a7)
 import {
   assert,
   assertEquals,
@@ -37,6 +46,7 @@ import { FakeTime } from "https://deno.land/std@0.224.0/testing/time.ts";
 import { processClaimedCampaigns, smsQuoteInputs } from "./index.ts";
 import { MAPPED_COUNTRIES } from "../_shared/e164Country.ts";
 import { SMS_COUNTRIES } from "../_shared/smsCountries.ts";
+import { smsAdapter } from "../_shared/adapters/smsAdapter.ts";
 
 const MARKETING_SID = "MG9d42785c51834395018b52144736b9a7";
 const TRANSACTIONAL_SID = "MG1942fbb549187fcf77c0e860405abf58";
@@ -480,4 +490,118 @@ Deno.test("#4273 X8 a flaky RPC recovers on the fresh snapshot; a country switch
   // own snapshot and texts US only.
   const after = await runSend([US, GB], answer(payload(["US"])));
   assertEquals(sentTo(after.http), [`${US}@${TOLL_FREE_ENV_SID}`]);
+});
+
+Deno.test("#4273 X9 the adapter refuses a marketing text on the transactional SID however it is padded; controls still send", async () => {
+  const saved: Record<string, string | undefined> = {};
+  for (const [k, v] of Object.entries(ENV)) {
+    saved[k] = Deno.env.get(k);
+    Deno.env.set(k, v);
+  }
+  const http: Array<{ url: string; sid: string | null }> = [];
+  const realFetch = globalThis.fetch;
+  const quiet = console.warn;
+  console.warn = () => {};
+  globalThis.fetch = ((input: unknown, init?: RequestInit) => {
+    const url = typeof input === "string" ? input : String(input);
+    http.push({
+      url,
+      sid: url.includes("api.twilio.com")
+        ? new URLSearchParams(String(init?.body ?? "")).get(
+          "MessagingServiceSid",
+        )
+        : null,
+    });
+    return Promise.resolve(
+      new Response(JSON.stringify({ sid: `SM${http.length}` }), {
+        status: 201,
+      }),
+    );
+  }) as typeof fetch;
+  const send = (to: string, sid: string, extra: Record<string, unknown> = {}) =>
+    smsAdapter.send({
+      to,
+      brandName: "Harmattan Club",
+      message: "Doors at 9",
+      messageType: "marketing",
+      marketingRoute: "marketing",
+      stopFooterOwnLine: true,
+      now: SEND_AT,
+      messagingServiceSid: sid,
+      ...extra,
+      // deno-lint-ignore no-explicit-any
+    } as any);
+  try {
+    const padded = [
+      TRANSACTIONAL_SID,
+      `  ${TRANSACTIONAL_SID}  `,
+      `\t${TRANSACTIONAL_SID}\n`,
+      `\u00a0${TRANSACTIONAL_SID}\u00a0`,
+    ];
+    const RoW = [GB, "+33612345678", "+4915112345678", "+8613800138000"];
+    let ioClaimed = 0;
+    const claim = () => {
+      ioClaimed += 1;
+      return Promise.resolve();
+    };
+    for (const sid of padded) {
+      for (const to of RoW) {
+        const r = await send(to, sid, { beforeProviderIo: claim });
+        assertEquals(
+          [r.ok, r.status, r.error],
+          // An unmapped calling code is refused even earlier (country_unresolved).
+          [
+            false,
+            "skipped",
+            to === "+8613800138000"
+              ? "country_unresolved"
+              : "marketing_sender_mismatch",
+          ],
+          `${to} ${JSON.stringify(sid)}`,
+        );
+      }
+      // Wrong route shapes carrying MG1942 are refused too.
+      for (const route of ["toll_free", "termii", undefined]) {
+        const r = await send(GB, sid, {
+          marketingRoute: route,
+          beforeProviderIo: claim,
+        });
+        // No route at all fails closed one step earlier (not switched on).
+        assertEquals(
+          [r.ok, r.status, r.error],
+          [
+            false,
+            "skipped",
+            route ? "marketing_sender_mismatch" : "provider_kill_switch_off",
+          ],
+          `GB route ${route}`,
+        );
+      }
+    }
+    assertEquals(http.length, 0, "zero provider HTTP for every refused case");
+    assertEquals(ioClaimed, 0, "refused before beforeProviderIo");
+
+    // Positive controls in the same pass.
+    const nearMiss = TRANSACTIONAL_SID.slice(0, -1) + "9";
+    const ok1 = await send(GB, MARKETING_SID);
+    const ok2 = await send(GB, nearMiss);
+    const tx = await send(GB, TRANSACTIONAL_SID, {
+      messageType: "transactional",
+      marketingRoute: undefined,
+      stopFooterOwnLine: false,
+    });
+    assertEquals([ok1.ok, ok2.ok, tx.ok], [true, true, true]);
+    assertEquals(
+      http.map((h) => h.sid),
+      [MARKETING_SID, nearMiss, TRANSACTIONAL_SID],
+      "the marketing SID, the near-miss and the transactional text each sent once on their own SID",
+    );
+  } finally {
+    globalThis.fetch = realFetch;
+    console.warn = quiet;
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) Deno.env.delete(k);
+      else Deno.env.set(k, v);
+    }
+  }
 });
