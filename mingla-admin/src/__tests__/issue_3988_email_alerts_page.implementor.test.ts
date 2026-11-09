@@ -15,16 +15,12 @@ import {
 
 const read = (relative: string) =>
   Deno.readTextFile(new URL(`../${relative}`, import.meta.url));
-const migration = () =>
-  Deno.readTextFile(
-    new URL(
-      "../../../supabase/migrations/20271123023988_issue_3988_support_email_alerts.sql",
-      import.meta.url,
-    ),
-  );
 
 Deno.test("#3988 the page lists exactly the alerts the server lets a teammate switch", async () => {
-  const sql = await migration();
+  // #4255: the alert list's current definition (mention email now on by default).
+  const sql = await Deno.readTextFile(
+    new URL("../../../supabase/migrations/20280524004255_issue_4255_work_card_email.sql", import.meta.url),
+  );
   const block = sql.slice(
     sql.indexOf("FUNCTION public.issue_3988_email_alert_categories()"),
     sql.indexOf("REVOKE ALL ON FUNCTION public.issue_3988_email_alert_categories()"),
@@ -33,8 +29,8 @@ Deno.test("#3988 the page lists exactly the alerts the server lets a teammate sw
     .map((m) => ({ key: m[1], on: m[2] === "true", order: Number(m[3]) }))
     .sort((a, b) => a.order - b.order);
   assertEquals(EMAIL_ALERTS.map((a) => a.key), serverKeys.map((k) => k.key));
-  // Everything starts on except mentions.
-  assertEquals(serverKeys.filter((k) => !k.on).map((k) => k.key), ["admin.team_mention"]);
+  // #4255: every alert starts on, mentions (work card email) included.
+  assertEquals(serverKeys.filter((k) => !k.on).map((k) => k.key), []);
   for (const alert of EMAIL_ALERTS) {
     assert(alert.label.length > 0 && alert.description.length > 0, alert.key);
     assertNotMatch(alert.label, /admin\.|business\.|_/, `${alert.key} label is plain English`);

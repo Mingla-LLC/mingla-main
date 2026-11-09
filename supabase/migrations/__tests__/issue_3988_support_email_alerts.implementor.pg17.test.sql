@@ -356,7 +356,7 @@ DECLARE v text;
 BEGIN
   v := pg_temp.t3988a_as('away', $q$(SELECT string_agg((e->>'category_key') || '=' || (e->>'email_enabled'), ',')
     FROM jsonb_array_elements(public.issue_3988_my_email_alert_preferences()) e)$q$);
-  IF v <> 'business.support_new_ticket=true,business.support_ticket_reply=true,admin.support_staff_ticket=true,admin.support_assigned=true,admin.support_overdue=true,admin.product_signal_new=true,admin.product_signal_assigned=true,admin.team_mention=false' THEN
+  IF v <> 'business.support_new_ticket=true,business.support_ticket_reply=true,admin.support_staff_ticket=true,admin.support_assigned=true,admin.support_overdue=true,admin.product_signal_new=true,admin.product_signal_assigned=true,admin.team_mention=true' THEN
     RAISE EXCEPTION 'default_preferences_wrong:%', v;
   END IF;
 
@@ -380,13 +380,13 @@ BEGIN
     RAISE EXCEPTION 'opt_out_leaked';
   END IF;
 
-  -- Mentions: still opt-in, and the toggle turns them on.
-  IF public.can_send(pg_temp.t3988a_id('away'), 'admin.team_mention', 'email', 'issue3988a-away@test.local') THEN
-    RAISE EXCEPTION 'mention_email_default_on';
-  END IF;
-  PERFORM pg_temp.t3988a_as('away', $q$public.issue_3988_set_email_alert_preference('admin.team_mention', true)$q$);
+  -- [TEST-MOD-APPROVED #4255] Mentions: on by default (Seth, 9 Nov 2026); the toggle turns them off.
   IF public.can_send(pg_temp.t3988a_id('away'), 'admin.team_mention', 'email', 'issue3988a-away@test.local') IS NOT TRUE THEN
-    RAISE EXCEPTION 'mention_opt_in_not_honoured';
+    RAISE EXCEPTION 'mention_email_not_default_on';
+  END IF;
+  PERFORM pg_temp.t3988a_as('away', $q$public.issue_3988_set_email_alert_preference('admin.team_mention', false)$q$);
+  IF public.can_send(pg_temp.t3988a_id('away'), 'admin.team_mention', 'email', 'issue3988a-away@test.local') THEN
+    RAISE EXCEPTION 'mention_opt_out_not_honoured';
   END IF;
 END;
 $prefs$;
