@@ -126,8 +126,10 @@ begin
     format('%s on %s: %s', public.ops_actor_label('oz.c4255@test.local', NULL), 'C4255 Open card', 'Can you check this today?'));
   perform pg_temp.chk('C-SUBJECT', 'note tells one teammate (never the actor)', v_n = 1, v_n::text);
   perform pg_temp.chk('C-SUBJECT', 'note subject is "<who> tagged you: <card>"',
+    -- The note's own row (same-transaction rows share created_at, so match it
+    -- by its body rather than by order).
     (select payload->>'title' from public.notification_outbox where user_id = pg_temp.uid('growth') and payload->>'card_id' = v_open::text
-      order by created_at desc, id limit 1)
+      and payload->>'body' like '%Can you check this today?%')
       = public.ops_actor_label('oz.c4255@test.local', NULL) || ' tagged you: C4255 Open card',
     (select string_agg(payload->>'title', ' | ') from public.notification_outbox where user_id = pg_temp.uid('growth') and payload->>'card_id' = v_open::text));
   perform pg_temp.chk('C-SUBJECT', 'note body keeps the note',
