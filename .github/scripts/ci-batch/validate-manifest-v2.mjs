@@ -415,7 +415,8 @@ export function phase3dContractDigest(manifest) {
 // #4273 tester retest 3: register the SMS opt-out scope PostgreSQL proof.
 // #4273: re-sealed after moving the migration to 20280522004273 (above production's 20280521004334).
 // #4273: re-sealed after merging origin/main (#4350).
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "930ac5978de4c538ac0a1a3b5bf1aa6bdd1ce2eb584a9c889bd97dee1cec4f51";
+// #4273 country switches: register the sms-country-switches migration and its PostgreSQL proof.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "203978272af82ff626b12081d9fdc77e399ce7a243b675f8774f80bc1190f993";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
