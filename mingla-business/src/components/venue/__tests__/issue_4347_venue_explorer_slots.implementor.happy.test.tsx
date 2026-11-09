@@ -148,6 +148,8 @@ jest.mock("@mingla/offering-rendering", () => {
     ...themeResolver,
     ...themePalette,
     ...staticMapImage,
+    // #4334 F-1 (merge adoption) — the REAL shared map renderer, as the #1559 harness registers it.
+    StaticMapImage: require("../../../../../packages/offering-rendering/StaticMapFrame").StaticMapImage,
     ...mapsDeepLink,
     ...venueMapsActions,
     // The consumer app is phone-only for this route (its `useResponsiveLayout`
@@ -542,7 +544,9 @@ describe("#4347 wave 4 — the Explorer slots on the shared venue page", () => {
     const at = (pred: (n: TestInstance) => boolean): number => order.findIndex(pred);
     const slotAt = at((n) => n.type === "ExplorerOverviewStub");
     const pitchAt = at((n) => typeof n.props?.children === "string" && (n.props.children as string).includes("neighbourhood bistro"));
-    const mapAt = at((n) => JSON.stringify(n.props?.source ?? "").includes("static-map"));
+    // #4334 (merge adoption) — the map is the shared StaticMapImage box now; it
+    // requests no image before layout, so the box itself is the anchor.
+    const mapAt = at((n) => typeof n.type === "function" && n.type.name === "StaticMapImage");
     expect(slotAt).toBeGreaterThan(-1);
     expect(pitchAt).toBeGreaterThan(-1);
     expect(mapAt).toBeGreaterThan(-1);

@@ -156,6 +156,8 @@ jest.mock("@mingla/offering-rendering", () => {
     ...themeResolver,
     ...themePalette,
     ...staticMapImage,
+    // #4334 F-1 (merge adoption) — the REAL shared map renderer, as the #1559 harness registers it.
+    StaticMapImage: require("../../../../../packages/offering-rendering/StaticMapFrame").StaticMapImage,
     ...mapsDeepLink,
     ...venueMapsActions,
     // The consumer app is phone-only for this route (its `useResponsiveLayout`
