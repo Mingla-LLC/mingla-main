@@ -20970,6 +20970,8 @@
         "supabase/migrations/__tests__/issue_4334_grants_restated.test.ts.ci-suite.json",
         "supabase/migrations/__tests__/issue_4334_place_id_repick.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4334_place_id_repick.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4334_place_id_repick.tester.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4334_place_id_repick.tester.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4334_place_id_write_paths.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4334_place_id_write_paths.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4339_ad_marketing_destinations.implementor.pg17.test.sql",
@@ -26110,6 +26112,8 @@
         "supabase/migrations/__tests__/issue_4334_grants_restated.test.ts.ci-suite.json",
         "supabase/migrations/__tests__/issue_4334_place_id_repick.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4334_place_id_repick.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4334_place_id_repick.tester.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4334_place_id_repick.tester.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4334_place_id_write_paths.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4334_place_id_write_paths.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4339_ad_marketing_destinations.implementor.pg17.test.sql",
@@ -53416,5 +53420,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "96c929094dbff13ee3549f562a10567c8c9ee11f5fb191a11c9cbc9e081135cc",
-  "phase3eContractSha256": "db0c54d44c0aad2918a35c9b7697d26fa2b5c63a0ed29e12143753b0956d6780"
+  "phase3eContractSha256": "23509065659cb0cee4a029437c33857e6b94dd110002a1d320eee806ecc39021"
 }
