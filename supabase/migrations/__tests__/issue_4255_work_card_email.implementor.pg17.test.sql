@@ -2,7 +2,7 @@
 -- on the fully replayed PG17 schema.
 -- MINGLA-INVARIANT: I-4255-CARD-EMAIL-SUBJECT | issue #4255 | Every admin.team_mention email queued for a work card has a subject (payload.title) that names the card title and a payload card_id, so each card is its own email and conversation.
 -- MINGLA-INVARIANT: I-4255-AUTO-CARD-NO-EMAIL | issue #4255 | A "Feature Guide is Live" card never queues a work card email, and an automatic card closed in the run that made it leaves no pending email; both still leave the in-app bell item.
--- MINGLA-INVARIANT: I-4255-CARD-EMAIL-DEFAULT-ON | issue #4255 | Work card email (admin.team_mention, email) is on for an active teammate with no saved preference; only an explicit enabled = false turns it off.
+-- MINGLA-INVARIANT: I-4255-CARD-EMAIL-DEFAULT-ON | issue #4255 | Work card email (admin.team_mention, email) is on for a current teammate with no saved preference; only an explicit enabled = false turns it off.
 -- [TEST-MOD-APPROVED #4255] supersedes I-3720-MENTION-EMAIL-OPT-IN (Seth, 9 Nov 2026: on by default).
 --
 --   C-SUBJECT  a person's note tells the tagged teammate "<who> tagged you:
