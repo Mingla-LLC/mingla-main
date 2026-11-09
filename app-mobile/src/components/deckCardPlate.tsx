@@ -528,13 +528,13 @@ export interface DeckCardPlateProps {
    * expanded hero, and it is a prop rather than a second component because
    * everything else about the plate — the 374 x 96, the r24, the 28pt gap, the
    * 53pt control row, the fills — is byte-identical on both surfaces, which is
-   * the entire continuity argument (see ExpandedCardHero's header).
+   * the entire continuity argument (#4347 wave 3 removed the sheet's plate; the deck is its only surface).
    *
    * It does NOT animate its turn — §9 row 3 is NOT IMPLEMENTED, not
    * impossible. `BaseBottomSheet` simply does not forward the
    * `animatedPosition` that `useBottomSheetInternal` already exposes from the
    * sheet's EXISTING driver; no second driver is needed. See
-   * ExpandedCardHero's header for the correction and the remaining work.
+   * the #1605 history in git for the correction (ExpandedCardHero, deleted in #4347 wave 3).
    */
   readonly chevron?: 'up' | 'down';
   /**

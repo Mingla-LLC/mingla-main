@@ -39,7 +39,7 @@ export interface CuratedStopsAvailabilityResult {
 
 // Minimal structural shape — accepts CuratedStop without importing the full
 // type, so this helper stays a pure leaf (and Deno-testable with plain objects).
-interface AvailabilityStop {
+export interface AvailabilityStop {
   placeName?: string;
   openingHours?: unknown;
   estimatedDurationMinutes?: number;
@@ -75,6 +75,51 @@ function formatUnknownReason(arrivalTime: Date, locale?: string): string {
 }
 
 /**
+ * #4347 wave 3 — THE ONE arrival-time model for a curated plan.
+ *
+ * Each stop's arrival = start + every earlier stop's dwell + every leg up to it
+ * (the same cumulative model the schedule check has always used). The expanded
+ * plan's clock times, its per-stop conditions and its warning card, the deck's
+ * smart chip and the schedule safety check below all read THIS function, so a
+ * time on screen and the time the safety check tests can never disagree.
+ *
+ * Pure, no React Native — Deno-testable like the validator.
+ */
+export interface PlanStopTiming {
+  readonly index: number;
+  readonly arrival: Date;
+  /** arrival + this stop's dwell. */
+  readonly departure: Date;
+  readonly dwellMinutes: number;
+  /** Minutes of travel INTO this stop from the previous one; null for stop 1 / no figure. */
+  readonly legMinutes: number | null;
+}
+
+export function curatedArrivalTimes(
+  stops: readonly AvailabilityStop[],
+  startTime: Date,
+): PlanStopTiming[] {
+  let cumulativeMinutes = 0;
+  return stops.map((stop, idx) => {
+    const arrival = new Date(startTime.getTime() + cumulativeMinutes * 60_000);
+    const dwellMinutes = stop.estimatedDurationMinutes ?? DEFAULT_STOP_DURATION_MIN;
+    const leg = idx > 0 && stop.travelTimeFromPreviousStopMin ? stop.travelTimeFromPreviousStopMin : null;
+    // PRESERVE the existing cumulative model (SavedTab.tsx:1170-1174):
+    cumulativeMinutes += dwellMinutes;
+    if (idx < stops.length - 1 && stops[idx + 1]?.travelTimeFromPreviousStopMin) {
+      cumulativeMinutes += stops[idx + 1]!.travelTimeFromPreviousStopMin!;
+    }
+    return {
+      index: idx,
+      arrival,
+      departure: new Date(arrival.getTime() + dwellMinutes * 60_000),
+      dwellMinutes,
+      legMinutes: leg,
+    };
+  });
+}
+
+/**
  * Canonical curated all-stops validator. Preserves the existing cumulative
  * arrival-time model (each stop's estimated arrival = start + Σ prior
  * durations + Σ travel times) and routes every open/closed decision through
@@ -89,21 +134,15 @@ export function checkAllCuratedStopsOpen(
   startTime: Date,
   locale?: string,
 ): CuratedStopsAvailabilityResult {
-  let cumulativeMinutes = 0;
+  const timings = curatedArrivalTimes(stops, startTime);
 
   const results: StopAvailability[] = stops.map((stop, idx) => {
-    const arrivalTime = new Date(startTime.getTime() + cumulativeMinutes * 60_000);
+    const arrivalTime = timings[idx]!.arrival;
     const weekdayText = extractWeekdayText(stop.openingHours as Parameters<typeof extractWeekdayText>[0]);
     // Per-stop venue offset if present; else canonical reader's documented
     // device-local fallback (same as the reference ActionButtons call).
     const utcOffset = stop.utcOffsetMinutes ?? stop.utc_offset_minutes ?? null;
     const openAtArrival = isPlaceOpenAt(weekdayText, arrivalTime, utcOffset);
-
-    // PRESERVE the existing cumulative model (SavedTab.tsx:1170-1174):
-    cumulativeMinutes += stop.estimatedDurationMinutes ?? DEFAULT_STOP_DURATION_MIN;
-    if (idx < stops.length - 1 && stops[idx + 1]?.travelTimeFromPreviousStopMin) {
-      cumulativeMinutes += stops[idx + 1]!.travelTimeFromPreviousStopMin!;
-    }
 
     const stopName = stop.placeName ?? 'Stop';
 

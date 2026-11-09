@@ -388,6 +388,18 @@ function curatedPriceLabel(
 }
 
 /**
+ * #4347 wave 3 — the plan sheet's Spend tile: the same price decision the plate
+ * makes (a host experience's converted amount, else the AI plan's spend level),
+ * over the same visible stops.
+ */
+export function curatedPlanPriceLabel(
+  card: CuratedExperienceCard,
+  options: Pick<CuratedFactsOptions, 'formatMoney' | 'spendLevelLabel' | 'freeLabel' | 'isBrandExperience'>,
+): string | null {
+  return curatedPriceLabel(card, planVisibleStops(card.stops), options as CuratedFactsOptions);
+}
+
+/**
  * The stop row's own weighted line: `★ 4.4 · ££ · 20 min here`.
  *
  * Separated from the plate's spans on purpose — a stop's facts are a stop's, and

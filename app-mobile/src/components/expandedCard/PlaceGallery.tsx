@@ -13,6 +13,9 @@
  *
  * No photo: a short neutral header, so the title moves up instead of sitting
  * under a 300pt empty box.
+ *
+ * #4347 wave 3 — the curated plan opens on the same gallery: every stop's
+ * photos in stop order, each tagged with its stop ("Stop 2 · Nike Art").
  */
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
@@ -167,6 +170,13 @@ export function PlaceGallery({
             </TouchableOpacity>
           )}
         />
+        {media[index]?.tag ? (
+          <View style={styles.tag} pointerEvents="none" testID="sheet-gallery-tag">
+            <Text style={styles.counterText} numberOfLines={1} maxFontSizeMultiplier={1.3}>
+              {media[index]?.tag}
+            </Text>
+          </View>
+        ) : null}
         {media.length > 1 ? (
           <View style={styles.counter} pointerEvents="none" testID="sheet-gallery-counter">
             <Text style={styles.counterText} accessibilityLiveRegion="polite">
@@ -256,6 +266,17 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: SHEET_GALLERY.counterFill,
+  },
+  // #4347 wave 3 — the stop a plan's photo belongs to, bottom-left.
+  tag: {
+    position: 'absolute',
+    left: 12,
+    bottom: 12,
+    maxWidth: '70%',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 99,
     backgroundColor: SHEET_GALLERY.counterFill,
   },
   counter: {

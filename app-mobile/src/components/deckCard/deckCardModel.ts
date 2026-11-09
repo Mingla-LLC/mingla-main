@@ -13,6 +13,7 @@
  */
 import { FACT_LINE, PHOTO_PAGER } from '../../../../packages/card-identity/index.js';
 import { isVideoUrl } from '../../utils/videoUrl';
+import { curatedArrivalTimes } from '../../utils/curatedStopsAvailability';
 import { extractWeekdayText, getOpenStatusAt, type OpenStatus } from '../../utils/openingHoursUtils';
 import type { MetaSpanInput } from '../deckCardPlate';
 
@@ -406,19 +407,24 @@ export function curatedSmartChip(stops: readonly ArrivalStop[] | null | undefine
   const list = Array.isArray(stops) ? stops : [];
   if (list.length === 0) return null;
   const first = list[0]?.travelTimeFromUserMin;
-  let minutes = typeof first === 'number' && Number.isFinite(first) && first > 0 ? first : 0;
+  const lead = typeof first === 'number' && Number.isFinite(first) && first > 0 ? first : 0;
+  const positive = (v: unknown): number | null =>
+    typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null;
+  // #4347 wave 3 — the ONE arrival model (curatedArrivalTimes), the same one
+  // the expanded plan's clock times and the schedule check read.
+  const timings = curatedArrivalTimes(
+    list.map((stop) => ({
+      estimatedDurationMinutes: positive(stop.estimatedDurationMinutes) ?? undefined,
+      travelTimeFromPreviousStopMin: positive(stop.travelTimeFromPreviousStopMin),
+    })),
+    new Date(now.getTime() + lead * 60_000),
+  );
   for (let i = 0; i < list.length; i += 1) {
     const stop = list[i];
-    const arrival = new Date(now.getTime() + minutes * 60_000);
     const weekday = extractWeekdayText(stop.openingHours as Parameters<typeof extractWeekdayText>[0]);
-    if (weekday !== null && getOpenStatusAt(weekday, arrival, stop.utcOffsetMinutes ?? null)?.kind === 'closed') {
+    if (weekday !== null && getOpenStatusAt(weekday, timings[i].arrival, stop.utcOffsetMinutes ?? null)?.kind === 'closed') {
       return { kind: 'stopClosedAtArrival', stopNumber: i + 1, tone: 'warn' };
     }
-    minutes += typeof stop.estimatedDurationMinutes === 'number' && stop.estimatedDurationMinutes > 0
-      ? stop.estimatedDurationMinutes
-      : 45;
-    const leg = list[i + 1]?.travelTimeFromPreviousStopMin;
-    if (typeof leg === 'number' && Number.isFinite(leg) && leg > 0) minutes += leg;
   }
   return null;
 }

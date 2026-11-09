@@ -93,19 +93,6 @@ export const SPINE = {
   disabledLabel: '#6B7280', // 4.83:1
 } as const;
 
-/** The action band. Its HEIGHT never changes — the same silhouette discipline the plate obeys. */
-export const ACTION_BAND = {
-  /** 20 + 52 + 20 = 92. Fixed, whether Reserve renders or not. */
-  height: 92,
-  padding: 20,
-  gap: 10,
-  buttonHeight: 52,   // a 44pt target with 8pt of slack
-  buttonRadius: 26,
-  labelSize: 14,
-  iconSize: 20,
-  reserveIconSize: 18,
-} as const;
-
 /** The Plan / Companion-stops list. Rows are a FIXED height so the list can be scanned. */
 export const STOP_ROW = {
   /** 72pt collapsed, always. 2 stops = 172pt, 3 = 272pt, 10 = 972pt. */
@@ -212,4 +199,60 @@ export const WHEN_BLOCK = {
   /** The chart's hours (inclusive). */
   firstHour: 10,
   lastHour: 23,
+} as const;
+
+/**
+ * #4347 wave 3 — the expanded curated plan. Geometry and colour for the route
+ * strip, the sticky stop navigator, the stop cards, the legs, the time column
+ * and the warning card. Timing lives in motionTokens.ts.
+ */
+export const PLAN_SHEET = {
+  /** Route strip: stop thumbnails with number badges, joined by legs. */
+  routeThumb: 40,
+  routeThumbRadius: 12,
+  routeSlot: 58,
+  routeBadge: 17,
+  routeBadgeFill: '#111111',
+  routeBadgeText: '#FFFFFF',
+  routeLegHeight: 2,
+  routeLegTrack: '#E6E6E6',
+  routeLegFill: '#BDBDBD',
+  routeLabelSize: 10,
+  routeLegLabelSize: 10,
+  /** Sticky navigator. */
+  navFill: 'rgba(255,255,255,0.97)',
+  navBorder: '#E5E7EB',
+  navDot: 22,
+  navDotBorder: '#CFCFCF',
+  navDotOn: '#111111',
+  navDotDone: '#ECECEA',
+  navLine: '#E3E3E3',
+  navLineFill: '#111111',
+  /** Time column beside each stop card. */
+  timeColumn: 54,
+  timeSize: 13,
+  timeSuffixSize: 11,
+  /** Stop card. */
+  cardRadius: 16,
+  cardBorder: '#E5E7EB',
+  cardPhotoHeight: 150,
+  cardGap: 12,
+  chipRadius: 9,
+  chipFill: '#F3F4F6',
+  chipText: '#333333',
+  chipOpenFill: '#EAF7EE',
+  chipOpenText: '#166534',
+  chipWarnFill: '#FFF4E5',
+  chipWarnText: '#92400E',
+  chipClosedFill: '#FDECEC',
+  chipClosedText: '#991B1B',
+  actionFill: '#F3F4F6',
+  stopNumberFill: 'rgba(0,0,0,0.5)',
+  /** The leg between cards: a dashed line and "6 min by car · estimated". */
+  legDash: '#C9C9C9',
+  /** The one warning card. */
+  warningFill: '#FFF4E5',
+  warningBorder: '#F4DCB8',
+  warningText: '#6E3E00',
+  warningButtonFill: '#FFFFFF',
 } as const;

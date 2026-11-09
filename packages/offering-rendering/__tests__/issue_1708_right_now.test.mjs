@@ -28,6 +28,7 @@ const read = (rel) => readFileSync(resolve(ROOT, rel), 'utf8');
 const BODY = read('packages/offering-rendering/ExperienceOfferingBody.tsx');
 const INDEX = read('packages/offering-rendering/index.ts');
 const SCREEN = read('app-mobile/src/screens/Experience/ConsumerExperienceDetailScreen.tsx');
+const NIGHT = read('app-mobile/src/screens/Experience/onTheNight.ts');
 
 test('V-1 the block is DATA on the shared body, not a node and not a fetch', () => {
   assert.match(BODY, /export interface RightNowFacts/, 'V-1: the contract is gone');
@@ -56,7 +57,7 @@ test('V-2 every row is independently optional — that is what makes web honest'
   }
   // And the whole section disappears when there is nothing at all.
   assert.match(
-    BODY, /\{rightNow && \(rightNow\.weather \|\| rightNow\.travel \|\| rightNow\.busyness\) \? \(/,
+    BODY, /\{rightNow &&\s*\(rightNow\.weather \|\| rightNow\.travel \|\| rightNow\.busyness\) \? \(/,
     'V-2: an empty Right now section still renders its heading and rule',
   );
 });
@@ -70,30 +71,30 @@ test('V-3 the estimate is disclosed', () => {
 });
 
 test('V-4 the app supplies it, and fabricates nothing when it cannot', () => {
+  // #4347 wave 3 — the facts are built by the pure `onTheNightFacts`
+  // (app-mobile/src/screens/Experience/onTheNight.ts, behaviour-tested in
+  // issue_4347_on_the_night.implementor.test.ts); the screen fetches and passes.
   assert.match(SCREEN, /rightNow=\{rightNow\}/, 'V-4: the consumer screen does not pass the block');
   assert.match(SCREEN, /weatherService\s*\n?\s*\.getWeatherForecast\(/, 'V-4: no weather is fetched');
-  assert.match(SCREEN, /haversineKm\(/, 'V-4: the travel figure is not the haversine estimate');
-
+  assert.match(SCREEN, /onTheNightFacts\(/, 'V-4: the screen does not build the block through the one producer');
   // No coordinates -> no weather. Not a placeholder, not a default city.
   assert.match(
-    SCREEN, /if \(rightNowLat == null \|\| rightNowLng == null\) \{\s*\n\s*setRightNowWeather\(null\);/,
+    SCREEN, /if \(rightNowLat == null \|\| rightNowLng == null\) \{\s*\n\s*setRightNowForecast\(null\);/,
     'V-4: a coordinate-less experience gets something other than null weather',
   );
+  assert.match(NIGHT, /haversineKm\(/, 'V-4: the travel figure is not the haversine estimate');
   // No viewer -> no travel row. This is the WEB page's permanent state.
-  assert.match(
-    SCREEN, /if \(viewerLocation\?\.lat != null && viewerLocation\?\.lng != null/,
-    'V-4: the travel figure is computed without checking the viewer has a position',
-  );
+  assert.match(NIGHT, /viewer && typeof viewer\.lat === "number" && typeof viewer\.lng === "number" && place/, 'V-4: travel without a viewer position');
   // Nothing at all -> no block.
-  assert.match(SCREEN, /if \(!rightNowWeather && !travel\) return null;/, 'V-4: an empty block is still handed to the body');
-  // And the estimate flag tracks the travel row rather than being hardcoded on.
-  assert.match(SCREEN, /estimated: travel !== null,/, 'V-4: the disclosure does not track the figure it discloses');
+  assert.match(NIGHT, /if \(!weather && driveMinutes === null\) return null;/, 'V-4: an empty block is still handed to the body');
+  // The estimate flag tracks the travel row rather than being hardcoded on.
+  assert.match(NIGHT, /estimated: driveMinutes !== null/, 'V-4: the disclosure does not track the figure it discloses');
 });
 
 test('V-5 the fetch cannot leak or fight itself', () => {
   const effect = SCREEN.slice(SCREEN.indexOf('let cancelled = false;'), SCREEN.indexOf('let cancelled = false;') + 1200);
   assert.ok(effect.length > 0, 'V-5: the weather effect is gone');
-  assert.match(effect, /if \(cancelled \|\| !w\) return;/, 'V-5: a late resolve can setState after unmount');
+  assert.match(effect, /if \(!cancelled\) setRightNowForecast\(w \?\? null\);/, 'V-5: a late resolve can setState after unmount');
   assert.match(effect, /return \(\) => \{ cancelled = true; \};/, 'V-5: the effect has no cleanup');
   assert.match(effect, /\.catch\(/, 'V-5: a failed weather fetch is unhandled');
 });

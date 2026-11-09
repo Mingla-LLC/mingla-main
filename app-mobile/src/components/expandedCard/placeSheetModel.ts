@@ -24,6 +24,8 @@ import type { HourlyForecast } from '../../services/weatherService';
 export interface SheetMedia {
   readonly uri: string;
   readonly isVideo: boolean;
+  /** #4347 wave 3 — a plan's photo says whose it is: "Stop 2 · Nike Art". */
+  readonly tag?: string | null;
 }
 
 /**

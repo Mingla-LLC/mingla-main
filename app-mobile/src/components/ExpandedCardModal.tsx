@@ -28,7 +28,6 @@ import { formatChargedInLine, formatDisplayPrice, parseAndFormatDistance } from 
 import { canonicalDiscoveryPriceDetail } from '../utils/priceTiers';
 import { getReadableCategoryName } from "../utils/categoryUtils";  // ORCH-0685
 import { weatherService, WeatherData } from "../services/weatherService";
-import { busynessService, BusynessData } from "../services/busynessService";
 /*
   #1605 P2-1 — `bookingService` is GONE from this sheet, not left fetching.
 
@@ -48,31 +47,25 @@ import { useRecommendationsOptional } from "../contexts/RecommendationsContext";
 import ExpandedCardHeader from "./expandedCard/ExpandedCardHeader";
 import CardInfoSection from "./expandedCard/CardInfoSection";
 import { LocalReviewsSection } from "./expandedCard/LocalReviewsSection";
-// #1605 wave 4 — WeatherSection + BusynessSection are DELETED. Two orange-tinted
-// boxes with 26pt icon badges became two fact rows under one RIGHT NOW heading.
-import ConditionsSection from "./expandedCard/ConditionsSection";
 import PracticalDetailsSection from "./expandedCard/PracticalDetailsSection";
-import PlanTimeline, { type PlanTimelineLeg } from "./expandedCard/PlanTimeline";
-import { ExpandedCardHero } from "./expandedCard/ExpandedCardHero";
+// #4347 wave 3 — the expanded curated plan: gallery tagged by stop, summary +
+// route strip, the one warning, stop cards with clock times, conditions,
+// getting there, ends near. PlanTimeline, ConditionsSection and the plan's hero
+// (ExpandedCardHero) are DELETED — this replaces all three.
+import { CuratedPlanBody } from "./expandedCard/CuratedPlanBody";
+import { PlanStopNavigator } from "./expandedCard/PlanStopNavigator";
+import { PlanScrollStore } from "./expandedCard/planScroll";
+import { defaultPlanStart, nextStopIndex, planMode, planTimeline, stopOrdinals } from "./expandedCard/curatedPlanModel";
+import { curatedPlanPriceLabel } from "./expandedCard/expandedCardFacts";
 import StopList, { type StopListStop } from "./expandedCard/StopList";
 import { occasionFromCategory, stopPurpose } from "./expandedCard/stopPurpose";
-import { dialablePhone } from "../../../packages/card-identity/phone.mjs";
 // #1605 P1-3 — the picnic Shopping List, re-homed onto the spine. It rendered on
 // `main` at :990-992 via the deleted PicnicShoppingList and was not in the
 // spec's deletion list; five producers still carry `shoppingList`.
 import SuppliesList from "./expandedCard/SuppliesList";
 import { SectionError } from "./expandedCard/SpineParts";
 import { SPINE } from "./expandedCard/spineTokens";
-// `planVisibleStops` is deliberately NOT imported here any more: the sheet's
-// plate takes its count from `curatedPlanSpans`, which calls it internally, and
-// the plan list's main-stop count must NOT go through its all-optional fallback
-// (see `planMainStopCount` below). One reader, one meaning.
-import {
-  companionStopMeta,
-  curatedPlanSpans,
-  singlePlaceSpans,
-  stopMetaText,
-} from "./expandedCard/expandedCardFacts";
+import { companionStopMeta } from "./expandedCard/expandedCardFacts";
 // The ONE Been-here state machine in the app. Declared in SwipeableCards.tsx (the
 // #1687 gate delimits it there); imported here so the sheet mounts the SAME
 // component rather than a second one in a different shape. The import edge is a
@@ -90,13 +83,9 @@ import VenueExperiencesSection from "./expandedCard/VenueExperiencesSection";
 import VenueReserveSheet from "./expandedCard/VenueReserveSheet";
 import { useVenueReservable } from "../hooks/useVenueReservable";
 import { ImageLightbox } from "./ImageLightbox";
-import { normalizeWebsiteUrl } from "../utils/normalizeWebsiteUrl";
 // issue #2468 / #4347 wave 2 — every maps link on this sheet goes through
 // expandedCard/placeDirections (openPlaceDirections), which wraps the ONE host
 // effect, openMapsTarget.
-// #1605 P2-2 — the body strip renders plain <Image>, and ImageLightbox is
-// images-only, so a video entry past the hero was a broken tile.
-import { isVideoUrl } from "../utils/videoUrl";
 import ActionButtons from "./expandedCard/ActionButtons";
 import InAppBrowserModal from "./InAppBrowserModal";
 // #4261: rows inside the sheet (LinkRow, price attribution) open links through
@@ -133,7 +122,6 @@ import { CalendarService } from "../services/calendarService";
 import { supabase } from "../services/supabase";
 import { useAppStore } from "../store/appStore";
 import { toastManager } from "./ui/Toast";
-import { useWindowDimensions } from "react-native";
 import { useUserLocation } from "../hooks/useUserLocation";
 import {
   useUnifiedShare,
@@ -146,7 +134,7 @@ import { useReducedMotion } from "react-native-reanimated";
 import { PlaceGallery } from "./expandedCard/PlaceGallery";
 import { PlaceBasics } from "./expandedCard/PlaceBasics";
 import { WhenYoudGo } from "./expandedCard/WhenYoudGo";
-import { openPlaceDirections } from "./expandedCard/placeDirections";
+import { openPlaceDirections, openRouteAllStops } from "./expandedCard/placeDirections";
 import {
   basicsTiles,
   lightboxFor,
@@ -582,6 +570,32 @@ export default function ExpandedCardModal({
     }
   }, [visible, experienceDeckTarget, router, onClose]);
 
+  /*
+    #4347 wave 3 (decision 4) — a HOST EXPERIENCE opens its public page, never
+    the plan sheet. The deck already routes it (wave 1); this catches the one
+    path that still reaches the sheet: a liked experience that Likes re-tags
+    `curated` (see `isBrandExperiencePlan` below for why the brand attribution,
+    not the tag, is read). Without slugs it stays here, in the plan layout with
+    no swap.
+  */
+  useEffect(() => {
+    if (!visible || !card) return;
+    const c = card as {
+      cardType?: unknown; brandId?: unknown; eventId?: unknown;
+      brandSlug?: unknown; eventSlug?: unknown; stops?: unknown;
+    };
+    if (c.cardType !== 'curated') return;
+    const brandExperience =
+      typeof c.brandId === 'string' && c.brandId.length > 0 &&
+      typeof c.eventId === 'string' && c.eventId.length > 0 &&
+      Array.isArray(c.stops) && c.stops.length > 0;
+    if (!brandExperience) return;
+    if (typeof c.brandSlug === 'string' && c.brandSlug.length > 0 && typeof c.eventSlug === 'string' && c.eventSlug.length > 0) {
+      router.push(`/exp/${c.brandSlug}/${c.eventSlug}` as never);
+      onClose();
+    }
+  }, [visible, card, router, onClose]);
+
   const { t, i18n } = useTranslation(['cards', 'common']);
   const { user } = useAppStore();
   const viewerLocationQuery = useUserLocation(user?.id, currentMode);
@@ -610,11 +624,8 @@ export default function ExpandedCardModal({
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
   /** #4347 rework (P2-b) — only the latest forecast request may write. */
   const weatherRequestRef = useRef(0);
-  const [busynessData, setBusynessData] = useState<BusynessData | null>(null);
   const [viewerTravelTime, setViewerTravelTime] = useState<string | null>(null);
   const [viewerDistance, setViewerDistance] = useState<number | null>(null);
-  const [loadingWeather, setLoadingWeather] = useState(false);
-  const [loadingBusyness, setLoadingBusyness] = useState(false);
   const [strollData, setStrollData] = useState(card?.strollData);
   const [loadingStrollData, setLoadingStrollData] = useState(false);
   const [picnicData, setPicnicData] = useState(card?.picnicData);
@@ -640,17 +651,7 @@ export default function ExpandedCardModal({
     useState<BusinessEventCard | null>(null);
 
   // ── #1605 wave 4 — the spine's own state ─────────────────────────────────
-  const { height: windowHeight } = useWindowDimensions();
-  /**
-   * The sheet's resolved height at the 90% snap, so the hero can take what the
-   * fold leaves (`expandedHeroHeight`). `wrapInRNModal` makes the percentage
-   * resolve against the FULL physical screen, which is why this reads the window
-   * and not a measured parent — a measured parent is exactly the flex-axis
-   * dependence I-PROPOSED-1593-LAYER-GEOMETRY-SINGLE-SOURCE forbids.
-   */
-  const sheetHeight = Math.round(windowHeight * 0.9);
   const scrollRef = useRef<ScrollView>(null);
-  const [planSectionY, setPlanSectionY] = useState(0);
   /**
    * The user's LOCAL edits to a curated plan (a replaced stop). `null` until the
    * first replacement, so "customized" is a real state rather than the reference
@@ -659,6 +660,17 @@ export default function ExpandedCardModal({
    * without a remount left the previous plan on screen).
    */
   const [curatedLocalCard, setCuratedLocalCard] = useState<CuratedExperienceCard | null>(null);
+  /**
+   * #4347 wave 3 — the plan's start time as the user picked it ("Starts · tap to
+   * change", or a warning's "Start at …" fix). Null = the default: the
+   * scheduled time when the plan is scheduled, otherwise the next sensible
+   * slot. Every arrival time, forecast, crowd value and the warning follow it.
+   */
+  const [planStartOverride, setPlanStartOverride] = useState<Date | null>(null);
+  /** Where the plan sheet is scrolled to — a store, not state (see planScroll.ts). */
+  const [planScroll] = useState(() => new PlanScrollStore());
+  /** Review mode's header height, so the navigator pins just under it. */
+  const [reviewHeaderHeight, setReviewHeaderHeight] = useState(0);
   const {
     alternatives,
     isLoading: isLoadingAlts,
@@ -1007,7 +1019,6 @@ export default function ExpandedCardModal({
     } else {
       // Reset state when modal closes
       setWeatherData(null);
-      setBusynessData(null);
       setViewerTravelTime(null);
       setViewerDistance(null);
       setStrollData(undefined);
@@ -1025,6 +1036,8 @@ export default function ExpandedCardModal({
     // plan could survive onto the next card.
     setWhenKey('now');
     setCuratedLocalCard(null);
+    setPlanStartOverride(null);
+    planScroll.reset();
     setReplacingStopIndex(null);
     clearAlternatives();
   }, [visible, card, viewerLoc?.lat, viewerLoc?.lng, effectiveTravelMode]);
@@ -1058,54 +1071,19 @@ export default function ExpandedCardModal({
   const fetchAdditionalData = async () => {
     if (!card) return;
     if ((card as any).cardType === 'curated') {
-      // For curated cards, fetch weather then busyness for the first stop's location
-      const curatedCard = card as any;
-      const firstStop = curatedCard.stops?.[0];
-      if (firstStop?.lat && firstStop?.lng) {
-        // Fetch weather first (provides utcOffsetSeconds for busyness timezone)
-        let weather: WeatherData | null = null;
-        setLoadingWeather(true);
-        try {
-          weather = await weatherService.getWeatherForecast(
-            firstStop.lat,
-            firstStop.lng
-          );
-          setWeatherData(weather);
-        } catch (error) {
-          console.error('Error fetching curated weather:', error);
-          setWeatherData(null);
-        } finally {
-          setLoadingWeather(false);
-        }
-
-        // Fetch busyness for first stop (with category + timezone from weather)
-        setLoadingBusyness(true);
-        try {
-          const busyness = await busynessService.getVenueBusyness(
-            firstStop.placeName,
-            firstStop.lat,
-            firstStop.lng,
-            firstStop.address,
-            firstStop.placeId,
-            card.category,
-            weather?.utcOffsetSeconds
-          );
-          setBusynessData(busyness);
-        } catch (error) {
-          console.error('Error fetching curated busyness:', error);
-        } finally {
-          setLoadingBusyness(false);
-        }
-      }
+      // #4347 wave 3 — a plan fetches its forecasts PER STOP inside
+      // CuratedPlanBody (the hourly forecast at each arrival); the stop-1-only
+      // "right now" weather and busyness fetch is gone with ConditionsSection.
       computeViewerTravelForChatMount();
-      return; // Still return — skip booking fetch (curated cards have per-stop links)
+      return;
     }
 
-    // Fetch weather first (provides utcOffsetSeconds for busyness timezone)
+    // The hourly forecast "When you'd go" reads. (#4347 wave 3: the typical
+    // crowd now comes from the built-in curves in placeSheetModel, so the old
+    // busyness fetch — whose only reader was ConditionsSection — is gone.)
     let weather: WeatherData | null = null;
     const request = ++weatherRequestRef.current;
     if (card.location) {
-      setLoadingWeather(true);
       try {
         weather = await weatherService.getWeatherForecast(
           card.location.lat,
@@ -1115,30 +1093,6 @@ export default function ExpandedCardModal({
       } catch (error) {
         console.error("Error fetching weather in modal:", error);
         if (request === weatherRequestRef.current) setWeatherData(null);
-      } finally {
-        setLoadingWeather(false);
-      }
-    }
-
-    // Fetch busyness data (with category + timezone from weather)
-    if (card.location) {
-      setLoadingBusyness(true);
-      try {
-        const busyness = await busynessService.getVenueBusyness(
-          card.title,
-          card.location.lat,
-          card.location.lng,
-          card.address,
-          // ORCH-0910: chat-mounted cards carry placeId at top level; deck-mounted cards may carry it under .source.
-          (card.placeId ?? (card as any).source?.placeId),
-          card.category,
-          weather?.utcOffsetSeconds
-        );
-        setBusynessData(busyness);
-      } catch (error) {
-        console.error("Error fetching busyness:", error);
-      } finally {
-        setLoadingBusyness(false);
       }
     }
 
@@ -1352,66 +1306,6 @@ export default function ExpandedCardModal({
   })();
 
   /**
-   * THE COVER. `images[0] ?? stops[0].imageUrl ?? null` — ONE decode, never N.
-   *
-   * This is the resolution `MessageBubble` already uses for the in-chat card
-   * (`intentHeroImage`), so a plan resolves the same way on every surface. A plan
-   * had NO hero image at all before this wave: `ImageGallery` was gated behind
-   * `!isCuratedCard`, so the only thing at the top of a plan was a black slab.
-   *
-   * The remaining stop photographs stay on their own stop rows, which is why the
-   * Gallery section does not render for a plan — not because of a branch, but
-   * because a plan has no second photo OF ITS OWN.
-   */
-  const heroCover: string | null =
-    (Array.isArray(card.images) && card.images.length > 0 ? card.images[0] : null) ??
-    (planStops.length > 0 ? planStops[0].imageUrl ?? null : null) ??
-    null;
-
-  /**
-   * The body's prose. A single place's is the venue owner's pitch
-   * (`card.description`, META-ORCH-1290's only route to a buyer on the deck); a
-   * plan's is its TAGLINE, which the deleted dark header used to carry at 14pt on
-   * rgba(255,255,255,0.7) and which the single-place branch dropped on the floor
-   * along with the rest of CardInfoSection.
-   *
-   * One slot, two sources — the same shape as the meta spans, and the reason this
-   * is a DATA difference rather than a second composition.
-   */
-  const bodyDescription = isCuratedCard ? planCard?.tagline : card.description;
-
-  /*
-    THE PLATE'S FACTS — from the SAME producer the collapsed deck card calls.
-
-    #1605 P1-6: this call used to pass three already-resolved labels the modal
-    derived itself (envelope price, a locally re-summed duration, a stop count
-    over ALL stops) while `CuratedExperienceSwipeCard` derived five spans its
-    own way. Same card, one tap apart, and the count, the duration and the
-    distance all changed — which contradicts the one claim the whole wave rests
-    on. Both surfaces now hand `curatedPlanSpans` the CARD and nothing but
-    viewer state, so they cannot disagree.
-  */
-  const heroSpans = isCuratedCard && planCard
-    ? curatedPlanSpans(planCard, {
-        measurementSystem: accountPreferences?.measurementSystem,
-        formatMoney: (price) =>
-          formatDisplayPrice({ ...price, viewerCurrency: accountPreferences?.currency })?.text ?? null,
-        spendLevelLabel: (level) => t(`cards:price.spend_${level}`),
-        freeLabel: t('cards:swipeable.free', { defaultValue: 'Free' }),
-        stopCountLabel: (count) =>
-          t('cards:expanded.stop_count', { defaultValue: '{{count}} stops', count }),
-        intentLabel: (slug) => t(`common:intent_${slug}`),
-        isBrandExperience: isBrandExperiencePlan,
-      })
-    : singlePlaceSpans(card, {
-        measurementSystem: accountPreferences?.measurementSystem,
-        // The viewer-relative distance the modal already computes for
-        // chat-mounted cards, which by definition carry no `card.distance`.
-        // Nothing read it after the wave-4 rewrite (#1605 rework).
-        viewerDistanceKm: viewerDistance,
-      });
-
-  /**
    * #4347 — a brand experience's price, when converted, also says what the host
    * charges: "₦100,000 · charged in naira" under the plate's "≈ $74". AI plans
    * show a spend level and have no amount to restate.
@@ -1510,130 +1404,6 @@ export default function ExpandedCardModal({
       },
     );
 
-  /*
-    THE PLATE SAYS "2 stops" AND THE PLAN SECTION LISTS THREE ROWS — #1605 rework.
-
-    Both numbers are correct and they were never wrong TOGETHER before, because
-    they had never been on one screen: the plate's count is over the plan's
-    NON-OPTIONAL stops (`planVisibleStops` — the same set `mutateCuratedCard`
-    computes the title, the total price and the duration over), while `StopList`
-    renders every `planStops` entry. `generate-curated-experiences` really does
-    emit `optional: true` stops (the romantic combos' Flowers stop, :501/:529/:575),
-    so a live 3-row / "2 stops" card is not a hypothetical.
-
-    Fixing the COUNT would be wrong — it would disagree with the card's own title,
-    which is the main stops joined by " → ". Dropping the row would be worse: an
-    optional stop is a real suggestion the user can act on. So the LIST says which
-    it is. An optional stop takes the `OPTIONAL` word in the index-chip slot
-    instead of an ordinal — the same mechanism the picnic grocery row's `SHOP`
-    chip already uses — and the main stops keep the contiguous 1…N numbering the
-    count is about. Two numbers that disagree become one number and one label.
-  */
-  /*
-    WHY THIS COUNTS THE STOPS DIRECTLY INSTEAD OF ASKING `planVisibleStops`.
-
-    The guard below reads "do not mark rows optional when there are no MAIN
-    stops", and until this line was fixed it could never fire: it took its count
-    from `planVisibleStops`, which ends in `main.length > 0 ? main : all` — the
-    deliberate fallback that gives an all-optional plan an identity (a title, a
-    price, a duration) instead of an empty one. Through that fallback the count
-    is positive for ANY non-empty plan, so the conjunct was dead and an
-    all-optional plan rendered "3 stops" on the plate above three rows that were
-    all chipped `Optional` and none of which was numbered — the same
-    two-numbers-one-screen defect the chip exists to close, inverted.
-
-    Counting the genuinely non-optional stops makes the guard live and leaves
-    every reachable plan byte-identical (with at least one main stop the two
-    quantities are the same number). On an all-optional plan there is no
-    main/optional distinction left to draw, so no row is marked and the rows
-    number 1..N against the same N the plate states. Latent when found — every
-    generator type definition pairs the optional Flowers stop with two required
-    ones — and now closed rather than left as a guard that reads live and is not.
-  */
-  const planMainStopCount = planStops.filter((stop) => stop.optional !== true).length;
-  let planOrdinal = 0;
-  /**
-   * #1706 — the leg between the plan's first and last stop.
-   *
-   * `travelTimeFromPreviousStopMin` is written by `replaceStopInCard` using
-   * `estimateTravelMinutes(haversineKm(...))` — real per-mode speeds over the
-   * real distance between two real coordinates. It is COMPUTED, never measured,
-   * so `estimated: true` is not a hedge: see `PlanTimelineLeg.estimated` for why
-   * that disclosure is the condition of this number being on the sheet at all.
-   *
-   * Null when the plan carries no figure. Nothing is invented to fill the gap —
-   * the leg simply does not render.
-   */
-  const planTimelineLeg: PlanTimelineLeg | null = (() => {
-    const last = planStops[planStops.length - 1];
-    const minutes = last?.travelTimeFromPreviousStopMin;
-    if (typeof minutes !== 'number' || !(minutes > 0)) return null;
-    return {
-      minutes,
-      mode: last?.travelModeFromPreviousStop ?? userPreferences?.travel_mode ?? null,
-      estimated: true,
-    };
-  })();
-
-  const planListStops: StopListStop[] = planStops.map((stop, i) => {
-    const isOptional = stop.optional === true && planMainStopCount > 0;
-    if (!isOptional) planOrdinal += 1;
-    // Cover first, then the rest, de-duplicated and photos only. `imageUrls`
-    // carries up to five per stop and only the first was reachable after the
-    // per-stop pager was deleted (#1605 P2-3).
-    const stopPhotos = [
-      ...(Array.isArray(stop.imageUrls) ? stop.imageUrls : []),
-      stop.imageUrl,
-    ].filter(
-      (uri, idx, all): uri is string =>
-        typeof uri === 'string' &&
-        uri.trim().length > 0 &&
-        !isVideoUrl(uri) &&
-        all.indexOf(uri) === idx,
-    );
-    return {
-    key: `${stop.placeId ?? 'stop'}_${i}`,
-    index: i + 1,
-    // The ordinal counts only the stops the PLATE counts, so "2 stops" and the
-    // rows numbered 1 and 2 are exactly the same claim. An optional stop is not
-    // in that sequence and so gets no number at all — it is marked in the row
-    // instead (`optional` below).
-    indexLabel: isOptional ? '' : String(planOrdinal),
-    name: stop.placeName,
-    imageUrl: stopPhotos[0] ?? null,
-    imageUrls: stopPhotos,
-    // Normalized HERE so the row's gate is the url, not the raw string — the
-    // same fix the single-place Website row carries (a handler that bails on a
-    // null normalization behind a control gated on the raw value is a visible
-    // dead button).
-    website: normalizeWebsiteUrl(stop.website ?? undefined),
-    meta: stopMetaText(stop, (minutes) =>
-      t('cards:expanded.minutes_here', { defaultValue: '{{count}} min here', count: minutes }),
-    ),
-    address: stop.address ?? null,
-    description: stop.aiDescription ?? null,
-    openingHours: stop.openingHours,
-    // A stop carries no offset today, so the badge hides rather than lying about
-    // a Lagos venue against a London clock. Producer-side; see #1605's D2.
-    utcOffsetMinutes: (stop as { utcOffsetMinutes?: number | null }).utcOffsetMinutes ?? null,
-    travelMinutes: stop.travelTimeFromPreviousStopMin ?? null,
-    travelMode: stop.travelModeFromPreviousStop ?? null,
-    canReplace: !isOptional,
-    // #1705 — from the slot's OWN comboCategory (the real picnic plan carries
-    // 'groceries' on stop 1 and 'nature' on stop 2). Null for anything we cannot
-    // state without guessing; the row then renders exactly as it did before.
-    purpose: stopPurpose(stop),
-    // #1703 rework — resolved ONCE here, and the only thing that decides whether
-    // the stop gets a Call control. A separate presence test on `stop.phone`
-    // would let the control render for a number the link cannot be built from.
-    dialable: (() => {
-      const d = dialablePhone(stop.phone ?? null, stop.countryCode ?? null);
-      return d === null ? null : { display: d.display, tel: d.tel };
-    })(),
-    optional: isOptional,
-    };
-  });
-
   /**
    * THE PICNIC SUPPLIES. #1605 P1-3.
    *
@@ -1721,10 +1491,6 @@ export default function ExpandedCardModal({
         indexLabel: t('cards:expanded.shop_chip', { defaultValue: 'SHOP' }),
         name: grocery.name,
         imageUrl: grocery.imageUrl ?? null,
-        imageUrls: typeof grocery.imageUrl === 'string' && grocery.imageUrl.length > 0
-          ? [grocery.imageUrl]
-          : [],
-        website: null,
         /*
           The grocery row takes rating + REVIEW COUNT but NOT the type label:
           its `type` is `groceries`, which the companion map does not carry and
@@ -1741,13 +1507,8 @@ export default function ExpandedCardModal({
         utcOffsetMinutes: null,
         travelMinutes: null,
         travelMode: null,
-        canReplace: false,
         // #1705 — no comboCategory on this producer, so no purpose. Never guessed.
         purpose: null,
-        // No comboCategory and no place-pool row on this producer, so neither a
-        // purpose nor a phone. Never guessed.
-        dialable: null,
-        optional: false,
       });
     }
     const companions = strollData?.companionStops ?? [];
@@ -1758,10 +1519,6 @@ export default function ExpandedCardModal({
         indexLabel: String(rows.length + 1),
         name: companion?.name ?? '',
         imageUrl: companion?.imageUrl ?? null,
-        imageUrls: typeof companion?.imageUrl === 'string' && companion.imageUrl.length > 0
-          ? [companion.imageUrl]
-          : [],
-        website: null,
         /*
           THE ROW'S SUBTITLE IS BACK. `type` and `reviewCount` are written by
           `get-companion-stops` on every row and were read by nothing after the
@@ -1776,13 +1533,8 @@ export default function ExpandedCardModal({
         utcOffsetMinutes: null,
         travelMinutes: null,
         travelMode: null,
-        canReplace: false,
         // #1705 — no comboCategory on this producer, so no purpose. Never guessed.
         purpose: null,
-        // No comboCategory and no place-pool row on this producer, so neither a
-        // purpose nor a phone. Never guessed.
-        dialable: null,
-        optional: false,
       });
     });
     return rows.filter((row) => row.name.trim().length > 0);
@@ -1931,6 +1683,103 @@ export default function ExpandedCardModal({
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
+  /*
+    ═══════════════════════════════════════════════════════════════════════════
+    #4347 wave 3 — THE EXPANDED CURATED PLAN's sheet-level pieces: the start
+    time, the Spend tile, "Route all stops", the navigator jump, the swap grid.
+    ═══════════════════════════════════════════════════════════════════════════
+  */
+  const planStart: Date = planStartOverride ?? defaultPlanStart(sheetNow, sheetScheduledAt);
+  const planOrdinals = stopOrdinals(planStops);
+  const planSpend: { value: string; sub: string | null } | null = (() => {
+    if (!isCuratedCard || !planCard) return null;
+    const value = curatedPlanPriceLabel(planCard, {
+      formatMoney: (price) =>
+        formatDisplayPrice({ ...price, viewerCurrency: accountPreferences?.currency })?.text ?? null,
+      spendLevelLabel: (level) => t(`cards:price.spend_${level}`),
+      freeLabel: t('cards:swipeable.free', { defaultValue: 'Free' }),
+      isBrandExperience: isBrandExperiencePlan,
+    });
+    return value === null ? null : { value, sub: planChargedInLine };
+  })();
+  const directionsUnavailable = (): void => {
+    toastManager.show(t('cards:expanded.directions_unavailable', { defaultValue: "Couldn't open directions" }), 'error');
+  };
+  const routeAllStops = (nextIndex: number, mode: 'driving' | 'walking' | 'transit' | 'bicycling'): void =>
+    openRouteAllStops(
+      planStops.map((stop) => ({ lat: stop.lat, lng: stop.lng, label: stop.placeName || stop.address, googlePlaceId: stop.placeId || null })),
+      { mode, nextIndex, onUnavailable: directionsUnavailable },
+    );
+  /** The navigator / route strip / warning jump: smooth scroll, then a pulse. */
+  const jumpToStop = (index: number): void => {
+    const y = planScroll.jumpTarget(index);
+    if (y === null) return;
+    scrollRef.current?.scrollTo({ y, animated: !reducedMotion });
+    if (!reducedMotion) planScroll.pulse(index);
+  };
+  /** The existing alternatives grid (replace-curated-stop), inside the stop card. */
+  const alternativesPanel = (stopIndex: number): React.ReactNode => (
+    <View style={styles.altPanel} testID="plan-swap-panel">
+      <View style={styles.altHeader}>
+        <Text style={styles.altTitle}>
+          {t('cards:plan.swap_title', { number: stopIndex + 1 })}
+        </Text>
+        <TouchableOpacity
+          onPress={() => {
+            setReplacingStopIndex(null);
+            clearAlternatives();
+          }}
+          accessibilityRole="button"
+          hitSlop={8}
+        >
+          <Text style={styles.altCancel}>{t('expanded_details:action_buttons.cancel', { defaultValue: 'Cancel' })}</Text>
+        </TouchableOpacity>
+      </View>
+      {isLoadingAlts ? (
+        <ActivityIndicator size="small" color={SPINE.accentFill} />
+      ) : altsError ? (
+        <SectionError
+          message={t('cards:expanded.couldnt_load_alternatives')}
+          retryLabel={t('cards:expanded.retry')}
+          onRetry={() => handleReplaceStop(stopIndex)}
+        />
+      ) : alternatives.length === 0 ? (
+        <Text style={styles.altEmpty}>{t('cards:expanded.no_alternatives')}</Text>
+      ) : (
+        /*
+          A WRAPPING GRID, not a horizontal ScrollView: a nested horizontal
+          scrollable fights the sheet's pan gesture.
+        */
+        <View style={styles.altGrid}>
+          {alternatives.map((alt) => (
+            <TouchableOpacity
+              key={alt.placeId}
+              style={styles.altCard}
+              activeOpacity={0.85}
+              onPress={() => handleSelectAlternative(alt)}
+              accessibilityRole="button"
+              accessibilityLabel={alt.placeName}
+            >
+              {alt.imageUrl ? (
+                <Image source={{ uri: alt.imageUrl }} style={styles.altImage} resizeMode="cover" />
+              ) : (
+                <View style={styles.altImage} />
+              )}
+              <Text style={styles.altName} numberOfLines={1}>
+                {alt.placeName}
+              </Text>
+              {alt.rating > 0 ? (
+                <Text style={styles.altMeta} numberOfLines={1}>
+                  {`★ ${alt.rating.toFixed(1)}`}
+                </Text>
+              ) : null}
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+
   // [ORCH-0696 S-6] Conditionally render sticky header + review nav for
   // review-flow surfaces only (Discover deck + Solo deck pass nav props).
   // Drag handle owns chrome role on all other 6 mount surfaces.
@@ -2047,7 +1896,29 @@ export default function ExpandedCardModal({
               }
             : {}),
         }}
-        header={reviewNavHeader}
+        header={
+          isCuratedCard && planStops.length > 1 ? (
+            <>
+              {reviewNavHeader ? (
+                <View onLayout={(e) => setReviewHeaderHeight(e.nativeEvent.layout.height)}>{reviewNavHeader}</View>
+              ) : null}
+              {/* #4347 wave 3 — the sticky stop navigator: absolutely placed over the top of the body. */}
+              <PlanStopNavigator
+                store={planScroll}
+                stops={planStops.map((stop, i) => ({
+                  key: `${stop.placeId}_${i}`,
+                  ordinal: planOrdinals[i] ?? null,
+                  name: stop.placeName,
+                }))}
+                onJump={jumpToStop}
+                reducedMotion={reducedMotion}
+                top={reviewNavHeader ? reviewHeaderHeight : 0}
+              />
+            </>
+          ) : (
+            reviewNavHeader
+          )
+        }
         /*
           #4347 wave 2 — THE PINNED ACTION BAR (single place): Save · Schedule ·
           Share · one main button ("Reserve a table" when the venue takes
@@ -2114,6 +1985,56 @@ export default function ExpandedCardModal({
                 }
               />
             </View>
+          ) : planCard ? (
+            /*
+              #4347 wave 3 — THE PLAN's pinned bar: Save plan · Route all stops ·
+              Share · "Schedule this plan". The same ActionButtons, so the
+              curated paywall (Save and Schedule) and the arrival-time safety
+              check (checkAllCuratedStopsOpen) are unchanged; the picker opens
+              on the start time chosen on the sheet. It replaces the in-flow
+              band. (A host experience never gets here — it opens its page.)
+            */
+            <View style={{ paddingBottom: Math.max(insets.bottom, 12) }}>
+              <ActionButtons
+                variant="pinned"
+                card={planCard as unknown as ExpandedCardData}
+                onSave={onSave}
+                onClose={onClose}
+                isSaved={isSaved}
+                userPreferences={userPreferences}
+                currentMode={currentMode}
+                onCardRemoved={onCardRemoved}
+                onScheduleSuccess={() => onClose()}
+                onSchedulePickerModalVisibilityChange={setIsSchedulePickerOpen}
+                onPaywallRequired={onPaywallRequired}
+                canAccessCurated={canAccessCurated}
+                onShare={() => admitExpandedShare(card)}
+                shareLabel={t('cards:swipeable.share_card', { defaultValue: 'Share {{title}}', title: card.title })}
+                shareBusy={shareHandoffBusy}
+                shareControlRef={shareControlRef}
+                primaryScheduleLabel={t('cards:plan.schedule_cta')}
+                initialScheduleAt={planStart}
+                afterSave={
+                  planStops.length > 0 ? (
+                    <TouchableOpacity
+                      testID="sheet-route-all"
+                      style={styles.routeAllButton}
+                      onPress={() => {
+                        const timeline = planTimeline(planStops, planStart, effectiveTravelMode);
+                        routeAllStops(nextStopIndex(timeline, new Date()), planMode(timeline, effectiveTravelMode));
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel={Platform.OS === 'ios' ? t('cards:plan.route_next') : t('cards:plan.route_all')}
+                    >
+                      <Icon name="map-outline" size={20} color={SPINE.prose} />
+                      <Text style={styles.routeAllLabel} numberOfLines={1} maxFontSizeMultiplier={1.2}>
+                        {Platform.OS === 'ios' ? t('cards:plan.route_next') : t('cards:plan.route_all')}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null
+                }
+              />
+            </View>
           ) : undefined
         }
         scrollMode="scroll"
@@ -2121,6 +2042,12 @@ export default function ExpandedCardModal({
         scrollProps={{
           ref: scrollRef,
           style: styles.scrollView,
+          // #4347 wave 3 — the plan's navigator reads the scroll from a store, so
+          // a scroll frame never re-renders this sheet.
+          onScroll: isCuratedCard
+            ? (e: { nativeEvent: { contentOffset: { y: number } } }) => planScroll.onScroll(e.nativeEvent.contentOffset.y)
+            : undefined,
+          scrollEventThrottle: 16,
           contentContainerStyle: [
             styles.scrollContent,
             { paddingBottom: Math.max(insets.bottom, 16) + 24 },
@@ -2169,303 +2096,68 @@ export default function ExpandedCardModal({
               </>
             ) : (
               <>
-            {isCuratedCard ? (
-              <>
-            {/*
-              ═══════════════════════════════════════════════════════════════
-              THE HERO. Always. On both branches.
-
-              It carries the SAME PLATE as the collapsed deck card — same size,
-              same radius, same position — so opening a card CONTINUES it rather
-              than cutting to a new screen. That continuity is arithmetic, not an
-              impression: the scrim formula reads only the plate's card-local
-              geometry, so every contrast figure comes out identical to the deck
-              card's. See ExpandedCardHero's header, and T-11 in
-              packages/card-identity/__tests__, which measures it.
-              ═══════════════════════════════════════════════════════════════
-            */}
-            <ExpandedCardHero
-              cover={heroCover}
-              title={card.title}
-              spans={heroSpans}
-              curated={isCuratedCard}
-              sheetHeight={sheetHeight}
-              beenHere={
-                /*
-                  THE ONLY BEEN-HERE CONTROL IN THE SYSTEM, and it lives on the
-                  plate. `ActionButtons`' implementation — gated on two props no
-                  caller has ever passed — is DELETED rather than wired up;
-                  wiring it would have given this sheet a second Been-here in a
-                  different shape at a different size with a different state
-                  machine, three sections below the first one.
-
-                  Because it renders here, it is reachable from the six entry
-                  points that have no collapsed card behind them: Likes,
-                  Calendar, chat, both collab sheets and a friend's profile.
-                */
-                <BeenHereControl
-                  userId={user?.id}
-                  card={{
-                    id: card.id,
-                    title: card.title,
-                    category: card.category,
-                    image: card.image,
-                    priceRange: card.priceRange ?? null,
-                    address: card.address,
-                    placeId: card.placeId ?? (card as any).source?.placeId,
-                    cardType: (card as any).cardType,
-                    placePoolId: (card as any).placePoolId,
-                  }}
-                />
-              }
-              onSharePress={() => admitExpandedShare(card)}
-              shareLabel={shareHandoffBusy
-                ? `Opening sharing for ${card.title}`
-                : t('cards:swipeable.share_card', {
-                    defaultValue: 'Share {{title}}',
-                    title: card.title,
-                  })}
-              shareHandoffEnabled
-              shareBusy={shareHandoffBusy}
-              shareControlRef={shareControlRef}
-              onClosePress={onClose}
-              closeLabel={t('common:close', { defaultValue: 'Close' })}
-            />
-
-            {planChargedInLine !== null ? (
-              <Text style={styles.chargedInLine}>{planChargedInLine}</Text>
-            ) : null}
-
-            {/* Slot 1 — a system message, not a content section: it keeps its fill. */}
-            {card && <LockedInBanner card={card} />}
-
-            {/* Slot 2 — the QR's light quiet zone is what the white body gives it for free. */}
-            {reservationPass && <ReservationPassSection pass={reservationPass} />}
-
-            {/*
-              Slot 3 — THE ACTION BAND, immediately below the hero, ON BOTH
-              BRANCHES. Before this wave it was LAST on a single place and
-              MID-SCROLL on a plan. There is one position now and it does not
-              depend on what kind of card you opened.
-            */}
-            <ActionButtons
-              card={(planCard ?? card) as ExpandedCardData}
-              onSave={onSave}
-              onClose={onClose}
-              isSaved={isSaved}
-              userPreferences={userPreferences}
-              currentMode={currentMode}
-              onCardRemoved={onCardRemoved}
-              onScheduleSuccess={() => onClose()}
-              onSchedulePickerModalVisibilityChange={setIsSchedulePickerOpen}
-              onPaywallRequired={onPaywallRequired}
-              canAccessCurated={canAccessCurated}
-              reserve={
-                /*
-                  ALL THREE CONDITIONS, BECAUSE THE SHEET REQUIRES ALL THREE.
-
-                  `venue_id !== null` is not decoration: `VenueReserveSheet`
-                  takes `venueId` and its own render gate below requires it. A
-                  button gated on two of the three conditions renders "Reserve a
-                  table" on a reservable venue whose `venue_id` is null, the tap
-                  sets `isReserveSheetOpen`, the sheet's gate is false and
-                  NOTHING OPENS, forever, with no feedback — Constitution 1.
-                  The ORCH-1148 strict-grep gate pins all three on both sites.
-                */
-                venueReservable?.reservable === true &&
-                venueReservable.brand_id !== null &&
-                venueReservable.venue_id !== null && (
-                  <TouchableOpacity
-                    style={reserveStyles.reserveButton}
-                    activeOpacity={0.85}
-                    onPress={() => setIsReserveSheetOpen(true)}
-                    accessibilityRole="button"
-                    accessibilityLabel={t('cards:sheet.reserve_a11y', { name: card.title })}
-                  >
-                    <Icon name="restaurant-outline" size={18} color={SPINE.onAccent} />
-                    <Text style={reserveStyles.reserveButtonText} numberOfLines={1}>
-                      {t('cards:sheet.reserve')}
-                    </Text>
-                  </TouchableOpacity>
-                )
-              }
-            />
-
-            {/*
-              Slot 4 — the description, the typical spend and the tip. A plan's
-              TAGLINE is a description, so it lands here too: before this wave the
-              tagline lived in the dark header at 14pt on rgba(255,255,255,0.7),
-              and the single-place branch dropped its description entirely along
-              with the rest of this component.
-            */}
-            <CardInfoSection
-              description={bodyDescription}
-              tip={isCuratedCard ? null : card.tip}
-              discoveryPrice={card}
-            />
-
-
-            {/*
-              Slot 5c — SUPPLIES, ABOVE THE PLAN. #1705.
-
-              It sat BELOW the stops ("directly under the stops it is shopped
-              for"). Seth, after using it: "The supplies section should come just
-              before the plan and indicate what it's for." He is right about the
-              order for the same reason the list exists — you buy before you go,
-              so the list is the first thing the plan asks of you, not a footnote
-              to it.
-            */}
-            <SuppliesList items={supplies} purposeLine={suppliesPurposeLine} />
-
-            {/* Slot 6 — THE PLAN (a plan has stops) … */}
-            <View onLayout={(e) => setPlanSectionY(e.nativeEvent.layout.y)}>
-              <StopList
-                heading={t('cards:expanded.the_plan', { defaultValue: 'The plan' })}
-                stops={planListStops}
-                customized={curatedLocalCard !== null}
-                onDirections={(stop) => openDirectionsForAddress(stop.address)}
-                onReplace={(stop) => handleReplaceStop(stop.index - 1)}
-                /* #1605 P2-3 — the stop's own photos, through the SHARED
-                   lightbox. It had exactly one entry point in the app and it
-                   was the deleted per-stop pager. */
-                onOpenPhotos={(stop) =>
-                  setCuratedLightbox({
-                    visible: true,
-                    images: [...stop.imageUrls],
-                    initialIndex: 0,
-                  })
+            {isCuratedCard && planCard ? (
+              <CuratedPlanBody
+                title={planCard.title || card.title}
+                kicker={t('cards:deck.curated_kicker')}
+                tagline={planCard.tagline ?? null}
+                stops={planStops}
+                originalStops={curatedCard?.stops ?? null}
+                isBrandExperience={isBrandExperiencePlan}
+                start={planStart}
+                onStartChange={setPlanStartOverride}
+                now={sheetNow}
+                viewer={viewerLoc ? { lat: viewerLoc.lat, lng: viewerLoc.lng } : null}
+                fallbackMode={effectiveTravelMode}
+                measurementSystem={accountPreferences?.measurementSystem}
+                spend={planSpend}
+                beenHere={
+                  <BeenHereControl
+                    userId={user?.id}
+                    card={{
+                      id: card.id,
+                      title: card.title,
+                      category: card.category,
+                      image: card.image,
+                      priceRange: card.priceRange ?? null,
+                      address: card.address,
+                      placeId: card.placeId ?? (card as any).source?.placeId,
+                      cardType: (card as any).cardType,
+                      placePoolId: (card as any).placePoolId,
+                    }}
+                  />
                 }
-                onOpenWebsite={(stop) => openStopWebsite(stop.website)}
-                onCall={(stop) => {
-                  if (stop.dialable === null) return;
-                  Linking.openURL(`tel:${stop.dialable.tel}`).catch(() =>
-                    toastManager.show(stop.dialable?.display ?? '', 'error'),
-                  );
+                banners={
+                  <>
+                    <LockedInBanner card={card} />
+                    {reservationPass && <ReservationPassSection pass={reservationPass} />}
+                  </>
+                }
+                supplies={supplies}
+                suppliesPurposeLine={suppliesPurposeLine}
+                reducedMotion={reducedMotion}
+                active={visible && !anyChildModalOpen}
+                onClose={onClose}
+                closeLabel={t('common:close', { defaultValue: 'Close' })}
+                onOpenLightbox={(images, initialIndex) =>
+                  setCuratedLightbox({ visible: true, images, initialIndex })
+                }
+                onDirections={(stop) =>
+                  openPlaceDirections(
+                    { lat: stop.lat, lng: stop.lng, label: stop.placeName || stop.address, googlePlaceId: stop.placeId || null },
+                    { onUnavailable: directionsUnavailable },
+                  )
+                }
+                onRouteAll={routeAllStops}
+                onSwap={handleReplaceStop}
+                swapPanel={(index) => (replacingStopIndex === index ? alternativesPanel(index) : null)}
+                onCall={(tel, display) => {
+                  Linking.openURL(`tel:${tel}`).catch(() => toastManager.show(display, 'error'));
                 }}
-                onExpandedRowLayout={(y) =>
-                  scrollRef.current?.scrollTo({ y: planSectionY + y, animated: true })
-                }
-                replacePanel={(stop) =>
-                  replacingStopIndex === stop.index - 1 ? (
-                    <View style={styles.altPanel}>
-                      {isLoadingAlts ? (
-                        <ActivityIndicator size="small" color={SPINE.accentFill} />
-                      ) : altsError ? (
-                        <SectionError
-                          message={t('cards:expanded.couldnt_load_alternatives')}
-                          retryLabel={t('cards:expanded.retry')}
-                          onRetry={() => handleReplaceStop(stop.index - 1)}
-                        />
-                      ) : alternatives.length === 0 ? (
-                        <Text style={styles.altEmpty}>{t('cards:expanded.no_alternatives')}</Text>
-                      ) : (
-                        /*
-                          A WRAPPING GRID, not a horizontal ScrollView. The strip
-                          was one of the nested scrollables inside the sheet's
-                          vertical scroll, and it fought the sheet's pan gesture
-                          every time a thumb crossed it.
-                        */
-                        <View style={styles.altGrid}>
-                          {alternatives.map((alt) => (
-                            <TouchableOpacity
-                              key={alt.placeId}
-                              style={styles.altCard}
-                              activeOpacity={0.85}
-                              onPress={() => handleSelectAlternative(alt)}
-                              accessibilityRole="button"
-                              accessibilityLabel={alt.placeName}
-                            >
-                              {alt.imageUrl ? (
-                                <Image
-                                  source={{ uri: alt.imageUrl }}
-                                  style={styles.altImage}
-                                  resizeMode="cover"
-                                />
-                              ) : (
-                                <View style={styles.altImage} />
-                              )}
-                              <Text style={styles.altName} numberOfLines={1}>
-                                {alt.placeName}
-                              </Text>
-                              {alt.rating > 0 ? (
-                                <Text style={styles.altMeta} numberOfLines={1}>
-                                  {`★ ${alt.rating.toFixed(1)}`}
-                                </Text>
-                              ) : null}
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                      )}
-                    </View>
-                  ) : null
-                }
+                onWebsite={(url) => openStopWebsite(url)}
+                scroll={planScroll}
+                onJump={jumpToStop}
               />
-            </View>
-
-            {/*
-              Slot 8 — RIGHT NOW. ONE call site, ONE prop shape, both branches.
-
-              A plan's coordinate IS `stops[0]`, because that is where the plan
-              starts; it is stated once, at the fetch, rather than discovered
-              twice.
-
-              This comment used to also claim the wave had fixed time-of-day-aware
-              weather for scheduled plans. It had not, and the claim is retracted:
-              both fetch branches pass the venue's coordinates and nothing else,
-              because `weatherService` only ever returns CURRENT conditions. The
-              full retraction, with the two independent reasons the feature has
-              never existed, is in `ConditionsSection.tsx`'s header.
-            */}
-            <ConditionsSection
-              weather={weatherData}
-              busyness={busynessData}
-              loadingWeather={loadingWeather}
-              loadingBusyness={loadingBusyness}
-              measurementSystem={accountPreferences?.measurementSystem}
-            />
-
-            {/* Slot 9 — DETAILS. A plan gets Starts at / Ends near; a place gets the rest. */}
-            <PracticalDetailsSection
-              address={isCuratedCard ? undefined : card.address}
-              openingHours={isCuratedCard ? undefined : card.openingHours}
-              phone={isCuratedCard ? undefined : card.phone}
-              countryCode={isCuratedCard ? undefined : card.countryCode}
-              website={isCuratedCard ? undefined : card.website}
-              utcOffsetMinutes={isCuratedCard ? null : cardUtcOffsetMinutes}
-              /*
-                #1706 — the PLAN's Details is now `PlanTimeline` below, so this
-                section renders the single-place branch only. Two rows that
-                happen to be ordered do not say a plan is a sequence; a drawn
-                spine does.
-              */
-              onLinkUnavailable={(what) =>
-                toastManager.show(t('cards:expanded.link_unavailable', {
-                    defaultValue: "Couldn't open {{what}}",
-                    what,
-                  }), 'error')
-              }
-            />
-
-            {/*
-              #1706 — THE PLAN'S DETAILS, DRAWN. Seth: "Details section should
-              show an animated vertical timeline."
-
-              Curated branch only. A single place's Details is an address, hours,
-              a phone and a website — attributes with no order among them, so a
-              timeline over them would be decoration pretending to be structure.
-            */}
-            {isCuratedCard ? (
-              <PlanTimeline
-                heading={t('expanded_details:action_buttons.details', { defaultValue: 'Details' })}
-                startsAt={planStops[0]?.address ?? null}
-                startsAtName={planStops[0]?.placeName ?? null}
-                endsNear={planStops[planStops.length - 1]?.address ?? null}
-                endsNearName={planStops[planStops.length - 1]?.placeName ?? null}
-                leg={planTimelineLeg}
-              />
-            ) : null}
-
-              </>
             ) : (
               <>
             {/*
@@ -2764,18 +2456,25 @@ export default function ExpandedCardModal({
 // Night Out detail styles
 
 const styles = StyleSheet.create({
+  // #4347 wave 3 — the plan bar's "Route all stops".
+  routeAllButton: {
+    minWidth: 52,
+    height: 48,
+    paddingHorizontal: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+  },
+  routeAllLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: SPINE.factValue,
+  },
   // #4347 wave 2 — the pinned bar's main button takes the remaining width.
   pinnedPrimary: {
     flex: 1,
   },
-  // #4347 — the converted price's original, under the plate.
-  chargedInLine: {
-    paddingHorizontal: SPINE.gutter,
-    paddingTop: 8,
-    fontSize: 13,
-    lineHeight: 18,
-    color: SPINE.muted,
-  },
+
   reviewNavBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2922,6 +2621,9 @@ const styles = StyleSheet.create({
   // The alternatives panel. A WRAPPING GRID, not a horizontal ScrollView — see
   // the render site: the strip was one of the nested scrollables.
   altPanel: { gap: 12, paddingTop: 4 },
+  altHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  altTitle: { fontSize: 14, fontWeight: '700', color: SPINE.factValue },
+  altCancel: { fontSize: 14, fontWeight: '600', color: SPINE.link },
   altEmpty: { fontSize: 14, color: SPINE.factLabel },
   altGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   altCard: { width: 140, gap: 4 },
