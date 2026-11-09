@@ -276,5 +276,9 @@
   "exp.not_found_title": "A kò rí ìrírí yìí",
   "exp.not_found_body": "Ó lè jẹ́ pé ìrírí yìí kò tíì jáde, tàbí ìjápọ̀ náà kò tọ̀nà.",
   "venue_page.experiences_here_one": "Ìrírí níbí",
-  "venue_page.experiences_here_other": "Àwọn ìrírí níbí"
+  "venue_page.experiences_here_other": "Àwọn ìrírí níbí",
+  "sheet.sound": "Ohùn",
+  "sheet.mute": "Pa ohùn",
+  "sheet.sound_on_a11y": "Tan ohùn",
+  "sheet.sound_off_a11y": "Pa ohùn mọ́"
 }

@@ -276,5 +276,9 @@
   "exp.not_found_title": "अनुभव नहीं मिला",
   "exp.not_found_body": "शायद यह अनुभव अभी लाइव नहीं है, या लिंक गलत है।",
   "venue_page.experiences_here_one": "यहाँ एक अनुभव",
-  "venue_page.experiences_here_other": "यहाँ के अनुभव"
+  "venue_page.experiences_here_other": "यहाँ के अनुभव",
+  "sheet.sound": "आवाज़",
+  "sheet.mute": "म्यूट",
+  "sheet.sound_on_a11y": "आवाज़ चालू करें",
+  "sheet.sound_off_a11y": "आवाज़ म्यूट करें"
 }

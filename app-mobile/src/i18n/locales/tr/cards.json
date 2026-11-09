@@ -276,5 +276,9 @@
   "exp.not_found_title": "Deneyim bulunamadı",
   "exp.not_found_body": "Bu deneyim henüz yayında olmayabilir ya da bağlantı yanlış.",
   "venue_page.experiences_here_one": "Burada bir deneyim",
-  "venue_page.experiences_here_other": "Buradaki deneyimler"
+  "venue_page.experiences_here_other": "Buradaki deneyimler",
+  "sheet.sound": "Ses",
+  "sheet.mute": "Sessiz",
+  "sheet.sound_on_a11y": "Sesi aç",
+  "sheet.sound_off_a11y": "Sesi kapat"
 }

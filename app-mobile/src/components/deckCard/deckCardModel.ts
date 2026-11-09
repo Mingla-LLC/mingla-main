@@ -13,8 +13,8 @@
  */
 import { FACT_LINE, PHOTO_PAGER } from '../../../../packages/card-identity/index.js';
 import { isVideoUrl } from '../../utils/videoUrl';
-import { curatedArrivalTimes } from '../../utils/curatedStopsAvailability';
-import { extractWeekdayText, getOpenStatusAt, type OpenStatus } from '../../utils/openingHoursUtils';
+import { MIN_USEFUL_OPEN_MINUTES, curatedArrivalTimes } from '../../utils/curatedStopsAvailability';
+import { extractWeekdayText, getOpenStatusAt, openMinutesLeftAt, type OpenStatus } from '../../utils/openingHoursUtils';
 import type { MetaSpanInput } from '../deckCardPlate';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -422,7 +422,10 @@ export function curatedSmartChip(stops: readonly ArrivalStop[] | null | undefine
   for (let i = 0; i < list.length; i += 1) {
     const stop = list[i];
     const weekday = extractWeekdayText(stop.openingHours as Parameters<typeof extractWeekdayText>[0]);
-    if (weekday !== null && getOpenStatusAt(weekday, timings[i].arrival, stop.utcOffsetMinutes ?? null)?.kind === 'closed') {
+    // #4347 retest Q-4 — the schedule check's own rule: closed at arrival, or
+    // closing within MIN_USEFUL_OPEN_MINUTES of it, is not worth the trip.
+    const minutesLeft = weekday === null ? null : openMinutesLeftAt(weekday, timings[i].arrival, stop.utcOffsetMinutes ?? null);
+    if (minutesLeft !== null && minutesLeft < MIN_USEFUL_OPEN_MINUTES) {
       return { kind: 'stopClosedAtArrival', stopNumber: i + 1, tone: 'warn' };
     }
   }

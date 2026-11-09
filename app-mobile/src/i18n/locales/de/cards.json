@@ -276,5 +276,9 @@
   "exp.not_found_title": "Erlebnis nicht gefunden",
   "exp.not_found_body": "Dieses Erlebnis ist vielleicht noch nicht online, oder der Link ist falsch.",
   "venue_page.experiences_here_one": "Erlebnis hier",
-  "venue_page.experiences_here_other": "Erlebnisse hier"
+  "venue_page.experiences_here_other": "Erlebnisse hier",
+  "sheet.sound": "Ton",
+  "sheet.mute": "Stumm",
+  "sheet.sound_on_a11y": "Ton einschalten",
+  "sheet.sound_off_a11y": "Ton ausschalten"
 }

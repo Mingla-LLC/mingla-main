@@ -276,5 +276,9 @@
   "exp.not_found_title": "Upplevelsen hittades inte",
   "exp.not_found_body": "Upplevelsen är kanske inte publicerad än, eller så är länken fel.",
   "venue_page.experiences_here_one": "Upplevelse här",
-  "venue_page.experiences_here_other": "Upplevelser här"
+  "venue_page.experiences_here_other": "Upplevelser här",
+  "sheet.sound": "Ljud",
+  "sheet.mute": "Stäng av",
+  "sheet.sound_on_a11y": "Slå på ljud",
+  "sheet.sound_off_a11y": "Stäng av ljud"
 }

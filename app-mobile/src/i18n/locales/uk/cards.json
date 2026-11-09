@@ -286,5 +286,9 @@
   "venue_page.experiences_here_one": "Враження тут",
   "venue_page.experiences_here_few": "Враження тут",
   "venue_page.experiences_here_many": "Враження тут",
-  "venue_page.experiences_here_other": "Враження тут"
+  "venue_page.experiences_here_other": "Враження тут",
+  "sheet.sound": "Звук",
+  "sheet.mute": "Без звуку",
+  "sheet.sound_on_a11y": "Увімкнути звук",
+  "sheet.sound_off_a11y": "Вимкнути звук"
 }

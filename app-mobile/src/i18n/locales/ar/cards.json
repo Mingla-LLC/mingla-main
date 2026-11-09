@@ -296,5 +296,9 @@
   "venue_page.experiences_here_two": "تجارب هنا",
   "venue_page.experiences_here_few": "تجارب هنا",
   "venue_page.experiences_here_many": "تجارب هنا",
-  "venue_page.experiences_here_other": "تجارب هنا"
+  "venue_page.experiences_here_other": "تجارب هنا",
+  "sheet.sound": "الصوت",
+  "sheet.mute": "كتم",
+  "sheet.sound_on_a11y": "تشغيل الصوت",
+  "sheet.sound_off_a11y": "كتم الصوت"
 }

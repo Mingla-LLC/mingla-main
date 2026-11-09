@@ -64,6 +64,9 @@ export function PlaceGallery({
   const { t } = useTranslation(['cards']);
   const { width } = useWindowDimensions();
   const [index, setIndex] = React.useState(0);
+  // #4347 retest P4 — the video slot plays muted; the person can turn sound on
+  // (the deleted hero offered this). Back to muted for every new gallery.
+  const [muted, setMuted] = React.useState(true);
   const pagerRef = React.useRef<{ scrollToIndex?: (p: { index: number; animated: boolean }) => void } | null>(null);
   // A photo that fails to load leaves the gallery (the next one takes its
   // slot); when every one fails the gallery is the short neutral header.
@@ -85,6 +88,7 @@ export function PlaceGallery({
     firstKey.current = contentKey;
     setIndex(0);
     setFailed(new Set());
+    setMuted(true);
   }, [contentKey]);
 
   const close = onClose ? (
@@ -151,8 +155,10 @@ export function PlaceGallery({
                     videoContentFit="cover"
                     autoplay={active && index === 0}
                     playbackActive={active && index === 0}
-                    muted
+                    muted={muted}
                     loop
+                    // The control is drawn by this gallery (translated, and
+                    // outside the pointerEvents="none" media wrapper).
                     showAudioControl={false}
                     style={StyleSheet.absoluteFill}
                   />
@@ -183,6 +189,22 @@ export function PlaceGallery({
               {`${Math.min(index, media.length - 1) + 1} / ${media.length}`}
             </Text>
           </View>
+        ) : null}
+        {media[index]?.isVideo ? (
+          <TouchableOpacity
+            testID="sheet-gallery-sound"
+            style={styles.sound}
+            onPress={() => setMuted((m) => !m)}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityState={{ checked: !muted }}
+            accessibilityLabel={muted ? t('cards:sheet.sound_on_a11y') : t('cards:sheet.sound_off_a11y')}
+          >
+            <Icon name={muted ? 'volume-mute' : 'volume-high'} size={16} color={SHEET_GALLERY.counterText} />
+            <Text style={styles.counterText} maxFontSizeMultiplier={1.3}>
+              {muted ? t('cards:sheet.sound') : t('cards:sheet.mute')}
+            </Text>
+          </TouchableOpacity>
         ) : null}
         {close}
       </View>
@@ -277,6 +299,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 99,
+    backgroundColor: SHEET_GALLERY.counterFill,
+  },
+  // #4347 retest P4 — the video's sound toggle, top-left (Close is top-right,
+  // the counter bottom-right).
+  sound: {
+    position: 'absolute',
+    left: 12,
+    top: 12,
+    minHeight: 36,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    borderRadius: 18,
     backgroundColor: SHEET_GALLERY.counterFill,
   },
   counter: {

@@ -276,5 +276,9 @@
   "exp.not_found_title": "Ma miẹn ẹmwẹ na",
   "exp.not_found_body": "Ọ sẹtin ne ẹmwẹ na i ma he rre otọ, ra odẹ ọni ma ghi ye ẹse.",
   "venue_page.experiences_here_one": "Emwi vbe ẹvba",
-  "venue_page.experiences_here_other": "Emwi vbe ẹvba"
+  "venue_page.experiences_here_other": "Emwi vbe ẹvba",
+  "sheet.sound": "Ẹlọn",
+  "sheet.mute": "Gbe ẹlọn rre",
+  "sheet.sound_on_a11y": "Rhie ẹlọn ladian",
+  "sheet.sound_off_a11y": "Gbe ẹlọn rre"
 }

@@ -1286,7 +1286,8 @@
         "app-mobile/src/services/deckService.ts",
         "app-mobile/src/utils/deckSnapshot.ts",
         "app-mobile/src/utils/queryPersistence.ts",
-        "app-mobile/src/utils/queryPersistenceBudget.ts"
+        "app-mobile/src/utils/queryPersistenceBudget.ts",
+        "app-mobile/src/components/deckCard/deckCardModel.ts"
       ]
     },
     {
@@ -1407,7 +1408,8 @@
         "app-mobile/src/i18n/locales/en/common.json",
         "app-mobile/src/utils/inAppLink.ts",
         "app-mobile/src/components/expandedCard/VenueExperiencesSection.tsx",
-        "app-mobile/src/components/expandedCard/WhenYoudGo.tsx"
+        "app-mobile/src/components/expandedCard/WhenYoudGo.tsx",
+        "app-mobile/src/components/expandedCard/PlaceGallery.tsx"
       ]
     },
     {

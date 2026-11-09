@@ -276,5 +276,9 @@
   "exp.not_found_title": "Experiência não encontrada",
   "exp.not_found_body": "Esta experiência pode ainda não estar publicada, ou o link está errado.",
   "venue_page.experiences_here_one": "Experiência aqui",
-  "venue_page.experiences_here_other": "Experiências aqui"
+  "venue_page.experiences_here_other": "Experiências aqui",
+  "sheet.sound": "Som",
+  "sheet.mute": "Silenciar",
+  "sheet.sound_on_a11y": "Ativar som",
+  "sheet.sound_off_a11y": "Silenciar som"
 }

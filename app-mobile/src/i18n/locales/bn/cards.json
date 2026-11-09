@@ -276,5 +276,9 @@
   "exp.not_found_title": "অভিজ্ঞতা পাওয়া যায়নি",
   "exp.not_found_body": "এই অভিজ্ঞতা হয়তো এখনও লাইভ নয়, অথবা লিংকটি ভুল।",
   "venue_page.experiences_here_one": "এখানে একটি অভিজ্ঞতা",
-  "venue_page.experiences_here_other": "এখানে অভিজ্ঞতাগুলো"
+  "venue_page.experiences_here_other": "এখানে অভিজ্ঞতাগুলো",
+  "sheet.sound": "শব্দ",
+  "sheet.mute": "মিউট",
+  "sheet.sound_on_a11y": "শব্দ চালু করুন",
+  "sheet.sound_off_a11y": "শব্দ মিউট করুন"
 }

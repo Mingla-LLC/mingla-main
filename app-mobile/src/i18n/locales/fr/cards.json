@@ -276,5 +276,9 @@
   "exp.not_found_title": "Expérience introuvable",
   "exp.not_found_body": "Cette expérience n’est peut-être pas encore en ligne, ou le lien est incorrect.",
   "venue_page.experiences_here_one": "Expérience ici",
-  "venue_page.experiences_here_other": "Expériences ici"
+  "venue_page.experiences_here_other": "Expériences ici",
+  "sheet.sound": "Son",
+  "sheet.mute": "Couper",
+  "sheet.sound_on_a11y": "Activer le son",
+  "sheet.sound_off_a11y": "Couper le son"
 }

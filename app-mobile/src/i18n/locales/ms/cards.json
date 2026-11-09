@@ -271,5 +271,9 @@
   "exp.note": "Masa memandu ialah anggaran.",
   "exp.not_found_title": "Pengalaman tidak dijumpai",
   "exp.not_found_body": "Pengalaman ini mungkin belum disiarkan, atau pautannya salah.",
-  "venue_page.experiences_here_other": "Pengalaman di sini"
+  "venue_page.experiences_here_other": "Pengalaman di sini",
+  "sheet.sound": "Bunyi",
+  "sheet.mute": "Senyap",
+  "sheet.sound_on_a11y": "Hidupkan bunyi",
+  "sheet.sound_off_a11y": "Senyapkan bunyi"
 }

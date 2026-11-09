@@ -223,7 +223,7 @@ describe("Q — one worth-arriving rule", () => {
   // P3 (pinned): the deck's smart chip (deckCardModel.ts:425) still reads only
   // getOpenStatusAt's "closed", so it stays silent where the sheet and the
   // schedule check both call the stop closed.
-  test.failing("Q-4 (P3) the deck chip flags a stop that closes 10 min after arrival, like the sheet and the check", () => {
+  test("Q-4 (P3) the deck chip flags a stop that closes 10 min after arrival, like the sheet and the check", () => {
     const s = [stop({ placeName: "Bakery", openingHours: { weekdayDescriptions: week(g("8:00 AM", "8:00 PM")) } })];
     const at = venue(13, 19, 50);
     expect(checkAllCuratedStopsOpen(s, at, "en-US").allOpen).toBe(false);

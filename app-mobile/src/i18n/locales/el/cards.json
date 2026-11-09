@@ -276,5 +276,9 @@
   "exp.not_found_title": "Η εμπειρία δεν βρέθηκε",
   "exp.not_found_body": "Αυτή η εμπειρία ίσως δεν έχει δημοσιευτεί ακόμα ή ο σύνδεσμος είναι λάθος.",
   "venue_page.experiences_here_one": "Εμπειρία εδώ",
-  "venue_page.experiences_here_other": "Εμπειρίες εδώ"
+  "venue_page.experiences_here_other": "Εμπειρίες εδώ",
+  "sheet.sound": "Ήχος",
+  "sheet.mute": "Σίγαση",
+  "sheet.sound_on_a11y": "Ενεργοποίηση ήχου",
+  "sheet.sound_off_a11y": "Σίγαση ήχου"
 }

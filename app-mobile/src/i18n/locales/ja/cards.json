@@ -271,5 +271,9 @@
   "exp.note": "運転時間は推定です。",
   "exp.not_found_title": "体験が見つかりません",
   "exp.not_found_body": "この体験はまだ公開されていないか、リンクが間違っている可能性があります。",
-  "venue_page.experiences_here_other": "ここでの体験"
+  "venue_page.experiences_here_other": "ここでの体験",
+  "sheet.sound": "サウンド",
+  "sheet.mute": "ミュート",
+  "sheet.sound_on_a11y": "サウンドをオン",
+  "sheet.sound_off_a11y": "サウンドをミュート"
 }

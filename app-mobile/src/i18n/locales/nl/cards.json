@@ -276,5 +276,9 @@
   "exp.not_found_title": "Ervaring niet gevonden",
   "exp.not_found_body": "Deze ervaring staat misschien nog niet live, of de link klopt niet.",
   "venue_page.experiences_here_one": "Belevenis hier",
-  "venue_page.experiences_here_other": "Belevenissen hier"
+  "venue_page.experiences_here_other": "Belevenissen hier",
+  "sheet.sound": "Geluid",
+  "sheet.mute": "Dempen",
+  "sheet.sound_on_a11y": "Geluid aanzetten",
+  "sheet.sound_off_a11y": "Geluid dempen"
 }
