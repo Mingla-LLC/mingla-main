@@ -82,7 +82,7 @@ jest.mock("../../../store/appStore", () => ({
 jest.mock("../../../hooks/useCalendarEntries", () => ({ useCalendarEntries: () => ({ data: [] }) }));
 jest.mock("@react-native-community/datetimepicker", () => () => null);
 jest.mock("expo-haptics", () => ({ impactAsync: jest.fn(), notificationAsync: jest.fn(), ImpactFeedbackStyle: {}, NotificationFeedbackType: {} }));
-jest.mock("expo-calendar", () => ({}));
+jest.mock("expo-calendar", () => ({}), { virtual: true });
 jest.mock("../../ui/Toast", () => ({ toastManager: { show: jest.fn(), success: jest.fn(), error: jest.fn() } }));
 jest.mock("@tanstack/react-query", () => ({
   useQuery: () => ({ data: mockWeather }),

@@ -86,7 +86,7 @@ jest.mock("../../../hooks/useCalendarEntries", () => ({ useCalendarEntries: () =
 jest.mock("@tanstack/react-query", () => ({ useQueryClient: () => ({ invalidateQueries: jest.fn(), setQueryData: jest.fn() }) }));
 jest.mock("@react-native-community/datetimepicker", () => () => null);
 jest.mock("expo-haptics", () => ({ impactAsync: jest.fn(), notificationAsync: jest.fn(), ImpactFeedbackStyle: {}, NotificationFeedbackType: {} }));
-jest.mock("expo-calendar", () => ({}));
+jest.mock("expo-calendar", () => ({}), { virtual: true });
 jest.mock("../../ui/Toast", () => ({ toastManager: { show: jest.fn(), success: jest.fn(), error: jest.fn() } }));
 
 jest.mock("../../../../../packages/card-identity/phone.mjs", () => ({
