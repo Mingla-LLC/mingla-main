@@ -965,7 +965,7 @@ export function ReportView({
                       }
                       className={buttonClasses({ variant: 'primary', className: 'mt-5 w-full' })}
                     >
-                      View on Mingla app
+                      View in Mingla Host
                     </DeviceLink>
                     {!emailOpen ? (
                       <button

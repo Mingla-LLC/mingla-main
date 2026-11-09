@@ -44,7 +44,7 @@ import './landing.css'
 //   3. sticky features: fixed background, sticky left column with three
 //      section buttons, three glass video cards;
 //   4. who it's for;  5. the free tool;  6. FAQ;  7. closing video band.
-// Buttons: "Use Mingla Web" → Host hand-off (§3), "Talk to the team" →
+// Buttons: "Use Mingla Host" → Host hand-off (§3), "Talk to the team" →
 // /schedule?icp=<slug>, "See what's inside" → the features section, the tool →
 // its internal /tools page. No privacy link here: the #4318 strip owns that.
 

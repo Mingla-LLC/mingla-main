@@ -16,7 +16,8 @@ import { isPlainClick, useHandoffSheet } from './handoff-trigger'
 // add its loader runtime to every page.
 const HandoffSheet = lazy(() => import('./handoff-sheet').then((module) => ({ default: module.HandoffSheet })))
 
-// #4339 §3 — "Use Mingla Web", the Host hand-off, on every redesigned page.
+// #4339 §3 — "Use Mingla Host", the Host hand-off, on every redesigned page.
+// (Seth: anything that goes to Host says "Host"; "Use Mingla Web" is retired.)
 //
 //   phone    → straight to the Mingla Host store through the attributed Host
 //              OneLink; the label reads "Get Mingla Host".
@@ -87,7 +88,7 @@ export function HostHandoffButton({ location, className, withArrow = false, chil
         {children ?? (
           <>
             <span data-cta-when="phone">Get Mingla Host</span>
-            <span data-cta-when="computer">Use Mingla Web</span>
+            <span data-cta-when="computer">Use Mingla Host</span>
           </>
         )}
         {withArrow ? <ArrowRight aria-hidden="true" /> : null}

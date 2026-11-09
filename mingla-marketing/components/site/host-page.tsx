@@ -14,13 +14,13 @@ import '@/components/landing/landing.css'
 import './site.css'
 
 // #4339 phase 2a — Mingla Host (/host), in the approved design's order:
-//   dark Reelmark hero ("Everything / a host needs.", Use Mingla Web) → the
+//   dark Reelmark hero ("Everything / a host needs.", Use Mingla Host) → the
 //   seven host-type tiles (each opens its /host/<icp> landing page) plus Free
 //   tools → "Prompt your website into existence" (visual demo, §5) → the Ari
 //   cards (Owned, Shared, Earned, Paid) on video with the text-card wash →
 //   the toolkit list → the closing band with "Book a call" (/schedule).
 //
-// "Use Mingla Web" is the Host hand-off (§3) everywhere, including the two
+// "Use Mingla Host" is the Host hand-off (§3) everywhere, including the two
 // toolkit rows that point at host web (Marketing, Ari AI).
 
 export const HOST_REEL: readonly ReelCard[] = [
@@ -56,7 +56,10 @@ const TOOLKIT: readonly { title: string; line: string; href: string | null }[] =
   { title: 'Ari AI', line: 'Owned, shared, earned and paid, in one assistant.', href: null },
 ]
 
-function ToolkitRow({ index, title, line }: { index: number; title: string; line: string }) {
+// #4339 (Seth): a row that goes to Mingla Host (the hand-off) says so in its
+// pill, and the pill is part of its accessible name; a row that opens a page on
+// this site keeps "Explore", which is decoration.
+function ToolkitRow({ index, title, line, toHost = false }: { index: number; title: string; line: string; toHost?: boolean }) {
   return (
     <>
       <span className="n" aria-hidden="true">
@@ -66,9 +69,15 @@ function ToolkitRow({ index, title, line }: { index: number; title: string; line
         <h3>{title}</h3>
         <p>{line}</p>
       </div>
-      <span className="btn soft go" aria-hidden="true">
-        Explore <ArrowRight />
-      </span>
+      {toHost ? (
+        <span className="btn soft go to-host">
+          Use Mingla Host <ArrowRight aria-hidden="true" />
+        </span>
+      ) : (
+        <span className="btn soft go" aria-hidden="true">
+          Explore <ArrowRight />
+        </span>
+      )}
     </>
   )
 }
@@ -200,7 +209,7 @@ export function HostPage() {
                   </Link>
                 ) : (
                   <HostHandoffButton location="toolkit" className="list-item">
-                    <ToolkitRow index={i} title={t.title} line={t.line} />
+                    <ToolkitRow index={i} title={t.title} line={t.line} toHost />
                   </HostHandoffButton>
                 )}
               </li>

@@ -41,7 +41,9 @@ const STEPS = [
 export default function CreatorsPage() {
   return (
     <div className={`${landingSerif.variable} ${landingSans.variable} ${landingMono.variable}`}>
-      <SitePage surface="host">
+      {/* #4339 (Seth): Creators sign up in Explorer, so the page is on the
+          Explorer surface and its top bar's "Use Mingla" goes to Explorer. */}
+      <SitePage surface="explorer">
         <PageHero
           title={
             <>

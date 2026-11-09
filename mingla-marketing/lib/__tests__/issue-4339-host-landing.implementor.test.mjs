@@ -14,7 +14,7 @@
 //     none can shadow /host/download or /host/get;
 //   - the hero headline is two lines and the second is italic;
 //   - no "Privacy choices" text or link, and no extra fixed-bottom element;
-//   - "Use Mingla Web" resolves through lib/cta-destination.ts: phones get the
+//   - "Use Mingla Host" resolves through lib/cta-destination.ts: phones get the
 //     Host OneLink ("Get Mingla Host"), computers the Host sheet;
 //   - no store, OneLink or host URL is hard-coded in the new files;
 //   - videos never carry a source in the server HTML (poster first; reduced
@@ -165,7 +165,7 @@ test('no "Privacy choices" text or link, and no fixed-bottom element of its own'
   assert.match(css, /bottom: calc\(25px \+ clamp\(28px, 5vh, 56px\) \+ var\(--mingla-privacy-inset, 0px\)\)/)
 })
 
-test('"Use Mingla Web" resolves through the #4137 seam: phone → Host OneLink, computer → Host sheet', () => {
+test('"Use Mingla Host" resolves through the #4137 seam: phone → Host OneLink, computer → Host sheet', () => {
   const attribution = links.siteAttribution('business_hero')
   for (const platform of ['ios', 'android']) {
     const h = handoff.resolveAppHandoff('host', platform, attribution)
@@ -184,7 +184,7 @@ test('"Use Mingla Web" resolves through the #4137 seam: phone → Host OneLink, 
   assert.match(button, /from '@\/lib\/app-handoff'/)
   assert.match(button, /<DeviceLink\s+surface="host"/)
   assert.match(button, /<span data-cta-when="phone">Get Mingla Host<\/span>/)
-  assert.match(button, /<span data-cta-when="computer">Use Mingla Web<\/span>/)
+  assert.match(button, /<span data-cta-when="computer">Use Mingla Host<\/span>/)
   assert.match(button, /resolveAppHandoff\('host', platform, ATTRIBUTION\)/)
   assert.match(code(read('lib/app-handoff.ts')), /from '\.\/cta-destination'/)
   // Talk to the team opens /schedule with the ICP chosen.

@@ -57,11 +57,13 @@ interface CityThisWeekendProps {
 }
 
 function StripLink({ pin, when }: { pin: LinksPin; when: string }) {
+  // #4339 (Seth): a pin that opens Mingla Host says "Host" whatever its admin
+  // title, so its tag names the app.
   const body = (
     <>
       <span className="dot" aria-hidden="true" />
       <span className="txt">
-        <span className="tag">{when}</span>
+        <span className="tag">{pin.opens === 'host' ? `Mingla Host · ${when}` : when}</span>
         <b>{pin.title}</b>
       </span>
       <ArrowRight aria-hidden="true" className="ic" />

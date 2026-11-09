@@ -14,7 +14,7 @@ import { captureMarketing } from '@/components/marketing/posthog-provider'
 // Phase 4b, the Ari draft hand-off: Generate also POSTs the description to the
 // rate-limited `site-prompt-draft` endpoint (lib/site-prompt-draft.ts), which
 // stores it server-side and answers with an opaque draft id. "Continue on
-// Mingla Web" then opens host web's sign-in resuming at /ari?draft=<id>, on
+// Mingla Host" then opens host web's sign-in resuming at /ari?draft=<id>, on
 // EVERY device, phones included (round 3, point 1), and Ari starts building
 // after sign-in. The description itself never goes in a URL or query string.
 // If the post fails, Continue opens host web's front door and nothing breaks.
@@ -264,7 +264,7 @@ function AriSheet({ href, onClose, onContinue }: { href: string; onClose: () => 
             onClose()
           }}
         >
-          Continue on Mingla Web <ArrowRight aria-hidden="true" width={17} height={17} />
+          Continue on Mingla Host <ArrowRight aria-hidden="true" width={17} height={17} />
         </a>
       </div>
     </div>,

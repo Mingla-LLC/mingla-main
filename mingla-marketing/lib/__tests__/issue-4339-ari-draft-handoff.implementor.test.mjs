@@ -4,7 +4,7 @@
 //
 // Proves: Generate posts the description in a POST body (never a URL) to the
 // site-prompt-draft endpoint; only a well-formed draft id is accepted back;
-// every failure resolves to "no draft"; "Continue on Mingla Web" goes to host
+// every failure resolves to "no draft"; "Continue on Mingla Host" goes to host
 // web's sign-in resuming at /ari?draft=<id> and carries ONLY the id; without a
 // draft it opens host web's front door; the demo wires both and the link is the
 // same on every device (no phone OneLink).

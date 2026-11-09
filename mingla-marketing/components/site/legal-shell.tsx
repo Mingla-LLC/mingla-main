@@ -31,7 +31,9 @@ interface LegalShellProps {
 
 export function LegalShell({ current, children }: LegalShellProps) {
   return (
-    <SitePage surface={current === 'organiser' || current === 'creator' ? 'host' : 'explorer'}>
+    // #4339 (Seth): only the Organiser terms are a Host page; Creators sign up
+    // in Explorer, so the Creator agreement sits on the Explorer surface.
+    <SitePage surface={current === 'organiser' ? 'host' : 'explorer'}>
       <section className="page-hero legal-hero" aria-hidden="true">
         <div className="wrap">
           <p className="legal-kicker">

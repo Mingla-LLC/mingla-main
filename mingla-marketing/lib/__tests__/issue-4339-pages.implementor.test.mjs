@@ -247,7 +247,7 @@ test('hand-offs go through the seam; no new file holds a store, OneLink or host 
   assert.match(download, /appHandoffHrefs\('host', siteAttribution\('business_download'\)\)/)
   assert.match(download, /if \(platform === 'ios'\) redirect\(APP_STORE_URL\)\s*if \(platform === 'android'\) redirect\(PLAY_STORE_URL\)/, 'phones still go straight to their store')
   assert.match(download, /<DownloadQr size=\{172\} \/>/, 'the Explorer QR still encodes /download')
-  assert.match(download, /<a className="btn soft" href=\{host\.computerHref\}>\s*Or use Mingla Web/)
+  assert.match(download, /<a className="btn soft" href=\{host\.computerHref\}>\s*Or use Mingla Host on web/)
   // #4339 calls: creator setup is in the Explorer app, so Creators joins through
   // the Explorer hand-off; the dead host web /creator/setup link is gone.
   assert.match(code(read('app/creators/page.tsx')), /<ExplorerHandoffButton location="creators_join"[^>]*>\s*Get Mingla to join/)

@@ -12,7 +12,7 @@
 // a looping clip from m/ (Seth, 8 Nov: every ICP's features background is its
 // own `bg-<icp>` loop, starting with bg-events for /host/events).
 //
-// No store, host or OneLink URL lives here: every "Use Mingla Web" button goes
+// No store, host or OneLink URL lives here: every "Use Mingla Host" button goes
 // through lib/app-handoff.ts, which asks lib/cta-destination.ts (#4137).
 
 // #4339 speed fix: the media reference and its resolver live in

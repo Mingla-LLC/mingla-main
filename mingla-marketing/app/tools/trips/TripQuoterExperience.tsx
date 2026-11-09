@@ -106,7 +106,7 @@ function RunningTheater({
               onActivate={() => captureMarketing('tool_ratelimit_cta_click', { tool: 'trips' })}
               className={buttonClasses({ variant: 'primary' })}
             >
-              Publish your trip on Mingla
+              Publish your trip in Mingla Host
             </DeviceLink>
           ) : (
             <button type="button" onClick={onRetry} className={buttonClasses({ variant: 'primary' })}>

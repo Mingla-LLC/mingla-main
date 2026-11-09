@@ -15,7 +15,7 @@
 //
 // #4339 phase 2b — the desktop page is the approved "Get the app" design: the
 // Mingla / Mingla Host toggle (components/site/download-toggle.tsx), a QR and
-// both store buttons for each app, and "Or use Mingla Web" for Host. Every
+// both store buttons for each app, and "Or use Mingla Host on web" for Host. Every
 // store, OneLink and host-web href comes from lib/app-handoff.ts →
 // lib/cta-destination.ts (#4137); the Explorer QR still encodes /download.
 // The phone redirect above is unchanged. No form, no PII, no email field.
@@ -89,24 +89,24 @@ export default async function DownloadPage({ searchParams }: Props) {
           <AppQr value={host.phoneHref} title="QR code that opens the Mingla Host app on your phone" size={172} />
         </div>
         <div className="stores">
-          <a className="store" href={host.stores.appStore} aria-label="Download Mingla Host on the App Store">
+          <a className="store" href={host.stores.appStore} aria-label="Get Mingla Host on the App Store">
             <AppleMark />
             <span>
-              <small>Download on the</small>
+              <small>Get Mingla Host on the</small>
               <b>App Store</b>
             </span>
           </a>
           <a className="store" href={host.stores.googlePlay} aria-label="Get Mingla Host on Google Play">
             <PlayMark />
             <span>
-              <small>Get it on</small>
+              <small>Get Mingla Host on</small>
               <b>Google Play</b>
             </span>
           </a>
           <a className="btn soft" href={host.computerHref}>
-            Or use Mingla Web <ArrowRight aria-hidden="true" />
+            Or use Mingla Host on web <ArrowRight aria-hidden="true" />
           </a>
-          <span className="sr-only">Mingla Web is at {hostWebLabel(host.computerHref)}</span>
+          <span className="sr-only">Mingla Host on web is at {hostWebLabel(host.computerHref)}</span>
         </div>
       </div>
     </>

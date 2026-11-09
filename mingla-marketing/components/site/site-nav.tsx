@@ -10,7 +10,7 @@ import { SiteNavMenu } from './site-nav-menu'
 //   wordmark · Going out · Cities · For hosts · Free tools · Help · CTA · menu
 //
 // The CTA is the Explorer hand-off ("Use Mingla") on Explorer pages and the
-// Host hand-off ("Use Mingla Web") on Host pages (#4339 §3). The ink menu
+// Host hand-off ("Use Mingla Host") on Host pages (#4339 §3). The ink menu
 // button animates its two bars into an X (300ms, cubic-bezier(.77,0,.175,1))
 // and opens the grouped menu: Explore, Host (Mingla Host, all seven landing
 // pages, Free tools) and Company. The pill is opaque white with an ink ring and

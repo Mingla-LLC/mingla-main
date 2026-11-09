@@ -889,6 +889,13 @@
   [data-landing] .list-item .go {
     display: none;
   }
+  /* #4339 (Seth): a row that goes to Mingla Host keeps its "Use Mingla Host"
+     pill on a phone, so the row still says where it goes. */
+  [data-landing] .list-item .go.to-host {
+    display: inline-flex;
+    grid-column: 2;
+    justify-self: start;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

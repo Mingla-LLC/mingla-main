@@ -1,7 +1,7 @@
 // #4339 — the site-wide app hand-off, lifted from the #4318 /links banners.
 //
 //   button            phone (iPhone, iPad, Android)        computer
-//   Host  ("Use Mingla Web")  Host OneLink (store)        "Host on Mingla" sheet:
+//   Host  ("Use Mingla Host") Host OneLink (store)        "Host on Mingla" sheet:
 //                                                          Host QR + both stores,
 //                                                          or continue on host web
 //   Explorer ("Use Mingla")   Explorer OneLink (store)    "Mingla lives on your

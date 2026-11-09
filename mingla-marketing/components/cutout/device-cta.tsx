@@ -147,10 +147,11 @@ export function DeviceCta({
     <ArrowRight className="h-4 w-4 shrink-0" aria-hidden="true" />
   ) : null
 
-  // Only HOST has a web app. Explorer on desktop opens a QR panel to install
-  // the app, so "Use Mingla Web" there promised something that does not exist.
-  const computerText = desktopLabel ?? (surface === 'host' ? 'Use Mingla Web' : 'Use Mingla')
-  const phoneText = phoneLabel ?? 'Use Mingla'
+  // #4339 (Seth): a plain "Use Mingla" / "Get Mingla" always goes to Explorer,
+  // and anything that goes to Mingla Host says "Host". So the Host defaults
+  // name Host on both devices; the Explorer defaults stay "Use Mingla".
+  const computerText = desktopLabel ?? (surface === 'host' ? 'Use Mingla Host' : 'Use Mingla')
+  const phoneText = phoneLabel ?? (surface === 'host' ? 'Get Mingla Host' : 'Use Mingla')
   const text =
     label ?? (
       <>

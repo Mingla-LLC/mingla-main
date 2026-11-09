@@ -4,7 +4,7 @@
 // 1. On Generate, the description is POSTed (body only, never a URL) to the
 //    public `site-prompt-draft` edge function, which stores it for 24 hours and
 //    answers with an opaque draft id.
-// 2. "Continue on Mingla Web" opens host web's sign-in with a resume path that
+// 2. "Continue on Mingla Host" opens host web's sign-in with a resume path that
 //    carries ONLY that id: /auth?next=/ari?draft=<id>. Host web keeps `next`
 //    through email sign-in, Google/Apple and sign-up (the ORCH-1375 resume
 //    path), then the Ari tab claims the draft and sends it to Ari.
@@ -76,7 +76,7 @@ export async function postSitePromptDraft(description: string, transport: DraftT
 }
 
 /**
- * Where "Continue on Mingla Web" goes, on every device. With a draft: host
+ * Where "Continue on Mingla Host" goes, on every device. With a draft: host
  * web's sign-in, resuming at the Ari tab with the draft id. Without one: host
  * web's front door.
  */

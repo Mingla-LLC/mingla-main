@@ -142,24 +142,27 @@ export function SheetFrame({ kind, labelledBy, onClose, children }: SheetFramePr
 export function StoreButtons({
   stores,
   onStore,
+  host = false,
 }: {
   stores: { appStore: string; googlePlay: string }
   /** #4339 round B: which store was clicked (handoff_store_clicked). */
   onStore?: (store: 'app_store' | 'google_play') => void
+  /** #4339 (Seth): the Host app's stores say "Mingla Host" in the badge. */
+  host?: boolean
 }) {
   return (
     <div className="gs-st">
       <a className="store" href={stores.appStore} target="_blank" rel="noopener" onClick={() => onStore?.('app_store')}>
         <AppleMark />
         <span>
-          <small>Download on the</small>
+          <small>{host ? 'Get Mingla Host on the' : 'Download on the'}</small>
           <b>App Store</b>
         </span>
       </a>
       <a className="store" href={stores.googlePlay} target="_blank" rel="noopener" onClick={() => onStore?.('google_play')}>
         <PlayMark />
         <span>
-          <small>Get it on</small>
+          <small>{host ? 'Get Mingla Host on' : 'Get it on'}</small>
           <b>Google Play</b>
         </span>
       </a>
@@ -194,7 +197,7 @@ export function HandoffSheet({ sheet, attribution, onClose, icp, sourceKind }: H
         <div className="qr">
           <QRCode value={hrefs.phoneHref} size={112} title={copy.qrTitle} />
         </div>
-        <StoreButtons stores={hrefs.stores} onStore={onStore} />
+        <StoreButtons stores={hrefs.stores} onStore={onStore} host={sheet === 'host'} />
       </div>
       {sheet === 'host' ? (
         <div className="gs-web">
