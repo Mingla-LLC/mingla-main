@@ -111,6 +111,11 @@ export const ALLOWLIST = new Map([
     issue: "#4261",
     reason: "Turn-by-turn directions handoff to the maps app the person picks, with its https fallback (open question O-1: kept by default).",
   }],
+  ["src/components/expandedCard/placeDirections.ts", {
+    count: 1,
+    issue: "#4347",
+    reason: "Maps app directions deep link for every stop of a plan (\"Route all stops\", Google Maps /dir/ link per #4334); the maps app is the destination, not a web page. openMapsTarget handles one stop only.",
+  }],
   ["src/components/onboarding/OnboardingCollaborationStep.tsx", {
     count: 1,
     issue: "#4261",
