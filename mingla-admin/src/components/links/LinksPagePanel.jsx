@@ -12,26 +12,40 @@ import { LoadError } from "../ui/LoadError";
 import { useToast } from "../../context/ToastContext";
 import {
   LINKS_STRIP_LABELS, LINKS_STRIP_OPENS, LINKS_STRIP_TITLE_MAX, moveStrip, runOptimisticReorder,
-  showsOnOptions, stripDayLabel, stripMetaLine, stripOpensSummary, stripRows, stripSaveArgs, validateStripDraft,
+  showsOnOptions, stripDateRange, stripDayLabel, stripMetaLine, stripOpensSummary, stripRows, stripSaveArgs, validateStripDraft,
 } from "../../lib/linksStrips";
 import {
-  deleteLinksStrip, linksStripsErrorField, linksStripsErrorMessage, listLinksStrips, listPublishedBlogPostsForLinks,
-  reorderLinksStrips, saveLinksStrip,
+  LINKS_REFRESH_FALLBACK, deleteLinksStrip, linksStripsErrorField, linksStripsErrorMessage, listLinksStrips,
+  listPublishedBlogPostsForLinks, refreshLinksPage, reorderLinksStrips, saveLinksStrip,
 } from "../../services/linksStripsService";
 
 const FIELD = "h-10 w-full rounded-lg border bg-[var(--color-background-primary)] px-3 text-sm text-[var(--color-text-primary)] outline-none transition-all duration-150 focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)]";
 const FIELD_OK = "border-[var(--gray-300)]";
 const FIELD_BAD = "border-[#ef4444]";
+/**
+ * Refresh usemingla.com/links after a change that already saved. A failed
+ * refresh is never a failed save: it returns the fallback words instead.
+ */
+async function refreshAfterWrite() {
+  try {
+    await refreshLinksPage();
+    return null;
+  } catch {
+    return LINKS_REFRESH_FALLBACK;
+  }
+}
+
 const LABEL = "mb-1.5 block text-sm font-medium text-[var(--color-text-primary)]";
 
 function emptyDraft(today) {
-  return { id: null, showsOn: today, title: "", label: LINKS_STRIP_LABELS[0], opens: "web", url: "", blogPostId: "" };
+  return { id: null, showsOn: today, showsUntil: "", title: "", label: LINKS_STRIP_LABELS[0], opens: "web", url: "", blogPostId: "" };
 }
 
 function draftFromStrip(strip) {
   return {
     id: strip.id,
     showsOn: strip.shows_on,
+    showsUntil: strip.shows_until || "",
     title: strip.title || "",
     label: strip.label,
     opens: strip.opens,
@@ -169,13 +183,14 @@ export function LinksPagePanel() {
     setSaving(true);
     try {
       await saveLinksStrip(stripSaveArgs(draft));
+      const title = draft.id ? "Strip saved" : "Strip published";
+      resetForm();
+      const [stale] = await Promise.all([refreshAfterWrite(), load()]);
       addToast({
         variant: "success",
-        title: draft.id ? "Strip saved" : "Strip published",
-        description: "Pinned under the banners on usemingla.com/links, in every city.",
+        title,
+        description: stale || "Pinned under the banners on usemingla.com/links, in every city.",
       });
-      resetForm();
-      await load();
     } catch (error) {
       const field = linksStripsErrorField(error);
       setFormError({ field, message: linksStripsErrorMessage(error) });
@@ -196,6 +211,8 @@ export function LinksPagePanel() {
     setReordering(true);
     try {
       await runOptimisticReorder({ previous, next, apply: setStrips, commit: reorderLinksStrips });
+      const stale = await refreshAfterWrite();
+      if (stale) addToast({ variant: "info", title: "New order saved", description: stale });
     } catch (error) {
       addToast({ variant: "error", title: "The new order wasn't saved", description: linksStripsErrorMessage(error) });
       if (error?.code === "stale") await load();
@@ -210,8 +227,8 @@ export function LinksPagePanel() {
       await deleteLinksStrip(strip.id);
       setConfirmingId(null);
       if (draft.id === strip.id) resetForm();
-      addToast({ variant: "success", title: "Strip removed", description: `"${strip.title}" is off the Links page.` });
-      await load();
+      const [stale] = await Promise.all([refreshAfterWrite(), load()]);
+      addToast({ variant: "success", title: "Strip removed", description: stale || `"${strip.title}" is off the Links page.` });
     } catch (error) {
       addToast({ variant: "error", title: "The strip wasn't removed", description: linksStripsErrorMessage(error) });
       if (error?.code === "stale") await load();
@@ -260,6 +277,21 @@ export function LinksPagePanel() {
                 {editingDayMissing && draft.showsOn ? <option value={draft.showsOn}>{stripDayLabel(draft.showsOn)}</option> : null}
                 {dayOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
+            </div>
+            <div>
+              <label htmlFor="links-strip-until" className={LABEL}>Show until <span className="font-normal text-[var(--color-text-tertiary)]">(optional)</span></label>
+              <input
+                id="links-strip-until"
+                ref={(node) => { fieldRefs.current.showsUntil = node; }}
+                type="date"
+                min={draft.showsOn || undefined}
+                value={draft.showsUntil}
+                onChange={(e) => update({ showsUntil: e.target.value })}
+                aria-invalid={formError?.field === "showsUntil" || undefined}
+                aria-describedby={errorFor("showsUntil") || "links-strip-until-help"}
+                className={fieldClass("showsUntil")}
+              />
+              <p id="links-strip-until-help" className="mt-1 text-xs text-[var(--color-text-tertiary)]">Leave empty to show it on one day only.</p>
             </div>
             <div className="sm:col-span-2">
               <label htmlFor="links-strip-title" className={LABEL}>Title</label>
@@ -373,8 +405,7 @@ export function LinksPagePanel() {
 
       <SectionCard title="Custom strips" subtitle={loading ? undefined : `${strips.length} on the page`}>
         <p className="mb-4 text-sm text-[var(--color-text-secondary)]">
-          Drag a strip, or use the arrows, to set the order. The top of this list shows first on the page. Changes reach
-          usemingla.com/links within 5 minutes.
+          Drag a strip, or use the arrows, to set the order. The top of this list shows first on the page.
         </p>
         {loadError ? (
           <LoadError title="Couldn't load the strips" message={linksStripsErrorMessage(loadError)} onRetry={load} retrying={loading} />
@@ -423,7 +454,7 @@ export function LinksPagePanel() {
                   <div className="min-w-0">
                     <b className="block truncate text-sm font-semibold">{strip.title}</b>
                     <small className="block truncate text-xs text-[var(--color-text-secondary)]">
-                      {strip.label} · {stripDayLabel(strip.shows_on)} · {stripOpensSummary(strip)}
+                      {strip.label} · {stripDateRange(strip.shows_on, strip.shows_until)} · {stripOpensSummary(strip)}
                     </small>
                   </div>
                   {confirming ? (

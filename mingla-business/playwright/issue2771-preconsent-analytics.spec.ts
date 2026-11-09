@@ -101,7 +101,10 @@ test.describe('#2771 → #2331 actual network and storage boundary (on unless tu
       await page.waitForTimeout(1_500)
       expect(requests.analytics.slice(analyticsBeforeReload)).toEqual([])
       expect(await trackingStorage(context, page, ANALYTICS_STORAGE)).toEqual([])
-      await expect(page.getByTestId('privacy-sheet')).toHaveCount(0)
+      // #4318: usemingla.com keeps its sheet in the page, hidden and not a dialog;
+      // either way no sheet is shown.
+      await expect(page.getByTestId('privacy-sheet')).toBeHidden()
+      await expect(page.locator('[data-testid="privacy-sheet"][role="dialog"], [data-testid="privacy-sheet"]:not([hidden])')).toHaveCount(0)
       expect(await storedChoice(page)).toMatchObject({ analytics: false, ads: true })
       await context.close()
     })

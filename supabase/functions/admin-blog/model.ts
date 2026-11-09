@@ -16,6 +16,28 @@ export function resolveMarketingRevalidateSecret(raw: string | undefined): strin
   }
 }
 
+// #4318: the marketing site's one revalidate route also refreshes /links,
+// keyed by the `links` cache tag (contract: marketing be30703784).
+export const MARKETING_REVALIDATE_PATH = "/api/blog/revalidate";
+
+export function linksRevalidateRequest(origin: string, secret: string): { url: string; init: RequestInit } {
+  return {
+    url: `${origin}${MARKETING_REVALIDATE_PATH}`,
+    init: {
+      method: "POST",
+      headers: { "x-mingla-revalidate-secret": secret, "Content-Type": "application/json" },
+      body: JSON.stringify({ tag: "links" }),
+    },
+  };
+}
+
+/** True only for the route's exact success answer for the links tag. */
+export function isLinksRevalidated(status: number, payload: unknown): boolean {
+  if (status !== 200 || typeof payload !== "object" || payload === null) return false;
+  const body = payload as Record<string, unknown>;
+  return body.revalidated === true && body.tag === "links";
+}
+
 export function collectBlogLinkReferences(
   document: BlogReferenceDocument,
   marketingOrigin = "https://usemingla.com",
