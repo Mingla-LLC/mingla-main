@@ -689,6 +689,14 @@ export function LinksExperience({
     live,
     readFailed: readFailed || placesFailed.includes(city.slug),
   })
+  // "Plans in … / Host something in …" under the places, or under the fallback
+  // line when the city has no places to show (not after a failed read).
+  const quietLinks =
+    quiet.mode === 'quiet'
+      ? { plansIn: quiet.plansIn, hostCity: quiet.hostCity }
+      : quiet.mode === 'fallback' && quiet.hostCity
+        ? { plansIn: quiet.plansIn ?? null, hostCity: quiet.hostCity }
+        : null
   // Listings exist but the chip filter leaves none.
   const emptyText = emptyListText({
     nothingAnywhere: false,
@@ -716,7 +724,7 @@ export function LinksExperience({
                 </small>
               </span>
               <em>
-                {pickerCountLabel(count)}
+                {pickerCountLabel(count, c.hasPlaces)}
                 {c.slug === city.slug ? <Icon name="check" /> : null}
               </em>
             </button>
@@ -850,11 +858,11 @@ export function LinksExperience({
                 </li>
               )}
             </ul>
-            {quiet.mode === 'quiet' ? (
+            {quietLinks !== null ? (
               <div className={styles['lk-quiet-links']} ref={quietLinksRef}>
-                {quiet.plansIn !== null ? (
-                  <button type="button" className={styles['lk-more']} onClick={() => pickCity(quiet.plansIn?.slug ?? city.slug)}>
-                    <u>Plans in {quiet.plansIn.name}</u>
+                {quietLinks.plansIn ? (
+                  <button type="button" className={styles['lk-more']} onClick={() => pickCity(quietLinks.plansIn?.slug ?? city.slug)}>
+                    <u>Plans in {quietLinks.plansIn.name}</u>
                     <Icon name="right" />
                   </button>
                 ) : null}
@@ -864,7 +872,7 @@ export function LinksExperience({
                   className={styles['lk-more']}
                   onClick={(event) => onTap(hostTarget, event)}
                 >
-                  <u>Host something in {quiet.hostCity}</u>
+                  <u>Host something in {quietLinks.hostCity}</u>
                   <Icon name="right" />
                 </a>
               </div>

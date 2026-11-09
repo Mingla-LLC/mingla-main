@@ -436,15 +436,18 @@ test('quiet week ladder: listings, places, plans elsewhere, nothing anywhere, a 
   assert.deepEqual(q.places.map((p) => p.name), ['Place 1', 'Place 2', 'Place 3'])
   assert.equal(q.plansIn.slug, 'raleigh-nc')
   assert.equal(q.hostCity, 'Cary')
-  // No listings, no places, another city live: heading and both links, no places.
+  // No listings and no places, another city live (conductor ruling, 8 Nov: a
+  // city with nothing to show says so, it no longer heads an empty place
+  // list): the fallback line, "Plans in Raleigh" and "Host something in Cary".
   const q2 = week.quietWeek({ city: cary, cityHasListings: false, places: [], live, readFailed: false })
-  assert.deepEqual([q2.mode, q2.places.length, q2.plansIn.slug], ['quiet', 0, 'raleigh-nc'])
+  assert.deepEqual([q2.mode, q2.text, q2.plansIn.slug, q2.hostCity], ['fallback', 'Nothing is listed this week yet. Check back soon.', 'raleigh-nc', 'Cary'])
   // No listings anywhere but places here: places and host, no "Plans in".
   const q3 = week.quietWeek({ city: cary, cityHasListings: false, places, live: [], readFailed: false })
   assert.deepEqual([q3.mode, q3.plansIn], ['quiet', null])
-  // 5. Nothing anywhere and no places, or a failed read: the fallback.
+  // 5. A failed read: the fallback line alone. 6. Nothing anywhere and no
+  //    places: the fallback line and "Host something in Cary".
   const fallback = { mode: 'fallback', text: 'Nothing is listed this week yet. Check back soon.' }
-  assert.deepEqual(week.quietWeek({ city: cary, cityHasListings: false, places: [], live: [], readFailed: false }), fallback)
+  assert.deepEqual(week.quietWeek({ city: cary, cityHasListings: false, places: [], live: [], readFailed: false }), { ...fallback, plansIn: null, hostCity: 'Cary' })
   assert.deepEqual(week.quietWeek({ city: cary, cityHasListings: false, places, live, readFailed: true }), fallback)
 })
 
@@ -640,13 +643,34 @@ test('quiet cities are listed: every live city, nearest first, else most plans t
   assert.equal(fromChapelHill.at(-1), 'lagos')
   assert.equal(week.pickerCountLabel(2), '2 this week')
   assert.equal(week.pickerCountLabel(0), 'Places to explore')
+  assert.equal(week.pickerCountLabel(0, true), 'Places to explore')
+  assert.equal(week.pickerCountLabel(3, false), '3 this week')
   // A visitor in Chapel Hill lands on quiet Durham, which points at plans in Cary.
   const live = week.liveCities(cities, listings, [], NOW)
   const initial = week.resolveCity({ cities, live, query: null, geo: { lat: 35.913, lng: -79.0558 }, cookie: null })
   assert.deepEqual(initial, { slug: 'durham', source: 'geo' })
   const durham = cities.find((c) => c.slug === 'durham')
-  const q = week.quietWeek({ city: durham, cityHasListings: false, places: [], live, readFailed: false })
+  const q = week.quietWeek({ city: durham, cityHasListings: false, places: week.normalisePlaces([placeRow(1)], 'durham', STORAGE), live, readFailed: false })
   assert.deepEqual([q.mode, q.heading, q.plansIn.slug], ['quiet', 'A quiet week in Durham.', 'cary'])
+})
+
+test('a quiet city with no photo places: "Nothing listed yet" in the picker, and the fallback line plus Host when picked', () => {
+  const rows = LIVE_ROWS.map((r) => (r.name === 'Fort Lauderdale' ? { ...r, has_places: false } : r))
+  const cities = week.withListingZones(week.linksCitiesFromRows(rows, HINTS), [])
+  const listings = week.bucketListings([row({ lat: 35.789, lng: -78.78, item_slug: 'c1' })], cities)
+  const counts = week.cityCounts(cities, listings, [], NOW)
+  const label = (slug) => {
+    const r = counts.find((c) => c.city.slug === slug)
+    return week.pickerCountLabel(r.count, r.city.hasPlaces)
+  }
+  assert.equal(cities.find((c) => c.slug === 'fort-lauderdale').hasPlaces, false)
+  assert.equal(label('fort-lauderdale'), 'Nothing listed yet')
+  assert.equal(label('cary'), '1 this week')
+  assert.equal(label('raleigh'), 'Places to explore')
+  // Picked, it shows the fallback line and "Host something in Fort Lauderdale" (and plans in Cary).
+  const fll = cities.find((c) => c.slug === 'fort-lauderdale')
+  const q = week.quietWeek({ city: fll, cityHasListings: false, places: [], live: week.liveCities(cities, listings, [], NOW), readFailed: false })
+  assert.deepEqual([q.mode, q.text, q.hostCity, q.plansIn.slug], ['fallback', 'Nothing is listed this week yet. Check back soon.', 'Fort Lauderdale', 'cary'])
 })
 
 test('quiet-week places are read by city_id (the fast index path); lat/lng alone only when no id is known', () => {

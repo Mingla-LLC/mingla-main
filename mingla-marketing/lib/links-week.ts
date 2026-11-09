@@ -636,9 +636,14 @@ export function pickerOrder(
   return out.sort((a, b) => b.count - a.count || a.city.name.localeCompare(b.city.name))
 }
 
-/** The picker row's right-hand label: "3 this week", or "Places to explore" for a quiet city. */
-export function pickerCountLabel(count: number): string {
-  return count > 0 ? `${count} this week` : 'Places to explore'
+/**
+ * The picker row's right-hand label: "3 this week"; a quiet city with photo
+ * places, "Places to explore"; a quiet city with none (`has_places` false),
+ * "Nothing listed yet", since it has nothing to show.
+ */
+export function pickerCountLabel(count: number, hasPlaces?: boolean | null): string {
+  if (count > 0) return `${count} this week`
+  return hasPlaces === false ? 'Nothing listed yet' : 'Places to explore'
 }
 
 /**
@@ -731,7 +736,7 @@ export function nearestLiveCity(
 export type QuietWeek =
   | { mode: 'listings' }
   | { mode: 'quiet'; heading: string; places: LinksPlace[]; plansIn: LinksCity | null; hostCity: string }
-  | { mode: 'fallback'; text: string }
+  | { mode: 'fallback'; text: string; plansIn?: LinksCity | null; hostCity?: string }
 
 /**
  * The shared "nothing this week" rule (#4318 addendum 2, mirrored by #4339):
@@ -740,7 +745,9 @@ export type QuietWeek =
  *   3. no listings: "A quiet week in <City>." with up to 3 real places;
  *   4. under that, "Plans in <nearest live city> →" when another city has
  *      listings, then "Host something in <City> →";
- *   5. a failed read, or nothing live anywhere and no places: the fallback line.
+ *   5. a failed read: the fallback line alone;
+ *   6. no places to show: the fallback line, then "Plans in <city> →" when
+ *      another city has listings and "Host something in <City> →".
  */
 export function quietWeek(input: {
   city: LinksCity
@@ -750,10 +757,10 @@ export function quietWeek(input: {
   readFailed: boolean
 }): QuietWeek {
   if (input.cityHasListings) return { mode: 'listings' }
+  const text = 'Nothing is listed this week yet. Check back soon.'
+  if (input.readFailed) return { mode: 'fallback', text }
   const plansIn = nearestLiveCity(input.city, input.live)
-  if (input.readFailed || (plansIn === null && input.places.length === 0)) {
-    return { mode: 'fallback', text: 'Nothing is listed this week yet. Check back soon.' }
-  }
+  if (input.places.length === 0) return { mode: 'fallback', text, plansIn, hostCity: input.city.name }
   return {
     mode: 'quiet',
     heading: `A quiet week in ${input.city.name}.`,

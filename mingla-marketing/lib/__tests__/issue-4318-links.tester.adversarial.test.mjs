@@ -847,7 +847,7 @@ test('the page builds its list from links_page_cities() only; the guides stand i
   // The picker lists every live city with "Places to explore" for a quiet one.
   const ui = read('components/marketing/links-experience.tsx')
   assert.match(ui, /pickerOrder\(counts, visitor\.point\)/)
-  assert.match(ui, /pickerCountLabel\(count\)/)
+  assert.match(ui, /pickerCountLabel\(count, c\.hasPlaces\)/)
 })
 
 // ================================================================= 7 + 8. socials, privacy link, noindex
