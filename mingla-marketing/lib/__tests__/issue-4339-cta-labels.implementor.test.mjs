@@ -297,6 +297,16 @@ function storeUrl(name) {
 }
 const HOST_URLS = ['BUSINESS_APP_STORE_URL', 'BUSINESS_PLAY_STORE_URL', 'BUSINESS_WEB_URL', 'BUSINESS_ONELINK_URL'].map(storeUrl)
 const EXPLORER_URLS = ['APP_STORE_URL', 'PLAY_STORE_URL', 'EXPLORER_ONELINK_URL'].map(storeUrl)
+// #4339 (release fix): a live listing card ("This weekend" on a city page,
+// lib/cta-destination.ts resolveListingDestinations) opens the listing's PUBLIC
+// page on the host web app on a computer (/e, /t or /exp/<brand>/<slug>) and
+// the Explorer OneLink on a phone. That is a guest's listing page, not the Host
+// product, so it is not a Host CTA. Only a build with the Supabase env renders
+// listings; a card whose phone href is not Explorer stays a Host CTA.
+const LISTING_PAGE = new RegExp(`^${storeUrl('BUSINESS_WEB_URL').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/(?:e|t|exp)/[^/?#]+/[^/?#]+$`)
+export function isListingPage(href, phoneHref) {
+  return LISTING_PAGE.test(href) && typeof phoneHref === 'string' && phoneHref.startsWith(storeUrl('EXPLORER_ONELINK_URL'))
+}
 
 export function builtRows(html, page) {
   const rows = []
@@ -305,8 +315,10 @@ export function builtRows(html, page) {
     const surface = attrs.match(/data-cta-surface="(\w+)"/)?.[1]
     const href = decode(attrs.match(/href="([^"]*)"/)?.[1] ?? '')
     let destination = surface ?? null
+    const phoneHref = decode(attrs.match(/data-cta-phone-href="([^"]*)"/)?.[1] ?? '')
     if (!destination) {
-      if (HOST_URLS.some((u) => href.startsWith(u)) || href.startsWith('/host/download') || href.startsWith('/host/get') || href === '/download?app=host') destination = 'host'
+      if (isListingPage(href, phoneHref)) destination = 'listing'
+      else if (HOST_URLS.some((u) => href.startsWith(u)) || href.startsWith('/host/download') || href.startsWith('/host/get') || href === '/download?app=host') destination = 'host'
       else if (EXPLORER_URLS.some((u) => href.startsWith(u)) || href === '/download') destination = 'explorer'
       else destination = 'web'
     }
@@ -317,11 +329,27 @@ export function builtRows(html, page) {
     if (ariaLabel) labels.push(decode(ariaLabel))
     if (labels.every((l) => !l)) continue
     // Only anchors that leave for an app (or claim to) are CTAs for this rule.
-    if (destination === 'web' && !labels.some((l) => PLAIN_MINGLA.test(l))) continue
+    if ((destination === 'web' || destination === 'listing') && !labels.some((l) => PLAIN_MINGLA.test(l))) continue
     rows.push({ where: `${page} ${href}`, destination, labels: labels.filter(Boolean) })
   }
   return rows
 }
+
+test('built rows: a live listing card (public page on a computer, Explorer on a phone) is not a Host CTA; Host app links still are', () => {
+  const web = storeUrl('BUSINESS_WEB_URL')
+  const explorer = storeUrl('EXPLORER_ONELINK_URL')
+  const host = storeUrl('BUSINESS_ONELINK_URL')
+  const card = (href, phone) => `<a class="wk-card" href="${href}" data-cta-phone-href="${phone}" data-weekend-listing="event"><span class="kind">Event · Fri–Sun</span><h3>Boat Day</h3></a>`
+  const rows = (html) => builtRows(html, 'cities/x.html')
+  assert.deepEqual(rows(card(`${web}/e/brand/boat-day`, `${explorer}?pid=mingla_web`)), [], 'listing card is a guest page, not a Host CTA')
+  assert.deepEqual(rows(card(`${web}/exp/brand/tour`, `${explorer}?pid=mingla_web`)), [])
+  // Not a listing: phone goes to Host, or the href is not a listing page.
+  assert.match(ruleBreak(rows(card(`${web}/e/brand/boat-day`, `${host}?pid=mingla_web`))[0]), /does not say Host/)
+  assert.match(ruleBreak(rows(card(`${web}/e/brand`, `${explorer}?pid=mingla_web`))[0]), /does not say Host/)
+  assert.match(ruleBreak(rows(`<a href="${web}/create">Start here</a>`)[0]), /does not say Host/)
+  // A listing card labelled "Use Mingla" still breaks the rule.
+  assert.match(ruleBreak(rows(`<a href="${web}/e/brand/boat-day" data-cta-phone-href="${explorer}">Use Mingla</a>`)[0]), /not Explorer/)
+})
 
 test('built: no prerendered page has a Host CTA without "Host" or a plain "Use Mingla" that is not Explorer', { skip: !BUILT }, async () => {
   const files = htmlFiles(APP)

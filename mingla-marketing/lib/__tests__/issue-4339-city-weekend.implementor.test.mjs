@@ -435,10 +435,13 @@ test('#4349 the server read: links_page_places is called with p_city_id from lin
 })
 
 // ---- built mode ---------------------------------------------------------------
-test('built: each city page carries "This weekend" (no database in the build: the fallback line) above its 50 ranked places', { skip: !BUILT }, () => {
+// #4339 (release fix): the Vercel production build has the public Supabase
+// env and renders live data (any mode); a build without it renders the fallback.
+test('built: each city page carries "This weekend" (live mode with the Supabase env, the fallback without) above its 50 ranked places', { skip: !BUILT }, () => {
+  const hasDatabase = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim())
   for (const slug of ['lagos', 'raleigh-nc', 'cary-nc']) {
     const html = fs.readFileSync(path.join(MARKETING, `.next/server/app/cities/${slug}.html`), 'utf8')
-    assert.match(html, /data-weekend="(weekend|weekday|quiet|fallback)"/, slug)
+    assert.match(html, hasDatabase ? /data-weekend="(weekend|weekday|quiet|fallback)"/ : /data-weekend="fallback"/, slug)
     const weekendAt = html.indexOf('id="weekend"')
     const placesAt = html.indexOf('id="places"')
     assert.ok(weekendAt > 0 && placesAt > weekendAt, `${slug}: This weekend sits above the places`)

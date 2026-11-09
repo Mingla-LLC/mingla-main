@@ -68,6 +68,12 @@ for (const [slug, city] of Object.entries(CITY)) {
   const places = catalogue.cities[slug].places
   const hasPlans = slug === 'lagos'
   const label = `/cities/${slug}`
+  // #4339 (release fix): the page's own copy, without the live data a host or
+  // admin wrote (admin strips and This weekend listing titles), which only a
+  // build with the Supabase env renders.
+  const pageCopy = main
+    .replace(/<ul class="astrips" data-weekend-strips="">[\s\S]*?<\/ul>/, '')
+    .replace(/<ul class="wk-grid" data-weekend-listings=""[\s\S]*?<\/ul>/, '')
 
   // AC-P1 (#4339): one H1, the design's headline; no promise of events.
   const h1s = [...html.matchAll(/<h1\b[^>]*>([\s\S]*?)<\/h1>/g)].map((match) => text(match[1]))
@@ -77,7 +83,7 @@ for (const [slug, city] of Object.entries(CITY)) {
   const hero = between(main, 'class="lp-hero city-lp-hero"', '</section>')
   assert(text(hero).includes(`${city}, what are we outside for?`), `#4339: ${label} hero keeps the brand line`)
   void CITY_COUNTRY
-  assert.doesNotMatch(text(main), /events? (?:this|on) (?:week|weekend)/i, `#4137 AC-P1: ${label} promises no events`)
+  assert.doesNotMatch(text(pageCopy), /events? (?:this|on) (?:week|weekend)/i, `#4137 AC-P1: ${label} promises no events`)
 
   // AC-P2 (#4339): the hero is the city's tile media (components/site/city-media.tsx):
   // a picked clip or redesign photo, else the licensed city photo; never captioned.
@@ -94,18 +100,33 @@ for (const [slug, city] of Object.entries(CITY)) {
     assert(heroSource.includes(`src: '${heroSrc}'`), `#4137: CITY_HERO_IMAGE.${slug}`)
   }
   assert.doesNotMatch(main, /<figcaption/i, `#4137 AC-P2: ${label} has no figcaption`)
-  for (const phrase of ['Photo:', 'Photo by', 'Unsplash', 'Google Maps']) assert(!text(main).includes(phrase), `#4137: ${label} shows no credit or attribution ("${phrase}")`)
+  for (const phrase of ['Photo:', 'Photo by', 'Unsplash', 'Google Maps']) assert(!text(pageCopy).includes(phrase), `#4137: ${label} shows no credit or attribution ("${phrase}")`)
 
   // #4339: "This weekend" with the four chips, each a button.
   const weekend = between(main, 'id="weekend"', '</section>')
   const chips = [...weekend.matchAll(/<button type="button" aria-pressed="(true|false)"[^>]*>([^<]+)<\/button>/g)].map((match) => [match[2], match[1]])
   assert.deepEqual(chips, [['All', 'true'], ['Events', 'false'], ['Experiences', 'false'], ['Places', 'false']], `#4339: ${label} weekend chips`)
 
-  // #4339 phase 4a: "This weekend" reads the live readers (the build has no
-  // database, so it shows the shared fallback line); the ranked places moved
-  // below it into "Places in <City>." (#places).
-  assert.match(weekend, /data-weekend="fallback"/, `#4339: ${label} weekend without a database is the fallback`)
-  assert(text(weekend).includes('Nothing is listed this week yet. Check back soon.'), `#4339: ${label} fallback line`)
+  // #4339 phase 4a: "This weekend" reads the live readers; the ranked places
+  // moved below it into "Places in <City>." (#places).
+  // #4339 (release fix): a local or CI build has no database and renders the
+  // fallback, but the Vercel production build HAS the public Supabase env, so
+  // the section renders whichever mode the live data gives (weekend, weekday,
+  // quiet or fallback). Each mode is checked on its own terms; any other mode
+  // fails. Pinning "fallback" failed the 9 Nov production build of #4354.
+  const mode = /data-weekend="([a-z]+)"/.exec(weekend)?.[1] ?? assert.fail(`#4339: ${label} weekend mode`)
+  const hasDatabase = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim())
+  if (!hasDatabase) assert.equal(mode, 'fallback', `#4339: ${label} weekend without a database is the fallback`)
+  if (mode === 'fallback') {
+    assert(text(weekend).includes('Nothing is listed this week yet. Check back soon.'), `#4339: ${label} fallback line`)
+  } else if (mode === 'weekend' || mode === 'weekday') {
+    assert.match(weekend, /data-weekend-listings=""/, `#4339: ${label} ${mode} renders its listings`)
+    assert(!text(weekend).includes('Nothing is listed this week yet.'), `#4339: ${label} ${mode} shows no fallback line`)
+  } else if (mode === 'quiet') {
+    assert.match(weekend, /data-weekend-mode="quiet"/, `#4339: ${label} quiet week renders its places`)
+  } else {
+    assert.fail(`#4339: ${label} unknown weekend mode "${mode}"`)
+  }
   const placesSection = between(main, 'id="places"', '</section>')
   assert(text(placesSection).includes(`Top places in ${city}.`), `#4339: ${label} places heading`)
 
@@ -137,13 +158,25 @@ for (const [slug, city] of Object.entries(CITY)) {
   // hero (plan "Save" buttons aside); no Host device CTA; ONE See Mingla Host → /host.
   assert(!main.includes('>Get the app<'), `#4137 AC-P4: ${label} has no per-card "Get the app"`)
   assert(!text(html).includes('Mingla score'), `#4137 AC-P4: ${label} has no Mingla score`)
-  const outsidePlans = main.replace(/<li class="list-item" data-city-plan-card=""[\s\S]*?<\/li>/g, '')
-  assert.equal((outsidePlans.match(/data-cta-surface="explorer"/g) ?? []).length, 1, `#4137 AC-P4: ${label} has one page-level Explorer CTA`)
-  assert.equal((hero.match(/data-cta-surface="explorer"/g) ?? []).length, 1, `#4137 AC-P4: ${label} Explorer CTA sits in the hero`)
-  // #4339 §4 rule 4: the empty week's "Host something in <City>" is the one Host hand-off, inside This weekend.
-  assert.equal((main.match(/data-cta-surface="host"/g) ?? []).length, 1, `#4339: ${label} has one Host device CTA`)
-  assert.equal((weekend.match(/data-cta-surface="host"/g) ?? []).length, 1, `#4339: ${label} Host hand-off sits in This weekend`)
-  assert(text(weekend).includes(`Host something in ${city}`), `#4339: ${label} Host something in ${city}`)
+  // #4339 (release fix): admin strips are live data (none without a database);
+  // a strip may open Explorer or Host through the hand-off seam, so its CTAs are
+  // counted against the strips, never against the page's own buttons.
+  const stripsHtml = /<ul class="astrips" data-weekend-strips="">[\s\S]*?<\/ul>/.exec(weekend)?.[0] ?? ''
+  if (!hasDatabase) assert.equal(stripsHtml, '', `#4339: ${label} has no admin strips without a database`)
+  const count = (html, surface) => (html.match(new RegExp(`data-cta-surface="${surface}"`, 'g')) ?? []).length
+  const mainNoStrips = stripsHtml ? main.replace(stripsHtml, '') : main
+  const outsidePlans = mainNoStrips.replace(/<li class="list-item" data-city-plan-card=""[\s\S]*?<\/li>/g, '')
+  assert.equal(count(outsidePlans, 'explorer'), 1, `#4137 AC-P4: ${label} has one page-level Explorer CTA`)
+  assert.equal(count(hero, 'explorer'), 1, `#4137 AC-P4: ${label} Explorer CTA sits in the hero`)
+  // #4339 §4 rule 4: an empty week (quiet or fallback) carries "Host something
+  // in <City>", the one Host hand-off, inside This weekend; a week with plans
+  // (weekend or weekday) carries none. Host CTAs from admin strips aside, the
+  // page has no other Host device CTA.
+  const emptyWeek = mode === 'quiet' || mode === 'fallback'
+  const hostButtons = emptyWeek ? 1 : 0
+  assert.equal(count(mainNoStrips, 'host'), hostButtons, `#4339: ${label} (${mode}) has ${hostButtons} page-level Host device CTA`)
+  assert.equal(count(weekend.replace(stripsHtml, ''), 'host'), hostButtons, `#4339: ${label} (${mode}) Host hand-off sits in This weekend`)
+  assert.equal(text(weekend).includes(`Host something in ${city}`), emptyWeek, `#4339: ${label} (${mode}) Host something in ${city} only on an empty week`)
   const hostLinks = [...main.matchAll(/<a\b[^>]*href="\/host"[^>]*>([\s\S]*?)<\/a>/g)].map((match) => text(match[1]))
   assert.deepEqual(hostLinks, ['See Mingla Host'], `#4339 AC-P11: ${label} has one See Mingla Host button`)
   assert(text(main).includes(`Run a place in ${city}?`), `#4339 AC-P11: ${label} host heading`)
@@ -171,8 +204,8 @@ for (const [slug, city] of Object.entries(CITY)) {
   assert.deepEqual(faqs, faqPage.mainEntity.map((question) => question.name), `#4137 AC-P12: ${label} visible questions equal the FAQPage questions`)
 
   // AC-P13
-  assert.doesNotMatch(text(main), /Latest stor|Blog/, `#4137 AC-P13: ${label} has no blog block`)
-  assert(!main.includes('href="/blog'), `#4137 AC-P13: ${label} links no blog`)
+  assert.doesNotMatch(text(pageCopy), /Latest stor|Blog/, `#4137 AC-P13: ${label} has no blog block`)
+  assert(!pageCopy.includes('href="/blog'), `#4137 AC-P13: ${label} links no blog`)
   assert(!main.includes('ps-catalogue-card'), `#4137: ${label} no longer renders the old catalogue cards`)
 }
 
