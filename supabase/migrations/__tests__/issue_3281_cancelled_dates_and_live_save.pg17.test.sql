@@ -10,10 +10,10 @@
 -- MINGLA-INVARIANT: I-3281-LIVE-SAVE-DATES-BEFORE-TICKETS | issue #3281 | business_update_live_event_atomic writes dates before tickets and strips removed dates once after the tickets; a direct business_patch_event_when still strips.
 -- MINGLA-INVARIANT: I-3281-LIVE-RSVP-KEEPS-ITS-DATE | issue #3281 | a live RSVP edit updates its date row in place and never changes its status, cancelled_at or occurrence_key.
 --
--- Red before green: on the bodies before 20280523003281, 16 of the 21 blocks
--- fail. The five that pass on both sides are regression guards for what must
--- not change: w4_sold_day, w4_direct_strip, w4_offering_date_past (free to
--- paid), w4_recurring and w5_rsvp_inserts.
+-- Red before green: on the bodies before 20280523003281, 19 of the 25 blocks
+-- fail. The six that pass on both sides are regression guards for what must
+-- not change: w1_approve_group, w4_sold_day, w4_direct_strip,
+-- w4_offering_date_past (free to paid), w4_recurring and w5_rsvp_inserts.
 --
 -- Chosen behaviour (offering_date_past): business_patch_event_when judges the
 -- tickets stored before the save and the live save judges the saved tickets
@@ -374,6 +374,54 @@ BEGIN
 END $w1_approve_single$;
 
 -- ═══ W2  buyer bundle ══════════════════════════════════════════════════════
+-- A recurring event's cancelled night: no comp, no link.
+DO $w1_recurring_night$
+DECLARE f record; v_err text;
+BEGIN
+  SELECT * INTO f FROM pg_temp.b3_fixture('rn', 3, 'recurring', 10);
+  PERFORM pg_temp.b3_cancel(f.o_d2);
+  v_err := pg_temp.b3_err(format('SELECT public.biz_comp_issue(%L,%L,%L,%L,%L::jsonb,NULL,%L,%L)',
+    f.o_mgr, f.o_event, f.o_free, f.o_d2, pg_temp.b3_guest('rn1'), gen_random_uuid(), pg_temp.b3_pepper()));
+  PERFORM pg_temp.b3_assert(v_err = 'occurrence_not_available', 'W1 comp: a recurring event''s cancelled night is refused (' || COALESCE(v_err, 'issued') || ')');
+  v_err := NULL;
+  BEGIN PERFORM pg_temp.b3_link(f.o_owner, f.o_event, f.o_free, f.o_d2, 'auto'); EXCEPTION WHEN OTHERS THEN v_err := SQLERRM; END;
+  PERFORM pg_temp.b3_assert(v_err = 'occurrence_not_available', 'W1 link create: a recurring event''s cancelled night is refused (' || COALESCE(v_err, 'created') || ')');
+END $w1_recurring_night$;
+
+-- A date that ended while the request waited is declined; the rest is issued.
+DO $w1_approve_ended$
+DECLARE f record; v_hash text; v_r jsonb; v_signup uuid;
+BEGIN
+  SELECT * INTO f FROM pg_temp.b3_fixture('xe', 3, 'per_day', 5);
+  v_hash := pg_temp.b3_link(f.o_owner, f.o_event, f.o_free, NULL, 'host');
+  PERFORM pg_temp.b3_signup(v_hash, 'xe1', ARRAY[f.o_d1, f.o_d2]);
+  SELECT id INTO v_signup FROM public.ticket_link_signups WHERE event_id = f.o_event;
+  UPDATE public.event_dates SET start_at = now() - interval '6 hours', end_at = now() - interval '1 hour' WHERE id = f.o_d2;
+  v_r := public.biz_ticket_link_decide(f.o_owner, v_signup, 'approve', gen_random_uuid(), pg_temp.b3_pepper());
+  PERFORM pg_temp.b3_assert(v_r ->> 'status' = 'issued' AND (v_r ->> 'issuedPasses')::int = 1
+    AND (SELECT status FROM public.ticket_link_member_passes WHERE signup_id = v_signup AND event_date_id = f.o_d2) = 'declined'
+    AND NOT EXISTS (SELECT 1 FROM public.orders WHERE event_id = f.o_event AND event_date_id = f.o_d2),
+    'W1 approval: a date that ended while waiting is declined, nothing issued on it');
+END $w1_approve_ended$;
+
+-- Two people, one of their two dates cancelled: both are issued on the live date.
+DO $w1_approve_group$
+DECLARE f record; v_hash text := md5(random()::text) || md5(random()::text); v_r jsonb; v_signup uuid;
+BEGIN
+  SELECT * INTO f FROM pg_temp.b3_fixture('xg', 3, 'per_day', 5);
+  PERFORM public.biz_ticket_link_create(f.o_owner, f.o_event, f.o_free, NULL, 'B3 link', NULL, 2, 'host',
+    NULL, gen_random_uuid(), decode(md5(random()::text), 'hex'), v_hash);
+  PERFORM public.pg_ticket_link_signup_days(v_hash, pg_temp.b3_people(2, 'xg1'), ARRAY[f.o_d1, f.o_d2],
+    gen_random_uuid(), NULL, pg_temp.b3_pepper());
+  SELECT id INTO v_signup FROM public.ticket_link_signups WHERE event_id = f.o_event;
+  PERFORM pg_temp.b3_cancel(f.o_d2);
+  v_r := public.biz_ticket_link_decide(f.o_owner, v_signup, 'approve', gen_random_uuid(), pg_temp.b3_pepper());
+  PERFORM pg_temp.b3_assert((v_r ->> 'issuedPasses')::int = 2
+    AND (SELECT count(*) FROM public.ticket_link_member_passes WHERE signup_id = v_signup AND status = 'declined') = 2
+    AND jsonb_array_length(v_r -> 'skippedNames') = 0,
+    'W1 approval: a two-person request with one date cancelled issues both people on the live date');
+END $w1_approve_group$;
+
 DO $w2_bundle_multi$
 DECLARE f record; v_b jsonb; v_o jsonb;
 BEGIN
@@ -594,6 +642,95 @@ BEGIN
     AND EXISTS (SELECT 1 FROM public.event_dates WHERE event_id = f.o_event AND occurrence_key = 'md_d'),
     'W4: a ticket left only on a removed date is refused (with tickets) and nothing moves (' || COALESCE(v_err, 'saved') || ')');
 END $w4_scope_new_dates$;
+
+-- Removing a date in the same save as tickets: lists that still name it drop
+-- it (the Host trims tickets' lists, never extras'). Unknown dates and lists
+-- left empty are still refused.
+CREATE FUNCTION pg_temp.b3_extra(p_id text, p_keys jsonb) RETURNS jsonb LANGUAGE sql AS $$
+  SELECT jsonb_build_object('id', p_id, 'name', 'Parking', 'priceGbp', 0, 'capacity', 5, 'validDayIds', p_keys);
+$$;
+
+CREATE FUNCTION pg_temp.b3_bx(p_tier uuid, p_keys jsonb) RETURNS jsonb LANGUAGE sql AS $$
+  SELECT jsonb_build_array(jsonb_build_object('id', a.id, 'name', 'B brunch', 'priceGbp', 0, 'capacity', 5,
+    'validDayIds', p_keys)) FROM public.ticket_add_ons a WHERE a.ticket_type_id = p_tier;
+$$;
+
+-- Fixture: "All" (scope p_all_keys) gets an extra on md_a and md_b.
+CREATE FUNCTION pg_temp.b3_prune_fixture(p_tag text, p_all_keys jsonb,
+  OUT o_event uuid, OUT o_a uuid, OUT o_b uuid, OUT o_all uuid, OUT o_x uuid)
+LANGUAGE plpgsql AS $$
+DECLARE v_err text; o record;
+BEGIN
+  SELECT * INTO o FROM pg_temp.b3_live(p_tag);
+  o_event := o.o_event; o_a := o.o_a; o_b := o.o_b; o_all := o.o_all;
+  v_err := pg_temp.b3_save(o_event, jsonb_build_object('core', jsonb_build_object('tickets', jsonb_build_array(
+    pg_temp.b3_tier_json(o_a), pg_temp.b3_tier_json(o_b),
+    pg_temp.b3_tier_json(o_all) || jsonb_build_object('validDayIds', p_all_keys,
+      'extras', jsonb_build_array(pg_temp.b3_extra('x_all', '["md_a","md_b"]'::jsonb)))))));
+  IF v_err IS NOT NULL THEN RAISE EXCEPTION 'prune fixture: %', v_err; END IF;
+  SELECT id INTO o_x FROM public.ticket_add_ons WHERE ticket_type_id = o_all;
+END $$;
+
+DO $w4_prune_removed_dates$
+DECLARE f record; v_err text; v_when jsonb;
+BEGIN
+  v_when := pg_temp.b3_when(jsonb_build_array(pg_temp.b3_day('md_a', 10), pg_temp.b3_day('md_c', 12)));
+
+  -- R1: an all-dates ticket's extra still lists the removed date.
+  SELECT * INTO f FROM pg_temp.b3_prune_fixture('pr1', 'null'::jsonb);
+  v_err := pg_temp.b3_save(f.o_event, jsonb_build_object('when', v_when, 'core', jsonb_build_object('tickets', jsonb_build_array(
+    pg_temp.b3_tier_json(f.o_a) || jsonb_build_object('name', 'A renamed', 'validDayIds', '["md_a"]'::jsonb),
+    pg_temp.b3_tier_json(f.o_b) || jsonb_build_object('validDayIds', '["md_a"]'::jsonb, 'extras', pg_temp.b3_bx(f.o_b, '["md_a"]')),
+    pg_temp.b3_tier_json(f.o_all) || jsonb_build_object('extras', jsonb_build_array(pg_temp.b3_extra(f.o_x::text, '["md_a","md_b"]')))))));
+  PERFORM pg_temp.b3_assert(v_err IS NULL
+    AND (SELECT valid_occurrence_keys FROM public.ticket_add_ons WHERE id = f.o_x) = ARRAY['md_a'],
+    'W4 prune: an extra still listing the removed date saves without it (' || COALESCE(v_err, 'saved') || ')');
+
+  -- R2: a dated ticket the Host trimmed, its extra not trimmed.
+  SELECT * INTO f FROM pg_temp.b3_prune_fixture('pr2', '["md_a","md_b"]'::jsonb);
+  v_err := pg_temp.b3_save(f.o_event, jsonb_build_object('when', v_when, 'core', jsonb_build_object('tickets', jsonb_build_array(
+    pg_temp.b3_tier_json(f.o_a) || jsonb_build_object('validDayIds', '["md_a"]'::jsonb),
+    pg_temp.b3_tier_json(f.o_b) || jsonb_build_object('validDayIds', '["md_a"]'::jsonb, 'extras', pg_temp.b3_bx(f.o_b, '["md_a"]')),
+    pg_temp.b3_tier_json(f.o_all) || jsonb_build_object('validDayIds', '["md_a"]'::jsonb,
+      'extras', jsonb_build_array(pg_temp.b3_extra(f.o_x::text, '["md_a","md_b"]')))))));
+  PERFORM pg_temp.b3_assert(v_err IS NULL AND pg_temp.b3_keys(f.o_all) = ARRAY['md_a']
+    AND (SELECT valid_occurrence_keys FROM public.ticket_add_ons WHERE id = f.o_x) = ARRAY['md_a'],
+    'W4 prune: a trimmed ticket with an untrimmed extra saves (' || COALESCE(v_err, 'saved') || ')');
+
+  -- A ticket list that still names the removed date, its extra not sent.
+  SELECT * INTO f FROM pg_temp.b3_prune_fixture('pr3', '["md_a","md_b"]'::jsonb);
+  v_err := pg_temp.b3_save(f.o_event, jsonb_build_object('when', v_when, 'core', jsonb_build_object('tickets', jsonb_build_array(
+    pg_temp.b3_tier_json(f.o_a) || jsonb_build_object('validDayIds', '["md_a"]'::jsonb),
+    pg_temp.b3_tier_json(f.o_b) || jsonb_build_object('validDayIds', '["md_b","md_a"]'::jsonb, 'extras', pg_temp.b3_bx(f.o_b, '["md_a"]')),
+    pg_temp.b3_tier_json(f.o_all) || jsonb_build_object('validDayIds', '["md_a","md_b"]'::jsonb)))));
+  PERFORM pg_temp.b3_assert(v_err IS NULL AND pg_temp.b3_keys(f.o_all) = ARRAY['md_a']
+    AND pg_temp.b3_keys(f.o_b) = ARRAY['md_a']
+    AND (SELECT valid_occurrence_keys FROM public.ticket_add_ons WHERE id = f.o_x) = ARRAY['md_a'],
+    'W4 prune: ticket lists naming the removed date drop it, and a kept extra follows (' || COALESCE(v_err, 'saved') || ')');
+
+  -- A ticket left with no date is refused, never widened.
+  SELECT * INTO f FROM pg_temp.b3_prune_fixture('pr4', 'null'::jsonb);
+  v_err := pg_temp.b3_save(f.o_event, jsonb_build_object('when', v_when, 'core', jsonb_build_object('tickets', jsonb_build_array(
+    pg_temp.b3_tier_json(f.o_a), pg_temp.b3_tier_json(f.o_b) || jsonb_build_object('validDayIds', '["md_b"]'::jsonb),
+    pg_temp.b3_tier_json(f.o_all)))));
+  PERFORM pg_temp.b3_assert(v_err = 'tier_day_scope_empty' AND pg_temp.b3_keys(f.o_b) = ARRAY['md_b'],
+    'W4 prune: a ticket left with no date is refused (' || COALESCE(v_err, 'saved') || ')');
+  -- An extra left with no date is refused, never widened.
+  v_err := pg_temp.b3_save(f.o_event, jsonb_build_object('when', v_when, 'core', jsonb_build_object('tickets', jsonb_build_array(
+    pg_temp.b3_tier_json(f.o_a),
+    pg_temp.b3_tier_json(f.o_b) || jsonb_build_object('validDayIds', '["md_a"]'::jsonb, 'extras', pg_temp.b3_bx(f.o_b, '["md_b"]')),
+    pg_temp.b3_tier_json(f.o_all)))));
+  PERFORM pg_temp.b3_assert(v_err LIKE '%extra_day_scope_empty'
+    AND EXISTS (SELECT 1 FROM public.event_dates WHERE event_id = f.o_event AND occurrence_key = 'md_b'),
+    'W4 prune: an extra left with no date is refused (' || COALESCE(v_err, 'saved') || ')');
+  -- A date that never existed is still refused.
+  v_err := pg_temp.b3_save(f.o_event, jsonb_build_object('when', v_when, 'core', jsonb_build_object('tickets', jsonb_build_array(
+    pg_temp.b3_tier_json(f.o_a),
+    pg_temp.b3_tier_json(f.o_b) || jsonb_build_object('validDayIds', '["md_a","md_zz"]'::jsonb, 'extras', pg_temp.b3_bx(f.o_b, '["md_a"]')),
+    pg_temp.b3_tier_json(f.o_all)))));
+  PERFORM pg_temp.b3_assert(v_err = 'tier_day_scope_unknown_day',
+    'W4 prune: an unknown date is still refused (' || COALESCE(v_err, 'saved') || ')');
+END $w4_prune_removed_dates$;
 
 DO $w4_sold_day$
 DECLARE f record; v_mgr uuid := gen_random_uuid(); v_err text; v_day uuid;

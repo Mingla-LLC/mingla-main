@@ -193,9 +193,11 @@ import {
 } from "../../utils/eventDateDisplay";
 import type { BusinessEventCard } from "../../types/mergedDiscover";
 import {
+  keepOfferedDays,
   ticketDayScopeLabel,
   ticketOffChosenDays,
 } from "../../components/expandedCard/ticketDayScope";
+import { ticketsWithNoDateOnSale } from "@mingla/offering-rendering/noDateOnSale";
 
 const ACCENT = "#FF6B35";
 const SHEET_SNAP_POINTS = glass.bottomSheet.snapPoints as unknown as (
@@ -595,12 +597,9 @@ export default function ConsumerEventDetailScreen({
       previous.eventId !== eventId ||
       previous.signature === signature
     ) return;
-    const validIds = new Set(
-      validOccurrences
-        .filter((day) => day.cancelled !== true)
-        .map((day) => day.id),
+    setSelectedEventDateIds((selected) =>
+      keepOfferedDays(selected, validOccurrences),
     );
-    setSelectedEventDateIds((selected) => selected.filter((id) => validIds.has(id)));
     setDayTruthStale(true);
     AccessibilityInfo.announceForAccessibility(
       "Those dates just changed. Refresh and choose again.",
@@ -1672,20 +1671,27 @@ export default function ConsumerEventDetailScreen({
   // off the guest's days when it covers none of them. Decorated after either
   // source is chosen, so a deck or chat arrival (warm, seeded) gets it too;
   // each source keeps its own tickets.
+  const decoratedTickets = sourcedPublicEvent.tickets.map((ticket) => ({
+    ...ticket,
+    dayScopeLabel: ticketDayScopeLabel(
+      ticket.validOccurrenceIds,
+      validOccurrences,
+      validatedDayCanonical?.timezone ?? seed?.timezone ?? "UTC",
+    ),
+    offChosenDays: ticketOffChosenDays(
+      ticket.validOccurrenceIds,
+      selectedEventDateIds,
+    ),
+  }));
   const publicEventForBody: PublicEventProps = {
     ...sourcedPublicEvent,
-    tickets: sourcedPublicEvent.tickets.map((ticket) => ({
-      ...ticket,
-      dayScopeLabel: ticketDayScopeLabel(
-        ticket.validOccurrenceIds,
-        validOccurrences,
-        validatedDayCanonical?.timezone ?? seed?.timezone ?? "UTC",
-      ),
-      offChosenDays: ticketOffChosenDays(
-        ticket.validOccurrenceIds,
-        selectedEventDateIds,
-      ),
-    })),
+    // issue #3281 — every date still to come was cancelled: nothing is on
+    // sale, so tickets read sold out (the same state Host web shows) rather
+    // than sending the guest on to choose a day that doesn't exist.
+    tickets:
+      validatedDayCanonical?.isMultiDate === true
+        ? ticketsWithNoDateOnSale(decoratedTickets, validOccurrences)
+        : decoratedTickets,
   };
   const canonicalLifecycleReady =
     validatedDayCanonical !== null && !canonicalQuery.isError;

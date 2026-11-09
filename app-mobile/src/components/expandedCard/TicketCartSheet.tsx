@@ -116,6 +116,7 @@ import type { CheckoutAddOnRequest } from "@mingla/offering-rendering/ticketChec
 import { EventDayChooser, type EventDayChooserStatus } from "./EventDayChooser";
 import {
   dayChooserCaptions,
+  keepOfferedDays,
   removedTicketsNotice,
   ticketDayScopeLabel,
 } from "./ticketDayScope";
@@ -1132,14 +1133,10 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     if (!signedInBuyer) return;
     if (multiDaySelection !== null) {
       // issue #3281 — a cancelled date never rides to checkout.
-      const validIds = new Set(
-        multiDaySelection.occurrences
-          .filter((day) => day.cancelled !== true)
-          .map((day) => day.id),
+      const selectedIds = keepOfferedDays(
+        [...new Set(multiDaySelection.selectedEventDateIds)],
+        multiDaySelection.occurrences,
       );
-      const selectedIds = [
-        ...new Set(multiDaySelection.selectedEventDateIds),
-      ].filter((id) => validIds.has(id));
       if (multiDaySelection.status !== "ready") return;
       // issue #3281 — an all-days pass has nothing to choose: the server
       // expands the pass to every upcoming date (ticket-checkout-create).
@@ -1272,10 +1269,14 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     return "populated";
   })();
 
+  // issue #3281 — a cancelled date in the selection is not a chosen day.
   const selectedDayCount =
     multiDaySelection === null
       ? 0
-      : new Set(multiDaySelection.selectedEventDateIds).size;
+      : keepOfferedDays(
+          [...new Set(multiDaySelection.selectedEventDateIds)],
+          multiDaySelection.occurrences,
+        ).length;
   const dayTruthUnavailable =
     multiDaySelection !== null && multiDaySelection.status !== "ready";
   const treatAsAllDaysPass =

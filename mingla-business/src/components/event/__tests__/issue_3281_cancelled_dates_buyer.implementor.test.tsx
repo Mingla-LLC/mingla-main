@@ -155,6 +155,28 @@ describe("issue #3281 — web day chooser shows a cancelled date as Cancelled", 
     tree.unmount();
   });
 
+  test("cancelled alone disables the row (soldOut false, places left)", async () => {
+    // The flag itself, not the server's forced sold-out, must disable the row.
+    const rows = normalizePublicEventOccurrences(
+      [
+        rawRow(FRI, 29),
+        rawRow(SAT, 30, { cancelled: true, soldOut: false, placesLeft: 12 }),
+      ],
+      "Europe/London",
+    );
+    const onToggle = jest.fn();
+    const tree = await mount(rows, { onToggle });
+    const sat = row(tree, SAT);
+    expect(sat.props.disabled).toBe(true);
+    expect(sat.props.accessibilityState).toEqual({ checked: false, disabled: true });
+    expect(sat.props.accessibilityHint).toBe("Cancelled");
+    await act(() => {
+      (sat.props.onPress as () => void)();
+    });
+    expect(onToggle).not.toHaveBeenCalled();
+    tree.unmount();
+  });
+
   test("tapping the cancelled row is a no-op; an active row still toggles", async () => {
     const onToggle = jest.fn();
     const tree = await mount(occurrences, { onToggle });

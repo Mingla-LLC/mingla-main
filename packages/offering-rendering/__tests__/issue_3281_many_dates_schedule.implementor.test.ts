@@ -13,6 +13,7 @@ import {
   placesLeftChip,
   weekStartForCountry,
 } from "../eventDateSchedule.ts";
+import { noDateOnSale, ticketsWithNoDateOnSale } from "../noDateOnSale.ts";
 
 const day = (n: number, hour = 12) => {
   const d = new Date(Date.UTC(2026, 10, n, hour, 0, 0));
@@ -106,4 +107,24 @@ Deno.test("#3281 cancelled: a pass needs a date still on; the flag reads only tr
   assertEquals(isCancelledOccurrence({ cancelled: true }), true);
   assertEquals(isCancelledOccurrence({ cancelled: null }), false);
   assertEquals(isCancelledOccurrence({}), false);
+});
+
+Deno.test("#3281 cancelled: no date on sale only when every date to come is cancelled", () => {
+  const now = Date.parse("2026-11-01T00:00:00.000Z");
+  const cancelled = (n: number) => ({ ...day(n), cancelled: true });
+  assertEquals(noDateOnSale([cancelled(2), cancelled(3)], now), true);
+  assertEquals(noDateOnSale([cancelled(2), day(3)], now), false);
+  assertEquals(noDateOnSale([], now), false);
+  // Every date already ended: the ended state owns it, not this rule.
+  assertEquals(noDateOnSale([cancelled(2)], Date.parse("2027-01-01T00:00:00.000Z")), false);
+  const ticket: {
+    id: string;
+    isUnlimited: boolean;
+    capacity: number | null;
+    waitlistEnabled: boolean;
+  } = { id: "t", isUnlimited: true, capacity: null, waitlistEnabled: true };
+  assertEquals(ticketsWithNoDateOnSale([ticket], [cancelled(2), cancelled(3)], now), [
+    { id: "t", isUnlimited: false, capacity: 0, waitlistEnabled: false },
+  ]);
+  assertEquals(ticketsWithNoDateOnSale([ticket], [cancelled(2), day(3)], now), [ticket]);
 });

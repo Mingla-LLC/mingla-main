@@ -165,6 +165,28 @@ jest.mock("../../../../src/components/checkout/ConsentTermsSheet", () => ({
   ConsentTermsSheet: () => null,
 }));
 
+// issue #3281 — records each attempt-id request so a test can read the
+// surface the screen asked for. Delegates to the real cart; nothing is faked.
+const mockAttemptInputs: Array<{ surface: string }> = [];
+jest.mock("../../../../src/components/checkout/CartContext", () => {
+  const actual = jest.requireActual(
+    "../../../../src/components/checkout/CartContext",
+  );
+  return {
+    ...actual,
+    useCart: () => {
+      const cart = actual.useCart();
+      return {
+        ...cart,
+        checkoutAttemptIdFor: (input: { surface: string }) => {
+          mockAttemptInputs.push(input);
+          return cart.checkoutAttemptIdFor(input);
+        },
+      };
+    },
+  };
+});
+
 import {
   CartProvider,
   useCart,
@@ -345,6 +367,7 @@ describe("issue #3281 — a free native reservation is contract v2 with its extr
 
   test("iOS sends v2, a native attempt id, accepted terms and the line's extras", async () => {
     jest.replaceProperty(Platform, "OS", "ios");
+    mockAttemptInputs.length = 0;
     let tree!: Renderer;
     await act(async () => {
       tree = TestRenderer.create(
@@ -368,6 +391,11 @@ describe("issue #3281 — a free native reservation is contract v2 with its extr
     expect(body.purchaseTermsAccepted).toBe(true);
     expect(String(body.checkoutAttemptId)).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+    // The attempt id is keyed to the native surface, never buyer web's.
+    expect(mockAttemptInputs.length).toBeGreaterThan(0);
+    expect(mockAttemptInputs.map((input) => input.surface)).toEqual(
+      mockAttemptInputs.map(() => "native"),
     );
     expect("payment_plan_choice" in body).toBe(false);
     const lines = body.lines as Array<Record<string, unknown>>;

@@ -11,6 +11,21 @@ import type { PublicTicketProps } from "@mingla/offering-rendering";
 import type { PublicEventOccurrenceLike } from "../../hooks/usePublicEventBySlug";
 import { formatOccurrenceLine } from "../../utils/eventDateDisplay";
 
+/**
+ * issue #3281 — the guest's chosen days that are still dates on offer. A date
+ * the host cancelled leaves the choice like a removed one; checkout refuses it
+ * (occurrence_not_available). Keeps the order of `selected`.
+ */
+export const keepOfferedDays = (
+  selected: readonly string[],
+  occurrences: readonly PublicEventOccurrenceLike[],
+): string[] => {
+  const offered = new Set(
+    occurrences.filter((day) => day.cancelled !== true).map((day) => day.id),
+  );
+  return selected.filter((id) => offered.has(id));
+};
+
 /** "Fri 2 Oct" for one date, "2 of 3 dates" for more; null on every date. */
 export const ticketDayScopeLabel = (
   validIds: readonly string[] | null | undefined,

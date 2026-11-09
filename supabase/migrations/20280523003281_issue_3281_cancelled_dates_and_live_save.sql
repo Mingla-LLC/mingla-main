@@ -151,6 +151,9 @@ DECLARE
   v_pricing_patch jsonb:='{}'::jsonb;
   v_reason text;   -- issue #3827
   v_notice jsonb;  -- issue #3827 buyer email
+  v_keys_before text[];   -- issue #3281
+  v_removed_keys text[];  -- issue #3281
+  v_ticket_patch jsonb;   -- issue #3281
 BEGIN
   -- issue #3827 — a reason is owed to BUYERS. With none, a blank reason is
   -- recorded as the stated constant; with one or more it is still refused.
@@ -209,15 +212,63 @@ BEGIN
     -- extra lists once the tickets are written (below), so a ticket moved
     -- off a removed date is judged on its new list, not its old one.
     PERFORM set_config('mingla.issue_3281_defer_day_strip','on',true);
+    -- issue #3281: the keys of the dates this save removes (before minus after).
+    SELECT COALESCE(array_agg(d.occurrence_key),'{}'::text[]) INTO v_keys_before
+      FROM public.event_dates d
+     WHERE d.event_id=p_event_id AND d.occurrence_key IS NOT NULL;
     PERFORM public.business_patch_event_when(
       p_event_id,v_when,v_reason,p_client_revision   -- issue #3827
     );
     PERFORM set_config('mingla.issue_3281_defer_day_strip','',true);
+    v_removed_keys:=ARRAY(
+      SELECT k FROM unnest(v_keys_before) k
+       WHERE NOT EXISTS (SELECT 1 FROM public.event_dates d
+                          WHERE d.event_id=p_event_id AND d.occurrence_key=k));
   END IF;
 
   IF v_core ? 'tickets' THEN
+    v_ticket_patch:=v_core->'tickets';
+    -- issue #3281: a ticket or extra sent with a date this save removed (the
+    -- Host trims tickets' lists, never extras') drops that date, the way the
+    -- publish path drops a deleted draft date. Only removed dates are dropped:
+    -- an unknown date is still refused, and a list left empty is refused
+    -- (*_scope_empty), never widened to every date. Kept extras that are not
+    -- sent lose a removed date here too, so they still fit their ticket.
+    IF v_mode='multi_date' AND COALESCE(cardinality(v_removed_keys),0)>0
+       AND jsonb_typeof(v_ticket_patch)='array' THEN
+      SELECT COALESCE(jsonb_agg(
+          (CASE WHEN jsonb_typeof(t.value->'validDayIds')='array'
+                THEN jsonb_set(t.value,'{validDayIds}',COALESCE((
+                  SELECT jsonb_agg(k.value ORDER BY k.n)
+                    FROM jsonb_array_elements(t.value->'validDayIds') WITH ORDINALITY k(value,n)
+                   WHERE NOT ((k.value#>>'{}') = ANY (v_removed_keys))),'[]'::jsonb))
+                ELSE t.value END)
+          || CASE WHEN jsonb_typeof(t.value->'extras')='array'
+               THEN jsonb_build_object('extras',(
+                 SELECT COALESCE(jsonb_agg((CASE WHEN jsonb_typeof(x.value->'validDayIds')='array'
+                THEN jsonb_set(x.value,'{validDayIds}',COALESCE((
+                  SELECT jsonb_agg(k.value ORDER BY k.n)
+                    FROM jsonb_array_elements(x.value->'validDayIds') WITH ORDINALITY k(value,n)
+                   WHERE NOT ((k.value#>>'{}') = ANY (v_removed_keys))),'[]'::jsonb))
+                ELSE x.value END) ORDER BY x.n),'[]'::jsonb)
+                   FROM jsonb_array_elements(t.value->'extras') WITH ORDINALITY x(value,n)))
+               ELSE '{}'::jsonb END
+          ORDER BY t.n),'[]'::jsonb)
+        INTO v_ticket_patch
+        FROM jsonb_array_elements(v_ticket_patch) WITH ORDINALITY t(value,n);
+      UPDATE public.ticket_add_ons a
+         SET valid_occurrence_keys=ARRAY(
+               SELECT k FROM unnest(a.valid_occurrence_keys) k
+                WHERE NOT (k = ANY (v_removed_keys)) ORDER BY k),
+             updated_at=now()
+        FROM public.ticket_types tt
+       WHERE tt.id=a.ticket_type_id AND tt.event_id=p_event_id
+         AND a.valid_occurrence_keys && v_removed_keys
+         AND EXISTS (SELECT 1 FROM unnest(a.valid_occurrence_keys) k
+                      WHERE NOT (k = ANY (v_removed_keys)));
+    END IF;
     PERFORM public.business_patch_event_ticket_tiers(
-      p_event_id,v_core->'tickets',NULL,NULL,NULL,v_reason   -- issue #3827
+      p_event_id,v_ticket_patch,NULL,NULL,NULL,v_reason   -- issue #3827
     );
   END IF;
 

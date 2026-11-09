@@ -49,6 +49,10 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import Head from "expo-router/head";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as OfferingRendering from "@mingla/offering-rendering";
+import {
+  noDateOnSale,
+  ticketsWithNoDateOnSale,
+} from "@mingla/offering-rendering/noDateOnSale";
 import type { FollowButtonProps } from "@mingla/brand-rendering/FollowButton";
 
 import {
@@ -692,6 +696,9 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   // A multi-date event whose occurrences have not loaded (or that materialised
   // only one row) offers NO choice — the guest is never blocked behind an empty
   // picker, and the CTA behaves exactly as it does today.
+  // issue #3281 — counts cancelled rows on purpose. A multi-date checkout
+  // always requires a chosen day (`issue_3313_event_day_choice`), so a
+  // two-date event with one cancelled must still carry the remaining date's id.
   const hasOccurrenceChoice = isMultiDate && occurrences.length > 1;
   useEffect(() => {
     if (eventIdentityRef.current === event.id) return;
@@ -824,10 +831,12 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     socialProofQuery.data?.hideRemainingCount === true ||
     (bundleHideRemainingCount !== false &&
       socialProofQuery.data?.hideRemainingCount !== false);
+  // issue #3281 — every date still to come was cancelled: nothing is on sale.
+  const noDatesOnSale = isMultiDate && noDateOnSale(occurrences, nowMs);
   const publicEvent = useMemo(
     () => {
       const mapped = mapLiveEventToPublicEvent(event, acquisitionState, occurrences);
-      return {
+      const withDays: PublicEventProps = {
         ...mapped,
         hideRemainingCount,
         // issue #3281 — each listed ticket read against the guest's chosen days.
@@ -842,12 +851,20 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           ),
         })),
       };
+      // issue #3281 — with no date on sale, tickets read sold out (the same
+      // state Explorer shows) rather than sending the guest on to choose a
+      // day that doesn't exist.
+      return noDatesOnSale
+        ? { ...withDays, tickets: ticketsWithNoDateOnSale(withDays.tickets, occurrences, nowMs) }
+        : withDays;
     },
     [
       acquisitionState,
       event,
       hideRemainingCount,
       multiDatePricingMode,
+      noDatesOnSale,
+      nowMs,
       occurrences,
       selectedOccurrenceIds,
     ],
@@ -1186,6 +1203,9 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   }, [dayChooserState, occurrences]);
 
   const blockForDayTruth = useCallback((): boolean => {
+    // issue #3281 — the buy controls are already disabled (Sold out); a
+    // programmatic or legacy invocation must not reach checkout either.
+    if (noDatesOnSale) return true;
     if (multiDatePurchaseReady) return false;
     if (dayChooserState === "ready") setDayChoiceMissing(true);
     setToast({
@@ -1202,7 +1222,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     });
     if (Platform.OS !== "web") revealDayChooser();
     return true;
-  }, [dayChooserState, multiDatePurchaseReady, revealDayChooser]);
+  }, [dayChooserState, multiDatePurchaseReady, noDatesOnSale, revealDayChooser]);
 
   // The canonical post-sign-in return target, built ONLY with the canonical
   // path helper — never `eventPublicUrl`, `canonicalUrl(event)`,
