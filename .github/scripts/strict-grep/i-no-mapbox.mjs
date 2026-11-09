@@ -22,6 +22,9 @@
  *     - .github/ci-batch/MANIFEST.json (frozen workflow digests);
  *     - .github/scripts/ci-discovery/legacy-baseline.json (immutable, sealed
  *       candidate snapshot; deleted suites stay listed as history);
+ *     - scripts/issue-4334/capture-rollback.sql (the pre-apply rollback
+ *       generator must name the old `mapbox` health row and chat-plan columns
+ *       it restores);
  *     - this gate and its registry descriptor.
  *   ALLOWED FILE NAMES (the name only; the contents are still scanned):
  *     - mingla-business/src/components/location/__tests__/
@@ -68,6 +71,8 @@ export const ALLOWED_PATHS = [
   // [TRANSITIONAL] until MAPBOX_ACCESS_TOKEN is unset on the live project (see header).
   /^supabase\/secrets\.manifest\.json$/,
   /^scripts\/secrets\/issue_1436_secret_capacity_exit\.adversarial\.test\.mjs$/,
+  // The rollback generator restores the pre-#4334 `mapbox` rows by name.
+  /^scripts\/issue-4334\/capture-rollback\.sql$/,
   /^\.github\/scripts\/strict-grep\/i-no-mapbox\.mjs(\.gate\.json)?$/,
 ];
 
