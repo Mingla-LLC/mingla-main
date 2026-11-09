@@ -231,7 +231,7 @@ describe("T — one arrival model", () => {
 
   // P3 (pinned): MIN_USEFUL_MINUTES makes the sheet call a stop "closed" when
   // fewer than 15 minutes remain; the schedule check has no such window.
-  test.failing("T-4 (P3) a stop that closes 10 min after arrival: the schedule check and the sheet agree", () => {
+  test("T-4 (P3) a stop that closes 10 min after arrival: the schedule check and the sheet agree", () => {
     const closingSoon = [stop({ placeName: "Bakery", openingHours: { weekdayDescriptions: week(g("8:00 AM", "8:00 PM")) } })];
     const at = venue(13, 19, 50);
     const sheetSaysClosed = arrivalOpen(planTimeline(closingSoon, at, null)[0].open)?.kind === "closed";

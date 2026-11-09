@@ -12,7 +12,7 @@
  * content, where its route strip ends, where its stop list sits, and where each
  * stop row sits inside the list; this store adds them up.
  */
-import { useSyncExternalStore } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 
 export const NAVIGATOR_HEIGHT = 52;
 /** A stop counts as "in view" once its top is this far under the navigator. */
@@ -153,5 +153,34 @@ export function usePlanScroll(store: PlanScrollStore | null): PlanScrollSnapshot
   );
 }
 
+/**
+ * #4347 wave 3 rework (tester N-1) — ONLY the pulse, for the plan body. The
+ * body needs nothing else from the store, and subscribing to the whole
+ * snapshot re-rendered every stop card on each navigator fill change during a
+ * scroll. The store keeps the same pulse object across scroll publishes, so
+ * this value only changes when a jump pulses a stop.
+ */
+export function usePlanPulse(store: PlanScrollStore | null): PlanScrollSnapshot['pulse'] {
+  const getPulse = store ? () => store.getSnapshot().pulse : emptyPulse;
+  return useSyncExternalStore(store ? store.subscribe : noopSubscribe, getPulse, getPulse);
+}
+
+const emptyPulse = (): PlanScrollSnapshot['pulse'] => null;
 const noopSubscribe = (): (() => void) => () => undefined;
 const emptySnapshot = (): PlanScrollSnapshot => EMPTY;
+
+/**
+ * #4347 wave 3 rework — the plan's per-card choices (start time, swaps, the
+ * scroll state) reset when the sheet opens or closes, or shows a DIFFERENT
+ * card — never when the same card re-renders because the viewer's location
+ * was refetched or the collab travel mode changed. `reset` is read from a ref,
+ * so a new function each render does not count as a change.
+ */
+export function useResetOnPlanIdentity(visible: boolean, cardId: string | null | undefined, reset: () => void): void {
+  const resetRef = useRef(reset);
+  resetRef.current = reset;
+  const identity = visible ? `open:${cardId ?? ''}` : 'closed';
+  useEffect(() => {
+    resetRef.current();
+  }, [identity]);
+}

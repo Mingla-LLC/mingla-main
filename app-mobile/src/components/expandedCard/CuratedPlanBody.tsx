@@ -17,14 +17,15 @@
  * every time, forecast, crowd value and the warning together.
  */
 import React from 'react';
-import { Platform, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
+import { planRouteTargets, routeCap } from './placeDirections';
 import { useTranslation } from 'react-i18next';
 import { PLAN_SHEET, SPINE } from './spineTokens';
 import { PlaceGallery } from './PlaceGallery';
 import { PlanSummary, type PlanTileView, type RouteStripStop } from './PlanSummary';
 import { PlanStopCard, type StopChip } from './PlanStopCard';
 import { PlanConditions, PlanEndsNear, PlanGettingThere, PlanWarningCard, type TableRow, type WarningFix } from './PlanSections';
-import { usePlanScroll, type PlanScrollStore } from './planScroll';
+import { usePlanPulse, type PlanScrollStore } from './planScroll';
 import { useCountTo } from './planMotion';
 import {
   arrivalOpen,
@@ -48,7 +49,7 @@ import {
   totalTravelMinutes,
   venueDay,
   weatherGlyph,
-  type PlanTimelineStop,
+  type PlanArrivalStop,
   type StopForecast,
   type TravelMode,
 } from './curatedPlanModel';
@@ -183,7 +184,8 @@ export function CuratedPlanBody(props: CuratedPlanBodyProps): React.ReactElement
   const fetched = usePlanForecasts(stops, active && forecastsOverride === undefined);
   const forecasts = forecastsOverride ? stops.map((_, i) => forecastsOverride[i] ?? null) : fetched;
   const [pickerOpen, setPickerOpen] = React.useState(false);
-  const snap = usePlanScroll(scroll);
+  // Only the pulse: the navigator owns the rest of the scroll state (N-1).
+  const pulse = usePlanPulse(scroll);
 
   // Which card just replaced a swapped-out stop (it slides in; the rest stay).
   const prevIds = React.useRef<string[]>(stops.map((s) => s.placeId));
@@ -293,7 +295,7 @@ export function CuratedPlanBody(props: CuratedPlanBodyProps): React.ReactElement
   }
 
   // ── Per stop ───────────────────────────────────────────────────────────────
-  const chipsFor = (stop: CuratedStop, tl: PlanTimelineStop, i: number): StopChip[] => {
+  const chipsFor = (stop: CuratedStop, tl: PlanArrivalStop, i: number): StopChip[] => {
     const chips: StopChip[] = [];
     const stopOffset = stop.utcOffsetMinutes ?? offset;
     const open = arrivalOpen(tl.open);
@@ -485,7 +487,7 @@ export function CuratedPlanBody(props: CuratedPlanBodyProps): React.ReactElement
                     swapPanel={swapPanel(i)}
                     reducedMotion={reducedMotion}
                     swappedIn={swappedIn[i]}
-                    pulseSeq={snap.pulse && snap.pulse.index === i ? snap.pulse.seq : null}
+                    pulseSeq={pulse && pulse.index === i ? pulse.seq : null}
                   />
                 </View>
               </View>
@@ -498,7 +500,11 @@ export function CuratedPlanBody(props: CuratedPlanBodyProps): React.ReactElement
       <PlanGettingThere
         title={t('cards:plan.getting_there')}
         rows={legRows}
-        routeLabel={Platform.OS === 'ios' ? t('cards:plan.route_next') : t('cards:plan.route_all')}
+        routeLabel={t('cards:plan.route_all')}
+        routeNote={(() => {
+          const cap = routeCap(planRouteTargets(stops));
+          return cap ? t('cards:plan.route_capped', { count: cap.total }) : null;
+        })()}
         onRoute={stops.length > 0 ? () => onRouteAll(nextStopIndex(timeline, now), mode) : null}
       />
       <PlanEndsNear title={t('cards:expanded.ends_near')} text={endsNear} />

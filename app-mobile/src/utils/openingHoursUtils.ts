@@ -112,11 +112,28 @@ export function isPlaceOpenAt(
   targetDate: Date,
   utcOffsetMinutes?: number | null,
 ): boolean | null {
+  const minutes = openMinutesLeftAt(weekdayText, targetDate, utcOffsetMinutes);
+  return minutes === null ? null : minutes > 0;
+}
+
+/**
+ * #4347 wave 3 rework — minutes the place stays open from `targetDate` (0 =
+ * closed), on the same model as `isPlaceOpenAt`; null = cannot tell. Lets the
+ * schedule check apply the plan sheet's "closes too soon to be worth it" rule.
+ * A missing or unreadable target-day line is unknown (null), even when last
+ * night's range would cover the time (tester O-3 pins that).
+ */
+export function openMinutesLeftAt(
+  weekdayText: readonly string[] | undefined | null,
+  targetDate: Date,
+  utcOffsetMinutes?: number | null,
+): number | null {
   if (!weekdayText || weekdayText.length === 0) return null;
   const { day, now } = venueClock(targetDate, utcOffsetMinutes);
-  const built = openIntervalsAround(weekdayText, day, false);
-  if (built === null) return null;
-  return built.merged.some(([open, close]) => open <= now && now < close);
+  const built = openIntervalsAround(weekdayText, day);
+  if (!built.todayReadable) return null;
+  const current = built.merged.find(([open, close]) => open <= now && now < close);
+  return current ? current[1] - now : 0;
 }
 
 /**
@@ -180,30 +197,29 @@ function venueClock(targetDate: Date, utcOffsetMinutes?: number | null): { day: 
 
 /**
  * Every opening from yesterday (an overnight range still running) through
- * seven days ahead, as merged absolute minutes from the start of today. null
- * when today's line is unreadable — or yesterday's, when `yesterdayRequired`.
+ * seven days ahead, as merged absolute minutes from the start of today. An
+ * unreadable day contributes nothing; the caller decides what an unreadable
+ * today / yesterday means.
  */
 function openIntervalsAround(
   weekdayText: readonly string[],
   day: number,
-  yesterdayRequired: boolean,
-): { merged: Array<[number, number]>; allDayToday: boolean } | null {
+): { merged: Array<[number, number]>; allDayToday: boolean; todayReadable: boolean; yesterdayReadable: boolean } {
   const intervals: Array<[number, number]> = [];
   let allDayToday = false;
+  let todayReadable = false;
+  let yesterdayReadable = false;
   for (let offset = -1; offset <= 7; offset += 1) {
     const parsed = parseDayRanges(weekdayText, day + offset);
-    if (parsed === null) {
-      // Today (and, for the status line, yesterday) must be readable; a later
-      // unreadable day only limits how far ahead "Opens …" can look.
-      if (offset === 0 || (offset === -1 && yesterdayRequired)) return null;
-      continue;
-    }
+    if (parsed === null) continue;
+    if (offset === 0) todayReadable = true;
+    if (offset === -1) yesterdayReadable = true;
     if (offset === 0 && parsed.allDay) allDayToday = true;
     for (const [open, close] of parsed.ranges) {
       intervals.push([open + offset * 1440, close + offset * 1440]);
     }
   }
-  intervals.sort((a, b) => a[0] - b[0]);
+  intervals.sort((x, y) => x[0] - y[0]);
   // Merge touching ranges so "Open 24 hours" next to an overnight range reads
   // as one long opening, not a close at midnight.
   const merged: Array<[number, number]> = [];
@@ -212,7 +228,7 @@ function openIntervalsAround(
     if (last && interval[0] <= last[1]) last[1] = Math.max(last[1], interval[1]);
     else merged.push([interval[0], interval[1]]);
   }
-  return { merged, allDayToday };
+  return { merged, allDayToday, todayReadable, yesterdayReadable };
 }
 
 export function getOpenStatusAt(
@@ -223,8 +239,10 @@ export function getOpenStatusAt(
 ): OpenStatus | null {
   if (!weekdayText || weekdayText.length === 0) return null;
   const { day, now } = venueClock(targetDate, utcOffsetMinutes);
-  const built = openIntervalsAround(weekdayText, day, true);
-  if (built === null) return null;
+  // Today and yesterday must be readable for the status line; a later
+  // unreadable day only limits how far ahead "Opens …" can look.
+  const built = openIntervalsAround(weekdayText, day);
+  if (!built.todayReadable || !built.yesterdayReadable) return null;
   const { merged, allDayToday } = built;
 
   const current = merged.find(([open, close]) => open <= now && now < close);

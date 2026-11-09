@@ -58,7 +58,7 @@ const CI = require_(path.join(REPO, 'packages/card-identity/index.js'));
 const SRC = {
   modal: 'app-mobile/src/components/ExpandedCardModal.tsx',
   // #4347 wave 3 — the plan's body and its stop card replace the hero, the
-  // plan's StopList rows, PlanTimeline and ConditionsSection (all deleted).
+  // plan's StopList rows, the old plan timeline and conditions section (all deleted).
   planbody: 'app-mobile/src/components/expandedCard/CuratedPlanBody.tsx',
   stopcard: 'app-mobile/src/components/expandedCard/PlanStopCard.tsx',
   plate: 'app-mobile/src/components/deckCardPlate.tsx',
@@ -72,7 +72,6 @@ const SRC = {
   // #4347 wave 1 — the deck face's binding of the redesigned deck producer.
   curatedface: 'app-mobile/src/components/deckCard/curatedFace.ts',
   // The two derived-data shapes S-6b classifies exhaustively.
-  busyness: 'app-mobile/src/services/busynessService.ts',
   cardtypes: 'app-mobile/src/types/expandedCardTypes.ts',
   // The chat trimmer that used to invent a per-stop duration (S-9).
   messaging: 'app-mobile/src/services/messagingService.ts',
@@ -1260,7 +1259,7 @@ function typeBody(source, openerRe, label) {
   return '';
 }
 
-// #4347 wave 3 — BusynessData left this ledger: ConditionsSection (its only
+// #4347 wave 3 — BusynessData left this ledger: the old conditions section (its only
 // reader) is deleted and nothing on the sheet renders that shape any more; the
 // crowd is the typical curve via placeSheetModel / curatedPlanModel (see S-7).
 const S6B_SHAPES = [
@@ -1388,31 +1387,25 @@ test('S-8 nothing produces, types, fetches or translates traffic any more', () =
   // failed. The real arm restated the distance span the plate already carries
   // (D-2: "14 min" beside "6.7 mi" is the same fact twice). So the producer
   // went with the row, and this rule keeps both ends deleted together.
-  const service = stripComments(read('busyness'));
-
-  for (const dead of ['TrafficInfo', 'trafficInfo', 'trafficCondition', 'currentTravelTime',
-    'fetchMapboxTraffic', 'getTrafficHeuristic', 'MAPBOX_DIRECTIONS_URL', 'routeCache']) {
-    assert.equal(
-      service.includes(dead),
-      false,
-      `S-8: \`${dead}\` is back in busynessService.ts. If traffic is genuinely wanted again it needs a `
-      + 'RENDER SITE and an honest fallback in the same change — the state this rule forbids is the '
-      + 'one that existed: paying for the data and dropping it on the floor.',
-    );
-  }
-  assert.equal(
-    /api\.mapbox\.com\/directions/.test(service),
-    false,
-    'S-8: busyness fetches a Mapbox Directions route again. That was one third-party round-trip per '
+  // #4347 wave 3 — the busyness service itself is DELETED (its last reader,
+  // the plan's old conditions row, went in wave 3), so the producer cannot come
+  // back by accident inside it. The rule now holds on the whole app tree.
+  assert.deepEqual(
+    fs.readdirSync(path.join(APP, 'src/services')).filter((f) => /^busyness/i.test(f)),
+    [],
+    'S-8: the deleted busyness service is back. Its only reader is gone; a revived service fetches for nobody.',
+  );
+  const directions = [...TREE].filter(([, src]) => /api\.mapbox\.com\/directions/.test(src)).map(([file]) => file);
+  assert.deepEqual(
+    directions,
+    [],
+    'S-8: something fetches a Mapbox Directions route again. That was one third-party round-trip per '
     + 'expanded-card open, for a row that does not exist.',
   );
-  // The reason must be written down where the next person will look.
-  assert.match(
-    fs.readFileSync(path.join(REPO, SRC.busyness), 'utf8'),
-    /TRAFFIC IS DELETED, DELIBERATELY/,
-    'S-8: the deletion rationale left the service header. A silent deletion is what produced three of '
-    + "this programme's regressions; the whole point of deleting rather than restoring was to say why.",
-  );
+  for (const dead of ['fetchMapboxTraffic', 'getTrafficHeuristic', 'TrafficInfo']) {
+    const back = [...TREE].filter(([, src]) => src.includes(dead)).map(([file]) => file);
+    assert.deepEqual(back, [], `S-8: \`${dead}\` is back in ${back.join(', ')}.`);
+  }
 
   // …and nowhere else in the app either.
   const holdouts = [...TREE]
@@ -1633,7 +1626,7 @@ test('S-9 a rendered "N min here" is a value a producer really carried', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 test('S-7 no synthesised busyness percentage renders as a measurement', () => {
-  // #4347 wave 3 — REWRITTEN. ConditionsSection (the only reader of
+  // #4347 wave 3 — REWRITTEN. The old conditions section (the only reader of
   // BusynessData) is deleted; every crowd value on the sheet is now the typical
   // curve, turned into a WORD by `crowdLevel` and shown as "Usually …". The
   // fabrication this rule exists for is a percentage or the advice string
@@ -1650,7 +1643,7 @@ test('S-7 no synthesised busyness percentage renders as a measurement', () => {
   for (const rel of surfaces) {
     const src = stripComments(fs.readFileSync(path.join(REPO, rel), 'utf8'));
     assert.ok(src.length > 400, `S-7 (vacuity): ${rel} was not read`);
-    assert.equal(/currentPopularity|busyness\.message|busynessService/.test(src), false,
+    assert.equal(/currentPopularity|busyness\.message|getVenueBusyness|BusynessData/.test(src), false,
       `S-7: ${rel} reads the synthesised busyness percentage / advice again.`);
   }
   const en = JSON.parse(fs.readFileSync(path.join(APP, 'src/i18n/locales/en/cards.json'), 'utf8'));

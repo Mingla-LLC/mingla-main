@@ -28,7 +28,7 @@
  * "6:00 PM – 2:00 AM" on Saturday is open at a Sunday 01:00 arrival.
  */
 
-import { extractWeekdayText, isPlaceOpenAt } from './openingHoursUtils';
+import { extractWeekdayText, openMinutesLeftAt } from './openingHoursUtils';
 
 export interface StopAvailability {
   stopName: string;
@@ -57,6 +57,15 @@ export interface AvailabilityStop {
 const DEFAULT_STOP_DURATION_MIN = 45;
 
 /**
+ * #4347 wave 3 rework — ONE "worth arriving" rule for the plan sheet and this
+ * check: a stop that closes within this many minutes of your arrival counts as
+ * CLOSED. The plan sheet's chips and warning (curatedPlanModel.arrivalOpen)
+ * read the same constant, so scheduling can never accept a time the sheet
+ * calls closed.
+ */
+export const MIN_USEFUL_OPEN_MINUTES = 15;
+
+/**
  * Format the per-stop closed reason. `locale` is threaded in so the caller's
  * resolved user locale is honoured (SavedTab passes getUserLocale()); the
  * Deno test passes a fixed locale for determinism.
@@ -68,6 +77,15 @@ function formatClosedReason(arrivalTime: Date, locale?: string): string {
     hour12: true,
   });
   return `Closed at ${timeStr}`;
+}
+
+function formatClosingSoonReason(arrivalTime: Date, locale?: string): string {
+  const timeStr = arrivalTime.toLocaleTimeString(locale, {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+  return `Closes within ${MIN_USEFUL_OPEN_MINUTES} min of arriving at ${timeStr}`;
 }
 
 function formatUnknownReason(arrivalTime: Date, locale?: string): string {
@@ -147,14 +165,17 @@ export function checkAllCuratedStopsOpen(
     // Per-stop venue offset if present; else canonical reader's documented
     // device-local fallback (same as the reference ActionButtons call).
     const utcOffset = stop.utcOffsetMinutes ?? stop.utc_offset_minutes ?? null;
-    const openAtArrival = isPlaceOpenAt(weekdayText, arrivalTime, utcOffset);
+    const minutesLeft = openMinutesLeftAt(weekdayText, arrivalTime, utcOffset);
 
     const stopName = stop.placeName ?? 'Stop';
 
-    if (openAtArrival === false) {
+    if (minutesLeft === 0) {
       return { stopName, status: 'closed', isOpen: false, reason: formatClosedReason(arrivalTime, locale) };
     }
-    if (openAtArrival === true) {
+    if (minutesLeft !== null && minutesLeft < MIN_USEFUL_OPEN_MINUTES) {
+      return { stopName, status: 'closed', isOpen: false, reason: formatClosingSoonReason(arrivalTime, locale) };
+    }
+    if (minutesLeft !== null) {
       return { stopName, status: 'open', isOpen: true };
     }
     return { stopName, status: 'unknown', isOpen: false, reason: formatUnknownReason(arrivalTime, locale) };

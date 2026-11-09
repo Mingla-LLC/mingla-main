@@ -1,6 +1,7 @@
 {
   "action_buttons": {
     "save": "Speichern",
+    "website": "Website",
     "saved": "Gespeichert",
     "schedule": "Planen",
     "scheduled": "Geplant",

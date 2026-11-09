@@ -61,7 +61,6 @@ const SRC = {
   stops: 'app-mobile/src/components/expandedCard/StopList.tsx',
   // #4347 wave 3 — the plan's route strip / navigator announce the plan's stops.
   summary: 'app-mobile/src/components/expandedCard/PlanSummary.tsx',
-  busyness: 'app-mobile/src/services/busynessService.ts',
   cardtypes: 'app-mobile/src/types/expandedCardTypes.ts',
   suite: 'app-mobile/src/components/expandedCard/__tests__/issue_1605_expanded_card_one_spine.test.mjs',
 };
@@ -361,7 +360,7 @@ test('A-5 every field of the two classified shapes is named in the gate, modifie
 
   const shapes = [
     // #4347 wave 3 — BusynessData left the S-6b ledger: nothing on the sheet
-    // renders it (ConditionsSection is deleted; the crowd is the typical curve).
+    // renders it (the old conditions section is deleted; the crowd is the typical curve).
     {
       label: 'the companion-stop element (expandedCardTypes.ts)',
       body: tolerantTypeBody(

@@ -131,6 +131,10 @@ orch-1386-tester-adversarial.yml f0d49800ed79ccf9a0dd51a0c6fef8cf236ad199da41a90
 // unchanged; every value was derived from the file on disk. The wave 1 rework
 // (tester P2: the kicker clause solved at the largest text size) re-banked
 // the same files' values again, the same way.
+// [TEST-MOD-APPROVED #4347] Wave 3 deleted the expanded hero; the card-identity
+// single-source suite's comment that names it was reworded (no assertion
+// changed), so its ONE lock value was re-banked from the file on disk. Paths,
+// order, the other hashes, and both lock call sites remain unchanged.
 const REFERENCE_SHA256 = locks(`
 .github/scripts/__tests__/issue-2207-merged-checkout-workflow.tester.test.mjs fc65e60b8636d7dc23190e10e8b0372cf6f033dca4cf060fb3e67d5f0ce21e06
 .github/scripts/strict-grep/__tests__/issue-1607-explorer-guard-integrity.adversarial.test.mjs a6dba7a4a109956b82acae0beb2eb6eb28bdc1c1522d5793452cbcc4885d3652
@@ -157,7 +161,7 @@ app-mobile/src/hooks/__tests__/issue_1661_completed_write_unparks_invalidation.t
 app-mobile/src/hooks/__tests__/issue_1661_parked_invalidation_fanout.adversarial.test.mjs 66a87430d62e2e0c110240f2b9c8314e661fbd5c66c437caad520171bd217d4e
 mingla-business/scripts/ci/__tests__/issue2058_bundle_baseline_handoff.happy.test.mjs 487c099f5407ff1c8304418046fd33ef6e228ef17725c26c8eabf00d6ba37ae2
 packages/card-identity/__tests__/card_identity_isolation.test.mjs 7c12a6bb9e90662357992fa8a24142bc0caa8d8b61c9bb5c00d14ea4eaa8640e
-packages/card-identity/__tests__/card_identity_single_source.test.mjs 354f932972f84b4bcf47d084e3c6143772434f29fbb29db05add4144d15cff5b
+packages/card-identity/__tests__/card_identity_single_source.test.mjs 56fd094b14ccde2d2469a104db5ca7fa9697af089603c70703a6cd8813c96ca7
 scripts/ci/__tests__/issue-2062-expo-config-node20.tester.adversarial.test.mjs 3c377ee6bd6860704961477c2512482628848e895f6a65d23081915afa6f7022
 scripts/ci/issue-2062-expo-config-node20.mjs 9abac62742457bce556e2c3fbb21d512cd77b95f091769d92a315d6e248dba7d
 scripts/issue-1615/curated-composition-terminal-ui.implementor.happy.test.mjs f1f3a94262faab8f998b27bccba420ed90085cfd6f9926334bd22408fce0d1a8

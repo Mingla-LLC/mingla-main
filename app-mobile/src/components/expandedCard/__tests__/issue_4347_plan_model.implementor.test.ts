@@ -273,7 +273,7 @@ describe("R — Route all stops", () => {
     try {
       RN.Platform.OS = "ios";
       const { openRouteAllStops } = require("../placeDirections");
-      openRouteAllStops([{ lat: 6.1, lng: 3.1 }, { lat: 6.2, lng: 3.2 }], { nextIndex: 1, mode: "walking" });
+      openRouteAllStops([{ lat: 6.1, lng: 3.1 }, { lat: 6.2, lng: 3.2 }], { mode: "walking" });
       expect(openURL).toHaveBeenCalledTimes(1);
       expect(openURL).toHaveBeenCalledWith(
         "https://www.google.com/maps/dir/?api=1&destination=6.2%2C3.2&waypoints=6.1%2C3.1&travelmode=walking",

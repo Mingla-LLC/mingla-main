@@ -82,12 +82,48 @@ export type RouteAllStopsAction = { readonly kind: 'route'; readonly url: string
  */
 export const GOOGLE_MAPS_MAX_WAYPOINTS = 9;
 
+/** A plan's stops as route targets: coordinates first, then the name, then the address. */
+export function planRouteTargets(
+  stops: ReadonlyArray<{
+    readonly lat?: number | null;
+    readonly lng?: number | null;
+    readonly placeName?: string | null;
+    readonly address?: string | null;
+    readonly placeId?: string | null;
+  }>,
+): DirectionsTarget[] {
+  return stops.map((stop) => ({
+    lat: stop.lat,
+    lng: stop.lng,
+    label: stop.placeName || stop.address || null,
+    googlePlaceId: stop.placeId || null,
+  }));
+}
+
+/** The most stops one route link can open: the waypoints plus the destination. */
+export const ROUTE_MAX_STOPS = GOOGLE_MAPS_MAX_WAYPOINTS + 1;
+
+/**
+ * How many stops the route link would carry, and how many the plan has, when
+ * the cap applies (null when every stop fits). The sheet shows "Opens 10 of N
+ * stops" from this, so a long plan never loses stops silently.
+ *
+ * Every stop the plan lists counts, optional and shop stops included, in plan
+ * order: they are part of the plan the person is looking at, so the route
+ * follows it rather than a filtered version of it.
+ */
+export function routeCap(stops: readonly DirectionsTarget[]): { readonly opened: number; readonly total: number } | null {
+  const total = stops.map(stopToken).filter((t) => t !== null).length;
+  return total > ROUTE_MAX_STOPS ? { opened: ROUTE_MAX_STOPS, total } : null;
+}
+
 function stopToken(target: DirectionsTarget): string | null {
   const { geo, label } = directionsTarget(target);
   if (geo !== null && !(geo.lat === 0 && geo.lng === 0)) return `${geo.lat},${geo.lng}`;
   return label === null ? null : label;
 }
 
+// Every stop in plan order, optional and shop stops included (see routeCap).
 export function routeAllStopsUrl(stops: readonly DirectionsTarget[], mode: RouteTravelMode = 'driving'): string | null {
   const tokens = stops.map(stopToken).filter((t): t is string => t !== null);
   if (tokens.length === 0) return null;
@@ -108,15 +144,10 @@ export function routeAllStopsAction(
   return url === null ? null : { kind: 'route', url };
 }
 
-/**
- * Run "Route all stops": opens the full route link on every platform.
- * `nextIndex` is no longer read (iPhone used to open only that stop); it stays
- * in the options so the caller in ExpandedCardModal needs no change in this
- * follow-up.
- */
+/** Run "Route all stops": opens the full route link on every platform. */
 export function openRouteAllStops(
   stops: readonly DirectionsTarget[],
-  options: { mode?: RouteTravelMode; nextIndex?: number; onUnavailable?: (() => void) | null } = {},
+  options: { mode?: RouteTravelMode; onUnavailable?: (() => void) | null } = {},
 ): void {
   const action = routeAllStopsAction(stops, options.mode ?? 'driving');
   if (action === null) {

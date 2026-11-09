@@ -262,7 +262,7 @@ test('A-9 EVERY surface that mounts the plate measures its facts line', () => {
   const files = [
     'app-mobile/src/components/SwipeableCards.tsx',
     'app-mobile/src/components/CuratedExperienceSwipeCard.tsx',
-    // ExpandedCardHero.tsx deleted in #4347 wave 3 (no expanded surface draws the plate).
+    // The expanded hero was deleted in #4347 wave 3 (no expanded surface draws the plate).
   ];
   const unmeasured = [];
   for (const rel of files) {

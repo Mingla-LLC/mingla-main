@@ -195,7 +195,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #1023: re-sealed after merging origin/main 5dd7f103ca (#4273 polish rows kept beside the #1023 rows).
 // #1023: re-sealed after merging origin/main 6038982e1a.
 // #4318: register the /links migration (20280508004318) and its implementor and tester PostgreSQL proofs; it joins the pre-#1931 replay skip list by exact filename.
-export const BOOTSTRAP_SHA256 = "99dbdc252a417ef2fff9803be37a658a364e0136f66e817d88c6041edc1b6b39";
+// #4347: drop the deleted expanded hero and busyness service from the #1880 and #1605 originPaths (both files are gone; the patterns matched nothing).
+export const BOOTSTRAP_SHA256 = "ae08156ca64fc9b6c9ed8ad90cff89d6a30d00f68bc763853c929a13ef9f5750";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

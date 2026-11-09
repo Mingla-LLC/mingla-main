@@ -2,7 +2,7 @@
  * Issue #1706 — a plan reads as a sequence in time, and every travel figure
  * says it is an estimate.
  *
- * #4347 wave 3 — REWRITTEN. PlanTimeline (the RN-Animated Starts at / Ends
+ * #4347 wave 3 — REWRITTEN. The old plan timeline (the RN-Animated Starts at / Ends
  * near spine) is DELETED: the plan now shows a clock arrival time beside every
  * stop card, legs between them, and an "Ends near" line — all from one arrival
  * model. The protections are kept and re-pointed: the estimator is real

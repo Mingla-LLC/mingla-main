@@ -38,7 +38,7 @@ test('V-1 the block is DATA on the shared body, not a node and not a fetch', () 
   // I-MOR-0827 — the package must not reach into an app's services. If it
   // fetched its own weather, the web page would inherit a dependency it cannot
   // satisfy and the parity contract would break at runtime, not at build.
-  for (const banned of ['weatherService', 'busynessService', 'app-mobile/src']) {
+  for (const banned of ['weatherService', 'services/', 'app-mobile/src']) {
     assert.equal(
       BODY.includes(banned), false,
       `V-1: the shared body references ${banned} — the package cannot reach into an app`,

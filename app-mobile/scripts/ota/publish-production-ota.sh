@@ -57,8 +57,8 @@
 #                                   reads. (mingla-business DOES read it from the
 #                                   environment — hence the asymmetry.)
 #   EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN NO live consumer in app-mobile. The producer was
-#                                   deleted; see the historical note at
-#                                   src/services/busynessService.ts:22. The only other
+#                                   deleted (the busyness service, removed in #4347
+#                                   wave 3; see git history). The only other
 #                                   tracked mentions are .env.example and a test
 #                                   fixture. (mingla-business DOES consume it.)
 #   EXPO_PUBLIC_APPSFLYER_*         NOT CHECKED. These are secret-visibility EAS

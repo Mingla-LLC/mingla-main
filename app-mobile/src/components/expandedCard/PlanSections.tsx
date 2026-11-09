@@ -107,11 +107,14 @@ export function PlanGettingThere({
   title,
   rows,
   routeLabel,
+  routeNote = null,
   onRoute,
 }: {
   title: string;
   rows: readonly TableRow[];
   routeLabel: string;
+  /** "Opens 10 of 12 stops" when the route link cannot carry every stop. */
+  routeNote?: string | null;
   onRoute: (() => void) | null;
 }): React.ReactElement | null {
   if (rows.length === 0 && onRoute === null) return null;
@@ -127,12 +130,18 @@ export function PlanGettingThere({
             onPress={onRoute}
             accessibilityRole="button"
             accessibilityLabel={routeLabel}
+            accessibilityHint={routeNote ?? undefined}
             hitSlop={8}
           >
             <Text style={styles.link}>{routeLabel}</Text>
           </Pressable>
         ) : null}
       </View>
+      {onRoute && routeNote ? (
+        <Text style={styles.routeNote} testID="plan-route-note">
+          {routeNote}
+        </Text>
+      ) : null}
       <Rows rows={rows} testIDPrefix="plan-leg" />
     </View>
   );
@@ -151,6 +160,8 @@ export function PlanEndsNear({ title, text }: { title: string; text: string | nu
 }
 
 const styles = StyleSheet.create({
+  // #4347 wave 3 rework — the route cap note, under the Getting there heading.
+  routeNote: { marginTop: 4, fontSize: 13, color: SPINE.muted },
   warning: {
     marginHorizontal: SPINE.gutter,
     marginTop: 12,

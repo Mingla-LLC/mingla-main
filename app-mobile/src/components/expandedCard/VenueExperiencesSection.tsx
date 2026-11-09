@@ -22,6 +22,7 @@ import {
 import type { BusinessEventCard } from "../../types/mergedDiscover";
 import { useTranslation } from "react-i18next";
 import { formatDisplayPrice } from "../utils/formatters";
+import { SPINE } from "./spineTokens";
 
 interface VenueExperiencesSectionProps {
   /** Deck card id == place_pool.id (uuid). Non-uuid ids disable the fetch. */
@@ -116,7 +117,7 @@ export default function VenueExperiencesSection({
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Icon name="sparkles-outline" size={14} color="#ea580c" />
+        <Icon name="sparkles-outline" size={14} color={SPINE.link} />
         <Text style={styles.headerText}>
           {data.length === 1 ? "Experience here" : "Experiences here"}
         </Text>
@@ -195,6 +196,8 @@ const styles = StyleSheet.create({
   rowPrice: {
     fontSize: 12,
     fontWeight: "600",
-    color: "#ea580c",
+    // #4347 wave 3 rework — #ea580c measured 3.56:1 on paper; the link accent
+    // is the one orange legible as text (5.18:1).
+    color: SPINE.link,
   },
 });

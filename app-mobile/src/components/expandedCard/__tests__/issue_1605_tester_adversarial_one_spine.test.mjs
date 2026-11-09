@@ -329,7 +329,7 @@ test('A-2b the variable hero height cannot invalidate the scrim, at any sheet he
 });
 
 // #4347 wave 3 — A-2c and A-3 (the coverless hero slab and its scrim) are
-// DELETED with ExpandedCardHero: the plan sheet opens on the gallery, and a
+// DELETED with the expanded hero (#4347 wave 3): the plan sheet opens on the gallery, and a
 // plan with no photo gets the gallery's short neutral header (pinned by the
 // wave 2 G-3 test and the wave 3 plan render test P-2).
 // ─────────────────────────────────────────────────────────────────────────────

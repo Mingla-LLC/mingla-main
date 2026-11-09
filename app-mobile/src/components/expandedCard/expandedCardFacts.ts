@@ -489,7 +489,7 @@ export function stopMetaText(
  * oversight: it was a 40pt circle with a 2pt #EB7825 border carrying a
  * category glyph that said the same thing as the label beside it. The wave
  * removed exactly that ornament everywhere else — the 26pt icon badges in
- * `ConditionsSection`, the `conditionBadge` chips, the `iconBadge` in the
+ * the old conditions section, the `conditionBadge` chips, the `iconBadge` in the
  * details rows — and re-adding one here for a secondary list would make the
  * companion row the loudest thing in the body. The information is the word.
  *

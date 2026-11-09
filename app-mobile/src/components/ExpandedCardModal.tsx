@@ -50,12 +50,12 @@ import { LocalReviewsSection } from "./expandedCard/LocalReviewsSection";
 import PracticalDetailsSection from "./expandedCard/PracticalDetailsSection";
 // #4347 wave 3 — the expanded curated plan: gallery tagged by stop, summary +
 // route strip, the one warning, stop cards with clock times, conditions,
-// getting there, ends near. PlanTimeline, ConditionsSection and the plan's hero
-// (ExpandedCardHero) are DELETED — this replaces all three.
+// getting there, ends near. The old plan timeline, the old conditions section
+// and the plan's old hero are DELETED — this replaces all three.
 import { CuratedPlanBody } from "./expandedCard/CuratedPlanBody";
 import { PlanStopNavigator } from "./expandedCard/PlanStopNavigator";
-import { PlanScrollStore } from "./expandedCard/planScroll";
-import { defaultPlanStart, nextStopIndex, planMode, planTimeline, stopOrdinals } from "./expandedCard/curatedPlanModel";
+import { PlanScrollStore, useResetOnPlanIdentity } from "./expandedCard/planScroll";
+import { defaultPlanStart, planMode, planTimeline, stopOrdinals } from "./expandedCard/curatedPlanModel";
 import { curatedPlanPriceLabel } from "./expandedCard/expandedCardFacts";
 import StopList, { type StopListStop } from "./expandedCard/StopList";
 import { occasionFromCategory, stopPurpose } from "./expandedCard/stopPurpose";
@@ -135,7 +135,7 @@ import { useReducedMotion } from "react-native-reanimated";
 import { PlaceGallery } from "./expandedCard/PlaceGallery";
 import { PlaceBasics } from "./expandedCard/PlaceBasics";
 import { WhenYoudGo } from "./expandedCard/WhenYoudGo";
-import { openPlaceDirections, openRouteAllStops } from "./expandedCard/placeDirections";
+import { openPlaceDirections, openRouteAllStops, planRouteTargets, routeCap } from "./expandedCard/placeDirections";
 import {
   basicsTiles,
   lightboxFor,
@@ -1031,17 +1031,22 @@ export default function ExpandedCardModal({
       setIsSchedulePickerOpen(false);
       setCuratedLightbox({ visible: false, images: [], initialIndex: 0 });
     }
-    // A replaced stop belongs to the card it was replaced on. The old
-    // `useState(card)` inside MultiStopPlanView had no sync effect at all, so on
-    // the deck — a single stable mount whose `target` prop changes — a previous
-    // plan could survive onto the next card.
+  }, [visible, card, viewerLoc?.lat, viewerLoc?.lng, effectiveTravelMode]);
+
+  // A replaced stop belongs to the card it was replaced on. The old
+  // `useState(card)` inside MultiStopPlanView had no sync effect at all, so on
+  // the deck — a single stable mount whose `target` prop changes — a previous
+  // plan could survive onto the next card. #4347 rework: keyed on the card's
+  // IDENTITY only, so a GPS refetch or a collab mode change (which re-run the
+  // fetch effect above) no longer throws away the chosen start time and swaps.
+  useResetOnPlanIdentity(visible, card?.id ?? null, () => {
     setWhenKey('now');
     setCuratedLocalCard(null);
     setPlanStartOverride(null);
     planScroll.reset();
     setReplacingStopIndex(null);
     clearAlternatives();
-  }, [visible, card, viewerLoc?.lat, viewerLoc?.lng, effectiveTravelMode]);
+  });
 
   const computeViewerTravelForChatMount = () => {
     if (!card) return;
@@ -1074,14 +1079,14 @@ export default function ExpandedCardModal({
     if ((card as any).cardType === 'curated') {
       // #4347 wave 3 — a plan fetches its forecasts PER STOP inside
       // CuratedPlanBody (the hourly forecast at each arrival); the stop-1-only
-      // "right now" weather and busyness fetch is gone with ConditionsSection.
+      // "right now" weather and busyness fetch is gone with the old conditions section.
       computeViewerTravelForChatMount();
       return;
     }
 
     // The hourly forecast "When you'd go" reads. (#4347 wave 3: the typical
     // crowd now comes from the built-in curves in placeSheetModel, so the old
-    // busyness fetch — whose only reader was ConditionsSection — is gone.)
+    // busyness fetch — whose only reader was the old conditions section — is gone.)
     let weather: WeatherData | null = null;
     const request = ++weatherRequestRef.current;
     if (card.location) {
@@ -1711,11 +1716,10 @@ export default function ExpandedCardModal({
   const directionsUnavailable = (): void => {
     toastManager.show(t('cards:expanded.directions_unavailable', { defaultValue: "Couldn't open directions" }), 'error');
   };
-  const routeAllStops = (nextIndex: number, mode: 'driving' | 'walking' | 'transit' | 'bicycling'): void =>
-    openRouteAllStops(
-      planStops.map((stop) => ({ lat: stop.lat, lng: stop.lng, label: stop.placeName || stop.address, googlePlaceId: stop.placeId || null })),
-      { mode, nextIndex, onUnavailable: directionsUnavailable },
-    );
+  // #4347 wave 3 rework — every platform routes the whole plan, so the index
+  // of the next stop (still reported by the plan body's route link) is not used.
+  const routeAllStops = (_nextIndex: number, mode: 'driving' | 'walking' | 'transit' | 'bicycling'): void =>
+    openRouteAllStops(planRouteTargets(planStops), { mode, onUnavailable: directionsUnavailable });
   /** The navigator / route strip / warning jump: smooth scroll, then a pulse. */
   const jumpToStop = (index: number): void => {
     const y = planScroll.jumpTarget(index);
@@ -2029,14 +2033,18 @@ export default function ExpandedCardModal({
                       style={styles.routeAllButton}
                       onPress={() => {
                         const timeline = planTimeline(planStops, planStart, effectiveTravelMode);
-                        routeAllStops(nextStopIndex(timeline, new Date()), planMode(timeline, effectiveTravelMode));
+                        routeAllStops(0, planMode(timeline, effectiveTravelMode));
                       }}
                       accessibilityRole="button"
-                      accessibilityLabel={Platform.OS === 'ios' ? t('cards:plan.route_next') : t('cards:plan.route_all')}
+                      accessibilityLabel={t('cards:plan.route_all')}
+                      accessibilityHint={(() => {
+                        const cap = routeCap(planRouteTargets(planStops));
+                        return cap ? t('cards:plan.route_capped', { count: cap.total }) : undefined;
+                      })()}
                     >
                       <Icon name="map-outline" size={20} color={SPINE.prose} />
                       <Text style={styles.routeAllLabel} numberOfLines={1} maxFontSizeMultiplier={1.2}>
-                        {Platform.OS === 'ios' ? t('cards:plan.route_next') : t('cards:plan.route_all')}
+                        {t('cards:plan.route_all')}
                       </Text>
                     </TouchableOpacity>
                   ) : null

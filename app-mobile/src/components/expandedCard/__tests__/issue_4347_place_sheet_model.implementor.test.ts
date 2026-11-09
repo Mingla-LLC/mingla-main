@@ -191,8 +191,8 @@ describe("#4347 wave 2 sheet order (wiring)", () => {
     ].map((needle) => single.indexOf(needle));
     expect(order.every((at) => at >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
-    // The ONE ConditionsSection left is the plan's; the single place reads "When you'd go".
-    expect(single.includes("<ConditionsSection")).toBe(false);
+    // No conditions section on the single place; it reads "When you'd go".
+    expect(single).not.toMatch(/<\w*Conditions\w*[\s/>]/);
     expect(src).toMatch(/stickyFooter=\{\s*isNightOut && nightOut \? \(\s*nightOutTicketBar\s*\) : !isCuratedCard \? \(/);
     // Every maps link on the sheet goes through the one helper.
     expect(src).not.toMatch(/openMapsTarget\(/);

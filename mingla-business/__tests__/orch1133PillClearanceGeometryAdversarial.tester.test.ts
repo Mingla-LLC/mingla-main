@@ -89,34 +89,38 @@ describe("ORCH-1133 (1) — Sound pill clears the public-event details panel wit
   });
 });
 
-describe("ORCH-1133 (2) — pill stays fully on-screen on the SHORTEST bottomRight consumer (the expanded hero)", () => {
+describe("ORCH-1133 (2) — pill stays fully on-screen on the SHORTEST bottomRight consumer (the expanded gallery)", () => {
   const pill = styleBody(ECM, "audioControlBottomRight");
   const base = styleBody(ECM, "audioControl"); // base style carries minHeight
   const pillBottom = numProp(pill, "bottom"); // 40
   const pillMinHeight = numProp(base, "minHeight"); // 36
 
-  // #1605 wave 4 [TEST-MOD-APPROVED #1605] — RE-POINTED, because the box this
-  // guarded was DELETED, not shrunk. `expandedCard/ImageGallery` was a 300px
-  // full-bleed video cover and the only surface exposing the unmute control; the
-  // expanded sheet's hero replaced it and CARRIED THE CONTROL WITH IT, so the
-  // shortest real bottomRight box is now the hero's clamp MINIMUM. It is 432, not
-  // 300, so the clearance this suite exists to protect strictly IMPROVED — but
-  // the guard has to name the box that actually exists or it proves nothing.
+  // #4347 wave 3 [TEST-MOD-APPROVED #4347] — RE-POINTED again, because the box
+  // this guarded (the expanded hero, clamp minimum S7_HERO_MIN) was DELETED. The
+  // expanded sheets now open on PlaceGallery, whose full-width pager is the
+  // video cover box; its height is SHEET_GALLERY.height (300, the original
+  // ImageGallery height this suite was written for). The gallery hides the
+  // sound pill today, but the pill must still fit the box if it is ever shown,
+  // so the geometry is computed against the box that actually exists.
+  const SPINE_TOKENS = fs.readFileSync(
+    path.join(repoRoot, "app-mobile/src/components/expandedCard/spineTokens.ts"),
+    "utf8",
+  );
   const SHORTEST_BOTTOMRIGHT_BOX = Number(
-    /S7_HERO_MIN\s*=\s*(\d+)/.exec(
-      fs.readFileSync(path.join(repoRoot, "packages/card-identity/index.js"), "utf8"),
-    )?.[1],
+    /SHEET_GALLERY\s*=\s*\{[\s\S]*?\n\s*height:\s*(\d+)/.exec(SPINE_TOKENS)?.[1],
   );
 
-  test("the expanded hero is the bottomRight cover, and its height is read from the package", () => {
-    const hero = fs.readFileSync(
-      path.join(repoRoot, "app-mobile/src/components/expandedCard/ExpandedCardHero.tsx"),
+  test("the expanded gallery is the expanded video cover, and its height is read from the token table", () => {
+    const gallery = fs.readFileSync(
+      path.join(repoRoot, "app-mobile/src/components/expandedCard/PlaceGallery.tsx"),
       "utf8",
     );
-    expect(hero).toMatch(/audioControlPosition="bottomRight"/);
-    // The hero's height is DERIVED (expandedHeroHeight), never typed, so the box
-    // is guarded by the package's own clamp minimum rather than by a literal.
-    expect(hero).toMatch(/expandedHeroHeight/);
+    expect(gallery).toMatch(/<EventCoverMedia[\s\S]*?mediaType="video"/);
+    // The gallery's height is the token, never a typed literal.
+    expect(gallery).toMatch(/height: SHEET_GALLERY\.height/);
+    // EventCoverMedia's default pill position is bottomRight, so a shown pill
+    // lands in the band computed below.
+    expect(ECM).toMatch(/audioControlPosition = "bottomRight"/);
     expect(SHORTEST_BOTTOMRIGHT_BOX).toBeGreaterThanOrEqual(300);
   });
 

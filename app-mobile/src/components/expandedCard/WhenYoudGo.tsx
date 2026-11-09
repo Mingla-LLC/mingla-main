@@ -1,6 +1,6 @@
 /**
  * #4347 wave 2 — "When you'd go", for a single place. Replaces the right-now
- * ConditionsSection on this branch (the curated branch keeps it until wave 3).
+ * conditions section on this branch (removed from the curated branch in wave 3).
  *
  * Pick a time (Now · Tonight 7pm · Tomorrow 7pm · your scheduled time) and the
  * block answers for THAT time:

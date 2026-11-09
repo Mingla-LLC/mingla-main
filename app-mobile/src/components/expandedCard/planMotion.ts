@@ -113,19 +113,25 @@ export function useShowStyle(shown: boolean, reduced: boolean, fromY: number) {
  */
 export function useCountTo(value: number, reduced: boolean, durationMs: number = PLAN_MOTION.swapMs): number {
   const [shown, setShown] = React.useState(value);
-  const fromRef = React.useRef(value);
+  // #4347 wave 3 rework — count from the value ON SCREEN, so a second change
+  // during a count continues from where the number is, never jumps back to
+  // the previous target first.
+  const shownRef = React.useRef(value);
   React.useEffect(() => {
-    const from = fromRef.current;
-    fromRef.current = value;
+    const show = (next: number): void => {
+      shownRef.current = next;
+      setShown(next);
+    };
+    const from = shownRef.current;
     if (reduced || from === value || typeof requestAnimationFrame !== 'function') {
-      setShown(value);
+      show(value);
       return;
     }
     const started = Date.now();
     let frame = 0;
     const step = (): void => {
       const p = Math.min(1, (Date.now() - started) / durationMs);
-      setShown(Math.round(from + (value - from) * (1 - Math.pow(1 - p, 3))));
+      show(Math.round(from + (value - from) * (1 - Math.pow(1 - p, 3))));
       if (p < 1) frame = requestAnimationFrame(step);
     };
     frame = requestAnimationFrame(step);

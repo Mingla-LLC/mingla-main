@@ -12,7 +12,7 @@
  * Crowd is a TYPICAL curve ("Usually …"), travel is an ESTIMATE (haversine x
  * detour / speed, labelled), and the weather is the hourly FORECAST.
  */
-import { curatedArrivalTimes } from '../../utils/curatedStopsAvailability';
+import { MIN_USEFUL_OPEN_MINUTES, curatedArrivalTimes } from '../../utils/curatedStopsAvailability';
 import { extractWeekdayText, getOpenStatusAt, type OpenStatus } from '../../utils/openingHoursUtils';
 import { isVideoUrl } from '../../utils/videoUrl';
 import { estimateTravelMinutes, haversineKm } from '../../utils/mutateCuratedCard';
@@ -175,7 +175,7 @@ export function normaliseMode(mode: unknown): TravelMode {
   return 'driving';
 }
 
-export interface PlanTimelineStop {
+export interface PlanArrivalStop {
   readonly index: number;
   readonly ordinal: number | null;
   readonly arrival: Date;
@@ -193,8 +193,11 @@ export type ArrivalOpen =
   | { readonly kind: 'open'; readonly closesAtMinute: number }
   | { readonly kind: 'open24h' };
 
-/** Below this, a stop that is technically open when you arrive is not worth arriving at. */
-export const MIN_USEFUL_MINUTES = 15;
+/**
+ * Below this, a stop that is technically open when you arrive is not worth
+ * arriving at. THE SAME constant as the schedule check (#4347 rework T-4).
+ */
+export const MIN_USEFUL_MINUTES = MIN_USEFUL_OPEN_MINUTES;
 const CLOSING_SOON_MINUTES = 60;
 
 export function arrivalOpen(status: OpenStatus | null): ArrivalOpen | null {
@@ -221,7 +224,7 @@ export function planTimeline(
   stops: readonly PlanStop[],
   start: Date,
   fallbackMode?: string | null,
-): PlanTimelineStop[] {
+): PlanArrivalStop[] {
   const timings = curatedArrivalTimes(stops, start);
   const ordinals = stopOrdinals(stops);
   return stops.map((stop, i) => {
@@ -246,7 +249,7 @@ export function planTimeline(
 }
 
 /** The plan's end: the last stop's departure. */
-export function planEnd(timeline: readonly PlanTimelineStop[]): Date | null {
+export function planEnd(timeline: readonly PlanArrivalStop[]): Date | null {
   return timeline.length > 0 ? timeline[timeline.length - 1].departure : null;
 }
 
@@ -408,8 +411,21 @@ const FIX_STEP_MINUTES = 30;
 const FIX_SEARCH_STEPS = 8; // up to 4 hours either way
 
 /**
+ * True when the whole plan is clear at `start`: no stop closed (or closing too
+ * soon) at its arrival, and no rain at an outdoor stop. A fix is only offered
+ * when it leaves the plan clear, so applying it can never move the problem to
+ * another stop (#4347 rework, tester W-5).
+ */
+function planClearAt(input: WarningInput, start: Date): boolean {
+  const tl = planTimeline(input.stops, start, input.fallbackMode);
+  if (tl.some((s) => arrivalOpen(s.open)?.kind === 'closed')) return false;
+  return !tl.some((s, i) => isOutdoorStop(input.stops[i]) && rainLikely(stopForecastAt(input.forecasts[i] ?? null, s.arrival)));
+}
+
+/**
  * The nearest start (in 30-minute steps, never in the past) that clears the
- * warning at THIS stop. Later first for rain and for a stop that has not opened
+ * warning at THIS stop AND leaves the whole plan clear (planClearAt); none →
+ * null, and the warning offers only Swap. Later first for rain and for a stop that has not opened
  * yet; earlier first for a stop that closes before you get there.
  */
 function fixStartFor(
@@ -422,7 +438,7 @@ function fixStartFor(
     const t = input.start.getTime() + deltaSteps * FIX_STEP_MINUTES * 60_000;
     if (t < minStart) return null;
     const d = new Date(t);
-    return clears(d) ? d : null;
+    return clears(d) && planClearAt(input, d) ? d : null;
   };
   for (let k = 1; k <= FIX_SEARCH_STEPS; k += 1) {
     const first = tryAt(preferEarlier ? -k : k);
@@ -501,13 +517,13 @@ export function legFromViewer(
 }
 
 /** Total minutes of travel: every leg between stops, plus "You → stop 1" when known. */
-export function totalTravelMinutes(timeline: readonly PlanTimelineStop[], fromViewer: number | null): number {
+export function totalTravelMinutes(timeline: readonly PlanArrivalStop[], fromViewer: number | null): number {
   const legs = timeline.reduce((sum, s) => sum + (s.leg?.minutes ?? 0), 0);
   return legs + (fromViewer ?? 0);
 }
 
 /** The plan's travel mode: the first leg's, else the fallback, else driving. */
-export function planMode(timeline: readonly PlanTimelineStop[], fallback?: string | null): TravelMode {
+export function planMode(timeline: readonly PlanArrivalStop[], fallback?: string | null): TravelMode {
   return timeline.find((s) => s.leg !== null)?.leg?.mode ?? normaliseMode(fallback);
 }
 
@@ -515,7 +531,7 @@ export function planMode(timeline: readonly PlanTimelineStop[], fallback?: strin
  * The stop "Next stop" opens on a platform that cannot route every stop: the
  * first stop you have not left yet, else stop 1.
  */
-export function nextStopIndex(timeline: readonly PlanTimelineStop[], now: Date): number {
+export function nextStopIndex(timeline: readonly PlanArrivalStop[], now: Date): number {
   const i = timeline.findIndex((s) => s.departure.getTime() > now.getTime());
   return i >= 0 ? i : 0;
 }

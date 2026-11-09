@@ -264,7 +264,7 @@ const contrast = (a: string, b: string) => {
 describe("#4347 wave 3 — tester adversarial (rendered)", () => {
   // P2 (pinned): the follow-up routes ALL stops on iPhone too, but the label
   // still reads "Next stop" there (CuratedPlanBody.tsx:501, ExpandedCardModal.tsx:2035/2039).
-  test.failing("L-1 (P2) on iPhone the route link says it routes every stop", () => {
+  test("L-1 (P2) on iPhone the route link says it routes every stop", () => {
     const prev = RN.Platform.OS;
     Object.defineProperty(RN.Platform, "OS", { configurable: true, get: () => "ios" });
     try {
@@ -381,7 +381,7 @@ describe("#4347 wave 3 — tester adversarial (rendered)", () => {
 
   // P2 (pinned): CuratedPlanBody calls usePlanScroll(scroll) for the pulse, so
   // every navigator fill / active change re-renders the whole plan body.
-  test.failing("N-1 (P2) a long scroll never re-renders the plan body (only the navigator)", () => {
+  test("N-1 (P2) a long scroll never re-renders the plan body (only the navigator)", () => {
     const store = new PlanScrollStore();
     const commits: Record<string, number> = { body: 0, nav: 0 };
     const onRender = (id: string) => {

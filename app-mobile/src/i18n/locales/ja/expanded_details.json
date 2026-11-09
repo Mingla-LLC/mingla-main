@@ -1,6 +1,7 @@
 {
   "action_buttons": {
     "save": "保存",
+    "website": "ウェブサイト",
     "saved": "保存済み",
     "schedule": "スケジュール",
     "scheduled": "スケジュール済み",

@@ -18,7 +18,9 @@ const read = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8');
 
 const FILES = {
   modal: 'app-mobile/src/components/ExpandedCardModal.tsx',
-  hero: 'app-mobile/src/components/expandedCard/ExpandedCardHero.tsx',
+  // #4347 wave 3 deleted the expanded hero; the pool sheets' Share control is
+  // the pinned bar's (ActionButtons).
+  actions: 'app-mobile/src/components/expandedCard/ActionButtons.tsx',
   plate: 'app-mobile/src/components/deckCardPlate.tsx',
   provider: 'app-mobile/src/components/share/UnifiedShareProvider.tsx',
   base: 'app-mobile/src/components/ui/BaseBottomSheet.tsx',
@@ -97,12 +99,26 @@ test('H3 admission is synchronous, single-flight, foreground-only and bounded at
 
 test('H4 the existing Share control owns busy UI while every non-opted-in plate stays default-idle', () => {
   const modal = read(FILES.modal);
-  const hero = read(FILES.hero);
+  const actions = read(FILES.actions);
   const plate = read(FILES.plate);
-  assert.match(modal, /<ExpandedCardHero[\s\S]*shareHandoffEnabled[\s\S]*shareBusy=\{shareHandoffBusy\}[\s\S]*shareControlRef=\{shareControlRef\}/);
-  assert.match(hero, /shareHandoffEnabled = false/);
-  assert.match(hero, /shareBusy = false/);
-  assert.match(hero, /<DeckCardPlate[\s\S]*shareHandoffEnabled=\{shareHandoffEnabled\}[\s\S]*shareBusy=\{shareBusy\}/);
+  // Both pool pinned bars (the place and the plan) hand the handoff state to
+  // the ONE Share control; population check so a moved bar fails closed.
+  const bars = modal.match(/<ActionButtons[\s\S]*?\/>/g) ?? [];
+  assert.equal(bars.length, 2, 'expected the place and the plan pinned bars');
+  for (const bar of bars) {
+    assert.match(bar, /onShare=\{\(\) => admitExpandedShare\(card\)\}/);
+    assert.match(bar, /shareBusy=\{shareHandoffBusy\}/);
+    assert.match(bar, /shareControlRef=\{shareControlRef\}/);
+  }
+  assert.match(actions, /shareBusy = false/);
+  const shareAt = actions.indexOf('logId="share"');
+  assert.notEqual(shareAt, -1, 'missing the pinned Share control');
+  const share = actions.slice(actions.lastIndexOf('<View ref={shareControlRef}', shareAt), actions.indexOf('</TrackedTouchableOpacity>', shareAt));
+  assert.match(share, /<View ref=\{shareControlRef\} collapsable=\{false\}>/);
+  assert.match(share, /onPress=\{onShare\}/);
+  assert.match(share, /disabled=\{shareBusy\}/);
+  assert.match(share, /accessibilityState=\{shareBusy \? \{ disabled: true, busy: true \} : undefined\}/);
+  assert.match(share, /shareBusy \? \([\s\S]*<ActivityIndicator/);
   assert.match(plate, /shareHandoffEnabled = false/);
   assert.match(plate, /shareBusy = false/);
   assert.match(plate, /accessibilityState=\{shareBusy \? \{ disabled: true, busy: true \} : undefined\}/);

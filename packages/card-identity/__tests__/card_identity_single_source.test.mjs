@@ -199,7 +199,7 @@ const SCANNED = {
   'CuratedExperienceSwipeCard.tsx': 'app-mobile/src/components/CuratedExperienceSwipeCard.tsx',
   'deckCardPlate.tsx': 'app-mobile/src/components/deckCardPlate.tsx',
   'deckHeroConstants.ts': 'app-mobile/src/components/deckHeroConstants.ts',
-  // (#4347 wave 3 deleted ExpandedCardHero: the plan sheet now opens on the
+  // (#4347 wave 3 deleted the expanded hero: the plan sheet now opens on the
   // gallery, so no expanded surface draws the plate any more.)
   // #4347 wave 1 — the deck card's new chrome (bars, kicker + title column, stop
   // stack, smart chip, host chip) is a card face and is held to the same scan.

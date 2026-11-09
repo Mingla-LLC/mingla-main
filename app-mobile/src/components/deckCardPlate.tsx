@@ -534,7 +534,7 @@ export interface DeckCardPlateProps {
    * impossible. `BaseBottomSheet` simply does not forward the
    * `animatedPosition` that `useBottomSheetInternal` already exposes from the
    * sheet's EXISTING driver; no second driver is needed. See
-   * the #1605 history in git for the correction (ExpandedCardHero, deleted in #4347 wave 3).
+   * the #1605 history in git for the correction (the expanded hero, deleted in #4347 wave 3).
    */
   readonly chevron?: 'up' | 'down';
   /**

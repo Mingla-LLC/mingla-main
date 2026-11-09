@@ -72,13 +72,19 @@ export function onTheNightFacts(input: {
   const weather = hour ? `${weatherGlyph(hour.icon)} ${Math.round(hour.temperature)}°`.trim() : null;
   if (!weather && driveMinutes === null) return null;
 
+  // #4347 wave 3 rework: no crowd sentence (there is no crowd row), and a
+  // leave-by time that has already passed reads "Leave now", never a past time.
   const notes: string[] = [];
   if (driveMinutes !== null) {
     const leave = new Date(at.getTime() - (driveMinutes + LEAVE_BUFFER_MINUTES) * 60_000);
     const rounded = new Date(Math.floor(leave.getTime() / (5 * 60_000)) * 5 * 60_000);
-    notes.push(t("cards:exp.leave_by", { time: clock(rounded) }));
+    notes.push(
+      rounded.getTime() <= input.now.getTime()
+        ? t("cards:exp.leave_now")
+        : t("cards:exp.leave_by", { time: clock(rounded) }),
+    );
+    notes.push(t("cards:exp.note"));
   }
-  notes.push(t("cards:exp.note"));
   return {
     title: t("cards:exp.on_the_night"),
     weatherLabel: t("cards:exp.weather_at", { time: clock(at) }),
@@ -86,6 +92,6 @@ export function onTheNightFacts(input: {
     weather,
     travel,
     estimated: driveMinutes !== null,
-    footnote: notes.join(" "),
+    footnote: notes.length > 0 ? notes.join(" ") : null,
   };
 }
