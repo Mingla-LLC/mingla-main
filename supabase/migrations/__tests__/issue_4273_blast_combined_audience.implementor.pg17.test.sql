@@ -83,7 +83,14 @@ CREATE FUNCTION pg_temp.b4273_snapshot(p_envelope jsonb) RETURNS jsonb LANGUAGE 
     'unavailableCount', (SELECT count(*) FROM jsonb_array_elements(p_envelope -> 'candidates') x
                           WHERE x ->> 'normalizedContact' IS NULL),
     'smsSegments', 0, 'costKind', 'not_metered', 'estimatedCostMinor', NULL, 'currency', NULL,
-    'candidates', p_envelope -> 'candidates')
+    'candidates', (
+      -- #4273: what the edge quote really seals. Every deliverable SMS row it
+      -- prices carries >= 1 segment and its cost (marketingBookQuote.ts); a row
+      -- with 0 segments is one it could not price, and is sealed as skipped.
+      SELECT COALESCE(jsonb_agg(x || CASE WHEN p_envelope ->> 'channel' = 'sms'
+          AND (x ->> 'allowed')::boolean AND x ->> 'normalizedContact' IS NOT NULL
+        THEN '{"segments": 1, "allocatedCostMinor": 3}'::jsonb ELSE '{}'::jsonb END ORDER BY o), '[]'::jsonb)
+        FROM jsonb_array_elements(p_envelope -> 'candidates') WITH ORDINALITY AS t(x, o)))
 $f$;
 
 DO $cases$

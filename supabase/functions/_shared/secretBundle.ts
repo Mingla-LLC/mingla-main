@@ -6,7 +6,22 @@
  * exact legacy name for the requested field.
  */
 
+import { MAPPED_COUNTRIES } from "./e164Country.ts";
+
 export type SecretEnvGetter = (name: string) => string | undefined;
+
+/**
+ * #4273 — one SMS switch per country. `us` and `ng` stay required (their
+ * legacy env names still work); every other mapped country is an OPTIONAL
+ * lowercase key in `sms_live_enabled`, and an absent key means OFF. So a
+ * country never sends until its own key is set true, and turning one off
+ * touches no other. Keys for countries e164Country cannot map are refused.
+ * Deploy this parser BEFORE adding a new key to the secret: the old parser
+ * rejects unknown keys and would fall every delivery flag back to legacy.
+ */
+export const SMS_SWITCH_KEYS: ReadonlyArray<string> = MAPPED_COUNTRIES.map((
+  country,
+) => country.toLowerCase());
 
 export type PaymentModeField = "stripe_mode" | "paystack_mode";
 export type EmailSenderField = "admin_from" | "system_from" | "ticket_from";
@@ -236,25 +251,27 @@ function parseSenderBundle(
   };
 }
 
+type SmsLiveFlags = { ng: boolean; us: boolean } & Record<string, boolean>;
+
 type DeliveryFlags = {
   schema_version: 1;
   marketing_send_live_enabled: boolean;
-  sms_live_enabled: { ng: boolean; us: boolean };
+  sms_live_enabled: SmsLiveFlags;
   payment_operations?: undefined;
 } | {
   schema_version: 2;
   marketing_send_live_enabled: boolean;
-  sms_live_enabled: { ng: boolean; us: boolean };
+  sms_live_enabled: SmsLiveFlags;
   payment_operations: Record<LegacyPaymentOperationFlagField, boolean>;
 } | {
   schema_version: 3;
   marketing_send_live_enabled: boolean;
-  sms_live_enabled: { ng: boolean; us: boolean };
+  sms_live_enabled: SmsLiveFlags;
   payment_operations: Record<Schema3PaymentOperationFlagField, boolean>;
 } | {
   schema_version: 4;
   marketing_send_live_enabled: boolean;
-  sms_live_enabled: { ng: boolean; us: boolean };
+  sms_live_enabled: SmsLiveFlags;
   payment_operations: Record<PaymentOperationFlagField, boolean>;
 };
 
@@ -313,13 +330,13 @@ export function parseDeliveryBundle(raw: string): ParseResult<DeliveryFlags> {
     return { ok: false, reason: "wrong_type", field: "sms_live_enabled" };
   }
   if (
-    Object.keys(sms).some((field) => field !== "ng" && field !== "us") ||
+    Object.keys(sms).some((field) => !SMS_SWITCH_KEYS.includes(field)) ||
     !Object.hasOwn(sms, "ng") ||
     !Object.hasOwn(sms, "us")
   ) {
     return { ok: false, reason: "unknown_field", field: "sms_live_enabled" };
   }
-  if (typeof sms.ng !== "boolean" || typeof sms.us !== "boolean") {
+  if (Object.values(sms).some((value) => typeof value !== "boolean")) {
     return { ok: false, reason: "wrong_type", field: "sms_live_enabled" };
   }
   let paymentOperations:
@@ -379,21 +396,21 @@ export function parseDeliveryBundle(raw: string): ParseResult<DeliveryFlags> {
         .source_refunds_post_disabled as boolean,
       ...(version === 3 || version === 4
         ? {
-          paystack_payout_hold_onboard_flip:
-            operations.paystack_payout_hold_onboard_flip as boolean,
+          paystack_payout_hold_onboard_flip: operations
+            .paystack_payout_hold_onboard_flip as boolean,
         }
         : {}),
       ...(version === 4
         ? {
-          checkout_revocation_execute:
-            operations.checkout_revocation_execute as boolean,
+          checkout_revocation_execute: operations
+            .checkout_revocation_execute as boolean,
         }
         : {}),
     };
   }
   const deliveryValues = {
     marketing_send_live_enabled: parsed.marketing_send_live_enabled,
-    sms_live_enabled: { ng: sms.ng, us: sms.us },
+    sms_live_enabled: { ...(sms as Record<string, boolean>) } as SmsLiveFlags,
   };
   if (version === 1) {
     return { ok: true, value: { schema_version: 1, ...deliveryValues } };
@@ -404,8 +421,10 @@ export function parseDeliveryBundle(raw: string): ParseResult<DeliveryFlags> {
       value: {
         schema_version: 2,
         ...deliveryValues,
-        payment_operations:
-          paymentOperations as Record<LegacyPaymentOperationFlagField, boolean>,
+        payment_operations: paymentOperations as Record<
+          LegacyPaymentOperationFlagField,
+          boolean
+        >,
       },
     };
   }
@@ -415,11 +434,10 @@ export function parseDeliveryBundle(raw: string): ParseResult<DeliveryFlags> {
       value: {
         schema_version: 3,
         ...deliveryValues,
-        payment_operations:
-          paymentOperations as Record<
-            Schema3PaymentOperationFlagField,
-            boolean
-          >,
+        payment_operations: paymentOperations as Record<
+          Schema3PaymentOperationFlagField,
+          boolean
+        >,
       },
     };
   }
@@ -428,8 +446,10 @@ export function parseDeliveryBundle(raw: string): ParseResult<DeliveryFlags> {
     value: {
       schema_version: 4,
       ...deliveryValues,
-      payment_operations:
-        paymentOperations as Record<PaymentOperationFlagField, boolean>,
+      payment_operations: paymentOperations as Record<
+        PaymentOperationFlagField,
+        boolean
+      >,
     },
   };
 }
@@ -572,6 +592,49 @@ export function resolveDeliveryFlagValue(
   return fallback(bundle, field, legacyName, result, getEnv);
 }
 
+/**
+ * #4273 — is SMS switched on for this recipient country? One switch per
+ * country (`sms_live_enabled.<cc>`). US and NG keep their legacy env-name
+ * fallback; every other country is bundle-only and OFF unless set true. A
+ * null or unmapped country is never on.
+ */
+export function resolveSmsCountryLive(
+  countryCode: string | null | undefined,
+  getEnv: SecretEnvGetter = defaultGetEnv,
+): boolean {
+  if (typeof countryCode !== "string") return false;
+  const key = countryCode.toLowerCase();
+  if (!SMS_SWITCH_KEYS.includes(key)) return false;
+  if (key === "us" || key === "ng") {
+    const raw = key === "us"
+      ? resolveDeliveryFlagValue(
+        "sms_live_enabled.us",
+        "SMS_LIVE_ENABLED_US",
+        getEnv,
+      )
+      : resolveDeliveryFlagValue(
+        "sms_live_enabled.ng",
+        "SMS_LIVE_ENABLED_NG",
+        getEnv,
+      );
+    return raw === true || raw === "true" || raw === "1";
+  }
+  const bundle = "MINGLA_DELIVERY_FLAGS_JSON";
+  const raw = getEnv(bundle);
+  const result = raw ? parseDeliveryBundle(raw) : null;
+  if (result && !result.ok) {
+    emitDiagnostic(
+      "secret_bundle_invalid",
+      bundle,
+      result.reason,
+      result.field,
+      result.schemaVersion,
+    );
+    return false;
+  }
+  return result?.ok === true && result.value.sms_live_enabled[key] === true;
+}
+
 function parseLegacyBoolean(value: string | undefined): boolean | undefined {
   if (value?.toLowerCase() === "true") return true;
   if (value?.toLowerCase() === "false") return false;
@@ -614,7 +677,8 @@ export function resolvePaystackPayoutHoldOnboardFlip(
   const raw = getEnv(bundle);
   const result = raw ? parseDeliveryBundle(raw) : null;
   if (result?.ok) {
-    return result.value.schema_version === 3 || result.value.schema_version === 4
+    return result.value.schema_version === 3 ||
+        result.value.schema_version === 4
       ? result.value.payment_operations.paystack_payout_hold_onboard_flip
       : false;
   }

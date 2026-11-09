@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_4273_sms_optout_scope.tester.adversarial.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-4273-sms-optout-scope-tester-pg",
+  "profile": "psql-pg17-post-replay",
+  "database": { "database": "postgres", "user": "supabase_admin", "reset": "suite-owned" }
+}

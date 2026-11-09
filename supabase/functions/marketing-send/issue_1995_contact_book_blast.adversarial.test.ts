@@ -26,7 +26,7 @@ Deno.test("#1995 public Book preview is an aggregate-only allowlist", async () =
 
   const publicQuote = publicMarketingBookQuote(quote);
   // #4273 — costBreakdown (per-currency amounts only) is public; the FX
-  // snapshot id stays server-only.
+  // snapshot id stays server-only. #4273 — unpricedCount is a count only.
   assertEquals(Object.keys(publicQuote).sort(), [
     "costBreakdown",
     "costKind",
@@ -41,6 +41,7 @@ Deno.test("#1995 public Book preview is an aggregate-only allowlist", async () =
     "smsSegments",
     "suppressedCount",
     "unavailableCount",
+    "unpricedCount",
   ]);
   assertEquals(
     JSON.stringify(publicQuote).includes("private-recipient@example.com"),

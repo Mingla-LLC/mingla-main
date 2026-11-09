@@ -54,6 +54,8 @@ export interface WizardInviteQuote {
   suppressedCount: number;
   canReceiveCount: number;
   skippedCount: number;
+  /** #4273 — texts skipped because Mingla can't text that country yet. */
+  unpricedSmsCount?: number;
   perChannelReachable: { email: number; sms: number; push: number };
   estimatedCostMinor: number;
   currency: string;

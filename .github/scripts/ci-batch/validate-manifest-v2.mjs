@@ -407,7 +407,15 @@ export function phase3dContractDigest(manifest) {
 // #4318: register the /links live-cities (20280514004318) and strip end-date (20280515004318) migrations and their PostgreSQL proofs; the end-date migration joins the pre-#1931 replay skip list by exact filename.
 // #4318: register the /links per-city places migration (20280516004318) and its PostgreSQL proof the same way.
 // #4334: register the Google places migration and its PostgreSQL proofs, and point the issue-992 lane at the renamed server geocode helper.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "c47608bf96d7ff506f7ee53bf51d7004f9d35ed833f1c3e2e633430352928a97";
+// #4273 unpriced country: register the sms-unpriced-country migration and its PostgreSQL proofs (implementor + tester); re-sealed after merging origin/main.
+// #4273 all countries: register the all-countries / automatic-prices PostgreSQL proof.
+// #4273 all countries (tester): register the tester adversarial PostgreSQL proof.
+// #4273: re-sealed for the SMS opt-out link suite.
+// #4273: re-sealed after merging origin/main (#4318) and moving the migration to 20280522004273.
+// #4273 tester retest 3: register the SMS opt-out scope PostgreSQL proof.
+// #4273: re-sealed after moving the migration to 20280522004273 (above production's 20280521004334).
+// #4273: re-sealed after merging origin/main (#4350).
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "930ac5978de4c538ac0a1a3b5bf1aa6bdd1ce2eb584a9c889bd97dee1cec4f51";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

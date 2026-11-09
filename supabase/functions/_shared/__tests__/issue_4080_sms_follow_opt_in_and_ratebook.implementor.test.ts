@@ -45,7 +45,7 @@ Deno.test("#4080 SMS quote keeps author copy concise when Follow is off", async 
       }],
     },
     NOW,
-    { smsRates: [NG_RATE], followBrand: null },
+    { smsCountryLive: () => true, smsRates: [NG_RATE], followBrand: null },
   );
 
   assertEquals(quote.reachableCount, 1);

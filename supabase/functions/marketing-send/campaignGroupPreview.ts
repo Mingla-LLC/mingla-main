@@ -54,8 +54,10 @@ export interface GroupPreviewDeps {
     quote: Record<string, unknown>,
   ) => Promise<Record<string, unknown>>;
   errorCode: (error: unknown) => string;
-  /** Tests only: the rate book the quote prices with. */
+  /** #4273 item 10 — the live prices (loadSmsRates); tests supply their own. */
   smsRates?: SmsRateV1[];
+  /** #4273 — can this country be texted now; defaults to the live switches. */
+  smsCountryLive?: (country: string) => boolean;
 }
 
 export interface GroupMethodPreview {
@@ -69,6 +71,8 @@ export interface GroupPreviewFigures {
   selectedCount: number;
   reachableCount: number;
   skippedCount: number;
+  /** #4273 — SMS phones skipped because their country has no rate yet. */
+  unpricedSmsCount: number;
   estimatedCostMinor: number | null;
   currency: string | null;
   costKind: "provider_estimate" | "not_metered";
@@ -104,6 +108,7 @@ export async function buildCampaignGroupPreview(
   let metered = false;
   let currencyConflict = false;
   let breakdown: SmsFxConverted[] = [];
+  let unpricedSms = 0;
   let quotedAt: string | null = null;
   let expiresAt: string | null = null;
 
@@ -134,14 +139,20 @@ export async function buildCampaignGroupPreview(
           costCurrency: brand.costCurrency,
           ...(deps.fx === undefined ? {} : { fx: deps.fx }),
           ...(deps.smsRates === undefined ? {} : { smsRates: deps.smsRates }),
+          ...(deps.smsCountryLive === undefined
+            ? {}
+            : { smsCountryLive: deps.smsCountryLive }),
         });
         publicQuote = publicMarketingBookQuote(quote);
-        for (const candidate of envelope.candidates) {
+        // #4273 — the quote's own verdict: a phone with no rate is skipped
+        // there, so it must not count as reached here either.
+        for (const candidate of quote.candidates) {
           const key = candidate.personKey ?? candidate.brandPersonId;
           const reachable = candidate.allowed &&
-            candidate.normalizedContact !== null;
+            candidate.normalizedContact !== null && !candidate.smsUnpriced;
           people.set(key, (people.get(key) ?? false) || reachable);
         }
+        if (envelope.channel === "sms") unpricedSms += quote.unpricedCount;
         sources ??= envelope.audienceSources ?? null;
         if (
           quote.costKind === "provider_estimate" &&
@@ -184,6 +195,7 @@ export async function buildCampaignGroupPreview(
       selectedCount: people.size,
       reachableCount,
       skippedCount: people.size - reachableCount,
+      unpricedSmsCount: unpricedSms,
       estimatedCostMinor: currencyConflict ? null : costMinor,
       currency: currencyConflict ? null : currency,
       costKind: metered ? "provider_estimate" : "not_metered",

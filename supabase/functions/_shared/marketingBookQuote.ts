@@ -1,6 +1,8 @@
 import { composeSmsBody, computeSegments } from "./adapters/smsAdapter.ts";
 import { smsBlastBodyWithFollow } from "./marketingBlastFollow.ts";
 import { allocateSmsCosts } from "./smsPriceBook.ts";
+import { smsMarketingCountry } from "./e164Country.ts";
+import { smsCountryProfile } from "./smsCountries.ts";
 import type { SmsRateV1 } from "./smsPriceBook.ts";
 import {
   SMS_FX_PROVIDER,
@@ -69,12 +71,24 @@ export function rewriteMarketingSmsLinks(
 export function marketingBookSmsWireBody(
   rawBody: string,
   trackingOrigin: string,
+  /**
+   * #4273 — the recipient's sender cannot take a "STOP" reply, so the text
+   * ends with a branded opt-out link of the same fixed length as at send.
+   */
+  optOutLink = false,
 ): string {
   return composeSmsBody(
     rewriteMarketingSmsLinks(rawBody, trackingOrigin, () => QUOTE_TRACKING_ID)
       .rewritten,
     true,
+    optOutLink ? `${trackingOrigin}/${QUOTE_TRACKING_ID}` : undefined,
   );
+}
+
+/** #4273 — true when a text to this number carries the opt-out link. */
+export function smsNeedsOptOutLink(normalizedPhone: string | null): boolean {
+  return smsCountryProfile(smsMarketingCountry(normalizedPhone))?.replyable ===
+    false;
 }
 export interface MarketingBookCandidate {
   brandPersonId: string;
@@ -159,6 +173,8 @@ export async function buildMarketingBookQuote(
   options: {
     trackingOrigin?: string;
     smsRates?: SmsRateV1[];
+    /** #4273 — per-country switch; see allocateSmsCosts for the default. */
+    smsCountryLive?: (country: string) => boolean;
     /** #3682 — same Follow line dispatch appends; required for SMS segment parity. */
     followBrand?: { name: string; slug: string } | null;
     /** #4273 — the brand's pricing currency; a mixed-currency SMS total is shown in it. */
@@ -181,6 +197,8 @@ export async function buildMarketingBookQuote(
   const candidates = input.candidates.map((candidate) => ({
     ...candidate,
     segments: 0,
+    /** #4273 — reachable by the Book's verdict, but no rate for this phone. */
+    smsUnpriced: false,
     allocatedCostMinor: null as number | null,
     rateId: null as string | null,
     sourceReference: null as string | null,
@@ -191,25 +209,33 @@ export async function buildMarketingBookQuote(
       candidate.normalizedContact !== null) ||
     (typeof candidate.buyerContactKey === "string" &&
       candidate.normalizedContact !== null);
-  const reachable = candidates.filter((candidate) =>
+  const deliverable = candidates.filter((candidate) =>
     candidate.allowed && hasDeliveryIdentity(candidate)
   );
+  // #4273 — the SMS reach: a deliverable phone with no rate is SKIPPED with
+  // SMS_UNPRICED_COUNTRY (its sealed target keeps segments = 0, which the
+  // seal turns into a suppressed target), never a whole-quote failure.
+  let reachable = deliverable;
+  let unpricedCount = 0;
   let estimatedCostMinor: number | null = null, currency: string | null = null;
   let costBreakdown: SmsFxConverted[] = [];
   let fxSnapshotId: string | null = null;
-  if (input.channel === "sms" && reachable.length > 0) {
+  if (input.channel === "sms" && deliverable.length > 0) {
     const authorBody = smsBlastBodyWithFollow(
       String(input.content.body ?? ""),
       options.followBrand?.name,
       options.followBrand?.slug,
     );
-    const wireBody = marketingBookSmsWireBody(
-      authorBody,
-      options.trackingOrigin ?? resolveMarketingTrackingOrigin(),
+    const origin = options.trackingOrigin ?? resolveMarketingTrackingOrigin();
+    // #4273 — quote = send: a text that carries the opt-out link is measured
+    // with it (the send appends a link of exactly this length).
+    const wireBody = marketingBookSmsWireBody(authorBody, origin);
+    const segmentsWithStop = computeSegments(wireBody);
+    const segmentsWithLink = computeSegments(
+      marketingBookSmsWireBody(authorBody, origin, true),
     );
-    const segments = computeSegments(wireBody);
     const priced = allocateSmsCosts(
-      reachable.map((candidate) => {
+      deliverable.map((candidate) => {
         if (candidate.normalizedContact === null) {
           throw new Error("cost_unavailable");
         }
@@ -219,13 +245,19 @@ export async function buildMarketingBookQuote(
               candidate.buyerContactKey ?? "unavailable"
           }`,
           normalizedPhone: candidate.normalizedContact,
-          segments,
+          segments: smsNeedsOptOutLink(candidate.normalizedContact)
+            ? segmentsWithLink
+            : segmentsWithStop,
           target: candidate,
         };
       }),
       now,
       options.smsRates,
+      options.smsCountryLive,
     );
+    for (const skipped of priced.unpriced) skipped.target.smsUnpriced = true;
+    unpricedCount = priced.unpriced.length;
+    reachable = deliverable.filter((candidate) => !candidate.smsUnpriced);
     for (const allocation of priced.allocations) {
       allocation.target.segments = allocation.segments;
       allocation.target.allocatedCostMinor = allocation.allocatedCostMinor;
@@ -323,9 +355,13 @@ export async function buildMarketingBookQuote(
       fxSnapshotId = conversion.snapshotId;
     }
   }
+  // #4273 — an unpriced phone is skipped like a suppression, so the sealed
+  // execution keeps selected = reachable + suppressed + unavailable;
+  // unpricedCount says how many of the suppressed are that reason.
   const suppressedCount =
     candidates.filter((candidate) =>
-      hasDeliveryIdentity(candidate) && !candidate.allowed
+      hasDeliveryIdentity(candidate) &&
+      (!candidate.allowed || candidate.smsUnpriced)
     ).length;
   const unavailableCount =
     candidates.filter((candidate) => !hasDeliveryIdentity(candidate)).length;
@@ -350,6 +386,8 @@ export async function buildMarketingBookQuote(
     reachableCount: reachable.length,
     suppressedCount,
     unavailableCount,
+    /** #4273 — of suppressedCount: phones skipped because their country has no rate. */
+    unpricedCount,
     smsSegments: candidates.reduce(
       (sum, candidate) => sum + candidate.segments,
       0,

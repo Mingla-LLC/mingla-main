@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy-patch",
+  "ownerIssue": "#4273",
+  "target": {
+    "kind": "function",
+    "name": "notify-dispatch"
+  },
+  "basePolicySha256": "1ab32f3da23a10bf109dcb9988e7e7164ddf8f4873085c2aad46ed19975b473b",
+  "operations": [
+    {
+      "op": "add_env_name",
+      "classification": "optional_top_level",
+      "name": "TWILIO_MARKETING_MESSAGING_SERVICE_SID",
+      "expectedAbsent": true
+    }
+  ],
+  "resultPolicySha256": "d555a1f0c0e976a0979d58b7e8e960c3d7bcf39a9c1f80e1af4bc7dccf123bf1",
+  "reason": "Issue #4273 routes SMS to alphanumeric-sender countries through the optional Mingla Marketing messaging service; this function reaches the shared check (smsCountryTextableNow) that reads whether that service is configured. Unset means those countries are skipped, never sent from the toll-free number."
+}
