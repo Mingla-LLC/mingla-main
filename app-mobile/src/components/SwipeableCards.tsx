@@ -54,13 +54,13 @@ import {
 import {
   BeenHereBody,
   CardStateDiscs,
-  CuratedSlivers,
   DeckCardPlate,
   beenHereStateStyle,
   // #1609 tester P1-1 — the ONE predicate that decides which silhouette a card
   // draws. This tree did not import it at all and hard-coded the 96pt anchor into
   // its stylesheet, so the name and the curated slivers did not follow the plate
   // when it shrank to the short silhouette. Every face-level offset now reads this.
+  planPlatePresentation,
   platePresentation,
   type BeenHereVisualState,
   type MetaSpanInput,
@@ -83,9 +83,8 @@ import {
   type DeckFactLabels,
   type DeckPhoto,
   type DeckStopLike,
-  routeLine,
 } from "./deckCard/deckCardModel";
-import { curatedFaceFacts } from "./deckCard/curatedFace";
+import { curatedFaceFacts, curatedPlanPlate } from "./deckCard/curatedFace";
 import {
   DeckTextColumn,
   HostChip,
@@ -459,8 +458,11 @@ const BEEN_HERE_SPINNER_TICK_MS = 250;
 export const BeenHereControl = React.memo(function BeenHereControl({
   userId,
   card,
+  compact = false,
 }: {
   userId: string | undefined;
+  /** #4347 round 2 — the AI plan plate's round, glyph-only control. */
+  compact?: boolean;
   card: {
     id: string;
     title: string;
@@ -598,7 +600,7 @@ export const BeenHereControl = React.memo(function BeenHereControl({
       onPress={onPress}
       onPressIn={() => setPressed(true)}
       onPressOut={() => setPressed(false)}
-      style={[styles.beenHere, beenHereStateStyle(state)]}
+      style={[styles.beenHere, compact ? styles.beenHereCompact : null, beenHereStateStyle(state)]}
       hitSlop={8}
       accessibilityRole="button"
       accessibilityState={{ selected: isVisited, busy: inFlight }}
@@ -610,7 +612,7 @@ export const BeenHereControl = React.memo(function BeenHereControl({
             : t('cards:swipeable.been_here_off', { title: card.title })
       }
     >
-      <BeenHereBody state={state} label={label} showSpinner={inFlight && slow} />
+      <BeenHereBody state={state} label={label} showSpinner={inFlight && slow} compact={compact} />
     </Pressable>
   );
 });
@@ -3622,7 +3624,20 @@ export default function SwipeableCards({
               const nextSpans = nextFacts
                 ? nextFacts.spans
                 : metaSpansForCard(nextCard, accountPreferences?.measurementSystem, deckNow, deckFactLabels);
-              const nextPresentation = platePresentation(nextSpans, metaLinesByCard[nextCard.id] ?? 1);
+              // #4347 round 2 — an AI plan behind the top card shows the SAME
+              // plan plate it will have once promoted (no photos: behind cards
+              // load photo 1 only, so the thumbnails join on promotion).
+              const nextPlanPlate =
+                nextCard.cardType === 'curated'
+                  ? curatedPlanPlate(nextCard as unknown as CuratedExperienceCard, {
+                      t,
+                      currencyCode: accountPreferences?.currency || 'USD',
+                      photos: [],
+                    })
+                  : null;
+              const nextPresentation = nextPlanPlate
+                ? { ...planPlatePresentation(), metaLines: 1 }
+                : platePresentation(nextSpans, metaLinesByCard[nextCard.id] ?? 1);
               const nextPhotos = deckPhotosForCard(nextCard);
               const nextHasPhoto = nextPhotos.length > 0;
 
@@ -3686,17 +3701,12 @@ export default function SwipeableCards({
                       dark={!nextHasPhoto}
                       // The stop stack is the TOP card's: behind cards load photo 1
                       // only, so the route line rides alone until promotion.
-                      stack={
-                        nextCard.cardType === 'curated'
-                          ? { photos: [], route: routeLine((nextCard as unknown as CuratedExperienceCard).stops) }
-                          : null
-                      }
+                      // #4347 round 2 — the AI plan's route is on its plate now.
+                      stack={null}
                     />
-                    {(nextCard as any).cardType === 'curated'
-                      ? <CuratedSlivers plateH={nextPresentation.plateH} />
-                      : null}
                     <DeckCardPlate
                       spans={nextSpans}
+                      plan={nextPlanPlate}
                       opaque={!nextHasPhoto}
                       fromPriceLabel={nextFacts?.fromPriceLabel ?? null}
                       metaLines={nextPresentation.metaLines}
@@ -3898,7 +3908,8 @@ export default function SwipeableCards({
                     card={currentRec as unknown as CuratedExperienceCard}
                     currencyCode={accountPreferences?.currency || 'USD'}
                     {...currentPagerProps}
-                    beenHere={<BeenHereControl userId={user?.id} card={currentRec} />}
+                    // #4347 round 2 — the AI plan plate's round, glyph-only Been-here.
+                    beenHere={<BeenHereControl userId={user?.id} card={currentRec} compact />}
                     onSharePress={handleShare}
                     shareLabel={t('cards:swipeable.share_card', { title: currentRec.title })}
                     onDetailsPress={() => deckSwipe.requestTapExpand()}
@@ -4479,6 +4490,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 22,
     borderWidth: 1,
+  },
+  // #4347 round 2 — the plan plate's round Been-here: same height, glyph only.
+  beenHereCompact: {
+    width: 44,
+    paddingHorizontal: 0,
+    justifyContent: "center",
   },
   highlightsContainer: {
     flexDirection: "row",

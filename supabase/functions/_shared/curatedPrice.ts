@@ -61,3 +61,31 @@ export function sumStopPrices(stops: ReadonlyArray<Partial<StopPrice>>): PlanPri
     ? { totalPriceMin, totalPriceMax, totalPriceOpenEnded: true }
     : { totalPriceMin, totalPriceMax };
 }
+
+/**
+ * #4347 round 2 — what a stop's amounts ARE. `priceMin` / `priceMax` come from
+ * Google's per-person range, which is in the PLACE's currency (₦100,000 at a
+ * Lagos restaurant), so they never travel without the code. `priceLevel` lets
+ * a client tell a free place ("PRICE_LEVEL_FREE") from one Google gave no range
+ * for. Both are null when unknown — never a guessed default (Constitution 9).
+ */
+export interface StopPriceIdentity {
+  priceCurrency: string | null;
+  priceLevel: string | null;
+}
+
+const CURRENCY_CODE = /^[A-Z]{3}$/;
+const GOOGLE_PRICE_LEVEL = /^PRICE_LEVEL_[A-Z_]+$/;
+
+/** A place_pool `price_range_currency` value, or null when it is not an ISO code. */
+export function rangeCurrency(value: unknown): string | null {
+  return typeof value === 'string' && CURRENCY_CODE.test(value) ? value : null;
+}
+
+/** The stop's currency + Google level, from a shaped place row. */
+export function stopPriceIdentity(row: { price_currency?: unknown; price_level?: unknown }): StopPriceIdentity {
+  return {
+    priceCurrency: rangeCurrency(row.price_currency),
+    priceLevel: typeof row.price_level === 'string' && GOOGLE_PRICE_LEVEL.test(row.price_level) ? row.price_level : null,
+  };
+}

@@ -56,7 +56,8 @@ import { CuratedPlanBody } from "./expandedCard/CuratedPlanBody";
 import { PlanStopNavigator } from "./expandedCard/PlanStopNavigator";
 import { PlanScrollStore, useResetOnPlanIdentity } from "./expandedCard/planScroll";
 import { defaultPlanStart, planMode, planTimeline, stopOrdinals } from "./expandedCard/curatedPlanModel";
-import { curatedPlanPriceLabel } from "./expandedCard/expandedCardFacts";
+import { curatedPlanPriceLabel, planVisibleStops } from "./expandedCard/expandedCardFacts";
+import { curatedPlanEstimate } from "../utils/curatedPriceRange";
 import StopList, { type StopListStop } from "./expandedCard/StopList";
 import { occasionFromCategory, stopPurpose } from "./expandedCard/stopPurpose";
 // #1605 P1-3 — the picnic Shopping List, re-homed onto the spine. It rendered on
@@ -1709,9 +1710,13 @@ export default function ExpandedCardModal({
         formatDisplayPrice({ ...price, viewerCurrency: accountPreferences?.currency })?.text ?? null,
       spendLevelLabel: (level) => t(`cards:price.spend_${level}`),
       freeLabel: t('cards:swipeable.free', { defaultValue: 'Free' }),
+      // #4347 round 2 — a real Google estimate when the plan has one.
+      planEstimateLabel: (price) => t('cards:plan.price_from_pp', { price }),
       isBrandExperience: isBrandExperiencePlan,
     });
-    return value === null ? null : { value, sub: planChargedInLine };
+    if (value === null) return null;
+    const estimated = !isBrandExperiencePlan && curatedPlanEstimate(planVisibleStops(planCard.stops)) !== null;
+    return { value, sub: estimated ? t('cards:plan.spend_estimate_sub') : planChargedInLine };
   })();
   const directionsUnavailable = (): void => {
     toastManager.show(t('cards:expanded.directions_unavailable', { defaultValue: "Couldn't open directions" }), 'error');
@@ -2024,7 +2029,7 @@ export default function ExpandedCardModal({
                 shareControlRef={shareControlRef}
                 // A plan has no reservation of its own (its stops are not one venue).
                 reserve={null}
-                primaryScheduleLabel={t('cards:plan.schedule_cta')}
+                primaryScheduleLabel={t('cards:plan.schedule_short')}
                 initialScheduleAt={planStart}
                 afterSave={
                   planStops.length > 0 ? (
@@ -2043,8 +2048,9 @@ export default function ExpandedCardModal({
                       })()}
                     >
                       <Icon name="map-outline" size={20} color={SPINE.prose} />
+                      {/* #4347 round 2 — the short word; the a11y label keeps "Route all stops". */}
                       <Text style={styles.routeAllLabel} numberOfLines={1} maxFontSizeMultiplier={1.2}>
-                        {t('cards:plan.route_all')}
+                        {t('cards:plan.route_short')}
                       </Text>
                     </TouchableOpacity>
                   ) : null
@@ -2127,6 +2133,7 @@ export default function ExpandedCardModal({
                 fallbackMode={effectiveTravelMode}
                 measurementSystem={accountPreferences?.measurementSystem}
                 spend={planSpend}
+                formatPrice={isBrandExperiencePlan ? undefined : (price) => formatDisplayPrice({ ...price, viewerCurrency: accountPreferences?.currency })?.text ?? null}
                 beenHere={
                   <BeenHereControl
                     userId={user?.id}

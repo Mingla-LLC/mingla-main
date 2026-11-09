@@ -275,5 +275,20 @@
   "sheet.sound": "Bunyi",
   "sheet.mute": "Senyap",
   "sheet.sound_on_a11y": "Hidupkan bunyi",
-  "sheet.sound_off_a11y": "Senyapkan bunyi"
+  "sheet.sound_off_a11y": "Senyapkan bunyi",
+  "plan.route_short": "Laluan",
+  "plan.schedule_short": "Jadualkan",
+  "plan.addon": "Tambahan",
+  "plan.conditions_row_addon": "{{name}} (tambahan), {{time}}",
+  "plan.price_from_pp": "Dari {{price}} seorang",
+  "plan.spend_estimate_sub": "Anggaran Google, seorang",
+  "plan.prices_title": "Harga setiap hentian",
+  "plan.prices_note": "Anggaran Google seorang, tidak termasuk minuman dan tip. Hentian tambahan tidak dikira.",
+  "plan.price_pp": "{{price}} seorang",
+  "plan.price_row": "{{number}} · {{name}}",
+  "plan.price_none": "Tiada harga",
+  "deck.tile_time": "Masa",
+  "deck.tile_away": "Jarak",
+  "deck.away_value": "{{minutes}} min",
+  "deck.price_plus": "{{price}}+"
 }

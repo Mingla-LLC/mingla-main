@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/utils/__tests__/issue_4347_round2_plan_price.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4347-round2-plan-price-implementor",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

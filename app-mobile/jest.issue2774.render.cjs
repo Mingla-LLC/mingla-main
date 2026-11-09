@@ -98,6 +98,9 @@ module.exports = {
     // deck-card state rendered.
     "**/__tests__/issue_4347_deck_card_model.implementor.test.ts",
     "**/__tests__/issue_4347_deck_card_states.implementor.render.test.tsx",
+    // issue #4347 round 2 — real plan price estimates, the Direction B plan plate,
+    // Price per stop, inline conditions rows, the shrinking pinned label.
+    "**/__tests__/issue_4347_round2.implementor.render.test.tsx",
     // issue #4347 wave 1 rework — smart chip after midnight, collab route
     // hand-off, kicker at large text, card-local tap zones, poster parity.
     "**/__tests__/issue_4347_wave1_rework.implementor.test.ts",

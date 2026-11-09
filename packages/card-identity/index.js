@@ -823,6 +823,58 @@ const DETAILS = {
   color: '#FFFFFF',
 };
 
+/**
+ * #4347 round 2 (Seth, Direction B, 2026-11-09) — the AI PLAN's collapsed plate.
+ *
+ * A plan is not one place, so its plate says where the night goes and what it
+ * costs instead of borrowing the place card's fact line:
+ *
+ *     ╔══ plate · r24 ══════════════════════════════════╗
+ *     ║                 ▬▬▬  handle                16pt ║
+ *     ║  ◉◉◉ Nike Art Gallery → The Burgundy       30pt ║
+ *     ║                                             8pt ║
+ *     ║  [ TIME 2h 33m ][ AWAY 6 min ][ SPEND ₦100K+ ]  ║ 52pt
+ *     ║                                             8pt ║
+ *     ║  [      👁 Details      ]  (✓)  (⤴)        53pt ║
+ *     ╚═════════════════════════════════════════════════╝
+ *
+ * 1 + 16 + 30 + 8 + 52 + 8 + 53 + 1 = 169. The two grey SLIVERS are not drawn
+ * on a plan plate (they read as a rendering glitch); the route line and its
+ * stop photos are the plan's mark. The handle replaces the chevron as the
+ * pull-up hint. Details is the one filled control — the same accent fill and
+ * near-black label as the sheet's pinned primary (6.47:1).
+ */
+const PLAN_PLATE = {
+  handle: { width: 36, height: 4, radius: 2, top: 8, color: 'rgba(255,255,255,0.55)' },
+  handleRow: 16,
+  routeRow: 30,
+  sectionGap: 8,
+  paddingH: 12,
+  thumb: { size: 24, overlap: 8, ring: 2, ringColor: 'rgba(20,20,22,0.85)', max: 3 },
+  route: { size: 15, weight: '700', color: '#FFFFFF', gap: 8 },
+  tiles: {
+    height: 52,
+    gap: 6,
+    radius: 14,
+    paddingH: 10,
+    fill: 'rgba(255,255,255,0.12)',
+    androidFill: 'rgb(70,70,72)',
+    labelSize: 10,
+    labelLetterSpacing: 0.8,
+    labelColor: 'rgba(255,255,255,0.74)',
+    valueSize: 16,
+    valueWeight: '700',
+    valueColor: '#FFFFFF',
+    /** The Spend value only — warm, so price is the one figure that stands out. */
+    spendColor: '#FFD5B5',
+  },
+  controlRow: 53,
+  controlGap: 8,
+  details: { fill: '#EB7825', fillPressed: '#D7691B', label: '#141414', labelSize: 15, labelWeight: '700', radius: 22, height: 44, glyphSize: 18 },
+  height: 0,
+};
+PLAN_PLATE.height = 1 + PLAN_PLATE.handleRow + PLAN_PLATE.routeRow + PLAN_PLATE.sectionGap + PLAN_PLATE.tiles.height + PLAN_PLATE.sectionGap + PLAN_PLATE.controlRow + 1;
+
 const SLIVER = {
   height: 4,
   radius: 2,
@@ -1353,6 +1405,7 @@ module.exports = {
   STATE_DISC,
   BEEN_HERE,
   DETAILS,
+  PLAN_PLATE,
   SLIVER,
   HANDLE,
   SURFACES,

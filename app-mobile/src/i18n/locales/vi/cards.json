@@ -275,5 +275,20 @@
   "sheet.sound": "Âm thanh",
   "sheet.mute": "Tắt tiếng",
   "sheet.sound_on_a11y": "Bật âm thanh",
-  "sheet.sound_off_a11y": "Tắt âm thanh"
+  "sheet.sound_off_a11y": "Tắt âm thanh",
+  "plan.route_short": "Lộ trình",
+  "plan.schedule_short": "Lên lịch",
+  "plan.addon": "Tùy chọn",
+  "plan.conditions_row_addon": "{{name}} (tùy chọn), {{time}}",
+  "plan.price_from_pp": "Từ {{price}}/người",
+  "plan.spend_estimate_sub": "Ước tính của Google, mỗi người",
+  "plan.prices_title": "Giá từng điểm dừng",
+  "plan.prices_note": "Ước tính của Google cho mỗi người, chưa gồm đồ uống và tiền boa. Điểm tùy chọn không được tính.",
+  "plan.price_pp": "{{price}}/người",
+  "plan.price_row": "{{number}} · {{name}}",
+  "plan.price_none": "Chưa có giá",
+  "deck.tile_time": "Thời gian",
+  "deck.tile_away": "Cách",
+  "deck.away_value": "{{minutes}} phút",
+  "deck.price_plus": "{{price}}+"
 }

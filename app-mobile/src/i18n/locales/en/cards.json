@@ -308,5 +308,20 @@
   "sheet.sound": "Sound",
   "sheet.mute": "Mute",
   "sheet.sound_on_a11y": "Turn on sound",
-  "sheet.sound_off_a11y": "Mute sound"
+  "sheet.sound_off_a11y": "Mute sound",
+  "plan.route_short": "Route",
+  "plan.schedule_short": "Schedule",
+  "plan.addon": "Add-on",
+  "plan.conditions_row_addon": "{{name}} (add-on), {{time}}",
+  "plan.price_from_pp": "From {{price}} pp",
+  "plan.spend_estimate_sub": "Google estimate, per person",
+  "plan.prices_title": "Price per stop",
+  "plan.prices_note": "Google's per-person estimates, before drinks and tips. Add-ons aren't counted.",
+  "plan.price_pp": "{{price}} pp",
+  "plan.price_row": "{{number}} · {{name}}",
+  "plan.price_none": "No price listed",
+  "deck.tile_time": "Time",
+  "deck.tile_away": "Away",
+  "deck.away_value": "{{minutes}} min",
+  "deck.price_plus": "{{price}}+"
 }
