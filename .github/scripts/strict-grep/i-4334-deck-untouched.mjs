@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
+// MINGLA-INVARIANT: I-4334-DECK-UNTOUCHED | issue #4334 | The Google migration leaves the swipe-deck files byte-identical to the merge base; a pull request with no merge base fails closed.
 /**
  * Strict-grep gate — #4334 · I-4334-DECK-UNTOUCHED
  *
