@@ -24,6 +24,7 @@ import {
   countryName,
   formatSmsPrice,
   marketingSenderWords,
+  senderSummaryWords,
   planSmsCountryChange,
   prospectiveBlock,
   reasonOk,
@@ -98,6 +99,14 @@ describe("#4273 A: the words", () => {
     assert.equal(smsCountryErrorWords({ code: "PT409", message: "" }), cases.sms_country_switch_stale);
     assert.equal(smsCountryErrorWords({ code: "42501", message: "" }), cases.not_authorized);
     assert.equal(smsCountryErrorWords({ message: "socket hang up" }), "Something went wrong saving that. Try again.");
+    assert.equal(smsCountryErrorWords({ message: "socket hang up" }, "save"), "Something went wrong saving that. Try again.");
+  });
+  it("a load failure never reads as a failed save (P2-2)", () => {
+    const words = smsCountryErrorWords({ message: "Failed to fetch" }, "load");
+    assert.equal(words, "Couldn't load SMS countries. Check your connection and try again.");
+    assert.equal(/sav/i.test(words), false);
+    // Known server errors keep their own words on load too.
+    assert.equal(smsCountryErrorWords({ code: "42501", message: "" }, "load"), "Only the owner and admins can change SMS countries.");
   });
   it("shows the marketing sender with the SID shortened", () => {
     assert.equal(
@@ -105,6 +114,15 @@ describe("#4273 A: the words", () => {
       "Mingla Marketing (MG9d…b9a7)",
     );
     assert.equal(marketingSenderWords(null), "not set");
+    // P2-1: no sender line until the list has loaded; "not set" only for a
+    // loaded list with no SID.
+    assert.equal(senderSummaryWords({ loaded: false, service: null, count: 0, onCount: 0 }), null);
+    assert.equal(senderSummaryWords({ loaded: false, service: { sid: "MG9d42785c51834395018b52144736b9a7" }, count: 3, onCount: 1 }), null);
+    assert.equal(senderSummaryWords({ loaded: true, service: null, count: 40, onCount: 0 }), "Marketing sender: not set · 40 countries · 0 on");
+    assert.equal(
+      senderSummaryWords({ loaded: true, service: { sid: "MG9d42785c51834395018b52144736b9a7", label: "Mingla Marketing" }, count: 40, onCount: 2 }),
+      "Marketing sender: Mingla Marketing (MG9d…b9a7) · 40 countries · 2 on",
+    );
     assert.equal(reasonOk("  "), false);
     assert.equal(reasonOk("UK first"), true);
   });
@@ -176,6 +194,13 @@ describe("#4273 C: wiring", () => {
     const pageFn = page.slice(page.indexOf("export function SmsCountriesPage"), page.indexOf("function SmsCountriesBoard"));
     assert.equal(/getSmsCountries|setSmsCountry/.test(pageFn), false);
   });
+  it("the page words a load failure as a load and draws the sender line only once loaded", () => {
+    const page = stripComments(read("pages/SmsCountriesPage.jsx"));
+    assert.ok(page.includes('setError(smsCountryErrorWords(err, "load"));'));
+    assert.ok(page.includes("senderSummaryWords({ loaded: loaded && !loading && !error,"));
+    assert.ok(page.includes("{summary && <p"));
+    assert.equal(page.includes("marketingSenderWords"), false, "the page never prints the sender words on its own");
+  });
 });
 
 describe("#4273 D: rendered", () => {
@@ -239,12 +264,14 @@ export const page = () => renderToStaticMarkup(<ToastProvider><SmsCountriesPage 
     });
   }
   for (const role of ["owner", "admin"]) {
-    it(`${role}: the board, not the card`, () => {
+    it(`${role}: the board, not the card (sender line hidden while loading)`, () => {
       globalThis.__issue4273Calls = [];
       globalThis.__issue4273Access = { role, areas: ["admin_console"] };
       const html = harness.page();
       assert.ok(html.includes("Which countries hosts can send marketing texts to."));
-      assert.ok(html.includes("Marketing sender:"));
+      // Still loading: no sender line, and never "not set" (P2-1).
+      assert.equal(html.includes("Marketing sender:"), false);
+      assert.equal(html.includes("not set"), false);
       assert.equal(html.includes("Owner and admins only"), false);
     });
   }

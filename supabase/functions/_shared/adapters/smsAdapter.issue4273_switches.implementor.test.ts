@@ -9,6 +9,8 @@
 //   T-A3 US carrying an override SID → marketing_sender_mismatch, 0 HTTP
 //   T-A4 US routed "marketing" → marketing_sender_mismatch, 0 HTTP
 //   T-A5 NG routed "toll_free" → marketing_sender_mismatch, 0 HTTP
+//   T-A7 GB carrying the TRANSACTIONAL service SID → marketing_sender_mismatch,
+//        0 HTTP (a marketing text never rides the verification sender)
 //   T-A6 GB happy, with NO bundle key for GB → one Twilio POST carrying the
 //        marketing SID; US happy on the toll-free service; NG happy on Termii.
 import {
@@ -16,6 +18,7 @@ import {
   assertEquals,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { smsAdapter, type SmsSendInput } from "./smsAdapter.ts";
+import { TRANSACTIONAL_SERVICE_SID } from "../smsCountrySwitches.ts";
 
 const MARKETING_SID = "MG9d42785c51834395018b52144736b9a7";
 const OWNED_KEYS = [
@@ -176,5 +179,29 @@ Deno.test("#4273 T-A6 the right pairings send: GB on the marketing service (no b
     assert(calls[2].url.startsWith("https://termii.switch.test/"));
     assertEquals(JSON.parse(calls[2].body).channel, "generic");
     assertEquals(calls.length, 3);
+  });
+});
+
+Deno.test("#4273 T-A7 a marketing text on the transactional service SID is refused with zero HTTP", async () => {
+  await withHarness(async (calls) => {
+    let ioClaimed = false;
+    const claim = () => {
+      ioClaimed = true;
+      return Promise.resolve();
+    };
+    for (const sid of [TRANSACTIONAL_SERVICE_SID, `  ${TRANSACTIONAL_SERVICE_SID}  `]) {
+      for (const to of ["+447700900123", "+33612345678"]) {
+        const result = await smsAdapter.send(base(to, {
+          marketingRoute: "marketing",
+          messagingServiceSid: sid,
+          beforeProviderIo: claim,
+        }));
+        assertEquals(result.status, "skipped", `${to} ${sid}`);
+        assertEquals(result.error, "marketing_sender_mismatch", `${to} ${sid}`);
+        assertEquals(result.ok, false);
+      }
+    }
+    assertEquals(calls.length, 0, "zero provider HTTP");
+    assertEquals(ioClaimed, false, "before beforeProviderIo");
   });
 });

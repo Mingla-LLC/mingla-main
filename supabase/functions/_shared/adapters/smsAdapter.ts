@@ -73,6 +73,9 @@ import { resolveDeliveryFlagValue } from "../secretBundle.ts";
 // #4273 — the sender CLASS a country's marketing text must use (toll-free,
 // Termii or the marketing service); the guard below refuses any other pairing.
 import { smsCountryProfile } from "../smsCountries.ts";
+// #4273 — the transactional "Mingla Verification" service SID: never a
+// marketing sender (one home, in smsCountrySwitches).
+import { TRANSACTIONAL_SERVICE_SID } from "../smsCountrySwitches.ts";
 import { resolveRuntimeConfigValue } from "../runtimeConfig.ts";
 // #2218 — the ONE definition of the Nigerian `generic` operator embargo. Both
 // rails read it from here; see the essay at the top of that file.
@@ -675,7 +678,8 @@ export const smsAdapter = {
     // class: US/CA the toll-free service (no override SID), NG Termii, every
     // other country the marketing service (an override SID is required, so an
     // alphanumeric country can never fall back to the toll-free number in
-    // twilioSend). Any other pairing is skipped with zero HTTP, before
+    // twilioSend, and the override may never be the transactional service
+    // SID). Any other pairing is skipped with zero HTTP, before
     // beforeProviderIo. Transactional texts never enter this block.
     if (input.messageType === "marketing") {
       const senderClass = smsCountryProfile(cc)?.sender;
@@ -684,7 +688,8 @@ export const smsAdapter = {
         ? input.marketingRoute === "toll_free" && sid.length === 0
         : senderClass === "termii"
         ? input.marketingRoute === "termii"
-        : input.marketingRoute === "marketing" && sid.length > 0;
+        : input.marketingRoute === "marketing" && sid.length > 0 &&
+          sid !== TRANSACTIONAL_SERVICE_SID;
       if (!paired) {
         return {
           ok: false,

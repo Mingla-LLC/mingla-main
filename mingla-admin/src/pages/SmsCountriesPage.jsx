@@ -27,12 +27,12 @@ import {
   blockedWords,
   countryName,
   formatSmsPrice,
-  marketingSenderWords,
   planSmsCountryChange,
   reasonOk,
   registrationLabel,
   senderChangeable,
   senderLabel,
+  senderSummaryWords,
   smsCountryErrorWords,
 } from "../lib/smsCountries";
 import { getSmsCountries, setSmsCountryReadiness, setSmsCountrySwitch } from "../services/smsCountriesService";
@@ -69,6 +69,7 @@ function SmsCountriesBoard() {
   const { addToast } = useToast();
   const [rows, setRows] = useState([]);
   const [service, setService] = useState(null);
+  const [loaded, setLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [changing, setChanging] = useState(null); // the row being changed
@@ -86,17 +87,20 @@ function SmsCountriesBoard() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoaded(false);
     setError(null);
     try {
       const data = await getSmsCountries();
       if (mounted.current) {
         setRows(data.countries);
         setService(data.marketingService);
+        setLoaded(true);
       }
     } catch (err) {
       if (mounted.current) {
         setRows([]);
-        setError(smsCountryErrorWords(err));
+        setService(null);
+        setError(smsCountryErrorWords(err, "load"));
       }
     } finally {
       if (mounted.current) setLoading(false);
@@ -230,12 +234,11 @@ function SmsCountriesBoard() {
     },
   ];
 
+  const summary = senderSummaryWords({ loaded: loaded && !loading && !error, service, count: rows.length, onCount });
+
   return (
     <>
-      <p className="text-sm text-[var(--color-text-secondary)]">
-        Marketing sender: {marketingSenderWords(service)}
-        {loading || error ? "" : ` · ${rows.length} countries · ${onCount} on`}
-      </p>
+      {summary && <p className="text-sm text-[var(--color-text-secondary)]">{summary}</p>}
 
       {error ? (
         <LoadError title="Couldn't load SMS countries" message={error} onRetry={load} />

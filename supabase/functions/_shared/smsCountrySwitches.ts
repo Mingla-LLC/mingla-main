@@ -54,7 +54,7 @@ export type SmsMarketingRoute = "toll_free" | "marketing" | "termii";
 
 const SID_RE = /^MG[0-9a-f]{32}$/;
 /** The transactional "Mingla Verification" service: never a marketing sender. */
-const TRANSACTIONAL_SERVICE_SID = "MG1942fbb549187fcf77c0e860405abf58";
+export const TRANSACTIONAL_SERVICE_SID = "MG1942fbb549187fcf77c0e860405abf58";
 const SENDERS: ReadonlySet<string> = new Set([
   "toll_free",
   "marketing_service",

@@ -89,15 +89,24 @@ const ERROR_WORDS = [
   [/switch_off_first/, "Turn marketing texts off for this country first."],
 ];
 
-/** Plain English for every error the SMS country RPCs raise. */
-export function smsCountryErrorWords(error) {
+const FALLBACK_WORDS = {
+  load: "Couldn't load SMS countries. Check your connection and try again.",
+  save: "Something went wrong saving that. Try again.",
+};
+
+/**
+ * Plain English for every error the SMS country RPCs raise. `action` says
+ * whether the page was loading the list or saving a change, so an unknown
+ * load failure never reads as a failed save.
+ */
+export function smsCountryErrorWords(error, action = "save") {
   const text = [error?.code, error?.message, typeof error === "string" ? error : ""]
     .filter(Boolean)
     .join(" ");
   for (const [pattern, words] of ERROR_WORDS) {
     if (pattern.test(text)) return words;
   }
-  return "Something went wrong saving that. Try again.";
+  return FALLBACK_WORDS[action] || FALLBACK_WORDS.save;
 }
 
 /** "Mingla Marketing (MG9d…b7a7)" — the sender, with the SID shortened. */
@@ -106,6 +115,15 @@ export function marketingSenderWords(service) {
   const sid = String(service.sid);
   const short = sid.length > 8 ? `${sid.slice(0, 4)}…${sid.slice(-4)}` : sid;
   return `${service.label || "Mingla Marketing"} (${short})`;
+}
+
+/**
+ * The line above the table, or null while the list is loading or failed to
+ * load: "not set" is only ever said about a list that loaded with no sender.
+ */
+export function senderSummaryWords({ loaded, service, count, onCount }) {
+  if (!loaded) return null;
+  return `Marketing sender: ${marketingSenderWords(service)} · ${count} countries · ${onCount} on`;
 }
 
 /** Can the reason box be sent? (The server checks again.) */
