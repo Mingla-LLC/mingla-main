@@ -135,6 +135,8 @@ export function useVenueMapsActions(
     return listMapsAppChoices({
       geo: target.geo,
       label: target.label,
+      // #4334 — the chooser's Google row carries the picked place id.
+      googlePlaceId: target.googlePlaceId ?? null,
       platform,
     });
   }, [platform, target]);

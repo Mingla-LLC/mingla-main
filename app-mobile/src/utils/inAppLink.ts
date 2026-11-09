@@ -57,7 +57,13 @@ export function classifyLink(raw: string | null | undefined): LinkClass {
 }
 
 /** The https map of a place (coordinates first, else its name), or null when there is nothing to show. */
-export function mapsWebUrl(input: { lat: number | null; lng: number | null; label: string | null }): string | null {
+export function mapsWebUrl(input: {
+  lat: number | null;
+  lng: number | null;
+  label: string | null;
+  /** #4334 — a Google place id anchors the link (`query_place_id`). */
+  googlePlaceId?: string | null;
+}): string | null {
   const geo = input.lat != null && input.lng != null ? { lat: input.lat, lng: input.lng } : null;
-  return buildMapsDeepLink({ geo, label: input.label, platform: "web" })?.url ?? null;
+  return buildMapsDeepLink({ geo, label: input.label, googlePlaceId: input.googlePlaceId ?? null, platform: "web" })?.url ?? null;
 }

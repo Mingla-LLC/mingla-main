@@ -341,6 +341,8 @@ export interface PublicVenue {
   coverMediaUrl: string | null;
   coverMediaType: "image" | "video" | "gif" | null;
   placePoolId: string | null;
+  /** #4334 — the venue's Google place id; anchors the Google Maps link. */
+  googlePlaceId?: string | null;
   theme: ThemeInput | null;
   coverHue: number;
   defaultCurrency: string | null;
@@ -945,6 +947,7 @@ export const venuePublicViewRowToPublicVenue = (
   coverMediaUrl: asStringOrNull(row.cover_media_url),
   coverMediaType: row.cover_media_type ?? null,
   placePoolId: row.place_pool_id ?? null,
+  googlePlaceId: asStringOrNull(row.google_place_id),
   theme: asThemeInput(row.theme_color, row.theme_font, row.theme_animation),
   coverHue: typeof row.cover_hue === "number" ? row.cover_hue : 25,
   defaultCurrency: asStringOrNull(row.default_currency),

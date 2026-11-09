@@ -888,7 +888,12 @@ export function lockPlaceOptionId(plan: Pick<ChatPlan, "source"> & { places?: Ch
   return leadingPlace(plan.places ?? [])?.id ?? null;
 }
 
-export type MapsUrlBuilder = (input: { lat: number | null; lng: number | null; label: string | null }) => string | null;
+export type MapsUrlBuilder = (input: {
+  lat: number | null;
+  lng: number | null;
+  label: string | null;
+  googlePlaceId?: string | null;
+}) => string | null;
 
 export type PlaceLinkTarget =
   | { kind: "mingla" }
@@ -909,12 +914,19 @@ export function placeLinkTarget(
     lat: number | null;
     lng: number | null;
     link: Pick<ChatPlanLink, "url" | "domain" | "title"> | null;
+    /** #4334 — a Google-sourced place's id; the map link opens that named place. */
+    providerPlaceId?: string | null;
   },
   mapsUrlOf: MapsUrlBuilder,
 ): PlaceLinkTarget | null {
   if (place.poolId) return { kind: "mingla" };
   if (place.link?.url) return { kind: "link", url: place.link.url, label: place.link.title || place.link.domain };
-  const url = mapsUrlOf({ lat: place.lat, lng: place.lng, label: place.name || place.address || null });
+  const url = mapsUrlOf({
+    lat: place.lat,
+    lng: place.lng,
+    label: place.name || place.address || null,
+    googlePlaceId: place.providerPlaceId ?? null,
+  });
   return url ? { kind: "maps", url } : null;
 }
 

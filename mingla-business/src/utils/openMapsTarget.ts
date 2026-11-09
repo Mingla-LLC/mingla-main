@@ -71,12 +71,16 @@ export function openMapsTarget(
       ? buildMapsDeepLink({
           geo: target?.geo ?? null,
           label: target?.label ?? null,
+          // #4334 — the picked Google place id rides to the Google link
+          // (`query_place_id`); the builder alone decides where it is used.
+          googlePlaceId: target?.googlePlaceId ?? null,
           platform: Platform.OS,
         })
       : buildMapsAppLink({
           app,
           geo: target?.geo ?? null,
           label: target?.label ?? null,
+          googlePlaceId: target?.googlePlaceId ?? null,
           platform: Platform.OS,
         });
   if (link === null) {

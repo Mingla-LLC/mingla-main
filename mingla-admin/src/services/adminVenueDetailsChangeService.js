@@ -37,6 +37,7 @@ const CHANGE_REQUEST_SELECT = `
   details_change_lat,
   details_change_lng,
   details_change_coordinate_precision,
+  details_change_place_id,
   details_change_requested_at,
   brand:brand_id (
     id,
@@ -121,13 +122,8 @@ function formatPin(lat, lng, precision) {
   return precision === "approximate" ? `${where} (approximate)` : where;
 }
 
-/** A Google Maps link for the proposed pin, so the admin can check the spot. */
-export function proposedPinMapUrl(request) {
-  const lat = request?.details_change_lat;
-  const lng = request?.details_change_lng;
-  if (typeof lat !== "number" || typeof lng !== "number") return null;
-  return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
-}
+// #4334 — moved to lib/claimsMapsLink.js (node-testable); re-exported here for callers.
+export { proposedPinMapUrl } from "../lib/claimsMapsLink.js";
 
 /**
  * Approve or reject one request. `requestId` pins the exact request the admin

@@ -219,6 +219,11 @@ export interface PublicVenueViewModel {
   galleryPhotoUrls: string[];
   /** The owner-authored public pitch. Null/empty ⇒ the About section is omitted. */
   pitch: string | null;
+  /**
+   * #4334 — the venue's Google place id (`venue_public_view.google_place_id`).
+   * Optional: the Google Maps link carries it as `query_place_id`.
+   */
+  googlePlaceId?: string | null;
 }
 
 /** The place-discovery spend band, already currency-resolved by the host. */
@@ -1253,9 +1258,9 @@ export const PublicVenueScreen = ({
       venue.address !== null && venue.address.trim().length > 0
         ? venue.address
         : venue.name;
-    const candidate: MapsOpenTarget = { label, geo };
+    const candidate: MapsOpenTarget = { label, geo, googlePlaceId: venue.googlePlaceId ?? null };
     return canOpenMapsTarget(candidate) ? candidate : null;
-  }, [venue.address, venue.lat, venue.lng, venue.name]);
+  }, [venue.address, venue.googlePlaceId, venue.lat, venue.lng, venue.name]);
 
   /*
     issue #2508 — one controller owns "ask which app, then open" and "copy the

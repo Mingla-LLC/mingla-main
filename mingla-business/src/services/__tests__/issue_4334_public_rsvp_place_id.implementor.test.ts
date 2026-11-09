@@ -16,7 +16,8 @@
  *        back to the coordinate
  *
  * FAILS-ON-REVERT: drop the `googlePlaceId:` line in publicEventViewRowToEvent and
- * R-1/R-2 fail.
+ * R-1/R-2 fail; drop it from venuePublicViewRowToPublicVenue → V-1; from the
+ * venue screen's target or either adapter → V-2.
  */
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 
@@ -39,7 +40,13 @@ jest.mock(
 );
 
 /* eslint-disable import/first */
-import { getPublicEventById, getPublicEventBySlug } from "../publicEventsService";
+import {
+  getPublicEventById,
+  getPublicEventBySlug,
+  venuePublicViewRowToPublicVenue,
+} from "../publicEventsService";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import {
   buildMapsDeepLink,
   selectVenueMapsTarget,
@@ -195,5 +202,40 @@ describe("#4334 — public RSVP pages carry the Google place id from the view", 
       expect(link?.url).not.toContain("query_place_id");
       expect(link?.url).toContain("6.4325,3.4236");
     }
+  });
+});
+
+// ── R3-1 venue pages: the venue's Google place id reaches the Maps target ─────
+const REPO = path.resolve(__dirname, "../../../..");
+const code = (rel: string): string =>
+  readFileSync(path.join(REPO, rel), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(^|[^:"'`])\/\/.*$/gm, "$1");
+
+describe("#4334 R3-1 — venue pages carry the venue's Google place id to the Maps link", () => {
+  test("V-1 venue_public_view.google_place_id maps to PublicVenue.googlePlaceId (blank → null)", () => {
+    const row = {
+      id: "v1", brand_id: "b1", brand_slug: "didi", brand_name: "Didi", slug: "museum", name: "Didi Museum",
+      address: "175 Akin Adesola St", city: "Lagos", country_code: "NG", lat: 6.4325, lng: 3.4236,
+      venue_category: "creative_and_arts", contact_email: null, contact_phone: null, cover_media_url: null,
+      cover_media_type: null, place_pool_id: null, theme_color: null, theme_font: null, theme_animation: null,
+      cover_hue: 25, default_currency: "NGN", hours: [], iana_timezone: "Africa/Lagos", pitch: null,
+      google_place_id: PLACE_ID,
+    } as unknown as Parameters<typeof venuePublicViewRowToPublicVenue>[0];
+    expect(venuePublicViewRowToPublicVenue(row).googlePlaceId).toBe(PLACE_ID);
+    expect(
+      venuePublicViewRowToPublicVenue({ ...row, google_place_id: " " } as typeof row).googlePlaceId,
+    ).toBeNull();
+  });
+
+  test("V-2 the shared venue screen puts it on the target; both apps' adapters pass it", () => {
+    expect(code("packages/brand-rendering/PublicVenueScreen.tsx")).toContain(
+      "const candidate: MapsOpenTarget = { label, geo, googlePlaceId: venue.googlePlaceId ?? null };",
+    );
+    expect(code("mingla-business/app/b/[brandSlug]/v/[venueSlug].tsx")).toContain(
+      "googlePlaceId: venue.googlePlaceId ?? null,",
+    );
+    expect(code("app-mobile/app/b/[brandSlug]/v/[venueSlug].tsx")).toContain("googlePlaceId: venue.googlePlaceId,");
+    expect(code("app-mobile/src/services/publicVenueService.ts")).toMatch(/googlePlaceId:\s*typeof row\.google_place_id === "string"/);
   });
 });

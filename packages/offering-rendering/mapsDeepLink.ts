@@ -194,7 +194,10 @@ export function buildMapsDeepLink(
 
   if (geo !== null) {
     const pair = `${geo.lat},${geo.lng}`;
-    const fallbackUrl = googleSearchUrl(pair);
+    // #4334 R3-1 — the https fallback IS a Google link on every platform (the
+    // browser path when no maps app opens the native scheme), so it carries the
+    // picked place id too. The native `maps://` / `geo:` URLs are unchanged.
+    const fallbackUrl = googlePlaceSearchUrl(pair, placeId);
     const encodedLabel = label === null ? null : encodeURIComponent(label);
     if (platform === "ios") {
       const url =
