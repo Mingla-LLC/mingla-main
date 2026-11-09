@@ -28,6 +28,8 @@ export interface ConsumerEventTimeFields {
 export interface ConsumerOccurrenceDateLike {
   startAt: string;
   endAt?: string | null;
+  /** issue #3281 — the host cancelled this date; summaries skip it. */
+  cancelled?: boolean | null;
 }
 
 const isValidIso = (iso: string | null | undefined): iso is string => {
@@ -288,9 +290,12 @@ export const formatOccurrenceLine = (
 
 /** Multi-day summary used beneath the master occurrence line. */
 export const formatOccurrenceSummary = (
-  occurrences: readonly ConsumerOccurrenceDateLike[],
+  allOccurrences: readonly ConsumerOccurrenceDateLike[],
   fallbackTimezone: string,
 ): string | null => {
+  // issue #3281 — a cancelled date is not one of the event's dates on offer
+  // (parity with Host web's formatOccurrenceSummary).
+  const occurrences = allOccurrences.filter((o) => o.cancelled !== true);
   if (occurrences.length < 2 || !isValidIso(occurrences[0]?.startAt)) return null;
   const timezone = fallbackTimezone.length > 0 ? fallbackTimezone : "UTC";
   try {

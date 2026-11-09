@@ -14,10 +14,12 @@ import { formatOccurrenceLine } from "../../utils/eventDateDisplay";
 /** "Fri 2 Oct" for one date, "2 of 3 dates" for more; null on every date. */
 export const ticketDayScopeLabel = (
   validIds: readonly string[] | null | undefined,
-  occurrences: readonly PublicEventOccurrenceLike[],
+  allOccurrences: readonly PublicEventOccurrenceLike[],
   timezone: string,
 ): string | null => {
   if (validIds == null) return null;
+  // issue #3281 — a cancelled date is not one the ticket can be bought for.
+  const occurrences = allOccurrences.filter((day) => day.cancelled !== true);
   const days = occurrences.filter((day) => validIds.includes(day.id));
   // A ticket on every date reads the same as All dates to a guest.
   if (days.length === 0 || days.length === occurrences.length) return null;

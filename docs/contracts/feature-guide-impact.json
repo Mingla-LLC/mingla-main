@@ -98,6 +98,7 @@
     {
       "capability_key": "checkout-tickets",
       "paths": [
+        "supabase/migrations/20280523003281_issue_3281_cancelled_dates_and_live_save.sql",
         "app-mobile/app/purchases/[kind]/[id].tsx",
         "app-mobile/src/components/activity/CalendarAgendaRow.tsx",
         "app-mobile/src/components/profile/PurchasesCard.tsx",
@@ -866,6 +867,7 @@
     {
       "capability_key": "events-guest-list",
       "paths": [
+        "supabase/migrations/20280523003281_issue_3281_cancelled_dates_and_live_save.sql",
         "mingla-business/app/event/[id]/guests/index.tsx",
         "mingla-business/jest.issue873.render.cjs",
         "mingla-business/src/components/guests/GuestDaySelector.tsx",
@@ -895,6 +897,7 @@
     {
       "capability_key": "events-ticket-types",
       "paths": [
+        "supabase/migrations/20280523003281_issue_3281_cancelled_dates_and_live_save.sql",
         "mingla-business/src/components/event/EventDetailTicketTypeRow.tsx",
         "mingla-business/src/components/event/CreatorStep2When.tsx",
         "mingla-business/src/components/event/CreatorStep5Tickets.tsx",
@@ -932,6 +935,7 @@
     {
       "capability_key": "events-edit-live",
       "paths": [
+        "supabase/migrations/20280523003281_issue_3281_cancelled_dates_and_live_save.sql",
         "mingla-business/app/event/[id]/dates.tsx",
         "supabase/migrations/20280216003281_issue_3281_cancel_event_date.sql",
         "mingla-business/src/components/event/ChangeSummaryModal.tsx",

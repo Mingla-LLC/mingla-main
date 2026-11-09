@@ -581,8 +581,12 @@ export default function ConsumerEventDetailScreen({
 
   useEffect(() => {
     if (eventId === null || validatedDayCanonical === null) return;
+    // issue #3281 — a date the host cancels changes the day truth too.
     const signature = validOccurrences
-      .map((day) => `${day.id}:${day.startAt}:${day.endAt}`)
+      .map(
+        (day) =>
+          `${day.id}:${day.startAt}:${day.endAt}${day.cancelled === true ? ":cancelled" : ""}`,
+      )
       .join("|");
     const previous = priorDayTruthRef.current;
     priorDayTruthRef.current = { eventId, signature };
@@ -591,7 +595,11 @@ export default function ConsumerEventDetailScreen({
       previous.eventId !== eventId ||
       previous.signature === signature
     ) return;
-    const validIds = new Set(validOccurrences.map((day) => day.id));
+    const validIds = new Set(
+      validOccurrences
+        .filter((day) => day.cancelled !== true)
+        .map((day) => day.id),
+    );
     setSelectedEventDateIds((selected) => selected.filter((id) => validIds.has(id)));
     setDayTruthStale(true);
     AccessibilityInfo.announceForAccessibility(
@@ -601,6 +609,15 @@ export default function ConsumerEventDetailScreen({
 
   const toggleEventDay = useCallback((eventDateId: string): void => {
     setSelectedEventDateIds((selected) => {
+      // issue #3281 — a cancelled date can never join the day set (the
+      // day-truth effect above already dropped any it held).
+      if (
+        validOccurrences.some(
+          (day) => day.id === eventDateId && day.cancelled === true,
+        )
+      ) {
+        return selected;
+      }
       const next = new Set(selected);
       if (next.has(eventDateId)) next.delete(eventDateId);
       else next.add(eventDateId);

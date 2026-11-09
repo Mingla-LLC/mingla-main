@@ -287,3 +287,49 @@ describe("#2264 — consumer/business terminal-token parity", () => {
     }
   });
 });
+
+/**
+ * issue #3281 — checkout contract v2 parity. Explorer's native flow already
+ * sends v2 (attempt id, accepted terms, per-line plan choice, dates, extras);
+ * the Host native event checkout now does too, and no v2 body may carry the
+ * scalar `payment_plan_choice`.
+ */
+describe("#3281 — consumer/business native checkout v2 parity", () => {
+  const CONSUMER_FLOW = stripLineComments(
+    read("app-mobile/src/payments/nativeCheckoutFlow.ts"),
+  );
+  const BUSINESS_FLOW = stripLineComments(
+    read("mingla-business/src/payments/nativeCheckoutFlow.native.ts"),
+  );
+  const BUSINESS_PAYMENT = stripLineComments(
+    read("mingla-business/app/checkout/[eventId]/payment.tsx"),
+  );
+
+  it.each([
+    ["consumer", CONSUMER_FLOW],
+    ["business", BUSINESS_FLOW],
+  ])("%s native flow sends the v2 attempt fields", (_name, source) => {
+    expect(source).toMatch(
+      /checkoutContractVersion:\s*TICKET_CHECKOUT_CONTRACT_VERSION/,
+    );
+    expect(source).toMatch(/checkoutAttemptId/);
+    expect(source).toMatch(/purchaseTermsAccepted:\s*true/);
+    expect(source).toMatch(/returnContract:\s*"host_v1"/);
+  });
+
+  it("business builds v2 lines with the shared normalizer and drops the scalar plan on v2", () => {
+    expect(BUSINESS_FLOW).toMatch(/normalizeCheckoutV2Lines\(/);
+    expect(BUSINESS_FLOW).toMatch(
+      /!isCheckoutV2 && input\.paymentPlanChoice !== undefined/,
+    );
+  });
+
+  it("the business event payment route asks the native flow for v2 with a native attempt", () => {
+    const nativeStart = BUSINESS_PAYMENT.indexOf("const surface: \"native\" = \"native\"");
+    expect(nativeStart).toBeGreaterThan(-1);
+    const nativePath = BUSINESS_PAYMENT.slice(nativeStart);
+    expect(nativePath).toMatch(/checkoutContractVersion:\s*2/);
+    expect(nativePath).toMatch(/checkoutAttemptIdFor\(\{[\s\S]*?surface,/);
+    expect(nativePath).toMatch(/purchaseTermsAccepted:\s*buyer\.termsAccepted === true/);
+  });
+});

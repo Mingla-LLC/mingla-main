@@ -83,3 +83,64 @@ describe("#2230 consumer event occurrence mapper", () => {
     ).toBe("all_days");
   });
 });
+
+// issue #3281 (bundle 3) — the bundle marks a host-cancelled date; Explorer
+// carries the flag so the day chooser can name it, parity with Host web's
+// normalizePublicEventOccurrences. A payload from before the key reads as
+// active, and its forced soldOut still disables the row.
+describe("#3281 consumer occurrence mapper carries cancelled", () => {
+  it("maps cancelled: true and reads a missing or non-boolean key as false", () => {
+    const base = payload();
+    const mapped = mapRpcPayloadToPublicEvent({
+      ...base,
+      occurrences: [
+        {
+          id: "day-1",
+          startAt: "2026-08-22T10:00:00.000Z",
+          endAt: "2026-08-22T17:00:00.000Z",
+        },
+        {
+          id: "day-2",
+          startAt: "2026-08-23T10:00:00.000Z",
+          endAt: "2026-08-23T17:00:00.000Z",
+          cancelled: true,
+          soldOut: true,
+          placesLeft: 0,
+        },
+        {
+          id: "day-3",
+          startAt: "2026-08-24T10:00:00.000Z",
+          endAt: "2026-08-24T17:00:00.000Z",
+          cancelled: "yes",
+        },
+      ],
+    });
+    expect(mapped.occurrences.map((day) => [day.id, day.cancelled])).toEqual([
+      ["day-1", false],
+      ["day-2", true],
+      ["day-3", false],
+    ]);
+    expect(mapped.occurrences[1]).toMatchObject({ soldOut: true, placesLeft: 0 });
+  });
+
+  it("an older server (soldOut: true, no cancelled key) maps as sold out, not cancelled", () => {
+    const base = payload();
+    const mapped = mapRpcPayloadToPublicEvent({
+      ...base,
+      occurrences: [
+        {
+          id: "day-1",
+          startAt: "2026-08-22T10:00:00.000Z",
+          endAt: "2026-08-22T17:00:00.000Z",
+          soldOut: true,
+          placesLeft: 0,
+        },
+      ],
+    });
+    expect(mapped.occurrences[0]).toMatchObject({
+      cancelled: false,
+      soldOut: true,
+      placesLeft: 0,
+    });
+  });
+});

@@ -208,8 +208,9 @@ const FREE_CHECKOUT_MESSAGE_BY_RAISE: Readonly<Record<string, string>> = Object
       "The day you picked is no longer part of this event. Choose another day \u2014 nothing was reserved.",
     ticket_not_valid_on_chosen_days:
       "One of your tickets isn't available on the days you picked. Go back and check your tickets \u2014 nothing was reserved.",
+    // issue #3281 — true for a day that has finished AND one the host cancelled.
     occurrence_not_available:
-      "That day has already finished, so it can no longer be booked. Pick another day \u2014 nothing was reserved.",
+      "That day is no longer available to book. Pick another day \u2014 nothing was reserved.",
     // issue #3313 — an event with more than one date needs the guest's date
     // before anything is reserved (the server refuses a checkout with none).
     event_date_choice_required:

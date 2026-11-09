@@ -703,7 +703,11 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   }, [event.id, occurrences]);
 
   useEffect(() => {
-    const nextIds = occurrences.map((row) => row.id);
+    // issue #3281 — a date the host cancelled leaves the guest's day set like
+    // a removed one (checkout refuses it with occurrence_not_available).
+    const nextIds = occurrences
+      .filter((row) => row.cancelled !== true)
+      .map((row) => row.id);
     setSelectedOccurrenceIds((selected) => {
       const valid = selected.filter((id) => nextIds.includes(id));
       if (
@@ -723,7 +727,9 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         const toggled = prev.includes(eventDateId)
           ? prev.filter((id) => id !== eventDateId)
           : [...prev, eventDateId];
+        // issue #3281 — a cancelled date can never join the day set.
         const next = occurrences
+          .filter((row) => row.cancelled !== true)
           .map((row) => row.id)
           .filter((id) => toggled.includes(id));
         // Clear the "you must choose" prompt only when the result is non-empty —
@@ -1161,7 +1167,8 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
 
   const revealDayChooser = useCallback((): void => {
     if (Platform.OS !== "web" || typeof document === "undefined") return;
-    const firstRow = occurrences[0];
+    const firstRow =
+      occurrences.find((row) => row.cancelled !== true) ?? occurrences[0];
     const target = document.getElementById(
       dayChooserState !== "ready" || firstRow === undefined
         ? "issue-2399-day-section"

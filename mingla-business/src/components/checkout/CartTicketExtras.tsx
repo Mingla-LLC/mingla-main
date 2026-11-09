@@ -1,5 +1,5 @@
 /**
- * issue #3281 — Extras on the Host web cart step. One ticket's extras, under
+ * issue #3281 — Extras on the Host cart step (web and native). One ticket's extras, under
  * its quantity row, revealed once the guest has at least one of that ticket
  * (#3283 §2.6). Lives in the deferred checkout route, so the public page pays
  * nothing for it.
@@ -10,7 +10,6 @@
  */
 
 import React, { useCallback, useEffect, useMemo } from "react";
-import { Platform } from "react-native";
 
 import type { CheckoutAddOnRequest } from "@mingla/offering-rendering/ticketCheckoutContract";
 
@@ -110,19 +109,13 @@ export const CartTicketExtras: React.FC<CartTicketExtrasProps> = ({
   const addOns = line?.addOns;
   useEffect(() => {
     if (line === undefined) return;
-    // Off web the panel doesn't render, so the line carries no extras.
-    if (Platform.OS !== "web") {
-      if (addOns !== undefined && addOns.length > 0) setLineAddOns([]);
-      return;
-    }
     const fitted = fitExtrasToLine(addOns, extras, parentCount, lineDates);
     if (fitted !== addOns) setLineAddOns(fitted);
   }, [addOns, extras, line, lineDates, parentCount, setLineAddOns]);
 
+  // Web and native alike: both Host checkouts send contract v2, whose attempt
+  // id covers extras (issue #3281).
   if (extras.length === 0 || line === undefined || parentCount === 0) return null;
-  // Host web only: the Host app's native paid checkout is still on contract
-  // v1, whose idempotency key ignores extras. Explorer is the native buyer app.
-  if (Platform.OS !== "web") return null;
 
   const dateCaption = (extra: PublicTicketExtra): string | null => {
     const dates = extraDatesOnLine(extra, lineDates);

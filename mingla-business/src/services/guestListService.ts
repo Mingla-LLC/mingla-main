@@ -92,7 +92,8 @@ export const guestListErrorCopy = (
     case "event_date_choice_required":
       return "Pick which date they're coming.";
     case "occurrence_not_available":
-      return "That date has passed. Pick another one.";
+      // issue #3281 — true for a past AND a cancelled date.
+      return "That date is no longer available. Pick another one.";
     case "ticket_capacity_exceeded":
       return `Not enough places left on ${ticketName ?? "this ticket type"}. ${remaining ?? 0} left.`;
     case "invalid_guests":

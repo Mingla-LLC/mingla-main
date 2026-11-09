@@ -691,6 +691,8 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
         ? []
         : multiDaySelection.occurrences
             .filter((day) =>
+              // issue #3281 — a cancelled date never rides to checkout.
+              day.cancelled !== true &&
               multiDaySelection.selectedEventDateIds.includes(day.id),
             )
             .map((day) => day.id),
@@ -1129,8 +1131,11 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     // for the existing root auth flow to restore a signed-in account.
     if (!signedInBuyer) return;
     if (multiDaySelection !== null) {
+      // issue #3281 — a cancelled date never rides to checkout.
       const validIds = new Set(
-        multiDaySelection.occurrences.map((day) => day.id),
+        multiDaySelection.occurrences
+          .filter((day) => day.cancelled !== true)
+          .map((day) => day.id),
       );
       const selectedIds = [
         ...new Set(multiDaySelection.selectedEventDateIds),

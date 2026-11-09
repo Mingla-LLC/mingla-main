@@ -9,6 +9,7 @@ import {
 import {
   chooseEventDateLayout,
   filterUpcomingOccurrences,
+  isCancelledOccurrence,
   placesLeftChip,
   weekStartForCountry,
 } from "../eventDateSchedule.ts";
@@ -84,4 +85,25 @@ Deno.test("package.json dependencies unchanged (no new native modules)", () => {
     Object.keys(pkg.peerDependencies ?? {}).includes("expo-calendar"),
     false,
   );
+});
+
+Deno.test("#3281 cancelled: a pass needs a date still on; the flag reads only true", () => {
+  const now = Date.parse("2026-11-01T00:00:00.000Z");
+  const cancelled = (n: number) => ({ ...day(n), cancelled: true });
+  assertEquals(
+    chooseEventDateLayout([cancelled(2), day(3)], { allDaysPass: true, nowMs: now }).kind,
+    "pass",
+  );
+  assertEquals(
+    chooseEventDateLayout([cancelled(2), cancelled(3)], { allDaysPass: true, nowMs: now }).kind,
+    "empty",
+  );
+  // Without a pass, cancelled rows stay listed so the guest sees "Cancelled".
+  assertEquals(
+    chooseEventDateLayout([cancelled(2), cancelled(3)], { nowMs: now }).kind,
+    "chips",
+  );
+  assertEquals(isCancelledOccurrence({ cancelled: true }), true);
+  assertEquals(isCancelledOccurrence({ cancelled: null }), false);
+  assertEquals(isCancelledOccurrence({}), false);
 });

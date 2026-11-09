@@ -14,7 +14,7 @@ export interface TicketDayView {
 
 export const ticketDayView = (
   validIds: readonly string[] | null | undefined,
-  occurrences: readonly OccurrenceDateLike[],
+  allOccurrences: readonly OccurrenceDateLike[],
   chosenIds: readonly string[],
   perDay: boolean,
   timezone: string | null | undefined,
@@ -22,6 +22,8 @@ export const ticketDayView = (
   if (validIds === null || validIds === undefined) {
     return { dayScopeLabel: null, offChosenDays: false };
   }
+  // issue #3281 — a cancelled date is not one the ticket can be bought for.
+  const occurrences = allOccurrences.filter((o) => o.cancelled !== true);
   const coversAll = occurrences.every((o) => validIds.includes(o.id));
   const inScope = chosenIds.filter((id) => validIds.includes(id));
   return {

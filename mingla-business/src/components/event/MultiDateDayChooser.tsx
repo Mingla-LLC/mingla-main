@@ -83,6 +83,7 @@ const toScheduleOccurrences = (
     overrideLocation: o.overrideLocation ?? null,
     soldOut: o.soldOut ?? null,
     placesLeft: o.placesLeft ?? o.ticketsRemaining ?? null,
+    cancelled: o.cancelled === true,
   }));
 
 /**
@@ -165,6 +166,8 @@ export const MultiDateDayChooser: React.FC<MultiDateDayChooserProps> = ({
 
   const fontStyle = fontFamily !== undefined ? { fontFamily } : null;
   const chosen = selectedOccurrenceIds.length;
+  // issue #3281 — a cancelled date stays listed but is not a date on offer.
+  const offered = occurrences.filter((o) => o.cancelled !== true).length;
   // issue #2160 §7(b) — THE PRICE BASIS IS VISIBLE BEFORE ANY TOTAL IS. An
   // all-days pass names the approved mode copy; per-day names the multiplier.
   const countLine = allDaysPass
@@ -172,10 +175,10 @@ export const MultiDateDayChooser: React.FC<MultiDateDayChooserProps> = ({
       ? "One price for all days"
       : "Every date of this event"
     : chosen === 0
-      ? `${occurrences.length} days`
+      ? `${offered} ${offered === 1 ? "day" : "days"}`
       : isPaid && pricingMode === "per_day"
-        ? `Priced per day · ${chosen} of ${occurrences.length} selected`
-        : `${chosen} of ${occurrences.length} selected`;
+        ? `Priced per day · ${chosen} of ${offered} selected`
+        : `${chosen} of ${offered} selected`;
 
   const recovery =
     state === "error"
@@ -268,11 +271,13 @@ export const MultiDateDayChooser: React.FC<MultiDateDayChooserProps> = ({
             renderOccurrence={(row: EventDatePickerOccurrenceRenderArgs) => {
               const selected = row.selected;
               const label = rowLabel(row.occurrence, timezone);
+              // issue #3281 — a cancelled date reads "Cancelled" (its
+              // placesLeftLabel) and nothing else about its tickets.
               const detail = [
                 row.title,
                 row.location,
                 row.placesLeftLabel,
-                dayCaptions[row.occurrence.id] ?? null,
+                row.cancelled ? null : (dayCaptions[row.occurrence.id] ?? null),
               ]
                 .filter((part): part is string => part !== null)
                 .join(" · ");
