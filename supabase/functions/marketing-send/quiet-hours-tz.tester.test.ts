@@ -23,6 +23,9 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
 
 const SRC = await Deno.readTextFile("supabase/functions/marketing-send/index.ts");
+// #4273 — the area-code map moved to _shared/smsCountries.ts beside every
+// country's window; marketing-send delegates to it.
+const SHARED = await Deno.readTextFile("supabase/functions/_shared/smsCountries.ts");
 
 // ── Extract the ACTUAL US_AREACODE_TZ map from the deployed source ───────────
 // The source builds it via add("<tz>", ["code", ...]) calls. Parse those.
@@ -43,7 +46,7 @@ function extractShippedMap(src: string): Record<string, string> {
   }
   return map;
 }
-const SHIPPED = extractShippedMap(SRC);
+const SHIPPED = extractShippedMap(SHARED);
 const QUIET = { US: { startHour: 8, endHour: 21 }, NG: { startHour: 8, endHour: 20 } } as const;
 
 function resolveTz(phone: string, cc: string | null): string | null {
@@ -119,10 +122,12 @@ Deno.test("null/empty country code → conservative DENY", () => {
 });
 
 Deno.test("anti-revert: the US branch derives the zone from the area code", () => {
-  assert(SRC.includes("US_AREACODE_TZ[areaCode] ?? null"),
+  assert(SHARED.includes("const us = US_AREACODE_TZ[areaCode];"),
     "the US branch must map the area code, not return a fixed zone");
-  assert(SRC.includes("const areaCode = national.slice(0, 3);"),
+  assert(SHARED.includes("const areaCode = national.slice(0, 3);"),
     "area-code extraction must exist");
+  assert(SRC.includes("return isWithinSmsWindow(phone, countryCode, now);"),
+    "marketing-send delegates quiet hours to the per-country window");
   assert(!/US:\s*\{\s*tz:\s*"America\/New_York"/.test(SRC),
     "no fixed-Eastern US anchor may remain");
 });

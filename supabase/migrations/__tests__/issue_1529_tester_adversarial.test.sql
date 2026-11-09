@@ -656,9 +656,9 @@ INSERT INTO public.reservations (
    '00000000-1529-4dd0-8000-000000000011',
    now() + interval '10 days', 2, 'confirmed', 'website', 'guest',
    'NG Guest', '+2348012345678', 'adv-ng@example.test'),
-  -- Canada rides the NANP calling code. Correct ROUTING is Twilio/US; the
-  -- documented imprecision must be US, never NULL (NULL would fail closed and
-  -- silently stop a working Canadian text).
+  -- Canada rides the NANP calling code and is told apart by area code
+  -- (#4273): CA, never NULL (NULL would fail closed and silently stop a
+  -- working Canadian text). Routing is still Twilio.
   ('00000000-1529-4dd0-8000-000000000051',
    '00000000-1529-4dd0-8000-000000000010',
    '00000000-1529-4dd0-8000-000000000011',
@@ -706,7 +706,7 @@ BEGIN
   FOR v_id, v_expected IN
     SELECT * FROM (VALUES
       ('00000000-1529-4dd0-8000-000000000050', 'NG'),
-      ('00000000-1529-4dd0-8000-000000000051', 'US'),
+      ('00000000-1529-4dd0-8000-000000000051', 'CA'),
       ('00000000-1529-4dd0-8000-000000000052', 'GB'),
       -- France: MAPPED (orchestrator decision, 2026-08-03). This row asserted
       -- NULL until the production probe found two real +33 users.

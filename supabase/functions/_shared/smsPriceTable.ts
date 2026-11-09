@@ -20,16 +20,35 @@
 // replaces. The runtime-config field still parses, so the secret can be left
 // as is or the field dropped at the next bundle rebuild.
 
-import type { SmsRateV1 } from "./smsPriceBook.ts";
 import { MAPPED_COUNTRIES } from "./e164Country.ts";
-import { smsProviderForCountry } from "./adapters/smsAdapter.ts";
+import { smsMarketingRoute } from "./smsCountries.ts";
 
 export const SMS_PRICE_TABLE = "sms_country_prices";
+
+/** The provider a country is priced on: Termii for NG, Twilio otherwise. Kept
+ * free of the SMS adapter so price readers carry no provider credentials. */
+function smsProviderForCountry(country: string): "twilio" | "termii" {
+  return smsMarketingRoute(country, true) === "termii" ? "termii" : "twilio";
+}
 /** A price older than this is quoted but alerted on. */
 export const SMS_PRICE_STALE_MS = 7 * 24 * 60 * 60 * 1000;
 /** A fetched price more than this far from the last good one is refused. */
 export const SMS_PRICE_MAX_CHANGE = 0.5;
 const NEVER = "9999-12-31T23:59:59.000Z";
+
+/** One per-segment SMS price the quote and send use (#4080 shape). */
+export interface SmsRateV1 {
+  rateId: string;
+  provider: "twilio" | "termii";
+  country: string;
+  currency: string;
+  unit: "sms_segment";
+  minorNumerator: number;
+  minorDenominator: number;
+  effectiveAt: string;
+  expiresAt: string;
+  sourceReference: string;
+}
 
 export interface SmsCountryPriceRow {
   country: string;

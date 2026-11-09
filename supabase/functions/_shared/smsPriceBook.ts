@@ -4,18 +4,8 @@ import { smsProviderForCountry } from "./adapters/smsAdapter.ts";
 import { resolveSmsCountryLive } from "./secretBundle.ts";
 import { smsMarketingRoute } from "./smsCountries.ts";
 
-export interface SmsRateV1 {
-  rateId: string;
-  provider: "twilio" | "termii";
-  country: string;
-  currency: string;
-  unit: "sms_segment";
-  minorNumerator: number;
-  minorDenominator: number;
-  effectiveAt: string;
-  expiresAt: string;
-  sourceReference: string;
-}
+import type { SmsRateV1 } from "./smsPriceTable.ts";
+export type { SmsRateV1 };
 
 export interface SmsCostInput<T> {
   key: string;
@@ -148,13 +138,20 @@ export function configuredSmsRoutes(
  */
 export const smsCountryTextableNow = (
   country: string,
-  getEnv: (name: string) => string | undefined = (name) => Deno.env.get(name),
-): boolean =>
-  resolveSmsCountryLive(country, getEnv) &&
-  smsMarketingRoute(
-      country,
-      (getEnv("TWILIO_MARKETING_MESSAGING_SERVICE_SID") ?? "").trim().length > 0,
-    ) !== null;
+  getEnv?: (name: string) => string | undefined,
+): boolean => {
+  // Tests inject an env; production reads the switch bundle and the one
+  // marketing sender name directly (no dynamic env reads in this module).
+  const live = getEnv
+    ? resolveSmsCountryLive(country, getEnv)
+    : resolveSmsCountryLive(country);
+  const marketingSid = getEnv
+    ? getEnv("TWILIO_MARKETING_MESSAGING_SERVICE_SID")
+    : Deno.env.get("TWILIO_MARKETING_MESSAGING_SERVICE_SID");
+  return live &&
+    smsMarketingRoute(country, (marketingSid ?? "").trim().length > 0) !==
+      null;
+};
 
 export interface SmsCostSubtotal {
   currency: string;

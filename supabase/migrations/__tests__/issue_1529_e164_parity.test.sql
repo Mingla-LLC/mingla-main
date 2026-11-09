@@ -179,7 +179,8 @@ BEGIN
   IF public.mingla_e164_country('guest@example.com') IS NOT NULL THEN
     RAISE EXCEPTION 'issue_1529_email_contact_resolved_to_a_country';
   END IF;
-  IF public.mingla_e164_country('+4915112345678') IS NOT NULL THEN
+  -- Ghana (+233) is genuinely unmapped (#4273: Germany now maps).
+  IF public.mingla_e164_country('+233241234567') IS NOT NULL THEN
     RAISE EXCEPTION 'issue_1529_unmapped_calling_code_resolved_to_a_country';
   END IF;
 END;

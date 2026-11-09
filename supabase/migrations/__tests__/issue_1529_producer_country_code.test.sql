@@ -135,7 +135,7 @@ INSERT INTO public.reservations (
    '00000000-1529-4000-8000-000000000010',
    '00000000-1529-4000-8000-000000000011',
    now() + interval '12 days', 2, 'confirmed', 'website', 'guest',
-   'DE Guest', '+4915112345678', 'de-1529@example.test'),
+   'GH Guest', '+233241234567', 'gh-1529@example.test'),
   -- Email only, no handset -> genuinely underivable -> NULL.
   ('00000000-1529-4000-8000-000000000023',
    '00000000-1529-4000-8000-000000000010',

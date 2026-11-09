@@ -396,14 +396,14 @@ export function parseDeliveryBundle(raw: string): ParseResult<DeliveryFlags> {
         .source_refunds_post_disabled as boolean,
       ...(version === 3 || version === 4
         ? {
-          paystack_payout_hold_onboard_flip:
-            operations.paystack_payout_hold_onboard_flip as boolean,
+          paystack_payout_hold_onboard_flip: operations
+            .paystack_payout_hold_onboard_flip as boolean,
         }
         : {}),
       ...(version === 4
         ? {
-          checkout_revocation_execute:
-            operations.checkout_revocation_execute as boolean,
+          checkout_revocation_execute: operations
+            .checkout_revocation_execute as boolean,
         }
         : {}),
     };
@@ -421,8 +421,10 @@ export function parseDeliveryBundle(raw: string): ParseResult<DeliveryFlags> {
       value: {
         schema_version: 2,
         ...deliveryValues,
-        payment_operations:
-          paymentOperations as Record<LegacyPaymentOperationFlagField, boolean>,
+        payment_operations: paymentOperations as Record<
+          LegacyPaymentOperationFlagField,
+          boolean
+        >,
       },
     };
   }
@@ -432,11 +434,10 @@ export function parseDeliveryBundle(raw: string): ParseResult<DeliveryFlags> {
       value: {
         schema_version: 3,
         ...deliveryValues,
-        payment_operations:
-          paymentOperations as Record<
-            Schema3PaymentOperationFlagField,
-            boolean
-          >,
+        payment_operations: paymentOperations as Record<
+          Schema3PaymentOperationFlagField,
+          boolean
+        >,
       },
     };
   }
@@ -445,8 +446,10 @@ export function parseDeliveryBundle(raw: string): ParseResult<DeliveryFlags> {
     value: {
       schema_version: 4,
       ...deliveryValues,
-      payment_operations:
-        paymentOperations as Record<PaymentOperationFlagField, boolean>,
+      payment_operations: paymentOperations as Record<
+        PaymentOperationFlagField,
+        boolean
+      >,
     },
   };
 }
@@ -603,11 +606,17 @@ export function resolveSmsCountryLive(
   const key = countryCode.toLowerCase();
   if (!SMS_SWITCH_KEYS.includes(key)) return false;
   if (key === "us" || key === "ng") {
-    const raw = resolveDeliveryFlagValue(
-      key === "us" ? "sms_live_enabled.us" : "sms_live_enabled.ng",
-      key === "us" ? "SMS_LIVE_ENABLED_US" : "SMS_LIVE_ENABLED_NG",
-      getEnv,
-    );
+    const raw = key === "us"
+      ? resolveDeliveryFlagValue(
+        "sms_live_enabled.us",
+        "SMS_LIVE_ENABLED_US",
+        getEnv,
+      )
+      : resolveDeliveryFlagValue(
+        "sms_live_enabled.ng",
+        "SMS_LIVE_ENABLED_NG",
+        getEnv,
+      );
     return raw === true || raw === "true" || raw === "1";
   }
   const bundle = "MINGLA_DELIVERY_FLAGS_JSON";
@@ -668,7 +677,8 @@ export function resolvePaystackPayoutHoldOnboardFlip(
   const raw = getEnv(bundle);
   const result = raw ? parseDeliveryBundle(raw) : null;
   if (result?.ok) {
-    return result.value.schema_version === 3 || result.value.schema_version === 4
+    return result.value.schema_version === 3 ||
+        result.value.schema_version === 4
       ? result.value.payment_operations.paystack_payout_hold_onboard_flip
       : false;
   }

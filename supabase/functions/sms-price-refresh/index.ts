@@ -85,7 +85,7 @@ export async function refreshSmsPrices(
       outcome.refused.push({ country, reason: rejection });
       continue;
     }
-    const { error: writeError } = await deps.db.from(SMS_PRICE_TABLE).upsert({
+    const { error: writeError } = await deps.db.from("sms_country_prices").upsert({
       country,
       provider: "twilio",
       currency: parsed.currency,

@@ -139,7 +139,7 @@ $fixture$;
 set local session_replication_role = origin;
 
 do $range$
-declare v jsonb; v_since text; v_until text;
+declare v jsonb; v_since text; v_until text; v_d2_listed boolean;
 begin
   -- A window from 12 days ago to 1 day ago: only the card closed 2 days ago
   -- and the one closed 10 days ago.
@@ -167,12 +167,19 @@ begin
   perform pg_temp.tr_check('R-OPEN', 'open cards first, then the done cards of the window',
     pg_temp.tr_titles(v), 'R4255 Open one|R4255 Open two|R4255 Closed 2 days ago');
 
-  -- No new keys: exactly the old answer (7 done days by default).
+  -- No new keys: the default done window. Since #4270 that is "closed since
+  -- Monday 00:00 UTC of this week", so the card closed 2 days ago is listed
+  -- only from Wednesday on; on a Monday or Tuesday it is last week's card.
+  -- (Asserting it unconditionally made this suite red every Monday/Tuesday.)
+  v_d2_listed := now() - interval '2 days' >=
+    (public.ops_monday((now() AT TIME ZONE 'UTC')::date)::timestamp AT TIME ZONE 'UTC');
   v := pg_temp.tr_list('{"owner":"gia.w4255@test.local"}');
-  perform pg_temp.tr_check('R-OLD', 'without the new keys done_days still decides (default 7 days)',
-    pg_temp.tr_titles(v), 'R4255 Open one|R4255 Open two|R4255 Closed 2 days ago');
+  perform pg_temp.tr_check('R-OLD', 'without the new keys the default done window decides (since Monday, #4270)',
+    pg_temp.tr_titles(v),
+    'R4255 Open one|R4255 Open two' || CASE WHEN v_d2_listed THEN '|R4255 Closed 2 days ago' ELSE '' END);
   perform pg_temp.tr_check('R-OLD', 'the old answer says offset 0 and is not truncated',
-    (v ->> 'offset') || '/' || (v ->> 'truncated') || '/' || (v ->> 'total'), '0/false/3');
+    (v ->> 'offset') || '/' || (v ->> 'truncated') || '/' || (v ->> 'total'),
+    '0/false/' || CASE WHEN v_d2_listed THEN '3' ELSE '2' END);
   v := pg_temp.tr_list('{"owner":"gia.w4255@test.local","done_days":60}');
   perform pg_temp.tr_check('R-OLD', 'done_days 60 still reaches back 60 days',
     pg_temp.tr_titles(v), 'R4255 Open one|R4255 Open two|R4255 Closed 2 days ago|R4255 Closed 10 days ago|R4255 Closed 40 days ago');
