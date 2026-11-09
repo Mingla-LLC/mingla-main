@@ -216,7 +216,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4255: register the work card email migration (20280524004255) and its implementor PostgreSQL proof in the #1857, #1931 and #2117 replay lanes.
 // #4273 country switches: register the sms-country-switches migration and its PostgreSQL proof.
 // #4273: re-sealed after merging origin/main be7ffb3fbd (#4255 and #4353 rows kept beside the #4273 rows).
-export const BOOTSTRAP_SHA256 = "7a594b8e5fc1d7cc43ea357db39eb1c13a458841e4f98f0461009b41d5997fb1";
+// #4273: re-sealed after renumbering the country switches migration 20280523004273 -> 20280526004273 (above #4255's 20280524004255 and #4334's reserved 20280525004334).
+export const BOOTSTRAP_SHA256 = "3815747bc18a7a237dce2235142d2fe091f74b85d4e34446da9bf38d0eefdace";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

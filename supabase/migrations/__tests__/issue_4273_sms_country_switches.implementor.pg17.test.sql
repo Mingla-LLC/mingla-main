@@ -393,7 +393,7 @@ END;
 $s10$;
 
 -- ─────────────────────── S-11 static scan of the migration ─────────────────
-\set t4273s_mig `cat "$(git rev-parse --show-toplevel)/supabase/migrations/20280523004273_issue_4273_sms_country_switches.sql"`
+\set t4273s_mig `cat "$(git rev-parse --show-toplevel)/supabase/migrations/20280526004273_issue_4273_sms_country_switches.sql"`
 SELECT set_config('t4273s.mig', :'t4273s_mig', true) IS NOT NULL AS loaded \gset
 DO $s11$
 DECLARE v_sql text := current_setting('t4273s.mig');

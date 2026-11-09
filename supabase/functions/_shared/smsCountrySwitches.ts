@@ -3,7 +3,7 @@
 //
 // Each country's switch and sender live in public.sms_country_switches, and
 // the "Mingla Marketing" Messaging Service SID in
-// public.sms_marketing_sender_config (migration 20280523004273). The owner and
+// public.sms_marketing_sender_config (migration 20280526004273). The owner and
 // admins change them on Mingla Admin's "SMS countries" page; every change is
 // audited. The edge reads ONE snapshot per request or send pass
 // (public.sms_marketing_switches_v1) and decides every marketing route with

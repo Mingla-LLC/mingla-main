@@ -34,7 +34,7 @@ const MARKETING_SID = "MG9d42785c51834395018b52144736b9a7";
 const TRANSACTIONAL_SID = "MG1942fbb549187fcf77c0e860405abf58";
 const ROOT = new URL("../../../../", import.meta.url);
 const MIGRATION = new URL(
-  "supabase/migrations/20280523004273_issue_4273_sms_country_switches.sql",
+  "supabase/migrations/20280526004273_issue_4273_sms_country_switches.sql",
   ROOT,
 );
 

@@ -424,7 +424,8 @@ export function phase3dContractDigest(manifest) {
 // #4255: register the work card email migration (20280524004255) and its implementor PostgreSQL proof in the #1857, #1931 and #2117 replay lanes.
 // #4273 country switches: register the sms-country-switches migration and its PostgreSQL proof.
 // #4273: re-sealed after merging origin/main be7ffb3fbd (#4255 and #4353 rows kept beside the #4273 rows).
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "e3738dbccf174291057c52bb891be37dea141ced85b11ec283068f1a4a2e2063";
+// #4273: re-sealed after renumbering the country switches migration 20280523004273 -> 20280526004273 (above #4255's 20280524004255 and #4334's reserved 20280525004334).
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "6136adf57e1d73c543bed8eac065abd73b6a62ad949b45a4d37e9c16b9121601";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
