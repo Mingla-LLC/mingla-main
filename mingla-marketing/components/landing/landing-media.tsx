@@ -34,9 +34,19 @@ interface LandingMediaProps {
   hero?: boolean
   /** Slow Ken Burns move for a still hero (design: art spaces). */
   kenBurns?: boolean
+  /**
+   * #4339 round B: this clip's poster is the page's LCP image although it is
+   * not the hero (the first tile of a grid page): preload it at high priority.
+   */
+  priority?: boolean
+  /**
+   * #4339 round B: a clip far below the first screen: its poster is requested
+   * only when it comes near the screen, so it never competes with the LCP.
+   */
+  lazyPoster?: boolean
 }
 
-export function LandingMedia({ media, hero = false, kenBurns = false }: LandingMediaProps) {
+export function LandingMedia({ media, hero = false, kenBurns = false, priority = false, lazyPoster = false }: LandingMediaProps) {
   const resolved = resolveLandingMedia(media)
   if (resolved.kind === 'photo') {
     return (
@@ -53,12 +63,28 @@ export function LandingMedia({ media, hero = false, kenBurns = false }: LandingM
   }
   const poster = webpPoster(resolved.poster)
   // The hero poster is the LCP image: fetch it first.
-  if (hero) preload(poster, { as: 'image', fetchPriority: 'high' })
-  return <LandingClip src={resolved.src ?? ''} poster={poster} hero={hero} />
+  if (hero || priority) preload(poster, { as: 'image', fetchPriority: 'high' })
+  return <LandingClip src={resolved.src ?? ''} poster={poster} hero={hero} lazyPoster={lazyPoster && !hero && !priority} />
 }
 
-function LandingClip({ src, poster, hero }: { src: string; poster: string; hero: boolean }) {
+function LandingClip({ src, poster, hero, lazyPoster }: { src: string; poster: string; hero: boolean; lazyPoster: boolean }) {
   const ref = useRef<HTMLVideoElement>(null)
+
+  // A lazy poster is set when the clip comes within 600px of the screen.
+  useEffect(() => {
+    const video = ref.current
+    if (!video || !lazyPoster) return
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry?.isIntersecting) return
+        video.poster = poster
+        observer.disconnect()
+      },
+      { rootMargin: '600px' },
+    )
+    observer.observe(video)
+    return () => observer.disconnect()
+  }, [poster, lazyPoster])
 
   useEffect(() => {
     const video = ref.current
@@ -100,7 +126,8 @@ function LandingClip({ src, poster, hero }: { src: string; poster: string; hero:
   return (
     <video
       ref={ref}
-      poster={poster}
+      poster={lazyPoster ? undefined : poster}
+      data-poster={lazyPoster ? poster : undefined}
       muted
       loop
       playsInline

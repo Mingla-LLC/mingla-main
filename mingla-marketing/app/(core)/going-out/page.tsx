@@ -53,7 +53,8 @@ function GuideTile({ guide }: { guide: Guide }) {
   return (
     <Link className="tile" href={guideHref(guide.city)}>
       <div className="ph scrim">
-        <LandingMedia media={guide.media} />
+        {/* #4339 round B: below the LCP tile, the posters wait for the screen. */}
+        <LandingMedia media={guide.media} lazyPoster />
       </div>
       <div className="ov">
         <h3>{guide.title}</h3>
@@ -103,7 +104,8 @@ export default function GoingOutPage() {
               between={
                 <Link className="tile wide mt-24" href="/cities">
                   <div className="ph scrim">
-                    <LandingMedia media="v:cozy" />
+                    {/* #4339 round B: the LCP image on phones. */}
+                    <LandingMedia media="v:cozy" priority />
                   </div>
                   <div className="ov">
                     <h3>

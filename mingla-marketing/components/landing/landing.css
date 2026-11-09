@@ -1,3 +1,19 @@
+/* #4339 round B (speed): the legacy site faces (Mochiy Pop One, Nunito Sans,
+   Inter; app/fonts.ts, #3548) are declared for the whole site but belong to
+   the pages not yet redesigned. On a redesigned page (it carries
+   [data-landing]) their variables are unset, so no element asks for them and
+   the browser never downloads them: text that referenced them inherits the
+   page's own face, and the body and the privacy strip use the system UI face.
+   A page without [data-landing] keeps them unchanged. */
+html:has([data-landing]) {
+  --font-mochiy: initial;
+  --font-nunito: initial;
+  --font-inter: initial;
+}
+html:has([data-landing]) body {
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
 /* #4339 round B (speed): metric-matched fallbacks for Instrument Serif, so
    the serif headline keeps its line breaks and height while the face loads
    (no reflow, no layout shift). Values from Next's capsize metrics:

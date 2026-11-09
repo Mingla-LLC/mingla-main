@@ -129,7 +129,9 @@ function VideoGrid({ videos, chapterLabel }: { videos: readonly HelpVideoRecord[
               {v.bambooEntryId ? (
                 <>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={bambooPosterUrl(v.bambooEntryId, 640)} alt="" loading="lazy" decoding="async" />
+                  {/* #4339 round B: sized (no shift) and a 480 px rendition. Kept lazy:
+                      an eager cross-origin thumbnail measured slower (Lighthouse). */}
+                  <img src={bambooPosterUrl(v.bambooEntryId, 480)} alt="" width={480} height={270} loading="lazy" decoding="async" />
                   <span className="play" aria-hidden="true">
                     <i>
                       <Play fill="currentColor" />

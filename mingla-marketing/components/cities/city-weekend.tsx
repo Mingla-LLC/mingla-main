@@ -146,7 +146,7 @@ export function CityWeekend({ cityName, citySlug, countryCode, locale, cityPath,
                           googlePlaceId={place.googlePlaceId}
                           name={place.name}
                           cityName={cityName}
-                          eager={index < 4}
+                          eager={false}
                           storedPhotoSrc={storedPlaceThumbSrc(place.googlePlaceId)}
                           fallback="category"
                           categorySlug={place.categorySlug}

@@ -75,13 +75,24 @@ test('clips: copy choice, WebP posters, deferred start, light masters', async ()
   }
   for (const f of ['f-trip.mp4', 'salsa.mp4']) assert.ok(fs.statSync(path.join(CLIPS, f)).size < 700 * 1024, f)
   const media = code(read('components/landing/landing-media.tsx'))
-  assert.match(media, /if \(hero\) preload\(poster, \{ as: 'image', fetchPriority: 'high' \}\)/)
-  assert.match(media, /return <LandingClip src=\{resolved\.src \?\? ''\} poster=\{poster\} hero=\{hero\} \/>/)
+  assert.match(media, /return <LandingClip src=\{resolved\.src \?\? ''\} poster=\{poster\} hero=\{hero\} lazyPoster=\{lazyPoster && !hero && !priority\} \/>/)
   assert.match(media, /void \(hero \? afterFirstPaint\(\) : afterLoadAndIdle\(\)\)\.then\(watch\)/)
   assert.match(media, /video\.src = clipSourceFor\(src, clipEnvironment\(\)\)/)
   const stage = code(read('components/site/reel-stage.tsx'))
   assert.match(stage, /void afterLoadAndIdle\(\)\.then\(\(\) => \{\s*if \(!alive\) return\s*clipsAllowed = true/)
   assert.match(stage, /video\.src = clipSourceFor\(video\.dataset\.src \?\? '', env\)/)
+})
+
+test('LCP: priority and lazy posters, lazy city place photos, sized help thumbnails', () => {
+  const media = code(read('components/landing/landing-media.tsx'))
+  assert.match(media, /if \(hero \|\| priority\) preload\(poster, \{ as: 'image', fetchPriority: 'high' \}\)/)
+  assert.match(media, /poster=\{lazyPoster \? undefined : poster\}\s*data-poster=\{lazyPoster \? poster : undefined\}/)
+  assert.match(media, /video\.poster = poster/)
+  const goingOut = code(read('app/(core)/going-out/page.tsx'))
+  assert.match(goingOut, /<LandingMedia media=\{guide\.media\} lazyPoster \/>/)
+  assert.match(goingOut, /<LandingMedia media="v:cozy" priority \/>/)
+  assert.match(code(read('components/cities/city-weekend.tsx')), /eager=\{false\}/)
+  assert.match(code(read('components/help/help-browser.tsx')), /<img src=\{bambooPosterUrl\(v\.bambooEntryId, 480\)\} alt="" width=\{480\} height=\{270\} loading="lazy" decoding="async" \/>/)
 })
 
 test('fonts: serif fallback metrics; legacy faces not preloaded site-wide', () => {
@@ -93,6 +104,9 @@ test('fonts: serif fallback metrics; legacy faces not preloaded site-wide', () =
   const fonts = read('app/fonts.ts')
   assert.equal((fonts.match(/preload: false,/g) ?? []).length, 4, 'the four root faces load on use')
   assert.doesNotMatch(fonts, /preload: true/)
+  // On a redesigned page the legacy faces are never asked for at all.
+  assert.match(css, /html:has\(\[data-landing\]\) \{\s*--font-mochiy: initial;\s*--font-nunito: initial;\s*--font-inter: initial;\s*\}/)
+  assert.match(css, /html:has\(\[data-landing\]\) body \{\s*font-family: system-ui/)
 })
 
 test('lazy nav image, QR with its sheet, no cutout barrel on help and cities, /schedule holds its room', () => {
