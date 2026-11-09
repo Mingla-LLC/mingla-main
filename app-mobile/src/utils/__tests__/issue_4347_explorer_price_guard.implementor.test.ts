@@ -165,7 +165,15 @@ Deno.test("#4347 the plan price is formatted with the experience's own currency"
   assert(/sourceCurrency:\s*typeof card\.currency === 'string' \? card\.currency : ''/.test(facts),
     "curatedPriceLabel must hand the experience's own currency to the formatter (no USD default)");
   assert(facts.includes("curatedSpendLevel("), "AI plans must show a spend level (Decision 2)");
-  for (const rel of ["components/CuratedExperienceSwipeCard.tsx", "components/ExpandedCardModal.tsx"]) {
+  // #4347 wave 1 — the deck face's facts moved into deckCard/curatedFace.ts:
+  // its "From" price is formatDisplayPrice over the experience's OWN currency,
+  // and AI plans show a spend level. The sheet still binds formatMoney.
+  const face = await read("components/deckCard/curatedFace.ts");
+  assert(/formatDisplayPrice\(\{\s*min,\s*sourceCurrency: typeof card\.currency === 'string' \? card\.currency : '',\s*viewerCurrency: currencyCode,/.test(face),
+    "deck face: the From price must be formatDisplayPrice over the experience's own currency, bound to the viewer");
+  assert(face.includes("spendLevelLabel:"), "deck face: the spend level label is not wired");
+  assert(!(await read("components/CuratedExperienceSwipeCard.tsx")).includes("formatCurrency("), "the deck face formats money without a source currency");
+  for (const rel of ["components/ExpandedCardModal.tsx"]) {
     const src = await read(rel);
     assert(/formatMoney:\s*\(price\)\s*=>\s*\n?\s*formatDisplayPrice\(\{\s*\.\.\.price,\s*viewerCurrency:/.test(src),
       `${rel}: the plan formatter must be formatDisplayPrice bound to the viewer only`);

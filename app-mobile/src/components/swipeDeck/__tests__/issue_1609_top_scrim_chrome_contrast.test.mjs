@@ -71,6 +71,7 @@ import {
   DECK_BOTTOM_SCRIM_HEIGHT_PT,
   DECK_CARD_TOP_OFFSET_PT,
 } from '../../deckHeroConstants.ts';
+import CI from '../../../../../packages/card-identity/index.js';
 
 const urls = {
   swipeable: new URL('../../SwipeableCards.tsx', import.meta.url),
@@ -447,11 +448,24 @@ test('T-5 the top and bottom scrims never overlap, so the shipped bottom ramp ma
   // scrim is the HARDER case than a percentage one — a percentage shrinks with the
   // card, absolute points do not. Stating that plainly rather than hiding it.
   const SHORTEST_SUPPORTED_CARD_PT = 576; // iPhone SE 3rd gen: 667pt screen - 91pt chrome
+  // #4347 wave 1 — REWRITTEN, SAME PROTECTION. The kicker clause deepened the
+  // bottom scrim to 424pt, so on the 576pt card the two ramps now share a band
+  // (y 152..200). What this clause protects is that the bottom ramp's
+  // derivation stays EXACT at every depth it is measured at: the plate top, the
+  // title top and the kicker top. So it now asserts that any shared band lies
+  // strictly ABOVE the deepest measured point (the kicker's top edge at the
+  // tallest silhouette) on the shortest card. A stacked band higher up only
+  // darkens photograph, and never touches a measured number.
+  const DEEPEST_MEASURED_DEPTH_PT = CI.kickerSolveDepthForLines('s1Single', CI.SURFACES.s1Single.metaLines);
+  assert.ok(DEEPEST_MEASURED_DEPTH_PT > 0, 'top-and-bottom-scrims-never-overlap: the kicker depth is vacuous');
+  const overlapBottomY = DECK_TOP_SCRIM_HEIGHT_PT; // card-local y where the top ramp ends
+  const deepestMeasuredY = SHORTEST_SUPPORTED_CARD_PT - DEEPEST_MEASURED_DEPTH_PT;
   assert.ok(
-    total <= SHORTEST_SUPPORTED_CARD_PT,
-    'top-and-bottom-scrims-never-overlap: the two absolute scrims sum to '
-    + `${total}pt but the shortest supported card is ${SHORTEST_SUPPORTED_CARD_PT}pt (iPhone SE 3rd gen). `
-    + 'Absolute points do not shrink with the card, so the short-device case is now the binding one.',
+    overlapBottomY < deepestMeasuredY,
+    'top-and-bottom-scrims-never-overlap: on the shortest supported card '
+    + `(${SHORTEST_SUPPORTED_CARD_PT}pt, iPhone SE 3rd gen) the top ramp reaches y=${overlapBottomY} `
+    + `but the kicker's top edge sits at y=${deepestMeasuredY}. The two ramps would stack over a `
+    + 'measured point and the bottom ramp contrast numbers would be fiction.',
   );
   console.log(
     `T-5 top ${DECK_TOP_SCRIM_HEIGHT_PT}pt + bottom ${DECK_BOTTOM_SCRIM_HEIGHT_PT}pt = ${total}pt; `

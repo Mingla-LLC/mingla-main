@@ -112,6 +112,18 @@ export interface RightNowFacts {
    * different roof (Constitution 9).
    */
   readonly estimated?: boolean;
+  /**
+   * #4347 wave 3 — OPTIONAL wording a surface may supply (the consumer app's
+   * "On the night", translated). Absent, the block reads exactly as before:
+   * "Right now", Weather / Travel / Busyness and the estimate line — so the
+   * public web page, which passes none of these, is unchanged.
+   */
+  readonly title?: string | null;
+  readonly weatherLabel?: string | null;
+  readonly travelLabel?: string | null;
+  readonly busynessLabel?: string | null;
+  /** Replaces the estimate line when present (e.g. "Leave by 5:35pm. …"). */
+  readonly footnote?: string | null;
 }
 import { buildStaticMapUrl } from "./staticMapImage";
 import { StaticMapImage } from "./StaticMapFrame";
@@ -668,12 +680,12 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
               boldFace,
             ]}
           >
-            Right now
+            {rightNow.title || "Right now"}
           </Text>
           {rightNow.weather ? (
             <View style={styles.rightNowRow}>
               <Text style={[styles.rightNowLabel, surface.secondaryText]}>
-                Weather
+                {rightNow.weatherLabel || "Weather"}
               </Text>
               <Text style={[styles.rightNowValue, surface.primaryText]}>
                 {rightNow.weather}
@@ -683,7 +695,7 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
           {rightNow.travel ? (
             <View style={styles.rightNowRow}>
               <Text style={[styles.rightNowLabel, surface.secondaryText]}>
-                Travel
+                {rightNow.travelLabel || "Travel"}
               </Text>
               <Text style={[styles.rightNowValue, surface.primaryText]}>
                 {rightNow.travel}
@@ -693,18 +705,23 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
           {rightNow.busyness ? (
             <View style={styles.rightNowRow}>
               <Text style={[styles.rightNowLabel, surface.secondaryText]}>
-                Busyness
+                {rightNow.busynessLabel || "Busyness"}
               </Text>
               <Text style={[styles.rightNowValue, surface.primaryText]}>
                 {rightNow.busyness}
               </Text>
             </View>
           ) : null}
-          {rightNow.estimated ? (
+          {rightNow.footnote ? (
+            <Text style={[styles.rightNowEstimated, surface.secondaryText]}>
+              {rightNow.footnote}
+            </Text>
+          ) : null}
+          {rightNow.estimated ? (rightNow.footnote ? null : (
             <Text style={[styles.rightNowEstimated, surface.secondaryText]}>
               Estimated from distance and typical patterns
             </Text>
-          ) : null}
+          )) : null}
         </View>
       ) : null}
 

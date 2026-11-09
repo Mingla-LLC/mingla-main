@@ -312,6 +312,33 @@ export type PublicVenueBookingSlotContext = PublicVenueThemedContext & {
       }
   );
 
+/**
+ * #4347 wave 4 — a native host's OWN pinned action bar (the consumer app's
+ * Explorer bar: Save · Schedule · Share · Reserve-or-Directions). When a host
+ * bar renders, it replaces this page's own pinned reserve bar (the phone bar),
+ * so a guest never sees two reserve bars. The desktop sticky panel is not
+ * touched: no host passes a bar at desktop width (the consumer route is
+ * phone-only). `canReserve` follows the same display rule as the shared bar,
+ * so it is false on the Reservations tab, whose pane carries its own reserve
+ * button. The sheet keeps ONE owner: `openReservation` goes through the same
+ * reducer and the same fail-closed gate as the shared CTA. Buyer web passes
+ * nothing and renders exactly as before.
+ */
+export interface PublicVenueActionBarContext extends PublicVenueThemedContext {
+  /**
+   * The shared reserve DISPLAY rule: the fail-closed gate (`RESERVATION_READY`
+   * for this category) AND not on the Reservations tab, exactly as the page's
+   * own reserve bar.
+   */
+  canReserve: boolean;
+  /** Which booking rail this category uses ("table" or "stay"). */
+  bookingKind: VenueBookingBody;
+  /** The category profile's one reserve verb. */
+  reserveAction: string;
+  /** Raises the reservation sheet through the page's own reducer. */
+  openReservation: () => void;
+}
+
 /** The modal the Reserve CTA opens. Chrome is app-owned; its state is not. */
 export interface PublicVenueReservationSheetContext
   extends PublicVenueThemedContext {
@@ -482,6 +509,20 @@ export interface PublicVenueScreenProps {
    * can paste it into Waze / Uber / a message. Absent ⇒ no copy button.
    */
   onCopyAddress?: (text: string) => void | Promise<void>;
+  /**
+   * #4347 wave 4 — a host-only block in the Overview pane, drawn after the
+   * About section (or first, when a category has none), in the page's palette.
+   * The consumer app puts "When you'd go" and "Experiences here" here. Absent
+   * (buyer web) ⇒ the Overview pane is exactly as before.
+   */
+  overviewSlot?: (context: PublicVenueThemedContext) => BrandRenderingReactNode;
+  /**
+   * #4347 wave 4 — a host-owned pinned action bar that REPLACES the page's own
+   * reserve bar (see `PublicVenueActionBarContext`). Absent ⇒ unchanged.
+   */
+  actionBar?: (context: PublicVenueActionBarContext) => BrandRenderingReactNode;
+  /** The host bar's height above the safe area, so the scroll clears it. */
+  actionBarHeight?: number;
 }
 
 // #1562 — the week's labels have ONE owner now (`venueOpenState.ts`), because
@@ -1045,6 +1086,9 @@ export const PublicVenueScreen = ({
   onMessageBrand,
   onOpenMaps,
   onCopyAddress,
+  overviewSlot,
+  actionBar,
+  actionBarHeight = 0,
 }: PublicVenueScreenProps): BrandRenderingReactElement => {
   const insets = safeAreaInsets;
   const { isDesktop, width: viewportWidth } = useResponsiveLayout();
@@ -1325,6 +1369,33 @@ export const PublicVenueScreen = ({
       brand_id: venue.brandId,
       venue_id: venue.id,
       source_tab: "reservations_pane",
+    });
+  }, [
+    canOpenReservationSheet,
+    normalizedReservationUiState.reservationSheetOpen,
+    onAnalytics,
+    reservationUiContext,
+    venue.brandId,
+    venue.id,
+  ]);
+
+  // #4347 wave 4 — the host action bar's Reserve. Same gate and reducer as
+  // the body's request; only the analytics source differs.
+  const handleOpenReservationFromActionBar = React.useCallback((): void => {
+    if (
+      !canOpenReservationSheet ||
+      normalizedReservationUiState.reservationSheetOpen
+    ) {
+      return;
+    }
+    dispatchReservationUi({
+      type: "RESERVE_CTA_PRESSED",
+      context: reservationUiContext,
+    });
+    onAnalytics("public_venue_reservation_started", {
+      brand_id: venue.brandId,
+      venue_id: venue.id,
+      source_tab: "host_action_bar",
     });
   }, [
     canOpenReservationSheet,
@@ -1962,6 +2033,24 @@ export const PublicVenueScreen = ({
         : 52 + 16 + insets.bottom + 8
       : insets.bottom + 24;
 
+  // #4347 wave 4 — a host bar replaces the shared reserve bar at every width.
+  const hostActionBar =
+    actionBar === undefined
+      ? null
+      : actionBar({
+          ...themedSlotContext,
+          // #4347 rework (A-4) — the same display rule as the shared bar: on
+          // the Reservations tab the pane carries the reserve button.
+          canReserve: showReserveCta,
+          bookingKind: profile.bookingBody,
+          reserveAction: profile.reserveAction,
+          openReservation: handleOpenReservationFromActionBar,
+        });
+  const hasHostActionBar = hostActionBar !== null;
+  const contentBottomInset = hasHostActionBar
+    ? actionBarHeight + insets.bottom + 8
+    : reserveBarClearance;
+
   // ── §6.10 desktop sticky panel ────────────────────────────────────────────
   const stickyPanel = isDesktop ? (
     <View style={[styles.deskPanel, surface.cardStrong]}>
@@ -2118,6 +2207,12 @@ export const PublicVenueScreen = ({
   // and **86.9%** of an 820pt tablet, both measured on live production.
   const heroAspectRatio = venueHeroAspectRatio(viewportWidth);
 
+  // #4347 wave 4 — the host's Overview block sits after "about" (the
+  // venue's own voice first), or first when the category has no About.
+  const overviewSlotNode =
+    overviewSlot === undefined ? null : overviewSlot(themedSlotContext);
+  const overviewHasAbout = profile.overview.includes("about");
+
   const bodyContent = (
     <View style={styles.body}>
       {/* #1561 — the identity + answer block now renders at EVERY width. On
@@ -2176,9 +2271,21 @@ export const PublicVenueScreen = ({
         theme={resolvedTheme}
         overview={
           <View style={styles.tabPane}>
+            {overviewSlotNode !== null && !overviewHasAbout ? (
+              <React.Fragment key="host-overview-slot">
+                {overviewSlotNode}
+              </React.Fragment>
+            ) : null}
             {profile.overview.map((sectionId) => {
               const Section = VENUE_SECTIONS[sectionId];
-              return <Section key={sectionId} {...sectionProps} />;
+              return (
+                <React.Fragment key={sectionId}>
+                  <Section {...sectionProps} />
+                  {overviewSlotNode !== null && sectionId === "about"
+                    ? overviewSlotNode
+                    : null}
+                </React.Fragment>
+              );
             })}
           </View>
         }
@@ -2258,11 +2365,11 @@ export const PublicVenueScreen = ({
         // place the redundant badge did. Both now live in `identityBlock`.
         stickyPanel={stickyPanel}
         safeAreaTop={insets.top + 8}
-        contentBottomInset={reserveBarClearance}
+        contentBottomInset={contentBottomInset}
         testID="orch-1255-public-venue"
       >
         {bodyContent}
-        {Platform.OS === "web" ? (
+        {Platform.OS === "web" && !hasHostActionBar ? (
           <React.Fragment key="issue-2729-web-phone-action">
             {reserveBar}
           </React.Fragment>
@@ -2271,7 +2378,11 @@ export const PublicVenueScreen = ({
       {/* issue #2729 — web owns the same bar INSIDE ParallaxCoverShell's sole
           scroll ancestry. Native retains the pre-existing absolute sibling
           byte-for-byte, and desktop has no phone bar. */}
-      {Platform.OS !== "web" ? reserveBar : null}
+      {hasHostActionBar
+        ? hostActionBar
+        : Platform.OS !== "web"
+          ? reserveBar
+          : null}
       {reservationSheet({
         ...themedSlotContext,
         visible: normalizedReservationUiState.reservationSheetOpen,

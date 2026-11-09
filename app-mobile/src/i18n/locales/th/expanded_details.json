@@ -1,6 +1,7 @@
 {
   "action_buttons": {
     "save": "บันทึก",
+    "website": "เว็บไซต์",
     "saved": "บันทึกแล้ว",
     "schedule": "ตั้งเวลา",
     "scheduled": "ตั้งเวลาแล้ว",

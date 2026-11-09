@@ -42,6 +42,8 @@ function strip(src) {
 }
 
 const MODAL = strip(read('app-mobile/src/components/ExpandedCardModal.tsx'));
+// #4347 wave 2 — the photo lists moved into PlaceGallery; the strip checks follow them.
+const GALLERY = strip(read('app-mobile/src/components/expandedCard/PlaceGallery.tsx'));
 
 test('Q-1 no OTHER raw scrollable is nested in the sheet either', () => {
   // A horizontal ScrollView loses the same fight a FlatList does, and this file
@@ -70,13 +72,16 @@ test('Q-3 exactly one horizontal scrollable in the sheet, and it is the photo st
   // "It is the ONE horizontal scrollable on this sheet" is a claim the file
   // makes about itself. Nested horizontal scrollables inside a vertical sheet
   // are the failure mode; one is a design decision, two is an accident.
-  const horizontals = [...MODAL.matchAll(/horizontal\s*(?:=\{true\}|\b)/g)];
+  // REWRITTEN (#4347 wave 2): the sheet body itself now has NONE; the gallery
+  // owns exactly two (pager + thumbnail row), both sheet-aware.
+  assert.equal([...MODAL.matchAll(/horizontal\s*(?:=\{true\}|\b)/g)].length, 0, 'Q-3: the sheet body has its own horizontal list again');
+  const horizontals = [...GALLERY.matchAll(/horizontal\s*(?:=\{true\}|\b)/g)];
   assert.ok(
     horizontals.length <= 2,
     `Q-3: ${horizontals.length} horizontal-scrolling props in the sheet. Each one is a fresh gesture `
     + 'fight with the sheet on Android.',
   );
-  assert.match(MODAL, /<BottomSheetFlatList[\s\S]{0,300}horizontal/, 'Q-3: the photo strip is not the horizontal one');
+  assert.match(GALLERY, /<BottomSheetFlatList[\s\S]{0,300}horizontal/, 'Q-3: the photo strip is not the horizontal one');
 });
 
 test('Q-4 nothing else in the app imports gorhom directly', () => {
@@ -109,7 +114,8 @@ test('Q-5 the strip is not virtualised into invisibility', () => {
   // A horizontal list with a windowSize/initialNumToRender of 1 scrolls but
   // renders blanks, which reads to a user as "still broken". Neither may be
   // set to a value below what fits on screen.
-  const strip_ = MODAL.slice(MODAL.indexOf('<BottomSheetFlatList'), MODAL.indexOf('<BottomSheetFlatList') + 1400);
+  const strip_ = GALLERY.slice(GALLERY.indexOf('<BottomSheetFlatList'), GALLERY.indexOf('<BottomSheetFlatList') + 1400);
+  assert.ok(strip_.length > 100, 'Q-5 (vacuity): the gallery list was not found');
   const initial = /initialNumToRender=\{(\d+)\}/.exec(strip_);
   if (initial) {
     assert.ok(Number(initial[1]) >= 4, `Q-5: initialNumToRender is ${initial[1]}; the strip shows more than that`);

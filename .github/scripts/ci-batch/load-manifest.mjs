@@ -211,7 +211,9 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4339 round B: register the ad marketing destinations migration (20280522004339) and its implementor PostgreSQL proof in the #1857, #1931 and #2117 replay lanes.
 // #4339: re-sealed after merging origin/main 85dba1f14e (#4349 /links rows kept beside the #4339 rows).
 // #4339: re-sealed after merging origin/main 28f88fea6d (#4334 and #4273 rows kept beside the #4339 rows) and adding marketing-capture.ts to the issue-905 path scope.
-export const BOOTSTRAP_SHA256 = "b08d2cf24cf93dfd4ef04324dc981cf56eac19a9580b4db94d41e7b426643a82";
+// #4347: drop the deleted expanded hero and busyness service from the #1880 and #1605 originPaths (both files are gone; the patterns matched nothing).
+// #4347: re-sealed after merging origin/main 671964a09e (#4339 and #4273 rows kept beside the #4347 originPath removals).
+export const BOOTSTRAP_SHA256 = "6f6f2b46e1fc58b7067638c561b55e9eb73670822320bc386d75882e4f0dec81";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

@@ -236,7 +236,7 @@ test('behind layer is the sole bounded lookahead with zero explicit prefetch', (
   assert.match(swipeableSource, /const CardHeroImage = React\.memo/);
   assert.match(
     swipeableSource,
-    /const source = React\.useMemo\([\s\S]*uri: src, width: decodeTarget\.width, height: decodeTarget\.height/,
+    /const source = React\.useMemo\([\s\S]*uri, width: decodeTarget\.width, height: decodeTarget\.height/,
   );
   assert.match(swipeableSource, /<ExpoImage[\s\S]*source=\{source\}/);
 });

@@ -1,36 +1,51 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Animated, StyleSheet } from 'react-native';
-import { spacing, radius, colors } from '../constants/designSystem';
+import { colors } from '../constants/designSystem';
+import { KICKER, PHOTO_PAGER, SURFACES } from '../../../packages/card-identity/index.js';
+
+/**
+ * #4347 wave 1 — the deck's loading face, in the NEW card layout: segment bars
+ * at the top, then (bottom-anchored, where the real card puts them) the kicker,
+ * a two-line title, and the plate with its fact line and controls. Same rhythm
+ * as the card that replaces it, so nothing jumps when the deck arrives.
+ *
+ * Supersedes the old image-block / title / two-buttons skeleton, which drew a
+ * layout the deck card has not had since #1609. The list and recommendation
+ * skeletons that lived in this file had no importer and are deleted with it.
+ *
+ * Reduce Motion: the shimmer does not run; the skeleton is shown still.
+ */
+const S1 = SURFACES.s1Single;
 
 interface SkeletonCardProps {
   width?: number;
   height?: number;
   borderRadius?: number;
+  reducedMotion?: boolean;
 }
 
 export const SkeletonCard: React.FC<SkeletonCardProps> = ({
   width = 300,
   height = 400,
-  borderRadius = radius.lg,
+  borderRadius = S1.cardR,
+  reducedMotion = false,
 }) => {
   const shimmerAnimation = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.loop(
+    if (reducedMotion) {
+      shimmerAnimation.setValue(0);
+      return undefined;
+    }
+    const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(shimmerAnimation, {
-          toValue: 1,
-          duration: 1000,
-          useNativeDriver: true,
-        }),
-        Animated.timing(shimmerAnimation, {
-          toValue: 0,
-          duration: 1000,
-          useNativeDriver: true,
-        }),
-      ])
-    ).start();
-  }, [shimmerAnimation]);
+        Animated.timing(shimmerAnimation, { toValue: 1, duration: 1000, useNativeDriver: true }),
+        Animated.timing(shimmerAnimation, { toValue: 0, duration: 1000, useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [shimmerAnimation, reducedMotion]);
 
   const shimmerTranslateX = shimmerAnimation.interpolate({
     inputRange: [0, 1],
@@ -38,34 +53,39 @@ export const SkeletonCard: React.FC<SkeletonCardProps> = ({
   });
 
   return (
-    <View style={[styles.container, { width, height, borderRadius }]}>
-      <View style={styles.content}>
-        {/* Image skeleton */}
-        <View style={[styles.imageSkeleton, { borderRadius: radius.md }]} />
+    <View
+      testID="deck-skeleton"
+      style={[styles.container, { width, height, borderRadius }]}
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+    >
+      <View style={styles.bars}>
+        {[0, 1, 2].map((i) => (
+          <View key={`bar_${i}`} style={styles.bar} />
+        ))}
+      </View>
 
-        {/* Title skeleton */}
-        <View style={styles.titleSkeleton} />
-        <View style={[styles.titleSkeleton, { width: '70%' }]} />
+      <View style={styles.column} testID="deck-skeleton-column">
+        <View style={styles.kicker} />
+        <View style={styles.titleLine} />
+        <View style={[styles.titleLine, styles.titleLineShort]} />
+      </View>
 
-        {/* Subtitle skeleton */}
-        <View style={styles.subtitleSkeleton} />
-
-        {/* Action buttons skeleton */}
-        <View style={styles.actionsContainer}>
-          <View style={styles.actionButtonSkeleton} />
-          <View style={styles.actionButtonSkeleton} />
+      <View style={styles.plate} testID="deck-skeleton-plate">
+        <View style={styles.factLine} />
+        <View style={styles.controls}>
+          <View style={styles.pill} />
+          <View style={styles.pill} />
+          <View style={styles.disc} />
         </View>
       </View>
 
-      {/* Shimmer effect */}
-      <Animated.View
-        style={[
-          styles.shimmer,
-          {
-            transform: [{ translateX: shimmerTranslateX }],
-          },
-        ]}
-      />
+      {reducedMotion ? null : (
+        <Animated.View
+          testID="deck-skeleton-shimmer"
+          style={[styles.shimmer, { transform: [{ translateX: shimmerTranslateX }] }]}
+        />
+      )}
     </View>
   );
 };
@@ -76,154 +96,80 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
   },
-  content: {
-    flex: 1,
-    padding: spacing.lg,
-  },
-  imageSkeleton: {
-    height: 200,
-    backgroundColor: colors.gray[200],
-    marginBottom: spacing.lg,
-  },
-  titleSkeleton: {
-    height: 20,
-    backgroundColor: colors.gray[200],
-    borderRadius: radius.sm,
-    marginBottom: spacing.sm,
-  },
-  subtitleSkeleton: {
-    height: 16,
-    width: '60%',
-    backgroundColor: colors.gray[200],
-    borderRadius: radius.sm,
-    marginBottom: spacing.lg,
-  },
-  actionsContainer: {
+  bars: {
+    position: 'absolute',
+    top: PHOTO_PAGER.bar.side,
+    left: PHOTO_PAGER.bar.side,
+    right: PHOTO_PAGER.bar.side,
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 'auto',
+    gap: PHOTO_PAGER.bar.gap,
   },
-  actionButtonSkeleton: {
-    height: 50,
-    width: 120,
+  bar: {
+    flex: 1,
+    height: PHOTO_PAGER.bar.height,
+    borderRadius: PHOTO_PAGER.bar.radius,
     backgroundColor: colors.gray[200],
-    borderRadius: radius.md,
+  },
+  column: {
+    position: 'absolute',
+    left: S1.titleInset,
+    right: S1.titleInset,
+    bottom: S1.bottomInset + S1.plateH + S1.gap,
+  },
+  kicker: {
+    width: '34%',
+    height: KICKER.size,
+    borderRadius: KICKER.size / 2,
+    backgroundColor: colors.gray[200],
+    marginBottom: KICKER.gap + 2,
+  },
+  titleLine: {
+    height: S1.titleSize - 6,
+    borderRadius: 6,
+    backgroundColor: colors.gray[200],
+    marginTop: S1.titleLH - S1.titleSize + 6,
+  },
+  titleLineShort: {
+    width: '62%',
+  },
+  plate: {
+    position: 'absolute',
+    left: S1.sideInset,
+    right: S1.sideInset,
+    bottom: S1.bottomInset,
+    height: S1.plateH,
+    borderRadius: S1.plateR,
+    backgroundColor: colors.gray[200],
+    paddingHorizontal: S1.sideInset,
+    justifyContent: 'space-evenly',
+  },
+  factLine: {
+    width: '78%',
+    height: S1.metaSize,
+    borderRadius: S1.metaSize / 2,
+    backgroundColor: colors.gray[300],
+  },
+  controls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  pill: {
+    width: 96,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.gray[300],
+  },
+  disc: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    marginLeft: 'auto',
+    backgroundColor: colors.gray[300],
   },
   shimmer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(255, 255, 255, 0.6)',
     width: '100%',
   },
-});
-
-// Skeleton for recommendation cards specifically
-export const RecommendationSkeletonCard: React.FC = () => {
-  return (
-    <SkeletonCard
-      width={320}
-      height={450}
-      borderRadius={radius.xl}
-    />
-  );
-};
-
-// Skeleton for list items
-export const SkeletonListItem: React.FC = () => {
-  const shimmerAnimation = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    const startShimmer = () => {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(shimmerAnimation, {
-            toValue: 1,
-            duration: 1000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(shimmerAnimation, {
-            toValue: 0,
-            duration: 1000,
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
-    };
-
-    startShimmer();
-  }, [shimmerAnimation]);
-
-  const shimmerTranslateX = shimmerAnimation.interpolate({
-    inputRange: [0, 1],
-    outputRange: [-200, 200],
-  });
-
-  return (
-    <View style={extendedStyles.listItemContainer}>
-      <View style={extendedStyles.listItemContent}>
-        <View style={extendedStyles.listItemIcon} />
-        <View style={extendedStyles.listItemText}>
-          <View style={extendedStyles.listItemTitle} />
-          <View style={[extendedStyles.listItemSubtitle, { width: '70%' }]} />
-        </View>
-      </View>
-
-      <Animated.View
-        style={[
-          extendedStyles.shimmer,
-          {
-            transform: [{ translateX: shimmerTranslateX }],
-          },
-        ]}
-      />
-    </View>
-  );
-};
-
-const listItemStyles = StyleSheet.create({
-  listItemContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: spacing.md,
-    backgroundColor: colors.background.primary,
-    borderRadius: radius.md,
-    marginBottom: spacing.sm,
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  listItemContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  listItemIcon: {
-    width: 40,
-    height: 40,
-    backgroundColor: colors.gray[200],
-    borderRadius: radius.md,
-    marginRight: spacing.md,
-  },
-  listItemText: {
-    flex: 1,
-  },
-  listItemTitle: {
-    height: 16,
-    backgroundColor: colors.gray[200],
-    borderRadius: radius.sm,
-    marginBottom: spacing.xs,
-  },
-  listItemSubtitle: {
-    height: 12,
-    backgroundColor: colors.gray[200],
-    borderRadius: radius.sm,
-  },
-});
-
-// Add the list item styles to the main styles object
-const extendedStyles = StyleSheet.create({
-  ...styles,
-  ...listItemStyles,
 });

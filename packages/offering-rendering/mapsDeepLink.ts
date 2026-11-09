@@ -124,14 +124,21 @@ const normalizeLabel = (label: string | null | undefined): string | null => {
 const googleSearchUrl = (query: string): string =>
   `https://www.google.com/maps/search/?api=1&query=${query}`;
 
+// A Mingla row id (a UUID). Some producers fall back to `place_id` when
+// `google_place_id` is missing (#4347); a UUID is never a Google place id.
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
- * #4334 — a usable Google place id, or null. Pre-#4334 ids (base64 "urn:",
- * prefix dXJuOm) are not Google ids and are never sent to Google.
+ * #4334 — a usable Google place id, or null. Accepts Google's id alphabet
+ * (`ChIJ…`, and the long `Ej…`/`Gh…` route and area ids) from 10 to 1024
+ * characters. Refuses: pre-#4334 ids (base64 "urn:", prefix dXJuOm) and
+ * UUID-shaped strings (a Mingla row id must never become `query_place_id`).
  */
 export const normalizeGooglePlaceId = (id: string | null | undefined): string | null => {
   if (typeof id !== "string") return null;
   const trimmed = id.trim();
-  if (!/^[A-Za-z0-9_-]{10,}$/.test(trimmed) || /^dXJuOm/.test(trimmed)) return null;
+  if (!/^[A-Za-z0-9_-]{10,1024}$/.test(trimmed)) return null;
+  if (/^dXJuOm/.test(trimmed) || UUID_SHAPE.test(trimmed)) return null;
   return trimmed;
 };
 
