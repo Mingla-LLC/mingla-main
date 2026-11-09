@@ -130,7 +130,8 @@ export const SUITES_FOLDED_SINCE_SEAL = Object.freeze([
 // runtime, deadline, routing, file inventory, exact command capabilities and
 // the digest of the workflow it replaced. A change to any of them is a reviewed
 // re-seal of THIS constant; the Phase 3A/3B/3C seals are never touched by it.
-const LOCKED_PHASE3D_CONTRACT_SHA256 = "a846f1a438bb88e06a6fb372d3fefb770d02241e63ceb9c26844774857059cdf";
+// #4334: register the Google places migration and its PostgreSQL proofs, and point the issue-992 lane at the renamed server geocode helper.
+const LOCKED_PHASE3D_CONTRACT_SHA256 = "96c929094dbff13ee3549f562a10567c8c9ee11f5fb191a11c9cbc9e081135cc";
 // [#3643] The exact inert literal environment the folded origins set on a step,
 // byte for byte, keyed by the command that carries it. #2198's two Paystack maps
 // are test-mode strings that only satisfy env-presence guards at import time
@@ -405,7 +406,8 @@ export function phase3dContractDigest(manifest) {
 // #4318: register the /links migration (20280508004318) and its implementor and tester PostgreSQL proofs; it joins the pre-#1931 replay skip list by exact filename.
 // #4318: register the /links live-cities (20280514004318) and strip end-date (20280515004318) migrations and their PostgreSQL proofs; the end-date migration joins the pre-#1931 replay skip list by exact filename.
 // #4318: register the /links per-city places migration (20280516004318) and its PostgreSQL proof the same way.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "9efe8bf44dc9e44af26eb418d2425bc1a082bddd86885baa0b3dd2cf60410d32";
+// #4334: register the Google places migration and its PostgreSQL proofs, and point the issue-992 lane at the renamed server geocode helper.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "c47608bf96d7ff506f7ee53bf51d7004f9d35ed833f1c3e2e633430352928a97";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
@@ -947,6 +949,11 @@ const STALE_PROVENANCE_ALLOWLIST = Object.freeze([
   Object.freeze({ suite: "issue-994-ota-env-resolution-app-mobile", pattern: REVIEWED_SPLIT_PATHS[1], issue: "#994" }),
   Object.freeze({ suite: "issue-994-ota-env-resolution-mingla-business", pattern: REVIEWED_SPLIT_PATHS[0], issue: "#994" }),
   Object.freeze({ suite: "issue-994-ota-env-resolution-mingla-business", pattern: REVIEWED_SPLIT_PATHS[1], issue: "#994" }),
+  // #4334 — the shared address field was renamed to AddressInput.tsx. This origin
+  // path sits in the byte-locked Phase 2 suite registry (PHASE2_SUITES_SHA256), so
+  // it cannot be rewritten; the suite still watches the business location
+  // components and its own keyboard-cap tests, which import the renamed file.
+  Object.freeze({ suite: "issue-1027-keyboard-and-datetime-tests", pattern: "packages/location-input/src/MapboxAddressInput.tsx", issue: "#4334" }),
 ]);
 const WORKFLOW_PROVENANCE_PREFIX = ".github/workflows/";
 

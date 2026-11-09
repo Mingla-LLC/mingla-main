@@ -127,7 +127,8 @@ test("#3988 defaults to device city while manual search stays global", () => {
   assert.match(screen, /if \(typeof location\.data\?\.lat !== "number"/);
   assert.match(screen, /if \(current && !deviceResolveRequested\) \{[\s\S]{0,200}if \(citySourceRef\.current !== "device" \|\| !preferencesReadFor\) return;[\s\S]{0,120}if \(deviceCityStillValid\(current, lat, lng\)\) return;/);
   assert.match(picker, /searchMode="places"/);
-  assert.match(picker, /suggestLimit=\{8\}/);
+  // #4334 D4 — at most 5 rows from Google; no client limit.
+  assert.doesNotMatch(picker, /suggestLimit/);
   assert.doesNotMatch(picker, /proximity=\{/);
 });
 

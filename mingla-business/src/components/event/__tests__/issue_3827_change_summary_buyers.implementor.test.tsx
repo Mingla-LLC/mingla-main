@@ -463,7 +463,11 @@ describe("issue #3827 — the editor is wired to the buyer count", () => {
 
   test("WIRE-5: a re-picked pin carries its precision; an untouched pin sends none", () => {
     expect(screen).toContain(
-      "...(patch.locationGeo !== undefined ? { coordinatePrecision: patch.locationGeo === null ? null : (editState.coordinatePrecision ?? null), } : {}),",
+      "...(patch.locationGeo !== undefined ? { coordinatePrecision: patch.locationGeo === null ? null : (editState.coordinatePrecision ?? null),",
+    );
+    // #4334 — the same changed-pin branch carries the pin's Google place id.
+    expect(screen).toContain(
+      "locationProviderPlaceId: patch.locationGeo === null ? null : (editState.locationProviderPlaceId ?? null), } : {}),",
     );
   });
 });

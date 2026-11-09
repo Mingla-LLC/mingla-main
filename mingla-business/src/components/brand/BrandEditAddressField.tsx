@@ -4,11 +4,11 @@
  * Brand Edit used to take the address as free text with no city or country, so
  * moving the address there left the brand's city/country (and every readiness
  * check built on them) stale with no form to fix it. This reuses the SAME
- * search the brand-creation flow uses — the Host `MapboxAddressInput` wrapper
+ * search the brand-creation flow uses — the Host `AddressInput` wrapper
  * over `@mingla/location-input`, `parseVenuePlaceResult` for a picked place,
  * and `resolveFreeTextLocation` for "use what you typed" — and writes the
  * address, city, country, latitude and longitude together. Like creation
- * (ORCH-1079), a Mapbox id is never written into `google_place_id`.
+ * (ORCH-1079), a picked place id is never written into `google_place_id`.
  *
  * Typing without picking keeps the old city/country (the hint says so); a
  * pick or a placed free-text address replaces them.
@@ -27,7 +27,7 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
-import type { PlaceDetails } from "../../services/mapboxGeocodeService";
+import type { PlaceDetails } from "../../services/placesService";
 import {
   brandAddressPatchFromLocation,
   brandAddressPatchFromPlace,
@@ -42,7 +42,7 @@ import {
 } from "../../utils/resolveApproxLocation";
 // The shared preview loads through its one lazy owner (#3493).
 import { LazyAddressMapPreview } from "../location/LazyAddressMapPreview";
-import { MapboxAddressInput } from "../location/MapboxAddressInput";
+import { AddressInput } from "../location/AddressInput";
 
 export interface BrandEditAddressFieldProps {
   address: string | null | undefined;
@@ -115,7 +115,7 @@ export const BrandEditAddressField: React.FC<BrandEditAddressFieldProps> = ({
 
   return (
     <View testID={testID}>
-      <MapboxAddressInput
+      <AddressInput
         value={text}
         allowFreeText
         selectionState={selectionState}

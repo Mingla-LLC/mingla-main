@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * ORCH-1162 Bug 2 — single owner of the static-Mapbox URL builder.
+ * ORCH-1162 Bug 2 — single owner of the static map URL builder.
  *
  * Invariant I-PROPOSED-1162-MAP-PRIMITIVE-SINGLE-OWNER (DRAFT): there is exactly
  * ONE implementation of buildStaticMapUrl, owned by @mingla/offering-rendering
- * (packages/offering-rendering/mapboxStaticImage.ts). mingla-business and app-mobile
+ * (packages/offering-rendering/staticMapImage.ts). mingla-business and app-mobile
  * RE-EXPORT it (a re-export shim), never re-implement it. This ends the prior
  * byte-for-byte fork in the two app utils and keeps I-MOR-0827-PACKAGE-ISOLATION
  * intact (app-mobile imports from the @mingla/* package, not mingla-business/src).
@@ -78,8 +78,8 @@ if (definitions.length !== 1) {
 
 // The two app utils must be re-export shims (no local definition).
 for (const shim of [
-  "mingla-business/src/utils/mapboxStaticImage.ts",
-  "app-mobile/src/utils/mapboxStaticImage.ts",
+  "mingla-business/src/utils/staticMapImage.ts",
+  "app-mobile/src/utils/staticMapImage.ts",
 ]) {
   const path = join(root, shim);
   if (!existsSync(path)) {

@@ -21,7 +21,7 @@ import { buildTikTokAdBody } from "../tiktok.ts";
 import {
   __clearForwardGeocodeCacheForTests,
   forwardGeocodeLookup,
-} from "../mapboxGeocode.ts";
+} from "../placesGeocode.ts";
 import { compileProviderTargeting } from "../adTargetingCompiler.ts";
 import { checkHostEstimateRate } from "../adHostEstimateRate.ts";
 
@@ -76,8 +76,8 @@ Deno.test("C1 older display labels map to the same codes; unknown buttons are re
 
 Deno.test("G1 a failed geocode is 'failed', not cached; a real miss is 'not_found'", async () => {
   const realFetch = globalThis.fetch;
-  const realToken = Deno.env.get("MAPBOX_ACCESS_TOKEN");
-  Deno.env.set("MAPBOX_ACCESS_TOKEN", "pk.test-not-real");
+  const realToken = Deno.env.get("GOOGLE_MAPS_API_KEY");
+  Deno.env.set("GOOGLE_MAPS_API_KEY", "test-key-not-real");
   let calls = 0;
   let mode: "error" | "empty" = "error";
   globalThis.fetch = ((_input: unknown) => {
@@ -85,7 +85,7 @@ Deno.test("G1 a failed geocode is 'failed', not cached; a real miss is 'not_foun
     return Promise.resolve(
       mode === "error"
         ? new Response("upstream", { status: 503 })
-        : new Response(JSON.stringify({ features: [] }), { status: 200 }),
+        : new Response(JSON.stringify({ status: "ZERO_RESULTS", results: [] }), { status: 200 }),
     );
   }) as typeof fetch;
   try {
@@ -98,8 +98,8 @@ Deno.test("G1 a failed geocode is 'failed', not cached; a real miss is 'not_foun
     assertEquals(calls, 2, "the real miss was cached");
   } finally {
     globalThis.fetch = realFetch;
-    if (realToken === undefined) Deno.env.delete("MAPBOX_ACCESS_TOKEN");
-    else Deno.env.set("MAPBOX_ACCESS_TOKEN", realToken);
+    if (realToken === undefined) Deno.env.delete("GOOGLE_MAPS_API_KEY");
+    else Deno.env.set("GOOGLE_MAPS_API_KEY", realToken);
     __clearForwardGeocodeCacheForTests();
   }
 });

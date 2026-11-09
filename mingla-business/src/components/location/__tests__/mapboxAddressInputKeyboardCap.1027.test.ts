@@ -3,7 +3,7 @@
  * Implementor-owned happy-path guard for the shared keyboard-aware dropdown cap.
  *
  * ROOT CAUSE (proven on a physical Samsung A72): the shared card-mode suggestion
- * list in `packages/location-input/src/MapboxAddressInput.tsx` rendered
+ * list in `packages/location-input/src/AddressInput.tsx` rendered
  * `<Scroll style={{ maxHeight: tokens.dropdown.maxHeight }}>` — with the injected
  * token = 9999 on every business host — so the list laid out as one tall block
  * that overflowed BEHIND the soft keyboard; rows past the keyboard's top edge
@@ -16,7 +16,7 @@
  * from "react"`, and `react`/`react-native` are unresolvable FROM the packages/
  * dir under this node/ts-jest config (mingla-business owns the only real copy —
  * see jest.config.cjs moduleNameMapper notes). Every shared-location regression
- * in this repo (BrandCreationFlow.mapbox, TripCreatorStep1Basics.mapbox,
+ * in this repo (BrandCreationFlow.addressPicker, TripCreatorStep1Basics.addressPicker,
  * orch-1361/1362) is therefore source-characterization. This suite pins the exact
  * cap formula + constants (the behavioral contract, SPEC §7 T-1..T-4) AND the
  * wiring (SPEC §9), reading the worktree package source directly.
@@ -39,7 +39,7 @@ const SRC = (): string =>
   readFileSync(
     path.join(
       process.cwd(),
-      "../packages/location-input/src/MapboxAddressInput.tsx",
+      "../packages/location-input/src/AddressInput.tsx",
     ),
     "utf8",
   );

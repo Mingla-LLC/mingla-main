@@ -9,7 +9,7 @@
  *
  * FAILS-ON-REVERT: restore `s.fullAddress.trim().length > 0 ? s.fullAddress :
  * s.displayName` as the label (and `s.fullAddress || s.displayName` as the row
- * accessibility label) in packages/location-input/src/MapboxAddressInput.tsx,
+ * accessibility label) in packages/location-input/src/AddressInput.tsx,
  * and the rendered-picker, every-host and event-mapper cases below go red.
  */
 
@@ -19,16 +19,16 @@ import path from "node:path";
 import { describe, expect, jest, test } from "@jest/globals";
 
 import {
-  MapboxAddressInput,
+  AddressInput,
   addressBeginsWithName,
   composeSuggestionLabel,
   resolvePickedLabel,
-} from "../../../packages/location-input/src/MapboxAddressInput";
+} from "../../../packages/location-input/src/AddressInput";
 import type {
   InvokeFn,
   PlaceAutocompleteSuggestion,
   PlaceDetails,
-} from "../../../packages/location-input/src/mapboxGeocodeService";
+} from "../../../packages/location-input/src/placesService";
 import type { LocationInputTokens } from "../../../packages/location-input/src/types";
 import { buildDraftEvent } from "../store/draftEventStore";
 import {
@@ -54,22 +54,22 @@ const ROOT = path.resolve(__dirname, "../../..");
 
 // ── Live-shaped fixtures (captured from the production mapbox-geocode proxy) ──
 const STREET: PlaceAutocompleteSuggestion = {
-  placeId: "mapbox.street.ozumba",
+  placeId: "ChIJfixture_street_ozumba",
   displayName: "Ozumba Mbadiwe Avenue",
   fullAddress: "Lagos 10, Lagos, Nigeria",
 };
 const HOUSE_NUMBER: PlaceAutocompleteSuggestion = {
-  placeId: "mapbox.address.ozumba12",
+  placeId: "ChIJfixture_address_ozumba12",
   displayName: "Ozumba Mbadiwe Rd 12",
   fullAddress: "Ozumba Mbadiwe Rd 12, Lagos 10, Lagos, Nigeria",
 };
 const CITY: PlaceAutocompleteSuggestion = {
-  placeId: "mapbox.place.london",
+  placeId: "ChIJfixture_place_london",
   displayName: "London",
   fullAddress: "Greater London, England, United Kingdom",
 };
 const VENUE: PlaceAutocompleteSuggestion = {
-  placeId: "mapbox.poi.nike",
+  placeId: "ChIJfixture_poi_nike",
   displayName: "Nike Art Gallery",
   fullAddress: "2 Elegushi Beach Rd, Lekki, Lagos, Nigeria",
 };
@@ -132,7 +132,7 @@ const copy = {
   minLengthHint: "Type more",
   searching: "Searching",
   noResults: "No matches",
-  offline: "Offline",
+  unavailable: "Offline",
   pickError: "Pick failed",
 };
 
@@ -158,7 +158,7 @@ async function pickThroughPicker(
   let tree: Tree | undefined;
   await TestRenderer.act(() => {
     tree = TestRenderer.create(
-      <MapboxAddressInput
+      <AddressInput
         value=""
         onChangeText={() => undefined}
         onPick={onPick}
@@ -322,13 +322,13 @@ const HOST_FIELDS: ReadonlyArray<{
 ];
 
 /**
- * Every `<MapboxAddressInput … />` JSX element in a host, as source text. Only a
+ * Every `<AddressInput … />` JSX element in a host, as source text. Only a
  * tag that opens its own line counts, so a comment naming the component (e.g.
  * ExperienceStopCard's header) is never mistaken for a mount.
  */
 function addressInputBlocks(source: string): string[] {
   const blocks: string[] = [];
-  const opener = /^([ \t]*)<MapboxAddressInput[ \t]*$/gm;
+  const opener = /^([ \t]*)<AddressInput[ \t]*$/gm;
   let match: RegExpExecArray | null = opener.exec(source);
   while (match !== null) {
     const close = source.indexOf(`\n${match[1]}/>`, match.index);

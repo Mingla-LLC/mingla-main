@@ -37,6 +37,7 @@ import { getActiveSignals } from "../services/deckTunerService";
 import { collectClaimPhotos } from "../lib/claimPhotos";
 import { formatDateTime } from "../lib/formatters";
 import { PageHeader } from "../components/ui/PageHeader";
+import { claimMapsUri } from "../lib/claimsMapsLink";
 
 const CAT_LABELS = {
   restaurant: "Restaurant",
@@ -536,12 +537,8 @@ export function ClaimsPage() {
 
   const phoneInfo = detail ? resolveClaimDisplayPhone(detail) : null;
   const tel = phoneInfo ? formatPhoneHref(phoneInfo.phone) : null;
-  const mapsUri = detail
-    ? (detail.place_pool?.google_maps_uri ??
-      (detail.google_place_id
-        ? `https://www.google.com/maps/search/?api=1&query_place_id=${encodeURIComponent(detail.google_place_id)}`
-        : null))
-    : null;
+  // #4334 — Google Maps URLs require `query`; claimMapsUri always sends it.
+  const mapsUri = claimMapsUri(detail);
   // META-ORCH-1255(C): the duplicate pointer is venue-keyed (M4 sets
   // duplicate_of_venue_id on the venue row).
   const isDuplicateOfApproved = Boolean(detail?.duplicate_of_venue_id);

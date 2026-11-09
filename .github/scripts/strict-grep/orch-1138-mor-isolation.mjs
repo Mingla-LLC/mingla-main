@@ -5,7 +5,7 @@
  * The consumer experience surface (the detail screen, the open-daily reserve
  * picker, the ported static-map util, and the seed mappers) MUST import nothing
  * from `mingla-business/src`. The web picker, the web CountAwareGallery, and the
- * web mapboxStaticImage are business-local; the consumer reuses app-mobile/
+ * web staticMapImage are business-local; the consumer reuses app-mobile/
  * packages ports instead. A cross-package import re-couples the two apps and
  * breaks the consumer build (the exact trap the prior pass avoided by leaving
  * the open-daily flow OFF the consumer — this rework ports it correctly).
@@ -23,7 +23,7 @@ const GUARDED = [
   "app-mobile/src/screens/Experience/ConsumerExperienceDetailScreen.tsx",
   "app-mobile/src/components/expandedCard/ExperienceReservePicker.tsx",
   "app-mobile/src/components/expandedCard/ExperienceOccurrencePicker.tsx",
-  "app-mobile/src/utils/mapboxStaticImage.ts",
+  "app-mobile/src/utils/staticMapImage.ts",
   "app-mobile/src/utils/venueExperienceMapping.ts",
   "app-mobile/src/hooks/useVenueExperiences.ts",
 ];

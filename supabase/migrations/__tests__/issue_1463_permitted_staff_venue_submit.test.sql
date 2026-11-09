@@ -186,14 +186,14 @@ DO $grants$
 BEGIN
   IF has_function_privilege(
     'anon',
-    'public.biz_create_venue_listing(uuid,text,text,text,text,double precision,double precision,text,text,text,text,text,text,text,text,jsonb,uuid,text,text,text,text,text)',
+    'public.biz_create_venue_listing(uuid,text,text,text,text,double precision,double precision,text,text,text,text,text,text,text,text,jsonb,uuid,text,text,text,text,text,text)',
     'EXECUTE'
   ) THEN
     RAISE EXCEPTION 'issue_1463_anon_execute_was_granted';
   END IF;
   IF NOT has_function_privilege(
     'authenticated',
-    'public.biz_create_venue_listing(uuid,text,text,text,text,double precision,double precision,text,text,text,text,text,text,text,text,jsonb,uuid,text,text,text,text,text)',
+    'public.biz_create_venue_listing(uuid,text,text,text,text,double precision,double precision,text,text,text,text,text,text,text,text,jsonb,uuid,text,text,text,text,text,text)',
     'EXECUTE'
   ) THEN
     RAISE EXCEPTION 'issue_1463_authenticated_execute_missing';

@@ -272,7 +272,7 @@ export function flowUploadKind(
 
 /**
  * #3355 P7 — the event flow's "Where is it?" card: answered with the Host's
- * address search (MapboxAddressInput) and a venue name, never typed text.
+ * address search (AddressInput) and a venue name, never typed text.
  * #3355 P8 — the trip flow's departure and destination cards use the same
  * search without a venue name ("city" mode).
  */

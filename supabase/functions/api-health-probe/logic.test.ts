@@ -371,7 +371,7 @@ Deno.test("ORCH-1201 — ticketmaster header remaining STRING '300' (<=warn 500)
 
 Deno.test("STATUS_PAGE_URLS keys are a subset of monitored services (canonical)", () => {
   const seeded = new Set([
-    "stripe", "paystack", "gemini", "openai", "mapbox", "google_places",
+    "stripe", "paystack", "gemini", "openai", "google_places", "google_place_details", "google_geocoding", "google_static_maps", "google_place_refresh",
     "ticketmaster", "serper", "pexels", "giphy", "onesignal_consumer",
     "onesignal_business", "resend", "twilio", "supabase",
     "vercel", "exchangerate", "thumio", "revenuecat", "posthog", "mixpanel",

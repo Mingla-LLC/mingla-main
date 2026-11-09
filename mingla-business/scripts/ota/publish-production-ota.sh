@@ -33,19 +33,11 @@
 #   EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY REQUIRED  pk_live_             (app.config.js -> extra; the #990 brick)
 #   EXPO_PUBLIC_GIPHY_API_KEY          REQUIRED  none                 (app.config.js -> extra; GIF tab)
 #   EXPO_PUBLIC_ONESIGNAL_APP_ID       REQUIRED  4505e476-            (app.config.js -> extra; Host push)
-#   EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN    ADVISORY  pk.                  (app.config.js -> extra; trip-page map)
 #   EXPO_PUBLIC_MIXPANEL_TOKEN         ADVISORY  none                 (mixpanelService.ts:63, static read)
 #   EXPO_PUBLIC_POSTHOG_KEY            ADVISORY  phc_                 (app.config.js carries a committed
 #                                                                      literal fallback, so it can NEVER be
 #                                                                      absent — it is deliberately not a
 #                                                                      tripwire on this app)
-#
-# WHY MAPBOX IS ADVISORY HERE. SPEC §3.4-V1 made its class conditional on the
-# variable existing in the EAS 'production' environment. The read-only check on
-# 2026-08-09 found it ABSENT from this app's production environment, so a
-# REQUIRED class would abort every correct publish. It also stays out of the
-# post-publish expectation table for the same reason. If it is ever provisioned,
-# promote it in both places together.
 #
 # OTA IS ENABLED (resolved). Production business OTA ships pure-JS /
 #   zero-native-module-delta changes through THIS script. The 2026-07-02
@@ -167,8 +159,6 @@ key_consequence() {
       echo "the cover-picker GIF tab would silently degrade" ;;
     EXPO_PUBLIC_ONESIGNAL_APP_ID)
       echo "the OneSignal SDK would be disabled and Host push delivery would silently stop" ;;
-    EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN)
-      echo "the public trip page would hide its map" ;;
     EXPO_PUBLIC_MIXPANEL_TOKEN)
       echo "Mixpanel would be dark in this OTA" ;;
     EXPO_PUBLIC_POSTHOG_KEY)
@@ -291,7 +281,6 @@ preflight_key EXPO_PUBLIC_SENTRY_DSN             required https://
 preflight_key EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY required pk_live_
 preflight_key EXPO_PUBLIC_GIPHY_API_KEY          required -
 preflight_key EXPO_PUBLIC_ONESIGNAL_APP_ID       required 4505e476-
-preflight_key EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN    advisory pk.
 preflight_key EXPO_PUBLIC_MIXPANEL_TOKEN         advisory -
 preflight_key EXPO_PUBLIC_POSTHOG_KEY            advisory phc_
 

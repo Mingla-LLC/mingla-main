@@ -272,6 +272,11 @@ export interface LiveEvent {
    * by the buyer-web standard-event read (merged from pg_public_event_by_slug).
    */
   cityGeo?: { lat: number; lng: number } | null;
+  /**
+   * #4334 — the venue's Google place id from pg_public_event_by_slug (null when
+   * the street is withheld). Anchors the Google Maps link (`query_place_id`).
+   */
+  googlePlaceId?: string | null;
   whenMode: WhenMode;
   date: string | null;
   doorsOpen: string | null;

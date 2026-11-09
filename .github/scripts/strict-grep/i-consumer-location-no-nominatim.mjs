@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
 /**
- * Strict-grep gate — META-ORCH-1060 [Mapbox consumer migration]
+ * Strict-grep gate — META-ORCH-1060 [consumer location migration]
  * INV-1 · I-CONSUMER-LOCATION-NO-NOMINATIM
  *
  * The consumer app (app-mobile/src) must contain ZERO Nominatim /
- * OpenStreetMap geocoding references after the Mapbox migration. The clean
+ * OpenStreetMap geocoding references after the location migration. The clean
  * sweep is enforced permanently: any reintroduction of Nominatim (host string,
  * the legacy User-Agent, or the literal "nominatim") fails the PR.
  *
@@ -72,7 +72,7 @@ function scanForbidden(text) {
 function runSelfTest() {
   const bad = `const r = await fetch("https://nominatim.openstreetmap.org/search?q=" + q);`;
   const bad2 = `headers: { "User-Agent": "Mingla-Mobile-App/1.0" }`;
-  const good = `const details = await forwardGeocodeMapbox(query, { invoke });`;
+  const good = `const details = await forwardGeocode(query, { invoke });`;
   let selfFail = 0;
   if (scanForbidden(bad).length === 0) {
     console.error("SELF-TEST FAIL: nominatim host not flagged");
@@ -83,7 +83,7 @@ function runSelfTest() {
     selfFail++;
   }
   if (scanForbidden(good).length !== 0) {
-    console.error("SELF-TEST FAIL: Mapbox line wrongly flagged");
+    console.error("SELF-TEST FAIL: shared-service line wrongly flagged");
     selfFail++;
   }
   if (selfFail > 0) {

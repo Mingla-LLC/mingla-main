@@ -26,7 +26,7 @@
  * preview's empty state and real map
  * (location/__tests__/issue_3355_address_map_preview.implementor.test.tsx);
  * the Host search request carries no types/country filter
- * (location/__tests__/issue_3827_host_address_suggest_limit.implementor.test.tsx).
+ * (location/__tests__/issue_4334_host_address_google.implementor.test.tsx).
  */
 import { describe, expect, test } from "@jest/globals";
 
@@ -40,7 +40,7 @@ import {
   addressBeginsWithName,
   composeSuggestionLabel,
   resolvePickedLabel,
-} from "../../../../../packages/location-input/src/MapboxAddressInput";
+} from "../../../../../packages/location-input/src/AddressInput";
 
 const DIRECTORY = [
   { iso: "GB", dialCode: "+44" },

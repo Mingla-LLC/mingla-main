@@ -217,7 +217,9 @@ test("any byte change, addition, removal, reorder or duplicate in the bootstrap 
 
 test("the workflow retires only the three authorized lists and seals every fixed invocation", async (t) => {
   const live = verifyWorkflowLiteralPolicy();
-  assert.deepEqual(live.counts, { sql: 4, teamAgentNode: 6, specializedDeno: 56, fixedNodeMjs: 10 });
+  // [TEST-MOD-APPROVED #4334] the nine retired map-provider suites (deleted with the provider) left
+  // the fixed ORCH-1361/1363/1365 invocations; their Google replacements run in the discovered lane.
+  assert.deepEqual(live.counts, { sql: 4, teamAgentNode: 6, specializedDeno: 47, fixedNodeMjs: 10 });
 
   const { source } = findWorkflowByDisplayName();
   const first = live.projection.flatMap((entry) => entry.paths)[0];

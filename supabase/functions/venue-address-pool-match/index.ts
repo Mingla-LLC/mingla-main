@@ -14,15 +14,14 @@
  * 2 and 18 active pool rows within ~130 m, so distance returns a shortlist,
  * never an identity.
  *
- * THE BOUNDARY (ORCH-1079). That sweep removed Google from address
- * AUTOCOMPLETE and its gate keeps that true. This function does NOT autocomplete
- * anything: Mapbox still owns every suggestion the brand sees, unchanged. Google
- * is asked exactly one question, once, AFTER the brand has already chosen —
- * "which place is this?" — and the answer is used only to look up our own
- * directory. GOOGLE MAY RESOLVE IDENTITY; IT MAY NEVER DRIVE SUGGESTIONS.
- * One call per pick, not per keystroke, and no autocomplete-session billing.
+ * #4334 retired the ORCH-1079 boundary: address search itself is Google now,
+ * so a picked establishment's place id IS the pool key. When the client sends
+ * that id (`google_place_id`), the text search is skipped and the pool is
+ * looked up directly — no Google spend. Without an id (a free-text address)
+ * Google is asked once, AFTER the brand has chosen: "which place is this?".
+ * A retired pre-#4334 id never reaches the pool lookup.
  *
- *   POST { formatted_address, lat, lng }
+ *   POST { formatted_address, lat, lng, google_place_id? }
  *     -> 200 { match: PoolMatchResult | null }
  *     -> 400 validation · 401 auth · 429 rate limited · 502 upstream
  *
@@ -87,6 +86,17 @@ export interface ResolveInput {
   formattedAddress: string;
   lat: number;
   lng: number;
+  /** #4334 — the picked Google place id, when the pick has one. */
+  googlePlaceId: string | null;
+}
+
+/** A Google place id, never a retired pre-#4334 id (base64 "urn:"). */
+export function usableGooglePlaceId(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const id = value.trim();
+  if (!/^[A-Za-z0-9_-]{10,}$/.test(id)) return null;
+  if (/^dXJuOm/.test(id)) return null;
+  return id;
 }
 
 /**
@@ -111,7 +121,12 @@ export function parseResolveInput(body: unknown): ResolveInput | { error: string
   // 0,0 is the null-island sentinel a failed geocode produces — never a real pick.
   if (lat === 0 && lng === 0) return { error: "validation" };
 
-  return { formattedAddress: addr, lat, lng };
+  return {
+    formattedAddress: addr,
+    lat,
+    lng,
+    googlePlaceId: usableGooglePlaceId(b.google_place_id),
+  };
 }
 
 /**
@@ -218,18 +233,19 @@ export async function handler(req: Request): Promise<Response> {
   const parsed = parseResolveInput(raw);
   if ("error" in parsed) return jsonResponse({ error: parsed.error }, 400);
 
-  const apiKey = Deno.env.get("GOOGLE_MAPS_API_KEY") ?? "";
-  if (!apiKey) return jsonResponse({ error: "server_misconfigured" }, 500);
-
-  let googlePlaceId: string | null;
-  try {
-    googlePlaceId = await resolveGooglePlaceId(parsed, apiKey);
-  } catch (e) {
-    console.warn("[venue-address-pool-match] upstream failed:", String(e));
-    // Fail LOUD, not as "no match". Reporting an upstream outage as "we don't
-    // know you" would send a venue we DO hold into create-from-scratch — the
-    // exact duplicate this endpoint exists to prevent.
-    return jsonResponse({ error: "resolve_unavailable" }, 502);
+  let googlePlaceId: string | null = parsed.googlePlaceId;
+  if (googlePlaceId === null) {
+    const apiKey = Deno.env.get("GOOGLE_MAPS_API_KEY") ?? "";
+    if (!apiKey) return jsonResponse({ error: "server_misconfigured" }, 500);
+    try {
+      googlePlaceId = await resolveGooglePlaceId(parsed, apiKey);
+    } catch (e) {
+      console.warn("[venue-address-pool-match] upstream failed:", String(e));
+      // Fail LOUD, not as "no match". Reporting an upstream outage as "we don't
+      // know you" would send a venue we DO hold into create-from-scratch — the
+      // exact duplicate this endpoint exists to prevent.
+      return jsonResponse({ error: "resolve_unavailable" }, 502);
+    }
   }
   if (googlePlaceId === null) return jsonResponse({ match: null });
 

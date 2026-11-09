@@ -266,8 +266,6 @@ concurrency:
 #   meta-orch-0972-no-brand-kind-reads  ->  meta-orch-0972-no-brand-kind-reads.mjs
 #   meta-orch-0991-base-bottom-sheet-sole-consumer  ->  meta-orch-0991-base-bottom-sheet-sole-consumer.mjs
 #   meta-orch-1060-consumer-location-no-nominatim  ->  i-consumer-location-no-nominatim.mjs
-#   meta-orch-1060-consumer-location-uses-shared-mapbox  ->  i-consumer-location-uses-shared-mapbox.mjs
-#   meta-orch-1060-discover-city-codes-from-mapbox-context  ->  i-discover-city-codes-from-mapbox-context.mjs
 #   meta-orch-1062-approval-go-live  ->  meta-orch-1062-approval-go-live.mjs
 #   meta-orch-1104-support-backend-invariants  ->  i-meta-orch-1104-support-backend-invariants.mjs
 #   meta-orch-1232-a-no-temp-id-to-uuid  ->  i-proposed-1232-a-no-temp-id-to-uuid.mjs
@@ -384,9 +382,6 @@ concurrency:
 #   orch-1058-collab-system-banner  ->  orch-1058-banner-allowlist-parity.mjs, orch-1058b-system-banner-check.mjs
 #   orch-1075-paid-publish-integrity-guards  ->  orch-1075-paid-publish-integrity-guards.mjs
 #   orch-1076-paid-supply-requires-charges-enabled  ->  orch-1076-paid-supply-requires-charges-enabled.mjs
-#   orch-1079-biz-venue-input-uses-mapbox  ->  i-biz-venue-input-uses-mapbox.mjs
-#   orch-1079-mapbox-suggest-no-types-filter  ->  i-mapbox-suggest-no-types-filter.mjs
-#   orch-1079-no-biz-google-places-autocomplete  ->  i-no-biz-google-places-autocomplete.mjs
 #   orch-1105-layout-no-self-redirect  ->  orch-1105-layout-no-self-redirect.mjs
 #   orch-1105-no-route-stub-gates  ->  orch-1105-no-route-stub-gates.mjs
 #   orch-1105-web-gesture-safe  ->  orch-1105-web-gesture-safe.mjs

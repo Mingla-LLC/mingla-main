@@ -18,7 +18,7 @@
 //      targeting must equal the pre-#992 shape EXACTLY — any accidental key is
 //      caught.
 //   C. COORD / TOKEN SCRUB: deep-recurse the ENTIRE built payload and prove no
-//      latitude/longitude/mapbox/token ever reaches the browser (create-time
+//      latitude/longitude/geocoder key/token ever reaches the browser (create-time
 //      server geocode is the only coordinate source).
 //   D. CROSS-PLATFORM LEAK incl. the numeric-id collision trap the happy-path
 //      mixed fixture hides — a google-tagged id equal to a snap-tagged id must
@@ -221,9 +221,9 @@ describe("ISSUE-992 adversarial — broad build targeting is byte-identical (dee
 });
 
 // ── C. Coordinate / token scrub across the WHOLE payload ───────────────────────
-describe("ISSUE-992 adversarial — no coordinate or Mapbox token ever reaches the browser", () => {
+describe("ISSUE-992 adversarial — no coordinate or geocoder key ever reaches the browser", () => {
   const FORBIDDEN_KEY = /^(lat|lng|latitude|longitude)$/i;
-  const FORBIDDEN_SUBSTR = /(mapbox|latitude|longitude|access_token)/i;
+  const FORBIDDEN_SUBSTR = /(AIza|latitude|longitude|access_token)/i;
 
   for (const platform of ["google", "snapchat"]) {
     it(`${platform} payload (city + interests picked) carries no coord/token anywhere`, () => {

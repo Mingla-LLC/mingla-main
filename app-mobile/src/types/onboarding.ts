@@ -108,6 +108,8 @@ export interface OnboardingData {
 
   // Step 4
   manualLocation: string | null  // city name typed by user (when GPS denied)
+  /** #4334 — Google place id of the "Choose your city" pick (null otherwise). */
+  manualLocationPlaceId?: string | null
   selectedCategories: string[]   // slug IDs: 'nature', 'drinks_and_music', etc.
   dateOption: string             // ORCH-0434: 'today' | 'this_weekend' | 'pick_dates'
   selectedDates: string[]        // ORCH-0434: ISO date strings for pick_dates mode

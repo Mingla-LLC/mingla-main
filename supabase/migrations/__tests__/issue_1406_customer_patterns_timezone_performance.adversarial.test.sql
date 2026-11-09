@@ -920,8 +920,14 @@ BEGIN
   -- hash 37e9eade3735be4ac9a0763e4c4013e8 -> d82eb3bebdb6d476c6ed48e69d36d940,
   -- measured on PG17 full replays of 88e51e68c0^ and cfb605f80d. #3645's
   -- 20280407003645 adds no index here and the seven functions are unchanged.
-  IF v_index_count <> 83
-    OR v_index_fingerprint <> 'd82eb3bebdb6d476c6ed48e69d36d940'
+  -- [TEST-MOD-APPROVED #4334] 20280521004334_issue_4334_google_places adds the
+  -- 30-day refresh indexes events_location_geo_refreshed_at_idx and
+  -- brands_location_geo_refreshed_at_idx (partial, on location_geo_refreshed_at).
+  -- Count 83 -> 85, hash d82eb3bebdb6d476c6ed48e69d36d940 -> 6b8508599f829dc2d9ce3d1e41f3543c,
+  -- measured on a PG17 full replay of the #4334 branch; dropping those two
+  -- indexes measures 83 / d82eb3bebdb6d476c6ed48e69d36d940 again.
+  IF v_index_count <> 85
+    OR v_index_fingerprint <> '6b8508599f829dc2d9ce3d1e41f3543c'
     OR v_function_mismatch IS NOT NULL
   THEN
     RAISE EXCEPTION

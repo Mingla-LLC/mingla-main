@@ -628,7 +628,7 @@ const placeStep: StepDefinition = {
     }
     if (place) return Promise.resolve(done("owner_place", place.address));
     const problem = problemOf(ctx);
-    // The Host shows its address search (MapboxAddressInput) on this card.
+    // The Host shows its address search (AddressInput) on this card.
     return Promise.resolve({
       done: false,
       ask: {

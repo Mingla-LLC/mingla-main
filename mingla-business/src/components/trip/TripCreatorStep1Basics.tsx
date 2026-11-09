@@ -13,7 +13,8 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { precisionFromPlaceDetails } from "@mingla/location-input";
+// #4334 — from its own file: the package index would pull the address field into this screen.
+import { precisionFromPlaceDetails } from "@mingla/location-input/src/placesService";
 import {
   Modal,
   Platform,
@@ -38,13 +39,12 @@ import { Button } from "../ui/Button";
 import { useBrand } from "../../hooks/useBrands";
 import { ThemeControlRow } from "../theme/ThemeControlRow";
 import { ThemeSheet } from "../theme/ThemeSheetLazy";
-// ORCH-1079 [Business-venue Google→Mapbox sweep] — swapped the legacy Google
-// address autocomplete for the shared Mapbox picker (drop-in, same props).
-// place.placeId now carries an opaque mapbox_id, stored in the SAME
-// theme.business_trip.{departure,destination}PlaceId keys (no downstream
-// consumer reads it as a Google id). Mapbox Search Box /suggest returns POIs
-// by name (no `types` filter): https://docs.mapbox.com/api/search/search-box/#get-suggestions
-import { MapboxAddressInput } from "../location/MapboxAddressInput";
+// The shared address picker (Google behind the proxy since #4334).
+// place.placeId is the picked Google place id, stored in
+// theme.business_trip.{departure,destination}PlaceId; places-coordinate-refresh
+// renews the coordinates by that id. The Host search is filter-free, so venue
+// names resolve.
+import { AddressInput } from "../location/AddressInput";
 import {
   advanceLocationRequestGeneration,
   isFreeTextResolveStale,
@@ -266,6 +266,8 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
             departureCity: approx.city,
             departureCountryCode: approx.countryCode,
             departureCoordinatePrecision: "approximate",
+            // #4334 — the place the typed address resolved to; saved with the pin.
+            departurePlaceId: approx.placeId,
           });
           departureContextRef.current = {
             city: approx.city,
@@ -328,6 +330,8 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
             destinationCity: approx.city,
             destinationCountryCode: approx.countryCode,
             destinationCoordinatePrecision: "approximate",
+            // #4334 — the place the typed address resolved to; saved with the pin.
+            destinationPlaceId: approx.placeId,
           });
           destinationContextRef.current = {
             city: approx.city,
@@ -611,12 +615,12 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
         </View>
       </View>
 
-      {/* ORCH-1016 — Departing from (origin city) via the Mapbox picker
+      {/* ORCH-1016 — Departing from (origin city) via the address picker
           (ORCH-1079). Sits ABOVE Destination: the mental model is "leave here →
           go there". Optional. */}
       <View style={styles.fieldGroup}>
         <Text style={styles.fieldLabel}>Departing from</Text>
-        <MapboxAddressInput
+        <AddressInput
           value={draft.departureLocationText ?? ""}
           accessibilityLabel="Departing from"
           allowFreeText
@@ -661,7 +665,7 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
               departureLng: place.location.lng,
               departureCity: place.city,
               departureCountryCode: place.countryCode,
-              // Issue #1629 — real pick: read Mapbox's feature_type, do not assert.
+              // Issue #1629 — real pick: read the pick's feature type, do not assert.
               departureCoordinatePrecision: precisionFromPlaceDetails(place),
             });
             departureContextRef.current = {
@@ -704,10 +708,10 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
         />
       </View>
 
-      {/* Destination via the Mapbox picker (ORCH-1079) */}
+      {/* Destination via the address picker (ORCH-1079) */}
       <View style={styles.fieldGroup}>
         <Text style={styles.fieldLabel}>Destination</Text>
-        <MapboxAddressInput
+        <AddressInput
           value={draft.destinationLocationText ?? ""}
           accessibilityLabel="Destination"
           allowFreeText
@@ -751,7 +755,7 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
               destinationLng: place.location.lng,
               destinationCity: place.city,
               destinationCountryCode: place.countryCode,
-              // Issue #1629 — real pick: read Mapbox's feature_type, do not assert.
+              // Issue #1629 — real pick: read the pick's feature type, do not assert.
               destinationCoordinatePrecision: precisionFromPlaceDetails(place),
             });
             destinationContextRef.current = {

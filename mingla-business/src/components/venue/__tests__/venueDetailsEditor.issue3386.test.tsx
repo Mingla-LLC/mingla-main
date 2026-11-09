@@ -87,9 +87,9 @@ jest.mock("../../ui/Input", () => ({
     { iso: "US", name: "United States", dialCode: "+1", flag: "" },
   ],
 }));
-jest.mock("../../location/MapboxAddressInput", () => ({
+jest.mock("../../location/AddressInput", () => ({
   __esModule: true,
-  MapboxAddressInput: mockHost("MapboxAddressInput"),
+  AddressInput: mockHost("AddressInput"),
 }));
 jest.mock("../../brand/VenueCategoryPicker", () => ({
   __esModule: true,
@@ -206,7 +206,7 @@ describe("in review — name, category and address save directly", () => {
     );
     await press(tree.root, "venue-details-edit-identity");
     expect(byTestId(tree.root, "venue-details-name").props.value).toBe("Pending Kitchen");
-    expect(byType(tree.root, "MapboxAddressInput").props.selectionState).toBe("selected");
+    expect(byType(tree.root, "AddressInput").props.selectionState).toBe("selected");
     expect(byTestId(tree.root, "venue-details-save-identity").props.label).toBe("Save changes");
     await TestRenderer.act(async () => tree.unmount());
   });
@@ -231,7 +231,7 @@ describe("in review — name, category and address save directly", () => {
     const tree = await mount();
     await press(tree.root, "venue-details-edit-identity");
     await TestRenderer.act(async () => {
-      (byType(tree.root, "MapboxAddressInput").props.onChangeText as (v: string) => void)(
+      (byType(tree.root, "AddressInput").props.onChangeText as (v: string) => void)(
         "11 Somewhere Road",
       );
     });
@@ -247,9 +247,9 @@ describe("in review — name, category and address save directly", () => {
     const tree = await mount();
     await press(tree.root, "venue-details-edit-identity");
     await TestRenderer.act(async () => {
-      (byType(tree.root, "MapboxAddressInput").props.onPick as (d: unknown, l?: string) => void)(
+      (byType(tree.root, "AddressInput").props.onPick as (d: unknown, l?: string) => void)(
         {
-          placeId: "mapbox.abc",
+          placeId: "ChIJfixture_abc",
           formattedAddress: "10 New Road, Lekki, Lagos, Nigeria",
           city: "Lagos",
           region: null,
@@ -273,6 +273,8 @@ describe("in review — name, category and address save directly", () => {
         countryCode: "NG",
         lat: 6.4474,
         lng: 3.4723,
+        // #4334 — the picked Google place id rides with the pin.
+        locationProviderPlaceId: "ChIJfixture_abc",
         coordinatePrecision: "exact",
       },
     });

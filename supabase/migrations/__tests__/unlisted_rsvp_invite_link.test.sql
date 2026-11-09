@@ -171,7 +171,10 @@ BEGIN
       -- [TEST-MOD-APPROVED #1023] 20280430011023 adds themeGradientOverride after the animation.
       'musicGenres','themeColorOverride','themeFontOverride','themeAnimationOverride','themeGradientOverride','brand',
       'rsvpGoingCount','rsvpCapacity','rsvpAllowPlusOnes','rsvpPlusOnesMax','rsvpWaitlistEnabled',
-      'rsvpApprovalMode']::text[],
+      'rsvpApprovalMode',
+      -- [TEST-MOD-APPROVED #4334] 20280521004334 appends googlePlaceId (withheld with the
+      -- street) after every earlier key, just before publicEventRow.
+      'googlePlaceId']::text[],
     'U-01e every pre-existing key keeps its name and position (got ' || array_to_string(v_keys, ',') || ')');
 END
 $u01$;

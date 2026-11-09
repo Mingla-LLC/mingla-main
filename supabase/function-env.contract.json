@@ -78,7 +78,7 @@
       "required_bundle_fields": {},
       "required_top_level": [
         "BUSINESS_WEB_ORIGIN",
-        "MAPBOX_ACCESS_TOKEN",
+        "GOOGLE_MAPS_API_KEY",
         "SENTRY_DSN",
         "SENTRY_ENVIRONMENT"
       ]
@@ -368,7 +368,6 @@
         "BUNNY_STREAM_LIBRARY_ID",
         "GEMINI_API_KEY",
         "GOOGLE_MAPS_API_KEY",
-        "MAPBOX_ACCESS_TOKEN",
         "OPENAI_API_KEY",
         "PEXELS_API_KEY",
         "RESEND_API_KEY",
@@ -1047,7 +1046,7 @@
       "optional_top_level": [],
       "required_bundle_fields": {},
       "required_top_level": [
-        "MAPBOX_ACCESS_TOKEN",
+        "GOOGLE_MAPS_API_KEY",
         "SENTRY_DSN",
         "SENTRY_ENVIRONMENT"
       ]
@@ -1063,7 +1062,7 @@
       "optional_top_level": [],
       "required_bundle_fields": {},
       "required_top_level": [
-        "MAPBOX_ACCESS_TOKEN",
+        "GOOGLE_MAPS_API_KEY",
         "SENTRY_DSN",
         "SENTRY_ENVIRONMENT"
       ]
@@ -1109,7 +1108,9 @@
       "optional_top_level": [],
       "required_bundle_fields": {},
       "required_top_level": [
-        "MAPBOX_ACCESS_TOKEN"
+        "GOOGLE_MAPS_API_KEY",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT"
       ]
     },
     "growth-tools-preview": {
@@ -1261,7 +1262,21 @@
       "optional_top_level": [],
       "required_bundle_fields": {},
       "required_top_level": [
-        "MAPBOX_ACCESS_TOKEN"
+        "GOOGLE_MAPS_API_KEY",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT"
+      ]
+    },
+    "places-coordinate-refresh": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "CRON_SECRET"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "GOOGLE_MAPS_API_KEY",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT"
       ]
     },
     "marketing-send": {
@@ -2006,7 +2021,9 @@
       "optional_top_level": [],
       "required_bundle_fields": {},
       "required_top_level": [
-        "MAPBOX_ACCESS_TOKEN"
+        "GOOGLE_MAPS_API_KEY",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT"
       ]
     },
     "stay-reservation-sweep": {
@@ -3340,7 +3357,6 @@
         "BUNNY_STREAM_LIBRARY_ID",
         "GEMINI_API_KEY",
         "GOOGLE_MAPS_API_KEY",
-        "MAPBOX_ACCESS_TOKEN",
         "ONESIGNAL_APP_ID",
         "ONESIGNAL_BUSINESS_APP_ID",
         "ONESIGNAL_BUSINESS_REST_API_KEY",

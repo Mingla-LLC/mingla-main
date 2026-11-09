@@ -140,9 +140,9 @@ jest.mock("../../ui/CoverPickerSheet", () => ({
   CoverPickerSheet: (props: Record<string, unknown>) =>
     React.createElement("CoverPickerSheet", props),
 }));
-jest.mock("../../location/MapboxAddressInput", () => ({
-  MapboxAddressInput: (props: Record<string, unknown>) =>
-    React.createElement("MapboxAddressInput", props),
+jest.mock("../../location/AddressInput", () => ({
+  AddressInput: (props: Record<string, unknown>) =>
+    React.createElement("AddressInput", props),
 }));
 jest.mock("../../ui/EventCoverMedia", () => ({
   EventCoverMedia: (props: Record<string, unknown>) =>

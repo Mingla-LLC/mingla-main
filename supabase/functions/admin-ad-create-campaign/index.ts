@@ -139,7 +139,7 @@ import {
 // #1303 RC-3: the REQUIRED square logo image for the Demand Gen video responsive
 // ad — embedded base64 PNG (public brand asset, self-contained in the edge deploy).
 import { MINGLA_SQUARE_LOGO_PNG_BASE64 } from "../_shared/adDemandGenLogo.ts";
-import { forwardGeocodeText } from "../_shared/mapboxGeocode.ts";
+import { forwardGeocodeText } from "../_shared/placesGeocode.ts";
 import {
   assertTikTokIdentityAllowed,
   normalizeTikTokInterestCategoryIds,
@@ -3379,7 +3379,7 @@ serve(async (req: Request): Promise<Response> => {
           : {}),
       };
     // ISSUE-992 (3a): create-time SERVER geocode of each city circle — the
-    // MAPBOX_ACCESS_TOKEN + every coordinate stay strictly server-side. A null
+    // GOOGLE_MAPS_API_KEY + every coordinate stay strictly server-side. A null
     // geocode DROPS that circle (never fabricates a location — Constitution #3);
     // if every circle misses, buildSnapchatAdSquadBody falls back to country-only.
     const geocodedCirclesS: SnapchatCircleGeo[] = [...frozenCirclesS];

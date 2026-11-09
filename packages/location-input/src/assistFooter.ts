@@ -13,7 +13,7 @@ export type AssistFooterStatusKind =
   | "loading_suggestions"
   | "suggestions_open"
   | "no_results"
-  | "offline"
+  | "unavailable"
   | "fetching_details"
   | "pick_error";
 
@@ -24,7 +24,7 @@ export type AssistFooterStatusKind =
  * idle-after-typing full-address case (`idle` + trimmed length >= minQueryLength),
  * AND — Issue #1363 CHANGE 1 — WHILE a live suggestion list is open
  * (`suggestions_open`) when the typed text is full-length, so an un-indexed NG
- * address is always committable even when Mapbox returns junk suggestions. Stays
+ * address is always committable even when search returns junk suggestions. Stays
  * false during `loading_suggestions` (transient) and `fetching_details` (a pick
  * resolving) so the row never flickers or races a resolving pick. Hidden right
  * after a pick (`justPicked`) and when the host hasn't opted in.
@@ -61,7 +61,7 @@ export function computeShowFreeTextRow(params: {
     statusKind === "no_results" ||
     statusKind === "suggestions_open" ||
     statusKind === "idle" ||
-    statusKind === "offline" ||
+    statusKind === "unavailable" ||
     statusKind === "pick_error"
   );
 }

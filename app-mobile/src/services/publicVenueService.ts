@@ -59,6 +59,8 @@ export interface ConsumerPublicVenue {
   lat: number;
   lng: number;
   placePoolId: string | null;
+  /** #4334 — `venue_public_view.google_place_id`; anchors the Google Maps link. */
+  googlePlaceId: string | null;
   coverMediaUrl: string | null;
   coverMediaType: "image" | "video" | "gif" | null;
   coverHue: number;
@@ -134,6 +136,7 @@ interface VenueRow {
   iana_timezone?: string | null;
   pool_photo_urls: string[] | null;
   place_pool_id: string | null;
+  google_place_id?: string | null;
 }
 
 interface MenuRow {
@@ -386,6 +389,10 @@ export async function fetchConsumerPublicVenue(
     lat: row.lat,
     lng: row.lng,
     placePoolId: row.place_pool_id,
+    googlePlaceId:
+      typeof row.google_place_id === "string" && row.google_place_id.trim().length > 0
+        ? row.google_place_id
+        : null,
     coverMediaUrl: row.cover_media_url,
     coverMediaType: row.cover_media_type,
     coverHue: row.cover_hue,

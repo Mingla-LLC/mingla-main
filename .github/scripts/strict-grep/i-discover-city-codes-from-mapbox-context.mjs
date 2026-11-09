@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
+// MINGLA-INVARIANT: I-DISCOVER-CITY-CODES-FROM-STRUCTURED-CONTEXT | issue #4334 | Discover city and country codes come from the provider structured context fields, never from parsing display text.
 /**
- * Strict-grep gate — META-ORCH-1060 [Mapbox consumer migration]
- * INV-3 · I-DISCOVER-CITY-CODES-FROM-MAPBOX-CONTEXT
+ * Strict-grep gate — META-ORCH-1060 / #4334
+ * INV-3 · I-DISCOVER-CITY-CODES-FROM-STRUCTURED-CONTEXT
  *
  * The Discover city picker must source discover_city_state_code /
- * discover_city_country_code from the STRUCTURED Mapbox PlaceDetails fields
+ * discover_city_country_code from the STRUCTURED PlaceDetails fields (ISO-validated by the proxy)
  * (`details.regionCode` / `details.countryCode`), never from a display-string
  * parse. The old display-string heuristics are deleted permanently.
  *
@@ -110,7 +111,7 @@ function runSelfTest() {
     console.error(`SELF-TEST: ${selfFail} expectation(s) failed`);
     process.exit(1);
   }
-  console.log("SELF-TEST OK: I-DISCOVER-CITY-CODES-FROM-MAPBOX-CONTEXT detector behaves");
+  console.log("SELF-TEST OK: I-DISCOVER-CITY-CODES-FROM-STRUCTURED-CONTEXT detector behaves");
   process.exit(0);
 }
 
@@ -165,6 +166,20 @@ if (!fs.existsSync(CITY_PICKER)) {
       "discover_city_country_code is NOT sourced from a .countryCode field",
     );
   }
+}
+
+// 3. #4334 F-10 — Discover's device-city path stores the ISO code, never the
+// region's display name (`place.state`).
+const DISCOVER = path.join(REPO_ROOT, "app-mobile", "src", "components", "DiscoverScreen.tsx");
+if (fs.existsSync(DISCOVER)) {
+  const src = fs.readFileSync(DISCOVER, "utf8");
+  if (/stateCode:\s*place\.(state|region)\b/.test(src)) {
+    fail("INV-3: discover-device-state-code", "DiscoverScreen.tsx assigns a region NAME to stateCode (F-10)");
+  } else {
+    ok("INV-3: discover-device-state-code", "DiscoverScreen.tsx stateCode comes from a code field");
+  }
+} else {
+  fail("INV-3: discover-device-state-code", "DiscoverScreen.tsx missing");
 }
 
 process.exit(failures > 0 ? 1 : 0);

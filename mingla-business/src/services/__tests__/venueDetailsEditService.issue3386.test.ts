@@ -133,6 +133,8 @@ describe("S — host write paths", () => {
       p_address: "20 Admiralty Way",
       p_city: "",
       p_country_code: "NG",
+      // #4334 — a moved address always says which Google place it is (none here).
+      p_location_place_id: null,
       p_lat: 6.43,
       p_lng: 3.42,
       p_coordinate_precision: "approximate",

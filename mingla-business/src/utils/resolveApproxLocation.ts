@@ -7,7 +7,7 @@ import type {
   HierarchicalForwardResult,
   SavedLocationContext,
 } from "@mingla/location-input";
-import { forwardHierarchyMapbox as businessForwardHierarchy } from "../services/mapboxGeocodeService";
+import { forwardHierarchy as businessForwardHierarchy } from "../services/placesService";
 
 export type CoordinatePrecision = "exact" | "approximate";
 
@@ -19,6 +19,8 @@ export interface ApproxLocation {
   countryCode: string | null;
   precision: "approximate";
   matchLevel: "place" | "city" | "country";
+  /** #4334 rework: the Google place id of the matched result (null when absent). */
+  placeId: string | null;
 }
 
 export type ApproxLocationResolution =
@@ -90,6 +92,10 @@ export async function resolveFreeTextLocation(
       countryCode: result.details.countryCode,
       precision: "approximate",
       matchLevel: result.matchLevel,
+      placeId:
+        typeof result.details.placeId === "string" && result.details.placeId.length > 0
+          ? result.details.placeId
+          : null,
     },
   };
 }

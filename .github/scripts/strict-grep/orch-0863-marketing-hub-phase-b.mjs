@@ -1316,7 +1316,7 @@ function checkNoNewBackendFiles() {
   // META-ORCH-1059 [experiences-business-parity] Sub-A — creation foundation.
   // Adds the experience_stops table + events location/pricing-mode columns +
   // the biz_create_experience RPC (one migration) and the mapbox-geocode edge
-  // fn (Mapbox Search Box proxy for the experience stops-builder address
+  // fn (the address proxy for the experience stops-builder address
   // picker). Also lists the two source-level RPC regression tests + the
   // modified agentTools.ts (AI create_experience now writes a draft shell).
   // C7 is scoped to ORCH-0863 marketing; these are experience-parity backend
@@ -1623,8 +1623,8 @@ function checkNoNewBackendFiles() {
   const ORCH_1073_BACKEND_ALLOWLIST = [
     "supabase/migrations/20260909000000_orch_1073_admin_suspend_delete_listing.sql",
   ];
-  // ORCH-1079 [Business-venue Google→Mapbox sweep]. C7 is scoped to ORCH-0863
-  // marketing; these backend touches are the business-venue Mapbox sweep:
+  // ORCH-1079 [Business-venue address sweep]. C7 is scoped to ORCH-0863
+  // marketing; these backend touches are the business-venue address sweep:
   // (1) the POI-without-city region fallback on the shared mapbox-geocode edge
   // fn, and (2) the RETIRED Google places-autocomplete proxy (both its index.ts
   // and index.test.ts are DELETED — deleted paths still appear in
@@ -1633,8 +1633,6 @@ function checkNoNewBackendFiles() {
   // allowlists should re-scope C7 to fire only on `Close ORCH-0863`.
   const ORCH_1079_BACKEND_ALLOWLIST = [
     "supabase/functions/mapbox-geocode/index.ts",
-    "supabase/functions/mapbox-geocode/__tests__/orch_1079_poi_region_fallback.test.ts",
-    "supabase/functions/mapbox-geocode/__tests__/meta_orch_1060_region_code.test.ts",
     "supabase/functions/places-autocomplete/index.ts",
     "supabase/functions/places-autocomplete/index.test.ts",
   ];
@@ -1977,19 +1975,18 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/__tests__/orch_1076_paid_supply_suppression.test.sql",
     "supabase/functions/discover-merged-events/index.ts",
   ];
-  // META-ORCH-1060 [Mapbox consumer migration]: the mapbox-geocode edge fn
+  // META-ORCH-1060 [consumer location migration]: the mapbox-geocode edge fn
   // keystone (region_code structured fields + reverse/forward actions) is a
   // MODIFY of an existing edge fn (C7 flags modified backend files too); plus a
-  // NEW server-to-server helper _shared/mapboxGeocode.ts (paired-view 4th
+  // NEW server-to-server helper (_shared/placesGeocode.ts since #4334; paired-view 4th
   // fallback), a MODIFY of _shared/personHeroCards.ts (text-geocode fallback +
   // its Deno test), the edge-fn keystone Deno test, and 3 NEW strict-grep gate
   // files. C7 is scoped to ORCH-0863 marketing; these are consumer-location
   // backend touches. Per COMMS-0002 — lands in the SAME commit as the change.
   const META_ORCH_1060_BACKEND_ALLOWLIST = [
     "supabase/functions/mapbox-geocode/index.ts",
-    "supabase/functions/mapbox-geocode/__tests__/meta_orch_1060_region_code.test.ts",
-    "supabase/functions/_shared/mapboxGeocode.ts",
-    "supabase/functions/_shared/__tests__/meta_orch_1060_mapbox_geocode.test.ts",
+    "supabase/functions/_shared/placesGeocode.ts",
+    "supabase/functions/_shared/__tests__/issue_4334_places_geocode.test.ts",
     "supabase/functions/_shared/personHeroCards.ts",
     "supabase/functions/_shared/__tests__/meta_orch_1060_paired_text_fallback.test.ts",
     ".github/scripts/strict-grep/i-consumer-location-no-nominatim.mjs",
