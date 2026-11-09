@@ -1,6 +1,7 @@
 {
   "action_buttons": {
     "save": "收藏",
+    "website": "网站",
     "saved": "已收藏",
     "schedule": "安排日程",
     "scheduled": "已安排",

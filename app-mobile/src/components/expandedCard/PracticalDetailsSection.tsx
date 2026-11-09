@@ -48,7 +48,7 @@ import { dialablePhone } from "../../../../packages/card-identity/phone.mjs";
 import { FactRow, LinkRow, Section, present } from "./SpineParts";
 import { SPINE } from "./spineTokens";
 // issue #2468 — the ONE host effect that opens a maps deep link.
-import { openMapsTarget } from "../../utils/openMapsTarget";
+import { openPlaceDirections } from "./placeDirections";
 
 export type PracticalOpeningHours =
   | string
@@ -90,6 +90,11 @@ interface PracticalDetailsSectionProps {
   plan?: { startsAt?: string | null; endsNear?: string | null };
   /** Surfaces a failed `Linking` attempt instead of swallowing it (Constitution 3). */
   onLinkUnavailable: (what: string) => void;
+  /**
+   * #4347 wave 2 — the place's own coordinates. When present, the address row's
+   * directions anchor on them (the address is only the label).
+   */
+  coordinates?: { lat: number; lng: number } | null;
 }
 
 export default function PracticalDetailsSection({
@@ -101,6 +106,7 @@ export default function PracticalDetailsSection({
   utcOffsetMinutes,
   plan,
   onLinkUnavailable,
+  coordinates = null,
 }: PracticalDetailsSectionProps): React.ReactElement | null {
   const { t } = useTranslation(["expanded_details", "cards", "common"]);
   const [showWeek, setShowWeek] = React.useState(false);
@@ -159,14 +165,14 @@ export default function PracticalDetailsSection({
           label={t("cards:expanded.starts_at", { defaultValue: "Starts at" })}
           value={startsAt}
           trailingIcon="open-outline"
-          onPress={startsAt === null ? undefined : () => openMaps(startsAt, onLinkUnavailable, t)}
+          onPress={startsAt === null ? undefined : () => openMaps(startsAt, onLinkUnavailable, t, null)}
         />
         <FactRow
           first={startsAt === null}
           label={t("cards:expanded.ends_near", { defaultValue: "Ends near" })}
           value={endsNear}
           trailingIcon="open-outline"
-          onPress={endsNear === null ? undefined : () => openMaps(endsNear, onLinkUnavailable, t)}
+          onPress={endsNear === null ? undefined : () => openMaps(endsNear, onLinkUnavailable, t, null)}
         />
       </Section>
     );
@@ -184,7 +190,7 @@ export default function PracticalDetailsSection({
         label={t("expanded_details:action_buttons.address", { defaultValue: "Address" })}
         value={present(address) ? address : null}
         trailingIcon="open-outline"
-        onPress={present(address) ? () => openMaps(address, onLinkUnavailable, t) : undefined}
+        onPress={present(address) ? () => openMaps(address, onLinkUnavailable, t, coordinates) : undefined}
       />
 
       {weekdayLines.length > 0 ? (
@@ -316,25 +322,19 @@ function openMaps(
   address: string,
   onUnavailable: (what: string) => void,
   t: (key: string, opts?: Record<string, unknown>) => string,
+  coordinates: { lat: number; lng: number } | null,
 ): void {
   /*
-    #2468 — routed through the ONE builder (`@mingla/offering-rendering`
-    buildMapsDeepLink, via openMapsTarget). Two things are preserved verbatim
-    because they were already right: the ORCH-1148 / #1605 WEB ARM (a
-    `Platform.select` with only ios/android keys returns undefined on web and
-    the `if (url)` then silently no-ops — a dead tap nobody could see), and the
-    canOpenURL pre-flight + `onUnavailable` toast. Both now live inside
-    `openMapsTarget`.
-
-    This surface holds NO coordinate — the rows are place/plan address STRINGS
-    (`plan.startsAt`, `plan.endsNear`, `address`) with no lat/lng anywhere in
-    the props — so it keeps the honest text path. The day these gain a
-    coordinate, passing it here is the whole change.
+    #4347 wave 2 — through the sheet's ONE directions helper
+    (`openPlaceDirections`), which anchors on the place's COORDINATES when the
+    card carries them (the address is then only the label) and keeps the honest
+    text path when it does not (a plan's start / end rows hold no coordinate).
+    The ORCH-1148 / #1605 canOpenURL pre-flight and the failure toast are
+    preserved: `preflight: true` + `onUnavailable`.
   */
-  openMapsTarget(
-    { label: address, geo: null },
+  openPlaceDirections(
+    { lat: coordinates?.lat ?? null, lng: coordinates?.lng ?? null, label: address },
     {
-      // ORCH-1148 / #1605 added the pre-flight on THIS site; it is preserved.
       preflight: true,
       onUnavailable: () =>
         onUnavailable(

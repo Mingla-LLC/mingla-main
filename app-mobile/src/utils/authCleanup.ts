@@ -13,6 +13,7 @@ import {
 import { clearNativeAdAttribution } from "../services/nativeAdAttributionService";
 import { SEEN_MATCHES_KEY_PREFIX } from "../hooks/useSeenSessionMatches";
 import { TEAM_BRAND_CACHE_PREFIX } from "../components/connections/teamBrandCache";
+import { clearDeckVenueHandoff } from "../components/venuePage/deckVenueHandoff";
 
 type CleanupOptions = {
   reason: string;
@@ -47,6 +48,8 @@ export async function performPrivateAuthCleanup(options: CleanupOptions): Promis
 
   const store = useAppStore.getState();
   store.clearUserData();
+  // #4347 wave 4: the deck card handed to a venue page belongs to this user.
+  clearDeckVenueHandoff();
 
   queryClient.cancelQueries({
     predicate: (query) => shouldRemoveForAuthChange(query.queryKey, currentUserId),

@@ -16,8 +16,10 @@
  */
 
 import React from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { useTranslation } from "react-i18next";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import ConsumerExperienceDetailScreen from "../../../src/screens/Experience/ConsumerExperienceDetailScreen";
 import { useCanonicalShareArrival } from "../../../src/hooks/useCanonicalShareArrival";
@@ -36,6 +38,8 @@ function stopLabel(index: number, total: number): "Start Here" | "Then" | "End W
 
 export default function ExperienceDeepLinkScreen(): React.ReactElement | null {
   const router = useRouter();
+  const { t } = useTranslation(["cards", "common"]);
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{
     brandSlug: string | string[];
     experienceSlug: string | string[];
@@ -83,10 +87,19 @@ export default function ExperienceDeepLinkScreen(): React.ReactElement | null {
   if (isError || detail === null) {
     return (
       <View style={styles.stateHost}>
-        <Text style={styles.stateTitle}>Experience not found</Text>
-        <Text style={styles.stateSub}>
-          This experience may not be live yet, or the link is wrong.
-        </Text>
+        {/* #4347 wave 3 — a way out that is not an edge swipe. */}
+        <Pressable
+          testID="experience-not-found-close"
+          onPress={onBack}
+          accessibilityRole="button"
+          accessibilityLabel={t("common:close", { defaultValue: "Close" })}
+          hitSlop={10}
+          style={[styles.close, { top: insets.top + 12 }]}
+        >
+          <Text style={styles.closeGlyph}>{"\u2715"}</Text>
+        </Pressable>
+        <Text style={styles.stateTitle}>{t("cards:exp.not_found_title")}</Text>
+        <Text style={styles.stateSub}>{t("cards:exp.not_found_body")}</Text>
       </View>
     );
   }
@@ -180,6 +193,21 @@ const styles = StyleSheet.create({
     padding: 24,
     gap: 10,
     backgroundColor: "#0c0e12",
+  },
+  close: {
+    position: "absolute",
+    left: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.14)",
+  },
+  closeGlyph: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#FFFFFF",
   },
   stateTitle: {
     fontSize: 17,

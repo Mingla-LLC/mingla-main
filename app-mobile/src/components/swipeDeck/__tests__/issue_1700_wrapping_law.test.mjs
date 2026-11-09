@@ -184,6 +184,8 @@ test('W-7 the scrim is ONE number per surface, solved from its tallest silhouett
         CI.plateTopDepthForLines(key, tallest),
         CI.titleTopDepthForLines(key, tallest),
         s.h,
+        // #4347 — the kicker clause; self-disabled (0) on surfaces without one.
+        CI.kickerSolveDepthForLines(key, tallest),
       ),
       `W-7: ${key}'s scrim is not solved from its tallest silhouette`,
     );

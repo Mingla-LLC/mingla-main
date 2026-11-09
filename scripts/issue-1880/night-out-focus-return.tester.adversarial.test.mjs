@@ -29,17 +29,21 @@ test('N-T1 Night Out ref cannot drift to Save, Tickets, Calendar, or a wrapper',
 });
 
 test('N-T2 the existing pool same-control chain remains complete', () => {
+  // #4347 wave 3: the expanded hero is deleted. The pool chain is now modal ->
+  // pinned bar (ActionButtons) -> the one Share control's wrapper View.
   const modal = read('app-mobile/src/components/ExpandedCardModal.tsx');
-  const hero = read('app-mobile/src/components/expandedCard/ExpandedCardHero.tsx');
-  const plate = read('app-mobile/src/components/deckCardPlate.tsx');
-  const heroStart = modal.indexOf('<ExpandedCardHero');
-  const heroMount = modal.slice(heroStart, modal.indexOf('onClosePress=', heroStart));
-  assert.match(heroMount, /shareControlRef=\{shareControlRef\}/);
-  assert.match(hero, /shareControlRef=\{shareControlRef\}/);
-  const plateRef = plate.indexOf('ref={shareControlRef}');
-  const poolShareControl = plate.slice(plate.lastIndexOf('<Pressable', plateRef), plate.indexOf('</Pressable>', plateRef));
-  assert.match(poolShareControl, /ref=\{shareControlRef\}/);
-  assert.match(poolShareControl, /onPress=\{onSharePress\}/);
+  const actions = read('app-mobile/src/components/expandedCard/ActionButtons.tsx');
+  const barStart = modal.indexOf('<ActionButtons');
+  assert.notEqual(barStart, -1);
+  const bar = modal.slice(barStart, modal.indexOf('/>', modal.indexOf('shareControlRef=', barStart)));
+  assert.match(bar, /shareControlRef=\{shareControlRef\}/);
+  assert.match(actions, /shareControlRef\?: React\.Ref<View>/);
+  const refAt = actions.indexOf('ref={shareControlRef}');
+  assert.notEqual(refAt, -1);
+  assert.equal((actions.match(/ref=\{shareControlRef\}/g) ?? []).length, 1);
+  const poolShareControl = actions.slice(refAt, actions.indexOf('</TrackedTouchableOpacity>', refAt));
+  assert.match(poolShareControl, /logId="share"/);
+  assert.match(poolShareControl, /onPress=\{onShare\}/);
 });
 
 test('N-T3 failure recovery cannot focus before restored native show', () => {

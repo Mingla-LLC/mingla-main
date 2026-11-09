@@ -164,6 +164,7 @@ import {
   UtensilsCrossed,
   Video,
   VolumeX,
+  Volume2,
   Wifi,
   Wine,
   X,
@@ -472,6 +473,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   // ─── V ───
   'videocam':                   Video,
   'volume-mute':                VolumeX,
+  'volume-high':                Volume2,
 
   // ─── W ───
   'walk-outline':               Footprints,

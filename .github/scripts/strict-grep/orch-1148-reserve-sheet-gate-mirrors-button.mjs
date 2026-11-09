@@ -94,7 +94,11 @@ const NIGHTOUT_TOKENS = [/\bisNightOut\b/, /\bnightOut\b/];
 
 // JSX tags each gate renders — used as anchors.
 const BUTTON_TAG = "<TouchableOpacity"; // the Reserve-a-table button (disambiguated below)
-const BUTTON_LABEL = "Reserve a table at ${"; // accessibilityLabel inside that button
+// accessibilityLabel inside that button. #4347 wave 2: the label is now the
+// translated key, and there are TWO Reserve buttons (the single place's pinned
+// bar and the plan's band); EVERY one of them is checked. The English literal
+// is still accepted so the self-test fixtures below keep working.
+const BUTTON_LABELS = ["Reserve a table at ${", "t('cards:sheet.reserve_a11y'"];
 const SHEET_TAG = "<VenueReserveSheet";
 
 /**
@@ -158,20 +162,25 @@ function scan(src) {
   // ---- BUTTON gate ----
   // Anchor on the <TouchableOpacity> that carries the Reserve-a-table
   // accessibilityLabel (disambiguates it from other TouchableOpacity uses).
-  const labelIdx = clean.indexOf(BUTTON_LABEL);
-  const btnTagIdx =
-    labelIdx !== -1 ? clean.lastIndexOf(BUTTON_TAG, labelIdx) : -1;
-  const btnHead = gateHeadFor(clean, btnTagIdx);
+  const labelIdxs = [];
+  for (const label of BUTTON_LABELS) {
+    let at = clean.indexOf(label);
+    while (at !== -1) {
+      labelIdxs.push(at);
+      at = clean.indexOf(label, at + label.length);
+    }
+  }
+  const btnHeads = labelIdxs.map((labelIdx) => gateHeadFor(clean, clean.lastIndexOf(BUTTON_TAG, labelIdx)));
 
   // ---- SHEET gate ----
   const sheetIdx = clean.indexOf(SHEET_TAG);
   const sheetHead = gateHeadFor(clean, sheetIdx);
 
   const problems = [];
-  if (!btnHead) {
+  if (btnHeads.length === 0 || btnHeads.some((head) => !head)) {
     problems.push("Could not locate the Reserve-a-table BUTTON render gate.");
   } else {
-    problems.push(...checkGate("BUTTON", btnHead));
+    btnHeads.forEach((head, i) => problems.push(...checkGate(btnHeads.length > 1 ? `BUTTON ${i + 1}` : "BUTTON", head)));
   }
   if (!sheetHead) {
     problems.push("Could not locate the <VenueReserveSheet> render gate.");
@@ -216,14 +225,18 @@ function run() {
   // Fails-on-revert harness 2 (#1605 P0-1): delete `venue_id !== null` from the
   // BUTTON gate, which is precisely the regression this file failed to catch.
   if (process.env.ORCH1148_SIMULATE_VENUEID_REVERT === "1") {
-    const BUTTON_VENUE_ID = /venueReservable\.venue_id !== null\s*&&\s*\(/;
+    // #4347: the button gate is now the ternary `cond ? (<Reserve/>) : (<Directions/>)`
+    // inside the pinned bar's `reserve={...}` slot, so the condition may end in
+    // `? (` as well as the older `&& (`. The sheet's `venue_id !== null &&
+    // isReserveSheetOpen && (` never matches either shape.
+    const BUTTON_VENUE_ID = /venueReservable\.venue_id !== null\s*(&&|\?)\s*\(/;
     if (!BUTTON_VENUE_ID.test(src)) {
       console.error(
         "ORCH1148_SIMULATE_VENUEID_REVERT: could not find the button gate's venue_id condition — anchors may have changed.",
       );
       process.exit(2);
     }
-    src = src.replace(BUTTON_VENUE_ID, "(");
+    src = src.replace(BUTTON_VENUE_ID, (_m, op) => (op === "?" ? "true ? (" : "("));
   }
 
   const problems = scan(src);

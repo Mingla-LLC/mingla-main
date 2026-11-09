@@ -109,9 +109,22 @@ const EXPECTED_PLAN = Object.freeze({
   // executions moved from the host batch:A lane into CI-batch suites.
   // [TEST-MOD-APPROVED #3645] Re-derived after the three locally declared
   // installment gates added six batch:A executions (self-test and plain).
-  executions: 1049,
-  loadsSeconds: [157.1, 157.0, 157.0],
-  counts: [345, 348, 356],
+  // [TEST-MOD-APPROVED #4261] Re-derived after the locally declared
+  // links-open-in-mingla gate added two batch:A executions (self-test and plain).
+  // [TEST-MOD-APPROVED #4261] Re-derived after refreshing the cost table with the
+  // reviewed tool from seven 2026-11 class-a-shard-aggregate artifacts. The old
+  // table understated the heaviest rows by up to seven times, so shard 3 reached
+  // 544 s against the 540 s ceiling while shard 1 ran about 300 s.
+  // [TEST-MOD-APPROVED #4334] Re-derived after #4334 added the locally declared
+  // provider-ban gate (i-no-mapbox, +2 batch:A executions: self-test and plain).
+  // The five sealed map-provider gates keep their sealed rows (their checks are
+  // provider-neutral now). (#4334's deck-untouched gate ran in class E and is retired.)
+  // #4339: re-derived after #4339 added the locally declared built-output
+  // anti-copy gate (issue-4339-built-output-anti-copy, +2 batch:A executions:
+  // self-test and plain). Read off the plan command as above.
+  executions: 1055,
+  loadsSeconds: [385.5, 385.5, 385.5],
+  counts: [351, 352, 352],
 });
 
 const tempDir = (label) =>

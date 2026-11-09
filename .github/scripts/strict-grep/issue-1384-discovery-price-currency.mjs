@@ -214,9 +214,13 @@ const rules = {
     // The new anchors are the meta-span builder that produces it, and they are
     // strictly more specific than the old ones: they name the FUNCTION that
     // decides, not one of two call sites that happened to look alike.
+    //
+    // #4347 wave 1 — the same property, one hop further: metaSpansForCard now
+    // hands the card's OWN priceRange to the fact-line producer (deckModel
+    // below), which pushes it only when present. Both hops are anchored.
     required: [
       "function metaSpansForCard(",
-      "if (card.priceRange) spans.push({ kind: 'fact', text: card.priceRange });",
+      "priceRange: card.priceRange ?? null,",
     ],
     venueOnly: true,
     forbid: [
@@ -228,6 +232,23 @@ const rules = {
     ],
     exclusion:
       "Brand experience and curated branches are explicitly excluded and may retain their separate event/itinerary currency arguments.",
+  },
+  deckModel: {
+    // #4347 wave 1 — the single place's fact-line producer. It prints the
+    // venue's own price string, guarded for absence, and computes no money.
+    required: [
+      "export function placeFactSpans(",
+      "const price = trimmed(card.priceRange);",
+      "if (price !== null) spans.push({ kind: 'fact', text: price });",
+    ],
+    venueOnly: true,
+    forbid: [
+      "fabricated dollar/pound literal",
+      "device/client FX authority",
+      "rate-one fallback",
+      "tier threshold money",
+      "tier/Google ordinal venue money",
+    ],
   },
   board: {
     required: ["{cardData.priceRange ? (", "{cardData.priceRange}"],
@@ -781,6 +802,7 @@ const paths = {
   personGrid: "app-mobile/src/components/PersonGridCard.tsx",
   holidayView: "app-mobile/src/components/PersonHolidayView.tsx",
   swipeable: "app-mobile/src/components/SwipeableCards.tsx",
+  deckModel: "app-mobile/src/components/deckCard/deckCardModel.ts",
   board: "app-mobile/src/components/board/SwipeableSessionCards.tsx",
   admin: "mingla-admin/src/pages/PlacePoolManagementPage.jsx",
   adminHandler: "supabase/functions/admin-review-venue-claim/index.ts",

@@ -45,6 +45,7 @@ const SRC = {
   swipeable: '../../SwipeableCards.tsx',
   curated: '../../CuratedExperienceSwipeCard.tsx',
   plate: '../../deckCardPlate.tsx',
+  chrome: '../../deckCard/DeckCardChrome.tsx',
 };
 
 /** Strip `//` and block comments, preserving string literals (#1607). */
@@ -111,9 +112,11 @@ test('H-0 VACUITY the three sources were read, stripped, and still contain what 
   // subjects exist before asserting anything about their shape.
   assert.ok(count(code.plate, /export function CuratedSlivers\(/g) === 1, 'H-0: CuratedSlivers is gone');
   assert.ok(count(code.plate, /export function platePresentation\(/g) === 1, 'H-0: platePresentation is gone');
+  // #4347 wave 1 — the name is drawn by DeckTextColumn (kicker + title column).
   for (const tree of ANCHORING_TREES) {
-    assert.ok(count(code[tree], /styles\.cardTitle\b/g) > 0, `H-0: ${tree} no longer draws the name`);
+    assert.ok(count(code[tree], /<DeckTextColumn\b/g) > 0, `H-0: ${tree} no longer draws the name`);
   }
+  assert.ok(code.chrome.includes('export function DeckTextColumn('), 'H-0: DeckTextColumn is gone');
   assert.notEqual(S1.plateH, CI.PLATE_H_NO_META, 'H-0: the package no longer has two silhouettes');
 });
 
@@ -192,14 +195,17 @@ test('H-3 plateH is a REQUIRED prop, so a forgotten one is a type error and not 
 });
 
 test('H-4 EVERY name render site composes a per-render bottom from a presentation object', () => {
+  // #4347 wave 1 — REWRITTEN, SAME PROTECTION: the render site is now
+  // `<DeckTextColumn … bottom={presentation.titleBottom} />`, and the column
+  // applies that bottom per render (asserted in H-6).
   for (const tree of ANCHORING_TREES) {
-    const usages = count(code[tree], /styles\.cardTitle\b/g);
+    const usages = count(code[tree], /<DeckTextColumn\b/g);
     const composed = [...code[tree].matchAll(
-      /style=\{\[\s*styles\.cardTitle\s*,\s*\{\s*bottom:\s*([A-Za-z_$][\w$]*)\.titleBottom\s*\}\s*\]\}/g,
+      /<DeckTextColumn\b[^>]*?\bbottom=\{\s*([A-Za-z_$][\w$]*)\.titleBottom\s*\}/g,
     )];
     assert.equal(
       composed.length, usages,
-      `H-4: ${tree} has ${usages} styles.cardTitle usages but ${composed.length} carry a per-render `
+      `H-4: ${tree} has ${usages} DeckTextColumn usages but ${composed.length} carry a per-render `
       + 'bottom. Every face that draws the name must anchor it to the plate height being rendered — '
       + 'a face that misses it strands the name over dead scrim in the alternate silhouette.',
     );
@@ -237,15 +243,20 @@ test('H-6 no module-load stylesheet on any face still bakes in a plate-relative 
   // The positive-wiring mirror of the tester's A-2/A-4: it is not enough that the
   // render sites are wired, the OLD constants must be gone, or a later edit can
   // quietly re-select them.
+  // #4347 wave 1 — the name's style is DeckTextColumn's `column` block, and
+  // the old per-tree `cardTitle` blocks must stay deleted (a later edit could
+  // otherwise quietly re-select a module-load anchor).
   for (const tree of ANCHORING_TREES) {
-    const block = /\bcardTitle:\s*\{([\s\S]*?)\n\s*\},/.exec(code[tree]);
-    assert.ok(block, `H-6: ${tree}'s cardTitle style block is gone`);
-    assert.equal(
-      /(?:^|[\s{,])bottom:/.test(block[1]), false,
-      `H-6: ${tree}'s cardTitle style carries a static \`bottom\` again. StyleSheet.create is `
-      + 'evaluated once per module; this value is per render.',
-    );
+    assert.equal(/\bcardTitle:\s*\{/.test(code[tree]), false, `H-6: ${tree}'s deleted cardTitle style is back`);
   }
+  const column = /\bcolumn:\s*\{([\s\S]*?)\n\s*\},/.exec(code.chrome);
+  assert.ok(column, "H-6: DeckTextColumn's column style block is gone");
+  assert.equal(
+    /(?:^|[\s{,])bottom:/.test(column[1]), false,
+    "H-6: DeckTextColumn's column style carries a static `bottom` again. StyleSheet.create is "
+    + 'evaluated once per module; this value is per render.',
+  );
+  assert.match(code.chrome, /style=\{\[styles\.column, \{ bottom \}\]\}/, 'H-6: the column no longer applies its bottom per render');
   const sliver = /\bsliver:\s*\{([\s\S]*?)\n\s*\},/.exec(code.plate);
   assert.ok(sliver, 'H-6: the sliver style block is gone');
   assert.equal(

@@ -105,11 +105,14 @@ test('T-4 link 4 — Save writes the card the DECK holds, which is now the edite
   // This is why fixing half 1 fixes half 2, and it is a claim about a chain, so
   // each link is asserted rather than the endpoints.
   //
-  // ActionButtons is handed `(planCard ?? card)` — the edited plan.
+  // The plan's pinned bar is handed `planCard` (curatedLocalCard ?? the card) —
+  // the edited plan. (#4347 wave 3: the in-flow band became the pinned bar.)
+  assert.match(MODAL, /const planCard = curatedLocalCard \?\? curatedCard;/, 'T-4: the plan no longer prefers the edited copy');
   assert.match(
-    MODAL, /card=\{\(planCard \?\? card\) as ExpandedCardData\}/,
-    'T-4: the action band is no longer given the edited plan',
+    MODAL, /const actionCard = \(isCuratedCard && planCard \? planCard : card\) as unknown as ExpandedCardData;/,
+    'T-4: the plan bar is no longer given the edited plan',
   );
+  assert.equal((MODAL.match(/card=\{actionCard\}/g) ?? []).length, 2, 'T-4: a bar is not handed the edited-plan card');
   // The deck's save path reads `currentRec` — its OWN copy — which the write-back
   // has now patched. If this ever stopped reading the deck's copy, the write-back
   // would no longer be what makes the save correct.

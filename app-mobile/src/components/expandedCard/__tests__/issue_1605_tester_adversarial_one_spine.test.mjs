@@ -294,7 +294,10 @@ test('A-2 the sheet and the deck card resolve the same plate at every span count
 });
 
 test('A-2b the variable hero height cannot invalidate the scrim, at any sheet height', () => {
-  const want = CI.surfaceScrimHeight('s1Single');
+  // #4347 wave 1 — the sheet's OWN scrim. The deck card (kicker clause) now
+  // solves deeper; what this guards is that the hero height never moves the
+  // sheet's scrim, which is unchanged.
+  const want = CI.surfaceScrimHeight('s7Expanded');
   // #1700 — the TALLEST silhouette's depths, not the canonical plate's. The
   // scrim is solved from the deepest-reaching composition a surface can render
   // (a two-line facts row), so comparing against the canonical depths here made
@@ -325,84 +328,12 @@ test('A-2b the variable hero height cannot invalidate the scrim, at any sheet he
   }
 });
 
-test('A-2c the COVERLESS hero is shorter than the scrim, so it must not draw one', () => {
-  // This is the one height that can actually make `scrimHeight`'s `min(H, cardH)`
-  // clamp bind, and it is the case nobody sampled: the coverless slab is 232pt
-  // against a 316pt scrim. A gradient there would be silently TRUNCATED, and
-  // every ratio in §7.1 would be void on exactly the surface that has no
-  // photograph to justify a gradient in the first place.
-  const coverless = CI.expandedCoverlessHeroHeight();
-  const scrim = CI.surfaceScrimHeight('s7Expanded');
-  assert.ok(
-    coverless < scrim,
-    `A-2c (vacuity): the coverless hero (${coverless}) is no longer shorter than the scrim (${scrim}), `
-    + 'so this rule is not testing the case it exists for.',
-  );
-  assert.notEqual(
-    CI.scrimHeight(CI.plateTopDepth('s7Expanded'), CI.titleTopDepth('s7Expanded'), coverless),
-    scrim,
-    `A-2c (vacuity): the clamp did not bind at ${coverless}pt, so a truncated scrim is not the hazard `
-    + 'this rule assumes.',
-  );
-
-  // So the coverless branch draws NO gradient. Delimited structurally: the
-  // branch is the block that returns the slab, and it must contain no
-  // LinearGradient of its own.
-  const hero = stripComments(
-    fs.readFileSync(path.join(REPO, 'app-mobile/src/components/expandedCard/ExpandedCardHero.tsx'), 'utf8'),
-  );
-  const at = hero.indexOf('if (coverless)');
-  assert.ok(at > 0, 'A-2c (vacuity): could not delimit the coverless branch, so the assertion is about nothing');
-  const end = hero.indexOf('return (', hero.indexOf('}', hero.indexOf('  }', at)));
-  const block = hero.slice(at, end > at ? end : hero.length);
-  assert.ok(
-    block.includes('coverlessSlab'),
-    'A-2c (vacuity): the delimited block is not the coverless branch',
-  );
-  assert.equal(
-    /LinearGradient|RAMP\./.test(block),
-    false,
-    'A-2c: the coverless hero draws a scrim. At 232pt it is CLIPPED by the 316pt scrim height, so the '
-    + 'gradient the contrast table was measured on is not the gradient on screen — and there is no '
-    + 'photograph under it to need one.',
-  );
-});
-
+// #4347 wave 3 — A-2c and A-3 (the coverless hero slab and its scrim) are
+// DELETED with the expanded hero (#4347 wave 3): the plan sheet opens on the gallery, and a
+// plan with no photo gets the gallery's short neutral header (pinned by the
+// wave 2 G-3 test and the wave 3 plan render test P-2).
 // ─────────────────────────────────────────────────────────────────────────────
 // A-3 · THE COVERLESS HERO IS BIG ENOUGH FOR THE OBJECT IT HAS TO HOLD
 // ─────────────────────────────────────────────────────────────────────────────
 
-test('A-3 the coverless slab cannot clip the plate or the title it is shaped around', () => {
-  const s7 = CI.SURFACES.s7Expanded;
-  const h = CI.expandedCoverlessHeroHeight();
 
-  // The composition the slab has to hold, computed from the descriptor rather
-  // than read off the design doc: the plate sits `bottomInset` above the bottom,
-  // the title's baseline block sits `gap` above the plate, and it is two lines.
-  const needed = s7.bottomInset + CI.SURFACES.s1Single.plateH + s7.gap + s7.titleLines * s7.titleLH;
-  assert.ok(
-    h >= needed,
-    `A-3: the coverless hero is ${h}pt but the plate + gap + two title lines need ${needed}pt. A card `
-    + 'with no photograph would have its title clipped by the top of its own sheet — and the coverless '
-    + 'state is the ONE state where nothing else on screen could explain the missing text.',
-  );
-  // It must not be so tall that it is a slab with a hole in it either: the whole
-  // point of §8.3 is ONE object, not a plate floating on a field of grey.
-  assert.ok(
-    h - needed <= 64,
-    `A-3: the coverless hero is ${h}pt against a ${needed}pt composition — ${h - needed}pt of bare slab `
-    + 'above the title makes it a panel the plate sits on rather than one object.',
-  );
-
-  // The hero must actually USE it, on the coverless branch, from the package.
-  const hero = stripComments(
-    fs.readFileSync(path.join(REPO, 'app-mobile/src/components/expandedCard/ExpandedCardHero.tsx'), 'utf8'),
-  );
-  assert.ok(hero.length > 400, 'A-3 (vacuity): the hero source did not read');
-  assert.match(
-    hero,
-    /expandedCoverlessHeroHeight/,
-    'A-3: the hero no longer takes its coverless height from the package, so the slab and the plate it '
-    + 'is shaped around can drift apart.',
-  );
-});

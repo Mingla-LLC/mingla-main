@@ -1,6 +1,7 @@
 {
   "action_buttons": {
     "save": "저장",
+    "website": "웹사이트",
     "saved": "저장됨",
     "schedule": "일정 추가",
     "scheduled": "일정 추가됨",

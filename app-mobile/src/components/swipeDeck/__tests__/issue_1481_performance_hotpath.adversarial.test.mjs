@@ -1,6 +1,10 @@
+import { readFileSync } from 'node:fs';
+import CI_ID from '../../../../../packages/card-identity/index.js';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+// #4347 — the pager's preload bound, read from the single geometry source.
+const CI_PAGER = CI_ID.PHOTO_PAGER;
 
 // [TEST-MOD-APPROVED ORCH-1481 AMENDMENT-5]
 
@@ -190,8 +194,28 @@ test('the render hot path has a stable two-poster bound and no explicit speculat
   assert.doesNotMatch(swipeable, /deckPrefetchIndex|DECK_PREFETCH_CACHE_POLICY/);
   assert.doesNotMatch(files.heroPolicy, /prefetch/i);
   assert.match(swipeable, /const CardHeroImage = React\.memo/);
-  assert.match(swipeable, /const source = React\.useMemo\(\s*\(\) => \(\{ uri: src, width: decodeTarget\.width, height: decodeTarget\.height \}\)/);
-  assert.match(swipeable, /recyclingKey=\{src\}/);
+  // #4347 — the poster's uri is the pager's page; changing it on the same
+  // mounted ExpoImage IS the cross-fade, so the per-src recyclingKey (which
+  // blanks the view on every change) is deleted with the src state.
+  assert.match(swipeable, /const source = React\.useMemo\(\s*\(\) => \(\{ uri, width: decodeTarget\.width, height: decodeTarget\.height \}\)/);
+  assert.doesNotMatch(swipeable.slice(swipeable.indexOf('const CardHeroImage'), swipeable.indexOf('function CardHero(')), /recyclingKey/);
+  // #4347 wave 1 — REWRITTEN, SAME PROTECTION. The approved pager preloads the
+  // next 2 photos of the TOP card. SwipeableCards itself still performs NO
+  // explicit load; the deck's ONE explicit load is `useTopCardPhotoPreload`,
+  // bounded by `photosToPreload` (PHOTO_PAGER.preloadAhead = 2), disk-only, and
+  // fed the current card's pager only. Asserted here so the bound cannot grow.
+  {
+    const hooks = readFileSync(new URL('../../deckCard/deckCardHooks.ts', import.meta.url), 'utf8');
+    const model = readFileSync(new URL('../../deckCard/deckCardModel.ts', import.meta.url), 'utf8');
+    assert.equal((hooks.match(/ExpoImage\.prefetch\(/g) ?? []).length, 1, 'exactly one explicit preload site');
+    assert.match(hooks, /photosToPreload\(photos, index\)/);
+    assert.match(hooks, /ExpoImage\.prefetch\(key\.split\('\|'\), 'disk'\)/);
+    assert.match(model, /\.slice\(index \+ 1, index \+ 1 \+ PHOTO_PAGER\.preloadAhead\)/);
+    assert.equal(CI_PAGER.preloadAhead, 2);
+    assert.match(swipeable, /useTopCardPhotoPreload\(currentPhotos, currentPhotoIndex, currentFailedPhotos\)/);
+    assert.equal((swipeable.match(/useTopCardPhotoPreload\(/g) ?? []).length, 1, 'the behind card must never preload');
+  }
+
   assert.match(swipeable, /allowDownscaling/);
   const behind = swipeable.slice(swipeable.indexOf('Next card is a poster-only'), swipeable.indexOf('{\/\* Current Card \*\/}'));
   // Issue #2113 EMPTY-WINDOW GUARD. BOTH boundaries of this window are JSX

@@ -108,7 +108,112 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4216: re-sealed after the Creator rights migration entered the same three
 // full-history replay inventories and gained an exact-file exclusion from the
 // deliberately pre-#1931 replay that has no Creator/gig schema.
-export const BOOTSTRAP_SHA256 = "9793619c2c320ce08028e2bac794ee14619eae6ef26a5c4e8b35b66563dc3ce6";
+// #3281: re-sealed after the per-date maximum migration entered the same
+// inventories and filtered replays.
+// #3281: re-sealed after the day-limited tickets migration and its PostgreSQL
+// proof entered the same inventories and filtered replays.
+// #3281: re-sealed after the door active date migration followed them.
+// #4226: re-sealed after the ticket buyer people migration and its proof followed them.
+// #3281: re-sealed after the Extras schema migration joined the same replays.
+// #4226: re-sealed after the host contacts people migration and its proof followed them,
+// and the #1995 blast suite watches the one email footer line instead of the retired
+// per-reason module.
+// #3281: re-sealed after the webhook fee migration joined the same replays.
+// #3281: re-sealed after the Extras checkout migration joined the same replays.
+// #3355: re-sealed after the renumbered #3355/#2830 migrations and proofs entered
+// the preserved inventories, and brand readiness, paid-tier terms and event seed
+// truth joined the deliberately pre-#1931 replay's skip list by exact filename (#2492).
+// #3355: re-sealed after the Ari flow runs migration joined that skip list by exact
+// filename (it links runs to ari_agent_jobs from the skipped control-plane migration).
+// #3281: register the Extras authoring migration and its proof the same way.
+// #3281: register the public Extras migration and its proof the same way.
+// #3355: register the Ari flow engine flag migration and its proof the same way.
+// #4238: re-sealed after the list-audience migration, its proof and the tester's adversarial proof joined the same replays.
+// #4250: re-sealed after the profiles admin-flag drop, its proof and its adversarial proof joined the same replays.
+// #3281: register the Explorer buyable-date migration and its proof the same way.
+// #4251: register the going-RSVPs cover type migration and its proof the same way.
+// #4256: register the no-auto-promo-cards migration the same way.
+// #4255: register the admin access and Work closed-range migrations the same way.
+// #3281: register the fast Explorer listing rule migration and its proof the same way.
+// #3281: register the per-date Explorer listing rule migration and its proof the same way.
+// #4261: register the friend-share, plan, place-vote, referral and repin migrations.
+// #4261: register the friend-request decline fix migration and its proof the same way.
+// #3682: register the follow closeout migrations (waves 1-3) and their proofs the same way.
+// #3682: register the tester send-time switch migration and adversarial proofs the same way.
+// #3682: the roster suite runs the closeout subject and empty-roster proofs.
+// #3281: register the Discover card price and bookable experiences migration (20280402004265) and its proof the same way.
+// #4273: register the Invite step sources-and-methods migration and its proofs the same way.
+// #4273: register the Blast combined-audience migration and its proofs the same way.
+// #4273: register the tester adversarial proofs the same way.
+// #4273: register the rework proofs the same way.
+// #4261: renumber the #4261 migrations after #3682, then after #4265 and #4270, before #4273 (20280403034261-20280403084261).
+// #4261: the #1880 expanded-share suite also runs when PlansSheet or PlanMatchesSheet change (they own the two collab mounts now).
+// #4273: register the tester retest proofs the same way.
+// #4273: register the segment-count proofs the same way.
+// #3281: register the door extras migration and test
+// #3281: register the private link dates migration and test
+// #3281: skip the private link dates migration on the pre-feature lanes
+// #3281: skip the private link dates migration on the pre-feature lanes
+// #4275: register the signal batch and cron stagger migrations and their proofs the same way.
+// #4283: register the accept single-member-row migration and its proofs
+// #4276: register the place-pipeline migrations and their proofs.
+// #4276: skip the conductor, score-hold and unparseable-date migrations on the pre-#1931 replay
+// (the conductor re-emits the #3872 Local picker typed on public.locals, which that replay skips).
+// #2830: register the Website setup takeover migration and its proof; the recovery workflow names the Studio migration guard.
+// #4271: re-sealed after the door pay migration and proof entered the preserved
+// inventories and the migration joined the pre-#1931 replay skip list by exact filename.
+// #4271: register the tester adversarial PostgreSQL proof the same way.
+// #4271: register the rework implementor PostgreSQL proof the same way.
+// #4271: register the Apple build PostgreSQL proof the same way.
+// #4271: register the final tester PostgreSQL proof the same way.
+// #4271: re-sealed after merging origin/main (#4261/#4273/#4275/#4276/#4283/#2830 rows kept beside the #4271 rows).
+// #3645: register the stay flat-net migration the same way.
+// #4271: register the resumable stuck-refund migration and its PostgreSQL proof.
+// #4271: register the resumable stuck-refund tester PostgreSQL proof (PR #4303).
+// #4271: PR #4303 rework renamed the migration and both proofs (failed-refund guard).
+// #4276: re-sealed after merging origin/main (#4271/#2830 rows kept beside the #4276 rows).
+// #4294: re-sealed after the Mingla connector migration entered the preserved inventories
+// and joined the pre-#1931 replay skip list by exact filename.
+// #4294: re-sealed after the connector's tester PostgreSQL proof joined the pre-#1931 template suites' inventories.
+// #4294: re-sealed after merging origin/main (#4303 and #4296 rows kept beside the #4294 rows).
+// #4273: register the buyer/follower auto opt-in, honest-quote and account-opt-out migrations and their proofs.
+// #4270: register the brand plan migrations (20280427004270-20280427024270) and their proofs the same way.
+// #3645: register the unpaid-release-holds migration and its PostgreSQL proof the same way.
+// #4294: re-sealed after the company sign-in migration and its PostgreSQL proof entered the preserved inventories
+// and the migration joined the pre-#1931 replay's exact-file exclusion.
+// #4294 (tester): re-sealed after the company sign-in tester proof entered the preserved inventories.
+// #4271: register the tap buyer-name migration and its PostgreSQL proofs the same way.
+// #4271: the tap buyer-name migration joins the pre-#1931 replay's exact-file exclusion beside door pay.
+// #3645: register the sell-and-publish integrity migration, its PostgreSQL proof and its re-emit guard.
+// #3645: the sell-and-publish migration joins the pre-#1931 and pre-#2117 replay skip lists by exact filename.
+// #4304: register the Brand group live migration and its PostgreSQL proof the same way.
+// #4270 W7: register the admin Brand group inbox suites; migration 20280502004270; re-sealed after merging origin/main (#4322).
+// #4273 polish: register the sent-previews migration, its PostgreSQL proofs (implementor + tester) and the campaign-screen render proof.
+// #1023: skip the wave 2 theme migration (20280430011023) in the #1931 and #2117 filtered replays.
+// #1023: re-sealed after merging origin/main (#3645, #4294, #4271, #4304, #4270 W7 rows kept beside the #1023 rows).
+// #1023: re-sealed after merging origin/main 4ace6deafa (#4331 rows kept beside the #1023 rows).
+// #1023: re-sealed after merging origin/main 5dd7f103ca (#4273 polish rows kept beside the #1023 rows).
+// #1023: re-sealed after merging origin/main 6038982e1a.
+// #4318: register the /links migration (20280508004318) and its implementor and tester PostgreSQL proofs; it joins the pre-#1931 replay skip list by exact filename.
+// #4318: register the /links live-cities (20280514004318) and strip end-date (20280515004318) migrations and their PostgreSQL proofs; the end-date migration joins the pre-#1931 replay skip list by exact filename.
+// #4318: register the /links per-city places migration (20280516004318) and its PostgreSQL proof the same way.
+// #4273 unpriced country: register the sms-unpriced-country migration and its PostgreSQL proofs (implementor + tester); re-sealed after merging origin/main.
+// #4273 all countries: register the all-countries / automatic-prices PostgreSQL proof.
+// #4273 all countries (tester): register the tester adversarial PostgreSQL proof.
+// #4273: re-sealed for the SMS opt-out link suite.
+// #4273: re-sealed after merging origin/main (#4318) and moving the migration to 20280522004273.
+// #4273 tester retest 3: register the SMS opt-out scope PostgreSQL proof.
+// #4273: re-sealed after moving the migration to 20280522004273 (above production's 20280521004334).
+// #4273: re-sealed after merging origin/main (#4350).
+// #4339: register the Ari draft hand-off migration (20280512004339) and its implementor PostgreSQL proof in the #1857, #1931 and #2117 replay lanes, after merging origin/main 2e6e331749 (#4318).
+// #4339: the #1931 lane skips 20280512004339_issue_4339_site_prompt_drafts.sql by exact filename (#2492 closure guard: CREATE TABLE columns are not credited as definitions).
+// #4339 round A: register the Book a call leads migration (20280520004339) and its implementor PostgreSQL proof in the #1857, #1931 and #2117 replay lanes (the #2492 closure guard passes without a skip).
+// #4339 round B: register the ad marketing destinations migration (20280522004339) and its implementor PostgreSQL proof in the #1857, #1931 and #2117 replay lanes.
+// #4339: re-sealed after merging origin/main 85dba1f14e (#4349 /links rows kept beside the #4339 rows).
+// #4339: re-sealed after merging origin/main 28f88fea6d (#4334 and #4273 rows kept beside the #4339 rows) and adding marketing-capture.ts to the issue-905 path scope.
+// #4347: drop the deleted expanded hero and busyness service from the #1880 and #1605 originPaths (both files are gone; the patterns matched nothing).
+// #4347: re-sealed after merging origin/main 671964a09e (#4339 and #4273 rows kept beside the #4347 originPath removals).
+export const BOOTSTRAP_SHA256 = "6f6f2b46e1fc58b7067638c561b55e9eb73670822320bc386d75882e4f0dec81";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

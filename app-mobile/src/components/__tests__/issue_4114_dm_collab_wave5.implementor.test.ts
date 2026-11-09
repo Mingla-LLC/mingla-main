@@ -68,7 +68,8 @@ Deno.test("W5 once joined, the 1:1 chat uses the collab header and the session d
   assert(/: isDmCollabActive\s*\? dmCollabSession\?\.id \?\? null/.test(chat), "the 1:1 collab's session id");
   assert(/useSessionSavedCardsForSheet\(\s*collabSessionId,/.test(chat), "matches from the session");
   assert(/useSessionScheduledCards\(collabSessionId\)/.test(chat), "plans from the session");
-  assert(/isCollabChat && showCollabDeckSheet && collabSessionId \? \(\s*<CollabDeckSheet[\s\S]*?sessionId=\{collabSessionId\}/.test(chat), "the deck takes the session id");
+  // #4347 rework: the sheet stays mounted for a collab chat and only `visible` flips.
+  assert(/isCollabChat && collabSessionId \? \(\s*<CollabDeckSheet\s+visible=\{showCollabDeckSheet\}[\s\S]*?sessionId=\{collabSessionId\}/.test(chat), "the deck takes the session id");
   assert(/collaborating=\{isCollabChat\}/.test(chat), "orange ring");
   assert(/isDmCollabActive \? \([\s\S]*?t\('chat:collaborating'\)/.test(chat), "Collaborating subtitle");
   assert(/primaryAction=\{\s*isCollabChat\s*\? \{\s*label: t\('chat:swipe'\)/.test(chat), "Swipe in a 1:1 collab");

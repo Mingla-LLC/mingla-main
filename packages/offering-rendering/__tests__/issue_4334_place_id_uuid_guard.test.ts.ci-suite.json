@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "packages/offering-rendering/__tests__/issue_4334_place_id_uuid_guard.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4334-place-id-uuid-guard-packages",
+  "profile": "deno-2-unit"
+}

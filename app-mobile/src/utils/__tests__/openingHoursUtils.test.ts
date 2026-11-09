@@ -47,10 +47,14 @@ Deno.test("ORCH-1021: 12:00 - 5:00 PM remains noon-to-five", () => {
 });
 
 Deno.test("ORCH-1021: overnight AM-close shorthand still crosses midnight", () => {
-  const hours = ["Saturday: 9:00 - 1:00 AM"];
+  // #4347 wave 3 follow-up: the small hours belong to the night BEFORE, so the
+  // 00:30 check reads Friday's range (one overnight model with getOpenStatusAt).
+  const hours = ["Friday: 9:00 - 1:00 AM", "Saturday: 9:00 - 1:00 AM"];
 
   assertEquals(isPlaceOpenAt(hours, saturdayAt(20, 59)), false);
   assertEquals(isPlaceOpenAt(hours, saturdayAt(21, 0)), true);
   assertEquals(isPlaceOpenAt(hours, saturdayAt(0, 30)), true);
   assertEquals(isPlaceOpenAt(hours, saturdayAt(1, 0)), false);
+  // Only Saturday listed: Saturday's own 9pm opening does not cover Saturday 00:30.
+  assertEquals(isPlaceOpenAt(["Saturday: 9:00 - 1:00 AM"], saturdayAt(0, 30)), false);
 });

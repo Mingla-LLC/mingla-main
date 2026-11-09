@@ -98,9 +98,10 @@ test('S-3 the supplies line degrades rather than inventing an occasion', () => {
 });
 
 test('S-4 supplies renders BEFORE the plan', () => {
-  const modal = read('app-mobile/src/components/ExpandedCardModal.tsx');
-  const supplies = modal.indexOf('<SuppliesList');
-  const plan = modal.indexOf('<StopList');
+  // #4347 wave 3 — the plan body owns the order now.
+  const body = read('app-mobile/src/components/expandedCard/CuratedPlanBody.tsx');
+  const supplies = body.indexOf('<SuppliesList');
+  const plan = body.indexOf('testID="plan-stops"');
   assert.ok(supplies > 0, 'S-4: the supplies list is gone');
   assert.ok(plan > 0, 'S-4: the plan is gone');
   assert.ok(
@@ -108,9 +109,9 @@ test('S-4 supplies renders BEFORE the plan', () => {
     'S-4: supplies still renders after the plan. You buy before you go, so the list is the first '
     + 'thing the plan asks of you.',
   );
-  assert.match(modal, /purposeLine=\{suppliesPurposeLine\}/, 'S-4: the supplies list has no occasion line');
+  assert.match(body, /purposeLine=\{suppliesPurposeLine\}/, 'S-4: the supplies list has no occasion line');
+  assert.match(read('app-mobile/src/components/ExpandedCardModal.tsx'), /suppliesPurposeLine=\{suppliesPurposeLine\}/, 'S-4: the sheet no longer hands the occasion line to the plan');
 });
-
 test('S-5 the stop controls are OUTSIDE the expanded block', () => {
   const list = read('app-mobile/src/components/expandedCard/StopList.tsx');
   const controls = list.indexOf('<View style={styles.controls}>');
@@ -176,32 +177,22 @@ test('S-8 no hook is declared below the sheet\'s early returns', () => {
   );
 });
 
-test('S-9 the busyness value is never the thing that shrinks', () => {
-  // Seth, on a device: "Estiated should take another line. Also the text usually..
-  // is not shown fully on android." He was reading "Usually stea…".
-  //
-  // The cause was NOT the deck plate's wrapping law — it was this row: `value`
-  // carried flexShrink 1 and `estimated` carried flexShrink 0, so Android clipped
-  // the FACT to preserve the CAVEAT.
-  const src = read('app-mobile/src/components/expandedCard/ConditionsSection.tsx');
-  const value = /^  value: \{([^}]*)\},/m.exec(src);
-  assert.ok(value, 'S-9: the busyness value style is gone');
-  assert.equal(
-    /flexShrink:\s*1/.test(value[1]), false,
-    'S-9: the busyness value can shrink again, so Android will clip "Usually steady" to make room '
-    + 'for the disclosure beside it',
-  );
-  // And the value must not be clamped to one line either.
-  const row = src.slice(src.indexOf('<Text style={styles.value}'), src.indexOf('<Text style={styles.value}') + 120);
-  assert.equal(/numberOfLines=\{1\}/.test(row), false, 'S-9: the busyness value is clamped to one line');
-  // The disclosure is a sibling of the value's ROW, not a sibling of the value.
-  assert.match(src, /busyTop:/, 'S-9: the value and sparkline are no longer their own line');
-  assert.match(
-    src, /flexDirection: "column"/,
-    'S-9: the busyness body is a row again, which is what made the value shrink',
-  );
+test('S-9 the crowd value is never the thing that shrinks', () => {
+  // Seth, on a device: "the text usually.. is not shown fully on android." He
+  // was reading "Usually stea…". #4347 wave 3 — the crowd now renders as a stop
+  // chip ("Usually steady then") and a Conditions row value; neither may be
+  // clamped to one line or shrink to make room for something beside it.
+  const card = read('app-mobile/src/components/expandedCard/PlanStopCard.tsx');
+  const chip = card.slice(card.indexOf('style={[styles.chipText'), card.indexOf('style={[styles.chipText') + 200);
+  assert.ok(chip.length > 20, 'S-9 (vacuity): the stop chip text is gone');
+  assert.equal(/numberOfLines/.test(chip), false, 'S-9: the stop chip (crowd) is clamped to one line');
+  assert.match(card, /chips: \{\s*flexDirection: 'row',\s*flexWrap: 'wrap'/, 'S-9: the chips no longer wrap, so a long crowd chip is cut');
+  const sections = read('app-mobile/src/components/expandedCard/PlanSections.tsx');
+  const value = /^  rowValue: \{([^}]*)\},/m.exec(sections);
+  assert.ok(value, 'S-9: the Conditions row value style is gone');
+  assert.equal(/flexShrink:\s*1/.test(value[1]), false, 'S-9: the crowd value can shrink again');
+  assert.match(sections, /^  row: \{[^}]*flexWrap: 'wrap'/m, 'S-9: a Conditions row cannot wrap its value onto a second line');
 });
-
 test('S-10 a fact row grows to hold its value rather than clipping it', () => {
   // Seth, on the device: "the details section on an expanded card sometimes gets
   // squished up. It does not expand vertically to contain the elements so there
