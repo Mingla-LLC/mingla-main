@@ -148,7 +148,7 @@ test('built: no legacy font preload, hero poster preloaded, first-load JS', { sk
 
 test('speed fix: the first-load budget runs in the build, and city routes leave the historical layout behind', async () => {
   const pkg = JSON.parse(read('package.json'))
-  assert.match(pkg.scripts.build, /issue-4339-built-output-anti-copy\.mjs --built && node scripts\/issue-4339-first-load-budget\.mjs --self-test && node scripts\/issue-4339-first-load-budget\.mjs$/, 'the budget closes the release build')
+  assert.match(pkg.scripts.build, /&& next build && [^]*node scripts\/issue-4339-first-load-budget\.mjs --self-test && node scripts\/issue-4339-first-load-budget\.mjs && node \.\.\/\.github\/scripts\/strict-grep\/issue-4339-built-output-anti-copy\.mjs --built$/, 'the budget runs on the release build, just before the anti-copy gate closes it')
   const budget = await import(pathToFileURL(path.join(MARKETING, 'scripts/issue-4339-first-load-budget.mjs')).href)
   assert.equal(budget.FIRST_LOAD_BUDGET_BYTES, 130_000)
   for (const entry of ['/(explorer)/page', '/host/page', '/host/[icp]/page', '/cities/[city]/page', '/(core)/going-out/page', '/schedule/page', '/help/page']) {
