@@ -88,7 +88,8 @@ Deno.test("ORCH-1065 BUG-2: the rating value still renders for CURATED cards (ga
 
 // ── BUG-3: require cycle broken via the leaf module ──────────────────────────
 Deno.test("ORCH-1065 BUG-3: hero constants live in the leaf ./deckHeroConstants module", () => {
-  assertStringIncludes(heroConstants, "export const CARD_FALLBACK_IMAGE");
+  // #4347 wave 1 deleted the stock-photo fallback; the blurhash stays a leaf constant.
+  assert(!heroConstants.includes("export const CARD_FALLBACK_IMAGE"), "the stock fallback photo came back");
   assertStringIncludes(heroConstants, "export const DECK_HERO_PLACEHOLDER_BLURHASH");
   // The leaf module must NOT import either deck component (else the cycle returns).
   assert(
@@ -115,7 +116,7 @@ Deno.test("ORCH-1065 BUG-3: SwipeableCards re-exports the constants for back-com
   // SwipeableCards consumes the constants from the leaf module + re-exports them,
   // so any historical importer that read them off SwipeableCards still works.
   assertStringIncludes(swipeable, 'from "./deckHeroConstants"');
-  assertStringIncludes(swipeable, "export { CARD_FALLBACK_IMAGE, DECK_HERO_PLACEHOLDER_BLURHASH }");
+  assertStringIncludes(swipeable, "export { DECK_HERO_PLACEHOLDER_BLURHASH }");
   // It must NOT also redefine them as literals (that would be a duplicate source).
   assert(
     !swipeable.includes("export const CARD_FALLBACK_IMAGE ="),

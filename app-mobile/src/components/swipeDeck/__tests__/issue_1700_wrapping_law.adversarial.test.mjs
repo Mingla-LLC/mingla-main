@@ -172,7 +172,9 @@ test('A-6 the plate height and the title anchor come from ONE object', () => {
     const calls = [...code.matchAll(/platePresentation\(/g)];
     assert.ok(calls.length > 0, `A-6: ${name} no longer resolves a presentation`);
     // Every title anchor reads a presentation object's titleBottom.
-    const titleAnchors = [...code.matchAll(/bottom:\s*(\w+)\.titleBottom/g)].map((m) => m[1]);
+    // #4347 — a style key (`bottom: x.titleBottom`) or a DeckTextColumn prop
+    // (`bottom={x.titleBottom}`); both must read a presentation object.
+    const titleAnchors = [...code.matchAll(/bottom(?::\s*|=\{\s*)(\w+)\.titleBottom/g)].map((m) => m[1]);
     assert.ok(titleAnchors.length > 0, `A-6: ${name} has no title anchored to a presentation`);
     for (const holder of titleAnchors) {
       assert.match(

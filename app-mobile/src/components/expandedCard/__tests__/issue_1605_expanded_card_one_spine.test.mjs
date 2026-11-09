@@ -67,6 +67,8 @@ const SRC = {
   swipeable: 'app-mobile/src/components/SwipeableCards.tsx',
   // The collapsed deck card — the OTHER caller of the one span producer (S-5).
   swipecurated: 'app-mobile/src/components/CuratedExperienceSwipeCard.tsx',
+  // #4347 wave 1 — the deck face's binding of the redesigned deck producer.
+  curatedface: 'app-mobile/src/components/deckCard/curatedFace.ts',
   // The two derived-data shapes S-6b classifies exhaustively.
   busyness: 'app-mobile/src/services/busynessService.ts',
   cardtypes: 'app-mobile/src/types/expandedCardTypes.ts',
@@ -1944,51 +1946,54 @@ test('S-5 the curated meta line is produced ONCE and both surfaces render the sa
     + 'is how the meta line diverged in the first place.',
   );
 
-  // (2) BOTH surfaces call it, and NEITHER assembles spans of its own. The
-  // second half is the important one: a caller that re-derives even ONE span
-  // locally is a second producer wearing the first one's name.
-  for (const [label, src] of [['the expanded sheet', modal], ['the collapsed deck card', deck]]) {
-    assert.match(
-      src,
-      /curatedPlanSpans\s*\(/,
-      `S-5: ${label} no longer calls the shared span producer.`,
-    );
+  // #4347 wave 1 — REWRITTEN. The approved redesign gives the DECK its own fact
+  // line ("2 stops · 1h 44m · 8 min away · Moderate"; an experience's price on
+  // the plate's From pill), while the sheet keeps curatedPlanSpans until waves
+  // 2-3 rebuild it. What this rule still protects, and how:
+  //   - ONE producer per surface, both in expandedCardFacts, neither caller
+  //     assembling spans of its own;
+  //   - the sheet's array is executed and pinned exactly as before;
+  //   - the deck's array is executed and pinned;
+  //   - the defect this rule was written for — the deck and the sheet COUNTING
+  //     A PLAN'S STOPS DIFFERENTLY — is executed across both shapes and both
+  //     measurement systems and must stay equal.
+  const face = stripComments(read('curatedface'));
+  assert.match(modal, /curatedPlanSpans\s*\(/, 'S-5: the expanded sheet no longer calls the shared span producer.');
+  assert.match(face, /curatedDeckSpans\s*\(/, 'S-5: the deck face no longer calls the deck span producer.');
+  assert.match(deck, /curatedFaceFacts\s*\(/, 'S-5: the collapsed deck card no longer reads its facts from the one binding.');
+  for (const [label, src] of [['the expanded sheet', modal], ['the collapsed deck card', deck], ['the deck face binding', face]]) {
     assert.equal(
       /(?:const|let)\s+\w*[Ss]pans\w*\s*:\s*MetaSpanInput\[\]\s*=\s*\[\s*\]/.test(src),
       false,
-      `S-5: ${label} assembles its own MetaSpanInput array again. Every curated span must come from `
-      + 'curatedPlanSpans, or the two surfaces can disagree without either file looking wrong.',
+      `S-5: ${label} assembles its own MetaSpanInput array again.`,
     );
   }
-  // The stop SELECTION is shared too — "which stops is this plan" decided twice
-  // is what made the count differ.
-  assert.match(
-    deck,
-    /planVisibleStops\s*\(/,
-    'S-5: the deck card selects its visible stops locally again instead of through planVisibleStops.',
-  );
   assert.equal(
-    /filter\s*\(\s*\w+\s*=>\s*!\w+\.optional\s*\)/.test(deck),
+    /filter\s*\(\s*\w+\s*=>\s*!\w+\.optional\s*\)/.test(deck + face),
     false,
     'S-5: the deck card re-implements the non-optional filter inline.',
   );
+  const deckDefiners = [...TREE]
+    .filter(([, src]) => /export\s+function\s+curatedDeckSpans\b/.test(src))
+    .map(([file]) => file);
+  assert.deepEqual(deckDefiners, ['app-mobile/src/components/expandedCard/expandedCardFacts.ts'],
+    `S-5: ${deckDefiners.length} module(s) define curatedDeckSpans`);
 
-  // (3) EXECUTED. Import the REAL producer (through the resolver hooks beside
-  // this file — nothing is stubbed except i18n) and run BOTH call sites'
-  // option objects against the SAME card.
-  const { curatedPlanSpans } = await import(
+  // (3) EXECUTED. Import the REAL producers and run each surface's own options.
+  const { curatedPlanSpans, curatedDeckSpans } = await import(
     pathToFileURL(path.join(REPO, SRC.facts)).href
   );
 
   const modalOpts = optionsLiteral(modal, 'curatedPlanSpans', 'S-5 sheet call site');
-  const deckOpts = optionsLiteral(deck, 'curatedPlanSpans', 'S-5 deck call site');
-  for (const [label, literal] of [['sheet', modalOpts], ['deck', deckOpts]]) {
-    assert.ok(
-      literal.includes('stopCountLabel') && literal.includes('formatMoney'),
-      `S-5 (vacuity): the ${label} options literal does not look like the producer's options — the `
-      + `extractor is slicing the wrong call. Got: ${literal.slice(0, 120)}`,
-    );
-  }
+  const deckOpts = optionsLiteral(face, 'curatedDeckSpans', 'S-5 deck call site');
+  assert.ok(
+    modalOpts.includes('stopCountLabel') && modalOpts.includes('formatMoney'),
+    `S-5 (vacuity): the sheet options literal does not look like the producer's options. Got: ${modalOpts.slice(0, 120)}`,
+  );
+  assert.ok(
+    deckOpts.includes('stopCountLabel') && deckOpts.includes('spendLevelLabel'),
+    `S-5 (vacuity): the deck options literal does not look like the producer's options. Got: ${deckOpts.slice(0, 120)}`,
+  );
 
   const build = (literal, label, deps) => {
     const names = Object.keys(deps);
@@ -2002,24 +2007,15 @@ test('S-5 the curated meta line is produced ONCE and both surfaces render the sa
     return fn(...names.map((n) => deps[n]));
   };
 
-  /*
-    THE PARITY SWEEP. Four cells: {Imperial, Metric} x {curated plan, brand
-    experience}. Each runs the REAL producer twice — once with the sheet's own
-    options object and once with the deck's — over one card, and requires the
-    two arrays to be identical.
-
-    Running at ONE measurement system was the hole. `parseAndFormatDistance`
-    defaults its `system` parameter to Imperial, and the fixture pinned Imperial,
-    so a call site that stopped passing `measurementSystem` produced byte-identical
-    output and the gate stayed green. HEAD is correct today; the gate simply could
-    not see a caller diverging. At Metric it can: the same 9.33 km is `9.3 km`
-    when the option arrives and `5.8 mi` when it does not.
-  */
   const EXPECTED = {
     'Imperial|plan': ['2 stops', '5.8 mi', '1h 44m', 'Free', 'Picnic Dates'],
     'Metric|plan': ['2 stops', '9.3 km', '1h 44m', 'Free', 'Picnic Dates'],
     'Imperial|experience': ['2 stops', '5.8 mi', '2h 30m', 'USD 4500', 'Adventurous'],
     'Metric|experience': ['2 stops', '9.3 km', '2h 30m', 'USD 4500', 'Adventurous'],
+  };
+  const EXPECTED_DECK = {
+    plan: ['2 stops', '1h 44m', 'Free'],
+    experience: ['2 stops', '2h 30m'],
   };
 
   let sheetPlanImperial = null;
@@ -2030,7 +2026,7 @@ test('S-5 the curated meta line is produced ONCE and both surfaces render the sa
     ]) {
       const deps = s5Deps(system, brand);
       const fromSheet = curatedPlanSpans(card, build(modalOpts, 'sheet', deps));
-      const fromDeck = curatedPlanSpans(card, build(deckOpts, 'deck', deps));
+      const fromDeck = curatedDeckSpans(card, build(deckOpts, 'deck', deps));
       if (system === 'Imperial' && shape === 'plan') sheetPlanImperial = fromSheet;
 
       assert.ok(
@@ -2038,23 +2034,17 @@ test('S-5 the curated meta line is produced ONCE and both surfaces render the sa
         `S-5 (vacuity): the producer returned ${fromSheet.length} spans for the full ${shape} fixture `
         + `at ${system} — it is not producing anything, so the equality below would be trivially true.`,
       );
-      assert.deepEqual(
-        fromDeck,
-        fromSheet,
-        `S-5: at ${system}, the SAME ${shape} resolves different meta spans on the deck and on the sheet:\n`
-        + `    deck   ${fromDeck.map((s) => s.text).join(' · ')}\n`
-        + `    sheet  ${fromSheet.map((s) => s.text).join(' · ')}\n`
-        + 'One tap apart, the plate must say the same thing. That is the whole claim. A distance that '
-        + 'differs means one call site stopped passing `measurementSystem` (the producer then defaults '
-        + 'to Imperial, which is why this was invisible at Imperial alone). A PRICE that differs means '
-        + 'one call site stopped passing `isBrandExperience`, and "Free" over a paid experience is '
-        + 'ORCH-1065 BUG-1 reproduced on the sheet.',
+      assert.equal(
+        fromDeck[0]?.text,
+        fromSheet[0]?.text,
+        `S-5: at ${system}, the SAME ${shape} counts its stops differently on the deck ("${fromDeck[0]?.text}") `
+        + `and on the sheet ("${fromSheet[0]?.text}"). One tap apart, a plan must be the same size.`,
       );
-
-      // …and the array is the one the design specifies, on both surfaces. The
-      // count is over the plan's NON-OPTIONAL stops — the same set
-      // `mutateCuratedCard` computes every other aggregate over and the same set
-      // the card's own title is built from.
+      assert.deepEqual(
+        fromDeck.map((s) => s.text),
+        EXPECTED_DECK[shape],
+        `S-5: at ${system} the deck ${shape} does not produce the approved line.`,
+      );
       assert.deepEqual(
         fromSheet.map((s) => s.text),
         EXPECTED[`${system}|${shape}`],
@@ -2081,16 +2071,18 @@ test('S-5 the curated meta line is produced ONCE and both surfaces render the sa
     build(modalOpts, 'sheet', imperialPlanDeps),
   );
   assert.equal(single[0].text, '5.8 mi', 'S-5: a single-stop plan still leads with a stop count.');
-  const none = curatedPlanSpans(
-    { ...S5_FIXTURE, stops: [] },
-    build(modalOpts, 'sheet', imperialPlanDeps),
-  );
-  assert.equal(
-    none.some((s) => /stops?/.test(s.text)),
-    false,
-    `S-5: a plan with no stops renders "${none.map((s) => s.text).join(' · ')}" — "0 stops" is a `
-    + 'fabricated fact about a plan that has none.',
-  );
+  for (const [label, produce] of [
+    ['sheet', (c) => curatedPlanSpans(c, build(modalOpts, 'sheet', imperialPlanDeps))],
+    ['deck', (c) => curatedDeckSpans(c, build(deckOpts, 'deck', imperialPlanDeps))],
+  ]) {
+    const none = produce({ ...S5_FIXTURE, stops: [] });
+    assert.equal(
+      none.some((s) => /stops?/.test(s.text)),
+      false,
+      `S-5: on the ${label}, a plan with no stops renders "${none.map((s) => s.text).join(' · ')}" — "0 stops" is a `
+      + 'fabricated fact about a plan that has none.',
+    );
+  }
 
   // Anti-vacuity on the producer itself: the file must still name the four
   // derivations, or the executed array above is coming from somewhere else.

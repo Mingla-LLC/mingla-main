@@ -30,7 +30,8 @@ function rng(seed) {
 
 function assertMemoizedBoundedHeroSource(source) {
   assert.match(source, /const source = React\.useMemo\([\s\S]*width: decodeTarget\.width, height: decodeTarget\.height/);
-  assert.match(source, /\[decodeTarget\.height, decodeTarget\.width, src\]/);
+  // #4347 — the memo keys on the pager's page uri (the src state is deleted).
+  assert.match(source, /\[decodeTarget\.height, decodeTarget\.width, uri\]/);
   assert.match(source, /<ExpoImage[\s\S]*source=\{source\}/);
   assert.doesNotMatch(source, /source=\{\{[\s\S]*decodeTarget\.width/);
 }

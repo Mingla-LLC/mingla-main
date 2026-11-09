@@ -65,7 +65,40 @@ import {
   type BeenHereVisualState,
   type MetaSpanInput,
 } from "./deckCardPlate";
-import { BEEN_HERE, MAX_FONT_SCALE, SURFACES } from "../../../packages/card-identity/index.js";
+import { BEEN_HERE, MAX_FONT_SCALE, PHOTO_PAGER, SURFACES } from "../../../packages/card-identity/index.js";
+// #4347 wave 1 — the redesigned deck card: photo pager, fact line, kicker,
+// smart chip, host chip. Pure decisions live in deckCardModel; the views are a
+// leaf module like the plate, so the require cycle stays closed.
+import {
+  classifyDeckTap,
+  curatedDeckPhotos,
+  experienceDeckPhotos,
+  curatedSmartChip,
+  nextLoadablePhotoIndex,
+  pagerPresentation,
+  placeDeckPhotos,
+  placeFactSpans,
+  placeSmartChip,
+  stepPhotoIndex,
+  type DeckFactLabels,
+  type DeckPhoto,
+  type DeckStopLike,
+  routeLine,
+} from "./deckCard/deckCardModel";
+import { curatedFaceFacts } from "./deckCard/curatedFace";
+import {
+  DeckTextColumn,
+  HostChip,
+  NoPhotoFill,
+  PhotoCapsule,
+  PhotoPagerBars,
+  photoBarsTop,
+  photoLabelTop,
+  tapZoneBottomY,
+} from "./deckCard/DeckCardChrome";
+import { deckKickerFor, useDeckFactLabels } from "./deckCard/useDeckFactLabels";
+import { useMinuteClock, usePhotoTapHint, useTopCardPhotoPreload } from "./deckCard/deckCardHooks";
+import { useClaimedVenues } from "../hooks/useClaimedVenues";
 import { LinearGradient } from "expo-linear-gradient";
 import { ANDROID_GLASS_USES_OPAQUE_FALLBACK, colors, fontWeights, glass, radius, typography } from "../constants/designSystem";
 import { throttledReverseGeocode } from '../utils/throttledGeocode';
@@ -95,7 +128,6 @@ import type { CuratedExperienceCard } from "../types/curatedExperience";
 // CuratedExperienceSwipeCard can import them WITHOUT importing SwipeableCards
 // (which imports CuratedExperienceSwipeCard back — that closed a require cycle).
 import {
-  CARD_FALLBACK_IMAGE,
   DECK_BOTTOM_SCRIM_HEIGHT_PT,
   DECK_HERO_PLACEHOLDER_BLURHASH,
   DECK_SCRIM_COLORS,
@@ -241,98 +273,77 @@ function parseDistanceToKm(distanceStr: string): number | null {
 // left to disagree about and no measurement to single-source.
 const CARD_ANIMATION_DURATION = 400;
 
-// ORCH-1042 / ORCH-1065 BUG-3: these two leaf constants moved to
+// ORCH-1042 / ORCH-1065 BUG-3: the blurhash leaf constant lives in
 // ./deckHeroConstants to break the SwipeableCards <-> CuratedExperienceSwipeCard
-// require cycle. Re-exported here so any historical importer that read them off
-// SwipeableCards keeps working (back-compat); the canonical source is the new
-// module. expo-image accepts a constant blurhash natively — no new dependency.
-export { CARD_FALLBACK_IMAGE, DECK_HERO_PLACEHOLDER_BLURHASH };
+// require cycle; re-exported here for historical importers. (#4347 deleted the
+// stock-photo CARD_FALLBACK_IMAGE: a failed photo now pages on, then falls back
+// to the neutral fill, never to a picture of somewhere else.)
+export { DECK_HERO_PLACEHOLDER_BLURHASH };
 
 // ORCH-1042: fade-in once the photo decodes so the swap is never a hard black→photo
-// cut. Within the spec's 180–300 ms band.
-const DECK_HERO_TRANSITION_MS = 220;
+// cut. #4347: the same value is the photo-flip cross-fade (PHOTO_PAGER, 180ms).
+const DECK_HERO_TRANSITION_MS = PHOTO_PAGER.crossfadeMs;
 
-/**
- * Card hero image with automatic fallback on load failure.
- *
- * ORCH-1042: renders via expo-image with a placeholder + fade transition +
- * `cachePolicy="memory-disk"` + `recyclingKey` so the per-card remount
- * (`key={currentRec.id}`, ORCH-0694) never flashes a bare dark panel during the
- * async decode window. The placeholder covers the decode gap; `CARD_FALLBACK_IMAGE`
- * is the hard-failure fallback (a real photo, distinct from the placeholder).
- */
 const S1 = SURFACES.s1Single;
 
 /** The behind face is `pointerEvents="none"`; its plate can never be pressed. */
 const NOOP = (): void => {};
 
 /**
- * #1609 Direction C §3.4 — the card's meta spans, in TRUNCATION-PRIORITY order.
+ * #4347 wave 1 — the single place's fact line, in the APPROVED order:
  *
- *     ★ 4.4  ·  6.7 mi  ·  ££  ·  Whiskey Bar
- *     └700┘    └──── 500 @1.0 ────┘  └500 @0.72┘
+ *     Open until 11pm  ·  ★ 4.6 (212)  ·  12 min  ·  ≈ $19–30
+ *     └ green/amber/grey ┘ └──700──┘   └──── 500 @1.0 ────┘
  *
- * The rating leads because it is the only fact that ranks places against each
- * other; the category trails because tail-ellipsis eats the last span first and
- * it is the sacrificial one. Every span is omitted when its value is absent, and
- * the separators are rendered BETWEEN PRESENT SPANS ONLY by CardMetaLine — a
- * card with no rating begins at distance, with no orphaned leading "·"
- * (Constitution 9). When EVERY span is absent the plate drops to its shorter
- * alternate silhouette (`PLATE_H_NO_META`) — the FACTS ROW goes, the divider and
- * its chevron stay, because the chevron is the card's only visible expand
- * affordance (Seth, #1609 comment 5196932627).
- *
- * D-2 — TRAVEL TIME IS DROPPED from the collapsed card. "14 min" beside "6.7 mi"
- * is the same fact twice, and it is 8 characters in a line that has room for a
- * category instead. `I-DECK-CARD-CONTRACT-DISTANCE-AND-TIME` is unaffected: it
- * governs what the edge functions must EMIT (both, dropping to null together),
- * not what the card must render, and its mobile clause is "branches on null to
- * hide the badge".
+ * Supersedes #1609 §3.4's order (rating, distance, travel, price, category).
+ * The open status leads because it is the fact that decides "go or not"; the
+ * category leaves the line for the kicker above the title; distance is now the
+ * fallback for travel time only (D-2's "same fact twice" argument, kept). Every
+ * span is still omitted when absent, separators still render between present
+ * spans only (CardMetaLine), and an all-absent line still drops the plate to
+ * its short silhouette. The decisions themselves live in `placeFactSpans`.
  */
 function metaSpansForCard(
   card: {
     rating?: number | null;
+    reviewCount?: number | null;
     distance?: string | number | null;
     travelTime?: string | null;
     priceRange?: string | null;
-    category?: string | null;
+    openingHours?: unknown;
+    utcOffsetMinutes?: number | null;
   },
   measurementSystem: 'Metric' | 'Imperial' | undefined,
+  now: Date,
+  labels: DeckFactLabels,
 ): MetaSpanInput[] {
-  const spans: MetaSpanInput[] = [];
-  if (card.rating != null && card.rating > 0) {
-    spans.push({ kind: 'rating', text: `★ ${card.rating.toFixed(1)}` });
-  }
-  if (card.distance != null) {
-    const d = parseAndFormatDistance(card.distance as any, measurementSystem);
-    if (typeof d === 'string' && d.length > 0) spans.push({ kind: 'fact', text: d });
-  }
-  /*
-    #1701 — TRAVEL TIME. Seth: "Travel time is missing on the cards."
-    `Recommendation.travelTime` has always existed and has always been populated
-    — the real saved picnic plan carries "16 min" today — and this function
-    simply never read it. Nothing was computed and nothing was fetched to fix
-    this; a field with a producer and no reader got a reader.
+  const distanceLabel =
+    card.distance != null ? parseAndFormatDistance(card.distance as any, measurementSystem) : null;
+  return placeFactSpans(
+    {
+      openingHours: card.openingHours,
+      utcOffsetMinutes: card.utcOffsetMinutes ?? null,
+      rating: card.rating ?? null,
+      reviewCount: card.reviewCount ?? null,
+      travelTime: card.travelTime ?? null,
+      distanceLabel: typeof distanceLabel === 'string' ? distanceLabel : null,
+      priceRange: card.priceRange ?? null,
+    },
+    now,
+    labels,
+  );
+}
 
-    NOT FABRICATED WHEN ABSENT (Constitution 9). `travelTime` is honestly null
-    whenever the user's GPS or the place's coordinates are missing, and the span
-    is then omitted exactly like the rating and the distance are. The old
-    `travelTime || "15 min"` default that #1669 found and deleted does not come
-    back in through this door.
-
-    It sits AFTER distance because the two are read together, and the wrapping
-    law (#1700) means a long row now costs a second line rather than the
-    category.
-  */
-  if (typeof card.travelTime === 'string' && card.travelTime.trim().length > 0) {
-    spans.push({ kind: 'fact', text: card.travelTime.trim() });
-  }
-  if (card.priceRange) spans.push({ kind: 'fact', text: card.priceRange });
-  if (card.category) {
-    const c = getReadableCategoryName(card.category);
-    if (typeof c === 'string' && c.length > 0) spans.push({ kind: 'tail', text: c });
-  }
-  return spans;
+/** The pager's photos for any deck card (place, curated plan, host experience). */
+function deckPhotosForCard(card: Recommendation | undefined | null): DeckPhoto[] {
+  if (!card) return [];
+  const loose = card as unknown as {
+    stops?: readonly DeckStopLike[];
+    coverMediaUrl?: string | null;
+  };
+  if (card.cardType === 'curated') return curatedDeckPhotos(loose.stops);
+  if (card.cardType === 'experience') return experienceDeckPhotos(loose.coverMediaUrl ?? null, loose.stops);
+  return placeDeckPhotos(card);
 }
 
 /**
@@ -599,23 +610,37 @@ export const BeenHereControl = React.memo(function BeenHereControl({
   );
 });
 
+/**
+ * #4347 wave 1 — the deck poster, now one page of the photo pager.
+ *
+ * Changing `uri` on the SAME mounted ExpoImage is the photo flip: expo-image
+ * cross-fades from the old source to the new one over `transitionMs` (180ms, or
+ * 0 under Reduce Motion), so no second image node and no new animation driver
+ * enter the swipe path.
+ *
+ * A load failure is REPORTED (`onLoadFailed`) instead of swapped for the old
+ * stock fallback photo: the pager skips to the next photo, and only when every
+ * photo has failed does the card fall back — to the neutral fill, never to a
+ * picture of somewhere else. No uri at all renders that fill directly.
+ */
 const CardHeroImage = React.memo(function CardHeroImage({
   uri,
   style,
   decodeTarget,
+  transitionMs = DECK_HERO_TRANSITION_MS,
+  onLoadFailed,
 }: {
   uri: string;
   style: any;
   decodeTarget: DeckHeroDecodeTarget;
+  transitionMs?: number;
+  onLoadFailed?: (uri: string) => void;
 }) {
-  const [src, setSrc] = React.useState(uri && uri.length > 0 ? uri : CARD_FALLBACK_IMAGE);
-  React.useEffect(() => {
-    setSrc(uri && uri.length > 0 ? uri : CARD_FALLBACK_IMAGE);
-  }, [uri]);
   const source = React.useMemo(
-    () => ({ uri: src, width: decodeTarget.width, height: decodeTarget.height }),
-    [decodeTarget.height, decodeTarget.width, src],
+    () => ({ uri, width: decodeTarget.width, height: decodeTarget.height }),
+    [decodeTarget.height, decodeTarget.width, uri],
   );
+  if (!uri || uri.length === 0) return <NoPhotoFill />;
   return (
     <ExpoImage
       source={source}
@@ -624,13 +649,10 @@ const CardHeroImage = React.memo(function CardHeroImage({
       cachePolicy={DECK_VISIBLE_POSTER_CACHE_POLICY}
       allowDownscaling
       enforceEarlyResizing={Platform.OS === 'ios'}
-      recyclingKey={src}
-      transition={DECK_HERO_TRANSITION_MS}
+      transition={transitionMs}
       placeholder={{ blurhash: DECK_HERO_PLACEHOLDER_BLURHASH }}
       placeholderContentFit="cover"
-      onError={() => {
-        if (src !== CARD_FALLBACK_IMAGE) setSrc(CARD_FALLBACK_IMAGE);
-      }}
+      onError={() => onLoadFailed?.(uri)}
     />
   );
 });
@@ -974,7 +996,7 @@ export default function SwipeableCards({
   savedCards = [],
   coachDeckRef,
 }: SwipeableCardsProps) {
-  const { t } = useTranslation(['cards', 'common']);
+  const { t, i18n } = useTranslation(['cards', 'common']);
   // ORCH-1155 [public-brand-page]: navigate to the brand page from the
   // brand-experience card's badge (no dead tap).
   const router = useRouter();
@@ -1003,7 +1025,6 @@ export default function SwipeableCards({
     addCardToFront,
     isExhausted,
     deckUIState,
-    collabTravelMode,
     // ORCH-0474: pipeline-error toast overlay on LOADED + serverPath for
     // analytics dimension + retry routing in the new UI states.
     showPipelineErrorToast,
@@ -1083,6 +1104,24 @@ export default function SwipeableCards({
     setMetaLinesByCard((prev) => (prev[cardId] === lines ? prev : { ...prev, [cardId]: lines }));
   }, []);
 
+  /**
+   * #4347 wave 1 — the photo pager's state, keyed BY CARD ID for the same reason
+   * as `metaLinesByCard`: the deck promotes a new card under the same tree, and
+   * one shared index would open the incoming card on the outgoing card's photo.
+   * A card never flipped reads index 0, which is the photo the behind face
+   * already showed, so promotion never changes the picture.
+   */
+  const [photoIndexByCard, setPhotoIndexByCard] = useState<Record<string, number>>({});
+  const [failedPhotosByCard, setFailedPhotosByCard] = useState<Record<string, readonly string[]>>({});
+  const deckNow = useMinuteClock();
+  const deckFactLabels = useDeckFactLabels(deckNow);
+  const photoTapHint = usePhotoTapHint();
+  // The tap path's geometry: where the finger went down (page coords) and the
+  // card's page frame, measured at press-in. Read only on the discrete press.
+  const cardTouchRef = useRef<View | null>(null);
+  const tapPointRef = useRef<{ pageX: number; pageY: number } | null>(null);
+  const cardFrameRef = useRef<{ pageX: number; pageY: number; width: number; height: number } | null>(null);
+
   const [expandedBrandExperience, setExpandedBrandExperience] =
     useState<BusinessEventCard | null>(null);
   const [showNextBatchLoader, setShowNextBatchLoader] = useState(false);
@@ -1114,9 +1153,6 @@ export default function SwipeableCards({
   const user = useAppStore((state) => state.user);
   const { data: cachedPreferences } = useUserPreferences(user?.id);
   const { data: calendarEntries } = useCalendarEntries(user?.id);
-  // In collaboration mode, use the group's aggregated travel mode (majority vote).
-  // In solo mode, fall back to the user's own cached preferences.
-  const effectiveTravelMode = collabTravelMode ?? cachedPreferences?.travel_mode ?? userPreferences?.travelMode;
   const [reverseGeocodedAddress, setReverseGeocodedAddress] = useState<string | null>(null);
 
   // Feature gating hooks
@@ -1475,6 +1511,78 @@ export default function SwipeableCards({
   // Always use currentCardIndex to track position in the deck
   const currentRec = availableRecommendations[currentCardIndex];
   const nextRec = availableRecommendations.find((rec) => rec.id !== currentRec?.id) ?? null;
+
+  // #4347 wave 1 — claimed host venues among the deck's places (one read per
+  // chunk of the loaded deck, never one per card — see useClaimedVenues).
+  const claimedVenues = useClaimedVenues(
+    useMemo(
+      () => (recommendations || []).map((rec) => (rec.cardType ? null : rec.placePoolId ?? null)),
+      [recommendations],
+    ),
+  );
+  const currentClaimedVenue =
+    currentRec && !currentRec.cardType && currentRec.placePoolId
+      ? claimedVenues.get(currentRec.placePoolId) ?? null
+      : null;
+
+  // #4347 wave 1 — the top card's photo pager, for every card type. The list is
+  // decided HERE (one owner) because the tap path that flips it lives here; the
+  // curated / experience face is handed the list and the index.
+  const currentPhotos: DeckPhoto[] = useMemo(() => deckPhotosForCard(currentRec), [currentRec]);
+  const currentFailedPhotos = useMemo(
+    () => new Set(currentRec ? failedPhotosByCard[currentRec.id] ?? [] : []),
+    [currentRec, failedPhotosByCard],
+  );
+  const currentPager = pagerPresentation(
+    currentPhotos,
+    currentRec ? photoIndexByCard[currentRec.id] ?? 0 : 0,
+    currentFailedPhotos,
+  );
+  const currentPhotoIndex = currentPager.photoIndex;
+  const currentPhoto: DeckPhoto | null = currentPhotos[currentPhotoIndex] ?? null;
+  // Every photo failed (or there is none): the neutral fill, never a stock picture.
+  const currentHasPhoto = currentPager.hasPhoto;
+  const currentPosterUri = currentPager.posterUri;
+
+  const setCardPhotoIndex = useCallback((cardId: string, index: number): void => {
+    setPhotoIndexByCard((prev) => (prev[cardId] === index ? prev : { ...prev, [cardId]: index }));
+  }, []);
+
+  const handleCurrentPhotoFailed = useCallback(
+    (uri: string): void => {
+      if (!currentRec) return;
+      const cardId = currentRec.id;
+      setFailedPhotosByCard((prev) => {
+        const seen = prev[cardId] ?? [];
+        return seen.includes(uri) ? prev : { ...prev, [cardId]: [...seen, uri] };
+      });
+      const failed = new Set([...currentFailedPhotos, uri]);
+      const index = currentPhotos.findIndex((photo) => photo.uri === uri);
+      if (index === -1 || index !== currentPhotoIndex) return;
+      const next = nextLoadablePhotoIndex(currentPhotos, index, failed);
+      if (next !== null) setCardPhotoIndex(cardId, next);
+    },
+    [currentRec, currentFailedPhotos, currentPhotos, currentPhotoIndex, setCardPhotoIndex],
+  );
+
+  // The one-time hint counts as seen once a card that showed it leaves the top
+  // of the deck, even if the person never flipped.
+  const hintShownOnCardRef = useRef<string | null>(null);
+  const hintEligible = photoTapHint.visible && currentPhotos.length >= 2;
+  const topCardId = currentRec?.id ?? null;
+  const markPhotoHintSeen = photoTapHint.markSeen;
+  useEffect(() => {
+    const shownOn = hintShownOnCardRef.current;
+    if (shownOn !== null && shownOn !== topCardId) {
+      hintShownOnCardRef.current = null;
+      markPhotoHintSeen();
+      return;
+    }
+    if (hintEligible && topCardId) hintShownOnCardRef.current = topCardId;
+  }, [topCardId, hintEligible, markPhotoHintSeen]);
+
+  // Preload the next photos of the TOP card only. Behind cards load photo 1.
+  useTopCardPhotoPreload(currentPhotos, currentPhotoIndex, currentFailedPhotos);
   const isCurrentCardSaved = currentRec ? savedCards.some(
     (s: any) => s?.id === currentRec.id || s === currentRec.id
   ) : false;
@@ -2282,6 +2390,28 @@ export default function SwipeableCards({
     // ORCH-1064: re-open guard — ignore an open within 500ms of the last close so
     // the modal can't be re-presented mid-dismiss (intermittent freeze).
     if (Date.now() - lastModalCloseAtRef.current < 500) return;
+
+    // #4347 wave 1, decision 4 — a CLAIMED host venue opens its public venue
+    // page (the same page as the web, in the host's colours), not the pool
+    // sheet. The expand is still recorded as one, so engagement counts hold.
+    if (currentClaimedVenue) {
+      recordCardExpand(currentRec.id, {
+        category: currentRec.category,
+        priceTier: currentRec.priceTier,
+        isCurated: false,
+      });
+      postHogService.capture("card_expanded", {
+        card_id: currentRec.id,
+        card_title: currentRec.title,
+        category: currentRec.category,
+        source: "home",
+        destination: "venue_page",
+      });
+      router.push(
+        `/b/${encodeURIComponent(currentClaimedVenue.brandSlug)}/v/${encodeURIComponent(currentClaimedVenue.venueSlug)}` as never,
+      );
+      return;
+    }
     setIsReviewMode(false); // ORCH-1064: normal deck tap — no review chrome
     setIsExpandedModalVisible(true);
 
@@ -2850,10 +2980,11 @@ export default function SwipeableCards({
       return (
         <View style={styles.loadingContainer}>
           <Animated.View style={[styles.loadingContent, { opacity: loaderFadeIn }]}>
+            {/* #4347 — the loading face in the new card layout; still under Reduce Motion. */}
             <SkeletonCard
               width={SCREEN_WIDTH - 48}
               height={SCREEN_HEIGHT - 280}
-              borderRadius={20}
+              reducedMotion={reducedMotion}
             />
             <Text style={styles.skeletonLoadingText}>{t('cards:swipeable.curating_lineup')}</Text>
           </Animated.View>
@@ -3174,15 +3305,101 @@ export default function SwipeableCards({
   // plate came to disagree about which silhouette was being drawn in the first
   // place. Curated/experience cards take the CuratedExperienceSwipeCard branch
   // above and resolve their own presentation there.
-  const currentSpans = metaSpansForCard(currentRec, accountPreferences?.measurementSystem);
+  const currentSpans = metaSpansForCard(currentRec, accountPreferences?.measurementSystem, deckNow, deckFactLabels);
   const currentPresentation = platePresentation(currentSpans, metaLinesByCard[currentRec.id] ?? 1);
+
+  // #4347 wave 1 — the redesigned face's derived pieces, decided once per render.
+  const deckLanguage = i18n?.language ?? 'en';
+  const currentKicker = deckKickerFor(currentRec, t, deckLanguage);
+  const currentPagerCount = currentHasPhoto ? currentPhotos.length : 0;
+  const currentStopLabel =
+    currentRec.cardType === 'curated' && currentPhoto?.stopNumber != null && currentPhoto.stopName
+      ? t('cards:deck.stop_label', { number: currentPhoto.stopNumber, name: currentPhoto.stopName })
+      : null;
+  const barsTop = photoBarsTop(safeAreaInsets.top);
+  const labelTop = photoLabelTop(safeAreaInsets.top);
+  const showPhotoHint = photoTapHint.visible && currentPagerCount >= 2;
+  const curatedStart = (() => {
+    const pref = userPreferences?.datetime_pref ? new Date(userPreferences.datetime_pref) : null;
+    return pref && !Number.isNaN(pref.getTime()) && pref.getTime() > deckNow.getTime() ? pref : deckNow;
+  })();
+  const currentSmartChipModel = !currentRec.cardType
+    ? placeSmartChip(currentRec, deckNow)
+    : currentRec.cardType === 'curated'
+      ? curatedSmartChip((currentRec as unknown as CuratedExperienceCard).stops, curatedStart)
+      : null;
+  const currentSmartChip = currentSmartChipModel
+    ? {
+        tone: currentSmartChipModel.tone,
+        text:
+          currentSmartChipModel.kind === 'stopClosedAtArrival'
+            ? t('cards:deck.stop_closed_at_arrival', { number: currentSmartChipModel.stopNumber })
+            : t('cards:deck.closed_at_arrival'),
+      }
+    : null;
+  const currentTapZoneBottomFor = (cardHeight: number): number =>
+    tapZoneBottomY(
+      cardHeight,
+      currentRec.cardType
+        ? platePresentation([{ kind: 'fact', text: '·' }], 2).titleBottom
+        : currentPresentation.titleBottom,
+      { smartChip: currentSmartChip !== null, stack: currentRec.cardType === 'curated' },
+    );
+
+  /**
+   * #4347 wave 1 — THE TAP PATH. One Touchable, one decision: the left/right
+   * photo zone flips (through `requestTapPhoto`, which shares requestTapExpand's
+   * admission gate and lease release), everything else opens (requestTapExpand).
+   * The pan gesture, its thresholds and the swipe haptics are untouched.
+   */
+  const flipCurrentPhoto = (direction: 'prev' | 'next'): void => {
+    const count = currentPagerCount;
+    let to = stepPhotoIndex(currentPhotoIndex, count, direction);
+    // Skip a photo already known to fail; stop at the end rather than wrap.
+    while (to !== currentPhotoIndex && currentFailedPhotos.has(currentPhotos[to]?.uri ?? '')) {
+      const after = stepPhotoIndex(to, count, direction);
+      if (after === to) {
+        to = currentPhotoIndex;
+        break;
+      }
+      to = after;
+    }
+    photoTapHint.markSeen();
+    if (to === currentPhotoIndex) return;
+    setCardPhotoIndex(currentRec.id, to);
+    AccessibilityInfo.announceForAccessibility(
+      t('cards:deck.photo_position', { index: to + 1, count }),
+    );
+  };
+
+  // #4347 — what the curated / experience face needs from the pager owner.
+  const currentPagerProps = {
+    photos: currentPhotos,
+    photoIndex: currentPhotoIndex,
+    failedPhotos: currentFailedPhotos,
+    onPhotoFailed: handleCurrentPhotoFailed,
+    photoTransitionMs: reducedMotion ? 0 : DECK_HERO_TRANSITION_MS,
+    kicker: currentKicker,
+    smartChip: currentSmartChip,
+    photoHint: showPhotoHint ? t('cards:deck.photo_hint') : null,
+    stopLabel: currentStopLabel,
+  };
 
   // #1609 §1.9 — the composed VoiceOver label. Each clause is dropped when its value
   // is absent rather than rendered as a placeholder or a zero (Constitution rule 9),
   // so a card with no rating simply never mentions a rating.
   const composedCardAccessibilityLabel = [
     currentRec.title || t('cards:swipeable.experience'),
-    getReadableCategoryName(currentRec.category),
+    currentKicker ?? getReadableCategoryName(currentRec.category),
+    // #4347 — the open status leads the visible fact line, so it is spoken too.
+    currentSpans.find((span) => span.kind.startsWith('status'))?.text ?? null,
+    currentSmartChip?.text ?? null,
+    currentClaimedVenue
+      ? t('cards:deck.hosted_by', { name: currentClaimedVenue.brandName || currentClaimedVenue.brandSlug })
+      : null,
+    currentPagerCount >= 2
+      ? t('cards:deck.photo_position', { index: currentPhotoIndex + 1, count: currentPagerCount })
+      : null,
     currentRec.rating != null && currentRec.rating > 0
       ? t('cards:swipeable.a11y_rating', { rating: currentRec.rating.toFixed(1) })
       : null,
@@ -3284,10 +3501,15 @@ export default function SwipeableCards({
                 id: currentRec.id,
                 role: 'current' as const,
                 poster: (
+                  // #4347 — the pager's page. A place flips this uri in place
+                  // (expo-image cross-fades it); curated / experience faces
+                  // draw their own pages above it, so theirs stays photo 1.
                   <CardHeroImage
-                    uri={currentRec.image}
+                    uri={currentRec.cardType ? currentRec.image : currentPosterUri}
                     style={styles.cardImage}
                     decodeTarget={heroDecodeTarget}
+                    transitionMs={reducedMotion ? 0 : DECK_HERO_TRANSITION_MS}
+                    onLoadFailed={currentRec.cardType ? undefined : handleCurrentPhotoFailed}
                   />
                 ),
               },
@@ -3308,8 +3530,22 @@ export default function SwipeableCards({
               // so it resolves the silhouette ONCE from the same predicate the
               // plate sizes itself with. Computing the spans once also keeps
               // metaSpansForCard off the promotion hot path twice over (#1481).
-              const nextSpans = metaSpansForCard(nextCard, accountPreferences?.measurementSystem);
+              // #4347 — the SAME producers the front face uses for this card's
+              // type, so promotion never changes the kicker or the fact line.
+              const nextIsPlan = nextCard.cardType === 'curated' || nextCard.cardType === 'experience';
+              const nextFacts = nextIsPlan
+                ? curatedFaceFacts(nextCard as unknown as CuratedExperienceCard, {
+                    t,
+                    currencyCode: accountPreferences?.currency || 'USD',
+                    isBrandExperience: nextCard.cardType === 'experience',
+                  })
+                : null;
+              const nextSpans = nextFacts
+                ? nextFacts.spans
+                : metaSpansForCard(nextCard, accountPreferences?.measurementSystem, deckNow, deckFactLabels);
               const nextPresentation = platePresentation(nextSpans, metaLinesByCard[nextCard.id] ?? 1);
+              const nextPhotos = deckPhotosForCard(nextCard);
+              const nextHasPhoto = nextPhotos.length > 0;
 
               return (
                 <Reanimated.View
@@ -3325,6 +3561,8 @@ export default function SwipeableCards({
                   importantForAccessibility="no-hide-descendants"
                 >
                   <View style={styles.cardInner}>
+                    {nextHasPhoto ? (
+                    <>
                   {/* #1609 — behind face is chrome only. The poster layer owns the
                       photo; this tree contributes the scrim + title so the promotion
                       diff stays small. No rail, no oneLiner (see pillar 1 §1.7). */}
@@ -3346,6 +3584,9 @@ export default function SwipeableCards({
                       style={styles.topScrim}
                     />
 
+                    </>
+                    ) : null}
+
                     {/* ORCH-0991: image-count badge removed from cards. */}
 
                     {/* #1609 Direction C — the behind face carries the name on the
@@ -3358,18 +3599,27 @@ export default function SwipeableCards({
                         and a control that cannot be pressed is a lie about
                         affordance (Rule L1). Share is inert for the same reason,
                         so the plate gets a no-op handler it can never reach. */}
-                    <Text
-                      style={[styles.cardTitle, { bottom: nextPresentation.titleBottom }]}
-                      numberOfLines={S1.titleLines}
-                      maxFontSizeMultiplier={MAX_FONT_SCALE.title}
-                    >
-                      {nextCard.title}
-                    </Text>
+                    <PhotoPagerBars count={nextPhotos.length} index={0} top={barsTop} />
+                    <DeckTextColumn
+                      title={nextCard.title}
+                      kicker={deckKickerFor(nextCard, t, deckLanguage)}
+                      bottom={nextPresentation.titleBottom}
+                      dark={!nextHasPhoto}
+                      // The stop stack is the TOP card's: behind cards load photo 1
+                      // only, so the route line rides alone until promotion.
+                      stack={
+                        nextCard.cardType === 'curated'
+                          ? { photos: [], route: routeLine((nextCard as unknown as CuratedExperienceCard).stops) }
+                          : null
+                      }
+                    />
                     {(nextCard as any).cardType === 'curated'
                       ? <CuratedSlivers plateH={nextPresentation.plateH} />
                       : null}
                     <DeckCardPlate
                       spans={nextSpans}
+                      opaque={!nextHasPhoto}
+                      fromPriceLabel={nextFacts?.fromPriceLabel ?? null}
                       metaLines={nextPresentation.metaLines}
                       // #1700 — the behind face does NOT report. It renders the
                       // same spans as the card that is about to be promoted, so
@@ -3429,6 +3679,13 @@ export default function SwipeableCards({
                 // unreachable; the button ALSO carries its own label. Deliberately
                 // redundant — both paths work.
                 { name: 'share', label: t('cards:swipeable.share_action') },
+                // #4347 — the photo pager, for VoiceOver / TalkBack.
+                ...(currentPagerCount >= 2
+                  ? [
+                      { name: 'nextPhoto', label: t('cards:deck.next_photo') },
+                      { name: 'previousPhoto', label: t('cards:deck.previous_photo') },
+                    ]
+                  : []),
               ]}
               onAccessibilityAction={(event) => {
                 const action = event.nativeEvent.actionName;
@@ -3442,6 +3699,8 @@ export default function SwipeableCards({
                   deckSwipe.requestTapExpand();
                 } else if (action === 'share') {
                   void handleShare();
+                } else if (action === 'nextPhoto' || action === 'previousPhoto') {
+                  deckSwipe.requestTapPhoto(() => flipCurrentPhoto(action === 'nextPhoto' ? 'next' : 'prev'));
                 }
               }}
               onLayout={() => {
@@ -3482,8 +3741,36 @@ export default function SwipeableCards({
             </Reanimated.View>
 
             <TouchableOpacity
+              ref={cardTouchRef}
               activeOpacity={1}
-              onPress={() => deckSwipe.requestTapExpand()}
+              onPressIn={(event) => {
+                // #4347 — where the finger went down, and the card's page frame,
+                // read once per press; nothing here runs on a drag frame.
+                tapPointRef.current = { pageX: event.nativeEvent.pageX, pageY: event.nativeEvent.pageY };
+                cardTouchRef.current?.measure((_x, _y, width, height, pageX, pageY) => {
+                  cardFrameRef.current = { pageX, pageY, width, height };
+                });
+              }}
+              onPress={() => {
+                const point = tapPointRef.current;
+                const frame = cardFrameRef.current;
+                tapPointRef.current = null;
+                const zone =
+                  point && frame
+                    ? classifyDeckTap({
+                        x: point.pageX - frame.pageX,
+                        y: point.pageY - frame.pageY,
+                        width: frame.width,
+                        zoneBottomY: currentTapZoneBottomFor(frame.height),
+                        photoCount: currentPagerCount,
+                      })
+                    : 'open';
+                if (zone === 'open') {
+                  deckSwipe.requestTapExpand();
+                  return;
+                }
+                deckSwipe.requestTapPhoto(() => flipCurrentPhoto(zone));
+              }}
               accessible={false}
               style={StyleSheet.absoluteFill}
             >
@@ -3493,9 +3780,8 @@ export default function SwipeableCards({
                   // prop, so curated is byte-unaffected — SC-13).
                   <CuratedExperienceSwipeCard
                     card={currentRec as unknown as CuratedExperienceCard}
-                    travelMode={effectiveTravelMode}
-                    measurementSystem={accountPreferences?.measurementSystem}
                     currencyCode={accountPreferences?.currency || 'USD'}
+                    {...currentPagerProps}
                     // #1609 Direction C — the plate's control row. Passed IN as an
                     // element so the curated tree never imports SwipeableCards back.
                     beenHere={<BeenHereControl userId={user?.id} card={currentRec} />}
@@ -3523,7 +3809,6 @@ export default function SwipeableCards({
                       coverMediaType: (currentRec as any).coverMediaType ?? null,
                       coverHue: hueFromId(String((currentRec as any).eventId ?? (currentRec as any).id ?? '')),
                     }}
-                    ctaOverride="Book"
                     // ORCH-1209: Current Card slot = the active front card, so it
                     // streams its cover video (parity with CardHero, I-1069). A
                     // future behind-card render MUST pass isTopCard={false}.
@@ -3532,9 +3817,8 @@ export default function SwipeableCards({
               ) : (currentRec as any).cardType === 'curated' ? (
                   <CuratedExperienceSwipeCard
                     card={currentRec as unknown as CuratedExperienceCard}
-                    travelMode={effectiveTravelMode}
-                    measurementSystem={accountPreferences?.measurementSystem}
                     currencyCode={accountPreferences?.currency || 'USD'}
+                    {...currentPagerProps}
                     beenHere={<BeenHereControl userId={user?.id} card={currentRec} />}
                     onSharePress={handleShare}
                     shareLabel={t('cards:swipeable.share_card', { title: currentRec.title })}
@@ -3563,9 +3847,11 @@ export default function SwipeableCards({
                     {/* ORCH-1069: video-aware hero. isTopCard={true} → the top card
                         plays its `.mp4` cover (muted/looping) with the still as
                         poster; still-only venues render the unchanged image hero. */}
+                    {/* #4347 — the video cover is photo 1: it plays only while
+                        page 1 is showing; any other page is the poster's still. */}
                     <CardHero
                       image={currentRec.image}
-                      images={currentRec.images}
+                      images={currentPager.playVideoUri ? [currentPager.playVideoUri] : []}
                       title={currentRec.title || t('cards:swipeable.experience')}
                       isTopCard={true}
                       style={styles.cardImage}
@@ -3573,6 +3859,8 @@ export default function SwipeableCards({
                     />
                   </View>
 
+                  {currentHasPhoto ? (
+                  <>
                   {/* #1609 Direction C — the scrim, BOTTOM-ANCHORED IN ABSOLUTE POINTS.
                       `height: '52%'` is deleted: a percentage makes the whole contrast
                       table valid only on the device it was computed on, and it also
@@ -3603,6 +3891,9 @@ export default function SwipeableCards({
                     style={styles.topScrim}
                   />
 
+                  </>
+                  ) : null}
+
                   {/* ORCH-0991: image-count badge removed from cards. */}
 
                   {/* #1609 Direction C — the saved / scheduled state discs. They move
@@ -3615,6 +3906,26 @@ export default function SwipeableCards({
                     scheduled={isCurrentCardScheduled}
                     savedLabel={t('cards:swipeable.saved')}
                     scheduledLabel={t('cards:swipeable.scheduled')}
+                  />
+
+                  {/* #4347 wave 1 — the pager chrome (bars, one-time hint) and the
+                      claimed venue's host chip. All pointerEvents="none": the one
+                      tap path above decides flip vs open. */}
+                  <PhotoPagerBars count={currentPagerCount} index={currentPhotoIndex} top={barsTop} />
+                  {currentClaimedVenue ? (
+                    <HostChip
+                      name={currentClaimedVenue.brandName || currentClaimedVenue.brandSlug}
+                      top={labelTop}
+                      label={t('cards:deck.hosted_by', {
+                        name: currentClaimedVenue.brandName || currentClaimedVenue.brandSlug,
+                      })}
+                    />
+                  ) : null}
+                  <PhotoCapsule
+                    text={showPhotoHint ? t('cards:deck.photo_hint') : null}
+                    top={labelTop + PHOTO_PAGER.label.lineHeight * 2 + 4}
+                    align="center"
+                    testID="deck-photo-hint"
                   />
 
                   {/* #1609 Direction C — the name, and NOTHING ELSE, on the photograph.
@@ -3643,15 +3954,16 @@ export default function SwipeableCards({
                     ]}
                     pointerEvents="box-none"
                   >
-                    <Text
-                      style={[styles.cardTitle, { bottom: currentPresentation.titleBottom }]}
-                      numberOfLines={S1.titleLines}
-                      maxFontSizeMultiplier={MAX_FONT_SCALE.title}
-                    >
-                      {currentRec.title || t('cards:swipeable.experience')}
-                    </Text>
+                    <DeckTextColumn
+                      title={currentRec.title || t('cards:swipeable.experience')}
+                      kicker={currentKicker}
+                      bottom={currentPresentation.titleBottom}
+                      dark={!currentHasPhoto}
+                      smartChip={currentSmartChip}
+                    />
 
                     <DeckCardPlate
+                      opaque={!currentHasPhoto}
                       spans={currentSpans}
                       metaLines={currentPresentation.metaLines}
                       onMetaLinesChange={(lines) => noteMetaLines(currentRec.id, lines)}
@@ -3967,32 +4279,9 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     zIndex: 2,
   },
-  // 30/700, not 24/700. At 24 the title had no register separation from the 15pt
-  // blurb below it — and the blurb is now deleted, so the name is the ONLY thing
-  // on the photograph and carries the whole first-glance read. 2 lines is the
-  // only multi-line element on the card face; `flexWrap` appears nowhere.
-  // #1609 tester P1-1 — `bottom` IS DELIBERATELY ABSENT. It was
-  // `S1.bottomInset + S1.plateH + S1.gap`, a module-load constant that is only
-  // correct for the 96pt silhouette; in the short one it left the name stranded
-  // above a plate it is supposed to sit 20pt above, with a band of dead
-  // scrim between them. It is now applied at each render site from
-  // `platePresentation(spans).titleBottom`. Do not put it back — StyleSheet.create
-  // is evaluated once per module and this value is per render.
-  cardTitle: {
-    position: "absolute",
-    left: S1.titleInset,
-    right: S1.titleInset,
-    color: "#FFFFFF",
-    fontSize: S1.titleSize,
-    fontWeight: S1.titleWeight as "700",
-    lineHeight: S1.titleLH,
-    zIndex: 2,
-    // Perceptual reinforcement only — it does NOT count toward WCAG and none of
-    // the scrim derivation relies on it.
-    textShadowColor: "rgba(0, 0, 0, 0.5)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
-  },
+  // #4347 wave 1 — `cardTitle` is DELETED. The name (30/700, two lines, the
+  // perceptual text shadow) now lives in DeckTextColumn with the kicker and the
+  // smart chip, bottom-anchored per render at `platePresentation().titleBottom`.
   // #1609 Direction C — replaces `height: '52%'`. Bottom-anchored in ABSOLUTE
   // POINTS from the package's scrimHeight(): no percentage, no flex-axis key, so
   // the layer depends neither on a sibling nor on the parent's resolved height,

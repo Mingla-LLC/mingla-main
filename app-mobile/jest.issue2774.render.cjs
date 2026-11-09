@@ -93,5 +93,10 @@ module.exports = {
     // issue #4347 — a paid brand experience that lost its cardType never
     // writes "Spend level: Free" into the phone calendar.
     "**/__tests__/issue_4347_device_calendar_spend_level.implementor.happy.test.ts",
+    // issue #4347 wave 1 — the redesigned deck card: pager, tap zones, fact
+    // line, curated line, smart chip, claimed-venue chunking (pure), and every
+    // deck-card state rendered.
+    "**/__tests__/issue_4347_deck_card_model.implementor.test.ts",
+    "**/__tests__/issue_4347_deck_card_states.implementor.render.test.tsx",
   ],
 };

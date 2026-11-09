@@ -80,6 +80,13 @@ export interface DeckSwipeController {
   gesture: ReturnType<typeof Gesture.Pan>;
   requestSwipe: (direction: DeckSwipeDirection) => boolean;
   requestTapExpand: () => boolean;
+  /**
+   * #4347 wave 1 — a tap on the left/right photo zone. Admitted by EXACTLY the
+   * same gate as requestTapExpand (IDLE, or the one unactivated-DRAGGING case
+   * #1579 measured), and it releases that press the same way, so a photo flip
+   * can never strand the pan's lease. Only the admitted action differs.
+   */
+  requestTapPhoto: (flip: () => void) => boolean;
   isIdle: () => boolean;
   invalidate: (reason: string) => void;
   getCounters: () => DeckSwipeCounters;
@@ -437,6 +444,19 @@ export function useDeckSwipeController(
     return true;
   }, [rejectInput, releaseUnactivatedPress]);
 
+  const requestTapPhoto = useCallback((flip: () => void): boolean => {
+    if (
+      !canAdmitDeckTapExpand(phaseRef.current, panActivatedRef.current) ||
+      !activeCardIdRef.current
+    ) {
+      rejectInput();
+      return false;
+    }
+    releaseUnactivatedPress();          // idempotent; no-ops when already IDLE
+    flip();
+    return true;
+  }, [rejectInput, releaseUnactivatedPress]);
+
   const isIdle = useCallback((): boolean => phaseRef.current === 'IDLE', []);
 
   const invalidate = useCallback((reason: string): void => {
@@ -549,6 +569,7 @@ export function useDeckSwipeController(
     gesture,
     requestSwipe,
     requestTapExpand,
+    requestTapPhoto,
     isIdle,
     invalidate,
     getCounters: () => ({ ...countersRef.current }),

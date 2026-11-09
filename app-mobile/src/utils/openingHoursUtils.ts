@@ -175,6 +175,117 @@ export function isPlaceOpenAt(
 }
 
 /**
+ * #4347 wave 1 — the deck card's open-status fact: "Open until 11pm",
+ * "Closes in 30 min", "Opens 9am". Same parser as `isPlaceOpenAt`, but it
+ * answers WHEN, not just whether.
+ *
+ *   { kind: 'open', closesAtMinute, minutesLeft }  open, more than the
+ *                                                  closing-soon window left
+ *   { kind: 'closing', closesAtMinute, minutesLeft } open, closes inside it
+ *   { kind: 'open24h' }                            open round the clock
+ *   { kind: 'closed', opensAtMinute, opensDayOffset } next opening, if any
+ *   { kind: 'closed', opensAtMinute: null, ... }   closed, no opening in 7 days
+ *   null                                           hours unknown: show nothing
+ *
+ * Minutes are venue-local minutes of the day (0..1439). `opensDayOffset` is 0
+ * for later today, 1 for tomorrow, and so on. Never fabricated: any day the
+ * parser cannot read makes the whole answer null rather than a guess.
+ */
+export type OpenStatus =
+  | { kind: 'open' | 'closing'; closesAtMinute: number; minutesLeft: number }
+  | { kind: 'open24h' }
+  | { kind: 'closed'; opensAtMinute: number | null; opensDayOffset: number | null };
+
+interface DayRanges {
+  readonly allDay: boolean;
+  readonly ranges: ReadonlyArray<readonly [number, number]>;
+}
+
+function parseDayRanges(weekdayText: readonly string[], dayIndex: number): DayRanges | null {
+  const dayName = DAY_NAMES[((dayIndex % 7) + 7) % 7].toLowerCase();
+  const line = weekdayText.find((entry) => {
+    const colon = entry.indexOf(':');
+    return colon !== -1 && entry.substring(0, colon).trim().toLowerCase() === dayName;
+  });
+  if (!line) return null;
+  const hours = line.substring(line.indexOf(':') + 1).trim();
+  if (!hours) return null;
+  if (/^closed$/i.test(hours)) return { allDay: false, ranges: [] };
+  if (/^open\s+24\s+hours?$/i.test(hours)) return { allDay: true, ranges: [[0, 1440]] };
+  const ranges: Array<readonly [number, number]> = [];
+  for (const range of hours.split(/,\s*/)) {
+    const parts = range.split(/\s+[–\-]\s+/);
+    if (parts.length !== 2) continue;
+    const open = parseTimeToMinutes(parts[0], inferOpenPeriod(parts[0], parts[1]));
+    const close = parseTimeToMinutes(parts[1]);
+    if (open === null || close === null) continue;
+    ranges.push([open, close <= open ? close + 1440 : close]);
+  }
+  return ranges.length > 0 ? { allDay: false, ranges } : null;
+}
+
+export function getOpenStatusAt(
+  weekdayText: readonly string[] | undefined | null,
+  targetDate: Date,
+  utcOffsetMinutes?: number | null,
+  closingSoonMinutes = 60,
+): OpenStatus | null {
+  if (!weekdayText || weekdayText.length === 0) return null;
+  const local = utcOffsetMinutes != null
+    ? new Date(targetDate.getTime() + utcOffsetMinutes * 60_000)
+    : targetDate;
+  const day = utcOffsetMinutes != null ? local.getUTCDay() : local.getDay();
+  const now = utcOffsetMinutes != null
+    ? local.getUTCHours() * 60 + local.getUTCMinutes()
+    : local.getHours() * 60 + local.getMinutes();
+
+  // Yesterday (for an overnight range still running) through six days ahead,
+  // as absolute minutes from the start of today.
+  const intervals: Array<[number, number]> = [];
+  let allDayToday = false;
+  for (let offset = -1; offset <= 7; offset += 1) {
+    const parsed = parseDayRanges(weekdayText, day + offset);
+    if (parsed === null) {
+      // Today and yesterday must be readable; a later unreadable day only
+      // limits how far ahead "Opens …" can look.
+      if (offset <= 0) return null;
+      continue;
+    }
+    if (offset === 0 && parsed.allDay) allDayToday = true;
+    for (const [open, close] of parsed.ranges) {
+      intervals.push([open + offset * 1440, close + offset * 1440]);
+    }
+  }
+  intervals.sort((a, b) => a[0] - b[0]);
+  // Merge touching ranges so "Open 24 hours" next to an overnight range reads
+  // as one long opening, not a close at midnight.
+  const merged: Array<[number, number]> = [];
+  for (const interval of intervals) {
+    const last = merged[merged.length - 1];
+    if (last && interval[0] <= last[1]) last[1] = Math.max(last[1], interval[1]);
+    else merged.push([interval[0], interval[1]]);
+  }
+
+  const current = merged.find(([open, close]) => open <= now && now < close);
+  if (current) {
+    const minutesLeft = current[1] - now;
+    if (allDayToday && minutesLeft >= 1440) return { kind: 'open24h' };
+    return {
+      kind: minutesLeft <= closingSoonMinutes ? 'closing' : 'open',
+      closesAtMinute: ((current[1] % 1440) + 1440) % 1440,
+      minutesLeft,
+    };
+  }
+  const next = merged.find(([open]) => open > now);
+  if (!next) return { kind: 'closed', opensAtMinute: null, opensDayOffset: null };
+  return {
+    kind: 'closed',
+    opensAtMinute: ((next[0] % 1440) + 1440) % 1440,
+    opensDayOffset: Math.floor(next[0] / 1440),
+  };
+}
+
+/**
  * Backward-compatible wrapper — checks if a place is open right now.
  */
 export function isPlaceOpenNow(

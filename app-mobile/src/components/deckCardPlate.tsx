@@ -97,6 +97,8 @@ import {
   CHEVRON,
   DETAILS,
   DIVIDER,
+  FACT_LINE,
+  FROM_PILL,
   MAX_FONT_SCALE,
   META,
   META_LINES_MAX,
@@ -166,8 +168,11 @@ function silhouetteFor(lines: number): (typeof SILHOUETTES)[number] {
  * blur anyway (convolving a smooth gradient is a visual no-op), so a dark tint
  * would contribute only suppression.
  */
-function PlateMaterial({ underFill }: { underFill?: string }): React.ReactElement {
-  if (ANDROID_GLASS_USES_OPAQUE_FALLBACK) {
+function PlateMaterial({ underFill, opaque = false }: { underFill?: string; opaque?: boolean }): React.ReactElement {
+  // #4347 — `opaque` is the no-photo card: there is no scrim under the plate to
+  // derive the glass against, so it takes the measured solid every opaque path
+  // already uses (L* 23.47), and white type keeps its ratios.
+  if (ANDROID_GLASS_USES_OPAQUE_FALLBACK || opaque) {
     return (
       <View
         pointerEvents="none"
@@ -197,7 +202,33 @@ function PlateMaterial({ underFill }: { underFill?: string }): React.ReactElemen
  * One meta span. `kind` selects the weight and colour from the package, so the
  * register the line depends on cannot be re-tuned per surface.
  */
-export type MetaSpanKind = 'rating' | 'fact' | 'tail';
+/**
+ * #4347 wave 1 — the three status kinds lead the fact line ("Open until 11pm"
+ * green, "Closes in 30 min" amber, "Opens 9am" grey). Colour is never the only
+ * channel: the words say the state.
+ */
+export type MetaSpanKind = 'rating' | 'fact' | 'tail' | 'statusOpen' | 'statusClosing' | 'statusClosed';
+
+function metaKindStyle(kind: MetaSpanKind) {
+  switch (kind) {
+    case 'rating':
+      return styles.metaRating;
+    case 'tail':
+      return styles.metaTail;
+    case 'statusOpen':
+      return styles.metaStatusOpen;
+    case 'statusClosing':
+      return styles.metaStatusClosing;
+    case 'statusClosed':
+      return styles.metaStatusClosed;
+    case 'fact':
+      return styles.metaFact;
+    default: {
+      const never: never = kind;
+      return never;
+    }
+  }
+}
 
 export interface MetaSpanInput {
   readonly kind: MetaSpanKind;
@@ -300,10 +331,7 @@ export function CardMetaLine({
             </Text>
           ) : null}
           <Text
-            style={[
-              styles.meta,
-              span.kind === 'rating' ? styles.metaRating : span.kind === 'tail' ? styles.metaTail : styles.metaFact,
-            ]}
+            style={[styles.meta, metaKindStyle(span.kind)]}
             maxFontSizeMultiplier={MAX_FONT_SCALE.meta}
           >
             {span.text}
@@ -530,6 +558,14 @@ export interface DeckCardPlateProps {
    */
   readonly onDetailsPress?: () => void;
   readonly detailsLabel?: string;
+  /**
+   * #4347 wave 1 — a host experience's "From ≈ $74" pill, converted through
+   * `formatDisplayPrice` by the caller. It opens the card (it is the same
+   * expand path as Details); absent when the experience has no honest price.
+   */
+  readonly fromPriceLabel?: string | null;
+  /** #4347 — no photo behind the plate: render the opaque solid, not glass. */
+  readonly opaque?: boolean;
 }
 
 /**
@@ -572,6 +608,8 @@ export function DeckCardPlate({
   onMetaLinesChange,
   onDetailsPress,
   detailsLabel,
+  fromPriceLabel,
+  opaque = false,
 }: DeckCardPlateProps): React.ReactElement {
   // #1700 — ONE resolution of the silhouette, read by the height, the row
   // heights AND the material. Three reads of one object; never three parallel
@@ -589,7 +627,7 @@ export function DeckCardPlate({
       accessibilityRole="none"
       accessible={false}
     >
-      <PlateMaterial underFill={silhouette.underFill} />
+      <PlateMaterial underFill={silhouette.underFill} opaque={opaque} />
       <View pointerEvents="none" style={styles.plateTopHighlight} />
 
       {withMeta ? (
@@ -683,6 +721,29 @@ export function DeckCardPlate({
               {detailsLabel}
             </Text>
           </Pressable>
+        ) : null}
+        {fromPriceLabel ? (
+          // Pressable only where the card can open (the behind face cannot, so
+          // there it is the same pill with no gesture owner — Rule L1).
+          onDetailsPress ? (
+            <Pressable
+              onPress={onDetailsPress}
+              style={({ pressed }) => [styles.fromPill, pressed ? styles.shareButtonPressed : null]}
+              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel={fromPriceLabel}
+            >
+              <Text style={styles.fromPillText} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE.controlLabel}>
+                {fromPriceLabel}
+              </Text>
+            </Pressable>
+          ) : (
+            <View style={styles.fromPill} pointerEvents="none">
+              <Text style={styles.fromPillText} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE.controlLabel}>
+                {fromPriceLabel}
+              </Text>
+            </View>
+          )
         ) : null}
         <Pressable
           ref={shareControlRef}
@@ -852,6 +913,24 @@ const styles = StyleSheet.create({
   metaFact: { fontWeight: META.fact.weight as '500', color: META.fact.color },
   metaSeparator: { fontWeight: META.separator.weight as '500', color: META.separator.color },
   metaTail: { fontWeight: META.tail.weight as '500', color: META.tail.color },
+  metaStatusOpen: { fontWeight: FACT_LINE.status.weight as '600', color: FACT_LINE.status.open },
+  metaStatusClosing: { fontWeight: FACT_LINE.status.weight as '600', color: FACT_LINE.status.closingSoon },
+  metaStatusClosed: { fontWeight: FACT_LINE.status.weight as '600', color: FACT_LINE.status.closed },
+  fromPill: {
+    height: FROM_PILL.height,
+    borderRadius: FROM_PILL.radius,
+    paddingHorizontal: FROM_PILL.paddingH,
+    backgroundColor: FROM_PILL.fill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: DETAILS.gapFromBeenHere,
+    flexShrink: 1,
+  },
+  fromPillText: {
+    fontSize: FROM_PILL.size,
+    fontWeight: FROM_PILL.weight as '700',
+    color: FROM_PILL.color,
+  },
   dividerRow: {
     flexDirection: 'row',
     alignItems: 'center',

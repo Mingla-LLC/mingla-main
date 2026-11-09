@@ -291,6 +291,61 @@ export function curatedPlanSpans(
 }
 
 /**
+ * #4347 wave 1 — the DECK card's curated fact line (the sheet keeps
+ * `curatedPlanSpans` until waves 2-3 redesign it):
+ *
+ *     3 stops  ·  3h 30m  ·  8 min away  ·  Moderate        (AI-curated plan)
+ *     3 stops  ·  3h 30m  ·  14 min away                    (host experience;
+ *                                                            its price is the
+ *                                                            plate's "From" pill)
+ *
+ * The stop COUNT is over `planVisibleStops`, the same set the sheet counts
+ * (#1605 S-5: a deck/sheet count mismatch was the defect that gate exists for),
+ * until waves 2-3 move the sheet onto this producer. The travel span is the
+ * first stop's own travel time from the viewer and is omitted when the viewer
+ * has no location (Constitution 9).
+ */
+export interface CuratedDeckFactsOptions {
+  readonly spendLevelLabel: (level: Exclude<SpendLevel, 'free'>) => string;
+  readonly freeLabel: string;
+  readonly stopCountLabel: (count: number) => string;
+  /** i18n'd "{{time}} away". */
+  readonly awayLabel: (minutes: number) => string;
+  readonly isBrandExperience?: boolean;
+}
+
+export function curatedDeckSpans(
+  card: CuratedExperienceCard,
+  options: CuratedDeckFactsOptions,
+): MetaSpanInput[] {
+  const all = Array.isArray(card.stops) ? card.stops : [];
+  const visible = planVisibleStops(all);
+  const spans: MetaSpanInput[] = [];
+  if (visible.length > 0) {
+    const count = trimmed(options.stopCountLabel(visible.length));
+    if (count !== null) spans.push({ kind: 'rating', text: count });
+  }
+  const duration = formatPlanDuration(card.estimatedDurationMinutes);
+  if (duration !== null) spans.push({ kind: 'fact', text: duration });
+  const away = visible[0]?.travelTimeFromUserMin;
+  if (typeof away === 'number' && Number.isFinite(away) && away > 0) {
+    const text = trimmed(options.awayLabel(Math.round(away)));
+    if (text !== null) spans.push({ kind: 'fact', text });
+  }
+  if (options.isBrandExperience !== true) {
+    const level = curatedSpendLevel(visible);
+    if (level === 'free') {
+      const free = trimmed(options.freeLabel);
+      if (free !== null) spans.push({ kind: 'fact', text: free });
+    } else if (level !== null) {
+      const label = trimmed(options.spendLevelLabel(level));
+      if (label !== null) spans.push({ kind: 'fact', text: label });
+    }
+  }
+  return spans;
+}
+
+/**
  * The plan's price. #4347 splits it by what the numbers ARE.
  *
  * A BRAND EXPERIENCE is real money in the host's currency (ORCH-1065 BUG-1:

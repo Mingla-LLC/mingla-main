@@ -205,6 +205,9 @@ const SCANNED = {
   // rather than a claim: neither file can carry a fill, radius, ramp stop or type
   // size of its own.
   'ExpandedCardHero.tsx': 'app-mobile/src/components/expandedCard/ExpandedCardHero.tsx',
+  // #4347 wave 1 — the deck card's new chrome (bars, kicker + title column, stop
+  // stack, smart chip, host chip) is a card face and is held to the same scan.
+  'DeckCardChrome.tsx': 'app-mobile/src/components/deckCard/DeckCardChrome.tsx',
 };
 
 function read(rel) {
@@ -379,9 +382,10 @@ test('G1c the deleted card furniture has not come back', () => {
   }
   // Whatever happens, the TITLE stays clamped: it is 30/700 and a third line
   // would push it off the card entirely.
+  // #4347 — the title now renders in DeckTextColumn (DeckCardChrome.tsx).
   assert.match(
-    read(SCANNED['deckCardPlate.tsx']) + read('app-mobile/src/components/SwipeableCards.tsx'),
-    /numberOfLines=\{S1\.titleLines\}/,
+    read(SCANNED['DeckCardChrome.tsx']),
+    /testID="deck-title"[\s\S]{0,200}numberOfLines=\{S1\.titleLines\}/,
     'G1c: the card title is no longer clamped to the descriptor\'s titleLines',
   );
   // Anti-vacuity: the needles must be findable SOMEWHERE, or this test passes

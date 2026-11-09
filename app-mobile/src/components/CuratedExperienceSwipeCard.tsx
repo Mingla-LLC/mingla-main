@@ -24,33 +24,30 @@ import {
   CuratedSlivers,
   DeckCardPlate,
   platePresentation,
-  type MetaSpanInput,
 } from './deckCardPlate';
-import { MAX_FONT_SCALE, SURFACES } from '../../../packages/card-identity/index.js';
+import { PHOTO_PAGER, STOP_STACK } from '../../../packages/card-identity/index.js';
 import type { CuratedExperienceCard } from '../types/curatedExperience';
 // `parseAndFormatDistance` moved with the rest of the span derivation into
 // `expandedCard/expandedCardFacts` (#1605 P1-6).
-import { formatDisplayPrice } from './utils/formatters';
 /*
-  #1605 P1-6 — THE META SPANS ARE PRODUCED ONCE, HERE AND ON THE SHEET.
-
-  This file used to assemble the curated meta line inline while
-  `expandedCardFacts.curatedPlanSpans` assembled a DIFFERENT one for the
-  expanded sheet: five spans from the non-optional stops here, four from all of
-  them there, with no distance and another duration rule. Same card, one tap
-  apart, three of five spans changed — and the wave's entire claim is that
-  opening a card continues it. Nothing gated span parity because there was
-  nothing shared to gate. There is now, and it is a leaf module (types +
-  formatters), so importing it opens no cycle.
+  #4347 wave 1 — the DECK's curated facts are `curatedFaceFacts` (N stops ·
+  duration · travel · spend level, and a host experience's "From" pill). The
+  same binding renders the behind face in SwipeableCards, so promotion never
+  changes the line. The sheet keeps `curatedPlanSpans` until waves 2-3.
 */
-import { curatedPlanSpans, planVisibleStops } from './expandedCard/expandedCardFacts';
-// ORCH-1042: reuse the SAME hard-failure fallback URL + placeholder blurhash as the
-// single-place deck hero (one source of truth — do not duplicate the literals).
-// ORCH-1065 BUG-3: import from the leaf ./deckHeroConstants module, NOT from
-// ./SwipeableCards — SwipeableCards imports THIS file (it renders the card), so
-// importing back from it closed a require cycle. The leaf module has no such edge.
+import { curatedFaceFacts } from './deckCard/curatedFace';
+import { pagerPresentation, routeLine, stopStackPhotos, type DeckPhoto } from './deckCard/deckCardModel';
+
+const NO_FAILURES: ReadonlySet<string> = new Set();
 import {
-  CARD_FALLBACK_IMAGE,
+  DeckTextColumn,
+  NoPhotoFill,
+  PhotoCapsule,
+  PhotoPagerBars,
+  photoBarsTop,
+  photoLabelTop,
+} from './deckCard/DeckCardChrome';
+import {
   DECK_BOTTOM_SCRIM_HEIGHT_PT,
   DECK_HERO_PLACEHOLDER_BLURHASH,
   DECK_SCRIM_COLORS,
@@ -62,46 +59,36 @@ import {
 import { DECK_VISIBLE_POSTER_CACHE_POLICY } from './swipeDeck/deckHeroPolicy';
 
 // ORCH-1042: fade-in within the spec's 180–300 ms band (mirrors SwipeableCards).
-const CURATED_STOP_TRANSITION_MS = 220;
-
 /**
- * Curated multi-stop hero image with placeholder + fade + onError fallback.
+ * #4347 wave 1 — one page of the curated / experience photo pager.
  *
- * ORCH-1042: a curated stop whose `imageUrl` is slow or hard-fails used to show a
- * permanent dark `#2C2C2E` panel (no placeholder, no onError). Now it renders via
- * expo-image with the same prop contract as the single-place CardHeroImage and
- * swaps to CARD_FALLBACK_IMAGE on a hard failure.
+ * Changing `uri` on the same mounted ExpoImage is the flip: expo-image
+ * cross-fades over `transitionMs` (180ms; 0 under Reduce Motion). A load
+ * failure is REPORTED so the pager skips to the next photo; the old stock
+ * fallback photo is deleted (a picture of somewhere else is fabricated data).
  */
-function CuratedStopImage({ uri }: { uri: string }) {
-  const [src, setSrc] = React.useState(uri);
-  React.useEffect(() => {
-    setSrc(uri);
-  }, [uri]);
+function CuratedStopImage({
+  uri,
+  transitionMs,
+  onLoadFailed,
+}: {
+  uri: string;
+  transitionMs: number;
+  onLoadFailed?: (uri: string) => void;
+}) {
   return (
     <ExpoImage
-      source={{ uri: src }}
+      source={{ uri }}
       style={styles.heroImage}
       contentFit="cover"
       cachePolicy={DECK_VISIBLE_POSTER_CACHE_POLICY}
-      recyclingKey={src}
-      transition={CURATED_STOP_TRANSITION_MS}
+      transition={transitionMs}
       placeholder={{ blurhash: DECK_HERO_PLACEHOLDER_BLURHASH }}
       placeholderContentFit="cover"
-      onError={() => {
-        if (src !== CARD_FALLBACK_IMAGE) setSrc(CARD_FALLBACK_IMAGE);
-      }}
+      onError={() => onLoadFailed?.(uri)}
     />
   );
 }
-
-// #1609 Direction C — `CURATED_ICON_MAP` is DELETED with the category chip it fed.
-// The curated identity is the sliver stack, not an icon: a silhouette reads at
-// every size and is colour-blind-safe, where an icon needs a chip to sit in.
-
-// ─── ORCH-1065 [consumer-experience-deck-card]: brand badge + Book CTA ─────────
-// Built to DESIGN_ORCH-1065_BRAND_EXPERIENCE_DECK_CARD.md. Both elements are
-// gated behind the `brandExperience` / `ctaOverride` props being present, so
-// curated callers (which pass neither) render byte-identically (SC-13).
 
 const g = glass.badge;
 
@@ -140,6 +127,7 @@ interface BrandChipProps {
 // as the metadata chips; degrades to the opaque solid fill on Android pre-blur /
 // Reduce Transparency (ANDROID_GLASS_USES_OPAQUE_FALLBACK policy, DESIGN §2.6).
 function BrandChip({ brandName, brandLogoUrl, top, wrapped = false }: BrandChipProps): React.ReactElement {
+  const { t } = useTranslation(['cards']);
   const [reduceTransparency, setReduceTransparency] = React.useState(false);
   const [logoFailed, setLogoFailed] = React.useState(false);
 
@@ -180,7 +168,7 @@ function BrandChip({ brandName, brandLogoUrl, top, wrapped = false }: BrandChipP
       accessibilityRole={wrapped ? undefined : 'image'}
       accessibilityElementsHidden={wrapped}
       importantForAccessibility={wrapped ? 'no-hide-descendants' : 'auto'}
-      accessibilityLabel={wrapped ? undefined : `Experience by ${trimmedName}`}
+      accessibilityLabel={wrapped ? undefined : t('cards:deck.experience_by', { name: trimmedName })}
     >
       {/* L1 — blur or opaque solid fallback */}
       {useGlass ? (
@@ -244,8 +232,6 @@ function BrandChip({ brandName, brandLogoUrl, top, wrapped = false }: BrandChipP
 
 interface Props {
   card: CuratedExperienceCard;
-  travelMode?: string;
-  measurementSystem?: 'Metric' | 'Imperial';
   currencyCode?: string;
   // ORCH-1065: present ONLY for brand experiences. Curated callers omit both →
   // byte-identical render (SC-13).
@@ -263,7 +249,6 @@ interface Props {
     coverMediaType: 'image' | 'video' | 'gif' | null;
     coverHue?: number;
   };
-  ctaOverride?: string;
   // #1609 Direction C — the plate's control row. The Been-here control is passed
   // IN as an element rather than imported, so this file never imports
   // SwipeableCards (which imports it back — that closes the require cycle).
@@ -285,12 +270,32 @@ interface Props {
   // downloads nothing. Defaults true so non-deck callers (none today) are
   // unaffected. Mirrors SwipeableCards CardHero isTopCard (I-1069).
   isTopCard?: boolean;
+  /**
+   * #4347 wave 1 — the photo pager, OWNED BY THE CALLER (SwipeableCards owns
+   * the one tap path that flips it). `photos` is `curatedDeckPhotos` /
+   * `experienceDeckPhotos`; `photoIndex` the page showing. Absent -> page 0 of
+   * the card's own stops (the behaviour of every non-deck caller).
+   */
+  photos?: readonly DeckPhoto[];
+  photoIndex?: number;
+  onPhotoFailed?: (uri: string) => void;
+  /** Photo uris already known to fail; the face never renders them. */
+  failedPhotos?: ReadonlySet<string>;
+  /** 0 under Reduce Motion, else PHOTO_PAGER.crossfadeMs. */
+  photoTransitionMs?: number;
+  /** The kicker above the title (one owner: deckKickerFor). */
+  kicker?: string | null;
+  /** The ONE smart chip, already worded by the caller. */
+  smartChip?: { text: string; tone: 'warn' | 'info' } | null;
+  /** The one-time "Tap the sides…" hint text, when it should show. */
+  photoHint?: string | null;
+  /** "Stop 2 · Café Neo" for the page showing (curated only). */
+  stopLabel?: string | null;
 }
 
 /** The behind face is `pointerEvents="none"`; its plate can never be pressed. */
 const NOOP = (): void => {};
 
-const S1 = SURFACES.s1Single;
 
 /*
   `formatDuration` moved to `expandedCard/expandedCardFacts.formatPlanDuration`
@@ -298,133 +303,75 @@ const S1 = SURFACES.s1Single;
   either side of a producer split is how the split stays invisible.
 */
 
-export function CuratedExperienceSwipeCard({ card, travelMode, measurementSystem, currencyCode, brandExperience, onBrandPress, experienceCover, ctaOverride, isTopCard = true, beenHere, onSharePress, shareLabel, onDetailsPress, detailsLabel }: Props) {
-  // `cards` joins `common` because the shared span producer's labels ("Free",
-  // "{{count}} stops") are the SAME keys the expanded sheet resolves — the
-  // collapsed card used to hardcode both in English (#1605 P1-6).
+export function CuratedExperienceSwipeCard({
+  card,
+  currencyCode,
+  brandExperience,
+  onBrandPress,
+  experienceCover,
+  isTopCard = true,
+  beenHere,
+  onSharePress,
+  shareLabel,
+  onDetailsPress,
+  detailsLabel,
+  photos,
+  photoIndex = 0,
+  onPhotoFailed,
+  failedPhotos,
+  photoTransitionMs = PHOTO_PAGER.crossfadeMs,
+  kicker = null,
+  smartChip = null,
+  photoHint = null,
+  stopLabel = null,
+}: Props) {
   const { t } = useTranslation(['common', 'cards']);
   const insets = useSafeAreaInsets();
-  // ORCH-0991: deck is full-bleed under the floating glass top bar. Keeps the brand
-  // chip below the chrome so it is not clipped behind the status bar / Dynamic Island.
-  // #1609: the per-stop number badges that also used this are gone with the strip.
-  const stopBadgeTop = insets.top + 62;
+  const brandChipTop = photoLabelTop(insets.top);
 
-  // Compact card shows only main (non-optional) stops. The SAME selection the
-  // expanded sheet's plate uses — it is `planVisibleStops`, exported by the one
-  // span producer, so "which stops is this plan" is stated once.
-  const visibleStops = planVisibleStops(card.stops);
-
-  // #1609 — the single hero for the non-cover path: the first stop that actually has a
-  // photo. Null when no stop has one, in which case the placeholder canvas shows and
-  // nothing is fabricated (Constitution rule 9).
-  const heroImageUrl = visibleStops.find(s => typeof s.imageUrl === 'string' && s.imageUrl.length > 0)?.imageUrl ?? null;
-
-  // #1609 Direction C — the stop RIBBON is deleted with the chips. The stop names
-  // leave the collapsed card, and this is the design's single most arguable cut:
-  // the 300ms question is "is this a plan, how long, how much", which the count,
-  // duration and price answer; WHICH three bars is deliberation, one tap away in
-  // the expanded card's stops accordion, where they appear in full with images.
-  // The ribbon also cost a wrapping row — a variable-height element on a card whose
-  // whole strength is a fixed silhouette (D-5).
-
-  // ORCH-1065: this card is a brand experience when the brand-attribution prop is
-  // present (curated callers omit it → byte-identical render, SC-13).
   const isBrandExperience = brandExperience != null;
 
-  // #1609 Direction C — `avgRating` is DELETED. A mean of the stops' Google ratings
-  // is not a rating OF THE PLAN, and the plan's characterising fact is its stop
-  // COUNT, which now takes the meta line's leading 700 slot.
-
-  // #1609 — isBookCta / handleCtaPressIn / ctaText are DELETED with the tray CTA
-  // they served. That CTA called onSeePlan -> handleCardExpand DIRECTLY, bypassing
-  // requestTapExpand and therefore the deck's gesture lease entirely. With it gone,
-  // EVERY expand entry point on this card — tap, swipe-up and the VoiceOver expand
-  // action — routes through requestTapExpand. That is a real hole closed
-  // (I-PROPOSED-1579 corollary), not a side effect: the same sheet is one tap away
-  // on the card itself, and the commerce "Book" action lives on it.
-
   /**
-   * #1609 Direction C §3.4 — the curated meta line:
-   *
-   *     3 stops  ·  6.7 mi  ·  2h 15m  ·  £28–£54  ·  Adventurous
-   *     └─700──┘  └────────── 500 @1.0 ─────────┘   └─500 @0.72─┘
-   *
-   * #1605 P1-6 — ASSEMBLED BY THE SHARED PRODUCER, NOT HERE. Everything that
-   * used to be computed inline above this line — the ORCH-0629 stop-sum price,
-   * the ORCH-1065 brand-experience envelope exception, the first-stop distance
-   * (D-2: travel time is NOT rendered, "14 min" beside "6.7 mi" is the same fact
-   * twice), the duration formatter and the single-stop distance fallback — moved
-   * into `curatedPlanSpans` VERBATIM so the expanded sheet renders the identical
-   * array. What stays here is only what is viewer state: the currency, the
-   * measurement system and the three i18n resolvers.
+   * #4347 wave 1 — the deck's curated fact line ("3 stops · 3h 30m · 8 min
+   * away · Moderate") and, for a host experience, the plate's "From ≈ $74"
+   * pill. One binding (`curatedFaceFacts`) for this face and the behind face.
    */
-  const curatedSpans: MetaSpanInput[] = curatedPlanSpans(card, {
-    measurementSystem,
-    // #4347: the producer passes the amount WITH the experience's own currency;
-    // only the viewer's currency is bound here.
-    formatMoney: (price) => formatDisplayPrice({ ...price, viewerCurrency: currencyCode })?.text ?? null,
-    spendLevelLabel: (level) => t(`cards:price.spend_${level}`),
-    freeLabel: t('cards:swipeable.free', { defaultValue: 'Free' }),
-    stopCountLabel: (count) =>
-      t('cards:expanded.stop_count', { defaultValue: '{{count}} stops', count }),
-    intentLabel: (slug) => t(`common:intent_${slug}`),
+  const { spans: curatedSpans, fromPriceLabel } = curatedFaceFacts(card, {
+    t,
+    currencyCode,
     isBrandExperience,
   });
 
   /**
-   * #1609 tester P1-1 — THE SILHOUETTE IS DECIDED ONCE, HERE, AND EVERYTHING ON
-   * THE FACE READS IT.
-   *
-   * `platePresentation()` is the SAME predicate `DeckCardPlate` uses to size
-   * itself. This file imported it and never called it, and instead baked
-   * `S1.bottomInset + S1.plateH + S1.gap` into a module-load `StyleSheet.create`
-   * entry, so when the span set was vacuous the plate shrank and the name
-   * and the sliver stack stayed where a 96pt plate had been. §3.6 promises
-   * "exactly ONE alternate silhouette in the whole system"; that produced four.
-   *
-   * A module-load stylesheet cannot express a per-render value. So the anchor
-   * leaves the stylesheet: `cardTitle` no longer carries `bottom` at all, and the
-   * offset is applied at the render site from this one object.
-   */
-  /**
-   * #1700 — the measured facts-line count. Local state here rather than lifted
-   * to SwipeableCards because this component owns its own title and sliver
-   * anchors: the number that sizes the plate and the number that positions the
-   * name above it MUST be the same one, and that is only guaranteed while a
-   * single `presentation` object is the only thing either reads.
+   * #1700 — the measured facts-line count, local because this component owns
+   * its own title anchor: the number that sizes the plate and the number that
+   * positions the column above it must be the same one.
    */
   const [metaLines, setMetaLines] = React.useState(1);
   const presentation = platePresentation(curatedSpans, metaLines);
 
-  // ORCH-1072: an experience with a real cover renders the COVER as the hero
-  // (image/video via the shared EventCoverMedia) with the stop photos as a
-  // smaller strip BELOW it. Curated cards (no cover prop) keep the full-bleed
-  // stop strip hero unchanged (SC-13). The experience cover-fallback (no cover
-  // url) also keeps the stop-strip hero so a cover-less experience still renders.
+  // The pager's pages, decided by the caller (SwipeableCards owns the tap path).
+  const pages = photos ?? [];
+  const pager = pagerPresentation(pages, photoIndex, failedPhotos ?? NO_FAILURES);
+  const hasPhoto = pager.hasPhoto;
+  const showingUri = pager.playVideoUri ?? pager.posterUri;
   const coverUrl = experienceCover?.coverMediaUrl ?? null;
-  const coverType = experienceCover?.coverMediaType ?? null;
-  const showCoverHero =
-    isBrandExperience && typeof coverUrl === 'string' && coverUrl.length > 0;
+  // The experience's own cover (image or video) renders through the shared
+  // EventCoverMedia; every other page is a stop photo.
+  const showCover = isBrandExperience && hasPhoto && coverUrl !== null && showingUri === coverUrl;
+
+  const stack = isBrandExperience
+    ? null
+    : { photos: stopStackPhotos(card.stops, STOP_STACK.max), route: routeLine(card.stops) };
 
   return (
     <View style={styles.card}>
-      {/* #1609 — full-bleed hero, ONE image.
-          The old `imageStrip` mounted one ExpoImage PER STOP as an absolute-fill row,
-          so a 4-stop card was 4 decodes and two mounted cards were 8, against a
-          performance bound of two raster posters. It also degraded badly at N>=4
-          (100pt-wide crops of interiors are unreadable) and pinned its stop-number
-          badges to the TOP of the card rather than over the slices they labelled.
-          Curated now joins the same single-poster budget as a place card, and the
-          stops are named in the ribbon below instead — strictly more informative than
-          four unreadable crops. */}
       <View style={styles.heroFill}>
-        {showCoverHero ? (
+        {showCover ? (
           <EventCoverMedia
             hue={experienceCover?.coverHue}
             mediaUrl={coverUrl}
-            mediaType={coverType}
-            // ORCH-1209 — only the front card streams (parity with the
-            // venue deck CardHero, I-1069). Off-front: paused on poster.
+            mediaType={experienceCover?.coverMediaType ?? null}
             autoplay={isTopCard}
             playbackActive={isTopCard}
             muted
@@ -434,31 +381,28 @@ export function CuratedExperienceSwipeCard({ card, travelMode, measurementSystem
             width="100%"
             label={card.title}
           />
-        ) : heroImageUrl ? (
-          <CuratedStopImage uri={heroImageUrl} />
+        ) : hasPhoto && pager.posterUri ? (
+          <CuratedStopImage uri={pager.posterUri} transitionMs={photoTransitionMs} onLoadFailed={onPhotoFailed} />
         ) : (
-          <View style={[StyleSheet.absoluteFillObject, styles.imagePlaceholder]} />
+          <NoPhotoFill />
         )}
 
-        {/* ORCH-1065: brand badge (top-left, below the stop-badge baseline) —
-            only when this is a brand experience.
-            ORCH-1155: when onBrandPress is provided, wrap the badge in a button
-            that opens the brand page (no dead tap). Curated callers pass neither
-            prop → byte-identical (SC-12). */}
+        {/* ORCH-1065 / ORCH-1155: the host chip of a brand experience, top-left.
+            A button to the brand page when the caller supplies the handler. */}
         {brandExperience ? (
           onBrandPress ? (
             <TrackedTouchableOpacity
               activeOpacity={0.8}
               onPress={onBrandPress}
               accessibilityRole="button"
-              accessibilityLabel={`View ${brandExperience.brandName}`}
+              accessibilityLabel={t('cards:deck.view_brand', { name: brandExperience.brandName })}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              style={[styles.brandChipPressable, { top: stopBadgeTop }]}
+              style={[styles.brandChipPressable, { top: brandChipTop }]}
             >
               <BrandChip
                 brandName={brandExperience.brandName}
                 brandLogoUrl={brandExperience.brandLogoUrl}
-                top={stopBadgeTop}
+                top={brandChipTop}
                 wrapped
               />
             </TrackedTouchableOpacity>
@@ -466,65 +410,50 @@ export function CuratedExperienceSwipeCard({ card, travelMode, measurementSystem
             <BrandChip
               brandName={brandExperience.brandName}
               brandLogoUrl={brandExperience.brandLogoUrl}
-              top={stopBadgeTop}
+              top={brandChipTop}
             />
           )
         ) : null}
 
-        {/* #1609 Direction C — the scrim. IDENTICAL to the place card: same ramp AND
-            same absolute point height. The 62%-vs-52% branch is DELETED. That branch
-            existed because curated carried an extra row the place card did not, and it
-            is exactly how the two card types drifted apart — a per-type geometry value
-            is the drift, not a response to it. Curated is now the same rectangle with
-            two extra 4pt views. */}
-        <LinearGradient
-          colors={DECK_SCRIM_COLORS}
-          locations={DECK_SCRIM_LOCATIONS}
-          pointerEvents="none"
-          style={styles.heroScrim}
-        />
+        {/* #1609 Direction C — the scrims, IDENTICAL to the place card: same ramp
+            and the same absolute point heights. A no-photo card has none: its
+            type is dark on the neutral fill. */}
+        {hasPhoto ? (
+          <>
+            <LinearGradient
+              colors={DECK_SCRIM_COLORS}
+              locations={DECK_SCRIM_LOCATIONS}
+              pointerEvents="none"
+              style={styles.heroScrim}
+            />
+            <LinearGradient
+              colors={DECK_TOP_SCRIM_COLORS}
+              locations={DECK_TOP_SCRIM_LOCATIONS}
+              pointerEvents="none"
+              style={styles.topScrim}
+            />
+          </>
+        ) : null}
 
-        {/* #1609 amendment 4 — the top scrim. Identical ramp and identical absolute
-            height to the place card: the deck chrome sits at the same absolute y over
-            BOTH card types, so a per-type value here would be the same class of drift
-            that made the place and curated scrims disagree before. Curated's bottom
-            scrim is the taller one (62%), so non-overlap is tightest here: it holds for
-            any card at least 200 / 0.38 = 526.4pt tall. */}
-        <LinearGradient
-          colors={DECK_TOP_SCRIM_COLORS}
-          locations={DECK_TOP_SCRIM_LOCATIONS}
-          pointerEvents="none"
-          style={styles.topScrim}
-        />
+        {/* #4347 wave 1 — the pager chrome: segment bars, "Stop 2 · Café Neo",
+            and the one-time tap hint. All pointerEvents="none". */}
+        <PhotoPagerBars count={hasPhoto ? pages.length : 0} index={pager.photoIndex} top={photoBarsTop(insets.top)} />
+        {isBrandExperience ? null : <PhotoCapsule text={stopLabel} top={photoLabelTop(insets.top)} testID="deck-stop-label" />}
+        <PhotoCapsule text={photoHint} top={photoLabelTop(insets.top) + PHOTO_PAGER.label.lineHeight * 2 + 4} align="center" testID="deck-photo-hint" />
 
-        {/* #1609 Direction C — the name on the photograph, then the plate, exactly as
-            the place card. `tagline` leaves the collapsed card for the same reason
-            `oneLiner` does on the place card: a second prose line under the title at
-            identical colour flattens the register the plate exists to create. It
-            survives in the expanded card. */}
         <View style={styles.faceOverlay} pointerEvents="box-none">
-          <Text
-            style={[styles.cardTitle, { bottom: presentation.titleBottom }]}
-            numberOfLines={S1.titleLines}
-            maxFontSizeMultiplier={MAX_FONT_SCALE.title}
-          >
-            {card.title}
-          </Text>
+          <DeckTextColumn
+            title={card.title}
+            kicker={kicker}
+            bottom={presentation.titleBottom}
+            dark={!hasPhoto}
+            smartChip={smartChip}
+            stack={stack}
+          />
 
           {/*
-            #1609 Direction C — THE CURATED MARK IS THE SILHOUETTE, NOT A LABEL.
-
-            Deleted here: the accent "Plan · N stops" GlassBadge and the four
-            metadata chips, the vector stop ribbon, and the rail's "See Full Plan"
-            text. All six chips were BlurViews with per-badge entryIndex staggers
-            inside the promotion diff — the exact shape that produced #1576 — and
-            the accent chip additionally carried a colour-only identity signal.
-
-            What replaces them is two 4pt slivers peeking above the plate's top
-            edge. No text, no colour, no extra image decode, no gesture owner, and
-            it reads at 402pt for the same reason it will read at 173pt: it is the
-            object's silhouette. The facts move into the plate's meta line, where
-            "3 stops" leads at weight 700.
+            #1609 Direction C — THE CURATED MARK IS THE SILHOUETTE: two 4pt slivers
+            peeking above the plate. No text, no colour, no gesture owner.
           */}
           <CuratedSlivers plateH={presentation.plateH} />
 
@@ -532,14 +461,13 @@ export function CuratedExperienceSwipeCard({ card, travelMode, measurementSystem
             spans={curatedSpans}
             metaLines={presentation.metaLines}
             onMetaLinesChange={setMetaLines}
-            // #1701 — Details, on the curated plan and the brand experience too.
-            // The handler is supplied by the CALLER, which owns the one expand
-            // path; this card never opens anything itself.
             onDetailsPress={onDetailsPress}
             detailsLabel={detailsLabel}
             beenHere={beenHere}
             onSharePress={onSharePress ?? NOOP}
             shareLabel={shareLabel ?? card.title}
+            fromPriceLabel={fromPriceLabel}
+            opaque={!hasPhoto}
           />
         </View>
       </View>
@@ -568,9 +496,6 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  imagePlaceholder: {
-    backgroundColor: '#2C2C2E',
-  },
   // #1609 Direction C — IDENTICAL to the place card's heroScrim: same ramp, same
   // absolute point height from the package. The 62%-vs-52% branch is deleted.
   heroScrim: {
@@ -598,26 +523,9 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     zIndex: 2,
   },
-  // #1609 tester P1-1 — `bottom` IS DELIBERATELY ABSENT. It was
-  // `S1.bottomInset + S1.plateH + S1.gap`, a module-load constant that is only
-  // correct for the 96pt silhouette; in the short one it stranded the name well
-  // above a plate it is supposed to sit 20pt above. It is now applied at the
-  // render site from `platePresentation(curatedSpans).titleBottom`. Do not put it
-  // back — a StyleSheet.create entry is evaluated once per module, and this value
-  // is per render.
-  cardTitle: {
-    position: 'absolute',
-    left: S1.titleInset,
-    right: S1.titleInset,
-    color: '#FFFFFF',
-    fontSize: S1.titleSize,
-    fontWeight: S1.titleWeight as '700',
-    lineHeight: S1.titleLH,
-    zIndex: 2,
-    textShadowColor: 'rgba(0, 0, 0, 0.5)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
-  },
+  // #4347 wave 1 — `cardTitle` is DELETED: the title, the kicker, the smart chip
+  // and the stop stack are one bottom-anchored column (DeckTextColumn), placed at
+  // `platePresentation(...).titleBottom` per render, never by a stylesheet value.
   // #1609 Direction C — DELETED: `titleOverlay` (flow layout replaced by absolute
   // anchoring), `oneLiner` (the tagline; it flattens the register and survives in
   // expanded), `ribbon` / `ribbonNode` / `ribbonDot` / `ribbonConnector` /
@@ -657,7 +565,7 @@ const styles = StyleSheet.create({
   },
   // ORCH-1155: the pressable wrapper owns the absolute positioning the badge had,
   // so the inner BrandChip (rendered with `wrapped`) lays out in normal flow and
-  // the tap target is the chip box. `top` is supplied inline (stopBadgeTop).
+  // the tap target is the chip box. `top` is supplied inline (photoLabelTop).
   brandChipPressable: {
     position: 'absolute',
     left: 8,
