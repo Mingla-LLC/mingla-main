@@ -352,10 +352,22 @@ const NATIVE_CURATED_SOURCE_KEYS = [
 ];
 const NATIVE_CURATED_STOP_KEYS = [
   "stopNumber","stopLabel","placeId","placeName","placeType","address","rating","reviewCount","imageUrl","imageUrls","priceLevelLabel",
-  "priceTier","priceMin","priceMax","priceOpenEnded","openingHours","utcOffsetMinutes","isOpenNow","website","lat","lng","aiDescription",
+  "priceTier","priceMin","priceMax","priceOpenEnded","priceCurrency","priceLevel","openingHours","utcOffsetMinutes","isOpenNow","website","lat","lng","aiDescription",
   "estimatedDurationMinutes","optional","dismissible","role","phone","countryCode","comboCategory","rankSignal","distanceFromUserKm",
   "travelTimeFromUserMin","travelTimeFromPreviousStopMin","travelModeFromPreviousStop",
 ];
+
+/** #4347 round 2 — a stop's price currency + Google level; invalid values are dropped, never guessed. */
+function nativeStopPriceIdentity(stop: RecordLike): RecordLike {
+  const out: RecordLike = {};
+  if (stop.priceCurrency !== undefined) {
+    out.priceCurrency = typeof stop.priceCurrency === "string" && /^[A-Z]{3}$/.test(stop.priceCurrency) ? stop.priceCurrency : null;
+  }
+  if (stop.priceLevel !== undefined) {
+    out.priceLevel = typeof stop.priceLevel === "string" && /^PRICE_LEVEL_[A-Z_]+$/.test(stop.priceLevel) ? stop.priceLevel : null;
+  }
+  return out;
+}
 
 /** Explicit recipient-safe allowlist. Private ownership, provider payloads,
  * processing metadata and internal notes cannot enter a native chat card. */
@@ -385,7 +397,10 @@ export function buildNativeContentCardSnapshot(kind: "place" | "curated", row: R
         imageUrl, imageUrls, priceLevelLabel: nativeText(stop.priceLevelLabel, 80), priceTier: nativeText(stop.priceTier, 40),
         priceMin: nativeMoney(stop.priceMin), priceMax: nativeMoney(stop.priceMax),
         // #4265: an open-ended stop price ("$100+") travels with the share; only `true` is emitted.
-        priceOpenEnded: nativeBoolean(stop.priceOpenEnded) === true ? true : undefined, openingHours: nativeHours(stop.openingHours),
+        priceOpenEnded: nativeBoolean(stop.priceOpenEnded) === true ? true : undefined,
+        // #4347 round 2: the currency and Google level of the stop's price travel with the share (null/absent = unknown).
+        ...nativeStopPriceIdentity(stop),
+        openingHours: nativeHours(stop.openingHours),
         utcOffsetMinutes: nativeUtcOffsetMinutes(stop.utcOffsetMinutes), isOpenNow: stop.isOpenNow === null ? null : nativeBoolean(stop.isOpenNow),
         website: stop.website === null ? null : nativeExternalUrl(stop.website),
         lat: nativeLatitude(stop.lat), lng: nativeLongitude(stop.lng), aiDescription: nativeText(stop.aiDescription, 4000),

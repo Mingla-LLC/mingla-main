@@ -68,7 +68,7 @@ import {
 // filter — solo users could be served a plan whose stop was closed on arrival.
 // Now solo inherits the SAME gate collab already gets via discover-cards.
 import { filterCuratedByStopHours, resolveCuratedHoursPolicy } from '../_shared/curatedStopHours.ts';
-import { buildStopPrice, sumStopPrices } from '../_shared/curatedPrice.ts';
+import { buildStopPrice, stopPriceIdentity, sumStopPrices } from '../_shared/curatedPrice.ts';
 import {
   attachExperienceDisplayPrices,
   dbMinorConverter,
@@ -832,6 +832,10 @@ function buildCardStop(
     priceLevelLabel: card.price_tiers?.[0] || card.price_tier || 'chill',
     // #4265: an unknown max ("$100+") is never 0 — see curatedPrice.ts.
     ...buildStopPrice(card.price_min, card.price_max),
+    // #4347 round 2 — priceMin/priceMax are Google's per-person range in the
+    // PLACE's currency, so the client converts them; priceLevel lets it tell a
+    // free place from one with no range ("PRICE_LEVEL_FREE" etc., null = unknown).
+    ...stopPriceIdentity(card),
     priceTier: card.price_tiers?.[0] || card.price_tier || 'chill',
     priceTiers: card.price_tiers?.length ? card.price_tiers : (card.price_tier ? [card.price_tier] : ['chill']),
     openingHours: card.opening_hours || {},

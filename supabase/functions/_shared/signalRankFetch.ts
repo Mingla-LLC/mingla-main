@@ -14,6 +14,7 @@
 // This makes the helper portable across edge functions.
 
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { rangeCurrency } from './curatedPrice.ts';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -50,6 +51,8 @@ export interface SignalRankResult {
   price_level: number | null;
   price_min: number | null;
   price_max: number | null;
+  /** #4347 round 2 — ISO 4217 code of price_min/price_max (Google's own range currency). */
+  price_currency: string | null;
   price_tier: string | null;
   price_tiers: string[] | null;
   opening_hours: Record<string, unknown> | null;
@@ -258,57 +261,23 @@ export async function fetchSinglesForSignalRank(
   supabaseAdmin: SupabaseClient,
   params: SignalRankParams,
 ): Promise<SignalRankResult[]> {
-  const {
-    filterSignal,
-    filterMin,
-    rankSignal,
-    centerLat,
-    centerLng,
-    radiusMeters,
-    limit,
-    requiredTypes,
-    primaryTypeRequired,
-    groceryFloralTag,
-    excludePlaceIds,
-  } = params;
-
-  const latDelta = radiusMeters / 111320;
-  const lngDelta = radiusMeters / (111320 * Math.cos(centerLat * Math.PI / 180));
+  const { filterSignal, filterMin, rankSignal, centerLat, requiredTypes } = params;
+  const latDelta = params.radiusMeters / 111320;
 
   const { data: rankedPairs, error: rpcErr } = await supabaseAdmin.rpc(
     'fetch_local_signal_ranked',
-    {
-      p_filter_signal: filterSignal,
-      p_filter_min: filterMin,
-      p_rank_signal: rankSignal,
-      p_lat_min: centerLat - latDelta,
-      p_lat_max: centerLat + latDelta,
-      p_lng_min: centerLng - lngDelta,
-      p_lng_max: centerLng + lngDelta,
-      p_required_types: requiredTypes ?? null,
-      p_limit: limit * 2,
-      // ORCH-0990: composite primary-type gate (flowers). Defaults (null/false)
-      // are a no-op in the RPC → every existing caller is unaffected.
-      p_primary_type_required: primaryTypeRequired ?? null,
-      p_grocery_floral_tag: groceryFloralTag ?? false,
-    },
+    signalRankRpcArgs(params),
   );
 
   // ORCH-0653: throw on error (Constitution #3); empty result still legitimate.
   if (rpcErr) {
-    throw new Error(`[fetchSinglesForSignalRank] RPC fetch_local_signal_ranked (filter=${filterSignal}>=${filterMin} rank=${rankSignal} bbox=(${centerLat.toFixed(4)},${centerLng.toFixed(4)})±${Math.round(latDelta * 111320)}m types=${requiredTypes?.join('|') ?? 'any'}) failed: ${rpcErr.message}`);
+    throw new Error(`[fetchSinglesForSignalRank] RPC fetch_local_signal_ranked (filter=${filterSignal}>=${filterMin} rank=${rankSignal} bbox=(${centerLat.toFixed(4)},${params.centerLng.toFixed(4)})±${Math.round(latDelta * 111320)}m types=${requiredTypes?.join('|') ?? 'any'}) failed: ${rpcErr.message}`);
   }
   if (!rankedPairs || rankedPairs.length === 0) return [];
 
-  const excluded = new Set((excludePlaceIds ?? []).filter(Boolean));
-  const rankedIds = (rankedPairs as Array<{ place_id: string; rank_score: number }>)
-    .map((p) => p.place_id)
-    .filter((id) => !excluded.has(id));
+  const pairs = rankedPairs as RankedPair[];
+  const rankedIds = unexcludedRankedIds(pairs, params);
   if (rankedIds.length === 0) return [];
-  const rankScoreById = new Map<string, number>();
-  for (const p of (rankedPairs as Array<{ place_id: string; rank_score: number }>)) {
-    rankScoreById.set(p.place_id, Number(p.rank_score));
-  }
 
   // Hydrate the small ranked set. rankedIds is bounded by limit*2 ≤ ~100,
   // well under any URL cap. No chunking needed.
@@ -316,9 +285,10 @@ export async function fetchSinglesForSignalRank(
   // META-ORCH-1009 Sub-B: `ai_signal_scores` added so the stop carries the
   // per-rankSignal Gemini Q2 reasoning into the curated card payload (mobile
   // expand-modal "Why we picked this for you" section).
+  // Issue #4275: `photos` removed. It was never read and is the widest column.
   const { data: places, error: placeErr } = await supabaseAdmin
     .from('place_pool')
-    .select('id, google_place_id, name, address, lat, lng, rating, review_count, price_level, price_range_start_cents, price_range_end_cents, opening_hours, website, stored_photo_urls, photos, types, primary_type, utc_offset_minutes, city_id, city, country, ai_signal_scores')
+    .select(SIGNAL_RANK_HYDRATE_COLUMNS)
     .in('id', rankedIds);
 
   // ORCH-0653: throw on error (Constitution #3); empty result still legitimate.
@@ -327,11 +297,145 @@ export async function fetchSinglesForSignalRank(
   }
   if (!places || places.length === 0) return [];
 
-  // Reorder hydrated rows to match RPC's score-DESC order.
   const placeById = new Map<string, Record<string, unknown>>();
-  for (const pp of (places as Array<Record<string, unknown>>)) {
+  for (const pp of (places as unknown as Array<Record<string, unknown>>)) {
     placeById.set(pp.id as string, pp);
   }
+  return shapeRankedPlaces(pairs, rankedIds, placeById, params);
+}
+
+// ── fetchSinglesForSignalRankBatch ───────────────────────────────────────────
+
+/** Most lookups one batch call may carry; the SQL function raises above this. */
+export const SIGNAL_RANK_BATCH_MAX_REQUESTS = 12;
+/**
+ * PostgREST caps a response at 1000 rows, silently. Every lookup asks for
+ * limit * 2 rows, so a batch must stay at or under this or rows would vanish.
+ * The same bound keeps the hydrate under its 1000-id cap.
+ */
+export const SIGNAL_RANK_BATCH_MAX_ROWS = 1000;
+
+/**
+ * Issue #4275: a group of lookups as few ranked requests (lookupsPerRankedCall in
+ * each) and ONE hydrate, instead of two requests per lookup. Results are by input index. Each request keeps its
+ * own exclusions, reasoning slice, G3 photo gate, sort and limit through the
+ * shared shaper, so a batch returns what the same lookups return one at a time.
+ *
+ * invariant: I-FEED-BATCHED-LOOKUPS — the curated function makes no per-category
+ * or per-anchor RPC. Enforced by issue_4275_curated_fan_out.implementor.test.ts.
+ */
+export async function fetchSinglesForSignalRankBatch(
+  supabaseAdmin: SupabaseClient,
+  params: SignalRankParams[],
+  lookupsPerRankedCall: number = SIGNAL_RANK_BATCH_MAX_REQUESTS,
+): Promise<SignalRankResult[][]> {
+  if (params.length === 0) return [];
+  if (!Number.isInteger(lookupsPerRankedCall) || lookupsPerRankedCall < 1 || lookupsPerRankedCall > SIGNAL_RANK_BATCH_MAX_REQUESTS) {
+    throw new Error(`[fetchSinglesForSignalRankBatch] lookupsPerRankedCall ${lookupsPerRankedCall} is outside 1-${SIGNAL_RANK_BATCH_MAX_REQUESTS}`);
+  }
+  const askedRows = params.reduce((sum, p) => sum + p.limit * 2, 0);
+  if (params.length > SIGNAL_RANK_BATCH_MAX_REQUESTS || askedRows > SIGNAL_RANK_BATCH_MAX_ROWS) {
+    throw new Error(
+      `[fetchSinglesForSignalRankBatch] ${params.length} requests asking ${askedRows} rows exceeds the batch caps (${SIGNAL_RANK_BATCH_MAX_REQUESTS} requests, ${SIGNAL_RANK_BATCH_MAX_ROWS} rows)`,
+    );
+  }
+
+  // In series on purpose: each call holds one database connection for its whole
+  // statement, and a failure stops the rest, since a failed call fails the intent.
+  const pairsByRequest: RankedPair[][] = params.map(() => []);
+  for (let start = 0; start < params.length; start += lookupsPerRankedCall) {
+    const chunk = params.slice(start, start + lookupsPerRankedCall);
+    const { data: rankedRows, error: rpcErr } = await supabaseAdmin.rpc(
+      'fetch_local_signal_ranked_batch',
+      { p_requests: chunk.map(signalRankRpcArgs) },
+    );
+    if (rpcErr) {
+      if (rpcErr.code === FUNCTION_NOT_FOUND_CODE) return fetchPerRequestUntilMigrated(supabaseAdmin, params, 'fetch_local_signal_ranked_batch');
+      throw new Error(`[fetchSinglesForSignalRankBatch] RPC fetch_local_signal_ranked_batch (${chunk.length} requests) failed: ${rpcErr.message}`);
+    }
+    for (const row of ((rankedRows ?? []) as Array<RankedPair & { request_index: number }>)) {
+      pairsByRequest[start + row.request_index]?.push({ place_id: row.place_id, rank_score: row.rank_score });
+    }
+  }
+  const idsByRequest = params.map((p, index) => unexcludedRankedIds(pairsByRequest[index], p));
+  const allIds = Array.from(new Set(idsByRequest.flat()));
+  if (allIds.length === 0) return params.map(() => []);
+
+  const { data: places, error: placeErr } = await supabaseAdmin.rpc(
+    'fetch_feed_places_by_ids',
+    { p_ids: allIds },
+  );
+  if (placeErr) {
+    if (placeErr.code === FUNCTION_NOT_FOUND_CODE) return fetchPerRequestUntilMigrated(supabaseAdmin, params, 'fetch_feed_places_by_ids');
+    throw new Error(`[fetchSinglesForSignalRankBatch] hydrate RPC fetch_feed_places_by_ids (${allIds.length} ids) failed: ${placeErr.message}`);
+  }
+
+  const placeById = new Map<string, Record<string, unknown>>();
+  for (const pp of ((places ?? []) as Array<Record<string, unknown>>)) {
+    placeById.set(pp.id as string, pp);
+  }
+  return params.map((p, index) => shapeRankedPlaces(pairsByRequest[index], idsByRequest[index], placeById, p));
+}
+
+// [TRANSITIONAL] Merging deploys edge functions with no migration gate, so this
+// can run before 20280406004275 is applied. Exit condition: remove this and the
+// PGRST202 checks once that migration is confirmed live (tracked on #4275).
+const FUNCTION_NOT_FOUND_CODE = 'PGRST202';
+function fetchPerRequestUntilMigrated(
+  supabaseAdmin: SupabaseClient,
+  params: SignalRankParams[],
+  missing: string,
+): Promise<SignalRankResult[][]> {
+  console.warn(`[fetchSinglesForSignalRankBatch] ${missing} is not live yet; using the per-request path`);
+  return Promise.all(params.map((p) => fetchSinglesForSignalRank(supabaseAdmin, p)));
+}
+
+// ── Shared by the single and batch paths ─────────────────────────────────────
+
+type RankedPair = { place_id: string; rank_score: number };
+
+const SIGNAL_RANK_HYDRATE_COLUMNS =
+  'id, google_place_id, name, address, lat, lng, rating, review_count, price_level, price_range_start_cents, price_range_end_cents, price_range_currency, opening_hours, website, stored_photo_urls, types, primary_type, utc_offset_minutes, city_id, city, country, ai_signal_scores';
+
+function signalRankRpcArgs(params: SignalRankParams): Record<string, unknown> {
+  const latDelta = params.radiusMeters / 111320;
+  const lngDelta = params.radiusMeters / (111320 * Math.cos(params.centerLat * Math.PI / 180));
+  return {
+    p_filter_signal: params.filterSignal,
+    p_filter_min: params.filterMin,
+    p_rank_signal: params.rankSignal,
+    p_lat_min: params.centerLat - latDelta,
+    p_lat_max: params.centerLat + latDelta,
+    p_lng_min: params.centerLng - lngDelta,
+    p_lng_max: params.centerLng + lngDelta,
+    p_required_types: params.requiredTypes ?? null,
+    p_limit: params.limit * 2,
+    // ORCH-0990: composite primary-type gate (flowers). Defaults (null/false)
+    // are a no-op in the RPC → every existing caller is unaffected.
+    p_primary_type_required: params.primaryTypeRequired ?? null,
+    p_grocery_floral_tag: params.groceryFloralTag ?? false,
+  };
+}
+
+function unexcludedRankedIds(pairs: RankedPair[], params: SignalRankParams): string[] {
+  const excluded = new Set((params.excludePlaceIds ?? []).filter(Boolean));
+  return pairs.map((p) => p.place_id).filter((id) => !excluded.has(id));
+}
+
+/** Score-DESC order from the RPC, G3 photo gate, and the row shape the assembler expects. */
+function shapeRankedPlaces(
+  pairs: RankedPair[],
+  rankedIds: string[],
+  placeById: Map<string, Record<string, unknown>>,
+  params: SignalRankParams,
+): SignalRankResult[] {
+  const { rankSignal, limit } = params;
+  const rankScoreById = new Map<string, number>();
+  for (const p of pairs) {
+    rankScoreById.set(p.place_id, Number(p.rank_score));
+  }
+
+  // Reorder hydrated rows to match RPC's score-DESC order.
   const orderedPlaces = rankedIds
     .map((id) => placeById.get(id))
     .filter((pp): pp is Record<string, unknown> => Boolean(pp));
@@ -339,7 +443,7 @@ export async function fetchSinglesForSignalRank(
   // Apply G3 photo gate + shape each row as the assembler expects.
   // Historical card_pool schema fields (title, images, image_url, etc.) are
   // mapped from place_pool equivalents so generateCardsForType stays unchanged.
-  const withScore: SignalRankResult[] = orderedPlaces
+  return orderedPlaces
     .filter((pp) => {
       const urls = pp.stored_photo_urls as string[] | null;
       if (!Array.isArray(urls) || urls.length === 0) return false;
@@ -368,6 +472,9 @@ export async function fetchSinglesForSignalRank(
       price_max: pp.price_range_end_cents != null
         ? Math.floor((pp.price_range_end_cents as number) / 100)
         : null,
+      // #4347 round 2 — the range is in the PLACE's currency (₦100,000 at a
+      // Lagos restaurant), so the amount never travels without its code.
+      price_currency: rangeCurrency(pp.price_range_currency),
       price_tier: null,      // card_pool had this; assembler tolerates null
       price_tiers: null,
       // Hours + meta
@@ -401,6 +508,4 @@ export async function fetchSinglesForSignalRank(
     }))
     .sort((a, b) => b._rankScore - a._rankScore)
     .slice(0, limit);
-
-  return withScore;
 }

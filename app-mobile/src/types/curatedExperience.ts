@@ -17,6 +17,14 @@ export interface CuratedStop {
   priceMax: number;
   /** #4265: the max is unknown ("$100+"); priceMax then equals priceMin. */
   priceOpenEnded?: boolean;
+  /**
+   * #4347 round 2 — the ISO code priceMin/priceMax are in. They are Google's
+   * per-person range in the PLACE's currency (₦100,000 in Lagos), so never
+   * read them without this. Absent on cards built before round 2.
+   */
+  priceCurrency?: string | null;
+  /** #4347 round 2 — Google's price level ("PRICE_LEVEL_FREE" …); null when unknown. */
+  priceLevel?: string | null;
   // ORCH-1019 F-7: runtime value is the raw Google Places v1 object passed
   // through verbatim by generate-curated-experiences (index.ts:567) →
   // signalRankFetch. The old Record<string,string> was a type lie that let

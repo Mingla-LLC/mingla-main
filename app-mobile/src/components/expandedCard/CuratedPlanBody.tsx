@@ -24,7 +24,9 @@ import { PLAN_SHEET, SPINE } from './spineTokens';
 import { PlaceGallery } from './PlaceGallery';
 import { PlanSummary, type PlanTileView, type RouteStripStop } from './PlanSummary';
 import { PlanStopCard, type StopChip } from './PlanStopCard';
-import { PlanConditions, PlanEndsNear, PlanGettingThere, PlanWarningCard, type TableRow, type WarningFix } from './PlanSections';
+import { PlanConditions, PlanEndsNear, PlanGettingThere, PlanPrices, PlanWarningCard, type TableRow, type WarningFix } from './PlanSections';
+import { stopPriceView } from '../../utils/curatedPriceRange';
+import type { DisplayPriceInput } from '../../utils/displayPrice';
 import { usePlanPulse, type PlanScrollStore } from './planScroll';
 import { useCountTo } from './planMotion';
 import {
@@ -81,6 +83,11 @@ export interface CuratedPlanBodyProps {
   readonly fallbackMode?: string | null;
   readonly measurementSystem?: 'Metric' | 'Imperial';
   readonly spend: { readonly value: string; readonly sub?: string | null } | null;
+  /**
+   * #4347 round 2 — `formatDisplayPrice` bound to the viewer's currency, for
+   * the "Price per stop" rows. Absent (host experiences) = no price rows.
+   */
+  readonly formatPrice?: (price: Omit<DisplayPriceInput, 'viewerCurrency'>) => string | null;
   readonly beenHere?: React.ReactNode;
   readonly banners?: React.ReactNode;
   readonly supplies: readonly string[];
@@ -159,6 +166,7 @@ export function CuratedPlanBody(props: CuratedPlanBodyProps): React.ReactElement
     fallbackMode,
     measurementSystem,
     spend,
+    formatPrice,
     beenHere,
     banners,
     supplies,
@@ -320,7 +328,8 @@ export function CuratedPlanBody(props: CuratedPlanBodyProps): React.ReactElement
 
   const tagsFor = (stop: CuratedStop, i: number): string[] => {
     const tags: string[] = [];
-    if (timeline[i]?.ordinal === null) tags.push(t('cards:expanded.optional'));
+    // #4347 round 2 — an unnumbered stop is an ADD-ON (flowers on the way), and says so.
+    if (timeline[i]?.ordinal === null) tags.push(t('cards:plan.addon'));
     if (stopPurpose(stop)?.key === 'expanded.purpose_groceries') tags.push(t('cards:expanded.shop_chip'));
     const original = originalStops?.[i];
     if (original && original.placeId !== stop.placeId) tags.push(t('cards:expanded.customized'));
@@ -335,11 +344,41 @@ export function CuratedPlanBody(props: CuratedPlanBodyProps): React.ReactElement
     const weather = f ? `${weatherGlyph(f.icon)} ${formatTemperature(f.temperature, measurementSystem)}`.trim() : null;
     return {
       key: String(i),
-      label: t('cards:plan.conditions_row', { number: tl.ordinal ?? '–', name: stop.placeName, time: clock(tl.arrival) }),
+      label:
+        tl.ordinal === null
+          ? t('cards:plan.conditions_row_addon', { name: stop.placeName, time: clock(tl.arrival) })
+          : t('cards:plan.conditions_row', { number: tl.ordinal, name: stop.placeName, time: clock(tl.arrival) }),
       value: weather ? `${weather} · ${crowd}` : crowd,
       warn: f !== null && isOutdoorStop(stop) && rainLikely(f),
     };
   });
+
+  // #4347 round 2 — "Price per stop" (numbered stops only; add-ons are not counted).
+  const priceRows: TableRow[] = [];
+  let anyPrice = false;
+  if (formatPrice && !isBrandExperience) {
+    timeline.forEach((tl, i) => {
+      if (tl.ordinal === null) return;
+      const stop = stops[i];
+      const view = stopPriceView(stop);
+      let value: string;
+      if (view.kind === 'priced') {
+        const money = formatPrice({ min: view.min, max: view.max, openEnded: view.openEnded, sourceCurrency: view.currency });
+        if (money === null) {
+          value = t('cards:plan.price_none');
+        } else {
+          value = t('cards:plan.price_pp', { price: money });
+          anyPrice = true;
+        }
+      } else if (view.kind === 'free') {
+        value = t('cards:swipeable.free');
+        anyPrice = true;
+      } else {
+        value = t('cards:plan.price_none');
+      }
+      priceRows.push({ key: String(i), label: t('cards:plan.price_row', { number: tl.ordinal, name: stop.placeName }), value });
+    });
+  }
 
   const legRows: TableRow[] = [];
   if (fromViewer !== null && stops[0]) {
@@ -496,6 +535,7 @@ export function CuratedPlanBody(props: CuratedPlanBodyProps): React.ReactElement
         })}
       </View>
 
+      <PlanPrices title={t('cards:plan.prices_title')} rows={anyPrice ? priceRows : []} note={t('cards:plan.prices_note')} />
       <PlanConditions title={t('cards:plan.conditions_title')} rows={conditionRows} note={t('cards:plan.conditions_note')} />
       <PlanGettingThere
         title={t('cards:plan.getting_there')}

@@ -1038,7 +1038,8 @@ const S6_CARRIED = [
     */
     // #4347 wave 3 — the stop card's "Optional" tag, and the unnumbered
     // route / navigator label (an optional stop announces its NAME, no ordinal).
-    renders: [/ordinal === null\) tags\.push\(t\('cards:expanded\.optional'\)\)/, /ordinal: timeline\[i\]\?\.ordinal \?\? null/],
+    // #4347 round 2 — the optional stop is labelled "Add-on" (cards:plan.addon); still rendered.
+    renders: [/ordinal === null\) tags\.push\(t\('cards:plan\.addon'\)\)/, /ordinal: timeline\[i\]\?\.ordinal \?\? null/],
     why:
       '`generate-curated-experiences` emits `optional: true` stops (:501/:529/:575) and the plate '
       + 'counts `planVisibleStops`, which excludes them. The list rendered every stop identically, so '

@@ -280,5 +280,20 @@
   "sheet.sound": "Ses",
   "sheet.mute": "Sessiz",
   "sheet.sound_on_a11y": "Sesi aç",
-  "sheet.sound_off_a11y": "Sesi kapat"
+  "sheet.sound_off_a11y": "Sesi kapat",
+  "plan.route_short": "Rota",
+  "plan.schedule_short": "Planla",
+  "plan.addon": "Ek durak",
+  "plan.conditions_row_addon": "{{name}} (ek), {{time}}",
+  "plan.price_from_pp": "Kişi başı {{price}}'den başlayan",
+  "plan.spend_estimate_sub": "Google tahmini, kişi başı",
+  "plan.prices_title": "Durak başına fiyat",
+  "plan.prices_note": "Google'ın kişi başı tahminleri, içecek ve bahşiş hariç. Ek duraklar sayılmaz.",
+  "plan.price_pp": "Kişi başı {{price}}",
+  "plan.price_row": "{{number}} · {{name}}",
+  "plan.price_none": "Fiyat belirtilmemiş",
+  "deck.tile_time": "Süre",
+  "deck.tile_away": "Uzaklık",
+  "deck.away_value": "{{minutes}} dk",
+  "deck.price_plus": "{{price}}+"
 }

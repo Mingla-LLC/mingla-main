@@ -178,7 +178,9 @@ test('A-6 the plate height and the title anchor come from ONE object', () => {
     assert.ok(titleAnchors.length > 0, `A-6: ${name} has no title anchored to a presentation`);
     for (const holder of titleAnchors) {
       assert.match(
-        code, new RegExp(`const ${holder}\\s*=\\s*platePresentation\\(`),
+        // #4347 round 2 — an AI plan anchors off planPlatePresentation(); the place
+        // branch of the same ternary must still be platePresentation().
+        code, new RegExp(`const ${holder}\\s*=\\s*(?:platePresentation\\(|[^;]*?\\bplanPlatePresentation\\(\\)[^;]*?:\\s*platePresentation\\()`),
         `A-6: ${name} anchors its title off "${holder}", which is not a platePresentation result`,
       );
     }

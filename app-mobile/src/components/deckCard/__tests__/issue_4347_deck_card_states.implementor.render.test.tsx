@@ -120,7 +120,9 @@ const EXPERIENCE = {
 };
 
 describe("#4347 deck card states — curated plan and host experience", () => {
-  test("R-1 curated: bars page the stops, the label names the stop, stack + route + facts", () => {
+  // #4347 round 2 (Direction B) — the AI plan's facts moved onto the PLAN plate:
+  // the route line with stop photos, then Time / Away / Spend tiles.
+  test("R-1 curated: bars page the stops, the label names the stop, plan plate route + tiles", () => {
     const photos = curatedDeckPhotos(STOPS);
     const root = mount(
       <CuratedExperienceSwipeCard
@@ -141,17 +143,21 @@ describe("#4347 deck card states — curated plan and host experience", () => {
       "CURATED PLAN · ROMANTIC",
       "A slow Saturday in Ikoyi",
       "Café Neo → Nike Art Gallery → Terra Kulture",
-      "3 stops",
+      "Time",
       "3h 30m",
-      "8 min away",
+      "Away",
+      "8 min",
+      "Spend",
       "Moderate",
     ]));
+    expect(byTestId(root, "deck-plan-plate")).toHaveLength(1);
+    expect(text).not.toContain("3 stops");
     // The page showing is stop 2's photo.
     const hero = root.root.findAll((n: Node) => n.type === "ExpoImage" && n.props.source?.uri === "https://cdn/nike.jpg" && n.props.transition !== undefined);
     expect(hero).toHaveLength(1);
     // The stack uses existing `_thumb.jpg` objects only for place-photos URLs;
     // these test URLs are off-bucket, so they pass through untouched.
-    const thumbs = root.root.findAll((n: Node) => n.type === "ExpoImage" && n.props.style && flat(n.props.style).width === CI.STOP_STACK.size);
+    const thumbs = root.root.findAll((n: Node) => n.type === "ExpoImage" && n.props.style && flat(n.props.style).width === CI.PLAN_PLATE.thumb.size);
     expect(thumbs).toHaveLength(3);
   });
 
