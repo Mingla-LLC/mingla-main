@@ -22,6 +22,7 @@
 
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { stripTypeScriptTypes } from 'node:module'
 import { test } from 'node:test'
@@ -236,7 +237,8 @@ test('4. phones: the last tile of an odd 2-column grid spans both columns at 16:
 })
 
 function writeStripped(rel) {
-  const dir = fs.mkdtempSync(path.join(MARKETING, 'node_modules/.issue-4339-round-a-'))
+  // A dependency-free module, so the OS temp dir (the no-install CI class has no node_modules).
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'issue-4339-round-a-'))
   const out = path.join(dir, path.basename(rel).replace(/\.ts$/, '.mjs'))
   fs.writeFileSync(out, stripTypeScriptTypes(read(rel)))
   process.on('exit', () => fs.rmSync(dir, { recursive: true, force: true }))
