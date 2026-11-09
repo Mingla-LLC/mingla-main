@@ -195,11 +195,14 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #1023: re-sealed after merging origin/main 5dd7f103ca (#4273 polish rows kept beside the #1023 rows).
 // #1023: re-sealed after merging origin/main 6038982e1a.
 // #4318: register the /links migration (20280508004318) and its implementor and tester PostgreSQL proofs; it joins the pre-#1931 replay skip list by exact filename.
+// #4318: register the /links live-cities (20280514004318) and strip end-date (20280515004318) migrations and their PostgreSQL proofs; the end-date migration joins the pre-#1931 replay skip list by exact filename.
+// #4318: register the /links per-city places migration (20280516004318) and its PostgreSQL proof the same way.
 // #4273 unpriced country: register the sms-unpriced-country migration and its PostgreSQL proofs (implementor + tester); re-sealed after merging origin/main.
 // #4273 all countries: register the all-countries / automatic-prices PostgreSQL proof.
 // #4273 all countries (tester): register the tester adversarial PostgreSQL proof.
 // #4273: re-sealed for the SMS opt-out link suite.
-export const BOOTSTRAP_SHA256 = "16a89e5e57452a6d4d01df46e31cea52253e86d6466cc8145366b7ab5f1e1141";
+// #4273: re-sealed after merging origin/main (#4318) and moving the migration to 20280517004273.
+export const BOOTSTRAP_SHA256 = "ffe865eaae34c8734b8396f005c5d9cd5a5c23c42834716d72ff19b611deb10a";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

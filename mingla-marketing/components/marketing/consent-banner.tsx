@@ -35,6 +35,34 @@ export const PRIVACY_SAVED_LABEL = 'Saved'
 const PANEL_ID = 'mingla-privacy-panel'
 const SAVED_MS = 1800
 
+// #4318 — the strip and its (hidden) sheet are server-rendered. Until React
+// hydrates, this inline handler opens and closes that same sheet (Escape and
+// the scrim close it) and marks any switch the visitor flips. It reads and
+// writes no choice: Save is the app's, and on hydration the app takes the open
+// sheet over (see takeOverPrehydrationSheet).
+// While closed the sheet is not a dialog (no role, no aria-modal), so nothing
+// else on the page ever mistakes it for an open one. The handler acts on
+// Escape only while its own sheet is open, never prevents or stops an event,
+// and removes every listener once the app takes over
+// (window.__minglaPrivacyPrehydrationOff).
+const PREHYDRATION_SCRIPT = `(function(){var d=document,w=window;function q(t){return d.querySelector('[data-testid="'+t+'"]')}var strip=q("privacy-strip"),sheet=q("privacy-sheet"),scrim=q("privacy-scrim");if(!strip||!sheet||!scrim)return;function show(on){sheet.hidden=!on;scrim.hidden=!on;strip.setAttribute("aria-expanded",on?"true":"false");if(on){sheet.setAttribute("role","dialog");sheet.setAttribute("aria-modal","true")}else{sheet.removeAttribute("role");sheet.removeAttribute("aria-modal")}}function tap(){if(!sheet.hidden){show(false);strip.focus();return}show(true);var f=sheet.querySelector("input");if(f)f.focus()}function shut(){show(false);strip.focus()}function flip(e){var t=e.target;if(t&&t.setAttribute)t.setAttribute("data-mpb-touched","")}function key(e){if(e.key==="Escape"&&!sheet.hidden)shut()}strip.addEventListener("click",tap);scrim.addEventListener("click",shut);sheet.addEventListener("change",flip);d.addEventListener("keydown",key);w.__minglaPrivacyPrehydrationOff=function(){strip.removeEventListener("click",tap);scrim.removeEventListener("click",shut);sheet.removeEventListener("change",flip);d.removeEventListener("keydown",key);w.__minglaPrivacyPrehydrationOff=undefined}})();`
+
+type Draft = { analytics: boolean; ads: boolean }
+
+/**
+ * #4318 — if the visitor opened the server-rendered sheet before hydration,
+ * the switches it should keep: a switch they flipped keeps its position, the
+ * rest show what is actually running. Null when the sheet is closed.
+ */
+function takeOverPrehydrationSheet(sheet: HTMLElement | null, running: Draft): Draft | null {
+  if (sheet === null || sheet.hidden) return null
+  const kept = (kind: keyof Draft): boolean => {
+    const input = sheet.querySelector<HTMLInputElement>(`[data-testid="privacy-switch-${kind}"]`)
+    return input !== null && input.hasAttribute('data-mpb-touched') ? input.checked : running[kind]
+  }
+  return { analytics: kept('analytics'), ads: kept('ads') }
+}
+
 const SERVER_SNAPSHOT: MarketingPrivacySnapshot = { saved: true, analytics: false, ads: false, gpc: false }
 
 // Above page content and the fixed nav; below dialogs, sheets and the side menu (z ≥ 100).
@@ -68,7 +96,7 @@ body{padding-bottom:var(${PRIVACY_INSET_PROPERTY},0px)}
 .mpb-primary{background:#eb7825;color:#111}
 .mpb-policy{margin-left:auto;display:inline-flex;align-items:center;min-height:44px;padding:0 4px;font-size:13px;color:rgba(255,255,255,.72);text-decoration:underline}
 .mpb-policy:focus-visible{outline:2px solid #eb7825;outline-offset:2px}
-@keyframes mpb-in{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+@keyframes mpb-in{from{transform:translateY(12px)}to{transform:none}}
 @media (prefers-reduced-motion:reduce){.mpb{animation:none}.mpb-switch,.mpb-switch::after{transition:none}}
 `
 
@@ -87,6 +115,21 @@ export function ConsentBanner(): React.ReactElement {
   const [saved, setSaved] = useState(false)
   const stripRef = useRef<HTMLButtonElement | null>(null)
   const sheetRef = useRef<HTMLElement | null>(null)
+  const adoptedDraftRef = useRef<Draft | null>(null)
+
+  // #4318 — hydration: the inline handler stands down, and a sheet the visitor
+  // already opened stays open, now the app's, before the next paint.
+  useLayoutEffect(() => {
+    const flag = window as Window & { __minglaPrivacyHydrated?: boolean; __minglaPrivacyPrehydrationOff?: () => void }
+    flag.__minglaPrivacyHydrated = true
+    flag.__minglaPrivacyPrehydrationOff?.()
+    const snapshot = getMarketingPrivacySnapshot()
+    const adopted = takeOverPrehydrationSheet(sheetRef.current, { analytics: snapshot.analytics, ads: snapshot.ads })
+    if (adopted !== null) {
+      adoptedDraftRef.current = adopted
+      setOpen(true)
+    }
+  }, [])
 
   useEffect(() => {
     // toward #3697: first-party ad click may record from the first page.
@@ -101,7 +144,10 @@ export function ConsentBanner(): React.ReactElement {
 
   // The switches always start from what is actually running.
   useEffect(() => {
-    if (open) setDraft({ analytics: privacy.analytics, ads: privacy.ads })
+    if (!open) return
+    const adopted = adoptedDraftRef.current
+    adoptedDraftRef.current = null
+    setDraft(adopted ?? { analytics: privacy.analytics, ads: privacy.ads })
   }, [open, privacy.analytics, privacy.ads])
 
   // I-PRIVACY-BAR-NEVER-OCCLUDES — the strip's height is the page's bottom inset.
@@ -173,14 +219,15 @@ export function ConsentBanner(): React.ReactElement {
   return (
     <>
       <style id="mingla-privacy-bar-style" dangerouslySetInnerHTML={{ __html: BAR_CSS }} />
-      {open ? (
-        <>
-          <div className="mpb-scrim" data-testid="privacy-scrim" onClick={close} />
+      {/* The inline handler may show these before hydration; the app then adopts them. */}
+      <div className="mpb-scrim" data-testid="privacy-scrim" onClick={close} hidden={!open} suppressHydrationWarning />
           <section
             ref={sheetRef}
+            hidden={!open}
+            suppressHydrationWarning
             className="mpb ph-no-capture"
-            role="dialog"
-            aria-modal="true"
+            role={open ? 'dialog' : undefined}
+            aria-modal={open ? true : undefined}
             aria-labelledby="mingla-privacy-title"
             id={PANEL_ID}
             data-testid="privacy-sheet"
@@ -229,8 +276,6 @@ export function ConsentBanner(): React.ReactElement {
               </div>
             </div>
           </section>
-        </>
-      ) : null}
       <button
         type="button"
         ref={stripRef}
@@ -250,6 +295,7 @@ export function ConsentBanner(): React.ReactElement {
           {saved ? PRIVACY_SAVED_LABEL : PRIVACY_STRIP_LABEL}
         </span>
       </button>
+      <script dangerouslySetInnerHTML={{ __html: PREHYDRATION_SCRIPT }} />
     </>
   )
 }

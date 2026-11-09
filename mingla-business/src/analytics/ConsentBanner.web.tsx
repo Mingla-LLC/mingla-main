@@ -67,7 +67,7 @@ html[data-mingla-privacy-bar="shown"] #root{overflow-y:auto;overscroll-behavior:
 .mpb-primary{background:#eb7825;color:#111}
 .mpb-policy{margin-left:auto;display:inline-flex;align-items:center;min-height:44px;padding:0 4px;font-size:13px;color:rgba(255,255,255,.72);text-decoration:underline}
 .mpb-policy:focus-visible{outline:2px solid #eb7825;outline-offset:2px}
-@keyframes mpb-in{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+@keyframes mpb-in{from{transform:translateY(12px)}to{transform:none}}
 @media (prefers-reduced-motion:reduce){.mpb{animation:none}.mpb-switch,.mpb-switch::after{transition:none}}
 `;
 
@@ -90,6 +90,33 @@ function writeInset(px: number): void {
   else document.documentElement.removeAttribute(PRIVACY_BAR_ATTRIBUTE);
 }
 
+const SSR_PRIVACY_SELECTOR =
+  "[data-mingla-ssr-privacy-bar],[data-mingla-ssr-privacy-strip],[data-mingla-ssr-privacy-scrim]";
+
+/**
+ * #4318 — when the server-rendered sheet is open at takeover, the switch
+ * values the visitor sees there (null when it is closed or absent).
+ */
+function takeoverSheet(): { analytics: boolean; ads: boolean } | null {
+  const sheet = document.querySelector<HTMLElement>("[data-mingla-ssr-privacy-bar]");
+  if (sheet === null || sheet.hidden) return null;
+  const value = (kind: "analytics" | "ads"): boolean | null => {
+    const input = sheet.querySelector<HTMLInputElement>(`[data-mpb-switch="${kind}"]`);
+    return input === null ? null : input.checked;
+  };
+  const analytics = value("analytics");
+  const ads = value("ads");
+  return analytics === null || ads === null ? null : { analytics, ads };
+}
+
+/** Hide, then remove, every server-rendered copy of the strip, sheet and scrim. */
+function removeServerPrivacyBar(): void {
+  for (const node of Array.from(document.querySelectorAll<HTMLElement>(SSR_PRIVACY_SELECTOR))) {
+    node.hidden = true;
+    node.remove();
+  }
+}
+
 /** The small sliders icon of the strip. */
 function SlidersIcon(): React.ReactElement {
   return (
@@ -110,15 +137,19 @@ export function ConsentBanner(): React.ReactElement | null {
   const [saved, setSaved] = useState<boolean>(false);
   const stripRef = useRef<HTMLButtonElement | null>(null);
   const sheetRef = useRef<HTMLElement | null>(null);
+  const adoptedDraftRef = useRef<{ analytics: boolean; ads: boolean } | null>(null);
 
   useEffect(() => {
     ensureBarStyle();
-    // The server-rendered public document carries its own copy of the strip
-    // until the app takes over; only one may ever show.
-    for (const node of Array.from(
-      document.querySelectorAll("[data-mingla-ssr-privacy-bar],[data-mingla-ssr-privacy-strip]"),
-    )) {
-      node.remove();
+    // #4318 — the server-rendered public document carries its own strip and
+    // sheet until the app takes over. A sheet the visitor already opened there
+    // stays open: the app opens its own with the switches as the visitor left
+    // them, and the server copy (strip, sheet AND scrim) goes in the same
+    // frame the app's copy appears (see the layout effect below).
+    const ssrSheet = takeoverSheet();
+    if (ssrSheet !== null) {
+      adoptedDraftRef.current = ssrSheet;
+      setOpen(true);
     }
     setMounted(true);
     // The #922 invite shell carries only the strip: tapping it boots the app
@@ -136,10 +167,20 @@ export function ConsentBanner(): React.ReactElement | null {
     };
   }, []);
 
-  // The switches always start from what is actually running.
+  // The switches always start from what is actually running (or, once, from
+  // the server sheet the visitor already had open).
   useEffect(() => {
-    if (open) setDraft({ analytics: privacy.analytics, ads: privacy.ads });
+    if (!open) return;
+    const adopted = adoptedDraftRef.current;
+    adoptedDraftRef.current = null;
+    setDraft(adopted ?? { analytics: privacy.analytics, ads: privacy.ads });
   }, [open, privacy.analytics, privacy.ads]);
+
+  // #4318 — the server copy leaves before the browser paints the app's copy,
+  // so there is never a frame with two strips, an orphaned scrim, or none.
+  useLayoutEffect(() => {
+    if (mounted) removeServerPrivacyBar();
+  }, [mounted]);
 
   // I-PRIVACY-BAR-NEVER-OCCLUDES — the strip's height is the page's bottom inset.
   useLayoutEffect(() => {

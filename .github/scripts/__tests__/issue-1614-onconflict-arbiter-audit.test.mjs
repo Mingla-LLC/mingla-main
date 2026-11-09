@@ -202,7 +202,7 @@ test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", (
   // #4273 SMS to every payout country, census +2 (111, after #4271):
   //   +1  `sms_country_prices (country)` — sms-price-refresh/index.ts writes
   //       the daily Twilio price; arbiter: `country text PRIMARY KEY` in
-  //       20280511004273_issue_4273_sms_unpriced_country_skips.sql.
+  //       20280517004273_issue_4273_sms_unpriced_country_skips.sql.
   //   +1  `marketing_messages (campaign_id,recipient_phone)` —
   //       marketing-send/index.ts records a legacy (unsealed) SMS recipient
   //       whose country can't be texted or priced as `failed`; arbiter: the

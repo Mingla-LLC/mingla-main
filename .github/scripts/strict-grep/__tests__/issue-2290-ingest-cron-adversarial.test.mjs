@@ -407,7 +407,7 @@ test("A-5 a non-literal cron.unschedule is NOT modelled — frozen as a tripwire
   // reschedule pair in its own DO block (issue_4273_sms_price_refresh)
   // (+1 → 22). Its unschedule is proven to sit just before its reschedule.
   {
-    const file = "supabase/migrations/20280511004273_issue_4273_sms_unpriced_country_skips.sql";
+    const file = "supabase/migrations/20280517004273_issue_4273_sms_unpriced_country_skips.sql";
     const sql = stripSqlComments(fs.readFileSync(path.join(REPO_ROOT, file), "utf8"));
     const job = "issue_4273_sms_price_refresh";
     const lookup = sql.search(new RegExp(`WHERE\\s+jobname\\s*=\\s*'${job}'`, "i"));

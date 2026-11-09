@@ -7,7 +7,9 @@ export default defineConfig({
   // Both of #3214's legs run here — the implementor's happy/failure proof and the
   // independent tester adversarial suite, which additionally SCANS that same
   // export for network destinations the policy has never been asked about.
-  testMatch: /(?:issue2771-preconsent-analytics(?:\.tester\.adversarial)?|issue2795-posthog-alias-consent|issue3214-public-boot-order(?:\.tester\.adversarial)?)\.spec\.ts$/,
+  // #4318 rides it too: the privacy sheet's first tap on that same server
+  // document, before and across the app's takeover.
+  testMatch: /(?:issue2771-preconsent-analytics(?:\.tester\.adversarial)?|issue2795-posthog-alias-consent|issue3214-public-boot-order(?:\.tester\.adversarial)?|issue4318-privacy-sheet-first-tap)\.spec\.ts$/,
   fullyParallel: false,
   workers: 1,
   retries: 0,

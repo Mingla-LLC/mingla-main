@@ -1,8 +1,8 @@
 const { SUPABASE_ANON_KEY, SUPABASE_URL } = require("./supabaseRpc");
 const {
-  privacyBarCss,
   privacyBarMarkup,
   privacyBarRuntimeSource,
+  privacyBarStyleElement,
   privacyReaderSource,
 } = require("./publicPrivacyRuntime");
 
@@ -23,7 +23,9 @@ const pixelConfig = () => ({
 // choice is offered before the app takes over (the app removes this copy).
 const publicAdPrivacyMarkup = () => privacyBarMarkup();
 
-const publicAdPrivacyStyle = () => privacyBarCss();
+// #4318 — the bar's rules as their own <style> element, outside the page's
+// boot-replaced stylesheet (see privacyBarStyleElement).
+const publicAdPrivacyStyle = () => privacyBarStyleElement();
 
 // I-PRIVACY-ON-UNLESS-VISITOR-TURNED-OFF: pixels boot on arrival in every
 // country unless this visitor turned ads off (GPC starts ads off). There is

@@ -62,11 +62,19 @@ const PRIVACY_BAR_CSS_LINES = [
   ".mpb-primary{background:#eb7825;color:#111}",
   ".mpb-policy{margin-left:auto;display:inline-flex;align-items:center;min-height:44px;padding:0 4px;font-size:13px;color:rgba(255,255,255,.72);text-decoration:underline}",
   ".mpb-policy:focus-visible{outline:2px solid #eb7825;outline-offset:2px}",
-  "@keyframes mpb-in{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}",
+  "@keyframes mpb-in{from{transform:translateY(12px)}to{transform:none}}",
   "@media (prefers-reduced-motion:reduce){.mpb{animation:none}.mpb-switch,.mpb-switch::after{transition:none}}",
 ];
 
 const privacyBarCss = () => PRIVACY_BAR_CSS_LINES.join("\n");
+
+// #4318 — the strip's rules in their own <style>, under the id the app's strip
+// (ConsentBanner.web.tsx STYLE_ID) looks for. The public boot hand-off drops
+// the page's own stylesheet the moment the app mounts; kept apart, an open
+// sheet keeps its layout through that hand-off and the app reuses this sheet
+// instead of adding a second copy.
+const PRIVACY_BAR_STYLE_ID = "mingla-privacy-bar-style";
+const privacyBarStyleElement = () => `<style id="${PRIVACY_BAR_STYLE_ID}">\n${privacyBarCss()}\n</style>`;
 
 const PRIVACY_POLICY_URL = "https://usemingla.com/privacy-policy";
 const PRIVACY_STRIP_LABEL = "Privacy & ad choices";
@@ -115,7 +123,7 @@ const privacyBarRuntimeSource = () => [
   "strip.addEventListener(\"click\",function(){if(bar.hidden)open();else close();});",
   "if(scrim)scrim.addEventListener(\"click\",close);",
   "bar.querySelector('[data-mpb-act=\"save\"]').addEventListener(\"click\",function(){save(sw(\"analytics\").checked,sw(\"ads\").checked);});",
-  "document.addEventListener(\"keydown\",function(e){if(bar.hidden)return;if(e.key===\"Escape\"){close();return;}if(e.key!==\"Tab\")return;var l=items(),a=document.activeElement,first=l[0],last=l[l.length-1];if(!first)return;if(e.shiftKey&&(a===first||!bar.contains(a))){e.preventDefault();last.focus();}else if(!e.shiftKey&&(a===last||!bar.contains(a))){e.preventDefault();first.focus();}});",
+  "document.addEventListener(\"keydown\",function(e){if(bar.hidden||!bar.isConnected)return;if(e.key===\"Escape\"){close();return;}if(e.key!==\"Tab\")return;var l=items(),a=document.activeElement,first=l[0],last=l[l.length-1];if(!first)return;if(e.shiftKey&&(a===first||!bar.contains(a))){e.preventDefault();last.focus();}else if(!e.shiftKey&&(a===last||!bar.contains(a))){e.preventDefault();first.focus();}});",
   "window.addEventListener(\"mingla:privacy-choices\",open);",
   "if(typeof ResizeObserver===\"function\")new ResizeObserver(inset).observe(strip);inset();}",
 ].join("");
@@ -147,6 +155,7 @@ const privacyBarCollapsedRuntimeSource = () => [
 
 module.exports = {
   LEGACY_CONSENT_STORAGE_KEY,
+  PRIVACY_BAR_STYLE_ID,
   PRIVACY_POLICY_URL,
   PRIVACY_STORAGE_KEY,
   PRIVACY_STRIP_LABEL,
@@ -156,6 +165,7 @@ module.exports = {
   privacyBarCss,
   privacyBarMarkup,
   privacyBarRuntimeSource,
+  privacyBarStyleElement,
   privacyReaderSource,
   privacyStripMarkup,
 };
