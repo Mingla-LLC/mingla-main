@@ -333,4 +333,52 @@ $function$;
 REVOKE ALL ON FUNCTION public.issue_1770_project_marketing_unsubscribe() FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.issue_1770_project_marketing_unsubscribe() TO service_role;
 
+-- ── (6) A host reads an account-scope opt-out only for a contact it holds ──
+-- #4273 tester retest. The SMS opt-out link writes account-scope rows keyed
+-- to the sending host, for anyone the host texted, including Mingla members
+-- reached only through the follower graph, whose numbers the host never
+-- held. The read policy let the account owner read EVERY account-scope row
+-- keyed to them (contact_phone included), so an opt-out handed the host the
+-- number. An account-scope row is now readable exactly like a global one: only
+-- when one of that account's own brands already holds the contact.
+CREATE OR REPLACE FUNCTION public.issue_4273_host_may_read_unsubscribe(
+  p_scope text, p_account_id uuid, p_brand_id uuid, p_email text, p_phone text
+)
+RETURNS boolean
+LANGUAGE sql
+STABLE SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+  WITH my_brands AS MATERIALIZED (
+    SELECT b.id FROM public.brands b
+     WHERE (CASE p_scope WHEN 'brand' THEN b.id = p_brand_id
+                         WHEN 'global' THEN b.account_id = auth.uid() OR EXISTS (
+                           SELECT 1 FROM public.brand_team_members m
+                            WHERE m.brand_id = b.id AND m.user_id = auth.uid())
+                         WHEN 'account' THEN b.account_id = p_account_id
+                                             AND p_account_id = auth.uid()
+                         ELSE false END)
+       AND public.mkt_brand_min_rank(b.id, 'brand_member')
+  ), wanted AS MATERIALIZED (
+    SELECT lower(btrim(p_email)) AS email,
+           NULLIF(regexp_replace(COALESCE(p_phone, ''), '[^0-9]', '', 'g'), '') AS digits
+  )
+  SELECT EXISTS (
+    SELECT 1 FROM public.brand_person_contact_methods m, wanted w
+     WHERE m.brand_id IN (SELECT id FROM my_brands) AND m.record_state = 'active'
+       AND ((m.channel = 'email' AND lower(m.normalized_value) = w.email)
+         OR (m.channel = 'phone' AND regexp_replace(m.normalized_value, '[^0-9]', '', 'g') = w.digits))
+    UNION ALL
+    SELECT 1 FROM public.orders o JOIN public.events e ON e.id = o.event_id, wanted w
+     WHERE e.brand_id IN (SELECT id FROM my_brands)
+       AND (lower(btrim(o.buyer_email)) = w.email
+         OR regexp_replace(COALESCE(o.buyer_phone_e164, o.buyer_phone, ''), '[^0-9]', '', 'g') = w.digits)
+    UNION ALL
+    SELECT 1 FROM public.event_rsvps r JOIN public.events e ON e.id = r.event_id, wanted w
+     WHERE e.brand_id IN (SELECT id FROM my_brands)
+       AND (lower(btrim(r.guest_email)) = w.email
+         OR regexp_replace(COALESCE(r.guest_phone, ''), '[^0-9]', '', 'g') = w.digits)
+  )
+$function$;
+
 COMMIT;

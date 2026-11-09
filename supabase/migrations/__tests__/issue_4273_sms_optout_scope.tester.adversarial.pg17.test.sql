@@ -180,6 +180,35 @@ BEGIN
 END;
 $history$;
 
+-- ── R. The host reads an opt-out only for a contact it already holds ──────
+-- A second opt-out from host A's texts, for a number A never held (a Mingla
+-- member reached only through the follower graph).
+INSERT INTO public.marketing_unsubscribes(contact_phone, channel, reason, scope, account_id)
+VALUES ('+447700900999', 'sms', 'sms_opt_out_link', 'account', '4273f000-0000-4000-8000-00000000000a');
+DO $read$
+DECLARE seen text[];
+BEGIN
+  PERFORM set_config('request.jwt.claim.sub', '4273f000-0000-4000-8000-00000000000a', true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub', '4273f000-0000-4000-8000-00000000000a', 'role', 'authenticated')::text, true);
+  SET LOCAL ROLE authenticated;
+  SELECT array_agg(contact_phone ORDER BY contact_phone) INTO seen
+    FROM public.marketing_unsubscribes WHERE contact_phone LIKE '+4477009005%' OR contact_phone LIKE '+4477009009%';
+  RESET ROLE;
+  PERFORM pg_temp.chk('R-01 host A reads the opt-out for the number it holds',
+    '+447700900555' = ANY (COALESCE(seen, ARRAY[]::text[])), COALESCE(seen::text, '<none>'));
+  PERFORM pg_temp.chk('R-02 host A never reads a number it did not hold',
+    NOT ('+447700900999' = ANY (COALESCE(seen, ARRAY[]::text[]))), COALESCE(seen::text, '<none>'));
+  PERFORM set_config('request.jwt.claim.sub', '4273f000-0000-4000-8000-00000000000b', true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub', '4273f000-0000-4000-8000-00000000000b', 'role', 'authenticated')::text, true);
+  SET LOCAL ROLE authenticated;
+  SELECT array_agg(contact_phone ORDER BY contact_phone) INTO seen
+    FROM public.marketing_unsubscribes WHERE contact_phone LIKE '+4477009005%' OR contact_phone LIKE '+4477009009%';
+  RESET ROLE;
+  PERFORM pg_temp.chk('R-03 host B reads neither of host A''s opt-outs',
+    seen IS NULL, COALESCE(seen::text, '<none>'));
+END;
+$read$;
+
 DO $report$
 DECLARE v text;
 BEGIN
