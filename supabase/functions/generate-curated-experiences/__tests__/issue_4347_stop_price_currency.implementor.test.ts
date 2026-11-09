@@ -45,3 +45,34 @@ Deno.test('#4347 r2 both stop builders stamp the identity', () => {
   const swap = stripComments(read('../../_shared/stopAlternatives.ts'));
   assert(/\.\.\.buildStopPrice\(c\.price_min, c\.price_max\),\s*\.\.\.stopPriceIdentity\(c\)/.test(swap), 'Replace-a-stop');
 });
+
+import { buildNativeContentCardSnapshot } from '../../_shared/contentShare.ts';
+
+function sharedPlan(stop: Record<string, unknown>) {
+  return {
+    card_data: {
+      id: 'plan-abuja',
+      cardType: 'curated',
+      title: 'Gallery to dinner',
+      totalPriceMin: 100000,
+      totalPriceMax: 100000,
+      stops: [
+        { stopNumber: 1, placeId: 'p1', placeName: 'Nike Art Gallery', priceMin: 0, priceMax: 0, priceCurrency: null, priceLevel: null },
+        { stopNumber: 2, placeId: 'p2', placeName: 'The Burgundy', priceMin: 100000, priceMax: 100000, ...stop },
+      ],
+    },
+  };
+}
+
+Deno.test('#4347 r2 a plan whose stops carry the new price fields still shares to chat, fields intact', () => {
+  // The share allowlist refuses unknown stop keys, so without the round-2 keys every new plan failed to share.
+  const snapshot = buildNativeContentCardSnapshot('curated', sharedPlan({ priceCurrency: 'NGN', priceLevel: 'PRICE_LEVEL_VERY_EXPENSIVE' }));
+  const stops = snapshot.stops as Array<Record<string, unknown>>;
+  assertEquals(stops[1].priceCurrency, 'NGN');
+  assertEquals(stops[1].priceLevel, 'PRICE_LEVEL_VERY_EXPENSIVE');
+  // Junk is dropped to null, never passed through.
+  const junk = buildNativeContentCardSnapshot('curated', sharedPlan({ priceCurrency: 'naira', priceLevel: '<script>' }));
+  const junkStops = junk.stops as Array<Record<string, unknown>>;
+  assertEquals(junkStops[1].priceCurrency ?? null, null);
+  assertEquals(junkStops[1].priceLevel ?? null, null);
+});

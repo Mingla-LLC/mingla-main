@@ -13,7 +13,8 @@
  * share must live in a module that imports NEITHER of them, or the require cycle
  * (Metro: "Require cycle: SwipeableCards -> CuratedExperienceSwipeCard ->
  * SwipeableCards") reopens. This module imports react-native, expo-blur, the
- * Icon and `@mingla/card-identity` — nothing from either card tree. Data flows
+ * Icon, `@mingla/card-identity` and (#4347 round 2, the plan plate's stop
+ * photos) expo-image — nothing from either card tree. Data flows
  * strictly downward; the Been-here control is passed IN as an element so the
  * control can keep living in SwipeableCards.tsx without either file importing
  * the other.
@@ -80,7 +81,6 @@
 import React from 'react';
 import {
   ActivityIndicator,
-  Image,
   type LayoutChangeEvent,
   Platform,
   Pressable,
@@ -89,6 +89,9 @@ import {
   View,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
+// #4347 round 2 — the plan plate's stop photos, through the same cached image
+// component every deck photo uses.
+import { Image as ExpoImage } from 'expo-image';
 import { Icon } from './ui/Icon';
 import { ANDROID_GLASS_USES_OPAQUE_FALLBACK } from '../constants/designSystem';
 // The specifier is relative for the same reason as in deckHeroConstants.ts: the
@@ -889,9 +892,10 @@ function PlanPlate({
         {photos.length > 0 ? (
           <View style={styles.planThumbs}>
             {photos.map((uri, i) => (
-              <Image
+              <ExpoImage
                 key={`${uri}_${i}`}
                 source={{ uri }}
+                contentFit="cover"
                 style={[styles.planThumb, i > 0 ? styles.planThumbOverlap : null]}
                 accessibilityIgnoresInvertColors
               />
