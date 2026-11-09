@@ -930,8 +930,13 @@ export default function PreferencesSheet({
         }
         // #4334 N-5 — inline under the field, scrolled into view; a toast here
         // renders behind the sheet's modal on iOS.
+        // #4334 R3-3 — Lock It In sits at the bottom of the sheet, so on a small
+        // phone the message appears above the visible area: scroll the sheet's
+        // own scroller (bound below via scrollProps.ref) up to it, and announce
+        // it so a screen-reader user hears it wherever focus is.
         setLocationUnavailable(true);
         scrollRef.current?.scrollTo?.({ y: Math.max(0, locationSectionY.current - 16), animated: true });
+        AccessibilityInfo.announceForAccessibility(LOCATION_SEARCH_UNAVAILABLE_COPY);
         return;
       }
 
@@ -1552,9 +1557,16 @@ export default function PreferencesSheet({
           keyboardBehavior="interactive"
           keyboardBlurBehavior="restore"
           android_keyboardInputMode="adjustResize"
+          // #4334 R3-5 — typing lifts the sheet by the keyboard height; without a
+          // cap the grabber rode into the status bar. Same cap as the city sheet
+          // (#3872 W5.1): stop just below the safe area.
+          topInset={Math.max(0, insets.top) + 8}
           accessibilityLabel={t('preferences:sheet.title')}
           backgroundStyle={styles.sheetBackground}
           scrollProps={{
+            // #4334 R3-3 — bind the sheet's scroller so scrollRef.scrollTo works
+            // in sheet mode too (it was bound only in the legacy inline body).
+            ref: scrollRef,
             contentContainerStyle: styles.sheetScrollContent,
             keyboardShouldPersistTaps: 'handled',
             showsVerticalScrollIndicator: false,

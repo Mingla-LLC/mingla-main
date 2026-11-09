@@ -13,6 +13,8 @@
 //   E-5 resolveOnboardingPlaceId's launch-city / GPS guard
 //   E-6 DiscoverScreen: `stateCode: place.stateCode` (F-10)
 //   E-8 the shared field's `lookup: "geocoding"` for places mode (A2)
+//   E-9 PreferencesSheet: the outage message is scrolled into view (sheet scroller bound) and announced (R3-3)
+//   E-10 PreferencesSheet: topInset caps the sheet below the safe area while typing (R3-5)
 
 import { assert, assertEquals, assertStringIncludes } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { resolveOnboardingPlaceId } from "../../utils/onboardingLocationOverride.ts";
@@ -108,4 +110,25 @@ Deno.test("E-7b R-DECK-6/7 / R-PREF-7: useUserLocation keeps saved coordinates f
 Deno.test("E-8 A2: Explorer place picks take coordinates from Geocoding by place id", async () => {
   const src = strip(await read("../../../../packages/location-input/src/AddressInput.tsx"));
   assertStringIncludes(src, 'searchMode === "places" ? { lookup: "geocoding" } : {}');
+});
+
+Deno.test("E-9 R3-3: in the sheet, the outage message is scrolled into view and announced", async () => {
+  const raw = await read("../../components/PreferencesSheet.tsx");
+  const src = strip(raw);
+  const block = src.slice(src.indexOf("await geocodingService.autocomplete(searchLocation)"));
+  const catchBody = block.slice(block.indexOf("} catch (err) {"), block.indexOf("if (!resolvedSuggestion || !resolvedCoords)"));
+  assertStringIncludes(catchBody, "scrollRef.current?.scrollTo?.({ y: Math.max(0, locationSectionY.current - 16), animated: true });");
+  assertStringIncludes(catchBody, "AccessibilityInfo.announceForAccessibility(LOCATION_SEARCH_UNAVAILABLE_COPY);");
+  // the scroll lands in SHEET mode too: the sheet's scroller is bound to scrollRef
+  const sheet = src.slice(src.indexOf("<BaseBottomSheet"), src.indexOf("</BaseBottomSheet>"));
+  assert(/scrollProps=\{\{\s*ref: scrollRef,/.test(sheet), "the sheet's scroll view is bound to scrollRef");
+});
+
+Deno.test("E-10 R3-5: the Preferences sheet stops below the safe area while typing (same cap as the city sheet)", async () => {
+  const src = strip(await read("../../components/PreferencesSheet.tsx"));
+  const sheet = src.slice(src.indexOf("<BaseBottomSheet"), src.indexOf("</BaseBottomSheet>"));
+  assertStringIncludes(sheet, 'keyboardBehavior="interactive"');
+  assertStringIncludes(sheet, "topInset={Math.max(0, insets.top) + 8}");
+  const city = strip(await read("../../components/discover/CityPickerSheet.tsx"));
+  assertStringIncludes(city, "topInset={Math.max(0, insets.top) + 8}");
 });
