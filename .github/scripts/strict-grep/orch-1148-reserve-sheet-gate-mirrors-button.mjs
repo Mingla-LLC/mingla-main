@@ -225,14 +225,18 @@ function run() {
   // Fails-on-revert harness 2 (#1605 P0-1): delete `venue_id !== null` from the
   // BUTTON gate, which is precisely the regression this file failed to catch.
   if (process.env.ORCH1148_SIMULATE_VENUEID_REVERT === "1") {
-    const BUTTON_VENUE_ID = /venueReservable\.venue_id !== null\s*&&\s*\(/;
+    // #4347: the button gate is now the ternary `cond ? (<Reserve/>) : (<Directions/>)`
+    // inside the pinned bar's `reserve={...}` slot, so the condition may end in
+    // `? (` as well as the older `&& (`. The sheet's `venue_id !== null &&
+    // isReserveSheetOpen && (` never matches either shape.
+    const BUTTON_VENUE_ID = /venueReservable\.venue_id !== null\s*(&&|\?)\s*\(/;
     if (!BUTTON_VENUE_ID.test(src)) {
       console.error(
         "ORCH1148_SIMULATE_VENUEID_REVERT: could not find the button gate's venue_id condition — anchors may have changed.",
       );
       process.exit(2);
     }
-    src = src.replace(BUTTON_VENUE_ID, "(");
+    src = src.replace(BUTTON_VENUE_ID, (_m, op) => (op === "?" ? "true ? (" : "("));
   }
 
   const problems = scan(src);
