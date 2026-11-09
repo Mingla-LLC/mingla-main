@@ -264,6 +264,14 @@ export interface LiveEvent {
   /** ORCH-0824: structured lat/lng from Google Places autocomplete at publish. */
   locationGeo?: { lat: number; lng: number } | null;
   /**
+   * #4334 — the saved pin's Google place id and precision, when the read
+   * carries them (the management view does not yet, so undefined = "none").
+   * The live-edit diff compares a re-pick against these so a same-coordinate
+   * re-pick with a new place still counts as a change.
+   */
+  locationProviderPlaceId?: string | null;
+  coordinatePrecision?: "exact" | "approximate" | null;
+  /**
    * ORCH-1167 [event-page-canonical] — CITY-LEVEL centroid (privacy-safe),
    * sibling of the exact `locationGeo` pin. The canonical EventOfferingBody
    * "Where you'll be" map draws at city zoom (no exact pin) from this when the

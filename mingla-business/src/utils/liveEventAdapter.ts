@@ -34,6 +34,7 @@ import {
   refundPoliciesEqual,
   refundPolicyDisplayName,
 } from "./refundPolicyTerms";
+import { locationPinChanged } from "./serverDraftEventMapper";
 
 // ---- Adapter (LiveEvent → DraftEvent view) --------------------------
 
@@ -81,6 +82,10 @@ export const liveEventToEditableDraft = (e: LiveEvent): DraftEvent => ({
   // on republish via the new autocomplete (validator enforces).
   city: e.city ?? null,
   locationGeo: e.locationGeo ?? null,
+  // #4334 — the saved pin's place id and precision (null when the read did not
+  // carry them), so the diff can tell a re-pick from an untouched pin.
+  locationProviderPlaceId: e.locationProviderPlaceId ?? null,
+  coordinatePrecision: e.coordinatePrecision ?? null,
   whenMode: e.whenMode,
   date: e.date,
   doorsOpen: e.doorsOpen,
@@ -212,9 +217,10 @@ const deepEqual = (a: unknown, b: unknown): boolean => {
 // `{lng, lat}` differ from `{lat, lng}`, so every save of an event with a pin
 // carried a "changed" location and the server treated it as a new coordinate.
 // Null-safe, the same test serverDraftEventMapper's RSVP diff uses.
+type GeoPoint = { lat: number; lng: number } | null | undefined;
 const sameGeoPoint = (
-  a: { lat: number; lng: number } | null | undefined,
-  b: { lat: number; lng: number } | null | undefined,
+  a: GeoPoint,
+  b: GeoPoint,
 ): boolean => {
   const left = a ?? null;
   const right = b ?? null;
@@ -528,8 +534,11 @@ export const editableDraftToPatch = (
   if (origCity !== edited.city) {
     patch.city = edited.city;
   }
-  // issue #3827 — compared by lat and lng, not by object shape.
-  if (!sameGeoPoint(original.locationGeo, edited.locationGeo)) {
+  // issue #3827 — compared by lat and lng, not by object shape. #4334 — and by
+  // the place it belongs to: a re-pick that lands on the same coordinates with
+  // a new Google place id or precision is still a change (the save then sends
+  // the pin with its place id and precision).
+  if (locationPinChanged(original, edited)) {
     patch.locationGeo = edited.locationGeo;
   }
   // ORCH-1006 — diff the pricing switches (who covers VAT/Mingla fee/service
@@ -699,6 +708,8 @@ const hasNoTextForm = (
 const mapPinSummary = (before: unknown, after: unknown): string => {
   if (before === null || before === undefined) return "Added";
   if (after === null || after === undefined) return "Removed";
+  // #4334 — re-picked at the same coordinates (a new place or precision).
+  if (sameGeoPoint(before as GeoPoint, after as GeoPoint)) return "Updated";
   return "Moved";
 };
 
@@ -775,7 +786,8 @@ export const computeRichFieldDiffs = (
       // and a row a host can read: "Map pin · Moved", never the coordinates.
       const before = a as { lat: number; lng: number } | null | undefined;
       const after = b as { lat: number; lng: number } | null | undefined;
-      if (sameGeoPoint(before, after)) continue;
+      // #4334 — the save's own test, so the summary and the save agree.
+      if (!locationPinChanged(original, edited)) continue;
       diffs.push({
         fieldKey: String(key),
         fieldLabel: "Map pin",

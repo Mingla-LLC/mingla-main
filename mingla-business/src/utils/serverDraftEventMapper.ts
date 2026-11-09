@@ -315,6 +315,42 @@ export const draftLocationPlaceId = (
     ? null
     : draft.locationProviderPlaceId.trim();
 
+/**
+ * #4334 — did the host change the event's pin? A pin is its coordinates AND
+ * the place they belong to: re-picking a suggestion whose text and
+ * coordinates match the saved ones can still bring a new Google place id or a
+ * new precision (a typed "approximate" address corrected to the exact place).
+ * Comparing the coordinates alone treated that re-pick as "no change", so Save
+ * stayed disabled and the place id never reached the server.
+ *
+ * The loaded event may not carry its place id or precision (undefined reads
+ * as "none"); the editor seeds the same `null`, so an untouched pin is never a
+ * change, and a pick, which always brings a place id, always is.
+ */
+export const locationPinChanged = (
+  original: Pick<
+    LiveEvent,
+    "locationGeo" | "locationProviderPlaceId" | "coordinatePrecision"
+  >,
+  edited: Pick<
+    DraftEvent,
+    "locationGeo" | "locationProviderPlaceId" | "coordinatePrecision"
+  >,
+): boolean => {
+  const before = original.locationGeo ?? null;
+  const after = edited.locationGeo ?? null;
+  if (before === null || after === null) return before !== after;
+  if (before.lat !== after.lat || before.lng !== after.lng) return true;
+  return (
+    draftLocationPlaceId({
+      locationGeo: before,
+      locationProviderPlaceId: original.locationProviderPlaceId,
+    }) !== draftLocationPlaceId({ ...edited, locationGeo: after }) ||
+    asCoordinatePrecision(original.coordinatePrecision) !==
+      asCoordinatePrecision(edited.coordinatePrecision)
+  );
+};
+
 /** The events.location_geo write value: Postgres `point` text "(lng,lat)". */
 const locationGeoColumnValue = (
   geo: { lat: number; lng: number } | null,
@@ -759,11 +795,8 @@ export const buildRsvpUpdatePayloadDiff = (
   // The Where-step pin: a re-picked address sends its coordinate, precision and
   // city. Before this the published-RSVP editor saved the new address text and
   // left the old (or no) pin behind, so map links pointed at the wrong place.
-  const originalGeo = original.locationGeo ?? null;
-  if (
-    originalGeo?.lat !== edited.locationGeo?.lat ||
-    originalGeo?.lng !== edited.locationGeo?.lng
-  ) {
+  // #4334 — a same-coordinate re-pick with a new place id or precision counts.
+  if (locationPinChanged(original, edited)) {
     payload.location_geo = locationGeoColumnValue(edited.locationGeo);
     payload.coordinate_precision =
       edited.locationGeo === null
