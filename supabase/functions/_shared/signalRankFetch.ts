@@ -14,6 +14,7 @@
 // This makes the helper portable across edge functions.
 
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { rangeCurrency } from './curatedPrice.ts';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -50,6 +51,8 @@ export interface SignalRankResult {
   price_level: number | null;
   price_min: number | null;
   price_max: number | null;
+  /** #4347 round 2 — ISO 4217 code of price_min/price_max (Google's own range currency). */
+  price_currency: string | null;
   price_tier: string | null;
   price_tiers: string[] | null;
   opening_hours: Record<string, unknown> | null;
@@ -392,7 +395,7 @@ function fetchPerRequestUntilMigrated(
 type RankedPair = { place_id: string; rank_score: number };
 
 const SIGNAL_RANK_HYDRATE_COLUMNS =
-  'id, google_place_id, name, address, lat, lng, rating, review_count, price_level, price_range_start_cents, price_range_end_cents, opening_hours, website, stored_photo_urls, types, primary_type, utc_offset_minutes, city_id, city, country, ai_signal_scores';
+  'id, google_place_id, name, address, lat, lng, rating, review_count, price_level, price_range_start_cents, price_range_end_cents, price_range_currency, opening_hours, website, stored_photo_urls, types, primary_type, utc_offset_minutes, city_id, city, country, ai_signal_scores';
 
 function signalRankRpcArgs(params: SignalRankParams): Record<string, unknown> {
   const latDelta = params.radiusMeters / 111320;
@@ -469,6 +472,9 @@ function shapeRankedPlaces(
       price_max: pp.price_range_end_cents != null
         ? Math.floor((pp.price_range_end_cents as number) / 100)
         : null,
+      // #4347 round 2 — the range is in the PLACE's currency (₦100,000 at a
+      // Lagos restaurant), so the amount never travels without its code.
+      price_currency: rangeCurrency(pp.price_range_currency),
       price_tier: null,      // card_pool had this; assembler tolerates null
       price_tiers: null,
       // Hours + meta
