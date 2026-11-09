@@ -71,8 +71,8 @@ import { ANDROID_GLASS_USES_OPAQUE_FALLBACK, colors, fontWeights, glass, radius,
 import { throttledReverseGeocode } from '../utils/throttledGeocode';
 
 import { ImageWithFallback } from "./figma/ImageWithFallback";
-import { formatCurrency, formatDistance, parseAndFormatDistance } from "./utils/formatters";
-import { PriceTierSlug, tierLabel, tierRangeLabel, googleLevelToTierSlug, TIER_BY_SLUG } from "../constants/priceTiers";
+import { formatDistance, parseAndFormatDistance } from "./utils/formatters";
+import { PriceTierSlug, tierLabel, googleLevelToTierSlug, TIER_BY_SLUG } from "../constants/priceTiers";
 // ORCH-0640 ch09: experiencesService + experienceGenerationService DELETED.
 // UserPreferences re-imported from canonical source. Legacy save calls
 // (ExperiencesService.saveExperience) redirected to savedCardsService.saveCard

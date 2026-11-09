@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { AppState } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuthSimple } from "../hooks/useAuthSimple";
 // #3524 — sign in by emailed code. A guest whose purchase address has no Google
@@ -20,7 +21,7 @@ export interface UserIdentity {
 }
 import { savedCardsService } from "../services/savedCardsService";
 import { SessionService } from "../services/sessionService";
-import { preloadRates } from "../services/currencyService";
+import { preloadRates, refreshRatesIfStale } from "../services/currencyService";
 import { useSavedCards } from "../hooks/useSavedCards";
 import { useQueryClient } from "@tanstack/react-query";
 import i18n from '../i18n';
@@ -276,6 +277,12 @@ export function useAppState() {
   // Preload exchange rates so prices use real rates app-wide
   useEffect(() => {
     preloadRates();
+    // #4347: also refresh on return to the foreground once the last live
+    // fetch is over 24 h old, so converted prices never age out silently.
+    const sub = AppState.addEventListener("change", (next) => {
+      if (next === "active") refreshRatesIfStale();
+    });
+    return () => sub.remove();
   }, []);
 
   // Force loading to false after timeout or if authLoading is false

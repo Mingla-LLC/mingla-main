@@ -7,7 +7,6 @@
  */
 import type { Recommendation } from '../types/recommendation';
 import { getCategoryIcon } from './categoryUtils';
-import { curatedTotalPriceRange } from './curatedPriceRange';
 
 /**
  * Normalize a datetime string to ISO format ("Z" suffix).
@@ -74,11 +73,15 @@ export function curatedToRecommendation(card: any): Recommendation {
     lat: firstStop?.lat,
     lng: firstStop?.lng,
     description: card.tagline ?? '',
-    budget: curatedTotalPriceRange(card.totalPriceMin, card.totalPriceMax, card.totalPriceOpenEnded),
+    // #4347 Decision 2: an AI plan's totals are sums of USD tier constants, not
+    // money. The plate shows its spend level (curatedPlanSpans); these carried
+    // strings used to print a dollar range to every viewer in every currency, and were
+    // persisted into Likes and the Calendar. Empty = absent; readers guard it.
+    budget: '',
     rating: avgRating,
     image: firstImage,
     images: allImages.length > 0 ? allImages : [firstImage || ''],
-    priceRange: curatedTotalPriceRange(card.totalPriceMin, card.totalPriceMax, card.totalPriceOpenEnded),
+    priceRange: '',
     // ORCH-0659/0660: honest null when first-stop distance/travel-time is missing
     distance: firstStop && typeof firstStop.distanceFromUserKm === 'number'
       ? `${firstStop.distanceFromUserKm.toFixed(1)} km`

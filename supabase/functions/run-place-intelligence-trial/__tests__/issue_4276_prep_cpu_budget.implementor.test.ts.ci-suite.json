@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/run-place-intelligence-trial/__tests__/issue_4276_prep_cpu_budget.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4276-prep-cpu-budget",
+  "profile": "deno-2-unit"
+}

@@ -24,7 +24,7 @@ import { Icon } from "./ui/Icon";
 import { BaseBottomSheet, BottomSheetFlatList } from "./ui/BaseBottomSheet";
 import { ExpandedCardModalProps, ExpandedCardData } from "../types/expandedCardTypes";
 import type { CuratedExperienceCard, CuratedStop } from '../types/curatedExperience';
-import { formatCurrency } from "./utils/formatters";
+import { formatChargedInLine, formatDisplayPrice } from "./utils/formatters";
 import { canonicalDiscoveryPriceDetail } from '../utils/priceTiers';
 import { getReadableCategoryName } from "../utils/categoryUtils";  // ORCH-0685
 import { weatherService, WeatherData } from "../services/weatherService";
@@ -1367,7 +1367,9 @@ export default function ExpandedCardModal({
   const heroSpans = isCuratedCard && planCard
     ? curatedPlanSpans(planCard, {
         measurementSystem: accountPreferences?.measurementSystem,
-        formatMoney: (amount) => formatCurrency(amount, accountPreferences?.currency || 'USD'),
+        formatMoney: (price) =>
+          formatDisplayPrice({ ...price, viewerCurrency: accountPreferences?.currency })?.text ?? null,
+        spendLevelLabel: (level) => t(`cards:price.spend_${level}`),
         freeLabel: t('cards:swipeable.free', { defaultValue: 'Free' }),
         stopCountLabel: (count) =>
           t('cards:expanded.stop_count', { defaultValue: '{{count}} stops', count }),
@@ -1381,6 +1383,25 @@ export default function ExpandedCardModal({
         // Nothing read it after the wave-4 rewrite (#1605 rework).
         viewerDistanceKm: viewerDistance,
       });
+
+  /**
+   * #4347 — a brand experience's price, when converted, also says what the host
+   * charges: "₦100,000 · charged in naira" under the plate's "≈ $74". AI plans
+   * show a spend level and have no amount to restate.
+   */
+  const planChargedInLine: string | null = (() => {
+    if (!isCuratedCard || !isBrandExperiencePlan || !planCard) return null;
+    const converted = formatDisplayPrice({
+      min: planCard.totalPriceMin,
+      max: planCard.totalPriceMax,
+      openEnded: planCard.totalPriceOpenEnded,
+      sourceCurrency: typeof planCard.currency === 'string' ? planCard.currency : '',
+      viewerCurrency: accountPreferences?.currency,
+      server: planCard,
+    });
+    if (!converted?.isApprox) return null;
+    return formatChargedInLine(converted.sourceText, converted.sourceCurrency, t);
+  })();
 
   /** The venue's UTC offset, top-level or legacy-cased. Absent = no badge. */
   const cardUtcOffsetMinutes = card.utcOffsetMinutes ?? card.utc_offset_minutes ?? null;
@@ -2040,6 +2061,10 @@ export default function ExpandedCardModal({
               closeLabel={t('common:close', { defaultValue: 'Close' })}
             />
 
+            {planChargedInLine !== null ? (
+              <Text style={styles.chargedInLine}>{planChargedInLine}</Text>
+            ) : null}
+
             {/* Slot 1 — a system message, not a content section: it keeps its fill. */}
             {card && <LockedInBanner card={card} />}
 
@@ -2410,6 +2435,7 @@ export default function ExpandedCardModal({
                 title={card.title}
                 address={card.address}
                 priceRange={canonicalDiscoveryPriceDetail(card)?.source}
+                priceApprox={canonicalDiscoveryPriceDetail(card)?.approximate}
                 travelTime={viewerTravelTime ?? card.travelTime ?? undefined}
                 strollTimeline={strollData.timeline}
                 routeDuration={strollData.route?.duration}
@@ -2424,6 +2450,7 @@ export default function ExpandedCardModal({
                 title={card.title}
                 address={card.address}
                 priceRange={canonicalDiscoveryPriceDetail(card)?.source}
+                priceApprox={canonicalDiscoveryPriceDetail(card)?.approximate}
                 travelTime={viewerTravelTime ?? card.travelTime ?? undefined}
                 strollTimeline={picnicData.timeline}
                 routeDuration={picnicData.route?.duration}
@@ -2536,6 +2563,14 @@ export default function ExpandedCardModal({
 // Night Out detail styles
 
 const styles = StyleSheet.create({
+  // #4347 — the converted price's original, under the plate.
+  chargedInLine: {
+    paddingHorizontal: SPINE.gutter,
+    paddingTop: 8,
+    fontSize: 13,
+    lineHeight: 18,
+    color: SPINE.muted,
+  },
   reviewNavBar: {
     flexDirection: 'row',
     alignItems: 'center',

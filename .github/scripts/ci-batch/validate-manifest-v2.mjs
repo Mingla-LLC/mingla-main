@@ -403,11 +403,14 @@ export function phase3dContractDigest(manifest) {
 // #1023: re-sealed after merging origin/main 5dd7f103ca (#4273 polish rows kept beside the #1023 rows).
 // #1023: re-sealed after merging origin/main 6038982e1a.
 // #4318: register the /links migration (20280508004318) and its implementor and tester PostgreSQL proofs; it joins the pre-#1931 replay skip list by exact filename.
+// #4318: register the /links live-cities (20280514004318) and strip end-date (20280515004318) migrations and their PostgreSQL proofs; the end-date migration joins the pre-#1931 replay skip list by exact filename.
+// #4318: register the /links per-city places migration (20280516004318) and its PostgreSQL proof the same way.
 // #4339: register the Ari draft hand-off migration (20280512004339) and its implementor PostgreSQL proof in the #1857, #1931 and #2117 replay lanes, after merging origin/main 2e6e331749 (#4318).
 // #4339: the #1931 lane skips 20280512004339_issue_4339_site_prompt_drafts.sql by exact filename (#2492 closure guard: CREATE TABLE columns are not credited as definitions).
 // #4339 round A: register the Book a call leads migration (20280520004339) and its implementor PostgreSQL proof in the #1857, #1931 and #2117 replay lanes (the #2492 closure guard passes without a skip).
 // #4339 round B: register the ad marketing destinations migration (20280522004339) and its implementor PostgreSQL proof in the #1857, #1931 and #2117 replay lanes.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "e50655043e775f3bcfb1e81623e93be70db0a452098ab5b3a1737ce38c683b2a";
+// #4339: re-sealed after merging origin/main 85dba1f14e (#4349 /links rows kept beside the #4339 rows).
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "5b1e2bda220722c2a0305b60344476d9cab1a2c906ba79473d2db9e11965121c";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

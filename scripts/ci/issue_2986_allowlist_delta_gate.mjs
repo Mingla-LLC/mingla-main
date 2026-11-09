@@ -219,8 +219,56 @@ const I4318_BLOCK = [
 ].join("\n");
 const I4318_NAME = "links_page_week(";
 const I4318_PLACES_NAME = "links_page_places(";
+
+// #4318 follow-up — twelfth binding amendment. Exactly ONE intended-public
+// reader: the cities live in Explorer (seeding_cities.is_live_for_consumers),
+// so usemingla.com/links lists exactly the app's live cities with no hand-kept
+// list. It sits directly after the #4318 places reader, returns the city id,
+// name, country code, centre and a photo-place count only, and advances the
+// intended-public count by one.
+const I4318C_OLD_HEADER = I4318_NEW_HEADER;
+const I4318C_NEW_HEADER =
+  "# Signature count: 207 (intended-public 34, internally-gated 108, predicate/read-helper 62, PostGIS 3).";
+const I4318C_ANCHOR = I4318_PLACES_SIGNATURE;
+const I4318C_SIGNATURE = "links_page_cities()";
+const I4318C_BLOCK = [
+  "# #4318 live cities: every city live for consumers in Explorer; id, name, country code, centre and a count of photo places under the links_page_places rules only, no seeding, coverage, cost or private column.",
+  I4318C_SIGNATURE,
+].join("\n");
+const I4318C_NAME = "links_page_cities(";
+
+// #4318 follow-up — thirteenth binding amendment. No new reader and no count
+// change: links_page_places gains p_city_id uuid (an index-ordered per-city
+// top-N) and links_page_cities answers has_places instead of a count, so the
+// places signature and both justification comments are rewritten in place.
+// It is applied LAST: a base that already carries it is first rewound to the
+// twelve-amendment text, run through the chain, and moved forward again, so
+// the earlier amendments keep their original anchors.
+const I4318F_PLACES_SIGNATURE =
+  "links_page_places(p_lat double precision, p_lng double precision, p_radius_km integer, p_limit integer, p_city_id uuid)";
+const I4318F_SWAPS = [
+  [I4318_BLOCK.split("\n")[2],
+    "# #4318: the /links quiet week: at most 6 Explorer-servable, operational places with a stored thumb, in one live city by id or within 100 km of a point the page passes; name, category, city label, point and bucket-relative thumb only, no address or private column."],
+  [I4318_PLACES_SIGNATURE, I4318F_PLACES_SIGNATURE],
+  [I4318C_BLOCK.split("\n")[0],
+    "# #4318 live cities: every city live for consumers in Explorer; id, name, country code, centre and whether it has photo places under the links_page_places rules only, no seeding, coverage, cost or private column."],
+];
+const swapLine = (source, from, to) => source.replace(`\n${from}\n`, `\n${to}\n`);
+const rewind4318Fast = (base) => {
+  const present = I4318F_SWAPS.map(([, next]) => countExactLine(base, next) === 1);
+  if (present.every((p) => !p)) return base;
+  if (!present.every(Boolean)) throw new Error("base contains a partial #4318 per-city places amendment");
+  return I4318F_SWAPS.reduce((text, [prior, next]) => swapLine(text, next, prior), base);
+};
+const expectedAfter4318Fast = (base) => {
+  for (const [prior] of I4318F_SWAPS) {
+    if (countExactLine(base, prior) !== 1) throw new Error("base #4318 per-city places anchor is absent or duplicated");
+  }
+  return I4318F_SWAPS.reduce((text, [prior, next]) => swapLine(text, prior, next), base);
+};
+
 // The count header every later amendment leaves in place.
-const CURRENT_HEADER = I4318_NEW_HEADER;
+const CURRENT_HEADER = I4318C_NEW_HEADER;
 
 const countExactLine = (source, expected) => source.split(/\r?\n/).filter((line) => line.trim() === expected).length;
 
@@ -363,7 +411,7 @@ const expectedAfter2829 = (base) => {
     countExactLine(base, I2829_SIGNATURE) === 1 &&
     base.includes(`${I2829_ANCHOR}\n${I2829_BLOCK}\n`) &&
     (countExactLine(base, I2829_NEW_HEADER) === 1 || countExactLine(base, I4137_NEW_HEADER) === 1 ||
-      countExactLine(base, I4318_NEW_HEADER) === 1)
+      countExactLine(base, I4318_NEW_HEADER) === 1 || countExactLine(base, I4318C_NEW_HEADER) === 1)
   ) {
     return base;
   }
@@ -387,7 +435,8 @@ const expectedAfter4137 = (base) => {
       .every((signature) => countExactLine(base, signature) === 1) &&
     base.includes(`${I4137_PUBLIC_ANCHOR}\n${I4137_PUBLIC_BLOCK}\n`) &&
     base.includes(`${I4137_PREDICATE_ANCHOR}\n${I4137_PREDICATE_BLOCK}\n`) &&
-    (countExactLine(base, I4137_NEW_HEADER) === 1 || countExactLine(base, I4318_NEW_HEADER) === 1)
+    (countExactLine(base, I4137_NEW_HEADER) === 1 || countExactLine(base, I4318_NEW_HEADER) === 1 ||
+      countExactLine(base, I4318C_NEW_HEADER) === 1)
   ) {
     return base;
   }
@@ -416,7 +465,7 @@ const expectedAfter4318 = (base) => {
     countExactLine(base, I4318_SIGNATURE) === 1 &&
     countExactLine(base, I4318_PLACES_SIGNATURE) === 1 &&
     base.includes(`${I4318_ANCHOR}\n${I4318_BLOCK}\n`) &&
-    countExactLine(base, I4318_NEW_HEADER) === 1
+    (countExactLine(base, I4318_NEW_HEADER) === 1 || countExactLine(base, I4318C_NEW_HEADER) === 1)
   ) {
     return base;
   }
@@ -434,8 +483,34 @@ const expectedAfter4318 = (base) => {
     .replace(`${I4318_ANCHOR}\n`, `${I4318_ANCHOR}\n${I4318_BLOCK}\n`);
 };
 
-export const expectedAllowlist = (base) =>
-  expectedAfter4318(expectedAfter4137(
+// #4318 live cities — applied on top of #4318. A settled base must keep the
+// exact block, its placement and the count; partial, moved or lookalike
+// additions fail closed.
+const expectedAfter4318Cities = (base) => {
+  if (
+    countExactLine(base, I4318C_SIGNATURE) === 1 &&
+    base.includes(`${I4318C_ANCHOR}\n${I4318C_BLOCK}\n`) &&
+    countExactLine(base, I4318C_NEW_HEADER) === 1
+  ) {
+    return base;
+  }
+  if (base.includes(I4318C_NAME) || base.includes("# #4318 live cities:")) {
+    throw new Error("base contains a partial or lookalike #4318 /links live-cities reader");
+  }
+  if (countExactLine(base, I4318C_OLD_HEADER) !== 1) {
+    throw new Error("base #4318 live-cities count-header anchor is absent or duplicated");
+  }
+  if (countExactLine(base, I4318C_ANCHOR) !== 1) {
+    throw new Error("base #4318 live-cities insertion anchor is absent or duplicated");
+  }
+  return base
+    .replace(I4318C_OLD_HEADER, I4318C_NEW_HEADER)
+    .replace(`${I4318C_ANCHOR}\n`, `${I4318C_ANCHOR}\n${I4318C_BLOCK}\n`);
+};
+
+export const expectedAllowlist = (input) => {
+  const base = rewind4318Fast(input);
+  return expectedAfter4318Fast(expectedAfter4318Cities(expectedAfter4318(expectedAfter4137(
     expectedAfter2829(
       expectedAfter3872Public(
         expectedAfter4111(
@@ -447,7 +522,8 @@ export const expectedAllowlist = (base) =>
         ),
       ),
     ),
-  ));
+  ))));
+};
 
 export const validate = ({ baseAllowlist, currentAllowlist }) => {
   const failures = [];
@@ -459,7 +535,7 @@ export const validate = ({ baseAllowlist, currentAllowlist }) => {
   }
   if (expected && currentAllowlist !== expected) {
     failures.push(
-      "allowlist delta is not the exact #2986 pair/comments/header correction plus the exact #3426 reader, #3281 R3 slot reader, #3697 pixel-mode reader, #3682 aggregate follower-count readers, #3872 R1 display readers, #4111 brand-page enquiry readers, #3872 R3/R4 public creator, Local and referral readers, #2829 W4 public trip-guide reader, #4137 Blog readers, and #4318 /links week and places readers",
+      "allowlist delta is not the exact #2986 pair/comments/header correction plus the exact #3426 reader, #3281 R3 slot reader, #3697 pixel-mode reader, #3682 aggregate follower-count readers, #3872 R1 display readers, #4111 brand-page enquiry readers, #3872 R3/R4 public creator, Local and referral readers, #2829 W4 public trip-guide reader, #4137 Blog readers, #4318 /links week and places readers, and the #4318 /links live-cities reader",
     );
   }
   for (const signature of [
@@ -475,7 +551,8 @@ export const validate = ({ baseAllowlist, currentAllowlist }) => {
     ...I4137_PUBLIC_SIGNATURES,
     ...I4137_PREDICATE_SIGNATURES,
     I4318_SIGNATURE,
-    I4318_PLACES_SIGNATURE,
+    I4318F_PLACES_SIGNATURE,
+    I4318C_SIGNATURE,
   ]) {
     if (countExactLine(currentAllowlist, signature) !== 1) failures.push(`signature must occur exactly once: ${signature}`);
   }
@@ -528,6 +605,10 @@ const runPostFoldBaseRegression = (allowlist) => {
 };
 
 const runSelfTest = () => {
+  // The #4318 blocks as a settled head carries them (after the per-city swap).
+  const forwardBlock = (block) => I4318F_SWAPS.reduce((text, [prior, next]) => `\n${text}\n`.replace(`\n${prior}\n`, `\n${next}\n`).slice(1, -1), block);
+  const H4318_BLOCK = forwardBlock(I4318_BLOCK);
+  const H4318C_BLOCK = forwardBlock(I4318C_BLOCK);
   const base = fixtureBase();
   const head = expectedAllowlist(base);
   const cases = [
@@ -623,27 +704,43 @@ const runSelfTest = () => {
     ["#4137 count not corrected", head.replace(CURRENT_HEADER, I4137_OLD_HEADER), false],
     // #4318 — the eleventh amendment is exactly one /links reader, its
     // decision comment, its placement after the Blog preview, and the count.
-    ["#4318 block missing", head.replace(`${I4318_BLOCK}\n`, ""), false],
-    ["#4318 comment missing", head.replace(`${I4318_BLOCK.split("\n")[0]}\n`, ""), false],
+    ["#4318 block missing", head.replace(`${H4318_BLOCK}\n`, ""), false],
+    ["#4318 comment missing", head.replace(`${H4318_BLOCK.split("\n")[0]}\n`, ""), false],
     ["#4318 comment substituted", head.replace("# #4318: the /links week:", "# #4318: approved somehow:"), false],
     ["#4318 signature changed", head.replace(`\n${I4318_SIGNATURE}\n`, "\nlinks_page_week(p_city text)\n"), false],
     ["#4318 lookalike overload", `${head}links_page_week(p_debug boolean)\n`, false],
-    ["#4318 moved away from its anchor", head.replace(`${I4318_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${I4318_BLOCK}\n`), false],
-    ["#4318 plus a forged neighbour", head.replace(`${I4318_BLOCK}\n`, `${I4318_BLOCK}\nforged_neighbour_function()\n`), false],
-    ["#4318 places reader dropped", head.replace(`\n${I4318_PLACES_SIGNATURE}\n`, "\n"), false],
-    ["#4318 places signature changed", head.replace(I4318_PLACES_SIGNATURE, "links_page_places(lat double precision, lng double precision)"), false],
+    ["#4318 moved away from its anchor", head.replace(`${H4318_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${H4318_BLOCK}\n`), false],
+    ["#4318 plus a forged neighbour", head.replace(`${H4318_BLOCK}\n`, `${H4318_BLOCK}\nforged_neighbour_function()\n`), false],
+    ["#4318 places reader dropped", head.replace(`\n${I4318F_PLACES_SIGNATURE}\n`, "\n"), false],
+    ["#4318 places signature changed", head.replace(I4318F_PLACES_SIGNATURE, "links_page_places(lat double precision, lng double precision)"), false],
+    // #4318 per-city places — the thirteenth amendment rewrites exactly the
+    // places signature and two comments; any one left behind fails closed.
+    ["#4318 per-city places reverted to the 4-argument signature", swapLine(head, I4318F_PLACES_SIGNATURE, I4318_PLACES_SIGNATURE), false],
+    ["#4318 per-city places comment not rewritten", swapLine(head, I4318F_SWAPS[0][1], I4318F_SWAPS[0][0]), false],
+    ["#4318 live cities comment still says count", swapLine(head, I4318F_SWAPS[2][1], I4318F_SWAPS[2][0]), false],
+    ["#4318 per-city places both signatures", head.replace(`\n${I4318F_PLACES_SIGNATURE}\n`, `\n${I4318F_PLACES_SIGNATURE}\n${I4318_PLACES_SIGNATURE}\n`), false],
     ["#4318 places lookalike overload", `${head}links_page_places(p_lat double precision, p_lng double precision)\n`, false],
     ["#4318 count not corrected", head.replace(CURRENT_HEADER, I4318_OLD_HEADER), false],
+    // #4318 live cities — the twelfth amendment is exactly one reader, its
+    // decision comment, its placement after the places reader, and the count.
+    ["#4318 live cities block missing", head.replace(`${H4318C_BLOCK}\n`, ""), false],
+    ["#4318 live cities comment missing", head.replace(`${H4318C_BLOCK.split("\n")[0]}\n`, ""), false],
+    ["#4318 live cities comment substituted", head.replace("# #4318 live cities: every city", "# #4318 live cities: approved somehow"), false],
+    ["#4318 live cities signature changed", head.replace(`\n${I4318C_SIGNATURE}\n`, "\nlinks_page_cities(p_all boolean)\n"), false],
+    ["#4318 live cities lookalike overload", `${head}links_page_cities(p_debug boolean)\n`, false],
+    ["#4318 live cities moved away from its anchor", head.replace(`${H4318C_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${H4318C_BLOCK}\n`), false],
+    ["#4318 live cities plus a forged neighbour", head.replace(`${H4318C_BLOCK}\n`, `${H4318C_BLOCK}\nforged_neighbour_function()\n`), false],
+    ["#4318 live cities count not corrected", head.replace(CURRENT_HEADER, I4318C_OLD_HEADER), false],
   ];
   for (const [name, candidate, shouldPass] of cases) {
     const passed = validate({ baseAllowlist: base, currentAllowlist: candidate }).length === 0;
     if (passed !== shouldPass) throw new Error(`self-test ${name} ${shouldPass ? "failed" : "was not rejected"}`);
   }
-  // Once a base carries all eleven amendments, the ONLY accepted head is that
+  // Once a base carries all twelve amendments, the ONLY accepted head is that
   // base, byte for byte.
   const settled = expectedAllowlist(base);
   if (validate({ baseAllowlist: settled, currentAllowlist: settled }).length !== 0) {
-    throw new Error("self-test settled base with all eleven amendments failed");
+    throw new Error("self-test settled base with all twelve amendments failed");
   }
   if (validate({ baseAllowlist: settled, currentAllowlist: `${settled}forged_after_settle()\n` }).length === 0) {
     throw new Error("self-test settled base accepted a new line");
@@ -662,7 +759,7 @@ const runReal = (baseSha) => {
   const failures = validate({ baseAllowlist, currentAllowlist });
   if (failures.length) throw new Error(failures.join("\n"));
   process.stdout.write(
-    "#2986 exact allowlist pair + #3426 exact reader + #3281 R3 slot reader + #3697 pixel-mode reader + #3682 aggregate follower-count readers + #3872 R1 display readers + #4111 brand-page enquiry readers + #3872 R3/R4 public readers + #2829 W4 public trip-guide reader + #4137 Blog readers + #4318 /links week and places readers PASS\n",
+    "#2986 exact allowlist pair + #3426 exact reader + #3281 R3 slot reader + #3697 pixel-mode reader + #3682 aggregate follower-count readers + #3872 R1 display readers + #4111 brand-page enquiry readers + #3872 R3/R4 public readers + #2829 W4 public trip-guide reader + #4137 Blog readers + #4318 /links week and places readers + #4318 /links live-cities reader PASS\n",
   );
 };
 

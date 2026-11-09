@@ -185,7 +185,8 @@ export const COMMUNITY_SUPPORT_TAB_CONTRACT = Object.freeze({
       "admin_links_strips_reorder",
       "issue_4137_blog_list_posts",
     ]),
-    functions: Object.freeze([]),
+    // refreshLinksPage: admin-blog "revalidate_links" after each saved change.
+    functions: Object.freeze(["admin-blog"]),
   }),
   team: Object.freeze({
     area: ADMIN,

@@ -1867,7 +1867,10 @@ function s5Deps(system, brandExperience) {
     // Both surfaces' local names for the same fact.
     isBrandExperience: brandExperience,
     isBrandExperiencePlan: brandExperience,
-    formatCurrency: (amount, code) => `${code} ${amount}`,
+    // [#4347] both call sites now bind `formatDisplayPrice` (the amount arrives
+    // WITH its own currency from the producer). The stub prints the source
+    // currency and amount so the parity sweep still compares real arguments.
+    formatDisplayPrice: (price) => ({ text: `${price.sourceCurrency} ${price.min}` }),
     t: (key, opts) => {
       if (key === 'cards:swipeable.free') return 'Free';
       if (key === 'cards:expanded.stop_count') return `${opts?.count ?? 0} stops`;
@@ -1899,6 +1902,8 @@ const S5_FIXTURE = {
  */
 const S5_EXPERIENCE = {
   experienceType: 'adventurous',
+  // [#4347] the experience's own currency; the producer hands it to the formatter.
+  currency: 'USD',
   estimatedDurationMinutes: 150,
   totalPriceMin: 4500,
   totalPriceMax: 4500,

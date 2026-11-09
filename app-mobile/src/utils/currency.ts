@@ -67,48 +67,8 @@ export const formatNumberWithCommas = (num: number): string => {
   return Math.round(num).toLocaleString(getUserLocale());
 };
 
-// RELIABILITY: Do NOT use this for user-facing price display — it does NOT apply
-// exchange rate conversion. Use formatCurrency from 'components/utils/formatters'
-// instead, which applies getRate() for proper currency conversion.
-// This function only formats a number with the currency symbol — no conversion.
-export const formatAmountWithSymbol = (amount: number, currency: string = 'USD'): string => {
-  const symbol = getCurrencySymbol(currency);
-  return `${symbol}${formatNumberWithCommas(amount)}`;
-};
-
-/**
- * Format a price range string with proper thousand separators
- * Handles formats like "$20-40", "$100+", "Free", "$136851"
- * @param priceRange - Price range string 
- * @param currency - Target currency code (default: 'USD')
- * @returns Formatted price range with commas (e.g., "$136851" -> "$136,851")
- */
-export const formatPriceRangeWithCommas = (priceRange: string | undefined, currency: string = 'USD'): string => {
-  if (!priceRange) return '';
-  
-  // Handle "Free" or non-numeric ranges
-  if (priceRange.toLowerCase() === 'free' || priceRange === '-') {
-    return priceRange;
-  }
-
-  const symbol = getCurrencySymbol(currency);
-
-  // Extract numbers and format them with commas
-  // Pattern: replace any number (with optional decimals) with its comma-formatted version
-  const formatted = priceRange.replace(/\d+(\.\d+)?/g, (match) => {
-    const num = parseFloat(match);
-    return formatNumberWithCommas(num);
-  });
-
-  // If the original had a currency symbol, replace it with the target currency symbol
-  if (formatted.startsWith('$') || formatted.startsWith('£') || formatted.startsWith('€') || formatted.startsWith('¥')) {
-    return symbol + formatted.slice(1);
-  }
-  
-  // If no symbol present but has numbers, add the symbol
-  if (/\d/.test(formatted) && !formatted.match(/^[^\d]*[₦₹₩฿₱₫₺₽﷼]/)) {
-    return symbol + formatted;
-  }
-
-  return formatted;
-};
+// #4347: formatAmountWithSymbol and formatPriceRangeWithCommas were deleted.
+// Neither had a caller, and both wrote a currency symbol next to a number
+// without knowing what currency the number was in (formatPriceRangeWithCommas
+// swapped a "$" for the viewer's glyph on an unconverted amount). Explorer
+// prices go through formatDisplayPrice in components/utils/formatters.
