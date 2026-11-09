@@ -9,7 +9,8 @@
 --   R-OPEN    open cards are listed exactly as before; the range only picks
 --             done cards
 --   R-OLD     a query with none of the new keys answers exactly as before
---             (the default 7 done days, the same cards, the same counts)
+--             (done_days 7: the same cards, the same counts); with no
+--             done_days the default is closed since Monday (#4270)
 --   R-PAGE    offset pages through the list: page 1 and page 2 together are
 --             every card once, `truncated` counts the offset, and the answer
 --             says which offset it used
@@ -167,12 +168,29 @@ begin
   perform pg_temp.tr_check('R-OPEN', 'open cards first, then the done cards of the window',
     pg_temp.tr_titles(v), 'R4255 Open one|R4255 Open two|R4255 Closed 2 days ago');
 
-  -- No new keys: exactly the old answer (7 done days by default).
-  v := pg_temp.tr_list('{"owner":"gia.w4255@test.local"}');
-  perform pg_temp.tr_check('R-OLD', 'without the new keys done_days still decides (default 7 days)',
+  -- No new keys: done_days still decides, on any weekday. (Since #4270 the
+  -- default with no done_days is "closed since Monday", so done_days is given.)
+  v := pg_temp.tr_list('{"owner":"gia.w4255@test.local","done_days":7}');
+  perform pg_temp.tr_check('R-OLD', 'without the new keys done_days still decides (7 days)',
     pg_temp.tr_titles(v), 'R4255 Open one|R4255 Open two|R4255 Closed 2 days ago');
   perform pg_temp.tr_check('R-OLD', 'the old answer says offset 0 and is not truncated',
     (v ->> 'offset') || '/' || (v ->> 'truncated') || '/' || (v ->> 'total'), '0/false/3');
+  -- The default (#4270): with no done_days, done cards closed since Monday.
+  -- The answer names that Monday (done_since); whatever weekday the suite
+  -- runs on, the done list is exactly the fixture's cards closed since it.
+  v := pg_temp.tr_list('{"owner":"gia.w4255@test.local"}');
+  perform pg_temp.tr_check('R-OLD', 'with no done_days the window starts on this week''s Monday (UTC)',
+    (v ->> 'done_since')::timestamptz::text,
+    (date_trunc('week', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')::text);
+  perform pg_temp.tr_check('R-OLD', 'with no done_days the done list is the cards closed since done_since',
+    pg_temp.tr_titles(v),
+    (select string_agg(t, '|' order by o) from (
+       select 'R4255 Open one' t, 0 o union all select 'R4255 Open two', 1
+       union all
+       select c.title, 2 + row_number() over (order by c.closed_at desc)
+         from public.ops_work_cards c
+        where c.id in (select id from tr_card_ids) and c.status = 'done'
+          and c.closed_at >= (v ->> 'done_since')::timestamptz) x));
   v := pg_temp.tr_list('{"owner":"gia.w4255@test.local","done_days":60}');
   perform pg_temp.tr_check('R-OLD', 'done_days 60 still reaches back 60 days',
     pg_temp.tr_titles(v), 'R4255 Open one|R4255 Open two|R4255 Closed 2 days ago|R4255 Closed 10 days ago|R4255 Closed 40 days ago');
