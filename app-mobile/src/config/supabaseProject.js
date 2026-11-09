@@ -4,7 +4,7 @@
 // the literal at `src/services/supabase.ts` — and that was correct. The problem
 // was that ONE reader could not see it.
 //
-// THE BUG THIS CLOSES. `packages/offering-rendering/mapboxFunctionsBase.ts` is
+// THE BUG THIS CLOSES. `packages/offering-rendering/functionsBase.ts` is
 // the shared owner of the "Where you'll be" / "Where you'll start" static map on
 // the public venue, trip, experience and RSVP surfaces. It resolves its base
 // through `Constants.expoConfig.extra.EXPO_PUBLIC_SUPABASE_URL`, on the strength

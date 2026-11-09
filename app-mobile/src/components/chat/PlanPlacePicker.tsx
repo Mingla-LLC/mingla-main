@@ -1,10 +1,10 @@
 /**
  * Issue #4261 amendment 1 (6.5 #1) — the place picker shared by the plan form
- * and "Suggest a place": search (Mingla places first, then Mapbox, then
- * `Use "{q}"`), the picked row with Change, the Mapbox retrieve, and "Some
+ * and "Suggest a place": search (Mingla places first, then Google, then
+ * `Use "{q}"`), the picked row with Change, the Google retrieve, and "Some
  * results couldn't load.".
  *
- * New: after a pick that is not on Mingla (Mapbox or typed), "Add a link
+ * New: after a pick that is not on Mingla (Google or typed), "Add a link
  * (optional)" reveals a URL field for the place's own website, menu or
  * tickets. A Mingla place shows no link field (its card has the venue's
  * links). Changing the place clears the link (the parent owns that rule).
@@ -17,7 +17,7 @@ import { Icon } from "../ui/Icon";
 import { toastManager } from "../ui/Toast";
 import { chatTokens } from "../../constants/chatTokens";
 import { usePlanPlaceSearch } from "../../hooks/usePlanPlaceSearch";
-import { retrieveMapbox } from "../../services/planPlaceSearchService";
+import { retrievePlaceForPlan } from "../../services/planPlaceSearchService";
 import { placeLinkInvalid, type PlaceResultRow, type PlanFormPlace } from "./planModel";
 
 interface PlanPlacePickerProps {
@@ -68,17 +68,17 @@ export function PlanPlacePicker({
     if (retrievingKey) return;
     setRetrievingKey(row.key);
     try {
-      const details = await retrieveMapbox(row.mapboxId, sessionToken, row.name);
+      const details = await retrievePlaceForPlan(row.providerPlaceId, sessionToken, row.name);
       pick({
-        source: "mapbox",
+        source: "google",
         name: details.name,
         area: details.address ?? row.area,
-        mapboxId: details.mapboxId,
+        providerPlaceId: details.providerPlaceId,
         lat: details.lat,
         lng: details.lng,
       });
     } catch (error) {
-      console.warn("[PlanPlacePicker] Mapbox retrieve failed", error);
+      console.warn("[PlanPlacePicker] Google retrieve failed", error);
       toastManager.error(t("chat:plan_place_load_failed"));
     } finally {
       setRetrievingKey(null);

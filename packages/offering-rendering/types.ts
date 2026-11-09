@@ -122,7 +122,7 @@ export interface PublicEventProps {
   address: string | null;
   hideAddressUntilTicket: boolean;
   /**
-   * ORCH-1162 Bug 2 — venue lat/lng for the static-Mapbox "Where you'll be"
+   * ORCH-1162 Bug 2 — venue lat/lng for the static map "Where you'll be"
    * snapshot. ADDITIVE + default-safe: every PublicEventProps constructor that
    * predates this field leaves it undefined → no map (rule-9: the renderer falls
    * back to the honest text venue card, never a blank/placeholder box). The pin
@@ -140,6 +140,12 @@ export interface PublicEventProps {
    * the address is hidden), so the host simply feeds whichever geo is present.
    */
   cityGeo?: { lat: number; lng: number } | null;
+  /**
+   * #4334 — the venue's Google place id (pg_public_event_by_slug `googlePlaceId`,
+   * withheld server-side with the street). Fed to selectVenueMapsTarget so the
+   * Google Maps link carries `query_place_id`; undefined/null → coordinates only.
+   */
+  googlePlaceId?: string | null;
 
   // Cover
   coverHue: number;

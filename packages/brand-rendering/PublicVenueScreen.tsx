@@ -73,6 +73,7 @@ import {
 import {
   ParallaxCoverShell,
   buildStaticMapUrl,
+  StaticMapImage,
   createThemePalette,
   offeringSurfaceStyles,
   resolveTheme,
@@ -218,6 +219,11 @@ export interface PublicVenueViewModel {
   galleryPhotoUrls: string[];
   /** The owner-authored public pitch. Null/empty ⇒ the About section is omitted. */
   pitch: string | null;
+  /**
+   * #4334 — the venue's Google place id (`venue_public_view.google_place_id`).
+   * Optional: the Google Maps link carries it as `query_place_id`.
+   */
+  googlePlaceId?: string | null;
 }
 
 /** The place-discovery spend band, already currency-resolved by the host. */
@@ -743,14 +749,17 @@ const VenueLocationSection: VenueSectionRenderer = ({
 
   const mapBlock =
     staticMapUrl !== null ? (
-      <View style={[styles.mapCard, { backgroundColor: palette.card }]}>
-        <Image
-          source={{ uri: staticMapUrl }}
-          resizeMode="cover"
-          style={[styles.mapImage, isDesktop && styles.mapImageDesktop]}
-          accessibilityLabel={`Map of ${venue.name}`}
-          accessibilityIgnoresInvertColors
-        />
+      <StaticMapImage
+        uri={staticMapUrl}
+        style={[
+          styles.mapCard,
+          styles.mapImage,
+          isDesktop && styles.mapImageDesktop,
+          { backgroundColor: palette.card },
+        ]}
+        accessibilityLabel={`Map of ${venue.name}`}
+        testID="venue-map"
+      >
         <View style={[styles.mapPill, { backgroundColor: palette.page }]}>
           <Text
             numberOfLines={1}
@@ -759,7 +768,7 @@ const VenueLocationSection: VenueSectionRenderer = ({
             {venue.name}
           </Text>
         </View>
-      </View>
+      </StaticMapImage>
     ) : null;
 
   const addressCard =
@@ -1249,9 +1258,9 @@ export const PublicVenueScreen = ({
       venue.address !== null && venue.address.trim().length > 0
         ? venue.address
         : venue.name;
-    const candidate: MapsOpenTarget = { label, geo };
+    const candidate: MapsOpenTarget = { label, geo, googlePlaceId: venue.googlePlaceId ?? null };
     return canOpenMapsTarget(candidate) ? candidate : null;
-  }, [venue.address, venue.lat, venue.lng, venue.name]);
+  }, [venue.address, venue.googlePlaceId, venue.lat, venue.lng, venue.name]);
 
   /*
     issue #2508 — one controller owns "ask which app, then open" and "copy the
@@ -2450,10 +2459,11 @@ const styles = StyleSheet.create({
   mapImageDesktop: {
     height: 300,
   },
+  // #4334 F-1 — top-left: Google's logo and attribution own the bottom corners.
   mapPill: {
     position: "absolute",
     left: 12,
-    bottom: 12,
+    top: 12,
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 6,

@@ -59,7 +59,7 @@ export interface ConsumerEventFoundationModel {
   format: "in-person" | "online" | "hybrid";
   /**
    * Venue lat/lng. PRESENT on the consumer card (BusinessEventCard.locationGeo),
-   * BUT the consumer map is OMITTED this leg (OQ-5): app-mobile has no Mapbox
+   * BUT the consumer map is OMITTED this leg (OQ-5): app-mobile had no map
    * token in app.config extra (only the static process.env fallback, which does
    * NOT survive standalone/OTA per COMMS-0028) and no buildStaticMapUrl util —
    * threading a token + util is outside the §11 allowlist. Surfaced here so a

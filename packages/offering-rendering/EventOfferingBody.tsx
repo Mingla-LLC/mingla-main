@@ -140,6 +140,7 @@ import {
 } from "./LazyOfferingRefundLadder";
 import { type RefundPolicyReadState } from "./offeringRefundPolicy";
 import { accentFill, accentIcon, themeBoldFace, themeFontFace } from "./themeAccentStyle";
+import { StaticMapImage } from "./StaticMapFrame";
 
 // Re-export the pure totals so a single import surface stays one place.
 export { computeRunningTotal, totalSelectedQuantity } from "./eventBoxTotals";
@@ -521,6 +522,7 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
     address: event.address,
     addressHidden: event.hideAddressUntilTicket,
     locationGeo: event.locationGeo,
+    googlePlaceId: event.googlePlaceId ?? null,
   });
   const canOpenVenueMaps =
     canOpenMapsTarget(venueMapsTarget) && onOpenMaps !== undefined;
@@ -891,10 +893,9 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
             Where you&rsquo;ll be
           </Text>
           {staticMapUrl !== null ? (
-            <Image
-              source={{ uri: staticMapUrl }}
+            <StaticMapImage
+              uri={staticMapUrl}
               style={[styles.whereMap, { borderColor: palette.panelBorder }]}
-              resizeMode="cover"
               accessibilityLabel={`Map showing ${event.venueName}`}
               testID="orch-1167-where-map"
             />

@@ -290,7 +290,8 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
       if (cancelled) return;
       setDeviceResolveRequested(false);
       if (!place.city) return;
-      const next = { name: place.city, stateCode: place.state ?? null, countryCode: place.countryCode ?? null, lat, lng };
+      // #4334 F-10 — the ISO subdivision CODE, never the region's display name.
+      const next = { name: place.city, stateCode: place.stateCode ?? null, countryCode: place.countryCode ?? null, lat, lng };
       if (current && sameDiscoverAnchorCity(current, next)) {
         if (citySourceRef.current !== "device") rememberCity(current, "device");
         return;

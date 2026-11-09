@@ -60,7 +60,7 @@ export async function detectLocaleFromCoordinates(
   try {
     const geocodeResult = await geocodingService.reverseGeocode(latitude, longitude)
 
-    // META-ORCH-1060 §3.7: prefer the STRUCTURED ISO country code that Mapbox
+    // META-ORCH-1060 §3.7: prefer the STRUCTURED ISO country code that the proxy
     // returns directly (cleaner + more reliable than country-name matching).
     // Fall back to the legacy name lookup only if no code is present.
     let detectedCountry: CountryCurrency | undefined

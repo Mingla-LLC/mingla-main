@@ -2,7 +2,7 @@
 //
 // Deno-runnable: `mapsDeepLink.ts` imports NOTHING (the platform is injected),
 // which is the whole point — the same builder runs on RN, react-native-web,
-// Node and here. Mirrors the harness of `mapboxStaticProxyUrl.orch1165.test.ts`,
+// Node and here. Mirrors the harness of `staticMapProxyUrl.orch1165.test.ts`,
 // its sibling in this package.
 //
 // Run:
