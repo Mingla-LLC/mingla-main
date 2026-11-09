@@ -51,7 +51,8 @@ import { SPINE } from "./spineTokens";
 import { formatChargedInLine } from "../utils/formatters";
 
 /** Five lines, then a Read more. Long enough to be a paragraph, short enough to be a fold. */
-const DESCRIPTION_CLAMP_LINES = 5;
+// #4347 wave 2 — About reads 3 lines, then More (the approved sheet order).
+const DESCRIPTION_CLAMP_LINES = 3;
 
 interface CardInfoSectionProps {
   /**

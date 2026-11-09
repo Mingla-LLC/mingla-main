@@ -21,10 +21,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useTranslation } from 'react-i18next';
 import { Icon } from "./ui/Icon";
-import { BaseBottomSheet, BottomSheetFlatList } from "./ui/BaseBottomSheet";
+import { BaseBottomSheet } from "./ui/BaseBottomSheet";
 import { ExpandedCardModalProps, ExpandedCardData } from "../types/expandedCardTypes";
 import type { CuratedExperienceCard, CuratedStop } from '../types/curatedExperience';
-import { formatChargedInLine, formatDisplayPrice } from "./utils/formatters";
+import { formatChargedInLine, formatDisplayPrice, parseAndFormatDistance } from "./utils/formatters";
 import { canonicalDiscoveryPriceDetail } from '../utils/priceTiers';
 import { getReadableCategoryName } from "../utils/categoryUtils";  // ORCH-0685
 import { weatherService, WeatherData } from "../services/weatherService";
@@ -61,8 +61,8 @@ import { dialablePhone } from "../../../packages/card-identity/phone.mjs";
 // `main` at :990-992 via the deleted PicnicShoppingList and was not in the
 // spec's deletion list; five producers still carry `shoppingList`.
 import SuppliesList from "./expandedCard/SuppliesList";
-import { Section, SectionError } from "./expandedCard/SpineParts";
-import { SPINE, GALLERY } from "./expandedCard/spineTokens";
+import { SectionError } from "./expandedCard/SpineParts";
+import { SPINE } from "./expandedCard/spineTokens";
 // `planVisibleStops` is deliberately NOT imported here any more: the sheet's
 // plate takes its count from `curatedPlanSpans`, which calls it internally, and
 // the plan list's main-stop count must NOT go through its all-optional fallback
@@ -80,7 +80,7 @@ import {
 import { BeenHereControl } from "./SwipeableCards";
 import ReservationPassSection from "./expandedCard/ReservationPassSection";
 import TimelineSection from "./expandedCard/TimelineSection";
-import EventDetailLayout from "./expandedCard/EventDetailLayout";
+import EventDetailLayout, { NightOutTicketBar } from "./expandedCard/EventDetailLayout";
 // ORCH-1072: brand experiences claimed-to-this-venue, rendered as compact rows
 // beneath the stars/miles/price block and above the weather section.
 import VenueExperiencesSection from "./expandedCard/VenueExperiencesSection";
@@ -91,8 +91,9 @@ import VenueReserveSheet from "./expandedCard/VenueReserveSheet";
 import { useVenueReservable } from "../hooks/useVenueReservable";
 import { ImageLightbox } from "./ImageLightbox";
 import { normalizeWebsiteUrl } from "../utils/normalizeWebsiteUrl";
-// issue #2468 — the ONE host effect that opens a maps deep link.
-import { openMapsTarget } from "../utils/openMapsTarget";
+// issue #2468 / #4347 wave 2 — every maps link on this sheet goes through
+// expandedCard/placeDirections (openPlaceDirections), which wraps the ONE host
+// effect, openMapsTarget.
 // #1605 P2-2 — the body strip renders plain <Image>, and ImageLightbox is
 // images-only, so a video entry past the hero was a broken tile.
 import { isVideoUrl } from "../utils/videoUrl";
@@ -140,6 +141,21 @@ import {
   type SharePresentationObservation,
 } from "./share/UnifiedShareProvider";
 import { trackContentShareEvent } from "../services/contentShareAdapter";
+// #4347 wave 2 — the expanded single place, gallery first.
+import { useReducedMotion } from "react-native-reanimated";
+import { PlaceGallery } from "./expandedCard/PlaceGallery";
+import { PlaceBasics } from "./expandedCard/PlaceBasics";
+import { WhenYoudGo } from "./expandedCard/WhenYoudGo";
+import { openPlaceDirections } from "./expandedCard/placeDirections";
+import {
+  basicsTiles,
+  lightboxFor,
+  sheetGalleryMedia,
+  whenChips,
+  type WhenKey,
+} from "./expandedCard/placeSheetModel";
+import { formatClockMinute, weekdayShort } from "./deckCard/useDeckFactLabels";
+import { canonicalDiscoveryPriceLabel } from "../utils/priceTiers";
 
 const SHARE_PRESENTATION_WATCHDOG_MS = 2_000;
 
@@ -566,7 +582,7 @@ export default function ExpandedCardModal({
     }
   }, [visible, experienceDeckTarget, router, onClose]);
 
-  const { t } = useTranslation(['cards', 'common']);
+  const { t, i18n } = useTranslation(['cards', 'common']);
   const { user } = useAppStore();
   const viewerLocationQuery = useUserLocation(user?.id, currentMode);
   const viewerLoc = viewerLocationQuery.data;
@@ -606,6 +622,9 @@ export default function ExpandedCardModal({
   const [browserUrl, setBrowserUrl] = useState<string | null>(null);
   const [browserTitle, setBrowserTitle] = useState('');
   const [isSchedulePickerOpen, setIsSchedulePickerOpen] = useState(false);
+  // #4347 wave 2 — the "When you'd go" time; back to Now for every new card.
+  const [whenKey, setWhenKey] = useState<WhenKey>('now');
+  const reducedMotion = useReducedMotion();
   const [curatedLightbox, setCuratedLightbox] = useState<{ visible: boolean; images: string[]; initialIndex: number }>({
     visible: false,
     images: [],
@@ -998,6 +1017,7 @@ export default function ExpandedCardModal({
     // `useState(card)` inside MultiStopPlanView had no sync effect at all, so on
     // the deck — a single stable mount whose `target` prop changes — a previous
     // plan could survive onto the next card.
+    setWhenKey('now');
     setCuratedLocalCard(null);
     setReplacingStopIndex(null);
     clearAlternatives();
@@ -1406,26 +1426,73 @@ export default function ExpandedCardModal({
   /** The venue's UTC offset, top-level or legacy-cased. Absent = no badge. */
   const cardUtcOffsetMinutes = card.utcOffsetMinutes ?? card.utc_offset_minutes ?? null;
 
-  /**
-   * THE BODY GALLERY'S ENTRIES — PHOTOS, and only photos. #1605 P2-2.
-   *
-   * `ImageGallery` routed ANY `isVideoUrl(mediaUri)` entry through
-   * `EventCoverMedia`, so a venue with a second video played it. The hero
-   * handles `images[0]` (video or photo, correctly, with the unmute control);
-   * the strip below renders a plain `<Image source={{uri}}>` for everything
-   * else, and `ImageLightbox` is images-only. An `.mp4` at `images[1]` was
-   * therefore a broken tile that opened a broken lightbox page — a dead tap on
-   * a rendering failure.
-   *
-   * A tile that cannot play is not a video, so it is not rendered (Constitution
-   * 9: missing is hidden, never faked). Playing a SECOND video in a 160x120
-   * tile is a real capability the gallery had and this does not restore — it
-   * needs a decode-per-tile policy the sheet does not have, and it is declared
-   * rather than silently dropped.
-   */
-  const galleryPhotos: string[] = (Array.isArray(card.images) ? card.images : [])
-    .filter((uri): uri is string => typeof uri === 'string' && uri.trim().length > 0)
-    .filter((uri) => uri !== heroCover && !isVideoUrl(uri));
+  /*
+    #4347 wave 2 — the old in-body "Photos" strip (`galleryPhotos`, a 160 x 120
+    BottomSheetFlatList half way down the sheet) is DELETED: a single place now
+    OPENS on its gallery (PlaceGallery), which pages every photo, plays a video
+    cover in slot 1 and opens the same ImageLightbox. A plan never had one.
+  */
+
+  /*
+    #4347 wave 2 — THE EXPANDED SINGLE PLACE, decided once per render.
+  */
+  const sheetLanguage = i18n?.language ?? 'en';
+  const sheetNow = new Date();
+  const sheetClock = (minute: number): string => formatClockMinute(minute, sheetLanguage);
+  const sheetMedia = isCuratedCard ? [] : sheetGalleryMedia(card.images, card.image);
+  const sheetTiles = isCuratedCard
+    ? []
+    : basicsTiles(
+        {
+          openingHours: card.openingHours,
+          utcOffsetMinutes: cardUtcOffsetMinutes,
+          priceText: canonicalDiscoveryPriceLabel(card) ?? card.priceRange ?? null,
+          travelTime: viewerTravelTime ?? card.travelTime ?? null,
+          distanceText: card.distance
+            ? parseAndFormatDistance(card.distance, accountPreferences?.measurementSystem)
+            : viewerDistance !== null
+              ? parseAndFormatDistance(`${viewerDistance} km`, accountPreferences?.measurementSystem)
+              : null,
+          rating: card.rating ?? null,
+          reviewCount: card.reviewCount ?? null,
+        },
+        sheetNow,
+        {
+          openUntil: (time) => t('cards:deck.open_until', { time }),
+          closesIn: (minutes) => t('cards:deck.closes_in', { minutes }),
+          opensAt: (time) => t('cards:deck.opens_at', { time }),
+          opensTomorrow: (time) => t('cards:deck.opens_tomorrow', { time }),
+          opensOn: (dayOffset, time) =>
+            t('cards:deck.opens_on', { day: weekdayShort(sheetNow, dayOffset, sheetLanguage), time }),
+          open24h: t('cards:deck.open_24h'),
+          clock: sheetClock,
+          rating: (rating, count) =>
+            count === null
+              ? t('cards:sheet.rating_value_no_count', { rating })
+              : t('cards:sheet.rating_value', { rating, count }),
+        },
+      );
+  const sheetScheduledAt = (() => {
+    const raw = (card as { scheduledAt?: unknown }).scheduledAt;
+    if (typeof raw !== 'string') return null;
+    const at = new Date(raw);
+    return Number.isNaN(at.getTime()) ? null : at;
+  })();
+  const sheetWhenChips = whenChips(sheetNow, cardUtcOffsetMinutes, sheetScheduledAt);
+  const sheetKicker = card.category ? getReadableCategoryName(card.category) : null;
+  const sheetDirections = (): void =>
+    openPlaceDirections(
+      {
+        lat: card.location?.lat ?? null,
+        lng: card.location?.lng ?? null,
+        label: card.address || card.title,
+        googlePlaceId: card.googlePlaceId ?? null,
+      },
+      {
+        onUnavailable: () =>
+          toastManager.show(t('cards:expanded.directions_unavailable', { defaultValue: "Couldn't open directions" }), 'error'),
+      },
+    );
 
   /*
     THE PLATE SAYS "2 stops" AND THE PLAN SECTION LISTS THREE ROWS — #1605 rework.
@@ -1719,11 +1786,9 @@ export default function ExpandedCardModal({
   const openDirections = (): void => {
     const coords = nightOut?.coordinates;
     const label = nightOut?.venueName || card.address || null;
-    openMapsTarget(
-      {
-        label,
-        geo: coords ? { lat: coords.lat, lng: coords.lng } : null,
-      },
+    // #4347 wave 2 — through the sheet's ONE directions helper.
+    openPlaceDirections(
+      { lat: coords?.lat ?? null, lng: coords?.lng ?? null, label },
       {
         // This arm never had a pre-flight; the https fallback + toast are new
         // and are the whole point (it used to no-op silently on web).
@@ -1758,8 +1823,8 @@ export default function ExpandedCardModal({
       The canOpenURL pre-flight, the https fallback and the failure toast all
       live inside `openMapsTarget`.
     */
-    openMapsTarget(
-      { label: address, geo: null },
+    openPlaceDirections(
+      { label: address },
       {
         // #1605 added the pre-flight on THIS site; it is preserved.
         preflight: true,
@@ -1854,6 +1919,21 @@ export default function ExpandedCardModal({
   // review-flow surfaces only (Discover deck + Solo deck pass nav props).
   // Drag handle owns chrome role on all other 6 mount surfaces.
   // META-ORCH-0991 Wave A — this is the BaseBottomSheet `header` slot.
+  // #4347 wave 2 — the night out's pinned "Get tickets" bar.
+  const nightOutTicketBar =
+    isNightOut && nightOut ? (
+      <NightOutTicketBar
+        card={card}
+        nightOut={nightOut}
+        viewerCurrency={accountPreferences?.currency}
+        onOpenBrowser={(url, title) => {
+          setBrowserUrl(url);
+          setBrowserTitle(title);
+        }}
+        bottomInset={insets.bottom}
+      />
+    ) : null;
+
   const reviewNavHeader =
     hasNavigation && navigationTotal != null && navigationIndex != null ? (
       <>
@@ -1952,6 +2032,74 @@ export default function ExpandedCardModal({
             : {}),
         }}
         header={reviewNavHeader}
+        /*
+          #4347 wave 2 — THE PINNED ACTION BAR (single place): Save · Schedule ·
+          Share · one main button ("Reserve a table" when the venue takes
+          reservations, otherwise Directions). It is the SAME ActionButtons
+          component — paywall, schedule safety checks, the closed-venue message,
+          the device-calendar write — in its pinned layout, so no behaviour moved.
+          A plan keeps its in-flow band until wave 3; a night out gets its own
+          pinned "Get tickets" bar.
+        */
+        stickyFooter={
+          isNightOut && nightOut ? (
+            nightOutTicketBar
+          ) : !isCuratedCard ? (
+            <View style={{ paddingBottom: Math.max(insets.bottom, 12) }}>
+              <ActionButtons
+                variant="pinned"
+                card={card as ExpandedCardData}
+                onSave={onSave}
+                onClose={onClose}
+                isSaved={isSaved}
+                userPreferences={userPreferences}
+                currentMode={currentMode}
+                onCardRemoved={onCardRemoved}
+                onScheduleSuccess={() => onClose()}
+                onSchedulePickerModalVisibilityChange={setIsSchedulePickerOpen}
+                onPaywallRequired={onPaywallRequired}
+                canAccessCurated={canAccessCurated}
+                onShare={() => admitExpandedShare(card)}
+                shareLabel={t('cards:swipeable.share_card', { defaultValue: 'Share {{title}}', title: card.title })}
+                shareBusy={shareHandoffBusy}
+                shareControlRef={shareControlRef}
+                reserve={
+                  venueReservable?.reservable === true &&
+                  venueReservable.brand_id !== null &&
+                  venueReservable.venue_id !== null ? (
+                    <TouchableOpacity
+                      testID="sheet-primary-reserve"
+                      style={[reserveStyles.reserveButton, styles.pinnedPrimary]}
+                      activeOpacity={0.85}
+                      onPress={() => setIsReserveSheetOpen(true)}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('cards:sheet.reserve_a11y', { name: card.title })}
+                    >
+                      <Icon name="restaurant-outline" size={18} color={SPINE.onAccent} />
+                      <Text style={reserveStyles.reserveButtonText} numberOfLines={1}>
+                        {t('cards:sheet.reserve')}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      testID="sheet-primary-directions"
+                      style={[reserveStyles.reserveButton, styles.pinnedPrimary]}
+                      activeOpacity={0.85}
+                      onPress={sheetDirections}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('cards:sheet.directions_a11y', { name: card.title })}
+                    >
+                      <Icon name="navigate-outline" size={18} color={SPINE.onAccent} />
+                      <Text style={reserveStyles.reserveButtonText} numberOfLines={1}>
+                        {t('cards:sheet.directions')}
+                      </Text>
+                    </TouchableOpacity>
+                  )
+                }
+              />
+            </View>
+          ) : undefined
+        }
         scrollMode="scroll"
         accessibilityLabel={card.title}
         scrollProps={{
@@ -1996,9 +2144,14 @@ export default function ExpandedCardModal({
                   seatMapFailed={seatMapFailed}
                   setSeatMapFailed={setSeatMapFailed}
                   openDirections={openDirections}
+                  onOpenLightbox={(images, initialIndex) =>
+                    setCuratedLightbox({ visible: true, images, initialIndex })
+                  }
                 />
               </>
             ) : (
+              <>
+            {isCuratedCard ? (
               <>
             {/*
               ═══════════════════════════════════════════════════════════════
@@ -2109,11 +2262,11 @@ export default function ExpandedCardModal({
                     activeOpacity={0.85}
                     onPress={() => setIsReserveSheetOpen(true)}
                     accessibilityRole="button"
-                    accessibilityLabel={`Reserve a table at ${card.title}`}
+                    accessibilityLabel={t('cards:sheet.reserve_a11y', { name: card.title })}
                   >
                     <Icon name="restaurant-outline" size={18} color={SPINE.onAccent} />
                     <Text style={reserveStyles.reserveButtonText} numberOfLines={1}>
-                      Reserve a table
+                      {t('cards:sheet.reserve')}
                     </Text>
                   </TouchableOpacity>
                 )
@@ -2133,73 +2286,6 @@ export default function ExpandedCardModal({
               discoveryPrice={card}
             />
 
-            {!isCuratedCard ? (
-              <LocalReviewsSection placePoolId={card.placePoolId ?? card.id} />
-            ) : null}
-
-            {/*
-              Slot 5 — the gallery, `images.length > 1`, SINGLE PLACE ONLY. Not a
-              branch: a plan has no second photo of its own, its stops do.
-
-              It is a horizontal list, and it is the ONE horizontal scrollable
-              on this sheet.
-
-              #1702 — AND IT IS `BottomSheetFlatList`, NOT A PLAIN RN `FlatList`.
-              Seth, on a physical Samsung: "the single card photo gallery
-              thumbnails don't scroll horizontally when i scroll them on the
-              expanded sheet. Only when i expand them."
-
-              A raw RN list nested in a gorhom sheet does not participate in the
-              sheet's gesture negotiation, so on Android the sheet's pan handler
-              claims the horizontal drag before the list ever sees it. It works
-              in the lightbox because that view is OUTSIDE the sheet — which is
-              exactly the "only when i expand them" half of the report.
-
-              This file already knew: the replace-alternatives strip was
-              deliberately rebuilt as a wrapping grid a few hundred lines below
-              because "it fought the sheet's pan gesture every time a thumb
-              crossed it". The same fight, the same file, the wrong conclusion
-              drawn once. `BaseBottomSheet` — the sole permitted importer of
-              @gorhom/bottom-sheet — already re-exports the sheet-aware list for
-              precisely this, and its own comment says so. What it replaces is the 402x300 in-flow #000000 pager
-              that used to BE the hero, with its 40pt chevrons, its dot row and its
-              dead `.counter` style — and the 402x200 #f3f4f6 "no images" box that
-              produced a 100pt layout jump against it.
-
-              Tapping opens `ImageLightbox`, which today has exactly one importer
-              and is reachable ONLY from a curated stop — so a single place's
-              photos have never been openable at all.
-            */}
-            {!isCuratedCard && galleryPhotos.length > 0 ? (
-              <Section title={t('cards:expanded.photos', { defaultValue: 'Photos' })}>
-                <BottomSheetFlatList
-                  data={galleryPhotos}
-                  keyExtractor={(uri: string, i: number) => `${uri}_${i}`}
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.galleryStrip}
-                  renderItem={({ item, index }: { item: string; index: number }) => (
-                    <TouchableOpacity
-                      activeOpacity={0.85}
-                      onPress={() =>
-                        setCuratedLightbox({
-                          visible: true,
-                          images: galleryPhotos,
-                          initialIndex: galleryPhotos.indexOf(item),
-                        })
-                      }
-                      accessibilityRole="button"
-                      accessibilityLabel={t('cards:expanded.photo_a11y', {
-                        defaultValue: 'Photo {{n}}',
-                        n: index + 1,
-                      })}
-                    >
-                      <Image source={{ uri: item }} style={styles.galleryItem} resizeMode="cover" />
-                    </TouchableOpacity>
-                  )}
-                />
-              </Section>
-            ) : null}
 
             {/*
               Slot 5c — SUPPLIES, ABOVE THE PLAN. #1705.
@@ -2299,73 +2385,6 @@ export default function ExpandedCardModal({
             </View>
 
             {/*
-              … and slot 6 again — COMPANION STOPS, the same component with a
-              different producer. A stroll is a multi-stop plan; a picnic's
-              grocery store is one stop of it with a SHOP chip.
-            */}
-            {!isCuratedCard && companionStops.length > 0 ? (
-              <StopList
-                heading={
-                  isPicnicCard
-                    ? t('cards:expanded.your_picnic', { defaultValue: 'Your picnic' })
-                    : t('cards:expanded.your_stroll', { defaultValue: 'Your stroll' })
-                }
-                /*
-                  #1605 rework — the deleted `CompanionStopsSection`'s subtitle,
-                  restored through the SAME key (translated in all 29 locales).
-                  It is not decoration: `StopList` numbers its rows, and these
-                  rows are places to BEGIN at, not a sequence to walk. Without
-                  the line a stroll's companions read as a three-stop itinerary.
-                  A picnic's rows are a shop plus a spot, which the SHOP chip and
-                  the heading already explain, so it stays stroll-only.
-                */
-                subtitle={
-                  isPicnicCard
-                    ? undefined
-                    : t('expanded_details:companion_stops.subtitle')
-                }
-                stops={companionStops}
-                onDirections={(stop) => openDirectionsForAddress(stop.address)}
-              />
-            ) : null}
-
-            {/*
-              The "See full plan" fetchers stay: they are what PRODUCE the
-              companion stops above, and a stroll card that has never been
-              expanded has none until they run.
-            */}
-            {!isCuratedCard && (isStrollCard || isPicnicCard) &&
-            companionStops.length === 0 ? (
-              <View style={styles.seeFullPlanSection}>
-                <TouchableOpacity
-                  style={styles.routePairingButton}
-                  onPress={isPicnicCard ? fetchPicnicData : fetchStrollData}
-                  disabled={loadingStrollData || loadingPicnicData}
-                  activeOpacity={0.7}
-                  accessibilityRole="button"
-                >
-                  {loadingStrollData || loadingPicnicData ? (
-                    <ActivityIndicator size="small" color={SPINE.onAccent} />
-                  ) : (
-                    <Icon name="map-outline" size={20} color={SPINE.onAccent} />
-                  )}
-                  <Text style={styles.routePairingButtonText}>
-                    {t('cards:expanded.see_full_plan', { defaultValue: 'See full plan' })}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            ) : null}
-
-            {/* Slot 7 — experiences at this venue (claimed brands only, single place). */}
-            {!isCuratedCard ? (
-              <VenueExperiencesSection
-                placePoolId={card.id}
-                currency={accountPreferences?.currency}
-                onOpenExperience={setSelectedVenueExperience}
-              />
-            ) : null}
-
-            {/*
               Slot 8 — RIGHT NOW. ONE call site, ONE prop shape, both branches.
 
               A plan's coordinate IS `stops[0]`, because that is where the plan
@@ -2428,6 +2447,120 @@ export default function ExpandedCardModal({
               />
             ) : null}
 
+              </>
+            ) : (
+              <>
+            {/*
+              ═══════════════════════════════════════════════════════════════
+              #4347 wave 2 — THE EXPANDED SINGLE PLACE, in the approved order:
+              see it (gallery), know the basics (kicker, title, Been here, four
+              tiles), then read more: About, local reviews, your stroll / picnic,
+              experiences at this venue, "When you'd go", Details. The actions
+              are the PINNED bar (BaseBottomSheet stickyFooter), not a band that
+              scrolls away. Every block that existed before is still here.
+              ═══════════════════════════════════════════════════════════════
+            */}
+            <PlaceGallery
+              media={sheetMedia}
+              title={card.title}
+              reducedMotion={reducedMotion}
+              active={visible && !anyChildModalOpen}
+              onClose={onClose}
+              closeLabel={t('common:close', { defaultValue: 'Close' })}
+              onOpen={(uri) => {
+                const target = lightboxFor(sheetMedia, sheetMedia.findIndex((m) => m.uri === uri));
+                if (target.images.length === 0) return;
+                setCuratedLightbox({ visible: true, images: target.images, initialIndex: target.initialIndex });
+              }}
+            />
+            <PlaceBasics
+              kicker={sheetKicker}
+              title={card.title}
+              tiles={sheetTiles}
+              beenHere={
+                <BeenHereControl
+                  userId={user?.id}
+                  card={{
+                    id: card.id,
+                    title: card.title,
+                    category: card.category,
+                    image: card.image,
+                    priceRange: card.priceRange ?? null,
+                    address: card.address,
+                    placeId: card.placeId ?? (card as any).source?.placeId,
+                    cardType: (card as any).cardType,
+                    placePoolId: (card as any).placePoolId,
+                  }}
+                />
+              }
+            />
+
+            {card && <LockedInBanner card={card} />}
+            {reservationPass && <ReservationPassSection pass={reservationPass} />}
+
+            {/* About — 3 lines, then More; the typical spend and its "charged in" line stay here. */}
+            <CardInfoSection description={card.description} tip={card.tip} discoveryPrice={card} />
+
+            <LocalReviewsSection placePoolId={card.placePoolId ?? card.id} />
+
+            {/*
+              … and slot 6 again — COMPANION STOPS, the same component with a
+              different producer. A stroll is a multi-stop plan; a picnic's
+              grocery store is one stop of it with a SHOP chip.
+            */}
+            {companionStops.length > 0 ? (
+              <StopList
+                heading={
+                  isPicnicCard
+                    ? t('cards:expanded.your_picnic', { defaultValue: 'Your picnic' })
+                    : t('cards:expanded.your_stroll', { defaultValue: 'Your stroll' })
+                }
+                /*
+                  #1605 rework — the deleted `CompanionStopsSection`'s subtitle,
+                  restored through the SAME key (translated in all 29 locales).
+                  It is not decoration: `StopList` numbers its rows, and these
+                  rows are places to BEGIN at, not a sequence to walk. Without
+                  the line a stroll's companions read as a three-stop itinerary.
+                  A picnic's rows are a shop plus a spot, which the SHOP chip and
+                  the heading already explain, so it stays stroll-only.
+                */
+                subtitle={
+                  isPicnicCard
+                    ? undefined
+                    : t('expanded_details:companion_stops.subtitle')
+                }
+                stops={companionStops}
+                onDirections={(stop) => openDirectionsForAddress(stop.address)}
+              />
+            ) : null}
+
+            {/*
+              The "See full plan" fetchers stay: they are what PRODUCE the
+              companion stops above, and a stroll card that has never been
+              expanded has none until they run.
+            */}
+            {(isStrollCard || isPicnicCard) &&
+            companionStops.length === 0 ? (
+              <View style={styles.seeFullPlanSection}>
+                <TouchableOpacity
+                  style={styles.routePairingButton}
+                  onPress={isPicnicCard ? fetchPicnicData : fetchStrollData}
+                  disabled={loadingStrollData || loadingPicnicData}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                >
+                  {loadingStrollData || loadingPicnicData ? (
+                    <ActivityIndicator size="small" color={SPINE.onAccent} />
+                  ) : (
+                    <Icon name="map-outline" size={20} color={SPINE.onAccent} />
+                  )}
+                  <Text style={styles.routePairingButtonText}>
+                    {t('cards:expanded.see_full_plan', { defaultValue: 'See full plan' })}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+
             {/* Timeline Section (for Take a Stroll cards) */}
             {isStrollCard && strollData && strollData.timeline && (
               <TimelineSection
@@ -2458,6 +2591,55 @@ export default function ExpandedCardModal({
               />
             )}
 
+            {/* Slot 7 — experiences at this venue (claimed brands only, single place). */}
+            {(
+              <VenueExperiencesSection
+                placePoolId={card.id}
+                currency={accountPreferences?.currency}
+                onOpenExperience={setSelectedVenueExperience}
+              />
+            )}
+
+
+            <WhenYoudGo
+              chips={sheetWhenChips}
+              selected={whenKey}
+              onSelect={setWhenKey}
+              hourly={weatherData?.hourlyForecast ?? null}
+              weatherUtcOffsetSeconds={weatherData?.utcOffsetSeconds ?? null}
+              category={card.category}
+              utcOffsetMinutes={cardUtcOffsetMinutes}
+              openingHours={card.openingHours}
+              driveTime={viewerTravelTime ?? card.travelTime ?? null}
+              lat={card.location?.lat ?? null}
+              lng={card.location?.lng ?? null}
+              measurementSystem={accountPreferences?.measurementSystem}
+              clock={sheetClock}
+              reducedMotion={reducedMotion}
+            />
+
+            {/* Details — address + Directions (by coordinates), today's hours with All hours, phone, website. */}
+            <PracticalDetailsSection
+              address={card.address}
+              openingHours={card.openingHours}
+              phone={card.phone}
+              countryCode={card.countryCode}
+              website={card.website}
+              utcOffsetMinutes={cardUtcOffsetMinutes}
+              coordinates={
+                typeof card.location?.lat === 'number' && typeof card.location?.lng === 'number'
+                  ? { lat: card.location.lat, lng: card.location.lng }
+                  : null
+              }
+              onLinkUnavailable={(what) =>
+                toastManager.show(t('cards:expanded.link_unavailable', {
+                    defaultValue: "Couldn't open {{what}}",
+                    what,
+                  }), 'error')
+              }
+            />
+              </>
+            )}
               </>
             )}
         </InAppBrowserProvider>
@@ -2563,6 +2745,10 @@ export default function ExpandedCardModal({
 // Night Out detail styles
 
 const styles = StyleSheet.create({
+  // #4347 wave 2 — the pinned bar's main button takes the remaining width.
+  pinnedPrimary: {
+    flex: 1,
+  },
   // #4347 — the converted price's original, under the plate.
   chargedInLine: {
     paddingHorizontal: SPINE.gutter,
@@ -2711,16 +2897,8 @@ const styles = StyleSheet.create({
    * which is the same furniture every other stop gets.
    */
 
-  // The body gallery strip — the ONE horizontal scrollable on this sheet, and
-  // the thing that finally gives a single place's photos a lightbox.
-  galleryStrip: { paddingHorizontal: SPINE.gutter, gap: GALLERY.gap },
-  galleryItem: {
-    width: GALLERY.itemWidth,
-    height: GALLERY.height,
-    borderRadius: GALLERY.itemRadius,
-    backgroundColor: SPINE.chipFill,
-    marginRight: GALLERY.gap,
-  },
+  // #4347 wave 2 — `galleryStrip` / `galleryItem` are DELETED with the strip;
+  // the single place's photos are the PlaceGallery at the top of the sheet.
 
   // The alternatives panel. A WRAPPING GRID, not a horizontal ScrollView — see
   // the render site: the strip was one of the nested scrollables.

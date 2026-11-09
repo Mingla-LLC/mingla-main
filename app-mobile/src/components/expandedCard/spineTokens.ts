@@ -143,3 +143,70 @@ export const GALLERY = {
   itemRadius: 12,
   gap: 8,
 } as const;
+
+/**
+ * #4347 wave 2 — the expanded single place, gallery first. Every number the
+ * new sheet pieces use lives here, beside the spine they sit on.
+ */
+export const SHEET_GALLERY = {
+  /** The full-width pager. */
+  height: 300,
+  /** The "1 / 8" counter capsule. */
+  counterFill: 'rgba(0,0,0,0.55)',
+  counterText: '#FFFFFF',
+  counterSize: 12,
+  /** The thumbnail row under the pager (shown with 2+ photos). */
+  thumb: 56,
+  thumbRadius: 10,
+  thumbGap: 8,
+  thumbActiveRing: '#C2410C',
+  /** No photo: a short neutral header, and the title moves up. */
+  emptyHeight: 72,
+  emptyFill: '#E7E5E0',
+  /** The cross-fade / pager settle when a thumbnail is tapped. */
+  settleMs: 220,
+} as const;
+
+export const BASICS = {
+  kickerSize: 12,
+  kickerLetterSpacing: 0.6,
+  titleSize: 26,
+  titleLineHeight: 32,
+  tileGap: 10,
+  tileRadius: 14,
+  tileFill: '#F3F4F6',
+  tilePadding: 12,
+  tileLabelSize: 12,
+  tileValueSize: 15,
+  /** At or above this font scale the 2 x 2 grid stacks to one column. */
+  stackAtFontScale: 1.25,
+} as const;
+
+export const PINNED_BAR = {
+  paddingH: 16,
+  paddingTop: 10,
+  gap: 8,
+  buttonHeight: 48,
+  buttonRadius: 24,
+  iconSize: 20,
+  labelSize: 12,
+  primaryLabelSize: 15,
+  border: '#E5E7EB',
+} as const;
+
+export const WHEN_BLOCK = {
+  chipHeight: 34,
+  chipRadius: 17,
+  chipGap: 8,
+  chipFill: '#F3F4F6',
+  chipActiveFill: '#111827',
+  chipActiveText: '#FFFFFF',
+  barsHeight: 64,
+  barGap: 3,
+  barFill: '#D1D5DB',
+  barActiveFill: '#EB7825',
+  barMinPct: 6,
+  /** The chart's hours (inclusive). */
+  firstHour: 10,
+  lastHour: 23,
+} as const;

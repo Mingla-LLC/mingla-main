@@ -94,7 +94,11 @@ const NIGHTOUT_TOKENS = [/\bisNightOut\b/, /\bnightOut\b/];
 
 // JSX tags each gate renders — used as anchors.
 const BUTTON_TAG = "<TouchableOpacity"; // the Reserve-a-table button (disambiguated below)
-const BUTTON_LABEL = "Reserve a table at ${"; // accessibilityLabel inside that button
+// accessibilityLabel inside that button. #4347 wave 2: the label is now the
+// translated key, and there are TWO Reserve buttons (the single place's pinned
+// bar and the plan's band); EVERY one of them is checked. The English literal
+// is still accepted so the self-test fixtures below keep working.
+const BUTTON_LABELS = ["Reserve a table at ${", "t('cards:sheet.reserve_a11y'"];
 const SHEET_TAG = "<VenueReserveSheet";
 
 /**
@@ -158,20 +162,25 @@ function scan(src) {
   // ---- BUTTON gate ----
   // Anchor on the <TouchableOpacity> that carries the Reserve-a-table
   // accessibilityLabel (disambiguates it from other TouchableOpacity uses).
-  const labelIdx = clean.indexOf(BUTTON_LABEL);
-  const btnTagIdx =
-    labelIdx !== -1 ? clean.lastIndexOf(BUTTON_TAG, labelIdx) : -1;
-  const btnHead = gateHeadFor(clean, btnTagIdx);
+  const labelIdxs = [];
+  for (const label of BUTTON_LABELS) {
+    let at = clean.indexOf(label);
+    while (at !== -1) {
+      labelIdxs.push(at);
+      at = clean.indexOf(label, at + label.length);
+    }
+  }
+  const btnHeads = labelIdxs.map((labelIdx) => gateHeadFor(clean, clean.lastIndexOf(BUTTON_TAG, labelIdx)));
 
   // ---- SHEET gate ----
   const sheetIdx = clean.indexOf(SHEET_TAG);
   const sheetHead = gateHeadFor(clean, sheetIdx);
 
   const problems = [];
-  if (!btnHead) {
+  if (btnHeads.length === 0 || btnHeads.some((head) => !head)) {
     problems.push("Could not locate the Reserve-a-table BUTTON render gate.");
   } else {
-    problems.push(...checkGate("BUTTON", btnHead));
+    btnHeads.forEach((head, i) => problems.push(...checkGate(btnHeads.length > 1 ? `BUTTON ${i + 1}` : "BUTTON", head)));
   }
   if (!sheetHead) {
     problems.push("Could not locate the <VenueReserveSheet> render gate.");

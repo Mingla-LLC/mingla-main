@@ -34,7 +34,7 @@ import {
 } from "../../utils/singleCardAvailability";
 import { canonicalDiscoveryPriceFields } from "../../utils/priceTiers";
 import { useTranslation } from "react-i18next";
-import { ACTION_BAND, SPINE } from "./spineTokens";
+import { ACTION_BAND, PINNED_BAR, SPINE } from "./spineTokens";
 
 
 // META-ORCH-0991 Wave B Batch 4: the iOS date/time picker <Modal> (a flex-end
@@ -71,6 +71,19 @@ interface ActionButtonsProps {
   onPaywallRequired?: () => void;
   /** Whether the current user can access curated card actions (save/schedule) */
   canAccessCurated?: boolean;
+  /**
+   * #4347 wave 2 — `'pinned'` is the single place's action bar, pinned to the
+   * bottom of the sheet: Save · Schedule · Share · one main button (the
+   * `reserve` slot: "Reserve a table" when the venue takes reservations,
+   * otherwise Directions). Call leaves the bar for the Details phone row, which
+   * dials the same composed number. `'band'` (the default) is the curated
+   * plan's in-flow band, unchanged until wave 3.
+   */
+  variant?: 'band' | 'pinned';
+  onShare?: () => void;
+  shareLabel?: string;
+  shareBusy?: boolean;
+  shareControlRef?: React.Ref<View>;
 }
 
 export default function ActionButtons({
@@ -86,7 +99,13 @@ export default function ActionButtons({
   reserve,
   onPaywallRequired,
   canAccessCurated = true,
+  variant = 'band',
+  onShare,
+  shareLabel,
+  shareBusy = false,
+  shareControlRef,
 }: ActionButtonsProps) {
+  const pinned = variant === 'pinned';
   const { t } = useTranslation(['expanded_details', 'common']);
   const [isSaving, setIsSaving] = useState(false);
   const [isScheduling, setIsScheduling] = useState(false);
@@ -627,8 +646,22 @@ export default function ActionButtons({
    * pre-flighted with `canOpenURL`.
    */
 
+  const closedMessage =
+    hasCheckedAvailability &&
+    availabilityCheck &&
+    !availabilityCheck.isOpen &&
+    !availabilityCheck.isAssumption ? (
+      <View style={styles.closedMessageContainer} testID="action-closed-message">
+        <Icon name="alert-circle" size={16} color="#9a3412" />
+        <Text style={styles.closedMessage}>
+          {availabilityCheck.reason ?? t('expanded_details:action_buttons.closed_message')}
+        </Text>
+      </View>
+    ) : null;
+
   return (
-    <View>
+    <View style={pinned ? styles.pinnedWrap : null} testID={pinned ? 'sheet-action-bar' : undefined}>
+      {pinned ? closedMessage : null}
       {/* Date/Time Picker Modal */}
       {showDateTimePicker && (
         <>
@@ -725,11 +758,11 @@ export default function ActionButtons({
         #374151 icon at 10.31:1, which is a stronger identification than the fill
         ever was.
       */}
-      <View style={styles.band}>
+      <View style={pinned ? styles.pinnedRow : styles.band}>
         <TrackedTouchableOpacity
           logComponent="ActionButtons"
           logId="save"
-          style={[styles.bandButton, (isSaving || isSaved) && styles.bandButtonDisabled]}
+          style={[pinned ? styles.pinnedButton : styles.bandButton, (isSaving || isSaved) && styles.bandButtonDisabled]}
           onPress={handleSave}
           activeOpacity={0.55}
           disabled={isSaving || isSaved}
@@ -751,7 +784,7 @@ export default function ActionButtons({
                 color={SPINE.prose}
               />
               <Text
-                style={[styles.bandLabel, (isSaving || isSaved) && styles.bandLabelDisabled]}
+                style={[pinned ? styles.pinnedLabel : styles.bandLabel, (isSaving || isSaved) && styles.bandLabelDisabled]}
                 numberOfLines={1}
                 maxFontSizeMultiplier={1.2}
               >
@@ -766,7 +799,7 @@ export default function ActionButtons({
         <TrackedTouchableOpacity
           logComponent="ActionButtons"
           logId="schedule"
-          style={[styles.bandButton, (isScheduling || isScheduled) && styles.bandButtonDisabled]}
+          style={[pinned ? styles.pinnedButton : styles.bandButton, (isScheduling || isScheduled) && styles.bandButtonDisabled]}
           onPress={handleSchedule}
           activeOpacity={0.55}
           disabled={isScheduling || isScheduled}
@@ -789,7 +822,7 @@ export default function ActionButtons({
               />
               <Text
                 style={[
-                  styles.bandLabel,
+                  pinned ? styles.pinnedLabel : styles.bandLabel,
                   (isScheduling || isScheduled) && styles.bandLabelDisabled,
                 ]}
                 numberOfLines={1}
@@ -816,7 +849,34 @@ export default function ActionButtons({
           `dialablePhone` composes the country code and refuses to guess one, so
           a number this button offers is a number that connects.
         */}
-        {dialable !== null ? (
+        {pinned && onShare ? (
+          <View ref={shareControlRef} collapsable={false}>
+          <TrackedTouchableOpacity
+            logComponent="ActionButtons"
+            logId="share"
+            style={[styles.pinnedButton, shareBusy && styles.bandButtonDisabled]}
+            onPress={onShare}
+            activeOpacity={0.55}
+            disabled={shareBusy}
+            accessibilityRole="button"
+            accessibilityState={shareBusy ? { disabled: true, busy: true } : undefined}
+            accessibilityLabel={shareLabel}
+          >
+            {shareBusy ? (
+              <ActivityIndicator size="small" color={SPINE.factValue} />
+            ) : (
+              <>
+                <Icon name="share-outline" size={PINNED_BAR.iconSize} color={SPINE.prose} />
+                <Text style={styles.pinnedLabel} numberOfLines={1} maxFontSizeMultiplier={1.2}>
+                  {t('cards:sheet.share')}
+                </Text>
+              </>
+            )}
+          </TrackedTouchableOpacity>
+          </View>
+        ) : null}
+
+        {dialable !== null && !pinned ? (
           <TrackedTouchableOpacity
             logComponent="ActionButtons"
             logId="call"
@@ -848,18 +908,8 @@ export default function ActionButtons({
         {reserve}
       </View>
 
-      {/* Availability Messages */}
-      {hasCheckedAvailability &&
-        availabilityCheck &&
-        !availabilityCheck.isOpen &&
-        !availabilityCheck.isAssumption && (
-          <View style={styles.closedMessageContainer}>
-            <Icon name="alert-circle" size={16} color="#9a3412" />
-            <Text style={styles.closedMessage}>
-              {availabilityCheck.reason ?? t('expanded_details:action_buttons.closed_message')}
-            </Text>
-          </View>
-        )}
+      {/* Availability Messages (the band shows it below; the pinned bar above). */}
+      {pinned ? null : closedMessage}
     </View>
   );
 }
@@ -887,6 +937,32 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   bandButtonDisabled: { opacity: 0.4 },
+  // #4347 wave 2 — the pinned bar (single place).
+  pinnedWrap: {
+    paddingHorizontal: PINNED_BAR.paddingH,
+    paddingTop: PINNED_BAR.paddingTop,
+    borderTopWidth: 1,
+    borderTopColor: PINNED_BAR.border,
+    backgroundColor: SPINE.paper,
+  },
+  pinnedRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: PINNED_BAR.gap,
+  },
+  pinnedButton: {
+    minWidth: 52,
+    height: PINNED_BAR.buttonHeight,
+    paddingHorizontal: 6,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 2,
+  },
+  pinnedLabel: {
+    fontSize: PINNED_BAR.labelSize,
+    fontWeight: "600",
+    color: SPINE.factValue,
+  },
   bandLabel: {
     fontSize: ACTION_BAND.labelSize,
     fontWeight: "600",

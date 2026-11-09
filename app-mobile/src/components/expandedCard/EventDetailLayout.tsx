@@ -9,7 +9,6 @@ import {
   ActivityIndicator,
   Alert,
 } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Calendar from "expo-calendar";
 import * as Haptics from "expo-haptics";
@@ -21,6 +20,8 @@ import { glass, radius, spacing } from "../../constants/designSystem";
 import { colors } from "../../constants/colors";
 import { toastManager } from "../ui/Toast";
 import { parseEventDateTime } from "../../utils/parseEventDateTime";
+import { PlaceGallery } from "./PlaceGallery";
+import { lightboxFor, sheetGalleryMedia } from "./placeSheetModel";
 
 interface EventDetailLayoutProps {
   card: ExpandedCardData;
@@ -39,6 +40,84 @@ interface EventDetailLayoutProps {
   seatMapFailed: boolean;
   setSeatMapFailed: (failed: boolean) => void;
   openDirections: () => void;
+  /** #4347 wave 2 — the gallery opens the sheet's ImageLightbox. */
+  onOpenLightbox?: (images: string[], initialIndex: number) => void;
+}
+
+/**
+ * #4347 wave 2 — the Get Tickets CTA, ONE derivation for the pinned bar. The
+ * status rules are unchanged (onsale + url -> primary with the converted
+ * price; offsale -> Sold out; TBA; presale / coming soon), they just moved out
+ * of the scrolling body into the sheet's pinned footer.
+ */
+export function nightOutTicketCta(
+  card: ExpandedCardData,
+  nightOut: NonNullable<ExpandedCardData["nightOutData"]>,
+  viewerCurrency: string | undefined,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+): { label: string; background: string; enabled: boolean; eventName: string } {
+  const eventName = nightOut.eventName || card.title;
+  const isOnsale = nightOut.ticketStatus === "onsale";
+  const isOffsale = nightOut.ticketStatus === "offsale";
+  const hasTicketUrl = !!nightOut.ticketUrl;
+  const isTba = !isOnsale && !isOffsale && !hasTicketUrl;
+  const priceLabel: string =
+    typeof nightOut.priceMinMajor === "number" && typeof nightOut.priceCurrency === "string"
+      ? formatDisplayPrice({
+          min: nightOut.priceMinMajor,
+          max: nightOut.priceMaxMajor ?? null,
+          sourceCurrency: nightOut.priceCurrency,
+          viewerCurrency,
+        })?.text ?? nightOut.price
+      : nightOut.price;
+  const enabled = isOnsale && hasTicketUrl;
+  const label = enabled
+    ? t("cards:expanded.get_tickets", { price: priceLabel })
+    : isOffsale
+    ? t("cards:expanded.sold_out")
+    : isTba
+    ? t("cards:expanded.tickets_tba")
+    : t("cards:expanded.tickets_coming_soon");
+  const background = enabled ? colors.primary : isOffsale ? "rgba(102, 102, 102, 1)" : "#F59E0B";
+  return { label, background, enabled, eventName };
+}
+
+/** #4347 wave 2 — the night out's pinned "Get tickets" bar (BaseBottomSheet stickyFooter). */
+export function NightOutTicketBar({
+  card,
+  nightOut,
+  viewerCurrency,
+  onOpenBrowser,
+  bottomInset,
+}: {
+  card: ExpandedCardData;
+  nightOut: NonNullable<ExpandedCardData["nightOutData"]>;
+  viewerCurrency?: string;
+  onOpenBrowser: (url: string, title: string) => void;
+  bottomInset: number;
+}): React.ReactElement {
+  const { t } = useTranslation(["cards", "common"]);
+  const cta = nightOutTicketCta(card, nightOut, viewerCurrency, t);
+  return (
+    <View style={[styles.ticketBar, { paddingBottom: Math.max(bottomInset, 12) }]} testID="sheet-ticket-bar">
+      <TouchableOpacity
+        style={[styles.cta, styles.ctaPinned, { backgroundColor: cta.background }]}
+        activeOpacity={cta.enabled ? 0.85 : 1}
+        onPress={() => {
+          if (cta.enabled) onOpenBrowser(nightOut.ticketUrl, `Tickets – ${cta.eventName}`);
+        }}
+        disabled={!cta.enabled}
+        accessibilityRole="button"
+        accessibilityLabel={cta.label}
+        accessibilityState={{ disabled: !cta.enabled }}
+      >
+        {cta.enabled && <Icon name="ticket-outline" size={18} color={colors.white} />}
+        <Text style={styles.ctaText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+          {cta.label}
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
 }
 
 /**
@@ -71,6 +150,7 @@ export default function EventDetailLayout({
   seatMapFailed,
   setSeatMapFailed,
   openDirections,
+  onOpenLightbox,
 }: EventDetailLayoutProps): React.ReactElement {
   const { t } = useTranslation(["cards", "common"]);
   const insets = useSafeAreaInsets();
@@ -78,13 +158,12 @@ export default function EventDetailLayout({
   const saveBounceScale = useRef(new Animated.Value(1)).current;
 
   const eventName = nightOut.eventName || card.title;
-  const heroSource = card.image || (card.images && card.images[0]) || null;
+  const eventMedia = sheetGalleryMedia(card.images, card.image);
   const isOnsale = nightOut.ticketStatus === "onsale";
   const isOffsale = nightOut.ticketStatus === "offsale";
   const hasTicketUrl = !!nightOut.ticketUrl;
   // Presale + TBA derived from absence of an active onsale URL
   const isTba = !isOnsale && !isOffsale && !hasTicketUrl;
-  const isPresale = !isOnsale && !isOffsale && hasTicketUrl;
 
   const handleSavePress = async (): Promise<void> => {
     Animated.sequence([
@@ -116,12 +195,6 @@ export default function EventDetailLayout({
 
   const handleSharePress = (): void => {
     onShare?.(card);
-  };
-
-  const handleGetTickets = (): void => {
-    if (isOnsale && hasTicketUrl) {
-      onOpenBrowser(nightOut.ticketUrl, `Tickets – ${eventName}`);
-    }
   };
 
   const handleAddToCalendar = async (): Promise<void> => {
@@ -168,63 +241,27 @@ export default function EventDetailLayout({
     }
   };
 
-  const nightOutPriceLabel: string =
-    typeof nightOut.priceMinMajor === "number" && typeof nightOut.priceCurrency === "string"
-      ? formatDisplayPrice({
-          min: nightOut.priceMinMajor,
-          max: nightOut.priceMaxMajor ?? null,
-          sourceCurrency: nightOut.priceCurrency,
-          viewerCurrency: accountPreferences?.currency,
-        })?.text ?? nightOut.price
-      : nightOut.price;
-
-  const ctaLabel = isOnsale && hasTicketUrl
-    ? t("cards:expanded.get_tickets", {
-        // #4347: converted from the event's OWN currency (≈ when it differs);
-        // with no structured price the CTA keeps the source label as-is.
-        price: nightOutPriceLabel,
-      })
-    : isOffsale
-    ? t("cards:expanded.sold_out")
-    : isTba
-    ? t("cards:expanded.tickets_tba")
-    : t("cards:expanded.tickets_coming_soon");
-
-  const ctaBg = isOnsale && hasTicketUrl
-    ? colors.primary
-    : isOffsale
-    ? "rgba(102, 102, 102, 1)"
-    : "#F59E0B"; // amber for presale/TBA
-
   return (
     <View style={styles.container}>
-      {/* Hero poster + genre chip overlay */}
-      <View style={styles.heroWrap}>
-        {heroSource ? (
-          <Image
-            source={{ uri: heroSource }}
-            style={styles.heroPoster}
-            resizeMode="cover"
-          />
-        ) : (
-          <View style={[styles.heroPoster, styles.heroPlaceholder]}>
-            <Icon name="musical-notes" size={48} color="rgba(255,255,255,0.30)" />
-          </View>
-        )}
-        <LinearGradient
-          colors={["rgba(0,0,0,0)", "rgba(12,14,18,0.95)"]}
-          style={styles.heroGradient}
-          pointerEvents="none"
-        />
-        {(nightOut.genre || nightOut.subGenre) && (
-          <View style={styles.genreChip}>
-            <Text style={styles.genreChipText} numberOfLines={1}>
-              {nightOut.genre}
-              {nightOut.subGenre ? ` · ${nightOut.subGenre}` : ""}
-            </Text>
-          </View>
-        )}
+      {/* #4347 wave 2 — GALLERY FIRST: every photo, swipeable, opens the lightbox. */}
+      <View style={styles.galleryBleed}>
+      <PlaceGallery
+        media={eventMedia}
+        title={eventName}
+        onOpen={(uri) => {
+          const target = lightboxFor(eventMedia, eventMedia.findIndex((m) => m.uri === uri));
+          if (target.images.length > 0) onOpenLightbox?.(target.images, target.initialIndex);
+        }}
+      />
       </View>
+      {(nightOut.genre || nightOut.subGenre) && (
+        <View style={styles.genreChipFlow}>
+          <Text style={styles.genreChipText} numberOfLines={1}>
+            {nightOut.genre}
+            {nightOut.subGenre ? ` · ${nightOut.subGenre}` : ""}
+          </Text>
+        </View>
+      )}
 
       {/* Title */}
       <Text
@@ -249,28 +286,7 @@ export default function EventDetailLayout({
           .join(" · ")}
       </Text>
 
-      {/* Get Tickets CTA */}
-      <TouchableOpacity
-        style={[styles.cta, { backgroundColor: ctaBg }]}
-        activeOpacity={isOnsale && hasTicketUrl ? 0.85 : 1}
-        onPress={handleGetTickets}
-        disabled={!isOnsale || !hasTicketUrl}
-        accessibilityRole="button"
-        accessibilityLabel={ctaLabel}
-        accessibilityState={{ disabled: !isOnsale || !hasTicketUrl }}
-      >
-        {isOnsale && hasTicketUrl && (
-          <Icon name="ticket-outline" size={18} color={colors.white} />
-        )}
-        <Text
-          style={styles.ctaText}
-          numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.8}
-        >
-          {ctaLabel}
-        </Text>
-      </TouchableOpacity>
+      {/* #4347 wave 2 — Get Tickets moved to the sheet's pinned bar (NightOutTicketBar). */}
 
       {/* Secondary action row */}
       <View style={styles.secondaryRow}>
@@ -469,35 +485,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
   },
-  heroWrap: {
-    width: "100%",
-    aspectRatio: 16 / 9,
-    maxHeight: 240,
-    borderRadius: radius.lg,
-    overflow: "hidden",
-    backgroundColor: glass.surfaceDark.backgroundColor,
+  galleryBleed: {
+    marginHorizontal: -spacing.md,
+    marginTop: -spacing.sm,
   },
-  heroPoster: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  heroPlaceholder: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  heroGradient: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: "60%",
-  },
-  genreChip: {
-    position: "absolute",
-    left: 12,
-    bottom: 12,
+  genreChipFlow: {
+    alignSelf: "flex-start",
+    marginTop: spacing.md,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    backgroundColor: "rgba(12, 14, 18, 0.42)",
+    backgroundColor: "rgba(255, 255, 255, 0.10)",
     borderColor: "rgba(255, 255, 255, 0.14)",
     borderWidth: 1,
     borderRadius: 999,
@@ -534,6 +531,16 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     marginTop: spacing.md,
     gap: 8,
+  },
+  ctaPinned: {
+    marginTop: 0,
+  },
+  ticketBar: {
+    paddingHorizontal: spacing.md,
+    paddingTop: 10,
+    backgroundColor: "rgba(12, 14, 18, 1)",
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(255,255,255,0.12)",
   },
   ctaText: {
     fontSize: 16,

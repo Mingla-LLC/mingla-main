@@ -101,6 +101,10 @@ module.exports = {
     // issue #4347 wave 1 rework — smart chip after midnight, collab route
     // hand-off, kicker at large text, card-local tap zones, poster parity.
     "**/__tests__/issue_4347_wave1_rework.implementor.test.ts",
+    // issue #4347 wave 2 — the expanded single place: gallery, basics tiles,
+    // When you'd go, pinned bar, directions helper, night-out ticket bar.
+    "**/__tests__/issue_4347_place_sheet_model.implementor.test.ts",
+    "**/__tests__/issue_4347_place_sheet_states.implementor.render.test.tsx",
     // issue #4347 wave 1 — tester adversarial: the photo flip's gesture lease,
     // the smart chip in venue time and across midnight, claimed-venue keys,
     // the hint's logout sweep, locale plurals, the kicker's contrast floor.

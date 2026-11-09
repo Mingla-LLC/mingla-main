@@ -122,10 +122,15 @@ test('R-4 no raw tel: url survives anywhere in the card tree', () => {
 test('R-5 no number means the button is ABSENT, never disabled', () => {
   // Seth: "if not dont show the button at all." 63% of the pool has no number,
   // so a greyed button would be the common case, not the edge case.
+  // #4347 wave 2 — the band (a plan) keeps its Call button; the single
+  // place's PINNED bar leaves Call to the Details phone row, which dials the
+  // same composed number (R-6). The gate is still the resolution, never a
+  // disabled state.
   assert.match(
-    ACTIONS, /\{dialable !== null \? \(/,
+    ACTIONS, /\{dialable !== null && !pinned \? \(/,
     'R-5: the Call button is not gated on a resolvable number',
   );
+  assert.match(DETAILS, /value=\{dialable === null \? null : dialable\.display\}/, 'R-5: the Details phone row is gone, so a pinned-bar place cannot be called');
   const btn = ACTIONS.slice(ACTIONS.indexOf('logId="call"'), ACTIONS.indexOf('logId="call"') + 900);
   assert.ok(btn.length > 0, 'R-5: the Call button is gone');
   assert.equal(

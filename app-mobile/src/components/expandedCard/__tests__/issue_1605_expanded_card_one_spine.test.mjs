@@ -207,14 +207,15 @@ test('S-1b the hero MOUNTS, on both branches, from one call site', () => {
     + 'two mounts is two compositions again, and zero means a curated plan is back to having no hero '
     + 'image at all (it had none before this wave — ImageGallery was gated behind !isCuratedCard).',
   );
-  // And that one mount must NOT sit inside an isCurated branch.
+  // #4347 wave 2 — REWRITTEN. Seth approved a different composition for the
+  // single place: it OPENS ON ITS GALLERY (PlaceGallery), so the S7 hero is now
+  // the PLAN's. What this rule still protects: one mount each (never a second
+  // copy of either), and a plan is never back to having no hero image.
+  assert.equal((modal.match(/<PlaceGallery\b/g) ?? []).length, 1, 'S-1b: the single place lost its gallery, or gained a second');
   const at = modal.indexOf('<ExpandedCardHero');
-  const before = modal.slice(Math.max(0, at - 900), at);
-  assert.ok(
-    !/isCuratedCard\s*(\?|&&)[^?&]*$/.test(before),
-    'S-1b: the hero is gated on isCuratedCard. The branch is DATA (`curated={isCuratedCard}`), never '
-    + 'composition — that is the one-line statement of this whole wave.',
-  );
+  const branch = modal.lastIndexOf('{isCuratedCard ? (', at);
+  assert.ok(branch >= 0 && at - branch < 4000, 'S-1b: the plan hero is no longer inside the plan branch');
+  assert.ok(modal.indexOf('<PlaceGallery') > at, 'S-1b: the gallery is not the other (single-place) branch');
   assert.match(
     modal,
     /curated=\{isCuratedCard\}/,
@@ -909,27 +910,27 @@ test('S-3c ActionButtons renders the BAND and nothing that moved off it', () => 
 
 test('S-4 the commitment actions sit in the SAME place on both branches', () => {
   const modal = stripComments(read('modal'));
+  // #4347 wave 2 — REWRITTEN. The defect this rule exists for is the actions
+  // landing MID-SCROLL (below reading sections). The approved design pins the
+  // single place's actions to the sheet's bottom edge (stickyFooter), which is
+  // the one position that can never be mid-scroll; the plan keeps its band
+  // directly under its hero until wave 3. So: exactly one pinned mount (in the
+  // sticky footer, not the scroll body) and exactly one band mount, which still
+  // precedes every one of the plan's reading sections.
   const mounts = modal.match(/<ActionButtons\b/g) ?? [];
-  assert.equal(
-    mounts.length,
-    1,
-    `S-4: the modal mounts <ActionButtons> ${mounts.length} times. TWO is the defect: the row was LAST `
-    + 'on a single place and MID-SCROLL on a plan, with Weather, Busyness and Timeline rendered below '
-    + 'it. One mount is what makes the position independent of what kind of card you opened.',
-  );
-
-  // And it must come BEFORE every reading section, on both branches.
-  const band = modal.indexOf('<ActionButtons');
+  assert.equal(mounts.length, 2, `S-4: the modal mounts <ActionButtons> ${mounts.length} times (pinned + plan band expected)`);
+  const footer = modal.indexOf('stickyFooter={');
+  const pinned = modal.indexOf('variant="pinned"');
+  assert.ok(footer >= 0 && pinned > footer && pinned - footer < 1500, 'S-4: the pinned bar is not the sheet\'s sticky footer');
+  const planBranch = modal.indexOf('{isCuratedCard ? (', modal.indexOf('<InAppBrowserProvider>'));
+  const band = modal.indexOf('<ActionButtons', planBranch);
+  const singleBranch = modal.indexOf('<PlaceGallery');
+  assert.ok(band > planBranch && band < singleBranch, 'S-4: the plan band left the plan branch');
   for (const later of ['<CardInfoSection', '<ConditionsSection', '<PracticalDetailsSection', '<StopList']) {
-    const at = modal.indexOf(later);
-    assert.ok(at > band, `S-4: ${later} renders BEFORE the action band, so the band is mid-scroll again.`);
+    const at = modal.indexOf(later, planBranch);
+    assert.ok(at > band, `S-4: ${later} renders BEFORE the plan's action band, so the band is mid-scroll again.`);
   }
-
-  // The hero comes before everything.
-  assert.ok(
-    modal.indexOf('<ExpandedCardHero') < band,
-    'S-4: the action band renders above the hero.',
-  );
+  assert.ok(modal.indexOf('<ExpandedCardHero') < band, 'S-4: the action band renders above the hero.');
 });
 
 test('S-4b one section component per job — the curated fork is gone', () => {
@@ -964,13 +965,13 @@ test('S-4c no per-stop or per-alternative horizontal scrollable', () => {
     + "sheet's vertical scroll.",
   );
   const modal = stripComments(read('modal'));
+  // #4347 wave 2 — REWRITTEN: the body strip is gone; the sheet body has NO
+  // horizontal list, and the gallery at the top owns exactly two fixed-height
+  // ones (pager + thumbnails), never one per row.
   const horizontals = modal.match(/\bhorizontal\b/g) ?? [];
-  assert.equal(
-    horizontals.length,
-    1,
-    `S-4c: the sheet now has ${horizontals.length} horizontal scrollables. Exactly ONE is sanctioned — `
-    + 'the body gallery strip, which is a single fixed-height list, not one per row.',
-  );
+  assert.equal(horizontals.length, 0, `S-4c: the sheet body has ${horizontals.length} horizontal scrollables again.`);
+  const gallery = stripComments(fs.readFileSync(path.join(REPO, 'app-mobile/src/components/expandedCard/PlaceGallery.tsx'), 'utf8'));
+  assert.equal((gallery.match(/\bhorizontal\b/g) ?? []).length, 2, 'S-4c: the gallery is not exactly the pager and the thumbnail row');
 });
 
 test('S-4d the body carries no rejected colour', () => {
