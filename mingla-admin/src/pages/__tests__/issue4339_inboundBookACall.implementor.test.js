@@ -52,11 +52,18 @@ const ROW = {
 describe("#4339 BC-1: a booking row", () => {
   it("reads Book a call with its ICP, social link, website and call time", () => {
     const lead = leadView(ROW);
-    assert.equal(lead.source, "Book a call");
+    // #4339 calls: a booking with no audience is a Host call.
+    assert.equal(lead.source, "Host call");
     assert.equal(lead.canAdd, true);
     assert.equal(lead.hasEmail, true);
     assert.deepEqual(lead.booking, {
+      audience: "host",
+      label: "Host call",
       icp: "Restaurant, café or diner",
+      city: null,
+      makes: null,
+      workUrl: null,
+      firstPlace: null,
       socialLabel: "Instagram",
       socialHandle: "@bluenote",
       socialUrl: "https://instagram.com/bluenote",

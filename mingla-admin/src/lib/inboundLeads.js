@@ -6,6 +6,11 @@
 // the social as a working profile link, the website, the call time and where
 // the booker came from; Add to Hosts puts the email and social on the card.
 //
+// Issue #4339 Creators and Locals calls (Seth approved, 9 Nov): a booking has
+// an audience. It reads "Host call", "Creator call" or "Local call", the list
+// can be filtered by it, and only a Host call can be added to Hosts (a Creator
+// or a Local is not a host).
+//
 // The server (admin_inbound_leads) already leaves out tool runs inside the
 // Business app (product usage, not leads) and hides staff and test rows unless
 // asked. This file owns the words and the "no new lead" warning.
@@ -20,6 +25,31 @@ export const TOOL_LABELS = Object.freeze({
 });
 
 export const SOURCE_LABELS = Object.freeze({ beta: "Beta form", tool: "Free tool", book_a_call: "Book a call" });
+
+/** A booking's audience as Inbound leads names it. */
+export const BOOKING_AUDIENCE_LABELS = Object.freeze({ host: "Host call", creator: "Creator call", local: "Local call" });
+export const CREATOR_MAKES_LABELS = Object.freeze({ video: "Video", photo: "Photos", both: "Video and photos" });
+
+/** The audience filter on Inbound leads ("" is every lead). */
+export const LEAD_FILTERS = Object.freeze([
+  { value: "", label: "All leads" },
+  { value: "host", label: "Host calls" },
+  { value: "creator", label: "Creator calls" },
+  { value: "local", label: "Local calls" },
+]);
+
+/** A booking's audience; host when the row predates audiences. */
+export function bookingAudience(booking) {
+  const a = booking && typeof booking === "object" ? booking.audience : null;
+  return Object.hasOwn(BOOKING_AUDIENCE_LABELS, a || "") ? a : "host";
+}
+
+/** The rows a filter keeps: every lead, or the bookings of one audience. */
+export function filterLeads(rows, audience) {
+  const list = Array.isArray(rows) ? rows : [];
+  if (!audience) return list;
+  return list.filter((row) => row && row.source === "book_a_call" && bookingAudience(row.booking) === audience);
+}
 
 /** What the booker runs, as the /schedule page asks it. */
 export const BOOKING_ICP_LABELS = Object.freeze({
@@ -68,8 +98,16 @@ function safeLink(url, allowHttp) {
 export function bookingView(booking) {
   if (!booking || typeof booking !== "object") return null;
   const platform = typeof booking.social_platform === "string" ? booking.social_platform : "";
+  const audience = bookingAudience(booking);
+  const text = (v) => (typeof v === "string" && v.trim() ? v.trim() : null);
   return {
+    audience,
+    label: BOOKING_AUDIENCE_LABELS[audience],
     icp: BOOKING_ICP_LABELS[booking.icp] || null,
+    city: text(booking.city),
+    makes: CREATOR_MAKES_LABELS[booking.creator_makes] || null,
+    workUrl: safeLink(booking.work_url, true),
+    firstPlace: text(booking.first_place),
     socialLabel: SOCIAL_LABELS[platform] || "Social",
     socialHandle: typeof booking.social_handle === "string" && booking.social_handle.trim() ? booking.social_handle.trim() : null,
     socialUrl: safeLink(booking.social_url, false),
@@ -107,7 +145,7 @@ export function quietWarning(summary, now = new Date()) {
 export function leadView(row) {
   return {
     id: row.id,
-    source: SOURCE_LABELS[row.source] || "Lead",
+    source: row.source === "book_a_call" ? BOOKING_AUDIENCE_LABELS[bookingAudience(row.booking)] : SOURCE_LABELS[row.source] || "Lead",
     business: row.business || null,
     tool: row.source === "tool" ? TOOL_LABELS[row.tool] || "Free tool" : null,
     city: row.city || null,
@@ -116,7 +154,8 @@ export function leadView(row) {
     isTest: !!row.is_test,
     booking: row.source === "book_a_call" ? bookingView(row.booking) : null,
     // A lead can go to Hosts once, and needs a business name to be a host.
-    canAdd: !(row.host && row.host.id) && !!row.business,
+    // A Creator or Local call is not a host (#4339).
+    canAdd: !(row.host && row.host.id) && !!row.business && !(row.source === "book_a_call" && bookingAudience(row.booking) !== "host"),
   };
 }
 
