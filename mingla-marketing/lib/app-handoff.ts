@@ -64,18 +64,6 @@ export function hostWebLabel(href: string): string {
   }
 }
 
-/**
- * A page on the host web app for every device (#4339 phase 2b: "Set up my
- * creator profile" → host.usemingla.com/creator/setup, §8). The origin is the
- * seam's host web destination and the result passes the seam's own host-web
- * check (`hostComputerHref`), so a typo can never send a person off-site and
- * no host URL is written here.
- */
-export function hostWebPageHref(path: `/${string}`, attribution: OneLinkAttribution): string {
-  const origin = resolveCtaDestinations('host', attribution).computerHref.replace(/\/+$/, '')
-  return resolveCtaDestinations('host', attribution, { hostComputerHref: `${origin}${path}` }).computerHref
-}
-
 // ---------------------------------------------------------------------------
 // #4339 phase 4a — the city page's "This weekend" taps: admin strips, live
 // listings and the quiet week's places. The SAME targets and decision as the

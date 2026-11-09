@@ -2,31 +2,31 @@ import type { Metadata } from 'next'
 import { searchRouteMetadata } from '@/lib/search/metadata'
 import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
+import { ExplorerHandoffButton } from '@/components/landing/explorer-handoff'
 import { LandingMedia } from '@/components/landing/landing-media'
 import { PageHero, SitePage } from '@/components/site/site-page'
 import type { LandingMediaRef } from '@/content/host-landing/icps'
-import { hostWebPageHref } from '@/lib/app-handoff'
-import { siteAttribution } from '@/lib/links-src'
 import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
 
-// #4339 phase 2b — Mingla Creators, in the approved design: the headline,
-// "Set up my creator profile" (→ host.usemingla.com/creator/setup on every
-// device, §8, built through the #4137 seam: lib/app-handoff.ts
-// hostWebPageHref → lib/cta-destination.ts) and "Creator agreement"
-// (→ /creator-agreement), four clips and the three steps. The step copy is the
-// live page's programme facts.
+// #4339 phase 2b — Mingla Creators, in the approved design: the headline, four
+// clips and the three steps. The step copy is the live page's programme facts.
+//
+// #4339 Creators and Locals calls (Seth approved, 9 Nov): creator setup lives
+// in the Mingla (Explorer) app, so the primary button is "Get Mingla to join",
+// the device-aware Explorer hand-off (a phone goes to the Explorer store, a
+// computer gets the QR sheet with no web option). The second button and the
+// closing band are "Book a call" (/schedule/creators). The Creator agreement
+// is accepted in the app; one line of fine print links to it.
 
 // #4339 round B: registered in lib/search/route-registry.ts (one absolute title).
 export const metadata: Metadata = searchRouteMetadata('/creators')
-
-const CREATOR_SETUP_HREF = hostWebPageHref('/creator/setup', siteAttribution('business_hero'))
 
 const CLIPS: readonly LandingMediaRef[] = ['v:amapiano', 'v:salsa', 'v:pottery', 'v:beach']
 
 const STEPS = [
   {
     title: 'Set up your profile',
-    body: 'Build your profile now. Creator mode stays private until every readiness check is complete.',
+    body: 'Build your profile in Mingla. Creator mode stays private until every readiness check is complete.',
   },
   {
     title: 'Get hired',
@@ -51,11 +51,11 @@ export default function CreatorsPage() {
           lead="Mingla Creators make the videos and photos that help people choose. Become a Creator and complete paid gigs for places and events on Mingla."
         >
           <div className="row">
-            <a className="btn cta" href={CREATOR_SETUP_HREF}>
-              Set up my creator profile <ArrowRight aria-hidden="true" />
-            </a>
-            <Link className="btn soft" href="/creator-agreement">
-              Creator agreement
+            <ExplorerHandoffButton location="creators_join" className="btn cta" withArrow>
+              Get Mingla to join
+            </ExplorerHandoffButton>
+            <Link className="btn soft" href="/schedule/creators">
+              Book a call
             </Link>
           </div>
         </PageHero>
@@ -78,6 +78,24 @@ export default function CreatorsPage() {
                 </li>
               ))}
             </ol>
+            <div className="band reveal mt-24">
+              <LandingMedia media="v:salsa" />
+              <div className="in">
+                <h2>
+                  Questions <em>first?</em>
+                </h2>
+                <div className="glassbar">
+                  <span className="bring">Talk to the Creators team</span>
+                  <Link className="btn white" href="/schedule/creators">
+                    Book a call <ArrowRight aria-hidden="true" />
+                  </Link>
+                </div>
+              </div>
+            </div>
+            <p className="fine-legal">
+              You’ll read and accept the <Link href="/creator-agreement">Creator agreement</Link> inside Mingla before
+              your first gig.
+            </p>
           </div>
         </section>
       </SitePage>

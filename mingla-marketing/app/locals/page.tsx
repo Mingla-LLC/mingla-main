@@ -8,11 +8,16 @@ import { PageHero, SitePage } from '@/components/site/site-page'
 import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
 
 // #4339 phase 2b — Mingla Locals, in the approved design: the headline, "Get
-// Mingla to apply" (the Explorer hand-off, §3: applications live in the app)
-// and "Local agreement" (→ /local-agreement), the three steps, the two
+// Mingla to apply" (the Explorer hand-off, §3: applications live in the app),
+// the three steps, the two
 // programme facts and the closing band. The programme facts are the live
 // page's, word for word where they are terms (#3872 pins them): up to three
 // Locals per open city, $150 after approval, paid by Mingla, never by the place.
+
+// #4339 Creators and Locals calls (Seth approved, 9 Nov): "Book a call"
+// (/schedule/locals) replaces the agreement button and sits beside "Get Mingla
+// to apply" in the closing band. The Local agreement is accepted in the app;
+// one line of fine print links to it.
 
 // #4339 round B: registered in lib/search/route-registry.ts (one absolute title).
 export const metadata: Metadata = searchRouteMetadata('/locals')
@@ -48,8 +53,8 @@ export default function LocalsPage() {
             <ExplorerHandoffButton location="locals_apply" className="btn cta" withArrow>
               Get Mingla to apply
             </ExplorerHandoffButton>
-            <Link className="btn soft" href="/local-agreement">
-              Local agreement
+            <Link className="btn soft" href="/schedule/locals">
+              Book a call
             </Link>
           </div>
         </PageHero>
@@ -96,11 +101,20 @@ export default function LocalsPage() {
                     matters more than a giant following.
                   </p>
                 </div>
-                <ExplorerHandoffButton location="locals_band" className="btn white">
-                  Get Mingla to apply <ArrowRight aria-hidden="true" />
-                </ExplorerHandoffButton>
+                <div className="band-actions">
+                  <ExplorerHandoffButton location="locals_band" className="btn white">
+                    Get Mingla to apply <ArrowRight aria-hidden="true" />
+                  </ExplorerHandoffButton>
+                  <Link className="btn glass" href="/schedule/locals">
+                    Book a call
+                  </Link>
+                </div>
               </div>
             </div>
+            <p className="fine-legal">
+              You’ll read and accept the <Link href="/local-agreement">Local agreement</Link> inside Mingla when you
+              apply.
+            </p>
           </div>
         </section>
       </SitePage>

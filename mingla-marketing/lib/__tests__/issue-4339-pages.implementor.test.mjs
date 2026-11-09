@@ -22,9 +22,9 @@
 //     filter (Going out guides, the city "This weekend" chips, Help, the
 //     Get the app toggle);
 //   - every hand-off goes through the seam: Explorer buttons are the shared
-//     ExplorerHandoffButton, Get the app reads lib/app-handoff.ts, "Set up my
-//     creator profile" is hostWebPageHref → resolveCtaDestinations, and no new
-//     file holds a store, OneLink or host URL;
+//     ExplorerHandoffButton (Creators' "Get Mingla to join" too), Get the app
+//     reads lib/app-handoff.ts, and no new file holds a store, OneLink or host
+//     URL;
 //   - the brand faces load on these routes through app/site-fonts.ts.
 //
 // Run from mingla-marketing/ (Node 22.13+):
@@ -225,11 +225,12 @@ test('hand-offs go through the seam; no new file holds a store, OneLink or host 
     assert.doesNotMatch(source, /apps\.apple\.com|play\.google\.com|onelink\.me|https:\/\/host\.usemingla\.com/, `${rel}: URLs come from lib/cta-destination.ts`)
   }
   // Explorer buttons ("Use Mingla", "Get Mingla to apply", "Save", the About card) are the shared hand-off.
-  for (const rel of ['components/cities/city-page.tsx', 'app/locals/page.tsx', 'app/(core)/about/page.tsx']) {
+  for (const rel of ['components/cities/city-page.tsx', 'app/locals/page.tsx', 'app/creators/page.tsx', 'app/(core)/about/page.tsx']) {
     assert.match(code(read(rel)), /<ExplorerHandoffButton\b/, `${rel}: the Explorer hand-off`)
   }
   assert.match(code(read('app/locals/page.tsx')), /<ExplorerHandoffButton location="locals_apply"[^>]*>\s*Get Mingla to apply/)
-  assert.match(code(read('app/locals/page.tsx')), /<Link className="btn soft" href="\/local-agreement">\s*Local agreement/)
+  // #4339 calls: the agreement button became Book a call (issue-4339-calls pins the rest).
+  assert.match(code(read('app/locals/page.tsx')), /<Link className="btn soft" href="\/schedule\/locals">\s*Book a call/)
   assert.match(code(read('app/(core)/about/page.tsx')), /<Link className="vcard text-card reveal" href="\/host">/, 'the Mingla Host card opens /host')
   assert.match(code(read('components/cities/city-page.tsx')), /<Link className="btn ink" href="\/host">\s*See Mingla Host/, 'the city page has one host button, to /host')
   assert.doesNotMatch(code(read('components/cities/city-page.tsx')), /surface="host"|HostHandoffButton|CityDeviceAction/, 'no other host button on the city page')
@@ -247,11 +248,10 @@ test('hand-offs go through the seam; no new file holds a store, OneLink or host 
   assert.match(download, /if \(platform === 'ios'\) redirect\(APP_STORE_URL\)\s*if \(platform === 'android'\) redirect\(PLAY_STORE_URL\)/, 'phones still go straight to their store')
   assert.match(download, /<DownloadQr size=\{172\} \/>/, 'the Explorer QR still encodes /download')
   assert.match(download, /<a className="btn soft" href=\{host\.computerHref\}>\s*Or use Mingla Web/)
-  // Creator setup: a host web page for every device, built by the seam.
-  assert.match(code(read('app/creators/page.tsx')), /hostWebPageHref\('\/creator\/setup', siteAttribution\('business_hero'\)\)/)
-  const attribution = links.siteAttribution('business_hero')
-  assert.equal(handoff.hostWebPageHref('/creator/setup', attribution), `${stores.BUSINESS_WEB_URL}/creator/setup`)
-  assert.equal(handoff.hostWebPageHref('/creator/setup', attribution), 'https://host.usemingla.com/creator/setup')
+  // #4339 calls: creator setup is in the Explorer app, so Creators joins through
+  // the Explorer hand-off; the dead host web /creator/setup link is gone.
+  assert.match(code(read('app/creators/page.tsx')), /<ExplorerHandoffButton location="creators_join"[^>]*>\s*Get Mingla to join/)
+  assert.equal('hostWebPageHref' in handoff, false, 'no host web page helper is left for a dead link')
   // And the stores on the computer page are the app's own listings.
   const explorer = handoff.appHandoffHrefs('explorer', links.siteAttribution('explorer_nav'))
   const host = handoff.appHandoffHrefs('host', links.siteAttribution('business_download'))
@@ -299,9 +299,10 @@ test('built: no "Privacy choices" on any redesigned page; the hand-offs carry th
     assert.match(html, /data-site-nav=""/, `${page}: the site nav`)
     assert.match(html, /data-site-footer=""/, `${page}: the canonical footer`)
   }
-  assert.match(builtHtml('creators.html'), /href="https:\/\/host\.usemingla\.com\/creator\/setup"/)
+  assert.doesNotMatch(builtHtml('creators.html'), /creator\/setup/, 'no dead creator setup link')
+  assert.match(builtHtml('creators.html'), /data-cta-surface="explorer"[^>]*>Get Mingla to join/)
   assert.match(builtHtml('locals.html'), /data-cta-surface="explorer"[^>]*>Get Mingla to apply/)
-  assert.match(builtHtml('locals.html'), /href="\/local-agreement"/)
+  assert.match(builtHtml('locals.html'), /href="\/local-agreement"/, 'the fine print still links the agreement')
   const about = builtHtml('about.html')
   assert.match(about, /class="vcard text-card reveal" href="\/host"|href="\/host" class="vcard text-card reveal"/)
   assert.match(about, /data-cta-surface="explorer"[^>]*class="vcard text-card reveal"|class="vcard text-card reveal"[^>]*data-cta-surface="explorer"/)
