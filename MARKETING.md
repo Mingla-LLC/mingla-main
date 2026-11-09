@@ -67,11 +67,12 @@ sight, in both founder content and creator collaborations.
 
 | Audience | Link | Use |
 |---|---|---|
-| Consumer (Explorer) | `go.usemingla.com/w36m` | Bios, organic content, consumer campaigns |
-| Business | `biz.usemingla.com/ZSCW` | Business bios, partner outreach, supply campaigns |
+| Consumer (Explorer) | `go.usemingla.com/w36m` | Organic content, consumer campaigns |
+| Business | `biz.usemingla.com/ZSCW` | Partner outreach, supply campaigns |
 
-- Bio links carry `pid=bio_<platform>` (e.g. `bio_instagram`, `bio_tiktok`) so installs attribute
-  to the platform the click came from.
+- Social bios do not use smart links. Every @usemingla profile links to the one canonical
+  `www.usemingla.com/links` page (decided 2026-11-09), titled "Discover Mingla" where the platform
+  allows a link title, and that page routes people to the right app or host page.
 - Both subdomains are branded and live; each OneLink domain maps to exactly one template, and the
   CNAME target is per-subdomain.
 - Email download CTAs are device-aware via a **server-side 307 redirect**, not client-side JS —
@@ -150,8 +151,9 @@ its status with the company marketing stack described in this document.
   and LinkedIn.
 - Posture: build the founder as the trusted voice on going out and local discovery. The app enters
   via the lightest-touch connection — often the CTA is just "follow me."
-- Bio links on every platform use the branded smart links with `pid=bio_<platform>` so organic
-  traffic is attributable.
+- Every profile shares one bio line, "Real life is still the point.", the display name "Mingla",
+  and one link: `www.usemingla.com/links`. Per-platform `pid=bio_<platform>` bio links are
+  retired.
 
 ### Paid ads pipeline
 
