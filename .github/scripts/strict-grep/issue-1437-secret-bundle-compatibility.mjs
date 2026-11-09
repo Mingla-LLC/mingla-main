@@ -36,6 +36,9 @@ const paths = {
 };
 
 const EXPECTED_DELIVERY_RUNTIME_CLOSURE = [
+  // #4273 — api-health-probe (SMS price staleness) and sms-price-refresh read
+  // the SMS route table, which shares smsProviderForCountry with the adapter.
+  ["api-health-probe", false],
   ["attendance-claim-backfill", false],
   ["brand-paystack-onboard", true],
   ["brand-stripe-onboard", true],
@@ -50,6 +53,7 @@ const EXPECTED_DELIVERY_RUNTIME_CLOSURE = [
   ["send-pair-request", true],
   ["send-phone-invite", true],
   ["send-venue-sms", true],
+  ["sms-price-refresh", false],
   ["source-refund-sweep", false],
   ["stay-reservations", true],
   ["support-brand-person-erasure", true],
@@ -86,7 +90,9 @@ function containsBundleResolutionCall(relativePath, source) {
   const withoutImports = source
     .replace(/^\s*import\s+[\s\S]*?;\s*$/gm, "")
     .replace(/^\s*export\s+[^;]*?\sfrom\s+[^;]*;\s*$/gm, "");
-  return /\b(?:resolveDeliveryFlagValue|resolvePaymentOperationFlagValue)\s*\(|\bresolvePaystackPayoutHoldOnboardFlip\b/.test(
+  // #4273 — resolveSmsCountryLive is the per-country SMS switch reader (it
+  // wraps resolveDeliveryFlagValue for US/NG), so it is a delivery-flag sink.
+  return /\b(?:resolveDeliveryFlagValue|resolvePaymentOperationFlagValue|resolveSmsCountryLive)\s*\(|\bresolvePaystackPayoutHoldOnboardFlip\b/.test(
     withoutImports,
   );
 }
@@ -226,7 +232,8 @@ function closureViolations(repoRoot) {
   const expectedNames = EXPECTED_DELIVERY_RUNTIME_CLOSURE.map(([name]) => name);
   const result = deriveDeliveryRuntimeClosure(trackedProductionFunctionFiles(repoRoot));
   const failures = compareClosure(result, expectedNames);
-  if (result.derived.length !== 19 || expectedNames.length !== 19) {
+  // #4273: 19 → 21 (api-health-probe, sms-price-refresh).
+  if (result.derived.length !== 21 || expectedNames.length !== 21) {
     failures.push(
       `runtime_closure:locked_count_mismatch:derived_${result.derived.length}:expected_${expectedNames.length}`,
     );

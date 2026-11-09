@@ -229,9 +229,8 @@ export async function buildMarketingBookQuote(
     const origin = options.trackingOrigin ?? resolveMarketingTrackingOrigin();
     // #4273 — quote = send: a text that carries the opt-out link is measured
     // with it (the send appends a link of exactly this length).
-    const segmentsWithStop = computeSegments(
-      marketingBookSmsWireBody(authorBody, origin),
-    );
+    const wireBody = marketingBookSmsWireBody(authorBody, origin);
+    const segmentsWithStop = computeSegments(wireBody);
     const segmentsWithLink = computeSegments(
       marketingBookSmsWireBody(authorBody, origin, true),
     );
