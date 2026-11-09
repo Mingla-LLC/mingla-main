@@ -16,6 +16,7 @@
       "mingla-marketing/lib/cta-destination.ts",
       "mingla-marketing/lib/store-links.ts",
       "mingla-marketing/content/cities/registry.ts",
+      "mingla-marketing/lib/search/historical-city-build.ts",
       "mingla-marketing/components/cities/**",
       "mingla-marketing/app/cities/**"
     ],

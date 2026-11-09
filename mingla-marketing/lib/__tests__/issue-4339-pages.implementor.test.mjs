@@ -51,8 +51,11 @@ const BUILT = process.env.ISSUE_4339_BUILT === '1'
 // Article-text hashes of the PRE-redesign build (fd8c08a616, 8 Nov 2026): the
 // text of the one <article> on each page, tags and comments removed, entities
 // decoded, whitespace collapsed (articleText below).
+// Privacy: re-pinned after #4349 (merged on main, 33d6973942) moved only
+// PRIVACY_EFFECTIVE_DATE from 'October 22, 2026' to 'November 9, 2026'; the
+// redesign itself still changes no legal word.
 const LEGAL = {
-  'privacy-policy': { key: 'privacy', module: 'lib/privacyContent.ts', text: 'c8e76e285ca2f0c18eb37499f849acc442bc8088711e9d494f2e4ff3ce344027', moduleSha: 'cbfd8c768624a6a7a2b96424a502caf6de0870d06af51b7d9b220b4d36794c6f' },
+  'privacy-policy': { key: 'privacy', module: 'lib/privacyContent.ts', text: 'c8e76e285ca2f0c18eb37499f849acc442bc8088711e9d494f2e4ff3ce344027', moduleSha: 'f609eddfe6fb729b6b390c546fdf275aa978a94ac2b90c620437d6bcabe6a85a' },
   'terms-of-service': { key: 'terms', module: 'lib/termsContent.ts', text: '8befcefabbc503b89b54fad087bdf11f3666bc632c622bf2a03658fef5a42a6c', moduleSha: '0295f3cd79328ce1edb6451401dcac15ab6398242298f85b4c1c513402ca4063' },
   'organiser-terms': { key: 'organiser', module: 'lib/organiserTermsContent.ts', text: '39f27a554b33a65e4433770b067b6593c78833feab64992ab837c107abcb64b8', moduleSha: '20e189ed504b312ee689516957a0db970d787413c741df70cfd8e0ba3451dde3' },
   'sms-terms': { key: 'sms', module: 'lib/smsTermsContent.ts', text: 'a9da87ccc105805c96a254ca6aa28d55071bf598ec9205d35be7d7a90f627fd0', moduleSha: '5e5bc19c3e54739c8ee4eeed7b2f36549843099b6d7c6b03fb77867fd72abbad' },

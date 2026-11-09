@@ -156,9 +156,8 @@ const WORDMARK = /<Wordmark\b|src="\/brand\/(?:links\/)?mingla-wordmark[\w-]*\.s
 const HOME_HREF = /^(?:"\/"|\{abs\('\/'\)\}|"https:\/\/usemingla\.com")$/
 // Wordmarks inside a card that already links elsewhere: the About cards and
 // the Ari cards (Seth, 8 Nov). Matched by the card's `vcard` class.
-// The /links page bar is out of this round's reach (links-* is not edited
-// here); it is named so a new exception cannot slip in silently.
-const NAMED_EXCEPTIONS = new Set(['components/marketing/links-experience.tsx'])
+// No file is excepted: #4349 made the /links bar's wordmark go Home, so the
+// /links page is scanned like every other page.
 
 /** For each wordmark in `source`: the enclosing link's href, or why it is exempt. */
 export function wordmarkLinks(source) {
@@ -185,7 +184,6 @@ export function wordmarkLinks(source) {
 test('3. every standalone Mingla wordmark is a home link (cards that link elsewhere excepted)', () => {
   let seen = 0
   for (const rel of SOURCES.filter((r) => r.endsWith('.tsx') && !r.endsWith('components/site/wordmark.tsx'))) {
-    if (NAMED_EXCEPTIONS.has(rel)) continue
     for (const w of wordmarkLinks(code(read(rel)))) {
       seen += 1
       if (w.exempt) continue
@@ -195,11 +193,21 @@ test('3. every standalone Mingla wordmark is a home link (cards that link elsewh
     }
   }
   assert.ok(seen >= 10, `found ${seen} wordmarks`)
+  // #4349: the /links bar's white wordmark is scanned too and goes Home.
+  const links = wordmarkLinks(code(read('components/marketing/links-experience.tsx')))
+  assert.ok(links.length >= 1, 'the /links wordmark is found')
+  for (const w of links) assert.deepEqual([w.href, w.label], ['"/"', 'Mingla home'], 'the /links wordmark goes Home')
   // The one Seth named: the paper section on every /host/<icp> page.
   assert.match(
     code(read('components/landing/icp-landing.tsx')),
     /<Link className="wm-link" href="\/" aria-label="Mingla home">\s*<img className="wm" src="\/brand\/mingla-wordmark\.svg" alt="" width=\{85\} height=\{30\} \/>\s*<\/Link>/,
   )
+})
+
+test('3. no file is excepted from the wordmark rule (the #4339 /links exception is gone)', () => {
+  const self = fs.readFileSync(fileURLToPath(import.meta.url), 'utf8')
+  assert.doesNotMatch(code(self), /const NAMED_\w+ = new Set|\.has\(rel\)\) continue/, 'no named file exception in the scanner')
+  assert.match(code(self), /for \(const rel of SOURCES\.filter\(\(r\) => r\.endsWith\('\.tsx'\) && !r\.endsWith\('components\/site\/wordmark\.tsx'\)\)\) \{\s*for \(const w of wordmarkLinks/, 'every .tsx source (but the Wordmark component itself) is scanned')
 })
 
 test('3. the scanner itself: a bare wordmark fails, a card wordmark is exempt', () => {
@@ -222,7 +230,7 @@ test('4. phones: the last tile of an odd 2-column grid spans both columns at 16:
   const mod = await import(pathToFileURL(writeStripped('components/site/orphan-tile.ts')).href)
   assert.deepEqual([0, 1, 2, 3, 4].map((i) => mod.orphanTile(i, 5)), [false, false, false, false, true])
   assert.deepEqual([0, 1, 2, 3].map((i) => mod.orphanTile(i, 4)), [false, false, false, false])
-  assert.match(code(read('components/cities/city-this-weekend.tsx')), /data-orphan=\{orphanTile\(index, shownListings\.length\) \? '' : undefined\}/)
+  assert.match(code(read('components/cities/city-this-weekend.tsx')), /data-orphan=\{orphanTile\(index, shownPlans\.length\) \? '' : undefined\}/)
   assert.match(code(read('components/cities/city-weekend.tsx')), /const shownCount = collapsed \? Math\.min\(COLLAPSED_COUNT, visible\.length\) : visible\.length/)
   assert.match(code(read('components/cities/city-weekend.tsx')), /data-orphan=\{orphanTile\(index, shownCount\) \? '' : undefined\}/)
 })
