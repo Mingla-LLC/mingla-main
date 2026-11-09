@@ -123,5 +123,12 @@ module.exports = {
     // quieter-at edges, and pinned-bar parity with the old band.
     "**/__tests__/issue_4347_wave1_rework.tester.adversarial.render.test.tsx",
     "**/__tests__/issue_4347_place_sheet.tester.adversarial.render.test.tsx",
+    // issue #4347 wave 3 + follow-ups — tester adversarial: the one overnight
+    // model with Google's real separators, arrivals across midnight and venue
+    // clocks, the warning's fix, Route all stops encoding / cap, the scroll
+    // store's publish budget; the plan sheet's route label on iPhone, the
+    // swap and start-time count, the navigator and the pinned plan bar.
+    "**/__tests__/issue_4347_wave3.tester.adversarial.test.ts",
+    "**/__tests__/issue_4347_wave3.tester.adversarial.render.test.tsx",
   ],
 };
