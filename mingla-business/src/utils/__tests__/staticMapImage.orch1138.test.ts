@@ -1,25 +1,15 @@
 /**
- * ORCH-1138 Leg 1 — regression guard for the public trip page "Where you'll be"
- * static map (buildStaticMapUrl).
- *
- * ORCH-1165 [Mapbox static map server-proxy] UPDATE [TEST-MOD-APPROVED ORCH-1165]:
- * the static map is no longer composed against api.mapbox.com with a client `pk.*`
- * token (that token was never provisioned, so the map never rendered). It now
- * points at the vendor-NEUTRAL `static-map` Supabase edge fn — a token-less,
- * host-hidden proxy URL whose path reveals nothing about the upstream map vendor.
- * This file's old assertions (api.mapbox.com host + access_token + client token
- * param + the interim `/mapbox-static` path) asserted SUPERSEDED contracts; they
- * are rewritten here to the new vendor-neutral proxy contract. The rule-9 coord
- * fail-safe coverage is preserved.
+ * ORCH-1138 Leg 1 / ORCH-1165 — regression guard for the "Where you'll be"
+ * static map (buildStaticMapUrl): a key-less, provider-neutral proxy URL
+ * (`<base>/static-map`), Google Maps Static API behind it since #4334.
  *
  * Covers:
- *  - happy path: finite coords + a functions base URL → a proxy URL pointing at
- *    `<base>/static-map` with NO Mapbox token, NO api.mapbox.com host, and the
- *    substring "mapbox" NOWHERE in the URL.
+ *  - happy path: finite coords + a functions base URL → `<base>/static-map`
+ *    with NO key and NO provider host.
  *  - FAIL-SAFE (Constitution rule 9): missing functions base → null (hide map).
  *  - FAIL-SAFE: missing / non-finite coords → null (hide map).
- *  - getPublicMapboxToken (retained backward-compat export) still reads the
- *    inlining-safe Constants.expoConfig.extra → process.env order.
+ *
+ * #4334 removed the dead client map-token reader and its three cases.
  *
  * fails-on-revert: delete the coord guard or the base guard in
  * buildProxyStaticMapUrl and the corresponding case below goes red.
@@ -37,23 +27,20 @@ jest.mock("expo-constants", () => ({
   },
 }));
 
-import { buildStaticMapUrl, getPublicMapboxToken } from "../mapboxStaticImage";
+import { buildStaticMapUrl } from "../staticMapImage";
 
-const PK = "pk.eyJtaW5nbGEtdGVzdCJ9.signature";
 const BASE = "https://gqnoajqerqhnvulmnyvv.supabase.co/functions/v1";
 
 beforeEach(() => {
   for (const k of Object.keys(mockExtra)) delete mockExtra[k];
-  delete process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN;
   delete process.env.EXPO_PUBLIC_SUPABASE_URL;
 });
 afterEach(() => {
-  delete process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN;
   delete process.env.EXPO_PUBLIC_SUPABASE_URL;
 });
 
-describe("buildStaticMapUrl — proxy URL (ORCH-1165), token-less + vendor-neutral", () => {
-  test("finite coords + base → proxy URL, NO token, NO api.mapbox.com, NO 'mapbox'", () => {
+describe("buildStaticMapUrl — proxy URL (ORCH-1165), key-less + provider-neutral", () => {
+  test("finite coords + base → proxy URL, no key, no provider host", () => {
     const url = buildStaticMapUrl({
       lat: 40.6281,
       lng: 14.485,
@@ -63,12 +50,8 @@ describe("buildStaticMapUrl — proxy URL (ORCH-1165), token-less + vendor-neutr
     expect(url).not.toBeNull();
     const u = url as string;
     expect(u.startsWith(`${BASE}/static-map?`)).toBe(true);
-    expect(u.includes("api.mapbox.com")).toBe(false);
-    expect(u.includes("access_token")).toBe(false);
-    expect(u.toLowerCase().includes("pk.")).toBe(false);
-    // Seth's HARD requirement: the substring "mapbox" appears NOWHERE in the
-    // client-facing URL — the public fn name is vendor-neutral `static-map`.
-    expect(u.toLowerCase().includes("mapbox")).toBe(false);
+    expect(u.includes("googleapis.com")).toBe(false);
+    expect(u.includes("key=")).toBe(false);
     // lng,lat forwarded; accent normalized ('#' stripped, lowercased).
     expect(u).toContain("lat=40.6281");
     expect(u).toContain("lng=14.485");
@@ -111,21 +94,5 @@ describe("buildStaticMapUrl — FAIL-SAFE (rule 9: hide, never fabricate/crash)"
   test("non-finite coords → null", () => {
     expect(buildStaticMapUrl({ lat: NaN, lng: 2, functionsBaseUrl: BASE })).toBeNull();
     expect(buildStaticMapUrl({ lat: 1, lng: Infinity, functionsBaseUrl: BASE })).toBeNull();
-  });
-});
-
-describe("getPublicMapboxToken — retained inlining-safe read (backward-compat)", () => {
-  test("reads from Constants.expoConfig.extra FIRST", () => {
-    mockExtra.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN = PK;
-    expect(getPublicMapboxToken()).toBe(PK);
-  });
-
-  test("falls back to process.env when extra is absent", () => {
-    process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN = PK;
-    expect(getPublicMapboxToken()).toBe(PK);
-  });
-
-  test("returns null when neither is set", () => {
-    expect(getPublicMapboxToken()).toBeNull();
   });
 });

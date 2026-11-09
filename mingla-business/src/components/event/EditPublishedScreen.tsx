@@ -1425,6 +1425,12 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
                   patch.locationGeo === null
                     ? null
                     : (editState.coordinatePrecision ?? null),
+                // #4334 — the re-picked pin's Google place id, written in the
+                // same statement as the pin.
+                locationProviderPlaceId:
+                  patch.locationGeo === null
+                    ? null
+                    : (editState.locationProviderPlaceId ?? null),
               }
             : {}),
         };

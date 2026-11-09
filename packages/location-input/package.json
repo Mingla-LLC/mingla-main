@@ -6,7 +6,7 @@
   "types": "index.ts",
   "react-native": "index.ts",
   "license": "UNLICENSED",
-  "description": "Shared Mapbox Search Box address/city picker (field + suggestion list + geocode service) between mingla-business (experience stops, META-ORCH-1059) and app-mobile (consumer discover/preferences/onboarding, META-ORCH-1060). Pure presentational + service seam — host injects tokens, Icon, supabase.functions.invoke, copy, and a gorhom BottomSheetTextInput.",
+  "description": "Shared address/city picker (field + suggestion list + places service) for mingla-business (Host address fields) and app-mobile (Explorer discover/preferences/onboarding). Google Maps Platform behind one edge proxy (#4334). Pure presentational + service seam \u2014 host injects tokens, Icon, supabase.functions.invoke, copy, and a gorhom BottomSheetTextInput.",
   "peerDependencies": {
     "react": "*",
     "react-native": "*"

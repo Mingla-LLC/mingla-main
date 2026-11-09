@@ -1384,6 +1384,12 @@ export interface PatchEventTaxonomyInput {
    * renders exactly as today (no fabricated precision, rule 9).
    */
   coordinatePrecision?: "exact" | "approximate" | null;
+  /**
+   * #4334 — the re-picked pin's Google place id. The live-edit owner
+   * (business_update_live_event_atomic) writes it in the same statement as the
+   * pin; sent only with a changed pin.
+   */
+  locationProviderPlaceId?: string | null;
 }
 
 interface PatchEventTaxonomyResponse {

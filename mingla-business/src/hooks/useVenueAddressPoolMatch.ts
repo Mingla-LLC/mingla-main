@@ -47,6 +47,7 @@ export function useVenueAddressPoolMatch(): UseVenueAddressPoolMatchResult {
   const lat = useDraftVenueStore((s) => s.lat);
   const lng = useDraftVenueStore((s) => s.lng);
   const coordinatePrecision = useDraftVenueStore((s) => s.coordinatePrecision);
+  const pickedPlaceId = useDraftVenueStore((s) => s.locationProviderPlaceId ?? null);
   const placePoolId = useDraftVenueStore((s) => s.placePoolId);
   const claim = useDraftVenueStore((s) => s.claim);
   const dismissedIds = useDraftVenueStore((s) => s.dismissedPoolMatchIds);
@@ -88,6 +89,7 @@ export function useVenueAddressPoolMatch(): UseVenueAddressPoolMatchResult {
           formattedAddress: formattedAddress.trim(),
           lat: pickedLat,
           lng: pickedLng,
+          googlePlaceId: pickedPlaceId,
         });
         if (cancelled || activeKeyRef.current !== queryKey) return;
         setMatch(found);
@@ -105,7 +107,7 @@ export function useVenueAddressPoolMatch(): UseVenueAddressPoolMatchResult {
     };
     // `queryKey` encodes address+lat+lng; the rest are listed for the linter and
     // cannot change without changing the key.
-  }, [queryKey, formattedAddress, lat, lng]);
+  }, [queryKey, formattedAddress, lat, lng, pickedPlaceId]);
 
   const dismiss = useCallback((): void => {
     const id = match?.id;

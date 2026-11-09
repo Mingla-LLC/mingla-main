@@ -91,8 +91,8 @@ jest.mock("expo-constants", () => ({
 // `__manual_mocks__/offering-rendering.js` in jest.config.cjs; importing the
 // barrel would assert against a mock's re-export rather than the module under
 // test. This path resolves through the workspace symlink to the real source.
-import { buildStaticMapUrl } from "@mingla/offering-rendering/mapboxStaticImage";
-import { getSupabaseFunctionsBaseUrl } from "@mingla/offering-rendering/mapboxFunctionsBase";
+import { buildStaticMapUrl } from "@mingla/offering-rendering/staticMapImage";
+import { getSupabaseFunctionsBaseUrl } from "@mingla/offering-rendering/functionsBase";
 
 const ORIGINAL_ENV = process.env;
 
@@ -188,7 +188,7 @@ describe("#1594 — the consumer static map resolves a functions base URL", () =
     expect(url as string).toContain("lat=25.790654");
     expect(url as string).toContain("lng=-80.13005");
     // ORCH-1165's vendor-neutrality contract must survive this change.
-    expect((url as string).toLowerCase()).not.toContain("mapbox");
+    expect(url as string).not.toContain("googleapis.com");
     expect(url as string).not.toContain("access_token");
   });
 

@@ -1,13 +1,13 @@
 /**
- * ORCH-1118 [trip from/destination fields must be Mapbox-validated addresses]
+ * ORCH-1118 [trip from/destination fields must be pick-validated addresses]
  *
  * Node-env Jest source-characterization harness (no RN renderer) → proves the
  * published-edit screen swapped its two plain TextInputs for the shared
- * MapboxAddressInput, nulls coords on type, and gates Save on a confirmed pick
+ * AddressInput, nulls coords on type, and gates Save on a confirmed pick
  * for BOTH departure and destination (hard-required, REVISED 2026-06-12).
  *
  * Fails-on-revert: reverting either field to a plain TextInput drops the
- * <MapboxAddressInput count below 2 (T-6); removing the gate drops the
+ * <AddressInput count below 2 (T-6); removing the gate drops the
  * handleSavePress reference (T-7); reverting the handlers drops the null keys (T-8).
  */
 
@@ -24,9 +24,9 @@ const src = (): string =>
     "utf8",
   );
 
-describe("ORCH-1118 — EditPublishedTripScreen uses the Mapbox picker for both fields", () => {
-  test("T-6: both address fields are MapboxAddressInput (exactly two)", () => {
-    const tags = src().match(/<MapboxAddressInput/g) ?? [];
+describe("ORCH-1118 — EditPublishedTripScreen uses the address picker for both fields", () => {
+  test("T-6: both address fields are AddressInput (exactly two)", () => {
+    const tags = src().match(/<AddressInput/g) ?? [];
     expect(tags.length).toBe(2);
   });
 
@@ -48,7 +48,7 @@ describe("ORCH-1118 — EditPublishedTripScreen uses the Mapbox picker for both 
   test("T-6: imports the shared picker + the predicate/copy", () => {
     const s = src();
     expect(s).toMatch(
-      /import\s*\{\s*MapboxAddressInput\s*\}\s*from\s*["'][^"']*location\/MapboxAddressInput["']/,
+      /import\s*\{\s*AddressInput\s*\}\s*from\s*["'][^"']*location\/AddressInput["']/,
     );
     expect(s).toContain("departureLocationValidated");
     expect(s).toContain("destinationLocationValidated");

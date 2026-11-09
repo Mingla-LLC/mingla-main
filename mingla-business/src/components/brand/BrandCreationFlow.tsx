@@ -60,12 +60,11 @@ import { Toast } from "../ui/Toast";
 import type { OfferingKind } from "./OfferingChooser";
 import { CoverPickerSheet } from "../ui/CoverPickerSheet";
 // META-ORCH-1009 Sub-F (WS1+WS2): validated address autocomplete + cover preview.
-// ORCH-1079 [Business-venue Google→Mapbox sweep]: swapped to the shared Mapbox
-// picker. The Mapbox `placeId` (a mapbox_id) is IGNORED for persistence — we set
-// `googlePlaceId: null` so a mapbox_id never lands in `brands.google_place_id`.
-// Mapbox Search Box /suggest returns POIs/businesses by name (no `types` filter):
-// https://docs.mapbox.com/api/search/search-box/#get-suggestions
-import { MapboxAddressInput } from "../location/MapboxAddressInput";
+// ORCH-1079 [Business-venue address sweep]: the shared address picker. The
+// picked `placeId` is never written into `brands.google_place_id` (that column
+// is the pool/claim identity) — we set `googlePlaceId: null`. The Host search is
+// filter-free, so businesses resolve by name.
+import { AddressInput } from "../location/AddressInput";
 import {
   advanceLocationRequestGeneration,
   isFreeTextResolveStale,
@@ -73,7 +72,7 @@ import {
   resolveFreeTextLocation,
 } from "../../utils/resolveApproxLocation";
 import { parseVenuePlaceResult } from "../../utils/parseVenuePlaceResult";
-import type { PlaceDetails } from "../../services/mapboxGeocodeService";
+import type { PlaceDetails } from "../../services/placesService";
 import type { LocationSelectionState } from "@mingla/location-input";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { useShareNetworkState } from "../ui/useShareNetworkState";
@@ -551,7 +550,9 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
     city: string | null;
     countryCode: string | null;
     googlePlaceId: string | null;
-  }>({ lat: null, lng: null, city: null, countryCode: null, googlePlaceId: null });
+    /** #4334 — the pin's Google place id, saved in the same write as the pin. */
+    locationProviderPlaceId: string | null;
+  }>({ lat: null, lng: null, city: null, countryCode: null, googlePlaceId: null, locationProviderPlaceId: null });
   const [toast, setToast] = useState<string | null>(null);
   // META-ORCH-1232 (H1) — persistent, non-auto-dismissing inline error for a
   // brand create/save WRITE failure. `retry` re-invokes the same mutation with
@@ -585,6 +586,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
         city: null,
         countryCode: null,
         googlePlaceId: null,
+        locationProviderPlaceId: null,
       });
       void (async () => {
         try {
@@ -610,6 +612,8 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
             city: approx.city,
             countryCode: approx.countryCode,
             googlePlaceId: null,
+            // #4334 — the place the typed address resolved to.
+            locationProviderPlaceId: approx.placeId,
           });
           savedContextRef.current = {
             city: approx.city,
@@ -861,6 +865,8 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
         if (geo.city !== null) patch.city = geo.city;
         if (geo.countryCode !== null) patch.countryCode = geo.countryCode;
         if (geo.googlePlaceId !== null) patch.googlePlaceId = geo.googlePlaceId;
+        // #4334 — same write as the pin; null clears a stale id.
+        patch.locationProviderPlaceId = geo.locationProviderPlaceId;
       }
       const nextBrand = await updateBrandMutation.mutateAsync({
         brandId: brand.id,
@@ -903,7 +909,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
     setAddress("");
     committedAddrRef.current = "";
     setAddressSelectionState("editing");
-    setAddrMeta({ lat: null, lng: null, city: null, countryCode: null, googlePlaceId: null });
+    setAddrMeta({ lat: null, lng: null, city: null, countryCode: null, googlePlaceId: null, locationProviderPlaceId: null });
     updateState({ type: "setAddress", address: null });
   }, [updateState]);
 
@@ -1358,7 +1364,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
             {/* WS1: validated autocomplete. Free-text typing clears the geo meta so
                 Continue stays gated until a real result is picked; Skip handles
                 brands with no fixed address. */}
-            <MapboxAddressInput
+            <AddressInput
               value={address}
               allowFreeText
               selectionState={addressSelectionState}
@@ -1381,6 +1387,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
                   city: null,
                   countryCode: null,
                   googlePlaceId: null,
+                  locationProviderPlaceId: null,
                 });
               }}
               onFreeText={resolveCommittedAddress}
@@ -1391,14 +1398,16 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
                 committedAddrRef.current = label;
                 setAddress(label);
                 // ORCH-1079 LOCKED (§3.B): write geo identically but set
-                // googlePlaceId: null — the Mapbox mapbox_id (`p.placeId`) is
-                // IGNORED so it never pollutes `brands.google_place_id`.
+                // googlePlaceId: null — the picked id (`p.placeId`) never
+                // pollutes `brands.google_place_id` (the pool identity).
                 setAddrMeta({
                   lat: p.lat,
                   lng: p.lng,
                   city: p.city,
                   countryCode: p.countryCode,
                   googlePlaceId: null,
+                  // #4334 — the picked Google place id lives in its own column.
+                  locationProviderPlaceId: p.placeId,
                 });
                 savedContextRef.current = {
                   city: p.city,
@@ -1417,6 +1426,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
                   city: null,
                   countryCode: null,
                   googlePlaceId: null,
+                  locationProviderPlaceId: null,
                 });
               }}
               onClear={(): void => {
@@ -1431,6 +1441,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
                   city: null,
                   countryCode: null,
                   googlePlaceId: null,
+                  locationProviderPlaceId: null,
                 });
               }}
               placeholder={BRAND_CREATION_COPY.step2.addressPlaceholder}

@@ -1,11 +1,11 @@
 /**
  * META-ORCH-1059 [experiences-business-parity] · SUB-A · LAYER 4
- * META-ORCH-1060 [Mapbox consumer migration] · §3.2 — EXTRACTED to the shared
- * @mingla/location-input package.
+ * META-ORCH-1060 §3.2 — EXTRACTED to the shared @mingla/location-input
+ * package. Google Maps Platform behind the proxy since #4334.
  *
  * This file is now a THIN per-app wrapper that injects the BUSINESS design
  * tokens + business Icon + business supabase.functions.invoke + business copy
- * into the shared MapboxAddressInput field. The props the experience importers
+ * into the shared AddressInput field. The props the experience importers
  * (ExperienceStopCard, CreatorStep3Where) use are UNCHANGED — this is a drop-in.
  * Token values below reproduce the pre-extraction StyleSheet byte-for-byte so
  * the experience picker renders + geocodes identically (SC-7).
@@ -16,13 +16,17 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
-import {
-  MapboxAddressInput as SharedMapboxAddressInput,
-  type LocationInputCopy,
-  type LocationSelectionState,
-  type LocationInputTokens,
-  type PlaceDetails,
+import type {
+  LocationInputCopy,
+  LocationSelectionState,
+  LocationInputTokens,
+  PlaceDetails,
 } from "@mingla/location-input";
+// #4334 — value imports come from their own files, never the package index:
+// the index re-exports the field, which on web loads from its own chunk
+// (sharedAddressField.web.tsx) to keep the Host boot payload small.
+import { createThrottledReporter } from "@mingla/location-input/src/placesService";
+import { SharedAddressInput } from "./sharedAddressField";
 
 import {
   accent,
@@ -42,7 +46,7 @@ import type {
 
 export type { PlaceDetails };
 
-interface MapboxAddressInputProps {
+interface AddressInputProps {
   value: string;
   onChangeText: (next: string) => void;
   onPick: (details: PlaceDetails, selectedLabel?: string) => void;
@@ -92,7 +96,7 @@ export const useAddressSearchProximity = (
     import("../../utils/addressSearchProximity").then(
       (module) => setLoaded((proximityResolver = module)),
       (error: unknown) =>
-        console.warn("[MapboxAddressInput] proximity resolver load failed:", error),
+        console.warn("[AddressInput] proximity resolver load failed:", error),
     );
   }, [wanted]);
   return sources === undefined
@@ -100,24 +104,19 @@ export const useAddressSearchProximity = (
     : proximityResolver?.resolveHostAddressProximity(memory, sources);
 };
 
-// ── Issue #3827 — Host address fields ask for 10 suggestions ───────────────
-// The shared field and the Explorer app ask for 5. For a Host that cut real
-// answers off: with a far-away rank point "Lagos, Nigeria" is the 7th result,
-// so it never showed. 10 is the most the search provider returns, the
-// `mapbox-geocode` function already clamps to it, and billing is per search
-// session, not per row. The request still carries no `types` / `country`
-// filter (INV-3 / ORCH-1079).
-export const HOST_ADDRESS_SUGGEST_LIMIT = 10;
+// ── #4334 (Seth decision D4) — at most 5 suggestions ──────────────────────
+// Google returns at most 5 rows, so the Host's 10-row request (#3827) is gone.
+// Ranking now comes from the proximity bias, not from row count.
 
-// Ten rows are roughly twice the height of five, and the Host list had no
-// height bound of its own (only the keyboard-aware cap on native). This bounds
-// the list to about five and a half rows, the size it was with 5 results; the
-// rest scroll inside it, and the half row shows there is more. On native the
+// The Host list has no height bound of its own (only the keyboard-aware cap on
+// native). This bounds it to about five and a half rows; on native the
 // keyboard-aware cap still shrinks it further when the keyboard is up.
 export const HOST_ADDRESS_DROPDOWN_MAX_HEIGHT = 320;
 
 // Business token bundle — reproduces the pre-extraction dark-glass StyleSheet.
 const BUSINESS_TOKENS: LocationInputTokens = {
+  // #4334 (D5) — the Host field is dark glass: the on-dark attribution.
+  attribution: { variant: "dark" },
   field: {
     bg: glass.tint.profileBase,
     bgFocused: glass.tint.profileBase, // business field had no focus bg lift
@@ -187,9 +186,23 @@ const BUSINESS_COPY: LocationInputCopy = {
   minLengthHint: "Type at least 3 characters to search.",
   searching: "Searching…",
   noResults: "No matches — try a broader search.",
-  offline: "Couldn't reach search. Tap to try again.",
+  // #4334 — search itself is down (never "No matches").
+  unavailable: "Address search isn't working right now. Tap to try again.",
   pickError: "Couldn't fetch address details. Tap to try again.",
 };
+
+type ReportNonFatalModule = typeof import("../../diagnostics/reportNonFatal");
+
+// #4334 — throttled Sentry report when address search is unavailable.
+// Lazy require (same pattern as copyAddressText / sharePublicUrl): the reporter
+// pulls in the Sentry SDK, which must not join this field's module-scope import
+// graph — every screen with an address field (and its render suites) loads it,
+// and some web/Jest environments cannot parse the SDK's ESM entry.
+const reportSearchUnavailable = createThrottledReporter((code: string) => {
+  const { reportNonFatal } =
+    require("../../diagnostics/reportNonFatal") as ReportNonFatalModule;
+  reportNonFatal("address_search", new Error(`address_search_unavailable:${code}`), { code });
+});
 
 const invoke = (fn: string, options: { body: Record<string, unknown> }) =>
   supabase.functions.invoke(fn, options);
@@ -208,7 +221,7 @@ const LocationInputIcon: React.FC<{
   return <Icon name={mappedName} size={size} color={color} />;
 };
 
-export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
+export const AddressInput: React.FC<AddressInputProps> = ({
   value,
   onChangeText,
   onPick,
@@ -227,7 +240,7 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
   const tokens = useMemo(() => BUSINESS_TOKENS, []);
   const resolvedProximity = useAddressSearchProximity(proximitySources);
   return (
-    <SharedMapboxAddressInput
+    <SharedAddressInput
       value={value}
       onChangeText={onChangeText}
       onPick={onPick}
@@ -247,9 +260,9 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
       selectedLabel={selectedLabel}
       onChangeSelected={onChangeSelected}
       proximity={proximity ?? resolvedProximity}
-      suggestLimit={HOST_ADDRESS_SUGGEST_LIMIT}
+      onSearchUnavailable={reportSearchUnavailable}
     />
   );
 };
 
-export default MapboxAddressInput;
+export default AddressInput;
