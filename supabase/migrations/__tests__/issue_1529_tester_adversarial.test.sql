@@ -406,7 +406,11 @@ DECLARE
     -- scheduled notices. The writes_outbox assertion below keeps this
     -- classification honest by rejecting either function if it ever INSERTs.
     'issue_4188_create_staff_stay_group',
-    'issue_4188_property_cancel'
+    'issue_4188_property_cancel',
+    -- [TEST-MOD-APPROVED #4255] The work card email trigger only DELETEs the
+    -- pending admin.team_mention rows an automatic card queued in the same run
+    -- it closed in. The writes_outbox assertion below rejects it if it INSERTs.
+    'issue_4255_auto_card_withdraw_email'
   ];
   v_unclassified text;
   v_missing_cc text;
