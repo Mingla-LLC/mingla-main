@@ -69,6 +69,13 @@ import {
 // Now solo inherits the SAME gate collab already gets via discover-cards.
 import { filterCuratedByStopHours, resolveCuratedHoursPolicy } from '../_shared/curatedStopHours.ts';
 import { buildStopPrice, sumStopPrices } from '../_shared/curatedPrice.ts';
+import {
+  attachExperienceDisplayPrices,
+  dbMinorConverter,
+  latestServableSnapshotId,
+  loadCurrencyExponents,
+  normalizeViewerCurrency,
+} from '../_shared/experienceDisplayPrice.ts';
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * generate-curated-experiences  –  Pool-Only Curated Card Generator
@@ -139,6 +146,12 @@ interface CuratedExperienceDeckCard {
   totalPriceMin: number;
   totalPriceMax: number;
   currency: string;
+  // #4347 — envelope converted into the viewer's currency (see
+  // _shared/experienceDisplayPrice). Null = not converted.
+  displayPriceMin?: number | null;
+  displayPriceMax?: number | null;
+  displayCurrency?: string | null;
+  priceIsApprox?: boolean;
   masterDateUtc: string | null;
   masterEndAtUtc: string | null;
   timezone: string;
@@ -1728,7 +1741,12 @@ export const handler = async (req: Request): Promise<Response> => {
       // instead of evaluating against the stale stored datetime_pref.
       dateOption,
       selectedDates = null,
+      // #4347: the viewer's display currency (profile.currency). Optional;
+      // absent → brand experiences carry no converted price and the app shows
+      // the host's own currency.
+      displayCurrency: rawDisplayCurrency = null,
     } = body;
+    const viewerDisplayCurrency = normalizeViewerCurrency(rawDisplayCurrency);
     if (!Array.isArray(excludePlacePoolIds)) {
       excludePlacePoolIds = [];
     }
@@ -2023,7 +2041,7 @@ export const handler = async (req: Request): Promise<Response> => {
         const expMaxDistKm = radiusKmForConstraint(travelConstraintValue, travelMode, 1.5);
         const expRadiusMeters = Math.min(Math.max(Math.round(expMaxDistKm * 1000), 500), 100000);
         const expNowIso = (datetimePref ? new Date(datetimePref) : new Date()).toISOString();
-        const experienceCards = await fetchEligibleExperiencesForCurated({
+        let experienceCards = await fetchEligibleExperiencesForCurated({
           lat: location.lat,
           lng: location.lng,
           radiusMeters: expRadiusMeters,
@@ -2034,6 +2052,18 @@ export const handler = async (req: Request): Promise<Response> => {
           ),
           limit: Math.min(limit, 30),
         });
+        if (experienceCards.length > 0 && viewerDisplayCurrency !== null) {
+          // #4347: the envelope in the viewer's currency, from the daily FX
+          // snapshot. Never throws; a stale snapshot leaves the fields null.
+          const snapshotId = await latestServableSnapshotId(supabaseAdmin, new Date());
+          experienceCards = await attachExperienceDisplayPrices(
+            experienceCards,
+            viewerDisplayCurrency,
+            snapshotId !== null ? dbMinorConverter(supabaseAdmin, snapshotId) : null,
+            // supported_brand_currencies.minor_unit_exponent, read once here.
+            await loadCurrencyExponents(supabaseAdmin),
+          );
+        }
         if (experienceCards.length > 0) {
           normalizedCards = frontLoadCuratedExperiences(normalizedCards, experienceCards);
           console.log(`[curated-v2] front-loaded ${experienceCards.length} brand experiences for intent=${experienceType}`);

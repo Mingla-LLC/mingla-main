@@ -118,7 +118,7 @@ export function canonicalDiscoveryPriceLabel(
       price.displayMinorUnitExponent,
     )
   ) {
-    return `Approx. ${formatRange(
+    return `≈ ${formatRange(
       price.displayMinMinor as number,
       price.displayMaxMinor ?? null,
       price.displayCurrencyCode as string,

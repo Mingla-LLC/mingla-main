@@ -17,6 +17,12 @@ interface TimelineSectionProps {
   title: string;
   address?: string;
   priceRange?: string;
+  /**
+   * #4347 — the server's conversion of `priceRange` into the viewer's currency.
+   * `priceRange` is the venue's SOURCE money; the timeline used to print it as
+   * if it were the viewer's. When present, the step reads "≈ <this>".
+   */
+  priceApprox?: string | null;
   travelTime?: string;
   strollTimeline?: Array<{
     step: number;
@@ -51,10 +57,13 @@ export default function TimelineSection({
   title,
   address,
   priceRange,
+  priceApprox,
   travelTime,
   strollTimeline,
   routeDuration,
 }: TimelineSectionProps) {
+  const viewerPrice =
+    typeof priceApprox === "string" && priceApprox.length > 0 ? `≈ ${priceApprox}` : priceRange;
   const { t } = useTranslation(['expanded_details', 'common']);
   // State to track which steps are expanded (first step expanded by default)
   const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set([0]));
@@ -115,7 +124,7 @@ export default function TimelineSection({
       category,
       title,
       address,
-      priceRange,
+      priceRange: viewerPrice,
       travelTime,
     });
 

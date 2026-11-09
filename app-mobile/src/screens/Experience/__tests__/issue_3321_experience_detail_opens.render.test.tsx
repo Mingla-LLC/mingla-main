@@ -247,6 +247,10 @@ jest.mock("../../../constants/designSystem", () => ({
   glass: { bottomSheet: { snapPoints: ["50%", "90%"] } },
 }));
 jest.mock("../../../utils/hueFromId", () => ({ hueFromId: () => 20 }));
+// #4347 — the screen now formats the converted price through formatters, whose
+// locale helper boots the real i18n stack (i18next is not installed in this
+// render lane). The locale is all this mount needs from it.
+jest.mock("../../../utils/localeUtils", () => ({ getUserLocale: () => "en-US" }));
 
 import ConsumerExperienceDetailScreen from "../ConsumerExperienceDetailScreen";
 

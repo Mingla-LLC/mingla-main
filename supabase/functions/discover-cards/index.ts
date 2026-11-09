@@ -16,6 +16,11 @@ import { decideTypeAndPill } from '../_shared/mixedTypeInterleave.ts';
 // Single owner: _shared/distanceMath.ts. See
 // Mingla_Artifacts/specs/SPEC_ORCH-0659_0660_DECK_DISTANCE_TRAVELTIME.md.
 import { haversineKm, estimateTravelMinutes, radiusKmForConstraint, type TravelMode } from '../_shared/distanceMath.ts';
+import {
+  attachExperienceDisplayPrices,
+  dbMinorConverter,
+  loadCurrencyExponents,
+} from '../_shared/experienceDisplayPrice.ts';
 // ORCH-1061 PART 2: single source of truth for the curated open-hours cascade +
 // the shared hours-text parsers. filterByDateTime AND the curated path both read
 // these — there is now exactly ONE parser (no duplicate defs). The shared
@@ -182,6 +187,12 @@ interface ExperienceDeckCard {
   totalPriceMin: number;
   totalPriceMax: number;
   currency: string;
+  // #4347 — the envelope converted into the viewer's currency (null = not
+  // converted; the app shows `currency` money). See _shared/experienceDisplayPrice.
+  displayPriceMin?: number | null;
+  displayPriceMax?: number | null;
+  displayCurrency?: string | null;
+  priceIsApprox?: boolean;
   masterDateUtc: string | null;
   masterEndAtUtc: string | null;
   timezone: string;
@@ -2818,6 +2829,18 @@ export async function handleDiscoverCards(
         excludeEventIds: excludeCardIds,
         limit: Math.min(limit, 30),
       });
+      // #4347: the envelope price in the VIEWER's currency, from the same FX
+      // snapshot this request pinned for place prices. Never throws; absent
+      // fields mean the app shows the host's own currency.
+      if (experienceCards.length > 0) {
+        experienceCards = await attachExperienceDisplayPrices(
+          experienceCards,
+          displayCurrency,
+          fxSnapshotId !== null ? dbMinorConverter(supabaseAdmin, fxSnapshotId) : null,
+          // supported_brand_currencies.minor_unit_exponent, read once here.
+          displayCurrency !== null ? await loadCurrencyExponents(supabaseAdmin) : undefined,
+        );
+      }
     } catch (err) {
       // Best-effort: an experience-source failure MUST NOT degrade the place deck
       // and MUST NOT be converted to pool-empty/pipeline-error (INV-042).
