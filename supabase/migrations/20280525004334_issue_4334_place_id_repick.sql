@@ -61,6 +61,9 @@ BEGIN
     ) -> 'address');
   END IF;
   IF v_patch = '{}'::jsonb THEN
+    -- 20280525004334: nothing is written, so the id validated above asserts
+    -- nothing; clear it so it cannot reach another row in this transaction.
+    PERFORM set_config('mingla.place_id_confirmed', '', true);
     RETURN jsonb_build_object('ok', true, 'venue_id', v_venue.id, 'changed', false, 'applied', v_patch);
   END IF;
 
@@ -364,8 +367,10 @@ COMMENT ON FUNCTION public.business_patch_event_taxonomy_with_place(uuid, text, 
 -- Mechanism: every write path that is sent a place id validates it through
 -- public.places_checked_place_id, which now also records it in the
 -- transaction-local setting mingla.place_id_confirmed. A trigger keeps the id
--- (and stamps the fresh pin) only when the row's id equals the asserted one,
--- and consumes the setting so it never carries to a later write. Everything
+-- (and stamps the fresh pin) only when the row's id equals the asserted one;
+-- every insert or update on those tables consumes the setting, and the
+-- in-review RPC clears it when it writes nothing, so it never carries to a
+-- later write. Everything
 -- else is unchanged: a moved pin with no id asserted, including a direct
 -- UPDATE, still clears. places_checked_place_id becomes VOLATILE (it now has
 -- an effect); it is used by no index, constraint or generated column.
@@ -405,6 +410,13 @@ AS $function$
 DECLARE
   v_confirmed text;   -- 20280525004334
 BEGIN
+  -- 20280525004334: the id the writer asserted through places_checked_place_id
+  -- in this transaction, consumed by EVERY row write (insert or update) so it
+  -- never carries to a later write.
+  v_confirmed := NULLIF(current_setting('mingla.place_id_confirmed', true), '');
+  IF v_confirmed IS NOT NULL THEN
+    PERFORM set_config('mingla.place_id_confirmed', '', true);
+  END IF;
   IF TG_OP = 'INSERT' THEN
     IF public.places_is_google_place_id(NEW.location_provider_place_id)
        AND NEW.location_geo_refreshed_at IS NULL THEN
@@ -413,12 +425,6 @@ BEGIN
       NEW.location_geo_refresh_failures := 0;
     END IF;
     RETURN NEW;
-  END IF;
-  -- 20280525004334: the id the writer asserted through places_checked_place_id
-  -- in this transaction, consumed here so it never carries to a later write.
-  v_confirmed := NULLIF(current_setting('mingla.place_id_confirmed', true), '');
-  IF v_confirmed IS NOT NULL THEN
-    PERFORM set_config('mingla.place_id_confirmed', '', true);
   END IF;
   IF NEW.location_geo_refreshed_at IS DISTINCT FROM OLD.location_geo_refreshed_at
      OR NEW.location_geo_refresh_state IS DISTINCT FROM OLD.location_geo_refresh_state THEN
@@ -464,12 +470,11 @@ DECLARE
   v_confirmed text;   -- 20280525004334
 BEGIN
   -- 20280525004334: the id the writer asserted through places_checked_place_id
-  -- in this transaction, consumed here so it never carries to a later write.
-  IF TG_OP = 'UPDATE' THEN
-    v_confirmed := NULLIF(current_setting('mingla.place_id_confirmed', true), '');
-    IF v_confirmed IS NOT NULL THEN
-      PERFORM set_config('mingla.place_id_confirmed', '', true);
-    END IF;
+  -- in this transaction, consumed by EVERY row write (insert or update) so it
+  -- never carries to a later write.
+  v_confirmed := NULLIF(current_setting('mingla.place_id_confirmed', true), '');
+  IF v_confirmed IS NOT NULL THEN
+    PERFORM set_config('mingla.place_id_confirmed', '', true);
   END IF;
   -- event location pin
   IF TG_OP = 'INSERT' THEN

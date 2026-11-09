@@ -17,10 +17,15 @@
 --   S-5 event draft: the same id with refined coordinates keeps the id
 --   S-6 a direct UPDATE that moves a pin without an id still clears it (venue and event),
 --       even after an earlier write in the same transaction asserted that id
+--   C-1 the asserted-id record is empty after a venue create and an event draft create
+--   C-2 ...after an in-review save that changed nothing, so a direct move of another
+--       venue holding the same id then clears that venue's id
+--   C-3 ...after a live-venue request refused as nothing_to_change (caught)
 --
 -- Fails-on-revert: run against 20280521004334's definitions (this migration's
 -- functions restored) → V-1, V-3 and E-2 red; without section (3) of the
--- migration (the place-stamp triggers) → S-1..S-5 red.
+-- migration (the place-stamp triggers) → S-1..S-5 red; without the INSERT and
+-- no-op consumption of the record → C-1 and C-2 red.
 \set ON_ERROR_STOP on
 BEGIN;
 
@@ -47,6 +52,8 @@ DECLARE
   v_admin uuid := '43342500-0000-4000-8400-000000000002';
   v_request uuid;
   v_rsvp uuid := '43342500-0000-4000-8400-000000000031';
+  v_venue_a uuid;
+  v_venue_b uuid;
 BEGIN
   INSERT INTO auth.users(id, email) VALUES (v_owner, 'repick-4334@example.test');
   INSERT INTO public.creator_accounts(id, email) VALUES (v_owner, 'repick-4334@example.test');
@@ -237,6 +244,49 @@ BEGIN
   UPDATE public.events SET location_geo = point(3.40, 6.40) WHERE id = v_event;
   IF (SELECT location_provider_place_id FROM public.events WHERE id = v_event) IS NOT NULL THEN
     RAISE EXCEPTION 'S-6b: a direct event move without an id kept the id';
+  END IF;
+
+  -- ── C-* the asserted-id record never outlives its write ──────────────────
+  v_venue_a := public.biz_create_venue_listing(
+    v_brand, 'Record venue A', 'recordvenuea4334', 'A venue.', '', 6.5100, 3.3600, 'Lagos', 'NG',
+    '1 Record Road', 'restaurant', 'record-a-4334@example.test', '+2348031234567', '', '', v_hours,
+    NULL, 'exact', p_location_place_id => v_id2);
+  IF COALESCE(current_setting('mingla.place_id_confirmed', true), '') <> '' THEN
+    RAISE EXCEPTION 'C-1a: a venue create left the asserted id set';
+  END IF;
+  v_result := public.business_create_event_draft(v_brand, jsonb_build_object(
+    'title', 'Record draft', 'location_geo', '(3.36,6.51)', 'location_provider_place_id', v_id2,
+    'timezone', 'Africa/Lagos', 'currency', 'NGN', 'theme', v_theme));
+  IF COALESCE(current_setting('mingla.place_id_confirmed', true), '') <> '' THEN
+    RAISE EXCEPTION 'C-1b: an event draft create left the asserted id set';
+  END IF;
+  v_venue_b := public.biz_create_venue_listing(
+    v_brand, 'Record venue B', 'recordvenueb4334', 'A venue.', '', 6.5000, 3.3500, 'Lagos', 'NG',
+    '2 Record Road', 'restaurant', 'record-b-4334@example.test', '+2348031234567', '', '', v_hours,
+    NULL, 'exact', p_location_place_id => v_id2);
+  v_result := public.biz_update_venue_identity_in_review(v_venue_a, p_address => '1 Record Road',
+    p_city => 'Lagos', p_country_code => 'NG', p_lat => 6.5100, p_lng => 3.3600,
+    p_coordinate_precision => 'exact', p_location_place_id => v_id2);
+  IF (v_result ->> 'changed')::boolean IS NOT FALSE THEN
+    RAISE EXCEPTION 'C-2 fixture: the no-op in review changed something (%)', v_result;
+  END IF;
+  IF COALESCE(current_setting('mingla.place_id_confirmed', true), '') <> '' THEN
+    RAISE EXCEPTION 'C-2a: an in-review save that changed nothing left the asserted id set';
+  END IF;
+  UPDATE public.venue_listings SET lat = 6.51 WHERE id = v_venue_b;
+  IF (SELECT location_provider_place_id FROM public.venue_listings WHERE id = v_venue_b) IS NOT NULL THEN
+    RAISE EXCEPTION 'C-2b: venue B kept its id on a direct move after a no-op on venue A';
+  END IF;
+  UPDATE public.venue_listings SET claim_status = 'verified' WHERE id = v_venue_a;
+  BEGIN
+    PERFORM public.biz_submit_venue_details_change_request(v_venue_a, p_address => '1 Record Road',
+      p_city => 'Lagos', p_country_code => 'NG', p_lat => 6.5100, p_lng => 3.3600,
+      p_coordinate_precision => 'exact', p_location_place_id => v_id2);
+    RAISE EXCEPTION 'C-3 fixture: the no-op request was accepted';
+  EXCEPTION WHEN invalid_parameter_value THEN NULL;
+  END;
+  IF COALESCE(current_setting('mingla.place_id_confirmed', true), '') <> '' THEN
+    RAISE EXCEPTION 'C-3: a refused no-op request left the asserted id set';
   END IF;
 
   RAISE NOTICE 'issue_4334_place_id_repick: all checks passed';
