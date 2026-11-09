@@ -408,4 +408,29 @@ describe("issue #3281 — the public page with a cancelled date", () => {
     expect(bannerText(tree)).not.toContain("Sold out");
     expect(has(tree, "issue-2135-day-chooser")).toBe(true);
   });
+
+  test("(e) the page's own toggle handler refuses a cancelled date, even if the picker lets the tap through", async () => {
+    const tree = await mount([occ(DAY_A, 21, true), occ(DAY_B, 22), occ(DAY_C, 23)]);
+    // Call the handler the page gives the chooser directly, skipping the
+    // picker's own disabled row, so this pins the page's filter on its own.
+    const onToggle = (
+      tree.root as unknown as {
+        findAll: (
+          pred: (node: { props: Record<string, unknown> }) => boolean,
+        ) => Array<{ props: { onToggle: (id: string) => void } }>;
+      }
+    ).findAll(
+      (node) =>
+        typeof node.props.onToggle === "function" &&
+        node.props.highlightUnchosen !== undefined,
+    )[0]?.props.onToggle;
+    if (typeof onToggle !== "function") throw new Error("missing onToggle");
+    await act(async () => onToggle(DAY_A));
+    await act(async () => onToggle(DAY_B));
+    await act(async () => press(tree, "issue-2135-proceed"));
+    expect(router.push).toHaveBeenCalledTimes(1);
+    expect(String(router.push.mock.calls[0][0])).toBe(
+      `/checkout/evt-3281?eventDateIds=${DAY_B}`,
+    );
+  });
 });

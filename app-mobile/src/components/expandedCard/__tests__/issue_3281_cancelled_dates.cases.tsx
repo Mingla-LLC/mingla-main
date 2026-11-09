@@ -24,7 +24,11 @@ import {
   computeOfferingVariant,
   resolveOfferingCta,
 } from "@mingla/offering-rendering/offeringCta";
-import { formatOccurrenceSummary } from "../../../utils/eventDateDisplay";
+import {
+  formatEventDateLine,
+  formatOccurrenceSummary,
+  formatPrimaryDateLine,
+} from "../../../utils/eventDateDisplay";
 import type { PublicEventOccurrenceLike } from "../../../hooks/usePublicEventBySlug";
 import type { EventDayChooserProps } from "../EventDayChooser";
 
@@ -208,6 +212,61 @@ describe("issue #3281 — Explorer never sends or counts a cancelled date", () =
     expect(
       formatOccurrenceSummary(DAYS.map((d) => ({ ...d, cancelled: true })), "UTC"),
     ).toBeNull();
+  });
+});
+
+describe("issue #3281 — a cancelled master date never leads the Explorer page", () => {
+  const master = {
+    masterDateUtc: "2030-08-29T10:00:00Z",
+    masterEndAtUtc: "2030-08-29T17:00:00Z",
+    timezone: "UTC",
+  };
+
+  test("two dates, the master cancelled: the line names the date still on", () => {
+    const occurrences = [day(FRI, 29, CANCELLED), day(SAT, 30)];
+    const line = formatPrimaryDateLine(master, occurrences);
+    expect(line).toBe(
+      formatEventDateLine({
+        masterDateUtc: "2030-08-30T10:00:00Z",
+        masterEndAtUtc: "2030-08-30T17:00:00Z",
+        timezone: "UTC",
+      }),
+    );
+    expect(line).not.toBe(formatEventDateLine(master));
+    // One date left, so no summary: the line alone names it.
+    expect(formatOccurrenceSummary(occurrences, "UTC")).toBeNull();
+  });
+
+  test("the earliest date still on leads, whatever order the dates arrive in", () => {
+    const line = formatPrimaryDateLine(master, [
+      day(SUN, 31),
+      day(FRI, 29, CANCELLED),
+      day(SAT, 30),
+    ]);
+    expect(line).toMatch(/30 Aug/);
+  });
+
+  test("the master still on, or another date cancelled: the master line is unchanged", () => {
+    expect(formatPrimaryDateLine(master, DAYS)).toBe(formatEventDateLine(master));
+    expect(formatPrimaryDateLine(master, [day(FRI, 29), day(SAT, 30)])).toBe(
+      formatEventDateLine(master),
+    );
+  });
+
+  test("every date cancelled: the master line stays (the page reads Sold out)", () => {
+    expect(
+      formatPrimaryDateLine(master, [day(FRI, 29, CANCELLED), day(SAT, 30, CANCELLED)]),
+    ).toBe(formatEventDateLine(master));
+  });
+
+  test("the Explorer event page uses it for its date line on both the seed and canonical paths", () => {
+    const screen = readFileSync(
+      join(__dirname, "..", "..", "..", "screens", "Event", "ConsumerEventDetailScreen.tsx"),
+      "utf8",
+    );
+    expect(screen).toMatch(/formatPrimaryDateLine\(\s*\{[\s\S]*?\},\s*validOccurrences,\s*\)/);
+    expect(screen.match(/dateLine: primaryDateLine,/g)?.length).toBe(2);
+    expect(screen).not.toMatch(/dateLine: seededPublicEvent\.dateLine/);
   });
 });
 

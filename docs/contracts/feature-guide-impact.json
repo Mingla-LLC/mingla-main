@@ -99,6 +99,12 @@
       "capability_key": "checkout-tickets",
       "paths": [
         "supabase/migrations/20280523003281_issue_3281_cancelled_dates_and_live_save.sql",
+        "mingla-business/src/payments/nativeCheckoutFlow.ts",
+        "mingla-business/src/services/publicEventOccurrencesService.ts",
+        "mingla-business/src/utils/eventDateDisplay.ts",
+        "mingla-business/src/utils/publicEventOccurrenceTruth.ts",
+        "packages/offering-rendering/eventDateSchedule.ts",
+        "packages/offering-rendering/noDateOnSale.ts",
         "app-mobile/app/purchases/[kind]/[id].tsx",
         "app-mobile/src/components/activity/CalendarAgendaRow.tsx",
         "app-mobile/src/components/profile/PurchasesCard.tsx",

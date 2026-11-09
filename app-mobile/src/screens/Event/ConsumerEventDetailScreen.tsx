@@ -190,6 +190,7 @@ import { buildStaticMapUrl } from "../../utils/staticMapImage";
 import {
   formatEventDateLine,
   formatOccurrenceSummary,
+  formatPrimaryDateLine,
 } from "../../utils/eventDateDisplay";
 import type { BusinessEventCard } from "../../types/mergedDiscover";
 import {
@@ -1602,6 +1603,19 @@ export default function ConsumerEventDetailScreen({
   // map URL is privacy-gated: exact pin when the street is public, else null on the
   // warm path (no city centroid on the deck seed) → text venue card (rule 9).
   const seededPublicEvent = cardToPublicEvent(seed, tickets);
+  // issue #3281 — a cancelled master date never leads the page while another
+  // date is still on; the line names the first date still on instead.
+  const primaryDateLine =
+    validOccurrences.length > 1
+      ? formatPrimaryDateLine(
+          {
+            masterDateUtc: seed.masterDateUtc,
+            masterEndAtUtc: seed.masterEndAtUtc,
+            timezone: validatedDayCanonical?.timezone ?? seed.timezone,
+          },
+          validOccurrences,
+        )
+      : seededPublicEvent.dateLine;
   const occurrenceSummary = validOccurrences.length > 1
     ? formatOccurrenceSummary(
         validOccurrences,
@@ -1630,6 +1644,7 @@ export default function ConsumerEventDetailScreen({
     canonical === null
       ? {
           ...seededPublicEvent,
+          dateLine: primaryDateLine,
           dateSubline: occurrenceSummary,
           ...(validatedDayCanonical?.event.acquisitionState === undefined
             ? {}
@@ -1641,7 +1656,7 @@ export default function ConsumerEventDetailScreen({
         }
       : {
           ...canonical.event,
-          dateLine: seededPublicEvent.dateLine,
+          dateLine: primaryDateLine,
           dateSubline: occurrenceSummary,
           hideRemainingCount,
         };

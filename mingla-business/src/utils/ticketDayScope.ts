@@ -103,36 +103,48 @@ export const liveDayIds = (
  * An extra's dated list follows the same rule as its ticket's: an id that is
  * no longer a date leaves it, and an emptied list stays `[]` ("choose again",
  * refused by the editor and by the server as `extra_day_scope_empty`), never
- * null, which would widen the extra to every date its ticket admits. Extras
+ * null, which would widen the extra to every date its ticket admits. Only
+ * `keep` returning null (the ticket itself left multi-date) widens it. Extras
  * that did not load (undefined) stay undefined so the save leaves them alone.
  */
 const withExtraDays = (
   ticket: TicketStub,
-  keep: (ids: readonly string[]) => string[],
+  keep: (ids: readonly string[]) => string[] | null,
 ): TicketStub => {
   if (ticket.extras === undefined) return ticket;
   let changed = false;
   const extras = ticket.extras.map((extra): TicketExtraStub => {
     if (extra.validDayIds === null) return extra;
     const next = keep(extra.validDayIds);
-    if (next.length === extra.validDayIds.length) return extra;
+    if (next !== null && next.length === extra.validDayIds.length) return extra;
     changed = true;
     return { ...extra, validDayIds: next };
   });
   return changed ? { ...ticket, extras } : ticket;
 };
 
+/** Each ticket's list, and each of its extras' lists, keeps what `keep` keeps. */
+const trimDays = (
+  tickets: readonly TicketStub[],
+  keep: (ids: readonly string[]) => string[],
+): TicketStub[] =>
+  tickets.map((ticket) => {
+    const ids = ticket.validDayIds;
+    const next = ids === null || ids === undefined ? null : keep(ids);
+    return withExtraDays(
+      next === null || next.length === ids?.length
+        ? ticket
+        : { ...ticket, validDayIds: next },
+      keep,
+    );
+  });
+
 /** After a date mode switch mints new ids, a list keeps only ids that survive. */
 export const ticketsOnCurrentDays = (
   tickets: readonly TicketStub[],
   entries: Entries,
 ): TicketStub[] =>
-  tickets.map((ticket) => {
-    const trimmed = ticket.validDayIds === null || ticket.validDayIds === undefined
-      ? ticket
-      : { ...ticket, validDayIds: liveDayIds(ticket.validDayIds, entries) };
-    return withExtraDays(trimmed, (ids) => liveDayIds(ids, entries));
-  });
+  trimDays(tickets, (ids) => liveDayIds(ids, entries));
 
 /**
  * Leaving multi-date hides the picker, so a list could never be fixed and the
@@ -141,24 +153,13 @@ export const ticketsOnCurrentDays = (
 export const ticketsOnAllDates = (
   tickets: readonly TicketStub[],
 ): TicketStub[] =>
-  tickets.map((ticket) => {
-    const widened = isDayLimited(ticket)
-      ? { ...ticket, validDayIds: null }
-      : ticket;
-    if (
-      widened.extras === undefined ||
-      widened.extras.every((extra) => extra.validDayIds === null)
-    ) {
-      return widened;
-    }
+  tickets.map((ticket) =>
     // The extra's day picker leaves with the ticket's, so its list goes too.
-    return {
-      ...widened,
-      extras: widened.extras.map((extra) =>
-        extra.validDayIds === null ? extra : { ...extra, validDayIds: null },
-      ),
-    };
-  });
+    withExtraDays(
+      isDayLimited(ticket) ? { ...ticket, validDayIds: null } : ticket,
+      () => null,
+    ),
+  );
 
 /** Passes sold on the ticket's busiest date. */
 export const busiestDaySold = (
@@ -173,15 +174,7 @@ export const ticketsWithoutDay = (
   tickets: readonly TicketStub[],
   entryId: string,
 ): TicketStub[] =>
-  tickets.map((ticket) => {
-    const trimmed = ticket.validDayIds?.includes(entryId)
-      ? {
-          ...ticket,
-          validDayIds: ticket.validDayIds.filter((id) => id !== entryId),
-        }
-      : ticket;
-    return withExtraDays(trimmed, (ids) => ids.filter((id) => id !== entryId));
-  });
+  trimDays(tickets, (ids) => ids.filter((id) => id !== entryId));
 
 const ticketPhrase = (names: readonly string[]): string =>
   names.length === 1 ? names[0] : `${names.length} tickets`;

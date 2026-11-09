@@ -224,6 +224,11 @@ export function EventDatePicker({
             ? CANCELLED_OCCURRENCE_LABEL
             : placesLeftChip(o.placesLeft);
           const rowTestID = `${occurrenceTestIDPrefix ?? `${testID}-day`}-${o.id}`;
+          // issue #3281 — a cancelled date can never be chosen, even by a
+          // caller that ignores `soldOut`.
+          const toggle = () => {
+            if (!cancelled) onToggle(o.id);
+          };
           const rowNativeID = occurrenceNativeIDPrefix
             ? `${occurrenceNativeIDPrefix}-${o.id}`
             : undefined;
@@ -248,11 +253,7 @@ export function EventDatePicker({
               placesLeftLabel: chip,
               testID: rowTestID,
               nativeID: rowNativeID,
-              // issue #3281 — a cancelled date can never be chosen, even by
-              // a caller that ignores `soldOut`.
-              toggle: () => {
-                if (!cancelled) onToggle(o.id);
-              },
+              toggle,
             });
           }
           const day =
@@ -271,9 +272,7 @@ export function EventDatePicker({
               accessibilityState={{ checked: isOn, disabled: full }}
               accessibilityLabel={label}
               disabled={full}
-              onPress={() => {
-                if (!cancelled) onToggle(o.id);
-              }}
+              onPress={toggle}
               style={[
                 styles.chip,
                 styles.hit,
