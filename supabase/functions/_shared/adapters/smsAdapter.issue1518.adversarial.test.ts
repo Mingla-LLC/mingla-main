@@ -683,6 +683,8 @@ Deno.test(
           ...baseInput,
           countryCode: "NG",
           messageType: mt as "transactional" | "marketing" | undefined,
+          // #4273 — a marketing send carries its DB route; ignored otherwise.
+          marketingRoute: "termii",
         });
         const label = `messageType=${JSON.stringify(mt)}`;
         assertEquals(result.status, "sent", label);
@@ -805,6 +807,8 @@ Deno.test(
           message,
           countryCode: "NG",
           messageType,
+          // #4273 — a marketing send carries its DB route; ignored otherwise.
+          marketingRoute: "termii",
           stopFooterOwnLine: ownLineFlag,
         });
         const label = `${messageType}/stopFooterOwnLine=${ownLineFlag}`;
@@ -874,6 +878,8 @@ Deno.test(
         to: US_NUMBER,
         countryCode: "US",
         messageType: "marketing",
+        // #4273 — US marketing rides the toll-free service (no override SID).
+        marketingRoute: "toll_free",
         stopFooterOwnLine: true,
       });
       const usBody = String(twilioParams().get("Body"));

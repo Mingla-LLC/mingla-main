@@ -69,10 +69,10 @@
 // "generic") and revert the invariant + strict-grep gate with it. The DND route
 // remains the correct design; this interim exists only because it is unavailable.
 // ===========================================================================
-import {
-  resolveDeliveryFlagValue,
-  resolveSmsCountryLive,
-} from "../secretBundle.ts";
+import { resolveDeliveryFlagValue } from "../secretBundle.ts";
+// #4273 — the sender CLASS a country's marketing text must use (toll-free,
+// Termii or the marketing service); the guard below refuses any other pairing.
+import { smsCountryProfile } from "../smsCountries.ts";
 import { resolveRuntimeConfigValue } from "../runtimeConfig.ts";
 // #2218 — the ONE definition of the Nigerian `generic` operator embargo. Both
 // rails read it from here; see the essay at the top of that file.
@@ -179,6 +179,13 @@ export interface SmsSendInput {
    * of "Reply STOP to opt out." Marketing only; set by marketing-send.
    */
   optOutLink?: string;
+  /**
+   * #4273 — MARKETING ONLY: the route the caller decided from
+   * public.sms_country_switches (smsMarketingRouteFromSwitches). Absent or
+   * null means the country is not switched on: the send is skipped
+   * (provider_kill_switch_off). Ignored for transactional texts.
+   */
+  marketingRoute?: "toll_free" | "marketing" | "termii" | null;
   beforeProviderIo?: () => Promise<void>;
 }
 
@@ -642,9 +649,12 @@ export const smsAdapter = {
     // Per-market kill-switch — return skipped WITHOUT any HTTP call when off.
     // Same single normalization feeds BOTH this and the provider choice below.
     const killSwitch = resolveMarketKillSwitch(cc, input.messageType);
+    // #4273 — marketing switch and sender are decided by the caller from
+    // public.sms_country_switches; the adapter only refuses a wrong-sender
+    // pairing (below). Transactional keeps envTrue, unchanged.
     const switchedOn = killSwitch !== null &&
       (input.messageType === "marketing"
-        ? resolveSmsCountryLive(cc)
+        ? (input.marketingRoute ?? null) !== null
         : envTrue(killSwitch));
     if (!switchedOn) {
       return {
@@ -658,6 +668,32 @@ export const smsAdapter = {
         provider: selectedProvider,
         error: "provider_kill_switch_off",
       };
+    }
+
+    // #4273 — MARKETING wrong-sender guard (I-4273-ALPHA-COUNTRIES-NEVER-USE-
+    // TOLL-FREE). A marketing text goes out only on its country's own sender
+    // class: US/CA the toll-free service (no override SID), NG Termii, every
+    // other country the marketing service (an override SID is required, so an
+    // alphanumeric country can never fall back to the toll-free number in
+    // twilioSend). Any other pairing is skipped with zero HTTP, before
+    // beforeProviderIo. Transactional texts never enter this block.
+    if (input.messageType === "marketing") {
+      const senderClass = smsCountryProfile(cc)?.sender;
+      const sid = (input.messagingServiceSid ?? "").trim();
+      const paired = senderClass === "toll_free"
+        ? input.marketingRoute === "toll_free" && sid.length === 0
+        : senderClass === "termii"
+        ? input.marketingRoute === "termii"
+        : input.marketingRoute === "marketing" && sid.length > 0;
+      if (!paired) {
+        return {
+          ok: false,
+          status: "skipped",
+          providerMessageId: null,
+          provider: selectedProvider,
+          error: "marketing_sender_mismatch",
+        };
+      }
     }
 
     // =====================================================================

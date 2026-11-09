@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/adapters/smsAdapter.issue4273_transactional_parity.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4273-sms-adapter-transactional-parity",
+  "profile": "deno-2-unit"
+}

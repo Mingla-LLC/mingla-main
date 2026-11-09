@@ -173,7 +173,11 @@ export async function buildMarketingBookQuote(
   options: {
     trackingOrigin?: string;
     smsRates?: SmsRateV1[];
-    /** #4273 — per-country switch; see allocateSmsCosts for the default. */
+    /**
+     * #4273 — per-country switch, from the caller's snapshot of
+     * public.sms_country_switches (smsCountryTextableFrom). Required for SMS:
+     * absent → the switches could not be read → rate book unavailable.
+     */
     smsCountryLive?: (country: string) => boolean;
     /** #3682 — same Follow line dispatch appends; required for SMS segment parity. */
     followBrand?: { name: string; slug: string } | null;

@@ -1,0 +1,4530 @@
+{
+  "us|us:true|ng:true|sid:none|media:none|ng_open": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+12025550142"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273transactional"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "us|us:true|ng:true|sid:none|media:none|ng_embargo": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+12025550142"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273transactional"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "us|us:true|ng:true|sid:none|media:one|ng_open": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+12025550142"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273transactional"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ],
+          [
+            "MediaUrl",
+            "https://cdn.example.test/a.jpg"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "us|us:true|ng:true|sid:none|media:one|ng_embargo": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+12025550142"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273transactional"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ],
+          [
+            "MediaUrl",
+            "https://cdn.example.test/a.jpg"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "us|us:true|ng:true|sid:override|media:none|ng_open": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+12025550142"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273override000000000000000000"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "us|us:true|ng:true|sid:override|media:none|ng_embargo": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+12025550142"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273override000000000000000000"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "us|us:true|ng:true|sid:override|media:one|ng_open": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+12025550142"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273override000000000000000000"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ],
+          [
+            "MediaUrl",
+            "https://cdn.example.test/a.jpg"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "us|us:true|ng:true|sid:override|media:one|ng_embargo": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+12025550142"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273override000000000000000000"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ],
+          [
+            "MediaUrl",
+            "https://cdn.example.test/a.jpg"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "us|us:false|ng:false|sid:none|media:none|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "us|us:false|ng:false|sid:none|media:none|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "us|us:false|ng:false|sid:none|media:one|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "us|us:false|ng:false|sid:none|media:one|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "us|us:false|ng:false|sid:override|media:none|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "us|us:false|ng:false|sid:override|media:none|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "us|us:false|ng:false|sid:override|media:one|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "us|us:false|ng:false|sid:override|media:one|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "us|us:true|ng:false|sid:none|media:none|ng_open": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+12025550142"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273transactional"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "us|us:true|ng:false|sid:none|media:none|ng_embargo": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+12025550142"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273transactional"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "us|us:true|ng:false|sid:none|media:one|ng_open": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+12025550142"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273transactional"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ],
+          [
+            "MediaUrl",
+            "https://cdn.example.test/a.jpg"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "us|us:true|ng:false|sid:none|media:one|ng_embargo": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+12025550142"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273transactional"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ],
+          [
+            "MediaUrl",
+            "https://cdn.example.test/a.jpg"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "us|us:true|ng:false|sid:override|media:none|ng_open": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+12025550142"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273override000000000000000000"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "us|us:true|ng:false|sid:override|media:none|ng_embargo": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+12025550142"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273override000000000000000000"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "us|us:true|ng:false|sid:override|media:one|ng_open": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+12025550142"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273override000000000000000000"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ],
+          [
+            "MediaUrl",
+            "https://cdn.example.test/a.jpg"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "us|us:true|ng:false|sid:override|media:one|ng_embargo": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+12025550142"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273override000000000000000000"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ],
+          [
+            "MediaUrl",
+            "https://cdn.example.test/a.jpg"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "us|us:false|ng:true|sid:none|media:none|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "us|us:false|ng:true|sid:none|media:none|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "us|us:false|ng:true|sid:none|media:one|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "us|us:false|ng:true|sid:none|media:one|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "us|us:false|ng:true|sid:override|media:none|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "us|us:false|ng:true|sid:override|media:none|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "us|us:false|ng:true|sid:override|media:one|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "us|us:false|ng:true|sid:override|media:one|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "ng|us:true|ng:true|sid:none|media:none|ng_open": {
+    "requests": [
+      {
+        "url": "https://termii.parity.test/api/sms/send",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/json"
+          ]
+        ],
+        "body": [
+          [
+            "api_key",
+            "tk4273parity"
+          ],
+          [
+            "to",
+            "+2348031234567"
+          ],
+          [
+            "from",
+            "Mingla"
+          ],
+          [
+            "sms",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "type",
+            "plain"
+          ],
+          [
+            "channel",
+            "generic"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "3017857812138224517130997",
+      "segments": 1,
+      "provider": "termii"
+    }
+  },
+  "ng|us:true|ng:true|sid:none|media:none|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "deferred",
+      "providerMessageId": null,
+      "provider": "termii",
+      "retryAfter": "2026-11-10T07:00:00.000Z",
+      "error": "ng_operator_embargo"
+    }
+  },
+  "ng|us:true|ng:true|sid:none|media:one|ng_open": {
+    "requests": [
+      {
+        "url": "https://termii.parity.test/api/sms/send",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/json"
+          ]
+        ],
+        "body": [
+          [
+            "api_key",
+            "tk4273parity"
+          ],
+          [
+            "to",
+            "+2348031234567"
+          ],
+          [
+            "from",
+            "Mingla"
+          ],
+          [
+            "sms",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "type",
+            "plain"
+          ],
+          [
+            "channel",
+            "generic"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "3017857812138224517130997",
+      "segments": 1,
+      "provider": "termii"
+    }
+  },
+  "ng|us:true|ng:true|sid:none|media:one|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "deferred",
+      "providerMessageId": null,
+      "provider": "termii",
+      "retryAfter": "2026-11-10T07:00:00.000Z",
+      "error": "ng_operator_embargo"
+    }
+  },
+  "ng|us:true|ng:true|sid:override|media:none|ng_open": {
+    "requests": [
+      {
+        "url": "https://termii.parity.test/api/sms/send",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/json"
+          ]
+        ],
+        "body": [
+          [
+            "api_key",
+            "tk4273parity"
+          ],
+          [
+            "to",
+            "+2348031234567"
+          ],
+          [
+            "from",
+            "Mingla"
+          ],
+          [
+            "sms",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "type",
+            "plain"
+          ],
+          [
+            "channel",
+            "generic"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "3017857812138224517130997",
+      "segments": 1,
+      "provider": "termii"
+    }
+  },
+  "ng|us:true|ng:true|sid:override|media:none|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "deferred",
+      "providerMessageId": null,
+      "provider": "termii",
+      "retryAfter": "2026-11-10T07:00:00.000Z",
+      "error": "ng_operator_embargo"
+    }
+  },
+  "ng|us:true|ng:true|sid:override|media:one|ng_open": {
+    "requests": [
+      {
+        "url": "https://termii.parity.test/api/sms/send",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/json"
+          ]
+        ],
+        "body": [
+          [
+            "api_key",
+            "tk4273parity"
+          ],
+          [
+            "to",
+            "+2348031234567"
+          ],
+          [
+            "from",
+            "Mingla"
+          ],
+          [
+            "sms",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "type",
+            "plain"
+          ],
+          [
+            "channel",
+            "generic"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "3017857812138224517130997",
+      "segments": 1,
+      "provider": "termii"
+    }
+  },
+  "ng|us:true|ng:true|sid:override|media:one|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "deferred",
+      "providerMessageId": null,
+      "provider": "termii",
+      "retryAfter": "2026-11-10T07:00:00.000Z",
+      "error": "ng_operator_embargo"
+    }
+  },
+  "ng|us:false|ng:false|sid:none|media:none|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "termii",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "ng|us:false|ng:false|sid:none|media:none|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "termii",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "ng|us:false|ng:false|sid:none|media:one|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "termii",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "ng|us:false|ng:false|sid:none|media:one|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "termii",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "ng|us:false|ng:false|sid:override|media:none|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "termii",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "ng|us:false|ng:false|sid:override|media:none|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "termii",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "ng|us:false|ng:false|sid:override|media:one|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "termii",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "ng|us:false|ng:false|sid:override|media:one|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "termii",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "ng|us:true|ng:false|sid:none|media:none|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "termii",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "ng|us:true|ng:false|sid:none|media:none|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "termii",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "ng|us:true|ng:false|sid:none|media:one|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "termii",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "ng|us:true|ng:false|sid:none|media:one|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "termii",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "ng|us:true|ng:false|sid:override|media:none|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "termii",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "ng|us:true|ng:false|sid:override|media:none|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "termii",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "ng|us:true|ng:false|sid:override|media:one|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "termii",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "ng|us:true|ng:false|sid:override|media:one|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "termii",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "ng|us:false|ng:true|sid:none|media:none|ng_open": {
+    "requests": [
+      {
+        "url": "https://termii.parity.test/api/sms/send",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/json"
+          ]
+        ],
+        "body": [
+          [
+            "api_key",
+            "tk4273parity"
+          ],
+          [
+            "to",
+            "+2348031234567"
+          ],
+          [
+            "from",
+            "Mingla"
+          ],
+          [
+            "sms",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "type",
+            "plain"
+          ],
+          [
+            "channel",
+            "generic"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "3017857812138224517130997",
+      "segments": 1,
+      "provider": "termii"
+    }
+  },
+  "ng|us:false|ng:true|sid:none|media:none|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "deferred",
+      "providerMessageId": null,
+      "provider": "termii",
+      "retryAfter": "2026-11-10T07:00:00.000Z",
+      "error": "ng_operator_embargo"
+    }
+  },
+  "ng|us:false|ng:true|sid:none|media:one|ng_open": {
+    "requests": [
+      {
+        "url": "https://termii.parity.test/api/sms/send",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/json"
+          ]
+        ],
+        "body": [
+          [
+            "api_key",
+            "tk4273parity"
+          ],
+          [
+            "to",
+            "+2348031234567"
+          ],
+          [
+            "from",
+            "Mingla"
+          ],
+          [
+            "sms",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "type",
+            "plain"
+          ],
+          [
+            "channel",
+            "generic"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "3017857812138224517130997",
+      "segments": 1,
+      "provider": "termii"
+    }
+  },
+  "ng|us:false|ng:true|sid:none|media:one|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "deferred",
+      "providerMessageId": null,
+      "provider": "termii",
+      "retryAfter": "2026-11-10T07:00:00.000Z",
+      "error": "ng_operator_embargo"
+    }
+  },
+  "ng|us:false|ng:true|sid:override|media:none|ng_open": {
+    "requests": [
+      {
+        "url": "https://termii.parity.test/api/sms/send",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/json"
+          ]
+        ],
+        "body": [
+          [
+            "api_key",
+            "tk4273parity"
+          ],
+          [
+            "to",
+            "+2348031234567"
+          ],
+          [
+            "from",
+            "Mingla"
+          ],
+          [
+            "sms",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "type",
+            "plain"
+          ],
+          [
+            "channel",
+            "generic"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "3017857812138224517130997",
+      "segments": 1,
+      "provider": "termii"
+    }
+  },
+  "ng|us:false|ng:true|sid:override|media:none|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "deferred",
+      "providerMessageId": null,
+      "provider": "termii",
+      "retryAfter": "2026-11-10T07:00:00.000Z",
+      "error": "ng_operator_embargo"
+    }
+  },
+  "ng|us:false|ng:true|sid:override|media:one|ng_open": {
+    "requests": [
+      {
+        "url": "https://termii.parity.test/api/sms/send",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/json"
+          ]
+        ],
+        "body": [
+          [
+            "api_key",
+            "tk4273parity"
+          ],
+          [
+            "to",
+            "+2348031234567"
+          ],
+          [
+            "from",
+            "Mingla"
+          ],
+          [
+            "sms",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "type",
+            "plain"
+          ],
+          [
+            "channel",
+            "generic"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "3017857812138224517130997",
+      "segments": 1,
+      "provider": "termii"
+    }
+  },
+  "ng|us:false|ng:true|sid:override|media:one|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "deferred",
+      "providerMessageId": null,
+      "provider": "termii",
+      "retryAfter": "2026-11-10T07:00:00.000Z",
+      "error": "ng_operator_embargo"
+    }
+  },
+  "gb|us:true|ng:true|sid:none|media:none|ng_open": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+447700900123"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273transactional"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "gb|us:true|ng:true|sid:none|media:none|ng_embargo": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+447700900123"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273transactional"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "gb|us:true|ng:true|sid:none|media:one|ng_open": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+447700900123"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273transactional"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ],
+          [
+            "MediaUrl",
+            "https://cdn.example.test/a.jpg"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "gb|us:true|ng:true|sid:none|media:one|ng_embargo": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+447700900123"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273transactional"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ],
+          [
+            "MediaUrl",
+            "https://cdn.example.test/a.jpg"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "gb|us:true|ng:true|sid:override|media:none|ng_open": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+447700900123"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273override000000000000000000"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "gb|us:true|ng:true|sid:override|media:none|ng_embargo": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+447700900123"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273override000000000000000000"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "gb|us:true|ng:true|sid:override|media:one|ng_open": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+447700900123"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273override000000000000000000"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ],
+          [
+            "MediaUrl",
+            "https://cdn.example.test/a.jpg"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "gb|us:true|ng:true|sid:override|media:one|ng_embargo": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+447700900123"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273override000000000000000000"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ],
+          [
+            "MediaUrl",
+            "https://cdn.example.test/a.jpg"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "gb|us:false|ng:false|sid:none|media:none|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "gb|us:false|ng:false|sid:none|media:none|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "gb|us:false|ng:false|sid:none|media:one|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "gb|us:false|ng:false|sid:none|media:one|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "gb|us:false|ng:false|sid:override|media:none|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "gb|us:false|ng:false|sid:override|media:none|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "gb|us:false|ng:false|sid:override|media:one|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "gb|us:false|ng:false|sid:override|media:one|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "gb|us:true|ng:false|sid:none|media:none|ng_open": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+447700900123"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273transactional"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "gb|us:true|ng:false|sid:none|media:none|ng_embargo": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+447700900123"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273transactional"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "gb|us:true|ng:false|sid:none|media:one|ng_open": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+447700900123"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273transactional"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ],
+          [
+            "MediaUrl",
+            "https://cdn.example.test/a.jpg"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "gb|us:true|ng:false|sid:none|media:one|ng_embargo": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+447700900123"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273transactional"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ],
+          [
+            "MediaUrl",
+            "https://cdn.example.test/a.jpg"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "gb|us:true|ng:false|sid:override|media:none|ng_open": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+447700900123"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273override000000000000000000"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "gb|us:true|ng:false|sid:override|media:none|ng_embargo": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+447700900123"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273override000000000000000000"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "gb|us:true|ng:false|sid:override|media:one|ng_open": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+447700900123"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273override000000000000000000"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ],
+          [
+            "MediaUrl",
+            "https://cdn.example.test/a.jpg"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "gb|us:true|ng:false|sid:override|media:one|ng_embargo": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+447700900123"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273override000000000000000000"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ],
+          [
+            "MediaUrl",
+            "https://cdn.example.test/a.jpg"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "gb|us:false|ng:true|sid:none|media:none|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "gb|us:false|ng:true|sid:none|media:none|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "gb|us:false|ng:true|sid:none|media:one|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "gb|us:false|ng:true|sid:none|media:one|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "gb|us:false|ng:true|sid:override|media:none|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "gb|us:false|ng:true|sid:override|media:none|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "gb|us:false|ng:true|sid:override|media:one|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "gb|us:false|ng:true|sid:override|media:one|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "be|us:true|ng:true|sid:none|media:none|ng_open": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+32470123456"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273transactional"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "be|us:true|ng:true|sid:none|media:none|ng_embargo": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+32470123456"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273transactional"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "be|us:true|ng:true|sid:none|media:one|ng_open": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+32470123456"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273transactional"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ],
+          [
+            "MediaUrl",
+            "https://cdn.example.test/a.jpg"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "be|us:true|ng:true|sid:none|media:one|ng_embargo": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+32470123456"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273transactional"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ],
+          [
+            "MediaUrl",
+            "https://cdn.example.test/a.jpg"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "be|us:true|ng:true|sid:override|media:none|ng_open": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+32470123456"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273override000000000000000000"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "be|us:true|ng:true|sid:override|media:none|ng_embargo": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+32470123456"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273override000000000000000000"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "be|us:true|ng:true|sid:override|media:one|ng_open": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+32470123456"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273override000000000000000000"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ],
+          [
+            "MediaUrl",
+            "https://cdn.example.test/a.jpg"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "be|us:true|ng:true|sid:override|media:one|ng_embargo": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+32470123456"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273override000000000000000000"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ],
+          [
+            "MediaUrl",
+            "https://cdn.example.test/a.jpg"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "be|us:false|ng:false|sid:none|media:none|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "be|us:false|ng:false|sid:none|media:none|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "be|us:false|ng:false|sid:none|media:one|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "be|us:false|ng:false|sid:none|media:one|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "be|us:false|ng:false|sid:override|media:none|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "be|us:false|ng:false|sid:override|media:none|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "be|us:false|ng:false|sid:override|media:one|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "be|us:false|ng:false|sid:override|media:one|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "be|us:true|ng:false|sid:none|media:none|ng_open": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+32470123456"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273transactional"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "be|us:true|ng:false|sid:none|media:none|ng_embargo": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+32470123456"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273transactional"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "be|us:true|ng:false|sid:none|media:one|ng_open": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+32470123456"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273transactional"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ],
+          [
+            "MediaUrl",
+            "https://cdn.example.test/a.jpg"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "be|us:true|ng:false|sid:none|media:one|ng_embargo": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+32470123456"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273transactional"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ],
+          [
+            "MediaUrl",
+            "https://cdn.example.test/a.jpg"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "be|us:true|ng:false|sid:override|media:none|ng_open": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+32470123456"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273override000000000000000000"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "be|us:true|ng:false|sid:override|media:none|ng_embargo": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+32470123456"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273override000000000000000000"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "be|us:true|ng:false|sid:override|media:one|ng_open": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+32470123456"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273override000000000000000000"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ],
+          [
+            "MediaUrl",
+            "https://cdn.example.test/a.jpg"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "be|us:true|ng:false|sid:override|media:one|ng_embargo": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+32470123456"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273override000000000000000000"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ],
+          [
+            "MediaUrl",
+            "https://cdn.example.test/a.jpg"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "be|us:false|ng:true|sid:none|media:none|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "be|us:false|ng:true|sid:none|media:none|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "be|us:false|ng:true|sid:none|media:one|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "be|us:false|ng:true|sid:none|media:one|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "be|us:false|ng:true|sid:override|media:none|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "be|us:false|ng:true|sid:override|media:none|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "be|us:false|ng:true|sid:override|media:one|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "be|us:false|ng:true|sid:override|media:one|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "ca|us:true|ng:true|sid:none|media:none|ng_open": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+14165550123"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273transactional"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "ca|us:true|ng:true|sid:none|media:none|ng_embargo": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+14165550123"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273transactional"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "ca|us:true|ng:true|sid:none|media:one|ng_open": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+14165550123"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273transactional"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ],
+          [
+            "MediaUrl",
+            "https://cdn.example.test/a.jpg"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "ca|us:true|ng:true|sid:none|media:one|ng_embargo": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+14165550123"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273transactional"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ],
+          [
+            "MediaUrl",
+            "https://cdn.example.test/a.jpg"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "ca|us:true|ng:true|sid:override|media:none|ng_open": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+14165550123"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273override000000000000000000"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "ca|us:true|ng:true|sid:override|media:none|ng_embargo": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+14165550123"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273override000000000000000000"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "ca|us:true|ng:true|sid:override|media:one|ng_open": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+14165550123"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273override000000000000000000"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ],
+          [
+            "MediaUrl",
+            "https://cdn.example.test/a.jpg"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "ca|us:true|ng:true|sid:override|media:one|ng_embargo": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+14165550123"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273override000000000000000000"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ],
+          [
+            "MediaUrl",
+            "https://cdn.example.test/a.jpg"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "ca|us:false|ng:false|sid:none|media:none|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "ca|us:false|ng:false|sid:none|media:none|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "ca|us:false|ng:false|sid:none|media:one|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "ca|us:false|ng:false|sid:none|media:one|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "ca|us:false|ng:false|sid:override|media:none|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "ca|us:false|ng:false|sid:override|media:none|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "ca|us:false|ng:false|sid:override|media:one|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "ca|us:false|ng:false|sid:override|media:one|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "ca|us:true|ng:false|sid:none|media:none|ng_open": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+14165550123"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273transactional"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "ca|us:true|ng:false|sid:none|media:none|ng_embargo": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+14165550123"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273transactional"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "ca|us:true|ng:false|sid:none|media:one|ng_open": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+14165550123"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273transactional"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ],
+          [
+            "MediaUrl",
+            "https://cdn.example.test/a.jpg"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "ca|us:true|ng:false|sid:none|media:one|ng_embargo": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+14165550123"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273transactional"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ],
+          [
+            "MediaUrl",
+            "https://cdn.example.test/a.jpg"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "ca|us:true|ng:false|sid:override|media:none|ng_open": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+14165550123"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273override000000000000000000"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "ca|us:true|ng:false|sid:override|media:none|ng_embargo": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+14165550123"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273override000000000000000000"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "ca|us:true|ng:false|sid:override|media:one|ng_open": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+14165550123"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273override000000000000000000"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ],
+          [
+            "MediaUrl",
+            "https://cdn.example.test/a.jpg"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "ca|us:true|ng:false|sid:override|media:one|ng_embargo": {
+    "requests": [
+      {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/AC4273parity/Messages.json",
+        "method": "POST",
+        "headers": [
+          [
+            "content-type",
+            "application/x-www-form-urlencoded"
+          ]
+        ],
+        "body": [
+          [
+            "To",
+            "+14165550123"
+          ],
+          [
+            "MessagingServiceSid",
+            "MG4273override000000000000000000"
+          ],
+          [
+            "Body",
+            "Your ticket's ready - doors at 9... Reply STOP to opt out."
+          ],
+          [
+            "StatusCallback",
+            "https://parity.supabase.test/functions/v1/twilio-message-status?secret=cb4273"
+          ],
+          [
+            "MediaUrl",
+            "https://cdn.example.test/a.jpg"
+          ]
+        ]
+      }
+    ],
+    "result": {
+      "ok": true,
+      "status": "sent",
+      "providerMessageId": "SM4273parity",
+      "segments": 1,
+      "provider": "twilio"
+    }
+  },
+  "ca|us:false|ng:true|sid:none|media:none|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "ca|us:false|ng:true|sid:none|media:none|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "ca|us:false|ng:true|sid:none|media:one|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "ca|us:false|ng:true|sid:none|media:one|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "ca|us:false|ng:true|sid:override|media:none|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "ca|us:false|ng:true|sid:override|media:none|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "ca|us:false|ng:true|sid:override|media:one|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "ca|us:false|ng:true|sid:override|media:one|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": "twilio",
+      "error": "provider_kill_switch_off"
+    }
+  },
+  "invalid|us:true|ng:true|sid:none|media:none|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "failed",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "invalid_recipient"
+    }
+  },
+  "invalid|us:true|ng:true|sid:none|media:none|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "failed",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "invalid_recipient"
+    }
+  },
+  "invalid|us:true|ng:true|sid:none|media:one|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "failed",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "invalid_recipient"
+    }
+  },
+  "invalid|us:true|ng:true|sid:none|media:one|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "failed",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "invalid_recipient"
+    }
+  },
+  "invalid|us:true|ng:true|sid:override|media:none|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "failed",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "invalid_recipient"
+    }
+  },
+  "invalid|us:true|ng:true|sid:override|media:none|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "failed",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "invalid_recipient"
+    }
+  },
+  "invalid|us:true|ng:true|sid:override|media:one|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "failed",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "invalid_recipient"
+    }
+  },
+  "invalid|us:true|ng:true|sid:override|media:one|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "failed",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "invalid_recipient"
+    }
+  },
+  "invalid|us:false|ng:false|sid:none|media:none|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "failed",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "invalid_recipient"
+    }
+  },
+  "invalid|us:false|ng:false|sid:none|media:none|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "failed",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "invalid_recipient"
+    }
+  },
+  "invalid|us:false|ng:false|sid:none|media:one|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "failed",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "invalid_recipient"
+    }
+  },
+  "invalid|us:false|ng:false|sid:none|media:one|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "failed",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "invalid_recipient"
+    }
+  },
+  "invalid|us:false|ng:false|sid:override|media:none|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "failed",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "invalid_recipient"
+    }
+  },
+  "invalid|us:false|ng:false|sid:override|media:none|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "failed",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "invalid_recipient"
+    }
+  },
+  "invalid|us:false|ng:false|sid:override|media:one|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "failed",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "invalid_recipient"
+    }
+  },
+  "invalid|us:false|ng:false|sid:override|media:one|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "failed",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "invalid_recipient"
+    }
+  },
+  "invalid|us:true|ng:false|sid:none|media:none|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "failed",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "invalid_recipient"
+    }
+  },
+  "invalid|us:true|ng:false|sid:none|media:none|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "failed",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "invalid_recipient"
+    }
+  },
+  "invalid|us:true|ng:false|sid:none|media:one|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "failed",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "invalid_recipient"
+    }
+  },
+  "invalid|us:true|ng:false|sid:none|media:one|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "failed",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "invalid_recipient"
+    }
+  },
+  "invalid|us:true|ng:false|sid:override|media:none|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "failed",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "invalid_recipient"
+    }
+  },
+  "invalid|us:true|ng:false|sid:override|media:none|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "failed",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "invalid_recipient"
+    }
+  },
+  "invalid|us:true|ng:false|sid:override|media:one|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "failed",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "invalid_recipient"
+    }
+  },
+  "invalid|us:true|ng:false|sid:override|media:one|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "failed",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "invalid_recipient"
+    }
+  },
+  "invalid|us:false|ng:true|sid:none|media:none|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "failed",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "invalid_recipient"
+    }
+  },
+  "invalid|us:false|ng:true|sid:none|media:none|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "failed",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "invalid_recipient"
+    }
+  },
+  "invalid|us:false|ng:true|sid:none|media:one|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "failed",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "invalid_recipient"
+    }
+  },
+  "invalid|us:false|ng:true|sid:none|media:one|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "failed",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "invalid_recipient"
+    }
+  },
+  "invalid|us:false|ng:true|sid:override|media:none|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "failed",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "invalid_recipient"
+    }
+  },
+  "invalid|us:false|ng:true|sid:override|media:none|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "failed",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "invalid_recipient"
+    }
+  },
+  "invalid|us:false|ng:true|sid:override|media:one|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "failed",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "invalid_recipient"
+    }
+  },
+  "invalid|us:false|ng:true|sid:override|media:one|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "failed",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "invalid_recipient"
+    }
+  },
+  "unmapped|us:true|ng:true|sid:none|media:none|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "country_unresolved"
+    }
+  },
+  "unmapped|us:true|ng:true|sid:none|media:none|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "country_unresolved"
+    }
+  },
+  "unmapped|us:true|ng:true|sid:none|media:one|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "country_unresolved"
+    }
+  },
+  "unmapped|us:true|ng:true|sid:none|media:one|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "country_unresolved"
+    }
+  },
+  "unmapped|us:true|ng:true|sid:override|media:none|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "country_unresolved"
+    }
+  },
+  "unmapped|us:true|ng:true|sid:override|media:none|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "country_unresolved"
+    }
+  },
+  "unmapped|us:true|ng:true|sid:override|media:one|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "country_unresolved"
+    }
+  },
+  "unmapped|us:true|ng:true|sid:override|media:one|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "country_unresolved"
+    }
+  },
+  "unmapped|us:false|ng:false|sid:none|media:none|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "country_unresolved"
+    }
+  },
+  "unmapped|us:false|ng:false|sid:none|media:none|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "country_unresolved"
+    }
+  },
+  "unmapped|us:false|ng:false|sid:none|media:one|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "country_unresolved"
+    }
+  },
+  "unmapped|us:false|ng:false|sid:none|media:one|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "country_unresolved"
+    }
+  },
+  "unmapped|us:false|ng:false|sid:override|media:none|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "country_unresolved"
+    }
+  },
+  "unmapped|us:false|ng:false|sid:override|media:none|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "country_unresolved"
+    }
+  },
+  "unmapped|us:false|ng:false|sid:override|media:one|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "country_unresolved"
+    }
+  },
+  "unmapped|us:false|ng:false|sid:override|media:one|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "country_unresolved"
+    }
+  },
+  "unmapped|us:true|ng:false|sid:none|media:none|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "country_unresolved"
+    }
+  },
+  "unmapped|us:true|ng:false|sid:none|media:none|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "country_unresolved"
+    }
+  },
+  "unmapped|us:true|ng:false|sid:none|media:one|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "country_unresolved"
+    }
+  },
+  "unmapped|us:true|ng:false|sid:none|media:one|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "country_unresolved"
+    }
+  },
+  "unmapped|us:true|ng:false|sid:override|media:none|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "country_unresolved"
+    }
+  },
+  "unmapped|us:true|ng:false|sid:override|media:none|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "country_unresolved"
+    }
+  },
+  "unmapped|us:true|ng:false|sid:override|media:one|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "country_unresolved"
+    }
+  },
+  "unmapped|us:true|ng:false|sid:override|media:one|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "country_unresolved"
+    }
+  },
+  "unmapped|us:false|ng:true|sid:none|media:none|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "country_unresolved"
+    }
+  },
+  "unmapped|us:false|ng:true|sid:none|media:none|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "country_unresolved"
+    }
+  },
+  "unmapped|us:false|ng:true|sid:none|media:one|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "country_unresolved"
+    }
+  },
+  "unmapped|us:false|ng:true|sid:none|media:one|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "country_unresolved"
+    }
+  },
+  "unmapped|us:false|ng:true|sid:override|media:none|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "country_unresolved"
+    }
+  },
+  "unmapped|us:false|ng:true|sid:override|media:none|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "country_unresolved"
+    }
+  },
+  "unmapped|us:false|ng:true|sid:override|media:one|ng_open": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "country_unresolved"
+    }
+  },
+  "unmapped|us:false|ng:true|sid:override|media:one|ng_embargo": {
+    "requests": [],
+    "result": {
+      "ok": false,
+      "status": "skipped",
+      "providerMessageId": null,
+      "provider": null,
+      "error": "country_unresolved"
+    }
+  }
+}

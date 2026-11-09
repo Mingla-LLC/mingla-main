@@ -18,6 +18,11 @@ import { FakeTime } from "https://deno.land/std@0.224.0/testing/time.ts";
 import { processClaimedCampaigns } from "./index.ts";
 import { smsAdapter } from "../_shared/adapters/smsAdapter.ts";
 import { verifySmsUnsubscribeToken } from "../_shared/marketingTokens.ts";
+// #4273 country switches — marketing routes come from
+// public.sms_country_switches; these tests pass a snapshot instead of a DB.
+import { seededSmsSwitches } from "../_shared/__tests__/_issue4273SmsSwitchesFixture.ts";
+import { smsMarketingRouteFromSwitches } from "../_shared/smsCountrySwitches.ts";
+import { smsMarketingCountry } from "../_shared/e164Country.ts";
 
 const SECRET = "issue-4273-test-secret-not-a-real-key-0123456789";
 const GB = "+447700904273";
@@ -188,6 +193,8 @@ async function send(
         live: true,
         resendApiKey: "re_test_key",
         smsRoutes,
+        // GB, US and NG switched on (GB is the alphanumeric-sender case).
+        smsSwitches: seededSmsSwitches({ on: ["US", "NG", "GB"] }),
         opsAlert: (subject: string, paragraphs: string[]) => {
           timing.alerts?.push([subject, ...paragraphs]);
           return Promise.resolve();
@@ -338,15 +345,22 @@ Deno.test("#4273 L-4 (P3) transactional routing is main's; marketing is per coun
     assertEquals((await transactional("+447700904273")).status, "sent");
     const de = await transactional("+4915112345678");
     assertEquals([de.status, de.error], ["skipped", "country_unresolved"]);
+    // #4273 country switches — the caller decides the route from the DB
+    // switches (seed: US and NG on); the adapter sends only on a route.
+    const switches = seededSmsSwitches();
     const marketing = (to: string) =>
       smsAdapter.send({
         to,
         brandName: "Mingla",
         message: "Doors at 9.",
         messageType: "marketing",
+        marketingRoute: smsMarketingRouteFromSwitches(
+          smsMarketingCountry(to),
+          switches,
+        ),
         stopFooterOwnLine: true,
       });
-    // Marketing: only the US key is on, so Canada, Jamaica and GB are skipped.
+    // Marketing: only US is on, so Canada, Jamaica and GB are skipped.
     assertEquals((await marketing("+12025550142")).status, "sent");
     for (const to of ["+14165550142", "+18765550142", "+447700904273"]) {
       const result = await marketing(to);

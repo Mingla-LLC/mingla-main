@@ -130,7 +130,12 @@ Deno.test("smsAdapter NG: marketing → Termii channel 'generic'", async () => {
   }) as typeof fetch;
 
   try {
-    const result = await smsAdapter.send({ ...NG_INPUT, messageType: "marketing" });
+    const result = await smsAdapter.send({
+      ...NG_INPUT,
+      messageType: "marketing",
+      // #4273 — marketing routes come from public.sms_country_switches.
+      marketingRoute: "termii",
+    });
     assertEquals(capturedBody.channel, "generic");
     assertEquals(result.status, "sent");
     assertEquals(result.providerMessageId, "tm_456");
