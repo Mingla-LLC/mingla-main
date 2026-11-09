@@ -242,9 +242,10 @@ test('Reelmark carousel: the design geometry, drift, drag momentum, near-centre 
   }
   const video = stage.match(/<video[\s\S]*?\/>/)?.[0] ?? ''
   assert.doesNotMatch(video, /\ssrc=/, 'no clip source in the server HTML')
-  for (const attr of ['muted', 'loop', 'playsInline', 'preload="none"', 'poster={media.poster}']) assert.ok(video.includes(attr), attr)
+  // #4339 round B: the poster is the small WebP (lib/clip-sources.ts).
+  for (const attr of ['muted', 'loop', 'playsInline', 'preload="none"', 'poster={webpPoster(media.poster)}']) assert.ok(video.includes(attr), attr)
   assert.match(stage, /const still = prefersStillMedia\(\)/)
-  assert.match(stage, /if \(!video \|\| still\) return/, 'reduced motion or Save-Data: posters only')
+  assert.match(stage, /if \(!video \|\| still \|\| !clipsAllowed\) return/, 'reduced motion or Save-Data: posters only; no clip before load')
   assert.match(stage, /const near = Math\.abs\(p\) < Math\.max\(1\.5 \* spacing, half \* 0\.5\)/)
   assert.match(stage, /\} else if \(!video\.paused\) \{\s*video\.pause\(\)/)
   assert.match(code(read('components/landing/landing-media.tsx')), /prefers-reduced-motion: reduce[\s\S]*saveData === true/)

@@ -250,7 +250,8 @@ test('every ICP: the features background is its own approved bg-<icp> loop under
     for (const slug of SLUGS) {
       const html = fs.readFileSync(path.join(MARKETING, '.next/server/app/host', `${slug}.html`), 'utf8')
       const bg = html.match(/<div class="feat-bg" aria-hidden="true">([\s\S]*?)<\/div>/)?.[1] ?? ''
-      assert.match(bg, new RegExp(`<video[^>]*poster="/marketing/site/m/${BG[slug]}\\.jpg"`), `built ${slug}: the clip with its poster`)
+      // #4339 round B: the poster is the small WebP beside the JPEG.
+      assert.match(bg, new RegExp(`<video[^>]*poster="/marketing/site/m/${BG[slug]}\\.webp"`), `built ${slug}: the clip with its poster`)
       assert.match(bg, /preload="none"/, `built ${slug}: nothing preloads`)
       assert.match(bg, new RegExp(`data-landing-clip="/marketing/site/m/${BG[slug]}\\.mp4"`))
       assert.doesNotMatch(bg, /\ssrc=|<img/, `built ${slug}: no source until on screen, no still`)

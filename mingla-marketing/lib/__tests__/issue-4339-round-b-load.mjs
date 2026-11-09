@@ -24,6 +24,7 @@ function resolveSpec(fromFile, spec) {
   for (const candidate of [base, `${base}.ts`, path.join(base, 'index.ts')]) {
     if (candidate.endsWith('.ts') && fs.existsSync(candidate)) return candidate
   }
+  if (base.endsWith('.json') && fs.existsSync(base)) return base
   if (fs.existsSync(`${base}.json`)) return `${base}.json`
   return null
 }
@@ -47,7 +48,7 @@ export function makeLoader() {
       const emitted = emit(resolved)
       let rel = path.relative(path.dirname(dest), emitted)
       if (!rel.startsWith('.')) rel = `./${rel}`
-      const attr = resolved.endsWith('.json') ? '' : ''
+      const attr = resolved.endsWith('.json') && lead.startsWith('from') ? " with { type: 'json' }" : ''
       return `${lead}${quote}${rel}${quote}${attr}`
     })
     fs.writeFileSync(dest, js)

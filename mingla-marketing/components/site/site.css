@@ -289,15 +289,16 @@
 [data-landing] .rm-stage.drag {
   cursor: grabbing;
 }
+/* #4339 round B: a fixed box per card; frames move only transform and
+   clip-path (reel-stage.tsx). The clip carries the rounded corner. */
 [data-landing] .rm-card {
   position: absolute;
   left: 50%;
   top: 50%;
-  border-radius: calc(var(--u) * 22px);
   overflow: hidden;
   background: #ddd;
-  will-change: transform, width, height;
-  box-shadow: 0 18px 40px rgba(17, 17, 16, 0.16);
+  transform-origin: 50% 50%;
+  will-change: transform;
   opacity: 0;
   transition: opacity 0.5s var(--out);
 }
@@ -311,12 +312,16 @@
   object-fit: cover;
   pointer-events: none;
 }
+/* The caption keeps its on-screen size and inset while the card scales:
+   counter-scaled, and moved in by the trimmed side. */
 [data-landing] .rm-card .cap {
   position: absolute;
-  left: 10px;
-  bottom: 10px;
-  right: 10px;
+  left: 0;
+  bottom: 0;
   display: flex;
+  max-width: 100%;
+  transform-origin: 0 100%;
+  transform: translate(calc(var(--side, 0px) + 10px / var(--s, 1)), calc(-10px / var(--s, 1))) scale(calc(1 / var(--s, 1)));
 }
 [data-landing] .rm-card .cap .pill {
   max-width: 100%;

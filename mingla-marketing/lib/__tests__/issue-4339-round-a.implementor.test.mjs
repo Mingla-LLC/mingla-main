@@ -119,7 +119,16 @@ test('1. every media reference resolves to a file, and no file in public/marketi
     for (const m of source.matchAll(/\/marketing\/site\/([mp]\/[a-z0-9-]+\.(?:jpg|mp4))/g)) refs.add(m[1])
   }
   for (const ref of [...refs]) {
-    if (ref.endsWith('.mp4')) refs.add(ref.replace(/\.mp4$/, '.jpg'))
+    if (!ref.endsWith('.mp4')) continue
+    refs.add(ref.replace(/\.mp4$/, '.jpg'))
+    // #4339 round B: every clip's lighter copies and WebP poster
+    // (scripts/encode-site-clips.mjs, chosen by lib/clip-sources.ts).
+    for (const copy of ['-sm.mp4', '.webp']) refs.add(ref.replace(/\.mp4$/, copy))
+    // AV1 copies exist only where they are lighter (lib/clip-av1.generated.json).
+    const name = ref.replace(/^m\//, '').replace(/\.mp4$/, '')
+    const av1 = JSON.parse(read('lib/clip-av1.generated.json'))
+    if (av1.full.includes(name)) refs.add(`m/${name}.webm`)
+    if (av1.small.includes(name)) refs.add(`m/${name}-sm.webm`)
   }
   for (const ref of refs) assert.ok(fs.existsSync(path.join(SITE, ref)), `referenced ${ref} exists`)
   for (const dir of ['m', 'p']) {

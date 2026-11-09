@@ -1,7 +1,7 @@
 'use client'
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import QRCode from 'react-qr-code'
+import dynamic from 'next/dynamic'
 import { X } from 'lucide-react'
 import { AppleMark, PlayMark } from '@/components/ui/store-marks'
 import { detectClientPlatform } from '@/lib/device-platform'
@@ -10,6 +10,10 @@ import { appHandoffHrefs, hostWebLabel, withLandingCampaign, type AppHandoffShee
 import { captureMarketing, isMarketingAdsOn } from '@/components/marketing/posthog-provider'
 import { readLandingCampaign } from '@/lib/landing-campaign'
 import type { SearchIcp } from '@/lib/page-measurement'
+
+// #4339 round B (speed): the QR code renders only inside a sheet opened by a
+// tap, so its library loads then, not with the page (first-load JS).
+const QRCode = dynamic(() => import('react-qr-code'), { ssr: false })
 
 // #4339 §3 — the two computer sheets of the site-wide app hand-off.
 //

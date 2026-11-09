@@ -174,7 +174,8 @@ const assertDefinition = ({ name, nextName, asset, weights, variable, fallback }
     `${name} must keep every source normal-style`,
   )
   assert.match(source, /display: 'swap'/, `${name} must remain display swap`)
-  assert.match(source, /preload: true/, `${name} must remain preloaded`)
+  // #4339 round B: the root faces load on use, never preloaded on every page.
+  assert.match(source, /preload: false/, `${name} must not be preloaded site-wide`)
   assert.equal(
     (source.match(/adjustFontFallback: false/g) ?? []).length,
     1,

@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, type MouseEvent } from 'react'
 import { ArrowLeft, Sparkles, Star, X } from 'lucide-react'
-import { DeviceCta } from '@/components/cutout'
+// #4339 round B (speed): direct module imports, not the barrel (the
+// barrel pulls framer-motion into every route that touches it).
+import { DeviceCta } from '@/components/cutout/device-cta'
 import type { CataloguePlace, CataloguePlan } from '@/content/page-system/shared'
 import { CurrentPlacePhoto } from './current-place-photo'
 

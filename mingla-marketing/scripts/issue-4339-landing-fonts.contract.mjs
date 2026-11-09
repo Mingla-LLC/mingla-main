@@ -65,7 +65,8 @@ export const LANDING_FONT_DEFINITIONS = [
       ['InstrumentSerif-latin-400-italic.woff2', '400', 'italic'],
     ],
     variable: '--font-landing-serif',
-    fallback: ['Georgia', 'Times New Roman', 'serif'],
+    // #4339 round B: metric-matched local fallbacks first (landing.css).
+    fallback: ['MinglaSerifFallbackGeorgia', 'MinglaSerifFallbackNoto', 'MinglaSerifFallbackTimes', 'Georgia', 'serif'],
   },
   {
     exportName: 'landingSans',

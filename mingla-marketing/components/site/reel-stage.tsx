@@ -2,6 +2,7 @@
 import { useEffect, useRef } from 'react'
 import { resolveLandingMedia, type LandingMediaRef } from '@/content/host-landing/icps'
 import { prefersStillMedia } from '@/components/landing/landing-media'
+import { afterLoadAndIdle, clipEnvironment, clipSourceFor, webpPoster } from '@/lib/clip-sources'
 
 // #4339 — the "Reelmark" carousel under the home and Mingla Host heroes: a
 // curved, draggable, auto-scrolling row of tall cards, built in the DOM.
@@ -21,6 +22,14 @@ import { prefersStillMedia } from '@/components/landing/landing-media'
 // no clip loads either (the poster stays). Only the clips of cards near the
 // centre play; a clip's file is requested the first time its card gets there.
 // Frames only run while the stage is on screen and the tab is visible.
+//
+// #4339 round B (speed): every card keeps ONE fixed box (BOX_W × BOX_H, set
+// on resize only). Each frame changes only compositor properties: the
+// transform (translate, rotateY and a uniform scale to the card's height) and
+// a clip-path that trims the sides to the card's width with the same 22u
+// corner. No width or height is written per frame, so the carousel never
+// forces layout while it drifts. The result is the same picture as before
+// (the clip is `object-fit: cover` either way, cropped at the sides).
 
 export interface ReelCard {
   media: LandingMediaRef
@@ -29,6 +38,10 @@ export interface ReelCard {
 
 const SPACING = 236
 const DRIFT = 50
+/** The fixed box: the centre card's height, and a width that covers every card's ratio. */
+const BOX_W = 174
+const BOX_H = 280
+const RADIUS = 22
 
 export function ReelStage({ cards }: { cards: readonly ReelCard[] }) {
   const stageRef = useRef<HTMLDivElement>(null)
@@ -41,6 +54,9 @@ export function ReelStage({ cards }: { cards: readonly ReelCard[] }) {
     const vids = els.map((el) => el.querySelector('video'))
     const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
     const still = prefersStillMedia()
+    // #4339 round B: no carousel clip loads before the page has loaded.
+    let clipsAllowed = false
+    const env = clipEnvironment()
     const n = els.length
     const auto = reduced ? 0 : DRIFT
 
@@ -61,6 +77,11 @@ export function ReelStage({ cards }: { cards: readonly ReelCard[] }) {
       u = Math.max(0.52, Math.min(1.12, vw / 1440))
       section.style.setProperty('--u', String(u))
       spacing = SPACING * u
+      // The only width/height writes: once per resize, never per frame.
+      els.forEach((el) => {
+        el.style.width = `${BOX_W * u}px`
+        el.style.height = `${BOX_H * u}px`
+      })
     }
 
     const layout = () => {
@@ -75,18 +96,22 @@ export function ReelStage({ cards }: { cards: readonly ReelCard[] }) {
         const h = (280 + 92 * Math.pow(ad, 2.6)) * u
         const x = p * (1 + 0.083 * ad * ad)
         const ry = Math.max(-26, Math.min(26, -d * 16))
-        el.style.width = `${w}px`
-        el.style.height = `${h}px`
-        el.style.transform = `translate(${x - w / 2}px, ${-h / 2}px) perspective(1200px) rotateY(${ry}deg)`
+        // Scale the fixed box to the card's height; trim the sides to its width.
+        const scale = h / (BOX_H * u)
+        const side = Math.max(0, (BOX_W * u - w / scale) / 2)
+        el.style.transform = `translate(${x - (BOX_W * u) / 2}px, ${-(BOX_H * u) / 2}px) perspective(1200px) rotateY(${ry}deg) scale(${scale})`
+        el.style.clipPath = `inset(0 ${side}px round ${(RADIUS * u) / scale}px)`
+        el.style.setProperty('--s', String(scale))
+        el.style.setProperty('--side', `${side}px`)
         el.style.zIndex = String(100 - Math.round(ad * 20))
         const video = vids[i]
-        if (!video || still) return
+        if (!video || still || !clipsAllowed) return
         const near = Math.abs(p) < Math.max(1.5 * spacing, half * 0.5)
         if (near && onScreen && !document.hidden) {
           if (!video.getAttribute('src')) {
             video.muted = true
             video.preload = 'metadata'
-            video.src = video.dataset.src ?? ''
+            video.src = clipSourceFor(video.dataset.src ?? '', env)
           }
           if (video.paused) {
             video.play().catch(() => {
@@ -159,6 +184,12 @@ export function ReelStage({ cards }: { cards: readonly ReelCard[] }) {
     layout()
     stage.setAttribute('data-ready', '')
     kick()
+    let alive = true
+    void afterLoadAndIdle().then(() => {
+      if (!alive) return
+      clipsAllowed = true
+      layout()
+    })
 
     stage.addEventListener('pointerdown', down)
     stage.addEventListener('pointermove', move)
@@ -177,6 +208,7 @@ export function ReelStage({ cards }: { cards: readonly ReelCard[] }) {
     io.observe(stage)
 
     return () => {
+      alive = false
       if (raf !== 0) window.cancelAnimationFrame(raf)
       io.disconnect()
       stage.removeEventListener('pointerdown', down)
@@ -197,7 +229,7 @@ export function ReelStage({ cards }: { cards: readonly ReelCard[] }) {
           <div className="rm-card" key={`${card.media}-${i}`}>
             {media.kind === 'video' ? (
               <video
-                poster={media.poster}
+                poster={webpPoster(media.poster)}
                 data-src={media.src ?? ''}
                 muted
                 loop

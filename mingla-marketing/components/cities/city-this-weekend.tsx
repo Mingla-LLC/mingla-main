@@ -2,7 +2,7 @@
 
 import { orphanTile } from '@/components/site/orphan-tile'
 import { useCallback, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react'
-import QRCode from 'react-qr-code'
+import dynamic from 'next/dynamic'
 import Image from 'next/image'
 import { ArrowRight } from 'lucide-react'
 import { captureMarketing } from '@/components/marketing/posthog-provider'
@@ -15,6 +15,10 @@ import { appHandoffHrefs, CITY_EXPLORER_ATTRIBUTION, resolveSiteTargetHandoff, s
 import type { LinksTarget } from '@/lib/links-handoff'
 import { listingDayKey, listingWhen, longDayLabel, timeLabel, type LinksListing, type LinksPin, type LinksPlace } from '@/lib/links-week'
 import { listingChip, type CityWeekendModel } from '@/lib/city-weekend'
+
+// #4339 round B (speed): the QR code renders only inside a sheet opened by a
+// tap, so its library loads then, not with the page (first-load JS).
+const QRCode = dynamic(() => import('react-qr-code'), { ssr: false })
 
 // #4339 phase 4a (§4) — "This weekend" on the city page, from live data.
 //

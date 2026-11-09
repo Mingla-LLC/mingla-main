@@ -17811,6 +17811,7 @@
         "supabase/migrations/20280508004318_issue_4318_links_page.sql",
         "supabase/migrations/20280512004339_issue_4339_site_prompt_drafts.sql",
         "supabase/migrations/20280520004339_issue_4339_book_a_call_leads.sql",
+        "supabase/migrations/20280522004339_issue_4339_ad_marketing_destinations.sql",
         "supabase/migrations/__tests__/issue_1773_preserves_1857_phone_authority.pg17.test.sql",
         "supabase/migrations/__tests__/issue_1857_phone_country_authority.pg17.test.sql",
         "supabase/migrations/__tests__/issue_1902_public_event_lifecycle.pg17.test.sql",
@@ -19560,6 +19561,7 @@
         "supabase/migrations/20280508004318_issue_4318_links_page.sql",
         "supabase/migrations/20280512004339_issue_4339_site_prompt_drafts.sql",
         "supabase/migrations/20280520004339_issue_4339_book_a_call_leads.sql",
+        "supabase/migrations/20280522004339_issue_4339_ad_marketing_destinations.sql",
         "supabase/migrations/__tests__/biz_trip_tickets_sold.test.ts",
         "supabase/migrations/__tests__/draft_autosave_keeps_applied_cover.test.sql",
         "supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts",
@@ -20922,6 +20924,8 @@
         "supabase/migrations/__tests__/issue_4318_links_page.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4318_links_page.tester.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4318_links_page.tester.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4339_ad_marketing_destinations.implementor.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4339_ad_marketing_destinations.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4339_book_a_call_leads.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4339_book_a_call_leads.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4339_site_prompt_drafts.implementor.pg17.test.sql",
@@ -24655,6 +24659,7 @@
         "supabase/migrations/20280508004318_issue_4318_links_page.sql",
         "supabase/migrations/20280512004339_issue_4339_site_prompt_drafts.sql",
         "supabase/migrations/20280520004339_issue_4339_book_a_call_leads.sql",
+        "supabase/migrations/20280522004339_issue_4339_ad_marketing_destinations.sql",
         "supabase/migrations/__tests__/biz_trip_tickets_sold.test.ts",
         "supabase/migrations/__tests__/draft_autosave_keeps_applied_cover.test.sql",
         "supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts",
@@ -26017,6 +26022,8 @@
         "supabase/migrations/__tests__/issue_4318_links_page.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4318_links_page.tester.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4318_links_page.tester.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4339_ad_marketing_destinations.implementor.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4339_ad_marketing_destinations.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4339_book_a_call_leads.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4339_book_a_call_leads.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4339_site_prompt_drafts.implementor.pg17.test.sql",
@@ -53320,5 +53327,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "a846f1a438bb88e06a6fb372d3fefb770d02241e63ceb9c26844774857059cdf",
-  "phase3eContractSha256": "747fd7ef501b4843cd1941fda2dc07ffe8bffda5cbb7ca77d610375aa4d967fe"
+  "phase3eContractSha256": "e50655043e775f3bcfb1e81623e93be70db0a452098ab5b3a1737ce38c683b2a"
 }

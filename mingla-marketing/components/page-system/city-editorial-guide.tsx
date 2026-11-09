@@ -1,5 +1,7 @@
 import type { CataloguePlace } from '@/content/page-system/shared'
-import { DeviceCta } from '@/components/cutout'
+// #4339 round B (speed): direct module imports, not the barrel (the
+// barrel pulls framer-motion into every route that touches it).
+import { DeviceCta } from '@/components/cutout/device-cta'
 import { LAGOS_EDITORIAL_SECTIONS, LAGOS_QUICK_FACTS } from '@/content/page-system/lagos-editorial'
 import { CurrentPlacePhoto } from './current-place-photo'
 import { ExplorerCatalogueCard } from './explorer-catalogue-card'

@@ -269,7 +269,8 @@ const checkSourceTopology = () => {
     )
     assert.equal((block.match(/style:\s*['"]normal['"]/g) ?? []).length, definition.weights.length)
     assert.match(block, /display:\s*['"]swap['"]/)
-    assert.match(block, /preload:\s*true/)
+    // #4339 round B: the root faces are not preloaded site-wide (they load on use).
+    assert.match(block, /preload:\s*false/)
     assert.equal((block.match(/adjustFontFallback:\s*false/g) ?? []).length, 1)
     assert.match(
       block,

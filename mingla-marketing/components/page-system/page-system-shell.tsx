@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import { type ReactNode } from 'react'
-import { CutoutShell } from '@/components/cutout'
+// #4339 round B (speed): direct module imports, not the barrel (the
+// barrel pulls framer-motion into every route that touches it).
+import { CutoutShell } from '@/components/cutout/primitives'
 import { LAUNCH_CITIES, PAGE_SYSTEM_PATHS, type PageSystemPath } from '@/content/page-system/shared'
 import { CityHostAcquisitionBar } from './city-host-acquisition-bar'
 import { PageSystemNav } from './page-system-nav'

@@ -1,7 +1,9 @@
 import Link from 'next/link'
 import { Mail } from 'lucide-react'
 import { searchRouteMetadata } from '@/lib/search/metadata'
-import { BreadcrumbSchema } from '@/components/cutout'
+// #4339 round B (speed): direct module imports, not the barrel (the
+// barrel pulls framer-motion into every route that touches it).
+import { BreadcrumbSchema } from '@/components/cutout/schema'
 import { HelpBrowser } from '@/components/help/help-browser'
 import { PageHero, SitePage } from '@/components/site/site-page'
 import { HELP_VIDEOS } from '@/content/help/registry'

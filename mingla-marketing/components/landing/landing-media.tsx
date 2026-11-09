@@ -1,6 +1,8 @@
 'use client'
 import { useEffect, useRef } from 'react'
+import { preload } from 'react-dom'
 import { resolveLandingMedia, type LandingMediaRef } from '@/content/host-landing/icps'
+import { afterFirstPaint, afterLoadAndIdle, clipEnvironment, clipSourceFor, webpPoster } from '@/lib/clip-sources'
 
 // #4339 §11 — video-first media, fast-load rules:
 //   - every clip is muted, inline, looping, with no audio and no controls;
@@ -12,6 +14,12 @@ import { resolveLandingMedia, type LandingMediaRef } from '@/content/host-landin
 //     pauses when it leaves. The hero asks for `preload=auto` (it is the one
 //     clip on first paint); every other clip stays `preload=none` until seen.
 // A `p:` reference is a still and renders as a lazy image.
+//
+// #4339 round B (speed): the poster is a small WebP (the page's LCP image;
+// the hero's is preloaded at high priority). The hero clip starts after first
+// paint and load; every other clip waits for load and an idle moment before
+// it may start on screen. Phones get the phone-size copy, and browsers that
+// play AV1 get the WebM (lib/clip-sources.ts).
 
 export function prefersStillMedia(): boolean {
   if (typeof window === 'undefined') return true
@@ -43,7 +51,10 @@ export function LandingMedia({ media, hero = false, kenBurns = false }: LandingM
       />
     )
   }
-  return <LandingClip src={resolved.src ?? ''} poster={resolved.poster} hero={hero} />
+  const poster = webpPoster(resolved.poster)
+  // The hero poster is the LCP image: fetch it first.
+  if (hero) preload(poster, { as: 'image', fetchPriority: 'high' })
+  return <LandingClip src={resolved.src ?? ''} poster={poster} hero={hero} />
 }
 
 function LandingClip({ src, poster, hero }: { src: string; poster: string; hero: boolean }) {
@@ -52,14 +63,18 @@ function LandingClip({ src, poster, hero }: { src: string; poster: string; hero:
   useEffect(() => {
     const video = ref.current
     if (!video || src === '' || prefersStillMedia()) return
-    const observer = new IntersectionObserver(
+    let cancelled = false
+    let observer: IntersectionObserver | null = null
+    const watch = () => {
+      if (cancelled) return
+      observer = new IntersectionObserver(
       ([entry]) => {
         if (!entry) return
         if (entry.isIntersecting) {
           if (!video.getAttribute('src')) {
             video.muted = true
             video.preload = hero ? 'auto' : 'metadata'
-            video.src = src
+            video.src = clipSourceFor(src, clipEnvironment())
           }
           video.play().catch(() => {
             // Autoplay can be refused (low-power mode, a browser policy). The
@@ -72,9 +87,14 @@ function LandingClip({ src, poster, hero }: { src: string; poster: string; hero:
         }
       },
       { rootMargin: '120px' },
-    )
-    observer.observe(video)
-    return () => observer.disconnect()
+      )
+      observer.observe(video)
+    }
+    void (hero ? afterFirstPaint() : afterLoadAndIdle()).then(watch)
+    return () => {
+      cancelled = true
+      observer?.disconnect()
+    }
   }, [src, hero])
 
   return (

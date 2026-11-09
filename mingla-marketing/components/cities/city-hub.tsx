@@ -9,7 +9,10 @@ import {
   type CityHubRecord,
   type CityUtilityRecord,
 } from '@/content/cities/registry'
-import { CutoutCard, CutoutFooter, CutoutSection, CutoutShell } from '@/components/cutout'
+// #4339 round B (speed): direct module imports, not the barrel (the
+// barrel pulls framer-motion into every route that touches it).
+import { CutoutCard, CutoutSection, CutoutShell } from '@/components/cutout/primitives'
+import { CutoutFooter } from '@/components/cutout/footer'
 import { PageSystemNav } from '@/components/page-system/page-system-nav'
 import { CityHostAcquisitionBar } from '@/components/page-system/city-host-acquisition-bar'
 import { CityCatalogue } from '@/components/page-system/city-catalogue'

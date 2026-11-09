@@ -20,7 +20,12 @@ export const landingSerif = localFont({
   display: 'swap',
   preload: true,
   adjustFontFallback: false,
-  fallback: ['Georgia', 'Times New Roman', 'serif'],
+  // #4339 round B: metric-matched fallbacks (components/landing/landing.css
+  // @font-face, size-adjust and ascent/descent overrides from the capsize
+  // metrics of Instrument Serif against Georgia, Noto Serif on Android and
+  // Times New Roman), so the serif headline does not reflow when the face
+  // arrives. Next's generated fallback stays off (#3548 font manifest).
+  fallback: ['MinglaSerifFallbackGeorgia', 'MinglaSerifFallbackNoto', 'MinglaSerifFallbackTimes', 'Georgia', 'serif'],
 })
 
 // Text: Geist 400/500/600.

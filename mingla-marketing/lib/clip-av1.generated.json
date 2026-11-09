@@ -1,0 +1,27 @@
+{
+  "full": [
+    "amb-locals",
+    "beach",
+    "bg-events",
+    "bg-exp",
+    "bg-play",
+    "crowd",
+    "f-stage",
+    "g-quests"
+  ],
+  "small": [
+    "amapiano",
+    "amb-locals",
+    "bachata",
+    "beach",
+    "bg-events",
+    "bg-exp",
+    "bg-hotel",
+    "bg-play",
+    "crowd",
+    "f-stage",
+    "h-boat",
+    "lp-hotel",
+    "nightlife"
+  ]
+}

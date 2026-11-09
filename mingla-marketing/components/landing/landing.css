@@ -1,3 +1,33 @@
+/* #4339 round B (speed): metric-matched fallbacks for Instrument Serif, so
+   the serif headline keeps its line breaks and height while the face loads
+   (no reflow, no layout shift). Values from Next's capsize metrics:
+   Instrument Serif (UPM 1000, ascent 990, descent 310, avg width 341) against
+   each local face; size-adjust = width ratio, overrides = metric / size-adjust. */
+@font-face {
+  font-family: 'MinglaSerifFallbackGeorgia';
+  src: local('Georgia');
+  size-adjust: 76.49%;
+  ascent-override: 129.43%;
+  descent-override: 40.53%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: 'MinglaSerifFallbackNoto';
+  src: local('Noto Serif'), local('NotoSerif-Regular'), local('NotoSerif');
+  size-adjust: 70.89%;
+  ascent-override: 139.65%;
+  descent-override: 43.73%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: 'MinglaSerifFallbackTimes';
+  src: local('Times New Roman'), local('TimesNewRomanPSMT');
+  size-adjust: 83.94%;
+  ascent-override: 117.94%;
+  descent-override: 36.93%;
+  line-gap-override: 0%;
+}
+
 /* ---------------------------------------------------------------------------
    #4339 — the Host landing pages ("Drift" format), ported from the approved
    design contract (version 7): .lp-hero, .glassbar, .about, .divider, .duo,

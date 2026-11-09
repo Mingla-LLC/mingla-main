@@ -1,5 +1,7 @@
 import type { HostGuideRecord } from '@/content/page-system/shared'
-import { DeviceCta } from '@/components/cutout'
+// #4339 round B (speed): direct module imports, not the barrel (the
+// barrel pulls framer-motion into every route that touches it).
+import { DeviceCta } from '@/components/cutout/device-cta'
 import { DeviceLink } from '@/components/cutout/device-link'
 import { siteAttribution } from '@/lib/links-src'
 import { GrowthToolEmbed } from './growth-tool-embed'

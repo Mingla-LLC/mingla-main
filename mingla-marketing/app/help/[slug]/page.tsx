@@ -3,7 +3,9 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ArrowLeft, ArrowUpRight, Clock } from 'lucide-react'
 import { helpVideoMetadata } from '@/lib/search/metadata'
-import { BreadcrumbSchema } from '@/components/cutout'
+// #4339 round B (speed): direct module imports, not the barrel (the
+// barrel pulls framer-motion into every route that touches it).
+import { BreadcrumbSchema } from '@/components/cutout/schema'
 import { SitePage } from '@/components/site/site-page'
 import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
 import { HelpPlayer } from '@/components/help/help-player'

@@ -1,0 +1,120 @@
+// #4339 round B (F) — implementor regression test for the speed pass:
+//   - the carousel writes only transform and clip-path per frame (no width or
+//     height), one fixed box per card set on resize;
+//   - clips: WebP posters (the hero's preloaded), the hero clip after first
+//     paint, every other clip after load and idle, phone-size and AV1 copies
+//     chosen at run time, every master under 700 KB;
+//   - fonts: the serif's metric-matched fallbacks, and the legacy site faces
+//     (Mochiy, Nunito Sans, Inter) never preloaded on every page;
+//   - the nav menu image is lazy, the QR library loads with its sheet, the
+//     cutout barrel is not imported by the help and city routes, and the
+//     /schedule loading panel holds its room (CLS).
+// Built mode also checks first-load JS and the preload links in the HTML.
+//
+// Run from mingla-marketing/ (Node 22.13+):
+//   node --test lib/__tests__/issue-4339-round-b-speed.implementor.test.mjs
+
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import path from 'node:path'
+import { after, test } from 'node:test'
+import { MARKETING, makeLoader } from './issue-4339-round-b-load.mjs'
+
+const read = (rel) => fs.readFileSync(path.join(MARKETING, rel), 'utf8')
+const code = (source) => source.replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
+const BUILT = process.env.ISSUE_4339_BUILT === '1'
+const CLIPS = path.join(MARKETING, 'public/marketing/site/m')
+const loader = makeLoader()
+after(() => loader.cleanup())
+
+test('carousel: transform and clip-path per frame, never width or height', () => {
+  const stage = code(read('components/site/reel-stage.tsx'))
+  const layout = stage.slice(stage.indexOf('const layout = () => {'), stage.indexOf('const frame = (t: number) => {'))
+  assert.ok(layout.length > 100, 'found the per-frame layout')
+  assert.doesNotMatch(layout, /style\.(width|height)\s*=/, 'no width/height write per frame')
+  assert.match(layout, /el\.style\.transform = `translate\([^`]*\) perspective\(1200px\) rotateY\(\$\{ry\}deg\) scale\(\$\{scale\}\)`/)
+  assert.match(layout, /el\.style\.clipPath = `inset\(0 \$\{side\}px round/)
+  const size = stage.slice(stage.indexOf('const size = () => {'), stage.indexOf('const layout = () => {'))
+  assert.match(size, /el\.style\.width = `\$\{BOX_W \* u\}px`/)
+  assert.match(size, /el\.style\.height = `\$\{BOX_H \* u\}px`/)
+  const css = read('components/site/site.css')
+  assert.match(css, /\[data-landing\] \.rm-card \{[^}]*will-change: transform;/)
+  assert.doesNotMatch(css, /will-change: transform, width, height/)
+})
+
+test('clips: copy choice, WebP posters, deferred start, light masters', async () => {
+  const cs = await loader.load('lib/clip-sources.ts')
+  const phone = { viewportWidth: 375, coarsePointer: true, av1: false }
+  const phoneAv1 = { viewportWidth: 375, coarsePointer: true, av1: true }
+  const desk = { viewportWidth: 1440, coarsePointer: false, av1: false }
+  const deskAv1 = { viewportWidth: 1440, coarsePointer: false, av1: true }
+  const av1 = JSON.parse(read('lib/clip-av1.generated.json'))
+  for (const name of ['crowd', 'cozy', 'c-lagos', 'f-trip', 'salsa']) {
+    const src = `/marketing/site/m/${name}.mp4`
+    assert.equal(cs.clipSourceFor(src, phone), `/marketing/site/m/${name}-sm.mp4`)
+    assert.equal(cs.clipSourceFor(src, desk), src)
+    assert.equal(cs.clipSourceFor(src, phoneAv1), `/marketing/site/m/${name}-sm.${av1.small.includes(name) ? 'webm' : 'mp4'}`)
+    assert.equal(cs.clipSourceFor(src, deskAv1), `/marketing/site/m/${name}.${av1.full.includes(name) ? 'webm' : 'mp4'}`)
+  }
+  assert.ok(av1.full.length + av1.small.length > 0, 'some AV1 copies are lighter and kept')
+  assert.equal(cs.webpPoster('/marketing/site/m/crowd.jpg'), '/marketing/site/m/crowd.webp')
+  const masters = fs.readdirSync(CLIPS).filter((f) => f.endsWith('.mp4') && !f.endsWith('-sm.mp4'))
+  assert.ok(masters.length >= 50)
+  for (const file of masters) {
+    const name = file.slice(0, -4)
+    const size = (f) => fs.statSync(path.join(CLIPS, f)).size
+    assert.ok(size(file) < 700 * 1024, `${file} is ${Math.round(size(file) / 1024)} KB`)
+    for (const copy of [`${name}-sm.mp4`, `${name}.webp`]) assert.ok(fs.existsSync(path.join(CLIPS, copy)), `${copy} exists`)
+    // An AV1 copy ships only where it is under 90% of its H.264 twin.
+    assert.equal(fs.existsSync(path.join(CLIPS, `${name}.webm`)), av1.full.includes(name), `${name}.webm matches the manifest`)
+    assert.equal(fs.existsSync(path.join(CLIPS, `${name}-sm.webm`)), av1.small.includes(name), `${name}-sm.webm matches the manifest`)
+    if (av1.full.includes(name)) assert.ok(size(`${name}.webm`) < size(file) * 0.9, `${name}.webm is lighter`)
+    if (av1.small.includes(name)) assert.ok(size(`${name}-sm.webm`) < size(`${name}-sm.mp4`) * 0.9, `${name}-sm.webm is lighter`)
+    assert.ok(size(`${name}-sm.mp4`) < size(file), `${name}-sm.mp4 is lighter than the mp4`)
+    assert.ok(size(`${name}.webp`) < 60 * 1024, `${name}.webp poster is small (${Math.round(size(`${name}.webp`) / 1024)} KB)`)
+  }
+  for (const f of ['f-trip.mp4', 'salsa.mp4']) assert.ok(fs.statSync(path.join(CLIPS, f)).size < 700 * 1024, f)
+  const media = code(read('components/landing/landing-media.tsx'))
+  assert.match(media, /if \(hero\) preload\(poster, \{ as: 'image', fetchPriority: 'high' \}\)/)
+  assert.match(media, /return <LandingClip src=\{resolved\.src \?\? ''\} poster=\{poster\} hero=\{hero\} \/>/)
+  assert.match(media, /void \(hero \? afterFirstPaint\(\) : afterLoadAndIdle\(\)\)\.then\(watch\)/)
+  assert.match(media, /video\.src = clipSourceFor\(src, clipEnvironment\(\)\)/)
+  const stage = code(read('components/site/reel-stage.tsx'))
+  assert.match(stage, /void afterLoadAndIdle\(\)\.then\(\(\) => \{\s*if \(!alive\) return\s*clipsAllowed = true/)
+  assert.match(stage, /video\.src = clipSourceFor\(video\.dataset\.src \?\? '', env\)/)
+})
+
+test('fonts: serif fallback metrics; legacy faces not preloaded site-wide', () => {
+  const css = read('components/landing/landing.css')
+  for (const [name, size] of [['MinglaSerifFallbackGeorgia', '76.49%'], ['MinglaSerifFallbackNoto', '70.89%'], ['MinglaSerifFallbackTimes', '83.94%']]) {
+    assert.match(css, new RegExp(`font-family: '${name}';[^}]*size-adjust: ${size.replace('.', '\\.')};[^}]*ascent-override:[^}]*descent-override:`), name)
+  }
+  assert.match(read('app/site-fonts.ts'), /fallback: \['MinglaSerifFallbackGeorgia', 'MinglaSerifFallbackNoto', 'MinglaSerifFallbackTimes', 'Georgia', 'serif'\]/)
+  const fonts = read('app/fonts.ts')
+  assert.equal((fonts.match(/preload: false,/g) ?? []).length, 4, 'the four root faces load on use')
+  assert.doesNotMatch(fonts, /preload: true/)
+})
+
+test('lazy nav image, QR with its sheet, no cutout barrel on help and cities, /schedule holds its room', () => {
+  assert.match(code(read('components/site/site-nav.tsx')), /<img src="\/marketing\/site\/p\/lagos-quests-gallery\.jpg" alt="" loading="lazy" decoding="async" width=\{900\} height=\{599\} \/>/)
+  for (const file of ['components/landing/handoff-sheet.tsx', 'components/cities/city-this-weekend.tsx']) {
+    const src = code(read(file))
+    assert.match(src, /const QRCode = dynamic\(\(\) => import\('react-qr-code'\), \{ ssr: false \}\)/, file)
+    assert.doesNotMatch(src, /import QRCode from 'react-qr-code'/, file)
+  }
+  for (const file of ['app/help/page.tsx', 'app/help/[slug]/page.tsx', 'components/cities/city-hub.tsx', 'components/page-system/catalogue-detail.tsx', 'app/blog/layout.tsx']) {
+    assert.doesNotMatch(code(read(file)), /from '@\/components\/cutout'/, file)
+  }
+  assert.match(code(read('app/schedule/ScheduleClient.tsx')), /<div className="sched-state sched-loading" role="status">/)
+  assert.match(read('components/site/pages.css'), /\.sched-state\.sched-loading \{\s*min-height: min\(760px, 85vh\);/)
+})
+
+test('built: no legacy font preload, hero poster preloaded, first-load JS', { skip: !BUILT && 'set ISSUE_4339_BUILT=1 after npm run build' }, () => {
+  const html = (route) => fs.readFileSync(path.join(MARKETING, '.next/server/app', `${route}.html`), 'utf8')
+  for (const route of ['index', 'host', 'host/events', 'cities/lagos', 'going-out', 'about']) {
+    const page = html(route)
+    const preloads = [...page.matchAll(/<link rel="preload" href="([^"]+\.woff2)"/g)].map((m) => m[1])
+    assert.ok(preloads.length <= 4, `${route}: at most the four brand faces are preloaded (${preloads.length})`)
+  }
+  assert.match(html('host/events'), /<link rel="preload" as="image" href="\/marketing\/site\/m\/crowd\.webp" fetchPriority="high"\/>|<link rel="preload" href="\/marketing\/site\/m\/crowd\.webp" as="image" fetchPriority="high"\/>/)
+})

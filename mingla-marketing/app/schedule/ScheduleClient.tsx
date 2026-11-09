@@ -227,7 +227,7 @@ export function ScheduleClient() {
   let panel: ReactNode
   if (phase === 'loading') {
     panel = (
-      <div className="sched-state" role="status">
+      <div className="sched-state sched-loading" role="status">
         <span className="spin" aria-hidden="true" />
         <p className="muted">Finding open times…</p>
       </div>

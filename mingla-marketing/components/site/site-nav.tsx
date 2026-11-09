@@ -171,7 +171,7 @@ export function SiteNav({ surface, current, origin }: SiteNavProps) {
           ))}
           <Link className="feat-card" href={abs('/host')}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/marketing/site/p/lagos-quests-gallery.jpg" alt="" decoding="async" />
+            <img src="/marketing/site/p/lagos-quests-gallery.jpg" alt="" loading="lazy" decoding="async" width={900} height={599} />
             <span>
               Run a place <em>with soul?</em>
             </span>

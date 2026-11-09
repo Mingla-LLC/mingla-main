@@ -1519,6 +1519,12 @@
   align-items: center;
   gap: 12px;
 }
+/* #4339 round B (speed): the loading panel holds the room the open times
+   will take, so the footer does not jump when they arrive (CLS). */
+[data-landing] .sched-state.sched-loading {
+  min-height: min(760px, 85vh);
+  justify-content: center;
+}
 [data-landing] .sched-state .muted,
 [data-landing] .done .muted {
   max-width: 420px;

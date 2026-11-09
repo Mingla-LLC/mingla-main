@@ -1,6 +1,9 @@
 import '@/components/cutout/cutout.css'
 import '@/components/blog/blog.css'
-import { CutoutFooter, CutoutNav } from '@/components/cutout'
+// #4339 round B (speed): direct module imports, not the barrel (the
+// barrel pulls framer-motion into every route that touches it).
+import { CutoutFooter } from '@/components/cutout/footer'
+import { CutoutNav } from '@/components/cutout/cutout-nav'
 import { RouteFrame } from '@/components/site/route-frame'
 
 // #4137 — the blog's own layout: Cutout shell, the Explorer nav, one <main>
