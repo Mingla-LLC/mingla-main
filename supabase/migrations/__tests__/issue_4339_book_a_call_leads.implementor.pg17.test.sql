@@ -20,10 +20,24 @@
 --       Hosts; null for an unknown id.
 -- I-04  a staff/test booking is hidden unless asked for.
 -- I-05  the #4130 rows are unchanged: beta and web tool leads still listed.
+-- #4339 Creators and Locals calls:
+-- T-04  each audience's own fields: an unknown audience, a Host call with no
+--       ICP, a Creator call with no city / no or an unknown `makes` / an ICP,
+--       and a Local call with no city are refused.
+-- C-02  admin_calendar_calls: SECURITY DEFINER, anon cannot run it, signed-in
+--       may call it.
+-- I-06  Inbound leads exposes the audience, the city and the program fields;
+--       a Creator or Local call is never matched to a host card.
+-- I-07  the Calendar calls layer: every audience's call in the range, with
+--       its audience, name, call_at, city, ICP or makes, social, Meet link,
+--       lead id and status; nothing outside the range; staff/test hidden
+--       unless asked; no email address; an outsider and a bad range refused.
 --
 -- FAILS-ON-REVERT: dropping the `UNION ALL ... FROM public.book_call_leads`
 -- branch from admin_inbound_leads fails I-01; dropping the booking_key UNIQUE
--- constraint fails T-02.
+-- constraint fails T-02; dropping book_call_leads_audience_fields_check fails
+-- T-04; dropping the 'audience' key from the booking json fails I-06;
+-- dropping admin_calendar_calls fails C-02 and I-07.
 -- MINGLA-INVARIANT: I-4339-BOOK-A-CALL-IS-AN-INBOUND-LEAD | issue #4339 | proved by T-01..T-03, I-01..I-05 here.
 
 CREATE OR REPLACE FUNCTION pg_temp.bc_assert(p_ok boolean, p_label text)
@@ -60,7 +74,7 @@ BEGIN
                         AND NOT has_table_privilege('authenticated', 'public.book_call_leads', 'DELETE'), 'T-01 signed-in cannot read or write');
   PERFORM pg_temp.bc_assert(has_table_privilege('service_role', 'public.book_call_leads', 'INSERT')
                         AND has_table_privilege('service_role', 'public.book_call_leads', 'SELECT'), 'T-01 the service role inserts and reads');
-  FOREACH v_fn IN ARRAY ARRAY['public.admin_inbound_leads(boolean,integer)', 'public.admin_book_call_lead_get(uuid)'] LOOP
+  FOREACH v_fn IN ARRAY ARRAY['public.admin_inbound_leads(boolean,integer)', 'public.admin_book_call_lead_get(uuid)', 'public.admin_calendar_calls(timestamptz,timestamptz,boolean)'] LOOP
     PERFORM pg_temp.bc_assert(to_regprocedure(v_fn) IS NOT NULL, 'C-01 exists ' || v_fn);
     PERFORM pg_temp.bc_assert((SELECT p.prosecdef FROM pg_proc p WHERE p.oid = v_fn::regprocedure), 'C-01 definer ' || v_fn);
     PERFORM pg_temp.bc_assert(NOT has_function_privilege('anon', v_fn, 'EXECUTE'), 'C-01 anon cannot run ' || v_fn);
@@ -244,4 +258,147 @@ BEGIN
   PERFORM pg_temp.bc_assert(v_err = 'not_authorized', 'I-02 an outsider is refused a booking''s contact details');
 END
 $main$;
+ROLLBACK;
+
+-- ═══ T-04 / I-06 / I-07: Creators and Locals calls, and the Calendar layer ═══
+BEGIN;
+ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS email_confirmed_at timestamptz;
+DO $calls$
+DECLARE
+  v_admin    constant uuid := '43390000-0000-4000-b000-000000000011';
+  v_outsider constant uuid := '43390000-0000-4000-b000-000000000012';
+  v_growth   constant uuid := '43390000-0000-4000-b000-000000000013';
+  v_from     constant timestamptz := '2031-03-01 00:00:00+00';
+  v_to       constant timestamptz := '2031-04-01 00:00:00+00';
+  v_host uuid; v_creator uuid; v_local uuid; v_staff uuid; v_late uuid;
+  v jsonb; v_rows jsonb; v_row jsonb; v_err text; v_case record;
+BEGIN
+  INSERT INTO auth.users(id, email, email_confirmed_at) VALUES
+    (v_admin,    'cl4339-admin@mingla-fixture.org', now()),
+    (v_outsider, 'cl4339-outsider@mingla-fixture.org', now()),
+    (v_growth,   'cl4339-growth@mingla-fixture.org', now());
+  INSERT INTO public.admin_users(email, role, status) VALUES ('cl4339-admin@mingla-fixture.org', 'admin', 'active')
+  ON CONFLICT (email) DO UPDATE SET role = EXCLUDED.role, status = EXCLUDED.status;
+  INSERT INTO public.admin_team_members(email, role, status) VALUES ('cl4339-growth@mingla-fixture.org', 'growth', 'active');
+  -- A host card named like the creator: a Creator call must never match it.
+  INSERT INTO public.crm_records (pipeline, name, stage, created_by, updated_by)
+  VALUES ('hosts', 'Ada Okafor', 'prospect', 'cl4339-admin@mingla-fixture.org', 'cl4339-admin@mingla-fixture.org');
+
+  -- ── what growth-tools-book writes for each audience ──────────────────────
+  SET LOCAL ROLE service_role;
+  INSERT INTO public.book_call_leads (booking_key, audience, name, email, venue, icp, social_platform, social_handle, social_url, call_at, booker_time_zone, meet_url, event_url)
+  VALUES ('gcal:cl4339host', 'host', 'Grace Host', 'grace@cl4339-host.org', 'Cl4339 Supper Club', 'events', 'instagram', '@supper', 'https://instagram.com/supper',
+          '2031-03-10 15:00:00+00', 'America/New_York', 'https://meet.google.com/aaa-bbbb-ccc', 'https://calendar.google.com/event?eid=h');
+  INSERT INTO public.book_call_leads (booking_key, audience, name, email, city, creator_makes, work_url, social_platform, social_handle, social_url, call_at, booker_time_zone, meet_url)
+  VALUES ('gcal:cl4339creator', 'creator', 'Ada Okafor', 'ada@cl4339-hey.org', 'Lagos', 'both', 'https://adashoots.example/reel', 'tiktok', '@adashoots',
+          'https://tiktok.com/@adashoots', '2031-03-11 23:30:00+00', 'Africa/Lagos', 'https://meet.google.com/ddd-eeee-fff');
+  INSERT INTO public.book_call_leads (booking_key, audience, name, email, city, first_place, social_platform, social_handle, social_url, call_at)
+  VALUES ('gcal:cl4339local', 'local', 'Tobi Adeyemi', 'tobi@cl4339-mail.org', 'Raleigh', 'Bida Manda', 'instagram', '@tobieats',
+          'https://instagram.com/tobieats', '2031-03-12 09:00:00+00');
+  INSERT INTO public.book_call_leads (booking_key, audience, name, email, city, social_platform, social_url, call_at)
+  VALUES ('gcal:cl4339staff', 'local', 'Staff Local', 'cl4339-staff@usemingla.com', 'Lagos', 'x', 'https://x.com/staff', '2031-03-13 09:00:00+00');
+  INSERT INTO public.book_call_leads (booking_key, audience, name, email, city, creator_makes, social_platform, social_url, call_at)
+  VALUES ('gcal:cl4339late', 'creator', 'Late Creator', 'late@cl4339-mail.org', 'Paris', 'video', 'instagram', 'https://instagram.com/late', '2031-04-02 09:00:00+00');
+  RESET ROLE;
+  SELECT id INTO v_host FROM public.book_call_leads WHERE booking_key = 'gcal:cl4339host';
+  SELECT id INTO v_creator FROM public.book_call_leads WHERE booking_key = 'gcal:cl4339creator';
+  SELECT id INTO v_local FROM public.book_call_leads WHERE booking_key = 'gcal:cl4339local';
+  SELECT id INTO v_staff FROM public.book_call_leads WHERE booking_key = 'gcal:cl4339staff';
+  SELECT id INTO v_late FROM public.book_call_leads WHERE booking_key = 'gcal:cl4339late';
+  PERFORM pg_temp.bc_assert((SELECT audience FROM public.book_call_leads WHERE id = v_host) = 'host', 'T-04 a Host call is stored as host');
+
+  -- ── T-04: each audience's own fields ──────────────────────────────────────
+  FOR v_case IN
+    SELECT * FROM (VALUES
+      ('an unknown audience',          'promoter', NULL::text, 'Lagos',  'video'),
+      ('a Host call with no ICP',      'host',     NULL,       NULL,     NULL),
+      ('a Creator call with no city',  'creator',  NULL,       NULL,     'video'),
+      ('a Creator call with no makes', 'creator',  NULL,       'Lagos',  NULL),
+      ('an unknown makes',             'creator',  NULL,       'Lagos',  'audio'),
+      ('a Creator call with an ICP',   'creator',  'events',   'Lagos',  'video'),
+      ('a Local call with no city',    'local',    NULL,       NULL,     NULL),
+      ('a Local call with makes',      'local',    NULL,       'Lagos',  'video')
+    ) AS t(label, audience, icp, city, makes)
+  LOOP
+    BEGIN
+      INSERT INTO public.book_call_leads (booking_key, audience, name, email, icp, city, creator_makes, social_platform, social_url, call_at)
+      VALUES ('gcal:cl4339bad', v_case.audience, 'Bad Row', 'bad@cl4339.org', v_case.icp, v_case.city, v_case.makes, 'instagram', 'https://instagram.com/x', v_from);
+      v_err := 'none';
+    EXCEPTION WHEN check_violation THEN v_err := 'refused';
+    END;
+    PERFORM pg_temp.bc_assert(v_err = 'refused', 'T-04 ' || v_case.label || ' is refused');
+  END LOOP;
+
+  -- ── I-06: Inbound leads ───────────────────────────────────────────────────
+  SET LOCAL ROLE authenticated;
+  PERFORM pg_temp.bc_as(v_admin);
+  v := public.admin_inbound_leads(false, 500);
+  RESET ROLE;
+  v_rows := v -> 'rows';
+  SELECT r INTO v_row FROM jsonb_array_elements(v_rows) r WHERE r ->> 'id' = v_creator::text;
+  PERFORM pg_temp.bc_assert(v_row ->> 'source' = 'book_a_call' AND v_row #>> '{booking,audience}' = 'creator', 'I-06 a Creator call is a book_a_call lead with audience creator');
+  PERFORM pg_temp.bc_assert(v_row ->> 'city' = 'Lagos' AND v_row #>> '{booking,city}' = 'Lagos', 'I-06 its city');
+  PERFORM pg_temp.bc_assert(v_row #>> '{booking,creator_makes}' = 'both' AND v_row #>> '{booking,work_url}' = 'https://adashoots.example/reel', 'I-06 what they make and their work');
+  PERFORM pg_temp.bc_assert(v_row -> 'host' = 'null'::jsonb, 'I-06 a Creator call is never matched to a host card');
+  PERFORM pg_temp.bc_assert((SELECT r #>> '{booking,audience}' FROM jsonb_array_elements(v_rows) r WHERE r ->> 'id' = v_local::text) = 'local'
+                        AND (SELECT r #>> '{booking,first_place}' FROM jsonb_array_elements(v_rows) r WHERE r ->> 'id' = v_local::text) = 'Bida Manda',
+    'I-06 a Local call with its first place');
+  PERFORM pg_temp.bc_assert((SELECT r #>> '{booking,audience}' FROM jsonb_array_elements(v_rows) r WHERE r ->> 'id' = v_host::text) = 'host',
+    'I-06 a Host call says host');
+
+  -- ── I-07: the Calendar calls layer ────────────────────────────────────────
+  SET LOCAL ROLE authenticated;
+  PERFORM pg_temp.bc_as(v_admin);
+  v := public.admin_calendar_calls(v_from, v_to, false);
+  RESET ROLE;
+  v_rows := v -> 'rows';
+  PERFORM pg_temp.bc_assert(
+    (SELECT array_agg(r ->> 'audience' ORDER BY (r ->> 'call_at')::timestamptz) FROM jsonb_array_elements(v_rows) r
+      WHERE r ->> 'id' IN (v_host::text, v_creator::text, v_local::text)) = ARRAY['host', 'creator', 'local'],
+    'I-07 Host, Creator and Local calls, in time order');
+  PERFORM pg_temp.bc_assert(NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_rows) r WHERE r ->> 'id' = v_late::text), 'I-07 nothing outside the range');
+  PERFORM pg_temp.bc_assert(NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_rows) r WHERE r ->> 'id' = v_staff::text), 'I-07 a staff call is hidden by default');
+  SELECT r INTO v_row FROM jsonb_array_elements(v_rows) r WHERE r ->> 'id' = v_creator::text;
+  PERFORM pg_temp.bc_assert(v_row ->> 'name' = 'Ada Okafor' AND (v_row ->> 'call_at')::timestamptz = '2031-03-11 23:30:00+00'
+                        AND v_row ->> 'city' = 'Lagos' AND v_row ->> 'makes' = 'both'
+                        AND v_row ->> 'social_url' = 'https://tiktok.com/@adashoots'
+                        AND v_row ->> 'meet_url' = 'https://meet.google.com/ddd-eeee-fff'
+                        AND v_row ->> 'booker_time_zone' = 'Africa/Lagos'
+                        AND v_row ->> 'lead_id' = v_creator::text AND v_row ->> 'status' = 'booked',
+    'I-07 a call carries what the panel shows');
+  PERFORM pg_temp.bc_assert((SELECT r ->> 'icp' FROM jsonb_array_elements(v_rows) r WHERE r ->> 'id' = v_host::text) = 'events'
+                        AND (SELECT r ->> 'event_url' FROM jsonb_array_elements(v_rows) r WHERE r ->> 'id' = v_host::text) = 'https://calendar.google.com/event?eid=h',
+    'I-07 a Host call carries what they run and the calendar link');
+  PERFORM pg_temp.bc_assert(position('@cl4339' IN v_rows::text) = 0 AND position('usemingla.com' IN v_rows::text) = 0, 'I-07 no email address is returned');
+  SET LOCAL ROLE authenticated;
+  PERFORM pg_temp.bc_as(v_admin);
+  v := public.admin_calendar_calls(v_from, v_to, true);
+  RESET ROLE;
+  PERFORM pg_temp.bc_assert(EXISTS (SELECT 1 FROM jsonb_array_elements(v -> 'rows') r WHERE r ->> 'id' = v_staff::text AND (r ->> 'is_test')::boolean),
+    'I-07 the staff call shows when asked for, marked as test');
+  SET LOCAL ROLE authenticated;
+  PERFORM pg_temp.bc_as(v_growth);
+  v := public.admin_calendar_calls(v_from, v_to, false);
+  RESET ROLE;
+  PERFORM pg_temp.bc_assert(EXISTS (SELECT 1 FROM jsonb_array_elements(v -> 'rows') r WHERE r ->> 'id' = v_local::text), 'I-07 a growth teammate sees calls');
+  SET LOCAL ROLE authenticated;
+  PERFORM pg_temp.bc_as(v_outsider);
+  BEGIN
+    PERFORM public.admin_calendar_calls(v_from, v_to, false);
+    v_err := 'none';
+  EXCEPTION WHEN OTHERS THEN v_err := SQLERRM;
+  END;
+  RESET ROLE;
+  PERFORM pg_temp.bc_assert(v_err = 'not_authorized', 'I-07 an outsider is refused the calls');
+  SET LOCAL ROLE authenticated;
+  PERFORM pg_temp.bc_as(v_admin);
+  BEGIN
+    PERFORM public.admin_calendar_calls(v_to, v_from, false);
+    v_err := 'none';
+  EXCEPTION WHEN OTHERS THEN v_err := SQLERRM;
+  END;
+  RESET ROLE;
+  PERFORM pg_temp.bc_assert(v_err = 'invalid_range', 'I-07 a backwards range is refused');
+END
+$calls$;
 ROLLBACK;
