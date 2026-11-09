@@ -22,7 +22,7 @@
 //                 --built after `next build`, and next.config strips what the
 //                 gate refuses (poweredByHeader off, test ids, issue refs);
 //   --built       scans mingla-marketing/.next (fails closed when it is
-//                 missing). Run by `npm run build` (postbuild), so a deploy
+//                 missing). Run as the last step of `npm run build`, so a deploy
 //                 whose output leaks fails.
 
 import fs from 'node:fs'
@@ -119,8 +119,10 @@ function selfTest() {
 function wiring() {
   const failures = []
   const pkg = JSON.parse(fs.readFileSync(path.join(MARKETING, 'package.json'), 'utf8'))
-  if (!/node \.\.\/\.github\/scripts\/strict-grep\/issue-4339-built-output-anti-copy\.mjs --built/.test(pkg.scripts.postbuild ?? '')) {
-    failures.push('package.json postbuild does not run this gate with --built after next build')
+  const build = pkg.scripts.build ?? ''
+  const own = 'node ../.github/scripts/strict-grep/issue-4339-built-output-anti-copy.mjs --built'
+  if (!build.endsWith(` && ${own}`) || build.lastIndexOf(own) < build.lastIndexOf('next build')) {
+    failures.push('package.json build does not end by running this gate with --built after the final next build')
   }
   const config = fs.readFileSync(path.join(MARKETING, 'next.config.ts'), 'utf8')
   if (!/poweredByHeader:\s*false/.test(config)) failures.push('next.config.ts must set poweredByHeader: false')
@@ -128,7 +130,7 @@ function wiring() {
   if (!/new StripIssueRefsPlugin\(\)/.test(config)) failures.push('next.config.ts must strip issue references from emitted JS')
   if (!/key: 'Content-Security-Policy', value: csp\.enforced/.test(config)) failures.push('next.config.ts must send the Content-Security-Policy')
   if (failures.length) throw new Error(`#4339 built-output anti-copy wiring FAIL\n- ${failures.join('\n- ')}`)
-  process.stdout.write('PASS #4339 built-output anti-copy wiring (postbuild scan, poweredByHeader off, test ids and issue refs stripped, CSP)\n')
+  process.stdout.write('PASS #4339 built-output anti-copy wiring (build-final scan, poweredByHeader off, test ids and issue refs stripped, CSP)\n')
 }
 
 function built() {

@@ -177,8 +177,9 @@ function sourceContract(overrides = {}) {
   const builtCommand = `node --experimental-websocket scripts/${SELF} --built-only`
   assert(scripts.build.includes(sourceCommand) && scripts.build.indexOf(sourceCommand) < scripts.build.indexOf('next build'), 'source guard must run before the first production build')
   // #4137: only the #4137 release-build tests may follow it.
+  // #4339 round B: the built-output anti-copy gate may close the chain.
   const releaseTail = scripts.build.slice(scripts.build.lastIndexOf(` && ${builtCommand}`) + ` && ${builtCommand}`.length)
-  assert(scripts.build.includes(` && ${builtCommand}`) && /^(?: && node (?:--experimental-websocket )?scripts\/issue-4137-[a-z-]+\.implementor\.happy\.test\.mjs --built-only)*$/.test(releaseTail) && scripts.build.lastIndexOf(builtCommand) > scripts.build.lastIndexOf('next build'), 'geometry guard must run against the final production build')
+  assert(scripts.build.includes(` && ${builtCommand}`) && /^(?: && node (?:--experimental-websocket )?scripts\/issue-4137-[a-z-]+\.implementor\.happy\.test\.mjs --built-only)*(?: && node \.\.\/\.github\/scripts\/strict-grep\/issue-4339-built-output-anti-copy\.mjs --built)?$/.test(releaseTail) && scripts.build.lastIndexOf(builtCommand) > scripts.build.lastIndexOf('next build'), 'geometry guard must run against the final production build')
   assert.equal(scripts['test:issue-3371'], `node --experimental-websocket scripts/${SELF}`, 'focused command must remain available')
   process.stdout.write('PASS #3371 source: menu order/hrefs without Home, one-screen home without city grid, /going-out rename, registry redirect, footers, analytics and build wiring\n')
 }

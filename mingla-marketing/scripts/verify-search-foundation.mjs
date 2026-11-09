@@ -32,11 +32,6 @@ const SEARCH_READY_PATHS = [
   '/organiser-terms',
   // #4137 — the blog front page, now the last SEARCH_READY_ROUTES base contract.
   '/blog',
-  // #4339 round B — the programme pages and their agreements, registered.
-  '/locals',
-  '/creators',
-  '/creator-agreement',
-  '/local-agreement',
   // #3371 — the renamed Explorer core page. Core routes project after the base
   // contracts and before the help-video family, so it sits here in registry
   // emission order; its title carries a single Mingla mention.
@@ -77,6 +72,11 @@ const SEARCH_READY_PATHS = [
   '/host/hotels',
   '/host/art',
   '/host/play',
+  // ...then the programme pages and their agreements (#4339 round B).
+  '/locals',
+  '/creators',
+  '/creator-agreement',
+  '/local-agreement',
 ]
 
 // #4339 round B — a blog category with no public post is noindex (follow)

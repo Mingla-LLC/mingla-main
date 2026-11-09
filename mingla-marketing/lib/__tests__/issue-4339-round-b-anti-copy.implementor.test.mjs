@@ -59,7 +59,7 @@ test('the built-output gate: self-test, wiring, and registered in the strict-gre
   assert.equal(descriptor.gate.enforcement, 'batch:A')
   assert.deepEqual(descriptor.gate.modes, ['self-test', 'plain'])
   const pkg = JSON.parse(fs.readFileSync(path.join(MARKETING, 'package.json'), 'utf8'))
-  assert.match(pkg.scripts.postbuild, /&& node \.\.\/\.github\/scripts\/strict-grep\/issue-4339-built-output-anti-copy\.mjs --built$/)
+  assert.match(pkg.scripts.build, /&& node \.\.\/\.github\/scripts\/strict-grep\/issue-4339-built-output-anti-copy\.mjs --built$/)
 })
 
 test('the gate catches what it must on a fake build', async () => {

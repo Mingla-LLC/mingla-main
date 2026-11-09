@@ -585,16 +585,11 @@ const checkBuiltManifests = () => {
       (absolutePath) => [sha256(readFileSync(absolutePath)), `static/media/${path.basename(absolutePath)}`],
     ),
   )
-  assert.deepEqual(
-    appEntries[0][1].sort(),
-    [
-      expectedMediaByHash.get(EXPECTED_ASSETS[0].sha256),
-      expectedMediaByHash.get(EXPECTED_ASSETS[1].sha256),
-      expectedMediaByHash.get(EXPECTED_ASSETS[2].sha256),
-      expectedMediaByHash.get(EXPECTED_ASSETS[2].sha256),
-    ].sort(),
-    'the font manifest must retain root roles plus a distinct preview Inter role',
-  )
+  // #4339 round B: the root faces (and the preview Inter role) are declared
+  // but never preloaded site-wide; they load on use. The root layout keeps
+  // its manifest entry with no preload.
+  assert.deepEqual(appEntries[0][1], [], 'the root layout preloads no font on every page')
+  void expectedMediaByHash.get(EXPECTED_ASSETS[0].sha256)
   assert.deepEqual(
     [...new Set(linksEntry[1])].sort(),
     LINKS_FONT_ASSETS.map(({ sha256: hash }) => expectedMediaByHash.get(hash)).sort(),
