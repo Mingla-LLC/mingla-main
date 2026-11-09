@@ -55,7 +55,7 @@ const BUILT = process.env.ISSUE_4339_BUILT === '1'
 // PRIVACY_EFFECTIVE_DATE from 'October 22, 2026' to 'November 9, 2026'; the
 // redesign itself still changes no legal word (the article text with the old
 // date put back still hashes to c8e76e28…, the pre-redesign pin).
-// #4339: re-pinned (privacy and terms) after merging origin/main 28f88fea6d: #4334 (#4350) replaced the Mapbox processor line with Google's address, geocoding and map-image services in lib/privacyContent.ts. That is main's approved legal change, not the redesign's.
+// #4339: re-pinned (privacy and terms) after merging origin/main 28f88fea6d: #4334 (#4350) replaced the former map vendor's processor line with Google's address, geocoding and map-image services in lib/privacyContent.ts. That is main's approved legal change, not the redesign's.
 const LEGAL = {
   'privacy-policy': { key: 'privacy', module: 'lib/privacyContent.ts', text: 'ac7e165cfb62ebc598371efe8e52f3aab91989848032430d90bf4369e44678f3', moduleSha: 'd76f0d71069e7d33cec417f790c8bf9699c80f144929bb77e29f9e01c7e862e7' },
   'terms-of-service': { key: 'terms', module: 'lib/termsContent.ts', text: '4a54ce1728ae12f75c349f3f39b1f5b2b0bfd99fa5b6828f90786fdfdf5a3fe9', moduleSha: '4d5c225a822ecb8e631b40820e5eebbabf0c7f96ce574189399943a34d383674' },
