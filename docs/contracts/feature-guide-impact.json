@@ -1750,7 +1750,8 @@
         "supabase/functions/mapbox-geocode/namedAreaAddress.ts",
         "supabase/migrations/20280521004334_issue_4334_google_places.sql",
         "mingla-business/src/components/location/sharedAddressField.tsx",
-        "mingla-business/src/components/location/sharedAddressField.web.tsx"
+        "mingla-business/src/components/location/sharedAddressField.web.tsx",
+        "supabase/migrations/20280525004334_issue_4334_place_id_repick.sql"
       ]
     },
     {
@@ -2331,7 +2332,8 @@
         "mingla-business/src/store/draftVenueStore.ts",
         "mingla-business/src/utils/parseVenuePlaceResult.ts",
         "supabase/functions/venue-address-pool-match/index.ts",
-        "app-mobile/src/components/venuePage/venueStateClose.tsx"
+        "app-mobile/src/components/venuePage/venueStateClose.tsx",
+        "mingla-business/src/components/venue/venueDetailsEditRules.ts"
       ]
     },
     {
