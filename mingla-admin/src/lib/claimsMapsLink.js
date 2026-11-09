@@ -31,19 +31,13 @@ export function claimMapsUri(detail) {
 }
 
 /**
- * A Google Maps link for a venue change request's proposed pin, so the admin
- * can check the spot. #4334 — when the host picked a Google place, its id
- * (`details_change_place_id`) anchors the link (Google shows the named place);
- * `query` stays the coordinate pair.
+ * A Google Maps link for a pin. #4334 — when a Google place id is known it
+ * anchors the link (Google shows the named place); `query` stays the
+ * coordinate pair. Used by the venue change review's proposed-pin link.
  */
-export function proposedPinMapUrl(request) {
-  const lat = request?.details_change_lat;
-  const lng = request?.details_change_lng;
+export function googleMapsPinUrl(lat, lng, placeId) {
   if (typeof lat !== "number" || typeof lng !== "number") return null;
   const base = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
-  const placeId =
-    typeof request?.details_change_place_id === "string" ? request.details_change_place_id.trim() : "";
-  return /^[A-Za-z0-9_-]{10,}$/.test(placeId)
-    ? `${base}&query_place_id=${encodeURIComponent(placeId)}`
-    : base;
+  const id = typeof placeId === "string" ? placeId.trim() : "";
+  return /^[A-Za-z0-9_-]{10,}$/.test(id) ? `${base}&query_place_id=${encodeURIComponent(id)}` : base;
 }

@@ -13,6 +13,7 @@
  */
 
 import { supabase } from "../lib/supabase";
+import { googleMapsPinUrl } from "../lib/claimsMapsLink.js";
 
 const CHANGE_REQUEST_SELECT = `
   id,
@@ -122,8 +123,15 @@ function formatPin(lat, lng, precision) {
   return precision === "approximate" ? `${where} (approximate)` : where;
 }
 
-// #4334 — moved to lib/claimsMapsLink.js (node-testable); re-exported here for callers.
-export { proposedPinMapUrl } from "../lib/claimsMapsLink.js";
+/** A Google Maps link for the proposed pin, so the admin can check the spot. */
+export function proposedPinMapUrl(request) {
+  // #4334 — the Google place the host picked anchors the link (named place).
+  return googleMapsPinUrl(
+    request?.details_change_lat,
+    request?.details_change_lng,
+    request?.details_change_place_id,
+  );
+}
 
 /**
  * Approve or reject one request. `requestId` pins the exact request the admin

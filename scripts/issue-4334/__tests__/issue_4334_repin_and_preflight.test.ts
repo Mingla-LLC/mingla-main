@@ -6,7 +6,10 @@
 // supabase/migrations/__tests__/issue_4334_google_places.implementor.pg17.test.sql).
 //
 // Fails-on-revert:
-//   R-2 drop the `distanceM > MAX_DISTANCE_M` reject            → red
+//   R-2 drop the 25 km approximate bound                         → red
+//   G-1..G-6 (R3-2 guard, the tester's production cases): drop the 150 m
+//        exact bound, the 25 km bound or the locality check      → red
+//   G-7 review rows not written to the CSV / applied anyway       → red
 //   R-3 drop the country-mismatch reject                         → red
 //   R-4 stop catching StopRun (no early stop on 429)            → red
 //   R-5 --apply without the `stoppedAt === null` guard          → red
@@ -19,6 +22,7 @@ import {
   queryFor,
   type RepinCandidate,
   type RepinDeps,
+  reviewCsv,
   run,
   TEXT_SEARCH_MASK,
 } from "../repin-to-google.ts";
@@ -35,8 +39,18 @@ const KYMA: RepinCandidate = {
   coordinate_precision: "approximate",
 };
 
-const place = (id: string, lat: number, lng: number, cc: string, types: string[]) => ({
-  places: [{ id, location: { latitude: lat, longitude: lng }, types, addressComponents: [{ shortText: cc, types: ["country", "political"] }] }],
+// [TEST-MOD-APPROVED #4334] R3-2: results carry their city / locality, which the
+// guard compares with the host's text (default "Lagos" / "Lekki").
+const place = (id: string, lat: number, lng: number, cc: string, types: string[], localities = ["Lekki", "Lagos"]) => ({
+  places: [{
+    id,
+    location: { latitude: lat, longitude: lng },
+    types,
+    addressComponents: [
+      ...localities.map((name, i) => ({ longText: name, shortText: name, types: [i === 0 ? "locality" : "administrative_area_level_2", "political"] })),
+      { shortText: cc, types: ["country", "political"] },
+    ],
+  }],
 });
 
 function deps(answer: (body: Record<string, unknown>) => Response): RepinDeps & { calls: Array<Record<string, unknown>>; headers: Array<Record<string, string>> } {
@@ -72,11 +86,13 @@ Deno.test("R-1 query is the host text with ' · ' → ', '; biased 50 km at the 
   assert(decisions[0].distanceM! > 9000 && decisions[0].distanceM! < 12000, `${decisions[0].distanceM}`);
 });
 
-Deno.test("R-2 more than 50 km away → rejected, old pin kept", async () => {
-  const d = deps(() => new Response(JSON.stringify(place("ChIJibadan_000001", 7.3775, 3.947, "NG", ["locality"]))));
+// [TEST-MOD-APPROVED #4334] R3-2: a far move is no longer a silent reject; it is
+// listed for review (not moved) under the 25 km approximate bound.
+Deno.test("R-2 more than 25 km away → review, old pin kept", async () => {
+  const d = deps(() => new Response(JSON.stringify(place("ChIJibadan_000001", 7.3775, 3.947, "NG", ["locality"], ["Ibadan"]))));
   const { decisions } = await planRepin([KYMA], d);
-  assertEquals(decisions[0].outcome, "reject");
-  assertEquals(decisions[0].reason, "too_far");
+  assertEquals(decisions[0].outcome, "review");
+  assertEquals(decisions[0].reason, "approximate_pin_moved_over_25km");
 });
 
 Deno.test("R-3 country mismatch (Lagos, Portugal) → rejected", async () => {
@@ -98,7 +114,7 @@ Deno.test("R-5 dry run writes nothing; apply writes only accepted rows, with no 
   const candidates = [KYMA, { ...KYMA, row_id: "far", label: "Far away" }];
   const answer = (b: Record<string, unknown>) =>
     new Response(JSON.stringify(b.textQuery === "Far away"
-      ? place("ChIJfar_000000001", 9.0, 7.4, "NG", ["locality"])
+      ? place("ChIJfar_000000001", 9.0, 7.4, "NG", ["locality"], ["Abuja"])
       : place("ChIJkyma_beach_0001", 6.4227, 3.4843, "NG", ["establishment"])));
   const base = { ...deps(answer), log: () => {}, rpc: (fn: string, args: Record<string, unknown>) => {
     rpcCalls.push([fn, args]);
@@ -153,4 +169,102 @@ Deno.test("P-1/P-2 preflight: four body verdicts; 200 + REQUEST_DENIED and the 4
     return Promise.resolve(good(url));
   });
   assertEquals(bad.map((r) => [r.api, r.ok]), [["places_autocomplete", true], ["place_details", true], ["geocoding", false], ["static_maps", false]]);
+});
+
+
+// ── R3-2: the move guard, on the tester's production dry-run cases ──────────
+// Old pins and Google's answers are placed at the distances the production dry
+// run measured (evidence/repin_dry_run_production.json). Moving north by
+// `m` metres: Δlat = m / 111 194.93 (the haversine metre-per-degree).
+const north = (p: { lat: number; lng: number }, m: number) => ({ lat: p.lat + m / 111_194.93, lng: p.lng });
+const exactRow = (row_id: string, label: string, pin: { lat: number; lng: number }, cc: string): RepinCandidate => ({
+  pin_kind: "event_location", row_id, label, lat: pin.lat, lng: pin.lng, country_code: cc, coordinate_precision: "exact",
+});
+async function decideOne(c: RepinCandidate, answer: { lat: number; lng: number }, cc: string, localities: string[]) {
+  const d = deps(() => new Response(JSON.stringify(place("ChIJguard_case_001", answer.lat, answer.lng, cc, ["point_of_interest", "establishment"], localities))));
+  return (await planRepin([c], d)).decisions[0];
+}
+
+const SOHO = { lat: 51.51366, lng: -0.13216 };
+const HARMATTAN = { lat: 6.42813, lng: 3.42189 };
+const WYTHE = { lat: 40.72146, lng: -73.95793 };
+const ONIJEKUJE = { lat: 6.61671, lng: 3.29801 };
+
+Deno.test("G-1 QA Test Venue · 12 Soho Square (exact) moved 4.2 km → review, not moved", async () => {
+  const d = await decideOne(exactRow("soho", "QA Test Venue · 12 Soho Square, Westminster, London, W1D 3QF, UK", SOHO, "GB"), north(SOHO, 4161), "GB", ["London"]);
+  assertEquals([d.outcome, d.reason, d.distanceM], ["review", "exact_pin_moved_over_150m", 4161]);
+});
+
+Deno.test("G-2 Harmattan Club (exact) at 8.6 km and at 815 m → review; a 60 m nudge onto Google's pin → accept", async () => {
+  const row = exactRow("harmattan", "Harmattan Club · Ozumba Mbadiwe Rd 12, Lagos 10, Lagos, Nigeria", HARMATTAN, "NG");
+  const far = await decideOne(row, north(HARMATTAN, 8592), "NG", ["Lagos"]);
+  assertEquals([far.outcome, far.reason], ["review", "exact_pin_moved_over_150m"]);
+  const mid = await decideOne(row, north(HARMATTAN, 815), "NG", ["Lagos"]);
+  assertEquals([mid.outcome, mid.reason], ["review", "exact_pin_moved_over_150m"]);
+  const nudge = await decideOne(row, north(HARMATTAN, 60), "NG", ["Lagos"]);
+  assertEquals([nudge.outcome, nudge.reason], ["accept", null]);
+});
+
+Deno.test("G-3 Lantern Room · 11 Wythe Ave (exact) moved 1.5 km → review", async () => {
+  const d = await decideOne(exactRow("wythe", "Lantern Room · 11 Wythe Avenue, Brooklyn, New York 11249, United States", WYTHE, "US"), north(WYTHE, 1525), "US", ["New York", "Brooklyn"]);
+  assertEquals([d.outcome, d.reason], ["review", "exact_pin_moved_over_150m"]);
+});
+
+Deno.test("G-4 Onijekuje Chopify moved 38 km → review whether the row is exact or approximate", async () => {
+  const label = "Onijekuje Chopify · 1st Avenue, 121 Road, Gowon Estate, Egbeda, Lagos";
+  const asExact = await decideOne(exactRow("oni", label, ONIJEKUJE, "NG"), north(ONIJEKUJE, 38255), "NG", ["Ikorodu", "Lagos"]);
+  assertEquals([asExact.outcome, asExact.reason], ["review", "exact_pin_moved_over_150m"]);
+  const asApprox = await decideOne({ ...exactRow("oni2", label, ONIJEKUJE, "NG"), coordinate_precision: "approximate" }, north(ONIJEKUJE, 38255), "NG", ["Ikorodu", "Lagos"]);
+  assertEquals([asApprox.outcome, asApprox.reason], ["review", "approximate_pin_moved_over_25km"]);
+});
+
+Deno.test("G-5 a Lagos-centroid row (precision unknown) moves ≤25 km only into a locality its text names", async () => {
+  const centroid = { ...KYMA, coordinate_precision: null };
+  const inTown = await decideOne(centroid, { lat: 6.4227, lng: 3.4843 }, "NG", ["Lekki"]);
+  assertEquals([inTown.outcome, inTown.reason], ["accept", null]);
+  const elsewhere = await decideOne(centroid, { lat: 6.4227, lng: 3.4843 }, "NG", ["Ikeja"]);
+  assertEquals([elsewhere.outcome, elsewhere.reason], ["review", "result_locality_not_in_host_text"]);
+  const unknown = await decideOne(centroid, { lat: 6.4227, lng: 3.4843 }, "NG", []);
+  assertEquals([unknown.outcome, unknown.reason], ["review", "result_locality_unknown"]);
+});
+
+Deno.test("G-6 the locality match is whole-word and accent-insensitive", async () => {
+  const row = { ...KYMA, label: "Café Zoé · Rue de la Paix, Montréal", country_code: "CA", coordinate_precision: "approximate" };
+  const ok = await decideOne(row, north({ lat: KYMA.lat, lng: KYMA.lng }, 900), "CA", ["Montreal"]);
+  assertEquals(ok.outcome, "accept");
+  const partial = await decideOne({ ...row, label: "Lagoon Bar · Victoria Island" }, north({ lat: KYMA.lat, lng: KYMA.lng }, 900), "CA", ["Lagos"]);
+  assertEquals([partial.outcome, partial.reason], ["review", "result_locality_not_in_host_text"]);
+});
+
+Deno.test("G-7 review rows are written to the CSV and never applied", async () => {
+  const soho = exactRow("soho-row", "QA Test Venue · 12 Soho Square, London", SOHO, "GB");
+  const candidates = [KYMA, soho];
+  const answer = (b: Record<string, unknown>) =>
+    new Response(JSON.stringify(String(b.textQuery).startsWith("QA Test Venue")
+      ? place("ChIJsoho_far_0001", north(SOHO, 4161).lat, SOHO.lng, "GB", ["establishment"], ["London"])
+      : place("ChIJkyma_beach_0001", 6.4227, 3.4843, "NG", ["establishment"])));
+  const rpcCalls: Array<[string, Record<string, unknown>]> = [];
+  const written: Record<string, string> = {};
+  const code = await run(["--apply", "--review-csv", "review.csv"], {
+    ...deps(answer),
+    log: () => {},
+    rpc: (fn, args) => {
+      rpcCalls.push([fn, args]);
+      return Promise.resolve(fn === "places_repin_candidates" ? candidates : true);
+    },
+    writeText: (p, text) => {
+      written[p] = text;
+      return Promise.resolve();
+    },
+  });
+  assertEquals(code, 0);
+  const applies = rpcCalls.filter((c) => c[0] === "places_repin_apply").map((c) => c[1].p_row_id);
+  assertEquals(applies, [KYMA.row_id]);
+  const lines = written["review.csv"].trim().split("\n");
+  assertEquals(lines[0], "id,kind,host_text,old_lat,old_lng,new_lat,new_lng,distance_m,reason");
+  assertEquals(lines.length, 2);
+  assert(lines[1].startsWith(`soho-row,event_location,"QA Test Venue · 12 Soho Square, London",51.51366,-0.13216,`), lines[1]);
+  assert(lines[1].endsWith(",4161,exact_pin_moved_over_150m"), lines[1]);
+  // a quote in host text is escaped
+  assert(reviewCsv([{ kind: "brand", rowId: "b", query: "q", label: 'Say "hi", Lagos', old: { lat: 1, lng: 2 }, outcome: "review", reason: "r", placeId: "p", new: { lat: 3, lng: 4 }, distanceM: 5, precision: null, featureType: null }]).includes('"Say ""hi"", Lagos"'));
 });

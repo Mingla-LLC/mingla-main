@@ -2,8 +2,8 @@
  * #4334 (Seth decision D2) — one-off automatic re-pin of the rows that still
  * need a pin onto Google, spec v2 §7.
  *
- *   deno run --allow-env --allow-net scripts/issue-4334/repin-to-google.ts            # dry run (default)
- *   deno run --allow-env --allow-net scripts/issue-4334/repin-to-google.ts --apply
+ *   deno run --allow-env --allow-net --allow-write scripts/issue-4334/repin-to-google.ts            # dry run (default)
+ *   deno run --allow-env --allow-net --allow-write scripts/issue-4334/repin-to-google.ts --apply [--review-csv review.csv]
  *   deno run --allow-env --allow-net --allow-read scripts/issue-4334/repin-to-google.ts --restore applied.json
  *
  * Env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, GOOGLE_MAPS_API_KEY. The key is
@@ -11,10 +11,20 @@
  *
  * Per pin: Places Text Search (New) with the stored host text (" · " → ", "),
  * biased 50 km around the old pin, in the stored country, English, one result.
- * Accept when the country matches (when one is stored) and the new pin is within
- * 50 km of the old one. Accepted rows go through `places_repin_apply`, which
- * keeps the old pin in the audit columns and NEVER writes host text (D9).
- * Rejected rows keep their old pin and are listed for #4334 and the ops alert.
+ * The country must match (when one is stored). Then the SAFETY GUARD (#4334
+ * retest 3, R3-2 — the production dry run moved exact pins 1.5–38 km onto
+ * same-name places elsewhere):
+ *   - a row whose current precision is "exact" moves only if the move is
+ *     ≤150 m (EXACT_MAX_MOVE_M);
+ *   - any other row (approximate, unknown, or the Lagos centroid) moves only if
+ *     the move is ≤25 km (APPROX_MAX_MOVE_M) AND Google's result is in a city /
+ *     locality named in the host's own text.
+ * A row that fails the guard is NOT moved: it goes to the REVIEW list, written
+ * as CSV (`--review-csv <path>`, default `repin-review.csv`: id, kind, host
+ * text, old and new coordinates, distance, reason) for a person to check.
+ * Accepted rows go through `places_repin_apply`, which keeps the old pin in the
+ * audit columns and NEVER writes host text (D9). Rejected rows (no result,
+ * country mismatch, HTTP error) keep their old pin and are listed too.
  * 5 requests/s, 6 s timeout, stops at the first 403 or 429.
  */
 
@@ -27,7 +37,21 @@ import {
 export const TEXT_SEARCH_URL = "https://places.googleapis.com/v1/places:searchText";
 export const TEXT_SEARCH_MASK =
   "places.id,places.location,places.types,places.formattedAddress,places.addressComponents";
+/** The search bias radius around the old pin (not an acceptance bound). */
 export const MAX_DISTANCE_M = 50_000;
+/** R3-2: an exact pin may be nudged onto Google's pin, never moved elsewhere. */
+export const EXACT_MAX_MOVE_M = 150;
+/** R3-2: an approximate / centroid pin may move at most this far. */
+export const APPROX_MAX_MOVE_M = 25_000;
+/** Address-component types that name a city or locality. */
+export const LOCALITY_TYPES = [
+  "locality",
+  "postal_town",
+  "sublocality",
+  "sublocality_level_1",
+  "administrative_area_level_2",
+  "administrative_area_level_3",
+] as const;
 export const REQUESTS_PER_SECOND = 5;
 export const TIMEOUT_MS = 6000;
 
@@ -46,8 +70,15 @@ export interface RepinDecision {
   rowId: string;
   query: string;
   old: { lat: number; lng: number };
-  outcome: "accept" | "reject";
+  /** accept → moved; review → NOT moved, listed for a person; reject → no usable result. */
+  outcome: "accept" | "review" | "reject";
   reason: string | null;
+  /** The host's text exactly as stored (for the review list; never written). */
+  label?: string | null;
+  /** The current precision the guard read ("exact" or anything else). */
+  oldPrecision?: string | null;
+  /** City / locality names from Google's result. */
+  localities?: string[];
   placeId: string | null;
   new: { lat: number; lng: number } | null;
   distanceM: number | null;
@@ -67,6 +98,66 @@ export function haversineMeters(a: { lat: number; lng: number }, b: { lat: numbe
   const h = Math.sin(rad(b.lat - a.lat) / 2) ** 2 +
     Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(rad(b.lng - a.lng) / 2) ** 2;
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+const fold = (s: string): string =>
+  s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+/** City / locality names (long and short) in a Places address-component list. */
+export function localityNames(
+  components: Array<{ longText?: string; shortText?: string; types?: string[] }> | undefined,
+): string[] {
+  const names = new Set<string>();
+  for (const c of components ?? []) {
+    if (!(c.types ?? []).some((t) => (LOCALITY_TYPES as readonly string[]).includes(t))) continue;
+    for (const n of [c.longText, c.shortText]) {
+      const f = fold(n ?? "");
+      if (f.length >= 3) names.add(f);
+    }
+  }
+  return [...names];
+}
+
+/** True when the host's text names one of the result's cities / localities (whole words). */
+export function hostTextNamesLocality(label: string | null, localities: string[]): boolean {
+  const text = ` ${fold(label ?? "")} `;
+  return localities.some((name) => text.includes(` ${name} `));
+}
+
+/**
+ * R3-2 — the move guard. Returns null when the move may be applied, else the
+ * review reason. `exact` is the row's CURRENT precision.
+ */
+export function moveGuard(input: {
+  currentPrecision: string | null;
+  distanceM: number;
+  label: string | null;
+  localities: string[];
+}): string | null {
+  if (input.currentPrecision === "exact") {
+    return input.distanceM <= EXACT_MAX_MOVE_M ? null : "exact_pin_moved_over_150m";
+  }
+  if (input.distanceM > APPROX_MAX_MOVE_M) return "approximate_pin_moved_over_25km";
+  if (input.localities.length === 0) return "result_locality_unknown";
+  if (!hostTextNamesLocality(input.label, input.localities)) return "result_locality_not_in_host_text";
+  return null;
+}
+
+/** One CSV line per review row: id, kind, host text, old/new lat/lng, distance, reason. */
+export function reviewCsv(decisions: RepinDecision[]): string {
+  const cell = (v: unknown): string => {
+    const s = v === null || v === undefined ? "" : String(v);
+    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const header = "id,kind,host_text,old_lat,old_lng,new_lat,new_lng,distance_m,reason";
+  const rows = decisions
+    .filter((d) => d.outcome === "review")
+    .map((d) =>
+      [d.rowId, d.kind, d.label ?? d.query, d.old.lat, d.old.lng, d.new?.lat, d.new?.lng, d.distanceM, d.reason]
+        .map(cell)
+        .join(",")
+    );
+  return [header, ...rows].join("\n") + "\n";
 }
 
 /** The host's text as the search query. Read only — never written back. */
@@ -94,6 +185,8 @@ export async function decide(candidate: RepinCandidate, deps: RepinDeps): Promis
     distanceM: null,
     precision: null,
     featureType: null,
+    label: candidate.label,
+    oldPrecision: candidate.coordinate_precision,
   };
   if (query.length === 0) return { ...base, reason: "no_text" };
   const country = candidate.country_code?.trim().toUpperCase() || null;
@@ -127,7 +220,7 @@ export async function decide(candidate: RepinCandidate, deps: RepinDeps): Promis
       id?: string;
       location?: { latitude?: number; longitude?: number };
       types?: string[];
-      addressComponents?: Array<{ shortText?: string; types?: string[] }>;
+      addressComponents?: Array<{ longText?: string; shortText?: string; types?: string[] }>;
     }>;
   } | null;
   const place = data?.places?.[0];
@@ -140,6 +233,7 @@ export async function decide(candidate: RepinCandidate, deps: RepinDeps): Promis
     ?.find((c) => (c.types ?? []).includes("country"))?.shortText?.toUpperCase() ?? null;
   const distanceM = haversineMeters(candidate, { lat, lng });
   const featureType = featureTypeFromGoogleTypes(place.types ?? []);
+  const localities = localityNames(place.addressComponents);
   const decided = {
     ...base,
     placeId: place.id,
@@ -147,9 +241,16 @@ export async function decide(candidate: RepinCandidate, deps: RepinDeps): Promis
     distanceM: Math.round(distanceM),
     featureType,
     precision: featureTypeToPrecision(featureType),
+    localities,
   };
   if (country && resultCountry !== country) return { ...decided, reason: `country_mismatch:${resultCountry}` };
-  if (distanceM > MAX_DISTANCE_M) return { ...decided, reason: "too_far" };
+  const guard = moveGuard({
+    currentPrecision: candidate.coordinate_precision,
+    distanceM,
+    label: candidate.label,
+    localities,
+  });
+  if (guard !== null) return { ...decided, outcome: "review", reason: guard };
   return { ...decided, outcome: "accept", reason: null };
 }
 
@@ -198,7 +299,12 @@ export function applyArgs(d: RepinDecision): Record<string, unknown> {
 
 type Rpc = (fn: string, args: Record<string, unknown>) => Promise<unknown>;
 
-export async function run(argv: string[], deps: RepinDeps & { rpc: Rpc; log: (s: string) => void; readText?: (p: string) => Promise<string> }): Promise<number> {
+export async function run(argv: string[], deps: RepinDeps & {
+  rpc: Rpc;
+  log: (s: string) => void;
+  readText?: (p: string) => Promise<string>;
+  writeText?: (p: string, text: string) => Promise<void>;
+}): Promise<number> {
   const mode = argv.includes("--restore") ? "restore" : argv.includes("--apply") ? "apply" : "dry-run";
   if (mode === "restore") {
     const file = argv[argv.indexOf("--restore") + 1];
@@ -217,7 +323,10 @@ export async function run(argv: string[], deps: RepinDeps & { rpc: Rpc; log: (s:
   const candidates = await deps.rpc("places_repin_candidates", {}) as RepinCandidate[];
   const { decisions, stoppedAt } = await planRepin(candidates ?? [], deps);
   const accepted = decisions.filter((d) => d.outcome === "accept");
+  const review = decisions.filter((d) => d.outcome === "review");
   const rejected = decisions.filter((d) => d.outcome === "reject");
+  const reviewPath = argv.includes("--review-csv") ? argv[argv.indexOf("--review-csv") + 1] : "repin-review.csv";
+  if (deps.writeText && reviewPath) await deps.writeText(reviewPath, reviewCsv(decisions));
   const applied: Array<{ kind: string; rowId: string }> = [];
   if (mode === "apply" && stoppedAt === null) {
     for (const d of accepted) {
@@ -228,6 +337,8 @@ export async function run(argv: string[], deps: RepinDeps & { rpc: Rpc; log: (s:
     mode,
     candidates: candidates?.length ?? 0,
     accepted: accepted.length,
+    review: review.length,
+    reviewCsv: deps.writeText ? reviewPath : null,
     rejected: rejected.length,
     stoppedAt,
     applied,
@@ -260,5 +371,6 @@ if (import.meta.main) {
     rpc,
     log: (s) => console.log(s),
     readText: (p) => Deno.readTextFile(p),
+    writeText: (p, text) => Deno.writeTextFile(p, text),
   }));
 }
