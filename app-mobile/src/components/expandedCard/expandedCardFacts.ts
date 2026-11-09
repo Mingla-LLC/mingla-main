@@ -300,7 +300,7 @@ export function curatedPlanSpans(
  * `formatDisplayPrice`, so ₦100,000 reads "≈ $74" to a dollar viewer and never
  * "$100,000". A 0 envelope total still prints "Free" honestly.
  *
- * An AI-CURATED plan's stop prices are fixed USD tier constants, not prices
+ * An AI curated plan's stop prices are fixed USD tier constants, not prices
  * anyone charges (Decision 2, approved 2026-11-08): it shows a SPEND LEVEL —
  * Free / Budget / Moderate / Upscale — and no amount at all.
  */
