@@ -190,18 +190,28 @@ Deno.test("#4339 A a confirmed booking writes ONE Inbound lead, idempotent on th
       calls.indexOf(w) > eventIndex,
       "the lead is written after the calendar event exists",
     );
+    // #4339 calls: a Host booking is audience host with no program fields;
+    // the Meet and calendar links and the booker's zone ride along.
     assertEquals(JSON.parse(w.body), {
       booking_key: "gcal:evt_4339_abc",
       calendar_event_id: "evt_4339_abc",
+      audience: "host",
       name: "Ada Lovelace",
       email: "ada@bluenote.com",
       venue: "Blue Note",
       icp: "restaurants",
+      city: null,
+      creator_makes: null,
+      work_url: null,
+      first_place: null,
       social_platform: "instagram",
       social_handle: "@bluenote",
       social_url: "https://instagram.com/bluenote",
       website: "https://bluenote.com",
       call_at: START,
+      booker_time_zone: null,
+      meet_url: "https://meet.example/abc",
+      event_url: "https://calendar.example/event",
       source: "venue_grader",
     });
   });

@@ -194,7 +194,7 @@ Deno.test("#4339 the social link and the website are the first lines, the #3601 
     social_handle: "@bluenote",
     website: "bluenote.com",
   });
-  assert(parsed.ok);
+  assert(parsed.ok && parsed.context.audience === "host");
   const lines = buildBookingDescription(
     parsed.context,
     `${SCHEDULER_BASE_LINE}\nCame from: x`,

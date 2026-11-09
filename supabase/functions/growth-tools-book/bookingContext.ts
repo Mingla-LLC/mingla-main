@@ -19,6 +19,44 @@
 //       instagram.com/<h>, tiktok.com/@<h>, facebook.com/<h>, x.com/<h>,
 //       youtube.com/@<h>, linkedin.com/in/<h>.
 //   - Website is optional; when given it must be a public http(s) address.
+//
+// #4339 Creators and Locals calls (Seth approved, 9 Nov): `audience` is host
+// (absent, the default: everything above, unchanged), creator or local, and
+// each audience has its own required fields:
+//   - creator: city, main social, and what they make (video, photo or both);
+//     a link to their best work is optional (a public http(s) address).
+//   - local:   city and main social; a place they'd review first is optional.
+// The city is a single line of 2 to 80 characters (the page offers every live
+// Mingla city, or "Somewhere else" and what they typed). The marketing page
+// checks the same (mingla-marketing/lib/booking-social.ts programBookingErrors),
+// pinned by the fixture table's `audiences` rows. Recipients never depend on
+// the audience; only the invite title and the facts listed do.
+
+export const BOOKING_AUDIENCES = ["host", "creator", "local"] as const;
+export type BookingAudience = (typeof BOOKING_AUDIENCES)[number];
+
+/** How each audience's call is named (Inbound leads, the Calendar, the notification). */
+export const AUDIENCE_CALL_LABELS: Readonly<Record<BookingAudience, string>> = {
+  host: "Host call",
+  creator: "Creator call",
+  local: "Local call",
+};
+
+export const CREATOR_MAKES = ["video", "photo", "both"] as const;
+export type CreatorMakes = (typeof CREATOR_MAKES)[number];
+
+export const CREATOR_MAKES_LABELS: Readonly<Record<CreatorMakes, string>> = {
+  video: "Video",
+  photo: "Photos",
+  both: "Video and photos",
+};
+
+export const MAX_CITY_INPUT = 80;
+export const MAX_FIRST_PLACE_INPUT = 120;
+
+// C0 and C1 controls and the two JavaScript line terminators (the same set as
+// bookingDetails.ts sanitizeLine), so no value can forge an invite line.
+const CONTROL_CHARS = /[\u0000-\u001F\u007F-\u009F\u2028\u2029]/;
 
 export const ICP_VALUES = [
   "events",
@@ -220,38 +258,190 @@ export function parseWebsite(raw: unknown): WebsiteResult {
   return { ok: true, url: typed };
 }
 
-export interface BookingContext {
+/** host when absent or empty (every caller before #4339's call pages); null when unknown. */
+export function parseAudience(raw: unknown): BookingAudience | null {
+  if (raw === undefined || raw === null || raw === "") return "host";
+  if (typeof raw !== "string") return null;
+  const value = raw.trim().toLowerCase();
+  return (BOOKING_AUDIENCES as readonly string[]).includes(value)
+    ? value as BookingAudience
+    : null;
+}
+
+/** The booker's city: one line of 2 to 80 characters, or null. */
+export function parseCity(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const value = raw.trim().replace(/\s+/g, " ");
+  if (value.length < 2 || value.length > MAX_CITY_INPUT) return null;
+  return CONTROL_CHARS.test(raw) ? null : value;
+}
+
+export function parseCreatorMakes(raw: unknown): CreatorMakes | null {
+  if (typeof raw !== "string") return null;
+  const value = raw.trim().toLowerCase();
+  return (CREATOR_MAKES as readonly string[]).includes(value)
+    ? value as CreatorMakes
+    : null;
+}
+
+export type FirstPlaceResult = { ok: true; place: string | null } | {
+  ok: false;
+};
+
+/** A Local's optional first place: empty is null; otherwise one line of up to 120 characters. */
+export function parseFirstPlace(raw: unknown): FirstPlaceResult {
+  if (raw === undefined || raw === null) return { ok: true, place: null };
+  if (typeof raw !== "string") return { ok: false };
+  const value = raw.trim().replace(/\s+/g, " ");
+  if (value === "") return { ok: true, place: null };
+  if (value.length > MAX_FIRST_PLACE_INPUT || CONTROL_CHARS.test(raw)) {
+    return { ok: false };
+  }
+  return { ok: true, place: value };
+}
+
+/**
+ * The booker's IANA time zone, so the team sees their local time. Optional
+ * and never refused: anything Intl does not know is dropped (null).
+ */
+export function parseTimeZone(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const value = raw.trim();
+  if (value === "" || value.length > 64 || !/^[A-Za-z0-9_+\-/]+$/.test(value)) {
+    return null;
+  }
+  try {
+    return new Intl.DateTimeFormat("en-US", { timeZone: value })
+      .resolvedOptions()
+      .timeZone;
+  } catch {
+    return null;
+  }
+}
+
+export interface HostBookingContext {
+  audience: "host";
   icp: BookingIcp;
   social: BookingSocial;
   website: string | null;
 }
 
+export interface CreatorBookingContext {
+  audience: "creator";
+  city: string;
+  social: BookingSocial;
+  makes: CreatorMakes;
+  workUrl: string | null;
+}
+
+export interface LocalBookingContext {
+  audience: "local";
+  city: string;
+  social: BookingSocial;
+  firstPlace: string | null;
+}
+
+export type BookingContext =
+  | HostBookingContext
+  | CreatorBookingContext
+  | LocalBookingContext;
+
+export type BookingContextField =
+  | "audience"
+  | "icp"
+  | "social"
+  | "website"
+  | "city"
+  | "makes"
+  | "work_url"
+  | "first_place";
+
 export type BookingContextResult =
   | { ok: true; context: BookingContext }
-  | { ok: false; field: "icp" | "social" | "website" };
+  | { ok: false; field: BookingContextField };
 
-/** Validates the three new booking fields from a request body. */
+/** Validates the booking's audience and that audience's own fields from a request body. */
 export function parseBookingContext(
   body: Record<string, unknown>,
 ): BookingContextResult {
-  const icp = parseIcp(body.icp);
-  if (icp === null) return { ok: false, field: "icp" };
+  const audience = parseAudience(body.audience);
+  if (audience === null) return { ok: false, field: "audience" };
+  if (audience === "host") {
+    const icp = parseIcp(body.icp);
+    if (icp === null) return { ok: false, field: "icp" };
+    const social = parseSocial(body.social_platform, body.social_handle);
+    if (social === null) return { ok: false, field: "social" };
+    const website = parseWebsite(body.website);
+    if (!website.ok) return { ok: false, field: "website" };
+    return {
+      ok: true,
+      context: { audience, icp, social, website: website.url },
+    };
+  }
+  const city = parseCity(body.city);
+  if (city === null) return { ok: false, field: "city" };
   const social = parseSocial(body.social_platform, body.social_handle);
   if (social === null) return { ok: false, field: "social" };
-  const website = parseWebsite(body.website);
-  if (!website.ok) return { ok: false, field: "website" };
-  return { ok: true, context: { icp, social, website: website.url } };
+  if (audience === "creator") {
+    const makes = parseCreatorMakes(body.makes);
+    if (makes === null) return { ok: false, field: "makes" };
+    const work = parseWebsite(body.work_url);
+    if (!work.ok) return { ok: false, field: "work_url" };
+    return {
+      ok: true,
+      context: { audience, city, social, makes, workUrl: work.url },
+    };
+  }
+  const firstPlace = parseFirstPlace(body.first_place);
+  if (!firstPlace.ok) return { ok: false, field: "first_place" };
+  return {
+    ok: true,
+    context: { audience, city, social, firstPlace: firstPlace.place },
+  };
 }
 
 /**
- * The lines at the TOP of the calendar invite description: the social link and
- * the website first (so the team can open them before the call), then what
- * they run. Every value here was validated above, so none can carry a line
- * break.
+ * The calendar event title. Host calls keep their title ("Mingla call", with
+ * the venue when given); a program call names its audience and the booker.
+ */
+export function buildEventSummary(
+  context: BookingContext,
+  name: string,
+  venue: string,
+): string {
+  if (context.audience === "creator") return `Mingla Creators call: ${name}`;
+  if (context.audience === "local") return `Mingla Locals call: ${name}`;
+  return `Mingla call${venue ? ` — ${venue}` : ""}`;
+}
+
+/**
+ * The lines at the TOP of the calendar invite description: the social link
+ * first (so the team can open it before the call), then the audience's facts.
+ * Host: the website, then what they run. Creator: the city, what they make and
+ * their best work. Local: the city and the first place. Every value here was
+ * validated above, so none can carry a line break.
  */
 export function buildContextLines(context: BookingContext): string[] {
+  const social = `Social: ${context.social.url} (${
+    SOCIAL_LABELS[context.social.platform]
+  })`;
+  if (context.audience === "creator") {
+    return [
+      social,
+      `City: ${context.city}`,
+      `Makes: ${CREATOR_MAKES_LABELS[context.makes]}`,
+      `Best work: ${context.workUrl ?? "none given"}`,
+    ];
+  }
+  if (context.audience === "local") {
+    return [
+      social,
+      `City: ${context.city}`,
+      `First place: ${context.firstPlace ?? "none given"}`,
+    ];
+  }
   return [
-    `Social: ${context.social.url} (${SOCIAL_LABELS[context.social.platform]})`,
+    social,
     `Website: ${context.website ?? "none given"}`,
     `Runs: ${ICP_LABELS[context.icp]}`,
   ];
@@ -273,6 +463,28 @@ export function buildPrivateProperties(
   context: BookingContext,
   source: string,
 ): Record<string, string> {
+  if (context.audience === "creator") {
+    return {
+      mingla_audience: "creator",
+      mingla_city: context.city,
+      mingla_creator_makes: context.makes,
+      mingla_work_url: context.workUrl ?? "",
+      mingla_social_platform: context.social.platform,
+      mingla_social_url: context.social.url,
+      mingla_source: source,
+    };
+  }
+  if (context.audience === "local") {
+    return {
+      mingla_audience: "local",
+      mingla_city: context.city,
+      mingla_first_place: context.firstPlace ?? "",
+      mingla_social_platform: context.social.platform,
+      mingla_social_url: context.social.url,
+      mingla_source: source,
+    };
+  }
+  // Host: exactly the #4339 §6 properties (unchanged).
   return {
     mingla_icp: context.icp,
     mingla_social_platform: context.social.platform,

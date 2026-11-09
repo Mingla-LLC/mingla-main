@@ -16,6 +16,12 @@
 // the booking key, so it can be found and replayed by hand. No email address
 // or token is logged.
 //
+// #4339 Creators and Locals calls: the row carries its `audience` (host,
+// creator or local) and that audience's facts (the ICP, venue and website for
+// a Host call; the city, what they make and their best work for a Creator; the
+// city and first place for a Local), plus the booker's time zone and the Meet
+// and calendar links, so the admin Calendar can show every call.
+//
 // No module imports beyond the sibling type file, so the Deno suites can run
 // it with a stubbed fetch and no network.
 
@@ -29,21 +35,40 @@ export interface BookingLeadInput {
   venue: string;
   source: string;
   context: BookingContext;
+  /** The booker's IANA time zone (validated), when the page sent one. */
+  timeZone?: string | null;
+  meetUrl?: string | null;
+  eventUrl?: string | null;
 }
 
 export interface BookingLeadRow {
   booking_key: string;
   calendar_event_id: string | null;
+  audience: "host" | "creator" | "local";
   name: string;
   email: string;
   venue: string | null;
-  icp: string;
+  icp: string | null;
+  city: string | null;
+  creator_makes: string | null;
+  work_url: string | null;
+  first_place: string | null;
   social_platform: string;
   social_handle: string;
   social_url: string;
   website: string | null;
   call_at: string;
+  booker_time_zone: string | null;
+  meet_url: string | null;
+  event_url: string | null;
   source: string | null;
+}
+
+/** Only an https link is stored for the Meet and the calendar event. */
+function httpsOrNull(url: string | null | undefined): string | null {
+  if (typeof url !== "string") return null;
+  const value = url.trim();
+  return /^https:\/\/\S+$/i.test(value) && value.length <= 500 ? value : null;
 }
 
 /** FNV-1a (32-bit) hex, so a key never carries the email itself. */
@@ -73,20 +98,30 @@ export function bookingKey(
 export function buildBookingLead(input: BookingLeadInput): BookingLeadRow {
   const venue = input.venue.trim();
   const source = input.source.trim();
+  const context = input.context;
+  const host = context.audience === "host";
   return {
     booking_key: bookingKey(input.eventId, input.startMs, input.email),
     calendar_event_id: input.eventId && input.eventId.trim() !== ""
       ? input.eventId.trim()
       : null,
+    audience: context.audience,
     name: input.name,
     email: input.email,
-    venue: venue === "" ? null : venue,
-    icp: input.context.icp,
-    social_platform: input.context.social.platform,
-    social_handle: input.context.social.display,
-    social_url: input.context.social.url.replace(/^http:\/\//i, "https://"),
-    website: input.context.website,
+    venue: host && venue !== "" ? venue : null,
+    icp: context.audience === "host" ? context.icp : null,
+    city: context.audience === "host" ? null : context.city,
+    creator_makes: context.audience === "creator" ? context.makes : null,
+    work_url: context.audience === "creator" ? context.workUrl : null,
+    first_place: context.audience === "local" ? context.firstPlace : null,
+    social_platform: context.social.platform,
+    social_handle: context.social.display,
+    social_url: context.social.url.replace(/^http:\/\//i, "https://"),
+    website: context.audience === "host" ? context.website : null,
     call_at: new Date(input.startMs).toISOString(),
+    booker_time_zone: input.timeZone ?? null,
+    meet_url: httpsOrNull(input.meetUrl),
+    event_url: httpsOrNull(input.eventUrl),
     source: source === "" ? null : source,
   };
 }
