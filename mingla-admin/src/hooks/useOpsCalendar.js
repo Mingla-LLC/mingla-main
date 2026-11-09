@@ -17,6 +17,17 @@ export function useOpsCalendar(from, to) {
   });
 }
 
+// #4339 Creators and Locals calls: the booked calls for the days on screen
+// (instants; the page draws each on the viewer's own day and time).
+export function useCalendarCalls(fromIso, toIso, showTest) {
+  const { access } = useAuth();
+  return useOpsPoll(() => ops.fetchCalendarCalls(fromIso, toIso, showTest), {
+    key: `${access?.email || ""}|calls|${fromIso}|${toIso}|${showTest ? 1 : 0}`,
+    intervalMs: 60_000,
+    enabled: !!fromIso && !!toIso,
+  });
+}
+
 // The runway list's last answer per signed-in person, kept across remounts so
 // Back to runway shows the rows (and can focus the one that opened the panel)
 // at once instead of a loading state.

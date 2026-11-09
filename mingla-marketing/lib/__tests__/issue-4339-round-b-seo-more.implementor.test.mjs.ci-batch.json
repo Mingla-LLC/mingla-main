@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-suite",
+  "ownerIssue": "#4339",
+  "suite": {
+    "id": "issue-4339-round-b-seo-more",
+    "class": "node22-noinstall",
+    "originPaths": [
+      "mingla-marketing/lib/__tests__/issue-4339-round-b-seo-more.implementor.test.mjs",
+      "mingla-marketing/lib/__tests__/issue-4339-round-b-load.mjs",
+      "mingla-marketing/app/**",
+      "mingla-marketing/components/**",
+      "mingla-marketing/lib/**",
+      "mingla-marketing/content/**",
+      "mingla-marketing/public/og/**",
+      "mingla-marketing/next.config.ts",
+      "mingla-marketing/middleware.ts",
+      "scripts/search/indexnow-apex.mjs",
+      "docs/search/README.md"
+    ],
+    "steps": [
+      {
+        "name": "Marketing: round B SEO follow-ups (share images, IndexNow apex, structured data, careers, headings)",
+        "cwd": "mingla-marketing",
+        "run": "node --test lib/__tests__/issue-4339-round-b-seo-more.implementor.test.mjs",
+        "commandId": "assert:issue-4339-round-b-seo-more:01",
+        "invocation": {
+          "kind": "raw-shell",
+          "command": "bash",
+          "argv": [
+            "-c",
+            "node --test lib/__tests__/issue-4339-round-b-seo-more.implementor.test.mjs"
+          ]
+        },
+        "exceptionRationale": "New self-registering execution replaces a legacy workflow registry edit."
+      }
+    ],
+    "lifecycle": "batched-active",
+    "ownerIssue": "#4339",
+    "runtime": {
+      "name": "node",
+      "version": "22"
+    },
+    "setupProfile": "node22-noinstall",
+    "cwd": "mingla-marketing",
+    "envNames": [],
+    "isolation": "clean-worktree",
+    "expectedFiles": [
+      "mingla-marketing/lib/__tests__/issue-4339-round-b-seo-more.implementor.test.mjs"
+    ],
+    "externalReferenceFiles": [],
+    "requiredContext": "CI batch: node22-noinstall",
+    "timingSeconds": {
+      "p50": 1,
+      "p95": 2,
+      "evidence": "Local targeted run 2026-11-08"
+    },
+    "generatedPaths": [
+      "suite-results.json"
+    ],
+    "exceptionRationale": "Raw shell preserves the reviewed assertion while this self-registering suite replaces a legacy workflow registry edit.",
+    "timeoutSeconds": 60
+  }
+}

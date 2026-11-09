@@ -32,7 +32,7 @@ import {
   type RefObject,
 } from 'react'
 import QRCode from 'react-qr-code'
-import { captureMarketing } from '@/components/marketing/posthog-provider'
+import { captureMarketing } from '@/components/marketing/marketing-capture'
 import { cn } from '@/lib/cn'
 import { detectClientPlatform, type Platform } from '@/lib/device-platform'
 import { resolveStoreListingHrefs } from '@/lib/cta-destination'
@@ -936,15 +936,17 @@ interface SheetProps {
 
 function StoreButtons({ app }: { app: 'explorer' | 'host' }): ReactNode {
   const stores = resolveStoreListingHrefs(app)
+  // #4339 (Seth): a store button that installs Mingla Host says "Host".
+  const host = app === 'host' ? 'Mingla Host on ' : ''
   return (
     <div className={styles.stores}>
       <a className={cn(styles.btn, styles['btn--ink'])} href={stores.appStore} target="_blank" rel="noopener">
         <Icon name="phone" />
-        App Store
+        {host}App Store
       </a>
       <a className={cn(styles.btn, styles['btn--line'])} href={stores.googlePlay} target="_blank" rel="noopener">
         <Icon name="phone" />
-        Google Play
+        {host}Google Play
       </a>
     </div>
   )

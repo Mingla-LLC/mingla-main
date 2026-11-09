@@ -45,7 +45,7 @@ const SAVED_MS = 1800
 // Escape only while its own sheet is open, never prevents or stops an event,
 // and removes every listener once the app takes over
 // (window.__minglaPrivacyPrehydrationOff).
-const PREHYDRATION_SCRIPT = `(function(){var d=document,w=window;function q(t){return d.querySelector('[data-testid="'+t+'"]')}var strip=q("privacy-strip"),sheet=q("privacy-sheet"),scrim=q("privacy-scrim");if(!strip||!sheet||!scrim)return;function show(on){sheet.hidden=!on;scrim.hidden=!on;strip.setAttribute("aria-expanded",on?"true":"false");if(on){sheet.setAttribute("role","dialog");sheet.setAttribute("aria-modal","true")}else{sheet.removeAttribute("role");sheet.removeAttribute("aria-modal")}}function tap(){if(!sheet.hidden){show(false);strip.focus();return}show(true);var f=sheet.querySelector("input");if(f)f.focus()}function shut(){show(false);strip.focus()}function flip(e){var t=e.target;if(t&&t.setAttribute)t.setAttribute("data-mpb-touched","")}function key(e){if(e.key==="Escape"&&!sheet.hidden)shut()}strip.addEventListener("click",tap);scrim.addEventListener("click",shut);sheet.addEventListener("change",flip);d.addEventListener("keydown",key);w.__minglaPrivacyPrehydrationOff=function(){strip.removeEventListener("click",tap);scrim.removeEventListener("click",shut);sheet.removeEventListener("change",flip);d.removeEventListener("keydown",key);w.__minglaPrivacyPrehydrationOff=undefined}})();`
+const PREHYDRATION_SCRIPT = `(function(){var d=document,w=window;function q(t){return d.querySelector('[data-mpb="'+t+'"]')}var strip=q("strip"),sheet=q("sheet"),scrim=q("scrim");if(!strip||!sheet||!scrim)return;function show(on){sheet.hidden=!on;scrim.hidden=!on;strip.setAttribute("aria-expanded",on?"true":"false");if(on){sheet.setAttribute("role","dialog");sheet.setAttribute("aria-modal","true")}else{sheet.removeAttribute("role");sheet.removeAttribute("aria-modal")}}function tap(){if(!sheet.hidden){show(false);strip.focus();return}show(true);var f=sheet.querySelector("input");if(f)f.focus()}function shut(){show(false);strip.focus()}function flip(e){var t=e.target;if(t&&t.setAttribute)t.setAttribute("data-mpb-touched","")}function key(e){if(e.key==="Escape"&&!sheet.hidden)shut()}strip.addEventListener("click",tap);scrim.addEventListener("click",shut);sheet.addEventListener("change",flip);d.addEventListener("keydown",key);w.__minglaPrivacyPrehydrationOff=function(){strip.removeEventListener("click",tap);scrim.removeEventListener("click",shut);sheet.removeEventListener("change",flip);d.removeEventListener("keydown",key);w.__minglaPrivacyPrehydrationOff=undefined}})();`
 
 type Draft = { analytics: boolean; ads: boolean }
 
@@ -57,7 +57,7 @@ type Draft = { analytics: boolean; ads: boolean }
 function takeOverPrehydrationSheet(sheet: HTMLElement | null, running: Draft): Draft | null {
   if (sheet === null || sheet.hidden) return null
   const kept = (kind: keyof Draft): boolean => {
-    const input = sheet.querySelector<HTMLInputElement>(`[data-testid="privacy-switch-${kind}"]`)
+    const input = sheet.querySelector<HTMLInputElement>(`[data-mpb="switch-${kind}"]`)
     return input !== null && input.hasAttribute('data-mpb-touched') ? input.checked : running[kind]
   }
   return { analytics: kept('analytics'), ads: kept('ads') }
@@ -220,7 +220,7 @@ export function ConsentBanner(): React.ReactElement {
     <>
       <style id="mingla-privacy-bar-style" dangerouslySetInnerHTML={{ __html: BAR_CSS }} />
       {/* The inline handler may show these before hydration; the app then adopts them. */}
-      <div className="mpb-scrim" data-testid="privacy-scrim" onClick={close} hidden={!open} suppressHydrationWarning />
+      <div className="mpb-scrim" data-testid="privacy-scrim" data-mpb="scrim" onClick={close} hidden={!open} suppressHydrationWarning />
           <section
             ref={sheetRef}
             hidden={!open}
@@ -230,7 +230,7 @@ export function ConsentBanner(): React.ReactElement {
             aria-modal={open ? true : undefined}
             aria-labelledby="mingla-privacy-title"
             id={PANEL_ID}
-            data-testid="privacy-sheet"
+            data-testid="privacy-sheet" data-mpb="sheet"
           >
             <div className="mpb-panel" data-testid="privacy-panel">
               <h2 className="mpb-title" id="mingla-privacy-title">{PRIVACY_STRIP_LABEL}</h2>
@@ -244,7 +244,7 @@ export function ConsentBanner(): React.ReactElement {
                   role="switch"
                   className="mpb-switch"
                   aria-label="Analytics"
-                  data-testid="privacy-switch-analytics"
+                  data-testid="privacy-switch-analytics" data-mpb="switch-analytics"
                   checked={draft.analytics}
                   onChange={(event) => setDraft((current) => ({ ...current, analytics: event.target.checked }))}
                 />
@@ -259,7 +259,7 @@ export function ConsentBanner(): React.ReactElement {
                   role="switch"
                   className="mpb-switch"
                   aria-label="Ads measurement"
-                  data-testid="privacy-switch-ads"
+                  data-testid="privacy-switch-ads" data-mpb="switch-ads"
                   checked={draft.ads}
                   onChange={(event) => setDraft((current) => ({ ...current, ads: event.target.checked }))}
                 />
@@ -280,7 +280,7 @@ export function ConsentBanner(): React.ReactElement {
         type="button"
         ref={stripRef}
         className="mps ph-no-capture"
-        data-testid="privacy-strip"
+        data-testid="privacy-strip" data-mpb="strip"
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-controls={open ? PANEL_ID : undefined}

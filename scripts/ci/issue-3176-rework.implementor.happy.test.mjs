@@ -49,7 +49,7 @@ function sourceContract() {
 
   const packageJson = JSON.parse(read('mingla-marketing/package.json'))
   assert.match(packageJson.scripts.build, /export MINGLA_HISTORICAL_2983_BUILD=1/)
-  assert.match(packageJson.scripts.build, /unset MINGLA_HISTORICAL_2983_BUILD && node scripts\/clear-historical-city-build\.mjs && next build && node \.\.\/scripts\/ci\/issue-3176-editorial-route-removal\.implementor\.happy\.test\.mjs --built-only && node \.\.\/scripts\/ci\/issue-3176-editorial-route-removal\.tester\.adversarial\.test\.mjs --built-only && node \.\.\/scripts\/ci\/issue-3176-rework\.implementor\.happy\.test\.mjs --built-only && node --experimental-websocket scripts\/issue-3371-explorer-home-one-screen\.tester\.adversarial\.test\.mjs --built-only && node --experimental-websocket scripts\/issue-3371-explorer-home-one-screen\.implementor\.happy\.test\.mjs --built-only(?: && node (?:--experimental-websocket )?scripts\/issue-4137-[a-z-]+\.implementor\.happy\.test\.mjs --built-only)*$/, '#4137: only #4137 release-build tests may follow the release chain')
+  assert.match(packageJson.scripts.build, /unset MINGLA_HISTORICAL_2983_BUILD && node scripts\/clear-historical-city-build\.mjs && next build && node \.\.\/scripts\/ci\/issue-3176-editorial-route-removal\.implementor\.happy\.test\.mjs --built-only && node \.\.\/scripts\/ci\/issue-3176-editorial-route-removal\.tester\.adversarial\.test\.mjs --built-only && node \.\.\/scripts\/ci\/issue-3176-rework\.implementor\.happy\.test\.mjs --built-only && node --experimental-websocket scripts\/issue-3371-explorer-home-one-screen\.tester\.adversarial\.test\.mjs --built-only && node --experimental-websocket scripts\/issue-3371-explorer-home-one-screen\.implementor\.happy\.test\.mjs --built-only(?: && node (?:--experimental-websocket )?scripts\/issue-4137-[a-z-]+\.implementor\.happy\.test\.mjs --built-only)*(?: && node scripts\/issue-4339-first-load-budget\.mjs --self-test && node scripts\/issue-4339-first-load-budget\.mjs)?(?: && node \.\.\/\.github\/scripts\/strict-grep\/issue-4339-built-output-anti-copy\.mjs --built)?$/, '#4137: only #4137 release-build tests (and the #4339 built-output anti-copy gate and first-load budget) may follow the release chain')
   assert.equal(packageJson.scripts.postbuild, 'node scripts/issue-2990-restructured-page-system.implementor.happy.test.mjs --built-only && node scripts/issue-2990-restructured-page-system.tester.adversarial.test.mjs')
   assert.match(read('mingla-marketing/lib/search/historical-city-build.ts'), /process\.env\.MINGLA_HISTORICAL_2983_BUILD === '1'[\s\S]*?process\.env\.npm_lifecycle_event === 'postbuild'/)
 
@@ -111,7 +111,7 @@ async function runtimeContract() {
     }
     const directory = await request(port, '/cities')
     assert.equal(directory.status, 200, '/cities must be 200 in the final release build')
-    assert(directory.body.replace(/<!--[\s\S]*?-->/g, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').includes('Explore Mingla city by city.'), '/cities lost current release content')
+    assert(directory.body.replace(/<!--[\s\S]*?-->/g, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').includes('Pick a city. Find a plan.'), '/cities lost current release content (#4339 phase 2b headline)')
     for (const pathname of CITY_PATHS) {
       const response = await request(port, pathname)
       assert.equal(response.status, 200, `${pathname} must be 200 in the final release build`)

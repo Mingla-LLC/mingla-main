@@ -7,6 +7,7 @@ on:
       - "mingla-marketing/components/marketing/consent-banner.tsx"
       - "mingla-marketing/components/marketing/links-experience.tsx"
       - "mingla-marketing/components/marketing/posthog-provider.tsx"
+      - "mingla-marketing/components/marketing/marketing-capture.ts"
       - "mingla-marketing/components/marketing/__tests__/consent-banner-links-suppression*.test.ts"
       - ".github/workflows/issue-905-links-consent-suppression-tests.yml"
   pull_request:
@@ -16,6 +17,7 @@ on:
       - "mingla-marketing/components/marketing/consent-banner.tsx"
       - "mingla-marketing/components/marketing/links-experience.tsx"
       - "mingla-marketing/components/marketing/posthog-provider.tsx"
+      - "mingla-marketing/components/marketing/marketing-capture.ts"
       - "mingla-marketing/components/marketing/__tests__/consent-banner-links-suppression*.test.ts"
       - ".github/workflows/issue-905-links-consent-suppression-tests.yml"
 

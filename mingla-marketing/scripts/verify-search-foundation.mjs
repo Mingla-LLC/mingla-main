@@ -62,7 +62,26 @@ const SEARCH_READY_PATHS = [
   '/help/referrals-and-earnings',
   '/help/become-a-mingla-creator',
   '/help/mingla-local-independent-reviews',
-  // #4137 — the four blog categories project after the help family.
+  // #4339 round B — the four blog categories are noindex and out of the
+  // sitemap while they hold no public post (always, without a database: see
+  // EMPTY_BLOG_CATEGORY_PATHS). The seven Host landing pages project last.
+  '/host/events',
+  '/host/trips',
+  '/host/experiences',
+  '/host/restaurants',
+  '/host/hotels',
+  '/host/art',
+  '/host/play',
+  // ...then the programme pages and their agreements (#4339 round B).
+  '/locals',
+  '/creators',
+  '/creator-agreement',
+  '/local-agreement',
+]
+
+// #4339 round B — a blog category with no public post is noindex (follow)
+// and keeps its canonical; it returns to the sitemap with its first post.
+const EMPTY_BLOG_CATEGORY_PATHS = [
   '/blog/category/going-out',
   '/blog/category/date-ideas',
   '/blog/category/host-playbook',
@@ -117,11 +136,19 @@ const SITEMAP_SEARCH_READY_PATHS = [
   '/help/referrals-and-earnings',
   '/help/become-a-mingla-creator',
   '/help/mingla-local-independent-reviews',
-  // #4137 — the four blog categories project after the help family.
-  '/blog/category/going-out',
-  '/blog/category/date-ideas',
-  '/blog/category/host-playbook',
-  '/blog/category/product-news',
+  // #4339 round B — empty blog categories leave the sitemap; the seven Host
+  // landing pages, then the programme pages and their agreements, project last.
+  '/host/events',
+  '/host/trips',
+  '/host/experiences',
+  '/host/restaurants',
+  '/host/hotels',
+  '/host/art',
+  '/host/play',
+  '/locals',
+  '/creators',
+  '/creator-agreement',
+  '/local-agreement',
 ]
 
 const PUBLIC_NOINDEX_PATHS = [
@@ -130,6 +157,8 @@ const PUBLIC_NOINDEX_PATHS = [
   '/host/download',
   '/unsubscribe',
   '/schedule',
+  '/schedule/creators',
+  '/schedule/locals',
   '/sms-terms',
   '/delete-account',
   '/event-preview',
@@ -354,6 +383,17 @@ async function main() {
       pass(`${pathname} browser/Googlebot search contract`)
     }
 
+    for (const pathname of EMPTY_BLOG_CATEGORY_PATHS) {
+      const response = await request(port, pathname, { userAgent: CRAWLER_AGENT })
+      assert.equal(response.status, 200, `${pathname} status`)
+      const facts = pageFacts(response.body.toString('utf8'))
+      assert.match(facts.robots, /noindex/i, `${pathname} is noindex while empty`)
+      assert.match(facts.robots, /(?<!no)follow/i, `${pathname} still follows its links`)
+      assert.equal(facts.canonical, canonicalFor(pathname), `${pathname} keeps its canonical`)
+      assertSingleBrandMention(facts.title, pathname)
+    }
+    pass('empty blog categories are noindex until a post lands')
+
     const home = await request(port, '/')
     const homeFacts = pageFacts(home.body.toString('utf8'))
     assert.equal(homeFacts.jsonLd.length, 1, 'entity graph is mounted exactly once')
@@ -481,7 +521,9 @@ async function main() {
 
     const careers = await request(port, '/', { host: 'career.usemingla.com' })
     assert.equal(careers.status, 200, 'careers host remains reachable')
-    assert.match(textContent(careers.body.toString('utf8')), /Build Mingla with us\./)
+    // #4339 (round A redesign): the careers hero reads "Build the app for what to do."
+    assert.match(textContent(careers.body.toString('utf8')), /Build the app for what to do\./)
+    assert.match(careers.body.toString('utf8'), /<title>Careers at Mingla<\/title>/, 'one careers title, no doubled brand')
     assert.notEqual(careers.headers.location, `${APEX_ORIGIN}/`)
     const aasa = await request(port, '/.well-known/apple-app-site-association', { host: 'www.usemingla.com' })
     assert.equal(aasa.status, 200, '.well-known remains reachable on its owner')

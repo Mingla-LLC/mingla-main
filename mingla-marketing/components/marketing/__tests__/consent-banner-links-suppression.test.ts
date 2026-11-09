@@ -24,7 +24,8 @@ function assert(cond: boolean, msg: string): void {
 }
 const banner = stripComments(read('components/marketing/consent-banner.tsx'))
 const links = stripComments(read('components/marketing/links-experience.tsx'))
-const provider = stripComments(read('components/marketing/posthog-provider.tsx'))
+// #4339: the privacy read and capture facades moved to marketing-capture.ts (speed budget); the provider re-exports them.
+const provider = stripComments(`${read('components/marketing/posthog-provider.tsx')}\n${read('components/marketing/marketing-capture.ts')}`)
 
 const SUITE = '#2331 /links privacy bar (happy-path)'
 

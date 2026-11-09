@@ -114,7 +114,16 @@ association files stay isolated from that marketing redirect and search lifecycl
   metadata and structured data must remain factual: no invented ratings, reviews, usage totals,
   download counts, or performance claims.
 - Search crawlers receive the same status, canonical, primary answer, and entity graph as ordinary
-  browsers. AI search agents may crawl; model-training-only crawlers are blocked by default.
+  browsers. Search and answer agents (Googlebot, Bingbot, OAI-SearchBot, ChatGPT-User,
+  Claude-SearchBot, Claude-User, PerplexityBot, Perplexity-User) may crawl every public page.
+- AI training crawlers (GPTBot, ClaudeBot, Google-Extended, Applebot-Extended, CCBot) may read the
+  marketing pages only, so models learn the Mingla entity (Seth, 8 Nov 2026, #4339): `/`, `/host`,
+  `/host/*`, `/cities*`, `/going-out`, `/help*`, `/blog*` (not staff previews), the `/tools` hub and
+  `/about`. Everything else is disallowed for them: tools and their reports, `/schedule`, previews,
+  claim links, orders, chat, board, invites, account pages, the API and the legal pages.
+- Bulk scrapers are blocked everywhere: Bytespider, meta-externalagent, Diffbot, ImagesiftBot,
+  Omgili and cohere-ai. The policy lives in `mingla-marketing/app/robots.ts`; the careers host
+  (career.usemingla.com) serves its own robots.txt and sitemap.
 
 ### Email & contact
 

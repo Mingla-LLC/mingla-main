@@ -31,7 +31,9 @@ export default defineConfig({
       // build immediately before this browser lane. This server needs a fresh
       // current artifact with the analytics fixture keys, not a second copy of
       // that two-pass release proof behind its readiness timeout.
-      command: 'node scripts/clear-historical-city-build.mjs && NEXT_PUBLIC_POSTHOG_KEY=phc_issue2771 NEXT_PUBLIC_GA4_MEASUREMENT_ID=G-ISSUE2771 npm exec -- next build && NEXT_PUBLIC_POSTHOG_KEY=phc_issue2771 NEXT_PUBLIC_GA4_MEASUREMENT_ID=G-ISSUE2771 npm run start -- --port 43171',
+      // #4339: release builds strip data-testid (anti-copy); this test build
+      // keeps them (MINGLA_KEEP_TEST_IDS=1) because these specs select by test id.
+      command: 'node scripts/clear-historical-city-build.mjs && NEXT_PUBLIC_POSTHOG_KEY=phc_issue2771 NEXT_PUBLIC_GA4_MEASUREMENT_ID=G-ISSUE2771 MINGLA_KEEP_TEST_IDS=1 npm exec -- next build && NEXT_PUBLIC_POSTHOG_KEY=phc_issue2771 NEXT_PUBLIC_GA4_MEASUREMENT_ID=G-ISSUE2771 npm run start -- --port 43171',
       cwd: '../mingla-marketing',
       port: 43171,
       reuseExistingServer: false,

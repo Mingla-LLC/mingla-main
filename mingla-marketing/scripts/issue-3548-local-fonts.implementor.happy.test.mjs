@@ -13,6 +13,7 @@ import {
   checkLinksFontSource,
   linksManifestRows,
 } from './issue-4318-links-fonts.contract.mjs'
+import { LANDING_FONT_DEFINITIONS, LANDING_FONT_FILES, checkLandingFontSource } from './issue-4339-landing-fonts.contract.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const read = (relativePath, encoding = 'utf8') => readFileSync(path.join(ROOT, relativePath), encoding)
@@ -136,10 +137,14 @@ for (const relativePath of productionAppFiles) {
 const fontDefinition = read('app/fonts.ts')
 // #4318: app/links/fonts.ts holds the /links-only brand faces (pinned in
 // scripts/issue-4318-links-fonts.contract.mjs); app/fonts.ts stays the site's.
+// #4339: app/site-fonts.ts holds the same brand faces for the redesigned pages
+// (/, /host and the Host landing pages; scripts/issue-4339-landing-fonts.contract.mjs).
+// Phase 2a moved it up from app/host/[icp]/fonts.ts when Home and Mingla Host
+// joined the redesign, deliberately: one module, three route consumers.
 assert.equal(
-  productionAppFiles.filter((relativePath) => read(relativePath).includes('next/font/local')).join(','),
-  'app/fonts.ts,app/links/fonts.ts',
-  'app/fonts.ts and the /links-scoped app/links/fonts.ts must be the only local-font definition modules',
+  productionAppFiles.filter((relativePath) => read(relativePath).includes('next/font/local')).sort().join(','),
+  'app/fonts.ts,app/links/fonts.ts,app/site-fonts.ts',
+  'app/fonts.ts, the /links-scoped app/links/fonts.ts and the redesign-scoped app/site-fonts.ts must be the only local-font definition modules',
 )
 assert.equal((fontDefinition.match(/localFont\s*\(/g) ?? []).length, 4, 'exactly four local definitions must exist')
 
@@ -169,7 +174,8 @@ const assertDefinition = ({ name, nextName, asset, weights, variable, fallback }
     `${name} must keep every source normal-style`,
   )
   assert.match(source, /display: 'swap'/, `${name} must remain display swap`)
-  assert.match(source, /preload: true/, `${name} must remain preloaded`)
+  // #4339 round B: the root faces load on use, never preloaded on every page.
+  assert.match(source, /preload: false/, `${name} must not be preloaded site-wide`)
   assert.equal(
     (source.match(/adjustFontFallback: false/g) ?? []).length,
     1,
@@ -282,6 +288,12 @@ const collectLinksSources = (relativeDirectory) => {
 }
 for (const sourceRoot of ['app', 'components', 'lib']) collectLinksSources(sourceRoot)
 checkLinksFontSource((relativePath) => read(relativePath), linksSourceFiles)
+// #4339 — the redesign brand faces: exact definitions over the pinned
+// /links files, scoped to the redesigned pages.
+checkLandingFontSource((relativePath) => read(relativePath), linksSourceFiles)
+for (const file of LANDING_FONT_FILES) {
+  assert.ok(LINKS_FONT_ASSETS.some((asset) => asset.localFile === file), `#4339: ${file} must be one of the pinned brand files`)
+}
 for (const asset of LINKS_FONT_ASSETS) {
   const binary = read(`app/fonts/${asset.localFile}`, null)
   assert.equal(binary.byteLength, asset.byteLength, `${asset.localFile} byte length must stay pinned`)
@@ -511,6 +523,19 @@ if (process.argv.includes('--built-only')) {
     assert.ok(!builtCss.includes(`${definition.exportName} Fallback`), `${definition.exportName} must not gain a generated fallback`)
   }
 
+  // #4339 — each landing face compiles once per pinned weight/style and adds no generated fallback.
+  for (const definition of LANDING_FONT_DEFINITIONS) {
+    const faces = faceBlocks
+      .map(declarations)
+      .filter((parsed) => unquote(parsed['font-family'] ?? '') === definition.exportName)
+    assert.deepEqual(
+      faces.map((parsed) => [parsed['font-weight'], parsed['font-style']]),
+      definition.faces.map(([, weight, style]) => [weight, style]),
+      `${definition.exportName} must compile its exact faces`,
+    )
+    assert.ok(!builtCss.includes(`${definition.exportName} Fallback`), `${definition.exportName} must not gain a generated fallback`)
+  }
+
   for (const { exportName, family } of EXPECTED_FALLBACKS) {
     const escapedFamily = family.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')
     const stackPattern = new RegExp(
@@ -522,6 +547,7 @@ if (process.argv.includes('--built-only')) {
 
 console.log('PASS #3548 exact local font definitions, consumers, weights and class placement')
 console.log('PASS #4318 /links brand faces: exact definitions, pinned bytes and licences, /links page only')
+console.log('PASS #4339 redesign brand faces: exact definitions over the pinned files, redesigned pages only')
 console.log('PASS #3548 pinned WOFF2 bytes, source manifest and exact OFL files')
 console.log('PASS #3548 exact manual Arial fallback descriptors, identities and source stacks')
 console.log('PASS #3548 dependency-free local fonts and both production build denials')

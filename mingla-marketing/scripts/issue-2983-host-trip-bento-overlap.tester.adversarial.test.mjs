@@ -680,5 +680,25 @@ async function runtimeContract() {
   }
 }
 
+// #4339 phase 2a: /host was replaced in place by the approved redesign
+// (components/site/host-page.tsx), which has no capability bento, so the Trips
+// figure this guard measured is no longer on any page. The built check now
+// proves the retirement against the production artifact (the figure is gone
+// and the redesigned page is what ships) instead of driving a browser to a
+// section that does not exist. The browser contract stays available for a page
+// that still mounts the bento via HOST_TRIP_BENTO_TEST_BASE_URL.
+function retiredBuiltContract() {
+  const file = path.join(ROOT, '.next/server/app/host.html')
+  assert(fs.existsSync(file), 'run `next build` before --built-only')
+  const html = fs.readFileSync(file, 'utf8')
+  assert.match(html, /<span class="rm-lines"><span>Everything<\/span>/, '#4339: /host is the redesigned page')
+  assert.doesNotMatch(html, /aria-label="A hosted trip from/, '#4339: the Trips bento figure is retired from /host')
+  assert.doesNotMatch(html, /cut-host-bento-card/, '#4339: no bento card on /host')
+  process.stdout.write('PASS #2983 Host Trips bento guard: retired with the #4339 /host redesign (no bento on the built page)\n')
+}
+
 if (!BUILT_ONLY) await sourceContract()
-if (!SOURCE_ONLY) await runtimeContract()
+if (!SOURCE_ONLY) {
+  if (EXTERNAL_BASE_URL) await runtimeContract()
+  else retiredBuiltContract()
+}

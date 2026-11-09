@@ -18,6 +18,14 @@
  *
  * `--self-test` proves the gate fires on the reverted shape and passes on the
  * fixed shape, so a green run is evidence and not vacuity.
+ *
+ * #4339 phase 3 re-pointed the gate on purpose: the redesigned /schedule lays
+ * its two panes and its time grid out in CSS (components/site/pages.css,
+ * `.sched` and `.slots`) instead of Tailwind classes. The same invariant is
+ * checked there: every `grid-template-columns` track of `.sched` and `.slots`
+ * (base and every media query) keeps a ZERO minimum (`minmax(0, …)`), so a
+ * long day row or time grid can never size the column to max-content. The
+ * Tailwind check on ScheduleClient.tsx stays for any breakpoint class.
  */
 
 import fs from "node:fs";
@@ -29,6 +37,7 @@ const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "../../..");
 
 const TARGET = "mingla-marketing/app/schedule/ScheduleClient.tsx";
+const CSS_TARGET = "mingla-marketing/components/site/pages.css";
 const BREAKPOINT_COLS = /^(?:sm|md|lg|xl|2xl):grid-cols-/;
 const BASE_COLS = /^grid-cols-/;
 
@@ -64,6 +73,42 @@ export function checkSource(rawSrc, relPath, failures) {
           `implicit column falls back to auto/max-content and blows the layout out ` +
           `of the overflow-hidden card (#1674: /schedule time pills rendered empty ` +
           `on mobile web). Add an unprefixed grid-cols-N.`,
+      );
+    }
+  }
+}
+
+/** Every `grid-template-columns` value of a rule whose selector ends in `.sched` or `.slots`. */
+function scheduleGridTracks(css) {
+  const out = [];
+  const re = /([^{}]*?)\{([^{}]*)\}/g;
+  let m;
+  const clean = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  while ((m = re.exec(clean)) !== null) {
+    const selector = m[1].trim();
+    if (!/\.(?:sched|slots)\s*$/.test(selector)) continue;
+    for (const d of m[2].matchAll(/grid-template-columns:\s*([^;]+);/g)) {
+      out.push({ selector, value: d[1].trim() });
+    }
+  }
+  return out;
+}
+
+/** A track list keeps a zero minimum when every `fr` track sits inside minmax(0, …). */
+export function checkCss(css, relPath, failures) {
+  const tracks = scheduleGridTracks(css);
+  const selectors = new Set(tracks.map((t) => t.selector.replace(/\s+/g, " ")));
+  for (const need of ["[data-landing] .sched", "[data-landing] .slots"]) {
+    if (!selectors.has(need)) {
+      failures.push(`${relPath}: no grid-template-columns found for ${need} — the gate would be scanning nothing.`);
+    }
+  }
+  for (const { selector, value } of tracks) {
+    const bare = value.replace(/minmax\(\s*0\s*,[^)]*\)/g, "");
+    if (/\bfr\b|\dfr/.test(bare) || /\bauto\b|max-content|min-content/.test(bare)) {
+      failures.push(
+        `${relPath}: ${selector} { grid-template-columns: ${value} } has a track without a zero minimum — ` +
+          `wrap it in minmax(0, …) (#1674: the /schedule column must never size to max-content).`,
       );
     }
   }
@@ -115,13 +160,36 @@ if (process.argv.includes("--self-test")) {
     selfFailures.push("comment prose satisfied the check — gate is vacuous");
   }
 
+  // (g) #4339 — the CSS layout of the redesigned page.
+  const runCss = (css) => {
+    const f = [];
+    checkCss(css, "fixture.css", f);
+    return f;
+  };
+  const goodCss =
+    `[data-landing] .sched { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); }\n` +
+    `[data-landing] .slots { grid-template-columns: repeat(4, minmax(0, 1fr)); }\n` +
+    `@media (max-width: 1000px) { [data-landing] .sched { grid-template-columns: minmax(0, 1fr); } }`;
+  if (runCss(goodCss).length !== 0) selfFailures.push("zero-minimum CSS tracks wrongly flagged");
+  for (const reverted of [
+    goodCss.replace("minmax(0, 0.8fr) minmax(0, 1.2fr)", "0.8fr 1.2fr"),
+    goodCss.replace("repeat(4, minmax(0, 1fr))", "repeat(4, 1fr)"),
+    goodCss.replace("{ grid-template-columns: minmax(0, 1fr); } }", "{ grid-template-columns: 1fr; } }"),
+    goodCss.replace("repeat(4, minmax(0, 1fr))", "repeat(4, auto)"),
+  ]) {
+    if (runCss(reverted).length === 0) selfFailures.push(`reverted CSS track not flagged: ${reverted.split("\n")[0]}`);
+  }
+  if (runCss(`[data-landing] .other { grid-template-columns: 1fr; }`).length === 0) {
+    selfFailures.push("CSS with no .sched/.slots grid was not reported as vacuous");
+  }
+
   if (selfFailures.length) {
     console.error("#1674 I-1674-SCHEDULE-MOBILE-GRID-ZERO-MIN-COLUMN self-test FAIL:");
     selfFailures.forEach((m) => console.error("  - " + m));
     process.exit(1);
   }
   console.log(
-    "#1674 I-1674-SCHEDULE-MOBILE-GRID-ZERO-MIN-COLUMN self-test PASS (8/8 cases).",
+    "#1674 I-1674-SCHEDULE-MOBILE-GRID-ZERO-MIN-COLUMN self-test PASS (14/14 cases).",
   );
   process.exit(0);
 }
@@ -136,15 +204,22 @@ if (!fs.existsSync(full)) {
 const failures = [];
 checkSource(fs.readFileSync(full, "utf8"), TARGET, failures);
 
-// Vacuity guard: the target MUST actually contain the two-pane grid this gate
-// exists to protect. A rename that silently emptied the scan would otherwise
-// pass forever.
+// Vacuity guard: the target MUST actually render the two-pane layout and the
+// time grid this gate exists to protect (#4339: `.sched` and `.slots`, laid out
+// in CSS), and the CSS must keep their zero-minimum tracks. A rename that
+// silently emptied the scan would otherwise pass forever.
 const shipped = stripComments(fs.readFileSync(full, "utf8"));
-if (!/className\s*=\s*"[^"]*\bmd:grid-cols-\[minmax\(0,240px\)_1fr\]/.test(shipped)) {
+if (!/className\s*=\s*"wrap sched"/.test(shipped) || !/className\s*=\s*"slots"/.test(shipped)) {
   failures.push(
-    `${TARGET}: the /schedule two-pane grid (md:grid-cols-[minmax(0,240px)_1fr]) was not ` +
-      `found — this gate would be scanning nothing. Re-point it at the renamed element.`,
+    `${TARGET}: the /schedule two-pane layout (className="wrap sched") or its time grid ` +
+      `(className="slots") was not found — this gate would be scanning nothing. Re-point it.`,
   );
+}
+const cssFull = path.join(repoRoot, CSS_TARGET);
+if (!fs.existsSync(cssFull)) {
+  failures.push(`missing required file: ${CSS_TARGET}`);
+} else {
+  checkCss(fs.readFileSync(cssFull, "utf8"), CSS_TARGET, failures);
 }
 
 if (failures.length > 0) {

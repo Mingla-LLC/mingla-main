@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-suite",
+  "ownerIssue": "#4339",
+  "suite": {
+    "id": "issue-4339-site-chrome",
+    "class": "node22-noinstall",
+    "originPaths": [
+      "mingla-marketing/lib/__tests__/issue-4339-site-chrome.implementor.test.mjs",
+      "mingla-marketing/app/(explorer)/page.tsx",
+      "mingla-marketing/app/host/page.tsx",
+      "mingla-marketing/app/host/[icp]/page.tsx",
+      "mingla-marketing/app/site-fonts.ts",
+      "mingla-marketing/components/site/**",
+      "mingla-marketing/components/landing/**",
+      "mingla-marketing/components/marketing/footer.tsx",
+      "mingla-marketing/components/marketing/site-footer.css",
+      "mingla-marketing/components/cutout/footer.tsx",
+      "mingla-marketing/components/cutout/device-link.tsx",
+      "mingla-marketing/lib/app-handoff.ts",
+      "mingla-marketing/lib/app-link-landing.ts",
+      "mingla-marketing/lib/cta-destination.ts",
+      "mingla-marketing/lib/links-handoff.ts",
+      "mingla-marketing/lib/links-src.ts",
+      "mingla-marketing/lib/store-links.ts",
+      "mingla-marketing/lib/business-app-target.ts",
+      "mingla-marketing/lib/explorer-app-target.ts",
+      "mingla-marketing/public/marketing/site/**"
+    ],
+    "steps": [
+      {
+        "name": "Marketing: site nav, canonical footer and Explorer hand-off; the three-line home headline and the redesigned /host",
+        "cwd": "mingla-marketing",
+        "run": "node --test lib/__tests__/issue-4339-site-chrome.implementor.test.mjs",
+        "commandId": "assert:issue-4339-site-chrome:01",
+        "invocation": {
+          "kind": "raw-shell",
+          "command": "bash",
+          "argv": [
+            "-c",
+            "node --test lib/__tests__/issue-4339-site-chrome.implementor.test.mjs"
+          ]
+        },
+        "exceptionRationale": "New self-registering execution replaces a legacy workflow registry edit."
+      }
+    ],
+    "lifecycle": "batched-active",
+    "ownerIssue": "#4339",
+    "runtime": {
+      "name": "node",
+      "version": "22"
+    },
+    "setupProfile": "node22-noinstall",
+    "cwd": "mingla-marketing",
+    "envNames": [],
+    "isolation": "clean-worktree",
+    "expectedFiles": [
+      "mingla-marketing/lib/__tests__/issue-4339-site-chrome.implementor.test.mjs"
+    ],
+    "externalReferenceFiles": [],
+    "requiredContext": "CI batch: node22-noinstall",
+    "timingSeconds": {
+      "p50": 1,
+      "p95": 2,
+      "evidence": "Local targeted run 2026-11-08"
+    },
+    "generatedPaths": [
+      "suite-results.json"
+    ],
+    "exceptionRationale": "Raw shell preserves the reviewed assertion while this self-registering suite replaces a legacy workflow registry edit.",
+    "timeoutSeconds": 60
+  }
+}

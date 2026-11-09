@@ -95,6 +95,12 @@ export function middleware(req: NextRequest) {
     if (pathname === CAREERS_PREFIX || pathname.startsWith(`${CAREERS_PREFIX}/`)) {
       return NextResponse.next({ request: { headers: requestHeaders } })
     }
+    // #4339 round B: the careers host has its own robots.txt and sitemap.
+    if (pathname === '/robots.txt' || pathname === '/sitemap.xml') {
+      const url = req.nextUrl.clone()
+      url.pathname = `${CAREERS_PREFIX}${pathname}`
+      return NextResponse.rewrite(url, { request: { headers: requestHeaders } })
+    }
     // Static files serve from public/ on every host, unprefixed.
     if (PUBLIC_FILE.test(pathname)) {
       return NextResponse.next({ request: { headers: requestHeaders } })

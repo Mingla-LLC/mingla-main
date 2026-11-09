@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/site-prompt-draft/__tests__/issue_4339_site_prompt_draft.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4339-site-prompt-draft-implementor",
+  "profile": "deno-2-unit"
+}

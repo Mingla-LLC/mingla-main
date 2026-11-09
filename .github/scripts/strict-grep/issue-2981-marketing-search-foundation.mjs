@@ -51,6 +51,9 @@ const PUBLIC_NOINDEX = [
   "/host/download",
   "/unsubscribe",
   "/schedule",
+  // #4339: the Creators and Locals call pages are noindex, like /schedule (decision on #4339, 9 Nov).
+  "/schedule/creators",
+  "/schedule/locals",
   "/sms-terms",
   "/delete-account",
   "/event-preview",
@@ -105,6 +108,8 @@ const NOINDEX_PAGE_FILES = new Map([
   ["/host/download", "mingla-marketing/app/host/download/page.tsx"],
   ["/unsubscribe", "mingla-marketing/app/unsubscribe/page.tsx"],
   ["/schedule", "mingla-marketing/app/schedule/page.tsx"],
+  ["/schedule/creators", "mingla-marketing/app/schedule/creators/page.tsx"],
+  ["/schedule/locals", "mingla-marketing/app/schedule/locals/page.tsx"],
   ["/sms-terms", "mingla-marketing/app/sms-terms/page.tsx"],
   ["/delete-account", "mingla-marketing/app/delete-account/page.tsx"],
   ["/event-preview", "mingla-marketing/app/event-preview/page.tsx"],

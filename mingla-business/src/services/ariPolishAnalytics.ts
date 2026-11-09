@@ -118,3 +118,13 @@ export function captureAriTitleAction(
 ): void {
   capture("ari_title_action", { surface, action });
 }
+
+/**
+ * #4339 round B — the host-web half of the usemingla.com "Prompt your website
+ * into existence" → Ari funnel: a website description handed over from the
+ * marketing site was claimed (or was missing, expired or already used, or the
+ * claim failed). Categorical only: never the description or the draft id.
+ */
+export function captureAriDraftClaimed(outcome: "claimed" | "unavailable" | "failed"): void {
+  capture("ari_draft_claimed", { surface: "website", outcome });
+}

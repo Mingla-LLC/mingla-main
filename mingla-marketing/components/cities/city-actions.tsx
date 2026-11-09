@@ -5,15 +5,11 @@ import {
   captureMarketing,
   posthogOptIn,
   subscribeMarketingConsent,
-} from '@/components/marketing/posthog-provider'
-import { DeviceCta, type CutoutSurface } from '@/components/cutout/device-cta'
-import { DeviceLink } from '@/components/cutout/device-link'
-import { siteAttribution } from '@/lib/links-src'
-import { HOST_DESTINATIONS } from '@/components/page-system/city-host-acquisition-bar'
-import { ArrowUpRight } from 'lucide-react'
+} from '@/components/marketing/marketing-capture'
+import type { CutoutSurface } from '@/components/cutout/device-cta'
 import type { CityHubAnalyticsEvent, CityHubDestinationType } from '@/lib/city-hub-analytics'
 
-interface CityAnalyticsIdentity {
+export interface CityAnalyticsIdentity {
   readonly citySlug: string
   readonly countryCode: string
 }
@@ -24,7 +20,7 @@ const CITY_TRACKED_LINK_EVENTS = [
   'city_hub_switch_city',
 ] as const satisfies readonly Exclude<CityHubAnalyticsEvent, 'city_hub_view' | 'city_hub_explorer_action'>[]
 
-function cityProperties(identity: CityAnalyticsIdentity, destinationType: CityHubDestinationType) {
+export function cityProperties(identity: CityAnalyticsIdentity, destinationType: CityHubDestinationType) {
   return {
     city_slug: identity.citySlug,
     country_code: identity.countryCode,
@@ -51,37 +47,13 @@ export function CityHubImpression(identity: CityAnalyticsIdentity) {
   return null
 }
 
-export function CityDeviceAction({
-  surface,
-  label,
-  location,
-  variant,
-  className,
-  ...identity
-}: CityAnalyticsIdentity & {
-  readonly surface: CutoutSurface
-  readonly label: ReactNode
-  readonly location: string
-  readonly variant: 'primary' | 'ink' | 'quiet'
-  readonly className?: string
-}) {
-  return (
-    <DeviceCta
-      surface={surface}
-      label={label}
-      location={location}
-      variant={variant}
-      size="lg"
-      className={className}
-      captureDefaultAnalytics={false}
-      onActivate={(destinationType) => {
-        captureMarketing(
-          surface === 'explorer' ? 'city_hub_explorer_action' : 'city_hub_host_action',
-          cityProperties(identity, destinationType),
-        )
-      }}
-    />
-  )
+/**
+ * The closed event a city device action records (#2983 allowlist). The action
+ * itself lives in city-hub-actions.tsx (#4339 speed fix), so the device CTA,
+ * its QR panel and motion load only where a page renders one.
+ */
+export function cityDeviceActionEvent(surface: CutoutSurface): 'city_hub_explorer_action' | 'city_hub_host_action' {
+  return surface === 'explorer' ? 'city_hub_explorer_action' : 'city_hub_host_action'
 }
 
 export function CityTrackedLink({
@@ -101,29 +73,5 @@ export function CityTrackedLink({
     >
       {children}
     </span>
-  )
-}
-
-export function CityHostCreationLinks(identity: CityAnalyticsIdentity) {
-  return (
-    <ul className="city-host-links">
-      {HOST_DESTINATIONS.map((destination) => (
-        <li key={destination.href}>
-          {/* #4137 OQ-3: phone → Mingla Host install; computer → this create page. */}
-          <DeviceLink
-            surface="host"
-            attribution={siteAttribution('business_hero')}
-            hostComputerHref={destination.href}
-            sameTab
-            onActivate={() => captureMarketing(
-              'city_hub_host_action',
-              cityProperties(identity, destination.destinationType),
-            )}
-          >
-            {destination.label}<ArrowUpRight aria-hidden="true" size={15} />
-          </DeviceLink>
-        </li>
-      ))}
-    </ul>
   )
 }

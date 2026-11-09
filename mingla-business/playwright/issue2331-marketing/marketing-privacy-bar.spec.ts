@@ -75,7 +75,10 @@ for (const size of SIZES) {
 }
 
 for (const size of SIZES) {
-  test(`${size.width}x${size.height}: home (one screen) ends above the strip; no chip sits under it`, async ({ browser }) => {
+  // #4339: the redesigned home is a full scrolling page (no longer one screen).
+  // At the top and at the very bottom no link or button sits under the strip,
+  // and the footer's last line ends above it.
+  test(`${size.width}x${size.height}: home ends above the strip at top and bottom; no chip sits under it`, async ({ browser }) => {
     const context = await browser.newContext({ viewport: size });
     await record(context);
     const page = await context.newPage();
@@ -83,7 +86,11 @@ for (const size of SIZES) {
     await expect(page.getByTestId("privacy-strip")).toBeVisible();
     await page.waitForTimeout(2500);
     expect(await underBar(page)).toEqual([]);
-    expect(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight + 1)).toBe(true);
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await page.waitForTimeout(800);
+    expect(await underBar(page)).toEqual([]);
+    const footerBottom = await page.evaluate(() => Math.round(document.querySelector("footer")!.getBoundingClientRect().bottom));
+    expect(footerBottom).toBeLessThanOrEqual(size.height - 28 + 1);
     await context.close();
   });
 }

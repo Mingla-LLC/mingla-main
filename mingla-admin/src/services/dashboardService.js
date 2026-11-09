@@ -20,6 +20,9 @@ export const listInboundLeads = (showTest = false) =>
 /** One web tool lead's details (admin): the email Add to Hosts carries over. */
 export const getToolLead = (id) => rpc("admin_tool_lead_get", { p_id: id });
 
+/** One Book a call booking's contact details: the email and social Add to Hosts carries over (#4339). */
+export const getBookCallLead = (id) => rpc("admin_book_call_lead_get", { p_id: id });
+
 /** Funnel and due chips over every Hosts and Creators card. */
 export const getOutreachSummary = (today) => rpc("outreach_summary", { p_today: today || null });
 

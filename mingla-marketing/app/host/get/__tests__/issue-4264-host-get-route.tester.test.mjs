@@ -216,14 +216,21 @@ test('/host/get is attributed separately from /host/download, and only /host/get
   assert.match(union, /export type SiteCampaign =[^;]*?\|\s*'business_get'/s)
 })
 
-test('the sibling download pages and the shared resolvers are byte-identical to origin/main', (t) => {
+// #4339: this used to diff the files against origin/main, which held only
+// while #4264 itself was the open change: any later, approved change to these
+// pages (the #4339 redesign rewrote /download and the Host button wording in
+// business-app-target.ts, Seth decision on #4339) turned it red. What #4264
+// promised is that ITS change left them alone, so this diffs #4264's own merge
+// commit against its parent.
+const ISSUE_4264_MERGE = 'f61934d1b5'
+test('the sibling download pages and the shared resolvers were left byte-identical by #4264', (t) => {
   const repo = path.resolve(MARKETING, '..')
   const git = (...args) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' }).trim()
-  let base
   try {
-    base = git('merge-base', 'origin/main', 'HEAD')
+    git('cat-file', '-e', `${ISSUE_4264_MERGE}^{commit}`)
+    git('cat-file', '-e', `${ISSUE_4264_MERGE}^^{commit}`)
   } catch {
-    t.skip('origin/main is not available in this checkout (shallow CI clone)')
+    t.skip(`#4264's merge commit ${ISSUE_4264_MERGE} is not available in this checkout (shallow clone)`)
     return
   }
   const untouched = [
@@ -233,6 +240,8 @@ test('the sibling download pages and the shared resolvers are byte-identical to 
     'mingla-marketing/lib/business-app-target.ts',
     'mingla-marketing/lib/store-links.ts',
   ]
-  const changed = git('diff', '--name-only', base, '--', ...untouched)
-  assert.equal(changed, '', `these must be unchanged vs origin/main:\n${changed}`)
+  // The change did touch the route it added, so the diff is real, not empty by accident.
+  assert.match(git('diff', '--name-only', `${ISSUE_4264_MERGE}^`, ISSUE_4264_MERGE), /mingla-marketing\/app\/host\/get\//)
+  const changed = git('diff', '--name-only', `${ISSUE_4264_MERGE}^`, ISSUE_4264_MERGE, '--', ...untouched)
+  assert.equal(changed, '', `#4264 must leave these unchanged:\n${changed}`)
 })

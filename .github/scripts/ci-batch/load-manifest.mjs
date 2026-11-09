@@ -205,7 +205,13 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4273 tester retest 3: register the SMS opt-out scope PostgreSQL proof.
 // #4273: re-sealed after moving the migration to 20280522004273 (above production's 20280521004334).
 // #4273: re-sealed after merging origin/main (#4350).
-export const BOOTSTRAP_SHA256 = "5bb864f1dd59f98be5f3617f14c7bbaa3ef30389cb8b40e32d8d80651b347c10";
+// #4339: register the Ari draft hand-off migration (20280512004339) and its implementor PostgreSQL proof in the #1857, #1931 and #2117 replay lanes, after merging origin/main 2e6e331749 (#4318).
+// #4339: the #1931 lane skips 20280512004339_issue_4339_site_prompt_drafts.sql by exact filename (#2492 closure guard: CREATE TABLE columns are not credited as definitions).
+// #4339 round A: register the Book a call leads migration (20280520004339) and its implementor PostgreSQL proof in the #1857, #1931 and #2117 replay lanes (the #2492 closure guard passes without a skip).
+// #4339 round B: register the ad marketing destinations migration (20280522004339) and its implementor PostgreSQL proof in the #1857, #1931 and #2117 replay lanes.
+// #4339: re-sealed after merging origin/main 85dba1f14e (#4349 /links rows kept beside the #4339 rows).
+// #4339: re-sealed after merging origin/main 28f88fea6d (#4334 and #4273 rows kept beside the #4339 rows) and adding marketing-capture.ts to the issue-905 path scope.
+export const BOOTSTRAP_SHA256 = "b08d2cf24cf93dfd4ef04324dc981cf56eac19a9580b4db94d41e7b426643a82";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
