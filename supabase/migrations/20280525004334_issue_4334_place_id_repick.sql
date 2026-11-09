@@ -352,3 +352,385 @@ REVOKE ALL ON FUNCTION public.business_patch_event_taxonomy_with_place(uuid, tex
 REVOKE ALL ON FUNCTION public.business_patch_event_taxonomy_with_place(uuid, text, text[], text[], text[], numeric, numeric, text, text, text) FROM authenticated;
 GRANT EXECUTE ON FUNCTION public.business_patch_event_taxonomy_with_place(uuid, text, text[], text[], text[], numeric, numeric, text, text, text) TO service_role;
 COMMENT ON FUNCTION public.business_patch_event_taxonomy_with_place(uuid, text, text[], text[], text[], numeric, numeric, text, text, text) IS 'ORCH-0824 hotfix-5 + issue #1363 G2: post-publish event taxonomy/address patch. issue #1363 adds an optional trailing p_coordinate_precision (exact|approximate) written to events.coordinate_precision, tied to the conditional location_geo write (precision written only when a new coordinate is supplied; existing precision preserved otherwise). city_required + the location_geo write are unchanged. SECURITY DEFINER + event_manager+ role check. #4334: copy with p_location_place_id, the picked Google place id written in the same statement as the pin. 20280525004334: a moved pin without an id clears the old id; the same pin resent keeps it.';
+
+-- =====================================================================================
+-- (3) A re-pick of the SAME place onto refined coordinates keeps its id.
+--
+-- The place-stamp triggers (tg_4334_lat_lng_place_stamp on venue_listings and
+-- brands, tg_4334_events_place_stamp on events) cleared the id whenever the
+-- coordinates moved and the id did not, so "the writer re-sent the same id"
+-- read as "stale": approximate → exact with the same place id stored NULL.
+--
+-- Mechanism: every write path that is sent a place id validates it through
+-- public.places_checked_place_id, which now also records it in the
+-- transaction-local setting mingla.place_id_confirmed. A trigger keeps the id
+-- (and stamps the fresh pin) only when the row's id equals the asserted one,
+-- and consumes the setting so it never carries to a later write. Everything
+-- else is unchanged: a moved pin with no id asserted, including a direct
+-- UPDATE, still clears. places_checked_place_id becomes VOLATILE (it now has
+-- an effect); it is used by no index, constraint or generated column.
+-- admin_review_venue_details_change asserts the request's own id before it
+-- applies the request. Writers that never send an id through the validator
+-- (the brand profile's direct table write, trip pins inside theme) keep the
+-- old clear-on-move behaviour.
+-- =====================================================================================
+
+CREATE OR REPLACE FUNCTION public.places_checked_place_id(p_id text)
+ RETURNS text
+ LANGUAGE plpgsql
+ VOLATILE
+ SET search_path = public, pg_temp
+AS $function$
+BEGIN
+  IF NULLIF(btrim(COALESCE(p_id, '')), '') IS NULL THEN RETURN NULL; END IF;
+  IF NOT public.places_is_google_place_id(btrim(p_id)) THEN
+    RAISE EXCEPTION 'location_place_id_invalid' USING ERRCODE = '22023';
+  END IF;
+  -- 20280525004334: the writer asserts this id for the row it is writing, so
+  -- the place-stamp triggers keep it even when the coordinates move (a
+  -- re-pick of the same place onto refined coordinates). Transaction-local,
+  -- and consumed by the next place-stamp trigger that fires.
+  PERFORM set_config('mingla.place_id_confirmed', btrim(p_id), true);
+  RETURN btrim(p_id);
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.places_checked_place_id(text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.places_checked_place_id(text) TO authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION public.tg_4334_lat_lng_place_stamp()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_confirmed text;   -- 20280525004334
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    IF public.places_is_google_place_id(NEW.location_provider_place_id)
+       AND NEW.location_geo_refreshed_at IS NULL THEN
+      NEW.location_geo_refreshed_at := now();
+      NEW.location_geo_refresh_state := 'ok';
+      NEW.location_geo_refresh_failures := 0;
+    END IF;
+    RETURN NEW;
+  END IF;
+  -- 20280525004334: the id the writer asserted through places_checked_place_id
+  -- in this transaction, consumed here so it never carries to a later write.
+  v_confirmed := NULLIF(current_setting('mingla.place_id_confirmed', true), '');
+  IF v_confirmed IS NOT NULL THEN
+    PERFORM set_config('mingla.place_id_confirmed', '', true);
+  END IF;
+  IF NEW.location_geo_refreshed_at IS DISTINCT FROM OLD.location_geo_refreshed_at
+     OR NEW.location_geo_refresh_state IS DISTINCT FROM OLD.location_geo_refresh_state THEN
+    RETURN NEW;
+  END IF;
+  IF NEW.location_provider_place_id IS DISTINCT FROM OLD.location_provider_place_id THEN
+    IF public.places_is_google_place_id(NEW.location_provider_place_id) THEN
+      NEW.location_geo_refreshed_at := now();
+      NEW.location_geo_refresh_state := 'ok';
+    ELSE
+      NEW.location_geo_refreshed_at := NULL;
+      NEW.location_geo_refresh_state := NULL;
+    END IF;
+    NEW.location_geo_refresh_failures := 0;
+  ELSIF (NEW.lat IS DISTINCT FROM OLD.lat OR NEW.lng IS DISTINCT FROM OLD.lng)
+        AND NEW.location_provider_place_id IS NOT NULL
+        AND v_confirmed IS NOT DISTINCT FROM NEW.location_provider_place_id THEN
+    -- 20280525004334: the same place re-picked onto refined coordinates: the
+    -- writer asserted this id, so keep it and stamp the fresh pin.
+    NEW.location_geo_refreshed_at := now();
+    NEW.location_geo_refresh_state := 'ok';
+    NEW.location_geo_refresh_failures := 0;
+  ELSIF (NEW.lat IS DISTINCT FROM OLD.lat OR NEW.lng IS DISTINCT FROM OLD.lng)
+        AND NEW.location_provider_place_id IS NOT NULL THEN
+    NEW.location_provider_place_id := NULL;
+    NEW.location_geo_refreshed_at := NULL;
+    NEW.location_geo_refresh_state := NULL;
+    NEW.location_geo_refresh_failures := 0;
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.tg_4334_events_place_stamp()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_side text;
+  v_new jsonb;
+  v_old jsonb;
+  v_confirmed text;   -- 20280525004334
+BEGIN
+  -- 20280525004334: the id the writer asserted through places_checked_place_id
+  -- in this transaction, consumed here so it never carries to a later write.
+  IF TG_OP = 'UPDATE' THEN
+    v_confirmed := NULLIF(current_setting('mingla.place_id_confirmed', true), '');
+    IF v_confirmed IS NOT NULL THEN
+      PERFORM set_config('mingla.place_id_confirmed', '', true);
+    END IF;
+  END IF;
+  -- event location pin
+  IF TG_OP = 'INSERT' THEN
+    IF public.places_is_google_place_id(NEW.location_provider_place_id)
+       AND NEW.location_geo_refreshed_at IS NULL THEN
+      NEW.location_geo_refreshed_at := now();
+      NEW.location_geo_refresh_state := 'ok';
+      NEW.location_geo_refresh_failures := 0;
+    END IF;
+  ELSIF NEW.location_geo_refreshed_at IS NOT DISTINCT FROM OLD.location_geo_refreshed_at
+        AND NEW.location_geo_refresh_state IS NOT DISTINCT FROM OLD.location_geo_refresh_state THEN
+    IF NEW.location_provider_place_id IS DISTINCT FROM OLD.location_provider_place_id THEN
+      IF public.places_is_google_place_id(NEW.location_provider_place_id) THEN
+        NEW.location_geo_refreshed_at := now();
+        NEW.location_geo_refresh_state := 'ok';
+      ELSE
+        NEW.location_geo_refreshed_at := NULL;
+        NEW.location_geo_refresh_state := NULL;
+      END IF;
+      NEW.location_geo_refresh_failures := 0;
+    ELSIF NEW.location_geo::text IS DISTINCT FROM OLD.location_geo::text
+          AND NEW.location_provider_place_id IS NOT NULL
+          AND v_confirmed IS NOT DISTINCT FROM NEW.location_provider_place_id THEN
+      -- 20280525004334: the same place re-picked onto refined coordinates:
+      -- the writer asserted this id, so keep it and stamp the fresh pin.
+      NEW.location_geo_refreshed_at := now();
+      NEW.location_geo_refresh_state := 'ok';
+      NEW.location_geo_refresh_failures := 0;
+    ELSIF NEW.location_geo::text IS DISTINCT FROM OLD.location_geo::text
+          AND NEW.location_provider_place_id IS NOT NULL THEN
+      NEW.location_provider_place_id := NULL;
+      NEW.location_geo_refreshed_at := NULL;
+      NEW.location_geo_refresh_state := NULL;
+      NEW.location_geo_refresh_failures := 0;
+    END IF;
+  END IF;
+
+  -- trip departure / destination pins in theme.business_trip
+  IF jsonb_typeof(NEW.theme -> 'business_trip') = 'object' THEN
+    FOREACH v_side IN ARRAY ARRAY['departure', 'destination'] LOOP
+      v_new := NEW.theme -> 'business_trip';
+      v_old := CASE WHEN TG_OP = 'UPDATE' AND jsonb_typeof(OLD.theme -> 'business_trip') = 'object'
+                    THEN OLD.theme -> 'business_trip' ELSE '{}'::jsonb END;
+      -- writer-managed
+      CONTINUE WHEN TG_OP = 'UPDATE'
+        AND ((v_new -> (v_side || 'GeoRefreshedAt')) IS DISTINCT FROM (v_old -> (v_side || 'GeoRefreshedAt'))
+          OR (v_new -> (v_side || 'GeoRefreshState')) IS DISTINCT FROM (v_old -> (v_side || 'GeoRefreshState')));
+      IF (v_new ->> (v_side || 'PlaceId')) IS DISTINCT FROM (v_old ->> (v_side || 'PlaceId')) THEN
+        IF public.places_is_google_place_id(v_new ->> (v_side || 'PlaceId')) THEN
+          v_new := v_new || jsonb_build_object(
+            v_side || 'GeoRefreshedAt', to_jsonb(now()),
+            v_side || 'GeoRefreshState', 'ok',
+            v_side || 'GeoRefreshFailures', 0);
+        ELSE
+          v_new := v_new - (v_side || 'GeoRefreshedAt') - (v_side || 'GeoRefreshState')
+                         - (v_side || 'GeoRefreshFailures');
+        END IF;
+      ELSIF TG_OP = 'UPDATE'
+        AND public.places_is_google_place_id(v_new ->> (v_side || 'PlaceId'))
+        AND ((v_new -> (v_side || 'Lat')) IS DISTINCT FROM (v_old -> (v_side || 'Lat'))
+          OR (v_new -> (v_side || 'Lng')) IS DISTINCT FROM (v_old -> (v_side || 'Lng'))) THEN
+        v_new := (v_new - (v_side || 'GeoRefreshedAt') - (v_side || 'GeoRefreshState')
+                        - (v_side || 'GeoRefreshFailures'))
+                 || jsonb_build_object(v_side || 'PlaceId', NULL);
+      ELSE
+        CONTINUE;
+      END IF;
+      NEW.theme := jsonb_set(NEW.theme, '{business_trip}', v_new);
+    END LOOP;
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.admin_review_venue_details_change(p_venue_id uuid, p_request_id uuid, p_decision text, p_reason text DEFAULT NULL::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_venue public.venue_listings%ROWTYPE;
+  v_after public.venue_listings%ROWTYPE;
+  v_decision text := lower(btrim(coalesce(p_decision, '')));
+  v_reason text := nullif(btrim(coalesce(p_reason, '')), '');
+  v_before jsonb;
+  v_proposed jsonb;
+BEGIN
+  IF NOT public.is_admin_user() THEN
+    RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
+  END IF;
+  IF v_decision NOT IN ('approve', 'reject') THEN
+    RAISE EXCEPTION 'invalid_decision' USING ERRCODE = '22023';
+  END IF;
+  IF p_request_id IS NULL THEN
+    RAISE EXCEPTION 'request_id_required' USING ERRCODE = '22023';
+  END IF;
+
+  SELECT * INTO v_venue FROM public.venue_listings WHERE id = p_venue_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'venue_not_found' USING ERRCODE = 'P0002';
+  END IF;
+
+  -- Withdrawn, replaced by a newer request, or already approved: never apply a
+  -- request the admin is not looking at.
+  IF v_venue.details_change_request_id IS DISTINCT FROM p_request_id THEN
+    RETURN jsonb_build_object('ok', false, 'code', 'request_not_current', 'venue_id', v_venue.id);
+  END IF;
+  IF v_venue.details_change_status = 'rejected' THEN
+    IF v_decision = 'reject' THEN
+      RETURN jsonb_build_object(
+        'ok', true, 'noop', true, 'decision', 'rejected',
+        'venue_id', v_venue.id, 'brand_id', v_venue.brand_id,
+        'request_id', p_request_id, 'venue_name', v_venue.name
+      );
+    END IF;
+    RETURN jsonb_build_object('ok', false, 'code', 'request_not_pending', 'venue_id', v_venue.id);
+  END IF;
+
+  v_before := jsonb_build_object(
+    'name', v_venue.name,
+    'venue_category', v_venue.venue_category,
+    'address', v_venue.address,
+    'city', v_venue.city,
+    'country_code', v_venue.country_code,
+    'lat', v_venue.lat,
+    'lng', v_venue.lng,
+    'coordinate_precision', v_venue.coordinate_precision
+  );
+  v_proposed := jsonb_strip_nulls(jsonb_build_object(
+    'name', v_venue.details_change_name,
+    'venue_category', v_venue.details_change_venue_category,
+    'address', v_venue.details_change_address,
+    'city', v_venue.details_change_city,
+    'country_code', v_venue.details_change_country_code,
+    'lat', v_venue.details_change_lat,
+    'lng', v_venue.details_change_lng,
+    'coordinate_precision', v_venue.details_change_coordinate_precision
+  ));
+
+  IF v_decision = 'approve' THEN
+    IF v_venue.claim_status <> 'verified' THEN
+      RAISE EXCEPTION 'venue_not_live' USING ERRCODE = '55000';
+    END IF;
+    IF v_venue.details_change_venue_category IS NOT NULL
+       AND v_venue.details_change_venue_category IS DISTINCT FROM v_venue.venue_category
+       AND (v_venue.details_change_venue_category = 'stay' OR v_venue.venue_category = 'stay') THEN
+      RAISE EXCEPTION 'category_stay_change_not_supported' USING ERRCODE = '22023';
+    END IF;
+
+    -- 20280525004334: the request's place id is asserted for this write, so a
+    -- request that refines the same place's coordinates keeps the id.
+    IF v_venue.details_change_address IS NOT NULL THEN
+      PERFORM public.places_checked_place_id(v_venue.details_change_place_id);
+    END IF;
+
+    -- One statement: the right-hand side reads the pre-update row, so the new
+    -- values land and the request clears atomically.
+    UPDATE public.venue_listings
+    SET name = COALESCE(details_change_name, name),
+        venue_category = COALESCE(details_change_venue_category, venue_category),
+        address = CASE WHEN details_change_address IS NOT NULL THEN details_change_address ELSE address END,
+        city = CASE WHEN details_change_address IS NOT NULL THEN details_change_city ELSE city END,
+        country_code = CASE WHEN details_change_address IS NOT NULL THEN details_change_country_code ELSE country_code END,
+        lat = CASE WHEN details_change_address IS NOT NULL THEN details_change_lat ELSE lat END,
+        lng = CASE WHEN details_change_address IS NOT NULL THEN details_change_lng ELSE lng END,
+        coordinate_precision = CASE WHEN details_change_address IS NOT NULL THEN details_change_coordinate_precision ELSE coordinate_precision END,
+        location_provider_place_id = CASE WHEN details_change_address IS NOT NULL THEN details_change_place_id ELSE location_provider_place_id END,
+        details_change_request_id = NULL,
+        details_change_status = NULL,
+        details_change_name = NULL,
+        details_change_venue_category = NULL,
+        details_change_address = NULL,
+        details_change_city = NULL,
+        details_change_country_code = NULL,
+        details_change_lat = NULL,
+        details_change_lng = NULL,
+        details_change_coordinate_precision = NULL,
+        details_change_place_id = NULL,
+        details_change_requested_by = NULL,
+        details_change_requested_at = NULL,
+        details_change_reviewed_by = NULL,
+        details_change_reviewed_at = NULL,
+        details_change_rejection_reason = NULL
+    WHERE id = v_venue.id
+    RETURNING * INTO v_after;
+
+    PERFORM public.issue_3386_sync_business_authored_place(v_venue.id);
+
+    PERFORM public.admin_write_audit(
+      'venue_details_change.approve',
+      'venue_listing',
+      v_venue.id::text,
+      'Approved the host''s venue details change request',
+      jsonb_build_object(
+        'request_id', p_request_id,
+        'requested_by', v_venue.details_change_requested_by,
+        'before', v_before,
+        'proposed', v_proposed
+      ),
+      false
+    );
+
+    RETURN jsonb_build_object(
+      'ok', true,
+      'noop', false,
+      'decision', 'approved',
+      'venue_id', v_venue.id,
+      'brand_id', v_venue.brand_id,
+      'request_id', p_request_id,
+      'requested_by', v_venue.details_change_requested_by,
+      'venue_name', v_after.name,
+      'before', v_before,
+      'proposed', v_proposed
+    );
+  END IF;
+
+  IF v_reason IS NULL THEN
+    RAISE EXCEPTION 'rejection_reason_required' USING ERRCODE = '22023';
+  END IF;
+  IF length(v_reason) > 1000 THEN
+    RAISE EXCEPTION 'rejection_reason_too_long' USING ERRCODE = '22023';
+  END IF;
+
+  UPDATE public.venue_listings
+  SET details_change_status = 'rejected',
+      details_change_reviewed_by = auth.uid(),
+      details_change_reviewed_at = now(),
+      details_change_rejection_reason = v_reason
+  WHERE id = v_venue.id;
+
+  PERFORM public.admin_write_audit(
+    'venue_details_change.reject',
+    'venue_listing',
+    v_venue.id::text,
+    v_reason,
+    jsonb_build_object(
+      'request_id', p_request_id,
+      'requested_by', v_venue.details_change_requested_by,
+      'before', v_before,
+      'proposed', v_proposed
+    ),
+    true
+  );
+
+  RETURN jsonb_build_object(
+    'ok', true,
+    'noop', false,
+    'decision', 'rejected',
+    'venue_id', v_venue.id,
+    'brand_id', v_venue.brand_id,
+    'request_id', p_request_id,
+    'requested_by', v_venue.details_change_requested_by,
+    'venue_name', v_venue.name,
+    'rejection_reason', v_reason,
+    'before', v_before,
+    'proposed', v_proposed
+  );
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.admin_review_venue_details_change(uuid,uuid,text,text) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.admin_review_venue_details_change(uuid,uuid,text,text) TO authenticated,service_role;
+REVOKE ALL ON FUNCTION public.tg_4334_events_place_stamp() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.tg_4334_lat_lng_place_stamp() FROM PUBLIC, anon, authenticated;

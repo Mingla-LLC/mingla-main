@@ -10,9 +10,17 @@
 --   E-1 event: a moved pin with a blank id stores NULL (end to end, triggers on)
 --   E-2 event: the RPC itself writes NULL for a moved pin with a blank id (triggers off)
 --   E-3 event: the same pin resent with a blank id keeps the id (#3827, triggers off)
+--   S-1 venue in review: the same id with refined coordinates keeps the id
+--   S-2 live venue: a request with the same id and refined coordinates keeps it on approval
+--   S-3 event taxonomy: the same id with refined coordinates keeps the id
+--   S-4 published RSVP: the same id with refined coordinates keeps the id
+--   S-5 event draft: the same id with refined coordinates keeps the id
+--   S-6 a direct UPDATE that moves a pin without an id still clears it (venue and event),
+--       even after an earlier write in the same transaction asserted that id
 --
 -- Fails-on-revert: run against 20280521004334's definitions (this migration's
--- functions restored) → V-1, V-3 and E-2 red.
+-- functions restored) → V-1, V-3 and E-2 red; without section (3) of the
+-- migration (the place-stamp triggers) → S-1..S-5 red.
 \set ON_ERROR_STOP on
 BEGIN;
 
@@ -36,6 +44,9 @@ DECLARE
   v_event uuid;
   v_row record;
   v_failed boolean;
+  v_admin uuid := '43342500-0000-4000-8400-000000000002';
+  v_request uuid;
+  v_rsvp uuid := '43342500-0000-4000-8400-000000000031';
 BEGIN
   INSERT INTO auth.users(id, email) VALUES (v_owner, 'repick-4334@example.test');
   INSERT INTO public.creator_accounts(id, email) VALUES (v_owner, 'repick-4334@example.test');
@@ -143,6 +154,90 @@ BEGIN
     RAISE EXCEPTION 'E-3: the same pin resent without an id lost the id';
   END IF;
   SET LOCAL session_replication_role = origin;
+
+  -- ── S-* the same place re-picked onto refined coordinates keeps its id ───
+  -- S-1 venue in review (v_venue is live now; use a second venue in review)
+  v_venue := public.biz_create_venue_listing(
+    v_brand, 'Refine venue', 'refinevenue4334', 'A venue.', '', 6.4325, 3.4236, 'Lagos', 'NG',
+    '175 Akin Adesola St', 'restaurant', 'refine-venue-4334@example.test', '+2348031234567', '', '', v_hours,
+    NULL, 'approximate', p_location_place_id => v_id1);
+  v_result := public.biz_update_venue_identity_in_review(v_venue, p_address => '175 Akin Adesola St',
+    p_city => 'Lagos', p_country_code => 'NG', p_lat => 6.43251, p_lng => 3.42362,
+    p_coordinate_precision => 'exact', p_location_place_id => v_id1);
+  SELECT location_provider_place_id, lat, coordinate_precision, location_geo_refresh_state INTO v_row
+    FROM public.venue_listings WHERE id = v_venue;
+  IF v_row.location_provider_place_id IS DISTINCT FROM v_id1 OR v_row.lat <> 6.43251
+     OR v_row.coordinate_precision <> 'exact' OR v_row.location_geo_refresh_state IS DISTINCT FROM 'ok' THEN
+    RAISE EXCEPTION 'S-1: refining the same place in review lost the id (%)', row_to_json(v_row);
+  END IF;
+
+  -- S-2 live venue: request + admin approval
+  INSERT INTO auth.users(id, email) VALUES (v_admin, 'admin-repick-4334@example.test');
+  INSERT INTO public.admin_users(email, role, status) VALUES ('admin-repick-4334@example.test', 'admin', 'active')
+    ON CONFLICT (email) DO UPDATE SET role = excluded.role, status = excluded.status;
+  -- independent of S-1: the live venue holds v_id1 at the S-1 pin
+  UPDATE public.venue_listings SET claim_status = 'verified', location_provider_place_id = v_id1 WHERE id = v_venue;
+  v_result := public.biz_submit_venue_details_change_request(v_venue, p_address => '175 Akin Adesola St',
+    p_city => 'Lagos', p_country_code => 'NG', p_lat => 6.43252, p_lng => 3.42363,
+    p_coordinate_precision => 'exact', p_location_place_id => v_id1);
+  v_request := (v_result ->> 'request_id')::uuid;
+  PERFORM set_config('request.jwt.claim.sub', v_admin::text, true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated',
+    'email', 'admin-repick-4334@example.test')::text, true);
+  PERFORM public.admin_review_venue_details_change(v_venue, v_request, 'approve', NULL);
+  PERFORM set_config('request.jwt.claim.sub', v_owner::text, true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub', v_owner, 'role', 'authenticated')::text, true);
+  SELECT location_provider_place_id, lat INTO v_row FROM public.venue_listings WHERE id = v_venue;
+  IF v_row.location_provider_place_id IS DISTINCT FROM v_id1 OR v_row.lat <> 6.43252 THEN
+    RAISE EXCEPTION 'S-2: approving a refinement of the same place lost the id (%)', row_to_json(v_row);
+  END IF;
+
+  -- S-3 event taxonomy (v_event holds pin (3.4236,6.4325) with v_id1 from E-3)
+  UPDATE public.events SET location_geo = point(3.4236, 6.4325), location_provider_place_id = v_id1 WHERE id = v_event;
+  PERFORM public.business_patch_event_taxonomy_with_place(
+    v_event, 'Lagos', ARRAY['club-night']::text[], ARRAY[]::text[], ARRAY[]::text[], 6.43253, 3.42364, NULL, 'exact', v_id1);
+  SELECT location_provider_place_id, location_geo INTO v_row FROM public.events WHERE id = v_event;
+  IF v_row.location_provider_place_id IS DISTINCT FROM v_id1 OR NOT (v_row.location_geo ~= point(3.42364, 6.43253)) THEN
+    RAISE EXCEPTION 'S-3: refining the same place on a live event lost the id (%)', row_to_json(v_row);
+  END IF;
+
+  -- S-4 published RSVP (business_update_rsvp_graph live branch)
+  INSERT INTO public.events(id, brand_id, created_by, title, slug, event_type, status, visibility,
+    timezone, currency, theme, party_types, city, location_geo, location_provider_place_id)
+  VALUES (v_rsvp, v_brand, v_owner, 'Repick RSVP', 'repick-rsvp-4334', 'rsvp', 'scheduled', 'public',
+    'Africa/Lagos', 'NGN', jsonb_build_object('business_event', jsonb_build_object('isRsvp', true, 'requestedVisibility', 'public')),
+    ARRAY['house-party'], 'Lagos', point(3.4236, 6.4325), v_id1);
+  PERFORM public.business_update_rsvp_graph(v_rsvp,
+    jsonb_build_object('title', 'Repick RSVP', 'location_geo', '(3.42365,6.43254)',
+      'coordinate_precision', 'exact', 'location_provider_place_id', v_id1),
+    'Refining the RSVP pin for issue 4334', NULL);
+  SELECT location_provider_place_id, location_geo INTO v_row FROM public.events WHERE id = v_rsvp;
+  IF v_row.location_provider_place_id IS DISTINCT FROM v_id1 OR NOT (v_row.location_geo ~= point(3.42365, 6.43254)) THEN
+    RAISE EXCEPTION 'S-4: refining the same place on a published RSVP lost the id (%)', row_to_json(v_row);
+  END IF;
+
+  -- S-5 event draft
+  v_result := public.business_create_event_draft(v_brand, jsonb_build_object(
+    'title', 'Refine draft', 'location_text', 'Didi Museum', 'location_geo', '(3.4236,6.4325)',
+    'location_provider_place_id', v_id1, 'timezone', 'Africa/Lagos', 'currency', 'NGN', 'theme', v_theme));
+  PERFORM public.business_update_event_draft((v_result #>> '{event,id}')::uuid, jsonb_build_object(
+    'title', 'Refine draft', 'location_text', 'Didi Museum', 'location_geo', '(3.42366,6.43255)',
+    'location_provider_place_id', v_id1, 'timezone', 'Africa/Lagos', 'currency', 'NGN', 'theme', v_theme), 1);
+  IF (SELECT location_provider_place_id FROM public.events WHERE id = (v_result #>> '{event,id}')::uuid) IS DISTINCT FROM v_id1 THEN
+    RAISE EXCEPTION 'S-5: refining the same place on a draft lost the id';
+  END IF;
+
+  -- S-6 a direct move without an id still clears, even right after an assertion
+  PERFORM public.places_checked_place_id(v_id1);   -- asserted, then consumed below
+  UPDATE public.venue_listings SET name = name WHERE id = v_venue;   -- consumes it
+  UPDATE public.venue_listings SET lat = 6.40, lng = 3.40 WHERE id = v_venue;
+  IF (SELECT location_provider_place_id FROM public.venue_listings WHERE id = v_venue) IS NOT NULL THEN
+    RAISE EXCEPTION 'S-6a: a direct venue move without an id kept the id';
+  END IF;
+  UPDATE public.events SET location_geo = point(3.40, 6.40) WHERE id = v_event;
+  IF (SELECT location_provider_place_id FROM public.events WHERE id = v_event) IS NOT NULL THEN
+    RAISE EXCEPTION 'S-6b: a direct event move without an id kept the id';
+  END IF;
 
   RAISE NOTICE 'issue_4334_place_id_repick: all checks passed';
 END;
