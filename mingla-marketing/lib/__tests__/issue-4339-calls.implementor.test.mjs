@@ -175,14 +175,14 @@ test('"Your city" is the live links_page_cities() list, sorted, with "Somewhere 
 })
 
 test('no city list is written in the call pages', () => {
-  const sources = ['lib/schedule-cities.ts', 'lib/booking-social.ts', 'app/schedule/ScheduleClient.tsx', 'app/schedule/ProgramCallPage.tsx', 'app/schedule/creators/page.tsx', 'app/schedule/locals/page.tsx'].map((rel) => [rel, code(read(rel))])
+  const sources = ['lib/schedule-cities.ts', 'lib/program-call-copy.ts', 'lib/booking-social.ts', 'app/schedule/ScheduleClient.tsx', 'app/schedule/ProgramCallPage.tsx', 'app/schedule/creators/page.tsx', 'app/schedule/locals/page.tsx'].map((rel) => [rel, code(read(rel))])
   for (const [rel, source] of sources) {
     for (const name of LIVE_14) assert.ok(!source.includes(`'${name}'`) && !source.includes(`"${name}"`) && !source.includes(`>${name}<`), `${rel}: no literal "${name}"`)
   }
   assert.match(code(read('lib/schedule-cities.ts')), /const data = await getLinksData\(\)\s+return cityOptions\(data\.failed\.includes\('cities'\) \? \[\] : data\.cities\)/)
   const page = code(read('app/schedule/ProgramCallPage.tsx'))
   assert.match(page, /await connection\(\)\s+const cities = await liveCityOptions\(\)/, 'read at request time')
-  assert.match(page, /<ScheduleClient audience=\{audience\} cities=\{cities\} \/>/)
+  assert.match(page, /<ScheduleClient audience=\{audience\} cities=\{cities\} copy=\{PROGRAM_CALL_COPY\[audience\]\} \/>/)
 })
 
 // ---- validation per audience -------------------------------------------------
@@ -216,6 +216,9 @@ test('per-audience validation in the browser: the shared fixture table', () => {
 // ---- the call pages ----------------------------------------------------------
 test('the call pages: the design copy, the fields, Get Mingla when booked, and Host leads only from Host calls', () => {
   const client = code(read('app/schedule/ScheduleClient.tsx'))
+  // The page's words live in lib/program-call-copy.ts and reach the client as a prop.
+  const words4 = client + code(read('lib/program-call-copy.ts'))
+  assert.match(code(read('app/schedule/ProgramCallPage.tsx')), /copy=\{PROGRAM_CALL_COPY\[audience\]\}/)
   for (const words of [
     'Mingla Creators', 'Creators team.', 'Twenty minutes with the people who run the program. You’ll get a calendar invite with a video link.',
     'How gigs are posted, and how you raise your hand', 'What hosts look for in your work', 'Contracts, delivery and how you get paid',
@@ -225,12 +228,12 @@ test('the call pages: the design copy, the fields, Get Mingla when booked, and H
     'You apply inside Mingla when your city opens. Get it now so you’re ready.', 'Back to Locals',
     'Locals open city by city, with up to three per city.', 'We look at your work before the call.', 'Link to your best work', 'A place you’d review first',
   ]) {
-    assert.ok(client.includes(words), `says "${words}"`)
+    assert.ok(words4.includes(words), `says "${words}"`)
   }
-  assert.match(client, /Talk to the <em>\{PROGRAM_COPY\[audience\]\.team\}<\/em>/)
+  assert.match(client, /Talk to the <em>\{copy\.team\}<\/em>/)
   assert.match(client, /What do you make\? <span className="req" aria-hidden="true">\*<\/span>/)
   assert.match(client, /<div className="seg" role="radiogroup"/)
-  assert.match(client, /<ExplorerHandoffButton location=\{PROGRAM_COPY\[audience\]\.handoff\} className="btn cta">\s*Get Mingla\s*<\/ExplorerHandoffButton>/)
+  assert.match(client, /<ExplorerHandoffButton location=\{copy\.handoff\} className="btn cta">\s*Get Mingla\s*<\/ExplorerHandoffButton>/)
   // The booking: audience, city and the program fields go to growth-tools-book.
   assert.match(client, /audience,\s+city: bookedCity,\s+social_platform: socialPlatform,\s+social_handle: socialHandle\.trim\(\),/)
   assert.match(client, /\{ makes, work_url: workUrl\.trim\(\) \|\| undefined \}/)

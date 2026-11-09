@@ -11,20 +11,19 @@ import { ScheduleClient } from './ScheduleClient'
 import { SitePage } from '@/components/site/site-page'
 import type { ProgramAudience } from '@/lib/booking-social'
 import { liveCityOptions } from '@/lib/schedule-cities'
-import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
+import { PROGRAM_CALL_COPY } from '@/lib/program-call-copy'
 
 export async function ProgramCallPage({ audience }: { audience: ProgramAudience }) {
   // Request time, never the build: the live list is the database's.
   await connection()
   const cities = await liveCityOptions()
+  // The brand faces are applied by each route's page (#3548: a page owns its font emission).
   return (
-    <div className={`${landingSerif.variable} ${landingSans.variable} ${landingMono.variable}`}>
-      <SitePage surface="explorer">
-        <Suspense fallback={<ProgramCallSkeleton audience={audience} />}>
-          <ScheduleClient audience={audience} cities={cities} />
-        </Suspense>
-      </SitePage>
-    </div>
+    <SitePage surface="explorer">
+      <Suspense fallback={<ProgramCallSkeleton audience={audience} />}>
+        <ScheduleClient audience={audience} cities={cities} copy={PROGRAM_CALL_COPY[audience]} />
+      </Suspense>
+    </SitePage>
   )
 }
 

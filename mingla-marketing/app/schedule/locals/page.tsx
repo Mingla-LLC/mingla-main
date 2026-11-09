@@ -4,6 +4,7 @@
 
 import { ProgramCallPage } from '../ProgramCallPage'
 import { publicNoindexMetadata } from '@/lib/search/metadata'
+import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
 
 export const metadata = publicNoindexMetadata('/schedule/locals', {
   title: 'Talk to the Mingla Locals team',
@@ -11,5 +12,9 @@ export const metadata = publicNoindexMetadata('/schedule/locals', {
 })
 
 export default function LocalCallPage() {
-  return <ProgramCallPage audience="local" />
+  return (
+    <div className={`${landingSerif.variable} ${landingSans.variable} ${landingMono.variable}`}>
+      <ProgramCallPage audience="local" />
+    </div>
+  )
 }

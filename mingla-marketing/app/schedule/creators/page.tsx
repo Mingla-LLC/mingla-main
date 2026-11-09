@@ -4,6 +4,7 @@
 
 import { ProgramCallPage } from '../ProgramCallPage'
 import { publicNoindexMetadata } from '@/lib/search/metadata'
+import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
 
 export const metadata = publicNoindexMetadata('/schedule/creators', {
   title: 'Talk to the Mingla Creators team',
@@ -11,5 +12,9 @@ export const metadata = publicNoindexMetadata('/schedule/creators', {
 })
 
 export default function CreatorCallPage() {
-  return <ProgramCallPage audience="creator" />
+  return (
+    <div className={`${landingSerif.variable} ${landingSans.variable} ${landingMono.variable}`}>
+      <ProgramCallPage audience="creator" />
+    </div>
+  )
 }

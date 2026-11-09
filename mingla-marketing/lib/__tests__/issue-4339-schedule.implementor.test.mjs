@@ -89,7 +89,9 @@ test('the page sends the new fields and the #3601 source through bookCall, and r
   }
   assert.match(client, /const source = \(params\.get\('source'\) \?\? 'direct'\)\.slice\(0, 40\)/, '#3601 source default kept')
   assert.match(client, /fetchBookingSlots\(\)/, 'live slots')
-  const submit = code(read('lib/growth-tools-submit.ts'))
+  // #4339: Book a call's transport is lib/booking-call.ts (re-exported by growth-tools-submit).
+  const submit = code(read('lib/booking-call.ts'))
+  assert.match(code(read('lib/growth-tools-submit.ts')), /export \{\s*bookCall,\s*fetchBookingSlots,/)
   // #4339 calls: the host shape is one arm of BookCallInput (audience absent).
   assert.match(submit, /export async function bookCall\(input: BookCallInput\)/)
   assert.match(submit, /audience\?: undefined\s+icp: string\s+social_platform: string\s+social_handle: string[\s\S]*website\?: string/)

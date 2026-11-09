@@ -10,6 +10,7 @@
       "mingla-marketing/lib/booking-social.ts",
       "mingla-marketing/lib/booking-social.fixtures.json",
       "mingla-marketing/lib/schedule-cities.ts",
+      "mingla-marketing/lib/program-call-copy.ts",
       "mingla-marketing/lib/links-data.ts",
       "mingla-marketing/lib/links-week.ts",
       "mingla-marketing/lib/app-handoff.ts",

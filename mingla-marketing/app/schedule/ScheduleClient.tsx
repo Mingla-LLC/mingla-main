@@ -13,7 +13,7 @@
 // `?name` / `?email` still prefill.
 //
 // Availability and booking are the live `growth-tools-book` function through
-// lib/growth-tools-submit.ts (Google Calendar + Meet invite, confirmation emails
+// lib/booking-call.ts (Google Calendar + Meet invite, confirmation emails
 // to both sides). The handle and website are checked here with the same rules
 // the function enforces (lib/booking-social.ts); the function is the authority
 // and names the field it refuses. Confirm stays pressable: a press with a
@@ -36,7 +36,7 @@ import { ArrowRight, Check, Mail } from 'lucide-react'
 import { captureMarketing, captureSearchMeasurement } from '@/components/marketing/posthog-provider'
 import { ExplorerHandoffButton } from '@/components/landing/explorer-handoff'
 import { landingIcp } from '@/lib/page-measurement'
-import { bookCall, fetchBookingSlots, type BookingSlot } from '@/lib/growth-tools-submit'
+import { bookCall, fetchBookingSlots, type BookingSlot } from '@/lib/booking-call'
 import {
   BOOKING_ICPS,
   CREATOR_MAKES,
@@ -49,40 +49,11 @@ import {
   type BookingField,
   type ProgramBookingField,
 } from '@/lib/booking-social'
+import type { ProgramCallCopy } from '@/lib/program-call-copy'
 
 const CALL_MAILTO = 'mailto:seth@usemingla.com?subject=Book%20a%20call%20with%20Mingla'
 
 type Field = BookingField | ProgramBookingField
-
-/** What each program call page says (the approved design, word for word). */
-const PROGRAM_COPY = {
-  creator: {
-    pill: 'Mingla Creators',
-    team: 'Creators team.',
-    lead: 'Twenty minutes with the people who run the program. You’ll get a calendar invite with a video link.',
-    covers: [
-      'How gigs are posted, and how you raise your hand',
-      'What hosts look for in your work',
-      'Contracts, delivery and how you get paid',
-    ],
-    next: 'Creator setup lives in the Mingla app. Get it before the call and we can walk through your profile together.',
-    back: { href: '/creators', label: 'Back to Creators' },
-    handoff: 'creators_call_booked',
-  },
-  local: {
-    pill: 'Mingla Locals',
-    team: 'Locals team.',
-    lead: 'Twenty minutes on how the monthly review works. You’ll get a calendar invite with a video link.',
-    covers: [
-      'When your city opens, and how the three seats are chosen',
-      'Which places are eligible for a review',
-      'Approval, disclosure and how the $150 is paid',
-    ],
-    next: 'You apply inside Mingla when your city opens. Get it now so you’re ready.',
-    back: { href: '/locals', label: 'Back to Locals' },
-    handoff: 'locals_call_booked',
-  },
-} as const
 
 /** The booker's IANA time zone, so the team sees their local time; omitted when unknown. */
 function bookerTimeZone(): string | undefined {
@@ -139,9 +110,11 @@ interface ScheduleClientProps {
   audience?: BookingAudience
   /** Program calls: every live Mingla city by name, then "Somewhere else" (read on the server). */
   cities?: readonly string[]
+  /** Program calls: the page's words (lib/program-call-copy.ts, passed from the server so they stay out of the client bundle). */
+  copy?: ProgramCallCopy
 }
 
-export function ScheduleClient({ audience = 'host', cities = [SOMEWHERE_ELSE] }: ScheduleClientProps = {}) {
+export function ScheduleClient({ audience = 'host', cities = [SOMEWHERE_ELSE], copy }: ScheduleClientProps = {}) {
   const params = useSearchParams()
   const isHost = audience === 'host'
   // No live city could be read: "Somewhere else" and a free-text city, so nobody is blocked.
@@ -367,7 +340,7 @@ export function ScheduleClient({ audience = 'host', cities = [SOMEWHERE_ELSE] }:
           {dayKeyFmt.format(when)} at {timeFmt.format(when)}. The invite, with a video link, is on its way to{' '}
           <b>{confirmed.email}</b>.
         </p>
-        {isHost ? (
+        {isHost || !copy ? (
           <div className="row">
             {confirmed.meet_url ? (
               <a className="btn ink" href={confirmed.meet_url} target="_blank" rel="noopener noreferrer">
@@ -380,13 +353,13 @@ export function ScheduleClient({ audience = 'host', cities = [SOMEWHERE_ELSE] }:
           </div>
         ) : (
           <>
-            <p className="muted done-next">{PROGRAM_COPY[audience].next}</p>
+            <p className="muted done-next">{copy.next}</p>
             <div className="row">
-              <ExplorerHandoffButton location={PROGRAM_COPY[audience].handoff} className="btn cta">
+              <ExplorerHandoffButton location={copy.handoff} className="btn cta">
                 Get Mingla
               </ExplorerHandoffButton>
-              <Link className="btn soft" href={PROGRAM_COPY[audience].back.href}>
-                {PROGRAM_COPY[audience].back.label}
+              <Link className="btn soft" href={copy.back.href}>
+                {copy.back.label}
               </Link>
             </div>
           </>
@@ -709,7 +682,7 @@ export function ScheduleClient({ audience = 'host', cities = [SOMEWHERE_ELSE] }:
   return (
     <section className="sec dark sched-sec" aria-labelledby={`${ids}-title`}>
       <div className="wrap sched">
-        {isHost ? (
+        {isHost || !copy ? (
           <div>
             <h1 className="sched-title" id={`${ids}-title`}>
               Grab 20 minutes <em>with Mingla.</em>
@@ -718,13 +691,13 @@ export function ScheduleClient({ audience = 'host', cities = [SOMEWHERE_ELSE] }:
           </div>
         ) : (
           <div>
-            <span className="pill aud">{PROGRAM_COPY[audience].pill}</span>
+            <span className="pill aud">{copy.pill}</span>
             <h1 className="sched-title" id={`${ids}-title`}>
-              Talk to the <em>{PROGRAM_COPY[audience].team}</em>
+              Talk to the <em>{copy.team}</em>
             </h1>
-            <p className="lead">{PROGRAM_COPY[audience].lead}</p>
+            <p className="lead">{copy.lead}</p>
             <ul className="covers">
-              {PROGRAM_COPY[audience].covers.map((line, index) => (
+              {copy.covers.map((line, index) => (
                 <li key={line}>
                   <span>{String(index + 1).padStart(2, '0')}</span>
                   {line}

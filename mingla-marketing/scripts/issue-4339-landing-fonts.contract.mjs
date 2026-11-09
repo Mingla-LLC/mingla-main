@@ -43,6 +43,8 @@ export const LANDING_FONT_CONSUMERS = [
   'app/locals/page.tsx',
   'app/organiser-terms/page.tsx',
   'app/privacy-policy/page.tsx',
+  'app/schedule/creators/page.tsx',
+  'app/schedule/locals/page.tsx',
   'app/schedule/page.tsx',
   'app/sms-terms/page.tsx',
   'app/support/page.tsx',

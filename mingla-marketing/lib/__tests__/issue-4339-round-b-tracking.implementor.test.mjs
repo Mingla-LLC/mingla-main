@@ -178,7 +178,8 @@ test('10. funnel events fire where they should and every event is allowlisted', 
   assert.match(listener, /captureMarketing\('icp_faq_opened', \{ icp, faq_index: Number\(details\.dataset\.icpFaq\) \}\)/)
   // GA4 mirrors.
   const schedule = code(read('app/schedule/ScheduleClient.tsx'))
-  assert.match(schedule, /captureMarketing\('tool_book_confirmed'[\s\S]*const leadIcp = landingIcp\(icp\)\s*if \(leadIcp\) \{\s*captureSearchMeasurement\('generate_lead', \{ audience: 'host', page_family: 'host_pillar', icp: leadIcp, action_state: 'succeeded' \}\)/)
+  // #4339 calls: only a Host booking is a GA4 lead (isHost); issue-4339-calls pins the rest.
+  assert.match(schedule, /captureMarketing\('tool_book_confirmed'[\s\S]*const leadIcp = isHost \? landingIcp\(icp\) : null\s*if \(leadIcp\) \{\s*captureSearchMeasurement\('generate_lead', \{ audience: 'host', page_family: 'host_pillar', icp: leadIcp, action_state: 'succeeded' \}\)/)
   const provider = code(read('components/marketing/posthog-provider.tsx'))
   assert.match(provider, /if \(event === 'tool_report_ready'\) \{[\s\S]*captureSearchMeasurement\('tool_interaction', \{ audience: 'host', page_family: 'tools', icp, action_state: 'succeeded' \}\)/)
   assert.match(provider, /if \(!isMarketingEventName\(event\)\) \{[\s\S]*return\s*\}/, 'unlisted events never reach PostHog')

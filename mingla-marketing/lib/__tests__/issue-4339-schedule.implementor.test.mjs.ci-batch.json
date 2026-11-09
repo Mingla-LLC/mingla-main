@@ -12,6 +12,8 @@
       "mingla-marketing/lib/booking-social.ts",
       "mingla-marketing/lib/booking-social.fixtures.json",
       "mingla-marketing/lib/growth-tools-submit.ts",
+      "mingla-marketing/lib/growth-tools-transport.ts",
+      "mingla-marketing/lib/booking-call.ts",
       "mingla-marketing/components/site/pages.css",
       "mingla-marketing/components/site/site-page.tsx",
       "mingla-marketing/content/host-landing/icps.ts",
