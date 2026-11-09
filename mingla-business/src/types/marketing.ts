@@ -149,6 +149,11 @@ export interface MarketingBookQuote {
   reachableCount: number;
   suppressedCount: number;
   unavailableCount: number;
+  /**
+   * #4273 — of suppressedCount: phones skipped because Mingla can't text
+   * their country yet. Absent from a server built before #4273's fix.
+   */
+  unpricedCount?: number;
   smsSegments: number;
   costKind: "provider_estimate" | "not_metered";
   estimatedCostMinor: number | null;
@@ -178,6 +183,8 @@ export interface CampaignGroupFigures {
   selectedCount: number;
   reachableCount: number;
   skippedCount: number;
+  /** #4273 — texts skipped because Mingla can't text that country yet. */
+  unpricedSmsCount?: number;
   estimatedCostMinor: number | null;
   currency: string | null;
   costKind: "provider_estimate" | "not_metered";

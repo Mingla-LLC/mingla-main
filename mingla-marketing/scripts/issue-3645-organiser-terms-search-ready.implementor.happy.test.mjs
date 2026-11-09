@@ -59,7 +59,10 @@ function verifySource(files) {
   // Page: metadata comes from the search_ready contract, never the noindex helper.
   assert.match(page, /export const metadata = searchRouteMetadata\('\/organiser-terms'\)/, 'page must use searchRouteMetadata')
   assert.doesNotMatch(page, /publicNoindexMetadata/, 'page must not use publicNoindexMetadata')
-  assert.match(page, /<main\b[^>]*id="main"/, 'page keeps its <main id="main"> landmark for the content probe')
+  // #4339 phase 2b: the legal reading layout (components/site/legal-shell.tsx →
+  // site-page.tsx) owns the <main id="main"> landmark around the document.
+  assert.match(page, /<LegalShell current="organiser">/, 'page renders inside the legal reading layout')
+  assert.match(readFileSync(path.join(ROOT, 'components/site/site-page.tsx'), 'utf8'), /<main id="main">/, 'page keeps its <main id="main"> landmark for the content probe')
 
   // Verifier: both the search-contract list and the sitemap list carry it, in order.
   const verifierPaths = block(verifier, 'const SEARCH_READY_PATHS = [', ']')

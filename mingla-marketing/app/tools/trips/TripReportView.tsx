@@ -12,7 +12,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { cn } from '@/lib/cn'
 import { buttonClasses } from '@/components/ui/button'
-import { captureMarketing } from '@/components/marketing/posthog-provider'
+import { captureMarketing } from '@/components/marketing/marketing-capture'
 import {
   submitGrowthToolsGate,
   type TripFactor,

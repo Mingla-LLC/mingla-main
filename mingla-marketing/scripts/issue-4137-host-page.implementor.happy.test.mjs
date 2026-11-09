@@ -7,6 +7,17 @@
 //
 // Covers AC-H1, H2, H3, S1, S2, T2 (strings), B1, B5, I1, I2, I3 and the card
 // accessibility/layout contract (C1, C5, C7 at source level).
+//
+// #4339 phase 2a SUPERSEDES THE PAGE-LEVEL HALF, deliberately: /host was
+// replaced in place by the approved "Mingla, Edited" design (spec §1/§8;
+// components/site/host-page.tsx). The #4137 hero lede/video, Start hosting
+// card, bento, live-value figures and expanding cards are no longer on /host,
+// so the assertions that read app/host/page.tsx or host.html for them are
+// retired here. What still guards real code stays: the expanding cards, the
+// builder demo and the HOST_IMAGERY provenance record (components that remain
+// in the repo), plus, on the built page, no forbidden image source and no
+// brand name. The new page is pinned by
+// lib/__tests__/issue-4339-site-chrome.implementor.test.mjs.
 
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
@@ -45,16 +56,11 @@ function loadImagery() {
 }
 
 function sourceContract() {
+  // #4339: /host is the redesigned page; the #4137 page-level pins are retired.
   const page = read('app/host/page.tsx')
-  assert(page.includes(`lede="${NEW_LEDE}"`), '#4137 AC-H1: /host carries the new lede')
-  assert.match(page, /image="\/marketing\/host-hero\/world-hosts-create-poster\.jpg"/, '#4137: the approved legacy hero poster is restored')
-  assert.match(page, /video="\/marketing\/host-hero\/world-hosts-create-preview\.mp4"/, '#4137: the approved legacy hero video is restored')
-  assert.doesNotMatch(page, /HostHeroWall/, '#4137: the replacement photo wall is not mounted')
-  assert.match(page, /<HostStartCta \/>/, '#4137 AC-S1: Start hosting card mounted')
-  assert.doesNotMatch(page, /RootCityGrid|allCityHubsSearchReady/, '#4137 AC-S1: no city grid on /host')
-  assert.doesNotMatch(page, /AriCreativeCard|gogi-site/, '#4137 AC-B5: the real-site screenshot is gone from /host')
-  assert.match(page, /<AriSiteBuilderDemo \/>/, '#4137: builder demo mounted')
-  assert.match(page, /<DeviceCta surface="host" location="tools"/, '#4137 OQ-8: the tools button stays')
+  assert.match(page, /<HostPage \/>/, '#4339: /host renders the redesigned page')
+  assert.match(page, /export const metadata = searchRouteMetadata\('\/host'\)/, '#4137: /host keeps its search_ready metadata')
+  assert.doesNotMatch(page + read('components/site/host-page.tsx'), /RootCityGrid|allCityHubsSearchReady|AriCreativeCard|gogi-site/, '#4137 AC-S1/B5: still no city grid or real-site screenshot')
 
   const hero = read('components/cutout/hero.tsx')
   assert.doesNotMatch(hero, /<CutReveal variant="headline"/, '#4137 AC-H3: the h1 is not wrapped in a reveal')
@@ -93,7 +99,7 @@ function sourceContract() {
   const builder = read('components/ui/ari-site-builder-demo.tsx')
   assert(builder.includes(PROMPT), '#4137: the live prompt string is kept verbatim')
   for (const value of REJECTED_VALUES) assert(!builder.includes(value), `#4137 rule 9: builder must not carry "${value}"`)
-  process.stdout.write('PASS #4137 /host source contract (hero, cards, imagery, builder, Start hosting)\n')
+  process.stdout.write('PASS #4137 /host source contract (cards, imagery, builder; the page itself is #4339)\n')
 }
 
 const decode = (s) => s
@@ -128,65 +134,9 @@ function builtContract() {
   const html = fs.readFileSync(file, 'utf8')
   const text = visible(html)
 
-  // AC-H1
-  assert(text.includes(NEW_LEDE), '#4137 AC-H1: new lede in the server HTML')
-  assert(html.includes('world-hosts-create-preview.mp4') && html.includes('world-hosts-create-poster.jpg'), '#4137 AC-H1: approved legacy hero video and poster')
-  assert(!text.includes(OLD_LEDE), '#4137 AC-H1: old lede gone')
-
-  // AC-H2 — Seth's latest decision restores the established video treatment.
-  assert.doesNotMatch(html, /cut-hero-wall/, '#4137 AC-H2: replacement photo wall is absent')
-
-  // AC-H3: neither the h1 nor the lede sits inside an inline opacity:0 wrapper.
-  const h1At = html.search(/<h1\b/)
-  const before = html.slice(Math.max(0, h1At - 600), h1At)
-  assert.doesNotMatch(before.slice(before.lastIndexOf('<div')), /opacity:0/, '#4137 AC-H3: h1 visible in server HTML')
-  const ledeAt = html.indexOf(NEW_LEDE.slice(0, 40))
-  const ledeTag = html.lastIndexOf('<p', ledeAt)
-  assert.doesNotMatch(html.slice(html.lastIndexOf('<div', ledeTag), ledeTag), /opacity:0/, '#4137 AC-H3: lede visible in server HTML')
-
-  // AC-S1 / AC-S2
-  assert(!text.includes('Mingla city guides') && !html.includes('city-grid'), '#4137 AC-S1: no city grid')
-  const start = byClass(html, 'cut-start')
-  const startText = visible(start)
-  assert.match(startText, /Start hosting/i)
-  assert(startText.includes('Open your doors to the whole city.'), '#4137 AC-S2: h2')
-  assert(startText.includes('Put your place, event or trip in front of the people planning their weekend, and start selling the same day.'))
-  assert.equal((byClass(start, 'cut-start-photos').match(/<img\b/g) ?? []).length, 3, '#4137 AC-S2: three photos')
-  assert.equal((start.match(/data-cta-surface="host"/g) ?? []).length, 1, '#4137 AC-S2: exactly one host CTA')
-  assert.doesNotMatch(startText, /On iPhone|this button opens|Photo/, '#4137 AC-S2: no device note or credit')
-
-  // AC-T2: live values only.
-  for (const value of ['Rain likely 7–9pm', 'peaks 10pm–1am', '12 Sep', '14 Sep', '18 of 24 tables', 'Came before', 'Never heard of you']) {
-    assert(text.includes(value), `#4137 AC-T2: "${value}" on /host`)
-  }
-  for (const value of REJECTED_VALUES) assert(!text.includes(value), `#4137 AC-T2: "${value}" must not appear`)
-  for (const pct of ['width:34%', 'width:61%', 'width:100%']) assert(html.includes(pct), `#4137 AC-T2: bar ${pct}`)
-
-  // AC-T3: the four tool photos carry their alt text.
-  for (const alt of ['A bar ready for a busy night', 'Friends arriving on a group trip', 'A restaurant floor laid for the evening', 'Drinks on a table, shown in an email preview']) {
-    assert(html.includes(`alt="${alt}"`), `#4137 AC-T3: tool photo "${alt}"`)
-  }
-
-  // AC-B1 / AC-B5: finished state at rest, one role=img, nothing focusable.
-  const bld = byClass(html, 'cut-bld')
-  assert.match(bld, /^<div[^>]*role="img"/)
-  assert(decode(bld).includes(`aria-label="${BUILDER_LABEL}"`), '#4137 AC-B5: builder label')
-  assert(visible(bld).includes(PROMPT), '#4137 AC-B1: full prompt at rest')
-  const stepItems = byClass(bld, 'cut-steps').match(/<li\b[^>]*>/g) ?? []
-  assert.equal(stepItems.length, 5)
-  for (const li of stepItems) assert.match(li, /class="[^"]*\bdone\b/, '#4137 AC-B1: every step done at rest')
-  for (const step of STEPS) assert(visible(bld).includes(step))
-  assert.equal((bld.match(/class="cut-bs [^"]*\bshow\b/g) ?? []).length, 3, '#4137 AC-B1: three sections shown')
-  assert.match(bld, /class="cut-live show"/, '#4137 AC-B1: live badge shown')
-  assert.doesNotMatch(bld, /<(a|button|input|select|textarea)\b|tabindex="0"/, '#4137 AC-B5: nothing focusable inside the demo')
-  assert(!html.includes('gogi-site'), '#4137 AC-B5: no real-site screenshot')
-
-  // AC-C1 (static half): seven card buttons with aria-expanded, one open.
-  const cards = byClass(html, 'cut-xc')
-  const triggers = cards.match(/<button[^>]*class="cut-xcard-trigger"[^>]*>/g) ?? []
-  assert.equal(triggers.length, 7, '#4137 AC-C1: seven card buttons')
-  assert.equal(triggers.filter((b) => /aria-expanded="true"/.test(b)).length, 1, '#4137: one card open at rest')
-  assert.doesNotMatch(cards, /grayscale/, '#4137 AC-C5')
+  // #4339: the #4137 page-level pins (lede, hero video, Start hosting, live
+  // values, builder at rest, expanding cards) are retired with the page.
+  assert.match(html, /<span class="rm-lines"><span>Everything<\/span>/, '#4339: host.html is the redesigned page')
 
   // AC-I1 / AC-I3: every image under /marketing/host/ is recorded; no forbidden source or brand.
   const imagery = new Set(loadImagery().map((i) => i.file))
@@ -195,12 +145,11 @@ function builtContract() {
     .map((part) => decodeURIComponent(part.trim().split(' ')[0]))
     .map((src) => (src.startsWith('/_next/image?') ? new URLSearchParams(src.split('?')[1]).get('url') : src))
     .filter((src) => src && src.startsWith('/marketing/host/')))
-  assert(used.size >= 25, `#4137 AC-I1: expected the /host photos in the HTML, found ${used.size}`)
   for (const src of used) assert(imagery.has(src), `#4137 AC-I1: ${src} is not in HOST_IMAGERY`)
   assert.doesNotMatch(html, /place-photos|googleusercontent|maps\.googleapis|\/marketing\/host-icp\//, '#4137 AC-I1: forbidden image source')
   for (const name of BRAND_NAMES) assert(!new RegExp(`\\b${name}\\b`, 'i').test(text), `#4137 AC-I3: "${name}" on /host`)
 
-  process.stdout.write('PASS #4137 /host built HTML (hero, Start hosting, live values, builder at rest, cards, imagery provenance)\n')
+  process.stdout.write('PASS #4137 /host built HTML (imagery provenance and no brand names on the #4339 page)\n')
 }
 
 if (!BUILT_ONLY) sourceContract()

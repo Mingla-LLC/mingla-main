@@ -78,6 +78,10 @@ export const setSprintGoal = (week, goal) => call(() => supabase.rpc("ops_sprint
 // Wave 2 — the Calendar, runway and host sync.
 export const fetchCalendar = (from, to, today) =>
   call(() => supabase.rpc("ops_calendar", { p_from: from, p_to: to, p_today: today || null }));
+// #4339 Creators and Locals calls: every booked call (Host, Creator, Local) in
+// [from, to) instants, read beside ops_calendar (which it does not change).
+export const fetchCalendarCalls = (fromIso, toIso, showTest) =>
+  call(() => supabase.rpc("admin_calendar_calls", { p_from: fromIso, p_to: toIso, p_show_test: !!showTest }));
 export const fetchRunwayReport = (from, to, today) =>
   call(() => supabase.rpc("ops_runway_report", { p_from: from || null, p_to: to || null, p_today: today || null }));
 export const fetchAnchorDetail = (kind, id, today) =>

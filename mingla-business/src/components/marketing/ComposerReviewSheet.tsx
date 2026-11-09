@@ -82,6 +82,11 @@ export interface ComposerReviewSheetProps {
   sendingBy?: ReadonlyArray<ReviewChannelRow>;
   /** #4273 — each picked group, from the server's totals. */
   audienceGroups?: ReadonlyArray<{ key: string; name: string; detail: string }>;
+  /**
+   * #4273 — how many of the skipped can't be texted because Mingla can't text
+   * their country yet (already worded). Absent when nobody was.
+   */
+  unpricedNote?: string;
 }
 
 export interface ReviewChannelRow {
@@ -91,6 +96,10 @@ export interface ReviewChannelRow {
   costLabel: string;
   allowanceLabel?: string;
   error?: string | null;
+  /** #4273 — a plain line under the method (e.g. texts skipped by country). */
+  note?: string;
+  /** #4273 P2-a — refresh this method's failed preview. */
+  onRetry?: () => void;
 }
 
 export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
@@ -127,6 +136,7 @@ export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
   weekBlastWarning,
   sendingBy,
   audienceGroups,
+  unpricedNote,
 }) => {
   const showWeekWarning = weekBlastWarning === true;
   const ctaLabel = isSendNow ? "Send now" : "Schedule";
@@ -210,6 +220,11 @@ export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
               {allowanceLabel}
             </Text>
           ) : null}
+          {unpricedNote !== undefined ? (
+            <Text style={styles.metaText} testID="composer-review-unpriced">
+              {unpricedNote}
+            </Text>
+          ) : null}
           {selectedCount !== undefined ? (
             <Text style={styles.billingNote}>
               Suppressed and unavailable people are skipped automatically. You are charged only for reachable recipients.
@@ -260,7 +275,22 @@ export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
                 {row.allowanceLabel !== undefined ? (
                   <Text style={styles.metaText}>{row.allowanceLabel}</Text>
                 ) : null}
+                {row.note !== undefined ? (
+                  <Text style={styles.metaText} testID={`composer-review-note-${row.key}`}>{row.note}</Text>
+                ) : null}
                 {row.error ? <Text style={styles.errorText}>{row.error}</Text> : null}
+                {row.error && row.onRetry !== undefined ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Refresh ${row.label} preview`}
+                    disabled={submitting}
+                    accessibilityState={{ disabled: submitting }}
+                    onPress={row.onRetry}
+                    testID={`composer-review-retry-${row.key}`}
+                  >
+                    <Text style={styles.scheduleForBtnLabel}>Refresh preview</Text>
+                  </Pressable>
+                ) : null}
               </View>
             ))}
             {sendingBy.length > 1 ? (

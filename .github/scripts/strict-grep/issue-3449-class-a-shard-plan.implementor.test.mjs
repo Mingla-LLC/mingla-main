@@ -119,9 +119,12 @@ const EXPECTED_PLAN = Object.freeze({
   // provider-ban gate (i-no-mapbox, +2 batch:A executions: self-test and plain).
   // The five sealed map-provider gates keep their sealed rows (their checks are
   // provider-neutral now). (#4334's deck-untouched gate ran in class E and is retired.)
-  executions: 1053,
-  loadsSeconds: [385.4, 385.4, 385.5],
-  counts: [350, 351, 352],
+  // #4339: re-derived after #4339 added the locally declared built-output
+  // anti-copy gate (issue-4339-built-output-anti-copy, +2 batch:A executions:
+  // self-test and plain). Read off the plan command as above.
+  executions: 1055,
+  loadsSeconds: [385.5, 385.5, 385.5],
+  counts: [351, 352, 352],
 });
 
 const tempDir = (label) =>

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/sms-price-refresh/__tests__/issue_4273_sms_price_table.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4273-sms-price-table-implementor",
+  "profile": "deno-2-unit"
+}

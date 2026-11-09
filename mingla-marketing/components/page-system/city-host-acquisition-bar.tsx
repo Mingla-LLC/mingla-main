@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { ArrowUpRight, X } from 'lucide-react'
-import { captureMarketing } from '@/components/marketing/posthog-provider'
+import { captureMarketing } from '@/components/marketing/marketing-capture'
 import { DeviceLink } from '@/components/cutout/device-link'
 import { siteAttribution } from '@/lib/links-src'
 
@@ -15,7 +15,7 @@ export const HOST_DESTINATIONS = [
   { label: 'Host an event', href: 'https://host.usemingla.com/event/create', destinationType: 'event' },
   { label: 'Host a trip', href: 'https://host.usemingla.com/trip/create', destinationType: 'trip' },
   { label: 'Host an experience', href: 'https://host.usemingla.com/experience/create', destinationType: 'experience' },
-  { label: 'Add a venue', href: 'https://host.usemingla.com/venue/create', destinationType: 'venue' },
+  { label: 'Add a venue to Mingla Host', href: 'https://host.usemingla.com/venue/create', destinationType: 'venue' },
 ] as const
 
 export function CityHostAcquisitionBar({

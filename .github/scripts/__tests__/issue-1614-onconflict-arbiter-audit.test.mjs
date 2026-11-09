@@ -199,9 +199,19 @@ test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", (
   //   `UNIQUE (brand_id, country_code, stripe_account_id)` from
   //   `20280404004271_issue_4271_door_pay.sql`.
   //
+  // #4273 SMS to every payout country, census +2 (111, after #4271):
+  //   +1  `sms_country_prices (country)` — sms-price-refresh/index.ts writes
+  //       the daily Twilio price; arbiter: `country text PRIMARY KEY` in
+  //       20280522004273_issue_4273_sms_unpriced_country_skips.sql.
+  //   +1  `marketing_messages (campaign_id,recipient_phone)` —
+  //       marketing-send/index.ts records a legacy (unsealed) SMS recipient
+  //       whose country can't be texted or priced as `failed`; arbiter: the
+  //       existing non-partial unique index `uq_mkt_msg_campaign_phone`, the
+  //       same one its three sibling upserts in that file already use.
+  //
   // Every behavioural assertion below is untouched; only the census moves, and
   // the derivation comment above moves with it so the figure stays checkable.
-  assert.equal(sites.length, 109);
+  assert.equal(sites.length, 111);
   assert.equal(
     sites.some((site) =>
       site.table === "brand_follow_email_pending" &&

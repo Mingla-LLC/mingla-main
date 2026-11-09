@@ -207,6 +207,9 @@ const minorAmount = (minor: number): string => (minor / 100).toFixed(2);
  */
 export function smsCostLabel(quote: SmsCostQuoteLike, variant: "row" | "total"): string {
   if (quote.costKind !== "provider_estimate") return "Free";
+  // #4273 — every text was skipped (e.g. no rate for their country): there is
+  // nothing to price, which is not the same as a cost we could not work out.
+  if (quote.estimatedCostMinor === 0 && quote.currency === null) return "No texts to pay for";
   if (quote.estimatedCostMinor === null || quote.currency === null) return "Cost unavailable";
   const amount = `${quote.currency} ${minorAmount(quote.estimatedCostMinor)}`;
   const parts = quote.costBreakdown ?? [];
@@ -218,6 +221,35 @@ export function smsCostLabel(quote: SmsCostQuoteLike, variant: "row" | "total"):
     .map((part) => `${part.currency} ${minorAmount(part.providerCostMinor)}`)
     .join(" + ");
   return `About ${amount} estimated provider cost (${listed}, converted at today's exchange rate)`;
+}
+
+/**
+ * #4273 P2-a — the review's total cost. A ticked SMS method without a priced
+ * preview means the total is unknown: never "Free", which would read as if the
+ * texts cost nothing.
+ */
+export function reviewTotalCostLabel(
+  figures: SmsCostQuoteLike,
+  smsTicked: boolean,
+  smsPriced: boolean,
+): string {
+  if (smsTicked && !smsPriced) return "Cost unavailable";
+  return figures.costKind === "not_metered" ? "Free" : smsCostLabel(figures, "total");
+}
+
+/**
+ * #4273 P2-a — Send waits until every ticked method has its own preview.
+ * Null when every method is priced. Each entry is a method sent alongside the
+ * lead; the lead has its own hold (getBookBlastDisabledReason).
+ */
+export function reviewSendHold(
+  extras: ReadonlyArray<{ channel: BlastChannel; priced: boolean; pending: boolean }>,
+): string | null {
+  const waiting = extras.filter((extra) => !extra.priced);
+  if (waiting.length === 0) return null;
+  if (waiting.some((extra) => extra.pending)) return "Checking reach and cost for every method…";
+  const names = waiting.map((extra) => METHOD_NAME[extra.channel]).join(" and ");
+  return `${names} ${waiting.length === 1 ? "has" : "have"} no preview yet. Refresh the preview before sending.`;
 }
 
 /** "Your Book + Followers", shortened so the button stays one line. */
@@ -479,20 +511,30 @@ const METHOD_NAME: Record<BlastChannel, string> = { email: "Email", sms: "SMS", 
  * A method the host ticked went away because of the groups they picked. Says so
  * in a sentence, because a chip going grey is easy to miss when the Blast then
  * goes out by a method they never chose.
+ *
+ * #4273 P3-d — `current` is what is ticked NOW. The sentence is re-read from
+ * it on every render, so unticking a method afterwards (or ticking a dropped
+ * one back) never leaves it naming a method that is no longer going out.
+ * Defaults to `after`, the methods right after the automatic change.
  */
 export function blastFallbackSentence(
   before: readonly BlastChannel[],
   after: readonly BlastChannel[],
   sourceKeys: readonly string[],
+  current: readonly BlastChannel[] = after,
 ): string | null {
-  const dropped = before.filter((channel) => !after.includes(channel));
-  if (dropped.length === 0 || after.length === 0) return null;
+  const dropped = before.filter((channel) =>
+    !after.includes(channel) && !current.includes(channel)
+  );
+  if (dropped.length === 0 || current.length === 0) return null;
   const names = dropped.map((channel) => METHOD_NAME[channel]).join(" and ");
   const who = dropped.includes("push") && sourceKeys.some(isBuyerSourceKey)
     ? "a buyer list"
     : "these groups";
-  const replacement = after.filter((channel) => !before.includes(channel));
-  const method = (replacement.length > 0 ? replacement : after)
+  const replacement = after.filter((channel) =>
+    !before.includes(channel) && current.includes(channel)
+  );
+  const method = (replacement.length > 0 ? replacement : current)
     .map((channel) => METHOD_NAME[channel]).join(" and ");
   return replacement.length > 0
     ? `${names} can't reach ${who}, so this will go by ${method} instead.`

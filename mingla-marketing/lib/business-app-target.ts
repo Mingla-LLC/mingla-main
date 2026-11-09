@@ -131,8 +131,9 @@ export const BUSINESS_APP_CHOICE_COPY = {
   // wording and its get_the_app_clicked event name. All 4 surfaces render this
   // constant, so all 4 update from this ONE line — the structural pin working as
   // designed. Never hand-write the label at a surface.
-  download: 'Get the app',
-  useWeb: 'Use on web',
+  // #4339 (Seth): every button that goes to Mingla Host says "Host".
+  download: 'Get Mingla Host',
+  useWeb: 'Use Mingla Host on web',
   // Phone (ios | android) — both actions are live.
   moreNote:
     'The app does more: scan tickets at the door and get push alerts. Everything else works on the web too.',

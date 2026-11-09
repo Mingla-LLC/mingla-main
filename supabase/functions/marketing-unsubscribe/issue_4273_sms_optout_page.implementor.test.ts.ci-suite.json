@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/marketing-unsubscribe/issue_4273_sms_optout_page.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4273-marketing-unsubscribe-sms-optout-page",
+  "profile": "deno-2-unit"
+}

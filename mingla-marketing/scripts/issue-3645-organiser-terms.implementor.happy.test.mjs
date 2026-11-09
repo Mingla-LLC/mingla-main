@@ -52,9 +52,11 @@ const COMPANY_FACTS = [
 const KEPT_SECTION_NUMBERS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 13, 14, 15, 16, 17, 18]
 const CARVE_OUT =
   'If you use Mingla Host to list, sell, message or advertise as an organiser, that use is commercial and is governed by the Mingla Organiser Terms at usemingla.com/organiser-terms, which apply alongside these Terms.'
+// #4339 §9: components/cutout/footer.tsx now renders the ONE canonical footer
+// (components/marketing/footer.tsx), so the footer link is checked once, on
+// the owner; the built /host and /tools pages below still prove it renders.
 const LINK_SURFACES = [
   'components/marketing/footer.tsx',
-  'components/cutout/footer.tsx',
   'components/page-system/page-system-shell.tsx',
   'app/support/page.tsx',
 ]
@@ -75,7 +77,10 @@ function verifySource(files) {
   assert.match(files['scripts/verify-search-foundation.mjs'], /'\/terms-of-service',[\s\S]*?'\/organiser-terms',/, '/organiser-terms must be in the sitemap/search-ready verifier')
   assert.match(page, /searchRouteMetadata\('\/organiser-terms'\)/, 'page must use the search-ready metadata helper')
   assert.doesNotMatch(page, /publicNoindexMetadata/, 'page must not use the noindex metadata helper')
-  assert.match(page, /<main\b[^>]*id="main"/, 'page needs the <main id="main"> landmark')
+  // #4339 phase 2b: the legal reading layout (components/site/legal-shell.tsx →
+  // site-page.tsx) owns the <main id="main"> landmark around the document.
+  assert.match(page, /<LegalShell current="organiser">/, 'page renders inside the legal reading layout')
+  assert.match(readFileSync(path.join(ROOT, 'components/site/site-page.tsx'), 'utf8'), /<main id="main">/, 'page needs the <main id="main"> landmark')
 
   // Held clauses and editor notes never render.
   for (const phrase of [...HELD_PHRASES, ...EDITOR_MARKERS]) {
@@ -171,7 +176,7 @@ if (mode === 'source') {
     ['held ads section published', { 'lib/organiserTermsContent.ts': `${files['lib/organiserTermsContent.ts']}\n// title: 'Ads through Mingla'` }],
     ['editor note published', { 'lib/organiserTermsContent.ts': `${files['lib/organiserTermsContent.ts']}\n// [Legal review: media licence.]` }],
     ['company registration dropped', { 'lib/organiserTermsContent.ts': files['lib/organiserTermsContent.ts'].replaceAll('RC 9591121', 'RC') }],
-    ['footer link dropped', { 'components/cutout/footer.tsx': files['components/cutout/footer.tsx'].replace("{ href: '/organiser-terms', label: 'Organiser Terms' }, ", '') }],
+    ['footer link dropped', { 'components/marketing/footer.tsx': files['components/marketing/footer.tsx'].replace("{ href: '/organiser-terms', label: 'Organiser Terms' },", '') }],
     ['carve-out reverted', { 'lib/termsContent.ts': files['lib/termsContent.ts'].replaceAll(` ${CARVE_OUT}`, '') }],
     ['help copy reverted', { 'content/help/registry.ts': `${files['content/help/registry.ts']}\n// Mingla is the merchant of record for ticket sales` }],
   ]
@@ -179,7 +184,7 @@ if (mode === 'source') {
     assert.throws(() => verifySource({ ...files, ...override }), assert.AssertionError, `RED proof failed to reject: ${label}`)
   }
   process.stdout.write(`RED proof: ${reverts.length} reverted states rejected\n`)
-  process.stdout.write('PASS #3645 source: /organiser-terms search_ready/canonical, held clauses omitted, both companies named, four link surfaces, ToS carve-out, help copy corrected\n')
+  process.stdout.write('PASS #3645 source: /organiser-terms search_ready/canonical, held clauses omitted, both companies named, three link surfaces, ToS carve-out, help copy corrected\n')
 } else {
   const appDir = path.join(ROOT, '.next/server/app')
   const pages = Object.fromEntries(['organiser-terms', 'support', 'terms-of-service', 'host', 'tools'].map((name) => {

@@ -187,7 +187,9 @@ export function violations(files) {
   for (const required of [
     "mingla:offering-payload:v1", "mingla:offering-eligibility:v1",
     "mingla:offering-quote:v1", "mingla:offering-execution:v1",
-    "resolveOfferingInviteSmsPriceBook", "composeSmsBody(body, true)",
+    // #4273 item 10 — invite SMS prices are supplied from the live price
+    // table (smsRates); the opt-out link may replace the STOP footer.
+    "input.smsRates", "composeSmsBody(\n        body,\n        true,",
     "executionCandidateParts", "allowEmptyPreview",
   ]) need(quote, required, "quote owner", failures);
   forbid(quote, "frame(input.quotedAt)", "stable quote identity", failures);

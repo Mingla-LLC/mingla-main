@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import { type ReactNode } from 'react'
-import { CutoutShell } from '@/components/cutout'
+// #4339 round B (speed): direct module imports, not the barrel (the
+// barrel pulls framer-motion into every route that touches it).
+import { CutoutShell } from '@/components/cutout/primitives'
 import { LAUNCH_CITIES, PAGE_SYSTEM_PATHS, type PageSystemPath } from '@/content/page-system/shared'
 import { CityHostAcquisitionBar } from './city-host-acquisition-bar'
 import { PageSystemNav } from './page-system-nav'
@@ -34,7 +36,9 @@ export function PageSystemShell({
         </main>
         <footer className="ps-footer" data-print-hide>
           <div>
-            <img src="/brand/mingla-wordmark.svg" alt="Mingla" width="116" height="41" />
+            <Link href="/" aria-label="Mingla home">
+              <img src="/brand/mingla-wordmark.svg" alt="" width="116" height="41" />
+            </Link>
             <p>Find the plan. Publish what people can join.</p>
             <p className="ps-footer-cities">{LAUNCH_CITIES.join(' · ')}</p>
           </div>
@@ -49,7 +53,7 @@ export function PageSystemShell({
         </footer>
         <aside className="ps-review-dock" aria-label="Private page-system review" data-private-review-dock data-print-hide>
           <div className="ps-review-state">
-            <strong>#2990 private review · noindex</strong>
+            <strong>Private review · noindex</strong>
             <span>Future route: {futurePath}</span>
           </div>
           <nav aria-label="Review fixtures">

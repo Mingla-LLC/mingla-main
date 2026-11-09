@@ -1,18 +1,11 @@
-import { countryFromE164 } from "./e164Country.ts";
+import { MAPPED_COUNTRIES, smsMarketingCountry } from "./e164Country.ts";
 import { resolveOfferingInviteSmsPriceBook } from "./runtimeConfig.ts";
+import { smsProviderForCountry } from "./adapters/smsAdapter.ts";
+import { resolveSmsCountryLive } from "./secretBundle.ts";
+import { smsMarketingRoute } from "./smsCountries.ts";
 
-export interface SmsRateV1 {
-  rateId: string;
-  provider: "twilio" | "termii";
-  country: string;
-  currency: string;
-  unit: "sms_segment";
-  minorNumerator: number;
-  minorDenominator: number;
-  effectiveAt: string;
-  expiresAt: string;
-  sourceReference: string;
-}
+import type { SmsRateV1 } from "./smsPriceTable.ts";
+export type { SmsRateV1 };
 
 export interface SmsCostInput<T> {
   key: string;
@@ -31,11 +24,27 @@ export function validatedSmsRates(
   suppliedRaw?: unknown[],
 ): SmsRateV1[] {
   const raw = suppliedRaw ?? resolveOfferingInviteSmsPriceBook();
-  if (!Array.isArray(raw)) {
+  // #4273 — a configured book with no rates prices nothing. Since an unpriced
+  // phone is now skipped rather than failing the quote, an empty book would
+  // read as "every number is in a country Mingla can't text": fail it closed
+  // as a missing book instead.
+  if (!Array.isArray(raw) || raw.length === 0) {
     throw new Error("cost_unavailable:sms_rate_book_missing");
   }
+  const seen = new Set<string>();
   return raw.map((entry) => {
     const rate = entry as SmsRateV1;
+    // #4273 — an entry must price a country Mingla can map, on the route that
+    // country actually sends by (smsProviderForCountry), once. A wrong route
+    // or a duplicate would silently price nothing or the wrong thing; fail the
+    // book closed so the bad entry is found before a quote uses it.
+    if (
+      typeof rate?.country !== "string" ||
+      !MAPPED_COUNTRIES.includes(rate.country) ||
+      rate.provider !== smsProviderForCountry(rate.country) ||
+      seen.has(rate.country)
+    ) throw new Error("cost_unavailable:sms_rate_book_invalid");
+    seen.add(rate.country);
     if (
       typeof rate?.rateId !== "string" ||
       (rate.provider !== "twilio" && rate.provider !== "termii") ||
@@ -60,6 +69,90 @@ export function validatedSmsRates(
   });
 }
 
+/**
+ * #4273 — the honest reason a reachable phone is not texted: its country (or
+ * provider route) has no rate in the book, or no country can be read from it.
+ * The person is skipped, never a quote failure. An expired, missing, invalid
+ * or not-yet-effective BOOK still fails the whole quote (validatedSmsRates).
+ */
+export const SMS_UNPRICED_COUNTRY = "sms_unpriced_country";
+
+/**
+ * #4273 — THE one rule for "can Mingla price (and so text) this phone".
+ * Country from the handset; NG routes to Termii, everything else to Twilio.
+ * Null = unpriced. The Blast quote, the invite quote and the send guard all
+ * call this, so they skip exactly the same numbers.
+ * Invariant I-4273-UNPRICED-ONE-RULE is declared beside its proof,
+ * supabase/functions/marketing-send/issue_4273_sms_unpriced_country.implementor.test.ts.
+ */
+export function smsRateForPhone<
+  R extends Pick<SmsRateV1, "country" | "provider">,
+>(
+  normalizedPhone: string | null,
+  rates: readonly R[],
+  /**
+   * #4273 — the country's own SMS switch. A country that is switched off is
+   * as unpriced as one with no rate: "can't text their country yet".
+   */
+  isLive: (country: string) => boolean = () => true,
+): R | null {
+  if (normalizedPhone === null) return null;
+  const country = smsMarketingCountry(normalizedPhone);
+  if (country === null || !isLive(country)) return null;
+  // #4273 — the ONE provider rule, shared with the adapter's sender choice.
+  const provider = smsProviderForCountry(country);
+  return rates.find((candidate) =>
+    candidate.country === country && candidate.provider === provider
+  ) ?? null;
+}
+
+/**
+ * #4273 — the send-time guard's view of the configured book: every entry with
+ * a country and provider, read WITHOUT the date checks (a sealed send must not
+ * fail because the book aged after confirm). Null when no book is configured:
+ * no quote can be sealed then, so the guard has nothing to protect.
+ */
+export function configuredSmsRoutes(
+  suppliedRaw?: unknown,
+): Array<Pick<SmsRateV1, "country" | "provider">> | null {
+  const raw = suppliedRaw === undefined
+    ? resolveOfferingInviteSmsPriceBook()
+    : suppliedRaw;
+  if (!Array.isArray(raw)) return null;
+  return raw.flatMap((entry) => {
+    const rate = entry as Partial<SmsRateV1> | null;
+    return typeof rate?.country === "string" &&
+        (rate.provider === "twilio" || rate.provider === "termii")
+      ? [{ country: rate.country, provider: rate.provider }]
+      : [];
+  });
+}
+
+/**
+ * #4273 — can Mingla text this country right now? Its own switch must be on
+ * (sms_live_enabled.<cc>) AND it must have a sender route: US/CA the
+ * toll-free service, NG Termii, alphanumeric countries the marketing service
+ * (TWILIO_MARKETING_MESSAGING_SERVICE_SID must be set — never the toll-free
+ * instead), and "needs_number" countries none. Anything else reads as "can't
+ * text their country yet" in the quote, and is never attempted at send.
+ */
+export const smsCountryTextableNow = (
+  country: string,
+  getEnv?: (name: string) => string | undefined,
+): boolean => {
+  // Tests inject an env; production reads the switch bundle and the one
+  // marketing sender name directly (no dynamic env reads in this module).
+  const live = getEnv
+    ? resolveSmsCountryLive(country, getEnv)
+    : resolveSmsCountryLive(country);
+  const marketingSid = getEnv
+    ? getEnv("TWILIO_MARKETING_MESSAGING_SERVICE_SID")
+    : Deno.env.get("TWILIO_MARKETING_MESSAGING_SERVICE_SID");
+  return live &&
+    smsMarketingRoute(country, (marketingSid ?? "").trim().length > 0) !==
+      null;
+};
+
 export interface SmsCostSubtotal {
   currency: string;
   estimatedCostMinor: number;
@@ -82,8 +175,12 @@ export function allocateSmsCosts<T>(
   inputs: SmsCostInput<T>[],
   now: Date,
   suppliedRates?: SmsRateV1[],
+  /** #4273 — can this country be texted now (switch + sender route). */
+  isLive?: (country: string) => boolean,
 ): {
   allocations: SmsCostAllocation<T>[];
+  /** #4273 — inputs whose phone has no rate: skipped, never priced. */
+  unpriced: SmsCostInput<T>[];
   subtotals: SmsCostSubtotal[];
   estimatedCostMinor: number | null;
   currency: string | null;
@@ -91,33 +188,47 @@ export function allocateSmsCosts<T>(
   if (inputs.length === 0) {
     return {
       allocations: [],
+      unpriced: [],
       subtotals: [],
       estimatedCostMinor: 0,
       currency: null,
     };
   }
-  const rates = suppliedRates ?? validatedSmsRates(now);
-  const fractions = inputs.map((input) => {
-    const country = countryFromE164(input.normalizedPhone);
-    if (
-      country === null || !Number.isSafeInteger(input.segments) ||
-      input.segments < 1
-    ) throw new Error("cost_unavailable:sms_rate_unavailable");
-    // orch-strict-grep-allow stripe-country-out-of-scope — messaging-provider selection, not Stripe/self-serve payout eligibility
-    const provider = country === "NG" ? "termii" : "twilio";
-    const rate = rates.find((candidate) =>
-      candidate.country === country && candidate.provider === provider
-    );
-    if (rate === undefined) {
-      throw new Error("cost_unavailable:sms_rate_unavailable");
+  // #4273 item 10 — prices come from public.sms_country_prices (loadSmsRates);
+  // the caller always supplies them. None supplied = no prices: fail closed.
+  void now;
+  if (suppliedRates === undefined || suppliedRates.length === 0) {
+    throw new Error("cost_unavailable:sms_rate_book_missing");
+  }
+  const rates = suppliedRates;
+  const live = isLive ?? smsCountryTextableNow;
+  const unpriced: SmsCostInput<T>[] = [];
+  const fractions = inputs.flatMap((input) => {
+    if (!Number.isSafeInteger(input.segments) || input.segments < 1) {
+      throw new Error("cost_unavailable:sms_segments_invalid");
     }
-    return {
+    const rate = smsRateForPhone(input.normalizedPhone, rates, live);
+    if (rate === null) {
+      unpriced.push(input);
+      return [];
+    }
+    return [{
       input,
       rate,
       numerator: BigInt(input.segments) * BigInt(rate.minorNumerator),
       denominator: BigInt(rate.minorDenominator),
-    };
+    }];
   });
+  unpriced.sort((a, b) => a.key.localeCompare(b.key));
+  if (fractions.length === 0) {
+    return {
+      allocations: [],
+      unpriced,
+      subtotals: [],
+      estimatedCostMinor: 0,
+      currency: null,
+    };
+  }
   const currencies = [...new Set(fractions.map((entry) => entry.rate.currency))]
     .sort();
   const allocations: SmsCostAllocation<T>[] = [];
@@ -139,7 +250,10 @@ export function allocateSmsCosts<T>(
       allocatedCostMinor: Number(entry.numerator / entry.denominator),
     }));
     let remainder = Number(aggregate - floorTotal);
-    group.map((entry, index) => ({ entry, allocation: groupAllocations[index] }))
+    group.map((entry, index) => ({
+      entry,
+      allocation: groupAllocations[index],
+    }))
       .sort((left, right) => {
         const l = left.entry.numerator % left.entry.denominator,
           r = right.entry.numerator % right.entry.denominator;
@@ -162,6 +276,7 @@ export function allocateSmsCosts<T>(
   allocations.sort((a, b) => a.key.localeCompare(b.key));
   return {
     allocations,
+    unpriced,
     subtotals,
     estimatedCostMinor: subtotals.length === 1
       ? subtotals[0].estimatedCostMinor

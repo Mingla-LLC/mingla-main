@@ -55,9 +55,10 @@ function verifySourceWiring() {
   const trustRoutes=['about','going-out','cities']
   for(const route of trustRoutes) {
     const page=read(`mingla-marketing/app/(core)/${route}/page.tsx`)
-    assert.match(page,/<CorePageShell/); assert.match(page,/corePageMetadata/)
+    // #4339 phase 2b: the trust pages render the redesigned shell (site nav, one <main>, canonical footer).
+    assert.match(page,/<SitePage/); assert.match(page,/corePageMetadata/)
   }
-  const combined=trustRoutes.map((route)=>read(`mingla-marketing/app/(core)/${route}/page.tsx`)).join('\n')+read('mingla-marketing/components/core-pages/core-page-shell.tsx')
+  const combined=trustRoutes.map((route)=>read(`mingla-marketing/app/(core)/${route}/page.tsx`)).join('\n')+read('mingla-marketing/components/site/site-page.tsx')
   assert.doesNotMatch(combined,/illustrative (?:demo|concept)|not a real customer|placeholder/i)
   const media=read('mingla-marketing/app/api/city-place-media/route.ts')+read('mingla-marketing/components/page-system/current-place-photo.tsx')
   for(const token of ['GOOGLE_MAPS_API_KEY','authorAttributions','googleMapsUri','current_attribution_unavailable','data-place-media','Photo unavailable']) assert(media.includes(token),`missing media gate ${token}`)

@@ -49,8 +49,13 @@ function verify(
   assert.match(menu, /const chipClass = [\s\S]*?cut-btn-brand text-white cut-menu-chip[\s\S]*cut-btn-light text-\[var\(--cut-ink\)\] cut-menu-chip/, '#4137: COMPANY chips must carry cut-menu-chip, brand when current')
   assert.match(menu, /label="Explore Your City"[\s\S]*label="Host Your City"/, 'device-aware audience actions must remain stacked at the bottom')
 
+  // #4339 §9: ONE canonical footer. components/marketing/footer.tsx owns the
+  // columns (<SiteFooter>); the Cutout footer only delegates to it, so the
+  // routes are checked on the owner and the delegation on the wrapper.
+  assert.match(cutoutFooter, /import \{ SiteFooter \} from '@\/components\/marketing\/footer'/, `${CUTOUT_FOOTER_PATH} must render the canonical footer`)
+  assert.match(cutoutFooter, /return <SiteFooter surface=\{surface\} \/>/, `${CUTOUT_FOOTER_PATH} must delegate to <SiteFooter>`)
   const requiredFooterRoutes = ['/', '/going-out', '/cities', '/host', '/tools', '/help', '/about']
-  for (const [owner, source] of [[CUTOUT_FOOTER_PATH, cutoutFooter], [MARKETING_FOOTER_PATH, marketingFooter]]) {
+  for (const [owner, source] of [[MARKETING_FOOTER_PATH, marketingFooter]]) {
     assert.doesNotMatch(source, /allCoreTrustPagesSearchReady|allCityHubsSearchReady|coreReady/, `${owner} must not hide approved public links behind indexing readiness`)
     for (const route of requiredFooterRoutes) {
       assert.match(source, new RegExp(`href: '${route.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}'`), `${owner} must expose ${route} in its footer navigation`)
@@ -75,8 +80,10 @@ if (SELF_TEST) {
   assert.throws(() => verify(reverted), /indexing-readiness gate|must exist once/, 'restoring the hidden Cities link must prove RED')
   const flatMenu = read(MENU_PATH).replace("const menuButtonClass = 'cut-btn", "const menuButtonClass = 'flex")
   assert.throws(() => verify(flatMenu), /same full-width moulded button anatomy/, 'restoring flat supporting links must prove RED')
-  const missingFooter = read(CUTOUT_FOOTER_PATH).replace("{ href: '/about', label: 'About' }, ", '')
-  assert.throws(() => verify(read(MENU_PATH), missingFooter), /must expose/, 'dropping an approved footer destination must prove RED')
+  const missingFooter = read(MARKETING_FOOTER_PATH).replace("{ href: '/about', label: 'About' },", '')
+  assert.throws(() => verify(read(MENU_PATH), read(CUTOUT_FOOTER_PATH), missingFooter), /must expose/, 'dropping an approved footer destination must prove RED')
+  const ownFooter = read(CUTOUT_FOOTER_PATH).replace('return <SiteFooter surface={surface} />', 'return null')
+  assert.throws(() => verify(read(MENU_PATH), ownFooter), /must delegate/, 'a Cutout footer that stops delegating must prove RED')
   process.stdout.write('RED proof: hidden, flat, and footer-incomplete navigation states were rejected\n')
 }
 process.stdout.write('PASS #3176 shared side menu and footers expose the complete styled public navigation\n')

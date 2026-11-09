@@ -7,8 +7,35 @@
 // NOT Workspace domain-wide delegation. Two actions:
 //
 //   POST {action:"slots"}                → {slots:[{start,end}]} (UTC ISO)
-//   POST {action:"book", start, name, email, venue?, report_url?, source?}
+//   POST {action:"book", start, name, email, icp, social_platform,
+//         social_handle, venue?, website?, report_url?, source?}
 //                                        → {ok:true, event_url, meet_url, start}
+//
+// #4339 §6 — `icp`, `social_platform` and `social_handle` are REQUIRED on every
+// booking (the /schedule page is the only caller; every funnel reaches it), and
+// `website` is optional. They are validated in bookingContext.ts, put at the TOP
+// of the calendar description (the social as a working profile link, then the
+// website), stored on the event as private extended properties, and shown at the
+// top of the "New Mingla call" notification. A booking without them is a 400
+// {error:"validation", field}.
+//
+// #4339 round A — every confirmed booking is also written to
+// public.book_call_leads (bookingLead.ts, service role, idempotent on the
+// calendar event id), so it shows in Mingla Admin's Inbound leads as
+// "Book a call". A failed lead write never fails the booking.
+//
+// #4339 Creators and Locals calls (Seth approved, 9 Nov): `audience` is host
+// (absent, the default, everything above unchanged), creator or local, from
+// usemingla.com/schedule/creators and /schedule/locals. Each audience has its
+// own required fields (bookingContext.ts parseBookingContext). The invite is
+// titled "Mingla Creators call: <name>" or "Mingla Locals call: <name>" and
+// lists the city, what they make or their first place, and the social as a
+// working link. RECIPIENTS ARE THE SAME FOR EVERY AUDIENCE (Seth, 9 Nov): the
+// same calendar and Meet organiser, guests = the booker + info@
+// (buildAttendees), the "New Mingla call" email to BOOKING_NOTIFY_TO + info@
+// (buildNotifyRecipients), which names the audience, and the booker's own
+// confirmation. The lead row carries the audience, the booker's time zone
+// (`time_zone`, optional) and the Meet and calendar links.
 //
 // Config secret GOOGLE_CALENDAR_KEYS = "client_id|client_secret|refresh_token".
 // Optional env: BOOKING_TZ (default America/New_York), BOOKING_CALENDAR_ID
@@ -27,10 +54,9 @@ import { corsHeaders } from "../_shared/cors.ts";
 import { renderShell, SHELL_TOKENS } from "../_shared/email/shell.ts";
 import { escapeHtml } from "../_shared/email/escape.ts";
 import {
-  assertNotResendSandbox,
-  EMAIL_SENDERS,
-  formatSenderHeader,
-} from "../_shared/email/senders.ts";
+  type GrowthToolsEmail,
+  sendGrowthToolsEmail,
+} from "../_shared/growthToolsResend.ts";
 import { minglaLogoUrl } from "../_shared/brandAssets.ts";
 import { resolveRuntimeString } from "../_shared/runtimeConfig.ts";
 // #3601 — pure, zero-import builders for the calendar description, the guest
@@ -43,6 +69,24 @@ import {
   originLabel,
   sanitizeLine,
 } from "./bookingDetails.ts";
+import {
+  AUDIENCE_CALL_LABELS,
+  type BookingContext,
+  buildBookingDescription,
+  buildEventSummary,
+  buildPrivateProperties,
+  CREATOR_MAKES_LABELS,
+  ICP_LABELS,
+  parseBookingContext,
+  parseTimeZone,
+  SOCIAL_LABELS,
+} from "./bookingContext.ts";
+import { buildBookingLead, recordBookingLead } from "./bookingLead.ts";
+import {
+  type CalendarKeys,
+  parseCalendarKeys,
+  refreshCalendarAccessToken,
+} from "../_shared/googleCalendarAuth.ts";
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -123,39 +167,20 @@ function tzYmd(date: Date, tz: string): { y: number; mo: number; d: number; wd: 
 }
 
 // ── Google OAuth (refresh token → access token) ──────────────────────────────
-export function parseCalendarKeys(packed: string): { clientId: string; clientSecret: string; refresh: string } | null {
-  // Governed manifest fields: calendar_client_id, calendar_client_secret,
-  // calendar_refresh_token.
-  const parts = packed.split("|");
-  // #3720 extends this governed bundle with one opaque Drive segment. Calendar
-  // deliberately keeps consuming exactly its original first three values.
-  if (![3, 4].includes(parts.length) || parts.slice(0, 3).some((s) => s.length === 0)) return null;
-  return { clientId: parts[0], clientSecret: parts[1], refresh: parts[2] };
-}
+// #4339 calendar sync — the parser and the refresh are shared with
+// growth-tools-calendar-sync (../_shared/googleCalendarAuth.ts); this function
+// still reads its own GOOGLE_CALENDAR_KEYS. Governed manifest fields:
+// calendar_client_id, calendar_client_secret, calendar_refresh_token.
+export { parseCalendarKeys };
 
-function calendarKeys(): { clientId: string; clientSecret: string; refresh: string } | null {
+function calendarKeys(): CalendarKeys | null {
   return parseCalendarKeys(Deno.env.get("GOOGLE_CALENDAR_KEYS") ?? "");
 }
 
 async function getAccessToken(): Promise<string | null> {
   const keys = calendarKeys();
   if (!keys) return null;
-  const res = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: keys.clientId,
-      client_secret: keys.clientSecret,
-      refresh_token: keys.refresh,
-      grant_type: "refresh_token",
-    }),
-  });
-  if (!res.ok) {
-    console.error("[growth-tools-book] token refresh failed", res.status);
-    return null;
-  }
-  const body = await res.json() as { access_token?: string };
-  return body.access_token ?? null;
+  return await refreshCalendarAccessToken(keys, { logTag: "growth-tools-book" });
 }
 
 interface Busy {
@@ -228,9 +253,9 @@ function computeFreeSlots(busy: Busy[], now: number): { start: string; end: stri
 
 // ── Confirmation + notification emails (Resend, best-effort) ──────────────────
 // Full local-time label, e.g. "Friday, July 24 at 9:00 AM EDT".
-function formatLocal(ms: number): string {
+function formatLocal(ms: number, timeZone: string = TZ): string {
   return new Intl.DateTimeFormat("en-US", {
-    timeZone: TZ,
+    timeZone,
     weekday: "long",
     month: "long",
     day: "numeric",
@@ -246,50 +271,12 @@ function emailButton(href: string, label: string): string {
   return `<a href="${escapeHtml(href)}" style="display:inline-block;background:${BRAND_ORANGE_BUTTON};color:#ffffff;text-decoration:none;font-weight:700;padding:12px 22px;border-radius:9999px;font-size:15px;">${escapeHtml(label)}</a>`;
 }
 
-async function sendResend(input: {
-  to: string[];
-  subject: string;
-  html: string;
-  text: string;
-  replyTo: string;
-}): Promise<boolean> {
-  const resendKey = Deno.env.get("RESEND_API_KEY") ?? "";
-  if (!resendKey) {
-    console.error("[growth-tools-book] RESEND_API_KEY missing — skipping email");
-    return false;
-  }
-  // #1154 — the growth-tools funnel gets its own no-reply identity instead of the
-  // shared `system` sender (a payments@ identity in prod). reply_to below still
-  // routes replies (to the lead / support@).
-  const sender = EMAIL_SENDERS.noreply;
-  try {
-    assertNotResendSandbox(sender);
-  } catch (e) {
-    console.error("[growth-tools-book] sandbox sender rejected", String(e));
-    return false;
-  }
-  // no-attachment: booking confirmation/notification is plain transactional HTML.
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${resendKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: formatSenderHeader(sender),
-      to: input.to,
-      reply_to: input.replyTo,
-      subject: input.subject,
-      html: input.html,
-      text: input.text,
-    }),
+// #4339 calendar sync — the send itself is shared with growth-tools-calendar-sync.
+async function sendResend(input: GrowthToolsEmail): Promise<boolean> {
+  return await sendGrowthToolsEmail(input, {
+    apiKey: Deno.env.get("RESEND_API_KEY") ?? "",
+    logTag: "growth-tools-book",
   });
-  if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    console.error("[growth-tools-book] resend failed", res.status, detail.slice(0, 160));
-    return false;
-  }
-  return true;
 }
 
 // Fire both emails. Never throws — a mail failure must not fail the booking
@@ -301,10 +288,14 @@ async function sendBookingEmails(input: {
   venue: string;
   reportUrl: string;
   source: string;
+  context: BookingContext;
+  timeZone: string | null;
   meetUrl: string | null;
   eventUrl: string | null;
 }): Promise<void> {
   const when = formatLocal(input.startMs);
+  const host = input.context.audience === "host";
+  const callLabel = AUDIENCE_CALL_LABELS[input.context.audience];
   const logo = minglaLogoUrl();
   const shell = (bodyHtml: string, preheader: string) =>
     renderShell({
@@ -332,12 +323,50 @@ async function sendBookingEmails(input: {
     (input.meetUrl ? `\n\nMeet: ${input.meetUrl}` : "");
 
   // 2) Notification to Seth — reply-to is the lead so a reply reaches them.
+  // #4339 §6 — their social (a working profile link) and website come FIRST, so
+  // the team can open them before the call.
+  const socialLabel = SOCIAL_LABELS[input.context.social.platform];
+  // #4339 calls: the second link is the website (Host) or their best work
+  // (Creator); a Local has only the social.
+  const second = input.context.audience === "host"
+    ? { url: input.context.website, label: "Website", none: "No website given" }
+    : input.context.audience === "creator"
+    ? { url: input.context.workUrl, label: "Best work", none: "No work link given" }
+    : null;
+  const contextLinks = [
+    `<a href="${escapeHtml(input.context.social.url)}" style="color:${BRAND_ORANGE_BUTTON};font-weight:600;">${escapeHtml(socialLabel)}: ${escapeHtml(input.context.social.display)}</a>`,
+    second === null
+      ? ""
+      : second.url
+      ? `<a href="${escapeHtml(second.url)}" style="color:${BRAND_ORANGE_BUTTON};font-weight:600;">${second.label}: ${escapeHtml(second.url)}</a>`
+      : `<span style="color:${BRAND_MUTED};">${second.none}</span>`,
+  ].filter(Boolean).join(" &nbsp;·&nbsp; ");
+  const row = (label: string, value: string) =>
+    `<tr><td style="padding:4px 12px 4px 0;color:${BRAND_MUTED};">${label}</td><td style="color:${BRAND_INK};font-weight:600;">${escapeHtml(value)}</td></tr>`;
+  const theirTime = input.timeZone && input.timeZone !== TZ
+    ? formatLocal(input.startMs, input.timeZone)
+    : "";
+  // The audience's own facts, as rows (Host: what they run).
+  const facts: Array<[string, string]> = input.context.audience === "creator"
+    ? [["City", input.context.city], [
+      "Makes",
+      CREATOR_MAKES_LABELS[input.context.makes],
+    ]]
+    : input.context.audience === "local"
+    ? [["City", input.context.city], [
+      "First place",
+      input.context.firstPlace ?? "none given",
+    ]]
+    : [["Runs", ICP_LABELS[input.context.icp]]];
   const rows = [
+    host ? "" : row("Call", callLabel),
     `<tr><td style="padding:4px 12px 4px 0;color:${BRAND_MUTED};">When</td><td style="color:${BRAND_INK};font-weight:600;">${escapeHtml(when)}</td></tr>`,
+    theirTime ? row("Their time", theirTime) : "",
     `<tr><td style="padding:4px 12px 4px 0;color:${BRAND_MUTED};">Who</td><td style="color:${BRAND_INK};font-weight:600;">${escapeHtml(input.name)} &lt;${escapeHtml(input.email)}&gt;</td></tr>`,
     input.venue
       ? `<tr><td style="padding:4px 12px 4px 0;color:${BRAND_MUTED};">Venue</td><td style="color:${BRAND_INK};font-weight:600;">${escapeHtml(input.venue)}</td></tr>`
       : "",
+    ...facts.map(([label, value]) => row(label, value)),
     // #3601 — unconditional, matching the calendar: the origin is never blank, so
     // a blank can never be ambiguous between "came in cold" and "we lost the tag".
     `<tr><td style="padding:4px 12px 4px 0;color:${BRAND_MUTED};">Came from</td><td style="color:${BRAND_INK};font-weight:600;">${escapeHtml(originLabel(input.source))}</td></tr>`,
@@ -349,12 +378,19 @@ async function sendBookingEmails(input: {
       : "",
   ].join(" ");
   const ownerBody = `
-    <h1 style="margin:0 0 12px;color:${BRAND_INK};font-size:22px;">New call booked 📅</h1>
+    <h1 style="margin:0 0 12px;color:${BRAND_INK};font-size:22px;">${host ? "New call booked" : `New ${callLabel} booked`} 📅</h1>
+    <p style="margin:0 0 14px;font-size:15px;">${contextLinks}</p>
     <table style="border-collapse:collapse;font-size:15px;border-top:1px solid ${BRAND_BORDER};border-bottom:1px solid ${BRAND_BORDER};padding:8px 0;">${rows}</table>
     <p style="margin:18px 0 0;">${links}</p>`;
   const ownerText =
-    `New Mingla call booked.\n\nWhen: ${when}\nWho: ${input.name} <${input.email}>` +
+    (host ? `New Mingla call booked.\n\n` : `New Mingla ${callLabel} booked.\n\n`) +
+    `Social: ${input.context.social.url} (${socialLabel})\n` +
+    (second === null ? "" : `${second.label}: ${second.url ?? "none given"}\n`) +
+    `\n` +
+    `When: ${when}` + (theirTime ? `\nTheir time: ${theirTime}` : "") +
+    `\nWho: ${input.name} <${input.email}>` +
     (input.venue ? `\nVenue: ${input.venue}` : "") +
+    facts.map(([label, value]) => `\n${label}: ${value}`).join("") +
     `\nCame from: ${originLabel(input.source)}` +
     (input.meetUrl ? `\nMeet: ${input.meetUrl}` : "") +
     (input.reportUrl ? `\nReport: ${input.reportUrl}` : "");
@@ -369,7 +405,10 @@ async function sendBookingEmails(input: {
     }),
     sendResend({
       to: buildNotifyRecipients(NOTIFY_TO),
-      subject: `New Mingla call — ${input.venue || input.name} (${when})`,
+      // #4339 calls: the subject names a Creator or Local call; Host is unchanged.
+      subject: host
+        ? `New Mingla call — ${input.venue || input.name} (${when})`
+        : `New Mingla call — ${callLabel}: ${input.name} (${when})`,
       html: shell(ownerBody, `${input.name} booked a call`),
       text: ownerText,
       replyTo: input.email, // reply lands on the lead
@@ -404,8 +443,11 @@ async function handleBook(
   const email = typeof body.email === "string"
     ? body.email.trim().toLowerCase()
     : "";
-  const venue = sanitizeLine(body.venue, 120);
-  const reportUrl = sanitizeLine(body.report_url, 500);
+  // #4339 calls: venue and report_url belong to Host calls only.
+  const hostOnly = body.audience === undefined || body.audience === null ||
+    body.audience === "" || body.audience === "host";
+  const venue = hostOnly ? sanitizeLine(body.venue, 120) : "";
+  const reportUrl = hostOnly ? sanitizeLine(body.report_url, 500) : "";
   // Optional, and never trusted from the client: the page's own 40-char cap is
   // re-applied server-side. An absent `source` renders the shared-link origin.
   const source = sanitizeLine(body.source, 40);
@@ -416,6 +458,14 @@ async function handleBook(
   ) {
     return json({ error: "validation" }, 400);
   }
+  // #4339 §6 — what they run and their main social are required; website is
+  // optional but must be a real address when given.
+  const parsedContext = parseBookingContext(body);
+  if (!parsedContext.ok) {
+    return json({ error: "validation", field: parsedContext.field }, 400);
+  }
+  const context = parsedContext.context;
+  const timeZone = parseTimeZone(body.time_zone);
   // Slot must be in the future (min notice) and land on a valid grid boundary.
   if (startMs < Date.now() + MIN_NOTICE_MS) {
     return json({ error: "validation" }, 400);
@@ -444,8 +494,12 @@ async function handleBook(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        summary: `Mingla call${venue ? ` — ${venue}` : ""}`,
-        description: buildEventDescription({ name, email, venue, reportUrl, source }),
+        summary: buildEventSummary(context, name, venue),
+        description: buildBookingDescription(
+          context,
+          buildEventDescription({ name, email, venue, reportUrl, source }),
+        ),
+        extendedProperties: { private: buildPrivateProperties(context, source) },
         start: { dateTime: new Date(startMs).toISOString() },
         end: { dateTime: new Date(endMs).toISOString() },
         attendees: buildAttendees(email, name),
@@ -466,12 +520,35 @@ async function handleBook(
     return json({ error: "calendar_unavailable" }, 502);
   }
   const ev = await res.json() as {
+    id?: string;
     htmlLink?: string;
     hangoutLink?: string;
     conferenceData?: { entryPoints?: { uri?: string }[] };
   };
   const meet = ev.hangoutLink ??
     ev.conferenceData?.entryPoints?.find((e) => e.uri)?.uri ?? null;
+
+  // #4339 round A — the booking becomes an Inbound lead in Mingla Admin. Awaited
+  // so the write completes before the isolate is frozen; it never fails the
+  // booking (recordBookingLead never throws and logs every failure loudly).
+  await recordBookingLead(
+    buildBookingLead({
+      eventId: ev.id ?? null,
+      startMs,
+      name,
+      email,
+      venue,
+      source,
+      context,
+      timeZone,
+      meetUrl: meet,
+      eventUrl: ev.htmlLink ?? null,
+    }),
+    {
+      supabaseUrl: Deno.env.get("SUPABASE_URL"),
+      serviceKey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"),
+    },
+  );
 
   // Confirmation to the booker + notification to Seth. Best-effort and awaited
   // so the sends complete before the isolate is frozen; never fails the booking.
@@ -482,6 +559,8 @@ async function handleBook(
     venue,
     reportUrl,
     source,
+    context,
+    timeZone,
     meetUrl: meet,
     eventUrl: ev.htmlLink ?? null,
   });

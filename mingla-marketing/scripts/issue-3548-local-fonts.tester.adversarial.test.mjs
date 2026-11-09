@@ -13,6 +13,7 @@ import {
   checkLinksFontSource,
   linksManifestRows,
 } from './issue-4318-links-fonts.contract.mjs'
+import { LANDING_FONT_DEFINITIONS, LANDING_FONT_MANIFEST_ENTRIES, checkLandingFontSource } from './issue-4339-landing-fonts.contract.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const BUILD_ROOT = path.join(ROOT, '.next')
@@ -268,7 +269,8 @@ const checkSourceTopology = () => {
     )
     assert.equal((block.match(/style:\s*['"]normal['"]/g) ?? []).length, definition.weights.length)
     assert.match(block, /display:\s*['"]swap['"]/)
-    assert.match(block, /preload:\s*true/)
+    // #4339 round B: the root faces are not preloaded site-wide (they load on use).
+    assert.match(block, /preload:\s*false/)
     assert.equal((block.match(/adjustFontFallback:\s*false/g) ?? []).length, 1)
     assert.match(
       block,
@@ -322,6 +324,8 @@ const checkSourceTopology = () => {
     ),
   )
   checkLinksFontSource((relativePath) => read(relativePath), linksSources)
+  // #4339 — the redesign brand faces live in their own route-scoped module.
+  checkLandingFontSource((relativePath) => read(relativePath), linksSources)
 }
 
 const checkForbiddenProductionHosts = () => {
@@ -506,6 +510,26 @@ const checkBuiltCss = () => {
     })
   }
 
+  // #4339 — every Host landing face resolves to the same approved emitted bytes.
+  for (const definition of LANDING_FONT_DEFINITIONS) {
+    const matching = faces.filter((face) => unquote(face['font-family'] ?? '') === definition.exportName)
+    assert.deepEqual(
+      matching.map((face) => [face['font-weight'], face['font-style']]),
+      definition.faces.map(([, weight, style]) => [weight, style]),
+      `${definition.exportName} compiled faces must remain exact`,
+    )
+    matching.forEach((face, i) => {
+      assert.equal(face['font-display'], 'swap')
+      const source = face.src?.match(/^url\((\/_next\/static\/media\/([^)]*\.woff2))\) format\(["']woff2["']\)$/)
+      assert(source, `${definition.exportName} must use same-origin emitted WOFF2 media`)
+      assert.equal(
+        sha256(readFileSync(path.join(mediaDirectory, source[2]))),
+        linksBytes.get(definition.faces[i][0]),
+        `${definition.exportName} must resolve to its approved emitted bytes`,
+      )
+    })
+  }
+
   const allowedFallbacks = new Set(EXPECTED_FALLBACKS.map(({ family }) => family))
   for (const face of faces) {
     const family = unquote(face['font-family'] ?? '')
@@ -539,32 +563,45 @@ const checkBuiltManifests = () => {
   assert.equal(fontManifest.appUsingSizeAdjust, false)
   assert.equal(fontManifest.pagesUsingSizeAdjust, false)
   // #4318: the root layout owns the site faces; the /links page alone owns the brand faces.
+  // #4339: the redesigned pages (phase 2a: /, /host, /host/<icp>; phase 2b:
+  // every redesigned public page, LANDING_FONT_CONSUMERS) own their own copy
+  // of the same brand faces, through the one module app/site-fonts.ts.
   const allEntries = Object.entries(fontManifest.app)
-  assert.equal(allEntries.length, 2, 'the root layout and the /links page own the local font emissions')
+  assert.equal(
+    allEntries.length,
+    2 + LANDING_FONT_MANIFEST_ENTRIES.length,
+    'the root layout, the /links page and each redesigned page own the local font emissions',
+  )
   const linksEntry = allEntries.find(([key]) => /\/app\/links\/page$/.test(key))
   assert(linksEntry, 'the /links page must own the /links brand faces')
-  const appEntries = allEntries.filter(([key]) => key !== linksEntry[0])
+  const landingEntries = LANDING_FONT_MANIFEST_ENTRIES.map((pattern) => allEntries.find(([key]) => pattern.test(key)))
+  landingEntries.forEach((entry, i) => assert(entry, `redesigned page ${LANDING_FONT_MANIFEST_ENTRIES[i]} must own the brand faces`))
+  const landingKeys = new Set(landingEntries.map((entry) => entry[0]))
+  const appEntries = allEntries.filter(([key]) => key !== linksEntry[0] && !landingKeys.has(key))
+  assert.equal(appEntries.length, 1, 'only the root layout remains')
   assert.match(appEntries[0][0], /\/app\/layout$/)
   const expectedMediaByHash = new Map(
     collectFiles(path.join(BUILD_ROOT, 'static/media'), (candidate) => candidate.endsWith('.woff2')).map(
       (absolutePath) => [sha256(readFileSync(absolutePath)), `static/media/${path.basename(absolutePath)}`],
     ),
   )
-  assert.deepEqual(
-    appEntries[0][1].sort(),
-    [
-      expectedMediaByHash.get(EXPECTED_ASSETS[0].sha256),
-      expectedMediaByHash.get(EXPECTED_ASSETS[1].sha256),
-      expectedMediaByHash.get(EXPECTED_ASSETS[2].sha256),
-      expectedMediaByHash.get(EXPECTED_ASSETS[2].sha256),
-    ].sort(),
-    'the font manifest must retain root roles plus a distinct preview Inter role',
-  )
+  // #4339 round B: the root faces (and the preview Inter role) are declared
+  // but never preloaded site-wide; they load on use. The root layout keeps
+  // its manifest entry with no preload.
+  assert.deepEqual(appEntries[0][1], [], 'the root layout preloads no font on every page')
+  void expectedMediaByHash.get(EXPECTED_ASSETS[0].sha256)
   assert.deepEqual(
     [...new Set(linksEntry[1])].sort(),
     LINKS_FONT_ASSETS.map(({ sha256: hash }) => expectedMediaByHash.get(hash)).sort(),
     'the /links page must preload exactly the four /links brand faces',
   )
+  for (const entry of landingEntries) {
+    assert.deepEqual(
+      [...new Set(entry[1])].sort(),
+      LINKS_FONT_ASSETS.map(({ sha256: hash }) => expectedMediaByHash.get(hash)).sort(),
+      `${entry[0]} must preload exactly the same four brand faces`,
+    )
+  }
 
   const appBuildManifest = JSON.parse(readFileSync(path.join(BUILD_ROOT, 'app-build-manifest.json'), 'utf8'))
   for (const route of ['/layout', '/careers/page', '/event-preview/page', '/trip-preview/page']) {

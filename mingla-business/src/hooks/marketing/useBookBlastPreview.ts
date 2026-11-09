@@ -54,7 +54,10 @@ export function getBookBlastDisabledReason(input: {
     return "This preview expired. Refresh it before confirming.";
   }
   if (input.quote.reachableCount === 0) {
-    return "No reachable people are available for this channel.";
+    // #4273 — every text skipped by country is not a fault to retry.
+    return input.channel === "sms" && (input.quote.unpricedCount ?? 0) > 0
+      ? "Nobody here can be texted: Mingla can't text their country yet."
+      : "No reachable people are available for this channel.";
   }
   const allowance = input.quote.allowance;
   if (allowance && input.channel === "sms") {

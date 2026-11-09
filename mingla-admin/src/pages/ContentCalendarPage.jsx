@@ -18,6 +18,19 @@
 // opens in the second, beside it, so nothing typed is lost. The table's two
 // actions moved: Make a card and Plan a post sit in the event panel and in the
 // page header. The two state tiles filter the month instead of opening a list.
+//
+// Issue #4339 Creators and Locals calls (Seth approved, 9 Nov): every booked
+// call (Host, Creator and Local) is on the month too, read through
+// admin_calendar_calls beside ops_calendar. Show gains Calls (Everything
+// includes them). A call is an instant: it sits on its LOCAL day in the
+// viewer's own time zone, time first, then its badge, then the name, and the
+// footnote names that zone. Selecting one opens its panel (name, when in the
+// viewer's zone, the booker's own time, what they run or make, city, social,
+// Join video call and Open lead). On a phone a call is one dot like an event.
+// #4339 calendar sync: a moved call sits at its new time with a "Moved" badge
+// (the panel names the booked time); a cancelled or declined call stays,
+// struck through, with a "Cancelled" / "Declined" badge and a hollow phone
+// dot. The panel names the status and when it changed.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, ClipboardList, Plus, Search, X } from "lucide-react";
 import { PageHeader } from "../components/ui/PageHeader";
@@ -57,7 +70,8 @@ import {
 import * as service from "../services/contentCalendarService";
 import { EventPanel } from "../components/ops/EventPanel";
 import { StateDot, StatePill } from "../components/ops/StateDot";
-import { useOpsCalendar } from "../hooks/useOpsCalendar";
+import { useCalendarCalls, useOpsCalendar } from "../hooks/useOpsCalendar";
+import { CALL_LABELS, calendarZoneNote, callEntriesOn, callRange, callView, viewerTimeZone } from "../lib/calendarCalls";
 import { useServerRead } from "../hooks/useServerRead";
 import { getCalendarRunway } from "../services/dashboardService";
 import { runwayAction, runwayCardItem, runwayPostTitle, testAnchorIds, visibleRunwayRows } from "../lib/calendarRunway";
@@ -76,7 +90,9 @@ const SHOW_OPTIONS = [
   { value: "", label: "Everything" },
   { value: "events", label: "Events" },
   { value: "posts", label: "Posts" },
+  { value: "calls", label: "Calls" },
 ];
+const SHOW_VALUES = ["events", "posts", "calls"];
 // The two state tiles filter the month to these events.
 const STATE_FILTERS = {
   notlive: { label: "Need to go live", keys: ["notlive"] },
@@ -114,18 +130,57 @@ function monthDays(month) {
   return last.every((d) => monthKey(d) !== month) ? days.slice(0, 35) : days;
 }
 
-/** Everything dated on the Calendar for one day: events and promised dates, then posts. */
-function dayEntries(key, data, items, show) {
+/** Everything dated on the Calendar for one day: events and promised dates, then calls, then posts. */
+function dayEntries(key, data, items, show, calls = [], zone = undefined) {
   const out = [];
-  if (show !== "posts" && data) {
+  if ((show === "" || show === "events") && data) {
     for (const e of data.events || []) if (e.start_on === key) out.push({ type: "event", id: `ev-${e.id}`, title: e.title, state: e.state, selection: { kind: "event", id: e.id }, on: e.start_on, host: e.host?.name });
     for (const x of data.expected || []) if (x.expected_on === key) out.push({ type: "expected", id: `x-${x.id}-${x.expected_on}`, title: x.title, state: x.state, selection: { kind: "expected", id: x.id }, on: x.expected_on, host: x.host_name, repeats: x.repeats && x.repeats !== "none", moment: x.promo_moment });
   }
-  if (show !== "events") for (const item of items) if (item.publish_at && localDateKey(item.publish_at) === key) out.push({ type: "post", id: `c-${item.id}`, title: item.title, item });
+  // #4339: calls on the viewer's own day (an instant in their device's zone).
+  if (show === "" || show === "calls") out.push(...callEntriesOn(key, calls, zone));
+  if (show === "" || show === "posts") for (const item of items) if (item.publish_at && localDateKey(item.publish_at) === key) out.push({ type: "post", id: `c-${item.id}`, title: item.title, item });
   return out;
 }
 
-function MonthGrid({ month, data, items, show, today, open, selectEvent, currentEvent, onDay, openDay, reschedule, coarse }) {
+/** #4339 calendar sync: "Moved" (amber) or "Cancelled" / "Declined" (red) beside a call. */
+function CallStatusBadge({ status, label }) {
+  if (!label) return null;
+  const tone = status === "moved" ? "bg-[var(--color-warning-50)] text-[var(--color-warning-700)]" : "bg-[var(--color-error-50)] text-[var(--color-error-700)]";
+  return <span className={`whitespace-nowrap rounded-full px-1.5 text-[10.5px] font-semibold no-underline ${tone}`} data-call-status={status}>{label}</span>;
+}
+
+/** A call's chip on the month: time first, then its badge, then the name. A cancelled or declined call is struck through. */
+function CallChip({ e, past, current, onOpen }) {
+  const words = [e.time, e.badge, e.statusLabel, e.title].filter(Boolean);
+  return (
+    <button
+      type="button"
+      data-calendar-call={e.callId}
+      data-call-audience={e.audience}
+      data-call-state={e.status}
+      aria-current={current ? "true" : undefined}
+      onClick={() => onOpen(e.callId)}
+      aria-label={words.join(", ")}
+      title={words.join(" · ")}
+      className={`block min-h-6 w-full min-w-0 rounded-md px-1 py-0.5 text-left text-[11.5px] leading-tight text-[var(--color-text-primary)] hover:bg-[var(--gray-100)] aria-[current=true]:bg-[var(--color-brand-50)] aria-[current=true]:ring-2 aria-[current=true]:ring-[var(--color-brand-700)] ${past || e.off ? "opacity-60" : ""} ${FOCUS}`}
+    >
+      <span className="flex min-w-0 flex-wrap items-center gap-1">
+        <b className={`whitespace-nowrap tabular-nums ${e.off ? "line-through" : ""}`} data-call-time="">{e.time}</b>
+        <span className="whitespace-nowrap rounded-full bg-[var(--color-brand-50)] px-1.5 text-[10.5px] font-semibold text-[var(--color-brand-700)]" data-call-badge="">{e.badge}</span>
+        <CallStatusBadge status={e.status} label={e.statusLabel} />
+      </span>
+      <span className={`block font-semibold ${e.off ? "line-through" : ""}`} data-call-title=""><ChipWords text={e.title} /></span>
+    </button>
+  );
+}
+
+/** The phone dot for a call: brand coloured, beside the event dots; a cancelled or declined call's dot is hollow. */
+function CallDot({ size = 10, off = false }) {
+  return <i aria-hidden="true" data-call-dot="" style={{ width: size, height: size }} className={`inline-block shrink-0 rounded-[3px] not-italic ${off ? "border-2 border-[var(--color-brand-600)] bg-transparent" : "bg-[var(--color-brand-600)]"}`} />;
+}
+
+function MonthGrid({ month, data, items, show, today, open, selectEvent, currentEvent, onDay, openDay, reschedule, coarse, calls, zone, openCall, currentCall }) {
   const days = monthDays(month);
   const drop = (event, date) => {
     if (coarse) return;
@@ -145,7 +200,7 @@ function MonthGrid({ month, data, items, show, today, open, selectEvent, current
           const inMonth = monthKey(date) === month;
           const isToday = key === today;
           const past = key < today;
-          const entries = dayEntries(key, data, items, show);
+          const entries = dayEntries(key, data, items, show, calls, zone);
           const dayWords = date.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
           const visible = entries.length <= DAY_ALL_UP_TO ? entries : entries.slice(0, DAY_LIMIT);
           const hidden = entries.length - visible.length;
@@ -173,16 +228,18 @@ function MonthGrid({ month, data, items, show, today, open, selectEvent, current
                   type="button"
                   data-calendar-day-dense={key}
                   onClick={() => onDay(key)}
-                  aria-label={`${dayWords}: ${events.map((e) => `${e.title}, ${stateName(e.state)}`).join("; ")}`}
+                  aria-label={`${dayWords}: ${events.map((e) => (e.type === "call" ? [e.time, e.badge, e.statusLabel, e.title].filter(Boolean).join(", ") : `${e.title}, ${stateName(e.state)}`)).join("; ")}`}
                   title={events.map((e) => e.title).join(", ")}
                   className={`-mx-1 flex min-h-11 w-[calc(100%+0.5rem)] flex-wrap content-start items-start gap-1 rounded-md px-1.5 py-1 hover:bg-[var(--gray-50)] @min-[640px]:hidden ${past ? "opacity-60" : ""} ${FOCUS}`}
                 >
-                  {events.slice(0, 6).map((e) => <StateDot key={e.id} k={e.state?.k} size={10} />)}
+                  {events.slice(0, 6).map((e) => (e.type === "call" ? <CallDot key={e.id} off={e.off} /> : <StateDot key={e.id} k={e.state?.k} size={10} />))}
                 </button>
               )}
               {/* Wide: dot and title, two lines, whole words; at most two, then "+N more". */}
               <div className="hidden min-w-0 flex-col gap-0.5 @min-[640px]:flex">
-                {visible.map((e) => e.type === "post" ? (
+                {visible.map((e) => e.type === "call" ? (
+                  <CallChip key={e.id} e={e} past={past} current={currentCall === e.callId} onOpen={openCall} />
+                ) : e.type === "post" ? (
                   <button
                     key={e.id}
                     type="button"
@@ -222,12 +279,14 @@ function MonthGrid({ month, data, items, show, today, open, selectEvent, current
   );
 }
 
-function Legend({ undated, onUndated, show }) {
+function Legend({ undated, onUndated, show, zone }) {
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 border-t border-[var(--gray-200)] px-3 py-2.5 text-[12.5px] text-[var(--color-text-secondary)]">
       {STATE_LEGEND.map((k) => <span key={k} className="inline-flex items-center gap-1.5 whitespace-nowrap"><StateDot k={k} />{PLAIN_STATES[k]}</span>)}
-      {show !== "events" && <Button type="button" variant="secondary" size="sm" className="ml-auto min-h-11" onClick={onUndated}>{undated} {undated === 1 ? "post" : "posts"} with no date</Button>}
-      <p className="w-full text-[11.5px] text-[var(--color-text-tertiary)]">Events are on their own local day and time. Post times are in your time zone ({Intl.DateTimeFormat().resolvedOptions().timeZone || "local time"}).</p>
+      {show !== "events" && show !== "calls" && <Button type="button" variant="secondary" size="sm" className="ml-auto min-h-11" onClick={onUndated}>{undated} {undated === 1 ? "post" : "posts"} with no date</Button>}
+      <span className="inline-flex items-center gap-1.5 whitespace-nowrap"><CallDot size={8} />Booked call</span>
+      <span className="inline-flex items-center gap-1.5 whitespace-nowrap"><CallDot size={8} off />Cancelled or declined</span>
+      <p className="w-full text-[11.5px] text-[var(--color-text-tertiary)]" data-calendar-zone-note="">{calendarZoneNote(zone)}</p>
     </div>
   );
 }
@@ -237,12 +296,22 @@ function BoardView({ items, open, move, coarse }) {
 }
 
 // One day in full, in the first panel. Each item opens beside it.
-function DayPanel({ day, entries, onClose }) {
+function DayPanel({ day, entries, onClose, onCall }) {
   return (
     <Drawer open onClose={onClose} title={new Date(`${day}T12:00:00`).toLocaleDateString("en-GB", { weekday: "long", month: "long", day: "numeric" })}>
       {entries.length ? (
         <ul className="flex min-w-0 flex-col gap-1.5">
-          {entries.map((e) => (
+          {entries.map((e) => e.type === "call" ? (
+            <li key={e.id}>
+              <button type="button" data-day-call={e.callId} onClick={() => onCall(e.callId)} className={`flex min-h-11 w-full min-w-0 flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--gray-200)] px-3 py-2 text-left hover:bg-[var(--gray-50)] ${FOCUS}`}>
+                <span className="min-w-0 flex-1">
+                  <span className={`block text-[13.5px] font-semibold text-[var(--color-text-primary)] ${e.off ? "line-through" : ""} ${WORDS}`}>{e.time} · {e.title}</span>
+                  <span className={`block text-[12px] text-[var(--color-text-tertiary)] ${WORDS}`}>{e.badge}</span>
+                </span>
+                <CallStatusBadge status={e.status} label={e.statusLabel} />
+              </button>
+            </li>
+          ) : (
             <li key={e.id}>
               <SideLink side={e.type === "post" ? { kind: "content", id: e.item.id } : e.selection} className={`flex min-h-11 w-full min-w-0 flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--gray-200)] px-3 py-2 text-left hover:bg-[var(--gray-50)] ${FOCUS}`}>
                 <span className="min-w-0 flex-1">
@@ -264,6 +333,49 @@ function UndatedPanel({ items, onOpen, onClose }) {
   return (
     <Drawer open onClose={onClose} title="Posts with no date">
       {items.length ? <div className="flex min-w-0 flex-col gap-2">{items.map((item) => <ContentCard key={item.id} item={item} compact onOpen={onOpen} />)}</div> : <p className="text-sm text-[var(--color-text-secondary)]">Every post has a date.</p>}
+    </Drawer>
+  );
+}
+
+// #4339: one booked call, in the first panel.
+function CallPanel({ call, zone, loading, onClose }) {
+  const v = callView(call, zone);
+  const link = "inline-block max-w-full truncate align-bottom font-semibold text-[var(--color-brand-700)] hover:underline";
+  const row = (label, value) => (value ? <div className="grid grid-cols-[7.5rem_minmax(0,1fr)] gap-2"><dt className="text-[var(--color-text-tertiary)]">{label}</dt><dd className={`min-w-0 text-[var(--color-text-primary)] ${WORDS}`}>{value}</dd></div> : null);
+  return (
+    <Drawer open onClose={onClose} title={v ? v.badge : "Booked call"}>
+      {!v ? (
+        <p className="text-sm text-[var(--color-text-secondary)]">{loading ? "Loading the call…" : "This call is not in the month on screen."}</p>
+      ) : (
+        <div data-call-panel={v.id} className="flex min-w-0 flex-col gap-4 text-[13.5px]">
+          <div>
+            <p className={`text-[17px] font-semibold text-[var(--color-text-primary)] ${v.off ? "line-through" : ""}`}>{v.name}</p>
+            <p className={`text-[var(--color-text-secondary)] ${v.off ? "line-through" : ""}`} data-call-when="">{v.when}</p>
+            {v.isTest && <p className="mt-1 text-[12px] text-[var(--color-text-tertiary)]">Staff or test booking</p>}
+          </div>
+          <dl className="flex min-w-0 flex-col gap-2">
+            {row("Status", (
+              <span className="inline-flex min-w-0 flex-wrap items-center gap-2" data-call-panel-status={v.status}>
+                {v.status === "booked" ? "Booked" : <CallStatusBadge status={v.status} label={v.statusLabel} />}
+                {v.status !== "booked" && <span className="text-[var(--color-text-secondary)]">{v.status === "moved" ? "Moved in Google Calendar" : v.status === "cancelled" ? "Cancelled in Google Calendar" : "They declined the invite"}</span>}
+              </span>
+            ))}
+            {row("Changed", v.statusChangedWhen ? <span data-call-changed="">{v.statusChangedWhen}</span> : null)}
+            {row("Booked for", v.originalWhen ? <span className="line-through" data-call-original="">{v.originalWhen}</span> : null)}
+            {row("Their time", v.bookerWhen)}
+            {row(v.badge === CALL_LABELS.host ? "What they run" : v.badge === CALL_LABELS.creator ? "What they make" : "First place", v.what ? v.what.replace(/^[^:]+: /, "") : null)}
+            {row("Place or brand", v.venue)}
+            {row("City", v.city)}
+            {row("Social", v.socialUrl ? <a href={v.socialUrl} target="_blank" rel="noopener noreferrer" className={link} data-call-social="">{v.socialLabel}: {v.socialHandle || v.socialUrl}</a> : null)}
+            {row("Best work", v.workUrl ? <a href={v.workUrl} target="_blank" rel="noopener noreferrer" className={link}>{v.workUrl}</a> : null)}
+          </dl>
+          <div className="flex min-w-0 flex-wrap gap-2">
+            {v.meetUrl && <a href={v.meetUrl} target="_blank" rel="noopener noreferrer" data-call-meet="" className={`inline-flex min-h-11 items-center rounded-lg bg-[var(--color-brand-800)] px-4 text-[13px] font-semibold text-white hover:bg-[var(--color-brand-900)] ${FOCUS}`}>Join video call</a>}
+            <a href={v.leadHash} data-call-lead="" className={`inline-flex min-h-11 items-center rounded-lg border border-[var(--gray-200)] px-4 text-[13px] font-semibold text-[var(--color-text-primary)] hover:bg-[var(--gray-50)] ${FOCUS}`}>Open lead</a>
+            {v.eventUrl && <a href={v.eventUrl} target="_blank" rel="noopener noreferrer" className={`inline-flex min-h-11 items-center rounded-lg px-2 text-[13px] font-semibold text-[var(--color-brand-700)] hover:underline ${FOCUS}`}>Open in Google Calendar</a>}
+          </div>
+        </div>
+      )}
     </Drawer>
   );
 }
@@ -299,7 +411,7 @@ export function ContentCalendarPage() {
     // show are Everything; the old Content tab (show=posts) and Posts board
     // (view=board) keep their meaning; view=list opens Month.
     const rawShow = p.get("show");
-    const show = rawShow === "events" || rawShow === "posts" ? rawShow : "";
+    const show = SHOW_VALUES.includes(rawShow) ? rawShow : "";
     const state = Object.hasOwn(STATE_FILTERS, p.get("state") || "") ? p.get("state") : "";
     return {
       view: p.get("view") === "board" ? "board" : "calendar",
@@ -311,6 +423,7 @@ export function ContentCalendarPage() {
       q: (p.get("q") || "").slice(0, 160),
       event: parseEventParam(p.get("event")),
       day: /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(p.get("day") || "") ? p.get("day") : null,
+      call: /^[0-9a-f-]{36}$/i.test(p.get("call") || "") ? p.get("call") : null,
       undated: p.get("undated") === "1",
       addCard: p.get("add") === "card",
     };
@@ -348,6 +461,10 @@ export function ContentCalendarPage() {
   const runwayTo = localDateKey(days[days.length - 1]);
   const loadRunway = useCallback(() => getCalendarRunway(runwayFrom, runwayTo, todayIso()), [runwayFrom, runwayTo]);
   const runwayRead = useServerRead(loadRunway);
+  // #4339: the booked calls for the days on screen, in the viewer's own zone.
+  const zone = viewerTimeZone() || undefined;
+  const callSpan = callRange(days[0], days[days.length - 1]);
+  const callsRead = useCalendarCalls(callSpan.from, callSpan.to, route.test);
   const runway = { data: runwayRead.data, error: runwayRead.status === "error" ? runwayRead.error : null, refetch: runwayRead.retry };
   const attention = useOpsAttention();
   const today = todayIso();
@@ -357,19 +474,20 @@ export function ContentCalendarPage() {
   // posts or the add-card form. Opening one closes the others and panel two.
   const openFirst = (name, value) => {
     const p = new URLSearchParams(search);
-    for (const k of ["card", "event", "day", "undated", "add", "side"]) p.delete(k);
+    for (const k of ["card", "event", "day", "undated", "add", "side", "call"]) p.delete(k);
     if (value) p.set(name, value);
     setSearch(p.toString());
   };
   const open = (id) => openFirst("card", id);
   const selectEvent = (selection, onDate) => {
     const p = new URLSearchParams(search);
-    for (const k of ["card", "day", "undated", "add", "side"]) p.delete(k);
+    for (const k of ["card", "day", "undated", "add", "side", "call"]) p.delete(k);
     p.set("event", `${selection.kind}:${selection.id}`);
     if (typeof onDate === "string" && /^\d{4}-\d{2}/.test(onDate)) p.set("month", onDate.slice(0, 7));
     setSearch(p.toString());
   };
   const openDay = (key) => openFirst("day", key);
+  const openCall = (id) => openFirst("call", id);
   const openUndated = () => openFirst("undated", "1");
   const closeFirst = () => openFirst("card", null);
 
@@ -524,10 +642,12 @@ export function ContentCalendarPage() {
   } : opsCal.data;
   // With a state tile on, the month shows those events only (no posts).
   const monthShow = route.state ? "events" : route.show;
+  const callRows = Array.isArray(callsRead.data?.rows) ? callsRead.data.rows.filter((c) => !route.q || String(c.name || "").toLowerCase().includes(route.q.toLowerCase())) : [];
+  const openCallRow = route.call ? (Array.isArray(callsRead.data?.rows) ? callsRead.data.rows.find((c) => c.id === route.call) : null) : null;
   const nonext = attention.data?.counts?.nonext;
   const monthName = monthWindow(route.month).first.toLocaleDateString("en-GB", { month: "long", year: "numeric" });
-  const dayItems = route.day ? dayEntries(route.day, monthData, calendar.items, monthShow) : [];
-  const boardItems = route.show === "events" ? [] : calendar.items;
+  const dayItems = route.day ? dayEntries(route.day, monthData, calendar.items, monthShow, callRows, zone) : [];
+  const boardItems = route.show === "events" || route.show === "calls" ? [] : calendar.items;
   const actionsFor = (selection) => eventActions({ selection, rows: allRunwayRows, online, onMakeCard: (row) => setCardFor(row), onPlanPost: planPost });
 
   const first = route.card ? (
@@ -536,8 +656,10 @@ export function ContentCalendarPage() {
     <Drawer open onClose={closeFirst} title={route.event.kind === "expected" ? "Promised event" : "Event"}>
       <EventPanel selection={route.event} onBack={closeFirst} online={online} embedded actions={actionsFor(route.event)} />
     </Drawer>
+  ) : route.call ? (
+    <CallPanel call={openCallRow} zone={zone} loading={!callsRead.data} onClose={closeFirst} />
   ) : route.day ? (
-    <DayPanel day={route.day} entries={dayItems} onClose={closeFirst} />
+    <DayPanel day={route.day} entries={dayItems} onClose={closeFirst} onCall={openCall} />
   ) : route.undated ? (
     <UndatedPanel items={undated} onOpen={(id) => stack.openSide({ kind: "content", id })} onClose={closeFirst} />
   ) : route.addCard ? (
@@ -562,9 +684,10 @@ export function ContentCalendarPage() {
           <button type="button" onClick={() => { setParam("month", null); }} className={`min-h-11 whitespace-nowrap rounded-full bg-[var(--color-brand-800)] px-3.5 text-[12.5px] font-semibold text-white hover:bg-[var(--color-brand-900)] ${FOCUS}`}>Today is {dayLong(today)}</button>
         </div>
       </div>
+      {callsRead.error && !callsRead.data && monthShow !== "events" && monthShow !== "posts" && <div className="p-3"><AlertCard variant="warning" title="Couldn’t load booked calls" action={<Button type="button" variant="secondary" className="min-h-11" onClick={() => callsRead.refetch()}>Try again</Button>}>{opsErrorWords(callsRead.error)} Events and posts still work.</AlertCard></div>}
       {opsCal.error && !opsCal.data && <div className="p-3"><AlertCard variant="warning" title="Couldn’t load events on Mingla" action={<Button type="button" variant="secondary" className="min-h-11" onClick={() => opsCal.refetch()}>Try again</Button>}>{opsErrorWords(opsCal.error)} Posts still work.</AlertCard></div>}
-      <MonthGrid month={route.month} data={monthData} items={calendar.items} show={monthShow} today={localDateKey()} open={open} selectEvent={selectEvent} currentEvent={route.event} onDay={openDay} openDay={route.event ? null : route.day} reschedule={reschedule} coarse={coarse} />
-      <Legend undated={undated.length} onUndated={openUndated} show={monthShow} />
+      <MonthGrid month={route.month} data={monthData} items={calendar.items} show={monthShow} today={localDateKey()} open={open} selectEvent={selectEvent} currentEvent={route.event} onDay={openDay} openDay={route.event ? null : route.day} reschedule={reschedule} coarse={coarse} calls={callRows} zone={zone} openCall={openCall} currentCall={route.call} />
+      <Legend undated={undated.length} onUndated={openUndated} show={monthShow} zone={zone} />
     </div>
   );
 
@@ -585,7 +708,7 @@ export function ContentCalendarPage() {
       } />
       {!online && <AlertCard variant="warning" title="You’re offline">You can read what is already here. Adding, saving, moving, commenting, deleting and Undo need a connection.</AlertCard>}
       {calendar.stale && <AlertCard variant="warning" title="Content may be out of date" action={<Button type="button" variant="secondary" className="min-h-11" onClick={() => calendar.refetch()}>Try again</Button>} />}
-      {route.show !== "posts" && <div className="grid min-w-0 grid-cols-1 gap-2.5 sm:grid-cols-3">
+      {(route.show === "" || route.show === "events") && <div className="grid min-w-0 grid-cols-1 gap-2.5 sm:grid-cols-3">
         {tile("notlive", states.notlive ?? "–", "need to go live", "text-[var(--color-info-700)]")}
         {tile("promote", states.ready === undefined ? "–" : Number(states.ready || 0) + Number(states.short || 0), "can be promoted", "text-[var(--color-success-700)]")}
         <a href="#/outreach?tab=hosts&due=nonext" className={`flex min-h-11 min-w-0 items-center gap-3 rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] px-3.5 py-2.5 text-left hover:bg-[var(--gray-50)] ${FOCUS}`}><b className="min-w-[1.6rem] text-[21px] tabular-nums text-[var(--color-info-700)]">{nonext ?? "–"}</b><span className="text-[13px] text-[var(--color-text-secondary)]">hosts with no next event</span></a>
@@ -611,7 +734,7 @@ export function ContentCalendarPage() {
         ? (calendar.loading
           ? <SectionCard><p role="status" className="text-sm text-[var(--color-text-secondary)]">Loading posts…</p></SectionCard>
           : <>
-              {route.show === "events" && <AlertCard variant="info" title="The board lists posts">Pick Everything or Posts in Show to see them here. Events are on the Month view.</AlertCard>}
+              {(route.show === "events" || route.show === "calls") && <AlertCard variant="info" title="The board lists posts">Pick Everything or Posts in Show to see them here. Events and calls are on the Month view.</AlertCard>}
               <BoardView items={boardItems} open={open} move={beginMove} coarse={coarse} />
             </>)
         : <div className="flex min-w-0 flex-col gap-4">{box}</div>}

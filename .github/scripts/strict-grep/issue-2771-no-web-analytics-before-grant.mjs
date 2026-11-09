@@ -12,6 +12,8 @@ const ROOT = process.env.ISSUE_2771_REPO_ROOT
 export const FILES = {
   business: 'mingla-business/src/analytics/webAnalytics.web.ts',
   marketingProvider: 'mingla-marketing/components/marketing/posthog-provider.tsx',
+  // #4339: the marketing privacy read and capture facades live here (speed budget); the provider re-exports them.
+  marketingCapture: 'mingla-marketing/components/marketing/marketing-capture.ts',
   marketingBanner: 'mingla-marketing/components/marketing/consent-banner.tsx',
   marketingLayout: 'mingla-marketing/app/layout.tsx',
 }
@@ -65,7 +67,7 @@ const MARKETING_ANALYTICS_ON = /isMarketingAnalyticsOn\(\)/
 export function evaluateSources(input) {
   const errors = []
   const business = stripComments(input.business)
-  const provider = stripComments(input.marketingProvider)
+  const provider = stripComments(`${input.marketingProvider}\n${input.marketingCapture ?? ''}`)
   const banner = stripComments(input.marketingBanner)
   const layout = stripComments(input.marketingLayout)
 

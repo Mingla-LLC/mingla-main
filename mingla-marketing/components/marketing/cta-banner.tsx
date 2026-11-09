@@ -2,7 +2,7 @@
 import { motion } from 'framer-motion'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
 import { cn } from '@/lib/cn'
-import { captureMarketing } from '@/components/marketing/posthog-provider'
+import { captureMarketing } from '@/components/marketing/marketing-capture'
 
 interface CTABannerProps {
   eyebrow?: string

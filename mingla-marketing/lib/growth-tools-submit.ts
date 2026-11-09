@@ -9,6 +9,9 @@
 // design: RLS denies anon writes and the edge fns write via the service role.
 // The edge fns re-validate everything; this transport only shapes the calls.
 
+import { postGrowthTools, type GrowthToolsError } from './growth-tools-transport'
+export type { GrowthToolsError } from './growth-tools-transport'
+
 // ─── Report contract (growth-tools-run {action:'run'}) ──────────────────────
 
 export interface GrowthToolsSearchResult {
@@ -147,21 +150,6 @@ export interface GraderRunInput {
 
 // ─── Result unions ──────────────────────────────────────────────────────────
 
-export type GrowthToolsError =
-  | 'rate_limited'
-  | 'generation_failed'
-  | 'validation'
-  | 'server'
-  | 'network'
-  | 'booking_unconfigured'
-  | 'slot_taken'
-  | 'calendar_unavailable'
-
-export interface BookingSlot {
-  start: string
-  end: string
-}
-
 export type GrowthToolsSearchResponse =
   | { ok: true; results: GrowthToolsSearchResult[] }
   | { ok: false; error: GrowthToolsError }
@@ -175,85 +163,16 @@ export type GrowthToolsGateResponse =
   | { ok: false; error: GrowthToolsError }
 
 // ─── Transport ──────────────────────────────────────────────────────────────
+// #4339: the transport lives in lib/growth-tools-transport.ts and Book a call
+// in lib/booking-call.ts, so /schedule loads only what booking needs (the
+// first-load budget); both are re-exported here unchanged.
 
-// Default = the public prod functions host from .env.example. NEXT_PUBLIC_*
-// vars are inlined at BUILD time and Vercel preview builds don't carry the
-// production env scope — without this default every preview build ships an
-// empty URL and the tool dies silently (proven on PR #1025's preview).
-const FUNCTIONS_URL =
-  process.env.NEXT_PUBLIC_SUPABASE_FUNCTIONS_URL ??
-  'https://gqnoajqerqhnvulmnyvv.functions.supabase.co'
-// Both growth-tools fns are verify_jwt=false public endpoints — auth headers
-// are optional. Sent only when the anon key is present in the build env.
-const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
-
-const KNOWN_ERRORS: readonly GrowthToolsError[] = [
-  'rate_limited',
-  'generation_failed',
-  'validation',
-  'server',
-  'network',
-  'booking_unconfigured',
-  'slot_taken',
-  'calendar_unavailable',
-]
-
-function mapErrorBody(status: number, body: unknown): GrowthToolsError {
-  const raw =
-    body && typeof body === 'object' && 'error' in body
-      ? (body as { error?: unknown }).error
-      : undefined
-  if (typeof raw === 'string' && (KNOWN_ERRORS as readonly string[]).includes(raw)) {
-    return raw as GrowthToolsError
-  }
-  if (status === 429) return 'rate_limited'
-  if (status >= 400 && status < 500) return 'validation'
-  return 'server'
-}
-
-async function postGrowthTools(
-  fn:
-    | 'growth-tools-run'
-    | 'growth-tools-events'
-    | 'growth-tools-trips'
-    | 'growth-tools-pricing'
-    | 'growth-tools-geocode'
-    | 'growth-tools-gate'
-    | 'growth-tools-preview'
-    | 'growth-tools-report'
-    | 'growth-tools-book',
-  payload: Record<string, unknown>,
-  signal?: AbortSignal,
-): Promise<{ ok: true; body: unknown } | { ok: false; error: GrowthToolsError }> {
-  let response: Response
-  try {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-    if (ANON_KEY) {
-      headers.Authorization = `Bearer ${ANON_KEY}`
-      headers.apikey = ANON_KEY
-    }
-    response = await fetch(`${FUNCTIONS_URL.replace(/\/$/, '')}/${fn}`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(payload),
-      signal,
-    })
-  } catch (err) {
-    // A caller-driven abort (debounced search superseded) is not a failure.
-    if (err instanceof DOMException && err.name === 'AbortError') throw err
-    return { ok: false, error: 'network' }
-  }
-
-  let body: unknown = null
-  try {
-    body = await response.json()
-  } catch {
-    // Non-JSON body — fall through; error mapping handles it by status.
-  }
-
-  if (response.ok) return { ok: true, body }
-  return { ok: false, error: mapErrorBody(response.status, body) }
-}
+export {
+  bookCall,
+  fetchBookingSlots,
+  type BookCallInput,
+  type BookingSlot,
+} from './booking-call'
 
 /** Typeahead search: {action:'search'} → up to a handful of place matches. */
 export async function searchGrowthToolsPlaces(
@@ -366,46 +285,6 @@ export async function fetchFullReport(
 }
 
 /** Available call slots on seth@usemingla.com's calendar. */
-export async function fetchBookingSlots(): Promise<
-  { ok: true; slots: BookingSlot[] } | { ok: false; error: GrowthToolsError }
-> {
-  const result = await postGrowthTools('growth-tools-book', { action: 'slots' })
-  if (!result.ok) return result
-  const slots =
-    result.body && typeof result.body === 'object' && 'slots' in result.body
-      ? (result.body as { slots?: BookingSlot[] }).slots
-      : undefined
-  if (!Array.isArray(slots)) return { ok: false, error: 'server' }
-  return { ok: true, slots }
-}
-
-/** Book a call: creates the event + Meet link and emails the invite. */
-export async function bookCall(input: {
-  start: string
-  name: string
-  email: string
-  venue?: string
-  report_url?: string
-  /** #3601 — funnel/standalone-link origin tag; renders on the calendar invite. */
-  source?: string
-}): Promise<
-  | { ok: true; event_url: string | null; meet_url: string | null; start: string }
-  | { ok: false; error: GrowthToolsError }
-> {
-  const result = await postGrowthTools('growth-tools-book', {
-    action: 'book',
-    ...input,
-  })
-  if (!result.ok) return result
-  const b = result.body as
-    | { ok?: boolean; event_url?: string | null; meet_url?: string | null; start?: string }
-    | null
-  if (!b || b.ok !== true || typeof b.start !== 'string') {
-    return { ok: false, error: 'server' }
-  }
-  return { ok: true, event_url: b.event_url ?? null, meet_url: b.meet_url ?? null, start: b.start }
-}
-
 // ─── Event Turnout Predictor (#1004) ─────────────────────────────────────────
 
 export interface EventRunInput {

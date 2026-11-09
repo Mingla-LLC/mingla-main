@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-suite",
+  "ownerIssue": "#4339",
+  "suite": {
+    "id": "issue-4339-calls",
+    "class": "node22-noinstall",
+    "originPaths": [
+      "mingla-marketing/lib/__tests__/issue-4339-calls.implementor.test.mjs",
+      "mingla-marketing/lib/booking-social.ts",
+      "mingla-marketing/lib/booking-social.fixtures.json",
+      "mingla-marketing/lib/schedule-cities.ts",
+      "mingla-marketing/lib/program-call-copy.ts",
+      "mingla-marketing/lib/links-data.ts",
+      "mingla-marketing/lib/links-week.ts",
+      "mingla-marketing/lib/app-handoff.ts",
+      "mingla-marketing/lib/store-links.ts",
+      "mingla-marketing/lib/search/route-registry.ts",
+      "mingla-marketing/scripts/verify-search-foundation.mjs",
+      "mingla-marketing/scripts/issue-4339-first-load-budget.mjs",
+      "mingla-marketing/app/creators/**",
+      "mingla-marketing/app/locals/**",
+      "mingla-marketing/app/schedule/**"
+    ],
+    "steps": [
+      {
+        "name": "Marketing: Creators and Locals calls: real links (no host web creator setup), the live city list, per-audience validation, Host-only leads",
+        "cwd": "mingla-marketing",
+        "run": "node --test lib/__tests__/issue-4339-calls.implementor.test.mjs",
+        "commandId": "assert:issue-4339-calls:01",
+        "invocation": {
+          "kind": "raw-shell",
+          "command": "bash",
+          "argv": [
+            "-c",
+            "node --test lib/__tests__/issue-4339-calls.implementor.test.mjs"
+          ]
+        },
+        "exceptionRationale": "New self-registering execution replaces a legacy workflow registry edit."
+      }
+    ],
+    "lifecycle": "batched-active",
+    "ownerIssue": "#4339",
+    "runtime": {
+      "name": "node",
+      "version": "22"
+    },
+    "setupProfile": "node22-noinstall",
+    "cwd": "mingla-marketing",
+    "envNames": [],
+    "isolation": "clean-worktree",
+    "expectedFiles": [
+      "mingla-marketing/lib/__tests__/issue-4339-calls.implementor.test.mjs"
+    ],
+    "externalReferenceFiles": [],
+    "requiredContext": "CI batch: node22-noinstall",
+    "timingSeconds": {
+      "p50": 1,
+      "p95": 2,
+      "evidence": "Local targeted run 2026-11-09"
+    },
+    "generatedPaths": [
+      "suite-results.json"
+    ],
+    "exceptionRationale": "Raw shell preserves the reviewed assertion while this self-registering suite replaces a legacy workflow registry edit.",
+    "timeoutSeconds": 60
+  }
+}

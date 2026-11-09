@@ -197,9 +197,23 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4318: register the /links migration (20280508004318) and its implementor and tester PostgreSQL proofs; it joins the pre-#1931 replay skip list by exact filename.
 // #4318: register the /links live-cities (20280514004318) and strip end-date (20280515004318) migrations and their PostgreSQL proofs; the end-date migration joins the pre-#1931 replay skip list by exact filename.
 // #4318: register the /links per-city places migration (20280516004318) and its PostgreSQL proof the same way.
+// #4273 unpriced country: register the sms-unpriced-country migration and its PostgreSQL proofs (implementor + tester); re-sealed after merging origin/main.
+// #4273 all countries: register the all-countries / automatic-prices PostgreSQL proof.
+// #4273 all countries (tester): register the tester adversarial PostgreSQL proof.
+// #4273: re-sealed for the SMS opt-out link suite.
+// #4273: re-sealed after merging origin/main (#4318) and moving the migration to 20280522004273.
+// #4273 tester retest 3: register the SMS opt-out scope PostgreSQL proof.
+// #4273: re-sealed after moving the migration to 20280522004273 (above production's 20280521004334).
+// #4273: re-sealed after merging origin/main (#4350).
+// #4339: register the Ari draft hand-off migration (20280512004339) and its implementor PostgreSQL proof in the #1857, #1931 and #2117 replay lanes, after merging origin/main 2e6e331749 (#4318).
+// #4339: the #1931 lane skips 20280512004339_issue_4339_site_prompt_drafts.sql by exact filename (#2492 closure guard: CREATE TABLE columns are not credited as definitions).
+// #4339 round A: register the Book a call leads migration (20280520004339) and its implementor PostgreSQL proof in the #1857, #1931 and #2117 replay lanes (the #2492 closure guard passes without a skip).
+// #4339 round B: register the ad marketing destinations migration (20280522004339) and its implementor PostgreSQL proof in the #1857, #1931 and #2117 replay lanes.
+// #4339: re-sealed after merging origin/main 85dba1f14e (#4349 /links rows kept beside the #4339 rows).
+// #4339: re-sealed after merging origin/main 28f88fea6d (#4334 and #4273 rows kept beside the #4339 rows) and adding marketing-capture.ts to the issue-905 path scope.
 // #4347: drop the deleted expanded hero and busyness service from the #1880 and #1605 originPaths (both files are gone; the patterns matched nothing).
-// #4347: re-sealed after merging origin/main fb101c54c3 (the #4318 /links rows kept beside the #4347 originPath removals).
-export const BOOTSTRAP_SHA256 = "d59db5ca4aeeb849cd5808dda6eb0298142d060782de2a2d62e7d678a6813961";
+// #4347: re-sealed after merging origin/main 671964a09e (#4339 and #4273 rows kept beside the #4347 originPath removals).
+export const BOOTSTRAP_SHA256 = "6f6f2b46e1fc58b7067638c561b55e9eb73670822320bc386d75882e4f0dec81";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

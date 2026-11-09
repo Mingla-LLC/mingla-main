@@ -27,8 +27,12 @@ function verify(
   assert.match(menu, /const rowClass = [\s\S]*menuButtonClass[\s\S]*cut-btn-brand[\s\S]*cut-btn-light/, '#4137: rows receive brand/light')
   assert.match(menu, /const chipClass = [\s\S]*?cut-btn-brand[^']*cut-menu-chip[\s\S]*?cut-btn-light[^']*cut-menu-chip/, '#4137: chips receive cut-menu-chip plus brand when current')
 
+  // #4339 §9: the Cutout footer renders the ONE canonical footer
+  // (components/marketing/footer.tsx), so it must delegate, not restate links.
+  assert.match(cutoutFooter, /<SiteFooter surface=\{surface\} \/>/, 'Cutout footer must render the canonical footer')
+  assert.doesNotMatch(cutoutFooter, /href[:=]/, 'Cutout footer must not keep a second set of links')
   const requiredFooterRoutes = ['/', '/going-out', '/cities', '/host', '/tools', '/help', '/about']
-  for (const [name, footer] of [['Cutout footer', cutoutFooter], ['marketing/tools footer', marketingFooter]]) {
+  for (const [name, footer] of [['canonical footer', marketingFooter]]) {
     assert.doesNotMatch(footer, /allCoreTrustPagesSearchReady|allCityHubsSearchReady|coreReady/, `${name} must stay visible independently from sitemap promotion`)
     for (const route of requiredFooterRoutes) {
       assert.match(footer, new RegExp(`href: '${route.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}'`), `${name} is missing ${route}`)

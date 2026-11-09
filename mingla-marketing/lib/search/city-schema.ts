@@ -11,7 +11,7 @@ export function cityHubStructuredData(record: CityHubRecord): Record<string, unk
         '@type': 'CollectionPage',
         '@id': `${url}#page`,
         url,
-        name: `Find the right plan in ${record.city}.`,
+        name: `Things to do in ${record.city}`,
         description: record.directAnswer,
         about: { '@id': `${url}#place` },
       },
@@ -25,7 +25,9 @@ export function cityHubStructuredData(record: CityHubRecord): Record<string, unk
         '@type': 'BreadcrumbList',
         itemListElement: [
           { '@type': 'ListItem', position: 1, name: 'Home', item: canonicalMarketingUrl('/') },
-          { '@type': 'ListItem', position: 2, name: record.city, item: url },
+          // #4339 round B: the Cities level the visible breadcrumb shows.
+          { '@type': 'ListItem', position: 2, name: 'Cities', item: canonicalMarketingUrl('/cities') },
+          { '@type': 'ListItem', position: 3, name: record.city, item: url },
         ],
       },
       {

@@ -149,11 +149,12 @@ Deno.test("#3980 W3 rework D9: nothing sits under the month, every list follows 
   // A day lists what Show says; the undated posts button shows only with posts.
   // #4130: the day list reads the month's events with test brands left out.
   // #4255: a state tile shows events only, so the day follows it too (monthShow).
-  assertMatch(page, /dayEntries\(route\.day, monthData, calendar\.items, monthShow\)/);
-  assertMatch(page, /\{show !== "events" && <Button [^>]*onClick=\{onUndated\}/);
+  assertMatch(page, /dayEntries\(route\.day, monthData, calendar\.items, monthShow, callRows, zone\)/);
+  // #4339 calls: the undated posts button is hidden on Calls too.
+  assertMatch(page, /\{show !== "events" && show !== "calls" && <Button [^>]*onClick=\{onUndated\}/);
   // #4255: List view is gone; Board follows Show (no posts under Events).
   assertNotMatch(page, /PostsList|RunwayTable/);
-  assertMatch(page, /const boardItems = route\.show === "events" \? \[\] : calendar\.items;/);
+  assertMatch(page, /const boardItems = route\.show === "events" \|\| route\.show === "calls" \? \[\] : calendar\.items;/);
 });
 
 Deno.test("#3980 W3 rework D10: the four plain states, never the old runway words", () => {

@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-suite",
+  "ownerIssue": "#4339",
+  "suite": {
+    "id": "issue-4339-pages",
+    "class": "node22-noinstall",
+    "originPaths": [
+      "mingla-marketing/lib/__tests__/issue-4339-pages.implementor.test.mjs",
+      "mingla-marketing/app/(core)/**",
+      "mingla-marketing/app/cities/**",
+      "mingla-marketing/app/download/page.tsx",
+      "mingla-marketing/app/tools/page.tsx",
+      "mingla-marketing/app/tools/layout.tsx",
+      "mingla-marketing/app/locals/page.tsx",
+      "mingla-marketing/app/creators/page.tsx",
+      "mingla-marketing/app/careers/**",
+      "mingla-marketing/app/blog/page.tsx",
+      "mingla-marketing/app/blog/layout.tsx",
+      "mingla-marketing/app/blog/category/**",
+      "mingla-marketing/app/help/page.tsx",
+      "mingla-marketing/app/support/page.tsx",
+      "mingla-marketing/app/privacy-policy/page.tsx",
+      "mingla-marketing/app/terms-of-service/page.tsx",
+      "mingla-marketing/app/organiser-terms/page.tsx",
+      "mingla-marketing/app/sms-terms/page.tsx",
+      "mingla-marketing/app/creator-agreement/page.tsx",
+      "mingla-marketing/app/local-agreement/page.tsx",
+      "mingla-marketing/app/delete-account/page.tsx",
+      "mingla-marketing/app/unsubscribe/**",
+      "mingla-marketing/app/site-fonts.ts",
+      "mingla-marketing/components/site/**",
+      "mingla-marketing/components/cities/**",
+      "mingla-marketing/components/help/help-browser.tsx",
+      "mingla-marketing/components/blog/blog-index.tsx",
+      "mingla-marketing/components/blog/blog-category-tabs.tsx",
+      "mingla-marketing/components/landing/**",
+      "mingla-marketing/components/marketing/footer.tsx",
+      "mingla-marketing/lib/app-handoff.ts",
+      "mingla-marketing/lib/cta-destination.ts",
+      "mingla-marketing/lib/links-handoff.ts",
+      "mingla-marketing/lib/links-src.ts",
+      "mingla-marketing/lib/store-links.ts",
+      "mingla-marketing/lib/business-app-target.ts",
+      "mingla-marketing/lib/explorer-app-target.ts",
+      "mingla-marketing/lib/privacyContent.ts",
+      "mingla-marketing/lib/termsContent.ts",
+      "mingla-marketing/lib/organiserTermsContent.ts",
+      "mingla-marketing/lib/smsTermsContent.ts",
+      "mingla-marketing/lib/creatorAgreementContent.ts",
+      "mingla-marketing/lib/localAgreementContent.ts"
+    ],
+    "steps": [
+      {
+        "name": "Marketing: the redesigned inner pages: legal text unchanged, no Privacy choices, no careers email form, chips that filter, hand-offs through the seam",
+        "cwd": "mingla-marketing",
+        "run": "node --test lib/__tests__/issue-4339-pages.implementor.test.mjs",
+        "commandId": "assert:issue-4339-pages:01",
+        "invocation": {
+          "kind": "raw-shell",
+          "command": "bash",
+          "argv": [
+            "-c",
+            "node --test lib/__tests__/issue-4339-pages.implementor.test.mjs"
+          ]
+        },
+        "exceptionRationale": "New self-registering execution replaces a legacy workflow registry edit."
+      }
+    ],
+    "lifecycle": "batched-active",
+    "ownerIssue": "#4339",
+    "runtime": {
+      "name": "node",
+      "version": "22"
+    },
+    "setupProfile": "node22-noinstall",
+    "cwd": "mingla-marketing",
+    "envNames": [],
+    "isolation": "clean-worktree",
+    "expectedFiles": [
+      "mingla-marketing/lib/__tests__/issue-4339-pages.implementor.test.mjs"
+    ],
+    "externalReferenceFiles": [],
+    "requiredContext": "CI batch: node22-noinstall",
+    "timingSeconds": {
+      "p50": 1,
+      "p95": 2,
+      "evidence": "Local targeted run 2026-11-08"
+    },
+    "generatedPaths": [
+      "suite-results.json"
+    ],
+    "exceptionRationale": "Raw shell preserves the reviewed assertion while this self-registering suite replaces a legacy workflow registry edit.",
+    "timeoutSeconds": 60
+  }
+}

@@ -49,3 +49,16 @@ Deno.test("marketing-track-click: marketing_messages.status transitions to 'clic
   assert(SOURCE.includes('"clicked"'));
   assert(SOURCE.includes("last_clicked_at"));
 });
+
+// #4273 tester — order safety: the click read must not name link_kind, or a
+// deploy that lands before the migration adding it fails every click read and
+// sends every email and SMS link to the fallback page.
+Deno.test("marketing-track-click: the click read survives a missing link_kind column", () => {
+  const read = SOURCE.slice(
+    SOURCE.indexOf('.from("marketing_clicks")'),
+    SOURCE.indexOf(".maybeSingle()"),
+  );
+  assert(read.includes('.select("*")'), read);
+  assert(!read.includes("link_kind"), read);
+  assert(SOURCE.includes('link_kind === "opt_out"'));
+});

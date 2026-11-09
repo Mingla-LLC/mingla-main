@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { SEARCH_EVENT_NAMES, sanitizeSearchMeasurement } from '../src/index.ts'
+import { SEARCH_EVENT_NAMES, SEARCH_ICPS, SEARCH_PAGE_FAMILIES, attributedPageLocation, sanitizeSearchMeasurement } from '../src/index.ts'
 
 const samples={
   page_view:{audience:'neutral',page_family:'brand_core',page_location:'https://usemingla.com/about',source_kind:'direct'},
@@ -39,4 +39,14 @@ for(const [label,event,properties] of [
   ['too many properties','page_view',{...samples.page_view,icp:'venue',city_slug:'lagos',publication_state:'search_ready',destination_kind:'external_source',action_state:'opened',content_kind:'place',page_referrer_origin:'https://example.com'}],
 ]) assert.equal(sanitizeSearchMeasurement(event,properties),null,label)
 
+// #4339 round B — host landing family, the three new ICPs, and campaign-aware page_location.
+assert(SEARCH_PAGE_FAMILIES.includes('host_landing'))
+for (const icp of ['hotel_resort','art_space','play_space']) assert(SEARCH_ICPS.includes(icp), icp)
+assert(sanitizeSearchMeasurement('page_view',{audience:'host',page_family:'host_landing',icp:'hotel_resort',page_location:'https://usemingla.com/host/hotels',source_kind:'direct'}),'host landing page_view')
+const utm='https://usemingla.com/host/events?utm_source=google&utm_medium=cpc&utm_campaign=ng_events&gclid=Cj0abc'
+assert(sanitizeSearchMeasurement('page_view',{...samples.page_view,page_location:utm}),'allowlisted campaign query kept')
+assert.equal(sanitizeSearchMeasurement('page_view',{...samples.page_view,page_location:'https://usemingla.com/about?utm_source=x&email=private'}),null,'mixed query leakage')
+assert.equal(attributedPageLocation('https://usemingla.com/host/events?email=a@b.c&utm_source=google&gclid=Cj0&x=1#frag'),'https://usemingla.com/host/events?utm_source=google')
+assert.equal(attributedPageLocation('https://usemingla.com/host/events?email=a@b.c&utm_source=google&gclid=Cj0&x=1#frag',{clickIds:true}),'https://usemingla.com/host/events?utm_source=google&gclid=Cj0')
+assert.equal(attributedPageLocation('https://usemingla.com/?fbclid=1&name=Ada'),'https://usemingla.com/')
 process.stdout.write('PASS search-measurement accepted and adversarial contract\n')
