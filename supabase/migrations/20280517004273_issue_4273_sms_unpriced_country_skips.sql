@@ -291,4 +291,46 @@ BEGIN
 END
 $cron$;
 
+-- ── (5) An account-scope opt-out projects onto THAT host's brands only ──────
+-- #4273 tester retest (Q1). The #1770 projection copies every
+-- marketing_unsubscribes row into brand_person_channel_suppressions, passing
+-- NEW.brand_id as the scope. An account-scope row (the SMS opt-out link) has no
+-- brand_id, so it was projected onto EVERY brand on Mingla holding that number:
+-- one host's opt-out stopped every other host's texts too. Account scope now
+-- projects onto each brand that account owns, exactly like the readers'
+-- "account_id = the brand's owner" rule. Global and brand rows are unchanged.
+CREATE OR REPLACE FUNCTION public.issue_1770_project_marketing_unsubscribe()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_brand uuid;
+BEGIN
+  IF NEW.scope = 'account' THEN
+    FOR v_brand IN
+      SELECT b.id FROM public.brands b WHERE b.account_id = NEW.account_id
+    LOOP
+      IF NEW.channel IN ('email','all') AND NEW.contact_email IS NOT NULL THEN
+        PERFORM public.biz_record_brand_person_suppression('email','marketing',NEW.contact_email,NULL,v_brand,COALESCE(NEW.reason,'unsubscribe'),TG_TABLE_NAME,NEW.id);
+      END IF;
+      IF NEW.channel IN ('sms','all') AND NEW.contact_phone IS NOT NULL THEN
+        PERFORM public.biz_record_brand_person_suppression('sms','marketing',NEW.contact_phone,NULL,v_brand,COALESCE(NEW.reason,'unsubscribe'),TG_TABLE_NAME,NEW.id);
+      END IF;
+    END LOOP;
+    RETURN NEW;
+  END IF;
+  IF NEW.channel IN ('email','all') AND NEW.contact_email IS NOT NULL THEN
+    PERFORM public.biz_record_brand_person_suppression('email','marketing',NEW.contact_email,NULL,NEW.brand_id,COALESCE(NEW.reason,'unsubscribe'),TG_TABLE_NAME,NEW.id);
+  END IF;
+  IF NEW.channel IN ('sms','all') AND NEW.contact_phone IS NOT NULL THEN
+    PERFORM public.biz_record_brand_person_suppression('sms','marketing',NEW.contact_phone,NULL,NEW.brand_id,COALESCE(NEW.reason,'unsubscribe'),TG_TABLE_NAME,NEW.id);
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.issue_1770_project_marketing_unsubscribe() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_1770_project_marketing_unsubscribe() TO service_role;
+
 COMMIT;

@@ -39,11 +39,12 @@ serve(async (req) => {
   const supabase = serviceClient();
 
   // Single round-trip — pull the click row + the related message id.
+  // #4273 tester: select "*" rather than naming link_kind, so this read cannot
+  // fail (and send every click to the fallback) if this function is live
+  // before the migration that adds the column; a row without it is content.
   const { data: clickRow, error: clickErr } = await supabase
     .from("marketing_clicks")
-    .select(
-      "id, campaign_id, message_id, destination_url, clicked_at, link_kind",
-    )
+    .select("*")
     .eq("tracking_id", trackingId)
     .maybeSingle();
 
