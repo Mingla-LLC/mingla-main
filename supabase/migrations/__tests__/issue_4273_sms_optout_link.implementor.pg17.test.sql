@@ -19,6 +19,8 @@
 BEGIN;
 
 CREATE TEMP TABLE t4273o_fail(id serial, line text) ON COMMIT DROP;
+GRANT ALL ON t4273o_fail TO PUBLIC;
+GRANT USAGE, SELECT ON SEQUENCE t4273o_fail_id_seq TO PUBLIC;
 CREATE FUNCTION pg_temp.chk(p_name text, p_ok boolean, p_detail text DEFAULT '') RETURNS void LANGUAGE plpgsql AS $f$
 BEGIN
   IF p_ok IS NOT TRUE THEN INSERT INTO t4273o_fail(line) VALUES (p_name || ' :: ' || COALESCE(p_detail, '')); END IF;
@@ -73,7 +75,10 @@ BEGIN
   FOR r IN SELECT destination_url FROM public.marketing_clicks WHERE link_kind = 'opt_out' LOOP
     v := pg_temp.decode_payload(r.destination_url);
     n := n + 1;
-    PERFORM pg_temp.chk('O-04 an opt-out destination carries no phone', v !~ '\+?[0-9]{7,}' , v);
+    PERFORM pg_temp.chk('O-04 an opt-out destination carries no phone', v !~ '\+[0-9]', v);
+    PERFORM pg_temp.chk('O-04 it carries exactly campaign, brand, channel, message and expiry',
+      (SELECT array_agg(k ORDER BY k) FROM jsonb_object_keys(v::jsonb) k)
+        = ARRAY['brand_id', 'campaign_id', 'channel', 'exp', 'message_id'], v);
     PERFORM pg_temp.chk('O-04 an opt-out destination carries no email', position('@' IN v) = 0, v);
     PERFORM pg_temp.chk('O-04 it names the message', (v::jsonb ? 'message_id') AND NOT (v::jsonb ? 'recipient_phone'), v);
   END LOOP;

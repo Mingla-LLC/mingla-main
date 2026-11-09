@@ -3,8 +3,8 @@
 -- rows on its own; the seed never overwrites a fetched price; the daily
 -- refresh is scheduled; the SQL calling-code map agrees with the edge on the
 -- edges of each prefix; and the SMS opt-out row exactly as marketing-
--- unsubscribe writes it is accepted, is idempotent, and stops Blast SMS to
--- that number. Runs on the fully applied migration chain and rolls back.
+-- unsubscribe writes it (a host-account marketing_unsubscribes row) stops
+-- Blast SMS to that number and writes no channel suppression. Runs on the fully applied migration chain and rolls back.
 \set ON_ERROR_STOP on
 BEGIN;
 
@@ -101,10 +101,12 @@ BEGIN
     ('+35312345678', 'IE'), ('+35512345678', NULL), ('+3551234567', NULL),
     ('+42312345678', 'LI'), ('+42212345678', NULL), ('+3801234567', NULL),
     ('+27821234567', NULL), ('+639171234567', NULL), ('+233241234567', NULL), ('+254712345678', NULL),
-    ('+14285550123', 'CA'), ('+15065550123', 'CA'), ('+18765550123', 'US'),
+    ('+14285550123', 'CA'), ('+15065550123', 'CA'), ('+18765550123', 'JM'),
     ('+1428555', 'CA'), ('+142855', NULL), ('+44', NULL)
   ) v(phone, expected) LOOP
-    v := public.mingla_e164_country(r.phone);
+    -- #4273 tester retest P3: the payout-country table is the MARKETING twin
+    -- (mingla_sms_marketing_country); the transactional twin stays main's.
+    v := public.mingla_sms_marketing_country(r.phone);
     PERFORM pg_temp.chk('E-01 ' || r.phone, v IS NOT DISTINCT FROM r.expected, COALESCE(v, '<NULL>'));
   END LOOP;
 END;
@@ -124,7 +126,7 @@ SELECT set_config('request.jwt.claim.sub', '4273e000-0000-4000-8000-000000000001
 
 DO $optout$
 DECLARE
-  b uuid := '4273e000-0000-4000-8000-0000000000b1'; v jsonb; p uuid; before_ok boolean; after_ok boolean; dup boolean := false;
+  b uuid := '4273e000-0000-4000-8000-0000000000b1'; v jsonb; p uuid; before_ok boolean; after_ok boolean;
 BEGIN
   SELECT public.biz_resolve_brand_person_source(b, o.event_id, 'order', o.id, NULL, NULL,
            o.buyer_email, o.buyer_phone_e164, o.created_at) INTO v
@@ -135,20 +137,15 @@ BEGIN
     FROM public.biz_brand_person_authorized_contact_v2(b, p, 'sms', 'marketing_blast') a;
   PERFORM pg_temp.chk('U-00 fixture: the UK number is textable before the opt-out', before_ok, '');
 
-  -- Exactly the row marketing-unsubscribe inserts for an SMS token.
-  INSERT INTO public.channel_suppressions(user_id, contact, channel, scope, reason, brand_id)
-  VALUES (NULL, '+447700900777', 'sms', 'all', 'unsubscribe', NULL);
+  -- Exactly the row marketing-unsubscribe now inserts for an SMS opt-out
+  -- (tester retest P2, Seth's Q1): the sending host's account, marketing only.
+  INSERT INTO public.marketing_unsubscribes(contact_phone, channel, scope, account_id, reason)
+  VALUES ('+447700900777', 'sms', 'account', '4273e000-0000-4000-8000-000000000001', 'sms_opt_out_link');
   SELECT COALESCE(bool_or(a.allowed), false) INTO after_ok
     FROM public.biz_brand_person_authorized_contact_v2(b, p, 'sms', 'marketing_blast') a;
   PERFORM pg_temp.chk('U-01 the opt-out row stops Blast SMS to that number', NOT after_ok, '');
-
-  -- A second click is a unique violation (the handler treats it as done).
-  BEGIN
-    INSERT INTO public.channel_suppressions(user_id, contact, channel, scope, reason, brand_id)
-    VALUES (NULL, '+447700900777', 'sms', 'all', 'unsubscribe', NULL);
-  EXCEPTION WHEN unique_violation THEN dup := true;
-  END;
-  PERFORM pg_temp.chk('U-02 a repeat opt-out is a unique violation, not a second row', dup, '');
+  PERFORM pg_temp.chk('U-02 it writes no channel suppression (transactional texts still go)',
+    NOT EXISTS (SELECT 1 FROM public.channel_suppressions WHERE contact = '+447700900777'), '');
   PERFORM pg_temp.chk('U-03 email for the same person is untouched',
     NOT EXISTS (SELECT 1 FROM public.channel_suppressions WHERE contact = 'gb-x@example.test'), '');
 END;
