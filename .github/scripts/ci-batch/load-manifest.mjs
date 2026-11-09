@@ -201,9 +201,10 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4273 all countries: register the all-countries / automatic-prices PostgreSQL proof.
 // #4273 all countries (tester): register the tester adversarial PostgreSQL proof.
 // #4273: re-sealed for the SMS opt-out link suite.
-// #4273: re-sealed after merging origin/main (#4318) and moving the migration to 20280517004273.
+// #4273: re-sealed after merging origin/main (#4318) and moving the migration to 20280522004273.
 // #4273 tester retest 3: register the SMS opt-out scope PostgreSQL proof.
-export const BOOTSTRAP_SHA256 = "0cf0dec6775de719f6b58ed6135be4f64d76422d78c71213ef8577645651d9f4";
+// #4273: re-sealed after moving the migration to 20280522004273 (above production's 20280521004334).
+export const BOOTSTRAP_SHA256 = "359c36a1bde32c6fb9b52aeed814acb323f9d36a38c2858556315fec0ed4c62a";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
