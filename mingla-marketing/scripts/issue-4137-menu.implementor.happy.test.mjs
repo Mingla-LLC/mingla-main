@@ -97,6 +97,15 @@ function sourceContract() {
   const pkg = JSON.parse(read('package.json'))
   assert.match(pkg.scripts.build, /issue-4137-menu\.implementor\.happy\.test\.mjs --source-only/, '#4137: the menu source contract runs before next build')
   assert.match(pkg.scripts.build, /issue-4137-menu\.implementor\.happy\.test\.mjs --built-only/, '#4137: the menu runtime contract runs on the release build')
+  // #4339 (10 Nov 2026): the generator writes the LIVE blog value into the seam
+  // file, so it must run after the checks that read the committed hidden value.
+  // Run before them, every production build failed once a post was public.
+  const generate = pkg.scripts.build.indexOf('node scripts/generate-blog-menu-entry.mjs')
+  assert(generate >= 0, '#4339: the build generates the blog menu seam')
+  for (const check of ['issue-4137-menu.implementor.happy.test.mjs --source-only', 'issue-4137-menu-blog-seam.implementor.happy.test.mjs']) {
+    assert(pkg.scripts.build.indexOf(check) >= 0 && pkg.scripts.build.indexOf(check) < generate, `#4339: ${check} must run before the seam is generated from live data`)
+  }
+  assert(generate < pkg.scripts.build.indexOf('next build'), '#4339: the seam is generated before next build')
   process.stdout.write('PASS #4137 menu source: grouped literal lists, hidden blog seam, byte-identical sticky CTAs, 48px rows, 44px chips\n')
 }
 
