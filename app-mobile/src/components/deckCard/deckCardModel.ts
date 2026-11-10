@@ -15,7 +15,7 @@ import { FACT_LINE, PHOTO_PAGER } from '../../../../packages/card-identity/index
 import { isVideoUrl } from '../../utils/videoUrl';
 import { MIN_USEFUL_OPEN_MINUTES, curatedArrivalTimes } from '../../utils/curatedStopsAvailability';
 import { extractWeekdayText, getOpenStatusAt, openMinutesLeftAt, type OpenStatus } from '../../utils/openingHoursUtils';
-import type { MetaSpanInput } from '../deckCardPlate';
+import type { MetaSpanInput, PlanPlateContent, PlanPlateTile } from '../deckCardPlate';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Photos
@@ -281,6 +281,58 @@ export function placeFactSpans(card: PlaceFactInput, now: Date, labels: DeckFact
   const price = trimmed(card.priceRange);
   if (price !== null) spans.push({ kind: 'fact', text: price });
   return spans;
+}
+
+/** The three tile labels a single place's plate needs (from i18n). */
+export interface PlacePlateLabels {
+  readonly rating: string;
+  readonly away: string;
+  readonly spend: string;
+}
+
+/**
+ * #4347 round 3 (Seth, S1) — a single place's plate content: the open status on
+ * top, then Rating / Away / Spend tiles. The SAME facts as `placeFactSpans`,
+ * from the same helpers, so the plate and the old fact line can never disagree:
+ * status from the hours, rating with review count, travel time (distance only
+ * when there is no travel time), price. A fact with no value is left out —
+ * the plate's shape follows what is known, never a placeholder.
+ */
+export function placePlateContent(
+  card: PlaceFactInput,
+  now: Date,
+  labels: DeckFactLabels,
+  tileLabels: PlacePlateLabels,
+): PlanPlateContent {
+  const status = statusSpan(
+    getOpenStatusAt(
+      extractWeekdayText(card.openingHours as Parameters<typeof extractWeekdayText>[0]),
+      now,
+      card.utcOffsetMinutes ?? null,
+      FACT_LINE.closingSoonMinutes,
+    ),
+    labels,
+  );
+  const tiles: PlanPlateTile[] = [];
+  const rating = ratingText(card.rating, card.reviewCount);
+  if (rating !== null) tiles.push({ key: 'rating', label: tileLabels.rating, value: rating });
+  const travel = trimmed(card.travelTime) ?? trimmed(card.distanceLabel);
+  if (travel !== null) tiles.push({ key: 'away', label: tileLabels.away, value: travel });
+  const price = trimmed(card.priceRange);
+  if (price !== null) tiles.push({ key: 'spend', label: tileLabels.spend, value: price, accent: true });
+  return {
+    kind: 'place',
+    route: null,
+    photos: [],
+    tiles,
+    status:
+      status === null
+        ? null
+        : {
+            text: status.text,
+            tone: status.kind === 'statusOpen' ? 'open' : status.kind === 'statusClosing' ? 'closing' : 'closed',
+          },
+  };
 }
 
 function trimmed(value: unknown): string | null {

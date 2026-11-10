@@ -64,6 +64,7 @@ import {
   platePresentation,
   type BeenHereVisualState,
   type MetaSpanInput,
+  type PlanPlateContent,
 } from "./deckCardPlate";
 import { BEEN_HERE, MAX_FONT_SCALE, PHOTO_PAGER, SURFACES } from "../../../packages/card-identity/index.js";
 // #4347 wave 1 — the redesigned deck card: photo pager, fact line, kicker,
@@ -78,9 +79,11 @@ import {
   pagerPresentation,
   placeDeckPhotos,
   placeFactSpans,
+  placePlateContent,
   placeSmartChip,
   stepPhotoIndex,
   type DeckFactLabels,
+  type PlacePlateLabels,
   type DeckPhoto,
   type DeckStopLike,
 } from "./deckCard/deckCardModel";
@@ -335,6 +338,36 @@ function metaSpansForCard(
     },
     now,
     labels,
+  );
+}
+
+/**
+ * #4347 round 3 (Seth, S1) — a single place's plate content: the same card
+ * fields and the same distance formatting as `metaSpansForCard`, so the plate's
+ * tiles and the fact line it replaces read one source.
+ */
+function placePlateForCard(
+  card: Parameters<typeof metaSpansForCard>[0],
+  measurementSystem: 'Metric' | 'Imperial' | undefined,
+  now: Date,
+  labels: DeckFactLabels,
+  tileLabels: PlacePlateLabels,
+): PlanPlateContent {
+  const distanceLabel =
+    card.distance != null ? parseAndFormatDistance(card.distance as any, measurementSystem) : null;
+  return placePlateContent(
+    {
+      openingHours: card.openingHours,
+      utcOffsetMinutes: card.utcOffsetMinutes ?? null,
+      rating: card.rating ?? null,
+      reviewCount: card.reviewCount ?? null,
+      travelTime: card.travelTime ?? null,
+      distanceLabel: typeof distanceLabel === 'string' ? distanceLabel : null,
+      priceRange: card.priceRange ?? null,
+    },
+    now,
+    labels,
+    tileLabels,
   );
 }
 
@@ -1098,32 +1131,13 @@ export default function SwipeableCards({
     useState<ExpandedCardData | null>(null);
   // ORCH-1065: brand experiences expand to the business-event sheet (NOT the
   // curated itinerary). Parallel state keeps them a first-class branch.
-  /**
-   * #1700 — how many lines each card's facts row actually needs, MEASURED.
-   *
-   * Keyed BY CARD ID rather than held as one number, because the deck promotes a
-   * new card under the same tree: a single `metaLines` would apply the outgoing
-   * card's silhouette to the incoming one until its first layout pass, and on a
-   * fast swipe burst that is a visible plate-height flicker at exactly the moment
-   * #1576 taught us not to touch. A card that has never been measured reads 1,
-   * which is the pre-#1700 height, so the first frame is never wrong-by-default.
-   *
-   * Bounded by the deck's own length (tens of cards per session).
-   *
-   * DECLARED HERE, with the component's other state, and NOT beside the
-   * `platePresentation` call that reads it — that spot is below
-   * `if (!currentRec) return null`, so on an empty deck these two hooks would be
-   * skipped and every hook after them would shift index. React's rules of hooks,
-   * broken by placement rather than by logic.
-   */
-  const [metaLinesByCard, setMetaLinesByCard] = useState<Record<string, number>>({});
-  const noteMetaLines = useCallback((cardId: string, lines: number): void => {
-    setMetaLinesByCard((prev) => (prev[cardId] === lines ? prev : { ...prev, [cardId]: lines }));
-  }, []);
+  // #4347 round 3 — the #1700 per-card measured line count is gone from this
+  // tree: a single place now draws the plan plate (no wrapping fact row), and a
+  // host experience measures its own (CuratedExperienceSwipeCard).
 
   /**
    * #4347 wave 1 — the photo pager's state, keyed BY CARD ID for the same reason
-   * as `metaLinesByCard`: the deck promotes a new card under the same tree, and
+   * as the old #1700 per-card line count: the deck promotes a new card under the same tree, and
    * one shared index would open the incoming card on the outgoing card's photo.
    * A card never flipped reads index 0, which is the photo the behind face
    * already showed, so promotion never changes the picture.
@@ -1132,6 +1146,11 @@ export default function SwipeableCards({
   const [failedPhotosByCard, setFailedPhotosByCard] = useState<Record<string, readonly string[]>>({});
   const deckNow = useMinuteClock();
   const deckFactLabels = useDeckFactLabels(deckNow);
+  // #4347 round 3 — a single place's tile labels (existing strings in all 29 locales).
+  const placeTileLabels = useMemo<PlacePlateLabels>(
+    () => ({ rating: t('cards:sheet.tile_rating'), away: t('cards:deck.tile_away'), spend: t('cards:plan.tile_spend') }),
+    [t],
+  );
   const photoTapHint = usePhotoTapHint();
   // The tap path's geometry (#4347 rework, tester P3-1): where the finger went
   // down in CARD-LOCAL points (`locationX/Y` — every face layer that can be the
@@ -3384,7 +3403,17 @@ export default function SwipeableCards({
   // place. Curated/experience cards take the CuratedExperienceSwipeCard branch
   // above and resolve their own presentation there.
   const currentSpans = metaSpansForCard(currentRec, accountPreferences?.measurementSystem, deckNow, deckFactLabels);
-  const currentPresentation = platePresentation(currentSpans, metaLinesByCard[currentRec.id] ?? 1);
+  // #4347 round 3 (Seth, S1) — a single place gets the plan plate's box: open
+  // status on top, Rating / Away / Spend tiles, the plan's controls. The name
+  // anchors off THAT plate's silhouette, so it moves with the plate's shape.
+  const currentPlacePlate = placePlateForCard(
+    currentRec,
+    accountPreferences?.measurementSystem,
+    deckNow,
+    deckFactLabels,
+    placeTileLabels,
+  );
+  const currentPresentation = { ...planPlatePresentation(currentPlacePlate), metaLines: 1 };
 
   // #4347 wave 1 — the redesigned face's derived pieces, decided once per render.
   const deckLanguage = i18n?.language ?? 'en';
@@ -3627,6 +3656,9 @@ export default function SwipeableCards({
               // #4347 round 2 — an AI plan behind the top card shows the SAME
               // plan plate it will have once promoted (no photos: behind cards
               // load photo 1 only, so the thumbnails join on promotion).
+              // #4347 round 3 — a single place behind the top card shows the same
+              // place plate it will have once promoted. Host experiences keep
+              // their plate (Seth: leave them as they are).
               const nextPlanPlate =
                 nextCard.cardType === 'curated'
                   ? curatedPlanPlate(nextCard as unknown as CuratedExperienceCard, {
@@ -3634,10 +3666,12 @@ export default function SwipeableCards({
                       currencyCode: accountPreferences?.currency || 'USD',
                       photos: [],
                     })
-                  : null;
+                  : !nextCard.cardType
+                    ? placePlateForCard(nextCard, accountPreferences?.measurementSystem, deckNow, deckFactLabels, placeTileLabels)
+                    : null;
               const nextPresentation = nextPlanPlate
-                ? { ...planPlatePresentation(), metaLines: 1 }
-                : platePresentation(nextSpans, metaLinesByCard[nextCard.id] ?? 1);
+                ? { ...planPlatePresentation(nextPlanPlate), metaLines: 1 }
+                : platePresentation(nextSpans, 1);
               const nextPhotos = deckPhotosForCard(nextCard);
               const nextHasPhoto = nextPhotos.length > 0;
 
@@ -4055,14 +4089,13 @@ export default function SwipeableCards({
                     <DeckCardPlate
                       opaque={!currentHasPhoto}
                       spans={currentSpans}
-                      metaLines={currentPresentation.metaLines}
-                      onMetaLinesChange={(lines) => noteMetaLines(currentRec.id, lines)}
+                      plan={currentPlacePlate}
                       // #1701 — the labelled way in. It does NOT own an expand
                       // path: it calls the same `requestTapExpand` the card face
                       // already routes through, so the deck keeps exactly one.
                       onDetailsPress={() => deckSwipe.requestTapExpand()}
                       detailsLabel={t('cards:swipeable.details', { defaultValue: 'Details' })}
-                      beenHere={<BeenHereControl userId={user?.id} card={currentRec} />}
+                      beenHere={<BeenHereControl userId={user?.id} card={currentRec} compact />}
                       onSharePress={handleShare}
                       shareLabel={t('cards:swipeable.share_card', { title: currentRec.title })}
                     />
