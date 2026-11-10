@@ -34,6 +34,7 @@ jest.mock("../../store/currentBrandStore", () => ({
 }));
 
 import { updateBrand } from "../brandsService";
+import { googlePlaceIdOrNull } from "../brandPinWrite";
 import { applyTripDraftGraph, updateLiveTripFields } from "../tripsService";
 import { tripPatchSendsPlaceId } from "../tripPinCommands";
 import { resolveBusinessNavTarget } from "../businessNotificationRouting";
@@ -131,5 +132,52 @@ describe("A-5 routing edges", () => {
       ({ kind: "none", ...patch }) as BrandEnquiryContext;
     expect(brandEnquiryContextOpen(ctx({ kind: "rsvp" }))).toBeNull();
     expect(brandEnquiryContextOpen(ctx({ kind: "offering", offering_kind: "rsvp" }))).toBeNull();
+  });
+});
+
+// Retest of the rework (head 53503c718f): R-1, R-2.
+
+describe("R-1 googlePlaceIdOrNull keeps exactly what places_is_google_place_id accepts", () => {
+  // The SQL rule (20280521004334): length 10..1024, ^[A-Za-z0-9_-]+$, not ^dXJuOm.
+  const sqlRule = (id: string): boolean =>
+    id.length >= 10 && id.length <= 1024 && /^[A-Za-z0-9_-]+$/.test(id) && !/^dXJuOm/.test(id);
+
+  test("boundaries, alphabet and the Mapbox urn prefix agree with the server", () => {
+    const cases = [
+      "a".repeat(9), "a".repeat(10), "a".repeat(1024), "a".repeat(1025),
+      "ChIJ0Wq9hS_1OxARsFOw5qkW6Y0", "ChIJ-abc_DEF-123", "ChIJ.abcdefgh", "ChIJ abcdefgh",
+      "ChIJ=abcdefgh", "ChIJéabcdefgh", "dXJuOm1ieHBvaTp4eXo", "dxjuom1iehbvatp4exo",
+      "poi.12345", "", "ChIJ abcdefg",
+    ];
+    for (const id of cases) expect([id, googlePlaceIdOrNull(id) !== null]).toEqual([id, sqlRule(id)]);
+  });
+
+  test("null, undefined and blank are none; surrounding whitespace is trimmed before the check", () => {
+    expect(googlePlaceIdOrNull(null)).toBeNull();
+    expect(googlePlaceIdOrNull(undefined)).toBeNull();
+    expect(googlePlaceIdOrNull("   ")).toBeNull();
+    expect(googlePlaceIdOrNull("  ChIJ0Wq9hS_1OxARsFOw5qkW6Y0\n")).toBe("ChIJ0Wq9hS_1OxARsFOw5qkW6Y0");
+  });
+});
+
+describe("R-2 the pin RPC only ever writes both coordinates together", () => {
+  const row = { id: "brand-1", name: "Kaycee", slug: "kaycee", lat: null, lng: null };
+
+  test("a cleared pin (both null) goes through the RPC with both nulls and no id", async () => {
+    mockRpc.mockResolvedValue({ data: row, error: null });
+    await updateBrand("brand-1", { lat: null, lng: null, locationProviderPlaceId: ID } as never, null);
+    expect(mockRpc.mock.calls[0]).toEqual([
+      "biz_update_brand_pin",
+      { p_brand_id: "brand-1", p_lat: null, p_lng: null, p_location_place_id: ID },
+    ]);
+  });
+
+  test("one coordinate alone, with or without an id, never calls the RPC and writes only what was sent", async () => {
+    const calls: Array<[string, unknown[]]> = [];
+    mockFrom.mockImplementation(() => chain({ data: { ...row, lat: 6.5, lng: 3.4 }, error: null }, calls));
+    await updateBrand("brand-1", { lng: 3.5, locationProviderPlaceId: ID }, null);
+    expect(mockRpc).not.toHaveBeenCalled();
+    const updates = calls.filter(([m]) => m === "update").map(([, a]) => a[0]);
+    expect(updates).toEqual([{ lng: 3.5, location_provider_place_id: ID }]);
   });
 });
