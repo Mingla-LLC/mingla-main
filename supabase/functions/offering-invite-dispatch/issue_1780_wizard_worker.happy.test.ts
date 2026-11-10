@@ -128,8 +128,10 @@ Deno.test("issue #1780 worker owns channels and performs no provider I/O before 
       '"issue_1780_complete_wizard_invite_outbox_no_recipients_v1"',
       '"issue_1780_fail_wizard_invite_outbox_v1"',
       '"marketing_send_live_enabled"',
-      // #4273 — one SMS switch per country (smsCountryTextableNow).
-      "smsCountryTextableNow",
+      // #4273 — one SMS switch per country, read from the database
+      // (public.sms_country_switches) once per pass.
+      "loadSmsCountrySwitches(service)",
+      "smsCountryTextableFrom",
       'source: "guest_roster_actions"',
       'status: "succeeded_no_recipients"',
       "perChannelReachable: {",
@@ -519,8 +521,9 @@ Deno.test("issue #1780 preview accepts no client channel list and stays provider
     const required of [
       'mode: "wizard_preview"',
       "currentWizardDeliveryPolicy",
-      // #4273 — the per-country switch now lives in the quote itself.
-      "smsCountryTextableNow",
+      // #4273 — the per-country switch now lives in the quote itself, from
+      // the database snapshot.
+      "smsCountryLive: switches === null",
     ]
   ) {
     if (!source.includes(required)) {

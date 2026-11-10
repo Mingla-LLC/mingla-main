@@ -189,7 +189,7 @@ Deno.test("#1518 T-2: NG marketing POSTs channel 'generic'", async () => {
   setNgEnvLive();
   try {
     const { captured, result } = await captureSend(
-      { ...NG_INPUT, messageType: "marketing" },
+      { ...NG_INPUT, messageType: "marketing", marketingRoute: "termii" },
       termiiOk(),
     );
     assertEquals(captured.bodies[0].channel, "generic");
@@ -290,7 +290,12 @@ Deno.test("#1518 T-4b: NG marketing still renders the own-line STOP footer when 
   setNgEnvLive();
   try {
     const { captured } = await captureSend(
-      { ...NG_INPUT, messageType: "marketing", stopFooterOwnLine: true },
+      {
+        ...NG_INPUT,
+        messageType: "marketing",
+        marketingRoute: "termii",
+        stopFooterOwnLine: true,
+      },
       termiiOk(),
     );
     assertEquals(

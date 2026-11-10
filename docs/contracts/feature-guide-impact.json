@@ -1071,7 +1071,12 @@
         "supabase/functions/_shared/secretBundle.ts",
         "supabase/functions/_shared/secretBundle.ts.function-policy.issue-4273.patch.json",
         "supabase/functions/notify-dispatch/function-policy.issue-4273.patch.json",
-        "supabase/functions/sms-price-refresh/function-policy.json"
+        "supabase/functions/sms-price-refresh/function-policy.json",
+        "supabase/functions/_shared/smsCountrySwitches.ts",
+        "supabase/migrations/20280526004273_issue_4273_sms_country_switches.sql",
+        "mingla-admin/src/pages/SmsCountriesPage.jsx",
+        "mingla-admin/src/services/smsCountriesService.js",
+        "mingla-admin/src/lib/smsCountries.js"
       ]
     },
     {

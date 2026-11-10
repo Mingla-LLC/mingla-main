@@ -423,8 +423,14 @@ export function phase3dContractDigest(manifest) {
 // #4339: re-sealed after merging origin/main 28f88fea6d (#4334 and #4273 rows kept beside the #4339 rows) and adding marketing-capture.ts to the issue-905 path scope; MANIFEST.json phase3eContractSha256 matches.
 // #4255: register the work card email migration (20280524004255) and its implementor PostgreSQL proof in the #1857, #1931 and #2117 replay lanes.
 // #4334: register the tester place-id re-pick PostgreSQL proof (issue_4334_place_id_repick.tester.pg17) in the #1931 and #2117 replay lanes.
+// #4273 country switches: register the sms-country-switches migration and its PostgreSQL proof.
+// #4273: re-sealed after merging origin/main be7ffb3fbd (#4255 and #4353 rows kept beside the #4273 rows).
+// #4273: re-sealed after renumbering the country switches migration 20280523004273 -> 20280526004273 (above #4255's 20280524004255 and #4334's reserved 20280525004334).
+// #4273: re-sealed after merging origin/main fff9cf9e16 (#4334 tester proof rows kept beside the #4273 rows).
+// #4273: re-sealed after merging origin/main cb00e54bf8 (#4360 rows kept beside the #4273 rows).
 // #4334: register the place-id follow-ups migration (20280526004334) in the #1857, #1931 and #2117 replay lanes, and its implementor PostgreSQL proof in the #1931 and #2117 lanes.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "c0ccc69220aebcd2748b7b7b8b5a22e0e0361a3d07fa6976f59a9edf5855a685";
+// #4334: re-sealed after merging origin/main d27f8b82c0 (#4273 country switch rows kept beside the #4334 follow-up rows).
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "83df52c0b39d4ff1bbce35b3cfe56622dfa56d72e6385caf2cf7456c432ff266";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

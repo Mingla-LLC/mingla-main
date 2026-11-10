@@ -23,7 +23,13 @@ import {
   resolveDeliveryFlagValue,
 } from "../_shared/secretBundle.ts";
 import { MAPPED_COUNTRIES } from "../_shared/e164Country.ts";
-import { smsCountryTextableNow } from "../_shared/smsPriceBook.ts";
+// #4273 — each country's marketing switch comes from
+// public.sms_country_switches, read once per request.
+import {
+  loadSmsCountrySwitches,
+  type SmsCountrySwitchesSnapshot,
+  smsCountryTextableFrom,
+} from "../_shared/smsCountrySwitches.ts";
 import { loadSmsRates } from "../_shared/smsPriceTable.ts";
 import {
   type OpsAlertEmailInput,
@@ -162,19 +168,21 @@ function deliveryFlagEnabled(
   return typeof value === "boolean" ? value : value === "true" || value === "1";
 }
 
-function currentWizardDeliveryPolicy(): {
+export function currentWizardDeliveryPolicy(
+  switches: SmsCountrySwitchesSnapshot | null,
+): {
   channels: Channel[];
 } {
   const marketing = deliveryFlagEnabled(
     "marketing_send_live_enabled",
     "MARKETING_SEND_LIVE_ENABLED",
   );
-  // #4273 — one SMS switch per country. SMS is offered when any country is
-  // switched on; a number in a switched-off country is then skipped by the
-  // quote itself ("can't text their country yet"), never priced.
-  const anySmsCountry = MAPPED_COUNTRIES.some((country) =>
-    smsCountryTextableNow(country)
-  );
+  // #4273 — one SMS switch per country (public.sms_country_switches). SMS is
+  // offered when any country is switched on; a number in a switched-off
+  // country is then skipped by the quote itself ("can't text their country
+  // yet"), never priced. Unreadable switches offer no SMS at all.
+  const anySmsCountry = switches !== null &&
+    MAPPED_COUNTRIES.some(smsCountryTextableFrom(switches));
   return {
     channels: [
       ...(marketing ? ["email" as const] : []),
@@ -526,7 +534,8 @@ export async function handleWizardWorker(
   }
   const jobs = (data ?? []) as WizardOutboxJob[];
   const outcomes: Array<Record<string, unknown>> = [];
-  const policy = currentWizardDeliveryPolicy();
+  const switches = await loadSmsCountrySwitches(service);
+  const policy = currentWizardDeliveryPolicy(switches);
   for (const job of jobs) {
     let providerIo = false;
     try {
@@ -679,6 +688,9 @@ export async function handleWizardWorker(
           };
           const snapshot = await buildOfferingExecutionSnapshot({
             smsRates: await loadSmsRates(service).catch(() => undefined),
+            smsCountryLive: switches === null
+              ? undefined
+              : smsCountryTextableFrom(switches),
             eventId: job.eventId,
             brandId: candidates.brandId,
             purpose: "invitation",
@@ -994,7 +1006,8 @@ async function handleWizardPreview(
       409,
     );
   }
-  const policy = currentWizardDeliveryPolicy();
+  const switches = await loadSmsCountrySwitches(service);
+  const policy = currentWizardDeliveryPolicy(switches);
   const selection = {
     kind: "resolved_brand_people_v1" as const,
     source: "guest_roster_actions",
@@ -1053,6 +1066,9 @@ async function handleWizardPreview(
     };
     const snapshot = await buildOfferingExecutionSnapshot({
       smsRates: await loadSmsRates(service).catch(() => undefined),
+      smsCountryLive: switches === null
+        ? undefined
+        : smsCountryTextableFrom(switches),
       eventId: body.eventId,
       brandId: quoted.brandId,
       purpose: "invitation",
@@ -1310,6 +1326,10 @@ export async function handler(request: Request): Promise<Response> {
   }
   const actorId = actorData.user.id;
   const channels = [...body.channels].sort() as Channel[];
+  // #4273 — the country switches, read once for this request.
+  const switches = channels.includes("sms")
+    ? await loadSmsCountrySwitches(service)
+    : null;
 
   const quote = async () => {
     const { data, error } = await service.rpc(
@@ -1332,6 +1352,9 @@ export async function handler(request: Request): Promise<Response> {
     };
     const snapshot = await buildOfferingExecutionSnapshot({
       smsRates: await loadSmsRates(service).catch(() => undefined),
+      smsCountryLive: switches === null
+        ? undefined
+        : smsCountryTextableFrom(switches),
       eventId: body.eventId,
       brandId: candidates.brandId,
       purpose: body.purpose,

@@ -159,6 +159,8 @@ Deno.test("NG MMS: Termii path taken; NO media param transmitted (SMS-only)", as
       message: "Look at this",
       countryCode: "NG",
       messageType: "marketing",
+      // #4273 — marketing routes come from public.sms_country_switches.
+      marketingRoute: "termii",
       mediaUrls: [MEDIA_URL],
     });
     assert(capturedUrl.includes("/api/sms/send"), `expected Termii, got ${capturedUrl}`);
