@@ -109,6 +109,7 @@ import {
   PLATE,
   PLATE_H_NO_META,
   PLAN_PLATE,
+  planPlateHeight,
   SHARE_GLYPH,
   SLIVER,
   STATE_DISC,
@@ -204,45 +205,77 @@ function PlateMaterial({ underFill, opaque = false }: { underFill?: string; opaq
 }
 
 /**
- * #4347 round 2 — the AI plan's plate (Direction B). ONE more silhouette, for
- * plans only; its under-layer is re-solved at its own top edge like the others.
+ * #4347 round 2 — the AI plan's plate (Direction B), and since round 3 (Seth,
+ * S1) a single place's plate too. A plan always draws both content rows and is
+ * PLAN_PLATE.height; a place drops the status row or the tiles it has no data
+ * for, so there are FOUR silhouettes, each derived by the package and each with
+ * its under-layer re-solved at its own top edge like the place plate's.
  */
-const PLAN_SILHOUETTE = (() => {
-  const plateH = PLAN_PLATE.height;
-  const underAlpha = plateUnderForHeight('s1Single', plateH);
-  return {
-    plateH,
-    underFill: `rgba(${PLATE.underRgb[0]},${PLATE.underRgb[1]},${PLATE.underRgb[2]},${underAlpha})`,
-  };
-})();
+type PlanPlateShape = { readonly topRow: boolean; readonly tiles: boolean };
+const PLAN_SILHOUETTES = [true, false].flatMap((topRow) =>
+  [true, false].map((tiles) => {
+    const plateH = planPlateHeight({ topRow, tiles });
+    const underAlpha = plateUnderForHeight('s1Single', plateH);
+    return {
+      topRow,
+      tiles,
+      plateH,
+      underFill: `rgba(${PLATE.underRgb[0]},${PLATE.underRgb[1]},${PLATE.underRgb[2]},${underAlpha})`,
+    };
+  }),
+);
+function planSilhouetteFor(shape: PlanPlateShape): (typeof PLAN_SILHOUETTES)[number] {
+  return PLAN_SILHOUETTES.find((s) => s.topRow === shape.topRow && s.tiles === shape.tiles) ?? PLAN_SILHOUETTES[0];
+}
 
-/** One tile on a plan plate: "TIME · 2h 33m". `accent` marks the Spend tile. */
+/** One tile: "TIME · 2h 33m" on a plan, "RATING · ★ 4.6 (212)" on a place. `accent` marks Spend. */
 export interface PlanPlateTile {
-  readonly key: 'time' | 'away' | 'spend';
+  readonly key: 'time' | 'away' | 'spend' | 'rating';
   readonly label: string;
   readonly value: string;
   readonly accent?: boolean;
 }
 
-/** What a plan plate shows above its controls. */
+/** A place's open status, in the deck fact line's own words and tones. */
+export interface PlacePlateStatus {
+  readonly text: string;
+  readonly tone: 'open' | 'closing' | 'closed';
+}
+
+/** What a plan (or, since round 3, a single place's) plate shows above its controls. */
 export interface PlanPlateContent {
+  /** 'place' = a single place (round 3): the top row is `status`, not the route. Default 'plan'. */
+  readonly kind?: 'plan' | 'place';
   /** "Nike Art Gallery → The Burgundy"; null hides the route row's text. */
   readonly route: string | null;
   /** Up to PLAN_PLATE.thumb.max stop photos. */
   readonly photos: readonly string[];
   /** One to three tiles; a fact with no value is left out, never faked. */
   readonly tiles: readonly PlanPlateTile[];
+  /** A place's open status; null when the hours say nothing honest. */
+  readonly status?: PlacePlateStatus | null;
+}
+
+/** Which rows a plate draws. A plan always draws both (its height never moves). */
+function planPlateShape(content: PlanPlateContent | null | undefined): PlanPlateShape {
+  if (!content || content.kind !== 'place') return { topRow: true, tiles: true };
+  return { topRow: content.status != null, tiles: content.tiles.length > 0 };
 }
 
 /**
- * The plan plate's anchors, from the package — the title sits above it exactly
- * the way it sits above the place plate (`surfaceTitleBottom`).
+ * The plate's anchors, from the package — the title sits above it exactly the
+ * way it sits above the place plate (`surfaceTitleBottom`). Pass the content so
+ * a single place's shorter silhouette moves its name down with it; a plan (or no
+ * argument) is the full PLAN_PLATE.height.
  */
-export function planPlatePresentation(): { plateH: number; plateTop: number; titleBottom: number } {
+export function planPlatePresentation(
+  content?: PlanPlateContent | null,
+): { plateH: number; plateTop: number; titleBottom: number } {
+  const { plateH } = planSilhouetteFor(planPlateShape(content));
   return {
-    plateH: PLAN_SILHOUETTE.plateH,
-    plateTop: S1.bottomInset + PLAN_SILHOUETTE.plateH,
-    titleBottom: surfaceTitleBottom('s1Single', PLAN_SILHOUETTE.plateH),
+    plateH,
+    plateTop: S1.bottomInset + plateH,
+    titleBottom: surfaceTitleBottom('s1Single', plateH),
   };
 }
 
@@ -873,21 +906,38 @@ function PlanPlate({
   opaque: boolean;
 }): React.ReactElement {
   const photos = plan.photos.slice(0, PLAN_PLATE.thumb.max);
+  const isPlace = plan.kind === 'place';
+  const shape = planPlateShape(plan);
+  const silhouette = planSilhouetteFor(shape);
   return (
     <View
-      testID="deck-plan-plate"
-      style={[styles.plate, { height: PLAN_SILHOUETTE.plateH }]}
+      testID={isPlace ? 'deck-place-plate' : 'deck-plan-plate'}
+      style={[styles.plate, { height: silhouette.plateH }]}
       accessibilityRole="none"
       accessible={false}
       pointerEvents="box-none"
     >
-      <PlateMaterial underFill={PLAN_SILHOUETTE.underFill} opaque={opaque} />
+      <PlateMaterial underFill={silhouette.underFill} opaque={opaque} />
       <View pointerEvents="none" style={styles.plateTopHighlight} />
 
       <View style={styles.planHandleRow} pointerEvents="none">
         <View style={styles.planHandle} />
       </View>
 
+      {isPlace ? (
+        plan.status ? (
+          <View style={styles.planRouteRow} pointerEvents="none" testID="deck-place-status">
+            <View style={[styles.placeStatusDot, placeStatusDotStyle(plan.status.tone)]} />
+            <Text
+              style={[styles.placeStatusText, metaKindStyle(placeStatusKind(plan.status.tone))]}
+              numberOfLines={1}
+              maxFontSizeMultiplier={MAX_FONT_SCALE.controlLabel}
+            >
+              {plan.status.text}
+            </Text>
+          </View>
+        ) : null
+      ) : (
       <View style={styles.planRouteRow} pointerEvents="none" testID="deck-plan-route">
         {photos.length > 0 ? (
           <View style={styles.planThumbs}>
@@ -908,7 +958,9 @@ function PlanPlate({
           </Text>
         ) : null}
       </View>
+      )}
 
+      {shape.tiles ? (
       <View style={styles.planTiles} pointerEvents="none" testID="deck-plan-tiles">
         {plan.tiles.map((tile) => (
           <View key={tile.key} style={styles.planTile} testID={`deck-plan-tile-${tile.key}`}>
@@ -927,6 +979,7 @@ function PlanPlate({
           </View>
         ))}
       </View>
+      ) : null}
 
       <View style={styles.planControlRow} pointerEvents="box-none">
         {onDetailsPress ? (
@@ -966,6 +1019,15 @@ function PlanPlate({
       </View>
     </View>
   );
+}
+
+/** The fact line's span kind for a place status tone, so the plate and the line share one colour. */
+function placeStatusKind(tone: PlacePlateStatus['tone']): MetaSpanKind {
+  return tone === 'open' ? 'statusOpen' : tone === 'closing' ? 'statusClosing' : 'statusClosed';
+}
+
+function placeStatusDotStyle(tone: PlacePlateStatus['tone']) {
+  return tone === 'open' ? styles.placeDotOpen : tone === 'closing' ? styles.placeDotClosing : styles.placeDotClosed;
 }
 
 /**
@@ -1261,6 +1323,21 @@ const styles = StyleSheet.create({
     fontWeight: PLAN_PLATE.route.weight as '700',
     color: PLAN_PLATE.route.color,
   },
+  // #4347 round 3 — a single place's status row (the plan's route row slot).
+  placeStatusText: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: PLAN_PLATE.route.size,
+    fontWeight: PLAN_PLATE.route.weight as '700',
+  },
+  placeStatusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  placeDotOpen: { backgroundColor: FACT_LINE.status.open },
+  placeDotClosing: { backgroundColor: FACT_LINE.status.closingSoon },
+  placeDotClosed: { backgroundColor: FACT_LINE.status.closed },
   planTiles: {
     marginTop: PLAN_PLATE.sectionGap,
     height: PLAN_PLATE.tiles.height,
