@@ -107,6 +107,24 @@ export function routeForEventRow(row: EventRowForRouting): string {
 }
 
 /**
+ * issue #3827 — the RSVP screen a ticketed `/event/<id>` screen hands over to
+ * once it knows the event is an RSVP: the detail page, the published editor
+ * (`edit-published`) or the guest list. Null for anything that is not an RSVP
+ * (or no id), so the ticketed screen carries on.
+ */
+export function rsvpTwinRoute(
+  event: { event_type?: string } | null | undefined,
+  id: string | null | undefined,
+  screen: "detail" | "edit-published" | "guests",
+): string | null {
+  if (event?.event_type !== "rsvp" || typeof id !== "string" || id.length === 0) {
+    return null;
+  }
+  if (screen === "edit-published") return `/rsvp/${id}/edit?mode=edit-published`;
+  return screen === "guests" ? `/rsvp/${id}/guests` : `/rsvp/${id}`;
+}
+
+/**
  * Variant of routeForEventRow that accepts the camelCased shape used by
  * mingla-business client-side LiveEvent / DraftEvent types (where
  * `event_type` may not be on the type). Falls back to "event" if the
