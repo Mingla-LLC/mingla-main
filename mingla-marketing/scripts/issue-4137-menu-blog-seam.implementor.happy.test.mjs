@@ -4,7 +4,7 @@
 // blog seam. AudienceMenuContent is rendered through react-dom/server with the
 // seam value swapped in this test only, so no test hook ships.
 //
-//   AC-M3  shipped value: no Blog row, no story card, no /blog href.
+//   AC-M3  hidden value (committed default, no database, read failed): no Blog row, no story card, no /blog href.
 //          blog on: Blog sits directly after Going out with "New", and the
 //          Latest story card links to the newest post. Never one without the
 //          other: a story with the blog hidden renders nothing.
@@ -14,8 +14,10 @@
 // Fails on revert: the pre-wave-2 menu has no seam, no Blog row and no card.
 
 import assert from 'node:assert/strict'
+import { execFileSync, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import { createRequire } from 'node:module'
+import os from 'node:os'
 import path from 'node:path'
 import ts from 'typescript'
 import { fileURLToPath } from 'node:url'
@@ -31,7 +33,57 @@ const seamSource = read('lib/blog/menu-entry.ts')
 // #4137 wave 3: the value is produced at build time (scripts/generate-blog-menu-entry.mjs)
 // into menu-entry.generated.json, committed as the hidden value.
 assert.match(seamSource, /export const BLOG_MENU_ENTRY: BlogMenuEntry = parseBlogMenuEntry\(generated\)/, '#4137: the seam reads the build-time value')
-assert.deepEqual(JSON.parse(read('lib/blog/menu-entry.generated.json')), { blogVisible: false, showNewBadge: false, latest: null }, '#4137: the committed seam value is hidden')
+// [TEST-MOD-APPROVED #4339] The build regenerates menu-entry.generated.json from
+// the live public index before this test runs, so the working file is the
+// EFFECTIVE value (visible once a post is published), not the committed one.
+// The committed-hidden rule is proven where it is reliable: the committed blob
+// at HEAD, and the generator's own no-database and read-failed output.
+const HIDDEN = { blogVisible: false, showNewBadge: false, latest: null }
+const derive = (() => {
+  const js = ts.transpileModule(read('lib/blog/menu-entry-derive.ts'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
+  const module = { exports: {} }
+  Function('module', 'exports', js)(module, module.exports)
+  return module.exports
+})()
+assert.deepEqual(derive.BLOG_MENU_HIDDEN, HIDDEN, '#4137: the hidden value')
+{
+  let committed = null
+  try {
+    committed = execFileSync('git', ['show', 'HEAD:./lib/blog/menu-entry.generated.json'], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+  } catch { /* no git checkout (e.g. a Vercel build): the generator checks below still prove the default */ }
+  if (committed === null) process.stdout.write('SKIP #4137 committed seam blob: no git history here; generator fallback checked instead\n')
+  else assert.deepEqual(JSON.parse(committed), HIDDEN, '#4137: the committed seam value (HEAD) is hidden')
+}
+// The generator with no database, and with a database it cannot read, writes the
+// hidden value even over a previously visible file. Runs a copy in a temp dir so
+// the build's own generated file is never touched.
+for (const [label, env] of [
+  ['no database configured', {}],
+  ['read failed', { NEXT_PUBLIC_SUPABASE_URL: 'http://127.0.0.1:9', NEXT_PUBLIC_SUPABASE_ANON_KEY: 'test-only' }],
+]) {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'mingla-4137-seam-'))
+  try {
+    fs.mkdirSync(path.join(temp, 'scripts'))
+    fs.mkdirSync(path.join(temp, 'lib/blog'), { recursive: true })
+    fs.copyFileSync(path.join(ROOT, 'scripts/generate-blog-menu-entry.mjs'), path.join(temp, 'scripts/generate-blog-menu-entry.mjs'))
+    fs.copyFileSync(path.join(ROOT, 'lib/blog/menu-entry-derive.ts'), path.join(temp, 'lib/blog/menu-entry-derive.ts'))
+    fs.symlinkSync(path.join(ROOT, 'node_modules'), path.join(temp, 'node_modules'), 'dir')
+    const out = path.join(temp, 'lib/blog/menu-entry.generated.json')
+    fs.writeFileSync(out, JSON.stringify({ blogVisible: true, showNewBadge: true, latest: null }))
+    const childEnv = { ...process.env, ...env }
+    if (!env.NEXT_PUBLIC_SUPABASE_URL) { delete childEnv.NEXT_PUBLIC_SUPABASE_URL; delete childEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY }
+    const run = spawnSync(process.execPath, ['scripts/generate-blog-menu-entry.mjs'], { cwd: temp, env: childEnv, encoding: 'utf8', timeout: 30_000 })
+    assert.equal(run.status, 0, `#4137: generator (${label}) exits cleanly: ${run.stderr}`)
+    assert.match(run.stdout, new RegExp(`blog menu seam: hidden \\(${label}\\)`), `#4137: generator says hidden (${label})`)
+    assert.deepEqual(JSON.parse(fs.readFileSync(out, 'utf8')), HIDDEN, `#4137: generator writes the hidden value (${label})`)
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true })
+  }
+}
+// The value this build embeds: well-formed (the real parser keeps it unchanged).
+const EFFECTIVE = JSON.parse(read('lib/blog/menu-entry.generated.json'))
+assert.deepEqual(derive.parseBlogMenuEntry(EFFECTIVE), EFFECTIVE, '#4137: the generated seam value is well-formed')
+if (!EFFECTIVE.blogVisible) assert.deepEqual(EFFECTIVE, HIDDEN, '#4137: a hidden seam is exactly the hidden value')
 assert.doesNotMatch(seamSource.replace(/\/\/.*$/gm, ''), /coreReady|allCityHubsSearchReady|allCoreTrustPagesSearchReady|server-only/, '#4137: the seam is not a readiness gate and bundles into the client')
 assert.match(read(MENU), /import \{ BLOG_MENU_ENTRY \} from '@\/lib\/blog\/menu-entry'/, '#4137: the menu reads the one seam')
 
@@ -57,7 +109,7 @@ function renderMenu(entry, pathname = '/') {
 const linkLabels = (html) => [...html.matchAll(/<a\b[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g)]
   .map(([, href, inner]) => [inner.replace(/<span class="sr-only">[\s\S]*?<\/span>/g, '').replace(/<[^>]+>/g, '').trim(), href])
 
-// Shipped value.
+// Hidden value (the committed default).
 const shipped = renderMenu({ blogVisible: false, showNewBadge: false, latest: null })
 assert.deepEqual(linkLabels(shipped), [
   ['Explorer', '/'], ['Cities', '/cities'], ['Going out', '/going-out'],
@@ -81,6 +133,21 @@ assert.match(read('components/cutout/cutout.css'), /\.cut-menu-story small \{[^}
 const blogPage = renderMenu({ blogVisible: true, showNewBadge: false, latest: null }, '/blog/a-slow-saturday')
 assert.deepEqual([...blogPage.matchAll(/<a\b[^>]*aria-current="page"[^>]*>([\s\S]*?)<\/a>/g)].map((match) => match[1].replace(/<[^>]+>/g, '')), ['Blog'], '#4137: /blog/* lights Blog only')
 assert.doesNotMatch(blogPage, /cut-menu-new|cut-menu-story/, '#4137: no badge without showNewBadge and no card without a story')
+
+// The effective value renders as the menu will ship it.
+{
+  const html = renderMenu(EFFECTIVE)
+  const links = linkLabels(html)
+  if (EFFECTIVE.blogVisible) {
+    assert.deepEqual(links.slice(0, 4), [['Explorer', '/'], ['Cities', '/cities'], ['Going out', '/going-out'], [EFFECTIVE.showNewBadge ? 'BlogNew' : 'Blog', '/blog']], '#4137 AC-M3: live blog: Blog row directly after Going out')
+    assert.equal(/cut-menu-new/.test(html), EFFECTIVE.showNewBadge, '#4137: New badge exactly when the seam says so')
+    const card = [...html.matchAll(/<a href="([^"]+)" class="cut-card cut-menu-story/g)].map((match) => match[1])
+    assert.deepEqual(card, EFFECTIVE.latest ? [EFFECTIVE.latest.href] : [], '#4137 AC-M3: live blog: one Latest story card exactly when there is a story')
+  } else {
+    assert.doesNotMatch(html, /cut-menu-story|href="\/blog|cut-menu-new/, '#4137 AC-M3: hidden blog: no Blog row, badge or story card')
+  }
+  process.stdout.write(`EVIDENCE #4137 effective seam: ${EFFECTIVE.blogVisible ? `Blog on${EFFECTIVE.showNewBadge ? ' + New' : ''}${EFFECTIVE.latest ? `, latest ${EFFECTIVE.latest.href}` : ''}` : 'hidden'}; menu links ${links.length}\n`)
+}
 
 // Never one without the other.
 const hiddenWithStory = renderMenu({ blogVisible: false, showNewBadge: true, latest: story })
@@ -118,12 +185,6 @@ for (const selector of ['.cut-menu-new', '.cut-btn-brand .cut-menu-new']) {
 // "New" for 14 days, Latest story = the newest post with a licensed cover, and
 // anything malformed falls back to hidden.
 {
-  const derive = (() => {
-    const js = ts.transpileModule(read('lib/blog/menu-entry-derive.ts'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
-    const module = { exports: {} }
-    Function('module', 'exports', js)(module, module.exports)
-    return module.exports
-  })()
   const now = new Date('2026-11-01T12:00:00Z')
   const media = (objectPath) => `https://example.supabase.co/storage/v1/object/public/blog-media/${objectPath}`
   const card = (slug, publishAt, cover = { path: 'u/c.jpg' }) => ({ slug, title: `Title ${slug}`, publish_at: publishAt, cover })
