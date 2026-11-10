@@ -14,6 +14,8 @@ export const LEDGER_FOLLOWUP_NEW_FUNCTIONS = [
   "issue_3645_mark_release_claimed",
   "issue_3645_release_carry_room",
   "issue_3645_paystack_plan_cents",
+  "issue_3645_release_due_cents",
+  "issue_3645_flag_oversized_paystack_plans",
   "issue_3645_release_closed_unpaid",
   "issue_3645_release_can_carry",
   "issue_3645_return_closed_release_debt",
@@ -73,14 +75,14 @@ export const LEDGER_FOLLOWUP_REEMITS: Reemit[] = [
     target: TARGET,
     hunks: [
       {
-        name: "place carried value under the provider claim lock before reading recredits",
+        name: "place carried value under the provider claim lock before reading recredits, and alert on plans left out",
         old: "AS $fn$\nBEGIN\n  RETURN QUERY\n",
-        new: "AS $fn$\nBEGIN\n  -- #3645 bundle 4: every Paystack claim takes this lock, then places carried\n  -- maturity value on payable releases, then reads recredits below in a\n  -- later statement. A value placed by one claim is therefore in the\n  -- snapshot of the next; no claim reads a carrier without it. Placement\n  -- failing never stops the claim: the value waits for the next one.\n  PERFORM pg_advisory_xact_lock(hashtextextended('issue_3645_claim:paystack', 0));\n  BEGIN\n    PERFORM public.issue_3645_place_maturity_carryovers(p_now, 'paystack');\n  EXCEPTION WHEN OTHERS THEN\n    RAISE WARNING 'issue_3645_place_carryovers_failed provider=paystack sqlstate=% message=%',\n      SQLSTATE, SQLERRM;\n  END;\n  RETURN QUERY\n",
+        new: "AS $fn$\nBEGIN\n  -- #3645 bundle 4: every Paystack claim takes this lock, then places carried\n  -- maturity value on payable releases, then reads recredits below in a\n  -- later statement. A value placed by one claim is therefore in the\n  -- snapshot of the next; no claim reads a carrier without it. Placement\n  -- failing never stops the claim: the value waits for the next one.\n  PERFORM pg_advisory_xact_lock(hashtextextended('issue_3645_claim:paystack', 0));\n  BEGIN\n    PERFORM public.issue_3645_place_maturity_carryovers(p_now, 'paystack');\n  EXCEPTION WHEN OTHERS THEN\n    RAISE WARNING 'issue_3645_place_carryovers_failed provider=paystack sqlstate=% message=%',\n      SQLSTATE, SQLERRM;\n  END;\n  -- #3645 bundle 4: alert ops about releases left out below for a kept plan\n  -- larger than they owe (authorize never sees those).\n  BEGIN\n    PERFORM public.issue_3645_flag_oversized_paystack_plans(p_now);\n  EXCEPTION WHEN OTHERS THEN\n    RAISE WARNING 'issue_3645_flag_oversized_plans_failed sqlstate=% message=%',\n      SQLSTATE, SQLERRM;\n  END;\n  RETURN QUERY\n",
       },
       {
-        name: "leave out a release whose kept plan is larger than it now owes, so it never takes a slot from payable releases",
+        name: "leave out a release whose kept plan is larger than it now owes (unless a leg needs reconciling), so it never takes a slot from payable releases",
         old: "      ),0), 2147483647::bigint) > 0\n    ORDER BY r.releasable_at,r.created_at,r.id\n",
-        new: "      ),0), 2147483647::bigint) > 0\n      -- #3645 bundle 4: authorize refuses a kept organiser plan larger than\n      -- the release now owes. Leave such a release out before the LIMIT until\n      -- it owes the plan again, so refused releases never fill every slot.\n      AND public.issue_3645_paystack_plan_cents(r.id)\n        <= r.net_release_cents::bigint + coalesce((\n          SELECT sum(a.amount_cents)\n          FROM public.payout_ledger_adjustments a\n          WHERE a.release_id=r.id AND a.kind='maturity_recredit'\n        ),0)\n    ORDER BY r.releasable_at,r.created_at,r.id\n",
+        new: "      ),0), 2147483647::bigint) > 0\n      -- #3645 bundle 4: authorize refuses a kept organiser plan larger than\n      -- the release now owes. Leave such a release out before the LIMIT until\n      -- it owes the plan again, so refused releases never fill every slot,\n      -- unless a leg still needs reconciling (sent and not settled): the\n      -- sweep's reconcile-first must still reach it. Ops are alerted above.\n      AND (\n        public.issue_3645_paystack_plan_cents(r.id)\n          <= public.issue_3645_release_due_cents(r.id)\n        OR EXISTS (\n          SELECT 1 FROM public.payout_transfer_legs leg\n          WHERE leg.release_id=r.id AND leg.kind='organiser'\n            AND leg.status IN ('in_flight','fee_unreconciled')\n        )\n      )\n    ORDER BY r.releasable_at,r.created_at,r.id\n",
       },
     ],
   },
@@ -93,6 +95,22 @@ export const LEDGER_FOLLOWUP_REEMITS: Reemit[] = [
         name: "place carried value under the provider claim lock before reading recredits",
         old: "AS $fn$\nBEGIN\n  RETURN QUERY\n",
         new: "AS $fn$\nBEGIN\n  -- #3645 bundle 4: every Stripe claim takes this lock, then places carried\n  -- maturity value on payable releases, then reads recredits below in a\n  -- later statement. A value placed by one claim is therefore in the\n  -- snapshot of the next; no claim reads a carrier without it. Placement\n  -- failing never stops the claim: the value waits for the next one.\n  PERFORM pg_advisory_xact_lock(hashtextextended('issue_3645_claim:stripe', 0));\n  BEGIN\n    PERFORM public.issue_3645_place_maturity_carryovers(p_now, 'stripe');\n  EXCEPTION WHEN OTHERS THEN\n    RAISE WARNING 'issue_3645_place_carryovers_failed provider=stripe sqlstate=% message=%',\n      SQLSTATE, SQLERRM;\n  END;\n  RETURN QUERY\n",
+      },
+    ],
+  },
+];
+
+/** private.* functions re-emitted (the shared definitions() reads public only). */
+export const LEDGER_FOLLOWUP_PRIVATE_REEMITS: Reemit[] = [
+  {
+    fn: "host_account_deletion_blockers",
+    source: "supabase/migrations/20270816003660_issue_3660_host_account_deletion_atomic.sql",
+    target: TARGET,
+    hunks: [
+      {
+        name: "carried value still owed to the host blocks account deletion",
+        old: "    + (SELECT count(*)\n       FROM private.host_account_unreleased_held_money(v_brand_ids, v_event_ids))\n  )::integer INTO v_count;\n",
+        new: "    + (SELECT count(*)\n       FROM private.host_account_unreleased_held_money(v_brand_ids, v_event_ids))\n    -- #3645 bundle 4: matured value carried to a later payout and not placed\n    -- yet is still owed to the host (placed value rides on a pending\n    -- release, which the first arm counts).\n    + (SELECT count(*) FROM public.payout_maturity_carryovers c\n        WHERE c.brand_id = ANY (v_brand_ids)\n          AND c.carried_at IS NULL)\n  )::integer INTO v_count;\n",
       },
     ],
   },

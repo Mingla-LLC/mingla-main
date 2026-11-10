@@ -14,6 +14,7 @@ import { assert, assertEquals } from "https://deno.land/std@0.168.0/testing/asse
 import { applyHunks, definitions } from "./issue_3645_reemit_hunks.ts";
 import {
   LEDGER_FOLLOWUP_NEW_FUNCTIONS,
+  LEDGER_FOLLOWUP_PRIVATE_REEMITS,
   LEDGER_FOLLOWUP_REEMITS,
   TARGET,
 } from "./issue_3645_ledger_followup_reemit_hunks.ts";
@@ -130,3 +131,31 @@ Deno.test("#3645 bundle 4 each claim locks, places its own provider's carried va
     assertEquals(body.split("issue_3645_place_maturity_carryovers(").length - 1, 1);
   }
 });
+
+function privateDefinition(sql: string, fn: string): string | undefined {
+  const head = new RegExp(`CREATE\\s+OR\\s+REPLACE\\s+FUNCTION\\s+private\\.${fn}\\s*\\(`);
+  const match = head.exec(sql);
+  if (match === null) return undefined;
+  const tag = /\bAS\s+(\$[A-Za-z0-9_]*\$)/g;
+  tag.lastIndex = match.index;
+  const t = tag.exec(sql);
+  if (t === null) return undefined;
+  const end = sql.indexOf(t[1], t.index + t[0].length);
+  return sql.slice(match.index, end + t[1].length);
+}
+
+for (const reemit of LEDGER_FOLLOWUP_PRIVATE_REEMITS) {
+  Deno.test(`#3645 bundle 4 private.${reemit.fn}: latest earlier definition, re-emitted by its hunks only, not redefined later`, () => {
+    let latest: string | null = null;
+    for (const file of files()) {
+      const defined = privateDefinition(Deno.readTextFileSync(`${DIR}/${file}`), reemit.fn) !== undefined;
+      if (file < TARGET_FILE && defined) latest = `${DIR}/${file}`;
+      if (file > TARGET_FILE) assert(!defined, `${file} redefines private.${reemit.fn}`);
+    }
+    assertEquals(latest, reemit.source);
+    const source = privateDefinition(Deno.readTextFileSync(reemit.source), reemit.fn);
+    const target = privateDefinition(Deno.readTextFileSync(reemit.target), reemit.fn);
+    assert(source !== undefined && target !== undefined);
+    assertEquals(target, applyHunks(source, reemit.hunks));
+  });
+}

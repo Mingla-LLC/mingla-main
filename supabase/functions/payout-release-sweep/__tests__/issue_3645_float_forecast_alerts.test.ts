@@ -10,6 +10,7 @@
  */
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { handlePayoutReleaseSweep } from "../index.ts";
+import { planOrganiserTransferChunks } from "../engine.ts";
 
 type Alert = {
   alert_id: string;
@@ -306,4 +307,16 @@ Deno.test("#3645 2c a normal tick raises and drains exactly once", async () => {
   await handlePayoutReleaseSweep(request(), deps);
   assertEquals(rpcNames.filter((n) => n === "issue_3645_raise_stale_stay_dispute_alerts").length, 1);
   assertEquals(rpcNames.filter((n) => n === "claim_payout_release_alerts").length, 1);
+});
+
+Deno.test("#3645 bundle 4 the Paystack carrier floor in SQL is the smallest pool the planner sends", () => {
+  // issue_3645_place_maturity_carryovers only places Paystack value where the
+  // carrier's pool reaches 5000 kobo; below that the planner defers.
+  assert(!("deferred" in planOrganiserTransferChunks(5000)));
+  assert("deferred" in planOrganiserTransferChunks(4999));
+  const migration = Deno.readTextFileSync(
+    "supabase/migrations/20280602003645_issue_3645_payout_ledger_followups.sql",
+  );
+  assertEquals(migration.split("+ v_c.amount_cents >= 5000").length - 1, 1);
+  assertEquals(migration.split("+ v_c.amount_cents < 5000").length - 1, 1);
 });

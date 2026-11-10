@@ -812,6 +812,38 @@ BEGIN
   IF v_ids IS DISTINCT FROM ARRAY[v_new] THEN
     RAISE EXCEPTION 'B12 the oversized plan took the slot: %', v_ids;
   END IF;
+  -- Left out, but never silently: the claim alerted ops once and the release
+  -- carries the reason.
+  IF (SELECT count(*) FROM public.payout_release_alert_outbox
+      WHERE release_id = v_old AND alert_kind = 'paystack_plan_exceeds_due'
+        AND error_message = 'plan 10000 > due 5000') <> 1
+     OR (pg_temp.rel(v_old)).error_message IS DISTINCT FROM 'paystack_plan_exceeds_due' THEN
+    RAISE EXCEPTION 'B12 no alert for the plan left out';
+  END IF;
+  -- A second claim does not alert twice.
+  PERFORM public.claim_paystack_payout_releases(1, v_now);
+  IF (SELECT count(*) FROM public.payout_release_alert_outbox
+      WHERE release_id = v_old AND alert_kind = 'paystack_plan_exceeds_due') <> 1 THEN
+    RAISE EXCEPTION 'B12 alerted twice';
+  END IF;
+  -- An oversized release whose leg still needs reconciling is still claimed,
+  -- so the sweep's reconcile-first reaches it.
+  DECLARE
+    v_rec uuid := pg_temp.stay(16, 3);
+  BEGIN
+    UPDATE public.brand_payout_releases
+    SET provider = 'paystack', currency = 'ngn', net_release_cents = 1000
+    WHERE id = v_rec;
+    INSERT INTO public.payout_transfer_legs(
+      release_id, kind, chunk_index, principal_cents, estimated_fee_cents,
+      stamp_duty_cents, fee_schedule_version, status, provider_reference
+    ) VALUES (v_rec, 'organiser', 0, 9940, 10, 50, 'test', 'in_flight', 'bprel_3645e_rec');
+    IF NOT EXISTS (
+      SELECT 1 FROM public.claim_paystack_payout_releases(10, v_now) c WHERE c.release_id = v_rec
+    ) THEN
+      RAISE EXCEPTION 'B12 a release with a leg to reconcile was left out';
+    END IF;
+  END;
   -- Once the release owes the plan again, it is claimed.
   UPDATE public.brand_payout_releases SET net_release_cents = 10000 WHERE id = v_old;
   SELECT array_agg(c.release_id) INTO v_ids
@@ -893,6 +925,87 @@ BEGIN
   PERFORM pg_temp.assert_i5('B14');
 END
 $b14$;
+
+-- B15: a Paystack carrier must end up with a pool the transfer planner sends
+-- (5000 kobo); an older release that would stay under it is skipped.
+DO $b15$
+DECLARE
+  v_mature constant timestamptz := timestamptz '2026-10-29 00:00:00+00';
+  v_s uuid;
+  v_paid uuid;
+  v_small uuid;
+  v_ok uuid;
+BEGIN
+  PERFORM pg_temp.brand(19);
+  v_s := pg_temp.temp_debt(19, 1, 900, timestamptz '2026-10-25 00:00:00+00');
+  v_paid := pg_temp.stay(19, 1);
+  v_small := pg_temp.stay(19, 2);
+  v_ok := pg_temp.stay(19, 3);
+  UPDATE public.brand_payout_releases SET provider = 'paystack'
+  WHERE id IN (v_paid, v_small, v_ok);
+  UPDATE public.brand_payout_releases SET status = 'released', released_at = v_mature
+  WHERE id = v_paid;
+  UPDATE public.brand_payout_releases SET net_release_cents = 4099 WHERE id = v_small;
+  UPDATE public.brand_payout_releases
+  SET created_at = created_at + interval '1 hour'
+  WHERE id = v_ok;
+  PERFORM public.mature_postponement_debts(v_mature);
+  PERFORM public.issue_3645_place_maturity_carryovers(v_mature, 'paystack');
+  IF (pg_temp.carry(v_s, v_paid)).carried_release_id IS DISTINCT FROM v_ok
+     OR pg_temp.adj(v_small, 'maturity_recredit') <> 0 THEN
+    RAISE EXCEPTION 'B15 placed where the planner would defer: %', (pg_temp.carry(v_s, v_paid)).carried_release_id;
+  END IF;
+  -- 4100 + 900 = 5000 exactly is enough.
+  PERFORM pg_temp.brand(21);
+  DECLARE
+    v_s2 uuid := pg_temp.temp_debt(21, 1, 900, timestamptz '2026-10-25 00:00:00+00');
+    v_paid2 uuid := pg_temp.stay(21, 1);
+    v_edge uuid := pg_temp.stay(21, 2);
+  BEGIN
+    UPDATE public.brand_payout_releases SET provider = 'paystack' WHERE id IN (v_paid2, v_edge);
+    UPDATE public.brand_payout_releases SET status = 'released', released_at = v_mature
+    WHERE id = v_paid2;
+    UPDATE public.brand_payout_releases SET net_release_cents = 4100 WHERE id = v_edge;
+    PERFORM public.mature_postponement_debts(v_mature);
+    PERFORM public.issue_3645_place_maturity_carryovers(v_mature, 'paystack');
+    IF (pg_temp.carry(v_s2, v_paid2)).carried_release_id IS DISTINCT FROM v_edge THEN
+      RAISE EXCEPTION 'B15 a carrier reaching exactly 5000 was skipped';
+    END IF;
+  END;
+  PERFORM pg_temp.assert_i5('B15');
+END
+$b15$;
+
+-- B16: carried value not yet placed is still owed to the host, so it blocks
+-- account deletion (money_in_motion) like the payout it came from did.
+DO $b16$
+DECLARE
+  v_mature constant timestamptz := timestamptz '2026-10-29 00:00:00+00';
+  v_s uuid;
+  v_paid uuid;
+  v_blockers jsonb;
+BEGIN
+  PERFORM pg_temp.brand(20);
+  v_s := pg_temp.temp_debt(20, 1, 700, timestamptz '2026-10-25 00:00:00+00');
+  v_paid := pg_temp.stay(20, 1);
+  UPDATE public.brand_payout_releases SET status = 'released', released_at = v_mature
+  WHERE id = v_paid;
+  PERFORM public.mature_postponement_debts(v_mature);
+  IF (pg_temp.carry(v_s, v_paid)).carried_at IS NOT NULL
+     OR (pg_temp.d(v_s)).status <> 'closed' THEN
+    RAISE EXCEPTION 'B16 fixture: carryover placed or debt open';
+  END IF;
+  v_blockers := private.host_account_deletion_blockers(
+    pg_temp.uid(1, 20, 0), ARRAY[pg_temp.uid(2, 20, 0)]
+  );
+  IF NOT EXISTS (
+    SELECT 1 FROM jsonb_array_elements(v_blockers) b
+    WHERE b->>'code' = 'money_in_motion' AND (b->>'count')::integer = 1
+  ) THEN
+    RAISE EXCEPTION 'B16 an unplaced carryover does not block deletion: %', v_blockers;
+  END IF;
+END
+$b16$;
 
 -- B7: authorize sends a plan up to what the release owes (net + recredits)
 -- and refuses a larger one, once alerted, legs kept; the plan goes out again
