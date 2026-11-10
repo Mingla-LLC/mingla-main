@@ -496,6 +496,16 @@ function buildLiveTripPatch(
   if (state.capacity !== trip.businessTrip.capacity) {
     bt.capacity = state.capacity;
   }
+  // #4334 — a moved pin always carries its place id (null for none), so the
+  // same place re-picked onto refined coordinates reaches the pin-keeping
+  // command (biz_update_trip_live_command_repick) and keeps its id; a pin
+  // moved with no id sends null and the server clears the old one.
+  if ("destinationLat" in bt || "destinationLng" in bt) {
+    bt.destinationPlaceId = state.destinationPlaceId;
+  }
+  if ("departureLat" in bt || "departureLng" in bt) {
+    bt.departurePlaceId = state.departurePlaceId;
+  }
   if (Object.keys(bt).length > 0) patch.theme = { business_trip: bt };
 
   // Days — full DELETE-then-INSERT semantics on the server; emit when any
