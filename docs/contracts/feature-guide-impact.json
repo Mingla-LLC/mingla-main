@@ -2273,8 +2273,7 @@
         "packages/offering-rendering/RsvpGoingConfirmDialog.tsx",
         "packages/offering-rendering/RsvpMomentumDecision.tsx",
         "packages/offering-rendering/RsvpOfferingBody.tsx",
-        "packages/offering-rendering/RsvpSuccessPopup.tsx",
-        "mingla-business/src/utils/rsvpTwinRoute.ts"
+        "packages/offering-rendering/RsvpSuccessPopup.tsx"
       ]
     },
     {

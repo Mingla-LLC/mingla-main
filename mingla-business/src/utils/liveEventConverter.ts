@@ -99,11 +99,6 @@ export const convertDraftToLiveEvent = (
     musicGenres: draft.musicGenres,
     city: draft.city,
     locationGeo: draft.locationGeo,
-    // #4334 — the published pin's place id and precision, so the editor seeds
-    // them before the server read lands.
-    locationProviderPlaceId:
-      draft.locationGeo === null ? null : draft.locationProviderPlaceId?.trim() || null,
-    coordinatePrecision: draft.locationGeo === null ? null : (draft.coordinatePrecision ?? null),
     whenMode: draft.whenMode,
     date: draft.date,
     doorsOpen: draft.doorsOpen,

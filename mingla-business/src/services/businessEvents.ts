@@ -823,7 +823,8 @@ const withRefundPolicy = (
  */
 interface SavedPinColumns {
   location_provider_place_id?: string | null;
-  coordinate_precision?: string | null;
+  // The column's CHECK allows only 'exact' | 'approximate' | NULL.
+  coordinate_precision?: LiveEvent["coordinatePrecision"];
 }
 const withSavedPin = (event: LiveEvent, row: SavedPinColumns | undefined): LiveEvent =>
   row === undefined
@@ -831,10 +832,7 @@ const withSavedPin = (event: LiveEvent, row: SavedPinColumns | undefined): LiveE
     : {
         ...event,
         locationProviderPlaceId: row.location_provider_place_id ?? null,
-        coordinatePrecision:
-          row.coordinate_precision === "exact" || row.coordinate_precision === "approximate"
-            ? row.coordinate_precision
-            : null,
+        coordinatePrecision: row.coordinate_precision ?? null,
       };
 
 export const fetchBusinessEventById = async (

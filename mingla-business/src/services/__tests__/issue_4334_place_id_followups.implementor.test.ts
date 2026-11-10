@@ -12,11 +12,11 @@
  *       (falling back on PGRST202); any other patch keeps the plain command
  *   F-4 reads: the event detail and list probes carry the saved place id and
  *       precision onto the LiveEvent; the venue host read selects and maps
- *       the venue's place id; a published draft carries its pin's id
+ *       the venue's place id
  *
  * Fails on revert: remove the pin trio in brandPatch (F-1), the RPC branch in
  * updateBrand (F-2), tripRpcKeepingPins (F-3), or withSavedPin / the venue
- * column / the converter lines (F-4).
+ * column (F-4).
  */
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 
@@ -30,13 +30,7 @@ jest.mock("../supabase", () => ({
   },
 }));
 
-jest.mock("../../hooks/brandCache", () => ({
-  getBrandFromCache: () => ({ id: "brand-1", slug: "kaycee", displayName: "Kaycee" }),
-}));
-
 import { computeDirtyFieldsPatch } from "../../utils/brandPatch";
-import { convertDraftToLiveEvent } from "../../utils/liveEventConverter";
-import { buildDraftEvent } from "../../store/draftEventStore";
 import type { Brand } from "../../store/currentBrandStore";
 import { updateBrand } from "../brandsService";
 import { applyTripDraftGraph } from "../tripsService";
@@ -222,7 +216,12 @@ describe("F-4 the reads carry the saved pin", () => {
     }
     if (table === "ticket_types") return chain({ data: [], error: null });
     if (table === "event_rsvps") return chain({ data: [], error: null });
-    return chain({ data: Array.isArray(probeRows) ? [viewRow] : viewRow, error: null });
+    return chain({
+      data: Array.isArray(probeRows)
+        ? probeRows.map((r) => ({ ...viewRow, id: (r as { id: string }).id }))
+        : viewRow,
+      error: null,
+    });
   };
 
   test("the detail probe reads the place id and precision onto the LiveEvent", async () => {
@@ -234,13 +233,18 @@ describe("F-4 the reads carry the saved pin", () => {
     expect(detail?.event.coordinatePrecision).toBe("exact");
   });
 
-  test("the list probe does the same; an unknown precision token reads as none", async () => {
+  test("the list probe does the same; a pin with no id or precision reads as none", async () => {
     const selects: string[] = [];
-    mockFrom.mockImplementation(tables([{ ...probe, coordinate_precision: "street" }], selects));
-    const [event] = await fetchBusinessEventsForBrand("brand-1");
+    mockFrom.mockImplementation(tables([
+      { ...probe, coordinate_precision: "approximate" },
+      { ...probe, id: "e-2", location_provider_place_id: null, coordinate_precision: null },
+    ], selects));
+    const events = await fetchBusinessEventsForBrand("brand-1");
     expect(selects[0]).toContain("location_provider_place_id, coordinate_precision");
-    expect(event.locationProviderPlaceId).toBe(ID);
-    expect(event.coordinatePrecision).toBeNull();
+    expect(events[0].locationProviderPlaceId).toBe(ID);
+    expect(events[0].coordinatePrecision).toBe("approximate");
+    expect(events[1].locationProviderPlaceId).toBeNull();
+    expect(events[1].coordinatePrecision).toBeNull();
   });
 
   test("the venue host read selects and maps the venue's place id", () => {
@@ -255,19 +259,4 @@ describe("F-4 the reads carry the saved pin", () => {
     expect(mapVenueDetailsRow(row).locationProviderPlaceId).toBe(ID);
   });
 
-  test("a published draft carries its pin's id and precision into the LiveEvent", () => {
-    const draft = {
-      ...buildDraftEvent("brand-1"),
-      name: "Rooftop",
-      locationGeo: { lat: 6.43, lng: 3.42 },
-      locationProviderPlaceId: ` ${ID} `,
-      coordinatePrecision: "exact" as const,
-    };
-    const live = convertDraftToLiveEvent(draft);
-    expect(live?.locationProviderPlaceId).toBe(ID);
-    expect(live?.coordinatePrecision).toBe("exact");
-    const noPin = convertDraftToLiveEvent({ ...draft, locationGeo: null });
-    expect(noPin?.locationProviderPlaceId).toBeNull();
-    expect(noPin?.coordinatePrecision).toBeNull();
-  });
 });

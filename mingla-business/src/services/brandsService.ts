@@ -855,43 +855,18 @@ export async function updateBrand(
   brandId: string,
   patch: Partial<Brand>,
   existingDescription: string | null,
-  /** #4334 — false writes the pin as a table update (the pre-RPC path). */
-  pinViaRpc = true,
 ): Promise<Brand> {
-  // #4334 — a save that moves the pin writes the rest as a table update and
-  // the pin with its id through biz_update_brand_pin (brandPinWrite, loaded on
-  // demand), so a refined pin keeps its place id. The rest goes first, so a
-  // refused pin leaves it saved and the error shown.
-  const pinChanged =
-    pinViaRpc &&
-    (patch.lat !== undefined ||
-      patch.lng !== undefined ||
-      patch.locationProviderPlaceId !== undefined);
-  const updatePayload = mapUiToBrandUpdatePatch(
-    pinChanged
-      ? { ...patch, lat: undefined, lng: undefined, locationProviderPlaceId: undefined }
-      : patch,
-    { existingDescription },
-  );
-  if (pinChanged) {
-    if (Object.keys(updatePayload).length > 0) {
-      const { error: restError } = await supabase
-        .from("brands")
-        .update(updatePayload)
-        .eq("id", brandId)
-        .is("deleted_at", null)
-        .select("id")
-        .single();
-      if (restError) throw restError;
-    }
-    const pin = { lat: patch.lat, lng: patch.lng, locationProviderPlaceId: patch.locationProviderPlaceId };
-    const row = await (await import("./brandPinWrite")).writeBrandPin(
-      brandId, pin.lat, pin.lng, pin.locationProviderPlaceId,
-    );
-    return row === null
-      ? updateBrand(brandId, pin, existingDescription, false)
-      : mapBrandRowToUi(row, { role: "owner" });
+  // #4334 — a save that moves the pin (or its place id) writes the pin with
+  // its id through biz_update_brand_pin, loaded on demand, so a refined pin
+  // keeps its place id.
+  if (
+    patch.lat !== undefined ||
+    patch.lng !== undefined ||
+    patch.locationProviderPlaceId !== undefined
+  ) {
+    return (await import("./brandPinWrite")).updateBrandWithPin(brandId, patch, existingDescription);
   }
+  const updatePayload = mapUiToBrandUpdatePatch(patch, { existingDescription });
 
   // Defensive: empty patch is no-op — return existing row instead of UPDATE
   // with empty SET (which Postgres rejects with syntax error)

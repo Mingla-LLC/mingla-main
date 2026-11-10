@@ -49,7 +49,6 @@ import type {
   DoorSaleRecord,
 } from "../../../../src/types/doorSales";
 import { useManagedEventRoute } from "../../../../src/hooks/useManagedEventRoute";
-import { rsvpTwinRoute } from "../../../../src/utils/rsvpTwinRoute";
 import { useGuestRosterAccess } from "../../../../src/hooks/useGuestRoster";
 import { useEventGuestList } from "../../../../src/hooks/useEventOrders";
 import { useEventDoorSales } from "../../../../src/hooks/useEventDoorSales";
@@ -620,7 +619,10 @@ export default function EventGuestsListRoute(): React.ReactElement {
 
   // issue #3827 — an RSVP's guests are its RSVPs, kept by the RSVP console;
   // this list reads ticket orders, so an RSVP opened here goes there.
-  const rsvpGuestsRoute = rsvpTwinRoute(event, eventId, "guests");
+  const rsvpGuestsRoute =
+    event?.event_type === "rsvp" && typeof eventId === "string"
+      ? `/rsvp/${eventId}/guests`
+      : null;
   useEffect(() => {
     if (routeEvent.replacementEventId !== null) {
       router.replace(`/event/${routeEvent.replacementEventId}/guests` as never);

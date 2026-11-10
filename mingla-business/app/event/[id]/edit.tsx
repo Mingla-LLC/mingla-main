@@ -103,7 +103,6 @@ import {
 } from "../../../src/components/event/editPublishedSections";
 import { markJustPublished } from "../../../src/utils/justPublishedSignal";
 import { isSetupReturn, setupReturnWith, withReturnTo } from "../../../src/utils/brandEditReturn";
-import { rsvpTwinRoute } from "../../../src/utils/rsvpTwinRoute";
 
 const isLocalOnlyDraft = (draft: DraftEvent): boolean =>
   draft.id.startsWith("d_") || draft.serverSlug === null;
@@ -611,9 +610,10 @@ export default function EventEditRoute(): React.ReactElement {
   // editor is the ticketed one (it shows Tickets and refuses an RSVP with
   // "Add at least one ticket type."), so an RSVP goes to the RSVP editor,
   // keeping the way back to Website setup.
-  const rsvpEditRoute = isEditPublished
-    ? rsvpTwinRoute(resolvedLiveEvent, idParam, "edit-published")
-    : null;
+  const rsvpEditRoute =
+    isEditPublished && resolvedLiveEvent?.event_type === "rsvp" && typeof idParam === "string"
+      ? `/rsvp/${idParam}/edit?mode=edit-published`
+      : null;
   useEffect(() => {
     if (rsvpEditRoute === null) return;
     router.replace(

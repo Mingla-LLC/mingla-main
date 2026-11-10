@@ -86,7 +86,6 @@ import { SignedInNotFoundNotice } from "../../../src/components/auth/SignedInNot
 import { useSwitchAccount } from "../../../src/hooks/useSwitchAccount";
 import { useSuccessfulBusinessRecentOpen } from "../../../src/hooks/useBusinessRecent";
 import { useManagedEventRoute } from "../../../src/hooks/useManagedEventRoute";
-import { rsvpTwinRoute } from "../../../src/utils/rsvpTwinRoute";
 // issue #3237 — the one-shot "Published. It's live." banner after a publish.
 import { useJustPublishedArrival } from "../../../src/hooks/useJustPublishedArrival";
 import { LazyPublishedBanner } from "../../../src/components/offering/LazyPublishedBanner";
@@ -243,8 +242,7 @@ export default function EventDetailScreen(): React.ReactElement {
     // issue #3827 — an RSVP opened here (an old link, a notification, an
     // enquiry) belongs on its own dashboard: this ticketed screen counts
     // ticket orders ("0 guests") and its Edit opens the ticketed editor.
-    const rsvpRoute = rsvpTwinRoute(resolvedLiveEvent, id, "detail");
-    if (rsvpRoute !== null) router.replace(rsvpRoute as never);
+    if (resolvedLiveEvent?.event_type === "rsvp") router.replace(`/rsvp/${id}` as never);
   }, [id, routeEvent.replacementEventId, resolvedLiveEvent, draftEvent, router]);
 
   // ----- State ---------------------------------------------------
@@ -881,7 +879,7 @@ export default function EventDetailScreen(): React.ReactElement {
 
   // Drafts (and RSVPs, issue #3827) → redirected via useEffect; render an
   // empty shell briefly
-  if (event === null || rsvpTwinRoute(event, id, "detail") !== null) {
+  if (event === null || event.event_type === "rsvp") {
     return <View style={styles.host} />;
   }
 
