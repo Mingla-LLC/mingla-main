@@ -35,11 +35,11 @@ import type { DraftEvent } from "../../store/draftEventStore";
 import type { LiveEvent } from "../../store/liveEventStore";
 import {
   buildRsvpUpdatePayloadDiff,
-  draftLocationPlaceId,
   draftToServerUpdate,
   serverRowToDraft,
   type ServerDraftEventRow,
 } from "../../utils/serverDraftEventMapper";
+import { draftLocationPlaceId } from "../../utils/liveEventAdapter";
 import {
   brandAddressPatchFromLocation,
   brandAddressPatchFromPlace,

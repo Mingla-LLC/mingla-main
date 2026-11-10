@@ -23,6 +23,9 @@ import type { RefundPolicy } from "../services/refundPolicyService";
 import type { LiveEvent } from "../store/liveEventStore";
 import { asExtraGuestCount } from "../constants/guestListPrivacy";
 import { currencyCodeOrNull } from "./currency";
+// #4334 — the pin rules live in liveEventAdapter (see there): importing them
+// from the mapper closed a require cycle through the stores.
+import { draftLocationPlaceId, locationPinChanged } from "./liveEventAdapter";
 import {
   draftMultiDatePricingMode,
   type MultiDatePricingMode,
@@ -301,19 +304,6 @@ const asLatLng = (value: unknown): { lat: number; lng: number } | null => {
     ? { lat: point.lat, lng: point.lng }
     : null;
 };
-
-/**
- * #4334 — the Google place id that belongs to the draft's pin: null when there
- * is no pin (an id never outlives its coordinate) or nothing was picked.
- */
-export const draftLocationPlaceId = (
-  draft: Pick<DraftEvent, "locationGeo" | "locationProviderPlaceId">,
-): string | null =>
-  draft.locationGeo === null ||
-  typeof draft.locationProviderPlaceId !== "string" ||
-  draft.locationProviderPlaceId.trim().length === 0
-    ? null
-    : draft.locationProviderPlaceId.trim();
 
 /** The events.location_geo write value: Postgres `point` text "(lng,lat)". */
 const locationGeoColumnValue = (
@@ -759,11 +749,8 @@ export const buildRsvpUpdatePayloadDiff = (
   // The Where-step pin: a re-picked address sends its coordinate, precision and
   // city. Before this the published-RSVP editor saved the new address text and
   // left the old (or no) pin behind, so map links pointed at the wrong place.
-  const originalGeo = original.locationGeo ?? null;
-  if (
-    originalGeo?.lat !== edited.locationGeo?.lat ||
-    originalGeo?.lng !== edited.locationGeo?.lng
-  ) {
+  // #4334 — a same-coordinate re-pick with a new place id or precision counts.
+  if (locationPinChanged(original, edited)) {
     payload.location_geo = locationGeoColumnValue(edited.locationGeo);
     payload.coordinate_precision =
       edited.locationGeo === null
