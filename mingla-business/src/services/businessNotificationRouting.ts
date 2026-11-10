@@ -38,7 +38,6 @@ import { useRouter } from "expo-router";
 import { supabase } from "./supabase";
 import { mixpanelService } from "./mixpanelService";
 import { useCurrentBrandStore } from "../store/currentBrandStore";
-import { routeForEventRow } from "../utils/routeForEventRow";
 
 export interface BusinessPushData {
   type?: string;
@@ -219,9 +218,7 @@ export function resolveBusinessNavTarget(
   // RSVP dashboard; an /event deep link would open the ticketed screen.
   if (type === "business.rsvp_contribution_received") {
     const rsvpId = data.eventId ?? data.event_id ?? data.relatedId;
-    if (typeof rsvpId === "string" && UUID_RE.test(rsvpId)) {
-      return routeForEventRow({ id: rsvpId, event_type: "rsvp" });
-    }
+    if (typeof rsvpId === "string" && UUID_RE.test(rsvpId)) return `/rsvp/${rsvpId}`;
   }
 
   // 1) Prefer the explicit deep link when present + parseable.

@@ -186,8 +186,7 @@ describe("F-2b rework: the pin save never nulls a coordinate or fails on a forei
     ) as string;
     const onError = src.slice(src.indexOf("onError: (_error, { brandId, accountId }, context)"));
     const body = onError.slice(0, onError.indexOf("onSuccess:"));
-    expect(body).toContain("queryClient.invalidateQueries({ queryKey: brandKeys.detail(brandId) })");
-    expect(body).toContain("queryClient.invalidateQueries({ queryKey: brandKeys.list(accountId) })");
+    expect(body).toContain("queryClient.invalidateQueries({ queryKey: brandKeys.all })");
   });
 });
 
