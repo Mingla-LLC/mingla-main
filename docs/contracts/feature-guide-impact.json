@@ -1112,7 +1112,9 @@
         "packages/location-input/src/AddressInput.tsx",
         "mingla-business/src/components/brand/LazyBrandAvatarPickerSheet.tsx",
         "mingla-business/src/components/location/LazyAddressMapPreview.tsx",
-        "packages/offering-rendering/GlassBlur.tsx"
+        "packages/offering-rendering/GlassBlur.tsx",
+        "mingla-business/src/services/brandsService.ts",
+        "supabase/migrations/20280526004334_issue_4334_place_id_followups.sql"
       ]
     },
     {
@@ -1761,7 +1763,8 @@
         "supabase/migrations/20280521004334_issue_4334_google_places.sql",
         "mingla-business/src/components/location/sharedAddressField.tsx",
         "mingla-business/src/components/location/sharedAddressField.web.tsx",
-        "supabase/migrations/20280525004334_issue_4334_place_id_repick.sql"
+        "supabase/migrations/20280525004334_issue_4334_place_id_repick.sql",
+        "mingla-business/src/utils/liveEventConverter.ts"
       ]
     },
     {
@@ -1771,7 +1774,8 @@
         "mingla-business/src/components/experience/ExperienceCreatorWizard.tsx",
         "supabase/migrations/20280428003645_issue_3645_sell_publish_integrity.sql",
         "mingla-business/src/components/experience/ExperienceStopCard.tsx",
-        "mingla-business/src/components/experience/experienceWizardTypes.ts"
+        "mingla-business/src/components/experience/experienceWizardTypes.ts",
+        "supabase/migrations/20280526004334_issue_4334_place_id_followups.sql"
       ]
     },
     {
@@ -1780,7 +1784,9 @@
         "mingla-business/app/trip/[id]/edit.tsx",
         "mingla-business/app/trip/create.tsx",
         "mingla-business/src/components/trip/EditPublishedTripScreen.tsx",
-        "mingla-business/src/components/trip/tripLocationValidated.ts"
+        "mingla-business/src/components/trip/tripLocationValidated.ts",
+        "mingla-business/src/services/tripsService.ts",
+        "supabase/migrations/20280526004334_issue_4334_place_id_followups.sql"
       ]
     },
     {
@@ -2265,7 +2271,8 @@
         "packages/offering-rendering/RsvpGoingConfirmDialog.tsx",
         "packages/offering-rendering/RsvpMomentumDecision.tsx",
         "packages/offering-rendering/RsvpOfferingBody.tsx",
-        "packages/offering-rendering/RsvpSuccessPopup.tsx"
+        "packages/offering-rendering/RsvpSuccessPopup.tsx",
+        "mingla-business/src/utils/routeForEventRow.ts"
       ]
     },
     {
@@ -2928,6 +2935,12 @@
       "capability_key": "web-unsubscribe",
       "paths": [
         "mingla-marketing/app/unsubscribe/page.tsx"
+      ]
+    },
+    {
+      "capability_key": "brand-customer-enquiries",
+      "paths": [
+        "mingla-business/src/utils/brandEnquiryDisplay.ts"
       ]
     }
   ]
