@@ -41,6 +41,7 @@ DECLARE
   v_op_pending uuid := gen_random_uuid();
   v_op_other_tool uuid := gen_random_uuid();
   v_op_cross uuid := gen_random_uuid();
+  v_op_upper uuid := gen_random_uuid();
   v_other_group uuid;
   v_args jsonb;
   v_first jsonb;
@@ -65,6 +66,8 @@ BEGIN
     (v_op_altered,v_member,'33550000-b500-4000-8000-0000000000c1','tell_owner_in_brand_group',v_args,'executing','ari',v_brand,now(),now()),
     (v_op_outsider,v_outsider,'33550000-b500-4000-8000-0000000000c3','tell_owner_in_brand_group',v_args,'executing','ari',v_brand,now(),now()),
     (v_op_pending,v_member,'33550000-b500-4000-8000-0000000000c1','tell_owner_in_brand_group',v_args,'pending','ari',v_brand,now(),NULL),
+    (v_op_upper,v_member,'33550000-b500-4000-8000-0000000000c1','tell_owner_in_brand_group',
+      v_args || jsonb_build_object('brand_id', upper(v_brand::text)),'executing','ari',v_brand,now(),now()),
     (v_op_cross,v_member,'33550000-b500-4000-8000-0000000000c1','tell_owner_in_brand_group',v_args,'executing','ari',v_brand,now(),now()),
     (v_op_other_tool,v_member,'33550000-b500-4000-8000-0000000000c1','update_brand',v_args,'executing','ari',v_brand,now(),now());
 
@@ -146,6 +149,13 @@ BEGIN
     RAISE EXCEPTION 'B5-5c a note went to another brand''s group (error=%)', v_error;
   END IF;
 
+  -- 5d. An approval that holds its brand id in upper case still sends to
+  --     that brand's own group.
+  v_second := public.ari_tell_owner_in_brand_group(v_op_upper, v_group, v_note);
+  IF (v_second->>'sent')::boolean IS NOT TRUE THEN
+    RAISE EXCEPTION 'B5-5d an upper-case brand id was refused: %', v_second;
+  END IF;
+
   -- 6. Someone else's approval is not this caller's to send.
   BEGIN
     PERFORM public.ari_tell_owner_in_brand_group(v_op_outsider, v_group, v_note);
@@ -173,7 +183,7 @@ BEGIN
   END IF;
   SELECT count(*) INTO v_count FROM public.messages
    WHERE conversation_id = v_group AND content = v_note;
-  IF v_count <> 2 THEN
+  IF v_count <> 3 THEN
     RAISE EXCEPTION 'B5-7 refused sends changed the group (count %)', v_count;
   END IF;
 

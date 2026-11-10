@@ -48,7 +48,8 @@ BEGIN
     SELECT 1 FROM public.conversations c
      WHERE c.id = p_conversation_id
        AND c.linked_entity_type = 'brand'
-       AND c.brand_id::text = v_confirmed->>'brand_id'
+       -- uuid text is lower-case; an approval may hold it in either case.
+       AND c.brand_id::text = lower(v_confirmed->>'brand_id')
   ) THEN
     RAISE EXCEPTION 'operation_binding_mismatch';
   END IF;
