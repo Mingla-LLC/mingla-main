@@ -85,7 +85,7 @@
 [data-cutout] .blog-prose { color: #2b2520; }
 [data-cutout] .blog-prose > p, [data-cutout] .blog-prose li { font-size: 19px; line-height: 1.7; }
 [data-cutout] .blog-prose > p { margin: 0 0 24px; }
-[data-cutout] .blog-prose a:not(.cut-btn):not(.blog-embed-card) { color: #a8450e; text-decoration: underline; text-underline-offset: 3px; }
+[data-cutout] .blog-prose a:not(.cut-btn):not(.blog-embed-card):not(.blog-button) { color: #a8450e; text-decoration: underline; text-underline-offset: 3px; }
 [data-cutout] .blog-prose h2 { font-family: var(--font-mochiy), system-ui, sans-serif; font-weight: 400; font-size: 32px; line-height: 1.2; margin: 48px 0 14px; color: var(--cut-ink); }
 [data-cutout] .blog-prose h3 { font-family: var(--font-mochiy), system-ui, sans-serif; font-weight: 400; font-size: 24px; line-height: 1.25; margin: 36px 0 12px; color: var(--cut-ink); }
 [data-cutout] .blog-prose ul, [data-cutout] .blog-prose ol { margin: 0 0 24px; padding-left: 1.4em; }
@@ -105,7 +105,29 @@
 [data-cutout] .blog-gallery img { width: 100%; aspect-ratio: 3 / 4; object-fit: cover; display: block; border-radius: 18px; }
 [data-cutout] .blog-gallery-grid img { aspect-ratio: 1; }
 [data-cutout] .blog-gallery figcaption { color: #5d544b; font-size: 14px; margin-top: 8px; }
-[data-cutout] .blog-cta-row { margin: 8px 0 32px; }
+[data-cutout] .blog-cta-row { margin: 8px 0 32px; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+/* #4339 — the button block in the new brand (Ink #111110, Paper #F5F4F0, Geist).
+   Two-attribute selectors on purpose: `[data-landing] a { color: inherit }`
+   (one attribute + one element) beat the old single-class `.cut-btn-dark` and
+   painted the label in the prose colour, black on black. */
+[data-cutout] .blog-cta-row .blog-button {
+  display: inline-flex; align-items: center; gap: 10px; max-width: 100%;
+  min-height: 48px; padding: 12px 22px; border-radius: 999px;
+  background: #111110; color: #f5f4f0; text-decoration: none;
+  font-family: var(--font-landing-sans, 'Geist'), system-ui, -apple-system, sans-serif;
+  font-size: 16px; font-weight: 500; line-height: 1.25; text-align: left;
+  box-shadow: 0 0 0 3px #eb7825; transition: background 0.2s, transform 0.2s;
+}
+[data-cutout] .blog-cta-row .blog-button:hover { background: #2a2a28; }
+[data-cutout] .blog-cta-row .blog-button:active { transform: scale(0.98); }
+[data-cutout] .blog-cta-row .blog-button-arrow { width: 18px; height: 18px; flex: none; color: #eb7825; }
+[data-cutout] .blog-cta-row .blog-button-helper {
+  max-width: 34em; color: #5d544b; font-size: 14px; line-height: 1.45;
+  font-family: var(--font-landing-sans, 'Geist'), system-ui, -apple-system, sans-serif;
+}
+/* The same `[data-landing] a` rule also greys out every other moulded button in
+   a post (place and offering cards use DeviceCta). Restore their tint colours. */
+[data-cutout] .blog-read a.cut-btn-dark, [data-cutout] .blog-read a.cut-btn-brand { color: #fff; }
 
 /* The inline Explorer link (DeviceCta variant="inline") */
 [data-cutout] .cut-cta-inline { color: #a8450e; text-decoration: underline; text-underline-offset: 3px; font-weight: 700; }
