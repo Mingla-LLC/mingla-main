@@ -103,7 +103,7 @@ import {
 } from "../../../src/components/event/editPublishedSections";
 import { markJustPublished } from "../../../src/utils/justPublishedSignal";
 import { isSetupReturn, setupReturnWith, withReturnTo } from "../../../src/utils/brandEditReturn";
-import { rsvpTwinRoute } from "../../../src/utils/routeForEventRow";
+import { rsvpTwinRoute } from "../../../src/utils/rsvpTwinRoute";
 
 const isLocalOnlyDraft = (draft: DraftEvent): boolean =>
   draft.id.startsWith("d_") || draft.serverSlug === null;

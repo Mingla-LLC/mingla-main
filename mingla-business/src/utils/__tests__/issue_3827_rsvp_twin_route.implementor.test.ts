@@ -24,7 +24,7 @@ jest.mock("../../store/currentBrandStore", () => ({
   useCurrentBrandStore: { getState: () => ({ currentBrandId: "brand-1" }) },
 }));
 
-import { rsvpTwinRoute } from "../routeForEventRow";
+import { rsvpTwinRoute } from "../rsvpTwinRoute";
 import { brandEnquiryContextOpen } from "../brandEnquiryDisplay";
 import type { BrandEnquiryContext } from "../../services/brandEnquiriesService";
 import { resolveBusinessNavTarget } from "../../services/businessNotificationRouting";

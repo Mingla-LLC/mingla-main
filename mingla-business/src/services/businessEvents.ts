@@ -819,8 +819,7 @@ const withRefundPolicy = (
  * #4334 — the saved pin's Google place id and precision, read from `events`
  * (the management view does not carry them). The editor seeds its pin from
  * these, so an untouched pin, or a re-pick of the same place, is not a change,
- * and a refined pin is saved with the id it belongs to. A probe that did not
- * carry a column leaves it unknown (undefined).
+ * and a refined pin is saved with the id it belongs to.
  */
 interface SavedPinColumns {
   location_provider_place_id?: string | null;
@@ -831,17 +830,11 @@ const withSavedPin = (event: LiveEvent, row: SavedPinColumns | undefined): LiveE
     ? event
     : {
         ...event,
-        ...(row.location_provider_place_id !== undefined
-          ? { locationProviderPlaceId: row.location_provider_place_id }
-          : {}),
-        ...(row.coordinate_precision !== undefined
-          ? {
-              coordinatePrecision:
-                row.coordinate_precision === "exact" || row.coordinate_precision === "approximate"
-                  ? row.coordinate_precision
-                  : null,
-            }
-          : {}),
+        locationProviderPlaceId: row.location_provider_place_id ?? null,
+        coordinatePrecision:
+          row.coordinate_precision === "exact" || row.coordinate_precision === "approximate"
+            ? row.coordinate_precision
+            : null,
       };
 
 export const fetchBusinessEventById = async (

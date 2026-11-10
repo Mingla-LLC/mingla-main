@@ -159,35 +159,13 @@ async function resolveRevision(
   );
 }
 
-/** #4334 — does this trip patch send a departure or destination place id? */
-export const tripPatchSendsPlaceId = (patch: unknown): boolean => {
-  const groups = patch as {
-    event?: { business_trip?: Record<string, unknown> };
-    theme?: { business_trip?: Record<string, unknown> };
-  } | null;
-  return [groups?.event?.business_trip, groups?.theme?.business_trip].some(
-    (trip) =>
-      typeof trip?.departurePlaceId === "string" ||
-      typeof trip?.destinationPlaceId === "string",
-  );
-};
-
-/**
- * #4334 — a patch that sends a trip pin's place id goes through the command's
- * `_repick` twin, which asserts those ids so the same place re-picked onto
- * refined coordinates keeps its place id (the plain command clears the id of
- * any pin that moves). Every other patch uses the plain command.
- * [TRANSITIONAL] until 20280526004334 is applied the twin is missing
- * (PGRST202) and the plain command runs instead. Exit: the migration is live.
- */
+// #4334 — the trip commands, through the pin-keeping twin when a patch sends
+// a place id (tripPinCommands, loaded on demand).
 const tripRpcKeepingPins = async (
   name: "biz_apply_trip_draft_graph" | "biz_update_trip_live_command",
   args: Record<string, unknown>,
-): Promise<{ data: unknown; error: { code?: string; message: string } | null }> => {
-  if (!tripPatchSendsPlaceId(args.p_patch)) return supabase.rpc(name, args);
-  const first = await supabase.rpc(`${name}_repick`, args);
-  return first.error?.code === "PGRST202" ? supabase.rpc(name, args) : first;
-};
+): Promise<{ data: unknown; error: { code?: string; message: string } | null }> =>
+  (await import("./tripPinCommands")).tripRpcKeepingPins(name, args);
 
 /**
  * Apply one atomic patch to a DRAFT trip graph through the canonical command.

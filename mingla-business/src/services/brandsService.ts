@@ -858,19 +858,21 @@ export async function updateBrand(
   /** #4334 — false writes the pin as a table update (the pre-RPC path). */
   pinViaRpc = true,
 ): Promise<Brand> {
-  // #4334 — the pin and its place id go through biz_update_brand_pin, which
-  // writes them in one statement and asserts the id, so the same place
-  // re-picked onto refined coordinates keeps it (a direct table write cannot,
-  // and the server clears the id of a pin it sees move). Everything else
-  // stays a table write; that write goes first, so a refused pin leaves the
-  // rest saved and the error shown.
-  const { lat, lng, locationProviderPlaceId, ...rest } = patch;
+  // #4334 — a save that moves the pin writes the rest as a table update and
+  // the pin with its id through biz_update_brand_pin (brandPinWrite, loaded on
+  // demand), so a refined pin keeps its place id. The rest goes first, so a
+  // refused pin leaves it saved and the error shown.
   const pinChanged =
     pinViaRpc &&
-    ("lat" in patch || "lng" in patch || "locationProviderPlaceId" in patch);
-  const updatePayload = mapUiToBrandUpdatePatch(pinChanged ? rest : patch, {
-    existingDescription,
-  });
+    (patch.lat !== undefined ||
+      patch.lng !== undefined ||
+      patch.locationProviderPlaceId !== undefined);
+  const updatePayload = mapUiToBrandUpdatePatch(
+    pinChanged
+      ? { ...patch, lat: undefined, lng: undefined, locationProviderPlaceId: undefined }
+      : patch,
+    { existingDescription },
+  );
   if (pinChanged) {
     if (Object.keys(updatePayload).length > 0) {
       const { error: restError } = await supabase
@@ -882,23 +884,13 @@ export async function updateBrand(
         .single();
       if (restError) throw restError;
     }
-    const { data, error } = await supabase.rpc("biz_update_brand_pin", {
-      p_brand_id: brandId,
-      p_lat: lat ?? null,
-      p_lng: lng ?? null,
-      p_location_place_id: locationProviderPlaceId ?? null,
-    });
-    // [TRANSITIONAL] #4334 — until 20280526004334 is applied the function is
-    // missing (PGRST202): write the pin as before (a refined pin then loses
-    // its id, as it always has). Exit: the migration is live.
-    if (error?.code === "PGRST202") {
-      return updateBrand(brandId, { lat, lng, locationProviderPlaceId }, existingDescription, false);
-    }
-    if (error) throw error;
-    if (data === null) {
-      throw new Error("updateBrand: brand pin update returned no row");
-    }
-    return mapBrandRowToUi(data as BrandRow, { role: "owner" });
+    const pin = { lat: patch.lat, lng: patch.lng, locationProviderPlaceId: patch.locationProviderPlaceId };
+    const row = await (await import("./brandPinWrite")).writeBrandPin(
+      brandId, pin.lat, pin.lng, pin.locationProviderPlaceId,
+    );
+    return row === null
+      ? updateBrand(brandId, pin, existingDescription, false)
+      : mapBrandRowToUi(row, { role: "owner" });
   }
 
   // Defensive: empty patch is no-op — return existing row instead of UPDATE

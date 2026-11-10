@@ -39,7 +39,8 @@ import { convertDraftToLiveEvent } from "../../utils/liveEventConverter";
 import { buildDraftEvent } from "../../store/draftEventStore";
 import type { Brand } from "../../store/currentBrandStore";
 import { updateBrand } from "../brandsService";
-import { applyTripDraftGraph, tripPatchSendsPlaceId } from "../tripsService";
+import { applyTripDraftGraph } from "../tripsService";
+import { tripPatchSendsPlaceId } from "../tripPinCommands";
 import { fetchBusinessEventById, fetchBusinessEventsForBrand } from "../businessEvents";
 import {
   VENUE_DETAILS_HOST_COLUMNS,

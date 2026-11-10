@@ -49,7 +49,7 @@ import type {
   DoorSaleRecord,
 } from "../../../../src/types/doorSales";
 import { useManagedEventRoute } from "../../../../src/hooks/useManagedEventRoute";
-import { rsvpTwinRoute } from "../../../../src/utils/routeForEventRow";
+import { rsvpTwinRoute } from "../../../../src/utils/rsvpTwinRoute";
 import { useGuestRosterAccess } from "../../../../src/hooks/useGuestRoster";
 import { useEventGuestList } from "../../../../src/hooks/useEventOrders";
 import { useEventDoorSales } from "../../../../src/hooks/useEventDoorSales";

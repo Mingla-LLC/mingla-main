@@ -86,7 +86,7 @@ import { SignedInNotFoundNotice } from "../../../src/components/auth/SignedInNot
 import { useSwitchAccount } from "../../../src/hooks/useSwitchAccount";
 import { useSuccessfulBusinessRecentOpen } from "../../../src/hooks/useBusinessRecent";
 import { useManagedEventRoute } from "../../../src/hooks/useManagedEventRoute";
-import { rsvpTwinRoute } from "../../../src/utils/routeForEventRow";
+import { rsvpTwinRoute } from "../../../src/utils/rsvpTwinRoute";
 // issue #3237 — the one-shot "Published. It's live." banner after a publish.
 import { useJustPublishedArrival } from "../../../src/hooks/useJustPublishedArrival";
 import { LazyPublishedBanner } from "../../../src/components/offering/LazyPublishedBanner";

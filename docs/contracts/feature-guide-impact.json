@@ -1114,7 +1114,8 @@
         "mingla-business/src/components/location/LazyAddressMapPreview.tsx",
         "packages/offering-rendering/GlassBlur.tsx",
         "mingla-business/src/services/brandsService.ts",
-        "supabase/migrations/20280526004334_issue_4334_place_id_followups.sql"
+        "supabase/migrations/20280526004334_issue_4334_place_id_followups.sql",
+        "mingla-business/src/services/brandPinWrite.ts"
       ]
     },
     {
@@ -1786,7 +1787,8 @@
         "mingla-business/src/components/trip/EditPublishedTripScreen.tsx",
         "mingla-business/src/components/trip/tripLocationValidated.ts",
         "mingla-business/src/services/tripsService.ts",
-        "supabase/migrations/20280526004334_issue_4334_place_id_followups.sql"
+        "supabase/migrations/20280526004334_issue_4334_place_id_followups.sql",
+        "mingla-business/src/services/tripPinCommands.ts"
       ]
     },
     {
@@ -2272,7 +2274,7 @@
         "packages/offering-rendering/RsvpMomentumDecision.tsx",
         "packages/offering-rendering/RsvpOfferingBody.tsx",
         "packages/offering-rendering/RsvpSuccessPopup.tsx",
-        "mingla-business/src/utils/routeForEventRow.ts"
+        "mingla-business/src/utils/rsvpTwinRoute.ts"
       ]
     },
     {
