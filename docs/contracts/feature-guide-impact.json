@@ -1922,7 +1922,8 @@
         "supabase/migrations/20280422003645_issue_3645_unpaid_release_holds.sql",
         "supabase/migrations/20280503003645_issue_3645_float_forecast_alerts.sql",
         "supabase/migrations/20280508003645_issue_3645_payout_debt_returns.sql",
-        "supabase/migrations/20280602003645_issue_3645_payout_ledger_followups.sql"
+        "supabase/migrations/20280602003645_issue_3645_payout_ledger_followups.sql",
+        "supabase/migrations/20280603003645_issue_3645_ledger_followup_closed_carrier_and_expired_claims.sql"
       ]
     },
     {
