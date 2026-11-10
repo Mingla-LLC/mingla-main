@@ -58,6 +58,9 @@ const SWEEP = "supabase/functions/payout-release-sweep/index.ts";
 // with revision-bearing keys; the guard reads it alongside the #1840 migration.
 const FLOAT_FORECAST_MIGRATION =
   "supabase/migrations/20280503003645_issue_3645_float_forecast_alerts.sql";
+// #3645 bundle 4 adds paystack_plan_exceeds_due (a plain `<kind>:<id>` key).
+const LEDGER_FOLLOWUP_MIGRATION =
+  "supabase/migrations/20280602003645_issue_3645_payout_ledger_followups.sql";
 
 /** The kind whose payload is a number that moves — the one honoured downstream. */
 const REVISION_BEARING_KINDS = [
@@ -76,6 +79,7 @@ const ALL_KINDS = [
   "paystack_float_shortfall",
   "waiting_for_bank",
   "stay_dispute_hold_open",
+  "paystack_plan_exceeds_due",
 ];
 
 /**
@@ -98,7 +102,8 @@ function keyExpression(src: string, at: number): string {
 
 Deno.test("#1840 RETEST the kinds writing a revision-bearing key are EXACTLY the kinds the notifier honours", async () => {
   const migration = (await Deno.readTextFile(MIGRATION)) +
-    (await Deno.readTextFile(FLOAT_FORECAST_MIGRATION));
+    (await Deno.readTextFile(FLOAT_FORECAST_MIGRATION)) +
+    (await Deno.readTextFile(LEDGER_FOLLOWUP_MIGRATION));
   const sweep = await Deno.readTextFile(SWEEP);
 
   // Which kinds does the SQL give a key with structure beyond `<kind>:<id>`?

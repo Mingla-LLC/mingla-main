@@ -11,6 +11,7 @@
  */
 import { assert, assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import { applyHunks, definitions } from "./issue_3645_reemit_hunks.ts";
+import { LEDGER_FOLLOWUP_REEMITS } from "./issue_3645_ledger_followup_reemit_hunks.ts";
 import {
   FLOAT_FORECAST_NEW_FUNCTIONS,
   FLOAT_FORECAST_REEMITS,
@@ -68,8 +69,13 @@ Deno.test("#3645 2c the target is still the latest definition of what it defines
   for (const file of files().filter((f) => f > TARGET_FILE)) {
     const later = definitions(Deno.readTextFileSync(`${DIR}/${file}`));
     for (const name of mine) {
+      // A later bundle may supersede a 2c body only through its own guard,
+      // which declares its hunks against this target.
+      const superseded = LEDGER_FOLLOWUP_REEMITS.some((r) =>
+        r.target === `${DIR}/${file}` && r.fn === name && r.source === TARGET
+      );
       assert(
-        !later.has(name),
+        !later.has(name) || superseded,
         `${file} redefines ${name}; declare its hunks against ${TARGET_FILE} in its own guard`,
       );
     }

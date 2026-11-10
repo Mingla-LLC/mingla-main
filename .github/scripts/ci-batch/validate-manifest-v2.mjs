@@ -428,7 +428,7 @@ export function phase3dContractDigest(manifest) {
 // #4273: re-sealed after renumbering the country switches migration 20280523004273 -> 20280526004273 (above #4255's 20280524004255 and #4334's reserved 20280525004334).
 // #4273: re-sealed after merging origin/main fff9cf9e16 (#4334 tester proof rows kept beside the #4273 rows).
 // #4273: re-sealed after merging origin/main cb00e54bf8 (#4360 rows kept beside the #4273 rows).
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "adbb14af0b69e0a16d87c64702c7fc14b85e80864589277af26f1f12573cbb71";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "8e54fe6b9fff3954dbfb2b0bff61ed975ad1b8eab561fd636240ce4d228a7ffa";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

@@ -10,6 +10,7 @@
  */
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { handlePayoutReleaseSweep } from "../index.ts";
+import { planOrganiserTransferChunks } from "../engine.ts";
 
 type Alert = {
   alert_id: string;
@@ -179,6 +180,27 @@ Deno.test("#3645 2c release-anchored alerts are delivered exactly as before", as
   assertEquals(sent[1].relatedId, "rel-2");
 });
 
+Deno.test("#3645 bundle 4 a Paystack plan larger than what is owed has its own copy", async () => {
+  const { deps, recorded } = harness([{
+    alert_id: "p1",
+    release_id: "rel-plan",
+    brand_id: "brand-plan",
+    alert_kind: "paystack_plan_exceeds_due",
+    error_message: "plan 10000 > due 9999",
+    idempotency_key: "paystack_plan_exceeds_due:rel-plan",
+    claim_id: "c-plan",
+  }], () => Promise.resolve({ data: { raised: 0, refreshed: 0 }, error: null }));
+  const { sent } = await withNotifyCapture(() => handlePayoutReleaseSweep(request(), deps));
+  assertEquals(sent.length, 1);
+  assertEquals(sent[0].type, "ops.paystack_payout_release_plan_exceeds_due");
+  assertEquals(sent[0].title, "Paystack organiser payout plan is larger than what is owed");
+  assert(String(sent[0].body).includes("plan 10000 > due 9999"));
+  assertEquals(sent[0].relatedId, "rel-plan");
+  // Never the Stripe attempt-cap fallback.
+  assert(!String(sent[0].type).includes("attempt_cap"));
+  assertEquals(recorded.length, 1);
+});
+
 Deno.test("#3645 2c a long-open stay dispute alert has its own copy and honours the outbox key", async () => {
   const { deps } = harness([{
     alert_id: "s1",
@@ -285,4 +307,16 @@ Deno.test("#3645 2c a normal tick raises and drains exactly once", async () => {
   await handlePayoutReleaseSweep(request(), deps);
   assertEquals(rpcNames.filter((n) => n === "issue_3645_raise_stale_stay_dispute_alerts").length, 1);
   assertEquals(rpcNames.filter((n) => n === "claim_payout_release_alerts").length, 1);
+});
+
+Deno.test("#3645 bundle 4 the Paystack carrier floor in SQL is the smallest pool the planner sends", () => {
+  // issue_3645_place_maturity_carryovers only places Paystack value where the
+  // carrier's pool reaches 5000 kobo; below that the planner defers.
+  assert(!("deferred" in planOrganiserTransferChunks(5000)));
+  assert("deferred" in planOrganiserTransferChunks(4999));
+  const migration = Deno.readTextFileSync(
+    "supabase/migrations/20280602003645_issue_3645_payout_ledger_followups.sql",
+  );
+  assertEquals(migration.split("+ v_c.amount_cents >= 5000").length - 1, 1);
+  assertEquals(migration.split("+ v_c.amount_cents < 5000").length - 1, 1);
 });
