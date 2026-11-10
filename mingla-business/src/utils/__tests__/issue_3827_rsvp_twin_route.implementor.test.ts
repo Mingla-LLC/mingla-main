@@ -79,9 +79,11 @@ describe("T-4 the ticketed routes hand an RSVP over", () => {
 
   test("/event/<id> replaces to the RSVP dashboard and draws nothing meanwhile", () => {
     const src = read("index.tsx");
-    expect(src).toContain(
-      'if (resolvedLiveEvent?.event_type === "rsvp") router.replace(`/rsvp/${id}` as never);',
+    expect(src).toMatch(
+      /if \(resolvedLiveEvent\?\.event_type === "rsvp"\) \{\s*router\.replace\(routeForEventRow\(\{ id, event_type: "rsvp" \}\) as never\);/,
     );
+    // issue #3827 rework — an RSVP is not recorded in Recents as an event.
+    expect(src).toContain('ready: event !== null && event.event_type !== "rsvp" &&');
     expect(src).toContain('if (event === null || event.event_type === "rsvp") {');
   });
 

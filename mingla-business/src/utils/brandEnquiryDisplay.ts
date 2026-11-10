@@ -3,6 +3,7 @@
  * no I/O, so every rule is provable in a unit test.
  */
 
+import { routeForEventRow } from "./routeForEventRow";
 import type {
   BrandEnquiryContext,
   BrandEnquiryCounts,
@@ -106,7 +107,10 @@ export function brandEnquiryContextOpen(context: BrandEnquiryContext | null | un
       // its own dashboard.
       return {
         label: "Open offering",
-        route: context.offering_kind === "rsvp" ? `/rsvp/${contextId}` : `/event/${contextId}`,
+        route:
+          context.offering_kind === "rsvp"
+            ? routeForEventRow({ id: contextId, event_type: "rsvp" })
+            : `/event/${contextId}`,
       };
     case "venue":
       return contextId ? { label: "Open venue", route: `/venue/${contextId}` } : null;

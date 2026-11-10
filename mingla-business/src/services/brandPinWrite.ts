@@ -4,7 +4,8 @@
  * so the same place re-picked onto refined coordinates keeps it (a direct
  * table write cannot, and the server clears the id of a pin it sees move).
  * Everything else in the patch stays a table write and goes first, so a
- * refused pin leaves it saved and the error shown. Loaded on demand by
+ * refused pin leaves it saved and the error shown (useUpdateBrand then
+ * re-reads the brand instead of restoring stale values). Loaded on demand by
  * updateBrand, only when a save moves the pin, so it stays out of the boot
  * payload.
  */
@@ -34,12 +35,29 @@ const writeRow = async (
   return data as BrandRow;
 };
 
+/**
+ * A Google place id, trimmed, or null. The server refuses anything else
+ * (location_place_id_invalid); a pin with an id from elsewhere saves without
+ * it rather than failing the whole save after the rest of it has saved.
+ */
+export const googlePlaceIdOrNull = (value: string | null | undefined): string | null => {
+  const id = typeof value === "string" ? value.trim() : "";
+  return /^[A-Za-z0-9_-]{10,1024}$/.test(id) && !id.startsWith("dXJuOm") ? id : null;
+};
+
 export async function updateBrandWithPin(
   brandId: string,
   patch: Partial<Brand>,
   existingDescription: string | null,
 ): Promise<Brand> {
   const { lat, lng, locationProviderPlaceId } = patch;
+  // The RPC writes both coordinates, so it runs only when the patch carries
+  // both (null clears the pin). A patch with only an id, or one coordinate,
+  // stays a plain table write and can never null the other coordinate.
+  if (lat === undefined || lng === undefined) {
+    const row = await writeRow(brandId, mapUiToBrandUpdatePatch(patch, { existingDescription }));
+    return mapBrandRowToUi(row, { role: "owner" });
+  }
   const rest = mapUiToBrandUpdatePatch(
     { ...patch, lat: undefined, lng: undefined, locationProviderPlaceId: undefined },
     { existingDescription },
@@ -48,9 +66,9 @@ export async function updateBrandWithPin(
 
   const { data, error } = await supabase.rpc("biz_update_brand_pin", {
     p_brand_id: brandId,
-    p_lat: lat ?? null,
-    p_lng: lng ?? null,
-    p_location_place_id: locationProviderPlaceId ?? null,
+    p_lat: lat,
+    p_lng: lng,
+    p_location_place_id: googlePlaceIdOrNull(locationProviderPlaceId),
   });
   // [TRANSITIONAL] #4334 — until 20280526004334 is applied the function is
   // missing (PGRST202): write the pin as a table update, as before (a refined

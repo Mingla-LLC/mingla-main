@@ -33,6 +33,7 @@ jest.mock("../supabase", () => ({
 import { computeDirtyFieldsPatch } from "../../utils/brandPatch";
 import type { Brand } from "../../store/currentBrandStore";
 import { updateBrand } from "../brandsService";
+import { googlePlaceIdOrNull } from "../brandPinWrite";
 import { applyTripDraftGraph } from "../tripsService";
 import { tripPatchSendsPlaceId } from "../tripPinCommands";
 import { fetchBusinessEventById, fetchBusinessEventsForBrand } from "../businessEvents";
@@ -152,6 +153,41 @@ describe("F-2 updateBrand sends the pin through biz_update_brand_pin", () => {
     mockRpc.mockResolvedValue({ data: null, error: { code: "22023", message: "location_place_id_invalid" } });
     await expect(updateBrand("brand-1", { lat: 1, lng: 2, locationProviderPlaceId: "x" }, null))
       .rejects.toMatchObject({ message: "location_place_id_invalid" });
+  });
+});
+
+describe("F-2b rework: the pin save never nulls a coordinate or fails on a foreign id", () => {
+  const row = { id: "brand-1", name: "Kaycee", slug: "kaycee", lat: 6.4, lng: 3.4 };
+
+  test("a patch with only the id (or one coordinate) is a table write; the RPC is not called", async () => {
+    const calls: Array<[string, unknown[]]> = [];
+    mockFrom.mockImplementation(() => chain({ data: row, error: null }, calls));
+    await updateBrand("brand-1", { locationProviderPlaceId: ID }, null);
+    await updateBrand("brand-1", { lat: 6.5 }, null);
+    expect(mockRpc).not.toHaveBeenCalled();
+    const updates = calls.filter(([m]) => m === "update").map(([, a]) => a[0]);
+    expect(updates).toEqual([{ location_provider_place_id: ID }, { lat: 6.5 }]);
+  });
+
+  test("a non-Google id is sent as none, so the save completes instead of failing", async () => {
+    mockRpc.mockResolvedValue({ data: row, error: null });
+    await updateBrand("brand-1", { lat: 6.4, lng: 3.4, locationProviderPlaceId: "poi.12345" }, null);
+    expect(mockRpc.mock.calls[0][1]).toMatchObject({ p_location_place_id: null });
+    expect(googlePlaceIdOrNull(` ${ID} `)).toBe(ID);
+    expect(googlePlaceIdOrNull("dXJuOm1ieHBvaTp4eXo")).toBeNull();
+    expect(googlePlaceIdOrNull("short")).toBeNull();
+  });
+
+  test("when the pin write fails after the rest saved, useUpdateBrand re-reads the brand", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const src = require("fs").readFileSync(
+      require("path").join(__dirname, "..", "..", "hooks", "useBrands.ts"),
+      "utf8",
+    ) as string;
+    const onError = src.slice(src.indexOf("onError: (_error, { brandId, accountId }, context)"));
+    const body = onError.slice(0, onError.indexOf("onSuccess:"));
+    expect(body).toContain("queryClient.invalidateQueries({ queryKey: brandKeys.detail(brandId) })");
+    expect(body).toContain("queryClient.invalidateQueries({ queryKey: brandKeys.list(accountId) })");
   });
 });
 

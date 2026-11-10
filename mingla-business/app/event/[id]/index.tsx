@@ -86,6 +86,7 @@ import { SignedInNotFoundNotice } from "../../../src/components/auth/SignedInNot
 import { useSwitchAccount } from "../../../src/hooks/useSwitchAccount";
 import { useSuccessfulBusinessRecentOpen } from "../../../src/hooks/useBusinessRecent";
 import { useManagedEventRoute } from "../../../src/hooks/useManagedEventRoute";
+import { routeForEventRow } from "../../../src/utils/routeForEventRow";
 // issue #3237 — the one-shot "Published. It's live." banner after a publish.
 import { useJustPublishedArrival } from "../../../src/hooks/useJustPublishedArrival";
 import { LazyPublishedBanner } from "../../../src/components/offering/LazyPublishedBanner";
@@ -242,7 +243,9 @@ export default function EventDetailScreen(): React.ReactElement {
     // issue #3827 — an RSVP opened here (an old link, a notification, an
     // enquiry) belongs on its own dashboard: this ticketed screen counts
     // ticket orders ("0 guests") and its Edit opens the ticketed editor.
-    if (resolvedLiveEvent?.event_type === "rsvp") router.replace(`/rsvp/${id}` as never);
+    if (resolvedLiveEvent?.event_type === "rsvp") {
+      router.replace(routeForEventRow({ id, event_type: "rsvp" }) as never);
+    }
   }, [id, routeEvent.replacementEventId, resolvedLiveEvent, draftEvent, router]);
 
   // ----- State ---------------------------------------------------
@@ -272,7 +275,8 @@ export default function EventDetailScreen(): React.ReactElement {
   useSuccessfulBusinessRecentOpen({
     brandId: brand?.id ?? event?.brandId ?? null,
     entityType: "event", entityId: event?.serverEventId ?? id,
-    ready: event !== null && draftEvent === null && routeEvent.replacementEventId === null,
+    // issue #3827 — an RSVP is recorded by its own dashboard after the hand-over.
+    ready: event !== null && event.event_type !== "rsvp" && draftEvent === null && routeEvent.replacementEventId === null,
     title: event?.name, coverUrl: event?.coverMediaUrl,
     coverPosterUrl: event?.coverMediaPosterUrl, coverType: event?.coverMediaType,
     status: event?.status,
