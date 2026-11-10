@@ -50,12 +50,24 @@ export const ticketLinkCover = (
 export const ticketLinkAsksForDates = (resolved: TicketLinkResolve): boolean =>
   (resolved.dates?.length ?? 0) > 0;
 
+/**
+ * The dates the guest has chosen. issue #3281: when a cancellation leaves the
+ * link with one date, the day chooser hides (it never draws a single row), so
+ * that date is the guest's choice rather than a selection they cannot make.
+ */
+const chosenDateIds = (
+  resolved: TicketLinkResolve,
+  selectedDateIds: readonly string[],
+): readonly string[] =>
+  resolved.dates?.length === 1 ? [resolved.dates[0].id] : selectedDateIds;
+
 /** True once the guest has chosen enough to continue. */
 export const ticketLinkDatesReady = (
   resolved: TicketLinkResolve,
   selectedDateIds: readonly string[],
 ): boolean =>
-  !ticketLinkAsksForDates(resolved) || resolved.allDaysPass === true || selectedDateIds.length > 0;
+  !ticketLinkAsksForDates(resolved) || resolved.allDaysPass === true ||
+  chosenDateIds(resolved, selectedDateIds).length > 0;
 
 /**
  * The date fields of a guest-list sign-up. An event that does not ask for a
@@ -71,7 +83,9 @@ export const ticketLinkSignupDates = (
   const offered = new Set((resolved.dates ?? []).map((date) => date.id));
   return {
     eventDateId: null,
-    eventDateIds: resolved.allDaysPass === true ? [] : selectedDateIds.filter((id) => offered.has(id)),
+    eventDateIds: resolved.allDaysPass === true
+      ? []
+      : chosenDateIds(resolved, selectedDateIds).filter((id) => offered.has(id)),
   };
 };
 
@@ -89,5 +103,6 @@ export const ticketLinkCheckoutDates = (
   }
   if (resolved.allDaysPass === true) return null;
   const order = (resolved.dates ?? []).map((date) => date.id);
-  return order.filter((id) => selectedDateIds.includes(id));
+  const chosen = chosenDateIds(resolved, selectedDateIds);
+  return order.filter((id) => chosen.includes(id));
 };

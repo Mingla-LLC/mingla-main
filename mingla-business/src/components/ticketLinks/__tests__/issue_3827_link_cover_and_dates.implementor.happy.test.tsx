@@ -19,6 +19,7 @@ import type { TicketLinkResolve } from "../../../services/ticketLinkPublicTypes"
 import {
   ticketLinkCheckoutDates,
   ticketLinkCover,
+  ticketLinkDatesReady,
   ticketLinkSignupDates,
 } from "../../../utils/ticketLinkLandingModel";
 
@@ -278,6 +279,56 @@ describe("#3827 link page", () => {
     expect(signup).toBeDefined();
     expect(signup).toHaveProperty("eventDateId", null);
     expect(signup).not.toHaveProperty("eventDateIds");
+    tree.unmount();
+  });
+});
+
+// issue #3281 (Copilot review on #4360) — a cancellation can leave a per-day
+// link with one date. The chooser draws no single row, so that date is the
+// guest's choice: sign-up and checkout must both carry it, not wait forever.
+const oneDateLeft = (kind: "guest_list" | "private_ticket"): TicketLinkResolve => {
+  const resolved = multiDate(kind);
+  return { ...resolved, dates: [resolved.dates![1]] };
+};
+
+describe("#3281 a link left with one date", () => {
+  test("the model treats the only date as chosen", () => {
+    expect(ticketLinkDatesReady(oneDateLeft("guest_list"), [])).toBe(true);
+    expect(ticketLinkSignupDates(oneDateLeft("guest_list"), [])).toEqual({
+      eventDateId: null,
+      eventDateIds: [DAY_TWO],
+    });
+    expect(ticketLinkCheckoutDates(oneDateLeft("private_ticket"), [])).toEqual([DAY_TWO]);
+    // A stale selection of a date no longer offered never leaks through.
+    expect(ticketLinkSignupDates(oneDateLeft("guest_list"), [DAY_ONE])).toEqual({
+      eventDateId: null,
+      eventDateIds: [DAY_TWO],
+    });
+    // Two dates still wait for a choice.
+    expect(ticketLinkDatesReady(multiDate("guest_list"), [])).toBe(false);
+  });
+
+  test("a guest list signs up for the remaining date", async () => {
+    const tree = await renderLanding(oneDateLeft("guest_list"));
+    expect(tree.root.findAll((node) => node.props.accessibilityRole === "checkbox")).toHaveLength(0);
+    await act(async () => {
+      (tree.root.findAllByProps({ accessibilityLabel: "Your details full name" })[0].props.onChangeText as (v: string) => void)("Ada");
+    });
+    await act(async () => {
+      (tree.root.findAllByProps({ accessibilityLabel: "Your details email" })[0].props.onChangeText as (v: string) => void)("ada@example.com");
+    });
+    await press(tree.root.findAll((node) => node.props.label === "Join guest list" && typeof node.props.onPress === "function")[0]);
+    await flush();
+    const signup = mockInvoke.mock.calls.map((call) => call[1].body).find((body) => body.op === "signup");
+    expect(signup).toMatchObject({ eventDateId: null, eventDateIds: [DAY_TWO] });
+    tree.unmount();
+  });
+
+  test("a paid link goes to checkout with the remaining date", async () => {
+    const tree = await renderLanding(oneDateLeft("private_ticket"));
+    await press(tree.root.findAll((node) => node.props.label === "Continue to checkout" && typeof node.props.onPress === "function")[0]);
+    expect(mockPush).toHaveBeenCalledTimes(1);
+    expect(String(mockPush.mock.calls[0][0])).toContain(`eventDateIds=${encodeURIComponent(DAY_TWO)}`);
     tree.unmount();
   });
 });

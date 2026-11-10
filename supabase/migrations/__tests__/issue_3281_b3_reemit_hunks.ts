@@ -253,4 +253,21 @@ export const B3_REEMITS: Reemit[] = [
       },
     ],
   },
+  {
+    fn: "issue_3859_resolve_checkout_attempt",
+    source: "supabase/migrations/20271016003859_issue_3859_checkout_line_authority.sql",
+    target: TARGET,
+    hunks: [
+      {
+        name: "the function was created, so the re-emit replaces it",
+        old: "CREATE FUNCTION public.issue_3859_resolve_checkout_attempt(\n",
+        new: "CREATE OR REPLACE FUNCTION public.issue_3859_resolve_checkout_attempt(\n",
+      },
+      {
+        name: "a retried attempt carries the extras the session priced",
+        old: "    'installmentSchedule', v_session.installment_schedule\n  );\nEND\n",
+        new: "    'installmentSchedule', v_session.installment_schedule,\n    -- issue #3281: a retried attempt (same cart after a PaymentSheet cancel)\n    -- carries the extras the session priced, as the session creator's own\n    -- replay does. Without them the fingerprint is rebuilt with no extras and\n    -- the contract bind refuses the retry.\n    'extras', public.issue_3281_session_extras(v_session.id)->'items',\n    'extrasTotalCents', (public.issue_3281_session_extras(v_session.id)->>'totalCents')::integer\n  );\nEND\n",
+      },
+    ],
+  },
 ];

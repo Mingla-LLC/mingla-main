@@ -56,7 +56,8 @@ BEGIN
       ('public.pg_public_rsvp_by_slug(text,text)', 'fda39914c6e687bd807879314062cecb'),
       ('public.issue_3281_ticket_dates_json(uuid)', '67c1e3e21b73c675247440b2c4fb149d'),
       ('public.pg_ticket_link_resolve(text)', '96901688b6afe3420fc34093a71cab21'),
-      ('public.biz_update_live_rsvp(uuid,jsonb,text)', '675eda660809724ede7cb7ecda48668e')
+      ('public.biz_update_live_rsvp(uuid,jsonb,text)', '675eda660809724ede7cb7ecda48668e'),
+      ('public.issue_3859_resolve_checkout_attempt(uuid,uuid)', '21c989bbbee3baa72ea2828edd5e1e8b')
     ) AS v(sig, expected_md5)
   LOOP
     IF (SELECT md5(p.prosrc) FROM pg_proc p WHERE p.oid = r.sig::regprocedure)
@@ -3252,5 +3253,69 @@ BEGIN
 END;
 $$;
 GRANT EXECUTE ON FUNCTION public.biz_update_live_rsvp(uuid,jsonb,text) TO authenticated;
+
+-- issue_3859_resolve_checkout_attempt: from 20271016003859_issue_3859_checkout_line_authority.sql
+CREATE OR REPLACE FUNCTION public.issue_3859_resolve_checkout_attempt(
+  p_event_id uuid,
+  p_checkout_attempt_id uuid
+) RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth, pg_temp
+AS $function$
+DECLARE
+  v_session public.ticket_checkout_sessions%ROWTYPE;
+  v_items jsonb;
+BEGIN
+  IF p_event_id IS NULL OR p_checkout_attempt_id IS NULL THEN
+    RAISE EXCEPTION 'checkout_attempt_invalid';
+  END IF;
+
+  SELECT * INTO v_session
+    FROM public.ticket_checkout_sessions
+   WHERE event_id = p_event_id
+     AND checkout_attempt_id = p_checkout_attempt_id
+     AND checkout_contract_version = 2;
+  IF NOT FOUND THEN RETURN NULL; END IF;
+
+  SELECT COALESCE(jsonb_agg(jsonb_build_object(
+    'ticketTypeId', i.ticket_type_id,
+    'ticketName', i.ticket_name_at_purchase,
+    'quantity', i.quantity,
+    'unitPriceCents', i.unit_price_cents,
+    'totalCents', i.total_cents,
+    'paymentPlanChoice', i.payment_plan_choice
+  ) ORDER BY i.created_at, i.id), '[]'::jsonb)
+    INTO v_items
+    FROM public.ticket_checkout_session_items i
+   WHERE i.checkout_session_id = v_session.id;
+
+  RETURN jsonb_build_object(
+    'checkoutSessionId', v_session.id,
+    'eventId', v_session.event_id,
+    'brandId', v_session.brand_id,
+    'status', v_session.status,
+    'totalCents', v_session.total_cents,
+    'subtotalCents', v_session.subtotal_cents,
+    'currency', trim(v_session.currency),
+    'stripeAccountId', v_session.stripe_account_id,
+    'orderId', v_session.order_id,
+    'items', v_items,
+    'lineItems', v_items,
+    'installmentSchedule', v_session.installment_schedule,
+    -- issue #3281: a retried attempt (same cart after a PaymentSheet cancel)
+    -- carries the extras the session priced, as the session creator's own
+    -- replay does. Without them the fingerprint is rebuilt with no extras and
+    -- the contract bind refuses the retry.
+    'extras', public.issue_3281_session_extras(v_session.id)->'items',
+    'extrasTotalCents', (public.issue_3281_session_extras(v_session.id)->>'totalCents')::integer
+  );
+END
+$function$;
+
+REVOKE ALL ON FUNCTION public.issue_3859_resolve_checkout_attempt(uuid, uuid)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_3859_resolve_checkout_attempt(uuid, uuid)
+  TO service_role;
 
 COMMIT;

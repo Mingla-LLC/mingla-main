@@ -10,7 +10,7 @@
 -- MINGLA-INVARIANT: I-3281-LIVE-SAVE-DATES-BEFORE-TICKETS | issue #3281 | business_update_live_event_atomic writes dates before tickets and strips removed dates once after the tickets; a direct business_patch_event_when still strips.
 -- MINGLA-INVARIANT: I-3281-LIVE-RSVP-KEEPS-ITS-DATE | issue #3281 | a live RSVP edit updates its date row in place and never changes its status, cancelled_at or occurrence_key.
 --
--- Red before green: on the bodies before 20280523003281, 19 of the 25 blocks
+-- Red before green: on the bodies before 20280523003281, 20 of the 26 blocks
 -- fail. The six that pass on both sides are regression guards for what must
 -- not change: w1_approve_group, w4_sold_day, w4_direct_strip,
 -- w4_offering_date_past (free to paid), w4_recurring and w5_rsvp_inserts.
@@ -910,5 +910,85 @@ BEGIN
       AND status = 'active') = 1,
     'W5: an RSVP with no date row gets one');
 END $w5_rsvp_inserts$;
+
+DO $w3_retry_carries_extras$
+-- Copilot review on #4360: a native retry after a PaymentSheet cancel resolves
+-- its attempt through issue_3859_resolve_checkout_attempt. That answer must
+-- carry the extras the session priced, as the session creator's own replay
+-- does, or the edge function rebuilds the fingerprint without them and the
+-- contract bind refuses the retry.
+DECLARE
+  v_owner uuid := '32819b30-0000-4000-8400-000000000001';
+  v_brand uuid := '32819b30-0000-4000-8400-000000000002';
+  v_event uuid := '32819b30-0000-4000-8400-000000000003';
+  v_tier uuid := '32819b30-0000-4000-8400-000000000004';
+  v_fri uuid := '32819b30-0000-4000-8400-000000000011';
+  v_dinner uuid := '32819b30-0000-4000-8400-000000000021';
+  v_attempt uuid := '32819b30-0000-4000-8400-000000000031';
+  v_plain_attempt uuid := '32819b30-0000-4000-8400-000000000032';
+  v_lines jsonb;
+  v_quote jsonb;
+  v_created jsonb;
+  v_resolved jsonb;
+BEGIN
+  INSERT INTO auth.users(id,email) VALUES(v_owner,'b3-retry@example.test');
+  INSERT INTO public.creator_accounts(id,email) VALUES(v_owner,'b3-retry@example.test');
+  INSERT INTO public.brands(id,account_id,name,slug,default_currency,payment_provider,payment_country,
+    pricing_region,pricing_currency)
+  VALUES(v_brand,v_owner,'B3 retry brand','b3-retry-brand','USD','stripe','US','US','USD');
+  INSERT INTO public.stripe_connect_accounts(brand_id,stripe_account_id,charges_enabled,payouts_enabled,
+    country,default_currency)
+  VALUES(v_brand,'acct_b3_retry',true,true,'US','usd');
+  INSERT INTO public.events(id,brand_id,created_by,title,slug,event_type,status,visibility,timezone,currency,
+    is_multi_date,multi_date_pricing_mode)
+  VALUES(v_event,v_brand,v_owner,'B3 retry','b3-retry','event','scheduled','public','UTC','USD',true,'per_day');
+  INSERT INTO public.event_dates(id,event_id,start_at,end_at,timezone,is_master,occurrence_key)
+  VALUES(v_fri,v_event,date_trunc('minute',now())+interval '1 day',now()+interval '1 day 2 hours','UTC',true,'fri');
+  INSERT INTO public.ticket_types(id,event_id,name,price_cents,currency,is_free,quantity_total,is_unlimited,
+    min_purchase_qty,max_purchase_qty,available_online,available_in_person)
+  VALUES(v_tier,v_event,'Entry',1000,'USD',false,100,false,1,10,true,false);
+  INSERT INTO public.ticket_add_ons(id,ticket_type_id,name,price_cents,quantity_total,is_unlimited,
+    max_per_ticket,valid_occurrence_keys)
+  VALUES(v_dinner,v_tier,'Dinner',1500,NULL,true,1,NULL);
+
+  v_lines := jsonb_build_array(jsonb_build_object('ticketTypeId',v_tier,'quantity',1,
+    'addOns',jsonb_build_array(jsonb_build_object('addOnId',v_dinner,'quantity',1))));
+  v_quote := public.issue_3872_ticket_quote(v_event,v_lines,ARRAY[v_fri],NULL,NULL,NULL,'full',NULL,
+    'buyer@example.test','+15555550901',NULL,NULL,false);
+  v_created := public.biz_ticket_checkout_create_session(
+    v_event,NULL,'Buyer','buyer@example.test','+15555550901',false,v_lines,
+    'ticket_checkout:v2:'||v_event::text||':'||v_attempt::text,
+    now()+interval '15 minutes',0,'full',ARRAY[v_fri],NULL,NULL,NULL,NULL,v_quote->>'quoteDigest');
+  UPDATE public.ticket_checkout_sessions
+     SET checkout_attempt_id = v_attempt, checkout_contract_version = 2
+   WHERE id = (v_created->>'checkoutSessionId')::uuid;
+
+  v_resolved := public.issue_3859_resolve_checkout_attempt(v_event, v_attempt);
+  PERFORM pg_temp.b3_assert((v_resolved->>'extrasTotalCents')::integer = 1500
+      AND (v_resolved->>'extrasTotalCents')::integer = (v_created->>'extrasTotalCents')::integer,
+    'W3: a resolved attempt carries the extras total its session priced');
+  PERFORM pg_temp.b3_assert(v_resolved->'extras' = v_created->'extras'
+      AND jsonb_array_length(v_resolved->'extras') = 1,
+    'W3: a resolved attempt lists the same extras as the session replay');
+
+  -- A cart without extras resolves with a zero total and no extras.
+  v_lines := jsonb_build_array(jsonb_build_object('ticketTypeId',v_tier,'quantity',1));
+  v_quote := public.issue_3872_ticket_quote(v_event,v_lines,ARRAY[v_fri],NULL,NULL,NULL,'full',NULL,
+    'plain@example.test','+15555550902',NULL,NULL,false);
+  v_created := public.biz_ticket_checkout_create_session(
+    v_event,NULL,'Plain','plain@example.test','+15555550902',false,v_lines,
+    'ticket_checkout:v2:'||v_event::text||':'||v_plain_attempt::text,
+    now()+interval '15 minutes',0,'full',ARRAY[v_fri],NULL,NULL,NULL,NULL,v_quote->>'quoteDigest');
+  UPDATE public.ticket_checkout_sessions
+     SET checkout_attempt_id = v_plain_attempt, checkout_contract_version = 2
+   WHERE id = (v_created->>'checkoutSessionId')::uuid;
+  v_resolved := public.issue_3859_resolve_checkout_attempt(v_event, v_plain_attempt);
+  PERFORM pg_temp.b3_assert((v_resolved->>'extrasTotalCents')::integer = 0
+      AND jsonb_array_length(v_resolved->'extras') = 0,
+    'W3: an attempt without extras resolves with none');
+  -- An unknown attempt still resolves to nothing.
+  PERFORM pg_temp.b3_assert(public.issue_3859_resolve_checkout_attempt(v_event, gen_random_uuid()) IS NULL,
+    'W3: an unknown attempt still resolves to NULL');
+END $w3_retry_carries_extras$;
 
 ROLLBACK;
