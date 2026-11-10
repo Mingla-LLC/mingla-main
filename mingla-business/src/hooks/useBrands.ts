@@ -518,8 +518,9 @@ export const useUpdateBrand = (): UseUpdateBrandResult => {
         queryClient.setQueryData(brandKeys.list(accountId), context.listSnap);
       }
       // #4334 — a pin save writes in two steps; if the second fails the first
-      // has saved, so re-read the brands rather than keep the restored snapshot.
-      void queryClient.invalidateQueries({ queryKey: brandKeys.all });
+      // has saved, so re-read this brand rather than keep the restored snapshot
+      // (the list is corrected by the next save or list read; boot payload).
+      void queryClient.invalidateQueries({ queryKey: brandKeys.detail(brandId) });
     },
     onSuccess: (serverBrand, { brandId, accountId }) => {
       queryClient.setQueryData<Brand>(brandKeys.detail(brandId), serverBrand);

@@ -159,13 +159,15 @@ async function resolveRevision(
   );
 }
 
-// #4334 — the trip commands, through the pin-keeping twin when a patch sends
-// a place id (tripPinCommands, loaded on demand).
-const tripRpcKeepingPins = async (
-  name: "biz_apply_trip_draft_graph" | "biz_update_trip_live_command",
+// #4334 — a patch that sends a trip pin's place id goes through the command's
+// pin-keeping twin (tripPinCommands, loaded on demand); null means "call the
+// plain command", which each caller below does itself.
+type TripRpcResult = { data: unknown; error: { code?: string; message: string } | null };
+const repickTripRpc = async (
+  name: "apply_trip_draft_graph" | "update_trip_live_command",
   args: Record<string, unknown>,
-): Promise<{ data: unknown; error: { code?: string; message: string } | null }> =>
-  (await import("./tripPinCommands")).tripRpcKeepingPins(name, args);
+): Promise<TripRpcResult | null> =>
+  (await import("./tripPinCommands")).repickTripRpc(name, args);
 
 /**
  * Apply one atomic patch to a DRAFT trip graph through the canonical command.
@@ -176,12 +178,15 @@ export async function applyTripDraftGraph(
   patch: Record<string, unknown>,
   options?: TripCommandOptions,
 ): Promise<Record<string, unknown>> {
-  const { data, error } = await tripRpcKeepingPins("biz_apply_trip_draft_graph", {
+  const args = {
     p_event_id: eventId,
     p_patch: patch,
     p_expected_updated_at: await resolveRevision(eventId, options),
     p_operation_id: options?.operationId ?? newTripOperationId(),
-  });
+  };
+  const { data, error } =
+    (await repickTripRpc("apply_trip_draft_graph", args)) ??
+    (await supabase.rpc("biz_apply_trip_draft_graph", args));
   if (error) throw error;
   if (data === null) {
     throw new Error("applyTripDraftGraph: RPC returned null");
@@ -1852,13 +1857,16 @@ export async function updateLiveTripFields(
   // on web, iOS and Android at once — see the #1971 QA record). What it adds is
   // compare-and-swap, an exactly-once receipt, and deposit/instalment bounds
   // checked before delegation.
-  const { data, error } = await tripRpcKeepingPins("biz_update_trip_live_command", {
+  const args = {
     p_event_id: eventId,
     p_patch: patch as Record<string, unknown>,
     p_reason: reason,
     p_expected_updated_at: await resolveRevision(eventId, options),
     p_operation_id: options?.operationId ?? newTripOperationId(),
-  });
+  };
+  const { data, error } =
+    (await repickTripRpc("update_trip_live_command", args)) ??
+    (await supabase.rpc("biz_update_trip_live_command", args));
 
   if (error !== null) {
     // Server-side exceptions (auth/type/permission) come back as SQL errors.

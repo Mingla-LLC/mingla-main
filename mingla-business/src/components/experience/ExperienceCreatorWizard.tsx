@@ -1670,7 +1670,7 @@ export const ExperienceCreatorWizard: React.FC<
         p_payload: buildPayload(true),
         p_reason: guard.trimmedReason,
       };
-      const repick = await supabase.rpc("biz_update_live_experience_repick", liveArgs);
+      const repick = await supabase.rpc("biz_repick_update_live_experience", liveArgs);
       const { data, error } =
         repick.error?.code === "PGRST202"
           ? await supabase.rpc("biz_update_live_experience", liveArgs)

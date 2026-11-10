@@ -91,7 +91,7 @@ describe("A-3 the trip twin never double-applies", () => {
   test("a PT409 from the draft twin is surfaced and the plain command is not retried", async () => {
     mockRpc.mockResolvedValue({ data: null, error: { code: "PT409", message: "trip_revision_conflict" } });
     await expect(applyTripDraftGraph(EVENT, pinPatch, opts)).rejects.toBeTruthy();
-    expect(mockRpc.mock.calls.map(([n]) => n)).toEqual(["biz_apply_trip_draft_graph_repick"]);
+    expect(mockRpc.mock.calls.map(([n]) => n)).toEqual(["biz_repick_apply_trip_draft_graph"]);
   });
 
   test("a permission error from the live twin is surfaced and the plain command is not retried", async () => {
@@ -104,7 +104,7 @@ describe("A-3 the trip twin never double-applies", () => {
         opts,
       ),
     ).rejects.toBeTruthy();
-    expect(mockRpc.mock.calls.map(([n]) => n)).toEqual(["biz_update_trip_live_command_repick"]);
+    expect(mockRpc.mock.calls.map(([n]) => n)).toEqual(["biz_repick_update_trip_live_command"]);
   });
 });
 
@@ -142,7 +142,7 @@ describe("R-1 googlePlaceIdOrNull keeps exactly what places_is_google_place_id a
   const sqlRule = (id: string): boolean =>
     id.length >= 10 && id.length <= 1024 && /^[A-Za-z0-9_-]+$/.test(id) && !/^dXJuOm/.test(id);
 
-  test("boundaries, alphabet and the Mapbox urn prefix agree with the server", () => {
+  test("boundaries, alphabet and the retired-vendor urn prefix agree with the server", () => {
     const cases = [
       "a".repeat(9), "a".repeat(10), "a".repeat(1024), "a".repeat(1025),
       "ChIJ0Wq9hS_1OxARsFOw5qkW6Y0", "ChIJ-abc_DEF-123", "ChIJ.abcdefgh", "ChIJ abcdefgh",

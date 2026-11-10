@@ -3,7 +3,7 @@
 -- and experience stops; a pin moved with no id still clears; an assertion
 -- never reaches another pin or row.
 --
--- MINGLA-INVARIANT: I-4334-PIN-ASSERTION-IS-KEYED | issue #4334 | A trip pin or experience stop keeps its place id across a coordinate move only when the writer asserted that id for that one pin of that one row in the same command (biz_*_repick); any other move clears it, and the assertion is gone when the command returns.
+-- MINGLA-INVARIANT: I-4334-PIN-ASSERTION-IS-KEYED | issue #4334 | A trip pin or experience stop keeps its place id across a coordinate move only when the writer asserted that id for that one pin of that one row in the same command (biz_repick_*); any other move clears it, and the assertion is gone when the command returns.
 --
 --   B-1 brand: biz_update_brand_pin with the same id onto refined coordinates keeps the id
 --   B-2 brand: a moved pin with no id stores NULL; a cleared pin stores no id
@@ -124,15 +124,15 @@ BEGIN
   PERFORM pg_temp.t4334f_assert(
     NOT has_function_privilege('anon', 'public.biz_update_brand_pin(uuid,double precision,double precision,text)', 'EXECUTE')
     AND has_function_privilege('authenticated', 'public.biz_update_brand_pin(uuid,double precision,double precision,text)', 'EXECUTE')
-    AND NOT has_function_privilege('anon', 'public.biz_apply_trip_draft_graph_repick(uuid,jsonb,timestamp with time zone,uuid)', 'EXECUTE')
-    AND NOT has_function_privilege('anon', 'public.biz_update_trip_live_command_repick(uuid,jsonb,text,timestamp with time zone,uuid)', 'EXECUTE')
-    AND NOT has_function_privilege('anon', 'public.biz_update_live_experience_repick(uuid,jsonb,text)', 'EXECUTE')
+    AND NOT has_function_privilege('anon', 'public.biz_repick_apply_trip_draft_graph(uuid,jsonb,timestamp with time zone,uuid)', 'EXECUTE')
+    AND NOT has_function_privilege('anon', 'public.biz_repick_update_trip_live_command(uuid,jsonb,text,timestamp with time zone,uuid)', 'EXECUTE')
+    AND NOT has_function_privilege('anon', 'public.biz_repick_update_live_experience(uuid,jsonb,text)', 'EXECUTE')
     AND NOT has_function_privilege('authenticated', 'public.places_confirm_pin(text,text)', 'EXECUTE')
     AND NOT has_function_privilege('authenticated', 'public.places_confirm_trip_pins(uuid,jsonb)', 'EXECUTE')
     AND NOT has_function_privilege('authenticated', 'public.places_confirm_experience_pins(uuid,jsonb)', 'EXECUTE')
     AND (SELECT prosecdef FROM pg_proc WHERE oid = 'public.biz_update_brand_pin(uuid,double precision,double precision,text)'::regprocedure) = false
-    AND (SELECT bool_and(prosecdef) FROM pg_proc WHERE proname IN ('biz_apply_trip_draft_graph_repick',
-         'biz_update_trip_live_command_repick', 'biz_update_live_experience_repick')),
+    AND (SELECT bool_and(prosecdef) FROM pg_proc WHERE proname IN ('biz_repick_apply_trip_draft_graph',
+         'biz_repick_update_trip_live_command', 'biz_repick_update_live_experience')),
     'B-3c grants: no anon EXECUTE; the assertion writers are not callable by authenticated');
 END $b3c$;
 
@@ -175,7 +175,7 @@ BEGIN
     'T-0 fixture: the first pick stores both ids');
 
   -- T-1 the same ids onto refined coordinates, through _repick
-  PERFORM public.biz_apply_trip_draft_graph_repick(v_a,
+  PERFORM public.biz_repick_apply_trip_draft_graph(v_a,
     jsonb_build_object('event', jsonb_build_object('business_trip', jsonb_build_object(
       'departurePlaceId', v_id1, 'departureLat', 6.43251, 'departureLng', 3.42361,
       'destinationPlaceId', v_id2, 'destinationLat', 9.07651, 'destinationLng', 7.49881))),
@@ -186,7 +186,7 @@ BEGIN
     AND v_bt ->> 'destinationGeoRefreshState' = 'ok',
     'T-1 trip draft: the same ids onto refined coordinates keep both pins'' ids');
   PERFORM pg_temp.t4334f_assert(COALESCE(current_setting('mingla.place_pins_confirmed', true), '') = '',
-    'K-1a the record is empty after biz_apply_trip_draft_graph_repick returns');
+    'K-1a the record is empty after biz_repick_apply_trip_draft_graph returns');
 
   -- T-2 the plain command (installed apps) still clears on a move
   PERFORM public.biz_apply_trip_draft_graph(v_a,
@@ -198,11 +198,11 @@ BEGIN
 
   -- T-3 _repick: departure moves with NO id in the patch (stale stored id);
   -- destination re-sent with its id onto refined coordinates.
-  PERFORM public.biz_apply_trip_draft_graph_repick(v_a,
+  PERFORM public.biz_repick_apply_trip_draft_graph(v_a,
     jsonb_build_object('event', jsonb_build_object('business_trip', jsonb_build_object(
       'departurePlaceId', v_id1, 'departureLat', 6.43, 'departureLng', 3.42))),
     (SELECT updated_at FROM public.events WHERE id = v_a), gen_random_uuid());   -- re-pick restores the id
-  PERFORM public.biz_apply_trip_draft_graph_repick(v_a,
+  PERFORM public.biz_repick_apply_trip_draft_graph(v_a,
     jsonb_build_object('event', jsonb_build_object('business_trip', jsonb_build_object(
       'departureLat', 51.50, 'departureLng', -0.12,
       'destinationPlaceId', v_id2, 'destinationLat', 9.07652, 'destinationLng', 7.49882))),
@@ -247,7 +247,7 @@ DECLARE
   v_result jsonb;
   v_bt jsonb;
 BEGIN
-  v_result := public.biz_update_trip_live_command_repick(v_b,
+  v_result := public.biz_repick_update_trip_live_command(v_b,
     jsonb_build_object('theme', jsonb_build_object('business_trip', jsonb_build_object(
       'departurePlaceId', v_id1, 'departureLat', 6.43251, 'departureLng', 3.42361))),
     'Refined the departure pin onto the same place',
@@ -257,7 +257,7 @@ BEGIN
     AND v_bt ->> 'departurePlaceId' = v_id1 AND (v_bt ->> 'departureLat')::numeric = 6.43251,
     'T-4 trip live: the same departure id onto refined coordinates keeps the id');
   PERFORM pg_temp.t4334f_assert(COALESCE(current_setting('mingla.place_pins_confirmed', true), '') = '',
-    'K-1c the record is empty after biz_update_trip_live_command_repick returns');
+    'K-1c the record is empty after biz_repick_update_trip_live_command returns');
 END $t4$;
 
 -- ── X: experience stops ──────────────────────────────────────────────────────
@@ -328,7 +328,7 @@ DECLARE
 BEGIN
   -- X-1 per-stop: both stops re-sent with their ids onto refined coordinates
   v_e := pg_temp.t4334f_experience('per_stop');
-  v_result := public.biz_update_live_experience_repick(v_e, pg_temp.t4334f_payload('per_stop',
+  v_result := public.biz_repick_update_live_experience(v_e, pg_temp.t4334f_payload('per_stop',
       jsonb_build_object('place_id', v_id1, 'lat', 40.71001, 'lng', -73.95001),
       jsonb_build_object('place_id', v_id2, 'lat', 40.72001, 'lng', -73.96001)),
     'Refined both stop pins onto the same places');
@@ -339,7 +339,7 @@ BEGIN
     AND v_s1.place_id = v_id2 AND v_s1.lat = 40.72001,
     'X-1 experience live: the same stop ids onto refined coordinates keep them');
   PERFORM pg_temp.t4334f_assert(COALESCE(current_setting('mingla.place_pins_confirmed', true), '') = '',
-    'K-1d the record is empty after biz_update_live_experience_repick returns');
+    'K-1d the record is empty after biz_repick_update_live_experience returns');
 
   -- X-2 the plain owner (installed apps) still clears on a move
   v_result := public.biz_update_live_experience(v_e, pg_temp.t4334f_payload('per_stop',
@@ -361,7 +361,7 @@ BEGIN
 
   -- X-3 single-location mode: every stop takes stop 0's place
   v_e := pg_temp.t4334f_experience('single');
-  v_result := public.biz_update_live_experience_repick(v_e, pg_temp.t4334f_payload('single',
+  v_result := public.biz_repick_update_live_experience(v_e, pg_temp.t4334f_payload('single',
       jsonb_build_object('place_id', v_id1, 'lat', 40.71003, 'lng', -73.95003),
       jsonb_build_object('place_id', v_id2, 'lat', 40.9, 'lng', -73.9)),
     'Refined the shared address onto the same place');

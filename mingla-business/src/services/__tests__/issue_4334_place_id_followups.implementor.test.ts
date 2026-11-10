@@ -10,12 +10,12 @@
  *       table write
  *   F-3 trips: a patch that sends a place id goes through the _repick twin
  *       (falling back on PGRST202); any other patch keeps the plain command
- *   F-4 reads: the event detail and list probes carry the saved place id and
+ *   F-4 reads: the event detail probe carries the saved place id and
  *       precision onto the LiveEvent; the venue host read selects and maps
  *       the venue's place id
  *
  * Fails on revert: remove the pin trio in brandPatch (F-1), the RPC branch in
- * updateBrand (F-2), tripRpcKeepingPins (F-3), or withSavedPin / the venue
+ * updateBrand (F-2), tripRpcKeepingPins (F-3), or the by-id probe columns / the venue
  * column (F-4).
  */
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";
@@ -186,7 +186,7 @@ describe("F-2b rework: the pin save never nulls a coordinate or fails on a forei
     ) as string;
     const onError = src.slice(src.indexOf("onError: (_error, { brandId, accountId }, context)"));
     const body = onError.slice(0, onError.indexOf("onSuccess:"));
-    expect(body).toContain("queryClient.invalidateQueries({ queryKey: brandKeys.all })");
+    expect(body).toContain("queryClient.invalidateQueries({ queryKey: brandKeys.detail(brandId) })");
   });
 });
 
@@ -205,10 +205,10 @@ describe("F-3 trip commands keep re-picked pins", () => {
 
   const opts = { expectedUpdatedAt: "2026-11-09T10:00:00Z", operationId: "op-1" };
 
-  test("a pin patch goes through biz_apply_trip_draft_graph_repick", async () => {
+  test("a pin patch goes through biz_repick_apply_trip_draft_graph", async () => {
     mockRpc.mockResolvedValue({ data: { revision: "r2" }, error: null });
     await applyTripDraftGraph(EVENT, pinPatch, opts);
-    expect(mockRpc.mock.calls.map(([n]) => n)).toEqual(["biz_apply_trip_draft_graph_repick"]);
+    expect(mockRpc.mock.calls.map(([n]) => n)).toEqual(["biz_repick_apply_trip_draft_graph"]);
   });
 
   test("before the migration (PGRST202) it falls back to the plain command, same arguments", async () => {
@@ -217,7 +217,7 @@ describe("F-3 trip commands keep re-picked pins", () => {
       .mockResolvedValueOnce({ data: { revision: "r2" }, error: null });
     await applyTripDraftGraph(EVENT, pinPatch, opts);
     expect(mockRpc.mock.calls.map(([n]) => n)).toEqual([
-      "biz_apply_trip_draft_graph_repick",
+      "biz_repick_apply_trip_draft_graph",
       "biz_apply_trip_draft_graph",
     ]);
     expect(mockRpc.mock.calls[1][1]).toEqual(mockRpc.mock.calls[0][1]);
@@ -268,18 +268,11 @@ describe("F-4 the reads carry the saved pin", () => {
     expect(detail?.event.coordinatePrecision).toBe("exact");
   });
 
-  test("the list probe does the same; a pin with no id or precision reads as none", async () => {
+  test("the list probe is unchanged (the editors open from the by-id read)", async () => {
     const selects: string[] = [];
-    mockFrom.mockImplementation(tables([
-      { ...probe, coordinate_precision: "approximate" },
-      { ...probe, id: "e-2", location_provider_place_id: null, coordinate_precision: null },
-    ], selects));
-    const events = await fetchBusinessEventsForBrand("brand-1");
-    expect(selects[0]).toContain("location_provider_place_id, coordinate_precision");
-    expect(events[0].locationProviderPlaceId).toBe(ID);
-    expect(events[0].coordinatePrecision).toBe("approximate");
-    expect(events[1].locationProviderPlaceId).toBeNull();
-    expect(events[1].coordinatePrecision).toBeNull();
+    mockFrom.mockImplementation(tables([probe], selects));
+    await fetchBusinessEventsForBrand("brand-1");
+    expect(selects[0]).not.toContain("location_provider_place_id");
   });
 
   test("the venue host read selects and maps the venue's place id", () => {

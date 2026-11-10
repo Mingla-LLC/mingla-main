@@ -171,21 +171,21 @@ DECLARE
   v_result jsonb;
 BEGIN
   BEGIN
-    PERFORM public.biz_apply_trip_draft_graph_repick(v_draft,
+    PERFORM public.biz_repick_apply_trip_draft_graph(v_draft,
       jsonb_build_object('event', jsonb_build_object('business_trip', jsonb_build_object(
         'departurePlaceId', v_id1, 'departureLat', 1.0, 'departureLng', 1.0))),
       now(), gen_random_uuid());
   EXCEPTION WHEN OTHERS THEN IF SQLERRM = 'insufficient_event_permission' THEN v_refused := v_refused + 1; END IF;
   END;
   BEGIN
-    PERFORM public.biz_update_trip_live_command_repick(v_live,
+    PERFORM public.biz_repick_update_trip_live_command(v_live,
       jsonb_build_object('theme', jsonb_build_object('business_trip', jsonb_build_object(
         'departurePlaceId', v_id1, 'departureLat', 1.0, 'departureLng', 1.0))),
       'A stranger moving someone else''s pin', now(), gen_random_uuid());
   EXCEPTION WHEN OTHERS THEN IF SQLERRM = 'insufficient_event_permission' THEN v_refused := v_refused + 1; END IF;
   END;
   BEGIN
-    v_result := public.biz_update_live_experience_repick(v_exp, pg_temp.t4334x_payload(1.0),
+    v_result := public.biz_repick_update_live_experience(v_exp, pg_temp.t4334x_payload(1.0),
       'A stranger moving someone else''s stop');
     -- reaching here (no raise) is a breach
     RAISE NOTICE 'unexpected result %', v_result;
@@ -217,7 +217,7 @@ BEGIN
   -- S-2: a stale revision raises PT409 inside the wrapped owner, after the
   -- wrapper has recorded the assertion.
   BEGIN
-    PERFORM public.biz_apply_trip_draft_graph_repick(v_draft,
+    PERFORM public.biz_repick_apply_trip_draft_graph(v_draft,
       jsonb_build_object('event', jsonb_build_object('business_trip', jsonb_build_object(
         'departurePlaceId', v_id1, 'departureLat', 6.43251, 'departureLng', 3.42361))),
       '2000-01-01T00:00:00Z'::timestamptz, gen_random_uuid());
@@ -235,11 +235,11 @@ BEGIN
 
   -- Control: the same move through _repick (fresh revision) keeps the id, so
   -- S-2c is not passing vacuously.
-  PERFORM public.biz_apply_trip_draft_graph_repick(v_draft,
+  PERFORM public.biz_repick_apply_trip_draft_graph(v_draft,
     jsonb_build_object('event', jsonb_build_object('business_trip', jsonb_build_object(
       'departurePlaceId', v_id1, 'departureLat', 6.43, 'departureLng', 3.42))),
     (SELECT updated_at FROM public.events WHERE id = v_draft), gen_random_uuid());
-  PERFORM public.biz_apply_trip_draft_graph_repick(v_draft,
+  PERFORM public.biz_repick_apply_trip_draft_graph(v_draft,
     jsonb_build_object('event', jsonb_build_object('business_trip', jsonb_build_object(
       'departurePlaceId', v_id1, 'departureLat', 6.43253, 'departureLng', 3.42363))),
     (SELECT updated_at FROM public.events WHERE id = v_draft), gen_random_uuid());
@@ -247,7 +247,7 @@ BEGIN
     'S-2d control: the asserted re-pick keeps the id');
 
   -- S-3: the owner refuses without raising (an edit reason under 10 chars).
-  v_result := public.biz_update_live_experience_repick(v_exp, pg_temp.t4334x_payload(40.71001), 'short');
+  v_result := public.biz_repick_update_live_experience(v_exp, pg_temp.t4334x_payload(40.71001), 'short');
   PERFORM pg_temp.t4334x_assert(NOT COALESCE((v_result ->> 'ok')::boolean, true)
     AND pg_temp.t4334x_pins() = '', 'S-3a an ok:false refusal leaves no assertion');
   UPDATE public.experience_stops SET lat = 40.71002 WHERE event_id = v_exp AND stop_order = 0;
@@ -262,7 +262,7 @@ DECLARE
   v_id1 text := (SELECT v FROM t4334x WHERE k = 'id1');
 BEGIN
   PERFORM set_config('mingla.place_pins_confirmed', '', true);
-  PERFORM public.places_confirm_pin('trip:x:departure', 'dXJuOm1ieHBsYzpBYkNkRWZHaA');   -- Mapbox urn
+  PERFORM public.places_confirm_pin('trip:x:departure', 'dXJuOm1ieHBsYzpBYkNkRWZHaA');   -- retired-vendor urn
   PERFORM public.places_confirm_pin('trip:x:departure', 'short');
   PERFORM public.places_confirm_pin('', v_id1);
   PERFORM public.places_confirm_pin(NULL, v_id1);
@@ -300,11 +300,11 @@ DO $s5b$
 DECLARE
   v_denied int := 0;
 BEGIN
-  BEGIN PERFORM public.biz_apply_trip_draft_graph_repick(gen_random_uuid(), '{}'::jsonb, now(), gen_random_uuid());
+  BEGIN PERFORM public.biz_repick_apply_trip_draft_graph(gen_random_uuid(), '{}'::jsonb, now(), gen_random_uuid());
   EXCEPTION WHEN insufficient_privilege THEN v_denied := v_denied + 1; END;
-  BEGIN PERFORM public.biz_update_trip_live_command_repick(gen_random_uuid(), '{}'::jsonb, 'reason text', now(), gen_random_uuid());
+  BEGIN PERFORM public.biz_repick_update_trip_live_command(gen_random_uuid(), '{}'::jsonb, 'reason text', now(), gen_random_uuid());
   EXCEPTION WHEN insufficient_privilege THEN v_denied := v_denied + 1; END;
-  BEGIN PERFORM public.biz_update_live_experience_repick(gen_random_uuid(), '{}'::jsonb, 'reason text');
+  BEGIN PERFORM public.biz_repick_update_live_experience(gen_random_uuid(), '{}'::jsonb, 'reason text');
   EXCEPTION WHEN insufficient_privilege THEN v_denied := v_denied + 1; END;
   BEGIN PERFORM public.biz_update_brand_pin(gen_random_uuid(), 1, 1, NULL);
   EXCEPTION WHEN insufficient_privilege THEN v_denied := v_denied + 1; END;
@@ -318,8 +318,8 @@ BEGIN
      WHERE p.pronamespace = 'public'::regnamespace
        AND p.proname IN ('places_confirm_pin', 'places_pin_confirmed', 'places_confirm_trip_pins',
                          'places_confirm_experience_pins', 'tg_4334_events_place_stamp',
-                         'tg_4334_experience_stops_place_stamp', 'biz_apply_trip_draft_graph_repick',
-                         'biz_update_trip_live_command_repick', 'biz_update_live_experience_repick',
+                         'tg_4334_experience_stops_place_stamp', 'biz_repick_apply_trip_draft_graph',
+                         'biz_repick_update_trip_live_command', 'biz_repick_update_live_experience',
                          'biz_update_brand_pin')
        AND NOT EXISTS (SELECT 1 FROM unnest(COALESCE(p.proconfig, '{}')) c WHERE c LIKE 'search_path=%')),
     'S-5c every new or replaced function pins search_path');

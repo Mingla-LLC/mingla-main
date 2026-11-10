@@ -498,7 +498,7 @@ function buildLiveTripPatch(
   }
   // #4334 — a moved pin always carries its place id (null for none), so the
   // same place re-picked onto refined coordinates reaches the pin-keeping
-  // command (biz_update_trip_live_command_repick) and keeps its id; a pin
+  // command (biz_repick_update_trip_live_command) and keeps its id; a pin
   // moved with no id sends null and the server clears the old one.
   if ("destinationLat" in bt || "destinationLng" in bt) {
     bt.destinationPlaceId = state.destinationPlaceId;

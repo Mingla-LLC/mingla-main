@@ -9,7 +9,7 @@
  * network boundary is inspected.
  *
  *   L-1 a same-place refine (only Lat/Lng changed) sends the side's place id,
- *       so Save calls biz_update_trip_live_command_repick
+ *       so Save calls biz_repick_update_trip_live_command
  *   L-2 a pin moved with no place id sends null (the plain command, which
  *       clears the old id)
  *   L-3 an untouched pin sends no pin keys at all
@@ -141,7 +141,7 @@ describe("#4334 — a re-picked live trip pin keeps its place id", () => {
       departurePlaceId: PLACE, departureLat: 51.50071, departureLng: -0.12462,
     }));
     expect(bt).not.toHaveProperty("destinationPlaceId");
-    expect(await save(buildLiveTripPatch(trip, state).patch)).toEqual(["biz_update_trip_live_command_repick"]);
+    expect(await save(buildLiveTripPatch(trip, state).patch)).toEqual(["biz_repick_update_trip_live_command"]);
   });
 
   test("L-2 a pin moved with no place id sends null and keeps the plain command", async () => {

@@ -607,7 +607,7 @@ describe("XL — experience live-edit wizard", () => {
     expect(rpcNames()).toEqual([
       "business_patch_offering_refund_policy",
       // #4334 — the live write goes through the twin that keeps re-picked stop ids.
-      "biz_update_live_experience_repick",
+      "biz_repick_update_live_experience",
     ]);
     expect((mockRpc.mock.calls[1][1] as { p_reason: string }).p_reason).toBe(REASON);
     await unmount(tree);
@@ -617,14 +617,14 @@ describe("XL — experience live-edit wizard", () => {
     mockRpc.mockImplementation(async (name) =>
       name === "business_patch_offering_refund_policy"
         ? { data: { ok: true, refundPolicy: EVENT_FLEXIBLE_POLICY, changed: true }, error: null }
-        : name === "biz_update_live_experience_repick"
+        : name === "biz_repick_update_live_experience"
           ? { data: null, error: { code: "PGRST202", message: "Could not find the function" } }
           : { data: { ok: true, event: { id: "exp-live" } }, error: null },
     );
     const tree = await openLive("refund-policy-chip-flexible");
     expect(rpcNames()).toEqual([
       "business_patch_offering_refund_policy",
-      "biz_update_live_experience_repick",
+      "biz_repick_update_live_experience",
       "biz_update_live_experience",
     ]);
     expect(mockRpc.mock.calls[2][1]).toEqual(mockRpc.mock.calls[1][1]);
