@@ -5,7 +5,7 @@
 // filters never hide them. The list order is the order on the page, saved as
 // an explicit position by admin_links_strips_reorder.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowRight, ArrowUp, GripVertical, MapPin, Pencil, Pin, Plus } from "lucide-react";
+import { ArrowDown, ArrowRight, ArrowUp, ExternalLink, GripVertical, MapPin, Pencil, Pin, Plus } from "lucide-react";
 import { Button } from "../ui/Button";
 import { AlertCard, SectionCard } from "../ui/Card";
 import { LoadError } from "../ui/LoadError";
@@ -18,6 +18,10 @@ import {
   LINKS_REFRESH_FALLBACK, deleteLinksStrip, linksStripsErrorField, linksStripsErrorMessage, listLinksStrips,
   listPublishedBlogPostsForLinks, refreshLinksPage, reorderLinksStrips, saveLinksStrip,
 } from "../../services/linksStripsService";
+
+// Seth (10 Nov 2026, toward #4339): staff open the live page straight from
+// Support › Links page, to check a strip after saving it.
+const LINKS_PAGE_URL = "https://usemingla.com/links";
 
 const FIELD = "h-10 w-full rounded-lg border bg-[var(--color-background-primary)] px-3 text-sm text-[var(--color-text-primary)] outline-none transition-all duration-150 focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)]";
 const FIELD_OK = "border-[var(--gray-300)]";
@@ -403,7 +407,22 @@ export function LinksPagePanel() {
         </form>
       </SectionCard>
 
-      <SectionCard title="Custom strips" subtitle={loading ? undefined : `${strips.length} on the page`}>
+      <SectionCard
+        title="Custom strips"
+        subtitle={loading ? undefined : `${strips.length} on the page`}
+        action={(
+          <a
+            href={LINKS_PAGE_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            data-links-open-page
+            className="inline-flex items-center gap-1.5 text-sm font-semibold text-[var(--color-brand-700)] underline"
+          >
+            Open usemingla.com/links
+            <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+          </a>
+        )}
+      >
         <p className="mb-4 text-sm text-[var(--color-text-secondary)]">
           Drag a strip, or use the arrows, to set the order. The top of this list shows first on the page.
         </p>

@@ -43,9 +43,9 @@ import { publicNoindexMetadata } from '@/lib/search/metadata'
 import { linksSans, linksMono, linksSerif } from './fonts'
 
 export const metadata = publicNoindexMetadata('/links', {
-  title: 'Get Mingla',
+  title: 'Mingla · What’s on this week',
   description:
-    'Mingla is the experiences app for date nights, things to do, and your city’s hidden gems. Get the app, or if you run a venue, event, or trip, get started on the web.',
+    'What’s on this week in your Mingla city: events, trips and experiences, each a tap away. Get Mingla to go, or Mingla Host to put on your own.',
 })
 
 const CITY_SLUG = /^[a-z0-9-]{2,60}$/

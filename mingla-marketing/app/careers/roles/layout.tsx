@@ -16,14 +16,11 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { CareersHeader } from '../_components/careers-header'
+import { LINKS_SOCIALS } from '@/lib/links-config'
 
-const SOCIAL_LINKS = [
-  { href: 'https://www.instagram.com/usemingla', label: 'Instagram' },
-  { href: 'https://www.tiktok.com/@usemingla', label: 'TikTok' },
-  { href: 'https://x.com/usemingla', label: 'X' },
-  { href: 'https://www.facebook.com/usemingla', label: 'Facebook' },
-  { href: 'https://www.threads.net/@usemingla', label: 'Threads' },
-]
+// The approved @usemingla set, the same list /links shows (lib/links-config.ts).
+// X and every @minglahost account are retired (#4318 feedback 16, #4339).
+const SOCIAL_LINKS = LINKS_SOCIALS.map(({ href, label }) => ({ href, label }))
 
 export default function CareersRolesLayout({ children }: { children: React.ReactNode }) {
   const year = new Date().getFullYear()

@@ -967,6 +967,9 @@
       "capability_key": "staff-email",
       "paths": [
         "mingla-admin/src/components/email/EmailComposer.jsx",
+        "mingla-marketing/public/brand/email/social-snapchat.png",
+        "mingla-marketing/public/brand/email/social-youtube.png",
+        "mingla-marketing/public/signature.html",
         "mingla-admin/src/lib/emailAudience.js",
         "mingla-admin/src/lib/emailDrafts.js",
         "mingla-admin/src/pages/EmailPage.jsx",
@@ -2439,6 +2442,7 @@
         "mingla-marketing/app/fonts/SOURCES.json",
         "mingla-marketing/app/links/fonts.ts",
         "mingla-marketing/app/links/page.tsx",
+        "mingla-marketing/components/cutout/schema.tsx",
         "mingla-marketing/components/marketing/links-experience.module.css",
         "mingla-marketing/components/marketing/links-experience.tsx",
         "mingla-marketing/lib/cta-destination.ts",
