@@ -1,6 +1,10 @@
 import { describe, expect, test } from "@jest/globals";
 
-import type { MultiDateEntry, TicketStub } from "../../store/draftEventStore";
+import type {
+  MultiDateEntry,
+  TicketExtraStub,
+  TicketStub,
+} from "../../store/draftEventStore";
 import {
   busiestDaySold,
   coverageCaution,
@@ -18,6 +22,7 @@ import {
   priceHelper,
   tapValidDay,
 } from "../ticketDayScopeCopy";
+import { validateTicketExtra } from "../ticketExtras";
 
 const entry = (id: string, date: string): MultiDateEntry => ({
   id,
@@ -114,6 +119,37 @@ describe("issue #3281 date deletion", () => {
     expect(next[2].validDayIds).toBeUndefined();
   });
 
+  test("a deleted date also leaves every extra's list; an emptied extra stays [] (refused), never every date", () => {
+    const extra = (id: string, validDayIds: string[] | null): TicketExtraStub => ({
+      id,
+      name: id,
+      description: null,
+      priceGbp: 5,
+      isUnlimited: true,
+      capacity: null,
+      maxPerTicket: 1,
+      validDayIds,
+    });
+    const withExtras: TicketStub = {
+      ...ticket("weekend", ["fri", "sat"]),
+      extras: [extra("dinner", ["sat"]), extra("parking", ["fri", "sat"]), extra("tee", null)],
+    };
+    const allDates: TicketStub = { ...ticket("all"), extras: [extra("bus", ["sat", "sun"])] };
+    const unloaded: TicketStub = ticket("unloaded", ["sat"]);
+    const [next, nextAll, nextUnloaded] = ticketsWithoutDay(
+      [withExtras, allDates, unloaded],
+      "sat",
+    );
+    expect(next.extras?.map((x) => x.validDayIds)).toEqual([[], ["fri"], null]);
+    expect(nextAll.validDayIds).toBeUndefined();
+    expect(nextAll.extras?.[0].validDayIds).toEqual(["sun"]);
+    expect(nextUnloaded.extras).toBeUndefined();
+    // The editor refuses the emptied extra before the save reaches the server.
+    expect(validateTicketExtra(next.extras![0], { tierIsFree: false })).toBe(
+      "Choose at least one date for this extra.",
+    );
+  });
+
   test("the dialog names what will break", () => {
     const tickets = [ticket("Saturday GA", ["sat"]), ticket("Weekend", ["fri", "sat"])];
     expect(deleteDateImpact(tickets, "sat")).toBe(
@@ -130,6 +166,17 @@ describe("issue #3281 date mode switches", () => {
       days,
     );
     expect(next.map((t) => t.validDayIds)).toEqual([[], ["fri"], null]);
+  });
+
+  test("new date ids trim extras' lists too, leaving an emptied extra []", () => {
+    const extras: TicketExtraStub[] = [
+      { id: "x1", name: "dinner", description: null, priceGbp: 0, isUnlimited: true, capacity: null, maxPerTicket: 1, validDayIds: ["gone"] },
+      { id: "x2", name: "bus", description: null, priceGbp: 0, isUnlimited: true, capacity: null, maxPerTicket: 1, validDayIds: ["gone", "fri"] },
+    ];
+    const [next] = ticketsOnCurrentDays([{ ...ticket("all", null), extras }], days);
+    expect(next.extras?.map((x) => x.validDayIds)).toEqual([[], ["fri"]]);
+    const [wide] = ticketsOnAllDates([{ ...ticket("sat", ["sat"]), extras }]);
+    expect(wide.extras?.map((x) => x.validDayIds)).toEqual([null, null]);
   });
 
   test("leaving multi-date clears lists the picker could no longer fix", () => {

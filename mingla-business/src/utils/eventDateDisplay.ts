@@ -547,7 +547,17 @@ export interface OccurrenceDateLike {
   startAt: string;
   endAt: string;
   timezone: string;
+  /**
+   * issue #3281 — the host cancelled this date. Summaries and date lists skip
+   * it: a cancelled date is not one of the event's dates on offer.
+   */
+  cancelled?: boolean | null;
 }
+
+/** issue #3281 — the dates still on offer; a cancelled date is skipped. */
+const activeOccurrences = <T extends { cancelled?: boolean | null }>(
+  occurrences: readonly T[],
+): T[] => occurrences.filter((o) => o.cancelled !== true);
 
 /**
  * "Sat 22 Aug · 11 AM – 6 PM" for ONE occurrence, degrading to
@@ -586,9 +596,10 @@ export const formatOccurrenceLine = (
  * rather than print a count of days it cannot name.
  */
 export const formatOccurrenceSummary = (
-  occurrences: readonly OccurrenceDateLike[],
+  allOccurrences: readonly OccurrenceDateLike[],
   fallbackTimezone: string | null | undefined,
 ): string | null => {
+  const occurrences = activeOccurrences(allOccurrences);
   const first = occurrences.find(
     (o) =>
       formatOccurrenceDayLabel(
@@ -622,7 +633,7 @@ const readableOccurrenceLines = (
   event: EventDateLike,
   occurrences: readonly OccurrenceDateLike[],
 ): string[] =>
-  occurrences
+  activeOccurrences(occurrences)
     .map((o) => ({ ms: new Date(o.startAt).getTime(), o }))
     .filter((x) => Number.isFinite(x.ms))
     .sort((a, b) => a.ms - b.ms)

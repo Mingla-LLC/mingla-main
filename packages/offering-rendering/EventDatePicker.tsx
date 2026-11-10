@@ -16,8 +16,10 @@ import {
 } from "react-native";
 
 import {
+  CANCELLED_OCCURRENCE_LABEL,
   chooseEventDateLayout,
   formatOccurrenceChipLabel,
+  isCancelledOccurrence,
   occurrenceLocalDay,
   placesLeftChip,
   type EventDateScheduleOccurrence,
@@ -74,13 +76,18 @@ export type EventDatePickerOccurrenceRenderArgs = {
   key: string;
   occurrence: EventDateScheduleOccurrence;
   selected: boolean;
-  /** True when the date is sold out; the row must not be toggleable. */
+  /**
+   * True when the date cannot be chosen (sold out OR cancelled); the row must
+   * not be toggleable.
+   */
   soldOut: boolean;
+  /** issue #3281 — true when the host cancelled this date. */
+  cancelled: boolean;
   /** Override title for this date, trimmed, or null. */
   title: string | null;
   /** Override location for this date, trimmed, or null. */
   location: string | null;
-  /** "N places left" style chip, or null. */
+  /** "N places left" style chip, "Cancelled" for a cancelled date, or null. */
   placesLeftLabel: string | null;
   testID: string;
   nativeID: string | undefined;
@@ -153,7 +160,7 @@ export function EventDatePicker({
     return (
       <View style={[styles.box, style]} testID={testID}>
         <Text style={[styles.passTitle, { color: accentColor }]}>
-          Pass — all {layout.upcoming.length} dates
+          Pass — all {layout.upcoming.filter((o) => !isCancelledOccurrence(o)).length} dates
         </Text>
         <Text style={{ color: mutedColor }}>
           One price covers every date of this event. Nothing to pick.
@@ -209,9 +216,19 @@ export function EventDatePicker({
       <View style={renderOccurrence ? styles.rowList : styles.chipWrap}>
         {visible.map((o) => {
           const isOn = selected.has(o.id);
-          const full = o.soldOut === true;
-          const chip = placesLeftChip(o.placesLeft);
+          const cancelled = isCancelledOccurrence(o);
+          const full = cancelled || o.soldOut === true;
+          // issue #3281 — a cancelled date says so, never "Sold out" (the
+          // server zeroes its places so older builds still disable it).
+          const chip = cancelled
+            ? CANCELLED_OCCURRENCE_LABEL
+            : placesLeftChip(o.placesLeft);
           const rowTestID = `${occurrenceTestIDPrefix ?? `${testID}-day`}-${o.id}`;
+          // issue #3281 — a cancelled date can never be chosen, even by a
+          // caller that ignores `soldOut`.
+          const toggle = () => {
+            if (!cancelled) onToggle(o.id);
+          };
           const rowNativeID = occurrenceNativeIDPrefix
             ? `${occurrenceNativeIDPrefix}-${o.id}`
             : undefined;
@@ -230,12 +247,13 @@ export function EventDatePicker({
               occurrence: o,
               selected: isOn,
               soldOut: full,
+              cancelled,
               title: overrideTitle,
               location: overrideLocation,
               placesLeftLabel: chip,
               testID: rowTestID,
               nativeID: rowNativeID,
-              toggle: () => onToggle(o.id),
+              toggle,
             });
           }
           const day =
@@ -254,7 +272,7 @@ export function EventDatePicker({
               accessibilityState={{ checked: isOn, disabled: full }}
               accessibilityLabel={label}
               disabled={full}
-              onPress={() => onToggle(o.id)}
+              onPress={toggle}
               style={[
                 styles.chip,
                 styles.hit,

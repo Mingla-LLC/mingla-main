@@ -114,6 +114,15 @@ Deno.test("#3281 extras: an all-days pass reads every date that hasn't ended", (
   assertEquals(extraCap(dinner, 1, extrasLineDates({ quantity: 1 }, null, extrasCartDates([], occurrences, true, now))), 2);
 });
 
+Deno.test("#3281 extras: an all-days pass never reads a cancelled date", () => {
+  const now = Date.parse("2027-03-01T00:00:00Z");
+  const occurrences = [
+    { id: FRI, endAt: "2027-03-01T22:00:00Z", cancelled: true },
+    { id: SAT, endAt: "2027-03-02T22:00:00Z" },
+  ];
+  assertEquals(extrasCartDates([], occurrences, true, now), [SAT]);
+});
+
 Deno.test("#3281 extras: a sold-out extra on the line's dates says so", () => {
   const [dinner] = parsePublicTicketExtras([{ ...payload[0], remaining: { [FRI]: 0 } }]);
   assert(extraSoldOutOnLine(dinner, [FRI]));

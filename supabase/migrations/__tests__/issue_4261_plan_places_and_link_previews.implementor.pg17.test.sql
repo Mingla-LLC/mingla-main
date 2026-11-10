@@ -53,6 +53,17 @@
 -- 4261 file can no longer re-run on top of the rename). The two re-applies
 -- prove that migration is idempotent; everything after them rolls back.
 
+-- [TEST-MOD-APPROVED #3281] The re-applies below commit, and #4334 is no longer
+-- the latest definition of every function it emits (20280523003281 re-emits
+-- pg_direct_event_checkout_bundle, pg_public_rsvp_by_slug and
+-- business_update_live_event_atomic). Snapshot every public function body
+-- first and put back any body the re-apply rolled back, so later suites in the
+-- same database see the chain's real latest definitions.
+CREATE TEMP TABLE t4261_fn_before ON COMMIT PRESERVE ROWS AS
+  SELECT p.oid, md5(p.prosrc) AS src_md5, pg_get_functiondef(p.oid) AS def
+    FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'public' AND p.prokind IN ('f', 'p');
+
 \ir ../20280521004334_issue_4334_google_places.sql
 \ir ../20280521004334_issue_4334_google_places.sql
 -- [TEST-MOD-APPROVED #4334] 20280525004334 later replaces some of those bodies
@@ -61,6 +72,23 @@
 -- commit, so re-apply it too: every suite after this one must see the end of
 -- the chain, not the 20280521004334 bodies.
 \ir ../20280525004334_issue_4334_place_id_repick.sql
+
+DO $t4261_restore$
+DECLARE
+  r record;
+  v_restored integer := 0;
+BEGIN
+  FOR r IN
+    SELECT b.def FROM t4261_fn_before b JOIN pg_proc p ON p.oid = b.oid
+     WHERE md5(p.prosrc) IS DISTINCT FROM b.src_md5
+  LOOP
+    EXECUTE r.def;
+    v_restored := v_restored + 1;
+  END LOOP;
+  RAISE NOTICE 'issue #4261: restored % function bodies the #4334 re-apply rolled back', v_restored;
+END
+$t4261_restore$;
+DROP TABLE t4261_fn_before;
 
 BEGIN;
 

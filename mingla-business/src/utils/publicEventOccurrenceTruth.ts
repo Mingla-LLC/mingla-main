@@ -51,6 +51,8 @@ export const normalizePublicEventOccurrences = (
       overrideLocation,
       soldOut: row.soldOut === true ? true : row.soldOut === false ? false : null,
       placesLeft,
+      // issue #3281 — a bundle from before the cancelled key reads as active.
+      cancelled: row.cancelled === true,
     });
   }
   return [...byId.values()].sort(

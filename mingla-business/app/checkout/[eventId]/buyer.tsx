@@ -658,16 +658,14 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
           // disagreed. The fallback stays for older builds; this build stops
           // relying on it.
           surface: Platform.OS === "web" ? "web" : "native",
-          ...(Platform.OS === "web"
-            ? {
-                checkoutContractVersion: 2 as const,
-                checkoutAttemptId: checkoutAttemptIdFor({
-                  eventId,
-                  surface: "web",
-                  ticketLinkToken,
-                }),
-              }
-            : {}),
+          // issue #3281 — every surface claims through contract v2, so a free
+          // native order carries its extras and dates like buyer web does.
+          checkoutContractVersion: 2 as const,
+          checkoutAttemptId: checkoutAttemptIdFor({
+            eventId,
+            surface: Platform.OS === "web" ? "web" : "native",
+            ticketLinkToken,
+          }),
           ...(heldToken.length > 0 ? { buyerStatusToken: heldToken } : {}),
           ...(eventDateId !== null ? { eventDateId } : {}),
           // issue #2160 — forward the chosen day SET. Empty => byte-identical

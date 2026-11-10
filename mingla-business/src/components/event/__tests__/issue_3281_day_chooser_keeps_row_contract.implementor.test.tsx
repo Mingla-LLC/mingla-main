@@ -69,6 +69,19 @@ const occurrences = [
     ticketsRemaining: null,
     soldOut: true,
   },
+  // issue #3281 bundle 3 — a cancelled date keeps the same checkbox contract,
+  // disabled and named "Cancelled" rather than "Sold out".
+  {
+    id: "day-3",
+    startAt: "2030-08-31T10:00:00Z",
+    endAt: "2030-08-31T17:00:00Z",
+    timezone: "Europe/London",
+    isMaster: false,
+    ticketsRemaining: null,
+    soldOut: true,
+    placesLeft: 0,
+    cancelled: true,
+  },
 ] as unknown as readonly PublicEventOccurrence[];
 
 const mount = async (
@@ -132,6 +145,23 @@ describe("issue #3281 — shared picker keeps the guest day-row contract", () =>
       checked: false,
       disabled: true,
     });
+    tree.unmount();
+  });
+
+  test("a cancelled day is disabled, reads Cancelled, and a press does nothing", async () => {
+    const onToggle = jest.fn();
+    const tree = await mount("per_day", onToggle);
+    const cancelled = row(tree, "day-3");
+    expect(cancelled.props.disabled).toBe(true);
+    expect(cancelled.props.accessibilityState).toEqual({
+      checked: false,
+      disabled: true,
+    });
+    expect(cancelled.props.accessibilityHint).toBe("Cancelled");
+    await act(() => {
+      (cancelled.props.onPress as () => void)();
+    });
+    expect(onToggle).not.toHaveBeenCalled();
     tree.unmount();
   });
 

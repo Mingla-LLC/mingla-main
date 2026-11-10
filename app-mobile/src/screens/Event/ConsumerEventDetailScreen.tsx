@@ -190,12 +190,15 @@ import { buildStaticMapUrl } from "../../utils/staticMapImage";
 import {
   formatEventDateLine,
   formatOccurrenceSummary,
+  formatPrimaryDateLine,
 } from "../../utils/eventDateDisplay";
 import type { BusinessEventCard } from "../../types/mergedDiscover";
 import {
+  keepOfferedDays,
   ticketDayScopeLabel,
   ticketOffChosenDays,
 } from "../../components/expandedCard/ticketDayScope";
+import { ticketsWithNoDateOnSale } from "@mingla/offering-rendering/noDateOnSale";
 
 const ACCENT = "#FF6B35";
 const SHEET_SNAP_POINTS = glass.bottomSheet.snapPoints as unknown as (
@@ -581,8 +584,12 @@ export default function ConsumerEventDetailScreen({
 
   useEffect(() => {
     if (eventId === null || validatedDayCanonical === null) return;
+    // issue #3281 — a date the host cancels changes the day truth too.
     const signature = validOccurrences
-      .map((day) => `${day.id}:${day.startAt}:${day.endAt}`)
+      .map(
+        (day) =>
+          `${day.id}:${day.startAt}:${day.endAt}${day.cancelled === true ? ":cancelled" : ""}`,
+      )
       .join("|");
     const previous = priorDayTruthRef.current;
     priorDayTruthRef.current = { eventId, signature };
@@ -591,8 +598,9 @@ export default function ConsumerEventDetailScreen({
       previous.eventId !== eventId ||
       previous.signature === signature
     ) return;
-    const validIds = new Set(validOccurrences.map((day) => day.id));
-    setSelectedEventDateIds((selected) => selected.filter((id) => validIds.has(id)));
+    setSelectedEventDateIds((selected) =>
+      keepOfferedDays(selected, validOccurrences),
+    );
     setDayTruthStale(true);
     AccessibilityInfo.announceForAccessibility(
       "Those dates just changed. Refresh and choose again.",
@@ -601,6 +609,15 @@ export default function ConsumerEventDetailScreen({
 
   const toggleEventDay = useCallback((eventDateId: string): void => {
     setSelectedEventDateIds((selected) => {
+      // issue #3281 — a cancelled date can never join the day set (the
+      // day-truth effect above already dropped any it held).
+      if (
+        validOccurrences.some(
+          (day) => day.id === eventDateId && day.cancelled === true,
+        )
+      ) {
+        return selected;
+      }
       const next = new Set(selected);
       if (next.has(eventDateId)) next.delete(eventDateId);
       else next.add(eventDateId);
@@ -1586,6 +1603,19 @@ export default function ConsumerEventDetailScreen({
   // map URL is privacy-gated: exact pin when the street is public, else null on the
   // warm path (no city centroid on the deck seed) → text venue card (rule 9).
   const seededPublicEvent = cardToPublicEvent(seed, tickets);
+  // issue #3281 — a cancelled master date never leads the page while another
+  // date is still on; the line names the first date still on instead.
+  const primaryDateLine =
+    validOccurrences.length > 1
+      ? formatPrimaryDateLine(
+          {
+            masterDateUtc: seed.masterDateUtc,
+            masterEndAtUtc: seed.masterEndAtUtc,
+            timezone: validatedDayCanonical?.timezone ?? seed.timezone,
+          },
+          validOccurrences,
+        )
+      : seededPublicEvent.dateLine;
   const occurrenceSummary = validOccurrences.length > 1
     ? formatOccurrenceSummary(
         validOccurrences,
@@ -1614,6 +1644,7 @@ export default function ConsumerEventDetailScreen({
     canonical === null
       ? {
           ...seededPublicEvent,
+          dateLine: primaryDateLine,
           dateSubline: occurrenceSummary,
           ...(validatedDayCanonical?.event.acquisitionState === undefined
             ? {}
@@ -1625,7 +1656,7 @@ export default function ConsumerEventDetailScreen({
         }
       : {
           ...canonical.event,
-          dateLine: seededPublicEvent.dateLine,
+          dateLine: primaryDateLine,
           dateSubline: occurrenceSummary,
           hideRemainingCount,
         };
@@ -1655,20 +1686,27 @@ export default function ConsumerEventDetailScreen({
   // off the guest's days when it covers none of them. Decorated after either
   // source is chosen, so a deck or chat arrival (warm, seeded) gets it too;
   // each source keeps its own tickets.
+  const decoratedTickets = sourcedPublicEvent.tickets.map((ticket) => ({
+    ...ticket,
+    dayScopeLabel: ticketDayScopeLabel(
+      ticket.validOccurrenceIds,
+      validOccurrences,
+      validatedDayCanonical?.timezone ?? seed?.timezone ?? "UTC",
+    ),
+    offChosenDays: ticketOffChosenDays(
+      ticket.validOccurrenceIds,
+      selectedEventDateIds,
+    ),
+  }));
   const publicEventForBody: PublicEventProps = {
     ...sourcedPublicEvent,
-    tickets: sourcedPublicEvent.tickets.map((ticket) => ({
-      ...ticket,
-      dayScopeLabel: ticketDayScopeLabel(
-        ticket.validOccurrenceIds,
-        validOccurrences,
-        validatedDayCanonical?.timezone ?? seed?.timezone ?? "UTC",
-      ),
-      offChosenDays: ticketOffChosenDays(
-        ticket.validOccurrenceIds,
-        selectedEventDateIds,
-      ),
-    })),
+    // issue #3281 — every date still to come was cancelled: nothing is on
+    // sale, so tickets read sold out (the same state Host web shows) rather
+    // than sending the guest on to choose a day that doesn't exist.
+    tickets:
+      validatedDayCanonical?.isMultiDate === true
+        ? ticketsWithNoDateOnSale(decoratedTickets, validOccurrences)
+        : decoratedTickets,
   };
   const canonicalLifecycleReady =
     validatedDayCanonical !== null && !canonicalQuery.isError;

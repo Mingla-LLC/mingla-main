@@ -77,6 +77,11 @@ export interface PublicEventOccurrenceLike {
   overrideLocation?: string | null;
   soldOut?: boolean | null;
   placesLeft?: number | null;
+  /**
+   * issue #3281 — the host cancelled this date. It stays listed but can never
+   * be chosen or counted as a date on offer. A missing key means false.
+   */
+  cancelled?: boolean;
 }
 
 export const publicEventBySlugKeys = {
@@ -205,6 +210,8 @@ const mapOccurrences = (
       overrideLocation,
       soldOut: row.soldOut === true ? true : row.soldOut === false ? false : null,
       placesLeft,
+      // issue #3281 — a bundle from before the cancelled key reads as active.
+      cancelled: row.cancelled === true,
     });
   }
   return [...byId.values()].sort((a, b) => {
