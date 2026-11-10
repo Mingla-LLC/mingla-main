@@ -77,8 +77,8 @@ import { retypeAriRefusal } from "../_shared/agentToolHelpers.ts";
 import { assertOwnerCopy } from "../_shared/ariOwnerCopy.ts";
 import { withProposalPresentation } from "../_shared/ariPresentation/registry.ts";
 import {
-  type ConfirmNext,
   closeSweptProposal,
+  type ConfirmNext,
   flowNextAfterConfirm,
   liveFlowRunFor,
   representFlowAfterExpiry,
