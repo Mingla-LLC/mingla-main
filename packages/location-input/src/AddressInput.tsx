@@ -338,6 +338,13 @@ export const AddressInput: React.FC<AddressInputProps> = ({
     null,
   );
   const [focusRevision, setFocusRevision] = useState(0);
+  // #4334 — "Change address" hands the field back with the saved address still
+  // in it (hosts keep the text so backing out loses nothing) and focuses it.
+  // The caret then sat at the END of that text, so the host's first keystrokes
+  // were appended to the old address ("12 Old St, LagosNew"). The handed-back
+  // text is selected instead, so typing replaces it; once the host types,
+  // clears or leaves the field it is ordinary text again.
+  const [selectAllOnFocus, setSelectAllOnFocus] = useState(false);
   // Issue #1363 — set true right after a successful pick, reset on the next
   // keystroke. Used ONLY to hide the Tier-2 free-text row immediately after a
   // pick (so the picked address doesn't re-offer "Use '<address>'").
@@ -490,6 +497,7 @@ export const AddressInput: React.FC<AddressInputProps> = ({
       // Issue #1363 — any keystroke means the value is no longer a just-picked
       // address, so the Tier-2 free-text row may show again.
       justPicked.current = false;
+      setSelectAllOnFocus(false);
       onChangeText(next);
       clearDebounceTimer();
       if (next.trim().length < minQueryLength) {
@@ -557,6 +565,7 @@ export const AddressInput: React.FC<AddressInputProps> = ({
     requestGeneration.current += 1;
     clearDebounceTimer();
     setStatus({ kind: "idle" });
+    setSelectAllOnFocus(false);
     sessionToken.current = newPlacesSessionToken();
     onClear();
   }, [clearDebounceTimer, onClear]);
@@ -567,6 +576,7 @@ export const AddressInput: React.FC<AddressInputProps> = ({
     setPendingSelectedLabel(null);
     setStatus({ kind: "idle" });
     onChangeSelected?.();
+    setSelectAllOnFocus(true);
     setFocusRevision((current) => current + 1);
   }, [clearDebounceTimer, onChangeSelected]);
 
@@ -1029,7 +1039,12 @@ export const AddressInput: React.FC<AddressInputProps> = ({
           value={value}
           onChangeText={handleChangeText}
           onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
+          onBlur={() => {
+            setFocused(false);
+            setSelectAllOnFocus(false);
+          }}
+          // #4334 — select the handed-back address so typing replaces it.
+          selectTextOnFocus={selectAllOnFocus}
           placeholder={placeholder}
           placeholderTextColor={tokens.text.placeholder}
           autoCorrect={false}
