@@ -50,6 +50,12 @@ export interface RunnerInput {
   confirmed?: { tool_name: string; result: unknown };
   /** #3355 P7 — a confirmed write that was refused; nothing was saved. */
   failed?: { tool_name: string; message: string };
+  /**
+   * #3355 bundle 5 — act only if the run is still in this status once the
+   * lease is held (re-checked under the lease, so two overlapping requests
+   * never both act on the same waiting run).
+   */
+  requireStatus?: FlowRun["status"];
   brandName: string;
 }
 
@@ -393,6 +399,9 @@ export async function runFlowStep(
   }
   run = lease.run;
   try {
+    if (input.requireStatus && run.status !== input.requireStatus) {
+      return { kind: "unchanged", artefact: run.current_artefact, run };
+    }
     return await advanceUnderLease(deps, def, run, token, input, newId);
   } finally {
     try {

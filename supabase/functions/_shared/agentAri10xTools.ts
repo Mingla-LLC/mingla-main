@@ -11,6 +11,7 @@ import {
   invokeFn,
   isString,
   isUuid,
+  requireAgentOperationId,
   ToolError,
 } from "./agentToolHelpers.ts";
 import { DOMAIN_TOOLS } from "./agentDomainTools.ts";
@@ -954,6 +955,13 @@ export async function bindOwnerNoteProposal(
   };
 }
 
+/** PostgREST's answer for an RPC that doesn't exist (yet) in this database. */
+export function receiptFunctionsMissing(error: unknown): boolean {
+  const text = error instanceof Error ? error.message : String(error ?? "");
+  return /Could not find the function|PGRST202|function public\.ari_tell_owner_\w+\(.*\) does not exist/
+    .test(text);
+}
+
 const tellOwnerInBrandGroup: AgentToolDefinition = {
   name: "tell_owner_in_brand_group",
   description:
@@ -969,9 +977,48 @@ const tellOwnerInBrandGroup: AgentToolDefinition = {
       message: { type: "string", maxLength: 600 },
     },
   },
-  executor: async (args, client, userId) => {
+  executor: async (args, client, userId, context) => {
     if (!isUuid(args.brand_id)) {
       throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
+    }
+    // #3355 bundle 5: the send is keyed by the approval, so a retry after a
+    // dropped connection reads back the note that posted instead of failing.
+    const operationId = requireAgentOperationId(context);
+    // A note that already posted for this approval is answered from its
+    // receipt first: a brand renamed or a group left since must not turn a
+    // sent note into "nothing was sent".
+    // Until migration 20280604003355 is applied (functions deploy on merge,
+    // migrations on their own go), the receipt functions don't exist yet:
+    // the note is sent the way it was before, never refused.
+    let receipts = true;
+    let prior: Record<string, unknown> | null = null;
+    try {
+      prior = await callRpc<Record<string, unknown> | null>(
+        client,
+        "ari_tell_owner_receipt",
+        { p_operation_id: operationId },
+      );
+    } catch (error) {
+      if (!receiptFunctionsMissing(error)) throw error;
+      receipts = false;
+    }
+    if (!(prior && prior.sent === true) && context?.retry) {
+      // A retry with no receipt: the earlier attempt may have posted the old
+      // way (before the migration) and lost its answer. Never post again;
+      // the stuck-row reconcile settles it ("couldn't confirm it saved").
+      throw new ToolError(
+        "RPC_FAILED",
+        "ari_tell_owner_in_brand_group: retry without a receipt",
+      );
+    }
+    if (prior && prior.sent === true) {
+      return {
+        sent: true,
+        message_id: prior.message_id ?? null,
+        conversation_id: prior.conversation_id ?? null,
+        sent_to: args.send_to ?? null,
+        message: typeof args.message === "string" ? args.message : null,
+      };
     }
     const topic = String(args.about ?? "");
     const conversationId = await findCallerBrandGroup(client, args.brand_id);
@@ -994,19 +1041,72 @@ const tellOwnerInBrandGroup: AgentToolDefinition = {
         "That note is out of date, so nothing was sent. Ask me again and I'll show the new words.",
       );
     }
-    const messageId = await callRpc<string>(
-      client,
-      "issue_3720_send_brand_group_message",
-      {
-        p_conversation_id: conversationId,
-        p_content: expected,
-        p_actor_mode: "brand",
-      },
-    );
+    if (!receipts) {
+      const messageId = await callRpc<string>(
+        client,
+        "issue_3720_send_brand_group_message",
+        {
+          p_conversation_id: conversationId,
+          p_content: expected,
+          p_actor_mode: "brand",
+        },
+      );
+      return {
+        sent: true,
+        message_id: messageId,
+        conversation_id: conversationId,
+        sent_to: args.send_to ?? null,
+        message: expected,
+        // Sent before the receipt functions exist: confirm must not wait
+        // for a receipt this send never wrote.
+        receipt_backed: false,
+      };
+    }
+    let receipt: Record<string, unknown> | null;
+    try {
+      receipt = await callRpc<Record<string, unknown>>(
+        client,
+        "ari_tell_owner_in_brand_group",
+        {
+          p_operation_id: operationId,
+          p_conversation_id: conversationId,
+          p_content: expected,
+        },
+      );
+    } catch (error) {
+      // The send and its receipt are one transaction, so these refusals are
+      // certain: nothing posted. Typed here, they end the approval instead
+      // of reading as "result unknown" (receipt-backed RPC_FAILED is kept
+      // `executing` for a retry).
+      const text = error instanceof Error ? error.message : "";
+      if (text.includes("conversation_unavailable")) {
+        throw new ToolError(
+          "OWNER_NOTE_UNAVAILABLE",
+          `${OWNER_NOTE_TEAM_FALLBACK} Nothing was sent.`,
+        );
+      }
+      // (idempotency_conflict is left out: it means a receipt exists, so a
+      // note may have posted — it stays "result unknown".)
+      if (
+        [
+          "operation_binding_mismatch",
+          "operation_not_executing",
+          "operation_not_found",
+          "invalid_message",
+          "invalid_actor_mode",
+        ].some((code) => text.includes(code))
+      ) {
+        throw new ToolError(
+          "OWNER_NOTE_CHANGED",
+          "That note is out of date, so nothing was sent. Ask me again and I'll show the new words.",
+        );
+      }
+      throw error;
+    }
     return {
       sent: true,
-      message_id: messageId,
-      conversation_id: conversationId,
+      message_id: receipt?.message_id ?? null,
+      conversation_id: receipt?.conversation_id ?? conversationId,
       sent_to: args.send_to ?? null,
       message: expected,
     };

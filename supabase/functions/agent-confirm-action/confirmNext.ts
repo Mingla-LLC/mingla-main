@@ -39,6 +39,7 @@ import {
 import type {
   FlowArtefact,
   FlowProbeDeps,
+  FlowRun,
 } from "../_shared/ariFlows/types.ts";
 import { LIVE_FLOW_STATUSES } from "../_shared/ariFlows/types.ts";
 
@@ -197,6 +198,8 @@ export async function flowNextAfterConfirm(args: {
    * so a refusal never leaves the owner at a dead end.
    */
   failed?: { tool_name: string; message: string };
+  /** #3355 bundle 5 — act only if the run is still in this status, under its lease. */
+  requireStatus?: FlowRun["status"];
   promptVersion: string;
   modelVersion: string;
   enabled?: boolean;
@@ -217,6 +220,7 @@ export async function flowNextAfterConfirm(args: {
     trigger: "confirm",
     ...(args.confirmed ? { confirmed: args.confirmed } : {}),
     ...(args.failed ? { failed: args.failed } : {}),
+    ...(args.requireStatus ? { requireStatus: args.requireStatus } : {}),
     ...(args.store ? { store: args.store } : {}),
     ...(args.probes ? { probes: args.probes } : {}),
     // #2830 — the next brand-details question may carry what Ari found.
@@ -268,4 +272,166 @@ export async function flowNextAfterConfirm(args: {
       : null,
     flow_state: state,
   };
+}
+
+/** #3355 bundle 5 — the owner words a re-presented step carries. */
+export const EXPIRED_IN_FLOW_REASON =
+  "That approval timed out, so nothing was saved.";
+
+/**
+ * #3355 bundle 5 (spec 3(b).6) — an approval that timed out inside a live
+ * flow never leaves the chat at a dead end. The step is read again from
+ * canonical state and re-presented with the reason, through the same path a
+ * refused write takes (#3355 P7): nothing is replayed from the expired
+ * proposal, so its 30-minute-old values, checks and revision guards are
+ * never offered again. The row is saved before the 409 answers, so the Host's
+ * resume finds it as the run's current card.
+ *
+ * Only when the chat's flow run is waiting on an approval and this was the
+ * chat's newest proposal: one replaced by a newer card, or one that expired
+ * while the flow shows a question, leaves the flow alone. If a later model
+ * proposal replaced the flow's own and then expired, the waiting run is
+ * re-read too: its own proposal is gone, so re-presenting the step is what
+ * un-sticks it. Never throws.
+ */
+export async function representFlowAfterExpiry(args: {
+  userClient: SupabaseClient;
+  service: SupabaseClient;
+  userId: string;
+  conversationId: string | null;
+  brand: { id: string; name: string } | null;
+  expired: {
+    id: string;
+    tool_name: string;
+    server_proposed_at: string | null;
+  };
+  promptVersion: string;
+  modelVersion: string;
+  /** Test seams. */
+  newerProposalExists?: () => Promise<boolean>;
+  flowNext?: typeof flowNextAfterConfirm;
+  enabled?: boolean;
+  store?: FlowStore;
+}): Promise<ConfirmNextResult | null> {
+  if (!args.conversationId || !args.brand) return null;
+  try {
+    if (!(args.enabled ?? await readFlowEngineEnabled(args.service))) {
+      return null;
+    }
+    const store = args.store ?? createFlowStore(args.service, args.userId);
+    const run = await store.getForConversation(args.conversationId);
+    if (run?.status !== "awaiting_approval") return null;
+    const newer = args.newerProposalExists
+      ? await args.newerProposalExists()
+      : await newerProposalIn(args.service, {
+        userId: args.userId,
+        conversationId: args.conversationId,
+        expired: args.expired,
+      });
+    if (newer) return null;
+    return await (args.flowNext ?? flowNextAfterConfirm)({
+      userClient: args.userClient,
+      service: args.service,
+      userId: args.userId,
+      conversationId: args.conversationId,
+      brand: args.brand,
+      failed: {
+        tool_name: args.expired.tool_name,
+        message: EXPIRED_IN_FLOW_REASON,
+      },
+      // Re-checked under the run's lease: of two overlapping expiries, only
+      // the first re-presents; the second finds the step already back.
+      requireStatus: "awaiting_approval",
+      promptVersion: args.promptVersion,
+      modelVersion: args.modelVersion,
+      enabled: true,
+      store,
+    });
+  } catch (error) {
+    // The expiry is already saved and answered; the next turn re-reads the
+    // run either way.
+    console.error(JSON.stringify({
+      event: "ari_confirm_expired_next_failed",
+      tool_name: args.expired.tool_name,
+      error: error instanceof Error ? error.name : "unknown",
+    }));
+    return null;
+  }
+}
+
+/**
+ * True when the chat has a proposal made after this one, or it can't tell
+ * (fails closed: no card is re-presented over one that may be newer).
+ */
+export async function newerProposalIn(
+  service: SupabaseClient,
+  args: {
+    userId: string;
+    conversationId: string;
+    expired: { id: string; server_proposed_at: string | null };
+  },
+): Promise<boolean> {
+  if (!args.expired.server_proposed_at) return true;
+  const { data, error } = await service.from("agent_pending_actions")
+    .select("id")
+    .eq("user_id", args.userId)
+    .eq("conversation_id", args.conversationId)
+    .neq("id", args.expired.id)
+    .gt("server_proposed_at", args.expired.server_proposed_at)
+    .limit(1);
+  if (error) return true;
+  return Array.isArray(data) && data.length > 0;
+}
+
+/**
+ * #3355 bundle 5 — close an approval the expiry sweep expired. The sweep only
+ * flips its status; it writes no tool row, and the Host takes the last
+ * proposal with no tool row as the open card — so re-reading history (which
+ * the re-presented step triggers) would bring the expired card back. Writes
+ * the same tool row an expiry at tap time writes, once. Never throws.
+ */
+export async function closeSweptProposal(
+  service: SupabaseClient,
+  args: {
+    userId: string;
+    conversationId: string | null;
+    pendingActionId: string;
+    toolName: string;
+    promptVersion: string;
+    modelVersion: string;
+  },
+): Promise<void> {
+  if (!args.conversationId) return;
+  try {
+    const { data: existing, error: readError } = await service
+      .from("agent_messages")
+      .select("id")
+      .eq("user_id", args.userId)
+      .eq("conversation_id", args.conversationId)
+      .eq("role", "tool")
+      .contains("tool_results", { pending_action_id: args.pendingActionId })
+      .limit(1);
+    if (readError) throw readError;
+    if (Array.isArray(existing) && existing.length > 0) return;
+    const { error } = await service.from("agent_messages").insert({
+      conversation_id: args.conversationId,
+      user_id: args.userId,
+      role: "tool",
+      content: { text: "" },
+      tool_results: {
+        tool_name: args.toolName,
+        pending_action_id: args.pendingActionId,
+        outcome: "expired",
+      },
+      prompt_version: args.promptVersion,
+      model_version: args.modelVersion,
+    });
+    if (error) throw error;
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: "ari_swept_expiry_close_failed",
+      tool_name: args.toolName,
+      error: error instanceof Error ? error.message.slice(0, 200) : "unknown",
+    }));
+  }
 }

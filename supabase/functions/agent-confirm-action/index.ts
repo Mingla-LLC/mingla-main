@@ -60,11 +60,13 @@ import {
 import { sanitizeAriUserFacingDiagnostics } from "../_shared/agentSanitization.ts";
 import { websiteSetupApprovedWriteFollowup } from "../_shared/agentWebsiteSetup.ts";
 import {
+  answerClaimExpired,
   ariProposalExpiredResponse,
   expiredProposalAnswer,
 } from "./proposalExpiry.ts";
 import {
   isAmbiguousExecutionFailure,
+  requiresOperationReceipt,
   toolErrorHttpStatus,
 } from "./executionOutcome.ts";
 import {
@@ -76,8 +78,10 @@ import { assertOwnerCopy } from "../_shared/ariOwnerCopy.ts";
 import { withProposalPresentation } from "../_shared/ariPresentation/registry.ts";
 import {
   type ConfirmNext,
+  closeSweptProposal,
   flowNextAfterConfirm,
   liveFlowRunFor,
+  representFlowAfterExpiry,
   websiteSetupNextAfterConfirm,
 } from "./confirmNext.ts";
 import type { FlowStateView } from "../_shared/ariFlows/edge.ts";
@@ -240,6 +244,9 @@ const RECEIPT_BACKED_TOOL_NAMES = new Set([
   // Issue #2830 — ari_update_brand_context begins and completes the shared
   // #1972 operation receipt itself, so its ambiguous retry must replay too.
   "update_brand_context",
+  // Issue #3355 bundle 5 — ari_tell_owner_in_brand_group sends the owner note
+  // inside the #1972 receipt, so a retry reads back the note that posted.
+  "tell_owner_in_brand_group",
 ]);
 // [TEST-MOD-APPROVED #1973] Preserve the #1972 recovery-contract name while
 // extending the exact same receipt gate to the experience lifecycle.
@@ -281,7 +288,9 @@ async function terminalizePending(
     failureReason?: string;
     requireOperationReceipt?: boolean;
   },
-): Promise<{ id: string; status: string; terminalMessageId?: string }> {
+): Promise<
+  { id: string; status: string; casWon: boolean; terminalMessageId?: string }
+> {
   const { data, error } = await pendingStateClient.rpc(
     "terminalize_agent_pending_action",
     {
@@ -295,7 +304,7 @@ async function terminalizePending(
       p_model_version: ARI_MODEL_VERSION,
       p_require_operation_receipt: input.requireOperationReceipt ?? false,
     },
-  ).select("id, status, conversation_id").maybeSingle();
+  ).select("id, status, conversation_id, cas_won").maybeSingle();
   if (error || !data) {
     throw new Error(error?.message ?? "terminal_state_not_committed");
   }
@@ -308,6 +317,8 @@ async function terminalizePending(
   return {
     id: data.id as string,
     status: data.status as string,
+    // false when another request already terminalized it (a replay).
+    casWon: (data as { cas_won?: unknown }).cas_won !== false,
     ...(terminalMessageId ? { terminalMessageId } : {}),
   };
 }
@@ -742,6 +753,48 @@ async function handleConfirmAction(args: {
       "A newer version of this change is waiting for you.",
     );
   }
+  // #3355 bundle 5 (3(b).6): an approval that timed out inside a live flow
+  // re-presents its step from a fresh read instead of dead-ending.
+  const representExpired = async (): Promise<void> => {
+    const brandId = conversationTask?.row.brand_id ?? null;
+    await representFlowAfterExpiry({
+      userClient,
+      service: pendingStateClient,
+      userId,
+      conversationId: pending.conversation_id,
+      brand: brandId
+        ? { id: brandId, name: conversationBrandName ?? "your brand" }
+        : null,
+      expired: {
+        id: pending.id,
+        tool_name: pending.tool_name,
+        server_proposed_at: pending.server_proposed_at ?? null,
+      },
+      promptVersion: TENANT_CONTEXT_VERSION,
+      modelVersion: ARI_MODEL_VERSION,
+    });
+  };
+  // #3355 bundle 5: the expiry sweep already closed this Ari approval (it
+  // runs every 15 minutes), so the answers below never see it. Answer it as
+  // the timeout it is — the Host shows why and resumes — and bring the flow's
+  // step back, instead of a status the Host clears without a word.
+  if (
+    pending.status === "expired" &&
+    expiredProposalAnswer(pending.source) === "ari_proposal_expired"
+  ) {
+    // Close the swept card for good first: a history re-read must never
+    // bring it back as an answerable card.
+    await closeSweptProposal(pendingStateClient, {
+      userId,
+      conversationId: pending.conversation_id,
+      pendingActionId: pending.id,
+      toolName: pending.tool_name,
+      promptVersion: TENANT_CONTEXT_VERSION,
+      modelVersion: ARI_MODEL_VERSION,
+    });
+    await representExpired();
+    return ariProposalExpiredResponse();
+  }
   if (
     pending.status !== "pending" &&
     !(pending.status === "executing" &&
@@ -832,6 +885,9 @@ async function handleConfirmAction(args: {
       }
     }
     if (expiredProposalAnswer(pending.source) === "ari_proposal_expired") {
+      // #3355 bundle 5: inside a flow, the step comes back from a fresh read
+      // (saved before this answer, so the Host's resume shows it).
+      await representExpired();
       // #2830 (D-3) — never a silent 200: the Ari Host used to clear the card
       // and report success for an approval that saved nothing.
       return ariProposalExpiredResponse();
@@ -1130,19 +1186,23 @@ async function handleConfirmAction(args: {
       );
     }
     if (claim.answer === "expired") {
-      try {
-        await terminalizePending(pendingStateClient, {
-          id: pending.id,
-          userId,
-          expectedStatus: "pending",
-          outcome: "expired",
-        });
-      } catch {
-        // Another request terminalized it first; the answer is the same.
-      }
-      return expiredProposalAnswer(pending.source) === "ari_proposal_expired"
-        ? ariProposalExpiredResponse()
-        : errorResponse(409, "EXPIRED", "This suggestion expired.");
+      // #3355 bundle 5: only the request that expired it re-presents.
+      return await answerClaimExpired({
+        source: pending.source,
+        terminalize: () =>
+          terminalizePending(pendingStateClient, {
+            id: pending.id,
+            userId,
+            expectedStatus: "pending",
+            outcome: "expired",
+          }).then((done) => {
+            // A replay of another request's expiry is not this request's.
+            if (!done.casWon) throw new Error("expired_elsewhere");
+          }),
+        represent: representExpired,
+        hubExpired: () =>
+          errorResponse(409, "EXPIRED", "This suggestion expired."),
+      });
     }
     if (claim.answer !== "claimed") {
       return errorResponse(
@@ -1168,6 +1228,7 @@ async function handleConfirmAction(args: {
       // Immutable server context: never copied into editable_args/tool_args.
       // #1972's receipt-backed dispatcher binds this UUID to the confirmed args.
       operationId: pending.id,
+      retry: pending.status === "executing",
     });
   } catch (rawErr: any) {
     // #3355 P1 (D-9): a deterministic publish/money refusal from the database
@@ -1304,7 +1365,10 @@ async function handleConfirmAction(args: {
       expectedStatus: "executing",
       outcome: "executed",
       result,
-      requireOperationReceipt: RECEIPT_BACKED_EVENT_TOOL_NAMES.has(tool.name),
+      requireOperationReceipt: requiresOperationReceipt(
+        RECEIPT_BACKED_EVENT_TOOL_NAMES.has(tool.name),
+        result,
+      ),
     });
     terminalMessageId = terminalized.terminalMessageId;
     receiptDurable = true;

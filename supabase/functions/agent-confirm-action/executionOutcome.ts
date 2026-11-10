@@ -117,3 +117,16 @@ export function toolErrorHttpStatus(code: string): number {
   if (code.toUpperCase() === "PRIVATE_VISIBILITY_UNAVAILABLE") return 400;
   return 500;
 }
+
+/**
+ * #3355 bundle 5 — does finalizing this executed write need its operation
+ * receipt? Receipt-backed tools do, except a result that says it was written
+ * without one (tell_owner_in_brand_group sent before its migration applied).
+ */
+export function requiresOperationReceipt(
+  receiptBacked: boolean,
+  result: unknown,
+): boolean {
+  return receiptBacked &&
+    !((result as { receipt_backed?: unknown } | null)?.receipt_backed === false);
+}

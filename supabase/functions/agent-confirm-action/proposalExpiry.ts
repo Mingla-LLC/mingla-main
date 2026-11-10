@@ -26,3 +26,29 @@ export function ariProposalExpiredResponse(): Response {
     "That approval timed out, so nothing was saved.",
   );
 }
+
+/**
+ * #3355 bundle 5 — the claim-time expiry answer. Only the request whose
+ * expire wins re-presents the flow step (a double tap shows one card), and
+ * only for an Ari proposal; the 409 envelope is the same either way.
+ */
+export async function answerClaimExpired(args: {
+  source: string | null | undefined;
+  terminalize: () => Promise<void>;
+  represent: () => Promise<void>;
+  hubExpired: () => Response;
+}): Promise<Response> {
+  let expiredHere = false;
+  try {
+    await args.terminalize();
+    expiredHere = true;
+  } catch {
+    // Another request terminalized it first; the answer is the same, and
+    // that request re-presents the step.
+  }
+  if (expiredProposalAnswer(args.source) !== "ari_proposal_expired") {
+    return args.hubExpired();
+  }
+  if (expiredHere) await args.represent();
+  return ariProposalExpiredResponse();
+}
