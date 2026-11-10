@@ -2,10 +2,7 @@
 -- Proves: Designed needs a Drive link; Approved records the go; Scheduled needs
 -- the go; going back to Approved keeps the go, back to Designed clears it; the
 -- calendar read shows only Approved, Scheduled and Published posts.
--- INVARIANT I-4255-CONTENT-CALENDAR-STAGES: content_calendar_move refuses
--- writing->design and design->review without drive_url (drive_required), records
--- design approval only on design->review, and ops_calendar.content /
--- posts_undated include only stages review, scheduled, published.
+-- MINGLA-INVARIANT: I-4255-CONTENT-CALENDAR-STAGES | issue #4255 | content_calendar_move refuses Designed and Approved without a Drive link, records the go only on the move to Approved, and ops_calendar content and posts_undated include only review, scheduled and published posts
 \set ON_ERROR_STOP on
 begin;
 alter table auth.users add column if not exists email_confirmed_at timestamptz;
