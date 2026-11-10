@@ -1,8 +1,10 @@
 import { MAPPED_COUNTRIES, smsMarketingCountry } from "./e164Country.ts";
 import { resolveOfferingInviteSmsPriceBook } from "./runtimeConfig.ts";
 import { smsProviderForCountry } from "./adapters/smsAdapter.ts";
-import { resolveSmsCountryLive } from "./secretBundle.ts";
-import { smsMarketingRoute } from "./smsCountries.ts";
+import {
+  type SmsCountrySwitchesSnapshot,
+  smsMarketingRouteFromSwitches,
+} from "./smsCountrySwitches.ts";
 
 import type { SmsRateV1 } from "./smsPriceTable.ts";
 export type { SmsRateV1 };
@@ -129,29 +131,17 @@ export function configuredSmsRoutes(
 }
 
 /**
- * #4273 — can Mingla text this country right now? Its own switch must be on
- * (sms_live_enabled.<cc>) AND it must have a sender route: US/CA the
- * toll-free service, NG Termii, alphanumeric countries the marketing service
- * (TWILIO_MARKETING_MESSAGING_SERVICE_SID must be set — never the toll-free
- * instead), and "needs_number" countries none. Anything else reads as "can't
- * text their country yet" in the quote, and is never attempted at send.
+ * #4273 — can Mingla text this country right now, under this snapshot of
+ * public.sms_country_switches / sms_marketing_sender_config? Its own switch
+ * must be on (and its sender registered), and it must have a sender route:
+ * US/CA the toll-free service, NG Termii, alphanumeric countries the DB
+ * marketing service. A null (unreadable) snapshot texts no one. The ONE rule
+ * is smsMarketingRouteFromSwitches; this is a thin alias with no env read.
  */
 export const smsCountryTextableNow = (
   country: string,
-  getEnv?: (name: string) => string | undefined,
-): boolean => {
-  // Tests inject an env; production reads the switch bundle and the one
-  // marketing sender name directly (no dynamic env reads in this module).
-  const live = getEnv
-    ? resolveSmsCountryLive(country, getEnv)
-    : resolveSmsCountryLive(country);
-  const marketingSid = getEnv
-    ? getEnv("TWILIO_MARKETING_MESSAGING_SERVICE_SID")
-    : Deno.env.get("TWILIO_MARKETING_MESSAGING_SERVICE_SID");
-  return live &&
-    smsMarketingRoute(country, (marketingSid ?? "").trim().length > 0) !==
-      null;
-};
+  snap: SmsCountrySwitchesSnapshot | null,
+): boolean => smsMarketingRouteFromSwitches(country, snap) !== null;
 
 export interface SmsCostSubtotal {
   currency: string;
@@ -175,7 +165,12 @@ export function allocateSmsCosts<T>(
   inputs: SmsCostInput<T>[],
   now: Date,
   suppliedRates?: SmsRateV1[],
-  /** #4273 — can this country be texted now (switch + sender route). */
+  /**
+   * #4273 — can this country be texted now (switch + sender route), from the
+   * caller's snapshot of public.sms_country_switches. Required whenever there
+   * is anything to price: absent means the switches could not be read, so the
+   * quote fails closed as "SMS pricing unavailable".
+   */
   isLive?: (country: string) => boolean,
 ): {
   allocations: SmsCostAllocation<T>[];
@@ -201,7 +196,12 @@ export function allocateSmsCosts<T>(
     throw new Error("cost_unavailable:sms_rate_book_missing");
   }
   const rates = suppliedRates;
-  const live = isLive ?? smsCountryTextableNow;
+  // #4273 — no snapshot of the country switches = nothing can be known to be
+  // textable: fail closed exactly like a missing price table.
+  if (isLive === undefined) {
+    throw new Error("cost_unavailable:sms_rate_book_missing");
+  }
+  const live = isLive;
   const unpriced: SmsCostInput<T>[] = [];
   const fractions = inputs.flatMap((input) => {
     if (!Number.isSafeInteger(input.segments) || input.segments < 1) {

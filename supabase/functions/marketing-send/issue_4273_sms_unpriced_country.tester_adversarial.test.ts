@@ -5,6 +5,9 @@
 // configured but holds no rates. A book that cannot price anything must fail
 // the quote closed, never read as "every number is in a country Mingla can't
 // text".
+// #4273 country switches — the send reads public.sms_country_switches.
+import { seededSmsSwitches } from "../_shared/__tests__/_issue4273SmsSwitchesFixture.ts";
+import { MAPPED_COUNTRIES } from "../_shared/e164Country.ts";
 import {
   assert,
   assertEquals,
@@ -413,7 +416,14 @@ async function runSend(
         scheduled_for: null,
         // deno-lint-ignore no-explicit-any
       }] as any,
-      { live: true, resendApiKey: "re_test_key", smsRoutes },
+      {
+        live: true,
+        resendApiKey: "re_test_key",
+        smsRoutes,
+        // #4273 country switches — the quote side uses smsCountryLive: () =>
+        // true; the send takes every mapped country as switched on too.
+        smsSwitches: seededSmsSwitches({ on: MAPPED_COUNTRIES }),
+      },
     );
   } finally {
     smsAdapter.send = realSend;

@@ -131,6 +131,9 @@ async function sendLoopPass(
     message: "Look at this",
     countryCode: contact.cc,
     messageType: "marketing",
+    // #4273 — marketing routes come from public.sms_country_switches; the
+    // caller (marketing-send) passes the route it decided.
+    marketingRoute: contact.cc === "NG" ? "termii" : "toll_free",
     mediaUrls,
   });
   if (result.status === "sent") {

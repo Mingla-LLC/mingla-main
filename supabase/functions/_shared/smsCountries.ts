@@ -24,14 +24,20 @@
 // in the transactional service. So:
 //   - toll_free:    US, CA — the transactional service (two-way: STOP works).
 //   - termii:       NG — Termii, unchanged.
-//   - alphanumeric: the marketing service (TWILIO_MARKETING_MESSAGING_SERVICE_SID).
-//                   One-way, so the text carries an opt-out link. If that
-//                   secret is missing the country is NOT textable — never
-//                   sent from the toll-free number instead.
+//   - alphanumeric: the marketing service, whose SID lives in
+//                   public.sms_marketing_sender_config. One-way, so the text
+//                   carries an opt-out link. Without that SID the country is
+//                   NOT textable — never sent from the toll-free number instead.
 //   - needs_number: no alphanumeric sender works; not textable until a local
 //                   number is added to the marketing service.
 // registrationRequired: "Mingla" must be pre-registered with Twilio before the
 // country's switch goes on (unregistered traffic is blocked or marked spam).
+//
+// #4273 (country switches) — each country's marketing switch, its live sender
+// and its registration state live in public.sms_country_switches, toggled from
+// Mingla Admin. The seed there mirrors `sender` and `registrationRequired`
+// below (a parity test reads the migration). The one marketing route rule is
+// smsMarketingRouteFromSwitches in smsCountrySwitches.ts.
 
 export type SmsSender =
   | "toll_free"
@@ -65,6 +71,13 @@ const eu = (
   ...extra,
 });
 const REG = { registrationRequired: true } as const;
+
+/**
+ * #4273 — the transactional "Mingla Verification" Messaging Service SID.
+ * Never a marketing sender: the switches parser drops it as the marketing
+ * SID and the SMS adapter refuses a marketing send that carries it.
+ */
+export const TRANSACTIONAL_SERVICE_SID = "MG1942fbb549187fcf77c0e860405abf58";
 
 export const SMS_COUNTRIES: Readonly<Record<string, SmsCountryProfile>> = {
   US: {
@@ -157,31 +170,6 @@ export const SMS_COUNTRIES: Readonly<Record<string, SmsCountryProfile>> = {
   SI: eu(["Europe/Ljubljana"]),
   SK: eu(["Europe/Bratislava"]),
 };
-
-/**
- * #4273 — which Twilio Messaging Service a marketing text to this country
- * goes through: "toll_free" (TWILIO_MESSAGING_SERVICE_SID), "marketing"
- * (TWILIO_MARKETING_MESSAGING_SERVICE_SID, the alpha sender), "termii", or
- * null when no route exists (needs_number, unmapped, or the marketing service
- * is not configured). Null means not textable: "can't text their country yet".
- */
-export function smsMarketingRoute(
-  countryCode: string | null | undefined,
-  marketingServiceConfigured: boolean,
-): "toll_free" | "marketing" | "termii" | null {
-  const profile = smsCountryProfile(countryCode);
-  if (profile === null) return null;
-  switch (profile.sender) {
-    case "toll_free":
-      return "toll_free";
-    case "termii":
-      return "termii";
-    case "alphanumeric":
-      return marketingServiceConfigured ? "marketing" : null;
-    case "needs_number":
-      return null;
-  }
-}
 
 export function smsCountryProfile(
   countryCode: string | null | undefined,

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_4273_sms_country_switches.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4273-sms-country-switches-implementor",
+  "profile": "deno-2-unit"
+}

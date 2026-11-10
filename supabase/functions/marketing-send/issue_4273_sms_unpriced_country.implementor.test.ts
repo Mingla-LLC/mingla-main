@@ -29,6 +29,9 @@ import {
   type QuoteCandidateRow,
 } from "../_shared/offeringInviteQuote.ts";
 import { buildCampaignGroupPreview } from "./campaignGroupPreview.ts";
+// #4273 country switches — the send reads public.sms_country_switches; these
+// tests pass today's seed (US and NG on) instead of a database.
+import { seededSmsSwitches } from "../_shared/__tests__/_issue4273SmsSwitchesFixture.ts";
 import {
   marketingBookQuoteErrorCode,
   processClaimedCampaigns,
@@ -460,6 +463,7 @@ Deno.test("#4273 U-9 the send never attempts an unpriced number", async () => {
           country: "NG",
           provider: "termii",
         }],
+        smsSwitches: seededSmsSwitches(),
       },
     );
   } finally {
@@ -486,7 +490,10 @@ Deno.test("#4273 U-9 the send never attempts an unpriced number", async () => {
 });
 
 async function runSend(
-  options: { smsRoutes?: Array<{ country: string; provider: "twilio" | "termii" }> | null },
+  options: {
+    smsRoutes?: Array<{ country: string; provider: "twilio" | "termii" }> | null;
+    smsSwitches?: ReturnType<typeof seededSmsSwitches> | null;
+  },
   sealed: boolean,
 ) {
   const writes: Array<{ table: string; op: string; payload: unknown }> = [];
@@ -521,7 +528,13 @@ async function runSend(
         // deno-lint-ignore no-explicit-any
       }] as any,
       // deno-lint-ignore no-explicit-any
-      { live: true, resendApiKey: "re_test_key", ...options } as any,
+      {
+        live: true,
+        resendApiKey: "re_test_key",
+        smsSwitches: seededSmsSwitches(),
+        ...options,
+        // deno-lint-ignore no-explicit-any
+      } as any,
     );
     return { summary, writes, sentTo };
   } finally {
