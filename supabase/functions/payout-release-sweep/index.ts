@@ -297,6 +297,16 @@ function payoutReleaseAlertCopy(alertKind: string): {
         bodyLead:
           "is held by a stay dispute that has been open for over 90 days",
       };
+    // Issue #3645 bundle 4 — the organiser legs were planned when the release
+    // owed more; a hold or refund since lowered it. Not sent (that would
+    // overpay); the legs are kept because one may already be at Paystack.
+    case "paystack_plan_exceeds_due":
+      return {
+        type: "ops.paystack_payout_release_plan_exceeds_due",
+        title: "Paystack organiser payout plan is larger than what is owed",
+        bodyLead:
+          "was not sent because its planned transfers are larger than what the release now owes",
+      };
     case "stripe_attempt_cap":
     default:
       return {

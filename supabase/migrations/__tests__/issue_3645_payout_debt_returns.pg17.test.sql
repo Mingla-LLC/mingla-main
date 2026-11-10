@@ -526,10 +526,17 @@ BEGIN
       (pg_temp.rel(v_r2)).net_release_cents;
   END IF;
 
-  -- T9: a paid release keeps today's recredit.
-  IF pg_temp.adj(v_r3, 'maturity_recredit') <> 1500
-     OR pg_temp.returned(v_s, v_r3, 'matured') <> 0 THEN
-    RAISE EXCEPTION 'T9 paid release recredit wrong';
+  -- T9 (#3645 bundle 4): a paid release can no longer pay a recredit, so the
+  -- matured 1500 is carried to the brand's next payable release. Brand 7 has
+  -- none yet (r4 is in flight), so it waits uncarried.
+  IF pg_temp.adj(v_r3, 'maturity_recredit') <> 0
+     OR pg_temp.returned(v_s, v_r3, 'matured') <> 0
+     OR (SELECT count(*) FROM public.payout_maturity_carryovers c
+         WHERE c.application_id = (pg_temp.app(v_s, v_r3)).id
+           AND c.amount_cents = 1500 AND c.source_release_id = v_r3
+           AND c.carried_at IS NULL AND c.parent_carryover_id IS NULL) <> 1 THEN
+    RAISE EXCEPTION 'T9 paid release: recredit % instead of one waiting carryover',
+      pg_temp.adj(v_r3, 'maturity_recredit');
   END IF;
 
   -- T10: a payout in flight holds the whole debt back a tick, untouched.
@@ -547,10 +554,19 @@ BEGIN
      OR (pg_temp.rel(v_r4)).net_release_cents <> 10000 THEN
     RAISE EXCEPTION 'T10 next tick: returned %', pg_temp.returned(v_f, v_r4, 'matured');
   END IF;
+  -- T9 continued: maturity never places carried value (the claims do), and
+  -- r4 could not take it anyway: it was claimed once. The value keeps
+  -- waiting for a release that can (bundle 4 suite).
+  IF pg_temp.adj(v_r4, 'maturity_recredit') <> 0
+     OR (SELECT carried_at FROM public.payout_maturity_carryovers
+         WHERE application_id = (pg_temp.app(v_s, v_r3)).id) IS NOT NULL THEN
+    RAISE EXCEPTION 'T9 carryover placed on a due, once-claimed release';
+  END IF;
   PERFORM pg_temp.assert_i1('T10');
 
   -- I4: every matured postponement debt is fully accounted for: recredits +
-  -- 'matured' returns + writeoff = principal (nothing paid twice, nothing lost).
+  -- carried value + 'matured' returns + writeoff = principal (nothing paid
+  -- twice, nothing lost).
   IF EXISTS (
     SELECT 1 FROM public.organiser_payout_debts d
     WHERE d.id IN (v_q, v_t, v_s, v_f)
@@ -560,6 +576,9 @@ BEGIN
           AND adj.idempotency_key IN (
             SELECT 'postpone-recredit:' || a.id FROM public.payout_debt_applications a
             WHERE a.debt_id = d.id)
+      ) + (
+        SELECT coalesce(sum(c.amount_cents), 0) FROM public.payout_maturity_carryovers c
+        WHERE c.debt_id = d.id AND c.parent_carryover_id IS NULL
       ) + (
         SELECT coalesce(sum(ret.amount_cents), 0) FROM public.payout_debt_application_returns ret
         WHERE ret.debt_id = d.id AND ret.reason = 'matured'
@@ -750,17 +769,21 @@ BEGIN
 END
 $t11$;
 
--- T12c (known gap, pinned): a Paystack claim plans organiser legs before it
--- authorizes. While a never-sent organiser leg stays 'planned', the release
--- is not settleable: a hold leaves its debt counted as recovered, and
--- maturity books today's recredit. Voiding unsent legs when the release goes
--- back to pending is tracked on #3645 (a re-claim reuses those legs at their
--- old principal, so returning debt here would not change what is paid).
+-- T12c: a Paystack claim plans organiser legs before it authorizes. While an
+-- organiser leg stays 'planned' the release is not settleable, and the leg
+-- is never voided (it may already be at Paystack on OTP). Maturity keeps
+-- 2d's recredit on such a release: its items no longer cover the value, so
+-- carrying it elsewhere could pay money no sale funded. #3645 bundle 4 adds
+-- the guard that matters here: authorize refuses to send a plan larger than
+-- what the release now owes (an ops alert, legs kept), so the hold is never
+-- overpaid.
 DO $t12c$
 DECLARE
   v_debt uuid;
   v_temp uuid;
   v_r uuid;
+  v_claim uuid := gen_random_uuid();
+  v_ok boolean;
 BEGIN
   PERFORM pg_temp.brand(12);
   v_debt := pg_temp.debt(12, 1, 3000, timestamptz '2026-10-01 00:00:00+00');
@@ -785,13 +808,36 @@ BEGIN
      OR (pg_temp.rel(v_r)).net_release_cents <> 0
      OR EXISTS (SELECT 1 FROM public.payout_debt_application_returns WHERE release_id = v_r)
      OR (pg_temp.d(v_debt)).status <> 'closed' THEN
-    RAISE EXCEPTION 'T12c pinned behaviour changed: status % returns %', (pg_temp.rel(v_r)).status,
+    RAISE EXCEPTION 'T12c refresh with a planned leg: status % returns %', (pg_temp.rel(v_r)).status,
       (SELECT count(*) FROM public.payout_debt_application_returns WHERE release_id = v_r);
   END IF;
   PERFORM public.mature_postponement_debts(timestamptz '2026-10-29 00:00:00+00');
+  -- Unpaid with a fixed plan: 2d's recredit stays, nothing is carried.
   IF pg_temp.adj(v_r, 'maturity_recredit') <> 1000
-     OR pg_temp.returned(v_temp, v_r, 'matured') <> 0 THEN
-    RAISE EXCEPTION 'T12c maturity on a planned-leg release changed';
+     OR pg_temp.returned(v_temp, v_r, 'matured') <> 0
+     OR EXISTS (SELECT 1 FROM public.payout_maturity_carryovers c
+                WHERE c.application_id = (pg_temp.app(v_temp, v_r)).id) THEN
+    RAISE EXCEPTION 'T12c maturity on a planned-leg release: recredit %', pg_temp.adj(v_r, 'maturity_recredit');
+  END IF;
+  -- Re-claimed, the 6000 plan is larger than the 1000 the release owes now
+  -- (net 0 + recredit 1000): not sent, back to pending, alert raised, the
+  -- planned leg kept as it was.
+  UPDATE public.brand_payout_releases
+  SET status = 'in_flight', paystack_execution_claim_id = v_claim,
+      paystack_execution_claimed_at = now()
+  WHERE id = v_r;
+  v_ok := public.authorize_paystack_payout_execution(v_r, v_claim);
+  IF v_ok IS NOT FALSE
+     OR (pg_temp.rel(v_r)).status <> 'pending'
+     OR (pg_temp.rel(v_r)).error_message IS DISTINCT FROM 'paystack_plan_exceeds_due'
+     OR (pg_temp.rel(v_r)).paystack_execution_claim_id IS NOT NULL
+     OR NOT EXISTS (
+       SELECT 1 FROM public.payout_release_alert_outbox
+       WHERE release_id = v_r AND alert_kind = 'paystack_plan_exceeds_due'
+     )
+     OR (SELECT status || ':' || principal_cents FROM public.payout_transfer_legs
+         WHERE release_id = v_r AND kind = 'organiser') <> 'planned:6000' THEN
+    RAISE EXCEPTION 'T12c an over-due plan was authorized: % status %', v_ok, (pg_temp.rel(v_r)).status;
   END IF;
 END
 $t12c$;
