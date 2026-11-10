@@ -99,7 +99,11 @@ test('X-2 the careers footer and the Organization sameAs read the approved list'
 
 test('X-3 the hosted email signature links exactly the approved seven, each with its icon', () => {
   const html = read('public/signature.html')
-  const socials = html.slice(html.indexOf('<!-- socials -->'), html.indexOf('<!-- ============ /SIGNATURE'))
+  const start = html.indexOf('<!-- socials -->')
+  const end = html.indexOf('<!-- ============ /SIGNATURE')
+  assert.ok(start >= 0 && end > start, 'the signature has a socials block before its end marker')
+  const socials = html.slice(start, end)
+  assert.ok(socials.length > 200 && socials.length < 20000, `socials window is ${socials.length} chars`)
   const hrefs = [...socials.matchAll(/<a href="([^"]+)"/g)].map((m) => m[1])
   assert.deepEqual(hrefs, APPROVED)
   for (const [, icon] of socials.matchAll(/src="https:\/\/usemingla\.com\/brand\/email\/(social-[a-z]+\.png)"/g)) {
