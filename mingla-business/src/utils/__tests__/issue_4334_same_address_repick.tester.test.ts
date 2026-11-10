@@ -304,6 +304,7 @@ describe("T-6 brand: a typed address with no place id clears a known id", () => 
     expect(computeDirtyFieldsPatch(brand(), brand())).toEqual({});
     expect(
       computeDirtyFieldsPatch(brand({ locationProviderPlaceId: null }), brand()),
-    ).toEqual({ locationProviderPlaceId: null });
+      // #4334 follow-ups — the pin travels with its id (biz_update_brand_pin).
+    ).toEqual({ lat: PIN.lat, lng: PIN.lng, locationProviderPlaceId: null });
   });
 });

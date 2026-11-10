@@ -62,9 +62,8 @@ export interface VenueDetailsForHost {
   lng: number | null;
   coordinatePrecision: CoordinatePrecision | null;
   /**
-   * #4334 — the saved pin's Google place id, when the read carries it (the
-   * host read does not select it yet, so undefined = "none"). The edit diff
-   * compares a re-pick against it.
+   * #4334 — the saved pin's Google place id (the host read selects it;
+   * undefined = not read = "none"). The edit diff compares a re-pick against it.
    */
   locationProviderPlaceId?: string | null;
   contactPhone: string | null;
@@ -85,6 +84,8 @@ export interface VenueDetailsRow {
   lat: number | null;
   lng: number | null;
   coordinate_precision: string | null;
+  /** #4334 — the saved pin's Google place id. Optional: an older read omits it. */
+  location_provider_place_id?: string | null;
   contact_phone: string | null;
   contact_phone_country_iso: string | null;
   contact_email: string | null;
@@ -105,7 +106,7 @@ export interface VenueDetailsRow {
 }
 
 export const VENUE_DETAILS_HOST_COLUMNS =
-  "id, brand_id, name, venue_category, address, city, country_code, lat, lng, coordinate_precision, contact_phone, contact_phone_country_iso, contact_email, claim_status, details_change_request_id, details_change_status, details_change_name, details_change_venue_category, details_change_address, details_change_city, details_change_country_code, details_change_lat, details_change_lng, details_change_coordinate_precision, details_change_requested_at, details_change_reviewed_at, details_change_rejection_reason";
+  "id, brand_id, name, venue_category, address, city, country_code, lat, lng, coordinate_precision, location_provider_place_id, contact_phone, contact_phone_country_iso, contact_email, claim_status, details_change_request_id, details_change_status, details_change_name, details_change_venue_category, details_change_address, details_change_city, details_change_country_code, details_change_lat, details_change_lng, details_change_coordinate_precision, details_change_requested_at, details_change_reviewed_at, details_change_rejection_reason";
 
 const asPrecision = (value: string | null): CoordinatePrecision | null =>
   value === "exact" || value === "approximate" ? value : null;
@@ -154,6 +155,10 @@ export function mapVenueDetailsRow(row: VenueDetailsRow): VenueDetailsForHost {
     lat: row.lat,
     lng: row.lng,
     coordinatePrecision: asPrecision(row.coordinate_precision),
+    // #4334 — seeds the edit diff, so a re-pick of the same place is not a change.
+    ...(row.location_provider_place_id !== undefined
+      ? { locationProviderPlaceId: row.location_provider_place_id }
+      : {}),
     contactPhone: row.contact_phone,
     contactPhoneCountryIso: row.contact_phone_country_iso,
     contactEmail: row.contact_email,

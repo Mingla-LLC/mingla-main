@@ -159,6 +159,36 @@ async function resolveRevision(
   );
 }
 
+/** #4334 — does this trip patch send a departure or destination place id? */
+export const tripPatchSendsPlaceId = (patch: unknown): boolean => {
+  const groups = patch as {
+    event?: { business_trip?: Record<string, unknown> };
+    theme?: { business_trip?: Record<string, unknown> };
+  } | null;
+  return [groups?.event?.business_trip, groups?.theme?.business_trip].some(
+    (trip) =>
+      typeof trip?.departurePlaceId === "string" ||
+      typeof trip?.destinationPlaceId === "string",
+  );
+};
+
+/**
+ * #4334 — a patch that sends a trip pin's place id goes through the command's
+ * `_repick` twin, which asserts those ids so the same place re-picked onto
+ * refined coordinates keeps its place id (the plain command clears the id of
+ * any pin that moves). Every other patch uses the plain command.
+ * [TRANSITIONAL] until 20280526004334 is applied the twin is missing
+ * (PGRST202) and the plain command runs instead. Exit: the migration is live.
+ */
+const tripRpcKeepingPins = async (
+  name: "biz_apply_trip_draft_graph" | "biz_update_trip_live_command",
+  args: Record<string, unknown>,
+): Promise<{ data: unknown; error: { code?: string; message: string } | null }> => {
+  if (!tripPatchSendsPlaceId(args.p_patch)) return supabase.rpc(name, args);
+  const first = await supabase.rpc(`${name}_repick`, args);
+  return first.error?.code === "PGRST202" ? supabase.rpc(name, args) : first;
+};
+
 /**
  * Apply one atomic patch to a DRAFT trip graph through the canonical command.
  * Every group in `patch` commits or none of them does.
@@ -168,7 +198,7 @@ export async function applyTripDraftGraph(
   patch: Record<string, unknown>,
   options?: TripCommandOptions,
 ): Promise<Record<string, unknown>> {
-  const { data, error } = await supabase.rpc("biz_apply_trip_draft_graph", {
+  const { data, error } = await tripRpcKeepingPins("biz_apply_trip_draft_graph", {
     p_event_id: eventId,
     p_patch: patch,
     p_expected_updated_at: await resolveRevision(eventId, options),
@@ -1844,7 +1874,7 @@ export async function updateLiveTripFields(
   // on web, iOS and Android at once — see the #1971 QA record). What it adds is
   // compare-and-swap, an exactly-once receipt, and deposit/instalment bounds
   // checked before delegation.
-  const { data, error } = await supabase.rpc("biz_update_trip_live_command", {
+  const { data, error } = await tripRpcKeepingPins("biz_update_trip_live_command", {
     p_event_id: eventId,
     p_patch: patch as Record<string, unknown>,
     p_reason: reason,

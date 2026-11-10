@@ -679,6 +679,7 @@ export const fetchBusinessEventsForBrand = async (
   // issue #3284 — the organiser's refund terms from the same probe, so a live
   // event opened from the list edits against its REAL terms.
   const refundPolicyById = new Map<string, RefundPolicy | null | undefined>();
+  const savedPinById = new Map<string, SavedPinColumns>();   // #4334
   // ORCH-1150 — per-RSVP host-control snapshot from the same probe.
   const rsvpMetaById = new Map<
     string,
@@ -704,7 +705,7 @@ export const fetchBusinessEventsForBrand = async (
     const typesResp = await supabase
       .from("events")
       .select(
-        "id, event_type, rsvp_capacity, rsvp_allow_plus_ones, rsvp_plus_ones_max, rsvp_waitlist_enabled, rsvp_approval_mode, rsvp_discoverable, rsvp_contribution_enabled, rsvp_contribution_suggested_cents, rsvp_contribution_min_cents, refund_policy",
+        "id, event_type, rsvp_capacity, rsvp_allow_plus_ones, rsvp_plus_ones_max, rsvp_waitlist_enabled, rsvp_approval_mode, rsvp_discoverable, rsvp_contribution_enabled, rsvp_contribution_suggested_cents, rsvp_contribution_min_cents, refund_policy, location_provider_place_id, coordinate_precision",
       )
       .in("id", ids);
     if (typesResp.error !== null) throw typesResp.error;
@@ -725,8 +726,9 @@ export const fetchBusinessEventsForBrand = async (
       rsvp_contribution_min_cents: number | null;
       // issue #3284 — events.refund_policy (jsonb; not on the generated types).
       refund_policy?: unknown;
-    }>) {
+    } & SavedPinColumns>) {
       const t = r.event_type ?? "event";
+      savedPinById.set(r.id, r);
       eventTypeById.set(r.id, t);
       refundPolicyById.set(r.id, refundPolicyFromColumn(r.refund_policy));
       if (t === "trip") tripIds.add(r.id);
@@ -777,14 +779,17 @@ export const fetchBusinessEventsForBrand = async (
     filteredRows.map((row) => fetchTicketsForEvent(row.id)),
   );
   return filteredRows.map((row, idx) =>
-    withRefundPolicy(
-      eventFromRow(
-        row,
-        ticketLists[idx] ?? [],
-        eventTypeById.get(row.id) ?? "event",
-        rsvpMetaById.get(row.id) ?? null,
+    withSavedPin(
+      withRefundPolicy(
+        eventFromRow(
+          row,
+          ticketLists[idx] ?? [],
+          eventTypeById.get(row.id) ?? "event",
+          rsvpMetaById.get(row.id) ?? null,
+        ),
+        refundPolicyById.get(row.id),
       ),
-      refundPolicyById.get(row.id),
+      savedPinById.get(row.id),
     ),
   );
 };
@@ -809,6 +814,35 @@ const withRefundPolicy = (
   refundPolicy: RefundPolicy | null | undefined,
 ): LiveEvent =>
   refundPolicy === undefined ? event : { ...event, refundPolicy };
+
+/**
+ * #4334 — the saved pin's Google place id and precision, read from `events`
+ * (the management view does not carry them). The editor seeds its pin from
+ * these, so an untouched pin, or a re-pick of the same place, is not a change,
+ * and a refined pin is saved with the id it belongs to. A probe that did not
+ * carry a column leaves it unknown (undefined).
+ */
+interface SavedPinColumns {
+  location_provider_place_id?: string | null;
+  coordinate_precision?: string | null;
+}
+const withSavedPin = (event: LiveEvent, row: SavedPinColumns | undefined): LiveEvent =>
+  row === undefined
+    ? event
+    : {
+        ...event,
+        ...(row.location_provider_place_id !== undefined
+          ? { locationProviderPlaceId: row.location_provider_place_id }
+          : {}),
+        ...(row.coordinate_precision !== undefined
+          ? {
+              coordinatePrecision:
+                row.coordinate_precision === "exact" || row.coordinate_precision === "approximate"
+                  ? row.coordinate_precision
+                  : null,
+            }
+          : {}),
+      };
 
 export const fetchBusinessEventById = async (
   eventId: string,
@@ -838,7 +872,9 @@ export const fetchBusinessEventById = async (
         // issue #3284 — the refund terms the edit surface diffs and gates against.
         "refund_policy, " +
         // issue #3281 — the pricing mode, for the ticket sheet's capacity and price hints.
-        "multi_date_pricing_mode",
+        "multi_date_pricing_mode, " +
+        // #4334 — the saved pin's place id and precision (the view lacks them).
+        "location_provider_place_id, coordinate_precision",
     )
     .eq("id", eventId)
     .maybeSingle();
@@ -865,7 +901,7 @@ export const fetchBusinessEventById = async (
     // issue #3284 — events.refund_policy (jsonb; not on the generated types).
     refund_policy?: unknown;
     multi_date_pricing_mode?: string | null;
-  } | null;
+  } & SavedPinColumns | null;
   if (probeRow !== null && probeRow.event_type === "trip") {
     return null;
   }
@@ -926,6 +962,7 @@ export const fetchBusinessEventById = async (
       detail.event,
       refundPolicyFromColumn(probeRow.refund_policy),
     );
+    detail.event = withSavedPin(detail.event, probeRow);   // #4334
     // issue #3281 — so the edit screen's ticket sheet can say what a guest uses.
     const mode = probeRow.multi_date_pricing_mode;
     if (mode === "per_day" || mode === "all_days") {
