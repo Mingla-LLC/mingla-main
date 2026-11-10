@@ -61,6 +61,12 @@ export interface VenueDetailsForHost {
   lat: number | null;
   lng: number | null;
   coordinatePrecision: CoordinatePrecision | null;
+  /**
+   * #4334 — the saved pin's Google place id, when the read carries it (the
+   * host read does not select it yet, so undefined = "none"). The edit diff
+   * compares a re-pick against it.
+   */
+  locationProviderPlaceId?: string | null;
   contactPhone: string | null;
   contactPhoneCountryIso: string | null;
   contactEmail: string | null;
