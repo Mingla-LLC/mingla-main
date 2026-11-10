@@ -826,6 +826,30 @@ BEGIN
       WHERE release_id = v_old AND alert_kind = 'paystack_plan_exceeds_due') <> 1 THEN
     RAISE EXCEPTION 'B12 alerted twice';
   END IF;
+  -- An oversized release left in flight by a worker that died (the claim
+  -- expired) is flagged the same way.
+  DECLARE
+    v_dead uuid := pg_temp.stay(16, 4);
+    v_taken boolean;
+  BEGIN
+    UPDATE public.brand_payout_releases
+    SET provider = 'paystack', currency = 'ngn', net_release_cents = 2000,
+        status = 'in_flight', paystack_execution_claim_id = gen_random_uuid(),
+        paystack_execution_claimed_at = v_now - interval '11 minutes'
+    WHERE id = v_dead;
+    INSERT INTO public.payout_transfer_legs(
+      release_id, kind, chunk_index, principal_cents, estimated_fee_cents,
+      stamp_duty_cents, fee_schedule_version, status
+    ) VALUES (v_dead, 'organiser', 0, 9940, 10, 50, 'test', 'planned');
+    SELECT EXISTS (
+      SELECT 1 FROM public.claim_paystack_payout_releases(10, v_now) c WHERE c.release_id = v_dead
+    ) INTO v_taken;
+    IF v_taken
+       OR (SELECT count(*) FROM public.payout_release_alert_outbox
+           WHERE release_id = v_dead AND alert_kind = 'paystack_plan_exceeds_due') <> 1 THEN
+      RAISE EXCEPTION 'B12 an expired oversized claim was taken (%) or not flagged', v_taken;
+    END IF;
+  END;
   -- An oversized release whose leg still needs reconciling is still claimed,
   -- so the sweep's reconcile-first reaches it.
   DECLARE
@@ -1004,6 +1028,26 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'B16 an unplaced carryover does not block deletion: %', v_blockers;
   END IF;
+  -- Placed on a never-claimed carrier that is then cancelled with its event:
+  -- until the next claim moves it on, it is still owed and still blocks.
+  DECLARE
+    v_carrier uuid := pg_temp.stay(20, 2);
+  BEGIN
+    PERFORM public.issue_3645_place_maturity_carryovers(v_mature, 'stripe');
+    IF (pg_temp.carry(v_s, v_paid)).carried_release_id IS DISTINCT FROM v_carrier THEN
+      RAISE EXCEPTION 'B16 fixture: not placed on the carrier';
+    END IF;
+    UPDATE public.brand_payout_releases SET status = 'cancelled_event' WHERE id = v_carrier;
+    v_blockers := private.host_account_deletion_blockers(
+      pg_temp.uid(1, 20, 0), ARRAY[pg_temp.uid(2, 20, 0)]
+    );
+    IF NOT EXISTS (
+      SELECT 1 FROM jsonb_array_elements(v_blockers) b
+      WHERE b->>'code' = 'money_in_motion' AND (b->>'count')::integer = 1
+    ) THEN
+      RAISE EXCEPTION 'B16 a carryover on a closed carrier stopped blocking deletion: %', v_blockers;
+    END IF;
+  END;
 END
 $b16$;
 

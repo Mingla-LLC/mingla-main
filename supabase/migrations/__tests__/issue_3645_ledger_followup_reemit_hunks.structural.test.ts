@@ -6,7 +6,9 @@
  *   (b) the target body equals the source body with exactly those hunks;
  *   (c) the target defines nothing else except its new functions, and
  *       those are new (no earlier migration defines them);
- *   (d) the target is still the latest definition of everything it defines;
+ *   (d) the target is still the latest definition of everything it defines,
+ *       except what a later migration re-emits through its own declared
+ *       hunks (issue_3645_ledger_followup_round3_reemit_hunks.ts);
  *   (e) maturity books no recredit of its own: matured value it cannot hand
  *       back through net is always carried.
  */
@@ -18,6 +20,10 @@ import {
   LEDGER_FOLLOWUP_REEMITS,
   TARGET,
 } from "./issue_3645_ledger_followup_reemit_hunks.ts";
+import {
+  ROUND3_PRIVATE_REEMITS,
+  ROUND3_REEMITS,
+} from "./issue_3645_ledger_followup_round3_reemit_hunks.ts";
 
 const DIR = "supabase/migrations";
 const TARGET_FILE = TARGET.slice(DIR.length + 1);
@@ -70,8 +76,11 @@ Deno.test("#3645 bundle 4 the target is still the latest definition of what it d
   for (const file of files().filter((f) => f > TARGET_FILE)) {
     const later = definitions(Deno.readTextFileSync(`${DIR}/${file}`));
     for (const name of mine) {
+      const superseded = ROUND3_REEMITS.some((r) =>
+        r.fn === name && r.target === `${DIR}/${file}`
+      );
       assert(
-        !later.has(name),
+        superseded || !later.has(name),
         `${file} redefines ${name}; declare its hunks against ${TARGET_FILE} in its own guard`,
       );
     }
@@ -150,7 +159,10 @@ for (const reemit of LEDGER_FOLLOWUP_PRIVATE_REEMITS) {
     for (const file of files()) {
       const defined = privateDefinition(Deno.readTextFileSync(`${DIR}/${file}`), reemit.fn) !== undefined;
       if (file < TARGET_FILE && defined) latest = `${DIR}/${file}`;
-      if (file > TARGET_FILE) assert(!defined, `${file} redefines private.${reemit.fn}`);
+      const superseded = ROUND3_PRIVATE_REEMITS.some((r) =>
+        r.fn === reemit.fn && r.target === `${DIR}/${file}`
+      );
+      if (file > TARGET_FILE) assert(superseded || !defined, `${file} redefines private.${reemit.fn}`);
     }
     assertEquals(latest, reemit.source);
     const source = privateDefinition(Deno.readTextFileSync(reemit.source), reemit.fn);
