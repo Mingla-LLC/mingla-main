@@ -1065,8 +1065,8 @@ async function generateCardsForType(
   // so post-anchor gates (required_stops_short / travel_constraint / duplicate)
   // can mark it as failed without needing to re-derive `anchor` from scope.
   const mainStopCount = typeDef.stops.filter(s => !s.optional).length;
-  // ORCH-0434: Budget filtering removed. perStopBudget set to Infinity to disable.
-  const perStopBudget = Infinity;
+  // ORCH-0434: budget filtering is removed. #4347 round 3 deleted the dead
+  // `price_min > Infinity` checks that were left behind.
 
   // ORCH-0677 §3.2: track candidate anchor count so summary can surface it
   // when cards.length === 0. Only meaningful for reverse-anchor types.
@@ -1156,7 +1156,6 @@ async function generateCardsForType(
           } else {
             const available = (categoryPlaces[nearKey(catId, anchor)] || []).filter(p => {
               if (comboUsedIds.has(p.google_place_id)) return false;
-              if (!stopDef.optional && p.price_min > perStopBudget) return false;
               return true;
             });
             if (available.length === 0 && !stopDef.optional) {
@@ -1197,7 +1196,6 @@ async function generateCardsForType(
 
         const available = (categoryPlaces[catId] || []).filter(p => {
           if (comboUsedIds.has(p.google_place_id)) return false;
-          if (!stopDef.optional && p.price_min > perStopBudget) return false;
           // Fine Dining price floor — check highest tier in array meets minimum
           const bestTier = p.price_tiers?.length ? p.price_tiers[p.price_tiers.length - 1] : p.price_tier;
           if (catId === 'upscale_fine_dining' && bestTier && !slugMeetsMinimum(bestTier, 'bougie')) {

@@ -146,21 +146,30 @@ test('A-4 the measurement cannot loop, and is clamped', () => {
 });
 
 test('A-5 exactly ONE writer per card — the behind face reads, it never reports', () => {
-  // The deck renders the same spans twice: the front card and the behind
-  // preview. Two measurers writing the same key would fight on every promotion.
+  // #4347 round 3 — RE-SCOPED, SAME PROTECTION. A single place now draws the
+  // plan plate (no facts row to measure), so the deck's front face no longer
+  // measures. The only plate that still wraps a facts line is a host
+  // experience's, and its ONE writer is CuratedExperienceSwipeCard. The deck's
+  // behind face renders that experience's spans too and must only read.
   const plates = [...DECK.matchAll(/<DeckCardPlate[\s\S]*?\/>/g)];
   assert.equal(plates.length, 2, `A-5: expected 2 DeckCardPlate mounts in the deck, found ${plates.length}`);
-  const reporting = plates.filter((m) => /onMetaLinesChange=/.test(m[0]));
+  const deckReporting = plates.filter((m) => /onMetaLinesChange=/.test(m[0]));
   assert.equal(
-    reporting.length, 1,
-    `A-5: ${reporting.length} of the deck's plates report their measurement. The behind face is `
-    + 'pointerEvents="none" and renders the NEXT card\'s spans; it must read only.',
+    deckReporting.length, 0,
+    `A-5: ${deckReporting.length} of the deck's plates report a measurement. The front face draws the `
+    + 'place plate (nothing wraps) and the behind face is pointerEvents="none"; neither may write.',
   );
-  // Both must still be SIZED by a measurement, or the behind face keeps a stale
-  // silhouette and the plate visibly jumps at the moment of promotion.
-  for (const m of plates) {
-    assert.match(m[0], /metaLines=\{/, 'A-5: a deck plate is not sized from the measured line count');
+  const curatedMounts = [...CURATED.matchAll(/<DeckCardPlate[\s\S]*?\/>/g)];
+  const curatedReporting = curatedMounts.filter((m) => /onMetaLinesChange=/.test(m[0]));
+  assert.equal(curatedReporting.length, 1, 'A-5: the host experience face is not the one writer of its measurement');
+  // A mount that can draw a facts row must be sized by a measurement, or the
+  // behind face keeps a stale silhouette and the plate jumps at promotion.
+  for (const m of [...plates, ...curatedMounts]) {
+    assert.match(m[0], /metaLines=\{|plan=\{/, 'A-5: a plate is neither sized from a measured line count nor a plan/place plate');
   }
+  const behind = plates.find((m) => !/onDetailsPress=/.test(m[0]));
+  assert.ok(behind, 'A-5 (vacuity): the behind face plate is gone');
+  assert.match(behind[0], /metaLines=\{/, 'A-5: the behind face (which can show a host experience) is not sized from a line count');
 });
 
 test('A-6 the plate height and the title anchor come from ONE object', () => {
@@ -178,9 +187,9 @@ test('A-6 the plate height and the title anchor come from ONE object', () => {
     assert.ok(titleAnchors.length > 0, `A-6: ${name} has no title anchored to a presentation`);
     for (const holder of titleAnchors) {
       assert.match(
-        // #4347 round 2 — an AI plan anchors off planPlatePresentation(); the place
-        // branch of the same ternary must still be platePresentation().
-        code, new RegExp(`const ${holder}\\s*=\\s*(?:platePresentation\\(|[^;]*?\\bplanPlatePresentation\\(\\)[^;]*?:\\s*platePresentation\\()`),
+        // #4347 round 2/3 — an AI plan and a single place anchor off
+        // planPlatePresentation(content); a host experience off platePresentation().
+        code, new RegExp(`const ${holder}\\s*=\\s*(?:platePresentation\\(|[^;]*?\\bplanPlatePresentation\\()`),
         `A-6: ${name} anchors its title off "${holder}", which is not a platePresentation result`,
       );
     }
@@ -194,17 +203,20 @@ test('A-6 the plate height and the title anchor come from ONE object', () => {
 });
 
 test('A-7 the measurement state is not stranded below a conditional return', () => {
-  // Placement, not logic: the deck has `if (!currentRec) return null` partway
-  // down, and hooks declared after it are SKIPPED on an empty deck, shifting the
-  // index of every hook after them. React's rules of hooks, broken silently.
-  const stateAt = DECK.indexOf('const [metaLinesByCard');
-  assert.ok(stateAt > 0, 'A-7: the deck no longer holds a per-card measurement');
-  const guardAt = DECK.indexOf('if (!currentRec) {');
-  assert.ok(guardAt > 0, 'A-7 (vacuity): the empty-deck guard is gone, so this test proves nothing');
-  assert.ok(
-    stateAt < guardAt,
-    'A-7: the measurement hooks are declared BELOW `if (!currentRec) return null`. On an empty deck '
-    + 'they are skipped and every later hook shifts index.',
+  // Placement, not logic: hooks declared after an early `return` are SKIPPED on
+  // that path, shifting the index of every hook after them.
+  // #4347 round 3 — the deck no longer measures (a single place draws the plan
+  // plate), so it must hold NO orphaned measurement state; the host experience
+  // face owns the measurement and must declare it before any return.
+  assert.equal(DECK.includes('metaLinesByCard'), false, 'A-7: the deck holds a per-card measurement nothing writes');
+  const stateAt = CURATED.indexOf('const [metaLines, setMetaLines]');
+  assert.ok(stateAt > 0, 'A-7: the host experience face no longer holds its measurement');
+  const fnAt = CURATED.indexOf('export function CuratedExperienceSwipeCard(');
+  assert.ok(fnAt > 0 && fnAt < stateAt, 'A-7 (vacuity): the component boundary moved, so this proves nothing');
+  const body = CURATED.slice(fnAt, stateAt);
+  assert.equal(
+    /\n\s{2}if \([^)]*\)\s*(?:\{\s*)?return\b/.test(body), false,
+    'A-7: the measurement hook is declared BELOW an early return in CuratedExperienceSwipeCard',
   );
 });
 
@@ -270,7 +282,10 @@ test('A-9 EVERY surface that mounts the plate measures its facts line', () => {
   for (const rel of files) {
     const code = strip(read(rel));
     for (const m of code.matchAll(/<DeckCardPlate[\s\S]*?\/>/g)) {
-      if (!/metaLines=\{/.test(m[0])) unmeasured.push(`${rel.split('/').pop()}`);
+      // #4347 round 3 — a mount that ALWAYS draws the plan/place plate has no
+      // facts line to wrap; only a mount that can draw the place-facts plate
+      // must be measured.
+      if (!/metaLines=\{/.test(m[0]) && !/plan=\{/.test(m[0])) unmeasured.push(`${rel.split('/').pop()}`);
     }
   }
   assert.deepEqual(

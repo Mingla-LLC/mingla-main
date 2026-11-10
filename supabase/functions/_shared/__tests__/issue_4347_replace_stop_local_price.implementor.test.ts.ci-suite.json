@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_4347_replace_stop_local_price.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4347-replace-stop-local-price-implementor",
+  "profile": "deno-2-unit"
+}

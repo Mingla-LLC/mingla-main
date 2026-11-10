@@ -90,7 +90,7 @@ Deno.test("#4265 replace-stop alternatives never turn a $100+ place into max 0",
   ]);
   const { alternatives } = await fetchStopAlternatives(
     admin as never,
-    { categoryId, refLat: 35.78, refLng: -78.64, travelMode: "driving", budgetMax: 1000, excludePlaceIds: [], limit: 10 },
+    { categoryId, refLat: 35.78, refLng: -78.64, travelMode: "driving", excludePlaceIds: [], limit: 10 },
   );
   const open = alternatives.find((a) => a.placePoolId === "open")!;
   assertEquals(open.priceMin, 100);
