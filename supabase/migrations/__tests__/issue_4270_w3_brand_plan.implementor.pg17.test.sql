@@ -490,6 +490,13 @@ begin
   perform pg_temp.tp_like('P-CAL', 'a collaborator is a Creators record', v_t, 'ERR:22023:invalid_collaborator:%');
   v_t := pg_temp.tp_person('growth', format($q$select public.content_calendar_update(%L, '{"plan_link_url":"http://example.com"}'::jsonb, %s, null)::text$q$, v_id, v_rev + 3));
   perform pg_temp.tp_like('P-CAL', 'the plan link is https only', v_t, 'ERR:22023:invalid_link:%');
+  -- #4255: the Calendar shows only Approved, Scheduled and Published posts, so
+  -- the card is made Approved (approved copy and the go) before it is read.
+  update public.content_calendar_items
+     set copy_text = 'P4270 approved words', copy_approved_by = 'p4270-fixture', copy_approved_at = now(),
+         drive_url = 'https://drive.example.test/p4270', design_approved_by = 'p4270-fixture', design_approved_at = now(),
+         stage = 'review'
+   where id = v_id;
   v := pg_temp.tp_j(pg_temp.tp_person('growth', format($q$select public.ops_calendar(%L, %L)::text$q$, pg_temp.tp_day(0), pg_temp.tp_day(40))));
   perform pg_temp.tp_check('P-CAL', 'the Calendar''s content rows carry the brand',
     (select c->>'brand_name' from jsonb_array_elements(v->'content') c where c->>'title' = 'P4270 Dated idea'), 'P4270 Palm Brand');
