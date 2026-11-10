@@ -287,7 +287,9 @@ async function terminalizePending(
     failureReason?: string;
     requireOperationReceipt?: boolean;
   },
-): Promise<{ id: string; status: string; terminalMessageId?: string }> {
+): Promise<
+  { id: string; status: string; casWon: boolean; terminalMessageId?: string }
+> {
   const { data, error } = await pendingStateClient.rpc(
     "terminalize_agent_pending_action",
     {
@@ -301,7 +303,7 @@ async function terminalizePending(
       p_model_version: ARI_MODEL_VERSION,
       p_require_operation_receipt: input.requireOperationReceipt ?? false,
     },
-  ).select("id, status, conversation_id").maybeSingle();
+  ).select("id, status, conversation_id, cas_won").maybeSingle();
   if (error || !data) {
     throw new Error(error?.message ?? "terminal_state_not_committed");
   }
@@ -314,6 +316,8 @@ async function terminalizePending(
   return {
     id: data.id as string,
     status: data.status as string,
+    // false when another request already terminalized it (a replay).
+    casWon: (data as { cas_won?: unknown }).cas_won !== false,
     ...(terminalMessageId ? { terminalMessageId } : {}),
   };
 }
@@ -1180,7 +1184,10 @@ async function handleConfirmAction(args: {
             userId,
             expectedStatus: "pending",
             outcome: "expired",
-          }).then(() => undefined),
+          }).then((done) => {
+            // A replay of another request's expiry is not this request's.
+            if (!done.casWon) throw new Error("expired_elsewhere");
+          }),
         represent: representExpired,
         hubExpired: () =>
           errorResponse(409, "EXPIRED", "This suggestion expired."),

@@ -1573,6 +1573,8 @@ export async function runFlowForConversation(args: {
   confirmed?: { tool_name: string; result: unknown };
   /** #3355 P7 — the confirmed write was refused; nothing was saved. */
   failed?: { tool_name: string; message: string };
+  /** #3355 bundle 5 — see RunnerInput.requireStatus. */
+  requireStatus?: FlowRun["status"];
   store?: FlowStore;
   /** Test seam: the canonical reads. */
   probes?: FlowProbeDeps;
@@ -1599,6 +1601,7 @@ export async function runFlowForConversation(args: {
       trigger: args.trigger,
       ...(args.confirmed ? { confirmed: args.confirmed } : {}),
       ...(args.failed ? { failed: args.failed } : {}),
+      ...(args.requireStatus ? { requireStatus: args.requireStatus } : {}),
       brandName: args.brand.name,
     });
     return { outcome, run: outcome.run };

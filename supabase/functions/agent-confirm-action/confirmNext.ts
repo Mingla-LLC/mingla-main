@@ -39,6 +39,7 @@ import {
 import type {
   FlowArtefact,
   FlowProbeDeps,
+  FlowRun,
 } from "../_shared/ariFlows/types.ts";
 import { LIVE_FLOW_STATUSES } from "../_shared/ariFlows/types.ts";
 
@@ -197,6 +198,8 @@ export async function flowNextAfterConfirm(args: {
    * so a refusal never leaves the owner at a dead end.
    */
   failed?: { tool_name: string; message: string };
+  /** #3355 bundle 5 — act only if the run is still in this status, under its lease. */
+  requireStatus?: FlowRun["status"];
   promptVersion: string;
   modelVersion: string;
   enabled?: boolean;
@@ -217,6 +220,7 @@ export async function flowNextAfterConfirm(args: {
     trigger: "confirm",
     ...(args.confirmed ? { confirmed: args.confirmed } : {}),
     ...(args.failed ? { failed: args.failed } : {}),
+    ...(args.requireStatus ? { requireStatus: args.requireStatus } : {}),
     ...(args.store ? { store: args.store } : {}),
     ...(args.probes ? { probes: args.probes } : {}),
     // #2830 — the next brand-details question may carry what Ari found.
@@ -335,6 +339,9 @@ export async function representFlowAfterExpiry(args: {
         tool_name: args.expired.tool_name,
         message: EXPIRED_IN_FLOW_REASON,
       },
+      // Re-checked under the run's lease: of two overlapping expiries, only
+      // the first re-presents; the second finds the step already back.
+      requireStatus: "awaiting_approval",
       promptVersion: args.promptVersion,
       modelVersion: args.modelVersion,
       enabled: true,

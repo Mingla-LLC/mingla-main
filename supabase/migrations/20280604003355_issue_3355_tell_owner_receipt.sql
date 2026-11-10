@@ -42,6 +42,16 @@ BEGIN
      OR v_confirmed->>'message' IS DISTINCT FROM p_content THEN
     RAISE EXCEPTION 'operation_binding_mismatch';
   END IF;
+  -- And only into the approved brand's own group: a teammate on two brands
+  -- can never post one brand's approved note in another brand's group.
+  IF NOT EXISTS (
+    SELECT 1 FROM public.conversations c
+     WHERE c.id = p_conversation_id
+       AND c.linked_entity_type = 'brand'
+       AND c.brand_id::text = v_confirmed->>'brand_id'
+  ) THEN
+    RAISE EXCEPTION 'operation_binding_mismatch';
+  END IF;
 
   v_begin := public.agent_operation_receipt_begin(
     p_operation_id, 'tell_owner_in_brand_group', v_confirmed);

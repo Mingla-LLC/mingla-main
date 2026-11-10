@@ -1759,3 +1759,77 @@ Deno.test("bundle 5: a timed-out create_event approval brings the create step ba
   assertEquals(run.status, "awaiting_owner");
   assertEquals(run.current_artefact?.artefact_id, next.artefact.artefact_id);
 });
+
+/** An expiry re-present as confirm sends it: re-checked under the lease. */
+async function expiredRepresent(world: World, store: MemoryStore) {
+  world.openProposal = false;
+  return await runFlowStep({ store, probes: probesFor(world) }, {
+    run: await cur(store),
+    trigger: "confirm",
+    failed: {
+      tool_name: "set_brand_payout_country",
+      message: EXPIRED_IN_FLOW_REASON,
+    },
+    requireStatus: "awaiting_approval",
+    brandName: BRAND_NAME,
+  });
+}
+
+Deno.test("bundle 5: overlapping expiries re-present once; a later one never replaces the card the owner has", async () => {
+  // Sequential: both read the waiting run, the second acts after the first.
+  const world = noCurrencyWorld();
+  const store = new MemoryStore();
+  await toExpiredPayoutCountry(world, store);
+  const stale = await cur(store);
+  const first = await expiredRepresent(world, store);
+  assert(first.kind === "artefact");
+  const second = await runFlowStep({ store, probes: probesFor(world) }, {
+    run: stale, // read before the first one acted
+    trigger: "confirm",
+    failed: {
+      tool_name: "set_brand_payout_country",
+      message: EXPIRED_IN_FLOW_REASON,
+    },
+    requireStatus: "awaiting_approval",
+    brandName: BRAND_NAME,
+  });
+  assertEquals(second.kind, "unchanged");
+  assertEquals(
+    (await cur(store)).current_artefact?.artefact_id,
+    first.artefact.artefact_id,
+  );
+  // Concurrent: exactly one card. The database lease is exclusive (a held
+  // lease answers busy); this test store's lease is not, so make it so.
+  const world2 = noCurrencyWorld();
+  const store2 = new MemoryStore();
+  await toExpiredPayoutCountry(world2, store2);
+  const grant = store2.lease.bind(store2);
+  let held = false;
+  store2.lease = async (runId: string, token: string) => {
+    if (held) {
+      return {
+        ok: false,
+        reason: "busy" as const,
+        owner_display_name: null,
+        run: await cur(store2),
+      };
+    }
+    held = true;
+    return await grant(runId, token);
+  };
+  const release = store2.release.bind(store2);
+  store2.release = async (runId: string, token: string) => {
+    held = false;
+    return await release(runId, token);
+  };
+  const both = await Promise.all([
+    expiredRepresent(world2, store2),
+    expiredRepresent(world2, store2),
+  ]);
+  const cards = both.filter((outcome) => outcome.kind === "artefact");
+  assertEquals(cards.length, 1, both.map((o) => o.kind).join(","));
+  assertEquals(
+    (await cur(store2)).current_artefact?.artefact_id,
+    (cards[0] as { artefact: { artefact_id: string } }).artefact.artefact_id,
+  );
+});

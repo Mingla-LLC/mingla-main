@@ -18,9 +18,11 @@ INSERT INTO public.creator_accounts(id,email,display_name,business_name) VALUES
   ('33550000-b500-4000-8000-000000000001','b5-owner@test.local','Olu Owner','B5 Host'),
   ('33550000-b500-4000-8000-000000000003','b5-outsider@test.local','Out Sider','B5 Other Host');
 INSERT INTO public.brands(id,account_id,name,slug) VALUES
-  ('33550000-b500-4000-8000-0000000000b1','33550000-b500-4000-8000-000000000001','Lantern Supper Club','b5-lantern-supper-club');
+  ('33550000-b500-4000-8000-0000000000b1','33550000-b500-4000-8000-000000000001','Lantern Supper Club','b5-lantern-supper-club'),
+  ('33550000-b500-4000-8000-0000000000b2','33550000-b500-4000-8000-000000000001','Harbour Nights','b5-harbour-nights');
 INSERT INTO public.brand_team_members(brand_id,user_id,role,accepted_at) VALUES
-  ('33550000-b500-4000-8000-0000000000b1','33550000-b500-4000-8000-000000000002','event_manager',now());
+  ('33550000-b500-4000-8000-0000000000b1','33550000-b500-4000-8000-000000000002','event_manager',now()),
+  ('33550000-b500-4000-8000-0000000000b2','33550000-b500-4000-8000-000000000002','event_manager',now());
 INSERT INTO public.agent_conversations(id,user_id,brand_id) VALUES
   ('33550000-b500-4000-8000-0000000000c1','33550000-b500-4000-8000-000000000002','33550000-b500-4000-8000-0000000000b1'),
   ('33550000-b500-4000-8000-0000000000c3','33550000-b500-4000-8000-000000000003','33550000-b500-4000-8000-0000000000b1');
@@ -38,6 +40,8 @@ DECLARE
   v_op_outsider uuid := gen_random_uuid();
   v_op_pending uuid := gen_random_uuid();
   v_op_other_tool uuid := gen_random_uuid();
+  v_op_cross uuid := gen_random_uuid();
+  v_other_group uuid;
   v_args jsonb;
   v_first jsonb;
   v_replay jsonb;
@@ -47,6 +51,8 @@ DECLARE
 BEGIN
   SELECT id INTO STRICT v_group FROM public.conversations
    WHERE linked_entity_type = 'brand' AND brand_id = v_brand;
+  SELECT id INTO STRICT v_other_group FROM public.conversations
+   WHERE linked_entity_type = 'brand' AND brand_id = '33550000-b500-4000-8000-0000000000b2';
   v_args := jsonb_build_object(
     'brand_id', v_brand, 'about', 'payment_setup',
     'send_to', 'Lantern Supper Club group chat', 'message', v_note);
@@ -59,6 +65,7 @@ BEGIN
     (v_op_altered,v_member,'33550000-b500-4000-8000-0000000000c1','tell_owner_in_brand_group',v_args,'executing','ari',v_brand,now(),now()),
     (v_op_outsider,v_outsider,'33550000-b500-4000-8000-0000000000c3','tell_owner_in_brand_group',v_args,'executing','ari',v_brand,now(),now()),
     (v_op_pending,v_member,'33550000-b500-4000-8000-0000000000c1','tell_owner_in_brand_group',v_args,'pending','ari',v_brand,now(),NULL),
+    (v_op_cross,v_member,'33550000-b500-4000-8000-0000000000c1','tell_owner_in_brand_group',v_args,'executing','ari',v_brand,now(),now()),
     (v_op_other_tool,v_member,'33550000-b500-4000-8000-0000000000c1','update_brand',v_args,'executing','ari',v_brand,now(),now());
 
   SET LOCAL ROLE authenticated;
@@ -125,6 +132,18 @@ BEGIN
   END;
   IF v_error <> 'operation_binding_mismatch' THEN
     RAISE EXCEPTION 'B5-5b another tool''s approval was not refused (error=%)', v_error;
+  END IF;
+
+  -- 5c. A teammate on two brands can't post brand A's approved note in
+  --     brand B's group (the destination is bound to the approval's brand).
+  BEGIN
+    PERFORM public.ari_tell_owner_in_brand_group(v_op_cross, v_other_group, v_note);
+    v_error := 'none';
+  EXCEPTION WHEN OTHERS THEN v_error := SQLERRM;
+  END;
+  IF v_error <> 'operation_binding_mismatch'
+     OR EXISTS (SELECT 1 FROM public.messages WHERE conversation_id = v_other_group AND content = v_note) THEN
+    RAISE EXCEPTION 'B5-5c a note went to another brand''s group (error=%)', v_error;
   END IF;
 
   -- 6. Someone else's approval is not this caller's to send.
