@@ -12,6 +12,8 @@ export const TARGET = "supabase/migrations/20280602003645_issue_3645_payout_ledg
 export const LEDGER_FOLLOWUP_NEW_FUNCTIONS = [
   "issue_3645_protect_maturity_carryover",
   "issue_3645_mark_release_claimed",
+  "issue_3645_release_carry_room",
+  "issue_3645_paystack_plan_cents",
   "issue_3645_release_closed_unpaid",
   "issue_3645_release_can_carry",
   "issue_3645_return_closed_release_debt",
@@ -74,6 +76,11 @@ export const LEDGER_FOLLOWUP_REEMITS: Reemit[] = [
         name: "place carried value under the provider claim lock before reading recredits",
         old: "AS $fn$\nBEGIN\n  RETURN QUERY\n",
         new: "AS $fn$\nBEGIN\n  -- #3645 bundle 4: every Paystack claim takes this lock, then places carried\n  -- maturity value on payable releases, then reads recredits below in a\n  -- later statement. A value placed by one claim is therefore in the\n  -- snapshot of the next; no claim reads a carrier without it. Placement\n  -- failing never stops the claim: the value waits for the next one.\n  PERFORM pg_advisory_xact_lock(hashtextextended('issue_3645_claim:paystack', 0));\n  BEGIN\n    PERFORM public.issue_3645_place_maturity_carryovers(p_now, 'paystack');\n  EXCEPTION WHEN OTHERS THEN\n    RAISE WARNING 'issue_3645_place_carryovers_failed provider=paystack sqlstate=% message=%',\n      SQLSTATE, SQLERRM;\n  END;\n  RETURN QUERY\n",
+      },
+      {
+        name: "leave out a release whose kept plan is larger than it now owes, so it never takes a slot from payable releases",
+        old: "      ),0), 2147483647::bigint) > 0\n    ORDER BY r.releasable_at,r.created_at,r.id\n",
+        new: "      ),0), 2147483647::bigint) > 0\n      -- #3645 bundle 4: authorize refuses a kept organiser plan larger than\n      -- the release now owes. Leave such a release out before the LIMIT until\n      -- it owes the plan again, so refused releases never fill every slot.\n      AND public.issue_3645_paystack_plan_cents(r.id)\n        <= r.net_release_cents::bigint + coalesce((\n          SELECT sum(a.amount_cents)\n          FROM public.payout_ledger_adjustments a\n          WHERE a.release_id=r.id AND a.kind='maturity_recredit'\n        ),0)\n    ORDER BY r.releasable_at,r.created_at,r.id\n",
       },
     ],
   },

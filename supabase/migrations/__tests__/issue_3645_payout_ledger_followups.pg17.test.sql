@@ -775,6 +775,125 @@ BEGIN
 END
 $b11$;
 
+-- B12: a Paystack release whose kept plan is larger than it now owes is left
+-- out of the claim before its LIMIT, so refused releases never fill every
+-- slot; it is claimed again once it owes the plan.
+DO $b12$
+DECLARE
+  v_now constant timestamptz := timestamptz '2026-10-30 00:00:00+00';
+  v_old uuid;
+  v_new uuid;
+  v_ids uuid[];
+BEGIN
+  PERFORM pg_temp.brand(16);
+  v_old := pg_temp.stay(16, 1);
+  v_new := pg_temp.stay(16, 2);
+  UPDATE public.brand_payout_releases
+  SET created_at = created_at + interval '1 hour'
+  WHERE id = v_new;
+  UPDATE public.brand_payout_releases SET provider = 'paystack', currency = 'ngn'
+  WHERE id IN (v_old, v_new);
+  INSERT INTO public.brand_paystack_recipients(
+    brand_id, recipient_code, bank_code, account_fingerprint,
+    account_number_masked, account_name
+  ) VALUES (
+    pg_temp.uid(2, 16, 0), 'RCP_3645e_16', '058', 'hmac-sha256:' || repeat('a', 64),
+    '••••1234', 'Issue 3645 b4'
+  );
+  INSERT INTO public.payout_transfer_legs(
+    release_id, kind, chunk_index, principal_cents, estimated_fee_cents,
+    stamp_duty_cents, fee_schedule_version, status
+  ) VALUES (v_old, 'organiser', 0, 9940, 10, 50, 'test', 'planned');
+  UPDATE public.brand_payout_releases SET net_release_cents = 5000 WHERE id = v_old;
+
+  -- With one slot, the oversized older release must not take it.
+  SELECT array_agg(c.release_id) INTO v_ids
+  FROM public.claim_paystack_payout_releases(1, v_now) c;
+  IF v_ids IS DISTINCT FROM ARRAY[v_new] THEN
+    RAISE EXCEPTION 'B12 the oversized plan took the slot: %', v_ids;
+  END IF;
+  -- Once the release owes the plan again, it is claimed.
+  UPDATE public.brand_payout_releases SET net_release_cents = 10000 WHERE id = v_old;
+  SELECT array_agg(c.release_id) INTO v_ids
+  FROM public.claim_paystack_payout_releases(1, v_now) c;
+  IF v_ids IS DISTINCT FROM ARRAY[v_old] THEN
+    RAISE EXCEPTION 'B12 a plan the release owes again was left out: %', v_ids;
+  END IF;
+END
+$b12$;
+
+-- B13: a carrier held by a dispute (one its claim or authorize would refuse
+-- to pay) is skipped; the value goes to a newer payable release.
+DO $b13$
+DECLARE
+  v_mature constant timestamptz := timestamptz '2026-10-29 00:00:00+00';
+  v_s uuid;
+  v_paid uuid;
+  v_disputed uuid;
+  v_ok uuid;
+BEGIN
+  PERFORM pg_temp.brand(17);
+  v_s := pg_temp.temp_debt(17, 1, 600, timestamptz '2026-10-25 00:00:00+00');
+  v_paid := pg_temp.stay(17, 1);
+  UPDATE public.brand_payout_releases SET status = 'released', released_at = v_mature
+  WHERE id = v_paid;
+  v_disputed := pg_temp.stay(17, 2);
+  v_ok := pg_temp.stay(17, 3);
+  UPDATE public.brand_payout_releases
+  SET created_at = created_at + interval '1 hour'
+  WHERE id = v_ok;
+  PERFORM pg_temp.dispute(17, 2, 'dp_3645e_17', 500, 'needs_response');
+  IF NOT public.issue_3645_stay_release_has_open_dispute(v_disputed) THEN
+    RAISE EXCEPTION 'B13 fixture: no open dispute';
+  END IF;
+  PERFORM public.mature_postponement_debts(v_mature);
+  PERFORM public.issue_3645_place_maturity_carryovers(v_mature, 'stripe');
+  IF (pg_temp.carry(v_s, v_paid)).carried_release_id IS DISTINCT FROM v_ok
+     OR pg_temp.adj(v_disputed, 'maturity_recredit') <> 0 THEN
+    RAISE EXCEPTION 'B13 placed on the disputed release: %', (pg_temp.carry(v_s, v_paid)).carried_release_id;
+  END IF;
+  PERFORM pg_temp.assert_i5('B13');
+END
+$b13$;
+
+-- B14: placement never takes a carrier past the integer range of net +
+-- recredits; the value goes to a carrier with room.
+DO $b14$
+DECLARE
+  v_mature constant timestamptz := timestamptz '2026-10-29 00:00:00+00';
+  v_s uuid;
+  v_paid uuid;
+  v_full uuid;
+  v_ok uuid;
+BEGIN
+  PERFORM pg_temp.brand(18);
+  v_s := pg_temp.temp_debt(18, 1, 900, timestamptz '2026-10-25 00:00:00+00');
+  v_paid := pg_temp.stay(18, 1);
+  UPDATE public.brand_payout_releases SET status = 'released', released_at = v_mature
+  WHERE id = v_paid;
+  v_full := pg_temp.stay(18, 2);
+  v_ok := pg_temp.stay(18, 3);
+  UPDATE public.brand_payout_releases
+  SET created_at = created_at + interval '1 hour'
+  WHERE id = v_ok;
+  -- 899 short of the limit: one cent too little room for 900.
+  UPDATE public.brand_payout_releases
+  SET net_release_cents = 2147483647 - 899
+  WHERE id = v_full;
+  PERFORM public.mature_postponement_debts(v_mature);
+  PERFORM public.issue_3645_place_maturity_carryovers(v_mature, 'stripe');
+  IF (pg_temp.carry(v_s, v_paid)).carried_release_id IS DISTINCT FROM v_ok
+     OR pg_temp.adj(v_full, 'maturity_recredit') <> 0 THEN
+    RAISE EXCEPTION 'B14 placed past the integer range';
+  END IF;
+  -- Exactly enough room is accepted.
+  IF public.issue_3645_release_carry_room(v_full) <> 899 THEN
+    RAISE EXCEPTION 'B14 room %', public.issue_3645_release_carry_room(v_full);
+  END IF;
+  PERFORM pg_temp.assert_i5('B14');
+END
+$b14$;
+
 -- B7: authorize sends a plan up to what the release owes (net + recredits)
 -- and refuses a larger one, once alerted, legs kept; the plan goes out again
 -- unchanged once the release owes it again.

@@ -230,8 +230,53 @@ AS $fn$
           WHERE e.id = r.event_id AND e.status <> 'cancelled'
         )
       )
+      -- Not held by a dispute: the Stripe claim skips an open stay dispute and
+      -- Paystack authorize refuses an unresolved one, so value placed there
+      -- would wait while a payable release goes without it.
+      AND NOT public.issue_3645_stay_release_has_open_dispute(r.id)
+      AND NOT public.paystack_release_has_unresolved_dispute(r.id)
       AND public.issue_3645_release_settleable(r.id)
   );
+$fn$;
+
+-- §5b. What a release can still take before net + recredits leaves the
+-- integer range both claims and the Stripe payout amount use. Placement
+-- never pushes a carrier past it; the value goes to another carrier.
+CREATE OR REPLACE FUNCTION public.issue_3645_release_carry_room(
+  p_release_id uuid
+) RETURNS bigint
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $fn$
+  SELECT 2147483647::bigint - r.net_release_cents::bigint - coalesce((
+    SELECT sum(a.amount_cents)
+    FROM public.payout_ledger_adjustments a
+    WHERE a.release_id = r.id AND a.kind = 'maturity_recredit'
+  ), 0)
+  FROM public.brand_payout_releases r
+  WHERE r.id = p_release_id;
+$fn$;
+
+-- §5c. A Paystack release's kept organiser plan (every leg not failed or
+-- reversed, principal + fee + stamp), the total authorize compares with what
+-- the release owes.
+CREATE OR REPLACE FUNCTION public.issue_3645_paystack_plan_cents(
+  p_release_id uuid
+) RETURNS bigint
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $fn$
+  SELECT coalesce(sum(
+    leg.principal_cents::bigint + leg.estimated_fee_cents + leg.stamp_duty_cents
+  ), 0)
+  FROM public.payout_transfer_legs leg
+  WHERE leg.release_id = p_release_id
+    AND leg.kind = 'organiser'
+    AND leg.status NOT IN ('failed', 'reversed');
 $fn$;
 
 -- §6. Hand back what a closed, unpaid release withheld, so the debt is owed
@@ -398,12 +443,14 @@ BEGIN
       AND r.provider = v_c.provider
       AND r.currency = v_c.currency
       AND public.issue_3645_release_can_carry(r.id)
+      AND public.issue_3645_release_carry_room(r.id) >= v_c.amount_cents
     ORDER BY r.releasable_at, r.created_at, r.id
     FOR UPDATE OF r SKIP LOCKED
     LIMIT 1;
     CONTINUE WHEN v_target IS NULL;
     -- Re-check under the lock: a claim may have taken it since.
-    CONTINUE WHEN NOT public.issue_3645_release_can_carry(v_target);
+    CONTINUE WHEN NOT public.issue_3645_release_can_carry(v_target)
+      OR public.issue_3645_release_carry_room(v_target) < v_c.amount_cents;
 
     INSERT INTO public.payout_ledger_adjustments(
       release_id, brand_id, currency, kind, amount_cents, idempotency_key,
@@ -430,6 +477,10 @@ REVOKE ALL ON FUNCTION public.issue_3645_release_closed_unpaid(uuid)
   FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.issue_3645_release_can_carry(uuid)
   FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.issue_3645_release_carry_room(uuid)
+  FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.issue_3645_paystack_plan_cents(uuid)
+  FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.issue_3645_return_closed_release_debt(timestamptz)
   FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.issue_3645_place_maturity_carryovers(timestamptz, text)
@@ -437,6 +488,10 @@ REVOKE ALL ON FUNCTION public.issue_3645_place_maturity_carryovers(timestamptz, 
 GRANT EXECUTE ON FUNCTION public.issue_3645_release_closed_unpaid(uuid)
   TO service_role;
 GRANT EXECUTE ON FUNCTION public.issue_3645_release_can_carry(uuid)
+  TO service_role;
+GRANT EXECUTE ON FUNCTION public.issue_3645_release_carry_room(uuid)
+  TO service_role;
+GRANT EXECUTE ON FUNCTION public.issue_3645_paystack_plan_cents(uuid)
   TO service_role;
 GRANT EXECUTE ON FUNCTION public.issue_3645_return_closed_release_debt(timestamptz)
   TO service_role;
@@ -925,6 +980,15 @@ BEGIN
         FROM public.payout_ledger_adjustments a
         WHERE a.release_id=r.id AND a.kind='maturity_recredit'
       ),0), 2147483647::bigint) > 0
+      -- #3645 bundle 4: authorize refuses a kept organiser plan larger than
+      -- the release now owes. Leave such a release out before the LIMIT until
+      -- it owes the plan again, so refused releases never fill every slot.
+      AND public.issue_3645_paystack_plan_cents(r.id)
+        <= r.net_release_cents::bigint + coalesce((
+          SELECT sum(a.amount_cents)
+          FROM public.payout_ledger_adjustments a
+          WHERE a.release_id=r.id AND a.kind='maturity_recredit'
+        ),0)
     ORDER BY r.releasable_at,r.created_at,r.id
     FOR UPDATE OF r SKIP LOCKED
     LIMIT greatest(1,least(p_limit,100))
