@@ -1267,13 +1267,15 @@
         "mingla-admin/src/components/ui/FilterSelect.jsx",
         "mingla-admin/src/components/ui/PanelStack.jsx",
         "mingla-admin/src/components/ui/Toast.jsx",
+        "mingla-admin/src/hooks/useOpsCalendar.js",
         "mingla-admin/src/hooks/usePanelDraft.js",
         "mingla-admin/src/hooks/usePanelStack.js",
+        "mingla-admin/src/lib/calendarCalls.js",
+        "mingla-admin/src/lib/contentCalendarModel.js",
         "mingla-admin/src/lib/panelDrafts.js",
         "mingla-admin/src/lib/panelStack.js",
         "mingla-admin/src/pages/ContentCalendarPage.jsx",
-        "mingla-admin/src/hooks/useOpsCalendar.js",
-        "mingla-admin/src/lib/calendarCalls.js"
+        "supabase/migrations/20280605004255_issue_4255_content_calendar_approved_designed.sql"
       ]
     },
     {
