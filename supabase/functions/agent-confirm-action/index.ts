@@ -1217,6 +1217,7 @@ async function handleConfirmAction(args: {
       // Immutable server context: never copied into editable_args/tool_args.
       // #1972's receipt-backed dispatcher binds this UUID to the confirmed args.
       operationId: pending.id,
+      retry: pending.status === "executing",
     });
   } catch (rawErr: any) {
     // #3355 P1 (D-9): a deterministic publish/money refusal from the database

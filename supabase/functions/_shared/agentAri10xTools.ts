@@ -1002,6 +1002,15 @@ const tellOwnerInBrandGroup: AgentToolDefinition = {
       if (!receiptFunctionsMissing(error)) throw error;
       receipts = false;
     }
+    if (!(prior && prior.sent === true) && context?.retry) {
+      // A retry with no receipt: the earlier attempt may have posted the old
+      // way (before the migration) and lost its answer. Never post again;
+      // the stuck-row reconcile settles it ("couldn't confirm it saved").
+      throw new ToolError(
+        "RPC_FAILED",
+        "ari_tell_owner_in_brand_group: retry without a receipt",
+      );
+    }
     if (prior && prior.sent === true) {
       return {
         sent: true,

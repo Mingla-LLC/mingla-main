@@ -60,6 +60,11 @@ export interface AgentAuthorizationDeclaration {
  */
 export interface AgentToolExecutionContext {
   operationId: string | null;
+  /**
+   * #3355 bundle 5 — this confirm retries an approval already `executing`
+   * (an earlier attempt may have committed and lost its answer).
+   */
+  retry?: boolean;
 }
 
 export interface AgentToolDefinition {

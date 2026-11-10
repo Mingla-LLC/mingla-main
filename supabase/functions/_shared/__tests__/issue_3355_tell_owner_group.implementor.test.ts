@@ -538,3 +538,50 @@ Deno.test("owner note: before its migration is applied the note still sends, and
   assertEquals(isAmbiguousExecutionFailure(true, err), true);
   assertEquals(flaky.legacy.length + flaky.sent.length, 0);
 });
+
+Deno.test("owner note: a retried approval with no receipt never posts again, before or after the migration", async () => {
+  const missing =
+    "Could not find the function public.ari_tell_owner_receipt(p_operation_id) in the schema cache";
+  for (
+    const retry of [
+      teammateClient({}), // migration applied, no receipt for this approval
+      teammateClient({ receiptError: missing }), // not applied yet
+    ]
+  ) {
+    const err = await assertRejects(
+      () =>
+        rawTool("tell_owner_in_brand_group").executor(
+          { brand_id: BRAND, about: "payment_setup", message: NOTE },
+          retry.client,
+          USER,
+          { operationId: OP, retry: true },
+        ),
+      ToolError,
+    );
+    // "Result unknown": the row stays executing for the stuck-row
+    // reconcile, never a second post and never "nothing was sent".
+    assertEquals(err.code, "RPC_FAILED");
+    assertEquals(isAmbiguousExecutionFailure(true, err), true);
+    assertEquals(retry.sent.length + retry.legacy.length, 0);
+  }
+  // A retry whose note posted (receipt) is answered from the receipt.
+  const replay = teammateClient({
+    receipt: { sent: true, message_id: SENT_ID, conversation_id: GROUP },
+  });
+  const result = await rawTool("tell_owner_in_brand_group").executor(
+    { brand_id: BRAND, about: "payment_setup", message: NOTE },
+    replay.client,
+    USER,
+    { operationId: OP, retry: true },
+  );
+  assertEquals(result.message_id, SENT_ID);
+  assertEquals(replay.sent.length + replay.legacy.length, 0);
+  // Confirm tells the executor when it is retrying an executing approval.
+  const confirmSource = Deno.readTextFileSync(
+    new URL("../../agent-confirm-action/index.ts", import.meta.url),
+  );
+  assertMatch(
+    confirmSource,
+    /operationId: pending\.id,\s*retry: pending\.status === "executing",/,
+  );
+});
