@@ -48,15 +48,54 @@ import {
   checkoutRefusalRaiseMessage,
   readEdgeRefusal,
 } from "../services/checkoutErrorCopy";
-import { paidCheckoutErrorMessage } from "../services/ticketCheckoutService";
+import {
+  PAID_CHECKOUT_FAILED_MESSAGE,
+  paidCheckoutErrorMessage,
+} from "../services/ticketCheckoutService";
 import { ticketCheckoutReviewFromError } from "../services/ticketCheckoutReview";
 import type { TicketCheckoutReview } from "@mingla/offering-rendering/discountQuote";
+// issue #3281 — checkout contract v2: per-line plan choice, dates and extras,
+// one attempt id per logical submission. Same shared normalizer buyer web uses.
+import {
+  isCheckoutAttemptId,
+  normalizeCheckoutV2Lines,
+  TICKET_CHECKOUT_CONTRACT_VERSION,
+  type CheckoutAddOnRequest,
+  type CheckoutLinePlanChoice,
+} from "@mingla/offering-rendering/ticketCheckoutContract";
 // ORCH-1246 (Apple 4.9) — Apple Pay sheet must show the product, not the company.
 import { buildApplePayCartItems } from "./applePayCartItems";
 
+/**
+ * issue #3281 — one cart line. v1 (trip / experience) reads ticket and
+ * quantity only; v2 (event tickets) also reads the line's plan choice, its
+ * per-date quantities and its extras.
+ */
+export interface NativeCheckoutLine {
+  ticketTypeId: string;
+  quantity: number;
+  paymentPlanChoice?: CheckoutLinePlanChoice;
+  byDate?: Readonly<Record<string, number>>;
+  addOns?: readonly CheckoutAddOnRequest[];
+}
+
 export interface NativeCheckoutInput {
   eventId: string;
-  lines: Array<{ ticketTypeId: string; quantity: number }>;
+  lines: NativeCheckoutLine[];
+  /**
+   * issue #3281 — checkout contract v2 (event tickets). When set, the request
+   * carries `checkoutAttemptId`, `purchaseTermsAccepted` and per-line
+   * `paymentPlanChoice` / `byDate` / `addOns`, and never the scalar
+   * `payment_plan_choice`. Absent → the v1 body, byte-identical (trip and
+   * experience checkout).
+   */
+  checkoutContractVersion?: typeof TICKET_CHECKOUT_CONTRACT_VERSION;
+  /** issue #3281 — v2 only: the cart's attempt id (same id across retries). */
+  checkoutAttemptId?: string;
+  /** issue #3281 — v2 only: must be true, or nothing is sent. */
+  purchaseTermsAccepted?: boolean;
+  /** issue #3281 — private ticket link the guest arrived through, if any. */
+  ticketLinkToken?: string;
   buyer: {
     name: string;
     email: string;
@@ -196,6 +235,10 @@ const CHECKOUT_PAYMENT_MISMATCH_MESSAGE =
 
 const CHECKOUT_AWAITING_CONFIRMATION_MESSAGE =
   "Paystack hasn't confirmed this payment yet. If you completed it, your tickets will arrive here and by email within a few minutes — don't pay again. If nothing arrives, contact support@usemingla.com.";
+
+// issue #3281 — v2 needs the guest's acceptance before anything is sent.
+const CHECKOUT_TERMS_REQUIRED_MESSAGE =
+  "Accept the terms on the previous step to continue. You have not been charged.";
 
 const CHECKOUT_UNAVAILABLE_MESSAGE =
   "This sale is no longer available — the organiser may have paused or changed this event. You have not been charged.";
@@ -349,6 +392,36 @@ export const useNativeCheckoutFlow = (): ((
       };
     }
 
+    // issue #3281 — v2 fails CLOSED before any network call: no terms, no
+    // attempt id, a scalar plan choice or a line the shared normalizer refuses
+    // means nothing is sent and nothing can be charged.
+    const isCheckoutV2 =
+      input.checkoutContractVersion === TICKET_CHECKOUT_CONTRACT_VERSION;
+    let v2Lines: ReturnType<typeof normalizeCheckoutV2Lines> | null = null;
+    if (isCheckoutV2) {
+      if (input.purchaseTermsAccepted !== true) {
+        return { outcome: "failed", message: CHECKOUT_TERMS_REQUIRED_MESSAGE };
+      }
+      if (
+        !isCheckoutAttemptId(input.checkoutAttemptId) ||
+        input.paymentPlanChoice !== undefined
+      ) {
+        return { outcome: "failed", message: PAID_CHECKOUT_FAILED_MESSAGE };
+      }
+      v2Lines = normalizeCheckoutV2Lines(
+        input.lines.map((line) => ({
+          ticketTypeId: line.ticketTypeId,
+          quantity: line.quantity,
+          paymentPlanChoice: line.paymentPlanChoice,
+          ...(line.byDate !== undefined ? { byDate: line.byDate } : {}),
+          ...(line.addOns !== undefined ? { addOns: line.addOns } : {}),
+        })),
+      );
+      if (!v2Lines.ok) {
+        return { outcome: "failed", message: PAID_CHECKOUT_FAILED_MESSAGE };
+      }
+    }
+
     // 1. Create the checkout session on the server.
     const { data, error } =
       await supabase.functions.invoke<CheckoutCreateResponse>(
@@ -358,6 +431,17 @@ export const useNativeCheckoutFlow = (): ((
             eventId: input.eventId,
             surface: "native",
             returnContract: "host_v1",
+            ...(isCheckoutV2
+              ? {
+                  checkoutContractVersion: TICKET_CHECKOUT_CONTRACT_VERSION,
+                  checkoutAttemptId: input.checkoutAttemptId,
+                  purchaseTermsAccepted: true,
+                }
+              : {}),
+            ...(input.ticketLinkToken !== undefined &&
+            input.ticketLinkToken.length > 0
+              ? { ticketLinkToken: input.ticketLinkToken }
+              : {}),
             buyer: {
               name: input.buyer.name,
               email: input.buyer.email,
@@ -368,14 +452,16 @@ export const useNativeCheckoutFlow = (): ((
               // the no-address create computes the same all-in total.
               ...(input.buyer.address ? { address: input.buyer.address } : {}),
             },
-            lines: input.lines,
+            // issue #3281 — v2 sends the normalized lines (plan choice, dates,
+            // extras); v1 keeps its body unchanged.
+            lines: v2Lines?.ok ? v2Lines.lines : input.lines,
             ...(input.discountCode ? { discountCode: input.discountCode } : {}),
             quoteDigest: input.quoteDigest ?? null,
             quoteListDigest: input.quoteListDigest ?? null,
             ...(input.taxCalculationId
               ? { taxCalculationId: input.taxCalculationId }
               : {}),
-            ...(input.paymentPlanChoice !== undefined
+            ...(!isCheckoutV2 && input.paymentPlanChoice !== undefined
               ? { payment_plan_choice: input.paymentPlanChoice }
               : {}),
             ...(input.idempotencyKey !== undefined

@@ -300,7 +300,6 @@ const renderPublicEventPage = (
       case "expo-router/head":
       case "react-native-safe-area-context":
       case "@mingla/offering-rendering":
-      case "@mingla/offering-rendering":
       // [TEST-MOD-APPROVED #1023] Harness registration only: the gradient-aware
       // accent helpers, real; no close assertion changed.
       case "@mingla/offering-rendering/themeAccentStyle":
@@ -519,6 +518,10 @@ const renderPublicEventPage = (
         return jest.requireActual(
           "@mingla/offering-rendering/rsvpGuestSnapshot",
         );
+      // Harness registration only (#3281) — the pure "every date cancelled"
+      // rule, returned real. Outside the close-callback contract.
+      case "@mingla/offering-rendering/noDateOnSale":
+        return jest.requireActual("@mingla/offering-rendering/noDateOnSale");
       case "./RsvpStatusBanner":
         return { RsvpStatusBanner: "RsvpStatusBanner" };
       // [TEST-MOD-APPROVED #3682] Harness registration only — ADDITION, no

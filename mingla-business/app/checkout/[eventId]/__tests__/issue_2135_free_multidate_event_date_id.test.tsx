@@ -165,6 +165,28 @@ jest.mock("../../../../src/components/checkout/ConsentTermsSheet", () => ({
   ConsentTermsSheet: () => null,
 }));
 
+// issue #3281 — records each attempt-id request so a test can read the
+// surface the screen asked for. Delegates to the real cart; nothing is faked.
+const mockAttemptInputs: Array<{ surface: string }> = [];
+jest.mock("../../../../src/components/checkout/CartContext", () => {
+  const actual = jest.requireActual(
+    "../../../../src/components/checkout/CartContext",
+  );
+  return {
+    ...actual,
+    useCart: () => {
+      const cart = actual.useCart();
+      return {
+        ...cart,
+        checkoutAttemptIdFor: (input: { surface: string }) => {
+          mockAttemptInputs.push(input);
+          return cart.checkoutAttemptIdFor(input);
+        },
+      };
+    },
+  };
+});
+
 import {
   CartProvider,
   useCart,
@@ -307,6 +329,82 @@ describe("issue #2135 — a free single-date reservation is byte-identical", () 
 
   test("and still completes", async () => {
     await reserveFreeTicket(null);
+    expect(router.replace).toHaveBeenCalledWith(`/checkout/${EVENT_ID}/confirm`);
+  });
+});
+
+// issue #3281 — the native free claim goes through checkout contract v2, like
+// buyer web, so a free ticket's extras and dates ride the request under one
+// attempt id. Before this, only `Platform.OS === "web"` sent v2.
+describe("issue #3281 — a free native reservation is contract v2 with its extras", () => {
+  const DINNER = "21350000-0000-4000-8000-0000000000d1";
+  const SeedWithExtras: React.FC = () => {
+    const { setLineQuantity, setBuyer, setQuoteState } = useCart();
+    React.useEffect(() => {
+      const line = {
+        ticketTypeId: TICKET_TYPE_ID,
+        ticketName: "Free entry",
+        unitPrice: 0,
+        unitPriceAllIn: 0,
+        currency: "NGN",
+        isFree: true,
+        quantity: 1,
+      };
+      setLineQuantity(line);
+      setLineQuantity({ ...line, addOns: [{ addOnId: DINNER, quantity: 1 }] });
+      setQuoteState(ticketQuoteFromLines([line]), "ready");
+      setBuyer({
+        name: "Ada Guest",
+        email: "ada@example.test",
+        phone: "+2348012345678",
+        termsAccepted: true,
+        marketingOptIn: true,
+      });
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+    return null;
+  };
+
+  test("iOS sends v2, a native attempt id, accepted terms and the line's extras", async () => {
+    jest.replaceProperty(Platform, "OS", "ios");
+    mockAttemptInputs.length = 0;
+    let tree!: Renderer;
+    await act(async () => {
+      tree = TestRenderer.create(
+        <CartProvider>
+          <SeedWithExtras />
+          <BuyerScreen />
+        </CartProvider>,
+      );
+    });
+    const button = tree.root.findAllByProps({ testID: "btn-Reserve free ticket" })[0];
+    if (button === undefined) throw new Error("free reserve button not rendered");
+    await act(async () => {
+      (button.props.onPress as () => void)();
+    });
+    await act(async () => tree.unmount());
+    const call = invoke.mock.calls.find((c) => c[0] === "ticket-checkout-create");
+    if (call === undefined) throw new Error("ticket-checkout-create was never invoked");
+    const body = (call[1] as { body: Record<string, unknown> }).body;
+    expect(body.surface).toBe("native");
+    expect(body.checkoutContractVersion).toBe(2);
+    expect(body.purchaseTermsAccepted).toBe(true);
+    expect(String(body.checkoutAttemptId)).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+    // The attempt id is keyed to the native surface, never buyer web's.
+    expect(mockAttemptInputs.length).toBeGreaterThan(0);
+    expect(mockAttemptInputs.map((input) => input.surface)).toEqual(
+      mockAttemptInputs.map(() => "native"),
+    );
+    expect("payment_plan_choice" in body).toBe(false);
+    const lines = body.lines as Array<Record<string, unknown>>;
+    expect(lines[0]).toMatchObject({
+      ticketTypeId: TICKET_TYPE_ID,
+      quantity: 1,
+      paymentPlanChoice: "full",
+      addOns: [{ addOnId: DINNER, quantity: 1 }],
+    });
     expect(router.replace).toHaveBeenCalledWith(`/checkout/${EVENT_ID}/confirm`);
   });
 });

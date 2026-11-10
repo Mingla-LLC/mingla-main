@@ -107,18 +107,26 @@ export function extrasParentCount(line: ExtrasParentLine | undefined): number {
 
 /**
  * The dates the cart is for. An all-days pass reaches checkout with no dates
- * chosen and the server binds every date that hasn't ended, so extras read
- * those; any other cart reads the guest's chosen dates.
+ * chosen and the server binds every active date that hasn't ended, so extras
+ * read those (issue #3281: never a cancelled date); any other cart reads the
+ * guest's chosen dates.
  */
 export function extrasCartDates(
   chosenDateIds: readonly string[],
-  occurrences: ReadonlyArray<{ id: string; endAt: string }>,
+  occurrences: ReadonlyArray<{
+    id: string;
+    endAt: string;
+    cancelled?: boolean | null;
+  }>,
   allDaysPass: boolean,
   now: number = Date.now(),
 ): string[] {
   if (!allDaysPass) return chosenDateIds.slice();
   return occurrences
-    .filter((occurrence) => Date.parse(occurrence.endAt) > now)
+    .filter(
+      (occurrence) =>
+        occurrence.cancelled !== true && Date.parse(occurrence.endAt) > now,
+    )
     .map((occurrence) => occurrence.id);
 }
 
