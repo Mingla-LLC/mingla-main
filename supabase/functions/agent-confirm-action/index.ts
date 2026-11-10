@@ -78,6 +78,7 @@ import {
   type ConfirmNext,
   flowNextAfterConfirm,
   liveFlowRunFor,
+  representFlowAfterExpiry,
   websiteSetupNextAfterConfirm,
 } from "./confirmNext.ts";
 import type { FlowStateView } from "../_shared/ariFlows/edge.ts";
@@ -240,6 +241,9 @@ const RECEIPT_BACKED_TOOL_NAMES = new Set([
   // Issue #2830 — ari_update_brand_context begins and completes the shared
   // #1972 operation receipt itself, so its ambiguous retry must replay too.
   "update_brand_context",
+  // Issue #3355 bundle 5 — ari_tell_owner_in_brand_group sends the owner note
+  // inside the #1972 receipt, so a retry reads back the note that posted.
+  "tell_owner_in_brand_group",
 ]);
 // [TEST-MOD-APPROVED #1973] Preserve the #1972 recovery-contract name while
 // extending the exact same receipt gate to the experience lifecycle.
@@ -753,6 +757,27 @@ async function handleConfirmAction(args: {
       `Cannot confirm — current status: ${pending.status}`,
     );
   }
+  // #3355 bundle 5 (3(b).6): an approval that timed out inside a live flow
+  // re-presents its step from a fresh read instead of dead-ending.
+  const representExpired = async (): Promise<void> => {
+    const brandId = conversationTask?.row.brand_id ?? null;
+    await representFlowAfterExpiry({
+      userClient,
+      service: pendingStateClient,
+      userId,
+      conversationId: pending.conversation_id,
+      brand: brandId
+        ? { id: brandId, name: conversationBrandName ?? "your brand" }
+        : null,
+      expired: {
+        id: pending.id,
+        tool_name: pending.tool_name,
+        server_proposed_at: pending.server_proposed_at ?? null,
+      },
+      promptVersion: TENANT_CONTEXT_VERSION,
+      modelVersion: ARI_MODEL_VERSION,
+    });
+  };
   // #3355 P1 (D-14): the database clock decides expiry, not this worker's.
   let expiredByDbClock = false;
   if (pending.status === "pending") {
@@ -832,6 +857,9 @@ async function handleConfirmAction(args: {
       }
     }
     if (expiredProposalAnswer(pending.source) === "ari_proposal_expired") {
+      // #3355 bundle 5: inside a flow, the step comes back from a fresh read
+      // (saved before this answer, so the Host's resume shows it).
+      await representExpired();
       // #2830 (D-3) — never a silent 200: the Ari Host used to clear the card
       // and report success for an approval that saved nothing.
       return ariProposalExpiredResponse();
@@ -1130,6 +1158,7 @@ async function handleConfirmAction(args: {
       );
     }
     if (claim.answer === "expired") {
+      let expiredHere = false;
       try {
         await terminalizePending(pendingStateClient, {
           id: pending.id,
@@ -1137,12 +1166,16 @@ async function handleConfirmAction(args: {
           expectedStatus: "pending",
           outcome: "expired",
         });
+        expiredHere = true;
       } catch {
-        // Another request terminalized it first; the answer is the same.
+        // Another request terminalized it first; the answer is the same,
+        // and that request re-presents the step (one card, never two).
       }
-      return expiredProposalAnswer(pending.source) === "ari_proposal_expired"
-        ? ariProposalExpiredResponse()
-        : errorResponse(409, "EXPIRED", "This suggestion expired.");
+      if (expiredProposalAnswer(pending.source) !== "ari_proposal_expired") {
+        return errorResponse(409, "EXPIRED", "This suggestion expired.");
+      }
+      if (expiredHere) await representExpired();
+      return ariProposalExpiredResponse();
     }
     if (claim.answer !== "claimed") {
       return errorResponse(

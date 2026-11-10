@@ -766,7 +766,8 @@
         "mingla-marketing/lib/site-prompt-draft.ts",
         "supabase/functions/site-prompt-draft/function-policy.json",
         "supabase/functions/site-prompt-draft/index.ts",
-        "supabase/migrations/20280512004339_issue_4339_site_prompt_drafts.sql"
+        "supabase/migrations/20280512004339_issue_4339_site_prompt_drafts.sql",
+        "supabase/migrations/20280604003355_issue_3355_tell_owner_receipt.sql"
       ]
     },
     {

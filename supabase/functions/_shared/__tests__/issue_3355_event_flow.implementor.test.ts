@@ -1445,3 +1445,195 @@ Deno.test("P7: publish blockers read as whole clauses and the refusal never repe
   );
   assert(!source.includes("listWords(blockers)}. Nothing was published"));
 });
+
+// ── #3355 bundle 5 (3(b).6): an approval that timed out inside a flow ──────
+
+import {
+  EXPIRED_IN_FLOW_REASON,
+  representFlowAfterExpiry,
+} from "../../agent-confirm-action/confirmNext.ts";
+
+/** To the protected payout-country card, then let it time out unconfirmed. */
+async function toExpiredPayoutCountry(world: World, store: MemoryStore) {
+  await toTicketKind(world, store);
+  await answer(world, store, (r) => choice(r, "paid"));
+  await answer(world, store, (r) => choice(r, "continue"));
+  const pick = await answer(
+    world,
+    store,
+    (r) => form(r, { choices: ["United Kingdom (GBP)"] }),
+  );
+  assertEquals(pick.kind, "propose");
+  assertEquals((await cur(store)).status, "awaiting_approval");
+  // The 30 minutes pass: the card is no longer open, nothing was written.
+  world.openProposal = false;
+}
+
+Deno.test("bundle 5: a timed-out approval in a flow re-presents its step from a fresh read, with the reason", async () => {
+  const world = noCurrencyWorld();
+  const store = new MemoryStore();
+  await toExpiredPayoutCountry(world, store);
+  const next = await confirmFailed(
+    world,
+    store,
+    "set_brand_payout_country",
+    EXPIRED_IN_FLOW_REASON,
+  );
+  assert(next.kind === "artefact", `got ${next.kind}`);
+  assertEquals(next.artefact.step_key, "event_ticket_details");
+  assertEquals(next.artefact.title, "Choose your payout country");
+  assertMatch(next.text, /That approval timed out, so nothing was saved\./);
+  assertEquals(world.brand.default_currency, null, "nothing was saved");
+  // It is the run's current card, so the Host's read-only resume finds it.
+  const run = await cur(store);
+  assertEquals(run.status, "awaiting_owner");
+  assertEquals(run.current_artefact?.artefact_id, next.artefact.artefact_id);
+  // Answering it again proposes afresh (a new protected card, not a replay).
+  const again = await answer(
+    world,
+    store,
+    (r) => form(r, { choices: ["United Kingdom (GBP)"] }),
+  );
+  assertEquals(again.kind, "propose");
+});
+
+// deno-lint-ignore no-explicit-any
+type FlowNextArgs = any;
+
+function guardHarness(opts: {
+  status: string;
+  newer?: boolean;
+  enabled?: boolean;
+  conversationId?: string | null;
+  brand?: { id: string; name: string } | null;
+}) {
+  const calls: FlowNextArgs[] = [];
+  const store = {
+    getForConversation: () => Promise.resolve({ status: opts.status }),
+  } as unknown as FlowStore;
+  const run = () =>
+    representFlowAfterExpiry({
+      // deno-lint-ignore no-explicit-any
+      userClient: {} as any,
+      // deno-lint-ignore no-explicit-any
+      service: {} as any,
+      userId: "u",
+      conversationId: opts.conversationId === undefined
+        ? CHAT
+        : opts.conversationId,
+      brand: opts.brand === undefined
+        ? { id: BRAND, name: BRAND_NAME }
+        : opts.brand,
+      expired: {
+        id: "p",
+        tool_name: "set_brand_payout_country",
+        server_proposed_at: "2026-11-10T10:00:00Z",
+      },
+      promptVersion: "pv",
+      modelVersion: "mv",
+      enabled: opts.enabled ?? true,
+      store,
+      newerProposalExists: () => Promise.resolve(opts.newer ?? false),
+      flowNext: (args: FlowNextArgs) => {
+        calls.push(args);
+        return Promise.resolve({ next: null, flow_state: null });
+      },
+    });
+  return { calls, run };
+}
+
+Deno.test("bundle 5: only the flow's own, newest, waiting approval is re-presented", async () => {
+  const happy = guardHarness({ status: "awaiting_approval" });
+  await happy.run();
+  assertEquals(happy.calls.length, 1);
+  assertEquals(happy.calls[0].failed, {
+    tool_name: "set_brand_payout_country",
+    message: EXPIRED_IN_FLOW_REASON,
+  });
+  assertEquals(happy.calls[0].confirmed, undefined, "nothing is replayed");
+  for (
+    const skip of [
+      guardHarness({ status: "awaiting_owner" }),
+      guardHarness({ status: "completed" }),
+      guardHarness({ status: "awaiting_approval", newer: true }),
+      guardHarness({ status: "awaiting_approval", enabled: false }),
+      guardHarness({ status: "awaiting_approval", conversationId: null }),
+      guardHarness({ status: "awaiting_approval", brand: null }),
+    ]
+  ) {
+    assertEquals(await skip.run(), null);
+    assertEquals(skip.calls.length, 0);
+  }
+  // A failure while re-presenting never changes the expiry answer.
+  const broken = guardHarness({ status: "awaiting_approval" });
+  const thrown = await representFlowAfterExpiry({
+    // deno-lint-ignore no-explicit-any
+    userClient: {} as any,
+    // deno-lint-ignore no-explicit-any
+    service: {} as any,
+    userId: "u",
+    conversationId: CHAT,
+    brand: { id: BRAND, name: BRAND_NAME },
+    expired: { id: "p", tool_name: "t", server_proposed_at: null },
+    promptVersion: "pv",
+    modelVersion: "mv",
+    enabled: true,
+    store: {
+      getForConversation: () => Promise.reject(new Error("down")),
+    } as unknown as FlowStore,
+  });
+  assertEquals(thrown, null);
+  assertEquals(broken.calls.length, 0);
+});
+
+Deno.test("bundle 5: both Ari expiry answers re-present first; Hub expiry is unchanged; the Host's resume reads the card", async () => {
+  const confirmSource = await Deno.readTextFile(
+    new URL("supabase/functions/agent-confirm-action/index.ts", ROOT),
+  );
+  const probeBranch = confirmSource.slice(
+    confirmSource.indexOf('if (expiredProposalAnswer(pending.source) === "ari_proposal_expired") {'),
+    confirmSource.indexOf('kind: "expired_regenerate",'),
+  );
+  assertMatch(probeBranch, /await representExpired\(\);\s*\/\/[^\n]*\n[^\n]*\n\s*return ariProposalExpiredResponse\(\);/);
+  const claimBranch = confirmSource.slice(
+    confirmSource.indexOf('if (claim.answer === "expired") {'),
+    confirmSource.indexOf('if (claim.answer !== "claimed") {'),
+  );
+  assertMatch(
+    claimBranch,
+    /return errorResponse\(409, "EXPIRED", "This suggestion expired\."\);\s*\}\s*if \(expiredHere\) await representExpired\(\);\s*return ariProposalExpiredResponse\(\);/,
+  );
+  // Only the request that expired it re-presents (a double tap: one card).
+  assertMatch(claimBranch, /expiredHere = true;\s*\} catch \{/);
+  // The other expiry answer is exclusive already: its compare-and-set
+  // expire returns before re-presenting when another request won.
+  const lazy = confirmSource.indexOf('p_outcome: "expired",');
+  assert(
+    confirmSource.indexOf("if (expireErr || !expired", lazy) <
+      confirmSource.indexOf("await representExpired();", lazy),
+  );
+  // The 409 body is the registry envelope, unchanged for Hosts in the field.
+  assertEquals(confirmSource.split("ariProposalExpiredResponse()").length - 1, 2);
+  // The field Host resumes after a timeout; a read-only resume returns the
+  // run's current card, and a returned card makes the Host re-read history.
+  const host = await Deno.readTextFile(
+    new URL("mingla-business/src/screens/ari/AriChatScreen.tsx", ROOT),
+  );
+  const expiredAt = host.indexOf("if (isAriProposalExpired(result)) {");
+  const expiredBranch = host.slice(
+    expiredAt,
+    host.indexOf('if (result.kind === "error") {', expiredAt),
+  );
+  assertMatch(expiredBranch, /void chat\.resumeFlow\("resume"\);/);
+  const resume = await Deno.readTextFile(
+    new URL("supabase/functions/agent-turn-control/flowResume.ts", ROOT),
+  );
+  assertMatch(resume, /artefact: live \? run\.current_artefact : null,/);
+  const hook = await Deno.readTextFile(
+    new URL("mingla-business/src/hooks/useAgentChat.ts", ROOT),
+  );
+  assertMatch(
+    hook,
+    /if \(resumed\.next \|\| resumed\.artefact\) \{\s*await refreshCanonicalMessages\(target\);/,
+  );
+});

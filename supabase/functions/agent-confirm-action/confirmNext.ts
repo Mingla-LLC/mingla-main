@@ -269,3 +269,103 @@ export async function flowNextAfterConfirm(args: {
     flow_state: state,
   };
 }
+
+/** #3355 bundle 5 — the owner words a re-presented step carries. */
+export const EXPIRED_IN_FLOW_REASON =
+  "That approval timed out, so nothing was saved.";
+
+/**
+ * #3355 bundle 5 (spec 3(b).6) — an approval that timed out inside a live
+ * flow never leaves the chat at a dead end. The step is read again from
+ * canonical state and re-presented with the reason, through the same path a
+ * refused write takes (#3355 P7): nothing is replayed from the expired
+ * proposal, so its 30-minute-old values, checks and revision guards are
+ * never offered again. The row is saved before the 409 answers, so the Host's
+ * resume finds it as the run's current card.
+ *
+ * Only when the chat's flow run is waiting on an approval and this was the
+ * chat's newest proposal: a model proposal that expired while a flow card is
+ * open, or one replaced by a newer card, leaves the flow alone. Never throws.
+ */
+export async function representFlowAfterExpiry(args: {
+  userClient: SupabaseClient;
+  service: SupabaseClient;
+  userId: string;
+  conversationId: string | null;
+  brand: { id: string; name: string } | null;
+  expired: {
+    id: string;
+    tool_name: string;
+    server_proposed_at: string | null;
+  };
+  promptVersion: string;
+  modelVersion: string;
+  /** Test seams. */
+  newerProposalExists?: () => Promise<boolean>;
+  flowNext?: typeof flowNextAfterConfirm;
+  enabled?: boolean;
+  store?: FlowStore;
+}): Promise<ConfirmNextResult | null> {
+  if (!args.conversationId || !args.brand) return null;
+  try {
+    if (!(args.enabled ?? await readFlowEngineEnabled(args.service))) {
+      return null;
+    }
+    const store = args.store ?? createFlowStore(args.service, args.userId);
+    const run = await store.getForConversation(args.conversationId);
+    if (run?.status !== "awaiting_approval") return null;
+    const newer = args.newerProposalExists
+      ? await args.newerProposalExists()
+      : await newerProposalIn(args.service, {
+        userId: args.userId,
+        conversationId: args.conversationId,
+        expired: args.expired,
+      });
+    if (newer) return null;
+    return await (args.flowNext ?? flowNextAfterConfirm)({
+      userClient: args.userClient,
+      service: args.service,
+      userId: args.userId,
+      conversationId: args.conversationId,
+      brand: args.brand,
+      failed: {
+        tool_name: args.expired.tool_name,
+        message: EXPIRED_IN_FLOW_REASON,
+      },
+      promptVersion: args.promptVersion,
+      modelVersion: args.modelVersion,
+      enabled: true,
+      store,
+    });
+  } catch (error) {
+    // The expiry is already saved and answered; the next turn re-reads the
+    // run either way.
+    console.error(JSON.stringify({
+      event: "ari_confirm_expired_next_failed",
+      tool_name: args.expired.tool_name,
+      error: error instanceof Error ? error.name : "unknown",
+    }));
+    return null;
+  }
+}
+
+/** True when the chat has a proposal made after this one (or it can't tell). */
+async function newerProposalIn(
+  service: SupabaseClient,
+  args: {
+    userId: string;
+    conversationId: string;
+    expired: { id: string; server_proposed_at: string | null };
+  },
+): Promise<boolean> {
+  if (!args.expired.server_proposed_at) return true;
+  const { data, error } = await service.from("agent_pending_actions")
+    .select("id")
+    .eq("user_id", args.userId)
+    .eq("conversation_id", args.conversationId)
+    .neq("id", args.expired.id)
+    .gt("server_proposed_at", args.expired.server_proposed_at)
+    .limit(1);
+  if (error) return true;
+  return Array.isArray(data) && data.length > 0;
+}
