@@ -1450,8 +1450,10 @@ Deno.test("P7: publish blockers read as whole clauses and the refusal never repe
 
 import {
   EXPIRED_IN_FLOW_REASON,
+  newerProposalIn,
   representFlowAfterExpiry,
 } from "../../agent-confirm-action/confirmNext.ts";
+import { answerClaimExpired } from "../../agent-confirm-action/proposalExpiry.ts";
 
 /** To the protected payout-country card, then let it time out unconfirmed. */
 async function toExpiredPayoutCountry(world: World, store: MemoryStore) {
@@ -1599,12 +1601,15 @@ Deno.test("bundle 5: both Ari expiry answers re-present first; Hub expiry is unc
     confirmSource.indexOf('if (claim.answer === "expired") {'),
     confirmSource.indexOf('if (claim.answer !== "claimed") {'),
   );
+  assertMatch(claimBranch, /return await answerClaimExpired\(\{[\s\S]*represent: representExpired,/);
+  // An approval the expiry sweep already closed is answered as expired and
+  // re-presented too, before the generic wrong-state refusal.
+  const swept = confirmSource.indexOf('pending.status === "expired" &&');
+  assert(swept > 0 && swept < confirmSource.indexOf("Cannot confirm — current status:"));
   assertMatch(
-    claimBranch,
-    /return errorResponse\(409, "EXPIRED", "This suggestion expired\."\);\s*\}\s*if \(expiredHere\) await representExpired\(\);\s*return ariProposalExpiredResponse\(\);/,
+    confirmSource.slice(swept, swept + 260),
+    /expiredProposalAnswer\(pending\.source\) === "ari_proposal_expired"\s*\) \{\s*await representExpired\(\);\s*return ariProposalExpiredResponse\(\);/,
   );
-  // Only the request that expired it re-presents (a double tap: one card).
-  assertMatch(claimBranch, /expiredHere = true;\s*\} catch \{/);
   // The other expiry answer is exclusive already: its compare-and-set
   // expire returns before re-presenting when another request won.
   const lazy = confirmSource.indexOf('p_outcome: "expired",');
@@ -1614,6 +1619,10 @@ Deno.test("bundle 5: both Ari expiry answers re-present first; Hub expiry is unc
   );
   // The 409 body is the registry envelope, unchanged for Hosts in the field.
   assertEquals(confirmSource.split("ariProposalExpiredResponse()").length - 1, 2);
+  const expirySource = await Deno.readTextFile(
+    new URL("supabase/functions/agent-confirm-action/proposalExpiry.ts", ROOT),
+  );
+  assertEquals(expirySource.split("return ariProposalExpiredResponse();").length - 1, 1);
   // The field Host resumes after a timeout; a read-only resume returns the
   // run's current card, and a returned card makes the Host re-read history.
   const host = await Deno.readTextFile(
@@ -1636,4 +1645,117 @@ Deno.test("bundle 5: both Ari expiry answers re-present first; Hub expiry is unc
     hook,
     /if \(resumed\.next \|\| resumed\.artefact\) \{\s*await refreshCanonicalMessages\(target\);/,
   );
+});
+
+Deno.test("bundle 5: the claim-time expiry re-presents only for the request that expired it, and only for Ari", async () => {
+  for (
+    const [source, wins, status, code, represented] of [
+      ["ari", true, 409, "PROPOSAL_EXPIRED", 1],
+      ["ari", false, 409, "PROPOSAL_EXPIRED", 0],
+      [null, true, 409, "PROPOSAL_EXPIRED", 1],
+      ["hub_experience", true, 409, "EXPIRED", 0],
+    ] as const
+  ) {
+    let calls = 0;
+    const order: string[] = [];
+    const response = await answerClaimExpired({
+      source,
+      terminalize: () => {
+        order.push("terminalize");
+        return wins
+          ? Promise.resolve()
+          : Promise.reject(new Error("cas_conflict"));
+      },
+      represent: () => {
+        calls += 1;
+        order.push("represent");
+        return Promise.resolve();
+      },
+      hubExpired: () =>
+        new Response(JSON.stringify({ code: "EXPIRED" }), { status: 409 }),
+    }).catch(() => null);
+    if (code === "EXPIRED") {
+      assertEquals(response?.status, status);
+      assertEquals((await response!.json()).code, "EXPIRED");
+    }
+    assertEquals(calls, represented, `${source} wins=${wins}`);
+    // The step is saved before the answer goes back.
+    if (represented) assertEquals(order, ["terminalize", "represent"]);
+  }
+});
+
+Deno.test("bundle 5: the newest-proposal check reads the chat's later proposals, and fails closed", async () => {
+  const calls: Array<[string, unknown[]]> = [];
+  const client = (result: { data: unknown; error: unknown }) => {
+    const q: Record<string, unknown> = {};
+    for (const m of ["select", "eq", "neq", "gt", "limit"]) {
+      q[m] = (...a: unknown[]) => {
+        calls.push([m, a]);
+        return m === "limit" ? Promise.resolve(result) : q;
+      };
+    }
+    return {
+      from: (table: string) => {
+        calls.push(["from", [table]]);
+        return q;
+      },
+      // deno-lint-ignore no-explicit-any
+    } as any;
+  };
+  const expired = {
+    id: "p-old",
+    server_proposed_at: "2026-11-10T10:00:00Z",
+  };
+  const base = { userId: "u", conversationId: CHAT, expired };
+  assertEquals(
+    await newerProposalIn(client({ data: [], error: null }), base),
+    false,
+  );
+  assertEquals(calls, [
+    ["from", ["agent_pending_actions"]],
+    ["select", ["id"]],
+    ["eq", ["user_id", "u"]],
+    ["eq", ["conversation_id", CHAT]],
+    ["neq", ["id", "p-old"]],
+    ["gt", ["server_proposed_at", "2026-11-10T10:00:00Z"]],
+    ["limit", [1]],
+  ]);
+  assertEquals(
+    await newerProposalIn(client({ data: [{ id: "p-new" }], error: null }), base),
+    true,
+  );
+  assertEquals(
+    await newerProposalIn(client({ data: null, error: { message: "x" } }), base),
+    true,
+    "a failed read never re-presents over what may be newer",
+  );
+  calls.length = 0;
+  assertEquals(
+    await newerProposalIn(client({ data: [], error: null }), {
+      ...base,
+      expired: { id: "p-old", server_proposed_at: null },
+    }),
+    true,
+  );
+  assertEquals(calls.length, 0, "no read without a proposal time");
+});
+
+Deno.test("bundle 5: a timed-out create_event approval brings the create step back as the current card", async () => {
+  const world = freshWorld();
+  const store = new MemoryStore();
+  const proposed = await toCreateProposal(world, store);
+  assertEquals(proposed.kind, "propose");
+  assertEquals((await cur(store)).status, "awaiting_approval");
+  const next = await confirmFailed(
+    world,
+    store,
+    "create_event",
+    EXPIRED_IN_FLOW_REASON,
+  );
+  assert(next.kind === "artefact", `got ${next.kind}`);
+  assertEquals(next.artefact.step_key, "event_create");
+  assertEquals(world.events.size, 0, "nothing was created");
+  const run = await cur(store);
+  assertEquals(run.status, "awaiting_owner");
+  assertEquals(run.current_artefact?.artefact_id, next.artefact.artefact_id);
 });

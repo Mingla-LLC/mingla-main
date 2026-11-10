@@ -37,6 +37,7 @@ DECLARE
   v_op_altered uuid := gen_random_uuid();
   v_op_outsider uuid := gen_random_uuid();
   v_op_pending uuid := gen_random_uuid();
+  v_op_other_tool uuid := gen_random_uuid();
   v_args jsonb;
   v_first jsonb;
   v_replay jsonb;
@@ -57,7 +58,8 @@ BEGIN
     (v_op_two,v_member,'33550000-b500-4000-8000-0000000000c1','tell_owner_in_brand_group',v_args,'executing','ari',v_brand,now(),now()),
     (v_op_altered,v_member,'33550000-b500-4000-8000-0000000000c1','tell_owner_in_brand_group',v_args,'executing','ari',v_brand,now(),now()),
     (v_op_outsider,v_outsider,'33550000-b500-4000-8000-0000000000c3','tell_owner_in_brand_group',v_args,'executing','ari',v_brand,now(),now()),
-    (v_op_pending,v_member,'33550000-b500-4000-8000-0000000000c1','tell_owner_in_brand_group',v_args,'pending','ari',v_brand,now(),NULL);
+    (v_op_pending,v_member,'33550000-b500-4000-8000-0000000000c1','tell_owner_in_brand_group',v_args,'pending','ari',v_brand,now(),NULL),
+    (v_op_other_tool,v_member,'33550000-b500-4000-8000-0000000000c1','update_brand',v_args,'executing','ari',v_brand,now(),now());
 
   SET LOCAL ROLE authenticated;
   PERFORM set_config('request.jwt.claim.sub', v_member::text, true);
@@ -113,6 +115,16 @@ BEGIN
   END;
   IF v_error <> 'operation_not_executing' THEN
     RAISE EXCEPTION 'B5-5 a pending approval was not refused (error=%)', v_error;
+  END IF;
+
+  -- 5b. An approval for a different change can never send a note.
+  BEGIN
+    PERFORM public.ari_tell_owner_in_brand_group(v_op_other_tool, v_group, v_note);
+    v_error := 'none';
+  EXCEPTION WHEN OTHERS THEN v_error := SQLERRM;
+  END;
+  IF v_error <> 'operation_binding_mismatch' THEN
+    RAISE EXCEPTION 'B5-5b another tool''s approval was not refused (error=%)', v_error;
   END IF;
 
   -- 6. Someone else's approval is not this caller's to send.

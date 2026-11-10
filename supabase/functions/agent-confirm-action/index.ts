@@ -60,11 +60,13 @@ import {
 import { sanitizeAriUserFacingDiagnostics } from "../_shared/agentSanitization.ts";
 import { websiteSetupApprovedWriteFollowup } from "../_shared/agentWebsiteSetup.ts";
 import {
+  answerClaimExpired,
   ariProposalExpiredResponse,
   expiredProposalAnswer,
 } from "./proposalExpiry.ts";
 import {
   isAmbiguousExecutionFailure,
+  requiresOperationReceipt,
   toolErrorHttpStatus,
 } from "./executionOutcome.ts";
 import {
@@ -746,17 +748,6 @@ async function handleConfirmAction(args: {
       "A newer version of this change is waiting for you.",
     );
   }
-  if (
-    pending.status !== "pending" &&
-    !(pending.status === "executing" &&
-      RECEIPT_BACKED_EVENT_TOOL_NAMES.has(pending.tool_name))
-  ) {
-    return errorResponse(
-      400,
-      "WRONG_STATE",
-      `Cannot confirm — current status: ${pending.status}`,
-    );
-  }
   // #3355 bundle 5 (3(b).6): an approval that timed out inside a live flow
   // re-presents its step from a fresh read instead of dead-ending.
   const representExpired = async (): Promise<void> => {
@@ -778,6 +769,28 @@ async function handleConfirmAction(args: {
       modelVersion: ARI_MODEL_VERSION,
     });
   };
+  // #3355 bundle 5: the expiry sweep already closed this Ari approval (it
+  // runs every 15 minutes), so the answers below never see it. Answer it as
+  // the timeout it is — the Host shows why and resumes — and bring the flow's
+  // step back, instead of a status the Host clears without a word.
+  if (
+    pending.status === "expired" &&
+    expiredProposalAnswer(pending.source) === "ari_proposal_expired"
+  ) {
+    await representExpired();
+    return ariProposalExpiredResponse();
+  }
+  if (
+    pending.status !== "pending" &&
+    !(pending.status === "executing" &&
+      RECEIPT_BACKED_EVENT_TOOL_NAMES.has(pending.tool_name))
+  ) {
+    return errorResponse(
+      400,
+      "WRONG_STATE",
+      `Cannot confirm — current status: ${pending.status}`,
+    );
+  }
   // #3355 P1 (D-14): the database clock decides expiry, not this worker's.
   let expiredByDbClock = false;
   if (pending.status === "pending") {
@@ -1158,24 +1171,20 @@ async function handleConfirmAction(args: {
       );
     }
     if (claim.answer === "expired") {
-      let expiredHere = false;
-      try {
-        await terminalizePending(pendingStateClient, {
-          id: pending.id,
-          userId,
-          expectedStatus: "pending",
-          outcome: "expired",
-        });
-        expiredHere = true;
-      } catch {
-        // Another request terminalized it first; the answer is the same,
-        // and that request re-presents the step (one card, never two).
-      }
-      if (expiredProposalAnswer(pending.source) !== "ari_proposal_expired") {
-        return errorResponse(409, "EXPIRED", "This suggestion expired.");
-      }
-      if (expiredHere) await representExpired();
-      return ariProposalExpiredResponse();
+      // #3355 bundle 5: only the request that expired it re-presents.
+      return await answerClaimExpired({
+        source: pending.source,
+        terminalize: () =>
+          terminalizePending(pendingStateClient, {
+            id: pending.id,
+            userId,
+            expectedStatus: "pending",
+            outcome: "expired",
+          }).then(() => undefined),
+        represent: representExpired,
+        hubExpired: () =>
+          errorResponse(409, "EXPIRED", "This suggestion expired."),
+      });
     }
     if (claim.answer !== "claimed") {
       return errorResponse(
@@ -1337,7 +1346,10 @@ async function handleConfirmAction(args: {
       expectedStatus: "executing",
       outcome: "executed",
       result,
-      requireOperationReceipt: RECEIPT_BACKED_EVENT_TOOL_NAMES.has(tool.name),
+      requireOperationReceipt: requiresOperationReceipt(
+        RECEIPT_BACKED_EVENT_TOOL_NAMES.has(tool.name),
+        result,
+      ),
     });
     terminalMessageId = terminalized.terminalMessageId;
     receiptDurable = true;

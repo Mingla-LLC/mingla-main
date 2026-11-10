@@ -46,6 +46,7 @@ import { WRITE_TOOL_OWNER_COPY as HOST_COPY } from "../../../../mingla-business/
 import { moneyGateStep } from "../ariFlows/moneyGate.ts";
 import {
   isAmbiguousExecutionFailure,
+  requiresOperationReceipt,
   toolErrorHttpStatus,
 } from "../../agent-confirm-action/executionOutcome.ts";
 
@@ -87,8 +88,11 @@ function teammateClient(opts: {
   brandName?: string;
   /** The send RPC's database error, if it refuses. */
   sendError?: string;
+  /** The receipt read's error (a missing function before the migration). */
+  receiptError?: string;
 }) {
   const sent: SentMessage[] = [];
+  const legacy: Record<string, unknown>[] = [];
   const calls: string[] = [];
   const client = {
     rpc(name: string, params?: Record<string, unknown>) {
@@ -108,7 +112,15 @@ function teammateClient(opts: {
         return Promise.resolve({ data: opts.isOwner === true, error: null });
       }
       if (name === "ari_tell_owner_receipt") {
-        return Promise.resolve({ data: opts.receipt ?? null, error: null });
+        return Promise.resolve(
+          opts.receiptError
+            ? { data: null, error: { message: opts.receiptError } }
+            : { data: opts.receipt ?? null, error: null },
+        );
+      }
+      if (name === "issue_3720_send_brand_group_message") {
+        legacy.push(params ?? {});
+        return Promise.resolve({ data: SENT_ID, error: null });
       }
       if (name === "ari_tell_owner_in_brand_group" && opts.sendError) {
         return Promise.resolve({
@@ -143,7 +155,7 @@ function teammateClient(opts: {
       return chain(null);
     },
   };
-  return { client: client as Any, sent, calls };
+  return { client: client as Any, sent, calls, legacy };
 }
 
 function rawTool(name: string): Any {
@@ -267,13 +279,18 @@ Deno.test("owner note: cancel sends nothing — the note is a confirmed write, n
   const source = Deno.readTextFileSync(
     new URL("../agentAri10xTools.ts", import.meta.url),
   );
-  // #3355 bundle 5: the only send is the receipt-backed RPC (the group
-  // send itself runs inside it, in SQL).
+  // #3355 bundle 5: one receipt-backed send, and the pre-migration send
+  // only behind the missing-function check.
   assertEquals(
     source.match(/"ari_tell_owner_in_brand_group"/g)?.length,
     1,
   );
-  assertEquals(source.includes("issue_3720_send_brand_group_message\""), false);
+  assertEquals(
+    source.match(/"issue_3720_send_brand_group_message"/g)?.length,
+    1,
+  );
+  const legacyAt = source.indexOf('"issue_3720_send_brand_group_message"');
+  assert(source.lastIndexOf("if (!receipts) {", legacyAt) > source.indexOf("const tellOwnerInBrandGroup"));
   const binder = source.slice(
     source.indexOf("export async function bindOwnerNoteProposal"),
     source.indexOf("const tellOwnerInBrandGroup"),
@@ -453,7 +470,10 @@ Deno.test("owner note: a certain refusal from the send ends the approval; only a
   const cases: Array<[string, string | null]> = [
     ["conversation_unavailable", "OWNER_NOTE_UNAVAILABLE"],
     ["operation_binding_mismatch", "OWNER_NOTE_CHANGED"],
-    ["idempotency_conflict", "OWNER_NOTE_CHANGED"],
+    ["operation_not_executing", "OWNER_NOTE_CHANGED"],
+    ["invalid_message", "OWNER_NOTE_CHANGED"],
+    // A receipt exists, so a note may have posted: never "nothing was sent".
+    ["idempotency_conflict", null],
     ["fetch failed: connection reset", null],
   ];
   for (const [dbError, code] of cases) {
@@ -477,4 +497,44 @@ Deno.test("owner note: a certain refusal from the send ends the approval; only a
       assertEquals(isAmbiguousExecutionFailure(true, err), true);
     }
   }
+});
+
+Deno.test("owner note: before its migration is applied the note still sends, and confirm doesn't wait for a receipt it never wrote", async () => {
+  const missing =
+    "Could not find the function public.ari_tell_owner_receipt(p_operation_id) in the schema cache";
+  const teammate = teammateClient({ receiptError: missing });
+  const result = await rawTool("tell_owner_in_brand_group").executor(
+    { brand_id: BRAND, about: "payment_setup", message: NOTE },
+    teammate.client,
+    USER,
+    { operationId: OP },
+  );
+  assertEquals(teammate.legacy, [{
+    p_conversation_id: GROUP,
+    p_content: NOTE,
+    p_actor_mode: "brand",
+  }]);
+  assertEquals(teammate.sent.length, 0);
+  assertEquals(result.sent, true);
+  assertEquals(result.receipt_backed, false);
+  assertEquals(requiresOperationReceipt(true, result), false);
+  // Receipt-backed results (and every other tool) still need their receipt.
+  assertEquals(requiresOperationReceipt(true, { sent: true }), true);
+  assertEquals(requiresOperationReceipt(true, null), true);
+  assertEquals(requiresOperationReceipt(false, { receipt_backed: false }), false);
+  // Any other failure of the receipt read is not a reason to send: unknown.
+  const flaky = teammateClient({ receiptError: "fetch failed" });
+  const err = await assertRejects(
+    () =>
+      rawTool("tell_owner_in_brand_group").executor(
+        { brand_id: BRAND, about: "payment_setup", message: NOTE },
+        flaky.client,
+        USER,
+        { operationId: OP },
+      ),
+    ToolError,
+  );
+  assertEquals(err.code, "RPC_FAILED");
+  assertEquals(isAmbiguousExecutionFailure(true, err), true);
+  assertEquals(flaky.legacy.length + flaky.sent.length, 0);
 });

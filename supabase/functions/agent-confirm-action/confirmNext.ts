@@ -284,8 +284,11 @@ export const EXPIRED_IN_FLOW_REASON =
  * resume finds it as the run's current card.
  *
  * Only when the chat's flow run is waiting on an approval and this was the
- * chat's newest proposal: a model proposal that expired while a flow card is
- * open, or one replaced by a newer card, leaves the flow alone. Never throws.
+ * chat's newest proposal: one replaced by a newer card, or one that expired
+ * while the flow shows a question, leaves the flow alone. If a later model
+ * proposal replaced the flow's own and then expired, the waiting run is
+ * re-read too: its own proposal is gone, so re-presenting the step is what
+ * un-sticks it. Never throws.
  */
 export async function representFlowAfterExpiry(args: {
   userClient: SupabaseClient;
@@ -349,8 +352,11 @@ export async function representFlowAfterExpiry(args: {
   }
 }
 
-/** True when the chat has a proposal made after this one (or it can't tell). */
-async function newerProposalIn(
+/**
+ * True when the chat has a proposal made after this one, or it can't tell
+ * (fails closed: no card is re-presented over one that may be newer).
+ */
+export async function newerProposalIn(
   service: SupabaseClient,
   args: {
     userId: string;

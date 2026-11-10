@@ -955,6 +955,13 @@ export async function bindOwnerNoteProposal(
   };
 }
 
+/** PostgREST's answer for an RPC that doesn't exist (yet) in this database. */
+export function receiptFunctionsMissing(error: unknown): boolean {
+  const text = error instanceof Error ? error.message : String(error ?? "");
+  return /Could not find the function|PGRST202|function public\.ari_tell_owner_\w+\(.*\) does not exist/
+    .test(text);
+}
+
 const tellOwnerInBrandGroup: AgentToolDefinition = {
   name: "tell_owner_in_brand_group",
   description:
@@ -980,11 +987,21 @@ const tellOwnerInBrandGroup: AgentToolDefinition = {
     // A note that already posted for this approval is answered from its
     // receipt first: a brand renamed or a group left since must not turn a
     // sent note into "nothing was sent".
-    const prior = await callRpc<Record<string, unknown> | null>(
-      client,
-      "ari_tell_owner_receipt",
-      { p_operation_id: operationId },
-    );
+    // Until migration 20280604003355 is applied (functions deploy on merge,
+    // migrations on their own go), the receipt functions don't exist yet:
+    // the note is sent the way it was before, never refused.
+    let receipts = true;
+    let prior: Record<string, unknown> | null = null;
+    try {
+      prior = await callRpc<Record<string, unknown> | null>(
+        client,
+        "ari_tell_owner_receipt",
+        { p_operation_id: operationId },
+      );
+    } catch (error) {
+      if (!receiptFunctionsMissing(error)) throw error;
+      receipts = false;
+    }
     if (prior && prior.sent === true) {
       return {
         sent: true,
@@ -1015,6 +1032,27 @@ const tellOwnerInBrandGroup: AgentToolDefinition = {
         "That note is out of date, so nothing was sent. Ask me again and I'll show the new words.",
       );
     }
+    if (!receipts) {
+      const messageId = await callRpc<string>(
+        client,
+        "issue_3720_send_brand_group_message",
+        {
+          p_conversation_id: conversationId,
+          p_content: expected,
+          p_actor_mode: "brand",
+        },
+      );
+      return {
+        sent: true,
+        message_id: messageId,
+        conversation_id: conversationId,
+        sent_to: args.send_to ?? null,
+        message: expected,
+        // Sent before the receipt functions exist: confirm must not wait
+        // for a receipt this send never wrote.
+        receipt_backed: false,
+      };
+    }
     let receipt: Record<string, unknown> | null;
     try {
       receipt = await callRpc<Record<string, unknown>>(
@@ -1038,9 +1076,16 @@ const tellOwnerInBrandGroup: AgentToolDefinition = {
           `${OWNER_NOTE_TEAM_FALLBACK} Nothing was sent.`,
         );
       }
+      // (idempotency_conflict is left out: it means a receipt exists, so a
+      // note may have posted — it stays "result unknown".)
       if (
-        text.includes("operation_binding_mismatch") ||
-        text.includes("idempotency_conflict")
+        [
+          "operation_binding_mismatch",
+          "operation_not_executing",
+          "operation_not_found",
+          "invalid_message",
+          "invalid_actor_mode",
+        ].some((code) => text.includes(code))
       ) {
         throw new ToolError(
           "OWNER_NOTE_CHANGED",
