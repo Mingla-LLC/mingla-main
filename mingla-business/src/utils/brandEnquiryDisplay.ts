@@ -3,6 +3,7 @@
  * no I/O, so every rule is provable in a unit test.
  */
 
+import { routeForEventRow } from "./routeForEventRow";
 import type {
   BrandEnquiryContext,
   BrandEnquiryCounts,
@@ -90,7 +91,9 @@ export function brandEnquiryContextOpen(context: BrandEnquiryContext | null | un
     case "order":
       return eventId && contextId ? { label: "Open order", route: `/event/${eventId}/orders/${contextId}` } : null;
     case "rsvp":
-      return eventId ? { label: "Open booking", route: `/event/${eventId}/guests` } : null;
+      // issue #3827 — an RSVP's guests live on the RSVP console, not the
+      // ticketed guest list (which reads ticket orders).
+      return eventId ? { label: "Open booking", route: `/rsvp/${eventId}/guests` } : null;
     case "reservation":
       return venueId ? { label: "Open reservations", route: `/venue/${venueId}?module=reservations` } : null;
     case "stay":
@@ -99,7 +102,16 @@ export function brandEnquiryContextOpen(context: BrandEnquiryContext | null | un
       return venueId ? { label: "Open order", route: `/venue/${venueId}?module=orders` } : null;
     case "offering":
       if (context.offering_kind === "stay") return null;
-      return contextId ? { label: "Open offering", route: `/event/${contextId}` } : null;
+      if (!contextId) return null;
+      // issue #3827 — offering_kind is the event's event_type: an RSVP opens
+      // its own dashboard.
+      return {
+        label: "Open offering",
+        route:
+          context.offering_kind === "rsvp"
+            ? routeForEventRow({ id: contextId, event_type: "rsvp" })
+            : `/event/${contextId}`,
+      };
     case "venue":
       return contextId ? { label: "Open venue", route: `/venue/${contextId}` } : null;
     case "none":

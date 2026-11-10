@@ -214,6 +214,13 @@ export function resolveBusinessNavTarget(
     }
   }
 
+  // 0b) issue #3827 — a push whose type says the event is an RSVP opens the
+  // RSVP dashboard; an /event deep link would open the ticketed screen.
+  if (type === "business.rsvp_contribution_received") {
+    const rsvpId = data.eventId ?? data.event_id ?? data.relatedId;
+    if (typeof rsvpId === "string" && UUID_RE.test(rsvpId)) return `/rsvp/${rsvpId}`;
+  }
+
   // 1) Prefer the explicit deep link when present + parseable.
   if (typeof data.deepLink === "string" && data.deepLink.length > 0) {
     const parsed = parseBusinessDeepLink(data.deepLink);

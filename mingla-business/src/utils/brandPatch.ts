@@ -19,6 +19,10 @@
 
 import type { Brand } from "../store/currentBrandStore";
 
+/** #4334 — a place id, trimmed, or null for none (unknown, null or blank). */
+const placeIdOrNone = (value: string | null | undefined): string | null =>
+  typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+
 /**
  * Compute the minimal patch between draft and original Brand objects.
  * Returns only the fields that have changed.
@@ -46,21 +50,21 @@ export function computeDirtyFieldsPatch(
   if (draft.countryCode !== original.countryCode) {
     patch.countryCode = draft.countryCode;
   }
-  if (draft.lat !== original.lat) {
-    patch.lat = draft.lat;
-  }
-  if (draft.lng !== original.lng) {
-    patch.lng = draft.lng;
-  }
-  // #4334 — the pin's Google place id. A re-pick whose text and coordinates
-  // match the saved ones can still bring a new place id; without this key
-  // Save found "no changes" and dropped the pick. Undefined (never read) and
-  // null both mean "none", so an untouched brand never diffs.
+  // #4334 — the pin is its coordinates AND its Google place id, and they
+  // travel together: a re-pick whose text and coordinates match the saved
+  // ones can still bring a new place id, and a refined pin must carry the id
+  // it belongs to (the server keeps an id across a move only when the same
+  // write sends it). Undefined (never read), null and blank all mean "none",
+  // so an untouched brand never diffs.
+  const draftPlaceId = placeIdOrNone(draft.locationProviderPlaceId);
   if (
-    (draft.locationProviderPlaceId ?? null) !==
-    (original.locationProviderPlaceId ?? null)
+    draft.lat !== original.lat ||
+    draft.lng !== original.lng ||
+    draftPlaceId !== placeIdOrNone(original.locationProviderPlaceId)
   ) {
-    patch.locationProviderPlaceId = draft.locationProviderPlaceId ?? null;
+    patch.lat = draft.lat;
+    patch.lng = draft.lng;
+    patch.locationProviderPlaceId = draftPlaceId;
   }
   if (draft.coverHue !== original.coverHue) {
     patch.coverHue = draft.coverHue;

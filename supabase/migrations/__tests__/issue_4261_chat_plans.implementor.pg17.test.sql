@@ -72,6 +72,9 @@ CREATE TEMP TABLE t4261_fn_before ON COMMIT PRESERVE ROWS AS
 -- commit, so re-apply it too: every suite after this one must see the end of
 -- the chain, not the 20280521004334 bodies.
 \ir ../20280525004334_issue_4334_place_id_repick.sql
+-- [TEST-MOD-APPROVED #4334] 20280526004334 replaces the events and experience
+-- stops place-stamp trigger bodies again; re-apply it too, for the same reason.
+\ir ../20280526004334_issue_4334_place_id_followups.sql
 
 DO $t4261_restore$
 DECLARE

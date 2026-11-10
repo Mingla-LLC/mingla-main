@@ -172,8 +172,10 @@ describe("ORCH-0859 REWORK 3 — events_type filter audit (trip-only defensive)"
     const matches = fn?.[0].match(/\.eq\("event_type",\s*"trip"\)/g);
     expect((matches ?? []).length).toBeGreaterThanOrEqual(1);
     expect(fn?.[0]).toMatch(/applyTripDraftGraph\(/);
+    // #4334 — the command is reached through tripRpcKeepingPins, which calls
+    // it (or its _repick twin when the patch sends a trip place id).
     expect(TRIPS).toMatch(
-      /supabase\.rpc\(["']biz_apply_trip_draft_graph["']/,
+      /(?:supabase\.rpc|tripRpcKeepingPins)\(["']biz_apply_trip_draft_graph["']/,
     );
   });
 
@@ -284,7 +286,9 @@ describe("ORCH-0859 REWORK 3 — events_type filter audit (trip-only defensive)"
     // `issue_1719_update_live_trip_with_poster` unchanged and adds CAS + an
     // exactly-once receipt. The delegation is asserted at the migration, so the
     // chain is still proven end to end rather than merely renamed.
-    expect(fnSource).toMatch(/supabase\.rpc\(["']biz_update_trip_live_command["']/);
+    // #4334 — reached through tripRpcKeepingPins (the plain command, or its
+    // _repick twin when the patch sends a trip place id).
+    expect(fnSource).toMatch(/(?:supabase\.rpc|tripRpcKeepingPins)\(["']biz_update_trip_live_command["']/);
     const migration = readFileSync(
       join(
         __dirname,
