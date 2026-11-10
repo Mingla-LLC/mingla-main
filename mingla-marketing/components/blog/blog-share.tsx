@@ -4,8 +4,9 @@ import { useEffect, useState } from 'react'
 
 // SHARE-SEMANTIC-ROLE:content-transport
 
-// #4137 — Share: Copy link, WhatsApp, X and (where the device has one) the
-// native share sheet. No Instagram button: Instagram has no web share URL.
+// #4137 — Share: Copy link, WhatsApp and (where the device has one) the native
+// share sheet. No Instagram button: Instagram has no web share URL.
+// #4339 — no X button: Mingla has retired X (Seth, 10 Nov 2026).
 export function BlogShare({ url, title }: { readonly url: string; readonly title: string }) {
   const [canShare, setCanShare] = useState(false)
   const [status, setStatus] = useState('')
@@ -33,7 +34,6 @@ export function BlogShare({ url, title }: { readonly url: string; readonly title
       <span className="blog-share-label">Share</span>
       <button type="button" className={button} onClick={() => void copy()}>Copy link</button>
       <a className={button} href={`https://wa.me/?text=${encodeURIComponent(`${title} ${url}`)}`} target="_blank" rel="noopener noreferrer">WhatsApp</a>
-      <a className={button} href={`https://x.com/intent/post?url=${encodeURIComponent(url)}&text=${encodeURIComponent(title)}`} target="_blank" rel="noopener noreferrer">X</a>
       {canShare ? (
         <button type="button" className={button} onClick={() => { void shareMore().catch(() => undefined) }}>More</button>
       ) : null}

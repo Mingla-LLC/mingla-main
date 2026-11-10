@@ -1,6 +1,8 @@
 import Image from 'next/image'
+import { ArrowRight } from 'lucide-react'
 import type { BlogBlock, BlogDocument, BlogTarget } from '@mingla/blog-document'
 import { DeviceCta } from '@/components/cutout/device-cta'
+import { blogButtonHelper } from '@/lib/blog/button-helper'
 import { blogMediaUrl, type BlogEmbeds, type BlogMediaSize } from '@/lib/blog/data'
 import { BlogRichText } from './blog-rich-text'
 import { CityCard } from './blocks/city-card'
@@ -24,20 +26,29 @@ function mediaImage(ctx: RenderContext, mediaId: string, alt: string, sizes: str
   return <Image src={blogMediaUrl(media.path)} alt={alt} width={media.width} height={media.height} sizes={sizes} />
 }
 
+// #4339 — the button block in the new brand: an Ink pill with Paper text and an
+// arrow, plus one helper line that says where it goes. The old `cut-btn-dark`
+// anchor lost its white text to `[data-landing] a { color: inherit }`, which
+// outranks a single class, so the 1.2 launch posts showed black on black.
 function TargetButton({ label, target }: { readonly label: string; readonly target: BlogTarget }) {
   if (target.kind === 'place' || target.kind === 'offering') {
     return <DeviceCta surface="explorer" location="blog_button" label={label} variant="primary" size="md" />
   }
   const href = target.kind === 'url' ? target.href : target.path
   const external = target.kind === 'url'
+  const helper = blogButtonHelper(target)
   return (
-    <a
-      href={href}
-      className="cut-btn cut-btn-dark h-[2.625rem] px-5 text-[0.9375rem] focus-ring"
-      {...(external ? { rel: 'noopener noreferrer', ...(target.newTab ? { target: '_blank' } : {}) } : {})}
-    >
-      {label}
-    </a>
+    <>
+      <a
+        href={href}
+        className="blog-button focus-ring"
+        {...(external ? { rel: 'noopener noreferrer', ...(target.newTab ? { target: '_blank' } : {}) } : {})}
+      >
+        <span>{label}</span>
+        <ArrowRight aria-hidden="true" className="blog-button-arrow" />
+      </a>
+      {helper ? <span className="blog-button-helper">{helper}</span> : null}
+    </>
   )
 }
 
