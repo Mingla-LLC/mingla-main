@@ -177,7 +177,8 @@ describe("thread header, context card and contact line", () => {
     });
     expect(brandEnquiryContextOpen({ kind: "rsvp", id: ID(32), event_id: ID(31) })).toEqual({
       label: "Open booking",
-      route: `/event/${ID(31)}/guests`,
+      // issue #3827 — an RSVP's guests are on the RSVP console.
+      route: `/rsvp/${ID(31)}/guests`,
     });
     expect(brandEnquiryContextOpen({ kind: "reservation", id: ID(33), venue_id: ID(34) })).toEqual({
       label: "Open reservations",

@@ -265,7 +265,8 @@ export interface LiveEvent {
   locationGeo?: { lat: number; lng: number } | null;
   /**
    * #4334 — the saved pin's Google place id and precision, when the read
-   * carries them (the management view does not yet, so undefined = "none").
+   * carries them (read from `events` beside the management view; undefined =
+   * not read = "none").
    * The live-edit diff compares a re-pick against these so a same-coordinate
    * re-pick with a new place still counts as a change.
    */

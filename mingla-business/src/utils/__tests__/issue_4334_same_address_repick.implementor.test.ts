@@ -213,7 +213,8 @@ describe("BR — brand edit: a same-text re-pick carries the place id", () => {
         brand({ locationProviderPlaceId: GOOGLE_ID }),
         brand(),
       ),
-    ).toEqual({ locationProviderPlaceId: GOOGLE_ID });
+      // #4334 follow-ups — the pin travels with its id (biz_update_brand_pin).
+    ).toEqual({ lat: 40.7222, lng: -73.9578, locationProviderPlaceId: GOOGLE_ID });
   });
 
   test("BR-2 undefined and null place ids are the same (no phantom diff)", () => {

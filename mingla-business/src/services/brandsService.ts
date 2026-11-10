@@ -856,6 +856,16 @@ export async function updateBrand(
   patch: Partial<Brand>,
   existingDescription: string | null,
 ): Promise<Brand> {
+  // #4334 — a save that moves the pin (or its place id) writes the pin with
+  // its id through biz_update_brand_pin, loaded on demand, so a refined pin
+  // keeps its place id.
+  if (
+    patch.lat !== undefined ||
+    patch.lng !== undefined ||
+    patch.locationProviderPlaceId !== undefined
+  ) {
+    return (await import("./brandPinWrite")).updateBrandWithPin(brandId, patch, existingDescription);
+  }
   const updatePayload = mapUiToBrandUpdatePatch(patch, { existingDescription });
 
   // Defensive: empty patch is no-op — return existing row instead of UPDATE

@@ -606,6 +606,21 @@ export default function EventEditRoute(): React.ReactElement {
     }
   }, [draft, isEditPublished, initialStep, router, setupReturn]);
 
+  // issue #3827 — the same guard for a PUBLISHED RSVP: this route's published
+  // editor is the ticketed one (it shows Tickets and refuses an RSVP with
+  // "Add at least one ticket type."), so an RSVP goes to the RSVP editor,
+  // keeping the way back to Website setup.
+  const rsvpEditRoute =
+    isEditPublished && resolvedLiveEvent?.event_type === "rsvp" && typeof idParam === "string"
+      ? `/rsvp/${idParam}/edit?mode=edit-published`
+      : null;
+  useEffect(() => {
+    if (rsvpEditRoute === null) return;
+    router.replace(
+      (setupReturn ? withReturnTo(rsvpEditRoute, setupReturn) : rsvpEditRoute) as never,
+    );
+  }, [rsvpEditRoute, router, setupReturn]);
+
   const handleExit = React.useCallback(
     (
       mode: WizardExitMode,
@@ -896,7 +911,7 @@ export default function EventEditRoute(): React.ReactElement {
   // Cycle 9b-2 edit-published branch — render the focused edit screen
   // when ?mode=edit-published. Loading shell while liveEvent resolves.
   if (isEditPublished) {
-    if (resolvedLiveEvent === null) {
+    if (resolvedLiveEvent === null || rsvpEditRoute !== null) {
       return (
         <View
           style={[
