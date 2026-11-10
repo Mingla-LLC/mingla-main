@@ -94,13 +94,12 @@ export async function fetchStopAlternatives(
     refLat: number;
     refLng: number;
     travelMode: string;
-    budgetMax: number;
     excludePlaceIds: string[];
     limit: number;
     rankSignal?: string; // ORCH-0985: vibe rank signal stamped on the stop by the generator
   },
 ): Promise<{ alternatives: StopAlternativeResult[]; totalAvailable: number }> {
-  const { categoryId, refLat, refLng, budgetMax, excludePlaceIds, limit, rankSignal } = params;
+  const { categoryId, refLat, refLng, excludePlaceIds, limit, rankSignal } = params;
 
   // ORCH-0985: replace uses a fixed, generous search radius around the stop being
   // replaced — NOT a travel-mode-derived one. The travel-mode radius exists to
@@ -150,13 +149,17 @@ export async function fetchStopAlternatives(
     groceryFloralTag: primaryTypeGate?.groceryFloralTag,
   });
 
-  // Filter: not in exclude list, within budget, fine-dining tier floor.
+  // Filter: not in exclude list, fine-dining tier floor.
+  // #4347 round 3 — NO price cap. `price_min` is Google's range in the PLACE's
+  // currency, and the old `> budgetMax` (default 1000, never sent by the app)
+  // compared naira with a dollar-sized number: in Lagos/Abuja it rejected every
+  // priced restaurant, bar and cinema as a replacement. Budget filtering was
+  // retired in ORCH-0434; this was the last copy of it.
   // (G1 is_servable + G2 signal score gate + G3 photo gate are all enforced
   // upstream by fetchSinglesForSignalRank.)
   const excludeSet = new Set(excludePlaceIds);
   const filtered = candidates.filter((c) => {
     if (excludeSet.has(c.google_place_id)) return false;
-    if ((c.price_min ?? 0) > budgetMax) return false;
 
     // Fine dining price floor — match curated-pipeline gate
     if (categoryId === 'upscale_fine_dining') {
