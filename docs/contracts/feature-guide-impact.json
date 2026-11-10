@@ -1651,7 +1651,9 @@
         "app-mobile/src/i18n/locales/yo/expanded_details.json",
         "app-mobile/src/i18n/locales/zh/common.json",
         "app-mobile/src/i18n/locales/zh/expanded_details.json",
-        "app-mobile/src/utils/openingHoursUtils.ts"
+        "app-mobile/src/utils/openingHoursUtils.ts",
+        "app-mobile/package.json",
+        "app-mobile/patches/metro+0.83.3.patch"
       ]
     },
     {
