@@ -76,7 +76,7 @@ export function PlanStopNavigator({ store, stops, onJump, reducedMotion, top = 0
             >
               <View style={[styles.dot, on ? styles.dotOn : done ? styles.dotDone : null]}>
                 <Text style={[styles.dotText, on ? styles.dotTextOn : null]} maxFontSizeMultiplier={1}>
-                  {stop.ordinal ?? '·'}
+                  {stop.ordinal ?? '+'}
                 </Text>
               </View>
               {on ? (

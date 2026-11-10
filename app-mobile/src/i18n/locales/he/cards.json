@@ -290,5 +290,20 @@
   "sheet.sound": "צליל",
   "sheet.mute": "השתק",
   "sheet.sound_on_a11y": "הפעלת צליל",
-  "sheet.sound_off_a11y": "השתקת צליל"
+  "sheet.sound_off_a11y": "השתקת צליל",
+  "plan.route_short": "מסלול",
+  "plan.schedule_short": "תזמון",
+  "plan.addon": "תוספת",
+  "plan.conditions_row_addon": "{{name}} (תוספת), {{time}}",
+  "plan.price_from_pp": "החל מ-{{price}} לאדם",
+  "plan.spend_estimate_sub": "הערכת Google, לאדם",
+  "plan.prices_title": "מחיר לכל עצירה",
+  "plan.prices_note": "הערכות Google לאדם, בלי שתייה וטיפ. תוספות לא נספרות.",
+  "plan.price_pp": "{{price}} לאדם",
+  "plan.price_row": "{{number}} · {{name}}",
+  "plan.price_none": "לא צוין מחיר",
+  "deck.tile_time": "זמן",
+  "deck.tile_away": "מרחק",
+  "deck.away_value": "{{minutes}} דק׳",
+  "deck.price_plus": "{{price}}+"
 }

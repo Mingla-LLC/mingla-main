@@ -285,5 +285,20 @@
   "sheet.sound": "Sunet",
   "sheet.mute": "Fără sunet",
   "sheet.sound_on_a11y": "Pornește sunetul",
-  "sheet.sound_off_a11y": "Oprește sunetul"
+  "sheet.sound_off_a11y": "Oprește sunetul",
+  "plan.route_short": "Traseu",
+  "plan.schedule_short": "Programează",
+  "plan.addon": "Opțional",
+  "plan.conditions_row_addon": "{{name}} (opțional), {{time}}",
+  "plan.price_from_pp": "De la {{price}} de persoană",
+  "plan.spend_estimate_sub": "Estimare Google, de persoană",
+  "plan.prices_title": "Preț pe oprire",
+  "plan.prices_note": "Estimări Google de persoană, fără băuturi și bacșiș. Opționalele nu se adună.",
+  "plan.price_pp": "{{price}} de persoană",
+  "plan.price_row": "{{number}} · {{name}}",
+  "plan.price_none": "Fără preț afișat",
+  "deck.tile_time": "Durată",
+  "deck.tile_away": "Distanță",
+  "deck.away_value": "{{minutes}} min",
+  "deck.price_plus": "{{price}}+"
 }

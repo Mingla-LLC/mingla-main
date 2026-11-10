@@ -280,5 +280,20 @@
   "sheet.sound": "Sauti",
   "sheet.mute": "Kashe",
   "sheet.sound_on_a11y": "Kunna sauti",
-  "sheet.sound_off_a11y": "Kashe sauti"
+  "sheet.sound_off_a11y": "Kashe sauti",
+  "plan.route_short": "Hanya",
+  "plan.schedule_short": "Tsara",
+  "plan.addon": "Ƙari",
+  "plan.conditions_row_addon": "{{name}} (ƙari), {{time}}",
+  "plan.price_from_pp": "Daga {{price}} kowane mutum",
+  "plan.spend_estimate_sub": "Ƙiyasin Google, kowane mutum",
+  "plan.prices_title": "Farashi a kowace tasha",
+  "plan.prices_note": "Ƙiyasin Google na kowane mutum, ba tare da abin sha da tukwici ba. Ba a ƙidaya ƙari ba.",
+  "plan.price_pp": "{{price}} kowane mutum",
+  "plan.price_row": "{{number}} · {{name}}",
+  "plan.price_none": "Babu farashi",
+  "deck.tile_time": "Lokaci",
+  "deck.tile_away": "Nisa",
+  "deck.away_value": "Minti {{minutes}}",
+  "deck.price_plus": "{{price}}+"
 }

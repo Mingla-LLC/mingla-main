@@ -1,8 +1,9 @@
-import { curatedDeckSpans } from '../expandedCard/expandedCardFacts';
+import { aiPlanPriceLabel, curatedDeckSpans, formatPlanDuration, planVisibleStops } from '../expandedCard/expandedCardFacts';
 import { formatDisplayPrice } from '../utils/formatters';
 import { isFreePrice } from '../../utils/displayPrice';
 import type { CuratedExperienceCard } from '../../types/curatedExperience';
-import type { MetaSpanInput } from '../deckCardPlate';
+import type { MetaSpanInput, PlanPlateContent, PlanPlateTile } from '../deckCardPlate';
+import { routeLine } from './deckCardModel';
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;
 
@@ -46,4 +47,36 @@ export function experienceFromPrice(
     server: card,
   });
   return price === null ? null : t('cards:price.from', { price: price.text });
+}
+
+/**
+ * #4347 round 2 (Direction B) — an AI plan's collapsed plate: the route over
+ * its numbered stops, then Time / Away / Spend. ONE function for the front face
+ * (CuratedExperienceSwipeCard) and the behind face (SwipeableCards), so a
+ * promotion never changes what the plate says. A fact with no value is left
+ * out (Constitution 9); Spend is the real Google estimate ("₦100,000+") when
+ * the plan honestly has one, else the spend level.
+ */
+export function curatedPlanPlate(
+  card: CuratedExperienceCard,
+  options: { t: Translate; currencyCode: string | null | undefined; photos: readonly string[] },
+): PlanPlateContent {
+  const { t, currencyCode, photos } = options;
+  const all = Array.isArray(card.stops) ? card.stops : [];
+  const visible = planVisibleStops(all);
+  const tiles: PlanPlateTile[] = [];
+  const duration = formatPlanDuration(card.estimatedDurationMinutes);
+  if (duration !== null) tiles.push({ key: 'time', label: t('cards:deck.tile_time'), value: duration });
+  const away = visible[0]?.travelTimeFromUserMin;
+  if (typeof away === 'number' && Number.isFinite(away) && away > 0) {
+    tiles.push({ key: 'away', label: t('cards:deck.tile_away'), value: t('cards:deck.away_value', { minutes: Math.round(away) }) });
+  }
+  const spend = aiPlanPriceLabel(visible, {
+    formatMoney: (price) => formatDisplayPrice({ ...price, viewerCurrency: currencyCode })?.text ?? null,
+    spendLevelLabel: (level) => t(`cards:price.spend_${level}`),
+    freeLabel: t('cards:swipeable.free'),
+    planEstimateLabel: (price) => t('cards:deck.price_plus', { price }),
+  });
+  if (spend !== null) tiles.push({ key: 'spend', label: t('cards:plan.tile_spend'), value: spend, accent: true });
+  return { route: routeLine(visible), photos, tiles };
 }

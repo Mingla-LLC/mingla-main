@@ -280,5 +280,20 @@
   "sheet.sound": "Geluid",
   "sheet.mute": "Dempen",
   "sheet.sound_on_a11y": "Geluid aanzetten",
-  "sheet.sound_off_a11y": "Geluid dempen"
+  "sheet.sound_off_a11y": "Geluid dempen",
+  "plan.route_short": "Route",
+  "plan.schedule_short": "Plannen",
+  "plan.addon": "Extra",
+  "plan.conditions_row_addon": "{{name}} (extra), {{time}}",
+  "plan.price_from_pp": "Vanaf {{price}} p.p.",
+  "plan.spend_estimate_sub": "Schatting van Google, per persoon",
+  "plan.prices_title": "Prijs per stop",
+  "plan.prices_note": "Schattingen van Google per persoon, zonder drankjes en fooi. Extra's tellen niet mee.",
+  "plan.price_pp": "{{price}} p.p.",
+  "plan.price_row": "{{number}} · {{name}}",
+  "plan.price_none": "Geen prijs bekend",
+  "deck.tile_time": "Duur",
+  "deck.tile_away": "Afstand",
+  "deck.away_value": "{{minutes}} min",
+  "deck.price_plus": "{{price}}+"
 }

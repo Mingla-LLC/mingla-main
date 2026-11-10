@@ -52,6 +52,16 @@ export function computeDirtyFieldsPatch(
   if (draft.lng !== original.lng) {
     patch.lng = draft.lng;
   }
+  // #4334 — the pin's Google place id. A re-pick whose text and coordinates
+  // match the saved ones can still bring a new place id; without this key
+  // Save found "no changes" and dropped the pick. Undefined (never read) and
+  // null both mean "none", so an untouched brand never diffs.
+  if (
+    (draft.locationProviderPlaceId ?? null) !==
+    (original.locationProviderPlaceId ?? null)
+  ) {
+    patch.locationProviderPlaceId = draft.locationProviderPlaceId ?? null;
+  }
   if (draft.coverHue !== original.coverHue) {
     patch.coverHue = draft.coverHue;
   }

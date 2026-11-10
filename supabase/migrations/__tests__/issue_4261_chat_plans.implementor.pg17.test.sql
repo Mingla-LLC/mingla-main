@@ -55,6 +55,12 @@
 -- re-apply is of the current owner of those bodies, which also proves it is
 -- idempotent.
 \ir ../20280521004334_issue_4334_google_places.sql
+-- [TEST-MOD-APPROVED #4334] 20280525004334 later replaces some of those bodies
+-- (venue in-review and change-request RPCs, the place-stamp triggers,
+-- places_checked_place_id). These re-applies run outside a transaction and
+-- commit, so re-apply it too: every suite after this one must see the end of
+-- the chain, not the 20280521004334 bodies.
+\ir ../20280525004334_issue_4334_place_id_repick.sql
 
 BEGIN;
 

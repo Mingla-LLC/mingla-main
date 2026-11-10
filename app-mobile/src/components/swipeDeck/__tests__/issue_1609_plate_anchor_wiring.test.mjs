@@ -213,7 +213,9 @@ test('H-4 EVERY name render site composes a per-render bottom from a presentatio
     for (const m of composed) {
       const ident = m[1];
       assert.match(
-        code[tree], new RegExp(`const ${ident}\\s*=\\s*platePresentation\\(`),
+        // #4347 round 2 — an AI plan anchors off planPlatePresentation(); the place
+        // branch of the same ternary must still be platePresentation().
+        code[tree], new RegExp(`const ${ident}\\s*=\\s*(?:platePresentation\\(|[^;]*?\\bplanPlatePresentation\\(\\)[^;]*?:\\s*platePresentation\\()`),
         `H-4: ${tree} anchors the name to \`${ident}\`, which is not assigned from platePresentation().`,
       );
     }

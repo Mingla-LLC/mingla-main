@@ -314,7 +314,8 @@ describe("#4347 wave 3 — the expanded curated plan", () => {
     ];
     const root = mount(body({ stops, originalStops: stops, forecastsOverride: [null, null, null] }).el);
     expect(textsIn(byTestId(root, "plan-stop-0")[0])).toContain("SHOP");
-    expect(textsIn(byTestId(root, "plan-stop-1")[0])).toContain("Optional");
+    // #4347 round 2 — an unnumbered stop is labelled "Add-on".
+    expect(textsIn(byTestId(root, "plan-stop-1")[0])).toContain("Add-on");
     expect(textsIn(byTestId(root, "plan-stop-1")[0]).some((s) => /^Stop \d/.test(s))).toBe(false);
     expect(textsIn(byTestId(root, "plan-stop-2")[0])).toContain("Stop 2");
     expect(byTestId(root, "plan-tile-stops-value")[0].props.children).toMatch(/^2 · /);

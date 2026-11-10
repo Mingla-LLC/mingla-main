@@ -428,7 +428,16 @@ test('T-7 the swipe-path budget actually dropped', () => {
   const materialMounts = {
     DeckCardPlate: count(componentBody(code.plate, 'DeckCardPlate'), /<PlateMaterial\b/g),
     CardStateDiscs: count(componentBody(code.plate, 'CardStateDiscs'), /<PlateMaterial\b/g),
+    // #4347 round 2 — the AI plan's plate. DeckCardPlate RETURNS it in place of
+    // the place plate (`if (plan) return <PlanPlate …/>`), so a face mounts one
+    // or the other, never both: the per-face count below is unchanged.
+    PlanPlate: count(componentBody(code.plate, 'PlanPlate'), /<PlateMaterial\b/g),
   };
+  assert.equal(materialMounts.PlanPlate, 1, `T-7: the plan plate mounts ${materialMounts.PlanPlate} PlateMaterials, expected 1`);
+  assert.ok(
+    /if \(plan\) \{\s*return \(\s*<PlanPlate\b/.test(componentBody(code.plate, 'DeckCardPlate')),
+    'T-7: DeckCardPlate no longer returns the plan plate INSTEAD of the place plate — a plan face could mount two plates',
+  );
   assert.equal(
     materialMounts.DeckCardPlate, 1,
     `T-7: the plate itself mounts ${materialMounts.DeckCardPlate} PlateMaterials, expected 1`,
@@ -441,9 +450,9 @@ test('T-7 the swipe-path budget actually dropped', () => {
   // Nothing else in the module graph may mount either node, or the arithmetic
   // below stops being the whole count.
   assert.equal(
-    count(code.plate, /<PlateMaterial\b/g), 3,
-    'T-7: the plate module mounts PlateMaterial somewhere other than the plate and the two state '
-    + 'discs — the per-face blur budget below no longer accounts for every layer.',
+    count(code.plate, /<PlateMaterial\b/g), 4,
+    'T-7: the plate module mounts PlateMaterial somewhere other than the plate (place or plan, '
+    + 'exclusive) and the two state discs — the per-face blur budget below no longer accounts for every layer.',
   );
   assert.equal(
     count(code.plate, /<BlurView\b/g), blursPerMaterial,

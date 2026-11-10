@@ -84,6 +84,11 @@ export function identityDraftFromVenue(venue: VenueDetailsForHost): VenueIdentit
           // A venue saved before #1363 has no precision; "approximate" is the
           // honest reading and is only sent if the host moves the pin.
           coordinatePrecision: venue.coordinatePrecision ?? "approximate",
+          // #4334 — the saved place id when the read carries one, so an
+          // untouched address never diffs against it.
+          ...(placeIdOrNone(venue.locationProviderPlaceId) !== null
+            ? { locationProviderPlaceId: placeIdOrNone(venue.locationProviderPlaceId) }
+            : {}),
         }
       : null;
   const address = pending?.address ?? liveAddress;
@@ -120,6 +125,14 @@ export function identityDraftProblem(
   return null;
 }
 
+/** #4334 — a place id, or null for none (unknown, null or blank). */
+const placeIdOrNone = (value: string | null | undefined): string | null =>
+  typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+
+// #4334 — a pin is its coordinates AND the place they belong to: re-picking
+// the same address onto the same coordinates with a new Google place id is a
+// change, so the save sends it (the same rule as the event editor's
+// locationPinChanged). An unknown saved place id reads as "none".
 const sameAddress = (
   a: VenueAddressValue | null,
   venue: VenueDetailsForHost,
@@ -130,7 +143,9 @@ const sameAddress = (
   a.lng === venue.lng &&
   (a.city ?? null) === (venue.city ?? null) &&
   (a.countryCode ?? null) === (venue.countryCode ?? null) &&
-  a.coordinatePrecision === (venue.coordinatePrecision ?? "approximate");
+  a.coordinatePrecision === (venue.coordinatePrecision ?? "approximate") &&
+  placeIdOrNone(a.locationProviderPlaceId) ===
+    placeIdOrNone(venue.locationProviderPlaceId);
 
 /**
  * Only what differs from the LIVE venue. The server compares again, so a stale

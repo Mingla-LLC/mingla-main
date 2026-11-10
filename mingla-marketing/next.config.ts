@@ -174,7 +174,18 @@ class HistoricalCityLayoutPlugin {
 const config: NextConfig = {
   webpack(webpackConfig) {
     webpackConfig.plugins = [...(webpackConfig.plugins ?? []), new StripIssueRefsPlugin()]
-    if (process.env.MINGLA_HISTORICAL_2983_BUILD === '1') webpackConfig.plugins.push(new HistoricalCityLayoutPlugin())
+    if (process.env.MINGLA_HISTORICAL_2983_BUILD === '1') {
+      webpackConfig.plugins.push(new HistoricalCityLayoutPlugin())
+      // #4339 — the historical build NEVER shares the webpack cache. Vercel
+      // restores the previous deploy's `.next/cache`, which the RELEASE build
+      // wrote; webpack then reuses its cached city-route module, the swap above
+      // never runs, and the historical build prerenders the release page with
+      // no weekend data: "city page lagos: the release layout needs the
+      // catalogue and the weekend" (failed deploys on 20c4431c4b, ffa8c46b8a).
+      // With no cache, every module resolves fresh, so the swap always runs and
+      // the release cache is neither read nor overwritten.
+      webpackConfig.cache = false
+    }
     return webpackConfig
   },
   htmlLimitedBots: HTML_LIMITED_BOTS,

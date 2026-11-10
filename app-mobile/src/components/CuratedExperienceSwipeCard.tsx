@@ -23,6 +23,7 @@ import { glass, ANDROID_GLASS_USES_OPAQUE_FALLBACK } from '../constants/designSy
 import {
   CuratedSlivers,
   DeckCardPlate,
+  planPlatePresentation,
   platePresentation,
 } from './deckCardPlate';
 import { PHOTO_PAGER, STOP_STACK } from '../../../packages/card-identity/index.js';
@@ -35,8 +36,8 @@ import type { CuratedExperienceCard } from '../types/curatedExperience';
   same binding renders the behind face in SwipeableCards, so promotion never
   changes the line. The sheet keeps `curatedPlanSpans` until waves 2-3.
 */
-import { curatedFaceFacts } from './deckCard/curatedFace';
-import { pagerPresentation, routeLine, stopStackPhotos, type DeckPhoto } from './deckCard/deckCardModel';
+import { curatedFaceFacts, curatedPlanPlate } from './deckCard/curatedFace';
+import { pagerPresentation, stopStackPhotos, type DeckPhoto } from './deckCard/deckCardModel';
 
 const NO_FAILURES: ReadonlySet<string> = new Set();
 import {
@@ -348,7 +349,16 @@ export function CuratedExperienceSwipeCard({
    * positions the column above it must be the same one.
    */
   const [metaLines, setMetaLines] = React.useState(1);
-  const presentation = platePresentation(curatedSpans, metaLines);
+  /*
+    #4347 round 2 (Direction B) — an AI plan gets the PLAN plate: route + stop
+    photos, Time / Away / Spend tiles, a wide Details. No slivers, no stop stack
+    above the title (the route lives on the plate now). A host experience keeps
+    the place-style plate and its "From ≈ $74" pill.
+  */
+  const planPlate = isBrandExperience
+    ? null
+    : curatedPlanPlate(card, { t, currencyCode, photos: stopStackPhotos(card.stops, STOP_STACK.max) });
+  const presentation = planPlate ? { ...planPlatePresentation(), metaLines: 1 } : platePresentation(curatedSpans, metaLines);
 
   // The pager's pages, decided by the caller (SwipeableCards owns the tap path).
   const pages = photos ?? [];
@@ -360,9 +370,8 @@ export function CuratedExperienceSwipeCard({
   // EventCoverMedia; every other page is a stop photo.
   const showCover = isBrandExperience && hasPhoto && coverUrl !== null && showingUri === coverUrl;
 
-  const stack = isBrandExperience
-    ? null
-    : { photos: stopStackPhotos(card.stops, STOP_STACK.max), route: routeLine(card.stops) };
+  // #4347 round 2 — the AI plan's route moved onto its plate; nothing stacks above the title.
+  const stack = null;
 
   return (
     <View style={styles.card}>
@@ -455,10 +464,11 @@ export function CuratedExperienceSwipeCard({
             #1609 Direction C — THE CURATED MARK IS THE SILHOUETTE: two 4pt slivers
             peeking above the plate. No text, no colour, no gesture owner.
           */}
-          <CuratedSlivers plateH={presentation.plateH} />
+          {planPlate ? null : <CuratedSlivers plateH={presentation.plateH} />}
 
           <DeckCardPlate
             spans={curatedSpans}
+            plan={planPlate}
             metaLines={presentation.metaLines}
             onMetaLinesChange={setMetaLines}
             onDetailsPress={onDetailsPress}
