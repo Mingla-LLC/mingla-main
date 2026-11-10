@@ -810,6 +810,13 @@ const withRefundPolicy = (
 ): LiveEvent =>
   refundPolicy === undefined ? event : { ...event, refundPolicy };
 
+/** #4334 — the saved pin columns the by-id probe reads (the view lacks them). */
+interface SavedPinColumns {
+  location_provider_place_id?: string | null;
+  // The column's CHECK allows only 'exact' | 'approximate' | NULL.
+  coordinate_precision?: LiveEvent["coordinatePrecision"];
+}
+
 export const fetchBusinessEventById = async (
   eventId: string,
 ): Promise<BusinessEventDetail | null> => {
@@ -836,7 +843,9 @@ export const fetchBusinessEventById = async (
         "rsvp_waitlist_enabled, rsvp_approval_mode, rsvp_discoverable, " +
         "rsvp_contribution_enabled, rsvp_contribution_suggested_cents, rsvp_contribution_min_cents, " +
         // issue #3284 — the refund terms the edit surface diffs and gates against.
-        "refund_policy",
+        "refund_policy, " +
+        // #4334 — the saved pin's place id and precision (the view lacks them).
+        "location_provider_place_id, coordinate_precision",
     )
     .eq("id", eventId)
     .maybeSingle();
@@ -862,7 +871,7 @@ export const fetchBusinessEventById = async (
     rsvp_contribution_min_cents?: number | null;
     // issue #3284 — events.refund_policy (jsonb; not on the generated types).
     refund_policy?: unknown;
-  } | null;
+  } & SavedPinColumns | null;
   if (probeRow !== null && probeRow.event_type === "trip") {
     return null;
   }
@@ -923,6 +932,14 @@ export const fetchBusinessEventById = async (
       detail.event,
       refundPolicyFromColumn(probeRow.refund_policy),
     );
+    // #4334 — the saved pin's place id and precision seed the editor, so an
+    // untouched pin, or a re-pick of the same place, is not a change, and a
+    // refined pin is saved with the id it belongs to.
+    detail.event = {
+      ...detail.event,
+      locationProviderPlaceId: probeRow.location_provider_place_id ?? null,
+      coordinatePrecision: probeRow.coordinate_precision ?? null,
+    };
   }
   return detail;
 };

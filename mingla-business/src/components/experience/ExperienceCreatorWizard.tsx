@@ -1659,11 +1659,20 @@ export const ExperienceCreatorWizard: React.FC<
         setToast(copy);
         return;
       }
-      const { data, error } = await supabase.rpc("biz_update_live_experience", {
+      // #4334 — the _repick twin asserts the stop pins this payload sends, so
+      // a stop re-picked onto the same place's refined coordinates keeps its
+      // place id. [TRANSITIONAL] until 20280526004334 is applied the twin is
+      // missing (PGRST202) and the plain owner runs. Exit: the migration is live.
+      const liveArgs = {
         p_event_id: liveExperience.id,
         p_payload: buildPayload(true),
         p_reason: guard.trimmedReason,
-      });
+      };
+      const repick = await supabase.rpc("biz_repick_update_live_experience", liveArgs);
+      const { data, error } =
+        repick.error?.code === "PGRST202"
+          ? await supabase.rpc("biz_update_live_experience", liveArgs)
+          : repick;
       if (error !== null) {
         const code = (error.message ?? "").trim();
         // ORCH-1075 — paid-edit integrity guards (defense-in-depth: this RPC
