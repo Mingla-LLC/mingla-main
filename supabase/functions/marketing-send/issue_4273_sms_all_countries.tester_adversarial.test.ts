@@ -1,8 +1,10 @@
 // #4273 — tester adversarial for "text every payout country". Runs the REAL
 // production send path (no injected routes, no injected switches): prices come
-// from the sms_country_prices table, each country's switch from
-// MINGLA_DELIVERY_FLAGS_JSON, and the alphanumeric sender from
-// TWILIO_MARKETING_MESSAGING_SERVICE_SID. It proves the quote and the send
+// from the sms_country_prices table, and (#4273 country switches) each
+// country's switch and the alphanumeric sender from
+// public.sms_marketing_switches_v1() — the database, never env. The bundle's
+// per-country keys below are deliberately ON for GB/DE/BE and are IGNORED; only
+// its US/NG master switches still count. It proves the quote and the send
 // pick the same people per country and per sender, that an alphanumeric
 // country never falls back to the toll-free number, that US/CA never use the
 // alphanumeric service, that a sealed send never leaves a recipient deferred
@@ -17,6 +19,12 @@ import { buildMarketingBookQuote } from "../_shared/marketingBookQuote.ts";
 import { smsRatesFromRows } from "../_shared/smsPriceTable.ts";
 import { isWithinSmsWindow, smsLocalZones } from "../_shared/smsCountries.ts";
 import { processClaimedCampaigns } from "./index.ts";
+import { MAPPED_COUNTRIES } from "../_shared/e164Country.ts";
+import { SMS_COUNTRIES } from "../_shared/smsCountries.ts";
+import {
+  loadSmsCountrySwitches,
+  smsCountryTextableFrom,
+} from "../_shared/smsCountrySwitches.ts";
 import { smsAdapter } from "../_shared/adapters/smsAdapter.ts";
 
 const US = "+12025550142";
@@ -60,7 +68,8 @@ const PRICE_ROWS = [
   priceRow("BE", "twilio", "USD", 1113, 100),
 ];
 
-// GB, DE and BE switched on; FR explicitly off; CA absent (off).
+// The legacy bundle: GB, DE and BE "on", FR off. Since #4273 country switches
+// only its US/NG master switches are read; the other keys must change nothing.
 const FLAGS = JSON.stringify({
   schema_version: 1,
   marketing_send_live_enabled: true,
@@ -75,6 +84,34 @@ const FLAGS = JSON.stringify({
 });
 
 type Write = { table: string; op: string; payload: unknown };
+
+// #4273 country switches — what public.sms_marketing_switches_v1() returns.
+// US, NG, GB and DE on; FR and CA off; BE needs a local number, so the table
+// cannot hold it on. Each test sets the marketing sender (null = none).
+const TESTER_SID = "MG4273" + "a".repeat(28);
+let dbSwitches: { sid: string | null; on: Set<string> } = {
+  sid: null,
+  on: new Set(["US", "NG", "GB", "DE"]),
+};
+function switchesPayload() {
+  return {
+    marketingServiceSid: dbSwitches.sid,
+    countries: MAPPED_COUNTRIES.map((country) => {
+      const sender = SMS_COUNTRIES[country].sender;
+      return {
+        country,
+        marketingEnabled: dbSwitches.on.has(country),
+        sender: sender === "alphanumeric"
+          ? "marketing_service"
+          : sender === "needs_number"
+          ? "needs_local_number"
+          : sender,
+        registrationRequired: SMS_COUNTRIES[country].registrationRequired,
+        registrationDone: false,
+      };
+    }),
+  };
+}
 
 function fakeDb(
   phones: string[],
@@ -191,6 +228,8 @@ function fakeDb(
               },
               error: null,
             }
+            : name === "sms_marketing_switches_v1"
+            ? { data: switchesPayload(), error: null }
             : { data: null, error: null },
         ),
     },
@@ -282,6 +321,11 @@ async function runProductionSend(
 }
 
 async function quoteReach(): Promise<string[]> {
+  // The live switches, read exactly as marketing-send's quote reads them.
+  const switches = await loadSmsCountrySwitches(
+    fakeDb([], { sealed: true }).client,
+  );
+  assert(switches !== null);
   const quote = await buildMarketingBookQuote(
     {
       brandId: "brand",
@@ -304,8 +348,9 @@ async function quoteReach(): Promise<string[]> {
     SEND_AT,
     {
       trackingOrigin: "https://usemingla.com/m",
-      // The live table's rows, the live switches (no smsCountryLive override).
+      // The live table's rows and the live switches (no test override).
       smsRates: smsRatesFromRows(PRICE_ROWS),
+      smsCountryLive: smsCountryTextableFrom(switches),
       costCurrency: "USD",
       fx: {
         convert: (
@@ -331,14 +376,15 @@ async function quoteReach(): Promise<string[]> {
 }
 
 Deno.test("#4273 X-1 no marketing sender: alphanumeric countries are skipped by quote AND send, never sent on the toll-free", async () => {
+  dbSwitches = { sid: null, on: new Set(["US", "NG", "GB", "DE"]) };
   await withEnv(
-    { ...BASE_ENV, TWILIO_MARKETING_MESSAGING_SERVICE_SID: undefined },
+    BASE_ENV,
     async () => {
       const quoted = await quoteReach();
       assertEquals(
         quoted,
         [NG, US].sort(),
-        "GB/DE need the alpha sender; FR off; CA off; BE has no sender",
+        "GB/DE need the alpha sender; FR off; CA off; BE needs a number",
       );
       const { sent } = await runProductionSend(ALL, { sealed: true });
       assertEquals(sent.map((s) => s.to).sort(), quoted);
@@ -355,16 +401,17 @@ Deno.test("#4273 X-1 no marketing sender: alphanumeric countries are skipped by 
 });
 
 Deno.test("#4273 X-2 with the marketing sender: GB/DE go by it with an opt-out link; US/NG never do; FR/CA/BE stay skipped", async () => {
+  dbSwitches = { sid: TESTER_SID, on: new Set(["US", "NG", "GB", "DE"]) };
   await withEnv(
-    { ...BASE_ENV, TWILIO_MARKETING_MESSAGING_SERVICE_SID: "MGtester4273" },
+    BASE_ENV,
     async () => {
       const quoted = await quoteReach();
       assertEquals(quoted, [DE, GB, NG, US].sort());
       const { sent, writes } = await runProductionSend(ALL, { sealed: true });
       assertEquals(sent.map((s) => s.to).sort(), quoted, "quote = send");
       const by = Object.fromEntries(sent.map((s) => [s.to, s]));
-      assertEquals(by[GB].messagingServiceSid, "MGtester4273");
-      assertEquals(by[DE].messagingServiceSid, "MGtester4273");
+      assertEquals(by[GB].messagingServiceSid, TESTER_SID);
+      assertEquals(by[DE].messagingServiceSid, TESTER_SID);
       assertEquals(
         by[US].messagingServiceSid ?? null,
         null,
@@ -399,18 +446,11 @@ Deno.test("#4273 X-2 with the marketing sender: GB/DE go by it with an opt-out l
 });
 
 Deno.test("#4273 X-3 a sealed recipient deferred overnight is resolved, not deferred forever, when their country is switched off before the next pass", async () => {
-  // GB was deferred by quiet hours on an earlier pass; GB is now switched off.
-  const flagsGbOff = JSON.stringify({
-    schema_version: 1,
-    marketing_send_live_enabled: true,
-    sms_live_enabled: { us: true, ng: true, gb: false },
-  });
+  // GB was deferred by quiet hours on an earlier pass; GB is now switched off
+  // in Mingla Admin (the bundle still says gb: true — ignored).
+  dbSwitches = { sid: TESTER_SID, on: new Set(["US", "NG", "DE"]) };
   await withEnv(
-    {
-      ...BASE_ENV,
-      MINGLA_DELIVERY_FLAGS_JSON: flagsGbOff,
-      TWILIO_MARKETING_MESSAGING_SERVICE_SID: "MGtester4273",
-    },
+    BASE_ENV,
     async () => {
       const { sent, writes } = await runProductionSend([US, GB], {
         sealed: true,
@@ -441,8 +481,9 @@ Deno.test("#4273 X-3 a sealed recipient deferred overnight is resolved, not defe
 });
 
 Deno.test("#4273 X-4 a sealed fresh recipient in a switched-off country still writes no row", async () => {
+  dbSwitches = { sid: TESTER_SID, on: new Set(["US", "NG", "GB", "DE"]) };
   await withEnv(
-    { ...BASE_ENV, TWILIO_MARKETING_MESSAGING_SERVICE_SID: "MGtester4273" },
+    BASE_ENV,
     async () => {
       const { writes } = await runProductionSend([FR], { sealed: true });
       assertEquals(

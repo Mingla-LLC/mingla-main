@@ -215,39 +215,52 @@ describe("#3281 extras date captions", () => {
 });
 
 describe("#3281 Host native checkout", () => {
-  test("offers no extras: its paid checkout is still contract v1", async () => {
+  // The native paid and free checkouts now send contract v2, whose attempt id
+  // covers extras, so the native cart offers them and keeps what was picked.
+  test("offers extras on iOS and keeps the line's picked extras", async () => {
     jest.replaceProperty(Platform, "OS", "ios");
-    let tree!: { toJSON: () => unknown; unmount: () => void };
-    await act(async () => {
-      TestRenderer.create(
-        <CartProvider>
-          <Probe />
-        </CartProvider>,
+    const ticket = {
+      id: TICKET,
+      name: "General",
+      buyerExtras: [
+        { id: DINNER, name: "Dinner", description: null, priceCents: 500, priceAllInCents: 500, maxPerTicket: 1, isUnlimited: true, validOccurrenceIds: null, remaining: null },
+      ],
+      validOccurrenceIds: null,
+    } as never;
+    const Harness = () => {
+      latestCart = useCart();
+      return (
+        <CartTicketExtras
+          ticket={ticket}
+          line={latestCart.lines[0]}
+          eventDateIds={[]}
+          occurrences={[]}
+          allDaysPass={false}
+          currency="USD"
+        />
       );
-    });
-    await act(async () => addTicket(1));
+    };
+    let tree!: { toJSON: () => unknown; unmount: () => void };
     await act(async () => {
       tree = TestRenderer.create(
         <CartProvider>
-          <CartTicketExtras
-            ticket={{
-              id: TICKET,
-              name: "General",
-              buyerExtras: [
-                { id: DINNER, name: "Dinner", description: null, priceCents: 500, priceAllInCents: 500, maxPerTicket: 1, isUnlimited: true, validOccurrenceIds: null, remaining: null },
-              ],
-              validOccurrenceIds: null,
-            } as never}
-            line={latestCart!.lines[0]}
-            eventDateIds={[]}
-            occurrences={[]}
-            allDaysPass={false}
-            currency="USD"
-          />
+          <Harness />
         </CartProvider>,
       ) as never;
     });
-    expect(tree.toJSON()).toBeNull();
+    await act(async () => addTicket(1));
+    await act(async () => addTicket(1, [{ addOnId: DINNER, quantity: 1 }]));
+    // Let the fit-to-line effect run: on native it no longer clears extras.
+    await act(async () => undefined);
+    expect(tree.toJSON()).not.toBeNull();
+    expect(JSON.stringify(tree.toJSON())).toContain("Dinner");
+    expect(latestCart!.lines[0].addOns).toEqual([{ addOnId: DINNER, quantity: 1 }]);
+    // A native attempt is keyed by its extras too.
+    await act(async () => latestCart!.setBuyer({ termsAccepted: true }));
+    const withDinner = latestCart!.checkoutAttemptIdFor({ eventId: EVENT, surface: "native" });
+    expect(latestCart!.checkoutAttemptIdFor({ eventId: EVENT, surface: "native" })).toBe(withDinner);
+    await act(async () => addTicket(1, []));
+    expect(latestCart!.checkoutAttemptIdFor({ eventId: EVENT, surface: "native" })).not.toBe(withDinner);
     await act(async () => tree.unmount());
   });
 });

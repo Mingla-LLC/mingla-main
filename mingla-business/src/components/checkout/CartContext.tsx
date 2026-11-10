@@ -552,7 +552,7 @@ export interface CartContextValue extends CartState {
   ) => void;
   checkoutAttemptIdFor: (input: {
     eventId: string;
-    surface: "web" | "mobile-web";
+    surface: "web" | "mobile-web" | "native";
     ticketLinkToken?: string | null;
   }) => string;
   /** Clears only attempt identity; reserved for an explicit server review reset. */
@@ -683,7 +683,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
   const checkoutAttemptIdFor = useCallback(
     (input: {
       eventId: string;
-      surface: "web" | "mobile-web";
+      surface: "web" | "mobile-web" | "native";
       ticketLinkToken?: string | null;
     }): string =>
       checkoutAttemptTrackerRef.current.idFor({

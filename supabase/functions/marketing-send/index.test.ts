@@ -43,8 +43,12 @@ Deno.test("marketing-send: SMS leg dispatches via smsAdapter with marketing SID 
   // Uses the Sub-A adapter (no new provider).
   assert(SOURCE.includes('from "../_shared/adapters/smsAdapter.ts"'));
   assert(/smsAdapter\.send\(/.test(SOURCE), "must call smsAdapter.send");
-  // Separate marketing Messaging Service SID (§12 Q2), with adapter fallback.
-  assert(SOURCE.includes("TWILIO_MARKETING_MESSAGING_SERVICE_SID"));
+  // Separate marketing Messaging Service SID (§12 Q2). #4273 country
+  // switches: it comes from public.sms_marketing_sender_config (the switches
+  // snapshot), never env, and only on the "marketing" route.
+  assert(!SOURCE.includes("TWILIO_MARKETING_MESSAGING_SERVICE_SID"));
+  assert(SOURCE.includes("switches?.marketingServiceSid"));
+  assert(SOURCE.includes("marketingRoute,"));
   // Quiet hours gate (marketing only).
   // [TEST-MOD-APPROVED ORCH-1270] SMS quiet-hours now DEFERS (retryable) instead
   // of terminal-failing. `quiet_hours_deferred` survives as an informational

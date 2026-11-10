@@ -255,9 +255,13 @@ describe("issue #3281 — Explorer day-limited tickets", () => {
       join(__dirname, "../../../screens/Event/ConsumerEventDetailScreen.tsx"),
       "utf8",
     );
-    // The scope fields are added after the canonical-or-seeded choice.
+    // The scope fields are added after the canonical-or-seeded choice, and
+    // the body reads that decorated list (#3281 b3: through the no-date rule).
     expect(screen).toMatch(
-      /const publicEventForBody: PublicEventProps = \{\s*\.\.\.sourcedPublicEvent,\s*tickets: sourcedPublicEvent\.tickets\.map/,
+      /const decoratedTickets = sourcedPublicEvent\.tickets\.map/,
+    );
+    expect(screen).toMatch(
+      /const publicEventForBody: PublicEventProps = \{\s*\.\.\.sourcedPublicEvent,[\s\S]{0,400}?\bdecoratedTickets\b/,
     );
   });
 

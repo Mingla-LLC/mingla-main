@@ -14,6 +14,8 @@ import "./issue_3281_per_date_cart.cases";
 import "./issue_3281_extras_cart.cases";
 // #3281 — day captions and the removal notice with Undo (same harness).
 import "./issue_3281_day_scope_cart.cases";
+// #3281 — a host-cancelled date on the chooser and in the cart (same harness).
+import "./issue_3281_cancelled_dates.cases";
 
 describe("issue #3859 — Explorer expired-session checkout guard", () => {
   test("null account never becomes anonymous contact entry, then late auth restores the recap without losing lines", () => {

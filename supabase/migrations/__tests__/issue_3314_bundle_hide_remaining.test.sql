@@ -343,10 +343,15 @@ BEGIN
   -- withheld with the street, before cityGeo); md5 00c7efab5b85a2d9f68f2efe31c9cc42 ->
   -- 1618f8ee62fad8b38da890b13968d472 (the peeled #3281 body); H-07c bb592bd96ba612ae11eade657ea819c2 ->
   -- 06076c7b3a8acd24de76c50c43303e29. Every #3314 hunk is unchanged (H-07a).
-  PERFORM pg_temp.h3314_assert(md5(v_src) = '1618f8ee62fad8b38da890b13968d472',
+  -- [TEST-MOD-APPROVED #3281] 20280523003281 (bundle 3) adds the per-occurrence
+  -- `cancelled` key and forces a cancelled date to sold out with no places left
+  -- (hunks declared in issue_3281_b3_reemit_hunks.ts); md5 1618f8ee62fad8b38da890b13968d472 ->
+  -- f8fb56055d8ac10ded7d1f44b8423a21; H-07c 06076c7b3a8acd24de76c50c43303e29 ->
+  -- 4a56544fde199a2ea3b7421d0265ce35. Every #3314 hunk is unchanged (H-07a).
+  PERFORM pg_temp.h3314_assert(md5(v_src) = 'f8fb56055d8ac10ded7d1f44b8423a21',
     'H-07b the installed body is byte-identical to 20271124003281 (md5 ' || md5(v_src) || ')');
   -- Keep the CTE projection: #3281 schedule sold-out/placesLeft still read it.
-  PERFORM pg_temp.h3314_assert(md5(replace(v_src, v_key_hunk, '')) = '06076c7b3a8acd24de76c50c43303e29',
+  PERFORM pg_temp.h3314_assert(md5(replace(v_src, v_key_hunk, '')) = '4a56544fde199a2ea3b7421d0265ce35',
     'H-07c removing only the hideRemainingCount key gives the #3281 comparison body (md5 '
       || md5(replace(v_src, v_key_hunk, '')) || ')');
   v_before_src := replace(v_wrapper_src, v_key_hunk, '');

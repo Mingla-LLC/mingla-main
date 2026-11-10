@@ -8,10 +8,29 @@
 // on web; the stub exists so the import resolves cleanly.
 
 import type { TicketCheckoutReview } from "@mingla/offering-rendering/discountQuote";
+import type {
+  CheckoutAddOnRequest,
+  CheckoutLinePlanChoice,
+  TICKET_CHECKOUT_CONTRACT_VERSION,
+} from "@mingla/offering-rendering/ticketCheckoutContract";
+
+/** issue #3281 — type parity with `nativeCheckoutFlow.native.ts`. */
+export interface NativeCheckoutLine {
+  ticketTypeId: string;
+  quantity: number;
+  paymentPlanChoice?: CheckoutLinePlanChoice;
+  byDate?: Readonly<Record<string, number>>;
+  addOns?: readonly CheckoutAddOnRequest[];
+}
 
 export interface NativeCheckoutInput {
   eventId: string;
-  lines: Array<{ ticketTypeId: string; quantity: number }>;
+  lines: NativeCheckoutLine[];
+  /** issue #3281 — checkout contract v2 (web stub never invokes; type parity). */
+  checkoutContractVersion?: typeof TICKET_CHECKOUT_CONTRACT_VERSION;
+  checkoutAttemptId?: string;
+  purchaseTermsAccepted?: boolean;
+  ticketLinkToken?: string;
   buyer: {
     name: string;
     email: string;

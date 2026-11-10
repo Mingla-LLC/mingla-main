@@ -76,6 +76,7 @@ import {
   createTicketCheckout,
   getTicketCheckoutStatus,
   paidCheckoutErrorMessage,
+  PAID_CHECKOUT_FAILED_MESSAGE,
   PAID_CHECKOUT_NO_HANDOFF_MESSAGE,
   ticketCheckoutProviderHandoff,
 } from "../../../src/services/ticketCheckoutService";
@@ -726,6 +727,9 @@ function CheckoutPaymentScreenContent({
       // available (lets the charge reuse the previewed Stripe Tax calculation);
       // otherwise the no-address create recomputes the same venue-sourced all-in.
       const surface: "native" = "native";
+      // issue #3281 — set once the order is paid, so Pay stays locked until the
+      // screen leaves (a re-tap after the attempt reset would be a new checkout).
+      let paid = false;
 
       try {
         setProcessing(true);
@@ -735,9 +739,31 @@ function CheckoutPaymentScreenContent({
           eventId,
         });
 
+        // issue #3281 — checkout contract v2, like buyer web: the attempt id is
+        // the cart's identity, so a PaymentSheet cancel or a
+        // `checkout_in_progress` retry of the SAME cart reuses it, and a change
+        // of tickets, dates, extras, buyer or code mints a new one. A cart the
+        // contract refuses fails closed here, before any network call.
+        let checkoutAttemptId: string;
+        try {
+          checkoutAttemptId = checkoutAttemptIdFor({
+            eventId,
+            surface,
+            ticketLinkToken,
+          });
+        } catch {
+          setProcessing(false);
+          setPaymentError(PAID_CHECKOUT_FAILED_MESSAGE);
+          return;
+        }
+
         const outcome = await nativeCheckout({
           eventId,
           lines,
+          checkoutContractVersion: 2,
+          checkoutAttemptId,
+          purchaseTermsAccepted: buyer.termsAccepted === true,
+          ...(ticketLinkToken !== null ? { ticketLinkToken } : {}),
           discountCode,
           quoteDigest: activeQuote.quoteDigest,
           quoteListDigest: activeQuote.quoteListDigest,
@@ -814,6 +840,9 @@ function CheckoutPaymentScreenContent({
         // There is no stranded post-payment dead-end any more.
         const sessionId = outcome.orderId;
         setCheckoutSessionId(sessionId);
+        // issue #3281 — this attempt is spent; the next purchase is a new one.
+        paid = true;
+        resetCheckoutAttempt();
         try {
           await Promise.race([
             confirmTicketCheckout(sessionId, ""),
@@ -879,7 +908,7 @@ function CheckoutPaymentScreenContent({
           message,
         });
       } finally {
-        setProcessing(false);
+        if (!paid) setProcessing(false);
       }
     },
     [
@@ -890,6 +919,7 @@ function CheckoutPaymentScreenContent({
       buyer,
       discountCode,
       checkoutAttemptIdFor,
+      resetCheckoutAttempt,
       brand?.id,
       event,
       eventId,

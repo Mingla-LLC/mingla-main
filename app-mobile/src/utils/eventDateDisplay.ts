@@ -28,6 +28,8 @@ export interface ConsumerEventTimeFields {
 export interface ConsumerOccurrenceDateLike {
   startAt: string;
   endAt?: string | null;
+  /** issue #3281 — the host cancelled this date; summaries skip it. */
+  cancelled?: boolean | null;
 }
 
 const isValidIso = (iso: string | null | undefined): iso is string => {
@@ -160,6 +162,38 @@ export const formatEventDateLine = (fields: ConsumerEventTimeFields): string => 
 };
 
 /**
+ * issue #3281 — the page's primary date line. When the host cancelled the
+ * master date and another date is still on, the line names the first date
+ * still on (a cancelled date never leads the page while tickets are on sale).
+ * Otherwise it is the master line, unchanged.
+ */
+export const formatPrimaryDateLine = (
+  fields: ConsumerEventTimeFields,
+  occurrences: readonly ConsumerOccurrenceDateLike[],
+): string => {
+  const masterMs = isValidIso(fields.masterDateUtc)
+    ? Date.parse(fields.masterDateUtc)
+    : NaN;
+  const masterCancelled = occurrences.some(
+    (o) => o.cancelled === true && Date.parse(o.startAt) === masterMs,
+  );
+  const firstOn = masterCancelled
+    ? occurrences
+        .filter((o) => o.cancelled !== true && isValidIso(o.startAt))
+        .sort((a, b) => Date.parse(a.startAt) - Date.parse(b.startAt))[0]
+    : undefined;
+  return formatEventDateLine(
+    firstOn === undefined
+      ? fields
+      : {
+          masterDateUtc: firstOn.startAt,
+          masterEndAtUtc: firstOn.endAt ?? null,
+          timezone: fields.timezone,
+        },
+  );
+};
+
+/**
  * Compact local range — "Mon 12 May · 21:00 → 02:00" (24h, ASCII arrow).
  * Used by calendar row where vertical space is tight. Falls back to
  * start-only when end is null.
@@ -288,9 +322,12 @@ export const formatOccurrenceLine = (
 
 /** Multi-day summary used beneath the master occurrence line. */
 export const formatOccurrenceSummary = (
-  occurrences: readonly ConsumerOccurrenceDateLike[],
+  allOccurrences: readonly ConsumerOccurrenceDateLike[],
   fallbackTimezone: string,
 ): string | null => {
+  // issue #3281 — a cancelled date is not one of the event's dates on offer
+  // (parity with Host web's formatOccurrenceSummary).
+  const occurrences = allOccurrences.filter((o) => o.cancelled !== true);
   if (occurrences.length < 2 || !isValidIso(occurrences[0]?.startAt)) return null;
   const timezone = fallbackTimezone.length > 0 ? fallbackTimezone : "UTC";
   try {

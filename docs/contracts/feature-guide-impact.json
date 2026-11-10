@@ -98,6 +98,13 @@
     {
       "capability_key": "checkout-tickets",
       "paths": [
+        "supabase/migrations/20280523003281_issue_3281_cancelled_dates_and_live_save.sql",
+        "mingla-business/src/payments/nativeCheckoutFlow.ts",
+        "mingla-business/src/services/publicEventOccurrencesService.ts",
+        "mingla-business/src/utils/eventDateDisplay.ts",
+        "mingla-business/src/utils/publicEventOccurrenceTruth.ts",
+        "packages/offering-rendering/eventDateSchedule.ts",
+        "packages/offering-rendering/noDateOnSale.ts",
         "app-mobile/app/purchases/[kind]/[id].tsx",
         "app-mobile/src/components/activity/CalendarAgendaRow.tsx",
         "app-mobile/src/components/profile/PurchasesCard.tsx",
@@ -866,6 +873,7 @@
     {
       "capability_key": "events-guest-list",
       "paths": [
+        "supabase/migrations/20280523003281_issue_3281_cancelled_dates_and_live_save.sql",
         "mingla-business/app/event/[id]/guests/index.tsx",
         "mingla-business/jest.issue873.render.cjs",
         "mingla-business/src/components/guests/GuestDaySelector.tsx",
@@ -895,6 +903,7 @@
     {
       "capability_key": "events-ticket-types",
       "paths": [
+        "supabase/migrations/20280523003281_issue_3281_cancelled_dates_and_live_save.sql",
         "mingla-business/src/components/event/EventDetailTicketTypeRow.tsx",
         "mingla-business/src/components/event/CreatorStep2When.tsx",
         "mingla-business/src/components/event/CreatorStep5Tickets.tsx",
@@ -932,6 +941,7 @@
     {
       "capability_key": "events-edit-live",
       "paths": [
+        "supabase/migrations/20280523003281_issue_3281_cancelled_dates_and_live_save.sql",
         "mingla-business/app/event/[id]/dates.tsx",
         "supabase/migrations/20280216003281_issue_3281_cancel_event_date.sql",
         "mingla-business/src/components/event/ChangeSummaryModal.tsx",
@@ -1061,7 +1071,12 @@
         "supabase/functions/_shared/secretBundle.ts",
         "supabase/functions/_shared/secretBundle.ts.function-policy.issue-4273.patch.json",
         "supabase/functions/notify-dispatch/function-policy.issue-4273.patch.json",
-        "supabase/functions/sms-price-refresh/function-policy.json"
+        "supabase/functions/sms-price-refresh/function-policy.json",
+        "supabase/functions/_shared/smsCountrySwitches.ts",
+        "supabase/migrations/20280526004273_issue_4273_sms_country_switches.sql",
+        "mingla-admin/src/pages/SmsCountriesPage.jsx",
+        "mingla-admin/src/services/smsCountriesService.js",
+        "mingla-admin/src/lib/smsCountries.js"
       ]
     },
     {

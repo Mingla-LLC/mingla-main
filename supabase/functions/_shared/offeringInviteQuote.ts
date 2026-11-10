@@ -3,11 +3,7 @@ import {
   resolveMarketingTrackingOrigin,
   smsNeedsOptOutLink,
 } from "./marketingBookQuote.ts";
-import {
-  smsCountryTextableNow,
-  smsRateForPhone,
-  type SmsRateV1,
-} from "./smsPriceBook.ts";
+import { smsRateForPhone, type SmsRateV1 } from "./smsPriceBook.ts";
 
 /** #4273 — a sample id of the send's opt-out link length (a UUID). */
 const OPT_OUT_LINK_SAMPLE_ID = "00000000-0000-4000-8000-000000000000";
@@ -300,7 +296,11 @@ export async function buildOfferingExecutionSnapshot(input: {
   allowEmptyPreview?: boolean;
   /** #4273 item 10 — the live SMS prices (loadSmsRates). */
   smsRates?: SmsRateV1[];
-  /** #4273 — per-country switch; defaults to the delivery flags. */
+  /**
+   * #4273 — per-country switch from the caller's snapshot of
+   * public.sms_country_switches. Required when any SMS is reachable: absent
+   * means the switches could not be read → cost_unavailable.
+   */
   smsCountryLive?: (country: string) => boolean;
 }): Promise<ExecutionSnapshotV1> {
   const now = input.now ?? new Date();
@@ -469,6 +469,13 @@ export async function buildOfferingExecutionSnapshot(input: {
   if (hasReachableSms && (input.smsRates ?? []).length === 0) {
     throw new Error("cost_unavailable");
   }
+  // #4273 — no snapshot of the country switches (public.sms_country_switches
+  // unreadable) = no SMS can be known to be textable: fail closed, the same
+  // treatment as missing prices.
+  const smsCountryLive = input.smsCountryLive;
+  if (hasReachableSms && smsCountryLive === undefined) {
+    throw new Error("cost_unavailable");
+  }
   const rates: SmsRateV1[] = hasReachableSms ? input.smsRates ?? [] : [];
   const fractions: Array<
     { candidate: ExecutionCandidateV1; numerator: bigint; denominator: bigint }
@@ -486,7 +493,7 @@ export async function buildOfferingExecutionSnapshot(input: {
     const rate = smsRateForPhone(
       source.normalizedContact,
       rates,
-      input.smsCountryLive ?? smsCountryTextableNow,
+      smsCountryLive ?? (() => false),
     );
     if (rate === null) {
       candidate.outcome = "suppressed";

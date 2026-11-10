@@ -116,6 +116,7 @@ import type { CheckoutAddOnRequest } from "@mingla/offering-rendering/ticketChec
 import { EventDayChooser, type EventDayChooserStatus } from "./EventDayChooser";
 import {
   dayChooserCaptions,
+  keepOfferedDays,
   removedTicketsNotice,
   ticketDayScopeLabel,
 } from "./ticketDayScope";
@@ -691,6 +692,8 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
         ? []
         : multiDaySelection.occurrences
             .filter((day) =>
+              // issue #3281 — a cancelled date never rides to checkout.
+              day.cancelled !== true &&
               multiDaySelection.selectedEventDateIds.includes(day.id),
             )
             .map((day) => day.id),
@@ -1129,12 +1132,11 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     // for the existing root auth flow to restore a signed-in account.
     if (!signedInBuyer) return;
     if (multiDaySelection !== null) {
-      const validIds = new Set(
-        multiDaySelection.occurrences.map((day) => day.id),
+      // issue #3281 — a cancelled date never rides to checkout.
+      const selectedIds = keepOfferedDays(
+        [...new Set(multiDaySelection.selectedEventDateIds)],
+        multiDaySelection.occurrences,
       );
-      const selectedIds = [
-        ...new Set(multiDaySelection.selectedEventDateIds),
-      ].filter((id) => validIds.has(id));
       if (multiDaySelection.status !== "ready") return;
       // issue #3281 — an all-days pass has nothing to choose: the server
       // expands the pass to every upcoming date (ticket-checkout-create).
@@ -1267,10 +1269,14 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     return "populated";
   })();
 
+  // issue #3281 — a cancelled date in the selection is not a chosen day.
   const selectedDayCount =
     multiDaySelection === null
       ? 0
-      : new Set(multiDaySelection.selectedEventDateIds).size;
+      : keepOfferedDays(
+          [...new Set(multiDaySelection.selectedEventDateIds)],
+          multiDaySelection.occurrences,
+        ).length;
   const dayTruthUnavailable =
     multiDaySelection !== null && multiDaySelection.status !== "ready";
   const treatAsAllDaysPass =

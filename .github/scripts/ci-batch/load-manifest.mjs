@@ -215,7 +215,12 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4347: re-sealed after merging origin/main 671964a09e (#4339 and #4273 rows kept beside the #4347 originPath removals).
 // #4255: register the work card email migration (20280524004255) and its implementor PostgreSQL proof in the #1857, #1931 and #2117 replay lanes.
 // #4334: register the tester place-id re-pick PostgreSQL proof (issue_4334_place_id_repick.tester.pg17) in the #1931 and #2117 replay lanes.
-export const BOOTSTRAP_SHA256 = "e4e221de6f8989c35651e909a0d5f7cb7a18725d544804c980519e477b703ae3";
+// #4273 country switches: register the sms-country-switches migration and its PostgreSQL proof.
+// #4273: re-sealed after merging origin/main be7ffb3fbd (#4255 and #4353 rows kept beside the #4273 rows).
+// #4273: re-sealed after renumbering the country switches migration 20280523004273 -> 20280526004273 (above #4255's 20280524004255 and #4334's reserved 20280525004334).
+// #4273: re-sealed after merging origin/main fff9cf9e16 (#4334 tester proof rows kept beside the #4273 rows).
+// #4273: re-sealed after merging origin/main cb00e54bf8 (#4360 rows kept beside the #4273 rows).
+export const BOOTSTRAP_SHA256 = "d844e73421a6347a74ae99645088ee8a35a47d48c18f8859500d44e03cf835fb";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

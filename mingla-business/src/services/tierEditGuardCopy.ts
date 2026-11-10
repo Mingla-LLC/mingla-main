@@ -33,8 +33,10 @@ const TIER_EDIT_GUARD_COPY: Readonly<Record<string, string>> = Object.assign(
       "Guests already have tickets for a day you removed from this tier, so that day has to stay. You can still add days, or remove days nobody has bought yet.",
     tier_day_scope_empty:
       "A ticket has no days left. Pick at least one day, or choose All dates.",
+    // Dates save before tickets in one live save (#3281), so a newly added day
+    // resolves; this now means the day was removed (here or by someone else).
     tier_day_scope_unknown_day:
-      "A day on this ticket isn't saved yet or no longer exists. Save your dates first, then pick the ticket's days again.",
+      "A day on this ticket no longer exists. Pick the ticket's days again, then save.",
 
     // Turning password protection on without a password to check against.
     ticket_password_setup_required:

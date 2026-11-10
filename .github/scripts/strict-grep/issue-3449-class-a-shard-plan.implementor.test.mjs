@@ -122,9 +122,12 @@ const EXPECTED_PLAN = Object.freeze({
   // #4339: re-derived after #4339 added the locally declared built-output
   // anti-copy gate (issue-4339-built-output-anti-copy, +2 batch:A executions:
   // self-test and plain). Read off the plan command as above.
-  executions: 1055,
-  loadsSeconds: [385.5, 385.5, 385.5],
-  counts: [351, 352, 352],
+  // [TEST-MOD-APPROVED #3281] Re-derived after #3281 added the locally declared
+  // Ari experience parity gate (issue-3281-ari-experience-parity, +2 batch:A
+  // executions: self-test and plain). Read off the plan command as above.
+  executions: 1057,
+  loadsSeconds: [385.5, 385.6, 385.6],
+  counts: [351, 353, 353],
 });
 
 const tempDir = (label) =>

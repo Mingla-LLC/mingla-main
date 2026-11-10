@@ -77,7 +77,6 @@ import { smsMarketingCountry } from "../_shared/e164Country.ts";
 import {
   isWithinSmsWindow,
   smsCountryProfile,
-  smsMarketingRoute,
   msUntilSmsWindowOpens,
   smsLocalZones,
 } from "../_shared/smsCountries.ts";
@@ -85,9 +84,17 @@ import { loadSmsRates, loadSmsRoutes } from "../_shared/smsPriceTable.ts";
 import {
   type configuredSmsRoutes,
   SMS_UNPRICED_COUNTRY,
-  smsCountryTextableNow,
   smsRateForPhone,
 } from "../_shared/smsPriceBook.ts";
+// #4273 — each country's marketing switch and the marketing sender come from
+// public.sms_country_switches / sms_marketing_sender_config. This module reads
+// env only inside functions, so the --allow-env-less suites can load it.
+import {
+  loadSmsCountrySwitches,
+  type SmsCountrySwitchesSnapshot,
+  smsCountryTextableFrom,
+  smsMarketingRouteFromSwitches,
+} from "../_shared/smsCountrySwitches.ts";
 import { resolveDeliveryFlagValue } from "../_shared/secretBundle.ts";
 import {
   constantTimeTokenHashEquals,
@@ -667,10 +674,11 @@ export async function handleMarketingSendRequest(
       followBrand: quoteBrand.followBrand,
       costCurrency: quoteBrand.costCurrency,
       fx: dbSmsFxConverter(supabase),
-      // #4273 item 10 — the live prices (public.sms_country_prices). Unreadable
-      // → none → the SMS quote fails closed as BOOK_BLAST_RATE_BOOK_UNAVAILABLE.
+      // #4273 item 10 — the live prices (public.sms_country_prices) and the
+      // country switches (public.sms_country_switches). Either unreadable →
+      // the SMS quote fails closed as BOOK_BLAST_RATE_BOOK_UNAVAILABLE.
       ...((candidates.data as { channel?: unknown } | null)?.channel === "sms"
-        ? { smsRates: await loadSmsRates(supabase).catch(() => undefined) }
+        ? await smsQuoteInputs(supabase)
         : {}),
     };
     if (requestedQuotedAt === null) {
@@ -989,7 +997,7 @@ export async function handleGroupPreview(
         },
         quoteBrand: (candidates) => resolveQuoteBrand(supabase, candidates),
         fx: dbSmsFxConverter(supabase),
-        smsRates: await loadSmsRates(supabase).catch(() => undefined),
+        ...(await smsQuoteInputs(supabase)),
         allowance: async (candidates, quote) => {
           const attached = await attachBookAllowance(supabase, actorId, candidates, quote);
           if (!attached.ok) throw new Error("cost_unavailable");
@@ -1203,6 +1211,29 @@ export async function resolveQuoteBrand(
   return { followBrand: { name, slug }, costCurrency };
 }
 
+/**
+ * #4273 — what an SMS quote needs from the database: the live prices and the
+ * per-country switches, read together. Unreadable prices → no smsRates;
+ * unreadable switches → no smsCountryLive. Either way allocateSmsCosts fails
+ * the quote closed (BOOK_BLAST_RATE_BOOK_UNAVAILABLE); nothing is guessed.
+ */
+// deno-lint-ignore no-explicit-any
+export async function smsQuoteInputs(supabase: any): Promise<{
+  smsRates: Awaited<ReturnType<typeof loadSmsRates>> | undefined;
+  smsCountryLive?: (country: string) => boolean;
+}> {
+  const [smsRates, switches] = await Promise.all([
+    loadSmsRates(supabase).catch(() => undefined),
+    loadSmsCountrySwitches(supabase),
+  ]);
+  return {
+    smsRates,
+    ...(switches === null
+      ? {}
+      : { smsCountryLive: smsCountryTextableFrom(switches) }),
+  };
+}
+
 async function safeBookQuote(
   candidates: unknown,
   options: Parameters<typeof buildMarketingBookQuote>[2],
@@ -1313,6 +1344,11 @@ interface DispatchOptions {
    * configured book (configuredSmsRoutes); null → no book configured.
    */
   smsRoutes?: ReturnType<typeof configuredSmsRoutes>;
+  /**
+   * #4273 — tests only: the country switches snapshot the send reads.
+   * Omitted → public.sms_marketing_switches_v1(); null → unreadable.
+   */
+  smsSwitches?: SmsCountrySwitchesSnapshot | null;
   /** #4273 — tests only: the ops alert (default: the api-health recipients). */
   opsAlert?: (subject: string, paragraphs: string[]) => Promise<void>;
 }
@@ -2353,16 +2389,6 @@ async function sendSms(
     );
   }
 
-  // #4273 — the marketing Messaging Service holds the alphanumeric "Mingla"
-  // sender and no number. It is used ONLY for alphanumeric countries: US and
-  // CA texts stay on the toll-free (transactional) service, which the US and
-  // Canada require; NG goes to Termii. An alphanumeric country with no
-  // marketing service configured is never textable (smsCountryTextableNow),
-  // so it never falls back to the toll-free number.
-  const marketingSidRaw = Deno.env.get("TWILIO_MARKETING_MESSAGING_SERVICE_SID")
-    ?.trim() ?? "";
-  const marketingSid = marketingSidRaw.length > 0 ? marketingSidRaw : null;
-
   // 3. Throttled batches.
   const deliverable = resolved.rows.filter(
     (c) => c.sms_marketing_ok && c.raw_phone !== null,
@@ -2411,14 +2437,47 @@ async function sendSms(
     await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
     smsRoutes = await loadSmsRoutes(supabase);
   }
+  // #4273 — the country switches and the marketing sender (one snapshot for
+  // the whole pass), read like the prices: up to three tries. Unreadable is
+  // treated EXACTLY like unreadable prices below: nothing is texted.
+  let switches = options.smsSwitches !== undefined
+    ? options.smsSwitches
+    : await loadSmsCountrySwitches(supabase);
+  for (
+    let attempt = 1;
+    switches === null && options.smsSwitches === undefined && attempt < 3;
+    attempt += 1
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
+    switches = await loadSmsCountrySwitches(supabase);
+  }
   const sealed = await sealedBookSend(supabase, campaign.id);
   const sealedSend = sealed.sealed;
-  if (smsRoutes === null) {
-    console.error(JSON.stringify({
-      event: "marketing_sms_rate_book_unreadable",
-      campaign_id: campaign.id,
-      retry: sealedSend,
-    }));
+  if (smsRoutes === null || switches === null) {
+    // Which read failed decides the log line and the alert wording; the
+    // prices case keeps its original wording.
+    const unreadable = smsRoutes === null && switches === null
+      ? {
+        what: "SMS prices and SMS country switches",
+        tables: "public.sms_country_prices and public.sms_country_switches",
+      }
+      : smsRoutes === null
+      ? { what: "SMS prices", tables: "public.sms_country_prices" }
+      : { what: "SMS country switches", tables: "public.sms_country_switches" };
+    if (smsRoutes === null) {
+      console.error(JSON.stringify({
+        event: "marketing_sms_rate_book_unreadable",
+        campaign_id: campaign.id,
+        retry: sealedSend,
+      }));
+    }
+    if (switches === null) {
+      console.error(JSON.stringify({
+        event: "marketing_sms_switches_unreadable",
+        campaign_id: campaign.id,
+        retry: sealedSend,
+      }));
+    }
     if (sealedSend) {
       // #4273 tester retest 3 — not forever. A day past the execution's own
       // time the send fails (the catch in processClaimedCampaigns marks it
@@ -2437,10 +2496,14 @@ async function sendSms(
         // time; no per-execution "alerted" marker exists to key it on).
         try {
           await (options.opsAlert ?? alertSmsPriceTableUnreadable)(
-            "[SMS] A Blast failed: SMS prices could not be read for 24 hours",
+            `[SMS] A Blast failed: ${unreadable.what} could not be read for 24 hours`,
             [
-              `Campaign ${campaign.id} could not read public.sms_country_prices for 24 hours after its scheduled time, so it was marked failed and nothing was texted.`,
-              "The host sees it as failed and can send it again once prices can be read.",
+              `Campaign ${campaign.id} could not read ${unreadable.tables} for 24 hours after its scheduled time, so it was marked failed and nothing was texted.`,
+              `The host sees it as failed and can send it again once ${
+                smsRoutes === null && switches !== null
+                  ? "prices"
+                  : unreadable.what
+              } can be read.`,
             ],
           );
         } catch {
@@ -2460,10 +2523,14 @@ async function sendSms(
       if (firstPark) {
         try {
           await (options.opsAlert ?? alertSmsPriceTableUnreadable)(
-            "[SMS] A Blast is waiting: SMS prices can't be read",
+            `[SMS] A Blast is waiting: ${unreadable.what} can't be read`,
             [
-              `Campaign ${campaign.id} could not read public.sms_country_prices, so nothing was texted. It retries every 10 minutes.`,
-              "If prices still can't be read 24 hours after its scheduled time, it fails and the host is told.",
+              `Campaign ${campaign.id} could not read ${unreadable.tables}, so nothing was texted. It retries every 10 minutes.`,
+              `If ${
+                smsRoutes === null && switches !== null
+                  ? "prices"
+                  : unreadable.what
+              } still can't be read 24 hours after its scheduled time, it fails and the host is told.`,
             ],
           );
         } catch {
@@ -2482,11 +2549,13 @@ async function sendSms(
       };
     }
   }
-  // A supplied (test) route list is taken as switched on; production reads
-  // each country's own switch.
-  const smsLiveAtSend = options.smsRoutes !== undefined
+  // A supplied (test) route list with no supplied switches is taken as
+  // switched on; production reads each country's own switch from the
+  // snapshot (smsMarketingRouteFromSwitches, the one rule).
+  const smsLiveAtSend = options.smsRoutes !== undefined &&
+      options.smsSwitches === undefined
     ? () => true
-    : smsCountryTextableNow;
+    : smsCountryTextableFrom(switches);
   let unpricedSkipped = 0;
 
   for (let i = 0; i < deliverable.length; i += SMS_BATCH_SIZE) {
@@ -2529,7 +2598,7 @@ async function sendSms(
       if (shouldSkipDispatchedRecipient(existing)) {
         continue;
       }
-      const unpricedReason = smsRoutes === null
+      const unpricedReason = smsRoutes === null || switches === null
         ? "sms_rate_book_unavailable"
         : smsRateForPhone(phone.trim(), smsRoutes, smsLiveAtSend) === null
         ? SMS_UNPRICED_COUNTRY
@@ -2752,18 +2821,26 @@ async function sendSms(
         offeringTokenId = prepared.tokenId;
       }
 
-      // Live path — adapter enforces the per-market kill-switch internally;
-      // when SMS_LIVE_ENABLED_<MKT> is off it returns status='skipped' with
-      // ZERO Twilio HTTP, so even LIVE marketing-send is text-dark until flip.
+      // Live path — #4273: the route comes from the country switches
+      // snapshot (the one rule). A country with no route reaches the adapter
+      // with marketingRoute null and is skipped there with ZERO provider HTTP;
+      // the adapter also refuses any wrong sender/route pairing. The marketing
+      // Messaging Service SID (public.sms_marketing_sender_config) is passed
+      // ONLY on the "marketing" route: US/CA stay on the toll-free service,
+      // NG goes to Termii.
+      const marketingRoute = smsMarketingRouteFromSwitches(
+        countryCode,
+        switches,
+      );
       const result = await smsAdapter.send({
         to: phone.trim(),
         brandName,
         message: providerMessage,
         countryCode,
-        messagingServiceSid:
-          smsMarketingRoute(countryCode, marketingSid !== null) === "marketing"
-            ? marketingSid
-            : null,
+        messagingServiceSid: marketingRoute === "marketing"
+          ? switches?.marketingServiceSid ?? null
+          : null,
+        marketingRoute,
         // ORCH-1227 (DEC-192) — NG marketing routes to Termii's `generic`
         // channel (Twilio ignores this field; reputation isolation there is the
         // separate marketing Messaging Service SID above).

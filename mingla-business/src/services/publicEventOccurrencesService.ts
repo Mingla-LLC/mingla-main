@@ -61,4 +61,9 @@ export interface PublicEventOccurrence {
   soldOut?: boolean | null;
   /** issue #3281 — remaining seats across limited tiers; null when hidden. */
   placesLeft?: number | null;
+  /**
+   * issue #3281 — the host cancelled this date. It stays listed but can never
+   * be chosen or counted as a date on offer. A missing key means false.
+   */
+  cancelled?: boolean;
 }

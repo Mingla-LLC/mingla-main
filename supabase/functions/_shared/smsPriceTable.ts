@@ -21,14 +21,14 @@
 // as is or the field dropped at the next bundle rebuild.
 
 import { MAPPED_COUNTRIES } from "./e164Country.ts";
-import { smsMarketingRoute } from "./smsCountries.ts";
+import { smsCountryProfile } from "./smsCountries.ts";
 
 export const SMS_PRICE_TABLE = "sms_country_prices";
 
 /** The provider a country is priced on: Termii for NG, Twilio otherwise. Kept
  * free of the SMS adapter so price readers carry no provider credentials. */
 function smsProviderForCountry(country: string): "twilio" | "termii" {
-  return smsMarketingRoute(country, true) === "termii" ? "termii" : "twilio";
+  return smsCountryProfile(country)?.sender === "termii" ? "termii" : "twilio";
 }
 /** A price older than this is quoted but alerted on. */
 export const SMS_PRICE_STALE_MS = 7 * 24 * 60 * 60 * 1000;

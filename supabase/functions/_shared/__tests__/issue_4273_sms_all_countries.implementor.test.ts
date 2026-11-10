@@ -3,7 +3,10 @@
 // T-A every payout country maps from its calling code (Canada split from +1 by
 //     area code); Ghana, South Africa, the Philippines and Kenya stay unmapped.
 // T-B the price rule and the sender rule are ONE rule (smsProviderForCountry).
-// T-C one switch per country: an absent key is OFF, US does not carry GB or CA.
+// T-C the legacy bundle reader (secretBundle.resolveSmsCountryLive, no longer
+//     read by any send path since #4273 country switches) still parses per
+//     country; marketing switches now live in public.sms_country_switches
+//     (issue_4273_sms_country_switches.implementor.test.ts).
 // T-D every mapped country has a quiet-hours window and a sender route.
 // T-E windows: France never on Sunday and until 21:30; Toronto 07:30 is held;
 //     a number that can be in two zones is held to the stricter one.
@@ -13,8 +16,8 @@
 //     issue_4273_sms_price_table.implementor.test.ts for the staleness alert).
 // T-H the book validator refuses wrong routes, duplicates and unmapped
 //     countries, and accepts the ready-to-paste entry list.
-// MINGLA-INVARIANT: I-4273-ONE-SMS-SWITCH-PER-COUNTRY | issue #4273 | Each mapped country has its own sms_live_enabled.<cc> switch, off when absent; a switched-off country is skipped as "can't text their country yet", never sent.
-// MINGLA-INVARIANT: I-4273-ALPHA-COUNTRIES-NEVER-USE-TOLL-FREE | issue #4273 | A marketing text to an alphanumeric-sender country goes only through TWILIO_MARKETING_MESSAGING_SERVICE_SID; without it the country is not textable; US and CA stay on the toll-free service.
+// I-4273-ONE-SMS-SWITCH-PER-COUNTRY and I-4273-ALPHA-COUNTRIES-NEVER-USE-TOLL-FREE
+// are re-declared (database switches) in issue_4273_sms_country_switches.implementor.test.ts.
 // MINGLA-INVARIANT: I-4273-OPT-OUT-LINK-WHERE-NO-REPLY | issue #4273 | A marketing text whose sender cannot take a STOP reply ends with a branded opt-out link, and the quote measures the same link length.
 import {
   assert,
@@ -32,8 +35,11 @@ import {
   isWithinSmsWindow,
   msUntilSmsWindowOpens,
   SMS_COUNTRIES,
-  smsMarketingRoute,
 } from "../smsCountries.ts";
+import {
+  parseSmsCountrySwitches,
+  smsMarketingRouteFromSwitches,
+} from "../smsCountrySwitches.ts";
 import {
   composeSmsBody,
   computeSegments,
@@ -42,7 +48,6 @@ import {
 } from "../adapters/smsAdapter.ts";
 import { resolveSmsCountryLive } from "../secretBundle.ts";
 import {
-  smsCountryTextableNow,
   smsRateForPhone,
   type SmsRateV1,
   validatedSmsRates,
@@ -140,8 +145,6 @@ const flags = (sms: Record<string, boolean>) => (name: string) =>
       marketing_send_live_enabled: true,
       sms_live_enabled: { ng: false, us: false, ...sms },
     })
-    : name === "TWILIO_MARKETING_MESSAGING_SERVICE_SID"
-    ? "MGtest"
     : undefined;
 
 Deno.test("#4273 T-A every payout country maps for marketing, Canada and the other NANP members split from +1, the four excluded stay unmapped", () => {
@@ -253,35 +256,42 @@ Deno.test("#4273 T-D every mapped country has a window and a sender route", () =
       SMS_COUNTRIES[country].window.start < SMS_COUNTRIES[country].window.end,
     );
   }
-  assertEquals(smsMarketingRoute("US", false), "toll_free");
-  assertEquals(smsMarketingRoute("CA", true), "toll_free");
-  assertEquals(smsMarketingRoute("NG", false), "termii");
-  assertEquals(smsMarketingRoute("GB", true), "marketing");
+  // #4273 country switches: every mapped country has a sender route once
+  // switched on in public.sms_country_switches (except a needs-number one).
+  const snap = (over: Record<string, string>, sid: string | null) =>
+    parseSmsCountrySwitches({
+      marketingServiceSid: sid,
+      countries: PAYOUT.map((country) => ({
+        country,
+        marketingEnabled: true,
+        sender: over[country] ??
+          (SMS_COUNTRIES[country].sender === "toll_free"
+            ? "toll_free"
+            : SMS_COUNTRIES[country].sender === "termii"
+            ? "termii"
+            : SMS_COUNTRIES[country].sender === "needs_number"
+            ? "needs_local_number"
+            : "marketing_service"),
+        registrationRequired: SMS_COUNTRIES[country].registrationRequired,
+        registrationDone: true,
+      })),
+    }, { US: true, NG: true });
+  const all = snap({}, "MG9d42785c51834395018b52144736b9a7");
+  assertEquals(smsMarketingRouteFromSwitches("US", all), "toll_free");
+  assertEquals(smsMarketingRouteFromSwitches("CA", all), "toll_free");
+  assertEquals(smsMarketingRouteFromSwitches("NG", all), "termii");
+  assertEquals(smsMarketingRouteFromSwitches("GB", all), "marketing");
   assertEquals(
-    smsMarketingRoute("GB", false),
+    smsMarketingRouteFromSwitches("GB", snap({}, null)),
     null,
     "never the toll-free instead",
   );
-  assertEquals(smsMarketingRoute("BE", true), null, "needs a local number");
-  assertEquals(smsMarketingRoute("HU", true), null);
-  const env = flags({ us: true, gb: true, be: true });
-  assertEquals(smsCountryTextableNow("GB", env), true);
   assertEquals(
-    smsCountryTextableNow("BE", env),
-    false,
-    "switched on but no sender",
+    smsMarketingRouteFromSwitches("BE", all),
+    null,
+    "needs a local number",
   );
-  assertEquals(
-    smsCountryTextableNow(
-      "GB",
-      (name) =>
-        name === "TWILIO_MARKETING_MESSAGING_SERVICE_SID"
-          ? undefined
-          : env(name),
-    ),
-    false,
-    "no marketing service: GB is not textable",
-  );
+  assertEquals(smsMarketingRouteFromSwitches("HU", all), null);
 });
 
 Deno.test("#4273 T-E windows: France, Canada, and two-zone countries", () => {

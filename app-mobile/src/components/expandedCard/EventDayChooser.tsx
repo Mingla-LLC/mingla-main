@@ -79,6 +79,7 @@ const toSchedule = (
     overrideLocation: o.overrideLocation ?? null,
     soldOut: o.soldOut ?? null,
     placesLeft: o.placesLeft ?? null,
+    cancelled: o.cancelled === true,
   }));
 
 export const EventDayChooser: React.FC<EventDayChooserProps> = ({
@@ -102,6 +103,9 @@ export const EventDayChooser: React.FC<EventDayChooserProps> = ({
     [occurrences, timezone],
   );
   const chosen = selectedEventDateIds.length;
+  // issue #3281 — a cancelled date stays listed but is not a date on offer
+  // (parity with Host web's MultiDateDayChooser).
+  const offered = occurrences.filter((o) => o.cancelled !== true).length;
   // #2160 §7(b) parity with Host web — the price basis is named before any
   // total: an all-days pass shows the approved mode copy.
   const countLine = allDaysPass
@@ -109,12 +113,12 @@ export const EventDayChooser: React.FC<EventDayChooserProps> = ({
       ? "One price for all days"
       : "Every date of this event"
     : chosen === 0
-      ? `${occurrences.length} days`
+      ? `${offered} ${offered === 1 ? "day" : "days"}`
       : !isPaid
-        ? `${chosen} of ${occurrences.length} selected`
+        ? `${chosen} of ${offered} selected`
         : pricingMode === "per_day"
-          ? `Priced per day · ${chosen} of ${occurrences.length} selected`
-          : `One price for all days · ${chosen} of ${occurrences.length} selected`;
+          ? `Priced per day · ${chosen} of ${offered} selected`
+          : `One price for all days · ${chosen} of ${offered} selected`;
   const unavailable = status === "loading" || status === "error";
   const recovery = statusCopy(status);
 
@@ -198,12 +202,14 @@ export const EventDayChooser: React.FC<EventDayChooserProps> = ({
               const label =
                 formatOccurrenceLine(row.occurrence, timezone) ??
                 "Date to be confirmed";
+              // issue #3281 — a cancelled date reads "Cancelled" (its
+              // placesLeftLabel) and nothing else about its tickets, as on web.
               const detail = [
                 row.title,
                 row.location,
                 row.placesLeftLabel,
                 // issue #3281 — what the tickets leave on this date, as on web.
-                captions?.[row.occurrence.id] ?? null,
+                row.cancelled ? null : (captions?.[row.occurrence.id] ?? null),
               ]
                 .filter((part): part is string => part !== null)
                 .join(" · ");

@@ -19,7 +19,22 @@ export type EventDateScheduleOccurrence = {
   overrideLocation?: string | null;
   soldOut?: boolean | null;
   placesLeft?: number | null;
+  /**
+   * issue #3281 — the host cancelled this date. The row stays listed (a guest
+   * who saw it sees "Cancelled" rather than it vanishing) but is never
+   * selectable and never counted as a date on offer. The server also forces
+   * soldOut/placesLeft for older builds; this flag is what names it.
+   */
+  cancelled?: boolean | null;
 };
+
+/** issue #3281 — true when the host cancelled this date. Missing means false. */
+export const isCancelledOccurrence = (
+  occurrence: { cancelled?: boolean | null },
+): boolean => occurrence.cancelled === true;
+
+/** issue #3281 — the label a cancelled date carries in every date picker. */
+export const CANCELLED_OCCURRENCE_LABEL = "Cancelled";
 
 export type EventDateLayoutKind = "chips" | "tiles" | "pass" | "empty" | "single";
 
@@ -127,7 +142,13 @@ export const chooseEventDateLayout = (
   const nowMs = opts.nowMs ?? Date.now();
   const upcoming = filterUpcomingOccurrences(occurrences, nowMs);
   if (upcoming.length === 0) return { kind: "empty", upcoming };
-  if (opts.allDaysPass === true) return { kind: "pass", upcoming };
+  if (opts.allDaysPass === true) {
+    // issue #3281 — a pass covers only the dates still on; when every
+    // upcoming date is cancelled there is nothing left to pass into.
+    return upcoming.some((o) => !isCancelledOccurrence(o))
+      ? { kind: "pass", upcoming }
+      : { kind: "empty", upcoming: [] };
+  }
   if (upcoming.length === 1) return { kind: "single", upcoming };
   if (upcoming.length <= 6) return { kind: "chips", upcoming };
 
