@@ -672,8 +672,8 @@ export const smsAdapter = {
       };
     }
 
-    // #4273 — MARKETING wrong-sender guard (I-4273-ALPHA-COUNTRIES-NEVER-USE-
-    // TOLL-FREE). A marketing text goes out only on its country's own sender
+    // #4273 — MARKETING wrong-sender guard
+    // (I-4273-ALPHA-COUNTRIES-NEVER-USE-TOLL-FREE). A marketing text goes out only on its country's own sender
     // class: US/CA the toll-free service (no override SID), NG Termii, every
     // other country the marketing service (an override SID is required, so an
     // alphanumeric country can never fall back to the toll-free number in

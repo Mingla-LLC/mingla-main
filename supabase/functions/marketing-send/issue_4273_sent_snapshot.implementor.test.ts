@@ -15,6 +15,7 @@ import {
   assertStringIncludes,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { FakeTime } from "https://deno.land/std@0.224.0/testing/time.ts";
+import { parseSmsCountrySwitches } from "../_shared/smsCountrySwitches.ts";
 import { processClaimedCampaigns } from "./index.ts";
 import { sendPushCampaign } from "./pushCampaign.ts";
 import { SAMPLE_TRACKING_ID, smsEncoding } from "./sentSnapshot.ts";
@@ -267,6 +268,19 @@ Deno.test("#4273 T-2 an SMS snapshot is the adapter's text with one sample link,
         live: true,
         resendApiKey: "re_test_key",
         smsRoutes: [{ country: "NG", provider: "termii" }],
+        // #4273 country switches — NG on through Termii (the DB snapshot the
+        // send reads once per pass; supplied here so the frozen clock never
+        // waits on the unreadable-switches retry).
+        smsSwitches: parseSmsCountrySwitches({
+          marketingServiceSid: null,
+          countries: [{
+            country: "NG",
+            marketingEnabled: true,
+            sender: "termii",
+            registrationRequired: false,
+            registrationDone: false,
+          }],
+        }, { US: false, NG: true }),
       },
     );
     assertEquals(summary.failed, 0, JSON.stringify(summary.errors));
