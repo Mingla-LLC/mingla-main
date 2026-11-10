@@ -939,7 +939,6 @@
         "mingla-business/src/utils/publishedEventEditGuards.ts",
         "mingla-business/src/store/liveEventStore.ts",
         "mingla-business/src/utils/liveEventAdapter.ts",
-        "mingla-business/src/utils/locationPin.ts",
         "supabase/migrations/20280428003645_issue_3645_sell_publish_integrity.sql"
       ]
     },

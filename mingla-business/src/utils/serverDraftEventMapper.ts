@@ -23,13 +23,9 @@ import type { RefundPolicy } from "../services/refundPolicyService";
 import type { LiveEvent } from "../store/liveEventStore";
 import { asExtraGuestCount } from "../constants/guestListPrivacy";
 import { currencyCodeOrNull } from "./currency";
-// #4334 — the pin rules live in a leaf module (no store imports) so
-// liveEventAdapter can share them without a require cycle.
-import {
-  asCoordinatePrecision,
-  draftLocationPlaceId,
-  locationPinChanged,
-} from "./locationPin";
+// #4334 — the pin rules live in liveEventAdapter (see there): importing them
+// from the mapper closed a require cycle through the stores.
+import { draftLocationPlaceId, locationPinChanged } from "./liveEventAdapter";
 import {
   draftMultiDatePricingMode,
   type MultiDatePricingMode,
@@ -38,8 +34,6 @@ import {
   themeOverridesFromColumns,
   themeOverridesToColumns,
 } from "../services/offeringTheme";
-
-export { draftLocationPlaceId, locationPinChanged };
 
 export const BUSINESS_DRAFT_SCHEMA_VERSION = 1;
 
@@ -294,6 +288,11 @@ const asNumber = (value: unknown, fallback: number): number =>
 
 const asBoolean = (value: unknown, fallback: boolean): boolean =>
   typeof value === "boolean" ? value : fallback;
+
+const asCoordinatePrecision = (
+  value: unknown,
+): "exact" | "approximate" | null =>
+  value === "exact" || value === "approximate" ? value : null;
 
 /** A `{lat,lng}` blob value with finite numbers, or null. */
 const asLatLng = (value: unknown): { lat: number; lng: number } | null => {
