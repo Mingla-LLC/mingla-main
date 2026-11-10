@@ -1,7 +1,7 @@
 // Issue #3355 P6 follow-up — "Tell the owner" posts in the brand group chat
 // (Seth, 2026-11-01). Implementor happy path + edges.
 //
-// MINGLA-INVARIANT: I-ARI-OWNER-NOTE-CONFIRMED-AS-CALLER | issue #3355 | Ari posts a "tell the owner" note in the brand group chat only through the confirmed write tool tell_owner_in_brand_group: the server writes the exact words shown on the card (no codes, ids or tool names), the confirm sends exactly that text once per approval through ari_tell_owner_in_brand_group (the #1972 operation receipt around issue_3720_send_brand_group_message) as the caller, a retry of the same approval reads the posted note back and never posts twice, a cancel or an unconfirmed proposal sends nothing, and a caller with no group they can post in is sent to the Team screen instead.
+// MINGLA-INVARIANT: I-ARI-OWNER-NOTE-CONFIRMED-AS-CALLER | issue #3355 | Ari posts a "tell the owner" note only through the confirmed write tell_owner_in_brand_group: the server writes the exact words shown on the card, the confirm sends them as the caller at most once per approval (receipt-backed; a retry reads the posted note back), a cancel or unconfirmed proposal sends nothing, and a caller with no group they can post in is sent to the Team screen instead.
 //
 //   * open_handoff tells a teammate a group note is possible, or falls back
 //     to the Team screen with a plain sentence when they can't post;
