@@ -222,7 +222,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4273: re-sealed after merging origin/main cb00e54bf8 (#4360 rows kept beside the #4273 rows).
 // #4334: register the place-id follow-ups migration (20280526004334) in the #1857, #1931 and #2117 replay lanes, and its implementor PostgreSQL proof in the #1931 and #2117 lanes.
 // #4334: re-sealed after merging origin/main d27f8b82c0 (#4273 country switch rows kept beside the #4334 follow-up rows).
-export const BOOTSTRAP_SHA256 = "704af8c78fece42f8f912761353b2578f15eea32857b353960b57dc24d661b21";
+// #4334: re-sealed after registering the tester follow-ups PostgreSQL proof (issue_4334_place_id_followups.tester) beside the implementor proof in the #1931 and #2117 lanes.
+export const BOOTSTRAP_SHA256 = "5d4f5ae947ee5eb374d412a1bafbd7ba63d00f220367dd790653aa32050d65b0";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

@@ -430,7 +430,8 @@ export function phase3dContractDigest(manifest) {
 // #4273: re-sealed after merging origin/main cb00e54bf8 (#4360 rows kept beside the #4273 rows).
 // #4334: register the place-id follow-ups migration (20280526004334) in the #1857, #1931 and #2117 replay lanes, and its implementor PostgreSQL proof in the #1931 and #2117 lanes.
 // #4334: re-sealed after merging origin/main d27f8b82c0 (#4273 country switch rows kept beside the #4334 follow-up rows).
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "83df52c0b39d4ff1bbce35b3cfe56622dfa56d72e6385caf2cf7456c432ff266";
+// #4334: re-sealed after registering the tester follow-ups PostgreSQL proof (issue_4334_place_id_followups.tester) beside the implementor proof in the #1931 and #2117 lanes.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "0a05a84164217abab0f19c4d940c7860e4b085b9a1ecc3ea2359d73600c45016";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
