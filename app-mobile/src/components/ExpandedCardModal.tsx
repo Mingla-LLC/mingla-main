@@ -123,6 +123,7 @@ import { DeviceCalendarService } from "../services/deviceCalendarService";
 import { CalendarService } from "../services/calendarService";
 import { supabase } from "../services/supabase";
 import { useAppStore } from "../store/appStore";
+import { usePlaceReviewRequest } from "../store/placeReviewRequestStore";
 import { toastManager } from "./ui/Toast";
 import { useUserLocation } from "../hooks/useUserLocation";
 import {
@@ -716,24 +717,35 @@ export default function ExpandedCardModal({
   const rootSuspendedForShare =
     shareHandoffPhase !== 'idle' && shareHandoffPhase !== 'expanded_restoring';
 
-  const anyChildModalOpen =
+  // #4381: "Been here" does not write on tap; it opens the review prompt, which
+  // is the single PostExperienceModal (an RN Modal) mounted in app/index.tsx.
+  // iOS will not present it over this sheet's own RN Modal (ORCH-1022), so the
+  // tap did nothing. While a review request is open the sheet steps aside like
+  // it does for its own child surfaces, and comes back when the prompt closes.
+  const placeReviewOpen = usePlaceReviewRequest() !== null;
+
+  // Every child surface that takes the native presentation slot. The share
+  // handoff is added separately below because the close guard reads its ref.
+  const childSurfaceOpen =
     browserUrl !== null ||
     ticketBrowserUrl !== null ||
     isSchedulePickerOpen ||
     curatedLightbox.visible ||
     selectedVenueExperience !== null ||
     isReserveSheetOpen ||
-    rootSuspendedForShare;
+    placeReviewOpen;
+
+  const anyChildModalOpen = childSurfaceOpen || rootSuspendedForShare;
 
   const handleRootSheetClose = useCallback(() => {
     // ORCH-1022: while a child RN Modal/WebView is open, the root sheet is
     // intentionally suppressed to free the native presentation slot. Swallow
     // BaseBottomSheet's synthetic close so the card state is not torn down.
-    if (browserUrl !== null || ticketBrowserUrl !== null || isSchedulePickerOpen || curatedLightbox.visible || selectedVenueExperience !== null || isReserveSheetOpen || shareHandoffPhaseRef.current !== 'idle') {
+    if (childSurfaceOpen || shareHandoffPhaseRef.current !== 'idle') {
       return;
     }
     onClose();
-  }, [browserUrl, curatedLightbox.visible, isSchedulePickerOpen, onClose, ticketBrowserUrl, selectedVenueExperience, isReserveSheetOpen]);
+  }, [childSurfaceOpen, onClose]);
 
   const focusShareControl = useCallback((): void => {
     const nativeNode = findNodeHandle(shareControlRef.current);
