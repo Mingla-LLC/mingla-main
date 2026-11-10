@@ -43,15 +43,18 @@ begin
   perform pg_temp.ok(pg_temp.fails(format('update public.content_calendar_items set copy_text=%L where id=%L','direct mutation',card_id),'copy_locked:'),'direct write cannot change copy after Writing');
   perform pg_temp.ok(pg_temp.fails(format('insert into public.content_calendar_items(title,stage,owner_emails,created_by,updated_by) values(%L,%L,array[%L],%L,%L)','Blank design','design',email,email,email),'copy_approval_required:'),'direct design insert cannot bypass copy approval');
 
-  answer:=pg_temp.as_user(uid,email,format($q$select public.content_calendar_move(%L,'review',%s,false,false,false,'reworkmove003')::text$q$,card_id,rev))::jsonb;
+  answer:=pg_temp.as_user(uid,email,format($q$select public.content_calendar_move(%L,'review',%s,false,true,false,'reworkmove003')::text$q$,card_id,rev))::jsonb;
+  -- #4255: the go from Ray and Abimbola is recorded on the move to Approved (review).
+  perform pg_temp.ok(answer#>>'{item,design_approved_by}'=email and answer#>>'{item,design_approved_at}' is not null,'approval actor and time stored at Approved');
   rev:=(answer#>>'{item,revision}')::bigint;
-  answer:=pg_temp.as_user(uid,email,format($q$select public.content_calendar_move(%L,'scheduled',%s,false,true,false,'reworkmove004')::text$q$,card_id,rev))::jsonb;
-  perform pg_temp.ok(answer#>>'{item,design_approved_by}'=email and answer#>>'{item,design_approved_at}' is not null,'design approval actor and time stored');
+  answer:=pg_temp.as_user(uid,email,format($q$select public.content_calendar_move(%L,'scheduled',%s,false,false,false,'reworkmove004')::text$q$,card_id,rev))::jsonb;
+  perform pg_temp.ok(answer#>>'{item,stage}'='scheduled' and answer#>>'{item,design_approved_by}'=email,'scheduled keeps the approval');
   rev:=(answer#>>'{item,revision}')::bigint;
   perform pg_temp.ok(pg_temp.fails(format('update public.content_calendar_items set channels=array[]::text[] where id=%L',card_id),'schedule_required:'),'direct scheduled update cannot clear channels');
 
   answer:=pg_temp.as_user(uid,email,format($q$select public.content_calendar_move(%L,'review',%s,false,false,false,'reworkback001')::text$q$,card_id,rev))::jsonb;
-  perform pg_temp.ok(answer#>>'{item,design_approved_by}' is null and answer#>>'{item,copy_approved_by}'=email,'back to Review resets design approval only');
+  -- #4255: back to Approved keeps the go; back to Designed would clear it.
+  perform pg_temp.ok(answer#>>'{item,design_approved_by}'=email and answer#>>'{item,copy_approved_by}'=email,'back to Approved keeps the approval');
   rev:=(answer#>>'{item,revision}')::bigint;
   answer:=pg_temp.as_user(uid,email,format($q$select public.content_calendar_move(%L,'writing',%s,false,false,false,'reworkback002')::text$q$,card_id,rev))::jsonb;
   perform pg_temp.ok(answer#>>'{item,design_approved_by}' is null and answer#>>'{item,copy_approved_by}' is null,'back to Writing resets both approvals');

@@ -17824,6 +17824,7 @@
         "supabase/migrations/20280602003645_issue_3645_payout_ledger_followups.sql",
         "supabase/migrations/20280603003645_issue_3645_ledger_followup_closed_carrier_and_expired_claims.sql",
         "supabase/migrations/20280604003355_issue_3355_tell_owner_receipt.sql",
+        "supabase/migrations/20280605004255_issue_4255_content_calendar_approved_designed.sql",
         "supabase/migrations/__tests__/issue_1773_preserves_1857_phone_authority.pg17.test.sql",
         "supabase/migrations/__tests__/issue_1857_phone_country_authority.pg17.test.sql",
         "supabase/migrations/__tests__/issue_1902_public_event_lifecycle.pg17.test.sql",
@@ -19588,6 +19589,7 @@
         "supabase/migrations/20280602003645_issue_3645_payout_ledger_followups.sql",
         "supabase/migrations/20280603003645_issue_3645_ledger_followup_closed_carrier_and_expired_claims.sql",
         "supabase/migrations/20280604003355_issue_3355_tell_owner_receipt.sql",
+        "supabase/migrations/20280605004255_issue_4255_content_calendar_approved_designed.sql",
         "supabase/migrations/__tests__/biz_trip_tickets_sold.test.ts",
         "supabase/migrations/__tests__/draft_autosave_keeps_applied_cover.test.sql",
         "supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts",
@@ -20832,6 +20834,8 @@
         "supabase/migrations/__tests__/issue_4251_going_rsvps_cover_media_type.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4255_admin_access_email_drafts.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4255_admin_access_email_drafts.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4255_content_calendar_approved_designed.implementor.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4255_content_calendar_approved_designed.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4255_work_card_email.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4255_work_card_email.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4255_work_list_closed_range.implementor.pg17.test.sql",
@@ -24757,6 +24761,7 @@
         "supabase/migrations/20280602003645_issue_3645_payout_ledger_followups.sql",
         "supabase/migrations/20280603003645_issue_3645_ledger_followup_closed_carrier_and_expired_claims.sql",
         "supabase/migrations/20280604003355_issue_3355_tell_owner_receipt.sql",
+        "supabase/migrations/20280605004255_issue_4255_content_calendar_approved_designed.sql",
         "supabase/migrations/__tests__/biz_trip_tickets_sold.test.ts",
         "supabase/migrations/__tests__/draft_autosave_keeps_applied_cover.test.sql",
         "supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts",
@@ -26001,6 +26006,8 @@
         "supabase/migrations/__tests__/issue_4251_going_rsvps_cover_media_type.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4255_admin_access_email_drafts.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4255_admin_access_email_drafts.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4255_content_calendar_approved_designed.implementor.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4255_content_calendar_approved_designed.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4255_work_card_email.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4255_work_card_email.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4255_work_list_closed_range.implementor.pg17.test.sql",
@@ -53480,5 +53487,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "96c929094dbff13ee3549f562a10567c8c9ee11f5fb191a11c9cbc9e081135cc",
-  "phase3eContractSha256": "9873c55c024e2872f0693acad3797a4e986f6a7d52e385066cf79b7643d7655f"
+  "phase3eContractSha256": "6bf1129a1aa925cf19333e50da136d0276982f36e29ca49373e9888235dc0281"
 }

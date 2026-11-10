@@ -65,6 +65,8 @@ import {
   monthWindow,
   moveNeedsFields,
   movePrompt,
+  onCalendar,
+  stageLabel,
   requestKey,
 } from "../lib/contentCalendarModel";
 import * as service from "../services/contentCalendarService";
@@ -130,6 +132,16 @@ function monthDays(month) {
   return last.every((d) => monthKey(d) !== month) ? days.slice(0, 35) : days;
 }
 
+/** #4255: post chips by stage. Approved (go given, not yet in the posting tool) is
+ *  dashed amber so it never reads as Scheduled; Scheduled is solid; Published is
+ *  quiet green. Idea, Writing and Designed never reach the Calendar. */
+const POST_TONE = {
+  review: "border border-dashed border-[var(--color-warning-500)] bg-[var(--color-warning-50)] text-[var(--color-warning-700)] hover:bg-[var(--color-warning-100)]",
+  scheduled: "border border-[var(--gray-300)] bg-[var(--color-background-primary)] text-[var(--color-text-primary)] hover:bg-[var(--gray-50)]",
+  published: "border border-[var(--color-success-500)] bg-[var(--color-success-50)] text-[var(--color-success-700)] hover:bg-[var(--color-success-100)]",
+};
+const POST_LEGEND = [["review", "Approved post"], ["scheduled", "Scheduled post"], ["published", "Published post"]];
+
 /** Everything dated on the Calendar for one day: events and promised dates, then calls, then posts. */
 function dayEntries(key, data, items, show, calls = [], zone = undefined) {
   const out = [];
@@ -139,7 +151,7 @@ function dayEntries(key, data, items, show, calls = [], zone = undefined) {
   }
   // #4339: calls on the viewer's own day (an instant in their device's zone).
   if (show === "" || show === "calls") out.push(...callEntriesOn(key, calls, zone));
-  if (show === "" || show === "posts") for (const item of items) if (item.publish_at && localDateKey(item.publish_at) === key) out.push({ type: "post", id: `c-${item.id}`, title: item.title, item });
+  if (show === "" || show === "posts") for (const item of items) if (item.publish_at && onCalendar(item) && localDateKey(item.publish_at) === key) out.push({ type: "post", id: `c-${item.id}`, title: item.title, item });
   return out;
 }
 
@@ -246,9 +258,10 @@ function MonthGrid({ month, data, items, show, today, open, selectEvent, current
                     draggable={!coarse}
                     onDragStart={(event) => { event.dataTransfer.setData("text/x-mingla-content-id", e.item.id); event.dataTransfer.effectAllowed = "move"; }}
                     onClick={() => open(e.item.id)}
-                    aria-label={`${e.title}, post, ${e.item.stage}`}
+                    data-post-stage={e.item.stage}
+                    aria-label={`${e.title}, post, ${stageLabel(e.item.stage)}`}
                     title={e.title}
-                    className={`block min-h-6 w-full min-w-0 rounded-md border border-[var(--gray-200)] bg-[var(--color-background-primary)] px-1.5 py-0.5 text-left text-[11.5px] font-semibold leading-tight text-[var(--color-text-primary)] hover:bg-[var(--gray-50)] ${past ? "opacity-60" : ""} ${FOCUS}`}
+                    className={`block min-h-6 w-full min-w-0 rounded-md px-1.5 py-0.5 text-left text-[11.5px] font-semibold leading-tight ${POST_TONE[e.item.stage] || POST_TONE.scheduled} ${past ? "opacity-60" : ""} ${FOCUS}`}
                   >
                     <ChipWords text={e.title} />
                   </button>
@@ -283,6 +296,7 @@ function Legend({ undated, onUndated, show, zone }) {
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 border-t border-[var(--gray-200)] px-3 py-2.5 text-[12.5px] text-[var(--color-text-secondary)]">
       {STATE_LEGEND.map((k) => <span key={k} className="inline-flex items-center gap-1.5 whitespace-nowrap"><StateDot k={k} />{PLAIN_STATES[k]}</span>)}
+      {show !== "events" && show !== "calls" && POST_LEGEND.map(([stage, words]) => <span key={stage} className="inline-flex items-center gap-1.5 whitespace-nowrap"><span aria-hidden="true" className={`inline-block h-3 w-5 rounded-sm ${POST_TONE[stage]}`} />{words}</span>)}
       {show !== "events" && show !== "calls" && <Button type="button" variant="secondary" size="sm" className="ml-auto min-h-11" onClick={onUndated}>{undated} {undated === 1 ? "post" : "posts"} with no date</Button>}
       <span className="inline-flex items-center gap-1.5 whitespace-nowrap"><CallDot size={8} />Booked call</span>
       <span className="inline-flex items-center gap-1.5 whitespace-nowrap"><CallDot size={8} off />Cancelled or declined</span>
@@ -316,7 +330,7 @@ function DayPanel({ day, entries, onClose, onCall }) {
               <SideLink side={e.type === "post" ? { kind: "content", id: e.item.id } : e.selection} className={`flex min-h-11 w-full min-w-0 flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--gray-200)] px-3 py-2 text-left hover:bg-[var(--gray-50)] ${FOCUS}`}>
                 <span className="min-w-0 flex-1">
                   <span className={`block text-[13.5px] font-semibold text-[var(--color-text-primary)] ${WORDS}`}>{e.title}</span>
-                  <span className={`block text-[12px] text-[var(--color-text-tertiary)] ${WORDS}`}>{e.type === "post" ? `Post · ${e.item.stage}` : `${e.host || ""}${e.repeats ? " · repeats" : ""}${e.moment ? " · promo moment" : ""}`}</span>
+                  <span className={`block text-[12px] text-[var(--color-text-tertiary)] ${WORDS}`}>{e.type === "post" ? `Post · ${stageLabel(e.item.stage)}` : `${e.host || ""}${e.repeats ? " · repeats" : ""}${e.moment ? " · promo moment" : ""}`}</span>
                 </span>
                 {e.type !== "post" && <StatePill state={e.state} />}
               </SideLink>
@@ -626,7 +640,8 @@ export function ContentCalendarPage() {
   const closeAdd = () => { if (!busy) { setAddOpen(false); setTitle(""); setSimilarAccepted(false); createFlight.current.reset(); } };
 
   const duplicateBlocked = !!duplicate.exact || (duplicate.similar.length > 0 && !similarAccepted);
-  const undated = calendar.items.filter((item) => !item.publish_at);
+  // #4255: only Approved, Scheduled and Published posts belong to the Calendar.
+  const undated = calendar.items.filter((item) => !item.publish_at && onCalendar(item));
   const allRunwayRows = Array.isArray(runway.data?.rows) ? runway.data.rows : [];
   const runwayRows = visibleRunwayRows(allRunwayRows, { showTest: route.test, q: route.q });
   const testHidden = Number(runway.data?.test_hidden || 0);
@@ -744,7 +759,7 @@ export function ContentCalendarPage() {
       </PanelLinksContext.Provider>
       <Modal open={!!cardFor} onClose={closeCard} title="Make a Work card?" size="sm"><ModalBody>{cardFor && (() => { const item = runwayCardItem(cardFor, people.me); return <div className="flex min-w-0 flex-col gap-2 text-sm text-[var(--color-text-secondary)]"><p className="font-semibold text-[var(--color-text-primary)]">{item.title}</p><p className="break-words">{item.instructions}</p><p>Done means: {item.done_means}</p><p>It is yours, linked to this event, and due before the event starts.</p>{cardProblem && <p role="alert" className="break-words text-[var(--color-error-700)]">{cardProblem}</p>}</div>; })()}</ModalBody><ModalFooter><Button type="button" variant="secondary" className="min-h-11" disabled={cardBusy} onClick={closeCard}>Cancel</Button><Button type="button" variant="brandContrast" className="min-h-11" loading={cardBusy} disabled={!online || !people.me} onClick={() => void makeCard()}>Make the card</Button></ModalFooter></Modal>
       <Modal open={addOpen} onClose={closeAdd} title="Plan a post" size="sm"><ModalBody><label htmlFor="new-content-title" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">Title</label><input id="new-content-title" autoFocus className={`${CONTROL_CLASS} min-h-11`} value={title} maxLength={160} disabled={busy} onChange={(event) => updateTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); create(); } }} /><p className="mt-2 text-sm text-[var(--color-text-secondary)]">It starts in Idea and is assigned to you. Add other owners here.</p><div className="mt-3"><PeopleField id="new-content-owners" label="Owners" value={addOwners} onChange={(next) => setAddOwners(next)} team={people.people} suggested={[people.me].filter(Boolean)} me={people.me} disabled={busy} /></div>{duplicate.checking && <p role="status" className="mt-2 text-sm text-[var(--color-text-secondary)]">Checking for similar titles…</p>}{duplicate.exact && <AlertCard variant="error" title="That title already exists" action={<Button type="button" variant="secondary" className="min-h-11" onClick={() => { closeAdd(); open(duplicate.exact.id); }}>Open existing</Button>}>Use the existing card instead of creating a duplicate.</AlertCard>}{duplicate.similar.length > 0 && !duplicate.exact && <AlertCard variant="warning" title="This may be a duplicate" action={!similarAccepted ? <Button type="button" variant="secondary" className="min-h-11" onClick={() => setSimilarAccepted(true)}>Add anyway</Button> : null}>Similar: {duplicate.similar.map((row) => row.title).join(", ")}{similarAccepted ? ". You can continue." : ". Review before continuing."}</AlertCard>}</ModalBody><ModalFooter><Button type="button" variant="secondary" className="min-h-11" disabled={busy} onClick={closeAdd}>Cancel</Button><Button type="button" variant="brandContrast" className="min-h-11" loading={busy} disabled={!title.trim() || !online || duplicate.checking || duplicateBlocked} onClick={create}>Add content</Button></ModalFooter></Modal>
-      <Modal open={!!move} onClose={() => setMove(null)} title={move?.prompt?.title || "Move content"} size="sm"><ModalBody><p className="text-sm text-[var(--color-text-secondary)]">{move?.prompt?.flag === "approve_copy" ? "Confirm that the copy is ready for design." : move?.prompt?.flag === "approve_design" ? "Confirm that the design is ready and the publish time and channels are set." : "A stable live link is not on this card yet. You can add it first, or explicitly continue without one."}</p></ModalBody><ModalFooter><Button type="button" variant="secondary" className="min-h-11" onClick={() => { if (move?.prompt?.flag === "publish_without_link") openForField(move.item, "content-live", "Add and save the live link, then publish again."); else setMove(null); }}>{move?.prompt?.flag === "publish_without_link" ? "Add link first" : "Cancel"}</Button><Button type="button" variant="brandContrast" className="min-h-11" loading={busy} onClick={() => performMove(move.item, move.to, { [move.prompt.flag]: true })}>{move?.prompt?.action}</Button></ModalFooter></Modal>
+      <Modal open={!!move} onClose={() => setMove(null)} title={move?.prompt?.title || "Move content"} size="sm"><ModalBody><p className="text-sm text-[var(--color-text-secondary)]">{move?.prompt?.flag === "approve_copy" ? "Confirm that the copy is ready for design." : move?.prompt?.flag === "approve_design" ? "Confirm that Ray and Abimbola have given the go for this post. It then shows on the Calendar as Approved." : "A stable live link is not on this card yet. You can add it first, or explicitly continue without one."}</p></ModalBody><ModalFooter><Button type="button" variant="secondary" className="min-h-11" onClick={() => { if (move?.prompt?.flag === "publish_without_link") openForField(move.item, "content-live", "Add and save the live link, then publish again."); else setMove(null); }}>{move?.prompt?.flag === "publish_without_link" ? "Add link first" : "Cancel"}</Button><Button type="button" variant="brandContrast" className="min-h-11" loading={busy} onClick={() => performMove(move.item, move.to, { [move.prompt.flag]: true })}>{move?.prompt?.action}</Button></ModalFooter></Modal>
     </div>
   );
 }
