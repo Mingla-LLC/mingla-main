@@ -931,11 +931,14 @@ const PHASE3C_WRAPPER_SET = new Set(PHASE3C_WRAPPER_NAMES);
 // the web player for the theme entrance motion, and its lockfile entries.
 // app-mobile is unchanged.
 // #1023: re-banked after merging origin/main (#3643 node-forge lock patch kept beside the #1023 lottie-web pin).
+// [TEST-MOD-APPROVED #3643] Re-banked all four after the advisory-floor overrides
+// (decode-uri-component, glob@^13, minimatch@^9/^10, uuid, markdown-it floor; app-mobile
+// image-size + the Metro image-size patch) and in-range JS updates. No framework majors.
 export const PACKAGE_AUTHORITY_DIGESTS = Object.freeze({
-  "app-mobile/package.json": "48af9d0cca47199b61b824a4fd80b87ec7e5bb12f07899994435031238834bbb",
-  "app-mobile/package-lock.json": "3ca515d470c958f53d8ebd8c59cb35051ae7ea903b074f5b8c634e4aced9546f",
-  "mingla-business/package.json": "dd0a4f5b3c115aa06a13deb9ea8714671df5230ad166d052160b550eb324e931",
-  "mingla-business/package-lock.json": "6ffdfc9d07778bc6df106d10fb89434c8c1fcd77eacae3088492208b10044ccc",
+  "app-mobile/package.json": "871320d641da0e0efcca176714bd8a7ebf55ad7a2ca8ef994da47b98930512e2",
+  "app-mobile/package-lock.json": "ac288a253c7c41316953e08ab23061611a0112bea9591892fd301594c6ed8085",
+  "mingla-business/package.json": "035159fb43e59dd4893195363cb688fb376f4a760a75352a8d310217c7f6a5ca",
+  "mingla-business/package-lock.json": "7d1b17f0bdecf1f166815466429a307152e4545671f9e40c4e1cc1bc71a3a9a6",
 });
 // [#2439 SC-11.5] The seven Phase 3C records that hold a provider record and
 // transition retained-live-provider -> batched-provider at cutover. The other
