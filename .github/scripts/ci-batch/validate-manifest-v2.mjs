@@ -932,13 +932,13 @@ const PHASE3C_WRAPPER_SET = new Set(PHASE3C_WRAPPER_NAMES);
 // app-mobile is unchanged.
 // #1023: re-banked after merging origin/main (#3643 node-forge lock patch kept beside the #1023 lottie-web pin).
 // [TEST-MOD-APPROVED #3643] Re-banked all four after the advisory-floor overrides
-// (decode-uri-component, glob@^13, minimatch@^9/^10, uuid, markdown-it floor; app-mobile
+// (glob@^13, minimatch@^9/^10, uuid, markdown-it floor; app-mobile
 // image-size + the Metro image-size patch) and in-range JS updates. No framework majors.
 export const PACKAGE_AUTHORITY_DIGESTS = Object.freeze({
-  "app-mobile/package.json": "871320d641da0e0efcca176714bd8a7ebf55ad7a2ca8ef994da47b98930512e2",
-  "app-mobile/package-lock.json": "ac288a253c7c41316953e08ab23061611a0112bea9591892fd301594c6ed8085",
-  "mingla-business/package.json": "035159fb43e59dd4893195363cb688fb376f4a760a75352a8d310217c7f6a5ca",
-  "mingla-business/package-lock.json": "7d1b17f0bdecf1f166815466429a307152e4545671f9e40c4e1cc1bc71a3a9a6",
+  "app-mobile/package.json": "fcdf6302f7944b01a48ddb2111b2d3deed82644b519c7c9a2bc673e31a30aae6",
+  "app-mobile/package-lock.json": "40bac6aff5ba88ab90debc72a88f0b106bf2d2e4dc0234f20b054d2ae9786edf",
+  "mingla-business/package.json": "317e03276578841eff1f4840aa448907b32790111bb866e54023f982d0f01903",
+  "mingla-business/package-lock.json": "b4d1f5f1849fbc2857b358d57ae9d0c0d95b868da76d562c55f24059b29f01ea",
 });
 // [#2439 SC-11.5] The seven Phase 3C records that hold a provider record and
 // transition retained-live-provider -> batched-provider at cutover. The other

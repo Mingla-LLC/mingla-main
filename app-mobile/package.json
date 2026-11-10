@@ -187,7 +187,6 @@
   },
   "overrides": {
     "@babel/core": "^7.29.6",
-    "decode-uri-component": "^0.5.1",
     "fast-uri": "^3.1.7",
     "glob@^13": "^14.0.2",
     "image-size": "^2.0.4",
