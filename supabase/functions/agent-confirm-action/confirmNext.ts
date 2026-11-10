@@ -382,3 +382,56 @@ export async function newerProposalIn(
   if (error) return true;
   return Array.isArray(data) && data.length > 0;
 }
+
+/**
+ * #3355 bundle 5 — close an approval the expiry sweep expired. The sweep only
+ * flips its status; it writes no tool row, and the Host takes the last
+ * proposal with no tool row as the open card — so re-reading history (which
+ * the re-presented step triggers) would bring the expired card back. Writes
+ * the same tool row an expiry at tap time writes, once. Never throws.
+ */
+export async function closeSweptProposal(
+  service: SupabaseClient,
+  args: {
+    userId: string;
+    conversationId: string | null;
+    pendingActionId: string;
+    toolName: string;
+    promptVersion: string;
+    modelVersion: string;
+  },
+): Promise<void> {
+  if (!args.conversationId) return;
+  try {
+    const { data: existing, error: readError } = await service
+      .from("agent_messages")
+      .select("id")
+      .eq("user_id", args.userId)
+      .eq("conversation_id", args.conversationId)
+      .eq("role", "tool")
+      .contains("tool_results", { pending_action_id: args.pendingActionId })
+      .limit(1);
+    if (readError) throw readError;
+    if (Array.isArray(existing) && existing.length > 0) return;
+    const { error } = await service.from("agent_messages").insert({
+      conversation_id: args.conversationId,
+      user_id: args.userId,
+      role: "tool",
+      content: { text: "" },
+      tool_results: {
+        tool_name: args.toolName,
+        pending_action_id: args.pendingActionId,
+        outcome: "expired",
+      },
+      prompt_version: args.promptVersion,
+      model_version: args.modelVersion,
+    });
+    if (error) throw error;
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: "ari_swept_expiry_close_failed",
+      tool_name: args.toolName,
+      error: error instanceof Error ? error.message.slice(0, 200) : "unknown",
+    }));
+  }
+}

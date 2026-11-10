@@ -78,6 +78,7 @@ import { assertOwnerCopy } from "../_shared/ariOwnerCopy.ts";
 import { withProposalPresentation } from "../_shared/ariPresentation/registry.ts";
 import {
   type ConfirmNext,
+  closeSweptProposal,
   flowNextAfterConfirm,
   liveFlowRunFor,
   representFlowAfterExpiry,
@@ -781,6 +782,16 @@ async function handleConfirmAction(args: {
     pending.status === "expired" &&
     expiredProposalAnswer(pending.source) === "ari_proposal_expired"
   ) {
+    // Close the swept card for good first: a history re-read must never
+    // bring it back as an answerable card.
+    await closeSweptProposal(pendingStateClient, {
+      userId,
+      conversationId: pending.conversation_id,
+      pendingActionId: pending.id,
+      toolName: pending.tool_name,
+      promptVersion: TENANT_CONTEXT_VERSION,
+      modelVersion: ARI_MODEL_VERSION,
+    });
     await representExpired();
     return ariProposalExpiredResponse();
   }

@@ -1449,6 +1449,7 @@ Deno.test("P7: publish blockers read as whole clauses and the refusal never repe
 // ── #3355 bundle 5 (3(b).6): an approval that timed out inside a flow ──────
 
 import {
+  closeSweptProposal,
   EXPIRED_IN_FLOW_REASON,
   newerProposalIn,
   representFlowAfterExpiry,
@@ -1607,8 +1608,8 @@ Deno.test("bundle 5: both Ari expiry answers re-present first; Hub expiry is unc
   const swept = confirmSource.indexOf('pending.status === "expired" &&');
   assert(swept > 0 && swept < confirmSource.indexOf("Cannot confirm — current status:"));
   assertMatch(
-    confirmSource.slice(swept, swept + 260),
-    /expiredProposalAnswer\(pending\.source\) === "ari_proposal_expired"\s*\) \{\s*await representExpired\(\);\s*return ariProposalExpiredResponse\(\);/,
+    confirmSource.slice(swept, swept + 900),
+    /expiredProposalAnswer\(pending\.source\) === "ari_proposal_expired"\s*\) \{[\s\S]*?await closeSweptProposal\(pendingStateClient, \{[\s\S]*?\}\);\s*await representExpired\(\);\s*return ariProposalExpiredResponse\(\);/,
   );
   // The other expiry answer is exclusive already: its compare-and-set
   // expire returns before re-presenting when another request won.
@@ -1832,4 +1833,60 @@ Deno.test("bundle 5: overlapping expiries re-present once; a later one never rep
     (await cur(store2)).current_artefact?.artefact_id,
     (cards[0] as { artefact: { artefact_id: string } }).artefact.artefact_id,
   );
+});
+
+Deno.test("bundle 5: a swept approval is closed with the same tool row, once, so a history re-read never revives its card", async () => {
+  const fake = (existing: unknown[], readError: unknown = null) => {
+    const inserted: Record<string, unknown>[] = [];
+    const q: Record<string, unknown> = {};
+    for (const m of ["select", "eq", "contains"]) q[m] = () => q;
+    q.limit = () => Promise.resolve({ data: existing, error: readError });
+    return {
+      inserted,
+      client: {
+        from: () => ({
+          ...q,
+          insert: (row: Record<string, unknown>) => {
+            inserted.push(row);
+            return Promise.resolve({ error: null });
+          },
+        }),
+        // deno-lint-ignore no-explicit-any
+      } as any,
+    };
+  };
+  const args = {
+    userId: "u",
+    conversationId: CHAT,
+    pendingActionId: "p-swept",
+    toolName: "set_brand_payout_country",
+    promptVersion: "pv",
+    modelVersion: "mv",
+  };
+  const fresh = fake([]);
+  await closeSweptProposal(fresh.client, args);
+  assertEquals(fresh.inserted.length, 1);
+  assertEquals(fresh.inserted[0].role, "tool");
+  assertEquals(fresh.inserted[0].conversation_id, CHAT);
+  // Exactly what the Host reads to treat the card as answered.
+  assertEquals(fresh.inserted[0].tool_results, {
+    tool_name: "set_brand_payout_country",
+    pending_action_id: "p-swept",
+    outcome: "expired",
+  });
+  const closed = fake([{ id: "already" }]);
+  await closeSweptProposal(closed.client, args);
+  assertEquals(closed.inserted.length, 0, "never a second tool row");
+  const broken = fake([], { message: "down" });
+  await closeSweptProposal(broken.client, args); // never throws
+  assertEquals(broken.inserted.length, 0);
+  const noChat = fake([]);
+  await closeSweptProposal(noChat.client, { ...args, conversationId: null });
+  assertEquals(noChat.inserted.length, 0);
+  // The Host's open-card rule: the last assistant proposal with no tool row
+  // carrying its pending_action_id.
+  const hook = await Deno.readTextFile(
+    new URL("mingla-business/src/hooks/useAgentChat.ts", ROOT),
+  );
+  assertMatch(hook, /\.filter\(\(message\) => message\.role === "tool"\)[\s\S]*?\?\.pending_action_id,/);
 });
