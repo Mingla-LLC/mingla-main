@@ -66,6 +66,12 @@ CREATE TEMP TABLE t4261_fn_before ON COMMIT PRESERVE ROWS AS
    WHERE n.nspname = 'public' AND p.prokind IN ('f', 'p');
 
 \ir ../20280521004334_issue_4334_google_places.sql
+-- [TEST-MOD-APPROVED #4334] 20280525004334 later replaces some of those bodies
+-- (venue in-review and change-request RPCs, the place-stamp triggers,
+-- places_checked_place_id). These re-applies run outside a transaction and
+-- commit, so re-apply it too: every suite after this one must see the end of
+-- the chain, not the 20280521004334 bodies.
+\ir ../20280525004334_issue_4334_place_id_repick.sql
 
 DO $t4261_restore$
 DECLARE

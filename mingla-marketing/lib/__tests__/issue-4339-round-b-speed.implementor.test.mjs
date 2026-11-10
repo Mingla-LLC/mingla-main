@@ -159,7 +159,7 @@ test('speed fix: the first-load budget runs in the build, and city routes leave 
   assert.match(page, /import \{ CityHub \} from '@\/components\/cities\/city-route'/)
   const route = code(read('components/cities/city-route.tsx'))
   assert.doesNotMatch(route, /city-hub'|framer-motion|city-catalogue|device-cta/)
-  assert.match(code(read('next.config.ts')), /if \(process\.env\.MINGLA_HISTORICAL_2983_BUILD === '1'\) webpackConfig\.plugins\.push\(new HistoricalCityLayoutPlugin\(\)\)/)
+  assert.match(code(read('next.config.ts')), /if \(process\.env\.MINGLA_HISTORICAL_2983_BUILD === '1'\) \{?\s*webpackConfig\.plugins\.push\(new HistoricalCityLayoutPlugin\(\)\)/, 'only the historical build installs the layout swap')
   for (const rel of ['components/cities/city-page.tsx', 'components/cities/city-weekend.tsx', 'components/cities/city-this-weekend.tsx', 'components/cities/city-actions.tsx']) {
     // Type-only imports erase at build time; only value imports ship.
     const src = code(read(rel)).replace(/^import type .*$/gm, '')
