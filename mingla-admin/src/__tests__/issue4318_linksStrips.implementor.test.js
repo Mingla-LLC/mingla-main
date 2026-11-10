@@ -7,6 +7,7 @@
 //   L-5  the tab sits directly after Blog, follows Support, and the panel is wired
 //   L-6  optional "Show until": empty keeps one day, never before "Shows on"
 //   L-7  a failed /links refresh after a saved change is never a failed save
+//   L-8  Support › Links page opens the live usemingla.com/links (toward #4339)
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -16,7 +17,7 @@ import {
   LINKS_STRIP_MESSAGES, moveStrip, normalizeStripUrl, runOptimisticReorder, stripDateRange, stripMetaLine, stripRows,
   stripSaveArgs, validateStripDraft,
 } from "../lib/linksStrips.js";
-import { SUPPORT_PAGE_TABS } from "../lib/supportCommunityTabs.js";
+import { SUPPORT_PAGE_TABS, pageTabHash } from "../lib/supportCommunityTabs.js";
 import { COMMUNITY_SUPPORT_TAB_CONTRACT } from "../lib/communitySupportCapabilityContract.js";
 import { communitySupportTabsForAccess } from "../lib/communitySupportAccess.js";
 
@@ -221,5 +222,18 @@ describe("L-7 the /links refresh after a change", () => {
     const ok = save.slice(0, save.indexOf("} catch (error)"));
     assert.match(ok, /variant: "success"/, "a saved strip is always reported as saved");
     assert.match(ok, /description: stale \|\|/);
+  });
+});
+
+describe("L-8 staff reach and open the live Links page from Support (toward #4339)", () => {
+  it("the tab has its own Support address", () => {
+    assert.equal(pageTabHash("support", "links"), "#/support?tab=links");
+  });
+
+  it("the panel links straight to usemingla.com/links in a new tab", () => {
+    const panel = read("components/links/LinksPagePanel.jsx");
+    assert.match(panel, /const LINKS_PAGE_URL = "https:\/\/usemingla\.com\/links";/);
+    assert.match(panel, /href=\{LINKS_PAGE_URL\}\s+target="_blank"\s+rel="noopener noreferrer"/);
+    assert.match(panel, />\s*Open usemingla\.com\/links\s*</);
   });
 });

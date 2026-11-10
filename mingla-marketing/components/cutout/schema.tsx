@@ -1,3 +1,4 @@
+import { LINKS_SOCIALS } from '@/lib/links-config'
 import { SITE_ORIGIN } from '@/lib/site'
 import {
   APP_STORE_URL,
@@ -29,15 +30,13 @@ import {
 export const ORG_ID = `${SITE_ORIGIN}/#organization`
 export const SITE_ID = `${SITE_ORIGIN}/#website`
 
-/** Verified public profiles. Every URL below is present in shipped source. */
+/**
+ * Verified public profiles: the approved @usemingla set (the /links social row,
+ * lib/links-config.ts) and the store listings. X is retired (#4318 feedback 16,
+ * #4339), so it is never listed.
+ */
 const SAME_AS = [
-  'https://www.instagram.com/usemingla',
-  'https://www.tiktok.com/@usemingla',
-  'https://www.threads.com/@usemingla',
-  'https://x.com/usemingla',
-  'https://www.facebook.com/usemingla',
-  'https://www.youtube.com/@usemingla',
-  'https://www.linkedin.com/company/usemingla',
+  ...LINKS_SOCIALS.map((social) => social.href),
   APP_STORE_URL,
   PLAY_STORE_URL,
 ]
