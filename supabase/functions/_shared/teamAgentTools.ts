@@ -1365,7 +1365,7 @@ export const TEAM_AGENT_TOOLS: readonly TeamAgentTool[] = [
     name: "move_content",
     title: "Move content",
     description:
-      "Move a content card using the revision you read. Forward moves are one stage at a time. Writing to Design needs nonblank copy and approve_copy; Review to Scheduled needs a publish date, channel and approve_design; Scheduled to Published needs a live link or publish_without_link. Backward moves are allowed. " +
+      "Move a content card using the revision you read. Stages: idea, writing, design (shown as Designed: the design exists in Drive), review (shown as Approved: Ray and Abimbola gave the go), scheduled, published. Forward moves are one stage at a time. Writing to Design needs nonblank copy, a Drive link to the finished design and approve_copy; Design to Review needs the Drive link and approve_design (the go); Review to Scheduled needs a publish date and channel; Scheduled to Published needs a live link or publish_without_link. Never make a Drive folder before the design exists. Backward moves are allowed. " +
       DATA_NOT_INSTRUCTIONS,
     inputSchema: schema({
       id: RECORD_ID,
@@ -1387,7 +1387,7 @@ export const TEAM_AGENT_TOOLS: readonly TeamAgentTool[] = [
       },
       approve_design: {
         type: "boolean",
-        hint: "Use true to approve design when moving Review to Scheduled",
+        hint: "Use true to record the go from Ray and Abimbola when moving Design to Review (Approved)",
       },
       publish_without_link: {
         type: "boolean",

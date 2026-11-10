@@ -1,8 +1,10 @@
 export const CONTENT_STAGES = [
   { value: "idea", label: "Idea" },
   { value: "writing", label: "Writing" },
-  { value: "design", label: "Design" },
-  { value: "review", label: "Review" },
+  // #4255: stored keys stay; Design is "Designed" (the design exists in Drive)
+  // and Review is "Approved" (Ray and Abimbola gave the go).
+  { value: "design", label: "Designed" },
+  { value: "review", label: "Approved" },
   { value: "scheduled", label: "Scheduled" },
   { value: "published", label: "Published" },
 ];
@@ -12,6 +14,11 @@ export const CONTENT_VIEWS = [
   { value: "board", label: "Board" },
   { value: "list", label: "List" },
 ];
+
+/** #4255: the only stages the Calendar shows. Idea, Writing and Designed live on the Board. */
+export const CALENDAR_STAGES = ["review", "scheduled", "published"];
+export const onCalendar = (item) => CALENDAR_STAGES.includes(item?.stage);
+export const stageLabel = (stage) => CONTENT_STAGES.find((row) => row.value === stage)?.label || stage || "";
 
 export const stageIndex = (stage) => CONTENT_STAGES.findIndex((row) => row.value === stage);
 export const copyIsLocked = (item) => stageIndex(item?.stage) >= stageIndex("design");
@@ -23,6 +30,8 @@ export function canMoveTo(item, to) {
 }
 
 export function moveNeedsFields(item, to) {
+  if (item?.stage === "writing" && to === "design" && !String(item.drive_url || "").trim()) return { field: "content-drive", message: "Add the Drive link to the finished design before Designed." };
+  if (item?.stage === "design" && to === "review" && !String(item.drive_url || "").trim()) return { field: "content-drive", message: "Add the Drive link to the finished design before Approved." };
   if (item?.stage !== "review" || to !== "scheduled") return null;
   if (!item.publish_at) return { field: "content-publish", message: "Add a publish date and time before scheduling." };
   if (!Array.isArray(item.channels) || item.channels.length === 0) return { field: "content-channel-first", message: "Choose at least one channel before scheduling." };
@@ -82,7 +91,7 @@ export function localToIso(value) {
 
 export function movePrompt(item, to) {
   if (item?.stage === "writing" && to === "design") return { flag: "approve_copy", title: "Approve copy?", action: "Approve and move" };
-  if (item?.stage === "review" && to === "scheduled") return { flag: "approve_design", title: "Approve design?", action: "Approve and schedule" };
+  if (item?.stage === "design" && to === "review") return { flag: "approve_design", title: "Approved by Ray and Abimbola?", action: "Mark approved" };
   if (item?.stage === "scheduled" && to === "published" && !item.live_url) return { flag: "publish_without_link", title: "Add the live link?", action: "Publish without link" };
   return null;
 }
@@ -134,9 +143,11 @@ export function contentErrorWords(error) {
   const token = error?.token || "";
   if (token === "stale_write") return "This card changed since you opened it. Choose Use latest or Save mine.";
   if (token === "undo_expired") return "Undo expired. The newer change is still saved.";
-  if (token === "copy_required") return "Add copy before moving this card to Design.";
+  if (token === "copy_required") return "Add copy before moving this card to Designed.";
   if (token === "copy_locked") return "Copy is read-only after Writing. Move the card back to Writing to revise it.";
-  if (token === "copy_approval_required") return "Approve non-blank copy before Design.";
+  if (token === "copy_approval_required") return "Approve non-blank copy before Designed.";
+  if (token === "drive_required") return "Add the Drive link to the finished design first.";
+  if (token === "design_approval_required") return "Record the go from Ray and Abimbola before this card is Approved.";
   if (token === "schedule_required") return "Add a publish date, time and at least one channel before Scheduled.";
   if (token === "live_link_required") return "Add the live link, or explicitly publish without one.";
   if (token === "duplicate_title") return "That title is already on the content calendar. Open the existing card instead.";

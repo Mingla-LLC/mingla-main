@@ -135,11 +135,13 @@ Deno.test("#3802 Wave 2: one simple add, approval prompts, autosave and explicit
     title: "Approve copy?",
     action: "Approve and move",
   });
-  assertEquals(movePrompt({ stage: "review" }, "scheduled"), {
+  // #4255: the go from Ray and Abimbola is recorded on the move to Approved (review).
+  assertEquals(movePrompt({ stage: "design" }, "review"), {
     flag: "approve_design",
-    title: "Approve design?",
-    action: "Approve and schedule",
+    title: "Approved by Ray and Abimbola?",
+    action: "Mark approved",
   });
+  assertEquals(movePrompt({ stage: "review" }, "scheduled"), null);
   assertEquals(
     movePrompt({ stage: "scheduled", live_url: null }, "published"),
     {

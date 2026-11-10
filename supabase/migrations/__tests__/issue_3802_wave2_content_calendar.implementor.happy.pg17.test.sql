@@ -36,7 +36,7 @@ begin
   perform pg_temp.ok(card->>'stage'='idea' and card->'owners'=jsonb_build_array(growth_email) and card->>'revision'='1','title-only create starts owned Idea');
   perform pg_temp.ok((pg_temp.as_user(growth_id,growth_email,$q$select public.content_calendar_create('Launch story','happycreate01')::text$q$)::jsonb)->>'replayed'='true','create replay');
 
-  answer:=pg_temp.as_user(growth_id,growth_email,format($q$select public.content_calendar_update(%L,'{"copy":"Ready copy","channels":["instagram"],"publish_at":"2026-10-25T15:00:00Z"}'::jsonb,1,'happyupdate01')::text$q$,card_id))::jsonb;
+  answer:=pg_temp.as_user(growth_id,growth_email,format($q$select public.content_calendar_update(%L,'{"copy":"Ready copy","channels":["instagram"],"publish_at":"2026-10-25T15:00:00Z","drive_url":"https://drive.example.test/design"}'::jsonb,1,'happyupdate01')::text$q$,card_id))::jsonb;
   card:=answer->'item';
   perform pg_temp.ok(card->>'copy'='Ready copy' and card->'channels'='["instagram"]'::jsonb and card->>'revision'='2','details update');
 
@@ -44,8 +44,8 @@ begin
   card:=answer->'item';
   answer:=pg_temp.as_user(growth_id,growth_email,format($q$select public.content_calendar_move(%L,'design',3,true,false,false,'happymove002')::text$q$,card_id))::jsonb;
   card:=answer->'item';
-  answer:=pg_temp.as_user(growth_id,growth_email,format($q$select public.content_calendar_move(%L,'review',4,false,false,false,'happymove003')::text$q$,card_id))::jsonb;
-  answer:=pg_temp.as_user(growth_id,growth_email,format($q$select public.content_calendar_move(%L,'scheduled',5,false,true,false,'happymove004')::text$q$,card_id))::jsonb;
+  answer:=pg_temp.as_user(growth_id,growth_email,format($q$select public.content_calendar_move(%L,'review',4,false,true,false,'happymove003')::text$q$,card_id))::jsonb;
+  answer:=pg_temp.as_user(growth_id,growth_email,format($q$select public.content_calendar_move(%L,'scheduled',5,false,false,false,'happymove004')::text$q$,card_id))::jsonb;
   answer:=pg_temp.as_user(growth_id,growth_email,format($q$select public.content_calendar_move(%L,'published',6,false,false,true,'happymove005')::text$q$,card_id))::jsonb;
   perform pg_temp.ok(answer#>>'{item,stage}'='published' and answer#>>'{item,live_url}' is null,'explicit publish without link');
 
