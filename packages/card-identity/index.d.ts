@@ -219,6 +219,8 @@ export const PLAN_PLATE: {
   };
   height: number;
 };
+/** #4347 round 3 — the plan plate's height for a shape; both rows by default (= PLAN_PLATE.height). */
+export function planPlateHeight(shape?: { topRow?: boolean; tiles?: boolean }): number;
 export const PLATE_ALPHA_FLOOR: number;
 export const TITLE_ALPHA_FLOOR: number;
 export const K_PLATE: number;

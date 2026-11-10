@@ -875,6 +875,29 @@ const PLAN_PLATE = {
 };
 PLAN_PLATE.height = 1 + PLAN_PLATE.handleRow + PLAN_PLATE.routeRow + PLAN_PLATE.sectionGap + PLAN_PLATE.tiles.height + PLAN_PLATE.sectionGap + PLAN_PLATE.controlRow + 1;
 
+/**
+ * #4347 round 3 — a single place's plate is the plan plate with a place's
+ * content (Seth, S1): the top row is the open status instead of the route, and
+ * the tiles are Rating / Away / Spend. A place can lack either, so its height is
+ * derived per shape, never typed:
+ *
+ *     status + tiles   1 + 16 + 30 + 8 + 52 + 8 + 53 + 1 = 169  (= PLAN_PLATE.height)
+ *     tiles only       1 + 16 +      8 + 52 + 8 + 53 + 1 = 139
+ *     status only      1 + 16 + 30 +           8 + 53 + 1 = 109
+ *     neither          1 + 16 +                8 + 53 + 1 =  79
+ *
+ * The 8s are the renderer's own `marginTop: sectionGap` on the tiles row and on
+ * the control row, so the arithmetic is the layout, row for row.
+ *
+ * A plan always draws both rows, so plans keep PLAN_PLATE.height.
+ */
+function planPlateHeight({ topRow = true, tiles = true } = {}) {
+  return 1 + PLAN_PLATE.handleRow
+    + (topRow ? PLAN_PLATE.routeRow : 0)
+    + (tiles ? PLAN_PLATE.sectionGap + PLAN_PLATE.tiles.height : 0)
+    + PLAN_PLATE.sectionGap + PLAN_PLATE.controlRow + 1;
+}
+
 const SLIVER = {
   height: 4,
   radius: 2,
@@ -1406,6 +1429,7 @@ module.exports = {
   BEEN_HERE,
   DETAILS,
   PLAN_PLATE,
+  planPlateHeight,
   SLIVER,
   HANDLE,
   SURFACES,
