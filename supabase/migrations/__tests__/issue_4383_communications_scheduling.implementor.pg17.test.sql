@@ -30,6 +30,9 @@
 --        than 12 Admin push rows claimable in any minute; a retry joins it
 --   R3   (tester P2-2) a card whose publish fails is recorded, cleared and
 --        listed under Needs attention, and the rest of the pass still runs
+--   R4   (retest P3) a card that rejects EVERY write (so its failure cannot
+--        even be recorded) is skipped with a warning; a push due in the same
+--        pass is still sent
 --
 -- FAILS-ON-REVERT: replay without 20280608004383 -> every RPC is missing and
 -- the suite stops at T7. Dropping the runner's "scheduled_for <= now()" guard
@@ -600,6 +603,42 @@ begin
 end;
 $t$;
 drop trigger t4383_card_break on public.community_roadmap_cards;
+
+
+-- R4: one card that rejects every UPDATE.
+create function pg_temp.t4383_card_wall() returns trigger language plpgsql as $fn$
+begin
+  if new.id = '43830000-0000-4000-f000-0000000000d4' then raise exception 'card rejects every write'; end if;
+  return new;
+end;
+$fn$;
+create trigger t4383_card_wall before update on public.community_roadmap_cards for each row execute function pg_temp.t4383_card_wall();
+create function pg_temp.t4383_try_runner() returns jsonb language plpgsql as $fn$
+begin
+  return public.issue_4383_fire_due_communications();
+exception when others then
+  return jsonb_build_object('aborted', sqlerrm);
+end;
+$fn$;
+do $t$
+declare v jsonb;
+begin
+  insert into public.community_roadmap_cards (id, public_title, lane, status, sort_order, go_live_at, go_live_timezone)
+  values ('43830000-0000-4000-f000-0000000000d4', 'Card R4', 'next', 'draft', 9104, now() - interval '1 minute', 'UTC');
+  update public.admin_push_campaigns set fired_at = now() - interval '5 minutes' where fired_at is not null;
+  insert into public.admin_push_campaigns (id, title, body, audience, status, scheduled_for, created_by) values
+    ('43830000-0000-4000-c000-0000000000d4', 'R4', 'w', 'hosts', 'scheduled', now() - interval '1 second', pg_temp.uid('admin'));
+  v := pg_temp.t4383_try_runner();
+  perform pg_temp.chk('R4', 'the pass is not aborted by a card that rejects every write', not (v ? 'aborted'), v::text);
+  perform pg_temp.chk('R4', 'the card counts as failed and the push in the same pass is sent',
+    coalesce((v->>'roadmap_cards_failed')::int, 0) = 1 and coalesce((v->>'pushes_sent')::int, 0) = 1
+    and (select status = 'sent' from public.admin_push_campaigns where id = '43830000-0000-4000-c000-0000000000d4'), v::text);
+  perform pg_temp.chk('R4', 'the card itself is untouched (still a draft with its time)',
+    (select status = 'draft' and go_live_at is not null from public.community_roadmap_cards where id = '43830000-0000-4000-f000-0000000000d4'), null);
+end;
+$t$;
+drop trigger t4383_card_wall on public.community_roadmap_cards;
+delete from public.community_roadmap_cards where id = '43830000-0000-4000-f000-0000000000d4';
 
 -- P3-1: the Admin pickers offer mingla-admin/src/lib/serverTimeZones.js; a
 -- sample of it must be real here, and a zone newer than this tzdata refused.

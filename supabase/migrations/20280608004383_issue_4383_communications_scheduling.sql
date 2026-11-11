@@ -971,10 +971,18 @@ BEGIN
       -- The card stays a draft and its time is cleared, so it is not retried
       -- every minute; the failure is listed under Needs attention.
       v_err := left(SQLERRM, 300);
-      UPDATE public.community_roadmap_cards SET go_live_at = NULL, go_live_timezone = NULL WHERE id = r.id;
-      INSERT INTO public.community_audit_log (actor_user_id, action, entity_type, entity_id, metadata)
-      VALUES (NULL, 'fail_roadmap_card_go_live', 'community_roadmap_card', r.id, jsonb_build_object('error', v_err));
       v_cards_failed := v_cards_failed + 1;
+      -- Recording the failure is itself guarded: a card that rejects every
+      -- write (so even clearing its time fails) is skipped with a warning,
+      -- and the rest of the pass still runs (retest P3).
+      BEGIN
+        UPDATE public.community_roadmap_cards SET go_live_at = NULL, go_live_timezone = NULL WHERE id = r.id;
+        INSERT INTO public.community_audit_log (actor_user_id, action, entity_type, entity_id, metadata)
+        VALUES (NULL, 'fail_roadmap_card_go_live', 'community_roadmap_card', r.id, jsonb_build_object('error', v_err));
+      EXCEPTION WHEN OTHERS THEN
+        RAISE WARNING 'issue_4383 roadmap card % go-live failed and could not be recorded: % / %',
+          r.id, v_err, left(SQLERRM, 200);
+      END;
     END;
   END LOOP;
 
