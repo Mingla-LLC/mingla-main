@@ -1927,7 +1927,10 @@
         "supabase/functions/terminal-connection-token/index.ts",
         "supabase/functions/ticket-checkout-create/doorPayCheckout.ts",
         "supabase/migrations/20280404004271_issue_4271_door_pay.sql",
-        "supabase/migrations/20280429004271_issue_4271_tap_buyer_name.sql"
+        "supabase/migrations/20280429004271_issue_4271_tap_buyer_name.sql",
+        "mingla-business/assets/tap-to-pay/awareness-hero.jpg",
+        "mingla-business/assets/tap-to-pay/awareness-hero@2x.jpg",
+        "mingla-business/assets/tap-to-pay/awareness-hero@3x.jpg"
       ]
     },
     {
@@ -2083,7 +2086,9 @@
     {
       "capability_key": "help-support",
       "paths": [
-        "mingla-business/app/account/support.tsx"
+        "mingla-business/app/account/support.tsx",
+        "mingla-business/src/components/support/SupportThreadCore.tsx",
+        "mingla-business/src/constants/supportHostFacing.ts"
       ]
     },
     {
@@ -2962,6 +2967,96 @@
       "capability_key": "brand-customer-enquiries",
       "paths": [
         "mingla-business/src/utils/brandEnquiryDisplay.ts"
+      ]
+    },
+    {
+      "capability_key": "staff-community-support",
+      "paths": [
+        "mingla-admin/src/components/communications/ConfirmCancel.jsx",
+        "mingla-admin/src/components/communications/SchedulePicker.jsx",
+        "mingla-admin/src/components/communications/ScheduleTime.jsx",
+        "mingla-admin/src/components/community/FailedPushBanner.jsx",
+        "mingla-admin/src/components/community/RoadmapPanel.jsx",
+        "mingla-admin/src/lib/communications.js",
+        "mingla-admin/src/lib/communicationsErrors.js",
+        "mingla-admin/src/lib/pushDestinations.js",
+        "mingla-admin/src/lib/scheduleTime.js",
+        "mingla-admin/src/pages/communications/AnnouncementsPage.jsx",
+        "mingla-admin/src/pages/communications/CommunicationsOverviewPage.jsx",
+        "mingla-admin/src/pages/communications/LinksPage.jsx",
+        "mingla-admin/src/pages/communications/PushPage.jsx",
+        "mingla-admin/src/pages/communications/RoadmapPage.jsx",
+        "mingla-admin/src/services/communicationsService.js",
+        "supabase/functions/_shared/adminPushDestinations.ts",
+        "supabase/functions/notify-outbox-drain/index.ts",
+        "supabase/migrations/20280608004383_issue_4383_communications_scheduling.sql"
+      ]
+    },
+    {
+      "capability_key": "help-announcements-roadmap",
+      "paths": [
+        "supabase/migrations/20280608004383_issue_4383_communications_scheduling.sql"
+      ]
+    },
+    {
+      "capability_key": "staff-email",
+      "paths": [
+        "mingla-admin/src/lib/emailViews.js",
+        "mingla-admin/src/services/adminSendEmailService.js"
+      ]
+    },
+    {
+      "capability_key": "web-blog",
+      "paths": [
+        "mingla-admin/src/components/blog/BlogPanel.jsx",
+        "mingla-admin/src/components/blog/BlogPostList.jsx",
+        "mingla-admin/src/pages/communications/BlogPage.jsx"
+      ]
+    },
+    {
+      "capability_key": "account-notification-settings",
+      "paths": [
+        "app-mobile/src/i18n/locales/ar/settings.json",
+        "app-mobile/src/i18n/locales/bin/settings.json",
+        "app-mobile/src/i18n/locales/bn/settings.json",
+        "app-mobile/src/i18n/locales/de/settings.json",
+        "app-mobile/src/i18n/locales/el/settings.json",
+        "app-mobile/src/i18n/locales/en/settings.json",
+        "app-mobile/src/i18n/locales/es/settings.json",
+        "app-mobile/src/i18n/locales/fr/settings.json",
+        "app-mobile/src/i18n/locales/ha/settings.json",
+        "app-mobile/src/i18n/locales/he/settings.json",
+        "app-mobile/src/i18n/locales/hi/settings.json",
+        "app-mobile/src/i18n/locales/id/settings.json",
+        "app-mobile/src/i18n/locales/ig/settings.json",
+        "app-mobile/src/i18n/locales/it/settings.json",
+        "app-mobile/src/i18n/locales/ja/settings.json",
+        "app-mobile/src/i18n/locales/ko/settings.json",
+        "app-mobile/src/i18n/locales/ms/settings.json",
+        "app-mobile/src/i18n/locales/nl/settings.json",
+        "app-mobile/src/i18n/locales/pl/settings.json",
+        "app-mobile/src/i18n/locales/pt/settings.json",
+        "app-mobile/src/i18n/locales/ro/settings.json",
+        "app-mobile/src/i18n/locales/ru/settings.json",
+        "app-mobile/src/i18n/locales/sv/settings.json",
+        "app-mobile/src/i18n/locales/th/settings.json",
+        "app-mobile/src/i18n/locales/tr/settings.json",
+        "app-mobile/src/i18n/locales/uk/settings.json",
+        "app-mobile/src/i18n/locales/vi/settings.json",
+        "app-mobile/src/i18n/locales/yo/settings.json",
+        "app-mobile/src/i18n/locales/zh/settings.json"
+      ]
+    },
+    {
+      "capability_key": "staff-community-support",
+      "paths": [
+        "mingla-admin/src/lib/serverTimeZones.js"
+      ]
+    },
+    {
+      "capability_key": "discover-reviews",
+      "paths": [
+        "app-mobile/src/store/placeReviewRequestStore.ts"
       ]
     }
   ]

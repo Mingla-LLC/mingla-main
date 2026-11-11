@@ -66,10 +66,16 @@ export const PAGE_ADDITIONAL_AREAS = Object.freeze({
   // Notifications page and its access.
   messages: Object.freeze([TEAM_NOTIFICATIONS_AREA]),
   "data-room": Object.freeze([DATA_ROOM_AREA]),
-  // Issue #4255: the Email and Blog tabs on the Support page, for every
-  // teammate. A pseudo page id (never in the menu) so it widens Support only,
-  // never Community.
-  "support-content": Object.freeze([AREA.EMAIL_DRAFTS, BLOG_AREA]),
+  // Issue #4383: Email and Blog are their own Communications screens, for
+  // every teammate (#4255 D5, exactly what the old Support tabs had), and the
+  // Links page for the Support area (its admin_links_* RPCs guard on
+  // is_support_staff). Admins open all three through admin_console. The old
+  // "support-content" pseudo page is gone: Support no longer holds them.
+  // Invariant I-4383-COMMS-ACCESS-UNCHANGED (persona table in
+  // src/__tests__/issue_4383_communications.implementor.test.js).
+  email: Object.freeze([AREA.EMAIL_DRAFTS]),
+  blog: Object.freeze([BLOG_AREA]),
+  links: Object.freeze([SUPPORT_OPERATIONS_AREA]),
 });
 
 // Every page id NOT listed here needs AREA.ADMIN_CONSOLE. A page added by any
@@ -108,8 +114,14 @@ export const PAGE_ACCESS_UNION = Object.freeze({
   settings: Object.freeze(["settings"]),
   // #4130 (Seth): Team and roles is the owner's again (team_manage only);
   // Careers is its own page with its own access, so it is not merged here.
-  support: Object.freeze(["community-support", "support-content"]),
+  // #4383: Support keeps the inbox and People and roles only, so it carries
+  // the console's access exactly. A teammate who only writes email and blog
+  // no longer sees a Support entry: nothing left in it was theirs.
+  support: Object.freeze(["community-support"]),
   community: Object.freeze(["community-support"]),
+  // #4383: the Communications Overview is open to whoever can open any of
+  // its screens, and lists only the kinds that person may open.
+  communications: Object.freeze(["push", "announcements", "roadmap", "email", "blog", "links"]),
 });
 
 export const TEAM_NAV_GROUP = {

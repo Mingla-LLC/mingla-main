@@ -56,6 +56,8 @@ import {
   teamInAppSuppressed,
   teamProviderSafeKeys,
 } from "./teamNotifications.ts";
+// #4383: where an Admin push may open (the one destination table).
+import { ADMIN_PUSH_CATEGORIES, adminPushDeepLinkValid } from "./adminPushDestinations.ts";
 
 // Minimal subset of the supabase-js client surface the v2 core uses, so the core
 // is unit-testable with a fake client.
@@ -273,6 +275,11 @@ function validDeepLink(
   if (category === "business.community_roadmap_updated") {
     return deepLink === "mingla-business://community/roadmap";
   }
+  // #4383: an Admin push opens only a screen in the destination table; any
+  // other link is refused, never silently rewritten.
+  if (ADMIN_PUSH_CATEGORIES.has(category)) {
+    return adminPushDeepLinkValid(category, deepLink);
+  }
   if (category === "business.community_announcement") {
     const id = deepLink?.replace(
       "mingla-business://community/announcement/",
@@ -326,6 +333,10 @@ export function providerSafePayload(
   if (category === "business.community_roadmap_updated") {
     return pick(["campaign_id"]);
   }
+  // #4383: the typed title and body never go into the provider's data bag.
+  if (ADMIN_PUSH_CATEGORIES.has(category)) {
+    return pick(["campaign_id", "push_id"]);
+  }
   if (category === "business.support_new_ticket") {
     return pick(["ticket_id"]);
   }
@@ -370,6 +381,8 @@ const ISSUE_3720_CATEGORIES = new Set([
   "business.support_new_ticket",
   "business.brand_group_message",
   "admin.team_mention",
+  // #4383: durable per-channel delivery rows feed the Push screen's counts.
+  ...ADMIN_PUSH_CATEGORIES,
   ...ISSUE_3988_ALERT_CATEGORIES,
   ...ISSUE_4111_ENQUIRY_CATEGORIES,
 ]);

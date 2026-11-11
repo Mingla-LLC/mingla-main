@@ -41,7 +41,17 @@
     "sessions_hint": "Bjud ins, member updates, och board activity",
     "tips_reengagement": "Tips & Re-engagement",
     "tips_hint": "Occasional nudges, weekly digest, och recommendations",
-    "error_update": "Failed to update notification setting."
+    "error_update": "Failed to update notification setting.",
+    "prefs": {
+      "cat": {
+        "mingla_updates": "Nyheter från Mingla",
+        "mingla_updates_hint": "Nyheter och uppdateringar från Mingla-teamet.",
+        "brand_campaign_push": "Meddelanden från ställen du följer",
+        "brand_campaign_push_hint": "Erbjudanden och nyheter från ställen och värdar du följer.",
+        "brand_offering_invite": "Inbjudningar från ställen du följer",
+        "brand_offering_invite_hint": "När ett ställe eller en värd bjuder in dig till något."
+      }
+    }
   },
   "quiet_hours": {
     "title": "Quiet Hours",

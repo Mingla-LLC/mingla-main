@@ -64,6 +64,8 @@ const MENU = [
   // #4130 + #3872: the four Creator Program pages sit under Hosts and creators.
   ["Outreach", ["outreach", "program-creators", "program-gigs", "program-locals", "program-disputes", "inbound", "content-calendar", "team-dashboard"]],
   ["Support", ["support", "community"]],
+  // #4383: what we tell hosts and explorers, each its own screen.
+  ["Communications", ["communications", "push", "announcements", "roadmap", "email", "blog", "links"]],
   ["Business", ["people", "brands", "business-offerings"]],
   ["Money", ["mingla-money", "business-payments", "business-orders", "business-money-ledger", "refund-operations", "subscriptions", "pricing"]],
   ["Explorer app", ["placepool"]],
@@ -82,6 +84,7 @@ const LABELS = {
   "program-creators": "Creators", "program-gigs": "Gigs", "program-locals": "Mingla Locals", "program-disputes": "Disputes",
   inbound: "Inbound leads", "content-calendar": "Calendar", "team-dashboard": "Team dashboard",
   support: "Support", community: "Community",
+  communications: "Overview", push: "Push", announcements: "Announcements", roadmap: "Roadmap", email: "Email", blog: "Blog", links: "Links page",
   people: "People", brands: "Brands", "business-offerings": "Offerings",
   "mingla-money": "Mingla money", "business-payments": "Payments", "business-orders": "Orders", "business-money-ledger": "Money ledger",
   "refund-operations": "Refund operations", subscriptions: "Subscriptions", pricing: "Pricing and limits",
@@ -112,12 +115,13 @@ const throwingStorage = {
   setItem() { throw new Error("storage is blocked"); },
 };
 
-describe("#3802 S-1: the menu is nine groups, in the approved order", () => {
+describe("#3802 S-1: the menu is ten groups, in the approved order", () => {
   it("group labels, in order", () => {
     assert.deepEqual(NAV_GROUPS.map((g) => g.label), MENU.map(([label]) => label));
     // #4130: nine groups (Home and Support added, Pipeline became Outreach).
     // #4130 + #3872: still nine; the Creator Program pages joined Outreach.
-    assert.equal(NAV_GROUPS.length, 9);
+    // #4383: ten, with Communications after Support.
+    assert.equal(NAV_GROUPS.length, 10);
   });
   it("each group holds exactly its pages, in order", () => {
     for (const [i, [label, ids]] of MENU.entries()) {
@@ -149,7 +153,9 @@ describe("#3802 S-2: every page is in the menu exactly once", () => {
     // #4130 + #3872: + the four Creator Program pages (Creators, Gigs, Mingla Locals, Disputes).
     // #3355: the guarded Ari Improvement Lab is the 32nd admin destination.
     // #4255 W4: - Notifications (Messages is in the top bar).
-    assert.equal(ids.length, 33); // #4294: + Company tools; #4273: + SMS countries
+    // #4383: + the Communications group (Overview, Push, Announcements,
+    // Roadmap, Email, Blog, Links page).
+    assert.equal(ids.length, 40); // #4294: + Company tools; #4273: + SMS countries
   });
   it("the menu plus governed Ads deep links are the app's pages (the role Home aside)", () => {
     const pagesBlock = APP.match(/const PAGES = \{([\s\S]*?)\n\};/);

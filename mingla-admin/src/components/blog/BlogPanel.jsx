@@ -18,11 +18,14 @@ function routeFromHash() {
     : view === "media" ? { view } : { view: "posts" };
 }
 
+// #4383: Blog is its own Communications screen (#/blog). Old
+// #/support?tab=blog&view=…&post=… links redirect here, view and post kept.
 function navigate(view, postId) {
-  const params = new URLSearchParams({ tab: "blog" });
+  const params = new URLSearchParams();
   if (view !== "posts") params.set("view", view);
   if (postId) params.set("post", postId);
-  window.location.hash = `#/support?${params}`;
+  const query = params.toString();
+  window.location.hash = `#/blog${query ? `?${query}` : ""}`;
 }
 
 export function BlogPanel({ onCounts }) {

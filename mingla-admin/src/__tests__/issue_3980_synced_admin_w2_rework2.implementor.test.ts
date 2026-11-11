@@ -20,7 +20,6 @@ import {
   roadmapDraftHref,
 } from "../lib/opsModel.js";
 // #4130 Wave 6: Roadmap is a tab of the Community page.
-import { pageTabFromHash } from "../lib/supportCommunityTabs.js";
 import { redirectHash } from "../lib/adminRoutes.js";
 
 const SRC = new URL("../", import.meta.url);
@@ -50,13 +49,14 @@ Deno.test("#3980 W2 rework 2: To review has a 'What hosts are told' group and th
   assertEquals(REVIEW_GROUPS.find((g) => g.id === reviewGroupOf(approval))?.title, "What hosts are told");
 });
 
-Deno.test("#3980 W2 rework 2: 'Open the draft in Roadmap' is a deep link Community, Roadmap reads back", () => {
+// #4383: Roadmap is its own Communications screen (#/roadmap).
+Deno.test("#3980 W2 rework 2: 'Open the draft in Roadmap' is a deep link the Roadmap screen reads back", () => {
   const href = roadmapDraftHref(approval)!;
-  assertEquals(href, `#/community?tab=roadmap&card=${DRAFT}`);
-  assertEquals(redirectHash(href), null, "a live Community address");
-  assertEquals(pageTabFromHash(href, "community"), "roadmap", "the page opens the Roadmap tab");
+  assertEquals(href, `#/roadmap?card=${DRAFT}`);
+  assertEquals(redirectHash(href), null, "a live Roadmap address");
   const old = `#/community-support?tab=roadmap&card=${DRAFT}`;
   assertEquals(redirectHash(old), href, "a link sent before the split lands in the same place");
+  assertEquals(redirectHash(`#/community?tab=roadmap&card=${DRAFT}`), href, "a link sent before #4383 lands there too");
   assertEquals(roadmapCardFromHash(href), DRAFT, "and the panel opens this card");
   assertEquals(roadmapDraftHref(eventCard), null, "no roadmap card linked, no link");
   assertEquals(roadmapDraftHref({ links: [{ kind: "roadmap_card", id: "" }] }), null);

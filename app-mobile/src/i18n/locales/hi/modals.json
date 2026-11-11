@@ -16,6 +16,7 @@
     "confirm": "पुष्टि करें",
     "rescheduled_toast": "अनुभव फिर से शेड्यूल हो गया!",
     "reschedule_failed_toast": "फिर से शेड्यूल करने में विफल। कृपया दोबारा कोशिश करें।",
+    "open_failed_toast": "रेटिंग नहीं खुल सकी। फिर से कोशिश करें।",
     "close_label": "बंद करें"
   },
   "custom_holiday": {

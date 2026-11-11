@@ -34,6 +34,14 @@ import { SubscriptionManagementPage } from "./pages/SubscriptionManagementPage";
 import { PricingPage } from "./pages/PricingPage";
 // #4130 Wave 6 — the #3720 Community & Support console, split into two pages.
 import { CommunityPage, SupportPage } from "./pages/CommunitySupportPage";
+// #4383 — Communications: what we tell hosts and explorers, each its own screen.
+import { CommunicationsOverviewPage } from "./pages/communications/CommunicationsOverviewPage";
+import { PushPage } from "./pages/communications/PushPage";
+import { AnnouncementsPage } from "./pages/communications/AnnouncementsPage";
+import { RoadmapPage } from "./pages/communications/RoadmapPage";
+import { EmailPage } from "./pages/EmailPage";
+import { BlogPage } from "./pages/communications/BlogPage";
+import { LinksPage } from "./pages/communications/LinksPage";
 // ORCH-1273 — Business offerings console (READ-ONLY): Offerings
 // (#/business-offerings). Detail views deep-link via ?offeringId=. Venues now
 // open inside Brands (#4130).
@@ -112,6 +120,16 @@ const PAGES = {
   // pages; #/community-support redirects by tab (lib/adminRoutes.js).
   support: SupportPage,
   community: CommunityPage,
+  // ── Communications ── #4383: Email, Blog and Links page came out of
+  // Support, Announcements and Roadmap out of Community; their old tab
+  // addresses redirect here (lib/adminRoutes.js TAB_PAGE_REDIRECTS).
+  communications: CommunicationsOverviewPage,
+  push: PushPage,
+  announcements: AnnouncementsPage,
+  roadmap: RoadmapPage,
+  email: EmailPage,
+  blog: BlogPage,
+  links: LinksPage,
   // ── Business ── #4130 Wave 3: People replaces Users + People; Brands holds
   // Brand Sites, Venues and Venue claims inside each brand.
   people: PeoplePage,
@@ -183,8 +201,8 @@ function captureConnectRequest() {
   return requestedPageId() === "connect";
 }
 
-// Issue #4130 (Wave 0) — an address of a retired page (and #3720's old
-// Email bookmarks and the Community & Support console, Wave 6) is rewritten to the page that now holds it,
+// Issue #4130 (Wave 0) — an address of a retired page (and the Community &
+// Support console, Wave 6, and #4383's moved tabs) is rewritten to the page that now holds it,
 // keeping its query, before any page is chosen (lib/adminRoutes.js).
 function canonicalizeLegacyCommunityHashes() {
   const page = requestedPageId();

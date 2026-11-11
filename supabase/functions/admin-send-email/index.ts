@@ -304,18 +304,16 @@ async function sendViaResend(input: {
   }
 }
 
-export async function createCampaign(
+// The subject and document checks every campaign's words pass, whether new
+// (createCampaign) or a scheduled one being edited (#4383
+// updateScheduledCampaign): one set of checks, one owner.
+export async function prepareCampaignContent(
   supabase: ServiceClient,
-  userId: string,
   raw: Record<string, unknown>,
 ) {
-  if (!RESEND_API_KEY) throw new Error("NO_PROVIDER");
   const subject = typeof raw.subject === "string" ? raw.subject.trim() : "";
   if (!subject || subject.length > 998 || /[\r\n]/.test(subject)) {
     throw new Error("email_subject_invalid");
-  }
-  if (!raw.audience || typeof raw.audience !== "object") {
-    throw new Error("audience_required");
   }
   const document = validateDocument(
     raw.document ?? legacyBodyDocument(String(raw.body ?? "")),
@@ -345,6 +343,23 @@ export async function createCampaign(
   if (!documentPlainText(resolvedBlog.document).replace(/─/g, "").trim()) {
     throw new Error("email_document_empty");
   }
+  return {
+    subject,
+    storedDocument,
+    plainBody: documentPlainText(resolvedBlog.document),
+  };
+}
+
+export async function createCampaign(
+  supabase: ServiceClient,
+  userId: string,
+  raw: Record<string, unknown>,
+) {
+  if (!RESEND_API_KEY) throw new Error("NO_PROVIDER");
+  if (!raw.audience || typeof raw.audience !== "object") {
+    throw new Error("audience_required");
+  }
+  const { subject, storedDocument, plainBody } = await prepareCampaignContent(supabase, raw);
   const audience = normalizeAudience(raw.audience);
   const scheduledFor = typeof raw.scheduledFor === "string" && raw.scheduledFor
     ? new Date(raw.scheduledFor)
@@ -375,7 +390,7 @@ export async function createCampaign(
     .from("admin_email_log")
     .insert({
       subject,
-      body: documentPlainText(resolvedBlog.document),
+      body: plainBody,
       body_document: versionedDocument(storedDocument),
       from_name: ADMIN_SENDER.name,
       from_email: ADMIN_SENDER.address,
@@ -433,6 +448,137 @@ export async function createCampaign(
     duplicate: snapshot.duplicate,
     no_consent: snapshot.noConsent,
     internal: snapshot.internalExcluded,
+  };
+}
+
+// #4383 — a scheduled email can change its time or its words until the
+// sender starts it. Both writes are conditional on status 'scheduled' and no
+// processing_started_at, so a campaign the drain has claimed is never
+// changed (campaign_not_reschedulable). Who gets it is fixed: the audience
+// was counted when it was scheduled (D8); a new audience is a new email.
+const SCHEDULED_GUARD_COLUMNS = "id,status,subject,scheduled_for,timezone";
+
+// #4383 (tester P3-2): who changed a scheduled email, and how, is recorded.
+// A failed audit write is logged loudly but never undoes the change it records.
+export type CampaignActor = { id: string; email: string | null };
+
+async function auditCampaignChange(
+  supabase: ServiceClient,
+  actor: CampaignActor | null,
+  action: "email_campaign_rescheduled" | "email_campaign_edited",
+  campaignId: string,
+  metadata: Record<string, unknown>,
+) {
+  if (!actor) return;
+  try {
+    const { error } = await supabase.from("admin_audit_log").insert({
+      admin_email: actor.email ?? actor.id,
+      action,
+      target_type: "admin_email_log",
+      target_id: campaignId,
+      metadata: { ...metadata, actor_user_id: actor.id },
+    });
+    if (error) console.error(`[admin-send-email] audit ${action} failed`, error.message);
+  } catch (error) {
+    console.error(`[admin-send-email] audit ${action} failed`, error);
+  }
+}
+
+function campaignIdFrom(raw: Record<string, unknown>): string {
+  const campaignId = typeof raw.campaignId === "string" ? raw.campaignId.trim() : "";
+  if (!UUID_PATTERN.test(campaignId)) throw new Error("campaign_id_invalid");
+  return campaignId;
+}
+
+/** The new send time: a real instant at least a minute ahead, in a real zone. */
+export function rescheduleInput(raw: Record<string, unknown>, now = Date.now()) {
+  const scheduledFor = typeof raw.scheduledFor === "string" && raw.scheduledFor
+    ? new Date(raw.scheduledFor)
+    : null;
+  if (!scheduledFor || Number.isNaN(scheduledFor.getTime())) {
+    throw new Error("scheduled_time_invalid");
+  }
+  if (scheduledFor.getTime() <= now + 60_000) {
+    throw new Error("scheduled_time_past");
+  }
+  const timezone = typeof raw.timezone === "string" ? raw.timezone.trim() : "";
+  try {
+    if (!timezone) throw new Error("empty");
+    new Intl.DateTimeFormat("en", { timeZone: timezone }).format(new Date());
+  } catch {
+    throw new Error("scheduled_timezone_invalid");
+  }
+  return { scheduledFor, timezone };
+}
+
+export async function rescheduleCampaign(
+  supabase: ServiceClient,
+  raw: Record<string, unknown>,
+  now = Date.now(),
+  actor: CampaignActor | null = null,
+) {
+  const campaignId = campaignIdFrom(raw);
+  const { scheduledFor, timezone } = rescheduleInput(raw, now);
+  const { data, error } = await supabase
+    .from("admin_email_log")
+    .update({ scheduled_for: scheduledFor.toISOString(), timezone })
+    .eq("id", campaignId)
+    .eq("status", "scheduled")
+    .is("processing_started_at", null)
+    .select(SCHEDULED_GUARD_COLUMNS)
+    .maybeSingle();
+  if (error) throw new Error(`campaign_reschedule_failed:${error.message}`);
+  if (!data) throw new Error("campaign_not_reschedulable");
+  await auditCampaignChange(supabase, actor, "email_campaign_rescheduled", campaignId, {
+    scheduled_for: scheduledFor.toISOString(),
+    timezone,
+  });
+  return data;
+}
+
+export async function updateScheduledCampaign(
+  supabase: ServiceClient,
+  raw: Record<string, unknown>,
+  actor: CampaignActor | null = null,
+) {
+  const campaignId = campaignIdFrom(raw);
+  const { subject, storedDocument, plainBody } = await prepareCampaignContent(supabase, raw);
+  const { data, error } = await supabase
+    .from("admin_email_log")
+    .update({ subject, body: plainBody, body_document: versionedDocument(storedDocument) })
+    .eq("id", campaignId)
+    .eq("status", "scheduled")
+    .is("processing_started_at", null)
+    .select(SCHEDULED_GUARD_COLUMNS)
+    .maybeSingle();
+  if (error) throw new Error(`campaign_update_failed:${error.message}`);
+  if (!data) throw new Error("campaign_not_reschedulable");
+  await auditCampaignChange(supabase, actor, "email_campaign_edited", campaignId, { subject });
+  return data;
+}
+
+/** A scheduled email's words, for the composer's edit mode. */
+export async function getScheduledCampaign(
+  supabase: ServiceClient,
+  raw: Record<string, unknown>,
+) {
+  const campaignId = campaignIdFrom(raw);
+  const { data, error } = await supabase
+    .from("admin_email_log")
+    .select("id,status,subject,body,body_document,scheduled_for,timezone,processing_started_at")
+    .eq("id", campaignId)
+    .maybeSingle();
+  if (error) throw new Error(`campaign_read_failed:${error.message}`);
+  if (!data || data.status !== "scheduled" || data.processing_started_at) {
+    throw new Error("campaign_not_reschedulable");
+  }
+  const stored = data.body_document as { blocks?: unknown } | null;
+  return {
+    id: data.id,
+    subject: data.subject,
+    document: validateDocument(stored?.blocks ?? stored ?? legacyBodyDocument(String(data.body ?? ""))),
+    scheduled_for: data.scheduled_for,
+    timezone: data.timezone,
   };
 }
 
@@ -901,6 +1047,17 @@ export async function handler(req: Request) {
       }, 201);
     }
 
+    // #4383: change a scheduled email's time or words before it starts.
+    if (action === "get_scheduled_campaign") {
+      return jsonResponse({ campaign: await getScheduledCampaign(supabase, body) });
+    }
+    if (action === "reschedule_campaign") {
+      return jsonResponse({ campaign: await rescheduleCampaign(supabase, body, Date.now(), { id: user.id, email: user.email ?? null }) });
+    }
+    if (action === "update_scheduled_campaign") {
+      return jsonResponse({ campaign: await updateScheduledCampaign(supabase, body, { id: user.id, email: user.email ?? null }) });
+    }
+
     if (action === "cancel_campaign") {
       const campaignId = typeof body.campaignId === "string"
         ? body.campaignId.trim()
@@ -968,7 +1125,7 @@ export async function handler(req: Request) {
     const status =
       error instanceof BlogPostBlockError && error.code === "blog_not_ready"
         ? 503
-        : /invalid|required|unsupported|not_cancellable|email_block|email_document|recipient_email|no_eligible/
+        : /invalid|required|unsupported|not_cancellable|not_reschedulable|time_past|email_block|email_document|recipient_email|no_eligible/
             .test(message)
         ? 400
         : 500;

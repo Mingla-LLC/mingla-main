@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { communicationsErrorMessage } from "../../lib/communicationsErrors";
 import {
   AlignLeft,
   Bold,
@@ -268,7 +269,12 @@ function LocalEmailPreview({ subject, documentValue }) {
   );
 }
 
-export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionExpired, openTemplateManager = false }) {
+// #4383: `editingCampaign` ({ id, subject, document, scheduled_for, timezone })
+// opens a scheduled email to change its words only. Who gets it and when are
+// not editable here (the Email screen's Scheduled list changes the time; a
+// new audience means cancel and write a new email). Save sends the same
+// document checks as a new campaign, through update_scheduled_campaign.
+export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionExpired, openTemplateManager = false, editingCampaign = null, onEditingDone = null }) {
   const { addToast } = useToast();
   const { access, session } = useAuth();
   const myUserId = session?.user?.id || null;
@@ -296,8 +302,9 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
   const [metadata, setMetadata] = useState({ countries: [], languages: [], cities: [], brands: [] });
   const [estimate, setEstimate] = useState(null);
   const [estimating, setEstimating] = useState(false);
-  const [subject, setSubject] = useState("");
-  const [documentValue, setDocumentValue] = useState(defaultDocument);
+  const [subject, setSubject] = useState(() => editingCampaign?.subject ?? "");
+  const [documentValue, setDocumentValue] = useState(() => (Array.isArray(editingCampaign?.document) && editingCampaign.document.length ? editingCampaign.document : defaultDocument()));
+  const [savingEdits, setSavingEdits] = useState(false);
   const [activeBlockId, setActiveBlockId] = useState(null);
   const [previewMode, setPreviewMode] = useState("desktop");
   const [serverPreview, setServerPreview] = useState("");
@@ -397,6 +404,8 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
     let cancelled = false;
     const storage = browserStorage();
     async function start() {
+      // #4383: editing a scheduled email never pulls in a draft or a recovery copy.
+      if (editingCampaign) return;
       const legacy = legacyDraftToMigrate(storage);
       if (legacy) {
         try {
@@ -439,6 +448,8 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
 
   // Crash recovery: only an unsaved change is kept in this browser.
   useEffect(() => {
+    // #4383: a scheduled email being edited is not a draft; keep no copy.
+    if (editingCampaign) return undefined;
     const storage = browserStorage();
     const timer = setTimeout(() => {
       if (!draftDirty) {
@@ -456,7 +467,7 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
       });
     }, 300);
     return () => clearTimeout(timer);
-  }, [audienceMode, documentValue, draft?.id, draft?.revision, draftDirty, filters, selectedRecipient, subject]);
+  }, [audienceMode, documentValue, draft?.id, draft?.revision, draftDirty, editingCampaign, filters, selectedRecipient, subject]);
 
   const saveDraft = useCallback(async ({ status, asCopy = false, quiet = false } = {}) => {
     if (draftSavingRef.current) return null;
@@ -890,6 +901,8 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
       }
     }
     if (candidateDocument.some((block) => block.type === "image" && !block.alt.trim())) return "Add alt text to every image or GIF";
+    // #4383: a scheduled email's audience and time are fixed while its words are edited.
+    if (editingCampaign) return null;
     if (audienceMode === "person" && !isRecipientChosen(selectedRecipient)) return "Choose an eligible Mingla recipient";
     if (scheduleMode === "later" && (!scheduledLocal || new Date(scheduledLocal).getTime() <= now)) return "Choose a future send time";
     if (!estimate || estimate.will_receive < 1) return "This audience has no eligible recipients";
@@ -922,7 +935,32 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
       addToast({ variant: "error", title: error });
       return;
     }
+    if (editingCampaign) {
+      await saveScheduledEdits(candidateDocument);
+      return;
+    }
     setReviewOpen(true);
+  }
+
+  // #4383: save the new words of a scheduled email (the server checks them
+  // exactly as a new campaign and refuses once it has started sending).
+  async function saveScheduledEdits(candidateDocument) {
+    setSavingEdits(true);
+    try {
+      await callEdgeFunction({
+        action: "update_scheduled_campaign",
+        campaignId: editingCampaign.id,
+        subject: subject.trim(),
+        document: candidateDocument,
+      });
+      addToast({ variant: "success", title: "Scheduled email updated", description: "It keeps its time and its audience." });
+      onEditingDone?.(true);
+    } catch (error) {
+      if (error?.name === "SessionExpiredError") onSessionExpired?.();
+      else addToast({ variant: "error", title: "Changes were not saved", description: communicationsErrorMessage(error) });
+    } finally {
+      setSavingEdits(false);
+    }
   }
 
   async function confirmCampaign() {
@@ -998,6 +1036,12 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
                     : "Drafts are shared with your team."}
             </p>
           </div>
+          {editingCampaign ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="info">Editing a scheduled email</Badge>
+              <Button variant="secondary" size="sm" onClick={() => onEditingDone?.(false)} disabled={savingEdits}>Stop editing</Button>
+            </div>
+          ) : (
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="secondary" size="sm" icon={FileText} onClick={() => { setDraftsOpen(true); void refreshDrafts(); }}>
               Drafts{drafts.length ? ` (${drafts.length})` : ""}
@@ -1012,6 +1056,7 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
               Ready for review
             </Button>
           </div>
+          )}
           {(draftConflict || draftError) && (
             <div role="alert" className="w-full rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
               <p>{draftError || "Someone saved this draft after you opened it. Load their version, or save yours as a copy."}</p>
@@ -1025,6 +1070,12 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
           )}
         </div>
 
+        {editingCampaign ? (
+          <div className="border-b border-[var(--gray-200)] px-4 py-4 sm:px-5" data-email-editing-audience>
+            <h2 className="text-[15px] font-semibold text-[var(--color-text-primary)]">Audience</h2>
+            <p className="text-xs text-[var(--color-text-secondary)]">The audience was counted when this email was scheduled and stays the same. To change who gets it, cancel it and write a new email.</p>
+          </div>
+        ) : (
         <div className="border-b border-[var(--gray-200)] px-4 py-4 sm:px-5">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -1189,6 +1240,8 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
           )}
         </div>
 
+        )}
+
         <div className="space-y-4 p-4 sm:p-5">
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="rounded-lg border border-[var(--gray-200)] bg-[var(--gray-50)] px-3 py-2.5">
@@ -1303,6 +1356,11 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
                 Manage
               </button>
             </div>
+            {editingCampaign ? (
+              <Button icon={Save} onClick={() => openReview(Date.now())} loading={savingEdits} disabled={!providerConfigured || savingEdits}>
+                Save changes
+              </Button>
+            ) : (<>
             <div>
               <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-text-tertiary)]">Delivery</span>
               <div className="flex min-h-9 flex-wrap items-center gap-2">
@@ -1315,6 +1373,7 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
             <Button icon={scheduleMode === "later" ? CalendarClock : Send} onClick={() => openReview(Date.now())} disabled={!providerConfigured || sending}>
               Review {scheduleMode === "later" ? "schedule" : "send"}
             </Button>
+            </>)}
           </div>
         </div>
       </section>

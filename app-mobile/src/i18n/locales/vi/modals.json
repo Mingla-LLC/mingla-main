@@ -16,6 +16,7 @@
     "confirm": "Xác nhận",
     "rescheduled_toast": "Đã đổi lịch trải nghiệm!",
     "reschedule_failed_toast": "Đổi lịch thất bại. Vui lòng thử lại.",
+    "open_failed_toast": "Không thể mở phần đánh giá. Hãy thử lại.",
     "close_label": "Đóng"
   },
   "custom_holiday": {

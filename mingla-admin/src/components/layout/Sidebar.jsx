@@ -39,6 +39,14 @@ import {
   Scale,
   BrainCircuit,
   KeyRound,
+  // #4383: the Communications group.
+  RadioTower,
+  Send,
+  BellRing,
+  Milestone,
+  Mail,
+  Newspaper,
+  Link,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
@@ -100,6 +108,14 @@ const ICON_MAP = {
   Settings,
   // Issue #4294: Company tools.
   KeyRound,
+  // #4383: the Communications group.
+  RadioTower,
+  Send,
+  BellRing,
+  Milestone,
+  Mail,
+  Newspaper,
+  Link,
 };
 
 // Two letters for the footer avatar, from the sign-in email: "seth.ogieva@…"

@@ -1,25 +1,24 @@
 /**
  * #3720 Slice F console, split by #4130 Wave 6 into two pages that share this
- * frame: Support (the inbox first, Email, People and roles) and Community
- * (announcements, roadmap, ideas, moderation, brand groups, feature guide,
- * product inbox). SupportPage and CommunityPage below are the two pages.
+ * frame: Support (the inbox first, then People and roles) and Community
+ * (ideas, questions, moderation, reported enquiries, brand groups, feature
+ * guide, product board). SupportPage and CommunityPage below are the two pages.
+ * #4383: Email, Blog, Links page, Announcements and Roadmap are their own
+ * Communications screens (pages/communications/); their old tab addresses
+ * redirect there (lib/adminRoutes.js TAB_PAGE_REDIRECTS).
  *
  * Each tab keeps its id and its row in communitySupportCapabilityContract.js,
  * and is shown only to the area that row names (communitySupportAccess.js):
  * moving a tab between the two pages changes nobody's access. Old
- * #/community-support and #/email addresses are rewritten in
- * lib/adminRoutes.js before a page is chosen.
+ * #/community-support addresses are rewritten in lib/adminRoutes.js before a
+ * page is chosen.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageHeader } from "../components/ui/PageHeader";
-import { Button } from "../components/ui/Button";
 import { Toggle } from "../components/ui/Input";
 import { SectionCard } from "../components/ui/Card";
 import { SupportDeskPage } from "./SupportDeskPage";
-import { EmailPage } from "./EmailPage";
-import { AnnouncementsPanel } from "../components/community/AnnouncementsPanel";
-import { RoadmapPanel } from "../components/community/RoadmapPanel";
 import { TeamRolesPanel } from "../components/community/TeamRolesPanel";
 import { BrandGroupsPanel } from "../components/community/BrandGroupsPanel";
 import { ProductInboxPanel } from "../components/community/ProductInboxPanel";
@@ -28,9 +27,6 @@ import { ModerationPanel } from "../components/community/ModerationPanel";
 import { ReportedEnquiriesPanel } from "../components/community/ReportedEnquiriesPanel";
 import { IdeasPanel } from "../components/community/IdeasPanel";
 import { QuestionsPanel } from "../components/community/QuestionsPanel";
-import { FailedPushBanner } from "../components/community/FailedPushBanner";
-import { BlogPanel } from "../components/blog/BlogPanel";
-import { LinksPagePanel } from "../components/links/LinksPagePanel";
 import { CommunitySupportNavigation } from "../components/community/CommunitySupportNavigation";
 import { useAuth } from "../context/AuthContext";
 import { AREA } from "../lib/access";
@@ -56,7 +52,7 @@ const PAGE_COPY = {
   },
   community: {
     title: "Community",
-    adminDescription: "What we tell hosts, what we've shipped, and what they ask for.",
+    adminDescription: "What hosts ask for and talk about. What we tell them now lives in Communications.",
     other: { id: "support", label: "Support" },
   },
 };
@@ -69,8 +65,8 @@ function roleDescription(capabilities, isLead) {
   }
   if (capabilities.canSupport) return "Your assigned Host support workspace.";
   if (capabilities.canCommunity) return "Your assigned Community workspace.";
-  // #4255: every teammate writes team email and blog posts.
-  return "Write and send team email, and write blog posts.";
+  // #4383: a role with neither area never reaches this page (lib/access.js).
+  return "Nothing on this page is assigned to your role.";
 }
 
 export function SupportCommunityConsole({ pageId }) {
@@ -124,10 +120,6 @@ export function SupportCommunityConsole({ pageId }) {
   // #4270 W7: the Brand groups badge is how many groups wait on Mingla.
   const onBrandGroupCounts = useCallback((waiting) => {
     setNavCounts((current) => (current["brand-groups"] === waiting ? current : { ...current, "brand-groups": waiting }));
-  }, []);
-
-  const onBlogCounts = useCallback((inReview) => {
-    setNavCounts((current) => (current.blog === inReview ? current : { ...current, blog: inReview }));
   }, []);
 
   useEffect(() => {
@@ -213,14 +205,6 @@ export function SupportCommunityConsole({ pageId }) {
                 onChange={(next) => void toggleAvailability(next)}
               />
             ) : null}
-            {!onSupportPage && capabilities.isAdmin ? (
-              <Button onClick={() => {
-                changeTab("announcements");
-                requestAnimationFrame(() => window.dispatchEvent(new CustomEvent("community:new-announcement")));
-              }}>
-                New announcement
-              </Button>
-            ) : null}
           </>
         }
         tabs={
@@ -247,18 +231,11 @@ export function SupportCommunityConsole({ pageId }) {
         </p>
       ) : null}
 
-      {onSupportPage && capabilities.isAdmin ? <FailedPushBanner /> : null}
-
       {activeTab === "support" && (
         <SupportDeskPage embedded canManageAgents={capabilities.isAdmin} onCounts={onInboxCounts} />
       )}
-      {activeTab === "email" && capabilities.canEmail && <EmailPage embedded />}
-      {activeTab === "blog" && capabilities.canBlog && <BlogPanel onCounts={onBlogCounts} />}
-      {activeTab === "links" && capabilities.canSupport && <LinksPagePanel />}
       {activeTab === "team" && capabilities.isAdmin && <TeamRolesPanel canInvite={canInvite} refreshKey={peopleRefreshKey} />}
 
-      {activeTab === "announcements" && <AnnouncementsPanel />}
-      {activeTab === "roadmap" && <RoadmapPanel />}
       {activeTab === "ideas" && capabilities.canCommunity && <IdeasPanel />}
       {activeTab === "questions" && capabilities.canCommunity && <QuestionsPanel />}
       {activeTab === "moderation" && capabilities.canCommunity && <ModerationPanel />}
@@ -272,12 +249,12 @@ export function SupportCommunityConsole({ pageId }) {
   );
 }
 
-// #4130 Wave 6 — Support: the inbox first, then Email and People and roles.
+// #4130 Wave 6 — Support: the inbox first, then People and roles (#4383).
 export function SupportPage() {
   return <SupportCommunityConsole pageId="support" />;
 }
 
-// #4130 Wave 6 — Community: what hosts are told, what shipped, what they ask for.
+// #4130 Wave 6 — Community: what hosts ask for and talk about (#4383).
 export function CommunityPage() {
   return <SupportCommunityConsole pageId="community" />;
 }

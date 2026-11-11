@@ -396,14 +396,19 @@ describe("T-DROOM and T-SUPP: who sees what", () => {
     const ids = (a, tabs) => communitySupportTabsForAccess(a, tabs).map((t) => t.id);
     assert.deepEqual(ids(acc.admin, SUPPORT_PAGE_TABS), SUPPORT_PAGE_TABS.map((t) => t.id));
     assert.deepEqual(ids(acc.admin, COMMUNITY_PAGE_TABS), COMMUNITY_PAGE_TABS.map((t) => t.id));
-    assert.deepEqual(ids(acc.support, SUPPORT_PAGE_TABS), ["support", "email", "blog", "links"]);
+    // #4383: Email, Blog and Links page are Communications screens now.
+    assert.deepEqual(ids(acc.support, SUPPORT_PAGE_TABS), ["support"]);
+    for (const screen of ["email", "blog", "links"]) assert.equal(canOpenPage(acc.support, screen), true, screen);
     const supportCommunity = ids(acc.support, COMMUNITY_PAGE_TABS);
     for (const adminOnly of ["announcements", "roadmap", "product"]) {
       assert.equal(supportCommunity.includes(adminOnly), false, `support teammate sees ${adminOnly}`);
     }
     assert.ok(supportCommunity.includes("moderation"));
     assert.ok(supportCommunity.includes("enquiry-reports"));
-    assert.deepEqual(ids(acc.growth, SUPPORT_PAGE_TABS), ["email", "blog"]);
+    assert.deepEqual(ids(acc.growth, SUPPORT_PAGE_TABS), []);
+    assert.equal(canOpenPage(acc.growth, "support"), false);
+    for (const screen of ["email", "blog"]) assert.equal(canOpenPage(acc.growth, screen), true, screen);
+    assert.equal(canOpenPage(acc.growth, "links"), false);
     assert.deepEqual(ids(acc.growth, COMMUNITY_PAGE_TABS), []);
     assert.deepEqual(ids(acc.partner, COMMUNITY_PAGE_TABS), COMMUNITY_PAGE_TABS.map((t) => t.id));
     assert.deepEqual(ids(acc.partner, SUPPORT_PAGE_TABS), SUPPORT_PAGE_TABS.map((t) => t.id));

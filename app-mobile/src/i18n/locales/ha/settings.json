@@ -41,7 +41,17 @@
     "sessions_hint": "Gayyatoci, sabuntawa na mambobi, da ayyukan hukuma",
     "tips_reengagement": "Nasihu & Tunani",
     "tips_hint": "Tunatarwa, labarai na mako-mako, da shawarwari",
-    "error_update": "An kasa sabunta saitin sanarwa."
+    "error_update": "An kasa sabunta saitin sanarwa.",
+    "prefs": {
+      "cat": {
+        "mingla_updates": "Sabuntawar Mingla",
+        "mingla_updates_hint": "Labarai da sabuntawa daga ƙungiyar Mingla.",
+        "brand_campaign_push": "Saƙonni daga wuraren da kake bi",
+        "brand_campaign_push_hint": "Tayi da labarai daga wurare da masu shirya taron da kake bi.",
+        "brand_offering_invite": "Gayyata daga wuraren da kake bi",
+        "brand_offering_invite_hint": "Lokacin da wani wuri ko mai shirya taro ya gayyace ka."
+      }
+    }
   },
   "quiet_hours": {
     "title": "Lokutan Natsuwa",

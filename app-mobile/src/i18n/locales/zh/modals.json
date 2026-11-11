@@ -16,6 +16,7 @@
     "confirm": "确认",
     "rescheduled_toast": "体验已重新安排！",
     "reschedule_failed_toast": "重新安排失败，请重试。",
+    "open_failed_toast": "无法打开评分，请重试。",
     "close_label": "关闭"
   },
   "custom_holiday": {

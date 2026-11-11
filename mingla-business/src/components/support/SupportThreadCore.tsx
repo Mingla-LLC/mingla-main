@@ -37,7 +37,7 @@ import {
   text as textTokens,
 } from "../../constants/designSystem";
 import { supabase } from "../../services/supabase";
-import { SUPPORT_HOST_FACING_AGENT } from "../../constants/supportHostFacing";
+import { HELP_AND_SUPPORT_ROUTE, SUPPORT_HOST_FACING_AGENT } from "../../constants/supportHostFacing";
 import {
   getOwnSupportTicket,
   sendSupportMessage,
@@ -156,7 +156,7 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
 
   const handleBack = useCallback((): void => {
     if (router.canGoBack()) router.back();
-    else router.replace("/account/support" as never);
+    else router.replace(HELP_AND_SUPPORT_ROUTE as never);
   }, [router]);
 
   const handleSend = useCallback(async (): Promise<void> => {

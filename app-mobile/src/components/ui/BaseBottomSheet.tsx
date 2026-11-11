@@ -313,7 +313,7 @@ function defaultHandleStyle(theme: BaseBottomSheetTheme): ViewStyle {
   return { backgroundColor: h.color, width: h.width, height: h.height };
 }
 
-type NativeModalLifecycleCallbacks = {
+export type NativeModalLifecycleCallbacks = {
   onNativeShow: () => void;
   onNativeDismiss: () => void;
 };
@@ -329,12 +329,15 @@ type NativeModalLifecycleAdapterProps = {
 /**
  * #1880 — one truthful acknowledgement per committed native-modal cycle.
  *
+ * #4381 — exported so the single review prompt (PostExperienceModal, a plain
+ * RN Modal) reports its native show and dismiss through this same adapter.
+ *
  * RN exposes onShow on both platforms but onDismiss only on iOS. Android
  * removes the Modal host synchronously during the mutation that commits
  * visible=false (animationType is none), so its layout effect is the first
  * post-mutation boundary where dismissal can be acknowledged truthfully.
  */
-function NativeModalLifecycleAdapter({
+export function NativeModalLifecycleAdapter({
   visible,
   onNativeShow,
   onNativeDismiss,

@@ -142,3 +142,6 @@ export const tapPaidAfterCloseCopy = (amount: string, saved: boolean): { title: 
 
 export const TAP_PROCESSING_TEXT = "Processing payment…";
 export const TAP_SEND_RECEIPT = "Send receipt";
+
+/** Every Tap to Pay screen that isn't a success offers this; it opens Help & Support. */
+export const TAP_GET_HELP = "Get help";

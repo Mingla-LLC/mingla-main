@@ -8,12 +8,18 @@ import {
   COMMUNITY_OPERATIONS_AREA,
   COMMUNITY_SUPPORT_AREA,
   SUPPORT_OPERATIONS_AREA,
+  canOpenPage,
 } from "../lib/access.js";
 import {
   COMMUNITY_SUPPORT_TAB_CAPABILITY,
   communitySupportTabsForAccess,
 } from "../lib/communitySupportAccess.js";
-import { COMMUNITY_SUPPORT_TAB_CONTRACT } from "../lib/communitySupportCapabilityContract.js";
+import {
+  COMMUNICATIONS_SCREEN_ROWS,
+  COMMUNITY_SUPPORT_TAB_CONTRACT,
+  SUPPORT_COMMUNITY_TAB_ROWS,
+} from "../lib/communitySupportCapabilityContract.js";
+import { NAV_ITEMS } from "../lib/constants.js";
 import { COMMUNITY_PAGE_TABS, SUPPORT_PAGE_TABS } from "../lib/supportCommunityTabs.js";
 
 // #3988 — every Community & Support tab is shown by exactly the area whose
@@ -81,11 +87,21 @@ async function reachedBy(panel: string): Promise<Reached> {
 // #4130 Wave 6: the tabs are split over the Support and Community pages
 // (lib/supportCommunityTabs.js, which both pages render); Overview was
 // retired, so its row went with it.
-Deno.test("every rendered tab has exactly one contract row, and no row is orphaned", () => {
+// #4383: the screen and tab contract — a row is a tab of Support or
+// Community, or a Communications screen of its own (its `page` is its id).
+const CONTRACT = COMMUNITY_SUPPORT_TAB_CONTRACT as Record<string, { page: string }>;
+
+Deno.test("every rendered tab and Communications screen has exactly one contract row, and no row is orphaned", () => {
   const tabIds = [...SUPPORT_PAGE_TABS, ...COMMUNITY_PAGE_TABS].map((tab) => tab.id);
-  assert(tabIds.length >= 12, "tab list parsed");
+  assert(tabIds.length >= 9, "tab list parsed");
   assertEquals(new Set(tabIds).size, tabIds.length, "no tab is on both pages");
-  assertEquals([...tabIds].sort(), Object.keys(COMMUNITY_SUPPORT_TAB_CONTRACT).sort());
+  assertEquals([...tabIds].sort(), [...SUPPORT_COMMUNITY_TAB_ROWS].sort());
+  for (const tab of SUPPORT_PAGE_TABS) assertEquals(CONTRACT[tab.id].page, "support", tab.id);
+  for (const tab of COMMUNITY_PAGE_TABS) assertEquals(CONTRACT[tab.id].page, "community", tab.id);
+  const comms = NAV_ITEMS.filter((item: { id: string }) =>
+    ["communications", "push", "announcements", "roadmap", "email", "blog", "links"].includes(item.id)).map((item: { id: string }) => item.id);
+  assertEquals([...COMMUNICATIONS_SCREEN_ROWS].sort(), [...comms].sort(), "every Communications menu entry has a row");
+  for (const id of COMMUNICATIONS_SCREEN_ROWS) assertEquals(CONTRACT[id].page, id);
 });
 
 Deno.test("each tab's contract lists exactly the RPCs and Edge Functions its panel reaches", async () => {
@@ -106,8 +122,18 @@ Deno.test("each tab maps to one known area and the access filter honours it", ()
   for (const [tab, row] of Object.entries(COMMUNITY_SUPPORT_TAB_CONTRACT)) {
     assert(known.has(row.area), `${tab}: unknown area ${row.area}`);
     const access = (areas: string[]) => ({ email: "t@example.test", role: "growth", status: "active", areas });
-    const shown = (areas: string[]) =>
-      communitySupportTabsForAccess(access(areas), tabs).some((t: { id: string }) => t.id === tab);
+    // #4383: a Communications screen is shown by lib/access.js, not the tab filter.
+    const ownScreen = !["support", "community"].includes(row.page);
+    const shown = (areas: string[]) => ownScreen
+      ? canOpenPage(access(areas), tab)
+      : communitySupportTabsForAccess(access(areas), tabs).some((t: { id: string }) => t.id === tab);
+    if (tab === "communications") {
+      // The Overview opens for whoever opens any of its screens (asserted in
+      // issue_4383_communications.implementor.test.js), never for nobody.
+      assertEquals(shown([]), false);
+      assertEquals(shown([AREA.ADMIN_CONSOLE]), true);
+      continue;
+    }
     if (row.area === AREA.ADMIN_CONSOLE) {
       // A Support teammate (both operational areas) never sees an Admin-only tab.
       assertEquals(shown([COMMUNITY_SUPPORT_AREA, COMMUNITY_OPERATIONS_AREA, SUPPORT_OPERATIONS_AREA]), false, tab);

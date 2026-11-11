@@ -41,7 +41,17 @@
     "sessions_hint": "Invitations, mises à jour des membres et activité des tableaux",
     "tips_reengagement": "Conseils & Rappels",
     "tips_hint": "Rappels occasionnels, résumé hebdomadaire et recommandations",
-    "error_update": "Échec de la mise à jour du paramètre de notification."
+    "error_update": "Échec de la mise à jour du paramètre de notification.",
+    "prefs": {
+      "cat": {
+        "mingla_updates": "Actualités Mingla",
+        "mingla_updates_hint": "Nouvelles et mises à jour de l’équipe Mingla.",
+        "brand_campaign_push": "Messages des lieux que vous suivez",
+        "brand_campaign_push_hint": "Offres et nouvelles des lieux et hôtes que vous suivez.",
+        "brand_offering_invite": "Invitations des lieux que vous suivez",
+        "brand_offering_invite_hint": "Quand un lieu ou un hôte vous invite à quelque chose."
+      }
+    }
   },
   "quiet_hours": {
     "title": "Heures calmes",

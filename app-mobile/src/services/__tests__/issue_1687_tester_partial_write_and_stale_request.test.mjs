@@ -570,10 +570,11 @@ test('X-8 the voluntary request outranks the scheduled one, and a target swap re
   );
   assert.match(
     index,
-    /visible=\{voluntaryPlaceReview\s*\?\s*true\s*:\s*showReviewModal\}/,
-    'X-8: the voluntary prompt no longer forces `visible`. It has no 3-second arming timer of '
-    + 'its own — the tap IS the trigger — so gating it on `showReviewModal` makes the tap open '
-    + 'nothing until an unrelated calendar poll happens to fire.',
+    /visible=\{voluntaryPlaceReview\s*\?\s*voluntaryPromptPresentable\s*:\s*showReviewModal\}/,
+    'X-8: the voluntary prompt is no longer driven by its own presentability. It has no 3-second '
+    + 'arming timer of its own — the tap IS the trigger — so gating it on `showReviewModal` makes '
+    + 'the tap open nothing until an unrelated calendar poll happens to fire. #4381: it is gated '
+    + 'only on the presentation slot being free, never on the calendar poll.',
   );
   assert.match(
     index,

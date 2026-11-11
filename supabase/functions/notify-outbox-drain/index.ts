@@ -39,6 +39,8 @@ import {
   resolveTeamPushText,
   TEAM_NOTIFY_CATEGORIES,
 } from "../_shared/teamNotifications.ts";
+// #4383: the Admin push categories (one list, the destination module).
+import { ADMIN_PUSH_CATEGORIES } from "../_shared/adminPushDestinations.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -130,6 +132,8 @@ const ISSUE_3720_DURABLE_CATEGORIES = new Set([
   "business.community_roadmap_updated",
   "business.brand_group_message",
   "admin.team_mention",
+  // #4383: Admin pushes (Communications > Push) get durable terminal envelopes.
+  ...ADMIN_PUSH_CATEGORIES,
   ...ISSUE_3988_ALERT_CATEGORIES,
   ...ISSUE_4111_ENQUIRY_CATEGORIES,
   // #4255 W4: team pushes get durable terminal envelopes, like Brand groups.

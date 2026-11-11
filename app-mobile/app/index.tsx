@@ -55,9 +55,13 @@ import ShareModal from "../src/components/ShareModal";
 import PostExperienceModal from "../src/components/PostExperienceModal";
 import { usePostExperienceCheck } from "../src/hooks/usePostExperienceCheck";
 import {
-  usePlaceReviewRequest,
+  usePlaceReviewDisplayRequest,
+  usePlaceReviewPromptPresentable,
   confirmPlaceReviewRequest,
   cancelPlaceReviewRequest,
+  markPlaceReviewPromptShown,
+  markPlaceReviewPromptDismissed,
+  watchPlaceReviewPresentation,
 } from "../src/store/placeReviewRequestStore";
 import { CoachMarkProvider, useCoachMarkContext } from "../src/contexts/CoachMarkContext";
 import { useCoachMark } from "../src/hooks/useCoachMark";
@@ -372,7 +376,13 @@ function AppContent() {
   const [isCreatingSession, setIsCreatingSession] = useState<boolean>(false);
   const [showPaywall, setShowPaywall] = useState<boolean>(false);
   const { pendingReview, showReviewModal, dismissReview, deferScheduledPrompt, recheckPending } = usePostExperienceCheck();
-  const voluntaryPlaceReview = usePlaceReviewRequest();
+  // #4381 — the request the single prompt RENDERS: it stays set after a cancel
+  // or confirm until the prompt has natively dismissed, so the presented modal
+  // is not unmounted mid-presentation and the expanded card re-presents only
+  // after it. `voluntaryPromptPresentable` is false while an RN-Modal host (the
+  // expanded card) still holds the iOS presentation slot.
+  const voluntaryPlaceReview = usePlaceReviewDisplayRequest();
+  const voluntaryPromptPresentable = usePlaceReviewPromptPresentable();
   const [attendanceClaimIntent, setAttendanceClaimIntent] =
     useState<AttendanceClaimIntent | null>(null);
   const [attendanceClaimVisible, setAttendanceClaimVisible] = useState(false);
@@ -882,6 +892,15 @@ function AppContent() {
     [voluntaryPlaceReview],
   );
   const activeReviewTarget = voluntaryReviewTarget ?? pendingReview;
+  // #4381 — safety net: a voluntary request that is never natively shown is
+  // cancelled (whatever stepped aside comes back) and the user is told.
+  useEffect(
+    () =>
+      watchPlaceReviewPresentation(() => {
+        toastManager.error(i18n.t('modals:post_experience.open_failed_toast'));
+      }),
+    [],
+  );
   const attendanceClaimSuppressesReview =
     attendanceClaimPresentationPending || attendanceClaimVisible;
   const reviewModalPolicy = attendanceClaimReviewModalPolicy(
@@ -3754,10 +3773,12 @@ function AppContent() {
                         (dismissible, opens on the rating step). */}
                     {reviewModalPolicy.render && activeReviewTarget && (
                       <PostExperienceModal
-                        visible={voluntaryPlaceReview ? true : showReviewModal}
+                        visible={voluntaryPlaceReview ? voluntaryPromptPresentable : showReviewModal}
                         review={activeReviewTarget}
                         voluntaryVisit={voluntaryPlaceReview}
                         dismissible={!!voluntaryPlaceReview}
+                        onNativeShow={markPlaceReviewPromptShown}
+                        onNativeDismiss={markPlaceReviewPromptDismissed}
                         onComplete={() => {
                           if (voluntaryPlaceReview) {
                             // The write already landed — arm the deck control's
