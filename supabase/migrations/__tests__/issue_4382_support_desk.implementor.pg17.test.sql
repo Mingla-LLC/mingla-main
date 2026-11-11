@@ -12,6 +12,7 @@
 -- MINGLA-INVARIANT: I-4382-CUSTOMER-DRAFT-NO-GITHUB-TITLE | issue #4382 | Default customer update drafts use generic wording and never quote the GitHub issue title.
 -- MINGLA-INVARIANT: I-4382-REOPEN-MARKER | issue #4382 | A customer reply that reopens a ticket adds one sender-less system line "Reopened automatically" after the reply; a reply on an open ticket adds none.
 -- MINGLA-INVARIANT: I-4382-SUPPORT-NO-LOCATION | issue #4382 | A support ticket's client details hold app and device facts only; a location key is refused.
+-- MINGLA-INVARIANT: I-4382-BETA-FEEDBACK-RETIRED | issue #4382 | After 20280622004382 the beta_feedback table, its import map, the import marker function and the beta-feedback storage policies are gone, and no support attachment still points at the beta-feedback bucket.
 BEGIN;
 
 CREATE FUNCTION pg_temp.t4382_as(p_user uuid)
@@ -609,7 +610,6 @@ END;
 $pipeline$;
 
 -- ── Beta feedback is retired (20280622004382) ──
--- MINGLA-INVARIANT: I-4382-BETA-FEEDBACK-RETIRED | issue #4382 | After 20280622004382 the beta_feedback table, its import map, the import marker function and the beta-feedback storage policies are gone, and no support attachment still points at the beta-feedback bucket.
 DO $retired$
 BEGIN
   IF to_regclass('public.beta_feedback') IS NOT NULL THEN
