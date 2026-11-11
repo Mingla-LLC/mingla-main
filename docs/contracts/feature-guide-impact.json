@@ -1142,7 +1142,12 @@
         "supabase/functions/_shared/ariFlows/brandSetup.ts",
         "supabase/functions/_shared/vatCountryGuard.ts",
         "supabase/migrations/20280621004389_issue_4389_brand_setup.sql",
-        "supabase/migrations/20280621104389_issue_4389_ari_brand_operation.sql"
+        "supabase/migrations/20280621104389_issue_4389_ari_brand_operation.sql",
+        "mingla-business/src/components/stripe/ConnectOnboardingNative.native.tsx",
+        "mingla-business/src/components/stripe/ConnectOnboardingNative.tsx",
+        "mingla-business/src/components/stripe/nativeConnectOnboarding.ts",
+        "mingla-business/src/hooks/useNativeConnectOnboardingRelease.ts",
+        "supabase/migrations/20280623204389_issue_4389_native_connect_flag.sql"
       ]
     },
     {

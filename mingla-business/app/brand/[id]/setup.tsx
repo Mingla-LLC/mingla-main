@@ -19,7 +19,7 @@ import { parseSetupStep } from "../../../src/services/brandSetupService";
 export default function BrandSetupRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ id?: string | string[]; step?: string | string[]; resumed?: string | string[] }>();
+  const params = useLocalSearchParams<{ id?: string | string[]; step?: string | string[]; resumed?: string | string[]; k1?: string | string[] }>();
   const brandId = Array.isArray(params.id) ? params.id[0] : params.id;
   const step = parseSetupStep(Array.isArray(params.step) ? params.step[0] : params.step);
   const leave = useCallback((): void => {
@@ -33,6 +33,8 @@ export default function BrandSetupRoute(): React.ReactElement {
           brandId={typeof brandId === "string" && brandId.length > 0 ? brandId : null}
           requestedStep={step}
           resumed={params.resumed === "1" || step !== null}
+          // #4389 S-11 — the native secure setup was closed early.
+          openK1={params.k1 === "1"}
           onExit={leave}
         />
       </Suspense>

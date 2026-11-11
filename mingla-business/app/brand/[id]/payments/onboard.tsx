@@ -96,6 +96,19 @@ export default function BrandOnboardRoute(): React.ReactElement {
     );
   };
 
+  // #4389 S-11 — leaving the NATIVE secure setup from brand setup: progress
+  // goes to F4 (which reads the account live through refresh_status); an early
+  // close returns to F3 with K1 "Only free events for now?" open.
+  const handleNativeExit = (exit: "finished" | "closed-early"): void => {
+    if (brandId === null) return;
+    const id = encodeURIComponent(brandId);
+    router.replace(
+      (exit === "finished"
+        ? `/brand/${id}/setup?step=done`
+        : `/brand/${id}/setup?step=pay&k1=1`) as never,
+    );
+  };
+
   // #4271 — Tap to Pay setup for this brand, from the "all set" states.
   const handleOpenTapToPay = (): void => {
     if (brandId === null) return;
@@ -124,6 +137,7 @@ export default function BrandOnboardRoute(): React.ReactElement {
           returnPath={isBrandCreateFunnel ? null : resumePath}
           countryChoiceRequested={countryChoiceRequested}
           onOpenTapToPay={brandId !== null ? handleOpenTapToPay : undefined}
+          onNativeExit={isBrandCreateFunnel ? handleNativeExit : undefined}
         />
       </BrandPaymentsPermissionGate>
     </View>

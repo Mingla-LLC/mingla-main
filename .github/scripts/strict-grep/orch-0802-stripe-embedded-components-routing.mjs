@@ -103,8 +103,15 @@ const CHECK1_PATTERN = /from\s+["']@stripe\/(react-)?connect-js["']/;
 const WEB_ONLY_EXT = /\.web\.(tsx?|jsx?)$/;
 // Check 2 — no Path A marker (RN SDK Connect Embedded Components)
 // Path A is FORBIDDEN until all three RN components reach GA.
-const CHECK2_PATTERN_A = /from\s+["']@stripe\/stripe-react-native["']/;
+const CHECK2_PATTERN_A = /(?:from\s+["']@stripe\/stripe-react-native["']|require\(\s*["']@stripe\/stripe-react-native["']\s*\))/;
 const CHECK2_PATTERN_B = /ConnectComponentsProvider/;
+// #4389 (decision S-11, 2026-11-11, Seth: "Go native anyway") — Path A is
+// adopted for Account Onboarding ONLY, in exactly this one native-only file,
+// behind the server kill switch biz_native_connect_onboarding with automatic
+// fallback to Path B. Any other Path A file still fails Check 2.
+const CHECK2_ALLOWED_PATH_A_FILES = new Set([
+  "mingla-business/src/components/stripe/ConnectOnboardingNative.native.tsx",
+]);
 // Check 3 — anti-WebView-wrap guard
 // Disallow co-occurrence of WebView + (@stripe/connect-js | connect.stripe.com).
 const CHECK3_WEBVIEW = /\bWebView\b/;
@@ -133,6 +140,7 @@ function check(fileEntries, failures) {
   }
   // Check 2 — Path A RN SDK Connect Embedded Components marker (held until GA).
   for (const { rel, content } of fileEntries) {
+    if (CHECK2_ALLOWED_PATH_A_FILES.has(rel)) continue;
     if (CHECK2_PATTERN_A.test(content) && CHECK2_PATTERN_B.test(content)) {
       failures.push(
         `Check 2 FAIL (${rel}): RN SDK Connect Embedded Components (Path A) is FORBIDDEN until all three Preview components reach GA. Use Path B (Mingla-hosted web page + expo-web-browser) instead — see app/connect-onboarding.tsx. I-PROPOSED-O EXIT condition.`,
@@ -204,12 +212,40 @@ if (process.argv.includes("--self-test")) {
   ]);
   if (f.length === 0) self.push("BAD2 (connect-js in src/) not flagged");
 
+  // #4389 S-11: the one allowlisted native onboarding file may carry Path A.
+  f = run([
+    {
+      rel: "mingla-business/src/components/stripe/ConnectOnboardingNative.native.tsx",
+      content:
+        'const sdk = require("@stripe/stripe-react-native");\nconst { ConnectComponentsProvider } = sdk;\n',
+    },
+  ]);
+  if (f.length) self.push("#4389 allowlisted native onboarding file wrongly flagged");
+
+  // BAD3 (#4389): Path A anywhere else still fails Check 2 (import or require).
+  f = run([
+    {
+      rel: "mingla-business/src/components/stripe/OtherConnect.native.tsx",
+      content:
+        'import { ConnectComponentsProvider } from "@stripe/stripe-react-native";\n',
+    },
+  ]);
+  if (f.length === 0) self.push("BAD3 (Path A outside the #4389 allowlist) not flagged");
+  f = run([
+    {
+      rel: "mingla-business/src/components/stripe/OtherConnect2.native.tsx",
+      content:
+        'const s = require("@stripe/stripe-react-native"); s.ConnectComponentsProvider;\n',
+    },
+  ]);
+  if (f.length === 0) self.push("BAD4 (Path A by require outside the allowlist) not flagged");
+
   if (self.length) {
     console.error("ORCH-0802 self-test FAIL:");
     self.forEach((m) => console.error("  - " + m));
     process.exit(1);
   }
-  console.log("ORCH-0802 self-test PASS (5/5 cases).");
+  console.log("ORCH-0802 self-test PASS (8/8 cases).");
   process.exit(0);
 }
 

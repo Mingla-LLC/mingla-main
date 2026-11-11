@@ -28,6 +28,10 @@ const allowedNativeImportFiles = new Set([
   // toward #3697 Wave 7b — platform Ads credit PaymentSheet; web sibling
   // `useAdCreditTopUpPay.ts` has no @stripe/stripe-react-native import.
   "mingla-business/src/payments/useAdCreditTopUpPay.native.ts",
+  // #4389 S-11 — native secure setup (Connect Account Onboarding). Native-only
+  // by its `.native.tsx` extension; the bare `ConnectOnboardingNative.tsx`
+  // sibling is the web stub with no Stripe React Native import.
+  "mingla-business/src/components/stripe/ConnectOnboardingNative.native.tsx",
 ]);
 const failures = [];
 const stripeReactNativeImportPattern =
