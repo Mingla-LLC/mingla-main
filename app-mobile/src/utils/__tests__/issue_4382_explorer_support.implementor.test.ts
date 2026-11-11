@@ -25,7 +25,7 @@
 // a closed request, deleting the `case 'support'` in parseDeepLink or the
 // explorer.support_* fallback, or restoring <BetaFeedbackButton in
 // ProfilePage fails here.
-// MINGLA-INVARIANT: I-4382-SUPPORT-NO-LOCATION | issue #4382 | Help & Support client_meta carries only app_version, os, os_version, device_model and source_screen; the Explorer app never reads or sends a location with a support request.
+// MINGLA-INVARIANT: I-4382-EXPLORER-SUPPORT-NO-LOCATION | issue #4382 | Help & Support client_meta carries only app_version, os, os_version, device_model and source_screen; the Explorer app never reads or sends a location with a support request.
 
 import {
   EXPLORER_SUPPORT_TOPICS,

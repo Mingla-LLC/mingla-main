@@ -6,6 +6,7 @@
 // MINGLA-INVARIANT: I-4382-NOTE-NEVER-WAITS | issue #4382 | A note is isInternal true with no setWaiting; a reply is isInternal false; every desk send is actorMode staff
 // MINGLA-INVARIANT: I-4382-PRODUCT-BOARD-COLUMNS | issue #4382 | Each Product item sits in exactly one of five columns; wont_do only under its filter
 // MINGLA-INVARIANT: I-4382-TELL-REPORTERS-ONCE-UI | issue #4382 | Tell reporters is offered only for a shipped item with unsent Live wording and never while a send is in flight or after one succeeded
+// MINGLA-INVARIANT: I-4382-INBOX-ACTIVE-NEVER-PAGED-OUT | issue #4382 | Every new, open or waiting support ticket is loaded into the Admin inbox (up to 2000, with a visible showing-N-of-M note beyond that); only resolved and closed tickets are paged, and a partial view says it is partial.
 //
 // FAILS-ON-REVERT: drop the "customer spoke last" check from the needs view, or count
 // before the Opened-by switch, and the view/count tests fail; let planAddFiles accept an

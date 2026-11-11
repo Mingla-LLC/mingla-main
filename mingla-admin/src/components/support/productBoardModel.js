@@ -4,8 +4,8 @@
 // not a column. Tell reporters goes to the customer-visible tickets linked to
 // the item, uses the approved "Live" wording, and can be sent once.
 //
-// MINGLA-INVARIANT: I-4382-PRODUCT-BOARD-COLUMNS | issue #4382 | Each Product item sits in exactly one board column named by its stage; wont_do items show only under the Won't do filter
-// MINGLA-INVARIANT: I-4382-TELL-REPORTERS-ONCE-UI | issue #4382 | The Tell reporters button is offered only for a shipped item with Live wording that has not been sent, and is disabled while a send is in flight
+// Invariant I-4382-PRODUCT-BOARD-COLUMNS (declared in src/__tests__/issue4382_support_desk.implementor.test.js): Each Product item sits in exactly one board column named by its stage; wont_do items show only under the Won't do filter
+// Invariant I-4382-TELL-REPORTERS-ONCE-UI (declared in src/__tests__/issue4382_support_desk.implementor.test.js): The Tell reporters button is offered only for a shipped item with Live wording that has not been sent, and is disabled while a send is in flight
 
 export const BOARD_COLUMNS = Object.freeze([
   Object.freeze({ id: "new", label: "New" }),

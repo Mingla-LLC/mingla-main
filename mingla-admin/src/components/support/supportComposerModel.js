@@ -1,6 +1,6 @@
 // #4382 Wave 2 — the composer's support-send body, with no React or network.
 //
-// MINGLA-INVARIANT: I-4382-NOTE-NEVER-WAITS | issue #4382 | An internal note is sent with isInternal true and never carries setWaiting; a reply is isInternal false; every desk send is actorMode "staff"
+// Invariant I-4382-NOTE-NEVER-WAITS (declared in src/__tests__/issue4382_support_desk.implementor.test.js): An internal note is sent with isInternal true and never carries setWaiting; a reply is isInternal false; every desk send is actorMode "staff"
 
 /**
  * The exact support-send body for the composer. A note never carries

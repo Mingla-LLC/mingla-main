@@ -5,7 +5,7 @@
 // view, after the same Opened-by switch, filters and search, so a count can
 // never disagree with the list under it (#4130 Wave 6 rule, kept).
 //
-// MINGLA-INVARIANT: I-4382-INBOX-COUNTS-EQUAL-ROWS | issue #4382 | Every inbox view count equals the number of rows that view lists under the same Opened-by switch, filters and search
+// Invariant I-4382-INBOX-COUNTS-EQUAL-ROWS (declared in src/__tests__/issue4382_support_desk.implementor.test.js): Every inbox view count equals the number of rows that view lists under the same Opened-by switch, filters and search
 //
 // The view rules follow the approved design ("Try the inbox"):
 //   Needs reply  open (or new) and the customer spoke last
@@ -213,7 +213,7 @@ export function waitLabel(ticket, nowMs = Date.now()) {
 // ("Load older"). Counts are always the loaded rows; when a view holds more
 // than is loaded the rail and the list say so.
 //
-// MINGLA-INVARIANT: I-4382-INBOX-ACTIVE-NEVER-PAGED-OUT | issue #4382 | Every active support ticket is loaded into the Admin inbox (up to 2000, with a visible "showing N of M" note beyond that); only resolved and closed tickets are paged, and a partial view says it is partial.
+// Invariant I-4382-INBOX-ACTIVE-NEVER-PAGED-OUT (declared in src/__tests__/issue4382_support_desk.implementor.test.js): Every active support ticket is loaded into the Admin inbox (up to 2000, with a visible "showing N of M" note beyond that); only resolved and closed tickets are paged, and a partial view says it is partial.
 export const ACTIVE_TICKET_STATUSES = Object.freeze([...ACTIVE_SUPPORT_STATUSES]);
 export const DONE_TICKET_STATUSES = Object.freeze([...DONE_SUPPORT_STATUSES]);
 export const ACTIVE_TICKET_CAP = 2000;

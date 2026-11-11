@@ -5,7 +5,7 @@
 -- every privileged door tried by the wrong person. Nothing here counts rows
 -- globally, so it holds on a database other suites have already used.
 -- MINGLA-INVARIANT: I-4382-TESTER-BRAND-ISOLATION | issue #4382 | A member of brand A, or a removed member of brand B, never reads, uploads to, replies on or sees the Product stage of brand B's ticket.
--- MINGLA-INVARIANT: I-4382-TESTER-UPLOAD-IDS-OWNED | issue #4382 | An attachment id can only be sent by the person who registered it, on the ticket it was registered for; a squatted draft id never reaches the real ticket.
+-- MINGLA-INVARIANT: I-4382-TESTER-UPLOAD-IDS-OWNED | issue #4382 | An attachment id can only be sent by the person who registered it, on the ticket it was registered for; a squatted unsent request id never reaches the real ticket.
 -- MINGLA-INVARIANT: I-4382-TESTER-NOTE-FILES-PRIVATE | issue #4382 | A file registered as non-internal and then sent on an internal note becomes internal: the customer cannot read its row or its storage object.
 BEGIN;
 

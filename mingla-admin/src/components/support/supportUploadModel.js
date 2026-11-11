@@ -5,8 +5,8 @@
 // side is capped at 2,560 px. The output is checked for leftover metadata and
 // refused if any is found, so a browser that ever kept it cannot leak it.
 //
-// MINGLA-INVARIANT: I-4382-SUPPORT-UPLOAD-STRIPS-METADATA | issue #4382 | Admin support images are re-encoded through a canvas (longest side <= 2560 px) and refused if the result still carries EXIF/XMP metadata
-// MINGLA-INVARIANT: I-4382-SUPPORT-UPLOAD-LIMITS | issue #4382 | At most 10 images per message, 10 MB each, png/jpeg/webp/heic only
+// Invariant I-4382-SUPPORT-UPLOAD-STRIPS-METADATA (declared in src/__tests__/issue4382_support_desk.implementor.test.js): Admin support images are re-encoded through a canvas (longest side <= 2560 px) and refused if the result still carries EXIF/XMP metadata
+// Invariant I-4382-SUPPORT-UPLOAD-LIMITS (declared in src/__tests__/issue4382_support_desk.implementor.test.js): At most 10 images per message, 10 MB each, png/jpeg/webp/heic only
 
 export const SUPPORT_UPLOAD_LIMITS = Object.freeze({
   maxImages: 10,
