@@ -2044,6 +2044,9 @@ function proposedValueWords(
  * it); any other stated value that is missing or different is asked about
  * instead of proposed, so it is never dropped or changed.
  */
+/** R5-13: a start this close to now is "from now", not an invented date. */
+const UNSTATED_START_SLACK_MS = 60 * 60 * 1000;
+
 export function checkStatedSlots(args: {
   toolName: string;
   toolArgs: Record<string, unknown>;
@@ -2189,6 +2192,24 @@ export function checkStatedSlots(args: {
           asks.push(`a start on ${spokenDay(day)}`);
         }
       }
+    }
+  }
+  // #3355 rework 5 (R5-13): a discount start the host never stated is not
+  // invented. A future starts_at with no start in the host's words (the
+  // local model wrote the stated END day as the start) is removed, so the
+  // code starts when it is saved; the card shows that before Confirm.
+  if (
+    !stated.starts_on && args.toolName === "create_discount" &&
+    schemaKeys.has("starts_at") && out.starts_at !== undefined &&
+    out.starts_at !== null && out.starts_at !== ""
+  ) {
+    const proposedAt = Date.parse(String(out.starts_at));
+    if (
+      Number.isFinite(proposedAt) &&
+      proposedAt > now.getTime() + UNSTATED_START_SLACK_MS
+    ) {
+      delete out.starts_at;
+      bound.push("starts_at");
     }
   }
   if (stated.ends_on && schemaKeys.has("ends_at")) {

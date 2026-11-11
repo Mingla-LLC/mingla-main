@@ -113,7 +113,7 @@ function targetReading(raw: unknown): "ok" | "unspecified" | "invalid" {
       ? "unspecified"
       : "ok";
   }
-  if (hasValue(target.target_id)) return "ok";
+  if (hasListingId(target.target_id)) return "ok";
   if (hasValue(target.listing_kind)) {
     const kind = readListingKindWord(target.listing_kind);
     if (kind === null) return "invalid";
@@ -242,12 +242,35 @@ export type DiscountTargetDefault =
 export function resolveDiscountTargetDefault(
   brandKinds: readonly string[],
   hostText: string,
+  /** R5-5: the code being bound; its own clause of the message decides. */
+  code?: string | null,
 ): DiscountTargetDefault {
   const kinds = [
     ...new Set(brandKinds.filter((kind) => LISTING_KINDS.has(kind))),
   ];
-  const strong = hostNamedListingKinds(hostText);
-  const weak = namedKinds(WEAK_KIND_PATTERNS, hostText).filter((kind) =>
+  const namedIn = (text: string): string[] => [
+    ...new Set([
+      ...hostNamedListingKinds(text),
+      ...namedKinds(WEAK_KIND_PATTERNS, text).filter((kind) =>
+        kinds.includes(kind) || (kinds.length === 0 && kind === "event")
+      ),
+    ]),
+  ];
+  // R5-5: with several codes in the message and no code given, kinds named
+  // for different codes are not merged: ask.
+  const codes = codesNamedIn(hostText);
+  if (!code && codes.length >= 2) {
+    const per = codes.map((each) => namedIn(codeClause(hostText, each)).join());
+    if (new Set(per.filter(Boolean)).size > 1) {
+      return {
+        kind: "ask",
+        listingKinds: kinds.length > 0 ? kinds : ["event"],
+      };
+    }
+  }
+  const text = code ? codeClause(hostText, code) : hostText;
+  const strong = hostNamedListingKinds(text);
+  const weak = namedKinds(WEAK_KIND_PATTERNS, text).filter((kind) =>
     kinds.includes(kind) || (kinds.length === 0 && kind === "event")
   );
   const named = [...new Set([...strong, ...weak])];
@@ -277,36 +300,197 @@ export function resolveDiscountTargetDefault(
 }
 
 /**
- * #3355 rework 4 (R4-3): "10% off all orders over ₦10,000", "minimum order
- * ₦5,000", "when they spend over 10k" set the minimum order (minor units),
- * never the target kind. Null when the host stated none.
+ * #3355 rework 5 (R5-5): the codes a host message names (upper-case words
+ * with a digit, "FAVY10", "GIRLS20"), in order of first mention.
  */
+const CODE_TOKEN =
+  /(?<![\p{L}\p{N}])[A-Za-z][A-Za-z0-9]{3,15}(?![\p{L}\p{N}])/gu;
+function codesNamedIn(text: string, also?: string): string[] {
+  const out: string[] = [];
+  for (const match of text.matchAll(CODE_TOKEN)) {
+    const upper = match[0].toUpperCase();
+    const coded = /\d/.test(match[0]) && /^[A-Z0-9]+$/.test(match[0]);
+    if ((coded || upper === also) && !out.includes(upper)) out.push(upper);
+  }
+  return out;
+}
+
+/**
+ * #3355 rework 5 (R5-5): the part of the host's message that is about one
+ * code. "FAVY10 10% off, and GIRLS20 20% off orders over ₦10,000": FAVY10's
+ * clause is "FAVY10 10% off, and", so GIRLS20's minimum is not FAVY10's.
+ * The words before the first code are shared ("For orders over ₦5,000 make
+ * FAVY10 and GIRLS20"), a code listed straight into the next ("FAVY10 and
+ * GIRLS20, both for orders over ₦5,000") shares that clause, and a clause
+ * saying "both", "all", "each" or "every" is shared. With one code (or the
+ * code not in the message) the whole message is its clause.
+ */
+export function codeClause(text: string, code: string | null): string {
+  if (!code) return text;
+  const target = normaliseAriDiscountCode(code);
+  const hits = [...text.matchAll(CODE_TOKEN)].filter((match) => {
+    const upper = match[0].toUpperCase();
+    return upper === target ||
+      (/\d/.test(match[0]) && /^[A-Z0-9]+$/.test(match[0]));
+  });
+  const codes = new Set(hits.map((match) => match[0].toUpperCase()));
+  if (codes.size < 2 || !codes.has(target)) return text;
+  const segments = hits.map((match, index) => ({
+    code: match[0].toUpperCase(),
+    text: text.slice(
+      match.index ?? 0,
+      hits[index + 1]?.index ?? text.length,
+    ),
+  }));
+  const content = (segment: { code: string; text: string }) =>
+    segment.text.slice(segment.code.length).replace(
+      /[^\p{L}\p{N}₦$£€%]+/gu,
+      " ",
+    )
+      .trim().toLowerCase();
+  const parts = [text.slice(0, hits[0].index ?? 0)];
+  segments.forEach((segment, index) => {
+    if (segment.code === target) {
+      parts.push(segment.text);
+      // Listed straight into the next code: the next clause is shared.
+      let next = index;
+      while (
+        /^(?:|and|plus|or|&)$/.test(content(segments[next])) &&
+        segments[next + 1]
+      ) {
+        next++;
+        parts.push(segments[next].text);
+      }
+    } else if (/\b(?:both|all|each|every|either)\b/i.test(segment.text)) {
+      parts.push(segment.text);
+    }
+  });
+  return parts.join(" ").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * #3355 rework 4 (R4-3) / rework 5 (R5-4): "10% off all orders over
+ * ₦10,000", "minimum order ₦5,000", "when they spend over 10k" set the
+ * minimum order (minor units), never the target kind. Only a currency amount
+ * counts: a currency mark or code ("₦", "NGN", "$", "naira") or "k". A count
+ * ("orders over 10 tickets", "bookings over 4 guests") is not money, and
+ * spaced thousands ("₦10 000") are read whole.
+ */
+const MINIMUM_LEAD = String
+  .raw`\b(?:(?:orders?|purchases?|baskets?|carts?|bookings?|spend(?:ing)?|spends?|buy(?:ing)?)\s+(?:of\s+|worth\s+|totalling\s+|totaling\s+)?(?:over|above|more\s+than|at\s+least|of\s+at\s+least|from)|minimum\s+(?:order|spend|purchase)(?:\s+(?:of|is|value))?|min\.?\s+(?:order|spend)(?:\s+of)?)`;
 const MINIMUM_ORDER = new RegExp(
   String
-    .raw`\b(?:(?:orders?|purchases?|baskets?|carts?|bookings?|spend(?:ing)?|spends?|buy(?:ing)?)\s+(?:of\s+|worth\s+|totalling\s+|totaling\s+)?(?:over|above|more\s+than|at\s+least|of\s+at\s+least|from)|minimum\s+(?:order|spend|purchase)(?:\s+(?:of|is|value))?|min\.?\s+(?:order|spend)(?:\s+of)?)\s*(?:₦|N|NGN|\$|USD|£|GBP|€|EUR|CA\$|CAD)?\s*(\d[\d,]*(?:\.\d{1,2})?)\s*(k)?(?![\w%])`,
+    .raw`${MINIMUM_LEAD}\s*(₦|NGN|N(?=\d)|US\$|\$|USD|£|GBP|€|EUR|CA\$|CAD|GH₵|GHS|KSh|KES)?\s*(\d{1,3}(?:[, ]\d{3})+|\d+)(?:\.(\d{1,2}))?\s*(k)?(?:\s*(naira|ngn|dollars?|usd|pounds?|gbp|euros?|eur|cedis?|ghs|shillings?|kes))?(?![\w%])(\s+(?:tickets?|guests?|people|persons?|seats?|items?|pax|tables?|spots?|places?|attendees?|bookings?|orders?|units?|heads?|passes?|nights?|rooms?))?`,
   "i",
 );
 
-export function statedMinimumOrderMinor(text: string): number | null {
-  const match = MINIMUM_ORDER.exec(text);
-  if (!match) return null;
-  const major = Number(match[1].replace(/,/g, "")) *
-    (match[2] ? 1_000 : 1);
-  if (!Number.isFinite(major) || major <= 0) return null;
-  return Math.round(major * 100);
+const CURRENCY_OF: ReadonlyArray<[RegExp, string]> = [
+  [/^(?:₦|ngn|n|naira)$/i, "NGN"],
+  [/^(?:us\$|\$|usd|dollars?)$/i, "USD"],
+  [/^(?:ca\$|cad)$/i, "CAD"],
+  [/^(?:£|gbp|pounds?)$/i, "GBP"],
+  [/^(?:€|eur|euros?)$/i, "EUR"],
+  [/^(?:gh₵|ghs|cedis?)$/i, "GHS"],
+  [/^(?:ksh|kes|shillings?)$/i, "KES"],
+];
+
+function currencyOf(mark: string | undefined): string | null {
+  if (!mark) return null;
+  return CURRENCY_OF.find(([pattern]) => pattern.test(mark.trim()))?.[1] ??
+    null;
 }
 
-/** Fills min_subtotal_minor from the host's words when the model left it out. */
+/** What the host stated as a minimum order. */
+export type StatedMinimum =
+  | { kind: "amount"; minor: number; currency: string | null }
+  | { kind: "count"; count: number; noun: string }
+  | { kind: "no_currency"; amount: number }
+  | { kind: "currency_mismatch"; currency: string };
+
+export function parseStatedMinimumOrder(
+  text: string,
+  brandCurrency?: string | null,
+): StatedMinimum | null {
+  const match = MINIMUM_ORDER.exec(text);
+  if (!match) return null;
+  const [, prefix, whole, cents, thousands, suffix, count] = match;
+  const number = Number(whole.replace(/[, ]/g, "")) +
+    (cents ? Number(`0.${cents}`) : 0);
+  if (!Number.isFinite(number) || number <= 0) return null;
+  if (count) {
+    return { kind: "count", count: number, noun: count.trim().toLowerCase() };
+  }
+  const currency = currencyOf(prefix) ?? currencyOf(suffix);
+  if (!currency && !thousands) return { kind: "no_currency", amount: number };
+  const brand = brandCurrency ? brandCurrency.trim().toUpperCase() : null;
+  if (currency && brand && currency !== brand) {
+    return { kind: "currency_mismatch", currency };
+  }
+  const major = number * (thousands ? 1_000 : 1);
+  return { kind: "amount", minor: Math.round(major * 100), currency };
+}
+
+function countNoun(noun: string): string {
+  if (/^(?:people|pax|persons?)$/.test(noun)) return "people";
+  return /s$/.test(noun) ? noun : `${noun}s`;
+}
+
+export function statedMinimumOrderMinor(
+  text: string,
+  brandCurrency?: string | null,
+): number | null {
+  const stated = parseStatedMinimumOrder(text, brandCurrency);
+  return stated?.kind === "amount" ? stated.minor : null;
+}
+
+/**
+ * Fills min_subtotal_minor from the host's words (the code's own clause,
+ * R5-5) when the model left it out. A ticket or guest count, a number with
+ * no currency, or a currency other than the brand's is asked about in one
+ * plain question before any card (R5-4); Mingla minimums are amounts only.
+ */
 export function applyStatedMinimumOrder(
   args: Record<string, unknown>,
   hostText: string,
+  brandCurrency?: string | null,
 ): Record<string, unknown> {
-  if (hasValue(args.min_subtotal_minor)) return args;
   if (args.kind === "sale_price" || args.value_type === "set_price") {
     return args;
   }
-  const minor = statedMinimumOrderMinor(hostText);
-  return minor === null ? args : { ...args, min_subtotal_minor: minor };
+  const code = typeof args.code === "string" && args.code.trim()
+    ? normaliseAriDiscountCode(args.code)
+    : null;
+  const stated = parseStatedMinimumOrder(
+    codeClause(hostText, code),
+    brandCurrency,
+  );
+  if (!stated) return args;
+  const subject = code ?? "this discount";
+  if (stated.kind === "count") {
+    return refuse(
+      `Mingla discounts can have a minimum order amount, but not a minimum number of ${
+        countNoun(stated.noun)
+      }. Should ${subject} have a minimum order amount instead, or no minimum? Tell me and I'll set it up.`,
+    );
+  }
+  if (hasValue(args.min_subtotal_minor)) return args;
+  if (stated.kind === "no_currency") {
+    return refuse(
+      `Is the minimum order for ${subject} ${
+        stated.amount.toLocaleString("en-US")
+      } in your brand's currency? Tell me the amount with its currency and I'll set it up.`,
+    );
+  }
+  if (stated.kind === "currency_mismatch") {
+    return refuse(
+      `Your brand sells in ${
+        (brandCurrency ?? "").toUpperCase()
+      }, so the minimum order for ${subject} has to be in ${
+        (brandCurrency ?? "").toUpperCase()
+      } too. What should it be? Tell me and I'll set it up.`,
+    );
+  }
+  return { ...args, min_subtotal_minor: stated.minor };
 }
 
 function listInWords(items: readonly string[]): string {
@@ -368,6 +552,16 @@ const refuse = (message: string): never => {
 const hasValue = (value: unknown): boolean =>
   value !== undefined && value !== null && value !== "";
 
+/**
+ * #3355 rework 5 (R5-18): a listing id that names a listing. The nil UUID
+ * (`00000000-0000-0000-0000-000000000000`, a model placeholder) names none:
+ * the target is unspecified, so the server fill-in binds it.
+ */
+const NIL_UUID = /^0{8}-0{4}-0{4}-0{4}-0{12}$/;
+const hasListingId = (value: unknown): boolean =>
+  hasValue(value) &&
+  !(typeof value === "string" && NIL_UUID.test(value.trim()));
+
 /** Uppercase and strip spaces / dashes, exactly as the SQL writer does. */
 export function normaliseAriDiscountCode(raw: unknown): string {
   return typeof raw === "string"
@@ -403,7 +597,7 @@ function canonicalTarget(raw: unknown): Record<string, unknown> {
       "I couldn't tell which listing this discount is for. Tell me the event, experience or trip, or say it's for everything of one kind.",
     );
   }
-  if (hasValue(targetId)) {
+  if (hasListingId(targetId)) {
     // A specific listing: the id names it; listing_kind would break bdt_shape.
     return { target_kind: targetKind, target_id: targetId };
   }

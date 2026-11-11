@@ -261,6 +261,7 @@ import {
   readAriPriorOwnerTexts,
   readAriRecentGaps,
   recordAriTurnGaps,
+  withAskTeamLead,
 } from "../_shared/ariGaps.ts";
 import {
   ariTurnContextPart,
@@ -2553,7 +2554,8 @@ async function handle(req: Request): Promise<Response> {
         );
         await authorizeAgentTool(tool, askArgs, userClient, userId);
         const leadGuard = guardAriReplyRoutes({
-          text: `${offer.replyText}\n\n${ASK_TEAM_LEAD}`,
+          // R5-11: the lead is said once, even if the reply copied it.
+          text: withAskTeamLead(offer.replyText),
         });
         const leadMessageId = await persistFlowRow({
           service: serviceClient,

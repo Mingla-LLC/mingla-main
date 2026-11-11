@@ -18,7 +18,9 @@ import { DOMAIN_TOOLS } from "./agentDomainTools.ts";
 import {
   applyDiscountTargetDefault,
   applyStatedMinimumOrder,
+  codeClause,
   discountTargetsNeedDefault,
+  parseStatedMinimumOrder,
   resolveDiscountTargetDefault,
 } from "./ariDiscountArgs.ts";
 import { SITE_AGENT_TOOLS } from "./agentSiteTools.ts";
@@ -1726,6 +1728,33 @@ export async function readBrandListingKinds(
 }
 
 /**
+ * #3355 rework 5 (R5-4): the brand's currency, read as the caller (RLS),
+ * for a minimum order stated with a currency mark. Null when it cannot be
+ * read (the amount is then taken as stated).
+ */
+async function readBrandCurrency(
+  client: SupabaseClient,
+  brandId: string,
+): Promise<string | null> {
+  const { data, error } = await client.from("brands").select(
+    "default_currency",
+  ).eq("id", brandId).limit(1);
+  if (error) {
+    console.warn(
+      "[agent-chat] brand currency read failed",
+      JSON.stringify({ code: error.code ?? null }),
+    );
+    return null;
+  }
+  const row = Array.isArray(data) ? data[0] : null;
+  const value = (row as { default_currency?: unknown } | null)
+    ?.default_currency;
+  return typeof value === "string" && value.trim()
+    ? value.trim().toUpperCase()
+    : null;
+}
+
+/**
  * #3355 rework 3b (I-ARI-DISCOUNT-TARGET-RESOLVED): a create_discount whose
  * target names no listing kind is bound at the server boundary, before the
  * #4304 canonicaliser, from the host's words and the brand's listings
@@ -1740,13 +1769,25 @@ export async function bindDiscountTargetDefault(
   hostText: string,
 ): Promise<Record<string, unknown>> {
   if (toolName !== "create_discount") return args;
-  // #3355 rework 4 (R4-3): "orders over ₦10,000" is the minimum order.
-  const withMinimum = applyStatedMinimumOrder(args, hostText);
+  // #3355 rework 4 (R4-3) / rework 5 (R5-4, R5-5): "orders over ₦10,000" in
+  // THIS code's clause is the minimum order, in the brand's currency.
+  const stated = parseStatedMinimumOrder(
+    codeClause(hostText, typeof args.code === "string" ? args.code : null),
+  );
+  const currency = stated?.kind === "amount" && stated.currency &&
+      isUuid(args.brand_id)
+    ? await readBrandCurrency(client, String(args.brand_id))
+    : null;
+  const withMinimum = applyStatedMinimumOrder(args, hostText, currency);
   if (!discountTargetsNeedDefault(withMinimum)) return withMinimum;
   const kinds = isUuid(withMinimum.brand_id)
     ? await readBrandListingKinds(client, String(withMinimum.brand_id))
     : [];
-  const resolved = resolveDiscountTargetDefault(kinds, hostText);
+  const resolved = resolveDiscountTargetDefault(
+    kinds,
+    hostText,
+    typeof withMinimum.code === "string" ? withMinimum.code : null,
+  );
   console.log(
     "[agent-chat] discount target bound",
     JSON.stringify({

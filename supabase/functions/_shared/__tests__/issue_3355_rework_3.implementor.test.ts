@@ -385,16 +385,23 @@ const ANSWERS = [
   "Discount codes give buyers money off at checkout. Open Events, pick your event, then tap Discounts.",
 ];
 
-Deno.test("R3-2: a pure question is not checked; a read or how-to answer is never blanked", async () => {
+Deno.test("R3-2: a read or how-to answer is never blanked (rework 5: every reply is checked)", async () => {
   for (const text of ANSWERS) {
-    // A pure question with no write nearby: no check at all.
-    const skipped = await check(text, {
+    // #3355 rework 5 (Seth 2026-11-11 "check all", replaces the rework 3
+    // "a pure question is not checked" skip): a pure question with no write
+    // nearby is checked too; Flash lists no claim and the text stays.
+    let calls = 0;
+    const plain = await check(text, {
       host: "How does it work?",
       intent: "question",
-      call: () => Promise.reject(new Error("must not be called")),
+      call: () => {
+        calls++;
+        return Promise.resolve({ claims: [] });
+      },
     });
-    assertEquals(skipped.source, "skipped", text);
-    assertEquals(skipped.text, text);
+    assertEquals(calls, 1, text);
+    assertEquals(plain.source, "model", text);
+    assertEquals(plain.text, text);
     // Checked (a write card nearby): Flash lists no claim, the text stays.
     const checked = await check(text, {
       host: "How does it work?",
@@ -527,14 +534,16 @@ Deno.test("fallback: a failed, slow or invalid check strips only first-person cl
   );
 });
 
-Deno.test("gate: checked when the host asked for an action, a write is near, or the reply names a chat object", () => {
+Deno.test("gate: every reply with text is checked (rework 5, Seth 2026-11-11)", () => {
   const base = {
     recentWrite: false,
     text: "Payouts go out weekly.",
     objects: [],
   };
-  assert(!claimCheckWanted({ ...base, intent: "question" }));
-  assert(!claimCheckWanted({ ...base, intent: "chat" }));
+  // #3355 rework 5: question and chat turns are checked too (was: skipped).
+  assert(claimCheckWanted({ ...base, intent: "question" }));
+  assert(claimCheckWanted({ ...base, intent: "chat" }));
+  assert(claimCheckWanted({ ...base, intent: null }));
   assert(claimCheckWanted({ ...base, intent: "tool" }));
   assert(claimCheckWanted({ ...base, intent: "flow" }));
   assert(claimCheckWanted({ ...base, intent: "flow_answer" }));

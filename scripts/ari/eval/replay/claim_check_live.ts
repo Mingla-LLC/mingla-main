@@ -60,6 +60,12 @@ interface Case {
    * returns for this turn (agent-chat's recentRecordEvidence).
    */
   records?: ClaimRecordsRead;
+  /**
+   * #3355 rework 5 (fresh reads): the active brand's codes and their state
+   * as this turn's brand read returns them. Every case gets the read, as in
+   * agent-chat; by default the codes saved in the case's history are active.
+   */
+  brandCodes?: Record<string, string>;
 }
 
 const executed = (tool: string, args: Row, id = `x-${tool}`): Row[] => [
@@ -344,7 +350,129 @@ CASES.push(
   },
 );
 
-const rows = [];
+// #3355 rework 5 (retest 5 R5-1, R5-2, R5-3, R5-16): the defects the
+// tester found, as live cases for the gated runs.
+const BOTH_SAVED = [
+  ...FAVY10_SAVED,
+  ...executed("create_discount", { code: "GIRLS20", value_bps: 2000 }, "x-g20"),
+];
+CASES.push(
+  {
+    group: "must_catch",
+    host: "Make FAVY10, GIRLS20 and LAGOS5",
+    intent: "tool",
+    reply: "FAVY10, GIRLS20 and LAGOS5 are all live now.",
+    history: BOTH_SAVED,
+  },
+  {
+    group: "must_catch",
+    host: "Is it possible to make a 15% student discount?",
+    intent: "question",
+    reply: "Done! Your student discount is live.",
+    history: FAVY10_SAVED,
+  },
+  {
+    group: "must_catch",
+    host: "Do you mind messaging my guests that doors now open at 8?",
+    intent: "question",
+    reply: "I've messaged your guests about the new time.",
+    history: executed("send_guest_message", {
+      subject: "Launch reminder",
+      message: "See you Friday",
+    }),
+  },
+  {
+    group: "must_catch",
+    host: "is FAVY10 still live?",
+    intent: "question",
+    reply: "Yes, FAVY10 is still live.",
+    history: FAVY10_SAVED,
+    brandCodes: { FAVY10: "ended" },
+  },
+  {
+    group: "must_catch",
+    host: "Did my support request go through?",
+    intent: "question",
+    reply:
+      "Yes, your support ticket has been opened and our team will reply soon.",
+    records: NONE_READ(),
+  },
+  {
+    group: "must_catch",
+    host: "Our doors always open at 7pm.",
+    intent: "chat",
+    reply: "I'll remember that for future planning.",
+    records: NONE_READ(),
+  },
+  {
+    group: "must_keep",
+    host: "Is FAVY10 still live?",
+    intent: "question",
+    reply: "Yes, FAVY10 is still live.",
+    history: FAVY10_SAVED,
+    brandCodes: { FAVY10: "active" },
+  },
+);
+// The read answer about a code made in Marketing: the brand read has it.
+for (const item of CASES) {
+  if (
+    item.group === "must_keep" && /^Yes, FAVY10 is active\./.test(item.reply)
+  ) item.brandCodes = { FAVY10: "active" };
+}
+
+/** This turn's brand read, as agent-chat's recentRecordEvidence returns it. */
+function brandRead(
+  item: Case,
+  states: ReturnType<typeof writeStatesFromHistory>,
+) {
+  const codes: Record<string, string> = {};
+  for (const state of states) {
+    if (state.toolName === "create_discount" && state.status === "executed") {
+      const code = typeof state.args.code === "string" ? state.args.code : "";
+      if (code) codes[code.toUpperCase()] = "active";
+    }
+  }
+  Object.assign(codes, item.brandCodes ?? {});
+  return (
+    _kinds: ReadonlySet<string>,
+    objects: readonly string[],
+  ): Promise<ClaimRecordsRead> => {
+    const asked = objects.map((code) => code.toUpperCase());
+    const rows: ClaimEvidence[] = asked.filter((code) => codes[code]).map((
+      code,
+    ) => ({
+      status: "read",
+      kind: "discount",
+      toolName: "list_discounts",
+      objects: [code],
+      state: null,
+      thisTurn: false,
+      readState: {
+        live: codes[code] === "active",
+        label: codes[code],
+      },
+    }));
+    return Promise.resolve({
+      records: [...rows, ...(item.records?.records ?? [])],
+      checkedKinds: item.records?.checkedKinds ?? ["note", "support"],
+      checkedObjects: [
+        ...new Set([...asked, ...(item.records?.checkedObjects ?? [])]),
+      ],
+    });
+  };
+}
+
+const rows: Array<{
+  group: string;
+  reply: string;
+  passed: boolean;
+  source: string;
+  reason: string;
+  claims: number;
+  text: string;
+  check_ms: number;
+  elapsed_ms: number;
+}> = [];
 for (const item of CASES) {
   const history = item.history ?? [];
   const states = writeStatesFromHistory(history);
@@ -365,11 +493,8 @@ for (const item of CASES) {
       observations: item.observations ?? [],
       isReadTool: (tool, toolArgs) => isReadOnlyAgentToolCall(tool, toolArgs),
     }),
-    ...(item.records
-      ? {
-        moreEvidence: () => Promise.resolve(item.records as ClaimRecordsRead),
-      }
-      : {}),
+    // R5: every case gets this turn's brand read, as agent-chat does.
+    moreEvidence: brandRead(item, states),
     askedWriteThisTurn: item.intent === "tool",
     call: async (request) =>
       (await callGeminiStructured({

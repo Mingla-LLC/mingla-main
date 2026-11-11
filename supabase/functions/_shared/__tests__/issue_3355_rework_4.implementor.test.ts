@@ -16,7 +16,7 @@
 //   R4-6  the records read has a 1.5 s deadline;
 //   R4-7  the continuation's next discount gets the same fill-in (or asks);
 //   R4-9  a bare "E don set!" goes with the claim it fronts;
-//   R4-10 a turn with no action, no write and no chat object is not checked;
+//   R4-10 (superseded by rework 5: every reply is checked);
 //   R4-11 a brand selling events AND trips with no kind named is asked;
 //   R4-12 a "### heading" in the continuation is softened, not dropped;
 //   R4-13 "till Easter" and "until the end of next month" are read.
@@ -747,9 +747,12 @@ Deno.test("R4-9: a bare status exclamation goes with the replaced claim it front
   assert(!isStatusExclamation("Done! FAVY10 is live."));
 });
 
-Deno.test("R4-10 (accepted residual, pinned): no action, no write, no chat object -> not checked", async () => {
+Deno.test("R4-10 superseded by rework 5: a turn with no action, no write and no chat object IS checked", async () => {
+  // #3355 rework 5 (Seth 2026-11-11 "check all"): the R4-10 skip is
+  // removed. The pinned assertion "not checked, no model call" is
+  // invalidated; the same reply is now checked and its false claim caught.
   assert(
-    !claimCheckWanted({
+    claimCheckWanted({
       intent: "question",
       recentWrite: false,
       text: "All set ✅ your discount is live",
@@ -770,31 +773,15 @@ Deno.test("R4-10 (accepted residual, pinned): no action, no write, no chat objec
       return Promise.resolve({ claims: [] });
     },
   });
-  assertEquals(out.source, "skipped");
-  assertEquals(called, 0);
-  // Any one of the three signals turns the check on.
+  assertEquals(out.source, "model");
+  assertEquals(called, 1);
+  assert(!/your discount is live/.test(out.text), out.text);
   assert(
-    claimCheckWanted({
+    !claimCheckWanted({
       intent: "tool",
       recentWrite: false,
-      text: "x",
+      text: "  ",
       objects: [],
-    }),
-  );
-  assert(
-    claimCheckWanted({
-      intent: "question",
-      recentWrite: true,
-      text: "x",
-      objects: [],
-    }),
-  );
-  assert(
-    claimCheckWanted({
-      intent: "question",
-      recentWrite: false,
-      text: "FAVY10 is live",
-      objects: ["FAVY10"],
     }),
   );
 });
@@ -888,9 +875,11 @@ Deno.test("R4-11: a brand that sells several kinds and the host named none is as
 });
 
 Deno.test("R4-3: 'orders over ₦10,000' sets the minimum order, never the kind", () => {
+  // #3355 rework 5 (R5-4): currency amounts only. A number with no currency
+  // mark is asked about (was: read as ₦10,000 — assertion invalidated).
   assertEquals(
     statedMinimumOrderMinor("20% off all orders over 10,000"),
-    1_000_000,
+    null,
   );
   assertEquals(statedMinimumOrderMinor("orders over ₦10,000"), 1_000_000);
   assertEquals(statedMinimumOrderMinor("minimum order ₦5,000"), 500_000);

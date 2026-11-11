@@ -244,6 +244,12 @@ export interface ClaimEvidence {
    * it shows: an expired code never backs "FAVY10 is live".
    */
   readState?: ReadState;
+  /**
+   * #3355 rework 5 (R5-3, Seth 2026-11-11 "fresh reads beat older
+   * receipts"): read in THIS turn (a loop read or the brand records read),
+   * so its row state is the current truth for a status claim.
+   */
+  fresh?: boolean;
 }
 
 /** The state one read row shows. */
@@ -471,6 +477,7 @@ export function buildClaimEvidence(args: {
         state: null,
         thisTurn: true,
         readState: row.state,
+        fresh: true,
       });
     }
     const names = new Set<string>(stringsOf(observation.args));
@@ -486,6 +493,7 @@ export function buildClaimEvidence(args: {
         objects: plain,
         state: null,
         thisTurn: true,
+        fresh: true,
       });
     }
   }
@@ -562,7 +570,7 @@ const KIND_WORDS: ReadonlyArray<[RegExp, AriClaimKind]> = [
   [/\b(?:request|ticket|support|reply|replied)\b/i, "support"],
   [/\b(?:notes?|remember|remembered|memory|memories|saved\s+that)\b/i, "note"],
   [
-    /\b(?:guests?|notified|emailed|texted|messaged|announcement|broadcast|group)\b/i,
+    /\b(?:guests?|notified|emailed|texted|messaged|announcement|broadcast|group|reminders?)\b/i,
     "message",
   ],
   [/\b(?:discount|code|promo|coupon|voucher)s?\b/i, "discount"],
@@ -625,32 +633,110 @@ function claimKinds(claim: AriClaim): Set<AriClaimKind> {
   return out;
 }
 
-/** Actions a read can back (a read never proves something was sent). */
+/**
+ * Actions a read can back (a read never proves something was sent, and
+ * #3355 rework 5, R5-15: never proves a change made this turn — "updated" /
+ * "completed" need a write record).
+ */
 const READ_BACKS: ReadonlySet<AriClaimAction> = new Set([
   "live",
-  "completed",
   "created",
   "published",
   "added",
   "saved",
-  "updated",
   "scheduled",
 ]);
 
+/** Actions a read row's state can contradict (it is said in the reply). */
+const READ_SPEAKS: ReadonlySet<AriClaimAction> = new Set([
+  ...READ_BACKS,
+  "updated",
+  "completed",
+  "deleted",
+  "cancelled",
+]);
+
+// ── #3355 rework 5: status claims ───────────────────────────────────────────
+
+const POSITIVE_STATE =
+  /\b(?:live|active|activated|reactivated|running|enabled|working(?!\s+(?:days?|hours?|weeks?))|valid|usable|back\s+on|turned\s+(?:back\s+)?on|switched\s+(?:back\s+)?on|up\s+and\s+running|good\s+to\s+go|in\s+effect)\b|\bnow\s+works\b|\bworks\s+(?:now|again)\b/i;
+const NEGATED_STATE =
+  /\b(?:not|isn['’]t|aren['’]t|wasn['’]t|weren['’]t|no\s+longer|never|won['’]t|doesn['’]t|don['’]t|hasn['’]t|haven['’]t|yet\s+to|no\s+more)\b/i;
+const FUTURE_STATE =
+  /\b(?:will\s+(?:be|go|become|start)|go(?:es)?\s+live\s+(?:on|from|at)|starts?\s+(?:on|from|at)|from\s+(?:mon|tue|wed|thu|fri|sat|sun|\d))/i;
+
 /**
- * R4-4: a read backs a claim only for the state it shows. A row with no
- * state backs what a read can (the object exists); "live" needs a live row;
- * "deleted" / "cancelled" need a row that is not live; a cancelled or
- * deleted row never backs "created".
+ * R5-15: the words say the object is live / active / on NOW ("Done! FAVY10
+ * is live again"), whatever action word the judge gave the claim.
  */
-function readBacks(action: AriClaimAction, item: ClaimEvidence): boolean {
+export function quoteAssertsLive(text: string): boolean {
+  const plain = text.replace(/[*_`]/g, "");
+  return POSITIVE_STATE.test(plain) && !NEGATED_STATE.test(plain) &&
+    !FUTURE_STATE.test(plain);
+}
+
+/** A claim about an object's current state (live, published, on again). */
+export function isStateClaim(claim: AriClaim): boolean {
+  if (claim.action === "live" || claim.action === "published") return true;
+  return (claim.action === "created" || claim.action === "saved" ||
+    claim.action === "added" || claim.action === "updated" ||
+    claim.action === "completed") && quoteAssertsLive(claim.quote);
+}
+
+/** A discount-code object ("FAVY10", "GIRLSTRIPLAGOS"). */
+function isCodeObject(object: string): boolean {
+  const code = object.trim();
+  return CODE_SHAPE.test(code) && (/\d/.test(code) || /^[A-Z]+$/.test(code));
+}
+
+/**
+ * R5-7: a code-like object with an inner space ("favy 10") is a NAMED
+ * object: it is never backed by another code of the turn.
+ */
+const LOOSE_CODE = /^[A-Za-z]{2,12}\s\d{1,4}$/;
+const LOOSE_CODE_STOP: ReadonlySet<string> = new Set([
+  "your",
+  "the",
+  "my",
+  "our",
+  "this",
+  "that",
+  "day",
+  "event",
+  "tier",
+  "stop",
+  "step",
+  "part",
+  "week",
+  "room",
+  "table",
+  "ticket",
+  "tickets",
+  "phase",
+  "page",
+  "night",
+]);
+export function isLooseCode(object: string): boolean {
+  const text = object.trim();
+  if (!LOOSE_CODE.test(text)) return false;
+  return !LOOSE_CODE_STOP.has(text.split(/\s/)[0].toLowerCase());
+}
+
+/**
+ * R4-4 / R5-15: a read backs a claim only for the state it shows. A row with
+ * no state backs what a read can (the object exists); a status claim needs a
+ * live row; "deleted" / "cancelled" need a row that is not live; a
+ * cancelled or deleted row never backs "created".
+ */
+function readBacks(claim: AriClaim, item: ClaimEvidence): boolean {
+  const action = claim.action;
   const state = item.readState;
   if (action === "deleted" || action === "cancelled") {
     return state ? !state.live : false;
   }
   if (!READ_BACKS.has(action)) return false;
   if (!state) return true;
-  if (action === "live" || action === "published") return state.live;
+  if (isStateClaim(claim)) return state.live;
   if (action === "scheduled") return state.live || state.label === "scheduled";
   return !/^(?:cancelled|deleted|failed)$/.test(state.label);
 }
@@ -663,6 +749,23 @@ export interface ClaimJudgement {
   found: ClaimEvidence | null;
   /** The object the decision is about (the first unbacked one, if any). */
   object: string | null;
+  /**
+   * R5 (Seth 2026-11-11): a status the records would back only from an
+   * older receipt, while this turn's fresh read could not run: the reply
+   * never asserts it.
+   */
+  unverified?: boolean;
+}
+
+/**
+ * #3355 rework 5 (Seth 2026-11-11): the brand-scoped read done in THIS turn
+ * for the codes the reply and the host name. `ok` false: it failed or ran
+ * past its 1.5 s cap.
+ */
+export interface FreshRead {
+  ok: boolean;
+  /** Identity keys of the codes the read looked up. */
+  checked: ReadonlySet<string>;
 }
 
 /** What else the check knows about this turn. */
@@ -675,25 +778,58 @@ export interface ClaimContext {
   askedWriteThisTurn?: boolean;
   /** This turn's host message (a status question is a follow-up). */
   hostMessage?: string;
+  /** This turn's fresh records read; undefined when none is wired. */
+  fresh?: FreshRead;
+  /**
+   * The host's write was just approved (the post-approval continuation):
+   * their message is that request, not a new one.
+   */
+  approved?: boolean;
 }
 
 /**
  * A host status question about what already happened ("Did it go
  * through?", "Is it live?", "Has my request been sent?"): a follow-up on the
  * card the chat just confirmed, never a request for a new write, even when
- * the intent read calls it one.
+ * the intent read calls it one. R5-2: a polite request phrased as a
+ * question ("Is it possible to make…?", "Do you mind messaging…?") is a
+ * write request, not a status question.
  */
 const STATUS_QUESTION =
   /^\s*(?:(?:so|and|ok(?:ay)?|hey|wait)\b[\s,]*)?(?:did|has|have|is|was|were|are|does|do)\b[^?]*\?\s*$/i;
+const POLITE_REQUEST =
+  /^\s*(?:(?:so|and|ok(?:ay)?|hey|wait|please)\b[\s,]*)?(?:is\s+it\s+possible|would\s+it\s+be\s+possible|is\s+there\s+(?:a|any)\s+way|is\s+there\s+a\s+chance|do\s+you\s+mind|would\s+you|are\s+you\s+able|do\s+you\s+(?:think|want)|is\s+it\s+ok(?:ay)?\s+(?:to|if)|does\s+it\s+make\s+sense\s+to|do\s+i\s+need\s+you\s+to)\b|\b(?:possible|able|way)\s+to\s+\w/i;
 
 export function isStatusQuestion(text: string): boolean {
-  return STATUS_QUESTION.test(text.trim());
+  const trimmed = text.trim();
+  return STATUS_QUESTION.test(trimmed) && !POLITE_REQUEST.test(trimmed);
+}
+
+/**
+ * R5-2 / R5-8: the host's words ask for a new write ("make a 15% student
+ * discount", "Is it possible to make…?", "Do you mind messaging my
+ * guests…?", "Can you open a ticket?"), whatever the intent read said.
+ */
+const WRITE_REQUEST =
+  /^\s*(?:(?:please|pls|ok(?:ay)?|so|and|now|also|hey|ari|then)\b[\s,]*)*(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?(?:also\s+)?|(?:is\s+it|would\s+it\s+be)\s+possible\s+(?:for\s+you\s+)?to\s+|is\s+there\s+(?:a|any)\s+way\s+(?:you\s+can\s+|to\s+)?|(?:do|would)\s+you\s+mind\s+|are\s+you\s+able\s+to\s+|i\s+(?:want|need|would\s+like|['’]d\s+like)\s+(?:you\s+)?to\s+|let['’]?s\s+|help\s+me\s+|go\s+ahead\s+and\s+)?(?:make|making|create|creating|set\s+up|setting\s+up|setup|add|adding|send|sending|message|messaging|email|emailing|text|texting|remind|reminding|open|opening|start|launch|publish|turn|switch|pause|resume|end|delete|remove|cancel|change|update|edit|invite|notify|tell|telling|give|giving|book|refund|raise|log|remember|save|schedule|post|share|sharing|reactivate|activate|enable|disable)\b/i;
+
+export function hostAsksForWrite(text: string): boolean {
+  return WRITE_REQUEST.test(text.trim());
+}
+
+/** The host asked for a new write this turn (and this is no follow-up). */
+function askedForWrite(context: ClaimContext): boolean {
+  const host = context.hostMessage ?? "";
+  return Boolean(
+    context.askedWriteThisTurn || (!context.approved && hostAsksForWrite(host)),
+  ) && !isStatusQuestion(host);
 }
 
 /**
  * Codes the quote lists together as one subject ("FAVY10 and GIRLS20 are
- * both live", "FAVY10, GIRLS20 & LAGOS5"): each must be backed, even when
- * the judge named only the first.
+ * both live", "FAVY10, GIRLS20 and LAGOS5", "FAVY10 / GIRLS20"): each must
+ * be backed, even when the judge named only the first. R5-1: the whole run
+ * is collected (any count), not codes two at a time.
  */
 function codesListedTogether(
   quote: string,
@@ -701,20 +837,40 @@ function codesListedTogether(
 ): string[] {
   const codes = codesInObject(quote, chatObjects);
   if (codes.length < 2) return [];
-  const listed = new Set<string>();
   const pattern = new RegExp(
-    `(${
-      codes.join("|")
-    })\\W{0,3}\\s*(?:,|&|\\+|\\band\\b|\\bplus\\b)\\s*\\W{0,3}(${
-      codes.join("|")
-    })`,
-    "gi",
+    `(?<![\\p{L}\\p{N}])(?:${
+      codes.map(escapeRegExp).join("|")
+    })(?![\\p{L}\\p{N}])`,
+    "giu",
   );
-  for (const match of quote.matchAll(pattern)) {
-    listed.add(match[1].toUpperCase());
-    listed.add(match[2].toUpperCase());
+  const hits = [...quote.matchAll(pattern)].map((match) => ({
+    code: match[0].toUpperCase(),
+    start: match.index ?? 0,
+    end: (match.index ?? 0) + match[0].length,
+  }));
+  const listed: string[] = [];
+  let run: string[] = [];
+  const close = () => {
+    if (new Set(run).size > 1) {
+      for (const code of run) if (!listed.includes(code)) listed.push(code);
+    }
+  };
+  for (let index = 0; index < hits.length; index++) {
+    if (index === 0) {
+      run = [hits[0].code];
+      continue;
+    }
+    const gap = quote.slice(hits[index - 1].end, hits[index].start)
+      .replace(/[^\p{L}\p{N}]+/gu, " ").trim().toLowerCase();
+    if (/^(?:|and|plus|or|and also|as well as)$/.test(gap)) {
+      run.push(hits[index].code);
+    } else {
+      close();
+      run = [hits[index].code];
+    }
   }
-  return [...listed];
+  close();
+  return listed;
 }
 
 /**
@@ -723,12 +879,11 @@ function codesListedTogether(
  * claimed state, then the latest contradicting card, then a read whose row
  * contradicts the claim.
  */
-function decide(
+function decideRecords(
   claim: AriClaim,
-  candidates: readonly ClaimEvidence[],
+  fit: readonly ClaimEvidence[],
   object: string | null,
 ): ClaimJudgement {
-  const fit = candidates.filter((item) => actionFits(claim.action, item));
   if (fit.length === 0) return { backed: false, found: null, object };
   // A saved record backs a completion claim even when a later card for the
   // same thing waits (a duplicate or an edit card does not unsave it); an
@@ -740,7 +895,7 @@ function decide(
     return { backed: claim.action === "proposed", found: latest, object };
   }
   const read = [...fit].reverse().find((item) =>
-    item.status === "read" && readBacks(claim.action, item)
+    item.status === "read" && readBacks(claim, item)
   );
   if (read) return { backed: true, found: read, object };
   const contradiction = [...fit].reverse().find((item) =>
@@ -749,12 +904,53 @@ function decide(
   if (contradiction) return { backed: false, found: contradiction, object };
   // A read row contradicts only a claim a read can speak to (live, created,
   // deleted …); it says nothing about "sent".
-  const readable = READ_BACKS.has(claim.action) ||
-    claim.action === "deleted" || claim.action === "cancelled";
-  const shown = readable
+  const shown = READ_SPEAKS.has(claim.action)
     ? [...fit].reverse().find((item) => item.readState)
     : undefined;
   return { backed: false, found: shown ?? null, object };
+}
+
+/**
+ * #3355 rework 5 (R5-3, Seth 2026-11-11): a status claim ("FAVY10 is still
+ * live") is decided by THIS turn's read when it has a row for the object —
+ * the fresh read beats an older receipt in the chat. When the brand read was
+ * wired but could not run, a status that only an older receipt would back
+ * is never asserted (`unverified`); a write saved in this very turn still
+ * backs it.
+ */
+function decide(
+  claim: AriClaim,
+  candidates: readonly ClaimEvidence[],
+  object: string | null,
+  fresh?: FreshRead,
+): ClaimJudgement {
+  const fit = candidates.filter((item) => actionFits(claim.action, item));
+  if (isStateClaim(claim)) {
+    const rows = fit.filter((item) =>
+      item.status === "read" && item.fresh && item.readState
+    );
+    if (rows.length > 0) {
+      const backing = [...rows].reverse().find((item) =>
+        readBacks(claim, item)
+      );
+      return backing
+        ? { backed: true, found: backing, object }
+        : { backed: false, found: rows[rows.length - 1], object };
+    }
+    if (fresh && object && isCodeObject(object)) {
+      const prior = decideRecords(claim, fit, object);
+      const savedNow = prior.found?.thisTurn && prior.found.status === "done";
+      if (prior.backed && !savedNow) {
+        // The read looked the code up and found no row: it is gone.
+        if (fresh.ok && fresh.checked.has(identityKey(object))) {
+          return { backed: false, found: null, object };
+        }
+        return { backed: false, found: null, object, unverified: true };
+      }
+      return prior;
+    }
+  }
+  return decideRecords(claim, fit, object);
 }
 
 /** Every named object must be backed; the first unbacked one decides. */
@@ -762,6 +958,7 @@ function judgeEach(
   claim: AriClaim,
   names: readonly string[],
   evidence: readonly ClaimEvidence[],
+  fresh?: FreshRead,
 ): ClaimJudgement {
   let last: ClaimJudgement = { backed: false, found: null, object: null };
   for (const name of names) {
@@ -769,6 +966,7 @@ function judgeEach(
       claim,
       evidence.filter((item) => objectsMatch(name, item.objects)),
       name,
+      fresh,
     );
     if (!judged.backed) return judged;
     last = judged;
@@ -777,17 +975,19 @@ function judgeEach(
 }
 
 /**
- * #3355 rework 4 (I-ARI-CLAIM-MATCHES-RECEIPT, exact evidence): how the
+ * #3355 rework 4 / 5 (I-ARI-CLAIM-MATCHES-RECEIPT, exact evidence): how the
  * records decide one claim.
  *   - A named object is matched to a record by exact identity; a claim that
- *     names several codes ("FAVY10 and GIRLS20") is backed only when EVERY
- *     code is.
+ *     names or lists several codes ("FAVY10, GIRLS20 and LAGOS5") is backed
+ *     only when EVERY code is (the listed run and the judge's object both).
  *   - A described or unnamed object ("your new discount") is judged against
  *     the codes the host named this turn when there are any; otherwise only
  *     a record from THIS turn backs it, or, when the host asked for no new
- *     write this turn, the latest card in the chat (the confirmed card the
- *     reply follows). Records read outside the chat (older notes, tickets,
- *     other codes) never back a claim by kind alone.
+ *     write this turn (by intent or by their own words), the latest card in
+ *     the chat (the confirmed card the reply follows). Records read outside
+ *     the chat (older notes, tickets, other codes) never back a claim by
+ *     kind alone.
+ *   - A status claim about a code is decided by this turn's fresh read.
  */
 export function judgeClaim(
   claim: AriClaim,
@@ -795,23 +995,37 @@ export function judgeClaim(
   context: ClaimContext = {},
 ): ClaimJudgement {
   const kinds = claimKinds(claim);
+  const fresh = context.fresh;
   const together = codesListedTogether(claim.quote, context.chatObjects ?? []);
-  if (together.length > 1) return judgeEach(claim, together, evidence);
+  if (together.length > 1) {
+    const names = [...together];
+    for (
+      const code of claim.object
+        ? codesInObject(claim.object, context.chatObjects)
+        : []
+    ) {
+      if (!names.includes(code)) names.push(code);
+    }
+    return judgeEach(claim, names, evidence, fresh);
+  }
   if (claim.object) {
     const whole = evidence.filter((item) =>
       objectsMatch(claim.object as string, item.objects)
     );
-    if (whole.length > 0) return decide(claim, whole, claim.object);
+    if (whole.length > 0) return decide(claim, whole, claim.object, fresh);
     const codes = codesInObject(claim.object, context.chatObjects);
-    if (codes.length > 0) return judgeEach(claim, codes, evidence);
+    if (codes.length > 0) return judgeEach(claim, codes, evidence, fresh);
     // A named code or a quoted title that matches nothing stays unbacked.
-    if (NAMED_OBJECT.test(claim.object)) {
+    if (NAMED_OBJECT.test(claim.object) || isLooseCode(claim.object)) {
+      if (fresh && isCodeObject(claim.object) && isStateClaim(claim)) {
+        return decide(claim, [], claim.object, fresh);
+      }
       return { backed: false, found: null, object: claim.object };
     }
   }
   const hostNamed = context.hostNamed ?? [];
   if (hostNamed.length > 0 && kinds.has("discount")) {
-    return judgeEach(claim, hostNamed, evidence);
+    return judgeEach(claim, hostNamed, evidence, fresh);
   }
   if (kinds.size === 0) {
     return decide(
@@ -830,10 +1044,7 @@ export function judgeClaim(
     const judged = decide(claim, thisTurn, null);
     if (judged.backed || judged.found) return judged;
   }
-  if (
-    context.askedWriteThisTurn &&
-    !isStatusQuestion(context.hostMessage ?? "")
-  ) {
+  if (askedForWrite(context)) {
     return { backed: false, found: null, object: null };
   }
   const cards = evidence.filter((item) =>
@@ -847,11 +1058,26 @@ export function judgeClaim(
   cards.forEach((item, index) => {
     if (item.status === "done") lastDone = index;
   });
-  return decide(
+  const judged = decide(
     claim,
     lastDone >= 0 ? cards.slice(lastDone) : cards.slice(-1),
     null,
   );
+  // R5 (fresh reads): "your discount is live" leans on the card's code; its
+  // status is decided by this turn's read of that code, not the receipt.
+  const code = judged.found?.state?.object ?? null;
+  if (
+    judged.backed && fresh && isStateClaim(claim) && code &&
+    isCodeObject(code) && !judged.found?.thisTurn
+  ) {
+    return decide(
+      claim,
+      evidence.filter((item) => objectsMatch(code, item.objects)),
+      code,
+      fresh,
+    );
+  }
+  return judged;
 }
 
 /** The deciding record for a claim (see judgeClaim). */
@@ -888,20 +1114,47 @@ export interface ClaimAbsence {
 
 const NO_ABSENCE: ClaimAbsence = { kinds: new Set(), objects: new Set() };
 
-function trueStateSentence(
-  claim: AriClaim,
-  judged: ClaimJudgement,
-  askedWriteThisTurn: boolean,
-  evidence: readonly ClaimEvidence[],
-  askedKinds?: ReadonlySet<AriClaimKind>,
-  absence: ClaimAbsence = NO_ABSENCE,
-): string {
+/**
+ * R5-16: what Ari says on a status question ("Did my support request go
+ * through?") when the chat holds no record of that kind at all.
+ */
+const KIND_ABSENT: Partial<Record<AriClaimKind, string>> = {
+  support: "I don't see a support request from this chat yet.",
+  note: "I haven't saved that as a note yet.",
+  message: "I don't see a message sent from this chat yet.",
+  discount: "I don't see that discount in this chat yet.",
+  team: "I don't see an invitation sent from this chat yet.",
+};
+
+/** R5 (fresh reads): the status could not be checked in this turn. */
+export function unverifiedStatusSentence(named: string): string {
+  return `I couldn't check ${named}'s current status just now. You can see it in Marketing, under Discounts.`;
+}
+
+function namedObject(object: string | null): string | null {
+  if (!object || object.length > 40) return null;
+  if (!NAMED_OBJECT.test(object) && !isLooseCode(object)) return null;
+  return object.replace(/^["“'‘]|["”'’]$/g, "");
+}
+
+function trueStateSentence(args: {
+  claim: AriClaim;
+  judged: ClaimJudgement;
+  askedWriteThisTurn: boolean;
+  evidence: readonly ClaimEvidence[];
+  askedKinds?: ReadonlySet<AriClaimKind>;
+  absence?: ClaimAbsence;
+  hostMessage?: string;
+  /** The deterministic pass: say only what a record shows, else drop. */
+  quiet?: boolean;
+}): string {
+  const { claim, judged, evidence, askedKinds } = args;
+  const absence = args.absence ?? NO_ABSENCE;
   const found = judged.found;
-  if (found?.state) return writeStateText(found.state);
   const object = judged.object ?? claim.object;
-  const named = object && NAMED_OBJECT.test(object) && object.length <= 40
-    ? object.replace(/^["“'‘]|["”'’]$/g, "")
-    : null;
+  const named = namedObject(object);
+  if (judged.unverified && named) return unverifiedStatusSentence(named);
+  if (found?.state) return writeStateText(found.state);
   // R4-4: the read shows another state ("expired"): say what it shows.
   if (found?.readState) {
     return named
@@ -909,6 +1162,14 @@ function trueStateSentence(
       : `Your records show it as ${found.readState.label}.`;
   }
   if (found) return "";
+  const proven = named !== null && absence.objects.has(identityKey(named));
+  // R5 (fresh reads): this turn's brand read looked the code up and found
+  // no row, so its status is not what the chat's older card said.
+  if (proven && isStateClaim(claim)) {
+    return args.askedWriteThisTurn
+      ? `Nothing has been saved or sent for ${named} yet.`
+      : `I can't find ${named} in your discount codes.`;
+  }
   // The object is real but nothing records this action on it ("I've
   // emailed your guests about FAVY10" after FAVY10 was created): the
   // sentence goes, and nothing false is said about the object itself.
@@ -916,25 +1177,45 @@ function trueStateSentence(
     object &&
     evidence.some((item) => objectsMatch(object, item.objects))
   ) return "";
+  const kinds = claimKinds(claim);
+  // R5-16: a status question about a record the chat does not hold.
+  if (
+    !named && isStatusQuestion(args.hostMessage ?? "") &&
+    !args.askedWriteThisTurn
+  ) {
+    const kind = [claim.kind, ...kinds].find((item) => KIND_ABSENT[item]);
+    if (kind) return KIND_ABSENT[kind] as string;
+  }
+  if (args.quiet) {
+    // "I'll remember that" with no note saved: say so.
+    if (!named && claim.kind === "note") return KIND_ABSENT.note as string;
+    if (proven) {
+      return args.askedWriteThisTurn
+        ? `Nothing has been saved or sent for ${named} yet.`
+        : `I can't find ${named} in your discount codes.`;
+    }
+    return "";
+  }
   // Rule 3: "nothing saved" only when the host asked for a save or send this
   // turn and no receipt or card exists for it. A claim about something the
   // host did not ask for ("I've also emailed your guests" on a discount
   // turn) is dropped instead.
-  const kinds = claimKinds(claim);
-  const asked = askedWriteThisTurn &&
+  const asked = args.askedWriteThisTurn &&
     (!askedKinds || claim.kind === "other" ||
       [...kinds].some((kind) => askedKinds.has(kind)));
   if (asked) {
     if (!named) return TRUE_STATE_NOTHING_SAVED;
     // R4-5: "Nothing has been saved" is said only when a read proved it;
     // otherwise Ari says what it knows about this chat.
-    const proven = absence.objects.has(identityKey(named)) ||
-      [...kinds].some((kind) => kind !== "discount" && absence.kinds.has(kind));
-    if (proven) return `Nothing has been saved or sent for ${named} yet.`;
+    if (
+      proven ||
+      [...kinds].some((kind) => kind !== "discount" && absence.kinds.has(kind))
+    ) return `Nothing has been saved or sent for ${named} yet.`;
     return `I don't see ${named} in this chat yet.`;
   }
   // Otherwise the records simply hold nothing for it: say so for a named
   // code, and drop any other unbacked claim.
+  if (proven) return `I can't find ${named} in your discount codes.`;
   return named ? `There's no card or receipt for ${named} in this chat.` : "";
 }
 
@@ -972,6 +1253,8 @@ export function reconcileClaims(args: {
   context?: ClaimContext;
   /** What a records read proved absent (R4-5). */
   absence?: ClaimAbsence;
+  /** The deterministic pass: say only what a record shows, else drop. */
+  quiet?: boolean;
 }): ReconcileResult {
   const kept: AriClaim[] = [];
   const replaced: ReconcileResult["replaced"] = [];
@@ -980,20 +1263,24 @@ export function reconcileClaims(args: {
     askedWriteThisTurn: args.askedWriteThisTurn,
     ...(args.context ?? {}),
   };
+  // R5-2 / R5-8: "asked" also reads the host's own words.
+  const asked = askedForWrite(context);
   for (const claim of args.claims) {
     const judged = judgeClaim(claim, args.evidence, context);
     if (judged.backed) {
       kept.push(claim);
       continue;
     }
-    const sentence = trueStateSentence(
+    const sentence = trueStateSentence({
       claim,
       judged,
-      args.askedWriteThisTurn,
-      args.evidence,
-      args.askedKinds,
-      args.absence,
-    );
+      askedWriteThisTurn: asked,
+      evidence: args.evidence,
+      askedKinds: args.askedKinds,
+      absence: args.absence,
+      hostMessage: context.hostMessage,
+      quiet: args.quiet,
+    });
     replaced.push({
       claim,
       with: sentence,
@@ -1067,85 +1354,337 @@ export function reconcileClaims(args: {
   return { text, kept, replaced };
 }
 
-// ── Fallback (the check failed, timed out or was invalid) ───────────────────
+// ── The deterministic must-catch pass ───────────────────────────────────────
 
 const FIRST_PERSON_PAST =
-  /\b(?:i|i['’]ve|i\s+have|i['’]ve\s+just|i\s+just|we['’]ve|we\s+have|ari\s+has|ari['’]s)\s+(?:also\s+|now\s+|already\s+|successfully\s+|gone\s+ahead\s+and\s+)*(?:created|made|saved|sent|published|proposed|prepared|drafted|set\s+up|added|updated|scheduled|emailed|texted|notified|launched|activated|posted|booked|invited|cancell?ed|deleted|removed|shared|changed|turned\s+on|switched\s+on|submitted|raised|logged|replied|refunded|issued|applied|uploaded|imported)\b/i;
+  /\b(?:i|i['’]ve|i\s+have|i['’]ve\s+just|i\s+just|we['’]ve|we\s+have|ari\s+has|ari['’]s)\s+(?:also\s+|now\s+|already\s+|successfully\s+|gone\s+ahead\s+and\s+)*(?:created|made|saved|sent|published|proposed|prepared|drafted|set\s+up|added|updated|scheduled|emailed|texted|messaged|notified|launched|activated|reactivated|resumed|posted|booked|invited|cancell?ed|deleted|removed|shared|changed|turned\s+(?:back\s+)?on|switched\s+(?:back\s+)?on|submitted|raised|logged|opened|filed|replied|refunded|issued|applied|uploaded|imported|told|informed)\b/i;
+
+/** "Your support ticket has been opened", "Guests have been notified". */
+const PASSIVE_DONE =
+  /\b(?:has|have|had|is|are|was|were)\s+(?:now\s+|just\s+|already\s+|successfully\s+|also\s+|all\s+)*been\s+(?:created|made|saved|sent|published|opened|submitted|raised|logged|filed|scheduled|added|updated|activated|reactivated|launched|posted|shared|emailed|texted|messaged|notified|invited|told|informed|cancell?ed|deleted|removed|refunded|issued|applied|set\s+up|enabled|resumed|booked|turned\s+(?:back\s+)?on|switched\s+(?:back\s+)?on|noted|remembered|changed|edited|paused|ended)\b|\b(?:went|has\s+gone|have\s+gone|got)\s+through\b/i;
+
+/** R5-16: "I'll remember that", "Noted, I'll keep that in mind". */
+const REMEMBER_PROMISE =
+  /\b(?:i['’]ll|i\s+will|i['’]m\s+going\s+to|i['’]ve|i\s+have)\s+(?:also\s+|now\s+|definitely\s+|surely\s+)?(?:remember(?:ed)?|keep\s+(?:that|this|it)\s+in\s+mind|kept\s+(?:that|this|it)\s+in\s+mind|make\s+a\s+note|made\s+a\s+note|noted)\b/i;
+
+/** A status said as fact: "FAVY10 is live again", "both live", "now works". */
+const STATE_ASSERTION =
+  /(?:\b(?:is|are|remains?|stays?|now|again|both|all)|(?<!\blet)['’]s)\b[^.!?]{0,30}?\b(?:live|active|activated|reactivated|running|enabled|working(?!\s+(?:days?|hours?|weeks?))|valid|usable|published|back\s+on|turned\s+(?:back\s+)?on|switched\s+(?:back\s+)?on|up\s+and\s+running|good\s+to\s+go)\b|\bnow\s+works\b|\bworks\s+(?:now|again)\b/i;
+
+/** "Ada is now a scanner on your team". */
+const TEAM_DONE =
+  /\b(?:is|are)\s+now\s+(?:an?\s+)?(?:scanner|admin|manager|member|owner|event\s+manager|finance\s+manager|marketing\s+manager)s?\b/i;
+
+/** "It's up and running", "Everything went through": no named subject. */
+const BARE_SUBJECT =
+  /^\s*(?:(?:yes|great|perfect|ok(?:ay)?)[,!.]?\s+)?(?:it|it['’]s|everything|all\s+of\s+it|it\s+all|that|they|they['’]re)\b/i;
+
+/** The note text a "saved that …" claim names. */
+const NOTE_OBJECT =
+  /\b(?:saved|noted|remember(?:ed)?)\s+(?:that|this)[:,]?\s+(.{3,160}?)[.!]*$/i;
+
+/** "Your discount is set", "Your code is all set up". */
+const DONE_STATE =
+  /(?:\b(?:is|are)|(?<!\blet)['’]s)\s+(?:now\s+|all\s+)*(?:set(?:\s+up)?|sorted|in\s+place)\b/i;
+
+/** The state is taken for granted inside a question or clause. */
+const PRESUPPOSITION =
+  /\b(?:which|that)\s+(?:is|are)\s+now\b|\bnow\s+that\b|\bsince\b|^[^?]*\b(?:now|again)\b[^?]*\?\s*$/i;
+
+/** The kind noun is the subject of the status ("your discount is set"). */
+const KIND_SUBJECT =
+  /(?:^\s*|\b(?:your|the|this|that|my)\s+)(?:[\p{L}]+\s+)?(?:discount|code|promo|coupon|voucher|event|trip|experience|website|site|page|note|message|email|ticket|request|reminder|announcement|guest)s?\b[^.!?]{0,25}?(?:\b(?:is|are|has\s+been|have\s+been)\b|['’]s\b)/iu;
+
+/** Ari asking the host back ("Is FAVY10 still needed?"). */
+const ARI_QUESTION =
+  /^\s*(?:is|are|does|do|did|has|have|was|were)\b[^?]*\?\s*$/i;
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function actionOfSentence(sentence: string): AriClaimAction {
+  if (/\b(?:proposed|prepared|drafted)\b/i.test(sentence)) return "proposed";
+  if (
+    /\b(?:sent|emailed|texted|messaged|notified|told|informed|shared|invited|posted|replied|through)\b/i
+      .test(sentence)
+  ) return "sent";
+  if (/\b(?:deleted|removed)\b/i.test(sentence)) return "deleted";
+  if (/\bcancell?ed\b/i.test(sentence)) return "cancelled";
+  if (quoteAssertsLive(sentence)) return "live";
+  if (
+    /\b(?:updated|changed|edited|paused|ended|resumed|reactivated)\b/i.test(
+      sentence,
+    )
+  ) return "updated";
+  if (/\b(?:saved|noted|remember(?:ed)?)\b/i.test(sentence)) return "saved";
+  return "created";
+}
+
+/** Listing words the deterministic pass also reads (not the judge's kinds). */
+const LISTING_WORDS: ReadonlyArray<[RegExp, AriClaimKind]> = [
+  [/\b(?:your|the)\s+events?\b/i, "event"],
+  [/\b(?:your|the)\s+trips?\b/i, "trip"],
+  [/\b(?:your|the)\s+experiences?\b/i, "experience"],
+  [/\b(?:your|the)\s+(?:website|site|page)\b/i, "website"],
+];
+
+function kindOfSentence(sentence: string): AriClaimKind {
+  for (const [pattern, kind] of [...KIND_WORDS, ...LISTING_WORDS]) {
+    if (pattern.test(sentence)) return kind;
+  }
+  return "other";
+}
+
+/** A deterministic claim; `bare` is a status exclamation alone. */
+interface SentenceClaim extends AriClaim {
+  bare?: boolean;
+}
+
 /**
- * The narrow deterministic strip used only when the check could not run:
- * a first-person past-tense completion claim ("I've created FAVY10") about
- * one of this chat's write objects that no record backs is replaced by that
- * object's true state (or dropped). Read answers, how-to answers and every
- * other sentence are never touched, and a reply is never blanked.
+ * #3355 rework 5 (R5-17, R5-16, Seth 2026-11-11 "check all"): the claims a
+ * reply makes in the must-catch forms, found without the model:
+ *   - first-person and passive completion claims ("I've created FAVY10",
+ *     "Your support ticket has been opened") about a named object of this
+ *     chat or a kind of record ("your request", "your guests");
+ *   - "I'll remember that" (a memory note);
+ *   - ✅ checklist lines;
+ *   - a code's status said as fact ("FAVY10 is live again", "FAVY10 and
+ *     GIRLS20 are both live") when this turn's fresh read is wired;
+ *   - a kind's status taken for granted ("the code, which is now live") or
+ *     said on a turn that asked for a new write;
+ *   - a bare "Done!" / "All set ✅".
+ * Instructions, how Mingla works, offers and plain read answers match none
+ * of these, so they are never touched.
+ */
+export function deterministicClaims(args: {
+  text: string;
+  objects: readonly string[];
+  asked: boolean;
+  fresh?: FreshRead;
+  skip: readonly string[];
+  /** Codes the host named this turn. */
+  hostCodes: readonly string[];
+  /** What the host asked for (a status said on a write turn is about it). */
+  askedKinds?: ReadonlySet<AriClaimKind>;
+}): SentenceClaim[] {
+  const objects = args.objects.filter((object) => object.trim().length >= 3);
+  const skip = args.skip.map(normalise).filter((item) => item.length >= 3);
+  const out: SentenceClaim[] = [];
+  for (const line of args.text.split("\n")) {
+    if (!line.trim()) continue;
+    for (const sentence of lineSentences(line)) {
+      // Quoted labels ("ACTIVE MEMBERS", "Go live") are screen words, not
+      // statements: they never make a claim.
+      const plain = sentence.replace(/[*_`]/g, "")
+        .replace(/"([^"]*)"|“([^”]*)”/g, (_whole, a, b) => {
+          const inner = String(a ?? b ?? "");
+          return /\s/.test(inner.trim()) || /^[A-Z]{4,}$/.test(inner)
+            ? '""'
+            : inner;
+        }).trim();
+      const key = normalise(sentence);
+      if (
+        skip.some((item) => item.includes(key) || key.includes(item))
+      ) continue;
+      if (isStatusExclamation(sentence)) {
+        out.push({
+          quote: sentence,
+          action: "completed",
+          object: null,
+          kind: "other",
+          bare: true,
+        });
+        continue;
+      }
+      if (ARI_QUESTION.test(plain)) continue;
+      const named = objects.filter((object) =>
+        new RegExp(
+          `(?:^|[^\\p{L}\\p{N}])${
+            escapeRegExp(object.trim())
+          }(?![\\p{L}\\p{N}])`,
+          "iu",
+        ).test(plain)
+      );
+      const codes = codesInObject(plain, objects);
+      const names = [
+        ...new Set([...codes, ...named.map((name) => name.trim())]),
+      ];
+      const kind = kindOfSentence(plain);
+      const noteText = kind === "note" ? NOTE_OBJECT.exec(plain)?.[1] : null;
+      const object = names.length > 0
+        ? names.join(" and ")
+        : noteText
+        ? noteText.trim()
+        : null;
+      const subject = object !== null || kind !== "other";
+      const claim = (
+        action: AriClaimAction,
+        ofKind = kind,
+        about: string | null = object,
+      ): void => {
+        out.push({ quote: sentence, action, object: about, kind: ofKind });
+      };
+      if (REMEMBER_PROMISE.test(plain)) {
+        claim("saved", "note");
+        continue;
+      }
+      if (TEAM_DONE.test(plain)) {
+        claim("added", "team");
+        continue;
+      }
+      if (/[✅✔]/u.test(plain)) {
+        claim(
+          kind === "message"
+            ? "sent"
+            : actionOfSentence(plain) === "created"
+            ? "completed"
+            : actionOfSentence(plain),
+        );
+        continue;
+      }
+      if (
+        (FIRST_PERSON_PAST.test(plain) || PASSIVE_DONE.test(plain)) && subject
+      ) {
+        claim(actionOfSentence(plain));
+        continue;
+      }
+      const stated = STATE_ASSERTION.test(plain) &&
+        (quoteAssertsLive(plain) || /\bpublished\b/i.test(plain)) &&
+        !NEGATED_STATE.test(plain);
+      if (stated && codes.length > 0 && args.fresh) {
+        claim("live", "discount");
+        continue;
+      }
+      // "It's up and running" / "Everything went through" on a turn that
+      // asked for a write: about the code the host named, or this turn.
+      if (
+        (stated || PASSIVE_DONE.test(plain)) && object === null &&
+        kind === "other" && args.asked && BARE_SUBJECT.test(plain)
+      ) {
+        const hostCode = args.hostCodes.length === 1 ? args.hostCodes[0] : null;
+        claim(
+          stated ? "live" : actionOfSentence(plain),
+          hostCode ? "discount" : "other",
+          hostCode,
+        );
+        continue;
+      }
+      const askedThisKind = args.asked &&
+        (!args.askedKinds || args.askedKinds.size === 0 ||
+          args.askedKinds.has(kind));
+      if (
+        (stated || DONE_STATE.test(plain)) && object === null &&
+        kind !== "other" && KIND_SUBJECT.test(plain) &&
+        (askedThisKind || PRESUPPOSITION.test(plain))
+      ) {
+        claim(stated ? "live" : "completed");
+      }
+    }
+  }
+  return out;
+}
+
+/** The kinds a write turn is about: the intent's tool, or the host's words. */
+function askedKindsOf(
+  askedKinds: ReadonlySet<AriClaimKind> | undefined,
+  hostMessage: string,
+): ReadonlySet<AriClaimKind> {
+  const out = new Set<AriClaimKind>(askedKinds ?? []);
+  const words = kindOfSentence(hostMessage);
+  if (words !== "other") out.add(words);
+  if (codesInObject(hostMessage).length > 0) out.add("discount");
+  return out;
+}
+
+/** Remove the bare "Done!" / "All set ✅" sentences of a reply. */
+function dropStatusExclamations(text: string): string {
+  const lines: string[] = [];
+  for (const line of text.split("\n")) {
+    if (!line.trim()) {
+      lines.push("");
+      continue;
+    }
+    const parts = lineSentences(line).filter((sentence) =>
+      !isStatusExclamation(sentence)
+    );
+    if (parts.length > 0) lines.push(parts.join(" "));
+  }
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/**
+ * The deterministic strip. It runs when the check could not run (failed,
+ * timed out, invalid) and, #3355 rework 5, after the model's check on every
+ * reply (it catches what the judge did not list). Each must-catch claim
+ * (deterministicClaims) is judged against the same records as the model's
+ * claims; an unbacked one is replaced by what a record shows (a card's
+ * state, a read row's state, an unverified status) or dropped. A bare
+ * "Done!" stays only when a write was saved in this turn. Read answers,
+ * how-to answers and every other sentence are never touched, and a reply is
+ * never blanked.
  */
 export function fallbackStripClaims(args: {
   text: string;
   /** This chat's write objects (codes, titles, names). */
   objects: readonly string[];
   evidence: readonly ClaimEvidence[];
+  hostMessage?: string;
+  askedWriteThisTurn?: boolean;
+  askedKinds?: ReadonlySet<AriClaimKind>;
+  fresh?: FreshRead;
+  absence?: ClaimAbsence;
+  /** Quotes the model's check already decided. */
+  skip?: readonly string[];
+  approved?: boolean;
 }): { text: string; removed: string[] } {
-  const objects = args.objects.filter((object) => object.trim().length >= 3);
-  if (objects.length === 0) return { text: args.text, removed: [] };
-  const removed: string[] = [];
-  const used = new Set<string>();
-  const lines: string[] = [];
-  for (const line of args.text.split("\n")) {
-    if (!line.trim()) {
-      lines.push("");
-      continue;
+  const context: ClaimContext = {
+    hostNamed: hostNamedCodes(args.hostMessage ?? "", args.objects),
+    chatObjects: args.objects,
+    askedWriteThisTurn: args.askedWriteThisTurn ?? false,
+    hostMessage: args.hostMessage ?? "",
+    fresh: args.fresh,
+    ...(args.approved ? { approved: true } : {}),
+  };
+  const claims = deterministicClaims({
+    text: args.text,
+    objects: args.objects,
+    asked: askedForWrite(context),
+    fresh: args.fresh,
+    skip: args.skip ?? [],
+    hostCodes: context.hostNamed ?? [],
+    askedKinds: askedKindsOf(args.askedKinds, args.hostMessage ?? ""),
+  });
+  if (claims.length === 0) return { text: args.text, removed: [] };
+  const savedNow = args.evidence.some((item) =>
+    item.thisTurn && item.status === "done"
+  );
+  const real = claims.filter((claim) => !claim.bare);
+  const result = real.length > 0
+    ? reconcileClaims({
+      text: args.text,
+      claims: real,
+      evidence: args.evidence,
+      askedWriteThisTurn: args.askedWriteThisTurn ?? false,
+      askedKinds: args.askedKinds,
+      context,
+      absence: args.absence,
+      quiet: true,
+    })
+    : { text: args.text, kept: [], replaced: [] };
+  const removed = result.replaced.map((item) => item.claim.quote.trim());
+  let text = result.text;
+  const bare = claims.filter((claim) => claim.bare);
+  if (bare.length > 0 && !savedNow) {
+    const without = dropStatusExclamations(text);
+    if (without !== text) {
+      text = without;
+      removed.push(...bare.map((claim) => claim.quote.trim()));
     }
-    const parts: string[] = [];
-    for (const sentence of lineSentences(line)) {
-      if (!FIRST_PERSON_PAST.test(sentence)) {
-        parts.push(sentence);
-        continue;
-      }
-      const named = objects.find((object) =>
-        new RegExp(
-          `(?:^|[^\\p{L}\\p{N}])${escapeRegExp(object)}(?![\\p{L}\\p{N}])`,
-          "iu",
-        ).test(sentence)
-      );
-      if (!named) {
-        parts.push(sentence);
-        continue;
-      }
-      const claim: AriClaim = {
-        quote: sentence,
-        action: /\b(?:proposed|prepared|drafted)\b/i.test(sentence)
-          ? "proposed"
-          : "created",
-        object: named,
-        kind: "other",
-      };
-      const judged = judgeClaim(claim, args.evidence, {
-        chatObjects: objects,
-      });
-      if (judged.backed) {
-        parts.push(sentence);
-        continue;
-      }
-      removed.push(sentence.trim());
-      const found = judged.found;
-      const state = found?.state ? writeStateText(found.state) : "";
-      if (state && !used.has(state)) {
-        used.add(state);
-        parts.push(state);
-      }
-    }
-    if (parts.length > 0) lines.push(parts.join(" "));
   }
   if (removed.length === 0) return { text: args.text, removed };
-  const text = dedupeReplySentences(
-    lines.join("\n").replace(/\n{3,}/g, "\n\n").trim(),
-  );
   return {
-    text: text || REPLY_EMPTY_AFTER_CHECK,
+    text: dedupeReplySentences(text) || REPLY_EMPTY_AFTER_CHECK,
     removed,
   };
 }
@@ -1176,12 +1715,9 @@ export function dedupeReplySentences(text: string): string {
 // ── The gate and the call ───────────────────────────────────────────────────
 
 /**
- * Whether this turn's reply is checked: the host asked for an action, a
- * write card / receipt / inline write is in the turn or the last few turns,
- * or the reply names one of the chat's objects. Pure questions, how-to and
- * read answers are not checked.
+ * Whether this turn's reply is checked: every model reply with text.
  *
- * MINGLA-INVARIANT: I-ARI-CLAIM-CHECK-GATE | issue #3355 | (rework 4, R4-10, orchestrator decision 2026-11-11) A turn with no requested action (intent not tool / flow / flow_answer), no write card, receipt or inline write in the turn or the last 8 rows, and no chat object named in the reply skips the claim check: no model call, the reply is unchanged. Rationale: such a turn has nothing in the chat a completion claim could be about, the check costs ~1 s of Flash per turn, and checking pure questions and how-to answers is what blanked read answers in Retest 3 (R3-2); the residual (a misread intent plus an invented "All set ✅" on a first turn) is monitored by the live claim_check eval (enforced by supabase/functions/_shared/__tests__/issue_3355_rework_4.implementor.test.ts).
+ * MINGLA-INVARIANT: I-ARI-CLAIM-CHECK-EVERY-REPLY | issue #3355 | (rework 5, Seth 2026-11-11 "check all"; replaces I-ARI-CLAIM-CHECK-GATE of rework 4 / R4-10) Every model reply with text runs the claim check — question, chat and how-to turns included — so a false "Yes, your support ticket has been opened" or "I'll remember that" on a turn with no write is caught (R5-16). Read and how-to answers are never blanked: the judge lists no claim for them, and the deterministic pass matches only completion, remember, checklist and status-as-fact forms (enforced by supabase/functions/_shared/__tests__/issue_3355_rework_5.implementor.test.ts and issue_3355_rework_3.implementor.test.ts R3-2).
  */
 export function claimCheckWanted(args: {
   intent: string | null;
@@ -1189,19 +1725,7 @@ export function claimCheckWanted(args: {
   text: string;
   objects: readonly string[];
 }): boolean {
-  if (!args.text.trim()) return false;
-  if (
-    args.intent === "tool" || args.intent === "flow" ||
-    args.intent === "flow_answer"
-  ) return true;
-  if (args.recentWrite) return true;
-  return args.objects.some((object) =>
-    object.trim().length >= 3 &&
-    new RegExp(
-      `(?:^|[^\\p{L}\\p{N}])${escapeRegExp(object.trim())}(?![\\p{L}\\p{N}])`,
-      "iu",
-    ).test(args.text)
-  );
+  return args.text.trim().length > 0;
 }
 
 export type ClaimCheckSource = "skipped" | "model" | "fallback";
@@ -1215,13 +1739,117 @@ export interface ClaimCheckResult {
   removed: string[];
   elapsedMs: number;
   modelCalls: 0 | 1;
+  /**
+   * R5 (fresh reads): the brand records read of this turn — "ok", "failed"
+   * (error or past its cap), or "none" (nothing to read / not wired).
+   */
+  freshRead?: "ok" | "failed" | "none";
 }
 
 class ClaimCheckTimeout extends Error {}
 
+/** Words that make a reply worth the fresh records read. */
+const READ_HINT =
+  /\b(?:live|active|running|enabled|working|works|paused|ended|expired|scheduled|sent|saved|created|opened|submitted|noted|remember|went\s+through|set\s+up|published|notified|emailed|added|done|sorted)\b|[✅✔]/i;
+
+/** The kinds the fresh read covers (notes, tickets, the brand's codes). */
+const FRESH_READ_KINDS: ReadonlySet<AriClaimKind> = new Set<AriClaimKind>([
+  "discount",
+  "note",
+  "support",
+]);
+
+/** The codes this turn's fresh read looks up (reply, host, chat). */
+export function freshReadCodes(args: {
+  text: string;
+  hostMessage: string;
+  objects: readonly string[];
+}): string[] {
+  const out: string[] = [];
+  const add = (code: string) => {
+    const upper = code.trim().toUpperCase();
+    if (CODE_SHAPE.test(upper) && !out.includes(upper)) out.push(upper);
+  };
+  for (const code of codesInObject(args.text, args.objects)) add(code);
+  for (const code of hostNamedCodes(args.hostMessage, args.objects)) add(code);
+  for (const code of codesInObject(args.hostMessage, args.objects)) add(code);
+  // An unnamed status ("your discount is live") leans on the chat's codes.
+  if (READ_HINT.test(args.text)) {
+    for (const object of args.objects) {
+      if (isCodeObject(object)) add(object);
+    }
+  }
+  return out.slice(0, 10);
+}
+
+type RecordsReader = (
+  kinds: ReadonlySet<AriClaimKind>,
+  objects: readonly string[],
+) => Promise<ClaimEvidence[] | ClaimRecordsRead>;
+
+interface TimedRead {
+  ok: boolean;
+  records: ClaimEvidence[];
+  absence: ClaimAbsence;
+}
+
+/** One records read, cut at `budget` ms; never throws. */
+async function timedRecordsRead(
+  read: RecordsReader,
+  kinds: ReadonlySet<AriClaimKind>,
+  objects: readonly string[],
+  budget: number,
+): Promise<TimedRead> {
+  let timer: number | undefined;
+  try {
+    const result = await Promise.race([
+      read(kinds, objects),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new ClaimCheckTimeout("records read timed out")),
+          budget,
+        );
+      }),
+    ]);
+    const records = (Array.isArray(result) ? result : result.records).map((
+      item,
+    ) => item.status === "read" ? { ...item, fresh: true } : item);
+    return {
+      ok: true,
+      records,
+      absence: Array.isArray(result)
+        ? { kinds, objects: new Set(objects.map(identityKey)) }
+        : {
+          kinds: new Set(result.checkedKinds),
+          objects: new Set(result.checkedObjects.map(identityKey)),
+        },
+    };
+  } catch (error) {
+    // The records read failed or ran late: the chat's own rows still
+    // decide, nothing is taken as proven absent, and no status is asserted
+    // from an older receipt.
+    console.warn(
+      "[ari-claim-check] records read",
+      error instanceof ClaimCheckTimeout ? "timed out" : "failed",
+    );
+    return { ok: false, records: [], absence: NO_ABSENCE };
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 /**
  * Run the check. Never throws: a failed, slow or invalid check is the
- * narrow fallback strip.
+ * deterministic strip.
+ *
+ * #3355 rework 5 (Seth 2026-11-11): every reply is checked, and a status
+ * answer is held to a FRESH brand-scoped read done in this turn. The read
+ * (the codes the reply, the host and the chat name, plus this
+ * conversation's notes and tickets) starts with the judge call and runs in
+ * parallel with it, cut at ARI_CLAIM_RECORDS_TIMEOUT_MS (1.5 s); it never
+ * adds to the judge's own 4 s cap. Its rows beat older receipts; when it
+ * cannot run, a status that only an older receipt would back is replaced by
+ * "I couldn't check … just now".
  */
 export async function checkReplyClaims(args: {
   text: string;
@@ -1232,16 +1860,15 @@ export async function checkReplyClaims(args: {
   objects: readonly string[];
   evidence: readonly ClaimEvidence[];
   /**
-   * Lazily read extra records (memory notes and support tickets of this
-   * conversation, the active brand's codes) when a claim is unbacked. It
+   * Read the host's records as the caller (the active brand's codes with
+   * their state, memory notes and support tickets of this conversation). It
    * gets ARI_CLAIM_RECORDS_TIMEOUT_MS at most; on timeout or error the
    * chat's own records decide and nothing is taken as proven absent.
    */
-  moreEvidence?: (
-    kinds: ReadonlySet<AriClaimKind>,
-    objects: readonly string[],
-  ) => Promise<ClaimEvidence[] | ClaimRecordsRead>;
+  moreEvidence?: RecordsReader;
   askedWriteThisTurn: boolean;
+  /** The host's write was just approved (post-approval continuation). */
+  approved?: boolean;
   /** What the host asked for this turn (the intent's tool); all when unset. */
   askedKinds?: ReadonlySet<AriClaimKind>;
   call: AriClaimModelCall;
@@ -1269,16 +1896,60 @@ export async function checkReplyClaims(args: {
       removed: [],
       elapsedMs: 0,
       modelCalls: 0,
+      freshRead: "none",
     };
   }
-  const fallback = (
+  const timeoutMs = Math.min(
+    ARI_CLAIM_CHECK_TIMEOUT_MS,
+    args.timeoutMs ?? ARI_CLAIM_CHECK_TIMEOUT_MS,
+  );
+  // The fresh read starts now, beside the judge call.
+  const codes = freshReadCodes({
+    text: args.text,
+    hostMessage: args.hostMessage,
+    objects: args.objects,
+  });
+  const wantsRead = Boolean(args.moreEvidence) &&
+    (codes.length > 0 || READ_HINT.test(args.text) ||
+      isStatusQuestion(args.hostMessage));
+  const readBudget = Math.min(
+    ARI_CLAIM_RECORDS_TIMEOUT_MS,
+    (args.timeoutMs ?? ARI_CLAIM_CHECK_TIMEOUT_MS) - 100,
+  );
+  const upfront = wantsRead && args.moreEvidence && readBudget > 0
+    ? timedRecordsRead(args.moreEvidence, FRESH_READ_KINDS, codes, readBudget)
+    : null;
+  const freshOf = (read: TimedRead | null): FreshRead | undefined =>
+    args.moreEvidence
+      ? {
+        ok: read?.ok ?? false,
+        checked: read?.ok ? read.absence.objects : new Set<string>(),
+      }
+      : undefined;
+  const freshLabel = (read: TimedRead | null) =>
+    read ? (read.ok ? "ok" : "failed") : "none";
+  const context: ClaimContext = {
+    hostNamed: hostNamedCodes(args.hostMessage, args.objects),
+    chatObjects: args.objects,
+    askedWriteThisTurn: args.askedWriteThisTurn,
+    hostMessage: args.hostMessage,
+    ...(args.approved ? { approved: true } : {}),
+  };
+  const fallback = async (
     reason: ClaimCheckResult["reason"],
     modelCalls: 0 | 1,
-  ): ClaimCheckResult => {
+  ): Promise<ClaimCheckResult> => {
+    const read = upfront ? await upfront : null;
     const stripped = fallbackStripClaims({
       text: args.text,
       objects: args.objects,
-      evidence: args.evidence,
+      evidence: [...args.evidence, ...(read?.records ?? [])],
+      hostMessage: args.hostMessage,
+      askedWriteThisTurn: args.askedWriteThisTurn,
+      askedKinds: args.askedKinds,
+      fresh: freshOf(read),
+      absence: read?.absence,
+      approved: args.approved,
     });
     return {
       text: stripped.text,
@@ -1289,13 +1960,10 @@ export async function checkReplyClaims(args: {
       removed: stripped.removed,
       elapsedMs: elapsed(),
       modelCalls,
+      freshRead: freshLabel(read),
     };
   };
-  const timeoutMs = Math.min(
-    ARI_CLAIM_CHECK_TIMEOUT_MS,
-    args.timeoutMs ?? ARI_CLAIM_CHECK_TIMEOUT_MS,
-  );
-  if (timeoutMs < ARI_CLAIM_CHECK_MIN_MS) return fallback("deadline", 0);
+  if (timeoutMs < ARI_CLAIM_CHECK_MIN_MS) return await fallback("deadline", 0);
   const controller = new AbortController();
   let timer: number | undefined;
   let raw: unknown;
@@ -1317,7 +1985,7 @@ export async function checkReplyClaims(args: {
       }),
     ]);
   } catch (error) {
-    return fallback(
+    return await fallback(
       error instanceof ClaimCheckTimeout ? "timeout" : "error",
       1,
     );
@@ -1325,16 +1993,15 @@ export async function checkReplyClaims(args: {
     if (timer !== undefined) clearTimeout(timer);
   }
   const claims = parseAriClaims(raw, args.text);
-  if (!claims) return fallback("invalid", 1);
-  const context: ClaimContext = {
-    hostNamed: hostNamedCodes(args.hostMessage, args.objects),
-    chatObjects: args.objects,
-    askedWriteThisTurn: args.askedWriteThisTurn,
-    hostMessage: args.hostMessage,
-  };
-  let evidence = args.evidence;
-  let absence: ClaimAbsence = NO_ABSENCE;
-  if (args.moreEvidence && claims.length > 0) {
+  if (!claims) return await fallback("invalid", 1);
+  const read = upfront ? await upfront : null;
+  let evidence: readonly ClaimEvidence[] = [
+    ...args.evidence,
+    ...(read?.records ?? []),
+  ];
+  let absence: ClaimAbsence = read?.ok ? read.absence : NO_ABSENCE;
+  context.fresh = freshOf(read);
+  if (args.moreEvidence && claims.length > 0 && read?.ok !== false) {
     const unbacked = claims.map((claim) => ({
       claim,
       judged: judgeClaim(claim, evidence, context),
@@ -1352,40 +2019,46 @@ export async function checkReplyClaims(args: {
         if (CODE_SHAPE.test(object.trim())) objects.add(object.trim());
       }
     }
+    // A second read only for what the first did not cover: kinds it did
+    // not read in full, codes it did not look up.
+    if (read?.ok) {
+      for (const kind of read.absence.kinds) kinds.delete(kind);
+      for (const object of [...objects]) {
+        if (read.absence.objects.has(identityKey(object))) {
+          objects.delete(object);
+        }
+      }
+      if (objects.size === 0) kinds.delete("discount");
+    }
     // R4-6: the read gets its own short deadline inside the check's budget.
     const budget = Math.min(
       ARI_CLAIM_RECORDS_TIMEOUT_MS,
       timeoutMs - elapsed() - 100,
     );
-    if (unbacked.length > 0 && budget > 0) {
-      let recordsTimer: number | undefined;
-      try {
-        const read = await Promise.race([
-          args.moreEvidence(kinds, [...objects]),
-          new Promise<never>((_, reject) => {
-            recordsTimer = setTimeout(
-              () => reject(new ClaimCheckTimeout("records read timed out")),
-              budget,
-            );
-          }),
-        ]);
-        const records = Array.isArray(read) ? read : read.records;
-        evidence = [...evidence, ...records];
-        absence = Array.isArray(read)
-          ? { kinds, objects: new Set([...objects].map(identityKey)) }
-          : {
-            kinds: new Set(read.checkedKinds),
-            objects: new Set(read.checkedObjects.map(identityKey)),
+    const needed = unbacked.length > 0 &&
+      (read === null || kinds.size > 0 || objects.size > 0);
+    if (needed && budget > 0) {
+      const more = await timedRecordsRead(
+        args.moreEvidence,
+        kinds,
+        [...objects],
+        budget,
+      );
+      if (more.ok) {
+        evidence = [...evidence, ...more.records];
+        absence = {
+          kinds: new Set([...absence.kinds, ...more.absence.kinds]),
+          objects: new Set([...absence.objects, ...more.absence.objects]),
+        };
+        if (context.fresh) {
+          context.fresh = {
+            ok: true,
+            checked: new Set([
+              ...context.fresh.checked,
+              ...more.absence.objects,
+            ]),
           };
-      } catch (error) {
-        // The records read failed or ran late: the chat's own rows still
-        // decide, and nothing is taken as proven absent.
-        console.warn(
-          "[ari-claim-check] extra evidence read",
-          error instanceof ClaimCheckTimeout ? "timed out" : "failed",
-        );
-      } finally {
-        if (recordsTimer !== undefined) clearTimeout(recordsTimer);
+        }
       }
     }
   }
@@ -1398,15 +2071,32 @@ export async function checkReplyClaims(args: {
     context,
     absence,
   });
-  return {
+  // The deterministic pass on what the judge did not list.
+  const strip = fallbackStripClaims({
     text: result.text,
+    objects: args.objects,
+    evidence,
+    hostMessage: args.hostMessage,
+    askedWriteThisTurn: args.askedWriteThisTurn,
+    askedKinds: args.askedKinds,
+    fresh: context.fresh,
+    absence,
+    approved: args.approved,
+    skip: [
+      ...claims.map((claim) => claim.quote),
+      ...result.replaced.map((item) => item.with),
+    ],
+  });
+  return {
+    text: strip.text,
     source: "model",
     reason: "ok",
     claims,
     replaced: result.replaced,
-    removed: [],
+    removed: strip.removed,
     elapsedMs: elapsed(),
     modelCalls: 1,
+    freshRead: freshLabel(read),
   };
 }
 
@@ -1553,6 +2243,7 @@ export async function recentRecordEvidence(args: {
         state: null,
         thisTurn: false,
         readState: rowReadState(row, now) ?? { live: true, label: "active" },
+        fresh: true,
       });
     }
   }

@@ -44,11 +44,15 @@ export interface AriGapSignal {
   detail?: Record<string, unknown>;
 }
 
-/** The gap types that count as "a failure" for escalation (D4). */
+/**
+ * The gap types that count as "a failure" for escalation (D4). #3355 rework
+ * 5 (R5-12): a flow parked for a side request is by design (the host asked
+ * something else mid-setup), so it is logged as a gap but never counts
+ * toward "Ask the Mingla team".
+ */
 export const ARI_ESCALATION_FAILURE_TYPES: ReadonlySet<AriGapType> = new Set([
   "refusal",
   "repeated_request",
-  "flow_parked",
   "frustration",
 ]);
 
@@ -619,6 +623,26 @@ export async function askTeamSentRecently(args: {
 /** What Ari says above the card, after its own answer. */
 export const ASK_TEAM_LEAD =
   "If that still doesn't sort it, I can ask the Mingla team for you. Tap Confirm and I'll post this note in your brand group chat; nothing is sent until you do.";
+
+/**
+ * #3355 rework 5 (R5-11): the reply with the "Ask the Mingla team" lead
+ * said once. A model reply that copied the previous turn's lead (whole or
+ * any of its sentences) has it removed before the lead is added.
+ */
+export function withAskTeamLead(replyText: string): string {
+  const leadSentences = ASK_TEAM_LEAD.split(/(?<=[.!?;])\s+/).map((part) =>
+    part.replace(/[^\p{L}\p{N}]+/gu, " ").trim().toLowerCase()
+  ).filter((part) => part.length >= 12);
+  const kept = replyText.split("\n").map((line) =>
+    line.split(/(?<=[.!?])\s+/).filter((sentence) => {
+      const key = sentence.replace(/[^\p{L}\p{N}]+/gu, " ").trim()
+        .toLowerCase();
+      return !(key.length >= 12 &&
+        leadSentences.some((lead) => lead.includes(key) || key.includes(lead)));
+    }).join(" ")
+  ).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  return kept ? `${kept}\n\n${ASK_TEAM_LEAD}` : ASK_TEAM_LEAD;
+}
 
 /** What Ari says when the team was already asked in this chat this hour. */
 export const ASK_TEAM_ALREADY_SENT =

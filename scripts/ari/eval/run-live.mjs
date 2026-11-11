@@ -77,6 +77,36 @@ function readEnvFile(path) {
   return out;
 }
 
+/**
+ * #3355 rework 5 (R5-19): the model a run really used. The functions run on
+ * the local Ollama model when ARI_LOCAL_MODEL_ENABLED is true (agentGemini
+ * localModelConfig), whatever key the env carries; the run says so.
+ */
+export function evalModel(env = process.env, functionsEnv = {}) {
+  const pick = (name) => functionsEnv[name] ?? env[name];
+  if (pick("ARI_LOCAL_MODEL_ENABLED") === "true") {
+    const id = String(pick("ARI_LOCAL_MODEL_ID") ?? "qwen3:4b-instruct").trim();
+    return { local: true, id, label: `local (${id}, Ollama)` };
+  }
+  return {
+    local: false,
+    id: pick("GEMINI_MODEL_ID") ?? null,
+    label: "gemini (GEMINI_MODEL_ID, Flash)",
+  };
+}
+
+/**
+ * R5-19: the Gemini baseline is never written from a local-model run (local
+ * scores are for finding defects, not a pass mark).
+ */
+export function assertBaselineWritable(model) {
+  if (model.local) {
+    throw new Error(
+      `--write-baseline refused: this run uses the local model ${model.id} (ARI_LOCAL_MODEL_ENABLED=true). The baseline is Gemini-only.`,
+    );
+  }
+}
+
 function revision() {
   try {
     const sha = execFileSync("git", ["rev-parse", "HEAD"], {
@@ -239,6 +269,16 @@ function runDenoSuite(functionsEnv, script, suiteName) {
         ...process.env,
         GEMINI_API_KEY_ARI: functionsEnv.GEMINI_API_KEY_ARI ?? "",
         SUPABASE_URL: functionsEnv.SUPABASE_URL ?? "",
+        // R5-19: the suites use the same model lane as the functions.
+        ...Object.fromEntries(
+          [
+            "ARI_LOCAL_MODEL_ENABLED",
+            "ARI_LOCAL_MODEL_BASE_URL",
+            "ARI_LOCAL_MODEL_ID",
+          ].flatMap((name) =>
+            functionsEnv[name] !== undefined ? [[name, functionsEnv[name]]] : []
+          ),
+        ),
       },
       maxBuffer: 20 * 1024 * 1024,
     },
@@ -404,6 +444,8 @@ function markdown(run) {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const functionsEnv = readEnvFile(option("functions-env"));
+  const model = evalModel(process.env, functionsEnv);
+  if (process.argv.includes("--write-baseline")) assertBaselineWritable(model);
   const only = option("only")?.split(",").filter(Boolean) ??
     ["replay", "flows", "route_table", "answers", "claim_check"];
   const config = localConfig();
@@ -469,7 +511,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     ran_at: new Date().toISOString().replace(/\.\d+Z$/, "Z"),
     revision: revision(),
     target: "local",
-    model: "gemini (GEMINI_MODEL_ID, Flash)",
+    model: model.label,
+    model_local: model.local,
+    model_id: model.id,
     scores: scoreRun(suites),
     latency: latencyBuckets(suites.replay, suites.flows),
     suites: {
@@ -493,6 +537,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   );
   writeFileSync(join(out, `${runId}.md`), markdown(run));
   if (process.argv.includes("--write-baseline")) {
+    assertBaselineWritable(model);
     const baseline = baselineFromRun(run);
     writeFileSync(
       join(ROOT, BASELINE_PATH),

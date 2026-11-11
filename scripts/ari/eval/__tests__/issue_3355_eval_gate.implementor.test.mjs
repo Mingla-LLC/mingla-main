@@ -79,4 +79,36 @@ describe("#3355 Wave F — promoting a reviewed run", () => {
     assert.equal(written.run_id, "r1");
     assert.deepEqual(written.scores, { replay: 99, overall: 99 });
   });
+
+  // #3355 rework 5 (R5-19): a local-model run is labelled as local and never
+  // becomes, or is compared with, the Gemini baseline.
+  it("refuses a local-model run in the gate and in --promote", () => {
+    const baseline = { run_id: "base", scores: { replay: 100, flows: 84.6, route_table: 100, overall: 94.9 } };
+    const local = { run_id: "local", model: "local (qwen3:4b-instruct, Ollama)", model_local: true, scores: { ...baseline.scores } };
+    const gated = gate(baseline, local);
+    assert.equal(gated.status, 2, gated.stdout);
+    assert.match(gated.stderr, /local model/);
+    const dir = mkdtempSync(join(tmpdir(), "ari-gate-"));
+    const b = join(dir, "baseline.json");
+    const r = join(dir, "run.json");
+    writeFileSync(b, JSON.stringify(baseline));
+    writeFileSync(r, JSON.stringify(local));
+    const promoted = spawnSync(process.execPath, [GATE, `--baseline=${b}`, `--run=${r}`, "--promote"], { encoding: "utf8" });
+    assert.equal(promoted.status, 2, promoted.stdout);
+    assert.deepEqual(JSON.parse(readFileSync(b, "utf8")), baseline);
+  });
+
+  it("run-live labels the model it used and refuses --write-baseline on the local model", async () => {
+    const { evalModel, assertBaselineWritable } = await import("../run-live.mjs");
+    const local = evalModel({}, { ARI_LOCAL_MODEL_ENABLED: "true", ARI_LOCAL_MODEL_ID: "qwen3:4b-instruct" });
+    assert.equal(local.local, true);
+    assert.equal(local.label, "local (qwen3:4b-instruct, Ollama)");
+    assert.throws(() => assertBaselineWritable(local), /refused/);
+    const fromProcess = evalModel({ ARI_LOCAL_MODEL_ENABLED: "true" }, {});
+    assert.equal(fromProcess.local, true);
+    const gemini = evalModel({}, { GEMINI_API_KEY_ARI: "placeholder" });
+    assert.equal(gemini.local, false);
+    assert.match(gemini.label, /^gemini/);
+    assert.doesNotThrow(() => assertBaselineWritable(gemini));
+  });
 });

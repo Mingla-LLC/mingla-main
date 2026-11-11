@@ -27,9 +27,22 @@ function option(name, fallback = null) {
   ) ?? fallback;
 }
 
+/**
+ * #3355 rework 5 (R5-19): a local-model run is informational. It is never
+ * compared with, or promoted to, the Gemini baseline.
+ */
+export function assertGeminiRun(run) {
+  if (run.model_local === true || /^local\b/.test(String(run.model ?? ""))) {
+    throw new Error(
+      `run ${run.run_id} used the local model (${run.model}); the gate and the baseline are Gemini-only`,
+    );
+  }
+}
+
 export function runGate(baselinePath, runPath) {
   const baseline = JSON.parse(readFileSync(baselinePath, "utf8"));
   const run = JSON.parse(readFileSync(runPath, "utf8"));
+  assertGeminiRun(run);
   const verdict = compareToBaseline(baseline, run);
   const lines = Object.keys({ ...baseline.scores, ...run.scores }).map((
     suite,
@@ -54,11 +67,24 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   if (process.argv.includes("--promote")) {
     // A reviewed run becomes the baseline (no comparison).
     const run = JSON.parse(readFileSync(runPath, "utf8"));
+    try {
+      assertGeminiRun(run);
+    } catch (error) {
+      console.error(`Ari eval gate: ${error.message}`);
+      process.exit(2);
+    }
     writeFileSync(baselinePath, `${JSON.stringify(baselineFromRun(run), null, 2)}\n`);
     console.log(`baseline ${baselinePath} now run ${run.run_id}`);
     process.exit(0);
   }
-  const { verdict, lines, baselineRun, runId } = runGate(baselinePath, runPath);
+  let gated;
+  try {
+    gated = runGate(baselinePath, runPath);
+  } catch (error) {
+    console.error(`Ari eval gate: ${error.message}`);
+    process.exit(2);
+  }
+  const { verdict, lines, baselineRun, runId } = gated;
   console.log(`Ari eval gate: run ${runId} vs baseline ${baselineRun}`);
   for (const line of lines) console.log(`  ${line}`);
   if (!verdict.ok) {
