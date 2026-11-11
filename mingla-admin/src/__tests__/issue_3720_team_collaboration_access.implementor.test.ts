@@ -32,7 +32,8 @@ Deno.test("#3720 every active role can open Support and Notifications without Ad
       TEAM_NOTIFICATIONS_AREA,
     );
     assert(canOpenPage(candidate, "community-support"), role);
-    assert(canOpenPage(candidate, "notifications"), role);
+    // #4255 W4: Messages (top bar and #/messages) replaced Notifications.
+    assert(canOpenPage(candidate, "messages"), role);
     assertEquals(canOpenPage(candidate, "business-money-ledger"), false, role);
     assertEquals(canOpenPage(candidate, "admin"), false, role);
   }
@@ -48,7 +49,7 @@ Deno.test("#3720 Data room is independently capability-gated", () => {
     false,
   );
   assertEquals(
-    canOpenPage(access("growth", DATA_ROOM_AREA), "notifications"),
+    canOpenPage(access("growth", DATA_ROOM_AREA), "messages"),
     false,
   );
   const company = NAV_GROUPS.find((group) => group.label === "Company");
@@ -63,7 +64,8 @@ Deno.test("#3720 mention UI uses one RPC; #4255 mention email is on unless switc
   const [drawer, service, page, migration] = await Promise.all([
     read("components/contentCalendar/ContentDrawer.jsx"),
     read("services/contentCalendarService.js"),
-    read("pages/NotificationsPage.jsx"),
+    // #4255 W4: the email settings moved into Messages' Settings tab.
+    read("components/messages/MessagesSettings.jsx"),
     Deno.readTextFile(
       new URL(
         "../../../supabase/migrations/20280524004255_issue_4255_work_card_email.sql",

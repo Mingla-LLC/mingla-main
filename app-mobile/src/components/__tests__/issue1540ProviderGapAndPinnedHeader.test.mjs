@@ -344,8 +344,7 @@ test("H-5 consumer inventory: every flatlist consumer passing a header is review
   const REVIEWED = [
     // The #1540 surface itself.
     "src/components/PersonHolidayView.tsx",
-    // Dynamic scrollMode ternary — its search field becomes pinned.
-    "src/components/FeedbackHistorySheet.tsx",
+    // (#4382: FeedbackHistorySheet, the dynamic-ternary consumer, is deleted.)
     // Its own source called the search header "always-visible"; now it is.
     "src/components/connections/FriendPickerSheet.tsx",
     // #871 tester runtime-verified the title/close header stays pinned while

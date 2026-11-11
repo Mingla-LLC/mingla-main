@@ -101,12 +101,14 @@ before(async () => {
   } catch {
     assert.fail("esbuild is not installed: run `npm ci` in mingla-admin before this test");
   }
+  // #4255 W2: the board is WorkBoard (columns are statuses) and the strip is the SprintBar.
   const contents = `
 import { renderToStaticMarkup } from "react-dom/server";
-import { WorkColumns } from "../components/ops/WorkColumns.jsx";
-import { SprintStrip } from "../components/ops/SprintStrip.jsx";
-export function columns(props) { return renderToStaticMarkup(<WorkColumns onSelect={() => {}} onOpenDraft={() => {}} {...props} />); }
-export function strip(props) { return renderToStaticMarkup(<SprintStrip onGoal={() => {}} onWeek={() => {}} onThisWeek={() => {}} {...props} />); }
+import { WorkBoard } from "../components/ops/WorkBoard.jsx";
+import { SprintBar } from "../components/ops/SprintBar.jsx";
+export function columns(props) { return renderToStaticMarkup(<WorkBoard onSelect={() => {}} onMoveCard={() => {}} onOpenDraft={() => {}} columnActions={{}} layout="desktop" {...props} />); }
+export function phone(props) { return renderToStaticMarkup(<WorkBoard onSelect={() => {}} onMoveCard={() => {}} onOpenDraft={() => {}} columnActions={{}} layout="phone" {...props} />); }
+export function strip(props) { return renderToStaticMarkup(<SprintBar onGoal={() => {}} onWeek={() => {}} onThisWeek={() => {}} onPlan={() => {}} {...props} />); }
 `;
   const out = await esbuild.build({
     stdin: { contents, resolveDir: HERE, sourcefile: "issue4270.harness.jsx", loader: "jsx" },
@@ -124,6 +126,18 @@ export function strip(props) { return renderToStaticMarkup(<SprintStrip onGoal={
   harness = await import(pathToFileURL(file).href);
 });
 
+// #4255 W2 changed the board: columns come from the database (each Not
+// started, Active or Closed underneath), headers stay put while each column
+// scrolls, and a phone shows one column behind tabs. The rules this suite
+// pinned for #4270 still hold: tags show in any column, the late card is on
+// top, loose drafts sit at the top of the first Not started column, an empty
+// column says Nothing here., and nothing says a card waits on a person.
+const COLS = [
+  { id: "s-todo", name: "To do", color: "#8a847b", grp: "todo", position: 0 },
+  { id: "s-doing", name: "In progress", color: "#2f6fd6", grp: "doing", position: 1 },
+  { id: "s-done", name: "Done", color: "#1f8a5b", grp: "done", position: 2 },
+];
+const sid = { todo: "s-todo", doing: "s-doing", done: "s-done" };
 describe("B-3 rendered: the board", () => {
   const today = "2026-11-04";
   const cards = [
@@ -131,51 +145,43 @@ describe("B-3 rendered: the board", () => {
     card("2", "todo", "2026-11-02", { person_reason: "send", tag: "send" }),
     card("3", "doing", "2026-11-05", { person_reason: "spend", tag: "spend" }),
     card("4", "done", "2026-11-03", { closed_at: "2026-11-03T08:00:00Z", close_kind: "done" }),
-  ];
-  it("phone tabs carry each column's count; three panels; To do is open first", () => {
-    const html = harness.columns({ cards, today });
+  ].map((c) => ({ ...c, status_id: sid[c.status] }));
+  it("phone tabs carry each column's count; one column shows; To do is open first", () => {
+    const html = harness.phone({ cards, columns: COLS, today });
     assert.match(html, /role="tablist" aria-label="Column"/);
-    assert.match(html, /id="work-col-tab-todo"[^>]*aria-selected="true"[^>]*>[\s\S]*?To do<\/span> <span class="tabular-nums">2<\/span>/);
-    assert.match(html, /id="work-col-tab-doing"[^>]*aria-selected="false"[^>]*>[\s\S]*?In progress<\/span> <span class="tabular-nums">1<\/span>/);
-    assert.match(html, /id="work-col-tab-done"[^>]*>[\s\S]*?Done<\/span> <span class="tabular-nums">1<\/span>/);
-    assert.equal((html.match(/data-column="/g) || []).length, 3);
-    // On a phone only the chosen column shows; from 768px all three share the width.
-    assert.match(html, /data-column="todo"[^>]*class="min-w-0 flex-col gap-2 flex"/);
-    assert.match(html, /data-column="doing"[^>]*class="min-w-0 flex-col gap-2 hidden md:flex"/);
-    assert.match(html, /grid min-w-0 grid-cols-1 gap-2 md:grid-cols-3/);
-    assert.ok(!/overflow-x-auto|minmax\(220px/.test(html), "nothing scrolls sideways");
+    assert.match(html, /id="work-col-tab-s-todo"[^>]*aria-selected="true"[\s\S]*?To do<\/span> <span class="tabular-nums">2<\/span>/);
+    assert.match(html, /id="work-col-tab-s-doing"[^>]*aria-selected="false"[\s\S]*?In progress<\/span> <span class="tabular-nums">1<\/span>/);
+    assert.equal((html.match(/data-column="/g) || []).length, 1);
+    assert.match(html, /data-status-pill="2"/, "a phone moves a card with its status pill");
   });
   it("To do lists the late card first; tags show in any column; no retired words", () => {
-    const html = harness.columns({ cards, today });
-    const todo = html.slice(html.indexOf('data-column="todo"'), html.indexOf('data-column="doing"'));
+    const html = harness.columns({ cards, columns: COLS, today });
+    assert.equal((html.match(/data-column="/g) || []).length, 3);
+    const todo = html.slice(html.indexOf('data-column="s-todo"'), html.indexOf('data-column="s-doing"'));
     assert.ok(todo.indexOf('data-card-id="2"') < todo.indexOf('data-card-id="1"'), "the late card is on top");
     assert.match(todo, /You send/);
-    const doing = html.slice(html.indexOf('data-column="doing"'), html.indexOf('data-column="done"'));
+    const doing = html.slice(html.indexOf('data-column="s-doing"'), html.indexOf('data-column="s-done"'));
     assert.match(doing, /You spend/);
-    assert.match(html, /Late first, then by due date/);
-    assert.match(html, /This week, latest due first/);
     assert.ok(!/Waiting on a person|Needs a person|need a person/.test(html));
   });
-  it("loose drafts sit at the top of To do, with their link at its foot", () => {
+  it("loose drafts sit at the top of To do", () => {
     const drafts = [{ id: "42700000-0000-4000-8000-0000000000d1", state: "waiting", record: { id: "h", name: "Rooftop" }, created_via: "claude" }];
-    const html = harness.columns({ cards, today, drafts, allDraftsHref: "#/work-board?drafts=all" });
-    const todo = html.slice(html.indexOf('data-column="todo"'), html.indexOf('data-column="doing"'));
+    const html = harness.columns({ cards, columns: COLS, today, drafts });
+    const todo = html.slice(html.indexOf('data-column="s-todo"'), html.indexOf('data-column="s-doing"'));
     assert.ok(todo.indexOf("data-draft-item=") < todo.indexOf('data-card-id="2"'));
-    assert.match(todo, /\+1 draft/);
-    assert.match(todo, /All my message drafts, sent and discarded/);
   });
   it("an empty column says Nothing here.", () => {
-    const html = harness.columns({ cards: [], today });
+    const html = harness.columns({ cards: [], columns: COLS, today });
     assert.equal((html.match(/Nothing here\./g) || []).length, 3);
   });
 });
 
-describe("B-4 the sprint strip", () => {
-  it("says what is due today and overdue, never how many need a person", () => {
-    const html = harness.strip({ sprint: { starts_on: "2026-11-02" }, counts: { todo: 3, doing: 1, done: 2 }, overdue: 2, dueToday: 1, online: true, isThisWeek: true });
-    assert.match(html, />1 due today</);
-    assert.match(html, />2 overdue</);
-    assert.match(html, />4 open</);
+describe("B-4 the sprint bar", () => {
+  it("says how many are late, never how many need a person", () => {
+    const html = harness.strip({ sprint: { starts_on: "2026-11-02" }, plan: { in_sprint: [{ status: "done" }, { status: "todo" }, { status: "doing" }], capacity: [] }, late: 2, today: "2026-11-04", online: true, isThisWeek: true });
+    assert.match(html, />2 late</);
+    assert.match(html, /1 of 3 done/);
+    assert.match(html, />Plan sprint</);
     assert.ok(!/need a person/.test(html));
   });
 });
@@ -189,27 +195,26 @@ describe("B-5 the Status dropdown", () => {
     assert.equal(statusChoice({ status: "todo" }, "todo"), null);
     assert.equal(statusChoice({ status: "done" }, "todo"), null);
   });
-  it("choosing Done only opens the proof form; the dropdown shows Done until Cancel", () => {
+  // #4255 W3: the status pill lists the board's columns; a Closed column asks
+  // for proof first (nothing is saved until Close card), the others move at once.
+  it("choosing a Closed column only opens the proof form", () => {
     const detail = code("components/ops/WorkDetail.jsx");
-    assert.match(detail, /const statusValue = form === "close" && !closed \? "done" : card\.status;/);
-    assert.match(detail, /if \(what === "close"\) setForm\("close"\);/);
-    assert.match(detail, /else if \(what === "start"\) \{ setForm\(""\); run\("start", \(\) => ops\.startWork\(card\.id, card\.revision\), "Started"\); \}/);
-    assert.match(detail, /else if \(what === "to_todo"\) \{ setForm\(""\); update\(\{ status: "todo" \}, "Moved to To do"\); \}/);
-    assert.match(detail, /data-status-select=""[\s\S]{0,80}value=\{statusValue\}/);
-    assert.match(detail, /\{form === "close" && <ProofForm [^\n]*onCancel=\{\(\) => setForm\(""\)\}[^\n]*ops\.closeWork\(card\.id, proof/);
+    assert.match(detail, /if \(to\.grp === "done" && !closed\) \{ setCloseTo\(to\); setForm\("close"\); return; \}/);
+    assert.match(detail, /run\("move", \(\) => ops\.moveWork\(card\.id, to\.id, card\.revision\), `Moved to \$\{to\.name\}`\);/);
+    assert.match(detail, /<ProofForm busy=\{busy === "close"\} disabled=\{locked\} onCancel=\{\(\) => \{ setForm\(""\); setCloseTo\(null\); \}\} onSubmit=\{submitClose\} \/>/);
   });
-  it("the card's order: header, Next step, Who and when, What to do, Links and files, the record", () => {
+  it("the card's order: header, title, status, people and dates, description, subtasks, files, linked", () => {
     const detail = code("components/ops/WorkDetail.jsx");
     const at = (needle) => { const i = detail.indexOf(needle); assert.ok(i > 0, needle); return i; };
     const order = [
-      at('data-next-step=""'), at('<Section title="Who and when">'), at('<Section title="What to do">'),
-      at("<FilesLink card={card}"), at('<Section title="Linked records"'), at("<GithubLinks card={card}"),
-      at('<Section title="Result">'), at('<Fold id="notes"'), at('<Fold id="history"'), at('<Fold id="prompt"'), at('<Fold id="remove"'),
+      at('data-card-header=""'), at('data-card-title=""'), at('data-next-step=""'), at('data-people-line=""'), at('data-dates-line=""'),
+      at('data-card-description=""'), at("<CardSubtasks card={card}"), at("<CardFiles card={card}"), at('<Section title="Linked"'), at("<GithubLinks card={card}"),
     ];
     assert.deepEqual([...order].sort((x, y) => x - y), order);
-    for (const kept of ["Assign to me", "Mark blocked", "Push back", "Send back", "Reopen", "Override", "Unblock", "Open the draft in Roadmap", "<PlanSteps", "<NoteBox", "<CardHistory", "agentPromptFor(card)", "ops.archiveWork", "<CardDrafts card={card} />", "<CardWording card={card}", "<WorkingMark", "<RecordPicker", "<GithubWait"]) {
+    for (const kept of ["Assign to me", "Mark blocked", "Push back", "Send back", "Reopen", "Override", "Unblock", "Open the draft in Roadmap", "agentPromptFor(card)", "ops.archiveWork", "<CardWording card={card}", "<WorkingMark", "<RecordPicker", "<GithubWait"]) {
       assert.ok(detail.includes(kept), kept);
     }
+    for (const gone of ["<CardDrafts", "<NoteBox", "<CardHistory", "<PlanSteps", '<Section title="Result">', "<Fold "]) assert.ok(!detail.includes(gone), gone);
   });
 });
 
@@ -224,8 +229,10 @@ describe("B-6 the Files link", () => {
     assert.equal(filesHost("https://drive.google.com/drive/folders/abc"), "drive.google.com");
     assert.equal(filesHost("not a link"), "files");
   });
-  it("the card and the add form both offer it", () => {
-    assert.match(code("components/ops/WorkDetail.jsx"), /update\(\{ files_url: url \}, words\)/);
+  // #4255 W3: the card's Files link is one of its link files now (the database
+  // keeps the two in step); the add form still sets it.
+  it("the card lists it among its files; the add form offers it", () => {
+    assert.match(code("components/ops/WorkDetail.jsx"), /<CardFiles card=\{card\} files=\{files\}/);
     const add = code("components/ops/WorkAddForm.jsx");
     assert.match(add, /if \(filesUrl\.trim\(\)\) out\.files_url = filesUrl\.trim\(\);/);
     assert.match(add, /disabled=\{!online \|\| busy \|\| !!filesError\}/);
@@ -255,14 +262,12 @@ describe("B-7 Due today for you", () => {
 
 describe("B-8 the board page", () => {
   // #4270 rework (P2-1): 300 cards per column, and the cut line is per column (WorkColumns).
-  it("asks for 300 cards per column; phone filters behind one button", () => {
+  it("asks for 300 cards per column; the filters fold behind one button when narrow", () => {
     const page = code("pages/WorkBoardPage.jsx");
     assert.match(page, /const BOARD_LIMIT = 300;/);
-    assert.match(page, /limit: BOARD_LIMIT, perStatus: true, enabled: onBoard/);
-    assert.match(code("components/ops/WorkColumns.jsx"), /Filter by owner or search to see the rest\./);
-    assert.match(page, /aria-expanded=\{filtersOpen\} aria-controls="work-filter-panel" data-filters-button=""/);
-    assert.match(page, /\{filtersOpen \? "flex" : "hidden"\} w-full min-w-0 flex-col gap-2 sm:flex/);
-    assert.match(page, /grid grid-cols-1 gap-2 md:grid-cols-3" aria-busy="true"/);
+    assert.match(page, /limit: BOARD_LIMIT, perStatus: true, subtasks: showSubtasks, goalId, enabled: onBoard/);
+    assert.match(code("components/ops/WorkBoard.jsx"), /Filter by owner or search to see the rest\./);
+    assert.match(code("components/ops/WorkHeader.jsx"), /`Filters\$\{count \? ` · \$\{count\}` : ""\}`/);
     assert.ok(!/person: 0/.test(page), "the strip counts no person status");
   });
 });

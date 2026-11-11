@@ -6,6 +6,8 @@ import { AREA, canOpenPage } from "../../lib/access";
 import { Dropdown, DropdownItem, DropdownLabel } from "../ui/Dropdown";
 import { NAV_GROUPS } from "../../lib/constants";
 import { breadcrumbFor } from "../../lib/shellNav";
+// #4255 W4: Messages (notifications, team chats, settings) at the top of every page.
+import { MessagesButton } from "../messages/MessagesButton";
 
 const ICON_BUTTON =
   "grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[var(--color-text-secondary)] " +
@@ -82,6 +84,9 @@ export function Header({ activeTab, title, collapsed, onToggleCollapsed, onMobil
             {searchShortcut()}
           </kbd>
         </button>
+
+        {/* #4255 W4 (D11): Messages, between Search and Live. */}
+        <MessagesButton />
 
         {/* Live indicator */}
         <div className="flex items-center gap-1.5 rounded-full bg-[var(--color-success-50)] px-3 py-1 text-xs font-medium text-[var(--color-success-700)]">

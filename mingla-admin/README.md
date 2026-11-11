@@ -77,7 +77,6 @@ mingla-admin/
 │       ├── UserManagementPage.jsx     ← User list, detail, edit, ban, delete, impersonate
 │       ├── SubscriptionManagementPage.jsx  ← Subscription tiers, admin overrides
 │       ├── PhotoPoolManagementPage.jsx ← Photo storage health, pool coverage, backfill ops
-│       ├── BetaFeedbackPage.jsx       ← Audio feedback from beta testers
 │       ├── ContentModerationPage.jsx  ← Experiences, card pool, reviews, curated cache
 │       ├── AnalyticsPage.jsx          ← Charts: growth, engagement, retention, funnel, geo
 │       ├── ReportsPage.jsx           ← User report management
@@ -221,16 +220,6 @@ The dashboard implements a comprehensive design token system in `globals.css`, d
 - **Setup detection** — if RPCs don't exist, shows migration SQL with retry button
 - **Place Data Refresh** — admin-controlled Google Place Details refresh replacing the disabled automatic `refresh-place-pool` edge function (which cost ~$75/month). Shows staleness stats (total active, stale >7d, stale >30d, recently served & stale), two refresh modes with cost estimates and confirmation dialogs: "Refresh Recently Served" (only places users actually viewed in the last 7 days) and "Refresh All Stale" (all places with data older than 7 days, capped at 500). Concurrency guard prevents duplicate refresh operations.
 - **Requires:** `admin_backfill_log` table, `admin_config` table — migration SQL in `supabase/migrations/20260317000002_admin_photo_pool_management.sql` and `supabase/migrations/20260317000003_admin_place_refresh.sql`
-
-### Beta Feedback
-- **Audio feedback browser** — paginated, searchable table of all beta tester audio feedback submissions with relative timestamps, user info, category badges, audio duration, device info, app version, and inline status dropdown
-- **Audio playback** — HTML5 audio player with signed URL generation (1-hour expiry, auto-refresh on expiration); plays `.m4a` (AAC) recordings up to 5 minutes
-- **Feedback detail view** — modal with full user info (name, email, phone), device context (OS, version, model, app version, screen before feedback, session duration), location coordinates, audio player, status management, and admin notes
-- **Status management** — inline dropdown to change feedback status (New → Reviewed → Actioned / Dismissed) with optimistic local state updates and stats refresh
-- **Admin notes** — free-text notes field with save button per feedback item; notes persist across sessions
-- **Filters** — status filter pills (All / New / Reviewed / Actioned / Dismissed), category filter (All / Bug / Feature Request / UX Issue / General), search by user name or email
-- **Stats cards** — total submissions, new, reviewed, actioned, dismissed counts with skeleton loading
-- **Requires:** `beta_feedback` table and `beta-feedback` storage bucket in Supabase (created by mobile app); admin user must have `is_admin = true` in profiles for RLS access
 
 ### Content Moderation
 - **Four sub-views** in a single Content tab: Experiences, Card Pool, Place Reviews, Curated Cache

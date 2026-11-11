@@ -47,8 +47,22 @@ import {
   ISSUE_4111_EMAIL_CATEGORIES,
   ISSUE_4111_ENQUIRY_CATEGORIES,
 } from "./issue4111EnquiryNotifications.ts";
+// #4382 — customer-facing support notifications (Host + Explorer).
+import {
+  isIssue4382SupportCategory,
+  issue4382DeepLinkValid,
+  issue4382ProviderSafeKeys,
+  ISSUE_4382_SUPPORT_CATEGORIES,
+} from "./issue4382SupportNotifications.ts";
 // #3682 wave 3 — the brand invite email's button and manage note.
 import { brandReachEmailCta } from "./brandReachMessages.ts";
+// #4255 W4 — Mingla team pushes to the Host app (chat, mentions, decisions).
+import {
+  isTeamNotifyCategory,
+  teamDeepLinkValid,
+  teamInAppSuppressed,
+  teamProviderSafeKeys,
+} from "./teamNotifications.ts";
 // #4383: where an Admin push may open (the one destination table).
 import { ADMIN_PUSH_CATEGORIES, adminPushDeepLinkValid } from "./adminPushDestinations.ts";
 
@@ -265,6 +279,9 @@ function validDeepLink(
   if (isIssue4111EnquiryCategory(category)) {
     return issue4111DeepLinkValid(category, deepLink, payload);
   }
+  if (isIssue4382SupportCategory(category)) {
+    return issue4382DeepLinkValid(category, deepLink, payload);
+  }
   if (category === "business.community_roadmap_updated") {
     return deepLink === "mingla-business://community/roadmap";
   }
@@ -295,6 +312,11 @@ function validDeepLink(
     const id = deepLink?.replace("mingla-business://messages/", "");
     return !!id && UUID.test(id) &&
       deepLink === `mingla-business://messages/${id}`;
+  }
+  // #4255 W4: team pushes open only mingla-business://team/<thread> or
+  // mingla-business://team/mention/<id>, naming the payload's own id.
+  if (isTeamNotifyCategory(category)) {
+    return teamDeepLinkValid(category, deepLink, payload);
   }
   return true;
 }
@@ -334,11 +356,18 @@ export function providerSafePayload(
   if (category === "admin.team_mention") {
     return pick(["mention_id", "source_kind", "source_id"]);
   }
+  // #4255 W4: ids only; names, chat titles and words stay with Mingla.
+  if (isTeamNotifyCategory(category)) {
+    return pick(teamProviderSafeKeys());
+  }
   if (isIssue3988AlertCategory(category)) {
     return pick(issue3988ProviderSafeKeys(category));
   }
   if (isIssue4111EnquiryCategory(category)) {
     return pick(issue4111ProviderSafeKeys());
+  }
+  if (isIssue4382SupportCategory(category)) {
+    return pick(issue4382ProviderSafeKeys());
   }
   // #4063 — consumer purchase, RSVP, and Stay payloads contain the contact and
   // message-rendering facts needed by email/SMS. None of those facts belong in
@@ -369,6 +398,7 @@ const ISSUE_3720_CATEGORIES = new Set([
   ...ADMIN_PUSH_CATEGORIES,
   ...ISSUE_3988_ALERT_CATEGORIES,
   ...ISSUE_4111_ENQUIRY_CATEGORIES,
+  ...ISSUE_4382_SUPPORT_CATEGORIES,
 ]);
 const SAFE_DENIAL_REASONS = new Set([
   "category_inactive",
@@ -537,6 +567,11 @@ export async function dispatchV2(
         data: inboxData,
         deep_link: input.deep_link ?? null,
         idempotency_key: input.idempotency_key,
+        // #4255 W4: a team mention lives in the Mingla team Mentions tab, not
+        // the Host app bell.
+        ...(teamInAppSuppressed(input.category_key, input.payload)
+          ? { in_app_suppressed_at: new Date().toISOString() }
+          : {}),
       })
       // deno-lint-ignore no-explicit-any
       .select?.("id")
@@ -590,11 +625,23 @@ export async function dispatchV2(
   // makes this resumable instead of returning early on a duplicate inbox row.
   const deliveries: NonNullable<DispatchV2Result["deliveries"]> = [];
   const inappClaim = await claimChannel(client, nid, "inapp");
+  // #4255 W4: a suppressed in-app row is recorded as suppressed, not delivered.
+  const inappSuppressed = teamInAppSuppressed(
+    input.category_key,
+    input.payload,
+  );
   if (inappClaim.outcome === "claimed") {
-    await completeChannel(client, inappClaim, "delivered", "inapp", null, null);
+    await completeChannel(
+      client,
+      inappClaim,
+      inappSuppressed ? "suppressed" : "delivered",
+      "inapp",
+      null,
+      inappSuppressed ? "inapp_in_team_mentions" : null,
+    );
     deliveries.push({
       channel: "inapp",
-      status: "delivered",
+      status: inappSuppressed ? "suppressed" : "delivered",
       providerMessageId: null,
     });
   } else {

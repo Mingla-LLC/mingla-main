@@ -73,6 +73,14 @@ export const purchaseKeys = {
     [...purchaseKeys.all, "lastClaim", userId] as const,
 };
 
+// #4382 Wave 5 — Help & Support (support tickets, owned by the requester).
+export const supportKeys = {
+  all: ["support"] as const,
+  list: (userId: string) => [...supportKeys.all, "list", userId] as const,
+  thread: (userId: string, ticketId: string) =>
+    [...supportKeys.all, "thread", userId, ticketId] as const,
+};
+
 export const buyerReferralKeys = {
   all: ["buyerReferral"] as const,
   link: (

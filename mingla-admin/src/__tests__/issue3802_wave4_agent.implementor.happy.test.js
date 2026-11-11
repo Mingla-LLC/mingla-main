@@ -126,7 +126,8 @@ describe("#3802 A-1: who may open My agent, and where it sits", () => {
       assert.equal(groups(a).some((g) => g.items.some((i) => i.id === "agent" || i.id === "guide")), false, a.role);
       assert.equal(canOpenPage(a, "agent"), true, a.role);
     }
-    assert.deepEqual(HEADER_PAGE_ITEMS, [{ id: "agent", label: "My agent" }, { id: "guide", label: "Guide" }]);
+    // #4255 W4: + Messages (its button in the top bar).
+    assert.deepEqual(HEADER_PAGE_ITEMS, [{ id: "agent", label: "My agent" }, { id: "guide", label: "Guide" }, { id: "messages", label: "Messages" }]);
     assert.ok(HEADER.includes('canOpenPage(access, "agent")') && HEADER.includes('openPage("agent")'));
     assert.ok(HEADER.includes('canOpenPage(access, "guide")') && HEADER.includes('openPage("guide")'));
     assert.equal(NAV_GROUPS.some((g) => g.label === "Help"), false);
@@ -759,7 +760,7 @@ describe("#3802 PR-D: Guide, prompts and counts-only agent outcomes", () => {
     assert.ok(APP.includes('import { GuidePage } from "./pages/GuidePage";'));
     assert.match(APP, /\n {2}guide: GuidePage,/);
     // #4130: Guide opens from the header's ? help button, after My agent in HEADER_PAGE_ITEMS.
-    assert.deepEqual(HEADER_PAGE_ITEMS.map((item) => item.id), ["agent", "guide"]);
+    assert.deepEqual(HEADER_PAGE_ITEMS.map((item) => item.id), ["agent", "guide", "messages"]); // #4255 W4: + Messages
     assert.deepEqual(GUIDE_TABS.map((tab) => tab.id), ["stages", "icp", "agent", "rules"]);
     assert.match(GUIDE_PAGE, /requested && requested !== tab[\s\S]*setSearch\("tab=stages", \{ replace: true \}\)/);
     assert.match(GUIDE_PAGE, /const changeTab = \(next\) => setSearch\(`tab=\$\{next\}`\)/);

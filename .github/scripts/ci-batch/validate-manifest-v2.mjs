@@ -432,10 +432,27 @@ export function phase3dContractDigest(manifest) {
 // #4334: re-sealed after merging origin/main d27f8b82c0 (#4273 country switch rows kept beside the #4334 follow-up rows).
 // #4334: re-sealed after registering the tester follow-ups PostgreSQL proof (issue_4334_place_id_followups.tester) beside the implementor proof in the #1931 and #2117 lanes.
 // #4334: re-sealed after merging origin/main b9d9ba3bab (#3645 payout ledger rows kept beside the #4334 follow-up rows).
+// #4382: register the Support Desk migrations (20280613004382, 20280613014382, 20280613024382) and their implementor PostgreSQL proof in the #1857, #1931 and #2117 replay lanes.
+// #4382: register the ticket Product stage migration (20280613044382) in the #1857, #1931 and #2117 replay lanes.
+// #4382: register the tester adversarial PostgreSQL proof (issue_4382_support_desk.tester.adversarial.pg17) in the #1931 and #2117 lanes.
+// #4382: register the support write guards migration (20280613054382) in the #1857, #1931 and #2117 replay lanes.
 // #4383: register the Communications scheduling migration (20280608004383) and its implementor PostgreSQL proof in the #1857, #1931 and #2117 replay lanes.
 // #4383: and the tester adversarial PostgreSQL proof.
-// #4389: register the brand setup, Ari brand operation, native connect flag and BGN retirement migrations (20280625004389, 20280625104389, 20280625204389, 20280625304389) in the #1857, #1931 and #2117 replay lanes, their implementor PostgreSQL proofs in the #1931 and #2117 lanes, and skip 20280625004389 in the #1931 template replay (it needs the skipped #3355 brand_readiness_catalog).
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "745d85d88e2179c295fd0425a97ed121118de1ade35aa160788247aa90605a11";
+// #4382: re-sealed after merging origin/main 2aa45c6da1 (#4383 rows kept beside the #4382 rows).
+// #4382: renumber the Support Desk migrations to 20280613*4382 (above production's applied 20280608004383 and the sibling #4255 migrations of the time) in the replay lanes.
+// #4255: register the Work board v2 and Mingla team migrations (20280624004255 to 20280624044255) in the #1857, #1931 and #2117 replay lanes, and their implementor PostgreSQL proofs in the #1931 and #2117 lanes.
+// #4255: and the tester adversarial PostgreSQL proof.
+// #4255: and the rework migration (20280624054255) in the #1857, #1931 and #2117 lanes, with its implementor PostgreSQL proof in the #1931 and #2117 lanes.
+// #4255: and the rework tester adversarial PostgreSQL proof.
+// #4255: re-sealed after merging origin/main 62aabbdc6d (#4382 rows kept beside the #4255 rows).
+// #4255: renumber the Work board v2 and Mingla team migrations to 20280624004255 to 20280624054255 (above production's applied 20280613054382) in the replay lanes.
+// #4255: and the rework 2 migration (20280624064255) in the #1857, #1931 and #2117 lanes, with its implementor PostgreSQL proof in the #1931 and #2117 lanes.
+// #4255: and the rework 2 tester adversarial PostgreSQL proof.
+// #4382: register the retire-beta-feedback migration (20280622004382) in the #1857, #1931 and #2117 replay lanes.
+// #4255: re-sealed after merging origin/main 4ba9ec5ec3 (#4382 retire-beta-feedback rows kept beside the #4255 rows).
+// #4255: renumber the seven Work board v2 and Mingla team migrations to 20280624004255 to 20280624064255 (above production's applied 20280622004382) in the replay lanes.
+// #4389: register the brand setup, Ari brand operation, native connect flag and BGN retirement migrations (20280625004389, 20280625104389, 20280625204389, 20280625304389) in the #1857, #1931 and #2117 replay lanes, their implementor PostgreSQL proofs in the #1931 and #2117 lanes, and skip 20280625004389 in the #1931 template replay (it needs the skipped #3355 brand_readiness_catalog). Re-sealed after merging origin/main 3dc6c44093 (#4396 rows kept beside the #4389 rows).
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "76b2a319ead4ff817252723d16d04ea99e8912e502564b6bd3a9c0ae11d42569";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

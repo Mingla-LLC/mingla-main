@@ -201,9 +201,10 @@ DECLARE
   v_thread uuid;
   v_payload jsonb;
 BEGIN
-  v := pg_temp.t3988a_as('avail', $q$public.issue_3720_create_internal_thread(
-    '39880000-0000-4000-c300-000000000001', 'Brand page broken', 'PRIVATE STAFF DETAILS',
-    NULL, NULL, NULL, 'urgent', now() + interval '2 hours', 'Will check the logs')$q$);
+  -- [TEST-MOD #4382] staff threads are internal support tickets now.
+  v := pg_temp.t3988a_as('avail', $q$public.issue_4382_create_staff_ticket(
+    '39880000-0000-4000-c300-000000000001', 'internal', 'Brand page broken', 'PRIVATE STAFF DETAILS',
+    NULL, NULL, NULL, 'urgent', NULL, NULL, now() + interval '2 hours', 'Will check the logs', NULL, ARRAY[]::uuid[])$q$);
   IF v LIKE 'ERR:%' THEN RAISE EXCEPTION 'thread_create_failed:%', v; END IF;
   v_thread := v::uuid;
   PERFORM set_config('t3988a.thread', v_thread::text, true);
@@ -213,22 +214,23 @@ BEGIN
 
   SELECT payload INTO v_payload FROM public.notification_outbox
    WHERE category_key = 'admin.support_staff_ticket' AND idempotency_key LIKE '%:' || v_thread::text || ':%' LIMIT 1;
-  IF v_payload <> jsonb_build_object(
-       'thread_id', v_thread, 'subject', 'Brand page broken', 'priority', 'urgent',
-       'deep_link', 'https://admin.usemingla.com/#/community-support?tab=support&thread=' || v_thread::text) THEN
+  IF (v_payload - 'ticket_number') <> jsonb_build_object(
+       'ticket_id', v_thread, 'subject', 'Brand page broken', 'priority', 'urgent',
+       'deep_link', 'https://admin.usemingla.com/#/community-support?tab=support&ticket=' || v_thread::text)
+     OR (v_payload->>'ticket_number')::bigint < 1001 THEN
     RAISE EXCEPTION 'staff_ticket_payload:%', v_payload;
   END IF;
 
   -- Reassign to a lead: the lead hears about it once.
-  UPDATE public.support_internal_threads
-     SET assigned_staff_id = pg_temp.t3988a_id('lead'), revision = revision + 1
+  UPDATE public.support_tickets
+     SET assigned_staff_id = pg_temp.t3988a_id('lead'), support_workflow_revision = support_workflow_revision + 1
    WHERE id = v_thread;
   v := pg_temp.t3988a_recipients('admin.support_assigned', 'admin.support_assigned:' || v_thread::text || ':%');
   IF v <> 'lead' THEN RAISE EXCEPTION 'assigned_recipients:%', v; END IF;
 
   -- Saving the same assignee again is not a new assignment.
-  UPDATE public.support_internal_threads
-     SET assigned_staff_id = pg_temp.t3988a_id('lead'), revision = revision + 1
+  UPDATE public.support_tickets
+     SET assigned_staff_id = pg_temp.t3988a_id('lead'), support_workflow_revision = support_workflow_revision + 1
    WHERE id = v_thread;
   IF pg_temp.t3988a_count('admin.support_assigned', 'admin.support_assigned:' || v_thread::text || ':%') <> 1 THEN
     RAISE EXCEPTION 'same_assignee_alerted_again';
@@ -247,7 +249,7 @@ DECLARE
   v_item uuid;
 BEGIN
   v := pg_temp.t3988a_as('avail', format($q$public.issue_3720_create_product_signal(
-    '39880000-0000-4000-c300-000000000002', 'internal_thread', %L::uuid, 'bug',
+    '39880000-0000-4000-c300-000000000002', 'support_ticket', %L::uuid, 'bug',
     'Brand page shows blank', 'PRIVATE PROBLEM STATEMENT', 'Brand pages', 'Open brand page',
     'Hosts cannot share', 3, 'high', now() + interval '3 hours', 'Reproduce', 'We are on it')$q$, v_thread));
   IF v LIKE 'ERR:%' THEN RAISE EXCEPTION 'signal_create_failed:%', v; END IF;
@@ -265,12 +267,12 @@ BEGIN
   END IF;
 
   -- A normal-priority signal raised by a lead: no push, the lead is excluded.
-  v := pg_temp.t3988a_as('lead', $q$public.issue_3720_create_internal_thread(
-    '39880000-0000-4000-c300-000000000003', 'Feature ask', 'details',
-    NULL, NULL, NULL, 'normal', now() + interval '2 hours', 'Triage')$q$);
+  v := pg_temp.t3988a_as('lead', $q$public.issue_4382_create_staff_ticket(
+    '39880000-0000-4000-c300-000000000003', 'internal', 'Feature ask', 'details',
+    NULL, NULL, NULL, 'normal', NULL, NULL, now() + interval '2 hours', 'Triage', NULL, ARRAY[]::uuid[])$q$);
   v_thread2 := v::uuid;
   v := pg_temp.t3988a_as('lead', format($q$public.issue_3720_create_product_signal(
-    '39880000-0000-4000-c300-000000000004', 'internal_thread', %L::uuid, 'feature',
+    '39880000-0000-4000-c300-000000000004', 'support_ticket', %L::uuid, 'feature',
     'Bulk export', 'problem', 'Exports', 'Export guests', 'Saves time', 1, 'normal',
     now() + interval '3 hours', 'Size it', 'Thanks')$q$, v_thread2));
   IF v LIKE 'ERR:%' THEN RAISE EXCEPTION 'signal2_create_failed:%', v; END IF;
@@ -301,10 +303,13 @@ BEGIN
     RAISE EXCEPTION 'linked_note_payload_wrong';
   END IF;
 
-  -- Released, then release verified: one note.
-  UPDATE public.support_product_signals SET state = 'released', revision = revision + 1 WHERE id = v_signal;
+  -- [TEST-MOD #4382] Shipped (was released) needs the verified release and
+  -- moves through the checked stages: one note.
   UPDATE public.product_avengers_items SET release_verified_at = now(), release_verified_by = pg_temp.t3988a_id('owner')
    WHERE id = v_item;
+  UPDATE public.support_product_signals SET state = 'triaged', revision = revision + 1 WHERE id = v_signal;
+  UPDATE public.support_product_signals SET state = 'planned', revision = revision + 1 WHERE id = v_signal;
+  UPDATE public.support_product_signals SET state = 'shipped', revision = revision + 1 WHERE id = v_signal;
   IF pg_temp.t3988a_count('admin.product_signal_progress', 'admin.product_signal_progress:released:' || v_signal::text || ':%') <> 1 THEN
     RAISE EXCEPTION 'released_note_not_once';
   END IF;
@@ -318,33 +323,33 @@ DECLARE
   v_due timestamptz;
   v text;
 BEGIN
-  SELECT next_update_at INTO v_due FROM public.support_internal_threads WHERE id = v_thread;
+  SELECT next_update_at INTO v_due FROM public.support_tickets WHERE id = v_thread;
 
   -- Not yet due: nothing.
   PERFORM public.issue_3988_support_overdue_sweep(v_due - interval '1 minute');
-  IF pg_temp.t3988a_count('admin.support_overdue', 'admin.support_overdue:internal_thread:' || v_thread::text || ':%') <> 0 THEN
+  IF pg_temp.t3988a_count('admin.support_overdue', 'admin.support_overdue:support_ticket:' || v_thread::text || ':%') <> 0 THEN
     RAISE EXCEPTION 'overdue_fired_early';
   END IF;
 
   -- Due: the assignee (lead) once, however often the sweep runs.
   PERFORM public.issue_3988_support_overdue_sweep(v_due + interval '1 minute');
   PERFORM public.issue_3988_support_overdue_sweep(v_due + interval '16 minutes');
-  v := pg_temp.t3988a_recipients('admin.support_overdue', 'admin.support_overdue:internal_thread:' || v_thread::text || ':%');
+  v := pg_temp.t3988a_recipients('admin.support_overdue', 'admin.support_overdue:support_ticket:' || v_thread::text || ':%');
   IF v <> 'lead' THEN RAISE EXCEPTION 'overdue_owner_recipients:%', v; END IF;
 
   -- 24h later: the other Support leads once (the owner is not told twice).
   PERFORM public.issue_3988_support_overdue_sweep(v_due + interval '25 hours');
   PERFORM public.issue_3988_support_overdue_sweep(v_due + interval '26 hours');
-  v := pg_temp.t3988a_recipients('admin.support_overdue', 'admin.support_overdue:internal_thread:' || v_thread::text || ':%:lead:%');
+  v := pg_temp.t3988a_recipients('admin.support_overdue', 'admin.support_overdue:support_ticket:' || v_thread::text || ':%:lead:%');
   IF v <> 'lead2' THEN RAISE EXCEPTION 'overdue_lead_recipients:%', v; END IF;
-  IF pg_temp.t3988a_count('admin.support_overdue', 'admin.support_overdue:internal_thread:' || v_thread::text || ':%') <> 2 THEN
+  IF pg_temp.t3988a_count('admin.support_overdue', 'admin.support_overdue:support_ticket:' || v_thread::text || ':%') <> 2 THEN
     RAISE EXCEPTION 'overdue_not_once_per_deadline';
   END IF;
 
   -- A new deadline is a new reminder.
-  UPDATE public.support_internal_threads SET next_update_at = v_due + interval '30 hours' WHERE id = v_thread;
+  UPDATE public.support_tickets SET next_update_at = v_due + interval '30 hours' WHERE id = v_thread;
   PERFORM public.issue_3988_support_overdue_sweep(v_due + interval '31 hours');
-  IF pg_temp.t3988a_count('admin.support_overdue', 'admin.support_overdue:internal_thread:' || v_thread::text || ':%:owner:%') <> 2 THEN
+  IF pg_temp.t3988a_count('admin.support_overdue', 'admin.support_overdue:support_ticket:' || v_thread::text || ':%:owner:%') <> 2 THEN
     RAISE EXCEPTION 'new_deadline_not_reminded';
   END IF;
 END;

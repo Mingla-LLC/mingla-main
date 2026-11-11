@@ -89,7 +89,7 @@ serve(async (req) => {
     const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const { data: ticket, error: tErr } = await admin
       .from("support_tickets")
-      .select("id, subject, requester_user_id, assigned_staff_id, brand_id, audience")
+      .select("id, subject, requester_user_id, requester_segment, assigned_staff_id, brand_id, visibility")
       .eq("id", ticketId)
       .maybeSingle();
     if (tErr) return json({ error: tErr.message }, 500);
@@ -99,9 +99,20 @@ serve(async (req) => {
     const recipients = new Set<string>();
     const type = "business.support_message";
 
+    // #4382 — an internal ticket tells no customer anything.
+    if (body?.senderIsStaff === true && ticket.visibility === "internal") {
+      return json({ ok: true, event, ticket_id: ticketId, dispatched: 0 });
+    }
+    // #4382 — an Explorer requester hears from the Explorer app: the send path
+    // already enqueued explorer.support_reply. A business.* push here would
+    // land in the Host app they may not have.
+    if (body?.senderIsStaff === true && ticket.requester_segment === "explorer") {
+      return json({ ok: true, event, ticket_id: ticketId, dispatched: 0, routed: "explorer.support_reply" });
+    }
+
     if (body?.senderIsStaff === true) {
       // A brand-visible case belongs to the active team, not the staff creator.
-      if (ticket.audience === "brand" && ticket.brand_id) {
+      if (ticket.visibility === "brand" && ticket.brand_id) {
         const { data: members } = await admin
           .from("brand_team_members")
           .select("user_id")

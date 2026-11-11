@@ -1,8 +1,8 @@
 /**
  * #4389 U-9 — the two top bars are pinned.
  *
- * Home: brand chip, Messages, bell, "+" (TopBar unchanged by the BrandChip
- * extraction). Ari: brand chip, Chats, Settings; first run adds Messages and
+ * Home: brand chip, Messages, [Mingla team "M" for staff, #4255 W5], bell,
+ * "+" (TopBar unchanged by the BrandChip extraction). Ari: brand chip, Chats, Settings; first run adds Messages and
  * the bell before Chats. Ari never mounts a brand TopBar with rightSlot= (I-37).
  */
 import { afterEach, beforeEach, describe, expect, jest, test } from "@jest/globals";
@@ -57,6 +57,15 @@ jest.mock("../../brand/BrandMark", () => ({
   brandMarkPhotoUrl: () => null,
 }));
 jest.mock("../Icon", () => ({ Icon: () => null }));
+// #4255 W5 — the staff "M" chunk, stood in by one labelled node.
+jest.mock("../../minglaTeam/teamBadge", () => {
+  const RN = jest.requireActual("react-native") as typeof import("react-native");
+  const R = jest.requireActual("react") as typeof React;
+  return {
+    __esModule: true,
+    default: () => R.createElement(RN.View, { accessibilityLabel: "Mingla team" }),
+  };
+});
 jest.mock("../Toast", () => ({ Toast: () => null }));
 jest.mock("../GlassChrome", () => {
   const RN = jest.requireActual("react-native") as typeof import("react-native");
@@ -128,6 +137,34 @@ describe("#4389 U-9 Home top bar", () => {
     expect(iBell).toBeGreaterThan(iMsg);
     expect(iPlus).toBeGreaterThan(iBell);
     expect(JSON.stringify(r.toJSON())).toContain("Lantern Room");
+  });
+
+  test("with the app's query client: brand chip, Messages, Mingla team, bell, + (#4255 W5)", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { QueryClient, QueryClientProvider } = require("@tanstack/react-query") as typeof import("@tanstack/react-query");
+    const client = new QueryClient();
+    let r!: RendererInstance;
+    await (TestRenderer.act as unknown as (cb: () => Promise<void>) => Promise<void>)(async () => {
+      r = TestRenderer.create(
+        <QueryClientProvider client={client}>
+          <TopBar
+            leftKind="brand"
+            onBrandTap={() => undefined}
+            extraRightSlot={
+              <IconChrome icon="plus" size={36} accessibilityLabel="Create event, experience, or trip" />
+            }
+          />
+        </QueryClientProvider>,
+      );
+      await Promise.resolve();
+    });
+    mounted.push(r);
+    const l = labels(r);
+    const order = ["Brand: Lantern Room", "Messages, 2 unread", "Mingla team", "Notifications, 3 unread", "Create event, experience, or trip"]
+      .map((x) => l.indexOf(x));
+    expect(order.every((i) => i >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    client.clear();
   });
 
   test("Home still mounts TopBar leftKind=brand with + as extraRightSlot and no rightSlot", () => {

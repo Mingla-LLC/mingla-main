@@ -11,7 +11,7 @@
  * response WITHOUT calling the underlying expo-image-picker
  * requestMediaLibraryPermissionsAsync — otherwise, on Android <= 12, the OS
  * would deny the now-stripped storage permission and the two block-on-denial
- * gallery gates (BetaFeedbackModal, MessageInterface) would DEAD-TAP.
+ * gallery gates (support screenshots — #4382 replaced BetaFeedbackModal — and MessageInterface) would DEAD-TAP.
  *
  * iOS is unchanged: it still gates on NSPhotoLibraryUsageDescription, so this
  * delegates to the real expo-image-picker permission request and returns its

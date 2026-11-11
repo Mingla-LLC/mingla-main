@@ -59,7 +59,8 @@ const APP = read("App.jsx");
 // #4130: Wave 0 — the menu from the approved polish design: nine groups,
 // 27 pages, Home first. (#4130: Careers is its own page again.) Retired ids redirect (lib/adminRoutes.js).
 const MENU = [
-  ["Home", ["overview", "work-board", "notifications"]],
+  // #4255 W4: Notifications left the menu for Messages in the top bar.
+  ["Home", ["overview", "work-board"]],
   // #4130 + #3872: the four Creator Program pages sit under Hosts and creators.
   ["Outreach", ["outreach", "program-creators", "program-gigs", "program-locals", "program-disputes", "inbound", "content-calendar", "team-dashboard"]],
   ["Support", ["support", "community"]],
@@ -77,7 +78,7 @@ const MENU = [
 
 // The words on each menu item. #4130: the polish design's names.
 const LABELS = {
-  overview: "Dashboard", "work-board": "Work", notifications: "Notifications",
+  overview: "Dashboard", "work-board": "Work",
   outreach: "Hosts and creators",
   // #4130 + #3872: the Creator Program pages keep their #3872 labels.
   "program-creators": "Creators", "program-gigs": "Gigs", "program-locals": "Mingla Locals", "program-disputes": "Disputes",
@@ -151,9 +152,10 @@ describe("#3802 S-2: every page is in the menu exactly once", () => {
     // #4130: Wave 0 — 40 entries became 26 pages.
     // #4130 + #3872: + the four Creator Program pages (Creators, Gigs, Mingla Locals, Disputes).
     // #3355: the guarded Ari Improvement Lab is the 32nd admin destination.
+    // #4255 W4: - Notifications (Messages is in the top bar).
     // #4383: + the Communications group (Overview, Push, Announcements,
     // Roadmap, Email, Blog, Links page).
-    assert.equal(ids.length, 41); // #4294: + Company tools; #4273: + SMS countries
+    assert.equal(ids.length, 40); // #4294: + Company tools; #4273: + SMS countries
   });
   it("the menu plus governed Ads deep links are the app's pages (the role Home aside)", () => {
     const pagesBlock = APP.match(/const PAGES = \{([\s\S]*?)\n\};/);
@@ -166,7 +168,8 @@ describe("#3802 S-2: every page is in the menu exactly once", () => {
     // #4130 Wave 6: Support and Community are real pages; the old
     // community-support console is a redirect, not a page.
     const menuPages = NAV_ITEMS.map((i) => i.id);
-    assert.deepEqual([...pageIds].sort(), ["home", "campaign-builder", "campaigns", "agent-log", "agent", "guide", ...menuPages].sort());
+    // #4255 W4: Messages is a header page too (its full page, #/messages).
+    assert.deepEqual([...pageIds].sort(), ["home", "campaign-builder", "campaigns", "agent-log", "agent", "guide", "messages", ...menuPages].sort());
   });
   it("the role Home group is still put first by lib/access.js, not by the menu list", () => {
     assert.equal(NAV_ITEMS.some((i) => i.id === "home"), false);
@@ -430,7 +433,7 @@ describe("#3802 S-8: one page header, and no page setting its own frame", () => 
     "CampaignsPage.jsx", "CareersPage.jsx", "ClaimsPage.jsx", "CommunitySupportPage.jsx", "ContentCalendarPage.jsx", "DataRoomPage.jsx", "DraftsPage.jsx", "EmailPage.jsx",
     // [TEST-MOD-APPROVED #3980] the Work board and Agent log draw the one header.
     "WorkBoardPage.jsx", "AgentLogPage.jsx",
-    "GuidePage.jsx", "LaunchCitiesPage.jsx", "NotificationsPage.jsx", "OfferingsConsolePage.jsx", "OverviewPage.jsx", "PeopleConsolePage.jsx", "PipelinePage.jsx",
+    "GuidePage.jsx", "LaunchCitiesPage.jsx", "OfferingsConsolePage.jsx", "OverviewPage.jsx", "PeopleConsolePage.jsx", "PipelinePage.jsx",
     // #4276: the Intelligence Trial and Signal Library pages are retired; their tools
     // live in Place pool's pipeline.
     "PlacePoolManagementPage.jsx", "PricingPage.jsx", "QueueHealthPage.jsx", "RefundOperationsPage.jsx",
@@ -453,6 +456,8 @@ describe("#3802 S-8: one page header, and no page setting its own frame", () => 
     "SmsCountriesPage.jsx",
     // #4130 + #3872: the four Creator Program pages draw the one header.
     "ProgramCreatorsPage.jsx", "ProgramGigsPage.jsx", "ProgramLocalsPage.jsx", "ProgramDisputesPage.jsx",
+    // #4255 W4: Messages replaced the Notifications page.
+    "MessagesPage.jsx",
   ];
   // The five pages that moved later (My agent, Hosts and Creators, Beta Leads,
   // Home, Team dashboard) are now in the list above; none is left to follow.
@@ -539,7 +544,8 @@ describe("#3802 S-8: one page header, and no page setting its own frame", () => 
 
   it("the header itself: one title style, a description, actions, a way back, tabs on the divider", () => {
     const code = stripComments(PAGE_HEADER);
-    assert.ok(code.includes("export function PageHeader({ title, description, meta, actions, back, tabs, titleId })"));
+    // #4255 (Work board v2): + inline, the controls on the title's own line (one row, never wraps).
+    assert.ok(code.includes("export function PageHeader({ title, description, meta, actions, back, tabs, titleId, inline })"));
     const h1 = code.match(/<h1[\s\S]*?className="([^"]*)"/);
     assert.ok(h1);
     for (const cls of ["text-[22px]", "leading-7", "font-semibold", "tracking-[-0.02em]"]) {

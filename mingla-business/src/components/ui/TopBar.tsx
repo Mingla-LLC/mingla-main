@@ -14,7 +14,8 @@
  *   - `none`  — no left content (renders empty View for layout balance).
  *
  * Right slot is configurable; defaults to a Messages IconChrome + bell
- * IconChrome with badge. Caller passes any `React.ReactNode`.
+ * IconChrome with badge. Caller passes any `React.ReactNode`. #4255 W5: for
+ * active Admin staff only, a Mingla team "M" sits between the two.
  *
  * Wrapper uses `GlassChrome` with `intensity="cardElevated"` (premium
  * frost), tinted floor `rgba(12,14,18,0.55)`, and `shadows.glassCard-
@@ -156,6 +157,13 @@ const EnquiryAwareMessagesButton: React.FC<{ groupUnread: number }> = ({
   );
 };
 
+/**
+ * #4255 W5 — the Mingla team "M" (active Admin staff only). Its staff check
+ * and button are one small lazy chunk; until team_badge says staff it renders
+ * nothing (no gap, no crash), and it needs the app's query client.
+ */
+const LazyMinglaTeamSlot = React.lazy(() => import("../minglaTeam/teamBadge"));
+
 const DefaultRightSlotInner: React.FC<{ unreadCount: number | undefined }> = ({
   unreadCount,
 }) => {
@@ -182,6 +190,13 @@ const DefaultRightSlotInner: React.FC<{ unreadCount: number | undefined }> = ({
       ) : (
         <MessagesButton unread={groupUnread} />
       )}
+      {/* #4255 W5 — between the chat bubble and the bell; needs the query
+          client, so an isolated render without one shows no M. */}
+      {hasQueryClient && user?.id ? (
+        <React.Suspense fallback={null}>
+          <LazyMinglaTeamSlot userId={user.id} />
+        </React.Suspense>
+      ) : null}
       {/* META-ORCH-1074 Sub-C: the bell opens the notifications inbox route.
           Badge caps at 9+ (operator noise reduction; other call-sites keep 99). */}
       <IconChrome

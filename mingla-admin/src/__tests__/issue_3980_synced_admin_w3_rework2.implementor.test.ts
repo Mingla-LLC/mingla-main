@@ -65,8 +65,9 @@ Deno.test("#3980 W3 rework 2 STEPS: no steps open yet is said plainly, never 'al
 Deno.test("#3980 W3 rework 2 GROUP: the status words stay; the dead grouped view is gone", () => {
   // #4270: three statuses; "Waiting on a person" is retired.
   assertEquals(["person", "todo", "doing", "done", "x"].map(workStatusLabel), ["", "To do", "In progress", "Done", ""]);
-  const cols = code("components/ops/WorkColumns.jsx");
-  assertMatch(cols, /export function WorkColumnCard\(\{ card, selected, onSelect, draftsReady = 0 \}\)/);
+  // #4255 W2: the board is WorkBoard; its card face still says a ready draft.
+  const cols = code("components/ops/WorkBoard.jsx");
+  assertMatch(cols, /export function BoardCardFace\(\{ card, today, columns = \[\], onMove = null, showPill = false, draftsReady = 0 \}\)/);
   assertNotMatch(cols, /WorkGroups|showStatus|groupCards/);
 });
 

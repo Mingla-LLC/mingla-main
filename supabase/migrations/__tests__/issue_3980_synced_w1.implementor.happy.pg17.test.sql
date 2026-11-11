@@ -1,4 +1,5 @@
 -- Issue #3980 synced program, Wave 1 -- foundations, on the fully replayed
+-- #4255: a card's plan is read from its subtasks now (ops_plan_from_subtasks); the plan column is retired and stays empty.
 -- PG17 schema.
 -- MINGLA-INVARIANT: I-3980-CHAT-IDENTITY | issue #3980 | Two chats on one person's agent key are told apart by a key the connector derives per connection; one chat's claim refuses the other's changes, an unnamed chat behaves as before, and a browser can never act as a chat.
 -- MINGLA-INVARIANT: I-3980-WORKING-MARK | issue #3980 | Starting a card marks the agent as working on it until it closes, pushes back or releases; another agent's changes to that card are refused while the mark was updated in the last 24 hours, and a person is never refused.
@@ -275,13 +276,13 @@ begin
   v := pg_temp.t3980s_work('A', 'aaaaaaaaaaaaaaaa', 'update_work',
     format('{"id":"%s","expected_revision":%s,"step":{"n":1,"status":"done","result":"Host called, read back the date"}}', v_id, v_rev));
   perform pg_temp.t3980s_check('X1', 'a step a person does is marked done, with its result',
-    pg_temp.t3980s_get(v, 'ok') || '/' || (select p->>'status' || ':' || (p->>'result') from public.ops_work_cards w, jsonb_array_elements(w.plan) p where w.id = v_id::uuid and p->>'n' = '1'),
+    pg_temp.t3980s_get(v, 'ok') || '/' || (select p->>'status' || ':' || (p->>'result') from public.ops_work_cards w, jsonb_array_elements(public.ops_plan_from_subtasks(w.id)) p where w.id = v_id::uuid and p->>'n' = '1'),
     'true/done:Host called, read back the date');
   select revision into v_rev from public.ops_work_cards where id = v_id::uuid;
   v := pg_temp.t3980s_work('A', 'aaaaaaaaaaaaaaaa', 'update_work',
     format('{"id":"%s","expected_revision":%s,"step":{"n":2,"status":"failed","result":"The host did not answer"}}', v_id, v_rev));
   perform pg_temp.t3980s_check('X1', 'a step a person does can be marked failed',
-    pg_temp.t3980s_get(v, 'ok') || '/' || (select p->>'status' from public.ops_work_cards w, jsonb_array_elements(w.plan) p where w.id = v_id::uuid and p->>'n' = '2'),
+    pg_temp.t3980s_get(v, 'ok') || '/' || (select p->>'status' from public.ops_work_cards w, jsonb_array_elements(public.ops_plan_from_subtasks(w.id)) p where w.id = v_id::uuid and p->>'n' = '2'),
     'true/failed');
   select revision into v_rev from public.ops_work_cards where id = v_id::uuid;
   v := pg_temp.t3980s_work('A', 'aaaaaaaaaaaaaaaa', 'update_work', format($j${"id":"%s","expected_revision":%s,"changes":{"plan":[
@@ -289,7 +290,7 @@ begin
       {"n":2,"text":"Write the recap","tool":"person","status":"person","result":"Needs Seth"},
       {"n":3,"text":"Log the reply","tool":"record_reply","status":"todo"}]}}$j$, v_id, v_rev));
   perform pg_temp.t3980s_check('X1', 'the whole plan sent back in the shape add_work takes is saved',
-    pg_temp.t3980s_get(v, 'ok') || '/' || (select string_agg(p->>'status', ',' order by (p->>'n')::int) from public.ops_work_cards w, jsonb_array_elements(w.plan) p where w.id = v_id::uuid),
+    pg_temp.t3980s_get(v, 'ok') || '/' || (select string_agg(p->>'status', ',' order by (p->>'n')::int) from public.ops_work_cards w, jsonb_array_elements(public.ops_plan_from_subtasks(w.id)) p where w.id = v_id::uuid),
     'true/done,person,todo');
   select revision into v_rev from public.ops_work_cards where id = v_id::uuid;
   v := pg_temp.t3980s_work('A', 'aaaaaaaaaaaaaaaa', 'update_work', format($j${"id":"%s","expected_revision":%s,"changes":{"plan":[

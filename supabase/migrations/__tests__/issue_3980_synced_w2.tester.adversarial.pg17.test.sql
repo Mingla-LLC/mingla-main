@@ -644,7 +644,7 @@ begin
     i := i + 1;
     insert into public.support_product_signals (id, client_request_id, signal_kind, state, title, problem_statement, product_area, user_journey,
       impact_summary, next_update_at, next_step, customer_reply_draft, created_by)
-    values (('39830000-0000-4000-c200-00000000000' || i)::uuid, gen_random_uuid(), 'bug', 'linked', 'W2T signal ' || r.n, 'Something is wrong.',
+    values (('39830000-0000-4000-c200-00000000000' || i)::uuid, gen_random_uuid(), 'bug', 'planned', 'W2T signal ' || r.n, 'Something is wrong.',
       'Payouts', 'Host waits', 'Hosts are upset', now() + interval '1 day', 'Fix it', 'We are on it.', '39830000-0000-4000-a000-000000000004');
     insert into public.product_avengers_items (id, issue_number, issue_node_id, project_item_id, issue_url, issue_title, issue_state, board_status)
     values (('39830000-0000-4000-c300-00000000000' || i)::uuid, r.n, 'I_w2t' || r.n, 'PVTI_w2t' || r.n,

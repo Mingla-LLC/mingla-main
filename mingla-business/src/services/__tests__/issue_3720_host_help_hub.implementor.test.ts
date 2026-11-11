@@ -247,15 +247,18 @@ describe("#3720 Host Help & Support hub (implementor)", () => {
   });
 
   // [TEST-MOD-APPROVED #3720] Wave 2 uses real Support sender names.
-  test("Support tab keeps the neutral Support fallback + online banner + start chat", () => {
+  // #4382: "Start a chat" became "New request"; the copy now lives in hostSupport.json.
+  test("Support tab keeps the neutral Support fallback + online banner + new request", () => {
     const src = fs.readFileSync(
       path.join(SRC, "components/support/SupportTabPanel.tsx"),
       "utf8",
     );
     expect(src).toMatch(/SUPPORT_HOST_FACING_AGENT/);
     expect(src).toMatch(/useSupportIsOnline/);
-    expect(src).toContain("Start a chat");
-    expect(src).toContain("Support is online");
+    expect(src).toContain('supportCopy("panel.new_request")');
+    expect(src).toContain('supportCopy("panel.online")');
+    const copy = fs.readFileSync(path.join(SRC, "i18n/locales/en/hostSupport.json"), "utf8");
+    expect(copy).toContain('"online": "Support is online"');
   });
 
   test("Settings Help & Support row wires unread badge", () => {

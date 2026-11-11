@@ -119,12 +119,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
+    minWidth: 0,
   },
   brandRowShrink: {
     flexShrink: 1,
     minWidth: 0,
   },
+  // #4255 W5 — four icons on a 320pt phone: the brand name truncates.
   brandLabel: {
+    flexShrink: 1,
     color: textTokens.primary,
     fontSize: typography.bodyLg.fontSize,
     lineHeight: typography.bodyLg.lineHeight,

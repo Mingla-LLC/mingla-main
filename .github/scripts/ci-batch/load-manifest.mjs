@@ -224,10 +224,27 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4334: re-sealed after merging origin/main d27f8b82c0 (#4273 country switch rows kept beside the #4334 follow-up rows).
 // #4334: re-sealed after registering the tester follow-ups PostgreSQL proof (issue_4334_place_id_followups.tester) beside the implementor proof in the #1931 and #2117 lanes.
 // #4334: re-sealed after merging origin/main b9d9ba3bab (#3645 payout ledger rows kept beside the #4334 follow-up rows).
+// #4382: drop the deleted FeedbackHistorySheet.tsx from the #1540 pathScope (the file is gone; the path matched nothing); re-sealed.
+// #4382: register the ticket Product stage migration (20280613044382) in the #1857, #1931 and #2117 replay lanes; re-sealed.
+// #4382: register the tester adversarial PostgreSQL proof in the #1931 and #2117 lanes; re-sealed after merging origin/main b805c52b1d.
+// #4382: register the support write guards migration (20280613054382) in the replay lanes; re-sealed.
 // #4383: re-sealed after registering the Communications scheduling migration and its PostgreSQL proof in the #1857, #1931 and #2117 lanes.
 // #4383: re-sealed after registering the tester adversarial PostgreSQL proof in the #1931 and #2117 lanes.
-// #4389: re-sealed after registering the four #4389 migrations and their PostgreSQL proofs in the #1857, #1931 and #2117 lanes, and skipping the brand setup migration in the #1931 template replay.
-export const BOOTSTRAP_SHA256 = "d413a85754ada242838dd007c24d8e0b8e70d62ca9b3f5ecf977f0de2751741c";
+// #4382: re-sealed after merging origin/main 2aa45c6da1 (#4383 rows kept beside the #4382 rows).
+// #4382: re-sealed after renumbering the Support Desk migrations to 20280613*4382.
+// #4255: re-sealed after registering the Work board v2 and Mingla team migrations and their PostgreSQL proofs in the #1857, #1931 and #2117 lanes.
+// #4255: re-sealed after registering the tester adversarial PostgreSQL proof in the #1931 and #2117 lanes.
+// #4255: re-sealed after registering the rework migration (20280624054255) and its PostgreSQL proof in the #1857, #1931 and #2117 lanes.
+// #4255: re-sealed after registering the rework tester adversarial PostgreSQL proof in the #1931 and #2117 lanes.
+// #4255: re-sealed after merging origin/main 62aabbdc6d (#4382 rows kept beside the #4255 rows).
+// #4255: re-sealed after renumbering the Work board v2 and Mingla team migrations to 20280624*4255 (above production's applied 20280613054382).
+// #4255: re-sealed after registering the rework 2 migration (20280624064255) and its PostgreSQL proof in the #1857, #1931 and #2117 lanes.
+// #4255: re-sealed after registering the rework 2 tester adversarial PostgreSQL proof in the #1931 and #2117 lanes.
+// #4382: register the retire-beta-feedback migration (20280622004382) in the #1857, #1931 and #2117 replay lanes; re-sealed.
+// #4255: re-sealed after merging origin/main 4ba9ec5ec3 (#4382 retire-beta-feedback rows kept beside the #4255 rows).
+// #4255: re-sealed after renumbering the seven Work board v2 and Mingla team migrations to 20280624*4255 (above production's applied 20280622004382).
+// #4389: re-sealed after registering the four #4389 migrations and their PostgreSQL proofs in the #1857, #1931 and #2117 lanes, skipping the brand setup migration in the #1931 template replay, and merging origin/main 3dc6c44093.
+export const BOOTSTRAP_SHA256 = "cf1c9e223fc208e8e9e3df3051a87c176b2d8087345a6236f08d4f09603b6952";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

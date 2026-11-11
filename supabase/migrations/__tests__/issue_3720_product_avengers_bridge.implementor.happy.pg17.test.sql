@@ -14,12 +14,12 @@ INSERT INTO public.support_product_signals(
   customer_reply_draft,created_by
 ) VALUES
   ('37200000-0000-4000-8000-000000000411','37200000-0000-4000-8000-000000000421',
-   'bug','ready_product','Private host calendar report','Private support evidence stays here.',
+   'bug','triaged','Private host calendar report','Private support evidence stays here.',
    'Host app','Host publishes a card.','Host cannot verify publishing.',2,'high',now()+interval '1 day',
    'Product reviews public-safe wording.','We are reviewing the publishing state.',
    '37200000-0000-4000-8000-000000000401'),
   ('37200000-0000-4000-8000-000000000412','37200000-0000-4000-8000-000000000422',
-   'feature','ready_product','Private feature request','Private customer details stay here.',
+   'feature','triaged','Private feature request','Private customer details stay here.',
    'Explorer','Explorer plans a trip.','Explorer needs a clearer planning view.',1,'normal',now()+interval '1 day',
    'Product reviews public-safe wording.','We are reviewing the request.',
    '37200000-0000-4000-8000-000000000401');
@@ -90,7 +90,7 @@ BEGIN
   IF NOT EXISTS(SELECT 1 FROM public.product_signal_avengers_links WHERE signal_id=v_signal AND item_id=v_item AND link_kind='existing') THEN
     RAISE EXCEPTION 'existing_issue_link_missing';
   END IF;
-  IF (SELECT state FROM public.support_product_signals WHERE id=v_signal)<>'linked' THEN RAISE EXCEPTION 'signal_not_linked'; END IF;
+  IF (SELECT state FROM public.support_product_signals WHERE id=v_signal)<>'planned' THEN RAISE EXCEPTION 'signal_not_planned'; END IF;
   IF (SELECT customer_status FROM public.product_avengers_items WHERE id=v_item)<>'Being built' THEN RAISE EXCEPTION 'status_translation_wrong'; END IF;
   IF NOT EXISTS(SELECT 1 FROM public.product_customer_update_drafts WHERE signal_id=v_signal AND state='draft') THEN RAISE EXCEPTION 'customer_draft_missing'; END IF;
 

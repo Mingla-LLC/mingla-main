@@ -62,7 +62,9 @@ export const BLOG_AREA = "blog";
 
 export const PAGE_ADDITIONAL_AREAS = Object.freeze({
   "community-support": Object.freeze([COMMUNITY_SUPPORT_AREA]),
-  notifications: Object.freeze([TEAM_NOTIFICATIONS_AREA]),
+  // #4255 W4: Messages (the top-bar button and #/messages) took over the
+  // Notifications page and its access.
+  messages: Object.freeze([TEAM_NOTIFICATIONS_AREA]),
   "data-room": Object.freeze([DATA_ROOM_AREA]),
   // Issue #4383: Email and Blog are their own Communications screens, for
   // every teammate (#4255 D5, exactly what the old Support tabs had), and the

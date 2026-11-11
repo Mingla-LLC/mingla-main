@@ -1,35 +1,45 @@
-// Issue #3980 — the right column of the Work board: one card, live. Changes
-// save as they are made; most offer Undo for a few seconds.
+// Issue #3980 — one work card, live. Changes save as they are made; most offer
+// Undo for a few seconds.
 //
-// Issue #4270 (Wave 1) — the card opens on what to do next. Order: (1) the
-// header, (2) the Next step box (a Status dropdown To do / In progress /
-// Done, where Done asks for proof first and closes the card, and the buttons
-// for this card's state, its Send, Spend or Publish tag and its drafts),
-// (3) Who and when, (4) What to do, (5) Links and files (a new Files link),
-// (6) the record: Result, Proof, then Notes, History, Agent prompt and Remove
-// card, each one tap open. Every field and action of the old card is kept.
+// Issue #4255 (Work board v2, W3) — the card panel, rebuilt (720px, with a
+// focus mode that fills the page; the thread opens beside it as panel two):
+//   (1) one header line: the card number and, for a subtask, the breadcrumb
+//       to its parent; Thread (with its message count), focus mode, the ⋯
+//       menu (Copy agent prompt, Copy link, Show changes in thread, Move to,
+//       Archive card) and close;
+//   (2) the title, shown once and edited in place; "Done when" one line under
+//       it;
+//   (3) status in two lines at most: the status pill (the board's columns),
+//       the next action as one button, More (Send back, Push back, Block),
+//       and a red second line only when something is wrong;
+//   (4) people and dates in two lines at most: Owners, Watching, Assign to
+//       me; then Start, Due, Sprint, Goal and Estimate as chips;
+//   (5) the description, a composer (bold, lists, checklists, links, code,
+//       @mentions, / menu) that autosaves 800 ms after typing stops and on
+//       blur; Instructions, Done means and Result merge into it (D4);
+//   (6) subtasks, two levels deep; (7) files and links; (8) linked records
+//       and GitHub; (9) the host plan switch where it applies.
+// Gone (D5-D7): the second Title field, Instructions, Result, the Proof box
+// (proof shows at the foot of the thread), the four folds at the bottom (in
+// the ⋯ menu and the thread now), and "Message to send" (a draft for a person
+// is a subtask they own).
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Copy, ExternalLink, FolderOpen, Link2, X } from "lucide-react";
+import { ExternalLink, Link2, Maximize2, MessageSquare, Minimize2, MoreHorizontal, X } from "lucide-react";
 import { AlertCard } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { Skeleton } from "../ui/Skeleton";
 import { useToast } from "../../context/ToastContext";
 import { useOpsCard } from "../../hooks/useOpsCard";
+import { useCardUploads } from "../../hooks/useCardFiles";
 import * as ops from "../../services/opsService";
 import {
   personActionFor,
   personReasonLabel,
   isTagged,
-  filesHost,
-  filesUrlProblem,
-  statusChoice,
   roadmapDraftHref,
-  WORK_STATUSES,
   addDays,
   agentName,
   agentPromptFor,
-  cardReasons,
-  closeKindLabel,
   dayLabel,
   githubChipClass,
   githubChipWords,
@@ -38,88 +48,120 @@ import {
   mondayOf,
   opsErrorWords,
   parseGithubInput,
-  proofBadge,
-  requestKey,
   cardAnchorWords,
   sprintLabel,
   todayIso,
   workingWords,
   showsHostSees,
 } from "../../lib/opsModel";
+import { GROUP_LABELS, hoursLabel, liveColumns, parseEstimate, writeShowChanges } from "../../lib/workBoardModel";
 import { OpsChip } from "./OpsChip";
-import { PeopleField } from "../people/PeopleField";
+import { PeopleField, PersonAvatar } from "../people/PeopleField";
 import { suggestedPeople } from "../../lib/peopleField";
 import { usePeopleDirectory } from "../../hooks/usePeopleDirectory";
 import { RecordPicker } from "./RecordPicker";
-import { PlanSteps } from "./PlanSteps";
 import { ProofForm } from "./ProofForm";
 import { PushBackForm } from "./PushBackForm";
-import { CardHistory } from "./CardHistory";
-import { NoteBox } from "./NoteBox";
-import { AUTO_GROW_CLASS, useAutoGrow } from "./useAutoGrow";
-import { CardDrafts, CardWording } from "./CardPersonPanels";
-import { DraftKeptNote, SideLink } from "../ui/PanelStack";
+import { CardWording } from "./CardPersonPanels";
+import { RichComposer } from "./RichComposer";
+import { CardSubtasks } from "./CardSubtasks";
+import { CardFiles } from "./CardFiles";
+import { MenuItem, Popover } from "./Popover";
+import { DraftKeptNote, SideLink, usePanelLinks } from "../ui/PanelStack";
 import { usePanelDraft } from "../../hooks/usePanelDraft";
-import { linkSide } from "../../lib/panelStack";
+import { AUTO_GROW_CLASS, useAutoGrow } from "./useAutoGrow";
+import { linkSide, sideHref } from "../../lib/panelStack";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 const INPUT = `min-h-11 w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 text-[13px] text-[var(--color-text-primary)] disabled:opacity-60 ${FOCUS}`;
-// Done means wraps and grows to show its whole text (it is one line to the server).
-const DONE_MEANS_CLASS = "min-h-[56px] w-full whitespace-pre-wrap break-words rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] p-2 text-[13px] text-[var(--color-text-primary)] disabled:opacity-60";
 const LABEL = "text-[11px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]";
+const CHIP = `inline-flex h-8 max-w-full items-center gap-1.5 rounded-lg px-2 text-[12.5px] hover:bg-[var(--gray-100)] disabled:opacity-60 ${FOCUS}`;
+// "Done when": one quiet line under the title that grows to show its whole text.
+const DONE_MEANS_CLASS = "min-h-8 min-w-0 flex-1 resize-none whitespace-pre-wrap break-words rounded-md border border-transparent bg-transparent px-1 py-1 text-[12.5px] text-[var(--color-text-secondary)] hover:border-[var(--gray-200)] focus:border-[var(--gray-300)]";
+const ICON_BTN = `inline-grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[var(--color-text-secondary)] hover:bg-[var(--gray-100)] ${FOCUS}`;
 
 function Section({ title, children, action }) {
   return (
-    <div className="flex min-w-0 flex-col gap-2 border-t border-[var(--gray-200)] pt-3">
+    <section className="flex min-w-0 flex-col gap-2">
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-        <h3 className="text-[12.5px] font-semibold text-[var(--color-text-primary)]">{title}</h3>
+        <h3 className={LABEL}>{title}</h3>
         {action}
       </div>
       {children}
-    </div>
+    </section>
   );
 }
 
-function statusTone(card) {
-  if (card.status === "done") return "success";
-  if (isTagged(card)) return "warning";
-  if (card.status === "doing") return "brand";
-  return "default";
+/** The verb a card's owner does next: "publishes", "sends", "approves the spend", "finishes it". */
+function nextVerb(card) {
+  const tag = card.tag || card.person_reason;
+  return { publish: "publishes", send: "sends", spend: "approves the spend", other: "gives the OK" }[tag] || (card.status === "doing" ? "finishes it" : "starts it");
 }
 
-// A record row that opens with one tap and shows a count while closed.
-function Fold({ title, count, children, id }) {
+/** The red second line: only when something is wrong. */
+function troubleWords(card, today) {
+  const parts = [];
+  if (card.due_on && card.status !== "done") {
+    const days = Math.round((new Date(`${today}T00:00:00Z`) - new Date(`${String(card.due_on).slice(0, 10)}T00:00:00Z`)) / 86_400_000);
+    if (days > 0) parts.push(`Overdue by ${days} ${days === 1 ? "day" : "days"}`);
+  }
+  if (card.blocked) parts.push(`Blocked${card.blocked_reason ? `: ${card.blocked_reason}` : ""}`);
+  if (card.status !== "done" && !(card.owners || []).length) parts.push("No owner");
+  if (!parts.length) return "";
+  const owner = (card.owners || [])[0];
+  return `${parts.join(" · ")}${owner && card.status !== "done" ? ` · next: ${owner.name} ${nextVerb(card)}` : ""}`;
+}
+
+/** A property chip: its value, or a faint "+ Due" when empty; it opens a small picker. */
+function PropChip({ label, value, empty, children, disabled, danger = false, width = "w-64" }) {
   return (
-    <details data-fold={id} className="group min-w-0 border-t border-[var(--gray-200)]">
-      <summary className={`flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 py-2 text-[12.5px] font-semibold text-[var(--color-text-primary)] ${FOCUS}`}>
-        <span>{title}{count !== undefined && count !== null ? <span className="font-normal text-[var(--color-text-tertiary)]"> · {count}</span> : null}</span>
-        <span aria-hidden="true" className="text-[var(--color-text-tertiary)] group-open:rotate-90">›</span>
-      </summary>
-      <div className="flex min-w-0 flex-col gap-2 pb-3">{children}</div>
-    </details>
+    <Popover label={label} width={width} disabled={disabled} dataAttr={`prop:${label}`}
+      button={value
+        ? <span className="inline-flex min-w-0 items-center gap-1"><span className="text-[var(--color-text-tertiary)]">{label}</span><span className={`truncate font-semibold ${danger ? "text-[var(--color-error-700)]" : "text-[var(--color-text-primary)]"}`}>{value}</span></span>
+        : <span className="text-[var(--color-text-tertiary)]">+ {empty || label}</span>}
+      buttonClassName={`${CHIP} ${danger ? "bg-[var(--color-error-50)]" : value ? "bg-[var(--gray-50)]" : ""}`}>
+      {(close) => <div className="flex flex-col gap-2 p-1">{typeof children === "function" ? children(close) : children}</div>}
+    </Popover>
+  );
+}
+
+/** Owners or Watching: avatars, + to change, in a popover with the people field. */
+function PeopleChip({ id, label, people, field }) {
+  return (
+    <Popover label={label} width="w-80" dataAttr={`people:${label}`}
+      button={<span className="inline-flex items-center gap-1.5"><span className="text-[var(--color-text-tertiary)]">{label}</span>
+        {people.length ? <span className="inline-flex">{people.slice(0, 4).map((p, i) => <span key={p.email} className={i ? "-ml-1.5" : ""}><PersonAvatar person={p} size="sm" /></span>)}</span> : <span className="text-[var(--color-text-tertiary)]">nobody</span>}
+        <span aria-hidden="true" className="text-[var(--color-text-tertiary)]">+</span><span className="sr-only">{people.map((p) => p.name).join(", ")}</span></span>}
+      buttonClassName={`${CHIP} bg-[var(--gray-50)]`}>
+      <div id={id} className="p-1">{field}</div>
+    </Popover>
   );
 }
 
 // #4270 W7 rework (D-1): `onOpenSide` is set inside the Brand group panel, so
 // the wording card's link to another page is not shown there.
-export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBack, inDrawer = false, onOpenSide = null }) {
+export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBack, onClose, onOpenSide = null, focus = false, onFocus = null, onOpenCard = null, columns: givenColumns = null }) {
   const { addToast } = useToast();
   const read = useOpsCard(cardId);
   const card = read.data?.card || null;
   const directory = usePeopleDirectory();
+  const links = usePanelLinks();
   const team = directory.people.length ? directory.people : (config?.team || []);
   const me = config?.me || {};
+  const columns = liveColumns(givenColumns && givenColumns.length ? givenColumns : config?.columns || []);
   const [busy, setBusy] = useState("");
   const [form, setForm] = useState("");
+  const [closeTo, setCloseTo] = useState(null);
+  const [closeChildren, setCloseChildren] = useState(false);
   const [linking, setLinking] = useState(false);
   // #4255: what is typed is kept per card (lib/panelDrafts.js) until it is
-  // saved, so it survives a linked item opening, closing or changing beside it.
+  // saved, so it survives a linked item or the thread opening beside it.
   const [title, setTitle, titleDraft] = usePanelDraft(`work:${cardId}:title`, card?.title || "");
-  const [instructions, setInstructions, instructionsDraft] = usePanelDraft(`work:${cardId}:instructions`, card?.instructions || "");
   const [doneMeans, setDoneMeans, doneMeansDraft] = usePanelDraft(`work:${cardId}:done_means`, card?.done_means || "");
-  const [result, setResult, resultDraft] = usePanelDraft(`work:${cardId}:result`, card?.result || "");
+  const savedDescription = card ? (card.description ?? card.instructions ?? "") : "";
+  const [description, setDescription, descriptionDraft] = usePanelDraft(`work:${cardId}:description`, savedDescription);
   const [blockReason, setBlockReason] = useState("");
-  // Title and Done means grow with their text and never clip it.
+  // The title and Done when grow with their text and never clip it.
   const titleGrow = useAutoGrow(title);
   const doneMeansGrow = useAutoGrow(doneMeans);
   const titleRef = useCallback((el) => {
@@ -131,12 +173,20 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
   const [overrideReason, setOverrideReason] = useState("");
   const [saveState, setSaveState] = useState("");
   const idle = useRef(null);
+  const close = onClose || onBack;
 
-  useEffect(() => { setForm(""); setLinking(false); setSaveState(""); }, [cardId]);
   useEffect(() => () => clearTimeout(idle.current), []);
+  // The thread beside the card says when it posted, so the count and files follow at once.
+  const refetchCard = read.refetch;
+  useEffect(() => {
+    const onChanged = (e) => { if (e.detail === cardId) refetchCard?.({ quiet: true }); };
+    window.addEventListener("mingla:work-card-changed", onChanged);
+    return () => window.removeEventListener("mingla:work-card-changed", onChanged);
+  }, [cardId, refetchCard]);
 
   const locked = !online || !card || card.archived;
   const refresh = async () => { await read.refetch({ quiet: true }); onChanged?.(); };
+  const uploads = useCardUploads(cardId, () => refresh());
 
   const offerUndo = (answer, titleText) => {
     if (!answer?.event_id) { addToast({ variant: "success", title: titleText }); return; }
@@ -144,6 +194,10 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
       try { await ops.undoWork(answer.event_id); await refresh(); addToast({ variant: "success", title: "Undone." }); }
       catch (error) { addToast({ variant: "error", title: "Undo didn’t work", description: opsErrorWords(error) }); }
     } } });
+  };
+  const failed = async (error) => {
+    if (error?.token === "stale_write") { addToast({ variant: "warning", title: "This card changed. Showing the latest." }); await refresh(); }
+    else addToast({ variant: "error", title: "That didn’t save", description: opsErrorWords(error) });
   };
 
   const run = async (label, task, success) => {
@@ -155,8 +209,7 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
       if (success) offerUndo(answer, typeof success === "function" ? success(answer) : success);
       return answer;
     } catch (error) {
-      if (error?.token === "stale_write") { addToast({ variant: "warning", title: "This card changed. Showing the latest." }); await refresh(); }
-      else addToast({ variant: "error", title: "That didn’t save", description: opsErrorWords(error) });
+      await failed(error);
       return null;
     } finally {
       setBusy("");
@@ -165,33 +218,58 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
 
   const update = (changes, success) => run("save", () => ops.updateWork(card.id, changes, card.revision), success);
 
-  const drafts = { title: titleDraft, instructions: instructionsDraft, done_means: doneMeansDraft, result: resultDraft };
+  const drafts = { title: titleDraft, done_means: doneMeansDraft, description: descriptionDraft };
   const saveText = async (field, value, current) => {
     if (!card) return;
     if ((value || "").trim() === (current || "").trim()) { drafts[field]?.clear(); return; }
     setSaveState("Saving…");
     const answer = await update({ [field]: value });
     if (answer) drafts[field]?.clear();
-    setSaveState(answer ? "Saved" : "");
+    setSaveState(answer ? "Saved" : "Not saved");
+  };
+  const saveDescription = (md) => {
+    clearTimeout(idle.current);
+    saveText("description", md, savedDescription);
+  };
+
+  const openThread = () => {
+    if (!card) return;
+    if (links?.openSide) links.openSide({ kind: "thread", id: card.id });
+    else window.location.assign(sideHref({ kind: "thread", id: card.id }));
+  };
+  const openCard = (id) => {
+    if (onOpenCard) onOpenCard(id);
+    else if (links?.openSide) links.openSide({ kind: "card", id });
+    else window.location.assign(`#/work-board?card=${id}`);
   };
 
   if (!cardId) return null;
+  const headerBar = (inner) => (
+    <div data-card-header="" className="flex h-12 shrink-0 items-center gap-1 border-b border-[var(--gray-200)] px-3">
+      {inner}
+      {close && <button type="button" aria-label="Close" onClick={close} className={ICON_BTN}><X aria-hidden="true" className="h-4 w-4" /></button>}
+    </div>
+  );
   if (read.loading) {
     return (
-      <div className="flex flex-col gap-3 rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] p-4" aria-busy="true" aria-label="Loading the card">
-        <Skeleton height={20} /><Skeleton height={64} /><Skeleton height={120} />
+      <div className="flex h-full min-h-0 flex-col">
+        {headerBar(<span className="flex-1" />)}
+        <div className="flex flex-col gap-3 p-5" aria-busy="true" aria-label="Loading the card"><Skeleton height={24} /><Skeleton height={64} /><Skeleton height={200} /></div>
       </div>
     );
   }
   if (read.error) {
     const missing = read.error.token === "not_found";
     return (
-      <div className="flex flex-col gap-3 rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] p-4">
-        <h2 ref={headingRef} tabIndex={-1} className="text-[15px] font-semibold text-[var(--color-text-primary)]">{missing ? "That card isn’t here." : "Couldn’t load this card"}</h2>
-        {!missing && <p className="text-[13px] text-[var(--color-text-secondary)]">{opsErrorWords(read.error)}</p>}
-        <div className="flex flex-wrap gap-2">
-          {!missing && <Button variant="secondary" className="min-h-11" onClick={() => read.refetch()}>Try again</Button>}
-          <Button variant="secondary" className="min-h-11" onClick={onBack}>Back to the board</Button>
+      <div className="flex h-full min-h-0 flex-col">
+        {headerBar(<span className="flex-1" />)}
+        <div className="flex flex-col gap-3 p-5">
+          <h2 ref={headingRef} tabIndex={-1} className="text-[15px] font-semibold text-[var(--color-text-primary)]">{missing ? "That card isn’t here." : "Couldn’t load this card"}</h2>
+          {!missing && <p className="text-[13px] text-[var(--color-text-secondary)]">{opsErrorWords(read.error)}</p>}
+          <div className="flex flex-wrap gap-2">
+            {!missing && <Button variant="secondary" className="min-h-11" onClick={() => read.refetch()}>Try again</Button>}
+            {close && <Button variant="secondary" className="min-h-11" onClick={close}>Back to the board</Button>}
+          </div>
         </div>
       </div>
     );
@@ -204,369 +282,384 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
   const watcherEmails = watchers.map((p) => p.email);
   const anchorWords = cardAnchorWords(card.anchor);
   const nameOf = (email) => team.find((p) => p.email === email)?.name || email;
-  // A card waiting for GitHub has its own row below (#3980 Wave 2, Bridge E).
   const githubBlock = card.blocked && card.blocked_kind === "github";
   const systemBlock = card.blocked && card.blocked_kind !== "manual" && !githubBlock;
   const today = todayIso();
   const thisWeek = mondayOf(today);
   const weeks = Array.from(new Set([card.sprint?.starts_on, ...[0, 7, 14, 21, 28].map((d) => addDays(thisWeek, d))].filter(Boolean))).sort();
-  // #3980 W2 rework 2: a roadmap approval card offers Close with proof, not
-  // Mark published (it is no event); it also opens its draft in Roadmap.
   const action = personActionFor(card);
   const draftHref = roadmapDraftHref(card);
-
   const tagged = isTagged(card);
   const closed = card.status === "done";
-  const events = read.data?.events || [];
-  const noteCount = events.filter((e) => e.action === "note").length;
-  // The Status dropdown shows Done while the proof form is open; Cancel puts it back.
-  const statusValue = form === "close" && !closed ? "done" : card.status;
-  const chooseStatus = (next) => {
-    const what = statusChoice(card, next);
-    if (what === "close") setForm("close");
-    else if (what === "start") { setForm(""); run("start", () => ops.startWork(card.id, card.revision), "Started"); }
-    else if (what === "to_todo") { setForm(""); update({ status: "todo" }, "Moved to To do"); }
-    else if (next === card.status) setForm("");
+  const column = columns.find((c) => c.id === card.status_id) || card.column || null;
+  const trouble = troubleWords(card, today);
+  const doneColumn = columns.find((c) => c.grp === "done");
+  const ancestors = Array.isArray(read.data?.ancestors) ? read.data.ancestors : [];
+  const subtasks = Array.isArray(read.data?.subtasks) ? read.data.subtasks : [];
+  const files = Array.isArray(read.data?.files) ? read.data.files : [];
+  const sprintGoals = [config?.sprint?.current, config?.sprint?.next].find((s) => s?.id && s.id === card.sprint?.id)?.goals || [];
+  const openSubs = subtasks.filter((s) => s.status !== "done").length;
+  const myName = directory.people.find((p) => p.me)?.name || me.name || "";
+  const canEdit = !locked && !closed;
+
+  // The status pill and the ⋯ menu's Move to: a Closed column asks for proof first.
+  const moveTo = (to) => {
+    if (!to || to.id === card.status_id) return;
+    if (to.grp === "done" && !closed) { setCloseTo(to); setForm("close"); return; }
+    run("move", () => ops.moveWork(card.id, to.id, card.revision), `Moved to ${to.name}`);
   };
-  const nextWords = closed ? "This card is done."
-    : card.blocked ? "Blocked: unblock it first."
-    : tagged ? `Next: ${personReasonLabel(card)}`
-    : card.status === "doing" ? "Next: finish it and add the proof"
-    : "Next: start it";
+  const startClose = () => { setCloseTo(doneColumn || null); setForm(form === "close" ? "" : "close"); };
+  const submitClose = async (proof, res) => {
+    const to = closeTo || doneColumn;
+    const a = to
+      ? await run("close", () => ops.moveWork(card.id, to.id, card.revision, { proof, result: res || null, closeChildren }), "Card closed")
+      : await run("close", () => ops.closeWork(card.id, proof, res || null, card.revision), "Card closed");
+    if (a) { setForm(""); setCloseTo(null); setCloseChildren(false); }
+  };
+
+  let primary = null;
+  if (!card.archived) {
+    if (closed) primary = <Button className="h-9" disabled={locked || !!busy} onClick={() => run("reopen", () => ops.reopenWork(card.id, null, card.revision), "Reopened")}>Reopen</Button>;
+    else if (tagged && action) primary = <Button className="h-9" disabled={locked || !!busy} onClick={() => setForm(form === action.action ? "" : action.action)}>{action.label}</Button>;
+    else if (card.status === "todo" && !tagged) primary = <Button className="h-9" disabled={locked || !!busy || card.blocked} onClick={() => run("start", () => ops.startWork(card.id, card.revision), "Started")}>Start</Button>;
+    else primary = <Button className="h-9" disabled={locked || !!busy} onClick={startClose}>Done with proof</Button>;
+  }
+  const more = [];
+  if (!card.archived && !closed) {
+    if (tagged) more.push({ id: "sendback", label: "Send back", run: () => setForm("sendback") });
+    if (tagged && card.status === "todo") more.push({ id: "start", label: "Start", run: () => run("start", () => ops.startWork(card.id, card.revision), "Started"), disabled: card.blocked });
+    if (tagged && action) more.push({ id: "close", label: "Done with proof", run: startClose });
+    more.push({ id: "push", label: "Push back", run: () => setForm("push") });
+    if (card.blocked && card.blocked_kind === "manual") more.push({ id: "unblock", label: "Unblock", run: () => update({ blocked: false }, "Unblocked") });
+    else if (!card.blocked && card.status === "doing") more.push({ id: "block", label: "Mark blocked", run: () => setForm("block") });
+    if (systemBlock && card.kind === "promo" && me.can_override) more.push({ id: "override", label: "Override the rule", run: () => setForm("override") });
+  }
 
   return (
-    <div className="flex min-w-0 flex-col gap-3 rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] p-4 shadow-[var(--shadow-sm)]">
-      {/* (1) The header */}
-      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-        {!inDrawer && <button type="button" onClick={onBack} className={`min-h-11 rounded-lg px-2 text-[13px] font-semibold text-[var(--color-text-secondary)] hover:bg-[var(--gray-100)] min-[1180px]:hidden ${FOCUS}`}>Back to list</button>}
-        {closed && <OpsChip tone={statusTone(card)}>{closeKindLabel(card.close_kind)}</OpsChip>}
-        {tagged && <OpsChip tone="warning">{personReasonLabel(card)}</OpsChip>}
-        {card.blocked && <OpsChip tone="error">Blocked</OpsChip>}
-        <span className="text-[12px] text-[var(--color-text-tertiary)]">Card {card.number} · {card.auto ? "Made from the timeline" : card.brand_plan_source === "host_app" ? "Added by the host in the Host app" : `Added by ${agentName(card.created_by_name, card.created_via)}`}</span>
-        {/* #4270 W3: where a plan card came from, and whether its host sees it. */}
-        {card.brand_plan_source === "host_app" && <span data-from-host-app="" className="rounded-full bg-[var(--color-info-50)] px-2 py-px text-[11px] font-semibold text-[var(--color-info-700)]">From Host app</span>}
-        {card.on_brand_plan && <span data-on-host-plan="" className="rounded-full bg-[var(--color-success-50)] px-2 py-px text-[11px] font-semibold text-[var(--color-success-700)]">On host plan</span>}
-        {saveState && <span role="status" className="ml-auto text-[12px] text-[var(--color-text-tertiary)]">{saveState}</span>}
-        {/* #4255: typed but not saved yet; kept while panels change beside it. */}
-        <DraftKeptNote className="w-full" kept={Object.values(drafts).some((d) => d.kept)} onDiscard={() => Object.values(drafts).forEach((d) => d.clear())} />
-      </div>
-      <h2 ref={headingRef} tabIndex={-1} className="break-words text-[16px] font-semibold leading-snug text-[var(--color-text-primary)] focus:outline-none">{card.title}</h2>
-      {card.archived && <AlertCard variant="warning" title="This card was removed.">It is kept for the record and can’t be changed.</AlertCard>}
-
-      {/* (2) The Next step box */}
-      <section data-next-step="" aria-label="Next step" className="flex min-w-0 flex-col gap-2 rounded-xl border border-[var(--gray-200)] bg-[var(--gray-50)] p-3">
-        <div className="flex min-w-0 flex-wrap items-end gap-2">
-          <label className="flex min-w-[10rem] flex-col gap-1">
-            <span className={LABEL}>Status</span>
-            <select
-              data-status-select=""
-              value={statusValue}
-              disabled={locked || closed || !!busy}
-              onChange={(e) => chooseStatus(e.target.value)}
-              className={INPUT}
-            >
-              {WORK_STATUSES.map((st) => <option key={st.value} value={st.value} disabled={st.value === "doing" && card.status === "todo" && card.blocked}>{st.label}</option>)}
-            </select>
-          </label>
-          {busy === "save" || busy === "start" ? <span role="status" className="pb-3 text-[12px] text-[var(--color-text-tertiary)]">Saving…</span> : null}
-          {card.due_on && <span className={`pb-3 text-[12.5px] ${card.overdue ? "font-semibold text-[var(--color-error-700)]" : "text-[var(--color-text-secondary)]"}`}>{card.overdue ? "Overdue · " : "Due "}{dayLabel(card.due_on)}</span>}
-        </div>
-        <p className="text-[13px] font-semibold text-[var(--color-text-primary)]">{nextWords}</p>
-        {cardReasons(card).length > 0 && !card.archived && (
-          <div className="flex min-w-0 flex-col gap-1.5 rounded-xl bg-[var(--color-error-50)] px-3 py-2.5 text-[13px]">
-            <b className="text-[var(--color-error-700)]">Needs attention</b>
-            {cardReasons(card).map((r) => (
-              <div key={r} className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-                <span className="text-[var(--color-text-primary)]">{r}</span>
-                {r === "No owner" && directory.me && <Button variant="secondary" size="sm" className="min-h-11" disabled={locked || !!busy} onClick={() => update({ owners: [directory.me] }, "Assigned to you.")}>Assign to me</Button>}
-              </div>
+    <div data-work-card={card.id} data-focus={focus ? "true" : "false"} className="flex h-full min-h-0 flex-col">
+      {/* (1) One header line */}
+      {headerBar(
+        <>
+          <nav aria-label="Card" className="flex min-w-0 flex-1 items-center gap-1 text-[12.5px] text-[var(--color-text-tertiary)]">
+            {ancestors.map((a) => (
+              <span key={a.id} className="inline-flex min-w-0 items-center gap-1">
+                <button type="button" data-breadcrumb={a.id} onClick={() => openCard(a.id)} className={`min-w-0 max-w-[12rem] truncate rounded px-1 font-semibold text-[var(--color-brand-700)] hover:underline ${FOCUS}`} title={a.title}>#{a.number} {a.title}</button>
+                <span aria-hidden="true">›</span>
+              </span>
             ))}
-          </div>
-        )}
-        {!card.archived && (
-          <div className="flex min-w-0 flex-wrap gap-2">
-            {tagged && <>
-              {action && <Button className="min-h-11" disabled={locked || !!busy} onClick={() => setForm(form === action.action ? "" : action.action)}>{action.label}</Button>}
-              {!action && <Button className="min-h-11" disabled={locked || !!busy} onClick={() => setForm(form === "close" ? "" : "close")}>Done with proof</Button>}
-              {draftHref && <a href={draftHref} target="_blank" rel="noopener" title="Opens in a new tab, so this card stays as it is" className={`inline-flex min-h-11 items-center rounded-lg px-3 text-[13px] font-semibold text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)] ${FOCUS}`}>Open the draft in Roadmap</a>}
-              <Button variant="secondary" className="min-h-11" disabled={locked || !!busy} onClick={() => setForm(form === "sendback" ? "" : "sendback")}>Send back</Button>
-            </>}
-            {card.status === "todo" && <>
-              <Button variant={tagged ? "secondary" : "primary"} className="min-h-11" disabled={locked || !!busy || card.blocked} onClick={() => run("start", () => ops.startWork(card.id, card.revision), "Started")}>Start</Button>
-              <Button variant="secondary" className="min-h-11" disabled={locked || !!busy} onClick={() => setForm(form === "push" ? "" : "push")}>Push back</Button>
-            </>}
-            {card.status === "doing" && <>
-              {!tagged && <Button className="min-h-11" disabled={locked || !!busy} onClick={() => setForm(form === "close" ? "" : "close")}>Done with proof</Button>}
-              <Button variant="secondary" className="min-h-11" disabled={locked || !!busy || card.blocked} onClick={() => setForm(form === "block" ? "" : "block")}>Mark blocked</Button>
-              <Button variant="secondary" className="min-h-11" disabled={locked || !!busy} onClick={() => setForm(form === "push" ? "" : "push")}>Push back</Button>
-            </>}
-            {closed && <Button variant="secondary" className="min-h-11" disabled={locked || !!busy} onClick={() => run("reopen", () => ops.reopenWork(card.id, null, card.revision), "Reopened")}>Reopen</Button>}
-          </div>
-        )}
-        {form === "close" && <ProofForm busy={busy === "close"} disabled={locked} onCancel={() => setForm("")} onSubmit={async (proof, res) => { const a = await run("close", () => ops.closeWork(card.id, proof, res || null, card.revision), "Card closed"); if (a) setForm(""); }} />}
-        {form === "push" && <PushBackForm busy={busy === "push"} disabled={locked} onCancel={() => setForm("")} onSubmit={async (kind, reason, proof) => { const a = await run("push", () => ops.pushBackWork(card.id, kind, reason, proof, card.revision), kind === "declined" ? "Pushed back: not needed" : "Closed: already done"); if (a) setForm(""); }} />}
-        {form === "block" && (
-          <div className="flex min-w-0 flex-wrap items-end gap-2">
-            <label className="flex min-w-[200px] flex-1 flex-col gap-1">
-              <span className={LABEL}>What blocks it</span>
-              <input value={blockReason} maxLength={300} onChange={(e) => setBlockReason(e.target.value)} className={INPUT} />
-            </label>
-            <Button className="min-h-11" disabled={locked || blockReason.trim().length < 5 || !!busy} onClick={async () => { const a = await update({ blocked: true, blocked_reason: blockReason.trim() }, "Marked blocked"); if (a) { setForm(""); setBlockReason(""); } }}>Mark blocked</Button>
-            <Button variant="ghost" className="min-h-11" onClick={() => setForm("")}>Cancel</Button>
-          </div>
-        )}
-        {["sendback", "approve_spend", "mark_sent", "mark_published"].includes(form) && (
-          <PersonActionForm
-            kind={form}
-            busy={busy === "person"}
-            disabled={locked}
-            onCancel={() => setForm("")}
-            onSubmit={async (note) => {
-              const a = await run("person", () => ops.personAction(card.id, form === "sendback" ? "send_back" : form, note, card.revision),
-                form === "sendback" ? "Sent back to the owner" : form === "approve_spend" ? "Spend approved" : form === "mark_sent" ? "Marked sent" : "Marked published");
-              if (a) setForm("");
-            }}
-          />
-        )}
-        {/* #4130: what the old Needs you page did lives on the card itself. */}
-        <CardDrafts card={card} />
-        <CardWording card={card} onChanged={refresh} onOpenSide={onOpenSide} />
-      </section>
-      {card.working && (
-        <WorkingMark card={card} canClear={!!me.can_archive && !locked} onCleared={refresh} />
-      )}
-
-      {/* (3) Who and when */}
-      <Section title="Who and when">
-        <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
-          <PeopleField
-            id={`card-${card.id}-owners`}
-            label="Owners"
-            value={ownerEmails}
-            team={team}
-            me={directory.me}
-            suggested={suggestedPeople(directory.me, ownerEmails)}
-            exclude={watcherEmails}
-            min={ownerEmails.length ? 1 : 0}
-            minWords={card.auto ? "This card keeps one owner once it has one. Add someone else first, then remove this one." : undefined}
-            disabled={locked || closed}
-            busy={!!busy}
-            onChange={(next, change) => update({ owners: next }, change.added ? `${nameOf(change.added)} added and told.` : `${nameOf(change.removed)} removed.`)}
-          />
-          <PeopleField
-            id={`card-${card.id}-watchers`}
-            label="Watching"
-            value={watcherEmails}
-            team={team}
-            me={directory.me}
-            suggested={[directory.me].filter(Boolean)}
-            exclude={ownerEmails}
-            disabled={locked || closed}
-            busy={!!busy}
-            onChange={(next, change) => update({ watchers: next }, change.added ? `${nameOf(change.added)} added and told.` : `${nameOf(change.removed)} removed.`)}
-          />
-          <label className="flex min-w-0 flex-col gap-1">
-            <span className={LABEL}>Due{card.kit_step !== null && card.kit_step !== undefined ? ` · T${card.kit_step > 0 ? "+" : ""}${card.kit_step}` : ""}</span>
-            <input type="date" value={card.due_on || ""} disabled={locked || closed} onChange={(e) => { if (e.target.value) update({ due_on: e.target.value }, "Due date changed"); }} className={INPUT} />
-            {card.overdue && <span className="text-[12px] font-semibold text-[var(--color-error-700)]">Overdue</span>}
-          </label>
-          <label className="flex min-w-0 flex-col gap-1">
-            <span className={LABEL}>Sprint</span>
-            <select value={card.sprint?.starts_on || ""} disabled={locked || closed} onChange={(e) => update({ week: e.target.value }, "Moved to another sprint")} className={INPUT}>
-              {weeks.map((w) => <option key={w} value={w}>{sprintLabel(w)}{w === thisWeek ? " (this week)" : ""}</option>)}
-            </select>
-          </label>
-        </div>
-        {anchorWords && (
-          <p className="break-words text-[13px] text-[var(--color-text-secondary)]">
-            {anchorWords.lead} <span className="font-semibold text-[var(--color-text-primary)]">{anchorWords.title}</span>
-            {anchorWords.rest}
-          </p>
-        )}
-      </Section>
-
-      {/* (4) What to do */}
-      <Section title="What to do">
-        <label className="flex min-w-0 flex-col gap-1">
-          <span className={LABEL}>Title</span>
-          <textarea
-            ref={titleRef}
-            value={title}
-            rows={1}
-            maxLength={160}
-            disabled={locked || closed}
-            aria-label="Title"
-            onChange={(e) => setTitle(e.target.value.replace(/[\r\n]+/g, " "))}
-            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } }}
-            onBlur={() => saveText("title", title, card.title)}
-            className={`min-h-11 w-full whitespace-pre-wrap break-words rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-2 text-[14px] font-semibold leading-snug text-[var(--color-text-primary)] disabled:opacity-100 ${AUTO_GROW_CLASS} ${FOCUS}`}
-          />
-        </label>
-        <label className="flex min-w-0 flex-col gap-1">
-          <span className={LABEL}>Instructions</span>
-          <textarea
-            value={instructions}
-            maxLength={4000}
-            disabled={locked || closed}
-            aria-label="Instructions"
-            onChange={(e) => {
-              const value = e.target.value;
-              setInstructions(value);
-              clearTimeout(idle.current);
-              idle.current = setTimeout(() => saveText("instructions", value, card.instructions), 1500);
-            }}
-            onBlur={() => { clearTimeout(idle.current); saveText("instructions", instructions, card.instructions); }}
-            className={`min-h-[96px] w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] p-2 text-[13px] ${FOCUS}`}
-          />
-        </label>
-        <label className="flex min-w-0 flex-col gap-1">
-          <span className={LABEL}>Done means</span>
-          <textarea value={doneMeans} ref={doneMeansGrow} maxLength={300} rows={2} disabled={locked || closed} aria-label="Done means" onChange={(e) => setDoneMeans(e.target.value)} onBlur={() => saveText("done_means", doneMeans, card.done_means)} className={`${DONE_MEANS_CLASS} ${AUTO_GROW_CLASS} ${FOCUS}`} />
-          {card.kind === "gate_live" && <p className="text-[12px] text-[var(--color-text-tertiary)]">Closes itself the moment the event goes public.</p>}
-        </label>
-        <div className="flex min-w-0 flex-col gap-1">
-          <span className={LABEL}>Plan</span>
-          <PlanSteps plan={card.plan} editable={!closed && !card.archived} disabled={locked || !!busy} onChange={(plan) => update({ plan }, "Plan saved")} />
-        </div>
-        {!closed && (
-          <div data-blocked-section="" className="flex min-w-0 flex-col gap-1">
-            <span className={LABEL}>Blocked</span>
-            {githubBlock ? (
-              <GithubWait card={card} disabled={locked || !!busy} onChange={(on, words) => update({ blocked_on_github: on }, words)} />
-            ) : systemBlock ? (
-              <div className="flex min-w-0 flex-col gap-2">
-                <p className="break-words text-[13px] text-[var(--color-error-700)]">{card.blocked_reason}</p>
-                {card.kind === "promo" && me.can_override && (form === "override" ? (
-                  <div className="flex min-w-0 flex-wrap items-end gap-2">
-                    <label className="flex min-w-[200px] flex-1 flex-col gap-1">
-                      <span className={LABEL}>Why it can start now</span>
-                      <input value={overrideReason} maxLength={300} onChange={(e) => setOverrideReason(e.target.value)} className={INPUT} />
-                    </label>
-                    <Button className="min-h-11" disabled={locked || overrideReason.trim().length < 10 || !!busy} onClick={async () => {
-                      setBusy("override");
-                      try {
-                        await ops.overrideGate(card.id, overrideReason.trim());
-                        await refresh();
-                        addToast({ variant: "success", title: "Overridden. The card can start, and the reason is in the agent log." });
-                        setForm(""); setOverrideReason("");
-                      } catch (error) {
-                        addToast({ variant: "error", title: "That didn’t save", description: opsErrorWords(error) });
-                      } finally { setBusy(""); }
-                    }}>Override</Button>
-                    <Button variant="ghost" className="min-h-11" onClick={() => setForm("")}>Cancel</Button>
+            <span className="shrink-0 font-semibold text-[var(--color-text-secondary)]">#{card.number}</span>
+            {column && <span className="truncate">· {GROUP_LABELS[column.grp] || ""}</span>}
+            {saveState && <span role="status" className="ml-2 shrink-0 text-[12px]">{saveState}</span>}
+          </nav>
+          <button type="button" data-open-thread="" onClick={openThread} className={`inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-[var(--gray-200)] px-2.5 text-[12.5px] font-semibold text-[var(--color-text-primary)] hover:bg-[var(--gray-100)] ${FOCUS}`}>
+            <MessageSquare aria-hidden="true" className="h-4 w-4" /> Thread
+            {/* #4255 rework (P3): unread for me (ops_thread_read), not the total. */}
+            {Number(card.thread_unread) > 0 && <span data-thread-unread="" aria-label={`${card.thread_unread} unread`} className="rounded-full bg-[var(--color-brand-500)] px-1.5 text-[11px] tabular-nums text-white">{card.thread_unread}</span>}
+          </button>
+          {onFocus && (
+            <button type="button" data-focus-mode="" aria-pressed={focus ? "true" : "false"} aria-label={focus ? "Leave focus mode" : "Focus mode: fill the page"} title={focus ? "Leave focus mode" : "Focus mode"} onClick={() => onFocus(!focus)} className={ICON_BTN}>
+              {focus ? <Minimize2 aria-hidden="true" className="h-4 w-4" /> : <Maximize2 aria-hidden="true" className="h-4 w-4" />}
+            </button>
+          )}
+          <Popover label="Card options" role="menu" align="right" width="w-72" dataAttr="card-menu"
+            button={<MoreHorizontal aria-hidden="true" className="h-4 w-4" />} buttonClassName={ICON_BTN}>
+            {(closeMenu) => (
+              <div className="flex flex-col">
+                <MenuItem hint="for Claude or Codex" onClick={async () => { closeMenu(); try { await navigator.clipboard.writeText(agentPromptFor(card)); addToast({ variant: "success", title: "Prompt copied." }); } catch { addToast({ variant: "error", title: "Couldn’t copy", description: "Your browser blocked copying." }); } }}>Copy agent prompt</MenuItem>
+                <MenuItem onClick={async () => { closeMenu(); try { await navigator.clipboard.writeText(`${window.location.origin}${window.location.pathname}#/work-board?card=${card.id}`); addToast({ variant: "success", title: "Link copied" }); } catch { addToast({ variant: "error", title: "Couldn’t copy", description: "Your browser blocked copying." }); } }}>Copy link</MenuItem>
+                <MenuItem onClick={() => { closeMenu(); writeShowChanges(typeof window !== "undefined" ? window.localStorage : null, true); openThread(); }}>Show changes in thread</MenuItem>
+                {!card.archived && columns.length > 0 && (
+                  <div role="group" aria-label="Move to" className="border-t border-[var(--gray-200)] pt-1">
+                    <p className="px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">Move to</p>
+                    {columns.map((c) => <MenuItem key={c.id} disabled={locked || c.id === card.status_id} onClick={() => { closeMenu(); moveTo(c); }} hint={c.id === card.status_id ? "here now" : GROUP_LABELS[c.grp]}><span className="inline-flex items-center gap-1.5"><span aria-hidden="true" className="h-2 w-2 rounded-full" style={{ background: c.color }} />{c.name}</span></MenuItem>)}
                   </div>
-                ) : (
-                  <Button variant="secondary" className="min-h-11 self-start" disabled={locked || !!busy} onClick={() => setForm("override")}>Override</Button>
-                ))}
-              </div>
-            ) : card.blocked ? (
-              <div className="flex min-w-0 flex-wrap items-center gap-2">
-                <p className="min-w-0 flex-1 break-words text-[13px] text-[var(--color-error-700)]">{card.blocked_reason}</p>
-                <Button variant="secondary" className="min-h-11" disabled={locked || !!busy} onClick={() => update({ blocked: false }, "Unblocked")}>Unblock</Button>
-              </div>
-            ) : card.override ? (
-              <p className="break-words text-[13px] text-[var(--color-text-secondary)]">Started before go-live: {card.override.by_name} overrode the giveaway and ads rule on {dayLabel(card.override.at)}. {card.override.reason}</p>
-            ) : <p className="text-[13px] text-[var(--color-text-tertiary)]">Not blocked.</p>}
-          </div>
-        )}
-      </Section>
-
-      {/* (5) Links and files */}
-      <FilesLink card={card} disabled={locked || closed || !!busy} onSave={(url, words) => update({ files_url: url }, words)} />
-      {showsHostSees(card) && (
-        <HostSeesToggle card={card} disabled={locked || !!busy} onChange={(on) => update({ on_brand_plan: on }, on ? "The host can see this on their plan" : "The host no longer sees this")} />
-      )}
-      <Section title="Linked records" action={!linking && <button type="button" aria-label="Link a record" disabled={locked || closed} onClick={() => setLinking(true)} className={`inline-flex min-h-11 items-center gap-1 rounded-lg px-2 text-[13px] font-semibold text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)] disabled:opacity-50 ${FOCUS}`}><Link2 aria-hidden="true" className="h-3.5 w-3.5" /> Link</button>}>
-        {(card.links || []).length === 0 ? <p className="text-[13px] text-[var(--color-text-tertiary)]">Nothing linked.</p> : (
-          <ul className="flex min-w-0 flex-wrap gap-1.5">
-            {card.links.map((l) => (
-              <li key={`${l.kind}:${l.id}`} className="inline-flex max-w-full items-center gap-1 rounded-full bg-[var(--gray-100)] py-0.5 pl-2.5 pr-0.5 text-[13px]">
-                {l.exists && linkSide(l) ? (
-                  <SideLink side={linkSide(l)} aria-label={`Open ${l.label}`} className={`inline-flex min-h-8 min-w-0 items-center break-words rounded-full font-medium text-[var(--color-text-primary)] hover:underline ${FOCUS}`}>
-                    <span><span className="text-[var(--color-text-tertiary)]">{l.kind.replace("_", " ")}: </span>{l.label}</span>
-                  </SideLink>
-                ) : (
-                  <span className="min-w-0 break-words"><span className="text-[var(--color-text-tertiary)]">{l.kind.replace("_", " ")}: </span>{l.label}{l.exists ? "" : " (removed)"}</span>
                 )}
-                <button type="button" aria-label={`Unlink ${l.label}`} disabled={locked || closed} onClick={() => update({ links: card.links.filter((x) => !(x.kind === l.kind && x.id === l.id)).map((x) => ({ kind: x.kind, id: x.id })) }, `${l.label} unlinked`)} className={`-my-1.5 -mr-1 inline-grid h-11 w-11 place-items-center rounded-full hover:bg-[var(--gray-200)] disabled:opacity-50 ${FOCUS}`}><X aria-hidden="true" className="h-3.5 w-3.5" /></button>
-              </li>
-            ))}
-          </ul>
-        )}
-        {linking && (
-          <RecordPicker
-            onClose={() => setLinking(false)}
-            onPick={async (pick) => {
-              const answer = await update({ links: [...(card.links || []).map((x) => ({ kind: x.kind, id: x.id })), { kind: pick.kind, id: pick.id }] }, `${pick.label} linked`);
-              if (answer) setLinking(false);
-            }}
-          />
-        )}
-      </Section>
-      <GithubLinks card={card} disabled={locked || closed || !!busy} onSave={(github, words) => update({ github }, words)} />
-      {!closed && !githubBlock && !card.blocked && (card.github || []).length > 0 && (
-        <GithubWait card={card} disabled={locked || !!busy} onChange={(on, words) => update({ blocked_on_github: on }, words)} />
+                {me.can_archive && !card.archived && <div className="border-t border-[var(--gray-200)] pt-1"><MenuItem danger onClick={() => { closeMenu(); setForm("remove"); }}>Archive card…</MenuItem></div>}
+              </div>
+            )}
+          </Popover>
+        </>
       )}
 
-      {/* (6) The record */}
-      <Section title="Result">
-        <textarea value={result} maxLength={2000} disabled={locked || closed} aria-label="Result" onChange={(e) => setResult(e.target.value)} onBlur={() => saveText("result", result, card.result)} className={`min-h-[64px] w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] p-2 text-[13px] ${FOCUS}`} />
-      </Section>
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+        <div className={`mx-auto flex min-w-0 flex-col gap-4 px-5 py-4 ${focus ? "max-w-[960px]" : ""}`}>
+          <DraftKeptNote className="w-full" kept={Object.values(drafts).some((d) => d.kept)} onDiscard={() => Object.values(drafts).forEach((d) => d.clear())} />
+          {card.archived && <AlertCard variant="warning" title="This card was removed.">It is kept for the record and can’t be changed.</AlertCard>}
 
-      {(card.proof || []).length > 0 && (
-        <Section title="Proof">
-          <ul className="flex min-w-0 flex-col gap-1.5">
-            {card.proof.map((p, i) => (
-              <li key={i} className="flex min-w-0 flex-wrap items-start gap-2 text-[13px]">
-                <OpsChip tone={p.verified ? "success" : "default"}>{proofBadge(p)}</OpsChip>
-                <span className="min-w-0 flex-1 break-words text-[var(--color-text-primary)]">{p.text}</span>
-              </li>
-            ))}
-          </ul>
-          {card.close_reason && <p className="break-words text-[13px] text-[var(--color-text-secondary)]">Reason: {card.close_reason}</p>}
-        </Section>
-      )}
-
-      <div className="flex min-w-0 flex-col">
-        {!card.archived && (
-          <Fold id="notes" title="Notes" count={noteCount}>
-            <NoteBox draftKey={`work:${card.id}:note`} team={team} disabled={locked} busy={busy === "note"} onPost={async (body, emails) => {
-              setBusy("note");
-              try {
-                const answer = await ops.noteWork(card.id, body, emails, requestKey("web_note"));
-                await refresh();
-                addToast({ variant: "success", title: answer?.told ? `Note posted. ${answer.told} told.` : "Note posted." });
-                return true;
-              } catch (error) {
-                addToast({ variant: "error", title: "Note not posted", description: opsErrorWords(error) });
-                return false;
-              } finally { setBusy(""); }
-            }} />
-          </Fold>
-        )}
-        <Fold id="history" title="History" count={events.length}><CardHistory events={events} /></Fold>
-        <Fold id="prompt" title="Agent prompt">
-          <div className="flex min-w-0 flex-col gap-2">
-            <button type="button" onClick={async () => { try { await navigator.clipboard.writeText(agentPromptFor(card)); addToast({ variant: "success", title: "Prompt copied." }); } catch { addToast({ variant: "error", title: "Couldn’t copy", description: "Select the text and copy it yourself." }); } }} className={`inline-flex min-h-11 items-center gap-1 self-start rounded-lg px-2 text-[13px] font-semibold text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)] ${FOCUS}`}><Copy aria-hidden="true" className="h-3.5 w-3.5" /> Copy</button>
-            <p className="whitespace-pre-wrap break-words rounded-lg bg-[var(--gray-50)] p-2 font-mono text-[12px] text-[var(--color-text-secondary)]">{agentPromptFor(card)}</p>
-          </div>
-        </Fold>
-        {me.can_archive && !card.archived && (
-          <Fold id="remove" title="Remove card">
-            <div className="flex min-w-0 flex-wrap items-end gap-2 rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-secondary)] p-3">
-              <label className="flex min-w-[200px] flex-1 flex-col gap-1">
-                <span className={LABEL}>Why remove it</span>
-                <input value={removeReason} maxLength={300} onChange={(e) => setRemoveReason(e.target.value)} className={INPUT} />
-              </label>
-              <Button variant="danger" className="min-h-11" disabled={locked || removeReason.trim().length < 3 || !!busy} onClick={async () => {
-                setBusy("remove");
-                try { await ops.archiveWork(card.id, removeReason.trim()); addToast({ variant: "success", title: "Card removed." }); setForm(""); setRemoveReason(""); onChanged?.(); onBack?.(); }
-                catch (error) { addToast({ variant: "error", title: "That didn’t work", description: opsErrorWords(error) }); }
-                finally { setBusy(""); }
-              }}>Remove card</Button>
+          {/* (2) The title, once, and Done when */}
+          <div className="flex min-w-0 flex-col gap-1">
+            <label className="sr-only" htmlFor={`card-${card.id}-title`}>Title</label>
+            <textarea
+              ref={titleRef}
+              value={title}
+              id={`card-${card.id}-title`}
+              data-card-title=""
+              rows={1}
+              maxLength={160}
+              disabled={!canEdit}
+              onChange={(e) => setTitle(e.target.value.replace(/[\r\n]+/g, " "))}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } }}
+              onBlur={() => saveText("title", title, card.title)}
+              className={`w-full resize-none rounded-md border border-transparent bg-transparent px-1 py-0.5 text-[19px] font-semibold leading-snug text-[var(--color-text-primary)] hover:border-[var(--gray-200)] focus:border-[var(--gray-300)] disabled:opacity-100 ${AUTO_GROW_CLASS} ${FOCUS}`}
+            />
+            <div className="flex min-w-0 items-start gap-2 px-1 text-[12.5px]">
+              <label htmlFor={`card-${card.id}-done`} className="shrink-0 pt-1.5 text-[var(--color-text-tertiary)]">Done when</label>
+              <textarea value={doneMeans} ref={doneMeansGrow} id={`card-${card.id}-done`} rows={1} maxLength={300} disabled={!canEdit} placeholder="What finished looks like"
+                onChange={(e) => setDoneMeans(e.target.value.replace(/[\r\n]+/g, " "))} onBlur={() => saveText("done_means", doneMeans, card.done_means)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } }}
+                className={`${DONE_MEANS_CLASS} ${AUTO_GROW_CLASS} ${FOCUS}`} />
             </div>
-          </Fold>
-        )}
+            <p className="px-1 text-[11.5px] text-[var(--color-text-tertiary)]">
+              {card.auto ? "Made from the timeline" : card.brand_plan_source === "host_app" ? "Added by the host in the Host app" : `Added by ${agentName(card.created_by_name, card.created_via)}`}
+              {card.on_brand_plan ? " · On host plan" : ""}
+            </p>
+          </div>
+
+          {/* (3) Status, two lines at most */}
+          <section data-next-step="" aria-label="Status" className="flex min-w-0 flex-col gap-1.5">
+            <div data-status-line="" className="flex min-w-0 flex-wrap items-center gap-2">
+              <Popover label="Status" role="menu" width="w-60" disabled={locked} dataAttr="status-pill"
+                button={<span className="inline-flex items-center gap-1.5"><span aria-hidden="true" className="h-2 w-2 rounded-full" style={{ background: column?.color || "var(--gray-400)" }} />{column?.name || "Status"}<span aria-hidden="true">▾</span></span>}
+                buttonClassName={`inline-flex h-9 items-center rounded-lg border border-[var(--gray-200)] bg-[var(--color-background-primary)] px-2.5 text-[13px] font-semibold text-[var(--color-text-primary)] hover:bg-[var(--gray-50)] disabled:opacity-60`}>
+                {(closeMenu) => columns.map((c) => (
+                  <MenuItem key={c.id} disabled={c.id === card.status_id || (c.grp === "doing" && card.status === "todo" && card.blocked)} onClick={() => { closeMenu(); moveTo(c); }} hint={GROUP_LABELS[c.grp]}>
+                    <span className="inline-flex items-center gap-1.5"><span aria-hidden="true" className="h-2 w-2 rounded-full" style={{ background: c.color }} />{c.name}</span>
+                  </MenuItem>
+                ))}
+              </Popover>
+              {primary}
+              {more.length > 0 && (
+                <Popover label="More actions" role="menu" width="w-52" disabled={locked || !!busy} dataAttr="more"
+                  button={<span className="inline-flex items-center gap-1">More <span aria-hidden="true">▾</span></span>}
+                  buttonClassName="inline-flex h-9 items-center rounded-lg px-2.5 text-[13px] font-semibold text-[var(--color-text-secondary)] hover:bg-[var(--gray-100)]">
+                  {(closeMenu) => more.map((m) => <MenuItem key={m.id} disabled={m.disabled} onClick={() => { closeMenu(); m.run(); }}>{m.label}</MenuItem>)}
+                </Popover>
+              )}
+              {tagged && <OpsChip tone="warning">{personReasonLabel(card)}</OpsChip>}
+              {draftHref && <a href={draftHref} target="_blank" rel="noopener" title="Opens in a new tab, so this card stays as it is" className={`inline-flex h-9 items-center rounded-lg px-2 text-[12.5px] font-semibold text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)] ${FOCUS}`}>Open the draft in Roadmap</a>}
+              {(busy === "save" || busy === "start" || busy === "move") && <span role="status" className="text-[12px] text-[var(--color-text-tertiary)]">Saving…</span>}
+            </div>
+            {trouble && !card.archived && (
+              <p data-trouble-line="" className="flex min-w-0 flex-wrap items-center gap-1.5 text-[12.5px] text-[var(--color-error-700)]">
+                <span className="rounded bg-[var(--color-error-50)] px-1.5 text-[11px] font-semibold">{card.blocked ? "Blocked" : card.overdue ? "Late" : "Check"}</span>
+                <span className="min-w-0 break-words">{trouble}</span>
+              </p>
+            )}
+            {form === "close" && (
+              <div className="flex min-w-0 flex-col gap-2">
+                {closeTo && <p className="text-[12.5px] text-[var(--color-text-secondary)]">Moving to {closeTo.name} closes this card.</p>}
+                {openSubs > 0 && (
+                  <label className="flex min-h-10 items-start gap-2 text-[13px] text-[var(--color-text-primary)]">
+                    <input type="checkbox" checked={closeChildren} onChange={(e) => setCloseChildren(e.target.checked)} className="mt-0.5 h-5 w-5 accent-[var(--color-brand-700)]" />
+                    <span>Close the {openSubs} open {openSubs === 1 ? "subtask" : "subtasks"} too</span>
+                  </label>
+                )}
+                <ProofForm busy={busy === "close"} disabled={locked} onCancel={() => { setForm(""); setCloseTo(null); }} onSubmit={submitClose} />
+              </div>
+            )}
+            {form === "push" && <PushBackForm busy={busy === "push"} disabled={locked} onCancel={() => setForm("")} onSubmit={async (kind, reason, proof) => { const a = await run("push", () => ops.pushBackWork(card.id, kind, reason, proof, card.revision), kind === "declined" ? "Pushed back: not needed" : "Closed: already done"); if (a) setForm(""); }} />}
+            {form === "block" && (
+              <div className="flex min-w-0 flex-wrap items-end gap-2">
+                <label className="flex min-w-[200px] flex-1 flex-col gap-1">
+                  <span className={LABEL}>What blocks it</span>
+                  <input value={blockReason} maxLength={300} onChange={(e) => setBlockReason(e.target.value)} className={INPUT} />
+                </label>
+                <Button className="min-h-11" disabled={locked || blockReason.trim().length < 5 || !!busy} onClick={async () => { const a = await update({ blocked: true, blocked_reason: blockReason.trim() }, "Marked blocked"); if (a) { setForm(""); setBlockReason(""); } }}>Mark blocked</Button>
+                <Button variant="ghost" className="min-h-11" onClick={() => setForm("")}>Cancel</Button>
+              </div>
+            )}
+            {card.kind === "promo" && me.can_override && (form === "override" ? (
+              <div className="flex min-w-0 flex-wrap items-end gap-2">
+                <label className="flex min-w-[200px] flex-1 flex-col gap-1">
+                  <span className={LABEL}>Why it can start now</span>
+                  <input value={overrideReason} maxLength={300} onChange={(e) => setOverrideReason(e.target.value)} className={INPUT} />
+                </label>
+                <Button className="min-h-11" disabled={locked || overrideReason.trim().length < 10 || !!busy} onClick={async () => {
+                  setBusy("override");
+                  try {
+                    await ops.overrideGate(card.id, overrideReason.trim());
+                    await refresh();
+                    addToast({ variant: "success", title: "Overridden. The card can start, and the reason is in the agent log." });
+                    setForm(""); setOverrideReason("");
+                  } catch (error) {
+                    addToast({ variant: "error", title: "That didn’t save", description: opsErrorWords(error) });
+                  } finally { setBusy(""); }
+                }}>Override</Button>
+                <Button variant="ghost" className="min-h-11" onClick={() => setForm("")}>Cancel</Button>
+              </div>
+            ) : null)}
+            {form === "remove" && (
+              <div className="flex min-w-0 flex-wrap items-end gap-2 rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-secondary)] p-3">
+                <label className="flex min-w-[200px] flex-1 flex-col gap-1">
+                  <span className={LABEL}>Why archive it</span>
+                  <input value={removeReason} maxLength={300} onChange={(e) => setRemoveReason(e.target.value)} className={INPUT} />
+                </label>
+                <Button variant="danger" className="min-h-11" disabled={locked || removeReason.trim().length < 3 || !!busy} onClick={async () => {
+                  setBusy("remove");
+                  try { await ops.archiveWork(card.id, removeReason.trim()); addToast({ variant: "success", title: "Card archived." }); setForm(""); setRemoveReason(""); onChanged?.(); close?.(); }
+                  catch (error) { addToast({ variant: "error", title: "That didn’t work", description: opsErrorWords(error) }); }
+                  finally { setBusy(""); }
+                }}>Archive card</Button>
+                <Button variant="ghost" className="min-h-11" onClick={() => setForm("")}>Cancel</Button>
+              </div>
+            )}
+            {["sendback", "approve_spend", "mark_sent", "mark_published"].includes(form) && (
+              <PersonActionForm
+                kind={form}
+                busy={busy === "person"}
+                disabled={locked}
+                onCancel={() => setForm("")}
+                onSubmit={async (note) => {
+                  const a = await run("person", () => ops.personAction(card.id, form === "sendback" ? "send_back" : form, note, card.revision),
+                    form === "sendback" ? "Sent back to the owner" : form === "approve_spend" ? "Spend approved" : form === "mark_sent" ? "Marked sent" : "Marked published");
+                  if (a) setForm("");
+                }}
+              />
+            )}
+            {githubBlock && <GithubWait card={card} disabled={locked || !!busy} onChange={(on, words) => update({ blocked_on_github: on }, words)} />}
+            {!closed && card.override && <p className="break-words text-[12.5px] text-[var(--color-text-secondary)]">Started before go-live: {card.override.by_name} overrode the giveaway and ads rule on {dayLabel(card.override.at)}. {card.override.reason}</p>}
+            <CardWording card={card} onChanged={refresh} onOpenSide={onOpenSide} />
+          </section>
+          {card.working && <WorkingMark card={card} canClear={!!me.can_archive && !locked} onCleared={refresh} />}
+
+          {/* (4) People and dates, two lines at most */}
+          <section aria-label="People and dates" className="flex min-w-0 flex-col gap-1">
+            <div data-people-line="" className="flex min-w-0 flex-wrap items-center gap-1">
+              <PeopleChip id={`card-${card.id}-owners-pop`} label="Owners" people={owners} field={
+                <PeopleField id={`card-${card.id}-owners`} label="Owners" value={ownerEmails} team={team} me={directory.me}
+                  suggested={suggestedPeople(directory.me, ownerEmails)} exclude={watcherEmails} min={ownerEmails.length ? 1 : 0}
+                  minWords={card.auto ? "This card keeps one owner once it has one. Add someone else first, then remove this one." : undefined}
+                  disabled={!canEdit} busy={!!busy}
+                  onChange={(next, change) => update({ owners: next }, change.added ? `${nameOf(change.added)} added and told.` : `${nameOf(change.removed)} removed.`)} />
+              } />
+              <PeopleChip id={`card-${card.id}-watchers-pop`} label="Watching" people={watchers} field={
+                <PeopleField id={`card-${card.id}-watchers`} label="Watching" value={watcherEmails} team={team} me={directory.me}
+                  suggested={[directory.me].filter(Boolean)} exclude={ownerEmails} disabled={!canEdit} busy={!!busy}
+                  onChange={(next, change) => update({ watchers: next }, change.added ? `${nameOf(change.added)} added and told.` : `${nameOf(change.removed)} removed.`)} />
+              } />
+              {directory.me && !ownerEmails.includes(directory.me) && canEdit && (
+                <button type="button" data-assign-me="" disabled={!!busy} onClick={() => update({ owners: [...ownerEmails, directory.me] }, "Assigned to you.")} className={`${CHIP} font-semibold text-[var(--color-text-secondary)]`}>Assign to me</button>
+              )}
+            </div>
+            <div data-dates-line="" className="flex min-w-0 flex-wrap items-center gap-1">
+              <PropChip label="Start" value={card.start_on ? dayLabel(card.start_on) : ""} disabled={!canEdit} width="w-56">
+                {(closeIt) => (
+                  <>
+                    <label className="flex flex-col gap-1 text-[12px] text-[var(--color-text-secondary)]">Start date
+                      <input type="date" defaultValue={card.start_on || ""} max={card.due_on || undefined} onChange={(e) => { update({ start_on: e.target.value || null }, e.target.value ? "Start date set" : "Start date cleared"); closeIt(); }} className={INPUT} />
+                    </label>
+                    {card.start_on && <button type="button" onClick={() => { update({ start_on: null }, "Start date cleared"); closeIt(); }} className={`self-start text-[12.5px] text-[var(--color-text-secondary)] underline ${FOCUS}`}>Clear</button>}
+                  </>
+                )}
+              </PropChip>
+              <PropChip label={`Due${card.kit_step !== null && card.kit_step !== undefined ? ` · T${card.kit_step > 0 ? "+" : ""}${card.kit_step}` : ""}`} empty="Due" value={card.due_on ? dayLabel(card.due_on) : ""} danger={!!card.overdue} disabled={!canEdit} width="w-56">
+                {(closeIt) => (
+                  <label className="flex flex-col gap-1 text-[12px] text-[var(--color-text-secondary)]">Due date
+                    <input type="date" defaultValue={card.due_on || ""} onChange={(e) => { if (e.target.value) { update({ due_on: e.target.value }, "Due date changed"); closeIt(); } }} className={INPUT} />
+                  </label>
+                )}
+              </PropChip>
+              <PropChip label="Sprint" value={card.in_backlog ? "Backlog" : card.sprint?.starts_on ? sprintLabel(card.sprint.starts_on).replace(/^Sprint /, "") : ""} disabled={!canEdit} width="w-60">
+                {(closeIt) => (
+                  <>
+                    {weeks.map((w) => <MenuItem key={w} disabled={w === card.sprint?.starts_on && !card.in_backlog} onClick={() => { update({ week: w, in_backlog: false }, "Moved to another sprint"); closeIt(); }}>{sprintLabel(w)}{w === thisWeek ? " (this week)" : ""}</MenuItem>)}
+                    <MenuItem disabled={card.in_backlog} onClick={() => { update({ in_backlog: true }, "Moved to the backlog"); closeIt(); }}>Backlog</MenuItem>
+                  </>
+                )}
+              </PropChip>
+              <PropChip label="Goal" value={card.goal?.title || ""} disabled={!canEdit} width="w-64">
+                {(closeIt) => (
+                  sprintGoals.length === 0 ? <p className="p-1 text-[12.5px] text-[var(--color-text-tertiary)]">This card’s sprint has no goals yet. Add them in Plan sprint.</p> : (
+                    <>
+                      {sprintGoals.map((g) => <MenuItem key={g.id} disabled={g.id === card.goal?.id} onClick={() => { update({ goal: g.id }, "Goal set"); closeIt(); }}>{g.title}</MenuItem>)}
+                      {card.goal && <MenuItem onClick={() => { update({ goal: null }, "Goal taken off"); closeIt(); }}>No goal</MenuItem>}
+                    </>
+                  )
+                )}
+              </PropChip>
+              <PropChip label="Estimate" value={hoursLabel(card.estimate_minutes)} disabled={!canEdit} width="w-56">
+                {(closeIt) => (
+                  <form onSubmit={(e) => {
+                    e.preventDefault();
+                    const { minutes, problem } = parseEstimate(new FormData(e.currentTarget).get("est"));
+                    if (problem) { addToast({ variant: "error", title: problem }); return; }
+                    update({ estimate_minutes: minutes }, minutes ? `Estimate ${hoursLabel(minutes)}` : "Estimate cleared");
+                    closeIt();
+                  }} className="flex flex-col gap-1">
+                    <label className="flex flex-col gap-1 text-[12px] text-[var(--color-text-secondary)]">Hours
+                      <input name="est" inputMode="decimal" autoFocus defaultValue={card.estimate_minutes ? String(Math.round((card.estimate_minutes / 60) * 10) / 10) : ""} placeholder="e.g. 1.5" className={INPUT} />
+                    </label>
+                    <Button type="submit" size="sm">Save</Button>
+                  </form>
+                )}
+              </PropChip>
+            </div>
+            {anchorWords && (
+              <p className="break-words px-2 text-[12.5px] text-[var(--color-text-secondary)]">
+                {anchorWords.lead} <span className="font-semibold text-[var(--color-text-primary)]">{anchorWords.title}</span>{anchorWords.rest}
+              </p>
+            )}
+          </section>
+
+          {/* (5) Description */}
+          <section aria-labelledby={`desc-${card.id}`} data-card-description="" className="flex min-w-0 flex-col gap-1.5">
+            <div className="flex min-w-0 items-center justify-between gap-2">
+              <h3 id={`desc-${card.id}`} className={LABEL}>Description</h3>
+              <span className="text-[11.5px] text-[var(--color-text-tertiary)]">{canEdit ? "Type @ to tag · / for blocks" : ""}{descriptionDraft.kept ? " · not saved yet" : ""}</span>
+            </div>
+            <RichComposer key={card.id} id={`card-${card.id}-description`} label="Description" value={description} disabled={!canEdit} people={team}
+              placeholder="What needs doing, links, checklists. Type @ to tag a teammate."
+              onChange={(md) => { setDescription(md); clearTimeout(idle.current); idle.current = setTimeout(() => saveText("description", md, savedDescription), 800); }}
+              onBlur={saveDescription}
+              onPasteFiles={canEdit ? (list) => { uploads.add(list); addToast({ variant: "info", title: "Adding the picture to Files." }); } : undefined} />
+            {card.kind === "gate_live" && <p className="text-[12px] text-[var(--color-text-tertiary)]">Closes itself the moment the event goes public.</p>}
+          </section>
+
+          {/* (6) Subtasks */}
+          <CardSubtasks card={card} subtasks={subtasks} columns={columns} disabled={locked} myName={myName}
+            onOpenCard={openCard} onChanged={refresh} offerUndo={offerUndo} onError={failed} />
+
+          {/* (7) Files and links */}
+          <CardFiles card={card} files={files} disabled={locked} onChanged={refresh} uploads={uploads} />
+
+          {/* (8) Linked records and GitHub, one compact row each */}
+          <Section title="Linked" action={!linking && canEdit && <button type="button" aria-label="Link a record" onClick={() => setLinking(true)} className={`inline-flex min-h-8 items-center gap-1 rounded-md px-1.5 text-[12.5px] font-semibold text-[var(--color-text-secondary)] hover:bg-[var(--gray-100)] ${FOCUS}`}><Link2 aria-hidden="true" className="h-3.5 w-3.5" /> Link a record</button>}>
+            {(card.links || []).length === 0 ? <p className="text-[12.5px] text-[var(--color-text-tertiary)]">Nothing linked.</p> : (
+              <ul className="flex min-w-0 flex-wrap gap-1.5">
+                {card.links.map((l) => (
+                  <li key={`${l.kind}:${l.id}`} className="inline-flex max-w-full items-center gap-1 rounded-full bg-[var(--gray-100)] py-0.5 pl-2.5 pr-0.5 text-[12.5px]">
+                    {l.exists && linkSide(l) ? (
+                      <SideLink side={linkSide(l)} aria-label={`Open ${l.label}`} className={`inline-flex min-h-7 min-w-0 items-center break-words rounded-full font-medium text-[var(--color-text-primary)] hover:underline ${FOCUS}`}>
+                        <span><span className="text-[var(--color-text-tertiary)]">{l.kind.replace("_", " ")}: </span>{l.label}</span>
+                      </SideLink>
+                    ) : (
+                      <span className="min-w-0 break-words"><span className="text-[var(--color-text-tertiary)]">{l.kind.replace("_", " ")}: </span>{l.label}{l.exists ? "" : " (removed)"}</span>
+                    )}
+                    <button type="button" aria-label={`Unlink ${l.label}`} disabled={!canEdit} onClick={() => update({ links: card.links.filter((x) => !(x.kind === l.kind && x.id === l.id)).map((x) => ({ kind: x.kind, id: x.id })) }, `${l.label} unlinked`)} className={`inline-grid h-8 w-8 place-items-center rounded-full hover:bg-[var(--gray-200)] disabled:opacity-50 ${FOCUS}`}><X aria-hidden="true" className="h-3.5 w-3.5" /></button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {linking && (
+              <RecordPicker
+                onClose={() => setLinking(false)}
+                onPick={async (pick) => {
+                  const answer = await update({ links: [...(card.links || []).map((x) => ({ kind: x.kind, id: x.id })), { kind: pick.kind, id: pick.id }] }, `${pick.label} linked`);
+                  if (answer) setLinking(false);
+                }}
+              />
+            )}
+            <GithubLinks card={card} disabled={!canEdit || !!busy} onSave={(github, words) => update({ github }, words)} />
+            {!closed && !githubBlock && !card.blocked && (card.github || []).length > 0 && (
+              <GithubWait card={card} disabled={locked || !!busy} onChange={(on, words) => update({ blocked_on_github: on }, words)} />
+            )}
+          </Section>
+
+          {/* (9) The host plan switch */}
+          {showsHostSees(card) && (
+            <HostSeesToggle card={card} disabled={locked || !!busy} onChange={(on) => update({ on_brand_plan: on }, on ? "The host can see this on their plan" : "The host no longer sees this")} />
+          )}
+        </div>
       </div>
     </div>
   );
@@ -587,44 +680,6 @@ function HostSeesToggle({ card, disabled, onChange }) {
           <span className="block text-[12px] text-[var(--color-text-tertiary)]">On: the host sees its title, due date, status and Files link on their plan.</span>
         </span>
       </label>
-    </Section>
-  );
-}
-
-// #4270: one Files link per card: where its designs and uploads live. https only.
-function FilesLink({ card, disabled, onSave }) {
-  const [editing, setEditing] = useState(false);
-  const [value, setValue] = useState(card.files_url || "");
-  const [error, setError] = useState("");
-  const save = async () => {
-    const v = value.trim();
-    const problem = filesUrlProblem(v);
-    if (problem) { setError(problem); return; }
-    if (v === (card.files_url || "")) { setEditing(false); return; }
-    const answer = await onSave(v, v ? "Files link saved" : "Files link removed");
-    if (answer) { setEditing(false); setError(""); }
-  };
-  return (
-    <Section title="Files" action={!editing && <button type="button" disabled={disabled} onClick={() => { setValue(card.files_url || ""); setEditing(true); }} className={`inline-flex min-h-11 items-center gap-1 rounded-lg px-2 text-[13px] font-semibold text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)] disabled:opacity-50 ${FOCUS}`}>{card.files_url ? "Change link" : "+ Add files link"}</button>}>
-      {card.files_url ? (
-        <a data-files-link="" href={card.files_url} target="_blank" rel="noopener noreferrer" className={`inline-flex min-h-11 max-w-full items-center gap-1.5 self-start rounded-lg bg-[var(--color-info-50)] px-3 text-[13px] font-semibold text-[var(--color-info-700)] hover:underline ${FOCUS}`}>
-          <FolderOpen aria-hidden="true" className="h-4 w-4 shrink-0" />
-          <span className="min-w-0 break-all">Open files · {filesHost(card.files_url)}</span>
-          <span className="sr-only">(opens in a new tab)</span>
-        </a>
-      ) : <p className="text-[13px] text-[var(--color-text-tertiary)]">No files link yet.</p>}
-      {editing && (
-        <form className="flex min-w-0 flex-wrap items-start gap-2" onSubmit={(e) => { e.preventDefault(); save(); }}>
-          <label className="flex min-w-[200px] flex-1 flex-col gap-1">
-            <span className="sr-only">Files link</span>
-            <input type="url" inputMode="url" value={value} autoFocus maxLength={2000} placeholder="https://" aria-invalid={error ? "true" : undefined} aria-describedby={error ? `files-err-${card.id}` : undefined} onChange={(e) => { setValue(e.target.value); setError(""); }} className={INPUT} />
-            {error && <span id={`files-err-${card.id}`} role="alert" className="text-[12px] text-[var(--color-error-700)]">{error}</span>}
-          </label>
-          <Button type="submit" className="min-h-11" disabled={disabled}>Save</Button>
-          {card.files_url && <Button type="button" variant="ghost" className="min-h-11" disabled={disabled} onClick={async () => { const a = await onSave("", "Files link removed"); if (a) { setEditing(false); setValue(""); } }}>Remove</Button>}
-          <Button type="button" variant="ghost" className="min-h-11" onClick={() => { setEditing(false); setValue(card.files_url || ""); setError(""); }}>Cancel</Button>
-        </form>
-      )}
     </Section>
   );
 }

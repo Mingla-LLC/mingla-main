@@ -48,8 +48,10 @@ Deno.test("#3980 W2: a work card's chips carry the tone, and people switch the G
   assertMatch(detail, /card\.blocked_kind === "github"/);
 });
 
+// [TEST-MOD #4382] the Engineering row moved into the ticket side panel, and
+// the Product tab became the Product board with a card panel.
 Deno.test("#3980 W2: the ticket shows one Engineering row with loading, error and Live words", () => {
-  const page = read("pages/SupportDeskPage.jsx");
+  const page = read("components/support/TicketPanel.jsx");
   assertMatch(page, /fetchTicketEngineering/);
   assertMatch(page, /Engineering: \{data\.label\} · #\{n\}/);
   assertMatch(page, /Live: you can tell the host it is fixed\./);
@@ -60,8 +62,8 @@ Deno.test("#3980 W2: the ticket shows one Engineering row with loading, error an
 });
 
 Deno.test("#3980 W2: the Product Inbox uses the bridge's word when it has the issue", () => {
-  const inbox = read("components/community/ProductInboxPanel.jsx");
-  assertMatch(inbox, /\["Engineering", engineering \|\| selected\.item\.board_status \|\| "Todo"\]/);
+  const inbox = read("components/support/ProductCardPanel.jsx");
+  assertMatch(inbox, /\["Engineering", engineering \|\| signal\.item\.board_status \|\| "Todo"\]/);
   assertMatch(inbox, /item\?\.checked && !item\.not_found/);
 });
 
@@ -91,8 +93,8 @@ Deno.test("#3980 W2: every new ops_ call lives in the one ops_ caller", () => {
   for (const fn of ["ops_github_status_list", "ops_ticket_engineering", "ops_roadmap_links_list", "ops_roadmap_link_set",
     "ops_roadmap_suggestion_decide", "ops_release_records_list", "ops_feature_guide_release"]) {
     assert(service.includes(`"${fn}"`), fn);
-    for (const file of ["pages/SupportDeskPage.jsx", "components/community/RoadmapPanel.jsx", "components/community/FeatureGuidePanel.jsx",
-      "components/community/ProductInboxPanel.jsx", "components/ops/WorkDetail.jsx"]) {
+    for (const file of ["pages/SupportDeskPage.jsx", "components/support/TicketPanel.jsx", "components/community/RoadmapPanel.jsx", "components/community/FeatureGuidePanel.jsx",
+      "components/community/ProductInboxPanel.jsx", "components/support/ProductCardPanel.jsx", "components/ops/WorkDetail.jsx"]) {
       assertEquals(read(file).includes(`"${fn}"`), false, `${fn} in ${file}`);
     }
   }

@@ -132,7 +132,7 @@ export const NAV_GROUPS = [
       // #4270 (D20): the Work entry carries the count of your own open cards
       // due today or overdue.
       { id: "work-board",                label: "Work",               icon: "SquareKanban" },
-      { id: "notifications",             label: "Notifications",      icon: "Bell" },
+      // #4255 W4: Notifications left the menu for Messages in the top bar.
     ],
   },
   {
@@ -236,6 +236,8 @@ export const NAV_GROUPS = [
 export const HEADER_PAGE_ITEMS = [
   { id: "agent", label: "My agent" },
   { id: "guide", label: "Guide" },
+  // #4255 W4: Messages (the top-bar button; #/messages is its full page).
+  { id: "messages", label: "Messages" },
 ];
 
 // Backward-compatible flat list (used by AppShell.currentTitle)
