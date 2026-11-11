@@ -243,7 +243,7 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4382: register the retire-beta-feedback migration (20280622004382) in the #1857, #1931 and #2117 replay lanes; re-sealed.
 // #4255: re-sealed after merging origin/main 4ba9ec5ec3 (#4382 retire-beta-feedback rows kept beside the #4255 rows).
 // #4255: re-sealed after renumbering the seven Work board v2 and Mingla team migrations to 20280624*4255 (above production's applied 20280622004382).
-export const BOOTSTRAP_SHA256 = "e28b4cd708bc21d09b8166f0eeac240351325162edc1837f09c21fd83e8e5d6b";
+export const BOOTSTRAP_SHA256 = "4a18c699eddb7ac10066ef1ede11edcc9ed59c2b2ceb7b0ddff56785d34f9e4f";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
