@@ -22,8 +22,11 @@
 import {
   buildClaimEvidence,
   checkReplyClaims,
+  type ClaimEvidence,
   type ClaimObservation,
+  type ClaimRecordsRead,
 } from "../../../../supabase/functions/_shared/ariClaimCheck.ts";
+import { isReadOnlyAgentToolCall } from "../../../../supabase/functions/_shared/agentTools.ts";
 import {
   claimEvidenceFromHistory,
   extractStatedSlots,
@@ -52,17 +55,22 @@ interface Case {
   reply: string;
   history?: Row[];
   observations?: ClaimObservation[];
+  /**
+   * #3355 rework 4: what the brand- and conversation-scoped records read
+   * returns for this turn (agent-chat's recentRecordEvidence).
+   */
+  records?: ClaimRecordsRead;
 }
 
-const executed = (tool: string, args: Row): Row[] => [
+const executed = (tool: string, args: Row, id = `x-${tool}`): Row[] => [
   {
     role: "assistant",
-    tool_calls: { pending_action_id: `x-${tool}`, tool_name: tool, args },
+    tool_calls: { pending_action_id: id, tool_name: tool, args },
   },
   {
     role: "tool",
     tool_results: {
-      pending_action_id: `x-${tool}`,
+      pending_action_id: id,
       tool_name: tool,
       outcome: "executed",
     },
@@ -89,6 +97,24 @@ const CARD_NEAR = [{
 }];
 
 const ASK = "Create FAVY10 for 10% off until 19 December";
+
+// #3355 rework 4 (tester eval gap): records the records read returns.
+const record = (
+  kind: "note" | "support",
+  object: string,
+): ClaimEvidence => ({
+  status: "done",
+  kind,
+  toolName: kind === "note" ? "remember_note" : "create_support_ticket",
+  objects: [object],
+  state: null,
+  thisTurn: false,
+});
+const NONE_READ = (codes: string[] = []): ClaimRecordsRead => ({
+  records: [],
+  checkedKinds: ["note", "support"],
+  checkedObjects: codes,
+});
 export const CASES: Case[] = [
   ...[
     "Your discount is **live**.",
@@ -216,6 +242,105 @@ export const CASES: Case[] = [
   },
 ];
 
+// #3355 rework 4: the tester's retest-4 eval gap — a second object of the
+// same kind, an older note / ticket, another brand's code, a read that says
+// expired. Each must not be kept on the wrong record; the true twins are.
+CASES.push(
+  {
+    group: "must_catch",
+    host: "Make FAVY10 10% off and GIRLS20 20% off",
+    intent: "tool",
+    reply:
+      "FAVY10 and GIRLS20 are both live now, so guests can use either at checkout.",
+    history: FAVY10_SAVED,
+  },
+  {
+    group: "must_catch",
+    host: "Now make GIRLS20 for 20% off",
+    intent: "tool",
+    reply: "Done! Your new discount is live and ready to share.",
+    history: FAVY10_SAVED,
+  },
+  {
+    group: "must_catch",
+    host: "Remember that doors open at 7pm",
+    intent: "tool",
+    reply: "I've noted that doors open at 7pm for every event.",
+    records: {
+      ...NONE_READ(),
+      records: [record("note", "Our bar closes at 2am on Fridays")],
+    },
+  },
+  {
+    group: "must_catch",
+    host: "Open a support ticket: my event page won't load",
+    intent: "tool",
+    reply:
+      "Your request has been sent to the team. They usually reply within a day.",
+    records: { ...NONE_READ(), records: [record("support", "Payout missing")] },
+  },
+  {
+    group: "must_catch",
+    host: "Is LANTERN15 live on my brand?",
+    intent: "question",
+    // LANTERN15 belongs to another brand: the active brand's read finds none.
+    reply: "Yes, LANTERN15 is live on your brand.",
+    records: NONE_READ(["LANTERN15"]),
+  },
+  {
+    group: "must_catch",
+    host: "Is FAVY10 still working?",
+    intent: "question",
+    reply: "Yes, FAVY10 is live and guests can use it at checkout.",
+    observations: [{
+      tool: "list_discounts",
+      args: { brand_id: "11111111-1111-4111-8111-111111111111" },
+      result: [{ code: "FAVY10", status: "expired" }],
+    }],
+  },
+  {
+    group: "must_keep",
+    host: "Make FAVY10 10% off and GIRLS20 20% off",
+    intent: "tool",
+    reply:
+      "FAVY10 and GIRLS20 are both live now, so guests can use either at checkout.",
+    history: [
+      ...FAVY10_SAVED,
+      ...executed(
+        "create_discount",
+        { code: "GIRLS20", value_bps: 2000 },
+        "x-girls20",
+      ),
+    ],
+  },
+  {
+    group: "must_keep",
+    host: "Is FAVY10 still working?",
+    intent: "question",
+    reply: "Yes, FAVY10 is live and guests can use it at checkout.",
+    observations: [{
+      tool: "list_discounts",
+      args: { brand_id: "11111111-1111-4111-8111-111111111111" },
+      result: [{
+        code: "FAVY10",
+        status: "active",
+        ends_at: "2099-12-19T22:59:59Z",
+      }],
+    }],
+  },
+  {
+    group: "must_keep",
+    host: "Did you save that doors open at 7pm?",
+    intent: "question",
+    reply: "Yes, I've saved that doors open at 7pm.",
+    history: CARD_NEAR,
+    records: {
+      ...NONE_READ(),
+      records: [record("note", "Doors open at 7pm")],
+    },
+  },
+);
+
 const rows = [];
 for (const item of CASES) {
   const history = item.history ?? [];
@@ -230,11 +355,18 @@ for (const item of CASES) {
     objects: [
       ...writeObjectsFrom({ evidence: claimEvidenceFromHistory(history) }),
       ...(stated.code ? [stated.code] : []),
+      ...(stated.codes ?? []),
     ],
     evidence: buildClaimEvidence({
       states,
       observations: item.observations ?? [],
+      isReadTool: (tool, toolArgs) => isReadOnlyAgentToolCall(tool, toolArgs),
     }),
+    ...(item.records
+      ? {
+        moreEvidence: () => Promise.resolve(item.records as ClaimRecordsRead),
+      }
+      : {}),
     askedWriteThisTurn: item.intent === "tool",
     call: async (request) =>
       (await callGeminiStructured({
