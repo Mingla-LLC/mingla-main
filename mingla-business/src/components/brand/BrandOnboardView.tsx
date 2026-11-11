@@ -174,6 +174,7 @@ import {
   classifyNativeConnectExit,
   decideConnectOnboardingSurface,
   nativeConnectLoadErrorMessage,
+  setupExitFromRefreshState,
   type NativeConnectExit,
 } from "../stripe/nativeConnectOnboarding";
 import { useNativeConnectOnboardingRelease } from "../../hooks/useNativeConnectOnboardingRelease";
@@ -797,6 +798,24 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
     [queryClient, statusQuery],
   );
 
+  // #4389 P2 — leaving the secure setup from brand setup: refresh_status (the
+  // live read F4 uses) decides. Submitted or verifying → F4; anything still
+  // due or not started → Get paid with K1. A failed read falls back to the
+  // settled status.
+  const decideSetupExit = useCallback(
+    async (brandId: string, outcome: StripeOnboardingOutcome): Promise<NativeConnectExit> => {
+      try {
+        const { refreshStripeSetupStatus } = await import("../../services/brandSetupService");
+        const live = await refreshStripeSetupStatus(brandId);
+        return setupExitFromRefreshState(live.state);
+      } catch (err) {
+        console.warn("[BrandOnboardView] refresh_status after secure setup failed; using the settled status", err);
+        return classifyNativeConnectExit(outcome);
+      }
+    },
+    [],
+  );
+
   const openBrowserSheetAndSettle = useCallback(
     async (brandId: string, onboardingUrl: string): Promise<void> => {
       const browserResult = await WebBrowser.openAuthSessionAsync(
@@ -804,6 +823,13 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
         RETURN_DEEP_LINK,
       );
       const outcome = await settleOutcome(brandId);
+
+      // Brand setup owns the way out of the browser sheet too (same rule as
+      // the native screen).
+      if (onNativeExit !== undefined) {
+        onNativeExit(await decideSetupExit(brandId, outcome));
+        return;
+      }
 
       if (browserResult.type === "success") {
         applyOnboardingOutcome(outcome);
@@ -826,7 +852,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
         applyOnboardingOutcome("session-expired");
       }
     },
-    [applyOnboardingOutcome, settleOutcome],
+    [applyOnboardingOutcome, decideSetupExit, onNativeExit, settleOutcome],
   );
 
   const handleStart = useCallback(async (): Promise<void> => {
@@ -975,12 +1001,13 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
     if (session === null) return;
     try {
       const outcome = await settleOutcome(session.brandId);
-      const exit = classifyNativeConnectExit(outcome);
       if (onNativeExit !== undefined) {
-        onNativeExit(exit);
+        onNativeExit(await decideSetupExit(session.brandId, outcome));
         return;
       }
-      if (exit === "finished") {
+      // Outside brand setup the screen shows its own outcome states, exactly
+      // as after the browser sheet (needs information included).
+      if (outcome !== "session-expired") {
         applyOnboardingOutcome(outcome);
       } else {
         setViewState("cancelled");
@@ -994,7 +1021,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
       fireHaptic("error");
       announceForAccessibility("We couldn't confirm your payout status.");
     }
-  }, [applyOnboardingOutcome, nativeSession, onNativeExit, settleOutcome]);
+  }, [applyOnboardingOutcome, decideSetupExit, nativeSession, onNativeExit, settleOutcome]);
 
   // #4389 S-11 — the native screen failed to load: fall back to the browser
   // sheet with the same setup link, automatically.

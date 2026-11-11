@@ -83,10 +83,12 @@ describe("#4389 S-11 — 2. the server switch per platform", () => {
 });
 
 describe("#4389 S-11 — 3. leaving the native screen", () => {
-  test("any account progress is finished (→ F4); none is an early close (→ K1)", () => {
+  // #4389 P2 (tester FAIL): "needs information" is details NOT submitted, so
+  // it is an early close (K1), not a finished visit.
+  test("submitted / verifying is finished (→ F4); details still due or none is an early close (→ K1)", () => {
     expect(classifyNativeConnectExit("complete-active")).toBe("finished");
     expect(classifyNativeConnectExit("complete-verifying")).toBe("finished");
-    expect(classifyNativeConnectExit("needs-information")).toBe("finished");
+    expect(classifyNativeConnectExit("needs-information")).toBe("closed-early");
     expect(classifyNativeConnectExit("failed-stripe")).toBe("finished");
     expect(classifyNativeConnectExit("session-expired")).toBe("closed-early");
   });

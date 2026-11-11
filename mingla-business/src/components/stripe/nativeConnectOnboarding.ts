@@ -58,11 +58,14 @@ export const decideConnectOnboardingSurface = (
 };
 
 /**
- * What leaving the native screen means. Anything the account now reports
- * (submitted, verifying, more needed, refused) is a finished visit and goes
- * on to the "You're all set" step, which reads the account live. No account
- * progress at all is an early close: the host is asked "Only free events for
- * now?".
+ * What leaving the secure setup (native screen or browser sheet) from brand
+ * setup means. "finished" goes on to "You're all set" (F4, which reads the
+ * account live); "closed-early" returns to Get paid with K1 "Only free events
+ * for now?".
+ *
+ * #4389 P2 — "needs information" used to count as finished, so closing the
+ * secure setup early never showed K1. Only details that are submitted (or
+ * pending verification) finish the visit now.
  */
 export type NativeConnectExit = "finished" | "closed-early";
 
@@ -74,7 +77,18 @@ export const classifyNativeConnectExit = (
     | "failed-stripe"
     | "session-expired",
 ): NativeConnectExit =>
-  outcome === "session-expired" ? "closed-early" : "finished";
+  outcome === "complete-active" || outcome === "complete-verifying" || outcome === "failed-stripe"
+    ? "finished"
+    : "closed-early";
+
+/**
+ * The live account read after the secure setup closes (`refresh_status`,
+ * the same read F4 makes). Submitted — nothing due, or pending verification —
+ * finishes; anything still due, or nothing started, is an early close.
+ */
+export const setupExitFromRefreshState = (
+  state: "submitted" | "action_needed" | "not_started",
+): NativeConnectExit => (state === "submitted" ? "finished" : "closed-early");
 
 /** Extracts a readable message from the SDK's onLoadError payload. */
 export const nativeConnectLoadErrorMessage = (event: unknown): string => {
