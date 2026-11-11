@@ -3127,6 +3127,81 @@
       "paths": [
         "app-mobile/src/store/placeReviewRequestStore.ts"
       ]
+    },
+    {
+      "capability_key": "brand-create",
+      "paths": [
+        "mingla-business/assets/offerings/offer-event.jpg",
+        "mingla-business/assets/offerings/offer-event.mp4",
+        "mingla-business/assets/offerings/offer-experience.jpg",
+        "mingla-business/assets/offerings/offer-experience.mp4",
+        "mingla-business/assets/offerings/offer-rsvp.jpg",
+        "mingla-business/assets/offerings/offer-rsvp.mp4",
+        "mingla-business/assets/offerings/offer-trip.jpg",
+        "mingla-business/assets/offerings/offer-trip.mp4",
+        "mingla-business/assets/offerings/offer-venue.jpg",
+        "mingla-business/assets/offerings/offer-venue.mp4",
+        "mingla-business/assets/tap-to-pay/ttp-visual.png",
+        "mingla-business/src/components/brand/BrandSetupInterruptions.tsx",
+        "mingla-business/src/components/brand/LazyBrandCreationFlow.tsx",
+        "mingla-business/src/components/brand/offeringRowVisibility.tsx",
+        "mingla-business/src/constants/stripeSupportedCountries.ts",
+        "mingla-business/src/i18n/locales/ar/hostSetup.json",
+        "mingla-business/src/i18n/locales/bin/hostSetup.json",
+        "mingla-business/src/i18n/locales/bn/hostSetup.json",
+        "mingla-business/src/i18n/locales/de/hostSetup.json",
+        "mingla-business/src/i18n/locales/el/hostSetup.json",
+        "mingla-business/src/i18n/locales/es/hostSetup.json",
+        "mingla-business/src/i18n/locales/fr/hostSetup.json",
+        "mingla-business/src/i18n/locales/ha/hostSetup.json",
+        "mingla-business/src/i18n/locales/he/hostSetup.json",
+        "mingla-business/src/i18n/locales/hi/hostSetup.json",
+        "mingla-business/src/i18n/locales/id/hostSetup.json",
+        "mingla-business/src/i18n/locales/ig/hostSetup.json",
+        "mingla-business/src/i18n/locales/it/hostSetup.json",
+        "mingla-business/src/i18n/locales/ja/hostSetup.json",
+        "mingla-business/src/i18n/locales/ko/hostSetup.json",
+        "mingla-business/src/i18n/locales/ms/hostSetup.json",
+        "mingla-business/src/i18n/locales/nl/hostSetup.json",
+        "mingla-business/src/i18n/locales/pl/hostSetup.json",
+        "mingla-business/src/i18n/locales/pt/hostSetup.json",
+        "mingla-business/src/i18n/locales/ro/hostSetup.json",
+        "mingla-business/src/i18n/locales/ru/hostSetup.json",
+        "mingla-business/src/i18n/locales/sv/hostSetup.json",
+        "mingla-business/src/i18n/locales/th/hostSetup.json",
+        "mingla-business/src/i18n/locales/tr/hostSetup.json",
+        "mingla-business/src/i18n/locales/uk/hostSetup.json",
+        "mingla-business/src/i18n/locales/vi/hostSetup.json",
+        "mingla-business/src/i18n/locales/yo/hostSetup.json",
+        "mingla-business/src/i18n/locales/zh/hostSetup.json",
+        "mingla-business/src/i18n/locales/en/ariSetup.json",
+        "mingla-business/src/i18n/locales/en/brandSetup.json",
+        "mingla-business/src/i18n/locales/en/doorMode.json",
+        "mingla-business/src/i18n/locales/en/homeSetup.json",
+        "mingla-business/src/i18n/brandGroupMediaLocalesA.ts",
+        "mingla-business/src/i18n/brandGroupMediaLocalesB.ts",
+        "mingla-business/src/i18n/brandGroupMediaLocalesC.ts"
+      ]
+    },
+    {
+      "capability_key": "brand-profile",
+      "paths": [
+        "mingla-business/src/components/brand/BrandDeleteSheet.tsx",
+        "supabase/functions/brand-delete/function-policy.json"
+      ]
+    },
+    {
+      "capability_key": "ari-host-assistant",
+      "paths": [
+        "mingla-business/src/components/ari/ariCreateBrandOutcome.ts"
+      ]
+    },
+    {
+      "capability_key": "payouts-stripe",
+      "paths": [
+        "supabase/functions/_shared/stripeBlueprintClient.ts",
+        "supabase/functions/_shared/stripeSupportedCountries.ts"
+      ]
     }
   ]
 }
