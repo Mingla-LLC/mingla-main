@@ -1,4 +1,5 @@
 -- Issue #3980 synced program, Wave 1 -- tester adversarial suite, on the
+-- #4255: a card's plan is read from its subtasks now (ops_plan_from_subtasks); the plan column is retired and stays empty.
 -- fully replayed PG17 schema. Attacks the angles the implementor's happy
 -- path does not:
 --   X1   every step status through the step mark; every malformed step or
@@ -247,23 +248,23 @@ declare v text; v_id text; v_rev bigint; v_plan jsonb; r record;
 begin
   v_id := pg_temp.t3980a_card('A3980 plan of person steps',
     $j$,"plan":[{"n":1,"text":"Call the host","tool":"person"},{"n":2,"text":"Collect the flyer","tool":"person"},{"n":3,"text":"Log the reply","tool":"record_reply"}]$j$);
-  perform pg_temp.t3980a_check('X1', 'add_work keeps a three-step plan', (select jsonb_array_length(plan)::text from public.ops_work_cards where id = v_id::uuid), '3');
+  perform pg_temp.t3980a_check('X1', 'add_work keeps a three-step plan', jsonb_array_length(public.ops_plan_from_subtasks(v_id::uuid))::text, '3');
   -- Every status, through the step mark, round trip.
   for r in select * from (values ('done', 1), ('failed', 2), ('person', 3), ('todo', 1)) t(st, n) loop
     v_rev := pg_temp.t3980a_rev(v_id);
     v := pg_temp.t3980a_chat('KC', 'aaaaaaaaaaaaaaaa', 'update_work',
       format('{"id":"%s","expected_revision":%s,"step":{"n":%s,"status":"%s","result":"Marked %s"}}', v_id, v_rev, r.n, r.st, r.st));
     perform pg_temp.t3980a_check('X1', format('step %s can be marked %s through the step mark', r.n, r.st),
-      coalesce(pg_temp.t3980a_get(v, 'ok'), v) || '/' || (select p->>'status' || ':' || coalesce(p->>'result', '') from public.ops_work_cards w, jsonb_array_elements(w.plan) p where w.id = v_id::uuid and (p->>'n')::int = r.n),
+      coalesce(pg_temp.t3980a_get(v, 'ok'), v) || '/' || (select p->>'status' || ':' || coalesce(p->>'result', '') from public.ops_work_cards w, jsonb_array_elements(public.ops_plan_from_subtasks(w.id)) p where w.id = v_id::uuid and (p->>'n')::int = r.n),
       'true/' || r.st || ':Marked ' || r.st);
   end loop;
   perform pg_temp.t3980a_check('X1', 'a step mark leaves the other steps as they were',
-    (select string_agg(p->>'text' || '=' || (p->>'tool'), ',' order by (p->>'n')::int) from public.ops_work_cards w, jsonb_array_elements(w.plan) p where w.id = v_id::uuid),
+    (select string_agg(p->>'text' || '=' || (p->>'tool'), ',' order by (p->>'n')::int) from public.ops_work_cards w, jsonb_array_elements(public.ops_plan_from_subtasks(w.id)) p where w.id = v_id::uuid),
     'Call the host=person,Collect the flyer=person,Log the reply=record_reply');
 
   -- Refusals through the step mark name the field.
   v_rev := pg_temp.t3980a_rev(v_id);
-  v_plan := (select plan from public.ops_work_cards where id = v_id::uuid);
+  v_plan := public.ops_plan_from_subtasks(v_id::uuid);
   v := pg_temp.t3980a_chat('KC', 'aaaaaaaaaaaaaaaa', 'update_work', format('{"id":"%s","expected_revision":%s,"step":{"n":2,"status":"finished"}}', v_id, v_rev));
   perform pg_temp.t3980a_check('X1', 'a step status that does not exist names "status"',
     pg_temp.t3980a_get(v, 'error', 'token') || '|' || pg_temp.t3980a_get(v, 'error', 'message'),
@@ -274,7 +275,7 @@ begin
   v := pg_temp.t3980a_chat('KC', 'aaaaaaaaaaaaaaaa', 'update_work', format('{"id":"%s","expected_revision":%s,"step":{"n":1,"status":"done","result":"%s"}}', v_id, v_rev, repeat('r', 300)));
   perform pg_temp.t3980a_check('X1', 'a result of exactly 300 characters is kept', pg_temp.t3980a_get(v, 'ok'), 'true');
   v_rev := pg_temp.t3980a_rev(v_id);
-  v_plan := (select plan from public.ops_work_cards where id = v_id::uuid);
+  v_plan := public.ops_plan_from_subtasks(v_id::uuid);
 
   -- Refusals through a whole-plan replace name the field.
   for r in select * from (values
@@ -298,7 +299,7 @@ begin
       pg_temp.t3980a_get(v, 'error', 'token') || '|' || pg_temp.t3980a_get(v, 'error', 'message'), 'invalid_card|' || r.want);
   end loop;
   perform pg_temp.t3980a_check('X1', 'every refused change wrote nothing',
-    (select (revision = v_rev and plan = v_plan)::text from public.ops_work_cards where id = v_id::uuid), 'true');
+    (select (revision = v_rev and public.ops_plan_from_subtasks(id) = v_plan)::text from public.ops_work_cards where id = v_id::uuid), 'true');
   perform pg_temp.t3980a_check('X1', 'the old catch-all words never come back for a plan the server can name',
     (select count(*)::text from public.ops_agent_log l where l.summary like '%Plan steps need a number%'), '0');
 
@@ -309,7 +310,7 @@ begin
       {"n":2,"text":"Collect the flyer","tool":"person","status":"person"},
       {"n":4,"text":"Chase next week","tool":"person"}]}}$j$, v_id, v_rev));
   perform pg_temp.t3980a_check('X1', 'a whole plan replace is kept in step order, the tool trimmed and a missing status as todo',
-    coalesce(pg_temp.t3980a_get(v, 'ok'), v) || '/' || (select string_agg((p->>'n') || ':' || (p->>'tool') || ':' || (p->>'status'), ',' order by (p->>'n')::int) from public.ops_work_cards w, jsonb_array_elements(w.plan) p where w.id = v_id::uuid),
+    coalesce(pg_temp.t3980a_get(v, 'ok'), v) || '/' || (select string_agg((p->>'n') || ':' || (p->>'tool') || ':' || (p->>'status'), ',' order by (p->>'n')::int) from public.ops_work_cards w, jsonb_array_elements(public.ops_plan_from_subtasks(w.id)) p where w.id = v_id::uuid),
     'true/1:person:done,2:person:person,3:record_reply:failed,4:person:todo');
   v_rev := pg_temp.t3980a_rev(v_id);
   v := pg_temp.t3980a_chat('KC', 'aaaaaaaaaaaaaaaa', 'update_work', format('{"id":"%s","expected_revision":%s,"step":{"n":7,"status":"done"}}', v_id, v_rev));

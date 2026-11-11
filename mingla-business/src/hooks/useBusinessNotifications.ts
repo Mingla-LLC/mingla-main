@@ -64,6 +64,22 @@ export const businessNotificationKeys = {
     ["business-notifications", userId] as const,
 };
 
+/**
+ * #4255 W5 — the Mingla team query-key factory (the top bar's other inbox):
+ * one key per entity, every key under the signed-in user's id, so one
+ * person's team data is never served to the next and sign-out clears them
+ * with the whole query cache. It lives in this module, which the top bar
+ * already loads, so it adds no module of its own to the boot bundle.
+ *   teamChatKey(user)                    everything for that person
+ *   teamChatKey(user, "badge")           team_badge (the top bar M)
+ *   teamChatKey(user, "threads" | "people" | "mentions" | "prefs")
+ *   teamChatKey(user, "messages", threadId) · teamChatKey(user, "file", attachmentId)
+ */
+export type TeamKeyPart = "badge" | "threads" | "messages" | "people" | "mentions" | "file" | "prefs";
+
+export const teamChatKey = (userId: string, part?: TeamKeyPart, id?: string): readonly string[] =>
+  ["team-chat", userId, part, id].filter((value): value is string => typeof value === "string");
+
 const DISABLED_KEY = ["business-notifications-disabled"] as const;
 
 const SELECT_COLUMNS =

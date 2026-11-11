@@ -19,7 +19,7 @@ const FOCUSABLE_SELECTOR =
  * scrolling, and Esc is handled once by the PanelStack (top panel first). A
  * second panel that covers the first on a narrow screen shows Back.
  */
-export function Drawer({ open, onClose, title, header, footer, suspended = false, children }) {
+export function Drawer({ open, onClose, title, header, footer, suspended = false, bare = false, children }) {
   const slot = useContext(PanelSlotContext);
   const panelRef = useRef(null);
   const footerRef = useRef(null);
@@ -142,6 +142,21 @@ export function Drawer({ open, onClose, title, header, footer, suspended = false
           "motion-safe:animate-[slide-in-right_200ms_ease-out]",
         ].join(" ")}
       >
+        {/* #4255 W3: a bare panel (the work card, its thread) draws its own
+            one-line header with its own close button; Back still shows. */}
+        {bare ? (
+          <>
+            <h2 id={titleId} className="sr-only">{title}</h2>
+            {slot.back && (
+              <div className="shrink-0 border-b border-[var(--gray-200)] px-3">
+                <button type="button" data-panel-back="" onClick={slot.back.onClick} className="inline-flex min-h-11 max-w-full items-center gap-1.5 rounded-lg px-1 text-[13px] font-semibold text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)]">
+                  <ArrowLeft className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  <span className="truncate">{slot.back.label}</span>
+                </button>
+              </div>
+            )}
+          </>
+        ) : (
         <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--gray-200)] px-4 py-3 sm:px-5">
           <div className="min-w-0 flex-1">
             {slot.back && (
@@ -177,9 +192,10 @@ export function Drawer({ open, onClose, title, header, footer, suspended = false
             <X className="h-5 w-5" aria-hidden="true" />
           </button>
         </div>
+        )}
         {/* A drawer opened from inside a panel is an ordinary drawer again. */}
         <PanelSlotContext.Provider value={null}>
-          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 sm:px-5">{children}</div>
+          <div className={bare ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 sm:px-5"}>{children}</div>
           {footer && (
             <div ref={footerRef} className="shrink-0 border-t border-[var(--gray-200)] px-4 py-3 sm:px-5">
               {footer}
@@ -206,12 +222,13 @@ export function Drawer({ open, onClose, title, header, footer, suspended = false
         aria-modal="true"
         aria-labelledby={titleId}
         className={[
-          "relative flex h-full w-full flex-col sm:w-[min(440px,100%)]",
+          bare ? "relative flex h-full w-full flex-col sm:w-[min(720px,100%)]" : "relative flex h-full w-full flex-col sm:w-[min(440px,100%)]",
           "bg-[var(--color-background-primary)] shadow-[var(--shadow-xl)] outline-none",
           "border-l border-[var(--gray-200)]",
           "motion-safe:animate-[slide-in-right_200ms_ease-out]",
         ].join(" ")}
       >
+        {bare ? <h2 id={titleId} className="sr-only">{title}</h2> : (
         <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--gray-200)] px-4 py-3 sm:px-5">
           <div className="min-w-0 flex-1">
             {header ? (
@@ -236,7 +253,8 @@ export function Drawer({ open, onClose, title, header, footer, suspended = false
             <X className="h-5 w-5" aria-hidden="true" />
           </button>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 sm:px-5">{children}</div>
+        )}
+        <div className={bare ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 sm:px-5"}>{children}</div>
         {footer && (
           <div ref={footerRef} className="shrink-0 border-t border-[var(--gray-200)] px-4 py-3 sm:px-5">
             {footer}

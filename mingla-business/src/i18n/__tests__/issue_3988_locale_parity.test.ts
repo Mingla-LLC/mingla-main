@@ -38,6 +38,9 @@ describe("#3988 Host brand-group media translations", () => {
   const englishTree = JSON.parse(fs.readFileSync(localePath("en"), "utf8")) as Record<string, Record<string, unknown>>;
   const planEnglish = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../locales/en/brandPlan.json"), "utf8")) as Record<string, Record<string, unknown>>;
   englishTree.plan = { ...englishTree.plan, ...planEnglish.plan };
+  // #4255 W5: so do the Mingla team screens' words.
+  const teamEnglish = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../locales/en/teamChat.json"), "utf8")) as Record<string, Record<string, unknown>>;
+  englishTree.team = { ...englishTree.team, ...teamEnglish.team };
   const english = flatten(englishTree as Record<string, unknown>);
   const fixedEnglishKeys = Object.keys(english).filter((key) => !/^media\.count_(photos_videos|files)_/.test(key)).sort();
 

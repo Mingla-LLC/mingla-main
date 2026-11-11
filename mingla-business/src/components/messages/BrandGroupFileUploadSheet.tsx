@@ -17,13 +17,22 @@ import {
 } from "../../services/brandGroupFilesService";
 import { Icon } from "../ui/Icon";
 import { pickBrandGroupFiles } from "./brandGroupFilePicker";
-import { BrandGroupFilePermissionError, type BrandGroupFileSource } from "./brandGroupFilePickerShared";
+import {
+  BrandGroupFilePermissionError,
+  type BrandGroupFileSource,
+  type BrandGroupPickedFile,
+  type BrandGroupPickOptions,
+} from "./brandGroupFilePickerShared";
 
 /**
  * #3720 picker sheet. #4304 (media speed): the sheet now only picks, shrinks
  * (native photos) and prepares; it hands the prepared files to the thread's
  * upload queue and closes, so the files show in the conversation at once with
  * their progress, and a failure stays there with Retry.
+ *
+ * #4255 W5: Mingla team chats reuse this sheet. They pass `onPicked`, which
+ * receives the picked (and, on phones, shrunk) files instead of the Brand group
+ * prepare step, plus their own subtitle, photos label and picker options.
  */
 export function BrandGroupFileUploadSheet({
   visible,
@@ -31,12 +40,20 @@ export function BrandGroupFileUploadSheet({
   actorMode,
   onClose,
   onQueued,
+  onPicked,
+  pickOptions,
+  remaining = 10,
+  copy,
 }: {
   visible: boolean;
   conversationId: string;
   actorMode: "brand" | "support";
   onClose: () => void;
   onQueued: (prepared: PreparedBrandGroupFile[]) => void;
+  onPicked?: (picked: BrandGroupPickedFile[]) => void;
+  pickOptions?: BrandGroupPickOptions;
+  remaining?: number;
+  copy?: { title: string; subtitle: string; camera: string; photos: string; files: string; close: string };
 }): React.ReactElement {
   const [preparing, setPreparing] = useState(false);
 
@@ -48,8 +65,13 @@ export function BrandGroupFileUploadSheet({
     if (preparing) return;
     setPreparing(true);
     try {
-      const picked = await pickBrandGroupFiles(source, 10);
+      const picked = await pickBrandGroupFiles(source, Math.max(1, remaining), pickOptions);
       if (!picked.length) return;
+      if (onPicked) {
+        onPicked(picked);
+        onClose();
+        return;
+      }
       const prepared = await prepareBrandGroupFiles({ conversationId, actorMode, files: picked });
       onQueued(prepared);
       onClose();
@@ -71,18 +93,18 @@ export function BrandGroupFileUploadSheet({
         <View style={[styles.sheet, Platform.OS === "web" && styles.sheetWeb]}>
           <View style={styles.header}>
             <View style={styles.headerCopy}>
-              <Text style={styles.title}>Add files</Text>
-              <Text style={styles.subtitle}>Up to 10 files, 100 MB each. Access follows this Brand group.</Text>
+              <Text style={styles.title}>{copy?.title ?? "Add files"}</Text>
+              <Text style={styles.subtitle}>{copy?.subtitle ?? "Up to 10 files, 100 MB each. Access follows this Brand group."}</Text>
             </View>
-            <Pressable accessibilityRole="button" accessibilityLabel="Close" disabled={preparing} onPress={onClose} style={styles.closeButton}>
+            <Pressable accessibilityRole="button" accessibilityLabel={copy?.close ?? "Close"} disabled={preparing} onPress={onClose} style={styles.closeButton}>
               <Icon name="close" size={18} color={preparing ? textTokens.tertiary : textTokens.primary} />
             </Pressable>
           </View>
 
           <View style={styles.choices}>
-            {Platform.OS !== "web" ? <SourceButton icon="scan" label="Camera" onPress={() => void choose("camera")} disabled={preparing} /> : null}
-            <SourceButton icon="grid" label="Photos & video" onPress={() => void choose("photos")} disabled={preparing} />
-            <SourceButton icon="upload" label="Browse files" onPress={() => void choose("files")} disabled={preparing} />
+            {Platform.OS !== "web" ? <SourceButton icon="scan" label={copy?.camera ?? "Camera"} onPress={() => void choose("camera")} disabled={preparing} /> : null}
+            <SourceButton icon="grid" label={copy?.photos ?? "Photos & video"} onPress={() => void choose("photos")} disabled={preparing} />
+            <SourceButton icon="upload" label={copy?.files ?? "Browse files"} onPress={() => void choose("files")} disabled={preparing} />
             {preparing ? <ActivityIndicator color={accent.warm} /> : null}
           </View>
         </View>

@@ -12,7 +12,7 @@
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** What panel two can show. */
-export const SIDE_KINDS = Object.freeze(["card", "host", "creator", "content", "event", "expected", "drafts", "brand"]);
+export const SIDE_KINDS = Object.freeze(["card", "host", "creator", "content", "event", "expected", "drafts", "brand", "thread"]);
 
 /**
  * #4270 W7: a Brand group's side panel also opens a brand's own Calendar
@@ -34,6 +34,7 @@ export const SIDE_KIND_WORDS = Object.freeze({
   drafts: "message drafts",
   brand: "brand",
   calendar: "calendar",
+  thread: "thread",
 });
 
 function validId(kind, id) {
@@ -113,6 +114,9 @@ export function sideHref(side) {
   switch (s.kind) {
     case "card":
       return `#/work-board?card=${s.id}`;
+    // #4255 W3: a card's thread opens beside the card.
+    case "thread":
+      return `#/work-board?card=${s.id}&side=thread:${s.id}`;
     case "host":
       return `#/outreach?tab=hosts&card=${s.id}`;
     case "creator":

@@ -1,21 +1,19 @@
 // Issue #4130 (Wave 1) — what the old Needs you page did, inside the Work
-// card that waits on a person:
-//   * CardDrafts: a card waiting to send a message shows the message drafts
-//     for the hosts and creators it is linked to, with every action the old
-//     page had (edit, copy and mark sent, discard, restore, undo). It is the
-//     same drafts screen (pages/DraftsPage.jsx), embedded.
+// card that waits on a person.
+//
+// Issue #4255 (W3, D6): the "Message to send" block (CardDrafts) is gone.
+// People review agent drafts in their Claude or Codex chat; a draft for a
+// person is a subtask they own ("Send <who> the message"), and the full
+// drafts screen stays on the Drafts page.
 //   * CardWording: a "Recently shipped" roadmap card shows the wording editor
 //     (owner and admins): publish it to hosts, or say it is not needed.
 // Spend and publish approvals are the card's own actions (WorkDetail).
 import { AlertCard } from "../ui/Card";
-import { SideLink } from "../ui/PanelStack";
-import { DraftsPage } from "../../pages/DraftsPage";
 import { useAuth } from "../../context/AuthContext";
 import { useOpsPoll } from "../../hooks/useOpsWork";
 import { usePeopleDirectory } from "../../hooks/usePeopleDirectory";
 import * as ops from "../../services/opsService";
 import { isRoadmapApproval, isTagged, opsErrorWords, todayIso } from "../../lib/opsModel";
-import { cardRecordIds, isSendCard } from "../../lib/workViews";
 import { isFullAdmin } from "../../lib/access";
 import { WordingCard } from "./WordingQueue";
 
@@ -27,24 +25,6 @@ function Block({ title, children }) {
       <h3 className="text-[13px] font-semibold text-[var(--color-text-primary)]">{title}</h3>
       {children}
     </section>
-  );
-}
-
-export function CardDrafts({ card }) {
-  if (!isSendCard(card)) return null;
-  const records = cardRecordIds(card).slice(0, 3);
-  return (
-    <Block title="Message to send">
-      <p className="text-[12.5px] text-[var(--color-text-secondary)]">Send it yourself on the real channel, then mark it sent here. The card keeps its You send tag until then.</p>
-      {records.length === 0 ? (
-        <p className="text-[13px] text-[var(--color-text-secondary)]">
-          This card is not linked to a host or creator, so its draft is not shown here.{" "}
-          <SideLink side={{ kind: "drafts", id: "all" }} href="#/work-board?drafts=all" className={`font-semibold text-[var(--color-brand-700)] underline ${FOCUS}`}>Open all my drafts</SideLink>
-        </p>
-      ) : (
-        records.map((id) => <DraftsPage key={id} embedded={{ search: `record=${id}` }} />)
-      )}
-    </Block>
   );
 }
 

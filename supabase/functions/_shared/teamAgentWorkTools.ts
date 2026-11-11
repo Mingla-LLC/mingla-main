@@ -154,7 +154,8 @@ const GITHUB: ArgSchema = {
     type: "string",
     minLength: 1,
     maxLength: 120,
-    hint: "Send #123 or a link to an issue or pull request of Mingla-LLC/mingla-main",
+    hint:
+      "Send #123 or a link to an issue or pull request of Mingla-LLC/mingla-main",
   },
   minItems: 0,
   maxItems: 10,
@@ -476,7 +477,8 @@ export const TEAM_AGENT_WORK_TOOLS: readonly TeamAgentTool[] = [
             type: "string",
             maxLength: 10,
             enum: ["todo", "doing", "person"],
-            hint: "Use todo or doing; person means To do with a Send, Spend or Publish tag",
+            hint:
+              "Use todo or doing; person means To do with a Send, Spend or Publish tag",
           },
           person_reason: PERSON_REASON,
           github: GITHUB,
@@ -803,6 +805,65 @@ export const WORK_SCREEN_FUNCTION_PARITY: Readonly<
   ops_sprint_set_goal: {
     excluded: "the owner or an admin sets the sprint goal",
   },
+  // #4255 Work board v2: columns, subtasks, files, the card thread and
+  // sprint planning. An agent keeps writing through update_work (a note
+  // becomes a thread message, step n is the n-th subtask) and add_work.
+  ops_status_list: {
+    excluded: "an agent reads a card's status with list_work",
+  },
+  ops_status_add: { excluded: "only an admin, in person, adds a column" },
+  ops_status_update: {
+    excluded: "only an admin, in person, renames or recolours a column",
+  },
+  ops_status_move: { excluded: "only an admin, in person, reorders columns" },
+  ops_status_archive: {
+    excluded: "only an admin, in person, archives a column",
+  },
+  ops_work_move: {
+    excluded:
+      "a person drags a card between columns; an agent starts, closes and pushes back with its own tools",
+  },
+  ops_subtask_add: {
+    excluded: "an agent plans steps with plan_work, which become subtasks",
+  },
+  ops_subtask_reorder: { excluded: "a person reorders subtasks" },
+  ops_file_add: { excluded: "a person attaches files and links to a card" },
+  ops_file_archive: { excluded: "a person removes a file from a card" },
+  ops_file_sign: { excluded: "a person opens a card's file in Admin" },
+  ops_message_list: {
+    excluded: "an agent reads a card's thread with read_log",
+  },
+  ops_message_post: {
+    excluded: "an agent posts to a card's thread through update_work's note",
+  },
+  ops_message_edit: { excluded: "a person edits their own thread message" },
+  ops_message_delete: {
+    excluded: "a person deletes their own thread message",
+  },
+  ops_message_react: { excluded: "reactions are for people" },
+  ops_thread_read: {
+    excluded: "an agent reading a thread never clears its person's unread mark",
+  },
+  ops_sprint_plan_get: {
+    excluded:
+      "sprint planning is for people; an agent reads cards with list_work",
+  },
+  ops_sprint_goal_add: {
+    excluded: "the owner or an admin sets the sprint goals",
+  },
+  ops_sprint_goal_update: {
+    excluded: "the owner or an admin sets the sprint goals",
+  },
+  ops_sprint_goal_archive: {
+    excluded: "the owner or an admin sets the sprint goals",
+  },
+  ops_sprint_capacity_set: {
+    excluded: "the owner or an admin sets sprint capacity",
+  },
+  ops_sprint_start: { excluded: "the owner or an admin starts a sprint" },
+  ops_sprint_review_note_set: {
+    excluded: "the sprint review note is written by people",
+  },
   ops_calendar: { tools: ["list_calendar"] },
   ops_runway_report: { tools: ["runway_report"] },
   ops_anchor_detail: {
@@ -823,7 +884,8 @@ export const WORK_SCREEN_FUNCTION_PARITY: Readonly<
     excluded: "the plan is for people on the host card",
   },
   ops_brand_plan_add: {
-    excluded: "a person adds to a brand's plan; the agent adds cards with add_work",
+    excluded:
+      "a person adds to a brand's plan; the agent adds cards with add_work",
   },
   ops_brand_plan_set_link: {
     excluded: "a person changes a plan link",
@@ -855,7 +917,8 @@ export const WORK_SCREEN_FUNCTION_PARITY: Readonly<
   // #3980 synced program, Wave 2: the bridges' screens.
   ops_github_status_list: { tools: ["list_work"] },
   ops_ticket_engineering: {
-    excluded: "Support reads a ticket's engineering status in person on the ticket",
+    excluded:
+      "Support reads a ticket's engineering status in person on the ticket",
   },
   ops_roadmap_links_list: {
     excluded: "what hosts are told is for the owner and admins, in person",
@@ -870,20 +933,25 @@ export const WORK_SCREEN_FUNCTION_PARITY: Readonly<
     excluded: "coding chats read release records on their GitHub issue",
   },
   ops_feature_guide_release: {
-    excluded: "the agent reads the Feature Guide through its product truth tools",
+    excluded:
+      "the agent reads the Feature Guide through its product truth tools",
   },
   // #3980 synced program, Wave 3: the operations redesign's screens.
   ops_people_directory: {
-    excluded: "the agent reads the team with get_started; names go through the server's name check",
+    excluded:
+      "the agent reads the team with get_started; names go through the server's name check",
   },
   ops_settings_get: {
-    excluded: "only the owner, in person, switches automatic steps and brand cards",
+    excluded:
+      "only the owner, in person, switches automatic steps and brand cards",
   },
   ops_setting_set: {
-    excluded: "only the owner, in person, switches automatic steps and brand cards",
+    excluded:
+      "only the owner, in person, switches automatic steps and brand cards",
   },
   ops_host_next: {
-    excluded: "the agent reads a host's next event with list_calendar and the host card with get_record",
+    excluded:
+      "the agent reads a host's next event with list_calendar and the host card with get_record",
   },
   ops_attention: { tools: ["list_work", "my_work"] },
   ops_recent_changes: {
@@ -891,10 +959,12 @@ export const WORK_SCREEN_FUNCTION_PARITY: Readonly<
   },
   // #3980 synced program, Wave 4: the owner's opt-in backfills.
   ops_roadmap_links_preview: {
-    excluded: "only the owner, in person, links roadmap cards to GitHub in bulk",
+    excluded:
+      "only the owner, in person, links roadmap cards to GitHub in bulk",
   },
   ops_roadmap_links_confirm: {
-    excluded: "only the owner, in person, links roadmap cards to GitHub in bulk",
+    excluded:
+      "only the owner, in person, links roadmap cards to GitHub in bulk",
   },
   ops_brand_cards_preview: {
     excluded: "only the owner, in person, adds host cards for brands in bulk",

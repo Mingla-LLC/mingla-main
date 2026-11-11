@@ -439,9 +439,19 @@ export function phase3dContractDigest(manifest) {
 // #4383: register the Communications scheduling migration (20280608004383) and its implementor PostgreSQL proof in the #1857, #1931 and #2117 replay lanes.
 // #4383: and the tester adversarial PostgreSQL proof.
 // #4382: re-sealed after merging origin/main 2aa45c6da1 (#4383 rows kept beside the #4382 rows).
-// #4382: renumber the Support Desk migrations to 20280613*4382 (above production's applied 20280608004383 and sibling 20280612004255) in the replay lanes.
+// #4382: renumber the Support Desk migrations to 20280613*4382 (above production's applied 20280608004383 and the sibling #4255 migrations of the time) in the replay lanes.
+// #4255: register the Work board v2 and Mingla team migrations (20280624004255 to 20280624044255) in the #1857, #1931 and #2117 replay lanes, and their implementor PostgreSQL proofs in the #1931 and #2117 lanes.
+// #4255: and the tester adversarial PostgreSQL proof.
+// #4255: and the rework migration (20280624054255) in the #1857, #1931 and #2117 lanes, with its implementor PostgreSQL proof in the #1931 and #2117 lanes.
+// #4255: and the rework tester adversarial PostgreSQL proof.
+// #4255: re-sealed after merging origin/main 62aabbdc6d (#4382 rows kept beside the #4255 rows).
+// #4255: renumber the Work board v2 and Mingla team migrations to 20280624004255 to 20280624054255 (above production's applied 20280613054382) in the replay lanes.
+// #4255: and the rework 2 migration (20280624064255) in the #1857, #1931 and #2117 lanes, with its implementor PostgreSQL proof in the #1931 and #2117 lanes.
+// #4255: and the rework 2 tester adversarial PostgreSQL proof.
 // #4382: register the retire-beta-feedback migration (20280622004382) in the #1857, #1931 and #2117 replay lanes.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "ede491e494191aff58fa3fe0f206fbd2e1bbbb57c5cd21b7b1b52d6481e0aa76";
+// #4255: re-sealed after merging origin/main 4ba9ec5ec3 (#4382 retire-beta-feedback rows kept beside the #4255 rows).
+// #4255: renumber the seven Work board v2 and Mingla team migrations to 20280624004255 to 20280624064255 (above production's applied 20280622004382) in the replay lanes.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "5597320a3434ca028b688f53d117d18c715c16341ce446a5498e0cccdf6e9823";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

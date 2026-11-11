@@ -188,8 +188,11 @@ test("the real route tree has one complete unconditional robots owner per privat
   // mingla-business/vercel.json ("/m/:path*").
   // [TEST-MOD-APPROVED #3645] +1: /pay/{attemptId}, the Paystack-hosted
   // payment handoff, is also a private family with an exact noindex owner.
-  // 41 + 2 + 1 + 1 = 45.
-  assert.equal(privateFamilies.size, 45, "current private family inventory must be explicit and non-vacuous");
+  // [TEST-MOD-APPROVED #4255] +1: /team, the staff-only Mingla team space in
+  // the Host app, is a private family with its own noindex owner
+  // ("/team/:path*").
+  // 41 + 2 + 1 + 1 + 1 = 46.
+  assert.equal(privateFamilies.size, 46, "current private family inventory must be explicit and non-vacuous");
   assert.deepEqual(inspectPartition(readRealConfig(), leaves), []);
 });
 

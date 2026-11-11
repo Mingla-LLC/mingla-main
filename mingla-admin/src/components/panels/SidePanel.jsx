@@ -18,6 +18,7 @@ import { Button } from "../ui/Button";
 import { Modal, ModalBody, ModalFooter } from "../ui/Modal";
 import { WorkDetail } from "../ops/WorkDetail";
 import { EventPanel } from "../ops/EventPanel";
+import { CardThread } from "../ops/CardThread";
 import { RecordDrawer } from "../crm/RecordDrawer";
 import { ReasonPrompt } from "../crm/ReasonPrompt";
 import { ContentDrawer } from "../contentCalendar/ContentDrawer";
@@ -44,15 +45,16 @@ export function FullPageLink({ side }) {
   );
 }
 
+// #4255 W3: the work card draws its own one-line header (bare panel).
 function WorkCardSide({ side, onClose, onChanged, onOpenSide }) {
   const config = useOpsConfig();
   const online = useOnline();
   return (
-    <Drawer open onClose={onClose} title="Work card" header={<p className="pt-2 text-[13px] font-semibold text-[var(--color-text-secondary)]">Work card</p>}>
-      <div className="flex min-w-0 flex-col gap-2">
-        <WorkDetail key={side.id} cardId={side.id} config={config.data} online={online} inDrawer onBack={onClose} onChanged={onChanged} onOpenSide={onOpenSide} />
-        <FullPageLink side={side} />
+    <Drawer open onClose={onClose} title="Work card" bare>
+      <div className="min-h-0 flex-1">
+        <WorkDetail key={side.id} cardId={side.id} config={config.data} online={online} onClose={onClose} onChanged={onChanged} onOpenSide={onOpenSide} />
       </div>
+      <div className="shrink-0 border-t border-[var(--gray-200)] px-4"><FullPageLink side={side} /></div>
     </Drawer>
   );
 }
@@ -284,6 +286,9 @@ export function SidePanel({ side, onClose, onChanged, eventActions = null, onOpe
       return <DraftsSide side={side} onClose={onClose} onOpenSide={onOpenSide} />;
     case "brand":
       return <BrandSide side={side} onClose={onClose} onChanged={() => onChanged?.("brand")} onOpenSide={onOpenSide} />;
+    // #4255 W3: a work card's thread, beside the card.
+    case "thread":
+      return <CardThread key={side.id} cardId={side.id} onClose={onClose} onCardChanged={() => onChanged?.("card")} />;
     default:
       return null;
   }

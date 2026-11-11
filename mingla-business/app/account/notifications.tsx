@@ -18,6 +18,11 @@
  * writes opt_in=false for every child (SUB-C_DESIGN §8.1). The two NEW masters
  * (Payments & trust, Audience & content) are derived ON when any child is on.
  *
+ * #4255 W5: active Admin staff also get a "Mingla team" group first (team
+ * mentions, decisions and messages; In app and Push), stored in
+ * notification_channel_prefs, the same settings Admin shows. Hosts who are
+ * not staff never see it (team_badge says staff:false).
+ *
  * I-21: operator-side route. NEVER imported by anon-tolerant buyer routes.
  *
  * Per Cycle 14 SPEC §4.7.3 + SPEC_META-ORCH-1074_SUB-C_DESIGN.md §8.
@@ -34,6 +39,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useQuery } from "@tanstack/react-query";
 
 import {
   accent,
@@ -66,10 +72,33 @@ import {
   setBrandGroupPushPrefEnabled,
 } from "../../src/services/brandGroupsService";
 
+import { teamChatKey } from "../../src/hooks/useBusinessNotifications";
 import { GlassCard } from "../../src/components/ui/GlassCard";
 import { Icon } from "../../src/components/ui/Icon";
 import { IconChrome } from "../../src/components/ui/IconChrome";
 import { Toast } from "../../src/components/ui/Toast";
+
+// #4255 W5 — the staff-only group loads with the Mingla team screens (the
+// Brand group route's lazy chunk), and only once team_badge says staff.
+const LazyTeamNotificationPrefs = React.lazy(async () => ({
+  default: (await import("../messages/[conversationId]")).TeamNotificationPrefs,
+}));
+
+export function MinglaTeamPrefsGroup({ userId }: { userId: string | null }): React.ReactElement | null {
+  const badge = useQuery({
+    queryKey: teamChatKey(userId ?? "signed-out", "badge"),
+    // The staff check is the top bar's small lazy chunk (teamBadge.tsx).
+    queryFn: async () => (await import("../../src/components/minglaTeam/teamBadge")).fetchTeamBadge(),
+    enabled: userId !== null,
+    staleTime: 30 * 1000,
+  });
+  if (userId === null || badge.data?.staff !== true) return null;
+  return (
+    <React.Suspense fallback={null}>
+      <LazyTeamNotificationPrefs userId={userId} />
+    </React.Suspense>
+  );
+}
 
 // ── Master + child config (SUB-C_DESIGN §8.2) ────────────────────────────────
 
@@ -299,6 +328,9 @@ export default function NotificationsRoute(): React.ReactElement {
         ]}
         showsVerticalScrollIndicator={false}
       >
+        {/* #4255 W5 — staff only; renders nothing for everyone else. */}
+        <MinglaTeamPrefsGroup userId={userId} />
+
         {/* Order activity (master ON gates 4 children) */}
         <MasterCard
           label="Order activity"

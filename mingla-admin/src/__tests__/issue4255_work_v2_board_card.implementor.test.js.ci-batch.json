@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-suite",
+  "ownerIssue": "#4255",
+  "suite": {
+    "id": "issue-4255-work-v2-board-card",
+    "class": "admin-node20-install",
+    "originPaths": [
+      "mingla-admin/src/**"
+    ],
+    "steps": [
+      {
+        "name": "Work board v2: column changes for admins only, moves with the card revision, PT409 snaps back, one-line header, five sprint goals, subtasks two deep, signed file links, thread attachments, no Message to send",
+        "cwd": "mingla-admin",
+        "run": "node --test src/__tests__/issue4255_work_v2_board_card.implementor.test.js",
+        "commandId": "assert:issue-4255-work-v2-board-card:01",
+        "invocation": {
+          "kind": "raw-shell",
+          "command": "bash",
+          "argv": [
+            "-c",
+            "node --test src/__tests__/issue4255_work_v2_board_card.implementor.test.js"
+          ]
+        },
+        "exceptionRationale": "New self-registering execution replaces a legacy workflow registry edit."
+      }
+    ],
+    "lifecycle": "batched-active",
+    "ownerIssue": "#4255",
+    "runtime": {
+      "name": "node",
+      "version": "20"
+    },
+    "setupProfile": "admin-node20-install",
+    "cwd": "mingla-admin",
+    "envNames": [],
+    "isolation": "clean-worktree",
+    "expectedFiles": [
+      "mingla-admin/src/__tests__/issue4255_work_v2_board_card.implementor.test.js"
+    ],
+    "externalReferenceFiles": [],
+    "requiredContext": "CI batch: admin-node20-install",
+    "timingSeconds": {
+      "p50": 3,
+      "p95": 6,
+      "evidence": "Local targeted run 2026-11-10"
+    },
+    "generatedPaths": [
+      "suite-results.json"
+    ],
+    "exceptionRationale": "Raw shell preserves the reviewed assertion while this self-registering suite replaces a legacy workflow registry edit.",
+    "timeoutSeconds": 60
+  }
+}

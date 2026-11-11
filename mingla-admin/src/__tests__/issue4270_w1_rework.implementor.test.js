@@ -46,8 +46,10 @@ before(async () => {
   const out = await esbuild.build({
     stdin: {
       contents: `import { renderToStaticMarkup } from "react-dom/server";
-import { WorkColumns } from "../components/ops/WorkColumns.jsx";
-export function columns(props) { return renderToStaticMarkup(<WorkColumns onSelect={() => {}} onOpenDraft={() => {}} {...props} />); }`,
+import { WorkBoard } from "../components/ops/WorkBoard.jsx";
+// #4255 W2: the board is WorkBoard; columns are statuses and their counts come from status_columns.
+const COLS = [{ id: "todo", name: "To do", color: "#8a847b", grp: "todo", position: 0 }, { id: "doing", name: "In progress", color: "#2f6fd6", grp: "doing", position: 1 }, { id: "done", name: "Done", color: "#1f8a5b", grp: "done", position: 2 }];
+export function columns({ columnInfo, cards, layout = "phone" }) { return renderToStaticMarkup(<WorkBoard onSelect={() => {}} onMoveCard={() => {}} columnActions={{}} columns={COLS} cards={cards.map((c) => ({ ...c, status_id: c.status }))} info={columnInfo} layout={layout} />); }`,
       resolveDir: HERE, sourcefile: "issue4270.rework.harness.jsx", loader: "jsx",
     },
     bundle: true, write: false, platform: "node", format: "esm", jsx: "automatic", logLevel: "silent",
@@ -66,10 +68,10 @@ describe("R-1 a long To do never empties In progress or Done (P2-1)", () => {
     const html = harness.columns({ cards, columnInfo });
     assert.match(html, /id="work-col-tab-todo"[^>]*>[\s\S]*?To do<\/span> <span class="tabular-nums">412<\/span>/);
     assert.match(html, /id="work-col-tab-doing"[^>]*>[\s\S]*?In progress<\/span> <span class="tabular-nums">1<\/span>/);
-    assert.match(html, /aria-label="412 cards"/);
+    assert.match(harness.columns({ cards, columnInfo, layout: "desktop" }), /aria-label="412 cards"/);
   });
   it("only the cut column says so, with the numbers", () => {
-    const html = harness.columns({ cards, columnInfo });
+    const html = harness.columns({ cards, columnInfo, layout: "desktop" });
     assert.match(html, /data-column-cut="todo"[^>]*>\s*Showing the first 300 of 412\. Filter by owner or search to see the rest\./);
     assert.doesNotMatch(html, /data-column-cut="doing"|data-column-cut="done"/);
     assert.match(html, /data-column="doing"[\s\S]*?Card 3/);
@@ -82,7 +84,7 @@ describe("R-1 a long To do never empties In progress or Done (P2-1)", () => {
   it("the board asks for each column on its own and drops the one-page notice", () => {
     const page = code("pages/WorkBoardPage.jsx");
     assert.match(page, /useOpsWork\(\{[^}]*limit: BOARD_LIMIT, perStatus: true/);
-    assert.match(page, /columnInfo=\{view\.show \|\| view\.linked \? null : list\.data\?\.columns \|\| null\}/);
+    assert.match(page, /info=\{view\.show \|\| view\.linked \? null : list\.data\?\.status_columns \|\| null\}/);
     assert.doesNotMatch(page, /Showing the first \$\{BOARD_LIMIT\} cards/);
     const hook = code("hooks/useOpsWork.js");
     assert.match(hook, /\.\.\.\(perStatus \? \{ per_status: true \} : \{\}\)/);

@@ -232,8 +232,18 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4383: re-sealed after registering the tester adversarial PostgreSQL proof in the #1931 and #2117 lanes.
 // #4382: re-sealed after merging origin/main 2aa45c6da1 (#4383 rows kept beside the #4382 rows).
 // #4382: re-sealed after renumbering the Support Desk migrations to 20280613*4382.
+// #4255: re-sealed after registering the Work board v2 and Mingla team migrations and their PostgreSQL proofs in the #1857, #1931 and #2117 lanes.
+// #4255: re-sealed after registering the tester adversarial PostgreSQL proof in the #1931 and #2117 lanes.
+// #4255: re-sealed after registering the rework migration (20280624054255) and its PostgreSQL proof in the #1857, #1931 and #2117 lanes.
+// #4255: re-sealed after registering the rework tester adversarial PostgreSQL proof in the #1931 and #2117 lanes.
+// #4255: re-sealed after merging origin/main 62aabbdc6d (#4382 rows kept beside the #4255 rows).
+// #4255: re-sealed after renumbering the Work board v2 and Mingla team migrations to 20280624*4255 (above production's applied 20280613054382).
+// #4255: re-sealed after registering the rework 2 migration (20280624064255) and its PostgreSQL proof in the #1857, #1931 and #2117 lanes.
+// #4255: re-sealed after registering the rework 2 tester adversarial PostgreSQL proof in the #1931 and #2117 lanes.
 // #4382: register the retire-beta-feedback migration (20280622004382) in the #1857, #1931 and #2117 replay lanes; re-sealed.
-export const BOOTSTRAP_SHA256 = "e0f5c12498fda5e3abd4d1d1d252df20d57485cb0918aeba0c5c8e0e332a36e1";
+// #4255: re-sealed after merging origin/main 4ba9ec5ec3 (#4382 retire-beta-feedback rows kept beside the #4255 rows).
+// #4255: re-sealed after renumbering the seven Work board v2 and Mingla team migrations to 20280624*4255 (above production's applied 20280622004382).
+export const BOOTSTRAP_SHA256 = "e28b4cd708bc21d09b8166f0eeac240351325162edc1837f09c21fd83e8e5d6b";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

@@ -140,6 +140,9 @@ const SERVED_ROUTE_SEGMENTS: ReadonlySet<string> = new Set([
   "stripe-onboarding-return",
   "support",
   "t",
+  // #4255 W5 — Mingla team (staff only): owned links to a team chat or
+  // Mentions must survive a cold start instead of landing on "/".
+  "team",
   "trip",
   "venue",
   "website-return",
