@@ -765,12 +765,14 @@ export default function HomeTab(): React.ReactElement {
       onMessage={showHomeMessage}
     />
   ) : undefined;
+  // Constitution #10 — the sale's own currency, else the brand's; never a guess.
+  const doorTodayCurrency = doorToday.currency ?? currentBrand?.defaultCurrency ?? null;
   const doorTodayLine =
-    showTakePayment && !doorToday.isLoading ? (
+    showTakePayment && !doorToday.isLoading && doorTodayCurrency !== null ? (
       <DoorTodayLine
         count={doorToday.count}
         totalMajor={doorToday.totalMajor}
-        currency={doorToday.currency ?? currentBrand?.defaultCurrency ?? "GBP"}
+        currency={doorTodayCurrency}
       />
     ) : undefined;
   const setupSection =

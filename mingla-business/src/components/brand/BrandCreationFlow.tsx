@@ -15,6 +15,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   Linking,
   Platform,
   Pressable,
@@ -61,6 +62,19 @@ import { BrandPaystackOnboardView } from "./BrandPaystackOnboardView";
 import { BRAND_SETUP_COPY as C } from "./brandSetupCopy";
 import { PayoutCountryList, payoutCountryOption } from "./PayoutCountryList";
 import { trackBrandSetup } from "./brandSetupAnalytics";
+import { useCurrentBrandStore, type Brand } from "../../store/currentBrandStore";
+import { useUpdateCreatorAccount } from "../../hooks/useCreatorAccount";
+import { getBrand } from "../../services/brandsService";
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const TTP_VISUAL: number | null = (() => {
+  try {
+    return require("../../../assets/tap-to-pay/ttp-visual.png") as number;
+  } catch {
+    // A plain node test run has no asset transform; the card draws without art.
+    return null;
+  }
+})();
 
 export interface BrandCreationFlowProps {
   /** null = a new brand (/brand/new). */
@@ -89,6 +103,34 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
 
   const checklistQuery = useBrandSetupChecklist(brandId);
   const checklist = checklistQuery.data ?? null;
+
+  // A new brand becomes the current brand and the saved default (I-0756A),
+  // so Home, Ari and the switcher open on it.
+  const setCurrentBrand = useCurrentBrandStore((st) => st.setCurrentBrand);
+  const updateCreatorAccountMutation = useUpdateCreatorAccount();
+  const commitDefaultBrand = useCallback(
+    (newBrand: Brand): void => {
+      setCurrentBrand(newBrand);
+      void updateCreatorAccountMutation
+        .mutateAsync({ default_brand_id: newBrand.id })
+        .catch((error: unknown) => {
+          console.warn("[brand-setup] could not save the default brand", error);
+        });
+    },
+    [setCurrentBrand, updateCreatorAccountMutation],
+  );
+  const adoptCreatedBrand = useCallback(
+    (id: string): void => {
+      void getBrand(id)
+        .then((newBrand) => {
+          if (newBrand !== null) commitDefaultBrand(newBrand);
+        })
+        .catch((error: unknown) => {
+          console.warn("[brand-setup] could not read the new brand", error);
+        });
+    },
+    [commitDefaultBrand],
+  );
   const facts = checklist?.facts ?? null;
   const brandName = checklist?.readiness.items.find((i) => i.key === "brand.name")?.valuePreview ?? "";
 
@@ -187,6 +229,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
           onExit={onExit}
           onCreated={(id) => {
             trackBrandSetup("brand_setup_step_completed", { step: "name", brand_id: id, resumed });
+            adoptCreatedBrand(id);
             router.replace(`/brand/${id}/setup?step=country` as never);
           }}
           onDraft={(draftId, draftName) =>
@@ -549,14 +592,24 @@ const DoneStep: React.FC<{ brandId: string; provider: "stripe" | "paystack"; cou
       )}
       {showTtp ? (
         <View style={styles.ttpCard} testID="brand-setup-ttp-card">
+          {/* Apple's in-app tile visual (Tap to Pay on iPhone marketing art). */}
+          {TTP_VISUAL !== null ? (
+            <Image source={TTP_VISUAL} style={styles.ttpVisual} resizeMode="cover" accessible={false} />
+          ) : null}
           <Text style={styles.cardTitle} numberOfLines={1}>{C.f4.ttpTitle}</Text>
           <Text style={styles.cardText}>{C.f4.ttpBody}</Text>
           <Text style={styles.helper}>{C.f4.ttpTerms}</Text>
           <Button label={C.f4.ttpCta} onPress={() => router.push(`/account/tap-to-pay?brandId=${encodeURIComponent(brandId)}` as never)} variant="primary" size="md" fullWidth />
         </View>
       ) : null}
-      <Text style={styles.label}>{C.f4.makeFirst}</Text>
-      <OfferingChooser variant="brand-create-welcome" onSelect={(o) => router.replace(routeForOffering(o) as never)} />
+      {/* The list of 5 carries its own "What do you want to make first?" heading. */}
+      <View style={styles.gap8} />
+      <OfferingChooser
+        variant="brand-create-welcome"
+        headline={C.f4.makeFirst}
+        subhead=""
+        onSelect={(o) => router.replace(routeForOffering(o) as never)}
+      />
     </ScrollView>
   );
 };
@@ -680,7 +733,8 @@ const styles = StyleSheet.create({
   cardText: { ...typography.body, color: textTokens.primary },
   box: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: "rgba(255,255,255,0.4)" },
   boxOn: { backgroundColor: accent.warm, borderColor: accent.warm },
-  ttpCard: { marginTop: spacing.md, padding: spacing.md, gap: spacing.sm, borderRadius: radius.lg, backgroundColor: "rgba(255,255,255,0.06)" },
+  ttpCard: { marginTop: spacing.md, padding: spacing.md, gap: spacing.sm, borderRadius: radius.lg, backgroundColor: "rgba(255,255,255,0.06)", overflow: "hidden" },
+  ttpVisual: { width: "100%", aspectRatio: 720 / 559, borderRadius: radius.md },
   sheetBody: { padding: spacing.lg, gap: spacing.sm },
   gap8: { height: spacing.sm },
 });

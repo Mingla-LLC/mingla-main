@@ -245,9 +245,10 @@ describe("#2719 payout-first brand creation happy path", () => {
       press(byLabel(tree.root, BRAND_CREATION_COPY.step4.secondary)[0]!);
     });
     expect(OFFERING_OPTIONS.map((option) => option.kind)).toEqual([
+      // #4389 addendum 2 — the list order: event, experience, trip, RSVP, venue.
       "event",
-      "trip",
       "experience",
+      "trip",
       "rsvp",
       "venue",
     ]);

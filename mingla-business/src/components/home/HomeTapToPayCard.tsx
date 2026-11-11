@@ -22,7 +22,14 @@ import { Button } from "../ui/Button";
 import { HOME_SETUP_COPY as C } from "./homeSetupCopy";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const TTP_VISUAL = require("../../../assets/tap-to-pay/ttp-visual.png") as number;
+const TTP_VISUAL: number | null = (() => {
+  try {
+    return require("../../../assets/tap-to-pay/ttp-visual.png") as number;
+  } catch {
+    // A plain node test run has no asset transform; the card draws without art.
+    return null;
+  }
+})();
 
 export interface HomeTapToPayCardProps {
   mode: Exclude<HomeTapCardMode, null>;
@@ -66,13 +73,15 @@ export const HomeTapToPayCard: React.FC<HomeTapToPayCardProps> = ({
         accessibilityLabel={C.ht.iosTitle}
         testID="home-ttp-card-ios"
       >
-        <Image
-          source={TTP_VISUAL}
-          style={styles.visual}
-          resizeMode="cover"
-          accessibilityIgnoresInvertColors
-          accessible={false}
-        />
+        {TTP_VISUAL !== null ? (
+          <Image
+            source={TTP_VISUAL}
+            style={styles.visual}
+            resizeMode="cover"
+            accessibilityIgnoresInvertColors
+            accessible={false}
+          />
+        ) : null}
         <View style={styles.heroText}>
           <Text style={styles.heroTitle} numberOfLines={1}>
             {C.ht.iosTitle}

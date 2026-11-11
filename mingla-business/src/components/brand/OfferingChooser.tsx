@@ -1,9 +1,9 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  AppState,
   Pressable,
   StyleSheet,
   Text,
-  useWindowDimensions,
   View,
 } from "react-native";
 import * as Haptics from "expo-haptics";
@@ -16,8 +16,10 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
-import { GlassCard } from "../ui/GlassCard";
 import { Icon, type IconName } from "../ui/Icon";
+// #4389 addendum 2 — one list of 5 with a silent looping clip behind each row.
+import { OfferingClip } from "./OfferingClip";
+import { offeringMedia } from "./offeringMedia";
 import type { BrandCreationPayoutState } from "../../utils/brandCreationPayoutState";
 
 export type OfferingKind = "event" | "trip" | "experience" | "rsvp" | "venue";
@@ -38,6 +40,8 @@ export interface OfferingChooserProps {
 interface OfferingOption {
   kind: OfferingKind;
   label: string;
+  /** #4389 — the row's visible label ("An event", …). */
+  rowLabel: string;
   subhead: string;
   icon: IconName;
 }
@@ -69,30 +73,35 @@ export const OFFERING_OPTIONS: readonly OfferingOption[] = [
   {
     kind: "event",
     label: "Event",
+    rowLabel: "An event",
     subhead: "Free or ticketed party, show or gathering.",
     icon: "calendar",
   },
   {
-    kind: "trip",
-    label: "Trip",
-    subhead: "Free or paid getaway or tour.",
-    icon: "compass",
-  },
-  {
     kind: "experience",
     label: "Experience",
+    rowLabel: "An experience",
     subhead: "Free or paid class or activity.",
     icon: "sparkle",
   },
   {
+    kind: "trip",
+    label: "Trip",
+    rowLabel: "A trip",
+    subhead: "Free or paid getaway or tour.",
+    icon: "compass",
+  },
+  {
     kind: "rsvp",
     label: "RSVP",
+    rowLabel: "An RSVP",
     subhead: "Free guest list; optional chip-ins.",
     icon: "users",
   },
   {
     kind: "venue",
     label: "Venue",
+    rowLabel: "A venue",
     subhead: "Free venue listing, menu and bookings.",
     icon: "location",
   },
@@ -226,14 +235,19 @@ export const OfferingChooser: React.FC<OfferingChooserProps> = ({
   payoutState = "not-connected",
   testID,
 }) => {
-  const { width } = useWindowDimensions();
-  const isWide = width >= 760;
   const selectionInProgressRef = useRef(false);
   const [focusedKind, setFocusedKind] = useState<OfferingKind | null>(null);
   const copy = VARIANT_COPY[variant];
   const visibleHeadline = headline ?? copy.headline;
   const visibleSubhead = subhead ?? copy.subhead;
   const payoutNotice = payoutNoticeCopy(payoutState);
+  // Clips play only while the app is in the foreground and this list is on
+  // screen; the screen unmounts the chooser when it leaves.
+  const [appActive, setAppActive] = useState(AppState.currentState === "active");
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (next) => setAppActive(next === "active"));
+    return () => sub.remove();
+  }, []);
 
   const handlePress = useCallback(
     (offering: OfferingKind): void => {
@@ -257,7 +271,7 @@ export const OfferingChooser: React.FC<OfferingChooserProps> = ({
           <Text style={styles.payoutNoticeBody}>{payoutNotice.body}</Text>
         </View>
       ) : null}
-      <View style={[styles.grid, isWide ? styles.gridWide : null]}>
+      <View style={styles.list} accessibilityRole="list">
         {OFFERING_OPTIONS.map((option) => (
           <Pressable
             key={option.kind}
@@ -266,6 +280,7 @@ export const OfferingChooser: React.FC<OfferingChooserProps> = ({
             onBlur={() => setFocusedKind(null)}
             accessibilityRole="button"
             accessibilityLabel={accessibilityLabel(option, payoutState)}
+            accessibilityHint={readinessLabel(option.kind, payoutState)}
             style={({ pressed }) => [
               styles.optionPressable,
               option.kind === "venue" ? styles.optionVenuePressable : null,
@@ -274,36 +289,24 @@ export const OfferingChooser: React.FC<OfferingChooserProps> = ({
             ]}
             testID={`offering-chooser-${option.kind}`}
           >
-            <GlassCard
-              variant="base"
-              radius="lg"
-              padding={spacing.md}
-              style={[
-                styles.optionCard,
-                option.kind === "venue" ? styles.optionVenueCard : null,
-              ]}
-            >
-              <View
-                style={[
-                  styles.optionInner,
-                  option.kind === "venue" ? styles.optionInnerVenue : null,
-                ]}
-              >
-                <Icon name={option.icon} size={28} color={accent.warm} />
-                <View
-                  style={[
-                    styles.optionText,
-                    option.kind === "venue" ? styles.optionTextVenue : null,
-                  ]}
-                >
-                  <Text style={styles.optionTitle}>{option.label}</Text>
-                  <Text style={styles.optionSubhead}>{option.subhead}</Text>
-                  <Text style={styles.readinessLabel}>
-                    {readinessLabel(option.kind, payoutState)}
-                  </Text>
-                </View>
+            {(() => {
+              const media = offeringMedia(option.kind);
+              return media === null ? null : (
+                <OfferingClip video={media.video} poster={media.poster} active={appActive} />
+              );
+            })()}
+            <View style={styles.optionShade} pointerEvents="none" />
+            <View style={styles.optionInner} pointerEvents="none">
+              <View style={styles.optionText}>
+                <Text style={styles.optionTitle} numberOfLines={1}>
+                  {option.rowLabel}
+                </Text>
+                <Text style={styles.optionSubhead} numberOfLines={2}>
+                  {option.subhead}
+                </Text>
               </View>
-            </GlassCard>
+              <Icon name="chevR" size={18} color="rgba(255,255,255,0.85)" />
+            </View>
           </Pressable>
         ))}
       </View>
@@ -329,29 +332,25 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: spacing.xs,
   },
-  grid: {
+  list: {
     width: "100%",
-    maxWidth: 720,
+    maxWidth: 560,
     alignSelf: "center",
-    flexDirection: "row",
-    flexWrap: "wrap",
     gap: spacing.sm,
   },
-  gridWide: {
-    maxWidth: 720,
-  },
   optionPressable: {
-    flexBasis: "48%",
-    flexGrow: 1,
-    minWidth: 0,
-    minHeight: 132,
+    minHeight: 76,
+    borderRadius: radius.lg,
+    overflow: "hidden",
     borderWidth: 2,
     borderColor: "transparent",
-    borderRadius: radius.lg,
+    backgroundColor: glass.tint.profileBase,
+    justifyContent: "center",
   },
+  // The venue row is the same height as the rest in the list (kept as its
+  // own style so the #2719 venue contract still has a home).
   optionVenuePressable: {
-    flexBasis: "100%",
-    minHeight: 104,
+    minHeight: 76,
   },
   optionFocused: {
     borderColor: accent.warm,
@@ -359,53 +358,33 @@ const styles = StyleSheet.create({
   optionPressed: {
     opacity: 0.88,
   },
-  optionCard: {
-    flex: 1,
-    minHeight: 128,
-    borderRadius: radius.lg,
-    backgroundColor: glass.tint.profileBase,
-  },
-  optionVenueCard: {
-    minHeight: 100,
+  // Dark gradient stand-in: a left-weighted scrim keeps the label readable
+  // over any frame.
+  optionShade: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(8, 9, 12, 0.55)",
   },
   optionInner: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.xs,
-  },
-  optionInnerVenue: {
     flexDirection: "row",
-    justifyContent: "flex-start",
-    gap: spacing.md,
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
   optionText: {
-    alignItems: "center",
-    gap: spacing.xxs,
-  },
-  optionTextVenue: {
     flex: 1,
-    alignItems: "flex-start",
+    gap: spacing.xxs,
   },
   optionTitle: {
     fontSize: typography.body.fontSize,
     lineHeight: typography.body.lineHeight,
-    fontWeight: "600",
-    color: textTokens.primary,
-    textAlign: "center",
+    fontWeight: "700",
+    color: "#FFFFFF",
   },
   optionSubhead: {
     fontSize: typography.caption.fontSize,
     lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
-    textAlign: "center",
-  },
-  readinessLabel: {
-    fontSize: 11,
-    lineHeight: 15,
-    fontWeight: "600",
-    color: textTokens.secondary,
-    textAlign: "center",
+    color: "rgba(255,255,255,0.82)",
   },
   payoutNotice: {
     gap: spacing.xxs,

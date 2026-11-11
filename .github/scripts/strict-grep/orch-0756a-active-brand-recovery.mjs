@@ -51,6 +51,9 @@ const recoveryHookPath = "mingla-business/src/hooks/useCurrentBrandRecovery.ts";
 const layoutPath = "mingla-business/app/_layout.tsx";
 const switcherPath = "mingla-business/src/components/brand/BrandSwitcherSheet.tsx";
 const creationFlowPath = "mingla-business/src/components/brand/BrandCreationFlow.tsx";
+// #4389 — the pick write moved, unchanged, into a hook shared with Ari's held
+// switch (R-16); the switcher must still use it.
+const pickHookPath = "mingla-business/src/hooks/usePickBrand.ts";
 const storePath = "mingla-business/src/store/currentBrandStore.ts";
 
 const GUARDED_PATHS = [
@@ -62,6 +65,7 @@ const GUARDED_PATHS = [
   recoveryHookPath,
   layoutPath,
   switcherPath,
+  pickHookPath,
   creationFlowPath,
   storePath,
 ];
@@ -181,9 +185,14 @@ function check(sources, violations, checks) {
 
   // --- brand PICK persistence — STILL owned by BrandSwitcherSheet.tsx (META-ORCH-0972) ---
   expectIncludes(
-    switcherPath,
+    pickHookPath,
     "default_brand_id: brand.id",
     "brand pick persists default brand",
+  );
+  expectIncludes(
+    switcherPath,
+    "usePickBrand(onDefaultBrandSaveError)",
+    "brand switcher picks through usePickBrand",
   );
   expectIncludes(
     switcherPath,
@@ -258,6 +267,8 @@ if (process.argv.includes("--self-test")) {
       "onError(\"Brand selected for now. Couldn't save it as your default.\");",
     [layoutPath]: "useCurrentBrandRecovery();\nif (ready) render();",
     [switcherPath]:
+      "const pickBrand = usePickBrand(onDefaultBrandSaveError);",
+    [pickHookPath]:
       "await mutateAsync({ default_brand_id: brand.id }).catch(() => onDefaultBrandSaveError?.(msg));",
     [creationFlowPath]:
       "setCurrentBrand(newBrand);\n" +
@@ -323,7 +334,7 @@ if (process.argv.includes("--self-test")) {
     const s = goodSources();
     s[creationFlowPath] = "// create-persistence relocated away";
     s[switcherPath] =
-      "await mutateAsync({ default_brand_id: brand.id }).catch(() => onDefaultBrandSaveError?.(msg));\n" +
+      "const pickBrand = usePickBrand(onDefaultBrandSaveError);\n" +
       "setCurrentBrand(newBrand);\nawait mutateAsync({ default_brand_id: newBrand.id });\ncommitDefaultBrand(newBrand);";
     const v = run(s);
     if (v.length === 0) problems.push("BAD5 (create legs relocated to switcher) not flagged");
