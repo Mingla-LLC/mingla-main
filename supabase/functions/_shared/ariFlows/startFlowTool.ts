@@ -121,3 +121,58 @@ export function parseStartFlowArgs(args: unknown): AriStartFlowArgs | null {
     prefills,
   };
 }
+
+/**
+ * #3355 Wave F (live eval): the create tool a guided setup owns. When the
+ * intent read says "start this setup" and the model jumps straight to the
+ * create tool instead (a create_event card with no date, which then fails at
+ * Confirm), the proposal is sent back once with this instruction.
+ * MINGLA-INVARIANT: I-ARI-SETUP-NOT-SKIPPED | issue #3355 | When the turn's intent read names a guided setup and start_flow is offered, a proposal of that setup's own create tool is returned to the model once with the instruction to call start_flow.
+ */
+export const ARI_SETUP_CREATE_TOOLS: Readonly<Record<string, string>> = Object
+  .freeze({
+    create_event: "create_event",
+    create_trip: "create_trip",
+    create_experience: "create_experience",
+    create_venue: "create_venue_listing",
+  });
+
+export function ariSetupSkippedIssue(args: {
+  startFlowHint: string | null;
+  startFlowAllowed: boolean;
+  toolName: string;
+}): { code: string; message: string } | null {
+  if (!args.startFlowAllowed || !args.startFlowHint) return null;
+  if (ARI_SETUP_CREATE_TOOLS[args.startFlowHint] !== args.toolName) return null;
+  return {
+    code: "USE_GUIDED_SETUP",
+    message: `The host asked to create a new ${
+      args.startFlowHint.replace(/^create_/, "")
+    }. Call start_flow with flow_key ${args.startFlowHint} so the guided setup asks for the details and checks them; do not propose ${args.toolName} directly.`,
+  };
+}
+
+/**
+ * #3355 Wave F (live eval, S3): the intent read named one tool (create a
+ * discount code) and the loop model proposed creating an offering instead
+ * (create_event) — this morning's misroute, one layer down. The proposal
+ * goes back once with the host's own target.
+ * MINGLA-INVARIANT: I-ARI-NO-OFFERING-DETOUR | issue #3355 | When the turn's model intent read names a tool, a proposal to create an offering (event, trip, experience, venue) the read did not name is returned to the model once.
+ */
+export function ariOfferingDetourIssue(args: {
+  readSource: "model" | "hints";
+  targetTool: string | null;
+  toolName: string;
+}): { code: string; message: string } | null {
+  if (args.readSource !== "model" || !args.targetTool) return null;
+  if (args.targetTool === args.toolName) return null;
+  if (!Object.values(ARI_SETUP_CREATE_TOOLS).includes(args.toolName)) {
+    return null;
+  }
+  return {
+    code: "REQUESTED_TOOL_MISMATCH",
+    message: `The host asked for ${args.targetTool}, not a new ${
+      args.toolName.replace(/^create_/, "").replace(/_listing$/, "")
+    }. Do what they asked (propose ${args.targetTool}, or ask one precise question it needs); do not propose ${args.toolName}.`,
+  };
+}

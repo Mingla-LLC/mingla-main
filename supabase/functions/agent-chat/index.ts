@@ -220,6 +220,8 @@ import { readFlowRequest } from "../_shared/ariFlows/requestRead.ts";
 import {
   ARI_START_FLOW_DECLARATION,
   ARI_START_FLOW_TOOL,
+  ariOfferingDetourIssue,
+  ariSetupSkippedIssue,
   parseStartFlowArgs,
 } from "../_shared/ariFlows/startFlowTool.ts";
 import {
@@ -251,6 +253,7 @@ import {
   classifyAriOwnerTurn,
   classifyAriReplyGaps,
   decideAriEscalation,
+  readAriPriorOwnerServed,
   readAriPriorOwnerTexts,
   readAriRecentGaps,
   recordAriTurnGaps,
@@ -1997,7 +2000,7 @@ async function handle(req: Request): Promise<Response> {
     const ownerTurnText = !choiceSubmission && !flowAnswer && !websiteKickoff
       ? semanticMessage
       : "";
-    const [priorOwnerTexts, recentGaps] = ownerTurnText
+    const [priorOwnerTexts, recentGaps, priorServed] = ownerTurnText
       ? await Promise.all([
         readAriPriorOwnerTexts({
           caller: userClient,
@@ -2005,11 +2008,19 @@ async function handle(req: Request): Promise<Response> {
           excludeMessageId: userMessageId,
         }),
         readAriRecentGaps({ caller: userClient, conversationId }),
+        // #3355 Wave F: a request Ari already answered with a card is not
+        // repeated by the next one of its kind.
+        readAriPriorOwnerServed({
+          caller: userClient,
+          conversationId,
+          excludeMessageId: userMessageId,
+        }),
       ])
-      : [[], []];
+      : [[], [], []];
     const ownerGapSignals = classifyAriOwnerTurn({
       text: ownerTurnText,
       priorOwnerTexts,
+      priorServed,
     });
     const escalation = activeBrand && ownerTurnText
       ? decideAriEscalation({ ownerSignals: ownerGapSignals, recentGaps })
@@ -3887,6 +3898,18 @@ ${boundedAgentContext}
           return "write";
         },
         validateProposal: (call) => {
+          const setupSkipped = ariSetupSkippedIssue({
+            startFlowHint: turnRoute.startFlowHint,
+            startFlowAllowed: startFlowAllowed && !modelFlowDelegated,
+            toolName: call.name,
+          });
+          if (setupSkipped) return setupSkipped;
+          const detour = ariOfferingDetourIssue({
+            readSource: turnRoute.source,
+            targetTool: turnRoute.targetTool,
+            toolName: call.name,
+          });
+          if (detour) return detour;
           if (ticketTierProposalMismatch(semanticMessage, call.name)) {
             return {
               code: "REQUESTED_TOOL_MISMATCH",

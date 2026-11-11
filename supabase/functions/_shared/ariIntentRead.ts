@@ -267,10 +267,10 @@ intent:
 
 flow_action, only when OPEN SETUP exists:
 - answer: the words answer the open card.
-- park: the host asks for something else (a different request); the setup waits.
+- park: the host asks for something else (a different request), or says what they want instead, even as a complaint or a why-question ("why does it keep asking me this? I just want the discount code"); the setup waits.
 - resume: OPEN SETUP is parked and the host wants to carry on with it.
 - cancel: the host wants to stop the setup.
-A side question about the card (what does this mean?) has no flow_action.
+A side question has no flow_action: a quick question you can answer in one reply while the setup stays open, about the card or about how Mingla works (what does this mean? how much does Mingla charge per ticket? is this optional?). Asking about fees, prices or what a field means is never park.
 
 confidence: 0 to 1, how sure you are.
 stated_values: only values the host actually wrote (a code, percent off, an end or start date as YYYY-MM-DD, use limits, a title, a date, a price, a capacity). Never invent one. Empty object when none.
@@ -340,8 +340,12 @@ function parseStated(raw: unknown): AriStatedValues | null {
       const text = value.replace(/\s+/g, " ").trim();
       if (!text) continue;
       if (text.length > MAX_STATED_TEXT) return null;
+      // #3355 Wave F (live eval): Flash sometimes writes a day as the host
+      // did ("20th"). That one value is unusable, not the whole read: it is
+      // dropped and the route stands (stated values are re-grounded in the
+      // host's own words before any proposal uses them).
       if (STATED_DATE.has(key) && !/^\d{4}-\d{2}-\d{2}$/.test(text)) {
-        return null;
+        continue;
       }
       out[key] = text;
     } else if (STATED_NUMBER.has(key)) {

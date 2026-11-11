@@ -145,6 +145,12 @@ export function claimEvidenceFromHistory(
 
 export interface StatedSlots {
   code?: string;
+  /**
+   * #3355 Wave F (live eval): every code a single message names ("Create
+   * the codes GIRLSTRIPLAGOS and FFBTSCOM10"). A proposal for any one of
+   * them keeps what the host stated; one card is made per code.
+   */
+  codes?: string[];
   value_bps?: number;
   value_minor_major?: number;
   /** The stated end, as the local calendar day. */
@@ -266,6 +272,20 @@ export function extractStatedSlots(
     if (code && /^[A-Z0-9-]{4,16}$/i.test(code)) {
       slots.code = normaliseAriDiscountCode(code);
     }
+    const named = new Set<string>();
+    for (const match of text.matchAll(new RegExp(CODE_ALONE.source, "g"))) {
+      named.add(normaliseAriDiscountCode(match[1]));
+    }
+    if (/[a-z]/.test(text)) {
+      for (const match of text.matchAll(new RegExp(CODE_CAPS.source, "g"))) {
+        if (!STOPWORDS.has(match[1])) {
+          named.add(normaliseAriDiscountCode(match[1]));
+        }
+      }
+    }
+    const valid = [...named].filter((item) => /^[A-Z0-9]{4,16}$/.test(item));
+    if (valid.length >= 2) slots.codes = valid.slice(0, 10);
+    else delete slots.codes;
     const percent = PERCENT.exec(text);
     if (percent) slots.value_bps = Math.round(Number(percent[1]) * 100);
     const ends = endOn(text, now);
@@ -456,7 +476,18 @@ export function checkStatedSlots(args: {
   const asks: string[] = [];
   const missing: string[] = [];
 
-  if (stated.code && schemaKeys.has("code") && out.kind !== "automatic") {
+  if (
+    stated.codes && stated.codes.length >= 2 && schemaKeys.has("code") &&
+    out.kind !== "automatic"
+  ) {
+    const proposed = normaliseAriDiscountCode(out.code);
+    if (!stated.codes.includes(proposed)) {
+      missing.push("code");
+      asks.push(`one of the codes ${stated.codes.join(", ")}`);
+    }
+  } else if (
+    stated.code && schemaKeys.has("code") && out.kind !== "automatic"
+  ) {
     const proposed = normaliseAriDiscountCode(out.code);
     if (proposed !== stated.code) {
       missing.push("code");
@@ -508,6 +539,14 @@ export function checkStatedSlots(args: {
         missing.push("ends_at");
         asks.push(`an end on ${spokenDay(stated.ends_on)}`);
       }
+    } else {
+      // The stated day's end written with an offset ("…T23:59:59+01:00") is
+      // the same instant: stored in the one canonical UTC form.
+      const iso = endOfLocalDayIso(stated.ends_on, args.timezone);
+      if (
+        iso && out.ends_at !== iso &&
+        Date.parse(String(out.ends_at)) === Date.parse(iso)
+      ) out.ends_at = iso;
     }
   }
   if (stated.max_total_uses !== undefined && schemaKeys.has("max_total_uses")) {

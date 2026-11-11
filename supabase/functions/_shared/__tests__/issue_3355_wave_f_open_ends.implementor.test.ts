@@ -37,13 +37,23 @@ import {
 } from "../ariFlows/edge.ts";
 import { CHAT } from "./_issue3355WaveEFlowWorld.ts";
 import { runFlowStep } from "../ariFlows/runner.ts";
-import { ARI_START_FLOW_TOOL } from "../ariFlows/startFlowTool.ts";
+import {
+  ARI_START_FLOW_TOOL,
+  ariOfferingDetourIssue,
+  ariSetupSkippedIssue,
+} from "../ariFlows/startFlowTool.ts";
+import { LIST_QUESTION } from "../ariFlows/contactImport.ts";
 import {
   ariGuideReadStatus,
   ariToolsForGuideKey,
 } from "../agentAri10xTools.ts";
 import { checkStatedSlots } from "../ariTruthGuards.ts";
-import { isPseudoToolCallText } from "../agentGeminiContents.ts";
+import {
+  HISTORY_CALL_NOTE,
+  isPseudoToolCallText,
+  repairGeminiContents,
+} from "../agentGeminiContents.ts";
+import { detectAriRepeat, priorOwnerServedFromRows } from "../ariGaps.ts";
 import {
   current,
   freshWorld,
@@ -339,4 +349,168 @@ Deno.test("F live: a reply that copies the tool-call marker is caught and sent b
     read(AGENT_CHAT),
     /validateFinalText: \(text\) =>\s*isPseudoToolCallText\(text\)/,
   );
+});
+
+Deno.test("F live: a create proposal that skips the guided setup the read named is sent back once", () => {
+  const issue = ariSetupSkippedIssue({
+    startFlowHint: "create_event",
+    startFlowAllowed: true,
+    toolName: "create_event",
+  });
+  assertEquals(issue?.code, "USE_GUIDED_SETUP");
+  assertMatch(issue?.message ?? "", /start_flow with flow_key create_event/);
+  // Not offered, another tool, or no setup named: unchanged.
+  for (
+    const args of [
+      {
+        startFlowHint: "create_event",
+        startFlowAllowed: false,
+        toolName: "create_event",
+      },
+      {
+        startFlowHint: "create_event",
+        startFlowAllowed: true,
+        toolName: "create_discount",
+      },
+      { startFlowHint: null, startFlowAllowed: true, toolName: "create_event" },
+    ]
+  ) assertEquals(ariSetupSkippedIssue(args), null);
+  assertMatch(read(AGENT_CHAT), /if \(setupSkipped\) return setupSkipped;/);
+  assertMatch(
+    read(AGENT_CHAT),
+    /const setupSkipped = ariSetupSkippedIssue\(\{\s*startFlowHint: turnRoute\.startFlowHint,\s*startFlowAllowed: startFlowAllowed && !modelFlowDelegated,/,
+  );
+});
+
+Deno.test("F live: the contact-list card points to People → Import (the guide's steps)", () => {
+  assertMatch(LIST_QUESTION, /open Blast, go to People and tap Import/);
+});
+
+Deno.test("F live: the same instant with an offset is stored in the canonical UTC form", () => {
+  const ok = checkStatedSlots({
+    toolName: "create_discount",
+    schemaKeys: new Set(["code", "value_bps", "ends_at"]),
+    stated: {
+      ends_on: {
+        year: 2026,
+        month: 12,
+        day: 19,
+        words: "19th of December 2026",
+      },
+    },
+    timezone: "Africa/Lagos",
+    toolArgs: { code: "FAVY10", ends_at: "2026-12-19T23:59:59+01:00" },
+  });
+  if (ok.kind !== "ok") throw new Error("asked");
+  assertEquals(ok.args.ends_at, "2026-12-19T22:59:59Z");
+});
+
+Deno.test("F live: the next code after a proposed one is a new request, not a repeat", () => {
+  const prior = [HOST_FAVY10_SENTENCE];
+  // Unserved (production: the event card came back) — a repeat.
+  assertEquals(
+    detectAriRepeat(
+      "Create the codes GIRLSTRIPLAGOS and FFBTSCOM10, 10% off each",
+      prior,
+    ).how,
+    "same_intent",
+  );
+  // Served with a card — a new request.
+  assertEquals(
+    detectAriRepeat(
+      "Create the codes GIRLSTRIPLAGOS and FFBTSCOM10, 10% off each",
+      prior,
+      [true],
+    ).repeated,
+    false,
+  );
+  // The same words again always count.
+  assertEquals(
+    detectAriRepeat(HOST_FAVY10_SENTENCE, prior, [true]).how,
+    "same_text",
+  );
+  // Rows → served flags (newest first; this turn excluded).
+  assertEquals(
+    priorOwnerServedFromRows([
+      { id: "u3", role: "user", content: { text: "now" } },
+      { id: "a2", role: "assistant", tool_calls: { pending_action_id: "p2" } },
+      { id: "u2", role: "user", content: { text: "FAVY10 …" } },
+      {
+        id: "a1",
+        role: "assistant",
+        content: { text: "What's the event called?" },
+      },
+      { id: "u1", role: "user", content: { text: "influencer codes" } },
+    ], "u3"),
+    [true, false],
+  );
+  assertMatch(
+    read(AGENT_CHAT),
+    /classifyAriOwnerTurn\(\{\s*text: ownerTurnText,\s*priorOwnerTexts,\s*priorServed,\s*\}\)/,
+  );
+});
+
+Deno.test("F live (S3): an offering proposal the read did not name goes back once", () => {
+  const issue = ariOfferingDetourIssue({
+    readSource: "model",
+    targetTool: "create_discount",
+    toolName: "create_event",
+  });
+  assertEquals(issue?.code, "REQUESTED_TOOL_MISMATCH");
+  assertMatch(
+    issue?.message ?? "",
+    /asked for create_discount, not a new event/,
+  );
+  for (
+    const args of [
+      {
+        readSource: "hints" as const,
+        targetTool: "create_discount",
+        toolName: "create_event",
+      },
+      {
+        readSource: "model" as const,
+        targetTool: null,
+        toolName: "create_event",
+      },
+      {
+        readSource: "model" as const,
+        targetTool: "create_event",
+        toolName: "create_event",
+      },
+      {
+        readSource: "model" as const,
+        targetTool: "create_discount",
+        toolName: "create_discount",
+      },
+      {
+        readSource: "model" as const,
+        targetTool: "list_events",
+        toolName: "upsert_ticket_tier",
+      },
+    ]
+  ) assertEquals(ariOfferingDetourIssue(args), null, JSON.stringify(args));
+  assertMatch(
+    read(AGENT_CHAT),
+    /const detour = ariOfferingDetourIssue\(\{\s*readSource: turnRoute\.source,\s*targetTool: turnRoute\.targetTool,\s*toolName: call\.name,\s*\}\);\s*if \(detour\) return detour;/,
+  );
+});
+
+Deno.test("F live: an unsigned history call is replayed as plain words, never a call-shaped marker", () => {
+  const { contents } = repairGeminiContents([
+    { role: "user", parts: [{ text: "Create FAVY10" }] },
+    {
+      role: "model",
+      parts: [{
+        functionCall: { name: "create_discount", args: { code: "FAVY10" } },
+      }],
+    },
+    { role: "user", parts: [{ text: "Create GIRLSTRIPLAGOS too" }] },
+  ] as never);
+  const text = JSON.stringify(contents);
+  assert(text.includes(HISTORY_CALL_NOTE), text);
+  assert(text.includes("create_discount") && text.includes("FAVY10"));
+  assert(!/\[mingla_tool_call/.test(text), text);
+  // A reply that copies the record is caught too.
+  assert(isPseudoToolCallText(`${HISTORY_CALL_NOTE} create_discount with {}.`));
 });

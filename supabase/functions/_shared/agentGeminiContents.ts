@@ -104,8 +104,13 @@ function safeJson(value: unknown): string {
  * instead of calling the tool. That text must never reach a host.
  * MINGLA-INVARIANT: I-ARI-NO-PSEUDO-TOOL-TEXT | issue #3355 | A final reply that imitates the repaired tool-call marker is sent back to the model once and never shown to the host.
  */
+/** The plain-words record an unsigned history call or result becomes. */
+export const HISTORY_CALL_NOTE =
+  "Record of an earlier step, not a reply: Ari used";
+export const HISTORY_RESULT_NOTE = "Record of an earlier step, not a reply:";
+
 const PSEUDO_TOOL_TEXT =
-  /\[\s*mingla[\s_-]*tool[\s_-]*(?:call|result)\b|^\s*\{?\s*"?(?:functionCall|function_call|tool_code)"?\s*[:=]/im;
+  /^\s*Record of an earlier step\b|\[\s*mingla[\s_-]*tool[\s_-]*(?:call|result)\b|^\s*\{?\s*"?(?:functionCall|function_call|tool_code)"?\s*[:=]/im;
 
 export function isPseudoToolCallText(text: string): boolean {
   return PSEUDO_TOOL_TEXT.test(text);
@@ -130,9 +135,12 @@ export function repairGeminiContents(
         if (signatureOf(part) === null) {
           repairs.unsignedCalls++;
           parts.push({
-            text: `[mingla_tool_call name=${part.functionCall.name}] ${
+            // #3355 Wave F (live eval): plain words, not a call-shaped
+            // marker. Flash copied "[mingla_tool_call …]" into its own reply
+            // instead of calling the tool.
+            text: `${HISTORY_CALL_NOTE} ${part.functionCall.name} with ${
               safeJson(part.functionCall.args)
-            }`,
+            }.`,
           });
           continue;
         }
@@ -145,7 +153,7 @@ export function repairGeminiContents(
         if (!callableNames.has(name)) {
           repairs.orphanResponses++;
           parts.push({
-            text: `[mingla_tool_result name=${name}] ${
+            text: `${HISTORY_RESULT_NOTE} ${name} returned: ${
               safeJson(part.functionResponse.response)
             }`,
           });

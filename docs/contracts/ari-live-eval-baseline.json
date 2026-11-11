@@ -1,0 +1,106 @@
+{
+  "schemaVersion": 1,
+  "ownerIssue": "#3355",
+  "description": "Ari live-eval baseline (local stack, Gemini Flash). scripts/ari/eval/gate.mjs fails a run that drops 2+ points on any suite or overall. Refresh with run-live.mjs --write-baseline after a reviewed improvement.",
+  "run_id": "live-20261111T045630Z-397a3088",
+  "ran_at": "2026-11-11T04:58:45Z",
+  "revision": {
+    "sha": "e021dd98b80a510995749a4ddceacf54b56a3980",
+    "functions_dirty": true
+  },
+  "scores": {
+    "replay": 100,
+    "flows": 84.6,
+    "route_table": 100,
+    "overall": 94.9
+  },
+  "replay": [
+    {
+      "id": "host_thread_2026_11_10",
+      "score": 100
+    },
+    {
+      "id": "issue_3355_customer_list_upload",
+      "score": 100
+    },
+    {
+      "id": "issue_3355_website_no_site",
+      "score": 100
+    }
+  ],
+  "flows": [
+    {
+      "id": "event_create_minimal",
+      "verdict": "pass"
+    },
+    {
+      "id": "event_paid_blocked",
+      "verdict": "pass"
+    },
+    {
+      "id": "trip_create_lagos_3day",
+      "verdict": "pass"
+    },
+    {
+      "id": "experience_create_two_stops",
+      "verdict": "pass"
+    },
+    {
+      "id": "venue_create_picker",
+      "verdict": "pass"
+    },
+    {
+      "id": "stay_create_on_approved_venue",
+      "verdict": "fail"
+    },
+    {
+      "id": "website_setup_phone",
+      "verdict": "fail"
+    },
+    {
+      "id": "refund_role_refused_event_manager",
+      "verdict": "pass"
+    },
+    {
+      "id": "brand_gate_defer_remembered",
+      "verdict": "pass"
+    },
+    {
+      "id": "influencer_request_discount_path",
+      "verdict": "pass"
+    },
+    {
+      "id": "favy10_mid_flow_ends_at",
+      "verdict": "pass"
+    },
+    {
+      "id": "same_request_twice_never_same_card",
+      "verdict": "pass"
+    },
+    {
+      "id": "ng_brand_no_timezone_handoff",
+      "verdict": "pass"
+    }
+  ],
+  "route_table": {
+    "total": 51,
+    "misroutes": 0
+  },
+  "latency": {
+    "setup_start": {
+      "n": 11,
+      "p50": 2519,
+      "p95": 2822
+    },
+    "typed_turn": {
+      "n": 11,
+      "p50": 3215,
+      "p95": 5344
+    },
+    "card_answer_or_confirm": {
+      "n": 56,
+      "p50": 62,
+      "p95": 109
+    }
+  }
+}

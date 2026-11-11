@@ -438,7 +438,7 @@ export function phase3dContractDigest(manifest) {
 // #3355 Wave B: register the Feature Guide search migration (20280606043355) and the Feature Guide content migration (20280606053355) in the #1857, #1931 and #2117 replay lanes, and the search's implementor PostgreSQL proof in the #1931 and #2117 lanes.
 // #3355 Wave D: register 20280606063355/073355/083355 in the #1857, #1931 and #2117 replay lanes (063355 and 073355 skipped by exact filename in #1931) and the two PostgreSQL proofs in #1931 and #2117.
 // #3355 Wave D step 0: skip 20280606013355 and 20280606023355 by exact filename in the #1931 replay lane (they reference objects only skipped migrations define).
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "186e2ace271f3f81d74e065ad0ed2b14c46886483242e229778315107d39f320";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "fef67f4444f5381134297f659f0c77916d2ebe6af6fc118d937ae6c08032b626";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

@@ -116,3 +116,10 @@ export async function turnAriGapIntoEval(eventId) {
     p_event_id: eventId,
   }));
 }
+
+// #3355 Wave F (F2): the Ari quality panel's rates over a window (days).
+export async function loadAriQuality({ days = 30 } = {}) {
+  return unwrap(await supabase.rpc("ari_admin_quality_metrics", {
+    p_days: days,
+  }));
+}

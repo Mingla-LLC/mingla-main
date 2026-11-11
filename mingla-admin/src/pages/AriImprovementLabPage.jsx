@@ -22,6 +22,8 @@ import { Drawer } from "../components/ui/Drawer";
 import { LoadError } from "../components/ui/LoadError";
 // #3355 Wave D (D3): Ari gaps by type and week, "Turn into eval", digest.
 import { AriGapsPanel } from "../components/ari/AriGapsPanel";
+// #3355 Wave F (F2): Ari quality rates over a chosen window.
+import { AriQualityPanel } from "../components/ari/AriQualityPanel";
 import {
   cancelAriEvaluation,
   controlAriRollout,
@@ -40,6 +42,7 @@ const TABS = [
   ["threads", "Message threads"],
   ["cases", "Quality cases"],
   ["gaps", "Ari gaps"],
+  ["quality", "Ari quality"],
   ["proposals", "Improvement proposals"],
   ["evaluations", "Evaluations"],
   ["versions", "Versions & rollout"],
@@ -703,6 +706,7 @@ export function AriImprovementLabPage() {
           {tab === "cases" && <SectionCard title="Quality cases" subtitle={`${cases.length} shown`} noPadding action={<div className="flex flex-wrap gap-2"><div className="relative"><Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-[var(--color-text-tertiary)]" /><input aria-label="Search cases" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search" className="h-9 w-44 rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] pl-9 pr-3 text-sm text-[var(--color-text-primary)]" /></div><select aria-label="Case status" value={status} onChange={(e) => setStatus(e.target.value)} className="h-9 rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2.5 text-sm text-[var(--color-text-primary)]"><option value="open">Open</option><option value="closed">Closed</option><option value="all">All</option></select><select aria-label="Case severity" value={severity} onChange={(e) => setSeverity(e.target.value)} className="h-9 rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2.5 text-sm text-[var(--color-text-primary)]"><option value="all">All severity</option>{["critical", "high", "medium", "low"].map((value) => <option key={value} value={value}>{value}</option>)}</select></div>}><CaseRows cases={cases} onOpen={setSelectedCase} /></SectionCard>}
 
           {tab === "gaps" && <AriGapsPanel onOpenCase={setSelectedCase} />}
+          {tab === "quality" && <AriQualityPanel />}
 
           {tab === "proposals" && <div className="space-y-5">
             <ProposalComposer cases={workspace?.cases || []} gaps={workspace?.capability_gaps || []} onSaved={load} />

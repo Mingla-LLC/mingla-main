@@ -120,7 +120,6 @@ Deno.test("E1: strict validation — any bad shape is no read at all", () => {
       { ...ok, confidence: "high" },
       { ...ok, target: 7 },
       { ...ok, target: "I created your code" },
-      { ...ok, stated_values: { ends_on: "19 Dec" } },
       { ...ok, stated_values: { percent_off: 150 } },
       { ...ok, stated_values: { secret: "x" } },
       { ...ok, intent: "flow", target: "create_discount" },
@@ -130,6 +129,17 @@ Deno.test("E1: strict validation — any bad shape is no read at all", () => {
     ]
   ) {
     assertEquals(parseAriIntentRead(bad, ctx()), null, JSON.stringify(bad));
+  }
+  // #3355 Wave F: a day the model wrote as the host did ("19 Dec", "20th")
+  // drops that one value, not the whole read.
+  for (const day of ["19 Dec", "20th"]) {
+    assertEquals(
+      parseAriIntentRead(
+        { ...ok, stated_values: { code: "FAVY10", ends_on: day, date: day } },
+        ctx(),
+      )?.stated_values,
+      { code: "FAVY10" },
+    );
   }
   // A tool the turn does not know is dropped, not trusted.
   assertEquals(

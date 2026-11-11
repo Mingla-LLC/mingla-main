@@ -217,6 +217,7 @@ export class AriSession {
   }
 
   async send(extra) {
+    const started = Date.now();
     const data = await this.#post("agent-chat", {
       conversation_id: this.conversationId,
       client_turn_id: randomUUID(),
@@ -227,7 +228,13 @@ export class AriSession {
       ...extra,
     });
     if (data.conversation_id) this.conversationId = data.conversation_id;
-    this.transcript.push({ sent: summarizeSent(extra), got: summarize(data) });
+    // #3355 Wave F: per-turn latency for the live eval report.
+    this.transcript.push({
+      sent: summarizeSent(extra),
+      got: summarize(data),
+      ms: Date.now() - started,
+      typed: typeof extra.message === "string",
+    });
     return data;
   }
 
@@ -272,6 +279,7 @@ export class AriSession {
   }
 
   async confirm(pendingActionId) {
+    const started = Date.now();
     const data = await this.#post("agent-confirm-action", {
       action: "confirm",
       continuation: "server",
@@ -281,6 +289,8 @@ export class AriSession {
     this.transcript.push({
       sent: `confirm`,
       got: summarize(data),
+      ms: Date.now() - started,
+      typed: false,
     });
     return data;
   }

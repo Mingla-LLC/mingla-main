@@ -142,6 +142,13 @@ export function normalizeAriOwnerText(text: string): string {
 export function detectAriRepeat(
   current: string,
   priorOwnerTexts: readonly string[],
+  /**
+   * #3355 Wave F (live eval): per prior owner turn (same order), whether Ari
+   * answered it with a proposal card. A host asking for the next discount
+   * code after the last one was proposed is a new request, not a repeat, so
+   * "same intent" counts only unserved turns. Same words always count.
+   */
+  priorServed: readonly boolean[] = [],
 ): { repeated: boolean; how: "same_text" | "same_intent" | null } {
   const recent = priorOwnerTexts.slice(0, 3);
   const words = normalizeAriOwnerText(current);
@@ -153,7 +160,11 @@ export function detectAriRepeat(
   }
   const hint = readFlowRequest(current);
   if (hint && hint !== "request" && hint !== "readiness") {
-    if (recent.some((prior) => readFlowRequest(prior) === hint)) {
+    if (
+      recent.some((prior, index) =>
+        priorServed[index] !== true && readFlowRequest(prior) === hint
+      )
+    ) {
       return { repeated: true, how: "same_intent" };
     }
   }
@@ -166,12 +177,17 @@ export function detectAriRepeat(
 export function classifyAriOwnerTurn(args: {
   text: string;
   priorOwnerTexts: readonly string[];
+  priorServed?: readonly boolean[];
 }): AriGapSignal[] {
   const text = String(args.text ?? "").trim();
   if (!text) return [];
   const excerpt = scrubAriExcerpt(text);
   const signals: AriGapSignal[] = [];
-  const repeat = detectAriRepeat(text, args.priorOwnerTexts);
+  const repeat = detectAriRepeat(
+    text,
+    args.priorOwnerTexts,
+    args.priorServed ?? [],
+  );
   if (repeat.repeated) {
     signals.push({
       type: "repeated_request",
@@ -318,6 +334,69 @@ export async function readAriPriorOwnerTexts(args: {
   } catch (_error) {
     return [];
   }
+}
+
+/**
+ * #3355 Wave F — for the caller's previous owner turns in this chat (most
+ * recent first, the same rows readAriPriorOwnerTexts returns), whether Ari
+ * answered each with a proposal card. Fail-soft: unknown is "not served".
+ */
+export async function readAriPriorOwnerServed(args: {
+  caller: SupabaseClient;
+  conversationId: string;
+  excludeMessageId?: string | null;
+}): Promise<boolean[]> {
+  try {
+    const { data, error } = await args.caller.from("agent_messages")
+      .select("id,role,content,tool_calls")
+      .eq("conversation_id", args.conversationId)
+      .in("role", ["user", "assistant"])
+      .order("created_at", { ascending: false })
+      .limit(16);
+    if (error || !Array.isArray(data)) return [];
+    return priorOwnerServedFromRows(
+      data as PriorRow[],
+      args.excludeMessageId ?? null,
+    );
+  } catch (_error) {
+    return [];
+  }
+}
+
+interface PriorRow {
+  id?: string;
+  role?: string;
+  content?: { text?: unknown } | null;
+  tool_calls?: unknown;
+}
+
+/** Newest-first rows → served flags for the prior owner turns with text. */
+export function priorOwnerServedFromRows(
+  rows: readonly PriorRow[],
+  excludeMessageId: string | null,
+): boolean[] {
+  const served: boolean[] = [];
+  let proposalSince = false;
+  for (const row of rows) {
+    if (row.role === "assistant") {
+      const calls = row.tool_calls as { pending_action_id?: unknown } | null;
+      if (calls && typeof calls.pending_action_id === "string") {
+        proposalSince = true;
+      }
+      continue;
+    }
+    if (row.role !== "user") continue;
+    if (row.id === excludeMessageId) {
+      proposalSince = false;
+      continue;
+    }
+    if (typeof row.content?.text === "string" && row.content.text) {
+      served.push(proposalSince);
+    }
+    proposalSince = false;
+    if (served.length >= 3) break;
+  }
+  return served;
 }
 
 /** The gap rows inside this chat's last 5 owner turns (caller JWT). */

@@ -1,0 +1,59 @@
+// Issue #3355 Wave F (F1) — the live-eval release gate as a command: exit 1
+// on a drop of 2+ points (any suite or overall) against the stored
+// baseline, exit 0 otherwise. Files only, no network.
+
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const here = dirname(fileURLToPath(import.meta.url));
+const GATE = join(here, "../gate.mjs");
+const BASELINE = join(here, "../../../../docs/contracts/ari-live-eval-baseline.json");
+
+function gate(baseline, run) {
+  const dir = mkdtempSync(join(tmpdir(), "ari-gate-"));
+  const b = join(dir, "baseline.json");
+  const r = join(dir, "run.json");
+  writeFileSync(b, JSON.stringify(baseline));
+  writeFileSync(r, JSON.stringify(run));
+  return spawnSync(process.execPath, [GATE, `--baseline=${b}`, `--run=${r}`], { encoding: "utf8" });
+}
+
+describe("#3355 Wave F — Ari eval gate", () => {
+  const baseline = { run_id: "base", scores: { replay: 100, flows: 84.6, route_table: 100, overall: 94.9 } };
+
+  it("passes an equal or slightly lower run", () => {
+    const same = gate(baseline, { run_id: "same", scores: { ...baseline.scores } });
+    assert.equal(same.status, 0, same.stdout);
+    assert.match(same.stdout, /PASS/);
+    const small = gate(baseline, { run_id: "small", scores: { ...baseline.scores, flows: 83, overall: 93.4 } });
+    assert.equal(small.status, 0, small.stdout);
+  });
+
+  it("fails a drop of 2 or more points, and a missing suite", () => {
+    const drop = gate(baseline, { run_id: "drop", scores: { ...baseline.scores, route_table: 96, overall: 93.5 } });
+    assert.equal(drop.status, 1);
+    assert.match(drop.stdout, /FAIL route_table: dropped 4 points/);
+    const missing = gate(baseline, { run_id: "missing", scores: { replay: 100, flows: 90, overall: 95 } });
+    assert.equal(missing.status, 1);
+    assert.match(missing.stdout, /FAIL route_table: missing from the run/);
+  });
+
+  it("needs --run", () => {
+    const none = spawnSync(process.execPath, [GATE], { encoding: "utf8" });
+    assert.equal(none.status, 2);
+  });
+
+  it("the stored baseline has every suite the gate compares", () => {
+    const stored = JSON.parse(readFileSync(BASELINE, "utf8"));
+    for (const suite of ["replay", "flows", "route_table", "overall"]) {
+      assert.equal(typeof stored.scores[suite], "number", suite);
+    }
+    const self = gate(stored, { run_id: "self", scores: stored.scores });
+    assert.equal(self.status, 0, self.stdout);
+  });
+});

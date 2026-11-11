@@ -64,7 +64,10 @@
 // v32 (#3355 Wave E): understanding first — guided setups start only through
 // start_flow (the model's choice; keyword rules are labelled hints), and the
 // turn's intent read arrives as TURN HINTS data.
-export const PROMPT_VERSION = "v32";
+// v33 (#3355 Wave F): live-eval tuning — the intent read's park / side-question
+// rules, the guide tool's available_through_ari status, and history records in
+// plain words instead of tool-call markers.
+export const PROMPT_VERSION = "v33";
 
 /**
  * #3355 Wave D (D4, D7a) — added to the system instruction when a host has
