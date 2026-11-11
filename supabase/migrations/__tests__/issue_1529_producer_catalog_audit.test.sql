@@ -104,9 +104,13 @@ $vacuity$;
 -- 20280611014255_issue_4255_team_chat_functions.sql and 43 after, so the floor
 -- rises 42 -> 43. Its owning registered PostgreSQL suite
 -- (issue_4255_team_chat.implementor.pg17) asserts the NULL country on the rows.
+-- [TEST-MOD-APPROVED #4255] The #4255 rework adds one more, ops_due_digest
+-- (the 09:00 "due and late" notice; in-app/push only, an explicit NULL
+-- country_code): 43 -> 44. issue_4255_team_rework.implementor.pg17 asserts
+-- the NULL country on its rows.
 -- (2) RATCHET — raised 12 -> 18 for #3988, 18 -> 19 for #4073, 19 -> 20 for
 --     the buyer venue-order receipt, 20 -> 22 for #4063 Wave 5, and
---     22 -> 25 for #4111, 25 -> 35 for #3872, 35 -> 39 for #2829, and 39 -> 42 for #4271, and 42 -> 43 for #4255.
+--     22 -> 25 for #4111, 25 -> 35 for #3872, 35 -> 39 for #2829, and 39 -> 42 for #4271, and 42 -> 43 -> 44 for #4255.
 --     The floor is the number that ACTUALLY exists in the catalog, so a
 --     producer DISAPPEARING is caught as well as
 --     one appearing. At the old floor of 8 any of #3720's three new producers
@@ -117,9 +121,9 @@ DECLARE
   v_count integer;
 BEGIN
   SELECT count(*) INTO v_count FROM issue_1529_discovered_producers;
-  IF v_count < 43 THEN
+  IF v_count < 44 THEN
     RAISE EXCEPTION
-      'issue_1529_producer_floor_breached_expected_at_least_43_got_%', v_count;
+      'issue_1529_producer_floor_breached_expected_at_least_44_got_%', v_count;
   END IF;
 END;
 $ratchet$;
@@ -167,6 +171,8 @@ $ratchet$;
 --       issue_4271_door_pay_code_text_link  → mingla_e164_country(p_phone_e164)
 --                                             on the door pay-link SMS
 --       team_chat_enqueue                   → explicit NULL (#4255 team chat;
+--                                             in-app/push only, no SMS channel)
+--       ops_due_digest                      → explicit NULL (#4255 rework;
 --                                             in-app/push only, no SMS channel)
 --
 --     PUSH-ONLY — the #3872 notification producers write only in-app/push
@@ -219,7 +225,8 @@ DECLARE
     'issue_4111_enquiry_nudge_sweep',
     'biz_door_tap_record',
     'issue_4271_door_pay_code_text_link',
-    'team_chat_enqueue'
+    'team_chat_enqueue',
+    'ops_due_digest'
   ];
   -- [TEST-MOD-APPROVED #2829] Sites and the current #3872 notification writers
   -- are in-app/push-only. Their owning suites prove delivery behavior; none of
@@ -361,7 +368,8 @@ DECLARE
     'issue_4111_enquiry_nudge_sweep',
     'biz_door_tap_record',
     'issue_4271_door_pay_code_text_link',
-    'team_chat_enqueue'
+    'team_chat_enqueue',
+    'ops_due_digest'
   ];
   v_missing text;
 BEGIN
