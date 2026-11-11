@@ -16,7 +16,7 @@
 import React from "react";
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 
-import { BRAND_CREATION_COPY, BrandCreationFlow } from "../BrandCreationFlow";
+import { BRAND_CREATION_COPY, BrandCreationFlow } from "../PartnerClientBrandCreationFlow";
 import type { Brand } from "../../../types/brand";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =

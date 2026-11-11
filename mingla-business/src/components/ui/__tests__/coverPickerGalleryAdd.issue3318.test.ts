@@ -619,7 +619,7 @@ const NON_SAVING_HOSTS: Array<[string, number]> = [
   ["components/venue/claim/ClaimStepCover.tsx", 1],
   ["components/venue/VenueDeckReadinessSetup.tsx", 1],
   ["components/brand/BrandEditView.tsx", 1],
-  ["components/brand/BrandCreationFlow.tsx", 1],
+  ["components/brand/PartnerClientBrandCreationFlow.tsx", 1],
   // [TEST-MOD-APPROVED #3697] Host Ads adds one video-only, non-gallery picker.
   ["components/ari/ToolProposalCard.tsx", 3],
   // #3355 — Ari's in-chat brand cover upload (Brand details' brand target, no gallery).

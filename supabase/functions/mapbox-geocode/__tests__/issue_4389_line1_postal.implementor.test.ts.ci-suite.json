@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/mapbox-geocode/__tests__/issue_4389_line1_postal.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4389-line1-postal-implementor",
+  "profile": "deno-2-unit"
+}

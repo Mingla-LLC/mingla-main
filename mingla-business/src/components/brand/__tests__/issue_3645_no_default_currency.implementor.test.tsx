@@ -15,7 +15,7 @@
 import React from "react";
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 
-import { BRAND_CREATION_COPY, BrandCreationFlow } from "../BrandCreationFlow";
+import { BRAND_CREATION_COPY, BrandCreationFlow } from "../PartnerClientBrandCreationFlow";
 import { PAYOUT_COUNTRY_FIELD_COPY } from "../BrandPayoutCountryField";
 import {
   brandNeedsPayoutCountry,

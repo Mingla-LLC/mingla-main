@@ -1,5 +1,6 @@
-import React, { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useRouter } from "expo-router";
 
 import {
   accent,
@@ -23,7 +24,6 @@ import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { TopSheet } from "../ui/TopSheet";
 import { BrandMark } from "./BrandMark";
-import { LazyBrandCreationFlow } from "./LazyBrandCreationFlow";
 
 export interface BrandSwitcherSheetProps {
   visible: boolean;
@@ -33,8 +33,6 @@ export interface BrandSwitcherSheetProps {
   onRequestDeleteBrand?: (brand: Brand) => void;
   testID?: string;
 }
-
-type Mode = "switch" | "create";
 
 export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
   visible,
@@ -50,28 +48,16 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
   const setCurrentBrand = useCurrentBrandStore((s) => s.setCurrentBrand);
   const currentBrandId = useCurrentBrandStore((s) => s.currentBrandId);
   const updateCreatorAccountMutation = useUpdateCreatorAccount();
-  const [mode, setMode] = useState<Mode>(
-    brandList.isTrueEmpty ? "create" : "switch",
-  );
-
-  // #3645 — the mode is decided when the sheet OPENS (and by the two explicit
-  // controls below), not on every brand-list change. Creating the first brand
-  // makes the list non-empty optimistically; re-deriving the mode from the list
-  // flipped the sheet to "Switch brand" and unmounted BrandCreationFlow after
-  // step 1, so Place, Look, Payouts and the first-offering tiles never showed.
-  // The one list-driven move that stays is switch → create when the list
-  // resolves truly empty after opening (it was still loading at open); that
-  // direction can never unmount a creation flow in progress.
-  const wasVisibleRef = useRef(false);
-  useEffect(() => {
-    const opening = visible && !wasVisibleRef.current;
-    wasVisibleRef.current = visible;
-    if (opening) {
-      setMode(brandList.isTrueEmpty ? "create" : "switch");
-      return;
-    }
-    if (visible && brandList.isTrueEmpty) setMode("create");
-  }, [brandList.isTrueEmpty, visible]);
+  const router = useRouter();
+  // #4389 I-4389-NO-MODAL-ON-OVERLAY — brand creation is never embedded in
+  // this non-modal TopSheet any more. Opening the setup flow (and its bank
+  // country step) inside this overlay is what froze the app (a native modal
+  // sheet over the overlay). "Create brand" closes the sheet and opens the
+  // full-screen route.
+  const openCreate = useCallback((): void => {
+    onClose();
+    router.push("/brand/new" as never);
+  }, [onClose, router]);
 
   const handlePick = useCallback(
     (brand: Brand): void => {
@@ -98,17 +84,7 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
   return (
     <TopSheet visible={visible} onClose={onClose} testID={testID}>
       <View style={styles.host}>
-        {mode === "create" ? (
-          <Suspense fallback={null}>
-            <LazyBrandCreationFlow
-              onComplete={() => onClose()}
-              onCancel={() => {
-                if (brands.length > 0) setMode("switch");
-                else onClose();
-              }}
-            />
-          </Suspense>
-        ) : (
+        {(
           <>
             <View style={styles.header}>
               <Text style={styles.headerTitle}>Switch brand</Text>
@@ -201,7 +177,7 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
             <View style={styles.footer}>
               <Button
                 label="Create a new brand"
-                onPress={() => setMode("create")}
+                onPress={openCreate}
                 variant="primary"
                 size="lg"
                 leadingIcon="plus"

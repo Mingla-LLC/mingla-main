@@ -2,7 +2,7 @@ import React from "react";
 import { describe, expect, jest, test } from "@jest/globals";
 import { StyleSheet } from "react-native";
 
-import { BrandCreationFlow } from "../BrandCreationFlow";
+import { BrandCreationFlow } from "../PartnerClientBrandCreationFlow";
 import {
   OFFERING_OPTIONS,
   OfferingChooser,

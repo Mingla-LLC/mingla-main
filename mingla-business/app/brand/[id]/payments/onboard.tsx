@@ -59,7 +59,8 @@ export default function BrandOnboardRoute(): React.ReactElement {
   const handleBack = (): void => {
     if (isBrandCreateFunnel && brandId !== null) {
       router.replace(
-        `/brand/new?resume_brand=${encodeURIComponent(brandId)}` as never,
+        // #4389 — back to setup; F4 reads the account live (refresh_status).
+        `/brand/${encodeURIComponent(brandId)}/setup?step=done` as never,
       );
     } else if (router.canGoBack()) {
       // The creator that pushed this route is still mounted underneath, on the

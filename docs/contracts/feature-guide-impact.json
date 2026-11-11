@@ -1124,7 +1124,25 @@
         "packages/offering-rendering/GlassBlur.tsx",
         "mingla-business/src/services/brandsService.ts",
         "supabase/migrations/20280526004334_issue_4334_place_id_followups.sql",
-        "mingla-business/src/services/brandPinWrite.ts"
+        "mingla-business/src/services/brandPinWrite.ts",
+        "mingla-business/app/brand/[id]/setup.tsx",
+        "mingla-business/app/brand/[id]/tap-to-pay/address.tsx",
+        "mingla-business/src/components/brand/PartnerClientBrandCreationFlow.tsx",
+        "mingla-business/src/components/brand/PayoutCountryList.tsx",
+        "mingla-business/src/components/brand/brandSetupCopy.ts",
+        "mingla-business/src/components/brand/brandSetupAnalytics.ts",
+        "mingla-business/src/components/brand/tapLocationAddress.ts",
+        "mingla-business/src/services/brandSetupService.ts",
+        "mingla-business/src/hooks/useBrandSetupChecklist.ts",
+        "supabase/functions/brand-delete/index.ts",
+        "supabase/functions/_shared/brandDelete.ts",
+        "supabase/functions/_shared/brandDeleteLive.ts",
+        "supabase/functions/_shared/brandSetupStripe.ts",
+        "supabase/functions/_shared/agentBrandSetupTools.ts",
+        "supabase/functions/_shared/ariFlows/brandSetup.ts",
+        "supabase/functions/_shared/vatCountryGuard.ts",
+        "supabase/migrations/20280621004389_issue_4389_brand_setup.sql",
+        "supabase/migrations/20280621104389_issue_4389_ari_brand_operation.sql"
       ]
     },
     {
@@ -2233,7 +2251,25 @@
         "supabase/functions/_shared/googleFontFamilies.json",
         "supabase/functions/_shared/themeFontValidation.ts",
         "supabase/migrations/20280430001023_issue_1023_widen_theme_animation_slugs.sql",
-        "supabase/migrations/20280430011023_issue_1023_theme_fonts_and_gradients.sql"
+        "supabase/migrations/20280430011023_issue_1023_theme_fonts_and_gradients.sql",
+        "mingla-business/app/brand/[id]/setup.tsx",
+        "mingla-business/app/brand/[id]/tap-to-pay/address.tsx",
+        "mingla-business/src/components/brand/PartnerClientBrandCreationFlow.tsx",
+        "mingla-business/src/components/brand/PayoutCountryList.tsx",
+        "mingla-business/src/components/brand/brandSetupCopy.ts",
+        "mingla-business/src/components/brand/brandSetupAnalytics.ts",
+        "mingla-business/src/components/brand/tapLocationAddress.ts",
+        "mingla-business/src/services/brandSetupService.ts",
+        "mingla-business/src/hooks/useBrandSetupChecklist.ts",
+        "supabase/functions/brand-delete/index.ts",
+        "supabase/functions/_shared/brandDelete.ts",
+        "supabase/functions/_shared/brandDeleteLive.ts",
+        "supabase/functions/_shared/brandSetupStripe.ts",
+        "supabase/functions/_shared/agentBrandSetupTools.ts",
+        "supabase/functions/_shared/ariFlows/brandSetup.ts",
+        "supabase/functions/_shared/vatCountryGuard.ts",
+        "supabase/migrations/20280621004389_issue_4389_brand_setup.sql",
+        "supabase/migrations/20280621104389_issue_4389_ari_brand_operation.sql"
       ]
     },
     {

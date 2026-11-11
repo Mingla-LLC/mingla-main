@@ -106,7 +106,7 @@ jest.mock("../../../utils/brandDeletePermission", () => ({
   canDeleteBrand: () => false,
 }));
 
-jest.mock("../BrandCreationFlow", () => {
+jest.mock("../PartnerClientBrandCreationFlow", () => {
   const ReactLocal = require("react") as typeof import("react");
   const { View } = require("react-native");
   return {

@@ -77,6 +77,13 @@ export interface PlaceDetails {
   provider: "google";
   /** Raw Google types, for diagnostics only. No client rule may read it. */
   providerTypes: string[];
+  /**
+   * #4389 (additive, nullable) — the street line ("1520 N Milwaukee Ave",
+   * street_number + route, else premise) and the postal code, for the Tap to
+   * Pay on iPhone address screen (T1). Null when Google has no such part.
+   */
+  line1: string | null;
+  postalCode: string | null;
 }
 
 /** Comparison-only normalization (NFKD, no diacritics, lower-case, spaces). */
@@ -327,7 +334,21 @@ export function googlePlaceToDetails(
     featureType: featureTypeFromGoogleTypes(types),
     provider: "google",
     providerTypes: types,
+    line1: streetLineOf(components),
+    postalCode: longOf(components, "postal_code"),
   };
+}
+
+/**
+ * #4389 — "street_number route" (US/GB order), else the premise name. Null
+ * when the place has no street (a city, a region): the caller asks for the
+ * missing part instead of guessing.
+ */
+export function streetLineOf(components: GoogleAddressComponent[]): string | null {
+  const number = longOf(components, "street_number");
+  const route = componentOf(components, "route")?.shortText?.trim() || longOf(components, "route");
+  if (route) return number ? `${number} ${route}` : route;
+  return longOf(components, "premise");
 }
 
 /** Administrative names of a place, normalized, for the #1363 hierarchy match. */

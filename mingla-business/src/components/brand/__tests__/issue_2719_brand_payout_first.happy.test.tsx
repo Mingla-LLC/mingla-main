@@ -6,7 +6,7 @@ import {
   BrandCreationFlow,
   brandCreationReducer,
   type BrandCreationState,
-} from "../BrandCreationFlow";
+} from "../PartnerClientBrandCreationFlow";
 import {
   OFFERING_OPTIONS,
   OfferingChooser,

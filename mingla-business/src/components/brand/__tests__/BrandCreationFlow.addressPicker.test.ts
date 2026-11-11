@@ -17,7 +17,7 @@ import path from "path";
 
 const src = (): string =>
   readFileSync(
-    path.join(process.cwd(), "src/components/brand/BrandCreationFlow.tsx"),
+    path.join(process.cwd(), "src/components/brand/PartnerClientBrandCreationFlow.tsx"),
     "utf8",
   );
 
