@@ -549,6 +549,8 @@ export const useUpdateBrand = (): UseUpdateBrandResult => {
 export interface SoftDeleteBrandInput {
   brandId: string;
   accountId: string;
+  /** #4389 — the typed name; the server checks it again before closing payments. */
+  confirmName?: string;
 }
 
 export interface UseSoftDeleteBrandResult {
@@ -559,8 +561,8 @@ export interface UseSoftDeleteBrandResult {
 export const useSoftDeleteBrand = (): UseSoftDeleteBrandResult => {
   const queryClient = useQueryClient();
   const mutation = useMutation<SoftDeleteResult, Error, SoftDeleteBrandInput>({
-    mutationFn: async ({ brandId }) => {
-      const result = await softDeleteBrand(brandId);
+    mutationFn: async ({ brandId, confirmName }) => {
+      const result = await softDeleteBrand(brandId, confirmName);
       return result;
     },
     onSuccess: (result, { brandId, accountId }) => {

@@ -143,6 +143,11 @@ describe("#1835 T-5 — nothing non-Error may escape softDeleteBrand", () => {
   ): Promise<(id: string) => Promise<unknown>> {
     jest.doMock("../../services/supabase", () => ({
       supabase: {
+        // #4389 — the delete itself now runs through the brand-delete core;
+        // its refusal reaches the client the same way (a plain object).
+        functions: {
+          invoke: () => Promise.resolve({ data: null, error: updateError }),
+        },
         from: (table: string) => {
           if (table === "events") {
             // Step 1 — blocking-event count: none, so we reach the UPDATE.

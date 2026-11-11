@@ -83,6 +83,28 @@ export interface BrandDeleteSheetProps {
   onDeleted?: (brandId: string) => void;
 }
 
+/** #4389 D2 — one plain line per blocker (host copy names no provider). */
+export function brandDeleteBlockerCopy(
+  blockers: Array<{ code: string; count?: number }>,
+): string {
+  const lines = blockers.map((b) => {
+    switch (b.code) {
+      case "payment_account_balance":
+        return "There's money in your payment account. Wait for it to pay out, then try again.";
+      case "upcoming_events":
+        return "Cancel or transfer the upcoming events first.";
+      case "checkout_in_progress":
+        return "A guest is paying right now. Try again in a few minutes.";
+      case "partner_payment_in_progress":
+        return "A partner payment is still in progress.";
+      default:
+        return "Money is still on its way to you. Wait for it to pay out.";
+    }
+  });
+  return [...new Set(lines)].join(" ") ||
+    "Money is still on its way to you. Wait for it to pay out.";
+}
+
 export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
   visible,
   brand,
@@ -94,6 +116,8 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
   const [confirmInput, setConfirmInput] = useState<string>("");
   const [rejectionCount, setRejectionCount] = useState<number>(0);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // #4389 — why the delete stopped (D2 blocked / D3 refused / upcoming events).
+  const [rejection, setRejection] = useState<SoftDeleteResult | null>(null);
 
   // Cascade preview query — fires only when sheet visible AND brand non-null
   const previewQuery = useBrandCascadePreview(
@@ -110,6 +134,7 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
       setConfirmInput("");
       setRejectionCount(0);
       setSubmitError(null);
+      setRejection(null);
     }
   }, [visible, brand?.id]);
 
@@ -171,9 +196,11 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
         await softDeleteMutation.mutateAsync({
           brandId: brand.id,
           accountId,
+          confirmName: confirmInput,
         });
       if (result.rejected) {
         setRejectionCount(result.upcomingEventCount);
+        setRejection(result);
         setStep("rejected");
         return;
       }
@@ -193,7 +220,7 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
       });
       setSubmitError(brandDeleteErrorMessage(error));
     }
-  }, [canConfirm, brand, accountId, softDeleteMutation, onDeleted, onClose, step, isOwner]);
+  }, [canConfirm, brand, accountId, softDeleteMutation, onDeleted, onClose, step, isOwner, confirmInput]);
 
   if (brand === null) return null;
 
@@ -350,7 +377,8 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
                   {/* #3645 — host-facing copy never names a payment provider. */}
                   <Text style={styles.previewLabel}>Payment account</Text>
                   <Text style={styles.previewValue}>
-                    {counts.hasStripeConnect ? "Linked (will unlink)" : "None"}
+                    {/* #4389 D1 — the delete really closes it now. */}
+                    {counts.hasStripeConnect ? "Will be closed when you delete" : "None"}
                   </Text>
                 </View>
                 {counts.upcomingEventCount > 0 || counts.liveEventCount > 0 ? (
@@ -460,7 +488,34 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
           </View>
         ) : null}
 
-        {step === "rejected" ? (
+        {step === "rejected" && rejection !== null && rejection.rejected &&
+          rejection.reason !== "upcoming_events" ? (
+          <View>
+            <Text style={styles.title}>
+              {rejection.reason === "delete_blocked"
+                ? "You can't delete this brand yet"
+                : "Nothing was deleted"}
+            </Text>
+            <View style={[styles.warnCard, styles.warnCardDanger]}>
+              <Icon name="flag" size={18} color={semantic.error} />
+              <View style={styles.warnTextCol}>
+                <Text style={styles.warnBody}>
+                  {rejection.reason === "delete_blocked"
+                    ? brandDeleteBlockerCopy(rejection.blockers)
+                    : "Our payment partner couldn't close this account, so nothing was deleted. Contact support and we'll sort it."}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.actionRow}>
+              <View style={styles.actionCell}>
+                <Button label="Close" variant="primary" size="md" onPress={onClose} fullWidth />
+              </View>
+            </View>
+          </View>
+        ) : null}
+
+        {step === "rejected" && (rejection === null || !rejection.rejected ||
+          rejection.reason === "upcoming_events") ? (
           <View>
             <Text style={styles.title}>Cannot delete this brand</Text>
             <View style={[styles.warnCard, styles.warnCardDanger]}>

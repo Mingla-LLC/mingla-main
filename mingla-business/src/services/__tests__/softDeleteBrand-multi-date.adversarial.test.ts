@@ -42,6 +42,13 @@ jest.mock("../supabase", () => ({
   },
 }));
 
+// #4389 — Step 2 is the brand-delete core (closes payment accounts first).
+jest.mock("../brandSetupService", () => ({
+  deleteBrandClosingPayments: jest.fn(() =>
+    Promise.resolve({ ok: true, stripe: "none", paystack: "none" }),
+  ),
+}));
+
 jest.mock("../appsFlyerService", () => ({
   logAppsFlyerEvent: jest.fn(),
 }));
