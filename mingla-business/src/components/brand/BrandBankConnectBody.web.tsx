@@ -51,8 +51,12 @@ import { useAuth } from "../../context/AuthContext";
 import {
   CURRENT_MINGLA_TOS_VERSION,
   ORGANISER_TERMS_URL,
+  isCurrentMinglaToSAccepted,
   useAcceptMinglaToS,
+  useMinglaToSAcceptance,
 } from "../../hooks/useMinglaToSAcceptance";
+import { BRAND_SETUP_COPY } from "./brandSetupCopy";
+import { payoutCountryOption } from "./PayoutCountryList";
 import { brandStripeStatusKeys } from "../../hooks/useBrandStripeStatus";
 import { useBrand } from "../../hooks/useBrands";
 import {
@@ -639,6 +643,32 @@ export default function BrandBankConnectBody(): React.ReactElement {
     });
   }, []);
 
+  // #4389 — from brand setup (F3 took the Organiser Terms and the bank country
+  // is saved): no intro, the embedded secure setup opens straight away. Terms
+  // not on record, or no saved country, shows the screen as usual.
+  const termsQuery = useMinglaToSAcceptance(
+    isBrandCreateFunnel ? brand?.id ?? null : null,
+    isBrandCreateFunnel ? user?.id ?? null : null,
+  );
+  const setupCountryFixed =
+    isBrandCreateFunnel && (brand?.payoutCountry ?? null) !== null;
+  const [autoStartDone, setAutoStartDone] = useState(false);
+  const autoStartPending =
+    setupCountryFixed &&
+    !autoStartDone &&
+    selectedProvider === "stripe" &&
+    selectedCountry !== null &&
+    !railSwitchPending &&
+    submitError === null &&
+    (termsQuery.isLoading || isCurrentMinglaToSAccepted(termsQuery.data));
+  const autoStartReady =
+    autoStartPending && isCurrentMinglaToSAccepted(termsQuery.data);
+  useEffect(() => {
+    if (!autoStartReady) return;
+    setAutoStartDone(true);
+    void handleStartStripe();
+  }, [autoStartReady, handleStartStripe]);
+
   // #3645 — a brand with a card payment account and nothing else to go on is
   // not shown "Choose a country" while its account's country is being read.
   const awaitingAccountCountry =
@@ -660,6 +690,21 @@ export default function BrandBankConnectBody(): React.ReactElement {
       !brandQuery.isError &&
       (brandQuery.isLoading || !brandQuery.isFetched)) ||
     awaitingAccountCountry;
+
+  // Kept up while the started setup navigates away; a failure shows the screen
+  // with its error.
+  const openingSecureSetup =
+    autoStartPending || (setupCountryFixed && autoStartDone && submitError === null);
+  if (!loading && openingSecureSetup) {
+    return (
+      <View style={styles.host}>
+        <View style={styles.centeredState} testID="bank-connect-opening-secure-setup">
+          <Spinner size={48} color={accent.warm} />
+          <Text style={styles.stateTitle}>{BRAND_SETUP_COPY.onboard.opening}</Text>
+        </View>
+      </View>
+    );
+  }
 
   if (loading) {
     return (
@@ -779,14 +824,18 @@ export default function BrandBankConnectBody(): React.ReactElement {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.content}>
-          <View style={styles.heroIcon}>
-            <Icon name="bank" size={28} color={accent.warm} />
-          </View>
-          <Text style={styles.title}>Add your bank</Text>
-          <Text style={styles.body}>
-            This is how you get paid. Add it once and every sale settles to
-            this account — tables, tickets or trips.
-          </Text>
+          {/* #4389 — from setup (country saved) the intro is skipped. */}
+          {!setupCountryFixed ? (
+            <>
+              <View style={styles.heroIcon}>
+                <Icon name="bank" size={28} color={accent.warm} />
+              </View>
+              <Text style={styles.title} accessibilityRole="header">
+                {BRAND_SETUP_COPY.onboard.title}
+              </Text>
+              <Text style={styles.body}>{BRAND_SETUP_COPY.onboard.body}</Text>
+            </>
+          ) : null}
 
           {accountCountryUnknown ? (
             <>
@@ -874,6 +923,7 @@ export default function BrandBankConnectBody(): React.ReactElement {
               mode="create"
               onConnected={handlePaystackConnected}
               onCancel={handleChooseDifferentCountry}
+              hideIntro={setupCountryFixed}
             />
           ) : selectedCountry === NIGERIA_COUNTRY ? (
             // Nigeria is showing in the country row but the brand has not been
@@ -890,22 +940,26 @@ export default function BrandBankConnectBody(): React.ReactElement {
             />
           ) : (
             <>
-              <GlassCard
-                variant="base"
-                padding={spacing.md}
-                style={styles.prerequisites}
-              >
-                <Text style={styles.prereqLabel}>BEFORE YOU START, HAVE READY</Text>
-                <Text style={styles.prereqItem}>
-                  {"•"} Business name and tax ID
-                </Text>
-                <Text style={styles.prereqItem}>
-                  {"•"} A bank account in your country
-                </Text>
-                <Text style={styles.prereqItem}>
-                  {"•"} Photo of government ID
-                </Text>
-              </GlassCard>
+              {/* #4389 — brand setup already listed what to have ready. */}
+              {!isBrandCreateFunnel ? (
+                <GlassCard
+                  variant="base"
+                  padding={spacing.md}
+                  style={styles.prerequisites}
+                  testID="bank-connect-have-ready"
+                >
+                  <Text style={styles.prereqLabel}>{BRAND_SETUP_COPY.onboard.haveReady}</Text>
+                  <Text style={styles.prereqItem}>{`• ${BRAND_SETUP_COPY.onboard.readyId}`}</Text>
+                  <Text style={styles.prereqItem}>
+                    {`• ${BRAND_SETUP_COPY.onboard.readyBank(
+                      selectedCountry === null
+                        ? null
+                        : payoutCountryOption(selectedCountry)?.name ?? null,
+                    )}`}
+                  </Text>
+                  <Text style={styles.prereqItem}>{`• ${BRAND_SETUP_COPY.onboard.readyTax}`}</Text>
+                </GlassCard>
+              ) : null}
 
               {submitError !== null ? (
                 <View
