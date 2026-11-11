@@ -173,8 +173,31 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
   const brandName = checklist?.readiness.items.find((i) => i.key === "brand.name")?.valuePreview ?? "";
 
   // ── which step ─────────────────────────────────────────────────────────
-  const derived = brandId === null ? "name" : deriveSetupStep(checklist, requestedStep);
+  // The URL's `?step=` is a request honoured when the flow opens (a deep link
+  // or "Change" back to an earlier step). A successful write CONSUMES it, so
+  // the step is then derived from the refreshed checklist alone and the flow
+  // advances (#4389 P1: F2 used to stay pinned to `?step=country` forever).
+  const [requested, setRequested] = useState<BrandSetupStep | null>(requestedStep);
+  const derived = brandId === null ? "name" : deriveSetupStep(checklist, requested);
   const [backTo, setBackTo] = useState<BrandSetupStep | null>(null);
+  // The server's first open step moving on (a write here, the secure setup
+  // finishing on return, another device) also ends the request.
+  const firstOpen = checklist === null ? null : deriveSetupStep(checklist);
+  const firstOpenAtRequestRef = useRef<BrandSetupStep | null>(null);
+  useEffect(() => {
+    if (requested === null || firstOpen === null) return;
+    if (firstOpenAtRequestRef.current === null) {
+      firstOpenAtRequestRef.current = firstOpen;
+    } else if (firstOpenAtRequestRef.current !== firstOpen) {
+      setRequested(null);
+    }
+  }, [firstOpen, requested]);
+  const refetchChecklist = checklistQuery.refetch;
+  const advanceAfterWrite = useCallback((): void => {
+    setRequested(null);
+    setBackTo(null);
+    void refetchChecklist();
+  }, [refetchChecklist]);
   const step: BrandSetupStep = brandId === null
     ? "name"
     : backTo !== null && STEP_INDEX[backTo] <= STEP_INDEX[derived]
@@ -346,8 +369,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
           offline={offline}
           onSaved={() => {
             trackBrandSetup("brand_setup_step_completed", { step: "country", brand_id: brandId, resumed });
-            setBackTo(null);
-            void checklistQuery.refetch();
+            advanceAfterWrite();
           }}
           onLater={() => setK1("country")}
         />
@@ -367,7 +389,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
           offline={offline}
           onChangeCountry={() => setBackTo("country")}
           onLater={() => setK1("pay")}
-          onConnected={() => void checklistQuery.refetch()}
+          onConnected={advanceAfterWrite}
         />
       ) : step === "done" && brandId !== null && facts !== null ? (
         <DoneStep brandId={brandId} provider={facts.provider} country={facts.payoutCountry} />
