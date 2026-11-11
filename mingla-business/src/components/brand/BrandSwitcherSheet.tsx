@@ -149,14 +149,16 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                       : null;
                   const setupState = setupStates.byId[brand.id] ?? { kind: "none" };
                   // #4389 N3 — any unfinished brand: line 2 starts with
-                  // "Draft" (accent), then progress, then "Free events only"
-                  // when chosen. Continue sits inside the row.
+                  // "Draft" (accent), then "Free events only" when the host
+                  // chose it (no count: skipping payments is a choice, so
+                  // "3 of 4 done" beside it contradicted it), else
+                  // "{n} of 4 done". Continue sits inside the row.
                   const setupRest =
                     setupState.kind === "none"
                       ? null
-                      : ` · ${BRAND_SETUP_COPY.n3.progress(setupState.doneCount)}${
-                        setupState.kind === "free_only" ? ` · ${BRAND_SETUP_COPY.n3.freeOnlyTag}` : ""
-                      }`;
+                      : setupState.kind === "free_only"
+                        ? ` · ${BRAND_SETUP_COPY.n3.freeOnlyTag}`
+                        : ` · ${BRAND_SETUP_COPY.n3.progress(setupState.doneCount)}`;
                   const canDiscard =
                     setupState.kind === "draft" && canDeleteBrand(brand, user?.id ?? null);
                   const subline = setupRest !== null

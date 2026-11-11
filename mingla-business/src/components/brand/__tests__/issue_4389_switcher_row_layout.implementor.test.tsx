@@ -1,4 +1,4 @@
-// MINGLA-INVARIANT: I-4389-SWITCHER-UNFINISHED-ROW | issue #4389 | A brand whose setup checklist is not complete (draft, free-only or published) shows in the brand switcher as one row: line 1 the name only, line 2 "Draft" (accent) · "{n} of 4 done" (· "Free events only" when chosen), and a Continue pill INSIDE the row that opens /brand/{id}/setup. There is no separate Continue button under the row and no pill next to the name. Only a true draft offers "Discard draft".
+// MINGLA-INVARIANT: I-4389-SWITCHER-UNFINISHED-ROW | issue #4389 | A brand whose setup checklist is not complete (draft, free-only or published) shows in the brand switcher as one row: line 1 the name only, line 2 "Draft" (accent) · "Free events only" when the host chose it (no count), else "Draft" · "{n} of 4 done", and a Continue pill INSIDE the row that opens /brand/{id}/setup. There is no separate Continue button under the row and no pill next to the name. Only a true draft offers "Discard draft".
 /**
  * Seth (2026-11-11): "the continue should be in the brand and it should be
  * clear it is a draft", then "the draft is placed awkwardly" (no pill by the
@@ -6,6 +6,9 @@
  *
  * FAILS-ON-REVERT: restore BrandSwitcherSheet.tsx from 24ce5878f9 and R1/R2
  * fail (Continue is a sibling under the row, line 2 reads "Draft · 1 of 4").
+ * #4389 P3a (tester): "Draft · 3 of 4 done · Free events only" contradicted
+ * itself; a free-only row now reads "Draft · Free events only". Restoring the
+ * count on free-only rows fails R1.
  *
  *   cd mingla-business && npx jest \
  *     src/components/brand/__tests__/issue_4389_switcher_row_layout.implementor.test.tsx
@@ -100,7 +103,7 @@ describe("#4389 N3 — unfinished brand row", () => {
     const draftLine = hosts(tree, "brand-switcher-setup-line-b-draft");
     expect(draftLine).toHaveLength(1);
     expect(textOf(draftLine[0]!)).toBe("Draft · 1 of 4 done");
-    expect(textOf(hosts(tree, "brand-switcher-setup-line-b-free")[0]!)).toBe("Draft · 2 of 4 done · Free events only");
+    expect(textOf(hosts(tree, "brand-switcher-setup-line-b-free")[0]!)).toBe("Draft · Free events only");
     // "Draft" is its own accent run at the start of line 2, not a pill by the name.
     const draftWord = (draftLine[0]!.children[0] as Node);
     expect(textOf(draftWord)).toBe("Draft");
