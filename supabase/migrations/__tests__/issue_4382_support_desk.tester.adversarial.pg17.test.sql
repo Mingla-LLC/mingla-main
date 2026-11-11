@@ -376,8 +376,7 @@ BEGIN
     'SELECT public.issue_4382_ticket_product_stage(gen_random_uuid())',
     'SELECT public.issue_4382_tell_reporters(gen_random_uuid(), gen_random_uuid())',
     'SELECT public.is_product_operator(gen_random_uuid())',
-    'SELECT count(*) FROM public.support_attachments',
-    'SELECT count(*) FROM public.issue_4382_beta_feedback_import'
+    'SELECT count(*) FROM public.support_attachments'
   ] LOOP
     v_raised := false;
     BEGIN

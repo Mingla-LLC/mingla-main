@@ -440,7 +440,8 @@ export function phase3dContractDigest(manifest) {
 // #4383: and the tester adversarial PostgreSQL proof.
 // #4382: re-sealed after merging origin/main 2aa45c6da1 (#4383 rows kept beside the #4382 rows).
 // #4382: renumber the Support Desk migrations to 20280613*4382 (above production's applied 20280608004383 and sibling 20280612004255) in the replay lanes.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "c6d34f3fd2f9416048be5c527e44cf9d740189ab3bd9794dccc6de79c3e6fb03";
+// #4382: register the retire-beta-feedback migration (20280622004382) in the #1857, #1931 and #2117 replay lanes.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "ede491e494191aff58fa3fe0f206fbd2e1bbbb57c5cd21b7b1b52d6481e0aa76";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
