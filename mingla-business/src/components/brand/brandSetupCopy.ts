@@ -17,6 +17,9 @@ export const BRAND_SETUP_COPY = {
     discardBody: "It hasn't been saved yet.",
     discard: "Discard",
     keepEditing: "Keep editing",
+    sessionTitle: "Sign in again to keep going",
+    sessionBody: "Your brand name is kept.",
+    signIn: "Sign in",
   },
   f2: {
     title: "Where will you collect funds?",
@@ -47,6 +50,8 @@ export const BRAND_SETUP_COPY = {
     notOwner: (owner: string): string => `Only ${owner} can set up payments. We've added it to their Home.`,
     waitingClient: (client: string): string => `Waiting for ${client} to accept and add bank details`,
     otherDevice: "Finishing on your other device…",
+    refresh: "Refresh",
+    ownerFallback: "the owner",
     trust: "Your bank details go straight to our payment partner. Mingla never sees them.",
     ngHeading: "Your Nigerian bank",
   },

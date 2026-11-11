@@ -83,10 +83,10 @@ import { trackBrandSetup } from "../../components/brand/brandSetupAnalytics";
 import type { Brand } from "../../store/currentBrandStore";
 import { usePickBrand } from "../../hooks/usePickBrand";
 // #4389 A1–A5 — setup cards from the server checklist; digits redacted before send.
-import { AriSensitiveNotice, AriSetupCard } from "../../components/ari/AriSetupCard";
+import { AriSensitiveNotice, AriSetupCard, AriSkipPaymentsCard } from "../../components/ari/AriSetupCard";
 import { ARI_SETUP_COPY } from "../../components/ari/ariSetupCopy";
-import { redactSensitiveDigits } from "../../components/ari/ariRedaction";
-import { useBrandSetupChecklist } from "../../hooks/useBrandSetupChecklist";
+import { redactSensitiveDigits, wantsToSkipPayments } from "../../components/ari/ariRedaction";
+import { useBrandSetupChecklist, useMarkBrandSetupFreeOnly } from "../../hooks/useBrandSetupChecklist";
 import {
   ariDraftFor,
   decideAriBrandSwitch,
@@ -407,6 +407,8 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   const [switchedToast, setSwitchedToast] = useState<string | null>(null);
   // #4389 A5 — a number was hidden from the last message.
   const [sensitiveHidden, setSensitiveHidden] = useState(false);
+  // #4389 AR-12 — "skip payments" shows the K1 words as a card.
+  const [skipCard, setSkipCard] = useState<"ask" | "saving" | "saved" | "error" | null>(null);
   const [rateLimitUntil, setRateLimitUntil] = useState<number | null>(null);
   const [cooldownNow, setCooldownNow] = useState(() => Date.now());
   // ORCH-1101 REWORK Bug #6 — dismiss the AI-disclosure sheet the instant the
@@ -583,6 +585,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     );
     setLocalError(null);
     setRateLimitUntil(null);
+    setSkipCard(null);
     Keyboard.dismiss();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- runs on a brand change only; names are read at that moment.
   }, [currentBrand?.displayName, selectedBrandId]);
@@ -594,6 +597,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     !setup && !websiteSplit ? selectedBrandId : null,
   );
   const setupData = setupChecklist.data;
+  const markFreeOnly = useMarkBrandSetupFreeOnly(selectedBrandId);
   const seenIncompleteRef = useRef<Set<string>>(new Set());
   const [allSetShownFor, setAllSetShownFor] = useState<string | null>(null);
   React.useEffect(() => {
@@ -715,6 +719,15 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     const safe = redactSensitiveDigits(text);
     text = safe.text;
     setSensitiveHidden(safe.redacted);
+    if (
+      selectedBrandId !== null &&
+      setupData !== undefined &&
+      !setupData.facts.complete &&
+      setupData.facts.freeOnlyAt === null &&
+      wantsToSkipPayments(text)
+    ) {
+      setSkipCard("ask");
+    }
     // Composer ownership transfers to one local row in this synchronous event.
     setDraftText("");
     setDraftKeptFor(null);
@@ -1410,6 +1423,26 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                     onOpen={() => {
                       setSensitiveHidden(false);
                       openBrandSetup("pay");
+                    }}
+                  />
+                ) : null}
+                {skipCard !== null && selectedBrandId !== null ? (
+                  <AriSkipPaymentsCard
+                    platform={Platform.OS === "ios" ? "ios" : Platform.OS === "android" ? "android" : "web"}
+                    state={skipCard}
+                    onBankNow={() => {
+                      setSkipCard(null);
+                      openBrandSetup("pay");
+                    }}
+                    onFreeOnly={() => {
+                      setSkipCard("saving");
+                      markFreeOnly.mutate(undefined, {
+                        onSuccess: () => setSkipCard("saved"),
+                        onError: (error) => {
+                          console.warn("[ari] free events only failed", error);
+                          setSkipCard("error");
+                        },
+                      });
                     }}
                   />
                 ) : null}

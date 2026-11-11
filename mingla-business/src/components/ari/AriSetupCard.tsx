@@ -20,6 +20,7 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { ARI_SETUP_COPY as C, ARI_SETUP_ITEMS } from "./ariSetupCopy";
+import { BRAND_SETUP_COPY } from "../brand/brandSetupCopy";
 
 type CardButton = { label: string; onPress: () => void; primary?: boolean; testID?: string };
 
@@ -139,6 +140,49 @@ export const AriSensitiveNotice: React.FC<{ onOpen: () => void }> = ({ onOpen })
     <CardButtons buttons={[{ label: C.a5.open, onPress: onOpen, primary: true, testID: "ari-sensitive-open" }]} />
   </View>
 );
+
+/**
+ * #4389 AR-12 — the host told Ari to skip payments: the K1 words and
+ * buttons as a card ("Set up bank now" first). After "Free events only for
+ * now" saves, the card shows the K1 toast words.
+ */
+export const AriSkipPaymentsCard: React.FC<{
+  platform: "ios" | "android" | "web";
+  state: "ask" | "saving" | "saved" | "error";
+  onBankNow: () => void;
+  onFreeOnly: () => void;
+}> = ({ platform, state, onBankNow, onFreeOnly }) => {
+  const K = BRAND_SETUP_COPY.k1;
+  if (state === "saved") {
+    return (
+      <View style={styles.card} testID="ari-skip-payments-saved" accessibilityRole="alert">
+        <Text style={styles.body}>{K.toast}</Text>
+      </View>
+    );
+  }
+  return (
+    <View style={styles.card} testID="ari-skip-payments">
+      <Text style={styles.title} accessibilityRole="header">{K.title}</Text>
+      <Text style={styles.body}>{platform === "ios" ? K.body : K.bodyAndroid}</Text>
+      <Text style={styles.body}>{K.later}</Text>
+      {state === "error" ? (
+        <Text style={styles.body} accessibilityRole="alert">{BRAND_SETUP_COPY.common.serverError}</Text>
+      ) : null}
+      <CardButtons
+        buttons={[
+          { label: K.bankNow, onPress: onBankNow, primary: true, testID: "ari-skip-bank-now" },
+          {
+            label: K.freeOnly,
+            onPress: () => {
+              if (state !== "saving") onFreeOnly();
+            },
+            testID: "ari-skip-free-only",
+          },
+        ]}
+      />
+    </View>
+  );
+};
 
 const styles = StyleSheet.create({
   card: {

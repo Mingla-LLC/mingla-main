@@ -24,7 +24,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useNavigation, useRouter } from "expo-router";
 
 // Keyboard-aware on native (the CTA and focused field stay clear of the keyboard, U-2).
 import { ScrollView } from "../../wrappers/SmartScrollView";
@@ -67,6 +67,25 @@ import { trackBrandSetup } from "./brandSetupAnalytics";
 import { useCurrentBrandStore, type Brand } from "../../store/currentBrandStore";
 import { useUpdateCreatorAccount } from "../../hooks/useCreatorAccount";
 import { getBrand } from "../../services/brandsService";
+import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
+import { useBrandTeamMemberDirectory } from "../../hooks/useBrandTeamMemberDirectory";
+import { BRAND_ROLE_RANK } from "../../utils/brandRole";
+import {
+  CountryConflictBanner,
+  ForbiddenBanner,
+  NameDiscardSheet,
+  OtherDeviceBanner,
+  SessionExpiredSheet,
+  countryConflict,
+  finishingOnOtherDevice,
+  isSessionExpiredError,
+  keepBrandNameForSignIn,
+  markPaymentsStartedHere,
+  ownerDisplayName,
+  paymentsStartedHere,
+  shouldConfirmNameDiscard,
+  takeKeptBrandName,
+} from "./BrandSetupInterruptions";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const TTP_VISUAL: number | null = (() => {
@@ -154,6 +173,35 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
   );
 
   const [resumeBanner, setResumeBanner] = useState<boolean>(resumed);
+  // F1 "Discard this brand name?" — Back, iOS swipe-back and Android back
+  // with a typed, unsaved name (design F1:discard).
+  const navigation = useNavigation();
+  const typedNameRef = useRef<string>("");
+  const nameSavingRef = useRef<boolean>(false);
+  const leaveSanctionedRef = useRef<boolean>(false);
+  const pendingLeaveRef = useRef<unknown>(null);
+  const [discardOpen, setDiscardOpen] = useState(false);
+  const nameStepShown = brandId === null;
+  useEffect(() => {
+    if (!nameStepShown || Platform.OS === "web") return;
+    const unsubscribe = navigation.addListener("beforeRemove" as never, (raw: unknown) => {
+      if (leaveSanctionedRef.current || !shouldConfirmNameDiscard(typedNameRef.current, nameSavingRef.current)) return;
+      const event = raw as { preventDefault: () => void; data: { action: unknown } };
+      event.preventDefault();
+      pendingLeaveRef.current = event.data.action;
+      setDiscardOpen(true);
+    });
+    return unsubscribe;
+  }, [navigation, nameStepShown]);
+  const discardTypedName = useCallback((): void => {
+    setDiscardOpen(false);
+    typedNameRef.current = "";
+    leaveSanctionedRef.current = true;
+    const action = pendingLeaveRef.current;
+    pendingLeaveRef.current = null;
+    if (action !== null) (navigation as unknown as { dispatch: (a: unknown) => void }).dispatch(action);
+    else onExit();
+  }, [navigation, onExit]);
   // K1 "Only free events for now?" — opened from F2/F3 "Save and finish later".
   const [k1, setK1] = useState<"country" | "pay" | null>(null);
   const viewedRef = useRef<BrandSetupStep | null>(null);
@@ -216,7 +264,9 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
           accessibilityLabel={C.common.back}
           hitSlop={12}
           onPress={() => {
-            if (step === "country" || step === "name") onExit();
+            if (step === "name" && shouldConfirmNameDiscard(typedNameRef.current, nameSavingRef.current)) {
+              setDiscardOpen(true);
+            } else if (step === "country" || step === "name") onExit();
             // K1 — leaving Get paid before payment details are done asks
             // "Only free events for now?" (addendum). "Change" on the country
             // chip still goes back to Bank country.
@@ -225,7 +275,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
           }}
           style={styles.backButton}
         >
-          <Text style={styles.backGlyph}>‹</Text>
+          <Text style={styles.backGlyph} maxFontSizeMultiplier={1.4}>‹</Text>
         </Pressable>
         <View
           style={styles.progress}
@@ -255,13 +305,20 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
           offline={offline}
           authReady={isAuthReady && user !== null}
           onExit={onExit}
+          onNameChange={(typed, saving) => {
+            typedNameRef.current = typed;
+            nameSavingRef.current = saving;
+          }}
           onCreated={(id) => {
+            typedNameRef.current = "";
             trackBrandSetup("brand_setup_step_completed", { step: "name", brand_id: id, resumed });
             adoptCreatedBrand(id);
             router.replace(`/brand/${id}/setup?step=country` as never);
           }}
-          onDraft={(draftId, draftName) =>
-            router.replace(`/brand/new?draft=${encodeURIComponent(draftId)}&draft_name=${encodeURIComponent(draftName)}` as never)}
+          onDraft={(draftId, draftName) => {
+            typedNameRef.current = "";
+            router.replace(`/brand/new?draft=${encodeURIComponent(draftId)}&draft_name=${encodeURIComponent(draftName)}` as never);
+          }}
         />
       ) : step === "country" && brandId !== null ? (
         <CountryStep
@@ -285,6 +342,9 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
           currency={facts.currency}
           termsDone={facts.terms}
           stripeState={facts.stripeState}
+          startedAt={facts.paymentsSetupStartedAt}
+          refreshing={checklistQuery.isFetching}
+          onRefresh={() => void checklistQuery.refetch()}
           waitingFor={facts.waitingFor}
           offline={offline}
           onChangeCountry={() => setBackTo("country")}
@@ -294,6 +354,14 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
       ) : step === "done" && brandId !== null && facts !== null ? (
         <DoneStep brandId={brandId} provider={facts.provider} country={facts.payoutCountry} />
       ) : null}
+      <NameDiscardSheet
+        visible={discardOpen}
+        onKeepEditing={() => {
+          pendingLeaveRef.current = null;
+          setDiscardOpen(false);
+        }}
+        onDiscard={discardTypedName}
+      />
       <K1Sheet
         visible={k1 !== null}
         brandId={brandId}
@@ -318,13 +386,21 @@ const NameStep: React.FC<{
   offline: boolean;
   authReady: boolean;
   onExit: () => void;
+  onNameChange: (typed: string, saving: boolean) => void;
   onCreated: (brandId: string) => void;
   onDraft: (brandId: string, name: string) => void;
-}> = ({ offline, authReady, onCreated, onDraft }) => {
+}> = ({ offline, authReady, onNameChange, onCreated, onDraft }) => {
   const idRef = useRef<string>(newBrandId());
-  const [name, setName] = useState("");
+  // R-12 — a name kept across "Sign in again" comes back here.
+  const [name, setName] = useState<string>(() => takeKeptBrandName());
   const [error, setError] = useState<string | null>(null);
+  const [sessionExpired, setSessionExpired] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const { signOut } = useAuth();
   const create = useCreateSetupBrand();
+  useEffect(() => {
+    onNameChange(name, create.isPending);
+  }, [name, create.isPending, onNameChange]);
   const trimmed = name.trim();
   const tooLong = trimmed.length > 60;
   const disabled = trimmed.length === 0 || tooLong || offline || !authReady || create.isPending;
@@ -339,6 +415,10 @@ const NameStep: React.FC<{
         onError: (e) => {
           if (e instanceof BrandSetupError && e.code === "draft_exists") {
             onDraft(String(e.detail.brandId ?? ""), String(e.detail.brandName ?? ""));
+            return;
+          }
+          if (isSessionExpiredError(e)) {
+            setSessionExpired(true);
             return;
           }
           setError(C.common.serverError);
@@ -376,6 +456,23 @@ const NameStep: React.FC<{
         <Button testID="brand-setup-name-continue" label={C.f1.cta} onPress={submit} variant="primary" size="lg" fullWidth disabled={disabled} loading={create.isPending} />
         {error !== null ? <Text style={[styles.helper, styles.errorText]} accessibilityRole="alert">{error}</Text> : null}
       </View>
+      <SessionExpiredSheet
+        visible={sessionExpired}
+        busy={signingOut}
+        onClose={() => setSessionExpired(false)}
+        onSignIn={() => {
+          // The typed name is kept for the next F1 (design F1:expired).
+          keepBrandNameForSignIn(trimmed);
+          onNameChange("", false);
+          setSigningOut(true);
+          void signOut({ scope: "local" })
+            .catch((e: unknown) => {
+              console.warn("[brand-setup] sign out for sign-in again failed", e);
+              setError(C.common.serverError);
+            })
+            .finally(() => setSigningOut(false));
+        }}
+      />
     </>
   );
 };
@@ -395,11 +492,27 @@ const CountryStep: React.FC<{
   useEffect(() => {
     if (selected === null && current !== null) setSelected(current);
   }, [current, selected]);
+  // F2 conflict — another device saved a different bank country while this
+  // screen had its own pick. "Keep" keeps what the other device saved;
+  // "Change" lets the host pick again here.
+  const previousServerRef = useRef<string | null>(current);
+  const [conflict, setConflict] = useState<string | null>(null);
+  useEffect(() => {
+    const changed = countryConflict({ previousServer: previousServerRef.current, server: current, selected });
+    previousServerRef.current = current;
+    if (changed !== null) setConflict(changed);
+    // `selected` is read at the moment the server value moves, not tracked.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current]);
+  // Forbidden pre-check: a member below brand admin sees why before tapping.
+  // A missing role row is left to the server (it refuses with "forbidden").
+  const role = useCurrentBrandRole(brandId);
+  const forbidden = !role.isLoading && !role.isError && role.role !== null && role.rank < BRAND_ROLE_RANK.brand_admin;
   const option = payoutCountryOption(selected);
   const locale = useMemo(() => Intl.DateTimeFormat().resolvedOptions().locale, []);
 
   const submit = (): void => {
-    if (selected === null || save.isPending || offline) return;
+    if (selected === null || save.isPending || offline || forbidden) return;
     if (selected === current) {
       onSaved();
       return;
@@ -425,16 +538,27 @@ const CountryStep: React.FC<{
       <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} keyboardShouldPersistTaps="handled">
         <Text style={styles.h1} accessibilityRole="header">{C.f2.title}</Text>
         <Text style={styles.sub}>{C.f2.body}</Text>
+        {conflict !== null ? (
+          <CountryConflictBanner
+            countryName={payoutCountryOption(conflict)?.name ?? conflict}
+            onKeep={() => {
+              setSelected(conflict);
+              setConflict(null);
+            }}
+            onChange={() => setConflict(null)}
+          />
+        ) : null}
+        {forbidden ? <ForbiddenBanner message={C.f2.forbidden} /> : null}
         {locked && current !== null ? (
           <View style={styles.banner}><Text style={styles.bannerText}>{C.f2.locked(payoutCountryOption(current)?.name ?? current)}</Text></View>
         ) : null}
-        <PayoutCountryList selected={selected} onSelect={setSelected} disabled={locked || save.isPending} deviceLocale={locale} />
+        <PayoutCountryList selected={selected} onSelect={setSelected} disabled={locked || forbidden || save.isPending} deviceLocale={locale} />
       </ScrollView>
       <View style={styles.footer}>
         {option !== null ? (
           <Text style={styles.footnote}>{C.f2.footnote(option.name, option.currency)}</Text>
         ) : null}
-        <Button testID="brand-setup-country-continue" label={C.f2.cta} onPress={submit} variant="primary" size="lg" fullWidth disabled={selected === null || offline || (locked && selected !== current)} loading={save.isPending} />
+        <Button testID="brand-setup-country-continue" label={C.f2.cta} onPress={submit} variant="primary" size="lg" fullWidth disabled={selected === null || offline || forbidden || (locked && selected !== current)} loading={save.isPending} />
         {error !== null ? <Text style={[styles.helper, styles.errorText]} accessibilityRole="alert">{error}</Text> : null}
         <View style={styles.gap8} />
         <Button label={C.common.later} onPress={onLater} variant="secondary" size="md" fullWidth />
@@ -452,12 +576,15 @@ const PayStep: React.FC<{
   currency: string | null;
   termsDone: boolean;
   stripeState: string;
+  startedAt: string | null;
+  refreshing: boolean;
+  onRefresh: () => void;
   waitingFor: string | null;
   offline: boolean;
   onChangeCountry: () => void;
   onLater: () => void;
   onConnected: () => void;
-}> = ({ brandId, brandName, provider, country, currency, termsDone, stripeState, waitingFor, offline, onChangeCountry, onLater, onConnected }) => {
+}> = ({ brandId, brandName, provider, country, currency, termsDone, stripeState, startedAt, refreshing, onRefresh, waitingFor, offline, onChangeCountry, onLater, onConnected }) => {
   const router = useRouter();
   const { user } = useAuth();
   const [ticked, setTicked] = useState<boolean>(termsDone);
@@ -466,6 +593,19 @@ const PayStep: React.FC<{
   const accept = useAcceptMinglaToS();
   const option = payoutCountryOption(country);
   const locked = stripeState !== "none";
+  // Not owner: payments are owner-only (biz_begin_payments_setup). Shown up
+  // front with the owner's real name from the team directory.
+  const role = useCurrentBrandRole(brandId);
+  const notOwner = !role.isLoading && !role.isError && role.role !== null && role.rank < BRAND_ROLE_RANK.brand_owner;
+  const team = useBrandTeamMemberDirectory(notOwner ? brandId : null);
+  const ownerName = ownerDisplayName(team.data, C.f3.ownerFallback);
+  // R-4 — the secure setup was started on another device in the last 15 min.
+  const otherDevice = finishingOnOtherDevice({
+    startedAt,
+    stripeState,
+    startedHere: paymentsStartedHere(brandId),
+    now: Date.now(),
+  });
 
   const acceptTerms = async (): Promise<boolean> => {
     if (termsDone) return true;
@@ -480,23 +620,25 @@ const PayStep: React.FC<{
   };
 
   const continueStripe = async (): Promise<void> => {
-    if (!ticked || offline) return;
+    if (!ticked || offline || notOwner) return;
     setError(null);
     if (!(await acceptTerms())) return;
+    markPaymentsStartedHere(brandId);
     // The server reads the bank country from the brand (never this screen).
     router.push(`/brand/${brandId}/connect?from=brand-create` as never);
   };
 
   const continueNigeria = async (): Promise<void> => {
-    if (!ticked || offline) return;
+    if (!ticked || offline || notOwner) return;
     setError(null);
     if (!(await acceptTerms())) return;
+    markPaymentsStartedHere(brandId);
     try {
       const { beginPaymentsSetup } = await import("../../services/brandSetupService");
       await beginPaymentsSetup(brandId);
       setNgReady(true);
     } catch (e) {
-      setError(e instanceof BrandSetupError && e.code === "requires_owner" ? C.f3.notOwner("the owner") : C.common.serverError);
+      setError(e instanceof BrandSetupError && e.code === "requires_owner" ? C.f3.notOwner(ownerName) : C.common.serverError);
     }
   };
 
@@ -510,6 +652,8 @@ const PayStep: React.FC<{
             {!locked ? <Button label={C.f3.change} onPress={onChangeCountry} variant="ghost" size="sm" /> : null}
           </View>
         ) : null}
+        {otherDevice ? <OtherDeviceBanner refreshing={refreshing} onRefresh={onRefresh} /> : null}
+        {notOwner ? <ForbiddenBanner message={C.f3.notOwner(ownerName)} /> : null}
         {waitingFor !== null ? (
           <View style={styles.banner}><Text style={styles.bannerText}>{C.f3.waitingClient(waitingFor)}</Text></View>
         ) : null}
@@ -548,11 +692,11 @@ const PayStep: React.FC<{
             variant="primary"
             size="lg"
             fullWidth
-            disabled={!ticked || offline || accept.isPending}
+            disabled={!ticked || offline || notOwner || accept.isPending}
             loading={accept.isPending}
           />
         ) : !ngReady ? (
-          <Button testID="brand-setup-pay-continue" label={C.f2.cta} onPress={() => void continueNigeria()} variant="primary" size="lg" fullWidth disabled={!ticked || offline} loading={accept.isPending} />
+          <Button testID="brand-setup-pay-continue" label={C.f2.cta} onPress={() => void continueNigeria()} variant="primary" size="lg" fullWidth disabled={!ticked || offline || notOwner} loading={accept.isPending} />
         ) : null}
         {error !== null ? <Text style={[styles.helper, styles.errorText]} accessibilityRole="alert">{error}</Text> : null}
         <View style={styles.gap8} />
