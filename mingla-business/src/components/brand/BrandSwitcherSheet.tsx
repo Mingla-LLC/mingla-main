@@ -170,15 +170,28 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                       : followerLine;
                   return (
                     <View key={brand.id} style={styles.brandRowOuter}>
-                      <Pressable
-                        onPress={() => handlePick(brand)}
+                      {/* #4389 (retest) — the row is a plain box; the switch
+                          target and the Continue pill are SIBLINGS. The pill
+                          used to be nested in the switch Pressable: it sat on
+                          the row's centre, so a tap on the row (and an
+                          accessibility tap, which lands on the element's
+                          centre) opened setup instead of switching, and
+                          VoiceOver could not reach the pill on its own. */}
+                      <View
                         style={[
                           styles.brandRow,
+                          styles.brandRowSplit,
                           isActive ? styles.brandRowActive : null,
                         ]}
+                        testID={`brand-switcher-rowbox-${brand.id}`}
+                      >
+                      <Pressable
+                        onPress={() => handlePick(brand)}
+                        style={styles.rowPick}
                         accessibilityRole="button"
                         accessibilityLabel={`Switch to ${brand.displayName}`}
                         accessibilityState={{ selected: isActive }}
+                        testID={`brand-switcher-row-${brand.id}`}
                       >
                         <BrandMark
                           brand={brand}
@@ -207,6 +220,7 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                         {isActive ? (
                           <Icon name="check" size={18} color={accent.warm} />
                         ) : null}
+                      </Pressable>
                         {setupRest !== null ? (
                           <Pressable
                             onPress={() => openSetup(brand)}
@@ -251,7 +265,7 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                             <Icon name="trash" size={16} color={textTokens.tertiary} />
                           </Pressable>
                         ) : null}
-                      </Pressable>
+                      </View>
                       {/* Issue #1835 — PER-ROW gate, deliberately not a
                           sheet-level one. The switcher lists every brand you can
                           reach, owned or merely administered, so the trash must
@@ -346,6 +360,9 @@ const styles = StyleSheet.create({
     borderColor: accent.border,
     backgroundColor: "rgba(235, 120, 37, 0.10)",
   },
+  // The row box keeps its look; the switch target fills it up to the pill.
+  brandRowSplit: { padding: 0, paddingRight: spacing.md, gap: spacing.sm },
+  rowPick: { flex: 1, minHeight: 64, flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.md, paddingRight: 0 },
   brandTextCol: { flex: 1 },
   brandName: { fontSize: typography.body.fontSize, lineHeight: typography.body.lineHeight, fontWeight: "600", color: textTokens.primary },
   brandSub: { fontSize: typography.caption.fontSize, lineHeight: typography.caption.lineHeight, color: textTokens.tertiary },

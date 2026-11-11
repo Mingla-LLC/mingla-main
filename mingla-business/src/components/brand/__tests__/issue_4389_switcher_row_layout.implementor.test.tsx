@@ -113,19 +113,26 @@ describe("#4389 N3 — unfinished brand row", () => {
     tree.unmount();
   });
 
-  test("R2: Continue is INSIDE the row (no separate button under it) and opens setup; tapping the row switches", () => {
+  // #4389 (retest P3): in Ari's "Talk to Ari about", tapping a draft row
+  // opened setup. The pill was nested in the switch target, on the row's
+  // centre. It now sits inside the row BOX, beside (never inside) the switch
+  // target, so any tap on the row switches and only the pill opens setup.
+  test("R2: Continue is inside the row box, beside the switch target; it opens setup; tapping the row switches (drafts included)", () => {
     const tree = render();
     const row = rowOf(tree, "Tester US Brand");
     const cont = hosts(tree, "brand-switcher-continue-b-draft");
     expect(cont).toHaveLength(1);
-    expect(isInside(cont[0]!, row)).toBe(true);
-    expect(isInside(hosts(tree, "brand-switcher-continue-b-free")[0]!, rowOf(tree, "Free Brand"))).toBe(true);
+    expect(isInside(cont[0]!, hosts(tree, "brand-switcher-rowbox-b-draft")[0]!)).toBe(true);
+    expect(isInside(cont[0]!, row)).toBe(false);
+    expect(isInside(hosts(tree, "brand-switcher-continue-b-free")[0]!, rowOf(tree, "Free Brand"))).toBe(false);
     expect(hosts(tree, "brand-switcher-continue-b-done")).toHaveLength(0);
     TestRenderer.act(() => (cont[0]!.props.onClick as (() => void) | undefined)?.() ?? (cont[0]!.props.onPress as (() => void) | undefined)?.());
     expect(mockPush).toHaveBeenCalledWith("/brand/b-draft/setup");
     expect(mockPick).not.toHaveBeenCalled();
     TestRenderer.act(() => (row.props.onClick as (() => void) | undefined)?.() ?? (row.props.onPress as (() => void) | undefined)?.());
     expect(mockPick).toHaveBeenCalledTimes(1);
+    expect(mockPick.mock.calls[0]![0]).toMatchObject({ id: "b-draft" });
+    expect(mockPush).toHaveBeenCalledTimes(1);
     tree.unmount();
   });
 
