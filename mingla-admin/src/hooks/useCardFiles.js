@@ -6,6 +6,7 @@ import { useToast } from "../context/ToastContext";
 import * as ops from "../services/opsService";
 import { opsErrorWords, requestKey } from "../lib/opsModel";
 import { fileKind, fileMime, fileProblem } from "../lib/workBoardModel";
+import { openExternal } from "../lib/openExternal";
 
 /** Signed thumbnails for the pictures shown (5 minutes; read again when the list changes). */
 export function useThumbnails(files) {
@@ -36,12 +37,13 @@ export function useOpenFile() {
   const [viewing, setViewing] = useState(null);
   const open = async (file) => {
     if (file.kind === "image") { setViewing(file); return; }
-    if (file.kind === "link") { window.open(file.url, "_blank", "noopener,noreferrer"); return; }
+    // ORCH-1381: new tabs open only through the one openExternal owner.
+    if (file.kind === "link") { openExternal(file.url); return; }
     // Open the tab first (browsers block a tab opened after a wait), then point it at the signed link.
     const tab = window.open("", "_blank");
     try {
       const url = await ops.openableFileUrl(file.id);
-      if (tab) { tab.opener = null; tab.location.href = url; } else window.open(url, "_blank", "noopener,noreferrer");
+      if (tab) { tab.opener = null; tab.location.href = url; } else openExternal(url);
     } catch (error) {
       tab?.close();
       addToast({ variant: "error", title: `Couldn’t open ${file.name}`, description: opsErrorWords(error) });

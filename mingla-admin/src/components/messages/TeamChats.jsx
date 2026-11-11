@@ -21,6 +21,7 @@ import { supabase } from "../../lib/supabase";
 import * as team from "../../services/teamChatService";
 import { announceMessagesChange, useMessages } from "../../hooks/useMessages";
 import { opsErrorWords } from "../../lib/opsModel";
+import { openExternal } from "../../lib/openExternal";
 import { REACTIONS, clockTime, dayHeading, fileMime, threadDays } from "../../lib/workBoardModel";
 import { composerPeople, filterThreads, mentionIds, mergeTeamPages, olderCursor, peopleToStart, threadPreview } from "../../lib/messagesModel";
 
@@ -351,11 +352,12 @@ function Thread({ threadId, onBack, allowEveryone }) {
   };
   const openFile = async (file) => {
     if (file.kind === "image") { setViewing(file); return; }
-    if (file.kind === "link") { window.open(file.url, "_blank", "noopener,noreferrer"); return; }
+    // ORCH-1381: new tabs open only through the one openExternal owner.
+    if (file.kind === "link") { openExternal(file.url); return; }
     const tab = window.open("", "_blank");
     try {
       const url = await team.attachmentUrl(file.id);
-      if (tab) { tab.opener = null; tab.location.href = url; } else window.open(url, "_blank", "noopener,noreferrer");
+      if (tab) { tab.opener = null; tab.location.href = url; } else openExternal(url);
     } catch (error) {
       tab?.close();
       addToast({ variant: "error", title: `Couldn’t open ${file.name}`, description: opsErrorWords(error) });

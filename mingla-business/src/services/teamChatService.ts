@@ -13,6 +13,7 @@
 import { Linking, Platform } from "react-native";
 
 import { supabase } from "./supabase";
+import { openExternal } from "./guestFunnelLink";
 import { uploadStorageObject, type BrandGroupPickedFile } from "./brandGroupFilesService";
 import type { TeamBadge } from "../components/minglaTeam/teamBadge";
 
@@ -396,7 +397,8 @@ export function normalizeTeamLink(input: string): string | null {
 /** Open a URL outside the app: a new tab on web, the browser or system viewer on phones. */
 export async function openOutside(url: string): Promise<void> {
   if (Platform.OS === "web" && typeof window !== "undefined") {
-    window.open(url, "_blank", "noopener,noreferrer");
+    // ORCH-1381: new tabs open only through the one openExternal owner.
+    openExternal(url);
     return;
   }
   await Linking.openURL(url);

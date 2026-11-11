@@ -325,6 +325,12 @@
       ]
     },
     {
+      "source": "/team/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
       "source": "/trip/:path*",
       "headers": [
         { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
