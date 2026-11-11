@@ -24,8 +24,13 @@ import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
 import {
+  ACTIVE_TICKET_CAP,
+  CLOSED_PAGE_SIZE,
   OPENED_BY_OPTIONS,
   SUPPORT_INBOX_VIEWS,
+  coverageNote,
+  inboxViewCoverage,
+  railCountLabel,
   isActiveUnassignedTicket,
   originChip,
   supportInboxCounts,
@@ -272,6 +277,41 @@ describe("#4382 W2: the uploader's limits and metadata strip", () => {
 });
 
 // ── Composer ────────────────────────────────────────────────────────────────
+describe("#4382 W2: every active ticket loads; older ones page in (tester P3d)", () => {
+  it("work views cover all active tickets; Resolved and All say when they are partial", () => {
+    const loaded = { activeLoaded: 40, activeTotal: 40, closedLoaded: 300, closedTotal: 420 };
+    for (const view of ["needs", "mine", "unassigned", "overdue", "waiting"]) {
+      assert.deepEqual(inboxViewCoverage(loaded, view), { partial: false, loaded: 40, total: 40, canLoadOlder: false });
+    }
+    assert.deepEqual(inboxViewCoverage(loaded, "resolved"), { partial: true, loaded: 300, total: 420, canLoadOlder: true });
+    assert.deepEqual(inboxViewCoverage(loaded, "all"), { partial: true, loaded: 340, total: 460, canLoadOlder: true });
+    assert.equal(railCountLabel(12, true), "12+");
+    assert.equal(railCountLabel(12, false), "12");
+    assert.equal(coverageNote(inboxViewCoverage(loaded, "resolved")), "Showing the newest 300 of 420 tickets. Counts cover the loaded tickets only.");
+    assert.equal(coverageNote(inboxViewCoverage(loaded, "needs")), null);
+  });
+
+  it("past the active cap the work views say so too", () => {
+    const capped = { activeLoaded: ACTIVE_TICKET_CAP, activeTotal: ACTIVE_TICKET_CAP + 5, closedLoaded: 0, closedTotal: 0 };
+    assert.equal(inboxViewCoverage(capped, "needs").partial, true);
+    assert.equal(inboxViewCoverage(capped, "needs").canLoadOlder, false);
+    assert.match(coverageNote(inboxViewCoverage(capped, "needs")), /of 2005 tickets/);
+  });
+
+  it("the service loads active tickets with no 300 cap and pages resolved ones", () => {
+    const service = read("services/supportDeskService.js");
+    assert.equal(ACTIVE_TICKET_CAP, 2000);
+    assert.equal(CLOSED_PAGE_SIZE, 300);
+    assert.doesNotMatch(service, /\.limit\(300\)/);
+    assert.match(service, /\.in\("status", ACTIVE_TICKET_STATUSES\)\s*\.order\("last_message_at", \{ ascending: false \}\)\s*\.range\(0, ACTIVE_TICKET_CAP - 1\)/);
+    assert.match(service, /\.in\("status", DONE_TICKET_STATUSES\)\s*\.order\("last_message_at", \{ ascending: false \}\)\s*\.range\(0, Math\.max\(CLOSED_PAGE_SIZE, closedLimit\) - 1\)/);
+    const desk = read("pages/SupportDeskPage.jsx");
+    assert.match(desk, /listSupportTickets\(\{ closedLimit: closedLimitRef\.current \}\)/);
+    assert.match(desk, /railCountLabel\(inboxCounts\[option\.id\], inboxViewCoverage\(coverage, option\.id\)\.partial\)/);
+    assert.match(desk, /viewCoverage\.canLoadOlder \?[\s\S]*Load older/);
+  });
+});
+
 describe("#4382 W2: a file that never finished uploading", () => {
   it("support-send's attachment_not_uploaded refusal has its own plain message", () => {
     assert.match(read("services/supportDeskService.js"), /attachment_not_uploaded: "An image didn't finish uploading\. Remove it, add it again and send\.",/);

@@ -14,6 +14,12 @@ import {
 } from "../lib/supabase";
 import { extractFunctionError } from "../lib/edgeFunctionError";
 import { escapeLike } from "../lib/formatters";
+import {
+  ACTIVE_TICKET_CAP,
+  ACTIVE_TICKET_STATUSES,
+  CLOSED_PAGE_SIZE,
+  DONE_TICKET_STATUSES,
+} from "../lib/supportTicketMetrics";
 
 export const SUPPORT_ATTACHMENT_BUCKET = "support-attachments";
 export const SIGNED_URL_SECONDS = 60 * 60;
@@ -32,52 +38,87 @@ function unwrap(result, fallback) {
   return result.data;
 }
 
-/** The newest 300 tickets, plus counts of their images and voice notes. */
-export async function listSupportTickets() {
-  const tickets = unwrap(
-    await supabase
+const ID_CHUNK = 150; // keeps each `in.(...)` filter well under URL limits
+
+function chunks(values, size = ID_CHUNK) {
+  const out = [];
+  for (let i = 0; i < values.length; i += size) out.push(values.slice(i, i + size));
+  return out;
+}
+
+/**
+ * The inbox's tickets (#4382, tester P3d): EVERY active ticket (new, open,
+ * pending) up to ACTIVE_TICKET_CAP, so an old open ticket never drops out of
+ * the work views, plus the newest `closedLimit` resolved or closed tickets
+ * (pages of CLOSED_PAGE_SIZE, "Load older"). Returns the rows with their image
+ * and voice counts and the totals the page uses to say a view is partial:
+ * { tickets, coverage: { activeLoaded, activeTotal, closedLoaded, closedTotal } }.
+ */
+export async function listSupportTickets({ closedLimit = CLOSED_PAGE_SIZE } = {}) {
+  const [active, closed] = await Promise.all([
+    supabase
       .from("support_tickets")
-      .select(TICKET_COLUMNS)
+      .select(TICKET_COLUMNS, { count: "exact" })
+      .in("status", ACTIVE_TICKET_STATUSES)
       .order("last_message_at", { ascending: false })
-      .limit(300),
-    "Couldn't load the support inbox",
-  ) || [];
-  if (tickets.length === 0) return [];
-  const attachments = unwrap(
-    await supabase
-      .from("support_attachments")
-      .select("ticket_id, kind, duration_ms, message_id")
-      .in("ticket_id", tickets.map((ticket) => ticket.id))
-      .not("message_id", "is", null)
-      .limit(3000),
-    "Couldn't load ticket attachments",
-  ) || [];
+      .range(0, ACTIVE_TICKET_CAP - 1),
+    supabase
+      .from("support_tickets")
+      .select(TICKET_COLUMNS, { count: "exact" })
+      .in("status", DONE_TICKET_STATUSES)
+      .order("last_message_at", { ascending: false })
+      .range(0, Math.max(CLOSED_PAGE_SIZE, closedLimit) - 1),
+  ]);
+  const activeRows = unwrap(active, "Couldn't load the support inbox") || [];
+  const closedRows = unwrap(closed, "Couldn't load resolved tickets") || [];
+  const coverage = {
+    activeLoaded: activeRows.length,
+    activeTotal: typeof active.count === "number" ? active.count : activeRows.length,
+    closedLoaded: closedRows.length,
+    closedTotal: typeof closed.count === "number" ? closed.count : closedRows.length,
+  };
+  const tickets = [...activeRows, ...closedRows];
+  if (tickets.length === 0) return { tickets: [], coverage };
+
   const byTicket = new Map();
-  for (const row of attachments) {
-    const entry = byTicket.get(row.ticket_id) || { image_count: 0, voice_ms: 0 };
-    if (row.kind === "image") entry.image_count += 1;
-    if (row.kind === "audio") entry.voice_ms += Number(row.duration_ms || 0);
-    byTicket.set(row.ticket_id, entry);
+  for (const ids of chunks(tickets.map((ticket) => ticket.id))) {
+    const attachments = unwrap(
+      await supabase
+        .from("support_attachments")
+        .select("ticket_id, kind, duration_ms, message_id")
+        .in("ticket_id", ids)
+        .not("message_id", "is", null)
+        .limit(5000),
+      "Couldn't load ticket attachments",
+    ) || [];
+    for (const row of attachments) {
+      const entry = byTicket.get(row.ticket_id) || { image_count: 0, voice_ms: 0 };
+      if (row.kind === "image") entry.image_count += 1;
+      if (row.kind === "audio") entry.voice_ms += Number(row.duration_ms || 0);
+      byTicket.set(row.ticket_id, entry);
+    }
   }
-  return tickets.map((ticket) => ({
-    ...ticket,
-    image_count: byTicket.get(ticket.id)?.image_count || 0,
-    voice_ms: byTicket.get(ticket.id)?.voice_ms || 0,
-  }));
+  return {
+    tickets: tickets.map((ticket) => ({
+      ...ticket,
+      image_count: byTicket.get(ticket.id)?.image_count || 0,
+      voice_ms: byTicket.get(ticket.id)?.voice_ms || 0,
+    })),
+    coverage,
+  };
 }
 
 /** Profiles (with segment) and every brand name, for the rows and filters. */
 export async function loadInboxLookups(userIds) {
-  const [profiles, brands] = await Promise.all([
-    userIds.length
-      ? supabase
-          .from("profiles_with_segment")
-          .select("id, display_name, username, email, avatar_url, segment")
-          .in("id", userIds)
-      : Promise.resolve({ data: [], error: null }),
+  const [profilePages, brands] = await Promise.all([
+    Promise.all(chunks(userIds).map((ids) =>
+      supabase
+        .from("profiles_with_segment")
+        .select("id, display_name, username, email, avatar_url, segment")
+        .in("id", ids))),
     supabase.from("brands").select("id, name").is("deleted_at", null).order("name", { ascending: true }).limit(2000),
   ]);
-  const profileRows = unwrap(profiles, "Couldn't load people") || [];
+  const profileRows = profilePages.flatMap((page) => unwrap(page, "Couldn't load people") || []);
   const brandRows = unwrap(brands, "Couldn't load brands") || [];
   return {
     profilesById: Object.fromEntries(profileRows.map((row) => [row.id, row])),

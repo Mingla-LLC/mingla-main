@@ -51,6 +51,10 @@ import {
   supportInboxRows,
   ticketNumberLabel,
   waitLabel,
+  CLOSED_PAGE_SIZE,
+  coverageNote,
+  inboxViewCoverage,
+  railCountLabel,
 } from "../lib/supportTicketMetrics";
 
 // #3988 — Support access is granted in People and roles, not from this desk.
@@ -130,6 +134,11 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true, onCo
   const [staffRoster, setStaffRoster] = useState([]);
   const [queueLoading, setQueueLoading] = useState(true);
   const [queueError, setQueueError] = useState(null);
+  // #4382 (tester P3d): every active ticket loads; resolved/closed load in
+  // pages. The ref keeps realtime reloads at the depth already loaded.
+  const [coverage, setCoverage] = useState({ activeLoaded: 0, activeTotal: 0, closedLoaded: 0, closedTotal: 0 });
+  const closedLimitRef = useRef(CLOSED_PAGE_SIZE);
+  const [loadingOlder, setLoadingOlder] = useState(false);
 
   const [view, setView] = useState(SUPPORT_INBOX_VIEWS[0].id);
   const [openedBy, setOpenedBy] = useState("all");
@@ -143,8 +152,8 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true, onCo
   const loadQueue = useCallback(async () => {
     setQueueError(null);
     try {
-      const [rows, signalRows, roster] = await Promise.all([
-        listSupportTickets(),
+      const [{ tickets: rows, coverage: loadedCoverage }, signalRows, roster] = await Promise.all([
+        listSupportTickets({ closedLimit: closedLimitRef.current }),
         listProductSignals(),
         listSupportStaffRoster(),
       ]);
@@ -152,6 +161,7 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true, onCo
       const lookups = await loadInboxLookups(userIds);
       if (!mountedRef.current) return;
       setTickets(rows);
+      setCoverage(loadedCoverage);
       setSignals(signalRows);
       setStaffRoster((roster || []).filter((row) => row.enabled));
       setProfilesById(lookups.profilesById);
@@ -164,6 +174,16 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true, onCo
       if (mountedRef.current) setQueueLoading(false);
     }
   }, [addToast]);
+
+  const loadOlder = useCallback(async () => {
+    closedLimitRef.current += CLOSED_PAGE_SIZE;
+    setLoadingOlder(true);
+    try {
+      await loadQueue();
+    } finally {
+      if (mountedRef.current) setLoadingOlder(false);
+    }
+  }, [loadQueue]);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- load on open, like the other admin pages
   useEffect(() => { void loadQueue(); }, [loadQueue]);
@@ -306,6 +326,8 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true, onCo
     </>
   );
   const currentView = SUPPORT_INBOX_VIEWS.find((v) => v.id === view) || SUPPORT_INBOX_VIEWS[0];
+  const viewCoverage = inboxViewCoverage(coverage, view);
+  const partialNote = coverageNote(viewCoverage);
   const customerRows = visibleTickets.filter((t) => t.origin !== "staff").length;
 
   return (
@@ -361,7 +383,7 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true, onCo
                   className={`flex min-h-9 shrink-0 items-center justify-between gap-3 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium ${view === option.id ? "bg-[var(--color-brand-500)] text-white" : "text-[var(--color-text-secondary)] hover:bg-[var(--gray-100)]"}`}
                 >
                   <span>{option.label}</span>
-                  <span className={`text-xs tabular-nums ${view === option.id ? "text-white/90" : "text-[var(--color-text-tertiary)]"}`}>{queueLoading || queueError ? "–" : inboxCounts[option.id]}</span>
+                  <span className={`text-xs tabular-nums ${view === option.id ? "text-white/90" : "text-[var(--color-text-tertiary)]"}`}>{queueLoading || queueError ? "–" : railCountLabel(inboxCounts[option.id], inboxViewCoverage(coverage, option.id).partial)}</span>
                 </button>
               ))}
             </div>
@@ -374,6 +396,14 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true, onCo
             <span>{customerRows} from customers</span>
             <span>{visibleTickets.length - customerRows} from staff</span>
           </div>
+          {!queueLoading && !queueError && partialNote ? (
+            <div role="status" className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--gray-200)] bg-[var(--gray-50)] px-4 py-2 text-xs text-[var(--color-text-secondary)]">
+              <span>{partialNote}</span>
+              {viewCoverage.canLoadOlder ? (
+                <Button size="sm" variant="secondary" loading={loadingOlder} disabled={loadingOlder} onClick={() => void loadOlder()}>Load older</Button>
+              ) : null}
+            </div>
+          ) : null}
           {queueLoading ? (
             <div className="flex justify-center py-12"><Spinner /></div>
           ) : queueError ? (

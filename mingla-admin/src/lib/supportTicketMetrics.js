@@ -205,3 +205,54 @@ export function waitLabel(ticket, nowMs = Date.now()) {
   if (hours < 24 * 60) return `${Math.round(hours / 24)}d`;
   return `${Math.round(hours / 24 / 30)}mo`;
 }
+
+// ── How much of each view is loaded ─────────────────────────────────────────
+// The inbox loads EVERY active ticket (new, open, pending) up to
+// ACTIVE_TICKET_CAP, so an old open ticket never drops out of the work views,
+// and loads resolved/closed tickets newest first in pages of CLOSED_PAGE_SIZE
+// ("Load older"). Counts are always the loaded rows; when a view holds more
+// than is loaded the rail and the list say so.
+//
+// MINGLA-INVARIANT: I-4382-INBOX-ACTIVE-NEVER-PAGED-OUT | issue #4382 | Every active support ticket is loaded into the Admin inbox (up to 2000, with a visible "showing N of M" note beyond that); only resolved and closed tickets are paged, and a partial view says it is partial.
+export const ACTIVE_TICKET_STATUSES = Object.freeze([...ACTIVE_SUPPORT_STATUSES]);
+export const DONE_TICKET_STATUSES = Object.freeze([...DONE_SUPPORT_STATUSES]);
+export const ACTIVE_TICKET_CAP = 2000;
+export const CLOSED_PAGE_SIZE = 300;
+
+const WORK_VIEWS = new Set(["needs", "mine", "unassigned", "overdue", "waiting"]);
+
+/**
+ * { partial, loaded, total, canLoadOlder } for a view, from the load's
+ * totals { activeLoaded, activeTotal, closedLoaded, closedTotal }.
+ */
+export function inboxViewCoverage(coverage, viewId) {
+  const activeLoaded = Number(coverage?.activeLoaded || 0);
+  const activeTotal = Math.max(activeLoaded, Number(coverage?.activeTotal || 0));
+  const closedLoaded = Number(coverage?.closedLoaded || 0);
+  const closedTotal = Math.max(closedLoaded, Number(coverage?.closedTotal || 0));
+  const activeShort = activeTotal > activeLoaded;
+  const closedShort = closedTotal > closedLoaded;
+  if (WORK_VIEWS.has(viewId)) {
+    return { partial: activeShort, loaded: activeLoaded, total: activeTotal, canLoadOlder: false };
+  }
+  if (viewId === "resolved") {
+    return { partial: closedShort, loaded: closedLoaded, total: closedTotal, canLoadOlder: closedShort };
+  }
+  return {
+    partial: activeShort || closedShort,
+    loaded: activeLoaded + closedLoaded,
+    total: activeTotal + closedTotal,
+    canLoadOlder: closedShort,
+  };
+}
+
+/** The rail count: the loaded rows, with "+" when the view holds more. */
+export function railCountLabel(count, partial) {
+  return partial ? `${count}+` : String(count);
+}
+
+/** The note above a partial list, or null. */
+export function coverageNote(viewCoverage) {
+  if (!viewCoverage?.partial) return null;
+  return `Showing the newest ${viewCoverage.loaded} of ${viewCoverage.total} tickets. Counts cover the loaded tickets only.`;
+}
