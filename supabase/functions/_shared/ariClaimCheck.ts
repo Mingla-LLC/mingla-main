@@ -673,6 +673,48 @@ export interface ClaimContext {
   chatObjects?: readonly string[];
   /** The host asked for a write this turn. */
   askedWriteThisTurn?: boolean;
+  /** This turn's host message (a status question is a follow-up). */
+  hostMessage?: string;
+}
+
+/**
+ * A host status question about what already happened ("Did it go
+ * through?", "Is it live?", "Has my request been sent?"): a follow-up on the
+ * card the chat just confirmed, never a request for a new write, even when
+ * the intent read calls it one.
+ */
+const STATUS_QUESTION =
+  /^\s*(?:(?:so|and|ok(?:ay)?|hey|wait)\b[\s,]*)?(?:did|has|have|is|was|were|are|does|do)\b[^?]*\?\s*$/i;
+
+export function isStatusQuestion(text: string): boolean {
+  return STATUS_QUESTION.test(text.trim());
+}
+
+/**
+ * Codes the quote lists together as one subject ("FAVY10 and GIRLS20 are
+ * both live", "FAVY10, GIRLS20 & LAGOS5"): each must be backed, even when
+ * the judge named only the first.
+ */
+function codesListedTogether(
+  quote: string,
+  chatObjects: readonly string[],
+): string[] {
+  const codes = codesInObject(quote, chatObjects);
+  if (codes.length < 2) return [];
+  const listed = new Set<string>();
+  const pattern = new RegExp(
+    `(${
+      codes.join("|")
+    })\\W{0,3}\\s*(?:,|&|\\+|\\band\\b|\\bplus\\b)\\s*\\W{0,3}(${
+      codes.join("|")
+    })`,
+    "gi",
+  );
+  for (const match of quote.matchAll(pattern)) {
+    listed.add(match[1].toUpperCase());
+    listed.add(match[2].toUpperCase());
+  }
+  return [...listed];
 }
 
 /**
@@ -747,6 +789,8 @@ export function judgeClaim(
   context: ClaimContext = {},
 ): ClaimJudgement {
   const kinds = claimKinds(claim);
+  const together = codesListedTogether(claim.quote, context.chatObjects ?? []);
+  if (together.length > 1) return judgeEach(claim, together, evidence);
   if (claim.object) {
     const whole = evidence.filter((item) =>
       objectsMatch(claim.object as string, item.objects)
@@ -774,7 +818,10 @@ export function judgeClaim(
     item.thisTurn && kinds.has(item.kind)
   );
   if (thisTurn.length > 0) return decide(claim, thisTurn, null);
-  if (context.askedWriteThisTurn) {
+  if (
+    context.askedWriteThisTurn &&
+    !isStatusQuestion(context.hostMessage ?? "")
+  ) {
     return { backed: false, found: null, object: null };
   }
   const cards = evidence.filter((item) =>
@@ -1271,6 +1318,7 @@ export async function checkReplyClaims(args: {
     hostNamed: hostNamedCodes(args.hostMessage, args.objects),
     chatObjects: args.objects,
     askedWriteThisTurn: args.askedWriteThisTurn,
+    hostMessage: args.hostMessage,
   };
   let evidence = args.evidence;
   let absence: ClaimAbsence = NO_ABSENCE;

@@ -233,6 +233,82 @@ Deno.test("R4-1: a follow-up 'did it go through?' is backed by the confirmed car
   assert(!/has been sent/.test(waiting.text), waiting.text);
 });
 
+Deno.test("R4-1 (live run 8): codes listed together in the quote are each checked, even when the judge names only one", async () => {
+  const reply =
+    "FAVY10 and GIRLS20 are both live now, so guests can use either at checkout.";
+  const out = await check({
+    host: "Make FAVY10 10% off and GIRLS20 20% off",
+    reply,
+    states: [state("executed", "FAVY10")],
+    objects: ["FAVY10", "GIRLS20"],
+    askedKinds: ["discount"],
+    claims: [{
+      quote: reply,
+      action: "live",
+      object: "FAVY10",
+      kind: "discount",
+    }],
+  });
+  assert(!/both live/.test(out.text), out.text);
+  // A code mentioned beside, not listed with, the claimed one is not pulled in.
+  const single = await check({
+    host: "Is FAVY10 live? GIRLS20 can wait",
+    reply: "FAVY10 is live. GIRLS20 is waiting for your Confirm.",
+    states: [state("executed", "FAVY10"), state("pending", "GIRLS20")],
+    objects: ["FAVY10", "GIRLS20"],
+    intent: "question",
+    asked: false,
+    claims: [{
+      quote: "FAVY10 is live.",
+      action: "live",
+      object: "FAVY10",
+      kind: "discount",
+    }],
+  });
+  assertEquals(
+    single.text,
+    "FAVY10 is live. GIRLS20 is waiting for your Confirm.",
+  );
+});
+
+Deno.test("R4-1 (live run 7): 'Did it go through?' read as a write turn still follows the confirmed card", async () => {
+  const reply =
+    "Your request has been sent to the team. They usually reply within a day.";
+  const ticket: WriteState = {
+    actionId: "t1",
+    toolName: "create_support_ticket",
+    status: "executed",
+    object: "Payout missing",
+    args: { subject: "Payout missing" },
+    receiptText: null,
+  };
+  const claims: AriClaim[] = [{
+    quote: "Your request has been sent to the team.",
+    action: "sent",
+    object: "your request",
+    kind: "support",
+  }];
+  const out = await check({
+    host: "Did it go through?",
+    reply,
+    intent: "tool",
+    asked: true,
+    askedKinds: ["support"],
+    states: [ticket],
+    claims,
+  });
+  assertEquals(out.text, reply);
+  // A new request this turn still needs this turn's record.
+  const fresh = await check({
+    host: "Open another ticket: my event page won't load",
+    reply,
+    askedKinds: ["support"],
+    states: [ticket],
+    claims,
+  });
+  assert(!/has been sent/.test(fresh.text), fresh.text);
+});
+
 Deno.test("R4-1: exact identity only — no substring or paraphrase match", () => {
   assert(objectsMatch("FAVY10", ["favy10"]));
   assert(objectsMatch('"Lagos Food Fest"', ["Lagos Food Fest"]));
