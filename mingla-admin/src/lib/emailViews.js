@@ -13,6 +13,7 @@ import { AREA } from "./access.js";
 
 export const EMAIL_VIEWS = Object.freeze([
   Object.freeze({ id: "write", label: "Write" }),
+  Object.freeze({ id: "scheduled", label: "Scheduled" }),
   Object.freeze({ id: "sent", label: "Sent" }),
   Object.freeze({ id: "templates", label: "Templates" }),
   Object.freeze({ id: "unsubscribes", label: "Unsubscribes" }),

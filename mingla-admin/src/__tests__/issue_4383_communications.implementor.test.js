@@ -267,13 +267,15 @@ describe("C-6 the Email screen's sections", () => {
   const admin = { status: "active", role: "admin", areas: [AREA.ADMIN_CONSOLE] };
   const teammate = { status: "active", role: "growth", areas: [AREA.EMAIL_DRAFTS] };
   it("admins see Sent and Unsubscribes; teammates do not", () => {
-    assert.deepEqual(emailViewsFor(admin).map((v) => v.id), ["write", "sent", "templates", "unsubscribes"]);
-    assert.deepEqual(emailViewsFor(teammate).map((v) => v.id), ["write", "templates"]);
+    assert.deepEqual(emailViewsFor(admin).map((v) => v.id), ["write", "scheduled", "sent", "templates", "unsubscribes"]);
+    // #4383 (SC-10): every teammate who writes email sees Scheduled.
+    assert.deepEqual(emailViewsFor(teammate).map((v) => v.id), ["write", "scheduled", "templates"]);
   });
   it("the section is read from and written to the address", () => {
     assert.equal(emailViewFromHash("#/email", emailViewsFor(admin)), "write");
     assert.equal(emailViewFromHash("#/email?view=sent", emailViewsFor(admin)), "sent");
     assert.equal(emailViewFromHash("#/email?view=sent", emailViewsFor(teammate)), "write", "an admin-only section falls back");
+    assert.equal(emailViewFromHash("#/email?view=scheduled", emailViewsFor(teammate)), "scheduled");
     assert.equal(emailViewFromHash("#/email?view=history", emailViewsFor(admin)), "sent", "the old History id");
     assert.equal(emailViewFromHash("#/email?view=send", emailViewsFor(admin)), "write", "the old Send id");
     assert.equal(emailViewFromHash("#/email?view=__proto__", emailViewsFor(admin)), "write");
@@ -364,5 +366,24 @@ describe("C-9 the screens and the server", () => {
   it("Review shows To, Apps, Opens and When before anything sends", () => {
     const push = read("pages/communications/PushPage.jsx");
     for (const term of [">To<", ">Apps<", ">Opens<", ">When<", "Send test to me", "Review and send", "Review and schedule"]) assert.ok(push.includes(term), term);
+  });
+});
+
+describe("C-10 scheduled emails (Wave 3)", () => {
+  const PAGE = read("pages/EmailPage.jsx");
+  const COMPOSER = read("components/email/EmailComposer.jsx");
+  it("the Scheduled section lists every scheduled email with Change time, Edit and Cancel", () => {
+    assert.match(PAGE, /activeSubTab === "scheduled" && \(\s*<ScheduledSubView/);
+    assert.match(PAGE, /await listScheduledEmails\(\)/);
+    for (const action of ["reschedule_campaign", "get_scheduled_campaign", "cancel_campaign"]) assert.ok(PAGE.includes(`action: "${action}"`), action);
+    for (const words of ["Change time", ">Edit<", ">Cancel<", "Started sending", "(counted ", "To change who gets it, cancel and write a new email."]) assert.ok(PAGE.includes(words), words);
+    assert.match(PAGE, /const check = checkLaterTime\(moving\.later\);/);
+    assert.match(PAGE, /<LoadError title="Couldn't load scheduled emails"/);
+  });
+  it("the composer's edit mode changes only the words, through update_scheduled_campaign", () => {
+    assert.match(COMPOSER, /editingCampaign = null, onEditingDone = null/);
+    assert.match(COMPOSER, /action: "update_scheduled_campaign",/);
+    assert.match(COMPOSER, /if \(editingCampaign\) return;\n\s+const legacy = legacyDraftToMigrate/);
+    assert.match(COMPOSER, /The audience was counted when this email was scheduled and stays the same\./);
   });
 });
