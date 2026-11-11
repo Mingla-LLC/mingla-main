@@ -128,12 +128,16 @@ const CLASSIFIED: Record<string, Row> = {
   'https://tiktok.com': { verdict: 'navigation', why: 'social link' },
   'https://www.tiktok.com': { verdict: 'navigation', why: 'social link' },
   'https://threads.net': { verdict: 'navigation', why: 'social link' },
+  // [TEST-MOD-APPROVED #4255] Mingla team (staff only): "Open in Mingla Admin" opens a card in Admin as a top-level navigation via openExternal.
+  'https://admin.usemingla.com': { verdict: 'navigation', why: 'Mingla team mention row: Open in Mingla Admin (new tab / browser), never fetched' },
   'https://linkedin.com': { verdict: 'navigation', why: 'social link' },
   'https://youtube.com': { verdict: 'navigation', why: 'social link' },
 
   // --- never fetched ---
   'https://fonts.gstatic.com': { verdict: 'inert', why: '@expo-google-fonts metadata objects (`files:{400:"…ttf"}`). The faces actually load from the bundle: the export carries the .ttf files under /assets and useThemeFont calls Font.loadAsync with the imported module, so font-src \'self\' is what is exercised.' },
   [POSTHOG_LEGACY_ORIGIN]: { verdict: 'inert', why: "posthog-js's built-in region default plus a support-link string; the app passes api_host explicitly, pinned to the US host by I-PROPOSED-1187" },
+  // [TEST-MOD-APPROVED #4255] Placeholder text in the add-link field (team chat and Brand group media locales); never fetched.
+  'https://drive.google.com': { verdict: 'inert', why: 'example link shown as the add-link input placeholder in team chat and Brand group media' },
   'https://us.posthog.com': { verdict: 'inert', why: "posthog-js's internal region mapping for its own legacy default host (see POSTHOG_LEGACY_ORIGIN above)" },
   'https://posthog.com': { verdict: 'inert', why: 'posthog-js documentation strings' },
   'https://browser.sentry-cdn.com': { verdict: 'inert', why: "Sentry's lazy CDN loader default, used only when a cdnBaseUrl option is set; the app bundles the SDK instead" },

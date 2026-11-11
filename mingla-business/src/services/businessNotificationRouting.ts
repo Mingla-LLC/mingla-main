@@ -31,6 +31,14 @@
  *
  * #2829 W9r adds the Website sub:
  *   mingla-business://brand/{brandId}/website/{section}  site_admin_requested
+ *
+ * #4255 W5 adds Mingla team (staff only; the team screens show a host who is
+ * not staff "This space is for the Mingla team"):
+ *   mingla-business://team/{threadId}         business.team_message / team chat mentions
+ *                                             -> /team?thread={threadId}
+ *   mingla-business://team/mention/{id}       business.team_mention / team_decision /
+ *                                             team_due (#4255 rework: the 09:00 notice)
+ *                                             -> /team?tab=mentions&mention={id}
  */
 
 import { useRouter } from "expo-router";
@@ -147,6 +155,11 @@ export function parseBusinessDeepLink(
       const ticketId = rest[0];
       return ticketId ? `/support/${ticketId}` : null;
     }
+    // #4255 W5 — a team chat, an Admin item on Mentions, or Mingla team.
+    case "team":
+      return rest[0] === "mention"
+        ? `/team?tab=mentions${UUID_RE.test(rest[1] ?? "") ? `&mention=${rest[1]}` : ""}`
+        : `/team${UUID_RE.test(rest[0] ?? "") ? `?thread=${rest[0]}` : ""}`;
     case "messages": {
       const conversationId = rest[0];
       return conversationId ? `/messages/${conversationId}` : "/messages";
