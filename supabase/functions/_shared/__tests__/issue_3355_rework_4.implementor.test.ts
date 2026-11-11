@@ -254,6 +254,32 @@ Deno.test("R4-2: an older unrelated note or ticket never backs a save / send cla
     }],
   });
   assert(!/has been sent/.test(ticket.text), ticket.text);
+  // A follow-up question (no new write asked): a record read outside the
+  // chat is still never "the latest card" a claim can lean on.
+  const question = await check({
+    host: "Did you save my note about the doors?",
+    reply: "Yes, I've saved your note about the doors.",
+    intent: "question",
+    asked: false,
+    more: () =>
+      Promise.resolve([
+        {
+          status: "done",
+          kind: "note",
+          toolName: "remember_note",
+          objects: ["Our bar closes at 2am on Fridays"],
+          state: null,
+          thisTurn: false,
+        } satisfies ClaimEvidence,
+      ]),
+    claims: [{
+      quote: "Yes, I've saved your note about the doors.",
+      action: "saved",
+      object: "your note about the doors",
+      kind: "note",
+    }],
+  });
+  assert(!/I've saved/.test(question.text), question.text);
 });
 
 Deno.test("R4-2: the SAME note (exact text) read for this conversation backs the claim; this turn's remember_note backs a paraphrase", async () => {
