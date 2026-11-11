@@ -213,6 +213,12 @@ import {
 import type { FlowArtefact } from "../_shared/ariFlows/types.ts";
 import { honestLoopStopText } from "../_shared/ariFlows/honestCopy.ts";
 import {
+  claimEvidenceFromHistory,
+  guardWriteClaims,
+  ownerMessagesForProposal,
+  preserveStatedSlots,
+} from "../_shared/ariTruthGuards.ts";
+import {
   buildWebsiteSetupPresentation,
   buildWebsiteSetupReply,
   buildWebsiteSetupRetryPresentation,
@@ -3606,6 +3612,37 @@ ${boundedAgentContext}
             userClient,
             userId,
           );
+          // #3355 Wave A (A6, I-ARI-STATED-SLOTS-PRESERVED): what the host
+          // stated (code, %, end date, limits) reaches the card, or Ari asks.
+          proposalStage = "stated_slots";
+          const statedSlots = await preserveStatedSlots({
+            toolName: tool.name,
+            toolArgs: loopResult.toolCall.args,
+            parameters: tool.parameters,
+            ownerMessages: ownerMessagesForProposal({
+              history,
+              toolName: tool.name,
+              current: semanticMessage,
+            }),
+            userClient,
+          });
+          if (statedSlots.kind === "ask") {
+            return await commitTextTurn({
+              client: serviceClient,
+              userId,
+              conversationId,
+              clientTurnId: body.client_turn_id,
+              previousState: taskState,
+              nextState: taskState,
+              expectedRevision: taskStateRevision,
+              previousSummary: conversationSummary,
+              text: statedSlots.text,
+              classification: "stated_slot_ask",
+              startedAt: turnStartedAt,
+              ...(flowParked ? { flowState: flowParked.state } : {}),
+            });
+          }
+          loopResult.toolCall.args = statedSlots.args;
           proposalStage = "authorize";
           await authorizeAgentTool(
             tool,
@@ -3808,9 +3845,24 @@ ${boundedAgentContext}
         researchExpected: usedResearch,
         hasSources,
       });
-      const safeLoopText = copyLint.ok
+      const lintedLoopText = copyLint.ok
         ? publicLoopText
         : safeAriCopyFallback(copyLint.violations);
+      // #3355 Wave A (A6, I-ARI-CLAIM-MATCHES-RECEIPT): this path carries no
+      // pending action, so a claimed write needs a receipt or proposal in
+      // the chat for what it names; otherwise the reply says the true state.
+      const claimGuard = guardWriteClaims({
+        text: lintedLoopText,
+        pendingThisTurn: false,
+        evidence: claimEvidenceFromHistory(history),
+      });
+      if (claimGuard.rewritten) {
+        console.warn(
+          "[agent-chat] unbacked write claim rewritten",
+          JSON.stringify({ count: claimGuard.unsupported.length }),
+        );
+      }
+      const safeLoopText = claimGuard.text;
       const resumedState = interruptionState.status === "interrupted"
         ? resumeInterruption(interruptionState)
         : taskState;
