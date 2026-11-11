@@ -9,6 +9,7 @@
  * or the web page losing ConnectAccountOnboarding fails block 5.
  */
 import fs from "fs";
+import React from "react";
 import path from "path";
 
 import {
@@ -145,6 +146,28 @@ describe("#4389 S-11 — 5. Host web keeps the web component; native mirrors its
       fields: "eventually_due",
       futureRequirements: "include",
     });
+  });
+  test("the web/tsc stub, rendered, draws nothing and never reports the native module", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const TestRenderer = require("react-test-renderer") as {
+      create(el: React.ReactElement): { toJSON(): unknown; unmount(): void };
+      act(cb: () => void | Promise<void>): Promise<void>;
+    };
+    const stub = await import("../ConnectOnboardingNative");
+    let tree!: { toJSON(): unknown; unmount(): void };
+    await TestRenderer.act(async () => {
+      tree = TestRenderer.create(
+        React.createElement(stub.ConnectOnboardingNative, {
+          brandId: "b",
+          clientSecret: "s",
+          onExit: () => undefined,
+          onLoadError: () => undefined,
+        }),
+      );
+    });
+    expect(tree.toJSON()).toBeNull();
+    expect(stub.isNativeConnectModuleAvailable()).toBe(false);
+    tree.unmount();
   });
   test("the web/tsc stub never imports the native SDK and is never available", () => {
     const stub = stripComments(read("src/components/stripe/ConnectOnboardingNative.tsx"));

@@ -152,6 +152,8 @@ describe("META-ORCH-1232 H1 — persistent retryable brand-write error", () => {
     // never clears the typed name.
     expect(nameStep).toContain("onSuccess: (r) => onCreated(r.brandId),");
     const onError = nameStep.slice(nameStep.indexOf("onError: (e) =>"), nameStep.indexOf("// \"Try again\""));
+    expect(onError.length).toBeGreaterThan(40);
+    expect(onError.length).toBeLessThan(800);
     expect(onError).not.toContain("onCreated");
     expect(onError).not.toContain("setName(");
   });
