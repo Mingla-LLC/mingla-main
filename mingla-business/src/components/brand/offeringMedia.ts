@@ -7,7 +7,9 @@
  * requires; a plain node test run (no asset transform) gets null and the row
  * draws without media instead of failing to load the module.
  */
-import type { OfferingKind } from "./OfferingChooser";
+// The same five kinds as OfferingChooser's OfferingKind, spelled here so this
+// module does not import the chooser back (I-PROPOSED-K require cycle).
+type OfferingKind = "event" | "trip" | "experience" | "rsvp" | "venue";
 
 export type OfferingMedia = { video: number; poster: number };
 

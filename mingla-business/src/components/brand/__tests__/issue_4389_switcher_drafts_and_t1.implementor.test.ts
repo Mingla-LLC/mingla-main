@@ -2,7 +2,8 @@
  * #4389 N1 up front, N3 switcher draft rows, and S-i (Tap to Pay with no
  * usable address opens T1).
  */
-import { describe, expect, test } from "@jest/globals";
+import { describe, expect, jest, test } from "@jest/globals";
+import React from "react";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -10,6 +11,23 @@ import { brandSetupRowState } from "../../../hooks/useBrandSetupStates";
 import type { BrandSetupChecklist } from "../../../services/brandSetupService";
 import { BRAND_SETUP_COPY } from "../brandSetupCopy";
 import { TAP_ADDRESS_MISSING_COPY } from "../../../constants/tapToPayCopy";
+
+jest.mock("../../ui/Icon", () => ({ Icon: () => null }));
+jest.mock("../../ui/Button", () => {
+  const R = jest.requireActual("react") as typeof React;
+  const RN = jest.requireActual("react-native") as typeof import("react-native");
+  return {
+    Button: (p: { label: string; onPress: () => void; testID?: string }) =>
+      R.createElement(RN.Pressable, { testID: p.testID, accessibilityLabel: p.label, onPress: p.onPress }),
+  };
+});
+jest.mock("../../../hooks/useMotionPreferences", () => ({ useReduceMotion: () => true }));
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const TestRenderer = require("react-test-renderer") as {
+  create(el: React.ReactElement): { root: { findAll(p: (n: { props: Record<string, unknown>; type: unknown }) => boolean): Array<{ props: Record<string, unknown>; type: unknown }> }; unmount(): void };
+  act(cb: () => void): void;
+};
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const BIZ = path.join(__dirname, "../../../..");
 const read = (rel: string): string => fs.readFileSync(path.join(BIZ, rel), "utf8");
@@ -65,5 +83,26 @@ describe("#4389 S-i Tap to Pay with no usable address", () => {
     expect(view).toContain('testID: "tap-add-address"');
     expect(read("src/services/terminal/tapToPaySetup.ts")).toContain("/tap-to-pay/address`");
     expect(fs.existsSync(path.join(BIZ, "app/brand/[id]/tap-to-pay/address.tsx"))).toBe(true);
+  });
+});
+
+describe("#4389 S-i rendered: the T1 entry", () => {
+  test("TapAddressMissing shows the words and Add address calls back", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { TapAddressMissing } = require("../../door/tap/TapStatusView") as typeof import("../../door/tap/TapStatusView");
+    const onAdd = jest.fn();
+    let r!: ReturnType<typeof TestRenderer.create>;
+    TestRenderer.act(() => {
+      r = TestRenderer.create(React.createElement(TapAddressMissing, { onAddAddress: onAdd }));
+    });
+    const texts = r.root
+      .findAll((n) => typeof n.type === "string" && /Text/.test(n.type as string))
+      .map((n) => n.props.children)
+      .filter((c): c is string => typeof c === "string");
+    expect(texts).toContain(TAP_ADDRESS_MISSING_COPY);
+    const add = r.root.findAll((n) => n.props.testID === "tap-add-address" && typeof n.props.onPress === "function")[0];
+    TestRenderer.act(() => (add?.props.onPress as () => void)());
+    expect(onAdd).toHaveBeenCalledTimes(1);
+    r.unmount();
   });
 });

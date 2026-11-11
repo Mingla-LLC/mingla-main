@@ -294,7 +294,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
         </View>
       ) : null}
       {resumeBanner && brandId !== null && step !== "name" ? (
-        <Pressable style={[styles.banner, styles.bannerAccent]} onPress={() => setResumeBanner(false)} accessibilityRole="button">
+        <Pressable style={[styles.banner, styles.bannerAccent]} onPress={() => setResumeBanner(false)} accessibilityRole="button" accessibilityLabel={C.common.resume(C.stepNames[step])}>
           <Text style={styles.bannerText}>{C.common.resume(C.stepNames[step])}</Text>
         </Pressable>
       ) : null}
@@ -398,8 +398,10 @@ const NameStep: React.FC<{
   const [signingOut, setSigningOut] = useState(false);
   const { signOut } = useAuth();
   const create = useCreateSetupBrand();
+  // Once "Sign in" keeps the name, leaving is not a discard.
+  const keptForSignInRef = useRef(false);
   useEffect(() => {
-    onNameChange(name, create.isPending);
+    onNameChange(keptForSignInRef.current ? "" : name, create.isPending);
   }, [name, create.isPending, onNameChange]);
   const trimmed = name.trim();
   const tooLong = trimmed.length > 60;
@@ -463,6 +465,7 @@ const NameStep: React.FC<{
         onSignIn={() => {
           // The typed name is kept for the next F1 (design F1:expired).
           keepBrandNameForSignIn(trimmed);
+          keptForSignInRef.current = true;
           onNameChange("", false);
           setSigningOut(true);
           void signOut({ scope: "local" })
@@ -663,6 +666,7 @@ const PayStep: React.FC<{
         <Pressable
           testID="brand-setup-terms"
           accessibilityRole="checkbox"
+          accessibilityLabel={C.f3.terms}
           accessibilityState={{ checked: ticked }}
           onPress={() => setTicked((v) => !v)}
           style={styles.card}
