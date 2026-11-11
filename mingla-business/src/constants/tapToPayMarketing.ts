@@ -18,8 +18,8 @@
  *   3. Update the B10 check in
  *      src/services/terminal/__tests__/issue_4271_apple_requirements.implementor.test.ts,
  *      which pins this to null until the toolkit lands.
- * The modal then shows once per user and device, on iPhone and Android alike, only
- * to a brand owner or admin (tapToPayMayAcceptTerms) on a live, eligible brand.
+ * The modal then shows once per user and device, on iPhone only (never Android),
+ * only to a brand owner or admin (tapToPayMayAcceptTerms) on a live, eligible brand.
  */
 export interface TapToPayAwarenessAssets {
   /** The result of require() on the toolkit image. */

@@ -355,6 +355,13 @@ describe("G2 only someone who may accept Apple's terms sees the splash", () => {
     expect(await shown(BRAND_ROLE_RANK.brand_owner)).toBe(true);
   });
 
+  test("iPhone only: Android renders nothing even with assets and an owner; iPhone renders", async () => {
+    withOs("android", "34");
+    expect(await shown(BRAND_ROLE_RANK.brand_owner)).toBe(false);
+    withOs("ios", "18.1");
+    expect(await shown(BRAND_ROLE_RANK.brand_owner)).toBe(true);
+  });
+
   test("setup and the splash both use the shared rule and restate no rank", () => {
     for (const rel of ["src/components/door/tap/TapToPaySetupScreen.tsx", "src/components/door/tap/TapToPayAwarenessModal.tsx"]) {
       const code = read(rel);

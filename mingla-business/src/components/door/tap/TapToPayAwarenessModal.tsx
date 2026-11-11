@@ -70,6 +70,8 @@ const AwarenessModal = ({ assets }: { assets: TapToPayAwarenessAssets }): React.
   }, [userId]);
 
   if (
+    // Apple's Tap to Pay on iPhone toolkit art and copy: never on Android.
+    Platform.OS !== "ios" ||
     seen !== false ||
     entry === null ||
     brandId === null ||
