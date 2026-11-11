@@ -55,6 +55,8 @@ const MENU = [
   // #4130 + #3872: the Creator Program pages sit right under Hosts and creators.
   ["Outreach", ["outreach:Hosts and creators", "program-creators:Creators", "program-gigs:Gigs", "program-locals:Mingla Locals", "program-disputes:Disputes", "inbound:Inbound leads", "content-calendar:Calendar", "team-dashboard:Team dashboard"]],
   ["Support", ["support:Support", "community:Community"]],
+  // #4383: what we tell hosts and explorers, each its own screen.
+  ["Communications", ["communications:Overview", "announcements:Announcements", "roadmap:Roadmap", "email:Email", "blog:Blog", "links:Links page"]],
   ["Business", ["people:People", "brands:Brands", "business-offerings:Offerings"]],
   ["Money", ["mingla-money:Mingla money", "business-payments:Payments", "business-orders:Orders", "business-money-ledger:Money ledger", "refund-operations:Refund operations", "subscriptions:Subscriptions", "pricing:Pricing and limits"]],
   ["Explorer app", ["placepool:Place pool"]],
@@ -91,10 +93,9 @@ const REDIRECTS = {
   "stripe-mode": ["platform-health", "stripe"],
   "api-health": ["platform-health", "providers"],
   "queue-health": ["platform-health", "queue"],
-  // #4130 Wave 6: Support and Community are real pages now; the old Email
-  // page is Support's Email tab. #/community-support is redirected by its
-  // tab (issue_4130_wave6_support_community.implementor.test.js).
-  email: ["support", "email"],
+  // #4130 Wave 6: #/community-support is redirected by its tab
+  // (issue_4130_wave6_support_community.implementor.test.js). #4383: #/email
+  // is the Communications Email screen again, so it is not here.
   // #4130 + #3872: the old one-page Creator gigs queue opens Disputes.
   "gig-queue": ["program-disputes", undefined],
 };
@@ -104,14 +105,16 @@ const admin = { email: "a@example.test", role: "admin", status: "active", areas:
 const growth = { email: "g@example.test", role: "growth", status: "active", areas: ["role_home", "crm", "beta_leads"] };
 
 describe("#4130 W0-1: the menu is the approved sidebar", () => {
-  it("nine groups, 32 pages, labels and order exactly as approved", () => {
+  it("ten groups, labels and order exactly as approved", () => {
     assert.deepEqual(NAV_GROUPS.map((g) => g.label), MENU.map(([label]) => label));
     for (const [i, [label, items]] of MENU.entries()) {
       assert.deepEqual(NAV_GROUPS[i].items.map((it) => `${it.id}:${it.label}`), items, label);
     }
     // #4130: Careers is back as its own page (27). #4130 + #3872: + the four
     // Creator Program pages. #3355: + the guarded Ari Improvement Lab.
-    assert.equal(NAV_ITEMS.length, 34); // #4294: + Company tools; #4273: + SMS countries
+    // #4383: + the Communications group (Overview, Announcements, Roadmap,
+    // Email, Blog, Links page).
+    assert.equal(NAV_ITEMS.length, 40); // #4294: + Company tools; #4273: + SMS countries
   });
   it("Needs you, My agent and Guide are not menu entries; My agent and Guide keep their pages in the header", () => {
     const ids = NAV_ITEMS.map((i) => i.id);
@@ -161,7 +164,7 @@ describe("#4130 W0-2: retired page ids redirect to their new homes", () => {
     assert.equal(redirectHash("#/drafts?record=r1"), "#/work-board?record=r1");
   });
   it("a live page, an unknown address or a hostile one is left alone", () => {
-    for (const hash of ["#/overview", "#/support", "#/community?tab=roadmap", "#/people?tab=hosts", "#/brands", "", "#/", "#/__proto__", "#/constructor", "#/toString", "#/Hosts", null, undefined, 7]) {
+    for (const hash of ["#/overview", "#/support", "#/community?tab=ideas", "#/email", "#/roadmap?card=x", "#/people?tab=hosts", "#/brands", "", "#/", "#/__proto__", "#/constructor", "#/toString", "#/Hosts", null, undefined, 7]) {
       assert.equal(redirectHash(hash), null, String(hash));
     }
   });
@@ -219,9 +222,9 @@ describe("#4130 W0-4: access is the union of the replaced pages, never wider", (
     for (const [hub, tabs] of Object.entries(PAGE_HUB_TABS)) {
       assert.deepEqual([...PAGE_ACCESS_UNION[hub]].sort(), tabs.map((t) => t.hosts).sort(), hub);
     }
-    // #4255: Support also opens for the Email and Blog tabs' areas (every
-    // teammate), through the support-content pseudo page; Community does not.
-    assert.deepEqual(PAGE_ACCESS_UNION.support, ["community-support", "support-content"]);
+    // #4255 / #4383: Email and Blog are their own Communications screens, so
+    // Support carries the console's access exactly, like Community.
+    assert.deepEqual(PAGE_ACCESS_UNION.support, ["community-support"]);
     assert.deepEqual(PAGE_ACCESS_UNION.community, ["community-support"]);
   });
   it("for every combination of areas, a merged page opens exactly when one of its old pages did", () => {

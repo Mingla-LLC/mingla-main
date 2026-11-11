@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Archive, Pencil, Plus, RefreshCw, Send } from "lucide-react";
+import { Archive, Pencil, RefreshCw, Send } from "lucide-react";
 import { SectionCard } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { Badge } from "../ui/Badge";
@@ -33,6 +33,7 @@ export function AnnouncementsPanel() {
     finally { setLoading(false); }
   }, [addToast]);
   useEffect(() => { queueMicrotask(() => void load()); }, [load]);
+  // #4383: the Announcements screen's header button opens the editor.
   useEffect(() => {
     const open = () => setEditor(blankEditor());
     window.addEventListener("community:new-announcement", open);
@@ -70,7 +71,7 @@ export function AnnouncementsPanel() {
   }
 
   return <div className="space-y-4">
-    <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-[var(--color-text-secondary)]">Host notices use in-app, push and eligible email delivery.</p><div className="flex gap-2"><Button size="sm" variant="secondary" icon={RefreshCw} onClick={() => void load()}>Refresh</Button><Button size="sm" icon={Plus} onClick={() => setEditor(blankEditor())}>New announcement</Button></div></div>
+    <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-[var(--color-text-secondary)]">Host notices use in-app, push and eligible email delivery.</p><div className="flex gap-2"><Button size="sm" variant="secondary" icon={RefreshCw} onClick={() => void load()}>Refresh</Button></div></div>
     <SectionCard title="Sent and scheduled" subtitle="Latest announcement notification delivery by channel" noPadding>
       {loading ? <div className="flex justify-center py-12"><Spinner /></div> : rows.length === 0 ? <p className="p-5 text-sm text-[var(--color-text-secondary)]">No announcements yet.</p> : <div className="overflow-x-auto"><table className="w-full min-w-[840px] text-sm"><thead><tr className="border-b border-[var(--gray-200)] text-left text-xs text-[var(--color-text-tertiary)]"><th className="p-3">Announcement</th><th className="p-3">Status</th><th className="p-3">Bell delivered</th><th className="p-3">Push accepted</th><th className="p-3">Push failed</th><th className="p-3">Email accepted</th><th className="p-3">Email suppressed</th><th className="p-3"></th></tr></thead><tbody>{rows.map((row) => {
         const delivery = row.delivery || {}; const channels = delivery.channels || {}; const pushFailed = pushDelivery(row).failed; const emailSuppressed = Number(channels.email_suppressed || 0);

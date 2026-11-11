@@ -1,5 +1,9 @@
 /**
- * #3988 — the Community & Support tab contract.
+ * #3988 — the Community & Support tab contract. #4383: the screen and tab
+ * contract — every row names the `page` that shows it: "support" or
+ * "community" for a tab of those pages, or the row's own page id for a
+ * Communications screen (Email, Blog, Links page, Announcements, Roadmap,
+ * Overview, Push).
  *
  * #4130 Wave 6: the tabs now sit on two pages, Support and Community
  * (lib/supportCommunityTabs.js); every row keeps its area. The Overview tab
@@ -26,6 +30,7 @@ const BLOG = "blog";
 
 export const COMMUNITY_SUPPORT_TAB_CONTRACT = Object.freeze({
   announcements: Object.freeze({
+    page: "announcements",
     area: ADMIN,
     panel: "components/community/AnnouncementsPanel.jsx",
     rpcs: Object.freeze([
@@ -40,6 +45,7 @@ export const COMMUNITY_SUPPORT_TAB_CONTRACT = Object.freeze({
     functions: Object.freeze([]),
   }),
   roadmap: Object.freeze({
+    page: "roadmap",
     area: ADMIN,
     panel: "components/community/RoadmapPanel.jsx",
     rpcs: Object.freeze([
@@ -53,18 +59,21 @@ export const COMMUNITY_SUPPORT_TAB_CONTRACT = Object.freeze({
     functions: Object.freeze([]),
   }),
   ideas: Object.freeze({
+    page: "community",
     area: COMMUNITY,
     panel: "components/community/IdeasPanel.jsx",
     rpcs: Object.freeze(["issue_3720_admin_list_posts", "issue_3720_admin_update_idea"]),
     functions: Object.freeze([]),
   }),
   questions: Object.freeze({
+    page: "community",
     area: COMMUNITY,
     panel: "components/community/QuestionsPanel.jsx",
     rpcs: Object.freeze(["issue_3720_admin_list_posts", "issue_3720_admin_question_action"]),
     functions: Object.freeze([]),
   }),
   moderation: Object.freeze({
+    page: "community",
     area: COMMUNITY,
     panel: "components/community/ModerationPanel.jsx",
     rpcs: Object.freeze(["issue_3720_admin_moderate", "issue_3720_admin_moderation_workspace"]),
@@ -73,6 +82,7 @@ export const COMMUNITY_SUPPORT_TAB_CONTRACT = Object.freeze({
   // #4111 — guarded by issue_4111_is_mingla_staff (active admin_users OR
   // is_support_staff), which is exactly community_can('moderate').
   "enquiry-reports": Object.freeze({
+    page: "community",
     area: COMMUNITY,
     panel: "components/community/ReportedEnquiriesPanel.jsx",
     rpcs: Object.freeze([
@@ -83,6 +93,7 @@ export const COMMUNITY_SUPPORT_TAB_CONTRACT = Object.freeze({
     functions: Object.freeze([]),
   }),
   support: Object.freeze({
+    page: "support",
     area: SUPPORT,
     panel: "pages/SupportDeskPage.jsx",
     rpcs: Object.freeze([
@@ -92,6 +103,7 @@ export const COMMUNITY_SUPPORT_TAB_CONTRACT = Object.freeze({
     functions: Object.freeze(["support-claim", "support-send", "support-set-status"]),
   }),
   product: Object.freeze({
+    page: "community",
     area: ADMIN,
     panel: "components/community/ProductInboxPanel.jsx",
     rpcs: Object.freeze([
@@ -106,6 +118,7 @@ export const COMMUNITY_SUPPORT_TAB_CONTRACT = Object.freeze({
     functions: Object.freeze(["product-avengers-sync"]),
   }),
   "feature-guide": Object.freeze({
+    page: "community",
     area: SUPPORT,
     panel: "components/community/FeatureGuidePanel.jsx",
     // Writing evidence and capabilities stays Admin-only (canManage).
@@ -119,6 +132,7 @@ export const COMMUNITY_SUPPORT_TAB_CONTRACT = Object.freeze({
     functions: Object.freeze([]),
   }),
   "brand-groups": Object.freeze({
+    page: "community",
     area: SUPPORT,
     panel: "components/community/BrandGroupsPanel.jsx",
     // #4270 W7: the staff inbox (who waits, the brand team) and #4304's
@@ -138,6 +152,7 @@ export const COMMUNITY_SUPPORT_TAB_CONTRACT = Object.freeze({
     functions: Object.freeze(["brand-group-files"]),
   }),
   email: Object.freeze({
+    page: "email",
     area: EMAIL_DRAFTS,
     panel: "pages/EmailPage.jsx",
     // The panel reaches admin-send-email through its own fetch helper and the
@@ -147,6 +162,7 @@ export const COMMUNITY_SUPPORT_TAB_CONTRACT = Object.freeze({
     functions: Object.freeze([]),
   }),
   blog: Object.freeze({
+    page: "blog",
     area: BLOG,
     panel: "components/blog/BlogPanel.jsx",
     rpcs: Object.freeze([
@@ -176,6 +192,7 @@ export const COMMUNITY_SUPPORT_TAB_CONTRACT = Object.freeze({
   // the Support area; the blog picker reuses the Blog tab's post reader,
   // which every active teammate may call.
   links: Object.freeze({
+    page: "links",
     area: SUPPORT,
     panel: "components/links/LinksPagePanel.jsx",
     rpcs: Object.freeze([
@@ -188,7 +205,18 @@ export const COMMUNITY_SUPPORT_TAB_CONTRACT = Object.freeze({
     // refreshLinksPage: admin-blog "revalidate_links" after each saved change.
     functions: Object.freeze(["admin-blog"]),
   }),
+  // #4383 — the Communications Overview screen. Its area is only the default
+  // (admin_console); lib/access.js opens it to whoever can open any of its
+  // screens and the server lists only the kinds that person may see.
+  communications: Object.freeze({
+    page: "communications",
+    area: ADMIN,
+    panel: "pages/communications/CommunicationsOverviewPage.jsx",
+    rpcs: Object.freeze([]),
+    functions: Object.freeze([]),
+  }),
   team: Object.freeze({
+    page: "support",
     area: ADMIN,
     panel: "components/community/TeamRolesPanel.jsx",
     rpcs: Object.freeze([
@@ -199,6 +227,18 @@ export const COMMUNITY_SUPPORT_TAB_CONTRACT = Object.freeze({
     functions: Object.freeze(["admin-team-invite"]),
   }),
 });
+
+/** #4383: the rows that are a tab of the Support or Community page. */
+export const SUPPORT_COMMUNITY_TAB_ROWS = Object.freeze(
+  Object.keys(COMMUNITY_SUPPORT_TAB_CONTRACT).filter((id) =>
+    ["support", "community"].includes(COMMUNITY_SUPPORT_TAB_CONTRACT[id].page)),
+);
+
+/** #4383: the rows that are a Communications screen of their own. */
+export const COMMUNICATIONS_SCREEN_ROWS = Object.freeze(
+  Object.keys(COMMUNITY_SUPPORT_TAB_CONTRACT).filter((id) =>
+    !["support", "community"].includes(COMMUNITY_SUPPORT_TAB_CONTRACT[id].page)),
+);
 
 /** tab id → the access area that shows it (used by communitySupportAccess). */
 export const COMMUNITY_SUPPORT_TAB_AREA = Object.freeze(

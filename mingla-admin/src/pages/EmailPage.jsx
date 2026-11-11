@@ -24,7 +24,7 @@ import {
 import { PageHeader } from "../components/ui/PageHeader";
 import { EmailComposer } from "../components/email/EmailComposer";
 import { audienceFilterWords } from "../lib/emailAudience";
-import { AREA } from "../lib/access";
+import { emailViewFromHash, emailViewHash, emailViewsFor } from "../lib/emailViews";
 
 class SessionExpiredError extends Error {
   constructor(message = SESSION_EXPIRED_MESSAGE) {
@@ -39,22 +39,10 @@ class SessionExpiredError extends Error {
 const SUPABASE_BASE = import.meta.env.VITE_SUPABASE_URL || "";
 const EDGE_FUNCTION_URL = SUPABASE_BASE ? `${SUPABASE_BASE}/functions/v1/admin-send-email` : "";
 
-const SUB_TABS = [
-  { id: "history", label: "History" },
-  { id: "send", label: "Send" },
-  { id: "templates", label: "Templates" },
-  { id: "unsubscribes", label: "Unsubscribes" },
-];
-
-// #4255: every teammate writes and sends (D5). Send history and the
-// unsubscribe list read admin-only tables, so only admins see those tabs.
-const ADMIN_ONLY_SUB_TABS = new Set(["history", "unsubscribes"]);
-
-export function emailSubTabsFor(access) {
-  const isAdmin = access?.status === "active" && Array.isArray(access?.areas) &&
-    access.areas.includes(AREA.ADMIN_CONSOLE);
-  return isAdmin ? SUB_TABS : SUB_TABS.filter((tab) => !ADMIN_ONLY_SUB_TABS.has(tab.id));
-}
+// #4383: the screen's sections (Write, Sent, Templates, Unsubscribes) and
+// who sees each live in lib/emailViews.js; the open one is `view=` in the
+// address. #4255: every teammate writes and sends (D5); Sent and
+// Unsubscribes read admin-only tables, so only admins see them.
 
 // #3720 Slice B — only segments the edge actually filters. City / tier /
 // last_active were UI-only and silently sent to everyone (bug 4).
@@ -158,11 +146,26 @@ async function callEdgeFunction(payload, { retried = false } = {}) {
 
 // ─── Main Page ──────────────────────────────────────────────────────────────
 
-export function EmailPage({ embedded = false } = {}) {
+// #4383 — Communications › Email, its own screen (#/email). Every teammate
+// opens it (lib/access.js PAGE_ADDITIONAL_AREAS.email), exactly as the old
+// Support tab.
+export function EmailPage() {
   const { signOut, access } = useAuth();
-  const subTabs = emailSubTabsFor(access);
-  const [requestedSubTab, setActiveSubTab] = useState("send");
-  const activeSubTab = subTabs.some((tab) => tab.id === requestedSubTab) ? requestedSubTab : "send";
+  const subTabs = emailViewsFor(access);
+  const [activeSubTab, setActiveView] = useState(() => emailViewFromHash(window.location.hash, subTabs));
+  const subTabsKey = subTabs.map((tab) => tab.id).join(",");
+  useEffect(() => {
+    const views = emailViewsFor(access);
+    const sync = () => setActiveView(emailViewFromHash(window.location.hash, views));
+    sync();
+    window.addEventListener("hashchange", sync);
+    return () => window.removeEventListener("hashchange", sync);
+    // subTabsKey stands for the views this person has.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subTabsKey]);
+  const changeView = useCallback((viewId) => {
+    window.location.hash = emailViewHash(viewId);
+  }, []);
   const [providerConfigured, setProviderConfigured] = useState(true);
   const [providerChecked, setProviderChecked] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
@@ -199,14 +202,14 @@ export function EmailPage({ embedded = false } = {}) {
 
   return (
     <div className="space-y-6">
-      {!embedded ? (
-        <PageHeader
-          title="Email"
-          tabs={<Tabs tabs={subTabs} activeTab={activeSubTab} onChange={setActiveSubTab} />}
-        />
-      ) : (
-        <Tabs tabs={subTabs} activeTab={activeSubTab} onChange={setActiveSubTab} />
-      )}
+      <PageHeader
+        title="Email"
+        description="Write, schedule and track emails to hosts, creators and Locals."
+        actions={activeSubTab === "write" ? null : (
+          <Button icon={Pencil} onClick={() => changeView("write")}>Write email</Button>
+        )}
+        tabs={<Tabs tabs={subTabs} activeTab={activeSubTab} onChange={changeView} />}
+      />
       {sessionExpired && (
         <div
           role="alert"
@@ -222,7 +225,7 @@ export function EmailPage({ embedded = false } = {}) {
           </button>
         </div>
       )}
-      {(activeSubTab === "send" || activeSubTab === "templates") && (
+      {(activeSubTab === "write" || activeSubTab === "templates") && (
         <ComposeSubView
           providerConfigured={providerConfigured}
           providerChecked={providerChecked}
@@ -230,7 +233,7 @@ export function EmailPage({ embedded = false } = {}) {
           openTemplateManager={activeSubTab === "templates"}
         />
       )}
-      {activeSubTab === "history" && <HistorySubView />}
+      {activeSubTab === "sent" && <HistorySubView />}
       {activeSubTab === "unsubscribes" && <PreferencesSubView />}
     </div>
   );

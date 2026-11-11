@@ -13,7 +13,7 @@
 //     tab shows; who may see a tab is that old page's access (lib/access.js).
 
 import { hashPageId, hashSearch } from "./crmUrl.js";
-import { consoleRedirectHash } from "./supportCommunityTabs.js";
+import { COMMUNICATIONS_TAB_PAGES, consoleRedirectHash } from "./supportCommunityTabs.js";
 
 /** The query value a hub uses to say which tab is open. */
 export const HUB_TAB_PARAM = "tab";
@@ -45,8 +45,8 @@ export const RETIRED_PAGE_REDIRECTS = Object.freeze({
   "stripe-mode": Object.freeze({ page: "platform-health", tab: "stripe" }),
   "api-health": Object.freeze({ page: "platform-health", tab: "providers" }),
   "queue-health": Object.freeze({ page: "platform-health", tab: "queue" }),
-  // #3720 Slice F legacy address: the old Email page is Support's Email tab.
-  email: Object.freeze({ page: "support", tab: "email" }),
+  // #4383: `email` is no longer here: #/email is the Communications Email
+  // screen again, so old #3720 Email bookmarks open it directly.
   // #4130 + #3872: the old one-page "Creator gigs" queue was split into the
   // Creator Program pages; its bookmarks open Disputes, which it mostly held.
   "gig-queue": Object.freeze({ page: "program-disputes" }),
@@ -92,8 +92,17 @@ export function redirectFor(pageId) {
 // A tab of a live page that became its own page again (#4130, Seth's call:
 // Careers is its own menu item). page -> tab -> new page. The page itself is
 // not retired: only an address naming that tab moves.
+// #4383: Email, Blog and Links page left Support, and Announcements and
+// Roadmap left Community, for their own Communications screens
+// (lib/supportCommunityTabs.js COMMUNICATIONS_TAB_PAGES is the one list).
+function communicationsTabsOn(pageTabIds) {
+  return Object.freeze(Object.fromEntries(pageTabIds.map((tab) => [tab, COMMUNICATIONS_TAB_PAGES[tab]])));
+}
+
 export const TAB_PAGE_REDIRECTS = Object.freeze({
   admin: Object.freeze({ careers: "careers" }),
+  support: communicationsTabsOn(["email", "blog", "links"]),
+  community: communicationsTabsOn(["announcements", "roadmap"]),
 });
 
 function tabRedirect(hash) {

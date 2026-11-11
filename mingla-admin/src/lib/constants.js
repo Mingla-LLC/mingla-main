@@ -121,6 +121,8 @@ export const SEED_SCRIPTS = [
 // holds them (lib/adminRoutes.js), My agent and Guide moved to the header.
 // #4130 + #3872: the Creator Program pages (Creators, Gigs, Mingla Locals,
 // Disputes) sit under Hosts and creators in Outreach: 31 entries.
+// #4383: the Communications group (Overview, Push, Announcements, Roadmap,
+// Email, Blog, Links page) sits after Support.
 
 export const NAV_GROUPS = [
   {
@@ -155,6 +157,21 @@ export const NAV_GROUPS = [
       // #4130 Wave 6: two pages, split from the Community & Support console.
       { id: "support",                   label: "Support",            icon: "LifeBuoy" },
       { id: "community",                 label: "Community",          icon: "MessagesSquare" },
+    ],
+  },
+  {
+    // #4383: everything we tell hosts and explorers, each its own screen.
+    // Email, Blog and Links page came out of Support, Announcements and
+    // Roadmap out of Community; each keeps exactly the access its tab had
+    // (lib/access.js). Old tab addresses redirect (lib/adminRoutes.js).
+    label: "Communications",
+    items: [
+      { id: "communications",            label: "Overview",           icon: "RadioTower" },
+      { id: "announcements",             label: "Announcements",      icon: "BellRing" },
+      { id: "roadmap",                   label: "Roadmap",            icon: "Milestone" },
+      { id: "email",                     label: "Email",              icon: "Mail" },
+      { id: "blog",                      label: "Blog",               icon: "Newspaper" },
+      { id: "links",                     label: "Links page",         icon: "Link" },
     ],
   },
   {
