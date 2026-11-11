@@ -269,3 +269,42 @@ export function peopleToStart(people, threads, query) {
     .filter((p) => !p.me && !dmWith.has(p.user_id) && (String(p.name || "").toLowerCase().includes(q) || String(p.email || "").toLowerCase().includes(q)))
     .slice(0, 6);
 }
+
+// #4255 rework 2 (P1): the browser's IANA time zone ("Africa/Lagos"), or null.
+// Admin saves it on the teammate's profile (team_set_my_timezone) so quiet
+// hours (22:00 to 07:00) and the 09:00 due notice follow their own clock.
+export function deviceTimeZone(intl = globalThis.Intl) {
+  try {
+    const zone = intl?.DateTimeFormat?.().resolvedOptions?.().timeZone;
+    return typeof zone === "string" && zone.trim() !== "" ? zone.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The zone to send now, or null: nothing known, or already saved by this tab. */
+export function timeZoneToSave(lastSaved, zone) {
+  return zone && zone !== lastSaved ? zone : null;
+}
+
+/**
+ * One save per zone per person (in this tab): returns sync(userId, zone),
+ * which calls save(zone) only for a new zone and remembers it once saved
+ * (a failed save is tried again next time).
+ */
+export function createTimeZoneSync(save) {
+  const saved = new Map();
+  return async function sync(userId, zone) {
+    if (!userId) return null;
+    const next = timeZoneToSave(saved.get(userId) ?? null, zone);
+    if (!next) return null;
+    const result = await save(next);
+    saved.set(userId, next);
+    return result;
+  };
+}
+
+/** The read-only line under the settings. */
+export function timeZoneLine(zone) {
+  return zone ? `Time zone: ${zone} (from this device)` : null;
+}

@@ -2,6 +2,7 @@
 // MINGLA-INVARIANT: I-4255-TEAM-DEEP-LINKS | issue #4255 | mingla-business://team/<thread> opens that chat (/team?thread=) and mingla-business://team/mention/<id> opens Mentions at that row; an odd id still opens Mingla team, never the account tab.
 // MINGLA-INVARIANT: I-4255-TEAM-NON-STAFF-GATE | issue #4255 | every Mingla team screen shows "This space is for the Mingla team" to a signed-in host who is not staff, and the staff-only settings group never renders for them.
 // MINGLA-INVARIANT: I-4255-TEAM-TABS-EQUAL-BADGE | issue #4255 | the Chats and Mentions tab counts are the two numbers team_badge adds for the M (chats with unread, muted left out; unread Mentions-tab items, team chat mentions left out).
+// MINGLA-INVARIANT: I-4255-TEAM-DEVICE-TIMEZONE | issue #4255 | a staff member signed in to the Host app saves the device IANA time zone (team_set_my_timezone) when the top bar loads and when the app comes back to the foreground with a different zone; a host who is not staff never calls it; Mingla team settings show "Time zone: <zone> (from this device)".
 // MINGLA-INVARIANT: I-4255-TEAM-FILES-PATH | issue #4255 | a team file uploads only to bucket team-files at the path the database issued for that chat and that attachment; over 25 MB is refused before upload.
 import fs from "node:fs";
 import path from "node:path";
@@ -82,7 +83,7 @@ jest.mock("../../../../app/messages/[conversationId]", () => ({
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const { TopBar } = require("../../ui/TopBar") as typeof import("../../ui/TopBar");
-const { teamBadgeCount, fetchTeamBadge } = require("../teamBadge") as typeof import("../teamBadge");
+const { teamBadgeCount, fetchTeamBadge, syncTeamTimeZone, resetSavedTimeZones, deviceTimeZone } = require("../teamBadge") as typeof import("../teamBadge");
 const { teamChatKey } = require("../../../hooks/useBusinessNotifications") as typeof import("../../../hooks/useBusinessNotifications");
 const routing = require("../../../services/businessNotificationRouting") as typeof import("../../../services/businessNotificationRouting");
 const service = require("../../../services/teamChatService") as typeof import("../../../services/teamChatService");
@@ -126,6 +127,7 @@ beforeEach(() => {
   mockPush.mockReset();
   mockAuth.user = { id: "u-staff" };
   mockAuth.loading = false;
+  resetSavedTimeZones();
 });
 afterEach(async () => {
   while (mounted.length) {
@@ -536,5 +538,62 @@ describe("#4255 rework R-PHOTOS: on the web the Photos button takes pictures onl
     expect(web.isPickedImage({ name: "deck.pdf", mimeType: "application/pdf" })).toBe(false);
     expect(web.isPickedImage({ name: "flyer.PNG", mimeType: null })).toBe(true);
     expect(web.isPickedImage({ name: "notes.txt", mimeType: "" })).toBe(false);
+  });
+});
+
+describe("#4255 rework 2 (P1): the device time zone", () => {
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const tzCalls = (): unknown[][] => mockRpc.mock.calls.filter((c) => c[0] === "team_set_my_timezone");
+
+  test("a staff member's top bar saves the device zone once", async () => {
+    badge({ staff: true, chats: 0, mentions: 0 });
+    await mount(<QueryClientProvider client={client()}><TopBar leftKind="brand" /></QueryClientProvider>);
+    expect(deviceTimeZone()).toBe(zone);
+    expect(tzCalls()).toEqual([["team_set_my_timezone", { p_timezone: zone }]]);
+  });
+
+  test("a host who is not staff never saves a zone", async () => {
+    badge({ staff: false, chats: 0, messages: 0, mentions: 0, total: 0 });
+    await mount(<QueryClientProvider client={client()}><TopBar leftKind="brand" /></QueryClientProvider>);
+    expect(mockRpc).toHaveBeenCalledWith("team_badge");
+    expect(tzCalls()).toHaveLength(0);
+  });
+
+  test("the same zone again sends nothing; a new zone (after travel) is saved", async () => {
+    mockRpc.mockResolvedValue({ data: { staff: true, timezone: "Africa/Lagos", changed: true }, error: null });
+    expect(await syncTeamTimeZone("u-staff", "Africa/Lagos")).toBe("Africa/Lagos");
+    expect(await syncTeamTimeZone("u-staff", "Africa/Lagos")).toBeNull();
+    mockRpc.mockResolvedValue({ data: { staff: true, timezone: "Europe/London", changed: true }, error: null });
+    expect(await syncTeamTimeZone("u-staff", "Europe/London")).toBe("Europe/London");
+    expect(tzCalls()).toEqual([
+      ["team_set_my_timezone", { p_timezone: "Africa/Lagos" }],
+      ["team_set_my_timezone", { p_timezone: "Europe/London" }],
+    ]);
+    expect(await syncTeamTimeZone("u-staff", null)).toBeNull();
+    expect(tzCalls()).toHaveLength(2);
+  });
+
+  test("a failed save throws (and is tried again next time)", async () => {
+    mockRpc.mockResolvedValue({ data: null, error: { message: "team_timezone_unknown" } });
+    await expect(syncTeamTimeZone("u-staff", "Africa/Lagos")).rejects.toThrow("team_timezone_unknown");
+    mockRpc.mockResolvedValue({ data: { staff: true, timezone: "Africa/Lagos", changed: true }, error: null });
+    expect(await syncTeamTimeZone("u-staff", "Africa/Lagos")).toBe("Africa/Lagos");
+  });
+
+  test("the app coming back to the foreground saves again when the zone changed", () => {
+    const source = fs.readFileSync(path.resolve(__dirname, "../teamBadge.tsx"), "utf8");
+    expect(source).toMatch(/AppState\.addEventListener\("change", \(state: AppStateStatus\) => \{\n\s+if \(state === "active"\) syncQuietly\(userId\);/);
+    expect(source).toContain("useTeamTimeZoneSync(userId, badge.data?.staff === true);");
+  });
+
+  test("Mingla team settings show the zone, read-only, from this device", async () => {
+    badge({ staff: true });
+    const select = { select: () => select, eq: () => select, in: async () => ({ data: [], error: null }) };
+    mockFrom.mockReturnValue(select);
+    const view = await mount(<QueryClientProvider client={client()}><MinglaTeamPrefsGroup userId="u-staff" /></QueryClientProvider>);
+    await TestRenderer.act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    const line = byTestId(view.root, "team-prefs-timezone");
+    expect(line).toHaveLength(1);
+    expect(allText(line[0])).toBe(`Time zone: ${zone} (from this device)`);
   });
 });

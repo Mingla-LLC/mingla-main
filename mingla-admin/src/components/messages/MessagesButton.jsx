@@ -6,7 +6,7 @@
 // the top bar never wraps.
 import { useEffect, useRef, useState } from "react";
 import { Maximize2, MessageSquareText, X } from "lucide-react";
-import { useMessages } from "../../hooks/useMessages";
+import { useMessages, useTeamTimeZoneSync } from "../../hooks/useMessages";
 import { messagesButtonLabel } from "../../lib/messagesModel";
 import { MessagesBody } from "./MessagesBody";
 
@@ -14,6 +14,8 @@ const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:rin
 
 export function MessagesButton() {
   const messages = useMessages();
+  // #4255 rework 2 (P1): Admin loading for a teammate saves their device zone.
+  useTeamTimeZoneSync(messages.enabled ? messages.userId : null);
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState("notifications");
   const [threadId, setThreadId] = useState(null);

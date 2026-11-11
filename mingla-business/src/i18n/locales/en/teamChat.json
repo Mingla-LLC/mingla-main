@@ -54,6 +54,7 @@
     "pref_due": "My cards due and late",
     "pref_due_hint": "One push at 9:00 your time",
     "prefs_sync": "One set of settings: a change here changes Admin too.",
+    "timezone_line": "Time zone: {{zone}} (from this device)",
     "save_failed": "Couldn't save. Try again.",
     "direct_message": "Direct message",
     "people_count": "{{n}} people",

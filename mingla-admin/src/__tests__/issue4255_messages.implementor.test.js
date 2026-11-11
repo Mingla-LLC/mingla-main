@@ -19,6 +19,14 @@
 //       in-app switch did nothing); "My cards due and late" is a row; the
 //       Group messages words follow its push switch
 //   R-2 (rework) the 09:00 due notice is its own "Due and late" group
+//   R2-1 (rework 2, P1) Admin loading for a teammate saves this browser's
+//       IANA time zone (team_set_my_timezone), once per zone, again when the
+//       tab comes back with a new one; Settings shows "Time zone: <zone>
+//       (from this device)"
+//
+// Rework 2 FAILS-ON-REVERT: deleting the useTeamTimeZoneSync call in
+// MessagesButton, or the "zone !== lastSaved" check in timeZoneToSave, reds
+// R2-1.
 //
 // Rework FAILS-ON-REVERT: putting "inapp" back on the Direct messages row or
 // deleting the business.team_due row reds R-1's row pin; deleting
@@ -50,6 +58,10 @@ import {
   settingHint,
   teamPrefOn,
   threadFromSearch,
+  createTimeZoneSync,
+  deviceTimeZone,
+  timeZoneLine,
+  timeZoneToSave,
 } from "../lib/messagesModel.js";
 
 const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -332,5 +344,52 @@ describe("R-2 the 09:00 due notice is its own group (rework)", () => {
     assert.equal(row.label, "Due and late");
     assert.equal(row.title, "Your cards due and late");
     assert.deepEqual(rowTarget(row), { hash: "#/work-board?view=today&who=mine" });
+  });
+});
+
+describe("R2-1 this browser's time zone is saved for quiet hours and the 09:00 notice (rework 2)", () => {
+  it("reads the IANA zone, or null when the browser cannot tell", () => {
+    assert.equal(deviceTimeZone({ DateTimeFormat: () => ({ resolvedOptions: () => ({ timeZone: " Africa/Lagos " }) }) }), "Africa/Lagos");
+    assert.equal(deviceTimeZone({ DateTimeFormat: () => ({ resolvedOptions: () => ({}) }) }), null);
+    assert.equal(deviceTimeZone({ DateTimeFormat: () => { throw new Error("no Intl"); } }), null);
+    assert.equal(deviceTimeZone(), Intl.DateTimeFormat().resolvedOptions().timeZone);
+  });
+  it("saves once per zone per person, again after a change, and retries a failed save", async () => {
+    assert.equal(timeZoneToSave(null, "Africa/Lagos"), "Africa/Lagos");
+    assert.equal(timeZoneToSave("Africa/Lagos", "Africa/Lagos"), null);
+    assert.equal(timeZoneToSave("Africa/Lagos", null), null);
+    const sent = [];
+    let fail = false;
+    const sync = createTimeZoneSync(async (zone) => {
+      sent.push(zone);
+      if (fail) throw new Error("offline");
+      return { staff: true, timezone: zone, changed: true };
+    });
+    assert.deepEqual(await sync("u1", "Africa/Lagos"), { staff: true, timezone: "Africa/Lagos", changed: true });
+    assert.equal(await sync("u1", "Africa/Lagos"), null);
+    assert.equal(await sync(null, "Africa/Lagos"), null);
+    fail = true;
+    await assert.rejects(sync("u1", "Europe/London"), /offline/);
+    fail = false;
+    await sync("u1", "Europe/London");
+    await sync("u2", "Africa/Lagos");
+    assert.deepEqual(sent, ["Africa/Lagos", "Europe/London", "Europe/London", "Africa/Lagos"]);
+  });
+  it("Admin loading for a teammate runs it, and the tab coming back runs it again", () => {
+    const button = stripComments(read("components/messages/MessagesButton.jsx"));
+    assert.match(button, /useTeamTimeZoneSync\(messages\.enabled \? messages\.userId : null\);/);
+    const hook = stripComments(read("hooks/useMessages.js"));
+    assert.match(hook, /createTimeZoneSync\(\(zone\) => setMyTimeZone\(zone\)\)/);
+    assert.match(hook, /document\.addEventListener\("visibilitychange", onVisible\)/);
+    assert.match(hook, /syncTeamTimeZone\(userId, deviceTimeZone\(\)\)\.catch\(/);
+    const service = stripComments(read("services/teamChatService.js"));
+    assert.match(service, /rpc\("team_set_my_timezone", \{ p_timezone: zone \}\)/);
+  });
+  it("Settings shows the zone, read-only", () => {
+    assert.equal(timeZoneLine("Africa/Lagos"), "Time zone: Africa/Lagos (from this device)");
+    assert.equal(timeZoneLine(null), null);
+    const settings = stripComments(read("components/messages/MessagesSettings.jsx"));
+    assert.match(settings, /useState\(\(\) => timeZoneLine\(deviceTimeZone\(\)\)\)/);
+    assert.match(settings, /\{zoneLine && <p data-setting-timezone=""[^>]*>\{zoneLine\}<\/p>\}/);
   });
 });

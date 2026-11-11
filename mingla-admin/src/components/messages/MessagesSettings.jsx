@@ -18,7 +18,7 @@ import { announceMessagesChange } from "../../hooks/useMessages";
 import * as collaboration from "../../services/teamCollaborationService";
 import * as team from "../../services/teamChatService";
 import { emailAlertRows } from "../../lib/emailAlerts";
-import { SETTING_ROWS, settingHint, teamPrefOn } from "../../lib/messagesModel";
+import { SETTING_ROWS, deviceTimeZone, settingHint, teamPrefOn, timeZoneLine } from "../../lib/messagesModel";
 import { opsErrorWords } from "../../lib/opsModel";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
@@ -42,6 +42,7 @@ export function MessagesSettings() {
   const [saving, setSaving] = useState(null);
   const [emailRows, setEmailRows] = useState(null);
   const [prefRows, setPrefRows] = useState(null);
+  const [zoneLine] = useState(() => timeZoneLine(deviceTimeZone()));
 
   const loadEmail = useCallback(() => collaboration.getEmailAlertPreferences(), []);
   const emailRead = useServerRead(loadEmail);
@@ -140,6 +141,8 @@ export function MessagesSettings() {
           {/* #4255: Mentions (work card) email is on by default too, so one
               rule covers every alert. */}
           <p className="mt-3 text-[11.5px] text-[var(--color-text-tertiary)]">Every alert emails you unless you switch it off here. Changes on cards you watch stay in the app.</p>
+          {/* #4255 rework 2 (P1): the zone quiet hours and the 09:00 notice use. */}
+          {zoneLine && <p data-setting-timezone="" className="mt-1 text-[11.5px] text-[var(--color-text-tertiary)]">{zoneLine}</p>}
           <p className="mt-1 text-[11.5px] text-[var(--color-text-tertiary)]"><span aria-hidden="true" className="text-[var(--color-success-600)]">● </span>One set of settings: changing it here changes it in the Host app too.</p>
         </>
       )}

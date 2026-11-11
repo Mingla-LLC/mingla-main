@@ -14,9 +14,9 @@ import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { canOpenPage } from "../lib/access";
 import { getInbox } from "../services/dashboardService";
-import { fetchBadge } from "../services/teamChatService";
+import { fetchBadge, setMyTimeZone } from "../services/teamChatService";
 import { SUPPORT_ALERT_TYPES } from "../lib/emailAlerts";
-import { messagesBadge } from "../lib/messagesModel";
+import { createTimeZoneSync, deviceTimeZone, messagesBadge } from "../lib/messagesModel";
 
 export const MESSAGES_POLL_MS = 30_000;
 export const MESSAGES_CHANGED = "mingla:messages-changed";
@@ -149,4 +149,26 @@ export function useMessages() {
     count: messagesBadge({ badge: current.badge, inbox: current.inbox }),
     refetch,
   };
+}
+
+// #4255 rework 2 (P1): save this browser's time zone on the teammate's profile
+// when Admin loads for them and whenever the tab comes back, so quiet hours
+// and the 09:00 due notice follow their own clock. One save per zone per
+// person in this tab; the server writes only when empty or different.
+export const syncTeamTimeZone = createTimeZoneSync((zone) => setMyTimeZone(zone));
+
+export function useTeamTimeZoneSync(userId) {
+  useEffect(() => {
+    if (!userId) return undefined;
+    const run = () => {
+      syncTeamTimeZone(userId, deviceTimeZone()).catch((err) => {
+        // Nothing for the person to do; quiet hours keep the last saved zone.
+        console.warn("[#4255] could not save this browser's time zone:", err?.message || err);
+      });
+    };
+    run();
+    const onVisible = () => { if (document.visibilityState === "visible") run(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [userId]);
 }

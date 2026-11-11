@@ -345,6 +345,11 @@ export async function resolveGenericBuyerMessageLink(
   };
 }
 
+// #4255 rework 2 (P4): what happened to one generic row. "held" is a row
+// parked until quiet hours end (retry_wait, attempts untouched): not sent and
+// not failed, so the drain's answer counts it apart from failures.
+export type GenericOutcome = "done" | "failed" | "held";
+
 // deno-lint-ignore no-explicit-any
 export async function processGeneric(
   admin: any,
@@ -353,7 +358,18 @@ export async function processGeneric(
   key: string,
   // #4255 rework: the clock the team quiet hours read (tests pin it).
   now: Date = new Date(),
-) {
+): Promise<boolean> {
+  return (await processGenericOutcome(admin, row, url, key, now)) === "done";
+}
+
+// deno-lint-ignore no-explicit-any
+export async function processGenericOutcome(
+  admin: any,
+  row: Record<string, unknown>,
+  url: string,
+  key: string,
+  now: Date = new Date(),
+): Promise<GenericOutcome> {
   const id = row.id as string;
   // #3720 Slice B — deferred legacy push after quiet hours. Payload carries the
   // original type/title/body body under `legacy`; re-drive the legacy contract
@@ -367,7 +383,7 @@ export async function processGeneric(
         last_error: "legacy_quiet_hours_payload_missing",
         processed_at: new Date().toISOString(),
       }).eq("id", id);
-      return false;
+      return "failed";
     }
     try {
       const res = await fetch(`${url}/functions/v1/notify-dispatch`, {
@@ -395,7 +411,7 @@ export async function processGeneric(
           next_attempt_at: nextAt,
           last_error: "quiet_hours",
         }).eq("id", id);
-        return false;
+        return "held";
       }
       if (!res.ok || result.success === false) {
         throw new Error(
@@ -410,7 +426,7 @@ export async function processGeneric(
         next_attempt_at: null,
         last_error: null,
       }).eq("id", id);
-      return true;
+      return "done";
     } catch (err) {
       const attempts = ((row.attempts as number) ?? 0) + 1;
       await admin.from("notification_outbox").update({
@@ -424,7 +440,7 @@ export async function processGeneric(
         id,
         err,
       );
-      return false;
+      return "failed";
     }
   }
 
@@ -461,7 +477,7 @@ export async function processGeneric(
           next_attempt_at: until,
           last_error: "quiet_hours",
         }).eq("id", id);
-        return false;
+        return "held";
       }
     }
     contact = await resolveIssue3720Contact(admin, row);
@@ -518,7 +534,7 @@ export async function processGeneric(
       next_attempt_at: null,
       last_error: null,
     }).eq("id", id);
-    return true;
+    return "done";
   } catch (err) {
     const attempts = ((row.attempts as number) ?? 0) + 1;
     const terminal = attempts >= 3;
@@ -533,7 +549,7 @@ export async function processGeneric(
       last_error: err instanceof Error ? err.message : String(err),
     }).eq("id", id);
     console.error("[notify-outbox-drain] dispatch failed for", id, err);
-    return false;
+    return "failed";
   }
 }
 
@@ -909,17 +925,21 @@ export async function handleNotifyOutboxDrain(req: Request): Promise<Response> {
   }
   let processed = 0;
   let failed = 0;
+  let held = 0;
   for (const item of interleave(generic, source)) {
-    const ok = item.kind === "generic"
-      ? await processGeneric(admin, item.row, url, key)
-      : await processSource(admin, item.row, url, key);
-    if (ok) processed++;
+    // #4255 rework 2 (P4): a row parked for quiet hours is "held", not failed.
+    const outcome: GenericOutcome = item.kind === "generic"
+      ? await processGenericOutcome(admin, item.row, url, key)
+      : (await processSource(admin, item.row, url, key) ? "done" : "failed");
+    if (outcome === "done") processed++;
+    else if (outcome === "held") held++;
     else failed++;
   }
   return json({
     ok: true,
     processed,
     failed,
+    held,
     generic_claimed: generic.length,
     source_claimed: source.length,
   });

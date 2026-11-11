@@ -88,3 +88,10 @@ export const setTeamPref = (userId, categoryKey, channel, enabled) =>
   call(() => (categoryKey === "business.team_group_message" && channel === "push" && !enabled
     ? supabase.from("notification_channel_prefs").delete().eq("user_id", userId).eq("category_key", categoryKey).eq("channel", channel)
     : supabase.from("notification_channel_prefs").upsert({ user_id: userId, category_key: categoryKey, channel, enabled: !!enabled, updated_at: new Date().toISOString() })));
+
+/**
+ * #4255 rework 2 (P1): saves this device's time zone on the signed-in
+ * teammate's profile. The server checks the name (pg_timezone_names) and
+ * writes only when the saved zone is empty or different.
+ */
+export const setMyTimeZone = (zone) => rpc("team_set_my_timezone", { p_timezone: zone });

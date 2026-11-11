@@ -1271,7 +1271,8 @@
         "supabase/migrations/20280614024255_issue_4255_team_chat_schema.sql",
         "supabase/migrations/20280614034255_issue_4255_team_chat_functions.sql",
         "supabase/migrations/20280614044255_issue_4255_team_chat_fixups.sql",
-        "supabase/migrations/20280614054255_issue_4255_team_rework.sql"
+        "supabase/migrations/20280614054255_issue_4255_team_rework.sql",
+        "supabase/migrations/20280614064255_issue_4255_team_rework2.sql"
       ]
     },
     {

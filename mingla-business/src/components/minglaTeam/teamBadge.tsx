@@ -6,8 +6,8 @@
  * bundle every screen loads. Hosts who are not staff get staff:false and see
  * nothing. Badge: unread team chats plus unread mentions, capped at 9+.
  */
-import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import React, { useEffect } from "react";
+import { AppState, Pressable, StyleSheet, Text, View, type AppStateStatus } from "react-native";
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 
@@ -53,6 +53,60 @@ export async function fetchTeamBadge(): Promise<TeamBadge> {
   };
 }
 
+/** The device's IANA time zone ("Africa/Lagos"), or null when it cannot tell. */
+export function deviceTimeZone(): string | null {
+  try {
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return typeof zone === "string" && zone.trim() !== "" ? zone.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+// The zone this app last saved per person, so a foreground with the same
+// zone sends nothing. The server also writes only when empty or different.
+const savedZones = new Map<string, string>();
+
+/**
+ * #4255 rework 2 (P1): saves the device time zone on the staff member's
+ * profile (team_set_my_timezone), so quiet hours (22:00 to 07:00) and the
+ * 09:00 due notice follow their own clock. Returns the zone saved, or null
+ * when there was nothing to do. Throws when the save fails.
+ */
+export async function syncTeamTimeZone(userId: string, zone: string | null = deviceTimeZone()): Promise<string | null> {
+  if (!zone || savedZones.get(userId) === zone) return null;
+  const { data, error } = await supabase.rpc("team_set_my_timezone", { p_timezone: zone });
+  if (error) throw new Error(error.message || "Couldn't save your time zone.");
+  const row = (data ?? {}) as { staff?: unknown; timezone?: unknown };
+  savedZones.set(userId, zone);
+  return row.staff === true && typeof row.timezone === "string" ? row.timezone : null;
+}
+
+/** Test seam: forget what this app saved. */
+export function resetSavedTimeZones(): void {
+  savedZones.clear();
+}
+
+function syncQuietly(userId: string): void {
+  syncTeamTimeZone(userId).catch((err: unknown) => {
+    // Not shown to the person (nothing for them to do); quiet hours keep the
+    // last saved zone. Logged so a broken save is seen.
+    console.warn("[#4255] could not save the device time zone:", err instanceof Error ? err.message : String(err));
+  });
+}
+
+/** Signed in as staff: save the device zone now and whenever the app comes back. */
+export function useTeamTimeZoneSync(userId: string, staff: boolean): void {
+  useEffect(() => {
+    if (!staff) return undefined;
+    syncQuietly(userId);
+    const subscription = AppState.addEventListener("change", (state: AppStateStatus) => {
+      if (state === "active") syncQuietly(userId);
+    });
+    return () => subscription.remove();
+  }, [staff, userId]);
+}
+
 /** The top bar slot: nothing until team_badge says staff, then the M. */
 export default function MinglaTeamSlot({ userId }: { userId: string }): React.ReactElement | null {
   const router = useRouter();
@@ -63,6 +117,7 @@ export default function MinglaTeamSlot({ userId }: { userId: string }): React.Re
     staleTime: 30 * 1000,
     refetchInterval: 60 * 1000,
   });
+  useTeamTimeZoneSync(userId, badge.data?.staff === true);
   if (badge.data?.staff !== true) return null;
   const unread = teamBadgeCount(badge.data);
   return (

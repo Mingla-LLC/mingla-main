@@ -34,6 +34,7 @@ import { SafeScreen } from "../ui/SafeScreen";
 import { Toast } from "../ui/Toast";
 import { teamTime, useTeamText, type TeamT } from "./teamText";
 import { PersonAvatar, TeamAccessGate, TeamAvatar, TeamHeader, useBack } from "./TeamCommon";
+import { deviceTimeZone } from "./teamBadge";
 import { useTeamMentions, useTeamPeople, useTeamRealtime, useTeamThreads } from "./useTeamChat";
 
 import { TeamThreadScreen } from "./TeamThreadScreen";
@@ -501,6 +502,7 @@ export function TeamNotificationPrefs({ userId }: { userId: string }): React.Rea
   });
   const rows = prefs.data ?? [];
   const busy = prefs.isPending || save.isPending;
+  const zone = useMemo(() => deviceTimeZone(), []);
   return (
     <View style={styles.prefsCard} testID="team-prefs">
       <Text style={styles.prefsTitle}>{t("team.prefs_title")}</Text>
@@ -540,6 +542,9 @@ export function TeamNotificationPrefs({ userId }: { userId: string }): React.Rea
           })}
         </View>
       ))}
+      {/* #4255 rework 2 (P1): the zone quiet hours and the 09:00 notice use,
+          saved from this device (teamBadge.tsx, team_set_my_timezone). */}
+      {zone ? <Text style={styles.footnote} testID="team-prefs-timezone">{t("team.timezone_line", { zone })}</Text> : null}
       <Text style={styles.footnote}>{t("team.prefs_sync")}</Text>
       {toast ? (
         <Pressable accessibilityRole="button" accessibilityLabel={toast} onPress={() => setToast(null)}>
