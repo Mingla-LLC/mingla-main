@@ -104,6 +104,8 @@ export interface BrandCreationFlowProps {
   requestedStep?: BrandSetupStep | null;
   /** The route came from a resume (Home card, Ari card, relaunch). */
   resumed?: boolean;
+  /** #4389 S-11 — open K1 at once (the native secure setup was closed early). */
+  openK1?: boolean;
   onExit: () => void;
 }
 
@@ -115,6 +117,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
   brandId,
   requestedStep = null,
   resumed = false,
+  openK1 = false,
   onExit,
 }) => {
   const router = useRouter();
@@ -203,7 +206,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
     else onExit();
   }, [navigation, onExit]);
   // K1 "Only free events for now?" — opened from F2/F3 "Save and finish later".
-  const [k1, setK1] = useState<"country" | "pay" | null>(null);
+  const [k1, setK1] = useState<"country" | "pay" | null>(openK1 ? "pay" : null);
   const viewedRef = useRef<BrandSetupStep | null>(null);
   useEffect(() => {
     if (viewedRef.current === step) return;

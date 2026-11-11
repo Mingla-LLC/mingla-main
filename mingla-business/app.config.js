@@ -263,6 +263,16 @@ module.exports = ({ config }) => {
   // talks to 127.0.0.1.
   assertNoLocalSitesOverridesInHostedBuild(process.env);
 
+  // #4389 S-11 — LOCAL-only override that opens the native secure setup with
+  // the server switch off, for a developer's own simulator proof. Any EAS build
+  // that sees it fails here, so it can never reach a tester or a store.
+  const nativeConnectDevForce = process.env.MINGLA_NATIVE_CONNECT_DEV_FORCE === "1";
+  if (nativeConnectDevForce && process.env.EAS_BUILD_PROFILE !== undefined) {
+    throw new Error(
+      `MINGLA_NATIVE_CONNECT_DEV_FORCE is a local-only override and must not be set for the ${process.env.EAS_BUILD_PROFILE} EAS build. [#4389]`,
+    );
+  }
+
   const basePlugins = filterOptionalNativeStartupPlugins(config.plugins);
 
   return {
@@ -312,11 +322,17 @@ module.exports = ({ config }) => {
         },
       ],
       "expo-video",
-      // ORCH-0839-B (2026-05-14): @stripe/stripe-react-native plugin removed.
-      // mingla-business pivoted from native PaymentSheet to hosted Stripe
-      // Checkout via expo-web-browser. Removing the plugin omits the native
-      // framework on the next EAS rebuild — shrinking binary size and
-      // retiring the iOS 26 + bridgeless TurboModule hang surface.
+      // #4389 (decision S-11, 2026-11-11): the @stripe/stripe-react-native
+      // config plugin is BACK in this app. It is registered in app.json (with
+      // the business Apple Pay merchant id, since ORCH-0849 re-adopted native
+      // PaymentSheet) and reaches this list through `basePlugins` — it is NOT
+      // repeated here, a second entry would run the plugin twice. The native
+      // secure setup screen (src/components/stripe/ConnectOnboardingNative)
+      // needs the SDK linked; it opens only behind the server kill switch
+      // biz_native_connect_onboarding and falls back to the browser sheet.
+      // The ORCH-0839-B removal note (the iOS 26 + bridgeless PaymentSheet
+      // hang on SDK 0.50.3) is history: the SDK is 0.65.x and #4389 re-proves
+      // cold launch on iOS 26.
       [
         "@sentry/react-native/expo",
         {
@@ -344,6 +360,8 @@ module.exports = ({ config }) => {
     ],
     extra: {
       ...config.extra,
+      // #4389 S-11 — local-only (guarded above); absent in every EAS build.
+      ...(nativeConnectDevForce ? { nativeConnectDevForce: true } : {}),
       // #2107 B1 — see readCriticalIndex above.
       criticalIndex: readCriticalIndex(),
       // NOTE (#1047 [business-jest-suite-audit], C-1): the earlier duplicate

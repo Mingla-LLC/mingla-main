@@ -6,6 +6,11 @@
  * Replaces the Cycle 2 simulated state machine with the real flow:
  *  - Calls brand-stripe-onboard edge fn → Mingla-hosted onboarding URL
  *  - Opens URL via expo-web-browser.openAuthSessionAsync (system browser modal)
+ *  - #4389 S-11: on iPhone/Android, when the server switch
+ *    biz_native_connect_onboarding is on and the native module is linked, the
+ *    secure setup opens as the NATIVE full-screen component instead
+ *    (ConnectOnboardingNative). Flag off, module missing or a load error fall
+ *    back to the browser sheet automatically.
  *  - On dismiss: refreshes status from server; transitions state machine
  *  - DELETED: long-press dev gesture (R-NEW-6 production back-door mitigation)
  *  - DELETED: 1.5s simulated delay (was fake)
@@ -158,6 +163,18 @@ import {
   isSafeAccountManagementTargetUrl,
 } from "../../utils/accountManagementOpen";
 import { refreshBrandPaymentState } from "../../hooks/brandPaymentStateRefresh";
+// #4389 S-11 — native secure setup behind the server kill switch.
+import {
+  ConnectOnboardingNative,
+  isNativeConnectModuleAvailable,
+} from "../stripe/ConnectOnboardingNative";
+import {
+  classifyNativeConnectExit,
+  decideConnectOnboardingSurface,
+  nativeConnectLoadErrorMessage,
+  type NativeConnectExit,
+} from "../stripe/nativeConnectOnboarding";
+import { useNativeConnectOnboardingRelease } from "../../hooks/useNativeConnectOnboardingRelease";
 
 const RETURN_DEEP_LINK = "mingla-business://onboarding-complete" as const;
 // #3645 — there is NO default country. Bank setup opens on the country the
@@ -258,6 +275,12 @@ export interface BrandOnboardViewProps {
    * route owns navigation; without it the Tap to Pay card is not shown.
    */
   onOpenTapToPay?: () => void;
+  /**
+   * #4389 S-11 — where leaving the NATIVE secure setup goes. "finished" (the
+   * account reports progress) and "closed-early" (no progress). Without it the
+   * screen shows its own outcome states, exactly as after the browser sheet.
+   */
+  onNativeExit?: (exit: NativeConnectExit) => void;
 }
 
 /** Best-effort haptic — silently swallowed if unavailable. */
@@ -301,6 +324,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   returnPath = null,
   countryChoiceRequested = false,
   onOpenTapToPay,
+  onNativeExit,
 }) => {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
@@ -318,6 +342,16 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
     [brandIdForRefresh, queryClient],
   );
   const startInProgressRef = useRef(false);
+  // #4389 S-11 — the native secure setup session, when that surface is open.
+  const nativeConnect = useNativeConnectOnboardingRelease(brand?.id ?? null);
+  const [nativeSession, setNativeSession] = useState<{
+    brandId: string;
+    clientSecret: string;
+    onboardingUrl: string;
+  } | null>(null);
+  // Set once the native screen reported a load error: this screen then uses the
+  // browser sheet until it is left.
+  const nativeLoadFailedRef = useRef(false);
   const initialCountryRail = resolveBankConnectRailForCountry(initialCountry);
   const chosenCountryHint =
     initialCountryRail !== null && initialCountryRail.provider === "stripe"
@@ -714,6 +748,56 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
 
   // ----- Action handlers ------------------------------------------------
 
+  // Refresh status to determine the outcome. The account can lag the return
+  // from setup, so settle briefly before deciding what the user sees.
+  const settleOutcome = useCallback(
+    async (brandId: string): Promise<StripeOnboardingOutcome> => {
+      setViewState("settling-status");
+      announceForAccessibility("Confirming your payout status.");
+      await queryClient.invalidateQueries({
+        queryKey: brandStripeStatusKeys.detail(brandId),
+      });
+      const refreshed = await settleStripeStatus(() => statusQuery.refetch());
+      return classifyStripeOnboardingOutcome({
+        status: refreshed?.status,
+        requirements: coerceRequirements(refreshed?.requirements),
+      });
+    },
+    [queryClient, statusQuery],
+  );
+
+  const openBrowserSheetAndSettle = useCallback(
+    async (brandId: string, onboardingUrl: string): Promise<void> => {
+      const browserResult = await WebBrowser.openAuthSessionAsync(
+        onboardingUrl,
+        RETURN_DEEP_LINK,
+      );
+      const outcome = await settleOutcome(brandId);
+
+      if (browserResult.type === "success") {
+        applyOnboardingOutcome(outcome);
+      } else if (
+        browserResult.type === "cancel" ||
+        browserResult.type === "dismiss"
+      ) {
+        // Dismissed browser windows can still complete Stripe steps. Trust the
+        // bounded settlement if Stripe now reports a real account state.
+        if (outcome !== "session-expired") {
+          applyOnboardingOutcome(outcome);
+        } else {
+          setViewState("cancelled");
+          fireHaptic("warning");
+          announceForAccessibility(
+            "Onboarding cancelled. Your progress is saved.",
+          );
+        }
+      } else {
+        applyOnboardingOutcome("session-expired");
+      }
+    },
+    [applyOnboardingOutcome, settleOutcome],
+  );
+
   const handleStart = useCallback(async (): Promise<void> => {
     if (brand === null || selectedCountry === null || startInProgressRef.current) {
       return;
@@ -763,45 +847,25 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
         return;
       }
 
-      const browserResult = await WebBrowser.openAuthSessionAsync(
-        result.onboarding_url,
-        RETURN_DEEP_LINK,
-      );
-
-      setViewState("settling-status");
-      announceForAccessibility("Confirming your payout status.");
-
-      // Refresh status to determine outcome. Stripe can lag the browser
-      // return, so settle briefly before deciding what the user sees.
-      await queryClient.invalidateQueries({
-        queryKey: brandStripeStatusKeys.detail(brand.id),
+      // #4389 S-11 — native secure setup when the server switch is on, the
+      // native module is linked and it has not failed to load on this screen.
+      const surface = decideConnectOnboardingSurface({
+        os: Platform.OS,
+        flagLive: nativeConnect.flagLive,
+        devForce: nativeConnect.devForce,
+        moduleAvailable: isNativeConnectModuleAvailable(),
+        loadFailed: nativeLoadFailedRef.current,
       });
-      const refreshed = await settleStripeStatus(() => statusQuery.refetch());
-      const outcome = classifyStripeOnboardingOutcome({
-        status: refreshed?.status,
-        requirements: coerceRequirements(refreshed?.requirements),
-      });
-
-      if (browserResult.type === "success") {
-        applyOnboardingOutcome(outcome);
-      } else if (
-        browserResult.type === "cancel" ||
-        browserResult.type === "dismiss"
-      ) {
-        // Dismissed browser windows can still complete Stripe steps. Trust the
-        // bounded settlement if Stripe now reports a real account state.
-        if (outcome !== "session-expired") {
-          applyOnboardingOutcome(outcome);
-        } else {
-          setViewState("cancelled");
-          fireHaptic("warning");
-          announceForAccessibility(
-            "Onboarding cancelled. Your progress is saved.",
-          );
-        }
-      } else {
-        applyOnboardingOutcome("session-expired");
+      if (surface === "native") {
+        setNativeSession({
+          brandId: brand.id,
+          clientSecret: result.client_secret,
+          onboardingUrl: result.onboarding_url,
+        });
+        return;
       }
+
+      await openBrowserSheetAndSettle(brand.id, result.onboarding_url);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       // #3208 — the decision lives in `classifyBrandOnboardingStartError` so it
@@ -857,12 +921,72 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   }, [
     applyOnboardingOutcome,
     brand,
+    nativeConnect.devForce,
+    nativeConnect.flagLive,
     onboardMutation,
-    queryClient,
+    openBrowserSheetAndSettle,
     returnPath,
     selectedCountry,
-    statusQuery,
   ]);
+
+  // #4389 S-11 — leaving the native secure setup. The account is read the same
+  // bounded way as after the browser sheet; progress goes on (F4 in brand
+  // setup), no progress is an early close (K1 in brand setup).
+  const handleNativeExit = useCallback(async (): Promise<void> => {
+    const session = nativeSession;
+    setNativeSession(null);
+    if (session === null) return;
+    try {
+      const outcome = await settleOutcome(session.brandId);
+      const exit = classifyNativeConnectExit(outcome);
+      if (onNativeExit !== undefined) {
+        onNativeExit(exit);
+        return;
+      }
+      if (exit === "finished") {
+        applyOnboardingOutcome(outcome);
+      } else {
+        setViewState("cancelled");
+        fireHaptic("warning");
+        announceForAccessibility("Onboarding cancelled. Your progress is saved.");
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setViewState("failed-network");
+      setErrorMessage(message);
+      fireHaptic("error");
+      announceForAccessibility("We couldn't confirm your payout status.");
+    }
+  }, [applyOnboardingOutcome, nativeSession, onNativeExit, settleOutcome]);
+
+  // #4389 S-11 — the native screen failed to load: fall back to the browser
+  // sheet with the same setup link, automatically.
+  const handleNativeLoadError = useCallback((event: unknown): void => {
+    const session = nativeSession;
+    console.warn("[BrandOnboardView] native secure setup failed to load; using the browser sheet", {
+      brandId: session?.brandId ?? null,
+      reason: nativeConnectLoadErrorMessage(event),
+    });
+    nativeLoadFailedRef.current = true;
+    setNativeSession(null);
+    if (session === null) return;
+    void openBrowserSheetAndSettle(session.brandId, session.onboardingUrl).catch(
+      (err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        setViewState("failed-network");
+        setErrorMessage(message);
+        fireHaptic("error");
+        announceForAccessibility("Onboarding failed. Tap try again.");
+      },
+    );
+  }, [nativeSession, openBrowserSheetAndSettle]);
+
+  const handleNativeStepChange = useCallback((step: string): void => {
+    console.info("[BrandOnboardView] native secure setup step", {
+      brandId: nativeSession?.brandId ?? null,
+      step,
+    });
+  }, [nativeSession?.brandId]);
 
   const handleTryAgain = useCallback((): void => {
     setViewState("idle");
@@ -1148,6 +1272,18 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
     <View style={styles.host}>
       {renderTopBar()}
 
+      {/* #4389 S-11 — the native secure setup, full screen over this route. */}
+      {nativeSession !== null ? (
+        <ConnectOnboardingNative
+          key={nativeSession.clientSecret}
+          brandId={nativeSession.brandId}
+          clientSecret={nativeSession.clientSecret}
+          onExit={(): void => void handleNativeExit()}
+          onLoadError={handleNativeLoadError}
+          onStepChange={handleNativeStepChange}
+        />
+      ) : null}
+
       {/* ORCH-1403 [connect-bank-heading-collision] — the state content is
           wrapped in a ScrollView, NOT a plain flex:1 View. contentContainerStyle
           carries flexGrow:1 + justifyContent:"center" so short content still
@@ -1404,7 +1540,9 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
             <View style={styles.stateBlock}>
               <Spinner size={48} color={accent.warm} />
               <Text style={styles.stateTitle}>
-                Complete onboarding in the browser
+                {nativeSession !== null
+                  ? "Finish secure setup"
+                  : "Complete onboarding in the browser"}
               </Text>
               <Text style={styles.stateSub}>
                 We{"’"}ll know automatically when you{"’"}re done. If the

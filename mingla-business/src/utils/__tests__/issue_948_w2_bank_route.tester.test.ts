@@ -555,8 +555,14 @@ describe("#948 W2 tester — native W4 boundary remains intact", () => {
     expect(existingOnboardSource).toContain(
       "window.location.assign(result.onboarding_url)",
     );
+    // #4389 S-11: the browser sheet moved into openBrowserSheetAndSettle
+    // (shared with the native screen's load-error fallback); handleStart hands
+    // it the same result.onboarding_url.
     expect(existingOnboardSource).toMatch(
-      /WebBrowser\.openAuthSessionAsync\(\s*result\.onboarding_url,\s*RETURN_DEEP_LINK,\s*\)/,
+      /WebBrowser\.openAuthSessionAsync\(\s*onboardingUrl,\s*RETURN_DEEP_LINK,\s*\)/,
+    );
+    expect(existingOnboardSource).toMatch(
+      /openBrowserSheetAndSettle\(brand\.id, result\.onboarding_url\)/,
     );
     expect(existingOnboardSource).toContain(
       'const RETURN_DEEP_LINK = "mingla-business://onboarding-complete"',
