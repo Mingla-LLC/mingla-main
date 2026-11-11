@@ -76,6 +76,7 @@ export default function SupportRoute(): React.ReactElement {
     announcementId?: string | string[];
     communityPost?: string | string[];
     section?: string | string[];
+    new?: string | string[];
   }>();
   const queryTab = firstParam(params.tab);
   const targetAnnouncementId = firstParam(params.announcementId);
@@ -211,7 +212,7 @@ export default function SupportRoute(): React.ReactElement {
           key={`${tab}:${tab === "community" ? communitySection : "root"}`}
         >
           {tab === "community" ? communityPanel : null}
-          {tab === "support" ? <SupportTabPanel onToast={showToast} /> : null}
+          {tab === "support" ? <SupportTabPanel onToast={showToast} startNew={firstParam(params.new) === "1"} /> : null}
           {tab === "guides" ? <GuidesTabPanel onToast={showToast} /> : null}
         </ScrollView>
 
