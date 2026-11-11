@@ -105,26 +105,23 @@ export const COMMUNITY_SUPPORT_TAB_CONTRACT = Object.freeze({
     page: "support",
     area: SUPPORT,
     panel: "pages/SupportDeskPage.jsx",
-    rpcs: Object.freeze([
-      "issue_3720_update_internal_thread",
-      "issue_3988_reassign_internal_thread",
-    ]),
-    functions: Object.freeze(["support-claim", "support-send", "support-set-status"]),
+    // #4382: staff threads are support tickets now; the desk writes only
+    // through the support-* Edge Functions (the retired internal-thread RPCs
+    // are gone).
+    rpcs: Object.freeze([]),
+    // support-send is reached by the ticket panel's composer
+    // (components/support/SupportComposer.jsx), not by the page itself.
+    functions: Object.freeze(["support-claim", "support-set-status"]),
   }),
   product: Object.freeze({
     page: "community",
     area: ADMIN,
     panel: "components/community/ProductInboxPanel.jsx",
-    rpcs: Object.freeze([
-      "issue_3720_approve_product_customer_draft",
-      "issue_3720_queue_product_avengers_command",
-      "issue_3720_record_product_avengers_candidate",
-      "issue_3720_save_product_avengers_review",
-      "issue_3720_save_product_roadmap_wording",
-      "issue_3720_set_product_avengers_no_fit",
-      "issue_3720_verify_product_release",
-    ]),
-    functions: Object.freeze(["product-avengers-sync"]),
+    // #4382: the board lists items and Community ideas; triage, GitHub, verify
+    // and Tell reporters run from the card panel
+    // (components/support/ProductCardPanel.jsx).
+    rpcs: Object.freeze(["issue_3720_admin_list_posts"]),
+    functions: Object.freeze([]),
   }),
   "feature-guide": Object.freeze({
     page: "community",

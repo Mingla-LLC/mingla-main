@@ -390,7 +390,7 @@ describe("#4382 Host thread", () => {
     expect(src).toContain('supportCopy("thread.start_new")');
     expect(src).toContain("SupportImageViewer");
     expect(src).toContain("message.is_internal");
-    const inbox = fs.readFileSync(path.join(ROOT, "app/support/inbox.tsx"), "utf8");
+    const inbox = fs.readFileSync(path.join(ROOT, "src/components/support/SupportInboxScreen.tsx"), "utf8");
     expect(inbox).toContain("?mode=staff");
   });
 
@@ -400,7 +400,7 @@ describe("#4382 Host thread", () => {
       "src/components/support/SupportTabPanel.tsx",
       "src/components/support/SupportNewRequestForm.tsx",
       "src/components/support/SupportMedia.tsx",
-      "app/support/inbox.tsx",
+      "src/components/support/SupportInboxScreen.tsx",
     ];
     for (const file of files) {
       const src = fs.readFileSync(path.join(ROOT, file), "utf8");
@@ -458,6 +458,34 @@ describe("#4382 Host thread system lines", () => {
     expect(core).toMatch(/if \(message\.message_type === "system"\) \{\s*return \(\s*<Text key=\{message\.id\} style=\{styles\.systemLine\}/);
     const service = fs.readFileSync(path.join(ROOT, "src/services/supportService.ts"), "utf8");
     expect(service).toContain("is_internal, message_type, sender_display_name_snapshot");
+  });
+});
+
+describe("#4382 support code stays out of the eager web chunk", () => {
+  // Expo hoists a module that two route chunks import statically into the
+  // eager __common chunk; the support routes reach their screens only through
+  // LazySupportScreens' one import() (bundle-baseline-movement, +1,024 B).
+  const routes = ["app/account/support.tsx", "app/support/[ticketId].tsx", "app/support/inbox.tsx"];
+  const heavy = /\/(supportService|supportRequestModel|SupportMedia|supportImagePicker|useSupportTickets|SupportTabPanel|SupportThread|SupportThreadCore|SupportInboxScreen|supportStaffService)["']/;
+
+  test("no support route imports a support screen, service or model statically", () => {
+    for (const route of routes) {
+      const src = fs.readFileSync(path.join(ROOT, route), "utf8");
+      const statics = [...src.matchAll(/^\s*import\s+(?!type\b)[^;]*?from\s+["']([^"']+)["']/gms)].map((m) => m[1]);
+      expect(statics.filter((spec) => heavy.test(`${spec}"`))).toEqual([]);
+      expect(src).toContain("LazySupportScreens");
+    }
+  });
+
+  test("the lazy boundary loads one support module with import()", () => {
+    const lazy = fs.readFileSync(path.join(ROOT, "src/components/support/LazySupportScreens.tsx"), "utf8");
+    expect(lazy).toContain('import("./supportScreens")');
+    expect([...lazy.matchAll(/^\s*import\s+(?!type\b)[^;]*?from\s+["']([^"']+)["']/gms)].map((m) => m[1]))
+      .toEqual(["../ui/RetryableLazyBoundary"]);
+    const screens = fs.readFileSync(path.join(ROOT, "src/components/support/supportScreens.ts"), "utf8");
+    for (const name of ["SupportTabPanel", "SupportThread", "SupportInboxScreen"]) {
+      expect(screens).toContain(`export { ${name} }`);
+    }
   });
 });
 

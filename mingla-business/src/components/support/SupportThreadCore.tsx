@@ -453,6 +453,7 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
                         key={note ? "note" : "reply"}
                         onPress={() => setNoteMode(note)}
                         accessibilityRole="radio"
+                        accessibilityLabel={note ? supportCopy("thread.mode_note") : supportCopy("thread.mode_reply")}
                         accessibilityState={{ selected: noteMode === note }}
                         style={[styles.modeChip, noteMode === note && (note ? styles.modeChipNote : styles.modeChipReply)]}
                       >

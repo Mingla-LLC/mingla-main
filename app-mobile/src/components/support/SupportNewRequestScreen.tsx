@@ -337,6 +337,7 @@ export function SupportNewRequestScreen(): React.ReactElement {
             }}
             disabled={!canNext || sending}
             accessibilityRole="button"
+            accessibilityLabel={step < 3 ? t('feedback:support.next') : t('feedback:support.send')}
             accessibilityState={{ disabled: !canNext || sending, busy: sending }}
             style={[supportStyles.primaryButton, (!canNext || sending) && supportStyles.primaryButtonDisabled]}
             testID="support-next"

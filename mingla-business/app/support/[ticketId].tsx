@@ -20,7 +20,7 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 
-import { SupportThread } from "../../src/components/support/SupportThread";
+import { LazySupportThread } from "../../src/components/support/LazySupportScreens";
 import { text as textTokens } from "../../src/constants/designSystem";
 import { useSupportStaff } from "../../src/hooks/useSupportStaff";
 
@@ -44,7 +44,7 @@ export default function SupportThreadRoute(): React.ReactElement {
     );
   }
 
-  return <SupportThread ticketId={ticketId} staffMode={staffMode} />;
+  return <LazySupportThread ticketId={ticketId} staffMode={staffMode} />;
 }
 
 const styles = StyleSheet.create({

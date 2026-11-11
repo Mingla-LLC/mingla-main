@@ -227,7 +227,7 @@ export function SupportThreadScreen({ ticketId }: { ticketId: string }): React.R
         {header}
         <View style={supportStyles.state}>
           <Text style={supportStyles.stateText}>{t('feedback:support.thread_load_error')}</Text>
-          <Pressable onPress={() => void thread.refetch()} accessibilityRole="button" style={supportStyles.secondaryButton}>
+          <Pressable onPress={() => void thread.refetch()} accessibilityRole="button" accessibilityLabel={t('feedback:support.try_again')} style={supportStyles.secondaryButton}>
             <Text style={supportStyles.secondaryButtonText}>{t('feedback:support.try_again')}</Text>
           </Pressable>
         </View>
@@ -240,7 +240,7 @@ export function SupportThreadScreen({ ticketId }: { ticketId: string }): React.R
         {header}
         <View style={supportStyles.state}>
           <Text style={supportStyles.stateText}>{t('feedback:support.thread_not_found')}</Text>
-          <Pressable onPress={() => router.replace('/support' as never)} accessibilityRole="button" style={supportStyles.secondaryButton}>
+          <Pressable onPress={() => router.replace('/support' as never)} accessibilityRole="button" accessibilityLabel={t('feedback:support.title')} style={supportStyles.secondaryButton}>
             <Text style={supportStyles.secondaryButtonText}>{t('feedback:support.title')}</Text>
           </Pressable>
         </View>
@@ -293,7 +293,7 @@ export function SupportThreadScreen({ ticketId }: { ticketId: string }): React.R
         </ScrollView>
         {composerMode === 'start_new' ? (
           <View style={[styles.closedBox, { paddingBottom: Math.max(insets.bottom, 12) }]} testID="support-thread-closed">
-            <Pressable onPress={() => router.replace('/support/new' as never)} accessibilityRole="button" style={supportStyles.primaryButton}>
+            <Pressable onPress={() => router.replace('/support/new' as never)} accessibilityRole="button" accessibilityLabel={t('feedback:support.start_new')} style={supportStyles.primaryButton}>
               <Icon name="add" size={20} color="#ffffff" />
               <Text style={supportStyles.primaryButtonText}>{t('feedback:support.start_new')}</Text>
             </Pressable>

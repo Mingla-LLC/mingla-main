@@ -97,7 +97,7 @@ export function HelpSupportScreen(): React.ReactElement {
         ) : tickets.isError ? (
           <View style={styles.listState}>
             <Text style={supportStyles.stateText}>{t('feedback:support.load_error')}</Text>
-            <Pressable onPress={() => void tickets.refetch()} accessibilityRole="button" style={supportStyles.secondaryButton}>
+            <Pressable onPress={() => void tickets.refetch()} accessibilityRole="button" accessibilityLabel={t('feedback:support.try_again')} style={supportStyles.secondaryButton}>
               <Text style={supportStyles.secondaryButtonText}>{t('feedback:support.try_again')}</Text>
             </Pressable>
           </View>

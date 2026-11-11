@@ -12,7 +12,7 @@ import {
 } from "../../src/components/support/CommunityTabPanel";
 import { GuidesTabPanel } from "../../src/components/support/GuidesTabPanel";
 import { HelpSupportHubTabs } from "../../src/components/support/HelpSupportHubTabs";
-import { SupportTabPanel } from "../../src/components/support/SupportTabPanel";
+import { LazySupportTabPanel } from "../../src/components/support/LazySupportScreens";
 import { Icon, type IconName } from "../../src/components/ui/Icon";
 import { DesktopCanvas } from "../../src/components/ui/DesktopCanvas";
 import { IconChrome } from "../../src/components/ui/IconChrome";
@@ -212,7 +212,7 @@ export default function SupportRoute(): React.ReactElement {
           key={`${tab}:${tab === "community" ? communitySection : "root"}`}
         >
           {tab === "community" ? communityPanel : null}
-          {tab === "support" ? <SupportTabPanel onToast={showToast} startNew={firstParam(params.new) === "1"} /> : null}
+          {tab === "support" ? <LazySupportTabPanel onToast={showToast} startNew={firstParam(params.new) === "1"} /> : null}
           {tab === "guides" ? <GuidesTabPanel onToast={showToast} /> : null}
         </ScrollView>
 

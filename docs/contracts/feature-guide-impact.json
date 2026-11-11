@@ -3077,6 +3077,8 @@
         "mingla-admin/src/lib/supportTicketMetrics.js",
         "mingla-admin/src/services/supportDeskService.js",
         "mingla-admin/src/services/supportProductWorkflowService.js",
+        "mingla-business/app/support/inbox.tsx",
+        "mingla-business/src/components/support/SupportInboxScreen.tsx",
         "mingla-business/src/services/supportStaffService.ts",
         "supabase/functions/_shared/issue3988SupportAlerts.ts",
         "supabase/functions/_shared/issue4382SupportNotifications.ts",
@@ -3112,6 +3114,7 @@
       "capability_key": "help-support",
       "paths": [
         "mingla-business/app/support/[ticketId].tsx",
+        "mingla-business/src/components/support/LazySupportScreens.tsx",
         "mingla-business/src/components/support/SupportMedia.tsx",
         "mingla-business/src/components/support/SupportNewRequestForm.tsx",
         "mingla-business/src/components/support/SupportTabPanel.tsx",
@@ -3122,6 +3125,7 @@
         "mingla-business/src/components/support/supportImagePicker.native.ts",
         "mingla-business/src/components/support/supportImagePicker.ts",
         "mingla-business/src/components/support/supportRequestModel.ts",
+        "mingla-business/src/components/support/supportScreens.ts",
         "mingla-business/src/hooks/useSupportTickets.ts",
         "mingla-business/src/i18n/locales/en/hostSupport.json",
         "mingla-business/src/services/supportService.ts"
