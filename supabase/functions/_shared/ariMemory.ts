@@ -195,6 +195,15 @@ export function rememberNoteError(message: string): ToolError {
       next_step: null,
     });
   }
+  if (message.includes("memory_brand_note_rank")) {
+    // #3355 rework 1 (tester P2-7): brand-wide notes need a manager role.
+    const text =
+      "Only brand managers can save a note for the whole team, so I didn't share that one. I can keep it as a note just for you.";
+    return new ToolError("MEMORY_BRAND_RANK", text, {
+      user_reason: text,
+      next_step: null,
+    });
+  }
   if (message.includes("not_authorized")) {
     return new ToolError(
       "BRAND_ACCESS_DENIED",

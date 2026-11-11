@@ -334,7 +334,10 @@ Deno.test("E1: readiness answers come only when the route says readiness", async
   const world = freshWorld();
   const rpcClient = {
     rpc: (_name: string, args: { p_action: ReadinessAction | null }) =>
-      Promise.resolve({ data: readinessFor(world, args.p_action), error: null }),
+      Promise.resolve({
+        data: readinessFor(world, args.p_action),
+        error: null,
+      }),
   } as unknown as SupabaseClient;
   const store = new MemoryStore(OWNER);
   const offRoute = await decideFlowTurn({

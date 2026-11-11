@@ -10,8 +10,8 @@
  *     `create_discount` accepts `ends_at`, but all three codes were saved with
  *     `ends_at = NULL`. The stated end date was dropped silently.
  *
- * MINGLA-INVARIANT: I-ARI-CLAIM-MATCHES-RECEIPT | issue #3355 | Reply text that claims a past write (proposed / created / saved / sent / published / updated / deleted) must be backed by a pending action or a receipt for what it names; otherwise the server rewrites the reply to the true state before it is stored or shown (enforced by supabase/functions/_shared/__tests__/issue_3355_wave_a_truth_guards.implementor.test.ts).
- * MINGLA-INVARIANT: I-ARI-STATED-SLOTS-PRESERVED | issue #3355 | Codes, percentages, amounts, end dates and use limits the host stated (last 6 owner messages since the previous proposal of the same tool) are compared with the proposal args for every tool whose schema has that field; a stated end date the args lack is bound exactly (end of that day in the brand's time zone), and any other stated value that is missing or different makes Ari ask instead of proposing (same test file).
+ * MINGLA-INVARIANT: I-ARI-CLAIM-MATCHES-RECEIPT | issue #3355 | Reply text that claims a past write, in the active voice ("I've created") or the passive / outcome voice ("has been created", "was sent", "is now live"), must be backed by evidence that matches the claim's verb (tool family), its object (event, discount, message …) and every code or name it states: "proposed" by a live or executed proposal, "created / saved / sent / published …" only by an executed receipt; a negation or condition excuses only its own clause, and a proposal whose card was cancelled, expired or failed backs nothing. Otherwise the server rewrites the reply to the true state before it is stored or shown, on the agent-loop and the single-call path alike (enforced by supabase/functions/_shared/__tests__/issue_3355_wave_a_truth_guards.implementor.test.ts and issue_3355_rework_1.implementor.test.ts).
+ * MINGLA-INVARIANT: I-ARI-STATED-SLOTS-PRESERVED | issue #3355 | Codes, percentages, fixed amounts off (in the currency's minor units), start and end dates and use limits the host stated (last 6 owner messages since the previous proposal of the same tool; each code its own values when one message gives several) are compared with the proposal args for every tool whose schema has that field, on both agent paths: a percent must be a percent of that size and an amount an amount of that size; a stated end day is bound to 23:59:59 local ("until / through / till / by" include the day) and a future start day to 00:00 local; anything else missing or different makes Ari ask instead of proposing (same test files).
  */
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
@@ -21,13 +21,38 @@ import {
 } from "./agentRelativeTime.ts";
 import { normaliseAriDiscountCode } from "./ariDiscountArgs.ts";
 import { marketDefaultTimezone } from "./payoutCountries.ts";
+import { formatMinor, minorFromMajor } from "./money/formatMinor.ts";
 
 // ── I-ARI-CLAIM-MATCHES-RECEIPT ─────────────────────────────────────────────
+//
+// #3355 rework 1 (tester P1-2): a claim is found clause by clause, in the
+// active voice ("I've created …") and the passive / outcome voice ("… has
+// been created", "… was sent", "… is now live"). A negation or a condition
+// excuses only its own clause. "Proposed" may be backed by a live proposal;
+// "created / saved / sent / published …" only by an executed receipt. The
+// backing evidence must match the claim's verb (tool family), its object
+// (event, discount, message …) and every code or name it states.
 
-const PAST_WRITE =
-  /\b(?:i|we|ari)(?:['’]ve|\s+have|\s+just|\s+already|\s+also)*\s+(?:proposed|created|saved|sent|published|updated|deleted|removed|cancelled|canceled|made|added|set\s+up|scheduled|issued|refunded|posted)\b/i;
-const NEGATION_AFTER_SUBJECT =
-  /\b(?:i|we|ari)\s+(?:have\s+not|haven[’']?t|did\s+not|didn[’']?t|never|couldn[’']?t|could\s+not|can[’']?t|cannot|won[’']?t)\b/i;
+const WRITE_VERBS =
+  "proposed|prepared|drafted|created|saved|sent|published|updated|changed|deleted|removed|cancell?ed|canceled|made|added|set\\s+up|scheduled|issued|refunded|posted|applied|activated|launched";
+const ACTIVE_CLAIM = new RegExp(
+  `\\b(?:i|we|ari)(?:['’](?:ve|d))?(?:\\s+(?:have|had|just|already|also|now|successfully|then|gone\\s+ahead\\s+and|went\\s+ahead\\s+and))*\\s+(${WRITE_VERBS})\\b`,
+  "gi",
+);
+const PASSIVE_CLAIM = new RegExp(
+  `\\b(?:has|have|had|['’]s|is|are|was|were)(?:\\s+(?:now|just|already|successfully|also|all))*\\s+been(?:\\s+(?:now|just|already|successfully))*\\s+(${WRITE_VERBS})\\b|\\b(?:was|were)(?:\\s+(?:just|already|successfully|also|all))*\\s+(${WRITE_VERBS})\\b|\\b(?:is|are)\\s+now\\s+(live|active|published|scheduled)\\b`,
+  "gi",
+);
+/** A negation inside the claim's own clause (before its verb). */
+const CLAUSE_NEGATION =
+  /\b(?:not|never|no|nothing|none|neither|nor|nobody|yet\s+to)\b|n['’]t\b/i;
+/** A condition or hypothetical inside the claim's own clause. */
+const CLAUSE_CONDITION =
+  /\b(?:if|once|until|unless|whether|when|whenever|after\s+you|before\s+you|as\s+soon\s+as|would|will|could|should|can|may|might)\b/i;
+/** Where a clause starts (the claim's subject never crosses one). */
+const CLAUSE_BOUNDARY =
+  /[,;:()—–]|\b(?:so|but|and|then|because|though|although|while|which|whereas)\b/gi;
+
 const NAMED_THING = /"([^"]{2,60})"|“([^”]{2,60})”|\b([A-Z][A-Z0-9]{3,15})\b/g;
 const STOPWORDS = new Set([
   "ARI",
@@ -41,6 +66,111 @@ const STOPWORDS = new Set([
   "HTTP",
 ]);
 
+type ClaimStrength = "proposed" | "done";
+type ToolFamily =
+  | "create"
+  | "update"
+  | "publish"
+  | "send"
+  | "delete"
+  | "cancel"
+  | "refund"
+  | "schedule";
+
+/** Which tool families back a claimed verb (null = any family). */
+function familiesForVerb(verb: string): ToolFamily[] | null {
+  const word = verb.toLowerCase().replace(/\s+/g, " ");
+  switch (word) {
+    case "created":
+    case "issued":
+    case "launched":
+      return ["create"];
+    case "made":
+    case "set up":
+    case "added":
+    case "applied":
+    case "activated":
+      return ["create", "update"];
+    case "updated":
+    case "changed":
+      return ["update"];
+    case "sent":
+    case "posted":
+      return ["send", "publish"];
+    case "published":
+    case "live":
+    case "active":
+      return ["publish", "create", "update"];
+    case "deleted":
+    case "removed":
+      return ["delete", "update"];
+    case "cancelled":
+    case "canceled":
+      return ["cancel", "delete"];
+    case "scheduled":
+      return ["schedule", "send", "create", "publish"];
+    case "refunded":
+      return ["refund", "cancel"];
+    default:
+      return null;
+  }
+}
+
+const TOOL_FAMILY_PREFIXES: ReadonlyArray<[RegExp, ToolFamily]> = [
+  [
+    /^(?:create|add|duplicate|issue|upsert|import|invite|start|open)_/,
+    "create",
+  ],
+  [/^(?:publish|unpublish|go_live|launch)_/, "publish"],
+  [/^(?:send|post|tell|notify|message|reply|announce|broadcast)_/, "send"],
+  [/^(?:delete|remove|archive|end|unlist)_/, "delete"],
+  [/^(?:cancel|void)_/, "cancel"],
+  [/^(?:refund)_/, "refund"],
+  [/^(?:schedule|reschedule)_/, "schedule"],
+  [
+    /^(?:update|edit|set|change|rename|pause|resume|move|assign|attach|enable|disable|toggle|bind|save|remember|draft)_/,
+    "update",
+  ],
+];
+
+function toolFamily(toolName: string): ToolFamily | null {
+  for (const [pattern, family] of TOOL_FAMILY_PREFIXES) {
+    if (pattern.test(toolName)) return family;
+  }
+  return null;
+}
+
+/** Object words a claim can name, and the tool-name parts that serve them. */
+const CLAIM_OBJECTS: ReadonlyArray<[RegExp, RegExp]> = [
+  [
+    /\b(?:discounts?|codes?|promo(?:\s+codes?)?|coupons?|vouchers?|sale\s+prices?)\b/i,
+    /discount/,
+  ],
+  [/\bevents?\b/i, /event/],
+  [/\btrips?\b/i, /trip/],
+  [/\bexperiences?\b/i, /experience/],
+  [/\bstays?\b/i, /stay/],
+  [/\b(?:tickets?|ticket\s+types?|tiers?)\b/i, /ticket|tier/],
+  [
+    /\b(?:messages?|emails?|announcements?|broadcasts?|blasts?|campaigns?|newsletters?)\b/i,
+    /message|email|announce|broadcast|blast|campaign|tell|notify/,
+  ],
+  [/\b(?:invites?|invitations?)\b/i, /invite|team/],
+  [/\bpayouts?\b/i, /payout/],
+  [/\brefunds?\b/i, /refund/],
+  [/\b(?:website|site|page)\b/i, /site|page/],
+  [/\b(?:posts?)\b/i, /post|social/],
+  [/\bnotes?\b/i, /note|remember/],
+];
+
+interface WriteClaim {
+  sentence: string;
+  strength: ClaimStrength;
+  families: ToolFamily[] | null;
+  objects: RegExp[];
+  named: string[];
+}
+
 /** Sentences of a reply (keeps their own punctuation). */
 function sentences(text: string): string[] {
   return text.split(/(?<=[.!?])\s+(?=[A-Z“"'])|\n+/).filter((part) =>
@@ -48,9 +178,87 @@ function sentences(text: string): string[] {
   );
 }
 
+/** The text of the clause a match sits in, from its start to the match end. */
+function clauseBefore(sentence: string, index: number, end: number): string {
+  let start = 0;
+  for (const boundary of sentence.matchAll(CLAUSE_BOUNDARY)) {
+    const at = boundary.index ?? 0;
+    if (at >= index) break;
+    start = at + boundary[0].length;
+  }
+  return sentence.slice(start, end);
+}
+
+/** The words a clause's claim is about: its direct object or its subject. */
+function claimObjectWords(
+  sentence: string,
+  index: number,
+  end: number,
+  passive: boolean,
+): string {
+  if (passive) return clauseBefore(sentence, index, index);
+  const after = sentence.slice(end);
+  const stop = after.search(
+    /[,;:.!?()—–]|\b(?:for|on|to|at|in|with|from|by|until|till|so|and|but|which|that)\b/i,
+  );
+  return stop === -1 ? after : after.slice(0, stop);
+}
+
+function claimFor(
+  sentence: string,
+  match: RegExpMatchArray,
+  passive: boolean,
+): WriteClaim | null {
+  const index = match.index ?? 0;
+  const end = index + match[0].length;
+  const clause = clauseBefore(sentence, index, end);
+  if (CLAUSE_NEGATION.test(clause) || CLAUSE_CONDITION.test(clause)) {
+    return null;
+  }
+  const verb = (match[1] ?? match[2] ?? match[3] ?? "").toLowerCase()
+    .replace(/\s+/g, " ");
+  const strength: ClaimStrength = /^(?:proposed|prepared|drafted)$/.test(verb)
+    ? "proposed"
+    : "done";
+  let families = familiesForVerb(verb);
+  const objectWords = claimObjectWords(sentence, index, end, passive);
+  if (strength === "proposed") {
+    // "I proposed creating / publishing …": the gerund names the family.
+    const gerund = /^\s*(?:to\s+)?(\w+?)(?:ing)?\b/i.exec(
+      sentence.slice(end),
+    )?.[1];
+    const fromGerund = gerund ? familiesForVerb(`${gerund}ed`) : null;
+    families = fromGerund ?? null;
+  }
+  const objects = CLAIM_OBJECTS.filter(([words]) => words.test(objectWords))
+    .map(([, tools]) => tools);
+  return {
+    sentence,
+    strength,
+    families,
+    objects,
+    named: namedThings(sentence),
+  };
+}
+
+/** The write claims a sentence makes (empty when it makes none). */
+export function writeClaimsIn(sentence: string): WriteClaim[] {
+  if (/\?\s*$/.test(sentence.trim())) return [];
+  const claims: WriteClaim[] = [];
+  for (const match of sentence.matchAll(ACTIVE_CLAIM)) {
+    const claim = claimFor(sentence, match, false);
+    if (claim) claims.push(claim);
+  }
+  for (const match of sentence.matchAll(PASSIVE_CLAIM)) {
+    const claim = claimFor(sentence, match, true);
+    if (claim) claims.push(claim);
+  }
+  return claims;
+}
+
 /** True when a sentence says Ari already did a write. */
 export function claimsPastWrite(sentence: string): boolean {
-  return PAST_WRITE.test(sentence) && !NEGATION_AFTER_SUBJECT.test(sentence);
+  return writeClaimsIn(sentence).length > 0;
 }
 
 /** The specific things a claim names (codes, quoted names). */
@@ -69,6 +277,92 @@ export function namedThings(sentence: string): string[] {
 export const TRUE_STATE_NOTHING_SAVED =
   "I haven't made that change yet, so nothing has been saved or sent.";
 
+type EvidenceStatus =
+  | "pending"
+  | "executed"
+  | "failed"
+  | "cancelled"
+  | "expired";
+
+interface ClaimEvidence {
+  toolName: string;
+  status: EvidenceStatus;
+  blob: string;
+}
+
+function evidenceRecord(item: unknown): Record<string, unknown> | null {
+  return item && typeof item === "object" && !Array.isArray(item)
+    ? item as Record<string, unknown>
+    : null;
+}
+
+/**
+ * The evidence as one entry per pending action: a proposal with its final
+ * outcome when a receipt for the same action is present, a receipt alone
+ * otherwise. Anything that is neither is ignored.
+ */
+function resolveEvidence(evidence: readonly unknown[]): ClaimEvidence[] {
+  const byAction = new Map<string, ClaimEvidence>();
+  const loose: ClaimEvidence[] = [];
+  const statusOf = (value: unknown): EvidenceStatus | null =>
+    value === "executed" || value === "failed" || value === "cancelled" ||
+      value === "expired"
+      ? value
+      : null;
+  for (const item of evidence) {
+    const record = evidenceRecord(item);
+    if (!record) continue;
+    const toolName = typeof record.tool_name === "string"
+      ? record.tool_name
+      : "";
+    const outcome = statusOf(record.outcome);
+    const actionId = typeof record.pending_action_id === "string"
+      ? record.pending_action_id
+      : null;
+    if (!outcome && !actionId) continue;
+    const blob = JSON.stringify(record).toLowerCase();
+    if (!actionId) {
+      if (outcome) loose.push({ toolName, status: outcome, blob });
+      continue;
+    }
+    const known = byAction.get(actionId);
+    if (!known) {
+      byAction.set(actionId, {
+        toolName,
+        status: outcome ?? "pending",
+        blob,
+      });
+      continue;
+    }
+    known.blob = `${known.blob}\n${blob}`;
+    if (!known.toolName) known.toolName = toolName;
+    if (outcome) known.status = outcome;
+  }
+  return [...byAction.values(), ...loose];
+}
+
+function claimBacked(claim: WriteClaim, evidence: ClaimEvidence[]): boolean {
+  return evidence.some((item) => {
+    if (claim.strength === "done" && item.status !== "executed") return false;
+    if (
+      claim.strength === "proposed" &&
+      item.status !== "executed" && item.status !== "pending"
+    ) return false;
+    const tool = item.toolName.toLowerCase();
+    if (claim.families) {
+      const family = toolFamily(tool);
+      if (!family || !claim.families.includes(family)) return false;
+    }
+    if (
+      claim.objects.length > 0 &&
+      !claim.objects.some((pattern) => pattern.test(tool))
+    ) return false;
+    return claim.named.every((thing) =>
+      item.blob.includes(thing.toLowerCase())
+    );
+  });
+}
+
 /**
  * Rewrite any sentence that claims a write the evidence does not back.
  * `evidence` is what this conversation can prove: this turn's pending
@@ -82,21 +376,16 @@ export function guardWriteClaims(args: {
   if (args.pendingThisTurn) {
     return { text: args.text, rewritten: false, unsupported: [] };
   }
-  const blob = args.evidence.map((item) => JSON.stringify(item ?? null))
-    .join("\n").toLowerCase();
+  const evidence = resolveEvidence(args.evidence);
   const unsupported: string[] = [];
   const kept: string[] = [];
   for (const sentence of sentences(args.text)) {
-    if (!claimsPastWrite(sentence)) {
+    const claims = writeClaimsIn(sentence);
+    if (claims.every((claim) => claimBacked(claim, evidence))) {
       kept.push(sentence);
-      continue;
+    } else {
+      unsupported.push(sentence.trim());
     }
-    const named = namedThings(sentence);
-    const backed = named.length > 0
-      ? named.every((thing) => blob.includes(thing.toLowerCase()))
-      : args.evidence.length > 0;
-    if (backed) kept.push(sentence);
-    else unsupported.push(sentence.trim());
   }
   if (unsupported.length === 0) {
     return { text: args.text, rewritten: false, unsupported };
@@ -111,7 +400,12 @@ export function guardWriteClaims(args: {
   };
 }
 
-/** What a conversation's recent rows can prove (proposals and receipts). */
+/**
+ * What a conversation's recent rows can prove: live proposals (their tool
+ * and args) and executed receipts, each receipt carrying its proposal's
+ * args. A proposal whose card was cancelled, expired or failed proves
+ * nothing, and neither does its receipt.
+ */
 export function claimEvidenceFromHistory(
   rows: ReadonlyArray<{
     role?: unknown;
@@ -119,31 +413,86 @@ export function claimEvidenceFromHistory(
     tool_results?: unknown;
   }>,
 ): unknown[] {
+  const proposals = new Map<string, Record<string, unknown>>();
+  const outcomes = new Map<string, string>();
   const evidence: unknown[] = [];
   for (const row of rows) {
-    if (
-      row.role === "assistant" && row.tool_calls &&
-      typeof row.tool_calls === "object"
-    ) {
-      const calls = row.tool_calls as { pending_action_id?: unknown };
-      if (typeof calls.pending_action_id === "string") {
-        evidence.push(row.tool_calls);
+    if (row.role === "assistant") {
+      const calls = evidenceRecord(row.tool_calls);
+      if (calls && typeof calls.pending_action_id === "string") {
+        proposals.set(calls.pending_action_id, calls);
       }
     }
-    if (
-      row.role === "tool" && row.tool_results &&
-      typeof row.tool_results === "object"
-    ) {
-      const result = row.tool_results as { outcome?: unknown };
-      if (result.outcome === "executed") evidence.push(row.tool_results);
+    if (row.role === "tool") {
+      const result = evidenceRecord(row.tool_results);
+      if (result && typeof result.pending_action_id === "string") {
+        outcomes.set(result.pending_action_id, String(result.outcome ?? ""));
+      }
     }
+  }
+  for (const [actionId, calls] of proposals) {
+    const outcome = outcomes.get(actionId);
+    if (outcome === undefined || outcome === "executed") {
+      evidence.push(calls);
+    }
+  }
+  for (const row of rows) {
+    if (row.role !== "tool") continue;
+    const result = evidenceRecord(row.tool_results);
+    if (!result || result.outcome !== "executed") continue;
+    const actionId = typeof result.pending_action_id === "string"
+      ? result.pending_action_id
+      : null;
+    const proposal = actionId ? proposals.get(actionId) : undefined;
+    evidence.push(
+      proposal && proposal.args !== undefined
+        ? { ...result, args: proposal.args }
+        : result,
+    );
   }
   return evidence;
 }
 
 // ── I-ARI-STATED-SLOTS-PRESERVED ────────────────────────────────────────────
 
-export interface StatedSlots {
+/** A calendar day the host named (local to the brand). */
+export interface StatedDay {
+  year: number;
+  month: number;
+  day: number;
+  words: string;
+  /** The host also named a time of day ("at 6pm", "18:00"). */
+  has_time?: boolean;
+  /**
+   * #3355 rework 1 (P3-14): a numeric date both ways round is a real day
+   * (12/1/2026). `alt` is the month-first reading; the brand's country picks
+   * one, or Ari asks.
+   */
+  alt?: { month: number; day: number };
+}
+
+/** A fixed amount off the host stated, in major units of its currency. */
+export interface StatedAmount {
+  major: number;
+  /** ISO code the host's words carry (₦, NGN, naira …), else null. */
+  currency: string | null;
+  words: string;
+}
+
+/** The values the host stated for one discount. */
+export interface StatedValues {
+  value_bps?: number;
+  /** #3355 rework 1 (P1-3): a fixed amount off ("₦5,000 off"). */
+  amount?: StatedAmount;
+  /** The stated end, as the local calendar day. */
+  ends_on?: StatedDay;
+  /** #3355 rework 1 (P2-10): the stated start, as the local calendar day. */
+  starts_on?: StatedDay;
+  max_total_uses?: number;
+  max_uses_per_buyer?: number;
+}
+
+export interface StatedSlots extends StatedValues {
   code?: string;
   /**
    * #3355 Wave F (live eval): every code a single message names ("Create
@@ -151,13 +500,22 @@ export interface StatedSlots {
    * them keeps what the host stated; one card is made per code.
    */
   codes?: string[];
-  value_bps?: number;
-  value_minor_major?: number;
-  /** The stated end, as the local calendar day. */
-  ends_on?: { year: number; month: number; day: number; words: string };
-  max_total_uses?: number;
-  max_uses_per_buyer?: number;
+  /**
+   * #3355 rework 1 (P2-9): when one message gives two codes their own
+   * values ("FAVY10 10% off until 19 December and GIRLS20 20% off until 31
+   * December"), each code's values, never the first code's.
+   */
+  per_code?: Record<string, StatedValues>;
 }
+
+const VALUE_KEYS: ReadonlyArray<keyof StatedValues> = [
+  "value_bps",
+  "amount",
+  "ends_on",
+  "starts_on",
+  "max_total_uses",
+  "max_uses_per_buyer",
+];
 
 const MONTHS: Record<string, number> = {
   jan: 1,
@@ -188,19 +546,29 @@ const MONTHS: Record<string, number> = {
 const MONTH =
   "(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)";
 const END_LEAD =
-  "(?:until|till|til|up\\s+to|through|thru|ends?(?:\\s+on)?|ending(?:\\s+on)?|expires?(?:\\s+on)?|expiring(?:\\s+on)?|valid\\s+(?:until|till|through)|runs?\\s+(?:until|till|through)|to)";
-const END_DAY_FIRST = new RegExp(
-  `\\b${END_LEAD}\\s+(?:the\\s+)?(\\d{1,2})(?:st|nd|rd|th)?(?:\\s+of)?\\s+${MONTH}\\.?(?:,?\\s+(\\d{4}))?`,
-  "i",
-);
-const END_MONTH_FIRST = new RegExp(
-  `\\b${END_LEAD}\\s+${MONTH}\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(\\d{4}))?`,
-  "i",
-);
-const END_NUMERIC = new RegExp(
-  `\\b${END_LEAD}\\s+(\\d{1,2})[/.-](\\d{1,2})[/.-](\\d{4})\\b`,
-  "i",
-);
+  "(?:until|till|til|up\\s+to|through|thru|by|ends?(?:\\s+on)?|ending(?:\\s+on)?|expires?(?:\\s+on)?|expiring(?:\\s+on)?|valid\\s+(?:until|till|through)|runs?\\s+(?:until|till|through)|to)";
+const START_LEAD =
+  "(?:from|starting(?:\\s+(?:on|from))?|starts?(?:\\s+on)?|beginning(?:\\s+on)?|begins?(?:\\s+on)?|valid\\s+from|effective(?:\\s+from)?)";
+function dayPatterns(lead: string): [RegExp, RegExp, RegExp] {
+  return [
+    new RegExp(
+      `\\b${lead}\\s+(?:the\\s+)?(\\d{1,2})(?:st|nd|rd|th)?(?:\\s+of)?\\s+${MONTH}\\.?(?:,?\\s+(\\d{4}))?`,
+      "i",
+    ),
+    new RegExp(
+      `\\b${lead}\\s+${MONTH}\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(\\d{4}))?`,
+      "i",
+    ),
+    new RegExp(
+      `\\b${lead}\\s+(\\d{1,2})[/.-](\\d{1,2})[/.-](\\d{4})\\b`,
+      "i",
+    ),
+  ];
+}
+const END_PATTERNS = dayPatterns(END_LEAD);
+const START_PATTERNS = dayPatterns(START_LEAD);
+const STATED_TIME =
+  /\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b|\b(?:[01]?\d|2[0-3]):[0-5]\d\b|\b(?:noon|midday|midnight)\b/i;
 const PERCENT = /\b(\d{1,2}(?:\.\d{1,2})?|100)\s?(?:%|percent\b|per\s+cent\b)/i;
 const QUOTED_CODE = /["“'‘]([A-Za-z0-9 -]{4,20})["”'’]/;
 const CODE_WORD =
@@ -214,36 +582,114 @@ const TOTAL_USES =
 const PER_BUYER =
   /\b(?:once|one\s+use|1\s+use)\s+per\s+(?:person|buyer|customer)\b|\b(\d{1,3})\s+(?:uses?|times)\s+per\s+(?:person|buyer|customer)\b/i;
 
+// #3355 rework 1 (P1-3): a fixed amount off, with or without its currency.
+const AMOUNT_NUMBER =
+  "(\\d{1,3}(?:,\\d{3})+|\\d+)(?:\\.(\\d{1,2}))?\\s?([kK])?";
+const CURRENCY_SIGNS: Readonly<Record<string, string>> = Object.freeze({
+  "₦": "NGN",
+  "£": "GBP",
+  "€": "EUR",
+  "$": "USD",
+  "₵": "GHS",
+  "GH₵": "GHS",
+  "KSH": "KES",
+  "N": "NGN",
+});
+const CURRENCY_WORDS: Readonly<Record<string, string>> = Object.freeze({
+  naira: "NGN",
+  pound: "GBP",
+  pounds: "GBP",
+  quid: "GBP",
+  euro: "EUR",
+  euros: "EUR",
+  dollar: "USD",
+  dollars: "USD",
+  cedi: "GHS",
+  cedis: "GHS",
+  shilling: "KES",
+  shillings: "KES",
+  rand: "ZAR",
+});
+const CURRENCY_CODES = "NGN|GBP|USD|EUR|GHS|KES|ZAR|CAD|AUD|NZD";
+const AMOUNT_OFF = "\\s*(?:off\\b|discount\\b)";
+const AMOUNT_SIGN_FIRST = new RegExp(
+  `(GH₵|KSh|₦|£|€|\\$|₵|\\bN(?=\\d)|\\b(?:${CURRENCY_CODES})\\b)\\s?${AMOUNT_NUMBER}${AMOUNT_OFF}`,
+  "i",
+);
+const AMOUNT_WORD_AFTER = new RegExp(
+  `\\b${AMOUNT_NUMBER}\\s?(naira|pounds?|quid|euros?|dollars?|cedis?|shillings?|rand|${CURRENCY_CODES})\\b${AMOUNT_OFF}`,
+  "i",
+);
+const AMOUNT_BARE = new RegExp(`(?<![\\w.,%])${AMOUNT_NUMBER}\\s+off\\b`, "i");
+/** Dollar currencies: "$" is the brand's own dollar when it sells in one. */
+const DOLLAR_CURRENCIES = new Set(["USD", "CAD", "AUD", "NZD"]);
+/** Countries that write numeric dates month first (12/19/2026). */
+const MONTH_FIRST_COUNTRIES = new Set([
+  "US",
+  "PR",
+  "GU",
+  "VI",
+  "AS",
+  "MP",
+  "UM",
+  "PH",
+  "FM",
+  "MH",
+  "PW",
+]);
+
 function validDay(year: number, month: number, day: number): boolean {
   const probe = new Date(Date.UTC(year, month - 1, day));
   return probe.getUTCFullYear() === year && probe.getUTCMonth() === month - 1 &&
     probe.getUTCDate() === day;
 }
 
-function endOn(text: string, now: Date): StatedSlots["ends_on"] | undefined {
+function statedDay(
+  text: string,
+  patterns: [RegExp, RegExp, RegExp],
+  now: Date,
+): StatedDay | undefined {
   let year: number | undefined;
   let month: number | undefined;
   let day: number | undefined;
+  let alt: StatedDay["alt"];
   let words = "";
-  const dayFirst = END_DAY_FIRST.exec(text);
-  const monthFirst = END_MONTH_FIRST.exec(text);
-  const numeric = END_NUMERIC.exec(text);
+  let end = 0;
+  const [dayFirst, monthFirst, numeric] = patterns.map((pattern) =>
+    pattern.exec(text)
+  );
   if (dayFirst) {
     day = Number(dayFirst[1]);
     month = MONTHS[dayFirst[2].toLowerCase().replace(/\.$/, "")];
     year = dayFirst[3] ? Number(dayFirst[3]) : undefined;
     words = dayFirst[0];
+    end = dayFirst.index + dayFirst[0].length;
   } else if (monthFirst) {
     month = MONTHS[monthFirst[1].toLowerCase().replace(/\.$/, "")];
     day = Number(monthFirst[2]);
     year = monthFirst[3] ? Number(monthFirst[3]) : undefined;
     words = monthFirst[0];
+    end = monthFirst.index + monthFirst[0].length;
   } else if (numeric) {
-    // Day first (the hosts this ships to write 19/12/2026).
-    day = Number(numeric[1]);
-    month = Number(numeric[2]);
+    const first = Number(numeric[1]);
+    const second = Number(numeric[2]);
     year = Number(numeric[3]);
     words = numeric[0];
+    end = numeric.index + numeric[0].length;
+    const dayFirstOk = validDay(year, second, first);
+    const monthFirstOk = validDay(year, first, second);
+    if (dayFirstOk && monthFirstOk && first !== second) {
+      // Both readings are real days: the brand's country decides.
+      day = first;
+      month = second;
+      alt = { month: first, day: second };
+    } else if (dayFirstOk) {
+      day = first;
+      month = second;
+    } else if (monthFirstOk) {
+      month = first;
+      day = second;
+    }
   }
   if (!month || !day) return undefined;
   if (!year) {
@@ -252,7 +698,140 @@ function endOn(text: string, now: Date): StatedSlots["ends_on"] | undefined {
     if (thisYear < now.getTime()) year += 1;
   }
   if (!validDay(year, month, day)) return undefined;
-  return { year, month, day, words: words.replace(/^\S+\s+/, "").trim() };
+  // A time named right after the day ("19 December at 6pm") is the host's.
+  const tail = text.slice(end, end + 24);
+  const has_time = STATED_TIME.test(tail) ||
+    STATED_TIME.test(text.slice(Math.max(0, end - words.length - 16), end));
+  return {
+    year,
+    month,
+    day,
+    words: words.replace(/^\S+\s+/, "").trim(),
+    ...(has_time ? { has_time: true } : {}),
+    ...(alt ? { alt } : {}),
+  };
+}
+
+function amountNumber(
+  whole: string,
+  decimals: string | undefined,
+  thousands: string | undefined,
+): number {
+  const value = Number(
+    `${whole.replace(/,/g, "")}${decimals ? `.${decimals}` : ""}`,
+  );
+  return thousands ? value * 1000 : value;
+}
+
+function statedAmount(text: string): StatedAmount | undefined {
+  const signFirst = AMOUNT_SIGN_FIRST.exec(text);
+  if (signFirst) {
+    const sign = signFirst[1].toUpperCase();
+    const currency = CURRENCY_SIGNS[signFirst[1]] ?? CURRENCY_SIGNS[sign] ??
+      (new RegExp(`^(?:${CURRENCY_CODES})$`).test(sign) ? sign : null);
+    return {
+      major: amountNumber(signFirst[2], signFirst[3], signFirst[4]),
+      currency,
+      words: signFirst[0].trim(),
+    };
+  }
+  const wordAfter = AMOUNT_WORD_AFTER.exec(text);
+  if (wordAfter) {
+    const word = wordAfter[4].toLowerCase();
+    return {
+      major: amountNumber(wordAfter[1], wordAfter[2], wordAfter[3]),
+      currency: CURRENCY_WORDS[word] ?? word.toUpperCase(),
+      words: wordAfter[0].trim(),
+    };
+  }
+  const bare = AMOUNT_BARE.exec(text);
+  if (bare) {
+    return {
+      major: amountNumber(bare[1], bare[2], bare[3]),
+      currency: null,
+      words: bare[0].trim(),
+    };
+  }
+  return undefined;
+}
+
+/** The discount values one stretch of the host's words states. */
+function valuesIn(text: string, now: Date): StatedValues {
+  const values: StatedValues = {};
+  const percent = PERCENT.exec(text);
+  if (percent) values.value_bps = Math.round(Number(percent[1]) * 100);
+  else {
+    const amount = statedAmount(text);
+    if (amount && Number.isFinite(amount.major) && amount.major > 0) {
+      values.amount = amount;
+    }
+  }
+  const ends = statedDay(text, END_PATTERNS, now);
+  if (ends) values.ends_on = ends;
+  const starts = statedDay(text, START_PATTERNS, now);
+  if (starts) values.starts_on = starts;
+  const total = TOTAL_USES.exec(text);
+  if (total) values.max_total_uses = Number(total[1] ?? total[2]);
+  const perBuyer = PER_BUYER.exec(text);
+  if (perBuyer) {
+    values.max_uses_per_buyer = perBuyer[1] ? Number(perBuyer[1]) : 1;
+  }
+  return values;
+}
+
+function hasValues(values: StatedValues): boolean {
+  return VALUE_KEYS.some((key) => values[key] !== undefined);
+}
+
+function assignValues(target: StatedValues, values: StatedValues): void {
+  for (const key of VALUE_KEYS) {
+    if (values[key] !== undefined) {
+      (target as Record<string, unknown>)[key] = values[key];
+    }
+  }
+}
+
+/** Every code a message names, with where it first appears. */
+function codeMentions(text: string): Array<{ code: string; index: number }> {
+  const found = new Map<string, number>();
+  const add = (raw: string, index: number) => {
+    const code = normaliseAriDiscountCode(raw);
+    if (!/^[A-Z0-9]{4,16}$/.test(code) || STOPWORDS.has(code)) return;
+    if (!found.has(code) || (found.get(code) ?? 0) > index) {
+      found.set(code, index);
+    }
+  };
+  for (const match of text.matchAll(new RegExp(CODE_ALONE.source, "g"))) {
+    add(match[1], match.index ?? 0);
+  }
+  if (/[a-z]/.test(text)) {
+    for (const match of text.matchAll(new RegExp(CODE_CAPS.source, "g"))) {
+      add(match[1], match.index ?? 0);
+    }
+  }
+  return [...found.entries()].map(([code, index]) => ({ code, index }))
+    .sort((left, right) => left.index - right.index);
+}
+
+/**
+ * The host's own words as whole code tokens (P3-13): "my party 10% off"
+ * never contains the code PARTY10, though the letters run together.
+ */
+export function hostCodeTokens(ownerMessages: readonly string[]): Set<string> {
+  const tokens = new Set<string>();
+  for (const message of ownerMessages) {
+    for (const token of message.split(/[^A-Za-z0-9-]+/)) {
+      const code = normaliseAriDiscountCode(token);
+      if (code) tokens.add(code);
+    }
+    for (
+      const quoted of message.matchAll(/["“'‘]([A-Za-z0-9 -]{4,20})["”'’]/g)
+    ) {
+      const code = normaliseAriDiscountCode(quoted[1]);
+      if (code) tokens.add(code);
+    }
+  }
+  return tokens;
 }
 
 /** The values a host stated, newest message winning per value. */
@@ -269,33 +848,57 @@ export function extractStatedSlots(
     const code = (quoted && normaliseAriDiscountCode(quoted)) ||
       CODE_WORD.exec(text)?.[1] || CODE_ALONE.exec(text)?.[1] ||
       (caps && !STOPWORDS.has(caps) ? caps : undefined);
+    let single: string | undefined;
     if (code && /^[A-Z0-9-]{4,16}$/i.test(code)) {
-      slots.code = normaliseAriDiscountCode(code);
+      single = normaliseAriDiscountCode(code);
+      slots.code = single;
     }
-    const named = new Set<string>();
-    for (const match of text.matchAll(new RegExp(CODE_ALONE.source, "g"))) {
-      named.add(normaliseAriDiscountCode(match[1]));
-    }
-    if (/[a-z]/.test(text)) {
-      for (const match of text.matchAll(new RegExp(CODE_CAPS.source, "g"))) {
-        if (!STOPWORDS.has(match[1])) {
-          named.add(normaliseAriDiscountCode(match[1]));
+    const mentions = codeMentions(text);
+    if (mentions.length >= 2) {
+      slots.codes = mentions.map((mention) => mention.code).slice(0, 10);
+      // Each code's own stretch of words, up to the next code.
+      const segments = mentions.map((mention, index) => ({
+        code: mention.code,
+        values: valuesIn(
+          text.slice(mention.index, mentions[index + 1]?.index ?? text.length),
+          now,
+        ),
+      }));
+      const withValues = segments.filter((segment) =>
+        hasValues(segment.values)
+      );
+      if (withValues.length >= 2) {
+        slots.per_code = Object.fromEntries(
+          segments.map((segment) => [segment.code, segment.values]),
+        );
+        for (const key of VALUE_KEYS) {
+          if (segments.some((segment) => segment.values[key] !== undefined)) {
+            delete slots[key];
+          }
         }
+        assignValues(slots, valuesIn(text.slice(0, mentions[0].index), now));
+        continue;
+      }
+      delete slots.per_code;
+      assignValues(slots, valuesIn(text, now));
+      continue;
+    }
+    const values = valuesIn(text, now);
+    if (mentions.length === 1 || single) {
+      const named = mentions[0]?.code ?? single ?? "";
+      delete slots.codes;
+      if (slots.per_code && slots.per_code[named]) {
+        assignValues(slots.per_code[named], values);
+        continue;
+      }
+      delete slots.per_code;
+    } else if (slots.per_code) {
+      // No code named: the new words apply to every code being set up.
+      for (const own of Object.values(slots.per_code)) {
+        assignValues(own, values);
       }
     }
-    const valid = [...named].filter((item) => /^[A-Z0-9]{4,16}$/.test(item));
-    if (valid.length >= 2) slots.codes = valid.slice(0, 10);
-    else delete slots.codes;
-    const percent = PERCENT.exec(text);
-    if (percent) slots.value_bps = Math.round(Number(percent[1]) * 100);
-    const ends = endOn(text, now);
-    if (ends) slots.ends_on = ends;
-    const total = TOTAL_USES.exec(text);
-    if (total) slots.max_total_uses = Number(total[1] ?? total[2]);
-    const perBuyer = PER_BUYER.exec(text);
-    if (perBuyer) {
-      slots.max_uses_per_buyer = perBuyer[1] ? Number(perBuyer[1]) : 1;
-    }
+    assignValues(slots, values);
   }
   return slots;
 }
@@ -354,7 +957,7 @@ export function mergeModelStatedSlots(
     const code = normaliseAriDiscountCode(model.code);
     if (
       code && /^[A-Z0-9-]{4,16}$/.test(code) &&
-      words.toUpperCase().includes(code)
+      hostCodeTokens(ownerMessages).has(code)
     ) out.code = code;
   }
   if (
@@ -421,6 +1024,27 @@ export function endOfLocalDayIso(
   return new Date(last.getTime() + 59_000).toISOString().replace(".000Z", "Z");
 }
 
+/** The first instant of the stated day in the brand's time zone, as UTC ISO. */
+export function startOfLocalDayIso(
+  day: { year: number; month: number; day: number },
+  timezone: string,
+): string | null {
+  const local = `${day.year}-${String(day.month).padStart(2, "0")}-${
+    String(day.day).padStart(2, "0")
+  }`;
+  for (const time of ["00:00", "01:00"]) {
+    const first = localDateTimeToInstants(local, time, timezone)[0];
+    if (first) return first.toISOString().replace(".000Z", "Z");
+  }
+  return null;
+}
+
+function isoDay(day: { year: number; month: number; day: number }): string {
+  return `${day.year}-${String(day.month).padStart(2, "0")}-${
+    String(day.day).padStart(2, "0")
+  }`;
+}
+
 function localDayOf(iso: unknown, timezone: string): string | null {
   if (typeof iso !== "string") return null;
   const at = new Date(iso);
@@ -457,11 +1081,43 @@ export type StatedSlotCheck =
   | { kind: "ask"; text: string; missing: string[] };
 
 /**
+ * A numeric day read both ways round (12/1/2026): the brand's country picks
+ * the reading; with no country, null (Ari asks which day).
+ */
+function resolveDay(
+  day: StatedDay,
+  country: string | null | undefined,
+): StatedDay | null {
+  if (!day.alt) return day;
+  const code = typeof country === "string" ? country.trim().toUpperCase() : "";
+  if (!code) return null;
+  return MONTH_FIRST_COUNTRIES.has(code)
+    ? { ...day, month: day.alt.month, day: day.alt.day, alt: undefined }
+    : { ...day, alt: undefined };
+}
+
+function eitherDay(day: StatedDay): string {
+  const first = spokenDay(day);
+  const second = day.alt
+    ? spokenDay({ year: day.year, month: day.alt.month, day: day.alt.day })
+    : first;
+  return `${first} or ${second}`;
+}
+
+function spokenAmount(amount: StatedAmount, currency: string | null): string {
+  const code = amount.currency ?? currency;
+  const text = code
+    ? formatMinor(minorFromMajor(amount.major, code), code)
+    : null;
+  return `${text ?? String(amount.major)} off`;
+}
+
+/**
  * Compare what the host stated with a proposal's args, for every field the
- * tool's schema has. A stated end date the args lack is bound exactly (it is
- * unambiguous once the brand's time zone is known, and the confirmation card
- * shows it); any other stated value that is missing or different is asked
- * about instead of proposed, so it is never dropped.
+ * tool's schema has. A stated end (or start) day the args lack is bound
+ * exactly once the brand's time zone is known (the confirmation card shows
+ * it); any other stated value that is missing or different is asked about
+ * instead of proposed, so it is never dropped or changed.
  */
 export function checkStatedSlots(args: {
   toolName: string;
@@ -469,84 +1125,170 @@ export function checkStatedSlots(args: {
   schemaKeys: ReadonlySet<string>;
   stated: StatedSlots;
   timezone: string | null;
+  /** #3355 rework 1: the brand's country (numeric day order). */
+  country?: string | null;
+  /** #3355 rework 1: the brand's currency (amounts off). */
+  currency?: string | null;
+  now?: Date;
 }): StatedSlotCheck {
-  const { stated, schemaKeys } = args;
+  const { schemaKeys } = args;
   const out: Record<string, unknown> = { ...args.toolArgs };
+  const now = args.now ?? new Date();
   const bound: string[] = [];
   const asks: string[] = [];
   const missing: string[] = [];
+  const proposedCode = normaliseAriDiscountCode(out.code);
+  // P2-9: a code with its own values in the host's words uses those.
+  const stated: StatedSlots = { ...args.stated };
+  const own = args.stated.per_code?.[proposedCode];
+  if (own) assignValues(stated, own);
 
   if (
     stated.codes && stated.codes.length >= 2 && schemaKeys.has("code") &&
     out.kind !== "automatic"
   ) {
-    const proposed = normaliseAriDiscountCode(out.code);
-    if (!stated.codes.includes(proposed)) {
+    if (!stated.codes.includes(proposedCode)) {
       missing.push("code");
       asks.push(`one of the codes ${stated.codes.join(", ")}`);
     }
   } else if (
     stated.code && schemaKeys.has("code") && out.kind !== "automatic"
   ) {
-    const proposed = normaliseAriDiscountCode(out.code);
-    if (proposed !== stated.code) {
+    if (proposedCode !== stated.code) {
       missing.push("code");
       asks.push(`the code ${stated.code}`);
     }
   }
+  // P1-3: a stated percent is a percent of exactly that size.
   if (stated.value_bps !== undefined && schemaKeys.has("value_bps")) {
-    if (out.value_type === "percent" || out.value_bps !== undefined) {
-      if (Number(out.value_bps) !== stated.value_bps) {
-        missing.push("value_bps");
-        asks.push(`${stated.value_bps / 100}% off`);
+    const wrongKind = schemaKeys.has("value_type") &&
+      out.value_type !== undefined && out.value_type !== "percent";
+    if (wrongKind || Number(out.value_bps) !== stated.value_bps) {
+      missing.push("value_bps");
+      asks.push(`${stated.value_bps / 100}% off`);
+    }
+  }
+  // P1-3: a stated amount off is a fixed amount of exactly that size, in
+  // the currency's own minor units (₦5,000 is 500000 kobo).
+  if (stated.amount && schemaKeys.has("value_minor")) {
+    const brandCurrency = typeof args.currency === "string"
+      ? args.currency.trim().toUpperCase()
+      : null;
+    let currency = stated.amount.currency;
+    if (
+      currency === "USD" && brandCurrency &&
+      DOLLAR_CURRENCIES.has(brandCurrency)
+    ) {
+      currency = brandCurrency;
+    }
+    currency = currency ?? brandCurrency;
+    const wrongKind = schemaKeys.has("value_type") &&
+      out.value_type !== "amount";
+    if (
+      !currency || (brandCurrency && currency !== brandCurrency) || wrongKind ||
+      Number(out.value_minor) !== minorFromMajor(stated.amount.major, currency)
+    ) {
+      missing.push("value_minor");
+      asks.push(spokenAmount(stated.amount, currency));
+    }
+  }
+  if (stated.starts_on && schemaKeys.has("starts_at")) {
+    const day = resolveDay(stated.starts_on, args.country);
+    if (!day) {
+      missing.push("starts_at");
+      asks.push(
+        `a start on ${eitherDay(stated.starts_on)} (which day did you mean?)`,
+      );
+    } else if (!args.timezone) {
+      missing.push("starts_at");
+      asks.push(`a start on ${spokenDay(day)} (which time zone is that in?)`);
+    } else {
+      const iso = startOfLocalDayIso(day, args.timezone);
+      const wanted = isoDay(day);
+      if (
+        out.starts_at === undefined || out.starts_at === null ||
+        out.starts_at === ""
+      ) {
+        if (iso && Date.parse(iso) > now.getTime()) {
+          out.starts_at = iso;
+          bound.push("starts_at");
+        } else if (
+          !iso || localDayOf(now.toISOString(), args.timezone) !== wanted
+        ) {
+          // A start already behind us is not what the host meant: ask.
+          missing.push("starts_at");
+          asks.push(`a start on ${spokenDay(day)}`);
+        }
+        // A start of today with no time is "from now": nothing to bind.
+      } else if (localDayOf(out.starts_at, args.timezone) !== wanted) {
+        const proposedAt = Date.parse(String(out.starts_at));
+        if (
+          iso && Number.isFinite(proposedAt) &&
+          Math.abs(proposedAt - Date.parse(iso)) <= ZONE_OFFSET_SLACK_MS
+        ) {
+          out.starts_at = iso;
+          bound.push("starts_at");
+        } else {
+          missing.push("starts_at");
+          asks.push(`a start on ${spokenDay(day)}`);
+        }
       }
     }
   }
   if (stated.ends_on && schemaKeys.has("ends_at")) {
-    const wanted = `${stated.ends_on.year}-${
-      String(stated.ends_on.month).padStart(2, "0")
-    }-${String(stated.ends_on.day).padStart(2, "0")}`;
-    if (!args.timezone) {
+    const day = resolveDay(stated.ends_on, args.country);
+    if (!day) {
       missing.push("ends_at");
       asks.push(
-        `an end on ${spokenDay(stated.ends_on)} (which time zone is that in?)`,
+        `an end on ${eitherDay(stated.ends_on)} (which day did you mean?)`,
       );
-    } else if (
-      out.ends_at === undefined || out.ends_at === null || out.ends_at === ""
-    ) {
-      const iso = endOfLocalDayIso(stated.ends_on, args.timezone);
-      if (iso) {
-        out.ends_at = iso;
-        bound.push("ends_at");
-      } else {
-        missing.push("ends_at");
-        asks.push(`an end on ${spokenDay(stated.ends_on)}`);
-      }
-    } else if (localDayOf(out.ends_at, args.timezone) !== wanted) {
-      // #3355 Wave F (live eval): Flash writes the stated day's end in UTC
-      // ("2026-12-19T23:59:59Z"), which is already 20 December in Lagos. A
-      // value within a time-zone offset of the stated day's local end is that
-      // day, so it is bound exactly; a different day is still asked about.
-      const iso = endOfLocalDayIso(stated.ends_on, args.timezone);
-      const proposedAt = Date.parse(String(out.ends_at));
-      if (
-        iso && Number.isFinite(proposedAt) &&
-        Math.abs(proposedAt - Date.parse(iso)) <= ZONE_OFFSET_SLACK_MS
-      ) {
-        out.ends_at = iso;
-        bound.push("ends_at");
-      } else {
-        missing.push("ends_at");
-        asks.push(`an end on ${spokenDay(stated.ends_on)}`);
-      }
+    } else if (!args.timezone) {
+      missing.push("ends_at");
+      asks.push(
+        `an end on ${spokenDay(day)} (which time zone is that in?)`,
+      );
     } else {
-      // The stated day's end written with an offset ("…T23:59:59+01:00") is
-      // the same instant: stored in the one canonical UTC form.
-      const iso = endOfLocalDayIso(stated.ends_on, args.timezone);
+      const wanted = isoDay(day);
+      const iso = endOfLocalDayIso(day, args.timezone);
       if (
-        iso && out.ends_at !== iso &&
-        Date.parse(String(out.ends_at)) === Date.parse(iso)
-      ) out.ends_at = iso;
+        out.ends_at === undefined || out.ends_at === null || out.ends_at === ""
+      ) {
+        if (iso) {
+          out.ends_at = iso;
+          bound.push("ends_at");
+        } else {
+          missing.push("ends_at");
+          asks.push(`an end on ${spokenDay(day)}`);
+        }
+      } else if (localDayOf(out.ends_at, args.timezone) !== wanted) {
+        // #3355 Wave F (live eval): Flash writes the stated day's end in UTC
+        // ("2026-12-19T23:59:59Z"), which is already 20 December in Lagos. A
+        // value within a time-zone offset of the stated day's local end is
+        // that day, so it is bound exactly; a different day is still asked.
+        const proposedAt = Date.parse(String(out.ends_at));
+        if (
+          iso && Number.isFinite(proposedAt) &&
+          Math.abs(proposedAt - Date.parse(iso)) <= ZONE_OFFSET_SLACK_MS
+        ) {
+          out.ends_at = iso;
+          bound.push("ends_at");
+        } else {
+          missing.push("ends_at");
+          asks.push(`an end on ${spokenDay(day)}`);
+        }
+      } else if (iso && out.ends_at !== iso) {
+        // P2-8: "until / through / till / by 19 December" includes the whole
+        // day, so an instant earlier that day (often its midnight) is bound
+        // to 23:59:59 local. A time the host named stays theirs.
+        const proposedAt = Date.parse(String(out.ends_at));
+        if (!day.has_time && proposedAt !== Date.parse(iso)) {
+          out.ends_at = iso;
+          bound.push("ends_at");
+        } else if (proposedAt === Date.parse(iso)) {
+          // The same instant written with an offset: one canonical UTC form.
+          out.ends_at = iso;
+        }
+      }
     }
   }
   if (stated.max_total_uses !== undefined && schemaKeys.has("max_total_uses")) {
@@ -572,13 +1314,15 @@ export function checkStatedSlots(args: {
     const list = asks.length === 1
       ? asks[0]
       : `${asks.slice(0, -1).join(", ")} and ${asks.at(-1)}`;
+    const subject = proposedCode && own ? ` ${proposedCode}` : "";
     return {
       kind: "ask",
       missing,
-      text:
-        `Before I set this up: you asked for ${list}, and I want to make sure that's exactly what goes on it. Is that right? Say yes and I'll prepare it with ${
-          asks.length === 1 ? "that" : "those"
-        } for you to approve. Nothing has been saved yet.`,
+      text: `Before I set${
+        subject ? ` up${subject}` : " this up"
+      }: you asked for ${list}, and I want to make sure that's exactly what goes on it. Is that right? Say yes and I'll prepare it with ${
+        asks.length === 1 ? "that" : "those"
+      } for you to approve. Nothing has been saved yet.`,
     };
   }
   return { kind: "ok", args: out, bound };
@@ -650,10 +1394,10 @@ export async function preserveStatedSlots(args: {
     args.toolName === "create_discount" && args.toolArgs.kind !== "automatic"
   ) {
     const proposed = normaliseAriDiscountCode(args.toolArgs.code);
-    const words = args.ownerMessages.map((message) =>
-      normaliseAriDiscountCode(message)
-    ).join(" ");
-    if (proposed && !words.includes(proposed)) {
+    // #3355 rework 1 (P3-13): whole tokens of the host's words, so "my party
+    // 10% off" never contains PARTY10.
+    const words = hostCodeTokens(args.ownerMessages);
+    if (proposed && !words.has(proposed)) {
       return {
         kind: "ask",
         missing: ["code"],
@@ -662,27 +1406,47 @@ export async function preserveStatedSlots(args: {
       };
     }
   }
+  const perCode = Object.values(stated.per_code ?? {});
+  const anyStated = (key: keyof StatedValues) =>
+    stated[key] !== undefined || perCode.some((own) => own[key] !== undefined);
   const relevant = (stated.code && schemaKeys.has("code")) ||
-    (stated.value_bps !== undefined && schemaKeys.has("value_bps")) ||
-    (stated.ends_on && schemaKeys.has("ends_at")) ||
-    (stated.max_total_uses !== undefined && schemaKeys.has("max_total_uses")) ||
-    (stated.max_uses_per_buyer !== undefined &&
-      schemaKeys.has("max_uses_per_buyer"));
+    (stated.codes && schemaKeys.has("code")) ||
+    (anyStated("value_bps") && schemaKeys.has("value_bps")) ||
+    (anyStated("amount") && schemaKeys.has("value_minor")) ||
+    (anyStated("ends_on") && schemaKeys.has("ends_at")) ||
+    (anyStated("starts_on") && schemaKeys.has("starts_at")) ||
+    (anyStated("max_total_uses") && schemaKeys.has("max_total_uses")) ||
+    (anyStated("max_uses_per_buyer") && schemaKeys.has("max_uses_per_buyer"));
   if (!relevant) return { kind: "ok", args: args.toolArgs, bound: [] };
   let timezone: string | null = null;
-  if (stated.ends_on && schemaKeys.has("ends_at")) {
+  let country: string | null = null;
+  let currency: string | null = null;
+  const needsBrand = (anyStated("ends_on") && schemaKeys.has("ends_at")) ||
+    (anyStated("starts_on") && schemaKeys.has("starts_at")) ||
+    (anyStated("amount") && schemaKeys.has("value_minor"));
+  if (needsBrand) {
     const brandId = args.toolArgs.brand_id;
     if (typeof brandId === "string" && UUID_ARG.test(brandId)) {
       const { data } = await args.userClient.from("brands")
-        .select("default_timezone,country_code")
+        .select("default_timezone,country_code,default_currency")
         .eq("id", brandId)
         .maybeSingle();
       const brand = (data ?? null) as
-        | { default_timezone?: unknown; country_code?: unknown }
+        | {
+          default_timezone?: unknown;
+          country_code?: unknown;
+          default_currency?: unknown;
+        }
         | null;
       timezone = isValidIanaTimezone(brand?.default_timezone)
-        ? String(brand!.default_timezone)
+        ? String(brand?.default_timezone)
         : marketDefaultTimezone(brand?.country_code);
+      country = typeof brand?.country_code === "string"
+        ? brand.country_code
+        : null;
+      currency = typeof brand?.default_currency === "string"
+        ? brand.default_currency
+        : null;
     }
   }
   return checkStatedSlots({
@@ -691,6 +1455,9 @@ export async function preserveStatedSlots(args: {
     schemaKeys,
     stated,
     timezone,
+    country,
+    currency,
+    now: args.now,
   });
 }
 

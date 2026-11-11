@@ -65,9 +65,11 @@
 // start_flow (the model's choice; keyword rules are labelled hints), and the
 // turn's intent read arrives as TURN HINTS data.
 // v33 (#3355 Wave F): live-eval tuning — the intent read's park / side-question
-// rules, the guide tool's available_through_ari status, and history records in
+// rules, the guide tool's available_through_ari status (removed in v34), and history records in
 // plain words instead of tool-call markers.
-export const PROMPT_VERSION = "v33";
+// v34 (#3355 rework 1): the guide tool's available_through_ari status is
+// removed (a planned entry reads as not available yet, whatever tools Ari has).
+export const PROMPT_VERSION = "v34";
 
 /**
  * #3355 Wave D (D4, D7a) — added to the system instruction when a host has

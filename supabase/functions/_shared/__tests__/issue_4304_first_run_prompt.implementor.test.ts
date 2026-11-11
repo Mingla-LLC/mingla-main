@@ -51,7 +51,7 @@ Deno.test("#4304 parseFirstRunHint accepts only the two stages and known intents
 });
 
 Deno.test("#4304 the prompt always carries the brand-first rules", () => {
-  assertEquals(PROMPT_VERSION, "v33"); // #3355 Wave D: memory principle + escalation guidance
+  assertEquals(PROMPT_VERSION, "v34"); // #3355 rework 1: no planned-entry upgrade; truth guards on every path
   const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false });
   assertStringIncludes(prompt, "FIRST RUN (a host with no brand, or a brand with nothing made yet):");
   assertStringIncludes(prompt, "Brand first, always.");

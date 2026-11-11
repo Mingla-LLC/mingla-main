@@ -14,6 +14,20 @@ export type AriSensitiveReason =
   | "id_details";
 
 const EMAIL = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
+// #3355 rework 1 (tester P3-15): an email written out to dodge a filter
+// ("ada [at] gmail [dot] com", "ada at gmail dot com").
+const AT_WORD = String.raw`(?:\s*[[({]\s*at\s*[\])}]\s*)`;
+const DOT_WORD = String.raw`(?:\s*[[({]\s*dot\s*[\])}]\s*|\s+dot\s+)`;
+const COMMON_TLD =
+  "(?:com|net|org|co|io|ng|uk|gh|ke|za|edu|gov|me|info|biz|app|dev|ai|africa)";
+const EMAIL_SPELLED = new RegExp(
+  String
+    .raw`[a-z0-9._%+-]+${AT_WORD}[a-z0-9-]+(?:(?:${DOT_WORD}|\.)[a-z0-9-]+)*(?:${DOT_WORD}|\.)[a-z]{2,6}\b|[a-z0-9._%+-]+(?:\s+at\s+|\s*@\s*)[a-z0-9-]+(?:${DOT_WORD}[a-z0-9-]+)*${DOT_WORD}${COMMON_TLD}\b`,
+  "gi",
+);
+/** "my pin is 4455", "PIN: 1234". */
+const PIN_DIGITS =
+  /\bpin(?:\s+(?:code|number|no\.?))?\s*(?:is|:|=|-)?\s*\d{4,8}\b/i;
 const ID_WORDS =
   /\b(password|passcode|passwd|pin code|one[- ]time code|otp|bvn|nin|ssn|social security|passport( number| no)?|national id|id number|driver'?s licen[cs]e)\b/i;
 const PAYMENT_WORDS =
@@ -41,9 +55,13 @@ function runReason(run: string): AriSensitiveReason | null {
 
 /** Why a note must not be stored (payment, ID or contact details), or null. */
 export function ariSensitiveReason(text: string): AriSensitiveReason | null {
-  const value = String(text ?? "");
+  // Full-width and other compatibility digits read as plain digits.
+  const value = String(text ?? "").normalize("NFKC");
   if (new RegExp(EMAIL.source, "i").test(value)) return "contact_details";
-  if (ID_WORDS.test(value)) return "id_details";
+  if (new RegExp(EMAIL_SPELLED.source, "i").test(value)) {
+    return "contact_details";
+  }
+  if (ID_WORDS.test(value) || PIN_DIGITS.test(value)) return "id_details";
   if (PAYMENT_WORDS.test(value)) return "payment_details";
   for (const run of withoutDates(value).match(DIGIT_RUN) ?? []) {
     const reason = runReason(run);
@@ -76,14 +94,19 @@ export const ARI_EXCERPT_MAX = 240;
  * capped at `max` characters.
  */
 export function scrubAriExcerpt(text: string, max = ARI_EXCERPT_MAX): string {
-  let value = String(text ?? "").replace(/\s+/g, " ").trim();
-  value = value.replace(EMAIL, "[email]");
+  let value = String(text ?? "").normalize("NFKC").replace(/\s+/g, " ")
+    .trim();
+  value = value.replace(EMAIL, "[email]").replace(EMAIL_SPELLED, "[email]")
+    .replace(
+      /(\bpin(?:\s+(?:code|number|no\.?))?\s*(?:is|:|=|-)?\s*)\d{4,8}\b/gi,
+      "$1[number]",
+    );
   // Protect dates and times, scrub long digit runs, then restore.
   const kept: string[] = [];
   for (const pattern of DATES) {
     value = value.replace(pattern, (match) => {
       kept.push(match);
-      return `\u0000${kept.length - 1}\u0000`;
+      return `\uE000${kept.length - 1}\uE001`;
     });
   }
   value = value.replace(DIGIT_RUN, (run) => {
@@ -92,9 +115,8 @@ export function scrubAriExcerpt(text: string, max = ARI_EXCERPT_MAX): string {
     if (reason === "contact_details") return "[phone]";
     return run;
   });
-  // deno-lint-ignore no-control-regex
   value = value.replace(
-    /\u0000(\d+)\u0000/g,
+    /\uE000(\d+)\uE001/g,
     (_m, index: string) => kept[Number(index)] ?? "",
   );
   if (value.length <= max) return value;

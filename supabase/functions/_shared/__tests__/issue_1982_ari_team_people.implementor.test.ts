@@ -152,7 +152,7 @@ Deno.test("#1982 implementor: auth + read-only pins", () => {
 });
 
 Deno.test("#1982 implementor: PROMPT_VERSION v22 ads team surface", () => {
-  assertEquals(PROMPT_VERSION, "v33"); // #3355 Wave D: memory principle + escalation guidance
+  assertEquals(PROMPT_VERSION, "v34"); // #3355 rework 1: no planned-entry upgrade; truth guards on every path
   // #3355 Wave B: tools are advertised by the capability index (it feeds
   // each tool's generated description), no longer pasted into the prompt.
   const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false }) +

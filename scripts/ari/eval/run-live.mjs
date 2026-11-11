@@ -192,6 +192,8 @@ function runRouteTable(functionsEnv) {
     "deno",
     [
       "run",
+      // #3355 rework 1 (tester P3-17): never leave a stray scripts/deno.lock.
+      "--no-lock",
       "--allow-read",
       "--allow-env",
       "--allow-net",

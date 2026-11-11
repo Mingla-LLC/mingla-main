@@ -269,8 +269,10 @@ import {
   announcesWriteWithoutCall,
   claimEvidenceFromHistory,
   guardWriteClaims,
+  type ModelStatedValues,
   ownerMessagesForProposal,
   preserveStatedSlots,
+  type StatedSlotCheck,
 } from "../_shared/ariTruthGuards.ts";
 import {
   buildWebsiteSetupPresentation,
@@ -4217,15 +4219,12 @@ ${boundedAgentContext}
           // #3355 Wave A (A6, I-ARI-STATED-SLOTS-PRESERVED): what the host
           // stated (code, %, end date, limits) reaches the card, or Ari asks.
           proposalStage = "stated_slots";
-          const statedSlots = await preserveStatedSlots({
+          const statedSlots = await statedSlotStage({
             toolName: tool.name,
             toolArgs: loopResult.toolCall.args,
             parameters: tool.parameters,
-            ownerMessages: ownerMessagesForProposal({
-              history,
-              toolName: tool.name,
-              current: semanticMessage,
-            }),
+            history,
+            current: semanticMessage,
             userClient,
             // #3355 Wave E (E1): what the intent read heard the host state,
             // grounded again in the host's own words.
@@ -4456,18 +4455,7 @@ ${boundedAgentContext}
       // #3355 Wave A (A6, I-ARI-CLAIM-MATCHES-RECEIPT): this path carries no
       // pending action, so a claimed write needs a receipt or proposal in
       // the chat for what it names; otherwise the reply says the true state.
-      const claimGuard = guardWriteClaims({
-        text: lintedLoopText,
-        pendingThisTurn: false,
-        evidence: claimEvidenceFromHistory(history),
-      });
-      if (claimGuard.rewritten) {
-        console.warn(
-          "[agent-chat] unbacked write claim rewritten",
-          JSON.stringify({ count: claimGuard.unsupported.length }),
-        );
-      }
-      const safeLoopText = claimGuard.text;
+      const safeLoopText = guardReplyClaims(lintedLoopText, history);
       const guideCitations = ariGuideCitations(loopResult.observations);
       const resumedState = interruptionState.status === "interrupted"
         ? resumeInterruption(interruptionState)
@@ -5114,6 +5102,33 @@ ${boundedAgentContext}
           userClient,
           userId,
         );
+        // #3355 rework 1 (tester P1-4, I-ARI-STATED-SLOTS-PRESERVED): the
+        // single-call path keeps what the host stated too, or asks.
+        const singleStatedSlots = await statedSlotStage({
+          toolName: tool.name,
+          toolArgs: gemini.toolCall.args,
+          parameters: tool.parameters,
+          history,
+          current: semanticMessage,
+          userClient,
+          modelStated: turnRoute.statedValues,
+        });
+        if (singleStatedSlots.kind === "ask") {
+          return await commitTextTurn({
+            client: serviceClient,
+            userId,
+            conversationId,
+            clientTurnId: body.client_turn_id,
+            previousState: taskState,
+            nextState: taskState,
+            expectedRevision: taskStateRevision,
+            previousSummary: conversationSummary,
+            text: singleStatedSlots.text,
+            classification: "stated_slot_ask",
+            startedAt: turnStartedAt,
+          });
+        }
+        gemini.toolCall.args = singleStatedSlots.args;
         await authorizeAgentTool(
           tool,
           gemini.toolCall.args,
@@ -5224,7 +5239,9 @@ ${boundedAgentContext}
         "Ari didn't respond — try again",
       );
     }
-    const answer = gemini.textResponse.trim();
+    // #3355 rework 1 (tester P1-4, I-ARI-CLAIM-MATCHES-RECEIPT): the
+    // single-call reply is held to the same receipts as the loop's.
+    const answer = guardReplyClaims(gemini.textResponse.trim(), history);
     const resumedState = interruptionState.status === "interrupted"
       ? resumeInterruption(interruptionState)
       : taskState;
@@ -5295,6 +5312,61 @@ ${boundedAgentContext}
       });
     }
   }
+}
+
+/**
+ * #3355 rework 1 (tester P1-4) — the one stated-values stage both the agent
+ * loop and the single-call path run before a proposal card
+ * (I-ARI-STATED-SLOTS-PRESERVED).
+ */
+async function statedSlotStage(args: {
+  toolName: string;
+  toolArgs: Record<string, unknown>;
+  parameters: Record<string, unknown>;
+  history: ReadonlyArray<
+    { role?: unknown; content?: unknown; tool_calls?: unknown }
+  >;
+  current: string;
+  userClient: SupabaseClient;
+  modelStated?: ModelStatedValues | null;
+}): Promise<StatedSlotCheck> {
+  return await preserveStatedSlots({
+    toolName: args.toolName,
+    toolArgs: args.toolArgs,
+    parameters: args.parameters,
+    ownerMessages: ownerMessagesForProposal({
+      history: args.history,
+      toolName: args.toolName,
+      current: args.current,
+    }),
+    userClient: args.userClient,
+    modelStated: args.modelStated,
+  });
+}
+
+/**
+ * #3355 rework 1 (tester P1-4) — the one write-claim guard both reply paths
+ * run: a reply claiming a write the chat cannot prove is rewritten to the
+ * true state before it is stored or shown (I-ARI-CLAIM-MATCHES-RECEIPT).
+ */
+function guardReplyClaims(
+  text: string,
+  history: ReadonlyArray<
+    { role?: unknown; tool_calls?: unknown; tool_results?: unknown }
+  >,
+): string {
+  const claimGuard = guardWriteClaims({
+    text,
+    pendingThisTurn: false,
+    evidence: claimEvidenceFromHistory(history),
+  });
+  if (claimGuard.rewritten) {
+    console.warn(
+      "[agent-chat] unbacked write claim rewritten",
+      JSON.stringify({ count: claimGuard.unsupported.length }),
+    );
+  }
+  return claimGuard.text;
 }
 
 async function commitPendingTurn(args: {

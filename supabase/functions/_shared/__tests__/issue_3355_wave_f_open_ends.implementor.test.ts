@@ -51,10 +51,7 @@ import {
   ariSetupTextIssue,
 } from "../ariFlows/startFlowTool.ts";
 import { LIST_QUESTION } from "../ariFlows/contactImport.ts";
-import {
-  ariGuideReadStatus,
-  ariToolsForGuideKey,
-} from "../agentAri10xTools.ts";
+import { ariGuideReadStatus } from "../agentAri10xTools.ts";
 import {
   announcesWriteWithoutCall,
   checkStatedSlots,
@@ -294,22 +291,19 @@ Deno.test("F(c): both the loop and the single-call path offer Ask the Mingla tea
 
 // ── Live-eval fixes ─────────────────────────────────────────────────────────
 
-Deno.test("F live: a planned guide entry an Ari tool serves reads as available through that tool", () => {
-  assert(
-    ariToolsForGuideKey("events-discount-codes").includes("create_discount"),
-  );
+// #3355 rework 1 (tester P1-1): the Wave F "planned entry an Ari tool serves
+// reads as available" rule was removed; the guide status alone decides.
+Deno.test("F live (rework 1): a planned guide entry stays planned even when an Ari tool shares its key", () => {
   const discounts = ariGuideReadStatus("Planned", "events-discount-codes");
-  assertEquals(discounts.status, "available_through_ari");
-  assertEquals(discounts.how_to_say, "offer_the_ari_tool");
-  assert(discounts.ari_tools.includes("create_discount"));
-  // Retired never upgrades; a planned entry with no tool stays planned.
+  assertEquals(discounts.status, "planned");
+  assertEquals(discounts.how_to_say, "not_available_yet");
+  assertEquals(
+    ariGuideReadStatus("Planned", "trips-cancel-booking").status,
+    "planned",
+  );
   assertEquals(
     ariGuideReadStatus("Retired", "events-discount-codes").status,
     "retired",
-  );
-  assertEquals(
-    ariGuideReadStatus("Planned", "no-such-feature").status,
-    "planned",
   );
   assertEquals(
     ariGuideReadStatus("Live", "events-discount-codes").status,
