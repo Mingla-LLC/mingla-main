@@ -33,10 +33,22 @@ const FAVY10 =
 const NOW = new Date("2026-11-10T09:51:52Z");
 const BRAND = "22222222-2222-4222-8222-222222222222";
 const DISCOUNT_KEYS = new Set([
-  "brand_id", "kind", "code", "name", "value_type", "value_bps",
-  "value_minor", "scope_kind", "combines_with", "starts_at", "ends_at",
-  "ends_after_count", "max_total_uses", "max_uses_per_buyer",
-  "min_subtotal_minor", "targets",
+  "brand_id",
+  "kind",
+  "code",
+  "name",
+  "value_type",
+  "value_bps",
+  "value_minor",
+  "scope_kind",
+  "combines_with",
+  "starts_at",
+  "ends_at",
+  "ends_after_count",
+  "max_total_uses",
+  "max_uses_per_buyer",
+  "min_subtotal_minor",
+  "targets",
 ]);
 
 function modelArgs(extra: Record<string, unknown> = {}) {
@@ -238,6 +250,10 @@ Deno.test("A6b: only the host's words since the previous proposal of the same to
   });
   assertEquals(words, ["thanks", "Now make GIRLSTRIPLAGOS 10% off"]);
   const stated = extractStatedSlots(words, NOW);
-  assertEquals(stated.ends_on, undefined, "FAVY10's end never leaks onto the next code");
+  assertEquals(
+    stated.ends_on,
+    undefined,
+    "FAVY10's end never leaks onto the next code",
+  );
   assertEquals(stated.code, "GIRLSTRIPLAGOS");
 });

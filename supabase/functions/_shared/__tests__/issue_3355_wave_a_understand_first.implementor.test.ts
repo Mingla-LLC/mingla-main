@@ -175,7 +175,13 @@ type StoredRun = FlowRun & {
   lease_expires: number;
   parked_from_status: FlowRun["status"] | null;
 };
-const LIVE = ["active", "awaiting_owner", "awaiting_approval", "awaiting_handoff", "blocked"];
+const LIVE = [
+  "active",
+  "awaiting_owner",
+  "awaiting_approval",
+  "awaiting_handoff",
+  "blocked",
+];
 
 class MemoryStore implements FlowStore {
   runs = new Map<string, StoredRun>();
@@ -415,7 +421,10 @@ Deno.test("A1: the host's influencer sentence and other non-offering creates sta
 });
 
 Deno.test("A1: real offering requests still start their flow", () => {
-  assertEquals(classifyOfferingIntent("create an event next Friday"), "create_event");
+  assertEquals(
+    classifyOfferingIntent("create an event next Friday"),
+    "create_event",
+  );
   assertEquals(classifyOfferingIntent("Create an event"), "create_event");
   assertEquals(
     classifyOfferingIntent("Create a party with tickets at ₦5,000"),
@@ -425,7 +434,10 @@ Deno.test("A1: real offering requests still start their flow", () => {
     classifyOfferingIntent("I want to plan a trip to Lisbon"),
     "create_trip",
   );
-  assertEquals(classifyOfferingIntent("Set up a stay at our venue"), "create_stay");
+  assertEquals(
+    classifyOfferingIntent("Set up a stay at our venue"),
+    "create_stay",
+  );
   assertEquals(classifyOfferingIntent("Add a venue"), "create_venue");
   assertEquals(
     classifyOfferingIntent("Make a new experience"),
@@ -447,10 +459,18 @@ Deno.test("A1: the influencer sentence through decideFlowTurn opens no run", asy
 Deno.test("A2: the request read hears requests, and only requests", () => {
   assertEquals(readFlowRequest(HOST_FAVY10_SENTENCE), "create_discount");
   assertEquals(readFlowRequest(HOST_INFLUENCER_SENTENCE), "create_discount");
-  assertEquals(readFlowRequest("Set up ticket tiers for my event"), "ticket_tiers");
+  assertEquals(
+    readFlowRequest("Set up ticket tiers for my event"),
+    "ticket_tiers",
+  );
   assertEquals(readFlowRequest("Create an event next Friday"), "create_event");
-  assertEquals(readFlowRequest("please send an email to my guests"), "campaign");
-  for (const text of ["blue", "hmm", "ok", "the second one", "add it", "Lagos"]) {
+  assertEquals(
+    readFlowRequest("please send an email to my guests"),
+    "campaign",
+  );
+  for (
+    const text of ["blue", "hmm", "ok", "the second one", "add it", "Lagos"]
+  ) {
     assertEquals(readFlowRequest(text), null, text);
   }
 });
@@ -502,7 +522,9 @@ Deno.test("A2 replay: the FAVY10 sentence inside an open create_event run parks 
 });
 
 Deno.test("A2 replay (v2 event flow): the FAVY10 sentence on an open form card is never taken as its answer", async () => {
-  const world = freshWorld({ set: new Set(["tagline", "contact_phone", "timezone"]) });
+  const world = freshWorld({
+    set: new Set(["tagline", "contact_phone", "timezone"]),
+  });
   const store = new MemoryStore(OWNER);
   const probes: FlowProbeDeps = {
     ...probesFor(world),
@@ -534,7 +556,11 @@ Deno.test("A2 replay (v2 event flow): the FAVY10 sentence on an open form card i
   });
   assertEquals(first.kind, "artefact");
   if (first.kind !== "artefact") return;
-  assertEquals(first.artefact.answer_mode, "form", "a typed-answer card is open");
+  assertEquals(
+    first.artefact.answer_mode,
+    "form",
+    "a typed-answer card is open",
+  );
   const typed = await runFlowStep(deps, {
     run: await current(store),
     trigger: "turn",
@@ -545,7 +571,11 @@ Deno.test("A2 replay (v2 event flow): the FAVY10 sentence on an open form card i
   if (typed.kind !== "parked") return;
   assertEquals(typed.hint, "create_discount");
   const after = await current(store);
-  assertEquals(after.answers.title, undefined, "the sentence is not the event's name");
+  assertEquals(
+    after.answers.title,
+    undefined,
+    "the sentence is not the event's name",
+  );
   assertEquals(after.answers.start_at, undefined, "nor its start");
 
   // An ordinary typed answer on the same kind of card still answers it.
@@ -602,7 +632,11 @@ Deno.test("A2: unclear words get 'I didn't catch that' once; the same words agai
     ownerText: "Blue.",
     brandName: "Favy Lagos",
   });
-  assertEquals(twice.kind, "parked", "the same words twice never get the same card twice");
+  assertEquals(
+    twice.kind,
+    "parked",
+    "the same words twice never get the same card twice",
+  );
   if (twice.kind !== "parked") return;
   assertEquals(twice.hint, "repeated");
 });
@@ -616,10 +650,18 @@ Deno.test("A2: the same request sent twice is served both times, never the same 
     trigger: "turn",
     brandName: "Favy Lagos",
   });
-  const first = await decideFlowTurn(turnArgs(store, world, HOST_FAVY10_SENTENCE));
+  const first = await decideFlowTurn(
+    turnArgs(store, world, HOST_FAVY10_SENTENCE),
+  );
   assertEquals(first.kind, "parked");
-  const second = await decideFlowTurn(turnArgs(store, world, HOST_FAVY10_SENTENCE));
-  assertEquals(second.kind, "none", "the agent loop answers; no card comes back");
+  const second = await decideFlowTurn(
+    turnArgs(store, world, HOST_FAVY10_SENTENCE),
+  );
+  assertEquals(
+    second.kind,
+    "none",
+    "the agent loop answers; no card comes back",
+  );
 });
 
 Deno.test("A2: Resume brings the run back with the same card; a stale Resume is refused", async () => {
@@ -633,7 +675,9 @@ Deno.test("A2: Resume brings the run back with the same card; a stale Resume is 
   });
   assertEquals(first.kind, "artefact");
   if (first.kind !== "artefact") return;
-  const parked = await decideFlowTurn(turnArgs(store, world, HOST_FAVY10_SENTENCE));
+  const parked = await decideFlowTurn(
+    turnArgs(store, world, HOST_FAVY10_SENTENCE),
+  );
   assertEquals(parked.kind, "parked");
   if (parked.kind !== "parked") return;
   const resume = parked.resume;
@@ -678,7 +722,10 @@ Deno.test("A5 (edge): a new flow in the chat closes the parked run; the chat hol
   await decideFlowTurn(turnArgs(store, world, HOST_FAVY10_SENTENCE));
   const parked = await current(store);
   assertEquals(parked.status, "parked");
-  assertEquals(flowStateOf(parked)?.current_artefact_id, parkArtefact(parked).artefact_id);
+  assertEquals(
+    flowStateOf(parked)?.current_artefact_id,
+    parkArtefact(parked).artefact_id,
+  );
   world.roleOk = true;
   await decideFlowTurn(turnArgs(store, world, "Plan a trip to Lisbon"));
   const open = [...store.runs.values()].filter((run) =>
@@ -734,7 +781,10 @@ Deno.test("A3: can-wait items never form a step; they are one summary line with 
   const done = await runFlowStep(deps, {
     run: running,
     trigger: "confirm",
-    confirmed: { tool_name: "create_event", result: { event: { id: EVENT_ID } } },
+    confirmed: {
+      tool_name: "create_event",
+      result: { event: { id: EVENT_ID } },
+    },
     brandName: "Favy Lagos",
   });
   assertEquals(done.kind, "completed");
@@ -782,7 +832,10 @@ Deno.test("A3: with nothing waiting the summary has no link and no line", async 
   const done = await runFlowStep(deps, {
     run: await current(store),
     trigger: "confirm",
-    confirmed: { tool_name: "create_event", result: { event: { id: EVENT_ID } } },
+    confirmed: {
+      tool_name: "create_event",
+      result: { event: { id: EVENT_ID } },
+    },
     brandName: "Favy Lagos",
   });
   assertEquals(done.kind, "completed");
@@ -808,7 +861,9 @@ Deno.test("S6 (twin of ng_brand_no_timezone_handoff): an NG brand missing its ti
   const run = await current(store);
   assertEquals(run.current_artefact, null, "no card at all on the way in");
   assert(
-    !Object.values(run.step_states).some((record) => record.item_key === "timezone"),
+    !Object.values(run.step_states).some((record) =>
+      record.item_key === "timezone"
+    ),
     "no step waits on the time zone",
   );
 });

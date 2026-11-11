@@ -774,7 +774,10 @@ Deno.test("P3 adversarial: 'I've uploaded it' with nothing uploaded keeps the ha
   });
   assertEquals(verified.kind, "delegate", "sorted: the flow moves on");
   if (verified.kind === "delegate") {
-    assertMatch(verified.ack ?? "", /^I checked; your brand logo is sorted now\./);
+    assertMatch(
+      verified.ack ?? "",
+      /^I checked; your brand logo is sorted now\./,
+    );
   }
 });
 

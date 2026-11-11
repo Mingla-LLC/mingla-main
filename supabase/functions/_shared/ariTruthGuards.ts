@@ -29,7 +29,17 @@ const PAST_WRITE =
 const NEGATION_AFTER_SUBJECT =
   /\b(?:i|we|ari)\s+(?:have\s+not|haven[’']?t|did\s+not|didn[’']?t|never|couldn[’']?t|could\s+not|can[’']?t|cannot|won[’']?t)\b/i;
 const NAMED_THING = /"([^"]{2,60})"|“([^”]{2,60})”|\b([A-Z][A-Z0-9]{3,15})\b/g;
-const STOPWORDS = new Set(["ARI", "NGN", "GBP", "USD", "EUR", "UTC", "GMT", "FAQ", "HTTP"]);
+const STOPWORDS = new Set([
+  "ARI",
+  "NGN",
+  "GBP",
+  "USD",
+  "EUR",
+  "UTC",
+  "GMT",
+  "FAQ",
+  "HTTP",
+]);
 
 /** Sentences of a reply (keeps their own punctuation). */
 function sentences(text: string): string[] {
@@ -111,11 +121,19 @@ export function claimEvidenceFromHistory(
 ): unknown[] {
   const evidence: unknown[] = [];
   for (const row of rows) {
-    if (row.role === "assistant" && row.tool_calls && typeof row.tool_calls === "object") {
+    if (
+      row.role === "assistant" && row.tool_calls &&
+      typeof row.tool_calls === "object"
+    ) {
       const calls = row.tool_calls as { pending_action_id?: unknown };
-      if (typeof calls.pending_action_id === "string") evidence.push(row.tool_calls);
+      if (typeof calls.pending_action_id === "string") {
+        evidence.push(row.tool_calls);
+      }
     }
-    if (row.role === "tool" && row.tool_results && typeof row.tool_results === "object") {
+    if (
+      row.role === "tool" && row.tool_results &&
+      typeof row.tool_results === "object"
+    ) {
       const result = row.tool_results as { outcome?: unknown };
       if (result.outcome === "executed") evidence.push(row.tool_results);
     }
@@ -136,12 +154,33 @@ export interface StatedSlots {
 }
 
 const MONTHS: Record<string, number> = {
-  jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3, apr: 4, april: 4,
-  may: 5, jun: 6, june: 6, jul: 7, july: 7, aug: 8, august: 8, sep: 9,
-  sept: 9, september: 9, oct: 10, october: 10, nov: 11, november: 11,
-  dec: 12, december: 12,
+  jan: 1,
+  january: 1,
+  feb: 2,
+  february: 2,
+  mar: 3,
+  march: 3,
+  apr: 4,
+  april: 4,
+  may: 5,
+  jun: 6,
+  june: 6,
+  jul: 7,
+  july: 7,
+  aug: 8,
+  august: 8,
+  sep: 9,
+  sept: 9,
+  september: 9,
+  oct: 10,
+  october: 10,
+  nov: 11,
+  november: 11,
+  dec: 12,
+  december: 12,
 };
-const MONTH = "(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)";
+const MONTH =
+  "(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)";
 const END_LEAD =
   "(?:until|till|til|up\\s+to|through|thru|ends?(?:\\s+on)?|ending(?:\\s+on)?|expires?(?:\\s+on)?|expiring(?:\\s+on)?|valid\\s+(?:until|till|through)|runs?\\s+(?:until|till|through)|to)";
 const END_DAY_FIRST = new RegExp(
@@ -160,7 +199,8 @@ const PERCENT = /\b(\d{1,2}(?:\.\d{1,2})?|100)\s?(?:%|percent\b|per\s+cent\b)/i;
 const QUOTED_CODE = /["“'‘]([A-Za-z0-9 -]{4,20})["”'’]/;
 const CODE_WORD =
   /\b(?:code|promo(?:\s+code)?|coupon|voucher)\s+(?:called\s+|named\s+|of\s+|is\s+|as\s+)?([A-Z0-9][A-Z0-9-]{3,15})\b/;
-const CODE_ALONE = /\b([A-Z]{2,}[0-9]{1,}[A-Z0-9]*|[A-Z0-9]*[0-9]+[A-Z]{2,}[A-Z0-9]*)\b/;
+const CODE_ALONE =
+  /\b([A-Z]{2,}[0-9]{1,}[A-Z0-9]*|[A-Z0-9]*[0-9]+[A-Z]{2,}[A-Z0-9]*)\b/;
 /** An all-capitals word in a mixed-case message reads as a code name. */
 const CODE_CAPS = /\b([A-Z][A-Z0-9]{4,15})\b/;
 const TOTAL_USES =
@@ -233,7 +273,9 @@ export function extractStatedSlots(
     const total = TOTAL_USES.exec(text);
     if (total) slots.max_total_uses = Number(total[1] ?? total[2]);
     const perBuyer = PER_BUYER.exec(text);
-    if (perBuyer) slots.max_uses_per_buyer = perBuyer[1] ? Number(perBuyer[1]) : 1;
+    if (perBuyer) {
+      slots.max_uses_per_buyer = perBuyer[1] ? Number(perBuyer[1]) : 1;
+    }
   }
   return slots;
 }
@@ -267,8 +309,18 @@ function localDayOf(iso: unknown, timezone: string): string | null {
 
 function spokenDay(day: { year: number; month: number; day: number }): string {
   const names = [
-    "January", "February", "March", "April", "May", "June", "July",
-    "August", "September", "October", "November", "December",
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
   ];
   return `${day.day} ${names[day.month - 1]} ${day.year}`;
 }
@@ -318,8 +370,12 @@ export function checkStatedSlots(args: {
     }-${String(stated.ends_on.day).padStart(2, "0")}`;
     if (!args.timezone) {
       missing.push("ends_at");
-      asks.push(`an end on ${spokenDay(stated.ends_on)} (which time zone is that in?)`);
-    } else if (out.ends_at === undefined || out.ends_at === null || out.ends_at === "") {
+      asks.push(
+        `an end on ${spokenDay(stated.ends_on)} (which time zone is that in?)`,
+      );
+    } else if (
+      out.ends_at === undefined || out.ends_at === null || out.ends_at === ""
+    ) {
       const iso = endOfLocalDayIso(stated.ends_on, args.timezone);
       if (iso) {
         out.ends_at = iso;
