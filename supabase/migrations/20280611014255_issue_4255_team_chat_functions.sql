@@ -233,10 +233,11 @@ $$;
 
 -- Teammates who can be in a chat: confirmed, active staff.
 CREATE FUNCTION public.team_people() RETURNS jsonb
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
 DECLARE v_me uuid := public.team_chat_ctx(false);
 BEGIN
+  PERFORM public.team_chat_sync_team();
   RETURN COALESCE((
     SELECT jsonb_agg(jsonb_build_object('user_id', p.id, 'name', public.team_chat_name(p.id), 'email', p.email, 'me', p.id = v_me)
                      ORDER BY public.team_chat_name(p.id), p.id)
@@ -253,8 +254,9 @@ LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
 DECLARE v_me uuid := public.team_chat_ctx(false); v_threads jsonb;
 BEGIN
-  -- Backstop for the staff-table and sign-in triggers.
-  PERFORM public.team_chat_sync_user(v_me);
+  -- The Mingla team follows the staff directory (no trigger sits on the
+  -- staff tables; see the schema file).
+  PERFORM public.team_chat_sync_team();
   SELECT COALESCE(jsonb_agg(public.team_thread_json(t, v_me)
                             ORDER BY (t.kind = 'team') DESC, COALESCE(t.last_message_at, t.created_at) DESC, t.id), '[]'::jsonb)
     INTO v_threads
@@ -404,6 +406,8 @@ BEGIN
   UPDATE public.team_threads x SET last_message_at = m.created_at, updated_at = now() WHERE x.id = t.id;
   INSERT INTO public.team_reads (thread_id, user_id, last_read_at, updated_at) VALUES (t.id, v_me, m.created_at, now())
   ON CONFLICT (thread_id, user_id) DO UPDATE SET last_read_at = GREATEST(team_reads.last_read_at, EXCLUDED.last_read_at), updated_at = now();
+  -- The Mingla team is told as the staff directory stands now.
+  IF t.kind = 'team' THEN PERFORM public.team_chat_sync_team(); END IF;
   v_told := public.team_chat_enqueue(m.id);
   RETURN jsonb_build_object('message', public.team_message_json(m, v_me), 'told', v_told, 'replayed', false);
 END;

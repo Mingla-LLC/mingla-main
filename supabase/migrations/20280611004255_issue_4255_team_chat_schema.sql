@@ -22,8 +22,12 @@
 --      the attachment row is live, by a member of the thread whose id starts
 --      the path.
 --   5. The one "Mingla team" thread, its membership synced from the staff
---      tables (admin_users, admin_team_members) and from sign-in accounts
---      (a confirmed or changed address), plus a backfill.
+--      directory (admin_team_directory: admin_users and admin_team_members)
+--      on every chat list and Mingla team post, and from sign-in accounts
+--      (a confirmed or changed address), plus a backfill. No trigger is put
+--      on the staff tables themselves: their trigger set and readers are
+--      pinned by the #3802 security suite. Access never waits for a sync:
+--      every read checks staff at that moment.
 --   6. team_mentions may now come from a team chat message.
 --   7. Realtime for the tables whose rows RLS already limits to members.
 --
@@ -357,6 +361,10 @@ BEGIN
   v_staff := public.team_chat_staff(p_user_id);
   v_team := public.team_chat_team_thread();
   IF v_staff THEN
+    -- Written only when something changes, so a sync on every read is cheap.
+    IF EXISTS (SELECT 1 FROM public.team_thread_members m WHERE m.thread_id = v_team AND m.user_id = p_user_id AND m.left_at IS NULL) THEN
+      RETURN false;
+    END IF;
     INSERT INTO public.team_thread_members (thread_id, user_id, role)
     VALUES (v_team, p_user_id, 'member')
     ON CONFLICT (thread_id, user_id) DO UPDATE SET left_at = NULL, joined_at = now(), updated_at = now()
@@ -372,8 +380,9 @@ $$;
 REVOKE ALL ON FUNCTION public.team_chat_sync_user(uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.team_chat_sync_user(uuid) TO service_role;
 
--- Everyone at once: every account whose address is on a staff row now, plus
--- every current member of the team thread.
+-- Everyone at once: every account whose address is in the staff directory
+-- (not revoked), plus every current member of the team thread (so a revoked
+-- or removed teammate is marked left).
 CREATE FUNCTION public.team_chat_sync_team() RETURNS integer
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
@@ -381,8 +390,7 @@ DECLARE v_uid uuid; v_changed integer := 0; v_team uuid := public.team_chat_team
 BEGIN
   FOR v_uid IN
     SELECT u.id FROM auth.users u
-     WHERE EXISTS (SELECT 1 FROM public.admin_users a WHERE lower(btrim(a.email)) = lower(btrim(u.email)))
-        OR EXISTS (SELECT 1 FROM public.admin_team_members t WHERE t.email = lower(btrim(u.email)))
+     WHERE lower(btrim(u.email)) IN (SELECT d.email FROM public.admin_team_directory() d)
     UNION
     SELECT m.user_id FROM public.team_thread_members m WHERE m.thread_id = v_team AND m.left_at IS NULL
   LOOP
@@ -394,30 +402,12 @@ $$;
 REVOKE ALL ON FUNCTION public.team_chat_sync_team() FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.team_chat_sync_team() TO service_role;
 COMMENT ON FUNCTION public.team_chat_sync_team() IS
-  'Issue #4255. Makes the Mingla team thread''s membership match the staff tables: active, confirmed staff in; everyone else marked left. Runs on every staff-table change and once as a backfill.';
-
--- A staff row changed (added, activated, revoked, removed, address changed).
-CREATE FUNCTION public.team_chat_staff_changed() RETURNS trigger
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp
-AS $$
-BEGIN
-  PERFORM public.team_chat_sync_team();
-  RETURN NULL;
-END;
-$$;
-REVOKE ALL ON FUNCTION public.team_chat_staff_changed() FROM PUBLIC, anon, authenticated;
-
-CREATE TRIGGER team_chat_sync_admin_users
-  AFTER INSERT OR UPDATE OR DELETE ON public.admin_users
-  FOR EACH STATEMENT EXECUTE FUNCTION public.team_chat_staff_changed();
-CREATE TRIGGER team_chat_sync_admin_team_members
-  AFTER INSERT OR UPDATE OR DELETE ON public.admin_team_members
-  FOR EACH STATEMENT EXECUTE FUNCTION public.team_chat_staff_changed();
+  'Issue #4255. Makes the Mingla team thread''s membership match the staff directory: active, confirmed staff in; everyone else marked left. Runs on every chat list, before every Mingla team post''s notices, and once as a backfill.';
 
 -- A sign-in account was made, confirmed, banned or changed address. Every
 -- other update (each sign-in writes last_sign_in_at) returns at once. A
 -- failure here must never stop someone signing in: it is logged as a
--- warning, and team_list_threads re-syncs the caller on every read.
+-- warning, and team_list_threads re-syncs on every read.
 CREATE FUNCTION public.team_chat_auth_user_changed() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$

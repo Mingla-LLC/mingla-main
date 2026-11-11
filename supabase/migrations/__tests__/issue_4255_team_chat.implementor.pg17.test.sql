@@ -31,6 +31,10 @@
 --   C-AGENT   a connected agent cannot post or start chats
 --   C-GRANT   internal helpers and tables closed to clients; realtime
 --
+-- The Mingla team is synced from admin_team_directory() on every chat list
+-- and Mingla team post (no trigger on the staff tables: #3802 pins them),
+-- and at once when a sign-in account is confirmed or changes address.
+--
 -- FAILS-ON-REVERT (proved by deleting lines from the migrations, then
 -- restoring): without the email_confirmed_at line in team_chat_staff, C-RLS
 -- and C-SYNC fail (the look-alike reads the team chat and joins it); without
@@ -186,9 +190,16 @@ end;
 $t$;
 
 -- ───────────────────────────── C-SYNC ─────────────────────────────
+create function pg_temp.sync() returns void
+language plpgsql as $fn$ begin perform pg_temp.person('gem', 'select public.team_list_threads()::text'); end; $fn$;
+
 do $t$
 declare v text;
 begin
+  -- The staff rows above were written after the accounts; the next chat list
+  -- brings the Mingla team in line (no trigger sits on the staff tables).
+  perform pg_temp.chk('C-SYNC', 'staff rows alone change nothing until a chat is listed', pg_temp.member(pg_temp.team(), 'gem'), 'none');
+  perform pg_temp.sync();
   perform pg_temp.chk('C-SYNC', 'there is exactly one Mingla team thread',
     (select count(*)::text || '/' || min(title) from public.team_threads where kind = 'team'), '1/Mingla team');
   perform pg_temp.chk('C-SYNC', 'confirmed active staff are members; the host, the look-alike and the unconfirmed are not',
@@ -200,12 +211,16 @@ begin
   insert into auth.users (id, email, email_confirmed_at) values (pg_temp.uid('new'), 'nia.c4255@test.local', now());
   perform pg_temp.chk('C-SYNC', 'an account alone is not a member', pg_temp.member(pg_temp.team(), 'new'), 'none');
   insert into public.admin_team_members (email, role, status, accepted_at) values ('nia.c4255@test.local', 'growth', 'active', now());
+  perform pg_temp.sync();
   perform pg_temp.chk('C-SYNC', 'a new active staff row adds them', pg_temp.member(pg_temp.team(), 'new'), 'true');
   update public.admin_team_members set status = 'revoked', updated_at = now() where email = 'nia.c4255@test.local';
+  perform pg_temp.sync();
   perform pg_temp.chk('C-SYNC', 'deactivating marks them left', pg_temp.member(pg_temp.team(), 'new'), 'false');
   update public.admin_team_members set status = 'active', updated_at = now() where email = 'nia.c4255@test.local';
+  perform pg_temp.sync();
   perform pg_temp.chk('C-SYNC', 'reactivating brings them back', pg_temp.member(pg_temp.team(), 'new'), 'true');
-  -- Confirming an address that is on a staff row joins the team.
+  -- Confirming an address that is on a staff row joins the team at once
+  -- (the sign-in account trigger), with no list in between.
   update auth.users set email_confirmed_at = now() where id = pg_temp.uid('late');
   perform pg_temp.chk('C-SYNC', 'confirming an address on a staff row joins the team', pg_temp.member(pg_temp.team(), 'late'), 'true');
   update auth.users set email = 'late.not.staff@test.local' where id = pg_temp.uid('late');
@@ -351,7 +366,9 @@ begin
   perform pg_temp.lk('C-RLS', 'revoked: cannot post or list',
     pg_temp.post(null, 'rev', pg_temp.team(), 'still here?') || '|' || pg_temp.person('rev', 'select public.team_list_threads()::text'),
     'ERR:42501:team_access_required%|ERR:42501:team_access_required%');
-  perform pg_temp.chk('C-RLS', 'revoked: left the Mingla team', pg_temp.member(pg_temp.team(), 'rev'), 'false');
+  perform pg_temp.chk('C-RLS', 'revoked: still a member row until the next sync, and reads nothing anyway', pg_temp.member(pg_temp.team(), 'rev'), 'true');
+  perform pg_temp.sync();
+  perform pg_temp.chk('C-RLS', 'revoked: left the Mingla team at the next list', pg_temp.member(pg_temp.team(), 'rev'), 'false');
   -- Even with a live membership row left behind (a group), staff is checked on every read.
   insert into public.team_thread_members (thread_id, user_id, role) values (v_g, pg_temp.uid('rev'), 'member');
   perform pg_temp.chk('C-RLS', 'revoked: a leftover group membership still reads nothing',
