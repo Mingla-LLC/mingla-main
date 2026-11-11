@@ -264,6 +264,12 @@ export function parseSupportProductStage(raw: unknown): SupportProductStage | nu
     : null;
 }
 
+/** A sender-less system line in the thread, in the app's words when known. */
+export function supportSystemLine(content: string | null | undefined): string {
+  const text = String(content ?? "").trim();
+  return text === "Reopened automatically" ? supportCopy("thread.reopened_marker") : text;
+}
+
 /** Copy keys for the Product banner under the status banner. */
 export function supportProductBannerKeys(stage: SupportProductStage): { title: string; body: string } {
   switch (stage) {

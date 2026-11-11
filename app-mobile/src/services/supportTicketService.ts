@@ -70,6 +70,8 @@ export interface SupportThreadMessage {
   id: string;
   sender_id: string | null;
   content: string;
+  /** "system" for sender-less lines such as "Reopened automatically". */
+  message_type?: string | null;
   created_at: string;
   sender_display_name_snapshot: string | null;
   sender_role_snapshot: string | null;
@@ -378,7 +380,7 @@ export async function getSupportThread(userId: string, ticketId: string): Promis
   const [messagesResult, attachmentsResult] = await Promise.all([
     supabase
       .from('messages')
-      .select('id, sender_id, content, created_at, sender_display_name_snapshot, sender_role_snapshot')
+      .select('id, sender_id, content, created_at, message_type, sender_display_name_snapshot, sender_role_snapshot')
       .eq('conversation_id', row.conversation_id)
       .is('deleted_at', null)
       .order('created_at', { ascending: true })

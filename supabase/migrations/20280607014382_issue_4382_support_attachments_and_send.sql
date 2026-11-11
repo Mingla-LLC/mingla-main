@@ -843,6 +843,12 @@ BEGIN
            next_update_note = CASE WHEN p_wait_until IS NOT NULL THEN v_note ELSE next_update_note END,
            support_workflow_revision = support_workflow_revision + 1
      WHERE id = v_ticket.id;
+    -- The thread says why the ticket is open again (Admin, Host, Explorer).
+    -- A system line: no sender, no alert, sorted just after the reply.
+    IF v_reopened THEN
+      INSERT INTO public.messages (conversation_id, sender_id, content, message_type, created_at)
+      VALUES (v_ticket.conversation_id, NULL, 'Reopened automatically', 'system', clock_timestamp());
+    END IF;
   END IF;
   PERFORM set_config('mingla.support_quiet', '', true);
 

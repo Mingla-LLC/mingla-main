@@ -92,6 +92,7 @@ import {
   parseSupportProductStage,
   supportComposerMode,
   supportProductBannerKeys,
+  supportSystemLine,
   supportCopy,
   supportStatusBanner,
   type SupportPickedImage,
@@ -448,3 +449,15 @@ describe("#4382 Host Product banner", () => {
     expect(core).toMatch(/catch \(err\) \{\s*console\.warn\("\[support\] reading the Product stage failed"/);
   });
 });
+
+describe("#4382 Host thread system lines", () => {
+  test("a reopen shows as a centred system line, never as a Mingla bubble", () => {
+    expect(supportSystemLine("Reopened automatically")).toBe("Reopened automatically");
+    expect(supportSystemLine("  Mingla will update you by Friday.  ")).toBe("Mingla will update you by Friday.");
+    const core = fs.readFileSync(path.join(ROOT, "src/components/support/SupportThreadCore.tsx"), "utf8");
+    expect(core).toMatch(/if \(message\.message_type === "system"\) \{\s*return \(\s*<Text key=\{message\.id\} style=\{styles\.systemLine\}/);
+    const service = fs.readFileSync(path.join(ROOT, "src/services/supportService.ts"), "utf8");
+    expect(service).toContain("is_internal, message_type, sender_display_name_snapshot");
+  });
+});
+

@@ -273,3 +273,12 @@ Deno.test("a file that never finished uploading is not a closed request", async 
   const english = JSON.parse(await read("src/i18n/locales/en/feedback.json")).support;
   assertEquals(english.not_uploaded, "A screenshot didn't finish uploading. Remove it, add it again and send.", "wording");
 });
+
+Deno.test("a reopen shows as a system line in the thread", async () => {
+  const screen = await read("src/components/support/SupportThreadScreen.tsx");
+  assert(screen.includes("if (message.message_type === 'system') {"), "system rows render on their own");
+  assert(screen.includes("t('feedback:support.reopened_marker')"), "the reopen line is translated");
+  const service = await read("src/services/supportTicketService.ts");
+  assert(service.includes("content, created_at, message_type, sender_display_name_snapshot"), "the thread reads message_type");
+});
+

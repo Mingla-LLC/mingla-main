@@ -10,6 +10,7 @@
 -- MINGLA-INVARIANT: I-4382-SUPPORT-ATTACH-ONLY-UPLOADED | issue #4382 | A support attachment joins a message only when its object exists in support-attachments at its storage_path; otherwise the send is refused with PT409 attachment_not_uploaded.
 -- MINGLA-INVARIANT: I-4382-LEGACY-CREATE-OWN-BRAND-ONLY | issue #4382 | The pre-#4382 create_support_ticket(text, uuid) files a ticket against a brand only when the caller is an active member or the owning account; any other brand id is dropped.
 -- MINGLA-INVARIANT: I-4382-CUSTOMER-DRAFT-NO-GITHUB-TITLE | issue #4382 | Default customer update drafts use generic wording and never quote the GitHub issue title.
+-- MINGLA-INVARIANT: I-4382-REOPEN-MARKER | issue #4382 | A customer reply that reopens a ticket adds one sender-less system line "Reopened automatically" after the reply; a reply on an open ticket adds none.
 -- MINGLA-INVARIANT: I-4382-SUPPORT-NO-LOCATION | issue #4382 | A support ticket's client details hold app and device facts only; a location key is refused.
 BEGIN;
 
@@ -261,6 +262,14 @@ BEGIN
   IF v_result->>'status' <> 'open' OR (v_result->>'reopened')::boolean IS NOT TRUE THEN
     RAISE EXCEPTION 'reply_on_waiting_did_not_reopen:%', v_result;
   END IF;
+  -- The thread shows a "Reopened automatically" line, once, after the reply.
+  IF (SELECT count(*) FROM public.messages m JOIN public.support_tickets t ON t.conversation_id = m.conversation_id
+      WHERE t.id = v_host_ticket AND m.message_type = 'system' AND m.sender_id IS NULL
+        AND m.content = 'Reopened automatically') <> 1
+     OR (SELECT m.content FROM public.messages m JOIN public.support_tickets t ON t.conversation_id = m.conversation_id
+      WHERE t.id = v_host_ticket ORDER BY m.created_at DESC, m.id LIMIT 1) <> 'Reopened automatically' THEN
+    RAISE EXCEPTION 'reopen_marker_missing_or_out_of_order';
+  END IF;
   UPDATE public.support_tickets SET status = 'resolved', resolved_at = now() WHERE id = v_explorer_ticket;
   v_result := public.issue_4382_post_support_message(
     v_explorer_ticket, v_explorer, false, 'It happened again', ARRAY[]::uuid[], false);
@@ -284,6 +293,10 @@ BEGIN
   v_result := public.issue_4382_post_support_message(
     v_host_ticket, v_staff, true, 'We are on it.', ARRAY[]::uuid[], false);
   IF v_result->>'status' <> 'open' THEN RAISE EXCEPTION 'plain_staff_reply_changed_status'; END IF;
+  IF (SELECT count(*) FROM public.messages m JOIN public.support_tickets t ON t.conversation_id = m.conversation_id
+      WHERE t.id = v_host_ticket AND m.content = 'Reopened automatically') <> 1 THEN
+    RAISE EXCEPTION 'reply_on_open_ticket_added_a_reopen_marker';
+  END IF;
   v_result := public.issue_4382_post_support_message(
     v_host_ticket, v_staff, true, 'Settlement lands Friday.', ARRAY[]::uuid[], false,
     now() + interval '3 days', 'We will confirm the payout landed');

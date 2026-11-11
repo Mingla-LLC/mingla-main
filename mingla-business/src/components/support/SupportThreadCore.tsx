@@ -69,6 +69,7 @@ import {
   supportCopy,
   supportProductBannerKeys,
   supportStatusBanner,
+  supportSystemLine,
   type SupportPickedImage,
   type SupportProductStage,
 } from "./supportRequestModel";
@@ -369,6 +370,13 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
               </View>
             ) : (
               messages.map((message) => {
+                if (message.message_type === "system") {
+                  return (
+                    <Text key={message.id} style={styles.systemLine} accessibilityRole="text">
+                      {supportSystemLine(message.content)}
+                    </Text>
+                  );
+                }
                 const mine = message.sender_id === currentUserId && !message.is_internal;
                 const messageImages = message.attachments.filter((a) => a.kind === "image");
                 return (
@@ -571,6 +579,13 @@ const styles = StyleSheet.create({
   bannerClosed: {
     borderColor: glass.border.profileBase,
     backgroundColor: glass.tint.profileBase,
+  },
+  systemLine: {
+    alignSelf: "center",
+    fontSize: 12,
+    fontStyle: "italic",
+    color: textTokens.secondary,
+    paddingVertical: spacing.xs,
   },
   bannerProduct: {
     borderColor: glass.border.profileBase,

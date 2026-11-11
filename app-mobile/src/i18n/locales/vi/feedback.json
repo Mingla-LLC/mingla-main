@@ -80,6 +80,7 @@
     "reply_failed": "Your message wasn't sent. Tap Send to try again.",
     "reply_closed": "This request is closed. Start a new request and we'll pick it up.",
     "not_uploaded": "A screenshot didn't finish uploading. Remove it, add it again and send.",
+    "reopened_marker": "Reopened automatically",
     "image_open": "Open screenshot {{index}}",
     "image_unavailable": "Screenshot unavailable",
     "voice_unavailable": "Voice note unavailable",

@@ -137,6 +137,13 @@ export function SupportThreadScreen({ ticketId }: { ticketId: string }): React.R
   }, [canSend, ticket, screenshots, reply, trimmed, t]);
 
   const bubble = useCallback((message: SupportThreadMessage, signed: Record<string, string>, myId: string | null): React.ReactElement => {
+    if (message.message_type === 'system') {
+      return (
+        <Text key={message.id} style={styles.systemLine} testID="support-thread-system-line">
+          {message.content.trim() === 'Reopened automatically' ? t('feedback:support.reopened_marker') : message.content}
+        </Text>
+      );
+    }
     const mine = message.sender_id !== null && message.sender_id === myId;
     const images = message.attachments.filter((a) => a.kind === 'image');
     const imageUrls = images.map((a) => signed[a.storage_path]).filter((url): url is string => typeof url === 'string');
@@ -360,6 +367,7 @@ const styles = StyleSheet.create({
   },
   bannerResolved: { backgroundColor: 'rgba(16,185,129,0.12)', borderColor: 'rgba(16,185,129,0.35)' },
   bannerClosed: { backgroundColor: 'rgba(255,255,255,0.06)', borderColor: 'rgba(255,255,255,0.15)' },
+  systemLine: { alignSelf: 'center', color: 'rgba(248,250,252,0.6)', fontSize: 12, fontStyle: 'italic', paddingVertical: 4 },
   bannerProduct: { backgroundColor: 'rgba(255,255,255,0.06)', borderColor: 'rgba(255,255,255,0.15)' },
   bannerTitle: { color: '#f8fafc', fontSize: 14, fontWeight: '700', lineHeight: 19 },
   bannerText: { color: '#f8fafc', fontSize: 13, lineHeight: 18 },

@@ -82,6 +82,7 @@
     "attach": "Add screenshots",
     "not_sent_title": "Message not sent",
     "not_sent_body": "Tap Send to try again.",
+    "reopened_marker": "Reopened automatically",
     "not_uploaded": "A screenshot didn't finish uploading. Remove it, add it again and send.",
     "closed_error": "This request is closed. Start a new request and we'll pick it up.",
     "empty": "Your request is with us. We'll reply here.",
