@@ -61,6 +61,7 @@ const isBrandEditSection = (
   value === "about" ||
   value === "cover" ||
   value === "address" ||
+  value === "timezone" ||
   value === "contact" ||
   value === "social";
 
