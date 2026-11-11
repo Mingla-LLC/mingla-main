@@ -720,7 +720,6 @@ describe("B9 Settings entry and the guide", () => {
 
 describe("B10 onboarding and awareness", () => {
   const STRIPE = { id: "brand-1", paymentProvider: "stripe", defaultCurrency: "GBP" };
-  const ASSETS = { hero: 1, title: "Toolkit title", body: "Toolkit body" };
   beforeEach(() => {
     // Forget any one-shot answer a test before this one left unused.
     (AsyncStorage.getItem as jest.Mock).mockReset();
@@ -752,11 +751,11 @@ describe("B10 onboarding and awareness", () => {
     expect(mount(<TapToPayOnboardingCard brand={STRIPE} />).toJSON()).toBeNull();
   });
 
-  test("the modal never renders without Apple's assets, whatever the switch says", async () => {
+  test("the modal never renders with Apple's assets switched off, whatever the switch says", async () => {
     mockLive = true;
     mockRole = { rank: 60, isLoading: false };
     (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
-    const tree = mount(<TapToPayAwarenessModal />);
+    const tree = mount(<TapToPayAwarenessModal assets={null} />);
     await settleSale();
     expect(tree.toJSON()).toBeNull();
   });
@@ -766,16 +765,16 @@ describe("B10 onboarding and awareness", () => {
     mockRole = { rank: 60, isLoading: false };
     (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
     (AsyncStorage.setItem as jest.Mock).mockClear();
-    const { root } = mount(<TapToPayAwarenessModal assets={ASSETS} />);
+    const { root } = mount(<TapToPayAwarenessModal />);
     await settleSale();
-    expect(textOf(root)).toContain("Toolkit title");
+    expect(root.findAll((n) => n.props.testID === "tap-awareness-art").length).toBeGreaterThan(0);
     act(() => {
       byTestId(root, "tap-awareness-not-now").props.onPress();
     });
     expect(AsyncStorage.setItem).toHaveBeenCalledWith("mingla.tapToPay.awarenessSeen.v1.user-1", "1");
     expect(root.findAll((n) => n.props.testID === "tap-awareness-modal")).toHaveLength(0);
     (AsyncStorage.getItem as jest.Mock).mockResolvedValue("1");
-    const again = mount(<TapToPayAwarenessModal assets={ASSETS} />);
+    const again = mount(<TapToPayAwarenessModal />);
     await settleSale();
     expect(again.root.findAll((n) => n.props.testID === "tap-awareness-modal")).toHaveLength(0);
     (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
@@ -785,12 +784,12 @@ describe("B10 onboarding and awareness", () => {
     (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
     mockLive = true;
     mockRole = { rank: 10, isLoading: false };
-    const scanner = mount(<TapToPayAwarenessModal assets={ASSETS} />);
+    const scanner = mount(<TapToPayAwarenessModal />);
     await settleSale();
     expect(scanner.root.findAll((n) => n.props.testID === "tap-awareness-modal")).toHaveLength(0);
     mockLive = false;
     mockRole = { rank: 60, isLoading: false };
-    const off = mount(<TapToPayAwarenessModal assets={ASSETS} />);
+    const off = mount(<TapToPayAwarenessModal />);
     await settleSale();
     expect(off.root.findAll((n) => n.props.testID === "tap-awareness-modal")).toHaveLength(0);
   });

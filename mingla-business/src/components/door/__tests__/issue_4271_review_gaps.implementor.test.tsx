@@ -1,7 +1,7 @@
 /**
  * #4271 — Tap to Pay on iPhone review gaps, against Apple's Human Interface
  * Guidelines, before the publishing-review videos:
- *   G1 the awareness splash stays off until Apple's toolkit files are in
+ *   G1 the awareness splash is Apple's Hero banner with native controls on it
  *   G2 only someone who may accept Apple's terms sees the splash (one shared rule)
  *   G3 iPhone screens say "Tap to Pay on iPhone"; Android never says "iPhone"
  *   G4 every failed state offers "Get help", which opens Help & Support
@@ -214,6 +214,12 @@ import { resetTapToPaySessionForTests, updateTapToPaySession } from "../../../se
 import { tapToPayMayAcceptTerms, BRAND_ROLE_RANK } from "../../../utils/brandRole";
 // eslint-disable-next-line import/first
 import { HELP_AND_SUPPORT_ROUTE } from "../../../constants/supportHostFacing";
+// eslint-disable-next-line import/first
+import {
+  TAP_TO_PAY_AWARENESS,
+  TAP_TO_PAY_DISCLAIMERS,
+  type TapToPayAwarenessAssets,
+} from "../../../constants/tapToPayMarketing";
 
 jest.setTimeout(60_000);
 
@@ -314,28 +320,138 @@ beforeEach(() => {
 });
 afterAll(() => withOs("ios", "18.1"));
 
-describe("G1 the awareness splash waits for Apple's toolkit", () => {
-  test("the assets are null, and the file says where the toolkit files go and what to set", () => {
-    const marketing = read("src/constants/tapToPayMarketing.ts");
-    expect(marketing).toContain("TAP_TO_PAY_AWARENESS: TapToPayAwarenessAssets | null = null");
-    expect(marketing).toContain("mingla-business/assets/tap-to-pay/");
-    expect(marketing).toContain('require("../../assets/tap-to-pay/awareness-hero.png")');
-  });
-
-  test("with no assets nothing renders, even for an owner on a live brand", async () => {
+describe("G1 the awareness splash is Apple's Hero banner", () => {
+  const assets = TAP_TO_PAY_AWARENESS as TapToPayAwarenessAssets;
+  const owner = async (): Promise<ReactTestRenderer> => {
+    mockRole = { rank: BRAND_ROLE_RANK.brand_owner, isLoading: false };
+    (AsyncStorage.getItem as jest.Mock).mockReset();
     (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
+    (AsyncStorage.setItem as jest.Mock).mockClear();
     const tree = mount(<TapToPayAwarenessModal />);
     await settle();
+    return tree;
+  };
+  const one = (root: ReactTestInstance, id: string): ReactTestInstance => {
+    const found = root.findAll((n) => n.props.testID === id && typeof n.type !== "string");
+    expect([id, found.length > 0]).toEqual([id, true]);
+    return found[0] as ReactTestInstance;
+  };
+  const styleOf = (node: ReactTestInstance): Record<string, unknown> => {
+    const raw = typeof node.props.style === "function" ? node.props.style({ pressed: false }) : node.props.style;
+    return Object.assign({}, ...[raw].flat(3).filter(Boolean));
+  };
+  const near = (value: unknown, percent: number): void => {
+    expect(typeof value).toBe("string");
+    expect(String(value).endsWith("%")).toBe(true);
+    expect(Math.abs(parseFloat(String(value)) - percent)).toBeLessThan(0.01);
+  };
+
+  test("the asset set is on, by default, with the art's own words for VoiceOver", async () => {
+    expect(assets).not.toBeNull();
+    expect(assets.frame).toEqual({ width: 2160, height: 3840 });
+    const { root } = await owner();
+    const art = one(root, "tap-awareness-art");
+    expect(art.props.accessibilityRole).toBe("image");
+    expect(art.props.accessibilityLabel).toBe(
+      "Tap to Pay on iPhone. Accept physical debit and credit cards as well as Apple Pay and other digital wallets. Right on your iPhone.",
+    );
+    expect(art.props.source).toBe(assets.hero);
+  });
+
+  test("Get started: exact label, opens setup for this brand, marks seen", async () => {
+    const { root } = await owner();
+    const cta = one(root, "tap-awareness-get-started");
+    expect(textOf(cta).replace(/\s+/g, " ").trim()).toBe("Get started");
+    expect(cta.props.accessibilityLabel).toBe("Get started");
+    act(() => {
+      cta.props.onPress();
+    });
+    expect(mockPush).toHaveBeenCalledWith("/account/tap-to-pay?brandId=brand-1");
+    expect(AsyncStorage.setItem).toHaveBeenCalledWith("mingla.tapToPay.awarenessSeen.v1.user-1", "1");
+    expect(root.findAll((n) => n.props.testID === "tap-awareness-modal")).toHaveLength(0);
+  });
+
+  test("Not now: dismisses and marks seen, and never opens setup", async () => {
+    const { root } = await owner();
+    act(() => {
+      one(root, "tap-awareness-not-now").props.onPress();
+    });
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(AsyncStorage.setItem).toHaveBeenCalledWith("mingla.tapToPay.awarenessSeen.v1.user-1", "1");
+    expect(root.findAll((n) => n.props.testID === "tap-awareness-modal")).toHaveLength(0);
+  });
+
+  test("Terms apply. opens Apple's three disclaimers in the app, and Close hides them", async () => {
+    const { root } = await owner();
+    const terms = one(root, "tap-awareness-terms");
+    expect(terms.props.accessibilityRole).toBe("link");
+    expect(terms.props.accessibilityLabel).toBe("Terms apply. Show Tap to Pay on iPhone terms");
+    expect(root.findAll((n) => n.props.testID === "tap-awareness-terms-sheet")).toHaveLength(0);
+    act(() => {
+      terms.props.onPress();
+    });
+    const sheet = textOf(one(root, "tap-awareness-terms-sheet"));
+    expect(sheet).toContain("Tap to Pay on iPhone requires a supported payment app and the latest version of iOS.");
+    expect(sheet).toContain("https://developer.apple.com/tap-to-pay/regions/");
+    expect(sheet).toContain("Apple Pay is a service provided by Apple Payments Services LLC");
+    expect(sheet).toContain("is a trademark owned by and used with permission of EMVCo, LLC.");
+    expect(sheet).not.toContain("Store and Forward");
+    expect(TAP_TO_PAY_DISCLAIMERS).toHaveLength(3);
+    act(() => {
+      one(root, "tap-awareness-terms-close").props.onPress();
+    });
+    expect(root.findAll((n) => n.props.testID === "tap-awareness-terms-sheet")).toHaveLength(0);
+    // Reading the terms is not a decision: the splash stays and is not marked seen.
+    expect(AsyncStorage.setItem).not.toHaveBeenCalled();
+  });
+
+  test("the controls sit at Apple's template positions, as fractions of the image box", async () => {
+    const { root } = await owner();
+    const cta = styleOf(one(root, "tap-awareness-get-started"));
+    near(cta.left, 9.91);
+    near(cta.top, 78.8);
+    near(cta.minWidth, 26.85);
+    near(cta.minHeight, 5.83);
+    expect(cta.borderRadius).toBe(999);
+    expect(cta.borderWidth).toBe(1);
+    const notNow = styleOf(one(root, "tap-awareness-not-now"));
+    near(notNow.left, 9.91);
+    near(notNow.top, 86.72);
+    expect(notNow.minHeight).toBeGreaterThanOrEqual(44);
+    const terms = styleOf(one(root, "tap-awareness-terms"));
+    near(terms.left, 9.63);
+    near(terms.top, 95.78);
+    near(terms.width, 18.47);
+    near(terms.height, 1.74);
+  });
+
+  test("the image box is 9:16 and the terms target reaches 44pt", async () => {
+    const { root } = await owner();
+    const box = styleOf(root.findAll((n) => n.props.testID === "tap-awareness-box")[0] as ReactTestInstance);
+    expect(Math.abs((box.width as number) / (box.height as number) - 9 / 16)).toBeLessThan(0.001);
+    const terms = one(root, "tap-awareness-terms");
+    const height = ((box.height as number) * assets.terms.height) / assets.frame.height;
+    expect(height + terms.props.hitSlop.top + terms.props.hitSlop.bottom).toBeGreaterThanOrEqual(44);
+  });
+
+  test("with the assets switched off nothing renders, even for an owner", async () => {
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
+    const tree = mount(<TapToPayAwarenessModal assets={null} />);
+    await settle();
     expect(tree.toJSON()).toBeNull();
+  });
+
+  test("the web build of the splash imports none of it", () => {
+    const web = read("src/components/door/tap/TapToPayAwarenessModal.web.tsx");
+    expect(web).not.toMatch(/tapToPayMarketing|assets\/tap-to-pay/);
   });
 });
 
 describe("G2 only someone who may accept Apple's terms sees the splash", () => {
-  const ASSETS = { hero: 1, title: "Toolkit title", body: "Toolkit body" };
   const shown = async (rank: number): Promise<boolean> => {
     mockRole = { rank, isLoading: false };
     (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
-    const { root } = mount(<TapToPayAwarenessModal assets={ASSETS} />);
+    const { root } = mount(<TapToPayAwarenessModal />);
     await settle();
     return root.findAll((n) => n.props.testID === "tap-awareness-modal").length > 0;
   };
