@@ -203,7 +203,7 @@ const rememberNote = {
           expected: (value) =>
             saved
               ? !NOTHING_SAVED.test(value) &&
-                /\b(?:saved|remember|noted|got it|i'll keep|will keep|kept)\b/i
+                /\b(?:saved|remember|remembered|noted|got it|i'll keep|will keep|kept|updated|added|stored)\b/i
                   .test(value)
               : !/\b(?:saved|noted)\b/i.test(value),
           label: saved ? "confirms the save" : "claims no save",
