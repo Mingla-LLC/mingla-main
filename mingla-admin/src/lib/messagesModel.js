@@ -25,6 +25,7 @@ export const NOTIFICATION_FILTERS = Object.freeze([
 export const NOTIFICATION_GROUPS = Object.freeze([
   { id: "decide", label: "Needs a decision from you", tone: "brand", filters: ["you", "all"] },
   { id: "mention", label: "Mentions and replies", tone: "info", filters: ["you", "all"] },
+  { id: "late", label: "Due and late", tone: "error", filters: ["you", "all"] },
   { id: "support", label: "Support alerts", tone: "warning", filters: ["you", "all"] },
   { id: "status", label: "Changes on cards you watch", tone: "success", filters: ["watch", "all"] },
 ]);
@@ -36,6 +37,8 @@ const DECISION_TAIL = /·\s*(You send|You spend|You publish|Needs your OK)\s*$/;
 /** Which group a team_inbox mention belongs to. */
 export function mentionGroup(m) {
   if (!m) return "status";
+  // #4255 rework: the 09:00 "due and late" notice (ops_due_digest).
+  if (m.source_kind === "work_due") return "late";
   if (m.kind === "mention") return "mention";
   return DECISION_TAIL.test(String(m.body_excerpt || "")) ? "decide" : "status";
 }
@@ -48,7 +51,7 @@ function time(iso) {
 function mentionRow(m, group) {
   const actor = m.actor_name || "A teammate";
   const chat = m.source_kind === "team_message";
-  const label = group === "decide" ? "Needs your OK" : group === "status" ? "Changed" : chat ? "Team chat" : "Mentioned you";
+  const label = group === "decide" ? "Needs your OK" : group === "late" ? "Due and late" : group === "status" ? "Changed" : chat ? "Team chat" : "Mentioned you";
   return {
     key: `m-${m.id}`,
     group,
@@ -57,7 +60,7 @@ function mentionRow(m, group) {
     isNew: !m.read_at,
     at: m.created_at,
     actor,
-    title: group === "decide" ? `${actor} needs your decision` : group === "status" ? `${actor} changed a card` : `${actor} mentioned you`,
+    title: group === "decide" ? `${actor} needs your decision` : group === "late" ? "Your cards due and late" : group === "status" ? `${actor} changed a card` : `${actor} mentioned you`,
     detail: m.body_excerpt || "",
     cardId: m.card_id || null,
     threadId: m.thread_id || null,
@@ -173,12 +176,23 @@ export function threadFromSearch(search) {
 // group message only ever pushes (team chat lives in Team chats, never a
 // notification list), so its row has a push switch alone; `channels` says
 // which switches a row has.
+// #4255 rework: a direct message never makes an in-app notice either (it is
+// read in its chat), so its row has the push switch alone (orchestrator
+// decision, 11 Nov). "My cards due and late" is the 09:00 push (design
+// contract). A row with `hintOn` says what its push switch does right now.
 export const SETTING_ROWS = Object.freeze([
   { key: "business.team_mention", label: "Mentions and tags", hint: "On work cards, in team chats", email: "admin.team_mention", channels: ["inapp", "push"] },
   { key: "business.team_decision", label: "Decisions for me", hint: "Approve, sent back, You send", email: null, channels: ["inapp", "push"] },
-  { key: "business.team_message", label: "Direct messages", hint: "Push on by default", email: null, channels: ["inapp", "push"] },
-  { key: "business.team_group_message", label: "Group messages", hint: "Push off: only when you’re mentioned", email: null, channels: ["push"] },
+  { key: "business.team_message", label: "Direct messages", hint: "Push on by default", email: null, channels: ["push"] },
+  { key: "business.team_group_message", label: "Group messages", hint: "Push off: only when you’re mentioned", hintOn: "Push on: every group message", email: null, channels: ["push"] },
+  { key: "business.team_due", label: "My cards due and late", hint: "One push at 9:00 your time", email: null, channels: ["inapp", "push"] },
 ]);
+
+/** The words under a setting, following its push switch (#4255 rework). */
+export function settingHint(row, rows) {
+  if (!row) return "";
+  return row.hintOn && teamPrefOn(rows, row.key, "push") ? row.hintOn : row.hint;
+}
 
 /**
  * Whether a switch is on. No row means the default: in-app and push on,

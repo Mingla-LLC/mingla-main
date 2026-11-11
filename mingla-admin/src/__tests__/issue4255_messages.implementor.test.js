@@ -15,6 +15,15 @@
 //   F-5 (fix-up) Team chats: edit and delete your own message at its
 //       revision, load older pages with p_before, and @everyone only when
 //       team_badge says admin
+//   R-1 (rework, 11 Nov) Direct messages have the push switch alone (the
+//       in-app switch did nothing); "My cards due and late" is a row; the
+//       Group messages words follow its push switch
+//   R-2 (rework) the 09:00 due notice is its own "Due and late" group
+//
+// Rework FAILS-ON-REVERT: putting "inapp" back on the Direct messages row or
+// deleting the business.team_due row reds R-1's row pin; deleting
+// settingHint's switch check (or MessagesSettings showing row.hint again)
+// reds R-1's hint tests; deleting the work_due line in mentionGroup reds R-2.
 //
 // FAILS-ON-REVERT: deleting the `notifications` line from
 // RETIRED_PAGE_REDIRECTS (lib/adminRoutes.js) reds M-3; putting the support
@@ -38,6 +47,7 @@ import {
   olderCursor,
   rowTarget,
   SETTING_ROWS,
+  settingHint,
   teamPrefOn,
   threadFromSearch,
 } from "../lib/messagesModel.js";
@@ -214,7 +224,7 @@ describe("M-6 Settings writes the same stored preferences", () => {
   it("in-app and push are notification_channel_prefs rows of the signed-in user, as the Host app writes them", () => {
     assert.match(service, /from\("notification_channel_prefs"\)\.upsert\(\{ user_id: userId, category_key: categoryKey, channel, enabled: !!enabled, updated_at:/);
     assert.match(service, /categoryKey === "business\.team_group_message" && channel === "push" && !enabled\s*\? supabase\.from\("notification_channel_prefs"\)\.delete\(\)/);
-    assert.match(service, /TEAM_PREF_CATEGORIES = Object\.freeze\(\["business\.team_mention", "business\.team_decision", "business\.team_message", "business\.team_group_message"\]\)/);
+    assert.match(service, /TEAM_PREF_CATEGORIES = Object\.freeze\(\["business\.team_mention", "business\.team_decision", "business\.team_message", "business\.team_group_message", "business\.team_due"\]\)/);
     assert.match(settings, /team\.setTeamPref\(userId, key, channel, on\)/);
   });
   it("the defaults read exactly as the Host app's (group message pushes off until switched on)", () => {
@@ -232,12 +242,13 @@ describe("M-6 Settings writes the same stored preferences", () => {
       assert.match(h, /return key !== "business\.team_group_message";/);
     }
   });
-  it("Direct messages and Group messages are two rows; Group messages has a push switch alone", () => {
+  it("Direct messages and Group messages are two rows, each a push switch alone; My cards due and late is the 09:00 row (rework)", () => {
     assert.deepEqual(SETTING_ROWS.map((r) => [r.key, r.label, r.channels.join("+")]), [
       ["business.team_mention", "Mentions and tags", "inapp+push"],
       ["business.team_decision", "Decisions for me", "inapp+push"],
-      ["business.team_message", "Direct messages", "inapp+push"],
+      ["business.team_message", "Direct messages", "push"],
       ["business.team_group_message", "Group messages", "push"],
+      ["business.team_due", "My cards due and late", "inapp+push"],
     ]);
     assert.match(settings, /\(row\.channels \|\| \["inapp", "push"\]\)\.includes\(channel\) \?/);
   });
@@ -286,5 +297,40 @@ describe("F-5 Team chats: edit, delete, older pages, @everyone for admins (fix-u
     assert.match(chats, /const allowEveryone = badge\?\.staff === true && badge\?\.admin === true;/);
     assert.doesNotMatch(chats, /access\?\.role === "owner"/);
     assert.match(chats, /allowEveryone=\{allowEveryone && thread\.kind !== "dm"\}/);
+  });
+});
+
+describe("R-1 Settings follow what the switches do (rework, 11 Nov)", () => {
+  const settings = stripComments(read("components/messages/MessagesSettings.jsx"));
+  const group = SETTING_ROWS.find((r) => r.key === "business.team_group_message");
+  it("the Group messages words follow its push switch", () => {
+    assert.equal(settingHint(group, []), "Push off: only when you’re mentioned");
+    assert.equal(settingHint(group, [{ category_key: "business.team_group_message", channel: "push", enabled: true }]), "Push on: every group message");
+    assert.equal(settingHint(group, [{ category_key: "business.team_group_message", channel: "push", enabled: false }]), "Push off: only when you’re mentioned");
+    const dm = SETTING_ROWS.find((r) => r.key === "business.team_message");
+    assert.equal(settingHint(dm, [{ category_key: "business.team_message", channel: "push", enabled: false }]), "Push on by default", "a row without hintOn keeps its words");
+  });
+  it("the Settings tab shows the words through settingHint, beside each row", () => {
+    assert.match(settings, /\{settingHint\(row, prefs\)\}/);
+    assert.doesNotMatch(settings, /\{row\.hint\}/);
+  });
+  it("Direct messages offer no in-app switch; the shared settings read and write business.team_due", () => {
+    assert.deepEqual(SETTING_ROWS.find((r) => r.key === "business.team_message").channels, ["push"]);
+    const svc = read("services/teamChatService.js");
+    assert.match(svc, /TEAM_PREF_CATEGORIES = Object\.freeze\(\[[^\]]*"business\.team_due"/);
+  });
+});
+
+describe("R-2 the 09:00 due notice is its own group (rework)", () => {
+  const due = { id: "d1", kind: "mention", source_kind: "work_due", card_id: null, actor_name: "Mingla", body_excerpt: "1 due today · 1 late: Book the venue", deep_link: "https://admin.usemingla.com/#/work-board?view=today&who=mine", created_at: at(5), read_at: null };
+  it("it reads Due and late, sits after mentions and opens Today", () => {
+    assert.equal(mentionGroup(due), "late");
+    const groups = notificationGroups({ mentions: [...INBOX.mentions, due], alerts: [] }, "you");
+    const ids = groups.map((g) => g.id);
+    assert.ok(ids.indexOf("late") > ids.indexOf("mention") && ids.indexOf("late") > ids.indexOf("decide"));
+    const row = groups.find((g) => g.id === "late").rows[0];
+    assert.equal(row.label, "Due and late");
+    assert.equal(row.title, "Your cards due and late");
+    assert.deepEqual(rowTarget(row), { hash: "#/work-board?view=today&who=mine" });
   });
 });

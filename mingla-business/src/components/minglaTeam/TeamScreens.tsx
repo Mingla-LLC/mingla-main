@@ -76,9 +76,32 @@ function ThreadRow({ thread, onOpen }: { thread: TeamThread; onOpen: () => void 
 
 // ── Mingla team: Chats and Mentions ─────────────────────────────────────────
 
-export function mentionKindLabel(mention: Pick<TeamMention, "kind" | "action">, t: TeamT): string {
+/**
+ * #4255 rework (P3): the Chats and Mentions tab counts, the same two numbers
+ * team_badge adds up for the M: chats with unread messages (muted chats left
+ * out) and unread Admin mentions (team chat mentions live in their chats).
+ */
+export function teamTabCounts(
+  threads: readonly Pick<TeamThread, "unread" | "muted">[],
+  mentions: readonly Pick<TeamMention, "read_at" | "source_kind">[],
+): { chats: number; mentions: number } {
+  return {
+    chats: threads.filter((x) => x.unread > 0 && !x.muted).length,
+    mentions: mentions.filter((m) => m.read_at === null && m.source_kind !== "team_message").length,
+  };
+}
+
+// #4255 rework: a card tagged You send, You spend, You publish or Needs your
+// OK tells its people with the tag's words at the end (ops_work_update), the
+// same rule Admin Messages groups decisions by.
+const DECISION_TAIL = /·\s*(You send|You spend|You publish|Needs your OK)\s*$/;
+
+export function mentionKindLabel(mention: Pick<TeamMention, "kind" | "action"> & Partial<Pick<TeamMention, "source_kind" | "body_excerpt">>, t: TeamT): string {
+  // #4255 rework: the 09:00 "due and late" notice (ops_due_digest).
+  if (mention.source_kind === "work_due") return t("team.kind_due");
   if (mention.kind === "mention") return t("team.kind_mention");
   if (mention.action === "decision" || mention.action === "approval_requested") return t("team.kind_decision");
+  if (DECISION_TAIL.test(String(mention.body_excerpt ?? ""))) return t("team.kind_decision");
   if (mention.kind === "work_update") return t("team.kind_update");
   return t("team.kind_update");
 }
@@ -137,8 +160,8 @@ function TeamHome({ userId }: { userId: string }): React.ReactElement {
   useTeamRealtime(userId, null, true);
 
   const list = threads.data?.threads ?? [];
-  const unreadChats = list.filter((x) => x.unread > 0).length;
-  const unreadMentions = (mentions.data ?? []).filter((m) => m.read_at === null).length;
+  // #4255 rework (P3): the tabs count exactly what the M badge counts.
+  const { chats: unreadChats, mentions: unreadMentions } = teamTabCounts(list, mentions.data ?? []);
   const query = find.trim().toLowerCase();
   const shownThreads = query ? list.filter((x) => x.title.toLowerCase().includes(query)) : list;
   const dmWith = new Set(list.filter((x) => x.kind === "dm").map((x) => x.other_user_id));
@@ -411,16 +434,22 @@ function TeamNewChat({ userId }: { userId: string }): React.ReactElement {
 // ever pushes (team chat lives in Mingla team, never the bell), so its row has
 // a push switch alone.
 type TeamPrefChannel = "inapp" | "push";
+// #4255 rework: a DM never makes an in-app notice (it is read in its chat),
+// so its row has the push switch alone (orchestrator decision, 11 Nov); "My
+// cards due and late" is the 09:00 push (design contract). The group row's
+// words follow its push switch (hintOn).
 export const TEAM_PREF_ROWS: readonly {
-  key: "business.team_mention" | "business.team_decision" | "business.team_message" | "business.team_group_message";
-  label: "team.pref_mentions" | "team.pref_decisions" | "team.pref_messages" | "team.pref_group_messages";
-  hint: "team.pref_mentions_hint" | "team.pref_decisions_hint" | "team.pref_messages_hint" | "team.pref_group_messages_hint";
+  key: "business.team_mention" | "business.team_decision" | "business.team_message" | "business.team_group_message" | "business.team_due";
+  label: "team.pref_mentions" | "team.pref_decisions" | "team.pref_messages" | "team.pref_group_messages" | "team.pref_due";
+  hint: "team.pref_mentions_hint" | "team.pref_decisions_hint" | "team.pref_messages_hint" | "team.pref_group_messages_hint" | "team.pref_due_hint";
+  hintOn?: "team.pref_group_messages_hint_on";
   channels: readonly TeamPrefChannel[];
 }[] = [
   { key: "business.team_mention", label: "team.pref_mentions", hint: "team.pref_mentions_hint", channels: ["inapp", "push"] },
   { key: "business.team_decision", label: "team.pref_decisions", hint: "team.pref_decisions_hint", channels: ["inapp", "push"] },
-  { key: "business.team_message", label: "team.pref_messages", hint: "team.pref_messages_hint", channels: ["inapp", "push"] },
-  { key: "business.team_group_message", label: "team.pref_group_messages", hint: "team.pref_group_messages_hint", channels: ["push"] },
+  { key: "business.team_message", label: "team.pref_messages", hint: "team.pref_messages_hint", channels: ["push"] },
+  { key: "business.team_group_message", label: "team.pref_group_messages", hint: "team.pref_group_messages_hint", hintOn: "team.pref_group_messages_hint_on", channels: ["push"] },
+  { key: "business.team_due", label: "team.pref_due", hint: "team.pref_due_hint", channels: ["inapp", "push"] },
 ];
 type TeamPrefKey = (typeof TEAM_PREF_ROWS)[number]["key"];
 interface TeamPrefRow { category_key: string; channel: string; enabled: boolean }
@@ -434,6 +463,11 @@ export function teamPrefOn(rows: readonly TeamPrefRow[], key: TeamPrefKey, chann
   const row = rows.find((r) => r.category_key === key && r.channel === channel);
   if (row) return row.enabled;
   return key !== "business.team_group_message";
+}
+
+/** The words under a setting, following its push switch (#4255 rework). */
+export function teamPrefHintKey(row: (typeof TEAM_PREF_ROWS)[number], rows: readonly TeamPrefRow[]): (typeof TEAM_PREF_ROWS)[number]["hint"] | "team.pref_group_messages_hint_on" {
+  return row.hintOn && teamPrefOn(rows, row.key, "push") ? row.hintOn : row.hint;
 }
 
 /** One set of settings for Admin and the Host app: notification_channel_prefs. */
@@ -484,7 +518,7 @@ export function TeamNotificationPrefs({ userId }: { userId: string }): React.Rea
         <View key={row.key} style={styles.prefsRow}>
           <View style={styles.flex}>
             <Text style={styles.prefsLabel}>{t(row.label)}</Text>
-            <Text style={styles.prefsRowHint}>{t(row.hint)}</Text>
+            <Text style={styles.prefsRowHint} testID={`team-pref-${row.key}-hint`}>{t(teamPrefHintKey(row, rows))}</Text>
           </View>
           {(["inapp", "push"] as const).map((channel) => {
             if (!row.channels.includes(channel)) return <View key={channel} style={styles.prefsSwitch} testID={`team-pref-${row.key}-${channel}-none`} />;

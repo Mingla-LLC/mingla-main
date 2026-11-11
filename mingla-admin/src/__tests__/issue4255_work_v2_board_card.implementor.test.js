@@ -21,6 +21,18 @@
 //        670px), the header row is not overflow-hidden (it clipped the
 //        views and Filters menus), the phone search box gives way and the
 //        Filters menu opens right-aligned
+//   R-3  (rework, 11 Nov) "+ Add subtask": Enter clears the box before
+//        anything is awaited, a second Enter sends nothing, titles typed in a
+//        row are added in order one at a time, a failed title comes back
+//   R-4  (rework) the header folds by the whole Work frame: at 1440 with the
+//        menu open the three filter chips show
+//   R-5  (rework) the card's Thread badge is unread for me (thread_unread),
+//        cleared by opening the thread (ops_thread_read)
+//
+// Rework FAILS-ON-REVERT: putting CardSubtasks' old add() back (await before
+// clearing, the box disabled while busy) reds R-3; measuring the header row
+// (headerFit(width + 64)) reds R-4; showing card.thread_count again or
+// dropping markThreadRead reds R-5.
 //
 // Run: node --test src/__tests__/issue4255_work_v2_board_card.implementor.test.js
 // (from mingla-admin, after `npm ci`; the components are built with esbuild
@@ -45,6 +57,8 @@ import {
   fileProblem,
   headerFit,
   lastOfGroup,
+  makeSubtaskAdder,
+  subtaskTitle,
   moveErrorWords,
   moveLocally,
   planMove,
@@ -397,5 +411,81 @@ describe("F-2 the Work page fits a 390px phone (fix-up, 10 Nov)", () => {
     const full = h.header({ fit: "full" });
     assert.match(full, /<form role="search" class="relative flex min-w-\[7rem\] flex-1/);
     assert.match(code("components/ops/WorkHeader.jsx"), /dataAttr="filters" rootClassName="shrink-0" align=\{fit === "compact" \? "right" : "left"\}/);
+  });
+});
+
+describe("R-3 + Add subtask: one at a time, in order, nothing lost (rework, 11 Nov)", () => {
+  const tick = () => new Promise((r) => setTimeout(r, 5));
+  it("a double Enter sends one subtask; the next title typed is queued and sent after it", async () => {
+    const sent = []; let live = 0; let most = 0; const added = []; let idle = 0;
+    const adder = makeSubtaskAdder({
+      send: async (t, card) => { live++; most = Math.max(most, live); sent.push([t, card]); await tick(); live--; },
+      onAdded: (t) => added.push(t), onIdle: () => { idle++; },
+    });
+    assert.equal(adder.submit("Book the venue", "c1"), true);
+    assert.equal(adder.submit("", "c1"), false, "the box was cleared, so the second Enter has nothing to send");
+    assert.equal(adder.submit("  Send   the deck ", "c1"), true);
+    assert.equal(adder.busy, true);
+    assert.equal(adder.waiting, 1);
+    while (adder.busy) await tick();
+    assert.deepEqual(sent, [["Book the venue", "c1"], ["Send the deck", "c1"]]);
+    assert.equal(most, 1, "never two requests at once");
+    assert.deepEqual(added, ["Book the venue", "Send the deck"]);
+    assert.equal(idle, 1);
+    assert.equal(subtaskTitle("ab"), "", "under 3 characters is nothing to send");
+  });
+  it("a failed title is handed back and the rest still go, in order", async () => {
+    const sent = []; const failed = [];
+    const adder = makeSubtaskAdder({
+      send: async (t) => { await tick(); if (t === "Dup title") throw Object.assign(new Error("dup"), { token: "duplicate" }); sent.push(t); },
+      onFailed: (t, e) => failed.push([t, e.token]),
+    });
+    adder.submit("Dup title"); adder.submit("Third one");
+    while (adder.busy) await tick();
+    assert.deepEqual(failed, [["Dup title", "duplicate"]]);
+    assert.deepEqual(sent, ["Third one"]);
+  });
+  it("CardSubtasks takes the typed title and clears the box before anything is awaited; the box stays usable", () => {
+    const src = code("components/ops/CardSubtasks.jsx");
+    const add = src.slice(src.indexOf("const add = (e) => {"), src.indexOf("return (", src.indexOf("const add = (e) => {")));
+    assert.match(add, /const typed = titleRef\.current;\s*if \(!adderRef\.current\.submit\(typed, card\.id\)\) return;\s*titleRef\.current = "";\s*setTitle\(""\);/);
+    assert.doesNotMatch(add, /await/, "nothing is awaited between Enter and clearing the box");
+    assert.match(src, /makeSubtaskAdder\(\{/);
+    assert.doesNotMatch(src, /disabled=\{busy\}/, "the box is never disabled while a title is sending, so the next one can be typed");
+    assert.match(src, /onChange=\{\(e\) => \{ titleRef\.current = e\.target\.value; setTitle\(e\.target\.value\); \}\}/);
+    const html = h.subtasks({ card: { id: "c9", number: 9, depth: 0, status: "todo", revision: 1 }, subtasks: [{ id: "s1", title: "One", status: "todo", status_id: TODO.id, owners: [] }], columns: COLS });
+    assert.match(html, /<input id="new-sub-c9"[^>]*>/);
+    assert.doesNotMatch(html.match(/<input id="new-sub-c9"[^>]*>/)[0], /disabled/);
+  });
+});
+
+describe("R-4 the header folds by the whole Work frame (rework)", () => {
+  it("at 1440 with the 248px menu open the frame is 1192px: the three chips show", () => {
+    assert.equal(headerFit(1440 - 248), "full");
+    assert.equal(headerFit(1440 - 248 - 15), "full", "even with a scrollbar");
+    assert.equal(headerFit(1280 - 248), "folded");
+  });
+  it("WorkHeader measures the frame (the page's scroll area), not its own row", () => {
+    const src = code("components/ops/WorkHeader.jsx");
+    assert.match(src, /el\.closest\("\[data-work-frame\], main"\)/);
+    assert.match(src, /const fit = forcedFit \|\| headerFit\(width\);/);
+    assert.doesNotMatch(src, /width \+ 64/);
+  });
+});
+
+describe("R-5 the Thread badge is unread for me (rework)", () => {
+  it("the card shows thread_unread, never the total thread_count", () => {
+    const src = code("components/ops/WorkDetail.jsx");
+    const button = src.slice(src.indexOf('data-open-thread=""'), src.indexOf("</button>", src.indexOf('data-open-thread=""')));
+    assert.match(button, /Number\(card\.thread_unread\) > 0/);
+    assert.doesNotMatch(button, /thread_count/);
+  });
+  it("opening the thread marks it read through ops_thread_read, then refreshes the card beside it", async () => {
+    const thread = code("components/ops/CardThread.jsx");
+    assert.match(thread, /ops\.markThreadRead\(cardId\)\s*\.then\(\(\) => \{ if \(!gone\) window\.dispatchEvent\(new CustomEvent\("mingla:work-card-changed"/);
+    assert.match(thread, /\}, \[cardId, loaded, count\]\);/);
+    reset(() => ({ data: { card_id: "c5", thread_unread: 0 }, error: null }));
+    await h.ops.markThreadRead("c5");
+    assert.deepEqual(globalThis.__calls.map((c) => [c.fn, c.params]), [["ops_thread_read", { p_card_id: "c5" }]]);
   });
 });

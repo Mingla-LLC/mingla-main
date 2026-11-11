@@ -187,6 +187,8 @@ export const reorderSubtasks = (parentId, ids, revision) => call(() => supabase.
 export const addFile = (cardId, file, key) => call(() => supabase.rpc("ops_file_add", { p_card_id: cardId, p_file: file, p_request_key: key || null }));
 export const archiveFile = (fileId) => call(() => supabase.rpc("ops_file_archive", { p_file_id: fileId }));
 export const signFile = (fileId) => call(() => supabase.rpc("ops_file_sign", { p_file_id: fileId }));
+// #4255 rework (P3): my read marker on a card's thread (the Thread badge).
+export const markThreadRead = (cardId) => call(() => supabase.rpc("ops_thread_read", { p_card_id: cardId }));
 export const listMessages = (cardId, limit, before) => call(() => supabase.rpc("ops_message_list", { p_card_id: cardId, p_limit: limit || 200, p_before: before || null }));
 export const postMessage = (cardId, { body = "", mentions = [], parentId = null, fileIds = [], everyone = false, key = null } = {}) =>
   call(() => supabase.rpc("ops_message_post", { p_card_id: cardId, p_body: body, p_mentions: mentions, p_parent_message_id: parentId, p_file_ids: fileIds.length ? fileIds : null, p_everyone: !!everyone, p_request_key: key }));

@@ -313,6 +313,18 @@ export function CardThread({ cardId, onClose, onCardChanged }) {
     const el = scrollRef.current;
     if (el && count) el.scrollTop = el.scrollHeight;
   }, [count]);
+  // #4255 rework (P3): opening the thread (and every new message seen while
+  // it is open) marks it read for me, so the card's Thread badge counts only
+  // what I have not seen. Posting marks it read on the server.
+  const loaded = !!thread.data;
+  useEffect(() => {
+    if (!cardId || !loaded) return undefined;
+    let gone = false;
+    ops.markThreadRead(cardId)
+      .then(() => { if (!gone) window.dispatchEvent(new CustomEvent("mingla:work-card-changed", { detail: cardId })); })
+      .catch(() => { if (!gone) addToast({ variant: "warning", title: "Couldn’t mark this thread read.", description: "The Thread badge may still show it as new." }); });
+    return () => { gone = true; };
+  }, [cardId, loaded, count]);
   const opener = useOpenFile();
   const disabled = !c || c.archived || (typeof navigator !== "undefined" && navigator.onLine === false);
   const refresh = async () => {

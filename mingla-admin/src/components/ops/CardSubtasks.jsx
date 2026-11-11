@@ -15,7 +15,7 @@ import { ChevronRight, GripVertical, MessageSquare, Plus } from "lucide-react";
 import { PersonAvatar } from "../people/PeopleField";
 import * as ops from "../../services/opsService";
 import { dayLabel, opsErrorWords, requestKey, todayIso } from "../../lib/opsModel";
-import { canHaveSubtasks, liveColumns, reorderIds, subtaskProgress, tickProof } from "../../lib/workBoardModel";
+import { canHaveSubtasks, liveColumns, makeSubtaskAdder, reorderIds, subtaskProgress, tickProof } from "../../lib/workBoardModel";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 
@@ -84,6 +84,26 @@ export function CardSubtasks({ card, subtasks = [], columns = [], disabled, myNa
   const [busy, setBusy] = useState(false);
   const [order, setOrder] = useState(null);
   const inputRef = useRef(null);
+  const titleRef = useRef("");
+  const live = useRef({});
+  live.current = { cardId: card.id, onChanged, onError };
+  const adderRef = useRef(null);
+  if (!adderRef.current) {
+    adderRef.current = makeSubtaskAdder({
+      send: async (t, cardId) => {
+        const out = await ops.addSubtask(cardId, { title: t }, requestKey("web_sub"));
+        if (out?.status === "duplicate") throw Object.assign(new Error("A subtask with that title is already open on this card."), { token: "duplicate" });
+        if (out?.status !== "added") throw Object.assign(new Error(""), { token: "invalid_card", fixes: Array.isArray(out?.fixes) ? out.fixes : [] });
+      },
+      onAdded: async () => { await live.current.onChanged?.(); },
+      // A failed title comes back into the box when nothing new was typed.
+      onFailed: (t, error, cardId) => {
+        if (!titleRef.current && cardId === live.current.cardId) { titleRef.current = t; setTitle(t); }
+        live.current.onError(error);
+      },
+      onIdle: () => { setBusy(false); requestAnimationFrame(() => inputRef.current?.focus()); },
+    });
+  }
   const canAdd = canHaveSubtasks(card) && !disabled && card.status !== "done";
   const list = order ? order.map((id) => subtasks.find((s) => s.id === id)).filter(Boolean) : subtasks;
   const prog = subtaskProgress({ total: subtasks.length, done: subtasks.filter((s) => s.status === "done").length });
@@ -108,22 +128,17 @@ export function CardSubtasks({ card, subtasks = [], columns = [], disabled, myNa
     catch (error) { onError(error); }
     finally { setOrder(null); }
   };
-  const add = async (e) => {
+  // #4255 rework (P2): Enter takes the typed title and clears the box before
+  // anything is awaited, so a second Enter on the same words sends nothing;
+  // titles typed in a row are queued and added in order, one at a time.
+  const add = (e) => {
     e.preventDefault();
-    const t = title.replace(/\s+/g, " ").trim();
-    if (t.length < 3) return;
+    const typed = titleRef.current;
+    if (!adderRef.current.submit(typed, card.id)) return;
+    titleRef.current = "";
+    setTitle("");
     setBusy(true);
-    try {
-      const out = await ops.addSubtask(card.id, { title: t }, requestKey("web_sub"));
-      if (out?.status === "duplicate") throw Object.assign(new Error("A subtask with that title is already open on this card."), { token: "duplicate" });
-      if (out?.status !== "added") throw Object.assign(new Error(""), { token: "invalid_card", fixes: Array.isArray(out?.fixes) ? out.fixes : [] });
-      setTitle("");
-      await onChanged?.();
-      requestAnimationFrame(() => inputRef.current?.focus());
-    } catch (error) { onError(error); }
-    finally { setBusy(false); }
   };
-
   return (
     <section aria-labelledby={`subtasks-${card.id}`} data-card-subtasks="" className="flex min-w-0 flex-col gap-1.5">
       <div className="flex min-w-0 items-center justify-between gap-2">
@@ -153,8 +168,8 @@ export function CardSubtasks({ card, subtasks = [], columns = [], disabled, myNa
         <form onSubmit={add} className="flex min-w-0 items-center gap-2 rounded-lg border border-dashed border-[var(--gray-300)] px-2">
           <span aria-hidden="true" className="h-4 w-4 shrink-0 rounded-full border border-[var(--gray-300)]" />
           <label className="sr-only" htmlFor={`new-sub-${card.id}`}>New subtask</label>
-          <input id={`new-sub-${card.id}`} ref={inputRef} value={title} maxLength={160} disabled={busy} placeholder="Add a subtask and press Enter"
-            onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setAdding(false); setTitle(""); e.currentTarget.blur(); } }}
+          <input id={`new-sub-${card.id}`} ref={inputRef} value={title} maxLength={160} aria-busy={busy ? "true" : "false"} placeholder="Add a subtask and press Enter"
+            onChange={(e) => { titleRef.current = e.target.value; setTitle(e.target.value); }} onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setAdding(false); titleRef.current = ""; setTitle(""); e.currentTarget.blur(); } }}
             className="min-h-10 min-w-0 flex-1 bg-transparent text-[13px] text-[var(--color-text-primary)] outline-none" />
         </form>
       )}

@@ -1,6 +1,7 @@
 // MINGLA-INVARIANT: I-4255-TEAM-ICON-STAFF-ONLY | issue #4255 | the Host app top bar shows the Mingla team "M" only when team_badge says staff:true; without a query client, while loading, on an error or for a host who is not staff it renders nothing. Its badge is unread team chats plus unread mentions.
 // MINGLA-INVARIANT: I-4255-TEAM-DEEP-LINKS | issue #4255 | mingla-business://team/<thread> opens that chat (/team?thread=) and mingla-business://team/mention/<id> opens Mentions at that row; an odd id still opens Mingla team, never the account tab.
 // MINGLA-INVARIANT: I-4255-TEAM-NON-STAFF-GATE | issue #4255 | every Mingla team screen shows "This space is for the Mingla team" to a signed-in host who is not staff, and the staff-only settings group never renders for them.
+// MINGLA-INVARIANT: I-4255-TEAM-TABS-EQUAL-BADGE | issue #4255 | the Chats and Mentions tab counts are the two numbers team_badge adds for the M (chats with unread, muted left out; unread Mentions-tab items, team chat mentions left out).
 // MINGLA-INVARIANT: I-4255-TEAM-FILES-PATH | issue #4255 | a team file uploads only to bucket team-files at the path the database issued for that chat and that attachment; over 25 MB is refused before upload.
 import fs from "node:fs";
 import path from "node:path";
@@ -86,7 +87,7 @@ const { teamChatKey } = require("../../../hooks/useBusinessNotifications") as ty
 const routing = require("../../../services/businessNotificationRouting") as typeof import("../../../services/businessNotificationRouting");
 const service = require("../../../services/teamChatService") as typeof import("../../../services/teamChatService");
 const { TeamAccessGate } = require("../TeamCommon") as typeof import("../TeamCommon");
-const { teamPrefOn } = require("../TeamScreens") as typeof import("../TeamScreens");
+const { teamPrefOn, teamPrefHintKey, teamTabCounts, mentionKindLabel, TEAM_PREF_ROWS } = require("../TeamScreens") as typeof import("../TeamScreens");
 const { useTeamAccess, useTeamRealtime } = require("../useTeamChat") as typeof import("../useTeamChat");
 const { canMentionEveryone, mentionsInBody } = require("../TeamThreadScreen") as typeof import("../TeamThreadScreen");
 const { MinglaTeamPrefsGroup } = require("../../../../app/account/notifications") as typeof import("../../../../app/account/notifications");
@@ -253,7 +254,7 @@ describe("#4255 W5 a host who is not staff", () => {
     expect(mockFrom).not.toHaveBeenCalled();
   });
 
-  test("staff get the group: In app and Push for mentions, decisions and direct messages; Push alone for group messages", async () => {
+  test("staff get the group: In app and Push for mentions, decisions and due and late; Push alone for direct and group messages (rework)", async () => {
     badge({ staff: true });
     const select = { select: () => select, eq: () => select, in: async () => ({ data: [{ category_key: "business.team_message", channel: "push", enabled: true }], error: null }) };
     mockFrom.mockReturnValue(select);
@@ -261,9 +262,13 @@ describe("#4255 W5 a host who is not staff", () => {
     await TestRenderer.act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     expect(byTestId(view.root, "team-prefs")).toHaveLength(1);
     expect(mockFrom).toHaveBeenCalledWith("notification_channel_prefs");
-    for (const key of ["business.team_mention", "business.team_decision", "business.team_message"]) {
+    for (const key of ["business.team_mention", "business.team_decision", "business.team_due"]) {
       for (const channel of ["inapp", "push"]) expect(byTestId(view.root, `team-pref-${key}-${channel}`)).toHaveLength(1);
     }
+    // #4255 rework (orchestrator decision, 11 Nov): a DM never made an in-app notice, so the switch is gone.
+    expect(byTestId(view.root, "team-pref-business.team_message-push")).toHaveLength(1);
+    expect(byTestId(view.root, "team-pref-business.team_message-inapp")).toHaveLength(0);
+    expect(byTestId(view.root, "team-pref-business.team_message-inapp-none")).toHaveLength(1);
     expect(byTestId(view.root, "team-pref-business.team_message-push")[0].props.value).toBe(true);
     // #4255 fix-up: groups are their own switch, off by default (a DM switch row does not turn it on).
     expect(byTestId(view.root, "team-pref-business.team_group_message-push")).toHaveLength(1);
@@ -432,7 +437,8 @@ describe("#4255 W5 Open in Mingla Admin", () => {
   test("the link Admin issued for the card, else the card on Work, else Messages", () => {
     expect(service.teamAdminUrl({ deep_link: `https://admin.usemingla.com/#/work-board?card=${CARD}`, card_id: CARD })).toBe(`https://admin.usemingla.com/#/work-board?card=${CARD}`);
     expect(service.teamAdminUrl({ deep_link: `https://admin.usemingla.com/#/content-calendar?card=${CARD}`, card_id: null })).toBe(`https://admin.usemingla.com/#/content-calendar?card=${CARD}`);
-    expect(service.teamAdminUrl({ deep_link: "https://evil.example/#/work", card_id: CARD })).toBe(`https://admin.usemingla.com/#/work-board?card=${CARD}`);
+    // #4255 rework: the card opens with its thread beside it.
+    expect(service.teamAdminUrl({ deep_link: "https://evil.example/#/work", card_id: CARD })).toBe(`https://admin.usemingla.com/#/work-board?card=${CARD}&side=thread:${CARD}`);
     expect(service.teamAdminUrl({ deep_link: null, card_id: "nope" })).toBe("https://admin.usemingla.com/#/messages");
   });
 
@@ -442,5 +448,93 @@ describe("#4255 W5 Open in Mingla Admin", () => {
     expect(service.teamLinkLabel("https://www.instagram.com/p/abc")).toEqual({ name: "Instagram post", host: "instagram.com" });
     expect(service.normalizeTeamLink("drive.google.com/x")).toBe("https://drive.google.com/x");
     expect(service.normalizeTeamLink("not a link")).toBeNull();
+  });
+});
+
+// ── #4255 rework (11 Nov) ───────────────────────────────────────────────────
+// FAILS-ON-REVERT: deleting teamPrefHintKey's switch check (or the screen
+// showing t(row.hint) again) reds R-HINT; counting muted chats or team chat
+// mentions in teamTabCounts, or TeamScreen counting the tabs its old way,
+// reds R-TABS; deleting the work_due or decision-tail lines in
+// mentionKindLabel reds R-KIND; dropping &side=thread from teamAdminUrl reds
+// the Open in Mingla Admin test; letting the Photos button accept documents
+// on the web reds R-PHOTOS.
+
+describe("#4255 rework R-HINT: the Group messages words follow its switch", () => {
+  test("switching group pushes on changes the words under the row, and off again changes them back", async () => {
+    badge({ staff: true });
+    let rows: { category_key: string; channel: string; enabled: boolean }[] = [];
+    const select = { select: () => select, eq: () => select, in: async () => ({ data: rows, error: null }) };
+    const write = {
+      upsert: async (row: { category_key: string; channel: string; enabled: boolean }) => { rows = [...rows.filter((r) => !(r.category_key === row.category_key && r.channel === row.channel)), row]; return { error: null }; },
+      delete: () => { const chain = { eq: () => chain, then: (resolve: (v: unknown) => void) => { rows = rows.filter((r) => r.category_key !== "business.team_group_message"); resolve({ error: null }); } }; return chain; },
+    };
+    mockFrom.mockImplementation(() => ({ ...select, ...write }));
+    const view = await mount(<QueryClientProvider client={client()}><MinglaTeamPrefsGroup userId="u-staff" /></QueryClientProvider>);
+    const hint = (): string => byTestId(view.root, "team-pref-business.team_group_message-hint")[0].children.join("");
+    expect(hint()).toBe("Push off: only when you're mentioned");
+    await TestRenderer.act(async () => { (byTestId(view.root, "team-pref-business.team_group_message-push")[0].props.onValueChange as (v: boolean) => void)(true); });
+    for (let i = 0; i < 3; i += 1) await TestRenderer.act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    expect(byTestId(view.root, "team-pref-business.team_group_message-push")[0].props.value).toBe(true);
+    expect(hint()).toBe("Push on: every group message");
+    await TestRenderer.act(async () => { (byTestId(view.root, "team-pref-business.team_group_message-push")[0].props.onValueChange as (v: boolean) => void)(false); });
+    for (let i = 0; i < 3; i += 1) await TestRenderer.act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    expect(hint()).toBe("Push off: only when you're mentioned");
+    expect(allText(view.root)).toContain("My cards due and late");
+    expect(allText(view.root)).toContain("One push at 9:00 your time");
+  });
+  test("only the group row's words move", () => {
+    const group = TEAM_PREF_ROWS.find((r) => r.key === "business.team_group_message")!;
+    const dm = TEAM_PREF_ROWS.find((r) => r.key === "business.team_message")!;
+    const on = [{ category_key: "business.team_group_message", channel: "push", enabled: true }];
+    expect(teamPrefHintKey(group, [])).toBe("team.pref_group_messages_hint");
+    expect(teamPrefHintKey(group, on)).toBe("team.pref_group_messages_hint_on");
+    expect(teamPrefHintKey(dm, [{ category_key: "business.team_message", channel: "push", enabled: false }])).toBe("team.pref_messages_hint");
+  });
+});
+
+describe("#4255 rework R-TABS: the M badge equals Chats unread + Mentions unread", () => {
+  test("the tabs count what team_badge counts: muted chats and team chat mentions left out", () => {
+    const threads = [{ unread: 2, muted: false }, { unread: 4, muted: true }, { unread: 0, muted: false }, { unread: 1, muted: false }];
+    const mentions = [
+      { read_at: null, source_kind: "work_card" },
+      { read_at: null, source_kind: "work_due" },
+      { read_at: null, source_kind: "team_message" },
+      { read_at: "2026-11-11T09:00:00Z", source_kind: "work_card" },
+    ];
+    const tabs = teamTabCounts(threads, mentions);
+    expect(tabs).toEqual({ chats: 2, mentions: 2 });
+    // The server's answer for the same data (team_badge, 20280612014255): chats 2, mentions 2.
+    expect(teamBadgeCount({ staff: true, chats: 2, mentions: 2 })).toBe(tabs.chats + tabs.mentions);
+  });
+  test("the Mingla team screen counts its tabs with teamTabCounts", () => {
+    const screen = fs.readFileSync(path.resolve(__dirname, "../TeamScreens.tsx"), "utf8");
+    expect(screen).toContain("const { chats: unreadChats, mentions: unreadMentions } = teamTabCounts(list, mentions.data ?? []);");
+  });
+});
+
+describe("#4255 rework R-KIND: decisions and the due notice say what they are", () => {
+  const t = (key: string): string => key;
+  test("a tagged card is a Decision, the 09:00 notice is Due and late", () => {
+    expect(mentionKindLabel({ kind: "work_update", action: "updated", source_kind: "work_card", body_excerpt: "Gem: Send the deck · You send" }, t as never)).toBe("team.kind_decision");
+    expect(mentionKindLabel({ kind: "mention", action: null, source_kind: "work_due", body_excerpt: "1 due today" }, t as never)).toBe("team.kind_due");
+    expect(mentionKindLabel({ kind: "work_update", action: "status", source_kind: "work_card", body_excerpt: "Gem moved it" }, t as never)).toBe("team.kind_update");
+    expect(mentionKindLabel({ kind: "mention", action: "note", source_kind: "work_card", body_excerpt: "Gem tagged you" }, t as never)).toBe("team.kind_mention");
+  });
+});
+
+describe("#4255 rework R-PHOTOS: on the web the Photos button takes pictures only", () => {
+  test("Photos and Camera accept images; Files keeps the documents; Brand groups are unchanged", () => {
+    /* eslint-disable @typescript-eslint/no-require-imports */
+    const web = require("../../messages/brandGroupFilePicker.ts") as typeof import("../../messages/brandGroupFilePicker");
+    /* eslint-enable @typescript-eslint/no-require-imports */
+    expect(web.brandGroupPickAccept("photos", service.TEAM_PICK_OPTIONS)).toBe(web.IMAGE_ONLY_ACCEPT);
+    expect(web.brandGroupPickAccept("camera", service.TEAM_PICK_OPTIONS)).toBe(web.IMAGE_ONLY_ACCEPT);
+    expect(web.IMAGE_ONLY_ACCEPT).not.toMatch(/pdf|doc|xls|ppt|txt|csv|key|numbers|pages/);
+    expect(web.brandGroupPickAccept("files", service.TEAM_PICK_OPTIONS)).toBe(service.TEAM_PICK_OPTIONS.accept);
+    expect(web.brandGroupPickAccept("photos")).toContain(".pdf");
+    expect(web.isPickedImage({ name: "deck.pdf", mimeType: "application/pdf" })).toBe(false);
+    expect(web.isPickedImage({ name: "flyer.PNG", mimeType: null })).toBe(true);
+    expect(web.isPickedImage({ name: "notes.txt", mimeType: "" })).toBe(false);
   });
 });

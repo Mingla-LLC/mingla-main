@@ -353,7 +353,8 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
           </nav>
           <button type="button" data-open-thread="" onClick={openThread} className={`inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-[var(--gray-200)] px-2.5 text-[12.5px] font-semibold text-[var(--color-text-primary)] hover:bg-[var(--gray-100)] ${FOCUS}`}>
             <MessageSquare aria-hidden="true" className="h-4 w-4" /> Thread
-            {Number(card.thread_count) > 0 && <span className="rounded-full bg-[var(--color-brand-500)] px-1.5 text-[11px] tabular-nums text-white">{card.thread_count}</span>}
+            {/* #4255 rework (P3): unread for me (ops_thread_read), not the total. */}
+            {Number(card.thread_unread) > 0 && <span data-thread-unread="" aria-label={`${card.thread_unread} unread`} className="rounded-full bg-[var(--color-brand-500)] px-1.5 text-[11px] tabular-nums text-white">{card.thread_unread}</span>}
           </button>
           {onFocus && (
             <button type="button" data-focus-mode="" aria-pressed={focus ? "true" : "false"} aria-label={focus ? "Leave focus mode" : "Focus mode: fill the page"} title={focus ? "Leave focus mode" : "Focus mode"} onClick={() => onFocus(!focus)} className={ICON_BTN}>

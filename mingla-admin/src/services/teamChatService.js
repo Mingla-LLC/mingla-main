@@ -74,7 +74,8 @@ export async function attachmentUrl(attachmentId) {
 // read and write (mingla-business TeamNotificationPrefs).
 // #4255 fix-up: direct messages (business.team_message) and group messages
 // (business.team_group_message) are separate switches.
-export const TEAM_PREF_CATEGORIES = Object.freeze(["business.team_mention", "business.team_decision", "business.team_message", "business.team_group_message"]);
+// #4255 rework: and "My cards due and late" (business.team_due, the 09:00 push).
+export const TEAM_PREF_CATEGORIES = Object.freeze(["business.team_mention", "business.team_decision", "business.team_message", "business.team_group_message", "business.team_due"]);
 
 export const getTeamPrefs = (userId) =>
   call(() => supabase.from("notification_channel_prefs").select("category_key, channel, enabled").eq("user_id", userId).in("category_key", TEAM_PREF_CATEGORIES));

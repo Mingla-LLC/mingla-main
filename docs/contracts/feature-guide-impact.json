@@ -1248,6 +1248,7 @@
         "mingla-admin/src/pages/MessagesPage.jsx",
         "mingla-admin/src/services/teamChatService.js",
         "mingla-business/app/account/notifications.tsx",
+        "supabase/functions/_shared/quietHours.ts",
         "mingla-business/app/team/index.tsx",
         "mingla-business/src/components/minglaTeam/TeamCommon.tsx",
         "mingla-business/src/components/minglaTeam/TeamScreens.tsx",
@@ -1269,7 +1270,8 @@
         "supabase/migrations/20280610014255_issue_4255_work_v2_functions.sql",
         "supabase/migrations/20280611004255_issue_4255_team_chat_schema.sql",
         "supabase/migrations/20280611014255_issue_4255_team_chat_functions.sql",
-        "supabase/migrations/20280612004255_issue_4255_team_chat_fixups.sql"
+        "supabase/migrations/20280612004255_issue_4255_team_chat_fixups.sql",
+        "supabase/migrations/20280612014255_issue_4255_team_rework.sql"
       ]
     },
     {
@@ -3076,6 +3078,7 @@
     {
       "capability_key": "account-notification-settings",
       "paths": [
+        "mingla-business/app/account/notifications.tsx",
         "app-mobile/src/i18n/locales/ar/settings.json",
         "app-mobile/src/i18n/locales/bin/settings.json",
         "app-mobile/src/i18n/locales/bn/settings.json",

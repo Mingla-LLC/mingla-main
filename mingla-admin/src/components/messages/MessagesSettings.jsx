@@ -18,7 +18,7 @@ import { announceMessagesChange } from "../../hooks/useMessages";
 import * as collaboration from "../../services/teamCollaborationService";
 import * as team from "../../services/teamChatService";
 import { emailAlertRows } from "../../lib/emailAlerts";
-import { SETTING_ROWS, teamPrefOn } from "../../lib/messagesModel";
+import { SETTING_ROWS, settingHint, teamPrefOn } from "../../lib/messagesModel";
 import { opsErrorWords } from "../../lib/opsModel";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
@@ -106,7 +106,7 @@ export function MessagesSettings() {
                 const mail = row.email ? emailOf(row.email) : null;
                 return (
                   <tr key={row.key} data-setting={row.key} className="border-t border-[var(--gray-100)]">
-                    <th scope="row" className="py-2 pr-2 text-left font-medium text-[var(--color-text-primary)]">{row.label}<small className="block text-[11.5px] font-normal text-[var(--color-text-tertiary)]">{row.hint}</small></th>
+                    <th scope="row" className="py-2 pr-2 text-left font-medium text-[var(--color-text-primary)]">{row.label}<small data-setting-hint={row.key} className="block text-[11.5px] font-normal text-[var(--color-text-tertiary)]">{settingHint(row, prefs)}</small></th>
                     {["inapp", "push"].map((channel, i) => (
                       <td key={channel} className="py-2 text-center">
                         {(row.channels || ["inapp", "push"]).includes(channel) ? (

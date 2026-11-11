@@ -259,7 +259,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function teamAdminUrl(mention: Pick<TeamMention, "deep_link" | "card_id">): string {
   const link = typeof mention.deep_link === "string" ? mention.deep_link.trim() : "";
   if (link.startsWith(`${ADMIN_ORIGIN}/#/`) && !/\s/.test(link)) return link;
-  if (mention.card_id && UUID.test(mention.card_id)) return `${ADMIN_ORIGIN}/#/work-board?card=${mention.card_id}`;
+  // #4255 rework (P3): the card opens with its thread beside it.
+  if (mention.card_id && UUID.test(mention.card_id)) return `${ADMIN_ORIGIN}/#/work-board?card=${mention.card_id}&side=thread:${mention.card_id}`;
   return `${ADMIN_ORIGIN}/#/messages`;
 }
 

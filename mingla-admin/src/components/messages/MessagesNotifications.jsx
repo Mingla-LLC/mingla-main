@@ -21,7 +21,7 @@ import { timeAgo } from "../../lib/formatters";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 const ACT = `min-h-8 rounded-md px-2 text-[12.5px] font-semibold text-[var(--color-text-secondary)] hover:bg-[var(--gray-100)] hover:text-[var(--color-text-primary)] ${FOCUS}`;
-const GROUP_DOT = { brand: "bg-[var(--color-brand-500)]", info: "bg-[var(--color-info-500)]", warning: "bg-[var(--color-warning-500)]", success: "bg-[var(--color-success-500)]" };
+const GROUP_DOT = { brand: "bg-[var(--color-brand-500)]", error: "bg-[var(--color-error-500)]", info: "bg-[var(--color-info-500)]", warning: "bg-[var(--color-warning-500)]", success: "bg-[var(--color-success-500)]" };
 const EMPTY_WORDS = {
   you: "You are all caught up. Mentions, decisions and support alerts for you show here.",
   watch: "No changes on cards you own or watch.",

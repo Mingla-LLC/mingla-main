@@ -36,7 +36,8 @@
  * not staff "This space is for the Mingla team"):
  *   mingla-business://team/{threadId}         business.team_message / team chat mentions
  *                                             -> /team?thread={threadId}
- *   mingla-business://team/mention/{id}       business.team_mention / team_decision
+ *   mingla-business://team/mention/{id}       business.team_mention / team_decision /
+ *                                             team_due (#4255 rework: the 09:00 notice)
  *                                             -> /team?tab=mentions&mention={id}
  */
 

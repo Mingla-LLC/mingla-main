@@ -120,6 +120,10 @@ export function lastOfGroup(column, columns) {
  * `folded` puts them behind one Filters button (under 1,150px), `compact` also
  * shows only the active tab (under 640px). The row never wraps.
  */
+// #4255 rework (P3): the width is the whole Work frame (the page's scroll
+// area, as the design contract's @container frame), not the header row:
+// measuring the row (minus the title) folded the filters at 1440 with the
+// menu open.
 export function headerFit(width) {
   const w = Number(width) || 0;
   if (w >= 1150) return "full";
@@ -246,6 +250,58 @@ export function reorderIds(ids, fromId, toId) {
 export function tickProof(name) {
   const who = String(name || "").trim();
   return [{ kind: "text", text: who ? `Ticked done in the subtask list by ${who}.` : "Ticked done in the subtask list." }];
+}
+
+/** A subtask title as it is sent: one line, trimmed; "" when under 3 characters. */
+export function subtaskTitle(raw) {
+  const t = String(raw ?? "").replace(/\s+/g, " ").trim();
+  return t.length >= 3 ? t : "";
+}
+
+/**
+ * #4255 rework (P2): "+ Add subtask" and Enter. Each Enter takes the title
+ * typed so far (the box is cleared before anything is awaited, so a second
+ * Enter on the same words sends nothing) and queues it; one request is in
+ * flight at a time and titles are added in the order they were typed. A
+ * failed title goes to `onFailed` so the box can give it back.
+ *   send(title, ctx) adds one subtask (ctx: what submit was given, such as
+ *                    the card it was typed on); throws on failure
+ *   onAdded(title, ctx)   after each one lands
+ *   onFailed(title, error, ctx)
+ *   onIdle()         when the queue is empty again
+ */
+export function makeSubtaskAdder({ send, onAdded = () => {}, onFailed = () => {}, onIdle = () => {} }) {
+  const queue = [];
+  let inFlight = false;
+  const pump = async () => {
+    inFlight = true;
+    try {
+      while (queue.length) {
+        const { title, ctx } = queue.shift();
+        try {
+          await send(title, ctx);
+          await onAdded(title, ctx);
+        } catch (error) {
+          onFailed(title, error, ctx);
+        }
+      }
+    } finally {
+      inFlight = false;
+      onIdle();
+    }
+  };
+  return {
+    /** Queues the typed title; returns false when there is nothing to send. */
+    submit(raw, ctx = null) {
+      const title = subtaskTitle(raw);
+      if (!title) return false;
+      queue.push({ title, ctx });
+      if (!inFlight) pump();
+      return true;
+    },
+    get busy() { return inFlight; },
+    get waiting() { return queue.length; },
+  };
 }
 
 // ---------------------------------------------------------------------------

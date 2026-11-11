@@ -33,13 +33,22 @@ export function FilterChip({ name, label, value, options, onChange, disabled = f
   );
 }
 
-function useWidth(ref) {
+// #4255 rework (P3): the fold is decided by the width of the whole Work
+// frame (the page's scroll area, like the design contract's
+// "@container frame"), not by this row: measuring the row folded the three
+// filter chips at 1440 with the menu open.
+export function workFrameOf(el) {
+  if (!el) return null;
+  return (typeof el.closest === "function" && el.closest("[data-work-frame], main")) || el.parentElement || el;
+}
+
+function useFrameWidth(ref) {
   const [width, setWidth] = useState(1440);
   useEffect(() => {
-    const el = ref.current;
-    if (!el || typeof ResizeObserver !== "function") return undefined;
+    const frame = workFrameOf(ref.current);
+    if (!frame || typeof ResizeObserver !== "function") return undefined;
     const ro = new ResizeObserver(([entry]) => setWidth(Math.round(entry.contentRect.width)));
-    ro.observe(el);
+    ro.observe(frame);
     return () => ro.disconnect();
   }, [ref]);
   return width;
@@ -68,9 +77,8 @@ export function WorkHeader({
   fit: forcedFit = null,
 }) {
   const ref = useRef(null);
-  const width = useWidth(ref);
-  // The title "Work" sits before this row in the page header (about 64px).
-  const fit = forcedFit || headerFit(width + 64);
+  const width = useFrameWidth(ref);
+  const fit = forcedFit || headerFit(width);
   const count = activeFilterCount({ owner, show, linked });
   const onBoard = view === "board";
   const chips = (
