@@ -664,14 +664,14 @@ export function ariTurnContextPart(args: {
   snapshot: AriBrandSnapshot | null;
   screen: AriScreenContext | null;
 }): { text: string } | null {
-  const lines = [
+  const contextLines = [
     ...ariScreenContextLines(args.screen),
     ...(args.snapshot ? [args.snapshot.text] : []),
   ];
-  if (lines.length === 0) return null;
+  if (contextLines.length === 0) return null;
   return {
     text: `<user_data source="ari_turn_context">\n${
-      lines.join("\n")
+      contextLines.join("\n")
     }\n</user_data>`,
   };
 }
