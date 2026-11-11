@@ -409,14 +409,14 @@ Deno.test("C1: cached per brand and user for 60 s; a newer write receipt rebuild
   const client = fakeClient(brandFixture());
   const c = client as AnyClient;
   const first = await getAriBrandSnapshot({
-    client: c,
+    caller: c,
     brandId: BRAND,
     userId: "u1",
     now: NOW,
   });
   const reads = client.calls.length;
   const second = await getAriBrandSnapshot({
-    client: c,
+    caller: c,
     brandId: BRAND,
     userId: "u1",
     now: NOW + 30_000,
@@ -424,7 +424,7 @@ Deno.test("C1: cached per brand and user for 60 s; a newer write receipt rebuild
   assertEquals(second, first);
   assertEquals(client.calls.length, reads, "a fresh cache does not read again");
   await getAriBrandSnapshot({
-    client: c,
+    caller: c,
     brandId: BRAND,
     userId: "u2",
     now: NOW + 30_000,
@@ -445,7 +445,7 @@ Deno.test("C1: cached per brand and user for 60 s; a newer write receipt rebuild
   ]);
   assertEquals(receiptAt, NOW + 40_000);
   const third = await getAriBrandSnapshot({
-    client: c,
+    caller: c,
     brandId: BRAND,
     userId: "u1",
     now: NOW + 45_000,
@@ -458,7 +458,7 @@ Deno.test("C1: cached per brand and user for 60 s; a newer write receipt rebuild
   assertEquals(third.built_at, NOW + 45_000);
   const afterReceipt = client.calls.length;
   await getAriBrandSnapshot({
-    client: c,
+    caller: c,
     brandId: BRAND,
     userId: "u1",
     now: NOW + 120_000,
@@ -519,7 +519,7 @@ Deno.test("C1/C2: agent-chat injects the snapshot and screen inside <user_data>,
   const source = read("supabase/functions/agent-chat/index.ts");
   assertStringIncludes(
     source,
-    "getAriBrandSnapshot({\n          client: userClient,",
+    "getAriBrandSnapshot({\n          caller: userClient,",
   );
   assertStringIncludes(
     source,
@@ -527,7 +527,7 @@ Deno.test("C1/C2: agent-chat injects the snapshot and screen inside <user_data>,
   );
   assertStringIncludes(
     source,
-    "resolveAriScreenContext({\n          client: userClient,",
+    "resolveAriScreenContext({\n          caller: userClient,",
   );
   assertStringIncludes(
     source,
@@ -590,7 +590,7 @@ function screenClient() {
 
 Deno.test("C2: a valid screen and entity are kept and 'this event' resolves to it", async () => {
   const screen = await resolveAriScreenContext({
-    client: screenClient() as AnyClient,
+    caller: screenClient() as AnyClient,
     raw: { route: `/event/${EVENT}`, entity_kind: "event", entity_id: EVENT },
     activeBrand: ACTIVE,
   });
@@ -610,7 +610,7 @@ Deno.test("C2: a valid screen and entity are kept and 'this event' resolves to i
     `"This event" or "this one" means event ${EVENT}`,
   );
   const trip = await resolveAriScreenContext({
-    client: screenClient() as AnyClient,
+    caller: screenClient() as AnyClient,
     raw: { route: `/trip/${TRIP}/edit`, entity_kind: "trip", entity_id: TRIP },
     activeBrand: ACTIVE,
   });
@@ -628,7 +628,7 @@ Deno.test("C2: a route that is not a Host screen is dropped", async () => {
     ]
   ) {
     const screen = await resolveAriScreenContext({
-      client: screenClient() as AnyClient,
+      caller: screenClient() as AnyClient,
       raw: { route },
       activeBrand: ACTIVE,
     });
@@ -655,7 +655,7 @@ Deno.test("C2: a foreign-brand entity, a non-uuid, a kind mismatch or an id not 
   ];
   for (const raw of cases) {
     const screen = await resolveAriScreenContext({
-      client: screenClient() as AnyClient,
+      caller: screenClient() as AnyClient,
       raw,
       activeBrand: ACTIVE,
     });
@@ -669,7 +669,7 @@ Deno.test("C2: a foreign-brand entity, a non-uuid, a kind mismatch or an id not 
     assert(!part!.text.includes("means event"));
   }
   const noBrand = await resolveAriScreenContext({
-    client: screenClient() as AnyClient,
+    caller: screenClient() as AnyClient,
     raw: { route: `/event/${EVENT}`, entity_kind: "event", entity_id: EVENT },
     activeBrand: null,
   });

@@ -2471,6 +2471,36 @@ async function handle(req: Request): Promise<Response> {
       }
     }
 
+    // #3355 Wave C (C1, C2): the active brand's snapshot and the Host screen
+    // the host is on, read as the caller. Both are data inside <user_data>;
+    // a failure leaves them out and never fails the turn.
+    const [turnSnapshot, turnScreen] = await Promise.all([
+      activeBrand
+        ? getAriBrandSnapshot({
+          caller: userClient,
+          brandId: activeBrand.id,
+          userId,
+          latestReceiptAt: latestAriWriteReceiptAt(history),
+        }).catch((error: unknown) => {
+          console.warn(
+            "[agent-chat] brand snapshot unavailable",
+            error instanceof Error ? error.message.slice(0, 120) : "unknown",
+          );
+          return null;
+        })
+        : Promise.resolve(null),
+      body.client_context === undefined
+        ? Promise.resolve(null)
+        : resolveAriScreenContext({
+          caller: userClient,
+          raw: body.client_context,
+          activeBrand,
+        }).catch(() => null),
+    ]);
+    const turnContextPart = ariTurnContextPart({
+      snapshot: turnSnapshot,
+      screen: turnScreen,
+    });
     // Build contents — wrap user-stored content in <user_data> delimiters per I-ARI-USER-DATA-WRAP
     const contents: GeminiContentMessage[] = [];
     // #2013 rework: only rows written under the first tenant-contained prompt
@@ -2513,36 +2543,6 @@ async function handle(req: Request): Promise<Response> {
         }
       }
     }
-    // #3355 Wave C (C1, C2): the active brand's snapshot and the Host screen
-    // the host is on, read as the caller. Both are data inside <user_data>;
-    // a failure leaves them out and never fails the turn.
-    const [turnSnapshot, turnScreen] = await Promise.all([
-      activeBrand
-        ? getAriBrandSnapshot({
-          client: userClient,
-          brandId: activeBrand.id,
-          userId,
-          latestReceiptAt: latestAriWriteReceiptAt(history),
-        }).catch((error: unknown) => {
-          console.warn(
-            "[agent-chat] brand snapshot unavailable",
-            error instanceof Error ? error.message.slice(0, 120) : "unknown",
-          );
-          return null;
-        })
-        : Promise.resolve(null),
-      body.client_context === undefined
-        ? Promise.resolve(null)
-        : resolveAriScreenContext({
-          client: userClient,
-          raw: body.client_context,
-          activeBrand,
-        }).catch(() => null),
-    ]);
-    const turnContextPart = ariTurnContextPart({
-      snapshot: turnSnapshot,
-      screen: turnScreen,
-    });
     // Append the new user message
     contents.push({
       role: "user",

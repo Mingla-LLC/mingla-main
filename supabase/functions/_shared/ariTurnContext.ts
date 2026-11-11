@@ -462,7 +462,8 @@ export function latestAriWriteReceiptAt(
 
 /** The cached snapshot when fresh and older than no write receipt, else a new read. */
 export async function getAriBrandSnapshot(args: {
-  client: SupabaseClient;
+  /** The caller-JWT client (RLS applies). */
+  caller: SupabaseClient;
   brandId: string;
   userId: string;
   now?: number;
@@ -479,7 +480,7 @@ export async function getAriBrandSnapshot(args: {
     return cached;
   }
   const fresh = await buildAriBrandSnapshot({
-    client: args.client,
+    client: args.caller,
     brandId: args.brandId,
     now,
     sectionTimeoutMs: args.sectionTimeoutMs,
@@ -603,7 +604,8 @@ async function entityTitle(
  * not a Host screen; drops only the entity when the entity does not hold.
  */
 export async function resolveAriScreenContext(args: {
-  client: SupabaseClient;
+  /** The caller-JWT client (RLS applies). */
+  caller: SupabaseClient;
   raw: unknown;
   activeBrand: { id: string; name: string } | null;
 }): Promise<AriScreenContext | null> {
@@ -622,7 +624,7 @@ export async function resolveAriScreenContext(args: {
   if (!segments.includes(input.entity_id)) return base;
   try {
     const title = await entityTitle(
-      args.client,
+      args.caller,
       input.entity_kind,
       input.entity_id,
       args.activeBrand,
