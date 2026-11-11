@@ -346,8 +346,11 @@ describe("V-8 a thread message with an attachment", () => {
     const send = thread.slice(thread.indexOf("const send = async () => {"), thread.indexOf("return (", thread.indexOf("const send = async () => {")));
     assert.match(send, /const done = await Promise\.all\(tray\.map\(upload\)\);/);
     assert.match(send, /if \(done\.some\(\(d\) => !d\?\.id\)\) \{ setError\("A file didn’t upload\. Retry it, or remove it, then send\. Your message is kept\."\); return; \}/);
-    assert.ok(send.indexOf("ops.postMessage(") > send.indexOf("Promise.all(tray.map(upload))"), "post only after every upload");
-    assert.ok(send.indexOf("ref.current?.clear()") > send.indexOf("ops.postMessage("), "the text is cleared only after the post");
+    // #4255 W4: the composer posts through its adapter (the card's posts with
+    // ops.postMessage; a Mingla team chat reuses the same composer).
+    assert.ok(send.indexOf("adapter.post(") > send.indexOf("Promise.all(tray.map(upload))"), "post only after every upload");
+    assert.ok(send.indexOf("ref.current?.clear()") > send.indexOf("adapter.post("), "the text is cleared only after the post");
+    assert.match(thread, /post: \(cardId, \{ body, emails, parentId, fileIds, everyone \}\) =>\s*ops\.postMessage\(cardId,/);
     assert.match(thread, /if \(next\.length > room\) addToast\(\{ variant: "error", title: "A message carries up to 10 files\." \}\);/);
   });
 });

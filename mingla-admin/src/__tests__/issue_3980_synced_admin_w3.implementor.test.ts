@@ -67,7 +67,8 @@ Deno.test("#3980 W3 D-11: the Pipeline menu is Needs you, Work and Calendar toge
   // Home and Calendar in Outreach. The Agent log is still a tab on Work.
   const home = NAV_GROUPS.find((g: { label: string | null }) => g.label === "Home");
   assertEquals(home?.items.map((i: { id: string; label: string }) => `${i.id}:${i.label}`), [
-    "overview:Dashboard", "work-board:Work", "notifications:Notifications",
+    // #4255 W4: Notifications left the menu for Messages in the top bar.
+    "overview:Dashboard", "work-board:Work",
   ]);
   const outreach = NAV_GROUPS.find((g: { label: string | null }) => g.label === "Outreach");
   assertEquals(outreach?.items.map((i: { id: string; label: string }) => `${i.id}:${i.label}`), [

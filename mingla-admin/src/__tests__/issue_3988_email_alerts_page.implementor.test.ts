@@ -73,21 +73,23 @@ Deno.test("#3988 an in-app alert opens its Admin page, or offers no tap at all",
 });
 
 Deno.test("#3988 the page wires one switch per row to the per-category RPC and keeps mentions", async () => {
-  const [page, service] = await Promise.all([
-    read("pages/NotificationsPage.jsx"),
+  // #4255 W4: the Notifications page became Messages. Email settings are in
+  // the Settings tab (same per-category RPC, nothing reset); the inbox is the
+  // Notifications tab, read through the one Messages poll.
+  const [page, inbox, poll, service] = await Promise.all([
+    read("components/messages/MessagesSettings.jsx"),
+    read("components/messages/MessagesNotifications.jsx"),
+    read("hooks/useMessages.js"),
     read("services/teamCollaborationService.js"),
   ]);
-  assertMatch(page, /title="Email alerts"/);
-  assertMatch(page, /state\.rows\.map\(\(row\) => \(/);
-  assertMatch(page, /<Toggle\s+label=\{row\.label\}/);
-  assertMatch(page, /collaboration\.setEmailAlertPreference\(row\.key, enabled\)/);
+  assertMatch(page, /otherAlerts\.map\(\(row\) => \(/);
+  assertMatch(page, /collaboration\.setEmailAlertPreference\(alertKey, enabled\)/);
+  assertMatch(page, /setEmail\(row\.key, on, row\.label\)/);
   assertMatch(page, /addToast\(\{\s*variant: "error"/);
-  // #4130: one inbox with Mentions and Support tabs replaced the two lists.
-  assertMatch(page, /INBOX_TABS/);
-  assertMatch(page, /getInbox\(SUPPORT_ALERT_TYPES\)/);
-  // No dead taps: a row without somewhere to go is not a button.
-  assertMatch(page, /\{canOpen\(row\) \? \(\s*<button\s+type="button"\s+onClick=\{\(\) => openRow\(row\)\}/);
-  assertMatch(page, /row\.type === "support" \? alertHashRoute\(row\.source\)/);
+  assertMatch(poll, /getInbox\(SUPPORT_ALERT_TYPES\)/);
+  // No dead taps: a row without somewhere to go has no Open button.
+  assertMatch(inbox, /\{target && <button type="button" onClick=\{open\}/);
+  assertMatch(inbox, /row\.kind === "support" \? \(alertHashRoute\(row\.alert\)/);
   // The old single mention switch is gone (its setting is one of the rows now).
   assertNotMatch(page, /setMentionEmail|getTeamNotificationPreferences/);
   assertMatch(service, /rpc\("issue_3988_my_email_alert_preferences"\)/);

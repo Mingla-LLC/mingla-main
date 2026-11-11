@@ -53,8 +53,18 @@ const ICON_BTN = `inline-grid h-9 w-9 place-items-center rounded-lg text-[var(--
 
 const storage = () => (typeof window !== "undefined" ? window.localStorage : null);
 
+// The card's own way to upload and post. #4255 W4: a Mingla team chat passes
+// its own (services/teamChatService.js) and reuses this composer.
+const CARD_ADAPTER = Object.freeze({
+  upload: (cardId, item) => (item.kind === "link"
+    ? ops.addCardLink(cardId, item.url, item.name, item.key)
+    : ops.uploadCardFile(cardId, item.file, { kind: item.kind, mime: fileMime(item.file), key: item.key })),
+  post: (cardId, { body, emails, parentId, fileIds, everyone }) =>
+    ops.postMessage(cardId, { body, mentions: emails, parentId, fileIds, everyone, key: requestKey("web_msg") }),
+});
+
 /** The composer with its tray: attachments wait as chips until the message is sent. */
-function ThreadComposer({ cardId, team, allowEveryone, disabled, parentId = null, placeholder, onPosted, compactHint = true }) {
+export function ThreadComposer({ cardId, team, allowEveryone, disabled, parentId = null, placeholder, onPosted, compactHint = true, adapter = CARD_ADAPTER }) {
   const { addToast } = useToast();
   const ref = useRef(null);
   const fileRef = useRef(null);
@@ -92,9 +102,7 @@ function ThreadComposer({ cardId, team, allowEveryone, disabled, parentId = null
     if (item.id) return item;
     setTray((t) => t.map((x) => (x.key === item.key ? { ...x, state: "sending", error: "" } : x)));
     try {
-      const row = item.kind === "link"
-        ? await ops.addCardLink(cardId, item.url, item.name, item.key)
-        : await ops.uploadCardFile(cardId, item.file, { kind: item.kind, mime: fileMime(item.file), key: item.key });
+      const row = await adapter.upload(cardId, item);
       const done = { ...item, id: row?.id, state: "ready" };
       setTray((t) => t.map((x) => (x.key === item.key ? done : x)));
       return done;
@@ -112,7 +120,7 @@ function ThreadComposer({ cardId, team, allowEveryone, disabled, parentId = null
     try {
       const done = await Promise.all(tray.map(upload));
       if (done.some((d) => !d?.id)) { setError("A file didn’t upload. Retry it, or remove it, then send. Your message is kept."); return; }
-      const answer = await ops.postMessage(cardId, { body, mentions: emails, parentId, fileIds: done.map((d) => d.id), everyone, key: requestKey("web_msg") });
+      const answer = await adapter.post(cardId, { body, emails, parentId, fileIds: done.map((d) => d.id), everyone });
       ref.current?.clear();
       setTray([]);
       onPosted?.(answer, emails);

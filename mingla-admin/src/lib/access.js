@@ -62,7 +62,9 @@ export const BLOG_AREA = "blog";
 
 export const PAGE_ADDITIONAL_AREAS = Object.freeze({
   "community-support": Object.freeze([COMMUNITY_SUPPORT_AREA]),
-  notifications: Object.freeze([TEAM_NOTIFICATIONS_AREA]),
+  // #4255 W4: Messages (the top-bar button and #/messages) took over the
+  // Notifications page and its access.
+  messages: Object.freeze([TEAM_NOTIFICATIONS_AREA]),
   "data-room": Object.freeze([DATA_ROOM_AREA]),
   // Issue #4255: the Email and Blog tabs on the Support page, for every
   // teammate. A pseudo page id (never in the menu) so it widens Support only,

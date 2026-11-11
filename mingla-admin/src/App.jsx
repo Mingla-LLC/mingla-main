@@ -68,7 +68,8 @@ import { CompanyToolsPage } from "./pages/CompanyToolsPage";
 import { keepConnectRequest, parseConnectHash } from "./services/minglaConnectorService";
 import { GuidePage } from "./pages/GuidePage";
 import { ContentCalendarPage } from "./pages/ContentCalendarPage";
-import { NotificationsPage } from "./pages/NotificationsPage";
+// #4255 W4: Messages replaced Notifications (#/notifications redirects).
+import { MessagesPage } from "./pages/MessagesPage";
 import { DataRoomPage } from "./pages/DataRoomPage";
 import { AriImprovementLabPage } from "./pages/AriImprovementLabPage";
 import { CareersPage } from "./pages/CareersPage";
@@ -95,7 +96,7 @@ const PAGES = {
   // retired into Work's first column (#4130); Wave 1 opens its draft editor
   // from the card.
   "work-board": WorkBoardPage,
-  notifications: NotificationsPage,
+  messages: MessagesPage,
   // ── Outreach ── #4130: Hosts and creators (two tabs) and Inbound leads.
   outreach: OutreachPage,
   // Issue #3872: the Creator Program pages (#4130 + #3872: under Hosts and

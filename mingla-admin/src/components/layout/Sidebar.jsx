@@ -28,7 +28,7 @@ import {
   LogOut,
   ChevronDown,
   X,
-  Bell,
+  // #4255 W4: Bell left with the Notifications menu item (Messages is in the top bar).
   FolderLock,
   SquareKanban,
   Briefcase,
@@ -67,7 +67,6 @@ const ICON_MAP = {
   Home,
   LayoutDashboard,
   SquareKanban,
-  Bell,
   Handshake,
   // #4130 + #3872: Creators, Gigs, Mingla Locals, Disputes.
   BadgeCheck,

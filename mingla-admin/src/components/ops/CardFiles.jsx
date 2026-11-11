@@ -41,14 +41,15 @@ export function FileTile({ file, thumb, onOpen, onRemove, compact = false }) {
 }
 
 /** A picture, full size, in a viewer. */
-export function ImageViewer({ file, onClose }) {
+export function ImageViewer({ file, onClose, resolveUrl = ops.openableFileUrl }) {
   const [url, setUrl] = useState("");
   const [error, setError] = useState("");
   useEffect(() => {
     let live = true;
-    ops.openableFileUrl(file.id).then((u) => { if (live) setUrl(u); }).catch((e) => { if (live) setError(opsErrorWords(e)); });
+    // #4255 W4: a team chat picture signs through team_attachment_sign.
+    resolveUrl(file.id).then((u) => { if (live) setUrl(u); }).catch((e) => { if (live) setError(opsErrorWords(e)); });
     return () => { live = false; };
-  }, [file.id]);
+  }, [file.id, resolveUrl]);
   return (
     <Modal open onClose={onClose} title={file.name} size="lg">
       <ModalBody>

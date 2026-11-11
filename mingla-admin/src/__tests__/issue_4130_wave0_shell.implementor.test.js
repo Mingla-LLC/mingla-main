@@ -51,7 +51,8 @@ const PAGE_IDS = pageIds();
 
 // The approved sidebar (~/.mingla-private/4130 design, "sidebar").
 const MENU = [
-  ["Home", ["overview:Dashboard", "work-board:Work", "notifications:Notifications"]],
+  // #4255 W4: Notifications left the menu for Messages in the top bar.
+  ["Home", ["overview:Dashboard", "work-board:Work"]],
   // #4130 + #3872: the Creator Program pages sit right under Hosts and creators.
   ["Outreach", ["outreach:Hosts and creators", "program-creators:Creators", "program-gigs:Gigs", "program-locals:Mingla Locals", "program-disputes:Disputes", "inbound:Inbound leads", "content-calendar:Calendar", "team-dashboard:Team dashboard"]],
   ["Support", ["support:Support", "community:Community"]],
@@ -97,6 +98,8 @@ const REDIRECTS = {
   email: ["support", "email"],
   // #4130 + #3872: the old one-page Creator gigs queue opens Disputes.
   "gig-queue": ["program-disputes", undefined],
+  // #4255 W4: Notifications is the Messages full page.
+  notifications: ["messages", undefined],
 };
 
 const owner = { email: "o@example.test", role: "owner", status: "active", areas: ["admin_console", "team_manage", "crm", "beta_leads"] };
@@ -111,12 +114,14 @@ describe("#4130 W0-1: the menu is the approved sidebar", () => {
     }
     // #4130: Careers is back as its own page (27). #4130 + #3872: + the four
     // Creator Program pages. #3355: + the guarded Ari Improvement Lab.
-    assert.equal(NAV_ITEMS.length, 34); // #4294: + Company tools; #4273: + SMS countries
+    // #4255 W4: - Notifications (Messages is in the top bar).
+    assert.equal(NAV_ITEMS.length, 33); // #4294: + Company tools; #4273: + SMS countries
   });
   it("Needs you, My agent and Guide are not menu entries; My agent and Guide keep their pages in the header", () => {
     const ids = NAV_ITEMS.map((i) => i.id);
     for (const gone of ["drafts", "agent", "guide"]) assert.equal(ids.includes(gone), false, gone);
-    assert.deepEqual(HEADER_PAGE_ITEMS.map((i) => i.id), ["agent", "guide"]);
+    // #4255 W4: + Messages (its button in the top bar, #/messages its full page).
+    assert.deepEqual(HEADER_PAGE_ITEMS.map((i) => i.id), ["agent", "guide", "messages"]);
     for (const id of ["agent", "guide"]) assert.ok(PAGE_IDS.includes(id), `${id} keeps its route`);
     const header = stripComments(read("components/layout/Header.jsx"));
     assert.ok(header.includes('openPage("guide")') && header.includes('openPage("agent")'));

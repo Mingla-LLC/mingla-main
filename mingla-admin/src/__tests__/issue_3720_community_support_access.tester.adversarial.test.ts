@@ -37,7 +37,8 @@ Deno.test("a sub-capability alone cannot open any Admin page", () => {
 Deno.test("additional page exceptions stay one-to-one with server capabilities", () => {
   assertEquals(PAGE_ADDITIONAL_AREAS, {
     "community-support": [COMMUNITY_SUPPORT_AREA],
-    notifications: [TEAM_NOTIFICATIONS_AREA],
+    // #4255 W4: Messages took over the Notifications page and its access.
+    messages: [TEAM_NOTIFICATIONS_AREA],
     "data-room": [DATA_ROOM_AREA],
     // #4255: the Email and Blog tabs' areas open Support (never Community).
     "support-content": [AREA.EMAIL_DRAFTS, BLOG_AREA],
@@ -47,10 +48,10 @@ Deno.test("additional page exceptions stay one-to-one with server capabilities",
   for (const page of ["overview", "announcements", "roadmap", "email", "team", "availability"]) {
     assertEquals(canOpenPage(candidate, page), false, `scoped staff unexpectedly opened ${page}`);
   }
-  assertEquals(canOpenPage(access(TEAM_NOTIFICATIONS_AREA), "notifications"), true);
+  assertEquals(canOpenPage(access(TEAM_NOTIFICATIONS_AREA), "messages"), true);
   assertEquals(canOpenPage(access(TEAM_NOTIFICATIONS_AREA), "data-room"), false);
   assertEquals(canOpenPage(access(DATA_ROOM_AREA), "data-room"), true);
-  assertEquals(canOpenPage(access(DATA_ROOM_AREA), "notifications"), false);
+  assertEquals(canOpenPage(access(DATA_ROOM_AREA), "messages"), false);
 });
 
 Deno.test("hash manipulation cannot add a forbidden tab", () => {

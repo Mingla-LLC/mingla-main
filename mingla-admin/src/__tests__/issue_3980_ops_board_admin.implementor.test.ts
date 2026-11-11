@@ -46,7 +46,8 @@ Deno.test("#3980 the Pipeline menu: To review, Work board, Agent log, Calendar, 
   const home = NAV_GROUPS.find((g: { label: string | null }) => g.label === "Home");
   assertEquals(
     home?.items.map((i: { id: string; label: string; icon: string }) => `${i.id}:${i.label}:${i.icon}`),
-    ["overview:Dashboard:LayoutDashboard", "work-board:Work:SquareKanban", "notifications:Notifications:Bell"],
+    // #4255 W4: Notifications left the menu for Messages in the top bar.
+    ["overview:Dashboard:LayoutDashboard", "work-board:Work:SquareKanban"],
   );
   const outreach = NAV_GROUPS.find((g: { label: string | null }) => g.label === "Outreach");
   assertEquals(
