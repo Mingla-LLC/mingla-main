@@ -327,7 +327,8 @@ describe("#3802 TG-3: who may open My agent, for every combination of areas", ()
     assert.equal(labels.includes("Help"), false);
     // #4130: My agent and Guide moved to the header (profile menu, ? help);
     // they are listed once, in HEADER_PAGE_ITEMS, and in no menu group.
-    assert.deepEqual(HEADER_PAGE_ITEMS, [{ id: "agent", label: "My agent" }, { id: "guide", label: "Guide" }]);
+    // #4255 W4: + Messages (its button in the top bar).
+    assert.deepEqual(HEADER_PAGE_ITEMS, [{ id: "agent", label: "My agent" }, { id: "guide", label: "Guide" }, { id: "messages", label: "Messages" }]);
     assert.equal(NAV_GROUPS.some((g) => g.items.some((i) => i.id === "agent" || i.id === "guide")), false);
     const HEADER_SRC = stripComments(read("components/layout/Header.jsx"));
     assert.ok(HEADER_SRC.includes('canOpenPage(access, "agent")') && HEADER_SRC.includes('openPage("agent")'));

@@ -242,7 +242,18 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3355 rework 3: register 20280623133355 (a follow-up setup run never cancels a parked or live one) in the #1857, #1931 and #2117 lanes, and the rework 3 PostgreSQL proof in #1931 and #2117.
 // #3355 rework 3: merged origin/main 4ba9ec5ec3 (#4382 retire-beta-feedback rows kept) and renumbered the thirteen #3355 migrations into 20280623xx3355 (after production's 20280622004382); re-sealed.
 // #4382: register the retire-beta-feedback migration (20280622004382) in the #1857, #1931 and #2117 replay lanes; re-sealed.
-export const BOOTSTRAP_SHA256 = "0e55b28b577c8fcdd6a850d074f5e92f1640ab29df8c0aab180aa75876c52806";
+// #4255: re-sealed after registering the Work board v2 and Mingla team migrations and their PostgreSQL proofs in the #1857, #1931 and #2117 lanes.
+// #4255: re-sealed after registering the tester adversarial PostgreSQL proof in the #1931 and #2117 lanes.
+// #4255: re-sealed after registering the rework migration (20280624054255) and its PostgreSQL proof in the #1857, #1931 and #2117 lanes.
+// #4255: re-sealed after registering the rework tester adversarial PostgreSQL proof in the #1931 and #2117 lanes.
+// #4255: re-sealed after merging origin/main 62aabbdc6d (#4382 rows kept beside the #4255 rows).
+// #4255: re-sealed after renumbering the Work board v2 and Mingla team migrations to 20280624*4255 (above production's applied 20280613054382).
+// #4255: re-sealed after registering the rework 2 migration (20280624064255) and its PostgreSQL proof in the #1857, #1931 and #2117 lanes.
+// #4255: re-sealed after registering the rework 2 tester adversarial PostgreSQL proof in the #1931 and #2117 lanes.
+// #4255: re-sealed after merging origin/main 4ba9ec5ec3 (#4382 retire-beta-feedback rows kept beside the #4255 rows).
+// #4255: re-sealed after renumbering the seven Work board v2 and Mingla team migrations to 20280624*4255 (above production's applied 20280622004382).
+// #3355 rework 4: re-sealed after merging origin/main 3dc6c44093 (#4255 rows kept beside the #3355 rows).
+export const BOOTSTRAP_SHA256 = "b1ddeb5c2393ea3daa23e3af51ec52067b3e1048fd4759193837c7d9823f3653";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

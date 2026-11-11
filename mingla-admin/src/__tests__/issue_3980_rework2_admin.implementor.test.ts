@@ -117,7 +117,7 @@ Deno.test("#3980 rework 2: Title and Done means grow with their text", () => {
   assertMatch(detail, /const titleGrow = useAutoGrow\(title\);/);
   assertMatch(detail, /if \(e\.key === "Enter"\) \{ e\.preventDefault\(\);/);
   assertMatch(detail, /setTitle\(e\.target\.value\.replace\(\/\[\\r\\n\]\+\/g, " "\)\)/);
-  assertMatch(detail, /<textarea value=\{doneMeans\} ref=\{doneMeansGrow\}/);
+  assertMatch(detail, /<textarea value=\{doneMeans\} ref=\{doneMeansGrow\}/); // #4255 W3: one quiet "Done when" line that still grows
   assertMatch(detail, /\$\{DONE_MEANS_CLASS\} \$\{AUTO_GROW_CLASS\}/);
   const add = code("components/ops/WorkAddForm.jsx");
   assertMatch(add, /const doneMeansGrow = useAutoGrow\(doneMeans\);/);

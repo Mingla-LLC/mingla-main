@@ -174,11 +174,15 @@ describe("#4130 W4A-2: Notifications", () => {
     assert.equal(inAppRoute("https://evil.example/#/work-board"), null);
   });
 
-  it("inbox first, Mark all read on the server, settings behind the gear", () => {
-    const page = stripComments(read("pages/NotificationsPage.jsx"));
-    assert.ok(page.indexOf("<Tabs") < page.indexOf("<EmailSettings open"), "the inbox comes before the settings");
-    assert.match(page, /\{settingsOpen && <EmailSettings open/);
-    assert.match(page, /markInboxRead\(markScope\(tab\), SUPPORT_ALERT_TYPES\)/);
+  // #4255 W4: the Notifications page became Messages (top-bar panel and
+  // #/messages): the inbox is the first tab and the settings are the last tab.
+  it("inbox first, Mark all read on the server, settings in their own tab", () => {
+    const tabs = read("lib/messagesModel.js");
+    assert.ok(tabs.indexOf('id: "notifications"') < tabs.indexOf('id: "settings"'), "the inbox comes before the settings");
+    const body = stripComments(read("components/messages/MessagesBody.jsx"));
+    assert.match(body, /tab === "settings" && <MessagesSettings \/>/);
+    const page = stripComments(read("components/messages/MessagesNotifications.jsx"));
+    assert.match(page, /markInboxRead\(filter === "watch" \? "work_updates" : "all", SUPPORT_ALERT_TYPES\)/);
     assert.match(read("services/dashboardService.js"), /rpc\("team_inbox_mark_read", \{ p_scope: scope, p_alert_types: alertTypes \}\)/);
     assert.ok(!/A teammate"\}\{!mention/.test(page));
   });

@@ -1,15 +1,18 @@
-// Issue #3980 (R7) — a work card opens in the right-side drawer over the
-// board (scrim, focus kept inside, Esc closes), like a host card. Inside is
-// the card itself: where it came from, what needs attention, then the
-// whole detail.
+// Issue #3980 (R7) — a work card opens in panel one over the board.
+//
+// Issue #4255 (W3) — the panel is 720px wide (the page decides: see
+// PanelStack's firstSize) with a focus mode that fills the page; the card
+// draws its own one-line header (number, breadcrumb, Thread, focus, ⋯,
+// close), so the drawer is bare.
 import { Drawer } from "../ui/Drawer";
 import { WorkDetail } from "./WorkDetail";
 
-export function WorkCardDrawer({ cardId, config, online, onClose, onChanged }) {
+export function WorkCardDrawer({ cardId, config, online, onClose, onChanged, focus = false, onFocus = null, onOpenCard = null, columns = null }) {
   if (!cardId) return null;
   return (
-    <Drawer open onClose={onClose} title="Work card" header={<p className="pt-2 text-[13px] font-semibold text-[var(--color-text-secondary)]">Work card</p>}>
-      <WorkDetail key={cardId} cardId={cardId} config={config} online={online} inDrawer onBack={onClose} onChanged={onChanged} />
+    <Drawer open onClose={onClose} title="Work card" bare>
+      <WorkDetail key={cardId} cardId={cardId} config={config} online={online} onClose={onClose} onChanged={onChanged}
+        focus={focus} onFocus={onFocus} onOpenCard={onOpenCard} columns={columns} />
     </Drawer>
   );
 }

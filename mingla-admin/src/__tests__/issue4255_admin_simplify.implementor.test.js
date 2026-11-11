@@ -175,7 +175,7 @@ describe("S-1 the side panels", () => {
       ["components/ops/EventPanel.jsx", 'kind: "host"'],
       ["components/ops/EventPanel.jsx", 'kind: "card"'],
       ["components/ops/EventSteps.jsx", 'kind: "card"'],
-      ["components/ops/CardPersonPanels.jsx", 'kind: "drafts"'],
+      // #4255 W3 (D6): the card's "Message to send" block is gone; the drafts open from the Drafts page.
       ["components/drafts/DraftCard.jsx", "kind: draft.record.pipeline"],
       ["components/ops/WorkDetail.jsx", "side={linkSide(l)}"],
       ["components/crm/RecordDrawer.jsx", 'kind: "drafts"'],
@@ -385,17 +385,18 @@ describe("S-3 Work: one filter, four tabs, one layout", () => {
     const page = code("pages/WorkBoardPage.jsx");
     assert.match(page, /const cards = useMemo\(\(\) => workFilter\(allCards, filters\)/);
     assert.match(page, /const periodCards = useMemo\(\(\) => workFilter\(period\.data\?\.cards \|\| \[\], filters\)/);
-    assert.match(page, /<WorkColumns cards=\{cards\}/); // #4270 rework: plus each column's server count
+    // #4255 W2: the board is WorkBoard (columns are statuses).
+    assert.match(page, /<WorkBoard\s+columns=\{columns\}\s+cards=\{cards\}/);
     assert.match(page, /<PeriodView win=\{win\} read=\{period\} cards=\{periodCards\}/);
-    // One filter bar above the tabs; one row of tabs.
-    assert.ok(page.indexOf('data-work-filters=""') < page.indexOf("<Tabs tabs={WORK_VIEWS"));
-    assert.equal((page.match(/<Tabs /g) || []).length, 1);
+    // #4255 W2 (rev2): the tabs and the one filter bar share ONE header line (WorkHeader).
+    assert.equal((page.match(/<WorkHeader\b/g) || []).length, 1);
+    assert.equal((page.match(/<Tabs /g) || []).length, 0);
     assert.ok(!/NeedsAttention|AttentionChips|PersonChips|parseWorkTab|WorkToday|WorkWeek|WorkMonth/.test(page));
     // The board reads only while it is on screen; the period tabs read their window.
-    assert.match(page, /useOpsWork\(\{ who, week: query\.week, owner: ownerFilter, q: view\.q, limit: BOARD_LIMIT, perStatus: true, enabled: onBoard \}\)/); // #4270 rework: per column
+    assert.match(page, /useOpsWork\(\{ who, week: query\.week, owner: ownerFilter, q: view\.q, limit: BOARD_LIMIT, perStatus: true, subtasks: showSubtasks, goalId, enabled: onBoard \}\)/); // #4270 rework: per column; #4255 W2: subtasks and a goal
     assert.match(page, /enabled: !onBoard,/);
     assert.ok(!fs.existsSync(path.join(SRC, "components/ops/NeedsAttention.jsx")));
-    assert.ok(!/WorkGroups/.test(code("components/ops/WorkColumns.jsx")));
+    assert.ok(!/WorkGroups/.test(code("components/ops/WorkBoard.jsx")));
   });
 
   it("Today, This week and This month: Done closed inside the window, open cards due by its end", () => {

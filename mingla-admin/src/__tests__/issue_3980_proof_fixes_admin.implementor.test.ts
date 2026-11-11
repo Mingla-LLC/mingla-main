@@ -113,7 +113,9 @@ Deno.test("#3980 P3: names, tabs, calendar targets, guide notices and staff draf
   // P3-2: the Work tabs wrap at 375 px instead of running off the screen.
   // #4130: the Work views (Board, Today, This week, This month) still wrap at 375 px.
   // #4255: they are one row of tabs now, which scrolls sideways inside itself.
-  assertMatch(code("pages/WorkBoardPage.jsx"), /<Tabs tabs=\{WORK_VIEWS\.map\(\(v\) => \(\{ id: v\.value, label: v\.label \}\)\)\}/);
+  // #4255 W2 (rev2): the tabs sit on the one-line Work header, which never wraps; under 640px only the active tab shows.
+  assertMatch(code("components/ops/WorkHeader.jsx"), /role="tablist" aria-label="Work views"/);
+  assertMatch(code("components/ops/WorkHeader.jsx"), /data-work-header="" data-fit=\{fit\} className="flex h-12 min-w-0 flex-1 flex-nowrap/);
   assertMatch(code("components/ui/Tabs.jsx"), /admin-control-scroll min-w-0 overflow-x-auto/);
   // P3-3: the narrow calendar's dot button is a 44 px target.
   assertMatch(code("pages/ContentCalendarPage.jsx"), /data-calendar-day-dense=\{key\}[\s\S]*?-mx-1 flex min-h-11 w-\[calc\(100%\+0\.5rem\)\]/);

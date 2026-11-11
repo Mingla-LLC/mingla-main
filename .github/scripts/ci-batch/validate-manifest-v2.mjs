@@ -453,7 +453,19 @@ export function phase3dContractDigest(manifest) {
 // #3355 rework 3: register 20280623133355 (a follow-up setup run never cancels a parked or live one) in the #1857, #1931 and #2117 lanes, and the rework 3 PostgreSQL proof in #1931 and #2117.
 // #3355 rework 3: merged origin/main 4ba9ec5ec3 (#4382 retire-beta-feedback rows kept) and renumbered the thirteen #3355 migrations into 20280623xx3355 (after production's 20280622004382); re-sealed.
 // #4382: register the retire-beta-feedback migration (20280622004382) in the #1857, #1931 and #2117 replay lanes.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "e9d2e35668d50708f814ffdd538bdf5eea87e899b77f342d3cbe6e012a047088";
+// #4382: renumber the Support Desk migrations to 20280613*4382 (above production's applied 20280608004383 and the sibling #4255 migrations of the time) in the replay lanes.
+// #4255: register the Work board v2 and Mingla team migrations (20280624004255 to 20280624044255) in the #1857, #1931 and #2117 replay lanes, and their implementor PostgreSQL proofs in the #1931 and #2117 lanes.
+// #4255: and the tester adversarial PostgreSQL proof.
+// #4255: and the rework migration (20280624054255) in the #1857, #1931 and #2117 lanes, with its implementor PostgreSQL proof in the #1931 and #2117 lanes.
+// #4255: and the rework tester adversarial PostgreSQL proof.
+// #4255: re-sealed after merging origin/main 62aabbdc6d (#4382 rows kept beside the #4255 rows).
+// #4255: renumber the Work board v2 and Mingla team migrations to 20280624004255 to 20280624054255 (above production's applied 20280613054382) in the replay lanes.
+// #4255: and the rework 2 migration (20280624064255) in the #1857, #1931 and #2117 lanes, with its implementor PostgreSQL proof in the #1931 and #2117 lanes.
+// #4255: and the rework 2 tester adversarial PostgreSQL proof.
+// #4255: re-sealed after merging origin/main 4ba9ec5ec3 (#4382 retire-beta-feedback rows kept beside the #4255 rows).
+// #4255: renumber the seven Work board v2 and Mingla team migrations to 20280624004255 to 20280624064255 (above production's applied 20280622004382) in the replay lanes.
+// #3355 rework 4: re-sealed after merging origin/main 3dc6c44093 (#4255 rows kept beside the #3355 rows).
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "64b8a251cd16b4c557af20b9e395b31c4fe6dae810e9810a426eb7b9c33a990f";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

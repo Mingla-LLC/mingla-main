@@ -181,11 +181,12 @@ Deno.test("#3980 W3 rework: Work groups by Status, Person or Event, one board at
   const page = code("pages/WorkBoardPage.jsx");
   assertNotMatch(page, /aria-label="Group by"/);
   assertNotMatch(page, /<WorkGroups /);
-  assertEquals((page.match(/<WorkColumns /g) || []).length, 1);
-  // #4255: the person chips became the Owner dropdown of the one filter bar,
-  // and the dead WorkGroups component is deleted.
-  assertMatch(page, /<FilterSelect name="owner" label="Owner" value=\{ownerFilter \|\| ""\}/);
-  assertNotMatch(code("components/ops/WorkColumns.jsx"), /WorkGroups/);
+  assertEquals((page.match(/<WorkBoard\b/g) || []).length, 1);
+  // #4255: the person chips became the Owner dropdown of the one filter bar
+  // (W2: an Owner chip on the one-line header), and WorkGroups stays deleted.
+  assertMatch(code("components/ops/WorkHeader.jsx"), /<FilterChip name="owner" label="Owner" value=\{owner \|\| ""\}/);
+  assertMatch(page, /owner=\{ownerFilter\}/);
+  assertNotMatch(code("components/ops/WorkBoard.jsx"), /WorkGroups/);
 });
 
 Deno.test("#3980 W3 rework P3: contrast, 44px targets, real switches, same names, three entries a day, a compact sprint strip", () => {
@@ -209,5 +210,7 @@ Deno.test("#3980 W3 rework P3: contrast, 44px targets, real switches, same names
   const panels = code("components/ops/TeamOpsPanels.jsx");
   assertMatch(panels, /\{p\.name\}\{sameName\(p, people\) && <span className="sr-only"> \(\{p\.email\}\)<\/span>\}/);
   assertMatch(panels, /\{sameName\(p, people\) && <tr aria-hidden="true" className="!border-t-0"><td colSpan=\{5\}[^>]*>\{p\.email\}<\/td><\/tr>\}/);
-  assertMatch(code("components/ops/SprintStrip.jsx"), /data-sprint-strip="" className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1\.5 rounded-xl border[^"]*px-2\.5 py-1\.5"/);
+  // #4255 W2 (rev2): the sprint bar is one line that never wraps; its goals scroll inside it.
+  // #4255 fix-up: it is `relative`, so its goals' hidden text cannot widen a phone page.
+  assertMatch(code("components/ops/SprintBar.jsx"), /data-sprint-bar="" className="relative flex h-11 min-w-0 flex-nowrap items-center gap-2 overflow-hidden rounded-xl border/);
 });

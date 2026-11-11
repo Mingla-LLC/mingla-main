@@ -7,6 +7,9 @@
 export function isQuietHours(
   timezone: string | null,
   now: Date = new Date(),
+  // #4255 rework: Mingla team pushes keep 22:00 to 07:00 (spec rev 3); the
+  // legacy push path keeps 22:00 to 08:00.
+  endHour = 8,
 ): boolean {
   const tz = timezone || "America/New_York";
   try {
@@ -17,7 +20,7 @@ export function isQuietHours(
     });
     const hour = parseInt(formatter.format(now), 10);
     if (Number.isNaN(hour)) return true; // fail closed → defer
-    return hour >= 22 || hour < 8;
+    return hour >= 22 || hour < endHour;
   } catch {
     return true;
   }
@@ -30,9 +33,10 @@ export function isQuietHours(
 export function nextQuietHoursEnd(
   timezone: string | null,
   now: Date = new Date(),
+  endHour = 8,
 ): string {
   const tz = timezone || "America/New_York";
-  let localHour = 8;
+  let localHour = endHour;
   try {
     const formatter = new Intl.DateTimeFormat("en-US", {
       hour: "numeric",
@@ -42,11 +46,11 @@ export function nextQuietHoursEnd(
     const parsed = parseInt(formatter.format(now), 10);
     if (!Number.isNaN(parsed)) localHour = parsed;
   } catch {
-    localHour = 8;
+    localHour = endHour;
   }
-  // Hours until the next 08:00 local. If already in-window (08–21), 0 → clamp
+  // Hours until the next end hour local. If already in-window, 0 → clamp
   // to a short re-check so a race at the boundary still re-evaluates.
-  const hoursUntilOpen = (8 - localHour + 24) % 24;
+  const hoursUntilOpen = (endHour - localHour + 24) % 24;
   const deltaMs = Math.max(hoursUntilOpen * 60 * 60 * 1000, 60 * 1000);
   return new Date(now.getTime() + deltaMs).toISOString();
 }

@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-suite",
+  "ownerIssue": "#4255",
+  "suite": {
+    "id": "issue-4255-messages-board-tester",
+    "class": "admin-node20-install",
+    "originPaths": [
+      "mingla-admin/src/**"
+    ],
+    "steps": [
+      {
+        "name": "Messages and Work board v2 tester adversarial: forged chat ids, badge junk, drop and conflict words, 25 MB edge, unsafe file types, header widths",
+        "cwd": "mingla-admin",
+        "run": "node --test src/__tests__/issue4255_messages_board.tester.adversarial.test.js",
+        "commandId": "assert:issue-4255-messages-board-tester:01",
+        "invocation": {
+          "kind": "raw-shell",
+          "command": "bash",
+          "argv": [
+            "-c",
+            "node --test src/__tests__/issue4255_messages_board.tester.adversarial.test.js"
+          ]
+        },
+        "exceptionRationale": "New self-registering execution replaces a legacy workflow registry edit."
+      }
+    ],
+    "lifecycle": "batched-active",
+    "ownerIssue": "#4255",
+    "runtime": {
+      "name": "node",
+      "version": "20"
+    },
+    "setupProfile": "admin-node20-install",
+    "cwd": "mingla-admin",
+    "envNames": [],
+    "isolation": "clean-worktree",
+    "expectedFiles": [
+      "mingla-admin/src/__tests__/issue4255_messages_board.tester.adversarial.test.js"
+    ],
+    "externalReferenceFiles": [],
+    "requiredContext": "CI batch: admin-node20-install",
+    "timingSeconds": {
+      "p50": 3,
+      "p95": 6,
+      "evidence": "Local targeted run 2026-11-11 (tester)"
+    },
+    "generatedPaths": [
+      "suite-results.json"
+    ],
+    "exceptionRationale": "Raw shell preserves the reviewed assertion while this self-registering suite replaces a legacy workflow registry edit.",
+    "timeoutSeconds": 60
+  }
+}

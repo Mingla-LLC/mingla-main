@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/notify-outbox-drain/__tests__/issue_4255_drain_held.implementor.test.ts",
+  "lane": "notification-deno",
+  "orderKey": "issue-4255-drain-held",
+  "profile": "deno-1.46-notification"
+}

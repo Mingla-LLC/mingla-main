@@ -50,6 +50,8 @@ export const RETIRED_PAGE_REDIRECTS = Object.freeze({
   // #4130 + #3872: the old one-page "Creator gigs" queue was split into the
   // Creator Program pages; its bookmarks open Disputes, which it mostly held.
   "gig-queue": Object.freeze({ page: "program-disputes" }),
+  // #4255 W4: Notifications is the Messages full page now (old email links).
+  notifications: Object.freeze({ page: "messages" }),
 });
 
 // Retired page id -> the function that works out its new address from the

@@ -106,27 +106,35 @@ async function uploadWeb(
   });
 }
 
-export async function uploadPreparedBrandGroupFile(
-  prepared: PreparedBrandGroupFile,
+/**
+ * #4255 W5 — one storage upload for both chats: a POST to a private bucket at
+ * the path the server issued (never upsert), with progress. Brand group files
+ * go to brand-group-file-staging; Mingla team files go to team-files.
+ */
+export async function uploadStorageObject(
+  bucket: string,
+  storagePath: string,
+  mimeType: string,
+  local: BrandGroupPickedFile,
   onProgress: (fraction: number) => void,
 ): Promise<void> {
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;
   if (!token) throw new Error("Sign in again to upload files.");
-  const target = `${supabaseUrl}/storage/v1/object/brand-group-file-staging/${prepared.storagePath.split("/").map(encodeURIComponent).join("/")}`;
+  const target = `${supabaseUrl}/storage/v1/object/${bucket}/${storagePath.split("/").map(encodeURIComponent).join("/")}`;
   const headers = {
     Authorization: `Bearer ${token}`,
     apikey: supabaseAnonKey,
-    "Content-Type": prepared.mimeType,
+    "Content-Type": mimeType,
     "x-upsert": "false",
   };
   if (Platform.OS === "web") {
-    if (!prepared.local.webFile) throw new Error("We couldn't read this browser file.");
-    await uploadWeb(target, prepared.local.webFile, headers, onProgress);
+    if (!local.webFile) throw new Error("We couldn't read this browser file.");
+    await uploadWeb(target, local.webFile, headers, onProgress);
   } else {
     const task = await createBinaryUploadTask(
       target,
-      prepared.local.uri,
+      local.uri,
       { httpMethod: "POST", headers },
       (event) => onProgress(event.totalBytesExpectedToSend > 0 ? event.totalBytesSent / event.totalBytesExpectedToSend : 0),
     );
@@ -136,6 +144,13 @@ export async function uploadPreparedBrandGroupFile(
     }
   }
   onProgress(1);
+}
+
+export async function uploadPreparedBrandGroupFile(
+  prepared: PreparedBrandGroupFile,
+  onProgress: (fraction: number) => void,
+): Promise<void> {
+  await uploadStorageObject("brand-group-file-staging", prepared.storagePath, prepared.mimeType, prepared.local, onProgress);
 }
 
 export async function finalizeBrandGroupFile(fileId: string): Promise<string | null> {
