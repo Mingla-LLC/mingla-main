@@ -12,7 +12,10 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AddressInput } from "../../../../src/components/location/AddressInput";
-import { ScrollView } from "../../../../src/wrappers/SmartScrollView";
+// #4389 (device r4) — keyboard-aware column, as brand setup's steps: the
+// avoiding view lifts Save address above the keyboard and its Done bar.
+import { DONE_BAR_OCCUPIED, ScrollView } from "../../../../src/wrappers/SmartScrollView";
+import { KeyboardAvoidingView } from "../../../../src/wrappers/SmartKeyboardAvoidingView";
 import { Button } from "../../../../src/components/ui/Button";
 import { CenteredState } from "../../../../src/components/ui/CenteredState";
 import { BRAND_SETUP_COPY as C } from "../../../../src/components/brand/brandSetupCopy";
@@ -78,7 +81,8 @@ export default function TapToPayAddressRoute(): React.ReactElement {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]} testID="tap-to-pay-address">
-      <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+      <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={DONE_BAR_OCCUPIED} style={styles.fill}>
+      <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
         <Text style={styles.h1} accessibilityRole="header">{C.t1.title}</Text>
         <Text style={styles.sub}>{Platform.OS === "android" ? C.t1.helperAndroid : C.t1.helper}</Text>
         {draft === null || (!draft.ok && draft.missing !== "building_number") ? (
@@ -141,14 +145,16 @@ export default function TapToPayAddressRoute(): React.ReactElement {
         {offline ? <Text style={styles.helper}>{C.common.offline}</Text> : null}
       </ScrollView>
       <View style={styles.footer}>
-        <Button label={C.t1.save} onPress={submit} variant="primary" size="lg" fullWidth disabled={ready === null || offline} loading={save.isPending} />
+        <Button testID="tap-address-save" label={C.t1.save} onPress={submit} variant="primary" size="lg" fullWidth disabled={ready === null || offline} loading={save.isPending} />
       </View>
+      </KeyboardAvoidingView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: canvas.discover },
+  fill: { flex: 1 },
   body: { padding: spacing.md, gap: spacing.sm, maxWidth: 560, width: "100%", alignSelf: "center" },
   footer: { padding: spacing.md, maxWidth: 560, width: "100%", alignSelf: "center" },
   h1: { ...typography.h1, color: textTokens.primary },
