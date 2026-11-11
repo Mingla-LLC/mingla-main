@@ -83,7 +83,8 @@ import { trackBrandSetup } from "../../components/brand/brandSetupAnalytics";
 import type { Brand } from "../../store/currentBrandStore";
 import { usePickBrand } from "../../hooks/usePickBrand";
 // #4389 A1–A5 — setup cards from the server checklist; digits redacted before send.
-import { AriSensitiveNotice, AriSetupCard, AriSkipPaymentsCard } from "../../components/ari/AriSetupCard";
+import { AriCreateBrandNotice, AriSensitiveNotice, AriSetupCard, AriSkipPaymentsCard } from "../../components/ari/AriSetupCard";
+import { a3NoticeFor, type A3Notice } from "../../components/ari/ariCreateBrandOutcome";
 import { ARI_SETUP_COPY } from "../../components/ari/ariSetupCopy";
 import { redactSensitiveDigits, wantsToSkipPayments } from "../../components/ari/ariRedaction";
 import { useBrandSetupChecklist, useMarkBrandSetupFreeOnly } from "../../hooks/useBrandSetupChecklist";
@@ -409,6 +410,8 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   const [sensitiveHidden, setSensitiveHidden] = useState(false);
   // #4389 AR-12 — "skip payments" shows the K1 words as a card.
   const [skipCard, setSkipCard] = useState<"ask" | "saving" | "saved" | "error" | null>(null);
+  // #4389 A3 — duplicate found / expired, shown as cards (not plain text).
+  const [a3Notice, setA3Notice] = useState<A3Notice | null>(null);
   const [rateLimitUntil, setRateLimitUntil] = useState<number | null>(null);
   const [cooldownNow, setCooldownNow] = useState(() => Date.now());
   // ORCH-1101 REWORK Bug #6 — dismiss the AI-disclosure sheet the instant the
@@ -586,6 +589,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     setLocalError(null);
     setRateLimitUntil(null);
     setSkipCard(null);
+    setA3Notice(null);
     Keyboard.dismiss();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- runs on a brand change only; names are read at that moment.
   }, [currentBrand?.displayName, selectedBrandId]);
@@ -1031,6 +1035,8 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   ): Promise<ConfirmOutcome> => {
     if (!chat.pendingAction) return { ok: false };
     setLocalError(null);
+    setA3Notice(null);
+    const proposal = chat.pendingAction;
     // D-1: watch the proposal's own turn; its callout appears only once
     // approved_action_started arrives and clears when this confirm resolves.
     chat.beginConfirmedActivity(chat.pendingAction.pending_action_id);
@@ -1052,7 +1058,14 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
       // `expired_regenerate` used to clear the card as if it had worked).
       if (isAriProposalExpired(result)) {
         const message = ARI_PROPOSAL_EXPIRED_COPY;
-        setLocalError(message);
+        const expiredCard = a3NoticeFor({
+          toolName: proposal.tool_name,
+          args: proposal.tool_args,
+          code: null,
+          expired: true,
+        });
+        if (expiredCard !== null) setA3Notice(expiredCard);
+        else setLocalError(message);
         chat.clearPendingAction();
         // #3355 P3: the server knows the current step; ask it, don't guess.
         void chat.resumeFlow("resume");
@@ -1083,6 +1096,19 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
         if (result.code === "BRAND_MISMATCH") {
           setLocalError(ARI_SETUP_COPY.brandMismatch);
           return { ok: false, error: ARI_SETUP_COPY.brandMismatch };
+        }
+        const duplicate = a3NoticeFor({
+          toolName: proposal.tool_name,
+          args: proposal.tool_args,
+          code: result.code,
+          message: result.message,
+          expired: false,
+          brandNamesById,
+        });
+        if (duplicate !== null) {
+          setA3Notice(duplicate);
+          chat.clearPendingAction();
+          return { ok: false, terminal: "resolved" };
         }
         const message = ariChatErrorCopy(result.code);
         setLocalError(message);
@@ -1423,6 +1449,21 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                     onOpen={() => {
                       setSensitiveHidden(false);
                       openBrandSetup("pay");
+                    }}
+                  />
+                ) : null}
+                {a3Notice !== null ? (
+                  <AriCreateBrandNotice
+                    notice={a3Notice}
+                    onContinue={() => {
+                      const id = a3Notice.kind === "duplicate" ? a3Notice.brandId : null;
+                      setA3Notice(null);
+                      router.push((id !== null ? `/brand/${id}/setup` : "/brand/new") as never);
+                    }}
+                    onCreateNew={() => {
+                      // /brand/new shows N1 first when a draft exists.
+                      setA3Notice(null);
+                      router.push("/brand/new" as never);
                     }}
                   />
                 ) : null}

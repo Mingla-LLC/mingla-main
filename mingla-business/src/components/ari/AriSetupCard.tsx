@@ -184,6 +184,33 @@ export const AriSkipPaymentsCard: React.FC<{
   );
 };
 
+/** #4389 A3 duplicate found / expired (design A3:duplicate, A3:expired). */
+export const AriCreateBrandNotice: React.FC<{
+  notice: import("./ariCreateBrandOutcome").A3Notice;
+  onContinue: () => void;
+  onCreateNew: () => void;
+}> = ({ notice, onContinue, onCreateNew }) => {
+  if (notice.kind === "expired") {
+    return (
+      <View style={[styles.card, styles.dim]} testID="ari-a3-expired">
+        <Text style={styles.title}>{notice.question}</Text>
+        <Text style={styles.body} accessibilityRole="alert">{C.a3.expired}</Text>
+      </View>
+    );
+  }
+  return (
+    <View style={styles.card} testID="ari-a3-duplicate">
+      <Text style={styles.title} accessibilityRole="header">{C.a3.duplicate(notice.name)}</Text>
+      <CardButtons
+        buttons={[
+          { label: C.a3.continue, onPress: onContinue, primary: true, testID: "ari-a3-continue" },
+          { label: C.a3.createNew, onPress: onCreateNew, testID: "ari-a3-create-new" },
+        ]}
+      />
+    </View>
+  );
+};
+
 const styles = StyleSheet.create({
   card: {
     gap: spacing.sm,
@@ -236,4 +263,5 @@ const styles = StyleSheet.create({
   },
   btnSecondaryLabel: { ...typography.bodySm, color: textTokens.primary, fontWeight: "600" },
   pressed: { opacity: 0.72 },
+  dim: { opacity: 0.6 },
 });

@@ -34,8 +34,12 @@ export const ARI_SETUP_COPY = {
   a3: {
     question: (name: string, country: string, cur: string): string =>
       `Create ${name} collecting funds in ${country} (${cur})?`,
+    questionNoCountry: (name: string): string => `Create ${name}?`,
     fundsLabel: "Collecting funds in",
     expired: "This expired. Ask again.",
+    duplicate: (name: string): string => `You already started ${name}. Continue it?`,
+    continue: "Continue",
+    createNew: "Create new",
   },
   a4: {
     secureTitle: "Secure setup",
