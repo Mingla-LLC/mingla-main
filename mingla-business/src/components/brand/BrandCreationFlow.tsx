@@ -368,7 +368,8 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
           <Text style={styles.bannerText}>{C.common.offline}</Text>
         </View>
       ) : null}
-      {resumeBanner && checklistReady && step !== "name" ? (
+      {/* Never on F4: "You stopped at You're all set" is not a resume (#4389 retest). */}
+      {resumeBanner && checklistReady && step !== "name" && step !== "done" ? (
         <Pressable style={[styles.banner, styles.bannerAccent]} onPress={() => setResumeBanner(false)} accessibilityRole="button" accessibilityLabel={C.common.resume(C.stepNames[step])}>
           <Text style={styles.bannerText}>{C.common.resume(C.stepNames[step])}</Text>
         </Pressable>

@@ -95,4 +95,12 @@ describe("#4389 R1 — the resume banner shows once, only on a resume", () => {
     expect(byLabel(t, banner("pay"))).toHaveLength(0);
     expect(byLabel(t, banner("country"))).toHaveLength(0);
   });
+
+  // #4389 (retest r3): a cold open of the done step said "Welcome back. You
+  // stopped at You're all set." The banner never shows on F4.
+  test("T5: no banner when the derived step is done", async () => {
+    harness.checklist = checklistAt("done");
+    const t = await mount(<BrandCreationFlow brandId={ID} resumed onExit={() => undefined} />);
+    expect(byLabel(t, C.common.resume(C.stepNames.done))).toHaveLength(0);
+  });
 });
