@@ -12,7 +12,7 @@
  *      already-wrapInRNModal ExpandedCardModal). Header slot + scrollMode="view"
  *      (own BottomSheetScrollView message thread) + stickyFooter composer whose
  *      <TextInput> is now <BottomSheetTextInput> (keyboard never covers it).
- *   2. FeedbackHistorySheet — feedback list + a NESTED fullscreen screenshot
+ *   2. FeedbackHistorySheet — RETIRED by #4382 (file deleted). Was: feedback list + a NESTED fullscreen screenshot
  *      viewer. Root: light BaseBottomSheet, fixed ['75%'] snap (was maxHeight 75%),
  *      scrollMode="flatlist" (the feedback FlatList), wrapInRNModal (ProfilePage
  *      z-trap). The fullscreen screenshot viewer stays an RN <Modal> but is
@@ -81,7 +81,6 @@ function code(source) {
 }
 
 const CARD_DISCUSSION = "app-mobile/src/components/board/CardDiscussionModal.tsx";
-const FEEDBACK_HISTORY = "app-mobile/src/components/FeedbackHistorySheet.tsx";
 const MESSAGE_INTERFACE = "app-mobile/src/components/MessageInterface.tsx";
 const CONNECTIONS_PAGE = "app-mobile/src/components/ConnectionsPage.tsx";
 const ADD_FRIEND_VIEW = "app-mobile/src/components/connections/AddFriendView.tsx";
@@ -123,37 +122,8 @@ function run() {
     assert.ok(!/\bcontainer:\s*\{/.test(c) || /sheetBackground:/.test(c), "CD-A1: sheet canvas now comes from backgroundStyle (sheetBackground), not the old full-screen container");
   }
 
-  // ════════════════════════════════════════════════════════════════════════
-  // 2. FeedbackHistorySheet (list + §13-gated nested fullscreen viewer)
-  // ════════════════════════════════════════════════════════════════════════
-  {
-    const src = read(FEEDBACK_HISTORY);
-    const c = code(src);
-
-    assert.ok(importsBaseBottomSheet(src), "FH-1: must import BaseBottomSheet");
-    assert.ok(!importsGorhom(src), "FH-1: must NOT import @gorhom/bottom-sheet directly");
-    assert.equal((c.match(/<BaseBottomSheet\b/g) || []).length, 1, "FH-1: exactly ONE <BaseBottomSheet> (the root list)");
-
-    // The root list <Modal> is gone; the nested fullscreen viewer is the ONLY RN <Modal> left.
-    assert.equal((c.match(/<Modal\b/g) || []).length, 1, "FH-2: exactly ONE RN <Modal> remains (the §13-gated fullscreen screenshot viewer)");
-
-    assert.ok(c.includes('"75%"') || c.includes("'75%'"), "FH-3: fixed ['75%'] snap (was maxHeight 75%) must be present");
-    assert.match(c, /scrollMode=\{?\s*loadingOrError\s*\?\s*['"]view['"]\s*:\s*['"]flatlist['"]/, "FH-3: feedback list must use flatlist body (with loading/error → view)");
-    assert.match(c, /wrapInRNModal/, "FH-4: must wrapInRNModal (ProfilePage z-trap)");
-
-    // §13 ONE-SHEET-AT-A-TIME GATE on the nested fullscreen viewer.
-    assert.match(c, /const\s+screenshotOpen\s*=/, "FH-5: must derive screenshotOpen from the viewer state");
-    assert.match(c, /visible=\{\s*visible\s*&&\s*!screenshotOpen\s*\}/, "FH-5: root sheet visible must be GATED on `visible && !screenshotOpen` (no co-present)");
-    assert.match(c, /const\s+handleRootClose\s*=/, "FH-5: must wrap the root onClose (handleRootClose) so suppress-for-child does not tear down the sheet");
-    assert.match(c, /onClose=\{handleRootClose\}/, "FH-5: root sheet must use onClose={handleRootClose}");
-
-    // ADVERSARIAL: the old hand-rolled scrim/sheet/handle styles must be gone.
-    for (const key of ["backdrop:", "sheet:", "handle:"]) {
-      assert.ok(!c.includes(key), `FH-A1: dead style key \`${key}\` must be removed (chrome from BaseBottomSheet now)`);
-    }
-    // ADVERSARIAL: the gate must not regress to an ungated root.
-    assert.ok(!/visible=\{visible\}/.test(c), "FH-A2: root must NOT use ungated visible={visible} — reintroduces the co-present crash");
-  }
+  // 2. FeedbackHistorySheet — RETIRED by #4382 (Help & Support replaced the
+  //    beta feedback history; the file is deleted, so there is nothing to pin).
 
   // ════════════════════════════════════════════════════════════════════════
   // 3. MessageInterface event-audience picker (ONLY that modal)
