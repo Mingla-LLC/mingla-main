@@ -20,6 +20,11 @@ import {
   renderIssue4111Message,
   renderIssue4111SubscribeSms,
 } from "./issue4111EnquiryNotifications.ts";
+// #4255 W4 — Mingla team pushes (chat, mentions, decisions).
+import {
+  isTeamNotifyCategory,
+  renderTeamMessage,
+} from "./teamNotifications.ts";
 
 export interface RenderedMessage {
   push: { title: string; body: string };
@@ -231,6 +236,11 @@ export function renderCategoryMessage(
   // #3682 wave 2 — account invites and campaign push name the brand and why.
   if (isBrandReachCategory(categoryKey)) {
     return renderBrandReachMessage(categoryKey, payload);
+  }
+  // #4255 W4 — "Ray mentioned you · #612", "Feyikemi in Lagos launch"; the
+  // words come from the names the drain resolved from the payload's ids.
+  if (isTeamNotifyCategory(categoryKey)) {
+    return renderTeamMessage(categoryKey, payload);
   }
   const brand = str(payload.brand_name ?? payload.brand, "Mingla");
   const party = str(payload.party_size ?? payload.party, "");

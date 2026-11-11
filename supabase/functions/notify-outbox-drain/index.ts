@@ -34,6 +34,11 @@ import {
   ISSUE_4111_EMAIL_CATEGORIES,
   ISSUE_4111_ENQUIRY_CATEGORIES,
 } from "../_shared/issue4111EnquiryNotifications.ts";
+// #4255 W4 — Mingla team pushes: the words are looked up from the ids here.
+import {
+  resolveTeamPushText,
+  TEAM_NOTIFY_CATEGORIES,
+} from "../_shared/teamNotifications.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -127,6 +132,8 @@ const ISSUE_3720_DURABLE_CATEGORIES = new Set([
   "admin.team_mention",
   ...ISSUE_3988_ALERT_CATEGORIES,
   ...ISSUE_4111_ENQUIRY_CATEGORIES,
+  // #4255 W4: team pushes get durable terminal envelopes, like Brand groups.
+  ...TEAM_NOTIFY_CATEGORIES,
 ]);
 const TERMINAL_DELIVERY_STATUSES = new Set([
   "sent",
@@ -425,6 +432,9 @@ export async function processGeneric(
   let reservationManageUrl: string | null = null;
   try {
     contact = await resolveIssue3720Contact(admin, row);
+    // #4255 W4: names and excerpts for a team push, resolved from the ids
+    // (the outbox row itself keeps ids only). A failed read retries the row.
+    Object.assign(payload, await resolveTeamPushText(admin, row));
     if (row.category_key === "buyer_reservation_confirmed") {
       const confirmation = await resolveReservationConfirmationDispatch(
         admin,

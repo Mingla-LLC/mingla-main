@@ -49,6 +49,13 @@ import {
 } from "./issue4111EnquiryNotifications.ts";
 // #3682 wave 3 — the brand invite email's button and manage note.
 import { brandReachEmailCta } from "./brandReachMessages.ts";
+// #4255 W4 — Mingla team pushes to the Host app (chat, mentions, decisions).
+import {
+  isTeamNotifyCategory,
+  teamDeepLinkValid,
+  teamInAppSuppressed,
+  teamProviderSafeKeys,
+} from "./teamNotifications.ts";
 
 // Minimal subset of the supabase-js client surface the v2 core uses, so the core
 // is unit-testable with a fake client.
@@ -289,6 +296,11 @@ function validDeepLink(
     return !!id && UUID.test(id) &&
       deepLink === `mingla-business://messages/${id}`;
   }
+  // #4255 W4: team pushes open only mingla-business://team/<thread> or
+  // mingla-business://team/mention/<id>, naming the payload's own id.
+  if (isTeamNotifyCategory(category)) {
+    return teamDeepLinkValid(category, deepLink, payload);
+  }
   return true;
 }
 
@@ -322,6 +334,10 @@ export function providerSafePayload(
   }
   if (category === "admin.team_mention") {
     return pick(["mention_id", "source_kind", "source_id"]);
+  }
+  // #4255 W4: ids only; names, chat titles and words stay with Mingla.
+  if (isTeamNotifyCategory(category)) {
+    return pick(teamProviderSafeKeys());
   }
   if (isIssue3988AlertCategory(category)) {
     return pick(issue3988ProviderSafeKeys(category));
@@ -524,6 +540,11 @@ export async function dispatchV2(
         data: inboxData,
         deep_link: input.deep_link ?? null,
         idempotency_key: input.idempotency_key,
+        // #4255 W4: a team mention lives in the Mingla team Mentions tab, not
+        // the Host app bell.
+        ...(teamInAppSuppressed(input.category_key)
+          ? { in_app_suppressed_at: new Date().toISOString() }
+          : {}),
       })
       // deno-lint-ignore no-explicit-any
       .select?.("id")
@@ -577,11 +598,20 @@ export async function dispatchV2(
   // makes this resumable instead of returning early on a duplicate inbox row.
   const deliveries: NonNullable<DispatchV2Result["deliveries"]> = [];
   const inappClaim = await claimChannel(client, nid, "inapp");
+  // #4255 W4: a suppressed in-app row is recorded as suppressed, not delivered.
+  const inappSuppressed = teamInAppSuppressed(input.category_key);
   if (inappClaim.outcome === "claimed") {
-    await completeChannel(client, inappClaim, "delivered", "inapp", null, null);
+    await completeChannel(
+      client,
+      inappClaim,
+      inappSuppressed ? "suppressed" : "delivered",
+      "inapp",
+      null,
+      inappSuppressed ? "inapp_in_team_mentions" : null,
+    );
     deliveries.push({
       channel: "inapp",
-      status: "delivered",
+      status: inappSuppressed ? "suppressed" : "delivered",
       providerMessageId: null,
     });
   } else {
