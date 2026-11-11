@@ -41,7 +41,17 @@
     "sessions_hint": "招待、メンバー更新、ボードのアクティビティ",
     "tips_reengagement": "ヒントと再エンゲージメント",
     "tips_hint": "時々のお知らせ、週間ダイジェスト、おすすめ",
-    "error_update": "通知設定の更新に失敗しました。"
+    "error_update": "通知設定の更新に失敗しました。",
+    "prefs": {
+      "cat": {
+        "mingla_updates": "Minglaからのお知らせ",
+        "mingla_updates_hint": "Minglaチームからのニュースとお知らせ。",
+        "brand_campaign_push": "フォロー中のお店からのメッセージ",
+        "brand_campaign_push_hint": "フォロー中のお店やホストからのお得な情報やニュース。",
+        "brand_offering_invite": "フォロー中のお店からの招待",
+        "brand_offering_invite_hint": "お店やホストからイベントなどに招待されたとき。"
+      }
+    }
   },
   "quiet_hours": {
     "title": "おやすみモード",

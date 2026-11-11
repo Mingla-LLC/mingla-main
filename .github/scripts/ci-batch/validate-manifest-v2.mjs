@@ -436,7 +436,10 @@ export function phase3dContractDigest(manifest) {
 // #4382: register the ticket Product stage migration (20280607044382) in the #1857, #1931 and #2117 replay lanes.
 // #4382: register the tester adversarial PostgreSQL proof (issue_4382_support_desk.tester.adversarial.pg17) in the #1931 and #2117 lanes.
 // #4382: register the support write guards migration (20280607054382) in the #1857, #1931 and #2117 replay lanes.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "2add19ed49a16b98e939c8460f3bf25fa4e7de5f446a82b22cc761b13dfce7c9";
+// #4383: register the Communications scheduling migration (20280608004383) and its implementor PostgreSQL proof in the #1857, #1931 and #2117 replay lanes.
+// #4383: and the tester adversarial PostgreSQL proof.
+// #4382: re-sealed after merging origin/main 2aa45c6da1 (#4383 rows kept beside the #4382 rows).
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "8580c90cb43ba408b99d8d599128b9b8e3fe89314779ac3e3e4787181cf0b630";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

@@ -41,7 +41,17 @@
     "sessions_hint": "הזמנות, עדכוני חברים ופעילות לוח",
     "tips_reengagement": "טיפים ותזכורות",
     "tips_hint": "תזכורות מדי פעם, סיכום שבועי והמלצות",
-    "error_update": "עדכון הגדרת התראות נכשל."
+    "error_update": "עדכון הגדרת התראות נכשל.",
+    "prefs": {
+      "cat": {
+        "mingla_updates": "עדכוני Mingla",
+        "mingla_updates_hint": "חדשות ועדכונים מצוות Mingla.",
+        "brand_campaign_push": "הודעות ממקומות שאתם עוקבים אחריהם",
+        "brand_campaign_push_hint": "מבצעים וחדשות ממקומות ומארחים שאתם עוקבים אחריהם.",
+        "brand_offering_invite": "הזמנות ממקומות שאתם עוקבים אחריהם",
+        "brand_offering_invite_hint": "כשמקום או מארח מזמינים אתכם למשהו."
+      }
+    }
   },
   "quiet_hours": {
     "title": "שעות שקט",

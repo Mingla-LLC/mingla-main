@@ -101,27 +101,30 @@ export function personActionFor(card) {
   return PERSON_ACTIONS[card?.person_reason] || null;
 }
 
-/** Community, Roadmap with the drafted card open, or null when the card links none. */
+/** Communications, Roadmap with the drafted card open, or null when the card links none. */
 export function roadmapDraftHref(card) {
   const link = (card?.links || []).find((l) => l?.kind === "roadmap_card" && typeof l.id === "string" && l.id);
-  return link ? `#/community?tab=roadmap&card=${encodeURIComponent(link.id)}` : null;
+  return link ? `#/roadmap?card=${encodeURIComponent(link.id)}` : null;
 }
 
-// #4130 Wave 6: Roadmap is a tab of the Community page. An old
-// #/community-support link still counts (App rewrites it to #/community).
-const ROADMAP_PAGES = new Set(["#/community", "#/community-support"]);
+// #4383: Roadmap is its own Communications screen (#/roadmap). The two older
+// forms still count, so a Work card or email sent before the move opens the
+// card: #4130 Wave 6's #/community?tab=roadmap and the console's
+// #/community-support?tab=roadmap (App rewrites both to #/roadmap).
+const OLD_ROADMAP_TAB_PAGES = new Set(["#/community", "#/community-support"]);
 
-/** True only for a Community address on its Roadmap tab. */
+/** True only for the Roadmap screen, or an old Community address on its Roadmap tab. */
 export function isRoadmapHash(hash) {
   const [path, query = ""] = String(hash || "").split("?");
-  return ROADMAP_PAGES.has(path) && new URLSearchParams(query).get("tab") === "roadmap";
+  if (path === "#/roadmap") return true;
+  return OLD_ROADMAP_TAB_PAGES.has(path) && new URLSearchParams(query).get("tab") === "roadmap";
 }
 
 /**
- * The roadmap card a Community, Roadmap address asks to open, or null. Only
- * #/community (or the old #/community-support) with tab=roadmap counts: the Work board and To review
- * also carry ?card= (a work card), and leaving Roadmap for them must not
- * look like a missing roadmap card.
+ * The roadmap card a Roadmap address asks to open, or null. Only #/roadmap
+ * (or the old #/community / #/community-support with tab=roadmap) counts: the
+ * Work board and To review also carry ?card= (a work card), and leaving
+ * Roadmap for them must not look like a missing roadmap card.
  */
 export function roadmapCardFromHash(hash) {
   if (!isRoadmapHash(hash)) return null;

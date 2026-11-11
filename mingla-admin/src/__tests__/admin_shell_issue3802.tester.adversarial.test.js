@@ -72,7 +72,8 @@ const SHELL_FILES = { SIDEBAR, HEADER, SHELL, PAGE_HEADER, CRUMBS };
 // #4130: Wave 0 — nine named groups, Home first; only the role Home group
 // (lib/access.js TEAM_NAV_GROUP) has no label. #4130 + #3872: the Creator Program pages joined Outreach,
 // so no Programs group.
-const APPROVED_LABELS = ["Home", "Outreach", "Support", "Business", "Money", "Explorer app", "Growth", "Company", "System"];
+// #4383: Communications sits after Support.
+const APPROVED_LABELS = ["Home", "Outreach", "Support", "Communications", "Business", "Money", "Explorer app", "Growth", "Company", "System"];
 const ALL_IDS = NAV_ITEMS.map((i) => i.id);
 const KNOWN = ["home", ...ALL_IDS];
 const AREAS = Object.values(AREA);
@@ -135,7 +136,8 @@ describe("#3802 TA-1: an address opens a page for exactly the people who may ope
     // (the role home page is "home"), Outreach (its Hosts and creators page,
     // #/outreach, from the approved redirect map) and Support (its first
     // entry). Group names are only ever fold memory, never an address.
-    for (const label of APPROVED_LABELS.filter((l) => l && !["Home", "Outreach", "Support"].includes(l))) {
+    // #4383: Communications too (its first entry, the Overview screen).
+    for (const label of APPROVED_LABELS.filter((l) => l && !["Home", "Outreach", "Support", "Communications"].includes(l))) {
       assert.equal(KNOWN.includes(label), false);
       assert.equal(KNOWN.includes(label.toLowerCase().replace(/\s+/g, "-")), false, `${label} must not collide with a page id`);
     }

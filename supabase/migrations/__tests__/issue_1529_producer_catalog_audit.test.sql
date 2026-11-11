@@ -130,8 +130,12 @@ $ratchet$;
 --       issue_1389_enqueue_stay_event       → explicit NULL on the email legs;
 --                                             mingla_e164_country over the
 --                                             NORMALISED handset on the SMS legs
---       community_publish_announcement      → explicit NULL (no SMS channel)
---       community_notify_roadmap_change     → explicit NULL (no SMS channel)
+--       issue_4383_publish_announcement_internal → explicit NULL (no SMS channel;
+--                                             community_publish_announcement calls it)
+--       issue_4383_notify_roadmap_internal  → explicit NULL (no SMS channel;
+--                                             community_notify_roadmap_change calls it)
+--       issue_4383_fire_push_internal       → explicit NULL (#4383 Admin push: bell + push)
+--       issue_4383_push_test_to_me          → explicit NULL (#4383 test push: bell + push)
 --       issue_3720_send_brand_group_message → explicit country_code per recipient
 --       issue_3720_complete_brand_group_file → explicit NULL (no SMS channel)
 --       content_calendar_comment_add_with_mentions → explicit NULL (no SMS channel)
@@ -183,8 +187,12 @@ DECLARE
     'pg_notify_reminders_enqueue',
     'finalize_rsvp_contribution',
     'issue_1389_enqueue_stay_event',
-    'community_publish_announcement',
-    'community_notify_roadmap_change',
+    -- #4383: the public publish / notify RPCs are now an admin gate in front
+    -- of these internals, which hold the INSERTs; plus the Admin push fan-out.
+    'issue_4383_publish_announcement_internal',
+    'issue_4383_notify_roadmap_internal',
+    'issue_4383_fire_push_internal',
+    'issue_4383_push_test_to_me',
     'issue_3720_send_brand_group_message',
     'issue_3720_complete_brand_group_file',
     'content_calendar_comment_add_with_mentions',
@@ -322,8 +330,12 @@ DECLARE
     'pg_notify_reminders_enqueue',
     'finalize_rsvp_contribution',
     'issue_1389_enqueue_stay_event',
-    'community_publish_announcement',
-    'community_notify_roadmap_change',
+    -- #4383: the public publish / notify RPCs are now an admin gate in front
+    -- of these internals, which hold the INSERTs; plus the Admin push fan-out.
+    'issue_4383_publish_announcement_internal',
+    'issue_4383_notify_roadmap_internal',
+    'issue_4383_fire_push_internal',
+    'issue_4383_push_test_to_me',
     'issue_3720_send_brand_group_message',
     'issue_3720_complete_brand_group_file',
     'content_calendar_comment_add_with_mentions',

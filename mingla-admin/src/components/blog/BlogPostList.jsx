@@ -38,7 +38,8 @@ export function BlogPostList({ api, onOpen, onMedia, onCounts }) {
         api.getBlogPermissions(),
       ]);
       setResult(data || { posts: [], counts: {} });
-      onCounts?.(permissions?.can_publish ? Number(data?.counts?.in_review || 0) : 0);
+      // #4383: the second value is the list's own counts (the Blog screen shows Scheduled).
+      onCounts?.(permissions?.can_publish ? Number(data?.counts?.in_review || 0) : 0, data?.counts || {});
     } catch (nextError) { setError(nextError); }
     finally { setLoading(false); }
   }, [api, filter, query, onCounts]);

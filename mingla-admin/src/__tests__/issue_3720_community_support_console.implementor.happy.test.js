@@ -31,24 +31,29 @@ describe("#3720 F — nav is one Community & Support item", () => {
     assert.match(CONSTANTS, /id:\s*"support",\s*label:\s*"Support"/);
     assert.match(CONSTANTS, /id:\s*"community",\s*label:\s*"Community"/);
     assert.match(ROUTES, /"community-support": consoleRedirectHash/);
-    assert.equal(/\bid:\s*"email"\b/.test(CONSTANTS), false);
+    // #4383: Email is a Communications screen of its own again.
+    assert.match(CONSTANTS, /id:\s*"email",\s*label:\s*"Email"/);
   });
 });
 
 describe("#3720 F — App routes and legacy aliases", () => {
   // #4130 Wave 6: was "PAGES maps community-support only".
-  it("PAGES maps the Support and Community pages (not the desk or email page keys)", () => {
+  it("PAGES maps the Support and Community pages (not the desk page key)", () => {
     assert.match(APP, /support: SupportPage,\s*community: CommunityPage,/);
     assert.equal(/\bsupport:\s*SupportDeskPage/.test(APP), false);
-    assert.equal(/\bemail:\s*EmailPage/.test(APP), false);
+    // #4383: #/email is the Communications Email screen.
+    assert.match(APP, /\bemail: EmailPage,/);
   });
 
   // #4130 Wave 6: #/email opens Support's Email tab; #/support is a page.
-  it("legacy #/email rewrites to the Support page's Email tab", () => {
+  // #4383: #/email is a page again, so it is not rewritten; the old
+  // Support Email tab address moves to it instead.
+  it("legacy #/email is the Email screen; #/support?tab=email moves to it", () => {
     assert.match(APP, /canonicalizeLegacyCommunityHashes/);
     // #4130: the rewrite reads the one redirect map (lib/adminRoutes.js).
     assert.match(APP, /const next = redirectHash\(window\.location\.hash\);/);
-    assert.match(ROUTES, /email: Object\.freeze\(\{ page: "support", tab: "email" \}\)/);
+    assert.equal(/email: Object\.freeze\(\{ page: "support", tab: "email" \}\)/.test(ROUTES), false);
+    assert.match(ROUTES, /support: communicationsTabsOn\(\["email", "blog", "links"\]\)/);
   });
 });
 
@@ -56,17 +61,18 @@ describe("#3720 F — console tabs and embeds", () => {
   // #4130 Wave 6: the tab lists live in lib/supportCommunityTabs.js; Overview
   // was retired and Availability is the Support header switch, not a tab.
   it("keeps the Phase 1 tabs across the two pages", () => {
-    for (const id of ["announcements", "roadmap", "support", "email", "team"]) {
+    // #4383: announcements, roadmap and email are Communications screens.
+    for (const id of ["support", "team"]) {
       assert.match(TABS, new RegExp(`id:\\s*"${id}"`));
     }
     assert.match(PAGE, /Available for support/);
   });
 
-  it("Support and Email pages accept embedded chrome", () => {
+  // #4383: Email is a screen of its own, so it no longer takes embedded chrome.
+  it("the Support desk accepts embedded chrome; Email does not any more", () => {
     assert.match(SUPPORT, /embedded\s*=\s*false/);
-    assert.match(EMAIL, /embedded\s*=\s*false/);
+    assert.equal(/embedded/.test(EMAIL), false);
     assert.match(PAGE, /<SupportDeskPage embedded/);
-    assert.match(PAGE, /<EmailPage embedded/);
   });
 });
 

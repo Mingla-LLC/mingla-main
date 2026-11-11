@@ -146,7 +146,8 @@ describe("#4130 INT-3 Needs you today: failed announcement pushes", () => {
     assert.equal(item.title, "3 of 20 announcement pushes failed");
     assert.match(item.detail, /"Payouts in 24 hours"/);
     assert.match(item.detail, /1 older announcement has failed pushes too/);
-    assert.equal(item.href, "#/community?tab=announcements");
+    // #4383: Announcements is its own Communications screen.
+    assert.equal(item.href, "#/announcements");
     assert.equal(item.tone, "bad");
   });
   it("a failed read is its own item with Retry; nothing to report is no item", () => {

@@ -276,6 +276,18 @@ export function renderCategoryMessage(
         sms: `Mingla: ${communityExcerpt(body)}`,
       };
     }
+    // #4383 — an Admin push (Communications > Push). The copy is exactly what
+    // the admin typed, as plain text; bell + push only (no email, no SMS).
+    case "mingla_updates":
+    case "business.mingla_update": {
+      const title = communityMarkdownToPlainText(payload.title) || "Mingla update";
+      const body = communityExcerpt(payload.body, 178);
+      return {
+        push: { title: communityExcerpt(title, 65), body },
+        email: { subject: "", body: "" },
+        sms: "",
+      };
+    }
     case "business.community_reply": {
       const body = "Someone replied to your Community post.";
       return {
