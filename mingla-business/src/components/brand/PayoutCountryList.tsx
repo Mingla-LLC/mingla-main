@@ -63,6 +63,8 @@ export interface PayoutCountryListProps {
   disabled?: boolean;
   deviceLocale?: string | null;
   testID?: string;
+  /** #4389 — the selected row's view, so the screen can scroll it into view. */
+  selectedRowRef?: React.Ref<View>;
 }
 
 export const PayoutCountryList: React.FC<PayoutCountryListProps> = ({
@@ -71,6 +73,7 @@ export const PayoutCountryList: React.FC<PayoutCountryListProps> = ({
   disabled = false,
   deviceLocale = null,
   testID = "payout-country-list",
+  selectedRowRef,
 }) => {
   const [query, setQuery] = useState("");
   const rows = useMemo(() => filterPayoutCountries(query), [query]);
@@ -81,6 +84,7 @@ export const PayoutCountryList: React.FC<PayoutCountryListProps> = ({
     return (
       <Pressable
         key={o.country}
+        ref={isSel ? selectedRowRef : undefined}
         testID={`${testID}-row-${o.country}`}
         accessibilityRole="radio"
         accessibilityState={{ checked: isSel, disabled }}

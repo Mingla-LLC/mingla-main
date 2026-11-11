@@ -185,15 +185,18 @@ export interface Tree {
   unmount(): void;
 }
 export const TestRenderer = require("react-test-renderer") as {
-  create(el: React.ReactElement): Tree;
+  create(el: React.ReactElement, options?: { createNodeMock?: (el: { props: Record<string, unknown> }) => unknown }): Tree;
   act(cb: () => void | Promise<void>): Promise<void> | void;
 };
 
 const mounted: Tree[] = [];
-export async function mount(el: React.ReactElement): Promise<Tree> {
+export async function mount(
+  el: React.ReactElement,
+  options?: { createNodeMock?: (el: { props: Record<string, unknown> }) => unknown },
+): Promise<Tree> {
   let t!: Tree;
   await TestRenderer.act(async () => {
-    t = TestRenderer.create(el);
+    t = TestRenderer.create(el, options);
   });
   mounted.push(t);
   return t;

@@ -582,6 +582,20 @@ const CountryStep: React.FC<{
   // made → Continue only ("Save and finish later" hides, as the design does).
   const keyboardUp = useKeyboardIsVisible();
   const footerShown = !(keyboardUp && selected === null);
+  // #4389 (retest r3, SE): picking a result with the keyboard up brings the
+  // footer back, which left only a sliver of the picked row showing. The
+  // picked row is scrolled into view when it is picked and when the footer
+  // reappears (after that layout pass).
+  const scrollRef = useRef<RevealScroller | null>(null);
+  const scrollYRef = useRef(0);
+  const selectedRowRef = useRef<View | null>(null);
+  useEffect(() => {
+    if (selected === null) return;
+    const timer = setTimeout(() => {
+      revealRow(selectedRowRef.current, scrollRef.current, scrollYRef.current);
+    }, REVEAL_AFTER_LAYOUT_MS);
+    return () => clearTimeout(timer);
+  }, [selected, footerShown]);
   useEffect(() => {
     if (selected === null && current !== null) setSelected(current);
   }, [current, selected]);
@@ -628,7 +642,18 @@ const CountryStep: React.FC<{
 
   return (
     <>
-      <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+      <ScrollView
+        ref={scrollRef as never}
+        style={styles.body}
+        contentContainerStyle={styles.bodyContent}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        scrollEventThrottle={16}
+        onScroll={(e) => {
+          scrollYRef.current = e.nativeEvent.contentOffset.y;
+        }}
+        testID="brand-setup-country-scroll"
+      >
         <Text style={styles.h1} accessibilityRole="header">{C.f2.title}</Text>
         <Text style={styles.sub}>{C.f2.body}</Text>
         {conflict !== null ? (
@@ -645,7 +670,7 @@ const CountryStep: React.FC<{
         {locked && current !== null ? (
           <View style={styles.banner}><Text style={styles.bannerText}>{C.f2.locked(payoutCountryOption(current)?.name ?? current)}</Text></View>
         ) : null}
-        <PayoutCountryList selected={selected} onSelect={setSelected} disabled={locked || forbidden || save.isPending} deviceLocale={locale} />
+        <PayoutCountryList selectedRowRef={selectedRowRef} selected={selected} onSelect={setSelected} disabled={locked || forbidden || save.isPending} deviceLocale={locale} />
       </ScrollView>
       {footerShown ? (
       <View style={styles.footer} testID="brand-setup-country-footer">
@@ -666,6 +691,36 @@ const CountryStep: React.FC<{
     </>
   );
 };
+
+// ── reveal a row (F2) ────────────────────────────────────────────────────
+const REVEAL_AFTER_LAYOUT_MS = 60;
+const REVEAL_MARGIN = spacing.md;
+type WindowBox = { y: number; height: number };
+interface Measurable {
+  measureInWindow: (cb: (x: number, y: number, w: number, h: number) => void) => void;
+}
+interface RevealScroller extends Measurable {
+  scrollTo: (o: { y: number; animated?: boolean }) => void;
+}
+
+/** The scroll offset that shows `row` fully inside `viewport` (null: already shown). */
+export function revealOffset(row: WindowBox, viewport: WindowBox, currentY: number, margin = REVEAL_MARGIN): number | null {
+  const below = row.y + row.height + margin - (viewport.y + viewport.height);
+  if (below > 0) return currentY + below;
+  const above = viewport.y - (row.y - margin);
+  if (above > 0) return Math.max(0, currentY - above);
+  return null;
+}
+
+function revealRow(row: Measurable | null, scroller: RevealScroller | null, currentY: number): void {
+  if (row === null || scroller === null) return;
+  row.measureInWindow((_rx, ry, _rw, rh) => {
+    scroller.measureInWindow((_sx, sy, _sw, sh) => {
+      const y = revealOffset({ y: ry, height: rh }, { y: sy, height: sh }, currentY);
+      if (y !== null) scroller.scrollTo({ y, animated: true });
+    });
+  });
+}
 
 // ── F3 ───────────────────────────────────────────────────────────────────
 const PayStep: React.FC<{
