@@ -12,6 +12,9 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import { useBrandListState } from "../../hooks/useBrandListShim";
 import { usePickBrand } from "../../hooks/usePickBrand";
+// #4389 N3 — draft and free-only rows from the setup checklist.
+import { useBrandSetupStates } from "../../hooks/useBrandSetupStates";
+import { BRAND_SETUP_COPY } from "./brandSetupCopy";
 import { useBrandFollowerCounts } from "../../hooks/useBrandFollowerCount";
 import { formatExactFollowers } from "@mingla/offering-rendering/followerCount";
 import {
@@ -66,10 +69,37 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
   // country step) inside this overlay is what froze the app (a native modal
   // sheet over the overlay). "Create brand" closes the sheet and opens the
   // full-screen route.
+  const brandIds = React.useMemo(() => brands.map((b) => b.id), [brands]);
+  const setupStates = useBrandSetupStates(brandIds);
+  const draftBrand = brands.find((b) => b.id === setupStates.draftId) ?? null;
   const openCreate = useCallback((): void => {
     onClose();
-    router.push("/brand/new" as never);
-  }, [onClose, router]);
+    // #4389 N1 — one draft at a time: Create brand with a draft opens
+    // "You have a brand in progress" on the full-screen route.
+    router.push(
+      (draftBrand !== null
+        ? `/brand/new?draft=${encodeURIComponent(draftBrand.id)}&draft_name=${encodeURIComponent(draftBrand.displayName)}`
+        : "/brand/new") as never,
+    );
+  }, [draftBrand, onClose, router]);
+  const openSetup = useCallback(
+    (brand: Brand): void => {
+      onClose();
+      router.push(`/brand/${brand.id}/setup` as never);
+    },
+    [onClose, router],
+  );
+  // The discard confirm is the N1 confirm on its full-screen route, never a
+  // pop-up over this sheet (U-1).
+  const openDiscard = useCallback(
+    (brand: Brand): void => {
+      onClose();
+      router.push(
+        `/brand/new?draft=${encodeURIComponent(brand.id)}&draft_name=${encodeURIComponent(brand.displayName)}&discard=1` as never,
+      );
+    },
+    [onClose, router],
+  );
 
   const handlePick = useCallback(
     (brand: Brand): void => {
@@ -117,11 +147,20 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                     typeof followerTotal === "number"
                       ? formatExactFollowers(followerTotal)
                       : null;
-                  const subline = isActive
-                    ? followerLine === null
-                      ? "Current brand"
-                      : `${followerLine} · Current brand`
-                    : followerLine;
+                  const setupState = setupStates.byId[brand.id] ?? { kind: "none" };
+                  const setupLine =
+                    setupState.kind === "draft"
+                      ? BRAND_SETUP_COPY.n3.draft(setupState.doneCount)
+                      : setupState.kind === "free_only"
+                        ? BRAND_SETUP_COPY.n3.freeOnly
+                        : null;
+                  const subline = setupLine !== null
+                    ? setupLine
+                    : isActive
+                      ? followerLine === null
+                        ? "Current brand"
+                        : `${followerLine} · Current brand`
+                      : followerLine;
                   return (
                     <View key={brand.id} style={styles.brandRowOuter}>
                       <Pressable
@@ -144,7 +183,10 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                             {brand.displayName}
                           </Text>
                           {subline !== null ? (
-                            <Text style={styles.brandSub} numberOfLines={1}>
+                            <Text
+                              style={[styles.brandSub, setupLine !== null ? styles.brandSubSetup : null]}
+                              numberOfLines={1}
+                            >
                               {subline}
                             </Text>
                           ) : null}
@@ -153,11 +195,38 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                           <Icon name="check" size={18} color={accent.warm} />
                         ) : null}
                       </Pressable>
+                      {setupLine !== null ? (
+                        <Pressable
+                          onPress={() => openSetup(brand)}
+                          onLongPress={
+                            setupState.kind === "draft" && canDeleteBrand(brand, user?.id ?? null)
+                              ? () => openDiscard(brand)
+                              : undefined
+                          }
+                          accessibilityRole="button"
+                          accessibilityLabel={`${BRAND_SETUP_COPY.n3.continue} ${brand.displayName}`}
+                          style={styles.rowContinueBtn}
+                          testID={`brand-switcher-continue-${brand.id}`}
+                        >
+                          <Text style={styles.rowContinueLabel}>{BRAND_SETUP_COPY.n3.continue}</Text>
+                        </Pressable>
+                      ) : null}
                       {/* Issue #1835 — PER-ROW gate, deliberately not a
                           sheet-level one. The switcher lists every brand you can
                           reach, owned or merely administered, so the trash must
                           be decided per brand: shown only on rows you own. */}
-                      {onRequestDeleteBrand !== undefined &&
+                      {setupState.kind === "draft" && canDeleteBrand(brand, user?.id ?? null) ? (
+                        <Pressable
+                          onPress={() => openDiscard(brand)}
+                          accessibilityRole="button"
+                          accessibilityLabel={`${BRAND_SETUP_COPY.n3.discard}: ${brand.displayName}`}
+                          hitSlop={8}
+                          style={styles.rowDeleteBtn}
+                          testID={`brand-switcher-discard-${brand.id}`}
+                        >
+                          <Icon name="moreH" size={16} color={textTokens.tertiary} />
+                        </Pressable>
+                      ) : onRequestDeleteBrand !== undefined &&
                       canDeleteBrand(brand, user?.id ?? null) ? (
                         <Pressable
                           onPress={() => {
@@ -195,6 +264,18 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
 };
 
 const styles = StyleSheet.create({
+  brandSubSetup: { color: accent.warm },
+  rowContinueBtn: {
+    minHeight: 32,
+    paddingHorizontal: spacing.md,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: spacing.xs,
+  },
+  rowContinueLabel: { ...typography.caption, color: textTokens.primary, fontWeight: "600" },
   host: { flex: 1 },
   header: {
     flexDirection: "row",

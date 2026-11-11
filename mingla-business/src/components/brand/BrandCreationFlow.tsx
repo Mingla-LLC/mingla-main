@@ -655,8 +655,10 @@ export const DraftInProgress: React.FC<{
   draftName: string;
   onContinue: () => void;
   onDiscarded: () => void;
-}> = ({ draftId, draftName, onContinue, onDiscarded }) => {
-  const [confirming, setConfirming] = useState(false);
+  /** #4389 N3 — "Discard draft" from the switcher opens straight on the confirm. */
+  startConfirming?: boolean;
+}> = ({ draftId, draftName, onContinue, onDiscarded, startConfirming = false }) => {
+  const [confirming, setConfirming] = useState(startConfirming);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const discard = async (): Promise<void> => {

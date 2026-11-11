@@ -145,3 +145,6 @@ export const TAP_SEND_RECEIPT = "Send receipt";
 
 /** Every Tap to Pay screen that isn't a success offers this; it opens Help & Support. */
 export const TAP_GET_HELP = "Get help";
+
+/** #4389 S-i — Tap to Pay has no usable card-payment address: open T1. */
+export const TAP_ADDRESS_MISSING_COPY = "Add the address where you'll take card payments";

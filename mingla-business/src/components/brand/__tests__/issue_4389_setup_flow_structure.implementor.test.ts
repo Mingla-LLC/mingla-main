@@ -34,7 +34,8 @@ describe("#4389 freeze designed out (U-1, SC-14)", () => {
     );
     expect(importers.sort()).toEqual(["app/brand/[id]/setup.tsx", "app/brand/new.tsx"]);
     expect(read("src/components/brand/BrandSwitcherSheet.tsx")).not.toMatch(/LazyBrandCreationFlow|BrandCreationFlow\b/);
-    expect(read("src/components/brand/BrandSwitcherSheet.tsx")).toContain('router.push("/brand/new"');
+    // #4389 N1 — Create brand opens /brand/new (or N1 when a draft exists).
+    expect(read("src/components/brand/BrandSwitcherSheet.tsx")).toContain(': "/brand/new") as never,');
   });
 
   test("2 — the bank-country step is inline: no Sheet or Modal in the list", () => {
@@ -106,5 +107,44 @@ describe("#4389 T1 address from a picked place", () => {
     expect(noNumber).toMatchObject({ ok: false, missing: "building_number" });
     expect(withBuildingNumber("N Milwaukee Ave", "1520")).toBe("1520 N Milwaukee Ave");
     expect(tapAddressFromPlace({ ...base, line1: "1 A St", countryCode: "GB" }, "US")).toMatchObject({ ok: false, missing: "wrong_country" });
+  });
+});
+
+// ── The bank-country list, rendered: search narrows, a tap picks ─────────
+/* eslint-disable import/first, @typescript-eslint/no-require-imports */
+import React from "react";
+import { PayoutCountryList } from "../PayoutCountryList";
+
+const TR = require("react-test-renderer") as {
+  create(el: React.ReactElement): {
+    root: { findAll(fn: (n: { props: Record<string, unknown> }) => boolean): Array<{ props: Record<string, unknown> }> };
+    unmount(): void;
+  };
+  act(cb: () => void): void;
+};
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+describe("#4389 F2 list, rendered", () => {
+  test("rows read '{country}, {currency}'; search narrows; tapping a row picks it", () => {
+    const picked: string[] = [];
+    let tree!: ReturnType<typeof TR.create>;
+    TR.act(() => {
+      tree = TR.create(
+        React.createElement(PayoutCountryList, { selected: null, onSelect: (c: string) => picked.push(c) }),
+      );
+    });
+    const rows = () =>
+      tree.root.findAll(
+        (n) => typeof n.props.testID === "string" && (n.props.testID as string).startsWith("payout-country-list-row-") && typeof n.props.onPress === "function",
+      );
+    expect(rows().length).toBeGreaterThanOrEqual(35);
+    const search = tree.root.findAll((n) => n.props.testID === "payout-country-list-search" && typeof n.props.onChangeText === "function")[0];
+    TR.act(() => (search?.props.onChangeText as (t: string) => void)("canad"));
+    const canada = rows().find((r) => r.props.accessibilityLabel === "Canada, CAD");
+    expect(canada).toBeDefined();
+    expect(rows().some((r) => r.props.accessibilityLabel === "Nigeria, NGN")).toBe(false);
+    TR.act(() => (canada?.props.onPress as () => void)());
+    expect(picked).toEqual(["CA"]);
+    TR.act(() => tree.unmount());
   });
 });

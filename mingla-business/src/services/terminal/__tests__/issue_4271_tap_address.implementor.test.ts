@@ -125,9 +125,9 @@ describe("#4271 tap-address: setup says exactly what to add", () => {
         throw new DoorTapError("tap_not_available", "address_missing");
       }),
     ).resolves.toEqual({ kind: "failed", message: TAP_ADDRESS_MISSING_COPY });
-    expect(TAP_ADDRESS_MISSING_COPY).toBe(
-      "Add your brand's full address (street, city, state and ZIP) in brand settings, then run setup again.",
-    );
+    // #4389 S-i — the address now comes from the payment account; when it has
+    // none, setup opens T1 instead of sending the host to brand settings.
+    expect(TAP_ADDRESS_MISSING_COPY).toBe("Add the address where you'll take card payments");
   });
 
   test("a brand whose address is complete sets up as before", async () => {

@@ -1,7 +1,7 @@
 /**
  * #4389 A1–A5 — Ari's setup cards and the client redaction (AR-3).
  */
-import { describe, expect, test } from "@jest/globals";
+import { describe, expect, jest, test } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -76,5 +76,70 @@ describe("#4389 A3 / A4", () => {
     expect(src).toContain('if (toolName === "start_door_sale" && route !== null)');
     expect(ARI_SETUP_COPY.a4.secureBody).toBe("Bank and ID details are entered on a secure screen, not in chat.");
     expect(read("../AriChatScreen.tsx")).toContain("onOpenRoute={(route) => router.push(route as never)}");
+  });
+});
+
+// ── A1 / A2 / A5 cards, rendered ────────────────────────────────────────
+/* eslint-disable import/first, @typescript-eslint/no-require-imports */
+import React from "react";
+import { AriSensitiveNotice, AriSetupCard } from "../../../components/ari/AriSetupCard";
+
+const TR = require("react-test-renderer") as {
+  create(el: React.ReactElement): {
+    root: { findAll(fn: (n: { props: Record<string, unknown> }) => boolean): Array<{ props: Record<string, unknown> }> };
+    toJSON(): unknown;
+    unmount(): void;
+  };
+  act(cb: () => void): void;
+};
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+function mount(el: React.ReactElement) {
+  let tree!: ReturnType<typeof TR.create>;
+  TR.act(() => {
+    tree = TR.create(el);
+  });
+  return tree;
+}
+const press = (tree: ReturnType<typeof TR.create>, id: string): void => {
+  const node = tree.root.findAll((n) => n.props.testID === id && typeof n.props.onPress === "function")[0];
+  if (!node) throw new Error(`no ${id}`);
+  TR.act(() => (node.props.onPress as () => void)());
+};
+
+describe("#4389 cards render from their inputs", () => {
+  test("A1: four rows, About 3 minutes, both buttons work", () => {
+    const onSetUp = jest.fn();
+    const onWithAri = jest.fn();
+    const tree = mount(React.createElement(AriSetupCard, { brandName: null, doneCount: 0, onSetUp, onWithAri }));
+    const text = JSON.stringify(tree.toJSON());
+    for (const t of ["Set up your brand", "About 3 minutes", "Brand name", "Bank country", "Organiser Terms", "Payment details"]) {
+      expect(text).toContain(t);
+    }
+    press(tree, "ari-setup-start");
+    press(tree, "ari-setup-with-ari");
+    expect(onSetUp).toHaveBeenCalledTimes(1);
+    expect(onWithAri).toHaveBeenCalledTimes(1);
+    tree.unmount();
+  });
+  test("A2: progress from doneCount; waiting for a client hides Continue", () => {
+    const tree = mount(React.createElement(AriSetupCard, { brandName: "Lantern Room", doneCount: 2, waitingFor: "Ada", onSetUp: jest.fn() }));
+    const text = JSON.stringify(tree.toJSON());
+    expect(text).toContain("2 of 4 done");
+    expect(text).toContain("Waiting for Ada");
+    expect(tree.root.findAll((n) => n.props.testID === "ari-setup-continue")).toHaveLength(0);
+    const bar = tree.root.findAll((n) => n.props.accessibilityRole === "progressbar")[0];
+    expect(bar?.props.accessibilityValue).toEqual({ min: 0, max: 4, now: 2 });
+    tree.unmount();
+  });
+  test("complete collapses to All set; A5 notice opens the secure screen", () => {
+    const done = mount(React.createElement(AriSetupCard, { brandName: "X", doneCount: 4, state: "complete", onSetUp: jest.fn() }));
+    expect(JSON.stringify(done.toJSON())).toContain("All set");
+    done.unmount();
+    const onOpen = jest.fn();
+    const notice = mount(React.createElement(AriSensitiveNotice, { onOpen }));
+    press(notice, "ari-sensitive-open");
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    notice.unmount();
   });
 });

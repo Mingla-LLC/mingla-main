@@ -23,7 +23,7 @@ import {
 } from "react-native";
 
 import { durations, spacing, text as textTokens, typography } from "../../../constants/designSystem";
-import { TAP_GET_HELP } from "../../../constants/tapToPayCopy";
+import { TAP_ADDRESS_MISSING_COPY, TAP_GET_HELP } from "../../../constants/tapToPayCopy";
 import { useReduceMotion } from "../../../hooks/useMotionPreferences";
 import { Button } from "../../ui/Button";
 import { Icon, type IconName } from "../../ui/Icon";
@@ -229,3 +229,26 @@ const styles = StyleSheet.create({
     textDecorationLine: "underline",
   },
 });
+
+/**
+ * #4389 S-i / T1 — Tap to Pay has no usable address for this brand: say so and
+ * open the one address screen (T1). Never a dead end. The caller passes its
+ * own navigation (shared Tap to Pay components take no router, #4271).
+ */
+export const TapAddressMissing = ({
+  onAddAddress,
+  onHelp,
+}: {
+  onAddAddress: () => void;
+  onHelp?: (() => void) | null;
+}): React.ReactElement => (
+  <TapStatusView
+    tone="neutral"
+    icon="location"
+    title={TAP_ADDRESS_MISSING_COPY}
+    body={null}
+    primary={{ label: "Add address", onPress: onAddAddress, testID: "tap-add-address" }}
+    onHelp={onHelp}
+    testID="tap-address-missing"
+  />
+);

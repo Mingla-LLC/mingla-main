@@ -76,3 +76,60 @@ describe("#4389 AR-13 confirmation bound to its brand", () => {
     expect(edge).toContain("pending.related_brand_id ?? conversationTask?.row.brand_id ?? null");
   });
 });
+
+// ── R-16 sheet, rendered ────────────────────────────────────────────────
+/* eslint-disable import/first, @typescript-eslint/no-require-imports */
+import { jest } from "@jest/globals";
+import React from "react";
+
+jest.mock("../../../components/ui/Sheet", () => {
+  const RN = jest.requireActual("react-native") as typeof import("react-native");
+  const R = jest.requireActual("react") as typeof React;
+  return {
+    Sheet: (p: { visible: boolean; children?: React.ReactNode }) =>
+      p.visible ? R.createElement(RN.View, null, p.children) : null,
+  };
+});
+jest.mock("../../../components/ui/Button", () => {
+  const RN = jest.requireActual("react-native") as typeof import("react-native");
+  const R = jest.requireActual("react") as typeof React;
+  return {
+    Button: (p: { label: string; onPress: () => void; testID?: string }) =>
+      R.createElement(RN.Pressable, { onPress: p.onPress, testID: p.testID, accessibilityLabel: p.label }),
+  };
+});
+
+const TR = require("react-test-renderer") as {
+  create(el: React.ReactElement): { root: { findAll(fn: (n: { props: Record<string, unknown> }) => boolean): Array<{ props: Record<string, unknown> }> }; unmount(): void };
+  act(cb: () => void): void;
+};
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+import { AriBrandSwitchConfirmSheet } from "../../../components/ari/AriBrandSwitchConfirmSheet";
+
+describe("#4389 R-16 the question, rendered", () => {
+  test("Switch and Stay call through; hidden when not visible", () => {
+    const onSwitch = jest.fn();
+    const onStay = jest.fn();
+    let tree!: ReturnType<typeof TR.create>;
+    TR.act(() => {
+      tree = TR.create(
+        React.createElement(AriBrandSwitchConfirmSheet, {
+          visible: true,
+          currentBrandName: "Moonlight",
+          nextBrandName: "Lantern Room",
+          onSwitch,
+          onStay,
+        }),
+      );
+    });
+    const byId = (id: string) =>
+      tree.root.findAll((n) => n.props.testID === id && typeof n.props.accessibilityLabel === "string")[0];
+    expect(byId("ari-brand-switch-confirm")?.props.accessibilityLabel).toBe("Switch to Lantern Room");
+    expect(byId("ari-brand-switch-stay")?.props.accessibilityLabel).toBe("Stay on Moonlight");
+    TR.act(() => (byId("ari-brand-switch-confirm")?.props.onPress as () => void)());
+    TR.act(() => (byId("ari-brand-switch-stay")?.props.onPress as () => void)());
+    expect(onSwitch).toHaveBeenCalledTimes(1);
+    expect(onStay).toHaveBeenCalledTimes(1);
+    TR.act(() => tree.unmount());
+  });
+});

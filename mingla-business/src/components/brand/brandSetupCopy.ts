@@ -105,6 +105,12 @@ export const BRAND_SETUP_COPY = {
     discardError: (brand: string): string => `We couldn't discard ${brand}. Try again.`,
     discarded: (brand: string): string => `${brand} discarded.`,
   },
+  n3: {
+    draft: (n: number): string => `Draft · ${n} of 4`,
+    freeOnly: "Free events only · Finish setup",
+    continue: "Continue",
+    discard: "Discard draft",
+  },
   t1: {
     title: "Where will you take card payments?",
     helper: "Only used for Tap to Pay on iPhone. Not shown to guests.",
