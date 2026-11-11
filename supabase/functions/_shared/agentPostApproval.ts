@@ -33,6 +33,7 @@ import {
   dedupeReplySentences,
   recentRecordEvidence,
 } from "./ariClaimCheck.ts";
+import { objectStatusReadPlan } from "./ariStatusRead.ts";
 import {
   AGENT_TOOLS,
   findTool,
@@ -473,6 +474,21 @@ export async function checkPostApprovalClaims(args: {
         since: args.since ?? new Date().toISOString(),
         objects: named,
       }),
+    // #3355 rework 5b: the object status read for the approved write's
+    // object (and anything else the reply's status words name).
+    statusRead: objectStatusReadPlan({
+      client: args.client,
+      brandId: args.brandId ??
+        (typeof args.toolArgs.brand_id === "string"
+          ? args.toolArgs.brand_id
+          : null),
+      text: args.text,
+      cards: [{
+        toolName: args.toolName,
+        args: args.toolArgs,
+        object: objects[0] ?? null,
+      }],
+    }),
     askedWriteThisTurn: false,
     // The host's message is the request they just approved, not a new one.
     approved: true,

@@ -250,12 +250,20 @@ export interface ClaimEvidence {
    * so its row state is the current truth for a status claim.
    */
   fresh?: boolean;
+  /**
+   * #3355 rework 5b: a row of this turn's object status read
+   * (ariStatusRead.ts): an event, trip, experience, stay, venue, tier,
+   * blast, website, refund or payout readiness, in its current state.
+   */
+  statusRow?: boolean;
 }
 
 /** The state one read row shows. */
 export interface ReadState {
   live: boolean;
   label: string;
+  /** Rework 5b: every tier sold (unknown when undefined). */
+  soldOut?: boolean;
 }
 
 /** What a tool's object is, for matching a claim that names no object. */
@@ -349,6 +357,11 @@ export function rowReadState(
   const status = typeof record.status === "string"
     ? record.status.trim().toLowerCase()
     : null;
+  // Rework 5b: an offering row (`events.status`) says "scheduled" for
+  // published-and-upcoming; it is published, not inactive.
+  if (status === "scheduled" && typeof record.event_type === "string") {
+    return { live: true, label: "published" };
+  }
   if (status && INACTIVE_STATUS.test(status)) {
     return { live: false, label: status === "canceled" ? "cancelled" : status };
   }
@@ -755,6 +768,19 @@ export interface ClaimJudgement {
    * never asserts it.
    */
   unverified?: boolean;
+  /** Rework 5b: the kind an unverified status is about (its place to look). */
+  unverifiedKind?: AriClaimKind;
+  /** Rework 5b: the true state, said in place of the claim. */
+  say?: string;
+}
+
+/**
+ * #3355 rework 5b: this turn's object status read (ariStatusRead.ts): the
+ * kinds it read and the kinds whose read failed or ran past its cap.
+ */
+export interface StatusFresh {
+  ok: ReadonlySet<AriClaimKind>;
+  failed: ReadonlySet<AriClaimKind>;
 }
 
 /**
@@ -780,6 +806,8 @@ export interface ClaimContext {
   hostMessage?: string;
   /** This turn's fresh records read; undefined when none is wired. */
   fresh?: FreshRead;
+  /** Rework 5b: this turn's object status read; undefined when not wired. */
+  status?: StatusFresh;
   /**
    * The host's write was just approved (the post-approval continuation):
    * their message is that request, not a new one.
@@ -953,6 +981,280 @@ function decide(
   return decideRecords(claim, fit, object);
 }
 
+// ── #3355 rework 5b: status claims about every object Ari changes ──────────
+
+/**
+ * The object kinds whose status the fresh object status read covers
+ * (ariStatusRead.ts): events / RSVPs, trips, experiences, stays, venues,
+ * ticket tiers, blasts, the brand website, refunds and payout readiness.
+ */
+export const STATUS_READ_KINDS: ReadonlySet<AriClaimKind> = new Set<
+  AriClaimKind
+>([
+  "event",
+  "trip",
+  "experience",
+  "stay",
+  "venue",
+  "ticket",
+  "message",
+  "website",
+  "refund",
+  "payout",
+]);
+
+const STATUS_KIND_WORDS: ReadonlyArray<[RegExp, AriClaimKind]> = [
+  [/\b(?:events?|rsvps?|party|parties|show|gig|concert)\b/i, "event"],
+  [/\btrips?\b/i, "trip"],
+  [/\bexperiences?\b/i, "experience"],
+  [/\b(?:stays?|rooms?|booking\s+page)\b/i, "stay"],
+  [/\b(?:venues?|listings?)\b/i, "venue"],
+  [/\b(?:tiers?|tickets?)\b/i, "ticket"],
+  [/\b(?:blasts?|campaigns?|newsletters?|broadcasts?)\b/i, "message"],
+  [/\b(?:website|site)\b/i, "website"],
+  [/\brefund(?:s|ed)?\b/i, "refund"],
+  [/\bpayouts?\b|\bpaid\s+out\b/i, "payout"],
+];
+
+/** The status kinds a text's words name. */
+export function statusKindsInText(text: string): Set<AriClaimKind> {
+  const out = new Set<AriClaimKind>();
+  for (const [pattern, kind] of STATUS_KIND_WORDS) {
+    if (pattern.test(text)) out.add(kind);
+  }
+  return out;
+}
+
+/** What one object status read found (ariStatusRead.ts). */
+export interface StatusReadResult {
+  records: ClaimEvidence[];
+  okKinds: AriClaimKind[];
+  failedKinds: AriClaimKind[];
+}
+
+/** The status read a caller wires: the kinds it covers, and the read. */
+export interface StatusReadPlan {
+  kinds: ReadonlySet<AriClaimKind>;
+  read: () => Promise<StatusReadResult>;
+}
+
+/** The state a status claim asserts. */
+export type WantedStatus = "live" | "sent" | "sold_out" | "cancelled";
+
+/** The positive words each kind's status is claimed in. */
+const STATUS_WORDS: Partial<Record<AriClaimKind, RegExp>> = {
+  event:
+    /\b(?:live|published|on\s+sale|active|open\s+for\s+(?:bookings|rsvps|sales))\b/i,
+  trip: /\b(?:live|published|on\s+sale|active|open\s+for\s+bookings)\b/i,
+  experience: /\b(?:live|published|on\s+sale|active|open\s+for\s+bookings)\b/i,
+  stay: /\b(?:live|published|active|open\s+for\s+bookings|bookable)\b/i,
+  venue: /\b(?:approved|verified|live|published)\b/i,
+  ticket: /\b(?:on\s+sale|live|active|available)\b/i,
+  message:
+    /\b(?:sent|went\s+out|gone\s+out|delivered|been\s+sent|has\s+gone)\b/i,
+  website: /\b(?:published|live|up\s+and\s+running)\b/i,
+  refund:
+    /\b(?:refunded|processed|went\s+through|gone\s+through|completed|issued|been\s+sent|sent)\b/i,
+  payout: /\b(?:ready|set\s+up|connected|enabled|active|turned\s+on)\b/i,
+};
+
+const SOLD_OUT = /\bsold\s+out\b/i;
+const CONDITIONAL =
+  /\b(?:once|when|whenever|after|if|until|before|as\s+soon\s+as)\b/i;
+const DESCRIBED_OBJECT =
+  /^(?:your|the|this|that|my|our|it|its)\b|^(?:event|trip|experience|stay|venue|tier|ticket|blast|campaign|website|site|refund|payouts?)s?$/i;
+
+/** The status kinds a claim is about (none for codes, notes, tickets). */
+export function statusKindsOf(claim: AriClaim): Set<AriClaimKind> {
+  if (
+    claim.kind === "discount" || claim.kind === "note" ||
+    claim.kind === "support" || claim.kind === "team"
+  ) return new Set();
+  if (claim.object && isCodeObject(claim.object)) return new Set();
+  const out = new Set<AriClaimKind>();
+  if (STATUS_READ_KINDS.has(claim.kind)) out.add(claim.kind);
+  if (out.size === 0) {
+    for (
+      const kind of statusKindsInText(`${claim.quote} ${claim.object ?? ""}`)
+    ) out.add(kind);
+  }
+  return out;
+}
+
+/**
+ * The status a claim asserts about an object of a status kind ("Your event
+ * is published": live; "The blast went out": sent; "It's sold out":
+ * sold_out; "Your trip has been cancelled": cancelled), or null when it
+ * asserts none (a proposal, a plan, a negation, an instruction).
+ */
+export function statusWanted(claim: AriClaim): WantedStatus | null {
+  const kinds = statusKindsOf(claim);
+  if (kinds.size === 0 || claim.action === "proposed") return null;
+  const words = claim.quote.replace(/[*_`]/g, "");
+  if (NEGATED_STATE.test(words) || FUTURE_STATE.test(words)) return null;
+  if (SOLD_OUT.test(words)) return "sold_out";
+  if (claim.action === "cancelled" || claim.action === "deleted") {
+    return "cancelled";
+  }
+  if (claim.action === "scheduled") return null;
+  for (const kind of kinds) {
+    if (kind === "message") {
+      if (
+        claim.action === "sent" || claim.action === "notified" ||
+        claim.action === "shared" || STATUS_WORDS.message?.test(words)
+      ) return "sent";
+      continue;
+    }
+    if (kind === "refund") return "live";
+    if (
+      STATUS_WORDS[kind]?.test(words) ||
+      ((claim.action === "live" || claim.action === "published") &&
+        kind !== "payout")
+    ) return "live";
+  }
+  return null;
+}
+
+/** Whether a row's current state shows what the claim asserts. */
+function statusBacks(wanted: WantedStatus, state: ReadState): boolean {
+  switch (wanted) {
+    case "live":
+    case "sent":
+      return state.live;
+    case "sold_out":
+      return state.soldOut === true;
+    case "cancelled":
+      return /cancel|ended|turned\s+off|no\s+longer|not\s+approved|revoked|suspended|archived|deleted/
+        .test(state.label);
+    default: {
+      const never: never = wanted;
+      return Boolean(never);
+    }
+  }
+}
+
+/** How a status kind is called when the reply names no title. */
+const KIND_NOUN: Partial<Record<AriClaimKind, string>> = {
+  event: "your event",
+  trip: "your trip",
+  experience: "your experience",
+  stay: "your stay",
+  venue: "your venue",
+  ticket: "your ticket tier",
+  message: "your blast",
+  website: "your website",
+  refund: "the refund",
+  payout: "your payouts",
+};
+
+/** Where the host sees the current status of a kind. */
+const STATUS_PLACE: Partial<Record<AriClaimKind, string>> = {
+  discount: "Marketing, under Discounts",
+  event: "Events",
+  trip: "Events",
+  experience: "Events",
+  ticket: "the event's tickets",
+  message: "Marketing, under Blasts",
+};
+
+function displayName(item: ClaimEvidence, fallback: string): string {
+  const name = item.objects.find((object) => object.trim().length > 0);
+  return name && name.length <= 80 ? name.trim() : fallback;
+}
+
+/** The true state, said in place of a contradicted status claim. */
+function statusSentence(
+  wanted: WantedStatus,
+  row: ClaimEvidence,
+  kind: AriClaimKind,
+): string {
+  const name = displayName(row, KIND_NOUN[kind] ?? "it");
+  const state = row.readState as ReadState;
+  const subject = /^(?:your|the)\b/i.test(name)
+    ? name.charAt(0).toUpperCase() + name.slice(1)
+    : name;
+  if (wanted === "sold_out" && state.live) {
+    return state.soldOut === false
+      ? `${subject} still has tickets available.`
+      : `I couldn't check whether ${name} is sold out just now.`;
+  }
+  return `Your records show ${name} as ${state.label}.`;
+}
+
+/**
+ * #3355 rework 5b (Seth 2026-11-11 "check all"): a status claim about an
+ * event, RSVP, trip, experience, stay, venue, tier, blast, website, refund
+ * or payout readiness is decided by THIS turn's read rows of the object
+ * (the object status read or the loop's own read): a fresh row beats any
+ * older receipt or card. When that kind's read failed or ran past its cap,
+ * the status is never asserted ("I couldn't check …") unless a write saved
+ * in this very turn backs it. Null: not a status claim of these kinds (the
+ * code, note and ticket rules decide).
+ */
+function statusJudgement(
+  claim: AriClaim,
+  evidence: readonly ClaimEvidence[],
+  context: ClaimContext,
+): ClaimJudgement | null {
+  const wanted = statusWanted(claim);
+  if (!wanted) return null;
+  const kinds = statusKindsOf(claim);
+  const kind = [...kinds][0];
+  const rows = evidence.filter((item) =>
+    item.status === "read" && item.fresh && item.readState &&
+    kinds.has(item.kind)
+  );
+  const object = claim.object && !DESCRIBED_OBJECT.test(claim.object.trim())
+    ? claim.object
+    : null;
+  let pool = object
+    ? rows.filter((item) => objectsMatch(object, item.objects))
+    : [];
+  if (pool.length === 0 && !object) {
+    pool = rows.filter((item) => item.thisTurn);
+  }
+  if (pool.length > 0) {
+    const backing = [...pool].reverse().find((item) =>
+      statusBacks(wanted, item.readState as ReadState)
+    );
+    if (backing) return { backed: true, found: backing, object: claim.object };
+    const latest = pool[pool.length - 1];
+    return {
+      backed: false,
+      found: latest,
+      object: claim.object,
+      say: statusSentence(wanted, latest, kind),
+    };
+  }
+  const failed = context.status &&
+    [...kinds].some((item) => context.status?.failed.has(item));
+  if (failed && wanted !== "cancelled") {
+    const savedNow = evidence.some((item) =>
+      item.thisTurn && item.status === "done" && kinds.has(item.kind)
+    );
+    if (!savedNow) {
+      // Unnamed ("your event"): the one card of the kind in the chat names it.
+      const titles = [
+        ...new Set(
+          evidence.flatMap((item) =>
+            item.state?.object && kinds.has(item.kind)
+              ? [item.state.object]
+              : []
+          ),
+        ),
+      ];
+      return {
+        backed: false,
+        found: null,
+        object: object ?? (titles.length === 1 ? titles[0] : claim.object),
+        unverified: true,
+        unverifiedKind: kind,
+      };
+    }
+  }
+  return null;
+}
+
 /** Every named object must be backed; the first unbacked one decides. */
 function judgeEach(
   claim: AriClaim,
@@ -994,6 +1296,10 @@ export function judgeClaim(
   evidence: readonly ClaimEvidence[],
   context: ClaimContext = {},
 ): ClaimJudgement {
+  // Rework 5b: a status claim about an event, trip, blast, website … is
+  // decided by this turn's read of that object first.
+  const status = statusJudgement(claim, evidence, context);
+  if (status) return status;
   const kinds = claimKinds(claim);
   const fresh = context.fresh;
   const together = codesListedTogether(claim.quote, context.chatObjects ?? []);
@@ -1126,9 +1432,21 @@ const KIND_ABSENT: Partial<Record<AriClaimKind, string>> = {
   team: "I don't see an invitation sent from this chat yet.",
 };
 
-/** R5 (fresh reads): the status could not be checked in this turn. */
-export function unverifiedStatusSentence(named: string): string {
-  return `I couldn't check ${named}'s current status just now. You can see it in Marketing, under Discounts.`;
+/**
+ * R5 (fresh reads): the status could not be checked in this turn. Rework
+ * 5b: for every status kind, with the place the host sees it.
+ */
+export function unverifiedStatusSentence(
+  named: string,
+  kind: AriClaimKind = "discount",
+): string {
+  const owner = /s$/i.test(named) ? `${named}'` : `${named}'s`;
+  const place = STATUS_PLACE[kind];
+  return `I couldn't check ${owner} current status just now. ${
+    place
+      ? `You can see it in ${place}.`
+      : "You can see it on its page in Mingla Host."
+  }`;
 }
 
 function namedObject(object: string | null): string | null {
@@ -1153,6 +1471,18 @@ function trueStateSentence(args: {
   const found = judged.found;
   const object = judged.object ?? claim.object;
   const named = namedObject(object);
+  // Rework 5b: a status kind's read decided it (or could not run).
+  if (judged.say) return judged.say;
+  if (judged.unverified && judged.unverifiedKind) {
+    const title = object && !DESCRIBED_OBJECT.test(object.trim()) &&
+        object.length <= 60
+      ? object.replace(/^["“'‘]|["”'’]$/g, "")
+      : null;
+    return unverifiedStatusSentence(
+      title ?? KIND_NOUN[judged.unverifiedKind] ?? "it",
+      judged.unverifiedKind,
+    );
+  }
   if (judged.unverified && named) return unverifiedStatusSentence(named);
   if (found?.state) return writeStateText(found.state);
   // R4-4: the read shows another state ("expired"): say what it shows.
@@ -1436,6 +1766,69 @@ function kindOfSentence(sentence: string): AriClaimKind {
   return "other";
 }
 
+/**
+ * Rework 5b: the subject of a status fact ("your event", "the VIP tier",
+ * "your Friday blast") and the state verb that asserts it.
+ */
+const STATUS_SUBJECT =
+  /\b(?:your|the|this)\s+(?:[\p{L}\p{N}'’-]+\s+){0,3}?(?:events?|rsvps?|trips?|experiences?|stays?|venues?|listings?|tiers?|tickets?|blasts?|campaigns?|newsletters?|website|site|refunds?|payouts?)\b/iu;
+const STATUS_VERB =
+  /\b(?:is|are|was|were|has\s+been|have\s+been|now|went|has\s+gone|have\s+gone|got)\b|['’]s\b|['’]re\b/i;
+
+/**
+ * Rework 5b: a status said as fact about an object of a status kind ("Your
+ * event is published", "The blast went out", "Lagos Night Out is sold
+ * out"), when this turn's object status read is wired. Negations, plans,
+ * conditions ("once published, …") and questions are never a fact.
+ */
+function statusFact(
+  plain: string,
+  names: ReadonlyArray<{ name: string; kind: AriClaimKind }>,
+):
+  | { action: AriClaimAction; kind: AriClaimKind; object: string | null }
+  | null {
+  if (
+    /\?\s*$/.test(plain) || NEGATED_STATE.test(plain) ||
+    FUTURE_STATE.test(plain) || CONDITIONAL.test(plain) ||
+    !STATUS_VERB.test(plain)
+  ) return null;
+  let kind: AriClaimKind | null = null;
+  let object: string | null = null;
+  const subject = STATUS_SUBJECT.exec(plain)?.[0];
+  if (subject) {
+    kind = [...statusKindsInText(subject)][0] ?? null;
+  } else {
+    const hit = names.find((item) =>
+      item.name.trim().length >= 4 &&
+      new RegExp(
+        `(?:^|[^\\p{L}\\p{N}])${
+          escapeRegExp(item.name.trim())
+        }(?![\\p{L}\\p{N}])`,
+        "iu",
+      ).test(plain)
+    );
+    if (hit) {
+      kind = hit.kind;
+      object = hit.name.trim();
+    }
+  }
+  if (!kind) return null;
+  const words = STATUS_WORDS[kind];
+  if (SOLD_OUT.test(plain) && (kind !== "message" && kind !== "payout")) {
+    return { action: "live", kind, object };
+  }
+  if (!words?.test(plain)) return null;
+  return {
+    action: kind === "message"
+      ? "sent"
+      : kind === "refund"
+      ? "completed"
+      : "live",
+    kind,
+    object,
+  };
+}
+
 /** A deterministic claim; `bare` is a status exclamation alone. */
 interface SentenceClaim extends AriClaim {
   bare?: boolean;
@@ -1467,6 +1860,10 @@ export function deterministicClaims(args: {
   hostCodes: readonly string[];
   /** What the host asked for (a status said on a write turn is about it). */
   askedKinds?: ReadonlySet<AriClaimKind>;
+  /** Rework 5b: this turn's object status read, when wired. */
+  status?: StatusFresh;
+  /** Rework 5b: the names that read found, with their kind. */
+  statusNames?: ReadonlyArray<{ name: string; kind: AriClaimKind }>;
 }): SentenceClaim[] {
   const objects = args.objects.filter((object) => object.trim().length >= 3);
   const skip = args.skip.map(normalise).filter((item) => item.length >= 3);
@@ -1532,6 +1929,15 @@ export function deterministicClaims(args: {
       if (TEAM_DONE.test(plain)) {
         claim("added", "team");
         continue;
+      }
+      // Rework 5b: an object's status said as fact, held to this turn's
+      // object status read (codes keep their own rule below).
+      if (args.status && codes.length === 0) {
+        const fact = statusFact(plain, args.statusNames ?? []);
+        if (fact) {
+          claim(fact.action, fact.kind, fact.object);
+          continue;
+        }
       }
       if (/[✅✔]/u.test(plain)) {
         claim(
@@ -1637,6 +2043,8 @@ export function fallbackStripClaims(args: {
   /** Quotes the model's check already decided. */
   skip?: readonly string[];
   approved?: boolean;
+  /** Rework 5b: this turn's object status read, when wired. */
+  status?: StatusFresh;
 }): { text: string; removed: string[] } {
   const context: ClaimContext = {
     hostNamed: hostNamedCodes(args.hostMessage ?? "", args.objects),
@@ -1644,6 +2052,7 @@ export function fallbackStripClaims(args: {
     askedWriteThisTurn: args.askedWriteThisTurn ?? false,
     hostMessage: args.hostMessage ?? "",
     fresh: args.fresh,
+    ...(args.status ? { status: args.status } : {}),
     ...(args.approved ? { approved: true } : {}),
   };
   const claims = deterministicClaims({
@@ -1654,6 +2063,13 @@ export function fallbackStripClaims(args: {
     skip: args.skip ?? [],
     hostCodes: context.hostNamed ?? [],
     askedKinds: askedKindsOf(args.askedKinds, args.hostMessage ?? ""),
+    status: args.status,
+    statusNames: args.evidence.flatMap((item) =>
+      item.statusRow
+        ? item.objects.filter((name) => !DESCRIBED_OBJECT.test(name.trim()))
+          .map((name) => ({ name, kind: item.kind }))
+        : []
+    ),
   });
   if (claims.length === 0) return { text: args.text, removed: [] };
   const savedNow = args.evidence.some((item) =>
@@ -1744,6 +2160,11 @@ export interface ClaimCheckResult {
    * (error or past its cap), or "none" (nothing to read / not wired).
    */
   freshRead?: "ok" | "failed" | "none";
+  /**
+   * Rework 5b: this turn's object status read — "ok", "partial" (some
+   * kinds failed), "failed" (error or past its cap) or "none".
+   */
+  statusRead?: "ok" | "partial" | "failed" | "none";
 }
 
 class ClaimCheckTimeout extends Error {}
@@ -1839,6 +2260,59 @@ async function timedRecordsRead(
 }
 
 /**
+ * Rework 5b: the object status read, cut at `budget` ms; never throws. On
+ * timeout or error every kind it covers is failed (never asserted).
+ */
+async function timedStatusRead(
+  plan: StatusReadPlan,
+  budget: number,
+): Promise<StatusReadResult> {
+  let timer: number | undefined;
+  try {
+    const result = await Promise.race([
+      plan.read(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new ClaimCheckTimeout("status read timed out")),
+          budget,
+        );
+      }),
+    ]);
+    return {
+      records: result.records.map((item) => ({
+        ...item,
+        fresh: true,
+        statusRow: true,
+      })),
+      okKinds: result.okKinds,
+      failedKinds: result.failedKinds,
+    };
+  } catch (error) {
+    console.warn(
+      "[ari-claim-check] status read",
+      error instanceof ClaimCheckTimeout ? "timed out" : "failed",
+    );
+    return { records: [], okKinds: [], failedKinds: [...plan.kinds] };
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+function statusFreshOf(read: StatusReadResult | null): StatusFresh | undefined {
+  return read
+    ? { ok: new Set(read.okKinds), failed: new Set(read.failedKinds) }
+    : undefined;
+}
+
+function statusLabel(
+  read: StatusReadResult | null,
+): ClaimCheckResult["statusRead"] {
+  if (!read) return "none";
+  if (read.failedKinds.length === 0) return "ok";
+  return read.okKinds.length > 0 ? "partial" : "failed";
+}
+
+/**
  * Run the check. Never throws: a failed, slow or invalid check is the
  * deterministic strip.
  *
@@ -1866,6 +2340,14 @@ export async function checkReplyClaims(args: {
    * chat's own records decide and nothing is taken as proven absent.
    */
   moreEvidence?: RecordsReader;
+  /**
+   * Rework 5b: the object status read (events, trips, experiences, stays,
+   * venues, tiers, blasts, website, refunds, payout readiness) for the
+   * kinds this reply speaks about, as the caller. It starts beside the judge
+   * and gets ARI_CLAIM_RECORDS_TIMEOUT_MS at most; a kind that fails is
+   * never asserted.
+   */
+  statusRead?: StatusReadPlan;
   askedWriteThisTurn: boolean;
   /** The host's write was just approved (post-approval continuation). */
   approved?: boolean;
@@ -1897,6 +2379,7 @@ export async function checkReplyClaims(args: {
       elapsedMs: 0,
       modelCalls: 0,
       freshRead: "none",
+      statusRead: "none",
     };
   }
   const timeoutMs = Math.min(
@@ -1919,6 +2402,16 @@ export async function checkReplyClaims(args: {
   const upfront = wantsRead && args.moreEvidence && readBudget > 0
     ? timedRecordsRead(args.moreEvidence, FRESH_READ_KINDS, codes, readBudget)
     : null;
+  // Rework 5b: the object status read, in the same window.
+  const statusUpfront = args.statusRead && args.statusRead.kinds.size > 0
+    ? readBudget > 0
+      ? timedStatusRead(args.statusRead, readBudget)
+      : Promise.resolve<StatusReadResult>({
+        records: [],
+        okKinds: [],
+        failedKinds: [...args.statusRead.kinds],
+      })
+    : null;
   const freshOf = (read: TimedRead | null): FreshRead | undefined =>
     args.moreEvidence
       ? {
@@ -1940,16 +2433,22 @@ export async function checkReplyClaims(args: {
     modelCalls: 0 | 1,
   ): Promise<ClaimCheckResult> => {
     const read = upfront ? await upfront : null;
+    const status = statusUpfront ? await statusUpfront : null;
     const stripped = fallbackStripClaims({
       text: args.text,
       objects: args.objects,
-      evidence: [...args.evidence, ...(read?.records ?? [])],
+      evidence: [
+        ...args.evidence,
+        ...(read?.records ?? []),
+        ...(status?.records ?? []),
+      ],
       hostMessage: args.hostMessage,
       askedWriteThisTurn: args.askedWriteThisTurn,
       askedKinds: args.askedKinds,
       fresh: freshOf(read),
       absence: read?.absence,
       approved: args.approved,
+      status: statusFreshOf(status),
     });
     return {
       text: stripped.text,
@@ -1961,6 +2460,7 @@ export async function checkReplyClaims(args: {
       elapsedMs: elapsed(),
       modelCalls,
       freshRead: freshLabel(read),
+      statusRead: statusLabel(status),
     };
   };
   if (timeoutMs < ARI_CLAIM_CHECK_MIN_MS) return await fallback("deadline", 0);
@@ -1995,12 +2495,15 @@ export async function checkReplyClaims(args: {
   const claims = parseAriClaims(raw, args.text);
   if (!claims) return await fallback("invalid", 1);
   const read = upfront ? await upfront : null;
+  const status = statusUpfront ? await statusUpfront : null;
   let evidence: readonly ClaimEvidence[] = [
     ...args.evidence,
     ...(read?.records ?? []),
+    ...(status?.records ?? []),
   ];
   let absence: ClaimAbsence = read?.ok ? read.absence : NO_ABSENCE;
   context.fresh = freshOf(read);
+  context.status = statusFreshOf(status);
   if (args.moreEvidence && claims.length > 0 && read?.ok !== false) {
     const unbacked = claims.map((claim) => ({
       claim,
@@ -2082,6 +2585,7 @@ export async function checkReplyClaims(args: {
     fresh: context.fresh,
     absence,
     approved: args.approved,
+    status: context.status,
     skip: [
       ...claims.map((claim) => claim.quote),
       ...result.replaced.map((item) => item.with),
@@ -2097,6 +2601,7 @@ export async function checkReplyClaims(args: {
     elapsedMs: elapsed(),
     modelCalls: 1,
     freshRead: freshLabel(read),
+    statusRead: statusLabel(status),
   };
 }
 

@@ -288,6 +288,7 @@ import {
   dedupeReplySentences,
   recentRecordEvidence,
 } from "../_shared/ariClaimCheck.ts";
+import { objectStatusReadPlan } from "../_shared/ariStatusRead.ts";
 import {
   buildWebsiteSetupPresentation,
   buildWebsiteSetupReply,
@@ -5577,6 +5578,15 @@ async function guardReplyClaims(args: {
         since: conversationSince(args.history, args.turnStartedAt),
         objects: named,
       }),
+    // #3355 rework 5b: the fresh status read of every other object Ari
+    // changes (events, trips, experiences, stays, venues, tiers, blasts,
+    // website, refunds, payouts), as the caller, for the active brand.
+    statusRead: objectStatusReadPlan({
+      client: args.userClient,
+      brandId: args.brandId,
+      text: args.text,
+      cards: states,
+    }),
     askedWriteThisTurn,
     // The tool the host asked for names what "nothing saved" may be about.
     ...(target ? { askedKinds: new Set([claimKindOfTool(target)]) } : {}),
@@ -5603,6 +5613,8 @@ async function guardReplyClaims(args: {
       elapsed_ms: check.elapsedMs,
       // #3355 rework 5: this turn's brand read (ok / failed / none).
       fresh_read: check.freshRead ?? "none",
+      // #3355 rework 5b: the object status read (ok / partial / failed).
+      status_read: check.statusRead ?? "none",
     }),
   );
   return check.text;
