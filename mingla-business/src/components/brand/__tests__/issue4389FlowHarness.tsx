@@ -163,6 +163,7 @@ jest.mock("../../ui/Sheet", () => {
 jest.mock("../../../services/brandSetupService", () => ({
   ...(jest.requireActual("../../../services/brandSetupService") as object),
   refreshStripeSetupStatus: (id: string) => harness.refreshStatus(id),
+  beginPaymentsSetup: jest.fn(() => Promise.resolve()),
 }));
 jest.mock("../../../hooks/useBrandStripeStatus", () => ({
   brandStripeStatusKeys: { detail: (id: string) => ["brand-stripe-status", id] },

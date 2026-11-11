@@ -47,7 +47,7 @@
       "refresh": "Sabunta",
       "ownerFallback": "mai shi",
       "trust": "Bayanan bankinka suna zuwa kai tsaye ga abokin biyan kuɗinmu. Mingla ba ta taɓa ganin su ba.",
-      "ngHeading": "Bankinka na Najeriya"
+      "ngCardLabel": "Bayanan banki"
     },
     "f4": {
       "checkingTitle": "An aika bayanai.",

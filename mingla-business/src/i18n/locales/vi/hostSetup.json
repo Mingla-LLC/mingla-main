@@ -47,7 +47,7 @@
       "refresh": "Làm mới",
       "ownerFallback": "chủ sở hữu",
       "trust": "Thông tin ngân hàng của bạn được gửi thẳng đến đối tác thanh toán. Mingla không bao giờ thấy chúng.",
-      "ngHeading": "Ngân hàng Nigeria của bạn"
+      "ngCardLabel": "Thông tin ngân hàng"
     },
     "f4": {
       "checkingTitle": "Đã gửi thông tin.",

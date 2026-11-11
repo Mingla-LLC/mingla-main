@@ -47,7 +47,7 @@
       "refresh": "Vernieuwen",
       "ownerFallback": "de eigenaar",
       "trust": "Je bankgegevens gaan rechtstreeks naar onze betaalpartner. Mingla ziet ze nooit.",
-      "ngHeading": "Je Nigeriaanse bank"
+      "ngCardLabel": "Bankgegevens"
     },
     "f4": {
       "checkingTitle": "Gegevens verstuurd.",

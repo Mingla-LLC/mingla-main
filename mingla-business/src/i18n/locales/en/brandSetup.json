@@ -47,7 +47,7 @@
       "refresh": "Refresh",
       "ownerFallback": "the owner",
       "trust": "Your bank details go straight to our payment partner. Mingla never sees them.",
-      "ngHeading": "Your Nigerian bank"
+      "ngCardLabel": "Bank details"
     },
     "f4": {
       "checkingTitle": "Details sent.",

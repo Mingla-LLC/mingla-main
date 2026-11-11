@@ -47,7 +47,7 @@
       "refresh": "Actualiser",
       "ownerFallback": "le propriétaire",
       "trust": "Vos coordonnées bancaires vont directement à notre partenaire de paiement. Mingla ne les voit jamais.",
-      "ngHeading": "Votre banque nigériane"
+      "ngCardLabel": "Coordonnées bancaires"
     },
     "f4": {
       "checkingTitle": "Informations envoyées.",

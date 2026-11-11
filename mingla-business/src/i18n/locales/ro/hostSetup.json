@@ -47,7 +47,7 @@
       "refresh": "Reîmprospătează",
       "ownerFallback": "proprietarul",
       "trust": "Datele tale bancare merg direct la partenerul nostru de plăți. Mingla nu le vede niciodată.",
-      "ngHeading": "Banca ta din Nigeria"
+      "ngCardLabel": "Datele bancare"
     },
     "f4": {
       "checkingTitle": "Date trimise.",

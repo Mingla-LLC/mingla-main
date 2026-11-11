@@ -831,8 +831,9 @@ const PayStep: React.FC<{
         {provider === "stripe" ? (
           <View style={styles.banner}><Text style={styles.bannerText}>{C.f3.stripeBody}</Text></View>
         ) : ngReady ? (
-          <View>
-            <Text style={styles.label}>{C.f3.ngHeading}</Text>
+          // Seth: no "Your Nigerian bank" heading (the card's own fields say
+          // it); the group keeps a label so screen readers keep the context.
+          <View accessibilityLabel={C.f3.ngCardLabel} testID="brand-setup-ng-bank-card">
             <BrandPaystackOnboardView brandId={brandId} brandName={brandName} onConnected={onConnected} hideIntro />
           </View>
         ) : null}

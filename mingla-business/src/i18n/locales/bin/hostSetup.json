@@ -47,7 +47,7 @@
       "refresh": "Ru ẹre ọkpakpa",
       "ownerFallback": "ọnọ nọ ye ẹre",
       "trust": "Ẹmwẹ banki ruẹ rrie ọkpa ọkpa ye ọnọ nọ ga ima vbe igho. Mingla i ghee ẹre.",
-      "ngHeading": "Banki Naijiria ruẹ"
+      "ngCardLabel": "Ẹmwẹ banki"
     },
     "f4": {
       "checkingTitle": "A viẹ ẹmwẹ na rrie.",

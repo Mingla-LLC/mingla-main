@@ -47,7 +47,7 @@
       "refresh": "Muat ulang",
       "ownerFallback": "pemilik",
       "trust": "Detail bankmu langsung dikirim ke mitra pembayaran kami. Mingla tidak pernah melihatnya.",
-      "ngHeading": "Bank Nigeria kamu"
+      "ngCardLabel": "Detail bank"
     },
     "f4": {
       "checkingTitle": "Detail terkirim.",

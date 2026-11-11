@@ -47,7 +47,7 @@
       "refresh": "새로 고침",
       "ownerFallback": "소유자",
       "trust": "은행 정보는 결제 파트너에게 바로 전달돼요. Mingla는 절대 볼 수 없어요.",
-      "ngHeading": "나이지리아 은행"
+      "ngCardLabel": "은행 정보"
     },
     "f4": {
       "checkingTitle": "정보를 보냈어요.",

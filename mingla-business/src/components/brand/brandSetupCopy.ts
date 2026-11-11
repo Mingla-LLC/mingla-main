@@ -65,7 +65,8 @@ export const BRAND_SETUP_COPY = {
     get refresh(): string { return t("f3.refresh"); },
     get ownerFallback(): string { return t("f3.ownerFallback"); },
     get trust(): string { return t("f3.trust"); },
-    get ngHeading(): string { return t("f3.ngHeading"); },
+    /** #4389 — the Nigerian bank card's accessibility label (no visible heading). */
+    get ngCardLabel(): string { return t("f3.ngCardLabel"); },
   },
   f4: {
     get checkingTitle(): string { return t("f4.checkingTitle"); },

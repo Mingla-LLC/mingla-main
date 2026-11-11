@@ -47,7 +47,7 @@
       "refresh": "更新",
       "ownerFallback": "オーナー",
       "trust": "銀行情報は決済パートナーに直接送られます。Minglaが見ることはありません。",
-      "ngHeading": "ナイジェリアの銀行"
+      "ngCardLabel": "銀行口座の情報"
     },
     "f4": {
       "checkingTitle": "情報を送信しました。",

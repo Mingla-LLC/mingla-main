@@ -47,7 +47,7 @@
       "refresh": "Muat semula",
       "ownerFallback": "pemilik",
       "trust": "Butiran bank anda terus dihantar kepada rakan kongsi pembayaran kami. Mingla tidak pernah melihatnya.",
-      "ngHeading": "Bank Nigeria anda"
+      "ngCardLabel": "Butiran bank"
     },
     "f4": {
       "checkingTitle": "Butiran dihantar.",

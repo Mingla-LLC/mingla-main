@@ -47,7 +47,7 @@
       "refresh": "Yenile",
       "ownerFallback": "sahip",
       "trust": "Banka bilgilerin doğrudan ödeme ortağımıza gider. Mingla bunları asla görmez.",
-      "ngHeading": "Nijerya'daki bankan"
+      "ngCardLabel": "Banka bilgileri"
     },
     "f4": {
       "checkingTitle": "Bilgiler gönderildi.",

@@ -47,7 +47,7 @@
       "refresh": "Uppdatera",
       "ownerFallback": "ägaren",
       "trust": "Dina bankuppgifter går direkt till vår betalpartner. Mingla ser dem aldrig.",
-      "ngHeading": "Din nigerianska bank"
+      "ngCardLabel": "Bankuppgifter"
     },
     "f4": {
       "checkingTitle": "Uppgifter skickade.",

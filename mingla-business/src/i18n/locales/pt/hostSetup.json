@@ -47,7 +47,7 @@
       "refresh": "Atualizar",
       "ownerFallback": "o dono",
       "trust": "Seus dados bancários vão direto para o nosso parceiro de pagamentos. A Mingla nunca os vê.",
-      "ngHeading": "Seu banco nigeriano"
+      "ngCardLabel": "Dados bancários"
     },
     "f4": {
       "checkingTitle": "Dados enviados.",

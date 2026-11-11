@@ -47,7 +47,7 @@
       "refresh": "刷新",
       "ownerFallback": "所有者",
       "trust": "你的银行信息会直接发送给我们的支付合作伙伴，Mingla 永远看不到。",
-      "ngHeading": "你的尼日利亚银行"
+      "ngCardLabel": "银行信息"
     },
     "f4": {
       "checkingTitle": "信息已发送。",
