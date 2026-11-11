@@ -18,6 +18,8 @@ import { supabase } from "../../services/supabase";
 
 export interface TeamBadge {
   staff: boolean;
+  /** #4255 fix-up: an owner or admin (team_chat_admin): may mention everyone. */
+  admin: boolean;
   chats: number;
   messages: number;
   mentions: number;
@@ -43,6 +45,7 @@ export async function fetchTeamBadge(): Promise<TeamBadge> {
   const staff = row.staff === true;
   return {
     staff,
+    admin: staff && row.admin === true,
     chats: staff ? count(row.chats) : 0,
     messages: staff ? count(row.messages) : 0,
     mentions: staff ? count(row.mentions) : 0,

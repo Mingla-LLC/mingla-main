@@ -406,24 +406,34 @@ function TeamNewChat({ userId }: { userId: string }): React.ReactElement {
 
 // ── Settings: the staff-only group on the Notifications screen ──────────────
 
-export const TEAM_PREF_ROWS = [
-  { key: "business.team_mention", label: "team.pref_mentions", hint: "team.pref_mentions_hint" },
-  { key: "business.team_decision", label: "team.pref_decisions", hint: "team.pref_decisions_hint" },
-  { key: "business.team_message", label: "team.pref_messages", hint: "team.pref_messages_hint" },
-] as const;
-type TeamPrefKey = (typeof TEAM_PREF_ROWS)[number]["key"];
+// #4255 fix-up: direct messages and group messages are switched apart
+// (business.team_message, business.team_group_message). A group message only
+// ever pushes (team chat lives in Mingla team, never the bell), so its row has
+// a push switch alone.
 type TeamPrefChannel = "inapp" | "push";
+export const TEAM_PREF_ROWS: readonly {
+  key: "business.team_mention" | "business.team_decision" | "business.team_message" | "business.team_group_message";
+  label: "team.pref_mentions" | "team.pref_decisions" | "team.pref_messages" | "team.pref_group_messages";
+  hint: "team.pref_mentions_hint" | "team.pref_decisions_hint" | "team.pref_messages_hint" | "team.pref_group_messages_hint";
+  channels: readonly TeamPrefChannel[];
+}[] = [
+  { key: "business.team_mention", label: "team.pref_mentions", hint: "team.pref_mentions_hint", channels: ["inapp", "push"] },
+  { key: "business.team_decision", label: "team.pref_decisions", hint: "team.pref_decisions_hint", channels: ["inapp", "push"] },
+  { key: "business.team_message", label: "team.pref_messages", hint: "team.pref_messages_hint", channels: ["inapp", "push"] },
+  { key: "business.team_group_message", label: "team.pref_group_messages", hint: "team.pref_group_messages_hint", channels: ["push"] },
+];
+type TeamPrefKey = (typeof TEAM_PREF_ROWS)[number]["key"];
 interface TeamPrefRow { category_key: string; channel: string; enabled: boolean }
 
 /**
  * Whether a switch is on. No row means the category's default: in-app and
- * push on, except team message pushes, which reach direct messages only
- * until switched on for groups (team_chat_enqueue).
+ * push on, except group message pushes, which stay off until switched on
+ * (a group pushes only on a mention; team_chat_enqueue).
  */
 export function teamPrefOn(rows: readonly TeamPrefRow[], key: TeamPrefKey, channel: TeamPrefChannel): boolean {
   const row = rows.find((r) => r.category_key === key && r.channel === channel);
   if (row) return row.enabled;
-  return !(key === "business.team_message" && channel === "push");
+  return key !== "business.team_group_message";
 }
 
 /** One set of settings for Admin and the Host app: notification_channel_prefs. */
@@ -446,8 +456,8 @@ export function TeamNotificationPrefs({ userId }: { userId: string }): React.Rea
   });
   const save = useMutation({
     mutationFn: async ({ key, channel, on }: { key: TeamPrefKey; channel: TeamPrefChannel; on: boolean }): Promise<void> => {
-      // Team message pushes off = back to the default (direct messages only).
-      const result = key === "business.team_message" && channel === "push" && !on
+      // Group message pushes off = back to the default (mentions only).
+      const result = key === "business.team_group_message" && channel === "push" && !on
         ? await supabase.from("notification_channel_prefs").delete().eq("user_id", userId).eq("category_key", key).eq("channel", channel)
         : await supabase.from("notification_channel_prefs").upsert({ user_id: userId, category_key: key, channel, enabled: on, updated_at: new Date().toISOString() });
       if (result.error) throw new Error(result.error.message || t("team.save_failed"));
@@ -477,6 +487,7 @@ export function TeamNotificationPrefs({ userId }: { userId: string }): React.Rea
             <Text style={styles.prefsRowHint}>{t(row.hint)}</Text>
           </View>
           {(["inapp", "push"] as const).map((channel) => {
+            if (!row.channels.includes(channel)) return <View key={channel} style={styles.prefsSwitch} testID={`team-pref-${row.key}-${channel}-none`} />;
             const on = teamPrefOn(rows, row.key, channel);
             return (
               <View key={channel} style={styles.prefsSwitch}>

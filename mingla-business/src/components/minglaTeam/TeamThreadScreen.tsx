@@ -69,7 +69,7 @@ import { SafeScreen } from "../ui/SafeScreen";
 import { Toast } from "../ui/Toast";
 import { PersonAvatar, TeamAccessGate, TeamAvatar } from "./TeamCommon";
 import { teamTime, useTeamText, type TeamT } from "./teamText";
-import { useTeamMessages, useTeamRealtime } from "./useTeamChat";
+import { useTeamAccess, useTeamMessages, useTeamRealtime } from "./useTeamChat";
 
 const LazyMediaViewer = React.lazy(async () => {
   const module = await import("../media/MediaViewer");
@@ -94,6 +94,14 @@ export interface TeamTrayItem {
 
 function newKey(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/**
+ * #4255 fix-up: @everyone is offered only to an owner or admin (team_badge
+ * admin, the rule team_post enforces), and never in a DM.
+ */
+export function canMentionEveryone(admin: boolean, thread: { kind: string } | null): boolean {
+  return admin && thread !== null && thread.kind !== "dm";
 }
 
 /** Which mentions the words still carry, and whether they mention everyone. */
@@ -203,7 +211,8 @@ function TeamThread({ userId, threadId }: { userId: string; threadId: string | n
   }, [newestId, queryClient, thread, threadId, userId]);
 
   const memberNames = useMemo(() => members.map((m) => m.name), [members]);
-  const canEveryone = thread !== null && thread.kind !== "dm";
+  const { admin: isTeamAdmin } = useTeamAccess();
+  const canEveryone = canMentionEveryone(isTeamAdmin, thread);
 
   // @mention suggestions for the word being typed at the end of the box.
   const mentionQuery = /(^|\s)@([^\s@]{0,40})$/.exec(body)?.[2] ?? null;

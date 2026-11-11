@@ -30,6 +30,8 @@ export interface TeamAccess {
   /** Still finding out (signed-in state or the staff check). */
   checking: boolean;
   staff: boolean;
+  /** #4255 fix-up: team_badge says this person may mention everyone. */
+  admin: boolean;
   error: Error | null;
   retry: () => void;
 }
@@ -51,6 +53,7 @@ export function useTeamAccess(): TeamAccess {
     userId,
     checking: loading || (userId !== null && badge.isPending),
     staff: userId !== null && badge.data?.staff === true,
+    admin: userId !== null && badge.data?.staff === true && badge.data?.admin === true,
     error: badge.isError ? (badge.error as Error) : null,
     retry,
   };

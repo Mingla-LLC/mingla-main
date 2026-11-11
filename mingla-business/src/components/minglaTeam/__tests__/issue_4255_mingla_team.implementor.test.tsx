@@ -87,7 +87,8 @@ const routing = require("../../../services/businessNotificationRouting") as type
 const service = require("../../../services/teamChatService") as typeof import("../../../services/teamChatService");
 const { TeamAccessGate } = require("../TeamCommon") as typeof import("../TeamCommon");
 const { teamPrefOn } = require("../TeamScreens") as typeof import("../TeamScreens");
-const { useTeamRealtime } = require("../useTeamChat") as typeof import("../useTeamChat");
+const { useTeamAccess, useTeamRealtime } = require("../useTeamChat") as typeof import("../useTeamChat");
+const { canMentionEveryone, mentionsInBody } = require("../TeamThreadScreen") as typeof import("../TeamThreadScreen");
 const { MinglaTeamPrefsGroup } = require("../../../../app/account/notifications") as typeof import("../../../../app/account/notifications");
 /* eslint-enable @typescript-eslint/no-require-imports */
 
@@ -192,9 +193,11 @@ describe("#4255 W5 badge math", () => {
   });
   test("the top bar's read cleans the counts and zeroes them for non-staff", async () => {
     badge({ staff: true, chats: "2", mentions: -4, messages: null, total: 9 });
-    expect(await fetchTeamBadge()).toEqual({ staff: true, chats: 2, messages: 0, mentions: 0, total: 9 });
-    badge({ staff: false, chats: 3, mentions: 3 });
-    expect(await fetchTeamBadge()).toEqual({ staff: false, chats: 0, messages: 0, mentions: 0, total: 0 });
+    expect(await fetchTeamBadge()).toEqual({ staff: true, admin: false, chats: 2, messages: 0, mentions: 0, total: 9 });
+    badge({ staff: true, admin: true, chats: 0 });
+    expect((await fetchTeamBadge()).admin).toBe(true);
+    badge({ staff: false, admin: true, chats: 3, mentions: 3 });
+    expect(await fetchTeamBadge()).toEqual({ staff: false, admin: false, chats: 0, messages: 0, mentions: 0, total: 0 });
     mockRpc.mockResolvedValue({ data: null, error: { message: "nope" } });
     await expect(fetchTeamBadge()).rejects.toThrow("nope");
   });
@@ -250,7 +253,7 @@ describe("#4255 W5 a host who is not staff", () => {
     expect(mockFrom).not.toHaveBeenCalled();
   });
 
-  test("staff get the group with In app and Push for all three team kinds", async () => {
+  test("staff get the group: In app and Push for mentions, decisions and direct messages; Push alone for group messages", async () => {
     badge({ staff: true });
     const select = { select: () => select, eq: () => select, in: async () => ({ data: [{ category_key: "business.team_message", channel: "push", enabled: true }], error: null }) };
     mockFrom.mockReturnValue(select);
@@ -262,6 +265,13 @@ describe("#4255 W5 a host who is not staff", () => {
       for (const channel of ["inapp", "push"]) expect(byTestId(view.root, `team-pref-${key}-${channel}`)).toHaveLength(1);
     }
     expect(byTestId(view.root, "team-pref-business.team_message-push")[0].props.value).toBe(true);
+    // #4255 fix-up: groups are their own switch, off by default (a DM switch row does not turn it on).
+    expect(byTestId(view.root, "team-pref-business.team_group_message-push")).toHaveLength(1);
+    expect(byTestId(view.root, "team-pref-business.team_group_message-push")[0].props.value).toBe(false);
+    expect(byTestId(view.root, "team-pref-business.team_group_message-inapp")).toHaveLength(0);
+    expect(byTestId(view.root, "team-pref-business.team_group_message-inapp-none")).toHaveLength(1);
+    expect(allText(view.root)).toContain("Group messages");
+    expect(allText(view.root)).toContain("Direct messages");
   });
 
   test("the team screens load from the Brand group chunk, never the boot bundle", () => {
@@ -280,7 +290,10 @@ describe("#4255 W5 a host who is not staff", () => {
     expect(teamPrefOn([], "business.team_mention", "push")).toBe(true);
     expect(teamPrefOn([], "business.team_decision", "inapp")).toBe(true);
     expect(teamPrefOn([], "business.team_message", "inapp")).toBe(true);
-    expect(teamPrefOn([], "business.team_message", "push")).toBe(false);
+    // #4255 fix-up: a DM pushes by default; a group only once switched on.
+    expect(teamPrefOn([], "business.team_message", "push")).toBe(true);
+    expect(teamPrefOn([], "business.team_group_message", "push")).toBe(false);
+    expect(teamPrefOn([{ category_key: "business.team_group_message", channel: "push", enabled: true }], "business.team_group_message", "push")).toBe(true);
     expect(teamPrefOn([{ category_key: "business.team_mention", channel: "push", enabled: false }], "business.team_mention", "push")).toBe(false);
   });
 });
@@ -317,6 +330,39 @@ describe("#4255 W5 sign-out clears team data", () => {
     expect(signOut).toContain("queryClient.clear();");
     const signedOut = auth.slice(auth.indexOf('if (_event === "SIGNED_OUT")'));
     expect(signedOut.slice(0, 1200)).toContain("queryClient.clear();");
+  });
+});
+
+describe("#4255 fix-up: @everyone is offered only to an owner or admin", () => {
+  test("team_badge admin decides; never in a DM", () => {
+    expect(canMentionEveryone(true, { kind: "group" })).toBe(true);
+    expect(canMentionEveryone(true, { kind: "team" })).toBe(true);
+    expect(canMentionEveryone(false, { kind: "group" })).toBe(false);
+    expect(canMentionEveryone(false, { kind: "team" })).toBe(false);
+    expect(canMentionEveryone(true, { kind: "dm" })).toBe(false);
+    expect(canMentionEveryone(true, null)).toBe(false);
+  });
+  test("the thread screen reads the flag from the staff check and gives it to the suggestions and the send", () => {
+    const source = fs.readFileSync(path.resolve(__dirname, "../TeamThreadScreen.tsx"), "utf8");
+    expect(source).toContain("const canEveryone = canMentionEveryone(isTeamAdmin, thread);");
+    expect(source).toContain("mentionsInBody(body, pickedMentions.current, canEveryone)");
+  });
+  test("a teammate who is not admin typing @everyone mentions nobody extra", () => {
+    expect(mentionsInBody("@everyone hi", new Map(), false)).toEqual({ ids: [], everyone: false });
+    expect(mentionsInBody("@everyone hi", new Map(), true).everyone).toBe(true);
+  });
+  function Probe(): null {
+    const access = useTeamAccess();
+    (globalThis as { __teamAdmin?: boolean }).__teamAdmin = access.admin;
+    return null;
+  }
+  test("the staff check carries admin from team_badge, and only for staff", async () => {
+    badge({ staff: true, admin: true });
+    await mount(<QueryClientProvider client={client()}><Probe /></QueryClientProvider>);
+    expect((globalThis as { __teamAdmin?: boolean }).__teamAdmin).toBe(true);
+    badge({ staff: true, admin: false });
+    await mount(<QueryClientProvider client={client()}><Probe /></QueryClientProvider>);
+    expect((globalThis as { __teamAdmin?: boolean }).__teamAdmin).toBe(false);
   });
 });
 

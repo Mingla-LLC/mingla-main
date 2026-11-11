@@ -159,7 +159,7 @@ async function rpc<T>(name: string, args: Record<string, unknown> | undefined, f
 
 export async function listTeamThreads(): Promise<{ threads: TeamThread[]; badge: TeamBadge }> {
   const data = await rpc<{ threads?: TeamThread[]; badge?: TeamBadge }>("team_list_threads", undefined, "Couldn't load team chats.");
-  return { threads: data?.threads ?? [], badge: data?.badge ?? { staff: true, chats: 0, messages: 0, mentions: 0, total: 0 } };
+  return { threads: data?.threads ?? [], badge: data?.badge ?? { staff: true, admin: false, chats: 0, messages: 0, mentions: 0, total: 0 } };
 }
 
 export async function getTeamMessages(threadId: string, before: string | null = null): Promise<TeamMessagesPage> {
