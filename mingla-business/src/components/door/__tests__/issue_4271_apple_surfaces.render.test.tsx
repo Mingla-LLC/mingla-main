@@ -101,6 +101,7 @@ jest.mock("../../../hooks/useCurrentBrandRole", () => ({
   useCurrentBrandRole: () => mockRole,
 }));
 const mockReplace = jest.fn();
+const mockPush = jest.fn();
 let mockAvailability: Record<string, unknown> = { available: true, needsSetup: true, reason: "ok" };
 jest.mock("../../../hooks/useTapToPayAvailability", () => ({
   ...jest.requireActual("../../../hooks/useTapToPayAvailability"),
@@ -113,7 +114,7 @@ jest.mock("../../../hooks/useManagedEventRoute", () => ({
   }),
 }));
 jest.mock("expo-router", () => ({
-  useRouter: () => ({ replace: mockReplace, push: jest.fn(), back: jest.fn(), canGoBack: () => true }),
+  useRouter: () => ({ replace: mockReplace, push: mockPush, back: jest.fn(), canGoBack: () => true }),
   useLocalSearchParams: () => ({}),
   Stack: () => null,
 }));
@@ -194,7 +195,7 @@ import { TapToPayTerminalHost } from "../tap/TapToPayTerminalHost";
 // eslint-disable-next-line import/first
 import { TapToPayOnboardingCard } from "../tap/TapToPayOnboardingCard";
 // eslint-disable-next-line import/first
-import { TapToPayAwarenessModal } from "../tap/TapToPayAwarenessModal";
+import { TapToPayAwarenessModal, openTapToPayAwareness } from "../tap/TapToPayAwarenessModal";
 // eslint-disable-next-line import/first
 import { TapNotOnThisPhone } from "../tap/TapNotOnThisPhone";
 // eslint-disable-next-line import/first
@@ -213,6 +214,8 @@ import { TapToPaySaleScreen } from "../tap/TapToPaySaleScreen";
 import { encodeTapToPayDraft } from "../../../services/terminal/tapToPayDraft";
 // eslint-disable-next-line import/first
 import { TapToPaySetupScreen } from "../tap/TapToPaySetupScreen";
+// eslint-disable-next-line import/first
+import { fetchDoorTapLocation, DoorTapError } from "../../../services/terminal/doorTapEdge";
 // eslint-disable-next-line import/first
 import {
   getTapToPaySession,
@@ -1308,5 +1311,78 @@ describe("#4271 door polish: the status pill on iOS (P3-2)", () => {
     } finally {
       announce.mockRestore();
     }
+  });
+});
+
+describe("#4389 HT Home Get started opens Apple's splash first, then setup", () => {
+  test("with no splash mounted the caller opens setup itself", () => {
+    expect(openTapToPayAwareness("brand-1")).toBe(false);
+  });
+  test("asked from Home, the splash shows even after it was seen; Get started then opens setup", async () => {
+    mockLive = true;
+    mockRole = { rank: 60, isLoading: false };
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue("1");
+    mockPush.mockClear();
+    const { root } = mount(<TapToPayAwarenessModal />);
+    await settleSale();
+    expect(root.findAll((n) => n.props.testID === "tap-awareness-modal")).toHaveLength(0);
+    let opened = false;
+    act(() => {
+      opened = openTapToPayAwareness("brand-1");
+    });
+    expect(opened).toBe(true);
+    expect(root.findAll((n) => n.props.testID === "tap-awareness-modal").length).toBeGreaterThan(0);
+    act(() => {
+      byTestId(root, "tap-awareness-get-started").props.onPress();
+    });
+    expect(mockPush).toHaveBeenCalledWith("/account/tap-to-pay?brandId=brand-1");
+    expect(root.findAll((n) => n.props.testID === "tap-awareness-modal")).toHaveLength(0);
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
+  });
+  test("someone the splash is not for goes straight to setup (never a dead tap)", async () => {
+    mockLive = true;
+    mockRole = { rank: 10, isLoading: false };
+    mockPush.mockClear();
+    const { root } = mount(<TapToPayAwarenessModal />);
+    await settleSale();
+    act(() => {
+      openTapToPayAwareness("brand-1");
+    });
+    expect(root.findAll((n) => n.props.testID === "tap-awareness-modal")).toHaveLength(0);
+    expect(mockPush).toHaveBeenCalledWith("/account/tap-to-pay?brandId=brand-1");
+    mockRole = { rank: 60, isLoading: false };
+  });
+});
+
+describe("#4389 S-i the setup screen opens T1 when the server says address_missing", () => {
+  test("TapAddressMissing shows and Add address opens /brand/{id}/tap-to-pay/address", async () => {
+    resetTapToPaySessionForTests();
+    mockAvailability = { available: true, needsSetup: true, reason: "ok" };
+    mockRole = { rank: 60, isLoading: false };
+    mockPush.mockClear();
+    (fetchDoorTapLocation as jest.Mock).mockImplementationOnce(async () => {
+      throw new (DoorTapError as unknown as new (code: string, detail: string | null) => Error)("tap_not_available", "address_missing");
+    });
+    updateTapToPaySession({
+      status: "ready",
+      client: {
+        ensureReaderConnected: jest.fn(async () => ({})),
+        checkDeviceSupport: async () => ({ supported: true }),
+      } as never,
+    });
+    const { root } = mount(<TapToPaySetupScreen eventId="event-1" rawDraft={null} />);
+    await settleSale();
+    const start = byTestId(root, "tap-setup-start");
+    if (start) {
+      await act(async () => {
+        start.props.onPress();
+      });
+      await settleSale();
+    }
+    expect(textOf(root)).toContain("Add the address where you'll take card payments");
+    act(() => {
+      byTestId(root, "tap-add-address").props.onPress();
+    });
+    expect(mockPush).toHaveBeenCalledWith("/brand/brand-1/tap-to-pay/address");
   });
 });

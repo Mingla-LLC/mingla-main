@@ -686,13 +686,19 @@ describe("G4 every failed state offers Get help, and it opens Help & Support", (
   });
 });
 
-describe("G5 Settings shows Apple's Tap to Pay symbol on iPhone", () => {
-  test("the Tap to Pay row uses TapToPayIcon on iOS only; Android keeps its generic icon", () => {
+describe("G5 Tap to Pay's entry lives on Home, with Apple's symbol", () => {
+  // #4389 HT (Seth approved): the Tap to Pay row moved from Account to the
+  // Home card. Account carries no Tap to Pay row; the Home card carries the
+  // Tap to Pay symbol (Apple's SF Symbol on iPhone, via TapToPayIcon), and
+  // "Get started" opens Apple's awareness splash before setup.
+  test("Account has no Tap to Pay row; the Home card uses TapToPayIcon", () => {
     const account = read("app/(tabs)/account.tsx");
-    expect(account).toContain('import { TapToPayIcon } from "../../src/components/door/tap/TapToPayIcon";');
-    expect(account).toContain('leading={Platform.OS === "ios" ? <TapToPayIcon size={18} /> : undefined}');
-    expect(account).toContain("{leading ?? (");
-    expect(account).not.toMatch(/name="tap"|icon="tap"/);
+    expect(account).not.toMatch(/TapToPayIcon|\/account\/tap-to-pay|label="Tap to Pay/);
+    const card = read("src/components/home/HomeTapToPayCard.tsx");
+    expect(card).toContain('import { TapToPayIcon } from "../door/tap/TapToPayIcon";');
+    expect(card).toContain("<TapToPayIcon size={22} />");
+    const home = read("app/(tabs)/home.tsx");
+    expect(home).toContain("if (openTapToPayAwareness(currentBrand.id)) return;");
   });
   test("TapToPayIcon on iPhone is Apple's wave.3.right.circle.fill SF Symbol", () => {
     jest.isolateModules(() => {

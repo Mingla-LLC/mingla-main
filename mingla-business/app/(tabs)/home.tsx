@@ -135,6 +135,7 @@ import {
   useTapToPayWarmHint,
 } from "../../src/hooks/useHomeTakePayment";
 import { useTapToPaySettingsEntry } from "../../src/hooks/useTapToPaySettingsEntry";
+import { openTapToPayAwareness } from "../../src/components/door/tap/TapToPayAwarenessModal";
 import {
   homeSetupPromptKey,
   useHomeSetupPromptStore,
@@ -790,11 +791,13 @@ export default function HomeTab(): React.ReactElement {
               os={Platform.OS}
               brandId={currentBrand.id}
               brandName={currentBrand.displayName}
-              onGetStarted={() =>
+              onGetStarted={() => {
+                // HT — Apple's awareness splash first, then setup.
+                if (openTapToPayAwareness(currentBrand.id)) return;
                 router.push(
                   `/account/tap-to-pay?brandId=${encodeURIComponent(currentBrand.id)}` as never,
-                )
-              }
+                );
+              }}
               onNotNow={() => {
                 if (promptKey !== null) markTapNotNow(promptKey);
               }}

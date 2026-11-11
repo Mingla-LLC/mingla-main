@@ -55,7 +55,7 @@ import { createDoorPayCodeForLines, DoorTapError, fetchDoorTapLocation } from ".
 import { showHowToTapEducation } from "../../../services/terminal/howToTap";
 import { markTapToPayWarmHint } from "../../../services/terminal/tapToPaySetupStore";
 import { encodeTapToPayDraft, parseTapToPayDraft } from "../../../services/terminal/tapToPayDraft";
-import { runTapToPaySetup } from "../../../services/terminal/tapToPaySetup";
+import { runTapToPaySetup, TAP_ADDRESS_MISSING_COPY, tapAddressRoute } from "../../../services/terminal/tapToPaySetup";
 import { Button } from "../../ui/Button";
 import { Icon } from "../../ui/Icon";
 import { IconChrome } from "../../ui/IconChrome";
@@ -63,7 +63,7 @@ import { doorPayCodeCreateErrorCopy } from "../doorPaymentOptions";
 import { TapConfiguringView } from "./TapConfiguringView";
 import { TapFactList } from "./TapFactList";
 import { TapNotOnThisPhone } from "./TapNotOnThisPhone";
-import { TapStatusView } from "./TapStatusView";
+import { TapAddressMissing, TapStatusView } from "./TapStatusView";
 import { TapToPayEducation } from "./TapToPayEducation";
 import { TapUpdateIos } from "./TapUpdateIos";
 import { tapToPayAcceptanceFor, useTapToPayTerminal } from "../../../services/terminal/tapToPaySession";
@@ -214,7 +214,8 @@ export const TapToPaySetupScreen = ({
           return;
         }
         if (result.kind === "failed") {
-          if (!probe) setError(result.message);
+          // The server's address_missing answer always shows its T1 entry.
+          if (!probe || result.message === TAP_ADDRESS_MISSING_COPY) setError(result.message);
           return;
         }
         // From Settings the screen stays and now reads "On for this brand".
@@ -326,6 +327,17 @@ export const TapToPaySetupScreen = ({
     );
   } else if (busy || terminal.config.installing) {
     body = <TapConfiguringView progress={terminal.config.progress} />;
+  } else if (error === TAP_ADDRESS_MISSING_COPY && brandId !== null) {
+    // #4389 S-i — no usable card-payment address: open T1, then set up again.
+    body = (
+      <TapAddressMissing
+        onAddAddress={() => {
+          setError(null);
+          router.push(tapAddressRoute(brandId) as never);
+        }}
+        onHelp={openHelp}
+      />
+    );
   } else {
     const rows = setupRowsFor(Platform.OS);
     body = (

@@ -10,3 +10,6 @@ export const tapAwarenessSeenKey = (userId: string): string =>
   `mingla.tapToPay.awarenessSeen.v1.${userId}`;
 
 export const TapToPayAwarenessModal = (_props: { assets?: unknown }): React.ReactElement | null => null;
+
+/** #4389 HT — no splash on the web: the caller opens setup itself. */
+export const openTapToPayAwareness = (_brandId: string): boolean => false;

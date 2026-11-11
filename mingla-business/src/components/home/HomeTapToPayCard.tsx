@@ -18,6 +18,7 @@ import {
 import type { HomeTapCardMode } from "../../utils/homeTakePayment";
 import { trackBrandSetup } from "../brand/brandSetupAnalytics";
 import { TapToPayIcon } from "../door/tap/TapToPayIcon";
+import { useBrandTeamMemberDirectory } from "../../hooks/useBrandTeamMemberDirectory";
 import { Button } from "../ui/Button";
 import { HOME_SETUP_COPY as C } from "./homeSetupCopy";
 
@@ -64,6 +65,11 @@ export const HomeTapToPayCard: React.FC<HomeTapToPayCardProps> = ({
     onNotNow();
   };
   const owner = mode === "owner";
+  // The not-owner line names the owner (team directory), else "the owner".
+  const team = useBrandTeamMemberDirectory(owner ? brandId : null);
+  const ownerName =
+    team.data?.find((m) => m.role === "brand_owner" && (m.displayName ?? "").trim().length > 0)?.displayName?.trim() ??
+    C.ht.ownerFallback;
 
   if (os === "ios") {
     return (
@@ -89,7 +95,7 @@ export const HomeTapToPayCard: React.FC<HomeTapToPayCardProps> = ({
           <Text style={styles.heroBody}>{C.ht.iosBody}</Text>
           {owner ? (
             <Text style={styles.ownerLine}>
-              {C.ht.notOwnerIos(C.ht.ownerFallback, brandName)}
+              {C.ht.notOwnerIos(ownerName, brandName)}
             </Text>
           ) : (
             <View style={styles.ctaRow}>
@@ -116,7 +122,7 @@ export const HomeTapToPayCard: React.FC<HomeTapToPayCardProps> = ({
         </View>
       </View>
       {owner ? (
-        <Text style={styles.ownerLineDark}>{C.ht.notOwner(C.ht.ownerFallback, brandName)}</Text>
+        <Text style={styles.ownerLineDark}>{C.ht.notOwner(ownerName, brandName)}</Text>
       ) : (
         <View style={styles.ctaRow}>
           <View style={styles.cta}>

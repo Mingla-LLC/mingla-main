@@ -5,7 +5,7 @@
  * whole and untouched (tapToPayMarketing.ts), with native "Get started", "Not
  * now" and a "Terms apply." target laid over the free areas of Apple's template.
  */
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Image,
   Modal,
@@ -39,6 +39,21 @@ import { tapToPayMayAcceptTerms } from "../../../utils/brandRole";
 export const tapAwarenessSeenKey = (userId: string): string =>
   `mingla.tapToPay.awarenessSeen.v1.${userId}`;
 
+const tapSetupRoute = (brandId: string): string => `/account/tap-to-pay?brandId=${encodeURIComponent(brandId)}`;
+
+/**
+ * #4389 HT — Home's "Get started" opens this splash first, then setup. The
+ * mounted splash listens; with no splash mounted (no art, not iPhone) the
+ * caller opens setup itself (returns false). A host the splash would not
+ * show for (not eligible, may not accept the terms) goes straight to setup.
+ */
+const openListeners = new Set<(brandId: string) => void>();
+export function openTapToPayAwareness(brandId: string): boolean {
+  if (Platform.OS !== "ios" || openListeners.size === 0) return false;
+  openListeners.forEach((listener) => listener(brandId));
+  return true;
+}
+
 export interface TapToPayAwarenessModalProps {
   /** Test seam: the toolkit assets. */
   assets?: TapToPayAwarenessAssets | null;
@@ -59,6 +74,26 @@ const AwarenessModal = ({ assets }: { assets: TapToPayAwarenessAssets }): React.
   const entry = useTapToPaySettingsEntry(brandId);
   const role = useCurrentBrandRole(brandId);
   const [seen, setSeen] = useState<boolean | null>(null);
+  const [requested, setRequested] = useState<string | null>(null);
+  const eligible =
+    Platform.OS === "ios" &&
+    entry !== null &&
+    brandId !== null &&
+    tapToPayBrandEligible(brandQuery.data) &&
+    tapToPayMayAcceptTerms(role.rank);
+  const eligibleRef = useRef<{ eligible: boolean; brandId: string | null }>({ eligible, brandId });
+  eligibleRef.current = { eligible, brandId };
+  useEffect(() => {
+    const listener = (id: string): void => {
+      const now = eligibleRef.current;
+      if (now.eligible && now.brandId === id) setRequested(id);
+      else router.push(tapSetupRoute(id) as never);
+    };
+    openListeners.add(listener);
+    return () => {
+      openListeners.delete(listener);
+    };
+  }, [router]);
 
   useEffect(() => {
     setSeen(null);
@@ -86,27 +121,25 @@ const AwarenessModal = ({ assets }: { assets: TapToPayAwarenessAssets }): React.
     });
   }, [userId]);
 
-  if (
-    // Apple's Tap to Pay on iPhone toolkit art and copy: never on Android.
-    Platform.OS !== "ios" ||
-    seen !== false ||
-    entry === null ||
-    brandId === null ||
-    !tapToPayBrandEligible(brandQuery.data) ||
-    // The splash leads to Apple's terms, so only someone who may accept them sees it.
-    !tapToPayMayAcceptTerms(role.rank)
-  ) {
+  // Apple's Tap to Pay on iPhone toolkit art and copy: never on Android. The
+  // splash leads to Apple's terms, so only someone who may accept them sees it.
+  // It shows once per user and device, or when Home's "Get started" asks.
+  if (!eligible || brandId === null || !(seen === false || requested === brandId)) {
     return null;
   }
+  const close = (): void => {
+    setRequested(null);
+    markSeen();
+  };
   return (
-    <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={markSeen}>
+    <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={close}>
       <AwarenessBanner
         assets={assets}
         onGetStarted={() => {
-          markSeen();
-          router.push(`/account/tap-to-pay?brandId=${encodeURIComponent(brandId)}` as never);
+          close();
+          router.push(tapSetupRoute(brandId) as never);
         }}
-        onNotNow={markSeen}
+        onNotNow={close}
       />
     </Modal>
   );
