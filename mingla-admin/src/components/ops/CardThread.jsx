@@ -14,7 +14,7 @@
 //     a watcher?";
 //   * status, people and close changes show as grey lines behind
 //     "Show changes" (off by default, remembered in this browser).
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, AtSign, Link2, MoreHorizontal, Paperclip, SendHorizontal, SmilePlus, X } from "lucide-react";
 import { Drawer } from "../ui/Drawer";
 import { Skeleton } from "../ui/Skeleton";
@@ -298,9 +298,21 @@ export function CardThread({ cardId, onClose, onCardChanged }) {
   const messages = useMemo(() => (Array.isArray(thread.data?.messages) ? thread.data.messages : []), [thread.data]);
   const allFiles = useMemo(() => messages.flatMap((m) => [...(m.files || []), ...(m.replies || []).flatMap((r) => r.files || [])]), [messages]);
   const thumbs = useThumbnails(allFiles);
+  // The newest message is in view when the thread opens and after each post.
+  const scrollRef = useRef(null);
+  const count = messages.reduce((n, m) => n + 1 + (m.replies || []).length, 0);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el && count) el.scrollTop = el.scrollHeight;
+  }, [count]);
   const opener = useOpenFile();
   const disabled = !c || c.archived || (typeof navigator !== "undefined" && navigator.onLine === false);
-  const refresh = async () => { await Promise.all([thread.refetch({ quiet: true }), card.refetch({ quiet: true })]); onCardChanged?.(); };
+  const refresh = async () => {
+    await Promise.all([thread.refetch({ quiet: true }), card.refetch({ quiet: true })]);
+    onCardChanged?.();
+    // The card beside it (panel one) shows the new count and the thread's files at once.
+    window.dispatchEvent(new CustomEvent("mingla:work-card-changed", { detail: cardId }));
+  };
   const posted = async (answer, emails) => {
     await refresh();
     if (answer?.told) addToast({ variant: "success", title: `Sent. ${answer.told} told.` });
@@ -337,7 +349,7 @@ export function CardThread({ cardId, onClose, onCardChanged }) {
           </label>
           <button type="button" aria-label="Close" onClick={onClose} className={ICON_BTN}><X aria-hidden="true" className="h-4 w-4" /></button>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
+        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
           {thread.loading ? (
             <div aria-busy="true" aria-label="Loading the thread" className="flex flex-col gap-2"><Skeleton height={40} /><Skeleton height={60} /></div>
           ) : thread.error ? (

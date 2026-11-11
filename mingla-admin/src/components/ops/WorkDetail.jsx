@@ -176,6 +176,13 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
   const close = onClose || onBack;
 
   useEffect(() => () => clearTimeout(idle.current), []);
+  // The thread beside the card says when it posted, so the count and files follow at once.
+  const refetchCard = read.refetch;
+  useEffect(() => {
+    const onChanged = (e) => { if (e.detail === cardId) refetchCard?.({ quiet: true }); };
+    window.addEventListener("mingla:work-card-changed", onChanged);
+    return () => window.removeEventListener("mingla:work-card-changed", onChanged);
+  }, [cardId, refetchCard]);
 
   const locked = !online || !card || card.archived;
   const refresh = async () => { await read.refetch({ quiet: true }); onChanged?.(); };
@@ -353,7 +360,7 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
               {focus ? <Minimize2 aria-hidden="true" className="h-4 w-4" /> : <Maximize2 aria-hidden="true" className="h-4 w-4" />}
             </button>
           )}
-          <Popover label="Card options" role="menu" align="right" width="w-64" dataAttr="card-menu"
+          <Popover label="Card options" role="menu" align="right" width="w-72" dataAttr="card-menu"
             button={<MoreHorizontal aria-hidden="true" className="h-4 w-4" />} buttonClassName={ICON_BTN}>
             {(closeMenu) => (
               <div className="flex flex-col">

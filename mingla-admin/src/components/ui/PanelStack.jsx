@@ -135,7 +135,7 @@ const FIELD_TAGS = new Set(["INPUT", "TEXTAREA", "SELECT"]);
  */
 function panelWidth(size, both, narrow, fallback) {
   if (size === "full") return both && !narrow ? "w-[calc(100vw-400px)]" : "w-screen";
-  if (size === "card") return both && !narrow ? "w-[min(720px,calc(100vw-400px))]" : "w-full sm:w-[720px] sm:max-w-[100vw]";
+  if (size === "card") return both && !narrow ? "w-[min(720px,calc(100vw-400px))]" : "w-screen sm:w-[720px] sm:max-w-[100vw]";
   return fallback;
 }
 
@@ -205,7 +205,7 @@ export function PanelStack({ stack = null, first = null, second = null, narrow: 
   // #4255 W3: a work card is 720px wide (its thread beside it at 400px), and
   // focus mode or the sprint planner fills the page.
   const firstWidth = panelWidth(firstSize, both, narrow, width);
-  const secondWidth = firstSize === "default" ? width : both && !narrow ? "w-[400px] max-w-[45vw]" : "w-full sm:w-[440px]";
+  const secondWidth = firstSize === "default" ? width : both && !narrow ? "w-[400px] max-w-[45vw]" : "w-screen sm:w-[440px]";
   return (
     <div
       ref={rootRef}

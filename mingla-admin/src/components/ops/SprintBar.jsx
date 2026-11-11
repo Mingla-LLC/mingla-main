@@ -4,7 +4,7 @@
 // filters the board to its cards, then cards done of planned, hours planned
 // against the team's hours (red over 100%), the late count and Plan sprint.
 // The goals scroll inside the bar; the numbers and Plan sprint never move off
-// screen.
+// screen. On a phone the whole bar scrolls sideways instead of wrapping.
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { sprintLabel } from "../../lib/opsModel";
 import { goalStateLabel, sprintDay, sprintProgress, teamCapacity } from "../../lib/workBoardModel";
@@ -24,7 +24,7 @@ export function SprintBar({ sprint, plan = null, today, late = 0, goalId = null,
   const prog = sprintProgress(plan?.in_sprint);
   const cap = teamCapacity(plan?.capacity);
   return (
-    <div data-sprint-bar="" className="flex h-11 min-w-0 flex-nowrap items-center gap-2 overflow-hidden rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] px-1.5">
+    <div data-sprint-bar="" className="flex h-11 min-w-0 flex-nowrap items-center gap-2 overflow-hidden rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] px-1.5 max-sm:overflow-x-auto">
       <div className="flex shrink-0 items-center">
         <button type="button" aria-label="Previous week" onClick={() => onWeek(-7)} className={`inline-grid h-9 w-8 place-items-center rounded-lg text-[var(--color-text-secondary)] hover:bg-[var(--gray-100)] ${FOCUS}`}><ChevronLeft aria-hidden="true" className="h-4 w-4" /></button>
         <h2 className="whitespace-nowrap text-[13px] font-semibold text-[var(--color-text-primary)]">{sprintLabel(sprint?.starts_on || "")}</h2>
@@ -32,7 +32,7 @@ export function SprintBar({ sprint, plan = null, today, late = 0, goalId = null,
         {!isThisWeek && <button type="button" onClick={onThisWeek} className={`h-9 whitespace-nowrap rounded-lg px-2 text-[12.5px] font-semibold text-[var(--color-brand-700)] hover:bg-[var(--gray-100)] ${FOCUS}`}>This week</button>}
         {day >= 1 && day <= 7 && <span className="hidden whitespace-nowrap pl-1 text-[12px] text-[var(--color-text-tertiary)] sm:inline">Day {day} of 7</span>}
       </div>
-      <div data-sprint-goals="" role="group" aria-label="Sprint goals" className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto py-1">
+      <div data-sprint-goals="" role="group" aria-label="Sprint goals" className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto py-1 max-sm:min-w-max max-sm:overflow-visible">
         {goals.length === 0 ? (
           <span className="whitespace-nowrap px-1 text-[12.5px] text-[var(--color-text-tertiary)]">No sprint goals yet</span>
         ) : goals.map((g) => {

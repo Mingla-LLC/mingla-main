@@ -208,10 +208,10 @@ export function SprintPlanner({ sprintId = null, team = [], online = true, onClo
                         if ((row.hours ?? null) === (h === null ? null : Math.round(h * 10) / 10)) return;
                         act(`cap:${row.email}`, () => ops.setSprintCapacity(sprint.id, row.email, h === null ? null : Math.round(h * 10) / 10), "Hours saved");
                       }}
-                      className={`${INPUT} w-16 text-right`} />h
+                      className={`${INPUT} w-20 text-right`} />h
                   </label>
-                  <span className="h-2 min-w-[6rem] flex-1 overflow-hidden rounded-full bg-[var(--gray-100)]" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Number.isFinite(use.pct) ? Math.min(use.pct, 100) : 100} aria-label={`${row.name}: ${plannedH} hours planned`}>
-                    <span className={`block h-full rounded-full ${use.over ? "bg-[var(--color-error-500)]" : "bg-[var(--color-success-600)]"}`} style={{ width: `${Math.min(Number.isFinite(use.pct) ? use.pct : 100, 100)}%` }} />
+                  <span className="h-2 min-w-[6rem] flex-1 overflow-hidden rounded-full bg-[var(--gray-100)]" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={!use.set ? 0 : Number.isFinite(use.pct) ? Math.min(use.pct, 100) : 100} aria-label={`${row.name}: ${plannedH} hours planned`}>
+                    <span className={`block h-full rounded-full ${use.over ? "bg-[var(--color-error-500)]" : "bg-[var(--color-success-600)]"}`} style={{ width: `${!use.set ? 0 : Math.min(Number.isFinite(use.pct) ? use.pct : 100, 100)}%` }} />
                   </span>
                   <span className={`w-28 text-right text-[12px] tabular-nums ${use.over ? "font-semibold text-[var(--color-error-700)]" : "text-[var(--color-text-secondary)]"}`}>
                     {use.set ? `${plannedH} h · ${Number.isFinite(use.pct) ? use.pct : "over"}%` : `${plannedH} h planned`}
