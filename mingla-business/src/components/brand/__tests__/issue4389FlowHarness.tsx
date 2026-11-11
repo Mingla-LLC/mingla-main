@@ -31,6 +31,7 @@ export const harness = {
   replace: jest.fn<(href: string) => void>(),
   saveCountry: jest.fn<(country: string, o: { onSuccess?: () => void }) => void>(),
   markFreeOnly: jest.fn<() => Promise<void>>(() => Promise.resolve()),
+  markFreeOnlyMutate: jest.fn<(v: undefined, o: { onSuccess?: () => void; onError?: () => void }) => void>(),
   focusEffects: [] as Array<() => void>,
   beforeRemove: null as null | ((e: unknown) => void),
   params: {} as Record<string, string>,
@@ -101,7 +102,7 @@ jest.mock("../../../hooks/useBrandSetupChecklist", () => ({
   }),
   useCreateSetupBrand: () => ({ mutate: jest.fn(), mutateAsync: jest.fn(), isPending: false }),
   useSetBrandPayoutCountry: () => ({ mutate: harness.saveCountry, isPending: false }),
-  useMarkBrandSetupFreeOnly: () => ({ mutateAsync: harness.markFreeOnly, isPending: false }),
+  useMarkBrandSetupFreeOnly: () => ({ mutate: harness.markFreeOnlyMutate, mutateAsync: harness.markFreeOnly, isPending: false }),
 }));
 jest.mock("../../../hooks/useMinglaToSAcceptance", () => ({
   CURRENT_MINGLA_TOS_VERSION: "v1",
@@ -220,6 +221,7 @@ export function resetHarness(): void {
   harness.replace.mockReset();
   harness.saveCountry.mockReset();
   harness.markFreeOnly.mockClear();
+  harness.markFreeOnlyMutate.mockReset();
   harness.focusEffects = [];
   harness.beforeRemove = null;
   harness.params = {};

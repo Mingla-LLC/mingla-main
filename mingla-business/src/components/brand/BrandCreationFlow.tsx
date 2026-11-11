@@ -865,21 +865,38 @@ const K1Sheet: React.FC<{
 }> = ({ visible, brandId, onBankNow, onFreeOnly }) => {
   const mark = useMarkBrandSetupFreeOnly(brandId);
   const [error, setError] = useState<string | null>(null);
+  // #4389 P3b — only the secondary "Free events only for now" records
+  // free-only, and only while K1 is open. "Set up bank now" and every dismiss
+  // (swipe down, scrim tap, Android back: the Sheet's onClose) mean "Set up
+  // bank now" and latch K1 shut, so a tap that lands on the secondary while
+  // the sheet is closing (the content stays mounted for the close animation)
+  // can never record free-only.
+  const dismissedRef = useRef(false);
+  useEffect(() => {
+    if (visible) dismissedRef.current = false;
+  }, [visible]);
+  const bankNow = (): void => {
+    dismissedRef.current = true;
+    onBankNow();
+  };
+  const freeOnly = (): void => {
+    if (!visible || dismissedRef.current || mark.isPending) return;
+    mark.mutate(undefined, {
+      onSuccess: onFreeOnly,
+      onError: () => setError(C.common.serverError),
+    });
+  };
   return (
-    <Sheet visible={visible} onClose={onBankNow} snapPoint="half">
+    <Sheet visible={visible} onClose={bankNow} snapPoint="half">
       <View style={styles.sheetBody} testID="brand-setup-k1">
         <Text style={styles.h3}>{C.k1.title}</Text>
         <Text style={styles.sub}>{Platform.OS === "ios" ? C.k1.body : C.k1.bodyAndroid}</Text>
         <Text style={styles.sub}>{C.k1.later}</Text>
-        <Button label={C.k1.bankNow} onPress={onBankNow} variant="primary" size="lg" fullWidth />
+        <Button label={C.k1.bankNow} onPress={bankNow} variant="primary" size="lg" fullWidth />
         <View style={styles.gap8} />
         <Button
           label={C.k1.freeOnly}
-          onPress={() =>
-            mark.mutate(undefined, {
-              onSuccess: onFreeOnly,
-              onError: () => setError(C.common.serverError),
-            })}
+          onPress={freeOnly}
           variant="secondary"
           size="lg"
           fullWidth
