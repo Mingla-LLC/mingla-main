@@ -1,6 +1,6 @@
 -- Issue #4255 (Work board v2, wave W1a) -- implementor happy path for
--- 20280610004255_issue_4255_work_v2_schema.sql and
--- 20280610014255_issue_4255_work_v2_functions.sql, on the fully replayed
+-- 20280614004255_issue_4255_work_v2_schema.sql and
+-- 20280614014255_issue_4255_work_v2_functions.sql, on the fully replayed
 -- PG17 schema.
 -- MINGLA-INVARIANT: I-4255-STATUS-IS-COLUMN-GROUP | issue #4255 | ops_work_cards.status always equals the group (todo, doing, done) of its status_id column; a write of either keeps the other in step.
 -- MINGLA-INVARIANT: I-4255-SUBTASK-TREE | issue #4255 | a card is never its own ancestor and is at most two levels below a top-level card; an open subtask never sits under a closed card.

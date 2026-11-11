@@ -1,5 +1,5 @@
 -- Issue #4255 (Work board v2 + Mingla team) fix-up -- implementor suite for
--- 20280612004255_issue_4255_team_chat_fixups.sql, on the fully replayed PG17
+-- 20280614044255_issue_4255_team_chat_fixups.sql, on the fully replayed PG17
 -- schema.
 -- MINGLA-INVARIANT: I-4255-TEAM-EVERYONE-ADMIN-FLAG | issue #4255 | team_badge says admin true only for a confirmed, active owner or admin (team_chat_admin, the rule team_post enforces for @everyone); everyone else, and anyone who is not staff, reads admin false.
 -- MINGLA-INVARIANT: I-4255-TEAM-GROUP-PUSH-SPLIT | issue #4255 | a plain message in a group or the Mingla team is queued only as business.team_group_message and only for a member who switched that category's push on (never while muted); a DM is queued only as business.team_message (on by default); neither switch moves the other.

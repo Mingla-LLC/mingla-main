@@ -1,6 +1,6 @@
 -- Issue #4255 (Work board v2 + Mingla team) fix-up, approved by Seth 10 Nov.
--- Builds on 20280611004255_issue_4255_team_chat_schema.sql and
--- 20280611014255_issue_4255_team_chat_functions.sql (the latest bodies of
+-- Builds on 20280614024255_issue_4255_team_chat_schema.sql and
+-- 20280614034255_issue_4255_team_chat_functions.sql (the latest bodies of
 -- both functions below are copied from there; edits are marked
 -- "#4255 fix-up" and counted).
 --
@@ -45,7 +45,7 @@ SELECT p.user_id, 'business.team_group_message', 'push', true, now()
 ON CONFLICT DO NOTHING;
 
 -- ---------------------------------------------------------------------------
--- 3. team_chat_enqueue (from 20280611014255).
+-- 3. team_chat_enqueue (from 20280614034255).
 -- ---------------------------------------------------------------------------
 -- The one producer of team chat notices (#1529 catalog: populating, with an
 -- explicit NULL country_code, since no team category routes SMS). Payloads
@@ -134,7 +134,7 @@ END;
 $$;
 
 -- ---------------------------------------------------------------------------
--- 4. team_badge (from 20280611014255).
+-- 4. team_badge (from 20280614034255).
 -- ---------------------------------------------------------------------------
 -- The one count for the Host app icon and the Admin Messages button: chats
 -- with unread messages (muted chats left out) plus unread mentions, and

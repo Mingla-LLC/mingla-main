@@ -1,5 +1,5 @@
 // Issue #4255 (W4) — the ONLY Admin caller of the Mingla team chat functions
-// (20280611014255_issue_4255_team_chat_functions.sql) and of the shared team
+// (20280614034255_issue_4255_team_chat_functions.sql) and of the shared team
 // notification settings. Every function gates on the server: confirmed,
 // active staff only, and a stale revision raises PT409 (stale_write). Errors
 // come back as an OpsError the screens word with opsErrorWords.

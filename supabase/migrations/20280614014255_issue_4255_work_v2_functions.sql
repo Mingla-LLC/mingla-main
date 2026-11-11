@@ -1,5 +1,5 @@
 -- Issue #4255, Work board v2, wave W1a (part 2 of 2): the functions. The
--- tables, guards and backfills are in 20280610004255_issue_4255_work_v2_schema.sql.
+-- tables, guards and backfills are in 20280614004255_issue_4255_work_v2_schema.sql.
 --
 -- New (SECURITY DEFINER, team access through crm_ctx(), PT409 on a stale
 -- revision, never 40001):

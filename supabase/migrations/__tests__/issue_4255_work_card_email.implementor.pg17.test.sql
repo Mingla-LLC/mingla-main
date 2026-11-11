@@ -51,7 +51,7 @@ language sql as $fn$ select id from t4255_people where who = p_who; $fn$;
 create function pg_temp.email(p_who text) returns text
 language sql as $fn$ select email from t4255_people where who = p_who; $fn$;
 -- email rows / bell rows for one card and one person
--- [TEST-MOD-APPROVED #4255] rework (20280612014255): card links end with
+-- [TEST-MOD-APPROVED #4255] rework (20280614054255): card links end with
 -- &side=thread:<card> (the card opens with its thread).
 create function pg_temp.mails(p_card uuid, p_who text) returns bigint
 language sql as $fn$

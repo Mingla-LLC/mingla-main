@@ -1,6 +1,6 @@
 -- Issue #4255 (Work board v2, wave W1b) -- implementor suite for
--- 20280611004255_issue_4255_team_chat_schema.sql and
--- 20280611014255_issue_4255_team_chat_functions.sql, on the fully replayed
+-- 20280614024255_issue_4255_team_chat_schema.sql and
+-- 20280614034255_issue_4255_team_chat_functions.sql, on the fully replayed
 -- PG17 schema.
 -- MINGLA-INVARIANT: I-4255-TEAM-CHAT-MEMBER-AND-STAFF | issue #4255 | every team chat row (threads, members, messages, reactions, reads, attachments, team-files objects) is readable only by a live member of its thread whose confirmed address is active Admin staff at the moment of the read; clients never write the tables directly.
 -- MINGLA-INVARIANT: I-4255-TEAM-CHAT-CONFIRMED-STAFF | issue #4255 | an account whose address matches a staff row but is not confirmed has no team chat access and never joins the Mingla team.
@@ -21,7 +21,7 @@
 --             minutes (deleting does not reset it); each member told once
 --   C-NOTIFY  group messages push only to mentions (or to people who switched
 --             group message pushes on: business.team_group_message, #4255
---             fix-up 20280612004255); DMs push by default; preferences and mute
+--             fix-up 20280614044255); DMs push by default; preferences and mute
 --             are respected; payloads carry ids only; deep links
 --   C-CARD    a card-thread mention: one in-app, one email, one push row with
 --             mingla-business://team/mention/<id>; no push for an
@@ -437,7 +437,7 @@ begin
   v := pg_temp.post(null, 'gem', v_g, 'Mention an outsider', array[pg_temp.uid('owner')]);
   perform pg_temp.lk('C-NOTIFY', 'a teammate outside the group cannot be mentioned into it', v, 'ERR:22023:invalid_mention_recipient:%');
   -- Switching group message pushes on (#4255 fix-up: groups have their own
-  -- category, business.team_group_message; 20280612004255).
+  -- category, business.team_group_message; 20280614044255).
   insert into public.notification_channel_prefs (user_id, category_key, channel, enabled) values (pg_temp.uid('ray'), 'business.team_group_message', 'push', true);
   v := pg_temp.post('g3', 'gem', v_g, 'Second plain update');
   v_m := pg_temp.id('g3');
@@ -472,7 +472,7 @@ begin
     (select count(*)::text from public.team_mentions where source_kind = 'team_message' and source_id = pg_temp.id('g6') and target_user_id = pg_temp.uid('admin')) || '/' ||
     pg_temp.outbox('business.team_mention', 'admin', pg_temp.id('g6')), '1/0');
   -- The badge: unread chats plus unread mentions, and reading clears it.
-  -- [TEST-MOD-APPROVED #4255] rework (20280612014255): a team chat mention is
+  -- [TEST-MOD-APPROVED #4255] rework (20280614054255): a team chat mention is
   -- counted once, in its chat; the mentions part is the Mentions tab only.
   perform pg_temp.chk('C-NOTIFY', 'the badge counts unread chats and unread Mentions-tab items (a chat mention once, in its chat)',
     pg_temp.person('ray', $q$select (public.team_badge()->>'total')::int = (public.team_badge()->>'chats')::int + (public.team_badge()->>'mentions')::int

@@ -273,7 +273,7 @@ async function send(
 
 // Shapes exactly as team_chat_enqueue and ops_notify_people write them. A DM
 // is business.team_message; a group or the Mingla team is
-// business.team_group_message (#4255 fix-up, 20280612004255).
+// business.team_group_message (#4255 fix-up, 20280614044255).
 const chatCategory = (over: AnyRecord): string =>
   over.thread_kind === "dm"
     ? "business.team_message"

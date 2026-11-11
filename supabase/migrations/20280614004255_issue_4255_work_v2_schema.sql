@@ -1,6 +1,6 @@
 -- Issue #4255, Work board v2, wave W1a (part 1 of 2): the tables, columns,
 -- guards and one-time backfills. The functions that read and write them are
--- in 20280610014255_issue_4255_work_v2_functions.sql.
+-- in 20280614014255_issue_4255_work_v2_functions.sql.
 --
 -- What this adds (all additive; no existing column is dropped):
 --   1. Custom columns. ops_work_statuses holds the board's columns. Every

@@ -2,7 +2,7 @@
  * #4255 W5 — Mingla team chat for staff in the Host app.
  *
  * Every read and write goes through the team_* database functions
- * (20280611014255_issue_4255_team_chat_functions.sql). They refuse anyone who
+ * (20280614034255_issue_4255_team_chat_functions.sql). They refuse anyone who
  * is not confirmed, active Admin staff, so this module never decides access:
  * the screens only hide what the database would refuse anyway.
  *

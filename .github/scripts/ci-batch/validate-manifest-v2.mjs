@@ -439,13 +439,14 @@ export function phase3dContractDigest(manifest) {
 // #4383: register the Communications scheduling migration (20280608004383) and its implementor PostgreSQL proof in the #1857, #1931 and #2117 replay lanes.
 // #4383: and the tester adversarial PostgreSQL proof.
 // #4382: re-sealed after merging origin/main 2aa45c6da1 (#4383 rows kept beside the #4382 rows).
-// #4382: renumber the Support Desk migrations to 20280613*4382 (above production's applied 20280608004383 and sibling 20280612004255) in the replay lanes.
-// #4255: register the Work board v2 and Mingla team migrations (20280610004255 to 20280612004255) in the #1857, #1931 and #2117 replay lanes, and their implementor PostgreSQL proofs in the #1931 and #2117 lanes.
+// #4382: renumber the Support Desk migrations to 20280613*4382 (above production's applied 20280608004383 and the sibling #4255 migrations of the time) in the replay lanes.
+// #4255: register the Work board v2 and Mingla team migrations (20280614004255 to 20280614044255) in the #1857, #1931 and #2117 replay lanes, and their implementor PostgreSQL proofs in the #1931 and #2117 lanes.
 // #4255: and the tester adversarial PostgreSQL proof.
-// #4255: and the rework migration (20280612014255) in the #1857, #1931 and #2117 lanes, with its implementor PostgreSQL proof in the #1931 and #2117 lanes.
+// #4255: and the rework migration (20280614054255) in the #1857, #1931 and #2117 lanes, with its implementor PostgreSQL proof in the #1931 and #2117 lanes.
 // #4255: and the rework tester adversarial PostgreSQL proof.
 // #4255: re-sealed after merging origin/main 62aabbdc6d (#4382 rows kept beside the #4255 rows).
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "b1dbc986270d1370f1bc9b9fe7c3388d6e2c9d5e845c0a1d71e6b9d3f646061f";
+// #4255: renumber the Work board v2 and Mingla team migrations to 20280614004255 to 20280614054255 (above production's applied 20280613054382) in the replay lanes.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "64bdb165aab3339267f5d42e98bdfb7eb2d9e16904e0e6e348befa730f5ac1da";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

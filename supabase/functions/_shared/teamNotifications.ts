@@ -2,7 +2,7 @@
 // and decisions) delivered to the Host app.
 //
 // Producers live in SQL (team_chat_enqueue and ops_notify_people,
-// 20280611014255_issue_4255_team_chat_functions.sql) and write
+// 20280614034255_issue_4255_team_chat_functions.sql) and write
 // notification_outbox rows that carry ids only. This module is the one place
 // the dispatcher, the outbox drain and the templates learn about these
 // categories:
@@ -20,12 +20,12 @@ import { isQuietHours } from "./quietHours.ts";
 export const TEAM_NOTIFY_CATEGORIES = [
   "business.team_message",
   // #4255 fix-up: group and Mingla team messages have their own switch
-  // (20280612004255): a DM pushes by default, a group only once switched on.
+  // (20280614044255): a DM pushes by default, a group only once switched on.
   "business.team_group_message",
   "business.team_mention",
   "business.team_decision",
   // #4255 rework: "My cards due and late", one notice at 09:00 local
-  // (ops_due_digest, 20280612014255).
+  // (ops_due_digest, 20280614054255).
   "business.team_due",
 ] as const;
 

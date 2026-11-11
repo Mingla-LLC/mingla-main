@@ -1,5 +1,5 @@
 -- Issue #4255 (Work board v2 + Mingla team) rework -- implementor suite for
--- 20280612014255_issue_4255_team_rework.sql, on the fully replayed PG17
+-- 20280614054255_issue_4255_team_rework.sql, on the fully replayed PG17
 -- schema.
 -- MINGLA-INVARIANT: I-4255-TEAM-DECISION-PRODUCER | issue #4255 | a card that gains a You send, You spend, You publish or Needs your OK tag queues business.team_decision (never business.team_mention) for each of its staff people, under the Decisions for me switches: push or in-app on queues it (in-app off says inapp false), both off queues nothing.
 -- MINGLA-INVARIANT: I-4255-TEAM-DUE-DIGEST | issue #4255 | ops_due_digest tells a confirmed staff owner of open cards due today or late once per local day, only when their own clock (profiles.timezone) reads 09:xx: one team_mentions row (work_due, from Mingla) and one business.team_due row under its switches; never a host, never at another hour.
