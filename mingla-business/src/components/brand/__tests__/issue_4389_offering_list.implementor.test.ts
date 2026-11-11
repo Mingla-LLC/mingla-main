@@ -60,3 +60,14 @@ describe("#4389 offering list of 5", () => {
     expect(flow).toContain("{C.f4.ttpCta}".replace("{C.f4.ttpCta}", "label={C.f4.ttpCta}"));
   });
 });
+
+describe("#4389 flow polish (items 1–5)", () => {
+  const flow = read("BrandCreationFlow.tsx");
+  test("U-6: desktop web gets a left step rail beside a 560 pane", () => {
+    expect(flow).toContain('testID="brand-setup-rail"');
+    expect(flow).toContain("pane: { flex: 1, maxWidth: 560 },");
+  });
+  test("K1 on Back from Get paid", () => {
+    expect(flow).toContain('else if (step === "pay") setK1("pay");');
+  });
+});

@@ -32,6 +32,7 @@ import { ScrollView } from "../../wrappers/SmartScrollView";
 import { useAuth } from "../../context/AuthContext";
 import { accent, canvas, radius, semantic, spacing, text as textTokens, typography } from "../../constants/designSystem";
 import {
+  BRAND_SETUP_STEPS,
   BrandSetupError,
   deriveSetupStep,
   discardDraftBrand,
@@ -52,6 +53,7 @@ import {
   useAcceptMinglaToS,
 } from "../../hooks/useMinglaToSAcceptance";
 import { useNetInfoSafe } from "../../lib/netinfoSafe";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { tapToPayBrandEligible } from "../../utils/tapToPayBrandEligible";
 import { useTapToPaySettingsEntry } from "../../hooks/useTapToPaySettingsEntry";
 import { Button } from "../ui/Button";
@@ -98,6 +100,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
 }) => {
   const router = useRouter();
   const { user, isAuthReady } = useAuth();
+  const { isWideDesktop } = useResponsiveLayout();
   const network = useNetInfoSafe();
   const offline = network?.isConnected === false;
 
@@ -183,8 +186,30 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
     );
   }
 
+  // U-6 desktop web: a left step rail beside a 560px pane. 390px web and the
+  // phones keep the single column. (No slide transitions exist, so Reduce
+  // Motion has nothing to replace.)
+  const rail = isWideDesktop ? (
+    <View style={styles.rail} testID="brand-setup-rail" accessibilityRole="list">
+      {BRAND_SETUP_STEPS.map((s, i) => {
+        const on = s === step;
+        const done = STEP_INDEX[s] < STEP_INDEX[step];
+        return (
+          <View key={s} style={styles.railRow} accessibilityState={{ selected: on }}>
+            <View style={[styles.railDot, done && styles.railDotDone, on && styles.railDotOn]}>
+              <Text style={styles.railDotText}>{done ? "✓" : String(i + 1)}</Text>
+            </View>
+            <Text style={[styles.railLabel, on && styles.railLabelOn]}>{C.stepNames[s]}</Text>
+          </View>
+        );
+      })}
+    </View>
+  ) : null;
+
   return (
-    <View style={styles.root} testID="brand-setup-flow">
+    <View style={[styles.root, isWideDesktop && styles.rootDesktop]} testID="brand-setup-flow">
+      {rail}
+      <View style={isWideDesktop ? styles.pane : styles.fill}>
       <View style={styles.topBar}>
         <Pressable
           accessibilityRole="button"
@@ -192,7 +217,10 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
           hitSlop={12}
           onPress={() => {
             if (step === "country" || step === "name") onExit();
-            else if (step === "pay") setBackTo("country");
+            // K1 — leaving Get paid before payment details are done asks
+            // "Only free events for now?" (addendum). "Change" on the country
+            // chip still goes back to Bank country.
+            else if (step === "pay") setK1("pay");
             else onExit();
           }}
           style={styles.backButton}
@@ -279,6 +307,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
           router.replace("/(tabs)/home?toast=free_only" as never);
         }}
       />
+      </View>
     </View>
   );
 
@@ -706,6 +735,25 @@ export { Toast };
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: canvas.discover },
+  rootDesktop: { flexDirection: "row", justifyContent: "center", gap: spacing.xl, paddingTop: spacing.lg },
+  fill: { flex: 1 },
+  pane: { flex: 1, maxWidth: 560 },
+  rail: { width: 220, paddingTop: spacing.xl, gap: spacing.md },
+  railRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  railDot: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.24)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  railDotOn: { borderColor: accent.warm },
+  railDotDone: { backgroundColor: accent.warm, borderColor: accent.warm },
+  railDotText: { ...typography.caption, color: textTokens.primary, fontWeight: "700" },
+  railLabel: { ...typography.body, color: textTokens.tertiary },
+  railLabelOn: { color: textTokens.primary, fontWeight: "600" },
   topBar: { flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.md, paddingVertical: spacing.sm, gap: spacing.sm },
   backButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   backGlyph: { fontSize: 30, color: textTokens.primary },
