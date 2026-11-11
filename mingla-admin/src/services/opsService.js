@@ -170,3 +170,64 @@ export const fetchEventsSince = (since, owner) =>
   call(() => supabase.rpc("ops_events_since", { p_since: since, p_owner: owner || null }));
 export const fetchPeriodSummary = (from, to, owner, tz) =>
   call(() => supabase.rpc("ops_period_summary", { p_from: from, p_to: to, p_owner: owner || null, p_tz: tz || null }));
+
+// Issue #4255 (Work board v2, W2 and W3) — columns, moving a card, subtasks,
+// files, the card's thread and sprint planning. Every function checks the
+// caller on the server and refuses a stale revision with PT409 (stale_write).
+export const listStatuses = (includeArchived) => call(() => supabase.rpc("ops_status_list", { p_include_archived: !!includeArchived }));
+export const addStatus = (name, color, grp, position) =>
+  call(() => supabase.rpc("ops_status_add", { p_name: name, p_color: color, p_grp: grp, p_position: Number.isInteger(position) ? position : null }));
+export const updateStatus = (id, changes, revision) => call(() => supabase.rpc("ops_status_update", { p_id: id, p_changes: changes, p_expected_revision: revision }));
+export const moveStatus = (id, position, revision) => call(() => supabase.rpc("ops_status_move", { p_id: id, p_position: position, p_expected_revision: revision }));
+export const archiveStatus = (id, moveTo, revision) => call(() => supabase.rpc("ops_status_archive", { p_id: id, p_move_to: moveTo, p_expected_revision: revision }));
+export const moveWork = (id, statusId, revision, { proof = null, result = null, closeChildren = false } = {}) =>
+  call(() => supabase.rpc("ops_work_move", { p_id: id, p_status_id: statusId, p_expected_revision: revision, p_proof: proof, p_result: result || null, p_close_children: !!closeChildren }));
+export const addSubtask = (parentId, item, key) => call(() => supabase.rpc("ops_subtask_add", { p_parent_id: parentId, p_item: item, p_request_key: key }));
+export const reorderSubtasks = (parentId, ids, revision) => call(() => supabase.rpc("ops_subtask_reorder", { p_parent_id: parentId, p_ids: ids, p_expected_revision: revision }));
+export const addFile = (cardId, file, key) => call(() => supabase.rpc("ops_file_add", { p_card_id: cardId, p_file: file, p_request_key: key || null }));
+export const archiveFile = (fileId) => call(() => supabase.rpc("ops_file_archive", { p_file_id: fileId }));
+export const signFile = (fileId) => call(() => supabase.rpc("ops_file_sign", { p_file_id: fileId }));
+export const listMessages = (cardId, limit, before) => call(() => supabase.rpc("ops_message_list", { p_card_id: cardId, p_limit: limit || 200, p_before: before || null }));
+export const postMessage = (cardId, { body = "", mentions = [], parentId = null, fileIds = [], everyone = false, key = null } = {}) =>
+  call(() => supabase.rpc("ops_message_post", { p_card_id: cardId, p_body: body, p_mentions: mentions, p_parent_message_id: parentId, p_file_ids: fileIds.length ? fileIds : null, p_everyone: !!everyone, p_request_key: key }));
+export const editMessage = (id, body, revision) => call(() => supabase.rpc("ops_message_edit", { p_message_id: id, p_body: body, p_expected_revision: revision }));
+export const deleteMessage = (id, revision) => call(() => supabase.rpc("ops_message_delete", { p_message_id: id, p_expected_revision: revision }));
+export const reactMessage = (id, emoji, on) => call(() => supabase.rpc("ops_message_react", { p_message_id: id, p_emoji: emoji, p_on: on !== false }));
+export const fetchSprintPlan = (sprintId, today) => call(() => supabase.rpc("ops_sprint_plan_get", { p_sprint_id: sprintId || null, p_today: today || null }));
+export const addSprintGoal = (sprintId, title, owner) => call(() => supabase.rpc("ops_sprint_goal_add", { p_sprint_id: sprintId, p_title: title, p_owner_email: owner || null }));
+export const updateSprintGoal = (goalId, changes, revision) => call(() => supabase.rpc("ops_sprint_goal_update", { p_goal_id: goalId, p_changes: changes, p_expected_revision: revision }));
+export const archiveSprintGoal = (goalId, revision) => call(() => supabase.rpc("ops_sprint_goal_archive", { p_goal_id: goalId, p_expected_revision: revision }));
+export const setSprintCapacity = (sprintId, email, hours) => call(() => supabase.rpc("ops_sprint_capacity_set", { p_sprint_id: sprintId, p_email: email, p_hours: hours }));
+export const startSprint = (sprintId, revision) => call(() => supabase.rpc("ops_sprint_start", { p_sprint_id: sprintId, p_expected_revision: revision }));
+export const setSprintReviewNote = (sprintId, note, revision) => call(() => supabase.rpc("ops_sprint_review_note_set", { p_sprint_id: sprintId, p_note: note, p_expected_revision: revision }));
+
+// Files live in the private ops-work-files bucket. The database says where a
+// file goes (ops_file_add's upload.path) and whether it may be read
+// (ops_file_sign); the browser uploads it there and asks storage for a
+// 5-minute signed link. No image transformations (spend cap, #1643).
+async function storageCall(run) {
+  if (typeof navigator !== "undefined" && navigator.onLine === false) throw new OpsError({ token: "network", message: "" });
+  let result;
+  try {
+    result = await run();
+  } catch (error) {
+    throw new OpsError({ token: "upload_failed", message: typeof error?.message === "string" && /\s/.test(error.message) ? error.message : "The upload didn’t finish. Try again." });
+  }
+  if (result?.error) {
+    throw new OpsError({ token: "upload_failed", message: typeof result.error.message === "string" && /\s/.test(result.error.message) ? result.error.message : "The upload didn’t finish. Try again." });
+  }
+  return result?.data;
+}
+export const uploadFileObject = (bucket, path, file, contentType) =>
+  storageCall(() => supabase.storage.from(bucket).upload(path, file, { contentType, upsert: false, cacheControl: "3600" }));
+export const signedFileUrl = async (bucket, path, seconds = 300) => {
+  const data = await storageCall(() => supabase.storage.from(bucket).createSignedUrl(path, seconds));
+  return data?.signedUrl || "";
+};
+export const signedFileUrls = async (bucket, paths, seconds = 300) => {
+  if (!paths.length) return {};
+  const data = await storageCall(() => supabase.storage.from(bucket).createSignedUrls(paths, seconds));
+  const out = {};
+  for (const row of Array.isArray(data) ? data : []) if (row?.path && row?.signedUrl) out[row.path] = row.signedUrl;
+  return out;
+};

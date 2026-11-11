@@ -129,11 +129,22 @@ function useNarrow() {
 const FIELD_TAGS = new Set(["INPUT", "TEXTAREA", "SELECT"]);
 
 /**
+ * #4255 W3: panel one's width. `card` is the 720px work card (it gives way to
+ * its thread on a narrower screen), `full` fills the page (focus mode, the
+ * sprint planner), `default` is the 440px panel every other page uses.
+ */
+function panelWidth(size, both, narrow, fallback) {
+  if (size === "full") return both && !narrow ? "w-[calc(100vw-400px)]" : "w-screen";
+  if (size === "card") return both && !narrow ? "w-[min(720px,calc(100vw-400px))]" : "w-full sm:w-[720px] sm:max-w-[100vw]";
+  return fallback;
+}
+
+/**
  * `stack` comes from hooks/usePanelStack.js; `first` and `second` are the two
  * panels' contents (each normally a <Drawer>), either may be null. `narrow`
  * forces the narrow layout (tests); otherwise the screen width decides.
  */
-export function PanelStack({ stack = null, first = null, second = null, narrow: forceNarrow }) {
+export function PanelStack({ stack = null, first = null, second = null, narrow: forceNarrow, firstSize = "default" }) {
   const screenNarrow = useNarrow();
   const narrow = forceNarrow ?? screenNarrow;
   const rootRef = useRef(null);
@@ -163,7 +174,7 @@ export function PanelStack({ stack = null, first = null, second = null, narrow: 
       if (document.querySelector('[aria-modal="true"]')) return;
       const root = rootRef.current;
       const active = document.activeElement;
-      if (active && FIELD_TAGS.has(active.tagName)) {
+      if (active && (FIELD_TAGS.has(active.tagName) || active.isContentEditable)) {
         if (!root || !root.contains(active)) return;
         active.blur();
         active.closest("[data-panel-focus]")?.focus?.();
@@ -191,6 +202,10 @@ export function PanelStack({ stack = null, first = null, second = null, narrow: 
   if (!hasFirst && !hasSecond) return null;
   const both = hasFirst && hasSecond;
   const width = both && !narrow ? "w-[min(440px,50vw)]" : "w-full sm:w-[440px]";
+  // #4255 W3: a work card is 720px wide (its thread beside it at 400px), and
+  // focus mode or the sprint planner fills the page.
+  const firstWidth = panelWidth(firstSize, both, narrow, width);
+  const secondWidth = firstSize === "default" ? width : both && !narrow ? "w-[400px] max-w-[45vw]" : "w-full sm:w-[440px]";
   return (
     <div
       ref={rootRef}
@@ -199,12 +214,12 @@ export function PanelStack({ stack = null, first = null, second = null, narrow: 
       style={{ zIndex: "var(--z-overlay)" }}
     >
       {hasFirst && (
-        <div data-panel-slot="1" aria-hidden={both && narrow ? "true" : undefined} className={`pointer-events-auto h-full min-w-0 ${width} ${both && narrow ? "hidden" : ""}`}>
+        <div data-panel-slot="1" aria-hidden={both && narrow ? "true" : undefined} data-panel-size={firstSize} className={`pointer-events-auto h-full min-w-0 ${firstWidth} ${both && narrow ? "hidden" : ""}`}>
           <PanelSlotContext.Provider value={firstSlot}>{first}</PanelSlotContext.Provider>
         </div>
       )}
       {hasSecond && (
-        <div data-panel-slot="2" className={`pointer-events-auto h-full min-w-0 ${width}`}>
+        <div data-panel-slot="2" className={`pointer-events-auto h-full min-w-0 ${secondWidth}`}>
           <PanelSlotContext.Provider value={secondSlot}>{second}</PanelSlotContext.Provider>
         </div>
       )}
