@@ -4,6 +4,10 @@
 // and write claims that name things the chat never proposed.
 //
 // MINGLA-INVARIANT: I-ARI-START-FLOW-ARGS-STRICT | issue #3355 | start_flow accepts only a registered flow_key, the three known argument names and at most 8 flat scalar prefills; anything else (a domain tool name as flow_key, nested or prototype-polluting prefills, non-finite numbers) is not a valid call.
+// Retest 2 adds: a card cancelled and then made again, amounts off in
+// each currency's own minor units, and a negation that sits in a different
+// clause from the claim.
+//
 // MINGLA-INVARIANT: I-ARI-MODEL-VALUES-GROUNDED | issue #3355 | A stated value the intent read reports (code, percent, end day, limits) reaches a proposal check only when the host's own words carry it.
 //
 // Run: deno test --no-check --allow-read --allow-env \
@@ -21,6 +25,7 @@ import {
 } from "../ariFlows/startFlowTool.ts";
 import {
   checkStatedSlots,
+  claimEvidenceFromHistory,
   endOfLocalDayIso,
   extractStatedSlots,
   guardWriteClaims,
@@ -362,4 +367,154 @@ Deno.test("#3355 tester: an active-voice claim naming a code the chat never prop
     evidence: [],
   });
   assertEquals(honest.rewritten, false);
+});
+
+// ── Retest 2 ────────────────────────────────────────────────────────────────
+
+function discountRows(
+  spec: ReadonlyArray<[id: string, code: string, outcome: string | null]>,
+) {
+  const rows: Array<Record<string, unknown>> = [];
+  for (const [id, code, outcome] of spec) {
+    rows.push({
+      role: "assistant",
+      tool_calls: {
+        pending_action_id: id,
+        tool_name: "create_discount",
+        args: { code, kind: "code" },
+      },
+    });
+    if (outcome) {
+      rows.push({
+        role: "tool",
+        tool_results: {
+          pending_action_id: id,
+          tool_name: "create_discount",
+          outcome,
+        },
+      });
+    }
+  }
+  return rows;
+}
+
+const claimHolds = (text: string, rows: Array<Record<string, unknown>>) =>
+  !guardWriteClaims({
+    text,
+    pendingThisTurn: false,
+    evidence: claimEvidenceFromHistory(rows),
+  }).rewritten;
+
+Deno.test("#3355 tester retest 2: a card cancelled then made again backs only what the new card proves", () => {
+  // Cancelled, then the same code proposed again and confirmed.
+  const remade = discountRows([["p1", "FAVY10", "cancelled"], [
+    "p2",
+    "FAVY10",
+    "executed",
+  ]]);
+  assert(claimHolds("I created FAVY10 for you.", remade));
+  // Cancelled, then proposed again and still waiting on the host.
+  const waiting = discountRows([["p1", "FAVY10", "cancelled"], [
+    "p2",
+    "FAVY10",
+    null,
+  ]]);
+  assert(claimHolds("I proposed FAVY10 for you to approve.", waiting));
+  assert(!claimHolds("I created FAVY10 for you.", waiting));
+  // Cancelled, and a different code proposed instead.
+  const swapped = discountRows([["p1", "FAVY10", "cancelled"], [
+    "p2",
+    "GIRLS20",
+    null,
+  ]]);
+  assert(!claimHolds("I proposed FAVY10 for you to approve.", swapped));
+  assert(claimHolds("I proposed GIRLS20 for you to approve.", swapped));
+  // Created, then a later edit card cancelled: the code still exists.
+  const edited = discountRows([["p1", "FAVY10", "executed"], [
+    "p2",
+    "FAVY10",
+    "cancelled",
+  ]]);
+  assert(claimHolds("FAVY10 has been created.", edited));
+  // Expired or failed cards prove nothing.
+  assert(
+    !claimHolds(
+      "I proposed FAVY10.",
+      discountRows([["p1", "FAVY10", "expired"]]),
+    ),
+  );
+  assert(
+    !claimHolds(
+      "FAVY10 has been created.",
+      discountRows([["p1", "FAVY10", "failed"]]),
+    ),
+  );
+  // A discount receipt never backs an event claim.
+  assert(!claimHolds("I published your event.", remade));
+});
+
+Deno.test("#3355 tester retest 2: a negation in another clause never excuses the claim", () => {
+  const none: Array<Record<string, unknown>> = [];
+  assert(
+    !claimHolds("I created FAVY10, but I haven't published the event.", none),
+  );
+  assert(
+    !claimHolds(
+      "I created FAVY10 — you can't miss it on the Discounts page.",
+      none,
+    ),
+  );
+  assert(!claimHolds("Once again, I created FAVY10.", none));
+  // The honest forms stay as written.
+  assert(claimHolds("I haven't created FAVY10 yet.", none));
+  assert(claimHolds("The code FAVY10 was not created.", none));
+  assert(claimHolds("If you approve, FAVY10 will be created.", none));
+});
+
+const AMOUNT_KEYS = new Set([
+  "brand_id",
+  "kind",
+  "code",
+  "value_type",
+  "value_bps",
+  "value_minor",
+]);
+const amountCheck = (
+  message: string,
+  valueMinor: number,
+  currency: string,
+) =>
+  checkStatedSlots({
+    toolName: "create_discount",
+    toolArgs: {
+      code: "FAVY10",
+      kind: "code",
+      value_type: "amount",
+      value_minor: valueMinor,
+    },
+    schemaKeys: AMOUNT_KEYS,
+    stated: extractStatedSlots([message], NOW),
+    timezone: null,
+    currency,
+    country: null,
+    now: NOW,
+  }).kind;
+
+Deno.test("#3355 tester retest 2: an amount off is compared in each currency's own minor units", () => {
+  // USD cents.
+  assertEquals(amountCheck("Code FAVY10 for $5.50 off", 550, "USD"), "ok");
+  assertEquals(amountCheck("Code FAVY10 for $5.50 off", 500, "USD"), "ask");
+  assertEquals(amountCheck("Code FAVY10 for $5 off", 5, "USD"), "ask");
+  // GBP pence, by sign and by word.
+  assertEquals(amountCheck("Code FAVY10 £5 off", 500, "GBP"), "ok");
+  assertEquals(amountCheck("Code FAVY10 5 quid off", 5, "GBP"), "ask");
+  // "$" is the brand's own dollar; on a pound brand it is a question.
+  assertEquals(amountCheck("Code FAVY10 $5 off", 500, "CAD"), "ok");
+  assertEquals(amountCheck("Code FAVY10 $5 off", 500, "GBP"), "ask");
+  // Naira kobo with "k" and thousands separators; cedi pesewas; shilling cents.
+  assertEquals(amountCheck("Code FAVY10 ₦5k off", 500000, "NGN"), "ok");
+  assertEquals(amountCheck("Code FAVY10 5k off", 5000, "NGN"), "ask");
+  assertEquals(amountCheck("Code FAVY10 5,000 naira off", 500000, "NGN"), "ok");
+  assertEquals(amountCheck("Code FAVY10 GH₵50 off", 5000, "GHS"), "ok");
+  assertEquals(amountCheck("Code FAVY10 KSh 500 off", 50000, "KES"), "ok");
 });
