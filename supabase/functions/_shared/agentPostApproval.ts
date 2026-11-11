@@ -6,9 +6,25 @@
 import { ARI_STOPPED_HERE_LINE } from "./ariOwnerCopy.ts";
 import { toolOwnerCopy } from "./ariPresentation/toolLabels.ts";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
-import { callGemini, type GeminiContentMessage } from "./agentGemini.ts";
-import { lintAriCopy, safeAriCopyFallback } from "./agentCopyLint.ts";
-import { type AgentLoopResult, runAgentLoop } from "./agentLoop.ts";
+import {
+  callGemini,
+  callGeminiStructured,
+  type GeminiContentMessage,
+} from "./agentGemini.ts";
+import { lintAriCopy } from "./agentCopyLint.ts";
+import {
+  ARI_CLAIM_CHECK_RESERVE_MS,
+  type AgentLoopResult,
+  runAgentLoop,
+} from "./agentLoop.ts";
+import {
+  type AriClaimModelCall,
+  buildClaimEvidence,
+  checkReplyClaims,
+  type ClaimCheckResult,
+  dedupeReplySentences,
+  recentRecordEvidence,
+} from "./ariClaimCheck.ts";
 import {
   AGENT_TOOLS,
   findTool,
@@ -26,7 +42,12 @@ import {
 export type PostApprovalContinuation =
   | {
     kind: "text";
-    text: string;
+    /**
+     * #3355 rework 3 (R3-9): null when the model's words could not be shown
+     * safely; the caller says the server's own receipt line instead (never
+     * a "couldn't format that answer" line next to a successful receipt).
+     */
+    text: string | null;
     observations: AgentLoopResult["observations"];
   }
   | {
@@ -70,6 +91,10 @@ export async function continueAfterApprovedAction(args: {
   conversationId: string;
   toolName: string;
   result: unknown;
+  /** The approved card's own args (its code, title …), the receipt's object. */
+  toolArgs?: Record<string, unknown>;
+  /** Test seam: the claim check's model call. */
+  claimCall?: AriClaimModelCall;
 }): Promise<PostApprovalContinuation | null> {
   // Ticket pricing's confirmed operation returns the exact canonical tier
   // that its SQL executor read back. Use that receipt directly; a second model
@@ -135,12 +160,14 @@ export async function continueAfterApprovedAction(args: {
   const loop = await runAgentLoop({
     budget: {
       maxSteps: 4,
-      maxModelCalls: 5,
+      // #3355 rework 3: one of the five model calls, and its time, is the
+      // claim check on the continuation's words.
+      maxModelCalls: 4,
       maxToolCalls: 8,
       maxConsecutiveErrors: 2,
-      deadlineMs: Deno.env.get("ARI_LOCAL_MODEL_ENABLED") === "true"
+      deadlineMs: (Deno.env.get("ARI_LOCAL_MODEL_ENABLED") === "true"
         ? 120_000
-        : 30_000,
+        : 30_000) - ARI_CLAIM_CHECK_RESERVE_MS,
     },
     callModel: async (observations) => {
       const observationContents: GeminiContentMessage[] = [];
@@ -240,11 +267,15 @@ export async function continueAfterApprovedAction(args: {
       observations: loop.observations,
     };
   }
-  const rawText = loop.kind === "text"
-    ? loop.text
+  if (loop.kind !== "text") {
     // #3355 Wave E: this loop never offers start_flow; a flow_start cannot
-    // happen here and reads as a stop.
-    : postApprovalStopText(loop.kind === "stopped" ? loop.reason : "errors");
+    // happen here and reads as a stop. Server words, no check needed.
+    return {
+      kind: "text",
+      text: postApprovalStopText(loop.kind === "stopped" ? loop.reason : "errors"),
+      observations: loop.observations,
+    };
+  }
   const usedResearch = loop.observations.some((item) =>
     [
       "search_public_web",
@@ -257,13 +288,103 @@ export async function continueAfterApprovedAction(args: {
     const result = item.result as { sources?: unknown } | undefined;
     return Array.isArray(result?.sources) && result.sources.length > 0;
   });
-  const lint = lintAriCopy(rawText, {
+  const lint = lintAriCopy(loop.text, {
     researchExpected: usedResearch,
     hasSources,
   });
+  if (!lint.ok) {
+    // R3-9: the receipt card already says what was saved.
+    console.warn(JSON.stringify({
+      event: "ari_post_approval_text_dropped",
+      issue: "3355",
+      violations: lint.violations.slice(0, 4),
+    }));
+    return { kind: "text", text: null, observations: loop.observations };
+  }
+  const check = await checkPostApprovalClaims({
+    text: loop.text,
+    hostMessage: recentGoalText,
+    toolName: args.toolName,
+    toolArgs: args.toolArgs ?? {},
+    result: args.result,
+    observations: loop.observations,
+    client: args.client,
+    userId: args.userId,
+    call: args.claimCall,
+  });
+  console.info(JSON.stringify({
+    event: "ari_post_approval_claim_check",
+    issue: "3355",
+    source: check.source,
+    reason: check.reason,
+    claims: check.claims.length,
+    replaced: check.replaced.map((item) => item.status),
+    removed: check.removed.length,
+    elapsed_ms: check.elapsedMs,
+  }));
+  const text = dedupeReplySentences(check.text);
   return {
     kind: "text",
-    text: lint.ok ? rawText : safeAriCopyFallback(lint.violations),
+    text: text || null,
     observations: loop.observations,
   };
+}
+
+/**
+ * #3355 rework 3 (R3-4, I-ARI-CLAIM-MATCHES-RECEIPT): the continuation's
+ * words right after a confirmed write are checked against the records like
+ * every other model text. The approved write is the one executed record of
+ * this turn; the loop's reads back what they found; anything else the words
+ * say was done ("I've also emailed your guests") is not in the records and
+ * is removed.
+ */
+export async function checkPostApprovalClaims(args: {
+  text: string;
+  hostMessage: string;
+  toolName: string;
+  toolArgs: Record<string, unknown>;
+  result: unknown;
+  observations: AgentLoopResult["observations"];
+  client: SupabaseClient;
+  userId: string;
+  call?: AriClaimModelCall;
+}): Promise<ClaimCheckResult> {
+  const executed = buildClaimEvidence({
+    states: [],
+    observations: [{
+      tool: args.toolName,
+      args: args.toolArgs,
+      result: args.result,
+    }],
+    isReadTool: () => false,
+  });
+  const reads = buildClaimEvidence({
+    states: [],
+    observations: args.observations,
+    // An inline Ari-state write (a memory note) is done, not a read.
+    isReadTool: (tool, toolArgs) => isReadOnlyAgentToolCall(tool, toolArgs),
+  });
+  const objects = executed.flatMap((item) =>
+    item.objects.filter((name) => name.length <= 80)
+  );
+  return await checkReplyClaims({
+    text: args.text,
+    hostMessage: args.hostMessage,
+    // The host just approved a write: always checked.
+    intent: "tool",
+    recentWrite: true,
+    objects,
+    evidence: [...executed, ...reads],
+    moreEvidence: (kinds) =>
+      recentRecordEvidence({ client: args.client, userId: args.userId, kinds }),
+    askedWriteThisTurn: false,
+    call: args.call ?? (async (request) =>
+      (await callGeminiStructured({
+        systemPrompt: request.systemPrompt,
+        contents: request.contents,
+        responseSchema: request.schema,
+        signal: request.signal,
+        maxOutputTokens: 512,
+      })).value),
+  });
 }

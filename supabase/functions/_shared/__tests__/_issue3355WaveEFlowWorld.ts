@@ -165,6 +165,19 @@ export class MemoryStore implements FlowStore {
     } as FlowRun;
   }
   start(args: Parameters<FlowStore["start"]>[0]) {
+    // #3355 rework 3 (R3-7, as 20280620133355): a follow-up run never closes
+    // another setup open in the chat, live or parked; it is refused.
+    const followUp = args.answers !== undefined && args.answers !== null &&
+      "follow_up_of" in (args.answers as Record<string, unknown>);
+    if (
+      followUp &&
+      [...this.runs.values()].some((run) =>
+        run.conversation_id === args.conversationId &&
+        (LIVE.includes(run.status) || run.status === "parked")
+      )
+    ) {
+      return Promise.reject(new Error("flow_run_open"));
+    }
     for (const run of this.runs.values()) {
       if (run.conversation_id !== args.conversationId) continue;
       if (LIVE.includes(run.status) && run.flow_key === args.flowKey) {

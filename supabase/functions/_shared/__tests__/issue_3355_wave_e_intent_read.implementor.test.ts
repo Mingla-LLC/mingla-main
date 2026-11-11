@@ -480,7 +480,8 @@ Deno.test("E1: stated values the read heard reach the stated-slot guard — only
     brand_id: "22222222-2222-4222-8222-222222222222",
     code: "FAVY10",
   };
-  // The keyword read alone cannot hear this end date.
+  // #3355 rework 3 (R3-10): the keyword read now hears "till Christmas Eve"
+  // on its own too; the read agrees.
   const alone = await preserveStatedSlots({
     toolName: "create_discount",
     toolArgs: args,
@@ -489,7 +490,10 @@ Deno.test("E1: stated values the read heard reach the stated-slot guard — only
     userClient: brandClient("Africa/Lagos"),
     now: new Date("2026-11-10T10:00:00Z"),
   });
-  assertEquals(alone.kind === "ok" && alone.args.ends_at, undefined);
+  assertEquals(
+    alone.kind === "ok" && alone.args.ends_at,
+    "2026-12-24T22:59:59Z",
+  );
   const withRead = await preserveStatedSlots({
     toolName: "create_discount",
     toolArgs: args,
@@ -512,7 +516,8 @@ Deno.test("E1: stated values the read heard reach the stated-slot guard — only
     modelStated: { ends_on: "2027-01-05", percent_off: 90, code: "FREE100" },
   });
   if (invented.kind !== "ok") throw new Error(invented.kind);
-  assertEquals(invented.args.ends_at, undefined);
+  // The host's own end day, never the model's invented one.
+  assertEquals(invented.args.ends_at, "2026-12-24T22:59:59Z");
   assertEquals(invented.args.value_bps, undefined);
   assertEquals(invented.args.code, "FAVY10");
 });

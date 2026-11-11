@@ -1320,7 +1320,7 @@ export async function decideFlowTurn(
         return await staleResumeReply(args.flowAnswer, store, live);
       }
       // #3355 rework 2 (P2-11): the completion card's follow-up.
-      const followUp = await completedRunFollowUp(args, deps, live);
+      const followUp = await completedRunFollowUp(args, deps, live, run);
       if (followUp) return followUp;
       if (!live) return { kind: "stale", next: null, state: flowStateOf(run) };
       return decisionFromOutcome(
@@ -1427,11 +1427,29 @@ async function completedRunFollowUp(
   args: FlowTurnArgs,
   deps: { store: FlowStore; probes: FlowProbeDeps },
   live: FlowRun | null,
+  current: FlowRun | null = null,
 ): Promise<FlowTurnDecision | null> {
   const answer = args.flowAnswer;
   if (!answer || !args.brand || live?.id === answer.run_id) return null;
   const old = await followUpTarget(deps.store, args.conversationId, answer);
   if (!old) return null;
+  // #3355 rework 3 (R3-7): a paused setup in this chat is open too. The old
+  // card's "Yes" never cancels it: its Resume card comes back instead.
+  const parked = !live && current?.status === "parked" &&
+      current.id !== old.id
+    ? current
+    : null;
+  if (parked) {
+    const resume = parkArtefact(parked);
+    return {
+      kind: "reply",
+      text:
+        `You have another setup paused in this chat. Pick it up again with ${resume.title}, or finish or stop it first, then ask me again.`,
+      artefact: resume,
+      state: flowStateOf(parked),
+      classification: "flow_engine_follow_up",
+    };
+  }
   if (live) {
     return {
       kind: "reply",

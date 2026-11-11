@@ -316,7 +316,7 @@ flow_action, only when OPEN SETUP exists:
 - park: the host asks for something else (a different request), or says what they want instead, even as a complaint or a why-question ("why does it keep asking me this? I just want the discount code"); the setup waits.
 - resume: OPEN SETUP is parked and the host wants to carry on with it.
 - cancel: the host wants to stop the setup.
-A side question has no flow_action: a quick question you can answer in one reply while the setup stays open, about the card or about how Mingla works (what does this mean? how much does Mingla charge per ticket? is this optional?). Asking about fees, prices or what a field means is never park.
+A side question has no flow_action: a quick question you can answer in one reply while the setup stays open, about the card, about how Mingla works, or a quick look at the host's own things (what does this mean? how much does Mingla charge per ticket? is this optional? is FAVY10 active and when does it end? how many tickets have I sold?). Asking about fees, prices, what a field means or the state of something that already exists is never park; only a new task to do parks.
 
 confidence: 0 to 1, how sure you are.
 stated_values: only values the host actually wrote in their NEWEST message (a code, percent off, an amount off as a plain number, an end or start date as YYYY-MM-DD, use limits, a title, a date, a price, a capacity). "Ten percent" and "10pc" are percent_off 10; "half off" is 50. When the host changes their mind, give only the new value. When the message names two or more codes, put each code's own values in per_code (one entry per code, with its code) and never copy one code's value onto another. Never invent one. Empty object when none.
@@ -730,6 +730,12 @@ export function routeAriTurn(args: {
   message: string;
   /** A deterministic safety reply owns this turn (bank details, …). */
   safetyReply: boolean;
+  /**
+   * #3355 rework 3 (R3-12): whether a tool only reads. A quick read of the
+   * host's own things during a setup ("is FAVY10 active?") is a side
+   * question: answered without parking. Only a new task parks.
+   */
+  isReadTool?: (toolName: string) => boolean;
 }): AriTurnRoute {
   const { result, hints, openFlow, engineOn } = args;
   const read = result.read;
@@ -745,11 +751,15 @@ export function routeAriTurn(args: {
     // setup is untouched and the safety words are said.
     flowAction = "side";
   } else if (live && fromModel) {
+    const sideRead = read.intent === "question" ||
+      (read.intent === "tool" && read.target !== null &&
+        (args.isReadTool?.(read.target) ?? false));
     if (read.flow_action === "answer") flowAction = "answer";
+    else if (read.flow_action === "park" && sideRead) flowAction = "side";
     else if (read.flow_action === "park") flowAction = "park";
     else if (read.flow_action === "cancel") flowAction = "cancel";
     else if (read.intent === "flow_answer") flowAction = "answer";
-    else if (read.intent === "question" || read.intent === "chat") {
+    else if (sideRead || read.intent === "chat") {
       flowAction = "side";
     } else if (read.intent === "tool" || read.intent === "flow") {
       flowAction = "park";

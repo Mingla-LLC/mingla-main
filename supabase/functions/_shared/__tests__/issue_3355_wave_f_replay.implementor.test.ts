@@ -7,7 +7,8 @@
 // parser and routeAriTurn; the typed words go through decideFlowTurn (no
 // keyword may start a setup); a stub proposal goes through the stated-slot
 // guard (checkStatedSlots, the brand's zone); a stub reply goes through the
-// write-claim guard (guardWriteClaims). What comes out is graded on route,
+// claim check against the records (checkReplyClaims, Flash's recorded
+// answers; rework 3). What comes out is graded on route,
 // proposal args, reply claims and no-same-card-twice. No network, no model.
 //
 // The live twin: node scripts/ari/eval/run-live.mjs (local stack, real Flash).
@@ -33,9 +34,12 @@ import { decideFlowTurn } from "../ariFlows/edge.ts";
 import {
   checkStatedSlots,
   extractStatedSlots,
-  guardWriteClaims,
   mergeModelStatedSlots,
+  writeObjectsFrom,
+  writeStatesFromHistory,
 } from "../ariTruthGuards.ts";
+import { buildClaimEvidence, checkReplyClaims } from "../ariClaimCheck.ts";
+import { recordedClaimCall } from "./_issue3355ClaimFlash.ts";
 import {
   freshWorld,
   MemoryStore,
@@ -157,10 +161,46 @@ async function replayTurn(args: {
       handoffs: [],
     };
   }
-  const guarded = guardWriteClaims({
+  // #3355 rework 3: the claim check against the records (Flash's recorded
+  // answer for a known reply; any other reply takes the fallback strip).
+  // Every card in a replay is cancelled between turns.
+  const rows = args.evidence.flatMap((item, index) => {
+    const record = item as { tool_name?: unknown; tool_args?: unknown };
+    return [
+      {
+        role: "assistant",
+        tool_calls: {
+          pending_action_id: `replay-${index}`,
+          tool_name: record.tool_name,
+          args: record.tool_args,
+        },
+      },
+      {
+        role: "tool",
+        tool_results: {
+          pending_action_id: `replay-${index}`,
+          tool_name: record.tool_name,
+          outcome: "cancelled",
+        },
+      },
+    ];
+  });
+  const states = writeStatesFromHistory(rows);
+  const stated = extractStatedSlots(args.ownerSinceProposal);
+  const intent = String(args.stub.read.intent ?? "question");
+  const guarded = await checkReplyClaims({
     text: args.stub.reply ?? "",
-    pendingThisTurn: false,
-    evidence: args.evidence,
+    hostMessage: args.say,
+    intent,
+    recentWrite: states.length > 0,
+    objects: [
+      ...writeObjectsFrom({ evidence: args.evidence }),
+      ...(stated.code ? [stated.code] : []),
+      ...(stated.codes ?? []),
+    ],
+    evidence: buildClaimEvidence({ states }),
+    askedWriteThisTurn: intent === "tool" || intent === "flow",
+    call: recordedClaimCall,
   });
   return {
     route: modelStarted.length > 0 ? `flow_card:${modelStarted[0]}` : "text",
@@ -241,11 +281,12 @@ Deno.test("F1 CI replay: the FAVY10 turn proposes ends_at 2026-12-19T22:59:59Z (
   assertEquals(favy.args.value_bps, 1000);
   assertEquals(favy.args.ends_at, "2026-12-19T22:59:59Z");
   // The production lie ("I proposed creating … FFBTSCOM10" with no card) is
-  // replaced by the server's true state (rework 2: structural guard).
+  // replaced by the records' true state (rework 3: the claim check). The
+  // host asked a question, not for a save, so it is not "nothing saved".
   const asked = graded.turns[3].observed as { text: string };
   assertEquals(
     asked.text,
-    "Nothing has been saved or sent for FFBTSCOM10 yet.",
+    "There's no card or receipt for FFBTSCOM10 in this chat.",
   );
 });
 

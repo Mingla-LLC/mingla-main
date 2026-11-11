@@ -103,7 +103,7 @@ Deno.test("#4304 agent-chat's read branch hands a promoted follow-up to the writ
   );
   const promote = chatSource.indexOf("promoted = followupProposal(", readStart);
   const leave = chatSource.indexOf("break readTurn;", promote);
-  // #3355 rework 2: the follow-up text now passes the structural claim guard
+  // #3355 rework 2/3: the follow-up text now passes the claim check
   // (`const text = followup?.textResponse ? await guardReplyClaims(…) : …`).
   const textFallback = chatSource.indexOf(
     "const text = followup?.textResponse",

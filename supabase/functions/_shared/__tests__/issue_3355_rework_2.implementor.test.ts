@@ -1,8 +1,7 @@
 // Issue #3355 rework 2 — the tester's retest-2 FAIL verdict, fixed
 // structurally (orchestrator decision 2026-11-11).
 //
-//   P1-2  the claim guard is structural: no sentence of model text states a
-//         write's status; the server composes it from state (N1, N2 folded in);
+//   P1-2  (retired in rework 3; see issue_3355_rework_3.implementor.test.ts);
 //   P1-18 percent ↔ amount: the latest statement wins, per object (N3);
 //   P2-9  values bind to their own code in either word order (N4);
 //   P2-19 / P3-20 spelled-out and abbreviated percents, NGN5000, "between …
@@ -14,27 +13,21 @@
 //   P2-11 a guided setup completes when its draft is saved and verified; the
 //         "get it ready" step is a follow-up that never blocks completion.
 //
-// MINGLA-INVARIANT: I-ARI-NO-MODEL-STATUS-WORDS | issue #3355 | No sentence of the model's own reply text that names one of the chat's write objects or uses a write-status word (other than as an instruction to the host, or in a question) reaches the host; the write status the host reads is composed by the server from the chat's proposals, receipts and the cards' database status, on the agent-loop and single-call paths.
+// (I-ARI-NO-MODEL-STATUS-WORDS was retired in rework 3: status words the records back are kept; see I-ARI-CLAIM-MATCHES-RECEIPT in ariClaimCheck.ts.)
 // MINGLA-INVARIANT: I-ARI-STATED-LATEST-PER-OBJECT | issue #3355 | Per code and field the host's latest stated value wins (a percent replaces an amount and the reverse; a correction inside one message keeps the newer value); values bind to the code in their own clause in either word order; two values with no correction, or an intent read that disagrees with the words, make Ari ask one question naming both.
 // MINGLA-INVARIANT: I-ARI-FLOW-COMPLETES-ON-DRAFT | issue #3355 | An offering setup run completes, with the draft step's evidence, as soon as its draft is saved and verified; the optional next step (get it ready / publish / cover) is offered once on the completion card and continues in a new run, never holding the first run open.
 
 import {
-  assert,
   assertEquals,
   assertMatch,
   assertNotMatch,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   checkStatedSlots,
-  claimEvidenceFromHistory,
   extractStatedSlots,
-  guardWriteClaims,
   mergeModelStatedSlots,
   type ModelStatedValues,
   preserveStatedSlots,
-  statusWordsIn,
-  TRUE_STATE_NOTHING_SAVED,
-  writeStatesFromHistory,
 } from "../ariTruthGuards.ts";
 import { parseAriIntentRead } from "../ariIntentRead.ts";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
@@ -75,197 +68,8 @@ function check(
   });
 }
 
-const rewritten = (text: string) =>
-  guardWriteClaims({ text, pendingThisTurn: false, evidence: [] }).rewritten;
-
-// ── P1-2: structural claim guard ────────────────────────────────────────────
-
-Deno.test("P1-2 (N1/N2 and more): every status sentence goes, whatever its wording", () => {
-  for (
-    const text of [
-      // Tester N1.
-      "I can confirm that I've created FAVY10.",
-      "I can confirm FAVY10 has been created.",
-      "No problem I've created FAVY10 for you.",
-      "Sure thing no worries I created FAVY10.",
-      // Tester N2.
-      "FAVY10 is live now.",
-      "Good news: FAVY10 is live.",
-      "Your code FAVY10 is active and ready to use.",
-      "Your event is published.",
-      "FAVY10 has gone live.",
-      "Ari has created FAVY10.",
-      "Created FAVY10 for you.",
-      "We've emailed all your guests.",
-      // The orchestrator's list and the runtime miss.
-      "I previously prepared the proposal card for FAVY10.",
-      "I previously prepared the proposal card.",
-      "FAVY10 is live",
-      "I can confirm I've created your discount.",
-      "No problem, I've created it.",
-      "I actually created FAVY10.",
-      "I've already gone and created FAVY10.",
-      "I quickly set up FAVY10.",
-      "I earlier proposed FAVY10.",
-      "All done!",
-      "Your trip is ready.",
-      "You're all set, the code went out to everyone.",
-      "FAVY10 is live, want me to share it?",
-    ]
-  ) assert(rewritten(text), text);
-});
-
-Deno.test("P1-2: answers, questions and guide steps with no status survive word for word", () => {
-  for (
-    const text of [
-      "Discount codes give buyers money off at checkout.",
-      "Mingla charges 4.5% per ticket, and buyers see the price before they pay.",
-      "What code would you like people to type at checkout?",
-      "Should FAVY10 end on 19 December?",
-      "Want me to prepare FAVY10 for you to approve?",
-      "Open Events, pick your event, then tap Discounts.",
-      "To create a discount, open Events → Discounts and tap New code.",
-      "Tap **Create event** at the top of Home.",
-      "You can set an end date and a use limit on each code.",
-      "Once you're done, tap Publish.",
-      "Let's set up your Website.",
-      "1. Open Events\n2. Pick your event\n3. Tap Discounts",
-    ]
-  ) {
-    const out = guardWriteClaims({ text, evidence: [] });
-    assertEquals(out, { text, rewritten: false, unsupported: [] }, text);
-  }
-  // A guide step keeps its instruction words; a status word near it does not.
-  assertEquals(statusWordsIn("Tap Create event, then add a cover."), []);
-  assertEquals(statusWordsIn("Your event is published."), ["published"]);
-});
-
-const PENDING_FAVY10 = [{
-  role: "assistant",
-  tool_calls: {
-    pending_action_id: "p1",
-    tool_name: "create_discount",
-    args: { code: "FAVY10", kind: "code", value_bps: 1000 },
-  },
-}];
-
-Deno.test("P1-2: the status the host reads is composed from state, never the model", () => {
-  const evidence = claimEvidenceFromHistory(PENDING_FAVY10);
-  // A live card.
-  const pending = guardWriteClaims({
-    text: "Great question! I've created FAVY10 for you. It gives 10% off.",
-    evidence,
-    states: writeStatesFromHistory(PENDING_FAVY10),
-  });
-  assertEquals(
-    pending.text,
-    "Great question! It gives 10% off.\n\nHere's FAVY10 ready to create. Tap Confirm to save it, or Edit to change it.",
-  );
-  // An executed receipt: the receipt card's own words.
-  const executed = [
-    ...PENDING_FAVY10,
-    {
-      role: "tool",
-      tool_results: {
-        pending_action_id: "p1",
-        tool_name: "create_discount",
-        outcome: "executed",
-      },
-    },
-    {
-      role: "assistant",
-      content: {
-        text: "",
-        structured: {
-          rendition: {
-            rendition_id: "receipt:p1",
-            kind: "receipt",
-            title: "Discount created",
-            body: "Saved and checked in Mingla:",
-            blocks: [{
-              type: "key_value",
-              rows: [{ label: "Code", value: "FAVY10" }, {
-                label: "Off",
-                value: "10%",
-              }],
-            }],
-          },
-        },
-      },
-    },
-  ];
-  assertEquals(
-    guardWriteClaims({
-      text: "FAVY10 is live now.",
-      evidence: claimEvidenceFromHistory(executed),
-      states: writeStatesFromHistory(executed),
-    }).text,
-    "Discount created. Saved and checked in Mingla: Code FAVY10, Off 10%.",
-  );
-  // The card's database status outranks the chat rows: it expired.
-  const expired = guardWriteClaims({
-    text: "I made FAVY10.",
-    evidence,
-    states: writeStatesFromHistory(
-      PENDING_FAVY10,
-      new Map([["p1", { status: "expired", expires_at: null }]]),
-    ),
-  });
-  assertMatch(
-    expired.text,
-    /^The card for FAVY10 expired before it was confirmed/,
-  );
-  // Nothing in state, nothing left: one neutral line.
-  assertEquals(
-    guardWriteClaims({ text: "Done! Your event is live.", evidence: [] }).text,
-    `${TRUE_STATE_NOTHING_SAVED} Tell me what you'd like and I'll prepare it for you to approve.`,
-  );
-  // A host-stated object is a write object even before any card.
-  const stated = guardWriteClaims({
-    text: "Lagos Rooftop Party starts at 9pm.",
-    evidence: [],
-    objects: ["Lagos Rooftop Party"],
-  });
-  assert(stated.rewritten);
-});
-
-Deno.test("P1-2: both reply paths run the one guard on model text only, reading the cards' status", async () => {
-  const source = await Deno.readTextFile(
-    new URL("../../agent-chat/index.ts", import.meta.url),
-  );
-  // The loop guards only text the model wrote.
-  assertMatch(
-    source,
-    /const modelAuthoredLoopText = !websiteSetupPresentation && !launchPlan &&\s+loopResult\.kind === "text" && copyLint\.ok;/,
-  );
-  assertMatch(
-    source,
-    /const safeLoopText = modelAuthoredLoopText\s+\? await guardReplyClaims\(\{/,
-  );
-  assertMatch(
-    source,
-    /const answer = await guardReplyClaims\(\{\s+text: gemini\.textResponse\.trim\(\),/,
-  );
-  // The single-call read follow-up's words go through it too.
-  assertMatch(
-    source,
-    /const text = followup\?\.textResponse\s+\? await guardReplyClaims\(\{/,
-  );
-  // The guard reads the cards' own status with the caller's login.
-  const guard = source.slice(
-    source.indexOf("async function guardReplyClaims("),
-  );
-  assertMatch(guard, /args\.userClient\.from\("agent_pending_actions"\)/);
-  assertMatch(guard, /states: writeStatesFromHistory\(args\.history, live\)/);
-  // The negation / excuse machinery is gone from the guard module.
-  const module = await Deno.readTextFile(
-    new URL("../ariTruthGuards.ts", import.meta.url),
-  );
-  assertNotMatch(
-    module,
-    /CLAUSE_NEGATION|CLAUSE_CONDITION|ACTIVE_CLAIM|PASSIVE_CLAIM/,
-  );
-});
+// P1-2 (the structural claim guard) was replaced in rework 3 by the claim
+// check against the records: issue_3355_rework_3.implementor.test.ts.
 
 // ── P1-18 / P2-9 / P2-19 / P3-20: stated values ─────────────────────────────
 

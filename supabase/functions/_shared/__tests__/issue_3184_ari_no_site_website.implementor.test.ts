@@ -347,7 +347,7 @@ Deno.test({
   sanitizeOps: false,
   sanitizeResources: false,
   fn: () => {
-    assertEquals(PROMPT_VERSION, "v35"); // #3355 rework 2: status words come from the server, never the model
+    assertEquals(PROMPT_VERSION, "v36"); // #3355 rework 3: status claims are checked against the records
     const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false });
     for (
       const line of [

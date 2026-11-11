@@ -22,11 +22,13 @@ import {
   claimEvidenceFromHistory,
   endOfLocalDayIso,
   extractStatedSlots,
-  guardWriteClaims,
   ownerMessagesForProposal,
   TRUE_STATE_NOTHING_SAVED,
+  writeObjectsFrom,
   writeStatesFromHistory,
 } from "../ariTruthGuards.ts";
+import { buildClaimEvidence, checkReplyClaims } from "../ariClaimCheck.ts";
+import { recordedClaimCall } from "./_issue3355ClaimFlash.ts";
 
 const FAVY10 =
   'Create a discount code for me using "FAVY10" as the code and 10% off this code and let it run from now until 19th of December 2026.';
@@ -67,102 +69,98 @@ function modelArgs(extra: Record<string, unknown> = {}) {
 
 // ── I-ARI-CLAIM-MATCHES-RECEIPT ─────────────────────────────────────────────
 
-// #3355 rework 2: the guard is structural. The model's words never state a
-// write's status (no claim is "backed" any more); the server says it from
-// state. These three tests changed with that rule (orchestrator decision
-// 2026-11-11): the old "a backed claim stands" and "a negation leaves the
-// words alone" cases now expect the sentence removed and the state composed.
+// #3355 rework 3 (Seth, 2026-11-11): the claim check against the records.
+// The model reads the reply's completion claims (Flash's recorded answers
+// here); the server keeps a backed claim word for word and replaces an
+// unbacked one with the true state.
 
-Deno.test("A6a: a claimed proposal for a code with no write is replaced by the true state", () => {
-  const history = [
-    {
-      role: "assistant",
-      tool_calls: {
-        tool_name: "create_discount",
-        args: modelArgs(),
-        pending_action_id: "p1",
-      },
-    },
-    {
-      role: "tool",
-      tool_results: {
-        tool_name: "create_discount",
-        pending_action_id: "p1",
-        outcome: "executed",
-        result: { code: "FAVY10" },
-      },
-    },
-  ];
-  const guarded = guardWriteClaims({
-    text:
-      "I proposed creating the discount code FFBTSCOM10 for 10% off. You can approve it below.",
-    evidence: claimEvidenceFromHistory(history),
-    states: writeStatesFromHistory(history),
+async function checked(
+  text: string,
+  history: Array<Record<string, unknown>>,
+  host: string,
+  intent = "tool",
+) {
+  const states = writeStatesFromHistory(history);
+  return await checkReplyClaims({
+    text,
+    hostMessage: host,
+    intent,
+    recentWrite: states.length > 0,
+    objects: [
+      ...writeObjectsFrom({ evidence: claimEvidenceFromHistory(history) }),
+      ...(extractStatedSlots([host], NOW).code
+        ? [extractStatedSlots([host], NOW).code as string]
+        : []),
+    ],
+    evidence: buildClaimEvidence({ states }),
+    askedWriteThisTurn: intent === "tool",
+    call: recordedClaimCall,
   });
-  assert(guarded.rewritten);
+}
+
+const SAVED_FAVY10 = [
+  {
+    role: "assistant",
+    tool_calls: {
+      tool_name: "create_discount",
+      args: modelArgs(),
+      pending_action_id: "p1",
+    },
+  },
+  {
+    role: "tool",
+    tool_results: {
+      tool_name: "create_discount",
+      pending_action_id: "p1",
+      outcome: "executed",
+      result: { code: "FAVY10" },
+    },
+  },
+];
+
+Deno.test("A6a: a claimed proposal for a code with no write is replaced by the true state", async () => {
+  const guarded = await checked(
+    "I proposed creating the discount code FFBTSCOM10 for 10% off. You can approve it below.",
+    SAVED_FAVY10,
+    "Create FFBTSCOM10",
+  );
+  assertEquals(guarded.source, "model");
   assertNotMatch(guarded.text, /I proposed/);
   assertMatch(
     guarded.text,
     /Nothing has been saved or sent for FFBTSCOM10 yet\./,
   );
   assertNotMatch(guarded.text, /FAVY10/, "another code's state is not shown");
-  assertEquals(guarded.unsupported.length, 1);
+  assertEquals(guarded.replaced.length, 1);
 });
 
-Deno.test("A6a: even a true claim is said by the server, from the receipt", () => {
-  const history = [
-    {
-      role: "assistant",
-      tool_calls: {
-        tool_name: "create_discount",
-        args: modelArgs(),
-        pending_action_id: "p1",
-      },
-    },
-    {
-      role: "tool",
-      tool_results: {
-        tool_name: "create_discount",
-        pending_action_id: "p1",
-        outcome: "executed",
-      },
-    },
-  ];
-  const guarded = guardWriteClaims({
-    text: "I've created FAVY10 — it's live for 10% off.",
-    evidence: claimEvidenceFromHistory(history),
-    states: writeStatesFromHistory(history),
-  });
-  assert(guarded.rewritten);
-  assertEquals(
-    guarded.text,
-    "Discount created: FAVY10. Saved and checked in Mingla.",
-  );
+Deno.test("A6a: a true claim stays word for word (the receipt backs it)", async () => {
+  const text = "I've created FAVY10 — it's live for 10% off.";
+  assertEquals((await checked(text, SAVED_FAVY10, "Create FAVY10")).text, text);
 });
 
-Deno.test("A6a: answers with no status stay; a status sentence never does, whatever its grammar", () => {
+Deno.test("A6a: answers with no claim stay; an unbacked claim never does", async () => {
   const answer =
     "Discount codes give buyers money off at checkout. Open Events, pick your event, then tap Discounts.";
   assertEquals(
-    guardWriteClaims({ text: answer, evidence: [] }),
-    { text: answer, rewritten: false, unsupported: [] },
+    (await checked(answer, [], "How do discounts work?", "question")).text,
+    answer,
   );
-  for (
-    const text of [
-      "I haven't created anything yet.",
-      "I've saved your changes.",
-      "I proposed the code below — approve it to save it.",
-    ]
-  ) {
-    const out = guardWriteClaims({ text, pendingThisTurn: true, evidence: [] });
-    assert(out.rewritten, text);
-    assertMatch(out.text, /prepare it for you to approve/);
-  }
+  assertEquals(
+    (await checked("I created FAVY10 for you.", [], "Create FAVY10")).text,
+    "Nothing has been saved or sent for FAVY10 yet.",
+  );
+  assertEquals(
+    (await checked("I haven't created FAVY10 yet.", [], "Create FAVY10")).text,
+    "I haven't created FAVY10 yet.",
+    "an honest 'not yet' is not a claim",
+  );
   const failed = claimEvidenceFromHistory([{
     role: "tool",
     tool_results: { tool_name: "create_discount", outcome: "failed" },
   }]);
   assertEquals(failed, [], "a row with no card is not evidence of anything");
+  assert(TRUE_STATE_NOTHING_SAVED.length > 0);
 });
 
 // ── I-ARI-STATED-SLOTS-PRESERVED ────────────────────────────────────────────

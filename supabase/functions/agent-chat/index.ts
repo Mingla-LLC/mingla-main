@@ -144,6 +144,8 @@ import {
 import {
   type AgentLoopObservation,
   type AgentLoopToolCall,
+  ARI_LOCAL_LOOP_BUDGET,
+  ARI_PRODUCTION_LOOP_BUDGET,
   ariChatLoopBudget,
   runAgentLoop,
 } from "../_shared/agentLoop.ts";
@@ -269,13 +271,19 @@ import {
   announcesWriteWithoutCall,
   claimEvidenceFromHistory,
   extractStatedSlots,
-  guardWriteClaims,
   type ModelStatedValues,
   ownerMessagesForProposal,
   preserveStatedSlots,
   type StatedSlotCheck,
+  writeObjectsFrom,
   writeStatesFromHistory,
 } from "../_shared/ariTruthGuards.ts";
+import {
+  buildClaimEvidence,
+  checkReplyClaims,
+  dedupeReplySentences,
+  recentRecordEvidence,
+} from "../_shared/ariClaimCheck.ts";
 import {
   buildWebsiteSetupPresentation,
   buildWebsiteSetupReply,
@@ -293,7 +301,14 @@ import {
   websiteSetupWorkflowInitialCalls,
 } from "../_shared/agentWebsiteSetup.ts";
 
+import { isValidIanaTimezone } from "../_shared/agentRelativeTime.ts";
+import { marketDefaultTimezone } from "../_shared/payoutCountries.ts";
+
 const MAX_MESSAGE_LENGTH = 4096;
+/** #3355 rework 3: the whole turn's wall budget (the claim check runs inside it). */
+const ARI_TURN_DEADLINE_MS = Deno.env.get("ARI_LOCAL_MODEL_ENABLED") === "true"
+  ? ARI_LOCAL_LOOP_BUDGET.deadlineMs ?? 115_000
+  : ARI_PRODUCTION_LOOP_BUDGET.deadlineMs;
 const HISTORY_WINDOW = 10;
 
 function completeStandaloneResearchRead(
@@ -833,8 +848,10 @@ async function commitTextTurn(
   // diagnostic codes remain available in agent_run observations and the
   // Improvement Lab; they never become chat prose.
   // #3355 P1 (D-6): the owner copy gate is the last word on what is shown.
+  // #3355 rework 3 (R3-11): a reply never says the same line twice (the
+  // model echoing a state line the server also adds, a resume prompt …).
   const publicText = assertOwnerCopy(
-    sanitizeAriUserFacingDiagnostics(args.text),
+    dedupeReplySentences(sanitizeAriUserFacingDiagnostics(args.text)),
     {
       fallback: OWNER_PROSE_FALLBACK,
       surface: "chat_text_turn",
@@ -2094,6 +2111,7 @@ async function handle(req: Request): Promise<Response> {
       engineOn,
       message: semanticMessage,
       safetyReply: intentSafetyReply,
+      isReadTool: (toolName) => isReadOnlyAgentToolCall(toolName, {}),
     });
     console.info(
       "[agent-chat] intent read",
@@ -3744,6 +3762,9 @@ ${boundedAgentContext}
             modelCalls: intentResult.modelCalls,
             elapsedMs: intentResult.elapsedMs,
           },
+          // #3355 rework 3: the claim check after the reply is one more of
+          // the turn's model calls, and its time is kept out of the loop's.
+          claimCheck: true,
         }),
         initialCalls,
         completeAfterInitialReads: websiteSetupIntent
@@ -4467,7 +4488,11 @@ ${boundedAgentContext}
           current: semanticMessage,
           modelStated: turnRoute.statedValues,
           userClient,
+          userId,
           conversationId,
+          intent: intentResult.read,
+          observations: loopResult.observations,
+          turnStartedAt,
         })
         : lintedLoopText;
       const guideCitations = ariGuideCitations(loopResult.observations);
@@ -4867,7 +4892,16 @@ ${boundedAgentContext}
               current: semanticMessage,
               modelStated: turnRoute.statedValues,
               userClient,
+              userId,
               conversationId,
+              intent: intentResult.read,
+              observations: [{
+                tool: tool.name,
+                args: gemini.toolCall.args,
+                result,
+                elapsedMs: 0,
+              }],
+              turnStartedAt,
             })
             : "Here's what I found.";
           await assertAttemptRunning(
@@ -5273,7 +5307,10 @@ ${boundedAgentContext}
       current: semanticMessage,
       modelStated: turnRoute.statedValues,
       userClient,
+      userId,
       conversationId,
+      intent: intentResult.read,
+      turnStartedAt,
     });
     const resumedState = interruptionState.status === "interrupted"
       ? resumeInterruption(interruptionState)
@@ -5378,12 +5415,14 @@ async function statedSlotStage(args: {
 }
 
 /**
- * #3355 rework 2 (I-ARI-CLAIM-MATCHES-RECEIPT, structural) — the one reply
- * guard both reply paths run. Every sentence of the model's text that names
- * one of this chat's write objects, or speaks of a write's status, is
- * removed; the status the host reads is composed by the server from the
- * chat's proposals, receipts and the cards' own database status (read with
- * the caller's login, so RLS decides).
+ * #3355 rework 3 (I-ARI-CLAIM-MATCHES-RECEIPT, the records) — the one reply
+ * check every model-text path runs. One structured model call lists the
+ * reply's completion claims; each is kept when the chat's records back it
+ * (receipts, cards and their database status read with the caller's login,
+ * this turn's inline writes and reads, recent memory notes and support
+ * tickets) and otherwise replaced in place by the server's true state. A
+ * failed or slow check is the narrow fallback strip. It is one of the
+ * turn's model calls and runs inside the 55 s deadline.
  */
 async function guardReplyClaims(args: {
   text: string;
@@ -5398,7 +5437,11 @@ async function guardReplyClaims(args: {
   current: string;
   modelStated?: ModelStatedValues | null;
   userClient: SupabaseClient;
+  userId: string;
   conversationId: string;
+  intent: { intent: string; target: string | null } | null;
+  observations?: readonly AgentLoopObservation[];
+  turnStartedAt: number;
 }): Promise<string> {
   const evidence = claimEvidenceFromHistory(args.history);
   const pendingIds = args.history.flatMap((row) => {
@@ -5444,30 +5487,119 @@ async function guardReplyClaims(args: {
     args.current,
   ];
   const stated = extractStatedSlots(ownerWords);
+  const states = writeStatesFromHistory(args.history, live);
   const objects = [
-    ...(stated.code ? [stated.code] : []),
-    ...(stated.codes ?? []),
-    ...Object.keys(stated.per_code ?? {}),
-    ...(typeof args.modelStated?.code === "string"
-      ? [args.modelStated.code]
-      : []),
-    ...(typeof args.modelStated?.title === "string"
-      ? [args.modelStated.title]
-      : []),
+    ...new Set([
+      ...writeObjectsFrom({ evidence }),
+      ...states.flatMap((state) => state.object ? [state.object] : []),
+      ...(stated.code ? [stated.code] : []),
+      ...(stated.codes ?? []),
+      ...Object.keys(stated.per_code ?? {}),
+      ...(typeof args.modelStated?.code === "string"
+        ? [args.modelStated.code]
+        : []),
+      ...(typeof args.modelStated?.title === "string"
+        ? [args.modelStated.title]
+        : []),
+    ]),
   ];
-  const claimGuard = guardWriteClaims({
-    text: args.text,
-    evidence,
-    states: writeStatesFromHistory(args.history, live),
-    objects,
-  });
-  if (claimGuard.rewritten) {
-    console.warn(
-      "[agent-chat] status sentences replaced by server state",
-      JSON.stringify({ count: claimGuard.unsupported.length }),
+  const observations = args.observations ?? [];
+  const isRead = (tool: string, toolArgs: Record<string, unknown>) =>
+    isReadOnlyAgentToolCall(tool, toolArgs);
+  const recentRows = args.history.slice(-8);
+  const recentWrite = writeStatesFromHistory(recentRows, live).length > 0 ||
+    observations.some((item) =>
+      !item.error && item.tool !== "request_tools" &&
+      !isRead(item.tool, item.args)
     );
+  const intentKind = args.intent?.intent ?? null;
+  const target = args.intent?.target ?? null;
+  const askedWriteThisTurn = (intentKind === "tool" || intentKind === "flow") &&
+    !(target && isRead(target, {}));
+  const check = await checkReplyClaims({
+    text: args.text,
+    hostMessage: args.current,
+    intent: intentKind,
+    recentWrite,
+    objects,
+    evidence: buildClaimEvidence({
+      states,
+      observations,
+      isReadTool: isRead,
+    }),
+    moreEvidence: (kinds) =>
+      recentRecordEvidence({
+        client: args.userClient,
+        userId: args.userId,
+        kinds,
+      }),
+    askedWriteThisTurn,
+    timeoutMs: ARI_TURN_DEADLINE_MS - (Date.now() - args.turnStartedAt),
+    call: async (request) =>
+      (await callGeminiStructured({
+        systemPrompt: request.systemPrompt,
+        contents: request.contents,
+        responseSchema: request.schema,
+        signal: request.signal,
+        maxOutputTokens: 512,
+      })).value,
+  });
+  console.info(
+    "[agent-chat] claim check",
+    JSON.stringify({
+      fn: "agent-chat",
+      issue: "3355",
+      source: check.source,
+      reason: check.reason,
+      claims: check.claims.length,
+      replaced: check.replaced.map((item) => item.status),
+      removed: check.removed.length,
+      elapsed_ms: check.elapsedMs,
+    }),
+  );
+  return check.text;
+}
+
+/**
+ * #3355 rework 3 (R3-5): the brand's time zone and currency for a proposal
+ * card that carries a date (`*_at`) or a minor-unit amount. Display only.
+ * Null when the write has neither, or the brand cannot be read.
+ */
+async function brandDisplayContext(
+  client: SupabaseClient,
+  toolArgs: Record<string, unknown>,
+): Promise<Record<string, string> | null> {
+  const brandId = toolArgs.brand_id;
+  const hasDate = Object.entries(toolArgs).some(([key, value]) =>
+    /_at$/.test(key) && typeof value === "string" &&
+    /^\d{4}-\d{2}-\d{2}T/.test(value)
+  );
+  const hasMinor = Object.keys(toolArgs).some((key) =>
+    /_(minor|cents)$/.test(key)
+  );
+  if (typeof brandId !== "string" || (!hasDate && !hasMinor)) return null;
+  const { data, error } = await client.from("brands")
+    .select("default_timezone,country_code,default_currency")
+    .eq("id", brandId)
+    .maybeSingle();
+  if (error || !data) {
+    console.warn(
+      "[agent-chat] brand display context unavailable",
+      JSON.stringify({ code: error?.code ?? null }),
+    );
+    return null;
   }
-  return claimGuard.text;
+  const brand = data as Record<string, unknown>;
+  const timezone = isValidIanaTimezone(brand.default_timezone)
+    ? String(brand.default_timezone)
+    : marketDefaultTimezone(brand.country_code);
+  const out: Record<string, string> = {};
+  if (timezone) out.brand_timezone = timezone;
+  if (
+    typeof brand.default_currency === "string" &&
+    /^[A-Za-z]{3}$/.test(brand.default_currency)
+  ) out.brand_currency = brand.default_currency.toUpperCase();
+  return Object.keys(out).length > 0 ? out : null;
 }
 
 async function commitPendingTurn(args: {
@@ -5524,12 +5656,20 @@ async function commitPendingTurn(args: {
   }
 
   const nowIso = new Date().toISOString();
+  // #3355 rework 3 (R3-5): a card with a date or an amount shows it in the
+  // brand's own time zone and currency before approval.
+  const brandDisplay = await brandDisplayContext(
+    args.pendingClient,
+    args.toolArgs,
+  );
   // #3355 P1 (D-5): the card and the rendition read the server's owner words
   // for this change; the presentation rides in server-owned proposal context,
   // which agent-confirm-action strips before authorization and execution.
   const proposalArgs = verifiedProposalArgs(
     args.toolArgs,
-    args.proposalContext ?? null,
+    brandDisplay
+      ? { ...(args.proposalContext ?? {}), ...brandDisplay }
+      : args.proposalContext ?? null,
     args.toolName,
   );
   const rendition = buildGenericProposalRendition({

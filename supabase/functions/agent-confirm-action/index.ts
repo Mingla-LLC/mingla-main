@@ -1446,6 +1446,7 @@ async function handleConfirmAction(args: {
           conversationId: pending.conversation_id,
           toolName: tool.name,
           result,
+          toolArgs: finalArgs,
         });
         if (continuation?.kind === "proposal") {
           const nextTool = findTool(continuation.toolName);
@@ -1496,7 +1497,10 @@ async function handleConfirmAction(args: {
     ? websiteSetupFollowup
     : continuationHasScopeFailure
     ? buildFollowupText(tool.name, result)
-    : continuation?.text ?? buildFollowupText(tool.name, result);
+    // #3355 rework 3 (R3-9): a continuation whose words could not be shown
+    // safely, or were all claims the records do not back, says the server's
+    // own receipt line.
+    : continuation?.text || buildFollowupText(tool.name, result);
   // #3355 P1 (D-6): the owner copy gate is the last word on follow-up text.
   const followupText = rawFollowupText
     ? assertOwnerCopy(sanitizeAriUserFacingDiagnostics(rawFollowupText), {

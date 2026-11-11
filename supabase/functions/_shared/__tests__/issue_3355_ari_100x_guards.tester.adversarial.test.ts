@@ -28,11 +28,13 @@ import {
   claimEvidenceFromHistory,
   endOfLocalDayIso,
   extractStatedSlots,
-  guardWriteClaims,
   mergeModelStatedSlots,
   TRUE_STATE_NOTHING_SAVED,
+  writeObjectsFrom,
   writeStatesFromHistory,
 } from "../ariTruthGuards.ts";
+import { buildClaimEvidence, checkReplyClaims } from "../ariClaimCheck.ts";
+import { recordedClaimCall } from "./_issue3355ClaimFlash.ts";
 
 const NOW = new Date("2026-11-11T10:00:00Z");
 const DISCOUNT_KEYS = new Set([
@@ -340,44 +342,68 @@ Deno.test("#3355 tester: a stated end a day off, or a different stated code, is 
   assertEquals(noZone.kind, "ask");
 });
 
-// Rework 2 (orchestrator decision 2026-11-11) edited the three claim tests
-// below: the guard is structural, so a status sentence never "holds" on a
-// receipt any more and no negation keeps one. Each case now pins the state
-// words the server composes instead, from the same histories.
+// Rework 3 (implementor; Seth's decision 2026-11-11, the claim check against
+// the records) edited the three claim tests below: the reply's claims are read
+// by Gemini Flash (its recorded answers, _issue3355ClaimFlash.ts) and kept only
+// when a record backs them. The histories and wordings are the tester's; the
+// expectations now say what the records prove (a backed claim stays word for
+// word, an honest "not yet" is not a claim).
 
-Deno.test("#3355 tester: an active-voice claim naming a code the chat never proposed is rewritten", () => {
-  const evidence = [{
-    pending_action_id: "p1",
-    tool_name: "create_discount",
-    args: { code: "FAVY10" },
+async function stateSaid(
+  text: string,
+  rows: Array<Record<string, unknown>>,
+  host = "Create FAVY10",
+  intent = "tool",
+) {
+  const states = writeStatesFromHistory(rows);
+  return (await checkReplyClaims({
+    text,
+    hostMessage: host,
+    intent,
+    recentWrite: states.length > 0,
+    objects: [
+      ...writeObjectsFrom({ evidence: claimEvidenceFromHistory(rows) }),
+      ...(extractStatedSlots([host], NOW).code
+        ? [extractStatedSlots([host], NOW).code as string]
+        : []),
+    ],
+    evidence: buildClaimEvidence({ states }),
+    askedWriteThisTurn: intent === "tool",
+    call: recordedClaimCall,
+  })).text;
+}
+
+Deno.test("#3355 tester: an active-voice claim naming a code the chat never proposed is rewritten", async () => {
+  const rows = [{
+    role: "assistant",
+    tool_calls: {
+      pending_action_id: "p1",
+      tool_name: "create_discount",
+      args: { code: "FAVY10" },
+    },
   }];
-  const out = guardWriteClaims({
-    text: "I've created GIRLSTRIPLAGOS for you. It is 10% off.",
-    pendingThisTurn: false,
-    evidence,
-  });
-  assert(out.rewritten);
-  assert(!out.text.includes("I've created GIRLSTRIPLAGOS"));
+  const out = await stateSaid(
+    "I've created GIRLSTRIPLAGOS for you. It is 10% off.",
+    rows,
+    "Create GIRLSTRIPLAGOS",
+  );
+  assert(!out.includes("I've created GIRLSTRIPLAGOS"));
   assert(
-    out.text.includes("Nothing has been saved or sent for GIRLSTRIPLAGOS yet."),
+    out.includes("Nothing has been saved or sent for GIRLSTRIPLAGOS yet."),
   );
   // A claim with no evidence at all is rewritten, whatever it names.
-  const bare = guardWriteClaims({
-    text: "We have just published your event.",
-    pendingThisTurn: false,
-    evidence: [],
-  });
-  assert(bare.rewritten);
-  assert(bare.text.startsWith(TRUE_STATE_NOTHING_SAVED));
-  // An honest "not yet" goes too: the server says it from state.
-  const honest = guardWriteClaims({
-    text: "I haven't created FFBTSCOM10 yet.",
-    pendingThisTurn: false,
-    evidence: [],
-  });
   assertEquals(
-    honest.text,
-    "Nothing has been saved or sent for FFBTSCOM10 yet.",
+    await stateSaid(
+      "We have just published your event.",
+      [],
+      "Publish my event",
+    ),
+    TRUE_STATE_NOTHING_SAVED,
+  );
+  // An honest "not yet" is not a claim: it stays.
+  assertEquals(
+    await stateSaid("I haven't created FAVY10 yet.", []),
+    "I haven't created FAVY10 yet.",
   );
 });
 
@@ -410,47 +436,38 @@ function discountRows(
   return rows;
 }
 
-const stateSaid = (text: string, rows: Array<Record<string, unknown>>) =>
-  guardWriteClaims({
-    text,
-    pendingThisTurn: false,
-    evidence: claimEvidenceFromHistory(rows),
-    states: writeStatesFromHistory(rows),
-  }).text;
-
-Deno.test("#3355 tester retest 2: a card cancelled then made again shows what the new card proves", () => {
+Deno.test("#3355 tester retest 2: a card cancelled then made again shows what the new card proves", async () => {
   const remade = discountRows([["p1", "FAVY10", "cancelled"], [
     "p2",
     "FAVY10",
     "executed",
   ]]);
   assertEquals(
-    stateSaid("I created FAVY10 for you.", remade),
-    "Discount created: FAVY10. Saved and checked in Mingla.",
+    await stateSaid("I created FAVY10 for you.", remade),
+    "I created FAVY10 for you.",
+    "the second card's receipt backs it",
   );
   const waiting = discountRows([["p1", "FAVY10", "cancelled"], [
     "p2",
     "FAVY10",
     null,
   ]]);
-  for (
-    const text of [
-      "I proposed FAVY10 for you to approve.",
-      "I created FAVY10 for you.",
-    ]
-  ) {
-    assertEquals(
-      stateSaid(text, waiting),
-      "Here's FAVY10 ready to create. Tap Confirm to save it, or Edit to change it.",
-    );
-  }
+  assertEquals(
+    await stateSaid("I created FAVY10 for you.", waiting),
+    "Here's FAVY10 ready to create. Tap Confirm to save it, or Edit to change it.",
+  );
+  assertEquals(
+    await stateSaid("I proposed FAVY10 for you to approve.", waiting),
+    "I proposed FAVY10 for you to approve.",
+    "a waiting card backs 'I proposed'",
+  );
   const swapped = discountRows([["p1", "FAVY10", "cancelled"], [
     "p2",
     "GIRLS20",
     null,
   ]]);
   assertEquals(
-    stateSaid("I proposed FAVY10 for you to approve.", swapped),
+    await stateSaid("I proposed FAVY10 for you to approve.", swapped),
     "The card for FAVY10 was cancelled, so nothing was saved.",
   );
   // Created, then a later card for it cancelled: the code still exists.
@@ -460,46 +477,52 @@ Deno.test("#3355 tester retest 2: a card cancelled then made again shows what th
     "cancelled",
   ]]);
   assertEquals(
-    stateSaid("FAVY10 has been created.", edited),
-    "Discount created: FAVY10. Saved and checked in Mingla.",
+    await stateSaid("FAVY10 has been created.", edited),
+    "FAVY10 has been created.",
   );
   assert(
-    stateSaid("I proposed FAVY10.", discountRows([["p1", "FAVY10", "expired"]]))
+    (await stateSaid(
+      "I proposed FAVY10.",
+      discountRows([["p1", "FAVY10", "expired"]]),
+    ))
       .startsWith("The card for FAVY10 expired"),
   );
   assert(
-    stateSaid(
+    (await stateSaid(
       "FAVY10 has been created.",
       discountRows([["p1", "FAVY10", "failed"]]),
-    )
-      .startsWith("FAVY10 couldn't be saved"),
+    )).startsWith("FAVY10 couldn't be saved"),
   );
   // A discount receipt never speaks for an event.
-  assert(
-    stateSaid("I published your event.", remade).startsWith(
-      TRUE_STATE_NOTHING_SAVED,
-    ),
+  assertEquals(
+    await stateSaid("I published your event.", remade, "Publish my event"),
+    TRUE_STATE_NOTHING_SAVED,
   );
 });
 
-Deno.test("#3355 tester retest 2: no negation, in any clause, keeps a status sentence", () => {
+Deno.test("#3355 tester retest 2: no excuse in any clause keeps an unbacked claim", async () => {
   const none: Array<Record<string, unknown>> = [];
   for (
     const text of [
       "I created FAVY10, but I haven't published the event.",
       "I created FAVY10 — you can't miss it on the Discounts page.",
       "Once again, I created FAVY10.",
-      "I haven't created FAVY10 yet.",
-      "The code FAVY10 was not created.",
-      "If you approve, FAVY10 will be created.",
     ]
   ) {
     assertEquals(
-      stateSaid(text, none),
+      await stateSaid(text, none),
       "Nothing has been saved or sent for FAVY10 yet.",
       text,
     );
   }
+  // Honest negatives and conditionals are not claims (rework 3).
+  for (
+    const text of [
+      "I haven't created FAVY10 yet.",
+      "The code FAVY10 was not created.",
+      "If you approve, FAVY10 will be created.",
+    ]
+  ) assertEquals(await stateSaid(text, none), text, text);
 });
 
 const AMOUNT_KEYS = new Set([

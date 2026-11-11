@@ -10,7 +10,7 @@
  *     `create_discount` accepts `ends_at`, but all three codes were saved with
  *     `ends_at = NULL`. The stated end date was dropped silently.
  *
- * MINGLA-INVARIANT: I-ARI-CLAIM-MATCHES-RECEIPT | issue #3355 | (rework 2: structural) The model's own reply text never states a write's status: every sentence naming one of the chat's write objects (codes, titles, names from its proposals and receipts, or stated by the host) or using a write-status word, other than an instruction to the host or a question, is removed, with no negation or modal exception; the status the host reads is composed by the server from state (an executed receipt's own words, a live card's "ready to … Tap Confirm", or the true cancelled / expired / failed state), on the agent-loop and the single-call path alike (enforced by supabase/functions/_shared/__tests__/issue_3355_rework_2.implementor.test.ts, issue_3355_rework_1.implementor.test.ts and issue_3355_wave_a_truth_guards.implementor.test.ts).
+ * I-ARI-CLAIM-MATCHES-RECEIPT is declared beside its enforcing check in ariClaimCheck.ts (rework 3).
  * MINGLA-INVARIANT: I-ARI-STATED-SLOTS-PRESERVED | issue #3355 | Codes, percentages (digits, number words, pc / pct / per cent, half off), fixed amounts off (in the currency's minor units), start and end dates (incl. "between … and …", "the end of <month>") and use limits the host stated (last 6 owner messages since the previous proposal of the same tool) are compared with the proposal args for every tool whose schema has that field, on both agent paths: per code and field the latest statement wins (a percent replaces an amount and the reverse), values bind to the code in their own clause in either word order, the intent read's values are primary and the words the cross-check; a stated end day is bound to 23:59:59 local and a future start day to 00:00 local; anything else missing, different or in conflict makes Ari ask instead of proposing (same test files).
  */
 
@@ -25,26 +25,13 @@ import { formatMinor, minorFromMajor } from "./money/formatMinor.ts";
 import { assertOwnerCopy } from "./ariOwnerCopy.ts";
 import { toolOwnerCopy } from "./ariPresentation/toolLabels.ts";
 
-// ── I-ARI-CLAIM-MATCHES-RECEIPT (structural) ────────────────────────────────
+// ── I-ARI-CLAIM-MATCHES-RECEIPT: the records ────────────────────────────────
 //
-// #3355 rework 2 (tester P1-2, orchestrator decision 2026-11-11): two retests
-// found new wordings that slipped past a list of claim patterns ("I can
-// confirm I've created …", "FAVY10 is live", "Ari has created …"). Widening
-// the patterns again would only move the leak. So the model's free text may
-// no longer state the write status of anything:
-//
-//   1. A sentence of model text that names a write object (a code, title or
-//      name from this chat's recent proposals and receipts, or one the host
-//      stated) is removed, unless it is a question to the host.
-//   2. A sentence that uses a write-status word (created, made, saved, live,
-//      sent, ready, done … in any tense or voice) is removed, unless it is a
-//      question or the word is an instruction to the host ("tap Create
-//      event", "To add a discount, …", "you can publish it from …").
-//   3. There are no negation, modal or excuse exceptions: "I haven't created
-//      FAVY10 yet" goes too. What the host reads about status is composed by
-//      the server from state: an executed receipt's own words, a live card's
-//      "ready to …, tap Confirm", or the true cancelled / expired / failed
-//      state. Nothing in state: nothing is said.
+// #3355 rework 3 (Seth, 2026-11-11): the rework-2 word-list guard (strip any
+// sentence with a status word or a chat object, then blank and replace with
+// state) is gone. The claim check in ariClaimCheck.ts reads the reply with
+// one structured model call and compares each completion claim with the
+// records below; these helpers only say what the chat's records are.
 
 const STOPWORDS = new Set([
   "ARI",
@@ -57,155 +44,6 @@ const STOPWORDS = new Set([
   "FAQ",
   "HTTP",
 ]);
-
-/**
- * Write-status words, any tense or voice. Word-start anchored, so
- * "already", "deliver" and "interactive" never match.
- */
-const STATUS_WORD = new RegExp(
-  "\\b(?:" + [
-    "creat(?:e|es|ed|ing|ion)",
-    "made",
-    "mak(?:e|es|ing)",
-    "set(?:s|ting)?\\s+(?:(?:it|this|that|them|everything|all)\\s+)?up",
-    "prepar(?:e|es|ed|ing)",
-    "sav(?:e|es|ed|ing)",
-    "add(?:s|ed|ing)?",
-    "publish(?:es|ed|ing)?",
-    "unpublish(?:es|ed|ing)?",
-    "live",
-    "activ(?:e|ated?|ates|ating)",
-    "launch(?:es|ed|ing)?",
-    "sent",
-    "send(?:s|ing)?",
-    "schedul(?:e|es|ed|ing)",
-    "updat(?:e|es|ed|ing)",
-    "chang(?:e|es|ed|ing)",
-    "delet(?:e|es|ed|ing)",
-    "cancel(?:s|led|ed|ling|ing)?",
-    "refund(?:s|ed|ing)?",
-    "done",
-    "ready",
-    "finish(?:es|ed|ing)?",
-    "complet(?:e|es|ed|ing)",
-    // Tester retest 2 (N2) and the same family.
-    "email(?:s|ed|ing)",
-    "text(?:ed|ing)",
-    "messag(?:ed|ing)",
-    "invit(?:e|es|ed|ing)",
-    "book(?:ed|ing)",
-    "post(?:ed|ing)",
-    "issu(?:e|es|ed|ing)",
-    "remov(?:e|es|ed|ing)",
-    "propos(?:e|es|ed|ing|al|als)",
-    "draft(?:ed|ing)",
-    "appl(?:y|ies|ied|ying)",
-    "approv(?:e|es|ed|ing)",
-    "confirmed",
-    "upload(?:s|ed|ing)",
-    "import(?:s|ed|ing)",
-    "paus(?:e|es|ed|ing)",
-    "resum(?:e|es|ed|ing)",
-    "ended",
-    "expired",
-    "gone\\s+(?:live|out)",
-    "went\\s+(?:live|out)",
-  ].join("|") + ")\\b",
-  "gi",
-);
-
-/** The base form of a status verb: what an instruction to the host uses. */
-const BASE_VERB =
-  /^(?:create|make|set\s+(?:(?:it|this|that|them|everything|all)\s+)?up|prepare|save|add|publish|unpublish|launch|send|schedule|update|change|delete|cancel|refund|finish|complete|email|text|invite|book|post|issue|remove|propose|apply|approve|upload|import|pause|resume)$/i;
-
-/** "tap Create event", "press the **Publish** button". */
-const UI_LABEL_LEAD =
-  /\b(?:tap|tapping|press|pressing|click|clicking|select|selecting|choose|choosing|hit|open)\s+(?:on\s+)?(?:the\s+)?["“'‘*`]*(?:[\w→&-]+\s+){0,2}["“'‘*`]*$/i;
-/** "you can publish it", "once you're done", "you'll need to add …". */
-const HOST_SUBJECT_LEAD =
-  /\byou(?:['’](?:ll|d|re|ve))?(?:\s+(?:can|could|will|would|should|may|might|must|need\s+to|want\s+to|have\s+to|are\s+able\s+to|just|then|also|still|first|now|only|always|ever))*\s+$/i;
-/** "once you're done", "when you are ready". */
-const HOST_CONDITION_LEAD =
-  /\b(?:once|when|whenever|after|if|until|before)\s+you(?:['’]re|\s+are)\s+(?:all\s+)?$/i;
-/** An imperative or infinitive start: "Create a code from …", "then publish", "to add". */
-const INSTRUCTION_LEAD =
-  /(?:^|[,;:→>(]\s*|\bthen\s+|\band\s+|\bor\s+|\bto\s+|\bplease\s+|\blet['’]s\s+|\blet\s+us\s+|^\s*(?:[-*•]|\d+[.)])\s*)$/i;
-
-/** Where a clause ends inside a sentence (used for questions). */
-const CLAUSE_SPLIT = /[,;:—–]|\s-\s|\b(?:so|and|but|because)\b/i;
-
-/** Sentences of one line (each keeps its own punctuation). */
-function lineSentences(line: string): string[] {
-  return line.split(/(?<=[.!?])\s+(?=[A-Z“"'*(\d])/).filter((part) =>
-    part.trim().length > 0
-  );
-}
-
-/** True when the status word at `index` is an instruction to the host. */
-function instructionalOccurrence(
-  sentence: string,
-  index: number,
-  word: string,
-): boolean {
-  const before = sentence.slice(0, index);
-  if (UI_LABEL_LEAD.test(before)) return true;
-  // Inside quotes, bold or code: the name of a button or screen.
-  const quotes = (before.match(/["“”`]/g) ?? []).length;
-  const bold = (before.match(/\*\*/g) ?? []).length;
-  if (quotes % 2 === 1 || bold % 2 === 1) return true;
-  const base = BASE_VERB.test(word.replace(/\s+/g, " "));
-  if (
-    base && (HOST_SUBJECT_LEAD.test(before) || INSTRUCTION_LEAD.test(before))
-  ) {
-    return true;
-  }
-  // "Once you're done, tap …": the host's own finishing, said as a condition.
-  return /^(?:done|ready|finished)$/i.test(word) &&
-    HOST_CONDITION_LEAD.test(before);
-}
-
-/** The status words in a stretch of text that are not instructions to the host. */
-export function statusWordsIn(text: string): string[] {
-  const out: string[] = [];
-  for (const match of text.matchAll(STATUS_WORD)) {
-    if (!instructionalOccurrence(text, match.index ?? 0, match[0])) {
-      out.push(match[0]);
-    }
-  }
-  return out;
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-/** The write objects a stretch of text names (case-insensitive, whole words). */
-function objectsIn(text: string, objects: readonly string[]): string[] {
-  return objects.filter((object) =>
-    new RegExp(
-      `(?:^|[^\\p{L}\\p{N}])${escapeRegExp(object)}(?![\\p{L}\\p{N}])`,
-      "iu",
-    )
-      .test(text)
-  );
-}
-
-/** Why a sentence is removed (null: it stays). */
-function removalReason(
-  sentence: string,
-  objects: readonly string[],
-): "object" | "status" | null {
-  const trimmed = sentence.trim();
-  if (/\?["”')*]*$/.test(trimmed)) {
-    // A question to the host stays, but only when nothing before its own
-    // last clause states a status ("FAVY10 is live, want to share it?").
-    const lead = trimmed.split(CLAUSE_SPLIT).slice(0, -1).join(" ");
-    return lead.trim() && statusWordsIn(lead).length > 0 ? "status" : null;
-  }
-  if (objectsIn(trimmed, objects).length > 0) return "object";
-  if (statusWordsIn(trimmed).length > 0) return "status";
-  return null;
-}
 
 /**
  * A code, title or name this chat could be talking about: from write args
@@ -468,150 +306,6 @@ export function writeStateText(state: WriteState): string {
     surface: "write_state",
     mode: "prose",
   });
-}
-
-/** The object words a removed sentence uses, and the tools that serve them. */
-const STATE_OBJECT_WORDS: ReadonlyArray<[RegExp, RegExp]> = [
-  [/\b(?:discounts?|codes?|promo|coupons?|vouchers?)\b/i, /discount/],
-  [/\bevents?\b/i, /event/],
-  [/\btrips?\b/i, /trip/],
-  [/\bexperiences?\b/i, /experience/],
-  [/\bstays?\b/i, /stay/],
-  [/\bvenues?\b/i, /venue/],
-  [/\b(?:tickets?|tiers?)\b/i, /ticket|tier/],
-  [
-    /\b(?:messages?|emails?|announcements?|broadcasts?|blasts?|campaigns?|guests?)\b/i,
-    /message|email|announce|broadcast|blast|campaign|tell|notify/,
-  ],
-  [/\b(?:invites?|invitations?|team)\b/i, /invite|member|scanner/],
-  [/\bpayouts?\b/i, /payout/],
-  [/\brefunds?\b/i, /refund/],
-  [/\b(?:website|site|page)\b/i, /site|page/],
-  [/\bbrand\b/i, /brand/],
-];
-
-/** A code-like token a sentence names ("FAVY10", "GIRLSTRIPLAGOS"). */
-const NAMED_CODE = /\b([A-Z][A-Z0-9]{3,15})\b/g;
-
-/**
- * The states a reply's removed sentences were about: per object its open
- * card when one is waiting, else its saved receipt, else its latest card.
- * `unknown` is what they named that this chat holds no write for.
- */
-function relevantStates(
-  removed: readonly string[],
-  states: readonly WriteState[],
-  objects: readonly string[],
-): { states: WriteState[]; unknown: string[] } {
-  const words = removed.join(" ");
-  const named = new Map<string, string>();
-  for (const name of objectsIn(words, objects)) {
-    named.set(name.toLowerCase(), name);
-  }
-  for (const match of words.matchAll(NAMED_CODE)) {
-    const token = match[1];
-    if (STOPWORDS.has(token)) continue;
-    // A code has a digit, is one of the chat's objects, or is a long capital
-    // word in mixed-case words ("GIRLSTRIPLAGOS").
-    const codeLike = /\d/.test(token) ||
-      objects.some((object) => object.toUpperCase() === token) ||
-      (token.length >= 5 && /[a-z]/.test(words));
-    if (!codeLike) continue;
-    named.set(token.toLowerCase(), token);
-  }
-  const perObject = new Map<string, WriteState[]>();
-  for (const state of states) {
-    const key = state.object?.toLowerCase() ?? `#${state.toolName}`;
-    perObject.set(key, [...(perObject.get(key) ?? []), state]);
-  }
-  const pick = (list: WriteState[]): WriteState => {
-    const latest = list[list.length - 1];
-    if (latest.status === "pending") return latest;
-    const saved = [...list].reverse().find((state) =>
-      state.status === "executed"
-    );
-    return saved ?? latest;
-  };
-  const chosen = [...perObject.values()].map(pick);
-  if (named.size > 0) {
-    const found = chosen.filter((state) =>
-      state.object !== null && named.has(state.object.toLowerCase())
-    );
-    const unknown = [...named.entries()].filter(([key]) =>
-      !found.some((state) => state.object?.toLowerCase() === key)
-    ).map(([, name]) => name);
-    return { states: found.slice(-3), unknown: unknown.slice(0, 3) };
-  }
-  const tools = STATE_OBJECT_WORDS.filter(([pattern]) => pattern.test(words))
-    .map(([, tool]) => tool);
-  if (tools.length > 0) {
-    return {
-      states: chosen.filter((state) =>
-        tools.some((tool) => tool.test(state.toolName))
-      ).slice(-2),
-      unknown: [],
-    };
-  }
-  return { states: chosen.slice(-1), unknown: [] };
-}
-
-/**
- * The reply the host sees: the model's text with every status sentence
- * removed, and the write status composed by the server from state.
- * `evidence` and `states` come from this chat's recent rows; `objects` adds
- * what the host named (stated codes and titles).
- */
-export function guardWriteClaims(args: {
-  text: string;
-  /** Kept for callers; status sentences are removed whatever it says. */
-  pendingThisTurn?: boolean;
-  evidence: unknown[];
-  states?: readonly WriteState[];
-  objects?: readonly string[];
-}): { text: string; rewritten: boolean; unsupported: string[] } {
-  const objects = [
-    ...new Set([
-      ...writeObjectsFrom({ evidence: args.evidence }),
-      ...(args.objects ?? []),
-      ...(args.states ?? []).flatMap((state) =>
-        state.object ? [state.object] : []
-      ),
-    ]),
-  ].filter((object) => object.length >= 4);
-  const removed: string[] = [];
-  const keptLines: string[] = [];
-  for (const line of String(args.text ?? "").split("\n")) {
-    if (!line.trim()) {
-      keptLines.push("");
-      continue;
-    }
-    const kept: string[] = [];
-    for (const sentence of lineSentences(line)) {
-      if (removalReason(sentence, objects)) removed.push(sentence.trim());
-      else kept.push(sentence);
-    }
-    if (kept.length > 0) keptLines.push(kept.join(" "));
-  }
-  if (removed.length === 0) {
-    return { text: args.text, rewritten: false, unsupported: [] };
-  }
-  const rest = keptLines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
-  const relevant = relevantStates(removed, args.states ?? [], objects);
-  const stateText = [
-    ...relevant.states.map(writeStateText),
-    ...relevant.unknown.map((name) =>
-      `Nothing has been saved or sent for ${name} yet.`
-    ),
-  ].join(" ");
-  let text: string;
-  if (rest && stateText) text = `${rest}\n\n${stateText}`;
-  else if (rest) text = `${rest}\n\n${TRUE_STATE_NOTHING_SAVED}`;
-  else if (stateText) text = stateText;
-  else {
-    text =
-      `${TRUE_STATE_NOTHING_SAVED} Tell me what you'd like and I'll prepare it for you to approve.`;
-  }
-  return { text, rewritten: true, unsupported: removed };
 }
 
 /**
@@ -1025,6 +719,70 @@ export function numberWordValue(words: string): number | null {
   return total > 0 && total <= 100 ? total : null;
 }
 
+// #3355 rework 3 (R3-8): amounts in words ("fifteen hundred naira off",
+// "five thousand naira", "five k off", "two grand off").
+const AMOUNT_WORD_TOKEN =
+  `(?:${TENS}|${UNITS}|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|hundred|thousand|grand|k|and)`;
+const AMOUNT_IN_WORDS = new RegExp(
+  `\\b((?:a|${TENS}|${UNITS}|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen)(?:[\\s-]+${AMOUNT_WORD_TOKEN})*)\\s+(?:(naira|pounds?|quid|euros?|dollars?|cedis?|shillings?|rand|${CURRENCY_CODES})\\s+)?(?:off|discount)\\b`,
+  "gi",
+);
+
+/** "fifteen hundred" → 1500, "five k" → 5000; null when not an amount. */
+export function amountWordsValue(words: string): number | null {
+  const parts = words.toLowerCase().replace(/-/g, " ").split(/\s+/).filter(
+    Boolean,
+  );
+  let total = 0;
+  let current = 0;
+  let multiplied = false;
+  for (const part of parts) {
+    if (part === "and") continue;
+    if (part === "a") {
+      current += 1;
+      continue;
+    }
+    if (part === "hundred") {
+      current = (current || 1) * 100;
+      multiplied = true;
+      continue;
+    }
+    if (part === "thousand" || part === "k" || part === "grand") {
+      total += (current || 1) * 1000;
+      current = 0;
+      multiplied = true;
+      continue;
+    }
+    const value = NUMBER_WORDS[part];
+    if (value === undefined) return null;
+    current += value;
+  }
+  const value = total + current;
+  return value > 0 ? (multiplied ? value : -value) : null;
+}
+
+/** #3355 rework 3 (R3-10): named days the host may end a code on. */
+const HOLIDAY_DAYS: ReadonlyArray<[RegExp, number, number]> = [
+  [/christmas\s+eve|xmas\s+eve/i, 12, 24],
+  [/boxing\s+day/i, 12, 26],
+  [/new\s+year['’]?s?\s+eve/i, 12, 31],
+  [/new\s+year['’]?s?(?:\s+day)?/i, 1, 1],
+  [/christmas(?:\s+day)?|xmas/i, 12, 25],
+  [/valentine['’]?s?(?:\s+day)?/i, 2, 14],
+];
+const END_HOLIDAY = new RegExp(
+  `\\b${END_LEAD}\\s+(?:the\\s+)?(christmas\\s+eve|xmas\\s+eve|boxing\\s+day|new\\s+year['’]?s?\\s+eve|new\\s+year['’]?s?(?:\\s+day)?|christmas(?:\\s+day)?|xmas|valentine['’]?s?(?:\\s+day)?)\\b`,
+  "gi",
+);
+/** "for 2 weeks", "for ten days", "for a month" (from the start, or today). */
+const FOR_DURATION = new RegExp(
+  `\\b(?:for|lasts?|run(?:s|ning)?\\s+for|valid\\s+for)\\s+(?:the\\s+next\\s+)?(\\d{1,3}|a|an|one|${NUMBER_WORD})\\s+(days?|weeks?|months?)\\b`,
+  "gi",
+);
+/** "from 10% to 15%", "change the 10% to 15%": the second value is the one. */
+const CHANGE_LEAD =
+  /\b(?:from|change|changing|up|raise|lower|bump|move|switch|go|going|increase|reduce|drop|take)\b[^.?!]{0,24}$/i;
+
 /** A currency code run into its amount ("NGN5000"): never a discount code. */
 const CURRENCY_AMOUNT_TOKEN = new RegExp(`^(?:${CURRENCY_CODES}|KSH|N)\\d+K?$`);
 
@@ -1117,6 +875,28 @@ function valueMentions(text: string, now: Date): ValueMention[] {
     const index = match.index ?? 0;
     percent(index, index + match[0].length, value);
   }
+  for (const match of text.matchAll(AMOUNT_IN_WORDS)) {
+    const raw = amountWordsValue(match[1]);
+    const currencyWord = match[2]?.toLowerCase();
+    // A bare number word needs a currency ("twenty naira off"); a hundred /
+    // thousand / k reads on its own ("fifteen hundred off").
+    if (raw === null || (raw < 0 && !currencyWord)) continue;
+    const major = Math.abs(raw);
+    const index = match.index ?? 0;
+    const end = index + match[0].length;
+    if (overlaps("value", index, end)) continue;
+    const currency = currencyWord
+      ? CURRENCY_WORDS[currencyWord] ?? currencyWord.toUpperCase()
+      : null;
+    push({
+      field: "value",
+      index,
+      end,
+      values: { amount: { major, currency, words: match[0].trim() } },
+      key: `a:${major}:${currency ?? ""}`,
+      words: match[0].trim(),
+    });
+  }
   for (const pattern of [AMOUNT_SIGN_FIRST, AMOUNT_WORD_AFTER, AMOUNT_BARE]) {
     for (const match of text.matchAll(globalOf(pattern))) {
       const amount = amountFromMatch(pattern, match);
@@ -1208,6 +988,63 @@ function valueMentions(text: string, now: Date): ValueMention[] {
       words: spokenDay(ends),
     });
   }
+  for (const match of text.matchAll(END_HOLIDAY)) {
+    const index = match.index ?? 0;
+    const named = HOLIDAY_DAYS.find(([pattern]) => pattern.test(match[1]));
+    if (!named) continue;
+    const [, month, dayOfMonth] = named;
+    const year = inferYear(month, dayOfMonth, now, undefined);
+    const ends: StatedDay = {
+      year,
+      month,
+      day: dayOfMonth,
+      words: match[1].trim(),
+    };
+    push({
+      field: "ends_on",
+      index,
+      end: index + match[0].length,
+      values: { ends_on: ends },
+      key: dayKey(ends),
+      words: spokenDay(ends),
+    });
+  }
+  for (const match of text.matchAll(FOR_DURATION)) {
+    const index = match.index ?? 0;
+    const count = /^\d+$/.test(match[1])
+      ? Number(match[1])
+      : /^(?:a|an|one)$/i.test(match[1])
+      ? 1
+      : numberWordValue(match[1]);
+    if (!count || count <= 0) continue;
+    const unit = match[2].toLowerCase();
+    const base = new Date(Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate(),
+    ));
+    if (unit.startsWith("month")) {
+      base.setUTCMonth(base.getUTCMonth() + count);
+    } else {
+      base.setUTCDate(
+        base.getUTCDate() + count * (unit.startsWith("week") ? 7 : 1),
+      );
+    }
+    const ends: StatedDay = {
+      year: base.getUTCFullYear(),
+      month: base.getUTCMonth() + 1,
+      day: base.getUTCDate(),
+      words: match[0].trim(),
+    };
+    push({
+      field: "ends_on",
+      index,
+      end: index + match[0].length,
+      values: { ends_on: ends },
+      key: dayKey(ends),
+      words: spokenDay(ends),
+    });
+  }
   for (
     const [field, patterns] of [
       ["ends_on", END_PATTERNS],
@@ -1257,7 +1094,18 @@ function valueMentions(text: string, now: Date): ValueMention[] {
       words: `a limit of ${value} uses`,
     });
   }
-  return found.sort((left, right) => left.index - right.index);
+  const sorted = found.sort((left, right) => left.index - right.index);
+  // "from 10% to 15%", "change the 10% to 15%": the first is the old value.
+  for (let at = 0; at + 1 < sorted.length; at++) {
+    const first = sorted[at];
+    const second = sorted[at + 1];
+    if (first.field !== "value" || second.field !== "value") continue;
+    const between = text.slice(first.end, second.index);
+    if (!/^\s*(?:to|→|->|into|up\s+to)\s*$/i.test(between)) continue;
+    const lead = text.slice(Math.max(0, first.index - 40), first.index);
+    if (CHANGE_LEAD.test(lead)) first.negated = true;
+  }
+  return sorted;
 }
 
 function amountFromMatch(

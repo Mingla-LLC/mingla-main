@@ -1778,7 +1778,7 @@ Deno.test("#3355 terse continuation requests read the durable onboarding plan", 
 });
 
 Deno.test("#3355 onboarding stays on the selected brand and treats future materials as absent", () => {
-  assertEquals(PROMPT_VERSION, "v35"); // #3355 rework 2: status words come from the server, never the model
+  assertEquals(PROMPT_VERSION, "v36"); // #3355 rework 3: status claims are checked against the records
   const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false });
   for (
     const phrase of [
@@ -2219,8 +2219,9 @@ Deno.test("#3355 every committed assistant reply crosses the diagnostic sanitize
   );
   assertMatch(
     commitBoundary,
-    // #3355 P1 (D-6): the sanitizer's output then crosses the owner copy gate.
-    /const publicText = assertOwnerCopy\(\s*sanitizeAriUserFacingDiagnostics\(args\.text\)/,
+    // #3355 P1 (D-6): the sanitizer's output then crosses the owner copy gate
+    // (rework 3, R3-11: after the repeated-line dedupe).
+    /const publicText = assertOwnerCopy\(\s*dedupeReplySentences\(sanitizeAriUserFacingDiagnostics\(args\.text\)\)/,
   );
   assertMatch(commitBoundary, /const content = \{\s*text: publicText,/);
   assertMatch(commitBoundary, /assistantText: publicText,/);

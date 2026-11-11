@@ -3,7 +3,7 @@
 // Each block names the verdict defect it pins. The tester's D1–D11 repros
 // are folded in here (they failed on 269eac5377 and pass after the rework).
 //
-// MINGLA-INVARIANT: I-ARI-TRUTH-GUARDS-ON-EVERY-PATH | issue #3355 | Both Ari reply paths (the agent loop and the single-call path) run the one stated-values stage before a proposal card and the one write-claim guard before a text reply.
+// MINGLA-INVARIANT: I-ARI-TRUTH-GUARDS-ON-EVERY-PATH | issue #3355 | Both Ari reply paths (the agent loop and the single-call path) run the one stated-values stage before a proposal card and the one write-claim check (rework 3: the claim check against the records) before a text reply.
 
 import {
   assert,
@@ -14,12 +14,14 @@ import {
   checkStatedSlots,
   claimEvidenceFromHistory,
   extractStatedSlots,
-  guardWriteClaims,
   hostCodeTokens,
   preserveStatedSlots,
   TRUE_STATE_NOTHING_SAVED,
+  writeObjectsFrom,
   writeStatesFromHistory,
 } from "../ariTruthGuards.ts";
+import { buildClaimEvidence, checkReplyClaims } from "../ariClaimCheck.ts";
+import { recordedClaimCall } from "./_issue3355ClaimFlash.ts";
 import { ariGuideReadStatus } from "../agentAri10xTools.ts";
 import { ariSensitiveReason, scrubAriExcerpt } from "../ariPii.ts";
 import { rememberNoteError } from "../ariMemory.ts";
@@ -59,17 +61,34 @@ function check(
   });
 }
 
-function guard(
+/** #3355 rework 3: the claim check with Flash's recorded answers. */
+async function guard(
   text: string,
-  evidence: unknown[] = [],
   history: Array<Record<string, unknown>> = [],
+  options: {
+    host?: string;
+    intent?: string;
+    live?: Map<string, { status: string; expires_at?: string | null }>;
+  } = {},
 ) {
-  return guardWriteClaims({
+  const states = writeStatesFromHistory(history, options.live, NOW);
+  const host = options.host ?? "Create FAVY10 10% off";
+  const stated = extractStatedSlots([host], NOW);
+  const intent = options.intent ?? "tool";
+  const out = await checkReplyClaims({
     text,
-    pendingThisTurn: false,
-    evidence,
-    states: writeStatesFromHistory(history),
+    hostMessage: host,
+    intent,
+    recentWrite: states.length > 0,
+    objects: [
+      ...writeObjectsFrom({ evidence: claimEvidenceFromHistory(history) }),
+      ...(stated.code ? [stated.code] : []),
+    ],
+    evidence: buildClaimEvidence({ states }),
+    askedWriteThisTurn: intent === "tool",
+    call: recordedClaimCall,
   });
+  return { ...out, rewritten: out.text !== text };
 }
 
 // ── P1-1: a planned guide entry stays planned ───────────────────────────────
@@ -89,48 +108,42 @@ Deno.test("P1-1: a planned guide entry reads as planned whatever tools Ari has",
 
 // ── P1-2: the write-claim guard ─────────────────────────────────────────────
 
-// #3355 rework 2 changed D2–D4 (orchestrator decision 2026-11-11): the claim
-// guard is structural, so no negation excuses a status sentence and no
-// receipt lets the model's own words say it. These tests now pin that the
-// sentence goes and the server's state words take its place.
+// #3355 rework 3 (Seth, 2026-11-11): the claim check against the records
+// replaced the word-list guard. D1–D4 now pin it on Gemini Flash's own
+// recorded answers: an unbacked claim goes, an honest "not yet" and a
+// question stay, a backed claim stays word for word, and a card's true
+// state is said.
 
-Deno.test("P1-2 (D1): a passive-voice claim with no receipt is rewritten", () => {
+Deno.test("P1-2 (D1): a passive-voice claim with no receipt is replaced", async () => {
   for (
-    const text of [
-      "Your discount code FAVY10 has been created and is live.",
-      "The code was sent to your guests.",
-      "Your event is now live.",
-      "FAVY10 has now been saved.",
+    const [host, text] of [
+      [
+        "Create FAVY10 10% off",
+        "Your discount code FAVY10 has been created and is live.",
+      ],
+      ["Send the code to my guests", "The code was sent to your guests."],
+      ["Publish my event", "Your event is now live."],
+      ["Save FAVY10", "FAVY10 has now been saved."],
     ]
   ) {
-    const out = guard(text);
+    const out = await guard(text, [], { host });
     assert(out.rewritten, text);
     assertMatch(out.text, /^(?:I haven't saved|Nothing has been saved)/, text);
   }
 });
 
-Deno.test("P1-2 (D2): no negation or modal excuses a status sentence (rework 2)", () => {
+Deno.test("P1-2 (D2): an excuse never keeps a claim; an honest 'not yet' and a question stay", async () => {
   for (
     const text of [
       "I couldn't find the old code, so I created FAVY10 for you.",
       "No problem, I've created FAVY10 for you.",
-      "I haven't created FAVY10 yet.",
-      "FAVY10 hasn't been created yet, and nothing has been sent.",
-      "Once you approve it, it will be created.",
     ]
-  ) assert(guard(text).rewritten, text);
-  // A question to the host stays.
+  ) assert((await guard(text)).rewritten, text);
   for (
-    const text of [
-      "Have I created FAVY10?",
-      "Should FAVY10 end on 19 December?",
-    ]
+    const text of ["I haven't created FAVY10 yet.", "Have I created FAVY10?"]
   ) {
-    assertEquals(guard(text).rewritten, false, text);
+    assertEquals((await guard(text)).rewritten, false, text);
   }
-  // Even the server's own state words would go: that is why agent-chat runs
-  // the guard on model-authored text only.
-  assert(guard(TRUE_STATE_NOTHING_SAVED).rewritten);
 });
 
 const CANCELLED_HISTORY: Array<Record<string, unknown>> = [
@@ -152,7 +165,7 @@ const CANCELLED_HISTORY: Array<Record<string, unknown>> = [
   },
 ];
 
-Deno.test("P1-2 (D3): a live card is said as ready to create; a cancelled card as cancelled", () => {
+Deno.test("P1-2 (D3): a live card is said as ready to create; a cancelled card as cancelled", async () => {
   const open: Array<Record<string, unknown>> = [{
     role: "assistant",
     tool_calls: {
@@ -161,50 +174,32 @@ Deno.test("P1-2 (D3): a live card is said as ready to create; a cancelled card a
       args: { code: "FFBTSCOM10" },
     },
   }];
-  for (
-    const text of [
-      "Yes, I created FFBTSCOM10 for you.",
-      "I proposed FFBTSCOM10 for 10% off. Approve it below.",
-    ]
-  ) {
-    const out = guard(text, claimEvidenceFromHistory(open), open);
-    assert(out.rewritten, text);
-    assertMatch(
-      out.text,
-      /Here's FFBTSCOM10 ready to create\. Tap Confirm to save it, or Edit to change it\./,
-    );
-    assert(!/I created|I proposed/.test(out.text));
-  }
-  const cancelled = guard(
-    "I proposed GIRLSTRIPLAGOS in the previous step.",
-    claimEvidenceFromHistory(CANCELLED_HISTORY),
-    CANCELLED_HISTORY,
+  const created = await guard("Yes, I created FFBTSCOM10 for you.", open, {
+    host: "Create FFBTSCOM10",
+  });
+  assertEquals(
+    created.text,
+    "Here's FFBTSCOM10 ready to create. Tap Confirm to save it, or Edit to change it.",
   );
-  assert(cancelled.rewritten);
+  // "I proposed" is true while the card waits.
+  const proposed = await guard(
+    "I proposed FFBTSCOM10 for 10% off. Approve it below.",
+    open,
+    { host: "Create FFBTSCOM10" },
+  );
+  assertEquals(proposed.rewritten, false);
+  const cancelled = await guard(
+    "I proposed GIRLSTRIPLAGOS in the previous step.",
+    CANCELLED_HISTORY,
+    { host: "What happened to GIRLSTRIPLAGOS?", intent: "question" },
+  );
   assertEquals(
     cancelled.text,
     "The card for GIRLSTRIPLAGOS was cancelled, so nothing was saved.",
   );
-  // The database's own status wins over the chat rows: an expired card.
-  const expired = guardWriteClaims({
-    text: "FFBTSCOM10 is waiting for you.",
-    evidence: claimEvidenceFromHistory(open),
-    states: writeStatesFromHistory(
-      open,
-      new Map([["p1", {
-        status: "pending",
-        expires_at: "2026-11-11T09:00:00Z",
-      }]]),
-      NOW,
-    ),
-  });
-  assertMatch(
-    expired.text,
-    /The card for FFBTSCOM10 expired before it was confirmed/,
-  );
 });
 
-Deno.test("P1-2 (D4): the state shown is the one the sentence is about", () => {
+Deno.test("P1-2 (D4): the state shown is the one the sentence is about", async () => {
   const history: Array<Record<string, unknown>> = [
     {
       role: "assistant",
@@ -224,24 +219,22 @@ Deno.test("P1-2 (D4): the state shown is the one the sentence is about", () => {
       },
     },
   ];
-  const evidence = claimEvidenceFromHistory(history);
-  // An event claim: the chat holds no event write, so nothing is said done.
-  const event = guard("I've published your event.", evidence, history);
-  assertMatch(event.text, /^I haven't saved or sent anything for that yet\./);
-  assert(!/Discount created/.test(event.text));
-  // The discount claim: the receipt's words, never the model's.
-  const discount = guard(
+  // An event claim: the chat holds no event write.
+  const event = await guard("I've published your event.", history, {
+    host: "Publish my event",
+  });
+  assertEquals(event.text, TRUE_STATE_NOTHING_SAVED);
+  // The discount claim is true: kept word for word.
+  const discount = await guard(
     "Your discount code FAVY10 has been created.",
-    evidence,
     history,
   );
-  assertEquals(
-    discount.text,
-    "Discount created: FAVY10. Saved and checked in Mingla.",
-  );
+  assertEquals(discount.text, "Your discount code FAVY10 has been created.");
   // A different code: nothing saved for it.
   assertEquals(
-    guard("I created GIRLS20 for you.", evidence, history).text,
+    (await guard("I created GIRLS20 for you.", history, {
+      host: "Create GIRLS20",
+    })).text,
     "Nothing has been saved or sent for GIRLS20 yet.",
   );
 });
@@ -366,7 +359,7 @@ Deno.test("P1-4: the single-call path runs the stated-values stage and the claim
   );
   assertMatch(single, /classification: "stated_slot_ask"/);
   // One helper each (no second copy of the rules).
-  assertEquals(source.match(/guardWriteClaims\(\{/g)?.length, 1);
+  assertEquals(source.match(/checkReplyClaims\(\{/g)?.length, 1);
   assertEquals(source.match(/preserveStatedSlots\(\{/g)?.length, 1);
 });
 

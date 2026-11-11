@@ -97,6 +97,9 @@ export const ARI_PRODUCTION_LOOP_BUDGET: AgentLoopBudget = Object.freeze({
   deadlineMs: 55_000,
 });
 
+/** #3355 rework 3: the claim check's share of the turn (its own ~4 s cap). */
+export const ARI_CLAIM_CHECK_RESERVE_MS = 4_000;
+
 /** The loopback lane's budget (#3355 local verification), unchanged. */
 export const ARI_LOCAL_LOOP_BUDGET: Partial<AgentLoopBudget> = Object.freeze({
   deadlineMs: 115_000,
@@ -118,9 +121,19 @@ export function ariChatLoopBudget(args: {
    * turn's model calls and its wall time comes out of the 55 s deadline.
    */
   intentRead?: { modelCalls: number; elapsedMs: number };
+  /**
+   * #3355 rework 3 — the reply's claim check runs after the loop: one model
+   * call and up to ARI_CLAIM_CHECK_RESERVE_MS are kept out of the loop's
+   * budget so the turn still ends inside the one deadline.
+   */
+  claimCheck?: boolean;
 }): Partial<AgentLoopBudget> {
-  const spentCalls = Math.max(0, Math.floor(args.intentRead?.modelCalls ?? 0));
-  const spentMs = Math.max(0, Math.floor(args.intentRead?.elapsedMs ?? 0));
+  const reserveCalls = args.claimCheck ? 1 : 0;
+  const reserveMs = args.claimCheck ? ARI_CLAIM_CHECK_RESERVE_MS : 0;
+  const spentCalls = Math.max(0, Math.floor(args.intentRead?.modelCalls ?? 0)) +
+    reserveCalls;
+  const spentMs = Math.max(0, Math.floor(args.intentRead?.elapsedMs ?? 0)) +
+    reserveMs;
   if (args.localModelEnabled) {
     return {
       ...ARI_LOCAL_LOOP_BUDGET,

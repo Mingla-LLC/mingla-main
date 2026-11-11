@@ -331,7 +331,7 @@ Deno.test("safety: the read never speaks and never writes — only enums reach t
     chat,
     /return startFlowOffered && parseStartFlowArgs\(call\.args\)\s*\? "flow"\s*: "unknown";/,
   );
-  assertMatch(chat, /guardWriteClaims\(/);
+  assertMatch(chat, /checkReplyClaims\(\{/); // #3355 rework 3: the claim check
   assertMatch(chat, /surface: "flow_refusal"/);
   // No start_flow on a safety turn, in either model path.
   assertMatch(chat, /!escalation\.escalate && !intentSafetyReply &&/);
