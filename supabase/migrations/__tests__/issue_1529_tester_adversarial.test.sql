@@ -279,9 +279,13 @@ BEGIN
   -- [TEST-MOD-APPROVED #4271] A PG17 full replay measures 54 outbox-touching
   -- functions on 88e51e68c0^ and 56 on cfb605f80d (the two door card payment
   -- SMS writers), so the floor rises to the live 56.
-  IF v_count < 56 THEN
+  -- [TEST-MOD-APPROVED #4255] Mingla team chat adds one writer
+  -- (team_chat_enqueue): a PG17 full replay measures 57 before
+  -- 20280611014255_issue_4255_team_chat_functions.sql and 58 after, so the
+  -- floor rises to the live 58.
+  IF v_count < 58 THEN
     RAISE EXCEPTION
-      'issue_1529_adv_outbox_touching_function_floor_breached_expected_at_least_56_got_%',
+      'issue_1529_adv_outbox_touching_function_floor_breached_expected_at_least_58_got_%',
       v_count;
   END IF;
 
@@ -296,9 +300,10 @@ BEGIN
   -- [TEST-MOD-APPROVED #2829] Four Sites push-only writers raise it to 39.
   -- [TEST-MOD-APPROVED #4271] Two door card payment SMS writers: a PG17 full
   -- replay measures 40 writers on 88e51e68c0^ and 42 on cfb605f80d.
-  IF v_count < 42 THEN
+  -- [TEST-MOD-APPROVED #4255] team_chat_enqueue: 42 -> 43 writers.
+  IF v_count < 43 THEN
     RAISE EXCEPTION
-      'issue_1529_adv_producer_floor_breached_expected_at_least_42_got_%',
+      'issue_1529_adv_producer_floor_breached_expected_at_least_43_got_%',
       v_count;
   END IF;
 END;
@@ -346,7 +351,11 @@ DECLARE
     -- asserts the country on the rows they write.
     'biz_door_tap_record',
     'issue_4271_door_pay_code_text_link',
-    'create_support_ticket'
+    'create_support_ticket',
+    -- [TEST-MOD-APPROVED #4255] Mingla team chat: the one team chat producer
+    -- writes an explicit NULL country_code (in-app/push only, no SMS leg);
+    -- issue_4255_team_chat.implementor.pg17 asserts it.
+    'team_chat_enqueue'
   ];
   -- [TEST-MOD-APPROVED #2829] Sites and the current #3872 notification writers
   -- are in-app/push-only. Their owning suites prove delivery behavior; none of
