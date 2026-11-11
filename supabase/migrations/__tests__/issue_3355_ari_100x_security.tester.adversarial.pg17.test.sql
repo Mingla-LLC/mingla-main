@@ -549,4 +549,187 @@ BEGIN
 END;
 $t7$;
 
+-- ── T8 (retest 3) P3-21 brand voice at read, from other angles ─────────────
+-- The rank boundary both ways (marketing manager is enough, finance and
+-- event managers rank above it, scanner below); removal hides the note and
+-- re-adding as a scanner does not bring it back; the author still reads
+-- their own note; a member of another brand never reads it; the new helper
+-- is not anon-callable and pins search_path.
+DO $t8$
+DECLARE
+  v_owner constant uuid := '33550000-7e57-4000-8000-000000000001';
+  v_mate constant uuid := '33550000-7e57-4000-8000-000000000002';
+  v_outsider constant uuid := '33550000-7e57-4000-8000-000000000003';
+  v_brand constant uuid := '33550000-7e57-4000-8000-0000000000b1';
+  v_author constant uuid := '33550000-7e57-4000-8000-000000000021';
+  v_note jsonb;
+  v_error text;
+  v_n integer;
+BEGIN
+  INSERT INTO auth.users(id,email,raw_user_meta_data) VALUES
+    (v_author,'t-author@test.local','{"full_name":"Au Thor"}');
+  INSERT INTO public.profiles(id,email,display_name,username,account_type) VALUES
+    (v_author,'t-author@test.local','Au Thor','t3355_author','business');
+  INSERT INTO public.brand_team_members(brand_id,user_id,role,accepted_at) VALUES
+    (v_brand,v_author,'marketing_manager',now());
+  SET LOCAL ROLE authenticated;
+  PERFORM pg_temp.t_as(v_author);
+  v_note := public.ari_remember_note('brand','fact','Our doors always open at 7pm sharp.',v_brand,NULL);
+  RESET ROLE;
+
+  -- rank -> must the owner's Ari (list) and the mate's RLS read see it?
+  FOR v_error IN SELECT unnest(ARRAY['marketing_manager:t','finance_manager:t','event_manager:t','scanner:f','brand_admin:t']) LOOP
+    UPDATE public.brand_team_members SET role = split_part(v_error,':',1)
+     WHERE brand_id = v_brand AND user_id = v_author;
+    SET LOCAL ROLE authenticated;
+    PERFORM pg_temp.t_as(v_owner);
+    IF EXISTS (SELECT 1 FROM jsonb_array_elements(public.ari_memory_list(v_brand)) e WHERE e->>'id' = v_note->>'id')
+       <> (split_part(v_error,':',2) = 't') THEN
+      RAISE EXCEPTION 'T8 brand voice at rank % is wrong in ari_memory_list', v_error;
+    END IF;
+    PERFORM pg_temp.t_as(v_mate);
+    SELECT count(*) INTO v_n FROM public.ari_memory_notes WHERE id = (v_note->>'id')::uuid;
+    IF (v_n = 1) <> (split_part(v_error,':',2) = 't') THEN
+      RAISE EXCEPTION 'T8 brand voice at rank % is wrong through RLS (% rows)', v_error, v_n;
+    END IF;
+    -- The author always reads their own note.
+    PERFORM pg_temp.t_as(v_author);
+    IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(public.ari_memory_list(v_brand)) e
+                    WHERE e->>'id' = v_note->>'id' AND (e->>'mine')::boolean) THEN
+      RAISE EXCEPTION 'T8 the author lost their own note at rank %', v_error;
+    END IF;
+    RESET ROLE;
+  END LOOP;
+
+  -- Removed, then re-added as a scanner: still hidden from the brand.
+  UPDATE public.brand_team_members SET role = 'marketing_manager', removed_at = now()
+   WHERE brand_id = v_brand AND user_id = v_author;
+  SET LOCAL ROLE authenticated;
+  PERFORM pg_temp.t_as(v_owner);
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(public.ari_memory_list(v_brand)) e WHERE e->>'id' = v_note->>'id') THEN
+    RAISE EXCEPTION 'T8 a removed marketing manager still speaks for the brand';
+  END IF;
+  RESET ROLE;
+  UPDATE public.brand_team_members SET role = 'scanner', removed_at = NULL
+   WHERE brand_id = v_brand AND user_id = v_author;
+  SET LOCAL ROLE authenticated;
+  PERFORM pg_temp.t_as(v_owner);
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(public.ari_memory_list(v_brand)) e WHERE e->>'id' = v_note->>'id') THEN
+    RAISE EXCEPTION 'T8 re-added as a scanner, the old brand note came back';
+  END IF;
+  -- Another brand's owner: no list, no rows.
+  PERFORM pg_temp.t_as(v_outsider);
+  BEGIN
+    PERFORM public.ari_memory_list(v_brand);
+    v_error := 'listed';
+  EXCEPTION WHEN OTHERS THEN v_error := SQLERRM; END;
+  IF v_error <> 'not_authorized' THEN RAISE EXCEPTION 'T8 an outsider listed the brand''s notes (%)', v_error; END IF;
+  SELECT count(*) INTO v_n FROM public.ari_memory_notes WHERE brand_id = v_brand AND scope = 'brand';
+  IF v_n > 0 THEN RAISE EXCEPTION 'T8 an outsider reads the brand''s notes through RLS (%)', v_n; END IF;
+  RESET ROLE;
+
+  IF has_function_privilege('anon','public.ari_memory_brand_voice(uuid,uuid)','EXECUTE') THEN
+    RAISE EXCEPTION 'T8 anon can execute ari_memory_brand_voice';
+  END IF;
+  IF has_function_privilege('anon','public.ari_admin_quality_metrics(integer)','EXECUTE') THEN
+    RAISE EXCEPTION 'T8 anon can execute ari_admin_quality_metrics';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'ari_memory_brand_voice'
+                  AND prosecdef AND array_to_string(proconfig, ',') LIKE 'search_path=%') THEN
+    RAISE EXCEPTION 'T8 ari_memory_brand_voice has no fixed search_path';
+  END IF;
+END;
+$t8$;
+
+-- ── T9 (retest 3) P2-11 a completed setup stays completed ──────────────────
+-- The table refuses completed without evidence even to a direct write; the
+-- RPCs refuse evidence without a probe, and never advance, resume, lease or
+-- sweep a completed run; a new setup in the same chat leaves it completed;
+-- the quality panel counts a follow-up run (answers.follow_up_of) as neither
+-- a setup started nor a second completion.
+DO $t9$
+DECLARE
+  v_owner constant uuid := '33550000-7e57-4000-8000-000000000001';
+  v_brand constant uuid := '33550000-7e57-4000-8000-0000000000b1';
+  v_chat constant uuid := '33550000-7e57-4000-8000-0000000000e1';
+  v_staff constant uuid := '33550000-7e57-4000-8000-000000000031';
+  v_run uuid;
+  v_follow uuid;
+  v_r jsonb;
+  v_tok uuid := gen_random_uuid();
+  v_error text;
+  v_before jsonb;
+  v_after jsonb;
+BEGIN
+  INSERT INTO auth.users(id,email) VALUES (v_staff,'t-staff3@test.local');
+  INSERT INTO public.admin_users(email, role, status) VALUES ('t-staff3@test.local','admin','active');
+  INSERT INTO public.agent_conversations(id,user_id,brand_id) VALUES (v_chat,v_owner,v_brand);
+  PERFORM pg_temp.t_as(v_staff);
+  v_before := public.ari_admin_quality_metrics(30)->'flows';
+
+  v_run := (public.ari_flow_run_start(v_owner,v_brand,'create_event',2,'one_per_subject',v_chat,NULL,'{}')->'run'->>'id')::uuid;
+  BEGIN
+    UPDATE public.ari_flow_runs SET status = 'completed' WHERE id = v_run;
+    v_error := 'accepted';
+  EXCEPTION WHEN check_violation THEN v_error := 'refused'; END;
+  IF v_error <> 'refused' THEN RAISE EXCEPTION 'T9 a run was completed with no evidence by a direct write'; END IF;
+
+  v_r := public.ari_flow_run_lease(v_run,v_owner,v_tok,30);
+  BEGIN
+    PERFORM public.ari_flow_run_advance(v_run,v_tok,(v_r->'run'->>'revision')::integer,
+      '{"status":"completed","completion_evidence":{"observed":true}}');
+    v_error := 'accepted';
+  EXCEPTION WHEN OTHERS THEN v_error := SQLERRM; END;
+  IF v_error <> 'flow_evidence_required' THEN RAISE EXCEPTION 'T9 completion evidence with no probe was accepted (%)', v_error; END IF;
+  v_r := public.ari_flow_run_advance(v_run,v_tok,(v_r->'run'->>'revision')::integer,
+    '{"status":"completed","completion_evidence":{"probe":"events_exists","observed":true}}');
+  IF v_r->'run'->>'status' IS DISTINCT FROM 'completed' AND v_r->>'status' IS DISTINCT FROM 'completed' THEN
+    IF (SELECT status FROM public.ari_flow_runs WHERE id = v_run) <> 'completed' THEN
+      RAISE EXCEPTION 'T9 a run with evidence did not complete';
+    END IF;
+  END IF;
+
+  BEGIN
+    PERFORM public.ari_flow_run_advance(v_run,v_tok,(SELECT revision FROM public.ari_flow_runs WHERE id = v_run),'{"status":"active"}');
+    v_error := 'accepted';
+  EXCEPTION WHEN OTHERS THEN v_error := SQLERRM; END;
+  IF v_error NOT IN ('flow_run_terminal','flow_lease_not_held') THEN RAISE EXCEPTION 'T9 a completed run was reopened by advance (%)', v_error; END IF;
+  BEGIN
+    PERFORM public.ari_flow_run_resume(v_owner,v_run,v_chat);
+    v_error := 'accepted';
+  EXCEPTION WHEN OTHERS THEN v_error := SQLERRM; END;
+  IF v_error <> 'flow_run_not_parked' THEN RAISE EXCEPTION 'T9 a completed run was resumed (%)', v_error; END IF;
+  v_r := public.ari_flow_run_lease(v_run,v_owner,gen_random_uuid(),30);
+  IF COALESCE((v_r->>'ok')::boolean, true) THEN RAISE EXCEPTION 'T9 a completed run was leased: %', v_r; END IF;
+
+  UPDATE public.ari_flow_runs SET updated_at = now() - interval '30 days', last_lease_at = NULL WHERE id = v_run;
+  PERFORM public.ari_flow_runs_expire_idle_all(500);
+  IF (SELECT status FROM public.ari_flow_runs WHERE id = v_run) <> 'completed' THEN
+    RAISE EXCEPTION 'T9 the idle sweep touched a completed run';
+  END IF;
+  UPDATE public.ari_flow_runs SET updated_at = now() WHERE id = v_run;
+
+  -- The follow-up ("yes, get it ready") is a new run in the same chat.
+  v_follow := (public.ari_flow_run_start(v_owner,v_brand,'create_event',2,'one_per_subject',v_chat,NULL,
+    jsonb_build_object('follow_up_of', jsonb_build_object('value', v_run, 'source', 'engine')))->'run'->>'id')::uuid;
+  IF v_follow = v_run OR (SELECT status FROM public.ari_flow_runs WHERE id = v_run) <> 'completed' THEN
+    RAISE EXCEPTION 'T9 the follow-up reopened or replaced the completed run';
+  END IF;
+  v_after := public.ari_admin_quality_metrics(30)->'flows';
+  IF (v_after->>'started')::int - (v_before->>'started')::int <> 1
+     OR (v_after->>'completed')::int - (v_before->>'completed')::int <> 1 THEN
+    RAISE EXCEPTION 'T9 quality panel counts after a follow-up run: before % after %', v_before, v_after;
+  END IF;
+  -- The follow-up completing too is still one setup, one completion.
+  UPDATE public.ari_flow_runs SET status = 'completed',
+         completion_evidence = '{"probe":"events_publish_ready","observed":true}', completed_at = now()
+   WHERE id = v_follow;
+  v_after := public.ari_admin_quality_metrics(30)->'flows';
+  IF (v_after->>'started')::int - (v_before->>'started')::int <> 1
+     OR (v_after->>'completed')::int - (v_before->>'completed')::int <> 1 THEN
+    RAISE EXCEPTION 'T9 a completed follow-up counted as a second setup: before % after %', v_before, v_after;
+  END IF;
+END;
+$t9$;
+
 ROLLBACK;
