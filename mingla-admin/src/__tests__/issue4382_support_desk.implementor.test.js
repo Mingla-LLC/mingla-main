@@ -13,7 +13,9 @@
 // reencodeImage hand back a blob that still carries EXIF, and the uploader tests fail;
 // let a note carry setWaiting and the composer test fails; give wont_do a column and the
 // board test fails; drop the sentOnce / sending / told checks from tellReportersState or
-// the !tell.canSend guard on the button and the Tell reporters tests fail.
+// the !tell.canSend guard on the button and the Tell reporters tests fail; gate the
+// Product board on anything narrower than the admin console area and the founding
+// partner test fails.
 //
 // Run: node --test src/__tests__/issue4382_support_desk.implementor.test.js
 
@@ -46,6 +48,11 @@ import {
   tellButtonLabel,
   tellReportersState,
 } from "../components/support/productBoardModel.js";
+import {
+  communitySupportCapabilities,
+  communitySupportTabsForAccess,
+} from "../lib/communitySupportAccess.js";
+import { COMMUNITY_PAGE_TABS, SUPPORT_PAGE_TABS } from "../lib/supportCommunityTabs.js";
 
 const read = (rel) => readFileSync(new URL(`../${rel}`, import.meta.url), "utf8");
 
@@ -371,5 +378,32 @@ describe("#4382 W3: Tell reporters can be sent once", () => {
     assert.match(card, /const result = await tellProductReporters\(signal\.id, tell\.draft\.id\);\n\s+setSentOnce\(true\);/);
     assert.match(read("services/productAvengersService.js"), /rpc\("issue_4382_tell_reporters"/);
     assert.match(read("services/productAvengersService.js"), /rpc\("issue_4382_set_wont_do"/);
+  });
+});
+
+// ── Who runs the Product board (D3) ─────────────────────────────────────────
+describe("#4382 W3: a founding partner runs the Product board", () => {
+  const allTabs = [...SUPPORT_PAGE_TABS, ...COMMUNITY_PAGE_TABS];
+  const partner = {
+    role: "partner",
+    status: "active",
+    areas: ["admin_console", "community_support", "community_support_support", "community_support_community"],
+  };
+  const plainSupport = { role: "growth", status: "active", areas: ["community_support", "community_support_support"] };
+
+  it("an active founding partner (role partner, admin console) sees the Product board", () => {
+    assert.ok(allTabs.some((tab) => tab.id === "product"), "the Product board is a console tab");
+    assert.equal(communitySupportCapabilities(partner).isAdmin, true);
+    assert.ok(communitySupportTabsForAccess(partner, allTabs).some((tab) => tab.id === "product"));
+  });
+
+  it("plain Support staff, and a partner whose seat is not active, do not", () => {
+    assert.equal(communitySupportTabsForAccess(plainSupport, allTabs).some((tab) => tab.id === "product"), false);
+    assert.ok(communitySupportTabsForAccess(plainSupport, allTabs).some((tab) => tab.id === "support"));
+    assert.equal(communitySupportTabsForAccess({ ...partner, status: "revoked" }, allTabs).some((tab) => tab.id === "product"), false);
+  });
+
+  it("the page mounts the board on the same admin-console capability", () => {
+    assert.match(read("pages/CommunitySupportPage.jsx"), /activeTab === "product" && capabilities\.isAdmin && <ProductInboxPanel \/>/);
   });
 });
