@@ -47,9 +47,10 @@ export const STRIPE_MANAGED_RISK_CONTROLLER = {
 } as const;
 
 export interface StripeBlueprintRequestOptions {
-  method: "POST";
+  /** #4389 — GET added for the Accounts v2 identity read (Tap to Pay address). */
+  method: "POST" | "GET";
   path: string;
-  body: Record<string, unknown>;
+  body?: Record<string, unknown>;
   idempotencyKey?: string;
   envVarNames: readonly string[];
   apiVersion?: string;
@@ -206,9 +207,11 @@ export async function stripeBlueprintRequest<T>(
     headers.set("Idempotency-Key", options.idempotencyKey);
   }
 
-  const requestBody = isV1Path
+  const requestBody = options.method === "GET"
+    ? undefined
+    : isV1Path
     ? toStripeFormUrlEncoded(options.body)
-    : JSON.stringify(options.body);
+    : JSON.stringify(options.body ?? {});
 
   const response = await fetch(`https://api.stripe.com${options.path}`, {
     method: options.method,
@@ -549,4 +552,57 @@ export function restoreDailyPayoutSchedule(
   idempotencyKey: string,
 ): Promise<StripeV2Account> {
   return setPayoutScheduleInterval(accountId, "daily", idempotencyKey);
+}
+
+/**
+ * #4389 — the connected account's own address, already collected and verified
+ * by Stripe during embedded onboarding (`GET /v2/core/accounts/{id}
+ * ?include=identity`). A company keeps it at `identity.business_details.address`,
+ * an individual at `identity.individual.address`. Used as the first source of
+ * a Tap to Pay Terminal Location address, so a host never types it twice.
+ */
+export interface StripeIdentityAddress {
+  line1?: string | null;
+  line2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postal_code?: string | null;
+  country?: string | null;
+}
+
+export interface StripeV2AccountIdentity {
+  id: string;
+  identity?: {
+    country?: string | null;
+    entity_type?: string | null;
+    business_details?: { address?: StripeIdentityAddress | null } | null;
+    individual?: { address?: StripeIdentityAddress | null } | null;
+  } | null;
+}
+
+export function retrieveAccountIdentity(
+  accountId: string,
+): Promise<StripeV2AccountIdentity> {
+  return stripeBlueprintRequest<StripeV2AccountIdentity>({
+    method: "GET",
+    path: `/v2/core/accounts/${encodeURIComponent(accountId)}?include=identity`,
+    envVarNames: ["STRIPE_RAK_REFRESH_STATUS"],
+  });
+}
+
+/** Company address first, then the individual's; null when neither has a street. */
+export function identityAddressOf(
+  account: StripeV2AccountIdentity | null,
+): StripeIdentityAddress | null {
+  const identity = account?.identity ?? null;
+  if (!identity) return null;
+  const company = identity.business_details?.address ?? null;
+  const person = identity.individual?.address ?? null;
+  const pick = identity.entity_type === "individual"
+    ? [person, company]
+    : [company, person];
+  for (const a of pick) {
+    if (a && typeof a.line1 === "string" && a.line1.trim().length > 0) return a;
+  }
+  return null;
 }

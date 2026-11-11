@@ -166,6 +166,10 @@ export async function quoteDoorSale(
   if (loaded === null) {
     return { ok: false, error: "stripe_account_not_ready", status: 400 };
   }
+  // #4389 I-4389-NO-ZERO-VAT-FALLBACK: no VAT country, no door sale.
+  if (loaded.provider === "paystack" && loaded.pricing.vat_country_missing === true) {
+    return { ok: false, error: "brand_setup_incomplete", status: 409 };
+  }
   // Never take money with the wrong total.
   if (doorTaxAddedAtCheckout(loaded.pricing, loaded.provider)) {
     return { ok: false, error: "door_tax_added_at_checkout", status: 400 };

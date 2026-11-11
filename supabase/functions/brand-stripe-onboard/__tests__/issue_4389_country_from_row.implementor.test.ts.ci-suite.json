@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/brand-stripe-onboard/__tests__/issue_4389_country_from_row.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4389-country-from-row-implementor",
+  "profile": "deno-2-unit"
+}

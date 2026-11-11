@@ -11,6 +11,7 @@ import {
   type PricingSwitches,
   taxBehaviorForRegion,
 } from "./allInPricingEngine.ts";
+import { BRAND_SETUP_INCOMPLETE } from "./vatCountryGuard.ts";
 
 /** No 0/O, 1/I/L: a guest may read the code aloud or type it. */
 export const DOOR_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -125,6 +126,9 @@ export interface DoorPricingRow {
   effective_take_rate_bps: number;
   take_rate_source: string | null;
   vat_rate_bps: number | null;
+  /** #4389 — from resolve_event_pricing_inputs; true = Paystack brand with no VAT country. */
+  vat_country_missing?: boolean | null;
+  payment_country?: string | null;
 }
 
 export interface DoorMoney {
@@ -188,6 +192,8 @@ export function computeDoorMoney(
   });
   let totalCents = sub.buyerSubtotalCents;
   if (provider === "paystack") {
+    // #4389 I-4389-NO-ZERO-VAT-FALLBACK: refuse rather than charge 0% VAT.
+    if (pricing.vat_country_missing === true) throw new Error(BRAND_SETUP_INCOMPLETE);
     totalCents = computeConfigVat(
       sub.buyerSubtotalCents,
       Number(pricing.vat_rate_bps ?? 0),
