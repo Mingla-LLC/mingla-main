@@ -207,7 +207,8 @@ class MemoryStore implements FlowStore {
       flow_key: args.flowKey,
       flow_version: args.flowVersion,
       concurrency: args.concurrency,
-      subject_id: null,
+      // #3355 rework 2: a follow-up run starts on its draft, as the RPC does.
+      subject_id: args.subjectId ?? null,
       conversation_id: args.conversationId,
       status: "active" as const,
       current_step_key: null,
@@ -294,9 +295,14 @@ class MemoryStore implements FlowStore {
     return Promise.resolve();
   }
   getForConversation(conversationId: string) {
-    const run = [...this.runs.values()].find((r) =>
+    // #3355 rework 2: the chat's live run first (as ari_flow_run_get), else
+    // its newest run (a completed run's follow-up card is answered on it).
+    const mine = [...this.runs.values()].filter((r) =>
       r.conversation_id === conversationId
     );
+    const run = mine.find((r) =>
+      !["completed", "cancelled", "expired", "parked"].includes(r.status)
+    ) ?? mine.at(-1);
     return Promise.resolve(run ? this.view(run) : null);
   }
   getById(runId: string) {
@@ -640,7 +646,8 @@ Deno.test("P9: an experience with two picked stops is one create proposal holdin
   for (const key of Object.keys(proposed.tool_args)) assert(schema.properties[key], key);
   for (const key of schema.required) assert(key in proposed.tool_args, key);
 
-  // Confirm → read back → "get it ready?" in the same response.
+  // Confirm → read back → the run completes on the draft; publishing is the
+  // completion card's follow-up (#3355 rework 2, P2-11).
   const next = await confirm(
     world,
     store,
@@ -648,10 +655,11 @@ Deno.test("P9: an experience with two picked stops is one create proposal holdin
     () => world.experiences.set(EXP_ID, experienceFrom(proposed.tool_args)),
     { event: { id: EXP_ID } },
   );
-  assert(next.kind === "artefact");
+  assert(next.kind === "completed", `got ${next.kind}`);
   assertMatch(next.text, /Saved and checked: "Lagos Street Food Trail" with 2 stops is an unpublished draft/);
   assertEquals(next.artefact.step_key, "experience_publish");
   const run = await cur(store);
+  assertEquals(run.status, "completed");
   assertEquals(run.subject_id, EXP_ID);
   for (
     const key of ["title", "description", "intents", "stops", "start_at", "end_at", "price_kind", "price"]
@@ -681,7 +689,7 @@ Deno.test("P9: a free experience is saved free only because the owner said so, a
   assertEquals(proposed.tool_args.is_free, true);
   assert(!("whole_price_cents" in proposed.tool_args));
   assertMatch(rowsText(proposed.rows), /Price: Free/);
-  const ready = await confirm(
+  const saved = await confirm(
     world,
     store,
     "create_experience",
@@ -692,6 +700,10 @@ Deno.test("P9: a free experience is saved free only because the owner said so, a
       }),
     { event: { id: EXP_ID } },
   );
+  // #3355 rework 2 (P2-11): completed on the draft; "Check it's ready"
+  // carries on in a follow-up run to the same publish card.
+  assert(saved.kind === "completed", `got ${saved.kind}`);
+  const ready = await answer(world, store, (r) => choice(r, "yes"));
   assert(ready.kind === "artefact");
   assertEquals(ready.artefact.step_key, "experience_publish");
   assertEquals(ready.artefact.title, "Ready to publish");
@@ -710,7 +722,7 @@ Deno.test("P9: a paid experience on a brand that can't sell yet is saved, and pu
   const store = new MemoryStore();
   const proposed = await experienceToProposal(world, store);
   assert(proposed.kind === "propose");
-  const next = await confirm(
+  const saved = await confirm(
     world,
     store,
     "create_experience",
@@ -720,6 +732,10 @@ Deno.test("P9: a paid experience on a brand that can't sell yet is saved, and pu
     }),
     { event: { id: EXP_ID } },
   );
+  // #3355 rework 2 (P2-11): the draft completes the run; the follow-up
+  // shows the true publish state.
+  assert(saved.kind === "completed", `got ${saved.kind}`);
+  const next = await answer(world, store, (r) => choice(r, "yes"));
   assert(next.kind === "artefact");
   assertMatch(next.artefact.text, /Can't publish yet: payment setup isn't finished/);
   assert(!next.artefact.options.some((o) => o.id === "publish"));
@@ -911,12 +927,17 @@ Deno.test("P9: a venue created via the picker is one submit proposal of the owne
       created_at: null,
     }];
   }, VENUE_ID);
-  assert(next.kind === "artefact");
+  // #3355 rework 2 (P2-11): the submitted venue completes the run; the cover
+  // is the completion card's follow-up, and "Add a cover" carries on to the
+  // venue page's cover step.
+  assert(next.kind === "completed", `got ${next.kind}`);
   assert(next.text.includes(VENUE_REVIEW_WORDS), next.text);
   assertMatch(next.text, /Saved and checked: "The Lagoon Room" is submitted/);
   assertEquals((await cur(store)).subject_id, VENUE_ID);
-  // The cover is a skippable step on the venue page.
   assertEquals(next.artefact.step_key, "venue_cover");
+  const coverCard = await answer(world, store, (r) => choice(r, "yes"));
+  assert(coverCard.kind === "artefact", `got ${coverCard.kind}`);
+  assertEquals(coverCard.artefact.step_key, "venue_cover");
   const end = await answer(world, store, (r) => choice(r, "not_now"));
   assertEquals(end.kind, "completed");
   assert(end.kind === "completed");
@@ -1100,7 +1121,7 @@ Deno.test("P9: a stay offering is created on an approved venue, typed, from the 
   const rows = rowsText(proposed.rows);
   assertMatch(rows, /Price: (?:₦|NGN\s)45,000\.00 per night/);
   assertMatch(rows, /How many: 5 rooms/);
-  const next = await confirm(world, store, "manage_stay_inventory", () => {
+  const saved = await confirm(world, store, "manage_stay_inventory", () => {
     const stay = world.stays.get(STAY_VENUE_ID)!;
     world.stays.set(STAY_VENUE_ID, {
       ...stay,
@@ -1115,8 +1136,13 @@ Deno.test("P9: a stay offering is created on an approved venue, typed, from the 
       }],
     });
   }, { kind: "success", data: { offeringId: OFFERING_ID } });
-  assert(next.kind === "artefact");
-  assertMatch(next.text, /Saved and checked: "Sea View Double" is on Lagoon Guesthouse as a draft/);
+  // #3355 rework 2 (P2-11): the draft completes the run; publishing is the
+  // completion card's follow-up.
+  assert(saved.kind === "completed", `got ${saved.kind}`);
+  assertMatch(saved.text, /Saved and checked: "Sea View Double" is on Lagoon Guesthouse as a draft/);
+  assertEquals(saved.artefact.step_key, "stay_publish");
+  const next = await answer(world, store, (r) => choice(r, "yes"));
+  assert(next.kind === "artefact", `got ${next.kind}`);
   assertEquals(next.artefact.step_key, "stay_publish");
   // Never published by itself; payments aren't ready so the card says why.
   assertMatch(next.artefact.text, /payment setup isn't finished/);

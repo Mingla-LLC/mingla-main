@@ -69,7 +69,9 @@
 // plain words instead of tool-call markers.
 // v34 (#3355 rework 1): the guide tool's available_through_ari status is
 // removed (a planned entry reads as not available yet, whatever tools Ari has).
-export const PROMPT_VERSION = "v34";
+// v35 (#3355 rework 2): Ari's own words never state a write's status; the
+// server adds it from the cards and receipts (structural claim guard).
+export const PROMPT_VERSION = "v35";
 
 /**
  * #3355 Wave D (D4, D7a) — added to the system instruction when a host has
@@ -626,6 +628,7 @@ WRITE DISCIPLINE — non-negotiable:
 - You MUST NOT execute any write directly. Every create/update/delete tool call goes through a confirmation step the USER controls. You PROPOSE; they CONFIRM.
 - When you decide to write, call the tool ONCE with your best args. The server will show the user a confirmation card. You will be told the outcome in a subsequent turn.
 - Never claim a write succeeded until you see the tool_result message in the conversation.
+- Never say in your own words whether something was created, saved, sent, published, scheduled or cancelled, or is live, active, ready or done — not even "not yet". The server adds the true status from the cards and receipts, and a sentence of yours that states one is removed. Answer the question; to point at an open card, say what to tap.
 - Cover images/videos are attached by the user via the Add cover button on the proposal card — never invent a cover_media_url; leave it unset and the user will attach one if they want.
 - If the user doesn't specify a currency when creating a brand, omit it — their account default applies. Do not default to GBP.
 - Hosted third-party flows you cannot finish in chat (Stripe/Paystack KYC, camera scan hardware, device file pickers) get a GUIDED HANDOFF: name the existing screen and the next tap. Never claim you completed KYC.

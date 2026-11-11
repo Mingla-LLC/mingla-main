@@ -461,6 +461,11 @@ export async function runFlowStep(
 ): Promise<RunnerOutcome> {
   const newId = deps.newId ?? (() => crypto.randomUUID());
   let run = input.run;
+  // #3355 rework 2 (P2-11): the completion card's follow-up answer.
+  if (input.trigger === "answer" && run.status === "completed") {
+    const followed = await followUpAnswer(deps, input);
+    if (followed) return followed;
+  }
   if (!LIVE_FLOW_STATUSES.has(run.status)) return { kind: "pass", run };
   const def = findFlowDefinition(run.flow_key, run.flow_version);
   if (!def) return { kind: "pass", run };
@@ -509,6 +514,101 @@ export async function runFlowStep(
       // The lease expires on its own within its TTL; nothing else to undo.
     }
   }
+}
+
+/**
+ * #3355 rework 2 (P2-11, I-ARI-FLOW-COMPLETES-ON-DRAFT) — the completed run
+ * whose completion card carries this follow-up answer, or null.
+ */
+export function followUpOf(
+  run: FlowRun,
+  answer: FlowAnswer | undefined,
+):
+  | { def: FlowDefinition; follow: NonNullable<FlowDefinition["follow_up"]> }
+  | null {
+  if (!answer || run.status !== "completed") return null;
+  const def = findFlowDefinition(run.flow_key, run.flow_version);
+  const follow = def?.follow_up;
+  if (
+    !def || !follow || answer.run_id !== run.id ||
+    run.current_step_key !== follow.step || answer.step_key !== follow.step ||
+    !run.current_question_id ||
+    answer.question_id !== run.current_question_id ||
+    (answer.choice_id !== follow.yes.id && answer.choice_id !== follow.no.id)
+  ) return null;
+  return { def, follow };
+}
+
+/**
+ * "Not now" is plain words and changes nothing. "Yes" carries on in a new
+ * run for the same draft: the completed run's answers are copied (plus the
+ * follow-up's own), `follow_up_of` names it, and the new run walks on from
+ * the follow-up step. The completed run is never reopened.
+ */
+async function followUpAnswer(
+  deps: RunnerDeps,
+  input: RunnerInput,
+): Promise<RunnerOutcome | null> {
+  const old = input.run;
+  const target = followUpOf(old, input.answer);
+  if (!target) return null;
+  const { def, follow } = target;
+  if (input.answer?.choice_id === follow.no.id) {
+    return { kind: "notice", text: follow.no_text, artefact: null, run: old };
+  }
+  const started = await deps.store.start({
+    brandId: old.brand_id,
+    flowKey: old.flow_key,
+    flowVersion: old.flow_version,
+    concurrency: def.concurrency,
+    conversationId: old.conversation_id,
+    subjectId: old.subject_id,
+    answers: {
+      ...old.answers,
+      ...(follow.yes_answers ?? {}),
+      follow_up_of: { value: old.id, source: "engine" },
+    },
+  });
+  if (!started.created && started.run.id === old.id) return null;
+  let next = started.run;
+  if (started.created) {
+    // What the first run settled before the follow-up (done with evidence,
+    // or set aside by the host) is settled here too: no gate is asked twice.
+    const before = stepIndex(def, follow.step);
+    const carried = Object.fromEntries(
+      Object.entries(old.step_states).filter(([key, value]) =>
+        stepIndex(def, key) >= 0 && stepIndex(def, key) < before &&
+        SETTLED.has(value.state)
+      ),
+    );
+    if (Object.keys(carried).length > 0 || old.session_skips.length > 0) {
+      const token = (deps.newId ?? (() => crypto.randomUUID()))();
+      const lease = await deps.store.lease(
+        next.id,
+        token,
+        deps.leaseSeconds ?? 30,
+      );
+      if (lease.ok) {
+        try {
+          next = await deps.store.advance(next.id, token, lease.run.revision, {
+            ...(Object.keys(carried).length > 0
+              ? { step_states: carried }
+              : {}),
+            ...(old.session_skips.length > 0
+              ? { session_skips: old.session_skips }
+              : {}),
+          });
+        } finally {
+          await deps.store.release(next.id, token).catch(() => undefined);
+        }
+      }
+    }
+  }
+  return await runFlowStep(deps, {
+    run: next,
+    trigger: "turn",
+    brandName: input.brandName,
+  });
 }
 
 async function advanceUnderLease(
@@ -775,12 +875,79 @@ async function advanceUnderLease(
     ) {
       break;
     }
+    // #3355 rework 2 (P2-11, I-ARI-FLOW-COMPLETES-ON-DRAFT): the run's job is
+    // done once the draft is saved and verified. The optional next step is a
+    // follow-up on the completion card, never a step that holds the run open.
+    // A run that already asked it (rec set) or a continuation run goes on.
+    const follow = def.follow_up;
+    if (
+      follow && step.key === follow.step && rec === undefined &&
+      run.answers.follow_up_of === undefined && def.summarize
+    ) {
+      const summary = def.summarize({ ...run, step_states: states });
+      if (summary) {
+        const laterLine = canWaitLine({ ...run, step_states: states });
+        const questionId = newId();
+        const artefact: FlowArtefact = {
+          schema_version: 1,
+          artefact_id: `s:${run.id}`,
+          run_id: run.id,
+          step_key: follow.step,
+          kind: "summary",
+          reuse_key: "summary",
+          title: assertOwnerCopy(summary.title, {
+            fallback: def.title,
+            surface: "flow_title",
+            mode: "label",
+          }),
+          text: ownerSafe(
+            [
+              summary.text,
+              laterLine && !summary.text.includes(laterLine) ? laterLine : "",
+              follow.text,
+            ].filter(Boolean).join(" "),
+            def.title,
+            "flow_text",
+          ),
+          question_id: questionId,
+          options: [
+            { id: follow.yes.id, label: follow.yes.label },
+            { id: follow.no.id, label: follow.no.label },
+            ...(laterLine
+              ? [{
+                id: "open:home",
+                label: "Open your Home to-do list",
+                route: HOME_TODO_ROUTE,
+              }]
+              : []),
+          ],
+        };
+        run = await commit({
+          status: "completed",
+          completion_evidence: summary.evidence,
+          current_step_key: follow.step,
+          current_question_id: questionId,
+          current_artefact: artefact,
+        });
+        return {
+          kind: "completed",
+          artefact,
+          text: [...lines, artefact.text].join("\n\n"),
+          run,
+        };
+      }
+    }
     const probe = await step.probe(ctxFor(step.key));
     // A step's note is said when it settles, not again on every later turn
-    // ("I'll add it to … venue" was repeated above each question).
+    // ("I'll add it to … venue" was repeated above each question). A
+    // follow-up run (rework 2) re-reads the steps its first run already
+    // settled; their notes were said then.
+    const resettled = follow !== undefined &&
+      run.answers.follow_up_of !== undefined &&
+      stepIndex(def, step.key) < stepIndex(def, follow.step);
     if (
       "note" in probe && probe.note &&
-      !(probe.done && rec?.state === "done")
+      !(probe.done && rec?.state === "done") && !resettled
     ) {
       lines.push(probe.note);
     }

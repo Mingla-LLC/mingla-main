@@ -1206,6 +1206,16 @@ export const CREATE_EXPERIENCE_FLOW: FlowDefinition = {
   },
   subject_tools: ["create_experience"],
   subject_table: "events",
+  // #3355 rework 2 (P2-11): the draft completes the run; publishing is
+  // offered once on the completion card.
+  follow_up: {
+    step: "experience_publish",
+    text: "Want me to check it's ready to publish?",
+    yes: { id: "yes", label: "Check it's ready" },
+    no: { id: "not_now", label: "Not now" },
+    no_text:
+      "Okay. Your draft stays as it is. Ask me to publish it whenever you like.",
+  },
   steps: [
     brandBlockersStep,
     brandCanWaitStep,

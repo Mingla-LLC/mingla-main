@@ -20,12 +20,12 @@ import {
 import {
   checkStatedSlots,
   claimEvidenceFromHistory,
-  claimsPastWrite,
   endOfLocalDayIso,
   extractStatedSlots,
   guardWriteClaims,
   ownerMessagesForProposal,
   TRUE_STATE_NOTHING_SAVED,
+  writeStatesFromHistory,
 } from "../ariTruthGuards.ts";
 
 const FAVY10 =
@@ -67,7 +67,13 @@ function modelArgs(extra: Record<string, unknown> = {}) {
 
 // ── I-ARI-CLAIM-MATCHES-RECEIPT ─────────────────────────────────────────────
 
-Deno.test("A6a: a claimed proposal with no proposal or receipt for it is rewritten to the true state", () => {
+// #3355 rework 2: the guard is structural. The model's words never state a
+// write's status (no claim is "backed" any more); the server says it from
+// state. These three tests changed with that rule (orchestrator decision
+// 2026-11-11): the old "a backed claim stands" and "a negation leaves the
+// words alone" cases now expect the sentence removed and the state composed.
+
+Deno.test("A6a: a claimed proposal for a code with no write is replaced by the true state", () => {
   const history = [
     {
       role: "assistant",
@@ -90,50 +96,73 @@ Deno.test("A6a: a claimed proposal with no proposal or receipt for it is rewritt
   const guarded = guardWriteClaims({
     text:
       "I proposed creating the discount code FFBTSCOM10 for 10% off. You can approve it below.",
-    pendingThisTurn: false,
     evidence: claimEvidenceFromHistory(history),
+    states: writeStatesFromHistory(history),
   });
   assert(guarded.rewritten);
   assertNotMatch(guarded.text, /I proposed/);
-  assertMatch(guarded.text, new RegExp(`^${TRUE_STATE_NOTHING_SAVED}`));
+  assertMatch(
+    guarded.text,
+    /Nothing has been saved or sent for FFBTSCOM10 yet\./,
+  );
+  assertNotMatch(guarded.text, /FAVY10/, "another code's state is not shown");
   assertEquals(guarded.unsupported.length, 1);
 });
 
-Deno.test("A6a: a claim backed by a receipt for what it names stands", () => {
-  const evidence = claimEvidenceFromHistory([{
-    role: "tool",
-    tool_results: {
-      tool_name: "create_discount",
-      outcome: "executed",
-      result: { code: "FAVY10" },
+Deno.test("A6a: even a true claim is said by the server, from the receipt", () => {
+  const history = [
+    {
+      role: "assistant",
+      tool_calls: {
+        tool_name: "create_discount",
+        args: modelArgs(),
+        pending_action_id: "p1",
+      },
     },
-  }]);
-  const text = "I've created FAVY10 — it's live for 10% off.";
-  const guarded = guardWriteClaims({ text, pendingThisTurn: false, evidence });
-  assertEquals(guarded, { text, rewritten: false, unsupported: [] });
+    {
+      role: "tool",
+      tool_results: {
+        tool_name: "create_discount",
+        pending_action_id: "p1",
+        outcome: "executed",
+      },
+    },
+  ];
+  const guarded = guardWriteClaims({
+    text: "I've created FAVY10 — it's live for 10% off.",
+    evidence: claimEvidenceFromHistory(history),
+    states: writeStatesFromHistory(history),
+  });
+  assert(guarded.rewritten);
+  assertEquals(
+    guarded.text,
+    "Discount created: FAVY10. Saved and checked in Mingla.",
+  );
 });
 
-Deno.test("A6a: a pending action this turn, a negation, or no claim leave the words alone", () => {
-  assert(!claimsPastWrite("I haven't created anything yet."));
-  assert(!claimsPastWrite("I can create that code for you."));
-  assert(claimsPastWrite("I've saved your changes."));
-  const text = "I proposed the code below — approve it to save it.";
+Deno.test("A6a: answers with no status stay; a status sentence never does, whatever its grammar", () => {
+  const answer =
+    "Discount codes give buyers money off at checkout. Open Events, pick your event, then tap Discounts.";
   assertEquals(
-    guardWriteClaims({ text, pendingThisTurn: true, evidence: [] }).rewritten,
-    false,
+    guardWriteClaims({ text: answer, evidence: [] }),
+    { text: answer, rewritten: false, unsupported: [] },
   );
+  for (
+    const text of [
+      "I haven't created anything yet.",
+      "I've saved your changes.",
+      "I proposed the code below — approve it to save it.",
+    ]
+  ) {
+    const out = guardWriteClaims({ text, pendingThisTurn: true, evidence: [] });
+    assert(out.rewritten, text);
+    assertMatch(out.text, /prepare it for you to approve/);
+  }
   const failed = claimEvidenceFromHistory([{
     role: "tool",
     tool_results: { tool_name: "create_discount", outcome: "failed" },
   }]);
-  assertEquals(failed, [], "a failed write is not a receipt");
-  const unnamed = guardWriteClaims({
-    text: "I've saved it.",
-    pendingThisTurn: false,
-    evidence: [],
-  });
-  assert(unnamed.rewritten, "nothing in the chat backs the claim");
-  assertMatch(unnamed.text, /prepare it for you to approve/);
+  assertEquals(failed, [], "a row with no card is not evidence of anything");
 });
 
 // ── I-ARI-STATED-SLOTS-PRESERVED ────────────────────────────────────────────

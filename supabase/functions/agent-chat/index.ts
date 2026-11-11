@@ -268,11 +268,13 @@ import {
 import {
   announcesWriteWithoutCall,
   claimEvidenceFromHistory,
+  extractStatedSlots,
   guardWriteClaims,
   type ModelStatedValues,
   ownerMessagesForProposal,
   preserveStatedSlots,
   type StatedSlotCheck,
+  writeStatesFromHistory,
 } from "../_shared/ariTruthGuards.ts";
 import {
   buildWebsiteSetupPresentation,
@@ -4452,10 +4454,22 @@ ${boundedAgentContext}
       const lintedLoopText = copyLint.ok
         ? publicLoopText
         : safeAriCopyFallback(copyLint.violations);
-      // #3355 Wave A (A6, I-ARI-CLAIM-MATCHES-RECEIPT): this path carries no
-      // pending action, so a claimed write needs a receipt or proposal in
-      // the chat for what it names; otherwise the reply says the true state.
-      const safeLoopText = guardReplyClaims(lintedLoopText, history);
+      // #3355 rework 2 (I-ARI-CLAIM-MATCHES-RECEIPT, structural): the
+      // model's own words never state a write's status; the server says it
+      // from state. Server-written text (setup presentations, the launch
+      // plan, honest stop words, the copy fallback) is already true state.
+      const modelAuthoredLoopText = !websiteSetupPresentation && !launchPlan &&
+        loopResult.kind === "text" && copyLint.ok;
+      const safeLoopText = modelAuthoredLoopText
+        ? await guardReplyClaims({
+          text: lintedLoopText,
+          history,
+          current: semanticMessage,
+          modelStated: turnRoute.statedValues,
+          userClient,
+          conversationId,
+        })
+        : lintedLoopText;
       const guideCitations = ariGuideCitations(loopResult.observations);
       const resumedState = interruptionState.status === "interrupted"
         ? resumeInterruption(interruptionState)
@@ -4843,7 +4857,19 @@ ${boundedAgentContext}
             );
             break readTurn;
           }
-          const text = followup?.textResponse ?? "Here's what I found.";
+          // #3355 rework 2 (I-ARI-CLAIM-MATCHES-RECEIPT, structural): the
+          // read's own card shows the data; the model's words about it never
+          // state a write's status.
+          const text = followup?.textResponse
+            ? await guardReplyClaims({
+              text: followup.textResponse,
+              history,
+              current: semanticMessage,
+              modelStated: turnRoute.statedValues,
+              userClient,
+              conversationId,
+            })
+            : "Here's what I found.";
           await assertAttemptRunning(
             serviceClient,
             attemptId,
@@ -5241,7 +5267,14 @@ ${boundedAgentContext}
     }
     // #3355 rework 1 (tester P1-4, I-ARI-CLAIM-MATCHES-RECEIPT): the
     // single-call reply is held to the same receipts as the loop's.
-    const answer = guardReplyClaims(gemini.textResponse.trim(), history);
+    const answer = await guardReplyClaims({
+      text: gemini.textResponse.trim(),
+      history,
+      current: semanticMessage,
+      modelStated: turnRoute.statedValues,
+      userClient,
+      conversationId,
+    });
     const resumedState = interruptionState.status === "interrupted"
       ? resumeInterruption(interruptionState)
       : taskState;
@@ -5345,24 +5378,92 @@ async function statedSlotStage(args: {
 }
 
 /**
- * #3355 rework 1 (tester P1-4) — the one write-claim guard both reply paths
- * run: a reply claiming a write the chat cannot prove is rewritten to the
- * true state before it is stored or shown (I-ARI-CLAIM-MATCHES-RECEIPT).
+ * #3355 rework 2 (I-ARI-CLAIM-MATCHES-RECEIPT, structural) — the one reply
+ * guard both reply paths run. Every sentence of the model's text that names
+ * one of this chat's write objects, or speaks of a write's status, is
+ * removed; the status the host reads is composed by the server from the
+ * chat's proposals, receipts and the cards' own database status (read with
+ * the caller's login, so RLS decides).
  */
-function guardReplyClaims(
-  text: string,
+async function guardReplyClaims(args: {
+  text: string;
   history: ReadonlyArray<
-    { role?: unknown; tool_calls?: unknown; tool_results?: unknown }
-  >,
-): string {
+    {
+      role?: unknown;
+      content?: unknown;
+      tool_calls?: unknown;
+      tool_results?: unknown;
+    }
+  >;
+  current: string;
+  modelStated?: ModelStatedValues | null;
+  userClient: SupabaseClient;
+  conversationId: string;
+}): Promise<string> {
+  const evidence = claimEvidenceFromHistory(args.history);
+  const pendingIds = args.history.flatMap((row) => {
+    const calls = row.role === "assistant" &&
+        row.tool_calls && typeof row.tool_calls === "object"
+      ? row.tool_calls as { pending_action_id?: unknown }
+      : null;
+    return typeof calls?.pending_action_id === "string"
+      ? [calls.pending_action_id]
+      : [];
+  }).slice(-12);
+  const live = new Map<string, { status: string; expires_at: string | null }>();
+  if (pendingIds.length > 0) {
+    const { data, error } = await args.userClient.from("agent_pending_actions")
+      .select("id,status,expires_at")
+      .eq("conversation_id", args.conversationId)
+      .in("id", pendingIds);
+    if (error) {
+      // The chat's own rows still say the state; log, never fail the reply.
+      console.warn(
+        "[agent-chat] card status read failed",
+        JSON.stringify({ code: error.code ?? null }),
+      );
+    }
+    for (const row of (data ?? []) as Array<Record<string, unknown>>) {
+      if (typeof row.id === "string" && typeof row.status === "string") {
+        live.set(row.id, {
+          status: row.status,
+          expires_at: typeof row.expires_at === "string"
+            ? row.expires_at
+            : null,
+        });
+      }
+    }
+  }
+  const ownerWords = [
+    ...args.history.flatMap((row) => {
+      const text = row.role === "user"
+        ? (row.content as { text?: unknown } | null)?.text
+        : null;
+      return typeof text === "string" && text.trim() ? [text] : [];
+    }).slice(-6),
+    args.current,
+  ];
+  const stated = extractStatedSlots(ownerWords);
+  const objects = [
+    ...(stated.code ? [stated.code] : []),
+    ...(stated.codes ?? []),
+    ...Object.keys(stated.per_code ?? {}),
+    ...(typeof args.modelStated?.code === "string"
+      ? [args.modelStated.code]
+      : []),
+    ...(typeof args.modelStated?.title === "string"
+      ? [args.modelStated.title]
+      : []),
+  ];
   const claimGuard = guardWriteClaims({
-    text,
-    pendingThisTurn: false,
-    evidence: claimEvidenceFromHistory(history),
+    text: args.text,
+    evidence,
+    states: writeStatesFromHistory(args.history, live),
+    objects,
   });
   if (claimGuard.rewritten) {
     console.warn(
-      "[agent-chat] unbacked write claim rewritten",
+      "[agent-chat] status sentences replaced by server state",
       JSON.stringify({ count: claimGuard.unsupported.length }),
     );
   }

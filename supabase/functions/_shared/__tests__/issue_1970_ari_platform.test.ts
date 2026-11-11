@@ -43,7 +43,7 @@ Deno.test("#1970 happy: PROMPT_VERSION is v6 and create_experience is advertised
   // packages, traveller intake and the aggregate money read are advertised, and
   // the trip rules block is new). ONE assertion is invalidated — the version
   // literal. Every capability-advertisement assertion below is unchanged.
-  assertEquals(PROMPT_VERSION, "v34"); // #3355 rework 1: no planned-entry upgrade; truth guards on every path
+  assertEquals(PROMPT_VERSION, "v35"); // #3355 rework 2: status words come from the server, never the model
   // #3355 Wave B: the capability list left the system prompt for the
   // capability index that feeds each tool's generated description.
   const prompt = buildSystemPrompt(null, []);

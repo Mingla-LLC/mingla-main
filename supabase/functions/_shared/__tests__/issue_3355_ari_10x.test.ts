@@ -1778,7 +1778,7 @@ Deno.test("#3355 terse continuation requests read the durable onboarding plan", 
 });
 
 Deno.test("#3355 onboarding stays on the selected brand and treats future materials as absent", () => {
-  assertEquals(PROMPT_VERSION, "v34"); // #3355 rework 1: no planned-entry upgrade; truth guards on every path
+  assertEquals(PROMPT_VERSION, "v35"); // #3355 rework 2: status words come from the server, never the model
   const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false });
   for (
     const phrase of [

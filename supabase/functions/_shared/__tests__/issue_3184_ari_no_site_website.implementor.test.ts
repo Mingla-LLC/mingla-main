@@ -347,7 +347,7 @@ Deno.test({
   sanitizeOps: false,
   sanitizeResources: false,
   fn: () => {
-    assertEquals(PROMPT_VERSION, "v34"); // #3355 rework 1: no planned-entry upgrade; truth guards on every path
+    assertEquals(PROMPT_VERSION, "v35"); // #3355 rework 2: status words come from the server, never the model
     const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false });
     for (
       const line of [

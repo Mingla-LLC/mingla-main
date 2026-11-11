@@ -583,6 +583,28 @@ export interface FlowDefinition {
     text: string;
     evidence: FlowEvidence;
   } | null;
+  /**
+   * #3355 rework 2 (P2-11, Seth 2026-11-11): the first step after the draft
+   * is saved and verified. It never blocks completion: when the run reaches
+   * it, the run completes on the draft's own evidence and this step is
+   * offered once on the completion card. "Yes" carries on in a new run for
+   * the same draft (answers copied, `follow_up_of` set); "Not now" is plain
+   * words. Absent: the steps run as before.
+   */
+  follow_up?: FlowFollowUp;
+}
+
+export interface FlowFollowUp {
+  /** The step the follow-up continues at. */
+  step: string;
+  /** The question added to the completion card. */
+  text: string;
+  yes: { id: string; label: string };
+  no: { id: string; label: string };
+  /** Answers the continuation run starts with when the host says yes. */
+  yes_answers?: Record<string, FlowAnswerValue>;
+  /** What Ari says to "Not now". */
+  no_text: string;
 }
 
 export type { BrandReadiness, BrandReadinessItem };

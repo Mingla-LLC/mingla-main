@@ -935,6 +935,16 @@ export const CREATE_VENUE_FLOW: FlowDefinition = {
   },
   subject_tools: ["create_venue_listing"],
   subject_table: "venue_listings",
+  // #3355 rework 2 (P2-11): the submitted venue completes the run; a cover is
+  // offered once on the completion card.
+  follow_up: {
+    step: "venue_cover",
+    text: "Want to add a cover photo so guests can see it?",
+    yes: { id: "yes", label: "Add a cover" },
+    no: { id: "not_now", label: "Not now" },
+    no_text:
+      "Okay, no cover for now. You can add one on the venue page anytime.",
+  },
   steps: [
     brandBlockersStep,
     brandCanWaitStep,

@@ -241,9 +241,12 @@ Deno.test("F1 CI replay: the FAVY10 turn proposes ends_at 2026-12-19T22:59:59Z (
   assertEquals(favy.args.value_bps, 1000);
   assertEquals(favy.args.ends_at, "2026-12-19T22:59:59Z");
   // The production lie ("I proposed creating … FFBTSCOM10" with no card) is
-  // rewritten to the true state, so the claim fact passes.
+  // replaced by the server's true state (rework 2: structural guard).
   const asked = graded.turns[3].observed as { text: string };
-  assert(asked.text.startsWith("I haven't made that change yet"), asked.text);
+  assertEquals(
+    asked.text,
+    "Nothing has been saved or sent for FFBTSCOM10 yet.",
+  );
 });
 
 Deno.test("F1 grader: this morning's production behaviour fails the grader", () => {

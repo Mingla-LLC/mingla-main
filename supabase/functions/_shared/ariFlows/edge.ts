@@ -33,6 +33,7 @@ import {
 } from "../ariContactImportWrite.ts";
 import { PLAN_PARTS, type PlanPartKey } from "../siteContracts/sitePlan.ts";
 import {
+  followUpOf,
   parkArtefact,
   RESUME_CHOICE,
   runFlowStep,
@@ -1318,6 +1319,9 @@ export async function decideFlowTurn(
       ) {
         return await staleResumeReply(args.flowAnswer, store, live);
       }
+      // #3355 rework 2 (P2-11): the completion card's follow-up.
+      const followUp = await completedRunFollowUp(args, deps, live);
+      if (followUp) return followUp;
       if (!live) return { kind: "stale", next: null, state: flowStateOf(run) };
       return decisionFromOutcome(
         await runFlowStep(deps, {
@@ -1400,6 +1404,54 @@ export async function decideFlowTurn(
     }
     throw error;
   }
+}
+
+/** The completed run whose completion card this answer is for, or null. */
+async function followUpTarget(
+  store: FlowStore,
+  conversationId: string,
+  answer: FlowAnswer,
+): Promise<FlowRun | null> {
+  const old = await store.getById(answer.run_id).catch(() => null);
+  if (!old || old.conversation_id !== conversationId) return null;
+  return followUpOf(old, answer) ? old : null;
+}
+
+/**
+ * #3355 rework 2 (P2-11, I-ARI-FLOW-COMPLETES-ON-DRAFT) — an answer to the
+ * follow-up on a completed run's card; the runner decides what it does
+ * (runner.ts followUpAnswer). Another setup open in this chat is never
+ * cancelled by a tap on an older card: its own card comes back.
+ */
+async function completedRunFollowUp(
+  args: FlowTurnArgs,
+  deps: { store: FlowStore; probes: FlowProbeDeps },
+  live: FlowRun | null,
+): Promise<FlowTurnDecision | null> {
+  const answer = args.flowAnswer;
+  if (!answer || !args.brand || live?.id === answer.run_id) return null;
+  const old = await followUpTarget(deps.store, args.conversationId, answer);
+  if (!old) return null;
+  if (live) {
+    return {
+      kind: "reply",
+      text: live.current_artefact
+        ? `You have another setup open in this chat. Here's where it is:\n\n${live.current_artefact.text}`
+        : "You have another setup open in this chat. Finish or stop it first, then ask me again.",
+      artefact: live.current_artefact,
+      state: flowStateOf(live),
+      classification: "flow_engine_follow_up",
+    };
+  }
+  return decisionFromOutcome(
+    await runFlowStep(deps, {
+      run: old,
+      trigger: "answer",
+      answer,
+      ownerText: answer.display_text,
+      brandName: args.brand.name,
+    }),
+  );
 }
 
 /**
@@ -1805,6 +1857,12 @@ export async function staleFlowAnswer(args: {
     ) return null;
     // #3355 Wave A: the Resume card of this chat's parked run is current.
     if (run && isResumeAnswer(run, args.answer)) return null;
+    // #3355 rework 2 (P2-11): a completed run's follow-up card is current
+    // while no other setup is live in the chat.
+    if (
+      !(run && LIVE_FLOW_STATUSES.has(run.status)) &&
+      await followUpTarget(args.store, args.conversationId, args.answer)
+    ) return null;
     // #3355 Wave F (I-ARI-NO-STALE-RESUME): a Resume card whose run was
     // closed says so in plain words, with the setup that is open now.
     if (args.answer.choice_id === RESUME_CHOICE) {

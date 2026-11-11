@@ -199,7 +199,8 @@ class MemoryStore implements FlowStore {
       flow_key: args.flowKey,
       flow_version: args.flowVersion,
       concurrency: args.concurrency,
-      subject_id: null,
+      // #3355 rework 2: a follow-up run starts on its draft, as the RPC does.
+      subject_id: args.subjectId ?? null,
       conversation_id: args.conversationId,
       status: "active" as const,
       current_step_key: null,
@@ -286,9 +287,14 @@ class MemoryStore implements FlowStore {
     return Promise.resolve();
   }
   getForConversation(conversationId: string) {
-    const run = [...this.runs.values()].find((r) =>
+    // #3355 rework 2: the chat's live run first (as ari_flow_run_get), else
+    // its newest run (a completed run's follow-up card is answered on it).
+    const mine = [...this.runs.values()].filter((r) =>
       r.conversation_id === conversationId
     );
+    const run = mine.find((r) =>
+      !["completed", "cancelled", "expired", "parked"].includes(r.status)
+    ) ?? mine.at(-1);
     return Promise.resolve(run ? this.view(run) : null);
   }
   getById(runId: string) {
@@ -498,7 +504,8 @@ Deno.test("P8: the Lagos trip becomes one create proposal holding only the owner
   for (const key of Object.keys(args)) assert(schema.properties[key], key);
   for (const key of schema.required) assert(key in args, key);
 
-  // Confirm → read back → "get it ready to publish?" in the same response.
+  // Confirm → read back → the run completes on the draft, and "get it ready
+  // to publish?" is the completion card's follow-up (#3355 rework 2, P2-11).
   const next = await confirm(
     world,
     store,
@@ -506,7 +513,8 @@ Deno.test("P8: the Lagos trip becomes one create proposal holding only the owner
     () => world.trips.set(TRIP_ID, tripFrom(args)),
     { event: { id: TRIP_ID } },
   );
-  assert(next.kind === "artefact");
+  assert(next.kind === "completed", `got ${next.kind}`);
+  assertEquals((await cur(store)).status, "completed");
   assertMatch(
     next.text,
     new RegExp(

@@ -10,8 +10,8 @@
  *     `create_discount` accepts `ends_at`, but all three codes were saved with
  *     `ends_at = NULL`. The stated end date was dropped silently.
  *
- * MINGLA-INVARIANT: I-ARI-CLAIM-MATCHES-RECEIPT | issue #3355 | Reply text that claims a past write, in the active voice ("I've created") or the passive / outcome voice ("has been created", "was sent", "is now live"), must be backed by evidence that matches the claim's verb (tool family), its object (event, discount, message …) and every code or name it states: "proposed" by a live or executed proposal, "created / saved / sent / published …" only by an executed receipt; a negation or condition excuses only its own clause, and a proposal whose card was cancelled, expired or failed backs nothing. Otherwise the server rewrites the reply to the true state before it is stored or shown, on the agent-loop and the single-call path alike (enforced by supabase/functions/_shared/__tests__/issue_3355_wave_a_truth_guards.implementor.test.ts and issue_3355_rework_1.implementor.test.ts).
- * MINGLA-INVARIANT: I-ARI-STATED-SLOTS-PRESERVED | issue #3355 | Codes, percentages, fixed amounts off (in the currency's minor units), start and end dates and use limits the host stated (last 6 owner messages since the previous proposal of the same tool; each code its own values when one message gives several) are compared with the proposal args for every tool whose schema has that field, on both agent paths: a percent must be a percent of that size and an amount an amount of that size; a stated end day is bound to 23:59:59 local ("until / through / till / by" include the day) and a future start day to 00:00 local; anything else missing or different makes Ari ask instead of proposing (same test files).
+ * MINGLA-INVARIANT: I-ARI-CLAIM-MATCHES-RECEIPT | issue #3355 | (rework 2: structural) The model's own reply text never states a write's status: every sentence naming one of the chat's write objects (codes, titles, names from its proposals and receipts, or stated by the host) or using a write-status word, other than an instruction to the host or a question, is removed, with no negation or modal exception; the status the host reads is composed by the server from state (an executed receipt's own words, a live card's "ready to … Tap Confirm", or the true cancelled / expired / failed state), on the agent-loop and the single-call path alike (enforced by supabase/functions/_shared/__tests__/issue_3355_rework_2.implementor.test.ts, issue_3355_rework_1.implementor.test.ts and issue_3355_wave_a_truth_guards.implementor.test.ts).
+ * MINGLA-INVARIANT: I-ARI-STATED-SLOTS-PRESERVED | issue #3355 | Codes, percentages (digits, number words, pc / pct / per cent, half off), fixed amounts off (in the currency's minor units), start and end dates (incl. "between … and …", "the end of <month>") and use limits the host stated (last 6 owner messages since the previous proposal of the same tool) are compared with the proposal args for every tool whose schema has that field, on both agent paths: per code and field the latest statement wins (a percent replaces an amount and the reverse), values bind to the code in their own clause in either word order, the intent read's values are primary and the words the cross-check; a stated end day is bound to 23:59:59 local and a future start day to 00:00 local; anything else missing, different or in conflict makes Ari ask instead of proposing (same test files).
  */
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
@@ -22,38 +22,30 @@ import {
 import { normaliseAriDiscountCode } from "./ariDiscountArgs.ts";
 import { marketDefaultTimezone } from "./payoutCountries.ts";
 import { formatMinor, minorFromMajor } from "./money/formatMinor.ts";
+import { assertOwnerCopy } from "./ariOwnerCopy.ts";
+import { toolOwnerCopy } from "./ariPresentation/toolLabels.ts";
 
-// ── I-ARI-CLAIM-MATCHES-RECEIPT ─────────────────────────────────────────────
+// ── I-ARI-CLAIM-MATCHES-RECEIPT (structural) ────────────────────────────────
 //
-// #3355 rework 1 (tester P1-2): a claim is found clause by clause, in the
-// active voice ("I've created …") and the passive / outcome voice ("… has
-// been created", "… was sent", "… is now live"). A negation or a condition
-// excuses only its own clause. "Proposed" may be backed by a live proposal;
-// "created / saved / sent / published …" only by an executed receipt. The
-// backing evidence must match the claim's verb (tool family), its object
-// (event, discount, message …) and every code or name it states.
+// #3355 rework 2 (tester P1-2, orchestrator decision 2026-11-11): two retests
+// found new wordings that slipped past a list of claim patterns ("I can
+// confirm I've created …", "FAVY10 is live", "Ari has created …"). Widening
+// the patterns again would only move the leak. So the model's free text may
+// no longer state the write status of anything:
+//
+//   1. A sentence of model text that names a write object (a code, title or
+//      name from this chat's recent proposals and receipts, or one the host
+//      stated) is removed, unless it is a question to the host.
+//   2. A sentence that uses a write-status word (created, made, saved, live,
+//      sent, ready, done … in any tense or voice) is removed, unless it is a
+//      question or the word is an instruction to the host ("tap Create
+//      event", "To add a discount, …", "you can publish it from …").
+//   3. There are no negation, modal or excuse exceptions: "I haven't created
+//      FAVY10 yet" goes too. What the host reads about status is composed by
+//      the server from state: an executed receipt's own words, a live card's
+//      "ready to …, tap Confirm", or the true cancelled / expired / failed
+//      state. Nothing in state: nothing is said.
 
-const WRITE_VERBS =
-  "proposed|prepared|drafted|created|saved|sent|published|updated|changed|deleted|removed|cancell?ed|canceled|made|added|set\\s+up|scheduled|issued|refunded|posted|applied|activated|launched";
-const ACTIVE_CLAIM = new RegExp(
-  `\\b(?:i|we|ari)(?:['’](?:ve|d))?(?:\\s+(?:have|had|just|already|also|now|successfully|then|gone\\s+ahead\\s+and|went\\s+ahead\\s+and))*\\s+(${WRITE_VERBS})\\b`,
-  "gi",
-);
-const PASSIVE_CLAIM = new RegExp(
-  `\\b(?:has|have|had|['’]s|is|are|was|were)(?:\\s+(?:now|just|already|successfully|also|all))*\\s+been(?:\\s+(?:now|just|already|successfully))*\\s+(${WRITE_VERBS})\\b|\\b(?:was|were)(?:\\s+(?:just|already|successfully|also|all))*\\s+(${WRITE_VERBS})\\b|\\b(?:is|are)\\s+now\\s+(live|active|published|scheduled)\\b`,
-  "gi",
-);
-/** A negation inside the claim's own clause (before its verb). */
-const CLAUSE_NEGATION =
-  /\b(?:not|never|no|nothing|none|neither|nor|nobody|yet\s+to)\b|n['’]t\b/i;
-/** A condition or hypothetical inside the claim's own clause. */
-const CLAUSE_CONDITION =
-  /\b(?:if|once|until|unless|whether|when|whenever|after\s+you|before\s+you|as\s+soon\s+as|would|will|could|should|can|may|might)\b/i;
-/** Where a clause starts (the claim's subject never crosses one). */
-const CLAUSE_BOUNDARY =
-  /[,;:()—–]|\b(?:so|but|and|then|because|though|although|while|which|whereas)\b/gi;
-
-const NAMED_THING = /"([^"]{2,60})"|“([^”]{2,60})”|\b([A-Z][A-Z0-9]{3,15})\b/g;
 const STOPWORDS = new Set([
   "ARI",
   "NGN",
@@ -66,216 +58,203 @@ const STOPWORDS = new Set([
   "HTTP",
 ]);
 
-type ClaimStrength = "proposed" | "done";
-type ToolFamily =
-  | "create"
-  | "update"
-  | "publish"
-  | "send"
-  | "delete"
-  | "cancel"
-  | "refund"
-  | "schedule";
+/**
+ * Write-status words, any tense or voice. Word-start anchored, so
+ * "already", "deliver" and "interactive" never match.
+ */
+const STATUS_WORD = new RegExp(
+  "\\b(?:" + [
+    "creat(?:e|es|ed|ing|ion)",
+    "made",
+    "mak(?:e|es|ing)",
+    "set(?:s|ting)?\\s+(?:(?:it|this|that|them|everything|all)\\s+)?up",
+    "prepar(?:e|es|ed|ing)",
+    "sav(?:e|es|ed|ing)",
+    "add(?:s|ed|ing)?",
+    "publish(?:es|ed|ing)?",
+    "unpublish(?:es|ed|ing)?",
+    "live",
+    "activ(?:e|ated?|ates|ating)",
+    "launch(?:es|ed|ing)?",
+    "sent",
+    "send(?:s|ing)?",
+    "schedul(?:e|es|ed|ing)",
+    "updat(?:e|es|ed|ing)",
+    "chang(?:e|es|ed|ing)",
+    "delet(?:e|es|ed|ing)",
+    "cancel(?:s|led|ed|ling|ing)?",
+    "refund(?:s|ed|ing)?",
+    "done",
+    "ready",
+    "finish(?:es|ed|ing)?",
+    "complet(?:e|es|ed|ing)",
+    // Tester retest 2 (N2) and the same family.
+    "email(?:s|ed|ing)",
+    "text(?:ed|ing)",
+    "messag(?:ed|ing)",
+    "invit(?:e|es|ed|ing)",
+    "book(?:ed|ing)",
+    "post(?:ed|ing)",
+    "issu(?:e|es|ed|ing)",
+    "remov(?:e|es|ed|ing)",
+    "propos(?:e|es|ed|ing|al|als)",
+    "draft(?:ed|ing)",
+    "appl(?:y|ies|ied|ying)",
+    "approv(?:e|es|ed|ing)",
+    "confirmed",
+    "upload(?:s|ed|ing)",
+    "import(?:s|ed|ing)",
+    "paus(?:e|es|ed|ing)",
+    "resum(?:e|es|ed|ing)",
+    "ended",
+    "expired",
+    "gone\\s+(?:live|out)",
+    "went\\s+(?:live|out)",
+  ].join("|") + ")\\b",
+  "gi",
+);
 
-/** Which tool families back a claimed verb (null = any family). */
-function familiesForVerb(verb: string): ToolFamily[] | null {
-  const word = verb.toLowerCase().replace(/\s+/g, " ");
-  switch (word) {
-    case "created":
-    case "issued":
-    case "launched":
-      return ["create"];
-    case "made":
-    case "set up":
-    case "added":
-    case "applied":
-    case "activated":
-      return ["create", "update"];
-    case "updated":
-    case "changed":
-      return ["update"];
-    case "sent":
-    case "posted":
-      return ["send", "publish"];
-    case "published":
-    case "live":
-    case "active":
-      return ["publish", "create", "update"];
-    case "deleted":
-    case "removed":
-      return ["delete", "update"];
-    case "cancelled":
-    case "canceled":
-      return ["cancel", "delete"];
-    case "scheduled":
-      return ["schedule", "send", "create", "publish"];
-    case "refunded":
-      return ["refund", "cancel"];
-    default:
-      return null;
-  }
-}
+/** The base form of a status verb: what an instruction to the host uses. */
+const BASE_VERB =
+  /^(?:create|make|set\s+(?:(?:it|this|that|them|everything|all)\s+)?up|prepare|save|add|publish|unpublish|launch|send|schedule|update|change|delete|cancel|refund|finish|complete|email|text|invite|book|post|issue|remove|propose|apply|approve|upload|import|pause|resume)$/i;
 
-const TOOL_FAMILY_PREFIXES: ReadonlyArray<[RegExp, ToolFamily]> = [
-  [
-    /^(?:create|add|duplicate|issue|upsert|import|invite|start|open)_/,
-    "create",
-  ],
-  [/^(?:publish|unpublish|go_live|launch)_/, "publish"],
-  [/^(?:send|post|tell|notify|message|reply|announce|broadcast)_/, "send"],
-  [/^(?:delete|remove|archive|end|unlist)_/, "delete"],
-  [/^(?:cancel|void)_/, "cancel"],
-  [/^(?:refund)_/, "refund"],
-  [/^(?:schedule|reschedule)_/, "schedule"],
-  [
-    /^(?:update|edit|set|change|rename|pause|resume|move|assign|attach|enable|disable|toggle|bind|save|remember|draft)_/,
-    "update",
-  ],
-];
+/** "tap Create event", "press the **Publish** button". */
+const UI_LABEL_LEAD =
+  /\b(?:tap|tapping|press|pressing|click|clicking|select|selecting|choose|choosing|hit|open)\s+(?:on\s+)?(?:the\s+)?["“'‘*`]*(?:[\w→&-]+\s+){0,2}["“'‘*`]*$/i;
+/** "you can publish it", "once you're done", "you'll need to add …". */
+const HOST_SUBJECT_LEAD =
+  /\byou(?:['’](?:ll|d|re|ve))?(?:\s+(?:can|could|will|would|should|may|might|must|need\s+to|want\s+to|have\s+to|are\s+able\s+to|just|then|also|still|first|now|only|always|ever))*\s+$/i;
+/** "once you're done", "when you are ready". */
+const HOST_CONDITION_LEAD =
+  /\b(?:once|when|whenever|after|if|until|before)\s+you(?:['’]re|\s+are)\s+(?:all\s+)?$/i;
+/** An imperative or infinitive start: "Create a code from …", "then publish", "to add". */
+const INSTRUCTION_LEAD =
+  /(?:^|[,;:→>(]\s*|\bthen\s+|\band\s+|\bor\s+|\bto\s+|\bplease\s+|\blet['’]s\s+|\blet\s+us\s+|^\s*(?:[-*•]|\d+[.)])\s*)$/i;
 
-function toolFamily(toolName: string): ToolFamily | null {
-  for (const [pattern, family] of TOOL_FAMILY_PREFIXES) {
-    if (pattern.test(toolName)) return family;
-  }
-  return null;
-}
+/** Where a clause ends inside a sentence (used for questions). */
+const CLAUSE_SPLIT = /[,;:—–]|\s-\s|\b(?:so|and|but|because)\b/i;
 
-/** Object words a claim can name, and the tool-name parts that serve them. */
-const CLAIM_OBJECTS: ReadonlyArray<[RegExp, RegExp]> = [
-  [
-    /\b(?:discounts?|codes?|promo(?:\s+codes?)?|coupons?|vouchers?|sale\s+prices?)\b/i,
-    /discount/,
-  ],
-  [/\bevents?\b/i, /event/],
-  [/\btrips?\b/i, /trip/],
-  [/\bexperiences?\b/i, /experience/],
-  [/\bstays?\b/i, /stay/],
-  [/\b(?:tickets?|ticket\s+types?|tiers?)\b/i, /ticket|tier/],
-  [
-    /\b(?:messages?|emails?|announcements?|broadcasts?|blasts?|campaigns?|newsletters?)\b/i,
-    /message|email|announce|broadcast|blast|campaign|tell|notify/,
-  ],
-  [/\b(?:invites?|invitations?)\b/i, /invite|team/],
-  [/\bpayouts?\b/i, /payout/],
-  [/\brefunds?\b/i, /refund/],
-  [/\b(?:website|site|page)\b/i, /site|page/],
-  [/\b(?:posts?)\b/i, /post|social/],
-  [/\bnotes?\b/i, /note|remember/],
-];
-
-interface WriteClaim {
-  sentence: string;
-  strength: ClaimStrength;
-  families: ToolFamily[] | null;
-  objects: RegExp[];
-  named: string[];
-}
-
-/** Sentences of a reply (keeps their own punctuation). */
-function sentences(text: string): string[] {
-  return text.split(/(?<=[.!?])\s+(?=[A-Z“"'])|\n+/).filter((part) =>
+/** Sentences of one line (each keeps its own punctuation). */
+function lineSentences(line: string): string[] {
+  return line.split(/(?<=[.!?])\s+(?=[A-Z“"'*(\d])/).filter((part) =>
     part.trim().length > 0
   );
 }
 
-/** The text of the clause a match sits in, from its start to the match end. */
-function clauseBefore(sentence: string, index: number, end: number): string {
-  let start = 0;
-  for (const boundary of sentence.matchAll(CLAUSE_BOUNDARY)) {
-    const at = boundary.index ?? 0;
-    if (at >= index) break;
-    start = at + boundary[0].length;
-  }
-  return sentence.slice(start, end);
-}
-
-/** The words a clause's claim is about: its direct object or its subject. */
-function claimObjectWords(
+/** True when the status word at `index` is an instruction to the host. */
+function instructionalOccurrence(
   sentence: string,
   index: number,
-  end: number,
-  passive: boolean,
-): string {
-  if (passive) return clauseBefore(sentence, index, index);
-  const after = sentence.slice(end);
-  const stop = after.search(
-    /[,;:.!?()—–]|\b(?:for|on|to|at|in|with|from|by|until|till|so|and|but|which|that)\b/i,
-  );
-  return stop === -1 ? after : after.slice(0, stop);
+  word: string,
+): boolean {
+  const before = sentence.slice(0, index);
+  if (UI_LABEL_LEAD.test(before)) return true;
+  // Inside quotes, bold or code: the name of a button or screen.
+  const quotes = (before.match(/["“”`]/g) ?? []).length;
+  const bold = (before.match(/\*\*/g) ?? []).length;
+  if (quotes % 2 === 1 || bold % 2 === 1) return true;
+  const base = BASE_VERB.test(word.replace(/\s+/g, " "));
+  if (
+    base && (HOST_SUBJECT_LEAD.test(before) || INSTRUCTION_LEAD.test(before))
+  ) {
+    return true;
+  }
+  // "Once you're done, tap …": the host's own finishing, said as a condition.
+  return /^(?:done|ready|finished)$/i.test(word) &&
+    HOST_CONDITION_LEAD.test(before);
 }
 
-function claimFor(
-  sentence: string,
-  match: RegExpMatchArray,
-  passive: boolean,
-): WriteClaim | null {
-  const index = match.index ?? 0;
-  const end = index + match[0].length;
-  const clause = clauseBefore(sentence, index, end);
-  if (CLAUSE_NEGATION.test(clause) || CLAUSE_CONDITION.test(clause)) {
-    return null;
-  }
-  const verb = (match[1] ?? match[2] ?? match[3] ?? "").toLowerCase()
-    .replace(/\s+/g, " ");
-  const strength: ClaimStrength = /^(?:proposed|prepared|drafted)$/.test(verb)
-    ? "proposed"
-    : "done";
-  let families = familiesForVerb(verb);
-  const objectWords = claimObjectWords(sentence, index, end, passive);
-  if (strength === "proposed") {
-    // "I proposed creating / publishing …": the gerund names the family.
-    const gerund = /^\s*(?:to\s+)?(\w+?)(?:ing)?\b/i.exec(
-      sentence.slice(end),
-    )?.[1];
-    const fromGerund = gerund ? familiesForVerb(`${gerund}ed`) : null;
-    families = fromGerund ?? null;
-  }
-  const objects = CLAIM_OBJECTS.filter(([words]) => words.test(objectWords))
-    .map(([, tools]) => tools);
-  return {
-    sentence,
-    strength,
-    families,
-    objects,
-    named: namedThings(sentence),
-  };
-}
-
-/** The write claims a sentence makes (empty when it makes none). */
-export function writeClaimsIn(sentence: string): WriteClaim[] {
-  if (/\?\s*$/.test(sentence.trim())) return [];
-  const claims: WriteClaim[] = [];
-  for (const match of sentence.matchAll(ACTIVE_CLAIM)) {
-    const claim = claimFor(sentence, match, false);
-    if (claim) claims.push(claim);
-  }
-  for (const match of sentence.matchAll(PASSIVE_CLAIM)) {
-    const claim = claimFor(sentence, match, true);
-    if (claim) claims.push(claim);
-  }
-  return claims;
-}
-
-/** True when a sentence says Ari already did a write. */
-export function claimsPastWrite(sentence: string): boolean {
-  return writeClaimsIn(sentence).length > 0;
-}
-
-/** The specific things a claim names (codes, quoted names). */
-export function namedThings(sentence: string): string[] {
+/** The status words in a stretch of text that are not instructions to the host. */
+export function statusWordsIn(text: string): string[] {
   const out: string[] = [];
-  for (const match of sentence.matchAll(NAMED_THING)) {
-    const value = (match[1] ?? match[2] ?? match[3] ?? "").trim();
-    if (!value || STOPWORDS.has(value)) continue;
-    // An all-letter capital word must look like a code (no plain shouting).
-    if (match[3] && !/\d/.test(value) && value.length < 5) continue;
-    out.push(value);
+  for (const match of text.matchAll(STATUS_WORD)) {
+    if (!instructionalOccurrence(text, match.index ?? 0, match[0])) {
+      out.push(match[0]);
+    }
   }
   return out;
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** The write objects a stretch of text names (case-insensitive, whole words). */
+function objectsIn(text: string, objects: readonly string[]): string[] {
+  return objects.filter((object) =>
+    new RegExp(
+      `(?:^|[^\\p{L}\\p{N}])${escapeRegExp(object)}(?![\\p{L}\\p{N}])`,
+      "iu",
+    )
+      .test(text)
+  );
+}
+
+/** Why a sentence is removed (null: it stays). */
+function removalReason(
+  sentence: string,
+  objects: readonly string[],
+): "object" | "status" | null {
+  const trimmed = sentence.trim();
+  if (/\?["”')*]*$/.test(trimmed)) {
+    // A question to the host stays, but only when nothing before its own
+    // last clause states a status ("FAVY10 is live, want to share it?").
+    const lead = trimmed.split(CLAUSE_SPLIT).slice(0, -1).join(" ");
+    return lead.trim() && statusWordsIn(lead).length > 0 ? "status" : null;
+  }
+  if (objectsIn(trimmed, objects).length > 0) return "object";
+  if (statusWordsIn(trimmed).length > 0) return "status";
+  return null;
+}
+
+/**
+ * A code, title or name this chat could be talking about: from write args
+ * (code, title, name, subject …) and the host's own stated values.
+ */
+export function writeObjectsFrom(args: {
+  evidence: readonly unknown[];
+  statedCodes?: readonly string[];
+  statedNames?: readonly string[];
+}): string[] {
+  const out = new Set<string>();
+  const add = (value: unknown) => {
+    if (typeof value !== "string") return;
+    const text = value.replace(/\s+/g, " ").trim();
+    if (text.length < 4 || text.length > 80) return;
+    if (STOPWORDS.has(text.toUpperCase())) return;
+    if (/^[0-9a-f-]{20,}$/i.test(text)) return;
+    out.add(text);
+  };
+  for (const item of args.evidence) {
+    const record = evidenceRecord(item);
+    const toolArgs = evidenceRecord(record?.args) ??
+      evidenceRecord(record?.tool_args);
+    if (!toolArgs) continue;
+    for (const key of OBJECT_KEYS) add(toolArgs[key]);
+    const context = evidenceRecord(toolArgs.__proposal_context);
+    if (context) add(context.flow_title);
+  }
+  for (const code of args.statedCodes ?? []) add(code);
+  for (const name of args.statedNames ?? []) add(name);
+  return [...out];
+}
+
+const OBJECT_KEYS = [
+  "code",
+  "title",
+  "name",
+  "subject",
+  "label",
+  "display_name",
+  "event_title",
+  "trip_title",
+  "package_name",
+  "tier_name",
+  "campaign_name",
+] as const;
+
 export const TRUE_STATE_NOTHING_SAVED =
-  "I haven't made that change yet, so nothing has been saved or sent.";
+  "I haven't saved or sent anything for that yet.";
 
 type EvidenceStatus =
   | "pending"
@@ -284,127 +263,362 @@ type EvidenceStatus =
   | "cancelled"
   | "expired";
 
-interface ClaimEvidence {
-  toolName: string;
-  status: EvidenceStatus;
-  blob: string;
-}
-
 function evidenceRecord(item: unknown): Record<string, unknown> | null {
   return item && typeof item === "object" && !Array.isArray(item)
     ? item as Record<string, unknown>
     : null;
 }
 
-/**
- * The evidence as one entry per pending action: a proposal with its final
- * outcome when a receipt for the same action is present, a receipt alone
- * otherwise. Anything that is neither is ignored.
- */
-function resolveEvidence(evidence: readonly unknown[]): ClaimEvidence[] {
-  const byAction = new Map<string, ClaimEvidence>();
-  const loose: ClaimEvidence[] = [];
-  const statusOf = (value: unknown): EvidenceStatus | null =>
-    value === "executed" || value === "failed" || value === "cancelled" ||
-      value === "expired"
-      ? value
-      : null;
-  for (const item of evidence) {
-    const record = evidenceRecord(item);
-    if (!record) continue;
-    const toolName = typeof record.tool_name === "string"
-      ? record.tool_name
-      : "";
-    const outcome = statusOf(record.outcome);
-    const actionId = typeof record.pending_action_id === "string"
-      ? record.pending_action_id
-      : null;
-    if (!outcome && !actionId) continue;
-    const blob = JSON.stringify(record).toLowerCase();
-    if (!actionId) {
-      if (outcome) loose.push({ toolName, status: outcome, blob });
-      continue;
-    }
-    const known = byAction.get(actionId);
-    if (!known) {
-      byAction.set(actionId, {
-        toolName,
-        status: outcome ?? "pending",
-        blob,
-      });
-      continue;
-    }
-    known.blob = `${known.blob}\n${blob}`;
-    if (!known.toolName) known.toolName = toolName;
-    if (outcome) known.status = outcome;
-  }
-  return [...byAction.values(), ...loose];
+/** One write this chat can prove, in its true state. */
+export interface WriteState {
+  actionId: string;
+  toolName: string;
+  status: EvidenceStatus;
+  /** The object it is about (code, title, name), when it has one. */
+  object: string | null;
+  args: Record<string, unknown>;
+  /** The executed receipt's own words (its card title, body and rows). */
+  receiptText: string | null;
 }
 
-function claimBacked(claim: WriteClaim, evidence: ClaimEvidence[]): boolean {
-  return evidence.some((item) => {
-    if (claim.strength === "done" && item.status !== "executed") return false;
-    if (
-      claim.strength === "proposed" &&
-      item.status !== "executed" && item.status !== "pending"
-    ) return false;
-    const tool = item.toolName.toLowerCase();
-    if (claim.families) {
-      const family = toolFamily(tool);
-      if (!family || !claim.families.includes(family)) return false;
+function objectOf(args: Record<string, unknown>): string | null {
+  for (const key of OBJECT_KEYS) {
+    const value = args[key];
+    if (typeof value === "string" && value.trim().length >= 2) {
+      return value.replace(/\s+/g, " ").trim().slice(0, 80);
     }
-    if (
-      claim.objects.length > 0 &&
-      !claim.objects.some((pattern) => pattern.test(tool))
-    ) return false;
-    return claim.named.every((thing) =>
-      item.blob.includes(thing.toLowerCase())
-    );
+  }
+  return null;
+}
+
+function receiptTextOf(rendition: Record<string, unknown>): string | null {
+  const title = typeof rendition.title === "string"
+    ? rendition.title.trim()
+    : "";
+  const body = typeof rendition.body === "string" ? rendition.body.trim() : "";
+  if (!title && !body) return null;
+  const rows: string[] = [];
+  for (const block of Array.isArray(rendition.blocks) ? rendition.blocks : []) {
+    const record = evidenceRecord(block);
+    if (!record || record.type !== "key_value" || !Array.isArray(record.rows)) {
+      continue;
+    }
+    for (const row of record.rows) {
+      const cell = evidenceRecord(row);
+      if (typeof cell?.label === "string" && typeof cell?.value === "string") {
+        rows.push(`${cell.label} ${cell.value}`);
+      }
+    }
+  }
+  const head = [title, body].filter(Boolean).map((part) =>
+    /[.:!]$/.test(part) ? part : `${part}.`
+  ).join(" ");
+  const withRows = rows.length > 0
+    ? `${head.replace(/[.:]$/, ":")} ${rows.slice(0, 4).join(", ")}.`
+    : head;
+  return withRows;
+}
+
+/**
+ * Every write in the chat's recent rows, in its true state: proposals (their
+ * args), outcomes from tool rows, receipt words from the receipt card, and
+ * the database's own status for a card still open (`live`, when read).
+ */
+export function writeStatesFromHistory(
+  rows: ReadonlyArray<{
+    role?: unknown;
+    content?: unknown;
+    tool_calls?: unknown;
+    tool_results?: unknown;
+  }>,
+  live?: ReadonlyMap<string, { status: string; expires_at?: string | null }>,
+  now: Date = new Date(),
+): WriteState[] {
+  const byAction = new Map<string, WriteState>();
+  const order: string[] = [];
+  const receiptWords = new Map<string, string>();
+  for (const row of rows) {
+    if (row.role === "assistant") {
+      const calls = evidenceRecord(row.tool_calls);
+      if (calls && typeof calls.pending_action_id === "string") {
+        const args = evidenceRecord(calls.args) ?? {};
+        const actionId = calls.pending_action_id;
+        if (!byAction.has(actionId)) order.push(actionId);
+        byAction.set(actionId, {
+          actionId,
+          toolName: typeof calls.tool_name === "string" ? calls.tool_name : "",
+          status: byAction.get(actionId)?.status ?? "pending",
+          object: objectOf(args),
+          args,
+          receiptText: byAction.get(actionId)?.receiptText ?? null,
+        });
+      }
+      const content = evidenceRecord(row.content);
+      const rendition = evidenceRecord(
+        evidenceRecord(content?.structured)?.rendition,
+      );
+      const id = typeof rendition?.rendition_id === "string"
+        ? rendition.rendition_id
+        : "";
+      if (
+        rendition && rendition.kind === "receipt" && id.startsWith("receipt:")
+      ) {
+        const words = receiptTextOf(rendition);
+        if (words) receiptWords.set(id.slice("receipt:".length), words);
+      }
+    }
+    if (row.role === "tool") {
+      const result = evidenceRecord(row.tool_results);
+      if (!result || typeof result.pending_action_id !== "string") continue;
+      const actionId = result.pending_action_id;
+      const outcome = result.outcome;
+      const status: EvidenceStatus | null = outcome === "executed" ||
+          outcome === "failed" || outcome === "cancelled" ||
+          outcome === "expired"
+        ? outcome
+        : null;
+      if (!status) continue;
+      const known = byAction.get(actionId);
+      if (known) {
+        known.status = status;
+      } else {
+        order.push(actionId);
+        byAction.set(actionId, {
+          actionId,
+          toolName: typeof result.tool_name === "string"
+            ? result.tool_name
+            : "",
+          status,
+          object: null,
+          args: {},
+          receiptText: null,
+        });
+      }
+    }
+  }
+  const out: WriteState[] = [];
+  for (const actionId of order) {
+    const state = byAction.get(actionId);
+    if (!state) continue;
+    const words = receiptWords.get(actionId);
+    if (words) state.receiptText = words;
+    const db = live?.get(actionId);
+    if (db && state.status === "pending") {
+      if (
+        db.status === "executed" || db.status === "failed" ||
+        db.status === "cancelled" || db.status === "expired"
+      ) {
+        state.status = db.status;
+      } else if (
+        db.status === "pending" && db.expires_at &&
+        Date.parse(db.expires_at) <= now.getTime()
+      ) {
+        state.status = "expired";
+      }
+    }
+    out.push(state);
+  }
+  return out;
+}
+
+function ownerVerb(
+  toolName: string,
+): { verb: string; noun: string; done: string } {
+  const copy = toolOwnerCopy(toolName);
+  const words = copy.verb.trim().split(/\s+/);
+  const verb = (words[0] ?? "save").toLowerCase();
+  const noun = words.slice(1).join(" ").toLowerCase() || "change";
+  return { verb, noun, done: copy.done };
+}
+
+/** One state, in the server's own words (owner-copy linted). */
+export function writeStateText(state: WriteState): string {
+  const { verb, noun, done } = ownerVerb(state.toolName);
+  const name = state.object;
+  const thing = name ? name : `the ${noun}`;
+  let text: string;
+  switch (state.status) {
+    case "executed":
+      text = state.receiptText ??
+        `${done}${name ? `: ${name}` : ""}. Saved and checked in Mingla.`;
+      break;
+    case "pending":
+      text =
+        `Here's ${thing} ready to ${verb}. Tap Confirm to save it, or Edit to change it.`;
+      break;
+    case "cancelled":
+      text = `The card for ${thing} was cancelled, so nothing was saved.`;
+      break;
+    case "expired":
+      text =
+        `The card for ${thing} expired before it was confirmed, so nothing was saved. Ask me and I'll prepare it again.`;
+      break;
+    case "failed":
+      text = `${
+        name ? `${name} couldn't` : "That couldn't"
+      } be saved, so nothing changed. Ask me and I'll try again.`;
+      break;
+    default: {
+      const never: never = state.status;
+      text = String(never);
+    }
+  }
+  return assertOwnerCopy(text, {
+    fallback: "Here's where that stands: check the card above.",
+    surface: "write_state",
+    mode: "prose",
   });
 }
 
+/** The object words a removed sentence uses, and the tools that serve them. */
+const STATE_OBJECT_WORDS: ReadonlyArray<[RegExp, RegExp]> = [
+  [/\b(?:discounts?|codes?|promo|coupons?|vouchers?)\b/i, /discount/],
+  [/\bevents?\b/i, /event/],
+  [/\btrips?\b/i, /trip/],
+  [/\bexperiences?\b/i, /experience/],
+  [/\bstays?\b/i, /stay/],
+  [/\bvenues?\b/i, /venue/],
+  [/\b(?:tickets?|tiers?)\b/i, /ticket|tier/],
+  [
+    /\b(?:messages?|emails?|announcements?|broadcasts?|blasts?|campaigns?|guests?)\b/i,
+    /message|email|announce|broadcast|blast|campaign|tell|notify/,
+  ],
+  [/\b(?:invites?|invitations?|team)\b/i, /invite|member|scanner/],
+  [/\bpayouts?\b/i, /payout/],
+  [/\brefunds?\b/i, /refund/],
+  [/\b(?:website|site|page)\b/i, /site|page/],
+  [/\bbrand\b/i, /brand/],
+];
+
+/** A code-like token a sentence names ("FAVY10", "GIRLSTRIPLAGOS"). */
+const NAMED_CODE = /\b([A-Z][A-Z0-9]{3,15})\b/g;
+
 /**
- * Rewrite any sentence that claims a write the evidence does not back.
- * `evidence` is what this conversation can prove: this turn's pending
- * action, and the recent proposals and receipts (their tool name and args).
+ * The states a reply's removed sentences were about: per object its open
+ * card when one is waiting, else its saved receipt, else its latest card.
+ * `unknown` is what they named that this chat holds no write for.
  */
-export function guardWriteClaims(args: {
-  text: string;
-  pendingThisTurn: boolean;
-  evidence: unknown[];
-}): { text: string; rewritten: boolean; unsupported: string[] } {
-  if (args.pendingThisTurn) {
-    return { text: args.text, rewritten: false, unsupported: [] };
+function relevantStates(
+  removed: readonly string[],
+  states: readonly WriteState[],
+  objects: readonly string[],
+): { states: WriteState[]; unknown: string[] } {
+  const words = removed.join(" ");
+  const named = new Map<string, string>();
+  for (const name of objectsIn(words, objects)) {
+    named.set(name.toLowerCase(), name);
   }
-  const evidence = resolveEvidence(args.evidence);
-  const unsupported: string[] = [];
-  const kept: string[] = [];
-  for (const sentence of sentences(args.text)) {
-    const claims = writeClaimsIn(sentence);
-    if (claims.every((claim) => claimBacked(claim, evidence))) {
-      kept.push(sentence);
-    } else {
-      unsupported.push(sentence.trim());
-    }
+  for (const match of words.matchAll(NAMED_CODE)) {
+    const token = match[1];
+    if (STOPWORDS.has(token)) continue;
+    // A code has a digit, is one of the chat's objects, or is a long capital
+    // word in mixed-case words ("GIRLSTRIPLAGOS").
+    const codeLike = /\d/.test(token) ||
+      objects.some((object) => object.toUpperCase() === token) ||
+      (token.length >= 5 && /[a-z]/.test(words));
+    if (!codeLike) continue;
+    named.set(token.toLowerCase(), token);
   }
-  if (unsupported.length === 0) {
-    return { text: args.text, rewritten: false, unsupported };
+  const perObject = new Map<string, WriteState[]>();
+  for (const state of states) {
+    const key = state.object?.toLowerCase() ?? `#${state.toolName}`;
+    perObject.set(key, [...(perObject.get(key) ?? []), state]);
   }
-  const rest = kept.join(" ").trim();
-  return {
-    text: rest
-      ? `${TRUE_STATE_NOTHING_SAVED} ${rest}`
-      : `${TRUE_STATE_NOTHING_SAVED} Tell me what you'd like and I'll prepare it for you to approve.`,
-    rewritten: true,
-    unsupported,
+  const pick = (list: WriteState[]): WriteState => {
+    const latest = list[list.length - 1];
+    if (latest.status === "pending") return latest;
+    const saved = [...list].reverse().find((state) =>
+      state.status === "executed"
+    );
+    return saved ?? latest;
   };
+  const chosen = [...perObject.values()].map(pick);
+  if (named.size > 0) {
+    const found = chosen.filter((state) =>
+      state.object !== null && named.has(state.object.toLowerCase())
+    );
+    const unknown = [...named.entries()].filter(([key]) =>
+      !found.some((state) => state.object?.toLowerCase() === key)
+    ).map(([, name]) => name);
+    return { states: found.slice(-3), unknown: unknown.slice(0, 3) };
+  }
+  const tools = STATE_OBJECT_WORDS.filter(([pattern]) => pattern.test(words))
+    .map(([, tool]) => tool);
+  if (tools.length > 0) {
+    return {
+      states: chosen.filter((state) =>
+        tools.some((tool) => tool.test(state.toolName))
+      ).slice(-2),
+      unknown: [],
+    };
+  }
+  return { states: chosen.slice(-1), unknown: [] };
 }
 
 /**
- * What a conversation's recent rows can prove: live proposals (their tool
- * and args) and executed receipts, each receipt carrying its proposal's
- * args. A proposal whose card was cancelled, expired or failed proves
- * nothing, and neither does its receipt.
+ * The reply the host sees: the model's text with every status sentence
+ * removed, and the write status composed by the server from state.
+ * `evidence` and `states` come from this chat's recent rows; `objects` adds
+ * what the host named (stated codes and titles).
+ */
+export function guardWriteClaims(args: {
+  text: string;
+  /** Kept for callers; status sentences are removed whatever it says. */
+  pendingThisTurn?: boolean;
+  evidence: unknown[];
+  states?: readonly WriteState[];
+  objects?: readonly string[];
+}): { text: string; rewritten: boolean; unsupported: string[] } {
+  const objects = [
+    ...new Set([
+      ...writeObjectsFrom({ evidence: args.evidence }),
+      ...(args.objects ?? []),
+      ...(args.states ?? []).flatMap((state) =>
+        state.object ? [state.object] : []
+      ),
+    ]),
+  ].filter((object) => object.length >= 4);
+  const removed: string[] = [];
+  const keptLines: string[] = [];
+  for (const line of String(args.text ?? "").split("\n")) {
+    if (!line.trim()) {
+      keptLines.push("");
+      continue;
+    }
+    const kept: string[] = [];
+    for (const sentence of lineSentences(line)) {
+      if (removalReason(sentence, objects)) removed.push(sentence.trim());
+      else kept.push(sentence);
+    }
+    if (kept.length > 0) keptLines.push(kept.join(" "));
+  }
+  if (removed.length === 0) {
+    return { text: args.text, rewritten: false, unsupported: [] };
+  }
+  const rest = keptLines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  const relevant = relevantStates(removed, args.states ?? [], objects);
+  const stateText = [
+    ...relevant.states.map(writeStateText),
+    ...relevant.unknown.map((name) =>
+      `Nothing has been saved or sent for ${name} yet.`
+    ),
+  ].join(" ");
+  let text: string;
+  if (rest && stateText) text = `${rest}\n\n${stateText}`;
+  else if (rest) text = `${rest}\n\n${TRUE_STATE_NOTHING_SAVED}`;
+  else if (stateText) text = stateText;
+  else {
+    text =
+      `${TRUE_STATE_NOTHING_SAVED} Tell me what you'd like and I'll prepare it for you to approve.`;
+  }
+  return { text, rewritten: true, unsupported: removed };
+}
+
+/**
+ * What a conversation's recent rows can prove: proposals (their tool and
+ * args) and receipts, each receipt carrying its proposal's args. Under the
+ * structural guard these only name the chat's write objects; status itself
+ * comes from `writeStatesFromHistory`.
  */
 export function claimEvidenceFromHistory(
   rows: ReadonlyArray<{
@@ -414,36 +628,20 @@ export function claimEvidenceFromHistory(
   }>,
 ): unknown[] {
   const proposals = new Map<string, Record<string, unknown>>();
-  const outcomes = new Map<string, string>();
   const evidence: unknown[] = [];
   for (const row of rows) {
-    if (row.role === "assistant") {
-      const calls = evidenceRecord(row.tool_calls);
-      if (calls && typeof calls.pending_action_id === "string") {
-        proposals.set(calls.pending_action_id, calls);
-      }
-    }
-    if (row.role === "tool") {
-      const result = evidenceRecord(row.tool_results);
-      if (result && typeof result.pending_action_id === "string") {
-        outcomes.set(result.pending_action_id, String(result.outcome ?? ""));
-      }
-    }
-  }
-  for (const [actionId, calls] of proposals) {
-    const outcome = outcomes.get(actionId);
-    if (outcome === undefined || outcome === "executed") {
+    if (row.role !== "assistant") continue;
+    const calls = evidenceRecord(row.tool_calls);
+    if (calls && typeof calls.pending_action_id === "string") {
+      proposals.set(calls.pending_action_id, calls);
       evidence.push(calls);
     }
   }
   for (const row of rows) {
     if (row.role !== "tool") continue;
     const result = evidenceRecord(row.tool_results);
-    if (!result || result.outcome !== "executed") continue;
-    const actionId = typeof result.pending_action_id === "string"
-      ? result.pending_action_id
-      : null;
-    const proposal = actionId ? proposals.get(actionId) : undefined;
+    if (!result || typeof result.pending_action_id !== "string") continue;
+    const proposal = proposals.get(result.pending_action_id);
     evidence.push(
       proposal && proposal.args !== undefined
         ? { ...result, args: proposal.args }
@@ -506,6 +704,21 @@ export interface StatedSlots extends StatedValues {
    * December"), each code's values, never the first code's.
    */
   per_code?: Record<string, StatedValues>;
+  /**
+   * #3355 rework 2: two different values for one field with no correction
+   * between them (or the intent read and the words disagree). Ari asks one
+   * question naming both.
+   */
+  conflicts?: StatedConflict[];
+  /** #3355 rework 2: per object ("*" or a code), the fields the newest message stated. */
+  latest_fields?: Record<string, StatedField[]>;
+}
+
+export interface StatedConflict {
+  /** The code it is about; null for the one object being set up. */
+  code: string | null;
+  field: StatedField;
+  said: [string, string];
 }
 
 const VALUE_KEYS: ReadonlyArray<keyof StatedValues> = [
@@ -569,7 +782,6 @@ const END_PATTERNS = dayPatterns(END_LEAD);
 const START_PATTERNS = dayPatterns(START_LEAD);
 const STATED_TIME =
   /\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b|\b(?:[01]?\d|2[0-3]):[0-5]\d\b|\b(?:noon|midday|midnight)\b/i;
-const PERCENT = /\b(\d{1,2}(?:\.\d{1,2})?|100)\s?(?:%|percent\b|per\s+cent\b)/i;
 const QUOTED_CODE = /["“'‘]([A-Za-z0-9 -]{4,20})["”'’]/;
 const CODE_WORD =
   /\b(?:code|promo(?:\s+code)?|coupon|voucher)\s+(?:called\s+|named\s+|of\s+|is\s+|as\s+)?([A-Z0-9][A-Z0-9-]{3,15})\b/;
@@ -578,7 +790,7 @@ const CODE_ALONE =
 /** An all-capitals word in a mixed-case message reads as a code name. */
 const CODE_CAPS = /\b([A-Z][A-Z0-9]{4,15})\b/;
 const TOTAL_USES =
-  /\b(?:first|max(?:imum)?(?:\s+of)?|up\s+to|limit(?:ed)?\s+(?:it\s+)?to|only)\s+(\d{1,6})\s+(?:people|uses|buyers|tickets|times|redemptions|customers|guests)\b|\b(\d{1,6})\s+uses\b/i;
+  /\b(?:first|max(?:imum)?(?:\s+of)?|up\s+to|limit(?:ed)?\s+(?:it\s+)?to|only)\s+(\d{1,6})\s+(?:people|uses|buyers|tickets|times|redemptions|customers|guests)\b|\b(\d{1,6})\s+uses\b(?!\s+per\b)/i;
 const PER_BUYER =
   /\b(?:once|one\s+use|1\s+use)\s+per\s+(?:person|buyer|customer)\b|\b(\d{1,3})\s+(?:uses?|times)\s+per\s+(?:person|buyer|customer)\b/i;
 
@@ -612,8 +824,9 @@ const CURRENCY_WORDS: Readonly<Record<string, string>> = Object.freeze({
 });
 const CURRENCY_CODES = "NGN|GBP|USD|EUR|GHS|KES|ZAR|CAD|AUD|NZD";
 const AMOUNT_OFF = "\\s*(?:off\\b|discount\\b)";
+// Rework 2 (P3-20): "NGN5000 off" with no space reads too.
 const AMOUNT_SIGN_FIRST = new RegExp(
-  `(GH₵|KSh|₦|£|€|\\$|₵|\\bN(?=\\d)|\\b(?:${CURRENCY_CODES})\\b)\\s?${AMOUNT_NUMBER}${AMOUNT_OFF}`,
+  `(GH₵|KSh|₦|£|€|\\$|₵|\\bN(?=\\d)|\\b(?:${CURRENCY_CODES})(?=\\s|\\d))\\s?${AMOUNT_NUMBER}${AMOUNT_OFF}`,
   "i",
 );
 const AMOUNT_WORD_AFTER = new RegExp(
@@ -723,72 +936,525 @@ function amountNumber(
   return thousands ? value * 1000 : value;
 }
 
-function statedAmount(text: string): StatedAmount | undefined {
-  const signFirst = AMOUNT_SIGN_FIRST.exec(text);
-  if (signFirst) {
-    const sign = signFirst[1].toUpperCase();
-    const currency = CURRENCY_SIGNS[signFirst[1]] ?? CURRENCY_SIGNS[sign] ??
-      (new RegExp(`^(?:${CURRENCY_CODES})$`).test(sign) ? sign : null);
-    return {
-      major: amountNumber(signFirst[2], signFirst[3], signFirst[4]),
-      currency,
-      words: signFirst[0].trim(),
-    };
-  }
-  const wordAfter = AMOUNT_WORD_AFTER.exec(text);
-  if (wordAfter) {
-    const word = wordAfter[4].toLowerCase();
-    return {
-      major: amountNumber(wordAfter[1], wordAfter[2], wordAfter[3]),
-      currency: CURRENCY_WORDS[word] ?? word.toUpperCase(),
-      words: wordAfter[0].trim(),
-    };
-  }
-  const bare = AMOUNT_BARE.exec(text);
-  if (bare) {
-    return {
-      major: amountNumber(bare[1], bare[2], bare[3]),
-      currency: null,
-      words: bare[0].trim(),
-    };
-  }
-  return undefined;
+// ── #3355 rework 2: every stated value with where it sits ───────────────────
+//
+// A message is read as a list of value mentions (a percent, an amount, an
+// end or start day, a use limit), each with its place in the words. Each
+// mention is bound to the code it belongs to (the code in its own clause,
+// before or after it), and per code and field the LATEST statement wins: a
+// newer message replaces an older one (a percent replaces an amount, and the
+// reverse), and inside one message a correction ("actually", "instead",
+// "make it", "not 10%") keeps the newer value. Two different values for one
+// field with no correction between them are a conflict: Ari asks.
+
+/** One slot of a discount the host can state (percent and amount share "value"). */
+export type StatedField =
+  | "value"
+  | "ends_on"
+  | "starts_on"
+  | "max_total_uses"
+  | "max_uses_per_buyer";
+
+interface ValueMention {
+  field: StatedField;
+  index: number;
+  end: number;
+  values: StatedValues;
+  /** Equality key: two mentions with the same key say the same thing. */
+  key: string;
+  /** The host's words for it, as Ari repeats them in a question. */
+  words: string;
+  negated: boolean;
 }
 
-/** The discount values one stretch of the host's words states. */
-function valuesIn(text: string, now: Date): StatedValues {
-  const values: StatedValues = {};
-  const percent = PERCENT.exec(text);
-  if (percent) values.value_bps = Math.round(Number(percent[1]) * 100);
-  else {
-    const amount = statedAmount(text);
-    if (amount && Number.isFinite(amount.major) && amount.major > 0) {
-      values.amount = amount;
+const NUMBER_WORDS: Readonly<Record<string, number>> = Object.freeze({
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  seven: 7,
+  eight: 8,
+  nine: 9,
+  ten: 10,
+  eleven: 11,
+  twelve: 12,
+  thirteen: 13,
+  fourteen: 14,
+  fifteen: 15,
+  sixteen: 16,
+  seventeen: 17,
+  eighteen: 18,
+  nineteen: 19,
+  twenty: 20,
+  thirty: 30,
+  forty: 40,
+  fifty: 50,
+  sixty: 60,
+  seventy: 70,
+  eighty: 80,
+  ninety: 90,
+  hundred: 100,
+});
+const TENS = "twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety";
+const UNITS = "one|two|three|four|five|six|seven|eight|nine";
+const NUMBER_WORD =
+  `(?:(?:a|one)\\s+hundred|(?:${TENS})(?:[\\s-](?:${UNITS}))?|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|ten|${UNITS})`;
+const PERCENT_SUFFIX = "\\s?(?:%|percent\\b|per\\s?cent\\b|pc\\b|pct\\b)";
+const PERCENT_DIGITS = new RegExp(
+  `\\b(\\d{1,2}(?:\\.\\d{1,2})?|100)${PERCENT_SUFFIX}`,
+  "gi",
+);
+const PERCENT_WORDS = new RegExp(`\\b(${NUMBER_WORD})${PERCENT_SUFFIX}`, "gi");
+const PERCENT_FRACTION =
+  /\b(?:(half)|(?:a\s+)?(quarter)|(?:a\s+|one\s+)?(third))\s+(?:off|price)\b/gi;
+
+/** "twenty-five" → 25; null when it is not a number word. */
+export function numberWordValue(words: string): number | null {
+  const text = words.toLowerCase().replace(/-/g, " ").replace(/\s+/g, " ")
+    .trim();
+  if (/^(?:a|one) hundred$/.test(text)) return 100;
+  const parts = text.split(" ");
+  let total = 0;
+  for (const part of parts) {
+    const value = NUMBER_WORDS[part];
+    if (value === undefined) return null;
+    total += value;
+  }
+  return total > 0 && total <= 100 ? total : null;
+}
+
+/** A currency code run into its amount ("NGN5000"): never a discount code. */
+const CURRENCY_AMOUNT_TOKEN = new RegExp(`^(?:${CURRENCY_CODES}|KSH|N)\\d+K?$`);
+
+const CORRECTION =
+  /\b(?:actually|instead|rather|nope|no|not|make\s+it|change\s+(?:it|that)\s+to|scratch\s+that|sorry|i\s+mean[t]?|correction|wait|on\s+second\s+thought)\b/i;
+const NEGATED_LEAD =
+  /\b(?:not|never|instead\s+of|rather\s+than|no\s+longer)\s+(?:a\s+|the\s+|at\s+)?$/i;
+const CLAUSE_BREAK = /[,;]|\band\b|\bbut\b|\bplus\b|\bwhile\b|\bwhereas\b/gi;
+const SHARED_WORDS = /\b(?:both|all|each|every|either)\b/i;
+
+function percentKey(bps: number): string {
+  return `p:${bps}`;
+}
+
+function dayKey(day: StatedDay): string {
+  return `${day.year}-${day.month}-${day.day}${
+    day.alt ? `|${day.alt.month}-${day.alt.day}` : ""
+  }${day.has_time ? "@t" : ""}`;
+}
+
+function globalOf(pattern: RegExp): RegExp {
+  return new RegExp(
+    pattern.source,
+    pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`,
+  );
+}
+
+const BETWEEN_DAYS = new RegExp(
+  `\\b(?:between|from)\\s+(?:the\\s+)?(\\d{1,2})(?:st|nd|rd|th)?(?:\\s+of)?(?:\\s+${MONTH}\\.?)?\\s+(?:and|to|until|till|through|-|–)\\s+(?:the\\s+)?(\\d{1,2})(?:st|nd|rd|th)?(?:\\s+of)?\\s+${MONTH}\\.?(?:,?\\s+(\\d{4}))?`,
+  "gi",
+);
+const END_OF_MONTH = new RegExp(
+  `\\b(?:until|till|til|through|thru|by|to|ends?|ending)\\s+(?:the\\s+)?end\\s+of\\s+${MONTH}\\.?(?:,?\\s+(\\d{4}))?`,
+  "gi",
+);
+
+function inferYear(
+  month: number,
+  day: number,
+  now: Date,
+  year?: number,
+): number {
+  if (year) return year;
+  let guess = now.getUTCFullYear();
+  if (Date.UTC(guess, month - 1, day, 23, 59, 59) < now.getTime()) guess += 1;
+  return guess;
+}
+
+function lastDayOf(year: number, month: number): number {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+/** Every value mention in one message, in the order the host wrote them. */
+function valueMentions(text: string, now: Date): ValueMention[] {
+  const found: ValueMention[] = [];
+  const overlaps = (field: StatedField, index: number, end: number) =>
+    found.some((other) =>
+      other.field === field && index < other.end && end > other.index
+    );
+  const push = (mention: Omit<ValueMention, "negated">) => {
+    if (overlaps(mention.field, mention.index, mention.end)) return;
+    const lead = text.slice(Math.max(0, mention.index - 18), mention.index);
+    found.push({ ...mention, negated: NEGATED_LEAD.test(lead) });
+  };
+  const percent = (index: number, end: number, value: number) => {
+    if (!(value > 0 && value <= 100)) return;
+    const bps = Math.round(value * 100);
+    push({
+      field: "value",
+      index,
+      end,
+      values: { value_bps: bps },
+      key: percentKey(bps),
+      words: `${bps / 100}% off`,
+    });
+  };
+  for (const match of text.matchAll(PERCENT_DIGITS)) {
+    const index = match.index ?? 0;
+    percent(index, index + match[0].length, Number(match[1]));
+  }
+  for (const match of text.matchAll(PERCENT_WORDS)) {
+    const value = numberWordValue(match[1]);
+    const index = match.index ?? 0;
+    if (value !== null) {
+      percent(index, index + match[0].length, value);
     }
   }
-  const ends = statedDay(text, END_PATTERNS, now);
-  if (ends) values.ends_on = ends;
-  const starts = statedDay(text, START_PATTERNS, now);
-  if (starts) values.starts_on = starts;
-  const total = TOTAL_USES.exec(text);
-  if (total) values.max_total_uses = Number(total[1] ?? total[2]);
-  const perBuyer = PER_BUYER.exec(text);
-  if (perBuyer) {
-    values.max_uses_per_buyer = perBuyer[1] ? Number(perBuyer[1]) : 1;
+  for (const match of text.matchAll(PERCENT_FRACTION)) {
+    const value = match[1] ? 50 : match[2] ? 25 : 33.33;
+    const index = match.index ?? 0;
+    percent(index, index + match[0].length, value);
   }
-  return values;
+  for (const pattern of [AMOUNT_SIGN_FIRST, AMOUNT_WORD_AFTER, AMOUNT_BARE]) {
+    for (const match of text.matchAll(globalOf(pattern))) {
+      const amount = amountFromMatch(pattern, match);
+      if (!amount || !Number.isFinite(amount.major) || amount.major <= 0) {
+        continue;
+      }
+      const index = match.index ?? 0;
+      // An amount inside a percent ("10 percent off") is the percent.
+      if (overlaps("value", index, index + match[0].length)) continue;
+      push({
+        field: "value",
+        index,
+        end: index + match[0].length,
+        values: { amount },
+        key: `a:${amount.major}:${amount.currency ?? ""}`,
+        words: amount.words,
+      });
+    }
+  }
+  for (const match of text.matchAll(BETWEEN_DAYS)) {
+    const index = match.index ?? 0;
+    const end = index + match[0].length;
+    const endMonth = MONTHS[match[4].toLowerCase().replace(/\.$/, "")];
+    const startMonth = match[2]
+      ? MONTHS[match[2].toLowerCase().replace(/\.$/, "")]
+      : endMonth;
+    const year = match[5] ? Number(match[5]) : undefined;
+    const startDay = Number(match[1]);
+    const endDay = Number(match[3]);
+    if (!startMonth || !endMonth) continue;
+    const endYear = inferYear(endMonth, endDay, now, year);
+    const startYear = year ??
+      (startMonth > endMonth ? endYear - 1 : endYear);
+    if (
+      !validDay(startYear, startMonth, startDay) ||
+      !validDay(endYear, endMonth, endDay)
+    ) continue;
+    const starts: StatedDay = {
+      year: startYear,
+      month: startMonth,
+      day: startDay,
+      words: match[0].trim(),
+    };
+    const ends: StatedDay = {
+      year: endYear,
+      month: endMonth,
+      day: endDay,
+      words: match[0].trim(),
+    };
+    push({
+      field: "starts_on",
+      index,
+      end,
+      values: { starts_on: starts },
+      key: dayKey(starts),
+      words: spokenDay(starts),
+    });
+    push({
+      field: "ends_on",
+      index,
+      end,
+      values: { ends_on: ends },
+      key: dayKey(ends),
+      words: spokenDay(ends),
+    });
+  }
+  for (const match of text.matchAll(END_OF_MONTH)) {
+    const index = match.index ?? 0;
+    const month = MONTHS[match[1].toLowerCase().replace(/\.$/, "")];
+    if (!month) continue;
+    const year = inferYear(
+      month,
+      1,
+      now,
+      match[2] ? Number(match[2]) : undefined,
+    );
+    const ends: StatedDay = {
+      year,
+      month,
+      day: lastDayOf(year, month),
+      words: match[0].trim(),
+    };
+    push({
+      field: "ends_on",
+      index,
+      end: index + match[0].length,
+      values: { ends_on: ends },
+      key: dayKey(ends),
+      words: spokenDay(ends),
+    });
+  }
+  for (
+    const [field, patterns] of [
+      ["ends_on", END_PATTERNS],
+      ["starts_on", START_PATTERNS],
+    ] as const
+  ) {
+    for (const pattern of patterns) {
+      for (const match of text.matchAll(globalOf(pattern))) {
+        const index = match.index ?? 0;
+        const end = index + match[0].length;
+        const window = text.slice(Math.max(0, index - 16), end + 24);
+        const day = statedDay(window, patterns, now);
+        if (!day) continue;
+        push({
+          field,
+          index,
+          end,
+          values: field === "ends_on" ? { ends_on: day } : { starts_on: day },
+          key: dayKey(day),
+          words: spokenDay(day),
+        });
+      }
+    }
+  }
+  for (const match of text.matchAll(globalOf(PER_BUYER))) {
+    const index = match.index ?? 0;
+    const value = match[1] ? Number(match[1]) : 1;
+    push({
+      field: "max_uses_per_buyer",
+      index,
+      end: index + match[0].length,
+      values: { max_uses_per_buyer: value },
+      key: String(value),
+      words: value === 1 ? "one use per buyer" : `${value} uses per buyer`,
+    });
+  }
+  for (const match of text.matchAll(globalOf(TOTAL_USES))) {
+    const index = match.index ?? 0;
+    const value = Number(match[1] ?? match[2]);
+    if (!Number.isFinite(value) || value <= 0) continue;
+    push({
+      field: "max_total_uses",
+      index,
+      end: index + match[0].length,
+      values: { max_total_uses: value },
+      key: String(value),
+      words: `a limit of ${value} uses`,
+    });
+  }
+  return found.sort((left, right) => left.index - right.index);
 }
 
-function hasValues(values: StatedValues): boolean {
-  return VALUE_KEYS.some((key) => values[key] !== undefined);
+function amountFromMatch(
+  pattern: RegExp,
+  match: RegExpMatchArray,
+): StatedAmount | undefined {
+  if (pattern === AMOUNT_SIGN_FIRST) {
+    const sign = match[1].toUpperCase();
+    const currency = CURRENCY_SIGNS[match[1]] ?? CURRENCY_SIGNS[sign] ??
+      (new RegExp(`^(?:${CURRENCY_CODES})$`).test(sign) ? sign : null);
+    return {
+      major: amountNumber(match[2], match[3], match[4]),
+      currency,
+      words: match[0].trim(),
+    };
+  }
+  if (pattern === AMOUNT_WORD_AFTER) {
+    const word = match[4].toLowerCase();
+    return {
+      major: amountNumber(match[1], match[2], match[3]),
+      currency: CURRENCY_WORDS[word] ?? word.toUpperCase(),
+      words: match[0].trim(),
+    };
+  }
+  return {
+    major: amountNumber(match[1], match[2], match[3]),
+    currency: null,
+    words: match[0].trim(),
+  };
 }
 
+/** One message's statement per field for one object (latest wins). */
+function resolveInMessage(
+  text: string,
+  mentions: readonly ValueMention[],
+): {
+  fields: Map<StatedField, ValueMention>;
+  conflicts: Map<StatedField, [ValueMention, ValueMention]>;
+} {
+  const fields = new Map<StatedField, ValueMention>();
+  const conflicts = new Map<StatedField, [ValueMention, ValueMention]>();
+  const byField = new Map<StatedField, ValueMention[]>();
+  for (const mention of mentions) {
+    if (mention.negated) continue;
+    byField.set(mention.field, [
+      ...(byField.get(mention.field) ?? []),
+      mention,
+    ]);
+  }
+  for (const [field, list] of byField) {
+    let current = list[0];
+    let conflict: [ValueMention, ValueMention] | null = null;
+    for (const next of list.slice(1)) {
+      if (next.key === current.key) {
+        current = next;
+        continue;
+      }
+      const between = text.slice(current.end, next.index);
+      const after = text.slice(next.end, next.end + 14);
+      if (CORRECTION.test(between) || /^\s*instead\b/i.test(after)) {
+        conflict = null;
+      } else {
+        conflict = [current, next];
+      }
+      current = next;
+    }
+    fields.set(field, current);
+    if (conflict) conflicts.set(field, conflict);
+  }
+  return { fields, conflicts };
+}
+
+interface LedgerEntry {
+  mention: ValueMention;
+  message: number;
+}
+interface Ledger {
+  fields: Map<StatedField, LedgerEntry>;
+  conflicts: Map<StatedField, { said: [string, string]; message: number }>;
+}
+
+function ledgerFor(ledgers: Map<string, Ledger>, key: string): Ledger {
+  let ledger = ledgers.get(key);
+  if (!ledger) {
+    ledger = { fields: new Map(), conflicts: new Map() };
+    ledgers.set(key, ledger);
+  }
+  return ledger;
+}
+
+/** Bind each mention to the object(s) it belongs to in a message. */
+function bindMentions(
+  text: string,
+  codes: ReadonlyArray<{ code: string; index: number }>,
+  mentions: readonly ValueMention[],
+  unnamedTargets: readonly string[],
+): Map<string, ValueMention[]> {
+  const bound = new Map<string, ValueMention[]>();
+  const give = (key: string, mention: ValueMention) =>
+    bound.set(key, [...(bound.get(key) ?? []), mention]);
+  if (codes.length === 0) {
+    for (const mention of mentions) {
+      for (const key of unnamedTargets) give(key, mention);
+    }
+    return bound;
+  }
+  if (codes.length === 1) {
+    for (const mention of mentions) give(codes[0].code, mention);
+    return bound;
+  }
+  // Two or more codes: the clause a value sits in names its code.
+  const breaks = [0];
+  for (const match of text.matchAll(CLAUSE_BREAK)) {
+    breaks.push((match.index ?? 0) + match[0].length);
+  }
+  breaks.push(text.length + 1);
+  const clauseOf = (at: number) => {
+    let clause = 0;
+    for (let index = 0; index < breaks.length - 1; index += 1) {
+      if (at >= breaks[index]) clause = index;
+    }
+    return clause;
+  };
+  const clauseCodes = new Map<number, string[]>();
+  for (const code of codes) {
+    const clause = clauseOf(code.index);
+    clauseCodes.set(clause, [...(clauseCodes.get(clause) ?? []), code.code]);
+  }
+  const all = codes.map((code) => code.code);
+  const loose: ValueMention[] = [];
+  for (const mention of mentions) {
+    const clause = clauseOf(mention.index);
+    const own = clauseCodes.get(clause) ?? [];
+    const clauseText = text.slice(
+      breaks[clause],
+      breaks[clause + 1] ?? text.length,
+    );
+    if (SHARED_WORDS.test(clauseText) && own.length !== 1) {
+      for (const code of all) give(code, mention);
+    } else if (own.length > 0) {
+      for (const code of own) give(code, mention);
+    } else {
+      loose.push(mention);
+    }
+  }
+  if (loose.length > 0) {
+    const anyOwn = [...bound.keys()].length > 0;
+    for (const mention of loose) {
+      if (!anyOwn) {
+        // "FAVY10 and GIRLS20, 10% off": the values are for every code named.
+        for (const code of all) give(code, mention);
+        continue;
+      }
+      // Otherwise the nearest clause before it that names one code, else after.
+      const clause = clauseOf(mention.index);
+      let target: string | null = null;
+      for (let at = clause - 1; at >= 0 && !target; at -= 1) {
+        const own = clauseCodes.get(at);
+        if (own && own.length === 1) target = own[0];
+      }
+      for (let at = clause + 1; at < breaks.length && !target; at += 1) {
+        const own = clauseCodes.get(at);
+        if (own && own.length === 1) target = own[0];
+      }
+      if (target) give(target, mention);
+    }
+  }
+  return bound;
+}
+
+/**
+ * Copy stated values onto a target, one slot per field: a percent replaces
+ * an amount and the reverse (rework 2, P1-18).
+ */
 function assignValues(target: StatedValues, values: StatedValues): void {
+  for (const key of VALUE_KEYS) {
+    if (values[key] === undefined) continue;
+    clearField(target, fieldOfKey(key));
+  }
   for (const key of VALUE_KEYS) {
     if (values[key] !== undefined) {
       (target as Record<string, unknown>)[key] = values[key];
     }
   }
+}
+
+function valuesOfLedger(
+  ledger: Ledger | undefined,
+): { values: StatedValues; latest: Map<StatedField, number> } {
+  const values: StatedValues = {};
+  const latest = new Map<StatedField, number>();
+  if (!ledger) return { values, latest };
+  for (const [field, entry] of ledger.fields) {
+    assignValues(values, entry.mention.values);
+    latest.set(field, entry.message);
+  }
+  return { values, latest };
 }
 
 /** Every code a message names, with where it first appears. */
@@ -797,6 +1463,8 @@ function codeMentions(text: string): Array<{ code: string; index: number }> {
   const add = (raw: string, index: number) => {
     const code = normaliseAriDiscountCode(raw);
     if (!/^[A-Z0-9]{4,16}$/.test(code) || STOPWORDS.has(code)) return;
+    // "NGN5000" is an amount, not a code.
+    if (CURRENCY_AMOUNT_TOKEN.test(code)) return;
     if (!found.has(code) || (found.get(code) ?? 0) > index) {
       found.set(code, index);
     }
@@ -809,6 +1477,11 @@ function codeMentions(text: string): Array<{ code: string; index: number }> {
       add(match[1], match.index ?? 0);
     }
   }
+  for (const match of text.matchAll(new RegExp(QUOTED_CODE.source, "g"))) {
+    add(match[1], (match.index ?? 0) + 1);
+  }
+  const word = CODE_WORD.exec(text);
+  if (word?.[1]) add(word[1], (word.index ?? 0) + word[0].indexOf(word[1]));
   return [...found.entries()].map(([code, index]) => ({ code, index }))
     .sort((left, right) => left.index - right.index);
 }
@@ -834,84 +1507,149 @@ export function hostCodeTokens(ownerMessages: readonly string[]): Set<string> {
   return tokens;
 }
 
-/** The values a host stated, newest message winning per value. */
+function fieldOfKey(key: keyof StatedValues): StatedField {
+  return key === "value_bps" || key === "amount" ? "value" : key;
+}
+
+/**
+ * The values a host stated, per object, newest statement winning per field
+ * (I-ARI-STATED-SLOTS-PRESERVED).
+ */
 export function extractStatedSlots(
   ownerMessages: readonly string[],
   now: Date = new Date(),
 ): StatedSlots {
-  const slots: StatedSlots = {};
-  for (const message of ownerMessages) {
+  const ledgers = new Map<string, Ledger>();
+  let current: string[] = [];
+  let primary: string | undefined;
+  let multi: string[] | undefined;
+  ownerMessages.forEach((message, messageIndex) => {
     const text = message.replace(/\s+/g, " ").trim();
-    if (!text) continue;
+    if (!text) return;
     const quoted = QUOTED_CODE.exec(text)?.[1];
     const caps = /[a-z]/.test(text) ? CODE_CAPS.exec(text)?.[1] : undefined;
     const code = (quoted && normaliseAriDiscountCode(quoted)) ||
       CODE_WORD.exec(text)?.[1] || CODE_ALONE.exec(text)?.[1] ||
       (caps && !STOPWORDS.has(caps) ? caps : undefined);
-    let single: string | undefined;
-    if (code && /^[A-Z0-9-]{4,16}$/i.test(code)) {
-      single = normaliseAriDiscountCode(code);
-      slots.code = single;
+    if (
+      code && /^[A-Z0-9-]{4,16}$/i.test(code) &&
+      !CURRENCY_AMOUNT_TOKEN.test(normaliseAriDiscountCode(code))
+    ) {
+      primary = normaliseAriDiscountCode(code);
     }
-    const mentions = codeMentions(text);
-    if (mentions.length >= 2) {
-      slots.codes = mentions.map((mention) => mention.code).slice(0, 10);
-      // Each code's own stretch of words, up to the next code.
-      const segments = mentions.map((mention, index) => ({
-        code: mention.code,
-        values: valuesIn(
-          text.slice(mention.index, mentions[index + 1]?.index ?? text.length),
-          now,
-        ),
-      }));
-      const withValues = segments.filter((segment) =>
-        hasValues(segment.values)
-      );
-      if (withValues.length >= 2) {
-        slots.per_code = Object.fromEntries(
-          segments.map((segment) => [segment.code, segment.values]),
-        );
-        for (const key of VALUE_KEYS) {
-          if (segments.some((segment) => segment.values[key] !== undefined)) {
-            delete slots[key];
-          }
+    const codes = codeMentions(text);
+    if (codes.length >= 2) {
+      multi = codes.map((mention) => mention.code).slice(0, 10);
+      current = multi;
+    } else if (codes.length === 1) {
+      // A follow-up naming one of the codes being set up changes only that
+      // code; a new code starts a new single object.
+      if (!multi?.includes(codes[0].code)) multi = undefined;
+      current = [codes[0].code];
+    }
+    const mentions = valueMentions(text, now);
+    const bound = bindMentions(text, codes, mentions, ["*", ...current]);
+    for (const [key, list] of bound) {
+      const ledger = ledgerFor(ledgers, key);
+      const { fields, conflicts } = resolveInMessage(text, list);
+      for (const [field, mention] of fields) {
+        ledger.fields.set(field, { mention, message: messageIndex });
+        ledger.conflicts.delete(field);
+      }
+      for (const [field, [first, second]] of conflicts) {
+        ledger.conflicts.set(field, {
+          said: [first.words, second.words],
+          message: messageIndex,
+        });
+      }
+    }
+  });
+  const slots: StatedSlots = {};
+  if (primary) slots.code = primary;
+  const last = ownerMessages.length - 1;
+  const conflicts: StatedConflict[] = [];
+  const latestFields: Record<string, StatedField[]> = {};
+  const collectConflicts = (
+    ledger: Ledger | undefined,
+    code: string | null,
+    floor: Map<StatedField, number>,
+  ) => {
+    for (const [field, conflict] of ledger?.conflicts ?? []) {
+      if (conflict.message >= (floor.get(field) ?? -1)) {
+        conflicts.push({ code, field, said: conflict.said });
+      }
+    }
+  };
+  if (multi && multi.length >= 2) {
+    slots.codes = multi;
+    const top = valuesOfLedger(ledgers.get("*"));
+    assignValues(slots, top.values);
+    slots.per_code = {};
+    for (const name of multi) {
+      const own = valuesOfLedger(ledgers.get(name));
+      slots.per_code[name] = own.values;
+      latestFields[name] = [...own.latest].filter(([, at]) => at === last)
+        .map(([field]) => field);
+      collectConflicts(ledgers.get(name), name, own.latest);
+    }
+    latestFields["*"] = [...top.latest].filter(([, at]) => at === last)
+      .map(([field]) => field);
+  } else {
+    // One object: the unnamed words and the code's own, newest per field.
+    const top = valuesOfLedger(ledgers.get("*"));
+    const named = current[0] ? valuesOfLedger(ledgers.get(current[0])) : null;
+    const merged: StatedValues = {};
+    const latest = new Map<StatedField, number>();
+    const fields = new Set<StatedField>([
+      ...top.latest.keys(),
+      ...(named?.latest.keys() ?? []),
+    ]);
+    for (const field of fields) {
+      const fromTop = top.latest.get(field) ?? -1;
+      const fromNamed = named?.latest.get(field) ?? -1;
+      const source = fromNamed >= fromTop && named ? named.values : top.values;
+      for (const key of VALUE_KEYS) {
+        if (fieldOfKey(key) === field && source[key] !== undefined) {
+          (merged as Record<string, unknown>)[key] = source[key];
         }
-        assignValues(slots, valuesIn(text.slice(0, mentions[0].index), now));
-        continue;
       }
-      delete slots.per_code;
-      assignValues(slots, valuesIn(text, now));
-      continue;
+      latest.set(field, Math.max(fromTop, fromNamed));
     }
-    const values = valuesIn(text, now);
-    if (mentions.length === 1 || single) {
-      const named = mentions[0]?.code ?? single ?? "";
-      delete slots.codes;
-      if (slots.per_code && slots.per_code[named]) {
-        assignValues(slots.per_code[named], values);
-        continue;
-      }
-      delete slots.per_code;
-    } else if (slots.per_code) {
-      // No code named: the new words apply to every code being set up.
-      for (const own of Object.values(slots.per_code)) {
-        assignValues(own, values);
-      }
-    }
-    assignValues(slots, values);
+    assignValues(slots, merged);
+    latestFields["*"] = [...latest].filter(([, at]) => at === last)
+      .map(([field]) => field);
+    collectConflicts(ledgers.get("*"), null, latest);
+    if (current[0]) collectConflicts(ledgers.get(current[0]), null, latest);
   }
+  if (conflicts.length > 0) slots.conflicts = conflicts;
+  slots.latest_fields = latestFields;
   return slots;
 }
 
 /**
  * #3355 Wave E (E1) — the intent read's stated values, as the model read
  * them. Shape mirrors `AriStatedValues` in ariIntentRead.ts (kept structural
- * here so this guard has no dependency on the read).
+ * here so this guard has no dependency on the read). Rework 2: `per_code`
+ * carries each code's own values when the host named several.
  */
 export interface ModelStatedValues {
   code?: string;
+  title?: string;
   percent_off?: number;
+  amount_off?: number;
   ends_on?: string;
+  starts_on?: string;
+  max_total_uses?: number;
+  max_uses_per_buyer?: number;
+  per_code?: ReadonlyArray<ModelCodeValues>;
+}
+
+export interface ModelCodeValues {
+  code: string;
+  percent_off?: number;
+  amount_off?: number;
+  ends_on?: string;
+  starts_on?: string;
   max_total_uses?: number;
   max_uses_per_buyer?: number;
 }
@@ -932,17 +1670,203 @@ const MONTH_NAMES = [
 ];
 
 function wordsHaveNumber(words: string, value: number): boolean {
-  return new RegExp(
-    `(?:^|[^0-9.])${String(value).replace(".", "\\.")}(?![0-9])`,
-  )
+  if (
+    new RegExp(`(?:^|[^0-9.])${String(value).replace(".", "\\.")}(?![0-9])`)
+      .test(words)
+  ) return true;
+  for (
+    const match of words.matchAll(new RegExp(`\\b${NUMBER_WORD}\\b`, "gi"))
+  ) {
+    if (numberWordValue(match[0]) === value) return true;
+  }
+  return false;
+}
+
+function hasPercentWords(words: string): boolean {
+  return /%|percent|per\s?cent|\bpc\b|\bpct\b|\bhalf\b|\bquarter\b|\bthird\b/i
     .test(words);
 }
 
 /**
- * The model's stated values fill only what the deterministic read missed,
- * and only when the host's own words carry them (a code the host typed, a
- * number the host wrote, a day and month the host named). A value the model
- * invented is dropped, so it can never reach a card or a question.
+ * A model value, kept only when the host's own words carry it: its number
+ * (or day) in `words`, and what makes it a percent, an amount off or a
+ * per-buyer limit anywhere in `context`.
+ */
+function groundedModelValues(
+  model: ModelCodeValues | ModelStatedValues,
+  words: string,
+  context: string = words,
+): Array<
+  { field: StatedField; values: StatedValues; key: string; said: string }
+> {
+  const lower = context.toLowerCase();
+  const out: Array<
+    { field: StatedField; values: StatedValues; key: string; said: string }
+  > = [];
+  const fraction: Record<number, RegExp> = {
+    50: /\bhalf\b/i,
+    25: /\bquarter\b/i,
+  };
+  if (
+    typeof model.percent_off === "number" && model.percent_off > 0 &&
+    model.percent_off <= 100 && hasPercentWords(context) &&
+    (wordsHaveNumber(words, model.percent_off) ||
+      (fraction[model.percent_off]?.test(words) ?? false))
+  ) {
+    const bps = Math.round(model.percent_off * 100);
+    out.push({
+      field: "value",
+      values: { value_bps: bps },
+      key: percentKey(bps),
+      said: `${model.percent_off}% off`,
+    });
+  } else if (
+    typeof model.amount_off === "number" && model.amount_off > 0 &&
+    /\boff\b|\bdiscount\b/i.test(context) &&
+    (wordsHaveNumber(words, model.amount_off) ||
+      (model.amount_off % 1000 === 0 &&
+        new RegExp(`\\b${model.amount_off / 1000}\\s?k\\b`, "i").test(words)))
+  ) {
+    const amount: StatedAmount = {
+      major: model.amount_off,
+      currency: null,
+      words: `${model.amount_off} off`,
+    };
+    out.push({
+      field: "value",
+      values: { amount },
+      key: `a:${model.amount_off}:`,
+      said: amount.words,
+    });
+  }
+  for (const field of ["ends_on", "starts_on"] as const) {
+    const raw = model[field];
+    if (typeof raw !== "string") continue;
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+    if (!match) continue;
+    const [year, month, day] = [
+      Number(match[1]),
+      Number(match[2]),
+      Number(match[3]),
+    ];
+    const monthName = MONTH_NAMES[month - 1] ?? "";
+    const named = monthName && lower.includes(monthName.slice(0, 3));
+    const numeric = new RegExp(`\\b0?${day}[/.-]0?${month}\\b`).test(words);
+    if (
+      validDay(year, month, day) && wordsHaveNumber(words, day) &&
+      (named || numeric)
+    ) {
+      const stated: StatedDay = { year, month, day, words: raw };
+      out.push({
+        field,
+        values: field === "ends_on"
+          ? { ends_on: stated }
+          : { starts_on: stated },
+        key: dayKey(stated),
+        said: spokenDay(stated),
+      });
+    }
+  }
+  if (
+    typeof model.max_total_uses === "number" &&
+    Number.isInteger(model.max_total_uses) && model.max_total_uses > 0 &&
+    wordsHaveNumber(words, model.max_total_uses)
+  ) {
+    out.push({
+      field: "max_total_uses",
+      values: { max_total_uses: model.max_total_uses },
+      key: String(model.max_total_uses),
+      said: `a limit of ${model.max_total_uses} uses`,
+    });
+  }
+  if (
+    typeof model.max_uses_per_buyer === "number" &&
+    Number.isInteger(model.max_uses_per_buyer) &&
+    model.max_uses_per_buyer > 0 &&
+    (wordsHaveNumber(words, model.max_uses_per_buyer) ||
+      (model.max_uses_per_buyer === 1 && /\b(?:once|one)\b/i.test(words))) &&
+    /\bper\s+(?:person|buyer|customer)\b/i.test(context)
+  ) {
+    out.push({
+      field: "max_uses_per_buyer",
+      values: { max_uses_per_buyer: model.max_uses_per_buyer },
+      key: String(model.max_uses_per_buyer),
+      said: model.max_uses_per_buyer === 1
+        ? "one use per buyer"
+        : `${model.max_uses_per_buyer} uses per buyer`,
+    });
+  }
+  return out;
+}
+
+function keyOfValues(field: StatedField, values: StatedValues): string | null {
+  switch (field) {
+    case "value":
+      if (values.value_bps !== undefined) return percentKey(values.value_bps);
+      // Amounts compare by size: the currency is checked against the brand's.
+      if (values.amount) return `a:${values.amount.major}`;
+      return null;
+    case "ends_on":
+      return values.ends_on
+        ? dayKey({ ...values.ends_on, has_time: undefined, alt: undefined })
+        : null;
+    case "starts_on":
+      return values.starts_on
+        ? dayKey({ ...values.starts_on, has_time: undefined, alt: undefined })
+        : null;
+    case "max_total_uses":
+      return values.max_total_uses !== undefined
+        ? String(values.max_total_uses)
+        : null;
+    case "max_uses_per_buyer":
+      return values.max_uses_per_buyer !== undefined
+        ? String(values.max_uses_per_buyer)
+        : null;
+    default: {
+      const never: never = field;
+      return never;
+    }
+  }
+}
+
+function saidOfValues(field: StatedField, values: StatedValues): string {
+  switch (field) {
+    case "value":
+      return values.value_bps !== undefined
+        ? `${values.value_bps / 100}% off`
+        : values.amount?.words ?? "an amount off";
+    case "ends_on":
+      return values.ends_on ? spokenDay(values.ends_on) : "an end day";
+    case "starts_on":
+      return values.starts_on ? spokenDay(values.starts_on) : "a start day";
+    case "max_total_uses":
+      return `a limit of ${values.max_total_uses} uses`;
+    case "max_uses_per_buyer":
+      return values.max_uses_per_buyer === 1
+        ? "one use per buyer"
+        : `${values.max_uses_per_buyer} uses per buyer`;
+    default: {
+      const never: never = field;
+      return never;
+    }
+  }
+}
+
+function clearField(target: StatedValues, field: StatedField): void {
+  for (const key of VALUE_KEYS) {
+    if (fieldOfKey(key) === field) delete target[key];
+  }
+}
+
+/**
+ * #3355 rework 2 — the intent read's stated values are the primary source
+ * and the deterministic read is the cross-check. The model reads the host's
+ * newest message, so for one object and field:
+ *   - the deterministic read has nothing, or only an older message's value:
+ *     the model's value wins (the latest statement);
+ *   - both read the newest message and disagree: a conflict, Ari asks.
+ * A model value the host's own words do not carry is dropped, so nothing
+ * invented reaches a card or a question. Values stay bound to their code.
  */
 export function mergeModelStatedSlots(
   base: StatedSlots,
@@ -950,60 +1874,93 @@ export function mergeModelStatedSlots(
   ownerMessages: readonly string[],
 ): StatedSlots {
   if (!model) return base;
-  const words = ownerMessages.join("\n");
-  const lower = words.toLowerCase();
-  const out: StatedSlots = { ...base };
+  const lastWords = ownerMessages.at(-1) ?? "";
+  const allWords = ownerMessages.join("\n");
+  const out: StatedSlots = {
+    ...base,
+    ...(base.per_code
+      ? {
+        per_code: Object.fromEntries(
+          Object.entries(base.per_code).map((
+            [code, values],
+          ) => [code, { ...values }]),
+        ),
+      }
+      : {}),
+    ...(base.conflicts ? { conflicts: [...base.conflicts] } : {}),
+  };
+  const tokens = hostCodeTokens(ownerMessages);
   if (!out.code && typeof model.code === "string") {
     const code = normaliseAriDiscountCode(model.code);
-    if (
-      code && /^[A-Z0-9-]{4,16}$/.test(code) &&
-      hostCodeTokens(ownerMessages).has(code)
-    ) out.code = code;
+    if (code && /^[A-Z0-9-]{4,16}$/.test(code) && tokens.has(code)) {
+      out.code = code;
+    }
   }
-  if (
-    out.value_bps === undefined && typeof model.percent_off === "number" &&
-    model.percent_off > 0 && model.percent_off <= 100 &&
-    wordsHaveNumber(words, model.percent_off) &&
-    /%|percent|per cent/i.test(words)
-  ) {
-    out.value_bps = Math.round(model.percent_off * 100);
-  }
-  if (!out.ends_on && typeof model.ends_on === "string") {
-    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(model.ends_on);
-    if (match) {
-      const [year, month, day] = [
-        Number(match[1]),
-        Number(match[2]),
-        Number(
-          match[3],
-        ),
-      ];
-      const monthName = MONTH_NAMES[month - 1] ?? "";
-      const named = monthName && (lower.includes(monthName.slice(0, 3)));
-      const numeric = new RegExp(`\\b0?${day}[/.-]0?${month}\\b`).test(words);
-      if (
-        validDay(year, month, day) && wordsHaveNumber(words, day) &&
-        (named || numeric)
-      ) {
-        out.ends_on = { year, month, day, words: model.ends_on };
+  const apply = (
+    target: StatedValues,
+    latest: readonly StatedField[],
+    values: ModelCodeValues | ModelStatedValues,
+    code: string | null,
+  ) => {
+    // Grounded in the newest message first; a value the deterministic read
+    // has not heard at all may be grounded anywhere in the window.
+    const fresh = groundedModelValues(values, lastWords, allWords);
+    const anywhere = groundedModelValues(values, allWords);
+    for (const read of anywhere) {
+      const inLast = fresh.some((item) => item.field === read.field);
+      const known = keyOfValues(read.field, target);
+      if (known === null) {
+        assignValues(target, read.values);
+        continue;
+      }
+      if (!inLast) continue;
+      if (!latest.includes(read.field)) {
+        // The deterministic value is from an older message: the newest wins.
+        clearField(target, read.field);
+        assignValues(target, read.values);
+        continue;
+      }
+      const said = keyOfValues(read.field, read.values) ?? "";
+      if (said.split("@")[0] !== known.split("@")[0]) {
+        out.conflicts = [
+          ...(out.conflicts ?? []),
+          {
+            code,
+            field: read.field,
+            said: [saidOfValues(read.field, target), read.said],
+          },
+        ];
+      }
+    }
+  };
+  if (Array.isArray(model.per_code) && model.per_code.length > 0) {
+    for (const item of model.per_code) {
+      const code = normaliseAriDiscountCode(item?.code);
+      if (!code || !tokens.has(code)) continue;
+      if (out.per_code) {
+        const own = out.per_code[code] ?? {};
+        out.per_code[code] = own;
+        apply(own, out.latest_fields?.[code] ?? [], item, code);
+      } else if (!out.code || out.code === code) {
+        apply(out, out.latest_fields?.["*"] ?? [], item, null);
       }
     }
   }
-  if (
-    out.max_total_uses === undefined &&
-    typeof model.max_total_uses === "number" &&
-    Number.isInteger(model.max_total_uses) && model.max_total_uses > 0 &&
-    wordsHaveNumber(words, model.max_total_uses)
-  ) out.max_total_uses = model.max_total_uses;
-  if (
-    out.max_uses_per_buyer === undefined &&
-    typeof model.max_uses_per_buyer === "number" &&
-    Number.isInteger(model.max_uses_per_buyer) &&
-    model.max_uses_per_buyer > 0 &&
-    (wordsHaveNumber(words, model.max_uses_per_buyer) ||
-      (model.max_uses_per_buyer === 1 && /\b(?:once|one)\b/i.test(words))) &&
-    /\bper\s+(?:person|buyer|customer)\b/i.test(words)
-  ) out.max_uses_per_buyer = model.max_uses_per_buyer;
+  const flatCode = typeof model.code === "string"
+    ? normaliseAriDiscountCode(model.code)
+    : "";
+  if (out.per_code && flatCode && out.per_code[flatCode]) {
+    apply(
+      out.per_code[flatCode],
+      out.latest_fields?.[flatCode] ?? [],
+      model,
+      flatCode,
+    );
+  } else if (!out.per_code) {
+    apply(out, out.latest_fields?.["*"] ?? [], model, null);
+  }
+  // With several codes and no code on the model's flat values, they belong
+  // to no one code: they are never spread onto every code.
   return out;
 }
 
@@ -1112,6 +2069,30 @@ function spokenAmount(amount: StatedAmount, currency: string | null): string {
   return `${text ?? String(amount.major)} off`;
 }
 
+/** The proposal's own discount value in plain words ("NGN 1,000.00 off"). */
+function proposedValueWords(
+  out: Record<string, unknown>,
+  currency: string | null | undefined,
+): string | null {
+  if (
+    out.value_type === "percent" ||
+    (out.value_type === undefined && out.value_bps !== undefined)
+  ) {
+    const bps = Number(out.value_bps);
+    return Number.isFinite(bps) && bps > 0 ? `${bps / 100}% off` : null;
+  }
+  if (out.value_type === "amount") {
+    const minor = Number(out.value_minor);
+    const code = typeof currency === "string"
+      ? currency.trim().toUpperCase()
+      : "";
+    if (!Number.isFinite(minor) || minor <= 0 || !code) return null;
+    const text = formatMinor(minor, code);
+    return text ? `${text} off` : null;
+  }
+  return null;
+}
+
 /**
  * Compare what the host stated with a proposal's args, for every field the
  * tool's schema has. A stated end (or start) day the args lack is bound
@@ -1143,6 +2124,33 @@ export function checkStatedSlots(args: {
   const own = args.stated.per_code?.[proposedCode];
   if (own) assignValues(stated, own);
 
+  // #3355 rework 2: the host said two things for one field (or the intent
+  // read and the words disagree): one question naming both, nothing proposed.
+  const fieldInSchema = (field: StatedField) =>
+    field === "value"
+      ? schemaKeys.has("value_bps") || schemaKeys.has("value_minor")
+      : field === "ends_on"
+      ? schemaKeys.has("ends_at")
+      : field === "starts_on"
+      ? schemaKeys.has("starts_at")
+      : schemaKeys.has(field);
+  const conflict = (args.stated.conflicts ?? []).find((item) =>
+    (item.code === null || item.code === proposedCode) &&
+    fieldInSchema(item.field)
+  );
+  if (conflict) {
+    const subject = conflict.code ? ` up ${conflict.code}` : " this up";
+    return {
+      kind: "ask",
+      missing: [conflict.field],
+      text: `Before I set${subject}: you said ${conflict.said[0]} and ${
+        conflict.said[1]
+      }. Which one should go on it? Tell me and I'll prepare it for you to approve. Nothing has been saved yet.`,
+    };
+  }
+  /** What the proposal had instead, in plain words, for the question. */
+  const had: string[] = [];
+
   if (
     stated.codes && stated.codes.length >= 2 && schemaKeys.has("code") &&
     out.kind !== "automatic"
@@ -1166,6 +2174,8 @@ export function checkStatedSlots(args: {
     if (wrongKind || Number(out.value_bps) !== stated.value_bps) {
       missing.push("value_bps");
       asks.push(`${stated.value_bps / 100}% off`);
+      const proposedHad = proposedValueWords(out, args.currency);
+      if (proposedHad) had.push(proposedHad);
     }
   }
   // P1-3: a stated amount off is a fixed amount of exactly that size, in
@@ -1190,6 +2200,8 @@ export function checkStatedSlots(args: {
     ) {
       missing.push("value_minor");
       asks.push(spokenAmount(stated.amount, currency));
+      const proposedHad = proposedValueWords(out, args.currency);
+      if (proposedHad) had.push(proposedHad);
     }
   }
   if (stated.starts_on && schemaKeys.has("starts_at")) {
@@ -1320,7 +2332,9 @@ export function checkStatedSlots(args: {
       missing,
       text: `Before I set${
         subject ? ` up${subject}` : " this up"
-      }: you asked for ${list}, and I want to make sure that's exactly what goes on it. Is that right? Say yes and I'll prepare it with ${
+      }: you asked for ${list}${
+        had.length > 0 ? `, but I had ${had.join(" and ")}` : ""
+      }, and I want to make sure that's exactly what goes on it. Is that right? Say yes and I'll prepare it with ${
         asks.length === 1 ? "that" : "those"
       } for you to approve. Nothing has been saved yet.`,
     };

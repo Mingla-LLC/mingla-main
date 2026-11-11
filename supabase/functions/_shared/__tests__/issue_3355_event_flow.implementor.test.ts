@@ -202,7 +202,8 @@ class MemoryStore implements FlowStore {
       flow_key: args.flowKey,
       flow_version: args.flowVersion,
       concurrency: args.concurrency,
-      subject_id: null,
+      // #3355 rework 2: a follow-up run starts on its draft, as the RPC does.
+      subject_id: args.subjectId ?? null,
       conversation_id: args.conversationId,
       status: "active" as const,
       current_step_key: null,
@@ -289,9 +290,14 @@ class MemoryStore implements FlowStore {
     return Promise.resolve();
   }
   getForConversation(conversationId: string) {
-    const run = [...this.runs.values()].find((r) =>
+    // #3355 rework 2: the chat's live run first (as ari_flow_run_get), else
+    // its newest run (a completed run's follow-up card is answered on it).
+    const mine = [...this.runs.values()].filter((r) =>
       r.conversation_id === conversationId
     );
+    const run = mine.find((r) =>
+      !["completed", "cancelled", "expired", "parked"].includes(r.status)
+    ) ?? mine.at(-1);
     return Promise.resolve(run ? this.view(run) : null);
   }
   getById(runId: string) {
@@ -505,7 +511,9 @@ Deno.test("P7 Script A: the owner's words become one create proposal with only t
   );
   assertEquals((await cur(store)).status, "awaiting_approval");
 
-  // Confirm → read back → "get it ready to publish?" in the same response.
+  // Confirm → read back → the run is COMPLETED on the draft's evidence, and
+  // "get it ready to publish?" is the completion card's follow-up (#3355
+  // rework 2, P2-11: Seth 2026-11-11 — it never holds the run open).
   const next = await confirm(
     world,
     store,
@@ -513,18 +521,33 @@ Deno.test("P7 Script A: the owner's words become one create proposal with only t
     () => world.events.set(EVENT_ID, rowFrom(args)),
     { event: { id: EVENT_ID } },
   );
-  assertEquals(next.kind, "artefact");
-  if (next.kind !== "artefact") return;
+  assertEquals(next.kind, "completed");
+  if (next.kind !== "completed") return;
   assertMatch(next.text, /Saved and checked: "Lantern Supper" is an unpublished draft/);
+  assertMatch(next.text, /unpublished draft.*Nobody can see it until you publish/);
+  assertNotMatch(next.text, /private/i);
   assertEquals(next.artefact.step_key, "event_publish_ready");
   assertMatch(next.artefact.text, /party type, a short description, tickets/);
-  assertEquals((await cur(store)).subject_id, EVENT_ID);
+  assertEquals(
+    next.artefact.options.map((option) => option.id).slice(0, 2),
+    ["yes", "not_now"],
+  );
+  const completedRun = await cur(store);
+  assertEquals(completedRun.status, "completed");
+  assertEquals(completedRun.subject_id, EVENT_ID);
+  const completion = store.patches.find((patch) => patch.status === "completed");
+  assertEquals(
+    (completion?.completion_evidence as { probe?: string } | undefined)?.probe,
+    "events_exists",
+    "completed on the draft step's own evidence",
+  );
 
+  // "Not now": plain words, nothing changes, no new run.
   const done = await answer(world, store, (r) => choice(r, "not_now"));
-  assertEquals(done.kind, "completed");
-  if (done.kind !== "completed") return;
-  assertMatch(done.text, /unpublished draft.*Nobody can see it until you publish/);
-  assertNotMatch(done.text, /private/i);
+  assertEquals(done.kind, "notice");
+  if (done.kind !== "notice") return;
+  assertMatch(done.text, /Your draft stays as it is/);
+  assertEquals(store.runs.size, 1);
   const final = await cur(store);
   assertEquals(final.status, "completed");
   // Every saved fact traces to the owner (I-ARI-NO-INVENTED-FACTS).
@@ -544,6 +567,53 @@ Deno.test("P7 Script A: the owner's words become one create proposal with only t
       if (value.state === "done") assert(value.evidence?.probe);
     }
   }
+});
+
+// ── #3355 rework 2 (P2-11): completion never waits on the follow-up ───────
+
+Deno.test("P2-11: the setup completes on its draft; yes on the card carries on in a follow-up run", async () => {
+  const world = freshWorld();
+  const store = new MemoryStore();
+  const proposed = await toCreateProposal(world, store);
+  assert(proposed.kind === "propose");
+  const saved = await confirm(
+    world,
+    store,
+    "create_event",
+    () => world.events.set(EVENT_ID, rowFrom(proposed.tool_args)),
+    { event: { id: EVENT_ID } },
+  );
+  assert(saved.kind === "completed", `got ${saved.kind}`);
+  const first = await cur(store);
+  assertEquals(first.status, "completed");
+  // The follow-up was offered, never answered: the run did not wait for it.
+  assertEquals(first.step_states.event_publish_ready, undefined);
+  assertEquals(first.current_step_key, "event_publish_ready");
+  // A stale question id on the completed card changes nothing.
+  const stale = await runFlowStep({ store, probes: probesFor(world) }, {
+    run: first,
+    trigger: "answer",
+    answer: { ...choice(first, "yes"), question_id: crypto.randomUUID() },
+    brandName: BRAND_NAME,
+  });
+  assertEquals(stale.kind, "pass");
+  assertEquals(store.runs.size, 1);
+
+  const cover = await answer(world, store, (r) => choice(r, "yes"));
+  assert(cover.kind === "artefact", `got ${cover.kind}`);
+  assertEquals(cover.artefact.step_key, "event_cover");
+  // No old step's note is said again, and no gate is asked twice.
+  assertNotMatch(cover.text, /Saved and checked|London time/);
+  assertEquals(store.runs.size, 2);
+  const runs = [...store.runs.values()];
+  assertEquals(runs[0].status, "completed", "the completed run is never reopened");
+  const follow = runs[1];
+  assertEquals(follow.subject_id, EVENT_ID);
+  assertEquals(follow.answers.follow_up_of?.value, first.id);
+  assertEquals(follow.answers.publish_ready?.value, true);
+  assertEquals(follow.answers.title?.value, first.answers.title?.value);
+  assertEquals(follow.step_states.event_create?.state, "done");
+  assertEquals(follow.step_states.event_publish_ready?.state, "done");
 });
 
 // ── Script B ────────────────────────────────────────────────────────────────
@@ -695,7 +765,9 @@ Deno.test("P7 adversarial: a same-title draft on the same day is offered back, n
   assertMatch(dup.artefact.text, /You already have a draft called "lantern supper"/);
   world.events.set(OLD_EVENT, { ...world.titled[0] });
   const kept = await answer(world, store, (r) => choice(r, "continue"));
-  assert(kept.kind === "artefact", "no create proposal for a kept draft");
+  // #3355 rework 2 (P2-11): keeping the existing draft completes the setup on
+  // that draft; getting it ready is the completion card's follow-up.
+  assert(kept.kind === "completed", "no create proposal for a kept draft");
   assertEquals(kept.artefact.step_key, "event_publish_ready");
   assertEquals((await cur(store)).subject_id, OLD_EVENT);
 

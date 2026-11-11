@@ -31,6 +31,7 @@ import {
   guardWriteClaims,
   mergeModelStatedSlots,
   TRUE_STATE_NOTHING_SAVED,
+  writeStatesFromHistory,
 } from "../ariTruthGuards.ts";
 
 const NOW = new Date("2026-11-11T10:00:00Z");
@@ -209,14 +210,14 @@ Deno.test("#3355 tester: values the model invents never become stated values", (
     }, priced).value_bps,
     undefined,
   );
-  // An impossible day the model reports is dropped.
+  // An impossible day the model reports is dropped. (Rework 2, P3-20: the
+  // host's own "end of February" is now read as 28 February, so that is
+  // what stands — never the model's 30 February.)
   const feb = ["Code FAVY10 until the end of February"];
-  assertEquals(
-    mergeModelStatedSlots(extractStatedSlots(feb, NOW), {
-      ends_on: "2027-02-30",
-    }, feb).ends_on,
-    undefined,
-  );
+  const febEnd = mergeModelStatedSlots(extractStatedSlots(feb, NOW), {
+    ends_on: "2027-02-30",
+  }, feb).ends_on;
+  assertEquals([febEnd?.year, febEnd?.month, febEnd?.day], [2027, 2, 28]);
 });
 
 Deno.test("#3355 tester: a stated end day binds 23:59:59 local across DST and the extreme offsets", () => {
@@ -339,6 +340,11 @@ Deno.test("#3355 tester: a stated end a day off, or a different stated code, is 
   assertEquals(noZone.kind, "ask");
 });
 
+// Rework 2 (orchestrator decision 2026-11-11) edited the three claim tests
+// below: the guard is structural, so a status sentence never "holds" on a
+// receipt any more and no negation keeps one. Each case now pins the state
+// words the server composes instead, from the same histories.
+
 Deno.test("#3355 tester: an active-voice claim naming a code the chat never proposed is rewritten", () => {
   const evidence = [{
     pending_action_id: "p1",
@@ -351,8 +357,10 @@ Deno.test("#3355 tester: an active-voice claim naming a code the chat never prop
     evidence,
   });
   assert(out.rewritten);
-  assert(out.text.startsWith(TRUE_STATE_NOTHING_SAVED));
   assert(!out.text.includes("I've created GIRLSTRIPLAGOS"));
+  assert(
+    out.text.includes("Nothing has been saved or sent for GIRLSTRIPLAGOS yet."),
+  );
   // A claim with no evidence at all is rewritten, whatever it names.
   const bare = guardWriteClaims({
     text: "We have just published your event.",
@@ -360,13 +368,17 @@ Deno.test("#3355 tester: an active-voice claim naming a code the chat never prop
     evidence: [],
   });
   assert(bare.rewritten);
-  // An honest "not yet" is kept.
+  assert(bare.text.startsWith(TRUE_STATE_NOTHING_SAVED));
+  // An honest "not yet" goes too: the server says it from state.
   const honest = guardWriteClaims({
     text: "I haven't created FFBTSCOM10 yet.",
     pendingThisTurn: false,
     evidence: [],
   });
-  assertEquals(honest.rewritten, false);
+  assertEquals(
+    honest.text,
+    "Nothing has been saved or sent for FFBTSCOM10 yet.",
+  );
 });
 
 // ── Retest 2 ────────────────────────────────────────────────────────────────
@@ -398,77 +410,96 @@ function discountRows(
   return rows;
 }
 
-const claimHolds = (text: string, rows: Array<Record<string, unknown>>) =>
-  !guardWriteClaims({
+const stateSaid = (text: string, rows: Array<Record<string, unknown>>) =>
+  guardWriteClaims({
     text,
     pendingThisTurn: false,
     evidence: claimEvidenceFromHistory(rows),
-  }).rewritten;
+    states: writeStatesFromHistory(rows),
+  }).text;
 
-Deno.test("#3355 tester retest 2: a card cancelled then made again backs only what the new card proves", () => {
-  // Cancelled, then the same code proposed again and confirmed.
+Deno.test("#3355 tester retest 2: a card cancelled then made again shows what the new card proves", () => {
   const remade = discountRows([["p1", "FAVY10", "cancelled"], [
     "p2",
     "FAVY10",
     "executed",
   ]]);
-  assert(claimHolds("I created FAVY10 for you.", remade));
-  // Cancelled, then proposed again and still waiting on the host.
+  assertEquals(
+    stateSaid("I created FAVY10 for you.", remade),
+    "Discount created: FAVY10. Saved and checked in Mingla.",
+  );
   const waiting = discountRows([["p1", "FAVY10", "cancelled"], [
     "p2",
     "FAVY10",
     null,
   ]]);
-  assert(claimHolds("I proposed FAVY10 for you to approve.", waiting));
-  assert(!claimHolds("I created FAVY10 for you.", waiting));
-  // Cancelled, and a different code proposed instead.
+  for (
+    const text of [
+      "I proposed FAVY10 for you to approve.",
+      "I created FAVY10 for you.",
+    ]
+  ) {
+    assertEquals(
+      stateSaid(text, waiting),
+      "Here's FAVY10 ready to create. Tap Confirm to save it, or Edit to change it.",
+    );
+  }
   const swapped = discountRows([["p1", "FAVY10", "cancelled"], [
     "p2",
     "GIRLS20",
     null,
   ]]);
-  assert(!claimHolds("I proposed FAVY10 for you to approve.", swapped));
-  assert(claimHolds("I proposed GIRLS20 for you to approve.", swapped));
-  // Created, then a later edit card cancelled: the code still exists.
+  assertEquals(
+    stateSaid("I proposed FAVY10 for you to approve.", swapped),
+    "The card for FAVY10 was cancelled, so nothing was saved.",
+  );
+  // Created, then a later card for it cancelled: the code still exists.
   const edited = discountRows([["p1", "FAVY10", "executed"], [
     "p2",
     "FAVY10",
     "cancelled",
   ]]);
-  assert(claimHolds("FAVY10 has been created.", edited));
-  // Expired or failed cards prove nothing.
-  assert(
-    !claimHolds(
-      "I proposed FAVY10.",
-      discountRows([["p1", "FAVY10", "expired"]]),
-    ),
+  assertEquals(
+    stateSaid("FAVY10 has been created.", edited),
+    "Discount created: FAVY10. Saved and checked in Mingla.",
   );
   assert(
-    !claimHolds(
+    stateSaid("I proposed FAVY10.", discountRows([["p1", "FAVY10", "expired"]]))
+      .startsWith("The card for FAVY10 expired"),
+  );
+  assert(
+    stateSaid(
       "FAVY10 has been created.",
       discountRows([["p1", "FAVY10", "failed"]]),
+    )
+      .startsWith("FAVY10 couldn't be saved"),
+  );
+  // A discount receipt never speaks for an event.
+  assert(
+    stateSaid("I published your event.", remade).startsWith(
+      TRUE_STATE_NOTHING_SAVED,
     ),
   );
-  // A discount receipt never backs an event claim.
-  assert(!claimHolds("I published your event.", remade));
 });
 
-Deno.test("#3355 tester retest 2: a negation in another clause never excuses the claim", () => {
+Deno.test("#3355 tester retest 2: no negation, in any clause, keeps a status sentence", () => {
   const none: Array<Record<string, unknown>> = [];
-  assert(
-    !claimHolds("I created FAVY10, but I haven't published the event.", none),
-  );
-  assert(
-    !claimHolds(
+  for (
+    const text of [
+      "I created FAVY10, but I haven't published the event.",
       "I created FAVY10 — you can't miss it on the Discounts page.",
-      none,
-    ),
-  );
-  assert(!claimHolds("Once again, I created FAVY10.", none));
-  // The honest forms stay as written.
-  assert(claimHolds("I haven't created FAVY10 yet.", none));
-  assert(claimHolds("The code FAVY10 was not created.", none));
-  assert(claimHolds("If you approve, FAVY10 will be created.", none));
+      "Once again, I created FAVY10.",
+      "I haven't created FAVY10 yet.",
+      "The code FAVY10 was not created.",
+      "If you approve, FAVY10 will be created.",
+    ]
+  ) {
+    assertEquals(
+      stateSaid(text, none),
+      "Nothing has been saved or sent for FAVY10 yet.",
+      text,
+    );
+  }
 });
 
 const AMOUNT_KEYS = new Set([

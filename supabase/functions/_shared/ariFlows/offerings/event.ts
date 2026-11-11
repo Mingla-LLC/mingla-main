@@ -2108,6 +2108,18 @@ export const CREATE_EVENT_FLOW: FlowDefinition = {
   },
   subject_tools: ["create_event"],
   subject_table: "events",
+  // #3355 rework 2 (P2-11): the draft completes the run; getting it ready to
+  // publish is offered once on the completion card.
+  follow_up: {
+    step: "event_publish_ready",
+    text:
+      "Want to get it ready to publish? I'll need a party type, a short description, tickets, and whether it's public or unlisted. A cover photo helps too.",
+    yes: { id: "yes", label: "Yes, get it ready" },
+    no: { id: "not_now", label: "Not now" },
+    yes_answers: { publish_ready: owner(true) },
+    no_text:
+      "Okay. Your draft stays as it is. Ask me to get it ready whenever you like.",
+  },
   steps: [
     brandBlockersStep,
     brandCanWaitStep,
