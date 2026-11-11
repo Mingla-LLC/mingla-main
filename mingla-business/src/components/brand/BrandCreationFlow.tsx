@@ -927,7 +927,8 @@ const styles = StyleSheet.create({
   segment: { flex: 1, height: 4, borderRadius: radius.full, backgroundColor: "rgba(255,255,255,0.12)" },
   segmentOn: { backgroundColor: accent.warm },
   body: { flex: 1 },
-  bodyContent: { padding: spacing.md, paddingBottom: spacing.xl, gap: spacing.sm, maxWidth: 560, width: "100%", alignSelf: "center" },
+  // flexGrow lets an empty / no-match state centre in the space left (#4389).
+  bodyContent: { flexGrow: 1, padding: spacing.md, paddingBottom: spacing.xl, gap: spacing.sm, maxWidth: 560, width: "100%", alignSelf: "center" },
   footer: { padding: spacing.md, gap: spacing.xs, maxWidth: 560, width: "100%", alignSelf: "center" },
   center: { flex: 1, alignItems: "center", justifyContent: "center", padding: spacing.lg },
   h1: { ...typography.h1, color: textTokens.primary },

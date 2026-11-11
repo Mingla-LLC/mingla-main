@@ -28,6 +28,7 @@ import { useDoorScreenAwake } from "../../hooks/useDoorScreenAwake";
 import { DoorPayCodeError, type DoorPayLiveStatus } from "../../services/doorPayCodeService";
 import { formatCurrency } from "../../utils/currency";
 import { Button } from "../ui/Button";
+import { CenteredState } from "../ui/CenteredState";
 import { Sheet } from "../ui/Sheet";
 import { DoorPayQr } from "./DoorPayQr";
 import { DoorStatusPill } from "./DoorStatusPill";
@@ -160,10 +161,9 @@ export const DoorModePayCodeSheet = ({
   let body: React.ReactNode;
   if (row === null) {
     body = codeQuery.isError ? (
-      <View style={styles.center}>
-        <Text style={styles.muted}>{DOOR_MODE_COPY.codeLoadFailed}</Text>
-        <Button label="Try again" onPress={() => void codeQuery.refetch()} variant="primary" size="md" fullWidth />
-      </View>
+      <CenteredState title={DOOR_MODE_COPY.codeLoadFailed} accessibilityRole="alert" testID="door-mode-code-load-failed">
+        <Button label="Try again" onPress={() => void codeQuery.refetch()} variant="primary" size="md" />
+      </CenteredState>
     ) : (
       <View style={styles.center}>
         <ActivityIndicator color={accent.warm} />

@@ -12,6 +12,8 @@ import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { STRIPE_SUPPORTED_COUNTRIES } from "../../constants/stripeSupportedCountries";
 import { accent, radius, spacing, text as textTokens, typography } from "../../constants/designSystem";
 import { BRAND_SETUP_COPY } from "./brandSetupCopy";
+// Text-only state: this list stays free of the icon (svg) runtime.
+import { CenteredState } from "../ui/CenteredState";
 
 export interface PayoutCountryOption {
   country: string;
@@ -96,7 +98,7 @@ export const PayoutCountryList: React.FC<PayoutCountryListProps> = ({
   };
 
   return (
-    <View testID={testID}>
+    <View testID={testID} style={styles.root}>
       <TextInput
         testID={`${testID}-search`}
         value={query}
@@ -114,10 +116,13 @@ export const PayoutCountryList: React.FC<PayoutCountryListProps> = ({
         </View>
       ) : null}
       {rows.length === 0 ? (
-        <View style={styles.empty} accessibilityLiveRegion="polite">
-          <Text style={styles.emptyText}>{BRAND_SETUP_COPY.f2.noMatch(query.trim())}</Text>
-          <Text style={styles.emptyHint}>{BRAND_SETUP_COPY.f2.cantPayOut}</Text>
-        </View>
+        // #4389 — centred in the space under the search (CenteredState).
+        <CenteredState
+          fill
+          title={BRAND_SETUP_COPY.f2.noMatch(query.trim())}
+          body={BRAND_SETUP_COPY.f2.cantPayOut}
+          testID={`${testID}-no-match`}
+        />
       ) : (
         <View style={[styles.group, { marginTop: spacing.sm }]}>{rows.map(renderRow)}</View>
       )}
@@ -166,7 +171,5 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.32)",
   },
   radioOn: { borderColor: accent.warm, backgroundColor: accent.warm },
-  empty: { paddingVertical: spacing.lg, gap: spacing.xs },
-  emptyText: { fontSize: typography.body.fontSize, color: textTokens.primary },
-  emptyHint: { fontSize: typography.bodySm.fontSize, color: textTokens.secondary },
+  root: { flexGrow: 1 },
 });

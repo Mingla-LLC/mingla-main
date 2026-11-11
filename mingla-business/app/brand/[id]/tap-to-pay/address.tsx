@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AddressInput } from "../../../../src/components/location/AddressInput";
 import { ScrollView } from "../../../../src/wrappers/SmartScrollView";
 import { Button } from "../../../../src/components/ui/Button";
+import { CenteredState } from "../../../../src/components/ui/CenteredState";
 import { BRAND_SETUP_COPY as C } from "../../../../src/components/brand/brandSetupCopy";
 import { payoutCountryOption } from "../../../../src/components/brand/PayoutCountryList";
 import {
@@ -133,7 +134,10 @@ export default function TapToPayAddressRoute(): React.ReactElement {
             <TextInput value={unit} onChangeText={setUnit} style={styles.input} accessibilityLabel={C.t1.unit} />
           </>
         ) : null}
-        {error !== null ? <Text style={[styles.helper, styles.err]} accessibilityRole="alert">{error}</Text> : null}
+        {error !== null ? (
+          // #4389 — centred like every other no-match / error state.
+          <CenteredState compact tone="error" title={error} accessibilityRole="alert" testID="t1-error" />
+        ) : null}
         {offline ? <Text style={styles.helper}>{C.common.offline}</Text> : null}
       </ScrollView>
       <View style={styles.footer}>

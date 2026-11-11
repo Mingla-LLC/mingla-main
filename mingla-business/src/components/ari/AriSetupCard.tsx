@@ -20,6 +20,7 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { ARI_SETUP_COPY as C, ariSetupItems } from "./ariSetupCopy";
+import { CenteredState } from "../ui/CenteredState";
 import { BRAND_SETUP_COPY } from "../brand/brandSetupCopy";
 
 type CardButton = { label: string; onPress: () => void; primary?: boolean; testID?: string };
@@ -76,8 +77,9 @@ export const AriSetupCard: React.FC<AriSetupCardProps> = ({
   if (state === "error") {
     return (
       <View style={styles.card} testID={`${testID}-error`} accessibilityRole="alert">
-        <Text style={styles.body}>{C.a2.error}</Text>
-        {onRetry ? <CardButtons buttons={[{ label: C.a2.retry, onPress: onRetry }]} /> : null}
+        <CenteredState compact title={C.a2.error} style={styles.centeredInCard}>
+          {onRetry ? <CardButtons buttons={[{ label: C.a2.retry, onPress: onRetry }]} /> : null}
+        </CenteredState>
       </View>
     );
   }
@@ -245,8 +247,10 @@ const styles = StyleSheet.create({
   },
   tickGlyph: { color: "#FFFFFF", fontSize: 11, fontWeight: "800", lineHeight: 13 },
   buttons: { gap: spacing.sm, marginTop: spacing.xs },
+  centeredInCard: { paddingHorizontal: 0, paddingVertical: spacing.xs },
   btnPrimary: {
     minHeight: 44,
+    paddingHorizontal: spacing.lg,
     borderRadius: radiusTokens.full,
     backgroundColor: accent.warm,
     alignItems: "center",
@@ -255,6 +259,7 @@ const styles = StyleSheet.create({
   btnPrimaryLabel: { ...typography.bodySm, color: "#101216", fontWeight: "700" },
   btnSecondary: {
     minHeight: 44,
+    paddingHorizontal: spacing.lg,
     borderRadius: radiusTokens.full,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.18)",

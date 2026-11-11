@@ -84,6 +84,7 @@ import { randomUuid } from "../../utils/randomId";
 import { reportNonFatal } from "../../diagnostics/reportNonFatal";
 import { trackBrandSetup } from "../brand/brandSetupAnalytics";
 import { Button } from "../ui/Button";
+import { CenteredState } from "../ui/CenteredState";
 import { Icon } from "../ui/Icon";
 import { IconChrome } from "../ui/IconChrome";
 import { usePhoneEntry } from "../ui/PhoneField";
@@ -809,10 +810,12 @@ export const DoorModeScreen = ({
     return (
       <View style={[styles.host, { paddingTop: insets.top }]}>
         {header}
-        <View style={styles.center}>
-          <Text style={styles.muted}>{routeEvent.isLoading ? DOOR_MODE_COPY.loading : DOOR_MODE_COPY.notFound}</Text>
-          {!routeEvent.isLoading ? <Text style={styles.faint}>{DOOR_MODE_COPY.notFoundBody}</Text> : null}
-        </View>
+        <CenteredState
+          fill
+          title={routeEvent.isLoading ? DOOR_MODE_COPY.loading : DOOR_MODE_COPY.notFound}
+          body={routeEvent.isLoading ? null : DOOR_MODE_COPY.notFoundBody}
+          testID="door-mode-not-found"
+        />
       </View>
     );
   }
@@ -859,7 +862,12 @@ export const DoorModeScreen = ({
         ) : null}
 
         {tiers.length === 0 ? (
-          <Text style={styles.muted}>{DOOR_MODE_COPY.noTiers}</Text>
+          <CenteredState
+            fill
+            icon={<Icon name="ticket" size={24} color={textTokens.tertiary} />}
+            title={DOOR_MODE_COPY.noTiers}
+            testID="door-mode-no-tiers"
+          />
         ) : (
           <View style={styles.tiles} testID="door-mode-tiles">
             {tiers.map((tier) => {
@@ -1064,7 +1072,7 @@ export const DoorModeScreen = ({
         <ScrollView style={styles.scroll} contentContainerStyle={styles.sheetBody} showsVerticalScrollIndicator={false}>
           <Text style={styles.sectionLabel}>{DOOR_MODE_COPY.recentSales}</Text>
           {sales.length === 0 ? (
-            <Text style={styles.muted}>{DOOR_MODE_COPY.noRecentSales}</Text>
+            <CenteredState compact title={DOOR_MODE_COPY.noRecentSales} testID="door-mode-no-recent-sales" />
           ) : (
             sales.slice(0, 5).map((sale) => {
               const qty = sale.lines.reduce((s, l) => s + l.quantity, 0);
@@ -1197,8 +1205,8 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 16, lineHeight: 21, fontWeight: "600", color: textTokens.primary },
   headerSub: { fontSize: 13, lineHeight: 17, color: textTokens.secondary },
   scroll: { flex: 1 },
-  scrollContent: { paddingHorizontal: spacing.md, paddingBottom: spacing.lg, gap: spacing.sm },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.xs, padding: spacing.lg },
+  // flexGrow: an empty state centres in the space left (#4389).
+  scrollContent: { flexGrow: 1, paddingHorizontal: spacing.md, paddingBottom: spacing.lg, gap: spacing.sm },
   muted: { fontSize: 14, lineHeight: 20, color: textTokens.secondary },
   faint: { fontSize: 12, lineHeight: 16, color: textTokens.tertiary },
   help: { fontSize: 13, lineHeight: 18, color: textTokens.secondary },
