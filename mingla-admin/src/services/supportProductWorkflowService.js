@@ -1,3 +1,5 @@
+// #4382 — Support → Product writes. Every write is a gated RPC; nothing here
+// inserts or updates a table from the browser.
 import { supabase } from "../lib/supabase";
 
 function unwrap(result, fallback) {
@@ -21,18 +23,11 @@ export function createClientRequestId() {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-// [TRANSITIONAL] #4382 Wave 1 — staff threads are internal support tickets
-// now (support_tickets.visibility = 'internal') and arrive with the ticket
-// list. Exit: Wave 2 rebuilds the inbox and removes this and its callers.
-export async function listInternalSupportThreads() {
-  return [];
-}
-
 export async function listProductSignals() {
   const [signalsResult, sourcesResult] = await Promise.all([
     supabase
       .from("support_product_signals")
-      .select("id, signal_kind, state, title, problem_statement, product_area, user_journey, impact_summary, affected_people, priority, owner_user_id, next_update_at, next_step, customer_reply_draft, duplicate_of_signal_id, created_by, created_at, updated_at, revision")
+      .select("id, signal_kind, state, title, problem_statement, product_area, user_journey, impact_summary, affected_people, priority, owner_user_id, next_update_at, next_step, customer_reply_draft, duplicate_of_signal_id, wont_do_reason, told_at, told_ticket_count, created_by, created_at, updated_at, revision")
       .order("updated_at", { ascending: false })
       .limit(300),
     supabase
@@ -72,62 +67,6 @@ export async function createStaffSupportTicket(input) {
     p_attachment_ids: input.attachmentIds || [],
   });
   return unwrap(result, "Couldn't create the support ticket");
-}
-
-// [TRANSITIONAL] #4382 Wave 1 — the old modal's two calls, mapped onto the one
-// staff create. The customer email and brand group context ride in the
-// internal note. Exit: Wave 2 replaces InternalTicketModal with the new form.
-export async function createInternalSupportThread(input) {
-  const extra = [
-    input.customerEmail ? `Customer: ${input.customerEmail}` : null,
-    input.brandGroupContext ? `Brand group: ${input.brandGroupContext}` : null,
-  ].filter(Boolean).join("\n");
-  return createStaffSupportTicket({
-    clientRequestId: input.clientRequestId,
-    visibility: "internal",
-    subject: input.subject,
-    details: extra ? `${input.details}\n\n${extra}` : input.details,
-    brandId: input.brandId,
-    priority: input.priority,
-    nextUpdateAt: input.nextUpdateAt,
-    nextUpdateNote: input.nextUpdateNote,
-  });
-}
-
-export async function createBrandVisibleSupportTicket(input) {
-  return createStaffSupportTicket({
-    clientRequestId: input.clientRequestId,
-    visibility: "brand",
-    subject: input.subject,
-    details: input.details,
-    brandId: input.brandId,
-    priority: input.priority,
-    nextUpdateAt: input.nextUpdateAt,
-    nextUpdateNote: input.nextUpdateNote,
-    firstMessage: input.details,
-  });
-}
-
-export async function setSupportNextUpdate(input) {
-  const result = await supabase.rpc("issue_3720_set_next_update", {
-    p_source_kind: input.sourceKind,
-    p_source_id: input.sourceId,
-    p_expected_revision: input.expectedRevision,
-    p_next_update_at: input.nextUpdateAt,
-    p_next_update_note: input.nextUpdateNote,
-  });
-  return unwrap(result, "Couldn't set the next update");
-}
-
-// [TRANSITIONAL] #4382 Wave 1 — staff threads no longer exist, so nothing
-// reaches these (listInternalSupportThreads returns none). They refuse
-// rather than call a removed function. Exit: Wave 2 deletes them.
-export async function updateInternalSupportThread() {
-  throw new Error("Staff threads are support tickets now. Reload the Support desk.");
-}
-
-export async function reassignInternalSupportThread() {
-  throw new Error("Staff threads are support tickets now. Reload the Support desk.");
 }
 
 export async function reassignProductSignal(input) {
@@ -175,19 +114,6 @@ export async function createProductSignal(input) {
   };
   const result = await supabase.rpc(rpcName, params);
   return unwrap(result, "Couldn't create the Product signal");
-}
-
-export async function updateProductSignal(input) {
-  const result = await supabase.rpc("issue_3720_update_product_signal", {
-    p_signal_id: input.signalId,
-    p_expected_revision: input.expectedRevision,
-    p_state: input.state,
-    p_priority: input.priority,
-    p_next_update_at: input.nextUpdateAt,
-    p_next_step: input.nextStep,
-    p_customer_reply_draft: input.customerReplyDraft,
-  });
-  return unwrap(result, "Couldn't update the Product signal");
 }
 
 export async function linkSourceToProductSignal(input) {

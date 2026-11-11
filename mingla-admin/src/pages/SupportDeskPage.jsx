@@ -1,186 +1,57 @@
 /**
- * META-ORCH-1104 Phase 2 — Admin Support Desk.
+ * #4382 Wave 2 — Admin Support Desk.
  *
- * A queue of support_tickets (mirroring the Users / Claims table) + a ticket
- * detail (left = the conversation thread; right = ticket meta + actions).
- * Who is on Support is managed in Support → People and roles
- * (#3988); Admins get a link there from this desk.
+ * One inbox over support_tickets (customer tickets and staff tickets alike):
+ * a rail of views (Needs reply, Mine, Unassigned, Overdue, Waiting on
+ * customer, Resolved, All), an Opened-by switch (Everyone, Customers, Staff),
+ * filters for product area, priority, owner and brand, and search by subject,
+ * person, brand or S-number. Every count is worked out from the same rows the
+ * list shows (lib/supportTicketMetrics.js).
  *
- * Auth: the admin web client authenticates with the anon key under RLS. The
- * admin is treated as support staff everywhere via the `is_admin_user()`
- * umbrella (Phase 0 RLS), so it can read every support ticket, conversation,
- * and message and INSERT replies into a support conversation. Lifecycle writes
- * (claim / status / priority) flow through the deployed
- * `support-*` edge functions; reply is ONLY via support-send (#3720) through the
- * `messages_support_staff_insert` RLS policy.
+ * A ticket opens in a side panel beside the list (components/support/
+ * TicketPanel.jsx) with its thread, images, voice notes, internal notes, the
+ * Product box and the Reply / Internal note composer. Every write goes
+ * through support-send, support-claim, support-set-status or a gated RPC;
+ * nothing writes a table from the browser.
  *
- * The support-* edge functions are deployed by the orchestrator at close. Until
- * then every edge-fn action degrades gracefully (a clear toast, no crash) —
- * see `invokeSupportFn`.
+ * Props (the Support page mounts this): embedded, canManageAgents, onCounts.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  LifeBuoy, Send, UserCheck, RefreshCw, ExternalLink,
-} from "lucide-react";
-import { fetchTicketEngineering } from "../services/opsService";
-import { githubChipClass } from "../lib/opsModel";
-import {
-  supabase,
-  invokeWithRefresh,
-  isSessionExpiredError,
-  SESSION_EXPIRED_MESSAGE,
-} from "../lib/supabase";
-import { SectionCard } from "../components/ui/Card";
+import { LifeBuoy, Plus, RefreshCw } from "lucide-react";
+import { SESSION_EXPIRED_MESSAGE, supabase } from "../lib/supabase";
 import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
-import { Modal, ModalBody, ModalFooter } from "../components/ui/Modal";
 import { Spinner } from "../components/ui/Spinner";
-import { Avatar } from "../components/ui/Avatar";
+import { SearchInput } from "../components/ui/SearchInput";
+import { PageHeader } from "../components/ui/PageHeader";
+import { Segmented, Select } from "../components/crm/fields";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
 import { logAdminAction } from "../lib/auditLog";
-import { extractFunctionError } from "../lib/edgeFunctionError";
-import { timeAgo, formatDateTime } from "../lib/formatters";
-import { PageHeader } from "../components/ui/PageHeader";
-import { Select } from "../components/crm/fields";
-import {
-  InternalTicketModal,
-  NextUpdateModal,
-  ProductInboxModal,
-  ProductSignalModal,
-} from "../components/community/SupportWorkflowModals";
-import {
-  listInternalSupportThreads,
-  listProductSignals,
-  reassignInternalSupportThread,
-  updateInternalSupportThread,
-} from "../services/supportProductWorkflowService";
+import { TicketPanel } from "../components/support/TicketPanel";
+import { NewTicketModal } from "../components/support/NewTicketModal";
+import { SendToProductModal } from "../components/support/SendToProductModal";
+import { PRIORITY_OPTIONS, STATUS_BADGE, STATUS_LABEL } from "../components/support/supportOptions";
+import { signalForTicket, STAGE_LABEL } from "../components/support/productBoardModel";
+import { listProductSignals } from "../services/supportProductWorkflowService";
 import { listSupportStaffRoster } from "../services/communityService";
 import {
-  SUPPORT_INBOX_FILTERS,
+  invokeSupportFunction,
+  listSupportTickets,
+  loadInboxLookups,
+} from "../services/supportDeskService";
+import {
+  OPENED_BY_OPTIONS,
+  SUPPORT_INBOX_VIEWS,
+  formatVoiceLength,
+  isOverdueTicket,
+  originChip,
   supportInboxCounts,
   supportInboxRows,
+  ticketNumberLabel,
+  waitLabel,
 } from "../lib/supportTicketMetrics";
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-
-const STATUS_BADGE = {
-  new: "info",
-  open: "brand",
-  pending: "warning",
-  resolved: "success",
-  closed: "default",
-};
-
-const PRIORITY_BADGE = {
-  low: "default",
-  normal: "info",
-  high: "warning",
-  urgent: "error",
-};
-
-// The only legal next statuses (mirrors SPEC §2.1 / the support-set-status edge
-// fn). The edge fn is the real enforcer; this just keeps the UI from offering an
-// illegal jump.
-const STATUS_OPTIONS = ["new", "open", "pending", "resolved", "closed"];
-const PRIORITY_OPTIONS = ["low", "normal", "high", "urgent"];
-
-// ─── Edge-fn helper (graceful degradation while support-* is undeployed) ───────
-
-/**
- * Invoke a support-* edge function and normalize the result to
- * { ok, error, sessionExpired? }. Uses invokeWithRefresh (#3512 / #3720) so an
- * idle tab gets one refresh+retry before we ask the admin to sign in again.
- * A 404 (function not deployed yet) surfaces a clear, non-alarming message.
- * Never throws.
- */
-async function invokeSupportFn(fnName, body) {
-  try {
-    const { data, error } = await invokeWithRefresh(fnName, { body });
-    if (error) {
-      const status = error?.context?.status ?? error?.status;
-      if (status === 404) {
-        return {
-          ok: false,
-          error: `Support actions aren't live yet. "${fnName}" isn't deployed, so the queue and thread are read-only until the support functions ship.`,
-        };
-      }
-      if (isSessionExpiredError(error) || status === 401) {
-        return {
-          ok: false,
-          sessionExpired: true,
-          error: SESSION_EXPIRED_MESSAGE,
-        };
-      }
-      const msg = await extractFunctionError(error, `${fnName} failed`);
-      return { ok: false, error: msg };
-    }
-    return { ok: true, data };
-  } catch (err) {
-    if (isSessionExpiredError(err)) {
-      return { ok: false, sessionExpired: true, error: SESSION_EXPIRED_MESSAGE };
-    }
-    return { ok: false, error: err?.message ?? `${fnName} failed` };
-  }
-}
-
-// ─── Display helpers ──────────────────────────────────────────────────────────
-
-// #3980 Wave 2 (Bridge C): one "Engineering" row under the ticket header,
-// from the Product Inbox issue this ticket or thread is linked to. Nothing
-// shows when it is not linked.
-function EngineeringRow({ sourceKind, sourceId }) {
-  const [attempt, setAttempt] = useState(0);
-  const key = `${sourceKind}:${sourceId}:${attempt}`;
-  // The answer is kept with the request it belongs to, so a new ticket (or
-  // Try again) shows the loading line until its own answer arrives.
-  const [answer, setAnswer] = useState({ key: null, error: null, data: null });
-  useEffect(() => {
-    let live = true;
-    fetchTicketEngineering(sourceKind, sourceId)
-      .then((data) => { if (live) setAnswer({ key, error: null, data }); })
-      .catch((error) => { if (live) setAnswer({ key, error, data: null }); });
-    return () => { live = false; };
-  }, [sourceKind, sourceId, key]);
-  const state = answer.key === key ? answer : { error: null, data: null, loading: true };
-  if (state.loading) {
-    return <div className="border-b border-[var(--gray-200)] px-4 py-2"><div aria-label="Reading engineering status" className="h-4 w-48 animate-pulse rounded bg-[var(--gray-100)]" /></div>;
-  }
-  if (state.error) {
-    return (
-      <div className="flex flex-wrap items-center gap-2 border-b border-[var(--gray-200)] px-4 py-2 text-sm">
-        <span role="alert" className="text-[var(--color-error-700)]">Couldn't read engineering status.</span>
-        <Button variant="ghost" size="sm" onClick={() => setAttempt((n) => n + 1)}>Try again</Button>
-      </div>
-    );
-  }
-  const data = state.data;
-  if (!data?.linked) return null;
-  const n = data.issue?.number;
-  return (
-    <div className="flex flex-col gap-1 border-b border-[var(--gray-200)] px-4 py-2 text-sm">
-      <a href={data.issue?.url} target="_blank" rel="noopener noreferrer" title={data.issue?.title || undefined}
-        className={`inline-flex min-h-8 items-center gap-1 self-start rounded-full px-2.5 font-medium hover:underline ${githubChipClass(data.label)}`}>
-        <span className="break-normal [overflow-wrap:normal]">Engineering: {data.label} · #{n}</span>
-        <ExternalLink aria-hidden="true" className="h-3 w-3 shrink-0" />
-        <span className="sr-only">(opens GitHub in a new tab)</span>
-      </a>
-      {data.live && <p className="text-[var(--color-success-700)]">Live: you can tell the host it is fixed.</p>}
-    </div>
-  );
-}
-
-function profileLabel(p) {
-  if (!p) return "Unknown user";
-  return p.display_name || p.username || p.email || "Unknown user";
-}
-
-function hasActiveNextUpdate(ticket) {
-  const nextUpdateMs = ticket?.next_update_at ? Date.parse(ticket.next_update_at) : Number.NaN;
-  return Number.isFinite(nextUpdateMs) && nextUpdateMs > Date.now();
-}
 
 // #3988 — Support access is granted in People and roles, not from this desk.
 // #4130 Wave 6: People and roles is a tab of the Support page.
@@ -188,888 +59,427 @@ const MANAGE_SUPPORT_PEOPLE_HREF = "#/support?tab=team";
 const MANAGE_SUPPORT_PEOPLE_CLASS =
   "inline-flex min-h-[32px] items-center px-2 text-sm font-medium text-[var(--color-brand-700)] underline-offset-2 hover:underline";
 
-// ─── Main component ───────────────────────────────────────────────────────────
+const EMPTY_FILTERS = { productArea: "", priority: "", owner: "", brand: "" };
+
+function ticketIdFromHash() {
+  if (typeof window === "undefined") return null;
+  const query = window.location.hash.split("?")[1] || "";
+  return new URLSearchParams(query).get("ticket");
+}
+
+function setTicketInHash(ticketId) {
+  if (typeof window === "undefined") return;
+  const [path, query = ""] = window.location.hash.split("?");
+  const params = new URLSearchParams(query);
+  if (ticketId) params.set("ticket", ticketId);
+  else params.delete("ticket");
+  const next = `${path || "#/support"}${params.toString() ? `?${params}` : ""}`;
+  if (next !== window.location.hash) window.history.replaceState(null, "", next);
+}
+
+function personName(profile) {
+  return profile?.display_name || profile?.username || profile?.email || "";
+}
+
+function rowWho(ticket, profilesById, brandsById) {
+  const person = personName(ticket.requester_user_id ? profilesById[ticket.requester_user_id] : null);
+  const brand = ticket.brand_id ? brandsById[ticket.brand_id]?.name : "";
+  if (ticket.origin === "staff") {
+    const creator = personName(ticket.created_by ? profilesById[ticket.created_by] : null) || "Staff";
+    const about = brand || person;
+    return about ? `${creator} → ${about}` : creator;
+  }
+  if (ticket.imported_from === "beta_feedback") return `${person || "Explorer"} · from beta feedback`;
+  return [person || (ticket.requester_segment === "explorer" ? "Explorer" : "Host"), brand].filter(Boolean).join(" · ");
+}
+
+function initials(text) {
+  return String(text || "?").split(/[\s·→]+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "?";
+}
+
+function TicketRowChips({ ticket, signal }) {
+  const chip = originChip(ticket);
+  return (
+    <>
+      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${chip.kind === "staff" ? "bg-[#f3e8ff] text-[#6b21a8]" : "bg-[var(--gray-100)] text-[var(--gray-700)]"}`}>{chip.label}</span>
+      {ticket.priority === "urgent" && <Badge variant="error">Urgent</Badge>}
+      {ticket.priority === "high" && <Badge variant="warning">High</Badge>}
+      {signal && <Badge variant="info">{`Product · ${STAGE_LABEL[signal.state] || signal.state}`}</Badge>}
+      {ticket.image_count > 0 && <span className="text-[11px] text-[var(--color-text-tertiary)]" aria-label={`${ticket.image_count} images`}>📎 {ticket.image_count}</span>}
+      {ticket.voice_ms > 0 && <span className="text-[11px] text-[var(--color-text-tertiary)]" aria-label={`Voice note ${formatVoiceLength(ticket.voice_ms)}`}>🎙 {formatVoiceLength(ticket.voice_ms)}</span>}
+      {ticket.imported_from === "beta_feedback" && <Badge variant="outline">From beta feedback</Badge>}
+    </>
+  );
+}
 
 export function SupportDeskPage({ embedded = false, canManageAgents = true, onCounts } = {}) {
   const { addToast } = useToast();
   const { session, signOut } = useAuth();
+  const myUserId = session?.user?.id ?? null;
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
   }, []);
 
-  const myUserId = session?.user?.id ?? null;
-  // #3720 bug 10 — after invokeWithRefresh already retried once, offer re-sign-in.
   const [sessionExpired, setSessionExpired] = useState(false);
-
-  function noteInvokeResult(res) {
-    if (res?.sessionExpired) {
-      setSessionExpired(true);
-      return true;
-    }
-    return false;
-  }
-
-  // Queue state
   const [tickets, setTickets] = useState([]);
-  const [productSignals, setProductSignals] = useState([]);
-  const [profilesById, setProfilesById] = useState({}); // user_id → { ...profile, segment }
-  const [brandsById, setBrandsById] = useState({});       // brand_id → { id, name }
-  // #4130 Wave 6: the inbox opens on the work still waiting.
-  const [inboxFilter, setInboxFilter] = useState(SUPPORT_INBOX_FILTERS[0].id);
+  const [signals, setSignals] = useState([]);
+  const [profilesById, setProfilesById] = useState({});
+  const [brandsById, setBrandsById] = useState({});
+  const [staffRoster, setStaffRoster] = useState([]);
   const [queueLoading, setQueueLoading] = useState(true);
   const [queueError, setQueueError] = useState(null);
 
-  // Detail state
-  const [selectedTicket, setSelectedTicket] = useState(null);
-  const [messages, setMessages] = useState([]);
-  const [threadLoading, setThreadLoading] = useState(false);
-  const [threadError, setThreadError] = useState(null);
-  const [reply, setReply] = useState("");
+  const [view, setView] = useState(SUPPORT_INBOX_VIEWS[0].id);
+  const [openedBy, setOpenedBy] = useState("all");
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const [search, setSearch] = useState("");
+  const [selectedId, setSelectedId] = useState(() => ticketIdFromHash());
   const [acting, setActing] = useState(false);
-  const [newInternalOpen, setNewInternalOpen] = useState(false);
-  const [nextUpdateSource, setNextUpdateSource] = useState(null);
-  const [productSignalSource, setProductSignalSource] = useState(null);
-  const [productInboxOpen, setProductInboxOpen] = useState(false);
-  const [staffRoster, setStaffRoster] = useState([]);
-
-  // ─── Queue fetch ────────────────────────────────────────────────────────────
+  const [newTicketOpen, setNewTicketOpen] = useState(false);
+  const [productSource, setProductSource] = useState(null);
 
   const loadQueue = useCallback(async () => {
-    setQueueLoading(true);
     setQueueError(null);
     try {
-      const [liveResult, internalRows, signals, roster] = await Promise.all([
-        supabase
-          .from("support_tickets")
-          .select("id, requester_user_id, requester_segment, subject, status, priority, assigned_staff_id, conversation_id, brand_id, audience, created_by, created_at, first_response_at, resolved_at, last_message_at, next_update_at, next_update_note, support_workflow_revision")
-          .order("last_message_at", { ascending: false })
-          .limit(200),
-        listInternalSupportThreads(),
+      const [rows, signalRows, roster] = await Promise.all([
+        listSupportTickets(),
         listProductSignals(),
         listSupportStaffRoster(),
       ]);
-      if (liveResult.error) throw liveResult.error;
-      const liveRows = (liveResult.data || []).map((row) => ({
-        ...row,
-        source_kind: "support_ticket",
-        source_label: row.audience === "brand" ? "Brand-visible" : "Live chat",
-        workflow_revision: row.support_workflow_revision,
-        details: null,
-        brand_group_context: null,
-      }));
-      const normalizedInternal = internalRows.map((row) => ({
-        ...row,
-        source_kind: "internal_thread",
-        source_label: "Staff-created",
-        requester_user_id: row.linked_user_id,
-        conversation_id: null,
-        first_response_at: null,
-        last_message_at: row.updated_at,
-        workflow_revision: row.revision,
-      }));
-      const rows = [...liveRows, ...normalizedInternal]
-        .sort((left, right) => new Date(right.last_message_at) - new Date(left.last_message_at));
-
-      // Batch-resolve the requester + assigned-staff profiles (with segment) and
-      // brands. support_tickets FKs point at auth.users, so we can't embed
-      // profiles directly — resolve by id instead.
-      const userIds = [
-        ...new Set(
-          rows.flatMap((t) => [t.requester_user_id, t.assigned_staff_id, t.created_by]).filter(Boolean),
-        ),
-      ];
-      const [profilesRes, brandsRes] = await Promise.all([
-        userIds.length
-          ? supabase
-              .from("profiles_with_segment")
-              .select("id, display_name, username, email, avatar_url, segment")
-              .in("id", userIds)
-          : Promise.resolve({ data: [], error: null }),
-        supabase.from("brands").select("id, name").order("name", { ascending: true }).limit(1000),
-      ]);
-
+      const userIds = [...new Set(rows.flatMap((t) => [t.requester_user_id, t.assigned_staff_id, t.created_by]).concat((roster || []).map((r) => r.user_id)).filter(Boolean))];
+      const lookups = await loadInboxLookups(userIds);
       if (!mountedRef.current) return;
-      const pMap = {};
-      (profilesRes.data || []).forEach((p) => { pMap[p.id] = p; });
-      const bMap = {};
-      (brandsRes.data || []).forEach((b) => { bMap[b.id] = b; });
-      setProfilesById(pMap);
-      setBrandsById(bMap);
       setTickets(rows);
-      setProductSignals(signals);
+      setSignals(signalRows);
       setStaffRoster((roster || []).filter((row) => row.enabled));
+      setProfilesById(lookups.profilesById);
+      setBrandsById(lookups.brandsById);
     } catch (err) {
       if (!mountedRef.current) return;
       setQueueError(err.message);
-      setTickets([]);
-      addToast({ variant: "error", title: "Couldn't load the support queue", description: err.message });
+      addToast({ variant: "error", title: "Couldn't load the support inbox", description: err.message });
     } finally {
       if (mountedRef.current) setQueueLoading(false);
     }
   }, [addToast]);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- load on open, like the other admin pages
   useEffect(() => { void loadQueue(); }, [loadQueue]);
 
-  // ─── Realtime: new tickets + activity bump the queue to the top ───────────────
-
+  // Realtime: ticket changes and Product changes refresh the inbox.
   useEffect(() => {
     const channel = supabase
       .channel("admin-support-queue")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "support_tickets" },
-        () => { if (mountedRef.current) void loadQueue(); },
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "support_product_signals" },
-        () => { if (mountedRef.current) void loadQueue(); },
-      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "support_tickets" }, () => { if (mountedRef.current) void loadQueue(); })
+      .on("postgres_changes", { event: "*", schema: "public", table: "support_product_signals" }, () => { if (mountedRef.current) void loadQueue(); })
       .subscribe();
     return () => { void supabase.removeChannel(channel); };
   }, [loadQueue]);
 
-  // ─── Thread fetch + realtime ──────────────────────────────────────────────────
+  useEffect(() => { setTicketInHash(selectedId); }, [selectedId]);
 
-  const loadThread = useCallback(async (conversationId) => {
-    setThreadLoading(true);
-    setThreadError(null);
-    try {
-      const { data, error } = await supabase
-        .from("messages")
-        .select("id, conversation_id, sender_id, content, message_type, created_at, deleted_at, sender_display_name_snapshot, sender_role_snapshot")
-        .eq("conversation_id", conversationId)
-        .is("deleted_at", null)
-        .order("created_at", { ascending: true })
-        .limit(500);
-      if (error) throw error;
-      if (!mountedRef.current) return;
-      setMessages(data || []);
-    } catch (err) {
-      if (!mountedRef.current) return;
-      setThreadError(err.message);
-      setMessages([]);
-    } finally {
-      if (mountedRef.current) setThreadLoading(false);
-    }
-  }, []);
-
-  const openTicket = useCallback((ticket) => {
-    setSelectedTicket(ticket);
-    setReply("");
-    setMessages([]);
-    if (ticket.conversation_id) void loadThread(ticket.conversation_id);
-  }, [loadThread]);
-
-  const closeTicket = useCallback(() => {
-    setSelectedTicket(null);
-    setMessages([]);
-    setReply("");
-  }, []);
-
-  // Live message stream for the open thread.
+  const ctx = useMemo(() => ({ openedBy, filters, search, profilesById, brandsById, me: myUserId }), [openedBy, filters, search, profilesById, brandsById, myUserId]);
+  // #4382: the rail counts and the list come from the same rows, after the
+  // same Opened-by switch, filters and search.
+  const inboxCounts = useMemo(() => supportInboxCounts(tickets, ctx), [tickets, ctx]);
+  const visibleTickets = useMemo(() => supportInboxRows(tickets, view, ctx), [tickets, view, ctx]);
+  // The page's Inbox badge reads the unfiltered Needs reply count.
+  const badgeCounts = useMemo(() => supportInboxCounts(tickets, { me: myUserId }), [tickets, myUserId]);
   useEffect(() => {
-    if (!selectedTicket?.conversation_id) return undefined;
-    const convId = selectedTicket.conversation_id;
-    const channel = supabase
-      .channel(`admin-support-thread-${convId}`)
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${convId}` },
-        () => { if (mountedRef.current) void loadThread(convId); },
-      )
-      .subscribe();
-    return () => { void supabase.removeChannel(channel); };
-  }, [selectedTicket?.conversation_id, loadThread]);
+    if (!queueLoading && !queueError) onCounts?.(badgeCounts);
+  }, [badgeCounts, queueLoading, queueError, onCounts]);
 
-  // ─── Actions ──────────────────────────────────────────────────────────────────
+  const selectedTicket = useMemo(() => tickets.find((t) => t.id === selectedId) || null, [tickets, selectedId]);
+  const selectedSignal = useMemo(() => (selectedTicket ? signalForTicket(signals, selectedTicket.id) : null), [signals, selectedTicket]);
+  const signalByTicket = useMemo(() => {
+    const map = new Map();
+    for (const signal of signals) {
+      for (const source of signal.sources || []) {
+        if (source.source_kind === "support_ticket") map.set(source.source_id, signal);
+      }
+    }
+    return map;
+  }, [signals]);
+
+  const brandOptions = useMemo(() => Object.values(brandsById).sort((a, b) => String(a.name).localeCompare(String(b.name))), [brandsById]);
+  const productAreas = useMemo(() => [...new Set(tickets.map((t) => t.product_area).filter(Boolean))].sort(), [tickets]);
+  const ticketBrandOptions = useMemo(() => {
+    const ids = new Set(tickets.map((t) => t.brand_id).filter(Boolean));
+    return brandOptions.filter((b) => ids.has(b.id));
+  }, [tickets, brandOptions]);
+  const filtersActive = Object.values(filters).some(Boolean) || search.trim() || openedBy !== "all";
+
+  const noteResult = useCallback((res) => {
+    if (res?.sessionExpired) { setSessionExpired(true); return true; }
+    return false;
+  }, []);
+
+  const showError = useCallback((title, description) => {
+    addToast({ variant: "error", title, description });
+  }, [addToast]);
 
   const handleClaim = useCallback(async () => {
-    if (!selectedTicket || selectedTicket.source_kind !== "support_ticket") return;
+    if (!selectedTicket) return;
     setActing(true);
-    const res = await invokeSupportFn("support-claim", { ticketId: selectedTicket.id });
+    const res = await invokeSupportFunction("support-claim", { ticketId: selectedTicket.id });
     if (res.ok) {
       setSessionExpired(false);
-      addToast({ variant: "success", title: "Ticket claimed" });
+      addToast({ variant: "success", title: "You own this ticket now" });
       await logAdminAction("support.claim", "support_ticket", selectedTicket.id);
-      // Optimistic local reflect; realtime + reload settle the rest.
-      setSelectedTicket((t) => (t ? { ...t, assigned_staff_id: myUserId, status: t.status === "new" ? "open" : t.status } : t));
       await loadQueue();
-    } else if (!noteInvokeResult(res)) {
-      addToast({ variant: "error", title: "Couldn't claim ticket", description: res.error });
+    } else if (!noteResult(res)) {
+      showError("Couldn't take this ticket", res.error);
     }
     if (mountedRef.current) setActing(false);
-  }, [selectedTicket, myUserId, addToast, loadQueue]);
+  }, [selectedTicket, addToast, loadQueue, noteResult, showError]);
 
-  const handleReassignInternal = useCallback(async (assignedStaffId) => {
-    if (!selectedTicket || selectedTicket.source_kind !== "internal_thread") return;
-    if (!assignedStaffId || assignedStaffId === selectedTicket.assigned_staff_id) return;
+  const handleSetStatus = useCallback(async (status) => {
+    if (!selectedTicket || status === selectedTicket.status) return;
     setActing(true);
-    try {
-      const revision = await reassignInternalSupportThread({
-        threadId: selectedTicket.id,
-        expectedRevision: selectedTicket.workflow_revision ?? selectedTicket.revision,
-        assignedStaffId,
-      });
-      setSelectedTicket((t) => (t ? {
-        ...t,
-        assigned_staff_id: assignedStaffId,
-        workflow_revision: revision,
-        revision,
-      } : t));
-      addToast({ variant: "success", title: "Staff ticket reassigned" });
-      await logAdminAction("support.reassign", "internal_thread", selectedTicket.id);
-      await loadQueue();
-    } catch (error) {
-      addToast({
-        variant: "error",
-        title: "Couldn't reassign",
-        description: error?.message || String(error),
-      });
-    } finally {
-      if (mountedRef.current) setActing(false);
-    }
-  }, [selectedTicket, addToast, loadQueue]);
-
-  const handleReply = useCallback(async () => {
-    if (!selectedTicket || selectedTicket.source_kind !== "support_ticket") return;
-    if (!hasActiveNextUpdate(selectedTicket)) {
-      addToast({
-        variant: "warning",
-        title: selectedTicket.next_update_at ? "Renew the next update first" : "Set the next update first",
-        description: "The customer must know when Mingla will update them again before a staff reply is sent.",
-      });
-      setNextUpdateSource(selectedTicket);
-      return;
-    }
-    const body = reply.trim();
-    if (!body) return;
-    setActing(true);
-    try {
-      // #3720: one path — support-send inserts the message (user JWT + RLS),
-      // bumps last_message_at / first_response_at, writes audit, and pushes the
-      // host with the authenticated staff member's real display name. Never insert messages here; always pass
-      // the reply body (support-send requires content).
-      const sideEffect = await invokeSupportFn("support-send", {
-        ticketId: selectedTicket.id,
-        content: body,
-        actorMode: "staff",
-      });
-      if (!sideEffect.ok) {
-        if (noteInvokeResult(sideEffect)) return;
-        throw new Error(sideEffect.error || "Couldn't send reply");
-      }
+    const res = await invokeSupportFunction("support-set-status", { ticketId: selectedTicket.id, status });
+    if (res.ok) {
       setSessionExpired(false);
-      await logAdminAction("support.reply", "support_ticket", selectedTicket.id);
-      if (!mountedRef.current) return;
-      setReply("");
-      await loadThread(selectedTicket.conversation_id);
+      addToast({ variant: "success", title: `Status: ${STATUS_LABEL[status] || status}` });
+      await logAdminAction("support.set_status", "support_ticket", selectedTicket.id, { status });
       await loadQueue();
-    } catch (err) {
-      addToast({ variant: "error", title: "Couldn't send reply", description: err.message });
-    } finally {
-      if (mountedRef.current) setActing(false);
-    }
-  }, [selectedTicket, reply, addToast, loadThread, loadQueue]);
-
-  const handleSetStatus = useCallback(async (nextStatus) => {
-    if (!selectedTicket || nextStatus === selectedTicket.status) return;
-    setActing(true);
-    if (selectedTicket.source_kind === "internal_thread") {
-      try {
-        const revision = await updateInternalSupportThread({
-          threadId: selectedTicket.id,
-          expectedRevision: selectedTicket.workflow_revision,
-          status: nextStatus,
-          priority: selectedTicket.priority,
-        });
-        setSelectedTicket((ticket) => ticket ? { ...ticket, status: nextStatus, workflow_revision: revision } : ticket);
-        addToast({ variant: "success", title: `Status: ${nextStatus}` });
-        await loadQueue();
-      } catch (error) {
-        addToast({ variant: "error", title: "Couldn't change status", description: error.message });
-      }
-    } else {
-      const res = await invokeSupportFn("support-set-status", {
-        ticketId: selectedTicket.id,
-        status: nextStatus,
-      });
-      if (res.ok) {
-        setSessionExpired(false);
-        addToast({ variant: "success", title: `Status: ${nextStatus}` });
-        await logAdminAction("support.set_status", "support_ticket", selectedTicket.id, { status: nextStatus });
-        setSelectedTicket((t) => (t ? { ...t, status: nextStatus } : t));
-        await loadQueue();
-      } else if (!noteInvokeResult(res)) {
-        addToast({ variant: "error", title: "Couldn't change status", description: res.error });
-      }
+    } else if (!noteResult(res)) {
+      showError("Couldn't change the status", res.error);
     }
     if (mountedRef.current) setActing(false);
-  }, [selectedTicket, addToast, loadQueue]);
+  }, [selectedTicket, addToast, loadQueue, noteResult, showError]);
 
-  const handleSetPriority = useCallback(async (nextPriority) => {
-    if (!selectedTicket || nextPriority === selectedTicket.priority) return;
+  const handleSetPriority = useCallback(async (priority) => {
+    if (!selectedTicket || priority === selectedTicket.priority) return;
     setActing(true);
-    if (selectedTicket.source_kind === "internal_thread") {
-      try {
-        const revision = await updateInternalSupportThread({
-          threadId: selectedTicket.id,
-          expectedRevision: selectedTicket.workflow_revision,
-          status: selectedTicket.status,
-          priority: nextPriority,
-        });
-        setSelectedTicket((ticket) => ticket ? { ...ticket, priority: nextPriority, workflow_revision: revision } : ticket);
-        addToast({ variant: "success", title: `Priority: ${nextPriority}` });
-        await loadQueue();
-      } catch (error) {
-        addToast({ variant: "error", title: "Couldn't change priority", description: error.message });
-      }
-    } else {
-      const res = await invokeSupportFn("support-set-status", {
-        ticketId: selectedTicket.id,
-        priority: nextPriority,
-      });
-      if (res.ok) {
-        setSessionExpired(false);
-        addToast({ variant: "success", title: `Priority: ${nextPriority}` });
-        await logAdminAction("support.set_priority", "support_ticket", selectedTicket.id, { priority: nextPriority });
-        setSelectedTicket((t) => (t ? { ...t, priority: nextPriority } : t));
-        await loadQueue();
-      } else if (!noteInvokeResult(res)) {
-        addToast({ variant: "error", title: "Couldn't change priority", description: res.error });
-      }
+    const res = await invokeSupportFunction("support-set-status", { ticketId: selectedTicket.id, priority });
+    if (res.ok) {
+      setSessionExpired(false);
+      addToast({ variant: "success", title: `Priority: ${priority}` });
+      await logAdminAction("support.set_priority", "support_ticket", selectedTicket.id, { priority });
+      await loadQueue();
+    } else if (!noteResult(res)) {
+      showError("Couldn't change the priority", res.error);
     }
     if (mountedRef.current) setActing(false);
-  }, [selectedTicket, addToast, loadQueue]);
-
-  // ─── Derived ──────────────────────────────────────────────────────────────────
-
-
-  // #4130 Wave 6: the filter counts and the list come from the same rows,
-  // so a count always matches what the inbox shows.
-  const inboxCounts = useMemo(() => supportInboxCounts(tickets), [tickets]);
-  const unassignedCount = inboxCounts.unassigned;
-  const visibleTickets = useMemo(
-    () => supportInboxRows(tickets, inboxFilter),
-    [tickets, inboxFilter],
-  );
-  useEffect(() => {
-    if (!queueLoading && !queueError) onCounts?.(inboxCounts);
-  }, [inboxCounts, queueLoading, queueError, onCounts]);
-
-  const selectedSignal = useMemo(() => {
-    if (!selectedTicket) return null;
-    return productSignals.find((signal) => signal.sources.some((source) => (
-      source.source_kind === selectedTicket.source_kind && source.source_id === selectedTicket.id
-    ))) || null;
-  }, [productSignals, selectedTicket]);
-
-  const requester = selectedTicket ? profilesById[selectedTicket.requester_user_id] : null;
-  const assignee = selectedTicket?.assigned_staff_id ? profilesById[selectedTicket.assigned_staff_id] : null;
-  const brand = selectedTicket?.brand_id ? brandsById[selectedTicket.brand_id] : null;
-  const brandOptions = useMemo(
-    () => Object.values(brandsById).sort((left, right) => left.name.localeCompare(right.name)),
-    [brandsById],
-  );
+  }, [selectedTicket, addToast, loadQueue, noteResult, showError]);
 
   const handleWorkflowError = useCallback((error) => {
-    const message = error?.message || "The workflow action failed";
+    const message = error?.message || "The action didn't finish";
     const stale = message.includes("stale_revision");
     addToast({
       variant: "error",
-      title: stale ? "This ticket changed in another tab" : "Couldn't save the workflow change",
-      description: stale ? "Refresh the queue, review the latest version and try again." : message,
+      title: stale ? "This changed in another tab" : "Couldn't save that",
+      description: stale ? "Refresh, check the latest version and try again." : message,
     });
   }, [addToast]);
 
-  // ─── Render ─────────────────────────────────────────────────────────────────
+  const openProductFor = useCallback((ticket) => {
+    setProductSource({
+      id: ticket.id,
+      source_kind: "support_ticket",
+      label: ticketNumberLabel(ticket),
+      subject: ticket.subject,
+      details: ticket.subject,
+      priority: ticket.priority,
+      product_area: ticket.product_area,
+    });
+  }, []);
+
+  const headerActions = (
+    <>
+      <Button variant="primary" size="sm" icon={Plus} onClick={() => setNewTicketOpen(true)}>New ticket</Button>
+      {canManageAgents && <a href={MANAGE_SUPPORT_PEOPLE_HREF} className={MANAGE_SUPPORT_PEOPLE_CLASS}>Manage who's on Support</a>}
+      <Button variant="secondary" size="sm" icon={RefreshCw} onClick={() => void loadQueue()}>Refresh</Button>
+    </>
+  );
+  const currentView = SUPPORT_INBOX_VIEWS.find((v) => v.id === view) || SUPPORT_INBOX_VIEWS[0];
+  const customerRows = visibleTickets.filter((t) => t.origin !== "staff").length;
 
   return (
-    <div className="space-y-6">
-      {!embedded && (
-        <PageHeader
-          title="Support"
-          description={`Answer business support tickets. ${unassignedCount} unassigned.`}
-          actions={
-            <>
-              <Button variant="primary" size="sm" onClick={() => setNewInternalOpen(true)}>
-                Add ticket
-              </Button>
-              <Button variant="secondary" size="sm" onClick={() => setProductInboxOpen(true)}>
-                Product inbox
-              </Button>
-              {canManageAgents && (
-                <a href={MANAGE_SUPPORT_PEOPLE_HREF} className={MANAGE_SUPPORT_PEOPLE_CLASS}>
-                  Manage who's on Support
-                </a>
-              )}
-              <Button variant="secondary" size="sm" icon={RefreshCw} onClick={() => void loadQueue()}>
-                Refresh
-              </Button>
-            </>
-          }
-        />
-      )}
-      {embedded && (
+    <div className="space-y-4">
+      {embedded ? (
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-[var(--color-text-secondary)]">
-            Answer business support tickets. {unassignedCount} unassigned.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="primary" size="sm" onClick={() => setNewInternalOpen(true)}>
-              Add ticket
-            </Button>
-            <Button variant="secondary" size="sm" onClick={() => setProductInboxOpen(true)}>
-              Product inbox
-            </Button>
-            {canManageAgents && (
-              <a href={MANAGE_SUPPORT_PEOPLE_HREF} className={MANAGE_SUPPORT_PEOPLE_CLASS}>
-                Manage who's on Support
-              </a>
-            )}
-            <Button variant="secondary" size="sm" icon={RefreshCw} onClick={() => void loadQueue()}>
-              Refresh
-            </Button>
-          </div>
+          <p className="text-sm text-[var(--color-text-secondary)]">Every support ticket, from customers and staff. {badgeCounts.unassigned} unassigned.</p>
+          <div className="flex flex-wrap items-center gap-2">{headerActions}</div>
         </div>
+      ) : (
+        <PageHeader title="Support" description={`Every support ticket, from customers and staff. ${badgeCounts.unassigned} unassigned.`} actions={headerActions} />
       )}
 
       {sessionExpired && (
-        <div
-          role="alert"
-          className="rounded-lg border border-[var(--color-warning-300)] bg-[var(--color-warning-50)] px-4 py-3 text-sm text-[var(--color-text-primary)]"
-        >
+        <div role="alert" className="rounded-lg border border-[var(--color-warning-300)] bg-[var(--color-warning-50)] px-4 py-3 text-sm text-[var(--color-text-primary)]">
           {SESSION_EXPIRED_MESSAGE}{" "}
-          <button
-            type="button"
-            className="underline font-medium"
-            onClick={() => void signOut()}
-          >
-            Sign in again
-          </button>
+          <button type="button" className="font-medium underline" onClick={() => void signOut()}>Sign in again</button>
         </div>
       )}
 
-      {/* #4130 Wave 6: what the inbox shows, each with its count */}
-      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Show tickets">
-        {SUPPORT_INBOX_FILTERS.map((option) => (
-          <button
-            key={option.id}
-            type="button"
-            aria-pressed={inboxFilter === option.id}
-            onClick={() => setInboxFilter(option.id)}
-            className={`min-h-9 rounded-full px-3 py-1.5 text-sm font-medium ${
-              inboxFilter === option.id
-                ? "bg-[var(--color-brand-500)] text-white"
-                : "border border-[var(--gray-200)] text-[var(--color-text-secondary)] hover:bg-[var(--gray-50)]"
-            }`}
-          >
-            {option.label} · {queueLoading || queueError ? "–" : inboxCounts[option.id]}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center gap-2">
+        <Segmented label="Opened by" options={OPENED_BY_OPTIONS} value={openedBy} onChange={setOpenedBy} />
+        <SearchInput
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          onClear={() => setSearch("")}
+          placeholder="Search subject, person, brand or S-number"
+          aria-label="Search tickets"
+          className="min-w-[220px] flex-1"
+        />
+      </div>
+      <div className="flex flex-wrap items-center gap-2" aria-label="Filters">
+        <Select aria-label="Product area" className="!w-auto" value={filters.productArea} onChange={(e) => setFilters((f) => ({ ...f, productArea: e.target.value }))} placeholder="Any product area" options={productAreas.map((a) => ({ value: a, label: a }))} />
+        <Select aria-label="Priority" className="!w-auto" value={filters.priority} onChange={(e) => setFilters((f) => ({ ...f, priority: e.target.value }))} placeholder="Any priority" options={PRIORITY_OPTIONS} />
+        <Select aria-label="Owner" className="!w-auto" value={filters.owner} onChange={(e) => setFilters((f) => ({ ...f, owner: e.target.value }))} placeholder="Any owner" options={[{ value: "none", label: "Nobody" }, ...staffRoster.map((r) => ({ value: r.user_id, label: r.user_id === myUserId ? "Me" : r.display_name || personName(profilesById[r.user_id]) || r.user_id.slice(0, 8) }))]} />
+        <Select aria-label="Brand" className="!w-auto" value={filters.brand} onChange={(e) => setFilters((f) => ({ ...f, brand: e.target.value }))} placeholder="Any brand" options={ticketBrandOptions.map((b) => ({ value: b.id, label: b.name }))} />
+        {filtersActive && (
+          <Button variant="ghost" size="sm" onClick={() => { setFilters(EMPTY_FILTERS); setSearch(""); setOpenedBy("all"); }}>Clear filters</Button>
+        )}
       </div>
 
-      {/* Queue */}
-      <SectionCard
-        title={`Support inbox (${visibleTickets.length})`}
-        subtitle={inboxFilter === "resolved" || inboxFilter === "all" ? "Live customer chats and staff-created work, newest activity first" : "Live customer chats and staff-created work, longest waiting first"}
-        noPadding
-      >
-        {queueLoading ? (
-          <div className="flex justify-center py-12"><Spinner /></div>
-        ) : queueError ? (
-          <div className="flex flex-col items-center gap-3 py-12">
-            <p className="text-sm text-[var(--color-text-primary)] font-medium">Couldn't load the queue</p>
-            <p className="text-xs text-[var(--color-text-tertiary)]">{queueError}</p>
-            <Button variant="link" onClick={() => void loadQueue()}>Try again</Button>
-          </div>
-        ) : visibleTickets.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 py-12">
-            <LifeBuoy className="h-10 w-10 text-[var(--gray-300)]" />
-            <p className="text-sm text-[var(--color-text-tertiary)]">
-              {inboxFilter === "all"
-                ? "No support work yet. New chats from hosts and explorers show up here."
-                : inboxFilter === "open"
-                  ? "Nothing is waiting. New chats from hosts and explorers show up here."
-                  : "No tickets match this filter."}
-            </p>
-          </div>
-        ) : (
-          <>
-          <div className="divide-y divide-[var(--gray-200)] lg:hidden">
-            {visibleTickets.map((t) => {
-              const r = profilesById[t.requester_user_id];
-              return <button key={t.id} type="button" onClick={() => openTicket(t)} className="block w-full p-4 text-left hover:bg-[var(--gray-50)]"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-sm font-semibold text-[var(--color-text-primary)]">{t.subject}</p><p className="mt-1 truncate text-xs text-[var(--color-text-secondary)]">{t.audience === "brand" ? brandsById[t.brand_id]?.name || "Brand team" : r ? profileLabel(r) : "No customer linked"}</p></div><Badge variant={STATUS_BADGE[t.status] || "default"}>{t.status}</Badge></div><div className="mt-2 flex items-center justify-between gap-2 text-xs text-[var(--color-text-tertiary)]"><span>Idle {timeAgo(t.last_message_at)}</span>{t.next_update_at ? <span className={hasActiveNextUpdate(t) ? "" : "font-semibold text-[var(--color-error-700)]"}>{formatDateTime(t.next_update_at)}</span> : <Badge variant="error">Promise needed</Badge>}</div></button>;
-            })}
-          </div>
-          <div className="hidden lg:block">
-            <table className="w-full table-fixed text-sm">
-              <thead>
-                <tr className="border-b border-[var(--gray-200)] text-left text-[var(--color-text-tertiary)]">
-                  <th className="w-[22%] py-2.5 px-4">Requester / brand</th>
-                  <th className="w-[30%] py-2.5 px-4">Subject</th>
-                  <th className="w-[14%] py-2.5 px-4">Status</th>
-                  <th className="w-[12%] py-2.5 px-4">Idle</th>
-                  <th className="w-[22%] py-2.5 px-4">Next update</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleTickets.map((t) => {
-                  const r = profilesById[t.requester_user_id];
-                  return (
-                    <tr
-                      key={t.id}
-                      onClick={() => openTicket(t)}
-                      className="border-b border-[var(--gray-100)] hover:bg-[var(--gray-50)] cursor-pointer"
-                    >
-                      <td className="py-2.5 px-4">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <Avatar src={t.audience === "brand" ? undefined : r?.avatar_url} name={t.audience === "brand" ? brandsById[t.brand_id]?.name || "Brand team" : r ? profileLabel(r) : "Internal"} size="sm" />
-                          <span className="truncate text-[var(--color-text-primary)]">{t.audience === "brand" ? brandsById[t.brand_id]?.name || "Brand team" : r ? profileLabel(r) : "No customer linked"}</span>
-                        </div>
-                      </td>
-                      <td className="py-2.5 px-4 max-w-[260px]">
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            openTicket(t);
-                          }}
-                          className="block max-w-full truncate text-left text-[var(--color-text-primary)] underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]"
-                          aria-label={`Open ${t.source_label.toLowerCase()}: ${t.subject}`}
-                        >
-                          {t.subject}
-                        </button>
-                      </td>
-                      <td className="py-2.5 px-4">
-                        <Badge variant={STATUS_BADGE[t.status] || "default"} dot>{t.status}</Badge>
-                      </td>
-                      <td className="py-2.5 px-4 text-xs text-[var(--color-text-tertiary)] whitespace-nowrap">{timeAgo(t.last_message_at)}</td>
-                      <td className="py-2.5 px-4 text-xs whitespace-nowrap">
-                        {t.next_update_at ? (
-                          <span className={hasActiveNextUpdate(t) ? "text-[var(--color-text-secondary)]" : "font-medium text-[var(--color-error-700)]"}>
-                            {formatDateTime(t.next_update_at)}
-                          </span>
-                        ) : (
-                          <Badge variant="error">Promise needed</Badge>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          </>
-        )}
-      </SectionCard>
-
-      {/* Ticket detail modal: left thread + right meta/actions */}
-      <Modal
-        open={!!selectedTicket}
-        onClose={closeTicket}
-        title={selectedTicket?.subject ?? "Ticket"}
-        size="lg"
-      >
-        <ModalBody className="!p-0">
-          {selectedTicket && (selectedTicket.source_kind === "support_ticket" || selectedTicket.source_kind === "internal_thread") && (
-            <EngineeringRow sourceKind={selectedTicket.source_kind} sourceId={selectedTicket.id} />
-          )}
-          {selectedTicket && (
-            <div className="grid grid-cols-1 md:grid-cols-[1fr_280px]">
-              {/* Thread */}
-              <div className="flex flex-col border-r border-[var(--gray-200)] min-h-[320px]">
-                <div className="flex-1 overflow-y-auto p-4 space-y-3 max-h-[52vh]">
-                  {selectedTicket.source_kind === "internal_thread" ? (
-                    <div className="space-y-4">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="default">Staff-created</Badge>
-                        <span className="text-xs text-[var(--color-text-tertiary)]">Internal only · no customer message was sent</span>
-                      </div>
-                      <div className="rounded-xl border border-[var(--gray-200)] bg-[var(--gray-50)] p-4">
-                        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">Reported context</div>
-                        <p className="whitespace-pre-wrap text-sm text-[var(--color-text-primary)]">{selectedTicket.details}</p>
-                      </div>
-                      {selectedTicket.brand_group_context && (
-                        <div className="rounded-xl border border-[var(--gray-200)] p-4">
-                          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">Brand group context</div>
-                          <p className="text-sm text-[var(--color-text-primary)]">{selectedTicket.brand_group_context}</p>
-                        </div>
-                      )}
-                    </div>
-                  ) : threadLoading ? (
-                    <div className="flex justify-center py-8"><Spinner /></div>
-                  ) : threadError ? (
-                    <div className="rounded-lg border border-[var(--color-error-200,#fecaca)] bg-[var(--color-error-50)] p-3 text-xs text-[var(--color-error-700)]">
-                      Couldn't load the conversation: {threadError}
-                    </div>
-                  ) : messages.length === 0 ? (
-                    <p className="text-sm text-[var(--color-text-tertiary)] text-center py-8">
-                      No messages yet in this ticket.
-                    </p>
-                  ) : (
-                    messages.map((m) => {
-                      const mine = m.sender_id === myUserId;
-                      const isSystem = m.message_type === "system" || !m.sender_id;
-                      const sender = m.sender_id ? profilesById[m.sender_id] : null;
-                      if (isSystem) {
-                        return (
-                          <p key={m.id} className="text-center text-xs text-[var(--color-text-tertiary)] italic">
-                            {m.content}
-                          </p>
-                        );
-                      }
-                      return (
-                        <div key={m.id} className={`flex flex-col ${mine ? "items-end" : "items-start"}`}>
-                          <div
-                            className={[
-                              "max-w-[85%] rounded-2xl px-3 py-2 text-sm",
-                              mine
-                                ? "bg-[var(--color-brand-500)] text-white"
-                                : "bg-[var(--gray-100)] text-[var(--color-text-primary)]",
-                            ].join(" ")}
-                          >
-                            {m.content}
-                          </div>
-                          <span className="mt-0.5 text-[10px] text-[var(--color-text-muted)]">
-                            {mine
-                              ? `You${m.sender_role_snapshot === "Mingla Support" ? " · Mingla Support" : ""}`
-                              : `${m.sender_display_name_snapshot || profileLabel(sender)}${m.sender_role_snapshot === "Mingla Support" ? " · Mingla Support" : ""}`} · {timeAgo(m.created_at)}
-                          </span>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-                {/* Composer */}
-                {selectedTicket.source_kind === "support_ticket" && (
-                <div className="border-t border-[var(--gray-200)] p-3 flex items-end gap-2">
-                  <div className="flex-1 space-y-1">
-                    <p className="text-[11px] text-[var(--color-text-tertiary)]">
-                      Replying as your real staff name · Mingla Support · a next-update promise is required
-                    </p>
-                    <textarea
-                      value={reply}
-                      onChange={(e) => setReply(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                          e.preventDefault();
-                          void handleReply();
-                        }
-                      }}
-                      placeholder="Reply to the business…"
-                      rows={2}
-                      disabled={acting}
-                      className="w-full resize-none rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 py-2 text-sm text-[var(--color-text-primary)] focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)] outline-none"
-                    />
-                  </div>
-                  <Button
-                    variant="primary"
-                    icon={Send}
-                    loading={acting}
-                    disabled={acting || !reply.trim() || !hasActiveNextUpdate(selectedTicket)}
-                    onClick={() => void handleReply()}
-                  >
-                    Send
-                  </Button>
-                </div>
-                )}
-              </div>
-
-              {/* Meta + actions */}
-              <div className="p-4 space-y-4 text-sm">
-                <div className="flex items-center gap-2">
-                  <Badge variant={selectedTicket.source_kind === "support_ticket" ? "brand" : "default"}>
-                    {selectedTicket.source_label}
-                  </Badge>
-                  {selectedTicket.source_kind === "support_ticket" && <span className="text-xs text-[var(--color-text-tertiary)]">{selectedTicket.audience === "brand" ? "Every active brand member can see the conversation" : "Customer can see the conversation"}</span>}
-                </div>
-                {selectedTicket.audience !== "brand" && <div className="space-y-1">
-                  <div className="text-[var(--color-text-tertiary)] text-xs uppercase tracking-wide">Customer</div>
-                  {requester ? (
-                    <div className="flex items-center gap-2">
-                      <Avatar src={requester.avatar_url} name={profileLabel(requester)} size="sm" />
-                      <div className="min-w-0">
-                        <div className="truncate text-[var(--color-text-primary)]">{profileLabel(requester)}</div>
-                        {requester.email && (
-                          <div className="truncate text-xs text-[var(--color-text-tertiary)]">{requester.email}</div>
-                        )}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-sm text-[var(--color-text-tertiary)]">No customer linked</div>
-                  )}
-                  {requester?.segment && <Badge variant="info">{requester.segment}</Badge>}
-                </div>}
-
-                {brand && (
-                  <div className="space-y-1">
-                    <div className="text-[var(--color-text-tertiary)] text-xs uppercase tracking-wide">Brand</div>
-                    <div className="text-[var(--color-text-primary)] truncate">{brand.name}</div>
-                  </div>
-                )}
-
-                <div className="space-y-1">
-                  <div className="text-[var(--color-text-tertiary)] text-xs uppercase tracking-wide">Assigned</div>
-                  {selectedTicket.source_kind === "internal_thread" ? (
-                    <Select
-                      value={selectedTicket.assigned_staff_id || ""}
-                      onChange={(e) => void handleReassignInternal(e.target.value)}
-                      disabled={acting || staffRoster.length === 0}
-                      options={[
-                        { value: "", label: "Choose a teammate" },
-                        ...staffRoster.map((row) => ({
-                          value: row.user_id,
-                          label: row.display_name
-                            || profilesById[row.user_id]?.display_name
-                            || profilesById[row.user_id]?.email
-                            || row.user_id.slice(0, 8),
-                        })),
-                      ]}
-                    />
-                  ) : assignee ? (
-                    <div className="text-[var(--color-text-primary)] truncate">{profileLabel(assignee)}</div>
-                  ) : selectedTicket.source_kind === "support_ticket" ? (
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      icon={UserCheck}
-                      loading={acting}
-                      disabled={acting}
-                      onClick={() => void handleClaim()}
-                    >
-                      Claim ticket
-                    </Button>
-                  ) : (
-                    <div className="text-[var(--color-text-tertiary)]">Not assigned</div>
-                  )}
-                </div>
-
-                <label className="block space-y-1">
-                  <span className="text-[var(--color-text-tertiary)] text-xs uppercase tracking-wide">Status</span>
-                  <Select
-                    value={selectedTicket.status}
-                    onChange={(e) => void handleSetStatus(e.target.value)}
-                    disabled={acting}
-                    options={STATUS_OPTIONS.map((value) => ({ value, label: value }))}
-                  />
-                </label>
-
-                <label className="block space-y-1">
-                  <span className="text-[var(--color-text-tertiary)] text-xs uppercase tracking-wide">Priority</span>
-                  <Select
-                    value={selectedTicket.priority}
-                    onChange={(e) => void handleSetPriority(e.target.value)}
-                    disabled={acting}
-                    options={PRIORITY_OPTIONS.map((value) => ({ value, label: value }))}
-                  />
-                </label>
-
-                <div className="rounded-xl border border-[var(--gray-200)] p-3 space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="font-medium text-[var(--color-text-primary)]">Next update</div>
-                    <Button variant="ghost" size="sm" onClick={() => setNextUpdateSource(selectedTicket)}>
-                      {selectedTicket.next_update_at ? "Change" : "Set now"}
-                    </Button>
-                  </div>
-                  {selectedTicket.next_update_at ? (
-                    <>
-                      <div className="text-sm text-[var(--color-text-primary)]">{formatDateTime(selectedTicket.next_update_at)}</div>
-                      <p className="text-xs text-[var(--color-text-tertiary)]">{selectedTicket.next_update_note}</p>
-                    </>
-                  ) : (
-                    <p className="text-xs font-medium text-[var(--color-error-700)]">Required before Support sends a reply.</p>
-                  )}
-                </div>
-
-                <div className="rounded-xl border border-[var(--gray-200)] p-3 space-y-2">
-                  <div className="font-medium text-[var(--color-text-primary)]">Product signal</div>
-                  {selectedSignal ? (
-                    <>
-                      <p className="text-xs text-[var(--color-text-secondary)]">{selectedSignal.title}</p>
-                      <div className="flex items-center justify-between gap-2">
-                        <Badge variant="info">{selectedSignal.state.replaceAll('_', ' ')}</Badge>
-                        <Button variant="ghost" size="sm" onClick={() => setProductInboxOpen(true)}>Open inbox</Button>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-xs text-[var(--color-text-tertiary)]">Send a private, structured report for Product review.</p>
-                      <Button variant="secondary" size="sm" onClick={() => setProductSignalSource(selectedTicket)}>
-                        Create signal
-                      </Button>
-                    </>
-                  )}
-                </div>
-
-                <div className="pt-2 border-t border-[var(--gray-200)] space-y-1 text-xs text-[var(--color-text-tertiary)]">
-                  <div>Opened {formatDateTime(selectedTicket.created_at)}</div>
-                  {selectedTicket.first_response_at && (
-                    <div>First reply {timeAgo(selectedTicket.first_response_at)}</div>
-                  )}
-                  {selectedTicket.resolved_at && (
-                    <div>Resolved {timeAgo(selectedTicket.resolved_at)}</div>
-                  )}
-                </div>
-              </div>
+      <div className={`grid gap-4 ${selectedTicket ? "lg:grid-cols-[180px_minmax(0,1fr)] xl:grid-cols-[180px_minmax(0,1fr)_minmax(380px,460px)]" : "lg:grid-cols-[180px_minmax(0,1fr)]"}`}>
+        <nav aria-label="Inbox views" className="flex gap-1 overflow-x-auto lg:flex-col lg:overflow-visible">
+          {["Work", "Done"].map((group) => (
+            <div key={group} className="flex gap-1 lg:flex-col">
+              <span className="hidden px-2 pt-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)] lg:block">{group}</span>
+              {SUPPORT_INBOX_VIEWS.filter((v) => v.group === group).map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  aria-pressed={view === option.id}
+                  onClick={() => setView(option.id)}
+                  className={`flex min-h-9 shrink-0 items-center justify-between gap-3 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium ${view === option.id ? "bg-[var(--color-brand-500)] text-white" : "text-[var(--color-text-secondary)] hover:bg-[var(--gray-100)]"}`}
+                >
+                  <span>{option.label}</span>
+                  <span className={`text-xs tabular-nums ${view === option.id ? "text-white/90" : "text-[var(--color-text-tertiary)]"}`}>{queueLoading || queueError ? "–" : inboxCounts[option.id]}</span>
+                </button>
+              ))}
             </div>
+          ))}
+        </nav>
+
+        <section aria-label={`${currentView.label} tickets`} className={`min-w-0 overflow-hidden rounded-2xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] ${selectedTicket ? "hidden xl:block" : ""}`}>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 border-b border-[var(--gray-200)] px-4 py-2.5 text-xs text-[var(--color-text-secondary)]">
+            <span><b className="text-[var(--color-text-primary)]">{visibleTickets.length}</b> in {currentView.label}</span>
+            <span>{customerRows} from customers</span>
+            <span>{visibleTickets.length - customerRows} from staff</span>
+          </div>
+          {queueLoading ? (
+            <div className="flex justify-center py-12"><Spinner /></div>
+          ) : queueError ? (
+            <div className="flex flex-col items-center gap-3 py-12">
+              <p className="text-sm font-medium text-[var(--color-text-primary)]">Couldn't load the inbox</p>
+              <p className="text-xs text-[var(--color-text-tertiary)]">{queueError}</p>
+              <Button variant="link" onClick={() => { setQueueLoading(true); void loadQueue(); }}>Try again</Button>
+            </div>
+          ) : visibleTickets.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 py-12 text-center">
+              <LifeBuoy className="h-10 w-10 text-[var(--gray-300)]" aria-hidden="true" />
+              <p className="px-4 text-sm text-[var(--color-text-tertiary)]">
+                {filtersActive ? "Nothing here for these filters." : view === "needs" ? "Nobody is waiting on a reply." : "No tickets in this view."}
+              </p>
+            </div>
+          ) : (
+            <ul className="divide-y divide-[var(--gray-100)]">
+              {visibleTickets.map((t) => {
+                const who = rowWho(t, profilesById, brandsById);
+                const owner = t.assigned_staff_id ? profilesById[t.assigned_staff_id] : null;
+                const selected = t.id === selectedId;
+                return (
+                  <li key={t.id}>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedId(t.id)}
+                      aria-current={selected ? "true" : undefined}
+                      aria-label={`Open ${ticketNumberLabel(t)}: ${t.subject}`}
+                      className={`grid w-full grid-cols-[56px_minmax(0,1fr)_auto] items-start gap-3 px-4 py-3 text-left hover:bg-[var(--gray-50)] ${selected ? "bg-[var(--color-brand-50)]" : ""}`}
+                    >
+                      <span className="pt-0.5 font-mono text-xs text-[var(--color-text-tertiary)]">{ticketNumberLabel(t)}</span>
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-semibold text-[var(--color-text-primary)]">{t.subject}</span>
+                        <span className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-[var(--color-text-secondary)]">
+                          <span aria-hidden="true" className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--color-brand-100)] text-[9px] font-bold text-[var(--color-brand-700)]">{initials(who)}</span>
+                          <span className="max-w-[220px] truncate">{who}</span>
+                          <TicketRowChips ticket={t} signal={signalByTicket.get(t.id)} />
+                        </span>
+                      </span>
+                      <span className="flex flex-col items-end gap-1 text-xs">
+                        <Badge variant={STATUS_BADGE[t.status] || "default"}>{STATUS_LABEL[t.status] || t.status}</Badge>
+                        {isOverdueTicket(t) && <Badge variant="error">Overdue</Badge>}
+                        <span className="text-[var(--color-text-tertiary)]">{owner ? (owner.id === myUserId ? "You" : personName(owner)) : "No owner"}</span>
+                        <span className="tabular-nums text-[var(--color-text-tertiary)]">{waitLabel(t)}</span>
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
           )}
-        </ModalBody>
-        <ModalFooter>
-          <Button variant="secondary" onClick={closeTicket}>Close</Button>
-        </ModalFooter>
-      </Modal>
+        </section>
 
-      <InternalTicketModal
-        open={newInternalOpen}
+        {selectedTicket && (
+          <div className="min-w-0 lg:col-start-2 xl:col-start-3">
+            <TicketPanel
+              ticket={selectedTicket}
+              profilesById={profilesById}
+              brandsById={brandsById}
+              signal={selectedSignal}
+              myUserId={myUserId}
+              acting={acting}
+              onClose={() => setSelectedId(null)}
+              onClaim={() => void handleClaim()}
+              onSetStatus={(status) => void handleSetStatus(status)}
+              onSetPriority={(priority) => void handleSetPriority(priority)}
+              onSendToProduct={openProductFor}
+              onChanged={async ({ mode, waiting }) => {
+                setSessionExpired(false);
+                await logAdminAction(mode === "note" ? "support.note" : "support.reply", "support_ticket", selectedTicket.id, { waiting });
+                if (mode !== "note") addToast({ variant: "success", title: waiting ? "Sent. Waiting on the customer." : "Reply sent" });
+                await loadQueue();
+              }}
+              onError={showError}
+              onSessionExpired={() => setSessionExpired(true)}
+            />
+          </div>
+        )}
+        {!queueLoading && selectedId && !selectedTicket && !queueError && (
+          <p role="status" className="text-sm text-[var(--color-text-tertiary)] lg:col-start-2">
+            That ticket isn't in the newest 300.{" "}
+            <button type="button" className="font-medium underline" onClick={() => setSelectedId(null)}>Close</button>
+          </p>
+        )}
+      </div>
+
+      <NewTicketModal
+        open={newTicketOpen}
         brands={brandOptions}
-        onClose={() => setNewInternalOpen(false)}
-        onCreated={async () => {
-          addToast({ variant: "success", title: "Staff-created ticket added" });
+        staffRoster={staffRoster}
+        myUserId={myUserId}
+        onClose={() => setNewTicketOpen(false)}
+        onCreated={async (id, imageCount) => {
+          addToast({ variant: "success", title: `Ticket created${imageCount ? ` · ${imageCount} image${imageCount === 1 ? "" : "s"}` : ""}` });
+          await logAdminAction("support.create_staff_ticket", "support_ticket", id);
           await loadQueue();
+          setOpenedBy("staff");
+          setView("all");
+          setSelectedId(id);
         }}
         onError={handleWorkflowError}
       />
 
-      <NextUpdateModal
-        source={nextUpdateSource}
-        onClose={() => setNextUpdateSource(null)}
-        onSaved={async () => {
-          addToast({ variant: "success", title: "Next update saved" });
-          closeTicket();
-          await loadQueue();
-        }}
-        onError={handleWorkflowError}
-      />
-
-      <ProductSignalModal
-        source={productSignalSource}
-        signals={productSignals}
-        onClose={() => setProductSignalSource(null)}
+      <SendToProductModal
+        source={productSource}
+        signals={signals}
+        onClose={() => setProductSource(null)}
         onCreated={async () => {
-          addToast({ variant: "success", title: "Private Product signal created" });
+          addToast({ variant: "success", title: "Sent to Product" });
           await loadQueue();
         }}
         onLinked={async () => {
-          addToast({ variant: "success", title: "Report linked to the existing Product signal" });
+          addToast({ variant: "success", title: "Linked to the Product item (+1 reporter)" });
           await loadQueue();
         }}
         onError={handleWorkflowError}
       />
-
-      <ProductInboxModal
-        open={productInboxOpen}
-        signals={productSignals}
-        onClose={() => setProductInboxOpen(false)}
-        onSaved={async () => {
-          addToast({ variant: "success", title: "Product review saved" });
-          await loadQueue();
-        }}
-        onError={handleWorkflowError}
-      />
-
     </div>
   );
 }
