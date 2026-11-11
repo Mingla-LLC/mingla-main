@@ -48,10 +48,11 @@ describe("#4389 offering list of 5", () => {
     // Web and node runs draw the poster only.
     expect(read("OfferingClip.tsx")).not.toContain("expo-video");
   });
-  test("the chooser plays only while the app is in the foreground", () => {
+  test("the chooser plays a clip only while the app is in the foreground and its row is on screen", () => {
     const chooser = read("OfferingChooser.tsx");
     expect(chooser).toContain('AppState.addEventListener("change"');
-    expect(chooser).toContain("active={appActive}");
+    expect(chooser).toContain("<OfferingRowClip video={media.video} poster={media.poster} appActive={appActive} />");
+    expect(read("offeringRowVisibility.tsx")).toContain("active={appActive && onScreen}");
   });
   test("F4: Tap to Pay on iPhone card (iOS, eligible brands) sits above the list", () => {
     const flow = read("BrandCreationFlow.tsx");

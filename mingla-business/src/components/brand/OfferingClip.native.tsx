@@ -2,8 +2,10 @@
  * #4389 addendum 2 — an offering row's silent looping clip (expo-video).
  *
  *   - muted, looped, no audio session (it never interrupts the host's music);
- *   - plays only while the screen is focused and the app is in the
- *     foreground (`active`); paused otherwise;
+ *   - plays only while its row is on screen and the app is in the
+ *     foreground (`active`, from offeringRowVisibility); paused otherwise;
+ *   - TODO(#4389): pause under Low Power Mode too (needs a native battery
+ *     module; none is installed, see the build log).
  *   - the poster frame under Reduce Motion, before the first frame, or if the
  *     clip fails to load or play.
  */

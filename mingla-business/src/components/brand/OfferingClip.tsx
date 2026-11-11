@@ -9,7 +9,7 @@ import { Image, StyleSheet } from "react-native";
 export interface OfferingClipProps {
   video: number;
   poster: number;
-  /** The screen is focused and the app is in the foreground. */
+  /** The app is in the foreground and this row is on screen (offeringRowVisibility). */
   active: boolean;
 }
 

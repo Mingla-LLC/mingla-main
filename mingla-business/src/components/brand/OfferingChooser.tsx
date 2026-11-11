@@ -18,7 +18,7 @@ import {
 } from "../../constants/designSystem";
 import { Icon, type IconName } from "../ui/Icon";
 // #4389 addendum 2 — one list of 5 with a silent looping clip behind each row.
-import { OfferingClip } from "./OfferingClip";
+import { OfferingRowClip } from "./offeringRowVisibility";
 import { offeringMedia } from "./offeringMedia";
 import type { BrandCreationPayoutState } from "../../utils/brandCreationPayoutState";
 
@@ -241,8 +241,8 @@ export const OfferingChooser: React.FC<OfferingChooserProps> = ({
   const visibleHeadline = headline ?? copy.headline;
   const visibleSubhead = subhead ?? copy.subhead;
   const payoutNotice = payoutNoticeCopy(payoutState);
-  // Clips play only while the app is in the foreground and this list is on
-  // screen; the screen unmounts the chooser when it leaves.
+  // Clips play only while the app is in the foreground and their own row is
+  // on screen (offeringRowVisibility measures each row in the window).
   const [appActive, setAppActive] = useState(AppState.currentState === "active");
   useEffect(() => {
     const sub = AppState.addEventListener("change", (next) => setAppActive(next === "active"));
@@ -292,7 +292,7 @@ export const OfferingChooser: React.FC<OfferingChooserProps> = ({
             {(() => {
               const media = offeringMedia(option.kind);
               return media === null ? null : (
-                <OfferingClip video={media.video} poster={media.poster} active={appActive} />
+                <OfferingRowClip video={media.video} poster={media.poster} appActive={appActive} />
               );
             })()}
             <View style={styles.optionShade} pointerEvents="none" />
