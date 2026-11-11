@@ -12,7 +12,7 @@ import { SupportThread } from "./SupportThread";
 import { SupportComposer } from "./SupportComposer";
 import { replyTargetLabel } from "./supportComposerModel";
 import { PRIORITY_OPTIONS, STATUS_BADGE, STATUS_LABEL, TOPIC_LABEL, deviceLine } from "./supportOptions";
-import { BOARD_COLUMNS, STAGE_LABEL, stageIndex } from "./productBoardModel";
+import { productPrefillDetails, BOARD_COLUMNS, STAGE_LABEL, stageIndex } from "./productBoardModel";
 import { isOverdueTicket, originChip, ticketNumberLabel } from "../../lib/supportTicketMetrics";
 import { listTicketThread, signAttachmentUrls } from "../../services/supportDeskService";
 import { fetchTicketEngineering } from "../../services/opsService";
@@ -63,12 +63,12 @@ function EngineeringRow({ sourceKind, sourceId }) {
   );
 }
 
-function ProductBox({ ticket, signal, onSendToProduct }) {
+function ProductBox({ ticket, signal, messages, onSendToProduct }) {
   if (!signal) {
     return (
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[var(--gray-200)] p-3 text-sm">
         <span className="text-[var(--color-text-tertiary)]">Not linked to product work</span>
-        <Button size="sm" variant="secondary" onClick={() => onSendToProduct(ticket)}>Send to Product</Button>
+        <Button size="sm" variant="secondary" onClick={() => onSendToProduct(ticket, productPrefillDetails(ticket, messages))}>Send to Product</Button>
       </div>
     );
   }
@@ -112,6 +112,7 @@ export function TicketPanel({
   onClose, onClaim, onSetStatus, onSetPriority, onSendToProduct, onChanged, onError, onSessionExpired,
 }) {
   const [messages, setMessages] = useState([]);
+  const [factsOpen, setFactsOpen] = useState(true);
   const [urls, setUrls] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -173,7 +174,11 @@ export function TicketPanel({
   const target = replyTargetLabel(ticket, { personName: personName.split(" ")[0], brandName: brand?.name });
 
   return (
-    <aside aria-label={`Ticket ${ticketNumberLabel(ticket)}`} className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] lg:max-h-[calc(100vh-180px)]">
+    // #4382 runtime P3a: the header, the compact facts and the thread scroll
+    // together; the thread keeps at least ~55% of the panel's height and the
+    // composer stays pinned at the bottom.
+    <aside aria-label={`Ticket ${ticketNumberLabel(ticket)}`} className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] lg:h-[calc(100vh-180px)]">
+      <div data-testid="ticket-panel-scroll" className="min-h-0 flex-1 overflow-y-auto">
       <div className="border-b border-[var(--gray-200)] p-4">
         <div className="flex items-center justify-between gap-2">
           <span className="font-mono text-xs text-[var(--color-text-tertiary)]">{ticketNumberLabel(ticket)}</span>
@@ -195,7 +200,20 @@ export function TicketPanel({
         </div>
       </div>
 
-      <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 border-b border-[var(--gray-200)] px-4 py-3 text-sm">
+      <div className="flex items-center justify-between border-b border-[var(--gray-200)] px-4 py-1.5">
+        <span className="text-xs font-medium text-[var(--color-text-tertiary)]">Details</span>
+        <button
+          type="button"
+          aria-expanded={factsOpen}
+          aria-controls={`ticket-facts-${ticket.id}`}
+          onClick={() => setFactsOpen((open) => !open)}
+          className="rounded px-2 py-0.5 text-xs font-medium text-[var(--color-brand-600)] hover:bg-[var(--gray-100)]"
+        >
+          {factsOpen ? "Hide details" : "Show details"}
+        </button>
+      </div>
+      {factsOpen && (
+      <dl id={`ticket-facts-${ticket.id}`} className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 border-b border-[var(--gray-200)] px-4 py-2 text-xs sm:grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)]">
         <dt className="text-[var(--color-text-tertiary)]">{ticket.origin === "staff" ? "About" : "From"}</dt>
         <dd className="min-w-0 truncate text-[var(--color-text-primary)]">
           {[personName || (ticket.visibility === "brand" ? null : ticket.imported_from === "beta_feedback" ? "Explorer (beta feedback)" : null), brand?.name].filter(Boolean).join(" · ") || "No customer linked"}
@@ -235,15 +253,16 @@ export function TicketPanel({
         </dd>
         <dt className="self-center text-[var(--color-text-tertiary)]">Status</dt>
         <dd>
-          <Select aria-label="Status" value={ticket.status} disabled={acting} onChange={(event) => onSetStatus(event.target.value)} options={STATUS_OPTIONS} className="!min-h-9 !py-1" />
+          <Select aria-label="Status" value={ticket.status} disabled={acting} onChange={(event) => onSetStatus(event.target.value)} options={STATUS_OPTIONS} className="!min-h-8 !py-0.5 !text-xs" />
         </dd>
         <dt className="self-center text-[var(--color-text-tertiary)]">Priority</dt>
         <dd>
-          <Select aria-label="Priority" value={ticket.priority} disabled={acting} onChange={(event) => onSetPriority(event.target.value)} options={PRIORITY_OPTIONS} className="!min-h-9 !py-1" />
+          <Select aria-label="Priority" value={ticket.priority} disabled={acting} onChange={(event) => onSetPriority(event.target.value)} options={PRIORITY_OPTIONS} className="!min-h-8 !py-0.5 !text-xs" />
         </dd>
       </dl>
+      )}
 
-      <div className="min-h-[200px] flex-1 space-y-3 overflow-y-auto p-4">
+      <div data-testid="ticket-thread" className="min-h-[320px] space-y-3 p-4 lg:min-h-[calc((100vh-180px)*0.55)]">
         {loading ? (
           <div className="flex justify-center py-8"><Spinner /></div>
         ) : error ? (
@@ -254,8 +273,9 @@ export function TicketPanel({
         ) : (
           <SupportThread ticket={ticket} messages={messages} urls={urls} profilesById={profilesById} myUserId={myUserId} />
         )}
-        <ProductBox ticket={ticket} signal={signal} onSendToProduct={onSendToProduct} />
+        <ProductBox ticket={ticket} signal={signal} messages={messages} onSendToProduct={onSendToProduct} />
         <div ref={bottomRef} />
+      </div>
       </div>
 
       <SupportComposer
