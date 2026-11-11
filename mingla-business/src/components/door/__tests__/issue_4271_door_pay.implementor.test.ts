@@ -120,14 +120,15 @@ describe("#4271 door sale payment list", () => {
     });
   });
 
-  test("the sheet uses the model and every placeholder string is gone", () => {
-    const sheet = read("src/components/door/DoorSaleNewSheet.tsx");
+  test("Door mode uses the model and every placeholder string is gone", () => {
+    // #4389: Door mode replaced the sale sheet; the pay code is a sheet on it.
+    const sheet = read("src/components/door/DoorModeScreen.tsx");
     expect(sheet).toContain("buildDoorPaymentOptions(");
     expect(sheet).toContain("doorTapNewSaleHref(");
-    expect(sheet).toContain("/door/pay/${created.codeId}");
+    expect(sheet).toContain("setCodeId(outcome.value.codeId)");
     expect(sheet).not.toContain("[TRANSITIONAL]");
     for (const relative of [
-      "src/components/door/DoorSaleNewSheet.tsx",
+      "src/components/door/DoorModeScreen.tsx",
       "app/event/[id]/door/index.tsx",
       "app/event/[id]/door/[saleId].tsx",
       "app/event/[id]/reconciliation.tsx",
@@ -299,26 +300,26 @@ describe("#4271 pay code states", () => {
     });
   });
 
-  test("Sell another reopens the sheet with the same tickets (tap and pay code)", () => {
+  test("Sell another goes back to Door mode with the same tickets (tap and pay code)", () => {
     const href = doorSellAnotherHref(
       "event-1",
       { lines: [{ ticketTypeId: "tier-1", quantity: 3 }], eventDateId: "date-1" },
       "cash",
     );
     const url = new URL(`https://x${href}`);
-    expect(url.pathname).toBe("/event/event-1/door");
-    expect(url.searchParams.get("sellAnother")).toBe("1");
+    // #4389: the full-screen door sale, not the old sheet on the hub.
+    expect(url.pathname).toBe("/event/event-1/door/sell");
     expect(url.searchParams.get("method")).toBe("cash");
     expect(decodeDoorTapDraft(url.searchParams.get("draft"))?.lines).toEqual([
       { ticketTypeId: "tier-1", quantity: 3 },
     ]);
+    // An older ?sellAnother=1 link is forwarded to Door mode.
     const hub = read("app/event/[id]/door/index.tsx");
     expect(hub).toContain("params.sellAnother");
-    expect(hub).toContain("decodeDoorTapDraft(draftParam)");
-    expect(hub).toContain("initialLines={sheetSeed?.lines}");
+    expect(hub).toContain("doorSaleHref(eventId");
     expect(read("src/components/door/DoorPayCodeScreen.tsx")).toContain("doorSellAnotherHref(");
-    expect(read("src/components/door/DoorSaleNewSheet.tsx")).toContain(
-      "useTapToPayAvailability({ brand, currency: event.currency })",
+    expect(read("src/components/door/DoorModeScreen.tsx")).toContain(
+      "useTapToPayAvailability({ brand, currency: event?.currency ?? null })",
     );
   });
 });

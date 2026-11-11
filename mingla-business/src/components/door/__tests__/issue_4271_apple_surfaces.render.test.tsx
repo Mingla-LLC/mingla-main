@@ -1153,7 +1153,7 @@ describe("#4271 door polish: Tap to Pay states", () => {
       byTestId(root, "tap-sell-another").props.onPress();
     });
     const href = String(mockReplace.mock.calls[mockReplace.mock.calls.length - 1]?.[0]);
-    expect(href).toContain("sellAnother=1");
+    expect(href).toContain("/door/sell?"); // #4389: Door mode, not the old sheet
     const raw = decodeURIComponent(href.split("draft=")[1] ?? "");
     const { parseTapToPayDraft } = jest.requireActual("../../../services/terminal/tapToPayDraft") as {
       parseTapToPayDraft: (value: string) => Record<string, unknown> | null;

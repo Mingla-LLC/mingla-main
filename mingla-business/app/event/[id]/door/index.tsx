@@ -12,8 +12,11 @@
  * I-29: door sales are read from server orders through React Query.
  *
  * issue #4271 — card money at the door (Buyer's phone, Tap to Pay) shows a
- * Mingla fee line and is paid out with online sales; "Sell at door" opens the
- * sale sheet, also reopened with the last tickets by the pay code screen.
+ * Mingla fee line and is paid out with online sales.
+ *
+ * #4389 — "Sell at door" opens Door mode, the full-screen door sale at
+ * /event/[id]/door/sell (openDoorSale). An older `?sellAnother=1&draft=` link
+ * is forwarded there with its tickets and method.
  *
  * Per Cycle 12 SPEC §4.12 / §5/J-D2 + J-D5.
  */
@@ -55,9 +58,7 @@ import {
 } from "../../../../src/utils/paymentMethodLabels";
 import { isCardDoorPaymentMethod } from "../../../../src/types/doorSales";
 import { Button } from "../../../../src/components/ui/Button";
-import { decodeDoorTapDraft } from "../../../../src/components/door/doorTapDraft";
-
-import { LazyDoorSaleNewSheet } from "../../../../src/components/door/LazyDoorSaleScreens";
+import { doorSaleHref, openDoorSale } from "../../../../src/utils/openDoorSale";
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
 import { Icon } from "../../../../src/components/ui/Icon";
 import { IconChrome } from "../../../../src/components/ui/IconChrome";
@@ -243,27 +244,18 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
   const hasCardSales = eventSales.some((sale) => isCardDoorPaymentMethod(sale.paymentMethod));
 
   // ---- UI state ----
-  const [newSheetOpen, setNewSheetOpen] = useState<boolean>(false);
-  // issue #4271 — "Sell another" / "Take cash instead" from the pay code
-  // screen reopen the sheet here with the last tickets kept.
-  // Both the Tap to Pay "Sell another" and the pay code screen send
-  // `?sellAnother=1&draft=<base64 json {lines, eventDateId, ...}>`.
+  // #4389 — an older "Sell another" link (`?sellAnother=1&draft=…&method=…`)
+  // goes on to Door mode with the same tickets.
   const sellParam = Array.isArray(params.sellAnother) ? params.sellAnother[0] : params.sellAnother;
   const draftParam = Array.isArray(params.draft) ? params.draft[0] : params.draft;
   const methodParam = Array.isArray(params.method) ? params.method[0] : params.method;
-  const [sheetSeed, setSheetSeed] = useState<{
-    lines: { ticketTypeId: string; quantity: number }[];
-    method: DoorPaymentMethod | undefined;
-  } | null>(null);
   useEffect(() => {
-    if (sellParam !== "1") return;
-    setSheetSeed({
-      lines: decodeDoorTapDraft(draftParam)?.lines ?? [],
-      method: methodParam === "cash" || methodParam === "pay_code" ? methodParam : undefined,
-    });
-    setNewSheetOpen(true);
+    if (sellParam !== "1" || typeof eventId !== "string") return;
     router.setParams({ sellAnother: undefined, draft: undefined, method: undefined } as never);
-  }, [draftParam, methodParam, router, sellParam]);
+    const href = doorSaleHref(eventId, { source: "sell_another", draft: draftParam ?? null });
+    const method = methodParam === "cash" || methodParam === "pay_code" ? `&method=${methodParam}` : "";
+    router.push(`${href}${href.includes("?") ? method : method.replace("&", "?")}` as never);
+  }, [draftParam, eventId, methodParam, router, sellParam]);
   const [byScannerExpanded, setByScannerExpanded] = useState<boolean>(false);
   const [toast, setToast] = useState<{ visible: boolean; message: string }>({
     visible: false,
@@ -291,9 +283,9 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
   );
 
   const handleNewSale = useCallback((): void => {
-    setSheetSeed(null);
-    setNewSheetOpen(true);
-  }, []);
+    if (typeof eventId !== "string") return;
+    void openDoorSale(router, brand?.id ?? null, eventId, { source: "event_door" });
+  }, [router, brand?.id, eventId]);
 
   // Cycle 13 — D-CYCLE13-RECON-FOR-4 polish: navigate to full cross-source reconciliation.
   const handleViewReconciliation = useCallback((): void => {
@@ -301,18 +293,6 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
       router.push(`/event/${eventId}/reconciliation` as never);
     }
   }, [router, eventId]);
-
-  const handleNewSaleSuccess = useCallback(
-    (_result: { orderId: string }, phoneLast4: string | null): void => {
-      setNewSheetOpen(false);
-      showToast(
-        phoneLast4 === null
-          ? "Sale recorded."
-          : `Sale recorded. Receipt texted to the number ending ${phoneLast4}.`,
-      );
-    },
-    [showToast],
-  );
 
   const handleExport = useCallback(async (): Promise<void> => {
     if (event === null) return;
@@ -628,19 +608,6 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
           </View>
         )}
       </ScrollView>
-
-      {/* New sale sheet */}
-      {brand !== null ? (
-        <LazyDoorSaleNewSheet
-          visible={newSheetOpen}
-          event={event}
-          onClose={() => setNewSheetOpen(false)}
-          onSuccess={handleNewSaleSuccess}
-          brand={brand}
-          initialLines={sheetSeed?.lines}
-          initialMethod={sheetSeed?.method}
-        />
-      ) : null}
 
       {/* issue #4271 — the primary way to start a sale. */}
       <View

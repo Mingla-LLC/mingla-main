@@ -235,14 +235,14 @@ export const startDoorSale: AgentToolDefinition = {
         .maybeSingle();
       if (tierError || !tier) throw new ToolError("INVALID_ARGS", "That ticket isn't on this event.");
       const quantity = Number.isInteger(args.quantity) ? Math.min(Math.max(Number(args.quantity), 1), 50) : 1;
-      draft = `&draft=${encodeURIComponent(asciiBase64(JSON.stringify({
+      draft = `?draft=${encodeURIComponent(asciiBase64(JSON.stringify({
         lines: [{ ticketTypeId: args.ticket_type_id, quantity }],
         eventDateId: null,
       })))}`;
     }
     return {
       event_id: eventId,
-      route: `/event/${eventId}/door?sellAnother=1${draft}`,
+      route: `/event/${eventId}/door/sell${draft}`,
       takes_payment: false,
       requires_human: true,
     };

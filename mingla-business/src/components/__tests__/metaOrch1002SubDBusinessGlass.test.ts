@@ -153,7 +153,9 @@ const SWEPT: readonly (readonly [string, string])[] = [
   // Phase 2 — brand / door / orders / ari / experience
   ["ari/QuickReplyChips.tsx", "chip"],
   ["brand/BrandDeleteSheet.tsx", "warnCard"],
-  ["door/DoorSaleNewSheet.tsx", "emptyTiersWrap"],
+  // #4389: the door sale sheet became Door mode; its tiles carry the clip.
+  ["door/DoorModeScreen.tsx", "tile"],
+  ["door/DoorModeScreen.tsx", "chip"],
   ["orders/RefundSheet.tsx", "reasonInputWrap"],
   ["orders/RefundSheet.tsx", "summaryCard"],
 ];

@@ -1,10 +1,10 @@
 /**
  * issue #4271 — the door sale draft passed between door screens.
  *
- * Sheet → Tap to Pay: `/event/<id>/door/tap/new?draft=<base64 json>`.
+ * Door mode → Tap to Pay: `/event/<id>/door/tap/new?draft=<base64 json>`.
  * "Sell another" (after a tap sale or a pay code) →
- * `/event/<id>/door?sellAnother=1&draft=<base64 json>`, which reopens the
- * sheet with the same tickets.
+ * `/event/<id>/door/sell?draft=<base64 json>` (Door mode, #4389), which opens
+ * with the same tickets.
  *
  * This file holds the shape and the door hub's reader (decodeDoorTapDraft). The
  * writers (encodeDoorTapDraft, doorSellAnotherHref, doorTapNewSaleHref) are in

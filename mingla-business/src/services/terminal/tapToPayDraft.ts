@@ -1,7 +1,7 @@
 /**
  * #4271 — the door-sale draft handed to the Tap to Pay route.
  *
- * DoorSaleNewSheet navigates to
+ * Door mode (#4389) hands off to
  *   /event/<id>/door/tap/new?draft=<base64 json {lines, eventDateId, buyerPhone?, buyerName?}>
  * The draft only names WHAT is being sold. The server prices it (door-tap-intent
  * create); nothing here is trusted as an amount. `buyerName` is shown on the

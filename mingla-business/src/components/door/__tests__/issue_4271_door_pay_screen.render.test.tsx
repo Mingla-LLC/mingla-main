@@ -311,7 +311,7 @@ describe("#4271 host Scan to pay screen", () => {
     await pressByLabel(tree, "Take cash instead");
     expect(mockCancel).not.toHaveBeenCalled();
     expect(mockReplace).toHaveBeenCalledTimes(1);
-    expect(String(mockReplace.mock.calls[0][0])).toContain("sellAnother=1");
+    expect(String(mockReplace.mock.calls[0][0])).toContain("/door/sell?"); // #4389: Door mode, not the old sheet
   });
 
   test("T4: Show a new code answered payment landing never opens a second sale", async () => {
