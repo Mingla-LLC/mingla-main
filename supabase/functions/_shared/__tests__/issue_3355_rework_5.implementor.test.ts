@@ -636,6 +636,36 @@ Deno.test("R5-17: the deterministic pass never blanks reads or how-to answers (j
       }
     }
   }
+  // A write request of the same kind as the answer's words (the case the
+  // asked-kind rule does not cover): screen labels, "working days" and a
+  // kind word that is not the subject are still not claims.
+  for (
+    const [host, text] of [
+      [
+        "Can you add Ada to my team?",
+        'Tap a person to "Revoke invitation" or "Remove from team"; accepted people are listed under "ACTIVE MEMBERS".',
+      ],
+      [
+        "Can you set up my event?",
+        "Payouts are sent to your bank 3 working days after the event ends.",
+      ],
+      [
+        "Can you make a discount code for my tables?",
+        '4) Print codes: in the Menu or Tables module tap "QR spots & printing", then "Print" for every active spot.',
+      ],
+    ]
+  ) {
+    for (const claims of [[], "fail"] as const) {
+      const out = await check({
+        host,
+        reply: text,
+        claims: claims as AriClaim[] | "fail",
+        objects: [],
+        read: brand({}),
+      });
+      assertEquals(out.text, text, `${host} | ${String(claims)}`);
+    }
+  }
   // Direct use (no records read wired): unchanged as before.
   for (const text of answers) {
     assertEquals(
