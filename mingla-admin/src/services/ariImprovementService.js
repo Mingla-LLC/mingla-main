@@ -101,3 +101,18 @@ export async function controlAriRollout(input, reason) {
     p_reason: reason,
   }));
 }
+
+// #3355 Wave D (D3): Ari gaps by type and week, and "Turn into eval".
+export async function loadAriGaps({ weeks = 8, type = null, limit = 100 } = {}) {
+  return unwrap(await supabase.rpc("ari_admin_capability_gap_events", {
+    p_weeks: weeks,
+    p_type: type,
+    p_limit: limit,
+  }));
+}
+
+export async function turnAriGapIntoEval(eventId) {
+  return unwrap(await supabase.rpc("ari_admin_gap_to_eval", {
+    p_event_id: eventId,
+  }));
+}

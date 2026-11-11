@@ -780,7 +780,15 @@
         "supabase/migrations/20280606043355_issue_3355_ari_search_feature_guide.sql",
         "supabase/migrations/20280606053355_issue_3355_feature_guide_wave_b.sql",
         "mingla-business/src/config/routes.ts",
-        "supabase/functions/_shared/ariTurnContext.ts"
+        "supabase/functions/_shared/ariTurnContext.ts",
+        "supabase/functions/_shared/ariMemory.ts",
+        "supabase/functions/_shared/ariGaps.ts",
+        "supabase/functions/_shared/ariPii.ts",
+        "supabase/migrations/20280606063355_issue_3355_ari_memory_notes.sql",
+        "supabase/migrations/20280606073355_issue_3355_ari_gap_logging.sql",
+        "supabase/migrations/20280606083355_issue_3355_feature_guide_wave_d.sql",
+        "mingla-admin/src/components/ari/AriGapsPanel.jsx",
+        "mingla-admin/src/lib/ariGaps.js"
       ]
     },
     {
