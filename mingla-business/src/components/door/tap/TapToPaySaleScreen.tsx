@@ -27,13 +27,13 @@ import {
   text as textTokens,
   typography,
 } from "../../../constants/designSystem";
+import { HELP_AND_SUPPORT_ROUTE } from "../../../constants/supportHostFacing";
 import {
   TAP_CARD_NEEDS_INSERT_COPY,
   TAP_PROCESSING_TEXT,
   TAP_SEND_RECEIPT,
   TAP_TIMED_OUT_COPY,
   TAP_UNKNOWN_RESULT_COPY,
-  TAP_TO_PAY_SHORT,
   tapPaidAfterCloseCopy,
   tapToPayName,
   tapReaderProblemCanRetry,
@@ -326,6 +326,12 @@ export const TapToPaySaleScreen = ({
     </View>
   );
 
+  // "Get help" on every failed result: the same Help & Support screen as
+  // Account → Settings → Help & Support. A push, so the sale stays underneath.
+  const openHelp = (): void => {
+    router.push(HELP_AND_SUPPORT_ROUTE as never);
+  };
+
   const payCodeAction = {
     label: "Show a pay code instead",
     onPress: () => void showPayCodeInstead(),
@@ -347,7 +353,7 @@ export const TapToPaySaleScreen = ({
     const device = currentTapToPayDevice();
     const belowFloor = isIosBelowTapFloor(device.os, device.version);
     const updateIos = (
-      <TapUpdateIos onUsePayCode={() => void showPayCodeInstead()} loading={payCodeBusy} />
+      <TapUpdateIos onUsePayCode={() => void showPayCodeInstead()} loading={payCodeBusy} onHelp={openHelp} />
     );
     if (availability.reason === "ios_update_required") return updateIos;
     if (!availability.available) {
@@ -362,27 +368,31 @@ export const TapToPaySaleScreen = ({
           <TapStatusView
             tone="neutral"
             icon={Platform.OS === "ios" ? "globe" : "tap"}
-            title={`${TAP_TO_PAY_SHORT} isn't available here`}
+            title={`${tapToPayName(Platform.OS)} isn't available here`}
             body="This brand can't take taps. Use a pay code instead. It works on any phone."
             primary={{ label: "Use a pay code", onPress: () => void showPayCodeInstead(), loading: payCodeBusy }}
+            onHelp={openHelp}
+            testID="tap-state-not_available"
           />
         );
       }
-      return <TapNotOnThisPhone onUsePayCode={() => void showPayCodeInstead()} loading={payCodeBusy} />;
+      return <TapNotOnThisPhone onUsePayCode={() => void showPayCodeInstead()} loading={payCodeBusy} onHelp={openHelp} />;
     }
     if (terminal.config.installing) return <TapConfiguringView progress={terminal.config.progress} />;
     if (terminal.status === "unavailable") {
-      return <TapNotOnThisPhone onUsePayCode={() => void showPayCodeInstead()} loading={payCodeBusy} />;
+      return <TapNotOnThisPhone onUsePayCode={() => void showPayCodeInstead()} loading={payCodeBusy} onHelp={openHelp} />;
     }
     if (terminal.status === "error") {
       return (
         <TapStatusView
           tone="neutral"
           icon={Platform.OS === "ios" ? "clock" : "tap"}
-          title="Tap to Pay didn't start"
+          title={tapReaderProblemTitle(Platform.OS)}
           body={`${terminal.errorMessage ?? "Try again."} Nothing was charged.`}
           primary={{ label: "Try again", onPress: terminal.retryInitialize }}
           secondary={payCodeAction}
+          onHelp={openHelp}
+          testID="tap-state-terminal_error"
         />
       );
     }
@@ -455,6 +465,7 @@ export const TapToPaySaleScreen = ({
             body={TAP_CARD_NEEDS_INSERT_COPY.body}
             primary={payCodeAction}
             secondary={{ label: "Try another card", onPress: () => void flowRef.current?.tryAnotherCard() }}
+            onHelp={openHelp}
             testID="tap-state-needs_pin"
           />
         );
@@ -471,6 +482,7 @@ export const TapToPaySaleScreen = ({
             }}
             secondary={payCodeAction}
             link={receiptLink("declined", state.amount, state.cardLabel)}
+            onHelp={openHelp}
             testID="tap-state-declined"
           />
         );
@@ -484,6 +496,7 @@ export const TapToPaySaleScreen = ({
             primary={{ label: "Try again", onPress: () => void flowRef.current?.tryAnotherCard() }}
             secondary={payCodeAction}
             link={receiptLink("declined", state.amount, null)}
+            onHelp={openHelp}
             testID="tap-state-timed_out"
           />
         );
@@ -515,6 +528,7 @@ export const TapToPaySaleScreen = ({
             testID="tap-state-cancelled"
             primary={{ label: "Try again", onPress: () => void flowRef.current?.tryAnotherCard() }}
             secondary={payCodeAction}
+            onHelp={openHelp}
           />
         );
       case "ios_update_required":
@@ -538,6 +552,7 @@ export const TapToPaySaleScreen = ({
                 : payCodeAction
             }
             secondary={tapReaderProblemCanRetry(state.problem) ? payCodeAction : null}
+            onHelp={openHelp}
             testID="tap-state-reader_problem"
           />
         );
@@ -546,7 +561,7 @@ export const TapToPaySaleScreen = ({
         return belowFloor ? (
           updateIos
         ) : (
-          <TapNotOnThisPhone onUsePayCode={() => void showPayCodeInstead()} loading={payCodeBusy} />
+          <TapNotOnThisPhone onUsePayCode={() => void showPayCodeInstead()} loading={payCodeBusy} onHelp={openHelp} />
         );
       case "save_failed":
         return (
@@ -576,6 +591,7 @@ export const TapToPaySaleScreen = ({
             body={state.message}
             testID="tap-state-failed"
             primary={{ label: "Back to door sales", onPress: handleClose, testID: "tap-back-to-door" }}
+            onHelp={openHelp}
           />
         ) : (
           <TapStatusView
@@ -585,6 +601,7 @@ export const TapToPaySaleScreen = ({
             testID="tap-state-failed"
             primary={{ label: "Try again", onPress: () => void flowRef.current?.start() }}
             secondary={payCodeAction}
+            onHelp={openHelp}
           />
         );
       default: {

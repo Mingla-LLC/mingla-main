@@ -8,25 +8,29 @@
 import React from "react";
 import { Platform } from "react-native";
 
+import { tapToPayName } from "../../../constants/tapToPayName";
 import { TapStatusView } from "./TapStatusView";
 
-export const TAP_NOT_ON_THIS_PHONE_BODY_IOS =
-  "Tap to Pay needs an iPhone XS or newer on the latest iOS. Use a pay code instead. It works on any phone.";
+// iPhone says the full name (Apple); Android never says "iPhone".
+export const TAP_NOT_ON_THIS_PHONE_BODY_IOS = `${tapToPayName("ios")} needs an iPhone XS or newer on the latest iOS. Use a pay code instead. It works on any phone.`;
 export const TAP_NOT_ON_THIS_PHONE_BODY_ANDROID =
   "Tap to Pay needs an Android phone with NFC turned on and no developer options. Use a pay code instead. It works on any phone.";
 
 export interface TapNotOnThisPhoneProps {
   onUsePayCode: () => void;
   loading?: boolean;
+  /** Opens Help & Support ("Get help"). */
+  onHelp?: () => void;
 }
 
-export const TapNotOnThisPhone = ({ onUsePayCode, loading = false }: TapNotOnThisPhoneProps): React.ReactElement => (
+export const TapNotOnThisPhone = ({ onUsePayCode, loading = false, onHelp }: TapNotOnThisPhoneProps): React.ReactElement => (
   <TapStatusView
     tone="neutral"
     icon={Platform.OS === "ios" ? "settings" : "phone"}
     title="This phone can't take taps"
     body={Platform.OS === "ios" ? TAP_NOT_ON_THIS_PHONE_BODY_IOS : TAP_NOT_ON_THIS_PHONE_BODY_ANDROID}
     primary={{ label: "Use a pay code", onPress: onUsePayCode, loading, testID: "tap-use-pay-code" }}
+    onHelp={onHelp}
     testID="tap-not-on-this-phone"
   />
 );

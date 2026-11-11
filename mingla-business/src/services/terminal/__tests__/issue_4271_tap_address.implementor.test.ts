@@ -126,7 +126,7 @@ describe("#4271 tap-address: setup says exactly what to add", () => {
       }),
     ).resolves.toEqual({ kind: "failed", message: TAP_ADDRESS_MISSING_COPY });
     expect(TAP_ADDRESS_MISSING_COPY).toBe(
-      "Add your brand's full address (street, city, state and ZIP) in brand settings, then set up Tap to Pay again.",
+      "Add your brand's full address (street, city, state and ZIP) in brand settings, then run setup again.",
     );
   });
 
