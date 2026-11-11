@@ -324,11 +324,6 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true, onCo
       )
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "support_internal_threads" },
-        () => { if (mountedRef.current) void loadQueue(); },
-      )
-      .on(
-        "postgres_changes",
         { event: "*", schema: "public", table: "support_product_signals" },
         () => { if (mountedRef.current) void loadQueue(); },
       )

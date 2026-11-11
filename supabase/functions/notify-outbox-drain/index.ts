@@ -34,6 +34,8 @@ import {
   ISSUE_4111_EMAIL_CATEGORIES,
   ISSUE_4111_ENQUIRY_CATEGORIES,
 } from "../_shared/issue4111EnquiryNotifications.ts";
+// #4382 — customer-facing support notifications.
+import { ISSUE_4382_SUPPORT_CATEGORIES } from "../_shared/issue4382SupportNotifications.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -127,6 +129,7 @@ const ISSUE_3720_DURABLE_CATEGORIES = new Set([
   "admin.team_mention",
   ...ISSUE_3988_ALERT_CATEGORIES,
   ...ISSUE_4111_ENQUIRY_CATEGORIES,
+  ...ISSUE_4382_SUPPORT_CATEGORIES,
 ]);
 const TERMINAL_DELIVERY_STATUSES = new Set([
   "sent",

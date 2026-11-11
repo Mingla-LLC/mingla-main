@@ -21,13 +21,11 @@ export function createClientRequestId() {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
+// [TRANSITIONAL] #4382 Wave 1 — staff threads are internal support tickets
+// now (support_tickets.visibility = 'internal') and arrive with the ticket
+// list. Exit: Wave 2 rebuilds the inbox and removes this and its callers.
 export async function listInternalSupportThreads() {
-  const result = await supabase
-    .from("support_internal_threads")
-    .select("id, subject, details, status, priority, linked_user_id, brand_id, brand_group_context, assigned_staff_id, next_update_at, next_update_note, created_by, created_at, updated_at, resolved_at, revision")
-    .order("updated_at", { ascending: false })
-    .limit(200);
-  return unwrap(result, "Couldn't load staff-created tickets") || [];
+  return [];
 }
 
 export async function listProductSignals() {
@@ -54,32 +52,60 @@ export async function listProductSignals() {
   return signals.map((signal) => ({ ...signal, sources: bySignal.get(signal.id) || [] }));
 }
 
-export async function createInternalSupportThread(input) {
-  const result = await supabase.rpc("issue_3720_create_internal_thread", {
+// #4382 — one staff create for every visibility (internal | person | brand).
+// Exact parameters: see issue_4382_create_staff_ticket.
+export async function createStaffSupportTicket(input) {
+  const result = await supabase.rpc("issue_4382_create_staff_ticket", {
     p_client_request_id: input.clientRequestId,
+    p_visibility: input.visibility,
     p_subject: input.subject,
     p_details: input.details,
-    p_customer_email: input.customerEmail || null,
+    p_requester_user_id: input.requesterUserId || null,
     p_brand_id: input.brandId || null,
-    p_brand_group_context: input.brandGroupContext || null,
-    p_priority: input.priority,
-    p_next_update_at: input.nextUpdateAt,
-    p_next_update_note: input.nextUpdateNote,
+    p_segment: input.segment || null,
+    p_priority: input.priority || "normal",
+    p_product_area: input.productArea || null,
+    p_assigned_staff_id: input.assignedStaffId || null,
+    p_next_update_at: input.nextUpdateAt || null,
+    p_next_update_note: input.nextUpdateNote || null,
+    p_first_message: input.firstMessage || null,
+    p_attachment_ids: input.attachmentIds || [],
   });
-  return unwrap(result, "Couldn't create the staff ticket");
+  return unwrap(result, "Couldn't create the support ticket");
+}
+
+// [TRANSITIONAL] #4382 Wave 1 — the old modal's two calls, mapped onto the one
+// staff create. The customer email and brand group context ride in the
+// internal note. Exit: Wave 2 replaces InternalTicketModal with the new form.
+export async function createInternalSupportThread(input) {
+  const extra = [
+    input.customerEmail ? `Customer: ${input.customerEmail}` : null,
+    input.brandGroupContext ? `Brand group: ${input.brandGroupContext}` : null,
+  ].filter(Boolean).join("\n");
+  return createStaffSupportTicket({
+    clientRequestId: input.clientRequestId,
+    visibility: "internal",
+    subject: input.subject,
+    details: extra ? `${input.details}\n\n${extra}` : input.details,
+    brandId: input.brandId,
+    priority: input.priority,
+    nextUpdateAt: input.nextUpdateAt,
+    nextUpdateNote: input.nextUpdateNote,
+  });
 }
 
 export async function createBrandVisibleSupportTicket(input) {
-  const result = await supabase.rpc("issue_3988_create_brand_support_ticket", {
-    p_client_request_id: input.clientRequestId,
-    p_subject: input.subject,
-    p_details: input.details,
-    p_brand_id: input.brandId,
-    p_priority: input.priority,
-    p_next_update_at: input.nextUpdateAt,
-    p_next_update_note: input.nextUpdateNote,
+  return createStaffSupportTicket({
+    clientRequestId: input.clientRequestId,
+    visibility: "brand",
+    subject: input.subject,
+    details: input.details,
+    brandId: input.brandId,
+    priority: input.priority,
+    nextUpdateAt: input.nextUpdateAt,
+    nextUpdateNote: input.nextUpdateNote,
+    firstMessage: input.details,
   });
-  return unwrap(result, "Couldn't create the brand-visible support ticket");
 }
 
 export async function setSupportNextUpdate(input) {
@@ -93,23 +119,15 @@ export async function setSupportNextUpdate(input) {
   return unwrap(result, "Couldn't set the next update");
 }
 
-export async function updateInternalSupportThread(input) {
-  const result = await supabase.rpc("issue_3720_update_internal_thread", {
-    p_thread_id: input.threadId,
-    p_expected_revision: input.expectedRevision,
-    p_status: input.status,
-    p_priority: input.priority,
-  });
-  return unwrap(result, "Couldn't update the staff ticket");
+// [TRANSITIONAL] #4382 Wave 1 — staff threads no longer exist, so nothing
+// reaches these (listInternalSupportThreads returns none). They refuse
+// rather than call a removed function. Exit: Wave 2 deletes them.
+export async function updateInternalSupportThread() {
+  throw new Error("Staff threads are support tickets now. Reload the Support desk.");
 }
 
-export async function reassignInternalSupportThread(input) {
-  const result = await supabase.rpc("issue_3988_reassign_internal_thread", {
-    p_thread_id: input.threadId,
-    p_expected_revision: input.expectedRevision,
-    p_assigned_staff_id: input.assignedStaffId,
-  });
-  return unwrap(result, "Couldn't reassign the staff ticket");
+export async function reassignInternalSupportThread() {
+  throw new Error("Staff threads are support tickets now. Reload the Support desk.");
 }
 
 export async function reassignProductSignal(input) {

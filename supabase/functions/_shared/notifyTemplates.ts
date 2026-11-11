@@ -20,6 +20,10 @@ import {
   renderIssue4111Message,
   renderIssue4111SubscribeSms,
 } from "./issue4111EnquiryNotifications.ts";
+import {
+  isIssue4382SupportCategory,
+  renderIssue4382Message,
+} from "./issue4382SupportNotifications.ts";
 
 export interface RenderedMessage {
   push: { title: string; body: string };
@@ -227,6 +231,10 @@ export function renderCategoryMessage(
   }
   if (categoryKey === ISSUE_4111_SUBSCRIBE_SMS_CATEGORY) {
     return renderIssue4111SubscribeSms(payload);
+  }
+  // #4382 — customer-facing support copy lives with its categories.
+  if (isIssue4382SupportCategory(categoryKey)) {
+    return renderIssue4382Message(categoryKey, payload);
   }
   // #3682 wave 2 — account invites and campaign push name the brand and why.
   if (isBrandReachCategory(categoryKey)) {

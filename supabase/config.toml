@@ -343,6 +343,15 @@ verify_jwt = true
 [functions.notify-support]
 verify_jwt = false
 
+# #4382 — daily pg_cron worker for unsent support uploads, and the one-off
+# beta feedback storage copy. Both are service-role only: the gateway is open
+# to the service-role bearer and each handler compares it in code.
+[functions.support-attachment-cleanup]
+verify_jwt = false
+
+[functions.support-beta-feedback-import]
+verify_jwt = false
+
 # ORCH-1150 — public-submit-rsvp is the anon-capable guest RSVP write (Going/
 # Not-going) for event_type=rsvp events. Public route (verify_jwt=false): the
 # /e/ public page + the consumer deck call it. It runs under service-role and

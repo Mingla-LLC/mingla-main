@@ -115,6 +115,7 @@ Deno.test("#3720 Admin source has no browser GitHub mutation path and keeps cust
   assertMatch(migration, /state text NOT NULL DEFAULT 'draft'/);
   assertNotMatch(migration, /FUNCTION public[.]issue_3720_[^(]*send/i);
   assertMatch(edge, /Deno[.]env[.]get\("SPRINT_ROLLOVER_TOKEN"\)/);
-  assertMatch(edge, /admin_team_my_access/);
+  // #4382: the edge and the Product RPCs share one rule, is_product_operator.
+  assertMatch(edge, /rpc\("is_product_operator"\)/);
   assert(edge.includes("issue_3720_apply_product_avengers_snapshot"));
 });

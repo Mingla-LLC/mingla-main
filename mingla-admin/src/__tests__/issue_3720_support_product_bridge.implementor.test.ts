@@ -22,24 +22,24 @@ Deno.test("the inbox distinguishes live chats from staff-created internal ticket
   assertMatch(page, /Support inbox/);
   assertMatch(page, /No customer linked/);
   assertMatch(page, /Internal only · no customer message was sent/);
-  assertMatch(page, /table: "support_internal_threads"/);
+  // [TEST-MOD #4382] staff threads are internal tickets; no separate table.
+  assertNotMatch(page, /table: "support_internal_threads"/);
   assertMatch(page, /table: "support_product_signals"/);
 });
 
-Deno.test("staff replies fail closed until an active next-update promise exists", () => {
-  assertMatch(page, /Set the next update first/);
-  assertMatch(page, /function hasActiveNextUpdate\(ticket\)/);
-  assertMatch(page, /disabled=\{acting \|\| !reply\.trim\(\) \|\| !hasActiveNextUpdate\(selectedTicket\)\}/);
-  assertMatch(supportSend, /senderIsStaff && \(!Number\.isFinite\(nextUpdateMs\) \|\| nextUpdateMs <= Date\.now\(\)\)/);
-  assertMatch(supportSend, /next_update_required/);
+// [TEST-MOD #4382] Staff may now reply with no promise ("Send and wait" sets
+// one); the server gate is gone. The Wave 1 page keeps its own check until the
+// Wave 2 composer replaces it.
+Deno.test("staff replies no longer need a promise on the server; Send and wait sets one", () => {
+  assertNotMatch(supportSend, /next_update_required/);
+  assertMatch(supportSend, /p_wait_until: send\.setWaiting\?\.nextUpdateAt \?\? null/);
   assertMatch(page, /actorMode:\s*"staff"/);
 });
 
 Deno.test("workflow writes use gated RPCs and never a browser table mutation", () => {
   for (const rpc of [
-    "issue_3720_create_internal_thread",
+    "issue_4382_create_staff_ticket",
     "issue_3720_set_next_update",
-    "issue_3720_update_internal_thread",
     "issue_3720_update_product_signal",
   ]) assertMatch(service, new RegExp(`rpc\\("${rpc}"`));
   for (const rpc of [

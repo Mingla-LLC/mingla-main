@@ -2121,6 +2121,18 @@
       "required_bundle_fields": {},
       "required_top_level": []
     },
+    "support-attachment-cleanup": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "support-beta-feedback-import": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
     "support-set-status": {
       "migration_fallback_top_level": [],
       "optional_top_level": [],
