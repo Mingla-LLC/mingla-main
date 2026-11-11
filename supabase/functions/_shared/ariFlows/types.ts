@@ -34,7 +34,13 @@ export type FlowRunStatus =
   | "blocked"
   | "completed"
   | "cancelled"
-  | "expired";
+  | "expired"
+  /**
+   * #3355 Wave A (A2) — set aside while the host asked for something else.
+   * Not live (typed turns go to the agent loop); only the host's Resume
+   * choice brings it back. Expires like any idle run (A5).
+   */
+  | "parked";
 
 export const LIVE_FLOW_STATUSES: ReadonlySet<FlowRunStatus> = new Set([
   "active",

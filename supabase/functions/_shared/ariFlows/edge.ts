@@ -36,14 +36,17 @@ import {
 } from "../ariContactImportWrite.ts";
 import { PLAN_PARTS, type PlanPartKey } from "../siteContracts/sitePlan.ts";
 import {
+  parkArtefact,
+  RESUME_CHOICE,
   runFlowStep,
   type RunnerOutcome,
   type RunnerTrigger,
 } from "./runner.ts";
+import type { FlowRequestHint } from "./requestRead.ts";
 import {
-  type FlowDisplacement,
   createFlowStore,
   FlowConflict,
+  type FlowDisplacement,
   FlowEngineUnavailable,
   type FlowStore,
 } from "./store.ts";
@@ -190,7 +193,8 @@ export function parseFlowPlace(value: unknown): FlowPlaceValue | null {
   const placeId = raw.place_id ?? null;
   if (
     placeId !== null &&
-    (typeof placeId !== "string" || !/^[A-Za-z0-9._:=+/-]{1,300}$/.test(placeId))
+    (typeof placeId !== "string" ||
+      !/^[A-Za-z0-9._:=+/-]{1,300}$/.test(placeId))
   ) return null;
   return {
     venue_name: venue,
@@ -227,8 +231,16 @@ export function flowStateOf(run: FlowRun | null): FlowStateView | null {
     run_id: run.id,
     flow_key: run.flow_key,
     status: run.status,
+    // #3355 Wave A: a parked run's one current card is its Resume card.
     current_artefact_id: live
       ? run.current_artefact?.artefact_id ?? null
+      : run.status === "parked"
+      ? parkArtefact(run).artefact_id
+      // #3355 Wave A (A3): a finished run's summary link stays tappable.
+      : run.status === "completed" &&
+          run.current_artefact?.kind === "summary" &&
+          run.current_artefact.options.length > 0
+      ? run.current_artefact.artefact_id
       : null,
     current_step_key: run.current_step_key,
     lease_owner_name: run.lease_held && !run.lease_held_by_me
@@ -472,9 +484,10 @@ async function readExperienceRow(
   const theme = row.theme && typeof row.theme === "object"
     ? row.theme as Record<string, unknown>
     : {};
-  const meta = theme.experience_meta && typeof theme.experience_meta === "object"
-    ? theme.experience_meta as Record<string, unknown>
-    : {};
+  const meta =
+    theme.experience_meta && typeof theme.experience_meta === "object"
+      ? theme.experience_meta as Record<string, unknown>
+      : {};
   const whenDraft = meta.when_draft && typeof meta.when_draft === "object"
     ? meta.when_draft as Record<string, unknown>
     : {};
@@ -612,8 +625,9 @@ function importCounts(value: unknown): ContactImportCounts | null {
     "alreadySuppressedCount",
   ] as const;
   if (keys.some((key) => typeof raw[key] !== "number")) return null;
-  return Object.fromEntries(keys.map((key) => [key, raw[key]])) as unknown as
-    ContactImportCounts;
+  return Object.fromEntries(
+    keys.map((key) => [key, raw[key]]),
+  ) as unknown as ContactImportCounts;
 }
 
 async function invokeContactImport(
@@ -940,6 +954,16 @@ export type FlowTurnDecision =
     state: FlowStateView | null;
   }
   | { kind: "stale"; next: FlowArtefact | null; state: FlowStateView | null }
+  /**
+   * #3355 Wave A (A2) — the run was parked: the agent loop serves the
+   * owner's words this turn, and `resume` (the Resume card) goes with it.
+   */
+  | {
+    kind: "parked";
+    hint: FlowRequestHint | "repeated";
+    resume: FlowArtefact;
+    state: FlowStateView | null;
+  }
   /** #2830 P4: the owner's answer becomes one protected proposal. */
   | {
     kind: "propose";
@@ -1019,6 +1043,13 @@ function decisionFromOutcome(outcome: RunnerOutcome): FlowTurnDecision {
       };
     case "stale":
       return { kind: "stale", next: outcome.artefact, state };
+    case "parked":
+      return {
+        kind: "parked",
+        hint: outcome.hint,
+        resume: outcome.resume,
+        state,
+      };
     case "propose":
       return {
         kind: "propose",
@@ -1081,7 +1112,10 @@ export interface FlowTurnAttachment {
 export function contactListFromFiles(
   run: FlowRun,
   files: FlowTurnAttachment[],
-): { kind: "answer"; answer: FlowAnswer } | { kind: "unreadable"; text: string } {
+): { kind: "answer"; answer: FlowAnswer } | {
+  kind: "unreadable";
+  text: string;
+} {
   const readable = files.filter((file) => file.text && file.text.trim());
   if (readable.length === 0) {
     const pdf = files.some((file) => file.file_type === "pdf");
@@ -1238,6 +1272,9 @@ export async function decideFlowTurn(
       if (taken) return taken;
     }
     if (args.flowAnswer) {
+      if (!live && run && isResumeAnswer(run, args.flowAnswer)) {
+        return await resumeParkedRun(args, deps, run);
+      }
       if (!live) return { kind: "stale", next: null, state: flowStateOf(run) };
       return decisionFromOutcome(
         await runFlowStep(deps, {
@@ -1501,7 +1538,9 @@ async function takenOverReply(args: {
     if (error instanceof FlowEngineUnavailable) return null;
     throw error;
   }
-  if (!displaced || (!args.force && displaced.notified_at !== null)) return null;
+  if (!displaced || (!args.force && displaced.notified_at !== null)) {
+    return null;
+  }
   if (displaced.notified_at === null) {
     await args.store.markDisplacementNotified?.(displaced.id);
   }
@@ -1512,6 +1551,72 @@ async function takenOverReply(args: {
     artefact: null,
     state: flowStateOf(run),
     classification: "flow_engine_taken_over",
+  };
+}
+
+/** #3355 Wave A — the Resume card's answer, for this chat's parked run. */
+export function isResumeAnswer(run: FlowRun, answer: FlowAnswer): boolean {
+  if (run.status !== "parked" || answer.choice_id !== RESUME_CHOICE) {
+    return false;
+  }
+  const card = parkArtefact(run);
+  return answer.run_id === run.id && answer.question_id === card.question_id &&
+    answer.step_key === card.step_key;
+}
+
+/**
+ * #3355 Wave A — Resume: the parked run is live again in this chat and the
+ * owner is shown the step they left (the same card id, so it stays the one
+ * answerable copy). A run that expired, or a chat that started something
+ * else meanwhile, says so in plain words.
+ */
+async function resumeParkedRun(
+  args: FlowTurnArgs,
+  deps: { store: FlowStore; probes: FlowProbeDeps },
+  parked: FlowRun,
+): Promise<FlowTurnDecision> {
+  const title = parkArtefact(parked).title.replace(/^Resume /, "");
+  if (!deps.store.resume) return { kind: "stale", next: null, state: null };
+  const closed = (run: FlowRun | null): FlowTurnDecision => ({
+    kind: "reply",
+    text:
+      `That ${title} was closed, so there's nothing to pick up. Tell me what you'd like to do and I'll start from here.`,
+    artefact: null,
+    state: flowStateOf(run),
+    classification: "flow_engine_resume_closed",
+  });
+  let run: FlowRun;
+  try {
+    run = await deps.store.resume(parked.id, args.conversationId);
+  } catch (error) {
+    if (error instanceof FlowConflict) {
+      return closed(await deps.store.getById(parked.id).catch(() => null));
+    }
+    throw error;
+  }
+  // Idle past the rule: it expired instead of coming back (A5).
+  if (!LIVE_FLOW_STATUSES.has(run.status)) return closed(run);
+  const outcome = await runFlowStep(deps, {
+    run,
+    trigger: "resume",
+    brandName: args.brand!.name,
+  });
+  const decision = decisionFromOutcome(outcome);
+  if (decision.kind !== "none") return decision;
+  const current = outcome.run;
+  const artefact = LIVE_FLOW_STATUSES.has(current.status)
+    ? current.current_artefact
+    : null;
+  return {
+    kind: "reply",
+    text: artefact
+      ? `Okay, back to your ${title}.\n\n${artefact.text}`
+      : current.status === "awaiting_approval"
+      ? `Okay, back to your ${title}. Your change is waiting on its confirmation card above.`
+      : `Okay, back to your ${title}.`,
+    artefact,
+    state: flowStateOf(current),
+    classification: "flow_engine_resumed",
   };
 }
 
@@ -1535,6 +1640,8 @@ export async function staleFlowAnswer(args: {
       run.current_question_id === args.answer.question_id &&
       run.current_step_key === args.answer.step_key
     ) return null;
+    // #3355 Wave A: the Resume card of this chat's parked run is current.
+    if (run && isResumeAnswer(run, args.answer)) return null;
     if (!run || !LIVE_FLOW_STATUSES.has(run.status)) {
       const taken = await takenOverReply({
         store: args.store,

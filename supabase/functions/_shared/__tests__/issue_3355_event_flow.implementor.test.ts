@@ -428,9 +428,9 @@ async function toCreateProposal(world: World, store: MemoryStore) {
     trigger: "turn",
     brandName: BRAND_NAME,
   });
-  assertEquals(first.kind, "artefact");
-  assertEquals((await cur(store)).current_step_key, "brand_can_wait");
-  const end = await answer(world, store, (r) => choice(r, "not_now"));
+  // #3355 Wave A (A3, D4a): what can wait is never a step, so the first card
+  // is the event's own.
+  const end = first;
   assertEquals(end.kind, "artefact");
   if (end.kind !== "artefact") throw new Error("no end card");
   // Title, start and time zone came from the request and the brand.
@@ -677,7 +677,6 @@ Deno.test("P7 adversarial: a same-title draft on the same day is offered back, n
     trigger: "turn",
     brandName: BRAND_NAME,
   });
-  await answer(world, store, (r) => choice(r, "not_now"));
   const created = new Date(Date.now() - 3_600_000).toISOString();
   world.titled = [{
     ...rowFrom({ title: "lantern supper", timezone: "Europe/London" }),
@@ -771,12 +770,11 @@ Deno.test("P7 adversarial: the time zone is the brand's own, never the device's 
   });
   const usStore = new MemoryStore();
   const run = await startRun(usStore, "Create an event called Rooftop Social");
-  await runFlowStep({ store: usStore, probes: probesFor(us) }, {
+  const asked = await runFlowStep({ store: usStore, probes: probesFor(us) }, {
     run,
     trigger: "turn",
     brandName: BRAND_NAME,
   });
-  const asked = await answer(us, usStore, (r) => choice(r, "not_now"));
   assert(asked.kind === "artefact");
   assertEquals(asked.artefact.step_key, "event_timezone");
   assertMatch(asked.artefact.text, /What time zone is this event in\?/);
@@ -804,12 +802,11 @@ Deno.test("P7 adversarial: no end time is saved unless the owner gives or picks 
     store,
     "Create an event for next Friday at 7pm called Lantern Supper",
   );
-  await runFlowStep({ store, probes: probesFor(world) }, {
+  const end = await runFlowStep({ store, probes: probesFor(world) }, {
     run,
     trigger: "turn",
     brandName: BRAND_NAME,
   });
-  const end = await answer(world, store, (r) => choice(r, "not_now"));
   assert(end.kind === "artefact");
   assertEquals(end.artefact.step_key, "event_end", "asked, never assumed");
   // Resume / reload never fills it in.
@@ -869,7 +866,6 @@ Deno.test("P7 adversarial: a home-like address asks, defaulting to ticket holder
     trigger: "turn",
     brandName: BRAND_NAME,
   });
-  await answer(world, store, (r) => choice(r, "not_now"));
   await answer(world, store, (r) => choice(r, "in_person"));
   const privacy = await answer(world, store, (r) =>
     form(r, {
@@ -921,12 +917,12 @@ Deno.test("P7 adversarial: a stale question id changes nothing", async () => {
     brandName: BRAND_NAME,
   });
   const oldCard = await cur(store);
-  await answer(world, store, (r) => choice(r, "not_now"));
+  await answer(world, store, (r) => form(r, { response: "10:30pm" }));
   const before = await cur(store);
   const stale = await runFlowStep({ store, probes: probesFor(world) }, {
     run: before,
     trigger: "answer",
-    answer: { ...choice(oldCard, "not_now"), step_key: "brand_can_wait" },
+    answer: form(oldCard, { response: "11pm" }),
     brandName: BRAND_NAME,
   });
   assertEquals(stale.kind, "stale");

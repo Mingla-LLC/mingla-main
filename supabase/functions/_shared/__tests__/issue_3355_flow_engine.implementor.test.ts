@@ -6,9 +6,10 @@
 //
 // Drives the shipped modules with an in-memory run store that applies the
 // same rules as the SQL functions (lease, compare-and-swap, evidence):
-//   * start → readiness preamble card → "Not now" (brand-wide set-aside, the
+//   * start → what can wait is noted, never asked (#3355 Wave A, D4a; the
 //     items stay on Home) → the owner's original request goes to the event
-//     lane → confirm of the created event returns an evidence-backed summary;
+//     lane → confirm of the created event returns an evidence-backed summary
+//     that names what can wait once;
 //   * reload/resume returns the same card (no duplicate), a stale answer is
 //     refused with the current card, concurrent requests get "busy", an
 //     expired lease lets a second device continue, a teammate is view-only;
@@ -75,6 +76,8 @@ interface World {
   canSell: boolean;
   brandWideNotNow: Set<string>;
   events: Set<string>;
+  /** #3355 Wave A: items made to block the draft, for an open handoff card. */
+  blockDraft?: Set<string>;
 }
 
 const CATALOGUE: Array<{
@@ -155,7 +158,10 @@ function readinessFor(
       : entry.key === "money.can_sell"
       ? world.canSell
       : world.set.has(entry.key);
-    const blocks = !!action && entry.blocking_for.includes(action) && !done;
+    const blocks = !!action &&
+      (entry.blocking_for.includes(action) ||
+        (action === "draft_save" && !!world.blockDraft?.has(entry.key))) &&
+      !done;
     const deferred = world.brandWideNotNow.has(entry.key) && !done;
     return {
       key: entry.key,
@@ -459,55 +465,31 @@ function answerFor(run: FlowRun, choice: string) {
 
 // ── Happy path ──────────────────────────────────────────────────────────────
 
-Deno.test("P3 happy: create event → preamble card → not now → event lane → confirm returns an evidence-backed summary", async () => {
+Deno.test("P3 happy (Wave A): create event → what can wait is noted, not asked → event lane → confirm returns an evidence-backed summary", async () => {
   const world = freshWorld();
   const store = new MemoryStore(OWNER);
   const log: string[] = [];
   const deps = { store, probes: probesFor(world, log) };
   const run = await startEventRun(store);
 
-  const first = await runFlowStep(deps, {
+  // #3355 Wave A (A3, D4a): items that can wait never form a step.
+  const answered = await runFlowStep(deps, {
     run,
     trigger: "turn",
-    brandName: "Lantern",
-  });
-  assertEquals(first.kind, "artefact");
-  if (first.kind !== "artefact") return;
-  const card: FlowArtefact = first.artefact;
-  assertEquals(card.step_key, "brand_can_wait");
-  assertEquals(card.kind, "question");
-  assertEquals(
-    card.artefact_id,
-    `q:${run.id}:${card.question_id}`,
-    "rendition ids are unique per question",
-  );
-  assertMatch(card.text, /Brand logo and Contact phone/);
-  assertMatch(card.text, /stay on your Home to-do list/);
-  // Irrelevant to an event: the Website-only plan approval never shows.
-  assertNotMatch(card.text, /Approved Website plan/);
-  assertEquals(card.options[0], {
-    id: "not_now",
-    label: "Not now, keep going",
-  });
-  const choices = flowChoices(card)!;
-  assertEquals(choices.question_id, card.question_id);
-
-  const answered = await runFlowStep(deps, {
-    run: await current(store),
-    trigger: "answer",
-    answer: answerFor(await current(store), "not_now"),
     brandName: "Lantern",
   });
   assertEquals(answered.kind, "delegate");
   if (answered.kind !== "delegate") return;
   assertEquals(answered.semantic_message, "Create an event");
-  assertMatch(answered.ack ?? "", /brand logo and contact phone for later/);
-  assertMatch(answered.ack ?? "", /stay on your Home to-do list/);
-  assertEquals(log.filter((l) => l.startsWith("set_aside:")), [
-    "set_aside:profile_photo",
-    "set_aside:contact_phone",
-  ]);
-  // A "not now" never completes the item: Home still lists it as missing.
+  const noted = (await current(store)).step_states.brand_can_wait;
+  assertEquals(noted.state, "done");
+  assertEquals(
+    (noted.evidence?.observed as { can_wait: string[] }).can_wait,
+    ["profile_photo", "contact_phone"],
+    "irrelevant to an event: the Website-only plan approval is never noted",
+  );
+  // Nothing was set aside on the owner's behalf; Home still lists it.
+  assertEquals(log.filter((l) => l.startsWith("set_aside:")), []);
   assertEquals(
     readinessFor(world, null).items.find((i) => i.key === "profile_photo")
       ?.severity,
@@ -586,7 +568,7 @@ Deno.test("P3 happy: every done the runner writes carries probe evidence", async
 
 Deno.test("P3 happy: reload resumes the open card — same id, no second card", async () => {
   const store = new MemoryStore(OWNER);
-  const deps = { store, probes: probesFor(freshWorld()) };
+  const deps = { store, probes: probesFor(freshWorld({ roleOk: false })) };
   const run = await startEventRun(store);
   const first = await runFlowStep(deps, {
     run,
@@ -615,7 +597,7 @@ Deno.test("P3 happy: reload resumes the open card — same id, no second card", 
 
 Deno.test("P3 adversarial: a stale question id is refused with the current card and changes nothing", async () => {
   const store = new MemoryStore(OWNER);
-  const deps = { store, probes: probesFor(freshWorld()) };
+  const deps = { store, probes: probesFor(freshWorld({ roleOk: false })) };
   const run = await startEventRun(store);
   await runFlowStep(deps, { run, trigger: "turn", brandName: "L" });
   const live = await current(store);
@@ -623,7 +605,7 @@ Deno.test("P3 adversarial: a stale question id is refused with the current card 
     run: live,
     trigger: "answer",
     answer: {
-      ...answerFor(live, "not_now"),
+      ...answerFor(live, "check"),
       question_id: "99999999-9999-4999-8999-999999999999",
     },
     brandName: "L",
@@ -637,14 +619,14 @@ Deno.test("P3 adversarial: a stale question id is refused with the current card 
   }
   const after = await current(store);
   assertEquals(after.revision, live.revision);
-  assertEquals(after.step_states.brand_can_wait.state, "asked");
+  assertEquals(after.step_states.brand_blockers.state, "human_action");
 
   // The pre-claim guard says the same without touching the run.
   const preClaim = await staleFlowAnswer({
     store,
     conversationId: CHAT,
     answer: {
-      ...answerFor(live, "not_now"),
+      ...answerFor(live, "check"),
       question_id: "99999999-9999-4999-8999-999999999999",
     },
   });
@@ -653,7 +635,7 @@ Deno.test("P3 adversarial: a stale question id is refused with the current card 
     await staleFlowAnswer({
       store,
       conversationId: CHAT,
-      answer: answerFor(live, "not_now"),
+      answer: answerFor(live, "check"),
     }),
     null,
     "the current card's answer is not stale",
@@ -662,7 +644,7 @@ Deno.test("P3 adversarial: a stale question id is refused with the current card 
   const tampered = await runFlowStep(deps, {
     run: live,
     trigger: "answer",
-    answer: { ...answerFor(live, "not_now"), choice_id: "fix:approved_plan" },
+    answer: { ...answerFor(live, "check"), choice_id: "not_now" },
     brandName: "L",
   });
   assertEquals(tampered.kind, "stale");
@@ -672,7 +654,7 @@ Deno.test("P3 adversarial: two concurrent requests — one works, the other is b
   const store = new MemoryStore(OWNER);
   let release!: () => void;
   const gate = new Promise<void>((resolve) => (release = resolve));
-  const world = freshWorld();
+  const world = freshWorld({ roleOk: false });
   const slow: FlowProbeDeps = {
     ...probesFor(world),
     async readiness(action) {
@@ -713,7 +695,7 @@ Deno.test("P3 adversarial: an expired lease lets a second device continue; a tea
   // Device A leased and vanished.
   await store.lease(run.id, "device-a", 30);
   const blocked = await runFlowStep(
-    { store, probes: probesFor(freshWorld()) },
+    { store, probes: probesFor(freshWorld({ roleOk: false })) },
     {
       run,
       trigger: "turn",
@@ -724,7 +706,7 @@ Deno.test("P3 adversarial: an expired lease lets a second device continue; a tea
   store.clock += 31_000;
   const continued = await runFlowStep({
     store,
-    probes: probesFor(freshWorld()),
+    probes: probesFor(freshWorld({ roleOk: false })),
   }, {
     run,
     trigger: "turn",
@@ -735,7 +717,7 @@ Deno.test("P3 adversarial: an expired lease lets a second device continue; a tea
   const mate = new MemoryStore(MATE, store);
   const viewOnly = await runFlowStep({
     store: mate,
-    probes: probesFor(freshWorld()),
+    probes: probesFor(freshWorld({ roleOk: false })),
   }, {
     run: (await mate.getForConversation(CHAT))!,
     trigger: "resume",
@@ -749,24 +731,20 @@ Deno.test("P3 adversarial: an expired lease lets a second device continue; a tea
 });
 
 Deno.test("P3 adversarial: 'I've uploaded it' with nothing uploaded keeps the handoff and says so", async () => {
-  const world = freshWorld();
+  // #3355 Wave A: what can wait is never a card, so the handoff here is an
+  // item that blocks the draft and the owner can fix.
+  const world = freshWorld({ blockDraft: new Set(["profile_photo"]) });
   const store = new MemoryStore(OWNER);
   const deps = { store, probes: probesFor(world) };
   const run = await startEventRun(store);
-  await runFlowStep(deps, { run, trigger: "turn", brandName: "L" });
-  const fix = await runFlowStep(deps, {
-    run: await current(store),
-    trigger: "answer",
-    answer: answerFor(await current(store), "fix:profile_photo"),
-    brandName: "L",
-  });
+  const fix = await runFlowStep(deps, { run, trigger: "turn", brandName: "L" });
   assertEquals(fix.kind, "artefact");
   if (fix.kind !== "artefact") return;
   assertEquals(fix.artefact.kind, "handoff");
   assertEquals(fix.artefact.options.map((o) => o.id), [
     "open",
     "check",
-    "not_now",
+    "cancel",
   ]);
   const handoffId = fix.artefact.artefact_id;
 
@@ -794,11 +772,9 @@ Deno.test("P3 adversarial: 'I've uploaded it' with nothing uploaded keeps the ha
     answer: answerFor(await current(store), "check"),
     brandName: "L",
   });
-  assertEquals(verified.kind, "artefact", "the remaining item is asked next");
-  if (verified.kind === "artefact") {
-    assertMatch(verified.text, /^I checked; your brand logo is there now\./);
-    assertMatch(verified.artefact.text, /Contact phone/);
-    assertNotMatch(verified.artefact.text, /Brand logo/);
+  assertEquals(verified.kind, "delegate", "sorted: the flow moves on");
+  if (verified.kind === "delegate") {
+    assertMatch(verified.ack ?? "", /^I checked; your brand logo is sorted now\./);
   }
 });
 
@@ -1140,7 +1116,7 @@ Deno.test("P3 happy: confirm of the created event returns the next step, saved a
 });
 
 Deno.test("P3 happy: resume returns the open card and writes nothing; flag off returns nothing", async () => {
-  const world = freshWorld();
+  const world = freshWorld({ roleOk: false });
   const store = new MemoryStore(OWNER);
   const run = await startEventRun(store);
   const first = await runFlowStep({ store, probes: probesFor(world) }, {

@@ -218,15 +218,49 @@ const NOT_A_CREATE =
   /\b(?:show me|list|how many|edit|update|change|rename|delete|remove|cancel|publish|duplicate|copy|website|flyer|poster|campaign|blast|ad|ads)\b/i;
 
 /**
+ * #3355 Wave A (A1) — things a host creates that are NOT an offering. When a
+ * create verb's object is one of these ("create discount codes … of my
+ * event", "set up ticket tiers for my event"), the offering noun later in the
+ * sentence only says what the thing is FOR, so no offering flow starts and
+ * the model reads the request (production 2026-11-10, run 8a841954).
+ */
+const NON_OFFERING_OBJECT =
+  /\b(?:discounts?|(?:discount|promo|coupon|voucher|access|referral)\s+codes?|codes?|promos?|promotions?|coupons?|vouchers?|sale\s+prices?|ticket\s+(?:tiers?|types?|prices?)|tiers?|tickets?|refunds?|payouts?|guest\s*lists?|invites?|invitations?|team\s+members?|teammates?|scanners?|campaigns?|emails?|messages?|blasts?|reports?|websites?|flyers?|posters?)\b/i;
+const CREATE_VERB_ALL = new RegExp(CREATE_VERB.source, "gi");
+const ANY_OFFERING_NOUN = new RegExp(
+  OFFERING_NOUNS.map(([, noun]) => noun.source).join("|"),
+  "i",
+);
+
+/** The first create verb whose object is a non-offering thing, if any. */
+function createsNonOffering(normalized: string): boolean {
+  for (const verb of normalized.matchAll(CREATE_VERB_ALL)) {
+    const after = normalized.slice((verb.index ?? 0) + verb[0].length);
+    // The verb's clause: up to the next sentence break or "and <verb>".
+    const clause = after.split(/[.;!?]|\band\b(?=\s+(?:then\s+)?[a-z]+)/i)[0]
+      .slice(0, 120);
+    const object = NON_OFFERING_OBJECT.exec(clause);
+    if (!object) continue;
+    const offering = ANY_OFFERING_NOUN.exec(clause);
+    // "create discount codes … for my event": the code comes first.
+    if (!offering || object.index < offering.index) return true;
+  }
+  return false;
+}
+
+/**
  * Deterministic offering intent ("create an event", "I want to plan a trip").
  * Questions about offerings ("how do I create an event?"), reads ("list my
  * events") and edits are not intents; the verb must come before the noun.
+ * #3355 Wave A: a create verb whose object is a non-offering thing (a code,
+ * a ticket tier, a refund…) is not an offering intent either.
  */
 export function classifyOfferingIntent(text: string): OfferingFlowKey | null {
   const normalized = text.replace(/\s+/g, " ").trim();
   if (!normalized || normalized.length > 600) return null;
   if (QUESTION_LEAD.test(normalized)) return null;
   if (NOT_A_CREATE.test(normalized)) return null;
+  if (createsNonOffering(normalized)) return null;
   const verb = CREATE_VERB.exec(normalized);
   if (!verb) return null;
   let best: { key: OfferingFlowKey; index: number } | null = null;

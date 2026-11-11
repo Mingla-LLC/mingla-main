@@ -183,7 +183,10 @@ import {
   OWNER_PROSE_FALLBACK,
   reconciledApprovalLine,
 } from "../_shared/ariOwnerCopy.ts";
-import { sweepInterruptedAriTurnAttemptsForUser } from "../_shared/agentTurnSweep.ts";
+import {
+  sweepIdleAriFlowRunsForUser,
+  sweepInterruptedAriTurnAttemptsForUser,
+} from "../_shared/agentTurnSweep.ts";
 import {
   canCompleteResearchFromSearchIndex,
   isStandalonePublicResearchRequest,
@@ -1170,6 +1173,15 @@ async function handle(req: Request): Promise<Response> {
     );
   }
 
+  // #3355 Wave A (A5): a flow run idle for a day ends, so it never greets
+  // the host again or holds this chat. Best effort: a failed sweep is
+  // logged and the turn goes on.
+  try {
+    await sweepIdleAriFlowRunsForUser({ admin: serviceClient, userId });
+  } catch (error) {
+    logError("agent-chat flow run sweep failed", error, { fn: "agent-chat" });
+  }
+
   // #3355 P1 (D-13): an approval stuck past its executing lease is settled
   // from its receipt (or marked unknown) before this turn is judged.
   await reconcileStalePendingActions(userId, serviceClient);
@@ -1840,6 +1852,11 @@ async function handle(req: Request): Promise<Response> {
       artefact: FlowArtefact | null;
       state: FlowStateView | null;
     } | null = null;
+    // #3355 Wave A — this turn parked the chat's flow run (A2).
+    let flowParked: {
+      state: FlowStateView | null;
+      hint: string;
+    } | null = null;
     const flowSideFailure = (): Promise<Response> => {
       const sideChoices = flowSide?.artefact
         ? flowChoices(flowSide.artefact)
@@ -1906,6 +1923,27 @@ async function handle(req: Request): Promise<Response> {
           artefact: decision.artefact ?? null,
           state: decision.state,
         };
+      }
+      if (decision.kind === "parked") {
+        // #3355 Wave A (A2, I-ARI-NO-JAIL): the owner asked for something
+        // else while a flow card was open. The run is parked; its Resume card
+        // is said first (as Ari's own row) and the agent loop below serves
+        // the owner's words in this same turn.
+        flowParked = { state: decision.state, hint: decision.hint };
+        await persistFlowRow({
+          service: serviceClient,
+          userId,
+          conversationId,
+          text: assertOwnerCopy(decision.resume.text, {
+            fallback: "I've paused this setup so I can help with that first.",
+            surface: "flow_parked",
+            mode: "prose",
+          }),
+          artefact: decision.resume,
+          state: decision.state,
+          promptVersion: TENANT_CONTEXT_VERSION,
+          modelVersion: ARI_MODEL_VERSION,
+        });
       }
       if (decision.kind === "propose") {
         // #2830 P4: the owner's card answer becomes ONE protected proposal
@@ -3791,11 +3829,13 @@ ${boundedAgentContext}
         text: resumePrompt
           ? `${safeLoopText}\n\nBack to your event plan: ${resumePrompt}`
           : safeLoopText,
-        classification: "agent_loop",
+        classification: flowParked ? "agent_loop_flow_parked" : "agent_loop",
         startedAt: turnStartedAt,
         choices: (readInterruption || questionInterruption) && liveChoices
           ? liveChoices
           : undefined,
+        // #3355 Wave A: the parked run's Resume card stays the current one.
+        ...(flowParked ? { flowState: flowParked.state } : {}),
         structuredData: {
           ...(websiteSetupPresentation
             ? { rendition: websiteSetupPresentation.rendition }

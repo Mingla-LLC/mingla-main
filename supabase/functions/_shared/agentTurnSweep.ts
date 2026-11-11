@@ -148,3 +148,29 @@ export async function loadAriTurnStatus(args: {
   if (eventsError) return { ok: false, code: "STATUS_UNAVAILABLE" };
   return { ok: true, attempt, events: events ?? [] };
 }
+
+/**
+ * #3355 Wave A (A5, I-ARI-RUNS-EXPIRE) — Ari flow runs end. Production
+ * 2026-11-10 had 7 of 7 runs still open and none finished; a stuck run greeted
+ * its host again. Every run this person started that has been idle for 24 h
+ * (database clock, `ari_flow_run_expire_after()`) becomes `expired`, through
+ * `ari_flow_runs_expire_idle` (migration 20280606013355). Runs with a live
+ * lease are never touched. Before that migration is applied the function is
+ * missing and nothing changes; any other failure is reported to the caller,
+ * which logs it and carries on (an old run never blocks a new turn).
+ */
+export async function sweepIdleAriFlowRunsForUser(args: {
+  admin: SupabaseClient;
+  userId: string;
+}): Promise<number> {
+  const { data, error } = await args.admin.rpc("ari_flow_runs_expire_idle", {
+    p_user_id: args.userId,
+  });
+  if (error) {
+    const missing = error.code === "PGRST202" || error.code === "42883" ||
+      /could not find the function|does not exist/i.test(error.message ?? "");
+    if (missing) return 0;
+    throw new Error("flow_run_sweep_failed");
+  }
+  return typeof data === "number" ? data : 0;
+}
