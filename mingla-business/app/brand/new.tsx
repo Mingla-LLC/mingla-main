@@ -28,6 +28,7 @@ import { useBrandListState } from "../../src/hooks/useBrandListShim";
 import { useBrandSetupStates } from "../../src/hooks/useBrandSetupStates";
 import { usePartnerStripeStatus } from "../../src/hooks/usePartnerStripe";
 import { decideBrandNewEntry } from "../../src/components/brand/brandNewEntry";
+import { setupFlowHop } from "../../src/services/brandSetupService";
 
 const first = (v: string | string[] | undefined): string | null => {
   const x = Array.isArray(v) ? v[0] : v;
@@ -113,7 +114,8 @@ export default function BrandNewRoute(): React.ReactElement {
     if (showsFlow && !flowOpened) setFlowOpened(true);
   }, [showsFlow, flowOpened]);
 
-  if (resume !== null) return <Redirect href={`/brand/${resume}/setup` as never} />;
+  // The web bank-setup return (`resume_brand`) is a hop inside the setup.
+  if (resume !== null) return <Redirect href={setupFlowHop(`/brand/${resume}/setup`) as never} />;
   return (
     <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: canvas.discover }}>
       <Suspense fallback={null}>{body}</Suspense>

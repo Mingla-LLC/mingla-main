@@ -39,6 +39,7 @@ import {
   BRAND_SETUP_STEPS,
   BrandSetupError,
   deriveSetupStep,
+  setupFlowHop,
   newBrandId,
   refreshStripeSetupStatus,
   type BrandSetupStep,
@@ -215,7 +216,16 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
     }, [brandId, checklistQuery.refetch]),
   );
 
+  // R1 — "Welcome back. You stopped at…" once per resume: on the first step
+  // the checklist shows after a resume open, gone once the host moves on.
   const [resumeBanner, setResumeBanner] = useState<boolean>(resumed);
+  const resumeStepRef = useRef<BrandSetupStep | null>(null);
+  const checklistReady = brandId !== null && checklist !== null;
+  useEffect(() => {
+    if (!resumeBanner || !checklistReady) return;
+    if (resumeStepRef.current === null) resumeStepRef.current = step;
+    else if (resumeStepRef.current !== step) setResumeBanner(false);
+  }, [checklistReady, resumeBanner, step]);
   // F1 "Discard this brand name?" — Back, iOS swipe-back and Android back
   // with a typed, unsaved name (design F1:discard).
   const navigation = useNavigation();
@@ -340,7 +350,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
           <Text style={styles.bannerText}>{C.common.offline}</Text>
         </View>
       ) : null}
-      {resumeBanner && brandId !== null && step !== "name" ? (
+      {resumeBanner && checklistReady && step !== "name" ? (
         <Pressable style={[styles.banner, styles.bannerAccent]} onPress={() => setResumeBanner(false)} accessibilityRole="button" accessibilityLabel={C.common.resume(C.stepNames[step])}>
           <Text style={styles.bannerText}>{C.common.resume(C.stepNames[step])}</Text>
         </Pressable>
@@ -361,7 +371,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
             typedNameRef.current = "";
             trackBrandSetup("brand_setup_step_completed", { step: "name", brand_id: id, resumed });
             adoptCreatedBrand(id);
-            router.replace(`/brand/${id}/setup?step=country` as never);
+            router.replace(setupFlowHop(`/brand/${id}/setup?step=country`) as never);
           }}
           onDraft={(draftId, draftName) => {
             typedNameRef.current = "";

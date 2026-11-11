@@ -24,6 +24,7 @@ import { BrandPaymentsPermissionGate } from "../../../../src/components/brand/Br
 import { canvas } from "../../../../src/constants/designSystem";
 import { useBrand } from "../../../../src/hooks/useBrands";
 import { sanitizeBankSetupReturnPath } from "../../../../src/utils/bankSetupReturn";
+import { setupFlowHop } from "../../../../src/services/brandSetupService";
 
 export default function BrandOnboardRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
@@ -60,7 +61,7 @@ export default function BrandOnboardRoute(): React.ReactElement {
     if (isBrandCreateFunnel && brandId !== null) {
       router.replace(
         // #4389 — back to setup; F4 reads the account live (refresh_status).
-        `/brand/${encodeURIComponent(brandId)}/setup?step=done` as never,
+        setupFlowHop(`/brand/${encodeURIComponent(brandId)}/setup?step=done`) as never,
       );
     } else if (router.canGoBack()) {
       // The creator that pushed this route is still mounted underneath, on the
@@ -103,7 +104,7 @@ export default function BrandOnboardRoute(): React.ReactElement {
     if (brandId === null) return;
     const id = encodeURIComponent(brandId);
     router.replace(
-      (exit === "finished"
+      setupFlowHop(exit === "finished"
         ? `/brand/${id}/setup?step=done`
         : `/brand/${id}/setup?step=pay&k1=1`) as never,
     );

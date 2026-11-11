@@ -33,6 +33,7 @@ export const harness = {
   markFreeOnly: jest.fn<() => Promise<void>>(() => Promise.resolve()),
   focusEffects: [] as Array<() => void>,
   beforeRemove: null as null | ((e: unknown) => void),
+  params: {} as Record<string, string>,
 };
 
 export function checklistAt(step: "country" | "pay" | "done", over: Partial<FlowFacts> = {}): NonNullable<typeof harness.checklist> {
@@ -63,6 +64,7 @@ export function checklistAt(step: "country" | "pay" | "done", over: Partial<Flow
 }
 
 jest.mock("expo-router", () => ({
+  useLocalSearchParams: () => harness.params,
   useRouter: () => ({ push: harness.push, replace: harness.replace, back: jest.fn(), canGoBack: () => true }),
   useNavigation: () => ({
     addListener: (_n: string, cb: (e: unknown) => void) => {
@@ -220,4 +222,5 @@ export function resetHarness(): void {
   harness.markFreeOnly.mockClear();
   harness.focusEffects = [];
   harness.beforeRemove = null;
+  harness.params = {};
 }

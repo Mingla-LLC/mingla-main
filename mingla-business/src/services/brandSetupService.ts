@@ -116,6 +116,20 @@ export function deriveSetupStep(
   return order.indexOf(requested) <= order.indexOf(first) ? requested : first;
 }
 
+/**
+ * #4389 R1 — a hop INSIDE the setup (F1 → F2, the return from secure setup)
+ * carries `from=flow`. Every other open of /brand/{id}/setup (Home card, Ari
+ * card, switcher Continue, N1 Continue, a deep link) is a resume and may show
+ * "Welcome back. You stopped at…" once.
+ */
+export function setupFlowHop(href: string): string {
+  return `${href}${href.includes("?") ? "&" : "?"}from=flow`;
+}
+
+export function isSetupFlowHop(from: unknown): boolean {
+  return (Array.isArray(from) ? from[0] : from) === "flow";
+}
+
 export function parseSetupStep(value: unknown): BrandSetupStep | null {
   return value === "name" || value === "country" || value === "pay" || value === "done" ? value : null;
 }
