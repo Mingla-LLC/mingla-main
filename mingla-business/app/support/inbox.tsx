@@ -65,6 +65,20 @@ import { Icon } from "../../src/components/ui/Icon";
 import { IconChrome } from "../../src/components/ui/IconChrome";
 import { Pill, type PillVariant } from "../../src/components/ui/Pill";
 import { Toast } from "../../src/components/ui/Toast";
+import { formatTicketNumber, supportCopy } from "../../src/components/support/supportRequestModel";
+
+// #4382: who opened the ticket — the Host or Explorer customer, or staff
+// (with who can see it).
+function originLabel(ticket: SupportQueueTicket): string {
+  if (ticket.origin === "staff") {
+    return supportCopy("staff.staff_chip", {
+      visibility: supportCopy(`staff.visibility_${ticket.visibility ?? "internal"}`),
+    });
+  }
+  return ticket.requester_segment === "explorer"
+    ? supportCopy("staff.explorer_chip")
+    : supportCopy("staff.host_chip");
+}
 
 // support_tickets.status CHECK = new | open | pending | resolved | closed.
 function statusPill(status: string): { variant: PillVariant; label: string } {
@@ -238,7 +252,8 @@ export default function SupportInboxRoute(): React.ReactElement {
         }
         void queue.refetch();
       }
-      router.push(`/support/${ticket.id}` as never);
+      // #4382: the staff view of the thread shows internal notes and images.
+      router.push(`/support/${ticket.id}?mode=staff` as never);
     },
     [myUserId, queue, router, showToast],
   );
@@ -367,6 +382,10 @@ export default function SupportInboxRoute(): React.ReactElement {
                       </View>
                       <View style={styles.rowBottom}>
                         <Text style={styles.rowMeta} numberOfLines={1}>
+                          {formatTicketNumber(ticket.ticket_number)
+                            ? `${formatTicketNumber(ticket.ticket_number)} · `
+                            : ""}
+                          {`${originLabel(ticket)} · `}
                           {ticket.priority !== "normal"
                             ? `${ticket.priority.toUpperCase()} · `
                             : ""}

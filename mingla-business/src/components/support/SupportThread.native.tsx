@@ -37,8 +37,8 @@ const NativeKeyboardWrap: React.FC<KeyboardWrapProps> = ({ children }) => (
   </KeyboardAvoidingView>
 );
 
-export const SupportThread: React.FC<{ ticketId: string }> = ({ ticketId }) => (
-  <SupportThreadCore ticketId={ticketId} KeyboardWrap={NativeKeyboardWrap} />
+export const SupportThread: React.FC<{ ticketId: string; staffMode?: boolean }> = ({ ticketId, staffMode = false }) => (
+  <SupportThreadCore ticketId={ticketId} KeyboardWrap={NativeKeyboardWrap} staffMode={staffMode} />
 );
 
 export default SupportThread;

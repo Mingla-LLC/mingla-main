@@ -22,11 +22,17 @@ import { useLocalSearchParams } from "expo-router";
 
 import { SupportThread } from "../../src/components/support/SupportThread";
 import { text as textTokens } from "../../src/constants/designSystem";
+import { useSupportStaff } from "../../src/hooks/useSupportStaff";
 
 export default function SupportThreadRoute(): React.ReactElement {
-  const params = useLocalSearchParams<{ ticketId?: string | string[] }>();
+  const params = useLocalSearchParams<{ ticketId?: string | string[]; mode?: string | string[] }>();
   const raw = params.ticketId;
   const ticketId = Array.isArray(raw) ? raw[0] : raw;
+  const mode = Array.isArray(params.mode) ? params.mode[0] : params.mode;
+  // #4382: the staff console opens threads with mode=staff. The flag only
+  // changes the view for real staff; RLS still decides what is readable.
+  const staff = useSupportStaff();
+  const staffMode = mode === "staff" && staff.isStaff;
 
   if (typeof ticketId !== "string" || ticketId.length === 0) {
     return (
@@ -38,7 +44,7 @@ export default function SupportThreadRoute(): React.ReactElement {
     );
   }
 
-  return <SupportThread ticketId={ticketId} />;
+  return <SupportThread ticketId={ticketId} staffMode={staffMode} />;
 }
 
 const styles = StyleSheet.create({
