@@ -84,6 +84,44 @@ export const DEFAULT_AGENT_LOOP_BUDGET: AgentLoopBudget = Object.freeze({
   deadlineMs: 55_000,
 });
 
+// #3355 Wave C (C3): agent-chat's production budget, tuned for Gemini Flash
+// (D2b). Before this, production fell through to DEFAULT_AGENT_LOOP_BUDGET
+// (12 tool calls) and only the local lane had an explicit budget.
+//
+// MINGLA-INVARIANT: I-ARI-PRODUCTION-LOOP-BUDGET | issue #3355 | With the local-model lane off, agent-chat runs at most 6 steps, 7 model calls and 5 model-chosen tool calls (plus the turn's required deterministic pre-reads) inside the 55 s deadline, and the deadline still stops the loop first. Enforced by supabase/functions/_shared/__tests__/issue_3355_wave_c_loop_budget.implementor.test.ts
+export const ARI_PRODUCTION_LOOP_BUDGET: AgentLoopBudget = Object.freeze({
+  maxSteps: 6,
+  maxModelCalls: 7,
+  maxToolCalls: 5,
+  maxConsecutiveErrors: DEFAULT_AGENT_LOOP_BUDGET.maxConsecutiveErrors,
+  deadlineMs: 55_000,
+});
+
+/** The loopback lane's budget (#3355 local verification), unchanged. */
+export const ARI_LOCAL_LOOP_BUDGET: Partial<AgentLoopBudget> = Object.freeze({
+  deadlineMs: 115_000,
+  maxSteps: 9,
+  maxModelCalls: 10,
+  maxToolCalls: 8,
+});
+
+/**
+ * agent-chat's budget. `requiredReads` are the turn's deterministic pre-reads
+ * (initialCalls plus any expanded page reads); they run before the model and
+ * would otherwise use up the 5 tool calls the model may choose.
+ */
+export function ariChatLoopBudget(args: {
+  localModelEnabled: boolean;
+  requiredReads?: number;
+}): Partial<AgentLoopBudget> {
+  if (args.localModelEnabled) return { ...ARI_LOCAL_LOOP_BUDGET };
+  const required = Math.max(0, Math.floor(args.requiredReads ?? 0));
+  return {
+    ...ARI_PRODUCTION_LOOP_BUDGET,
+    maxToolCalls: ARI_PRODUCTION_LOOP_BUDGET.maxToolCalls + required,
+  };
+}
+
 export type AgentLoopResult =
   | {
     kind: "text";

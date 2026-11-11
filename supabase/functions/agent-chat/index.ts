@@ -143,6 +143,7 @@ import {
 import {
   type AgentLoopObservation,
   type AgentLoopToolCall,
+  ariChatLoopBudget,
   runAgentLoop,
 } from "../_shared/agentLoop.ts";
 import {
@@ -221,6 +222,12 @@ import {
   ariGuideInitialCalls,
   ariGuideRecoveryCalls,
 } from "../_shared/ariGuideKnowledge.ts";
+import {
+  ariTurnContextPart,
+  getAriBrandSnapshot,
+  latestAriWriteReceiptAt,
+  resolveAriScreenContext,
+} from "../_shared/ariTurnContext.ts";
 import {
   claimEvidenceFromHistory,
   guardWriteClaims,
@@ -340,6 +347,13 @@ interface RequestBody {
    * message in the owner's name. Its bubble reads "Set up my Website".
    */
   website_setup_kickoff?: unknown;
+  /**
+   * #3355 Wave C (C2): the Host screen the host is on, as
+   * `{ route, entity_kind?, entity_id? }`. Context only; validated against
+   * the App Map and the active brand, and dropped (never a 400) when it does
+   * not hold.
+   */
+  client_context?: unknown;
 }
 
 type Response_ =
@@ -2499,11 +2513,42 @@ async function handle(req: Request): Promise<Response> {
         }
       }
     }
+    // #3355 Wave C (C1, C2): the active brand's snapshot and the Host screen
+    // the host is on, read as the caller. Both are data inside <user_data>;
+    // a failure leaves them out and never fails the turn.
+    const [turnSnapshot, turnScreen] = await Promise.all([
+      activeBrand
+        ? getAriBrandSnapshot({
+          client: userClient,
+          brandId: activeBrand.id,
+          userId,
+          latestReceiptAt: latestAriWriteReceiptAt(history),
+        }).catch((error: unknown) => {
+          console.warn(
+            "[agent-chat] brand snapshot unavailable",
+            error instanceof Error ? error.message.slice(0, 120) : "unknown",
+          );
+          return null;
+        })
+        : Promise.resolve(null),
+      body.client_context === undefined
+        ? Promise.resolve(null)
+        : resolveAriScreenContext({
+          client: userClient,
+          raw: body.client_context,
+          activeBrand,
+        }).catch(() => null),
+    ]);
+    const turnContextPart = ariTurnContextPart({
+      snapshot: turnSnapshot,
+      screen: turnScreen,
+    });
     // Append the new user message
     contents.push({
       role: "user",
       parts: [
         ...currentAttachmentParts,
+        ...(turnContextPart ? [turnContextPart] : []),
         { text: `<user_data>\n${semanticMessage}\n</user_data>` },
       ],
     });
@@ -3213,14 +3258,14 @@ ${boundedAgentContext}
         // production 55s budget, but allow the explicitly enabled loopback
         // lane enough time for its first prompt compilation and one observed
         // follow-up. The local endpoint guard lives in agentGemini.ts.
-        budget: Deno.env.get("ARI_LOCAL_MODEL_ENABLED") === "true"
-          ? {
-            deadlineMs: 115_000,
-            maxSteps: 9,
-            maxModelCalls: 10,
-            maxToolCalls: 8,
-          }
-          : undefined,
+        // #3355 Wave C (C3): production gets its own explicit budget (6
+        // steps, 5 model-chosen tool calls on top of the required pre-reads,
+        // 7 model calls, inside 55 s); the local lane keeps its own.
+        budget: ariChatLoopBudget({
+          localModelEnabled: Deno.env.get("ARI_LOCAL_MODEL_ENABLED") === "true",
+          requiredReads: initialCalls.length +
+            (standaloneResearchRequest && !completeFromSearchIndex ? 2 : 0),
+        }),
         initialCalls,
         completeAfterInitialReads: websiteSetupIntent
           ? (observations) =>

@@ -778,7 +778,9 @@
         "supabase/functions/_shared/ariToolDescriptions.ts",
         "supabase/functions/_shared/generated/ariAppMap.json",
         "supabase/migrations/20280606043355_issue_3355_ari_search_feature_guide.sql",
-        "supabase/migrations/20280606053355_issue_3355_feature_guide_wave_b.sql"
+        "supabase/migrations/20280606053355_issue_3355_feature_guide_wave_b.sql",
+        "mingla-business/src/config/routes.ts",
+        "supabase/functions/_shared/ariTurnContext.ts"
       ]
     },
     {
