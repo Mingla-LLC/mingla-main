@@ -1250,6 +1250,7 @@
         "mingla-business/app/account/notifications.tsx",
         "supabase/functions/_shared/quietHours.ts",
         "mingla-business/app/team/index.tsx",
+        "mingla-business/app/+native-intent.tsx",
         "mingla-business/src/components/minglaTeam/TeamCommon.tsx",
         "mingla-business/src/components/minglaTeam/TeamScreens.tsx",
         "mingla-business/src/components/minglaTeam/TeamThreadScreen.tsx",
