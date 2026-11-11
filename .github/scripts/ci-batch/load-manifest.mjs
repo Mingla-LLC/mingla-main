@@ -230,7 +230,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4383: re-sealed after registering the Communications scheduling migration and its PostgreSQL proof in the #1857, #1931 and #2117 lanes.
 // #4383: re-sealed after registering the tester adversarial PostgreSQL proof in the #1931 and #2117 lanes.
 // #3355 rework 1: re-sealed after merging origin/main 1d23fd97e8 (#4383 rows kept) and renaming the nine #3355 migrations 20280606xx3355 -> 20280620xx3355.
-export const BOOTSTRAP_SHA256 = "fa31859f1db346a306488dc7090768811b0709ec60183ab591150202c5d0026b";
+// #3355 rework 1: register 20280620103355 (discount-codes Feature Guide sync) in the #1857, #1931 and #2117 replay lanes (skipped by exact filename in #1931), and the rework and tester adversarial PostgreSQL proofs in #1931 and #2117.
+export const BOOTSTRAP_SHA256 = "b205f15c36e1bd194f224e1d80c3efe44392b9e5e5c20f1fdab5c2ce37bf7947";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

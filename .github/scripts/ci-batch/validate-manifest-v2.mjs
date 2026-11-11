@@ -441,7 +441,8 @@ export function phase3dContractDigest(manifest) {
 // #4383: register the Communications scheduling migration (20280608004383) and its implementor PostgreSQL proof in the #1857, #1931 and #2117 replay lanes.
 // #4383: and the tester adversarial PostgreSQL proof.
 // #3355 rework 1: re-sealed after merging origin/main 1d23fd97e8 (#4383 rows kept) and renaming the nine #3355 migrations 20280606xx3355 -> 20280620xx3355.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "e7100f9f56ad6b4bb0c56794c6086725c42dea1fc65d24bd87dbf9a1e55abdbd";
+// #3355 rework 1: register 20280620103355 (discount-codes Feature Guide sync) in the #1857, #1931 and #2117 replay lanes (skipped by exact filename in #1931), and the rework and tester adversarial PostgreSQL proofs in #1931 and #2117.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "c1beda223c2b86ab7257a2193e222b9fde177081476b1066708eb0ca1f2ea74b";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

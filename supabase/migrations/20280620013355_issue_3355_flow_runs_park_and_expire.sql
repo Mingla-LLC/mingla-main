@@ -276,6 +276,45 @@ REVOKE ALL ON FUNCTION public.ari_flow_runs_expire_idle(uuid)
   FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.ari_flow_runs_expire_idle(uuid) TO service_role;
 
+-- ── Expire: every idle run, whoever started it (#3355 rework 1, P2-12) ────
+-- A host who never comes back would otherwise keep an open run forever. Same
+-- rule as above (24 h idle, never a run with a live lease); a run another
+-- writer holds right now is skipped and caught by the next sweep. Bounded
+-- per call so one sweep stays short.
+CREATE OR REPLACE FUNCTION public.ari_flow_runs_expire_idle_all(
+  p_limit integer DEFAULT 500
+) RETURNS integer
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_count integer;
+BEGIN
+  IF p_limit IS NULL OR p_limit < 1 OR p_limit > 5000 THEN
+    RAISE EXCEPTION 'flow_sweep_limit_invalid' USING ERRCODE = '22023';
+  END IF;
+  WITH idle AS (
+    SELECT r.id FROM public.ari_flow_runs r
+     WHERE r.status IN ('active','awaiting_owner','awaiting_approval','awaiting_handoff','blocked','parked')
+       AND (r.lease_expires_at IS NULL OR r.lease_expires_at <= now())
+       AND public.ari_flow_run_last_activity(r) < now() - public.ari_flow_run_expire_after()
+     ORDER BY r.updated_at
+     LIMIT p_limit
+     FOR UPDATE SKIP LOCKED
+  )
+  UPDATE public.ari_flow_runs r
+  SET status = 'expired', lease_owner = NULL, lease_token = NULL,
+      lease_expires_at = NULL, revision = r.revision + 1, updated_at = now()
+  FROM idle
+  WHERE r.id = idle.id;
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  RETURN v_count;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.ari_flow_runs_expire_idle_all(integer)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.ari_flow_runs_expire_idle_all(integer) TO service_role;
+
 -- ── Start: same signature; a new flow closes the chat's parked run too ─────
 CREATE OR REPLACE FUNCTION public.ari_flow_run_start(
   p_user_id uuid,
@@ -433,5 +472,21 @@ SET status = 'expired', lease_owner = NULL, lease_token = NULL,
     lease_expires_at = NULL, revision = r.revision + 1, updated_at = now()
 WHERE r.status IN ('active','awaiting_owner','awaiting_approval','awaiting_handoff','blocked','parked')
   AND public.ari_flow_run_last_activity(r) < now() - interval '24 hours';
+
+-- The hourly global sweep (#3355 rework 1, P2-12). Static SQL in the job;
+-- re-running this migration replaces it.
+DO $cron$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
+    RAISE NOTICE 'Issue #3355: pg_cron unavailable; idle Ari flow runs expire only on their starter''s next turn.';
+    RETURN;
+  END IF;
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'issue_3355_ari_flow_runs_expire_idle') THEN
+    PERFORM cron.unschedule('issue_3355_ari_flow_runs_expire_idle');
+  END IF;
+  PERFORM cron.schedule('issue_3355_ari_flow_runs_expire_idle', '17 * * * *',
+    $job$SELECT public.ari_flow_runs_expire_idle_all(500);$job$);
+END
+$cron$;
 
 COMMIT;

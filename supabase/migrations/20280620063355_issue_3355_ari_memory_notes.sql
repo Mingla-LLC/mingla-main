@@ -88,14 +88,21 @@ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE
 SET search_path = pg_catalog, pg_temp
 AS $fn$
 DECLARE
-  v text := COALESCE(p_content, '');
+  -- #3355 rework 1 (tester P3-15): full-width digits read as plain digits.
+  v text := normalize(COALESCE(p_content, ''), NFKC);
   v_digits text;
   v_run text;
 BEGIN
   IF v ~* '[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}' THEN
     RETURN 'contact_details';
   END IF;
-  IF v ~* '\m(password|passcode|passwd|pin code|one[- ]time code|otp|bvn|nin|ssn|social security|passport( number| no)?|national id|id number|driver''?s licen[cs]e)\M' THEN
+  -- An email written out to dodge a filter ("ada [at] gmail [dot] com").
+  IF v ~* '[a-z0-9._%+-]+\s*[[({]\s*at\s*[])}]\s*[a-z0-9-]+((\s*[[({]\s*dot\s*[])}]\s*|\s+dot\s+|\.)[a-z0-9-]+)*(\s*[[({]\s*dot\s*[])}]\s*|\s+dot\s+|\.)[a-z]{2,6}\M'
+     OR v ~* '[a-z0-9._%+-]+(\s+at\s+|\s*@\s*)[a-z0-9-]+((\s*[[({]\s*dot\s*[])}]\s*|\s+dot\s+)[a-z0-9-]+)*(\s*[[({]\s*dot\s*[])}]\s*|\s+dot\s+)(com|net|org|co|io|ng|uk|gh|ke|za|edu|gov|me|info|biz|app|dev|ai|africa)\M' THEN
+    RETURN 'contact_details';
+  END IF;
+  IF v ~* '\m(password|passcode|passwd|pin code|one[- ]time code|otp|bvn|nin|ssn|social security|passport( number| no)?|national id|id number|driver''?s licen[cs]e)\M'
+     OR v ~* '\mpin(\s+(code|number|no\.?))?\s*(is|:|=|-)?\s*\d{4,8}\M' THEN
     RETURN 'id_details';
   END IF;
   IF v ~* '\m(cvv|cvc|iban|swift|sort code|routing number|account number|acct no|card number)\M' THEN
@@ -170,6 +177,13 @@ BEGIN
   IF p_brand_id IS NOT NULL
      AND NOT public.biz_is_brand_member_for_read(p_brand_id, v_actor) THEN
     RAISE EXCEPTION 'not_authorized';
+  END IF;
+  -- #3355 rework 1 (tester P2-7): a note every member's Ari reads needs the
+  -- marketing manager rank or above; a scanner keeps notes for themself.
+  IF p_scope = 'brand'
+     AND COALESCE(public.biz_brand_effective_rank(p_brand_id, v_actor), 0)
+         < public.biz_role_rank('marketing_manager') THEN
+    RAISE EXCEPTION 'memory_brand_note_rank' USING ERRCODE = '42501';
   END IF;
   IF char_length(v_text) NOT BETWEEN 3 AND 280 THEN
     RAISE EXCEPTION 'invalid_memory_content' USING ERRCODE = '22023';
@@ -253,7 +267,10 @@ BEGIN
       AND (
         (n.user_id = v_actor
           AND (n.brand_id IS NULL OR n.brand_id IS NOT DISTINCT FROM p_brand_id))
-        OR (p_brand_id IS NOT NULL AND n.scope = 'brand' AND n.brand_id = p_brand_id)
+        -- #3355 rework 1 (tester P1-5): a brand note speaks for the brand only
+        -- while its author is still on the brand's team.
+        OR (p_brand_id IS NOT NULL AND n.scope = 'brand' AND n.brand_id = p_brand_id
+            AND public.biz_is_brand_member_for_read(n.brand_id, n.user_id))
       )
   ), '[]'::jsonb);
 END;
@@ -272,10 +289,14 @@ DECLARE
   v_count integer;
 BEGIN
   IF v_actor IS NULL THEN RAISE EXCEPTION 'not_authorized'; END IF;
+  -- #3355 rework 1 (tester P1-5): a brand note is changed only by someone on
+  -- the brand's team now; a personal note is always its author's to forget.
   UPDATE public.ari_memory_notes n SET active = false, updated_at = now()
    WHERE n.id = p_note_id AND n.active
      AND (
-       n.user_id = v_actor
+       (n.user_id = v_actor
+         AND (n.scope <> 'brand'
+              OR public.biz_is_brand_member_for_read(n.brand_id, v_actor)))
        OR (n.scope = 'brand' AND n.brand_id IS NOT NULL
            AND COALESCE(public.biz_is_brand_admin_plus(n.brand_id, v_actor), false))
      );
@@ -355,6 +376,22 @@ BEGIN
   END IF;
   IF p_brand_id IS NOT NULL AND NOT public.biz_is_brand_member_for_read(p_brand_id, v_actor) THEN
     RAISE EXCEPTION 'not_authorized';
+  END IF;
+  -- #3355 rework 1 (tester P1-5): the note's own brand decides, not the
+  -- argument. A removed member cannot edit a note every member's Ari reads,
+  -- and a brand note needs the rank that may write one (P2-7).
+  SELECT * INTO v_note FROM public.ari_memory_notes n
+   WHERE n.id = p_note_id AND n.user_id = v_actor AND n.active
+   FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'not_found'; END IF;
+  IF v_note.brand_id IS NOT NULL
+     AND NOT public.biz_is_brand_member_for_read(v_note.brand_id, v_actor) THEN
+    RAISE EXCEPTION 'not_authorized';
+  END IF;
+  IF v_note.scope = 'brand'
+     AND COALESCE(public.biz_brand_effective_rank(v_note.brand_id, v_actor), 0)
+         < public.biz_role_rank('marketing_manager') THEN
+    RAISE EXCEPTION 'memory_brand_note_rank' USING ERRCODE = '42501';
   END IF;
 
   UPDATE public.ari_memory_notes
