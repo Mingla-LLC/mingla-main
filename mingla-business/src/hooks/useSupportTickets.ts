@@ -12,7 +12,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useAuth } from "../context/AuthContext";
 import {
-  createHostSupportTicket,
+  createSupportTicket,
   listOwnSupportTickets,
   type SupportTicket,
 } from "../services/supportService";
@@ -70,7 +70,7 @@ export const useCreateSupportTicket = (): UseCreateSupportTicketResult => {
       if (user === null) throw new Error("Not signed in");
       // #3720: the create function enqueues staff delivery itself. Do not
       // call notify-support from the client.
-      return createHostSupportTicket(input);
+      return createSupportTicket(input);
     },
     onSuccess: (): void => {
       if (user !== null) {

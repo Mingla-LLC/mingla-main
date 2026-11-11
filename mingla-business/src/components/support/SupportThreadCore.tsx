@@ -175,7 +175,8 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
           event: "UPDATE",
           schema: "public",
           table: "support_tickets",
-          filter: `id=eq.${ticketId}`,
+          // Not the primary key (ORCH-0931): the ticket's own conversation.
+          filter: `conversation_id=eq.${conversationId}`,
         },
         () => {
           void refresh();

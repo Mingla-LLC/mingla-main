@@ -58,7 +58,7 @@ export function useSupportThread(ticketId: string) {
       )
       .on(
         'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'support_tickets', filter: `id=eq.${ticketId}` },
+        { event: 'UPDATE', schema: 'public', table: 'support_tickets', filter: `conversation_id=eq.${conversationId}` },
         refresh,
       )
       .subscribe();

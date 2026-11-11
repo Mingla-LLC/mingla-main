@@ -67,7 +67,7 @@ jest.mock("../supabase", () => ({
 
 import {
   SupportSendError,
-  createHostSupportTicket,
+  createSupportTicket,
   listOwnSupportTickets,
   sendSupportMessage,
   uploadSupportImage,
@@ -102,7 +102,7 @@ beforeEach(() => {
 describe("#4382 Host new request", () => {
   test("create calls issue_4382_create_customer_ticket with p_app host and the whole form", async () => {
     rpcMock.mockResolvedValue({ data: REQUEST, error: null });
-    const id = await createHostSupportTicket({
+    const id = await createSupportTicket({
       clientRequestId: REQUEST,
       topic: "payouts",
       summary: "  Payout balance shows 0  ",
@@ -156,10 +156,10 @@ describe("#4382 Host new request", () => {
       }),
     ).toThrow("invalid_topic");
     await expect(
-      createHostSupportTicket({ clientRequestId: REQUEST, topic: "events", summary: "  ", details: "y", attachmentIds: [], clientMeta: {}, brandId: null }),
+      createSupportTicket({ clientRequestId: REQUEST, topic: "events", summary: "  ", details: "y", attachmentIds: [], clientMeta: {}, brandId: null }),
     ).rejects.toThrow();
     await expect(
-      createHostSupportTicket({ clientRequestId: REQUEST, topic: "events", summary: "s", details: "  ", attachmentIds: [], clientMeta: {}, brandId: null }),
+      createSupportTicket({ clientRequestId: REQUEST, topic: "events", summary: "s", details: "  ", attachmentIds: [], clientMeta: {}, brandId: null }),
     ).rejects.toThrow();
     expect(rpcMock).not.toHaveBeenCalled();
   });
@@ -167,7 +167,7 @@ describe("#4382 Host new request", () => {
   test("a database refusal is thrown, never swallowed", async () => {
     rpcMock.mockResolvedValue({ data: null, error: { message: "not_brand_member" } });
     await expect(
-      createHostSupportTicket({ clientRequestId: REQUEST, topic: "venue", summary: "s", details: "d", attachmentIds: [], clientMeta: {}, brandId: "b" }),
+      createSupportTicket({ clientRequestId: REQUEST, topic: "venue", summary: "s", details: "d", attachmentIds: [], clientMeta: {}, brandId: "b" }),
     ).rejects.toThrow("not_brand_member");
   });
 });

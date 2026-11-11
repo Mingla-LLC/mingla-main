@@ -190,7 +190,7 @@ export async function signSupportAttachments(paths: readonly string[]): Promise<
  * client request id doubles as the ticket id, so a retry after a dropped
  * response returns the same ticket instead of a second one.
  */
-export async function createHostSupportTicket(input: HostCreateTicketInput): Promise<string> {
+export async function createSupportTicket(input: HostCreateTicketInput): Promise<string> {
   const args = buildHostCreateTicketArgs(input);
   if (args.p_subject.length === 0) throw new Error("Add a short summary so we know what it's about.");
   if (args.p_message.length === 0 && args.p_attachment_ids.length === 0) {
