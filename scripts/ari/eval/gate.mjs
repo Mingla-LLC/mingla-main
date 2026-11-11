@@ -3,7 +3,7 @@
  * #3355 Wave F (F1) — Ari's release gate for live evals.
  *
  *   node scripts/ari/eval/gate.mjs --run=<run json from run-live.mjs> \
- *     [--baseline=docs/contracts/ari-live-eval-baseline.json]
+ *     [--baseline=docs/contracts/ari-live-eval-baseline.json] [--promote]
  *
  * Exits 1 when any suite (replay, flows, route_table) or the overall score
  * drops by 2 points or more against the stored baseline, or when a suite the
@@ -13,10 +13,10 @@
  * MINGLA-INVARIANT: I-ARI-EVAL-NO-REGRESSION | issue #3355 | A live Ari eval run that drops 2+ points on any suite or overall against docs/contracts/ari-live-eval-baseline.json fails the release gate.
  */
 
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { compareToBaseline } from "./replay/grade.mjs";
+import { baselineFromRun, compareToBaseline } from "./replay/grade.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 
@@ -51,6 +51,13 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     "baseline",
     join(ROOT, "docs/contracts/ari-live-eval-baseline.json"),
   );
+  if (process.argv.includes("--promote")) {
+    // A reviewed run becomes the baseline (no comparison).
+    const run = JSON.parse(readFileSync(runPath, "utf8"));
+    writeFileSync(baselinePath, `${JSON.stringify(baselineFromRun(run), null, 2)}\n`);
+    console.log(`baseline ${baselinePath} now run ${run.run_id}`);
+    process.exit(0);
+  }
   const { verdict, lines, baselineRun, runId } = runGate(baselinePath, runPath);
   console.log(`Ari eval gate: run ${runId} vs baseline ${baselineRun}`);
   for (const line of lines) console.log(`  ${line}`);

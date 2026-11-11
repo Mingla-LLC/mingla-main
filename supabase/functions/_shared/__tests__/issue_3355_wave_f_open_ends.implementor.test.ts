@@ -26,7 +26,9 @@ import {
   assertEquals,
   assertMatch,
   assertNotMatch,
+  assertThrows,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { canonicalizeCreateDiscountArgs } from "../ariDiscountArgs.ts";
 
 import { runAgentLoop } from "../agentLoop.ts";
 import {
@@ -674,4 +676,32 @@ Deno.test("F live: a create-tool read of a new offering hints its guided setup",
     safetyReply: false,
   });
   assertEquals(discount.startFlowHint, null);
+});
+
+Deno.test("F live: a discount for 'events' or 'tickets' is the event kind, not a refusal", () => {
+  for (const word of ["events", "Events", "tickets", "ticket", "event"]) {
+    const args = canonicalizeCreateDiscountArgs({
+      brand_id: "b",
+      kind: "code",
+      code: "FAVY10",
+      value_type: "percent",
+      value_bps: 1000,
+      targets: [{ target_kind: "listing_kind", listing_kind: word }],
+    });
+    assertEquals(
+      (args.targets as unknown[])[0],
+      { target_kind: "listing_kind", listing_kind: "event" },
+      word,
+    );
+  }
+  assertThrows(() =>
+    canonicalizeCreateDiscountArgs({
+      brand_id: "b",
+      kind: "code",
+      code: "FAVY10",
+      value_type: "percent",
+      value_bps: 1000,
+      targets: [{ target_kind: "listing_kind", listing_kind: "parties" }],
+    })
+  );
 });

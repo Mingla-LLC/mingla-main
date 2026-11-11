@@ -35,6 +35,15 @@ const LISTING_KINDS = new Set([
   "reservation_deposit",
 ]);
 
+/** The kinds as hosts say them. */
+const LISTING_KIND_WORDS: Readonly<Record<string, string>> = Object.freeze({
+  events: "event",
+  ticket: "event",
+  tickets: "event",
+  experiences: "experience",
+  trips: "trip",
+});
+
 const refuse = (message: string): never => {
   throw new ToolError(DISCOUNT_PROPOSAL_REFUSED_CODE, message);
 };
@@ -61,6 +70,16 @@ function canonicalTarget(raw: unknown): Record<string, unknown> {
   const targetId = target.target_id;
 
   if (targetKind === "listing_kind") {
+    // #3355 Wave F (live eval): Flash writes the kind as the host says it
+    // ("events", "tickets"). Those name the same kind; anything else is still
+    // refused in plain words.
+    const spoken = typeof listingKind === "string"
+      ? LISTING_KIND_WORDS[listingKind.trim().toLowerCase()] ??
+        listingKind.trim().toLowerCase()
+      : listingKind;
+    if (typeof spoken === "string" && LISTING_KINDS.has(spoken)) {
+      return { target_kind: "listing_kind", listing_kind: spoken };
+    }
     if (typeof listingKind !== "string" || !LISTING_KINDS.has(listingKind)) {
       return refuse(
         "I couldn't tell which kind of listing this discount is for. Say events, experiences or trips and I'll set it up.",

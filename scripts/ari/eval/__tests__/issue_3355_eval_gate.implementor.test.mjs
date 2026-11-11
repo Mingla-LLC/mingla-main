@@ -57,3 +57,17 @@ describe("#3355 Wave F — Ari eval gate", () => {
     assert.equal(self.status, 0, self.stdout);
   });
 });
+
+describe("#3355 Wave F — promoting a reviewed run", () => {
+  it("--promote writes the run's scores as the baseline", () => {
+    const dir = mkdtempSync(join(tmpdir(), "ari-gate-"));
+    const b = join(dir, "baseline.json");
+    const r = join(dir, "run.json");
+    writeFileSync(r, JSON.stringify({ run_id: "r1", scores: { replay: 99, overall: 99 }, suites: {} }));
+    const out = spawnSync(process.execPath, [GATE, `--baseline=${b}`, `--run=${r}`, "--promote"], { encoding: "utf8" });
+    assert.equal(out.status, 0, out.stderr);
+    const written = JSON.parse(readFileSync(b, "utf8"));
+    assert.equal(written.run_id, "r1");
+    assert.deepEqual(written.scores, { replay: 99, overall: 99 });
+  });
+});

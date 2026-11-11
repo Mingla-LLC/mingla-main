@@ -48,7 +48,13 @@ import {
 } from "./seed-flow-brands.mjs";
 import { runFlowEvals } from "./flows/run.mjs";
 import { LIVE_FLOW_EVAL_IDS, REPLAY_FIXTURES } from "./replay/fixtures.mjs";
-import { gradeThread, percentiles, round, scoreRun } from "./replay/grade.mjs";
+import {
+  baselineFromRun,
+  gradeThread,
+  percentiles,
+  round,
+  scoreRun,
+} from "./replay/grade.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 export const BASELINE_PATH = "docs/contracts/ari-live-eval-baseline.json";
@@ -380,26 +386,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   writeFileSync(join(out, `${runId}.json`), `${JSON.stringify(run, null, 2)}\n`);
   writeFileSync(join(out, `${runId}.md`), markdown(run));
   if (process.argv.includes("--write-baseline")) {
-    const baseline = {
-      schemaVersion: 1,
-      ownerIssue: "#3355",
-      description:
-        "Ari live-eval baseline (local stack, Gemini Flash). scripts/ari/eval/gate.mjs fails a run that drops 2+ points on any suite or overall. Refresh with run-live.mjs --write-baseline after a reviewed improvement.",
-      run_id: run.run_id,
-      ran_at: run.ran_at,
-      revision: run.revision,
-      scores: run.scores,
-      replay: run.suites.replay.map((item) => ({ id: item.id, score: item.score })),
-      flows: run.suites.flows.map((item) => ({
-        id: item.id,
-        verdict: item.skipped ? "skipped" : item.passed ? "pass" : "fail",
-      })),
-      route_table: {
-        total: run.suites.route_table.total,
-        misroutes: run.suites.route_table.misroutes,
-      },
-      latency: run.latency,
-    };
+    const baseline = baselineFromRun(run);
     writeFileSync(join(ROOT, BASELINE_PATH), `${JSON.stringify(baseline, null, 2)}\n`);
     console.log(`baseline written to ${BASELINE_PATH}`);
   }
