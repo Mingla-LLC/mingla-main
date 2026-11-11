@@ -226,7 +226,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4334: re-sealed after merging origin/main b9d9ba3bab (#3645 payout ledger rows kept beside the #4334 follow-up rows).
 // #4382: drop the deleted FeedbackHistorySheet.tsx from the #1540 pathScope (the file is gone; the path matched nothing); re-sealed.
 // #4382: register the ticket Product stage migration (20280607044382) in the #1857, #1931 and #2117 replay lanes; re-sealed.
-export const BOOTSTRAP_SHA256 = "b5375720d05cc577180a8371b3a93866473e271c49886fa59272797564ddb5f1";
+// #4382: register the tester adversarial PostgreSQL proof in the #1931 and #2117 lanes; re-sealed after merging origin/main b805c52b1d.
+export const BOOTSTRAP_SHA256 = "904f4c283d8b1705f93d44d36056bfabaf1a94f246365a09d422e77c963241e5";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
