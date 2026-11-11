@@ -5,13 +5,17 @@ import { BLOG_CITY_TARGETS, BLOG_MARKETING_PAGE_TARGETS } from "../lib/blogLinkT
 import { communitySupportTabsForAccess } from "../lib/communitySupportAccess.js";
 import { COMMUNITY_SUPPORT_TAB_CONTRACT } from "../lib/communitySupportCapabilityContract.js";
 import { SUPPORT_PAGE_TABS } from "../lib/supportCommunityTabs.js";
-import { AREA, SUPPORT_OPERATIONS_AREA } from "../lib/access.js";
+import { AREA, SUPPORT_OPERATIONS_AREA, canOpenPage } from "../lib/access.js";
+import { NAV_GROUPS } from "../lib/constants.js";
 
 const read = (relative: string) => Deno.readTextFile(new URL(`../${relative}`, import.meta.url));
 
-Deno.test("#4137 Blog sits beside Email and follows the Support capability", () => {
-  // #4318: the Links page tab sits directly after Blog.
-  assertEquals(SUPPORT_PAGE_TABS.map((tab) => tab.id), ["support", "email", "blog", "links", "team"]);
+// #4383: Blog is its own Communications screen, beside Email and Links page.
+Deno.test("#4137 Blog sits beside Email and follows the blog area", () => {
+  const comms = NAV_GROUPS.find((group: { label: string }) => group.label === "Communications")!.items.map((item: { id: string }) => item.id);
+  assertEquals(comms.indexOf("blog"), comms.indexOf("email") + 1);
+  assertEquals(comms.indexOf("links"), comms.indexOf("blog") + 1);
+  assertEquals(SUPPORT_PAGE_TABS.map((tab) => tab.id), ["support", "team"]);
   // #4255: Blog follows the team-wide blog area that every teammate holds.
   assertEquals(COMMUNITY_SUPPORT_TAB_CONTRACT.blog.area, "blog");
   assertEquals(COMMUNITY_SUPPORT_TAB_CONTRACT.blog.panel, "components/blog/BlogPanel.jsx");
@@ -19,9 +23,12 @@ Deno.test("#4137 Blog sits beside Email and follows the Support capability", () 
   const support = { status: "active", role: "growth", areas: [SUPPORT_OPERATIONS_AREA, "email_drafts", "blog"] };
   const community = { status: "active", role: "growth", areas: ["community_support_community"] };
   const admin = { status: "active", role: "admin", areas: [AREA.ADMIN_CONSOLE] };
-  assertEquals(communitySupportTabsForAccess(support, SUPPORT_PAGE_TABS).map((tab: { id: string }) => tab.id), ["support", "email", "blog", "links"]);
+  assertEquals(communitySupportTabsForAccess(support, SUPPORT_PAGE_TABS).map((tab: { id: string }) => tab.id), ["support"]);
   assertEquals(communitySupportTabsForAccess(community, SUPPORT_PAGE_TABS), []);
-  assertEquals(communitySupportTabsForAccess(admin, SUPPORT_PAGE_TABS).map((tab: { id: string }) => tab.id), ["support", "email", "blog", "links", "team"]);
+  assertEquals(communitySupportTabsForAccess(admin, SUPPORT_PAGE_TABS).map((tab: { id: string }) => tab.id), ["support", "team"]);
+  assertEquals(canOpenPage(support, "blog"), true);
+  assertEquals(canOpenPage(community, "blog"), false);
+  assertEquals(canOpenPage(admin, "blog"), true);
 });
 
 Deno.test("#4137 block reducer inserts, moves, removes and restores without mutation", () => {

@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/services/__tests__/issue_4383_admin_push_destinations.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4383-admin-push-destinations-explorer",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

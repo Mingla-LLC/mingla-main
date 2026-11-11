@@ -174,7 +174,7 @@ export function needsYouToday(sources = {}) {
         title: failedPushTitle(latest),
         detail: `${latest.title ? `"${latest.title}": t` : "T"}hose hosts did not get it on their phone.`
           + (others > 0 ? ` ${plural(others, "older announcement has", "older announcements have")} failed pushes too.` : ""),
-        href: "#/community?tab=announcements",
+        href: "#/announcements",
       });
     }
   }

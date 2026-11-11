@@ -18,6 +18,19 @@ import {
 import { confirmRoadmapLinks, decideRoadmapSuggestion, listRoadmapLinks, previewRoadmapLinks, setRoadmapLink } from "../../services/opsService";
 import { useOpsConfig } from "../../hooks/useOpsConfig";
 import { OpsChip } from "../ops/OpsChip";
+// #4383: a draft card can go live at a time, and the notice can go out later.
+import {
+  cancelRoadmapNotice,
+  listRoadmapScheduled,
+  scheduleRoadmapCard,
+  scheduleRoadmapNotice,
+  unscheduleRoadmapCard,
+} from "../../services/communicationsService";
+import { LaterInputs, WhenSegment } from "../communications/SchedulePicker";
+import { ScheduleTime } from "../communications/ScheduleTime";
+import { LoadError } from "../ui/LoadError";
+import { browserTimeZone, checkLaterTime, scheduleLabel, utcToZonedInputs } from "../../lib/scheduleTime";
+import { communicationsErrorMessage } from "../../lib/communicationsErrors";
 import { githubChipClass, githubChipWords, isRoadmapHash, opsErrorWords, parseGithubInput, parseRoadmapLinkLines, requestKey, roadmapBackfillChip, roadmapBackfillResultWords, roadmapCardFromHash, roadmapSuggestionWords } from "../../lib/opsModel";
 
 const LANES = [
@@ -32,6 +45,9 @@ const STATUS_BADGE = {
   published: "success",
   archived: "warning",
 };
+
+const blankLater = () => ({ date: "", time: "", zone: browserTimeZone() });
+const NOTICE_STATUS = { scheduled: ["Scheduled", "info"], sent: ["Sent", "success"], failed: ["Failed", "error"], cancelled: ["Cancelled", "default"] };
 
 export function RoadmapPanel() {
   const { addToast } = useToast();
@@ -50,6 +66,13 @@ export function RoadmapPanel() {
   const [notifyStatus, setNotifyStatus] = useState(null);
   const [statusFilter, setStatusFilter] = useState("published");
   const [draggingId, setDraggingId] = useState(null);
+  // #4383: scheduled go-lives and notices (issue_4383_roadmap_scheduled_list).
+  const [scheduled, setScheduled] = useState({ state: "loading", cards: [], notices: [], error: null });
+  const [notifyWhen, setNotifyWhen] = useState("now");
+  const [notifyLater, setNotifyLater] = useState(blankLater);
+  const [notifyLaterError, setNotifyLaterError] = useState(null);
+  const [goLiveError, setGoLiveError] = useState(null);
+  const [scheduleBusy, setScheduleBusy] = useState(null);
   // #3980 Wave 2: each card's GitHub issue, its status chip and the lane
   // GitHub suggests. Null when the list could not be read (it is shown only
   // to an owner or admin).
@@ -62,8 +85,15 @@ export function RoadmapPanel() {
   // Work board, To review) or the panel is closing; no warning then.
   const leavingRef = useRef(false);
 
+  const loadScheduled = useCallback(async () => {
+    setScheduled((current) => ({ ...current, state: "loading", error: null }));
+    try { setScheduled({ state: "ready", ...(await listRoadmapScheduled()), error: null }); }
+    catch (error) { setScheduled({ state: "error", cards: [], notices: [], error }); }
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
+    void loadScheduled();
     try {
       setRows(await listRoadmapCards());
       try {
@@ -89,7 +119,7 @@ export function RoadmapPanel() {
     } finally {
       setLoading(false);
     }
-  }, [addToast]);
+  }, [addToast, loadScheduled]);
 
   useEffect(() => {
     void load();
@@ -144,9 +174,19 @@ export function RoadmapPanel() {
       addToast({ variant: "error", title: "Public title is required" });
       return;
     }
+    // #4383: a draft can be given a go-live time, checked in its timezone.
+    const goLive = editor.status === "draft" ? editorGoLive(editor) : { mode: "now" };
+    let at = null;
+    if (goLive.mode === "later") {
+      const check = checkLaterTime(goLive.later);
+      setGoLiveError(check.ok ? null : check.message);
+      if (!check.ok) return;
+      at = check.at;
+    }
+    const wasScheduled = Boolean(editor.id && goLiveById[editor.id]);
     setBusy(true);
     try {
-      await upsertRoadmapCard({
+      const saved = await upsertRoadmapCard({
         id: editor.id,
         publicTitle,
         publicBody: editor.publicBody,
@@ -154,14 +194,40 @@ export function RoadmapPanel() {
         lane: editor.lane,
         status: editor.status,
       });
-      addToast({ variant: "success", title: "Roadmap card saved" });
+      const cardId = editor.id || (typeof saved === "string" ? saved : saved?.id);
+      if (at && cardId) {
+        await scheduleRoadmapCard(cardId, at.toISOString(), goLive.later.zone);
+        const label = scheduleLabel(at.toISOString(), goLive.later.zone);
+        addToast({ variant: "success", title: "Roadmap card saved", description: `Goes live ${label.primary} ${label.zone}.` });
+      } else if (wasScheduled && (editor.status !== "draft" || goLive.mode === "now")) {
+        if (editor.status === "draft") await unscheduleRoadmapCard(cardId);
+        addToast({ variant: "success", title: "Roadmap card saved", description: editor.status === "draft" ? "It will not go live by itself." : undefined });
+      } else {
+        addToast({ variant: "success", title: "Roadmap card saved" });
+      }
       setEditor(null);
+      setGoLiveError(null);
       await load();
     } catch (err) {
-      addToast({ variant: "error", title: "Save failed", description: err?.message });
+      addToast({ variant: "error", title: "Save failed", description: communicationsErrorMessage(err) });
+      await load();
     } finally {
       setBusy(false);
     }
+  }
+
+  async function unscheduleCard(card) {
+    setScheduleBusy(`card:${card.id}`);
+    try { await unscheduleRoadmapCard(card.id); addToast({ variant: "success", title: "Card back to draft; it will not go live by itself." }); await loadScheduled(); }
+    catch (err) { addToast({ variant: "error", title: "Couldn't unschedule the card", description: communicationsErrorMessage(err) }); await loadScheduled(); }
+    finally { setScheduleBusy(null); }
+  }
+
+  async function cancelNotice(notice) {
+    setScheduleBusy(`notice:${notice.id}`);
+    try { await cancelRoadmapNotice(notice.id); addToast({ variant: "success", title: "Notice cancelled. It will not go out." }); await loadScheduled(); }
+    catch (err) { addToast({ variant: "error", title: "Couldn't cancel the notice", description: communicationsErrorMessage(err) }); await loadScheduled(); }
+    finally { setScheduleBusy(null); }
   }
 
   async function move(row, direction) {
@@ -262,10 +328,34 @@ export function RoadmapPanel() {
 
   function openNotifyConfirmation() {
     setNotifyRequestKey(crypto.randomUUID());
+    setNotifyWhen("now");
+    setNotifyLater(blankLater());
+    setNotifyLaterError(null);
     setNotifyOpen(true);
   }
 
+  // #4383: "Later" schedules the same notice for a time; the runner sends it.
+  async function scheduleRoadmapNotification() {
+    const check = checkLaterTime(notifyLater);
+    setNotifyLaterError(check.ok ? null : check.message);
+    if (!check.ok) return;
+    setNotifyBusy(true);
+    try {
+      await scheduleRoadmapNotice(check.at.toISOString(), notifyLater.zone);
+      const label = scheduleLabel(check.at.toISOString(), notifyLater.zone);
+      setNotifyOpen(false);
+      setNotifyRequestKey(null);
+      addToast({ variant: "success", title: "Notice scheduled", description: `${label.primary} ${label.zone}. It is listed under Scheduled and on Overview.` });
+      await loadScheduled();
+    } catch (err) {
+      addToast({ variant: "error", title: "Couldn't schedule the notice", description: communicationsErrorMessage(err) });
+    } finally {
+      setNotifyBusy(false);
+    }
+  }
+
   async function sendRoadmapNotification() {
+    if (notifyWhen === "later") { await scheduleRoadmapNotification(); return; }
     if (!notifyRequestKey) return;
     setNotifyBusy(true);
     try {
@@ -317,6 +407,18 @@ export function RoadmapPanel() {
       setNotifyBusy(false);
     }
   }
+
+  const goLiveById = Object.fromEntries((scheduled.cards || []).map((card) => [card.id, card]));
+  // The editor's go-live choice: what the person picked, else what is saved.
+  function editorGoLive(current) {
+    const saved = current?.id ? goLiveById[current.id] : null;
+    const zone = saved?.go_live_timezone || browserTimeZone();
+    return {
+      mode: current?.goLiveMode ?? (saved ? "later" : "now"),
+      later: current?.goLiveLater ?? (saved ? { ...utcToZonedInputs(saved.go_live_at, zone), zone } : blankLater()),
+    };
+  }
+  const editorWhen = editorGoLive(editor);
 
   return (
     <div className="space-y-4">
@@ -401,6 +503,36 @@ export function RoadmapPanel() {
         </SectionCard>
       ) : null}
 
+      <SectionCard title="Scheduled" subtitle="Cards that go live and notices that go out later.">
+        {scheduled.state === "loading" ? <div className="flex justify-center py-6"><Spinner /></div>
+          : scheduled.state === "error" ? <LoadError title="Couldn't load scheduled roadmap changes" message={communicationsErrorMessage(scheduled.error)} onRetry={() => void loadScheduled()} />
+          : scheduled.cards.length === 0 && scheduled.notices.length === 0 ? <p className="text-sm text-[var(--color-text-secondary)]">Nothing scheduled. Give a draft card a go-live time, or pick Later when you tell hosts it changed.</p>
+          : <ul className="divide-y divide-[var(--gray-100)]">
+            {scheduled.cards.map((card) => (
+              <li key={`card:${card.id}`} className="flex flex-wrap items-start gap-3 py-3">
+                <Badge variant="info">Card</Badge>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-[var(--color-text-primary)] break-words">{card.public_title}</p>
+                  <p className="text-xs text-[var(--color-text-secondary)]">Goes live in {LANES.find((l) => l.id === card.lane)?.label || card.lane}{card.by ? ` · by ${card.by}` : ""}</p>
+                </div>
+                <ScheduleTime at={card.go_live_at} zone={card.go_live_timezone || "UTC"} />
+                <Button size="sm" variant="ghost" loading={scheduleBusy === `card:${card.id}`} disabled={Boolean(scheduleBusy)} onClick={() => void unscheduleCard(card)}>Unschedule</Button>
+              </li>
+            ))}
+            {scheduled.notices.map((notice) => (
+              <li key={`notice:${notice.id}`} className="flex flex-wrap items-start gap-3 py-3">
+                <Badge variant={NOTICE_STATUS[notice.status]?.[1] || "default"}>Notice · {NOTICE_STATUS[notice.status]?.[0] || notice.status}</Badge>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-[var(--color-text-primary)]">Tell hosts the roadmap changed</p>
+                  <p className="text-xs text-[var(--color-text-secondary)]">All hosts · bell and push{notice.by ? ` · by ${notice.by}` : ""}{notice.status === "failed" && notice.last_error ? ` · did not go out: ${notice.last_error}` : ""}</p>
+                </div>
+                <ScheduleTime at={notice.scheduled_for} zone={notice.timezone} />
+                {notice.status === "scheduled" ? <Button size="sm" variant="ghost" loading={scheduleBusy === `notice:${notice.id}`} disabled={Boolean(scheduleBusy)} onClick={() => void cancelNotice(notice)}>Cancel</Button> : null}
+              </li>
+            ))}
+          </ul>}
+      </SectionCard>
+
       {loading ? (
         <div className="flex justify-center py-12">
           <Spinner />
@@ -428,6 +560,9 @@ export function RoadmapPanel() {
                         <Badge variant={STATUS_BADGE[row.status] || "default"}>
                           {row.status}
                         </Badge>
+                        {row.status === "draft" && goLiveById[row.id] ? (
+                          <Badge variant="info">Goes live {scheduleLabel(goLiveById[row.id].go_live_at, goLiveById[row.id].go_live_timezone || "UTC").primary}</Badge>
+                        ) : null}
                         {links?.[row.id]?.from_github && <Badge variant="brand">Draft from GitHub</Badge>}
                       </div>
                       {row.public_body && (
@@ -539,6 +674,26 @@ export function RoadmapPanel() {
               <option value="archived">Archived</option>
             </select>
           </label>
+          {editor?.status === "draft" ? (
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-[var(--color-text-secondary)]">Goes live</p>
+              <WhenSegment
+                label="Goes live"
+                value={editorWhen.mode}
+                nowLabel="When I publish it"
+                laterLabel="At a time"
+                onChange={(mode) => { setGoLiveError(null); setEditor((p) => ({ ...p, goLiveMode: mode, goLiveLater: editorGoLive(p).later })); }}
+              />
+              {editorWhen.mode === "later" ? (
+                <LaterInputs
+                  value={editorWhen.later}
+                  onChange={(later) => setEditor((p) => ({ ...p, goLiveMode: "later", goLiveLater: later }))}
+                  error={goLiveError}
+                  hint="The card is published by itself at this time; hosts see it on the public roadmap."
+                />
+              ) : null}
+            </div>
+          ) : null}
         </ModalBody>
         <ModalFooter>
           <Button variant="secondary" onClick={() => setEditor(null)}>
@@ -572,6 +727,13 @@ export function RoadmapPanel() {
             All roadmap edits since the last notice are bundled into this one update.
             Hosts will land on the Roadmap section. No email is sent.
           </p>
+          <div className="space-y-2">
+            <WhenSegment value={notifyWhen} onChange={(mode) => { setNotifyLaterError(null); setNotifyWhen(mode); }} disabled={notifyBusy} />
+            {notifyWhen === "later" ? (
+              <LaterInputs value={notifyLater} onChange={setNotifyLater} error={notifyLaterError} disabled={notifyBusy}
+                hint="Sent at this time to every host then, with whatever is on the roadmap at that moment." />
+            ) : null}
+          </div>
           <div className="rounded-lg border border-[var(--color-border-primary)] p-3">
             <p className="text-sm font-semibold">Mingla roadmap updated</p>
             <p className="text-sm text-[var(--color-text-secondary)]">
@@ -595,7 +757,7 @@ export function RoadmapPanel() {
             loading={notifyBusy}
             onClick={() => void sendRoadmapNotification()}
           >
-            Send one notification
+            {notifyWhen === "later" ? "Schedule notice" : "Send one notification"}
           </Button>
         </ModalFooter>
       </Modal>

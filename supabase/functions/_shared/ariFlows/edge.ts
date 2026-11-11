@@ -1448,7 +1448,7 @@ export async function startFlowFromTool(
       };
     }
     // #3355 Wave F (I-ARI-NO-STALE-RESUME): starting a setup closes this
-    // chat's parked run (one open run per chat, migration 20280606013355).
+    // chat's parked run (one open run per chat, migration 20280620013355).
     // The host is told so in the same reply, and the old Resume card answers
     // "that was closed" instead of acting.
     const closedParked = existing?.status === "parked"

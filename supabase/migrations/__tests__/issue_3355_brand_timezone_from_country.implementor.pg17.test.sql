@@ -1,4 +1,4 @@
--- MINGLA-INVARIANT: I-BRAND-TIMEZONE-FROM-SINGLE-ZONE-COUNTRY | issue #3355 | A brand whose country has exactly one time zone gets that zone as default_timezone when it has none (insert, country change, backfill); a zone the host chose is never overwritten; a multi-zone country is never guessed (migration 20280606023355; edge mirror pinned by supabase/functions/_shared/__tests__/issue_3355_wave_a_handoff_fixable.implementor.test.ts).
+-- MINGLA-INVARIANT: I-BRAND-TIMEZONE-FROM-SINGLE-ZONE-COUNTRY | issue #3355 | A brand whose country has exactly one time zone gets that zone as default_timezone when it has none (insert, country change, backfill); a zone the host chose is never overwritten; a multi-zone country is never guessed (migration 20280620023355; edge mirror pinned by supabase/functions/_shared/__tests__/issue_3355_wave_a_handoff_fixable.implementor.test.ts).
 --
 -- Issue #3355 Wave A (A4, D5a). Reverting the trigger or the function makes a
 -- block below raise.

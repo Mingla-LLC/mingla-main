@@ -142,12 +142,12 @@ describe("ORCH-1008 Phase 1 — sidebar prune + flatten", () => {
     // [TEST-MOD-APPROVED ISSUE-3802] was: both sit in the primary group.
     // #4130: Users is People's Explorers tab and Email is Support's Email tab;
     // their old addresses redirect there (lib/adminRoutes.js).
+    // #4383: Email is its own Communications screen again.
     const ids = NAV_ITEMS.map((i) => i.id);
     assert.ok(ids.includes("people"), "People (with Users) must remain in nav");
-    assert.ok(ids.includes("support"), "Support (with Email) must remain in nav");
+    assert.ok(ids.includes("email"), "Email must remain in nav");
     const routes = fs.readFileSync(path.join(ADMIN_ROOT, "src", "lib", "adminRoutes.js"), "utf8");
     assert.match(routes, /users: Object\.freeze\(\{ page: "people", tab: "explorers" \}\)/);
-    assert.match(routes, /email: Object\.freeze\(\{ page: "support", tab: "email" \}\)/);
   });
 
   it("the 6 page files are physically deleted from disk", () => {

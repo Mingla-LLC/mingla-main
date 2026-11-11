@@ -9,7 +9,7 @@
 // catalogue's one home), so a new item, or a route moved to a screen that
 // cannot write the column, fails CI.
 //
-// Also pins the single-zone country list in migration 20280606023355 to the
+// Also pins the single-zone country list in migration 20280620023355 to the
 // edge's own list (MARKET_DEFAULT_TIMEZONES).
 //
 // Run: deno test --no-check --allow-read \
@@ -272,7 +272,7 @@ Deno.test("I-ARI-HANDOFF-FIXABLE: the Time zone handoff opens Brand profile's Ti
 
 Deno.test("A4: the migration's single-zone countries are exactly the edge's", () => {
   const sql = read(
-    "supabase/migrations/20280606023355_issue_3355_brand_timezone_from_country.sql",
+    "supabase/migrations/20280620023355_issue_3355_brand_timezone_from_country.sql",
   );
   const fromSql = Object.fromEntries(
     [...sql.matchAll(/\('([A-Z]{2})','([A-Za-z_/]+)'\)/g)].map((

@@ -17,9 +17,12 @@ import {
   LINKS_STRIP_MESSAGES, moveStrip, normalizeStripUrl, runOptimisticReorder, stripDateRange, stripMetaLine, stripRows,
   stripSaveArgs, validateStripDraft,
 } from "../lib/linksStrips.js";
-import { SUPPORT_PAGE_TABS, pageTabHash } from "../lib/supportCommunityTabs.js";
+import { SUPPORT_PAGE_TABS } from "../lib/supportCommunityTabs.js";
+// #4383: Links page is a Communications screen.
+import { NAV_GROUPS } from "../lib/constants.js";
+import { canOpenPage } from "../lib/access.js";
+import { redirectHash } from "../lib/adminRoutes.js";
 import { COMMUNITY_SUPPORT_TAB_CONTRACT } from "../lib/communitySupportCapabilityContract.js";
-import { communitySupportTabsForAccess } from "../lib/communitySupportAccess.js";
 
 const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (rel) => fs.readFileSync(path.join(SRC, rel), "utf8");
@@ -138,10 +141,13 @@ describe("L-4 reorder", () => {
 });
 
 describe("L-5 tab, access and panel wiring", () => {
-  it("puts Links page directly after Blog on the Support page", () => {
-    const tabIds = SUPPORT_PAGE_TABS.map((tab) => tab.id);
-    assert.equal(tabIds.indexOf("links"), tabIds.indexOf("blog") + 1);
-    assert.equal(SUPPORT_PAGE_TABS.find((tab) => tab.id === "links").label, "Links page");
+  // #4383: Links page is its own Communications screen, directly after Blog.
+  it("puts Links page directly after Blog in the Communications menu", () => {
+    const items = NAV_GROUPS.find((group) => group.label === "Communications").items;
+    const menuIds = items.map((item) => item.id);
+    assert.equal(menuIds.indexOf("links"), menuIds.indexOf("blog") + 1);
+    assert.equal(items.find((item) => item.id === "links").label, "Links page");
+    assert.equal(SUPPORT_PAGE_TABS.some((tab) => tab.id === "links"), false);
   });
 
   it("follows the Support area, the guard on its RPCs", () => {
@@ -149,14 +155,15 @@ describe("L-5 tab, access and panel wiring", () => {
     assert.equal(row.area, "community_support_support");
     assert.equal(row.panel, "components/links/LinksPagePanel.jsx");
     const person = (areas) => ({ email: "t@example.test", role: "growth", status: "active", areas });
-    const shows = (areas) => communitySupportTabsForAccess(person(areas), SUPPORT_PAGE_TABS).some((tab) => tab.id === "links");
+    // #4383: the screen opens for exactly the area the tab followed.
+    const shows = (areas) => canOpenPage(person(areas), "links");
     assert.equal(shows(["community_support", "community_support_support"]), true);
     assert.equal(shows(["email_drafts", "blog"]), false);
     assert.equal(shows(["community_support", "community_support_community"]), false);
   });
 
   it("the page renders the panel for Support, and the service names each RPC", () => {
-    assert.match(read("pages/CommunitySupportPage.jsx"), /activeTab === "links" && capabilities\.canSupport && <LinksPagePanel \/>/);
+    assert.match(read("pages/communications/LinksPage.jsx"), /<LinksPagePanel \/>/);
     const service = read("services/linksStripsService.js");
     for (const rpc of ["admin_links_strips_list", "admin_links_strip_save", "admin_links_strip_delete", "admin_links_strips_reorder", "issue_4137_blog_list_posts"]) {
       assert.match(service, new RegExp(`supabase\\.rpc\\("${rpc}"`), rpc);
@@ -226,8 +233,10 @@ describe("L-7 the /links refresh after a change", () => {
 });
 
 describe("L-8 staff reach and open the live Links page from Support (toward #4339)", () => {
-  it("the tab has its own Support address", () => {
-    assert.equal(pageTabHash("support", "links"), "#/support?tab=links");
+  // #4383: its own Communications address; the old Support one redirects.
+  it("the screen has its own address, and the old Support tab address lands on it", () => {
+    assert.equal(redirectHash("#/support?tab=links"), "#/links");
+    assert.equal(redirectHash("#/links"), null);
   });
 
   it("the panel links straight to usemingla.com/links in a new tab", () => {

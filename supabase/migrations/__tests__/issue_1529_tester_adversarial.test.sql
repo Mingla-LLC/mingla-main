@@ -313,8 +313,12 @@ DECLARE
     'pg_notify_reminders_enqueue',
     'finalize_rsvp_contribution',
     'issue_1389_enqueue_stay_event',
-    'community_publish_announcement',
-    'community_notify_roadmap_change',
+    -- #4383: the public publish / notify RPCs are now an admin gate in front
+    -- of these internals, which hold the INSERTs; plus the Admin push fan-out.
+    'issue_4383_publish_announcement_internal',
+    'issue_4383_notify_roadmap_internal',
+    'issue_4383_fire_push_internal',
+    'issue_4383_push_test_to_me',
     'issue_3720_send_brand_group_message',
     'issue_3720_complete_brand_group_file',
     'content_calendar_comment_add_with_mentions',
@@ -402,6 +406,9 @@ DECLARE
     -- a deletion, and nothing about this classification warrants an override.
     'resolve_source_refund_notification_recipient',
     'issue_1427_admin_stay_group_projection',
+    -- #4383: reads the queued Admin push rows to pick the next pacing slot;
+    -- never inserts (the writes_outbox check below rejects it if it does).
+    'issue_4383_push_pacing_start',
     -- [TEST-MOD-APPROVED #4194] These #4188 rollback paths only DELETE stale
     -- scheduled notices. The writes_outbox assertion below keeps this
     -- classification honest by rejecting either function if it ever INSERTs.

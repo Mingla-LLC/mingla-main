@@ -79,9 +79,14 @@ describe("B — Email and Blog for every teammate", () => {
   const growth = person("growth", ["role_home", "crm", "beta_leads", AREA.EMAIL_DRAFTS, BLOG_AREA]);
   const ids = (a, tabs) => communitySupportTabsForAccess(a, tabs).map((t) => t.id);
 
-  it("a growth teammate opens Support with exactly Email and Blog", () => {
-    assert.equal(canOpenPage(growth, "support"), true);
-    assert.deepEqual(ids(growth, SUPPORT_PAGE_TABS), ["email", "blog"]);
+  // #4383: Email and Blog are their own Communications screens; Support
+  // holds nothing of theirs, so it is not in their menu any more.
+  it("a growth teammate opens Email and Blog (Communications), and no Support tab", () => {
+    assert.equal(canOpenPage(growth, "email"), true);
+    assert.equal(canOpenPage(growth, "blog"), true);
+    assert.equal(canOpenPage(growth, "communications"), true);
+    assert.equal(canOpenPage(growth, "support"), false);
+    assert.deepEqual(ids(growth, SUPPORT_PAGE_TABS), []);
   });
 
   it("Community stays closed to them", () => {
@@ -89,9 +94,11 @@ describe("B — Email and Blog for every teammate", () => {
     assert.deepEqual(ids(growth, COMMUNITY_PAGE_TABS), []);
   });
 
-  it("without the areas, neither tab shows", () => {
+  it("without the areas, neither screen opens", () => {
     const bare = person("growth", ["role_home", "crm", "beta_leads"]);
     assert.equal(canOpenPage(bare, "support"), false);
+    assert.equal(canOpenPage(bare, "email"), false);
+    assert.equal(canOpenPage(bare, "blog"), false);
     assert.deepEqual(ids(bare, SUPPORT_PAGE_TABS), []);
   });
 
@@ -209,8 +216,10 @@ describe("D — the screens use the shared drafts", () => {
   });
 
   it("send history and unsubscribes stay admin-only on the Email page", () => {
+    // #4383: the sections live in lib/emailViews.js (History is "Sent").
+    assert.match(read("lib/emailViews.js"), /ADMIN_ONLY_EMAIL_VIEWS = Object\.freeze\(new Set\(\["sent", "unsubscribes"\]\)\)/);
     const page = read("pages/EmailPage.jsx");
-    assert.match(page, /const ADMIN_ONLY_SUB_TABS = new Set\(\["history", "unsubscribes"\]\);/);
+    assert.match(page, /const subTabs = emailViewsFor\(access\);/);
     assert.match(page, /<Tabs tabs=\{subTabs\}/);
   });
 

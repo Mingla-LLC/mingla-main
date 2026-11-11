@@ -41,7 +41,17 @@
     "sessions_hint": "Lời mời, cập nhật thành viên và hoạt động bảng",
     "tips_reengagement": "Mẹo & Nhắc nhở",
     "tips_hint": "Gợi ý thỉnh thoảng, tóm tắt tuần và đề xuất",
-    "error_update": "Cập nhật cài đặt thông báo thất bại."
+    "error_update": "Cập nhật cài đặt thông báo thất bại.",
+    "prefs": {
+      "cat": {
+        "mingla_updates": "Tin từ Mingla",
+        "mingla_updates_hint": "Tin tức và cập nhật từ đội ngũ Mingla.",
+        "brand_campaign_push": "Tin nhắn từ địa điểm bạn theo dõi",
+        "brand_campaign_push_hint": "Ưu đãi và tin tức từ địa điểm và chủ nhà bạn theo dõi.",
+        "brand_offering_invite": "Lời mời từ địa điểm bạn theo dõi",
+        "brand_offering_invite_hint": "Khi một địa điểm hoặc chủ nhà mời bạn tham gia."
+      }
+    }
   },
   "quiet_hours": {
     "title": "Giờ im lặng",
