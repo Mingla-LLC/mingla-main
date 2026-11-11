@@ -24,10 +24,12 @@ jest.mock("../../../wrappers/SmartScrollView", () => {
   const RN = jest.requireActual("react-native") as typeof import("react-native");
   return { ScrollView: RN.ScrollView, DONE_BAR_OCCUPIED: 53 };
 });
+let mockKeyboardHeight = 0;
+jest.mock("../../../wrappers/useKeyboardHeight", () => ({ useKeyboardHeight: () => mockKeyboardHeight }));
+jest.mock("react-native-safe-area-context", () => ({ useSafeAreaInsets: () => ({ top: 20, bottom: 34, left: 0, right: 0 }) }));
 
 /* eslint-disable import/first */
-import { SheetScrollLayout } from "../SheetScrollLayout";
-import { KeyboardAvoidingView } from "../../../wrappers/SmartKeyboardAvoidingView";
+import { SheetScrollLayout, sheetKeyboardLift } from "../SheetScrollLayout";
 import { computeSheetHeight, type SheetSnapValue } from "../sheetSnapHeight";
 /* eslint-enable import/first */
 
@@ -134,22 +136,27 @@ describe("#4389 — SheetScrollLayout: scroll body above a pinned footer", () =>
     expect((StyleSheet.flatten(scroll.props.style as object) as { flex?: number }).flex).toBe(1);
     const col = root.findAll((n) => typeof n.type === "string" && n.props.testID === "s")[0] as Node;
     expect((StyleSheet.flatten(col.props.style as object) as { flex?: number }).flex).toBe(1);
-    expect(root.findAll((n) => n.type === KeyboardAvoidingView)).toHaveLength(0);
+    expect((StyleSheet.flatten(col.props.style as object) as { paddingBottom?: number }).paddingBottom).toBeUndefined();
   });
 
-  test("T4: keyboardAware lifts the footer with the library avoiding view (Done bar budget)", () => {
+  // #4389 (device r4): the footer of a sheet with an input (delete
+  // "Type to confirm", Add buyer, Text the link) sat behind the keyboard.
+  test("T4: keyboardAware lifts the footer by the keyboard + Done bar, less the panel's bottom room", () => {
+    mockKeyboardHeight = 336;
     TestRenderer.act(() => {
       tree = TestRenderer.create(
-        <SheetScrollLayout keyboardAware footer={<Text testID="btn">Save</Text>}>
+        <SheetScrollLayout keyboardAware testID="k" footer={<Text testID="btn">Save</Text>}>
           <View />
         </SheetScrollLayout>,
       );
     });
     const root = (tree as unknown as { root: Node }).root;
-    const kav = root.findAll((n) => n.type === KeyboardAvoidingView)[0] as Node;
-    expect(kav.props.behavior).toBe("padding");
-    expect(kav.props.keyboardVerticalOffset).toBe(53);
-    const btn = root.findAll((n) => typeof n.type === "string" && n.props.testID === "btn")[0] as Node;
-    expect(isInside(btn, kav)).toBe(true);
+    const col = root.findAll((n) => typeof n.type === "string" && n.props.testID === "k")[0] as Node;
+    const lift = (StyleSheet.flatten(col.props.style as object) as { paddingBottom?: number }).paddingBottom;
+    // 336 + 53 (Done bar) - (24 + 34) = 331
+    expect(lift).toBe(331);
+    expect(sheetKeyboardLift(336, 34)).toBe(331);
+    expect(sheetKeyboardLift(0, 34)).toBe(0);
+    mockKeyboardHeight = 0;
   });
 });
