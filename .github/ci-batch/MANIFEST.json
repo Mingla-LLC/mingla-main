@@ -33283,7 +33283,6 @@
         "pathScope": [
           ".github/workflows/issue-1540-paired-saves-sheet-tests.yml",
           "app-mobile/src/components/ExpandedCardModal.tsx",
-          "app-mobile/src/components/FeedbackHistorySheet.tsx",
           "app-mobile/src/components/PairedSavesListScreen.tsx",
           "app-mobile/src/components/PersonGridCard.tsx",
           "app-mobile/src/components/PersonHolidayView.tsx",
