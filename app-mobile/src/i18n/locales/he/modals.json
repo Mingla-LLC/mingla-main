@@ -16,6 +16,7 @@
     "confirm": "אשר",
     "rescheduled_toast": "החוויה תוזמנה מחדש!",
     "reschedule_failed_toast": "התזמון מחדש נכשל. נסה שוב.",
+    "open_failed_toast": "לא ניתן לפתוח את הדירוג. נסה שוב.",
     "close_label": "סגור"
   },
   "custom_holiday": {

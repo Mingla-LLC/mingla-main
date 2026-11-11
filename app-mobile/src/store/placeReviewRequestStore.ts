@@ -76,6 +76,23 @@ export interface VoluntaryPlaceReviewRequest {
 interface PlaceReviewRequestState {
   /** The open request, or null when no voluntary review is in progress. */
   request: VoluntaryPlaceReviewRequest | null;
+  /**
+   * #4381 — what the single prompt mount RENDERS. It is the open request, and
+   * it outlives a cancel or confirm until the prompt has natively dismissed, so
+   * the presented RN Modal is never unmounted mid-presentation (ORCH-1063) and
+   * its native dismiss callback still arrives.
+   */
+  displayRequest: VoluntaryPlaceReviewRequest | null;
+  /**
+   * #4381 — how many RN-Modal hosts are natively presented right now and hold
+   * the iOS presentation slot (the expanded card's root sheet). iOS refuses to
+   * present a second RN Modal from a view controller that is already presenting
+   * one, so the prompt is not told to present until this is zero. A host adds
+   * itself on its native show and removes itself on its native dismiss.
+   */
+  slotHolds: number;
+  /** #4381 — the prompt's own native presentation (onShow seen, dismiss not yet). */
+  promptOnScreen: boolean;
   /** The card whose review was last CONFIRMED — never set by a cancel. */
   confirmedCardId: string | null;
   /**
@@ -86,23 +103,154 @@ interface PlaceReviewRequestState {
   openRequest: (request: VoluntaryPlaceReviewRequest) => void;
   cancelRequest: () => void;
   confirmRequest: () => void;
+  holdSlot: () => void;
+  releaseSlot: () => void;
+  promptShown: () => void;
+  promptDismissed: () => void;
 }
 
 export const usePlaceReviewRequestStore = create<PlaceReviewRequestState>((set) => ({
   request: null,
+  displayRequest: null,
+  slotHolds: 0,
+  promptOnScreen: false,
   confirmedCardId: null,
   confirmToken: 0,
-  openRequest: (request) => set({ request }),
+  openRequest: (request) => set({ request, displayRequest: request }),
   // Cancel deliberately touches NEITHER confirmedCardId NOR confirmToken: a
   // cancelled tap leaves no write, no flash and no trace of having happened.
-  cancelRequest: () => set({ request: null }),
+  // The rendered request is kept only while the prompt is still on screen.
+  cancelRequest: () =>
+    set((s) => ({ request: null, displayRequest: s.promptOnScreen ? s.displayRequest : null })),
   confirmRequest: () =>
     set((s) =>
       s.request
-        ? { request: null, confirmedCardId: s.request.cardId, confirmToken: s.confirmToken + 1 }
+        ? {
+            request: null,
+            displayRequest: s.promptOnScreen ? s.displayRequest : null,
+            confirmedCardId: s.request.cardId,
+            confirmToken: s.confirmToken + 1,
+          }
         : {},
     ),
+  holdSlot: () => set((s) => ({ slotHolds: s.slotHolds + 1 })),
+  releaseSlot: () => set((s) => ({ slotHolds: Math.max(0, s.slotHolds - 1) })),
+  // Only a voluntary prompt is tracked; the scheduled prompt shares the mount
+  // but renders no displayRequest, so its show and dismiss change nothing here.
+  promptShown: () => set((s) => (s.displayRequest !== null ? { promptOnScreen: true } : {})),
+  promptDismissed: () =>
+    set((s) => ({
+      promptOnScreen: false,
+      displayRequest: s.request !== null ? s.displayRequest : null,
+    })),
 }));
+
+type PresentationState = Pick<
+  PlaceReviewRequestState,
+  'request' | 'slotHolds' | 'promptOnScreen'
+>;
+
+/**
+ * #4381 — the prompt may be told to present only when a request is open AND no
+ * RN-Modal host still holds the presentation slot. On device, presenting in the
+ * same commit that dismissed the expanded card raced iOS ("Attempt to present
+ * ... which is already presenting"), the prompt never appeared, and the request
+ * stayed open for good.
+ */
+export const isPromptPresentable = (s: PresentationState): boolean =>
+  s.request !== null && s.slotHolds === 0;
+
+/**
+ * #4381 — a host steps aside while a request is open AND while the prompt is
+ * still natively on screen after it closed, so the host re-presents only after
+ * the prompt's own native dismiss.
+ */
+export const isHostSuspendedForPrompt = (s: PresentationState): boolean =>
+  s.request !== null || s.promptOnScreen;
+
+/** #4381 — bound for each wait: the slot to free, the prompt to show, the prompt to go. */
+export const PLACE_REVIEW_PRESENTATION_TIMEOUT_MS = 1500;
+
+interface PresentationTimers {
+  set: (callback: () => void, ms: number) => unknown;
+  clear: (handle: unknown) => void;
+}
+
+const defaultTimers: PresentationTimers = {
+  set: (callback, ms) => setTimeout(callback, ms),
+  clear: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+};
+
+/**
+ * #4381 — safety net (Constitution rule 3). A request that is open but never
+ * natively shown would keep every host suspended, so the user could tap
+ * nothing until a restart. Each wait is bounded:
+ *
+ *  - the slot never frees, or the prompt never reports onShow (an outer full-
+ *    screen sheet such as SessionViewModal holds the slot): the request is
+ *    cancelled, so whatever stepped aside comes back, and `onPresentFailed`
+ *    tells the user;
+ *  - the prompt closed but its native dismiss never arrives: it is treated as
+ *    dismissed, so the host comes back.
+ *
+ * The deadline restarts whenever the phase changes, so a slow host dismiss does
+ * not eat the prompt's own time to show. Returns the unsubscribe.
+ */
+export function watchPlaceReviewPresentation(
+  onPresentFailed: () => void,
+  timeoutMs: number = PLACE_REVIEW_PRESENTATION_TIMEOUT_MS,
+  timers: PresentationTimers = defaultTimers,
+): () => void {
+  let handle: unknown = null;
+  let armedPhase: string | null = null;
+  let armedRequest: VoluntaryPlaceReviewRequest | null = null;
+
+  const disarm = (): void => {
+    if (handle !== null) timers.clear(handle);
+    handle = null;
+    armedPhase = null;
+    armedRequest = null;
+  };
+
+  const evaluate = (s: PlaceReviewRequestState): void => {
+    const phase =
+      s.request !== null && !s.promptOnScreen
+        ? s.slotHolds > 0
+          ? 'awaiting_slot'
+          : 'awaiting_show'
+        : s.request === null && s.promptOnScreen
+          ? 'awaiting_dismiss'
+          : null;
+    if (phase === armedPhase && s.request === armedRequest) return;
+    disarm();
+    if (phase === null) return;
+    armedPhase = phase;
+    armedRequest = s.request;
+    handle = timers.set(() => {
+      handle = null;
+      const now = usePlaceReviewRequestStore.getState();
+      if (phase === 'awaiting_dismiss') {
+        if (now.request === null && now.promptOnScreen) {
+          console.warn('[place-review] prompt dismiss was not reported; releasing the host');
+          now.promptDismissed();
+        }
+        return;
+      }
+      if (now.request !== null && now.request === armedRequest && !now.promptOnScreen) {
+        console.warn('[place-review] prompt did not present', { phase });
+        now.cancelRequest();
+        onPresentFailed();
+      }
+    }, timeoutMs);
+  };
+
+  evaluate(usePlaceReviewRequestStore.getState());
+  const unsubscribe = usePlaceReviewRequestStore.subscribe(evaluate);
+  return () => {
+    unsubscribe();
+    disarm();
+  };
+}
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -181,9 +329,21 @@ export function placeReviewRequestFromCard(
   };
 }
 
-/** Subscribe to the open voluntary request (the single modal mount reads this). */
+/** Subscribe to the open voluntary request. */
 export const usePlaceReviewRequest = (): VoluntaryPlaceReviewRequest | null =>
   usePlaceReviewRequestStore((s) => s.request);
+
+/** #4381 — the request the single modal mount renders (outlives close until native dismiss). */
+export const usePlaceReviewDisplayRequest = (): VoluntaryPlaceReviewRequest | null =>
+  usePlaceReviewRequestStore((s) => s.displayRequest);
+
+/** #4381 — the single modal mount presents only when this is true. */
+export const usePlaceReviewPromptPresentable = (): boolean =>
+  usePlaceReviewRequestStore(isPromptPresentable);
+
+/** #4381 — an RN-Modal host (the expanded card) steps aside while this is true. */
+export const usePlaceReviewSuspendsHost = (): boolean =>
+  usePlaceReviewRequestStore(isHostSuspendedForPrompt);
 
 /** Imperative helpers — safe to call from a handler without subscribing. */
 export const openPlaceReviewRequest = (request: VoluntaryPlaceReviewRequest): void =>
@@ -192,3 +352,13 @@ export const cancelPlaceReviewRequest = (): void =>
   usePlaceReviewRequestStore.getState().cancelRequest();
 export const confirmPlaceReviewRequest = (): void =>
   usePlaceReviewRequestStore.getState().confirmRequest();
+
+/** #4381 — native acknowledgements from the slot holder and from the prompt. */
+export const holdPlaceReviewSlot = (): void =>
+  usePlaceReviewRequestStore.getState().holdSlot();
+export const releasePlaceReviewSlot = (): void =>
+  usePlaceReviewRequestStore.getState().releaseSlot();
+export const markPlaceReviewPromptShown = (): void =>
+  usePlaceReviewRequestStore.getState().promptShown();
+export const markPlaceReviewPromptDismissed = (): void =>
+  usePlaceReviewRequestStore.getState().promptDismissed();

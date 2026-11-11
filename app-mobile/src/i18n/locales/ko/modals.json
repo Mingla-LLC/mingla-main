@@ -16,6 +16,7 @@
     "confirm": "확인",
     "rescheduled_toast": "경험이 재스케줄되었습니다!",
     "reschedule_failed_toast": "재스케줄에 실패했습니다. 다시 시도해 주세요.",
+    "open_failed_toast": "평가를 열 수 없습니다. 다시 시도해 주세요.",
     "close_label": "닫기"
   },
   "custom_holiday": {

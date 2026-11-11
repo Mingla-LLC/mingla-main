@@ -589,11 +589,41 @@ describe("B10 where the card goes", () => {
     const verifying = view.slice(view.indexOf('viewState === "complete-verifying" ? ('));
     expect(verifying.slice(0, 1200)).not.toContain("TapToPayOnboardingCard");
   });
-  test("the modal is a sibling of the Stack and the assets are unset until the toolkit lands", () => {
+  test("the modal is a sibling of the Stack and uses Apple's Hero banner, untouched", () => {
     expect(fs.readFileSync(path.join(BIZ_ROOT, "app/_layout.tsx"), "utf8")).toContain("<TapToPayAwarenessModal />");
-    expect(fs.readFileSync(path.join(BIZ_ROOT, "src/constants/tapToPayMarketing.ts"), "utf8")).toContain(
-      "TAP_TO_PAY_AWARENESS: TapToPayAwarenessAssets | null = null",
-    );
+    const marketing = fs.readFileSync(path.join(BIZ_ROOT, "src/constants/tapToPayMarketing.ts"), "utf8");
+    expect(marketing).toContain("export const TAP_TO_PAY_AWARENESS: TapToPayAwarenessAssets | null = {");
+    expect(marketing).toContain('hero: require("../../assets/tap-to-pay/awareness-hero.jpg") as number,');
+    expect(marketing).toContain("frame: { width: 2160, height: 3840 },");
+    expect(marketing).toContain("cta: { x: 214, y: 3026, width: 580, height: 224 },");
+    expect(marketing).toContain("notNow: { x: 214, y: 3330 },");
+    expect(marketing).toContain("terms: { x: 208, y: 3678, width: 399, height: 67 },");
+  });
+
+  // Reads a baseline or progressive JPEG's size from its SOF marker.
+  const jpegSize = (file: string): { width: number; height: number } => {
+    const bytes = fs.readFileSync(file);
+    expect([bytes[0], bytes[1]]).toEqual([0xff, 0xd8]);
+    let at = 2;
+    while (at < bytes.length) {
+      const marker = bytes[at + 1] as number;
+      const length = bytes.readUInt16BE(at + 2);
+      if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+        return { height: bytes.readUInt16BE(at + 5), width: bytes.readUInt16BE(at + 7) };
+      }
+      at += 2 + length;
+    }
+    throw new Error(`no size in ${file}`);
+  };
+
+  test.each([
+    ["awareness-hero.jpg", 360, 640],
+    ["awareness-hero@2x.jpg", 720, 1280],
+    ["awareness-hero@3x.jpg", 1080, 1920],
+  ])("%s exists at %ix%i, exactly 9:16", (name, width, height) => {
+    const size = jpegSize(path.join(BIZ_ROOT, "assets/tap-to-pay", name));
+    expect(size).toEqual({ width, height });
+    expect(size.width * 16).toBe(size.height * 9);
   });
 });
 

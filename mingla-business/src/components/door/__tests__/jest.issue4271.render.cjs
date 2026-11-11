@@ -21,6 +21,8 @@ module.exports = {
     "**/src/components/door/__tests__/issue_4271_door_polish_money.tester.adversarial.render.test.tsx",
     // #4271 door polish retest: the pay code screen and VoiceOver.
     "**/src/components/door/__tests__/issue_4271_door_polish_retest.tester.adversarial.test.tsx",
+    // #4271 Tap to Pay on iPhone review gaps (awareness role, full name, Get help, Settings icon).
+    "**/src/components/door/__tests__/issue_4271_review_gaps.render.test.tsx",
   ],
   transformIgnorePatterns: [
     "node_modules/(?!(jest-)?react-native|@react-native|@react-native-community|test-renderer|react-clone-referenced-element|@react-native-async-storage|expo|@expo|react-native-safe-area-context|react-native-reanimated|react-native-svg)",

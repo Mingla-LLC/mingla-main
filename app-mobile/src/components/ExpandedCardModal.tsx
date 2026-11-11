@@ -123,6 +123,11 @@ import { DeviceCalendarService } from "../services/deviceCalendarService";
 import { CalendarService } from "../services/calendarService";
 import { supabase } from "../services/supabase";
 import { useAppStore } from "../store/appStore";
+import {
+  holdPlaceReviewSlot,
+  releasePlaceReviewSlot,
+  usePlaceReviewSuspendsHost,
+} from "../store/placeReviewRequestStore";
 import { toastManager } from "./ui/Toast";
 import { useUserLocation } from "../hooks/useUserLocation";
 import {
@@ -716,6 +721,21 @@ export default function ExpandedCardModal({
   const rootSuspendedForShare =
     shareHandoffPhase !== 'idle' && shareHandoffPhase !== 'expanded_restoring';
 
+  // #4381: "Been here" does not write on tap; it opens the review prompt, which
+  // is the single PostExperienceModal (an RN Modal) mounted in app/index.tsx.
+  // iOS will not present it over this sheet's own RN Modal (ORCH-1022), so the
+  // sheet steps aside while a review request is open. The handoff is sequenced
+  // on native acknowledgements, like the share handoff: this sheet holds the
+  // presentation slot from its native show to its native dismiss
+  // (handleRootNativeShow / handleRootNativeDismiss), the prompt presents only
+  // once no host holds it, and this sheet stays down until the prompt has
+  // natively dismissed too.
+  const placeReviewOpen = usePlaceReviewSuspendsHost();
+  const holdsPresentationSlot = useRef(false);
+
+  // Every child surface that takes the native presentation slot. The list is
+  // spelled out in BOTH places on purpose: the ORCH-1148 gates check that each
+  // flag suppressing the sheet is also swallowed by the close guard.
   const anyChildModalOpen =
     browserUrl !== null ||
     ticketBrowserUrl !== null ||
@@ -723,17 +743,18 @@ export default function ExpandedCardModal({
     curatedLightbox.visible ||
     selectedVenueExperience !== null ||
     isReserveSheetOpen ||
+    placeReviewOpen ||
     rootSuspendedForShare;
 
   const handleRootSheetClose = useCallback(() => {
     // ORCH-1022: while a child RN Modal/WebView is open, the root sheet is
     // intentionally suppressed to free the native presentation slot. Swallow
     // BaseBottomSheet's synthetic close so the card state is not torn down.
-    if (browserUrl !== null || ticketBrowserUrl !== null || isSchedulePickerOpen || curatedLightbox.visible || selectedVenueExperience !== null || isReserveSheetOpen || shareHandoffPhaseRef.current !== 'idle') {
+    if (browserUrl !== null || ticketBrowserUrl !== null || isSchedulePickerOpen || curatedLightbox.visible || selectedVenueExperience !== null || isReserveSheetOpen || placeReviewOpen || shareHandoffPhaseRef.current !== 'idle') {
       return;
     }
     onClose();
-  }, [browserUrl, curatedLightbox.visible, isSchedulePickerOpen, onClose, ticketBrowserUrl, selectedVenueExperience, isReserveSheetOpen]);
+  }, [browserUrl, curatedLightbox.visible, isSchedulePickerOpen, onClose, ticketBrowserUrl, selectedVenueExperience, isReserveSheetOpen, placeReviewOpen]);
 
   const focusShareControl = useCallback((): void => {
     const nativeNode = findNodeHandle(shareControlRef.current);
@@ -955,12 +976,44 @@ export default function ExpandedCardModal({
   ]);
 
   const handleRootNativeDismiss = useCallback((): void => {
+    if (holdsPresentationSlot.current) {
+      holdsPresentationSlot.current = false;
+      releasePlaceReviewSlot();
+    }
     rootDismissedAcknowledgement.current?.resolve();
   }, []);
 
   const handleRootNativeShow = useCallback((): void => {
+    if (!holdsPresentationSlot.current) {
+      holdsPresentationSlot.current = true;
+      holdPlaceReviewSlot();
+    }
     rootShownAcknowledgement.current?.resolve();
   }, []);
+
+  // #4381: an unmount never delivers the native dismiss, so give the slot back.
+  useEffect(() => () => {
+    if (holdsPresentationSlot.current) {
+      holdsPresentationSlot.current = false;
+      releasePlaceReviewSlot();
+    }
+  }, []);
+
+  // #4381: the deck and Saved close the card by clearing `visible` AND the card
+  // in one commit. This component stays mounted but renders nothing, so the
+  // root sheet (and its RN Modal) unmounts with no native dismiss and the
+  // cleanup above never runs: the slot stayed held and every later Been here on
+  // a collapsed card timed out with a toast. Give the slot back whenever this
+  // component can no longer present its root sheet. Suspending the sheet for a
+  // child surface or the prompt keeps `visible` and the card, so it does not
+  // reach here; that path releases on the real native dismiss.
+  const rootSheetMounted =
+    visible && card !== null && (businessEvent === null || businessEvent === undefined);
+  useEffect(() => {
+    if (rootSheetMounted || !holdsPresentationSlot.current) return;
+    holdsPresentationSlot.current = false;
+    releasePlaceReviewSlot();
+  }, [rootSheetMounted]);
 
   useEffect(() => {
     if (shareHandoffPhase === 'idle' || shareHandoffPhase === 'provider_visible') return undefined;
