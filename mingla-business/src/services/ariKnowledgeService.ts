@@ -3,7 +3,11 @@
 import { supabase } from "./supabase";
 
 export type AriMemoryKind =
-  "preference" | "correction" | "business_fact" | "workflow";
+  | "preference"
+  | "correction"
+  | "fact"
+  | "business_fact"
+  | "workflow";
 
 export interface AriMemoryNote {
   id: string;
@@ -12,6 +16,12 @@ export interface AriMemoryNote {
   content: string;
   confidence: number;
   updated_at: string;
+  /** #3355 Wave D: "brand" notes are shared with everyone on the brand. */
+  scope?: "user" | "brand";
+  /** #3355 Wave D: the caller wrote this note. */
+  mine?: boolean;
+  /** #3355 Wave D: the author, or a brand admin for a shared note. */
+  can_forget?: boolean;
 }
 
 export type AriJobStatus =
