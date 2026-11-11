@@ -121,6 +121,8 @@ const SERVED_ROUTE_SEGMENTS: ReadonlySet<string> = new Set([
   "purchases",
   "s",
   "stay",
+  // #4382 — Help & Support and support request threads.
+  "support",
   "t",
 ]);
 

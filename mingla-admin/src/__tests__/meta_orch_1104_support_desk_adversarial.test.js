@@ -94,25 +94,26 @@ describe("META-ORCH-1104 Phase 2 — adversarial", () => {
 
   // [TEST-MOD-APPROVED #3720] reply must not use messages.insert / notifyOnly.
   it("D. support actions degrade gracefully when the edge fns are undeployed (404)", () => {
+    // [TEST-MOD #4382] the helpers live in services/supportDeskService.js.
+    const service = read("src/services/supportDeskService.js");
     const page = read("src/pages/SupportDeskPage.jsx");
+    assert.match(page, /invokeSupportFunction\("support-claim"/);
     // The invoke helper must special-case 404 and return a clear message, never throw.
-    assert.match(page, /invokeSupportFn/);
-    assert.match(page, /status\s*===\s*404/);
-    assert.match(page, /isn't deployed|aren't live yet/);
-    // Helper is try/caught so a thrown error never crashes the desk.
-    const helperMatch = page.match(/async function invokeSupportFn[\s\S]*?\n\}/);
-    assert.ok(helperMatch, "invokeSupportFn must be defined");
-    assert.match(helperMatch[0], /try\s*\{/, "invokeSupportFn must be wrapped in try/catch");
-    assert.match(helperMatch[0], /catch\s*\(/);
-    // #3720: handleReply sends content through support-send only; a failed
-    // invoke surfaces as an error toast (message is not half-written client-side).
-    const replyMatch = page.match(/const handleReply[\s\S]*?\}, \[/);
-    assert.ok(replyMatch, "handleReply must exist");
-    assert.match(replyMatch[0], /support-send/);
-    assert.match(replyMatch[0], /content:\s*body/);
-    assert.equal(replyMatch[0].includes('from("messages")'), false,
-      "handleReply must not insert messages directly");
-    assert.equal(replyMatch[0].includes("notifyOnly"), false,
-      "handleReply must not use notifyOnly");
+    assert.match(service, /status\s*===\s*404/);
+    assert.match(service, /isn't deployed|aren't live yet/);
+    for (const name of ["invokeSupportFunction", "sendSupportMessage"]) {
+      const helperMatch = service.match(new RegExp(`export async function ${name}[\\s\\S]*?\\n\\}`));
+      assert.ok(helperMatch, `${name} must be defined`);
+      assert.match(helperMatch[0], /try\s*\{/, `${name} must be wrapped in try/catch`);
+      assert.match(helperMatch[0], /catch\s*\(/);
+    }
+    // #3720: replies go through support-send only; the composer never writes
+    // messages itself.
+    const composer = read("src/components/support/SupportComposer.jsx");
+    assert.match(composer, /sendSupportMessage\(body\)/);
+    for (const src of [composer, service, page]) {
+      assert.equal(/from\("messages"\)\s*\.(insert|update)/.test(src), false, "no direct message writes");
+      assert.equal(src.includes("notifyOnly"), false, "no notifyOnly");
+    }
   });
 });

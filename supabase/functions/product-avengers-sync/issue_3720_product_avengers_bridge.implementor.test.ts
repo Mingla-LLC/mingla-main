@@ -101,13 +101,21 @@ Deno.test("#3720 Admin source has no browser GitHub mutation path and keeps cust
   const edge = await Deno.readTextFile(
     new URL("supabase/functions/product-avengers-sync/index.ts", root),
   );
+  // #4382: the board's card panel holds Triage, GitHub and Tell reporters.
+  const card = await Deno.readTextFile(
+    new URL("mingla-admin/src/components/support/ProductCardPanel.jsx", root),
+  );
   assertNotMatch(
-    `${service}\n${panel}`,
+    `${service}\n${panel}\n${card}`,
     /api[.]github[.]com|SPRINT_ROLLOVER_TOKEN|github_token/i,
   );
   assertMatch(service, /invokeWithRefresh\("product-avengers-sync"/);
-  assertMatch(panel, /Existing issue first · public-safe fields only/);
-  assertMatch(panel, /it does not send anything/);
+  assertMatch(card, /Triage: public wording, existing issue first/);
+  assertMatch(card, /Only this wording can cross into the public GitHub repo/);
+  // D2: reporters hear only through the once-only Tell reporters function,
+  // after an admin approves the wording; nothing else in the browser sends.
+  assertMatch(service, /rpc\("issue_4382_tell_reporters"/);
+  assertNotMatch(`${service}\n${card}`, /functions[.]invoke\("support-send"|invokeWithRefresh\("support-send"/);
   assertMatch(migration, /candidate_search_and_no_fit_reason_required/);
   assertMatch(migration, /candidate_decisions_required/);
   assertMatch(migration, /selected_candidate_required/);
@@ -115,6 +123,7 @@ Deno.test("#3720 Admin source has no browser GitHub mutation path and keeps cust
   assertMatch(migration, /state text NOT NULL DEFAULT 'draft'/);
   assertNotMatch(migration, /FUNCTION public[.]issue_3720_[^(]*send/i);
   assertMatch(edge, /Deno[.]env[.]get\("SPRINT_ROLLOVER_TOKEN"\)/);
-  assertMatch(edge, /admin_team_my_access/);
+  // #4382: the edge and the Product RPCs share one rule, is_product_operator.
+  assertMatch(edge, /rpc\("is_product_operator"\)/);
   assert(edge.includes("issue_3720_apply_product_avengers_snapshot"));
 });

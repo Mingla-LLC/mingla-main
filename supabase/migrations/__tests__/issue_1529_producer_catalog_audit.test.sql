@@ -153,8 +153,10 @@ $ratchet$;
 --       create_support_ticket               → explicit NULL (no SMS channel)
 --       issue_3988_enqueue_alert            → explicit NULL (no SMS channel; #3988
 --                                             support and product alerts)
---       issue_3988_create_brand_support_ticket → explicit NULL (push-only brand notice)
---       issue_3988_notify_brand_support_progress → explicit NULL (push-only progress notice)
+--       issue_4382_create_customer_ticket   → explicit NULL (no SMS channel; #4382
+--                                             replaced issue_3988_create_brand_support_ticket)
+--       issue_4382_enqueue_customer_alert   → explicit NULL (push-only customer support
+--                                             notice; replaced issue_3988_notify_brand_support_progress)
 --       issue_3720_admin_update_idea        → explicit NULL (no SMS channel)
 --       issue_3720_admin_question_action    → explicit NULL (no SMS channel)
 --       issue_4073_scan_city_watches        → copies the normalized country_code
@@ -212,8 +214,8 @@ DECLARE
     'issue_3720_community_add_comment',
     'create_support_ticket',
     'issue_3988_enqueue_alert',
-    'issue_3988_create_brand_support_ticket',
-    'issue_3988_notify_brand_support_progress',
+    'issue_4382_create_customer_ticket',
+    'issue_4382_enqueue_customer_alert',
     'issue_3720_admin_update_idea',
     'issue_3720_admin_question_action',
     'issue_4073_scan_city_watches',
@@ -357,8 +359,8 @@ DECLARE
     'issue_3720_community_add_comment',
     'create_support_ticket',
     'issue_3988_enqueue_alert',
-    'issue_3988_create_brand_support_ticket',
-    'issue_3988_notify_brand_support_progress',
+    'issue_4382_create_customer_ticket',
+    'issue_4382_enqueue_customer_alert',
     'issue_3720_admin_update_idea',
     'issue_3720_admin_question_action',
     'issue_4073_scan_city_watches',

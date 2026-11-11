@@ -22,14 +22,19 @@ function read(rel) {
 
 describe("#3720 admin support reply path (happy)", () => {
   // [TEST-MOD-APPROVED #3720] Wave 2 removes the fictional Support identity.
-  it("handleReply sends content via support-send and explains actual-person attribution", () => {
-    const page = read("src/pages/SupportDeskPage.jsx");
-    const replyMatch = page.match(/const handleReply[\s\S]*?\}, \[/);
-    assert.ok(replyMatch, "handleReply must exist");
-    assert.match(replyMatch[0], /invokeSupportFn\("support-send"/);
-    assert.match(replyMatch[0], /content:\s*body/);
-    assert.equal(replyMatch[0].includes("notifyOnly"), false);
-    assert.equal(replyMatch[0].includes('from("messages")'), false);
-    assert.match(page, /your real staff name · Mingla Support/);
+  // [TEST-MOD #4382] the composer replaced handleReply; support-send names
+  // the real staff member (sender_display_name_snapshot) on every reply.
+  it("the composer sends content via support-send as staff, never writing messages itself", () => {
+    const composer = read("src/components/support/SupportComposer.jsx");
+    const model = read("src/components/support/supportComposerModel.js");
+    const service = read("src/services/supportDeskService.js");
+    assert.match(service, /invokeWithRefresh\("support-send", \{ body \}\)/);
+    assert.match(model, /actorMode: "staff"/);
+    assert.match(model, /content: String\(content \|\| ""\)\.trim\(\)/);
+    for (const src of [composer, service]) {
+      assert.equal(src.includes("notifyOnly"), false);
+      assert.equal(/from\("messages"\)\s*\.insert/.test(src), false);
+    }
+    assert.match(read("src/components/support/SupportThread.jsx"), /sender_display_name_snapshot/);
   });
 });

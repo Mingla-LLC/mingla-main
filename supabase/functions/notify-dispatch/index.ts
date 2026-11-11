@@ -355,6 +355,13 @@ const typeToPreference: Record<string, string> = {
   "business.support_new_ticket": "messages",
   // #3988 — Host reply alert (v2 outbox category; listed for the legacy path).
   "business.support_ticket_reply": "messages",
+  // #4382 — customer support updates (v2 outbox categories; listed for the
+  // legacy path so a direct call still respects the messages preference).
+  "business.support_status_changed": "messages",
+  "business.support_product_update": "messages",
+  "explorer.support_reply": "messages",
+  "explorer.support_status_changed": "messages",
+  "explorer.support_product_update": "messages",
   "re_engagement": "marketing",
   "re_engagement_3d": "marketing",
   "re_engagement_7d": "marketing",

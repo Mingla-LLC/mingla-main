@@ -41,6 +41,8 @@ import {
   TEAM_NOTIFY_CATEGORIES,
   teamQuietUntil,
 } from "../_shared/teamNotifications.ts";
+// #4382 — customer-facing support notifications.
+import { ISSUE_4382_SUPPORT_CATEGORIES } from "../_shared/issue4382SupportNotifications.ts";
 // #4383: the Admin push categories (one list, the destination module).
 import { ADMIN_PUSH_CATEGORIES } from "../_shared/adminPushDestinations.ts";
 
@@ -140,6 +142,7 @@ const ISSUE_3720_DURABLE_CATEGORIES = new Set([
   ...ISSUE_4111_ENQUIRY_CATEGORIES,
   // #4255 W4: team pushes get durable terminal envelopes, like Brand groups.
   ...TEAM_NOTIFY_CATEGORIES,
+  ...ISSUE_4382_SUPPORT_CATEGORIES,
 ]);
 const TERMINAL_DELIVERY_STATUSES = new Set([
   "sent",

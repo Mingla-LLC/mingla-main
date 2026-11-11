@@ -24,8 +24,8 @@ const WebKeyboardWrap: React.FC<KeyboardWrapProps> = ({ children }) => (
   <>{children}</>
 );
 
-export const SupportThread: React.FC<{ ticketId: string }> = ({ ticketId }) => (
-  <SupportThreadCore ticketId={ticketId} KeyboardWrap={WebKeyboardWrap} />
+export const SupportThread: React.FC<{ ticketId: string; staffMode?: boolean }> = ({ ticketId, staffMode = false }) => (
+  <SupportThreadCore ticketId={ticketId} KeyboardWrap={WebKeyboardWrap} staffMode={staffMode} />
 );
 
 export default SupportThread;

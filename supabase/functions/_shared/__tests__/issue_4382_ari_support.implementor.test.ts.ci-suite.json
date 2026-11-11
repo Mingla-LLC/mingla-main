@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_4382_ari_support.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-4382-ari-support",
+  "profile": "deno-1.46-stripe"
+}

@@ -79,12 +79,16 @@ export function issue3988DeepLinkValid(
       return new RegExp(`^${UUID.source}$`).test(id) &&
         deepLink === `mingla-business://support/${id}`;
     }
+    // #4382: staff threads became internal tickets; old thread links stay
+    // valid for rows queued before the move.
     case "admin.support_staff_ticket":
     case "admin.support_assigned":
-      return typeof deepLink === "string" && ADMIN_THREAD_LINK.test(deepLink);
+      return typeof deepLink === "string" &&
+        (ADMIN_TICKET_LINK.test(deepLink) || ADMIN_THREAD_LINK.test(deepLink));
     case "admin.support_overdue":
       return typeof deepLink === "string" &&
-        (ADMIN_THREAD_LINK.test(deepLink) || ADMIN_SIGNAL_LINK.test(deepLink));
+        (ADMIN_TICKET_LINK.test(deepLink) || ADMIN_THREAD_LINK.test(deepLink) ||
+          ADMIN_SIGNAL_LINK.test(deepLink));
     case "admin.product_signal_new":
     case "admin.product_signal_assigned":
     case "admin.product_signal_progress":
@@ -95,8 +99,8 @@ export function issue3988DeepLinkValid(
 /** Only these keys ever reach the push provider. */
 const PROVIDER_SAFE_KEYS: Record<Issue3988AlertCategory, string[]> = {
   "business.support_ticket_reply": ["ticket_id", "message_id"],
-  "admin.support_staff_ticket": ["thread_id"],
-  "admin.support_assigned": ["thread_id"],
+  "admin.support_staff_ticket": ["ticket_id", "thread_id"],
+  "admin.support_assigned": ["ticket_id", "thread_id"],
   "admin.support_overdue": ["kind", "item_id"],
   "admin.product_signal_new": ["signal_id"],
   "admin.product_signal_assigned": ["signal_id"],

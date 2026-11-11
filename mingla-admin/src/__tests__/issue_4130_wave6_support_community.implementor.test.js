@@ -45,7 +45,7 @@ import {
 import { communitySupportTabsForAccess } from "../lib/communitySupportAccess.js";
 import { COMMUNITY_SUPPORT_TAB_CONTRACT } from "../lib/communitySupportCapabilityContract.js";
 import {
-  SUPPORT_INBOX_FILTERS,
+  SUPPORT_INBOX_VIEWS,
   supportInboxCounts,
   supportInboxRows,
 } from "../lib/supportTicketMetrics.js";
@@ -212,37 +212,42 @@ describe("W6-4 Reported enquiries", () => {
   });
 });
 
+// [TEST-MOD #4382] the inbox's views are now Needs reply, Mine, Unassigned,
+// Overdue, Waiting on customer, Resolved and All, and staff tickets are
+// support_tickets with origin "staff". The rule this suite pins is unchanged:
+// every count is the number of rows that view lists.
 describe("W6-5 the inbox counts match the inbox", () => {
   const now = Date.parse("2026-10-26T12:00:00Z");
+  const ctx = { nowMs: now, me: "s1" };
   const rows = [
-    // a staff-created thread: the old Overview never counted these
-    { id: "i1", source_kind: "internal_thread", status: "new", assigned_staff_id: "s1", last_message_at: "2026-10-26T11:20:00Z", next_update_at: "2026-10-26T18:00:00Z" },
-    { id: "t1", source_kind: "support_ticket", status: "open", assigned_staff_id: null, last_message_at: "2026-10-25T09:00:00Z", next_update_at: "2026-10-26T10:00:00Z" },
-    { id: "t2", source_kind: "support_ticket", status: "pending", assigned_staff_id: "s1", last_message_at: "2026-10-26T08:00:00Z", next_update_at: null },
-    { id: "t3", source_kind: "support_ticket", status: "resolved", assigned_staff_id: null, last_message_at: "2026-10-24T08:00:00Z" },
-    { id: "t4", source_kind: "support_ticket", status: "closed", assigned_staff_id: "s1", last_message_at: "2026-10-26T09:00:00Z" },
+    { id: "i1", origin: "staff", visibility: "internal", status: "open", assigned_staff_id: "s1", last_sender_kind: "staff", last_message_at: "2026-10-26T11:20:00Z", next_update_at: "2026-10-26T18:00:00Z" },
+    { id: "t1", origin: "customer", visibility: "person", status: "open", assigned_staff_id: null, last_sender_kind: "customer", last_message_at: "2026-10-25T09:00:00Z", next_update_at: "2026-10-26T10:00:00Z" },
+    { id: "t2", origin: "customer", visibility: "brand", status: "pending", assigned_staff_id: "s1", last_sender_kind: "staff", last_message_at: "2026-10-26T08:00:00Z", next_update_at: null },
+    { id: "t3", origin: "customer", visibility: "person", status: "resolved", assigned_staff_id: null, last_message_at: "2026-10-24T08:00:00Z" },
+    { id: "t4", origin: "customer", visibility: "person", status: "closed", assigned_staff_id: "s1", last_message_at: "2026-10-26T09:00:00Z" },
+    { id: "t5", origin: "customer", visibility: "person", status: "new", assigned_staff_id: null, last_sender_kind: null, first_response_at: null, last_message_at: "2026-10-26T10:00:00Z" },
   ];
 
-  it("each filter's count is the number of rows that filter lists", () => {
-    const counts = supportInboxCounts(rows, now);
-    for (const { id } of SUPPORT_INBOX_FILTERS) {
-      assert.equal(counts[id], supportInboxRows(rows, id, now).length, id);
+  it("each view's count is the number of rows that view lists", () => {
+    const counts = supportInboxCounts(rows, ctx);
+    for (const { id } of SUPPORT_INBOX_VIEWS) {
+      assert.equal(counts[id], supportInboxRows(rows, id, ctx).length, id);
     }
-    assert.deepEqual(counts, { open: 3, unassigned: 1, overdue: 1, resolved: 2, all: 5 });
+    assert.deepEqual(counts, { needs: 2, mine: 2, unassigned: 2, overdue: 1, waiting: 1, resolved: 2, all: 6, open: 2 });
   });
 
-  it("the inbox opens on Open, longest waiting first; Resolved is newest first", () => {
-    assert.equal(SUPPORT_INBOX_FILTERS[0].id, "open");
-    assert.deepEqual(supportInboxRows(rows, "open", now).map((r) => r.id), ["t1", "t2", "i1"]);
-    assert.deepEqual(supportInboxRows(rows, "resolved", now).map((r) => r.id), ["t4", "t3"]);
-    assert.deepEqual(supportInboxRows(rows, "overdue", now).map((r) => r.id), ["t1"]);
+  it("the inbox opens on Needs reply, longest waiting first; Resolved is newest first", () => {
+    assert.equal(SUPPORT_INBOX_VIEWS[0].id, "needs");
+    assert.deepEqual(supportInboxRows(rows, "needs", ctx).map((r) => r.id), ["t1", "t5"]);
+    assert.deepEqual(supportInboxRows(rows, "resolved", ctx).map((r) => r.id), ["t4", "t3"]);
+    assert.deepEqual(supportInboxRows(rows, "overdue", ctx).map((r) => r.id), ["t1"]);
   });
 
   it("the desk shows those counts and hands them to the page's Inbox badge", () => {
     const desk = read("pages/SupportDeskPage.jsx");
-    assert.match(desk, /const inboxCounts = useMemo\(\(\) => supportInboxCounts\(tickets\), \[tickets\]\);/);
-    assert.match(desk, /supportInboxRows\(tickets, inboxFilter\)/);
-    assert.match(desk, /onCounts\?\.\(inboxCounts\)/);
+    assert.match(desk, /const inboxCounts = useMemo\(\(\) => supportInboxCounts\(tickets, ctx\), \[tickets, ctx\]\);/);
+    assert.match(desk, /supportInboxRows\(tickets, view, ctx\)/);
+    assert.match(desk, /onCounts\?\.\(badgeCounts\)/);
     assert.match(read("pages/CommunitySupportPage.jsx"), /onCounts=\{onInboxCounts\}/);
     assert.equal(/support: Number\(data\.unanswered_tickets/.test(read("pages/CommunitySupportPage.jsx")), false);
   });

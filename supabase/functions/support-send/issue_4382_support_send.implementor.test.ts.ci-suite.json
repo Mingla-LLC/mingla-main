@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/support-send/issue_4382_support_send.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-4382-support-send",
+  "profile": "deno-1.46-stripe"
+}

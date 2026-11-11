@@ -53,8 +53,11 @@ Deno.test("#3720 Admin Community and Support rebuild stays complete", async () =
   assertMatch(roadmap, /Recently shipped/);
   assertMatch(roadmap, /draggable/);
   assertMatch(roadmap, /line-clamp-2/);
-  assertMatch(support, /Requester[\s\S]+Subject[\s\S]+Status[\s\S]+Idle[\s\S]+Next update/);
-  assertMatch(support, /lg:hidden/);
+  // [TEST-MOD #4382] the inbox is a rail of views, a list and a side panel
+  // (the old five-column table is gone); on a phone the panel replaces the list.
+  assertMatch(support, /aria-label="Inbox views"/);
+  assertMatch(support, /<TicketPanel/);
+  assertMatch(support, /hidden xl:block/);
   // #4383: the sections live in lib/emailViews.js (History is Sent, Send is Write).
   assertMatch(email, /emailViewsFor\(access\)/);
   assertMatch(composer, /userType: "host"/);
@@ -68,7 +71,9 @@ Deno.test("#3720 Admin Community and Support rebuild stays complete", async () =
   assertMatch(guide, /before[\s\S]+after/);
   assertMatch(groups, /Search brand groups/);
   assertMatch(groups, /n === 1 \? "teammate" : "teammates"/);
-  assertMatch(inbox, /Open the Mingla Avengers board/);
+  // [TEST-MOD #4382] the Product board links the Avengers board from its toolbar.
+  assertMatch(inbox, /https:\/\/github\.com\/orgs\/Mingla-LLC\/projects\/4/);
+  assertMatch(inbox, /Avengers board/);
 
   for (const rpc of [
     "issue_3720_admin_list_posts", "issue_3720_admin_update_idea",

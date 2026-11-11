@@ -64,16 +64,12 @@ function safeCode(error: unknown): string {
   return /^[A-Z][A-Z0-9_]{2,79}$/.test(value) ? value : "SYNC_FAILED";
 }
 
+// #4382 (D3): Product is run by admins and Founding partners. The database
+// owns that rule (is_product_operator), and the Product RPCs this function
+// queues and applies check the same function, so the two can never disagree.
 async function requireAdmin(user: AdminClient): Promise<boolean> {
-  const result = await user.rpc("admin_team_my_access");
-  if (result.error || !result.data || typeof result.data !== "object") {
-    return false;
-  }
-  const access = result.data as { role?: unknown; status?: unknown };
-  // #4255 (D3): a Founding partner holds a full-admin seat too.
-  return access.status === "active" &&
-    (access.role === "owner" || access.role === "admin" ||
-      access.role === "partner");
+  const result = await user.rpc("is_product_operator");
+  return !result.error && result.data === true;
 }
 
 async function reviewFor(

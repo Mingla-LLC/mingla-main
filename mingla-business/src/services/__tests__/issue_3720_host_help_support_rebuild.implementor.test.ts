@@ -36,7 +36,8 @@ describe("#3720 Host Help & Support rebuild", () => {
   });
 
   test("H3-H5 keep normal placeholders, list-first ideas and complete announcements", () => {
-    const support = read("mingla-business/src/components/support/SupportTabPanel.tsx");
+    // #4382: the request inputs moved into the new-request form.
+    const support = read("mingla-business/src/components/support/SupportNewRequestForm.tsx");
     const conversations = read("mingla-business/src/components/support/CommunityConversationsPanel.tsx");
     const community = read("mingla-business/src/components/support/CommunityTabPanel.tsx");
     expect(support).toMatch(/subjectInput:[\s\S]+letterSpacing: 0/);
@@ -71,7 +72,10 @@ describe("#3720 Host Help & Support rebuild", () => {
     expect(guides).toContain('desktopCell: { flex: 1, height: "100%"');
     expect(account).toContain('icon="logout"');
     expect(account).toContain("Sign out of Mingla Host on this device?");
-    expect(support).toContain("Add a subject to start");
+    // #4382: the disabled Send explains what is missing, from the new-request form.
+    const form = read("mingla-business/src/components/support/SupportNewRequestForm.tsx");
+    expect(form).toContain('supportCopy("form.need_summary")');
+    expect(support).toContain("SupportNewRequestForm");
     expect(read("mingla-business/src/utils/helpSupportLastTab.ts")).toMatch(/unreadCount > 0[\s\S]+return "community"/);
   });
 

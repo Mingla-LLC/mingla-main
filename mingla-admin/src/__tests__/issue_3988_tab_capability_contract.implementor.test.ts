@@ -32,9 +32,11 @@ const read = (relative: string) => Deno.readTextFile(new URL(relative, SRC));
 
 type Reached = { rpcs: Set<string>; functions: Set<string> };
 
+// [TEST-MOD #4382] the desk calls its support-* functions through
+// supportDeskService.invokeSupportFunction (the page-local invokeSupportFn is gone).
 function callsIn(source: string, into: Reached) {
   for (const m of source.matchAll(/\.rpc\(\s*"([a-z0-9_]+)"/g)) into.rpcs.add(m[1]);
-  for (const m of source.matchAll(/(?:invokeWithRefresh|functions\.invoke|invokeSupportFn)\(\s*"([a-z0-9-]+)"/g)) {
+  for (const m of source.matchAll(/(?:invokeWithRefresh|functions\.invoke|invokeSupportFn|invokeSupportFunction)\(\s*"([a-z0-9-]+)"/g)) {
     into.functions.add(m[1]);
   }
   for (const m of source.matchAll(/TEAM_INVITE_FUNCTION\b/g)) {
