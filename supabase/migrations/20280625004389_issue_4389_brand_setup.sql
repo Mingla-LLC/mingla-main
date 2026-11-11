@@ -53,14 +53,22 @@ COMMENT ON COLUMN public.brands.setup_free_only_at IS
 -- 34 Stripe countries + Nigeria (Paystack). BG is EUR: Stripe refuses BGN
 -- bank accounts since 2026-01-01 (#4389 D8). Parity with the three TS lists
 -- is pinned by tests.
-CREATE OR REPLACE FUNCTION public.payout_country_rail(p_country text)
-RETURNS TABLE(provider text, currency text, tap_to_pay boolean)
-LANGUAGE sql IMMUTABLE PARALLEL SAFE
-SET search_path TO 'public', 'pg_temp'
-AS $function$
-  -- orch-strict-grep-allow offering-currency-list: bank-country to payout-currency map (which currency a bank in each country is paid in), not a list of allowed offering currencies; supported_brand_currencies stays the only allow-list, and the bank-parity pin keeps this map and that table in step.
-  SELECT m.provider, m.currency, m.tap_to_pay
-  FROM (VALUES
+-- The map is a table, not a list inside a function: every currency in it is
+-- a foreign key into supported_brand_currencies, the one currency allow-list
+-- (#3645 one offering currency source).
+CREATE TABLE IF NOT EXISTS public.payout_country_rails (
+  country character(2) PRIMARY KEY CHECK (country = upper(country)),
+  provider text NOT NULL CHECK (provider IN ('stripe', 'paystack')),
+  currency character(3) NOT NULL REFERENCES public.supported_brand_currencies (code),
+  tap_to_pay boolean NOT NULL DEFAULT false
+);
+ALTER TABLE public.payout_country_rails ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.payout_country_rails FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON TABLE public.payout_country_rails TO service_role;
+COMMENT ON TABLE public.payout_country_rails IS
+  'Issue #4389: bank country -> payment partner, payout currency and Tap to Pay eligibility. Read only through payout_country_rail(text). No client reads it directly (RLS on, no policies).';
+
+INSERT INTO public.payout_country_rails (country, provider, currency, tap_to_pay) VALUES
     ('US','stripe','USD',true),  ('GB','stripe','GBP',true),
     ('CA','stripe','CAD',false), ('CH','stripe','CHF',false),
     ('AT','stripe','EUR',false), ('BE','stripe','EUR',false),
@@ -79,8 +87,18 @@ AS $function$
     ('RO','stripe','RON',false), ('SE','stripe','SEK',false),
     ('SI','stripe','EUR',false), ('SK','stripe','EUR',false),
     ('NG','paystack','NGN',false)
-  ) AS m(country, provider, currency, tap_to_pay)
-  WHERE m.country = upper(btrim(COALESCE(p_country, '')));
+ON CONFLICT (country) DO UPDATE
+  SET provider = EXCLUDED.provider, currency = EXCLUDED.currency, tap_to_pay = EXCLUDED.tap_to_pay;
+
+CREATE OR REPLACE FUNCTION public.payout_country_rail(p_country text)
+RETURNS TABLE(provider text, currency text, tap_to_pay boolean)
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+  SELECT m.provider, m.currency::text, m.tap_to_pay
+  FROM public.payout_country_rails m
+  WHERE m.country = upper(btrim(COALESCE(p_country, '')))::character(2)
+    AND pg_catalog.length(btrim(COALESCE(p_country, ''))) = 2;
 $function$;
 REVOKE ALL ON FUNCTION public.payout_country_rail(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.payout_country_rail(text)

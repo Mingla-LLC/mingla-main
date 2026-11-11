@@ -1,4 +1,4 @@
-// Issue #4389 — one country map. The SQL rail (payout_country_rail in the
+// Issue #4389 — one country map. The SQL rail (payout_country_rails, read by payout_country_rail, in the
 // #4389 migration) and the edge lists agree on every country and currency.
 // MINGLA-INVARIANT: I-4389-COUNTRY-MAP-PARITY | issue #4389 | payout_country_rail, _shared/stripeSupportedCountries.ts, _shared/payoutCountries.ts and mingla-business/src/constants/stripeSupportedCountries.ts list the same 35 countries with the same currencies (BG -> EUR).
 // FAILS-ON-REVERT: putting BG back to BGN in any list fails this test.
@@ -10,7 +10,9 @@ async function sqlRail(): Promise<Record<string, string>> {
   const src = await Deno.readTextFile(
     new URL("../../../migrations/20280625004389_issue_4389_brand_setup.sql", import.meta.url),
   );
-  const fn = src.slice(src.indexOf("FUNCTION public.payout_country_rail"), src.indexOf("AS m(country, provider, currency, tap_to_pay)"));
+  // The rail is the seeded payout_country_rails table read by payout_country_rail().
+  const start = src.indexOf("INSERT INTO public.payout_country_rails");
+  const fn = src.slice(start, src.indexOf("ON CONFLICT (country)", start));
   const out: Record<string, string> = {};
   for (const m of fn.matchAll(/\('([A-Z]{2})','(stripe|paystack)','([A-Z]{3})',(true|false)\)/g)) out[m[1]] = m[3];
   return out;
