@@ -52,6 +52,8 @@ import {
   groupSignals,
   tellButtonLabel,
   tellReportersState,
+  PRODUCT_PREFILL_MAX,
+  productPrefillDetails,
 } from "../components/support/productBoardModel.js";
 import {
   communitySupportCapabilities,
@@ -309,6 +311,37 @@ describe("#4382 W2: every active ticket loads; older ones page in (tester P3d)",
     assert.match(desk, /listSupportTickets\(\{ closedLimit: closedLimitRef\.current \}\)/);
     assert.match(desk, /railCountLabel\(inboxCounts\[option\.id\], inboxViewCoverage\(coverage, option\.id\)\.partial\)/);
     assert.match(desk, /viewCoverage\.canLoadOlder \?[\s\S]*Load older/);
+  });
+});
+
+describe("#4382 runtime: Reopened automatically and the Send to Product prefill", () => {
+  it("the Admin thread shows system lines (the reopen marker) as centred notes", () => {
+    assert.match(read("components/support/SupportThread.jsx"), /if \(message\.message_type === "system"[\s\S]{0,120}text-center text-xs italic/);
+  });
+  it("What's wrong starts from the customer's first message, about 500 characters, else the subject", () => {
+    const ticket = { subject: "Map is blank", requester_user_id: "u1" };
+    const messages = [
+      { id: "s", message_type: "system", content: "Reopened automatically", sender_id: null },
+      { id: "n", is_internal: true, content: "note", sender_id: "staff", sender_role_snapshot: "Mingla Support" },
+      { id: "r", content: "We are on it", sender_id: "staff", sender_role_snapshot: "Mingla Support" },
+      { id: "c", content: "  The map   stays blank after I book.  ", sender_id: "u1" },
+      { id: "c2", content: "Second message", sender_id: "u1" },
+    ];
+    assert.equal(productPrefillDetails(ticket, messages), "The map stays blank after I book.");
+    assert.equal(productPrefillDetails(ticket, []), "Map is blank");
+    const long = productPrefillDetails(ticket, [{ id: "l", content: "word ".repeat(200), sender_id: "u1" }]);
+    assert.ok(long.length <= PRODUCT_PREFILL_MAX + 1 && long.endsWith("…"));
+    assert.match(read("components/support/TicketPanel.jsx"), /onSendToProduct\(ticket, productPrefillDetails\(ticket, messages\)\)/);
+    assert.match(read("pages/SupportDeskPage.jsx"), /details: \(typeof details === "string" && details\.trim\(\)\) \? details : ticket\.subject,/);
+  });
+  it("the ticket panel keeps the thread at least ~55% tall with compact, collapsible facts", () => {
+    const panel = read("components/support/TicketPanel.jsx");
+    assert.match(panel, /data-testid="ticket-panel-scroll" className="min-h-0 flex-1 overflow-y-auto"/);
+    assert.match(panel, /data-testid="ticket-thread" className="min-h-\[320px\][^"]*lg:min-h-\[calc\(\(100vh-180px\)\*0\.55\)\]"/);
+    assert.match(panel, /aria-expanded=\{factsOpen\}/);
+    assert.match(panel, /sm:grid-cols-\[auto_minmax\(0,1fr\)_auto_minmax\(0,1fr\)\]/);
+    // The composer sits outside the scrolling area, so it stays at the bottom.
+    assert.ok(panel.indexOf("<SupportComposer") > panel.lastIndexOf('<div ref={bottomRef} />'));
   });
 });
 

@@ -129,3 +129,28 @@ export function searchOpenItems(signals, query, limit = 5) {
     .slice(0, limit)
     .map((row) => row.signal);
 }
+
+// ── Send to Product prefill (#4382 runtime P4) ──────────────────────────────
+export const PRODUCT_PREFILL_MAX = 500;
+
+/**
+ * "What's wrong" for Send to Product: the customer's first message (trimmed,
+ * about 500 characters, cut at a word), falling back to the ticket subject.
+ * Internal notes, system lines and Mingla Support replies never count.
+ */
+export function productPrefillDetails(ticket, messages = []) {
+  const first = (messages || []).find((message) =>
+    !message?.is_internal
+    && message?.message_type !== "system"
+    && message?.sender_role_snapshot !== "Mingla Support"
+    && Boolean(message?.sender_id)
+    && (!ticket?.requester_user_id || message.sender_id === ticket.requester_user_id)
+    && String(message?.content || "").trim().length > 0);
+  const text = String(first?.content || "").replace(/\s+/g, " ").trim();
+  if (!text) return String(ticket?.subject || "").trim();
+  if (text.length <= PRODUCT_PREFILL_MAX) return text;
+  const cut = text.slice(0, PRODUCT_PREFILL_MAX);
+  const atWord = cut.lastIndexOf(" ");
+  return `${(atWord > PRODUCT_PREFILL_MAX * 0.6 ? cut.slice(0, atWord) : cut).trimEnd()}…`;
+}
+

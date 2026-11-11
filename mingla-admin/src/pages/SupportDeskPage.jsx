@@ -304,13 +304,15 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true, onCo
     });
   }, [addToast]);
 
-  const openProductFor = useCallback((ticket) => {
+  // P4: "What's wrong" starts from the customer's first message (TicketPanel
+  // passes it), falling back to the subject.
+  const openProductFor = useCallback((ticket, details) => {
     setProductSource({
       id: ticket.id,
       source_kind: "support_ticket",
       label: ticketNumberLabel(ticket),
       subject: ticket.subject,
-      details: ticket.subject,
+      details: (typeof details === "string" && details.trim()) ? details : ticket.subject,
       priority: ticket.priority,
       product_area: ticket.product_area,
     });
