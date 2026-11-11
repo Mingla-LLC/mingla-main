@@ -507,7 +507,7 @@ describe("#4255 rework R-TABS: the M badge equals Chats unread + Mentions unread
     ];
     const tabs = teamTabCounts(threads, mentions);
     expect(tabs).toEqual({ chats: 2, mentions: 2 });
-    // The server's answer for the same data (team_badge, 20280614054255): chats 2, mentions 2.
+    // The server's answer for the same data (team_badge, 20280624054255): chats 2, mentions 2.
     expect(teamBadgeCount({ staff: true, chats: 2, mentions: 2 })).toBe(tabs.chats + tabs.mentions);
   });
   test("the Mingla team screen counts its tabs with teamTabCounts", () => {

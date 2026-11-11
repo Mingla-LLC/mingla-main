@@ -1,5 +1,5 @@
 -- Issue #4255 (Work board v2 + Mingla team) rework 2 after Retest 1 (FAIL at
--- 714b61e4e4). Builds on 20280614054255_issue_4255_team_rework.sql; the
+-- 714b61e4e4). Builds on 20280624054255_issue_4255_team_rework.sql; the
 -- latest body of ops_notify_people is copied from there, and each edit is
 -- marked "#4255 rework 2" with its defect.
 --
@@ -40,7 +40,7 @@ COMMENT ON COLUMN public.team_mentions.decision IS
   'Issue #4255. True when this notice asks its person to decide: a work card event that put a different ask (Send, Spend, Publish, Needs your OK) on the card, sent to one of its owners. Set by ops_notify_people; Admin Messages and the Host app label from it.';
 
 -- ---------------------------------------------------------------------------
--- P2 + P3. ops_notify_people (from 20280614054255).
+-- P2 + P3. ops_notify_people (from 20280624054255).
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.ops_notify_people(p_card_id uuid, p_event_id uuid, p_emails text[], p_actor_email text, p_excerpt text) RETURNS integer
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
@@ -169,7 +169,7 @@ COMMENT ON FUNCTION public.ops_notify_people(uuid, uuid, text[], text, text) IS
   'Issue #3980/#4255. The one work-card notice producer: team_mentions (linking to the card with its thread open) plus admin.team_mention (no country, no text message) plus one Host app push for a confirmed staff account: business.team_decision for an owner when the event put a You send, You spend, You publish or Needs your OK tag on the card that is a different ask from before (stored as team_mentions.decision; under the Decisions for me switches), else business.team_mention. guide_live cards and automatic cards closed in their own run get no email and no push.';
 
 -- ---------------------------------------------------------------------------
--- P3 (Retest 2). ops_work_update (from 20280614014255): a card whose tag
+-- P3 (Retest 2). ops_work_update (from 20280624014255): a card whose tag
 -- changes to a different ask tells its people again, so the owners get the
 -- decision push. One edit, marked "#4255 Retest 2 (P3)".
 -- ---------------------------------------------------------------------------
@@ -762,7 +762,7 @@ END;
 $$;
 
 -- ---------------------------------------------------------------------------
--- P3b. team_inbox (from 20280614054255): each mention carries decision.
+-- P3b. team_inbox (from 20280624054255): each mention carries decision.
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.team_inbox(
   p_alert_types text[] DEFAULT NULL,

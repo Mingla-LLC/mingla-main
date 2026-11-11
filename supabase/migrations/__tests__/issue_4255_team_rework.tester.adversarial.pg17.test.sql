@@ -1,5 +1,5 @@
 -- Issue #4255 retest -- tester adversarial suite for the rework migration
--- 20280614054255_issue_4255_team_rework.sql, on the fully replayed PG17 schema.
+-- 20280624054255_issue_4255_team_rework.sql, on the fully replayed PG17 schema.
 -- Angles the implementor rework suite does not take:
 --
 --   X-DUE     the 09:00 digest: a revoked, an unconfirmed and a banned staff

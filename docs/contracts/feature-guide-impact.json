@@ -1266,13 +1266,13 @@
         "supabase/functions/_shared/notifyV2.ts",
         "supabase/functions/_shared/teamNotifications.ts",
         "supabase/functions/notify-outbox-drain/index.ts",
-        "supabase/migrations/20280614004255_issue_4255_work_v2_schema.sql",
-        "supabase/migrations/20280614014255_issue_4255_work_v2_functions.sql",
-        "supabase/migrations/20280614024255_issue_4255_team_chat_schema.sql",
-        "supabase/migrations/20280614034255_issue_4255_team_chat_functions.sql",
-        "supabase/migrations/20280614044255_issue_4255_team_chat_fixups.sql",
-        "supabase/migrations/20280614054255_issue_4255_team_rework.sql",
-        "supabase/migrations/20280614064255_issue_4255_team_rework2.sql"
+        "supabase/migrations/20280624004255_issue_4255_work_v2_schema.sql",
+        "supabase/migrations/20280624014255_issue_4255_work_v2_functions.sql",
+        "supabase/migrations/20280624024255_issue_4255_team_chat_schema.sql",
+        "supabase/migrations/20280624034255_issue_4255_team_chat_functions.sql",
+        "supabase/migrations/20280624044255_issue_4255_team_chat_fixups.sql",
+        "supabase/migrations/20280624054255_issue_4255_team_rework.sql",
+        "supabase/migrations/20280624064255_issue_4255_team_rework2.sql"
       ]
     },
     {

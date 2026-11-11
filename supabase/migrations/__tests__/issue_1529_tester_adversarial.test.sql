@@ -281,7 +281,7 @@ BEGIN
   -- SMS writers), so the floor rises to the live 56.
   -- [TEST-MOD-APPROVED #4255] Mingla team chat adds one writer
   -- (team_chat_enqueue): a PG17 full replay measures 57 before
-  -- 20280614034255_issue_4255_team_chat_functions.sql and 58 after, so the
+  -- 20280624034255_issue_4255_team_chat_functions.sql and 58 after, so the
   -- floor rises to the live 58.
   -- [TEST-MOD-APPROVED #4255] The rework's ops_due_digest: 58 -> 59.
   IF v_count < 59 THEN

@@ -10,8 +10,8 @@
       "mingla-business/app/**",
       "mingla-business/jest.config.cjs",
       "packages/offering-rendering/**",
-      "supabase/migrations/20280614024255_issue_4255_team_chat_schema.sql",
-      "supabase/migrations/20280614034255_issue_4255_team_chat_functions.sql"
+      "supabase/migrations/20280624024255_issue_4255_team_chat_schema.sql",
+      "supabase/migrations/20280624034255_issue_4255_team_chat_functions.sql"
     ],
     "steps": [
       {

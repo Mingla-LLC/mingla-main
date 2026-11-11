@@ -1,7 +1,7 @@
 -- Issue #4255 (Work board v2 + Mingla team) rework after the independent test
--- (FAIL at bbe3579a02). Builds on 20280614014255_issue_4255_work_v2_functions.sql,
--- 20280614034255_issue_4255_team_chat_functions.sql and
--- 20280614044255_issue_4255_team_chat_fixups.sql; the latest body of every
+-- (FAIL at bbe3579a02). Builds on 20280624014255_issue_4255_work_v2_functions.sql,
+-- 20280624034255_issue_4255_team_chat_functions.sql and
+-- 20280624044255_issue_4255_team_chat_fixups.sql; the latest body of every
 -- function replaced below is copied from there, and each edit is marked
 -- "#4255 rework" with its letter.
 --
@@ -125,7 +125,7 @@ CREATE TRIGGER ops_work_messages_read_on_post
   FOR EACH ROW EXECUTE FUNCTION public.ops_thread_read_on_post();
 
 -- ---------------------------------------------------------------------------
--- D2. ops_work_get (from 20280614014255): the card carries thread_unread.
+-- D2. ops_work_get (from 20280624014255): the card carries thread_unread.
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.ops_work_get(p_id uuid, p_today date DEFAULT NULL) RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
@@ -160,7 +160,7 @@ END;
 $$;
 
 -- ---------------------------------------------------------------------------
--- A + B. ops_notify_people (from 20280614034255).
+-- A + B. ops_notify_people (from 20280624034255).
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.ops_notify_people(p_card_id uuid, p_event_id uuid, p_emails text[], p_actor_email text, p_excerpt text) RETURNS integer
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
@@ -273,7 +273,7 @@ $$;
 COMMENT ON FUNCTION public.ops_notify_people(uuid, uuid, text[], text, text) IS
   'Issue #3980/#4255. The one work-card notice producer: team_mentions (linking to the card with its thread open) plus admin.team_mention (no country, no text message) plus one Host app push for a confirmed staff account: business.team_decision when the card asks the person to act (You send, You spend, You publish, Needs your OK; under the Decisions for me switches), else business.team_mention. guide_live cards and automatic cards closed in their own run get no email and no push.';
 
--- The automatic-card withdraw (from 20280614034255): the decision push queued
+-- The automatic-card withdraw (from 20280624034255): the decision push queued
 -- beside the email is withdrawn with it too.
 CREATE OR REPLACE FUNCTION public.issue_4255_auto_card_withdraw_email()
 RETURNS trigger
@@ -366,7 +366,7 @@ COMMENT ON FUNCTION public.ops_due_digest(timestamptz) IS
   'Issue #4255. My cards due and late: at 09:00 in each staff member''s own time zone, one team_mentions row (work_due, once per local day) and one business.team_due push (ids only, explicit NULL country) when they own open cards due today or late. Run hourly by pg_cron (issue_4255_due_digest). Internal.';
 
 -- ---------------------------------------------------------------------------
--- E. team_badge (from 20280614044255).
+-- E. team_badge (from 20280624044255).
 -- ---------------------------------------------------------------------------
 -- The one count for the Host app icon and the Admin Messages button: chats
 -- with unread messages (muted chats left out) plus unread mentions on the
@@ -400,7 +400,7 @@ COMMENT ON FUNCTION public.team_badge() IS
   'Issue #4255. One call for the Host app Mingla team icon and the Admin Messages button: chats with unread messages (not muted) plus unread Mentions-tab items (Admin mentions, decisions, the due notice; team chat mentions are counted in their chat), and admin (owner or admin: may mention everyone). staff false, admin false and zeros for a signed-in person who is not staff.';
 
 -- ---------------------------------------------------------------------------
--- F. team_inbox (from 20280614034255): the due notice is from Mingla.
+-- F. team_inbox (from 20280624034255): the due notice is from Mingla.
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.team_inbox(
   p_alert_types text[] DEFAULT NULL,

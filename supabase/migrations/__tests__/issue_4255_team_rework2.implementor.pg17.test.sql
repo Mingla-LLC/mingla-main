@@ -1,5 +1,5 @@
 -- Issue #4255 rework 2 -- implementor suite for
--- 20280614064255_issue_4255_team_rework2.sql, on the fully replayed PG17
+-- 20280624064255_issue_4255_team_rework2.sql, on the fully replayed PG17
 -- schema (Retest 1 FAIL at 714b61e4e4).
 --
 --   R2-DECIDE  P2: a tag change asks only the card's OWNERS to decide

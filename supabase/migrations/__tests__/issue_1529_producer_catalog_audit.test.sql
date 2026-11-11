@@ -101,7 +101,7 @@ $vacuity$;
 -- [TEST-MOD-APPROVED #4255] Mingla team chat adds one producer,
 -- team_chat_enqueue (in-app/push only, an explicit NULL country_code: no team
 -- category routes SMS). A PG17 full replay measures 42 writers before
--- 20280614034255_issue_4255_team_chat_functions.sql and 43 after, so the floor
+-- 20280624034255_issue_4255_team_chat_functions.sql and 43 after, so the floor
 -- rises 42 -> 43. Its owning registered PostgreSQL suite
 -- (issue_4255_team_chat.implementor.pg17) asserts the NULL country on the rows.
 -- [TEST-MOD-APPROVED #4255] The #4255 rework adds one more, ops_due_digest

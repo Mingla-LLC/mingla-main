@@ -1,6 +1,6 @@
 -- Issue #4255 -- tester adversarial suite for the Work board v2 and Mingla
--- team chat migrations (20280614004255, 20280614014255, 20280614024255,
--- 20280614034255, 20280614044255), on the fully replayed PG17 schema.
+-- team chat migrations (20280624004255, 20280624014255, 20280624024255,
+-- 20280624034255, 20280624044255), on the fully replayed PG17 schema.
 -- Angles the implementor suites do not take:
 --
 --   A-ID      identity edges: a banned or deleted staff account, a staff row

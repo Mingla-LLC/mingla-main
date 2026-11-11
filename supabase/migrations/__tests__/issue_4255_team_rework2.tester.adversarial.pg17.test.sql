@@ -1,5 +1,5 @@
 -- Issue #4255 retest 2 -- tester adversarial suite for
--- 20280614064255_issue_4255_team_rework2.sql (team_set_my_timezone and the
+-- 20280624064255_issue_4255_team_rework2.sql (team_set_my_timezone and the
 -- owner-only, tag-event-only decision push), on the fully replayed PG17
 -- schema. Angles the implementor rework 2 suite does not take:
 --

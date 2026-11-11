@@ -1,5 +1,5 @@
 -- Issue #4255 (Work board v2, wave W1b): Mingla team chat, database layer 2 of 2.
--- Builds on 20280614024255_issue_4255_team_chat_schema.sql.
+-- Builds on 20280624024255_issue_4255_team_chat_schema.sql.
 --
 -- Client functions (authenticated; every one refuses anyone who is not
 -- confirmed, active staff, and every write refuses a connected agent):
