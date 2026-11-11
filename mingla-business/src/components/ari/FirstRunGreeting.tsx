@@ -13,7 +13,7 @@
  */
 
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import {
   accent,
@@ -107,8 +107,20 @@ export function FirstRunGreeting({
     );
   }
 
+  // #4389 P2 — the phone greeting scrolls inside its own box. It used to be a
+  // bottom-anchored View: with the A1 setup card it grew taller than the space
+  // under Ari's top bar and drew over it (17pt overlap; the orb over the brand
+  // chip). The ScrollView clips to that box, keeps short content anchored at
+  // the bottom (flexGrow + flex-end) and lets tall content scroll under the bar.
   return (
-    <View style={styles.phoneHost} testID={testID}>
+    <ScrollView
+      style={styles.phoneScroll}
+      contentContainerStyle={styles.phoneHost}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
+      showsVerticalScrollIndicator={false}
+      testID={testID}
+    >
       {compact ? null : (
         <View style={styles.orbWrap}>
           <AriOrb size="md" decorative={false} accessibilityLabel="Ari" />
@@ -120,14 +132,19 @@ export function FirstRunGreeting({
       {compact ? null : <Text style={styles.body}>{copy.body}</Text>}
       {chips}
       {compact ? null : footer}
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  phoneHost: {
+  phoneScroll: {
     flex: 1,
+  },
+  phoneHost: {
+    flexGrow: 1,
     justifyContent: "flex-end",
+    // Top inset: the first line (or the orb) never touches the bar's edge.
+    paddingTop: spacing.md,
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.md,
     gap: spacing.sm,
