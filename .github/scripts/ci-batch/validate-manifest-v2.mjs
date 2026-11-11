@@ -450,7 +450,8 @@ export function phase3dContractDigest(manifest) {
 // #3355 rework 1: register 20280620103355 (discount-codes Feature Guide sync) in the #1857, #1931 and #2117 replay lanes (skipped by exact filename in #1931), and the rework and tester adversarial PostgreSQL proofs in #1931 and #2117.
 // #3355 rework 2: register 20280620113355 (memory brand voice at read; skipped by exact filename in #1931) and 20280620123355 (quality panel follow-up runs) in the #1857, #1931 and #2117 lanes, and the rework 2 PostgreSQL proof in #1931 and #2117.
 // #3355 rework 2: re-sealed after merging origin/main 62aabbdc6d (#4382 rows kept beside the #3355 rows).
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "a2e30c1ec2f18a62ebe0cd144d3eeb80d984e961eae1085d3ea02f53bdae6c85";
+// #3355 rework 3: register 20280620133355 (a follow-up setup run never cancels a parked or live one) in the #1857, #1931 and #2117 lanes, and the rework 3 PostgreSQL proof in #1931 and #2117.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "cb657b81665be5c0949c8152a1ba830a434514105eb93fe0462aed9d0b93cf04";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

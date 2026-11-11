@@ -17843,6 +17843,7 @@
         "supabase/migrations/20280620103355_issue_3355_feature_guide_discount_codes_live.sql",
         "supabase/migrations/20280620113355_issue_3355_ari_memory_brand_voice.sql",
         "supabase/migrations/20280620123355_issue_3355_ari_quality_follow_up_runs.sql",
+        "supabase/migrations/20280620133355_issue_3355_flow_follow_up_never_cancels.sql",
         "supabase/migrations/__tests__/issue_1773_preserves_1857_phone_authority.pg17.test.sql",
         "supabase/migrations/__tests__/issue_1857_phone_country_authority.pg17.test.sql",
         "supabase/migrations/__tests__/issue_1902_public_event_lifecycle.pg17.test.sql",
@@ -19626,6 +19627,7 @@
         "supabase/migrations/20280620103355_issue_3355_feature_guide_discount_codes_live.sql",
         "supabase/migrations/20280620113355_issue_3355_ari_memory_brand_voice.sql",
         "supabase/migrations/20280620123355_issue_3355_ari_quality_follow_up_runs.sql",
+        "supabase/migrations/20280620133355_issue_3355_flow_follow_up_never_cancels.sql",
         "supabase/migrations/__tests__/biz_trip_tickets_sold.test.ts",
         "supabase/migrations/__tests__/draft_autosave_keeps_applied_cover.test.sql",
         "supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts",
@@ -20147,6 +20149,8 @@
         "supabase/migrations/__tests__/issue_3355_rework_1.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_3355_rework_2.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_3355_rework_2.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_3355_rework_3.implementor.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_3355_rework_3.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_3355_tell_owner_receipt.pg17.test.sql",
         "supabase/migrations/__tests__/issue_3355_tell_owner_receipt.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_3355_trip_seed_truth.implementor.pg17.test.sql",
@@ -24842,6 +24846,7 @@
         "supabase/migrations/20280620103355_issue_3355_feature_guide_discount_codes_live.sql",
         "supabase/migrations/20280620113355_issue_3355_ari_memory_brand_voice.sql",
         "supabase/migrations/20280620123355_issue_3355_ari_quality_follow_up_runs.sql",
+        "supabase/migrations/20280620133355_issue_3355_flow_follow_up_never_cancels.sql",
         "supabase/migrations/__tests__/biz_trip_tickets_sold.test.ts",
         "supabase/migrations/__tests__/draft_autosave_keeps_applied_cover.test.sql",
         "supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts",
@@ -25363,6 +25368,8 @@
         "supabase/migrations/__tests__/issue_3355_rework_1.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_3355_rework_2.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_3355_rework_2.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_3355_rework_3.implementor.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_3355_rework_3.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_3355_tell_owner_receipt.pg17.test.sql",
         "supabase/migrations/__tests__/issue_3355_tell_owner_receipt.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_3355_trip_seed_truth.implementor.pg17.test.sql",
@@ -53592,5 +53599,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "96c929094dbff13ee3549f562a10567c8c9ee11f5fb191a11c9cbc9e081135cc",
-  "phase3eContractSha256": "a2e30c1ec2f18a62ebe0cd144d3eeb80d984e961eae1085d3ea02f53bdae6c85"
+  "phase3eContractSha256": "cb657b81665be5c0949c8152a1ba830a434514105eb93fe0462aed9d0b93cf04"
 }
