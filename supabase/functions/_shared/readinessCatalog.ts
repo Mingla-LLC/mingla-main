@@ -47,7 +47,7 @@ export const ACTION_READINESS_ITEM_LABELS: Readonly<Record<string, string>> =
     "team.role": "Your role on this brand",
     "venue.approved_exists": "An approved venue",
     "stay.settings_complete": "Stay settings",
-    // #4389 — brand_setup checklist (migration 20280621004389).
+    // #4389 — brand_setup checklist (migration 20280625004389).
     "brand.name": "Brand name",
     "money.details_submitted": "Payment details",
   });

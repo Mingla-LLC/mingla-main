@@ -66,7 +66,9 @@ describe("#4389 N1 up front", () => {
   test("/brand/new looks for the host's draft before showing F1, and discard=1 starts on the confirm", () => {
     const route = read("app/brand/new.tsx");
     expect(route).toContain("const setupStates = useBrandSetupStates(brandIds);");
-    expect(route).toContain("waitingForDrafts ? null : (");
+    // While drafts load nothing shows (no F1 flash). #881 partner Step 0 and
+    // the #3645 open-time latch sit in the same branch.
+    expect(route).toContain("waitingForDrafts || resume !== null ? null : ");
     expect(route).toContain('startConfirming={first(params.discard) === "1"}');
     expect(route).toContain("BRAND_SETUP_COPY.n1.discarded(discardedName)");
     expect(read("src/components/brand/BrandCreationFlow.tsx")).toContain(

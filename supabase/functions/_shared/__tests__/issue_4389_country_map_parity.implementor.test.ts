@@ -8,7 +8,7 @@ import { PAYOUT_COUNTRIES } from "../payoutCountries.ts";
 
 async function sqlRail(): Promise<Record<string, string>> {
   const src = await Deno.readTextFile(
-    new URL("../../../migrations/20280621004389_issue_4389_brand_setup.sql", import.meta.url),
+    new URL("../../../migrations/20280625004389_issue_4389_brand_setup.sql", import.meta.url),
   );
   const fn = src.slice(src.indexOf("FUNCTION public.payout_country_rail"), src.indexOf("AS m(country, provider, currency, tap_to_pay)"));
   const out: Record<string, string> = {};
