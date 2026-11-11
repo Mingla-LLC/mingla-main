@@ -10,7 +10,7 @@
 //     (PT409, token stale_write) snaps the card back with one sentence.
 //   * Up to five sprint goals; subtasks go two levels deep (card, subtask,
 //     sub-subtask); files are pictures, documents or links, 25 MB each.
-import { sortColumn, todayIso } from "./opsModel";
+import { sortColumn, todayIso } from "./opsModel.js";
 
 export const GROUP_LABELS = Object.freeze({ todo: "Not started", doing: "Active", done: "Closed" });
 export const GROUPS = Object.freeze(["todo", "doing", "done"]);

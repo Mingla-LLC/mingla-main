@@ -195,11 +195,11 @@ export const RichComposer = forwardRef(function RichComposer({
     isEmpty: () => !editor || editor.isEmpty,
   }), [editor]);
 
-  const tool = (labelText, Icon, run, active) => (
+  const tool = (labelText, icon, run, active) => (
     <button key={labelText} type="button" aria-label={labelText} title={labelText} aria-pressed={active ? "true" : "false"} disabled={disabled || !editor}
       onMouseDown={(e) => e.preventDefault()} onClick={run}
       className={`inline-grid h-8 w-8 place-items-center rounded-md text-[var(--color-text-secondary)] hover:bg-[var(--gray-100)] disabled:opacity-40 ${active ? "bg-[var(--gray-100)] text-[var(--color-text-primary)]" : ""} ${FOCUS}`}>
-      <Icon aria-hidden="true" className="h-4 w-4" />
+      {icon}
     </button>
   );
   const ch = () => editor?.chain().focus();
@@ -215,18 +215,18 @@ export const RichComposer = forwardRef(function RichComposer({
     <div data-composer={compact ? "thread" : "description"} className={`relative min-w-0 rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] focus-within:border-[var(--gray-400)] ${disabled ? "opacity-60" : ""}`}>
       {toolbar && !compact && (
         <div role="toolbar" aria-label={`${label} formatting`} className="flex min-w-0 flex-wrap items-center gap-0.5 border-b border-[var(--gray-200)] px-1.5 py-1">
-          {tool("Bold", Bold, () => ch()?.toggleBold().run(), editor?.isActive("bold"))}
-          {tool("Italic", Italic, () => ch()?.toggleItalic().run(), editor?.isActive("italic"))}
-          {tool("Strikethrough", Strikethrough, () => ch()?.toggleStrike().run(), editor?.isActive("strike"))}
+          {tool("Bold", <Bold aria-hidden="true" className="h-4 w-4" />, () => ch()?.toggleBold().run(), editor?.isActive("bold"))}
+          {tool("Italic", <Italic aria-hidden="true" className="h-4 w-4" />, () => ch()?.toggleItalic().run(), editor?.isActive("italic"))}
+          {tool("Strikethrough", <Strikethrough aria-hidden="true" className="h-4 w-4" />, () => ch()?.toggleStrike().run(), editor?.isActive("strike"))}
           <span aria-hidden="true" className="mx-1 h-5 w-px bg-[var(--gray-200)]" />
-          {tool("Heading", Heading2, () => ch()?.toggleHeading({ level: 2 }).run(), editor?.isActive("heading"))}
-          {tool("Bullet list", List, () => ch()?.toggleBulletList().run(), editor?.isActive("bulletList"))}
-          {tool("Numbered list", ListOrdered, () => ch()?.toggleOrderedList().run(), editor?.isActive("orderedList"))}
-          {tool("Checklist", ListChecks, () => ch()?.toggleTaskList().run(), editor?.isActive("taskList"))}
+          {tool("Heading", <Heading2 aria-hidden="true" className="h-4 w-4" />, () => ch()?.toggleHeading({ level: 2 }).run(), editor?.isActive("heading"))}
+          {tool("Bullet list", <List aria-hidden="true" className="h-4 w-4" />, () => ch()?.toggleBulletList().run(), editor?.isActive("bulletList"))}
+          {tool("Numbered list", <ListOrdered aria-hidden="true" className="h-4 w-4" />, () => ch()?.toggleOrderedList().run(), editor?.isActive("orderedList"))}
+          {tool("Checklist", <ListChecks aria-hidden="true" className="h-4 w-4" />, () => ch()?.toggleTaskList().run(), editor?.isActive("taskList"))}
           <span aria-hidden="true" className="mx-1 h-5 w-px bg-[var(--gray-200)]" />
-          {tool("Link", Link2, () => { setLinkUrl(editor?.getAttributes("link")?.href || ""); setLinkOpen((o) => !o); }, editor?.isActive("link"))}
-          {tool("Code", Code, () => ch()?.toggleCode().run(), editor?.isActive("code"))}
-          {tool("Mention someone", AtSign, () => ch()?.insertContent("@").run(), false)}
+          {tool("Link", <Link2 aria-hidden="true" className="h-4 w-4" />, () => { setLinkUrl(editor?.getAttributes("link")?.href || ""); setLinkOpen((o) => !o); }, editor?.isActive("link"))}
+          {tool("Code", <Code aria-hidden="true" className="h-4 w-4" />, () => ch()?.toggleCode().run(), editor?.isActive("code"))}
+          {tool("Mention someone", <AtSign aria-hidden="true" className="h-4 w-4" />, () => ch()?.insertContent("@").run(), false)}
         </div>
       )}
       {linkOpen && (
