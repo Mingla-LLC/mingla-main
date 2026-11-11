@@ -38,6 +38,8 @@ export interface FirstRunGreetingProps {
   /** Phone keyboard up: keep the headline and chips, drop the orb and body. */
   compact?: boolean;
   disabled?: boolean;
+  /** #4389 A1 — the setup card under the chips (no-brand first landing). */
+  footer?: React.ReactNode;
   testID?: string;
 }
 
@@ -48,6 +50,7 @@ export function FirstRunGreeting({
   composer,
   compact = false,
   disabled = false,
+  footer,
   testID = "ari-first-run-greeting",
 }: FirstRunGreetingProps): React.ReactElement {
   const chips = (
@@ -98,6 +101,7 @@ export function FirstRunGreeting({
           <Text style={[styles.body, styles.bodyDesktop]}>{copy.body}</Text>
           {composer ? <View style={styles.desktopComposer}>{composer}</View> : null}
           {chips}
+          {footer}
         </View>
       </View>
     );
@@ -115,6 +119,7 @@ export function FirstRunGreeting({
       </Text>
       {compact ? null : <Text style={styles.body}>{copy.body}</Text>}
       {chips}
+      {compact ? null : footer}
     </View>
   );
 }

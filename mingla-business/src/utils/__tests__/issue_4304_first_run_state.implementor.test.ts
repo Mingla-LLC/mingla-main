@@ -209,9 +209,10 @@ describe("#4304 greeting copy and chips", () => {
       brandName: null,
       remembered: null,
     });
-    expect(copy.headline).toBe("Hi Tobi. Let's get your business on Mingla.");
+    expect(copy.headline).toBe("Hi Tobi. Let's get your account ready to take bookings.");
     expect(copy.body).toBe(
-      "First we set up your brand: name, logo and where you host. It takes about two minutes, and I'll do the typing.",
+      // #4389 A1 — the approved first-landing words.
+      "It takes about 3 minutes: your brand name, your bank country, then payments. I'll guide you.",
     );
     expect(copy.chips.map((c) => c.label)).toEqual([
       "Set up my brand",
@@ -228,7 +229,7 @@ describe("#4304 greeting copy and chips", () => {
     expect(
       firstRunGreeting({ stage: "no_brand", displayName: "tobi@x.com", brandName: null, remembered: null })
         .headline,
-    ).toBe("Hi. Let's get your business on Mingla.");
+    ).toBe("Hi. Let's get your account ready to take bookings.");
   });
 
   it("B: names the brand, five chips, ticketed event primary by default", () => {

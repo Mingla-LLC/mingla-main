@@ -318,8 +318,10 @@ describe("#4304 First Home with Ari — Ari screen by stage", () => {
   it("State A: greets by first name, shows all six chips, hides the generic hero, keeps the top bar", async () => {
     const tree = await mount("no_brand");
     const text = textOf(tree.root);
-    expect(text).toContain("Hi Tobi. Let's get your business on Mingla.");
-    expect(text).toContain("First we set up your brand: name, logo and where you host.");
+    expect(text).toContain("Hi Tobi. Let's get your account ready to take bookings.");
+    expect(text).toContain("It takes about 3 minutes: your brand name, your bank country, then payments.");
+    // #4389 A1 — the setup card shows with no AI call.
+    expect(byTestId(tree.root, "ari-setup-card")).toBeDefined();
     for (const id of ["brand", "events", "experiences", "trips", "venue", "about"]) {
       expect(byTestId(tree.root, `ari-first-run-chip-${id}`)).toBeDefined();
     }

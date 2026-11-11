@@ -15,6 +15,8 @@
  *     intentional departure from "all primary actions = userBubble".
  */
 
+// #4389 A3 — create_brand shows where funds are collected.
+import { ARI_SETUP_COPY, payoutCountryLabel } from "./ariSetupCopy";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
@@ -758,6 +760,11 @@ function fieldsFor(
   if (toolName === "create_brand" || toolName === "update_brand") {
     if (typeof args.name === "string" && args.name) {
       out.push({ label: "Name", value: args.name });
+    }
+    // #4389 A3 — the bank country decides the currency; say both.
+    const funds = toolName === "create_brand" ? payoutCountryLabel(args.payout_country) : null;
+    if (funds !== null) {
+      out.push({ label: ARI_SETUP_COPY.a3.fundsLabel, value: `${funds.name} (${funds.currency})` });
     }
     if (typeof args.description === "string" && args.description) {
       out.push({ label: "Description", value: args.description });

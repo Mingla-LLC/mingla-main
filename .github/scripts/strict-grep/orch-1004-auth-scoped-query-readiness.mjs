@@ -60,6 +60,8 @@ const AUTH_SCOPED_HOOK_FILES = [
   // member rank check) behind Home's brand/money rows. Folds isAuthReady into
   // enabled.
   "useBrandReadiness.ts",
+  // #4389 — brand_readiness(brand_setup) reads auth.uid(); folds isAuthReady.
+  "useBrandSetupChecklist.ts",
   // #4111 — brand_enquiry_my_plans reads auth.uid(); folds isAuthReady.
   "useMyBrandPlans.ts",
   // #3988 — brand-group media/list metadata RPCs are membership-gated.

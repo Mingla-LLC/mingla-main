@@ -209,8 +209,9 @@ export function firstRunGreeting(args: {
   if (args.stage === "no_brand") {
     const first = firstNameOf(args.displayName);
     return {
-      headline: `${first ? `Hi ${first}.` : "Hi."} Let's get your business on Mingla.`,
-      body: "First we set up your brand: name, logo and where you host. It takes about two minutes, and I'll do the typing.",
+      // #4389 A1 — the approved first-landing words (never "business").
+      headline: `${first ? `Hi ${first}.` : "Hi."} Let's get your account ready to take bookings.`,
+      body: "It takes about 3 minutes: your brand name, your bank country, then payments. I'll guide you.",
       placeholder: "Tell Ari about your business…",
       chips: [...NO_BRAND_CHIPS],
     };

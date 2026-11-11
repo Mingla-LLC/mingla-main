@@ -82,6 +82,11 @@ import { ARI_BRAND_BAR_COPY } from "../../components/ari/ariBrandBarCopy";
 import { trackBrandSetup } from "../../components/brand/brandSetupAnalytics";
 import type { Brand } from "../../store/currentBrandStore";
 import { usePickBrand } from "../../hooks/usePickBrand";
+// #4389 A1–A5 — setup cards from the server checklist; digits redacted before send.
+import { AriSensitiveNotice, AriSetupCard } from "../../components/ari/AriSetupCard";
+import { ARI_SETUP_COPY } from "../../components/ari/ariSetupCopy";
+import { redactSensitiveDigits } from "../../components/ari/ariRedaction";
+import { useBrandSetupChecklist } from "../../hooks/useBrandSetupChecklist";
 import {
   ariDraftFor,
   decideAriBrandSwitch,
@@ -400,6 +405,8 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   draftTextRef.current = draftText;
   const [draftKeptFor, setDraftKeptFor] = useState<string | null>(null);
   const [switchedToast, setSwitchedToast] = useState<string | null>(null);
+  // #4389 A5 — a number was hidden from the last message.
+  const [sensitiveHidden, setSensitiveHidden] = useState(false);
   const [rateLimitUntil, setRateLimitUntil] = useState<number | null>(null);
   const [cooldownNow, setCooldownNow] = useState(() => Date.now());
   // ORCH-1101 REWORK Bug #6 — dismiss the AI-disclosure sheet the instant the
@@ -582,6 +589,33 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   // #4389 AR-13 — a confirmation is sent with the brand it is shown under.
   const confirm = useConfirmPendingAction(chat.conversationId, selectedBrandId);
 
+  // #4389 A2 — the selected brand's setup card, from the server checklist.
+  const setupChecklist = useBrandSetupChecklist(
+    !setup && !websiteSplit ? selectedBrandId : null,
+  );
+  const setupData = setupChecklist.data;
+  const seenIncompleteRef = useRef<Set<string>>(new Set());
+  const [allSetShownFor, setAllSetShownFor] = useState<string | null>(null);
+  React.useEffect(() => {
+    if (selectedBrandId === null || setupData === undefined) return;
+    if (!setupData.facts.complete) {
+      seenIncompleteRef.current.add(selectedBrandId);
+    } else if (seenIncompleteRef.current.has(selectedBrandId)) {
+      // Complete collapses to "All set" once (AR-9).
+      seenIncompleteRef.current.delete(selectedBrandId);
+      setAllSetShownFor(selectedBrandId);
+    }
+  }, [selectedBrandId, setupData]);
+  const openBrandSetup = (step?: "pay"): void => {
+    if (selectedBrandId === null) {
+      router.push("/brand/new" as never);
+      return;
+    }
+    router.push(
+      `/brand/${selectedBrandId}/setup${step ? `?step=${step}` : ""}` as never,
+    );
+  };
+
   // #4389 R-16 — switching while Ari is answering asks first. The answer
   // keeps writing to the old conversation on the server.
   const ariAnswering = chat.isSending || chat.activeTurn != null;
@@ -677,9 +711,14 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     const selectedFiles = attachments.consumeReady();
     if (selectedFiles === null) return false;
     if (!text.trim() && selectedFiles.length === 0) return false;
+    // #4389 AR-3 — bank, card and ID numbers never leave the phone.
+    const safe = redactSensitiveDigits(text);
+    text = safe.text;
+    setSensitiveHidden(safe.redacted);
     // Composer ownership transfers to one local row in this synchronous event.
     setDraftText("");
     setDraftKeptFor(null);
+    setAllSetShownFor(null);
     setLocalError(null);
     // #4304 — while first-run is locked every turn carries the stage and what
     // the host said they host, so Ari sets up the brand first and then offers
@@ -1027,6 +1066,11 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
           chat.clearPendingAction();
           return { ok: false, terminal: "resolved" };
         }
+        // #4389 AR-13 — the card belongs to the brand it was made for.
+        if (result.code === "BRAND_MISMATCH") {
+          setLocalError(ARI_SETUP_COPY.brandMismatch);
+          return { ok: false, error: ARI_SETUP_COPY.brandMismatch };
+        }
         const message = ariChatErrorCopy(result.code);
         setLocalError(message);
         // #3355 P7: a refused write inside a flow comes back with the step
@@ -1330,6 +1374,24 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   const firstRunCentred = firstRunCopy !== null && noMessages && isWideDesktop;
   const firstRunChipsDisabled =
     chat.isSending || rateLimited || !online || !conversationSelectionReady;
+  // #4389 A1 — the first-landing setup card: works with no AI call (AR-1).
+  const firstRunSetupCard =
+    firstRunStage === "no_brand" ? (
+      <AriSetupCard
+        brandName={null}
+        doneCount={0}
+        onSetUp={() => router.push("/brand/new" as never)}
+        onWithAri={
+          firstRunChipsDisabled
+            ? undefined
+            : () =>
+                handleSend(ARI_SETUP_COPY.a1.withAriMessage, {
+                  stage: "no_brand",
+                  intent: "brand",
+                })
+        }
+      />
+    ) : null;
   const composerBlock = (
     recovery ? (
               <RecoveryPanel recovery={recovery} onAction={handleRecovery} />
@@ -1343,6 +1405,34 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                   );
                 }}
               >
+                {sensitiveHidden ? (
+                  <AriSensitiveNotice
+                    onOpen={() => {
+                      setSensitiveHidden(false);
+                      openBrandSetup("pay");
+                    }}
+                  />
+                ) : null}
+                {firstRunStage !== "no_brand" && selectedBrandId !== null && !setup && !websiteSplit ? (
+                  allSetShownFor === selectedBrandId ? (
+                    <AriSetupCard brandName={brandName} doneCount={4} state="complete" onSetUp={() => openBrandSetup()} />
+                  ) : setupChecklist.isError ? (
+                    <AriSetupCard
+                      brandName={brandName}
+                      doneCount={0}
+                      state="error"
+                      onSetUp={() => openBrandSetup()}
+                      onRetry={() => void setupChecklist.refetch()}
+                    />
+                  ) : setupData !== undefined && !setupData.facts.complete && setupData.facts.freeOnlyAt === null ? (
+                    <AriSetupCard
+                      brandName={brandName}
+                      doneCount={setupData.doneCount}
+                      waitingFor={setupData.facts.waitingFor}
+                      onSetUp={() => openBrandSetup()}
+                    />
+                  ) : null
+                ) : null}
                 {draftKeptFor !== null ? (
                   <Text style={styles.draftKept} testID="ari-draft-kept">
                     {ARI_BRAND_BAR_COPY.draftKept(draftKeptFor)}
@@ -1654,6 +1744,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                 desktop
                 composer={composerBlock}
                 disabled={firstRunChipsDisabled}
+                footer={firstRunSetupCard}
               />
             ) : (
               <>
@@ -1677,6 +1768,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                     onChip={handleFirstRunChip}
                     compact={keyboardHeight > 0}
                     disabled={firstRunChipsDisabled}
+                    footer={firstRunSetupCard}
                   />
                 </View>
               </View>
@@ -1905,6 +1997,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
               // ORCH-1103 REWORK 2 — a disambiguation / no-brand-handoff chip tap
               // sends the chip label as a normal user turn (Q2 conversational
               // feedback; Gemini re-proposes with the resolved target).
+              onOpenRoute={(route) => router.push(route as never)}
               onSendChoice={(submission, label) =>
                 void handleChoice(submission, label)
               }
