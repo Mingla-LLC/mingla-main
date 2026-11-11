@@ -16,6 +16,7 @@
     "confirm": "Bevestigen",
     "rescheduled_toast": "Ervaring verplaatst!",
     "reschedule_failed_toast": "Verplaatsen mislukt. Probeer het opnieuw.",
+    "open_failed_toast": "Kan de beoordeling niet openen. Probeer het opnieuw.",
     "close_label": "Sluiten"
   },
   "custom_holiday": {

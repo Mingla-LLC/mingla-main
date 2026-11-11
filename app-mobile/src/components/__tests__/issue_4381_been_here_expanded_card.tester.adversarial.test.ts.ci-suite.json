@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/components/__tests__/issue_4381_been_here_expanded_card.tester.adversarial.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4381-been-here-expanded-card-tester-adversarial",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}
