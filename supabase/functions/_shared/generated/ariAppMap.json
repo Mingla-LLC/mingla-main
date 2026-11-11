@@ -1578,6 +1578,14 @@
       "capability_keys": []
     },
     {
+      "pattern": "/team",
+      "params": [],
+      "title": "Team",
+      "title_source": "path",
+      "file": "mingla-business/app/team/index.tsx",
+      "capability_keys": []
+    },
+    {
       "pattern": "/trip/[id]",
       "params": [
         "id"
