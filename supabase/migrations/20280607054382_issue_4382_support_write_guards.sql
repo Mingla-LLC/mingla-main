@@ -15,6 +15,9 @@
 --    the support-attachments object at storage_path and refuses with PT409
 --    'attachment_not_uploaded' otherwise (after the ownership checks, which
 --    still refuse with 22023 'attachment_not_available').
+-- 3. The pre-#4382 create_support_ticket(text, uuid) stays for installed Host
+--    builds, but a brand_id the caller does not belong to is dropped (the
+--    ticket becomes personal) instead of being filed against that brand.
 
 BEGIN;
 
@@ -118,5 +121,88 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.issue_4382_attach_to_message(uuid, uuid, uuid[], uuid, boolean) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.issue_4382_attach_to_message(uuid, uuid, uuid[], uuid, boolean) TO service_role;
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- 3. The old create keeps only the caller's own brand.
+-- ─────────────────────────────────────────────────────────────────────────
+-- Same body as 20271120003988_issue_3988_operational_permissions.sql except
+-- the brand check.
+CREATE OR REPLACE FUNCTION public.create_support_ticket(p_subject text, p_brand_id uuid DEFAULT NULL::uuid)
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_conv uuid;
+  v_ticket uuid;
+  v_seg text;
+  v_subject text := left(btrim(COALESCE(p_subject, '')), 200);
+  v_brand uuid;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'not_authenticated' USING ERRCODE = '42501';
+  END IF;
+  IF v_subject = '' THEN
+    RAISE EXCEPTION 'subject_required' USING ERRCODE = 'P0001';
+  END IF;
+
+  -- #4382: a brand is kept only when the caller belongs to it (an active
+  -- team member, or the account that owns it). Installed Host builds pass
+  -- their current brand, so a member keeps it; anyone else gets a personal
+  -- ticket instead of an error, and never one filed against a stranger's brand.
+  IF p_brand_id IS NOT NULL AND (
+    public.issue_4382_is_brand_member(p_brand_id, auth.uid())
+    OR EXISTS (SELECT 1 FROM public.brands b WHERE b.id = p_brand_id AND b.account_id = auth.uid())
+  ) THEN
+    v_brand := p_brand_id;
+  END IF;
+
+  v_seg := public.derive_user_segment(auth.uid());
+  IF v_seg = 'admin' THEN v_seg := 'business'; END IF;
+  IF v_seg NOT IN ('business', 'explorer') THEN v_seg := 'business'; END IF;
+
+  INSERT INTO public.conversations(type, linked_entity_type, name, created_by)
+  VALUES ('group', 'support', v_subject, auth.uid())
+  RETURNING id INTO v_conv;
+
+  INSERT INTO public.conversation_participants(conversation_id, user_id)
+  VALUES (v_conv, auth.uid());
+
+  INSERT INTO public.support_tickets(
+    requester_user_id, requester_segment, subject, conversation_id, brand_id
+  ) VALUES (
+    auth.uid(), v_seg, v_subject, v_conv, v_brand
+  ) RETURNING id INTO v_ticket;
+
+  -- Support-ticket alerts are bell + push + email only. Country remains NULL
+  -- because no SMS channel is eligible for this category.
+  INSERT INTO public.notification_outbox (
+    category_key, user_id, brand_id, country_code, payload,
+    idempotency_key, status
+  )
+  SELECT
+    'business.support_new_ticket',
+    s.user_id,
+    v_brand,
+    NULL,
+    jsonb_build_object(
+      'ticket_id', v_ticket,
+      'subject', v_subject,
+      'deep_link', 'mingla-business://support/' || v_ticket::text
+    ),
+    'business.support_new_ticket:' || v_ticket::text || ':' || s.user_id::text,
+    'pending'
+  FROM public.support_staff s
+  JOIN auth.users u ON u.id = s.user_id
+  WHERE s.enabled = true
+    AND public.is_support_staff(s.user_id)
+  ON CONFLICT (idempotency_key) DO NOTHING;
+
+  RETURN v_ticket;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.create_support_ticket(text, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.create_support_ticket(text, uuid) TO authenticated, service_role;
 
 COMMIT;

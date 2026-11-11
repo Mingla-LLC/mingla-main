@@ -8,6 +8,7 @@
 -- MINGLA-INVARIANT: I-4382-PRODUCT-STAGE-CUSTOMER-SAFE | issue #4382 | A ticket's Product stage reaches only its requester, a brand member on a brand-visible ticket, or Support staff, and carries only {stage, board_status_label}.
 -- MINGLA-INVARIANT: I-4382-SUPPORT-MESSAGES-SERVER-PATH-ONLY | issue #4382 | No anon or signed-in browser inserts a message into a support conversation; support messages are written only by issue_4382_post_support_message and the other SECURITY DEFINER support functions or the service role.
 -- MINGLA-INVARIANT: I-4382-SUPPORT-ATTACH-ONLY-UPLOADED | issue #4382 | A support attachment joins a message only when its object exists in support-attachments at its storage_path; otherwise the send is refused with PT409 attachment_not_uploaded.
+-- MINGLA-INVARIANT: I-4382-LEGACY-CREATE-OWN-BRAND-ONLY | issue #4382 | The pre-#4382 create_support_ticket(text, uuid) files a ticket against a brand only when the caller is an active member or the owning account; any other brand id is dropped.
 -- MINGLA-INVARIANT: I-4382-SUPPORT-NO-LOCATION | issue #4382 | A support ticket's client details hold app and device facts only; a location key is refused.
 BEGIN;
 
@@ -633,6 +634,7 @@ DECLARE
   v_item uuid;
   v_rev integer;
   v_stage jsonb;
+  v_legacy uuid;
 BEGIN
   INSERT INTO auth.users(id, email) VALUES
     (v_partner, 'partner-stage-4382@example.test'),
@@ -679,6 +681,24 @@ BEGIN
     'The whole team can see this one', ARRAY[]::uuid[], '{}'::jsonb, v_brand, 'brand');
   PERFORM public.issue_4382_create_customer_ticket(v_lonely_ticket, 'host', 'other', 'No Product item',
     'Nothing for Product here', ARRAY[]::uuid[], '{}'::jsonb, v_brand, 'person');
+
+  -- The pre-#4382 create (installed Host builds) keeps only the caller's own
+  -- brand: a stranger's brand id is dropped, a member's is kept.
+  PERFORM pg_temp.t4382_as(v_stranger);
+  v_legacy := public.create_support_ticket('Filed against a brand I am not in', v_brand);
+  IF (SELECT brand_id FROM public.support_tickets WHERE id = v_legacy) IS NOT NULL THEN
+    RAISE EXCEPTION 'legacy_create_kept_a_strangers_brand';
+  END IF;
+  PERFORM pg_temp.t4382_as(v_mate);
+  v_legacy := public.create_support_ticket('Filed by a team member', v_brand);
+  IF (SELECT brand_id FROM public.support_tickets WHERE id = v_legacy) IS DISTINCT FROM v_brand THEN
+    RAISE EXCEPTION 'legacy_create_dropped_a_members_brand';
+  END IF;
+  PERFORM pg_temp.t4382_as(v_host);
+  v_legacy := public.create_support_ticket('Filed by the owner', v_brand);
+  IF (SELECT brand_id FROM public.support_tickets WHERE id = v_legacy) IS DISTINCT FROM v_brand THEN
+    RAISE EXCEPTION 'legacy_create_dropped_the_owners_brand';
+  END IF;
 
   -- Plain Support staff sends to Product and links the brand ticket.
   PERFORM pg_temp.t4382_as(v_plain_staff);
