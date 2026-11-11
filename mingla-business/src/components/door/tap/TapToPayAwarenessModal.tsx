@@ -113,7 +113,7 @@ const AwarenessModal = ({ assets }: { assets: TapToPayAwarenessAssets }): React.
 };
 
 /** A length in the artwork's frame as a percentage of the drawn image box. */
-export const artPercent = (value: number, of: number): `${number}%` => `${(value / of) * 100}%`;
+const artPercent = (value: number, of: number): `${number}%` => `${(value / of) * 100}%`;
 
 interface AwarenessBannerProps {
   assets: TapToPayAwarenessAssets;

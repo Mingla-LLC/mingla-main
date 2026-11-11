@@ -7,6 +7,11 @@
  *   G4 every failed state offers "Get help", which opens Help & Support
  *   G5 Settings shows Apple's Tap to Pay symbol on iPhone
  * Mocks mirror issue_4271_apple_surfaces.render.test.tsx.
+ *
+ * The implementor regression test for these gaps. It was named
+ * issue_4271_review_gaps.implementor.test.tsx; it is a render proof, so it is a
+ * .render.test.tsx that runs only under jest.issue4271.render.cjs (the stock
+ * jest.config.cjs ignores render proofs).
  */
 import fs from "node:fs";
 import path from "node:path";
