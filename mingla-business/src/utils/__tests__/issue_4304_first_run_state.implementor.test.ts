@@ -238,6 +238,7 @@ describe("#4304 greeting copy and chips", () => {
       displayName: "Tobi",
       brandName: "Wythe Hospitality",
       remembered: null,
+      setupComplete: true,
     });
     expect(copy.headline).toBe("Wythe Hospitality is set up. What are you hosting first?");
     expect(copy.body).toBe(

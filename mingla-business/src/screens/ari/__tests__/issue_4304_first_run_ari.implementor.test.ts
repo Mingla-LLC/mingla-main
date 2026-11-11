@@ -362,7 +362,9 @@ describe("#4304 First Home with Ari — Ari screen by stage", () => {
     useFirstRunStore.getState().rememberIntent("user-4304", { intent: "trips", text: null });
     const tree = await mount("empty_brand");
     const text = textOf(tree.root);
-    expect(text).toContain("Wythe Hospitality is set up. What are you hosting first?");
+    // #4389 — no complete brand_setup here, so Ari never says "is set up".
+    expect(text).toContain("Wythe Hospitality was created. What are you hosting first?");
+    expect(text).not.toContain("is set up");
     for (const id of ["events", "rsvp", "experiences", "trips", "venue"]) {
       expect(byTestId(tree.root, `ari-first-run-chip-${id}`)).toBeDefined();
     }

@@ -1408,6 +1408,8 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
           displayName: firstRunContext.displayName,
           brandName: currentBrand?.displayName ?? null,
           remembered: rememberedFirstRun?.intent ?? null,
+          // #4389 — never "set up" unless brand_setup is complete.
+          setupComplete: setupData?.facts.complete === true,
         })
       : null;
   const firstRunCentred = firstRunCopy !== null && noMessages && isWideDesktop;
