@@ -341,14 +341,18 @@ CREATE TRIGGER ops_4255_c_tree_follow
 -- (c) A card closes with open subtasks only when the closer asked to close
 --     them too: ops.close_children = on in this transaction (ops_work_move
 --     with close_children), a system close, or a push back (declined or
---     already done, which ends the whole piece of work).
+--     already done, which ends the whole piece of work). Open subtasks that
+--     are old plan steps (plan_step set) never block a close: closing never
+--     waited for plan steps before #4255 (69 tagged cards had open steps on
+--     10 Nov), so Mark sent, close_work and the rest keep working; those
+--     steps close with the card as a system close.
 CREATE FUNCTION public.ops_4255_close_children_guard() RETURNS trigger
 LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp
 AS $$
 DECLARE v_open integer;
 BEGIN
   SELECT count(*) INTO v_open FROM public.ops_work_cards c
-   WHERE c.parent_id = NEW.id AND c.status <> 'done' AND c.archived_at IS NULL;
+   WHERE c.parent_id = NEW.id AND c.status <> 'done' AND c.archived_at IS NULL AND c.plan_step IS NULL;
   IF v_open = 0 THEN RETURN NEW; END IF;
   IF COALESCE(current_setting('ops.close_children', true), '') = 'on'
      OR NEW.closed_via = 'system' OR NEW.close_kind IN ('declined','already_done','system') THEN
@@ -370,12 +374,14 @@ CREATE FUNCTION public.ops_4255_close_children() RETURNS trigger
 LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp
 AS $$
 DECLARE r record; n public.ops_work_cards; v_before jsonb;
+        v_kind text := CASE WHEN COALESCE(current_setting('ops.close_children', true), '') = 'on' OR NEW.close_kind <> 'done'
+                            THEN NEW.close_kind ELSE 'system' END;
 BEGIN
   FOR r IN SELECT c.id, c.revision FROM public.ops_work_cards c
             WHERE c.parent_id = NEW.id AND c.status <> 'done' AND c.archived_at IS NULL ORDER BY c.position, c.number FOR UPDATE LOOP
     v_before := public.ops_card_snapshot(r.id);
     UPDATE public.ops_work_cards c SET status = 'done', person_reason = NULL, blocked = false, blocked_kind = NULL, blocked_reason = NULL,
-      close_kind = NEW.close_kind, close_reason = left(format('Closed with Card %s.', NEW.number), 500),
+      close_kind = v_kind, close_reason = left(format('Closed with Card %s.', NEW.number), 500),
       closed_at = NEW.closed_at, closed_by = NEW.closed_by, closed_via = NEW.closed_via,
       working_by = NULL, working_via = NULL, working_chat = NULL, working_seen_at = NULL,
       revision = c.revision + 1, updated_by = NEW.updated_by, updated_via = NEW.updated_via, updated_at = now()

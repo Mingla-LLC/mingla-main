@@ -24,7 +24,8 @@
 --             is refused; archiving a card archives its subtasks; subtasks
 --             share titles with open cards
 --   C-CLOSE   a card with an open subtask does not close; with
---             close_children both close; a push back closes them too
+--             close_children both close; a push back closes them too; an
+--             open plan step never blocks a close and closes with the card
 --   C-PLAN    legacy plan steps become subtasks (title, done, named owner,
 --             person step owner), the plan column empties and the plan
 --             reads back from subtasks; a plan written with ops_work_update
@@ -354,6 +355,12 @@ begin
     pg_temp.id('K2'), pg_temp.rev('K2')));
   perform pg_temp.chk('C-CLOSE', 'a push back closes the open subtasks with it',
     (select status || ':' || close_kind from public.ops_work_cards where id = v_sub), 'done:declined');
+  -- An open step from a plan never blocks a close (closing never waited for
+  -- plan steps); it closes with the card as a system close.
+  v := pg_temp.add('K3', 'growth', pg_temp.item('V4255 Card with an open plan step') || '{"plan":[{"n":1,"text":"Check the venue","tool":"person"}]}'::jsonb);
+  v := pg_temp.person('growth', format('select public.ops_work_close(%L, ''[{"kind":"text","text":"Checked it by hand."}]''::jsonb, NULL, %s)::text', pg_temp.id('K3'), pg_temp.rev('K3')));
+  perform pg_temp.chk('C-CLOSE', 'an open plan step does not block the close and closes with it as a system close',
+    pg_temp.col('K3') || '/' || (select status || ':' || close_kind from public.ops_work_cards where parent_id = pg_temp.id('K3')), 'done/Done/done:system');
 end;
 $t$;
 
