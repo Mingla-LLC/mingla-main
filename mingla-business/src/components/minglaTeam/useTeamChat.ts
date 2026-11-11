@@ -139,7 +139,12 @@ export function useTeamRealtime(userId: string | null, threadId: string | null, 
           .on("postgres_changes", { event: "*", schema: "public", table: "team_messages", filter: `thread_id=eq.${threadId}` }, refresh)
           .on("postgres_changes", { event: "*", schema: "public", table: "team_message_reactions" }, refresh)
           .on("postgres_changes", { event: "*", schema: "public", table: "team_thread_members", filter: `thread_id=eq.${threadId}` }, refresh)
-          .on("postgres_changes", { event: "UPDATE", schema: "public", table: "team_threads", filter: `id=eq.${threadId}` }, refresh);
+          // No primary-key filter (I-PROPOSED-ORCH-0931: realtime drops an
+          // id=eq.* binding on an RLS table): every thread update this member
+          // can see arrives, and only this thread's refreshes.
+          .on("postgres_changes", { event: "UPDATE", schema: "public", table: "team_threads" }, (payload: { new?: { id?: unknown } }) => {
+            if (payload.new?.id === threadId) refresh();
+          });
       } else {
         channel = channel
           .on("postgres_changes", { event: "*", schema: "public", table: "team_threads" }, refresh)

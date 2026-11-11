@@ -320,6 +320,39 @@ describe("#4255 W5 sign-out clears team data", () => {
   });
 });
 
+describe("#4255 fix-up: realtime never filters on a primary key (I-PROPOSED-ORCH-0931)", () => {
+  function Live({ threadId }: { threadId: string | null }): null {
+    useTeamRealtime("u-staff", threadId, true);
+    return null;
+  }
+  test("the thread channel listens to team_threads without id=eq.* and refreshes only for its own thread", async () => {
+    interface FakeChannel { on: jest.Mock; subscribe: jest.Mock }
+    const channel: FakeChannel = { on: jest.fn(), subscribe: jest.fn() };
+    channel.on.mockReturnValue(channel);
+    channel.subscribe.mockReturnValue(channel);
+    mockChannel.mockReturnValue(channel);
+    const qc = client();
+    const invalidate = jest.spyOn(qc, "invalidateQueries");
+    await mount(<QueryClientProvider client={qc}><Live threadId={THREAD} /></QueryClientProvider>);
+    const bindings = channel.on.mock.calls.map((call) => call[1] as { table: string; event: string; filter?: string });
+    for (const b of bindings) expect(b.filter ?? "").not.toMatch(/(^|[^_a-z])id=eq\./);
+    const threadsCall = channel.on.mock.calls.find((call) => (call[1] as { table: string }).table === "team_threads");
+    expect(threadsCall).toBeDefined();
+    expect((threadsCall?.[1] as { filter?: string }).filter).toBeUndefined();
+    const handler = threadsCall?.[2] as (payload: { new?: { id?: unknown } }) => void;
+    invalidate.mockClear();
+    handler({ new: { id: CARD } });
+    expect(invalidate).not.toHaveBeenCalled();
+    handler({ new: { id: THREAD } });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: teamChatKey("u-staff", "messages", THREAD) });
+  });
+
+  test("the repo gate passes on the team chat hook", () => {
+    const source = fs.readFileSync(path.resolve(__dirname, "../useTeamChat.ts"), "utf8");
+    expect(source).not.toMatch(/filter:\s*`id=eq\./);
+  });
+});
+
 describe("#4255 W5 attachments", () => {
   const file = (size: number, name = "flyer.png", mimeType: string | null = "image/png") => ({ uri: "file:///x", name, mimeType, size });
 
