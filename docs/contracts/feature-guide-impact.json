@@ -790,6 +790,7 @@
         "mingla-admin/src/components/ari/AriGapsPanel.jsx",
         "mingla-admin/src/lib/ariGaps.js",
         "supabase/functions/_shared/ariIntentRead.ts",
+        "supabase/functions/_shared/ariClaimCheck.ts",
         "supabase/functions/_shared/ariFlows/startFlowTool.ts",
         "supabase/functions/_shared/agentGeminiContents.ts",
         "supabase/migrations/20280623093355_issue_3355_ari_quality_panel.sql",
