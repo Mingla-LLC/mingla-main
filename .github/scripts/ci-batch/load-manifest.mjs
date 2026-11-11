@@ -229,7 +229,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4255: re-sealed after registering the Work board v2 and Mingla team migrations and their PostgreSQL proofs in the #1857, #1931 and #2117 lanes.
 // #4255: re-sealed after registering the tester adversarial PostgreSQL proof in the #1931 and #2117 lanes.
 // #4255: re-sealed after registering the rework migration (20280612014255) and its PostgreSQL proof in the #1857, #1931 and #2117 lanes.
-export const BOOTSTRAP_SHA256 = "06733c3a1df21a0993aa36aceabe6e293747374f479e34650804843dd75b87b7";
+// #4255: re-sealed after registering the rework tester adversarial PostgreSQL proof in the #1931 and #2117 lanes.
+export const BOOTSTRAP_SHA256 = "ae75e04b9988474fb90cba3ce2fc1b9e85eafb8674e4ce87285da306b0860482";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

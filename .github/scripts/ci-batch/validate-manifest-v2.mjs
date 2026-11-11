@@ -437,7 +437,8 @@ export function phase3dContractDigest(manifest) {
 // #4255: register the Work board v2 and Mingla team migrations (20280610004255 to 20280612004255) in the #1857, #1931 and #2117 replay lanes, and their implementor PostgreSQL proofs in the #1931 and #2117 lanes.
 // #4255: and the tester adversarial PostgreSQL proof.
 // #4255: and the rework migration (20280612014255) in the #1857, #1931 and #2117 lanes, with its implementor PostgreSQL proof in the #1931 and #2117 lanes.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "e7cda7befb87769f1bb6609db673be0ce120c3c2ee8c189f14148778dded83a8";
+// #4255: and the rework tester adversarial PostgreSQL proof.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "0560dbb0747ed2a02b0ebdfc67fd3eb584d60026f3e2ca82339570fae33b25e9";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
