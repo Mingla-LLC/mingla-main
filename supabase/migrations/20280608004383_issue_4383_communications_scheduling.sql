@@ -2,10 +2,10 @@
 -- later; scheduled announcements and roadmap changes; one list of everything
 -- scheduled.
 --
---   A. two notification categories: explorer.mingla_update (Explorer app) and
+--   A. two notification categories: mingla_updates (Explorer app) and
 --      business.mingla_update (Host app). The prefix decides the OneSignal app
---      (_shared/push-utils.ts resolveOneSignalApp), so no edge function and no
---      app change is needed to deliver them.
+--      (_shared/push-utils.ts resolveOneSignalApp: business.* to the Host app,
+--      anything else to the Explorer app), so no edge function is needed.
 --   B. admin_push_campaigns: one row per Admin push. Its time lives only on
 --      its own row (I-4383-SCHEDULE-ONE-OWNER).
 --   C. announcements: the dead scheduled_at column finally means something
@@ -32,12 +32,15 @@ SET LOCAL lock_timeout = '10s';
 -- ---------------------------------------------------------------------------
 -- A. Categories
 -- ---------------------------------------------------------------------------
--- is_transactional = true keeps the Settings switch and can_send agreeing
--- (default on; push stays user-toggleable; D4).
+-- mingla_updates sits in the Explorer Settings 'Marketing' section (the app
+-- lists only Purchases, Reservations, Reminders, Marketing and Social), as
+-- "Mingla updates". is_transactional = true: in-app is the only locked
+-- channel, push defaults on and the person can switch it off, which
+-- can_send honours (an enabled = false pref refuses push; D4).
 INSERT INTO public.notification_categories (
   key, section, is_transactional, urgency, default_channels, reach_mode, active
 ) VALUES
-  ('explorer.mingla_update', 'Mingla updates', true, 'normal', ARRAY['inapp', 'push']::text[], 'reach_once', true),
+  ('mingla_updates', 'Marketing', true, 'normal', ARRAY['inapp', 'push']::text[], 'reach_once', true),
   ('business.mingla_update', 'community', true, 'normal', ARRAY['inapp', 'push']::text[], 'reach_once', true)
 ON CONFLICT (key) DO NOTHING;
 
@@ -346,7 +349,7 @@ BEGIN
   PERFORM pg_advisory_xact_lock(hashtextextended('issue_4383_push_pacing', 4383));
   SELECT max(o.next_attempt_at) INTO v_last
   FROM public.notification_outbox o
-  WHERE o.category_key IN ('explorer.mingla_update', 'business.mingla_update')
+  WHERE o.category_key IN ('mingla_updates', 'business.mingla_update')
     AND o.status IN ('pending', 'retry_wait')
     AND o.next_attempt_at IS NOT NULL
     AND o.payload ? 'campaign_id';
@@ -355,7 +358,7 @@ BEGIN
     base := now();
     SELECT count(*)::integer INTO used
     FROM public.notification_outbox o
-    WHERE o.category_key IN ('explorer.mingla_update', 'business.mingla_update')
+    WHERE o.category_key IN ('mingla_updates', 'business.mingla_update')
       AND o.status IN ('pending', 'retry_wait')
       AND o.next_attempt_at IS NOT NULL
       AND o.payload ? 'campaign_id';
@@ -363,7 +366,7 @@ BEGIN
     base := v_last;
     SELECT count(*)::integer INTO used
     FROM public.notification_outbox o
-    WHERE o.category_key IN ('explorer.mingla_update', 'business.mingla_update')
+    WHERE o.category_key IN ('mingla_updates', 'business.mingla_update')
       AND o.status IN ('pending', 'retry_wait')
       AND o.next_attempt_at = v_last
       AND o.payload ? 'campaign_id';
@@ -830,7 +833,7 @@ BEGIN
       AND btm.accepted_at IS NOT NULL
       AND btm.removed_at IS NULL
     UNION
-    SELECT p.id, 'explorer.mingla_update'::text, v_explorer_link
+    SELECT p.id, 'mingla_updates'::text, v_explorer_link
     FROM public.profiles p
     JOIN auth.users u ON u.id = p.id
     WHERE v_push.audience IN ('explorers', 'both')
@@ -1294,7 +1297,7 @@ BEGIN
     SELECT 'business.mingla_update'::text AS category_key, public.issue_4383_push_deep_link('host', v_row.host_target) AS deep_link
     WHERE v_row.audience IN ('hosts', 'both')
     UNION ALL
-    SELECT 'explorer.mingla_update'::text, public.issue_4383_push_deep_link('explorer', v_row.explorer_target)
+    SELECT 'mingla_updates'::text, public.issue_4383_push_deep_link('explorer', v_row.explorer_target)
     WHERE v_row.audience IN ('explorers', 'both')
   ), inserted AS (
     INSERT INTO public.notification_outbox (category_key, user_id, country_code, payload, idempotency_key, status)

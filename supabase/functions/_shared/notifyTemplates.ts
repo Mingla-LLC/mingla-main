@@ -270,7 +270,7 @@ export function renderCategoryMessage(
     }
     // #4383 — an Admin push (Communications > Push). The copy is exactly what
     // the admin typed, as plain text; bell + push only (no email, no SMS).
-    case "explorer.mingla_update":
+    case "mingla_updates":
     case "business.mingla_update": {
       const title = communityMarkdownToPlainText(payload.title) || "Mingla update";
       const body = communityExcerpt(payload.body, 178);

@@ -44,7 +44,7 @@ export const ADMIN_PUSH_DESTINATIONS: readonly AdminPushDestination[] = Object.f
 
 /** The push category each app's rows are sent as (the prefix picks the OneSignal app). */
 export const ADMIN_PUSH_CATEGORY: Readonly<Record<AdminPushApp, string>> = Object.freeze({
-  explorer: "explorer.mingla_update",
+  explorer: "mingla_updates",
   host: "business.mingla_update",
 });
 

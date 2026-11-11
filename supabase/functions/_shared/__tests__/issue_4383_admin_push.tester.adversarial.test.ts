@@ -24,7 +24,7 @@ import {
 } from "../adminPushDestinations.ts";
 
 const NEAR_MISSES: Record<string, string[]> = {
-  "explorer.mingla_update": [
+  "mingla_updates": [
     "mingla://Home", "MINGLA://home", "mingla://home/", "mingla://home?x=1", "mingla://home#top",
     " mingla://home", "mingla://home ", "mingla:///home", "mingla://discover/", "mingla://likes?tab=saved",
     "mingla://connections", "mingla://chats", "mingla://saved", "mingla://profile", "mingla://explore",
@@ -102,7 +102,7 @@ Deno.test("N1 a missing link is refused too (a push always names its screen)", a
 });
 
 Deno.test("N2 prototype-shaped and unknown categories never match the table", () => {
-  for (const category of ["__proto__", "constructor", "toString", "explorer", "host", "explorer.mingla_updates", "business.mingla_update ", "Explorer.mingla_update"]) {
+  for (const category of ["__proto__", "constructor", "toString", "explorer", "host", "mingla_updatess", "business.mingla_update ", "Explorer.mingla_update"]) {
     for (const row of ADMIN_PUSH_DESTINATIONS) {
       assertEquals(adminPushDeepLinkValid(category, row.deepLink), false, `${category} ${row.deepLink}`);
     }
@@ -150,5 +150,5 @@ Deno.test("N4 the destination table is frozen", () => {
   assertThrows(() => (ADMIN_PUSH_DESTINATIONS as unknown as unknown[]).push({ app: "explorer", value: "connections", label: "Chats", deepLink: "mingla://connections", isDefault: false }));
   assertThrows(() => { (ADMIN_PUSH_DESTINATIONS[0] as unknown as { deepLink: string }).deepLink = "mingla://connections"; });
   assertEquals(ADMIN_PUSH_DESTINATIONS.length, 5);
-  assertEquals(adminPushDeepLinkValid("explorer.mingla_update", "mingla://connections"), false);
+  assertEquals(adminPushDeepLinkValid("mingla_updates", "mingla://connections"), false);
 });

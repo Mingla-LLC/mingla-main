@@ -10,7 +10,7 @@
 --   T9   a growth teammate gets 42501 from every push RPC
 --   T10  the runner fires a due push: sent, campaign kind admin_push, one
 --        outbox row per recipient per app (hosts business.mingla_update,
---        explorers explorer.mingla_update), deep links from the destination
+--        explorers mingla_updates), deep links from the destination
 --        table, paced next_attempt_at (12 a minute)
 --   T11  a push due in five minutes is untouched
 --   T12  running twice fires once (one campaign, no duplicate rows)
@@ -201,12 +201,12 @@ begin
     exists (select 1 from public.community_notification_campaigns c where c.id = p.campaign_id and c.kind = 'admin_push' and c.request_key = p.id and c.source_id = p.id), null);
   select count(*) into v_n from public.notification_outbox where payload->>'push_id' = p.id::text and category_key = 'business.mingla_update';
   perform pg_temp.chk('T10', 'two host rows (the removed host is left out)', v_n = 2, v_n::text);
-  select count(*) into v_n from public.notification_outbox where payload->>'push_id' = p.id::text and category_key = 'explorer.mingla_update';
+  select count(*) into v_n from public.notification_outbox where payload->>'push_id' = p.id::text and category_key = 'mingla_updates';
   perform pg_temp.chk('T10', 'five explorer rows', v_n = 5, v_n::text);
   select string_agg(distinct category_key || '=' || (payload->>'deep_link'), ',' order by category_key || '=' || (payload->>'deep_link')) into v_links
   from public.notification_outbox where payload->>'push_id' = p.id::text;
   perform pg_temp.chk('T10', 'deep links come from the destination table',
-    v_links = 'business.mingla_update=mingla-business://(tabs)/home,explorer.mingla_update=mingla://likes', v_links);
+    v_links = 'business.mingla_update=mingla-business://(tabs)/home,mingla_updates=mingla://likes', v_links);
   perform pg_temp.chk('T10', 'idempotency key is category:push:user',
     not exists (select 1 from public.notification_outbox o where o.payload->>'push_id' = p.id::text
       and o.idempotency_key <> o.category_key || ':' || p.id::text || ':' || o.user_id::text), null);
@@ -504,8 +504,10 @@ begin
   perform pg_temp.chk('security', 'every issue_4383 function pins search_path',
     not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where n.nspname = 'public' and p.proname like 'issue_4383_%' and not exists (select 1 from unnest(coalesce(p.proconfig, '{}')) c where c like 'search_path=%')), null);
+  perform pg_temp.chk('categories', 'the Explorer category is in the Marketing section (where Explorer Settings lists it)',
+    (select section = 'Marketing' and is_transactional from public.notification_categories where key = 'mingla_updates'), null);
   perform pg_temp.chk('categories', 'both categories exist, inapp + push, default on (transactional)',
-    (select count(*) from public.notification_categories where key in ('explorer.mingla_update', 'business.mingla_update')
+    (select count(*) from public.notification_categories where key in ('mingla_updates', 'business.mingla_update')
       and is_transactional and default_channels = array['inapp', 'push']::text[] and active) = 2, null);
 end;
 $t$;
@@ -537,16 +539,16 @@ begin
     (select go_live_at is null and go_live_timezone is null from public.community_roadmap_cards where id = v_card), null);
 
   -- R2: clear earlier admin pushes' rows so this measures only what follows.
-  delete from public.notification_outbox where category_key in ('explorer.mingla_update', 'business.mingla_update');
+  delete from public.notification_outbox where category_key in ('mingla_updates', 'business.mingla_update');
   insert into public.admin_push_campaigns (id, title, body, audience, status, scheduled_for, created_by) values
     ('43830000-0000-4000-c000-0000000000d1', 'R2a', 'x', 'explorers', 'scheduled', now() - interval '2 seconds', pg_temp.uid('admin')),
     ('43830000-0000-4000-c000-0000000000d2', 'R2b', 'y', 'explorers', 'scheduled', now() - interval '1 second', pg_temp.uid('admin'));
   v := public.issue_4383_fire_due_communications();
   select max(c) into v_max from (select next_attempt_at, count(*) c from public.notification_outbox
-    where category_key in ('explorer.mingla_update', 'business.mingla_update') group by 1) x;
+    where category_key in ('mingla_updates', 'business.mingla_update') group by 1) x;
   select string_agg(m || ':' || c, ',' order by m) into v_minutes from (
     select extract(epoch from (next_attempt_at - now()))::int / 60 as m, count(*) as c
-    from public.notification_outbox where category_key in ('explorer.mingla_update', 'business.mingla_update') group by 1) x;
+    from public.notification_outbox where category_key in ('mingla_updates', 'business.mingla_update') group by 1) x;
   perform pg_temp.chk('R2', 'two pushes in one pass: at most 12 a minute across both', (v->>'pushes_sent')::int = 2 and v_max <= 12, coalesce(v_minutes, ''));
   perform pg_temp.chk('R2', 'and they follow each other (60 rows over minutes 0..4)', v_minutes = '0:12,1:12,2:12,3:12,4:12', v_minutes);
   -- A retry of failed rows joins the same pace instead of re-queueing at now().
@@ -558,7 +560,7 @@ begin
   perform public.issue_3720_admin_retry_announcement(v_campaign);
   reset role;
   select max(c) into v_max from (select next_attempt_at, count(*) c from public.notification_outbox
-    where category_key in ('explorer.mingla_update', 'business.mingla_update') and status in ('pending', 'retry_wait') group by 1) x;
+    where category_key in ('mingla_updates', 'business.mingla_update') and status in ('pending', 'retry_wait') group by 1) x;
   perform pg_temp.chk('R2', 'a retry re-queues on the shared pace (never more than 12 in a minute)', v_max <= 12, v_max::text);
   perform pg_temp.chk('R2', 'a retried row never comes before the rows already queued',
     (select min(next_attempt_at) from public.notification_outbox where payload->>'push_id' = '43830000-0000-4000-c000-0000000000d1')
@@ -608,6 +610,19 @@ begin
     (select count(*) from pg_catalog.pg_timezone_names where name in ('Africa/Lagos', 'America/New_York', 'Europe/Helsinki', 'Asia/Kolkata', 'UTC')) = 5, null);
   v_e := pg_temp.err($$select public.issue_4383_check_schedule(now() + interval '1 day', 'America/Coyhaique')$$);
   perform pg_temp.chk('P3-1', 'a zone the database does not know is refused', v_e like '22023 invalid_timezone%', v_e);
+end;
+$t$;
+
+
+-- D4 (SC-12): an explorer who switches Mingla updates push off gets none.
+do $t$
+declare v_uid uuid := pg_temp.uid('exp1');
+begin
+  perform pg_temp.chk('D4', 'no pref: push allowed (default on)', public.can_send(v_uid, 'mingla_updates', 'push', null), null);
+  insert into public.notification_channel_prefs (user_id, category_key, channel, enabled) values (v_uid, 'mingla_updates', 'push', false);
+  perform pg_temp.chk('D4', 'pref enabled = false: can_send refuses push', not public.can_send(v_uid, 'mingla_updates', 'push', null), null);
+  perform pg_temp.chk('D4', 'the bell item still lands (in-app untouched)', public.can_send(v_uid, 'mingla_updates', 'inapp', null), null);
+  perform pg_temp.chk('D4', 'another explorer is unaffected', public.can_send(pg_temp.uid('exp2'), 'mingla_updates', 'push', null), null);
 end;
 $t$;
 

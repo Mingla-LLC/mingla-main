@@ -2,7 +2,7 @@
 // or both, now or at a time you pick. Full admins only (lib/access.js
 // default, the same as announcements). Hosts get it in the Host app
 // (business.mingla_update), explorers in the Explorer app
-// (explorer.mingla_update); the server fans it out at 12 a minute so order and
+// (mingla_updates); the server fans it out at 12 a minute so order and
 // payout pushes are never held up. A push only opens a screen in the
 // destination table (supabase/functions/_shared/adminPushDestinations.ts).
 import { useCallback, useEffect, useMemo, useState } from "react";

@@ -4,7 +4,7 @@
 //   T20  the two categories render the typed title and body as plain text,
 //        bell + push only; the provider's data bag carries only campaign_id
 //        and push_id; a deep link outside the destination table is refused
-//   T21  explorer.mingla_update goes to the Explorer (consumer) OneSignal app,
+//   T21  mingla_updates goes to the Explorer (consumer) OneSignal app,
 //        business.mingla_update to the Host (business) app
 //   D    the destination table, the migration's SQL and the Admin composer's
 //        choices agree row for row (one source of truth, spec §4.6)
@@ -43,9 +43,9 @@ Deno.test("T20 the copy is what the admin typed, plain text, bell and push only"
     assertEquals(rendered.email, { subject: "", body: "" }, `${category}: no email`);
     assertEquals(rendered.sms, "", `${category}: no SMS`);
   }
-  const long = renderCategoryMessage("explorer.mingla_update", { title: "t", body: "x".repeat(400) });
+  const long = renderCategoryMessage("mingla_updates", { title: "t", body: "x".repeat(400) });
   assert(long.push.body.length <= 178, "body excerpted to the composer's limit");
-  assertEquals(renderCategoryMessage("explorer.mingla_update", {}).push.title, "Mingla update");
+  assertEquals(renderCategoryMessage("mingla_updates", {}).push.title, "Mingla update");
 });
 
 Deno.test("T20 the provider data bag carries only campaign_id and push_id", () => {
@@ -67,7 +67,7 @@ Deno.test("T20 a deep link outside the destination table is refused, never rewri
     assertEquals(adminPushDeepLinkValid(ADMIN_PUSH_CATEGORY[other], row.deepLink), false, `${row.deepLink} in the other app`);
   }
   for (const bad of ["mingla://connections", "mingla://saved", "mingla://profile", "mingla-business://home", "https://evil.test", "", null]) {
-    assertEquals(adminPushDeepLinkValid("explorer.mingla_update", bad), false, String(bad));
+    assertEquals(adminPushDeepLinkValid("mingla_updates", bad), false, String(bad));
     assertEquals(adminPushDeepLinkValid("business.mingla_update", bad), false, String(bad));
   }
   // Through the real dispatcher: an invalid link stops before anything is written.
@@ -75,14 +75,14 @@ Deno.test("T20 a deep link outside the destination table is refused, never rewri
   const client = {
     from(table: string) {
       return {
-        select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: { key: "explorer.mingla_update", active: true, is_transactional: true, urgency: "normal", default_channels: ["inapp", "push"], reach_mode: "reach_once", section: "Mingla updates" }, error: null }) }) }),
+        select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: { key: "mingla_updates", active: true, is_transactional: true, urgency: "normal", default_channels: ["inapp", "push"], reach_mode: "reach_once", section: "Marketing" }, error: null }) }) }),
         insert: () => { writes.push(table); return Promise.resolve({ data: null, error: null }); },
       };
     },
     rpc: () => Promise.resolve({ data: null, error: null }),
   };
   const result = await dispatchV2(client as never, {
-    category_key: "explorer.mingla_update",
+    category_key: "mingla_updates",
     user_id: "00000000-0000-4000-8000-000000000001",
     payload: { title: "t", body: "b", campaign_id: "c", push_id: "p" },
     deep_link: "mingla://connections",
@@ -93,7 +93,7 @@ Deno.test("T20 a deep link outside the destination table is refused, never rewri
 });
 
 Deno.test("T21 each category reaches its own app", () => {
-  assertEquals(resolveOneSignalApp("explorer.mingla_update"), "consumer");
+  assertEquals(resolveOneSignalApp("mingla_updates"), "consumer");
   assertEquals(resolveOneSignalApp("business.mingla_update"), "business");
 });
 
