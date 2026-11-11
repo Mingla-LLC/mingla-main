@@ -116,6 +116,22 @@ export async function createProductSignal(input) {
   return unwrap(result, "Couldn't create the Product signal");
 }
 
+// Planned can go back to Triaged when the wrong issue was picked. The other
+// stages have their own doors (GitHub link, verify release, Tell reporters,
+// Won't do).
+export async function updateProductSignal(input) {
+  const result = await supabase.rpc("issue_3720_update_product_signal", {
+    p_signal_id: input.signalId,
+    p_expected_revision: input.expectedRevision,
+    p_state: input.state,
+    p_priority: input.priority,
+    p_next_update_at: input.nextUpdateAt,
+    p_next_step: input.nextStep,
+    p_customer_reply_draft: input.customerReplyDraft,
+  });
+  return unwrap(result, "Couldn't update the Product item");
+}
+
 export async function linkSourceToProductSignal(input) {
   const brandMessage = input.sourceKind === "brand_group_message";
   const result = await supabase.rpc(
