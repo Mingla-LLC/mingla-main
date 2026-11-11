@@ -16,6 +16,7 @@
     "confirm": "Confirm",
     "rescheduled_toast": "Experience rescheduled!",
     "reschedule_failed_toast": "Failed to reschedule. Please try again.",
+    "open_failed_toast": "Не вдалося відкрити оцінку. Спробуйте ще раз.",
     "close_label": "Close"
   },
   "custom_holiday": {

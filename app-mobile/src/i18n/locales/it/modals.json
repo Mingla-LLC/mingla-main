@@ -16,6 +16,7 @@
     "confirm": "Conferma",
     "rescheduled_toast": "Esperienza riprogrammata!",
     "reschedule_failed_toast": "Riprogrammazione fallita. Riprova.",
+    "open_failed_toast": "Impossibile aprire la valutazione. Riprova.",
     "close_label": "Chiudi"
   },
   "custom_holiday": {

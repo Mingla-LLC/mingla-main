@@ -16,6 +16,7 @@
     "confirm": "Kwenye",
     "rescheduled_toast": "Ahazigharịrị ahụmahụ!",
     "reschedule_failed_toast": "Enweghị ike ihazie ọzọ. Biko nwaa ọzọ.",
+    "open_failed_toast": "Enweghị ike imepe ntụle ahụ. Nwaa ọzọ.",
     "close_label": "Mechie"
   },
   "custom_holiday": {

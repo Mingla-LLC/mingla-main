@@ -16,6 +16,7 @@
     "confirm": "Gba Evaen",
     "rescheduled_toast": "A rhie ede\u1eb9 khian!",
     "reschedule_failed_toast": "A i gha h\u1ecdo gha rhie ede\u1eb9. Gha gb\u1eb9r\u1eb9.",
+    "open_failed_toast": "Couldn't open the rating. Try again.",
     "close_label": "Kue"
   },
   "custom_holiday": {
