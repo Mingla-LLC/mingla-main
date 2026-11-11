@@ -608,6 +608,35 @@ BEGIN
 END;
 $pipeline$;
 
+-- ── Beta feedback is retired (20280622004382) ──
+-- MINGLA-INVARIANT: I-4382-BETA-FEEDBACK-RETIRED | issue #4382 | After 20280622004382 the beta_feedback table, its import map, the import marker function and the beta-feedback storage policies are gone, and no support attachment still points at the beta-feedback bucket.
+DO $retired$
+BEGIN
+  IF to_regclass('public.beta_feedback') IS NOT NULL THEN
+    RAISE EXCEPTION 'beta_feedback_still_exists';
+  END IF;
+  IF to_regclass('public.issue_4382_beta_feedback_import') IS NOT NULL THEN
+    RAISE EXCEPTION 'beta_feedback_import_map_still_exists';
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_policies
+             WHERE (schemaname = 'public' AND tablename = 'beta_feedback')
+                OR (schemaname = 'storage' AND tablename = 'objects'
+                    AND policyname IN ('Admins can read all feedback audio',
+                                       'Beta testers can upload feedback audio',
+                                       'Users can read own feedback audio',
+                                       'Users can delete own feedback files'))) THEN
+    RAISE EXCEPTION 'beta_feedback_policy_left';
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.support_attachments
+             WHERE import_source_bucket = 'beta-feedback' OR import_source_path IS NOT NULL) THEN
+    RAISE EXCEPTION 'attachment_still_points_at_beta_feedback';
+  END IF;
+  IF to_regprocedure('public.issue_4382_mark_attachment_imported(uuid,integer)') IS NOT NULL THEN
+    RAISE EXCEPTION 'import_marker_function_still_exists';
+  END IF;
+END;
+$retired$;
+
 -- ── The move-across left a consistent world ──
 DO $moved$
 BEGIN
@@ -618,12 +647,7 @@ BEGIN
              WHERE imported_from = 'internal_thread' AND (origin <> 'staff' OR visibility <> 'internal'))
      OR EXISTS (SELECT 1 FROM public.support_tickets
              WHERE imported_from = 'beta_feedback'
-               AND (origin <> 'customer' OR visibility <> 'person' OR requester_segment <> 'explorer'))
-     OR EXISTS (SELECT 1 FROM public.issue_4382_beta_feedback_import import
-             WHERE NOT EXISTS (SELECT 1 FROM public.support_attachments a
-                               WHERE a.message_id = import.message_id AND a.kind = 'audio'))
-     OR (SELECT count(*) FROM public.issue_4382_beta_feedback_import)
-        <> (SELECT count(*) FROM public.beta_feedback) THEN
+               AND (origin <> 'customer' OR visibility <> 'person' OR requester_segment <> 'explorer')) THEN
     RAISE EXCEPTION 'move_across_inconsistent';
   END IF;
   IF EXISTS (SELECT 1 FROM public.support_product_signals

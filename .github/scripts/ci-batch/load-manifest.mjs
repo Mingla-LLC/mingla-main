@@ -232,7 +232,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4383: re-sealed after registering the tester adversarial PostgreSQL proof in the #1931 and #2117 lanes.
 // #4382: re-sealed after merging origin/main 2aa45c6da1 (#4383 rows kept beside the #4382 rows).
 // #4382: re-sealed after renumbering the Support Desk migrations to 20280613*4382.
-export const BOOTSTRAP_SHA256 = "3c8d145a1c22bc291c2c64297323e18472bb9fbe95516dc4239ce7d459e38a7d";
+// #4382: register the retire-beta-feedback migration (20280622004382) in the #1857, #1931 and #2117 replay lanes; re-sealed.
+export const BOOTSTRAP_SHA256 = "e0f5c12498fda5e3abd4d1d1d252df20d57485cb0918aeba0c5c8e0e332a36e1";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

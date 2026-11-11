@@ -127,13 +127,6 @@ async function runExplorerPreDeleteBatch(
         if (error) console.warn("[delete-user] messages soft-delete:", error.message);
       }),
     adminClient
-      .from("beta_feedback")
-      .update({ user_display_name: null, user_email: null, user_phone: null })
-      .eq("user_id", userId)
-      .then(({ error }) => {
-        if (error) console.warn("[delete-user] beta_feedback anonymize:", error.message);
-      }),
-    adminClient
       .from("place_reviews")
       .update({
         feedback_text: null,
