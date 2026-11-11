@@ -7,7 +7,10 @@
 //
 // FAILS-ON-REVERT: counting a parked row with the failures again (the
 // boolean processGeneric in the loop) answers failed: 2, held: undefined.
-import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  assert,
+  assertEquals,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { handleNotifyOutboxDrain } from "../index.ts";
 
 const SERVICE_KEY = "issue-4255-drain-held";
@@ -18,8 +21,16 @@ const USER_ID = "4255aaaa-0000-4000-8000-000000000001";
 function zoneAtElevenPm(now: Date): string {
   for (let offset = -12; offset <= 14; offset++) {
     // Etc/GMT signs are inverted: Etc/GMT-3 is UTC+3.
-    const zone = offset === 0 ? "Etc/GMT" : `Etc/GMT${offset > 0 ? "-" : "+"}${Math.abs(offset)}`;
-    const hour = Number(new Intl.DateTimeFormat("en-US", { hour: "numeric", hour12: false, timeZone: zone }).format(now)) % 24;
+    const zone = offset === 0
+      ? "Etc/GMT"
+      : `Etc/GMT${offset > 0 ? "-" : "+"}${Math.abs(offset)}`;
+    const hour = Number(
+      new Intl.DateTimeFormat("en-US", {
+        hour: "numeric",
+        hour12: false,
+        timeZone: zone,
+      }).format(now),
+    ) % 24;
     if (hour === 23) return zone;
   }
   throw new Error("no zone at 23:00");
@@ -38,31 +49,49 @@ Deno.test("#4255 P4 the drain answers held for a quiet-hours row, failed only fo
     category_key: "business.team_mention",
     user_id: USER_ID,
     attempts: 0,
-    payload: { source_kind: "work_card", mention_id: "4255cccc-0000-4000-8000-000000000001" },
-    idempotency_key: "business.team_mention:4255cccc-0000-4000-8000-000000000001",
+    payload: {
+      source_kind: "work_card",
+      mention_id: "4255cccc-0000-4000-8000-000000000001",
+    },
+    idempotency_key:
+      "business.team_mention:4255cccc-0000-4000-8000-000000000001",
   };
   // A legacy quiet-hours row without its stored push: a real failure.
-  const brokenRow = { id: "4255bbbb-0000-4000-8000-000000000002", category_key: "legacy_quiet_hours_push", payload: {}, attempts: 0 };
-  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
-    const url = input instanceof Request ? input.url : String(input);
-    const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
-    const ok = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
-    if (url.includes("/rest/v1/rpc/claim_notification_outbox")) {
-      genericClaims++;
-      return ok(genericClaims === 1 ? [teamRow, brokenRow] : []);
-    }
-    if (url.includes("/rest/v1/rpc/claim_source_refund_notification_outbox")) return ok([]);
-    if (url.includes("/rest/v1/profiles")) return ok([{ timezone: zone }]);
-    if (url.includes("/rest/v1/notification_outbox") && method === "PATCH") {
-      patches.push({ url, body: JSON.parse(String(init?.body ?? "{}")) });
-      return ok([]);
-    }
-    if (url.includes("/functions/v1/notify-dispatch")) {
-      dispatched.push(url);
-      return ok({ success: true });
-    }
-    return new Response("{}", { status: 404 });
-  }) as typeof fetch;
+  const brokenRow = {
+    id: "4255bbbb-0000-4000-8000-000000000002",
+    category_key: "legacy_quiet_hours_push",
+    payload: {},
+    attempts: 0,
+  };
+  globalThis.fetch =
+    (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const method =
+        (init?.method ?? (input instanceof Request ? input.method : "GET"))
+          .toUpperCase();
+      const ok = (body: unknown) =>
+        new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      if (url.includes("/rest/v1/rpc/claim_notification_outbox")) {
+        genericClaims++;
+        return ok(genericClaims === 1 ? [teamRow, brokenRow] : []);
+      }
+      if (
+        url.includes("/rest/v1/rpc/claim_source_refund_notification_outbox")
+      ) return ok([]);
+      if (url.includes("/rest/v1/profiles")) return ok([{ timezone: zone }]);
+      if (url.includes("/rest/v1/notification_outbox") && method === "PATCH") {
+        patches.push({ url, body: JSON.parse(String(init?.body ?? "{}")) });
+        return ok([]);
+      }
+      if (url.includes("/functions/v1/notify-dispatch")) {
+        dispatched.push(url);
+        return ok({ success: true });
+      }
+      return new Response("{}", { status: 404 });
+    }) as typeof fetch;
   Deno.env.set("SUPABASE_URL", SUPABASE_URL);
   Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", SERVICE_KEY);
   try {
