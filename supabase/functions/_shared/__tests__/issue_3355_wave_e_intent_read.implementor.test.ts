@@ -102,7 +102,7 @@ Deno.test("E1: the response schema is the contract (intents, flow actions, requi
 
 Deno.test("E1: strict validation — any bad shape is no read at all", () => {
   const ok = {
-    intent: "tool",
+    intent: "tool" as const,
     target: "create_discount",
     confidence: 0.9,
     stated_values: { code: "FAVY10", percent_off: 10, ends_on: "2026-12-19" },

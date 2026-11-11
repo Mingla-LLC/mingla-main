@@ -95,6 +95,9 @@ class MemoryStore implements FlowStore {
       lease_held: false,
       lease_held_by_me: false,
       lease_owner_name: null,
+      stopped: false,
+      last_activity_at: null,
+      owner_since: null,
       token: null,
     };
     this.runs.set(run.id, run);

@@ -19,7 +19,10 @@ import {
   payoutRailFor,
 } from "../agentAri10xTools.ts";
 import { AGENT_TOOL_AUTHORIZATION } from "../agentToolAuthorization.ts";
-import { ToolError } from "../agentToolHelpers.ts";
+import {
+  type AgentToolExecutionContext,
+  ToolError,
+} from "../agentToolHelpers.ts";
 import { WRITE_TOOL_OWNER_COPY } from "../ariPresentation/toolLabels.ts";
 import { WRITE_TOOL_OWNER_COPY as HOST_COPY } from "../../../../mingla-business/src/components/ari/toolProposalCopy.ts";
 import { STRIPE_SUPPORTED_COUNTRIES } from "../../../../mingla-business/src/constants/stripeSupportedCountries.ts";
@@ -27,6 +30,9 @@ import { toolErrorHttpStatus } from "../../agent-confirm-action/executionOutcome
 
 // deno-lint-ignore no-explicit-any
 type Any = any;
+
+/** #3355 rework 5 (R5-14): a typed empty execution context. */
+const NO_OP: AgentToolExecutionContext = { operationId: null };
 
 const BRAND = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 
@@ -107,7 +113,7 @@ Deno.test("payout country: the United Kingdom sets GBP, then remembers GB (the H
     { brand_id: BRAND, country_code: "GB" },
     client,
     "user",
-    {},
+    NO_OP,
   ) as Any;
   assertEquals(log, [
     'update {"default_currency":"GBP"}',
@@ -125,7 +131,7 @@ Deno.test("payout country: Nigeria goes through select_provider (server sets the
     { brand_id: BRAND, country_code: "NG" },
     client,
     "user",
-    {},
+    NO_OP,
   ) as Any;
   assertEquals(log, [
     "invoke brand-paystack-onboard select_provider",
@@ -138,7 +144,12 @@ Deno.test("payout country: Nigeria goes through select_provider (server sets the
 Deno.test("payout country: leaving a Paystack rail clears it before the new currency", async () => {
   const brand = freshBrand({ payment_provider: "paystack" });
   const { client, log } = callerClient(brand);
-  await tool.executor({ brand_id: BRAND, country_code: "IE" }, client, "u", {});
+  await tool.executor(
+    { brand_id: BRAND, country_code: "IE" },
+    client,
+    "u",
+    NO_OP,
+  );
   assertEquals(log, [
     "invoke brand-paystack-onboard clear_provider",
     'update {"default_currency":"EUR"}',
@@ -155,7 +166,7 @@ Deno.test("payout country: refusals write nothing", async () => {
         { brand_id: BRAND, country_code: "GB" },
         first.client,
         "u",
-        {},
+        NO_OP,
       ),
     ToolError,
   );
@@ -168,7 +179,7 @@ Deno.test("payout country: refusals write nothing", async () => {
         { brand_id: BRAND, country_code: "AU" },
         unsupported.client,
         "u",
-        {},
+        NO_OP,
       ),
     ToolError,
   );
@@ -181,7 +192,7 @@ Deno.test("payout country: refusals write nothing", async () => {
         { brand_id: BRAND, country_code: "GB" },
         denied.client,
         "u",
-        {},
+        NO_OP,
       ),
     ToolError,
   );

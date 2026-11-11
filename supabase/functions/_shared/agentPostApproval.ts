@@ -20,8 +20,8 @@ import { lintAriCopy, softenAriHeadings } from "./agentCopyLint.ts";
 import { DISCOUNT_PROPOSAL_REFUSED_CODE } from "./ariDiscountArgs.ts";
 import { bindDiscountTargetDefault } from "./agentAri10xTools.ts";
 import {
-  type AgentLoopResult,
   ARI_CLAIM_CHECK_RESERVE_MS,
+  type AgentLoopResult,
   runAgentLoop,
 } from "./agentLoop.ts";
 import {
@@ -161,11 +161,12 @@ export async function continueAfterApprovedAction(args: {
   const receiptMessage: GeminiContentMessage = {
     role: "user",
     parts: [{
-      text: `The user approved this change: ${
-        toolOwnerCopy(args.toolName).verb
-      }. The canonical Mingla readback is:\n${
-        boundedJson(withAriLocalTimes(args.result, zone))
-      }\n\nContinue the existing goal now. Verify the result, complete safe reads and Ari-owned plan updates without asking for “continue”, and stop at the next protected Mingla write so it can be shown for confirmation. If the goal is complete, give a concise receipt with completed, waiting, skipped, and human-owned steps.`,
+      text:
+        `The user approved this change: ${
+          toolOwnerCopy(args.toolName).verb
+        }. The canonical Mingla readback is:\n${
+          boundedJson(withAriLocalTimes(args.result, zone))
+        }\n\nContinue the existing goal now. Verify the result, complete safe reads and Ari-owned plan updates without asking for “continue”, and stop at the next protected Mingla write so it can be shown for confirmation. If the goal is complete, give a concise receipt with completed, waiting, skipped, and human-owned steps.`,
     }],
   };
   const systemPrompt = `You are Ari continuing an already-approved Mingla plan.
@@ -234,22 +235,14 @@ export async function continueAfterApprovedAction(args: {
       };
     },
     classifyTool: (call) => {
-      if (!findTool(call.name)) {
-        return "unknown";
-      }
-      if (isAgentStateToolCall(call.name)) {
-        return "agent_state";
-      }
-      if (isReadOnlyAgentToolCall(call.name, call.args)) {
-        return "read";
-      }
+      if (!findTool(call.name)) return "unknown";
+      if (isAgentStateToolCall(call.name)) return "agent_state";
+      if (isReadOnlyAgentToolCall(call.name, call.args)) return "read";
       return "write";
     },
     executeTool: async (call) => {
       const tool = findTool(call.name);
-      if (!tool) {
-        throw new ToolError("UNKNOWN_TOOL", "Capability unavailable.");
-      }
+      if (!tool) throw new ToolError("UNKNOWN_TOOL", "Capability unavailable.");
       const result = await tool.executor(call.args, args.client, args.userId, {
         operationId: null,
       });
@@ -272,9 +265,7 @@ export async function continueAfterApprovedAction(args: {
               "memory",
               "onboarding",
             ].includes(key)
-          ) {
-            toolsets.add(key as AriToolsetKey);
-          }
+          ) toolsets.add(key as AriToolsetKey);
         }
         tools = selectAriTools(
           AGENT_TOOLS,
@@ -320,7 +311,8 @@ export async function continueAfterApprovedAction(args: {
       kind: "proposal",
       toolName: loop.toolCall.name,
       toolArgs: loop.toolCall.args,
-      text: "That's saved. The next change is ready for you to review.",
+      text:
+        "That's saved. The next change is ready for you to review.",
       observations: loop.observations,
       goalText: recentGoalText,
     };
@@ -330,9 +322,7 @@ export async function continueAfterApprovedAction(args: {
     // happen here and reads as a stop. Server words, no check needed.
     return {
       kind: "text",
-      text: postApprovalStopText(
-        loop.kind === "stopped" ? loop.reason : "errors",
-      ),
+      text: postApprovalStopText(loop.kind === "stopped" ? loop.reason : "errors"),
       observations: loop.observations,
     };
   }
@@ -396,13 +386,7 @@ export async function continueAfterApprovedAction(args: {
   };
 }
 
-const IDENTITY_KEYS = [
-  "code",
-  "subject",
-  "title",
-  "name",
-  "ticket_id",
-] as const;
+const IDENTITY_KEYS = ["code", "subject", "title", "name", "ticket_id"] as const;
 
 /**
  * The continuation's proposal is the write the host just approved, again:

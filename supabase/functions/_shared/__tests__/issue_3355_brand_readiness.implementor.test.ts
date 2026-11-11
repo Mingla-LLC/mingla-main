@@ -394,11 +394,11 @@ Deno.test("#3355 P2: the launch plan reads the canonical checklist and says can-
               group: i.group,
               state: i.state,
               severity: i.severity,
-              not_now: i.deferral
+              not_now: (i.deferral as { at: string; reason: string } | null)
                 ? {
                   by: "Ada Owner",
-                  at: i.deferral.at,
-                  reason: i.deferral.reason,
+                  at: (i.deferral as unknown as { at: string }).at,
+                  reason: (i.deferral as unknown as { reason: string }).reason,
                 }
                 : null,
             })),
@@ -481,10 +481,13 @@ Deno.test("#3355 P2: onboarding setup reply names the canonical gaps", () => {
     "Lantern Supper Club",
   );
   assertMatch(
-    reply,
+    reply ?? "",
     /brand checklist still needs: contact email, contact phone/,
   );
-  assert(!/website design/.test(reply), "website rows are not profile gaps");
+  assert(
+    !/website design/.test(reply ?? ""),
+    "website rows are not profile gaps",
+  );
 });
 
 Deno.test("#3355 P2: not now writes verify their readback and refuse in plain words", async () => {

@@ -219,6 +219,9 @@ class MemoryStore implements FlowStore {
       lease_held: false,
       lease_held_by_me: false,
       lease_owner_name: null,
+      stopped: false,
+      last_activity_at: null,
+      owner_since: null,
       token: null,
     };
     this.runs.set(run.id, run);
@@ -1881,7 +1884,7 @@ Deno.test("bundle 5: overlapping expiries re-present once; a later one never rep
   await toExpiredPayoutCountry(world2, store2);
   const grant = store2.lease.bind(store2);
   let held = false;
-  store2.lease = async (runId: string, token: string) => {
+  store2.lease = (async (runId: string, token: string) => {
     if (held) {
       return {
         ok: false,
@@ -1892,7 +1895,7 @@ Deno.test("bundle 5: overlapping expiries re-present once; a later one never rep
     }
     held = true;
     return await grant(runId, token);
-  };
+  }) as typeof store2.lease;
   const release = store2.release.bind(store2);
   store2.release = async (runId: string, token: string) => {
     held = false;

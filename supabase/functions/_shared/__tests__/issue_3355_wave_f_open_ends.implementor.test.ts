@@ -138,7 +138,7 @@ Deno.test("F(a): the old Resume card says it was closed, shows the open setup an
     turnArgs(store, world, "Resume event setup", {
       run_id: resume.run_id,
       step_key: resume.step_key,
-      question_id: resume.question_id,
+      question_id: resume.question_id ?? "",
       choice_id: "resume",
       display_text: "Resume event setup",
     }),
@@ -160,7 +160,7 @@ Deno.test("F(a): agent-chat's pre-claim check answers a closed Resume card in pl
   const answer = {
     run_id: resume.run_id,
     step_key: resume.step_key,
-    question_id: resume.question_id,
+    question_id: resume.question_id ?? "",
     choice_id: "resume",
     display_text: "Resume event setup",
   };
@@ -318,7 +318,7 @@ Deno.test("F live: Flash's UTC end of 19 Dec binds to 23:59:59 Lagos; another da
     stated: {
       code: "FAVY10",
       value_bps: 1000,
-      ends_on: { year: 2026, month: 12, day: 19 },
+      ends_on: { year: 2026, month: 12, day: 19, words: "19 December" },
     },
     timezone: "Africa/Lagos",
   };

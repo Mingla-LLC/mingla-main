@@ -261,7 +261,11 @@ Deno.test("F1 CI replay: every fixture passes through the deterministic layers w
   for (const fixture of REPLAY_FIXTURES) {
     const graded = await replayFixture(fixture);
     for (const turn of graded.turns) {
-      for (const item of turn.facts.filter((entry) => !entry.passed)) {
+      for (
+        const item of turn.facts.filter((entry: { passed: boolean }) =>
+          !entry.passed
+        )
+      ) {
         failures.push(
           `${fixture.id} | ${turn.say.slice(0, 60)} | ${item.fact}: expected ${
             JSON.stringify(item.expected)
@@ -325,8 +329,11 @@ Deno.test("F1 grader: this morning's production behaviour fails the grader", () 
   ];
   const graded = gradeThread(thread, production);
   assert(!graded.passed);
-  const failed = graded.turns.flatMap((turn) =>
-    turn.facts.filter((item) => !item.passed).map((item) => item.fact)
+  type Fact = { passed: boolean; fact: string };
+  const failed = graded.turns.flatMap((turn: { facts: Fact[] }) =>
+    turn.facts.filter((item: Fact) => !item.passed).map((item: Fact) =>
+      item.fact
+    )
   );
   for (
     const expected of [
@@ -392,7 +399,7 @@ Deno.test("F1 scores and latency: suite scores out of 100, overall the mean; nea
     flows: [{ passed: true }, { passed: false }, { skipped: "x" }],
     route_table: { total: 50, misroutes: 1 },
   });
-  assertEquals(scores, {
+  assertEquals(scores as Record<string, number>, {
     replay: 75,
     flows: 50,
     route_table: 98,

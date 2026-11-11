@@ -863,12 +863,14 @@ Deno.test("#3355 local model lane is explicit and loopback-only", async () => {
     Deno.env.set("ARI_LOCAL_MODEL_ID", "qwen3:4b-instruct");
     globalThis.fetch = async (input, init) => {
       assertEquals(String(input), "http://host.docker.internal:11434/api/chat");
-      requestSignals.push(init?.signal as AbortSignal);
+      const request = init as RequestInit | undefined;
+      requestSignals.push(request?.signal as AbortSignal);
       wireModel = String(
-        (JSON.parse(String(init?.body)) as Record<string, unknown>).model ?? "",
+        (JSON.parse(String(request?.body)) as Record<string, unknown>).model ??
+          "",
       );
       wireContext = Number(
-        ((JSON.parse(String(init?.body)) as Record<string, unknown>)
+        ((JSON.parse(String(request?.body)) as Record<string, unknown>)
           .options as Record<string, unknown>)?.num_ctx ?? 0,
       );
       return new Response(
