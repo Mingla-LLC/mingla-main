@@ -11,7 +11,9 @@
  *   - remember: a note is saved and Ari's reply says so truthfully;
  *   - support: a ticket is created on a confirmed card, and a later "did it go
  *     through?" is never told "nothing sent";
- *   - the receipt turn never shows "I couldn't format that answer".
+ *   - the receipt turn never shows "I couldn't format that answer";
+ *   - read in brand time (rework 3b): "when does <code> end?" says 11:59 pm,
+ *     the Lagos end, never the UTC-converted 10:59.
  * Score (run-live.mjs suite "answers"): facts passed / facts compared.
  * Every code and note is the run's own (suffix); nothing touches production.
  */
@@ -110,6 +112,64 @@ const readCodeActive = {
           fact: "answer is never 'nothing saved'",
           expected: (value) => !NOTHING_SAVED.test(value),
           label: "no false state",
+          actual: answer,
+        },
+      ]),
+    };
+  },
+};
+
+/**
+ * #3355 rework 3b: "when does <code> end?" is answered in the brand's own
+ * time. Rework 3's device check got "10:59 PM West Africa Time" for an end of
+ * 23:59:59 Lagos (the model converted the UTC ends_at itself). Graded on the
+ * words "11:59 pm" (I-ARI-READS-IN-BRAND-TIME).
+ */
+const readCodeEndLocal = {
+  meta: {
+    id: "answer_read_code_end_local_time",
+    brand: "ng",
+    account: "ng_owner",
+    capabilities: ["ari-host-assistant", "events-discount-codes"],
+  },
+  async run(ctx) {
+    const code = `FV${
+      ctx.suffix.replace(/[^0-9a-z]/gi, "").toUpperCase().slice(0, 4)
+    }10`;
+    const session = await ctx.session("ng_owner", "ng", {
+      timezone: "Africa/Lagos",
+    });
+    await session.say(
+      `Create a discount code for my events using "${code}" as the code and 10% off this code and let it run from now until 19th of December 2026.`,
+    );
+    const card = await pendingFor(ctx, session, "create_discount");
+    if (card) await session.confirm(card.id);
+    const asked = await session.say(`When does ${code} end?`);
+    const answer = textOf(asked);
+    await cancelOpen(ctx, session);
+    return {
+      facts: compareFacts([
+        {
+          fact: "the card was proposed",
+          expected: true,
+          actual: Boolean(card),
+        },
+        {
+          fact: "answer gives the 19 December end",
+          expected: (value) => DECEMBER_19.test(value),
+          label: "19 December",
+          actual: answer,
+        },
+        {
+          fact: "answer gives 11:59 pm (brand time)",
+          expected: (value) => /\b11[:.]59\s*(?:pm|p\.m\.)/i.test(value),
+          label: "11:59 pm",
+          actual: answer,
+        },
+        {
+          fact: "answer never gives the wrong 10:59",
+          expected: (value) => !/\b10[:.]59\b/.test(value),
+          label: "no 10:59",
           actual: answer,
         },
       ]),
@@ -269,6 +329,7 @@ const supportTicket = {
 
 export const ANSWER_EVALS = [
   readCodeActive,
+  readCodeEndLocal,
   howTo(
     "answer_howto_publishing",
     "How do I publish my event so people can buy tickets?",
