@@ -103,8 +103,9 @@
       "discarded": "{{brand}} slängdes."
     },
     "n3": {
-      "draft": "Utkast · {{done}} av 4",
-      "freeOnly": "Bara gratisevenemang · Slutför konfigurationen",
+      "draftLabel": "Utkast",
+      "progress": "{{done}} av 4 klara",
+      "freeOnlyTag": "Bara gratisevenemang",
       "continue": "Fortsätt",
       "discard": "Släng utkast"
     },

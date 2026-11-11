@@ -103,8 +103,9 @@
       "discarded": "Odrzucono {{brand}}."
     },
     "n3": {
-      "draft": "Wersja robocza · {{done}} z 4",
-      "freeOnly": "Tylko bezpłatne wydarzenia · Dokończ konfigurację",
+      "draftLabel": "Wersja robocza",
+      "progress": "{{done}} z 4 gotowe",
+      "freeOnlyTag": "Tylko bezpłatne wydarzenia",
       "continue": "Dalej",
       "discard": "Odrzuć wersję roboczą"
     },

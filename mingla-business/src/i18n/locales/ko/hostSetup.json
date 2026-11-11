@@ -103,8 +103,9 @@
       "discarded": "{{brand}}을(를) 버렸어요."
     },
     "n3": {
-      "draft": "초안 · {{done}}/4",
-      "freeOnly": "무료 이벤트만 · 설정 마치기",
+      "draftLabel": "초안",
+      "progress": "{{done}}/4 완료",
+      "freeOnlyTag": "무료 이벤트만",
       "continue": "계속",
       "discard": "초안 버리기"
     },

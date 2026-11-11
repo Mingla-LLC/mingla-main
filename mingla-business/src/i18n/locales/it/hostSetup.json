@@ -103,8 +103,9 @@
       "discarded": "{{brand}} scartato."
     },
     "n3": {
-      "draft": "Bozza · {{done}} di 4",
-      "freeOnly": "Solo eventi gratuiti · Completa la configurazione",
+      "draftLabel": "Bozza",
+      "progress": "{{done}} di 4 completati",
+      "freeOnlyTag": "Solo eventi gratuiti",
       "continue": "Continua",
       "discard": "Scarta bozza"
     },

@@ -103,8 +103,9 @@
       "discarded": "已放弃 {{brand}}。"
     },
     "n3": {
-      "draft": "草稿 · {{done}}/4",
-      "freeOnly": "仅限免费活动 · 完成设置",
+      "draftLabel": "草稿",
+      "progress": "已完成 {{done}}/4",
+      "freeOnlyTag": "仅限免费活动",
       "continue": "继续",
       "discard": "放弃草稿"
     },

@@ -103,8 +103,9 @@
       "discarded": "{{brand}} descartada."
     },
     "n3": {
-      "draft": "Borrador · {{done}} de 4",
-      "freeOnly": "Solo eventos gratuitos · Terminar configuración",
+      "draftLabel": "Borrador",
+      "progress": "{{done}} de 4 hechos",
+      "freeOnlyTag": "Solo eventos gratuitos",
       "continue": "Continuar",
       "discard": "Descartar borrador"
     },

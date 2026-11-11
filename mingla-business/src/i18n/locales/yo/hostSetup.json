@@ -103,8 +103,9 @@
       "discarded": "A ti pa {{brand}} rẹ́."
     },
     "n3": {
-      "draft": "Àkọsílẹ̀ · {{done}} nínú 4",
-      "freeOnly": "Ìṣẹ̀lẹ̀ ọ̀fẹ́ nìkan · Parí ìṣètò",
+      "draftLabel": "Àkọsílẹ̀",
+      "progress": "{{done}} nínú 4 ti parí",
+      "freeOnlyTag": "Ìṣẹ̀lẹ̀ ọ̀fẹ́ nìkan",
       "continue": "Tẹ̀síwájú",
       "discard": "Pa àkọsílẹ̀ rẹ́"
     },

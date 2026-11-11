@@ -42,11 +42,14 @@ const checklist = (facts: Partial<BrandSetupChecklist["facts"]>, doneCount = 1):
 describe("#4389 N3 switcher rows", () => {
   test("draft, free-only and finished brands", () => {
     expect(brandSetupRowState(checklist({ isDraft: true }, 1))).toEqual({ kind: "draft", doneCount: 1 });
-    expect(brandSetupRowState(checklist({ freeOnlyAt: "2026-11-11T00:00:00Z" }))).toEqual({ kind: "free_only" });
+    expect(brandSetupRowState(checklist({ freeOnlyAt: "2026-11-11T00:00:00Z" }))).toEqual({ kind: "free_only", doneCount: 1 });
+    // #4389 — any unfinished checklist reads as unfinished (published, not free-only).
+    expect(brandSetupRowState(checklist({}, 3))).toEqual({ kind: "incomplete", doneCount: 3 });
     expect(brandSetupRowState(checklist({ complete: true }))).toEqual({ kind: "none" });
     expect(brandSetupRowState(undefined)).toEqual({ kind: "none" });
-    expect(BRAND_SETUP_COPY.n3.draft(1)).toBe("Draft · 1 of 4");
-    expect(BRAND_SETUP_COPY.n3.freeOnly).toBe("Free events only · Finish setup");
+    expect(BRAND_SETUP_COPY.n3.draftLabel).toBe("Draft");
+    expect(BRAND_SETUP_COPY.n3.progress(1)).toBe("1 of 4 done");
+    expect(BRAND_SETUP_COPY.n3.freeOnlyTag).toBe("Free events only");
   });
   test("Continue opens the setup route; Discard draft opens the N1 confirm on its route, never over the sheet", () => {
     const sheet = read("src/components/brand/BrandSwitcherSheet.tsx");

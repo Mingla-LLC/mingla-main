@@ -103,8 +103,9 @@
       "discarded": "Ai renunțat la {{brand}}."
     },
     "n3": {
-      "draft": "Ciornă · {{done}} din 4",
-      "freeOnly": "Doar evenimente gratuite · Finalizează configurarea",
+      "draftLabel": "Ciornă",
+      "progress": "{{done}} din 4 gata",
+      "freeOnlyTag": "Doar evenimente gratuite",
       "continue": "Continuă",
       "discard": "Renunță la ciornă"
     },

@@ -148,14 +148,19 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                       ? formatExactFollowers(followerTotal)
                       : null;
                   const setupState = setupStates.byId[brand.id] ?? { kind: "none" };
-                  const setupLine =
-                    setupState.kind === "draft"
-                      ? BRAND_SETUP_COPY.n3.draft(setupState.doneCount)
-                      : setupState.kind === "free_only"
-                        ? BRAND_SETUP_COPY.n3.freeOnly
-                        : null;
-                  const subline = setupLine !== null
-                    ? setupLine
+                  // #4389 N3 — any unfinished brand: line 2 starts with
+                  // "Draft" (accent), then progress, then "Free events only"
+                  // when chosen. Continue sits inside the row.
+                  const setupRest =
+                    setupState.kind === "none"
+                      ? null
+                      : ` · ${BRAND_SETUP_COPY.n3.progress(setupState.doneCount)}${
+                        setupState.kind === "free_only" ? ` · ${BRAND_SETUP_COPY.n3.freeOnlyTag}` : ""
+                      }`;
+                  const canDiscard =
+                    setupState.kind === "draft" && canDeleteBrand(brand, user?.id ?? null);
+                  const subline = setupRest !== null
+                    ? null
                     : isActive
                       ? followerLine === null
                         ? "Current brand"
@@ -182,11 +187,17 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                           <Text style={styles.brandName} numberOfLines={1}>
                             {brand.displayName}
                           </Text>
-                          {subline !== null ? (
+                          {setupRest !== null ? (
                             <Text
-                              style={[styles.brandSub, setupLine !== null ? styles.brandSubSetup : null]}
+                              style={styles.brandSub}
                               numberOfLines={1}
+                              testID={`brand-switcher-setup-line-${brand.id}`}
                             >
+                              <Text style={styles.brandSubDraft}>{BRAND_SETUP_COPY.n3.draftLabel}</Text>
+                              {setupRest}
+                            </Text>
+                          ) : subline !== null ? (
+                            <Text style={styles.brandSub} numberOfLines={1}>
                               {subline}
                             </Text>
                           ) : null}
@@ -194,39 +205,59 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                         {isActive ? (
                           <Icon name="check" size={18} color={accent.warm} />
                         ) : null}
+                        {setupRest !== null ? (
+                          <Pressable
+                            onPress={() => openSetup(brand)}
+                            onLongPress={canDiscard ? () => openDiscard(brand) : undefined}
+                            accessibilityRole="button"
+                            accessibilityLabel={`${BRAND_SETUP_COPY.n3.continue} ${brand.displayName}`}
+                            hitSlop={4}
+                            style={styles.rowContinueBtn}
+                            testID={`brand-switcher-continue-${brand.id}`}
+                          >
+                            <Text style={styles.rowContinueLabel}>{BRAND_SETUP_COPY.n3.continue}</Text>
+                          </Pressable>
+                        ) : null}
+                        {/* The row menu on a true draft: "Discard draft" (the
+                            N1 confirm on its own route). Inline, after Continue. */}
+                        {canDiscard ? (
+                          <Pressable
+                            onPress={() => openDiscard(brand)}
+                            accessibilityRole="button"
+                            accessibilityLabel={`${BRAND_SETUP_COPY.n3.discard}: ${brand.displayName}`}
+                            hitSlop={8}
+                            style={styles.rowMenuBtn}
+                            testID={`brand-switcher-discard-${brand.id}`}
+                          >
+                            <Icon name="moreH" size={16} color={textTokens.tertiary} />
+                          </Pressable>
+                        ) : setupRest !== null &&
+                        onRequestDeleteBrand !== undefined &&
+                        canDeleteBrand(brand, user?.id ?? null) ? (
+                          // Not a draft (free-only or published): the usual
+                          // owner-only delete, inline so it never covers Continue.
+                          <Pressable
+                            onPress={() => {
+                              onRequestDeleteBrand(brand);
+                              onClose();
+                            }}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Delete ${brand.displayName}`}
+                            hitSlop={8}
+                            style={styles.rowMenuBtn}
+                          >
+                            <Icon name="trash" size={16} color={textTokens.tertiary} />
+                          </Pressable>
+                        ) : null}
                       </Pressable>
-                      {setupLine !== null ? (
-                        <Pressable
-                          onPress={() => openSetup(brand)}
-                          onLongPress={
-                            setupState.kind === "draft" && canDeleteBrand(brand, user?.id ?? null)
-                              ? () => openDiscard(brand)
-                              : undefined
-                          }
-                          accessibilityRole="button"
-                          accessibilityLabel={`${BRAND_SETUP_COPY.n3.continue} ${brand.displayName}`}
-                          style={styles.rowContinueBtn}
-                          testID={`brand-switcher-continue-${brand.id}`}
-                        >
-                          <Text style={styles.rowContinueLabel}>{BRAND_SETUP_COPY.n3.continue}</Text>
-                        </Pressable>
-                      ) : null}
                       {/* Issue #1835 — PER-ROW gate, deliberately not a
                           sheet-level one. The switcher lists every brand you can
                           reach, owned or merely administered, so the trash must
-                          be decided per brand: shown only on rows you own. */}
-                      {setupState.kind === "draft" && canDeleteBrand(brand, user?.id ?? null) ? (
-                        <Pressable
-                          onPress={() => openDiscard(brand)}
-                          accessibilityRole="button"
-                          accessibilityLabel={`${BRAND_SETUP_COPY.n3.discard}: ${brand.displayName}`}
-                          hitSlop={8}
-                          style={styles.rowDeleteBtn}
-                          testID={`brand-switcher-discard-${brand.id}`}
-                        >
-                          <Icon name="moreH" size={16} color={textTokens.tertiary} />
-                        </Pressable>
-                      ) : onRequestDeleteBrand !== undefined &&
+                          be decided per brand: shown only on rows you own.
+                          #4389 — an unfinished brand's row carries Continue
+                          (and, on a draft, the Discard menu) instead. */}
+                      {setupRest === null &&
+                      onRequestDeleteBrand !== undefined &&
                       canDeleteBrand(brand, user?.id ?? null) ? (
                         <Pressable
                           onPress={() => {
@@ -264,17 +295,18 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
 };
 
 const styles = StyleSheet.create({
-  brandSubSetup: { color: accent.warm },
+  brandSubDraft: { color: accent.warm, fontWeight: "600" },
+  // 36pt pill; hitSlop 4 makes the target 44pt.
   rowContinueBtn: {
-    minHeight: 32,
+    height: 36,
     paddingHorizontal: spacing.md,
     borderRadius: 999,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.18)",
     alignItems: "center",
     justifyContent: "center",
-    marginRight: spacing.xs,
   },
+  rowMenuBtn: { width: 32, height: 32, alignItems: "center", justifyContent: "center", marginLeft: -spacing.xs },
   rowContinueLabel: { ...typography.caption, color: textTokens.primary, fontWeight: "600" },
   host: { flex: 1 },
   header: {

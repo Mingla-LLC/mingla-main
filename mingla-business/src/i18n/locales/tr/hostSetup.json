@@ -103,8 +103,9 @@
       "discarded": "{{brand}} silindi."
     },
     "n3": {
-      "draft": "Taslak · {{done}} / 4",
-      "freeOnly": "Yalnızca ücretsiz etkinlikler · Kurulumu bitir",
+      "draftLabel": "Taslak",
+      "progress": "{{done}} / 4 tamamlandı",
+      "freeOnlyTag": "Yalnızca ücretsiz etkinlikler",
       "continue": "Devam",
       "discard": "Taslağı sil"
     },

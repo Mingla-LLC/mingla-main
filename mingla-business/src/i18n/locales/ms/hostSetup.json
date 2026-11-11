@@ -103,8 +103,9 @@
       "discarded": "{{brand}} dibuang."
     },
     "n3": {
-      "draft": "Draf · {{done}} daripada 4",
-      "freeOnly": "Acara percuma sahaja · Selesaikan persediaan",
+      "draftLabel": "Draf",
+      "progress": "{{done}} daripada 4 selesai",
+      "freeOnlyTag": "Acara percuma sahaja",
       "continue": "Teruskan",
       "discard": "Buang draf"
     },

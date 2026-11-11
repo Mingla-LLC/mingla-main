@@ -13,16 +13,23 @@ import { useAuth } from "../context/AuthContext";
 import type { BrandSetupChecklist } from "../services/brandSetupService";
 import { brandSetupKey } from "./useBrandSetupChecklist";
 
+/**
+ * #4389 N3 (Seth 2026-11-11) — every brand whose setup checklist is not
+ * complete reads as unfinished in the switcher, free-only included. Only a
+ * true draft (server `is_draft`) can be discarded; the one-draft rule reads
+ * `draft` alone.
+ */
 export type BrandSetupRowState =
   | { kind: "draft"; doneCount: number }
-  | { kind: "free_only" }
+  | { kind: "free_only"; doneCount: number }
+  | { kind: "incomplete"; doneCount: number }
   | { kind: "none" };
 
 export function brandSetupRowState(checklist: BrandSetupChecklist | undefined): BrandSetupRowState {
   if (checklist === undefined || checklist.facts.complete) return { kind: "none" };
   if (checklist.facts.isDraft) return { kind: "draft", doneCount: checklist.doneCount };
-  if (checklist.facts.freeOnlyAt !== null) return { kind: "free_only" };
-  return { kind: "none" };
+  if (checklist.facts.freeOnlyAt !== null) return { kind: "free_only", doneCount: checklist.doneCount };
+  return { kind: "incomplete", doneCount: checklist.doneCount };
 }
 
 export function useBrandSetupStates(brandIds: readonly string[]): {

@@ -103,8 +103,9 @@
       "discarded": "E wepụla {{brand}}."
     },
     "n3": {
-      "draft": "Ndepụta · {{done}} n'ime 4",
-      "freeOnly": "Naanị mmemme efu · Mechaa nhazi",
+      "draftLabel": "Ndepụta",
+      "progress": "Emechara {{done}} n'ime 4",
+      "freeOnlyTag": "Naanị mmemme efu",
       "continue": "Gaa n'ihu",
       "discard": "Wepụ ndepụta"
     },

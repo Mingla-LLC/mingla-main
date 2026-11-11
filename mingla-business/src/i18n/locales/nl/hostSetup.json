@@ -103,8 +103,9 @@
       "discarded": "{{brand}} weggegooid."
     },
     "n3": {
-      "draft": "Concept · {{done}} van 4",
-      "freeOnly": "Alleen gratis evenementen · Instelling afronden",
+      "draftLabel": "Concept",
+      "progress": "{{done}} van 4 klaar",
+      "freeOnlyTag": "Alleen gratis evenementen",
       "continue": "Doorgaan",
       "discard": "Concept weggooien"
     },

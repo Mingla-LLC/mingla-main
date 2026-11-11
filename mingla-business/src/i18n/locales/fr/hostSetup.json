@@ -103,8 +103,9 @@
       "discarded": "{{brand}} abandonnée."
     },
     "n3": {
-      "draft": "Brouillon · {{done}} sur 4",
-      "freeOnly": "Événements gratuits uniquement · Terminer la configuration",
+      "draftLabel": "Brouillon",
+      "progress": "{{done}} sur 4 terminées",
+      "freeOnlyTag": "Événements gratuits uniquement",
       "continue": "Continuer",
       "discard": "Abandonner le brouillon"
     },

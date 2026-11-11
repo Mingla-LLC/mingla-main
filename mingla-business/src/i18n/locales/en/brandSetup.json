@@ -103,8 +103,9 @@
       "discarded": "{{brand}} discarded."
     },
     "n3": {
-      "draft": "Draft · {{done}} of 4",
-      "freeOnly": "Free events only · Finish setup",
+      "draftLabel": "Draft",
+      "progress": "{{done}} of 4 done",
+      "freeOnlyTag": "Free events only",
       "continue": "Continue",
       "discard": "Discard draft"
     },

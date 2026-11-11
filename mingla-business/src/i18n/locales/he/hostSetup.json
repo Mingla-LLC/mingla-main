@@ -103,8 +103,9 @@
       "discarded": "{{brand}} בוטל."
     },
     "n3": {
-      "draft": "טיוטה · {{done}} מתוך 4",
-      "freeOnly": "אירועים חינמיים בלבד · סיום ההגדרה",
+      "draftLabel": "טיוטה",
+      "progress": "{{done}} מתוך 4 הושלמו",
+      "freeOnlyTag": "אירועים חינמיים בלבד",
       "continue": "המשך",
       "discard": "ביטול הטיוטה"
     },

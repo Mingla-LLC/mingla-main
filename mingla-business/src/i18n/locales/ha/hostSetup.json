@@ -103,8 +103,9 @@
       "discarded": "An watsar da {{brand}}."
     },
     "n3": {
-      "draft": "Daftari · {{done}} cikin 4",
-      "freeOnly": "Taruka kyauta kawai · Kammala saiti",
+      "draftLabel": "Daftari",
+      "progress": "An kammala {{done}} cikin 4",
+      "freeOnlyTag": "Taruka kyauta kawai",
       "continue": "Ci gaba",
       "discard": "Watsar da daftari"
     },

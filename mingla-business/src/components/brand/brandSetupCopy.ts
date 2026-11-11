@@ -121,8 +121,9 @@ export const BRAND_SETUP_COPY = {
     discarded: (brand: string): string => t("n1.discarded", { brand }),
   },
   n3: {
-    draft: (done: number): string => t("n3.draft", { done }),
-    get freeOnly(): string { return t("n3.freeOnly"); },
+    get draftLabel(): string { return t("n3.draftLabel"); },
+    progress: (done: number): string => t("n3.progress", { done }),
+    get freeOnlyTag(): string { return t("n3.freeOnlyTag"); },
     get continue(): string { return t("n3.continue"); },
     get discard(): string { return t("n3.discard"); },
   },

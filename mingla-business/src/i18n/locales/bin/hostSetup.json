@@ -103,8 +103,9 @@
       "discarded": "A fi {{brand}} fiẹ."
     },
     "n3": {
-      "draft": "Draft · {{done}} vbe 4",
-      "freeOnly": "Ukpo ọ khọ igho ọkpa · Fu ẹre",
+      "draftLabel": "Draft",
+      "progress": "{{done}} vbe 4 ọ fo",
+      "freeOnlyTag": "Ukpo ọ khọ igho ọkpa",
       "continue": "Gha dee",
       "discard": "Fi draft fiẹ"
     },

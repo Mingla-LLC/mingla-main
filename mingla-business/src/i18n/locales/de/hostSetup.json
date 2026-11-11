@@ -103,8 +103,9 @@
       "discarded": "{{brand}} verworfen."
     },
     "n3": {
-      "draft": "Entwurf · {{done}} von 4",
-      "freeOnly": "Nur kostenlose Events · Einrichtung abschließen",
+      "draftLabel": "Entwurf",
+      "progress": "{{done}} von 4 erledigt",
+      "freeOnlyTag": "Nur kostenlose Events",
       "continue": "Weiter",
       "discard": "Entwurf verwerfen"
     },

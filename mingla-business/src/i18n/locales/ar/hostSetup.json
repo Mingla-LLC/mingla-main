@@ -103,8 +103,9 @@
       "discarded": "تم تجاهل {{brand}}."
     },
     "n3": {
-      "draft": "مسودة · {{done}} من 4",
-      "freeOnly": "فعاليات مجانية فقط · إكمال الإعداد",
+      "draftLabel": "مسودة",
+      "progress": "اكتمل {{done}} من 4",
+      "freeOnlyTag": "فعاليات مجانية فقط",
       "continue": "متابعة",
       "discard": "تجاهل المسودة"
     },

@@ -103,8 +103,9 @@
       "discarded": "{{brand}}を破棄しました。"
     },
     "n3": {
-      "draft": "下書き · {{done}}/4",
-      "freeOnly": "無料イベントのみ · 設定を完了",
+      "draftLabel": "下書き",
+      "progress": "{{done}}/4 完了",
+      "freeOnlyTag": "無料イベントのみ",
       "continue": "続ける",
       "discard": "下書きを破棄"
     },

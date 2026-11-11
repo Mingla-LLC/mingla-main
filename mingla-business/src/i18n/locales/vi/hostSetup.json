@@ -103,8 +103,9 @@
       "discarded": "Đã bỏ {{brand}}."
     },
     "n3": {
-      "draft": "Bản nháp · {{done}}/4",
-      "freeOnly": "Chỉ sự kiện miễn phí · Hoàn tất thiết lập",
+      "draftLabel": "Bản nháp",
+      "progress": "Đã xong {{done}}/4",
+      "freeOnlyTag": "Chỉ sự kiện miễn phí",
       "continue": "Tiếp tục",
       "discard": "Bỏ bản nháp"
     },
