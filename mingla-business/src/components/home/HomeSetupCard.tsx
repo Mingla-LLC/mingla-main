@@ -44,7 +44,7 @@ export const HomeSetupCard: React.FC<HomeSetupCardProps> = ({
       <View
         style={styles.bar}
         accessibilityRole="progressbar"
-        accessibilityLabel="Setup progress"
+        accessibilityLabel={C.h1.progressLabel}
         accessibilityValue={{ min: 0, max: 4, now: done }}
       >
         {[0, 1, 2, 3].map((i) => (

@@ -1,67 +1,80 @@
 /**
  * #4389 (screens A1–A5) — host copy for Ari's brand setup cards. Never
  * "business", never a provider name. The cards render from tool results and
- * the server checklist, not from Ari's words (AR-2).
- * [TRANSITIONAL] English only — exit: moved into the locale files with the
- * rest of the #4389 copy (i18n remainder in the build log).
+ * the server checklist, not from Ari's words (AR-2). The words live in
+ * src/i18n/locales/<lang>/ (English: ariSetup.json, other languages:
+ * hostSetup.json); each property reads the current language.
  */
 import { STRIPE_SUPPORTED_COUNTRIES } from "../../constants/stripeSupportedCountries";
+import english from "../../i18n/locales/en/ariSetup.json";
+import { businessT, registerBusinessEnglish } from "../../i18n";
 
-export const ARI_SETUP_ITEMS = ["Brand name", "Bank country", "Organiser Terms", "Payment details"] as const;
+registerBusinessEnglish(english);
+
+const t = (key: string, variables?: Record<string, string | number>): string =>
+  businessT(`ariSetup.${key}`, variables);
+
+/** The four setup rows, in order (a getter so each read is in the current language). */
+export const ariSetupItems = (): readonly [string, string, string, string] => [
+  t("items.name"),
+  t("items.country"),
+  t("items.terms"),
+  t("items.payments"),
+];
 
 export const ARI_SETUP_COPY = {
   a1: {
-    headline: (first: string | null): string =>
-      `${first ? `Hi ${first}.` : "Hi."} Let's get your account ready to take bookings.`,
-    body: "It takes about 3 minutes: your brand name, your bank country, then payments. I'll guide you.",
-    cardTitle: "Set up your brand",
-    minutes: "About 3 minutes",
-    setUp: "Set up my brand",
-    withAri: "Do it with Ari",
-    withAriMessage: "Help me set up my brand",
-    offline: "Ari is unavailable right now. Use Set up my brand.",
+    headline: (first: string | null): string => (first ? t("a1.headlineNamed", { first }) : t("a1.headline")),
+    get body(): string { return t("a1.body"); },
+    get cardTitle(): string { return t("a1.cardTitle"); },
+    get minutes(): string { return t("a1.minutes"); },
+    get setUp(): string { return t("a1.setUp"); },
+    get withAri(): string { return t("a1.withAri"); },
+    get withAriMessage(): string { return t("a1.withAriMessage"); },
+    get offline(): string { return t("a1.offline"); },
   },
   a2: {
-    lead: (brand: string, done: number, next: string): string =>
-      `Let's finish setting up ${brand}. ${done} of 4 done. Next: ${next}.`,
-    count: (done: number): string => `${done} of 4 done`,
-    waiting: (client: string): string => `Waiting for ${client}`,
-    cta: "Continue",
-    allSet: "All set",
-    error: "We couldn't load your setup.",
-    retry: "Try again",
+    lead: (brand: string, done: number, next: string): string => t("a2.lead", { brand, done, next }),
+    count: (done: number): string => t("a2.count", { done }),
+    waiting: (client: string): string => t("a2.waiting", { client }),
+    get cta(): string { return t("a2.cta"); },
+    get allSet(): string { return t("a2.allSet"); },
+    get error(): string { return t("a2.error"); },
+    get retry(): string { return t("a2.retry"); },
+    get progressLabel(): string { return t("a2.progressLabel"); },
   },
   a3: {
-    question: (name: string, country: string, cur: string): string =>
-      `Create ${name} collecting funds in ${country} (${cur})?`,
-    questionNoCountry: (name: string): string => `Create ${name}?`,
-    fundsLabel: "Collecting funds in",
-    expired: "This expired. Ask again.",
-    duplicate: (name: string): string => `You already started ${name}. Continue it?`,
-    continue: "Continue",
-    createNew: "Create new",
+    question: (name: string, country: string, currency: string): string =>
+      t("a3.question", { name, country, currency }),
+    questionNoCountry: (name: string): string => t("a3.questionNoCountry", { name }),
+    get thisBrand(): string { return t("a3.thisBrand"); },
+    get fundsLabel(): string { return t("a3.fundsLabel"); },
+    get expired(): string { return t("a3.expired"); },
+    duplicate: (name: string): string => t("a3.duplicate", { name }),
+    get continue(): string { return t("a3.continue"); },
+    get createNew(): string { return t("a3.createNew"); },
   },
   a4: {
-    secureTitle: "Secure setup",
-    secureBody: "Bank and ID details are entered on a secure screen, not in chat.",
-    open: "Open secure setup",
-    termsTitle: "Organiser Terms",
-    termsBody: "Accept the Organiser Terms first.",
-    termsCta: "Review and accept",
-    countryTitle: "Bank country",
-    countryBody: "Pick the country your bank account is in first.",
-    countryCta: "Pick bank country",
-    owner: "Only the owner can set up payments. We've added it to their Home.",
-    doorTitle: "Door sale",
-    doorBody: "You pick how they pay on the next screen. Cards are never handled in chat.",
-    doorCta: "Open door sale",
+    get secureTitle(): string { return t("a4.secureTitle"); },
+    get secureBody(): string { return t("a4.secureBody"); },
+    get open(): string { return t("a4.open"); },
+    get termsTitle(): string { return t("a4.termsTitle"); },
+    get termsBody(): string { return t("a4.termsBody"); },
+    get termsCta(): string { return t("a4.termsCta"); },
+    get countryTitle(): string { return t("a4.countryTitle"); },
+    get countryBody(): string { return t("a4.countryBody"); },
+    get countryCta(): string { return t("a4.countryCta"); },
+    get owner(): string { return t("a4.owner"); },
+    get doorTitle(): string { return t("a4.doorTitle"); },
+    get doorBody(): string { return t("a4.doorBody"); },
+    get doorCta(): string { return t("a4.doorCta"); },
   },
   a5: {
-    notice: "Please don't share that here. I've hidden it. Use the secure screen.",
-    open: "Open secure setup",
+    get notice(): string { return t("a5.notice"); },
+    get open(): string { return t("a5.open"); },
   },
-  brandMismatch: "This card belongs to another brand. Switch back to it to confirm.",
-} as const;
+  get brandMismatch(): string { return t("brandMismatch"); },
+};
 
 /** "Canada (CAD)" for a bank country code, or null when unknown. */
 export function payoutCountryLabel(code: unknown): { name: string; currency: string } | null {

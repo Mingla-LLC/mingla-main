@@ -19,7 +19,7 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
-import { ARI_SETUP_COPY as C, ARI_SETUP_ITEMS } from "./ariSetupCopy";
+import { ARI_SETUP_COPY as C, ariSetupItems } from "./ariSetupCopy";
 import { BRAND_SETUP_COPY } from "../brand/brandSetupCopy";
 
 type CardButton = { label: string; onPress: () => void; primary?: boolean; testID?: string };
@@ -94,7 +94,7 @@ export const AriSetupCard: React.FC<AriSetupCardProps> = ({
         <View
           style={styles.bar}
           accessibilityRole="progressbar"
-          accessibilityLabel="Setup progress"
+          accessibilityLabel={C.a2.progressLabel}
           accessibilityValue={{ min: 0, max: 4, now: done }}
         >
           {[0, 1, 2, 3].map((i) => (
@@ -102,7 +102,7 @@ export const AriSetupCard: React.FC<AriSetupCardProps> = ({
           ))}
         </View>
       ) : null}
-      {ARI_SETUP_ITEMS.map((item, i) => {
+      {ariSetupItems().map((item, i) => {
         const waiting = waitingFor !== null && i >= 2;
         return (
           <View key={item} style={styles.itemRow}>

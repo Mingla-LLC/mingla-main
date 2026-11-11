@@ -1,15 +1,24 @@
 /**
- * #4389 Door mode — every new English string on the door sale screen
- * (design screen "DM", approved 2026-11-11). English first; a later pass moves
- * these into i18n with the rest of the setup copy.
+ * #4389 Door mode — every new string on the door sale screen (design screen
+ * "DM", approved 2026-11-11). The words live in src/i18n/locales/<lang>/
+ * (English: doorMode.json, next to this module; other languages:
+ * hostSetup.json). Each property reads the current language when read.
  *
  * Apple naming: the device-facing Tap to Pay name always comes from
- * tapToPayName(os) ("Tap to Pay on iPhone" on iOS). These strings never name a
- * card reader, a terminal or hardware, and never call the app the business app.
+ * tapToPayName(os) ("Tap to Pay on iPhone" on iOS, in every language). These
+ * strings never name a card reader, a terminal or hardware, and never call
+ * the app the business app.
  *
  * MINGLA-INVARIANT: I-4389-DOOR-MODE-APPLE-NAMING | issue #4389 | Door mode copy names Tap to Pay only through tapToPayName(os) and never says reader, terminal, hardware or business; pinned by issue_4389_door_mode.implementor.test.ts.
  */
 import { tapToPayName } from "../../constants/tapToPayName";
+import english from "../../i18n/locales/en/doorMode.json";
+import { businessT, registerBusinessEnglish } from "../../i18n";
+
+registerBusinessEnglish(english);
+
+const t = (key: string, variables?: Record<string, string | number>): string =>
+  businessT(`doorMode.${key}`, variables);
 
 /** The chip labels, in buildDoorPaymentOptions order. */
 export const doorModeChipLabel = (method: "tap_to_pay" | "pay_code" | "cash", os: string): string => {
@@ -17,9 +26,9 @@ export const doorModeChipLabel = (method: "tap_to_pay" | "pay_code" | "cash", os
     case "tap_to_pay":
       return tapToPayName(os);
     case "pay_code":
-      return "Buyer's phone";
+      return t("chipPayCode");
     case "cash":
-      return "Cash";
+      return t("chipCash");
     default: {
       const exhaustive: never = method;
       return exhaustive;
@@ -28,91 +37,94 @@ export const doorModeChipLabel = (method: "tap_to_pay" | "pay_code" | "cash", os
 };
 
 export const DOOR_MODE_COPY = {
-  closeLabel: "Close door mode",
-  menuLabel: "Recent sales and more",
-  soldTonight: (n: number): string => `Door · ${n} sold tonight`,
-  howTheyPay: "How they pay",
-  ticketCount: (n: number): string => `${n} ticket${n === 1 ? "" : "s"}`,
+  get closeLabel(): string { return t("closeLabel"); },
+  get menuLabel(): string { return t("menuLabel"); },
+  soldTonight: (n: number): string => t("soldTonight", { n }),
+  get howTheyPay(): string { return t("howTheyPay"); },
+  ticketCount: (n: number): string => t("ticketCount", { count: n }),
   tileLabel: (name: string, price: string, qty: number): string =>
-    qty > 0 ? `${name}, ${price}, ${qty} in sale. Tap to add one.` : `${name}, ${price}. Tap to add one.`,
-  removeOne: (name: string): string => `Remove one ${name}`,
-  remembered: (method: string): string => `${method} is remembered for this event on this phone.`,
+    qty > 0 ? t("tileLabelInSale", { name, price, qty }) : t("tileLabel", { name, price }),
+  removeOne: (name: string): string => t("removeOne", { name }),
+  remembered: (method: string): string => t("remembered", { method }),
   // The button follows the method.
-  charge: (total: string | null): string => (total === null ? "Charge" : `Charge ${total}`),
-  showCode: (total: string | null): string => (total === null ? "Show code" : `Show code · ${total}`),
-  cashTaken: (total: string): string => `Cash taken · ${total}`,
-  manualTaken: (total: string): string => `Record payment · ${total}`,
-  charging: "Charging…",
-  finalTotalHint: "The payment shows the final total, with any fees.",
+  charge: (total: string | null): string => (total === null ? t("chargeNoTotal") : t("charge", { total })),
+  showCode: (total: string | null): string => (total === null ? t("showCodeNoTotal") : t("showCode", { total })),
+  cashTaken: (total: string): string => t("cashTaken", { total }),
+  manualTaken: (total: string): string => t("manualTaken", { total }),
+  get charging(): string { return t("charging"); },
+  get finalTotalHint(): string { return t("finalTotalHint"); },
   // Cash confirm.
-  cashConfirmTitle: (total: string): string => `Cash taken: ${total}?`,
-  cashConfirmBody: "Tickets are issued and checked in.",
-  confirmCash: "Confirm cash",
-  back: "Back",
+  cashConfirmTitle: (total: string): string => t("cashConfirmTitle", { total }),
+  get cashConfirmBody(): string { return t("cashConfirmBody"); },
+  get confirmCash(): string { return t("confirmCash"); },
+  get back(): string { return t("back"); },
   // Scan to pay.
-  scanToPay: (total: string): string => `Scan to pay ${total}`,
-  waitingForPayment: "Waiting for payment… This screen moves on by itself when they've paid.",
-  guestPaying: "Guest is paying on their phone…",
-  cancelSale: "Cancel this sale",
-  codeChecking: "Checking with the card provider whether a payment went through. Don't charge them again yet.",
-  codeLanding: "Their payment went through. This turns green in a moment. Don't charge them again and don't take cash.",
-  codeAlreadyPaid: "This code was already paid, so it can't be cancelled.",
-  codeCancelFailed: "Couldn't cancel the code. Check your connection and try again.",
-  codeStillOpen: "Couldn't reach the card provider to close this code. It's still open. Try again.",
-  codeLoadFailed: "Couldn't load the pay code. Check your connection and try again.",
+  scanToPay: (total: string): string => t("scanToPay", { total }),
+  get waitingForPayment(): string { return t("waitingForPayment"); },
+  get guestPaying(): string { return t("guestPaying"); },
+  get cancelSale(): string { return t("cancelSale"); },
+  get codeChecking(): string { return t("codeChecking"); },
+  get codeLanding(): string { return t("codeLanding"); },
+  get codeAlreadyPaid(): string { return t("codeAlreadyPaid"); },
+  get codeCancelFailed(): string { return t("codeCancelFailed"); },
+  get codeStillOpen(): string { return t("codeStillOpen"); },
+  get codeLoadFailed(): string { return t("codeLoadFailed"); },
   // Paid overlay.
-  paid: (total: string): string => `Paid ${total}`,
-  paidLine: (n: number, how: string): string => `${n} ticket${n === 1 ? "" : "s"} checked in · ${how}`,
-  paidByPhone: "Buyer's phone",
-  paidByCash: "Cash",
-  paidManual: "Paid another way",
-  nextSaleHint: "Ready for the next sale in 2s. Tap anywhere to skip.",
-  sendReceipt: "Send receipt",
+  paid: (total: string): string => t("paid", { total }),
+  paidLine: (n: number, how: string): string => t("paidLine", { count: n, how }),
+  get paidByPhone(): string { return t("paidByPhone"); },
+  get paidByCash(): string { return t("paidByCash"); },
+  get paidManual(): string { return t("paidManual"); },
+  get nextSaleHint(): string { return t("nextSaleHint"); },
+  get sendReceipt(): string { return t("sendReceipt"); },
   cashReceipt: (args: { brand: string | null; event: string | null; total: string; tickets: number; when: string }): string =>
     [
       [args.brand, args.event].filter((part): part is string => part !== null && part.length > 0).join(" · "),
-      `Paid ${args.total} in cash for ${args.tickets} ticket${args.tickets === 1 ? "" : "s"}.`,
+      t("cashReceiptLine", { total: args.total, count: args.tickets }),
       args.when,
     ]
       .filter((line) => line.length > 0)
       .join("\n"),
   // Banners.
-  offline: "You're offline. Card and phone payments need a connection. Cash still works.",
-  noTiers: "No tickets are on sale at the door. Edit the event and make a ticket available at the door.",
-  pickTicket: "Tap a ticket to start a sale.",
-  saleFailed: "Couldn't record the sale. Nothing was lost: the tickets are still here. Try again.",
-  capacity: "Not enough tickets left for this sale.",
-  wrongDate: "One of these tickets isn't valid on that date.",
-  noSharedDate: "These tickets share no date. Sell them separately.",
-  checkingDates: "Checking dates…",
-  dateHeading: "Date",
+  get offline(): string { return t("offline"); },
+  get noTiers(): string { return t("noTiers"); },
+  get pickTicket(): string { return t("pickTicket"); },
+  get saleFailed(): string { return t("saleFailed"); },
+  get capacity(): string { return t("capacity"); },
+  get wrongDate(): string { return t("wrongDate"); },
+  get noSharedDate(): string { return t("noSharedDate"); },
+  get checkingDates(): string { return t("checkingDates"); },
+  get dateHeading(): string { return t("dateHeading"); },
   // Menu.
-  menuTitle: "Door",
-  recentSales: "Recent sales",
-  noRecentSales: "No door sales yet.",
-  allSales: "All door sales",
-  addBuyer: "Add buyer",
-  addBuyerSub: "Name, mobile or email for the next sale's receipt.",
-  manual: "Paid another way",
-  manualSub: "Record a payment you took another way, like a bank transfer.",
-  manualPicked: "Paid another way. Pick a chip to go back.",
+  get menuTitle(): string { return t("menuTitle"); },
+  get recentSales(): string { return t("recentSales"); },
+  get noRecentSales(): string { return t("noRecentSales"); },
+  get allSales(): string { return t("allSales"); },
+  get addBuyer(): string { return t("addBuyer"); },
+  get addBuyerSub(): string { return t("addBuyerSub"); },
+  get manual(): string { return t("manual"); },
+  get manualSub(): string { return t("manualSub"); },
+  get manualPicked(): string { return t("manualPicked"); },
   // Add buyer.
-  buyerTitle: "Add buyer",
-  buyerBody: "Optional. Saved on the next cash or card sale and used for their receipt.",
-  buyerName: "Name",
-  buyerPhone: "Mobile, for their receipt",
-  buyerEmail: "Email",
-  buyerEmailInvalid: "Enter a valid email or leave blank.",
-  buyerPhoneInvalid: "Enter a valid mobile number or leave blank.",
-  buyerSave: "Use for the next sale",
-  buyerClear: "Clear",
-  buyerSet: (label: string): string => `Next sale: ${label}`,
+  get buyerTitle(): string { return t("buyerTitle"); },
+  get buyerBody(): string { return t("buyerBody"); },
+  get buyerName(): string { return t("buyerName"); },
+  get buyerPhone(): string { return t("buyerPhone"); },
+  get buyerEmail(): string { return t("buyerEmail"); },
+  get buyerEmailInvalid(): string { return t("buyerEmailInvalid"); },
+  get buyerPhoneInvalid(): string { return t("buyerPhoneInvalid"); },
+  get buyerSave(): string { return t("buyerSave"); },
+  get buyerClear(): string { return t("buyerClear"); },
+  buyerSet: (label: string): string => t("buyerSet", { label }),
   // Which event.
-  whichEvent: "Which event?",
-  liveNow: "Live now",
-  today: "Today",
+  get whichEvent(): string { return t("whichEvent"); },
+  get liveNow(): string { return t("liveNow"); },
+  get today(): string { return t("today"); },
   // Not found / loading.
-  loading: "Loading the door…",
-  notFound: "Event not found",
-  notFoundBody: "It may have been deleted.",
-} as const;
+  get loading(): string { return t("loading"); },
+  get notFound(): string { return t("notFound"); },
+  get notFoundBody(): string { return t("notFoundBody"); },
+  // #4389 S-i — Tap to Pay setup with no card-payment address (T1 entry).
+  get addressMissing(): string { return t("addressMissing"); },
+  get addAddress(): string { return t("addAddress"); },
+};

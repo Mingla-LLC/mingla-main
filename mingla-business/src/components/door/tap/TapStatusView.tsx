@@ -23,7 +23,8 @@ import {
 } from "react-native";
 
 import { durations, spacing, text as textTokens, typography } from "../../../constants/designSystem";
-import { TAP_ADDRESS_MISSING_COPY, TAP_GET_HELP } from "../../../constants/tapToPayCopy";
+import { TAP_GET_HELP } from "../../../constants/tapToPayCopy";
+import { DOOR_MODE_COPY } from "../doorModeCopy";
 import { useReduceMotion } from "../../../hooks/useMotionPreferences";
 import { Button } from "../../ui/Button";
 import { Icon, type IconName } from "../../ui/Icon";
@@ -245,9 +246,9 @@ export const TapAddressMissing = ({
   <TapStatusView
     tone="neutral"
     icon="location"
-    title={TAP_ADDRESS_MISSING_COPY}
+    title={DOOR_MODE_COPY.addressMissing}
     body={null}
-    primary={{ label: "Add address", onPress: onAddAddress, testID: "tap-add-address" }}
+    primary={{ label: DOOR_MODE_COPY.addAddress, onPress: onAddAddress, testID: "tap-add-address" }}
     onHelp={onHelp}
     testID="tap-address-missing"
   />

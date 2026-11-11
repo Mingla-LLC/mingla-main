@@ -224,7 +224,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
       <View style={styles.root} testID="brand-setup-fatal">
         <View style={styles.center}>
           <Text style={styles.h3} accessibilityRole="alert">
-            {fatal === "brand_not_found" ? C.common.deleted(brandName || "This brand") : C.common.noAccess(brandName || "this brand")}
+            {fatal === "brand_not_found" ? C.common.deleted(brandName || null) : C.common.noAccess(brandName || null)}
           </Text>
         </View>
         <View style={styles.footer}>
@@ -446,7 +446,7 @@ const NameStep: React.FC<{
         />
         <View style={styles.helperRow}>
           <Text style={[styles.helper, tooLong && styles.errorText]}>{tooLong ? C.f1.tooLong : C.f1.helper}</Text>
-          <Text style={[styles.counter, trimmed.length >= 60 && styles.errorText]} accessibilityLabel={`${trimmed.length} of 60 characters`}>
+          <Text style={[styles.counter, trimmed.length >= 60 && styles.errorText]} accessibilityLabel={C.f1.counterLabel(trimmed.length)}>
             {trimmed.length}/60
           </Text>
         </View>

@@ -67,6 +67,7 @@ import { captureException } from "../../diagnostics/sentry";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { Sheet } from "../ui/Sheet";
+import { BRAND_SETUP_COPY } from "./brandSetupCopy";
 
 type DeleteStep = "warn" | "preview" | "confirm" | "submitting" | "rejected";
 
@@ -90,19 +91,19 @@ export function brandDeleteBlockerCopy(
   const lines = blockers.map((b) => {
     switch (b.code) {
       case "payment_account_balance":
-        return "There's money in your payment account. Wait for it to pay out, then try again.";
+        return BRAND_SETUP_COPY.delete.blockedBalance;
       case "upcoming_events":
-        return "Cancel or transfer the upcoming events first.";
+        return BRAND_SETUP_COPY.delete.blockedEvents;
       case "checkout_in_progress":
-        return "A guest is paying right now. Try again in a few minutes.";
+        return BRAND_SETUP_COPY.delete.blockedPaying;
       case "partner_payment_in_progress":
-        return "A partner payment is still in progress.";
+        return BRAND_SETUP_COPY.delete.blockedPartner;
       default:
-        return "Money is still on its way to you. Wait for it to pay out.";
+        return BRAND_SETUP_COPY.delete.blockedPayout;
     }
   });
   return [...new Set(lines)].join(" ") ||
-    "Money is still on its way to you. Wait for it to pay out.";
+    BRAND_SETUP_COPY.delete.blockedPayout;
 }
 
 export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
@@ -378,7 +379,7 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
                   <Text style={styles.previewLabel}>Payment account</Text>
                   <Text style={styles.previewValue}>
                     {/* #4389 D1 — the delete really closes it now. */}
-                    {counts.hasStripeConnect ? "Will be closed when you delete" : "None"}
+                    {counts.hasStripeConnect ? BRAND_SETUP_COPY.delete.closedOnDelete : BRAND_SETUP_COPY.delete.none}
                   </Text>
                 </View>
                 {counts.upcomingEventCount > 0 || counts.liveEventCount > 0 ? (
@@ -493,8 +494,8 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
           <View>
             <Text style={styles.title}>
               {rejection.reason === "delete_blocked"
-                ? "You can't delete this brand yet"
-                : "Nothing was deleted"}
+                ? BRAND_SETUP_COPY.delete.cantDeleteYet
+                : BRAND_SETUP_COPY.delete.nothingDeleted}
             </Text>
             <View style={[styles.warnCard, styles.warnCardDanger]}>
               <Icon name="flag" size={18} color={semantic.error} />
@@ -502,13 +503,13 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
                 <Text style={styles.warnBody}>
                   {rejection.reason === "delete_blocked"
                     ? brandDeleteBlockerCopy(rejection.blockers)
-                    : "Our payment partner couldn't close this account, so nothing was deleted. Contact support and we'll sort it."}
+                    : BRAND_SETUP_COPY.delete.closeRefused}
                 </Text>
               </View>
             </View>
             <View style={styles.actionRow}>
               <View style={styles.actionCell}>
-                <Button label="Close" variant="primary" size="md" onPress={onClose} fullWidth />
+                <Button label={BRAND_SETUP_COPY.delete.close} variant="primary" size="md" onPress={onClose} fullWidth />
               </View>
             </View>
           </View>

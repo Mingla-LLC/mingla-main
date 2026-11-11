@@ -1,0 +1,72 @@
+{
+  "ariSetup": {
+    "items": {
+      "name": "Brand name",
+      "country": "Bank country",
+      "terms": "Organiser Terms",
+      "payments": "Payment details"
+    },
+    "a1": {
+      "headlineNamed": "Hi {{first}}. Let's get your account ready to take bookings.",
+      "headline": "Hi. Let's get your account ready to take bookings.",
+      "body": "It takes about 3 minutes: your brand name, your bank country, then payments. I'll guide you.",
+      "cardTitle": "Set up your brand",
+      "minutes": "About 3 minutes",
+      "setUp": "Set up my brand",
+      "withAri": "Do it with Ari",
+      "withAriMessage": "Help me set up my brand",
+      "offline": "Ari is unavailable right now. Use Set up my brand."
+    },
+    "a2": {
+      "lead": "Let's finish setting up {{brand}}. {{done}} of 4 done. Next: {{next}}.",
+      "count": "{{done}} of 4 done",
+      "waiting": "Waiting for {{client}}",
+      "cta": "Continue",
+      "allSet": "All set",
+      "error": "We couldn't load your setup.",
+      "retry": "Try again",
+      "progressLabel": "Setup progress"
+    },
+    "a3": {
+      "question": "Create {{name}} collecting funds in {{country}} ({{currency}})?",
+      "questionNoCountry": "Create {{name}}?",
+      "thisBrand": "this brand",
+      "fundsLabel": "Collecting funds in",
+      "expired": "This expired. Ask again.",
+      "duplicate": "You already started {{name}}. Continue it?",
+      "continue": "Continue",
+      "createNew": "Create new"
+    },
+    "a4": {
+      "secureTitle": "Secure setup",
+      "secureBody": "Bank and ID details are entered on a secure screen, not in chat.",
+      "open": "Open secure setup",
+      "termsTitle": "Organiser Terms",
+      "termsBody": "Accept the Organiser Terms first.",
+      "termsCta": "Review and accept",
+      "countryTitle": "Bank country",
+      "countryBody": "Pick the country your bank account is in first.",
+      "countryCta": "Pick bank country",
+      "owner": "Only the owner can set up payments. We've added it to their Home.",
+      "doorTitle": "Door sale",
+      "doorBody": "You pick how they pay on the next screen. Cards are never handled in chat.",
+      "doorCta": "Open door sale"
+    },
+    "a5": {
+      "notice": "Please don't share that here. I've hidden it. Use the secure screen.",
+      "open": "Open secure setup"
+    },
+    "brandMismatch": "This card belongs to another brand. Switch back to it to confirm.",
+    "bar": {
+      "switcherTitle": "Talk to Ari about",
+      "chats": "Chats",
+      "settings": "Ari settings",
+      "busyTitle": "Ari is still answering",
+      "busyBody": "Switch to {{next}} anyway? The answer will finish in {{current}}'s chat.",
+      "busySwitch": "Switch to {{next}}",
+      "busyStay": "Stay on {{current}}",
+      "switched": "Now talking about {{next}}.",
+      "draftKept": "Your unsent message for {{other}} is saved there."
+    }
+  }
+}

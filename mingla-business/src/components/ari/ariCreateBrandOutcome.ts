@@ -27,7 +27,7 @@ export function a3NoticeFor(input: {
   const askedName = typeof args.name === "string" ? args.name.trim() : "";
   if (input.expired) {
     const funds = payoutCountryLabel(args.payout_country);
-    const name = askedName || "this brand";
+    const name = askedName || ARI_SETUP_COPY.a3.thisBrand;
     return {
       kind: "expired",
       question: funds !== null ? ARI_SETUP_COPY.a3.question(name, funds.name, funds.currency) : ARI_SETUP_COPY.a3.questionNoCountry(name),

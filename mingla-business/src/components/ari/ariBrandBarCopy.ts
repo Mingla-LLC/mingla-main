@@ -1,17 +1,24 @@
 /**
- * #4389 (screen AB) — host copy for Ari's top bar and brand switch.
- * [TRANSITIONAL] English only — exit: moved into the locale files with the
- * rest of the #4389 copy (i18n remainder in the build log).
+ * #4389 (screen AB) — host copy for Ari's top bar and brand switch. The words
+ * live in src/i18n/locales/<lang>/ (English: ariSetup.json `bar`, other
+ * languages: hostSetup.json); each property reads the current language.
  */
+import english from "../../i18n/locales/en/ariSetup.json";
+import { businessT, registerBusinessEnglish } from "../../i18n";
+
+registerBusinessEnglish(english);
+
+const t = (key: string, variables?: Record<string, string>): string =>
+  businessT(`ariSetup.bar.${key}`, variables);
+
 export const ARI_BRAND_BAR_COPY = {
-  switcherTitle: "Talk to Ari about",
-  chats: "Chats",
-  settings: "Ari settings",
-  busyTitle: "Ari is still answering",
-  busyBody: (next: string, current: string): string =>
-    `Switch to ${next} anyway? The answer will finish in ${current}'s chat.`,
-  busySwitch: (next: string): string => `Switch to ${next}`,
-  busyStay: (current: string): string => `Stay on ${current}`,
-  switched: (next: string): string => `Now talking about ${next}.`,
-  draftKept: (other: string): string => `Your unsent message for ${other} is saved there.`,
-} as const;
+  get switcherTitle(): string { return t("switcherTitle"); },
+  get chats(): string { return t("chats"); },
+  get settings(): string { return t("settings"); },
+  get busyTitle(): string { return t("busyTitle"); },
+  busyBody: (next: string, current: string): string => t("busyBody", { next, current }),
+  busySwitch: (next: string): string => t("busySwitch", { next }),
+  busyStay: (current: string): string => t("busyStay", { current }),
+  switched: (next: string): string => t("switched", { next }),
+  draftKept: (other: string): string => t("draftKept", { other }),
+};

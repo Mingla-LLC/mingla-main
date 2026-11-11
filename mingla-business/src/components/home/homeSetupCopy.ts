@@ -1,51 +1,56 @@
 /**
  * #4389 (screens H1, H2, HT) — host copy for Home's setup card, the one-time
  * sheet and Taking payments from Home. Never "business", never a provider
- * name; always "Tap to Pay on iPhone" on iOS (Apple naming).
- * [TRANSITIONAL] English only — exit: moved into the locale files with the
- * rest of the #4389 copy (i18n remainder in the build log).
+ * name; always "Tap to Pay on iPhone" on iOS (Apple naming, every language).
+ * The words live in src/i18n/locales/<lang>/ (English: homeSetup.json, other
+ * languages: hostSetup.json); each property reads the current language.
  */
+import english from "../../i18n/locales/en/homeSetup.json";
+import { businessT, registerBusinessEnglish } from "../../i18n";
+
+registerBusinessEnglish(english);
+
+const t = (key: string, variables?: Record<string, string | number>): string =>
+  businessT(`homeSetup.${key}`, variables);
+
 export const HOME_SETUP_COPY = {
   h1: {
-    title: (brand: string): string => `Finish setting up ${brand}`,
-    count: (done: number): string => `${done} of 4`,
-    waiting: (client: string): string => `Waiting for ${client}`,
-    moreNeeded: "One more thing",
-    cta: "Continue",
-    todoSub: (done: number): string => `${done} of 4 done`,
+    title: (brand: string): string => t("h1.title", { brand }),
+    count: (done: number): string => t("h1.count", { done }),
+    waiting: (client: string): string => t("h1.waiting", { client }),
+    get moreNeeded(): string { return t("h1.moreNeeded"); },
+    get cta(): string { return t("h1.cta"); },
+    todoSub: (done: number): string => t("h1.todoSub", { done }),
+    get progressLabel(): string { return t("h1.progressLabel"); },
   },
   h2: {
-    title: (brand: string): string => `${brand} needs a few details before it can take payments.`,
-    country: "Bank country",
-    terms: "Organiser Terms",
-    payments: "Payment details",
-    later: "Later",
-    finish: "Finish now",
+    title: (brand: string): string => t("h2.title", { brand }),
+    get country(): string { return t("h2.country"); },
+    get terms(): string { return t("h2.terms"); },
+    get payments(): string { return t("h2.payments"); },
+    get later(): string { return t("h2.later"); },
+    get finish(): string { return t("h2.finish"); },
   },
   ht: {
-    iosTitle: "Tap to Pay on iPhone",
-    iosBody:
-      "Accept physical debit and credit cards as well as Apple Pay and other digital wallets. Right on your iPhone.",
-    terms: "Terms apply.",
-    androidTitle: "Tap to Pay",
-    androidBody: "Guests tap a card or phone on your Android phone to pay at the door.",
-    getStarted: "Get started",
-    notNow: "Not now",
-    notOwner: (owner: string, brand: string): string =>
-      `Only ${owner} can turn this on for ${brand}.`,
-    notOwnerIos: (owner: string, brand: string): string =>
-      `Only ${owner} can turn this on for ${brand}. We've let them know.`,
-    ownerFallback: "the owner",
-    todoIos: "Set up Tap to Pay on iPhone",
-    todoAndroid: "Set up Tap to Pay",
-    todoSub: "Take card payments at the door",
+    get iosTitle(): string { return t("ht.iosTitle"); },
+    get iosBody(): string { return t("ht.iosBody"); },
+    get terms(): string { return t("ht.terms"); },
+    get androidTitle(): string { return t("ht.androidTitle"); },
+    get androidBody(): string { return t("ht.androidBody"); },
+    get getStarted(): string { return t("ht.getStarted"); },
+    get notNow(): string { return t("ht.notNow"); },
+    notOwner: (owner: string, brand: string): string => t("ht.notOwner", { owner, brand }),
+    notOwnerIos: (owner: string, brand: string): string => t("ht.notOwnerIos", { owner, brand }),
+    get ownerFallback(): string { return t("ht.ownerFallback"); },
+    get todoIos(): string { return t("ht.todoIos"); },
+    get todoAndroid(): string { return t("ht.todoAndroid"); },
+    get todoSub(): string { return t("ht.todoSub"); },
   },
   takePayment: {
-    pill: "Take a payment",
-    chip: "Take a payment",
-    atDoorToday: (n: number, amount: string): string =>
-      `At the door today · ${n} ${n === 1 ? "sale" : "sales"} · ${amount}`,
-    noEventToday: "Nothing on today to sell for. Take payments on the day of an event.",
-    openFailed: "Couldn't open the door sale. Try again.",
+    get pill(): string { return t("takePayment.pill"); },
+    get chip(): string { return t("takePayment.chip"); },
+    atDoorToday: (n: number, amount: string): string => t("takePayment.atDoorToday", { count: n, amount }),
+    get noEventToday(): string { return t("takePayment.noEventToday"); },
+    get openFailed(): string { return t("takePayment.openFailed"); },
   },
-} as const;
+};
