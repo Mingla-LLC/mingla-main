@@ -18,6 +18,10 @@
 // MINGLA-INVARIANT: I-ARI-SNAPSHOT-CAPPED | issue #3355 | The per-turn brand snapshot is read with the caller's client, never exceeds ARI_BRAND_SNAPSHOT_MAX_CHARS, truncates lists with counts, omits a failed section with a marker instead of failing the turn, and is rebuilt after a write receipt. Enforced by supabase/functions/_shared/__tests__/issue_3355_wave_c_turn_context.implementor.test.ts
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
+import {
+  ariBrandDisplayZone,
+  withAriLocalTimesInText,
+} from "./ariLocalTime.ts";
 
 import { readBrandReadiness } from "./agentReadinessTools.ts";
 import type { BrandReadiness } from "./agentReadinessTools.ts";
@@ -98,6 +102,7 @@ async function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
 async function brandSection(
   client: SupabaseClient,
   brandId: string,
+  onZone: (zone: string | null) => void = () => {},
 ): Promise<string[]> {
   const { data, error } = await client.from("brands")
     .select("name,city,country_code,default_currency,default_timezone")
@@ -106,6 +111,7 @@ async function brandSection(
     .maybeSingle();
   if (error || !data) throw new SectionUnavailable("brand");
   const row = data as Record<string, unknown>;
+  onZone(ariBrandDisplayZone(row.default_timezone, row.country_code));
   const place = [ariSafeText(row.city, 60), ariSafeText(row.country_code, 2)]
     .filter(Boolean).join(", ");
   return [
@@ -372,12 +378,23 @@ export async function buildAriBrandSnapshot(args: {
   const timeout = args.sectionTimeoutMs ??
     ARI_BRAND_SNAPSHOT_SECTION_TIMEOUT_MS;
   const { client, brandId } = args;
+  // #3355 rework 3b (I-ARI-READS-IN-BRAND-TIME): instants in the snapshot
+  // read in the brand's zone too (UTC, labelled "UTC", when unknown).
+  let zone: string | null = null;
   const readinessRead = withTimeout(
     readBrandReadiness(client, brandId, null),
     timeout,
   );
   const sections: Array<[AriSnapshotSection, Promise<string[]>]> = [
-    ["brand", withTimeout(brandSection(client, brandId), timeout)],
+    [
+      "brand",
+      withTimeout(
+        brandSection(client, brandId, (found) => {
+          zone = found;
+        }),
+        timeout,
+      ),
+    ],
     ["checklist", readinessRead.then(checklistLines)],
     ["money", readinessRead.then(moneyLines)],
     ["offerings", withTimeout(offeringsSection(client, brandId, now), timeout)],
@@ -408,7 +425,9 @@ export async function buildAriBrandSnapshot(args: {
   return {
     brand_id: brandId,
     built_at: now,
-    text: capAriSnapshotText(lines),
+    text: capAriSnapshotText(
+      lines.map((line) => withAriLocalTimesInText(line, zone)),
+    ),
     unavailable,
   };
 }

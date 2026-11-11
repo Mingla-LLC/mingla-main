@@ -57,6 +57,7 @@ import {
   preflightTripPackagePrices,
 } from "../_shared/money/proposeReadiness.ts";
 import {
+  bindDiscountTargetDefault,
   bindOwnerNoteProposal,
   bindProposalTimezone,
 } from "../_shared/agentAri10xTools.ts";
@@ -304,6 +305,10 @@ import {
 
 import { isValidIanaTimezone } from "../_shared/agentRelativeTime.ts";
 import { marketDefaultTimezone } from "../_shared/payoutCountries.ts";
+import {
+  readAriBrandDisplayZone,
+  withAriLocalTimesForModel,
+} from "../_shared/ariLocalTime.ts";
 
 const MAX_MESSAGE_LENGTH = 4096;
 /** #3355 rework 3: the whole turn's wall budget (the claim check runs inside it). */
@@ -2919,7 +2924,9 @@ async function handle(req: Request): Promise<Response> {
     // the host is on, read as the caller. Both are data inside <user_data>;
     // a failure leaves them out and never fails the turn.
     // #3355 Wave D (D1): the notes worth having this turn, read as the caller.
-    const [turnSnapshot, turnScreen, turnMemory] = await Promise.all([
+    // #3355 rework 3b (I-ARI-READS-IN-BRAND-TIME): the brand's display zone,
+    // so every instant the model reads carries its brand-local rendering.
+    const [turnSnapshot, turnScreen, turnMemory, turnZone] = await Promise.all([
       activeBrand
         ? getAriBrandSnapshot({
           caller: userClient,
@@ -2946,6 +2953,9 @@ async function handle(req: Request): Promise<Response> {
         brandId: activeBrand?.id ?? null,
         message: semanticMessage,
       }),
+      activeBrand
+        ? readAriBrandDisplayZone(userClient, activeBrand.id)
+        : Promise.resolve(null),
     ]);
     const turnContextPart = ariTurnContextPart({
       snapshot: turnSnapshot,
@@ -3894,7 +3904,10 @@ ${boundedAgentContext}
           try {
             model = await callGemini({
               systemPrompt: loopSystemPrompt,
-              contents: [...contents, ...observationContents],
+              contents: withAriLocalTimesForModel(
+                [...contents, ...observationContents],
+                turnZone,
+              ),
               // #3355 Wave B (B3): generated per-tool descriptions.
               tools: [
                 ...ariToolDeclarations(selectedTools),
@@ -4202,8 +4215,17 @@ ${boundedAgentContext}
             `Unknown tool: ${loopResult.toolCall.name}`,
           );
         }
-        let proposalStage = "canonicalize";
+        let proposalStage = "bind_discount_target";
         try {
+          // #3355 rework 3b: an unspecified discount target is resolved from
+          // the host's words and the brand's listings before #4304 refuses.
+          loopResult.toolCall.args = await bindDiscountTargetDefault(
+            tool.name,
+            loopResult.toolCall.args,
+            userClient,
+            semanticMessage,
+          );
+          proposalStage = "canonicalize";
           loopResult.toolCall.args = canonicalizeAgentProposalArgs(
             tool.name,
             loopResult.toolCall.args,
@@ -4615,7 +4637,7 @@ ${boundedAgentContext}
       );
       gemini = await callGemini({
         systemPrompt,
-        contents,
+        contents: withAriLocalTimesForModel(contents, turnZone),
         tools: [
           ...ariToolDeclarations(AGENT_TOOLS),
           // #3355 Wave E (D3a): the legacy single-call path can start a
@@ -4835,7 +4857,7 @@ ${boundedAgentContext}
           try {
             followup = await callGemini({
               systemPrompt,
-              contents: followupContents,
+              contents: withAriLocalTimesForModel(followupContents, turnZone),
               tools: ariToolDeclarations(AGENT_TOOLS),
             });
           } catch (err: unknown) {
@@ -5093,6 +5115,13 @@ ${boundedAgentContext}
       // #2063: bind canonical optimistic state before authorization/persistence.
       // The proposal, confirmation, and SQL owner all receive the same version.
       try {
+        // #3355 rework 3b: same unspecified-target bind as the loop path.
+        gemini.toolCall.args = await bindDiscountTargetDefault(
+          tool.name,
+          gemini.toolCall.args,
+          userClient,
+          semanticMessage,
+        );
         gemini.toolCall.args = canonicalizeAgentProposalArgs(
           tool.name,
           gemini.toolCall.args,

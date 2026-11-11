@@ -7,6 +7,11 @@ import { ARI_STOPPED_HERE_LINE } from "./ariOwnerCopy.ts";
 import { toolOwnerCopy } from "./ariPresentation/toolLabels.ts";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import {
+  readAriBrandDisplayZone,
+  withAriLocalTimes,
+  withAriLocalTimesForModel,
+} from "./ariLocalTime.ts";
+import {
   callGemini,
   callGeminiStructured,
   type GeminiContentMessage,
@@ -135,6 +140,12 @@ export async function continueAfterApprovedAction(args: {
     8,
     recentGoalText,
   );
+  // #3355 rework 3b (I-ARI-READS-IN-BRAND-TIME): the readback and the
+  // loop's reads carry brand-local times beside their UTC instants.
+  const brandId = args.toolArgs?.brand_id;
+  const zone = typeof brandId === "string"
+    ? await readAriBrandDisplayZone(args.client, brandId)
+    : null;
   const receiptMessage: GeminiContentMessage = {
     role: "user",
     parts: [{
@@ -142,7 +153,7 @@ export async function continueAfterApprovedAction(args: {
         `The user approved this change: ${
           toolOwnerCopy(args.toolName).verb
         }. The canonical Mingla readback is:\n${
-          boundedJson(args.result)
+          boundedJson(withAriLocalTimes(args.result, zone))
         }\n\nContinue the existing goal now. Verify the result, complete safe reads and Ari-owned plan updates without asking for “continue”, and stop at the next protected Mingla write so it can be shown for confirmation. If the goal is complete, give a concise receipt with completed, waiting, skipped, and human-owned steps.`,
     }],
   };
@@ -195,7 +206,10 @@ export async function continueAfterApprovedAction(args: {
       }
       const response = await callGemini({
         systemPrompt,
-        contents: [...history, receiptMessage, ...observationContents],
+        contents: withAriLocalTimesForModel(
+          [...history, receiptMessage, ...observationContents],
+          zone,
+        ),
         tools: tools.map((tool) => ({
           name: tool.name,
           description: tool.description,

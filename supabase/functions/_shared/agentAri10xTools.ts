@@ -15,6 +15,11 @@ import {
   ToolError,
 } from "./agentToolHelpers.ts";
 import { DOMAIN_TOOLS } from "./agentDomainTools.ts";
+import {
+  applyDiscountTargetDefault,
+  discountTargetsNeedDefault,
+  resolveDiscountTargetDefault,
+} from "./ariDiscountArgs.ts";
 import { SITE_AGENT_TOOLS } from "./agentSiteTools.ts";
 import { READINESS_TOOLS } from "./agentReadinessTools.ts";
 import { STRIPE_SUPPORTED_COUNTRIES } from "./stripeSupportedCountries.ts";
@@ -1694,6 +1699,64 @@ export async function bindProposalTimezone(
     );
   }
   return { ...args, timezone };
+}
+
+/**
+ * #3355 rework 3b: the listing kinds a brand sells, read as the caller (RLS).
+ * events.event_type (event / experience / trip; RSVPs take no discount) and
+ * venue listings (venue orders). A failed read is treated as no listings.
+ */
+export async function readBrandListingKinds(
+  client: SupabaseClient,
+  brandId: string,
+): Promise<string[]> {
+  const [events, venues] = await Promise.all([
+    client.from("events").select("event_type")
+      .eq("brand_id", brandId).is("deleted_at", null)
+      .neq("event_type", "rsvp").limit(200),
+    client.from("venue_listings").select("id")
+      .eq("brand_id", brandId).limit(1),
+  ]);
+  const kinds = new Set<string>();
+  if (!events.error) {
+    for (const row of (events.data ?? []) as Array<Record<string, unknown>>) {
+      if (typeof row.event_type === "string") kinds.add(row.event_type);
+    }
+  }
+  if (!venues.error && (venues.data ?? []).length > 0) {
+    kinds.add("venue_order");
+  }
+  return [...kinds];
+}
+
+/**
+ * #3355 rework 3b (I-ARI-DISCOUNT-TARGET-RESOLVED): a create_discount whose
+ * target names no listing kind is bound at the server boundary, before the
+ * #4304 canonicaliser, from the host's words and the brand's listings
+ * (resolveDiscountTargetDefault). A brand with several kinds and no kind
+ * named gets one question listing them. A kind Ari does not know is left for
+ * the canonicaliser to refuse.
+ */
+export async function bindDiscountTargetDefault(
+  toolName: string,
+  args: Record<string, unknown>,
+  client: SupabaseClient,
+  hostText: string,
+): Promise<Record<string, unknown>> {
+  if (toolName !== "create_discount") return args;
+  if (!discountTargetsNeedDefault(args)) return args;
+  const kinds = isUuid(args.brand_id)
+    ? await readBrandListingKinds(client, String(args.brand_id))
+    : [];
+  const resolved = resolveDiscountTargetDefault(kinds, hostText);
+  console.log(
+    "[agent-chat] discount target bound",
+    JSON.stringify({
+      outcome: resolved.kind === "ask" ? "ask" : resolved.reason,
+      kinds: resolved.listingKinds,
+    }),
+  );
+  return applyDiscountTargetDefault(args, resolved);
 }
 
 const getListingCapabilities: AgentToolDefinition = {

@@ -258,7 +258,9 @@ Deno.test("C1: the snapshot for a fixture brand carries the active discount and 
   });
   assertStringIncludes(
     snapshot.text,
-    "FAVY10: 10% off, ends 2026-12-19T22:59:59.000Z, used 3 of 100 times",
+    // #3355 rework 3b (I-ARI-READS-IN-BRAND-TIME): each instant now carries
+    // its brand-local rendering beside the raw ISO.
+    "FAVY10: 10% off, ends 2026-12-19T22:59:59.000Z (Sat 19 Dec 2026, 11:59 pm Lagos time), used 3 of 100 times",
   );
   assertStringIncludes(
     snapshot.text,
@@ -272,7 +274,7 @@ Deno.test("C1: the snapshot for a fixture brand carries the active discount and 
   assertStringIncludes(snapshot.text, "Home to-dos open: 3");
   assertStringIncludes(
     snapshot.text,
-    `- event "Rooftop Night" live, starts 2026-12-01T18:00:00.000Z`,
+    `- event "Rooftop Night" live, starts 2026-12-01T18:00:00.000Z (Tue 1 Dec 2026, 7:00 pm Lagos time)`,
   );
   assertStringIncludes(
     snapshot.text,
@@ -284,7 +286,7 @@ Deno.test("C1: the snapshot for a fixture brand carries the active discount and 
   );
   assertStringIncludes(
     snapshot.text,
-    "Recent Ari activity: response_ready 2026-11-10T10:08:53.000Z",
+    "Recent Ari activity: response_ready 2026-11-10T10:08:53.000Z (Tue 10 Nov 2026, 11:08 am Lagos time)",
   );
   assertStringIncludes(snapshot.text, "Brand group: 4 unread messages");
   assert(!snapshot.text.includes("secret words"), "never a message preview");
