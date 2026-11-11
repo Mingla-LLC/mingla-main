@@ -55,6 +55,7 @@ import {
   type SoftDeleteResult,
 } from "../services/brandsService";
 import type { Brand } from "../store/currentBrandStore";
+import type { BrandDeleteOutcome } from "../services/brandSetupService";
 // Issue #1835 — brand-delete failures must leave a trace.
 import { captureException } from "../diagnostics/sentry";
 // ORCH-0740 Cycle 1: import the existing brandRoleKeys factory to replace
@@ -544,6 +545,92 @@ export const useUpdateBrand = (): UseUpdateBrandResult => {
   return { mutateAsync: mutation.mutateAsync, isPending: mutation.isPending };
 };
 
+// ----- cache eviction / adoption (ORCH-1062, #4389) ----------------------
+
+type BrandQueryClient = ReturnType<typeof useQueryClient>;
+
+/**
+ * ORCH-1062 — ROOT-CAUSE fix for the "Maximum update depth exceeded" crash when
+ * a brand that is (or was) current disappears. Only INVALIDATING the list keeps
+ * React Query serving the STALE list (still holding the gone brand) during the
+ * background refetch. In that window `useCurrentBrandRecovery` re-resolves the
+ * gone brand (stale list / stale default_brand_id) while `useCurrentBrand`
+ * clears currentBrandId to null (its detail read correctly returns null): the
+ * two writers ping-pong currentBrandId synchronously until React's nested-update
+ * cap trips. Fix: SYNCHRONOUSLY drop the brand from the list cache and clear a
+ * default_brand_id pointing at it, so the resolver lands on a valid brand.
+ *
+ * #4389 — shared by brand delete AND N1 "Discard and start new" (the discard
+ * path used to leave every cache untouched and crashed Ari, 2 of 2 times).
+ */
+export const evictDeletedBrandFromCaches = (
+  queryClient: BrandQueryClient,
+  brandId: string,
+  accountId: string,
+): void => {
+  queryClient.setQueryData<Brand[]>(brandKeys.list(accountId), (prev) =>
+    prev !== undefined ? prev.filter((b) => b.id !== brandId) : prev,
+  );
+  queryClient.setQueryData<CreatorAccountRow | null>(
+    creatorAccountKeys.byId(accountId),
+    (prev) =>
+      prev != null && prev.default_brand_id === brandId
+        ? { ...prev, default_brand_id: null }
+        : prev,
+  );
+  // Server-truth backstop (also reconciles any cascade).
+  queryClient.invalidateQueries({ queryKey: brandKeys.list(accountId) });
+  queryClient.removeQueries({ queryKey: brandKeys.detail(brandId) });
+  // ORCH-0740 Cycle 1: brandRoleKeys factory (Constitutional #4).
+  queryClient.removeQueries({ queryKey: brandRoleKeys.allForBrand(brandId) });
+  queryClient.removeQueries({ queryKey: brandKeys.cascadePreview(brandId) });
+};
+
+/**
+ * #4389 — a brand created outside useCreateBrand (the setup RPC) is written
+ * into the list, detail and default-brand caches BEFORE it is made current, so
+ * `useCurrentBrandRecovery` sees it at once and never resolves the pointer
+ * back to a stale default or "none" while the list refetch is in flight.
+ */
+export const adoptBrandIntoCaches = (
+  queryClient: BrandQueryClient,
+  brand: Brand,
+  accountId: string,
+): void => {
+  queryClient.setQueryData<Brand[]>(brandKeys.list(accountId), (prev) =>
+    prev === undefined
+      ? [brand]
+      : prev.some((b) => b.id === brand.id)
+        ? prev.map((b) => (b.id === brand.id ? brand : b))
+        : [brand, ...prev],
+  );
+  queryClient.setQueryData<Brand>(brandKeys.detail(brand.id), brand);
+  queryClient.setQueryData<CreatorAccountRow | null>(
+    creatorAccountKeys.byId(accountId),
+    (prev) => (prev != null ? { ...prev, default_brand_id: brand.id } : prev),
+  );
+};
+
+/**
+ * #4389 N1 — "Discard and start new". Same cache contract as delete.
+ */
+export const useDiscardDraftBrand = (
+  accountId: string | null,
+): ((brandId: string) => Promise<BrandDeleteOutcome>) => {
+  const queryClient = useQueryClient();
+  return useCallback(
+    async (brandId: string): Promise<BrandDeleteOutcome> => {
+      const { discardDraftBrand } = await import("../services/brandSetupService");
+      const outcome = await discardDraftBrand(brandId);
+      if (outcome.ok && accountId !== null) {
+        evictDeletedBrandFromCaches(queryClient, brandId, accountId);
+      }
+      return outcome;
+    },
+    [accountId, queryClient],
+  );
+};
+
 // ----- useSoftDeleteBrand (PESSIMISTIC) ---------------------------------
 
 export interface SoftDeleteBrandInput {
@@ -567,41 +654,7 @@ export const useSoftDeleteBrand = (): UseSoftDeleteBrandResult => {
     },
     onSuccess: (result, { brandId, accountId }) => {
       if (!result.rejected) {
-        // ORCH-1062 — ROOT-CAUSE fix for the "Maximum update depth exceeded"
-        // crash when deleting the CURRENTLY-SELECTED brand. The old code only
-        // INVALIDATED the list, so React Query kept serving the STALE list (still
-        // containing the just-deleted brand) during the background refetch. In
-        // that window `useCurrentBrandRecovery` re-resolved the deleted brand
-        // (from the stale list / stale default_brand_id) while `useCurrentBrand`
-        // cleared currentBrandId to null (its detail fetch correctly returns
-        // null) — the two hooks ping-ponged currentBrandId synchronously until
-        // React's nested-update cap tripped the render-loop crash. Fix:
-        // SYNCHRONOUSLY drop the deleted brand from the list cache so the
-        // resolver immediately sees fresh data and lands on a valid brand.
-        queryClient.setQueryData<Brand[]>(brandKeys.list(accountId), (prev) =>
-          prev !== undefined ? prev.filter((b) => b.id !== brandId) : prev,
-        );
-        // Clear default_brand_id in the creator-account cache if it pointed at
-        // the deleted brand (softDeleteBrand Step 3 already cleared it server-
-        // side; this stops the cache from briefly re-resolving the dead pointer).
-        queryClient.setQueryData<CreatorAccountRow | null>(
-          creatorAccountKeys.byId(accountId),
-          (prev) =>
-            prev != null && prev.default_brand_id === brandId
-              ? { ...prev, default_brand_id: null }
-              : prev,
-        );
-        // Invalidate list — server-truth backstop (also reconciles any cascade).
-        queryClient.invalidateQueries({ queryKey: brandKeys.list(accountId) });
-        // Clear detail cache
-        queryClient.removeQueries({ queryKey: brandKeys.detail(brandId) });
-        // Clear role cache for this brand (useCurrentBrandRole sees no brand row → null role).
-        // ORCH-0740 Cycle 1: use brandRoleKeys.allForBrand factory instead of hardcoded literal.
-        queryClient.removeQueries({ queryKey: brandRoleKeys.allForBrand(brandId) });
-        // Clear cascade-preview cache (defensive)
-        queryClient.removeQueries({
-          queryKey: brandKeys.cascadePreview(brandId),
-        });
+        evictDeletedBrandFromCaches(queryClient, brandId, accountId);
       }
       // On rejection: caller (BrandDeleteSheet) handles via modal; no cache changes
     },

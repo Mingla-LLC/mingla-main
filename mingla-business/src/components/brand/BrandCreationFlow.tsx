@@ -35,7 +35,6 @@ import {
   BRAND_SETUP_STEPS,
   BrandSetupError,
   deriveSetupStep,
-  discardDraftBrand,
   newBrandId,
   refreshStripeSetupStatus,
   type BrandSetupStep,
@@ -67,6 +66,8 @@ import { trackBrandSetup } from "./brandSetupAnalytics";
 import { useCurrentBrandStore, type Brand } from "../../store/currentBrandStore";
 import { useUpdateCreatorAccount } from "../../hooks/useCreatorAccount";
 import { getBrand } from "../../services/brandsService";
+import { useQueryClient } from "@tanstack/react-query";
+import { adoptBrandIntoCaches, useDiscardDraftBrand } from "../../hooks/useBrands";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
 import { useBrandTeamMemberDirectory } from "../../hooks/useBrandTeamMemberDirectory";
 import { BRAND_ROLE_RANK } from "../../utils/brandRole";
@@ -139,8 +140,14 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
   // so Home, Ari and the switcher open on it.
   const setCurrentBrand = useCurrentBrandStore((st) => st.setCurrentBrand);
   const updateCreatorAccountMutation = useUpdateCreatorAccount();
+  const queryClient = useQueryClient();
+  const accountId = user?.id ?? null;
   const commitDefaultBrand = useCallback(
     (newBrand: Brand): void => {
+      // The brand goes into the list / default caches FIRST, so the current-
+      // brand recovery never resolves the pointer back to a stale (or just
+      // discarded) brand while the list refetch is in flight (#4389 P0).
+      if (accountId !== null) adoptBrandIntoCaches(queryClient, newBrand, accountId);
       setCurrentBrand(newBrand);
       void updateCreatorAccountMutation
         .mutateAsync({ default_brand_id: newBrand.id })
@@ -148,7 +155,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
           console.warn("[brand-setup] could not save the default brand", error);
         });
     },
-    [setCurrentBrand, updateCreatorAccountMutation],
+    [accountId, queryClient, setCurrentBrand, updateCreatorAccountMutation],
   );
   const adoptCreatedBrand = useCallback(
     (id: string): void => {
@@ -856,6 +863,9 @@ export const DraftInProgress: React.FC<{
   const [confirming, setConfirming] = useState(startConfirming);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { user } = useAuth();
+  // #4389 P0 — evicts the discarded brand from the brand caches (ORCH-1062).
+  const discardDraftBrand = useDiscardDraftBrand(user?.id ?? null);
   const discard = async (): Promise<void> => {
     setBusy(true);
     setError(null);
