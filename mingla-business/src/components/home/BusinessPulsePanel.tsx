@@ -81,6 +81,10 @@ export interface BusinessPulsePanelProps {
   liveMetricsById: Record<string, LiveCardMetrics>;
   onScanPress: (id: string) => void;
   onOpenOffering: (item: UpcomingItem) => void;
+  /** #4389 HT — "Take a payment" pill in the revenue header (Home decides when). */
+  headerAction?: React.ReactNode;
+  /** #4389 HT — "At the door today · …" under the revenue figure. */
+  moneyFootnote?: React.ReactNode;
 }
 
 const offeringName = (item: UpcomingItem): string => {
@@ -535,6 +539,8 @@ export const BusinessPulsePanel: React.FC<BusinessPulsePanelProps> = ({
   liveMetricsById,
   onScanPress,
   onOpenOffering,
+  headerAction,
+  moneyFootnote,
 }) => {
   const router = useRouter();
   const { isWideDesktop } = useResponsiveLayout();
@@ -676,10 +682,20 @@ export const BusinessPulsePanel: React.FC<BusinessPulsePanelProps> = ({
       testID="business-pulse-money"
     >
       <View style={styles.moneyHeadline}>
-        <View style={styles.zoneHeading}>
-          <Text style={styles.eyebrow}>TOTAL LIFETIME REVENUE</Text>
-          <Text style={styles.zoneChevron}>›</Text>
-        </View>
+        {headerAction !== undefined ? (
+          <View style={styles.zoneHeading}>
+            <View style={styles.eyebrowGroup}>
+              <Text style={styles.eyebrow}>TOTAL LIFETIME REVENUE</Text>
+              <Text style={styles.zoneChevron}>›</Text>
+            </View>
+            {headerAction}
+          </View>
+        ) : (
+          <View style={styles.zoneHeading}>
+            <Text style={styles.eyebrow}>TOTAL LIFETIME REVENUE</Text>
+            <Text style={styles.zoneChevron}>›</Text>
+          </View>
+        )}
         {payout.isLoading ? (
           <View style={styles.moneySkeleton}>
             <Skeleton width="60%" height={44} />
@@ -701,6 +717,7 @@ export const BusinessPulsePanel: React.FC<BusinessPulsePanelProps> = ({
             ))}
           </>
         )}
+        {moneyFootnote}
       </View>
       {showMoneyRows ? <View
         style={[
@@ -968,6 +985,7 @@ const styles = StyleSheet.create({
   },
   moneyRowsOnly: { flex: 1, marginTop: 0, paddingLeft: spacing.lg, borderTopWidth: 0, borderLeftWidth: 1 },
   eyebrow: { ...typography.labelCap, color: textTokens.tertiary },
+  eyebrowGroup: { flexDirection: "row", alignItems: "center", gap: spacing.sm, flexShrink: 1 },
   zoneHeading: {
     minHeight: 20,
     flexDirection: "row",
