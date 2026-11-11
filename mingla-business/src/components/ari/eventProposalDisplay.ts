@@ -195,9 +195,15 @@ export function discountProposalFields(
   if (typeof args.max_uses_per_buyer === "number") {
     out.push({ label: "Uses per buyer", value: String(args.max_uses_per_buyer) });
   }
-  if (typeof args.scope_kind === "string") {
-    out.push({ label: "Scope", value: args.scope_kind.replace(/_/g, " ") });
+  // #3355 rework 4 (R4-8): the minimum order and what the code applies to,
+  // in words ("All event tickets", "Lagos Food Fest tickets"), never the raw
+  // scope enum.
+  if (typeof args.min_subtotal_minor === "number") {
+    const money = formatProposalMinor(args.min_subtotal_minor, currency);
+    if (money) out.push({ label: "Minimum order", value: money });
   }
+  const appliesTo = discountAppliesTo(args, context);
+  if (appliesTo) out.push({ label: "Applies to", value: appliesTo });
   if (typeof args.combines_with === "string") {
     out.push({
       label: "Combines with",
@@ -205,4 +211,63 @@ export function discountProposalFields(
     });
   }
   return out;
+}
+
+const KIND_APPLIES: Readonly<Record<string, string>> = {
+  event: "All event tickets",
+  experience: "All experiences",
+  trip: "All trips",
+  venue_order: "All venue orders",
+  reservation_deposit: "All table deposits",
+};
+
+const ONE_TARGET: Readonly<Record<string, string>> = {
+  event: "One event's tickets",
+  ticket_type: "One ticket type",
+  venue_menu: "A venue menu",
+  menu_item: "One menu item",
+  venue_deposit: "Table deposits",
+};
+
+/**
+ * #3355 rework 4 (R4-8): what a discount applies to, in the host's words.
+ * A specific event uses its title from the server's proposal context
+ * (`discount_target_titles`, read by the server); a whole kind reads "All
+ * event tickets"; a brand-wide code reads "Everything you sell". Null when
+ * the card says nothing about it.
+ */
+export function discountAppliesTo(
+  args: Record<string, unknown>,
+  context: Record<string, unknown> = {},
+): string | null {
+  const titles = context.discount_target_titles !== null &&
+      typeof context.discount_target_titles === "object" &&
+      !Array.isArray(context.discount_target_titles)
+    ? (context.discount_target_titles as Record<string, unknown>)
+    : {};
+  const targets = Array.isArray(args.targets) ? args.targets : [];
+  const parts: string[] = [];
+  for (const raw of targets) {
+    if (raw === null || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const target = raw as Record<string, unknown>;
+    const kind = typeof target.listing_kind === "string"
+      ? target.listing_kind
+      : null;
+    let part: string | null = null;
+    if (target.target_kind === "listing_kind" && kind) {
+      part = KIND_APPLIES[kind] ?? null;
+    } else if (typeof target.target_kind === "string") {
+      const id = typeof target.target_id === "string" ? target.target_id : "";
+      const title = typeof titles[id] === "string"
+        ? (titles[id] as string).trim()
+        : "";
+      part = title
+        ? target.target_kind === "event" ? `${title} tickets` : title
+        : ONE_TARGET[target.target_kind] ?? null;
+    }
+    if (part && !parts.includes(part)) parts.push(part);
+  }
+  if (parts.length > 0) return parts.join(", ");
+  if (args.scope_kind === "brand") return "Everything you sell";
+  return null;
 }
