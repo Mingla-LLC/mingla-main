@@ -4,7 +4,7 @@
  *
  * Server state lives in React Query (Const #5). Keys come from the factory;
  * creating a request invalidates the list. The list is filtered to
- * requester = me, so a host who is also Mingla staff sees only their own
+ * requester = me or a brand-team ticket of one of my brands, so a host who is also Mingla staff sees only their own
  * requests here, never the staff queue.
  */
 

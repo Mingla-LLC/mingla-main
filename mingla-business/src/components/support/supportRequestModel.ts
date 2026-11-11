@@ -171,13 +171,36 @@ export function buildHostCreateTicketArgs(input: HostCreateTicketInput): CreateC
 export interface OwnTicketRow {
   requester_user_id: string | null;
   visibility?: string | null;
+  brand_id?: string | null;
 }
 
-/** "My requests": only tickets this person asked for, never an internal ticket. */
-export function keepOwnTickets<T extends OwnTicketRow>(rows: readonly T[], userId: string): T[] {
+/**
+ * "My requests": tickets this person asked for, plus tickets shared with the
+ * team of a brand they belong to (staff can open those for a brand, with no
+ * requester). Never an internal ticket, and never another person's
+ * person-visibility ticket, so a host who is also Mingla staff never sees
+ * the whole queue.
+ */
+export function keepOwnTickets<T extends OwnTicketRow>(
+  rows: readonly T[],
+  userId: string,
+  brandIds: readonly string[] = [],
+): T[] {
+  const brands = new Set(brandIds);
   return rows.filter(
-    (row) => row.requester_user_id === userId && row.visibility !== "internal",
+    (row) =>
+      row.visibility !== "internal" &&
+      (row.requester_user_id === userId ||
+        (row.visibility === "brand" && typeof row.brand_id === "string" && brands.has(row.brand_id))),
   );
+}
+
+/** The PostgREST `or` filter for "mine, or shared with one of my brands". */
+export function ownOrBrandTicketFilter(userId: string, brandIds: readonly string[]): string {
+  const mine = `requester_user_id.eq.${userId}`;
+  return brandIds.length === 0
+    ? mine
+    : `${mine},and(visibility.eq.brand,brand_id.in.(${brandIds.join(",")}))`;
 }
 
 export function formatTicketNumber(ticketNumber: number | null | undefined): string {

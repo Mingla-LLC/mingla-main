@@ -40,10 +40,16 @@ const uploadMock = jest.fn<(...args: unknown[]) => DbResult>();
 const storageFromMock = jest.fn((..._a: unknown[]) => ({ upload: uploadMock }));
 const calls: { method: string; args: unknown[] }[] = [];
 let listResult: { data: unknown; error: unknown } = { data: [], error: null };
+let memberResult: { data: unknown; error: unknown } = { data: [], error: null };
 
-function chain(): Record<string, unknown> {
+function chain(table = ""): Record<string, unknown> {
   const builder: Record<string, unknown> = {};
-  for (const method of ["select", "eq", "neq", "is", "not", "limit"]) {
+  // The brand-membership read ends without .order(): awaiting the builder
+  // resolves the membership rows.
+  if (table === "brand_team_members") {
+    builder.then = (resolve: (value: unknown) => unknown) => resolve(memberResult);
+  }
+  for (const method of ["select", "eq", "neq", "is", "not", "limit", "or"]) {
     builder[method] = (...args: unknown[]) => {
       calls.push({ method, args });
       return builder;
@@ -57,7 +63,7 @@ function chain(): Record<string, unknown> {
 }
 const fromMock = jest.fn((...args: unknown[]) => {
   calls.push({ method: "from", args });
-  return chain();
+  return chain(String(args[0] ?? ""));
 });
 
 jest.mock("../supabase", () => ({
@@ -104,6 +110,7 @@ beforeEach(() => {
   fromMock.mockClear();
   calls.length = 0;
   listResult = { data: [], error: null };
+  memberResult = { data: [], error: null };
 });
 
 describe("#4382 Host new request", () => {
@@ -225,33 +232,72 @@ describe("#4382 Host screenshots", () => {
   });
 });
 
-describe("#4382 My requests = requester is me", () => {
-  test("the query filters on requester_user_id and hides internal tickets", async () => {
+describe("#4382 My requests = mine, or my brands' brand-team tickets", () => {
+  const MY_BRAND = "44444444-4444-4444-8444-444444444444";
+  const OTHER_BRAND = "55555555-5555-4555-8555-555555555555";
+
+  test("the server query asks only for mine or my brands' brand tickets, never internal", async () => {
+    memberResult = { data: [{ brand_id: MY_BRAND }], error: null };
     listResult = {
       data: [
-        { id: "t1", requester_user_id: ME, visibility: "person" },
-        { id: "t2", requester_user_id: OTHER, visibility: "person" },
-        { id: "t3", requester_user_id: ME, visibility: "internal" },
+        { id: "t1", requester_user_id: ME, visibility: "person", brand_id: null },
+        { id: "t2", requester_user_id: OTHER, visibility: "person", brand_id: MY_BRAND },
+        { id: "t3", requester_user_id: ME, visibility: "internal", brand_id: null },
+        { id: "t4", requester_user_id: null, visibility: "brand", brand_id: MY_BRAND },
+        { id: "t5", requester_user_id: null, visibility: "brand", brand_id: OTHER_BRAND },
       ],
       error: null,
     };
     const rows = await listOwnSupportTickets(ME);
-    expect(calls).toContainEqual({ method: "eq", args: ["requester_user_id", ME] });
+    expect(calls).toContainEqual({ method: "from", args: ["brand_team_members"] });
+    expect(calls).toContainEqual({ method: "is", args: ["removed_at", null] });
+    expect(calls).toContainEqual({
+      method: "or",
+      args: [`requester_user_id.eq.${ME},and(visibility.eq.brand,brand_id.in.(${MY_BRAND}))`],
+    });
     expect(calls).toContainEqual({ method: "neq", args: ["visibility", "internal"] });
+    // A staff-opened brand ticket (no requester) shows for a member; another
+    // person's person ticket, another brand's ticket and internal never do.
+    expect(rows.map((row) => row.id)).toEqual(["t1", "t4"]);
+  });
+
+  test("a host who is also staff and in no brand still sees only their own", async () => {
+    memberResult = { data: [], error: null };
+    listResult = {
+      data: [
+        { id: "t1", requester_user_id: ME, visibility: "person", brand_id: null },
+        { id: "t6", requester_user_id: null, visibility: "brand", brand_id: OTHER_BRAND },
+        { id: "t7", requester_user_id: OTHER, visibility: "person", brand_id: null },
+      ],
+      error: null,
+    };
+    const rows = await listOwnSupportTickets(ME);
+    expect(calls).toContainEqual({ method: "or", args: [`requester_user_id.eq.${ME}`] });
     expect(rows.map((row) => row.id)).toEqual(["t1"]);
   });
 
-  test("keepOwnTickets drops someone else's and internal rows", () => {
+  test("keepOwnTickets drops someone else's, other brands' and internal rows", () => {
     expect(
       keepOwnTickets(
         [
-          { requester_user_id: ME, visibility: "brand" },
-          { requester_user_id: null, visibility: "internal" },
-          { requester_user_id: OTHER, visibility: "person" },
+          { requester_user_id: ME, visibility: "brand", brand_id: OTHER_BRAND },
+          { requester_user_id: null, visibility: "internal", brand_id: MY_BRAND },
+          { requester_user_id: OTHER, visibility: "person", brand_id: MY_BRAND },
+          { requester_user_id: null, visibility: "brand", brand_id: MY_BRAND },
+          { requester_user_id: null, visibility: "brand", brand_id: OTHER_BRAND },
         ],
         ME,
+        [MY_BRAND],
       ),
-    ).toEqual([{ requester_user_id: ME, visibility: "brand" }]);
+    ).toEqual([
+      { requester_user_id: ME, visibility: "brand", brand_id: OTHER_BRAND },
+      { requester_user_id: null, visibility: "brand", brand_id: MY_BRAND },
+    ]);
+  });
+
+  test("a failed membership read throws (no silent empty list)", async () => {
+    memberResult = { data: null, error: { message: "members denied" } };
+    await expect(listOwnSupportTickets(ME)).rejects.toThrow("members denied");
   });
 
   test("a DB error throws (no silent empty list)", async () => {

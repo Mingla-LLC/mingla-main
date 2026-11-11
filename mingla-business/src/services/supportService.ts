@@ -21,6 +21,7 @@ import {
   MAX_SUPPORT_IMAGE_BYTES,
   buildHostCreateTicketArgs,
   keepOwnTickets,
+  ownOrBrandTicketFilter,
   parseSupportProductStage,
   supportCopy,
   supportImageMime,
@@ -57,20 +58,37 @@ export interface SupportTicket {
   next_update_note: string | null;
 }
 
+/** The brands this person is an active (accepted, not removed) member of. */
+async function listMyBrandIds(userId: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("brand_team_members")
+    .select("brand_id")
+    .eq("user_id", userId)
+    .is("removed_at", null)
+    .not("accepted_at", "is", null);
+  if (error) throw new Error(error.message);
+  return [...new Set(((data ?? []) as { brand_id: string | null }[])
+    .map((row) => row.brand_id)
+    .filter((id): id is string => typeof id === "string" && id.length > 0))];
+}
+
 /**
- * The signed-in person's OWN requests, newest activity first. RLS also lets
- * support staff read every ticket, so the requester filter here is what keeps
- * a host who is also on the Mingla team from seeing the whole queue.
+ * "My requests", newest activity first: tickets this person asked for, plus
+ * brand-team tickets for brands they belong to (staff-opened brand tickets
+ * have no requester). RLS also lets support staff read every ticket, so this
+ * explicit filter is what keeps a host who is also on the Mingla team from
+ * seeing the whole queue.
  */
 export async function listOwnSupportTickets(userId: string): Promise<SupportTicket[]> {
+  const brandIds = await listMyBrandIds(userId);
   const { data, error } = await supabase
     .from("support_tickets")
     .select(SUPPORT_TICKET_FIELDS)
-    .eq("requester_user_id", userId)
+    .or(ownOrBrandTicketFilter(userId, brandIds))
     .neq("visibility", "internal")
     .order("last_message_at", { ascending: false });
   if (error) throw new Error(error.message);
-  return keepOwnTickets((data ?? []) as SupportTicket[], userId);
+  return keepOwnTickets((data ?? []) as SupportTicket[], userId, brandIds);
 }
 
 /**
