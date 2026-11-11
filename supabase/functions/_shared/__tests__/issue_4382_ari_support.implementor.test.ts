@@ -4,7 +4,10 @@
 // Run:
 //   deno test --allow-read --allow-env supabase/functions/_shared/__tests__/issue_4382_ari_support.implementor.test.ts
 
-import { assertEquals, assertRejects } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  assertEquals,
+  assertRejects,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { DOMAIN_TOOLS } from "../agentDomainTools.ts";
 import { ToolError } from "../agentToolHelpers.ts";
 
@@ -19,7 +22,13 @@ function tool(name: string) {
 }
 
 // deno-lint-ignore no-explicit-any
-function client(invokeResult: { data: unknown; error: unknown }): { client: any; inserts: string[]; invokes: { name: string; body: unknown }[] } {
+function client(
+  invokeResult: { data: unknown; error: unknown },
+): {
+  client: any;
+  inserts: string[];
+  invokes: { name: string; body: unknown }[];
+} {
   const inserts: string[] = [];
   const invokes: { name: string; body: unknown }[] = [];
   // deno-lint-ignore no-explicit-any
@@ -32,7 +41,12 @@ function client(invokeResult: { data: unknown; error: unknown }): { client: any;
     };
     self.single = () => Promise.resolve({ data: { id: "x" }, error: null });
     self.maybeSingle = () =>
-      Promise.resolve({ data: table === "support_tickets" ? { id: TICKET, conversation_id: CONV } : null, error: null });
+      Promise.resolve({
+        data: table === "support_tickets"
+          ? { id: TICKET, conversation_id: CONV }
+          : null,
+        error: null,
+      });
     return self;
   };
   return {
@@ -51,7 +65,10 @@ function client(invokeResult: { data: unknown; error: unknown }): { client: any;
 }
 
 Deno.test("reply goes through support-send as the requester", async () => {
-  const { client: c, inserts, invokes } = client({ data: { ok: true, message_id: "m-1" }, error: null });
+  const { client: c, inserts, invokes } = client({
+    data: { ok: true, message_id: "m-1" },
+    error: null,
+  });
   const out = await tool("manage_support_inbox").executor(
     { action: "reply", ticket_id: TICKET, content: "  Still broken  " },
     c,
@@ -67,9 +84,17 @@ Deno.test("reply goes through support-send as the requester", async () => {
 });
 
 Deno.test("a refused send surfaces as a tool error, not a silent success", async () => {
-  const { client: c } = client({ data: null, error: new Error("Edge Function returned a non-2xx status code") });
+  const { client: c } = client({
+    data: null,
+    error: new Error("Edge Function returned a non-2xx status code"),
+  });
   await assertRejects(
-    () => tool("manage_support_inbox").executor({ action: "reply", ticket_id: TICKET, content: "hi" }, c, USER),
+    () =>
+      tool("manage_support_inbox").executor(
+        { action: "reply", ticket_id: TICKET, content: "hi" },
+        c,
+        USER,
+      ),
     ToolError,
   );
 });

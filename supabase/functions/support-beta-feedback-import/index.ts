@@ -63,7 +63,9 @@ Deno.serve(async (request) => {
         .download(row.import_source_path as string);
       if (downloadError || !blob) throw new Error("source_missing");
       const bytes = blob.size;
-      if (!Number.isInteger(bytes) || bytes < 1) throw new Error("source_empty");
+      if (!Number.isInteger(bytes) || bytes < 1) {
+        throw new Error("source_empty");
+      }
       const { error: uploadError } = await admin.storage.from(TARGET).upload(
         row.storage_path as string,
         blob,
@@ -77,7 +79,10 @@ Deno.serve(async (request) => {
       if (markError || marked !== true) throw new Error("mark_failed");
       copied += 1;
     } catch (err) {
-      failures.push({ id, reason: err instanceof Error ? err.message : "unknown" });
+      failures.push({
+        id,
+        reason: err instanceof Error ? err.message : "unknown",
+      });
     }
   }
 

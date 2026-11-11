@@ -47,10 +47,18 @@ Deno.serve(async (request) => {
       { p_limit: 200 },
     );
     if (claimError) {
-      console.error(JSON.stringify({ event: "support_attachment_cleanup_claim_failed", code: claimError.code ?? null }));
+      console.error(
+        JSON.stringify({
+          event: "support_attachment_cleanup_claim_failed",
+          code: claimError.code ?? null,
+        }),
+      );
       return response(500, { code: "CLAIM_FAILED" });
     }
-    const rows = (claimed ?? []) as { attachment_id: string; storage_path: string }[];
+    const rows = (claimed ?? []) as {
+      attachment_id: string;
+      storage_path: string;
+    }[];
     if (rows.length === 0) break;
 
     const { error: removeError } = await admin.storage.from(BUCKET).remove(
@@ -71,7 +79,12 @@ Deno.serve(async (request) => {
       { p_attachment_ids: rows.map((row) => row.attachment_id) },
     );
     if (finishError) {
-      console.error(JSON.stringify({ event: "support_attachment_cleanup_finish_failed", code: finishError.code ?? null }));
+      console.error(
+        JSON.stringify({
+          event: "support_attachment_cleanup_finish_failed",
+          code: finishError.code ?? null,
+        }),
+      );
       return response(500, { code: "FINISH_FAILED", removed });
     }
     deleted += typeof finished === "number" ? finished : 0;
@@ -84,5 +97,10 @@ Deno.serve(async (request) => {
     deleted_rows: deleted,
     failed_objects: failed,
   }));
-  return response(failed > 0 ? 502 : 200, { ok: failed === 0, removed, deleted, failed });
+  return response(failed > 0 ? 502 : 200, {
+    ok: failed === 0,
+    removed,
+    deleted,
+    failed,
+  });
 });

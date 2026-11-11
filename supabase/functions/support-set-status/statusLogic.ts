@@ -74,7 +74,10 @@ export function waitingNeedsNextUpdate(
  */
 export function statusAfterCustomerMessage(
   from: SupportStatus,
-): { ok: true; status: SupportStatus; reopened: boolean } | { ok: false; error: "ticket_closed" } {
+): { ok: true; status: SupportStatus; reopened: boolean } | {
+  ok: false;
+  error: "ticket_closed";
+} {
   if (from === "closed") return { ok: false, error: "ticket_closed" };
   if (from === "pending" || from === "resolved") {
     return { ok: true, status: "open", reopened: true };

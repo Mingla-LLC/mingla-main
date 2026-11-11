@@ -33,7 +33,10 @@ function bad(error: string, status = 400): ParseResult {
   return { ok: false, status, error };
 }
 
-export function parseSendRequest(body: unknown, nowMs = Date.now()): ParseResult {
+export function parseSendRequest(
+  body: unknown,
+  nowMs = Date.now(),
+): ParseResult {
   if (!body || typeof body !== "object") return bad("bad_request");
   const b = body as Record<string, unknown>;
   if (typeof b.ticketId !== "string" || !UUID_RE.test(b.ticketId)) {
@@ -53,7 +56,9 @@ export function parseSendRequest(body: unknown, nowMs = Date.now()): ParseResult
       unique.add(id.toLowerCase());
     }
     attachmentIds = [...unique];
-    if (attachmentIds.length > MAX_ATTACHMENTS) return bad("too_many_attachments");
+    if (attachmentIds.length > MAX_ATTACHMENTS) {
+      return bad("too_many_attachments");
+    }
   }
   // A message may be images only.
   if (content.length === 0 && attachmentIds.length === 0) {
@@ -76,12 +81,19 @@ export function parseSendRequest(body: unknown, nowMs = Date.now()): ParseResult
   let setWaiting: SendRequest["setWaiting"] = null;
   if (b.setWaiting !== undefined && b.setWaiting !== null) {
     const w = b.setWaiting as Record<string, unknown>;
-    const at = typeof w?.nextUpdateAt === "string" ? Date.parse(w.nextUpdateAt) : NaN;
+    const at = typeof w?.nextUpdateAt === "string"
+      ? Date.parse(w.nextUpdateAt)
+      : NaN;
     const note = typeof w?.note === "string" ? w.note.trim() : "";
-    if (!Number.isFinite(at) || at <= nowMs) return bad("next_update_must_be_future");
+    if (!Number.isFinite(at) || at <= nowMs) {
+      return bad("next_update_must_be_future");
+    }
     if (note.length === 0) return bad("next_update_note_required");
     if (isInternal) return bad("wait_needs_a_customer_reply");
-    setWaiting = { nextUpdateAt: new Date(at).toISOString(), note: note.slice(0, 500) };
+    setWaiting = {
+      nextUpdateAt: new Date(at).toISOString(),
+      note: note.slice(0, 500),
+    };
   }
 
   return {
@@ -98,7 +110,10 @@ export function parseSendRequest(body: unknown, nowMs = Date.now()): ParseResult
 }
 
 /** Staff-only options asked for by someone sending as the customer. */
-export function staffOnlyViolation(req: SendRequest, senderIsStaff: boolean): string | null {
+export function staffOnlyViolation(
+  req: SendRequest,
+  senderIsStaff: boolean,
+): string | null {
   if (senderIsStaff) return null;
   if (req.isInternal) return "internal_notes_are_staff_only";
   if (req.setWaiting) return "send_and_wait_is_staff_only";

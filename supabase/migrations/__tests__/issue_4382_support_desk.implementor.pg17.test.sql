@@ -471,7 +471,7 @@ BEGIN
   v_raised := false;
   BEGIN
     PERFORM public.issue_4382_tell_reporters(v_signal, v_draft);
-  EXCEPTION WHEN sqlstate 'PT409' THEN v_raised := true;
+  EXCEPTION WHEN sqlstate 'PT409' THEN v_raised := SQLERRM = 'already_told';
   END;
   IF NOT v_raised THEN RAISE EXCEPTION 'told_ran_twice'; END IF;
   RESET ROLE;

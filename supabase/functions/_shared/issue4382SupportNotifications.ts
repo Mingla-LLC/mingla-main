@@ -15,16 +15,18 @@ export const ISSUE_4382_SUPPORT_CATEGORIES = [
   "explorer.support_product_update",
 ] as const;
 
-export type Issue4382SupportCategory = typeof ISSUE_4382_SUPPORT_CATEGORIES[number];
+export type Issue4382SupportCategory =
+  typeof ISSUE_4382_SUPPORT_CATEGORIES[number];
 
 export function isIssue4382SupportCategory(
   category: string,
 ): category is Issue4382SupportCategory {
-  return (ISSUE_4382_SUPPORT_CATEGORIES as readonly string[]).includes(category);
+  return (ISSUE_4382_SUPPORT_CATEGORIES as readonly string[]).includes(
+    category,
+  );
 }
 
-const UUID =
-  "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 
 /** The deep link must open this ticket in the app the category belongs to. */
 export function issue4382DeepLinkValid(
@@ -66,14 +68,24 @@ const STATUS_WORDS: Record<string, string> = {
 export function renderIssue4382Message(
   category: Issue4382SupportCategory,
   payload: Record<string, unknown>,
-): { push: { title: string; body: string }; email: { subject: string; body: string }; sms: string } {
+): {
+  push: { title: string; body: string };
+  email: { subject: string; body: string };
+  sms: string;
+} {
   const label = ticketLabel(payload);
   const subject = text(payload.subject, "your request");
   switch (category) {
     case "explorer.support_reply":
       return {
-        push: { title: "Mingla replied", body: `New reply on ${label}: ${subject}` },
-        email: { subject: "Mingla replied", body: `There is a new reply on ${label}: ${subject}.` },
+        push: {
+          title: "Mingla replied",
+          body: `New reply on ${label}: ${subject}`,
+        },
+        email: {
+          subject: "Mingla replied",
+          body: `There is a new reply on ${label}: ${subject}.`,
+        },
         sms: `Mingla: new reply on ${label}.`,
       };
     case "business.support_status_changed":
@@ -88,8 +100,14 @@ export function renderIssue4382Message(
       }
       if (kind === "next_update") {
         return {
-          push: { title: `Update on ${label}`, body: `Mingla set a time for the next update: ${subject}` },
-          email: { subject: `Update on ${label}`, body: `Mingla set a time for the next update on ${subject}.` },
+          push: {
+            title: `Update on ${label}`,
+            body: `Mingla set a time for the next update: ${subject}`,
+          },
+          email: {
+            subject: `Update on ${label}`,
+            body: `Mingla set a time for the next update on ${subject}.`,
+          },
           sms: `Mingla: new update time for ${label}.`,
         };
       }
@@ -103,8 +121,14 @@ export function renderIssue4382Message(
     case "business.support_product_update":
     case "explorer.support_product_update":
       return {
-        push: { title: "It's live", body: `What you reported is fixed: ${subject}` },
-        email: { subject: "It's live", body: `What you reported on ${label} is now live: ${subject}.` },
+        push: {
+          title: "It's live",
+          body: `What you reported is fixed: ${subject}`,
+        },
+        email: {
+          subject: "It's live",
+          body: `What you reported on ${label} is now live: ${subject}.`,
+        },
         sms: `Mingla: what you reported on ${label} is now live.`,
       };
   }
