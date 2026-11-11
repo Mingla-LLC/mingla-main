@@ -44,7 +44,7 @@ If a critical post-cutover bug surfaces and the fix path requires the archived t
 
 This is destructive-reverse territory. Contact the orchestrator before attempting.
 
-## 20280607034382_issue_4382_retire_beta_feedback.sql
+## 20280613064382_issue_4382_retire_beta_feedback.sql
 
 **Schedule:** after the #4382 beta feedback storage copy is verified and the Explorer
 Help & Support build (Wave 5) is live. The file header lists the four preconditions.

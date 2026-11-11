@@ -1,7 +1,9 @@
 -- #4382 — retire beta feedback (D1, D7). DEFERRED: not in the apply path.
 --
 -- Move this file into supabase/migrations/ only AFTER:
---   1. 20280607004382 .. 20280607024382 are applied;
+--   1. 20280613004382 .. 20280613054382 are applied (this file sorts after
+--      all of them; if anything newer has been applied by then, rename it to
+--      a version above the production ceiling before moving it);
 --   2. support-beta-feedback-import is deployed and has been run, and its
 --      response shows "pending": 0 and "failed": [];
 --   3. Support has played one imported voice note in Mingla Admin;

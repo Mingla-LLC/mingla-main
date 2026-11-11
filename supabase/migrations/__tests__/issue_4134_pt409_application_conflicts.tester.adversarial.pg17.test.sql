@@ -395,7 +395,7 @@ $fn$;
 -- (20280605004255_issue_4255_content_calendar_approved_designed.sql)
 -- re-defines content_calendar_move (Designed needs a Drive link, Approved
 -- records the go), so it is put back and restored the same way. #4382
--- (20280607004382 / 20280607024382, Support Desk redesign) re-defines
+-- (20280613004382 / 20280613024382, Support Desk redesign) re-defines
 -- issue_3720_set_next_update, issue_3720_link_product_signal_source,
 -- issue_3720_update_product_signal and issue_3720_save_product_avengers_review
 -- (staff threads became tickets; new Product stages), so they are put back and

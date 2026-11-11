@@ -3091,11 +3091,11 @@
         "supabase/functions/support-send/sendLogic.ts",
         "supabase/functions/support-set-status/index.ts",
         "supabase/functions/support-set-status/statusLogic.ts",
-        "supabase/migrations/20280607004382_issue_4382_support_ticket_model.sql",
-        "supabase/migrations/20280607014382_issue_4382_support_attachments_and_send.sql",
-        "supabase/migrations/20280607024382_issue_4382_product_pipeline.sql",
-        "supabase/migrations/20280607044382_issue_4382_ticket_product_stage.sql",
-        "supabase/migrations/20280607054382_issue_4382_support_write_guards.sql"
+        "supabase/migrations/20280613004382_issue_4382_support_ticket_model.sql",
+        "supabase/migrations/20280613014382_issue_4382_support_attachments_and_send.sql",
+        "supabase/migrations/20280613024382_issue_4382_product_pipeline.sql",
+        "supabase/migrations/20280613044382_issue_4382_ticket_product_stage.sql",
+        "supabase/migrations/20280613054382_issue_4382_support_write_guards.sql"
       ]
     },
     {
