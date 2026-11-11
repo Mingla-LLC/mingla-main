@@ -579,7 +579,8 @@ const TextLinkSheet: React.FC<TextLinkSheetProps> = ({ visible, codeId, currency
   }, [phone.countryIso, phone.e164, sendLink]);
 
   return (
-    <Sheet visible={visible} onClose={onClose} snapPoint="half">
+    // full: with the keyboard up a half sheet has no room left for Send.
+    <Sheet visible={visible} onClose={onClose} snapPoint="full">
       {/* #4389 — scrolls inside the sheet; Send stays pinned above the keyboard. */}
       <SheetScrollLayout
         keyboardAware
