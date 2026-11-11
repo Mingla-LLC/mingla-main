@@ -30,6 +30,11 @@ describe("ORCH-1332 partner brand-creation route contract", () => {
     // Deleting the route file (the F-1 revert) makes readFileSync throw → RED.
     const source = readBusinessFile("app/brand/new.tsx");
     expect(source).toContain("BrandCreationFlow");
+    // #4389: ?partner_mode=client mounts the partner client flow.
+    expect(source).toMatch(/entry === "client" \? \(\s*<LazyPartnerClientBrandCreationFlow/);
+    expect(readBusinessFile("src/components/brand/brandNewEntry.ts")).toContain(
+      'if (input.partnerModeParam === "client") return "client";',
+    );
     // The whole bug was the dynamic [id] route rendering BrandProfileView's
     // not-found branch; the new static route must NEVER mount that view.
     expect(source).not.toContain("BrandProfileView");
@@ -45,7 +50,8 @@ describe("ORCH-1332 partner brand-creation route contract", () => {
   });
 
   test("SC-1 param plumbed — BrandCreationFlow reads partner_mode and presets client mode", () => {
-    const flow = readBusinessFile("src/components/brand/BrandCreationFlow.tsx");
+    // #4389: the partner wizard moved verbatim to PartnerClientBrandCreationFlow.tsx.
+    const flow = readBusinessFile("src/components/brand/PartnerClientBrandCreationFlow.tsx");
     expect(flow).toContain("useLocalSearchParams");
     expect(flow).toContain("partner_mode");
     // The client preset the route relies on (mode:'client', step:1).
@@ -53,7 +59,8 @@ describe("ORCH-1332 partner brand-creation route contract", () => {
   });
 
   test("SC-6 F-2 hardening — client mode is re-applied when partner status resolves after mount", () => {
-    const flow = readBusinessFile("src/components/brand/BrandCreationFlow.tsx");
+    // #4389: the partner wizard moved verbatim to PartnerClientBrandCreationFlow.tsx.
+    const flow = readBusinessFile("src/components/brand/PartnerClientBrandCreationFlow.tsx");
     // The added promote-effect branch. Deleting it (the F-2 revert) removes
     // this exact re-apply dispatch → RED. Distinct from the mount-time preset
     // (which uses the initial-state literal, not this setState re-apply).

@@ -11,10 +11,10 @@
  * brandReadinessService).
  */
 
-import {
-  parseBrandReadiness,
-  type BrandReadiness,
-} from "./brandReadinessService";
+// #3355 keeps the readiness reader off the boot chunk (this module is reached
+// statically from the setup route): types only here, the parser is loaded with
+// the first read.
+import type { BrandReadiness } from "./brandReadinessService";
 import { awaitSessionAttached } from "../utils/authReadyGate";
 
 export type BrandSetupStep = "name" | "country" | "pay" | "done";
@@ -77,7 +77,10 @@ export function parseBrandSetupFacts(raw: unknown): BrandSetupFacts {
   };
 }
 
-export function parseBrandSetupChecklist(raw: unknown): BrandSetupChecklist {
+export function parseBrandSetupChecklist(
+  raw: unknown,
+  parseBrandReadiness: (raw: unknown) => BrandReadiness,
+): BrandSetupChecklist {
   const readiness = parseBrandReadiness(raw);
   const facts = parseBrandSetupFacts(isObject(raw) ? raw.setup : null);
   const doneCount = readiness.items.filter(
@@ -178,7 +181,8 @@ export async function fetchBrandSetupChecklist(brandId: string): Promise<BrandSe
     p_action: "brand_setup",
   });
   if (error) throw classifySetupError(error);
-  return parseBrandSetupChecklist(data);
+  const { parseBrandReadiness } = await import("./brandReadinessService");
+  return parseBrandSetupChecklist(data, parseBrandReadiness);
 }
 
 // ── Writes ──────────────────────────────────────────────────────────────────

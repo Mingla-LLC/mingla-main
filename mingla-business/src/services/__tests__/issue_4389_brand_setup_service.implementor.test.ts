@@ -28,6 +28,7 @@ import {
 } from "../brandSetupService";
 import { tapToPayBrandEligible } from "../../utils/tapToPayBrandEligible";
 import { isAuthNotReadyError } from "../../utils/authReadyGate";
+import { parseBrandReadiness } from "../brandReadinessService";
 
 const BRAND = "43890000-0000-4000-b000-000000000001";
 
@@ -45,7 +46,7 @@ function checklist(states: [string, string][], setup: Record<string, unknown> = 
     items: states.map(([k, s]) => item(k, s)),
     money: { can_sell: false, can_be_paid_out: false, sell_reason: "no_provider", payout_reason: "no_bank", rail: "none", currency: null },
     setup,
-  });
+  }, parseBrandReadiness);
 }
 
 beforeEach(() => {
