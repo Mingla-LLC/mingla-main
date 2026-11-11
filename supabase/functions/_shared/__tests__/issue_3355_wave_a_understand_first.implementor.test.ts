@@ -501,6 +501,81 @@ Deno.test("A2 replay: the FAVY10 sentence inside an open create_event run parks 
   assertEquals(next.kind, "none");
 });
 
+Deno.test("A2 replay (v2 event flow): the FAVY10 sentence on an open form card is never taken as its answer", async () => {
+  const world = freshWorld({ set: new Set(["tagline", "contact_phone", "timezone"]) });
+  const store = new MemoryStore(OWNER);
+  const probes: FlowProbeDeps = {
+    ...probesFor(world),
+    brandFacts: () =>
+      Promise.resolve({
+        default_timezone: "Africa/Lagos",
+        country_code: "NG",
+        default_currency: "NGN",
+      }),
+  };
+  const deps = { store, probes };
+  const def = findFlowDefinition("create_event")!;
+  assertEquals(def.version, 2);
+  const started = await store.start({
+    brandId: BRAND,
+    flowKey: def.key,
+    flowVersion: def.version,
+    concurrency: def.concurrency,
+    conversationId: CHAT,
+    answers: {
+      intent_text: { value: "Create an event", source: "owner" },
+      paid: { value: false, source: "owner" },
+    },
+  });
+  const first = await runFlowStep(deps, {
+    run: started.run,
+    trigger: "turn",
+    brandName: "Favy Lagos",
+  });
+  assertEquals(first.kind, "artefact");
+  if (first.kind !== "artefact") return;
+  assertEquals(first.artefact.answer_mode, "form", "a typed-answer card is open");
+  const typed = await runFlowStep(deps, {
+    run: await current(store),
+    trigger: "turn",
+    ownerText: HOST_FAVY10_SENTENCE,
+    brandName: "Favy Lagos",
+  });
+  assertEquals(typed.kind, "parked");
+  if (typed.kind !== "parked") return;
+  assertEquals(typed.hint, "create_discount");
+  const after = await current(store);
+  assertEquals(after.answers.title, undefined, "the sentence is not the event's name");
+  assertEquals(after.answers.start_at, undefined, "nor its start");
+
+  // An ordinary typed answer on the same kind of card still answers it.
+  const store2 = new MemoryStore(OWNER);
+  const run2 = (await store2.start({
+    brandId: BRAND,
+    flowKey: def.key,
+    flowVersion: def.version,
+    concurrency: def.concurrency,
+    conversationId: CHAT,
+    answers: { intent_text: { value: "Create an event", source: "owner" } },
+  })).run;
+  await runFlowStep({ store: store2, probes }, {
+    run: run2,
+    trigger: "turn",
+    brandName: "Favy Lagos",
+  });
+  const answered = await runFlowStep({ store: store2, probes }, {
+    run: (await store2.getForConversation(CHAT))!,
+    trigger: "turn",
+    ownerText: "Lagos Rooftop Social",
+    brandName: "Favy Lagos",
+  });
+  assert(answered.kind !== "parked", "a plain answer is still an answer");
+  assertEquals(
+    (await store2.getForConversation(CHAT))!.answers.title?.value,
+    "Lagos Rooftop Social",
+  );
+});
+
 Deno.test("A2: unclear words get 'I didn't catch that' once; the same words again are never answered with the same card", async () => {
   const world = freshWorld({ roleOk: false });
   const store = new MemoryStore(OWNER);
@@ -715,4 +790,25 @@ Deno.test("A3: with nothing waiting the summary has no link and no line", async 
   assertNotMatch(done.artefact.text, /to-do list/);
   assertEquals(done.artefact.options, []);
   assertEquals(done.artefact.question_id ?? null, null);
+});
+
+// ── A7 twins of the live flow evals (scripts/ari/eval/flows/) ──────────────
+
+Deno.test("S6 (twin of ng_brand_no_timezone_handoff): an NG brand missing its time zone is never handed off for it", async () => {
+  // Time zone (and everything else that can wait) is missing.
+  const world = freshWorld();
+  const store = new MemoryStore(OWNER);
+  const deps = { store, probes: probesFor(world) };
+  const outcome = await runFlowStep(deps, {
+    run: await startEventRun(store, "Create an event"),
+    trigger: "turn",
+    brandName: "Favy Lagos",
+  });
+  assertEquals(outcome.kind, "delegate");
+  const run = await current(store);
+  assertEquals(run.current_artefact, null, "no card at all on the way in");
+  assert(
+    !Object.values(run.step_states).some((record) => record.item_key === "timezone"),
+    "no step waits on the time zone",
+  );
 });

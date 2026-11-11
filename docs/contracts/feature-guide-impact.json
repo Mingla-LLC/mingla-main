@@ -767,7 +767,12 @@
         "supabase/functions/site-prompt-draft/function-policy.json",
         "supabase/functions/site-prompt-draft/index.ts",
         "supabase/migrations/20280512004339_issue_4339_site_prompt_drafts.sql",
-        "supabase/migrations/20280604003355_issue_3355_tell_owner_receipt.sql"
+        "supabase/migrations/20280604003355_issue_3355_tell_owner_receipt.sql",
+        "supabase/functions/_shared/ariFlows/requestRead.ts",
+        "supabase/functions/_shared/ariTruthGuards.ts",
+        "supabase/migrations/20280606013355_issue_3355_flow_runs_park_and_expire.sql",
+        "supabase/migrations/20280606023355_issue_3355_brand_timezone_from_country.sql",
+        "supabase/migrations/20280606033355_issue_3355_feature_guide_wave_a.sql"
       ]
     },
     {
@@ -1124,7 +1129,13 @@
         "packages/offering-rendering/GlassBlur.tsx",
         "mingla-business/src/services/brandsService.ts",
         "supabase/migrations/20280526004334_issue_4334_place_id_followups.sql",
-        "mingla-business/src/services/brandPinWrite.ts"
+        "mingla-business/src/services/brandPinWrite.ts",
+        "mingla-business/app/brand/[id]/edit.tsx",
+        "mingla-business/src/components/brand/BrandEditTimezoneField.tsx",
+        "mingla-business/src/services/brandMapping.ts",
+        "mingla-business/src/types/brand.ts",
+        "supabase/migrations/20280606023355_issue_3355_brand_timezone_from_country.sql",
+        "supabase/migrations/20280606033355_issue_3355_feature_guide_wave_a.sql"
       ]
     },
     {
@@ -2228,7 +2239,14 @@
         "supabase/functions/_shared/googleFontFamilies.json",
         "supabase/functions/_shared/themeFontValidation.ts",
         "supabase/migrations/20280430001023_issue_1023_widen_theme_animation_slugs.sql",
-        "supabase/migrations/20280430011023_issue_1023_theme_fonts_and_gradients.sql"
+        "supabase/migrations/20280430011023_issue_1023_theme_fonts_and_gradients.sql",
+        "mingla-business/app/brand/[id]/edit.tsx",
+        "mingla-business/src/components/brand/BrandEditTimezoneField.tsx",
+        "mingla-business/src/components/brand/BrandEditView.tsx",
+        "mingla-business/src/types/brand.ts",
+        "mingla-business/src/utils/brandPatch.ts",
+        "supabase/migrations/20280606023355_issue_3355_brand_timezone_from_country.sql",
+        "supabase/migrations/20280606033355_issue_3355_feature_guide_wave_a.sql"
       ]
     },
     {

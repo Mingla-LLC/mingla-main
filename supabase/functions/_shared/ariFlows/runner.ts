@@ -587,9 +587,16 @@ async function advanceUnderLease(
     }
   } else if (input.trigger === "turn") {
     choiceId = textChoiceFor(open, input.ownerText);
+    // #3355 Wave A (A2) — a typed request for something else (a discount
+    // code, a refund, another kind of offering) is never taken as this form
+    // card's answer (the FAVY10 sentence must not become an event's title or
+    // start); it falls through to the re-read below, which parks the run.
+    const otherRequest = readFlowRequest(input.ownerText);
+    const answersThisCard = !otherRequest || otherRequest === "request" ||
+      otherRequest === def.key;
     if (
       !choiceId && open?.answer_mode === "form" && open.question_id &&
-      openStep?.textAnswer && input.ownerText
+      openStep?.textAnswer && input.ownerText && answersThisCard
     ) {
       const values = openStep.textAnswer(ctxFor(openStep.key), input.ownerText);
       if (values) {

@@ -434,7 +434,8 @@ export function phase3dContractDigest(manifest) {
 // #4334: re-sealed after merging origin/main b9d9ba3bab (#3645 payout ledger rows kept beside the #4334 follow-up rows).
 // #3355 Wave A: register the flow-run park/expire migration (20280606013355) in the #1857, #1931 and #2117 replay lanes, and its implementor PostgreSQL proof in the #1931 and #2117 lanes.
 // #3355 Wave A: register the brand time zone from country migration (20280606023355) in the #1857, #1931 and #2117 replay lanes, and its implementor PostgreSQL proof in the #1931 and #2117 lanes.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "486005655ba25df82368d99deb4a66c0bfe2fce6f4edb96ec694a2dabe842e14";
+// #3355 Wave A: register the Feature Guide content migration (20280606033355) in the #1857, #1931 and #2117 replay lanes.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "8c3fd450c39bb11d6f4131552ffc1ba7d1dd0511f53403b12abdd2801387701e";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

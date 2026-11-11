@@ -43,6 +43,11 @@ import * as websiteSetupPhone from "./website_setup_phone.mjs";
 import * as brandGateDeferRemembered from "./brand_gate_defer_remembered.mjs";
 import * as refundRoleRefusedEventManager from "./refund_role_refused_event_manager.mjs";
 import * as moneyReconciliationResolve from "./money_reconciliation_resolve.mjs";
+// #3355 Wave A (A7) — S3–S6.
+import * as influencerRequestDiscountPath from "./influencer_request_discount_path.mjs";
+import * as favy10MidFlowEndsAt from "./favy10_mid_flow_ends_at.mjs";
+import * as sameRequestTwiceNeverSameCard from "./same_request_twice_never_same_card.mjs";
+import * as ngBrandNoTimezoneHandoff from "./ng_brand_no_timezone_handoff.mjs";
 
 export const FLOW_EVALS = [
   eventCreateMinimal,
@@ -55,6 +60,10 @@ export const FLOW_EVALS = [
   refundRoleRefusedEventManager,
   brandGateDeferRemembered,
   moneyReconciliationResolve,
+  influencerRequestDiscountPath,
+  favy10MidFlowEndsAt,
+  sameRequestTwiceNeverSameCard,
+  ngBrandNoTimezoneHandoff,
 ];
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../../../..");
