@@ -1,4 +1,4 @@
--- MINGLA-INVARIANT: I-ARI-KNOWLEDGE-FROM-GUIDE | issue #3355 | ari_search_feature_guide (migration 20280620043355) is the only way Ari reads the Feature Guide: signed-in callers only, full-text over title, outcome, how_to and limitations, public entry text plus the guide's own effective status (Live only with current evidence), no evidence rows, no staff-only entries, at most 5 results (edge half: supabase/functions/_shared/__tests__/issue_3355_wave_b_guide.implementor.test.ts).
+-- MINGLA-INVARIANT: I-ARI-KNOWLEDGE-FROM-GUIDE | issue #3355 | ari_search_feature_guide (migration 20280623043355) is the only way Ari reads the Feature Guide: signed-in callers only, full-text over title, outcome, how_to and limitations, public entry text plus the guide's own effective status (Live only with current evidence), no evidence rows, no staff-only entries, at most 5 results (edge half: supabase/functions/_shared/__tests__/issue_3355_wave_b_guide.implementor.test.ts).
 --
 -- Issue #3355 Wave B (B1). Reverting the function or its grants makes a
 -- block below raise.

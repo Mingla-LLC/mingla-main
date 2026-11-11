@@ -4,7 +4,7 @@
  * Production 2026-11-10: a Lagos host was handed off to Brand profile to add
  * a time zone, which Brand profile could not set. Nigeria has one zone.
  * Asserts on SAVED state: an NG brand with no time zone gets Africa/Lagos as
- * soon as its country is written (migration 20280620023355), and an event
+ * soon as its country is written (migration 20280623023355), and an event
  * setup never shows a time zone handoff (or any "can wait" card) on the way
  * to its first question.
  *

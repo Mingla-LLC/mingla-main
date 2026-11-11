@@ -1,23 +1,11 @@
--- Issue #3355 Wave F (F2) — the Ari quality panel's numbers, for Mingla
--- admins only.
---
--- One read-only, admin-only RPC over a selectable window (1..180 days):
---   * flow completion rate  = guided setups started in the window that
---                              completed / setups started;
---   * park rate             = setups started in the window that were ever
---                              parked / setups started;
---   * refusal rate          = refusal gap events / Ari replies;
---   * repeat-request rate   = repeated_request gap events / host turns;
---   * empty-reply rate      = empty_reply gap events / Ari replies;
---   * turns to done         = host messages between a setup's start and its
---                              completion, per setup (flow_key);
---   * thumbs up / down      = ari_message_feedback in the window.
--- Gap events come from ari_capability_gap_events (Wave D, 20280620073355).
--- A rate whose denominator is 0 is NULL (the panel shows "no data"), never 0.
---
--- Static SQL (no EXECUTE), SECURITY DEFINER with a fixed search_path, and
--- refused for anyone but a Mingla admin (is_admin_user), like the Wave D
--- ari_admin_capability_gap_events. Nothing is written.
+-- Issue #3355 rework 2 (P2-11, Seth 2026-11-11) — a guided setup counts as
+-- completed as soon as its draft is saved and verified (the runner completes
+-- the run on the draft step's evidence; the optional "get it ready" step is a
+-- follow-up offered on the completion card). Saying yes carries on in a new
+-- run marked answers.follow_up_of. The quality panel counts setups, so a
+-- follow-up run is not a second setup started: it is left out of the flow
+-- counts and of turns to done. Everything else is unchanged from
+-- 20280623093355 (same signature, same shape, admin only, read only).
 
 CREATE OR REPLACE FUNCTION public.ari_admin_quality_metrics(
   p_days integer DEFAULT 30
@@ -53,7 +41,10 @@ BEGIN
          count(*) FILTER (WHERE r.status NOT IN ('completed', 'cancelled', 'expired'))
     INTO v_runs, v_completed, v_parked, v_cancelled, v_expired, v_open
     FROM public.ari_flow_runs r
-   WHERE r.created_at >= v_since;
+   WHERE r.created_at >= v_since
+     -- #3355 rework 2: a follow-up run continues a setup that already
+     -- completed; it is not a new setup.
+     AND NOT (r.answers ? 'follow_up_of');
 
   SELECT count(*) FILTER (WHERE m.role = 'user'),
          count(*) FILTER (WHERE m.role = 'assistant')
@@ -130,6 +121,7 @@ BEGIN
                        AND m.created_at <= r.completed_at) AS turns
               FROM public.ari_flow_runs r
              WHERE r.created_at >= v_since
+               AND NOT (r.answers ? 'follow_up_of')
                AND r.status = 'completed'
                AND r.completed_at IS NOT NULL
                AND r.conversation_id IS NOT NULL
@@ -145,4 +137,4 @@ REVOKE ALL ON FUNCTION public.ari_admin_quality_metrics(integer) FROM PUBLIC, an
 GRANT EXECUTE ON FUNCTION public.ari_admin_quality_metrics(integer) TO authenticated, service_role;
 
 COMMENT ON FUNCTION public.ari_admin_quality_metrics(integer) IS
-  '#3355 Wave F (F2): Ari quality panel numbers over the last p_days (1..180): flow completion, park, refusal, repeat-request, empty-reply and thumbs-up rates, turns to done per setup. Admin only; read only.';
+  '#3355 Wave F (F2), rework 2: Ari quality panel numbers over the last p_days (1..180): flow completion, park, refusal, repeat-request, empty-reply and thumbs-up rates, turns to done per setup. Admin only; read only.';

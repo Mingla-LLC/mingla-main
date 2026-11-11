@@ -1,6 +1,6 @@
 -- Issue #3355 rework 3 (tester R3-7) — I-ARI-FOLLOW-UP-NEVER-CANCELS
 -- (declared in supabase/functions/_shared/__tests__/issue_3355_rework_3.implementor.test.ts;
--- enforced in SQL by 20280620133355_issue_3355_flow_follow_up_never_cancels.sql).
+-- enforced in SQL by 20280623133355_issue_3355_flow_follow_up_never_cancels.sql).
 --
 --   F1  a completed event setup and a parked trip setup in one chat: the
 --       follow-up start ("Yes" on the old event card, answers.follow_up_of)
@@ -9,7 +9,7 @@
 --   F3  with nothing else open the follow-up starts (completed run kept);
 --   F4  a new setup (no follow_up_of) still replaces the chat's parked one
 --       (the Wave A rule is unchanged).
--- Reverting 20280620133355 (the 20280620013355 body) raises F1: the parked
+-- Reverting 20280623133355 (the 20280623013355 body) raises F1: the parked
 -- trip is cancelled.
 
 \set ON_ERROR_STOP on

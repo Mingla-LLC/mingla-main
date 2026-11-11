@@ -43,10 +43,3 @@ If a critical post-cutover bug surfaces and the fix path requires the archived t
 - Consider reverting migrations 20260425000010..000014 via a down migration.
 
 This is destructive-reverse territory. Contact the orchestrator before attempting.
-
-## 20280613064382_issue_4382_retire_beta_feedback.sql
-
-**Schedule:** after the #4382 beta feedback storage copy is verified and the Explorer
-Help & Support build (Wave 5) is live. The file header lists the four preconditions.
-**What it does:** drops `beta_feedback` and the one-off import map. It refuses to run
-while any imported file is still uncopied.

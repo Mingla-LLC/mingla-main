@@ -770,34 +770,34 @@
         "supabase/migrations/20280604003355_issue_3355_tell_owner_receipt.sql",
         "supabase/functions/_shared/ariFlows/requestRead.ts",
         "supabase/functions/_shared/ariTruthGuards.ts",
-        "supabase/migrations/20280620013355_issue_3355_flow_runs_park_and_expire.sql",
-        "supabase/migrations/20280620023355_issue_3355_brand_timezone_from_country.sql",
-        "supabase/migrations/20280620033355_issue_3355_feature_guide_wave_a.sql",
+        "supabase/migrations/20280623013355_issue_3355_flow_runs_park_and_expire.sql",
+        "supabase/migrations/20280623023355_issue_3355_brand_timezone_from_country.sql",
+        "supabase/migrations/20280623033355_issue_3355_feature_guide_wave_a.sql",
         "supabase/functions/_shared/ariAppMap.ts",
         "supabase/functions/_shared/ariGuideKnowledge.ts",
         "supabase/functions/_shared/ariToolDescriptions.ts",
         "supabase/functions/_shared/generated/ariAppMap.json",
-        "supabase/migrations/20280620043355_issue_3355_ari_search_feature_guide.sql",
-        "supabase/migrations/20280620053355_issue_3355_feature_guide_wave_b.sql",
+        "supabase/migrations/20280623043355_issue_3355_ari_search_feature_guide.sql",
+        "supabase/migrations/20280623053355_issue_3355_feature_guide_wave_b.sql",
         "mingla-business/src/config/routes.ts",
         "supabase/functions/_shared/ariTurnContext.ts",
         "supabase/functions/_shared/ariMemory.ts",
         "supabase/functions/_shared/ariGaps.ts",
         "supabase/functions/_shared/ariPii.ts",
-        "supabase/migrations/20280620063355_issue_3355_ari_memory_notes.sql",
-        "supabase/migrations/20280620073355_issue_3355_ari_gap_logging.sql",
-        "supabase/migrations/20280620083355_issue_3355_feature_guide_wave_d.sql",
+        "supabase/migrations/20280623063355_issue_3355_ari_memory_notes.sql",
+        "supabase/migrations/20280623073355_issue_3355_ari_gap_logging.sql",
+        "supabase/migrations/20280623083355_issue_3355_feature_guide_wave_d.sql",
         "mingla-admin/src/components/ari/AriGapsPanel.jsx",
         "mingla-admin/src/lib/ariGaps.js",
         "supabase/functions/_shared/ariIntentRead.ts",
         "supabase/functions/_shared/ariFlows/startFlowTool.ts",
         "supabase/functions/_shared/agentGeminiContents.ts",
-        "supabase/migrations/20280620093355_issue_3355_ari_quality_panel.sql",
+        "supabase/migrations/20280623093355_issue_3355_ari_quality_panel.sql",
         "mingla-admin/src/components/ari/AriQualityPanel.jsx",
         "mingla-admin/src/lib/ariQuality.js",
-        "supabase/migrations/20280620113355_issue_3355_ari_memory_brand_voice.sql",
-        "supabase/migrations/20280620123355_issue_3355_ari_quality_follow_up_runs.sql",
-        "supabase/migrations/20280620133355_issue_3355_flow_follow_up_never_cancels.sql"
+        "supabase/migrations/20280623113355_issue_3355_ari_memory_brand_voice.sql",
+        "supabase/migrations/20280623123355_issue_3355_ari_quality_follow_up_runs.sql",
+        "supabase/migrations/20280623133355_issue_3355_flow_follow_up_never_cancels.sql"
       ]
     },
     {
@@ -1159,8 +1159,8 @@
         "mingla-business/src/components/brand/BrandEditTimezoneField.tsx",
         "mingla-business/src/services/brandMapping.ts",
         "mingla-business/src/types/brand.ts",
-        "supabase/migrations/20280620023355_issue_3355_brand_timezone_from_country.sql",
-        "supabase/migrations/20280620033355_issue_3355_feature_guide_wave_a.sql"
+        "supabase/migrations/20280623023355_issue_3355_brand_timezone_from_country.sql",
+        "supabase/migrations/20280623033355_issue_3355_feature_guide_wave_a.sql"
       ]
     },
     {
@@ -2117,7 +2117,7 @@
         "mingla-business/src/components/discounts/DiscountListView.tsx",
         "packages/offering-rendering/discountWriteRefusalCopy.ts",
         "supabase/functions/brand-discount-upsert/index.ts",
-        "supabase/migrations/20280620103355_issue_3355_feature_guide_discount_codes_live.sql"
+        "supabase/migrations/20280623103355_issue_3355_feature_guide_discount_codes_live.sql"
       ]
     },
     {
@@ -2276,8 +2276,8 @@
         "mingla-business/src/components/brand/BrandEditView.tsx",
         "mingla-business/src/types/brand.ts",
         "mingla-business/src/utils/brandPatch.ts",
-        "supabase/migrations/20280620023355_issue_3355_brand_timezone_from_country.sql",
-        "supabase/migrations/20280620033355_issue_3355_feature_guide_wave_a.sql"
+        "supabase/migrations/20280623023355_issue_3355_brand_timezone_from_country.sql",
+        "supabase/migrations/20280623033355_issue_3355_feature_guide_wave_a.sql"
       ]
     },
     {
@@ -3106,6 +3106,7 @@
     {
       "capability_key": "staff-support-desk",
       "paths": [
+        "mingla-admin/README.md",
         "mingla-admin/src/components/community/SupportWorkflowModals.jsx",
         "mingla-admin/src/components/community/supportWorkflowUtils.js",
         "mingla-admin/src/components/people/PersonDrawer.jsx",
@@ -3141,7 +3142,8 @@
         "supabase/migrations/20280613014382_issue_4382_support_attachments_and_send.sql",
         "supabase/migrations/20280613024382_issue_4382_product_pipeline.sql",
         "supabase/migrations/20280613044382_issue_4382_ticket_product_stage.sql",
-        "supabase/migrations/20280613054382_issue_4382_support_write_guards.sql"
+        "supabase/migrations/20280613054382_issue_4382_support_write_guards.sql",
+        "supabase/migrations/20280622004382_issue_4382_retire_beta_feedback.sql"
       ]
     },
     {
@@ -3251,7 +3253,8 @@
         "app-mobile/src/services/betaFeedbackService.ts",
         "app-mobile/src/services/supportTicketService.ts",
         "app-mobile/src/utils/mediaLibraryPermission.ts",
-        "app-mobile/src/utils/supportRequestModel.ts"
+        "app-mobile/src/utils/supportRequestModel.ts",
+        "supabase/functions/submit-feedback/index.ts"
       ]
     }
   ]

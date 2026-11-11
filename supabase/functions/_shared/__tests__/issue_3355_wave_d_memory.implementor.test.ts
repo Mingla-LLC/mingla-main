@@ -410,7 +410,7 @@ Deno.test("D1: agent-chat reads memory as the caller into <user_data>, not into 
 
 Deno.test("D1: the edge and SQL refuse the same words", () => {
   const sql = read(
-    "supabase/migrations/20280620063355_issue_3355_ari_memory_notes.sql",
+    "supabase/migrations/20280623063355_issue_3355_ari_memory_notes.sql",
   );
   const pii = read("supabase/functions/_shared/ariPii.ts");
   for (

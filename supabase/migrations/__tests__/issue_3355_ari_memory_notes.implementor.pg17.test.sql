@@ -1,7 +1,7 @@
 -- MINGLA-INVARIANT: I-ARI-MEMORY-SCOPED | issue #3355 | An Ari memory note is readable only by its author (scope user) or by members of its brand (scope brand); a member of another brand never reads it, and only the author or a brand admin can forget it.
 -- MINGLA-INVARIANT: I-ARI-MEMORY-NO-SENSITIVE | issue #3355 | public.ari_remember_note, ari_memory_save and ari_memory_update refuse payment, ID and contact details (emails, phone numbers, card-like numbers, password and ID words) server-side, are idempotent on the normalised words, and allow at most 20 new notes per user per hour.
 --
--- Wave D (20280620063355). Reverting the migration fails the first block
+-- Wave D (20280623063355). Reverting the migration fails the first block
 -- (no ari_remember_note).
 
 \set ON_ERROR_STOP on
