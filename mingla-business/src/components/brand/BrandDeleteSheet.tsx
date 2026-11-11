@@ -374,14 +374,7 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
                     {counts.teamMemberCount}
                   </Text>
                 </View>
-                <View style={styles.previewRow}>
-                  {/* #3645 — host-facing copy never names a payment provider. */}
-                  <Text style={styles.previewLabel}>Payment account</Text>
-                  <Text style={styles.previewValue}>
-                    {/* #4389 D1 — the delete really closes it now. */}
-                    {counts.hasStripeConnect ? BRAND_SETUP_COPY.delete.closedOnDelete : BRAND_SETUP_COPY.delete.none}
-                  </Text>
-                </View>
+                <PaymentAccountPreviewRow hasAccount={counts.hasStripeConnect} />
                 {counts.upcomingEventCount > 0 || counts.liveEventCount > 0 ? (
                   <View style={[styles.warnCard, styles.warnCardDanger]}>
                     <Icon name="flag" size={18} color={semantic.error} />
@@ -552,6 +545,22 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
   );
 };
 
+/**
+ * #4389 D1 — the payment account row of the delete preview. The value is a
+ * sentence ("Will be closed when you delete"), so the row stacks: label on
+ * line 1, value on line 2 with a gap, wrapping, never truncated (#4389 P2 on
+ * SE: in one row the two ran together and the value was clipped).
+ * #3645 — host-facing copy never names a payment provider.
+ */
+export const PaymentAccountPreviewRow: React.FC<{ hasAccount: boolean }> = ({ hasAccount }) => (
+  <View style={[styles.previewRow, styles.previewRowStacked]} testID="brand-delete-payment-account-row">
+    <Text style={styles.previewLabel}>Payment account</Text>
+    <Text style={[styles.previewValue, styles.previewValueWrap]}>
+      {hasAccount ? BRAND_SETUP_COPY.delete.closedOnDelete : BRAND_SETUP_COPY.delete.none}
+    </Text>
+  </View>
+);
+
 const styles = StyleSheet.create({
   scroll: {
     flex: 1,
@@ -635,6 +644,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: glass.border.profileBase,
     marginBottom: spacing.xs,
+  },
+  previewRowStacked: {
+    flexDirection: "column",
+    alignItems: "flex-start",
+    justifyContent: "flex-start",
+    gap: spacing.xs,
+  },
+  previewValueWrap: {
+    flexShrink: 1,
+    alignSelf: "stretch",
   },
   previewRowDanger: {
     borderColor: "rgba(239, 68, 68, 0.32)",
