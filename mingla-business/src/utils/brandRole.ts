@@ -40,3 +40,11 @@ export const BRAND_ROLE_RANK = {
 } as const satisfies Record<BrandRole, number>;
 
 export const NO_MEMBERSHIP_RANK = 0;
+
+/**
+ * #4271 — the one rule for "may accept Apple's Tap to Pay on iPhone terms".
+ * Apple: present the terms (and the awareness splash that leads to them) only to
+ * an admin or authorized party. A loading or failed role check reads as no. The
+ * setup screen and the awareness modal both use this; never restate the rank.
+ */
+export const tapToPayMayAcceptTerms = (rank: number): boolean => rank >= BRAND_ROLE_RANK.brand_admin;

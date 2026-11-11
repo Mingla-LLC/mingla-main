@@ -999,6 +999,22 @@ export default function ExpandedCardModal({
     }
   }, []);
 
+  // #4381: the deck and Saved close the card by clearing `visible` AND the card
+  // in one commit. This component stays mounted but renders nothing, so the
+  // root sheet (and its RN Modal) unmounts with no native dismiss and the
+  // cleanup above never runs: the slot stayed held and every later Been here on
+  // a collapsed card timed out with a toast. Give the slot back whenever this
+  // component can no longer present its root sheet. Suspending the sheet for a
+  // child surface or the prompt keeps `visible` and the card, so it does not
+  // reach here; that path releases on the real native dismiss.
+  const rootSheetMounted =
+    visible && card !== null && (businessEvent === null || businessEvent === undefined);
+  useEffect(() => {
+    if (rootSheetMounted || !holdsPresentationSlot.current) return;
+    holdsPresentationSlot.current = false;
+    releasePlaceReviewSlot();
+  }, [rootSheetMounted]);
+
   useEffect(() => {
     if (shareHandoffPhase === 'idle' || shareHandoffPhase === 'provider_visible') return undefined;
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {

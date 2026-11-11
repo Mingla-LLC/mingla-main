@@ -10,3 +10,9 @@ export const SUPPORT_HOST_FACING_AGENT = "Mingla Support" as const;
 
 /** Help Centre videos (Guides) — opens in the system browser. */
 export const HELP_CENTRE_URL = "https://usemingla.com/help" as const;
+
+/**
+ * The Help & Support screen: Account → Settings → Help & Support. One route for
+ * every "Get help" in the app (the Tap to Pay screens too, #4271).
+ */
+export const HELP_AND_SUPPORT_ROUTE = "/account/support" as const;

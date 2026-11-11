@@ -88,6 +88,20 @@ Deno.test("#4381 the sheet holds the presentation slot from native show to nativ
   );
 });
 
+Deno.test("#4381 closing the card (card cleared, sheet unmounted, no native dismiss) gives the slot back", async () => {
+  const sheet = strip(await read("components/ExpandedCardModal.tsx"));
+  const mounted = statement(sheet, /const rootSheetMounted =/);
+  assert(/\bvisible\b/.test(mounted) && /\bcard !== null\b/.test(mounted), "keyed on the visible prop and the card");
+  assert(/\bbusinessEvent === null\b/.test(mounted), "the business-event and experience-route branches count as not mounted");
+  assert(!/anyChildModalOpen|placeReviewOpen|rootSuspendedForShare/.test(mounted), "a suspended sheet is still mounted: no early release");
+  assert(
+    /useEffect\(\(\) => \{\s*if \(rootSheetMounted \|\| !holdsPresentationSlot\.current\) return;\s*holdsPresentationSlot\.current = false;\s*releasePlaceReviewSlot\(\);\s*\}, \[rootSheetMounted\]\);/.test(sheet),
+    "the ref-guarded single hold is released once when the root sheet can no longer present",
+  );
+  const effect = sheet.indexOf("}, [rootSheetMounted]);");
+  assert(effect > 0 && effect < sheet.indexOf("if (!card) {"), "the effect runs above the early returns (rules of hooks)");
+});
+
 Deno.test("#4381 lowering the sheet for the review prompt is not a close", async () => {
   const sheet = strip(await read("components/ExpandedCardModal.tsx"));
   const { body, deps } = callbackBody(sheet, "handleRootSheetClose");

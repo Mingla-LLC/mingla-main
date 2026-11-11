@@ -19,7 +19,7 @@
  * red is kept for Apple's hard blocks (device banned, merchant blocked).
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Platform, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -33,9 +33,10 @@ import {
   text as textTokens,
   typography,
 } from "../../../constants/designSystem";
+import { HELP_AND_SUPPORT_ROUTE } from "../../../constants/supportHostFacing";
 import {
+  TAP_GET_HELP,
   TAP_ON_FOR_BRAND,
-  TAP_TO_PAY_SHORT,
   TAP_ADMIN_ONLY_COPY,
   TAP_APPLE_TERMS_ROW,
   tapToPayName,
@@ -66,7 +67,9 @@ import { TapStatusView } from "./TapStatusView";
 import { TapToPayEducation } from "./TapToPayEducation";
 import { TapUpdateIos } from "./TapUpdateIos";
 import { tapToPayAcceptanceFor, useTapToPayTerminal } from "../../../services/terminal/tapToPaySession";
-import { BRAND_ROLE_RANK } from "../../../utils/brandRole";
+// Only an admin may accept the terms. A client check, because the terms sheet is
+// native; the server still gates the money.
+import { tapToPayMayAcceptTerms } from "../../../utils/brandRole";
 
 export interface TapToPaySetupScreenProps {
   /** Settings passes this; a door route gets the brand from its event. */
@@ -97,13 +100,6 @@ export const setupRowsFor = (os: string): SetupRow[] => {
       : { title: "Quick phone check", sub: "We check NFC is on and the phone is secure." },
   ];
 };
-
-/**
- * Apple: only an admin or authorized party may accept the terms. A loading or
- * failed role check reads as no. This can only be a client check because the
- * terms sheet is native; the server still gates the money.
- */
-export const tapToPayMayAcceptTerms = (rank: number): boolean => rank >= BRAND_ROLE_RANK.brand_admin;
 
 export const TapToPaySetupScreen = ({
   brandId: brandIdProp = null,
@@ -147,6 +143,12 @@ export const TapToPaySetupScreen = ({
     if (router.canGoBack()) router.back();
     else goToDoor();
   }, [router, goToDoor]);
+
+  // "Get help" on every state that isn't a success: the same Help & Support
+  // screen as Account → Settings → Help & Support.
+  const openHelp = useCallback((): void => {
+    router.push(HELP_AND_SUPPORT_ROUTE as never);
+  }, [router]);
 
   const startPayCode = useCallback(async (): Promise<void> => {
     if (draft === null || eventId === null) {
@@ -284,17 +286,19 @@ export const TapToPaySetupScreen = ({
       </ScrollView>
     );
   } else if (showIosUpdate) {
-    body = <TapUpdateIos onUsePayCode={() => void startPayCode()} loading={payCodeBusy} />;
+    body = <TapUpdateIos onUsePayCode={() => void startPayCode()} loading={payCodeBusy} onHelp={openHelp} />;
   } else if (deviceBlocked) {
-    body = <TapNotOnThisPhone onUsePayCode={() => void startPayCode()} loading={payCodeBusy} />;
+    body = <TapNotOnThisPhone onUsePayCode={() => void startPayCode()} loading={payCodeBusy} onHelp={openHelp} />;
   } else if (!availability.available || brandNotAvailable) {
     body = (
       <TapStatusView
         tone="neutral"
         icon={Platform.OS === "ios" ? "globe" : "tap"}
-        title={`${TAP_TO_PAY_SHORT} isn't available here`}
+        title={`${tapToPayName(Platform.OS)} isn't available here`}
         body="This brand can't take taps. Use a pay code instead. It works on any phone."
         primary={{ label: "Use a pay code", onPress: () => void startPayCode(), loading: payCodeBusy }}
+        onHelp={openHelp}
+        testID="tap-setup-not-available"
       />
     );
   } else if (adminRequired) {
@@ -316,6 +320,7 @@ export const TapToPaySetupScreen = ({
               }
             : null
         }
+        onHelp={openHelp}
         testID="tap-setup-admin-only"
       />
     );
@@ -340,6 +345,9 @@ export const TapToPaySetupScreen = ({
             <Text style={styles.error}>{terminal.errorMessage}</Text>
           ) : null}
           {error ? <Text style={styles.error}>{error}</Text> : null}
+          {error || (terminal.status === "error" && terminal.errorMessage) ? (
+            <HelpLink onPress={openHelp} />
+          ) : null}
         </ScrollView>
         <View style={styles.bar}>
           <Button
@@ -370,6 +378,19 @@ export const TapToPaySetupScreen = ({
     </View>
   );
 };
+
+/** The setup list's own "Get help" once setup failed (the status screens carry theirs). */
+const HelpLink = ({ onPress }: { onPress: () => void }): React.ReactElement => (
+  <Pressable
+    onPress={onPress}
+    accessibilityRole="button"
+    accessibilityLabel={TAP_GET_HELP}
+    style={styles.helpLink}
+    testID="tap-get-help"
+  >
+    <Text style={styles.helpLinkText}>{TAP_GET_HELP}</Text>
+  </Pressable>
+);
 
 const styles = StyleSheet.create({
   host: { flex: 1 },
@@ -415,5 +436,12 @@ const styles = StyleSheet.create({
     textAlign: "center",
     paddingHorizontal: spacing.md,
     marginTop: spacing.sm,
+  },
+  helpLink: { minHeight: 44, alignItems: "center", justifyContent: "center" },
+  helpLinkText: {
+    ...typography.bodySm,
+    fontWeight: "600",
+    color: textTokens.secondary,
+    textDecorationLine: "underline",
   },
 });

@@ -21,6 +21,7 @@ import { AppState, Platform } from "react-native";
 
 import type { Reader } from "@stripe/stripe-terminal-react-native";
 
+import { tapToPayName } from "../../../constants/tapToPayName";
 import { reportNonFatal } from "../../../diagnostics/reportNonFatal";
 import { useBrand } from "../../../hooks/useBrands";
 import { currentTapToPayDevice, isTapToPayDeviceSupported } from "../../../services/terminal/tapToPayDevice";
@@ -90,7 +91,7 @@ const TerminalBridge = ({ sdk, brandId, merchantDisplayName }: BridgeProps): nul
       if (!alive) return;
       if (init.error) {
         setStatus("error");
-        setErrorMessage("Couldn't start Tap to Pay. Check your connection and try again.");
+        setErrorMessage(`Couldn't start ${tapToPayName(Platform.OS)}. Check your connection and try again.`);
         return;
       }
       if (lastInitializedBrandId !== null && lastInitializedBrandId !== brandId) {
@@ -111,7 +112,7 @@ const TerminalBridge = ({ sdk, brandId, merchantDisplayName }: BridgeProps): nul
       if (__DEV__) console.warn("[#4271] Terminal initialize failed", error);
       if (alive) {
         setStatus("error");
-        setErrorMessage("Couldn't start Tap to Pay. Try again.");
+        setErrorMessage(`Couldn't start ${tapToPayName(Platform.OS)}. Try again.`);
       }
     });
     return () => {
