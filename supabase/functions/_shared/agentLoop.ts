@@ -23,8 +23,41 @@ export interface AgentLoopObservation {
   args: Record<string, unknown>;
   thoughtSignature?: string;
   result?: unknown;
-  error?: { code: string; message: string };
+  /**
+   * #3355 Wave B (B4): a failed call is an observation the model reasons
+   * over — the code, the detail, the host-facing reason and the next step
+   * (a Host screen from the App Map or another tool).
+   */
+  error?: AgentLoopToolErrorObservation;
   elapsedMs: number;
+}
+
+export interface AgentLoopToolErrorObservation {
+  code: string;
+  message: string;
+  user_reason?: string;
+  next_step?: unknown;
+}
+
+export interface AgentLoopNormalizedError {
+  code: string;
+  message: string;
+  recoverable: boolean;
+  user_reason?: string;
+  next_step?: unknown;
+}
+
+function errorObservation(
+  normal: AgentLoopNormalizedError,
+): AgentLoopToolErrorObservation {
+  return {
+    code: normal.code,
+    message: normal.message,
+    ...(normal.user_reason !== undefined
+      ? { user_reason: normal.user_reason }
+      : {}),
+    ...(normal.next_step !== undefined ? { next_step: normal.next_step } : {}),
+  };
 }
 
 export interface AgentLoopProposalValidationIssue {
@@ -124,17 +157,18 @@ export async function runAgentLoop(args: {
   validateFinalText?: (
     text: string,
     observations: readonly AgentLoopObservation[],
-  ) => AgentLoopProposalValidationIssue | null | Promise<
-    AgentLoopProposalValidationIssue | null
-  >;
+  ) =>
+    | AgentLoopProposalValidationIssue
+    | null
+    | Promise<
+      AgentLoopProposalValidationIssue | null
+    >;
   executeTool: (call: AgentLoopToolCall) => Promise<unknown>;
   isCancelled?: () => Promise<boolean>;
   onProgress?: (
     event: { phase: string; step: number; tool?: string },
   ) => Promise<void> | void;
-  normalizeError?: (
-    error: unknown,
-  ) => { code: string; message: string; recoverable: boolean };
+  normalizeError?: (error: unknown) => AgentLoopNormalizedError;
 }): Promise<AgentLoopResult> {
   const budget = { ...DEFAULT_AGENT_LOOP_BUDGET, ...(args.budget ?? {}) };
   const started = Date.now();
@@ -200,7 +234,7 @@ export async function runAgentLoop(args: {
       });
       consecutiveErrors = 0;
     } catch (error) {
-      const normal = args.normalizeError?.(error) ?? {
+      const normal: AgentLoopNormalizedError = args.normalizeError?.(error) ?? {
         code: "TOOL_FAILED",
         message: error instanceof Error ? error.message : "The tool failed.",
         recoverable: true,
@@ -208,7 +242,7 @@ export async function runAgentLoop(args: {
       observations.push({
         tool: call.name,
         args: call.args,
-        error: { code: normal.code, message: normal.message },
+        error: errorObservation(normal),
         elapsedMs: Date.now() - toolStarted,
       });
       if (
@@ -279,7 +313,7 @@ export async function runAgentLoop(args: {
       });
       consecutiveErrors = 0;
     } catch (error) {
-      const normal = args.normalizeError?.(error) ?? {
+      const normal: AgentLoopNormalizedError = args.normalizeError?.(error) ?? {
         code: "TOOL_FAILED",
         message: error instanceof Error ? error.message : "The tool failed.",
         recoverable: true,
@@ -287,7 +321,7 @@ export async function runAgentLoop(args: {
       observations.push({
         tool: call.name,
         args: call.args,
-        error: { code: normal.code, message: normal.message },
+        error: errorObservation(normal),
         elapsedMs: Date.now() - toolStarted,
       });
       if (
@@ -497,7 +531,7 @@ export async function runAgentLoop(args: {
         });
         consecutiveErrors = 0;
       } catch (error) {
-        const normal = args.normalizeError?.(error) ??
+        const normal: AgentLoopNormalizedError = args.normalizeError?.(error) ??
           {
             code: "TOOL_FAILED",
             message: error instanceof Error
@@ -511,7 +545,7 @@ export async function runAgentLoop(args: {
           ...(call.thoughtSignature
             ? { thoughtSignature: call.thoughtSignature }
             : {}),
-          error: { code: normal.code, message: normal.message },
+          error: errorObservation(normal),
           elapsedMs: Date.now() - toolStarted,
         });
         if (!normal.recoverable) {

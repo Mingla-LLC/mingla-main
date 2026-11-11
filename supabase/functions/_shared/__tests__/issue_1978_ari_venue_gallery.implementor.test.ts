@@ -10,7 +10,11 @@ import {
 import { DOMAIN_TOOLS } from "../agentDomainTools.ts";
 import { AGENT_TOOL_AUTHORIZATION } from "../agentToolAuthorization.ts";
 import { isReadOnlyAgentToolCall } from "../agentTools.ts";
-import { buildSystemPrompt, PROMPT_VERSION } from "../agentSystemPrompt.ts";
+import {
+  ARI_CAPABILITY_INDEX,
+  buildSystemPrompt,
+  PROMPT_VERSION,
+} from "../agentSystemPrompt.ts";
 
 const BRAND = "11111111-1111-4111-8111-111111111111";
 const VENUE = "22222222-2222-4222-8222-222222222222";
@@ -114,8 +118,11 @@ Deno.test("#1978 implementor: PROMPT_VERSION advertises manage_venue_gallery", (
   // [TEST-MOD-APPROVED #1976] Prompt revision advanced for payout/tax connect-status ads.
   // [TEST-MOD-APPROVED #1980] Prompt revision advanced for marketing draft/growth report tools.
   // [TEST-MOD-APPROVED #1981] prompt v17→v18 for refund/cancel discovery (append-only auth).
-  assertEquals(PROMPT_VERSION, "v29"); // #2829 W11 completes the website journey entrances
-  const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false });
+  assertEquals(PROMPT_VERSION, "v30"); // #3355 Wave B: the prompt is principles; tool rules ride on tool descriptions
+  // #3355 Wave B: tools are advertised by the capability index (it feeds
+  // each tool's generated description), no longer pasted into the prompt.
+  const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false }) +
+    "\n" + ARI_CAPABILITY_INDEX;
   assert(prompt.includes("manage_venue_gallery"));
 });
 

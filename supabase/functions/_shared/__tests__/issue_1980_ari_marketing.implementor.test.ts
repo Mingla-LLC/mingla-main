@@ -18,7 +18,11 @@ import {
 import { AGENT_TOOL_AUTHORIZATION } from "../agentToolAuthorization.ts";
 import { TENANT_SCOPED_READ_TOOL_NAMES } from "../agentTenantScope.ts";
 import { isReadOnlyAgentToolCall } from "../agentTools.ts";
-import { PROMPT_VERSION, buildSystemPrompt } from "../agentSystemPrompt.ts";
+import {
+  ARI_CAPABILITY_INDEX,
+  PROMPT_VERSION,
+  buildSystemPrompt,
+} from "../agentSystemPrompt.ts";
 import { ToolError } from "../agentToolHelpers.ts";
 
 const BRAND = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -88,8 +92,11 @@ Deno.test("#1980 implementor: auth + read-only pins", () => {
 // [TEST-MOD-APPROVED #1980] prompt bumped with draft mutate + growth report tools.
 Deno.test("#1980 implementor: PROMPT_VERSION v17 advertises new tools", () => {
   // [TEST-MOD-APPROVED #1981] prompt v17→v18 for refund/cancel discovery (append-only auth).
-  assertEquals(PROMPT_VERSION, "v29"); // #2829 W11 completes the website journey entrances
-  const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false });
+  assertEquals(PROMPT_VERSION, "v30"); // #3355 Wave B: the prompt is principles; tool rules ride on tool descriptions
+  // #3355 Wave B: tools are advertised by the capability index (it feeds
+  // each tool's generated description), no longer pasted into the prompt.
+  const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false }) +
+    "\n" + ARI_CAPABILITY_INDEX;
   assertStringIncludes(prompt, "update_campaign_draft");
   assertStringIncludes(prompt, "delete_campaign_draft");
   assertStringIncludes(prompt, "get_growth_tool_report");

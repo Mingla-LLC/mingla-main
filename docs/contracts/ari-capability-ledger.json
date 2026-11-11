@@ -10,11 +10,11 @@
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
     "verified_at": "2026-10-31T03:20:00Z",
-    "registered_tool_count": 185,
-    "capability_count": 197,
+    "registered_tool_count": 186,
+    "capability_count": 198,
     "status_breakdown": {
       "verified": 0,
-      "registered_unverified": 184,
+      "registered_unverified": 185,
       "broken": 0,
       "guided_handoff": 8,
       "unsupported": 0,
@@ -8566,6 +8566,41 @@
       ],
       "confidence": "high",
       "verified_at": "2026-10-30"
+    },
+    {
+      "id": "ari.capabilities.search_mingla_guide",
+      "domain": "capabilities",
+      "outcome": "Search the Mingla Feature Guide for what Mingla can do and the exact steps",
+      "safety": "read",
+      "required_role": "self",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "issue_3355" },
+      "owners": {
+        "ui": ["mingla-business/src/screens/ari/AriChatScreen.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentAri10xTools.ts",
+            "symbol": "const searchMinglaGuide"
+          }
+        ]
+      },
+      "ari_tool": "search_mingla_guide",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "730201d472cceb626dabe7daddb3c6995a5343af",
+          "reference": "issue_3355_wave_b_guide.implementor.test.ts: guide search, refusal guard and citations",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [3355],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-11-10"
     },
     {
       "id": "ari.capabilities.request_tools",

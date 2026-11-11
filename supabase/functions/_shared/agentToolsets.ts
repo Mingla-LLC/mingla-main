@@ -23,6 +23,7 @@ const TOOLSET_PATTERNS: Readonly<Record<AriToolsetKey, readonly RegExp[]>> =
     core: [
       /^get_operator_snapshot$/,
       /^search_capabilities$/,
+      /^search_mingla_guide$/,
       /^request_tools$/,
       /^get_capability_inventory$/,
     ],
@@ -112,11 +113,48 @@ const INTENT_PATTERNS: ReadonlyArray<[AriToolsetKey, RegExp]> = [
   ],
 ];
 
-export function inferAriToolsets(text: string): AriToolsetKey[] {
+/**
+ * #3355 Wave B (B3, D3a): the keyword classifiers are hints, never the
+ * router. A hint (readFlowRequest / classifyOfferingIntent) adds the
+ * toolset that serves it to this turn's tools; the model still chooses.
+ */
+const HINT_TOOLSETS: Readonly<Record<string, readonly AriToolsetKey[]>> = Object
+  .freeze({
+    create_discount: ["marketing"],
+    campaign: ["marketing"],
+    ticket_tiers: ["listings"],
+    refund: ["money", "listings"],
+    payouts: ["money"],
+    team: ["people"],
+    website: ["sites"],
+    readiness: ["brand"],
+    create_event: ["listings"],
+    create_experience: ["listings"],
+    create_trip: ["listings"],
+    create_venue: ["venues"],
+    create_stay: ["venues"],
+  });
+
+export function ariToolsetsForHints(
+  hints: readonly (string | null | undefined)[],
+): AriToolsetKey[] {
+  const selected = new Set<AriToolsetKey>();
+  for (const hint of hints) {
+    if (typeof hint !== "string") continue;
+    for (const key of HINT_TOOLSETS[hint] ?? []) selected.add(key);
+  }
+  return [...selected];
+}
+
+export function inferAriToolsets(
+  text: string,
+  hints: readonly (string | null | undefined)[] = [],
+): AriToolsetKey[] {
   const selected = new Set<AriToolsetKey>(["core"]);
   for (const [key, pattern] of INTENT_PATTERNS) {
     if (pattern.test(text)) selected.add(key);
   }
+  for (const key of ariToolsetsForHints(hints)) selected.add(key);
   if (selected.size === 1) selected.add("brand");
   return [...selected];
 }
@@ -198,6 +236,7 @@ export function selectAriTools(
   const priority: Record<string, number> = {
     get_operator_snapshot: 80,
     search_capabilities: 78,
+    search_mingla_guide: 77,
     list_brands: 75,
     list_events: 70,
     request_tools: 68,
@@ -244,9 +283,8 @@ export function selectAriTools(
       (score, token) => score + (terms.includes(token) ? 90 : 0),
       0,
     );
-    const venueListScore = hostVenueCreate && tool.name === "list_venue_listings"
-      ? 150
-      : 0;
+    const venueListScore =
+      hostVenueCreate && tool.name === "list_venue_listings" ? 150 : 0;
     const tripPricingScore =
       tripTierRequested && tool.name === "manage_trip_tiers"
         ? 180

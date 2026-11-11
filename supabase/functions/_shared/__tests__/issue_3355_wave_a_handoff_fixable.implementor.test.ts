@@ -1,7 +1,7 @@
 // Issue #3355 Wave A (A4) — every readiness handoff opens a screen that can
 // fix the item.
 //
-// MINGLA-INVARIANT: I-ARI-HANDOFF-FIXABLE | issue #3355 | Every readiness item whose fix is a handoff (a route in public.brand_readiness_catalog) names a Host route that exists in mingla-business/app, and every field item names the control and the write that actually change its column; the Time zone item opens Brand profile's Time zone section, which writes brands.default_timezone. Static map now; Wave B swaps it for the generated App Map.
+// MINGLA-INVARIANT: I-ARI-HANDOFF-FIXABLE | issue #3355 | Every readiness item whose fix is a handoff (a route in public.brand_readiness_catalog) names a Host route that exists in mingla-business/app, and every field item names the control and the write that actually change its column; the Time zone item opens Brand profile's Time zone section, which writes brands.default_timezone. Routes are validated against the generated App Map (supabase/functions/_shared/generated/ariAppMap.json), and at runtime a route outside the map is dropped (ariAppMap.ts guardAriReplyRoutes).
 //
 // Production 2026-11-10: the Time zone item handed a Lagos host to Brand
 // profile, which had no time zone field, so "It's done, check now" could
@@ -25,6 +25,7 @@ import {
   BRAND_READINESS_ITEM_LABELS,
 } from "../readinessCatalog.ts";
 import { MARKET_DEFAULT_TIMEZONES } from "../payoutCountries.ts";
+import { matchAriAppRoute } from "../ariAppMap.ts";
 
 const ROOT = new URL("../../../../", import.meta.url);
 const read = (path: string) => Deno.readTextFileSync(new URL(path, ROOT));
@@ -77,14 +78,15 @@ function catalogue(): Map<string, CatalogueItem> {
   return items;
 }
 
-/** "/brand/{brand_id}/edit?section=timezone" → the Expo Router screen file. */
+/**
+ * "/brand/{brand_id}/edit?section=timezone" → the Host screen file, read from
+ * the generated App Map (Wave B; it replaced Wave A's filesystem lookup).
+ */
 function routeFile(route: string): string | null {
-  const path = route.split("?")[0].replace(/\{brand_id\}/g, "[id]");
-  const base = `mingla-business/app${path}`;
-  for (const candidate of [`${base}.tsx`, `${base}/index.tsx`]) {
-    if (exists(candidate)) return candidate;
-  }
-  return null;
+  const entry = matchAriAppRoute(
+    route.replace(/\{brand_id\}/g, "00000000-0000-4000-8000-000000000000"),
+  );
+  return entry && exists(entry.file) ? entry.file : null;
 }
 
 const EDIT_VIEW = "mingla-business/src/components/brand/BrandEditView.tsx";
@@ -92,7 +94,7 @@ const MAPPING = "mingla-business/src/services/brandMapping.ts";
 const PLAN_API = "mingla-business/src/sites/planApi.ts";
 
 /**
- * Static map (Wave B: the generated App Map). Each field item: the control on
+ * Per-item fix evidence (routes come from the App Map). Each field item: the control on
  * the screen and the write that changes its column. Flow items (payments
  * onboarding, team, venue, Website approval) hand off to a whole flow, so
  * only their screen must exist.

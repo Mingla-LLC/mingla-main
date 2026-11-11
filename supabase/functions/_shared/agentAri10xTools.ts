@@ -34,6 +34,7 @@ export {
 } from "./payoutCountries.ts";
 import { sanitizeAriPublicText } from "./agentSanitization.ts";
 import { toolBelongsTo } from "./agentToolsets.ts";
+import { ARI_APP_ROUTES, ariHandoffRoute } from "./ariAppMap.ts";
 import {
   type AriResearchResult,
   readPublicUrl,
@@ -78,6 +79,10 @@ const LOCAL_CAPABILITIES = [
     "Read a public social profile where public access permits.",
   ],
   ["search_capabilities", "Search Ari's current Mingla capability map."],
+  [
+    "search_mingla_guide",
+    "Search the Mingla Feature Guide for what Mingla can do and the exact steps.",
+  ],
   ["request_tools", "Load a compact toolset needed for the current step."],
   ["get_onboarding_plan", "Read the user's durable onboarding plan."],
   [
@@ -639,6 +644,102 @@ const searchCapabilities: AgentToolDefinition = {
   }),
 };
 
+/**
+ * #3355 Wave B (B1) — Ari reads the Feature Guide (public.product_capabilities)
+ * through ari_search_feature_guide, as the signed-in caller. The guide's
+ * effective status decides how Ari may speak (how_to_say).
+ */
+const GUIDE_STATUS: Readonly<
+  Record<string, { status: string; how_to_say: string }>
+> = Object.freeze({
+  Live: { status: "live", how_to_say: "state_as_fact" },
+  "Needs review": {
+    status: "needs_review",
+    how_to_say: "hedge_and_point_to_the_screen",
+  },
+  Planned: { status: "planned", how_to_say: "not_available_yet" },
+  Retired: { status: "retired", how_to_say: "not_available" },
+});
+
+function guideText(value: unknown, max: number): string {
+  return typeof value === "string"
+    ? sanitizeAriPublicText(value).text.trim().slice(0, max)
+    : "";
+}
+
+function guideList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+      .slice(0, 12)
+    : [];
+}
+
+const searchMinglaGuide: AgentToolDefinition = {
+  name: "search_mingla_guide",
+  description:
+    "Search the Mingla Feature Guide: what Mingla can do, who can use it, the exact steps (how_to) and limits. Use it before saying Mingla can't do something and before giving how-to steps. status live = say it as fact; needs_review = hedge and point to the screen; planned or retired = not available. Cite the capability_key of the entry you used.",
+  parameters: {
+    type: "object",
+    additionalProperties: false,
+    required: ["query"],
+    properties: {
+      query: { type: "string", minLength: 2, maxLength: 300 },
+      limit: { type: "integer", minimum: 1, maximum: 5 },
+    },
+  },
+  executor: async (args, client) => {
+    const query = requiredText(args.query, "query", 300);
+    const limit = Math.min(
+      Math.max(Math.trunc(Number(args.limit ?? 3)) || 3, 1),
+      5,
+    );
+    const { data, error } = await client.rpc("ari_search_feature_guide", {
+      p_query: query,
+      p_limit: limit,
+    });
+    if (error) {
+      throw new ToolError(
+        "READ_FAILED",
+        "The Mingla Feature Guide could not be read just now.",
+        {
+          user_reason: "Ari couldn't read the Mingla guide just now.",
+          next_step: null,
+        },
+      );
+    }
+    const rows = Array.isArray(data) ? data as Record<string, unknown>[] : [];
+    return {
+      query,
+      results: rows.slice(0, limit).map((row) => {
+        const key = guideText(row.capability_key, 80);
+        const status = GUIDE_STATUS[String(row.guide_status)] ??
+          GUIDE_STATUS["Needs review"];
+        return {
+          capability_key: key,
+          title: guideText(row.title, 160),
+          outcome: guideText(row.outcome_summary, 600),
+          how_to: guideText(row.how_to, 1500),
+          limitations: guideText(row.limitations, 800),
+          support_wording: guideText(row.support_wording, 600),
+          who_can_use: guideList(row.who_can_use),
+          surfaces: guideList(row.surfaces),
+          claimed_status: guideText(row.claimed_status, 20),
+          status: status.status,
+          evidence_current: row.evidence_current === true,
+          how_to_say: status.how_to_say,
+          screens: ARI_APP_ROUTES.filter((route) =>
+            route.capability_keys.includes(key)
+          ).slice(0, 3).map((route) => ({
+            route: route.pattern,
+            title: route.title,
+          })),
+        };
+      }),
+      found: rows.length > 0,
+    };
+  },
+};
+
 const requestTools: AgentToolDefinition = {
   name: "request_tools",
   description:
@@ -1188,9 +1289,13 @@ const openHandoff: AgentToolDefinition = {
         };
       }
     }
+    // #3355 Wave B (I-ARI-HANDOFF-FIXABLE): a destination is only a route
+    // when the Host App Map has that screen; otherwise say how to get there.
     return {
       destination,
-      route: template.replace("{brand_id}", String(args.brand_id ?? "")),
+      ...ariHandoffRoute(
+        template.replace("{brand_id}", String(args.brand_id ?? "")),
+      ),
       reason,
       requires_human: true,
     };
@@ -1917,6 +2022,7 @@ export const ARI_10X_TOOLS: AgentToolDefinition[] = [
   readPublicUrlTool,
   inspectPublicSocialProfile,
   searchCapabilities,
+  searchMinglaGuide,
   requestTools,
   getOnboardingPlan,
   updateOnboardingPlan,
@@ -1942,6 +2048,7 @@ export const ARI_10X_READ_ONLY = new Set([
   "read_public_url",
   "inspect_public_social_profile",
   "search_capabilities",
+  "search_mingla_guide",
   "request_tools",
   "get_onboarding_plan",
   "list_memory_notes",

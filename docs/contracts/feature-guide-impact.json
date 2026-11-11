@@ -772,7 +772,13 @@
         "supabase/functions/_shared/ariTruthGuards.ts",
         "supabase/migrations/20280606013355_issue_3355_flow_runs_park_and_expire.sql",
         "supabase/migrations/20280606023355_issue_3355_brand_timezone_from_country.sql",
-        "supabase/migrations/20280606033355_issue_3355_feature_guide_wave_a.sql"
+        "supabase/migrations/20280606033355_issue_3355_feature_guide_wave_a.sql",
+        "supabase/functions/_shared/ariAppMap.ts",
+        "supabase/functions/_shared/ariGuideKnowledge.ts",
+        "supabase/functions/_shared/ariToolDescriptions.ts",
+        "supabase/functions/_shared/generated/ariAppMap.json",
+        "supabase/migrations/20280606043355_issue_3355_ari_search_feature_guide.sql",
+        "supabase/migrations/20280606053355_issue_3355_feature_guide_wave_b.sql"
       ]
     },
     {

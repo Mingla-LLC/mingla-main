@@ -132,6 +132,7 @@ const MAX_TEXT = 500;
 const MAX_BODY = 1_500;
 const INTERNAL_REASONING_TOOLS = new Set([
   "search_capabilities",
+  "search_mingla_guide",
   "request_tools",
 ]);
 const PUBLIC_RESEARCH_TOOLS = new Set([

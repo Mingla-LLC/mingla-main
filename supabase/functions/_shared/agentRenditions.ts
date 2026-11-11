@@ -15,6 +15,7 @@ type JsonRecord = Record<string, unknown>;
 
 const TOOL_LABELS: Readonly<Record<string, string>> = Object.freeze({
   search_capabilities: "Check Mingla capabilities",
+  search_mingla_guide: "Check the Mingla guide",
   request_tools: "Load the right Mingla tools",
   search_public_web: "Search public sources",
   read_public_url: "Read the public page",
@@ -62,7 +63,9 @@ function toolLabel(name: string): string {
   // #3355 P1 (D-5): owner words for a write, a neutral step for a read —
   // never the tool name with its underscores swapped for spaces.
   const write = toolOwnerCopy(name);
-  return write.verb !== "Review this change" ? write.verb : "Check your workspace";
+  return write.verb !== "Review this change"
+    ? write.verb
+    : "Check your workspace";
 }
 
 /** Raw diagnostic slugs belong in traces and the Improvement Lab, never UI. */
@@ -167,7 +170,8 @@ function timelineRows(
     rows.push({
       id: "step-verify",
       label: "Check it saved",
-      detail: "After you approve, Ari reads it back from Mingla before calling it done.",
+      detail:
+        "After you approve, Ari reads it back from Mingla before calling it done.",
       state: "queued",
     });
   } else if (result.kind === "stopped") {

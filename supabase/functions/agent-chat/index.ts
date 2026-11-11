@@ -47,6 +47,7 @@ import {
   findTool,
   isAgentStateToolCall,
   isReadOnlyAgentToolCall,
+  normalizeAriToolError,
   ToolError,
 } from "../_shared/agentTools.ts";
 import {
@@ -212,6 +213,14 @@ import {
 } from "../_shared/ariFlows/store.ts";
 import type { FlowArtefact } from "../_shared/ariFlows/types.ts";
 import { honestLoopStopText } from "../_shared/ariFlows/honestCopy.ts";
+import { readFlowRequest } from "../_shared/ariFlows/requestRead.ts";
+import { guardAriReplyRoutes } from "../_shared/ariAppMap.ts";
+import { ariToolDeclarations } from "../_shared/ariToolDescriptions.ts";
+import {
+  ariGuideCitations,
+  ariGuideInitialCalls,
+  ariGuideRecoveryCalls,
+} from "../_shared/ariGuideKnowledge.ts";
 import {
   claimEvidenceFromHistory,
   guardWriteClaims,
@@ -714,7 +723,7 @@ async function terminalizeProposalForTaskReplacement(args: {
   return { ok: true };
 }
 
-async function commitTextTurn(args: {
+type CommitTextTurnArgs = {
   client: SupabaseClient;
   userId: string;
   conversationId: string;
@@ -732,7 +741,33 @@ async function commitTextTurn(args: {
   resumed?: boolean;
   flowArtefact?: FlowArtefact | null;
   flowState?: FlowStateView | null;
-}): Promise<Response> {
+};
+
+async function commitTextTurn(
+  unguardedArgs: CommitTextTurnArgs,
+): Promise<Response> {
+  // #3355 Wave B (I-ARI-HANDOFF-FIXABLE): every route this reply hands the
+  // host must open a Host screen in the App Map; one that does not is
+  // dropped and the text says how to get there instead.
+  const routeGuard = guardAriReplyRoutes({
+    text: unguardedArgs.text,
+    handoffRoute: unguardedArgs.handoffRoute,
+    choices: unguardedArgs.choices,
+    flowArtefact: unguardedArgs.flowArtefact,
+  });
+  if (routeGuard.dropped.length > 0) {
+    console.warn(
+      `[agent-chat] dropped ${routeGuard.dropped.length} route(s) outside the App Map`,
+      { routes: routeGuard.dropped.slice(0, 4) },
+    );
+  }
+  const args: CommitTextTurnArgs = {
+    ...unguardedArgs,
+    text: routeGuard.text,
+    handoffRoute: routeGuard.handoffRoute,
+    choices: routeGuard.choices,
+    flowArtefact: routeGuard.flowArtefact,
+  };
   // Issue #3355: this is the final host-facing persistence boundary. Individual
   // tools and models should produce clean product copy, but no caller is
   // trusted to remember that rule. Sanitize once more before the assistant
@@ -2343,7 +2378,8 @@ async function handle(req: Request): Promise<Response> {
       business,
       // #4304: the hint is advisory; the brand list above stays the truth (a
       // "no_brand" hint on an account that now has brands is ignored).
-      firstRun: firstRun && (firstRun.stage === "empty_brand" || brandsList.length === 0)
+      firstRun: firstRun &&
+          (firstRun.stage === "empty_brand" || brandsList.length === 0)
         ? firstRun
         : null,
     });
@@ -3023,7 +3059,12 @@ ${boundedAgentContext}
           ? ["core", "brand", "onboarding"]
           : eventLaunchReadinessRequest
           ? ["core", "sites", "listings"]
-          : inferAriToolsets(semanticMessage),
+          // #3355 Wave B (B3, D3a): classifier hints add toolsets; the
+          // model picks the tool.
+          : inferAriToolsets(semanticMessage, [
+            readFlowRequest(semanticMessage),
+            flowParked?.hint,
+          ]),
       );
       if (websiteSetupBoundary) {
         selectedToolsets.add("sites");
@@ -3040,11 +3081,7 @@ ${boundedAgentContext}
           semanticMessage,
         );
       try {
-        compileGeminiToolDeclarations(selectedTools.map((tool) => ({
-          name: tool.name,
-          description: tool.description,
-          parameters: tool.parameters,
-        })));
+        compileGeminiToolDeclarations(ariToolDeclarations(selectedTools));
       } catch (err: unknown) {
         const schemaResponse = schemaErrorResponse(err);
         if (schemaResponse) return schemaResponse;
@@ -3165,7 +3202,10 @@ ${boundedAgentContext}
         }]
         : deterministicRead
         ? deterministicRead.calls
-        : [];
+        // #3355 Wave B (B1, I-ARI-KNOWLEDGE-FROM-GUIDE): a how-to or
+        // "can I / I want to" ask reads the Feature Guide first, so steps
+        // and "can't" answers come from the guide, not from memory.
+        : ariGuideInitialCalls(semanticMessage);
       let lastProgressEvent: string | null = null;
       let sideModelFailed = false;
       const loopRun = runAgentLoop({
@@ -3257,10 +3297,14 @@ ${boundedAgentContext}
             !completeFromSearchIndex
           ? requiredPublicPageReads
           : undefined,
-        recoverReadsFromPrematureText: standaloneResearchRequest &&
-            !completeFromSearchIndex
-          ? (_text, observations) => requiredPublicPageReads(observations)
-          : undefined,
+        // #3355 Wave B (I-ARI-KNOWLEDGE-FROM-GUIDE): a "can't" reply with no
+        // guide search this turn runs one, and the model answers again.
+        recoverReadsFromPrematureText: (text, observations) => [
+          ...(standaloneResearchRequest && !completeFromSearchIndex
+            ? requiredPublicPageReads(observations)
+            : []),
+          ...ariGuideRecoveryCalls(text, observations, semanticMessage),
+        ],
         callModel: async (observations, step) => {
           await assertAttemptRunning(
             serviceClient,
@@ -3305,11 +3349,8 @@ ${boundedAgentContext}
             model = await callGemini({
               systemPrompt: loopSystemPrompt,
               contents: [...contents, ...observationContents],
-              tools: selectedTools.map((tool) => ({
-                name: tool.name,
-                description: tool.description,
-                parameters: tool.parameters,
-              })),
+              // #3355 Wave B (B3): generated per-tool descriptions.
+              tools: ariToolDeclarations(selectedTools),
             });
           } catch (modelError) {
             if (flowSide && !(modelError instanceof AriAttachmentError)) {
@@ -3428,11 +3469,9 @@ ${boundedAgentContext}
                 12,
                 semanticMessage,
               );
-              compileGeminiToolDeclarations(candidateTools.map((item) => ({
-                name: item.name,
-                description: item.description,
-                parameters: item.parameters,
-              })));
+              compileGeminiToolDeclarations(
+                ariToolDeclarations(candidateTools),
+              );
               selectedTools = candidateTools;
             }
             const { data: toolMessageId, error: toolMessageError } =
@@ -3518,14 +3557,9 @@ ${boundedAgentContext}
             eventType,
           });
         },
-        normalizeError: (error) => ({
-          code: error instanceof ToolError ? error.code : "TOOL_FAILED",
-          message: error instanceof Error
-            ? error.message
-            : "The tool failed without a usable reason.",
-          recoverable: !(error instanceof ToolError &&
-            error.code === "TURN_STOPPED"),
-        }),
+        // #3355 Wave B (B4): a failed call reaches the model with its
+        // user_reason and next_step; only a stopped turn ends the loop.
+        normalizeError: normalizeAriToolError,
       });
       let loopResult: Awaited<typeof loopRun>;
       try {
@@ -3863,6 +3897,7 @@ ${boundedAgentContext}
         );
       }
       const safeLoopText = claimGuard.text;
+      const guideCitations = ariGuideCitations(loopResult.observations);
       const resumedState = interruptionState.status === "interrupted"
         ? resumeInterruption(interruptionState)
         : taskState;
@@ -3915,6 +3950,10 @@ ${boundedAgentContext}
             usage: loopResult.usage,
             copy_lint: copyLint.violations,
           },
+          // #3355 Wave B (B1): the Feature Guide entries this answer used.
+          ...(guideCitations.length > 0
+            ? { guide_citations: guideCitations }
+            : {}),
         },
         resumed: readInterruption || questionInterruption,
       });
@@ -3955,11 +3994,7 @@ ${boundedAgentContext}
       gemini = await callGemini({
         systemPrompt,
         contents,
-        tools: AGENT_TOOLS.map((t) => ({
-          name: t.name,
-          description: t.description,
-          parameters: t.parameters,
-        })),
+        tools: ariToolDeclarations(AGENT_TOOLS),
       });
     } catch (err: any) {
       // #3355 — a side question during Website setup: plain words and the
@@ -4170,11 +4205,7 @@ ${boundedAgentContext}
             followup = await callGemini({
               systemPrompt,
               contents: followupContents,
-              tools: AGENT_TOOLS.map((t) => ({
-                name: t.name,
-                description: t.description,
-                parameters: t.parameters,
-              })),
+              tools: ariToolDeclarations(AGENT_TOOLS),
             });
           } catch (err: unknown) {
             const schemaResponse = schemaErrorResponse(err);

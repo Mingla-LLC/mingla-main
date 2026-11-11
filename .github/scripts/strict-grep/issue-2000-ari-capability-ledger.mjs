@@ -207,6 +207,7 @@ ari.research.search_public_web
 ari.research.read_public_url
 ari.research.inspect_public_social_profile
 ari.capabilities.search
+ari.capabilities.search_mingla_guide
 ari.capabilities.request_tools
 ari.onboarding.read_plan
 ari.onboarding.update_plan

@@ -276,6 +276,8 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   read_public_url: role("self", "none"),
   inspect_public_social_profile: role("self", "none"),
   search_capabilities: role("self", "none"),
+  // #3355 Wave B (B1): the Feature Guide is product knowledge, not tenant data.
+  search_mingla_guide: role("self", "none"),
   request_tools: role("self", "none"),
   get_onboarding_plan: role("self", "optional_brand"),
   update_onboarding_plan: role("self", "optional_brand"),
