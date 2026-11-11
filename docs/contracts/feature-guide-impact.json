@@ -3007,6 +3007,46 @@
         "mingla-admin/src/components/blog/BlogPostList.jsx",
         "mingla-admin/src/pages/communications/BlogPage.jsx"
       ]
+    },
+    {
+      "capability_key": "account-notification-settings",
+      "paths": [
+        "app-mobile/src/i18n/locales/ar/settings.json",
+        "app-mobile/src/i18n/locales/bin/settings.json",
+        "app-mobile/src/i18n/locales/bn/settings.json",
+        "app-mobile/src/i18n/locales/de/settings.json",
+        "app-mobile/src/i18n/locales/el/settings.json",
+        "app-mobile/src/i18n/locales/en/settings.json",
+        "app-mobile/src/i18n/locales/es/settings.json",
+        "app-mobile/src/i18n/locales/fr/settings.json",
+        "app-mobile/src/i18n/locales/ha/settings.json",
+        "app-mobile/src/i18n/locales/he/settings.json",
+        "app-mobile/src/i18n/locales/hi/settings.json",
+        "app-mobile/src/i18n/locales/id/settings.json",
+        "app-mobile/src/i18n/locales/ig/settings.json",
+        "app-mobile/src/i18n/locales/it/settings.json",
+        "app-mobile/src/i18n/locales/ja/settings.json",
+        "app-mobile/src/i18n/locales/ko/settings.json",
+        "app-mobile/src/i18n/locales/ms/settings.json",
+        "app-mobile/src/i18n/locales/nl/settings.json",
+        "app-mobile/src/i18n/locales/pl/settings.json",
+        "app-mobile/src/i18n/locales/pt/settings.json",
+        "app-mobile/src/i18n/locales/ro/settings.json",
+        "app-mobile/src/i18n/locales/ru/settings.json",
+        "app-mobile/src/i18n/locales/sv/settings.json",
+        "app-mobile/src/i18n/locales/th/settings.json",
+        "app-mobile/src/i18n/locales/tr/settings.json",
+        "app-mobile/src/i18n/locales/uk/settings.json",
+        "app-mobile/src/i18n/locales/vi/settings.json",
+        "app-mobile/src/i18n/locales/yo/settings.json",
+        "app-mobile/src/i18n/locales/zh/settings.json"
+      ]
+    },
+    {
+      "capability_key": "staff-community-support",
+      "paths": [
+        "mingla-admin/src/lib/serverTimeZones.js"
+      ]
     }
   ]
 }
