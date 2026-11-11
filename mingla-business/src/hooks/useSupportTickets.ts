@@ -1,11 +1,11 @@
 /**
- * useSupportTickets — META-ORCH-1104 Phase 1 (business requester).
+ * useSupportTickets — the signed-in person's OWN support requests (#4382
+ * Wave 4, built on META-ORCH-1104).
  *
- * React Query hook for the signed-in user's OWN support tickets (server state in
- * React Query, NOT Zustand — Const #5). Key factory only; create invalidates the
- * list. Mirrors `useCreatorAccount` discipline (SPEC §5.1).
- *
- * Per SPEC §5.1.
+ * Server state lives in React Query (Const #5). Keys come from the factory;
+ * creating a request invalidates the list. The list is filtered to
+ * requester = me or a brand-team ticket of one of my brands, so a host who is also Mingla staff sees only their own
+ * requests here, never the staff queue.
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -16,6 +16,7 @@ import {
   listOwnSupportTickets,
   type SupportTicket,
 } from "../services/supportService";
+import type { HostCreateTicketInput } from "../components/support/supportRequestModel";
 
 const STALE_TIME_MS = 30 * 1000; // tickets change as staff reply — keep it fresh
 
@@ -23,6 +24,8 @@ export const supportTicketKeys = {
   all: ["support", "tickets"] as const,
   byUser: (userId: string): readonly [string, string, string] =>
     ["support", "tickets", userId] as const,
+  thread: (ticketId: string): readonly [string, string, string] =>
+    ["support", "thread", ticketId] as const,
 };
 
 const DISABLED_KEY = ["support", "tickets", "disabled"] as const;
@@ -40,12 +43,12 @@ export const useSupportTickets = (): UseSupportTicketsResult => {
   const enabled = isAuthReady && userId !== null;
 
   const { data, isLoading, isError, refetch } = useQuery<SupportTicket[]>({
-    queryKey: enabled ? supportTicketKeys.byUser(userId) : DISABLED_KEY,
+    queryKey: enabled && userId !== null ? supportTicketKeys.byUser(userId) : DISABLED_KEY,
     enabled,
     staleTime: STALE_TIME_MS,
     queryFn: async (): Promise<SupportTicket[]> => {
-      if (!enabled) return [];
-      return listOwnSupportTickets();
+      if (!enabled || userId === null) return [];
+      return listOwnSupportTickets(userId);
     },
   });
 
@@ -53,11 +56,8 @@ export const useSupportTickets = (): UseSupportTicketsResult => {
 };
 
 export interface UseCreateSupportTicketResult {
-  /** Resolves to the new ticket id; throws (surfaced via onError) on failure. */
-  mutateAsync: (input: {
-    subject: string;
-    brandId?: string | null;
-  }) => Promise<string>;
+  /** Resolves to the new ticket id; throws (surfaced by the form) on failure. */
+  mutateAsync: (input: HostCreateTicketInput) => Promise<string>;
   isPending: boolean;
 }
 
@@ -65,16 +65,16 @@ export const useCreateSupportTicket = (): UseCreateSupportTicketResult => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
-  const mutation = useMutation<string, Error, { subject: string; brandId?: string | null }>({
-    mutationFn: async ({ subject, brandId }): Promise<string> => {
+  const mutation = useMutation<string, Error, HostCreateTicketInput>({
+    mutationFn: async (input): Promise<string> => {
       if (user === null) throw new Error("Not signed in");
-      // #3720: create_support_ticket atomically enqueues staff delivery. Do not
-      // call the retired notify-support new_ticket path from the client.
-      return createSupportTicket(subject, brandId);
+      // #3720: the create function enqueues staff delivery itself. Do not
+      // call notify-support from the client.
+      return createSupportTicket(input);
     },
     onSuccess: (): void => {
       if (user !== null) {
-        queryClient.invalidateQueries({
+        void queryClient.invalidateQueries({
           queryKey: supportTicketKeys.byUser(user.id),
         });
       }

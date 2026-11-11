@@ -37,8 +37,15 @@ import { supabase } from "./supabase";
 /** A support ticket as STAFF see it (all rows, via is_support_staff() RLS). */
 export interface SupportQueueTicket {
   id: string;
-  requester_user_id: string;
+  /** #4382: null on staff-opened internal tickets and imported beta reports. */
+  requester_user_id: string | null;
   requester_segment: string;
+  ticket_number: number | null;
+  /** customer | staff (#4382). */
+  origin: string | null;
+  /** internal | person | brand (#4382). */
+  visibility: string | null;
+  last_sender_kind: string | null;
   subject: string;
   status: string;
   priority: string;
@@ -52,7 +59,7 @@ export interface SupportQueueTicket {
 }
 
 const QUEUE_COLUMNS =
-  "id, requester_user_id, requester_segment, subject, status, priority, assigned_staff_id, conversation_id, brand_id, created_at, first_response_at, resolved_at, last_message_at";
+  "id, ticket_number, requester_user_id, requester_segment, origin, visibility, last_sender_kind, subject, status, priority, assigned_staff_id, conversation_id, brand_id, created_at, first_response_at, resolved_at, last_message_at";
 
 /**
  * List the full support queue (newest activity first). RLS returns ALL rows to

@@ -296,7 +296,10 @@ export function resolveBusinessNavTarget(
     // META-ORCH-1104: support reply / new-ticket → the support thread. The
     // ticket id rides data.ticketId (notify-support payload) or relatedId.
     case "business.support_message":
-    case "business.support_new_ticket": {
+    case "business.support_new_ticket":
+    // #4382: status changes and the Product "it's live" message open the thread too.
+    case "business.support_status_changed":
+    case "business.support_product_update": {
       const ticketId = (data.ticketId ?? data.ticket_id ?? data.relatedId) as
         string | undefined;
       return ticketId ? `/support/${ticketId}` : ACCOUNT_FALLBACK;
