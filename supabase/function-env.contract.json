@@ -2079,12 +2079,6 @@
         "app.qr_token_pepper"
       ]
     },
-    "submit-feedback": {
-      "migration_fallback_top_level": [],
-      "optional_top_level": [],
-      "required_bundle_fields": {},
-      "required_top_level": []
-    },
     "support-brand-person-erasure": {
       "migration_fallback_top_level": [],
       "optional_top_level": [],

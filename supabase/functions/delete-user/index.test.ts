@@ -60,3 +60,9 @@ Deno.test("#4202 Explorer deletion preserves purchases for verified-identity rec
   assertEquals(explorerPurge.includes('.from("orders").delete()'), false);
   assertEquals(explorerPurge.includes('.from("tickets").delete()'), false);
 });
+
+Deno.test("#4382 delete-user no longer touches the retired beta_feedback table", async () => {
+  const source = await Deno.readTextFile(DELETE_USER);
+  assert(!source.includes("beta_feedback"), "beta_feedback was dropped by 20280622004382");
+  assert(source.includes('.from("place_reviews")'), "the neighbouring Explorer scrub steps are kept");
+});

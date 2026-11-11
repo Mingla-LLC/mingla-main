@@ -3126,6 +3126,7 @@
     {
       "capability_key": "staff-support-desk",
       "paths": [
+        "mingla-admin/README.md",
         "mingla-admin/src/components/community/SupportWorkflowModals.jsx",
         "mingla-admin/src/components/community/supportWorkflowUtils.js",
         "mingla-admin/src/components/people/PersonDrawer.jsx",
@@ -3161,7 +3162,8 @@
         "supabase/migrations/20280613014382_issue_4382_support_attachments_and_send.sql",
         "supabase/migrations/20280613024382_issue_4382_product_pipeline.sql",
         "supabase/migrations/20280613044382_issue_4382_ticket_product_stage.sql",
-        "supabase/migrations/20280613054382_issue_4382_support_write_guards.sql"
+        "supabase/migrations/20280613054382_issue_4382_support_write_guards.sql",
+        "supabase/migrations/20280622004382_issue_4382_retire_beta_feedback.sql"
       ]
     },
     {
@@ -3271,7 +3273,8 @@
         "app-mobile/src/services/betaFeedbackService.ts",
         "app-mobile/src/services/supportTicketService.ts",
         "app-mobile/src/utils/mediaLibraryPermission.ts",
-        "app-mobile/src/utils/supportRequestModel.ts"
+        "app-mobile/src/utils/supportRequestModel.ts",
+        "supabase/functions/submit-feedback/index.ts"
       ]
     }
   ]

@@ -18,7 +18,6 @@ const USER_ID_POSITIONS: Record<string, number[]> = {
   savedCards: [2],
   "profile-interests": [1],
   userLevel: [1],
-  "beta-feedback": [2],
   "session-creation-gate": [1],
   // #4265 — share-sheet recipients: contentShareRecipientKeys.list(userId).
   contentShareRecipients: [2],
