@@ -41,7 +41,17 @@
     "sessions_hint": "초대, 멤버 업데이트, 보드 활동",
     "tips_reengagement": "팁 및 리인게이지먼트",
     "tips_hint": "가끔 알림, 주간 다이제스트, 추천",
-    "error_update": "알림 설정 업데이트에 실패했습니다."
+    "error_update": "알림 설정 업데이트에 실패했습니다.",
+    "prefs": {
+      "cat": {
+        "mingla_updates": "Mingla 소식",
+        "mingla_updates_hint": "Mingla 팀의 소식과 업데이트.",
+        "brand_campaign_push": "팔로우한 장소의 메시지",
+        "brand_campaign_push_hint": "팔로우한 장소와 호스트의 혜택과 소식.",
+        "brand_offering_invite": "팔로우한 장소의 초대",
+        "brand_offering_invite_hint": "장소나 호스트가 나를 초대할 때."
+      }
+    }
   },
   "quiet_hours": {
     "title": "조용한 시간",

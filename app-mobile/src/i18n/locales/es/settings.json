@@ -41,7 +41,17 @@
     "sessions_hint": "Invitaciones, actualizaciones de miembros y actividad de tableros",
     "tips_reengagement": "Consejos y reactivación",
     "tips_hint": "Recordatorios ocasionales, resumen semanal y recomendaciones",
-    "error_update": "No se pudo actualizar la configuración de notificaciones."
+    "error_update": "No se pudo actualizar la configuración de notificaciones.",
+    "prefs": {
+      "cat": {
+        "mingla_updates": "Novedades de Mingla",
+        "mingla_updates_hint": "Noticias y novedades del equipo de Mingla.",
+        "brand_campaign_push": "Mensajes de lugares que sigues",
+        "brand_campaign_push_hint": "Ofertas y novedades de lugares y anfitriones que sigues.",
+        "brand_offering_invite": "Invitaciones de lugares que sigues",
+        "brand_offering_invite_hint": "Cuando un lugar o anfitrión te invita a algo."
+      }
+    }
   },
   "quiet_hours": {
     "title": "Horas de silencio",

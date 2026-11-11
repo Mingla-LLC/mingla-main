@@ -41,7 +41,17 @@
     "sessions_hint": "আমন্ত্রণ, সদস্য আপডেট এবং বোর্ড কার্যকলাপ",
     "tips_reengagement": "টিপস ও রিমাইন্ডার",
     "tips_hint": "মাঝে মাঝে নাজ, সাপ্তাহিক সারসংক্ষেপ এবং সুপারিশ",
-    "error_update": "নোটিফিকেশন সেটিং আপডেট করা যায়নি।"
+    "error_update": "নোটিফিকেশন সেটিং আপডেট করা যায়নি।",
+    "prefs": {
+      "cat": {
+        "mingla_updates": "Mingla আপডেট",
+        "mingla_updates_hint": "Mingla টিমের খবর ও আপডেট।",
+        "brand_campaign_push": "আপনি যাদের ফলো করেন তাদের বার্তা",
+        "brand_campaign_push_hint": "আপনি যে জায়গা ও হোস্টদের ফলো করেন তাদের অফার ও খবর।",
+        "brand_offering_invite": "আপনি যাদের ফলো করেন তাদের আমন্ত্রণ",
+        "brand_offering_invite_hint": "যখন কোনো জায়গা বা হোস্ট আপনাকে কিছুতে আমন্ত্রণ জানায়।"
+      }
+    }
   },
   "quiet_hours": {
     "title": "শান্ত সময়",
