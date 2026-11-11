@@ -74,6 +74,20 @@ import {
   buildAriRenditionSubmission,
 } from "../../components/ari/renditions/ariRenditionProtocol";
 import { Toast } from "../../components/ui/Toast";
+// #4389 AB — Ari's one top bar composes the shared brand chip (never a brand
+// TopBar with rightSlot=, I-37).
+import { BrandChip } from "../../components/ui/BrandChip";
+import { AriBrandSwitchConfirmSheet } from "../../components/ari/AriBrandSwitchConfirmSheet";
+import { ARI_BRAND_BAR_COPY } from "../../components/ari/ariBrandBarCopy";
+import { trackBrandSetup } from "../../components/brand/brandSetupAnalytics";
+import type { Brand } from "../../store/currentBrandStore";
+import { usePickBrand } from "../../hooks/usePickBrand";
+import {
+  ariDraftFor,
+  decideAriBrandSwitch,
+  stashAriDraft,
+  type AriDraftsByBrand,
+} from "./ariBrandSwitch";
 import { useShareNetworkState } from "../../components/ui/useShareNetworkState";
 import type {
   AgentChoiceSubmissionV2,
@@ -249,19 +263,15 @@ const LazyBrandSwitcherSheet = React.lazy(async () => {
   const mod = await import("../../components/brand/BrandSwitcherSheet");
   return { default: mod.BrandSwitcherSheet };
 });
-// #4304 — the first-run top bar. Evaluated only when a first-run host is on
-// Ari: a module-scope import pulls the notifications graph (expo-constants)
-// into every render suite that mounts this screen. TopBar already ships in the
-// boot bundle (Home imports it), so a deferred require adds no chunk.
-const LazyTopBar = React.lazy(async () => {
+// #4304 / #4389 AB — Messages + bell on the first-run bar (no Home tab to
+// reach them). Evaluated only when a first-run host is on Ari: a module-scope
+// import pulls the notifications graph (expo-constants) into every render
+// suite that mounts this screen. TopBar already ships in the boot bundle
+// (Home imports it), so a deferred require adds no chunk.
+const LazyMessagesAndBell = React.lazy(async () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const mod = require("../../components/ui/TopBar") as typeof import("../../components/ui/TopBar");
-  return { default: mod.TopBar };
-});
-// #4304 — "+ Create" on the first-run top bar opens the manual wizards.
-const LazyUniversalCreatorSheet = React.lazy(async () => {
-  const mod = await import("../../components/ui/UniversalCreatorSheet");
-  return { default: mod.UniversalCreatorSheet };
+  return { default: mod.TopBarMessagesAndBell };
 });
 const AriFlowPlaceCard = React.lazy(() =>
   import("../../components/ari/AriFlowPlaceCard").then((module) => ({
@@ -381,7 +391,15 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     null,
   );
   const [brandSwitcherOpen, setBrandSwitcherOpen] = useState(false);
-  const [creatorOpen, setCreatorOpen] = useState(false);
+  // #4389 R-16 — a pick held while Ari is answering, waiting for the host.
+  const [heldBrandPick, setHeldBrandPick] = useState<Brand | null>(null);
+  const pickBrand = usePickBrand();
+  // #4389 AR-14 — the unsent message per brand (it used to be cleared).
+  const draftsByBrandRef = useRef<AriDraftsByBrand>({});
+  const draftTextRef = useRef("");
+  draftTextRef.current = draftText;
+  const [draftKeptFor, setDraftKeptFor] = useState<string | null>(null);
+  const [switchedToast, setSwitchedToast] = useState<string | null>(null);
   const [rateLimitUntil, setRateLimitUntil] = useState<number | null>(null);
   const [cooldownNow, setCooldownNow] = useState(() => Date.now());
   // ORCH-1101 REWORK Bug #6 — dismiss the AI-disclosure sheet the instant the
@@ -538,15 +556,58 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
 
   React.useEffect(() => {
     if (previousBrandId.current === selectedBrandId) return;
+    const leftBrandId = previousBrandId.current;
     previousBrandId.current = selectedBrandId;
     setDrawerOpen(false);
     setAttachmentSourceOpen(false);
-    setDraftText("");
+    // #4389 AR-14 — keep what was typed for the brand we left; bring back
+    // what was typed for this one.
+    const leftDraft = draftTextRef.current;
+    draftsByBrandRef.current = stashAriDraft(
+      draftsByBrandRef.current,
+      leftBrandId,
+      leftDraft,
+    );
+    setDraftText(ariDraftFor(draftsByBrandRef.current, selectedBrandId));
+    setDraftKeptFor(
+      leftDraft.trim().length > 0 && leftBrandId !== null
+        ? (brandNamesById[leftBrandId] ?? null)
+        : null,
+    );
     setLocalError(null);
     setRateLimitUntil(null);
     Keyboard.dismiss();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs on a brand change only; names are read at that moment.
   }, [currentBrand?.displayName, selectedBrandId]);
-  const confirm = useConfirmPendingAction(chat.conversationId);
+  // #4389 AR-13 — a confirmation is sent with the brand it is shown under.
+  const confirm = useConfirmPendingAction(chat.conversationId, selectedBrandId);
+
+  // #4389 R-16 — switching while Ari is answering asks first. The answer
+  // keeps writing to the old conversation on the server.
+  const ariAnswering = chat.isSending || chat.activeTurn != null;
+  const handleBeforeBrandPick = (brand: Brand): boolean => {
+    const decision = decideAriBrandSwitch({
+      currentBrandId: selectedBrandId,
+      nextBrandId: brand.id,
+      answering: ariAnswering,
+    });
+    if (decision === "confirm") {
+      setHeldBrandPick(brand);
+      return false;
+    }
+    if (decision === "apply") {
+      trackBrandSetup("ari_brand_switched", {
+        brand_id: brand.id,
+        while_streaming: false,
+      });
+    }
+    return true;
+  };
+  const handleBrandPicked = (brand: Brand): void => {
+    if (brand.id !== selectedBrandId) {
+      setSwitchedToast(ARI_BRAND_BAR_COPY.switched(brand.displayName));
+    }
+  };
 
   // #4304 — Home's "Ask Ari to do something…" hands its text over in memory.
   // A request from Home is a new ask, so it opens a NEW conversation rather
@@ -618,6 +679,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     if (!text.trim() && selectedFiles.length === 0) return false;
     // Composer ownership transfers to one local row in this synchronous event.
     setDraftText("");
+    setDraftKeptFor(null);
     setLocalError(null);
     // #4304 — while first-run is locked every turn carries the stage and what
     // the host said they host, so Ari sets up the brand first and then offers
@@ -1281,6 +1343,11 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                   );
                 }}
               >
+                {draftKeptFor !== null ? (
+                  <Text style={styles.draftKept} testID="ari-draft-kept">
+                    {ARI_BRAND_BAR_COPY.draftKept(draftKeptFor)}
+                  </Text>
+                ) : null}
                 {!online ? (
                   <RecoveryPanel
                     recovery={{
@@ -1466,41 +1533,54 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
           websiteSplit && !websiteSetup && isWideDesktop ? styles.websiteAriPane : null,
         ]}
       >
-        {/* #4304 — the Home top bar stays on Ari while first-run is locked:
-          "Create brand" (or the brand switcher), "+ Create" for the manual
-          wizards once a brand exists, messages and notifications. */}
-        {firstRunStage !== null ? (
-          <View style={styles.firstRunBar} testID="ari-first-run-topbar">
-            <React.Suspense fallback={<View style={styles.firstRunBarFallback} />}>
-            <LazyTopBar
-              leftKind="brand"
-              onBrandTap={() => setBrandSwitcherOpen(true)}
-              extraRightSlot={
-                currentBrand !== null ? (
-                  <Pressable
-                    onPress={() => setCreatorOpen(true)}
-                    accessibilityRole="button"
-                    accessibilityLabel="Create event, RSVP, experience, trip or venue"
-                    style={({ pressed }) => [
-                      styles.firstRunCreate,
-                      pressed && styles.pressed,
-                    ]}
-                    testID="ari-first-run-create"
-                  >
-                    <Text style={styles.firstRunCreateLabel}>+ Create</Text>
-                  </Pressable>
-                ) : undefined
-              }
-            />
-            </React.Suspense>
+        {/* #4389 AB — Ari's one top bar: the brand chip (same as Home), then
+          Chats and Ari settings. First run (no Home tab) keeps Messages and
+          the bell before them. The centred "Ari · Mingla Intelligence"
+          header is gone from the tab; the Website setup and embedded
+          surfaces keep their own header below. */}
+        {!setup && !embedded ? (
+          <View style={styles.ariBar} testID="ari-top-bar">
+            <View style={styles.ariBarLeft}>
+              <BrandChip
+                onPress={() => setBrandSwitcherOpen(true)}
+                fullNameLabel
+                testID="ari-brand-chip"
+              />
+            </View>
+            <View style={styles.ariBarRight}>
+              {firstRunStage !== null ? (
+                <React.Suspense fallback={null}>
+                  <LazyMessagesAndBell />
+                </React.Suspense>
+              ) : null}
+              <Pressable
+                onPress={() => setDrawerOpen(true)}
+                style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
+                accessibilityRole="button"
+                accessibilityLabel={ARI_BRAND_BAR_COPY.chats}
+                testID="ari-bar-chats"
+              >
+                <Menu size={24} color={textTokens.primary} strokeWidth={2} />
+              </Pressable>
+              <Pressable
+                onPress={() => router.push("/ari/settings" as never)}
+                style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
+                accessibilityRole="button"
+                accessibilityLabel={ARI_BRAND_BAR_COPY.settings}
+                testID="ari-bar-settings"
+              >
+                <Settings size={22} color={textTokens.primary} strokeWidth={2} />
+              </Pressable>
+            </View>
           </View>
         ) : null}
         {/* Header — the embedding host owns the page title, so it is dropped
           there rather than stacking two headers in one column. */}
+        {setup || embedded ? (
         <View
           style={[
             styles.header,
-            embedded || firstRunStage !== null ? styles.headerEmbedded : null,
+            embedded ? styles.headerEmbedded : null,
           ]}
         >
           {setup ? (
@@ -1542,6 +1622,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
             </Pressable>
           )}
         </View>
+        ) : null}
 
         <Toast
           visible={!!displayError}
@@ -2020,24 +2101,45 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
         surface={surface}
       />
 
-      {/* #3355 — the switcher loads when the owner opens it (#3493). */}
+      {/* #3355 — the switcher loads when the owner opens it (#3493).
+          #4389 AB — titled "Talk to Ari about"; a pick while Ari is
+          answering is held for the R-16 question. */}
       {brandSwitcherOpen ? (
         <React.Suspense fallback={null}>
           <LazyBrandSwitcherSheet
             visible
+            title={ARI_BRAND_BAR_COPY.switcherTitle}
+            onBeforePick={handleBeforeBrandPick}
+            onPicked={handleBrandPicked}
             onClose={() => setBrandSwitcherOpen(false)}
           />
         </React.Suspense>
       ) : null}
 
-      {creatorOpen ? (
-        <React.Suspense fallback={null}>
-          <LazyUniversalCreatorSheet
-            visible
-            onClose={() => setCreatorOpen(false)}
-          />
-        </React.Suspense>
-      ) : null}
+      <AriBrandSwitchConfirmSheet
+        visible={heldBrandPick !== null && !brandSwitcherOpen}
+        currentBrandName={currentBrand?.displayName ?? ""}
+        nextBrandName={heldBrandPick?.displayName ?? ""}
+        onStay={() => setHeldBrandPick(null)}
+        onSwitch={() => {
+          const brand = heldBrandPick;
+          setHeldBrandPick(null);
+          if (brand === null) return;
+          trackBrandSetup("ari_brand_switched", {
+            brand_id: brand.id,
+            while_streaming: true,
+          });
+          pickBrand(brand);
+          setSwitchedToast(ARI_BRAND_BAR_COPY.switched(brand.displayName));
+        }}
+      />
+
+      <Toast
+        visible={switchedToast !== null}
+        kind="success"
+        message={switchedToast ?? ""}
+        onDismiss={() => setSwitchedToast(null)}
+      />
 
       <AriAttachmentSourceSheet
         visible={attachmentSourceOpen}
@@ -2114,23 +2216,30 @@ const styles = StyleSheet.create({
   headerEmbedded: {
     display: "none",
   },
-  // #4304 — first-run top bar (same insets as Home's bar).
-  firstRunBar: {
+  // #4389 AB — Ari's one top bar.
+  ariBar: {
+    minHeight: 56,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
     paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: glass.border.profileBase,
   },
-  firstRunBarFallback: { height: 56 },
-  firstRunCreate: {
-    minHeight: 36,
-    justifyContent: "center",
-    paddingHorizontal: spacing.md - 4,
-    borderRadius: 999,
-    backgroundColor: accent.warm,
+  ariBarLeft: { flexShrink: 1, minWidth: 0 },
+  ariBarRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    flexShrink: 0,
   },
-  firstRunCreateLabel: {
-    color: "#101216",
-    fontWeight: "700",
-    fontSize: 13,
+  draftKept: {
+    ...typography.caption,
+    color: textTokens.tertiary,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.xs,
   },
   firstRunOverlay: {
     ...StyleSheet.absoluteFillObject,

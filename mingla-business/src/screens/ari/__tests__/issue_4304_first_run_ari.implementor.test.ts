@@ -142,6 +142,9 @@ jest.mock("../../../components/ui/TopBar", () => {
         { testID: `topbar-stub-${props.leftKind}` },
         props.extraRightSlot ?? null,
       ),
+    // #4389 AB — Messages + bell on Ari's first-run bar.
+    TopBarMessagesAndBell: () =>
+      R.createElement(RN.View, { testID: "topbar-stub-messages-bell" }),
   };
 });
 jest.mock("../../../context/AuthContext", () => ({
@@ -321,7 +324,14 @@ describe("#4304 First Home with Ari — Ari screen by stage", () => {
       expect(byTestId(tree.root, `ari-first-run-chip-${id}`)).toBeDefined();
     }
     expect(text).not.toContain("What should we tackle?");
-    expect(byTestId(tree.root, "topbar-stub-brand")).toBeDefined();
+    // #4389 AB — one Ari bar: brand chip, then Messages + bell (first run),
+    // Chats and Settings. No brand TopBar is mounted on Ari any more.
+    expect(byTestId(tree.root, "ari-top-bar")).toBeDefined();
+    expect(byTestId(tree.root, "ari-brand-chip")).toBeDefined();
+    expect(byTestId(tree.root, "topbar-stub-messages-bell")).toBeDefined();
+    expect(byTestId(tree.root, "ari-bar-chats")).toBeDefined();
+    expect(byTestId(tree.root, "ari-bar-settings")).toBeDefined();
+    expect(byTestId(tree.root, "topbar-stub-brand")).toBeUndefined();
     expect(byTestId(tree.root, "ari-first-run-create")).toBeUndefined();
     expect(byTestId(tree.root, "ari-input-bar")?.props.accessibilityLabel).toBe(
       "Tell Ari about your business…",
@@ -345,7 +355,7 @@ describe("#4304 First Home with Ari — Ari screen by stage", () => {
     tree.unmount();
   });
 
-  it("State B: names the brand, promotes the remembered kind, offers + Create, sends with empty_brand context", async () => {
+  it("State B: names the brand, promotes the remembered kind, no + Create in the bar, sends with empty_brand context", async () => {
     STATE.brand = { id: "brand-4304", displayName: "Wythe Hospitality" };
     useFirstRunStore.getState().rememberIntent("user-4304", { intent: "trips", text: null });
     const tree = await mount("empty_brand");
@@ -354,7 +364,10 @@ describe("#4304 First Home with Ari — Ari screen by stage", () => {
     for (const id of ["events", "rsvp", "experiences", "trips", "venue"]) {
       expect(byTestId(tree.root, `ari-first-run-chip-${id}`)).toBeDefined();
     }
-    expect(byTestId(tree.root, "ari-first-run-create")).toBeDefined();
+    // #4389 AB — "+ Create" left the bar; creating starts from the setup
+    // card and the "make first" list.
+    expect(byTestId(tree.root, "ari-first-run-create")).toBeUndefined();
+    expect(byTestId(tree.root, "topbar-stub-messages-bell")).toBeDefined();
     const press = pressOf(tree.root, "ari-first-run-chip-rsvp");
     await TR.act(async () => {
       press();
@@ -367,12 +380,14 @@ describe("#4304 First Home with Ari — Ari screen by stage", () => {
     tree.unmount();
   });
 
-  it("pending (every other host): today's hero, no greeting, no first-run top bar", async () => {
+  it("pending (every other host): today's hero, no greeting, the Ari bar without first-run icons", async () => {
     const tree = await mount("pending");
     const text = textOf(tree.root);
     expect(text).toContain("What should we tackle?");
     expect(byTestId(tree.root, "ari-first-run-greeting")).toBeUndefined();
-    expect(byTestId(tree.root, "ari-first-run-topbar")).toBeUndefined();
+    // #4389 AB — the one Ari bar shows, without first-run Messages + bell.
+    expect(byTestId(tree.root, "ari-top-bar")).toBeDefined();
+    expect(byTestId(tree.root, "topbar-stub-messages-bell")).toBeUndefined();
     tree.unmount();
   });
 

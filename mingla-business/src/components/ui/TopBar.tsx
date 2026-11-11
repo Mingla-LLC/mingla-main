@@ -23,23 +23,18 @@
  */
 
 import React, { useContext, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 import { useRouter } from "expo-router";
 import { QueryClientContext } from "@tanstack/react-query";
 
 import {
-  glass,
-  radius as radiusTokens,
   shadows,
   spacing,
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
-// issue #3345 — loading vs absent. Store selectors only (no new query mounts).
-import { useCurrentBrandStore } from "../../store/currentBrandStore";
-import { isCurrentBrandPending } from "../../utils/currentBrandPending";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useAuth } from "../../context/AuthContext";
 import { useBusinessNotificationsInbox } from "../../hooks/useBusinessNotifications";
@@ -47,9 +42,8 @@ import { useBrandGroups } from "../../hooks/useBrandGroups";
 import { useBrandEnquiries } from "../../hooks/useBrandEnquiries";
 import { messagesBadgeCount } from "../../utils/brandEnquiryWaiting";
 
-import { BrandMark, brandMarkPhotoUrl } from "../brand/BrandMark";
+import { BrandChip } from "./BrandChip";
 import { GlassChrome } from "./GlassChrome";
-import { Icon } from "./Icon";
 import { IconChrome } from "./IconChrome";
 import { Toast } from "./Toast";
 import type { ToastKind } from "./Toast";
@@ -118,16 +112,11 @@ export interface TopBarProps {
 }
 
 const TOPBAR_HEIGHT = 56;
-const BRAND_LABEL_MAX_CHARS = 18;
-const BRAND_MARK_SIZE = 24;
 
 interface ToastState {
   kind: ToastKind;
   message: string;
 }
-
-const truncate = (value: string, max: number): string =>
-  value.length <= max ? value : `${value.slice(0, max - 1)}…`;
 
 /**
  * Default right-slot icons (Messages + bell). Rendered WITHOUT outer View
@@ -209,6 +198,15 @@ const DefaultRightSlotInner: React.FC<{ unreadCount: number | undefined }> = ({
   );
 };
 
+/**
+ * #4389 AB — Messages + bell exactly as Home's default cluster, for Ari's
+ * first-run bar (no Home tab to reach them). Ari composes this with its own
+ * icons; it never passes `rightSlot=` to a brand TopBar (I-37).
+ */
+export const TopBarMessagesAndBell: React.FC = () => (
+  <DefaultRightSlotInner unreadCount={undefined} />
+);
+
 export const TopBar: React.FC<TopBarProps> = ({
   leftKind,
   title,
@@ -222,18 +220,6 @@ export const TopBar: React.FC<TopBarProps> = ({
   style,
 }) => {
   const currentBrand = useCurrentBrand();
-  const currentBrandId = useCurrentBrandStore((s) => s.currentBrandId);
-  const hasBrandHydrated = useCurrentBrandStore((s) => s.hasHydrated);
-  // issue #3345 — "no brand yet" is not "no brand". A selected brand whose record
-  // is still on its way must never read "Create brand".
-  const brandPending =
-    currentBrand === null &&
-    (brandLoading ||
-      isCurrentBrandPending({
-        brandPresent: false,
-        currentBrandId,
-        hasHydrated: hasBrandHydrated,
-      }));
   const router = useRouter();
   const { isWideDesktop } = useResponsiveLayout();
   const [toast, setToast] = useState<ToastState | null>(null);
@@ -274,48 +260,9 @@ export const TopBar: React.FC<TopBarProps> = ({
   const renderLeft = (): React.ReactNode => {
     switch (leftKind) {
       case "brand": {
-        if (brandPending) {
-          return (
-            <Pressable
-              onPress={handleBrandTap}
-              accessibilityRole="button"
-              accessibilityLabel="Brand: loading"
-              accessibilityState={{ busy: true }}
-              style={styles.brandRow}
-              testID="topbar-brand-loading"
-            >
-              <View style={styles.brandLabelPlaceholder} />
-              <Icon name="chevD" size={16} color={textTokens.tertiary} />
-            </Pressable>
-          );
-        }
-        const label =
-          currentBrand === null
-            ? "Create brand"
-            : truncate(currentBrand.displayName, BRAND_LABEL_MAX_CHARS);
-        return (
-          <Pressable
-            onPress={handleBrandTap}
-            accessibilityRole="button"
-            accessibilityLabel={`Brand: ${label}`}
-            style={styles.brandRow}
-          >
-            {/* #3355 bug 17 — the brand's uploaded logo beside its name. The
-                chip never showed a mark, so a brand without a logo keeps the
-                name-only chip. */}
-            {currentBrand !== null && brandMarkPhotoUrl(currentBrand) !== null ? (
-              <BrandMark
-                brand={currentBrand}
-                size={BRAND_MARK_SIZE}
-                testID="topbar-brand-mark"
-              />
-            ) : null}
-            <Text style={styles.brandLabel} numberOfLines={1}>
-              {label}
-            </Text>
-            <Icon name="chevD" size={16} color={textTokens.tertiary} />
-          </Pressable>
-        );
+        // #4389 AB — the chip lives in BrandChip (shared with Ari); the
+        // element tree, labels and styles are unchanged (U-9).
+        return <BrandChip onPress={handleBrandTap} brandLoading={brandLoading} />;
       }
       case "back": {
         return (
@@ -432,28 +379,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
-  },
-  brandRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
-  brandLabel: {
-    color: textTokens.primary,
-    fontSize: typography.bodyLg.fontSize,
-    lineHeight: typography.bodyLg.lineHeight,
-    fontWeight: "600",
-  },
-  // issue #3345 — the calm stand-in while the selected brand loads; the same
-  // glass tint as Home's Recent skeletons, one label-line tall.
-  brandLabelPlaceholder: {
-    width: 112,
-    height: typography.bodyLg.fontSize,
-    borderRadius: radiusTokens.sm,
-    backgroundColor: glass.tint.profileBase,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    opacity: 0.55,
   },
   backRow: {
     flexDirection: "row",

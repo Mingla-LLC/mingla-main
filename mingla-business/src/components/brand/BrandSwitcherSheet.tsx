@@ -11,7 +11,7 @@ import {
 } from "../../constants/designSystem";
 import { useAuth } from "../../context/AuthContext";
 import { useBrandListState } from "../../hooks/useBrandListShim";
-import { useUpdateCreatorAccount } from "../../hooks/useCreatorAccount";
+import { usePickBrand } from "../../hooks/usePickBrand";
 import { useBrandFollowerCounts } from "../../hooks/useBrandFollowerCount";
 import { formatExactFollowers } from "@mingla/offering-rendering/followerCount";
 import {
@@ -31,6 +31,16 @@ export interface BrandSwitcherSheetProps {
   onBrandCreated?: (brand: Brand) => void;
   onDefaultBrandSaveError?: (message: string) => void;
   onRequestDeleteBrand?: (brand: Brand) => void;
+  /** #4389 AB — Ari titles the sheet "Talk to Ari about". Default "Switch brand". */
+  title?: string;
+  /**
+   * #4389 R-16 — called before a pick is applied. Return false to hold the
+   * pick (the sheet closes, nothing changes); the caller applies it later
+   * with `usePickBrand()`.
+   */
+  onBeforePick?: (brand: Brand) => boolean;
+  /** #4389 — called after a pick was applied. */
+  onPicked?: (brand: Brand) => void;
   testID?: string;
 }
 
@@ -39,15 +49,17 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
   onClose,
   onDefaultBrandSaveError,
   onRequestDeleteBrand,
+  title = "Switch brand",
+  onBeforePick,
+  onPicked,
   testID,
 }) => {
   const brandList = useBrandListState();
   const brands = brandList.brands;
   const followerCounts = useBrandFollowerCounts(brands.map((brand) => brand.id));
   const { user } = useAuth();
-  const setCurrentBrand = useCurrentBrandStore((s) => s.setCurrentBrand);
   const currentBrandId = useCurrentBrandStore((s) => s.currentBrandId);
-  const updateCreatorAccountMutation = useUpdateCreatorAccount();
+  const pickBrand = usePickBrand(onDefaultBrandSaveError);
   const router = useRouter();
   // #4389 I-4389-NO-MODAL-ON-OVERLAY — brand creation is never embedded in
   // this non-modal TopSheet any more. Opening the setup flow (and its bank
@@ -61,24 +73,15 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
 
   const handlePick = useCallback(
     (brand: Brand): void => {
-      setCurrentBrand(brand);
+      if (onBeforePick !== undefined && !onBeforePick(brand)) {
+        onClose();
+        return;
+      }
+      pickBrand(brand);
       onClose();
-      if (user === null) return;
-      void updateCreatorAccountMutation
-        .mutateAsync({ default_brand_id: brand.id })
-        .catch(() => {
-          onDefaultBrandSaveError?.(
-            "Brand selected for now. Couldn't save it as your default.",
-          );
-        });
+      onPicked?.(brand);
     },
-    [
-      onClose,
-      onDefaultBrandSaveError,
-      setCurrentBrand,
-      updateCreatorAccountMutation,
-      user,
-    ],
+    [onBeforePick, onClose, onPicked, pickBrand],
   );
 
   return (
@@ -87,7 +90,7 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
         {(
           <>
             <View style={styles.header}>
-              <Text style={styles.headerTitle}>Switch brand</Text>
+              <Text style={styles.headerTitle}>{title}</Text>
             </View>
             {/* ORCH-1136 F-4 defense-in-depth: render the cached brand list
                whenever brands exist, BEFORE the loading branch — a populated

@@ -652,7 +652,11 @@ async function handleConfirmAction(args: {
   // for; confirming it while another brand is selected is refused.
   if (
     body.action === "confirm" &&
-    pendingActionBrandMismatch(pending.related_brand_id, body.brand_id)
+    pendingActionBrandMismatch(
+      // Ari rows carry their brand on the conversation; Hub rows on the action.
+      pending.related_brand_id ?? conversationTask?.row.brand_id ?? null,
+      body.brand_id,
+    )
   ) {
     return errorResponse(
       409,
