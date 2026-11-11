@@ -262,3 +262,14 @@ Deno.test("Product banner: the stage RPC drives the approved wording", async () 
   assert(screen.includes("supportProductBannerKeys(data.productStage)"), "thread maps the stage to copy");
   assert(screen.includes('testID="support-thread-product-banner"'), "thread renders the Product banner");
 });
+
+Deno.test("a file that never finished uploading is not a closed request", async () => {
+  const service = await read("src/services/supportTicketService.ts");
+  assert(service.includes("if (fields.token === 'attachment_not_uploaded') throw new SupportReplyError('failed', 'attachment_not_uploaded');"), "the reply maps the not-uploaded refusal");
+  assert(!service.includes("fields.token === 'ticket_closed' || status === 409)"), "a bare 409 no longer means closed");
+  const thread = await read("src/components/support/SupportThreadScreen.tsx");
+  const create = await read("src/components/support/SupportNewRequestScreen.tsx");
+  assert(thread.includes("error.message === 'attachment_not_uploaded'") && create.includes("error.message === 'attachment_not_uploaded'"), "both screens say so");
+  const english = JSON.parse(await read("src/i18n/locales/en/feedback.json")).support;
+  assertEquals(english.not_uploaded, "A screenshot didn't finish uploading. Remove it, add it again and send.", "wording");
+});

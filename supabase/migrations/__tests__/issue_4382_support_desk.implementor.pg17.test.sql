@@ -7,6 +7,7 @@
 -- MINGLA-INVARIANT: I-4382-TOLD-ONCE | issue #4382 | Telling reporters runs once per Product item and posts exactly one message into each linked customer-visible ticket.
 -- MINGLA-INVARIANT: I-4382-PRODUCT-STAGE-CUSTOMER-SAFE | issue #4382 | A ticket's Product stage reaches only its requester, a brand member on a brand-visible ticket, or Support staff, and carries only {stage, board_status_label}.
 -- MINGLA-INVARIANT: I-4382-SUPPORT-MESSAGES-SERVER-PATH-ONLY | issue #4382 | No anon or signed-in browser inserts a message into a support conversation; support messages are written only by issue_4382_post_support_message and the other SECURITY DEFINER support functions or the service role.
+-- MINGLA-INVARIANT: I-4382-SUPPORT-ATTACH-ONLY-UPLOADED | issue #4382 | A support attachment joins a message only when its object exists in support-attachments at its storage_path; otherwise the send is refused with PT409 attachment_not_uploaded.
 -- MINGLA-INVARIANT: I-4382-SUPPORT-NO-LOCATION | issue #4382 | A support ticket's client details hold app and device facts only; a location key is refused.
 BEGIN;
 
@@ -83,6 +84,26 @@ BEGIN
   END;
   IF NOT v_raised THEN RAISE EXCEPTION 'unregistered_object_written'; END IF;
 
+  -- A registered file that was never uploaded does not attach (PT409), and
+  -- the refused send leaves it unattached.
+  v_raised := false;
+  BEGIN
+    PERFORM public.issue_4382_create_customer_ticket(
+      v_explorer_ticket, 'explorer', 'broken', NULL, 'The map will not load after I book',
+      ARRAY[(v_upload->>'attachment_id')::uuid, (v_upload_two->>'attachment_id')::uuid],
+      '{}'::jsonb, NULL, 'person');
+  EXCEPTION WHEN sqlstate 'PT409' THEN v_raised := SQLERRM = 'attachment_not_uploaded';
+  END;
+  IF NOT v_raised THEN RAISE EXCEPTION 'attached_a_file_that_was_never_uploaded'; END IF;
+  IF EXISTS (SELECT 1 FROM public.support_tickets WHERE id = v_explorer_ticket)
+     OR EXISTS (SELECT 1 FROM public.support_attachments
+                WHERE id = (v_upload_two->>'attachment_id')::uuid AND message_id IS NOT NULL) THEN
+    RAISE EXCEPTION 'refused_send_left_a_ticket_or_attachment';
+  END IF;
+  -- Now the voice note is uploaded too.
+  INSERT INTO storage.objects(bucket_id, name, owner)
+  VALUES ('support-attachments', v_upload_two->>'storage_path', v_explorer);
+
   -- A location in client details is refused.
   v_raised := false;
   BEGIN
@@ -128,6 +149,8 @@ BEGIN
   PERFORM pg_temp.t4382_as(v_staff);
   v_internal_upload := public.issue_4382_register_support_attachment(
     v_internal_ticket, 'image', 'image/png', 5000, 100, 100, NULL, true);
+  INSERT INTO storage.objects(bucket_id, name, owner)
+  VALUES ('support-attachments', v_internal_upload->>'storage_path', v_staff);
   PERFORM public.issue_4382_create_staff_ticket(
     v_internal_ticket, 'internal', 'Check Gogi menu photos', 'Photos look stretched on Android',
     v_host, v_brand, NULL, 'normal', 'Host app / Menu', NULL, NULL, NULL, NULL,
@@ -186,7 +209,8 @@ BEGIN
   PERFORM pg_temp.t4382_as(v_explorer);
   SELECT count(*) INTO v_count FROM public.support_tickets;
   IF v_count <> 1 THEN RAISE EXCEPTION 'explorer_sees_%_expected_1', v_count; END IF;
-  IF (SELECT count(*) FROM storage.objects WHERE bucket_id = 'support-attachments') <> 1 THEN
+  -- The screenshot and the voice note.
+  IF (SELECT count(*) FROM storage.objects WHERE bucket_id = 'support-attachments') <> 2 THEN
     RAISE EXCEPTION 'explorer_cannot_read_own_file';
   END IF;
 

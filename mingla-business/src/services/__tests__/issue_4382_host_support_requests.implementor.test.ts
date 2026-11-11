@@ -309,6 +309,34 @@ describe("#4382 Host thread", () => {
     expect((err as SupportSendError).code).toBe("ticket_closed");
   });
 
+  test("a 409 for a file that never finished uploading is not a closed request", async () => {
+    invokeMock.mockResolvedValue({
+      data: null,
+      error: {
+        message: "Edge Function returned a non-2xx status code",
+        context: { status: 409, json: async () => ({ error: "attachment_not_uploaded" }) },
+      },
+    });
+    const err = await sendSupportMessage("ticket-1", "hello", { attachmentIds: ["a1"] }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(SupportSendError);
+    expect((err as SupportSendError).code).toBe("failed");
+    expect((err as SupportSendError).message).toBe(
+      "A screenshot didn't finish uploading. Remove it, add it again and send.",
+    );
+    rpcMock.mockResolvedValueOnce({ data: null, error: { message: "attachment_not_uploaded" } });
+    await expect(
+      createSupportTicket({
+        clientRequestId: REQUEST,
+        topic: "payouts",
+        summary: "Payout",
+        details: "Zero balance",
+        attachmentIds: ["a1"],
+        brandId: null,
+        clientMeta: {},
+      } as never),
+    ).rejects.toThrow("didn't finish uploading");
+  });
+
   test("the thread renders images, internal notes and the closed state", () => {
     const src = fs.readFileSync(path.join(ROOT, "src/components/support/SupportThreadCore.tsx"), "utf8");
     expect(src).toContain("supportComposerMode(ticket?.status)");

@@ -22,6 +22,7 @@ import {
   buildHostCreateTicketArgs,
   keepOwnTickets,
   parseSupportProductStage,
+  supportCopy,
   supportImageMime,
   type HostCreateTicketInput,
   type SupportPickedImage,
@@ -211,7 +212,11 @@ export async function createSupportTicket(input: HostCreateTicketInput): Promise
     throw new Error("Tell us what happened.");
   }
   const { data, error } = await supabase.rpc("issue_4382_create_customer_ticket", args);
-  if (error) throw new Error(error.message);
+  if (error) {
+    throw new Error(
+      error.message === "attachment_not_uploaded" ? supportCopy("thread.not_uploaded") : error.message,
+    );
+  }
   if (typeof data !== "string" || data.length === 0) {
     throw new Error("We couldn't send your request. Try again.");
   }
@@ -307,7 +312,12 @@ async function readSendError(error: FunctionErrorLike): Promise<SupportSendError
       // The body was not JSON; fall back to the status below.
     }
   }
-  if (code === "ticket_closed" || status === 409) {
+  // #4382: a 409 is "closed" only when the server says so; a file that never
+  // finished uploading is also a 409 and must not read as a closed request.
+  if (code === "attachment_not_uploaded") {
+    return new SupportSendError("failed", supportCopy("thread.not_uploaded"));
+  }
+  if (code === "ticket_closed" || (status === 409 && code === null)) {
     return new SupportSendError(
       "ticket_closed",
       message ?? "This request is closed. Start a new request and we'll pick it up.",

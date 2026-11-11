@@ -221,7 +221,12 @@ export function SupportNewRequestScreen(): React.ReactElement {
       router.replace(`${supportRoutePath(ticketId)}?sent=1` as never);
     } catch (error) {
       console.warn('[Support] sending the request failed:', error);
-      toastManager.show(t('feedback:support.send_failed'), 'error');
+      toastManager.show(
+        error instanceof Error && error.message === 'attachment_not_uploaded'
+          ? t('feedback:support.not_uploaded')
+          : t('feedback:support.send_failed'),
+        'error',
+      );
     } finally {
       setSending(false);
       setProgress(null);

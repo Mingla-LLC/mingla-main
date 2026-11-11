@@ -272,6 +272,12 @@ describe("#4382 W2: the uploader's limits and metadata strip", () => {
 });
 
 // ── Composer ────────────────────────────────────────────────────────────────
+describe("#4382 W2: a file that never finished uploading", () => {
+  it("support-send's attachment_not_uploaded refusal has its own plain message", () => {
+    assert.match(read("services/supportDeskService.js"), /attachment_not_uploaded: "An image didn't finish uploading\. Remove it, add it again and send\.",/);
+  });
+});
+
 describe("#4382 W2: the composer's support-send body", () => {
   const ticketId = "11111111-1111-4111-8111-111111111111";
   const waiting = { nextUpdateAt: "2026-11-11T12:00:00.000Z", note: " We'll check back. " };

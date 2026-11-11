@@ -166,6 +166,7 @@ const SEND_ERRORS = {
   ticket_closed: "This ticket is closed, so it can't take new messages.",
   content_required: "Write a message or add an image first.",
   attachment_not_available: "One of the images isn't available any more. Remove it and add it again.",
+  attachment_not_uploaded: "An image didn't finish uploading. Remove it, add it again and send.",
   next_update_must_be_future: "Pick a time in the future for the next update.",
   next_update_note_required: "Say what you'll do before then.",
   too_many_attachments: "Up to 10 images per message.",

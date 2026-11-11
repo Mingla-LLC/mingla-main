@@ -128,7 +128,9 @@ export function SupportThreadScreen({ ticketId }: { ticketId: string }): React.R
       toastManager.show(
         error instanceof SupportReplyError && error.code === 'ticket_closed'
           ? t('feedback:support.reply_closed')
-          : t('feedback:support.reply_failed'),
+          : error instanceof SupportReplyError && error.message === 'attachment_not_uploaded'
+            ? t('feedback:support.not_uploaded')
+            : t('feedback:support.reply_failed'),
         'error',
       );
     }

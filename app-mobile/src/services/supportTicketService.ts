@@ -456,7 +456,12 @@ export async function sendSupportReply(
   if (error) {
     const status = (error as { context?: { status?: number } }).context?.status;
     const fields = await extractFunctionErrorFields(error, 'send_failed');
-    if (fields.token === 'ticket_closed' || status === 409) throw new SupportReplyError('ticket_closed');
+    // #4382: a 409 is "closed" only when the server says so; a file that never
+    // finished uploading is also a 409 and must not read as a closed request.
+    if (fields.token === 'attachment_not_uploaded') throw new SupportReplyError('failed', 'attachment_not_uploaded');
+    if (fields.token === 'ticket_closed' || (status === 409 && fields.token === 'send_failed')) {
+      throw new SupportReplyError('ticket_closed');
+    }
     throw new SupportReplyError('failed', fields.token);
   }
   const result = (data ?? {}) as { status?: unknown; reopened?: unknown };
