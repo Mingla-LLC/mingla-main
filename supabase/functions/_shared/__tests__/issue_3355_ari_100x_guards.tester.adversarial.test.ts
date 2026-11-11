@@ -388,8 +388,10 @@ Deno.test("#3355 tester: an active-voice claim naming a code the chat never prop
     "Create GIRLSTRIPLAGOS",
   );
   assert(!out.includes("I've created GIRLSTRIPLAGOS"));
+  // #3355 rework 4 (R4-5): no read proved absence here, so Ari says what it
+  // knows about this chat instead of "Nothing has been saved".
   assert(
-    out.includes("Nothing has been saved or sent for GIRLSTRIPLAGOS yet."),
+    out.includes("I don't see GIRLSTRIPLAGOS in this chat yet."),
   );
   // A claim with no evidence at all is rewritten, whatever it names.
   assertEquals(
@@ -511,7 +513,8 @@ Deno.test("#3355 tester retest 2: no excuse in any clause keeps an unbacked clai
   ) {
     assertEquals(
       await stateSaid(text, none),
-      "Nothing has been saved or sent for FAVY10 yet.",
+      // #3355 rework 4 (R4-5): no read proved absence.
+      "I don't see FAVY10 in this chat yet.",
       text,
     );
   }

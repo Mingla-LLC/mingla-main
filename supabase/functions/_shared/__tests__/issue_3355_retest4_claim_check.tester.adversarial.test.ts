@@ -117,8 +117,9 @@ Deno.test("#3355 retest 4: table rows are decided per code (FAVY10 saved, GIRLS2
   });
   assert(out.text.includes("| FAVY10 | ✅ Live |"), out.text);
   assert(!out.text.includes("| GIRLS20 | ✅ Live |"), out.text);
+  // #3355 rework 4 (R4-5): no read proved absence.
   assert(
-    out.text.includes("Nothing has been saved or sent for GIRLS20 yet."),
+    out.text.includes("I don't see GIRLS20 in this chat yet."),
     out.text,
   );
 });
@@ -199,7 +200,8 @@ Deno.test("#3355 retest 4: 'nothing saved' only for the asked kind; an unasked e
       },
     ],
   });
-  assertEquals(out.text, "Nothing has been saved or sent for GIRLS20 yet.");
+  // #3355 rework 4 (R4-5): no read proved absence.
+  assertEquals(out.text, "I don't see GIRLS20 in this chat yet.");
 });
 
 Deno.test("#3355 retest 4: an unknown listing kind is still refused after the target bind", () => {

@@ -819,6 +819,67 @@ const END_OF_MONTH = new RegExp(
   "gi",
 );
 
+/**
+ * #3355 rework 4 (R4-13): "till Easter" / "until Easter Monday" / "by Good
+ * Friday", and "until the end of next month" / "till the end of the month".
+ */
+const END_EASTER = new RegExp(
+  `\\b${END_LEAD}\\s+(?:the\\s+)?(easter(?:\\s+(?:sunday|monday|day))?|good\\s+friday)\\b`,
+  "gi",
+);
+const END_RELATIVE_MONTH = new RegExp(
+  `\\b(?:until|till|til|through|thru|by|to|ends?|ending)\\s+(?:the\\s+)?end\\s+of\\s+(?:the\\s+|this\\s+)?(next\\s+month|month)\\b`,
+  "gi",
+);
+
+/** Western Easter Sunday (anonymous Gregorian computus): [month, day]. */
+export function easterSunday(year: number): [number, number] {
+  const a = year % 19;
+  const b = Math.floor(year / 100);
+  const c = year % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31);
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+  return [month, day];
+}
+
+function easterDay(words: string, now: Date): StatedDay {
+  const offset = /good\s+friday/i.test(words)
+    ? -2
+    : /monday/i.test(words)
+    ? 1
+    : 0;
+  for (let year = now.getUTCFullYear();; year++) {
+    const [month, day] = easterSunday(year);
+    const date = new Date(Date.UTC(year, month - 1, day + offset));
+    if (
+      Date.UTC(
+        date.getUTCFullYear(),
+        date.getUTCMonth(),
+        date.getUTCDate(),
+        23,
+        59,
+        59,
+      ) >= now.getTime()
+    ) {
+      return {
+        year: date.getUTCFullYear(),
+        month: date.getUTCMonth() + 1,
+        day: date.getUTCDate(),
+        words: words.trim(),
+      };
+    }
+  }
+}
+
 function inferYear(
   month: number,
   day: number,
@@ -999,6 +1060,41 @@ function valueMentions(text: string, now: Date): ValueMention[] {
       month,
       day: dayOfMonth,
       words: match[1].trim(),
+    };
+    push({
+      field: "ends_on",
+      index,
+      end: index + match[0].length,
+      values: { ends_on: ends },
+      key: dayKey(ends),
+      words: spokenDay(ends),
+    });
+  }
+  for (const match of text.matchAll(END_EASTER)) {
+    const index = match.index ?? 0;
+    const ends = easterDay(match[1], now);
+    push({
+      field: "ends_on",
+      index,
+      end: index + match[0].length,
+      values: { ends_on: ends },
+      key: dayKey(ends),
+      words: spokenDay(ends),
+    });
+  }
+  for (const match of text.matchAll(END_RELATIVE_MONTH)) {
+    const index = match.index ?? 0;
+    const next = /next/i.test(match[1]) ? 1 : 0;
+    const base = new Date(Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth() + next,
+      1,
+    ));
+    const ends: StatedDay = {
+      year: base.getUTCFullYear(),
+      month: base.getUTCMonth() + 1,
+      day: lastDayOf(base.getUTCFullYear(), base.getUTCMonth() + 1),
+      words: match[0].trim(),
     };
     push({
       field: "ends_on",

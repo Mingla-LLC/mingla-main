@@ -85,6 +85,8 @@ const VERIFIED_PROPOSAL_CONTEXT_KEYS = new Set([
   // time zone and currency (display only; read by the server).
   "brand_timezone",
   "brand_currency",
+  // #3355 rework 4 (R4-8): the event titles a discount card applies to.
+  "discount_target_titles",
 ]);
 
 export function verifiedProposalArgs(

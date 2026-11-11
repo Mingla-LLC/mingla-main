@@ -148,14 +148,12 @@ const UNSPECIFIED_TARGETS: Array<[string, unknown]> = [
 
 // ── 3b-1: the discount target ──────────────────────────────────────────────
 
-Deno.test("3b-1: the default order — host words, events, only kind, no listings, else ask", () => {
+Deno.test("3b-1: the default order — host words, only kind, no listings, else ask", () => {
+  // #3355 rework 4 (R4-11, orchestrator decision): a brand that sells events
+  // AND trips, with no kind named, is asked; events are no longer assumed.
   assertEquals(
     resolveDiscountTargetDefault(["event", "trip"], FAVY10_SENTENCE),
-    {
-      kind: "default",
-      listingKinds: ["event"],
-      reason: "brand_sells_events",
-    },
+    { kind: "ask", listingKinds: ["event", "trip"] },
   );
   assertEquals(resolveDiscountTargetDefault(["experience"], FAVY10_SENTENCE), {
     kind: "default",
@@ -282,7 +280,8 @@ Deno.test("3b-1: a brand with several kinds and none named gets ONE question lis
   assertEquals((error as ToolError).code, "DISCOUNT_PROPOSAL_INVALID");
   assertEquals(
     (error as ToolError).message,
-    "Which listings is this discount for: your experiences or your trips? Tell me and I'll set it up.",
+    // #3355 rework 4: the question names the code.
+    "Which listings is FAVY10 for: your experiences or your trips? Tell me and I'll set it up.",
   );
   assert(!/couldn't tell/i.test((error as ToolError).message));
   assertEquals(ownerCopyViolations((error as ToolError).message, "prose"), []);

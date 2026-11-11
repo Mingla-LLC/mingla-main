@@ -128,7 +128,11 @@ Deno.test("P1-2 (D1): a passive-voice claim with no receipt is replaced", async 
   ) {
     const out = await guard(text, [], { host });
     assert(out.rewritten, text);
-    assertMatch(out.text, /^(?:I haven't saved|Nothing has been saved)/, text);
+    assertMatch(
+      out.text,
+      /^(?:I haven't saved|Nothing has been saved|I don't see \w+ in this chat yet)/,
+      text,
+    );
   }
 });
 
@@ -235,7 +239,8 @@ Deno.test("P1-2 (D4): the state shown is the one the sentence is about", async (
     (await guard("I created GIRLS20 for you.", history, {
       host: "Create GIRLS20",
     })).text,
-    "Nothing has been saved or sent for GIRLS20 yet.",
+    // #3355 rework 4 (R4-5): no read proved absence.
+    "I don't see GIRLS20 in this chat yet.",
   );
 });
 

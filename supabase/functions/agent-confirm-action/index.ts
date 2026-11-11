@@ -56,6 +56,7 @@ import {
 import {
   continueAfterApprovedAction,
   type PostApprovalContinuation,
+  prepareContinuationProposal,
 } from "../_shared/agentPostApproval.ts";
 import { sanitizeAriUserFacingDiagnostics } from "../_shared/agentSanitization.ts";
 import { websiteSetupApprovedWriteFollowup } from "../_shared/agentWebsiteSetup.ts";
@@ -1453,16 +1454,21 @@ async function handleConfirmAction(args: {
           if (!nextTool) {
             continuation = null;
           } else {
-            continuation.toolArgs = canonicalizeAgentProposalArgs(
-              nextTool.name,
-              continuation.toolArgs,
-            );
-            await authorizeAgentTool(
-              nextTool,
-              continuation.toolArgs,
-              userClient,
-              userId,
-            );
+            // #3355 rework 4 (R4-7): the same discount fill-in as agent-chat
+            // before #4304 canonicalises; a question replaces the card.
+            continuation = await prepareContinuationProposal({
+              continuation,
+              client: userClient,
+              canonicalize: canonicalizeAgentProposalArgs,
+            });
+            if (continuation.kind === "proposal") {
+              await authorizeAgentTool(
+                nextTool,
+                continuation.toolArgs,
+                userClient,
+                userId,
+              );
+            }
           }
         }
       } catch (error) {

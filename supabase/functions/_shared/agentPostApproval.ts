@@ -16,7 +16,9 @@ import {
   callGeminiStructured,
   type GeminiContentMessage,
 } from "./agentGemini.ts";
-import { lintAriCopy } from "./agentCopyLint.ts";
+import { lintAriCopy, softenAriHeadings } from "./agentCopyLint.ts";
+import { DISCOUNT_PROPOSAL_REFUSED_CODE } from "./ariDiscountArgs.ts";
+import { bindDiscountTargetDefault } from "./agentAri10xTools.ts";
 import {
   ARI_CLAIM_CHECK_RESERVE_MS,
   type AgentLoopResult,
@@ -27,6 +29,7 @@ import {
   buildClaimEvidence,
   checkReplyClaims,
   type ClaimCheckResult,
+  conversationSince,
   dedupeReplySentences,
   recentRecordEvidence,
 } from "./ariClaimCheck.ts";
@@ -61,6 +64,12 @@ export type PostApprovalContinuation =
     toolArgs: Record<string, unknown>;
     text: string;
     observations: AgentLoopResult["observations"];
+    /**
+     * #3355 rework 4 (R4-7): the host's last message, so the next write's
+     * unspecified fields (a discount's listings, its minimum order) are
+     * filled from the host's own words, exactly as agent-chat does.
+     */
+    goalText?: string;
   };
 
 function contentText(value: unknown): string {
@@ -133,6 +142,9 @@ export async function continueAfterApprovedAction(args: {
   const recentGoalText = recentGoal && "text" in recentGoal
     ? recentGoal.text
     : args.toolName;
+  // #3355 rework 4 (R4-2): this conversation's records start at its oldest
+  // row in the window.
+  const since = conversationSince(rows ?? [], Date.now());
   const toolsets = new Set<AriToolsetKey>(inferAriToolsets(recentGoalText));
   let tools = selectAriTools(
     AGENT_TOOLS,
@@ -302,6 +314,7 @@ export async function continueAfterApprovedAction(args: {
       text:
         "That's saved. The next change is ready for you to review.",
       observations: loop.observations,
+      goalText: recentGoalText,
     };
   }
   if (loop.kind !== "text") {
@@ -325,7 +338,11 @@ export async function continueAfterApprovedAction(args: {
     const result = item.result as { sources?: unknown } | undefined;
     return Array.isArray(result?.sources) && result.sources.length > 0;
   });
-  const lint = lintAriCopy(loop.text, {
+  // #3355 rework 4 (R4-12): Flash writes "### Next steps" headings in the
+  // continuation; a heading is softened to a bold line instead of dropping
+  // every continuation as RAW_MARKUP. A code fence still drops it.
+  const continuationText = softenAriHeadings(loop.text);
+  const lint = lintAriCopy(continuationText, {
     researchExpected: usedResearch,
     hasSources,
   });
@@ -339,7 +356,7 @@ export async function continueAfterApprovedAction(args: {
     return { kind: "text", text: null, observations: loop.observations };
   }
   const check = await checkPostApprovalClaims({
-    text: loop.text,
+    text: continuationText,
     hostMessage: recentGoalText,
     toolName: args.toolName,
     toolArgs: args.toolArgs ?? {},
@@ -347,6 +364,8 @@ export async function continueAfterApprovedAction(args: {
     observations: loop.observations,
     client: args.client,
     userId: args.userId,
+    brandId: typeof brandId === "string" ? brandId : null,
+    since,
     call: args.claimCall,
   });
   console.info(JSON.stringify({
@@ -410,6 +429,10 @@ export async function checkPostApprovalClaims(args: {
   observations: AgentLoopResult["observations"];
   client: SupabaseClient;
   userId: string;
+  /** The approved write's brand (R4-2: records are read for it only). */
+  brandId?: string | null;
+  /** Where this conversation's records start (ISO). */
+  since?: string;
   call?: AriClaimModelCall;
 }): Promise<ClaimCheckResult> {
   const executed = buildClaimEvidence({
@@ -438,8 +461,18 @@ export async function checkPostApprovalClaims(args: {
     recentWrite: true,
     objects,
     evidence: [...executed, ...reads],
-    moreEvidence: (kinds) =>
-      recentRecordEvidence({ client: args.client, userId: args.userId, kinds }),
+    moreEvidence: (kinds, named) =>
+      recentRecordEvidence({
+        client: args.client,
+        userId: args.userId,
+        kinds,
+        brandId: args.brandId ??
+          (typeof args.toolArgs.brand_id === "string"
+            ? args.toolArgs.brand_id
+            : null),
+        since: args.since ?? new Date().toISOString(),
+        objects: named,
+      }),
     askedWriteThisTurn: false,
     call: args.call ?? (async (request) =>
       (await callGeminiStructured({
@@ -450,4 +483,56 @@ export async function checkPostApprovalClaims(args: {
         maxOutputTokens: 512,
       })).value),
   });
+}
+
+/**
+ * #3355 rework 4 (R4-7, I-ARI-DISCOUNT-TARGET-RESOLVED on the continuation):
+ * the continuation's next write gets the same server fill-in as agent-chat
+ * before the #4304 canonicaliser: a discount's unspecified listings and its
+ * minimum order come from the host's own words and the brand's listings.
+ * When the fill-in has to ask (the brand sells several kinds and the host
+ * named none) or the canonicaliser refuses in owner words, that sentence
+ * becomes the continuation text after the receipt. The host's second code
+ * is proposed or asked about, never dropped silently.
+ */
+export async function prepareContinuationProposal(args: {
+  continuation: Extract<PostApprovalContinuation, { kind: "proposal" }>;
+  client: SupabaseClient;
+  canonicalize: (
+    toolName: string,
+    toolArgs: Record<string, unknown>,
+  ) => Record<string, unknown>;
+  bind?: typeof bindDiscountTargetDefault;
+}): Promise<PostApprovalContinuation> {
+  const bind = args.bind ?? bindDiscountTargetDefault;
+  const { continuation } = args;
+  try {
+    const bound = await bind(
+      continuation.toolName,
+      continuation.toolArgs,
+      args.client,
+      continuation.goalText ?? "",
+    );
+    return {
+      ...continuation,
+      toolArgs: args.canonicalize(continuation.toolName, bound),
+    };
+  } catch (error) {
+    if (
+      error instanceof ToolError &&
+      error.code === DISCOUNT_PROPOSAL_REFUSED_CODE
+    ) {
+      console.info(JSON.stringify({
+        event: "ari_post_approval_proposal_question",
+        issue: "3355",
+        tool_name: continuation.toolName,
+      }));
+      return {
+        kind: "text",
+        text: `That's saved. ${error.message}`,
+        observations: continuation.observations,
+      };
+    }
+    throw error;
+  }
 }

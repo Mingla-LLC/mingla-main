@@ -17,6 +17,7 @@ import {
 import { DOMAIN_TOOLS } from "./agentDomainTools.ts";
 import {
   applyDiscountTargetDefault,
+  applyStatedMinimumOrder,
   discountTargetsNeedDefault,
   resolveDiscountTargetDefault,
 } from "./ariDiscountArgs.ts";
@@ -1739,9 +1740,11 @@ export async function bindDiscountTargetDefault(
   hostText: string,
 ): Promise<Record<string, unknown>> {
   if (toolName !== "create_discount") return args;
-  if (!discountTargetsNeedDefault(args)) return args;
-  const kinds = isUuid(args.brand_id)
-    ? await readBrandListingKinds(client, String(args.brand_id))
+  // #3355 rework 4 (R4-3): "orders over ₦10,000" is the minimum order.
+  const withMinimum = applyStatedMinimumOrder(args, hostText);
+  if (!discountTargetsNeedDefault(withMinimum)) return withMinimum;
+  const kinds = isUuid(withMinimum.brand_id)
+    ? await readBrandListingKinds(client, String(withMinimum.brand_id))
     : [];
   const resolved = resolveDiscountTargetDefault(kinds, hostText);
   console.log(
@@ -1751,7 +1754,7 @@ export async function bindDiscountTargetDefault(
       kinds: resolved.listingKinds,
     }),
   );
-  return applyDiscountTargetDefault(args, resolved);
+  return applyDiscountTargetDefault(withMinimum, resolved);
 }
 
 const getListingCapabilities: AgentToolDefinition = {

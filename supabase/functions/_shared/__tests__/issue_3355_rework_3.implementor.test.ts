@@ -224,8 +224,13 @@ Deno.test("R3-3: every bypass on the tester's list is caught when no record back
         `${claim.quote} left in ${out.text}`,
       );
     }
-    // The host asked for it this turn and nothing exists: the true state.
-    assertMatch(out.text, /saved or sent/, text);
+    // The host asked for it this turn and nothing exists: the true state
+    // (rework 4, R4-5: with no read, what Ari knows about this chat).
+    assertMatch(
+      out.text,
+      /saved or sent|I don't see \w+ in this chat yet/,
+      text,
+    );
   }
 });
 
@@ -349,7 +354,8 @@ Deno.test("R3-1 rule 3: 'nothing saved' only when the host asked for a save this
   const asked = await check("I created GIRLS20 for you.", {
     host: "Create GIRLS20",
   });
-  assertEquals(asked.text, "Nothing has been saved or sent for GIRLS20 yet.");
+  // #3355 rework 4 (R4-5): no read proved absence.
+  assertEquals(asked.text, "I don't see GIRLS20 in this chat yet.");
   // A question about it (not a save request): never "nothing saved".
   const question = await check("I created GIRLS20 for you.", {
     host: "Did you make GIRLS20?",

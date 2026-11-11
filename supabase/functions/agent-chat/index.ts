@@ -283,6 +283,7 @@ import {
   buildClaimEvidence,
   checkReplyClaims,
   claimKindOfTool,
+  conversationSince,
   dedupeReplySentences,
   recentRecordEvidence,
 } from "../_shared/ariClaimCheck.ts";
@@ -4513,6 +4514,7 @@ ${boundedAgentContext}
           userClient,
           userId,
           conversationId,
+          brandId: activeBrand?.id ?? null,
           intent: intentResult.read,
           observations: loopResult.observations,
           turnStartedAt,
@@ -4917,6 +4919,7 @@ ${boundedAgentContext}
               userClient,
               userId,
               conversationId,
+              brandId: activeBrand?.id ?? null,
               intent: intentResult.read,
               observations: [{
                 tool: tool.name,
@@ -5339,6 +5342,7 @@ ${boundedAgentContext}
       userClient,
       userId,
       conversationId,
+      brandId: activeBrand?.id ?? null,
       intent: intentResult.read,
       turnStartedAt,
     });
@@ -5462,6 +5466,7 @@ async function guardReplyClaims(args: {
       content?: unknown;
       tool_calls?: unknown;
       tool_results?: unknown;
+      created_at?: unknown;
     }
   >;
   current: string;
@@ -5469,6 +5474,8 @@ async function guardReplyClaims(args: {
   userClient: SupabaseClient;
   userId: string;
   conversationId: string;
+  /** The conversation's active brand (R4-2: records are read for it only). */
+  brandId: string | null;
   intent: { intent: string; target: string | null } | null;
   observations?: readonly AgentLoopObservation[];
   turnStartedAt: number;
@@ -5557,11 +5564,16 @@ async function guardReplyClaims(args: {
       observations,
       isReadTool: isRead,
     }),
-    moreEvidence: (kinds) =>
+    // R4-2 / R4-5: notes and tickets of THIS conversation (from its first
+    // row in the window) on the active brand, and the brand's named codes.
+    moreEvidence: (kinds, named) =>
       recentRecordEvidence({
         client: args.userClient,
         userId: args.userId,
         kinds,
+        brandId: args.brandId,
+        since: conversationSince(args.history, args.turnStartedAt),
+        objects: named,
       }),
     askedWriteThisTurn,
     // The tool the host asked for names what "nothing saved" may be about.
@@ -5597,10 +5609,56 @@ async function guardReplyClaims(args: {
  * card that carries a date (`*_at`) or a minor-unit amount. Display only.
  * Null when the write has neither, or the brand cannot be read.
  */
+/**
+ * #3355 rework 4 (R4-8): a create_discount card names the events it applies
+ * to ("Lagos Food Fest tickets"): their titles, read for the card's own
+ * brand. Display only; null when there are none or the read fails.
+ */
+async function discountTargetTitles(
+  client: SupabaseClient,
+  brandId: string,
+  toolArgs: Record<string, unknown>,
+): Promise<Record<string, string> | null> {
+  const targets = Array.isArray(toolArgs.targets) ? toolArgs.targets : [];
+  const ids = [
+    ...new Set(
+      targets.flatMap((raw) => {
+        const target = raw && typeof raw === "object" && !Array.isArray(raw)
+          ? raw as Record<string, unknown>
+          : null;
+        return target?.target_kind === "event" &&
+            typeof target.target_id === "string" &&
+            /^[0-9a-f-]{36}$/i.test(target.target_id)
+          ? [target.target_id]
+          : [];
+      }),
+    ),
+  ].slice(0, 20);
+  if (ids.length === 0) return null;
+  const { data, error } = await client.from("events")
+    .select("id,title")
+    .eq("brand_id", brandId)
+    .in("id", ids);
+  if (error || !data) {
+    console.warn(
+      "[agent-chat] discount target titles unavailable",
+      JSON.stringify({ code: error?.code ?? null }),
+    );
+    return null;
+  }
+  const out: Record<string, string> = {};
+  for (const row of data as Array<Record<string, unknown>>) {
+    if (typeof row.id === "string" && typeof row.title === "string") {
+      out[row.id] = row.title.slice(0, 120);
+    }
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
 async function brandDisplayContext(
   client: SupabaseClient,
   toolArgs: Record<string, unknown>,
-): Promise<Record<string, string> | null> {
+): Promise<Record<string, unknown> | null> {
   const brandId = toolArgs.brand_id;
   const hasDate = Object.entries(toolArgs).some(([key, value]) =>
     /_at$/.test(key) && typeof value === "string" &&
@@ -5609,7 +5667,12 @@ async function brandDisplayContext(
   const hasMinor = Object.keys(toolArgs).some((key) =>
     /_(minor|cents)$/.test(key)
   );
-  if (typeof brandId !== "string" || (!hasDate && !hasMinor)) return null;
+  if (typeof brandId !== "string") return null;
+  // #3355 rework 4 (R4-8): the event titles a discount applies to.
+  const titles = await discountTargetTitles(client, brandId, toolArgs);
+  if (!hasDate && !hasMinor) {
+    return titles ? { discount_target_titles: titles } : null;
+  }
   const { data, error } = await client.from("brands")
     .select("default_timezone,country_code,default_currency")
     .eq("id", brandId)
@@ -5625,7 +5688,8 @@ async function brandDisplayContext(
   const timezone = isValidIanaTimezone(brand.default_timezone)
     ? String(brand.default_timezone)
     : marketDefaultTimezone(brand.country_code);
-  const out: Record<string, string> = {};
+  const out: Record<string, unknown> = {};
+  if (titles) out.discount_target_titles = titles;
   if (timezone) out.brand_timezone = timezone;
   if (
     typeof brand.default_currency === "string" &&

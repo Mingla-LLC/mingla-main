@@ -128,7 +128,8 @@ Deno.test("A6a: a claimed proposal for a code with no write is replaced by the t
   assertNotMatch(guarded.text, /I proposed/);
   assertMatch(
     guarded.text,
-    /Nothing has been saved or sent for FFBTSCOM10 yet\./,
+    // #3355 rework 4 (R4-5): no read proved absence.
+    /I don't see FFBTSCOM10 in this chat yet\./,
   );
   assertNotMatch(guarded.text, /FAVY10/, "another code's state is not shown");
   assertEquals(guarded.replaced.length, 1);
@@ -148,7 +149,8 @@ Deno.test("A6a: answers with no claim stay; an unbacked claim never does", async
   );
   assertEquals(
     (await checked("I created FAVY10 for you.", [], "Create FAVY10")).text,
-    "Nothing has been saved or sent for FAVY10 yet.",
+    // #3355 rework 4 (R4-5): no read proved absence.
+    "I don't see FAVY10 in this chat yet.",
   );
   assertEquals(
     (await checked("I haven't created FAVY10 yet.", [], "Create FAVY10")).text,

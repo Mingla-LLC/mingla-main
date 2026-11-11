@@ -150,20 +150,68 @@ export function discountTargetsNeedDefault(
   return targets.some((raw) => targetReading(raw) === "unspecified");
 }
 
-/** The kinds a host names in their own words ("for my trips"). */
+/**
+ * #3355 rework 4 (R4-3): the kinds a host names in their own words. Venue
+ * kinds come ONLY from explicit phrases ("venue orders", "menu orders",
+ * "food and drink orders", "table deposits"); bare "orders" ("10% off all
+ * orders over ₦10,000", "the first 20 orders") and bare "deposit" ("no
+ * deposit needed") never pick a kind. A phrase after "no", "not",
+ * "without", "except" or "excluding" never selects.
+ */
 const HOST_KIND_PATTERNS: ReadonlyArray<[string, RegExp]> = [
-  ["event", /\b(?:events?|tickets?|concerts?)\b/i],
-  ["experience", /\bexperiences?\b/i],
-  ["trip", /\b(?:trips?|tours?)\b/i],
-  ["venue_order", /\b(?:menu|food orders?|drinks? orders?|orders)\b/i],
-  ["reservation_deposit", /\b(?:reservations?|table deposits?|deposits?)\b/i],
+  ["event", /\b(?:events?|concerts?)\b/gi],
+  ["experience", /\bexperiences?\b/gi],
+  ["trip", /\btrips?\b/gi],
+  [
+    "venue_order",
+    /\b(?:venue|menu|food|drinks?|bar|food\s+and\s+drinks?|food\s*(?:&|\/)\s*drinks?)\s+orders?\b/gi,
+  ],
+  [
+    "reservation_deposit",
+    /\b(?:table|reservation|booking)\s+deposits?\b|\btable\s+(?:reservations?|bookings?)\b/gi,
+  ],
 ];
 
-export function hostNamedListingKinds(text: string): string[] {
-  return HOST_KIND_PATTERNS.flatMap(([kind, pattern]) =>
-    pattern.test(text) ? [kind] : []
-  );
+/**
+ * Words that name a kind only when the brand sells it: "tickets" (events,
+ * or a brand with no listings yet) and "tour" (trips; "the whole tour" on an
+ * events brand is an event tour).
+ */
+const WEAK_KIND_PATTERNS: ReadonlyArray<[string, RegExp]> = [
+  ["event", /\btickets?\b/gi],
+  ["trip", /\btours?\b/gi],
+];
+
+const NEGATED_BEFORE =
+  /\b(?:no|not|without|except|excluding|exclude|never|but\s+not)\s+(?:\S+\s+){0,2}$/i;
+
+function namedKinds(
+  patterns: ReadonlyArray<[string, RegExp]>,
+  text: string,
+): string[] {
+  const out: string[] = [];
+  for (const [kind, pattern] of patterns) {
+    for (const match of text.matchAll(pattern)) {
+      const before = text.slice(
+        Math.max(0, (match.index ?? 0) - 40),
+        match.index,
+      );
+      if (NEGATED_BEFORE.test(before)) continue;
+      if (!out.includes(kind)) out.push(kind);
+      break;
+    }
+  }
+  return out;
 }
+
+export function hostNamedListingKinds(text: string): string[] {
+  return namedKinds(HOST_KIND_PATTERNS, text);
+}
+
+const VENUE_KINDS: ReadonlySet<string> = new Set([
+  "venue_order",
+  "reservation_deposit",
+]);
 
 const KIND_LABELS: Readonly<Record<string, string>> = Object.freeze({
   event: "events",
@@ -175,34 +223,45 @@ const KIND_LABELS: Readonly<Record<string, string>> = Object.freeze({
 
 export type DiscountTargetDefault =
   | { kind: "default"; listingKinds: string[]; reason: string }
-  | { kind: "ask"; listingKinds: string[] };
+  | { kind: "ask"; listingKinds: string[]; notSold?: string[] };
 
 /**
- * #3355 rework 3b (live eval favy10_mid_flow_ends_at): the listing kind for a
- * discount whose target the model left unspecified. In order:
- *   1. the kinds the host named in their own words;
- *   2. events, when the brand sells events;
- *   3. the brand's only kind;
- *   4. events, when the brand has no listings yet;
- *   5. otherwise ask one question listing the brand's kinds.
+ * #3355 rework 3b / rework 4: the listing kind for a discount whose target
+ * the model left unspecified. In order:
+ *   1. the kinds the host named in their own words, when the brand sells
+ *      them (venue orders and table deposits are taken as named; "tickets"
+ *      and "tour" count only for a brand that sells events / trips). A kind
+ *      the host named that the brand does not sell, while it sells other
+ *      kinds, asks one question;
+ *   2. the brand's only kind;
+ *   3. events, when the brand has no listings yet;
+ *   4. otherwise (R4-11, the brand sells several kinds and the host named
+ *      none) ONE question listing the brand's kinds. Ari never assumes
+ *      events for a brand that also sells trips or experiences.
  */
 export function resolveDiscountTargetDefault(
   brandKinds: readonly string[],
   hostText: string,
 ): DiscountTargetDefault {
-  const named = hostNamedListingKinds(hostText);
-  if (named.length > 0) {
-    return { kind: "default", listingKinds: named, reason: "host_named" };
-  }
   const kinds = [
     ...new Set(brandKinds.filter((kind) => LISTING_KINDS.has(kind))),
   ];
-  if (kinds.includes("event")) {
-    return {
-      kind: "default",
-      listingKinds: ["event"],
-      reason: "brand_sells_events",
-    };
+  const strong = hostNamedListingKinds(hostText);
+  const weak = namedKinds(WEAK_KIND_PATTERNS, hostText).filter((kind) =>
+    kinds.includes(kind) || (kinds.length === 0 && kind === "event")
+  );
+  const named = [...new Set([...strong, ...weak])];
+  if (named.length > 0) {
+    if (kinds.length === 0) {
+      return { kind: "default", listingKinds: named, reason: "host_named" };
+    }
+    const notSold = named.filter((kind) =>
+      !kinds.includes(kind) && !VENUE_KINDS.has(kind)
+    );
+    if (notSold.length === 0) {
+      return { kind: "default", listingKinds: named, reason: "host_named" };
+    }
+    return { kind: "ask", listingKinds: kinds, notSold };
   }
   if (kinds.length === 1) {
     return { kind: "default", listingKinds: kinds, reason: "brand_only_kind" };
@@ -215,6 +274,39 @@ export function resolveDiscountTargetDefault(
     };
   }
   return { kind: "ask", listingKinds: kinds };
+}
+
+/**
+ * #3355 rework 4 (R4-3): "10% off all orders over ₦10,000", "minimum order
+ * ₦5,000", "when they spend over 10k" set the minimum order (minor units),
+ * never the target kind. Null when the host stated none.
+ */
+const MINIMUM_ORDER = new RegExp(
+  String
+    .raw`\b(?:(?:orders?|purchases?|baskets?|carts?|bookings?|spend(?:ing)?|spends?|buy(?:ing)?)\s+(?:of\s+|worth\s+|totalling\s+|totaling\s+)?(?:over|above|more\s+than|at\s+least|of\s+at\s+least|from)|minimum\s+(?:order|spend|purchase)(?:\s+(?:of|is|value))?|min\.?\s+(?:order|spend)(?:\s+of)?)\s*(?:₦|N|NGN|\$|USD|£|GBP|€|EUR|CA\$|CAD)?\s*(\d[\d,]*(?:\.\d{1,2})?)\s*(k)?(?![\w%])`,
+  "i",
+);
+
+export function statedMinimumOrderMinor(text: string): number | null {
+  const match = MINIMUM_ORDER.exec(text);
+  if (!match) return null;
+  const major = Number(match[1].replace(/,/g, "")) *
+    (match[2] ? 1_000 : 1);
+  if (!Number.isFinite(major) || major <= 0) return null;
+  return Math.round(major * 100);
+}
+
+/** Fills min_subtotal_minor from the host's words when the model left it out. */
+export function applyStatedMinimumOrder(
+  args: Record<string, unknown>,
+  hostText: string,
+): Record<string, unknown> {
+  if (hasValue(args.min_subtotal_minor)) return args;
+  if (args.kind === "sale_price" || args.value_type === "set_price") {
+    return args;
+  }
+  const minor = statedMinimumOrderMinor(hostText);
+  return minor === null ? args : { ...args, min_subtotal_minor: minor };
 }
 
 function listInWords(items: readonly string[]): string {
@@ -235,8 +327,22 @@ export function applyDiscountTargetDefault(
     const labels = resolved.listingKinds.map((kind) =>
       `your ${KIND_LABELS[kind] ?? kind}`
     );
+    const code = typeof args.code === "string" && args.code.trim()
+      ? normaliseAriDiscountCode(args.code)
+      : null;
+    const subject = code ? code : "this discount";
+    if (resolved.notSold && resolved.notSold.length > 0) {
+      const missing = listInWords(
+        resolved.notSold.map((kind) => KIND_LABELS[kind] ?? kind),
+      );
+      return refuse(
+        `You don't have any ${missing} yet. Should ${subject} be for ${
+          listInWords(labels)
+        }? Tell me and I'll set it up.`,
+      );
+    }
     return refuse(
-      `Which listings is this discount for: ${
+      `Which listings is ${subject} for: ${
         listInWords(labels)
       }? Tell me and I'll set it up.`,
     );
