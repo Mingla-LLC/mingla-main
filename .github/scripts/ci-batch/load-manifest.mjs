@@ -227,7 +227,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4383: re-sealed after registering the Communications scheduling migration and its PostgreSQL proof in the #1857, #1931 and #2117 lanes.
 // #4383: re-sealed after registering the tester adversarial PostgreSQL proof in the #1931 and #2117 lanes.
 // #4255: re-sealed after registering the Work board v2 and Mingla team migrations and their PostgreSQL proofs in the #1857, #1931 and #2117 lanes.
-export const BOOTSTRAP_SHA256 = "794499dde8ed4f5434340bf12a41018d783b757ab16293ab34a8b8899c4fe256";
+// #4255: re-sealed after registering the tester adversarial PostgreSQL proof in the #1931 and #2117 lanes.
+export const BOOTSTRAP_SHA256 = "5a532ae0bf8010bb9ee951d4358862d24978b998efdd5bfc5618227ec3f7e028";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

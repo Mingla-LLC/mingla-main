@@ -20850,6 +20850,8 @@
         "supabase/migrations/__tests__/issue_4255_content_calendar_approved_designed.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4255_team_chat.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4255_team_chat.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4255_team_chat.tester.adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4255_team_chat.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4255_team_chat_fixups.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4255_team_chat_fixups.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4255_work_card_email.implementor.pg17.test.sql",
@@ -26038,6 +26040,8 @@
         "supabase/migrations/__tests__/issue_4255_content_calendar_approved_designed.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4255_team_chat.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4255_team_chat.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4255_team_chat.tester.adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4255_team_chat.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4255_team_chat_fixups.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4255_team_chat_fixups.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4255_work_card_email.implementor.pg17.test.sql",
@@ -53525,5 +53529,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "96c929094dbff13ee3549f562a10567c8c9ee11f5fb191a11c9cbc9e081135cc",
-  "phase3eContractSha256": "85079f8bcc011123722aa38cb57623c66ec14e1cef55716caea5c0d9f388f50b"
+  "phase3eContractSha256": "de4a7a75739a278c5c0ecb85f722197bd766156a10bec942d79790e33d39b877"
 }

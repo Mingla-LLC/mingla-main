@@ -42,6 +42,7 @@
     "isolation": "clean-worktree",
     "expectedFiles": [
       "mingla-business/src/components/minglaTeam/__tests__/issue_4255_mingla_team.implementor.test.tsx",
+      "mingla-business/src/components/minglaTeam/__tests__/issue_4255_mingla_team.tester.adversarial.test.ts",
       "mingla-business/src/components/minglaTeam/__tests__/jest.issue4255.cjs",
       "mingla-business/src/i18n/__tests__/issue_3988_locale_parity.test.ts"
     ],
