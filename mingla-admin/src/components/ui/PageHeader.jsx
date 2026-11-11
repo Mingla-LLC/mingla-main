@@ -18,7 +18,9 @@ import { EmbeddedPageContext } from "../layout/embeddedPage";
 //   titleId      an id for the <h1>, when a section is labelled by it
 //   inline       #4255 (Work board v2): controls drawn on the title's own line,
 //                one row that never wraps (the Work header: tabs, search,
-//                filters, New card). The title keeps its one style.
+//                filters, New card). The title keeps its one style. The row
+//                is not overflow-hidden: its menus (views, Filters) open
+//                below it and must not be clipped; the row fits by itself.
 //
 // A page puts nothing around this: no outer padding, width or centring. The
 // shell sets those once (components/layout/AppShell.jsx).
@@ -45,7 +47,7 @@ export function PageHeader({ title, description, meta, actions, back, tabs, titl
   );
   if (inline) {
     return (
-      <header data-page-header="inline" className="flex h-12 min-w-0 flex-nowrap items-center gap-3 overflow-hidden">
+      <header data-page-header="inline" className="flex h-12 min-w-0 flex-nowrap items-center gap-3">
         {heading}
         {inline}
       </header>

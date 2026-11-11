@@ -6,7 +6,7 @@ import { useEffect, useId, useRef, useState } from "react";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 
-export function Popover({ label, button, buttonClassName = "", align = "left", width = "w-60", role = "dialog", children, disabled = false, open: givenOpen, onOpenChange, dataAttr }) {
+export function Popover({ label, button, buttonClassName = "", rootClassName = "", align = "left", width = "w-60", role = "dialog", children, disabled = false, open: givenOpen, onOpenChange, dataAttr }) {
   const [ownOpen, setOwnOpen] = useState(false);
   const open = givenOpen ?? ownOpen;
   const setOpen = (v) => { if (onOpenChange) onOpenChange(v); else setOwnOpen(v); };
@@ -36,7 +36,7 @@ export function Popover({ label, button, buttonClassName = "", align = "left", w
   }, [refocus, open]);
   const close = () => { setOpen(false); setRefocus(true); };
   return (
-    <span ref={rootRef} className="relative inline-flex min-w-0">
+    <span ref={rootRef} className={`relative inline-flex min-w-0 ${rootClassName}`}>
       <button
         ref={buttonRef}
         type="button"

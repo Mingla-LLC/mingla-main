@@ -5,6 +5,9 @@
 // against the team's hours (red over 100%), the late count and Plan sprint.
 // The goals scroll inside the bar; the numbers and Plan sprint never move off
 // screen. On a phone the whole bar scrolls sideways instead of wrapping.
+// The bar is `relative` so it is the containing block of the goals'
+// screen-reader text (absolutely positioned): without it that text escaped the
+// bar's scroll box and widened the whole page on a phone (390px -> 670px).
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { sprintLabel } from "../../lib/opsModel";
 import { goalStateLabel, sprintDay, sprintProgress, teamCapacity } from "../../lib/workBoardModel";
@@ -24,7 +27,7 @@ export function SprintBar({ sprint, plan = null, today, late = 0, goalId = null,
   const prog = sprintProgress(plan?.in_sprint);
   const cap = teamCapacity(plan?.capacity);
   return (
-    <div data-sprint-bar="" className="flex h-11 min-w-0 flex-nowrap items-center gap-2 overflow-hidden rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] px-1.5 max-sm:overflow-x-auto">
+    <div data-sprint-bar="" className="relative flex h-11 min-w-0 flex-nowrap items-center gap-2 overflow-hidden rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] px-1.5 max-sm:overflow-x-auto">
       <div className="flex shrink-0 items-center">
         <button type="button" aria-label="Previous week" onClick={() => onWeek(-7)} className={`inline-grid h-9 w-8 place-items-center rounded-lg text-[var(--color-text-secondary)] hover:bg-[var(--gray-100)] ${FOCUS}`}><ChevronLeft aria-hidden="true" className="h-4 w-4" /></button>
         <h2 className="whitespace-nowrap text-[13px] font-semibold text-[var(--color-text-primary)]">{sprintLabel(sprint?.starts_on || "")}</h2>

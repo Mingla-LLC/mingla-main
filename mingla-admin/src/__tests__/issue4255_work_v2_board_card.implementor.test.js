@@ -16,6 +16,11 @@
 //   V-8  a thread message with an attachment: the file is uploaded to the
 //        card first, then the message is posted with its id and mentions
 //   V-9  "Message to send" (CardDrafts) is gone from the card
+//   F-2  (fix-up, 10 Nov) the page fits a 390px phone: the sprint bar
+//        contains its goals' screen-reader text (it widened the page to
+//        670px), the header row is not overflow-hidden (it clipped the
+//        views and Filters menus), the phone search box gives way and the
+//        Filters menu opens right-aligned
 //
 // Run: node --test src/__tests__/issue4255_work_v2_board_card.implementor.test.js
 // (from mingla-admin, after `npm ci`; the components are built with esbuild
@@ -213,7 +218,8 @@ describe("V-3 a conflict snaps the card back and says so", () => {
 describe("V-4 the header is one line", () => {
   it("full width shows the three filter chips; nothing wraps", () => {
     const html = h.header({ fit: "full" });
-    assert.match(html, /data-work-header="" data-fit="full" class="flex h-12 min-w-0 flex-1 flex-nowrap items-center gap-2 overflow-hidden"/);
+    // Fix-up (10 Nov): the row is no longer overflow-hidden (it clipped the phone menus); it fits by itself.
+    assert.match(html, /data-work-header="" data-fit="full" class="flex h-12 min-w-0 flex-1 flex-nowrap items-center gap-2"/);
     assert.doesNotMatch(html, /flex-wrap/);
     for (const f of ["owner", "show", "linked"]) assert.match(html, new RegExp(`data-filter-chip="${f}"`));
     assert.equal((html.match(/role="tab"/g) || []).length, 4);
@@ -257,7 +263,7 @@ describe("V-5 sprint goals: five at most", () => {
     assert.match(html, /data-sprint-capacity=""[^>]*text-\[var\(--color-error-700\)\][^>]*>10 of 8 h planned/, "over capacity is red");
     assert.match(html, />2 late</);
     assert.match(html, /Day 2 of 7/);
-    assert.match(html, /data-sprint-bar="" class="flex h-11 min-w-0 flex-nowrap/);
+    assert.match(html, /data-sprint-bar="" class="relative flex h-11 min-w-0 flex-nowrap/);
   });
 });
 
@@ -365,5 +371,31 @@ describe("V-9 Message to send is gone", () => {
         assert.doesNotMatch(code(`${dir}/${f}`), /<CardDrafts\b|"Message to send"/, `${dir}/${f}`);
       }
     }
+  });
+});
+
+describe("F-2 the Work page fits a 390px phone (fix-up, 10 Nov)", () => {
+  const goals = Array.from({ length: 5 }, (_, i) => ({ id: `g${i}`, title: `A long sprint goal title number ${i}`, state: "on_track", done: 0, cards: 2 }));
+  it("the sprint bar is the containing block of its goals, so their screen-reader text cannot widen the page", () => {
+    const html = h.bar({ sprint: { starts_on: "2026-11-09" }, plan: { goals } });
+    assert.match(html, /data-sprint-bar="" class="relative flex h-11 min-w-0 [^"]*max-sm:overflow-x-auto/);
+    assert.equal((html.match(/class="sr-only"/g) || []).length, 5, "each goal pill carries absolutely positioned sr-only text");
+  });
+  it("the header row and the page header are not overflow-hidden, so their menus are never clipped", () => {
+    for (const fit of ["full", "folded", "compact"]) {
+      const html = h.header({ fit });
+      const row = html.match(/data-work-header=""[^>]*>/)[0];
+      assert.doesNotMatch(row, /overflow-hidden/, fit);
+    }
+    const pageHeader = code("components/ui/PageHeader.jsx");
+    assert.match(pageHeader, /data-page-header="inline" className="flex h-12 min-w-0 flex-nowrap items-center gap-3">/);
+  });
+  it("on a phone the search box may shrink to nothing, and the views and Filters buttons never shrink under their words", () => {
+    const compact = h.header({ fit: "compact" });
+    assert.match(compact, /<form role="search" class="relative flex min-w-0 flex-1/);
+    assert.equal((compact.match(/class="relative inline-flex min-w-0 shrink-0"/g) || []).length, 2, "views and Filters popovers");
+    const full = h.header({ fit: "full" });
+    assert.match(full, /<form role="search" class="relative flex min-w-\[7rem\] flex-1/);
+    assert.match(code("components/ops/WorkHeader.jsx"), /dataAttr="filters" rootClassName="shrink-0" align=\{fit === "compact" \? "right" : "left"\}/);
   });
 });

@@ -4,7 +4,10 @@
 // switch and + New card. An active filter turns orange and Clear appears.
 // Under 1,150px the three chips fold into one "Filters · n" button; under
 // 640px only the active tab shows (the others behind it). The row never
-// wraps. The filters filter the board, Today, This week and This month alike.
+// wraps and never overflows: it is not overflow-hidden (that clipped the
+// views and Filters menus on phones), so on a phone the search box gives way
+// (min width 0) and the Filters menu opens right-aligned so it stays on
+// screen. 390px (and 320px) fit with no sideways scroll. The filters filter the board, Today, This week and This month alike.
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ClipboardCopy, ListTree, Plus, Search, SlidersHorizontal } from "lucide-react";
 import { MenuItem, Popover } from "./Popover";
@@ -79,9 +82,9 @@ export function WorkHeader({
   );
   const active = WORK_VIEWS.find((v) => v.value === view) || WORK_VIEWS[0];
   return (
-    <div ref={ref} data-work-header="" data-fit={fit} className="flex h-12 min-w-0 flex-1 flex-nowrap items-center gap-2 overflow-hidden">
+    <div ref={ref} data-work-header="" data-fit={fit} className="flex h-12 min-w-0 flex-1 flex-nowrap items-center gap-2">
       {fit === "compact" ? (
-        <Popover label="Choose a view" role="menu" width="w-44" dataAttr="views"
+        <Popover label="Choose a view" role="menu" width="w-44" dataAttr="views" rootClassName="shrink-0"
           button={<span className="inline-flex items-center gap-1">{active.label}<ChevronDown aria-hidden="true" className="h-3.5 w-3.5" /></span>}
           buttonClassName="inline-flex h-9 shrink-0 items-center rounded-lg bg-[var(--gray-100)] px-3 text-[13px] font-semibold text-[var(--color-text-primary)]">
           {(close) => WORK_VIEWS.map((v) => <MenuItem key={v.value} onClick={() => { onView(v.value); close(); }}>{v.label}{v.value === view ? " ✓" : ""}</MenuItem>)}
@@ -102,7 +105,7 @@ export function WorkHeader({
           ))}
         </nav>
       )}
-      <form role="search" className="relative flex min-w-[7rem] flex-1 basis-[10rem] items-center lg:max-w-[16rem]" onSubmit={(e) => { e.preventDefault(); onSearch(typed.trim().slice(0, 160)); }}>
+      <form role="search" className={`relative flex ${fit === "compact" ? "min-w-0" : "min-w-[7rem]"} flex-1 basis-[10rem] items-center lg:max-w-[16rem]`} onSubmit={(e) => { e.preventDefault(); onSearch(typed.trim().slice(0, 160)); }}>
         <Search aria-hidden="true" className="pointer-events-none absolute left-2.5 h-3.5 w-3.5 text-[var(--color-text-tertiary)]" />
         <label className="sr-only" htmlFor="work-search">Search cards</label>
         <input id="work-search" type="search" value={typed} maxLength={160} placeholder="Search cards"
@@ -111,7 +114,7 @@ export function WorkHeader({
           className={`h-9 w-full min-w-0 rounded-lg border border-[var(--gray-200)] bg-[var(--color-background-primary)] pl-8 pr-2 text-[13px] text-[var(--color-text-primary)] ${FOCUS}`} />
       </form>
       {fit === "full" ? chips : (
-        <Popover label={count ? `Filters, ${count} on` : "Filters"} width="w-72" dataAttr="filters"
+        <Popover label={count ? `Filters, ${count} on` : "Filters"} width="w-72" dataAttr="filters" rootClassName="shrink-0" align={fit === "compact" ? "right" : "left"}
           button={<span className="inline-flex items-center gap-1.5"><SlidersHorizontal aria-hidden="true" className="h-3.5 w-3.5" />{fit === "compact" ? (count ? count : "") : `Filters${count ? ` · ${count}` : ""}`}</span>}
           buttonClassName={`inline-flex h-9 shrink-0 items-center rounded-full border px-3 text-[12.5px] font-semibold ${count ? "border-[var(--color-brand-500)] bg-[var(--color-brand-50)] text-[var(--color-brand-700)]" : "border-[var(--gray-200)] text-[var(--color-text-secondary)]"}`}>
           <div className="flex flex-col gap-2 p-1">{chips}{filtersOn && <button type="button" onClick={onClear} className={`min-h-9 self-start rounded-md px-2 text-[12.5px] font-semibold text-[var(--color-brand-700)] hover:underline ${FOCUS}`}>Clear filters</button>}</div>
