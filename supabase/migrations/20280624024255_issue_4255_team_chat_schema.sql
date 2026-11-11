@@ -32,7 +32,7 @@
 --   7. Realtime for the tables whose rows RLS already limits to members.
 --
 -- Static SQL only (#1860 C7). Conflicts raise PT409 (functions file).
--- MINGLA-INVARIANT declarations live beside the enforcing test:
+-- Invariant declarations live beside the enforcing test:
 -- supabase/migrations/__tests__/issue_4255_team_chat.implementor.pg17.test.sql
 
 -- ---------------------------------------------------------------------------

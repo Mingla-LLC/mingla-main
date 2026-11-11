@@ -2,7 +2,7 @@
 -- 20280624024255_issue_4255_team_chat_schema.sql and
 -- 20280624034255_issue_4255_team_chat_functions.sql, on the fully replayed
 -- PG17 schema.
--- MINGLA-INVARIANT: I-4255-TEAM-CHAT-MEMBER-AND-STAFF | issue #4255 | every team chat row (threads, members, messages, reactions, reads, attachments, team-files objects) is readable only by a live member of its thread whose confirmed address is active Admin staff at the moment of the read; clients never write the tables directly.
+-- MINGLA-INVARIANT: I-4255-TEAM-CHAT-MEMBER-AND-STAFF | issue #4255 | every team chat row (threads, members, messages, reactions, reads, attachments, team-files objects) is readable only by a live member of its thread whose confirmed address is current Admin staff at the moment of the read; clients never write the tables directly.
 -- MINGLA-INVARIANT: I-4255-TEAM-CHAT-CONFIRMED-STAFF | issue #4255 | an account whose address matches a staff row but is not confirmed has no team chat access and never joins the Mingla team.
 -- MINGLA-INVARIANT: I-4255-TEAM-CHAT-PT409 | issue #4255 | a team chat write that takes an expected revision refuses a stale one with SQLSTATE PT409 (never 40001).
 -- MINGLA-INVARIANT: I-4255-TEAM-MENTION-PUSH | issue #4255 | a work-card notice to a confirmed staff member leaves exactly one in-app row (team_mentions), one email row (admin.team_mention, under the #4255 email rules) and one Host app push row (business.team_mention).
