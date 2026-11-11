@@ -387,7 +387,7 @@ Deno.test("#1971 happy: the prompt advertises the trip graph and its revision ru
   // [TEST-MOD-APPROVED #1976] Prompt revision advanced for payout/tax connect-status ads.
   // [TEST-MOD-APPROVED #1980] Prompt revision advanced for marketing draft/growth report tools.
   // [TEST-MOD-APPROVED #1981] prompt v17→v18 for refund/cancel discovery (append-only auth).
-  assertEquals(PROMPT_VERSION, "v31"); // #3355 Wave D: memory principle + escalation guidance
+  assertEquals(PROMPT_VERSION, "v32"); // #3355 Wave D: memory principle + escalation guidance
   // #3355 Wave B: tools are advertised by the capability index (it feeds
   // each tool's generated description), no longer pasted into the prompt.
   const prompt = buildSystemPrompt(null, []) +

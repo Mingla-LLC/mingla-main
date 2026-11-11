@@ -113,12 +113,28 @@ export const ARI_LOCAL_LOOP_BUDGET: Partial<AgentLoopBudget> = Object.freeze({
 export function ariChatLoopBudget(args: {
   localModelEnabled: boolean;
   requiredReads?: number;
+  /**
+   * #3355 Wave E (E1) — the turn's intent read already ran: it is one of the
+   * turn's model calls and its wall time comes out of the 55 s deadline.
+   */
+  intentRead?: { modelCalls: number; elapsedMs: number };
 }): Partial<AgentLoopBudget> {
-  if (args.localModelEnabled) return { ...ARI_LOCAL_LOOP_BUDGET };
+  const spentCalls = Math.max(0, Math.floor(args.intentRead?.modelCalls ?? 0));
+  const spentMs = Math.max(0, Math.floor(args.intentRead?.elapsedMs ?? 0));
+  if (args.localModelEnabled) {
+    return {
+      ...ARI_LOCAL_LOOP_BUDGET,
+      maxModelCalls: (ARI_LOCAL_LOOP_BUDGET.maxModelCalls ?? 10) - spentCalls,
+      deadlineMs: (ARI_LOCAL_LOOP_BUDGET.deadlineMs ?? 115_000) - spentMs,
+    };
+  }
   const required = Math.max(0, Math.floor(args.requiredReads ?? 0));
   return {
     ...ARI_PRODUCTION_LOOP_BUDGET,
     maxToolCalls: ARI_PRODUCTION_LOOP_BUDGET.maxToolCalls + required,
+    maxModelCalls: ARI_PRODUCTION_LOOP_BUDGET.maxModelCalls - spentCalls,
+    // The read and the loop together stay inside the one 55 s deadline.
+    deadlineMs: ARI_PRODUCTION_LOOP_BUDGET.deadlineMs - spentMs,
   };
 }
 
@@ -132,6 +148,18 @@ export type AgentLoopResult =
   }
   | {
     kind: "proposal";
+    toolCall: AgentLoopToolCall;
+    observations: AgentLoopObservation[];
+    usage: { input: number; output: number; calls: number };
+    exhausted: false;
+  }
+  /**
+   * #3355 Wave E (D3a) — the model chose to start a guided setup
+   * (start_flow). The caller hands it to the flow engine; nothing is written
+   * by the loop and no confirmation card is involved.
+   */
+  | {
+    kind: "flow_start";
     toolCall: AgentLoopToolCall;
     observations: AgentLoopObservation[];
     usage: { input: number; output: number; calls: number };
@@ -181,7 +209,7 @@ export async function runAgentLoop(args: {
   ) => Promise<AgentLoopModelResult>;
   classifyTool: (
     call: AgentLoopToolCall,
-  ) => "read" | "agent_state" | "write" | "unknown";
+  ) => "read" | "agent_state" | "write" | "flow" | "unknown";
   /** A failed proposal check is returned to the model for a bounded repair. */
   validateProposal?: (
     call: AgentLoopToolCall,
@@ -492,6 +520,15 @@ export async function runAgentLoop(args: {
     }
     for (const call of calls) {
       const classification = args.classifyTool(call);
+      if (classification === "flow") {
+        return {
+          kind: "flow_start",
+          toolCall: call,
+          observations,
+          usage: usage(),
+          exhausted: false,
+        };
+      }
       if (classification === "write") {
         const issue = await args.validateProposal?.(call);
         if (issue) {

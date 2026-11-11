@@ -67,6 +67,13 @@ export interface RunnerInput {
    * frustration): a typed turn sets the run aside instead of answering it.
    */
   escalate?: boolean;
+  /**
+   * #3355 Wave E (E1) — what the turn's intent read says typed words do to
+   * this run: answer the card, park the run and serve the words, cancel it,
+   * or leave it untouched while the model answers a side question.
+   * Undefined (the intent read failed): the Wave A re-read below decides.
+   */
+  flowAction?: "answer" | "park" | "cancel" | "side";
 }
 
 export interface RunnerDeps {
@@ -593,14 +600,32 @@ async function advanceUnderLease(
   } else if (input.trigger === "turn") {
     // #3355 Wave D (D4): a stuck host leaves the setup; Resume brings it back.
     if (input.escalate && open) return await parkOrPass("repeated");
+    // #3355 Wave E (E1): the intent read's flow_action is primary; the
+    // keyword re-read below is the fallback when the read failed.
+    if (input.flowAction === "side") return { kind: "pass", run };
+    if (input.flowAction === "cancel") {
+      patch.status = "cancelled";
+      patch.current_artefact = null;
+      patch.current_question_id = null;
+      run = await commit({});
+      return {
+        kind: "cancelled",
+        text:
+          "Okay, I've stopped here. Nothing was changed, and everything you already saved stays saved. You can pick this up again anytime.",
+        run,
+      };
+    }
+    if (input.flowAction === "park") {
+      return await parkOrPass(readFlowRequest(input.ownerText) ?? "request");
+    }
     choiceId = textChoiceFor(open, input.ownerText);
     // #3355 Wave A (A2) — a typed request for something else (a discount
     // code, a refund, another kind of offering) is never taken as this form
     // card's answer (the FAVY10 sentence must not become an event's title or
     // start); it falls through to the re-read below, which parks the run.
     const otherRequest = readFlowRequest(input.ownerText);
-    const answersThisCard = !otherRequest || otherRequest === "request" ||
-      otherRequest === def.key;
+    const answersThisCard = input.flowAction === "answer" || !otherRequest ||
+      otherRequest === "request" || otherRequest === def.key;
     if (
       !choiceId && open?.answer_mode === "form" && open.question_id &&
       openStep?.textAnswer && input.ownerText && answersThisCard
@@ -935,7 +960,12 @@ async function advanceUnderLease(
         // request is served (the run is parked); the same words twice are
         // never answered with the same card twice.
         const openRecord = states[step.key];
-        const request = readFlowRequest(input.ownerText);
+        // #3355 Wave E: words the intent read called an answer are not
+        // re-read as a request; the same words twice still never get the
+        // same card twice.
+        const request = input.flowAction === "answer"
+          ? null
+          : readFlowRequest(input.ownerText);
         if (
           request ||
           sameOwnerText(openRecord?.data?.unmatched_text, input.ownerText)

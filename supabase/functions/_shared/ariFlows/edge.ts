@@ -12,7 +12,6 @@ import {
 } from "../agentReadinessTools.ts";
 import type { ReadinessAction } from "../readinessCatalog.ts";
 import {
-  classifyOfferingIntent,
   classifyReadinessQuestion,
   findFlowDefinition,
   intentWantsInstallments,
@@ -25,9 +24,7 @@ import { WEBSITE_SETUP_FLOW, WEBSITE_SETUP_FLOW_KEY } from "./websiteSetup.ts";
 import {
   CONTACT_LIST_STEP,
   CONTACT_REVIEW_STEP,
-  IMPORT_CONTACTS_FLOW,
   IMPORT_CONTACTS_FLOW_KEY,
-  isContactImportIntent,
 } from "./contactImport.ts";
 import { CONTACT_IMPORT_MAPPING_VERSION } from "../contactImportContract.ts";
 import {
@@ -1067,6 +1064,36 @@ function decisionFromOutcome(outcome: RunnerOutcome): FlowTurnDecision {
   }
 }
 
+/**
+ * #3355 Wave E (E1, D3a) — the turn's intent route, as the flow engine needs
+ * it. The model's intent read decides; with the hint read ("hints", today's
+ * behaviour) the keyword classifier decides the readiness answer and the
+ * runner's own Wave A rules decide what typed words do to an open card.
+ * Typed words never start a setup here: only the model's start_flow does
+ * (see startFlowFromTool).
+ */
+export interface FlowTurnRoute {
+  source: "model" | "hints";
+  /** Answer a readiness question from the canonical checklist (no model). */
+  readiness: ReadinessAction | "all" | null;
+  /**
+   * What typed words do to a live run: answer the card, park the run and
+   * serve the words, cancel the run, or leave it untouched for a side answer.
+   * Undefined: the runner's own rules (the fallback).
+   */
+  flowAction?: "answer" | "park" | "cancel" | "side";
+  /** The host asked to carry on with this chat's parked run. */
+  resumeParked?: boolean;
+}
+
+/** The hint route (no model): today's classifier behaviour. */
+export function flowRouteFromHints(message: string): FlowTurnRoute {
+  return {
+    source: "hints",
+    readiness: classifyReadinessQuestion(message),
+  };
+}
+
 export interface FlowTurnArgs {
   service: SupabaseClient;
   /** #2830 — see FlowResearch. */
@@ -1086,10 +1113,12 @@ export interface FlowTurnArgs {
    */
   escalate?: boolean;
   /**
-   * #2830 P4: this turn is Website setup (the Website setup screen, or a
-   * "start / continue Website setup" request).
+   * #2830 P4: this turn is Website setup (the Website setup screen). #3355
+   * Wave E: a typed "start Website setup" in chat is the model's start_flow.
    */
   websiteSetup?: boolean;
+  /** #3355 Wave E — the turn's intent route (default: the hint route). */
+  route?: FlowTurnRoute;
   /**
    * #3355 — this turn's attachments as text (a contact list attached in the
    * chat). Read only when the import flow needs them.
@@ -1218,10 +1247,13 @@ export async function decideFlowTurn(
 ): Promise<FlowTurnDecision> {
   if (!args.brand) return { kind: "none" };
   const websiteMode = args.websiteSetup === true;
+  const route = args.route ?? flowRouteFromHints(args.message);
 
-  // Deterministic readiness answers: the canonical checklist, no model.
+  // Readiness answers come from the canonical checklist, no model — but only
+  // when the turn's intent route says this is a readiness question (#3355
+  // Wave E: the classifier is a hint, the intent read decides).
   if (!args.flowAnswer && !websiteMode && !args.escalate) {
-    const action = classifyReadinessQuestion(args.message);
+    const action = route.readiness;
     if (action) {
       try {
         const readiness = await readBrandReadiness(
@@ -1264,7 +1296,7 @@ export async function decideFlowTurn(
     ),
   };
   try {
-    let run = await store.getForConversation(args.conversationId);
+    const run = await store.getForConversation(args.conversationId);
     const live = run && LIVE_FLOW_STATUSES.has(run.status) ? run : null;
     if (!live) {
       // #2830 — the run left this chat because a teammate took it over: say so
@@ -1301,6 +1333,8 @@ export async function decideFlowTurn(
         ownerText: args.message,
         brandName: args.brand.name,
         ...(args.escalate ? { escalate: true } : {}),
+        // #3355 Wave E: the intent read's flow_action is primary.
+        ...(route.flowAction ? { flowAction: route.flowAction } : {}),
       });
       const website = live.flow_key === WEBSITE_SETUP_FLOW_KEY;
       // #2830 P4: "Start / continue Website setup" points at the open card.
@@ -1326,6 +1360,14 @@ export async function decideFlowTurn(
         artefact: current.current_artefact,
       };
     }
+    // #3355 Wave E: "carry on with my event setup" typed in chat, read by the
+    // model as flow_action resume on this chat's parked run.
+    if (
+      !live && run && run.status === "parked" && route.resumeParked &&
+      !args.escalate
+    ) {
+      return await resumeParkedRun(args, deps, run);
+    }
     if (websiteMode) {
       // A finished Website setup in this chat is not restarted by every
       // message on the Website screen — only by asking for it again.
@@ -1337,59 +1379,11 @@ export async function decideFlowTurn(
       }
       return await startWebsiteSetup(args, store, deps);
     }
-    if (args.otherLaneActive) return { kind: "none" };
-    // #3355 Wave D (D4): a stuck host is answered by the agent, not a setup.
-    if (args.escalate) return { kind: "none" };
-    // #3355: "Import my contacts" / "Upload a contact list".
-    if (isContactImportIntent(args.message)) {
-      const def = IMPORT_CONTACTS_FLOW;
-      const started = await store.start({
-        brandId: args.brand.id,
-        flowKey: def.key,
-        flowVersion: def.version,
-        concurrency: def.concurrency,
-        conversationId: args.conversationId,
-        answers: {},
-      });
-      const first = await runFlowStep(deps, {
-        run: started.run,
-        trigger: "turn",
-        brandName: args.brand.name,
-      });
-      // The list attached to the same message is read straight away.
-      if (first.kind === "artefact") {
-        const filesTurn = await importFilesTurn(args, deps, first.run);
-        if (filesTurn) return filesTurn;
-      }
-      return decisionFromOutcome(first);
-    }
-    const flowKey = classifyOfferingIntent(args.message);
-    if (!flowKey) return { kind: "none" };
-    const def = findFlowDefinition(flowKey);
-    if (!def) return { kind: "none" };
-    const started = await store.start({
-      brandId: args.brand.id,
-      flowKey: def.key,
-      flowVersion: def.version,
-      concurrency: def.concurrency,
-      conversationId: args.conversationId,
-      answers: {
-        intent_text: { value: args.message.slice(0, 600), source: "owner" },
-        paid: { value: intentWantsPaid(args.message), source: "owner" },
-        // #3355 P6: deposits/instalments are the one paid path payouts block.
-        ...(def.key === "create_trip" && intentWantsInstallments(args.message)
-          ? { installments: { value: true, source: "owner" as const } }
-          : {}),
-      },
-    });
-    run = started.run;
-    return decisionFromOutcome(
-      await runFlowStep(deps, {
-        run,
-        trigger: "turn",
-        brandName: args.brand.name,
-      }),
-    );
+    // #3355 Wave E (D3a, I-ARI-FLOWS-START-BY-TOOL): typed words never start
+    // a setup here. The contact-import and offering keyword starts that lived
+    // here are hints now; the model starts a setup with start_flow
+    // (startFlowFromTool below).
+    return { kind: "none" };
   } catch (error) {
     if (
       error instanceof FlowEngineUnavailable || error instanceof FlowConflict
@@ -1397,6 +1391,96 @@ export async function decideFlowTurn(
       return args.flowAnswer
         ? { kind: "stale", next: null, state: null }
         : { kind: "none" };
+    }
+    throw error;
+  }
+}
+
+/**
+ * #3355 Wave E (D3a) — the model called start_flow. The setup starts exactly
+ * as the keyword lane used to start it: its facts come from the host's own
+ * words (provenance "owner"), every step keeps its server checks, and the
+ * first thing it says is one card. The model's prefills are kept as engine
+ * hints only. A run already live in this chat is never forked: its card comes
+ * back instead.
+ */
+export async function startFlowFromTool(
+  args: FlowTurnArgs & {
+    call: {
+      flow_key: string;
+      intent_text?: string;
+      prefills?: Record<string, string | number | boolean>;
+    };
+  },
+): Promise<FlowTurnDecision> {
+  if (!args.brand || !args.engineEnabled) return { kind: "none" };
+  const def = findFlowDefinition(args.call.flow_key);
+  if (!def) return { kind: "none" };
+  const store = args.store ?? createFlowStore(args.service, args.userId);
+  const deps = {
+    store,
+    probes: args.probes ?? buildFlowProbeDeps(
+      args.userClient,
+      args.brand.id,
+      args.userId,
+      args.conversationId,
+      args.research,
+    ),
+  };
+  try {
+    const existing = await store.getForConversation(args.conversationId);
+    if (existing && LIVE_FLOW_STATUSES.has(existing.status)) {
+      const open = existing.current_artefact;
+      return {
+        kind: "reply",
+        text: open
+          ? `You already have a setup open in this chat. Here's where it is:\n\n${open.text}`
+          : "You already have a setup open in this chat. Finish it, or say stop, before starting another.",
+        artefact: open,
+        state: flowStateOf(existing),
+        classification: "flow_engine_already_open",
+      };
+    }
+    if (def.key === WEBSITE_SETUP_FLOW_KEY) {
+      return await startWebsiteSetup(args, store, deps);
+    }
+    // The owner's own words (this turn) are the setup's request.
+    const ownerWords = args.message.slice(0, 600);
+    const prefills = args.call.prefills ?? {};
+    const started = await store.start({
+      brandId: args.brand.id,
+      flowKey: def.key,
+      flowVersion: def.version,
+      concurrency: def.concurrency,
+      conversationId: args.conversationId,
+      answers: def.key === IMPORT_CONTACTS_FLOW_KEY ? {} : {
+        intent_text: { value: ownerWords, source: "owner" },
+        paid: { value: intentWantsPaid(ownerWords), source: "owner" },
+        // #3355 P6: deposits/instalments are the one paid path payouts block.
+        ...(def.key === "create_trip" && intentWantsInstallments(ownerWords)
+          ? { installments: { value: true, source: "owner" as const } }
+          : {}),
+        ...(Object.keys(prefills).length > 0
+          ? { model_prefills: { value: prefills, source: "engine" as const } }
+          : {}),
+      },
+    });
+    const first = await runFlowStep(deps, {
+      run: started.run,
+      trigger: "turn",
+      brandName: args.brand.name,
+    });
+    // A contact list attached to the same message is read straight away.
+    if (def.key === IMPORT_CONTACTS_FLOW_KEY && first.kind === "artefact") {
+      const filesTurn = await importFilesTurn(args, deps, first.run);
+      if (filesTurn) return filesTurn;
+    }
+    return decisionFromOutcome(first);
+  } catch (error) {
+    if (
+      error instanceof FlowEngineUnavailable || error instanceof FlowConflict
+    ) {
+      return { kind: "none" };
     }
     throw error;
   }

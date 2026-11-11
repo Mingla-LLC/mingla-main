@@ -60,7 +60,7 @@ function ruleLines(prompt: string): string[] {
 }
 
 Deno.test("B3: the prompt is principles — no capability list, about 80 rule lines (at most 150), v30", () => {
-  assertEquals(PROMPT_VERSION, "v31");
+  assertEquals(PROMPT_VERSION, "v32");
   const prompt = buildSystemPrompt(null, []);
   assert(!prompt.includes("CAPABILITIES (your tools):"));
   assert(!/^- create_brand — /m.test(prompt), "no per-tool advertisement");
@@ -163,7 +163,10 @@ Deno.test("B3: the turn's toolset comes from the intent read — classifier hint
   );
   assertStringIncludes(chat, "inferAriToolsets(semanticMessage, [");
   assertStringIncludes(chat, "readFlowRequest(semanticMessage),");
-  assertStringIncludes(chat, "tools: ariToolDeclarations(selectedTools),");
+  // #3355 Wave E: the loop's declarations are the generated tool
+  // descriptions plus, when a setup may start, the start_flow control.
+  assertStringIncludes(chat, "...ariToolDeclarations(selectedTools),");
+  assertStringIncludes(chat, "...startFlowDeclarations,");
 });
 
 Deno.test("B4: every ToolError carries user_reason and next_step, with safe defaults", () => {

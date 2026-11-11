@@ -110,7 +110,7 @@ Deno.test("ORCH-1103: PROMPT_VERSION bumped (v6 keeps the earlier tools)", () =>
   // [TEST-MOD-APPROVED #1971] issue #1971 bumps v5 → v6 (trip lifecycle rebuilt
   // on the canonical command boundary). ONE assertion is invalidated — the
   // version literal. No brand-tool assertion changes.
-  assertEquals(PROMPT_VERSION, "v31"); // #3355 Wave D: memory principle + escalation guidance
+  assertEquals(PROMPT_VERSION, "v32"); // #3355 Wave D: memory principle + escalation guidance
 });
 
 Deno.test("ORCH-1103: prompt scopes currency and deletion guidance to the active brand", () => {

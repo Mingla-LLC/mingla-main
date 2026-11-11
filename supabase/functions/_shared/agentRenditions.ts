@@ -198,7 +198,7 @@ function timelineRows(
 
 function progressFor(result: AgentLoopResult): number {
   if (result.kind === "text") return 100;
-  if (result.kind === "proposal") return 75;
+  if (result.kind === "proposal" || result.kind === "flow_start") return 75;
   if (result.reason === "errors") return 55;
   return 70;
 }

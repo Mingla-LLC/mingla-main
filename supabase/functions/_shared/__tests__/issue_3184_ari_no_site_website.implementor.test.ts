@@ -347,7 +347,7 @@ Deno.test({
   sanitizeOps: false,
   sanitizeResources: false,
   fn: () => {
-    assertEquals(PROMPT_VERSION, "v31"); // #3355 Wave D: memory principle + escalation guidance
+    assertEquals(PROMPT_VERSION, "v32"); // #3355 Wave D: memory principle + escalation guidance
     const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false });
     for (
       const line of [

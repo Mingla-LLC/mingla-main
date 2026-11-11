@@ -242,7 +242,9 @@ export async function continueAfterApprovedAction(args: {
   }
   const rawText = loop.kind === "text"
     ? loop.text
-    : postApprovalStopText(loop.reason);
+    // #3355 Wave E: this loop never offers start_flow; a flow_start cannot
+    // happen here and reads as a stop.
+    : postApprovalStopText(loop.kind === "stopped" ? loop.reason : "errors");
   const usedResearch = loop.observations.some((item) =>
     [
       "search_public_web",

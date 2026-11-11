@@ -44,7 +44,11 @@ import {
   classifyOfferingIntent,
   findFlowDefinition,
 } from "../ariFlows/index.ts";
-import { decideFlowTurn, parseFlowAnswer } from "../ariFlows/edge.ts";
+import {
+  decideFlowTurn,
+  parseFlowAnswer,
+  startFlowFromTool,
+} from "../ariFlows/edge.ts";
 import {
   CREATE_EVENT_FLOW,
   createEventArgs,
@@ -1058,7 +1062,9 @@ Deno.test("P7: the seed migration requires the owner's end and time zone on the 
   );
 });
 
-Deno.test("P7: the request starts the engine's event flow before any keyword lane", async () => {
+// #3355 Wave E (D3a): the model's start_flow starts the event setup (typed
+// words alone no longer do); the rest of the premise is unchanged.
+Deno.test("P7: start_flow starts the engine's event flow before any keyword lane", async () => {
   const world = freshWorld({
     brand: {
       default_timezone: "Europe/London",
@@ -1067,7 +1073,8 @@ Deno.test("P7: the request starts the engine's event flow before any keyword lan
     },
   });
   const store = new MemoryStore();
-  const decision = await decideFlowTurn({
+  const decision = await startFlowFromTool({
+    call: { flow_key: "create_event" },
     // deno-lint-ignore no-explicit-any
     service: {} as any,
     // deno-lint-ignore no-explicit-any

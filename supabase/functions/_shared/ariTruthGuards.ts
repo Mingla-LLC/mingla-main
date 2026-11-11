@@ -280,6 +280,110 @@ export function extractStatedSlots(
   return slots;
 }
 
+/**
+ * #3355 Wave E (E1) — the intent read's stated values, as the model read
+ * them. Shape mirrors `AriStatedValues` in ariIntentRead.ts (kept structural
+ * here so this guard has no dependency on the read).
+ */
+export interface ModelStatedValues {
+  code?: string;
+  percent_off?: number;
+  ends_on?: string;
+  max_total_uses?: number;
+  max_uses_per_buyer?: number;
+}
+
+const MONTH_NAMES = [
+  "january",
+  "february",
+  "march",
+  "april",
+  "may",
+  "june",
+  "july",
+  "august",
+  "september",
+  "october",
+  "november",
+  "december",
+];
+
+function wordsHaveNumber(words: string, value: number): boolean {
+  return new RegExp(
+    `(?:^|[^0-9.])${String(value).replace(".", "\\.")}(?![0-9])`,
+  )
+    .test(words);
+}
+
+/**
+ * The model's stated values fill only what the deterministic read missed,
+ * and only when the host's own words carry them (a code the host typed, a
+ * number the host wrote, a day and month the host named). A value the model
+ * invented is dropped, so it can never reach a card or a question.
+ */
+export function mergeModelStatedSlots(
+  base: StatedSlots,
+  model: ModelStatedValues | null | undefined,
+  ownerMessages: readonly string[],
+): StatedSlots {
+  if (!model) return base;
+  const words = ownerMessages.join("\n");
+  const lower = words.toLowerCase();
+  const out: StatedSlots = { ...base };
+  if (!out.code && typeof model.code === "string") {
+    const code = normaliseAriDiscountCode(model.code);
+    if (
+      code && /^[A-Z0-9-]{4,16}$/.test(code) &&
+      words.toUpperCase().includes(code)
+    ) out.code = code;
+  }
+  if (
+    out.value_bps === undefined && typeof model.percent_off === "number" &&
+    model.percent_off > 0 && model.percent_off <= 100 &&
+    wordsHaveNumber(words, model.percent_off) &&
+    /%|percent|per cent/i.test(words)
+  ) {
+    out.value_bps = Math.round(model.percent_off * 100);
+  }
+  if (!out.ends_on && typeof model.ends_on === "string") {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(model.ends_on);
+    if (match) {
+      const [year, month, day] = [
+        Number(match[1]),
+        Number(match[2]),
+        Number(
+          match[3],
+        ),
+      ];
+      const monthName = MONTH_NAMES[month - 1] ?? "";
+      const named = monthName && (lower.includes(monthName.slice(0, 3)));
+      const numeric = new RegExp(`\\b0?${day}[/.-]0?${month}\\b`).test(words);
+      if (
+        validDay(year, month, day) && wordsHaveNumber(words, day) &&
+        (named || numeric)
+      ) {
+        out.ends_on = { year, month, day, words: model.ends_on };
+      }
+    }
+  }
+  if (
+    out.max_total_uses === undefined &&
+    typeof model.max_total_uses === "number" &&
+    Number.isInteger(model.max_total_uses) && model.max_total_uses > 0 &&
+    wordsHaveNumber(words, model.max_total_uses)
+  ) out.max_total_uses = model.max_total_uses;
+  if (
+    out.max_uses_per_buyer === undefined &&
+    typeof model.max_uses_per_buyer === "number" &&
+    Number.isInteger(model.max_uses_per_buyer) &&
+    model.max_uses_per_buyer > 0 &&
+    (wordsHaveNumber(words, model.max_uses_per_buyer) ||
+      (model.max_uses_per_buyer === 1 && /\b(?:once|one)\b/i.test(words))) &&
+    /\bper\s+(?:person|buyer|customer)\b/i.test(words)
+  ) out.max_uses_per_buyer = model.max_uses_per_buyer;
+  return out;
+}
+
 /** 23:59:59 on the stated day in the brand's time zone, as UTC ISO. */
 export function endOfLocalDayIso(
   day: { year: number; month: number; day: number },
@@ -470,12 +574,18 @@ export async function preserveStatedSlots(args: {
   ownerMessages: readonly string[];
   userClient: SupabaseClient;
   now?: Date;
+  /** #3355 Wave E — the intent read's stated values (grounded again here). */
+  modelStated?: ModelStatedValues | null;
 }): Promise<StatedSlotCheck> {
   const properties = (args.parameters as { properties?: unknown }).properties;
   const schemaKeys = new Set(
     properties && typeof properties === "object" ? Object.keys(properties) : [],
   );
-  const stated = extractStatedSlots(args.ownerMessages, args.now);
+  const stated = mergeModelStatedSlots(
+    extractStatedSlots(args.ownerMessages, args.now),
+    args.modelStated,
+    args.ownerMessages,
+  );
   const relevant = (stated.code && schemaKeys.has("code")) ||
     (stated.value_bps !== undefined && schemaKeys.has("value_bps")) ||
     (stated.ends_on && schemaKeys.has("ends_at")) ||

@@ -53,6 +53,7 @@ import {
   flowStateOf,
   isResumeAnswer,
   staleFlowAnswer,
+  startFlowFromTool,
 } from "../ariFlows/edge.ts";
 import type { ReadinessAction } from "../readinessCatalog.ts";
 
@@ -758,7 +759,11 @@ Deno.test("A5 (edge): a new flow in the chat closes the parked run; the chat hol
     parkArtefact(parked).artefact_id,
   );
   world.roleOk = true;
-  await decideFlowTurn(turnArgs(store, world, "Plan a trip to Lisbon"));
+  // #3355 Wave E (D3a): the new setup is the model's start_flow.
+  await startFlowFromTool({
+    ...turnArgs(store, world, "Plan a trip to Lisbon"),
+    call: { flow_key: "create_trip" },
+  });
   const open = [...store.runs.values()].filter((run) =>
     LIVE.includes(run.status) || run.status === "parked"
   );

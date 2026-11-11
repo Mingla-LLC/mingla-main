@@ -700,6 +700,158 @@ export async function callGemini(args: {
   );
 }
 
+/**
+ * #3355 Wave E (E1) — one structured-output call (JSON mode) on the SAME
+ * model and key as callGemini (D2b: no model or provider change). Used by the
+ * turn's intent read: no tools, a response schema, a short output cap, no
+ * retries (the caller's timeout and fallback own failure). Returns the parsed
+ * JSON; anything unparseable throws, and the caller falls back.
+ */
+export async function callGeminiStructured(args: {
+  systemPrompt: string;
+  contents: GeminiContentMessage[];
+  responseSchema: Readonly<Record<string, unknown>>;
+  signal?: AbortSignal;
+  maxOutputTokens?: number;
+}): Promise<{ value: unknown; usage: GeminiUsage }> {
+  const localModel = localModelConfig();
+  if (localModel) {
+    return await callLocalOllamaStructured(localModel, args);
+  }
+  const apiKey = Deno.env.get("GEMINI_API_KEY_ARI");
+  if (!apiKey) {
+    throw makeError("config", "GEMINI_API_KEY_ARI is not configured.");
+  }
+  const requestBody = {
+    contents: sanitizeGeminiContents(args.contents),
+    systemInstruction: { parts: [{ text: args.systemPrompt }] },
+    generationConfig: {
+      maxOutputTokens: args.maxOutputTokens ?? 256,
+      temperature: 0,
+      responseMimeType: "application/json",
+      responseSchema: args.responseSchema,
+      // issue #3526 — set it, never inherit it.
+      thinkingConfig: { thinking_level: GEMINI_THINKING_LEVEL_MINIMAL },
+    },
+  };
+  const started = Date.now();
+  const response = await fetch(`${geminiGenerateContentUrl()}?key=${apiKey}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(requestBody),
+    ...(args.signal ? { signal: args.signal } : {}),
+  });
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    void recordApiCall(
+      "gemini",
+      false,
+      Date.now() - started,
+      response.status,
+      geminiErrorFingerprint(response.status, text),
+    );
+    throw makeError("http", `Gemini HTTP ${response.status}`, {
+      status: response.status,
+      detail: text.slice(0, 500),
+    });
+  }
+  void recordApiCall("gemini", true, Date.now() - started, response.status);
+  const payload = await response.json() as GeminiResponse;
+  const text = (payload.candidates?.[0]?.content?.parts ?? []).flatMap((
+    part,
+  ) => "text" in part && typeof part.text === "string" ? [part.text] : [])
+    .join("").trim();
+  if (!text) throw makeError("empty", "Gemini returned no structured content");
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    throw makeError("malformed", "Gemini returned invalid JSON");
+  }
+  return {
+    value,
+    usage: {
+      prompt_tokens: payload.usageMetadata?.promptTokenCount ?? 0,
+      completion_tokens: payload.usageMetadata?.candidatesTokenCount ?? 0,
+      total_tokens: payload.usageMetadata?.totalTokenCount ?? 0,
+    },
+  };
+}
+
+/** The Gemini schema subset as a JSON Schema (Ollama's `format`). */
+export function geminiSchemaToJsonSchema(schema: unknown): unknown {
+  if (Array.isArray(schema)) return schema.map(geminiSchemaToJsonSchema);
+  if (!schema || typeof schema !== "object") return schema;
+  const out: Record<string, unknown> = {};
+  for (
+    const [key, value] of Object.entries(schema as Record<string, unknown>)
+  ) {
+    if (key === "propertyOrdering" || key === "nullable") continue;
+    if (key === "type" && typeof value === "string") {
+      const lower = value.toLowerCase();
+      out.type = (schema as { nullable?: unknown }).nullable === true
+        ? [lower, "null"]
+        : lower;
+      continue;
+    }
+    out[key] = geminiSchemaToJsonSchema(value);
+  }
+  return out;
+}
+
+async function callLocalOllamaStructured(
+  config: { baseUrl: string; modelId: string },
+  args: {
+    systemPrompt: string;
+    contents: GeminiContentMessage[];
+    responseSchema: Readonly<Record<string, unknown>>;
+    signal?: AbortSignal;
+  },
+): Promise<{ value: unknown; usage: GeminiUsage }> {
+  const response = await fetch(`${config.baseUrl}/api/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    signal: args.signal ??
+      AbortSignal.timeout(ARI_LOCAL_MODEL_REQUEST_TIMEOUT_MS),
+    body: JSON.stringify({
+      model: config.modelId,
+      stream: false,
+      think: false,
+      keep_alive: "1h",
+      format: geminiSchemaToJsonSchema(args.responseSchema),
+      messages: toOllamaMessages(args.systemPrompt, args.contents),
+      options: {
+        temperature: 0,
+        num_ctx: LOCAL_CONTEXT_TOKENS,
+        num_predict: 256,
+      },
+    }),
+  });
+  if (!response.ok) {
+    throw makeError("http", `Local Ari model HTTP ${response.status}`, {
+      status: response.status,
+    });
+  }
+  const payload = await response.json() as OllamaResponse;
+  const text = payload.message?.content?.trim() ?? "";
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    throw makeError("malformed", "The local Ari model returned invalid JSON");
+  }
+  const promptTokens = payload.prompt_eval_count ?? 0;
+  const completionTokens = payload.eval_count ?? 0;
+  return {
+    value,
+    usage: {
+      prompt_tokens: promptTokens,
+      completion_tokens: completionTokens,
+      total_tokens: promptTokens + completionTokens,
+    },
+  };
+}
+
 // Internal — minimal shape of the Gemini API response we depend on
 interface GeminiResponse {
   candidates?: Array<{

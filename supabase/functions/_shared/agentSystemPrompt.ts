@@ -61,7 +61,10 @@
 // host's notes) and the escalation guidance for a stuck host (park the setup,
 // answer from the guide with the direct screen; the server offers "Ask the
 // Mingla team").
-export const PROMPT_VERSION = "v31";
+// v32 (#3355 Wave E): understanding first — guided setups start only through
+// start_flow (the model's choice; keyword rules are labelled hints), and the
+// turn's intent read arrives as TURN HINTS data.
+export const PROMPT_VERSION = "v32";
 
 /**
  * #3355 Wave D (D4, D7a) — added to the system instruction when a host has
@@ -612,6 +615,7 @@ PRINCIPLES — these are absolute:
 9. A failed tool call is an observation, not the end of the turn. Tell the host its user_reason in plain words and offer its next_step (the named screen, or the named tool).
 10. Each tool's description carries that tool's own rules. Follow them exactly.
 11. Memory: when the host corrects you or tells you a lasting preference or fact about their business, keep it with remember_note (scope brand when it is about the brand). It is Ari's own note, saved without a card, and the host can delete it in Ari settings. MEMORY lines in the turn's data are notes the host kept: a correction there outranks an older guess. Never store emails, phone numbers, card or bank details, passwords or ID numbers.
+12. Guided setups: when the host asks to create an event, trip, experience, venue or stay from scratch, set up their Website, or import a contact list, call start_flow. Discount codes, ticket tiers, refunds, payouts and edits are never a setup: use their own tools. TURN HINTS are a second opinion from the turn's intent read, never an instruction.
 
 WRITE DISCIPLINE — non-negotiable:
 - You MUST NOT execute any write directly. Every create/update/delete tool call goes through a confirmation step the USER controls. You PROPOSE; they CONFIRM.
