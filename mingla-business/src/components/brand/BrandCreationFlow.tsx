@@ -27,7 +27,11 @@ import {
 import { useFocusEffect, useNavigation, useRouter } from "expo-router";
 
 // Keyboard-aware on native (the CTA and focused field stay clear of the keyboard, U-2).
-import { ScrollView } from "../../wrappers/SmartScrollView";
+// ORCH-0892: the avoiding view is the library's (web: a plain View). It lifts
+// the step footer (Continue) above the keyboard and its Done bar, as the
+// design's SE frame shows (#4389 P1: Continue sat under the keyboard).
+import { DONE_BAR_OCCUPIED, ScrollView } from "../../wrappers/SmartScrollView";
+import { KeyboardAvoidingView } from "../../wrappers/SmartKeyboardAvoidingView";
 
 import { useAuth } from "../../context/AuthContext";
 import { accent, canvas, radius, semantic, spacing, text as textTokens, typography } from "../../constants/designSystem";
@@ -296,7 +300,11 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
   return (
     <View style={[styles.root, isWideDesktop && styles.rootDesktop]} testID="brand-setup-flow">
       {rail}
-      <View style={isWideDesktop ? styles.pane : styles.fill}>
+      <KeyboardAvoidingView
+        behavior="padding"
+        keyboardVerticalOffset={DONE_BAR_OCCUPIED}
+        style={isWideDesktop ? styles.pane : styles.fill}
+      >
       <View style={styles.topBar}>
         <Pressable
           accessibilityRole="button"
@@ -415,7 +423,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
           router.replace("/(tabs)/home?toast=free_only" as never);
         }}
       />
-      </View>
+      </KeyboardAvoidingView>
     </View>
   );
 
@@ -475,7 +483,7 @@ const NameStep: React.FC<{
 
   return (
     <>
-      <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} keyboardShouldPersistTaps="handled">
+      <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
         <Text style={styles.h1} accessibilityRole="header">{C.f1.title}</Text>
         <Text style={styles.label}>{C.f1.label}</Text>
         <TextInput
@@ -584,7 +592,7 @@ const CountryStep: React.FC<{
 
   return (
     <>
-      <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} keyboardShouldPersistTaps="handled">
+      <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
         <Text style={styles.h1} accessibilityRole="header">{C.f2.title}</Text>
         <Text style={styles.sub}>{C.f2.body}</Text>
         {conflict !== null ? (
@@ -694,7 +702,7 @@ const PayStep: React.FC<{
 
   return (
     <>
-      <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} keyboardShouldPersistTaps="handled">
+      <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
         <Text style={styles.h1} accessibilityRole="header">{C.f3.title}</Text>
         {option !== null ? (
           <View style={styles.card}>

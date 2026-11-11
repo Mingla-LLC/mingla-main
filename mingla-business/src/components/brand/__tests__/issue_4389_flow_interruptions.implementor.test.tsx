@@ -250,7 +250,7 @@ describe("#4389 Dynamic Type at 200%: no clipped CTA", () => {
     const flow = read("src/components/brand/BrandCreationFlow.tsx");
     expect(flow).not.toMatch(/<Pressable[^>]*>\s*<Text[^>]*>\{C\.(f1|f2|f3)\.cta/);
     // Bodies scroll (the CTA stays reachable) and text boxes never use a fixed height.
-    expect(flow).toContain('import { ScrollView } from "../../wrappers/SmartScrollView";');
+    expect(flow).toMatch(/import \{[^}]*\bScrollView\b[^}]*\} from "\.\.\/\.\.\/wrappers\/SmartScrollView";/);
     for (const name of ["input", "card", "banner", "footer", "helper", "cardText", "sub", "h1"]) {
       const rule = new RegExp(`\\n  ${name}: \\{([^}]*)\\}`).exec(flow)?.[1] ?? "";
       expect(rule).not.toMatch(/(^|[^a-zA-Z])height:/);
