@@ -9,8 +9,9 @@
 --    orders lost their date (orders.event_date_id is ON DELETE SET NULL) or
 --    the publish failed on a raw foreign-key error. It now refuses with
 --    experience_dates_have_sales when any date is not deletable.
--- 3. biz_update_live_rsvp: extra legacy date rows are removed only when
---    nothing holds them.
+-- 3. biz_update_live_rsvp: an extra legacy date row that something holds
+--    refuses the edit (multi_date_remove_with_sales, as live events do)
+--    instead of being deleted. Both writers lock the dates before checking.
 -- 4. scan_events.event_date_id becomes ON DELETE RESTRICT. Any check-in is
 --    already a hold (issue_3285_event_date_hold_reason), so no guarded path
 --    changes; service-role and cron deletes get the same backstop.
@@ -28,6 +29,8 @@ BEGIN;
 -- database refuses to orphan points at it: no hold (live order, live pass,
 -- check-in, payout release) and no entitlement row of any status
 -- (ticket_event_dates is ON DELETE RESTRICT, also for refunded passes).
+-- The scan_events and payout arms repeat what the hold rule already says,
+-- on purpose: this function lists every RESTRICT reference in one place.
 CREATE OR REPLACE FUNCTION public.issue_3281_event_date_deletable(
   p_event_date_id uuid
 ) RETURNS boolean
@@ -458,7 +461,10 @@ BEGIN
     -- #3281 bundle 6: publishing again rebuilds every date. A date that
     -- holds sales, a pass, a check-in or a payout is never deleted (its
     -- orders would lose their date); live changes go through
-    -- biz_update_live_experience, which edits dates in place.
+    -- biz_update_live_experience, which edits dates in place. The dates are
+    -- locked first, so no order can land on one between the check and the
+    -- delete.
+    PERFORM 1 FROM public.event_dates WHERE event_id = p_event_id ORDER BY id FOR UPDATE;
     IF EXISTS (
       SELECT 1 FROM public.event_dates d
        WHERE d.event_id = p_event_id
@@ -950,9 +956,18 @@ BEGIN
       INSERT INTO public.event_dates (event_id, start_at, end_at, timezone, is_master)
       VALUES (p_event_id, v_new_start, v_new_end, v_timezone, true);
     ELSE
-      -- #3281 bundle 6: only extra rows nothing holds are removed.
-      DELETE FROM public.event_dates WHERE event_id = p_event_id AND id <> v_date_row
-        AND public.issue_3281_event_date_deletable(id);
+      -- #3281 bundle 6: an extra row that something holds is never deleted
+      -- (its order would lose its date) and never kept behind the moved date
+      -- (it would stay bookable): the edit is refused, like a live event's.
+      PERFORM 1 FROM public.event_dates WHERE event_id = p_event_id ORDER BY id FOR UPDATE;
+      IF EXISTS (
+        SELECT 1 FROM public.event_dates d
+         WHERE d.event_id = p_event_id AND d.id <> v_date_row
+           AND NOT public.issue_3281_event_date_deletable(d.id)
+      ) THEN
+        RAISE EXCEPTION 'multi_date_remove_with_sales';
+      END IF;
+      DELETE FROM public.event_dates WHERE event_id = p_event_id AND id <> v_date_row;
       UPDATE public.event_dates
          SET start_at = v_new_start, end_at = v_new_end, timezone = v_timezone, is_master = true
        WHERE id = v_date_row
@@ -1116,10 +1131,13 @@ BEGIN
     RAISE EXCEPTION '#3281 bundle 6: a check-in points at a missing date; repair it before this migration';
   END IF;
 END $$;
+-- NOT VALID: no scan of scan_events under this migration's locks; the next
+-- migration (20280625013281) validates it with a light lock.
 ALTER TABLE public.scan_events
   DROP CONSTRAINT scan_events_event_date_id_fkey,
   ADD CONSTRAINT scan_events_event_date_id_fkey
-    FOREIGN KEY (event_date_id) REFERENCES public.event_dates(id) ON DELETE RESTRICT;
+    FOREIGN KEY (event_date_id) REFERENCES public.event_dates(id) ON DELETE RESTRICT
+    NOT VALID;
 COMMENT ON CONSTRAINT scan_events_event_date_id_fkey ON public.scan_events IS
   'issue #3281 bundle 6 — ON DELETE RESTRICT (was SET NULL): a check-in always keeps its date. Every check-in is a hold, so writers already keep the date.';
 
@@ -1138,7 +1156,7 @@ BEGIN
        'public.biz_publish_experience(uuid,jsonb,boolean)'::regprocedure)) = 0 THEN
     RAISE EXCEPTION '#3281 bundle 6 self-assert: experience publish still deletes held dates';
   END IF;
-  IF position('issue_3281_event_date_deletable(id)' in pg_get_functiondef(
+  IF position('multi_date_remove_with_sales' in pg_get_functiondef(
        'public.biz_update_live_rsvp'::regproc)) = 0 THEN
     RAISE EXCEPTION '#3281 bundle 6 self-assert: live RSVP edit still deletes held rows';
   END IF;

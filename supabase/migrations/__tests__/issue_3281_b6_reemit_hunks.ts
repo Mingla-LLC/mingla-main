@@ -40,7 +40,7 @@ export const B6_REEMITS: Reemit[] = [
         "old":
           "  IF p_publish THEN\n    DELETE FROM public.event_dates WHERE event_id = p_event_id;\n",
         "new":
-          "  IF p_publish THEN\n    -- #3281 bundle 6: publishing again rebuilds every date. A date that\n    -- holds sales, a pass, a check-in or a payout is never deleted (its\n    -- orders would lose their date); live changes go through\n    -- biz_update_live_experience, which edits dates in place.\n    IF EXISTS (\n      SELECT 1 FROM public.event_dates d\n       WHERE d.event_id = p_event_id\n         AND NOT public.issue_3281_event_date_deletable(d.id)\n    ) THEN\n      RAISE EXCEPTION 'experience_dates_have_sales';\n    END IF;\n    DELETE FROM public.event_dates WHERE event_id = p_event_id;\n",
+          "  IF p_publish THEN\n    -- #3281 bundle 6: publishing again rebuilds every date. A date that\n    -- holds sales, a pass, a check-in or a payout is never deleted (its\n    -- orders would lose their date); live changes go through\n    -- biz_update_live_experience, which edits dates in place. The dates are\n    -- locked first, so no order can land on one between the check and the\n    -- delete.\n    PERFORM 1 FROM public.event_dates WHERE event_id = p_event_id ORDER BY id FOR UPDATE;\n    IF EXISTS (\n      SELECT 1 FROM public.event_dates d\n       WHERE d.event_id = p_event_id\n         AND NOT public.issue_3281_event_date_deletable(d.id)\n    ) THEN\n      RAISE EXCEPTION 'experience_dates_have_sales';\n    END IF;\n    DELETE FROM public.event_dates WHERE event_id = p_event_id;\n",
       },
     ],
   },
@@ -51,11 +51,12 @@ export const B6_REEMITS: Reemit[] = [
     "target": TARGET,
     "hunks": [
       {
-        "name": "an extra legacy date row that something holds is kept",
+        "name":
+          "an extra legacy date row that something holds refuses the edit",
         "old":
           "      DELETE FROM public.event_dates WHERE event_id = p_event_id AND id <> v_date_row;\n",
         "new":
-          "      -- #3281 bundle 6: only extra rows nothing holds are removed.\n      DELETE FROM public.event_dates WHERE event_id = p_event_id AND id <> v_date_row\n        AND public.issue_3281_event_date_deletable(id);\n",
+          "      -- #3281 bundle 6: an extra row that something holds is never deleted\n      -- (its order would lose its date) and never kept behind the moved date\n      -- (it would stay bookable): the edit is refused, like a live event's.\n      PERFORM 1 FROM public.event_dates WHERE event_id = p_event_id ORDER BY id FOR UPDATE;\n      IF EXISTS (\n        SELECT 1 FROM public.event_dates d\n         WHERE d.event_id = p_event_id AND d.id <> v_date_row\n           AND NOT public.issue_3281_event_date_deletable(d.id)\n      ) THEN\n        RAISE EXCEPTION 'multi_date_remove_with_sales';\n      END IF;\n      DELETE FROM public.event_dates WHERE event_id = p_event_id AND id <> v_date_row;\n",
       },
     ],
   },

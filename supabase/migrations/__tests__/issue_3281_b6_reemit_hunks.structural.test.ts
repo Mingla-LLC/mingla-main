@@ -94,9 +94,12 @@ Deno.test("#3281 bundle 6 the target is still the latest definition of what it d
   }
 });
 
-Deno.test("#3281 bundle 6 every delete gate uses the one deletable rule", () => {
+Deno.test("#3281 bundle 6 every delete gate locks, checks the one deletable rule, then deletes", () => {
   const defs = definitions(Deno.readTextFileSync(TARGET));
+  const LOCK =
+    "PERFORM 1 FROM public.event_dates WHERE event_id = p_event_id ORDER BY id FOR UPDATE;";
   const publish = defs.get("biz_publish_experience")!;
+  const lock = publish.indexOf(LOCK);
   const gate = publish.indexOf(
     "NOT public.issue_3281_event_date_deletable(d.id)",
   );
@@ -107,13 +110,26 @@ Deno.test("#3281 bundle 6 every delete gate uses the one deletable rule", () => 
     "DELETE FROM public.event_dates WHERE event_id = p_event_id;",
   );
   assert(
-    gate > 0 && refuse > gate && del > refuse,
-    "publish checks every date before deleting",
+    lock > 0 && gate > lock && refuse > gate && del > refuse,
+    "publish: lock, check, refuse, delete",
   );
   assertEquals(publish.split("DELETE FROM public.event_dates").length - 1, 1);
   const rsvp = defs.get("biz_update_live_rsvp")!;
+  const rLock = rsvp.indexOf(LOCK);
+  const rGate = rsvp.indexOf(
+    "AND NOT public.issue_3281_event_date_deletable(d.id)",
+  );
+  const rRefuse = rsvp.indexOf(
+    "RAISE EXCEPTION 'multi_date_remove_with_sales';",
+  );
+  const rDel = rsvp.indexOf(
+    "DELETE FROM public.event_dates WHERE event_id = p_event_id AND id <> v_date_row;",
+  );
+  assert(
+    rLock > 0 && rGate > rLock && rRefuse > rGate && rDel > rRefuse,
+    "RSVP edit: lock, check, refuse, delete",
+  );
   assertEquals(rsvp.split("DELETE FROM public.event_dates").length - 1, 1);
-  assert(rsvp.includes("AND public.issue_3281_event_date_deletable(id);"));
 });
 
 Deno.test("#3281 bundle 6 the new refusal is worded for Ari and the experience wizard", () => {
@@ -121,6 +137,13 @@ Deno.test("#3281 bundle 6 the new refusal is worded for Ari and the experience w
   const raw = "biz_publish_experience: experience_dates_have_sales";
   assertEquals(detectAriRefusalCode(raw), "experience_dates_have_sales");
   const ari = ariDomainRefusalMessage(raw) ?? "";
+  const moved = ariDomainRefusalMessage(
+    "biz_update_live_rsvp: multi_date_remove_with_sales",
+  ) ?? "";
+  assert(
+    moved.includes("already has bookings") &&
+      moved.endsWith("Nothing was saved."),
+  );
   assert(
     ari.includes("already has bookings") && ari.endsWith("Nothing was saved."),
   );
