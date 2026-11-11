@@ -9,6 +9,7 @@
 -- MINGLA-INVARIANT: I-4382-SUPPORT-MESSAGES-SERVER-PATH-ONLY | issue #4382 | No anon or signed-in browser inserts a message into a support conversation; support messages are written only by issue_4382_post_support_message and the other SECURITY DEFINER support functions or the service role.
 -- MINGLA-INVARIANT: I-4382-SUPPORT-ATTACH-ONLY-UPLOADED | issue #4382 | A support attachment joins a message only when its object exists in support-attachments at its storage_path; otherwise the send is refused with PT409 attachment_not_uploaded.
 -- MINGLA-INVARIANT: I-4382-LEGACY-CREATE-OWN-BRAND-ONLY | issue #4382 | The pre-#4382 create_support_ticket(text, uuid) files a ticket against a brand only when the caller is an active member or the owning account; any other brand id is dropped.
+-- MINGLA-INVARIANT: I-4382-CUSTOMER-DRAFT-NO-GITHUB-TITLE | issue #4382 | Default customer update drafts use generic wording and never quote the GitHub issue title.
 -- MINGLA-INVARIANT: I-4382-SUPPORT-NO-LOCATION | issue #4382 | A support ticket's client details hold app and device facts only; a location key is refused.
 BEGIN;
 
@@ -522,6 +523,14 @@ BEGIN
 
   SELECT id INTO v_draft FROM public.product_customer_update_drafts
    WHERE signal_id = v_signal AND customer_status = 'Live' ORDER BY created_at DESC LIMIT 1;
+  -- The default "it's live" wording is generic and never quotes the GitHub
+  -- issue title; no draft for this item quotes it either.
+  IF (SELECT body FROM public.product_customer_update_drafts WHERE id = v_draft)
+     IS DISTINCT FROM 'Good news: the problem you reported has been fixed and is now live. Thanks for telling us about it.'
+     OR EXISTS (SELECT 1 FROM public.product_customer_update_drafts
+                WHERE signal_id = v_signal AND body LIKE '%Explorer map tiles%') THEN
+    RAISE EXCEPTION 'customer_draft_quotes_the_github_title';
+  END IF;
   SET LOCAL ROLE authenticated;
   PERFORM pg_temp.t4382_as(v_op);
   v_raised := false;

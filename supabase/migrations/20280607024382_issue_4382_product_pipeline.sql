@@ -559,7 +559,9 @@ BEGIN
     signal_id, item_id, customer_status, body, source_item_revision
   )
   SELECT l.signal_id, v_item_id, 'Live',
-         format('“%s” is now verified live. Thank you for helping Mingla improve it.', i.issue_title),
+         -- Never the GitHub issue title: customers get generic, safe wording
+         -- that an operator edits before approving.
+         'Good news: the problem you reported has been fixed and is now live. Thanks for telling us about it.',
          v_revision
     FROM public.product_signal_avengers_links l
     JOIN public.product_avengers_items i ON i.id = l.item_id
@@ -682,11 +684,12 @@ BEGIN
       signal_id, item_id, customer_status, body, source_item_revision
     )
     SELECT l.signal_id, v_item_id, v_new_status,
+      -- #4382: never quote the GitHub issue title to a customer.
       CASE v_new_status
-        WHEN 'Planned' THEN format('We have added “%s” to Mingla''s plans. It is in %s, which is a priority horizon—not a delivery-date promise.', i.issue_title, COALESCE(i.board_horizon, 'the roadmap'))
-        WHEN 'Being built' THEN format('The team is now building “%s”. We will share another useful update by the time shown in your Support conversation.', i.issue_title)
-        WHEN 'Final checks' THEN format('“%s” is in final checks. It is not confirmed live yet, and we will update you after production verification.', i.issue_title)
-        ELSE format('“%s” is now verified live. Thank you for helping Mingla improve it.', i.issue_title)
+        WHEN 'Planned' THEN 'Our product team has planned a fix for the problem you reported. This is a plan, not a delivery date. We will update you here.'
+        WHEN 'Being built' THEN 'Our product team is now building the fix for the problem you reported. We will update you here.'
+        WHEN 'Final checks' THEN 'The fix for the problem you reported is in final checks. It is not live yet, and we will tell you here when it is.'
+        ELSE 'Good news: the problem you reported has been fixed and is now live. Thanks for telling us about it.'
       END,
       v_revision
       FROM public.product_signal_avengers_links l
