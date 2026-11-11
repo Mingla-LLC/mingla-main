@@ -163,7 +163,11 @@ describe("XA-3 the Files link check matches the server's rule", () => {
   // a new tab with noopener, and a link is refused past 2,000 characters.
   it("the card's links open in a new tab without handing the page an opener", () => {
     const src = read("hooks/useCardFiles.js");
-    assert.match(src, /if \(file\.kind === "link"\) \{ window\.open\(file\.url, "_blank", "noopener,noreferrer"\); return; \}/);
+    // #4255 fix-up (ORCH-1381): through the one openExternal owner, which opens
+    // with no feature string and sets opener to null itself.
+    assert.match(src, /if \(file\.kind === "link"\) \{ openExternal\(file\.url\); return; \}/);
+    assert.match(src, /import \{ openExternal \} from "\.\.\/lib\/openExternal";/);
+    assert.match(read("lib/openExternal.js"), /win\.opener = null;/);
     assert.match(read("components/ops/CardFiles.jsx"), /maxLength=\{2000\}/, "the field stops at 2,000 characters");
   });
 });
