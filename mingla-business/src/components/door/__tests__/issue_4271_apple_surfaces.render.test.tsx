@@ -413,7 +413,7 @@ describe("B5 only admins accept Apple's terms", () => {
     await flush();
   };
   const SETUP_FAILED =
-    /Couldn't finish Apple's Tap to Pay setup\. Accept Apple's terms when asked, then try again\.|Couldn't start Tap to Pay on this phone\. Try again\./;
+    /Couldn't finish setting up Tap to Pay on iPhone\. Accept Apple's terms when asked, then try again\.|Couldn't start Tap to Pay on this phone\. Try again\./;
 
   test("retest 2 P4-7: an admin's own press that fails for a network reason shows the error", async () => {
     mockRole = { rank: 50, isLoading: false };

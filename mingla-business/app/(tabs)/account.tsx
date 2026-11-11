@@ -14,7 +14,7 @@
  */
 
 import React, { Suspense, useCallback, useEffect, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -38,6 +38,8 @@ import {
 import { useAuth } from "../../src/context/AuthContext";
 import { useBrandListState } from "../../src/hooks/useBrandListShim";
 import { useTapToPaySettingsEntry } from "../../src/hooks/useTapToPaySettingsEntry";
+import { TapToPayIcon } from "../../src/components/door/tap/TapToPayIcon";
+import { HELP_AND_SUPPORT_ROUTE } from "../../src/constants/supportHostFacing";
 import { useBrandFollowerCounts } from "../../src/hooks/useBrandFollowerCount";
 import { formatExactFollowers } from "@mingla/offering-rendering/followerCount";
 import { hasStoredSupabaseWebSession } from "../../src/utils/storedWebSession";
@@ -198,7 +200,7 @@ export default function AccountTab(): React.ReactElement {
 
   // META-ORCH-1104 Phase 1 — Help & Support (business requester entry).
   const handleSupport = useCallback((): void => {
-    router.push("/account/support" as never);
+    router.push(HELP_AND_SUPPORT_ROUTE as never);
   }, [router]);
 
   // ORCH-1052 hotfix — partner section navigation.
@@ -446,6 +448,8 @@ export default function AccountTab(): React.ReactElement {
             {tapToPayEntry !== null ? (
               <SettingsNavRow
                 icon="settings"
+                // #4271 — iPhone shows Apple's Tap to Pay SF Symbol; Android keeps its generic icon.
+                leading={Platform.OS === "ios" ? <TapToPayIcon size={18} /> : undefined}
                 label={tapToPayEntry.label}
                 onPress={handleTapToPay}
               />
@@ -581,6 +585,8 @@ interface SettingsNavRowProps {
   destructive?: boolean;
   /** Unread count badge (e.g. community announcements on Help & Support). */
   badgeCount?: number;
+  /** Replaces the icon glyph inside the badge (e.g. Apple's Tap to Pay symbol). */
+  leading?: React.ReactNode;
   onPress: () => void;
 }
 
@@ -589,6 +595,7 @@ const SettingsNavRow: React.FC<SettingsNavRowProps> = ({
   label,
   destructive = false,
   badgeCount = 0,
+  leading,
   onPress,
 }) => {
   const showBadge = badgeCount > 0;
@@ -611,11 +618,13 @@ const SettingsNavRow: React.FC<SettingsNavRowProps> = ({
           destructive && styles.navIconBadgeDestructive,
         ]}
       >
-        <Icon
-          name={icon}
-          size={18}
-          color={destructive ? semantic.error : textTokens.primary}
-        />
+        {leading ?? (
+          <Icon
+            name={icon}
+            size={18}
+            color={destructive ? semantic.error : textTokens.primary}
+          />
+        )}
       </View>
       <Text
         style={[

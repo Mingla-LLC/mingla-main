@@ -16,7 +16,7 @@ import { useBrand } from "../../../hooks/useBrands";
 import { useCurrentBrandRole } from "../../../hooks/useCurrentBrandRole";
 import { tapToPayBrandEligible, useTapToPaySettingsEntry } from "../../../hooks/useTapToPaySettingsEntry";
 import { useCurrentBrandId } from "../../../store/currentBrandStore";
-import { BRAND_ROLE_RANK } from "../../../utils/brandRole";
+import { tapToPayMayAcceptTerms } from "../../../utils/brandRole";
 import { Button } from "../../ui/Button";
 
 export const tapAwarenessSeenKey = (userId: string): string =>
@@ -74,7 +74,8 @@ const AwarenessModal = ({ assets }: { assets: TapToPayAwarenessAssets }): React.
     entry === null ||
     brandId === null ||
     !tapToPayBrandEligible(brandQuery.data) ||
-    role.rank < BRAND_ROLE_RANK.event_manager
+    // The splash leads to Apple's terms, so only someone who may accept them sees it.
+    !tapToPayMayAcceptTerms(role.rank)
   ) {
     return null;
   }
