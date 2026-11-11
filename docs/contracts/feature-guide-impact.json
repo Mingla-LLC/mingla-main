@@ -791,6 +791,7 @@
         "mingla-admin/src/lib/ariGaps.js",
         "supabase/functions/_shared/ariIntentRead.ts",
         "supabase/functions/_shared/ariClaimCheck.ts",
+        "supabase/functions/_shared/ariStatusRead.ts",
         "supabase/functions/_shared/ariLocalTime.ts",
         "supabase/functions/_shared/ariFlows/startFlowTool.ts",
         "supabase/functions/_shared/agentGeminiContents.ts",
