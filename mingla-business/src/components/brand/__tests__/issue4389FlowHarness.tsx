@@ -36,6 +36,9 @@ export const harness = {
   beforeRemove: null as null | ((e: unknown) => void),
   params: {} as Record<string, string>,
   keyboardUp: false,
+  offeringProps: null as null | Record<string, unknown>,
+  refreshStatus: jest.fn<(id: string) => Promise<unknown>>(() => new Promise(() => undefined)),
+  invalidate: jest.fn<(f: { queryKey: readonly unknown[] }) => Promise<void>>(() => Promise.resolve()),
 };
 
 export function checklistAt(step: "country" | "pay" | "done", over: Partial<FlowFacts> = {}): NonNullable<typeof harness.checklist> {
@@ -132,7 +135,13 @@ jest.mock("../../../store/currentBrandStore", () => ({
   useCurrentBrandStore: (sel: (s: { setCurrentBrand: () => void }) => unknown) => sel({ setCurrentBrand: jest.fn() }),
 }));
 jest.mock("../brandSetupAnalytics", () => ({ trackBrandSetup: jest.fn() }));
-jest.mock("../OfferingChooser", () => ({ OfferingChooser: () => null, routeForOffering: () => "/" }));
+jest.mock("../OfferingChooser", () => ({
+  OfferingChooser: (p: Record<string, unknown>) => {
+    harness.offeringProps = p;
+    return null;
+  },
+  routeForOffering: () => "/",
+}));
 jest.mock("../BrandPaystackOnboardView", () => ({ BrandPaystackOnboardView: () => null }));
 jest.mock("../../ui/Toast", () => ({ Toast: () => null }));
 jest.mock("../../ui/Button", () => {
@@ -153,9 +162,12 @@ jest.mock("../../ui/Sheet", () => {
 });
 jest.mock("../../../services/brandSetupService", () => ({
   ...(jest.requireActual("../../../services/brandSetupService") as object),
-  refreshStripeSetupStatus: jest.fn(() => new Promise(() => undefined)),
+  refreshStripeSetupStatus: (id: string) => harness.refreshStatus(id),
 }));
-jest.mock("@tanstack/react-query", () => ({ useQueryClient: () => ({}) }));
+jest.mock("../../../hooks/useBrandStripeStatus", () => ({
+  brandStripeStatusKeys: { detail: (id: string) => ["brand-stripe-status", id] },
+}));
+jest.mock("@tanstack/react-query", () => ({ useQueryClient: () => ({ invalidateQueries: harness.invalidate }) }));
 
 import { BrandCreationFlow } from "../BrandCreationFlow";
 
@@ -228,4 +240,8 @@ export function resetHarness(): void {
   harness.beforeRemove = null;
   harness.params = {};
   harness.keyboardUp = false;
+  harness.invalidate.mockClear();
+  harness.offeringProps = null;
+  harness.refreshStatus.mockReset();
+  harness.refreshStatus.mockImplementation(() => new Promise(() => undefined));
 }

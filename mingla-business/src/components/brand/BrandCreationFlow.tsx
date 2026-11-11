@@ -74,6 +74,9 @@ import { useUpdateCreatorAccount } from "../../hooks/useCreatorAccount";
 import { getBrand } from "../../services/brandsService";
 import { useQueryClient } from "@tanstack/react-query";
 import { adoptBrandIntoCaches, useDiscardDraftBrand } from "../../hooks/useBrands";
+import { brandKeys } from "../../hooks/brandKeys";
+import { brandStripeStatusKeys } from "../../hooks/useBrandStripeStatus";
+import type { BrandCreationPayoutState } from "../../utils/brandCreationPayoutState";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
 import { useBrandTeamMemberDirectory } from "../../hooks/useBrandTeamMemberDirectory";
 import { BRAND_ROLE_RANK } from "../../utils/brandRole";
@@ -176,6 +179,20 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
     [commitDefaultBrand],
   );
   const facts = checklist?.facts ?? null;
+  // #4389 P2 (retest) — when the checklist turns complete, the brand's payout
+  // reads (connect status, brand row) are refreshed so no surface keeps the
+  // pre-setup "not connected" answer.
+  const setupComplete = facts?.complete === true;
+  const wasCompleteRef = useRef<boolean>(setupComplete);
+  useEffect(() => {
+    if (brandId === null) return;
+    if (setupComplete && !wasCompleteRef.current) {
+      void queryClient.invalidateQueries({ queryKey: brandStripeStatusKeys.detail(brandId) });
+      void queryClient.invalidateQueries({ queryKey: brandKeys.detail(brandId), exact: true });
+      void queryClient.invalidateQueries({ queryKey: brandKeys.lists() });
+    }
+    wasCompleteRef.current = setupComplete;
+  }, [brandId, queryClient, setupComplete]);
   const brandName = checklist?.readiness.items.find((i) => i.key === "brand.name")?.valuePreview ?? "";
 
   // ── which step ─────────────────────────────────────────────────────────
@@ -790,6 +807,22 @@ const PayStep: React.FC<{
 };
 
 // ── F4 ───────────────────────────────────────────────────────────────────
+/**
+ * #4389 P2 — F4's payout line, from the same refresh_status read as its
+ * heading, so "You're all set." never sits over "Payouts aren't connected".
+ */
+export function f4PayoutState(
+  provider: "stripe" | "paystack",
+  status: StripeSetupStatus | null,
+  failed: boolean,
+): BrandCreationPayoutState {
+  if (provider === "paystack") return "ready";
+  if (status?.state === "action_needed") return "restricted";
+  if (failed) return "unknown-error";
+  if (status?.state === "submitted") return "ready";
+  return "loading";
+}
+
 const DoneStep: React.FC<{ brandId: string; provider: "stripe" | "paystack"; country: string | null }> = ({ brandId, provider, country }) => {
   const router = useRouter();
   const [status, setStatus] = useState<StripeSetupStatus | null>(null);
@@ -864,6 +897,9 @@ const DoneStep: React.FC<{ brandId: string; provider: "stripe" | "paystack"; cou
         variant="brand-create-welcome"
         headline={C.f4.makeFirst}
         subhead=""
+        // #4389 P2 — the payout line comes from the same live read as the
+        // heading above (it used to default to "not connected").
+        payoutState={f4PayoutState(provider, status, failed)}
         onSelect={(o) => router.replace(routeForOffering(o) as never)}
       />
     </ScrollView>
