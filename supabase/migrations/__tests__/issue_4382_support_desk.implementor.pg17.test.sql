@@ -6,6 +6,7 @@
 -- MINGLA-INVARIANT: I-4382-PRODUCT-MOVES-CHECKED | issue #4382 | Product items move only new->triaged->planned->shipped->told (planned may go back to triaged, anything but told may become wont_do with a reason); planned needs a GitHub link, shipped a verified release, and a refused move raises PT409.
 -- MINGLA-INVARIANT: I-4382-TOLD-ONCE | issue #4382 | Telling reporters runs once per Product item and posts exactly one message into each linked customer-visible ticket.
 -- MINGLA-INVARIANT: I-4382-PRODUCT-STAGE-CUSTOMER-SAFE | issue #4382 | A ticket's Product stage reaches only its requester, a brand member on a brand-visible ticket, or Support staff, and carries only {stage, board_status_label}.
+-- MINGLA-INVARIANT: I-4382-SUPPORT-MESSAGES-SERVER-PATH-ONLY | issue #4382 | No anon or signed-in browser inserts a message into a support conversation; support messages are written only by issue_4382_post_support_message and the other SECURITY DEFINER support functions or the service role.
 -- MINGLA-INVARIANT: I-4382-SUPPORT-NO-LOCATION | issue #4382 | A support ticket's client details hold app and device facts only; a location key is refused.
 BEGIN;
 
@@ -204,7 +205,9 @@ BEGIN
   IF NOT v_raised THEN RAISE EXCEPTION 'stranger_registered_upload_on_other_ticket'; END IF;
 
   PERFORM pg_temp.t4382_as(v_staff);
-  IF (SELECT count(*) FROM public.support_tickets) <> 4
+  -- Scoped to this suite's own rows: a database with other tickets passes too.
+  IF (SELECT count(*) FROM public.support_tickets
+      WHERE id IN (v_host_ticket, v_explorer_ticket, v_internal_ticket, v_brand_ticket)) <> 4
      OR NOT EXISTS (SELECT 1 FROM public.messages WHERE is_internal)
      OR NOT EXISTS (SELECT 1 FROM public.support_attachments WHERE is_internal) THEN
     RAISE EXCEPTION 'staff_cannot_read_everything';
@@ -285,6 +288,46 @@ BEGIN
                    AND payload->>'deep_link' = 'mingla://support/' || v_explorer_ticket::text) THEN
     RAISE EXCEPTION 'explorer_reply_push_missing';
   END IF;
+
+  -- Every support message goes through the server path: a requester's (or a
+  -- brand member's) direct insert into the support conversation is refused,
+  -- open or closed.
+  SET LOCAL ROLE authenticated;
+  PERFORM pg_temp.t4382_as(v_explorer);
+  v_raised := false;
+  BEGIN
+    INSERT INTO public.messages(conversation_id, sender_id, content, message_type)
+    SELECT conversation_id, v_explorer, 'Direct insert on an open ticket', 'text'
+      FROM public.support_tickets WHERE id = v_explorer_ticket;
+  EXCEPTION WHEN insufficient_privilege THEN v_raised := true;
+  END;
+  IF NOT v_raised THEN RAISE EXCEPTION 'requester_direct_insert_on_open_ticket'; END IF;
+  PERFORM pg_temp.t4382_as(v_mate);
+  v_raised := false;
+  BEGIN
+    INSERT INTO public.messages(conversation_id, sender_id, content, message_type)
+    SELECT conversation_id, v_mate, 'Direct insert by a brand member', 'text'
+      FROM public.support_tickets WHERE id = v_host_ticket;
+  EXCEPTION WHEN insufficient_privilege THEN v_raised := true;
+  END;
+  IF NOT v_raised THEN RAISE EXCEPTION 'brand_member_direct_insert'; END IF;
+  RESET ROLE;
+  UPDATE public.support_tickets SET status = 'closed' WHERE id = v_explorer_ticket;
+  SET LOCAL ROLE authenticated;
+  PERFORM pg_temp.t4382_as(v_explorer);
+  v_raised := false;
+  BEGIN
+    INSERT INTO public.messages(conversation_id, sender_id, content, message_type)
+    SELECT conversation_id, v_explorer, 'Direct insert on a closed ticket', 'text'
+      FROM public.support_tickets WHERE id = v_explorer_ticket;
+  EXCEPTION WHEN insufficient_privilege THEN v_raised := true;
+  END;
+  IF NOT v_raised THEN RAISE EXCEPTION 'requester_direct_insert_on_closed_ticket'; END IF;
+  RESET ROLE;
+  IF EXISTS (SELECT 1 FROM public.messages WHERE content LIKE 'Direct insert%') THEN
+    RAISE EXCEPTION 'direct_support_insert_landed';
+  END IF;
+  UPDATE public.support_tickets SET status = 'open' WHERE id = v_explorer_ticket;
 
   -- At most 10 images on one message.
   v_raised := false;
