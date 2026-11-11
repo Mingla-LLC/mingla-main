@@ -35,8 +35,13 @@ export function communicationsErrorCode(error) {
   return CODES.find((code) => new RegExp(`\\b${code}\\b`).test(text)) || null;
 }
 
-/** Plain words for an error, with its code in brackets. */
+/**
+ * Plain words for an error, with its code in brackets. A CommunicationsError
+ * already carries those words, so it is returned as is: never worded twice
+ * (tester P2-3).
+ */
 export function communicationsErrorMessage(error, fallback = "The server didn't accept that.") {
+  if (error instanceof CommunicationsError) return error.message;
   const code = communicationsErrorCode(error);
   if (code) return `${COMMUNICATIONS_ERROR_COPY[code]} (${code})`;
   const raw = String(error?.message || "").trim();
@@ -50,5 +55,7 @@ export class CommunicationsError extends Error {
     super(communicationsErrorMessage(error));
     this.name = "CommunicationsError";
     this.code = communicationsErrorCode(error) || error?.code || null;
+    // The server's own error, untouched (for logs and for a code check).
+    this.raw = error;
   }
 }

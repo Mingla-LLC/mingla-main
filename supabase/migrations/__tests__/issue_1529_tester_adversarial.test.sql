@@ -406,6 +406,9 @@ DECLARE
     -- a deletion, and nothing about this classification warrants an override.
     'resolve_source_refund_notification_recipient',
     'issue_1427_admin_stay_group_projection',
+    -- #4383: reads the queued Admin push rows to pick the next pacing slot;
+    -- never inserts (the writes_outbox check below rejects it if it does).
+    'issue_4383_push_pacing_start',
     -- [TEST-MOD-APPROVED #4194] These #4188 rollback paths only DELETE stale
     -- scheduled notices. The writes_outbox assertion below keeps this
     -- classification honest by rejecting either function if it ever INSERTs.

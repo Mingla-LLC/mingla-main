@@ -4,10 +4,18 @@
 //
 // Pure module: no React, no Supabase, so the plain node tests run it.
 
-/** The browser's own zone, or UTC when it cannot say. */
+import { SERVER_TIME_ZONES } from "./serverTimeZones.js";
+
+const SERVER_ZONES = new Set(SERVER_TIME_ZONES);
+
+/**
+ * The browser's own zone when the server accepts it, else UTC (a browser can
+ * know a newer zone than the database; tester P3-1).
+ */
 export function browserTimeZone() {
   try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    return SERVER_ZONES.has(zone) ? zone : "UTC";
   } catch {
     return "UTC";
   }
@@ -15,7 +23,7 @@ export function browserTimeZone() {
 
 const COMMON_ZONES = ["Africa/Lagos", "America/New_York", "America/Chicago", "America/Los_Angeles", "Europe/London", "Europe/Helsinki", "Europe/Dublin", "UTC"];
 
-/** Every zone the browser knows (common ones first), always including `extra`. */
+/** Every zone both the browser and the server know (common ones first), plus `extra` when valid. */
 export function timeZoneOptions(extra = []) {
   let all = [];
   try {
@@ -34,8 +42,9 @@ export function timeZoneOptions(extra = []) {
   return out;
 }
 
+/** A zone the server accepts and this browser can format in. */
 export function isValidTimeZone(zone) {
-  if (typeof zone !== "string" || !zone) return false;
+  if (typeof zone !== "string" || !zone || !SERVER_ZONES.has(zone)) return false;
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: zone });
     return true;

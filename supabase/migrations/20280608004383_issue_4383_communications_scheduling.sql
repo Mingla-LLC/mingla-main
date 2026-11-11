@@ -125,6 +125,29 @@ ALTER TABLE public.community_roadmap_cards
 -- community_audit_log (schedule_roadmap_card), not on the card.
 GRANT SELECT (go_live_at, go_live_timezone) ON TABLE public.community_roadmap_cards TO authenticated;
 
+-- A go-live time belongs to a draft only. Whatever path publishes or archives
+-- a card (the editor's Save, a lane move, a GitHub suggestion, the runner),
+-- the time and zone are cleared in the same write, so a card taken back to
+-- draft never re-arms an old time and a host never reads a stale one.
+CREATE OR REPLACE FUNCTION public.issue_4383_roadmap_card_clear_go_live()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+  IF NEW.status IS DISTINCT FROM 'draft' THEN
+    NEW.go_live_at := NULL;
+    NEW.go_live_timezone := NULL;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.issue_4383_roadmap_card_clear_go_live() FROM PUBLIC, anon, authenticated;
+DROP TRIGGER IF EXISTS issue_4383_roadmap_card_clear_go_live ON public.community_roadmap_cards;
+CREATE TRIGGER issue_4383_roadmap_card_clear_go_live
+  BEFORE INSERT OR UPDATE ON public.community_roadmap_cards
+  FOR EACH ROW EXECUTE FUNCTION public.issue_4383_roadmap_card_clear_go_live();
+
 CREATE INDEX IF NOT EXISTS community_roadmap_cards_go_live_idx
   ON public.community_roadmap_cards (go_live_at)
   WHERE status = 'draft' AND go_live_at IS NOT NULL;
@@ -304,18 +327,79 @@ REVOKE ALL ON FUNCTION public.community_get_announcement_notification_status(uui
 GRANT EXECUTE ON FUNCTION public.community_get_announcement_notification_status(uuid)
   TO authenticated;
 
--- #4383: re-emitted from 20271108063720 with one change: an Admin push or a
--- roadmap notice campaign can be retried the same way.
+-- Where the next Admin push row may queue. All Admin push rows share ONE
+-- pace: at most 12 claimable a minute across every push and every retry, so
+-- a broadcast takes at most 12 of the drain's 25 slots and order and payout
+-- pushes are never held up (spec F-13). Serialised by an advisory lock, so two
+-- pushes fired in the same pass (or racing) never pace from the same start.
+-- base: the bucket to fill next; used: rows already in it. Row g (0-based,
+-- counted from `used`) goes to base + (g / 12) minutes.
+CREATE OR REPLACE FUNCTION public.issue_4383_push_pacing_start()
+RETURNS TABLE(base timestamptz, used integer)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_last timestamptz;
+BEGIN
+  PERFORM pg_advisory_xact_lock(hashtextextended('issue_4383_push_pacing', 4383));
+  SELECT max(o.next_attempt_at) INTO v_last
+  FROM public.notification_outbox o
+  WHERE o.category_key IN ('explorer.mingla_update', 'business.mingla_update')
+    AND o.status IN ('pending', 'retry_wait')
+    AND o.next_attempt_at IS NOT NULL
+    AND o.payload ? 'campaign_id';
+  IF v_last IS NULL OR v_last < now() THEN
+    -- Everything still queued is claimable now: it all counts against this minute.
+    base := now();
+    SELECT count(*)::integer INTO used
+    FROM public.notification_outbox o
+    WHERE o.category_key IN ('explorer.mingla_update', 'business.mingla_update')
+      AND o.status IN ('pending', 'retry_wait')
+      AND o.next_attempt_at IS NOT NULL
+      AND o.payload ? 'campaign_id';
+  ELSE
+    base := v_last;
+    SELECT count(*)::integer INTO used
+    FROM public.notification_outbox o
+    WHERE o.category_key IN ('explorer.mingla_update', 'business.mingla_update')
+      AND o.status IN ('pending', 'retry_wait')
+      AND o.next_attempt_at = v_last
+      AND o.payload ? 'campaign_id';
+  END IF;
+  RETURN NEXT;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.issue_4383_push_pacing_start() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4383_push_pacing_start() TO service_role;
+
+-- #4383: re-emitted from 20271108063720 with two changes: an Admin push or a
+-- roadmap notice campaign can be retried the same way, and an Admin push's
+-- failed rows re-queue on the shared Admin push pace (never all at once).
 CREATE OR REPLACE FUNCTION public.issue_3720_admin_retry_announcement(p_campaign_id uuid)
 RETURNS integer
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
-DECLARE v_count integer;
+DECLARE v_count integer; v_kind text; v_base timestamptz; v_used integer;
 BEGIN
-  IF NOT public.is_admin_user() OR NOT EXISTS(
-    SELECT 1 FROM public.community_notification_campaigns WHERE id=p_campaign_id AND kind IN ('announcement','admin_push','roadmap_update')
-  ) THEN RAISE EXCEPTION 'not_authorized_or_not_found' USING ERRCODE='42501'; END IF;
-  UPDATE public.notification_outbox SET status='retry_wait',attempts=0,next_attempt_at=now(),processed_at=NULL,last_error=NULL
-  WHERE payload->>'campaign_id'=p_campaign_id::text AND status='failed';
+  SELECT kind INTO v_kind FROM public.community_notification_campaigns
+  WHERE id=p_campaign_id AND kind IN ('announcement','admin_push','roadmap_update');
+  IF NOT public.is_admin_user() OR v_kind IS NULL
+  THEN RAISE EXCEPTION 'not_authorized_or_not_found' USING ERRCODE='42501'; END IF;
+  IF v_kind = 'admin_push' THEN
+    SELECT p.base, p.used INTO v_base, v_used FROM public.issue_4383_push_pacing_start() p;
+    WITH failed AS (
+      SELECT o.id, row_number() OVER (ORDER BY o.id) - 1 AS n
+      FROM public.notification_outbox o
+      WHERE o.payload->>'campaign_id'=p_campaign_id::text AND o.status='failed'
+    )
+    UPDATE public.notification_outbox o
+    SET status='retry_wait',attempts=0,next_attempt_at=v_base + ((v_used + f.n) / 12) * interval '1 minute',processed_at=NULL,last_error=NULL
+    FROM failed f WHERE o.id=f.id;
+  ELSE
+    UPDATE public.notification_outbox SET status='retry_wait',attempts=0,next_attempt_at=now(),processed_at=NULL,last_error=NULL
+    WHERE payload->>'campaign_id'=p_campaign_id::text AND status='failed';
+  END IF;
   GET DIAGNOSTICS v_count=ROW_COUNT;
   INSERT INTO public.community_audit_log(actor_user_id,action,entity_type,entity_id,metadata)
   VALUES(auth.uid(),'retry_announcement','community_notification_campaign',p_campaign_id,jsonb_build_object('requeued',v_count));
@@ -707,7 +791,8 @@ AS $$
 DECLARE
   v_push public.admin_push_campaigns%ROWTYPE;
   v_campaign public.community_notification_campaigns%ROWTYPE;
-  v_now timestamptz := now();
+  v_base timestamptz;
+  v_used integer;
   v_enqueued integer := 0;
   v_host_link text;
   v_explorer_link text;
@@ -733,6 +818,9 @@ BEGIN
   INSERT INTO public.community_notification_campaigns (kind, source_id, request_key, actor_user_id)
   VALUES ('admin_push', p_push_id, p_push_id, COALESCE(v_push.updated_by, v_push.created_by))
   RETURNING * INTO v_campaign;
+
+  -- One shared pace across every Admin push (and retry): see issue_4383_push_pacing_start.
+  SELECT p.base, p.used INTO v_base, v_used FROM public.issue_4383_push_pacing_start() p;
 
   WITH recipients AS (
     SELECT DISTINCT btm.user_id, 'business.mingla_update'::text AS category_key, v_host_link AS deep_link
@@ -768,7 +856,7 @@ BEGIN
       -- retry_wait + next_attempt_at is the drain's own deferral path
       -- (claim_notification_outbox); the status reads it as pending.
       'retry_wait',
-      v_now + (p.n / 12) * interval '1 minute'
+      v_base + ((v_used + p.n) / 12) * interval '1 minute'
     FROM paced p
     ON CONFLICT (idempotency_key) DO NOTHING
     RETURNING 1
@@ -805,6 +893,7 @@ DECLARE
   v_ann_sent integer := 0;
   v_ann_failed integer := 0;
   v_cards integer := 0;
+  v_cards_failed integer := 0;
   v_notice_sent integer := 0;
   v_notice_failed integer := 0;
   v_notice_waiting integer := 0;
@@ -868,12 +957,22 @@ BEGIN
     LIMIT 20
     FOR UPDATE SKIP LOCKED
   LOOP
-    UPDATE public.community_roadmap_cards
-    SET status = 'published', go_live_at = NULL, go_live_timezone = NULL, updated_at = now()
-    WHERE id = r.id;
-    INSERT INTO public.community_audit_log (actor_user_id, action, entity_type, entity_id, metadata)
-    VALUES (NULL, 'roadmap_card_go_live', 'community_roadmap_card', r.id, '{}'::jsonb);
-    v_cards := v_cards + 1;
+    BEGIN
+      UPDATE public.community_roadmap_cards
+      SET status = 'published', go_live_at = NULL, go_live_timezone = NULL, updated_at = now()
+      WHERE id = r.id;
+      INSERT INTO public.community_audit_log (actor_user_id, action, entity_type, entity_id, metadata)
+      VALUES (NULL, 'roadmap_card_go_live', 'community_roadmap_card', r.id, '{}'::jsonb);
+      v_cards := v_cards + 1;
+    EXCEPTION WHEN OTHERS THEN
+      -- The card stays a draft and its time is cleared, so it is not retried
+      -- every minute; the failure is listed under Needs attention.
+      v_err := left(SQLERRM, 300);
+      UPDATE public.community_roadmap_cards SET go_live_at = NULL, go_live_timezone = NULL WHERE id = r.id;
+      INSERT INTO public.community_audit_log (actor_user_id, action, entity_type, entity_id, metadata)
+      VALUES (NULL, 'fail_roadmap_card_go_live', 'community_roadmap_card', r.id, jsonb_build_object('error', v_err));
+      v_cards_failed := v_cards_failed + 1;
+    END;
   END LOOP;
 
   -- Roadmap notices. The 60-second rate limit leaves a notice scheduled; it
@@ -909,7 +1008,7 @@ BEGIN
   RETURN jsonb_build_object(
     'pushes_sent', v_push_sent, 'pushes_failed', v_push_failed,
     'announcements_published', v_ann_sent, 'announcements_failed', v_ann_failed,
-    'roadmap_cards_live', v_cards,
+    'roadmap_cards_live', v_cards, 'roadmap_cards_failed', v_cards_failed,
     'roadmap_notices_sent', v_notice_sent, 'roadmap_notices_failed', v_notice_failed,
     'roadmap_notices_waiting', v_notice_waiting
   );
@@ -1587,6 +1686,18 @@ BEGIN
     SELECT jsonb_build_object('kind', 'announcement', 'id', a.id, 'title', a.title, 'problem', 'late',
       'detail', NULL, 'at', a.scheduled_at, 'timezone', a.scheduled_timezone, 'href', '#/announcements')
     FROM public.community_announcements a WHERE a.status = 'scheduled' AND a.scheduled_at < now() - interval '5 minutes'
+    UNION ALL
+    SELECT jsonb_build_object('kind', 'roadmap_card', 'id', c.id, 'title', c.public_title, 'problem', 'failed',
+      'detail', last_event.metadata->>'error', 'at', last_event.created_at, 'timezone', 'UTC', 'href', '#/roadmap?card=' || c.id::text)
+    FROM public.community_roadmap_cards c
+    CROSS JOIN LATERAL (
+      SELECT l.action, l.metadata, l.created_at FROM public.community_audit_log l
+      WHERE l.entity_type = 'community_roadmap_card' AND l.entity_id = c.id
+        AND l.action IN ('schedule_roadmap_card', 'roadmap_card_go_live', 'fail_roadmap_card_go_live')
+      ORDER BY l.created_at DESC LIMIT 1
+    ) last_event
+    WHERE c.status = 'draft' AND c.go_live_at IS NULL
+      AND last_event.action = 'fail_roadmap_card_go_live' AND last_event.created_at > now() - interval '30 days'
     UNION ALL
     SELECT jsonb_build_object('kind', 'roadmap_card', 'id', c.id, 'title', c.public_title, 'problem', 'late',
       'detail', NULL, 'at', c.go_live_at, 'timezone', c.go_live_timezone, 'href', '#/roadmap?card=' || c.id::text)

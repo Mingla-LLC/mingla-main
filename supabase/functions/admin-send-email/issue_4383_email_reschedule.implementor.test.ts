@@ -21,8 +21,12 @@ type Row = Record<string, unknown>;
 // functions use. An update applies only when every .eq/.is filter matches.
 function fakeClient(row: Row) {
   const calls: Array<{ op: string; patch?: Row; filters: Array<[string, string, unknown]> }> = [];
+  const audits: Row[] = [];
   const client = {
     from(table: string) {
+      if (table === "admin_audit_log") {
+        return { insert(rowIn: Row) { audits.push(rowIn); return Promise.resolve({ data: null, error: null }); } };
+      }
       if (table !== "admin_email_log") throw new Error(`unexpected table ${table}`);
       const filters: Array<[string, string, unknown]> = [];
       let op = "select";
@@ -44,7 +48,7 @@ function fakeClient(row: Row) {
     },
     rpc() { return Promise.resolve({ data: [], error: null }); },
   };
-  return { client: client as never, calls, row };
+  return { client: client as never, calls, row, audits };
 }
 
 const scheduled = (extra: Row = {}): Row => ({
@@ -108,4 +112,19 @@ Deno.test("T19 the composer's edit mode reads a scheduled email's words", async 
   assertEquals(result.subject, "Your December checklist");
   assertEquals(result.document.length, 1);
   assertEquals(result.timezone, "Africa/Lagos");
+});
+
+Deno.test("T19 (tester P3-2) each change records who made it; a refused change records nothing", async () => {
+  const actor = { id: "43830000-0000-4000-8000-0000000000a1", email: "gus@test.local" };
+  const fake = fakeClient(scheduled());
+  await rescheduleCampaign(fake.client, { campaignId: ID, scheduledFor: "2026-11-13T14:00:00.000Z", timezone: "UTC" }, NOW, actor);
+  await updateScheduledCampaign(fake.client, { campaignId: ID, subject: "New", document: [{ type: "rich_text", html: "<p>New</p>" }] }, actor);
+  assertEquals(fake.audits.map((a) => [a.action, a.admin_email, a.target_type, a.target_id]), [
+    ["email_campaign_rescheduled", "gus@test.local", "admin_email_log", ID],
+    ["email_campaign_edited", "gus@test.local", "admin_email_log", ID],
+  ]);
+  assertEquals((fake.audits[0].metadata as Row).actor_user_id, actor.id);
+  const started = fakeClient(scheduled({ processing_started_at: "2026-11-10T11:59:00Z" }));
+  await assertRejects(() => rescheduleCampaign(started.client, { campaignId: ID, scheduledFor: "2026-11-13T14:00:00.000Z", timezone: "UTC" }, NOW, actor), Error, "campaign_not_reschedulable");
+  assertEquals(started.audits, []);
 });

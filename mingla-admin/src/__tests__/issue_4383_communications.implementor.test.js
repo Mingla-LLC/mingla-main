@@ -51,7 +51,9 @@ import { isRoadmapHash, roadmapCardFromHash, roadmapDraftHref } from "../lib/ops
 import { emailViewFromHash, emailViewHash, emailViewsFor } from "../lib/emailViews.js";
 import { checkLaterTime, formatInZone, scheduleLabel, utcToZonedInputs, zonedLocalToUtc } from "../lib/scheduleTime.js";
 import { EXPLORER_DESTINATIONS, HOST_DESTINATIONS, opensLabel, pushReach } from "../lib/pushDestinations.js";
-import { COMMUNICATIONS_ERROR_COPY, communicationsErrorCode, communicationsErrorMessage } from "../lib/communicationsErrors.js";
+import { COMMUNICATIONS_ERROR_COPY, CommunicationsError, communicationsErrorCode, communicationsErrorMessage } from "../lib/communicationsErrors.js";
+import { SERVER_TIME_ZONES } from "../lib/serverTimeZones.js";
+import { isValidTimeZone, timeZoneOptions } from "../lib/scheduleTime.js";
 import { attentionWords, cancelKindLabel } from "../lib/communications.js";
 
 const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -385,5 +387,30 @@ describe("C-10 scheduled emails (Wave 3)", () => {
     assert.match(COMPOSER, /action: "update_scheduled_campaign",/);
     assert.match(COMPOSER, /if \(editingCampaign\) return;\n\s+const legacy = legacyDraftToMigrate/);
     assert.match(COMPOSER, /The audience was counted when this email was scheduled and stays the same\./);
+  });
+});
+
+describe("C-11 tester rework (P2-3, P3-1, P3-3)", () => {
+  it("an unexpected error is worded once, with its code once", () => {
+    const network = new CommunicationsError({ message: "TypeError: Failed to fetch" });
+    assert.equal(communicationsErrorMessage(network), "The server didn't accept that. TypeError: Failed to fetch");
+    const server = new CommunicationsError({ code: "XX000", message: "mock failure" });
+    const words = communicationsErrorMessage(server);
+    assert.equal(words, "The server didn't accept that. mock failure (XX000)");
+    assert.equal(words.split("The server didn't accept that.").length - 1, 1);
+    assert.equal(words.split("(XX000)").length - 1, 1);
+    assert.equal(communicationsErrorMessage(new CommunicationsError({ code: "PT409", message: "already_sending" })),
+      "This push already started sending, so it can't be changed. (already_sending)");
+    assert.deepEqual(server.raw, { code: "XX000", message: "mock failure" });
+  });
+  it("the pickers offer only zones the database accepts", () => {
+    assert.ok(SERVER_TIME_ZONES.includes("Africa/Lagos") && SERVER_TIME_ZONES.includes("UTC"));
+    assert.equal(SERVER_TIME_ZONES.includes("America/Coyhaique"), false, "newer than the database's tzdata");
+    assert.equal(isValidTimeZone("America/Coyhaique"), false);
+    assert.equal(isValidTimeZone("Africa/Lagos"), true);
+    for (const zone of timeZoneOptions(["America/Coyhaique", "Mars/Olympus"])) assert.ok(SERVER_TIME_ZONES.includes(zone), zone);
+  });
+  it("each audience button has an accessible name", () => {
+    assert.match(read("pages/communications/PushPage.jsx"), /aria-label=\{`\$\{a\.label\}\$\{n === null \? "" : `, \$\{n\} people`\}/);
   });
 });

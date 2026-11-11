@@ -458,6 +458,32 @@ export async function createCampaign(
 // was counted when it was scheduled (D8); a new audience is a new email.
 const SCHEDULED_GUARD_COLUMNS = "id,status,subject,scheduled_for,timezone";
 
+// #4383 (tester P3-2): who changed a scheduled email, and how, is recorded.
+// A failed audit write is logged loudly but never undoes the change it records.
+export type CampaignActor = { id: string; email: string | null };
+
+async function auditCampaignChange(
+  supabase: ServiceClient,
+  actor: CampaignActor | null,
+  action: "email_campaign_rescheduled" | "email_campaign_edited",
+  campaignId: string,
+  metadata: Record<string, unknown>,
+) {
+  if (!actor) return;
+  try {
+    const { error } = await supabase.from("admin_audit_log").insert({
+      admin_email: actor.email ?? actor.id,
+      action,
+      target_type: "admin_email_log",
+      target_id: campaignId,
+      metadata: { ...metadata, actor_user_id: actor.id },
+    });
+    if (error) console.error(`[admin-send-email] audit ${action} failed`, error.message);
+  } catch (error) {
+    console.error(`[admin-send-email] audit ${action} failed`, error);
+  }
+}
+
 function campaignIdFrom(raw: Record<string, unknown>): string {
   const campaignId = typeof raw.campaignId === "string" ? raw.campaignId.trim() : "";
   if (!UUID_PATTERN.test(campaignId)) throw new Error("campaign_id_invalid");
@@ -489,6 +515,7 @@ export async function rescheduleCampaign(
   supabase: ServiceClient,
   raw: Record<string, unknown>,
   now = Date.now(),
+  actor: CampaignActor | null = null,
 ) {
   const campaignId = campaignIdFrom(raw);
   const { scheduledFor, timezone } = rescheduleInput(raw, now);
@@ -502,12 +529,17 @@ export async function rescheduleCampaign(
     .maybeSingle();
   if (error) throw new Error(`campaign_reschedule_failed:${error.message}`);
   if (!data) throw new Error("campaign_not_reschedulable");
+  await auditCampaignChange(supabase, actor, "email_campaign_rescheduled", campaignId, {
+    scheduled_for: scheduledFor.toISOString(),
+    timezone,
+  });
   return data;
 }
 
 export async function updateScheduledCampaign(
   supabase: ServiceClient,
   raw: Record<string, unknown>,
+  actor: CampaignActor | null = null,
 ) {
   const campaignId = campaignIdFrom(raw);
   const { subject, storedDocument, plainBody } = await prepareCampaignContent(supabase, raw);
@@ -521,6 +553,7 @@ export async function updateScheduledCampaign(
     .maybeSingle();
   if (error) throw new Error(`campaign_update_failed:${error.message}`);
   if (!data) throw new Error("campaign_not_reschedulable");
+  await auditCampaignChange(supabase, actor, "email_campaign_edited", campaignId, { subject });
   return data;
 }
 
@@ -1019,10 +1052,10 @@ export async function handler(req: Request) {
       return jsonResponse({ campaign: await getScheduledCampaign(supabase, body) });
     }
     if (action === "reschedule_campaign") {
-      return jsonResponse({ campaign: await rescheduleCampaign(supabase, body) });
+      return jsonResponse({ campaign: await rescheduleCampaign(supabase, body, Date.now(), { id: user.id, email: user.email ?? null }) });
     }
     if (action === "update_scheduled_campaign") {
-      return jsonResponse({ campaign: await updateScheduledCampaign(supabase, body) });
+      return jsonResponse({ campaign: await updateScheduledCampaign(supabase, body, { id: user.id, email: user.email ?? null }) });
     }
 
     if (action === "cancel_campaign") {

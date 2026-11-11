@@ -24,6 +24,12 @@
 --   T23  delivery status reads a push campaign by id; no id is still the
 --        latest announcement
 --   +    send now, test to me, unschedule, Overview and Needs attention
+--   R1   (tester P1-1) publishing or archiving a card by any path clears its
+--        go-live time; back to draft it never re-arms; hosts never read it
+--   R2   (tester P2-1) two pushes fired in one pass share one pace: never more
+--        than 12 Admin push rows claimable in any minute; a retry joins it
+--   R3   (tester P2-2) a card whose publish fails is recorded, cleared and
+--        listed under Needs attention, and the rest of the pass still runs
 --
 -- FAILS-ON-REVERT: replay without 20280608004383 -> every RPC is missing and
 -- the suite stops at T7. Dropping the runner's "scheduled_for <= now()" guard
@@ -250,7 +256,9 @@ begin
   select string_agg(m || ':' || c, ',' order by m) into v_minutes from (
     select extract(epoch from (next_attempt_at - now()))::int / 60 as m, count(*) as c
     from public.notification_outbox where payload->>'push_id' = '43830000-0000-4000-c000-000000000004' group by 1) x;
-  perform pg_temp.chk('T10', '30 rows paced 12 a minute', v_minutes = '0:12,1:12,2:6', v_minutes);
+  -- The first push's 7 rows still wait in minute 0, so this push fills that
+  -- minute to 12 and goes on: one shared pace (tester P2-1).
+  perform pg_temp.chk('T10', '30 rows paced 12 a minute after the 7 already queued', v_minutes = '0:5,1:12,2:12,3:1', v_minutes);
 end;
 $t$;
 
@@ -499,6 +507,107 @@ begin
   perform pg_temp.chk('categories', 'both categories exist, inapp + push, default on (transactional)',
     (select count(*) from public.notification_categories where key in ('explorer.mingla_update', 'business.mingla_update')
       and is_transactional and default_channels = array['inapp', 'push']::text[] and active) = 2, null);
+end;
+$t$;
+
+
+-- ───────────────────────────── R1 / R2 / R3 (tester rework) ─────────────────────────────
+do $t$
+declare v jsonb; v_minutes text; v_max int; v_campaign uuid; v_card uuid := '43830000-0000-4000-f000-0000000000d1';
+begin
+  insert into public.community_roadmap_cards (id, public_title, lane, status, sort_order) values (v_card, 'Card R1', 'next', 'draft', 9101);
+  perform pg_temp.act('admin');
+  set local role authenticated;
+  perform public.issue_4383_roadmap_schedule_card(v_card, now() + interval '2 hours', 'Europe/London');
+  perform public.community_upsert_roadmap_card(v_card, 'Card R1', null, null, 'next', 'published');
+  reset role;
+  perform pg_temp.chk('R1', 'a manual publish clears the go-live time and zone',
+    (select go_live_at is null and go_live_timezone is null from public.community_roadmap_cards where id = v_card), null);
+  perform pg_temp.act('admin');
+  set local role authenticated;
+  perform public.community_upsert_roadmap_card(v_card, 'Card R1', null, null, 'next', 'draft');
+  reset role;
+  v := public.issue_4383_fire_due_communications();
+  perform pg_temp.chk('R1', 'back to draft, the runner does not republish it',
+    (select status = 'draft' from public.community_roadmap_cards where id = v_card) and (v->>'roadmap_cards_live')::int = 0, v::text);
+  -- Any writer: a direct status change clears it too.
+  update public.community_roadmap_cards set go_live_at = now() + interval '1 day', go_live_timezone = 'UTC' where id = v_card;
+  update public.community_roadmap_cards set status = 'archived' where id = v_card;
+  perform pg_temp.chk('R1', 'archiving clears it as well',
+    (select go_live_at is null and go_live_timezone is null from public.community_roadmap_cards where id = v_card), null);
+
+  -- R2: clear earlier admin pushes' rows so this measures only what follows.
+  delete from public.notification_outbox where category_key in ('explorer.mingla_update', 'business.mingla_update');
+  insert into public.admin_push_campaigns (id, title, body, audience, status, scheduled_for, created_by) values
+    ('43830000-0000-4000-c000-0000000000d1', 'R2a', 'x', 'explorers', 'scheduled', now() - interval '2 seconds', pg_temp.uid('admin')),
+    ('43830000-0000-4000-c000-0000000000d2', 'R2b', 'y', 'explorers', 'scheduled', now() - interval '1 second', pg_temp.uid('admin'));
+  v := public.issue_4383_fire_due_communications();
+  select max(c) into v_max from (select next_attempt_at, count(*) c from public.notification_outbox
+    where category_key in ('explorer.mingla_update', 'business.mingla_update') group by 1) x;
+  select string_agg(m || ':' || c, ',' order by m) into v_minutes from (
+    select extract(epoch from (next_attempt_at - now()))::int / 60 as m, count(*) as c
+    from public.notification_outbox where category_key in ('explorer.mingla_update', 'business.mingla_update') group by 1) x;
+  perform pg_temp.chk('R2', 'two pushes in one pass: at most 12 a minute across both', (v->>'pushes_sent')::int = 2 and v_max <= 12, coalesce(v_minutes, ''));
+  perform pg_temp.chk('R2', 'and they follow each other (60 rows over minutes 0..4)', v_minutes = '0:12,1:12,2:12,3:12,4:12', v_minutes);
+  -- A retry of failed rows joins the same pace instead of re-queueing at now().
+  update public.notification_outbox set status = 'failed'
+  where payload->>'push_id' = '43830000-0000-4000-c000-0000000000d1';
+  select campaign_id into v_campaign from public.admin_push_campaigns where id = '43830000-0000-4000-c000-0000000000d1';
+  perform pg_temp.act('admin');
+  set local role authenticated;
+  perform public.issue_3720_admin_retry_announcement(v_campaign);
+  reset role;
+  select max(c) into v_max from (select next_attempt_at, count(*) c from public.notification_outbox
+    where category_key in ('explorer.mingla_update', 'business.mingla_update') and status in ('pending', 'retry_wait') group by 1) x;
+  perform pg_temp.chk('R2', 'a retry re-queues on the shared pace (never more than 12 in a minute)', v_max <= 12, v_max::text);
+  perform pg_temp.chk('R2', 'a retried row never comes before the rows already queued',
+    (select min(next_attempt_at) from public.notification_outbox where payload->>'push_id' = '43830000-0000-4000-c000-0000000000d1')
+      >= (select max(next_attempt_at) from public.notification_outbox where payload->>'push_id' = '43830000-0000-4000-c000-0000000000d2'), null);
+end;
+$t$;
+
+-- R3: one card whose publish raises.
+create function pg_temp.t4383_card_break() returns trigger language plpgsql as $fn$
+begin
+  if new.id = '43830000-0000-4000-f000-0000000000d3' and new.status = 'published' then raise exception 'forced card failure'; end if;
+  return new;
+end;
+$fn$;
+create trigger t4383_card_break before update on public.community_roadmap_cards for each row execute function pg_temp.t4383_card_break();
+do $t$
+declare v jsonb; v_list jsonb;
+begin
+  insert into public.community_roadmap_cards (id, public_title, lane, status, sort_order, go_live_at, go_live_timezone)
+  values ('43830000-0000-4000-f000-0000000000d3', 'Card R3', 'next', 'draft', 9103, now() - interval '1 minute', 'UTC');
+  insert into public.admin_push_campaigns (id, title, body, audience, status, scheduled_for, created_by) values
+    ('43830000-0000-4000-c000-0000000000d3', 'R3', 'z', 'hosts', 'scheduled', now() - interval '1 second', pg_temp.uid('admin'));
+  v := public.issue_4383_fire_due_communications();
+  perform pg_temp.chk('R3', 'the runner finishes: the card failed, the push in the same pass sent',
+    (v->>'roadmap_cards_failed')::int = 1 and (v->>'pushes_sent')::int = 1
+    and (select status = 'sent' from public.admin_push_campaigns where id = '43830000-0000-4000-c000-0000000000d3'), v::text);
+  perform pg_temp.chk('R3', 'the card stays a draft with its time cleared (not retried every minute)',
+    (select status = 'draft' and go_live_at is null from public.community_roadmap_cards where id = '43830000-0000-4000-f000-0000000000d3'), null);
+  v := public.issue_4383_fire_due_communications();
+  perform pg_temp.chk('R3', 'the next pass does not try it again', (v->>'roadmap_cards_failed')::int = 0, v::text);
+  perform pg_temp.act('admin');
+  set local role authenticated;
+  v_list := public.issue_4383_communications_failures();
+  reset role;
+  perform pg_temp.chk('R3', 'Needs attention lists the card with its reason',
+    exists (select 1 from jsonb_array_elements(v_list) i where i->>'id' = '43830000-0000-4000-f000-0000000000d3' and i->>'problem' = 'failed' and i->>'detail' like '%forced card failure%'), left(v_list::text, 400));
+end;
+$t$;
+drop trigger t4383_card_break on public.community_roadmap_cards;
+
+-- P3-1: the Admin pickers offer mingla-admin/src/lib/serverTimeZones.js; a
+-- sample of it must be real here, and a zone newer than this tzdata refused.
+do $t$
+declare v_e text;
+begin
+  perform pg_temp.chk('P3-1', 'the picker sample zones exist in pg_timezone_names',
+    (select count(*) from pg_catalog.pg_timezone_names where name in ('Africa/Lagos', 'America/New_York', 'Europe/Helsinki', 'Asia/Kolkata', 'UTC')) = 5, null);
+  v_e := pg_temp.err($$select public.issue_4383_check_schedule(now() + interval '1 day', 'America/Coyhaique')$$);
+  perform pg_temp.chk('P3-1', 'a zone the database does not know is refused', v_e like '22023 invalid_timezone%', v_e);
 end;
 $t$;
 

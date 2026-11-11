@@ -246,6 +246,7 @@ export function PushPage() {
                     const n = counts.data ? pushReach(a.value, counts.data).people : null;
                     return (
                       <button key={a.value} type="button" aria-pressed={form.audience === a.value} onClick={() => set({ audience: a.value })}
+                        aria-label={`${a.label}${n === null ? "" : `, ${n} people`}, ${a.value === "both" ? "hosts get both apps" : a.app}`}
                         className={`rounded-lg border p-3 text-left transition-colors ${form.audience === a.value ? "border-[var(--color-brand-500)] bg-[var(--color-brand-50)]" : "border-[var(--gray-300)] hover:bg-[var(--gray-50)]"}`}>
                         <span className="block text-sm font-semibold text-[var(--color-text-primary)]">{a.label}</span>
                         <span className="block text-xs text-[var(--color-text-secondary)]">
