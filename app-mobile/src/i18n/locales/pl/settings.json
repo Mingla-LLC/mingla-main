@@ -41,7 +41,17 @@
     "sessions_hint": "Zaprośs, member updates, i board activity",
     "tips_reengagement": "Tips & Re-engagement",
     "tips_hint": "Occasional nudges, weekly digest, i recommendations",
-    "error_update": "Failed to update notification setting."
+    "error_update": "Failed to update notification setting.",
+    "prefs": {
+      "cat": {
+        "mingla_updates": "Nowości Mingla",
+        "mingla_updates_hint": "Wiadomości i nowości od zespołu Mingla.",
+        "brand_campaign_push": "Wiadomości od miejsc, które obserwujesz",
+        "brand_campaign_push_hint": "Oferty i nowości od miejsc i gospodarzy, których obserwujesz.",
+        "brand_offering_invite": "Zaproszenia od miejsc, które obserwujesz",
+        "brand_offering_invite_hint": "Gdy miejsce lub gospodarz zaprasza cię na coś."
+      }
+    }
   },
   "quiet_hours": {
     "title": "Quiet Hours",

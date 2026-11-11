@@ -41,7 +41,17 @@
     "sessions_hint": "Запроситиs, member updates, та board activity",
     "tips_reengagement": "Tips & Re-engagement",
     "tips_hint": "Occasional nudges, weekly digest, та recommendations",
-    "error_update": "Failed to update notification setting."
+    "error_update": "Failed to update notification setting.",
+    "prefs": {
+      "cat": {
+        "mingla_updates": "Новини Mingla",
+        "mingla_updates_hint": "Новини та оновлення від команди Mingla.",
+        "brand_campaign_push": "Повідомлення від місць, за якими ви стежите",
+        "brand_campaign_push_hint": "Пропозиції та новини від місць і організаторів, за якими ви стежите.",
+        "brand_offering_invite": "Запрошення від місць, за якими ви стежите",
+        "brand_offering_invite_hint": "Коли місце чи організатор запрошує вас кудись."
+      }
+    }
   },
   "quiet_hours": {
     "title": "Quiet Hours",

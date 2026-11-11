@@ -41,7 +41,17 @@
     "sessions_hint": "आमंत्रण, सदस्य अपडेट और बोर्ड गतिविधि",
     "tips_reengagement": "टिप्स और रिमाइंडर",
     "tips_hint": "कभी-कभी नज़, साप्ताहिक डाइजेस्ट और सुझाव",
-    "error_update": "सूचना सेटिंग अपडेट करने में विफल।"
+    "error_update": "सूचना सेटिंग अपडेट करने में विफल।",
+    "prefs": {
+      "cat": {
+        "mingla_updates": "Mingla अपडेट",
+        "mingla_updates_hint": "Mingla टीम की ओर से खबरें और अपडेट।",
+        "brand_campaign_push": "जिन जगहों को आप फ़ॉलो करते हैं उनके संदेश",
+        "brand_campaign_push_hint": "जिन जगहों और होस्ट को आप फ़ॉलो करते हैं उनके ऑफ़र और खबरें।",
+        "brand_offering_invite": "जिन जगहों को आप फ़ॉलो करते हैं उनके निमंत्रण",
+        "brand_offering_invite_hint": "जब कोई जगह या होस्ट आपको किसी चीज़ के लिए आमंत्रित करे।"
+      }
+    }
   },
   "quiet_hours": {
     "title": "शांत समय",

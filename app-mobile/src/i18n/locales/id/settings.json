@@ -41,7 +41,17 @@
     "sessions_hint": "Undangan, pembaruan anggota, dan aktivitas board",
     "tips_reengagement": "Tips & Pengingat",
     "tips_hint": "Dorongan sesekali, ringkasan mingguan, dan rekomendasi",
-    "error_update": "Gagal memperbarui pengaturan notifikasi."
+    "error_update": "Gagal memperbarui pengaturan notifikasi.",
+    "prefs": {
+      "cat": {
+        "mingla_updates": "Kabar Mingla",
+        "mingla_updates_hint": "Berita dan pembaruan dari tim Mingla.",
+        "brand_campaign_push": "Pesan dari tempat yang kamu ikuti",
+        "brand_campaign_push_hint": "Penawaran dan kabar dari tempat dan host yang kamu ikuti.",
+        "brand_offering_invite": "Undangan dari tempat yang kamu ikuti",
+        "brand_offering_invite_hint": "Saat tempat atau host mengundangmu ke sesuatu."
+      }
+    }
   },
   "quiet_hours": {
     "title": "Jam Tenang",

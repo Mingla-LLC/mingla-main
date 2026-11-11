@@ -41,7 +41,17 @@
     "sessions_hint": "Àwọn ìpè, ìmúdójúìwọ̀n ọmọ ẹgbẹ́, àti iṣẹ́ bọ́ọ̀dù",
     "tips_reengagement": "Ìmọ̀ràn & Ìránnilétí",
     "tips_hint": "Ìránnilétí, àkójọ ọ̀sẹ̀, àti àwọn ìṣedúró",
-    "error_update": "Kò lè ṣe ìmúdójúìwọ̀n ètò ìfitónilétí."
+    "error_update": "Kò lè ṣe ìmúdójúìwọ̀n ètò ìfitónilétí.",
+    "prefs": {
+      "cat": {
+        "mingla_updates": "Ìròyìn Mingla",
+        "mingla_updates_hint": "Ìròyìn àti àfikún láti ọ̀dọ̀ ẹgbẹ́ Mingla.",
+        "brand_campaign_push": "Ìfiránṣẹ́ láti àwọn ibi tí o ń tẹ̀lé",
+        "brand_campaign_push_hint": "Àwọn ìpèsè àti ìròyìn láti àwọn ibi àti olùgbàlejò tí o ń tẹ̀lé.",
+        "brand_offering_invite": "Ìpè láti àwọn ibi tí o ń tẹ̀lé",
+        "brand_offering_invite_hint": "Nígbà tí ibì kan tàbí olùgbàlejò bá pè ọ́ sí nǹkan."
+      }
+    }
   },
   "quiet_hours": {
     "title": "Àwọn Wákàtí Ìdákẹ́rọ́rọ́",

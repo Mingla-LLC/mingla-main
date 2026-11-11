@@ -41,7 +41,17 @@
     "sessions_hint": "Einladungen, Mitglieder-Updates und Board-Aktivität",
     "tips_reengagement": "Tipps & Erinnerungen",
     "tips_hint": "Gelegentliche Hinweise, wöchentliche Zusammenfassung und Empfehlungen",
-    "error_update": "Benachrichtigungseinstellung konnte nicht aktualisiert werden."
+    "error_update": "Benachrichtigungseinstellung konnte nicht aktualisiert werden.",
+    "prefs": {
+      "cat": {
+        "mingla_updates": "Mingla-Neuigkeiten",
+        "mingla_updates_hint": "Neuigkeiten und Updates vom Mingla-Team.",
+        "brand_campaign_push": "Nachrichten von Orten, denen du folgst",
+        "brand_campaign_push_hint": "Angebote und News von Orten und Gastgebern, denen du folgst.",
+        "brand_offering_invite": "Einladungen von Orten, denen du folgst",
+        "brand_offering_invite_hint": "Wenn ein Ort oder Gastgeber dich zu etwas einlädt."
+      }
+    }
   },
   "quiet_hours": {
     "title": "Ruhezeiten",

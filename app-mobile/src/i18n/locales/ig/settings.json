@@ -41,7 +41,17 @@
     "sessions_hint": "Oku, mmelite ndị otu, na ọrụ bọọdụ",
     "tips_reengagement": "Ndụmọdụ & Ncheta",
     "tips_hint": "Ncheta, nchịkọta izu, na atụmatụ",
-    "error_update": "Enweghị ike ịmelite ntọala ọkwa."
+    "error_update": "Enweghị ike ịmelite ntọala ọkwa.",
+    "prefs": {
+      "cat": {
+        "mingla_updates": "Mmelite Mingla",
+        "mingla_updates_hint": "Akụkọ na mmelite sitere n’aka ndị otu Mingla.",
+        "brand_campaign_push": "Ozi sitere n’ebe ị na-eso",
+        "brand_campaign_push_hint": "Onyinye na akụkọ sitere n’ebe na ndị nnabata ị na-eso.",
+        "brand_offering_invite": "Akwụkwọ ịkpọ òkù sitere n’ebe ị na-eso",
+        "brand_offering_invite_hint": "Mgbe otu ebe ma ọ bụ onye nnabata kpọrọ gị òkù."
+      }
+    }
   },
   "quiet_hours": {
     "title": "Oge Jụụ",

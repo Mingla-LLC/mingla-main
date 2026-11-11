@@ -41,7 +41,17 @@
     "sessions_hint": "Jemputan, kemas kini ahli, dan aktiviti papan",
     "tips_reengagement": "Petua & Penglibatan Semula",
     "tips_hint": "Dorongan sekali-sekala, ringkasan mingguan, dan cadangan",
-    "error_update": "Gagal mengemas kini tetapan pemberitahuan."
+    "error_update": "Gagal mengemas kini tetapan pemberitahuan.",
+    "prefs": {
+      "cat": {
+        "mingla_updates": "Berita Mingla",
+        "mingla_updates_hint": "Berita dan kemas kini daripada pasukan Mingla.",
+        "brand_campaign_push": "Mesej daripada tempat yang anda ikuti",
+        "brand_campaign_push_hint": "Tawaran dan berita daripada tempat dan hos yang anda ikuti.",
+        "brand_offering_invite": "Jemputan daripada tempat yang anda ikuti",
+        "brand_offering_invite_hint": "Apabila tempat atau hos menjemput anda ke sesuatu."
+      }
+    }
   },
   "quiet_hours": {
     "title": "Waktu Senyap",
