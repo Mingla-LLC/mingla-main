@@ -159,13 +159,12 @@ describe("XA-3 the Files link check matches the server's rule", () => {
   it("empty, blank, null and undefined mean no link (the card clears it)", () => {
     for (const v of ["", "   ", null, undefined]) assert.equal(filesUrlProblem(v), "");
   });
-  it("the card's Files link opens in a new tab without handing the page an opener", () => {
-    const src = read("components/ops/WorkDetail.jsx");
-    const anchor = src.match(/<a data-files-link=""[^>]*>/);
-    assert.ok(anchor, "the Files link is an anchor");
-    assert.match(anchor[0], /target="_blank"/);
-    assert.match(anchor[0], /rel="noopener noreferrer"/);
-    assert.match(src, /maxLength=\{2000\}/, "the field stops at 2,000 characters");
+  // #4255 W3: the Files link is one of the card's link files; a link opens in
+  // a new tab with noopener, and a link is refused past 2,000 characters.
+  it("the card's links open in a new tab without handing the page an opener", () => {
+    const src = read("hooks/useCardFiles.js");
+    assert.match(src, /if \(file\.kind === "link"\) \{ window\.open\(file\.url, "_blank", "noopener,noreferrer"\); return; \}/);
+    assert.match(read("components/ops/CardFiles.jsx"), /maxLength=\{2000\}/, "the field stops at 2,000 characters");
   });
 });
 
@@ -259,7 +258,7 @@ describe("XA-7 owners and words", () => {
     assert.deepEqual(WORK_COLUMNS.map((c) => c.key), ["todo", "doing", "done"]);
   });
   it("the board, the card, the strip, the Dashboard and the menu say nothing about waiting on a person", () => {
-    for (const rel of ["components/ops/WorkColumns.jsx", "components/ops/WorkDetail.jsx", "components/ops/SprintStrip.jsx",
+    for (const rel of ["components/ops/WorkBoard.jsx", "components/ops/WorkDetail.jsx", "components/ops/SprintBar.jsx",
       "pages/WorkBoardPage.jsx", "pages/OverviewPage.jsx", "lib/dashboardToday.js", "components/layout/Sidebar.jsx",
       "components/ops/TeamOpsPanels.jsx", "components/ops/MyCardsPanels.jsx"]) {
       const shown = read(rel).split("\n").filter((l) => !/^\s*(\/\/|\*|\/\*|\{\/\*)/.test(l)).join("\n");

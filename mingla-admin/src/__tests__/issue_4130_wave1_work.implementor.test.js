@@ -205,8 +205,10 @@ describe("W1-6 rendered: To do with the tags and the drafts", () => {
     }
     const harness = `
 import { renderToStaticMarkup } from "react-dom/server";
-import { WorkColumns } from "../components/ops/WorkColumns.jsx";
-export function render(props) { return renderToStaticMarkup(<WorkColumns onSelect={() => {}} onOpenDraft={() => {}} {...props} />); }
+import { WorkBoard } from "../components/ops/WorkBoard.jsx";
+// #4255 W2: the board is WorkBoard; columns are statuses.
+const COLS = [{ id: "todo", name: "To do", color: "#8a847b", grp: "todo", position: 0 }, { id: "doing", name: "In progress", color: "#2f6fd6", grp: "doing", position: 1 }, { id: "done", name: "Done", color: "#1f8a5b", grp: "done", position: 2 }];
+export function render(props) { return renderToStaticMarkup(<WorkBoard onSelect={() => {}} onMoveCard={() => {}} onOpenDraft={() => {}} columnActions={{}} columns={COLS} layout="desktop" {...props} cards={props.cards.map((c) => ({ ...c, status_id: c.status }))} />); }
 `;
     const out = await esbuild.build({
       stdin: { contents: harness, resolveDir: HERE, sourcefile: "work-columns.harness.jsx", loader: "jsx" },
@@ -231,8 +233,8 @@ export function render(props) { return renderToStaticMarkup(<WorkColumns onSelec
     const html = render({ cards: [sendCard, spendCard], drafts: loose, draftsByCard: byCard, allDraftsHref: "#/work-board?drafts=all" });
     assert.equal(WORK_COLUMNS[0].label, "To do");
     assert.equal(workStatusLabel("person"), "");
-    const first = html.slice(html.indexOf('id="work-col-panel-todo"'), html.indexOf('id="work-col-panel-doing"'));
-    assert.match(first, /<span[^>]*>To do<\/span><span[^>]*><span[^>]*aria-label="2 cards"[^>]*>2<\/span><span[^>]*>\+2 drafts<\/span>/);
+    const first = html.slice(html.indexOf('data-column="todo"'), html.indexOf('data-column="doing"'));
+    assert.match(first, />To do<\/h2><span[^>]*aria-label="2 cards"[^>]*>2<\/span><span[^>]*>\+2 drafts<\/span>/);
     assert.ok(!/Needs you|Waiting on a person/.test(html), "the retired names are gone");
     assert.match(first, /data-draft-item="41300000-0000-4000-8000-0000000000d2"[\s\S]*Send a message to Gallery/);
     assert.match(first, /data-draft-item="41300000-0000-4000-8000-0000000000d3"/);
@@ -253,10 +255,13 @@ describe("W1-7 everything Needs you did is reachable from Work", () => {
   const detail = code("components/ops/WorkDetail.jsx");
   const panels = code("components/ops/CardPersonPanels.jsx");
   const drafts = code("pages/DraftsPage.jsx");
-  it("a send card shows its drafts with every draft action; a roadmap card shows the wording editor", () => {
-    assert.match(detail, /<CardDrafts card=\{card\} \/>/);
+  // #4255 W3 (D6): the card no longer embeds the drafts screen ("Message to
+  // send" is gone); drafts open from the board's draft items and the Drafts
+  // page, with every draft action there. A roadmap card keeps its wording editor.
+  it("drafts keep every action on the Drafts page; a roadmap card shows the wording editor", () => {
+    assert.ok(!/<CardDrafts\b/.test(detail));
+    assert.ok(!/export function CardDrafts/.test(panels));
     assert.match(detail, /<CardWording card=\{card\} onChanged=\{refresh\}( onOpenSide=\{onOpenSide\})? \/>/);
-    assert.match(panels, /<DraftsPage key=\{id\} embedded=\{\{ search: `record=\$\{id\}` \}\} \/>/);
     assert.match(panels, /<WordingCard card=\{wording\}/);
     for (const action of ["service.updateDraft", "service.markDraftSent", "service.discardDrafts", "service.restoreDraft", "service.undoDraftSent"]) {
       assert.ok(drafts.includes(action), action);
@@ -278,7 +283,7 @@ describe("W1-7 everything Needs you did is reachable from Work", () => {
   // it still filters the board on the server, and only while the board is on
   // screen. Today, This week and This month read their window (loadPeriod).
   it("the owner filters on the server; the views read the new functions through the one service", () => {
-    assert.match(page, /useOpsWork\(\{ who, week: query\.week, owner: ownerFilter, q: view\.q, limit: BOARD_LIMIT, perStatus: true, enabled: onBoard \}\)/);
+    assert.match(page, /useOpsWork\(\{ who, week: query\.week, owner: ownerFilter, q: view\.q, limit: BOARD_LIMIT, perStatus: true, subtasks: showSubtasks, goalId, enabled: onBoard \}\)/);
     assert.match(code("hooks/useOpsWork.js"), /\.\.\.\(owner \? \{ owner \} : \{\}\)/);
     const service = read("services/opsService.js");
     assert.match(service, /supabase\.rpc\("ops_events_since", \{ p_since: since, p_owner: owner \|\| null \}\)/);

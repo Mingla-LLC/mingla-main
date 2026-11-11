@@ -16,10 +16,13 @@ import { EmbeddedPageContext } from "../layout/embeddedPage";
 //   tabs         the page's <Tabs>; it sits on the divider under the header
 //                (optional)
 //   titleId      an id for the <h1>, when a section is labelled by it
+//   inline       #4255 (Work board v2): controls drawn on the title's own line,
+//                one row that never wraps (the Work header: tabs, search,
+//                filters, New card). The title keeps its one style.
 //
 // A page puts nothing around this: no outer padding, width or centring. The
 // shell sets those once (components/layout/AppShell.jsx).
-export function PageHeader({ title, description, meta, actions, back, tabs, titleId }) {
+export function PageHeader({ title, description, meta, actions, back, tabs, titleId, inline }) {
   // #4130 (Wave 4b): inside another page's tab, only the controls are drawn;
   // the holding page owns the title.
   const embedded = useContext(EmbeddedPageContext);
@@ -30,6 +33,22 @@ export function PageHeader({ title, description, meta, actions, back, tabs, titl
         {actions && <div className="flex flex-wrap items-center justify-end gap-2">{actions}</div>}
         {tabs && <div className="min-w-0">{tabs}</div>}
       </div>
+    );
+  }
+  const heading = (
+    <h1
+      id={titleId}
+      className="shrink-0 break-words text-[22px] font-semibold leading-7 tracking-[-0.02em] text-[var(--color-text-primary)]"
+    >
+      {title}
+    </h1>
+  );
+  if (inline) {
+    return (
+      <header data-page-header="inline" className="flex h-12 min-w-0 flex-nowrap items-center gap-3 overflow-hidden">
+        {heading}
+        {inline}
+      </header>
     );
   }
   return (
@@ -47,12 +66,7 @@ export function PageHeader({ title, description, meta, actions, back, tabs, titl
       <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
-            <h1
-              id={titleId}
-              className="break-words text-[22px] font-semibold leading-7 tracking-[-0.02em] text-[var(--color-text-primary)]"
-            >
-              {title}
-            </h1>
+            {heading}
             {meta}
           </div>
           {description && (

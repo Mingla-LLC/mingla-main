@@ -1,4 +1,5 @@
-// Issue #4255 (W2, rev2) — the Work header on ONE line: Work, the four tabs,
+// Issue #4255 (W2, rev2) — the Work header on ONE line (drawn inside the one
+// PageHeader, after its title "Work", #3802): the four tabs,
 // search, Owner, Show and Linked to as compact chips, the Show subtasks
 // switch and + New card. An active filter turns orange and Clear appears.
 // Under 1,150px the three chips fold into one "Filters · n" button; under
@@ -65,7 +66,8 @@ export function WorkHeader({
 }) {
   const ref = useRef(null);
   const width = useWidth(ref);
-  const fit = forcedFit || headerFit(width);
+  // The title "Work" sits before this row in the page header (about 64px).
+  const fit = forcedFit || headerFit(width + 64);
   const count = activeFilterCount({ owner, show, linked });
   const onBoard = view === "board";
   const chips = (
@@ -77,8 +79,7 @@ export function WorkHeader({
   );
   const active = WORK_VIEWS.find((v) => v.value === view) || WORK_VIEWS[0];
   return (
-    <div ref={ref} data-work-header="" data-fit={fit} className="flex h-12 min-w-0 flex-nowrap items-center gap-2 overflow-hidden">
-      <h1 className="shrink-0 text-[18px] font-semibold text-[var(--color-text-primary)]">Work</h1>
+    <div ref={ref} data-work-header="" data-fit={fit} className="flex h-12 min-w-0 flex-1 flex-nowrap items-center gap-2 overflow-hidden">
       {fit === "compact" ? (
         <Popover label="Choose a view" role="menu" width="w-44" dataAttr="views"
           button={<span className="inline-flex items-center gap-1">{active.label}<ChevronDown aria-hidden="true" className="h-3.5 w-3.5" /></span>}

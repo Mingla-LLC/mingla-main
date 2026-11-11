@@ -231,3 +231,25 @@ export const signedFileUrls = async (bucket, paths, seconds = 300) => {
   for (const row of Array.isArray(data) ? data : []) if (row?.path && row?.signedUrl) out[row.path] = row.signedUrl;
   return out;
 };
+
+/**
+ * A picture or document onto a card: the database row first (it checks the
+ * caller, the type, the 25 MB cap and the 50-file limit and says where the
+ * file goes), then the upload to that path. Returns the file row. A failed
+ * upload leaves a row that never shows (it lists only uploaded files).
+ */
+export async function uploadCardFile(cardId, file, { kind, mime, key } = {}) {
+  const added = await addFile(cardId, { kind, name: String(file?.name || "file").slice(0, 200), mime, size_bytes: Number(file?.size) || 0 }, key);
+  if (added?.upload?.path) await uploadFileObject(added.upload.bucket || "ops-work-files", added.upload.path, file, mime);
+  return added?.file || null;
+}
+
+/** A link onto a card (no page is fetched). */
+export const addCardLink = (cardId, url, name, key) => addFile(cardId, { kind: "link", url, ...(name ? { name } : {}) }, key).then((r) => r?.file || null);
+
+/** A short-lived address to open a file: a link's own, or a 5-minute signed one. */
+export async function openableFileUrl(fileId) {
+  const s = await signFile(fileId);
+  if (s?.kind === "link") return s.url || "";
+  return signedFileUrl(s?.bucket || "ops-work-files", s?.path, Math.min(Number(s?.expires_in) || 300, 300));
+}

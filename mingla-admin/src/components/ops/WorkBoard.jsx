@@ -68,7 +68,7 @@ function Ring({ done, total }) {
 }
 
 /** The card face: title, tags, owners, due, subtasks, thread and files, agent on it. */
-export function BoardCardFace({ card, today, columns = [], onMove = null, showPill = false }) {
+export function BoardCardFace({ card, today, columns = [], onMove = null, showPill = false, draftsReady = 0 }) {
   const late = lateDays(card, today);
   const sub = subtaskProgress(card.subtasks);
   const reasons = cardReasons(card).filter((r) => r === "No owner");
@@ -79,6 +79,7 @@ export function BoardCardFace({ card, today, columns = [], onMove = null, showPi
       {(isTagged(card) || late > 0 || card.goal) && (
         <span className="flex min-w-0 flex-wrap items-center gap-1">
           {isTagged(card) && <span className="rounded-full bg-[var(--color-brand-50)] px-2 py-px text-[11px] font-semibold text-[var(--color-brand-700)]">{personReasonLabel(card)}</span>}
+          {isTagged(card) && draftsReady > 0 && <span data-draft-ready="" className="rounded-full bg-[var(--color-info-50)] px-2 py-px text-[11px] font-semibold text-[var(--color-info-700)]">Draft ready</span>}
           {late > 0 && <span className="rounded-full bg-[var(--color-error-50)] px-2 py-px text-[11px] font-semibold text-[var(--color-error-700)]">{late}d late</span>}
           {card.goal && <span className="inline-flex min-w-0 items-center gap-1 rounded-full bg-[var(--gray-100)] px-2 py-px text-[11px] text-[var(--color-text-secondary)]"><span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--color-success-600)]" /><span className="truncate">{card.goal.title}</span></span>}
         </span>
@@ -122,7 +123,7 @@ export function StatusPill({ card, columns, onMove, disabled = false }) {
   );
 }
 
-function DraggableCard({ card, today, selected, onSelect, canDrag, dimmed }) {
+function DraggableCard({ card, today, selected, onSelect, canDrag, dimmed, draftsReady = 0 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `card:${card.id}`, data: { type: "card", card }, disabled: !canDrag });
   return (
     <li className="min-w-0">
@@ -137,7 +138,7 @@ function DraggableCard({ card, today, selected, onSelect, canDrag, dimmed }) {
         onClick={() => onSelect(card)}
         className={`flex w-full min-w-0 flex-col rounded-xl border bg-[var(--color-background-primary)] p-2.5 text-left shadow-[var(--shadow-xs,none)] hover:border-[var(--gray-300)] ${selected ? "border-[var(--color-brand-500)] shadow-[inset_0_0_0_1px_var(--color-brand-500)]" : "border-[var(--gray-200)]"} ${isDragging || dimmed ? "opacity-40" : ""} ${canDrag ? "cursor-grab active:cursor-grabbing" : ""} ${FOCUS}`}
       >
-        <BoardCardFace card={card} today={today} />
+        <BoardCardFace card={card} today={today} draftsReady={draftsReady} />
       </button>
     </li>
   );
@@ -164,7 +165,7 @@ function Placeholder() {
 }
 
 /** One column: fixed header, its own scrolling list, + Add card at the foot. */
-function BoardColumn({ col, columns, today, selectedId, onSelect, canChange, canDrag, onAddCard, columnActions, dragCard, overColumnId, drafts, selectedDraftId, onOpenDraft }) {
+function BoardColumn({ col, columns, today, selectedId, onSelect, canChange, canDrag, onAddCard, columnActions, dragCard, overColumnId, drafts, selectedDraftId, onOpenDraft, draftsByCard, allDraftsHref }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: `col:${col.id}`, data: { type: "column", column: col }, disabled: !canChange });
   const lit = dragCard && overColumnId === col.id && dragCard.status_id !== col.id;
   // Where the dragged card would land: the column's automatic order with it in.
@@ -188,6 +189,7 @@ function BoardColumn({ col, columns, today, selectedId, onSelect, canChange, can
         <span aria-hidden="true" className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: col.color }} />
         <h2 id={`work-col-${col.id}`} className={`min-w-0 flex-1 truncate text-[13px] font-semibold text-[var(--color-text-primary)]`} title={`${col.name} · ${GROUP_LABELS[col.grp]}`}>{col.name}</h2>
         <span className="shrink-0 rounded-full bg-[var(--color-background-primary)] px-2 py-0.5 text-[11px] tabular-nums text-[var(--color-text-secondary)]" aria-label={`${col.count} ${col.count === 1 ? "card" : "cards"}`}>{col.count}</span>
+        {drafts?.length > 0 && <span className="shrink-0 rounded-full bg-[var(--color-info-50)] px-2 py-0.5 text-[11px] tabular-nums text-[var(--color-info-700)]">+{drafts.length} {drafts.length === 1 ? "draft" : "drafts"}</span>}
         {canChange && <ColumnMenu col={col} columns={columns} actions={columnActions} />}
       </header>
       {col.cut && (
@@ -203,9 +205,10 @@ function BoardColumn({ col, columns, today, selectedId, onSelect, canChange, can
             {(drafts || []).map((d) => <DraftItem key={`draft-${d.id}`} draft={d} selected={d.id === selectedDraftId} onOpen={onOpenDraft} />)}
             {list.map((card) => card.__ghost
               ? <Placeholder key="ghost" />
-              : <DraggableCard key={card.id} card={card} today={today} selected={card.id === selectedId} onSelect={onSelect} canDrag={canDrag} dimmed={dragCard?.id === card.id && lit} />)}
+              : <DraggableCard key={card.id} card={card} today={today} selected={card.id === selectedId} onSelect={onSelect} canDrag={canDrag} dimmed={dragCard?.id === card.id && lit} draftsReady={draftsByCard?.get?.(card.id) || 0} />)}
           </ul>
         )}
+        {drafts && allDraftsHref && <a href={allDraftsHref} className={`mt-2 block rounded-lg px-1.5 py-1 text-[12px] font-semibold text-[var(--color-brand-700)] hover:underline ${FOCUS}`}>All my message drafts, sent and discarded</a>}
       </div>
       {onAddCard && (
         <button type="button" onClick={() => onAddCard(col)} className={`flex min-h-10 shrink-0 items-center gap-1 rounded-b-xl border-t border-[var(--gray-200)] px-3 text-[12.5px] font-semibold text-[var(--color-text-secondary)] hover:bg-[var(--gray-100)] ${FOCUS}`}>
@@ -390,6 +393,8 @@ export function WorkBoard({
   drafts = [],
   selectedDraftId = null,
   onOpenDraft = null,
+  draftsByCard = null,
+  allDraftsHref = null,
   layout = null,
 }) {
   const phoneNow = useIsPhone();
@@ -432,13 +437,14 @@ export function WorkBoard({
                 {current.cards.map((card) => (
                   <li key={card.id} className="min-w-0 rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] p-2.5">
                     <button type="button" data-card-id={card.id} aria-current={card.id === selectedId ? "true" : undefined} onClick={() => onSelect(card)} className={`block w-full min-w-0 text-left ${FOCUS}`}>
-                      <BoardCardFace card={card} today={today} />
+                      <BoardCardFace card={card} today={today} draftsReady={draftsByCard?.get?.(card.id) || 0} />
                     </button>
                     <div className="pt-2"><StatusPill card={card} columns={columns} onMove={onMoveCard} disabled={!online} /></div>
                   </li>
                 ))}
               </ul>
             )}
+            {current.id === firstTodo && allDraftsHref && <a href={allDraftsHref} className={`rounded-lg px-1.5 py-1 text-[12px] font-semibold text-[var(--color-brand-700)] hover:underline ${FOCUS}`}>All my message drafts, sent and discarded</a>}
             {onAddCard && <button type="button" onClick={() => onAddCard(current)} className={`flex min-h-11 items-center gap-1 rounded-lg px-2 text-[13px] font-semibold text-[var(--color-text-secondary)] ${FOCUS}`}><Plus aria-hidden="true" className="h-4 w-4" /> Add card</button>}
           </section>
         )}
@@ -473,7 +479,8 @@ export function WorkBoard({
             <BoardColumn key={col.id} col={col} columns={columns} today={today} selectedId={selectedId} onSelect={onSelect}
               canChange={canChange && online} canDrag={online} onAddCard={online ? onAddCard : null} columnActions={columnActions}
               dragCard={dragCard} overColumnId={overColumnId}
-              drafts={draftsFor(col)} selectedDraftId={selectedDraftId} onOpenDraft={onOpenDraft} />
+              drafts={draftsFor(col)} selectedDraftId={selectedDraftId} onOpenDraft={onOpenDraft}
+              draftsByCard={draftsByCard} allDraftsHref={col.id === firstTodo ? allDraftsHref : null} />
           ))}
         </SortableContext>
         {canChange && online && <AddColumn columns={columns} onAdd={columnActions.add} />}

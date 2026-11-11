@@ -214,7 +214,7 @@ export function PanelStack({ stack = null, first = null, second = null, narrow: 
       style={{ zIndex: "var(--z-overlay)" }}
     >
       {hasFirst && (
-        <div data-panel-slot="1" aria-hidden={both && narrow ? "true" : undefined} data-panel-size={firstSize} className={`pointer-events-auto h-full min-w-0 ${firstWidth} ${both && narrow ? "hidden" : ""}`}>
+        <div data-panel-slot="1" aria-hidden={both && narrow ? "true" : undefined} className={`pointer-events-auto h-full min-w-0 ${firstWidth} ${both && narrow ? "hidden" : ""}`} data-panel-size={firstSize === "default" ? undefined : firstSize}>
           <PanelSlotContext.Provider value={firstSlot}>{first}</PanelSlotContext.Provider>
         </div>
       )}

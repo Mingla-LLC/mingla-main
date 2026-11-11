@@ -170,7 +170,8 @@ Deno.test("#3980 the new screens: two columns, Undo, offline words, tokens only,
   assertMatch(two, /grid min-w-0 grid-cols-1 gap-4 min-\[1180px\]:grid-cols-\[minmax\(0,1fr\)_minmax\(360px,440px\)\]/);
   assertMatch(two, /min-\[1180px\]:sticky min-\[1180px\]:top-4/);
   // [TEST-MOD-APPROVED #3980] synced Wave 3 (R7, R8): Work is columns with tabs; Agent activity (the old log) keeps two columns.
-  assertMatch(board, /<WorkColumns /);
+  // #4255 W2: the board is WorkBoard (columns are statuses).
+  assertMatch(board, /<WorkBoard\b/);
   assertMatch(read("components/ops/AgentActivity.jsx"), /<TwoColumn/);
   assertMatch(read("components/ops/ReviewQueue.jsx"), /<TwoColumn/);
   // [TEST-MOD-APPROVED #3980] synced Wave 3 (D-11, R7, R8): Work, the Agent log page that opens Agent activity, Needs you.
@@ -192,8 +193,13 @@ Deno.test("#3980 the new screens: two columns, Undo, offline words, tokens only,
     assertNotMatch(source, /bg-white|text-black/);
     // [TEST-MOD-APPROVED #3980] synced Wave 3 (D-12): a work card opens in the right-side Drawer over the board; only
     // the Work page and WorkCardDrawer may open it, and nothing opens a Modal.
-    assertNotMatch(source, /from "\.\.\/(?:\.\.\/)?(?:components\/)?ui\/Modal"|from "\.\/Modal"/);
-    if (!/export function WorkCardDrawer|export function WorkBoardPage/.test(source)) {
+    // [TEST-MOD-APPROVED #4255] Work board v2 (design contract v7, approved 10 Nov): the close-with-proof
+    // sheet, the archive-column dialog and the picture viewer are dialogs; the sprint planner and the
+    // card's thread are panels in the PanelStack beside the card drawer.
+    if (!/export function CloseCardDialog|export function ImageViewer/.test(source)) {
+      assertNotMatch(source, /from "\.\.\/(?:\.\.\/)?(?:components\/)?ui\/Modal"|from "\.\/Modal"/);
+    }
+    if (!/export function WorkCardDrawer|export function WorkBoardPage|export function SprintPlanner|export function CardThread|export function CloseCardDialog|export function ImageViewer/.test(source)) {
       assertNotMatch(source, /from "\.\.\/(?:\.\.\/)?(?:components\/)?ui\/(?:Modal|Drawer)"|from "\.\/(?:Modal|Drawer)"/);
     }
     assertNotMatch(source, /#[0-9a-fA-F]{6}\b/);

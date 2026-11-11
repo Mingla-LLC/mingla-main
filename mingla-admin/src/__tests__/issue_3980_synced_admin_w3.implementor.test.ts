@@ -237,21 +237,23 @@ Deno.test("#3980 W3 R7: Work's columns, its card badges, and the tabs never stac
   assertEquals(cardReasons(cards[2], now), ["No update for 11d"]);
   const page = code("pages/WorkBoardPage.jsx");
   assertMatch(page, /title="Work"/);
-  // #4255: one filter for every tab, and linked items open beside the card.
-  assertMatch(page, /description="Every piece of team work is a card\. Filter once and every tab follows; open a card and anything linked to it opens beside it\."/);
+  // #4255 W2 (rev2): the header is one line (title, tabs, search, filters, New card); no description line.
+  assertMatch(page, /<PageHeader title="Work" inline=\{<WorkHeader/);
   // One tab at a time: the board, or the shared period layout (D9: Needs
   // attention is a Show choice and Activity sits at the foot of Today).
   assertMatch(page, /\{onBoard \? \(/);
   assertMatch(page, /<PeriodView win=\{win\} read=\{period\} cards=\{periodCards\}/);
   assertEquals((page.match(/<NeedsAttention |<AgentActivity /g) || []).length, 0);
-  assertEquals((page.match(/<WorkColumns /g) || []).length, 1);
-  const columns = code("components/ops/WorkColumns.jsx");
-  // #4270: three columns share the width from 768px; phones get tabs; nothing scrolls sideways.
-  assertMatch(columns, /grid min-w-0 grid-cols-1 gap-2 md:grid-cols-3/);
+  assertEquals((page.match(/<WorkBoard\b/g) || []).length, 1);
+  const columns = code("components/ops/WorkBoard.jsx");
+  // #4255 W2: columns are statuses at 280px each; headers stay put and each column's cards scroll on
+  // their own; with more columns than fit the board scrolls sideways; phones get tabs.
+  assertMatch(columns, /data-column-scroll="" className="min-h-0 flex-1 overflow-y-auto/);
+  assertMatch(columns, /data-work-board="columns"[^>]*className=\{`flex min-w-0 gap-2\.5 overflow-x-auto/);
   assertMatch(columns, /role="tablist" aria-label="Column"/);
-  assertNotMatch(columns, /overflow-x-auto|gridAutoFlow/);
+  assertNotMatch(columns, /gridAutoFlow/);
   assertMatch(columns, /Nothing here\./);
-  assertMatch(columns, /from the timeline/);
+  // #4255 W2: the card face is compact (title, tags, owners, due, subtasks, thread, files, agent); "from the timeline" left it.
   assertMatch(code("components/ops/WorkCardDrawer.jsx"), /<Drawer open onClose=\{onClose\}/);
 });
 
@@ -308,7 +310,7 @@ Deno.test("#3980 W3 R6: the Calendar opens on the month with today marked, dots 
 
 Deno.test("#3980 W3: the new screens use tokens only", () => {
   for (const file of [
-    "components/people/PeopleField.jsx", "components/people/MentionBox.jsx", "components/ops/WorkColumns.jsx", "components/ui/PanelStack.jsx",
+    "components/people/PeopleField.jsx", "components/people/MentionBox.jsx", "components/ops/WorkBoard.jsx", "components/ui/PanelStack.jsx",
     "components/ops/AgentActivity.jsx", "components/ops/JustHappened.jsx", "components/ops/StateDot.jsx", "components/ops/EventSteps.jsx",
     "components/ops/WordingQueue.jsx", "components/crm/NextEventLine.jsx", "pages/WorkBoardPage.jsx", "pages/ContentCalendarPage.jsx",
   ]) {

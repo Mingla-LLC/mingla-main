@@ -23,6 +23,7 @@
 //     proof first, and every move offers Undo for 8 seconds.
 // (W3) The card opens at 720px with a focus mode; its thread opens beside it.
 import { useEffect, useMemo, useState } from "react";
+import { PageHeader } from "../components/ui/PageHeader";
 import { AlertCard, SectionCard } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Drawer } from "../components/ui/Drawer";
@@ -251,8 +252,8 @@ export function WorkBoardPage() {
   const firstSize = planning || (query.card && focus) ? "full" : query.card ? "card" : "default";
 
   return (
-    <div className="flex min-w-0 flex-col gap-2">
-      <WorkHeader
+    <div className="flex min-w-0 flex-col gap-6">
+      <PageHeader title="Work" inline={<WorkHeader
         view={view.view}
         onView={(v) => go({ view: v }, { replace: true })}
         typed={typed}
@@ -272,7 +273,7 @@ export function WorkBoardPage() {
         onNewCard={() => go({ add: true })}
         onCopyStandup={copyStandup}
         online={online}
-      />
+      />} />
       {!online && <AlertCard variant="warning" title="You’re offline">You’re offline. You can read Work; adding and changes need a connection.</AlertCard>}
 
       <div role="tabpanel" id={`tabpanel-${view.view}`} aria-labelledby={`tab-${view.view}`} className="min-w-0">
@@ -315,8 +316,10 @@ export function WorkBoardPage() {
                 onAddCard={(col) => go({ add: true, addcol: col.id })}
                 columnActions={columnActions}
                 drafts={looseDrafts}
+                draftsByCard={split.byCard}
                 selectedDraftId={view.draft}
                 onOpenDraft={(d) => go({ draft: d.id })}
+                allDraftsHref={showDrafts ? "#/work-board?drafts=all" : null}
               />
             )}
           </div>

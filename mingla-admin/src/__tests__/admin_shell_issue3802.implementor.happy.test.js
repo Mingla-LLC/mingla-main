@@ -533,7 +533,8 @@ describe("#3802 S-8: one page header, and no page setting its own frame", () => 
 
   it("the header itself: one title style, a description, actions, a way back, tabs on the divider", () => {
     const code = stripComments(PAGE_HEADER);
-    assert.ok(code.includes("export function PageHeader({ title, description, meta, actions, back, tabs, titleId })"));
+    // #4255 (Work board v2): + inline, the controls on the title's own line (one row, never wraps).
+    assert.ok(code.includes("export function PageHeader({ title, description, meta, actions, back, tabs, titleId, inline })"));
     const h1 = code.match(/<h1[\s\S]*?className="([^"]*)"/);
     assert.ok(h1);
     for (const cls of ["text-[22px]", "leading-7", "font-semibold", "tracking-[-0.02em]"]) {
