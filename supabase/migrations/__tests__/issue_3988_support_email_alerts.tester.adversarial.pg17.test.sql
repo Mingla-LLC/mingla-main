@@ -195,9 +195,10 @@ DECLARE
   v_signal uuid;
   v_item uuid;
 BEGIN
-  v_thread := pg_temp.t3988b_as('lead', $q$public.issue_3720_create_internal_thread(
-    '39880000-0000-4000-c400-000000000001', 'Account takeover report', 'SECRET DETAILS phone 555-0100',
-    NULL, NULL, NULL, 'urgent', now() + interval '1 hour', 'Escalate')$q$)::uuid;
+  -- [TEST-MOD #4382] staff threads are internal support tickets now.
+  v_thread := pg_temp.t3988b_as('lead', $q$public.issue_4382_create_staff_ticket(
+    '39880000-0000-4000-c400-000000000001', 'internal', 'Account takeover report', 'SECRET DETAILS phone 555-0100',
+    NULL, NULL, NULL, 'urgent', NULL, NULL, now() + interval '1 hour', 'Escalate', NULL, ARRAY[]::uuid[])$q$)::uuid;
   v := pg_temp.t3988b_recipients('admin.support_staff_ticket', '%:' || v_thread::text || ':%');
   IF v <> 'mate' THEN RAISE EXCEPTION 'staff_ticket_recipients:%', v; END IF;
   IF EXISTS (SELECT 1 FROM public.notification_outbox WHERE payload::text LIKE '%SECRET DETAILS%') THEN
@@ -206,17 +207,17 @@ BEGIN
 
   -- Assigning to yourself, to someone off the team, or to nobody alerts no one.
   PERFORM set_config('request.jwt.claim.sub', pg_temp.t3988b_id('mate')::text, true);
-  UPDATE public.support_internal_threads SET assigned_staff_id = pg_temp.t3988b_id('mate'), revision = revision + 1 WHERE id = v_thread;
+  UPDATE public.support_tickets SET assigned_staff_id = pg_temp.t3988b_id('mate'), support_workflow_revision = support_workflow_revision + 1 WHERE id = v_thread;
   PERFORM set_config('request.jwt.claim.sub', '', true);
-  UPDATE public.support_internal_threads SET assigned_staff_id = pg_temp.t3988b_id('ghost'), revision = revision + 1 WHERE id = v_thread;
-  UPDATE public.support_internal_threads SET assigned_staff_id = NULL, revision = revision + 1 WHERE id = v_thread;
+  UPDATE public.support_tickets SET assigned_staff_id = pg_temp.t3988b_id('ghost'), support_workflow_revision = support_workflow_revision + 1 WHERE id = v_thread;
+  UPDATE public.support_tickets SET assigned_staff_id = NULL, support_workflow_revision = support_workflow_revision + 1 WHERE id = v_thread;
   IF EXISTS (SELECT 1 FROM public.notification_outbox WHERE category_key = 'admin.support_assigned'
        AND idempotency_key LIKE 'admin.support_assigned:' || v_thread::text || ':%') THEN
     RAISE EXCEPTION 'self_or_off_team_assignment_alerted';
   END IF;
 
   v_signal := pg_temp.t3988b_as('mate', format($q$public.issue_3720_create_product_signal(
-    '39880000-0000-4000-c400-000000000002', 'internal_thread', %L::uuid, 'trust_safety',
+    '39880000-0000-4000-c400-000000000002', 'support_ticket', %L::uuid, 'trust_safety',
     'Takeover pattern', 'SECRET PROBLEM STATEMENT', 'Accounts', 'SECRET JOURNEY',
     'SECRET IMPACT', 2, 'urgent', now() + interval '2 hours', 'SECRET NEXT STEP', 'SECRET CUSTOMER DRAFT')$q$, v_thread))::uuid;
   v := pg_temp.t3988b_recipients('admin.product_signal_new', '%:' || v_signal::text || ':%');
@@ -256,8 +257,8 @@ DECLARE
   v_signal uuid := current_setting('t3988b.signal')::uuid;
   v_far timestamptz := now() + interval '30 days';
 BEGIN
-  UPDATE public.support_internal_threads SET assigned_staff_id = pg_temp.t3988b_id('ghost') WHERE id = v_thread;
-  UPDATE public.support_product_signals SET state = 'closed', revision = revision + 1 WHERE id = v_signal;
+  UPDATE public.support_tickets SET assigned_staff_id = pg_temp.t3988b_id('ghost') WHERE id = v_thread;
+  UPDATE public.support_product_signals SET state = 'wont_do', wont_do_reason = 'Closed in the test', revision = revision + 1 WHERE id = v_signal;
   PERFORM public.issue_3988_support_overdue_sweep(v_far);
   PERFORM public.issue_3988_support_overdue_sweep(v_far);
 
@@ -266,18 +267,18 @@ BEGIN
     RAISE EXCEPTION 'closed_signal_reminded';
   END IF;
   IF EXISTS (SELECT 1 FROM public.notification_outbox WHERE category_key = 'admin.support_overdue'
-       AND idempotency_key LIKE 'admin.support_overdue:internal_thread:' || v_thread::text || ':%:owner:%') THEN
+       AND idempotency_key LIKE 'admin.support_overdue:support_ticket:' || v_thread::text || ':%:owner:%') THEN
     RAISE EXCEPTION 'off_team_owner_reminded';
   END IF;
-  IF pg_temp.t3988b_recipients('admin.support_overdue', 'admin.support_overdue:internal_thread:' || v_thread::text || ':%:lead:%') <> 'lead' THEN
+  IF pg_temp.t3988b_recipients('admin.support_overdue', 'admin.support_overdue:support_ticket:' || v_thread::text || ':%:lead:%') <> 'lead' THEN
     RAISE EXCEPTION 'off_team_owner_not_escalated';
   END IF;
 
-  UPDATE public.support_internal_threads SET status = 'resolved' WHERE id = v_thread;
-  UPDATE public.support_internal_threads SET next_update_at = next_update_at + interval '1 day' WHERE id = v_thread;
+  UPDATE public.support_tickets SET status = 'resolved' WHERE id = v_thread;
+  UPDATE public.support_tickets SET next_update_at = next_update_at + interval '1 day' WHERE id = v_thread;
   PERFORM public.issue_3988_support_overdue_sweep(v_far + interval '1 day');
   IF (SELECT count(*) FROM public.notification_outbox WHERE category_key = 'admin.support_overdue'
-       AND idempotency_key LIKE 'admin.support_overdue:internal_thread:' || v_thread::text || ':%') <> 1 THEN
+       AND idempotency_key LIKE 'admin.support_overdue:support_ticket:' || v_thread::text || ':%') <> 1 THEN
     RAISE EXCEPTION 'resolved_thread_reminded';
   END IF;
 END;

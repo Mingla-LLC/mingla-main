@@ -515,7 +515,7 @@ export function ProductInboxModal({ open, signals, onClose, onSaved, onError }) 
                       ]}
                     />
                   </label>
-                  <label className={labelClass}>State<Select value={form.state} onChange={(event) => set('state', event.target.value)} options={['needs_review', 'waiting_details', 'ready_product', 'linked', 'update_due', 'released', 'closed'].map((value) => ({ value, label: value.replaceAll('_', ' ') }))} /></label>
+                  <label className={labelClass}>State<Select value={form.state} onChange={(event) => set('state', event.target.value)} options={[...new Set(['new', 'triaged', selected.state])].map((value) => ({ value, label: value.replaceAll('_', ' ') }))} /></label>
                   <label className={labelClass}>Priority<Select value={form.priority} onChange={(event) => set('priority', event.target.value)} options={['low', 'normal', 'high', 'urgent'].map((value) => ({ value, label: value }))} /></label>
                   <label className={labelClass}>Next Product update<Input type="datetime-local" min={futureLocal(0.25)} value={form.nextUpdateAt} onChange={(event) => set('nextUpdateAt', event.target.value)} /></label>
                   <label className={labelClass}>Next step<Input value={form.nextStep} onChange={(event) => set('nextStep', event.target.value)} /></label>

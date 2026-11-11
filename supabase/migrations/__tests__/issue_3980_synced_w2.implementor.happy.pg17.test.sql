@@ -234,7 +234,7 @@ insert into public.community_roadmap_cards (id, public_title, public_body, lane,
   ('39820000-0000-4000-c100-000000000003', 'W2 Missing issue card', 'Linked to a number GitHub does not have.', 'now', 'published', 902);
 insert into public.support_product_signals (id, client_request_id, signal_kind, state, title, problem_statement, product_area, user_journey,
   impact_summary, next_update_at, next_step, customer_reply_draft, created_by) values
-  ('39820000-0000-4000-c200-000000000001', gen_random_uuid(), 'bug', 'linked', 'W2 payouts late', 'Payouts arrive late.', 'Payouts',
+  ('39820000-0000-4000-c200-000000000001', gen_random_uuid(), 'bug', 'planned', 'W2 payouts late', 'Payouts arrive late.', 'Payouts',
    'Host waits for money', 'Hosts are upset', now() + interval '1 day', 'Fix it', 'We are on it.', '39820000-0000-4000-a000-000000000004');
 insert into public.product_avengers_items (id, issue_number, issue_node_id, project_item_id, issue_url, issue_title, issue_state, board_status)
 values ('39820000-0000-4000-c300-000000000001', 5005, 'I_w2node5005', 'PVTI_w2item5005', 'https://github.com/Mingla-LLC/mingla-main/issues/5005',

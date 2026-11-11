@@ -394,7 +394,14 @@ $fn$;
 -- an append-only hold), so it is put back and restored the same way. #4255
 -- (20280605004255_issue_4255_content_calendar_approved_designed.sql)
 -- re-defines content_calendar_move (Designed needs a Drive link, Approved
--- records the go), so it is put back and restored the same way.
+-- records the go), so it is put back and restored the same way. #4382
+-- (20280607004382 / 20280607024382, Support Desk redesign) re-defines
+-- issue_3720_set_next_update, issue_3720_link_product_signal_source,
+-- issue_3720_update_product_signal and issue_3720_save_product_avengers_review
+-- (staff threads became tickets; new Product stages), so they are put back and
+-- restored the same way. It also DROPS issue_3720_update_internal_thread and
+-- issue_3988_reassign_internal_thread with the staff-thread table; they are
+-- re-created here from section B for the replay and dropped again after T4.
 -------------------------------------------------------------------------------
 CREATE TEMP TABLE t4134_superseded AS
 SELECT p.oid, pg_temp.t4134_def(p.oid) AS def, md5(pg_temp.t4134_def(p.oid)) AS def_md5
@@ -405,7 +412,11 @@ SELECT p.oid, pg_temp.t4134_def(p.oid) AS def, md5(pg_temp.t4134_def(p.oid)) AS 
                  'public.ops_work_update(uuid,jsonb,bigint,text)'::regprocedure,
                  'public.content_calendar_update(uuid,jsonb,bigint,text)'::regprocedure,
                  'public.issue_1389_record_stay_dispute(text,text,text,text,integer,text,text)'::regprocedure,
-                 'public.content_calendar_move(uuid,text,bigint,boolean,boolean,boolean,text)'::regprocedure);
+                 'public.content_calendar_move(uuid,text,bigint,boolean,boolean,boolean,text)'::regprocedure,
+                 'public.issue_3720_set_next_update(text,uuid,integer,timestamp with time zone,text)'::regprocedure,
+                 'public.issue_3720_link_product_signal_source(uuid,integer,text,uuid)'::regprocedure,
+                 'public.issue_3720_update_product_signal(uuid,integer,text,text,timestamp with time zone,text,text)'::regprocedure,
+                 'public.issue_3720_save_product_avengers_review(uuid,integer,text,text,text,text[],text,text,text,text,text,text)'::regprocedure);
 
 BEGIN;
 SET LOCAL search_path TO pg_catalog, pg_temp;
@@ -1499,6 +1510,411 @@ BEGIN
 END;
 $function$
 ;
+-- #4382 put-backs (verbatim from section B of the migration).
+CREATE OR REPLACE FUNCTION public.issue_3720_link_product_signal_source(p_signal_id uuid, p_expected_revision integer, p_source_kind text, p_source_id uuid)
+ RETURNS integer
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_actor uuid := auth.uid();
+  v_revision integer;
+BEGIN
+  PERFORM public.issue_3720_support_operator_required();
+  IF p_source_kind NOT IN ('support_ticket', 'internal_thread') THEN
+    RAISE EXCEPTION 'invalid_source_kind' USING ERRCODE = '22023';
+  END IF;
+  IF p_source_kind = 'support_ticket'
+     AND NOT EXISTS (SELECT 1 FROM public.support_tickets WHERE id = p_source_id) THEN
+    RAISE EXCEPTION 'source_not_found' USING ERRCODE = 'P0002';
+  END IF;
+  IF p_source_kind = 'internal_thread'
+     AND NOT EXISTS (SELECT 1 FROM public.support_internal_threads WHERE id = p_source_id) THEN
+    RAISE EXCEPTION 'source_not_found' USING ERRCODE = 'P0002';
+  END IF;
+
+  UPDATE public.support_product_signals
+     SET affected_people = affected_people + 1,
+         updated_at = now(),
+         revision = revision + 1
+   WHERE id = p_signal_id AND revision = p_expected_revision
+  RETURNING revision INTO v_revision;
+
+  IF v_revision IS NULL THEN
+    IF NOT EXISTS (SELECT 1 FROM public.support_product_signals WHERE id = p_signal_id) THEN
+      RAISE EXCEPTION 'signal_not_found' USING ERRCODE = 'P0002';
+    END IF;
+    RAISE EXCEPTION 'stale_revision' USING ERRCODE = 'PT409';
+  END IF;
+
+  BEGIN
+    INSERT INTO public.support_product_signal_sources(signal_id, source_kind, source_id, linked_by)
+    VALUES (p_signal_id, p_source_kind, p_source_id, v_actor);
+  EXCEPTION WHEN unique_violation THEN
+    -- Keep the counter and link atomic if another operator linked the source.
+    RAISE;
+  END;
+
+  INSERT INTO public.support_product_workflow_audit(
+    actor_user_id, action, entity_kind, entity_id, after_snapshot
+  ) VALUES (
+    v_actor, 'product_signal_source_linked', 'product_signal', p_signal_id,
+    jsonb_build_object(
+      'source_kind', p_source_kind,
+      'source_id', p_source_id,
+      'revision', v_revision
+    )
+  );
+
+  RETURN v_revision;
+END;
+$function$
+;
+CREATE OR REPLACE FUNCTION public.issue_3720_save_product_avengers_review(p_signal_id uuid, p_expected_revision integer, p_public_title text, p_public_problem_statement text, p_public_outcome text, p_public_acceptance_criteria text[], p_board_product text, p_board_theme text, p_board_priority text, p_board_estimate text, p_board_horizon text, p_board_quarter text)
+ RETURNS integer
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_actor uuid := auth.uid();
+  v_kind text;
+  v_revision integer;
+  v_work_type text;
+  v_criteria text[];
+BEGIN
+  IF v_actor IS NULL OR NOT public.is_admin_user() THEN
+    RAISE EXCEPTION 'not_authorized' USING ERRCODE = '42501';
+  END IF;
+  IF p_expected_revision < 0 THEN
+    RAISE EXCEPTION 'invalid_expected_revision' USING ERRCODE = '22023';
+  END IF;
+  IF p_expected_revision = 0
+     AND EXISTS (SELECT 1 FROM public.product_avengers_reviews r WHERE r.signal_id = p_signal_id) THEN
+    RAISE EXCEPTION 'stale_revision' USING ERRCODE = 'PT409';
+  END IF;
+  IF p_expected_revision > 0
+     AND NOT EXISTS (
+       SELECT 1 FROM public.product_avengers_reviews r
+        WHERE r.signal_id = p_signal_id AND r.revision = p_expected_revision
+     ) THEN
+    RAISE EXCEPTION 'stale_revision' USING ERRCODE = 'PT409';
+  END IF;
+  SELECT s.signal_kind INTO v_kind
+    FROM public.support_product_signals s WHERE s.id = p_signal_id FOR UPDATE;
+  IF v_kind IS NULL THEN RAISE EXCEPTION 'signal_not_found' USING ERRCODE = 'P0002'; END IF;
+  IF v_kind NOT IN ('bug', 'feature') THEN
+    RAISE EXCEPTION 'signal_not_product_work' USING ERRCODE = '22023';
+  END IF;
+  v_work_type := CASE v_kind WHEN 'bug' THEN 'Bug' ELSE 'Initiative' END;
+  SELECT array_agg(btrim(value)) INTO v_criteria
+    FROM unnest(COALESCE(p_public_acceptance_criteria, ARRAY[]::text[])) value
+   WHERE char_length(btrim(value)) BETWEEN 4 AND 1000;
+  IF cardinality(COALESCE(v_criteria, ARRAY[]::text[])) = 0 THEN
+    RAISE EXCEPTION 'acceptance_criteria_required' USING ERRCODE = '22023';
+  END IF;
+
+  INSERT INTO public.product_avengers_reviews (
+    signal_id, public_title, public_problem_statement, public_outcome,
+    public_acceptance_criteria, board_work_type, board_product, board_theme,
+    board_priority, board_estimate, board_horizon, board_quarter,
+    reviewed_by, reviewed_at
+  ) VALUES (
+    p_signal_id, btrim(p_public_title), btrim(p_public_problem_statement),
+    btrim(p_public_outcome), v_criteria, v_work_type, p_board_product,
+    btrim(p_board_theme), p_board_priority, p_board_estimate,
+    p_board_horizon, p_board_quarter, v_actor, now()
+  )
+  ON CONFLICT (signal_id) DO UPDATE
+    SET public_title = EXCLUDED.public_title,
+        public_problem_statement = EXCLUDED.public_problem_statement,
+        public_outcome = EXCLUDED.public_outcome,
+        public_acceptance_criteria = EXCLUDED.public_acceptance_criteria,
+        board_work_type = EXCLUDED.board_work_type,
+        board_product = EXCLUDED.board_product,
+        board_theme = EXCLUDED.board_theme,
+        board_priority = EXCLUDED.board_priority,
+        board_estimate = EXCLUDED.board_estimate,
+        board_horizon = EXCLUDED.board_horizon,
+        board_quarter = EXCLUDED.board_quarter,
+        reviewed_by = EXCLUDED.reviewed_by,
+        reviewed_at = now(),
+        revision = public.product_avengers_reviews.revision + 1,
+        updated_at = now()
+    WHERE public.product_avengers_reviews.revision = p_expected_revision
+  RETURNING revision INTO v_revision;
+  IF v_revision IS NULL THEN
+    RAISE EXCEPTION 'stale_revision' USING ERRCODE = 'PT409';
+  END IF;
+  INSERT INTO public.product_avengers_audit(actor_user_id, action, entity_type, entity_id, metadata)
+  VALUES (v_actor, 'save_public_review', 'product_signal', p_signal_id::text,
+    jsonb_build_object('revision', v_revision, 'work_type', v_work_type));
+  RETURN v_revision;
+END;
+$function$
+;
+CREATE OR REPLACE FUNCTION public.issue_3720_set_next_update(p_source_kind text, p_source_id uuid, p_expected_revision integer, p_next_update_at timestamp with time zone, p_next_update_note text)
+ RETURNS integer
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_actor uuid := auth.uid();
+  v_revision integer;
+  v_conversation uuid;
+  v_before jsonb;
+BEGIN
+  PERFORM public.issue_3720_support_operator_required();
+  IF p_source_kind NOT IN ('support_ticket', 'internal_thread') THEN
+    RAISE EXCEPTION 'invalid_source_kind' USING ERRCODE = '22023';
+  END IF;
+  IF p_next_update_at IS NULL OR p_next_update_at <= now() + interval '14 minutes' THEN
+    RAISE EXCEPTION 'next_update_must_be_future' USING ERRCODE = '22023';
+  END IF;
+  IF btrim(coalesce(p_next_update_note, '')) = '' THEN
+    RAISE EXCEPTION 'next_update_note_required' USING ERRCODE = '22023';
+  END IF;
+
+  IF p_source_kind = 'support_ticket' THEN
+    SELECT conversation_id,
+           jsonb_build_object('next_update_at', next_update_at, 'revision', support_workflow_revision)
+      INTO v_conversation, v_before
+      FROM public.support_tickets
+     WHERE id = p_source_id;
+
+    UPDATE public.support_tickets
+       SET next_update_at = p_next_update_at,
+           next_update_note = left(btrim(p_next_update_note), 500),
+           last_message_at = now(),
+           support_workflow_revision = support_workflow_revision + 1
+     WHERE id = p_source_id
+       AND support_workflow_revision = p_expected_revision
+    RETURNING support_workflow_revision INTO v_revision;
+
+    IF v_revision IS NULL THEN
+      IF v_conversation IS NULL THEN
+        RAISE EXCEPTION 'source_not_found' USING ERRCODE = 'P0002';
+      END IF;
+      RAISE EXCEPTION 'stale_revision' USING ERRCODE = 'PT409';
+    END IF;
+
+    INSERT INTO public.messages(conversation_id, sender_id, content, message_type)
+    VALUES (
+      v_conversation,
+      NULL,
+      'Mingla will update you by ' || to_char(p_next_update_at AT TIME ZONE 'UTC', 'FMDay, FMMonth DD at HH12:MI AM') || ' UTC. ' || left(btrim(p_next_update_note), 500),
+      'system'
+    );
+  ELSE
+    SELECT jsonb_build_object('next_update_at', next_update_at, 'revision', revision)
+      INTO v_before
+      FROM public.support_internal_threads
+     WHERE id = p_source_id;
+
+    UPDATE public.support_internal_threads
+       SET next_update_at = p_next_update_at,
+           next_update_note = left(btrim(p_next_update_note), 500),
+           updated_at = now(),
+           revision = revision + 1
+     WHERE id = p_source_id
+       AND revision = p_expected_revision
+    RETURNING revision INTO v_revision;
+
+    IF v_revision IS NULL THEN
+      IF v_before IS NULL THEN
+        RAISE EXCEPTION 'source_not_found' USING ERRCODE = 'P0002';
+      END IF;
+      RAISE EXCEPTION 'stale_revision' USING ERRCODE = 'PT409';
+    END IF;
+  END IF;
+
+  INSERT INTO public.support_product_workflow_audit(
+    actor_user_id, action, entity_kind, entity_id, before_snapshot, after_snapshot
+  ) VALUES (
+    v_actor,
+    'next_update_set',
+    CASE WHEN p_source_kind = 'support_ticket' THEN 'support_ticket' ELSE 'internal_thread' END,
+    p_source_id,
+    v_before,
+    jsonb_build_object('next_update_at', p_next_update_at, 'revision', v_revision)
+  );
+
+  RETURN v_revision;
+END;
+$function$
+;
+CREATE OR REPLACE FUNCTION public.issue_3720_update_internal_thread(p_thread_id uuid, p_expected_revision integer, p_status text, p_priority text)
+ RETURNS integer
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_actor uuid := auth.uid();
+  v_before jsonb;
+  v_revision integer;
+BEGIN
+  PERFORM public.issue_3720_support_operator_required();
+  IF p_status NOT IN ('new', 'open', 'pending', 'resolved', 'closed')
+     OR p_priority NOT IN ('low', 'normal', 'high', 'urgent') THEN
+    RAISE EXCEPTION 'invalid_state' USING ERRCODE = '22023';
+  END IF;
+
+  SELECT jsonb_build_object('status', status, 'priority', priority, 'revision', revision)
+    INTO v_before
+    FROM public.support_internal_threads
+   WHERE id = p_thread_id;
+
+  UPDATE public.support_internal_threads
+     SET status = p_status,
+         priority = p_priority,
+         resolved_at = CASE
+           WHEN p_status IN ('resolved', 'closed') THEN coalesce(resolved_at, now())
+           ELSE NULL
+         END,
+         updated_at = now(),
+         revision = revision + 1
+   WHERE id = p_thread_id AND revision = p_expected_revision
+  RETURNING revision INTO v_revision;
+
+  IF v_revision IS NULL THEN
+    IF v_before IS NULL THEN
+      RAISE EXCEPTION 'thread_not_found' USING ERRCODE = 'P0002';
+    END IF;
+    RAISE EXCEPTION 'stale_revision' USING ERRCODE = 'PT409';
+  END IF;
+
+  INSERT INTO public.support_product_workflow_audit(
+    actor_user_id, action, entity_kind, entity_id, before_snapshot, after_snapshot
+  ) VALUES (
+    v_actor, 'internal_thread_updated', 'internal_thread', p_thread_id, v_before,
+    jsonb_build_object('status', p_status, 'priority', p_priority, 'revision', v_revision)
+  );
+
+  RETURN v_revision;
+END;
+$function$
+;
+CREATE OR REPLACE FUNCTION public.issue_3720_update_product_signal(p_signal_id uuid, p_expected_revision integer, p_state text, p_priority text, p_next_update_at timestamp with time zone, p_next_step text, p_customer_reply_draft text)
+ RETURNS integer
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_actor uuid := auth.uid();
+  v_before jsonb;
+  v_revision integer;
+BEGIN
+  PERFORM public.issue_3720_support_operator_required();
+  IF p_state NOT IN ('needs_review', 'waiting_details', 'ready_product', 'linked', 'update_due', 'released', 'closed')
+     OR p_priority NOT IN ('low', 'normal', 'high', 'urgent') THEN
+    RAISE EXCEPTION 'invalid_state' USING ERRCODE = '22023';
+  END IF;
+  IF p_next_update_at IS NULL OR p_next_update_at <= now() + interval '14 minutes' THEN
+    RAISE EXCEPTION 'next_update_must_be_future' USING ERRCODE = '22023';
+  END IF;
+  IF btrim(coalesce(p_next_step, '')) = '' OR btrim(coalesce(p_customer_reply_draft, '')) = '' THEN
+    RAISE EXCEPTION 'product_fields_required' USING ERRCODE = '22023';
+  END IF;
+
+  SELECT jsonb_build_object(
+    'state', state, 'priority', priority, 'next_update_at', next_update_at, 'revision', revision
+  ) INTO v_before
+    FROM public.support_product_signals
+   WHERE id = p_signal_id;
+
+  UPDATE public.support_product_signals
+     SET state = p_state,
+         priority = p_priority,
+         next_update_at = p_next_update_at,
+         next_step = left(btrim(p_next_step), 1000),
+         customer_reply_draft = left(btrim(p_customer_reply_draft), 4000),
+         updated_at = now(),
+         revision = revision + 1
+   WHERE id = p_signal_id AND revision = p_expected_revision
+  RETURNING revision INTO v_revision;
+
+  IF v_revision IS NULL THEN
+    IF v_before IS NULL THEN
+      RAISE EXCEPTION 'signal_not_found' USING ERRCODE = 'P0002';
+    END IF;
+    RAISE EXCEPTION 'stale_revision' USING ERRCODE = 'PT409';
+  END IF;
+
+  INSERT INTO public.support_product_workflow_audit(
+    actor_user_id, action, entity_kind, entity_id, before_snapshot, after_snapshot
+  ) VALUES (
+    v_actor, 'product_signal_updated', 'product_signal', p_signal_id, v_before,
+    jsonb_build_object(
+      'state', p_state, 'priority', p_priority,
+      'next_update_at', p_next_update_at, 'revision', v_revision
+    )
+  );
+
+  RETURN v_revision;
+END;
+$function$
+;
+CREATE OR REPLACE FUNCTION public.issue_3988_reassign_internal_thread(p_thread_id uuid, p_expected_revision integer, p_assigned_staff_id uuid)
+ RETURNS integer
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_actor uuid := auth.uid();
+  v_before jsonb;
+  v_revision integer;
+BEGIN
+  PERFORM public.issue_3720_support_operator_required();
+  IF p_assigned_staff_id IS NULL THEN
+    RAISE EXCEPTION 'assignee_required' USING ERRCODE = '22023';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.support_staff
+     WHERE user_id = p_assigned_staff_id AND enabled IS TRUE
+  ) THEN
+    RAISE EXCEPTION 'assignee_not_support_staff' USING ERRCODE = '22023';
+  END IF;
+
+  SELECT jsonb_build_object(
+    'assigned_staff_id', assigned_staff_id,
+    'revision', revision
+  ) INTO v_before
+    FROM public.support_internal_threads
+   WHERE id = p_thread_id;
+
+  UPDATE public.support_internal_threads
+     SET assigned_staff_id = p_assigned_staff_id,
+         updated_at = now(),
+         revision = revision + 1
+   WHERE id = p_thread_id AND revision = p_expected_revision
+  RETURNING revision INTO v_revision;
+
+  IF v_revision IS NULL THEN
+    IF v_before IS NULL THEN
+      RAISE EXCEPTION 'thread_not_found' USING ERRCODE = 'P0002';
+    END IF;
+    RAISE EXCEPTION 'stale_revision' USING ERRCODE = 'PT409';
+  END IF;
+
+  INSERT INTO public.support_product_workflow_audit(
+    actor_user_id, action, entity_kind, entity_id, before_snapshot, after_snapshot
+  ) VALUES (
+    v_actor, 'internal_thread_reassigned', 'internal_thread', p_thread_id, v_before,
+    jsonb_build_object(
+      'assigned_staff_id', p_assigned_staff_id,
+      'revision', v_revision
+    )
+  );
+
+  RETURN v_revision;
+END;
+$function$
+;
 COMMIT;
 
 -------------------------------------------------------------------------------
@@ -1775,6 +2191,10 @@ BEGIN
 END
 $t4_restore_superseded$;
 DROP TABLE t4134_superseded;
+
+-- #4382 removed these two with the staff-thread table; drop the replay copies.
+DROP FUNCTION public.issue_3720_update_internal_thread(uuid, integer, text, text);
+DROP FUNCTION public.issue_3988_reassign_internal_thread(uuid, integer, uuid);
 
 DO $t4_after$
 DECLARE v_bad text;

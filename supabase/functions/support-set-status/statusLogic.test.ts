@@ -8,6 +8,8 @@ import {
   isLegalTransition,
   isSupportStatus,
   resolvedAtForTransition,
+  statusAfterCustomerMessage,
+  waitingNeedsNextUpdate,
 } from "./statusLogic.ts";
 
 Deno.test("legal forward transitions per SPEC §2.1", () => {
@@ -46,4 +48,22 @@ Deno.test("isSupportStatus type guard", () => {
   assert(isSupportStatus("closed"));
   assert(!isSupportStatus("archived"));
   assert(!isSupportStatus(42));
+});
+
+// #4382 — a customer reply reopens Waiting or Resolved; closed refuses.
+Deno.test("#4382 customer reply: pending and resolved reopen, closed refuses", () => {
+  assertEquals(statusAfterCustomerMessage("pending"), { ok: true, status: "open", reopened: true });
+  assertEquals(statusAfterCustomerMessage("resolved"), { ok: true, status: "open", reopened: true });
+  assertEquals(statusAfterCustomerMessage("open"), { ok: true, status: "open", reopened: false });
+  assertEquals(statusAfterCustomerMessage("new"), { ok: true, status: "new", reopened: false });
+  assertEquals(statusAfterCustomerMessage("closed"), { ok: false, error: "ticket_closed" });
+});
+
+// #4382 — Waiting needs a next-update time in the future.
+Deno.test("#4382 Waiting needs a future next-update time", () => {
+  const now = Date.parse("2026-11-10T12:00:00Z");
+  assert(waitingNeedsNextUpdate("pending", null, now));
+  assert(waitingNeedsNextUpdate("pending", "2026-11-10T11:00:00Z", now));
+  assert(!waitingNeedsNextUpdate("pending", "2026-11-11T12:00:00Z", now));
+  assert(!waitingNeedsNextUpdate("resolved", null, now));
 });
