@@ -23,6 +23,7 @@ import {
 } from "react-native";
 
 import { durations, spacing, text as textTokens, typography } from "../../../constants/designSystem";
+import { TAP_GET_HELP } from "../../../constants/tapToPayCopy";
 import { useReduceMotion } from "../../../hooks/useMotionPreferences";
 import { Button } from "../../ui/Button";
 import { Icon, type IconName } from "../../ui/Icon";
@@ -53,6 +54,8 @@ export interface TapStatusViewProps {
   secondaryGhost?: boolean;
   /** A quiet 44pt text link under the buttons (e.g. "Send receipt"). */
   link?: TapStatusAction | null;
+  /** "Get help": a second quiet link that opens Help & Support. Hidden without a handler. */
+  onHelp?: (() => void) | null;
   testID?: string;
 }
 
@@ -67,6 +70,7 @@ export const TapStatusView = ({
   secondary,
   secondaryGhost = false,
   link,
+  onHelp,
   testID,
 }: TapStatusViewProps): React.ReactElement => {
   const style = doorToneStyle(tone);
@@ -160,6 +164,17 @@ export const TapStatusView = ({
             testID={link.testID}
           >
             <Text style={styles.linkText}>{link.label}</Text>
+          </Pressable>
+        ) : null}
+        {onHelp ? (
+          <Pressable
+            onPress={onHelp}
+            accessibilityRole="button"
+            accessibilityLabel={TAP_GET_HELP}
+            style={styles.link}
+            testID="tap-get-help"
+          >
+            <Text style={styles.linkText}>{TAP_GET_HELP}</Text>
           </Pressable>
         ) : null}
       </View>

@@ -4,6 +4,9 @@
  * setup, the Tap to Pay sale and the pay code screen share one chunk loaded on
  * intent, and nothing they share is hoisted into the eager web __common chunk.
  */
+import { Platform } from "react-native";
+
+import { tapToPayName } from "../../constants/tapToPayName";
 import { createOnIntentLazySheet } from "../ui/OnIntentLazySheet";
 import { createRetryableLazyErrorBoundary } from "../ui/RetryableLazyBoundary";
 import type { DoorSaleNewSheetProps } from "./DoorSaleNewSheet";
@@ -26,12 +29,12 @@ export const loadDoorSaleScreens = (): Promise<DoorSaleScreensModule> => {
 
 export const LazyTapToPaySetupScreen = createRetryableLazyErrorBoundary<TapToPaySetupScreenProps>(
   async () => ({ default: (await loadDoorSaleScreens()).TapToPaySetupScreen }),
-  { loadingLabel: "Loading Tap to Pay" },
+  { loadingLabel: `Loading ${tapToPayName(Platform.OS)}` },
 );
 
 export const LazyTapToPaySaleScreen = createRetryableLazyErrorBoundary<TapToPaySaleScreenProps>(
   async () => ({ default: (await loadDoorSaleScreens()).TapToPaySaleScreen }),
-  { loadingLabel: "Loading Tap to Pay" },
+  { loadingLabel: `Loading ${tapToPayName(Platform.OS)}` },
 );
 
 /** "Scan to pay": the sheet preloads this chunk, so the screen usually opens at once. */

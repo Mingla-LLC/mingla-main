@@ -42,7 +42,7 @@ import {
   text as textTokens,
 } from "../../constants/designSystem";
 import { supabase } from "../../services/supabase";
-import { SUPPORT_HOST_FACING_AGENT } from "../../constants/supportHostFacing";
+import { HELP_AND_SUPPORT_ROUTE, SUPPORT_HOST_FACING_AGENT } from "../../constants/supportHostFacing";
 import { supportTicketKeys } from "../../hooks/useSupportTickets";
 import {
   SupportSendError,
@@ -204,11 +204,11 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
 
   const handleBack = useCallback((): void => {
     if (router.canGoBack()) router.back();
-    else router.replace((staffMode ? "/support/inbox" : "/account/support") as never);
+    else router.replace((staffMode ? "/support/inbox" : HELP_AND_SUPPORT_ROUTE) as never);
   }, [router, staffMode]);
 
   const handleStartNew = useCallback((): void => {
-    router.replace("/account/support?tab=support&new=1" as never);
+    router.replace(`${HELP_AND_SUPPORT_ROUTE}?tab=support&new=1` as never);
   }, [router]);
 
   const handleAddImages = useCallback(async (): Promise<void> => {

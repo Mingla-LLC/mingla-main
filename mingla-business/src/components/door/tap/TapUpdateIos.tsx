@@ -12,9 +12,11 @@ import { TapStatusView } from "./TapStatusView";
 export interface TapUpdateIosProps {
   onUsePayCode: () => void;
   loading?: boolean;
+  /** Opens Help & Support ("Get help"). */
+  onHelp?: () => void;
 }
 
-export const TapUpdateIos = ({ onUsePayCode, loading }: TapUpdateIosProps): React.ReactElement => {
+export const TapUpdateIos = ({ onUsePayCode, loading, onHelp }: TapUpdateIosProps): React.ReactElement => {
   const openSettings = useCallback((): void => {
     void Linking.openSettings().catch((error: unknown) => {
       console.warn("[door-tap] could not open Settings", error instanceof Error ? error.message : "unknown");
@@ -33,6 +35,7 @@ export const TapUpdateIos = ({ onUsePayCode, loading }: TapUpdateIosProps): Reac
         loading,
         testID: "tap-update-pay-code",
       }}
+      onHelp={onHelp}
       testID="tap-state-ios_update_required"
     />
   );

@@ -27,7 +27,7 @@ import type {
 } from "./doorTapEdge";
 import { DoorTapError } from "./doorTapEdge";
 import { randomUuid } from "../../utils/randomId";
-import { TAP_TO_PAY_SHORT, type TapReaderProblem } from "../../constants/tapToPayCopy";
+import { type TapReaderProblem } from "../../constants/tapToPayCopy";
 
 // ---- Minimal structural views of the SDK objects we read ----------------
 
@@ -265,7 +265,7 @@ const serverMessage = (error: unknown): string => {
       case "door_access_denied":
         return "You don't have permission to take payments at this door. Ask the brand owner.";
       case "tap_not_available":
-        return `${TAP_TO_PAY_SHORT} isn't available for this brand. Use a pay code instead.`;
+        return "Card taps aren't available for this brand. Use a pay code instead.";
       case "stripe_account_not_ready":
         return "Card payments aren't set up for this brand yet. Use cash or a pay code.";
       case "door_tax_added_at_checkout":
@@ -321,7 +321,7 @@ export interface TapToPaySaleFlowInput {
 export const TAP_READY_LIMIT_MS = 10 * 60 * 1000;
 
 /** Shown after a pay code that couldn't be made stopped a tap that was starting. */
-export const TAP_RESTART_MESSAGE = "Tap to Pay stopped. Try again to take the card.";
+export const TAP_RESTART_MESSAGE = "The tap stopped. Try again to take the card.";
 
 /** A stale intent's cancel didn't land: its state is unconfirmed, so no "nothing was charged". */
 export const TAP_REPLACE_FAILED_MESSAGE = "Couldn't start a new payment. Check your connection and try again.";
@@ -551,7 +551,7 @@ export class TapToPaySaleFlow {
       });
       if (this.closed) return;
       if (connected.error) {
-        this.emitTerminalFailure(connected.error, "Couldn't start Tap to Pay on this phone. Try again.");
+        this.emitTerminalFailure(connected.error, "Couldn't get this phone ready to take cards. Try again.");
         return;
       }
       if (this.paymentIntent === null) {

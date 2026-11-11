@@ -13,7 +13,7 @@
  * Nothing here charges anyone. Each failure says what to do next.
  */
 import { DoorTapError } from "./doorTapEdge";
-import { tapReaderProblemCopy } from "../../constants/tapToPayCopy";
+import { tapReaderProblemCopy, tapToPayName } from "../../constants/tapToPayCopy";
 import { classifyTerminalError, isTapReaderProblem, type TerminalErrorLike } from "./tapToPayFlow";
 
 export interface TapToPaySetupDeps {
@@ -36,7 +36,7 @@ export type TapToPaySetupResult =
 
 /** Stripe needs the full address for the brand's Tap to Pay Location (#4271). */
 export const TAP_ADDRESS_MISSING_COPY =
-  "Add your brand's full address (street, city, state and ZIP) in brand settings, then set up Tap to Pay again.";
+  "Add your brand's full address (street, city, state and ZIP) in brand settings, then run setup again.";
 
 const locationFailure = (error: unknown): TapToPaySetupResult => {
   if (error instanceof DoorTapError) {
@@ -93,7 +93,7 @@ export const runTapToPaySetup = async (deps: TapToPaySetupDeps): Promise<TapToPa
       kind: "failed",
       message:
         deps.os === "ios"
-          ? "Couldn't finish Apple's Tap to Pay setup. Accept Apple's terms when asked, then try again."
+          ? `Couldn't finish setting up ${tapToPayName(deps.os)}. Accept Apple's terms when asked, then try again.`
           : "Couldn't start Tap to Pay on this phone. Try again.",
     };
   }
