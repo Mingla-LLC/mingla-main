@@ -262,8 +262,19 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
       maxWidth: regular ? BANK_PICKER_MAX_WIDTH : undefined,
       paddingHorizontal: windowWidth < bpCompact ? spacing.md : spacing.lg,
       paddingBottom: Math.max(safeArea.bottom, spacing.md),
+      // #4389 (device r4) — with the keyboard up the avoiding view pads the
+      // root by the keyboard height; the fixed height is only the preferred
+      // size, so the sheet shrinks to the room left under the top safe area
+      // instead of pushing "Search banks" into the status bar.
+      flexShrink: 1,
+      minHeight: 0,
     };
   }, [safeArea.bottom, windowHeight, windowWidth]);
+  /** The picker's root never reaches above the top safe area (plus a gap). */
+  const modalRootInsetStyle = useMemo<ViewStyle>(
+    () => ({ paddingTop: safeArea.top + spacing.sm }),
+    [safeArea.top],
+  );
 
   const bankRowStyle = useCallback(
     (
@@ -577,7 +588,7 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
             `behavior` undefined — the difference is that the code now SAYS so,
             so the next reader cannot mistake an inert 42 for a real budget. */}
         <KeyboardAvoidingView
-          style={styles.modalRoot}
+          style={[styles.modalRoot, modalRootInsetStyle]}
           behavior={Platform.OS === "ios" ? "padding" : undefined}
           keyboardVerticalOffset={
             DONE_BAR_PRESENT_IN_RAW_MODAL ? DONE_BAR_OCCUPIED : 0
