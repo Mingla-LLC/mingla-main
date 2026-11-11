@@ -103,6 +103,25 @@ export function programRoutePath(segments: string[]): string | null {
   return null;
 }
 
+/**
+ * #4382 — the in-app route for a support request (`/support/<uuid>`), or
+ * Help & Support (`/support`) when the id is missing or malformed. Kept
+ * inline (not imported) because this file is loaded import-free by the node
+ * and Deno routing suites.
+ */
+export function supportRoutePath(ticketId: string | null | undefined): string {
+  return typeof ticketId === 'string' && PROGRAM_UUID.test(ticketId)
+    ? `/support/${ticketId.toLowerCase()}`
+    : '/support';
+}
+
+/** #4382 — the Explorer support push types (support reply, status, "it's live"). */
+export const EXPLORER_SUPPORT_PUSH_TYPES: readonly string[] = [
+  'explorer.support_reply',
+  'explorer.support_status_changed',
+  'explorer.support_product_update',
+];
+
 // ── Parser ───────────────────────────────────────────────────────────────────
 
 /**
@@ -244,6 +263,12 @@ export function parseDeepLink(url: string): Destination | null {
         return route ? { kind: 'route', path: route } : null;
       }
 
+      // #4382 — `mingla://support/<ticketId>` (the explorer.support_* pushes)
+      // opens that request's thread; bare `mingla://support` opens Help &
+      // Support. A malformed id still lands on Help & Support, never Home.
+      case 'support':
+        return { kind: 'route', path: supportRoutePath(pathSegments[1] ?? null) };
+
       case 'c': {
         const code = pathSegments[1]?.trim().toUpperCase();
         return code && /^[0-9A-Z]{10}$/.test(code)
@@ -374,6 +399,12 @@ export function typeFallbackDestination(
     return enquiryId
       ? { kind: 'enquiry', enquiryId, ...(conversationId ? { conversationId } : {}) }
       : { kind: 'page', page: 'connections' };
+  }
+
+  // #4382 — Mingla Support replied, changed the status, or told you it's
+  // live → that request's thread (Help & Support when the id is missing).
+  if (EXPLORER_SUPPORT_PUSH_TYPES.includes(type)) {
+    return { kind: 'route', path: supportRoutePath(str('ticket_id') ?? str('ticketId') ?? null) };
   }
 
   // Board / group messages → the conversation thread (Connections opens it).

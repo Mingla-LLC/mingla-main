@@ -10,7 +10,6 @@ import {
   AppState,
   LayoutAnimation,
   UIManager,
-  Linking,
 } from "react-native";
 import type { AppStateStatus } from "react-native";
 import { Icon } from "../ui/Icon";
@@ -40,6 +39,7 @@ import { getCountryByCode } from "../../constants/countries";
 import { getCurrencyByCountryCode, getMeasurementSystem } from "../../services/countryCurrencyService";
 import { GENDER_OPTIONS, GENDER_DISPLAY_LABELS } from "../../types/onboarding";
 import { useTranslation } from 'react-i18next';
+import { useRouter } from 'expo-router';
 // META-ORCH-1161 Sub-A — consumer notification-preferences matrix.
 import { useNotificationPrefs } from "../../hooks/useNotificationPrefs";
 import type {
@@ -93,6 +93,7 @@ interface AccountSettingsProps {
 }
 
 export default function AccountSettings({ user, onSignOut, visible, onClose, notificationsEnabled = true, onNotificationsToggle }: AccountSettingsProps) {
+  const router = useRouter();
   const { t } = useTranslation(['settings', 'common']);
   const VISIBILITY_LABELS: Record<string, string> = {
     friends: t('settings:privacy.friends_only'),
@@ -1039,7 +1040,10 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
               <TouchableOpacity
                 style={[styles.row, styles.rowMultiline]}
                 onPress={() => {
-                  void Linking.openURL("mailto:support@usemingla.com");
+                  // #4382: Contact support opens Help & Support (requests and
+                  // replies in the app), not an email link.
+                  onClose();
+                  router.push("/support?from=account_settings" as never);
                 }}
                 accessibilityRole="button"
                 accessibilityLabel={t('settings:app_info.contact_support')}

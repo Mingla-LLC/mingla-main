@@ -12,7 +12,7 @@
  *   1 Deck · 2 Preferences · 3 Likes        (home — unchanged ids)
  *   4 Content-type pill · 5 Filters          (discover)
  *   6 People icon · 7 + button              (connections)
- *   8 Purchases · 9 Interests · 10 Circle · 11 Account · 12 Share Feedback
+ *   8 Purchases · 9 Interests · 10 Circle · 11 Account · 12 Help & Support
  *     (profile, scroll steps)
  *
  * ⚠ LOCKSTEP-RENUMBER WARNING: step-to-target wiring is by numeric stepId only
@@ -138,8 +138,9 @@ export const COACH_STEPS: CoachStep[] = [
   {
     id: 12,
     tab: 'profile',
-    title: 'Tell us what works',
-    description: "Love something? Spot a bug? Tap here — we read every one.",
+    // #4382: Help & Support replaced the beta-only Share Feedback button.
+    title: 'Help & Support',
+    description: "Stuck, spotted a bug or have an idea? Tap here — real people reply.",
     buttonLabel: "You're set",
   },
 ];

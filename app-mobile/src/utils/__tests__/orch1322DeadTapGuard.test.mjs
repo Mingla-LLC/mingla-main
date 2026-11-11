@@ -52,7 +52,7 @@ const { requestGalleryPermission } = await import(wrapperUrl);
 
 /**
  * Faithful reproduction of the gate-site predicate shared by all 3 routed sites
- * (BetaFeedbackModal.tsx, MessageInterface.tsx, cameraService.ts): request, and
+ * (support screenshots — #4382 replaced BetaFeedbackModal —, MessageInterface.tsx, cameraService.ts): request, and
  * if the status is not 'granted', bail out BEFORE launching the library picker.
  * Returns whether the launchImageLibraryAsync path was reached ("no dead-tap").
  */

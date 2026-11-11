@@ -52,7 +52,6 @@ import BillingSheet from "./profile/BillingSheet";
 import * as Haptics from 'expo-haptics';
 import { useScreenLogger } from "../hooks/useScreenLogger";
 import { useTabScrollRegistry } from "../hooks/useTabScrollRegistry";
-import BetaFeedbackButton from "./BetaFeedbackButton";
 import InAppBrowserModal from "./InAppBrowserModal";
 import { LEGAL_URLS } from "../constants/urls";
 import { useTranslation } from 'react-i18next';
@@ -107,7 +106,7 @@ function ProfilePage({
   useScreenLogger('profile');
   // Issue #1638 — one shared app-wide a11y probe (see useA11yPreferences.ts).
   const { reduceMotion } = useA11yPreferences();
-  const { t } = useTranslation(['profile', 'common']);
+  const { t } = useTranslation(['profile', 'common', 'feedback']);
   const insets = useSafeAreaInsets();
   const [legalBrowserVisible, setLegalBrowserVisible] = useState(false);
   const [legalBrowserUrl, setLegalBrowserUrl] = useState('');
@@ -174,7 +173,8 @@ function ProfilePage({
   //   step 9  Interests card
   //   step 10 Your Circle card
   //   step 11 Account Settings row
-  //   step 12 Beta Feedback button
+  //   step 12 Help & Support row (#4382: was the beta-only Share Feedback
+  //           button; the row is shown to everyone, so step 12 always has a target)
   const scrollRef = useRef<any>(null);
   const contentRef = useRef<View>(null);
   const purchasesRef = useRef<View>(null);
@@ -659,8 +659,20 @@ function ProfilePage({
             </View>
           </GlassCard>
 
-          {/* 6. Beta feedback (conditional — retained styling for Phase 1; re-skin = ORCH-0634) */}
-          <BetaFeedbackButton isTabVisible={isTabVisible} feedbackButtonRef={feedbackButtonRef} onCoachLayout={handleFeedbackButtonLayout} />
+          {/* 6. #4382 Help & Support — for every Explorer user (replaces the
+              beta-only Share Feedback section). Coach step 12 targets this row. */}
+          <GlassCard variant="base">
+            <View ref={feedbackButtonRef} collapsable={false} onLayout={handleFeedbackButtonLayout}>
+              <SettingsRow
+                icon="help-circle-outline"
+                label={t('feedback:support.row_label')}
+                description={t('feedback:support.row_description')}
+                showChevron
+                onPress={() => router.push('/support' as never)}
+                isLast
+              />
+            </View>
+          </GlassCard>
 
           {/* 7. Footer card — legal + sign out + meta */}
           <GlassCard variant="base">
