@@ -34,7 +34,6 @@ import { SafeScreen } from "../ui/SafeScreen";
 import { Toast } from "../ui/Toast";
 import { teamTime, useTeamText, type TeamT } from "./teamText";
 import { PersonAvatar, TeamAccessGate, TeamAvatar, TeamHeader, useBack } from "./TeamCommon";
-import { deviceTimeZone } from "./teamBadge";
 import { useTeamMentions, useTeamPeople, useTeamRealtime, useTeamThreads } from "./useTeamChat";
 
 import { TeamThreadScreen } from "./TeamThreadScreen";
@@ -499,7 +498,21 @@ export function TeamNotificationPrefs({ userId }: { userId: string }): React.Rea
   });
   const rows = prefs.data ?? [];
   const busy = prefs.isPending || save.isPending;
-  const zone = useMemo(() => deviceTimeZone(), []);
+  // #4255 bundle budget: the device zone comes from the top bar's lazy chunk
+  // (teamBadge.tsx). A static import here would share teamBadge between that
+  // chunk and this one, and Metro would hoist it into the eager __common.
+  const [zone, setZone] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    import("./teamBadge")
+      .then((badgeModule) => { if (live) setZone(badgeModule.deviceTimeZone()); })
+      .catch((err: unknown) => {
+        // The line stays hidden; nothing for the person to do. Logged so a
+        // broken chunk is seen.
+        console.warn("[#4255] could not read the device time zone:", err instanceof Error ? err.message : String(err));
+      });
+    return () => { live = false; };
+  }, []);
   return (
     <View style={styles.prefsCard} testID="team-prefs">
       <Text style={styles.prefsTitle}>{t("team.prefs_title")}</Text>

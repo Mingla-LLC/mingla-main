@@ -175,6 +175,9 @@ const EXPECTED: Record<string, Bucket> = {
   // remains behind the root auth gate; public Stay discovery lives under /b/.
   stay: "gated-default",
   support: "gated-default",
+  // #4255 W5 — Mingla team is signed-in and staff-gated (team_badge), not a
+  // bottom tab and not public: in no exemption set, like messages and support.
+  team: "gated-default",
   trip: "gated-default",
   venue: "gated-default",
   // [TEST-MOD-APPROVED #2830] — the native Website Studio return is an

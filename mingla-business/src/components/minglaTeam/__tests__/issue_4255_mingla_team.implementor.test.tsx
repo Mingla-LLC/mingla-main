@@ -293,6 +293,19 @@ describe("#4255 W5 a host who is not staff", () => {
     expect(topBar).toContain('React.lazy(() => import("../minglaTeam/teamBadge"))');
   });
 
+  test("teamBadge stays its own lazy chunk: no team screen imports it statically (bundle-baseline-movement)", () => {
+    // A static import from a module in the Brand group chunk makes teamBadge
+    // shared by two lazy chunks, and Metro hoists it into the eager __common
+    // (PR #4396: +2,808 B, the movement gate went red at +3,672 B).
+    const dir = path.resolve(__dirname, "..");
+    const staticImport = /^\s*(import|export)\b[^;]*from\s+["']\.\/teamBadge["']/m;
+    for (const file of fs.readdirSync(dir).filter((name) => /\.(ts|tsx)$/.test(name) && name !== "teamBadge.tsx")) {
+      const source = fs.readFileSync(path.join(dir, file), "utf8");
+      expect({ file, staticImport: staticImport.test(source.replace(/^\s*import type\b[^;]*;/gm, "")) }).toEqual({ file, staticImport: false });
+    }
+    expect(fs.readFileSync(path.join(dir, "TeamScreens.tsx"), "utf8")).toContain('import("./teamBadge")');
+  });
+
   test("defaults match the database: everything on except group message pushes", () => {
     expect(teamPrefOn([], "business.team_mention", "push")).toBe(true);
     expect(teamPrefOn([], "business.team_decision", "inapp")).toBe(true);
