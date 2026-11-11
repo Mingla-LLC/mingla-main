@@ -148,6 +148,16 @@
       "nothingDeleted": "A i fi emwi rhọkpa fiẹ",
       "closeRefused": "Ọnọ nọ ga ima vbe igho i sẹtin khui akaunti na, ọna ọre a i fi emwi rhọkpa fiẹ. Ya ẹmwẹ ye ọnọ nọ rhie ọbọ, ma gha ru ẹre.",
       "close": "Khui"
+    },
+    "onboard": {
+      "title": "Gu banki ruẹ ye ọ",
+      "body": "Ọ ra mẹhẹn 5. Ẹmwẹ banki ruẹ rrie ọkpa ọkpa ye ọnọ nọ ga ima vbe igho.",
+      "opening": "A ya kie ẹkpẹ ọ mwẹ ẹtin…",
+      "haveReady": "Ru ẹre ye ẹkpo",
+      "readyId": "Ẹbe ọ mwẹ uhunmwu ruẹ",
+      "readyBank": "Akauntu banki vbe {{country}}",
+      "readyBankAny": "Akauntu banki vbe ẹvbo ruẹ",
+      "readyTax": "Nọmba ẹto (ẹsọ ne a gbẹn ẹre ọkpa)"
     }
   },
   "doorMode": {

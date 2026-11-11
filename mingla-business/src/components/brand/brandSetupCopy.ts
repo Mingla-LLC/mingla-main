@@ -141,6 +141,17 @@ export const BRAND_SETUP_COPY = {
     get change(): string { return t("t1.change"); },
     get save(): string { return t("t1.save"); },
   },
+  /** #4389 — the bank setup screen (/brand/{id}/payments/onboard). */
+  onboard: {
+    get title(): string { return t("onboard.title"); },
+    get body(): string { return t("onboard.body"); },
+    get opening(): string { return t("onboard.opening"); },
+    get haveReady(): string { return t("onboard.haveReady"); },
+    get readyId(): string { return t("onboard.readyId"); },
+    readyBank: (country: string | null): string =>
+      country === null ? t("onboard.readyBankAny") : t("onboard.readyBank", { country }),
+    get readyTax(): string { return t("onboard.readyTax"); },
+  },
   stepNames: {
     get name(): string { return t("stepNames.name"); },
     get country(): string { return t("stepNames.country"); },

@@ -148,6 +148,16 @@
       "nothingDeleted": "Ọ dịghị ihe ehichapụrụ",
       "closeRefused": "Onye mmekọ ịkwụ ụgwọ anyị enweghị ike imechi akaụntụ a, ya mere ọ dịghị ihe ehichapụrụ. Kpọtụrụ nkwado, anyị ga-edozi ya.",
       "close": "Mechie"
+    },
+    "onboard": {
+      "title": "Jikọọ akụ gị",
+      "body": "Ihe dị ka nkeji 5. Nkọwa akụ gị na-aga ozugbo n'aka onye mmekọ ịkwụ ụgwọ anyị.",
+      "opening": "Na-emepe nhazi nchekwa…",
+      "haveReady": "Kwadebe",
+      "readyId": "NJ nwere foto",
+      "readyBank": "Akaụntụ akụ na {{country}}",
+      "readyBankAny": "Akaụntụ akụ na mba gị",
+      "readyTax": "Nọmba ụtụ isi (naanị ụlọ ọrụ edebanyere aha)"
     }
   },
   "doorMode": {

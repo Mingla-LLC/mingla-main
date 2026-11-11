@@ -148,6 +148,16 @@
       "nothingDeleted": "Nu s-a șters nimic",
       "closeRefused": "Partenerul nostru de plăți nu a putut închide acest cont, așa că nu s-a șters nimic. Contactează asistența și rezolvăm.",
       "close": "Închide"
+    },
+    "onboard": {
+      "title": "Conectează-ți banca",
+      "body": "Aproximativ 5 minute. Datele tale bancare ajung direct la partenerul nostru de plăți.",
+      "opening": "Se deschide configurarea securizată…",
+      "haveReady": "Pregătește",
+      "readyId": "Act de identitate cu fotografie",
+      "readyBank": "Cont bancar în {{country}}",
+      "readyBankAny": "Cont bancar în țara ta",
+      "readyTax": "Cod fiscal (doar companii înregistrate)"
     }
   },
   "doorMode": {

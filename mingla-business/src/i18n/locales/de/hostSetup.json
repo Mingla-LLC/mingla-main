@@ -148,6 +148,16 @@
       "nothingDeleted": "Nichts wurde gelöscht",
       "closeRefused": "Unser Zahlungspartner konnte dieses Konto nicht schließen, daher wurde nichts gelöscht. Kontaktiere den Support, wir kümmern uns darum.",
       "close": "Schließen"
+    },
+    "onboard": {
+      "title": "Bank verbinden",
+      "body": "Etwa 5 Minuten. Deine Bankdaten gehen direkt an unseren Zahlungspartner.",
+      "opening": "Sichere Einrichtung wird geöffnet…",
+      "haveReady": "Halte bereit",
+      "readyId": "Lichtbildausweis",
+      "readyBank": "Bankkonto in {{country}}",
+      "readyBankAny": "Bankkonto in deinem Land",
+      "readyTax": "Steuernummer (nur eingetragene Unternehmen)"
     }
   },
   "doorMode": {

@@ -148,6 +148,16 @@
       "nothingDeleted": "Nada foi excluído",
       "closeRefused": "Nosso parceiro de pagamentos não conseguiu encerrar esta conta, então nada foi excluído. Fale com o suporte e resolvemos.",
       "close": "Fechar"
+    },
+    "onboard": {
+      "title": "Conecte seu banco",
+      "body": "Cerca de 5 minutos. Seus dados bancários vão direto para nosso parceiro de pagamento.",
+      "opening": "Abrindo a configuração segura…",
+      "haveReady": "Tenha em mãos",
+      "readyId": "Documento com foto",
+      "readyBank": "Conta bancária em {{country}}",
+      "readyBankAny": "Conta bancária no seu país",
+      "readyTax": "Número fiscal (apenas empresas registradas)"
     }
   },
   "doorMode": {

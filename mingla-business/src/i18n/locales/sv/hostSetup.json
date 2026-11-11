@@ -148,6 +148,16 @@
       "nothingDeleted": "Inget raderades",
       "closeRefused": "Vår betalpartner kunde inte stänga det här kontot, så inget raderades. Kontakta supporten så löser vi det.",
       "close": "Stäng"
+    },
+    "onboard": {
+      "title": "Koppla din bank",
+      "body": "Cirka 5 minuter. Dina bankuppgifter går direkt till vår betalpartner.",
+      "opening": "Öppnar säker konfiguration…",
+      "haveReady": "Ha redo",
+      "readyId": "Fotolegitimation",
+      "readyBank": "Bankkonto i {{country}}",
+      "readyBankAny": "Bankkonto i ditt land",
+      "readyTax": "Skattenummer (endast registrerade företag)"
     }
   },
   "doorMode": {

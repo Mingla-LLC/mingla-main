@@ -148,6 +148,16 @@
       "nothingDeleted": "Ba a goge komai ba",
       "closeRefused": "Abokin biyan kuɗinmu bai iya rufe wannan asusun ba, don haka ba a goge komai ba. Tuntuɓi tallafi, za mu warware shi.",
       "close": "Rufe"
+    },
+    "onboard": {
+      "title": "Haɗa bankinka",
+      "body": "Kusan minti 5. Bayanan bankinka suna zuwa kai tsaye ga abokin biyan kuɗinmu.",
+      "opening": "Ana buɗe saitin tsaro…",
+      "haveReady": "Ka shirya",
+      "readyId": "Katin shaida mai hoto",
+      "readyBank": "Asusun banki a {{country}}",
+      "readyBankAny": "Asusun banki a ƙasarka",
+      "readyTax": "Lambar haraji (kamfanoni masu rajista kawai)"
     }
   },
   "doorMode": {

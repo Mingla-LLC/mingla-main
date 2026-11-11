@@ -86,6 +86,12 @@ interface Props {
    * the form into view. 0 / undefined = do nothing.
    */
   focusFirstFieldSignal?: number;
+  /**
+   * #4389 — brand setup already said what this step is: show the bank form
+   * straight away, without this view's own heading, paragraph or "Choose a
+   * different country" row (the country was chosen at its own step).
+   */
+  hideIntro?: boolean;
 }
 
 const ACCOUNT_LEN = 10;
@@ -102,6 +108,7 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
   onConnected,
   onCancel,
   focusFirstFieldSignal = 0,
+  hideIntro = false,
 }) => {
   const isUpdate = mode === "update";
   const { isAuthReady, user } = useAuth();
@@ -429,7 +436,7 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
         </>
       ) : (
         <>
-      {onCancel != null && !isUpdate ? (
+      {onCancel != null && !isUpdate && !hideIntro ? (
         <View style={styles.backRow}>
           <Button
             label="‹ Choose a different country"
@@ -439,14 +446,18 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
           />
         </View>
       ) : null}
-      <Text style={styles.title}>
-        {isUpdate ? "Change payout bank" : "Get paid in Nigeria"}
-      </Text>
-      <Text style={styles.subtitle}>
-        {isUpdate
-          ? "Enter the new bank account that should receive your payouts."
-          : "Connect your bank account to receive payouts. Ticket sales are released to this account about a day after each payment and typically arrive within 1–2 business days."}
-      </Text>
+      {!hideIntro ? (
+        <>
+          <Text style={styles.title}>
+            {isUpdate ? "Change payout bank" : "Get paid in Nigeria"}
+          </Text>
+          <Text style={styles.subtitle}>
+            {isUpdate
+              ? "Enter the new bank account that should receive your payouts."
+              : "Connect your bank account to receive payouts. Ticket sales are released to this account about a day after each payment and typically arrive within 1–2 business days."}
+          </Text>
+        </>
+      ) : null}
 
       {/* Bank picker */}
       <Text style={styles.label}>Bank</Text>

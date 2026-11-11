@@ -148,6 +148,16 @@
       "nothingDeleted": "Non è stato eliminato nulla",
       "closeRefused": "Il nostro partner di pagamento non ha potuto chiudere questo conto, quindi non è stato eliminato nulla. Contatta l'assistenza e risolveremo.",
       "close": "Chiudi"
+    },
+    "onboard": {
+      "title": "Collega la tua banca",
+      "body": "Circa 5 minuti. I tuoi dati bancari vanno direttamente al nostro partner di pagamento.",
+      "opening": "Apertura della configurazione sicura…",
+      "haveReady": "Tieni a portata di mano",
+      "readyId": "Documento d'identità con foto",
+      "readyBank": "Conto bancario in {{country}}",
+      "readyBankAny": "Conto bancario nel tuo paese",
+      "readyTax": "Codice fiscale (solo società registrate)"
     }
   },
   "doorMode": {

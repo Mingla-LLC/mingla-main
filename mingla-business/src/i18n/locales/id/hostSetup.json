@@ -148,6 +148,16 @@
       "nothingDeleted": "Tidak ada yang dihapus",
       "closeRefused": "Mitra pembayaran kami tidak bisa menutup akun ini, jadi tidak ada yang dihapus. Hubungi dukungan dan kami akan menyelesaikannya.",
       "close": "Tutup"
+    },
+    "onboard": {
+      "title": "Hubungkan bank Anda",
+      "body": "Sekitar 5 menit. Detail bank Anda langsung dikirim ke mitra pembayaran kami.",
+      "opening": "Membuka penyiapan aman…",
+      "haveReady": "Siapkan",
+      "readyId": "Kartu identitas berfoto",
+      "readyBank": "Rekening bank di {{country}}",
+      "readyBankAny": "Rekening bank di negara Anda",
+      "readyTax": "NPWP (khusus perusahaan terdaftar)"
     }
   },
   "doorMode": {

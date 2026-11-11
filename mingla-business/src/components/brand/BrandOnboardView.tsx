@@ -107,6 +107,8 @@ import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { Spinner } from "../ui/Spinner";
 import { BrandStripeCountryPicker } from "./BrandStripeCountryPicker";
+import { BRAND_SETUP_COPY } from "./brandSetupCopy";
+import { flagEmoji, payoutCountryOption } from "./PayoutCountryList";
 import { MinglaToSAcceptanceGate } from "../onboarding/MinglaToSAcceptanceGate";
 import { useAuth } from "../../context/AuthContext";
 import {
@@ -281,6 +283,12 @@ export interface BrandOnboardViewProps {
    * screen shows its own outcome states, exactly as after the browser sheet.
    */
   onNativeExit?: (exit: NativeConnectExit) => void;
+  /**
+   * #4389 — the host came from brand setup's "Get paid" step, which already
+   * chose the bank country and took the Organiser Terms. The intro is skipped:
+   * the secure setup opens by itself behind a short "Opening secure setup…".
+   */
+  fromSetup?: boolean;
 }
 
 /** Best-effort haptic — silently swallowed if unavailable. */
@@ -325,6 +333,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   countryChoiceRequested = false,
   onOpenTapToPay,
   onNativeExit,
+  fromSetup = false,
 }) => {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
@@ -431,6 +440,9 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   const { user } = useAuth();
   const [tosPassed, setTosPassed] = useState(false);
   const handleTosPassed = useCallback((): void => setTosPassed(true), []);
+  // #4389 — the terms sheet is up (not accepted): from setup it shows alone.
+  const [tosAsking, setTosAsking] = useState(false);
+  const handleTosShown = useCallback((): void => setTosAsking(true), []);
   // META-ORCH-1076 — picking Nigeria switches to the inline Paystack bank-details
   // form instantly (no network call — the form's "Connect bank" step commits the
   // provider). The Stripe onboarding path below is never entered for NG, and the
@@ -573,6 +585,25 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
     : null;
   const isCountryLockedError =
     errorMessage?.includes("create a new brand") === true;
+  // #4389 — the bank country is the brand's payout_country (chosen in brand
+  // setup, locked once a payment account exists). With one saved, the row is a
+  // read-only summary, never the picker — unless the host came here to choose
+  // a different country.
+  const countryFixed =
+    brand?.payoutCountry != null && !countryChoiceRequested && selectedCountry !== null;
+  const fixedCountryOption = countryFixed ? payoutCountryOption(selectedCountry) : null;
+  // #4389 — from setup the intro is skipped once: the secure setup starts by
+  // itself when the country is known and the terms are accepted.
+  const [autoStartDone, setAutoStartDone] = useState(false);
+  const autoStartPending =
+    fromSetup &&
+    !autoStartDone &&
+    viewState === "idle" &&
+    countryFixed &&
+    selectedCountry !== NIGERIA_COUNTRY;
+  // Started once the account's status is read (its country wins over a stale
+  // remembered one) and the terms are accepted.
+  const statusSettledForStart = !statusQuery.isLoading;
 
   useEffect(() => {
     if (countryTouched || countryTouchedRef.current) return;
@@ -929,6 +960,12 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
     selectedCountry,
   ]);
 
+  useEffect(() => {
+    if (!autoStartPending || !tosPassed || !statusSettledForStart) return;
+    setAutoStartDone(true);
+    void handleStart();
+  }, [autoStartPending, handleStart, statusSettledForStart, tosPassed]);
+
   // #4389 S-11 — leaving the native secure setup. The account is read the same
   // bounded way as after the browser sheet; progress goes on (F4 in brand
   // setup), no progress is an early close (K1 in brand setup).
@@ -1261,6 +1298,9 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
               mode="create"
               onConnected={onAfterDone}
               onCancel={chooseDifferentCountry}
+              // #4389 — from setup: the form alone (the country was chosen at
+              // its own step, so no "Choose a different country" either).
+              hideIntro={fromSetup}
             />
           )}
         </ScrollView>
@@ -1433,8 +1473,18 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
             brandId={brand.id}
             userId={user.id}
             onPassed={handleTosPassed}
+            onShown={handleTosShown}
             subtitle="A quick read before you sell or connect payouts."
           />
+        ) : null}
+
+        {/* #4389 — from setup: only a short loading line while the secure
+            setup opens (the terms sheet alone if they are not accepted). */}
+        {autoStartPending && !tosAsking ? (
+          <View style={styles.stateBlock} testID="onboard-opening-secure-setup">
+            <Spinner size={48} color={accent.warm} />
+            <Text style={styles.stateTitle}>{BRAND_SETUP_COPY.onboard.opening}</Text>
+          </View>
         ) : null}
 
         {viewState === "idle" && awaitingLockState ? (
@@ -1444,45 +1494,57 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
           </View>
         ) : null}
 
-        {viewState === "idle" && !awaitingLockState ? (
+        {viewState === "idle" && !awaitingLockState && !autoStartPending ? (
           <>
             <View style={styles.stateBlock}>
-              <Text style={styles.stateTitle}>
-                Connect your bank to start getting paid
+              <Text style={styles.stateTitle} accessibilityRole="header">
+                {BRAND_SETUP_COPY.onboard.title}
               </Text>
-              <Text style={styles.stateSub}>
-                Set up payments to publish your offerings and get paid.{"\n\n"}
-                <Text style={styles.bold}>
-                  Your bank details go straight to our payment partner —
-                  Mingla never sees them.
-                </Text>
-                {"\n\n"}Takes about 5 minutes.
-              </Text>
+              <Text style={styles.stateSub}>{BRAND_SETUP_COPY.onboard.body}</Text>
 
               <View style={styles.prereqCard}>
-                <BrandStripeCountryPicker
-                  value={selectedCountry}
-                  onChange={handleCountryChange}
-                  disabled={countryPickerLocked}
-                  helperText={countryPickerHelper}
-                  warningText={countryPickerWarning}
-                  extraOptions={PAYSTACK_PICKER_OPTIONS}
-                  // Never opened over a locked row (a brand with a payment
-                  // account keeps its country).
-                  defaultOpen={reopenPickerOnReturn && !countryPickerLocked}
-                />
+                {fixedCountryOption !== null ? (
+                  // #4389 — the saved bank country, read-only.
+                  <GlassCard variant="base" padding={spacing.md}>
+                    <Text style={styles.countrySummary} testID="onboard-country-summary">
+                      {`${flagEmoji(fixedCountryOption.country)} ${fixedCountryOption.name} · ${fixedCountryOption.currency}`}
+                    </Text>
+                  </GlassCard>
+                ) : (
+                  <BrandStripeCountryPicker
+                    value={selectedCountry}
+                    onChange={handleCountryChange}
+                    disabled={countryPickerLocked}
+                    helperText={countryPickerHelper}
+                    warningText={countryPickerWarning}
+                    extraOptions={PAYSTACK_PICKER_OPTIONS}
+                    // Never opened over a locked row (a brand with a payment
+                    // account keeps its country).
+                    defaultOpen={reopenPickerOnReturn && !countryPickerLocked}
+                  />
+                )}
               </View>
 
-              <GlassCard variant="base" padding={spacing.md} style={styles.prereqCard}>
-                <Text style={styles.prereqHeader}>BEFORE YOU START, HAVE READY</Text>
-                <Text style={styles.prereqItem}>{"•"} Business name and tax ID</Text>
-                <Text style={styles.prereqItem}>
-                  {"•"} Bank account for your country
-                </Text>
-                <Text style={styles.prereqItem}>
-                  {"•"} Photo of government ID
-                </Text>
-              </GlassCard>
+              {/* #4389 — setup already listed what to have ready. */}
+              {!fromSetup ? (
+                <GlassCard
+                  variant="base"
+                  padding={spacing.md}
+                  style={styles.prereqCard}
+                  testID="onboard-have-ready"
+                >
+                  <Text style={styles.prereqHeader}>{BRAND_SETUP_COPY.onboard.haveReady}</Text>
+                  <Text style={styles.prereqItem}>{`• ${BRAND_SETUP_COPY.onboard.readyId}`}</Text>
+                  <Text style={styles.prereqItem}>
+                    {`• ${BRAND_SETUP_COPY.onboard.readyBank(
+                      selectedCountry === null
+                        ? null
+                        : payoutCountryOption(selectedCountry)?.name ?? null,
+                    )}`}
+                  </Text>
+                  <Text style={styles.prereqItem}>{`• ${BRAND_SETUP_COPY.onboard.readyTax}`}</Text>
+                </GlassCard>
+              ) : null}
             </View>
 
             <View style={styles.actionsCol}>
@@ -1955,6 +2017,12 @@ const styles = StyleSheet.create({
   prereqCard: {
     marginTop: spacing.md,
     width: "100%",
+  },
+  countrySummary: {
+    fontSize: typography.body.fontSize,
+    lineHeight: typography.body.lineHeight,
+    fontWeight: "600",
+    color: textTokens.primary,
   },
   prereqHeader: {
     fontSize: typography.caption.fontSize,

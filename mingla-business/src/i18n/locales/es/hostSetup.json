@@ -148,6 +148,16 @@
       "nothingDeleted": "No se eliminó nada",
       "closeRefused": "Nuestro socio de pagos no pudo cerrar esta cuenta, así que no se eliminó nada. Contacta con soporte y lo solucionaremos.",
       "close": "Cerrar"
+    },
+    "onboard": {
+      "title": "Conecta tu banco",
+      "body": "Unos 5 minutos. Tus datos bancarios van directamente a nuestro socio de pagos.",
+      "opening": "Abriendo la configuración segura…",
+      "haveReady": "Ten a mano",
+      "readyId": "Identificación con foto",
+      "readyBank": "Cuenta bancaria en {{country}}",
+      "readyBankAny": "Cuenta bancaria en tu país",
+      "readyTax": "NIF (solo empresas registradas)"
     }
   },
   "doorMode": {

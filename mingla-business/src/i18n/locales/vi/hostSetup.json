@@ -148,6 +148,16 @@
       "nothingDeleted": "Không có gì bị xóa",
       "closeRefused": "Đối tác thanh toán của chúng tôi không đóng được tài khoản này, nên không có gì bị xóa. Hãy liên hệ hỗ trợ và chúng tôi sẽ xử lý.",
       "close": "Đóng"
+    },
+    "onboard": {
+      "title": "Kết nối ngân hàng",
+      "body": "Khoảng 5 phút. Thông tin ngân hàng của bạn được gửi thẳng đến đối tác thanh toán của chúng tôi.",
+      "opening": "Đang mở thiết lập bảo mật…",
+      "haveReady": "Chuẩn bị sẵn",
+      "readyId": "Giấy tờ tùy thân có ảnh",
+      "readyBank": "Tài khoản ngân hàng tại {{country}}",
+      "readyBankAny": "Tài khoản ngân hàng tại quốc gia của bạn",
+      "readyTax": "Mã số thuế (chỉ công ty đã đăng ký)"
     }
   },
   "doorMode": {

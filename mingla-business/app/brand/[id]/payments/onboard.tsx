@@ -138,6 +138,7 @@ export default function BrandOnboardRoute(): React.ReactElement {
           countryChoiceRequested={countryChoiceRequested}
           onOpenTapToPay={brandId !== null ? handleOpenTapToPay : undefined}
           onNativeExit={isBrandCreateFunnel ? handleNativeExit : undefined}
+          fromSetup={isBrandCreateFunnel}
         />
       </BrandPaymentsPermissionGate>
     </View>

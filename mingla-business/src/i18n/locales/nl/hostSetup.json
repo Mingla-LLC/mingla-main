@@ -148,6 +148,16 @@
       "nothingDeleted": "Er is niets verwijderd",
       "closeRefused": "Onze betaalpartner kon deze rekening niet sluiten, dus er is niets verwijderd. Neem contact op met support, dan lossen we het op.",
       "close": "Sluiten"
+    },
+    "onboard": {
+      "title": "Koppel je bank",
+      "body": "Ongeveer 5 minuten. Je bankgegevens gaan rechtstreeks naar onze betaalpartner.",
+      "opening": "Beveiligde installatie wordt geopend…",
+      "haveReady": "Houd bij de hand",
+      "readyId": "Identiteitsbewijs met foto",
+      "readyBank": "Bankrekening in {{country}}",
+      "readyBankAny": "Bankrekening in je land",
+      "readyTax": "Fiscaal nummer (alleen geregistreerde bedrijven)"
     }
   },
   "doorMode": {

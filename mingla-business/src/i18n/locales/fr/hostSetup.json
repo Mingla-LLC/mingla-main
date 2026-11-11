@@ -148,6 +148,16 @@
       "nothingDeleted": "Rien n'a été supprimé",
       "closeRefused": "Notre partenaire de paiement n'a pas pu fermer ce compte, rien n'a donc été supprimé. Contactez le support et nous réglerons ça.",
       "close": "Fermer"
+    },
+    "onboard": {
+      "title": "Connectez votre banque",
+      "body": "Environ 5 minutes. Vos coordonnées bancaires vont directement à notre partenaire de paiement.",
+      "opening": "Ouverture de la configuration sécurisée…",
+      "haveReady": "À préparer",
+      "readyId": "Pièce d'identité avec photo",
+      "readyBank": "Compte bancaire en {{country}}",
+      "readyBankAny": "Compte bancaire dans votre pays",
+      "readyTax": "Numéro fiscal (sociétés immatriculées uniquement)"
     }
   },
   "doorMode": {

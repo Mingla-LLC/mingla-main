@@ -52,6 +52,12 @@ interface MinglaToSAcceptanceGateProps {
    * Keep free of payout lies — #1180 scans this file.
    */
   subtitle?: string;
+  /**
+   * #4389 — fired once the gate knows it must ask (terms not accepted, or the
+   * acceptance could not be read), so a screen that opens setup by itself can
+   * show the gate alone instead of a "loading" line behind it.
+   */
+  onShown?: () => void;
 }
 
 /** Short summary only — full text is on the website. Keep #1180 timing honest. */
@@ -73,6 +79,7 @@ export function MinglaToSAcceptanceGate({
   userId,
   onPassed,
   subtitle = "A quick read before you sell or connect payouts.",
+  onShown,
 }: MinglaToSAcceptanceGateProps): React.ReactElement | null {
   const acceptanceQuery = useMinglaToSAcceptance(brandId, userId);
   const acceptMutation = useAcceptMinglaToS();
@@ -83,6 +90,11 @@ export function MinglaToSAcceptanceGate({
   React.useEffect(() => {
     if (accepted) onPassed();
   }, [accepted, onPassed]);
+
+  const mustAsk = !acceptanceQuery.isLoading && !accepted;
+  React.useEffect(() => {
+    if (mustAsk) onShown?.();
+  }, [mustAsk, onShown]);
 
   const handleOpenTerms = useCallback((): void => {
     void Linking.openURL(ORGANISER_TERMS_URL);

@@ -148,6 +148,16 @@
       "nothingDeleted": "Kò sí ohun tí a pa rẹ́",
       "closeRefused": "Alábàáṣiṣẹ́pọ̀ ìsanwó wa kò lè ti àkọọ́lẹ̀ yìí, nítorí náà kò sí ohun tí a pa rẹ́. Kàn sí ìrànlọ́wọ́, a sì máa yanjú rẹ̀.",
       "close": "Tì"
+    },
+    "onboard": {
+      "title": "So báǹkì rẹ pọ̀",
+      "body": "Bí ìṣẹ́jú 5. Àlàyé báǹkì rẹ ń lọ tààrà sí alábàáṣiṣẹ́pọ̀ ìsanwó wa.",
+      "opening": "A ń ṣí ìṣètò aláàbò…",
+      "haveReady": "Ṣètò sílẹ̀",
+      "readyId": "Káàdì ìdánimọ̀ pẹ̀lú fọ́tò",
+      "readyBank": "Àkáǹtì báǹkì ní {{country}}",
+      "readyBankAny": "Àkáǹtì báǹkì ní orílẹ̀-èdè rẹ",
+      "readyTax": "Nọ́mbà owó-orí (ilé-iṣẹ́ tí a forúkọ sílẹ̀ nìkan)"
     }
   },
   "doorMode": {

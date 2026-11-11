@@ -148,6 +148,16 @@
       "nothingDeleted": "未删除任何内容",
       "closeRefused": "我们的支付合作伙伴无法关闭此账户，因此未删除任何内容。请联系客服，我们会处理。",
       "close": "关闭"
+    },
+    "onboard": {
+      "title": "连接你的银行",
+      "body": "大约 5 分钟。你的银行信息会直接发送给我们的支付合作伙伴。",
+      "opening": "正在打开安全设置…",
+      "haveReady": "请准备好",
+      "readyId": "带照片的身份证件",
+      "readyBank": "{{country}}的银行账户",
+      "readyBankAny": "你所在国家的银行账户",
+      "readyTax": "税号（仅限注册公司）"
     }
   },
   "doorMode": {

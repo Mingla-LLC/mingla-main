@@ -148,6 +148,16 @@
       "nothingDeleted": "Tiada apa yang dipadam",
       "closeRefused": "Rakan kongsi pembayaran kami tidak dapat menutup akaun ini, jadi tiada apa yang dipadam. Hubungi sokongan dan kami akan uruskan.",
       "close": "Tutup"
+    },
+    "onboard": {
+      "title": "Sambungkan bank anda",
+      "body": "Kira-kira 5 minit. Butiran bank anda terus dihantar kepada rakan pembayaran kami.",
+      "opening": "Membuka persediaan selamat…",
+      "haveReady": "Sediakan",
+      "readyId": "ID bergambar",
+      "readyBank": "Akaun bank di {{country}}",
+      "readyBankAny": "Akaun bank di negara anda",
+      "readyTax": "Nombor cukai (syarikat berdaftar sahaja)"
     }
   },
   "doorMode": {

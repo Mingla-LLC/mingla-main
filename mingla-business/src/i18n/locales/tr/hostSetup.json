@@ -148,6 +148,16 @@
       "nothingDeleted": "Hiçbir şey silinmedi",
       "closeRefused": "Ödeme ortağımız bu hesabı kapatamadı, bu yüzden hiçbir şey silinmedi. Destekle iletişime geç, çözelim.",
       "close": "Kapat"
+    },
+    "onboard": {
+      "title": "Bankanı bağla",
+      "body": "Yaklaşık 5 dakika. Banka bilgilerin doğrudan ödeme ortağımıza gider.",
+      "opening": "Güvenli kurulum açılıyor…",
+      "haveReady": "Hazır bulundur",
+      "readyId": "Fotoğraflı kimlik",
+      "readyBank": "{{country}} içinde banka hesabı",
+      "readyBankAny": "Ülkende bir banka hesabı",
+      "readyTax": "Vergi numarası (yalnızca kayıtlı şirketler)"
     }
   },
   "doorMode": {

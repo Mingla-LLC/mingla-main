@@ -148,6 +148,16 @@
       "nothingDeleted": "Nic nie zostało usunięte",
       "closeRefused": "Nasz partner płatniczy nie mógł zamknąć tego konta, więc nic nie zostało usunięte. Skontaktuj się z pomocą, a to załatwimy.",
       "close": "Zamknij"
+    },
+    "onboard": {
+      "title": "Połącz swój bank",
+      "body": "Około 5 minut. Twoje dane bankowe trafiają bezpośrednio do naszego partnera płatności.",
+      "opening": "Otwieranie bezpiecznej konfiguracji…",
+      "haveReady": "Przygotuj",
+      "readyId": "Dokument tożsamości ze zdjęciem",
+      "readyBank": "Konto bankowe w kraju: {{country}}",
+      "readyBankAny": "Konto bankowe w Twoim kraju",
+      "readyTax": "NIP (tylko zarejestrowane spółki)"
     }
   },
   "doorMode": {

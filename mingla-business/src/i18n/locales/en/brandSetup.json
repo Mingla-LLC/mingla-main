@@ -148,6 +148,16 @@
       "nothingDeleted": "Nothing was deleted",
       "closeRefused": "Our payment partner couldn't close this account, so nothing was deleted. Contact support and we'll sort it.",
       "close": "Close"
+    },
+    "onboard": {
+      "title": "Connect your bank",
+      "body": "About 5 minutes. Your bank details go straight to our payment partner.",
+      "opening": "Opening secure setup…",
+      "haveReady": "Have ready",
+      "readyId": "Photo ID",
+      "readyBank": "Bank account in {{country}}",
+      "readyBankAny": "Bank account in your country",
+      "readyTax": "Tax ID (registered companies only)"
     }
   }
 }

@@ -699,7 +699,7 @@ const PayStep: React.FC<{
         ) : ngReady ? (
           <View>
             <Text style={styles.label}>{C.f3.ngHeading}</Text>
-            <BrandPaystackOnboardView brandId={brandId} brandName={brandName} onConnected={onConnected} />
+            <BrandPaystackOnboardView brandId={brandId} brandName={brandName} onConnected={onConnected} hideIntro />
           </View>
         ) : null}
         <Text style={styles.helper}>{C.f3.trust}</Text>
