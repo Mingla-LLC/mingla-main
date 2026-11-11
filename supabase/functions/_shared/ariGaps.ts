@@ -160,15 +160,45 @@ export function detectAriRepeat(
   }
   const hint = readFlowRequest(current);
   if (hint && hint !== "request" && hint !== "readiness") {
+    // #3355 Wave F (live eval): a message that brings the details a bare
+    // request lacked (a code, a percentage, a day, where the earlier one had
+    // none) answers Ari's question; it is not the same request again.
+    const added = (prior: string) =>
+      ariRequestSpecifics(prior).length === 0 &&
+      ariRequestSpecifics(current).length > 0;
     if (
       recent.some((prior, index) =>
-        priorServed[index] !== true && readFlowRequest(prior) === hint
+        priorServed[index] !== true && !added(prior) &&
+        readFlowRequest(prior) === hint
       )
     ) {
       return { repeated: true, how: "same_intent" };
     }
   }
   return { repeated: false, how: null };
+}
+
+const SPECIFIC_MONTH =
+  /\b(\d{1,2})(?:st|nd|rd|th)?(?:\s+of)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b/gi;
+
+/** The specific values a request carries: codes, percentages, days. */
+export function ariRequestSpecifics(text: string): string[] {
+  const value = String(text ?? "");
+  const out = new Set<string>();
+  for (const match of value.matchAll(/\b([A-Z][A-Z0-9]{3,15})\b/g)) {
+    if (/\d/.test(match[1]) || match[1].length >= 5) {
+      out.add(`code:${match[1]}`);
+    }
+  }
+  for (
+    const match of value.matchAll(/\b(\d{1,3}(?:\.\d+)?)\s?(?:%|percent\b)/gi)
+  ) {
+    out.add(`pct:${match[1]}`);
+  }
+  for (const match of value.matchAll(SPECIFIC_MONTH)) {
+    out.add(`day:${Number(match[1])}-${match[2].toLowerCase()}`);
+  }
+  return [...out];
 }
 
 // ── Classifiers ──────────────────────────────────────────────────────────

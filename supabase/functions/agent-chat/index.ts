@@ -222,6 +222,7 @@ import {
   ARI_START_FLOW_TOOL,
   ariOfferingDetourIssue,
   ariSetupSkippedIssue,
+  ariSetupTextIssue,
   parseStartFlowArgs,
 } from "../_shared/ariFlows/startFlowTool.ts";
 import {
@@ -2417,6 +2418,7 @@ async function handle(req: Request): Promise<Response> {
     // loop continues and serves it in this same turn; the setup's own card
     // or proposal ends the turn as before.
     let modelFlowDecision: FlowTurnDecision | null = null;
+    let setupTextBounced = false;
     let modelFlowDelegated = false;
     const resolveModelFlowStart = async (
       call: { args: Record<string, unknown> },
@@ -2553,8 +2555,8 @@ async function handle(req: Request): Promise<Response> {
             droppedRoutes: leadGuard.dropped.length,
           }),
         });
-        return {
-          response: await commitPendingTurn({
+        const commitAskTeamCard = async (): Promise<Response> => {
+          return await commitPendingTurn({
             client: serviceClient,
             pendingClient: serviceClient,
             userId,
@@ -2577,9 +2579,9 @@ async function handle(req: Request): Promise<Response> {
             },
             classification: "ari_escalation_ask_team",
             startedAt: turnStartedAt,
-          }),
-          note: null,
+          });
         };
+        return { response: await commitAskTeamCard(), note: null };
       } catch (err: unknown) {
         if (!(err instanceof ToolError)) throw err;
         // Already asked this hour: say so. No group or no access: the
@@ -3951,7 +3953,15 @@ ${boundedAgentContext}
           }
         },
         validateFinalText: (text) =>
-          isPseudoToolCallText(text)
+          // #3355 Wave F: at most once per turn, so a second plain answer
+          // stands instead of stopping the turn.
+          (!modelFlowDelegated && !setupTextBounced &&
+            (setupTextBounced = true) &&
+            ariSetupTextIssue({
+              startFlowHint: turnRoute.startFlowHint,
+              startFlowAllowed,
+            })) ||
+          (isPseudoToolCallText(text)
             ? {
               code: "TOOL_CALL_AS_TEXT",
               message:
@@ -3963,7 +3973,7 @@ ${boundedAgentContext}
               message:
                 "The user supplied the event, ticket name, price, and capacity. Return the matching upsert_ticket_tier tool call so the app can show its protected approval proposal. Do not ask the user to type a confirmation in chat. If the canonical event read shows a conflict or the target is ambiguous, ask one precise question instead.",
             }
-            : null,
+            : null),
         executeTool: async (call) => {
           const tool = findTool(call.name);
           if (!tool) {

@@ -23,7 +23,9 @@ import { callGeminiStructured } from "../../../../supabase/functions/_shared/age
 if (Deno.env.get("SUPABASE_URL")) {
   const host = new URL(Deno.env.get("SUPABASE_URL")!).hostname;
   if (!["127.0.0.1", "localhost", "::1", "[::1]"].includes(host)) {
-    throw new Error(`SUPABASE_URL host "${host}" is not local; refusing to run`);
+    throw new Error(
+      `SUPABASE_URL host "${host}" is not local; refusing to run`,
+    );
   }
 }
 if (!Deno.env.get("GEMINI_API_KEY_ARI")) {

@@ -41,6 +41,7 @@ import {
   ARI_START_FLOW_TOOL,
   ariOfferingDetourIssue,
   ariSetupSkippedIssue,
+  ariSetupTextIssue,
 } from "../ariFlows/startFlowTool.ts";
 import { LIST_QUESTION } from "../ariFlows/contactImport.ts";
 import {
@@ -53,7 +54,11 @@ import {
   isPseudoToolCallText,
   repairGeminiContents,
 } from "../agentGeminiContents.ts";
-import { detectAriRepeat, priorOwnerServedFromRows } from "../ariGaps.ts";
+import {
+  ariRequestSpecifics,
+  detectAriRepeat,
+  priorOwnerServedFromRows,
+} from "../ariGaps.ts";
 import {
   current,
   freshWorld,
@@ -256,7 +261,7 @@ Deno.test("F(c): the escalated turn records its own reply gaps before the Ask-th
   );
   assert(offer.length > 200, "offerAskTheTeam exists");
   const gaps = offer.indexOf("await recordAriTurnGaps({");
-  const card = offer.indexOf("response: await commitPendingTurn({");
+  const card = offer.indexOf("return await commitPendingTurn({");
   assert(gaps > 0 && card > gaps, "gaps are recorded, then the card commits");
   assertMatch(offer, /messageId: leadMessageId,/);
   assertMatch(offer, /replyText: offer\.replyText,/);
@@ -347,7 +352,7 @@ Deno.test("F live: a reply that copies the tool-call marker is caught and sent b
   );
   assertMatch(
     read(AGENT_CHAT),
-    /validateFinalText: \(text\) =>\s*isPseudoToolCallText\(text\)/,
+    /\(isPseudoToolCallText\(text\)\s*\?\s*\{\s*code: "TOOL_CALL_AS_TEXT"/,
   );
 });
 
@@ -513,4 +518,52 @@ Deno.test("F live: an unsigned history call is replayed as plain words, never a 
   assert(!/\[mingla_tool_call/.test(text), text);
   // A reply that copies the record is caught too.
   assert(isPseudoToolCallText(`${HISTORY_CALL_NOTE} create_discount with {}.`));
+});
+
+Deno.test("F live: details for a bare request answer it; they are not a repeat", () => {
+  assertEquals(
+    detectAriRepeat(HOST_FAVY10_SENTENCE, [
+      "I want to create discount codes for influencers and marketers of my event",
+    ]).repeated,
+    false,
+  );
+  assertEquals(ariRequestSpecifics(HOST_FAVY10_SENTENCE).sort(), [
+    "code:FAVY10",
+    "day:19-dec",
+    "pct:10",
+  ]);
+  // A bare ask again is still a repeat.
+  assertEquals(
+    detectAriRepeat("Please create discount codes for my influencers", [
+      "I want to create discount codes for influencers and marketers of my event",
+    ]).how,
+    "same_intent",
+  );
+});
+
+Deno.test("F live: a setup answered with the model's own questions goes back once", () => {
+  assertEquals(
+    ariSetupTextIssue({ startFlowHint: "create_event", startFlowAllowed: true })
+      ?.code,
+    "USE_GUIDED_SETUP",
+  );
+  assertEquals(
+    ariSetupTextIssue({
+      startFlowHint: "create_event",
+      startFlowAllowed: false,
+    }),
+    null,
+  );
+  assertEquals(
+    ariSetupTextIssue({
+      startFlowHint: "website_setup",
+      startFlowAllowed: true,
+    }),
+    null,
+  );
+  const source = read(AGENT_CHAT);
+  assertMatch(
+    source,
+    /\(!modelFlowDelegated && !setupTextBounced &&\s*\(setupTextBounced = true\) &&\s*ariSetupTextIssue\(/,
+  );
 });

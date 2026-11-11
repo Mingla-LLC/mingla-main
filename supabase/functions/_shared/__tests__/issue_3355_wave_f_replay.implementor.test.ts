@@ -122,7 +122,10 @@ async function replayTurn(args: {
 
   if (args.stub.proposal) {
     const stated = mergeModelStatedSlots(
-      extractStatedSlots(args.ownerSinceProposal, new Date("2026-11-10T09:47:00Z")),
+      extractStatedSlots(
+        args.ownerSinceProposal,
+        new Date("2026-11-10T09:47:00Z"),
+      ),
       route.statedValues,
       args.ownerSinceProposal,
     );
@@ -202,7 +205,9 @@ Deno.test("F1 CI replay: the fixtures cover this morning's thread and the #3355 
     "issue_3355_website_no_site",
   ]);
   const thread = REPLAY_FIXTURES[0];
-  assert(thread.turns.some((turn) => /influencers and marketers/.test(turn.say)));
+  assert(
+    thread.turns.some((turn) => /influencers and marketers/.test(turn.say)),
+  );
   assert(thread.turns.some((turn) => /FAVY10/.test(turn.say)));
   // PII: the synthetic brand only; the production brand never appears.
   for (const fixture of REPLAY_FIXTURES) {
@@ -331,7 +336,10 @@ Deno.test("F1 gate: a drop of 2+ points on any suite or overall fails; 1.9 passe
   const missing = compareToBaseline(baseline, {
     scores: { replay: 100, overall: 100 },
   });
-  assertEquals(missing.drops.map((item) => item.suite), ["flows", "route_table"]);
+  assertEquals(missing.drops.map((item) => item.suite), [
+    "flows",
+    "route_table",
+  ]);
 });
 
 Deno.test("F1 scores and latency: suite scores out of 100, overall the mean; nearest-rank percentiles", () => {
@@ -340,7 +348,12 @@ Deno.test("F1 scores and latency: suite scores out of 100, overall the mean; nea
     flows: [{ passed: true }, { passed: false }, { skipped: "x" }],
     route_table: { total: 50, misroutes: 1 },
   });
-  assertEquals(scores, { replay: 75, flows: 50, route_table: 98, overall: 74.3 });
+  assertEquals(scores, {
+    replay: 75,
+    flows: 50,
+    route_table: 98,
+    overall: 74.3,
+  });
   assertEquals(percentiles([5, 1, 3, 2, 4]), { n: 5, p50: 3, p95: 5 });
 });
 

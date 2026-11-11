@@ -86,7 +86,10 @@ const MORNING_THREAD: ThreadTurn[] = [
     reply:
       "I didn't catch that as an answer to this step, so nothing was changed.",
     // The second discount-code ask (same request as turn 1, never served).
-    expected: ["repeated_request", "refusal"],
+    // #3355 Wave F: the FAVY10 sentence brings the code, % and end date
+    // the bare influencer ask lacked, so it answers it rather than repeating
+    // it; the reply's refusal is still the first failure.
+    expected: ["refusal"],
   },
   {
     owner: HOST_FAVY10_SENTENCE,

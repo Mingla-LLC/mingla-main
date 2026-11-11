@@ -382,7 +382,6 @@ export async function routeClass(
   call: AriIntentModelCall | null,
   snapshotText = "Brand: Favy Lagos",
 ): Promise<string> {
-  const useModel = call !== null;
   const open = row.open ?? "none";
   const { store, world } = await worldFor(open);
   const openFlow = ariOpenFlowView(

@@ -176,3 +176,23 @@ export function ariOfferingDetourIssue(args: {
     }. Do what they asked (propose ${args.targetTool}, or ask one precise question it needs); do not propose ${args.toolName}.`,
   };
 }
+
+/**
+ * #3355 Wave F (live eval): the same skip as text — the intent read named a
+ * guided setup and the model answered with its own list of questions instead
+ * of starting it. The reply goes back once with the instruction to call
+ * start_flow (the setup asks one thing at a time and checks each answer).
+ */
+export function ariSetupTextIssue(args: {
+  startFlowHint: string | null;
+  startFlowAllowed: boolean;
+}): { code: string; message: string } | null {
+  if (!args.startFlowAllowed || !args.startFlowHint) return null;
+  if (!ARI_SETUP_CREATE_TOOLS[args.startFlowHint]) return null;
+  return {
+    code: "USE_GUIDED_SETUP",
+    message: `The host asked to create a new ${
+      args.startFlowHint.replace(/^create_/, "")
+    }. Call start_flow with flow_key ${args.startFlowHint} now instead of asking your own questions; the guided setup asks one thing at a time.`,
+  };
+}
