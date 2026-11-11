@@ -770,10 +770,11 @@ export const useBrandCascadePreview = (
         upcomingEventCount: upcomingResult.count ?? 0,
         liveEventCount: liveResult.count ?? 0,
         teamMemberCount: teamResult.count ?? 0,
-        // B2a HF-8 fix: only true for active or onboarding states (excludes
-        // not_connected, restricted, detached). Per spike findings.
-        hasStripeConnect:
-          derivedStatus === "active" || derivedStatus === "onboarding",
+        // #4389 P2 — any account that is not detached is closed by the
+        // delete, whatever its state: restricted (a started, unfinished
+        // account) used to read "Payment account: None". The derivation maps
+        // a detached account to not_connected.
+        hasStripeConnect: derivedStatus !== "not_connected",
       };
     },
   });
