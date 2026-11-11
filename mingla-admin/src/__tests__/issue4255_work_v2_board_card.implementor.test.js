@@ -409,7 +409,9 @@ describe("F-2 the Work page fits a 390px phone (fix-up, 10 Nov)", () => {
     assert.match(compact, /<form role="search" class="relative flex min-w-0 flex-1/);
     assert.equal((compact.match(/class="relative inline-flex min-w-0 shrink-0"/g) || []).length, 2, "views and Filters popovers");
     const full = h.header({ fit: "full" });
-    assert.match(full, /<form role="search" class="relative flex min-w-\[7rem\] flex-1/);
+    // Rework (11 Nov): with the three chips showing, the search box may give way to 5rem so the row fits at the 1,150px fold point.
+    assert.match(full, /<form role="search" class="relative flex min-w-\[5rem\] flex-1/);
+    assert.match(h.header({ fit: "folded" }), /<form role="search" class="relative flex min-w-\[7rem\] flex-1/);
     assert.match(code("components/ops/WorkHeader.jsx"), /dataAttr="filters" rootClassName="shrink-0" align=\{fit === "compact" \? "right" : "left"\}/);
   });
 });

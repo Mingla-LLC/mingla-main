@@ -113,7 +113,8 @@ export function WorkHeader({
           ))}
         </nav>
       )}
-      <form role="search" className={`relative flex ${fit === "compact" ? "min-w-0" : "min-w-[7rem]"} flex-1 basis-[10rem] items-center lg:max-w-[16rem]`} onSubmit={(e) => { e.preventDefault(); onSearch(typed.trim().slice(0, 160)); }}>
+      {/* #4255 rework: with all three chips (a frame of 1,150px and up) the search box may give 2rem more, so the row still fits at the fold point. */}
+      <form role="search" className={`relative flex ${fit === "compact" ? "min-w-0" : fit === "full" ? "min-w-[5rem]" : "min-w-[7rem]"} flex-1 basis-[10rem] items-center lg:max-w-[16rem]`} onSubmit={(e) => { e.preventDefault(); onSearch(typed.trim().slice(0, 160)); }}>
         <Search aria-hidden="true" className="pointer-events-none absolute left-2.5 h-3.5 w-3.5 text-[var(--color-text-tertiary)]" />
         <label className="sr-only" htmlFor="work-search">Search cards</label>
         <input id="work-search" type="search" value={typed} maxLength={160} placeholder="Search cards"
