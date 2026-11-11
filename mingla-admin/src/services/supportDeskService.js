@@ -157,6 +157,11 @@ export async function uploadSupportImage({ ticketId, blob, mime, width, height, 
   return registered.attachment_id;
 }
 
+/** A support-* function that is not deployed yet: say so, never crash. */
+function notDeployed(name) {
+  return `Support actions aren't live yet. "${name}" isn't deployed, so this can't be saved until the support functions ship.`;
+}
+
 const SEND_ERRORS = {
   ticket_closed: "This ticket is closed, so it can't take new messages.",
   content_required: "Write a message or add an image first.",
@@ -175,6 +180,7 @@ export async function sendSupportMessage(body) {
     const { data, error } = await invokeWithRefresh("support-send", { body });
     if (error) {
       const status = error?.context?.status ?? error?.status;
+      if (status === 404) return { ok: false, error: notDeployed("support-send") };
       if (isSessionExpiredError(error) || status === 401) {
         return { ok: false, sessionExpired: true, error: SESSION_EXPIRED_MESSAGE };
       }
@@ -195,6 +201,7 @@ export async function invokeSupportFunction(name, body) {
     const { data, error } = await invokeWithRefresh(name, { body });
     if (error) {
       const status = error?.context?.status ?? error?.status;
+      if (status === 404) return { ok: false, error: notDeployed(name) };
       if (isSessionExpiredError(error) || status === 401) {
         return { ok: false, sessionExpired: true, error: SESSION_EXPIRED_MESSAGE };
       }

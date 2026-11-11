@@ -299,7 +299,9 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true, onCo
   const headerActions = (
     <>
       <Button variant="primary" size="sm" icon={Plus} onClick={() => setNewTicketOpen(true)}>New ticket</Button>
-      {canManageAgents && <a href={MANAGE_SUPPORT_PEOPLE_HREF} className={MANAGE_SUPPORT_PEOPLE_CLASS}>Manage who's on Support</a>}
+      {canManageAgents && (
+        <a href={MANAGE_SUPPORT_PEOPLE_HREF} className={MANAGE_SUPPORT_PEOPLE_CLASS}>Manage who's on Support</a>
+      )}
       <Button variant="secondary" size="sm" icon={RefreshCw} onClick={() => void loadQueue()}>Refresh</Button>
     </>
   );
@@ -307,7 +309,7 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true, onCo
   const customerRows = visibleTickets.filter((t) => t.origin !== "staff").length;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {embedded ? (
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-[var(--color-text-secondary)]">Every support ticket, from customers and staff. {badgeCounts.unassigned} unassigned.</p>

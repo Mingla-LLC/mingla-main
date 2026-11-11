@@ -18,10 +18,13 @@ function read(rel) {
 }
 
 describe("#3720 support grant + session (happy)", () => {
-  it("invokeSupportFn uses invokeWithRefresh and surfaces sessionExpired", () => {
+  // [TEST-MOD #4382] the support-* invoke helpers moved into
+  // services/supportDeskService.js (invokeSupportFunction, sendSupportMessage).
+  it("invokeSupportFunction uses invokeWithRefresh and surfaces sessionExpired", () => {
     const page = read("src/pages/SupportDeskPage.jsx");
-    const helper = page.match(/async function invokeSupportFn[\s\S]*?\n\}/);
-    assert.ok(helper, "invokeSupportFn must exist");
+    const service = read("src/services/supportDeskService.js");
+    const helper = service.match(/export async function invokeSupportFunction[\s\S]*?\n\}/);
+    assert.ok(helper, "invokeSupportFunction must exist");
     assert.match(helper[0], /invokeWithRefresh\(/);
     assert.equal(helper[0].includes("supabase.functions.invoke"), false);
     assert.match(helper[0], /sessionExpired:\s*true/);
@@ -37,7 +40,7 @@ describe("#3720 support grant + session (happy)", () => {
     assert.equal(/const handleGrant|const handleRevoke|support-grant-staff/.test(page), false);
     // #4130 Wave 6: People and roles is a tab of the Support page.
     assert.match(page, /MANAGE_SUPPORT_PEOPLE_HREF = "#\/support\?tab=team"/);
-    assert.match(page, /\{canManageAgents && \(\s*<a href=\{MANAGE_SUPPORT_PEOPLE_HREF\}/);
+    assert.match(page, /\{canManageAgents && \(?\s*<a href=\{MANAGE_SUPPORT_PEOPLE_HREF\}/);
     assert.match(page, /Manage who's on Support/);
   });
 
