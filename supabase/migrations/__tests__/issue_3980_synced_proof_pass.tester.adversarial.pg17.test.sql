@@ -153,7 +153,7 @@ insert into public.conversations (id) values ('39970000-0000-4000-c500-000000000
 insert into public.support_tickets (id, requester_user_id, requester_segment, subject, status, priority, conversation_id)
 values ('39970000-0000-4000-c400-000000000001', '39970000-0000-4000-a000-000000000004', 'business', 'PP trip will not publish', 'open', 'normal', '39970000-0000-4000-c500-000000000001');
 insert into public.support_product_signals (id, client_request_id, signal_kind, state, title, problem_statement, product_area, user_journey, impact_summary, next_update_at, next_step, customer_reply_draft, created_by)
-values ('39970000-0000-4000-c600-000000000001', gen_random_uuid(), 'bug', 'linked', 'PP trips', 'Trips do not publish.', 'Trips', 'Publish a trip', 'Hosts cannot publish.', now() + interval '1 day', 'Engineering fixes it.', 'We are on it.', '39970000-0000-4000-a000-000000000003');
+values ('39970000-0000-4000-c600-000000000001', gen_random_uuid(), 'bug', 'planned', 'PP trips', 'Trips do not publish.', 'Trips', 'Publish a trip', 'Hosts cannot publish.', now() + interval '1 day', 'Engineering fixes it.', 'We are on it.', '39970000-0000-4000-a000-000000000003');
 insert into public.support_product_signal_sources (signal_id, source_kind, source_id, linked_by)
 values ('39970000-0000-4000-c600-000000000001', 'support_ticket', '39970000-0000-4000-c400-000000000001', '39970000-0000-4000-a000-000000000003');
 insert into public.product_avengers_items (id, issue_number, issue_node_id, project_item_id, issue_url, issue_title, issue_state, board_status, board_horizon)

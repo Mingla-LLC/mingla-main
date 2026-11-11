@@ -15,7 +15,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import { Button } from "../ui/Button";
 import { SectionCard } from "../ui/Card";
-import { ProductSignalModal } from "./SupportWorkflowModals";
+import { SendToProductModal } from "../support/SendToProductModal";
 import {
   addBrandGroupReaction,
   listBrandGroupInbox,
@@ -654,6 +654,7 @@ export function BrandGroupsPanel({ onCounts }) {
     setSignalSource({
       id: message.id,
       source_kind: "brand_group_message",
+      label: "this brand group message",
       subject: `${selectedGroup?.brand_name || "Brand group"}: ${message.content.slice(0, 120)}`,
       details: evidence,
       requester_user_id: message.sender_id,
@@ -900,14 +901,14 @@ export function BrandGroupsPanel({ onCounts }) {
         )}
       </div>
 
-      <ProductSignalModal
+      <SendToProductModal
         source={signalSource}
         signals={signals}
         onClose={() => setSignalSource(null)}
         onCreated={async () => {
           setSignals(await listProductSignals());
           setSelectedMessageIds([]);
-          addToast({ variant: "success", title: "Private Product signal created" });
+          addToast({ variant: "success", title: "Sent to Product" });
         }}
         onLinked={async () => {
           setSignals(await listProductSignals());

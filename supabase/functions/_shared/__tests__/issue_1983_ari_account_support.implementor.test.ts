@@ -344,19 +344,31 @@ Deno.test("#1983 implementor: missing confirm_phrase DELETE fails", async () => 
   assertEquals(invokes.length, 0);
 });
 
-Deno.test("#1983 implementor: create_support_ticket RPC args", async () => {
+// [TEST-MOD #4382] Ari now opens a Host request through the same create path
+// as the Host app: topic, first message and brand, with the agent operation
+// id as the request id so a retried proposal opens one ticket.
+Deno.test("#4382 implementor: create_support_ticket uses the Host create path", async () => {
   const tool = domainTool("create_support_ticket");
   const { client, rpcs } = accountClient();
+  const operationId = "4382aaaa-0000-4000-8000-000000000001";
   await tool.executor(
-    { subject: "Ari E2E test", brand_id: BRAND },
+    { subject: "Ari E2E test", message: "Payout shows zero", topic: "payouts", brand_id: BRAND },
     client,
     USER,
+    { operationId } as never,
   );
   assertEquals(rpcs.length, 1);
-  assertEquals(rpcs[0].name, "create_support_ticket");
+  assertEquals(rpcs[0].name, "issue_4382_create_customer_ticket");
   assertEquals(rpcs[0].args, {
+    p_client_request_id: operationId,
+    p_app: "host",
+    p_topic: "payouts",
     p_subject: "Ari E2E test",
+    p_message: "Payout shows zero",
+    p_attachment_ids: [],
+    p_client_meta: { source_screen: "Ari" },
     p_brand_id: BRAND,
+    p_visibility: "person",
   });
 });
 

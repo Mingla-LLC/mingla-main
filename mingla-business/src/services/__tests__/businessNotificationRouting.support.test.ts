@@ -50,6 +50,12 @@ describe("META-ORCH-1104 support deep-link routing", () => {
     expect(resolveBusinessNavTarget(data)).toBe("/support/tkt-9");
   });
 
+  test("#4382 status-change and Product pushes open the request thread", () => {
+    for (const type of ["business.support_status_changed", "business.support_product_update"]) {
+      expect(resolveBusinessNavTarget({ type, ticket_id: "tkt-5" } as BusinessPushData)).toBe("/support/tkt-5");
+    }
+  });
+
   test("business.support_new_ticket resolves to the thread via relatedId fallback", () => {
     const data: BusinessPushData = {
       type: "business.support_new_ticket",

@@ -118,19 +118,26 @@ EXCEPTION WHEN OTHERS THEN
 END;
 $$;
 
--- Service-role style direct writes (the trigger path every writer shares).
+-- [TEST-MOD #4382] Staff threads are internal support tickets, created by
+-- issue_4382_create_staff_ticket as the creator. Other writes stay direct
+-- (the trigger path every writer shares).
 CREATE FUNCTION pg_temp.t3988c_thread(p_creator text, p_subject text, p_status text DEFAULT 'open')
-RETURNS uuid LANGUAGE sql AS $$
-  INSERT INTO public.support_internal_threads (
-    client_request_id, subject, details, status, priority, next_update_at,
-    next_update_note, created_by
-  ) VALUES (
-    gen_random_uuid(), p_subject, 'SECRET THREAD DETAILS 555-0199', p_status, 'high',
-    now() + interval '1 hour', 'SECRET NOTE', pg_temp.t3988c_id(p_creator)
-  ) RETURNING id
+RETURNS uuid LANGUAGE plpgsql AS $$
+DECLARE v_id uuid;
+BEGIN
+  PERFORM set_config('request.jwt.claim.sub', pg_temp.t3988c_id(p_creator)::text, true);
+  v_id := public.issue_4382_create_staff_ticket(
+    gen_random_uuid(), 'internal', p_subject, 'SECRET THREAD DETAILS 555-0199',
+    NULL, NULL, NULL, 'high', NULL, NULL, now() + interval '1 hour', 'SECRET NOTE', NULL, ARRAY[]::uuid[]);
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+  IF p_status <> 'open' THEN
+    UPDATE public.support_tickets SET status = p_status WHERE id = v_id;
+  END IF;
+  RETURN v_id;
+END;
 $$;
 
-CREATE FUNCTION pg_temp.t3988c_signal(p_creator text, p_title text, p_state text DEFAULT 'needs_review')
+CREATE FUNCTION pg_temp.t3988c_signal(p_creator text, p_title text, p_state text DEFAULT 'new')
 RETURNS uuid LANGUAGE sql AS $$
   INSERT INTO public.support_product_signals (
     client_request_id, signal_kind, state, title, problem_statement, product_area,
@@ -170,7 +177,7 @@ BEGIN
   UPDATE public.support_staff SET enabled = true
    WHERE user_id IN (pg_temp.t3988c_id('lead1'), pg_temp.t3988c_id('lead2'), pg_temp.t3988c_id('mate2'));
   -- Closed off so later sweeps ignore it.
-  UPDATE public.support_internal_threads SET status = 'closed' WHERE id = v_thread;
+  UPDATE public.support_tickets SET status = 'closed' WHERE id = v_thread;
 END;
 $solo$;
 
@@ -202,8 +209,8 @@ BEGIN
   IF EXISTS (SELECT 1 FROM public.notification_outbox WHERE idempotency_key LIKE '%DELETE%') THEN
     RAISE EXCEPTION 'subject_reached_idempotency_key';
   END IF;
-  UPDATE public.support_internal_threads SET status = 'closed' WHERE id = v_thread;
-  UPDATE public.support_product_signals SET state = 'closed', revision = revision + 1 WHERE id = v_signal;
+  UPDATE public.support_tickets SET status = 'closed' WHERE id = v_thread;
+  UPDATE public.support_product_signals SET state = 'wont_do', wont_do_reason = 'Closed in the test', revision = revision + 1 WHERE id = v_signal;
 END;
 $hostile$;
 
@@ -215,41 +222,41 @@ DECLARE
   v text;
 BEGIN
   v_thread := pg_temp.t3988c_thread('mate', 'Lead owns this');
-  UPDATE public.support_internal_threads SET assigned_staff_id = pg_temp.t3988c_id('lead1'),
-         revision = revision + 1 WHERE id = v_thread;
-  SELECT next_update_at INTO v_due FROM public.support_internal_threads WHERE id = v_thread;
+  UPDATE public.support_tickets SET assigned_staff_id = pg_temp.t3988c_id('lead1'),
+         support_workflow_revision = support_workflow_revision + 1 WHERE id = v_thread;
+  SELECT next_update_at INTO v_due FROM public.support_tickets WHERE id = v_thread;
 
   -- 25h past the deadline on the very first sweep: owner copy and lead copies at once.
   PERFORM public.issue_3988_support_overdue_sweep(v_due + interval '25 hours');
   PERFORM public.issue_3988_support_overdue_sweep(v_due + interval '25 hours');
-  v := pg_temp.t3988c_rows('admin.support_overdue:internal_thread:' || v_thread::text || ':%');
+  v := pg_temp.t3988c_rows('admin.support_overdue:support_ticket:' || v_thread::text || ':%');
   IF v <> 'lead1/owner,lead2/lead' THEN
     RAISE EXCEPTION 'lead_owner_double_or_wrong:%', v;
   END IF;
 
   -- Moved LATER: nothing until the new deadline passes, then exactly one more.
-  UPDATE public.support_internal_threads SET next_update_at = v_due + interval '30 hours' WHERE id = v_thread;
+  UPDATE public.support_tickets SET next_update_at = v_due + interval '30 hours' WHERE id = v_thread;
   PERFORM public.issue_3988_support_overdue_sweep(v_due + interval '29 hours');
-  IF pg_temp.t3988c_count('admin.support_overdue:internal_thread:' || v_thread::text || ':%') <> 2 THEN
+  IF pg_temp.t3988c_count('admin.support_overdue:support_ticket:' || v_thread::text || ':%') <> 2 THEN
     RAISE EXCEPTION 'moved_later_fired_early';
   END IF;
   PERFORM public.issue_3988_support_overdue_sweep(v_due + interval '31 hours');
   PERFORM public.issue_3988_support_overdue_sweep(v_due + interval '31 hours 15 minutes');
-  IF pg_temp.t3988c_count('admin.support_overdue:internal_thread:' || v_thread::text || ':%:owner:%') <> 2 THEN
+  IF pg_temp.t3988c_count('admin.support_overdue:support_ticket:' || v_thread::text || ':%:owner:%') <> 2 THEN
     RAISE EXCEPTION 'moved_later_not_exactly_once';
   END IF;
 
   -- Moved EARLIER (to a new, already-past value): exactly one more owner copy.
-  UPDATE public.support_internal_threads SET next_update_at = v_due + interval '20 hours' WHERE id = v_thread;
+  UPDATE public.support_tickets SET next_update_at = v_due + interval '20 hours' WHERE id = v_thread;
   PERFORM public.issue_3988_support_overdue_sweep(v_due + interval '31 hours 30 minutes');
   PERFORM public.issue_3988_support_overdue_sweep(v_due + interval '31 hours 45 minutes');
-  IF pg_temp.t3988c_count('admin.support_overdue:internal_thread:' || v_thread::text || ':%:owner:%') <> 3 THEN
+  IF pg_temp.t3988c_count('admin.support_overdue:support_ticket:' || v_thread::text || ':%:owner:%') <> 3 THEN
     RAISE EXCEPTION 'moved_earlier_not_exactly_once';
   END IF;
   -- Never two rows for the same person, deadline and audience.
   IF EXISTS (
     SELECT 1 FROM public.notification_outbox
-    WHERE idempotency_key LIKE 'admin.support_overdue:internal_thread:' || v_thread::text || ':%'
+    WHERE idempotency_key LIKE 'admin.support_overdue:support_ticket:' || v_thread::text || ':%'
     GROUP BY user_id, payload->>'due_at', payload->>'audience' HAVING count(*) > 1
   ) THEN
     RAISE EXCEPTION 'overdue_duplicate_per_deadline';
@@ -257,12 +264,12 @@ BEGIN
   -- Lead1 never got a lead copy of an item lead1 owns.
   IF EXISTS (
     SELECT 1 FROM public.notification_outbox
-    WHERE idempotency_key LIKE 'admin.support_overdue:internal_thread:' || v_thread::text || ':%:lead:%'
+    WHERE idempotency_key LIKE 'admin.support_overdue:support_ticket:' || v_thread::text || ':%:lead:%'
       AND user_id = pg_temp.t3988c_id('lead1')
   ) THEN
     RAISE EXCEPTION 'owner_lead_got_lead_copy';
   END IF;
-  UPDATE public.support_internal_threads SET status = 'closed' WHERE id = v_thread;
+  UPDATE public.support_tickets SET status = 'closed' WHERE id = v_thread;
 END;
 $overdue$;
 
@@ -271,12 +278,12 @@ DO $finished$
 DECLARE
   v_resolved uuid := pg_temp.t3988c_thread('mate', 'Already resolved', 'resolved');
   v_closed uuid := pg_temp.t3988c_thread('mate', 'Already closed', 'closed');
-  v_released uuid := pg_temp.t3988c_signal('mate', 'Already released', 'released');
-  v_sclosed uuid := pg_temp.t3988c_signal('mate', 'Already closed signal', 'closed');
+  v_released uuid := pg_temp.t3988c_signal('mate', 'Already released', 'shipped');
+  v_sclosed uuid := pg_temp.t3988c_signal('mate', 'Already closed signal', 'told');
 BEGIN
   PERFORM public.issue_3988_support_overdue_sweep(now() + interval '90 days');
-  IF pg_temp.t3988c_count('admin.support_overdue:internal_thread:' || v_resolved::text || ':%')
-   + pg_temp.t3988c_count('admin.support_overdue:internal_thread:' || v_closed::text || ':%')
+  IF pg_temp.t3988c_count('admin.support_overdue:support_ticket:' || v_resolved::text || ':%')
+   + pg_temp.t3988c_count('admin.support_overdue:support_ticket:' || v_closed::text || ':%')
    + pg_temp.t3988c_count('admin.support_overdue:product_signal:' || v_released::text || ':%')
    + pg_temp.t3988c_count('admin.support_overdue:product_signal:' || v_sclosed::text || ':%') <> 0 THEN
     RAISE EXCEPTION 'finished_work_reminded';
@@ -291,11 +298,11 @@ DECLARE
   v_due timestamptz;
   v text;
 BEGIN
-  UPDATE public.support_internal_threads SET assigned_staff_id = pg_temp.t3988c_id('mate2'),
-         revision = revision + 1 WHERE id = v_thread;
-  SELECT next_update_at INTO v_due FROM public.support_internal_threads WHERE id = v_thread;
+  UPDATE public.support_tickets SET assigned_staff_id = pg_temp.t3988c_id('mate2'),
+         support_workflow_revision = support_workflow_revision + 1 WHERE id = v_thread;
+  SELECT next_update_at INTO v_due FROM public.support_tickets WHERE id = v_thread;
   PERFORM public.issue_3988_support_overdue_sweep(v_due + interval '1 hour');
-  IF pg_temp.t3988c_rows('admin.support_overdue:internal_thread:' || v_thread::text || ':%') <> 'mate2/owner' THEN
+  IF pg_temp.t3988c_rows('admin.support_overdue:support_ticket:' || v_thread::text || ':%') <> 'mate2/owner' THEN
     RAISE EXCEPTION 'owner_reminder_missing';
   END IF;
 
@@ -303,16 +310,16 @@ BEGIN
   UPDATE public.admin_team_members SET status = 'revoked'
    WHERE email IN ('issue3988c-mate2@test.local', 'issue3988c-lead2@test.local');
   PERFORM public.issue_3988_support_overdue_sweep(v_due + interval '25 hours');
-  v := pg_temp.t3988c_rows('admin.support_overdue:internal_thread:' || v_thread::text || ':%');
+  v := pg_temp.t3988c_rows('admin.support_overdue:support_ticket:' || v_thread::text || ':%');
   IF v <> 'lead1/lead,mate2/owner' THEN
     RAISE EXCEPTION 'removed_teammate_still_alerted:%', v;
   END IF;
   -- And a new deadline for the departed owner reaches nobody but the leads.
-  UPDATE public.support_internal_threads SET next_update_at = v_due + interval '2 days' WHERE id = v_thread;
+  UPDATE public.support_tickets SET next_update_at = v_due + interval '2 days' WHERE id = v_thread;
   PERFORM public.issue_3988_support_overdue_sweep(v_due + interval '4 days');
   IF EXISTS (
     SELECT 1 FROM public.notification_outbox
-    WHERE idempotency_key LIKE 'admin.support_overdue:internal_thread:' || v_thread::text || ':%'
+    WHERE idempotency_key LIKE 'admin.support_overdue:support_ticket:' || v_thread::text || ':%'
       AND user_id IN (pg_temp.t3988c_id('mate2'), pg_temp.t3988c_id('lead2'))
       AND payload->>'due_at' <> (to_jsonb(v_due) #>> '{}')
   ) THEN
@@ -321,7 +328,7 @@ BEGIN
 
   UPDATE public.admin_team_members SET status = 'active'
    WHERE email IN ('issue3988c-mate2@test.local', 'issue3988c-lead2@test.local');
-  UPDATE public.support_internal_threads SET status = 'closed' WHERE id = v_thread;
+  UPDATE public.support_tickets SET status = 'closed' WHERE id = v_thread;
 END;
 $removed$;
 
@@ -334,17 +341,17 @@ DECLARE
 BEGIN
   SELECT count(*) INTO v_before FROM public.notification_outbox;
   -- Same-value writes to the watched columns, across every row.
-  UPDATE public.support_internal_threads SET assigned_staff_id = assigned_staff_id, revision = revision + 1;
+  UPDATE public.support_tickets SET assigned_staff_id = assigned_staff_id, support_workflow_revision = support_workflow_revision + 1;
   UPDATE public.support_product_signals SET owner_user_id = owner_user_id, state = state, revision = revision + 1;
   UPDATE public.product_avengers_items SET release_verified_at = release_verified_at;
   -- Writes to columns the triggers do not watch.
-  UPDATE public.support_internal_threads SET priority = 'low', updated_at = now();
+  UPDATE public.support_tickets SET priority = 'low', last_message_at = now();
   UPDATE public.support_product_signals SET priority = 'low', updated_at = now();
   IF (SELECT count(*) FROM public.notification_outbox) <> v_before THEN
     RAISE EXCEPTION 'maintenance_write_enqueued:%', (SELECT count(*) FROM public.notification_outbox) - v_before;
   END IF;
-  UPDATE public.support_internal_threads SET status = 'closed' WHERE id = v_thread;
-  UPDATE public.support_product_signals SET state = 'closed' WHERE id = v_signal;
+  UPDATE public.support_tickets SET status = 'closed' WHERE id = v_thread;
+  UPDATE public.support_product_signals SET state = 'wont_do', wont_do_reason = 'Closed in the test' WHERE id = v_signal;
 END;
 $bulk$;
 
@@ -367,8 +374,8 @@ BEGIN
   PERFORM public.issue_3988_enqueue_support_reply_alerts(v_ticket, v_msg, pg_temp.t3988c_id('outside'));
 
   v_thread := pg_temp.t3988c_thread('mate', 'Payload thread');
-  UPDATE public.support_internal_threads SET assigned_staff_id = pg_temp.t3988c_id('mate2'),
-         revision = revision + 1 WHERE id = v_thread;
+  UPDATE public.support_tickets SET assigned_staff_id = pg_temp.t3988c_id('mate2'),
+         support_workflow_revision = support_workflow_revision + 1 WHERE id = v_thread;
   v_signal := pg_temp.t3988c_signal('mate', 'Payload signal');
   UPDATE public.support_product_signals SET owner_user_id = pg_temp.t3988c_id('lead2'),
          revision = revision + 1 WHERE id = v_signal;
@@ -377,7 +384,11 @@ BEGIN
   RETURNING id INTO v_item;
   INSERT INTO public.product_signal_avengers_links (signal_id, item_id, link_kind, linked_by)
   VALUES (v_signal, v_item, 'existing', pg_temp.t3988c_id('lead1'));
-  UPDATE public.support_product_signals SET state = 'released', revision = revision + 1 WHERE id = v_signal;
+  -- [TEST-MOD #4382] shipped (was released) needs the verified release.
+  UPDATE public.product_avengers_items SET release_verified_at = now() WHERE id = v_item;
+  UPDATE public.support_product_signals SET state = 'triaged', revision = revision + 1 WHERE id = v_signal;
+  UPDATE public.support_product_signals SET state = 'planned', revision = revision + 1 WHERE id = v_signal;
+  UPDATE public.support_product_signals SET state = 'shipped', revision = revision + 1 WHERE id = v_signal;
   PERFORM public.issue_3988_support_overdue_sweep(now() + interval '3 hours');
 
   IF (SELECT count(DISTINCT category_key) FROM public.notification_outbox o
@@ -399,8 +410,8 @@ BEGIN
       'admin.product_signal_progress')
     AND NOT (k.key = ANY (CASE o.category_key
       WHEN 'business.support_ticket_reply' THEN ARRAY['ticket_id','message_id','subject','priority','push','deep_link','admin_link']
-      WHEN 'admin.support_staff_ticket' THEN ARRAY['thread_id','subject','priority','deep_link']
-      WHEN 'admin.support_assigned' THEN ARRAY['thread_id','subject','priority','deep_link']
+      WHEN 'admin.support_staff_ticket' THEN ARRAY['ticket_id','ticket_number','subject','priority','deep_link']
+      WHEN 'admin.support_assigned' THEN ARRAY['ticket_id','ticket_number','subject','priority','deep_link']
       WHEN 'admin.support_overdue' THEN ARRAY['kind','item_id','title','priority','due_at','deep_link','audience']
       WHEN 'admin.product_signal_new' THEN ARRAY['signal_id','title','signal_kind','priority','deep_link','push']
       WHEN 'admin.product_signal_assigned' THEN ARRAY['signal_id','title','signal_kind','priority','deep_link']
@@ -419,7 +430,7 @@ BEGIN
   IF EXISTS (
     SELECT 1 FROM public.notification_outbox o JOIN t3988c_people p ON p.id = o.user_id
     WHERE o.category_key LIKE 'admin.%' AND o.category_key <> 'admin.team_mention'
-      AND o.payload->>'deep_link' !~ '^https://admin\.usemingla\.com/#/community-support\?tab=(support&thread|product&signal)=[0-9a-f-]{36}$'
+      AND o.payload->>'deep_link' !~ '^https://admin\.usemingla\.com/#/community-support\?tab=(support&ticket|product&signal)=[0-9a-f-]{36}$'
   ) THEN
     RAISE EXCEPTION 'admin_link_shape_wrong';
   END IF;

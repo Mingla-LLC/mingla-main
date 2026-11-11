@@ -47,6 +47,13 @@ import {
   ISSUE_4111_EMAIL_CATEGORIES,
   ISSUE_4111_ENQUIRY_CATEGORIES,
 } from "./issue4111EnquiryNotifications.ts";
+// #4382 — customer-facing support notifications (Host + Explorer).
+import {
+  isIssue4382SupportCategory,
+  issue4382DeepLinkValid,
+  issue4382ProviderSafeKeys,
+  ISSUE_4382_SUPPORT_CATEGORIES,
+} from "./issue4382SupportNotifications.ts";
 // #3682 wave 3 — the brand invite email's button and manage note.
 import { brandReachEmailCta } from "./brandReachMessages.ts";
 // #4383: where an Admin push may open (the one destination table).
@@ -265,6 +272,9 @@ function validDeepLink(
   if (isIssue4111EnquiryCategory(category)) {
     return issue4111DeepLinkValid(category, deepLink, payload);
   }
+  if (isIssue4382SupportCategory(category)) {
+    return issue4382DeepLinkValid(category, deepLink, payload);
+  }
   if (category === "business.community_roadmap_updated") {
     return deepLink === "mingla-business://community/roadmap";
   }
@@ -340,6 +350,9 @@ export function providerSafePayload(
   if (isIssue4111EnquiryCategory(category)) {
     return pick(issue4111ProviderSafeKeys());
   }
+  if (isIssue4382SupportCategory(category)) {
+    return pick(issue4382ProviderSafeKeys());
+  }
   // #4063 — consumer purchase, RSVP, and Stay payloads contain the contact and
   // message-rendering facts needed by email/SMS. None of those facts belong in
   // a third-party push provider's data bag. The mobile app routes these pushes
@@ -369,6 +382,7 @@ const ISSUE_3720_CATEGORIES = new Set([
   ...ADMIN_PUSH_CATEGORIES,
   ...ISSUE_3988_ALERT_CATEGORIES,
   ...ISSUE_4111_ENQUIRY_CATEGORIES,
+  ...ISSUE_4382_SUPPORT_CATEGORIES,
 ]);
 const SAFE_DENIAL_REASONS = new Set([
   "category_inactive",

@@ -62,22 +62,26 @@ describe("META-ORCH-1104 Phase 2 — Support desk + segmentation (happy path)", 
   });
 
   it("SupportDeskPage renders a support_tickets queue with status + unassigned filters", () => {
+    // [TEST-MOD #4382] the desk reads through services/supportDeskService.js
+    // and the views are Needs reply, Mine, Unassigned, Overdue, Waiting on
+    // customer, Resolved and All.
     const page = read("src/pages/SupportDeskPage.jsx");
-    assert.match(page, /from\("support_tickets"\)/, "queue must read support_tickets");
+    const service = read("src/services/supportDeskService.js");
+    assert.match(service, /from\("support_tickets"\)/, "queue must read support_tickets");
     // #4130 Wave 6: the status tabs and the "Unassigned only" box became the
     // inbox filters (Open, Unassigned, Overdue, Resolved, All) with counts
     // from the inbox's own rows (lib/supportTicketMetrics.js). The unassigned
     // filter is worked out client-side over every row the desk loads (live
     // chats and staff threads), so there is no .is("assigned_staff_id", null)
     // query; that pin had been stale since #3720 merged the two sources.
-    assert.match(page, /SUPPORT_INBOX_FILTERS\.map\(\(option\) =>/);
-    assert.match(page, /supportInboxRows\(tickets, inboxFilter\)/);
+    assert.match(page, /SUPPORT_INBOX_VIEWS\.filter\(\(v\) => v\.group === group\)\.map\(\(option\) =>/);
+    assert.match(page, /supportInboxRows\(tickets, view, ctx\)/);
     const metrics = read("src/lib/supportTicketMetrics.js");
-    for (const id of ["open", "unassigned", "overdue", "resolved", "all"]) {
+    for (const id of ["needs", "mine", "unassigned", "overdue", "waiting", "resolved", "all"]) {
       assert.match(metrics, new RegExp(`id: "${id}"`), `inbox filter ${id} present`);
     }
     // sorted newest-activity-first
-    assert.match(page, /\.order\("last_message_at",\s*\{\s*ascending:\s*false\s*\}\)/);
+    assert.match(service, /\.order\("last_message_at",\s*\{\s*ascending:\s*false\s*\}\)/);
   });
 
   // [TEST-MOD-APPROVED #3720] reply is only via support-send with content
@@ -90,13 +94,14 @@ describe("META-ORCH-1104 Phase 2 — Support desk + segmentation (happy path)", 
     assert.match(page, /support-claim/);
     assert.match(page, /support-set-status/);
     assert.equal(page.includes("support-grant-staff"), false);
-    // #3720: reply goes through support-send with the message body
-    assert.match(page, /support-send/);
-    assert.match(page, /content:\s*body/);
-    // Only comments may mention the retired notifyOnly path.
-    const replyMatch = page.match(/const handleReply[\s\S]*?\}, \[/);
-    assert.ok(replyMatch, "handleReply must exist");
-    assert.equal(replyMatch[0].includes("notifyOnly"), false, "handleReply must not use notifyOnly");
+    // #3720 / [TEST-MOD #4382]: the composer sends through support-send with
+    // the body built by buildSendBody.
+    const composer = read("src/components/support/SupportComposer.jsx");
+    const service = read("src/services/supportDeskService.js");
+    assert.match(service, /invokeWithRefresh\("support-send", \{ body \}\)/);
+    assert.match(composer, /const body = buildSendBody\(/);
+    assert.match(composer, /sendSupportMessage\(body\)/);
+    assert.equal(`${composer}${service}`.includes("notifyOnly"), false, "the composer must not use notifyOnly");
     // priority + status selects
     assert.match(page, /handleSetStatus/);
     assert.match(page, /handleSetPriority/);

@@ -332,7 +332,7 @@ declare v text;
 begin
   insert into public.support_product_signals (id, client_request_id, signal_kind, state, title, problem_statement, product_area, user_journey,
     impact_summary, next_update_at, next_step, customer_reply_draft, created_by)
-  values ('39850000-0000-4000-c200-000000000051', gen_random_uuid(), 'bug', 'linked', 'R5 signal', 'Something is wrong.', 'Payouts', 'Host waits',
+  values ('39850000-0000-4000-c200-000000000051', gen_random_uuid(), 'bug', 'planned', 'R5 signal', 'Something is wrong.', 'Payouts', 'Host waits',
     'Hosts are upset', now() + interval '1 day', 'Fix it', 'We are on it.', '39850000-0000-4000-a000-000000000004');
   insert into public.product_avengers_items (id, issue_number, issue_node_id, project_item_id, issue_url, issue_title, issue_state, board_status) values
     ('39850000-0000-4000-c300-000000000051', 7501, 'I_r5', 'PVTI_r5', 'https://github.com/Mingla-LLC/mingla-main/issues/7501', 'R5 issue', 'OPEN', 'In Progress');
@@ -369,7 +369,7 @@ begin
   perform pg_temp.t3980w2r_check('R6', 'the chip reads the higher pull request: Shipped, not Live', pg_temp.t3980w2r_label(7601), 'Shipped');
   insert into public.support_product_signals (id, client_request_id, signal_kind, state, title, problem_statement, product_area, user_journey,
     impact_summary, next_update_at, next_step, customer_reply_draft, created_by)
-  values ('39850000-0000-4000-c200-000000000061', gen_random_uuid(), 'bug', 'linked', 'R6 signal', 'Something is wrong.', 'Payouts', 'Host waits',
+  values ('39850000-0000-4000-c200-000000000061', gen_random_uuid(), 'bug', 'planned', 'R6 signal', 'Something is wrong.', 'Payouts', 'Host waits',
     'Hosts are upset', now() + interval '1 day', 'Fix it', 'We are on it.', '39850000-0000-4000-a000-000000000004');
   insert into public.product_avengers_items (id, issue_number, issue_node_id, project_item_id, issue_url, issue_title, issue_state, board_status) values
     ('39850000-0000-4000-c300-000000000061', 7601, 'I_r6', 'PVTI_r6', 'https://github.com/Mingla-LLC/mingla-main/issues/7601', 'R6 issue', 'CLOSED', 'Done');

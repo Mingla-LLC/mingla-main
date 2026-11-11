@@ -3,7 +3,11 @@
  *
  * The status lifecycle (SPEC §2.1, enforced in the edge fn, not a DB trigger):
  *   new → open → pending ↔ open → resolved → closed
- *   resolved/closed may reopen → open on a new requester message.
+ *   Staff may reopen resolved/closed → open.
+ *   #4382: a customer message reopens pending/resolved → open (built in the
+ *   send path, issue_4382_post_support_message, mirrored by
+ *   statusAfterCustomerMessage below); a closed ticket refuses replies.
+ *   Waiting (pending) needs a next-update time in the future.
  *
  * Pure + unit-testable so the adversarial "illegal transition" test (T-2.4)
  * runs without a live DB.
@@ -51,4 +55,32 @@ export function resolvedAtForTransition(
   // reopened → clear resolved_at
   if (to === "open" || to === "pending") return null;
   return priorResolvedAt;
+}
+
+/** #4382 — Waiting needs a next-update promise that is still in the future. */
+export function waitingNeedsNextUpdate(
+  to: SupportStatus,
+  nextUpdateAt: string | null,
+  nowMs = Date.now(),
+): boolean {
+  if (to !== "pending") return false;
+  const at = nextUpdateAt ? Date.parse(nextUpdateAt) : Number.NaN;
+  return !Number.isFinite(at) || at <= nowMs;
+}
+
+/**
+ * #4382 — what a customer message does to a ticket. Mirrors the database
+ * send path: Waiting or Resolved goes back to Open, a closed ticket refuses.
+ */
+export function statusAfterCustomerMessage(
+  from: SupportStatus,
+): { ok: true; status: SupportStatus; reopened: boolean } | {
+  ok: false;
+  error: "ticket_closed";
+} {
+  if (from === "closed") return { ok: false, error: "ticket_closed" };
+  if (from === "pending" || from === "resolved") {
+    return { ok: true, status: "open", reopened: true };
+  }
+  return { ok: true, status: from, reopened: false };
 }

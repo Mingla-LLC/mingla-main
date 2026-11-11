@@ -34,6 +34,8 @@ import {
   ISSUE_4111_EMAIL_CATEGORIES,
   ISSUE_4111_ENQUIRY_CATEGORIES,
 } from "../_shared/issue4111EnquiryNotifications.ts";
+// #4382 — customer-facing support notifications.
+import { ISSUE_4382_SUPPORT_CATEGORIES } from "../_shared/issue4382SupportNotifications.ts";
 // #4383: the Admin push categories (one list, the destination module).
 import { ADMIN_PUSH_CATEGORIES } from "../_shared/adminPushDestinations.ts";
 
@@ -131,6 +133,7 @@ const ISSUE_3720_DURABLE_CATEGORIES = new Set([
   ...ADMIN_PUSH_CATEGORIES,
   ...ISSUE_3988_ALERT_CATEGORIES,
   ...ISSUE_4111_ENQUIRY_CATEGORIES,
+  ...ISSUE_4382_SUPPORT_CATEGORIES,
 ]);
 const TERMINAL_DELIVERY_STATUSES = new Set([
   "sent",

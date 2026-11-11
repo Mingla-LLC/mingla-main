@@ -8139,14 +8139,14 @@ const manageBusinessNotifications = writeTool(
 
 const manageSupportInbox = writeTool(
   "manage_support_inbox",
-  "List/get the caller's support tickets, or reply with a text message on the ticket's conversation (same Host supportService + groupChat post).",
+  "List/get the caller's support tickets, or reply with a text message through support-send (the same path as the Host app).",
   {
     action: { type: "string", enum: ["list", "get", "reply"] },
     ticket_id: UUID,
     content: { type: "string", minLength: 1, maxLength: 4000 },
   },
   ["action"],
-  async (args, client, userId) => {
+  async (args, client, _userId) => {
     const action = String(args.action);
     if (action === "list") {
       const { data, error } = await client
@@ -8201,21 +8201,25 @@ const manageSupportInbox = writeTool(
           "Ticket not found or access denied.",
         );
       }
-      const { data: message, error: msgErr } = await client
-        .from("messages")
-        .insert({
-          conversation_id: ticket.conversation_id,
-          sender_id: userId,
-          content,
-          message_type: "text",
-        })
-        .select("id")
-        .single();
-      if (msgErr) throw new ToolError("RPC_FAILED", msgErr.message);
+      // #4382: the reply goes through support-send like every other reply, so
+      // the status rules (a reply reopens a Waiting or Resolved request, a
+      // closed request refuses), the audit row and Support's alerts all apply.
+      const sent = await invokeFn<{ message_id?: string | null }>(
+        client,
+        "support-send",
+        { ticketId: ticket.id, content, actorMode: "requester" },
+        undefined,
+        {
+          refusals: {
+            ticket_closed:
+              "This request is closed. Open a new support request instead.",
+          },
+        },
+      );
       return {
         ticket_id: ticket.id,
         conversation_id: ticket.conversation_id,
-        message_id: message.id,
+        message_id: sent?.message_id ?? null,
         replied: true,
       };
     }
@@ -8663,15 +8667,44 @@ const updateNotificationPrefs = writeTool(
   },
 );
 
+// #4382: the Host request create path (topic, first message, brand), the
+// same one the Host app uses. The agent operation id is the request id, so a
+// retried proposal opens one ticket, not two.
+const SUPPORT_HOST_TOPICS = [
+  "payouts",
+  "tickets_checkin",
+  "events",
+  "venue",
+  "account",
+  "other",
+];
 const createSupportTicket = writeTool(
   "create_support_ticket",
-  "Open a support ticket via create_support_ticket RPC.",
-  { subject: STR, brand_id: UUID },
-  ["subject"],
-  async (args, client, _userId) => {
-    return await callRpc(client, "create_support_ticket", {
+  "Open a Host support request via issue_4382_create_customer_ticket: a topic, a subject, the first message, and the brand it is about.",
+  {
+    subject: STR,
+    message: { type: "string", minLength: 1, maxLength: 4000 },
+    topic: { type: "string", enum: SUPPORT_HOST_TOPICS },
+    brand_id: UUID,
+  },
+  ["subject", "message"],
+  async (args, client, _userId, context) => {
+    const topic = typeof args.topic === "string" &&
+        SUPPORT_HOST_TOPICS.includes(args.topic)
+      ? args.topic
+      : "other";
+    const message = typeof args.message === "string" ? args.message.trim() : "";
+    if (!message) throw new ToolError("INVALID_ARGS", "message is required");
+    return await callRpc(client, "issue_4382_create_customer_ticket", {
+      p_client_request_id: requireAgentOperationId(context),
+      p_app: "host",
+      p_topic: topic,
       p_subject: args.subject,
+      p_message: message,
+      p_attachment_ids: [],
+      p_client_meta: { source_screen: "Ari" },
       p_brand_id: args.brand_id ?? null,
+      p_visibility: "person",
     });
   },
 );

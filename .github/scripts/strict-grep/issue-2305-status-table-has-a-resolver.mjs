@@ -358,6 +358,25 @@ export function findLifecycleTables(migrations) {
       });
     }
   }
+  // #4382: a table a later migration DROPs (support_internal_threads, folded
+  // into support_tickets) no longer exists, so it has no lifecycle left to
+  // resolve. Only a statement-level `DROP TABLE` counts; `ALTER PUBLICATION
+  // ... DROP TABLE` merely leaves realtime. A table re-created after its drop
+  // is live again.
+  const lastCreate = new Map();
+  const lastDrop = new Map();
+  migrations.forEach(({ sql }, index) => {
+    const clean = stripSqlComments(sql);
+    for (const m of clean.matchAll(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?public\.([a-z0-9_]+)\s*\(/gi)) {
+      lastCreate.set(m[1], index);
+    }
+    for (const m of clean.matchAll(/(?:^|;)\s*DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?public\.([a-z0-9_]+)/gi)) {
+      lastDrop.set(m[1], index);
+    }
+  });
+  for (const table of [...found.keys()]) {
+    if (lastDrop.has(table) && lastDrop.get(table) >= (lastCreate.get(table) ?? -1)) found.delete(table);
+  }
   return found;
 }
 
@@ -575,6 +594,25 @@ function selfTest() {
 
   // 1. THE #2305 DEFECT ITSELF: writers, no reader, no advancer.
   let r = analyze([LANDFILL], []);
+  // #4382: a later statement-level DROP TABLE retires the lifecycle; leaving
+  // realtime (ALTER PUBLICATION ... DROP TABLE) does not.
+  const DROPPED = { file: "20270303000000_c.sql", sql: "DROP TABLE public.widget_reviews;" };
+  const LEFT_REALTIME = {
+    file: "20270303000000_c.sql",
+    sql: "ALTER PUBLICATION supabase_realtime DROP TABLE public.widget_reviews;",
+  };
+  if (analyze([LANDFILL, DROPPED], []).violations.length !== 0) {
+    console.error("#2305 self-test: a table dropped by a later migration was still flagged.");
+    process.exit(1);
+  }
+  if (analyze([LANDFILL, LEFT_REALTIME], []).violations.length !== 1) {
+    console.error("#2305 self-test: leaving realtime was mistaken for dropping the table.");
+    process.exit(1);
+  }
+  if (analyze([LANDFILL, DROPPED, { ...LANDFILL, file: "20270404000000_d.sql" }], []).violations.length !== 1) {
+    console.error("#2305 self-test: a table re-created after its drop was not checked again.");
+    process.exit(1);
+  }
   if (r.violations.length !== 1 || r.violations[0].table !== "widget_reviews") {
     console.error(
       "#2305 self-test: a lifecycle table with zero readers and zero advancers " +

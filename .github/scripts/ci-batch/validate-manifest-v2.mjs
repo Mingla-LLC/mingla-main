@@ -432,18 +432,25 @@ export function phase3dContractDigest(manifest) {
 // #4334: re-sealed after merging origin/main d27f8b82c0 (#4273 country switch rows kept beside the #4334 follow-up rows).
 // #4334: re-sealed after registering the tester follow-ups PostgreSQL proof (issue_4334_place_id_followups.tester) beside the implementor proof in the #1931 and #2117 lanes.
 // #4334: re-sealed after merging origin/main b9d9ba3bab (#3645 payout ledger rows kept beside the #4334 follow-up rows).
+// #4382: register the Support Desk migrations (20280613004382, 20280613014382, 20280613024382) and their implementor PostgreSQL proof in the #1857, #1931 and #2117 replay lanes.
+// #4382: register the ticket Product stage migration (20280613044382) in the #1857, #1931 and #2117 replay lanes.
+// #4382: register the tester adversarial PostgreSQL proof (issue_4382_support_desk.tester.adversarial.pg17) in the #1931 and #2117 lanes.
+// #4382: register the support write guards migration (20280613054382) in the #1857, #1931 and #2117 replay lanes.
+// #4383: register the Communications scheduling migration (20280608004383) and its implementor PostgreSQL proof in the #1857, #1931 and #2117 replay lanes.
+// #4383: and the tester adversarial PostgreSQL proof.
+// #4382: re-sealed after merging origin/main 2aa45c6da1 (#4383 rows kept beside the #4382 rows).
+// #4382: renumber the Support Desk migrations to 20280613*4382 (above production's applied 20280608004383 and sibling 20280612004255) in the replay lanes.
 // #3355 Wave A: register the flow-run park/expire migration (20280620013355) in the #1857, #1931 and #2117 replay lanes, and its implementor PostgreSQL proof in the #1931 and #2117 lanes.
 // #3355 Wave A: register the brand time zone from country migration (20280620023355) in the #1857, #1931 and #2117 replay lanes, and its implementor PostgreSQL proof in the #1931 and #2117 lanes.
 // #3355 Wave A: register the Feature Guide content migration (20280620033355) in the #1857, #1931 and #2117 replay lanes.
 // #3355 Wave B: register the Feature Guide search migration (20280620043355) and the Feature Guide content migration (20280620053355) in the #1857, #1931 and #2117 replay lanes, and the search's implementor PostgreSQL proof in the #1931 and #2117 lanes.
 // #3355 Wave D: register 20280620063355/073355/083355 in the #1857, #1931 and #2117 replay lanes (063355 and 073355 skipped by exact filename in #1931) and the two PostgreSQL proofs in #1931 and #2117.
 // #3355 Wave D step 0: skip 20280620013355 and 20280620023355 by exact filename in the #1931 replay lane (they reference objects only skipped migrations define).
-// #4383: register the Communications scheduling migration (20280608004383) and its implementor PostgreSQL proof in the #1857, #1931 and #2117 replay lanes.
-// #4383: and the tester adversarial PostgreSQL proof.
 // #3355 rework 1: re-sealed after merging origin/main 1d23fd97e8 (#4383 rows kept) and renaming the nine #3355 migrations 20280606xx3355 -> 20280620xx3355.
 // #3355 rework 1: register 20280620103355 (discount-codes Feature Guide sync) in the #1857, #1931 and #2117 replay lanes (skipped by exact filename in #1931), and the rework and tester adversarial PostgreSQL proofs in #1931 and #2117.
 // #3355 rework 2: register 20280620113355 (memory brand voice at read; skipped by exact filename in #1931) and 20280620123355 (quality panel follow-up runs) in the #1857, #1931 and #2117 lanes, and the rework 2 PostgreSQL proof in #1931 and #2117.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "2782467e21c5e765776bb76f1294c6617555df5aec0c6af45a3549b32a02fa38";
+// #3355 rework 2: re-sealed after merging origin/main 62aabbdc6d (#4382 rows kept beside the #3355 rows).
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "a2e30c1ec2f18a62ebe0cd144d3eeb80d984e961eae1085d3ea02f53bdae6c85";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
