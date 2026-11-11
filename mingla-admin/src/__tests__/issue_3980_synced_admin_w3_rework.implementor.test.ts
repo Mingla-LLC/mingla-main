@@ -211,5 +211,6 @@ Deno.test("#3980 W3 rework P3: contrast, 44px targets, real switches, same names
   assertMatch(panels, /\{p\.name\}\{sameName\(p, people\) && <span className="sr-only"> \(\{p\.email\}\)<\/span>\}/);
   assertMatch(panels, /\{sameName\(p, people\) && <tr aria-hidden="true" className="!border-t-0"><td colSpan=\{5\}[^>]*>\{p\.email\}<\/td><\/tr>\}/);
   // #4255 W2 (rev2): the sprint bar is one line that never wraps; its goals scroll inside it.
-  assertMatch(code("components/ops/SprintBar.jsx"), /data-sprint-bar="" className="flex h-11 min-w-0 flex-nowrap items-center gap-2 overflow-hidden rounded-xl border/);
+  // #4255 fix-up: it is `relative`, so its goals' hidden text cannot widen a phone page.
+  assertMatch(code("components/ops/SprintBar.jsx"), /data-sprint-bar="" className="relative flex h-11 min-w-0 flex-nowrap items-center gap-2 overflow-hidden rounded-xl border/);
 });

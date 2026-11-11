@@ -78,7 +78,8 @@ describe("C-1 the Communications menu group", () => {
     assert.equal(labels.indexOf("Communications"), labels.indexOf("Support") + 1);
     const group = NAV_GROUPS.find((g) => g.label === "Communications");
     assert.deepEqual(group.items.map((item) => [item.id, item.label, item.icon]), COMMUNICATIONS);
-    assert.equal(NAV_ITEMS.length, 41, "34 entries + the seven Communications screens");
+    // #4255 W4 took Notifications out of the menu (Messages is in the top bar): 33 + 7.
+    assert.equal(NAV_ITEMS.length, 40, "33 entries + the seven Communications screens");
   });
 
   it("each screen is a page App draws, and its icon is registered", () => {
