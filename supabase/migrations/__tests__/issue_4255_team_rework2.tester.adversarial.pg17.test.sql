@@ -21,6 +21,8 @@
 -- the #4255 retest 2 verdict):
 --   * team_set_my_timezone: the pg_timezone_names check
 --   * team_set_my_timezone: "IF NOT public.team_chat_staff(v_uid)"
+--   * ops_work_update: the different-ask condition (D-ASK Send to Spend)
+--   * team_set_my_timezone: the agent refusal (Z-AGENT)
 --
 -- Run from the repository root as supabase_admin. Everything is rolled back.
 
@@ -95,6 +97,17 @@ create function pg_temp.person(p_who text, p_sql text) returns text
 language plpgsql as $fn$
 begin
   perform pg_temp.next_request();
+  return pg_temp.as_(p_who, p_sql);
+end;
+$fn$;
+create function pg_temp.agent(p_who text, p_sql text) returns text
+language plpgsql as $fn$
+declare v_id uuid; v_email text;
+begin
+  perform pg_temp.next_request();
+  select id, email into strict v_id, v_email from tz_people where who = p_who;
+  insert into public.team_agent_calls (key_id, owner_email, actor_uid, agent, tool, xact_id, started_at)
+  values (gen_random_uuid(), v_email, v_id, 'claude', 'update_work', pg_current_xact_id(), clock_timestamp());
   return pg_temp.as_(p_who, p_sql);
 end;
 $fn$;
@@ -192,6 +205,59 @@ begin
     (select string_agg(p.who || ':' || o.category_key, ',' order by p.who) from public.notification_outbox o join tz_people p on p.id = o.user_id
       where o.category_key like 'business.team_%' and o.payload->>'card_id' = pg_temp.id('TAG')::text),
     'gem:business.team_mention,ray:business.team_decision');
+end;
+$t$;
+
+-- ───────────────────────────── D-ASK (final confirm) ─────────────────────────────
+-- The ask changing (Send to Spend) asks the owner again; the same ask again and
+-- taking the tag off do not; the per-person flag on the notice says which.
+create function pg_temp.retag(p_k text, p_reason text) returns text
+language sql as $fn$
+  select pg_temp.person('owner', format('select public.ops_work_update(%L, %L::jsonb, %s)::text', pg_temp.id(p_k),
+    jsonb_build_object('person_reason', p_reason), pg_temp.rev(p_k)))
+$fn$;
+create function pg_temp.decisions(p_who text, p_k text) returns text
+language sql as $fn$
+  select count(*)::text from public.notification_outbox o
+   where o.user_id = pg_temp.uid(p_who) and o.category_key = 'business.team_decision' and o.payload->>'card_id' = pg_temp.id(p_k)::text
+$fn$;
+do $t$
+declare v text;
+begin
+  -- TAG already carries "send" (D-TAG): Ray has one decision.
+  perform pg_temp.chk('D-ASK', 'control: one decision after the first tag', pg_temp.decisions('ray', 'TAG'), '1');
+  v := pg_temp.retag('TAG', 'spend');
+  perform pg_temp.chk('D-ASK', 'Send to Spend asks the owner again (two decisions)', pg_temp.decisions('ray', 'TAG'), '2');
+  perform pg_temp.chk('D-ASK', 'the watcher still gets no decision', pg_temp.decisions('gem', 'TAG'), '0');
+  perform pg_temp.chk('D-ASK', 'the Send-to-Spend notice is flagged a decision for the owner, not the watcher',
+    (select string_agg(p.who || ':' || tm.decision::text, ',' order by p.who) from public.team_mentions tm
+       join public.ops_work_events e on e.id = tm.source_id join tz_people p on p.id = tm.target_user_id
+      where tm.source_kind = 'work_card' and e.card_id = pg_temp.id('TAG') and tm.created_at = (select max(created_at) from public.team_mentions x where x.source_kind = 'work_card' and x.source_id = tm.source_id)
+        and e.id = (select id from public.ops_work_events where card_id = pg_temp.id('TAG') order by at desc limit 1)),
+    'gem:false,ray:true');
+  v := pg_temp.retag('TAG', 'spend');
+  perform pg_temp.chk('D-ASK', 'the same ask again asks nobody', pg_temp.decisions('ray', 'TAG'), '2');
+  v := pg_temp.person('owner', format('select public.ops_work_update(%L, %L::jsonb, %s)::text', pg_temp.id('TAG'), '{"person_reason":null}', pg_temp.rev('TAG')));
+  perform pg_temp.chk('D-ASK', 'taking the tag off asks nobody', pg_temp.decisions('ray', 'TAG'), '2');
+  v := pg_temp.retag('TAG', 'publish');
+  perform pg_temp.chk('D-ASK', 'a new ask after it was off asks again', pg_temp.decisions('ray', 'TAG'), '3');
+  v := pg_temp.person('owner', format($q$select public.ops_message_post(%L, 'Ray, it is ready · You send', array[%L], null, null, false, %L)::text$q$,
+    pg_temp.id('TAG'), pg_temp.email('ray'), pg_temp.rk()));
+  perform pg_temp.chk('D-ASK', 'a note ending in "· You send" is not flagged a decision and pushes no decision',
+    (select string_agg(tm.decision::text, ',') from public.team_mentions tm join public.ops_work_events e on e.id = tm.source_id
+      where e.card_id = pg_temp.id('TAG') and e.action = 'note' and tm.target_user_id = pg_temp.uid('ray')) || '/' || pg_temp.decisions('ray', 'TAG'),
+    'false/3');
+  perform pg_temp.chk('D-ASK', 'team_inbox gives Ray the flag: three decisions, and the note is not one',
+    pg_temp.person('ray', $q$select (select count(*) from jsonb_array_elements(public.team_inbox(null, 200)->'mentions') m where (m->>'decision')::boolean)::text$q$), '3');
+end;
+$t$;
+
+-- ───────────────────────────── Z-AGENT (final confirm) ─────────────────────────────
+do $t$
+begin
+  perform pg_temp.lk('Z-AGENT', 'a connected agent cannot set its person''s zone',
+    pg_temp.agent('ray', $q$select public.team_set_my_timezone('Asia/Tokyo')::text$q$), 'ERR:42501:agents_cannot_post%');
+  perform pg_temp.chk('Z-AGENT', 'and nothing is written', pg_temp.zone('ray'), 'Africa/Lagos');
 end;
 $t$;
 
