@@ -83,9 +83,14 @@ begin
   v_card := (v->>'id')::uuid;
   perform pg_temp.chk('C-AUTO', 'same-run card added', v->>'status' = 'added', v::text);
   perform pg_temp.chk('C-AUTO', 'before close the owner email is queued', pg_temp.mails(v_card, 'admin') = 1, pg_temp.mails(v_card, 'admin')::text);
+  perform pg_temp.chk('C-AUTO', 'before close the owner push is queued too',
+    exists (select 1 from public.notification_outbox where category_key = 'business.team_mention' and user_id = pg_temp.uid('admin') and payload->>'card_id' = v_card::text), NULL);
   perform public.ops_auto_card_close(v_card, 'Checked.', '[{"text":"Checked by Mingla."}]'::jsonb);
   perform pg_temp.chk('C-AUTO', 'same-run close: owner has no email', pg_temp.mails(v_card, 'admin') = 0, pg_temp.mails(v_card, 'admin')::text);
   perform pg_temp.chk('C-AUTO', 'same-run close: watcher has no email', pg_temp.mails(v_card, 'growth') = 0, pg_temp.mails(v_card, 'growth')::text);
+  -- [TEST-MOD-APPROVED #4255] W1b: the push queued beside the email goes with it.
+  perform pg_temp.chk('C-AUTO', 'same-run close: no Host app push either',
+    not exists (select 1 from public.notification_outbox where category_key = 'business.team_mention' and payload->>'card_id' = v_card::text), NULL);
   perform pg_temp.chk('C-AUTO', 'same-run close: owner keeps bell items', pg_temp.bells(v_card, 'admin') >= 1, pg_temp.bells(v_card, 'admin')::text);
   perform pg_temp.chk('C-AUTO', 'same-run close: watcher keeps bell items', pg_temp.bells(v_card, 'growth') >= 1, pg_temp.bells(v_card, 'growth')::text);
 
@@ -101,8 +106,14 @@ begin
   v_open := (v->>'id')::uuid;
   perform pg_temp.chk('C-OPEN', 'open auto card emails its owner', pg_temp.mails(v_open, 'admin') = 1, pg_temp.mails(v_open, 'admin')::text);
   perform pg_temp.chk('C-OPEN', 'subject names the card',
-    (select payload->>'title' from public.notification_outbox where user_id = pg_temp.uid('admin') and payload->>'card_id' = v_open::text) = 'Mingla added: C4255 Open card',
-    (select payload::text from public.notification_outbox where user_id = pg_temp.uid('admin') and payload->>'card_id' = v_open::text));
+    (select payload->>'title' from public.notification_outbox where category_key = 'admin.team_mention' and user_id = pg_temp.uid('admin') and payload->>'card_id' = v_open::text) = 'Mingla added: C4255 Open card',
+    (select payload::text from public.notification_outbox where category_key = 'admin.team_mention' and user_id = pg_temp.uid('admin') and payload->>'card_id' = v_open::text));
+  -- [TEST-MOD-APPROVED #4255] W1b: each email is joined by one Host app push
+  -- (business.team_mention); the email's subject check above now names its
+  -- category, since the card has two outbox rows per person.
+  perform pg_temp.chk('C-OPEN', 'open auto card also pushes its owner once',
+    (select count(*) from public.notification_outbox where category_key = 'business.team_mention' and user_id = pg_temp.uid('admin') and payload->>'card_id' = v_open::text) = 1,
+    (select string_agg(category_key, ',') from public.notification_outbox where user_id = pg_temp.uid('admin') and payload->>'card_id' = v_open::text));
 
   -- made in an earlier run, closed now: the close notice emails and the
   -- earlier "added" emails stay
