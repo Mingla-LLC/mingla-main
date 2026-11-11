@@ -2963,6 +2963,12 @@
       "paths": [
         "mingla-business/src/utils/brandEnquiryDisplay.ts"
       ]
+    },
+    {
+      "capability_key": "discover-reviews",
+      "paths": [
+        "app-mobile/src/store/placeReviewRequestStore.ts"
+      ]
     }
   ]
 }

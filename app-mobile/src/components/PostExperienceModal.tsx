@@ -24,6 +24,7 @@ import { mixpanelService } from "../services/mixpanelService";
 import { VoluntaryPlaceReviewRequest } from "../store/placeReviewRequestStore";
 import { useSubmitVoluntaryPlaceReview } from "../hooks/usePlaceReviews";
 import { PlaceReviewWriteError } from "../services/placeReviewService";
+import { NativeModalLifecycleAdapter } from "./ui/BaseBottomSheet";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -52,6 +53,15 @@ interface PostExperienceModalProps {
    * Null/absent on the scheduled path, which is unchanged.
    */
   voluntaryVisit?: VoluntaryPlaceReviewRequest | null;
+  /**
+   * #4381 — native acknowledgements, so the voluntary handoff is sequenced on
+   * what iOS actually did rather than on the commit that asked for it. Show is
+   * RN Modal `onShow` on both platforms; dismiss is `onDismiss` on iOS and the
+   * post-commit boundary on Android (no `onDismiss` there; Android dialogs stack,
+   * so an early acknowledgement while the slide-out runs is harmless).
+   */
+  onNativeShow?: () => void;
+  onNativeDismiss?: () => void;
 }
 
 // ── Component ──────────────────────────────────────────────────────────────
@@ -64,6 +74,8 @@ export default function PostExperienceModal({
   dismissible = false,
   calendarEntryId,
   voluntaryVisit = null,
+  onNativeShow,
+  onNativeDismiss,
 }: PostExperienceModalProps) {
   const { user } = useAppStore();
   const queryClient = useQueryClient();
@@ -591,39 +603,50 @@ export default function PostExperienceModal({
   // ── Root render ────────────────────────────────────────────────────────
 
   return (
-    <Modal
+    <NativeModalLifecycleAdapter
       visible={visible}
-      animationType="slide"
-      transparent={false}
-      // #1687 — Android hardware back closes the voluntary review (same contract
-      // as the close icon: nothing written). The scheduled prompt stays locked.
-      onRequestClose={dismissible ? handleDismiss : () => {}}
+      onNativeShow={onNativeShow}
+      onNativeDismiss={onNativeDismiss}
+      androidPostCommitNativeShow={false}
     >
-      <SafeAreaView style={[styles.container, { paddingBottom: insets.bottom }]} edges={['top', 'left', 'right']}>
-        {/* #1687 — hidden on "thank-you": by then the write has landed, so there is
-            nothing left to cancel and the step carries its own Done button. */}
-        {dismissible && step !== "thank-you" && (
-          <TouchableOpacity
-            // The absolute inset is measured from the SCREEN, not from the
-            // SafeAreaView's padded box — verified on an iPhone 17 Pro Max, where
-            // a bare `top: 16` put this icon on top of the battery indicator. The
-            // inset is added here rather than left to `edges` because the button
-            // does not participate in that layout.
-            style={[styles.dismissButton, { top: insets.top + 8 }]}
-            onPress={handleDismiss}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            accessibilityLabel={t('modals:post_experience.close_label')}
-            accessibilityRole="button"
-          >
-            <Icon name="close" size={24} color={colors.gray800} />
-          </TouchableOpacity>
-        )}
-        {step === "prompt" && renderPromptStep()}
-        {step === "rate" && renderRateStep()}
-        {step === "thank-you" && renderThankYouStep()}
-        {step === "reschedule" && renderRescheduleStep()}
-      </SafeAreaView>
-    </Modal>
+      {(nativeLifecycle) => (
+        <Modal
+          visible={visible}
+          animationType="slide"
+          transparent={false}
+          // #1687 — Android hardware back closes the voluntary review (same contract
+          // as the close icon: nothing written). The scheduled prompt stays locked.
+          onRequestClose={dismissible ? handleDismiss : () => {}}
+          onShow={nativeLifecycle.onNativeShow}
+          onDismiss={nativeLifecycle.onNativeDismiss}
+        >
+          <SafeAreaView style={[styles.container, { paddingBottom: insets.bottom }]} edges={['top', 'left', 'right']}>
+            {/* #1687 — hidden on "thank-you": by then the write has landed, so there is
+                nothing left to cancel and the step carries its own Done button. */}
+            {dismissible && step !== "thank-you" && (
+              <TouchableOpacity
+                // The absolute inset is measured from the SCREEN, not from the
+                // SafeAreaView's padded box — verified on an iPhone 17 Pro Max, where
+                // a bare `top: 16` put this icon on top of the battery indicator. The
+                // inset is added here rather than left to `edges` because the button
+                // does not participate in that layout.
+                style={[styles.dismissButton, { top: insets.top + 8 }]}
+                onPress={handleDismiss}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityLabel={t('modals:post_experience.close_label')}
+                accessibilityRole="button"
+              >
+                <Icon name="close" size={24} color={colors.gray800} />
+              </TouchableOpacity>
+            )}
+            {step === "prompt" && renderPromptStep()}
+            {step === "rate" && renderRateStep()}
+            {step === "thank-you" && renderThankYouStep()}
+            {step === "reschedule" && renderRescheduleStep()}
+          </SafeAreaView>
+        </Modal>
+      )}
+    </NativeModalLifecycleAdapter>
   );
 }
 

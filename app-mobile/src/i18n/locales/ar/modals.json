@@ -16,6 +16,7 @@
     "confirm": "تأكيد",
     "rescheduled_toast": "تم إعادة جدولة التجربة!",
     "reschedule_failed_toast": "فشلت إعادة الجدولة. يرجى المحاولة مرة أخرى.",
+    "open_failed_toast": "تعذّر فتح التقييم. حاول مرة أخرى.",
     "close_label": "إغلاق"
   },
   "custom_holiday": {

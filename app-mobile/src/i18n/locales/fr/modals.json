@@ -16,6 +16,7 @@
     "confirm": "Confirmer",
     "rescheduled_toast": "Expérience reprogrammée !",
     "reschedule_failed_toast": "Échec de la reprogrammation. Veuillez réessayer.",
+    "open_failed_toast": "Impossible d'ouvrir la note. Réessayez.",
     "close_label": "Fermer"
   },
   "custom_holiday": {
