@@ -62,6 +62,11 @@ export interface RunnerInput {
    */
   requireStatus?: FlowRun["status"];
   brandName: string;
+  /**
+   * #3355 Wave D (D4) — the host is stuck (a second failure or strong
+   * frustration): a typed turn sets the run aside instead of answering it.
+   */
+  escalate?: boolean;
 }
 
 export interface RunnerDeps {
@@ -586,6 +591,8 @@ async function advanceUnderLease(
       formAnswer = answer;
     }
   } else if (input.trigger === "turn") {
+    // #3355 Wave D (D4): a stuck host leaves the setup; Resume brings it back.
+    if (input.escalate && open) return await parkOrPass("repeated");
     choiceId = textChoiceFor(open, input.ownerText);
     // #3355 Wave A (A2) — a typed request for something else (a discount
     // code, a refund, another kind of offering) is never taken as this form

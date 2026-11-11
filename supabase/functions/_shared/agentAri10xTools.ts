@@ -33,6 +33,22 @@ export {
   payoutRailFor,
 } from "./payoutCountries.ts";
 import { sanitizeAriPublicText } from "./agentSanitization.ts";
+// #3355 Wave D (D1): remember_note replaces save_memory_note.
+import {
+  ARI_MEMORY_KINDS,
+  ARI_MEMORY_NOTE_MAX,
+  ARI_MEMORY_SCOPES,
+  rememberNoteArgs,
+  rememberNoteError,
+} from "./ariMemory.ts";
+// #3355 Wave D (D4): "Ask the Mingla team" rides the tell_owner send.
+import {
+  ARI_ASK_TEAM_TOPIC,
+  ASK_TEAM_ALREADY_SENT,
+  askTeamNoteFromGaps,
+  askTeamSentRecently,
+  readAskTeamGaps,
+} from "./ariGaps.ts";
 import { toolBelongsTo } from "./agentToolsets.ts";
 import { ARI_APP_ROUTES, ariHandoffRoute } from "./ariAppMap.ts";
 import {
@@ -91,8 +107,8 @@ const LOCAL_CAPABILITIES = [
   ],
   ["list_memory_notes", "List editable memories scoped to the user and brand."],
   [
-    "save_memory_note",
-    "Save an approved preference, correction, business fact or workflow.",
+    "remember_note",
+    "Keep a short correction, preference or fact for later turns (brand or user scope).",
   ],
   ["forget_memory_note", "Remove a memory from future Ari context."],
   [
@@ -839,33 +855,51 @@ const listMemoryNotes: AgentToolDefinition = {
     }),
 };
 
-const saveMemoryNote: AgentToolDefinition = {
-  name: "save_memory_note",
+// #3355 Wave D (D1): Ari's memory write. Ari-owned, reversible state (the
+// host sees and deletes every note in Ari settings), so it runs in the loop
+// without a card (ARI_10X_AGENT_STATE), through ari_remember_note with the
+// caller's JWT. See ariMemory.ts.
+const rememberNote: AgentToolDefinition = {
+  name: "remember_note",
   description:
-    "Save an explicit approved preference, correction, business fact or working style. Do not infer sensitive facts.",
+    "Keep one short note for later turns: a correction the host gave you, a lasting preference, or a fact about their business. scope brand shares it with everyone on the brand; scope user keeps it to this host. Never store emails, phone numbers, card or bank details, passwords or ID numbers. The host sees and deletes notes in Ari settings.",
   parameters: {
     type: "object",
     additionalProperties: false,
-    required: ["kind", "content"],
+    required: ["scope", "kind", "text"],
     properties: {
-      brand_id: { type: "string", format: "uuid", nullable: true },
-      kind: {
+      scope: { type: "string", enum: [...ARI_MEMORY_SCOPES] },
+      kind: { type: "string", enum: [...ARI_MEMORY_KINDS] },
+      text: {
         type: "string",
-        enum: ["preference", "correction", "business_fact", "workflow"],
+        minLength: 3,
+        maxLength: ARI_MEMORY_NOTE_MAX,
       },
-      content: { type: "string", minLength: 1, maxLength: 1200 },
+      brand_id: { type: "string", format: "uuid", nullable: true },
       evidence_message_id: { type: "string", format: "uuid", nullable: true },
     },
   },
-  executor: async (args, client) =>
-    await callRpc(client, "ari_memory_save", {
-      p_brand_id: isUuid(args.brand_id) ? args.brand_id : null,
-      p_kind: args.kind,
-      p_content: requiredText(args.content, "content", 1200),
-      p_evidence_message_id: isUuid(args.evidence_message_id)
-        ? args.evidence_message_id
-        : null,
-    }),
+  executor: async (args, client) => {
+    const checked = rememberNoteArgs(args);
+    try {
+      return await callRpc(client, "ari_remember_note", {
+        p_scope: checked.scope,
+        p_kind: checked.kind,
+        p_content: checked.text,
+        p_brand_id: checked.brandId,
+        p_evidence_message_id: isUuid(args.evidence_message_id)
+          ? args.evidence_message_id
+          : null,
+      });
+    } catch (error) {
+      if (error instanceof ToolError && error.code !== "RPC_FAILED") {
+        throw error;
+      }
+      throw rememberNoteError(
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  },
 };
 
 const forgetMemoryNote: AgentToolDefinition = {
@@ -1022,6 +1056,9 @@ export async function bindOwnerNoteProposal(
     throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
   }
   const topic = String(args.about ?? "");
+  if (topic === ARI_ASK_TEAM_TOPIC) {
+    return await bindAskTeamProposal(args, client, userId);
+  }
   if (!OWNER_NOTE_TOPICS[topic]) {
     throw new ToolError("INVALID_ARGS", "That isn't an owner-only step.");
   }
@@ -1056,6 +1093,95 @@ export async function bindOwnerNoteProposal(
   };
 }
 
+/**
+ * #3355 Wave D (D4, D7a) — "Ask the Mingla team": the server writes a
+ * PII-minimised note from this Ari chat's gap rows (by id, so the executor
+ * rebuilds the same words), bound to the brand's own group. Refused when the
+ * team was already asked from this chat within the hour.
+ */
+async function bindAskTeamProposal(
+  args: JsonRecord,
+  client: SupabaseClient,
+  userId: string,
+): Promise<JsonRecord> {
+  const brandId = String(args.brand_id);
+  if (!isUuid(args.ari_conversation_id)) {
+    throw new ToolError("INVALID_ARGS", "ari_conversation_id must be a uuid");
+  }
+  const ariConversationId = String(args.ari_conversation_id);
+  if (
+    await askTeamSentRecently({ caller: client, userId, ariConversationId })
+  ) {
+    throw new ToolError("ASK_TEAM_RECENTLY_SENT", ASK_TEAM_ALREADY_SENT, {
+      user_reason: ASK_TEAM_ALREADY_SENT,
+      next_step: null,
+    });
+  }
+  const [group, brandName, firstName, gaps] = await Promise.all([
+    findCallerBrandGroup(client, brandId),
+    brandNameFor(client, brandId),
+    teammateFirstName(client, userId),
+    readAskTeamGaps({ caller: client, ariConversationId }),
+  ]);
+  if (!group) {
+    throw new ToolError(
+      "OWNER_NOTE_UNAVAILABLE",
+      `${OWNER_NOTE_TEAM_FALLBACK} Nothing was sent.`,
+    );
+  }
+  return {
+    brand_id: brandId,
+    about: ARI_ASK_TEAM_TOPIC,
+    ari_conversation_id: ariConversationId,
+    gap_ids: gaps.map((gap) => gap.id),
+    send_to: `${brandName} group chat`,
+    message: askTeamNoteFromGaps({
+      firstName,
+      brandName,
+      ariConversationId,
+      gaps,
+    }),
+  };
+}
+
+/** The exact words the server would write today for this approval. */
+async function expectedOwnerNote(
+  args: JsonRecord,
+  client: SupabaseClient,
+  userId: string,
+): Promise<string> {
+  const brandId = String(args.brand_id);
+  if (args.about === ARI_ASK_TEAM_TOPIC) {
+    if (!isUuid(args.ari_conversation_id)) {
+      throw new ToolError(
+        "OWNER_NOTE_CHANGED",
+        "That note is out of date, so nothing was sent. Ask me again and I'll show the new words.",
+      );
+    }
+    const gapIds = Array.isArray(args.gap_ids)
+      ? args.gap_ids.filter((id): id is string => isUuid(id))
+      : [];
+    const gaps = gapIds.length > 0
+      ? await readAskTeamGaps({
+        caller: client,
+        ariConversationId: String(args.ari_conversation_id),
+        gapIds,
+      })
+      : [];
+    return askTeamNoteFromGaps({
+      firstName: await teammateFirstName(client, userId),
+      brandName: await brandNameFor(client, brandId),
+      ariConversationId: String(args.ari_conversation_id),
+      gaps,
+    });
+  }
+  return ownerNoteText({
+    teammateFirstName: await teammateFirstName(client, userId),
+    brandName: await brandNameFor(client, brandId),
+    topic: String(args.about ?? ""),
+  });
+}
+
 /** PostgREST's answer for an RPC that doesn't exist (yet) in this database. */
 export function receiptFunctionsMissing(error: unknown): boolean {
   const text = error instanceof Error ? error.message : String(error ?? "");
@@ -1066,14 +1192,24 @@ export function receiptFunctionsMissing(error: unknown): boolean {
 const tellOwnerInBrandGroup: AgentToolDefinition = {
   name: "tell_owner_in_brand_group",
   description:
-    "After the teammate confirms, post one note in the brand's group chat asking the owner to do an owner-only step (payment setup). Sent as the teammate. The server writes the exact words; never write your own. Offer it when open_handoff returns requires_owner with tell_owner.via brand_group; when it says team_screen, say its message and link the Team screen instead.",
+    "After the teammate confirms, post one note in the brand's group chat asking the owner to do an owner-only step (payment setup). Sent as the teammate. The server writes the exact words; never write your own. Offer it when open_handoff returns requires_owner with tell_owner.via brand_group; when it says team_screen, say its message and link the Team screen instead. about ask_mingla_team asks the Mingla team for help in the same group with a server-written summary (Ari offers it when a host is stuck; at most once an hour per chat).",
   parameters: {
     type: "object",
     additionalProperties: false,
     required: ["brand_id", "about"],
     properties: {
       brand_id: { type: "string", format: "uuid" },
-      about: { type: "string", enum: Object.keys(OWNER_NOTE_TOPICS) },
+      about: {
+        type: "string",
+        enum: [...Object.keys(OWNER_NOTE_TOPICS), ARI_ASK_TEAM_TOPIC],
+      },
+      // #3355 Wave D (D4): server-bound for an ask_mingla_team note.
+      ari_conversation_id: { type: "string", format: "uuid" },
+      gap_ids: {
+        type: "array",
+        maxItems: 5,
+        items: { type: "string", format: "uuid" },
+      },
       send_to: { type: "string", maxLength: 200 },
       message: { type: "string", maxLength: 600 },
     },
@@ -1121,7 +1257,6 @@ const tellOwnerInBrandGroup: AgentToolDefinition = {
         message: typeof args.message === "string" ? args.message : null,
       };
     }
-    const topic = String(args.about ?? "");
     const conversationId = await findCallerBrandGroup(client, args.brand_id);
     if (!conversationId) {
       throw new ToolError(
@@ -1131,11 +1266,7 @@ const tellOwnerInBrandGroup: AgentToolDefinition = {
     }
     // Send exactly the words the teammate confirmed, and only words the
     // server would write today (a stale or altered note is refused).
-    const expected = ownerNoteText({
-      teammateFirstName: await teammateFirstName(client, userId),
-      brandName: await brandNameFor(client, args.brand_id),
-      topic,
-    });
+    const expected = await expectedOwnerNote(args, client, userId);
     if (args.message !== expected) {
       throw new ToolError(
         "OWNER_NOTE_CHANGED",
@@ -1180,6 +1311,13 @@ const tellOwnerInBrandGroup: AgentToolDefinition = {
       // of reading as "result unknown" (receipt-backed RPC_FAILED is kept
       // `executing` for a retry).
       const text = error instanceof Error ? error.message : "";
+      // #3355 Wave D (D4): the team was already asked from this chat.
+      if (text.includes("ask_team_recently_sent")) {
+        throw new ToolError("ASK_TEAM_RECENTLY_SENT", ASK_TEAM_ALREADY_SENT, {
+          user_reason: ASK_TEAM_ALREADY_SENT,
+          next_step: null,
+        });
+      }
       if (text.includes("conversation_unavailable")) {
         throw new ToolError(
           "OWNER_NOTE_UNAVAILABLE",
@@ -2027,7 +2165,7 @@ export const ARI_10X_TOOLS: AgentToolDefinition[] = [
   getOnboardingPlan,
   updateOnboardingPlan,
   listMemoryNotes,
-  saveMemoryNote,
+  rememberNote,
   forgetMemoryNote,
   openHandoff,
   tellOwnerInBrandGroup,
@@ -2066,7 +2204,7 @@ export const ARI_10X_READ_ONLY = new Set([
 export const ARI_10X_AGENT_STATE = new Set([
   "request_tools",
   "update_onboarding_plan",
-  "save_memory_note",
+  "remember_note",
   "forget_memory_note",
   "manage_agent_job",
 ]);

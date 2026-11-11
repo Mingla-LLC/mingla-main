@@ -641,6 +641,37 @@ Deno.test("A2: unclear words get 'I didn't catch that' once; the same words agai
   assertEquals(twice.hint, "repeated");
 });
 
+// #3355 Wave D (D4, I-ARI-ESCALATES-AFTER-SECOND-FAILURE): a stuck host's
+// typed turn sets the open setup aside — even words that would answer the
+// card — and decideFlowTurn starts no new setup for them.
+Deno.test("D4: a stuck host (escalate) parks the open setup instead of answering its card", async () => {
+  const world = freshWorld({ roleOk: false });
+  const store = new MemoryStore(OWNER);
+  const deps = { store, probes: probesFor(world) };
+  await runFlowStep(deps, {
+    run: await startEventRun(store, "Create an event"),
+    trigger: "turn",
+    brandName: "Favy Lagos",
+  });
+  const parked = await runFlowStep(deps, {
+    run: await current(store),
+    trigger: "turn",
+    ownerText: "Lagos Rooftop Social",
+    brandName: "Favy Lagos",
+    escalate: true,
+  });
+  assertEquals(parked.kind, "parked");
+  assertEquals((await current(store)).status, "parked");
+
+  const fresh = new MemoryStore(OWNER);
+  const none = await decideFlowTurn({
+    ...turnArgs(fresh, world, "Create an event next Friday"),
+    escalate: true,
+  });
+  assertEquals(none.kind, "none", "no setup starts for a stuck host");
+  assertEquals(await fresh.getForConversation(CHAT), null);
+});
+
 Deno.test("A2: the same request sent twice is served both times, never the same card", async () => {
   const world = freshWorld({ roleOk: false });
   const store = new MemoryStore(OWNER);

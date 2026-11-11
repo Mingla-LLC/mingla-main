@@ -18,6 +18,7 @@ import {
 import { corsHeaders } from "../_shared/cors.ts";
 import {
   AgentUserProfile,
+  ARI_ESCALATION_GUIDANCE,
   BrandSummary,
   buildSystemPrompt,
   BusinessContext,
@@ -219,9 +220,26 @@ import { guardAriReplyRoutes } from "../_shared/ariAppMap.ts";
 import { ariToolDeclarations } from "../_shared/ariToolDescriptions.ts";
 import {
   ariGuideCitations,
+  ariGuideForcedCalls,
   ariGuideInitialCalls,
   ariGuideRecoveryCalls,
 } from "../_shared/ariGuideKnowledge.ts";
+import {
+  ariMemoryContextLines,
+  readAriMemoryForTurn,
+} from "../_shared/ariMemory.ts";
+import {
+  ARI_ASK_TEAM_TITLE,
+  ARI_ASK_TEAM_TOPIC,
+  ASK_TEAM_ALREADY_SENT,
+  ASK_TEAM_LEAD,
+  classifyAriOwnerTurn,
+  classifyAriReplyGaps,
+  decideAriEscalation,
+  readAriPriorOwnerTexts,
+  readAriRecentGaps,
+  recordAriTurnGaps,
+} from "../_shared/ariGaps.ts";
 import {
   ariTurnContextPart,
   getAriBrandSnapshot,
@@ -755,6 +773,8 @@ type CommitTextTurnArgs = {
   resumed?: boolean;
   flowArtefact?: FlowArtefact | null;
   flowState?: FlowStateView | null;
+  /** #3355 Wave D (D2): the owner's words, for the gap excerpt. */
+  gapOwnerText?: string;
 };
 
 async function commitTextTurn(
@@ -958,6 +978,26 @@ async function commitTextTurn(
         ? (entry as { tool: string }).tool
         : ""
     ).filter(Boolean),
+  });
+  // #3355 Wave D (D2): the committed reply's own gap signals (refusal, empty
+  // reply, tool errors the model saw, routes the App Map dropped). Fail-soft.
+  await recordAriTurnGaps({
+    service: args.client,
+    userId: args.userId,
+    conversationId: args.conversationId,
+    messageId: assistantMessageId,
+    turnKey: `${args.conversationId}:${args.clientTurnId}`,
+    signals: classifyAriReplyGaps({
+      replyText: unguardedArgs.text,
+      ownerText: args.gapOwnerText ?? null,
+      hasRendition: Boolean(
+        args.choices || args.handoffRoute || args.flowArtefact ||
+          (args.structuredData as { rendition?: unknown } | undefined)
+            ?.rendition,
+      ),
+      errorCodes,
+      droppedRoutes: routeGuard.dropped.length,
+    }),
   });
   const { data: conversation } = await args.client.from("agent_conversations")
     .select("title")
@@ -1934,6 +1974,39 @@ async function handle(req: Request): Promise<Response> {
         flowState: flowSide?.state ?? null,
       });
     };
+    // #3355 Wave D (D2, D4): the owner's own words carry repeat and
+    // frustration signals; with the chat's recent gaps they decide whether
+    // Ari changes approach this turn. Reads are the caller's; writes are
+    // fail-soft and never touch the turn.
+    const gapTurnKey = `${conversationId}:${body.client_turn_id}`;
+    const ownerTurnText = !choiceSubmission && !flowAnswer && !websiteKickoff
+      ? semanticMessage
+      : "";
+    const [priorOwnerTexts, recentGaps] = ownerTurnText
+      ? await Promise.all([
+        readAriPriorOwnerTexts({
+          caller: userClient,
+          conversationId,
+          excludeMessageId: userMessageId,
+        }),
+        readAriRecentGaps({ caller: userClient, conversationId }),
+      ])
+      : [[], []];
+    const ownerGapSignals = classifyAriOwnerTurn({
+      text: ownerTurnText,
+      priorOwnerTexts,
+    });
+    const escalation = activeBrand && ownerTurnText
+      ? decideAriEscalation({ ownerSignals: ownerGapSignals, recentGaps })
+      : { escalate: false, reason: null };
+    await recordAriTurnGaps({
+      service: serviceClient,
+      userId,
+      conversationId,
+      messageId: userMessageId,
+      turnKey: gapTurnKey,
+      signals: ownerGapSignals,
+    });
     if (activeBrand && !choiceSubmission) {
       const otherLaneActive = body.workflow_context === "website_setup" ||
         (taskState.active_task !== null &&
@@ -1958,6 +2031,8 @@ async function handle(req: Request): Promise<Response> {
         flowAnswer,
         engineEnabled: engineOn,
         otherLaneActive,
+        // #3355 Wave D (D4): a stuck host's open setup is set aside.
+        escalate: escalation.escalate,
         websiteSetup: body.workflow_context === "website_setup" ||
           isWebsiteSetupRequest(semanticMessage),
         // #3355: a contact list attached in the chat, read only when the
@@ -1985,6 +2060,15 @@ async function handle(req: Request): Promise<Response> {
         // is said first (as Ari's own row) and the agent loop below serves
         // the owner's words in this same turn.
         flowParked = { state: decision.state, hint: decision.hint };
+        // #3355 Wave D (D2): a setup set aside for a new request is a gap.
+        await recordAriTurnGaps({
+          service: serviceClient,
+          userId,
+          conversationId,
+          messageId: userMessageId,
+          turnKey: gapTurnKey,
+          signals: [{ type: "flow_parked", excerpt: semanticMessage }],
+        });
         await persistFlowRow({
           service: serviceClient,
           userId,
@@ -2474,7 +2558,8 @@ async function handle(req: Request): Promise<Response> {
     // #3355 Wave C (C1, C2): the active brand's snapshot and the Host screen
     // the host is on, read as the caller. Both are data inside <user_data>;
     // a failure leaves them out and never fails the turn.
-    const [turnSnapshot, turnScreen] = await Promise.all([
+    // #3355 Wave D (D1): the notes worth having this turn, read as the caller.
+    const [turnSnapshot, turnScreen, turnMemory] = await Promise.all([
       activeBrand
         ? getAriBrandSnapshot({
           caller: userClient,
@@ -2496,10 +2581,16 @@ async function handle(req: Request): Promise<Response> {
           raw: body.client_context,
           activeBrand,
         }).catch(() => null),
+      readAriMemoryForTurn({
+        caller: userClient,
+        brandId: activeBrand?.id ?? null,
+        message: semanticMessage,
+      }),
     ]);
     const turnContextPart = ariTurnContextPart({
       snapshot: turnSnapshot,
       screen: turnScreen,
+      memoryLines: ariMemoryContextLines(turnMemory),
     });
     // Build contents — wrap user-stored content in <user_data> delimiters per I-ARI-USER-DATA-WRAP
     const contents: GeminiContentMessage[] = [];
@@ -3048,19 +3139,13 @@ async function handle(req: Request): Promise<Response> {
         );
       }
 
-      const [{ data: memoryNotes }, { data: onboardingPlan }] = await Promise
-        .all([
-          userClient.rpc("ari_memory_list", {
-            p_brand_id: activeBrand?.id ?? null,
-          }),
-          userClient.rpc("ari_get_onboarding_plan", {
-            p_brand_id: activeBrand?.id ?? null,
-          }),
-        ]);
+      // #3355 Wave D (D1): memory notes now ride in the turn's <user_data>
+      // context part (top notes for this message), not in the system prompt.
+      const { data: onboardingPlan } = await userClient.rpc(
+        "ari_get_onboarding_plan",
+        { p_brand_id: activeBrand?.id ?? null },
+      );
       const boundedAgentContext = JSON.stringify({
-        memory_notes: Array.isArray(memoryNotes)
-          ? memoryNotes.slice(0, 30)
-          : [],
         onboarding_plan: onboardingPlan ?? null,
       }).slice(0, 16_000);
       const loopSystemPrompt = `${systemPrompt}
@@ -3081,7 +3166,9 @@ ARI 10X OPERATING CONTRACT
 
 <caller_scoped_agent_context>
 ${boundedAgentContext}
-</caller_scoped_agent_context>`;
+</caller_scoped_agent_context>${
+        // #3355 Wave D (D4): a stuck host gets a different approach.
+        escalation.escalate ? `\n\n${ARI_ESCALATION_GUIDANCE}` : ""}`;
 
       const onboardingResumeRequest = needsAriOnboardingResumeRead(
         semanticMessage,
@@ -3247,6 +3334,10 @@ ${boundedAgentContext}
         }]
         : deterministicRead
         ? deterministicRead.calls
+        // #3355 Wave D (D4): a stuck host's answer comes from the guide
+        // and the App Map, read before the model.
+        : escalation.escalate
+        ? ariGuideForcedCalls(semanticMessage)
         // #3355 Wave B (B1, I-ARI-KNOWLEDGE-FROM-GUIDE): a how-to or
         // "can I / I want to" ask reads the Feature Guide first, so steps
         // and "can't" answers come from the guide, not from memory.
@@ -3949,6 +4040,81 @@ ${boundedAgentContext}
       const resumePrompt = (readInterruption || questionInterruption)
         ? liveChoices?.prompt ?? pendingQuestionPrompt(resumedState)
         : null;
+      // #3355 Wave D (D4, D7a, I-ARI-ASK-TEAM-ONLY-ON-TAP): after the
+      // guide answer, a stuck host is offered "Ask the Mingla team" as a
+      // confirmation card (the receipt-backed tell_owner send into the
+      // brand's group). Nothing is sent unless the host taps Confirm.
+      let escalationNote: string | null = null;
+      if (
+        escalation.escalate && activeBrand && !websiteSetupBoundary &&
+        !websiteSetupPresentation && !launchPlan && !resumePrompt &&
+        loopResult.kind === "text"
+      ) {
+        const tool = findTool("tell_owner_in_brand_group");
+        try {
+          if (!tool) throw new ToolError("OWNER_NOTE_UNAVAILABLE", "");
+          const askArgs = await bindOwnerNoteProposal(
+            tool.name,
+            {
+              brand_id: activeBrand.id,
+              about: ARI_ASK_TEAM_TOPIC,
+              ari_conversation_id: conversationId,
+            },
+            userClient,
+            userId,
+          );
+          await authorizeAgentTool(tool, askArgs, userClient, userId);
+          const leadGuard = guardAriReplyRoutes({
+            text: `${safeLoopText}\n\n${ASK_TEAM_LEAD}`,
+          });
+          await persistFlowRow({
+            service: serviceClient,
+            userId,
+            conversationId,
+            text: assertOwnerCopy(leadGuard.text, {
+              fallback: ASK_TEAM_LEAD,
+              surface: "ask_team_lead",
+              mode: "prose",
+            }),
+            artefact: null,
+            state: flowParked?.state ?? null,
+            promptVersion: TENANT_CONTEXT_VERSION,
+            modelVersion: ARI_MODEL_VERSION,
+          });
+          return await commitPendingTurn({
+            client: serviceClient,
+            pendingClient: serviceClient,
+            userId,
+            conversationId,
+            clientTurnId: body.client_turn_id,
+            uiCapabilities: ariUiCapabilities,
+            previousState: taskState,
+            readyState: resumedState,
+            expectedRevision: taskStateRevision,
+            previousSummary: conversationSummary,
+            toolName: tool.name,
+            toolArgs: askArgs,
+            proposalContext: {
+              flow_title: ARI_ASK_TEAM_TITLE,
+              flow_rows: [
+                { label: "Sends to", value: String(askArgs.send_to ?? "") },
+                { label: "Message", value: String(askArgs.message ?? "") },
+              ],
+              flow_rows_only: true,
+            },
+            classification: "ari_escalation_ask_team",
+            startedAt: turnStartedAt,
+          });
+        } catch (err: unknown) {
+          if (!(err instanceof ToolError)) throw err;
+          // Already asked this hour: say so. No group or no access: the
+          // guide answer stands on its own.
+          if (err.code === "ASK_TEAM_RECENTLY_SENT") {
+            escalationNote = ASK_TEAM_ALREADY_SENT;
+          }
+          console.warn("[agent-chat] ask-the-team not offered", err.code);
+        }
+      }
       return await commitTextTurn({
         client: serviceClient,
         userId,
@@ -3960,8 +4126,11 @@ ${boundedAgentContext}
         previousSummary: conversationSummary,
         text: resumePrompt
           ? `${safeLoopText}\n\nBack to your event plan: ${resumePrompt}`
+          : escalationNote
+          ? `${safeLoopText}\n\n${escalationNote}`
           : safeLoopText,
         classification: flowParked ? "agent_loop_flow_parked" : "agent_loop",
+        gapOwnerText: semanticMessage,
         startedAt: turnStartedAt,
         choices: (readInterruption || questionInterruption) && liveChoices
           ? liveChoices

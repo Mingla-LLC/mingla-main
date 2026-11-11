@@ -282,7 +282,7 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   get_onboarding_plan: role("self", "optional_brand"),
   update_onboarding_plan: role("self", "optional_brand"),
   list_memory_notes: role("self", "optional_brand"),
-  save_memory_note: role("self", "optional_brand"),
+  remember_note: role("self", "optional_brand"),
   forget_memory_note: role("self", "none"),
   open_handoff: role("self", "optional_brand"),
   // #3355 P6 follow-up — any accepted member may ask the owner in the brand

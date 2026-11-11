@@ -8745,7 +8745,7 @@
     {
       "id": "ari.memory.save",
       "domain": "memory",
-      "outcome": "Save an approved preference, correction, business fact, or workflow",
+      "outcome": "Keep a short correction, preference or fact for later turns, shared with the brand or private to the host",
       "safety": "write",
       "required_role": "self",
       "confirmation": "none",
@@ -8756,11 +8756,11 @@
         "source": [
           {
             "path": "supabase/functions/_shared/agentAri10xTools.ts",
-            "symbol": "const saveMemoryNote"
+            "symbol": "const rememberNote"
           }
         ]
       },
-      "ari_tool": "save_memory_note",
+      "ari_tool": "remember_note",
       "status": "registered_unverified",
       "evidence": [
         {

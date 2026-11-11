@@ -46,6 +46,15 @@ export function ariGuideInitialCalls(message: string): AgentLoopToolCall[] {
 }
 
 /**
+ * #3355 Wave D (D4): a stuck host's turn always reads the guide first, so the
+ * answer names the direct screen from the guide and the App Map.
+ */
+export function ariGuideForcedCalls(message: string): AgentLoopToolCall[] {
+  const query = message.trim();
+  return query.length >= 2 ? [guideCall(query)] : [];
+}
+
+/**
  * I-ARI-KNOWLEDGE-FROM-GUIDE: a "can't" reply in a turn with no guide search
  * gets exactly one guide search (with the owner's words), and the model is
  * asked again with what it found.

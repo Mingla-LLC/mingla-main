@@ -225,8 +225,9 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4334: re-sealed after registering the tester follow-ups PostgreSQL proof (issue_4334_place_id_followups.tester) beside the implementor proof in the #1931 and #2117 lanes.
 // #4334: re-sealed after merging origin/main b9d9ba3bab (#3645 payout ledger rows kept beside the #4334 follow-up rows).
 // #3355 Wave B: re-sealed after registering the Feature Guide search and Wave B content migrations and the search PostgreSQL proof.
+// #3355 Wave D: re-sealed after registering the memory, gap-logging and Wave D Feature Guide migrations and their PostgreSQL proofs.
 // #3355 Wave D step 0: re-sealed after adding the two Wave A migrations to the #1931 replay lane skip list (issue-2492 closure).
-export const BOOTSTRAP_SHA256 = "e0f3ed44c77617ba3499b793feeee4e6cb9a8344472bd60adff068ea38031031";
+export const BOOTSTRAP_SHA256 = "94756829af7261a5709463f00baeafefca57a7ca056852c8ef95ea9c6de44f61";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

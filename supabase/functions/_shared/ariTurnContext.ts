@@ -663,10 +663,13 @@ export function ariScreenContextLines(
 export function ariTurnContextPart(args: {
   snapshot: AriBrandSnapshot | null;
   screen: AriScreenContext | null;
+  /** #3355 Wave D (D1): the turn's memory notes (ariMemoryContextLines). */
+  memoryLines?: readonly string[];
 }): { text: string } | null {
   const contextLines = [
     ...ariScreenContextLines(args.screen),
     ...(args.snapshot ? [args.snapshot.text] : []),
+    ...(args.memoryLines ?? []),
   ];
   if (contextLines.length === 0) return null;
   return {

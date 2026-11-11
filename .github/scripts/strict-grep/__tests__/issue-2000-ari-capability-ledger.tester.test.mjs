@@ -101,6 +101,9 @@ const LEDGER_PATH = path.join(ROOT, "docs/contracts/ari-capability-ledger.json")
 // #4304 adds end_discount and resume_discount, the confirmed versioned
 // discount end and resume beside pause (183→185 tools / 195→197 capabilities).
 // registered_unverified 182→184.
+// #3355 Wave D renames save_memory_note to remember_note (ari.memory.save keeps
+// its id; the tool name and its source owner move, so mappingDigest and
+// sourceRefDigest are re-derived; counts unchanged).
 // #3355 Wave B adds search_mingla_guide, Ari's Feature Guide read
 // (185→186 tools / 197→198 capabilities). registered_unverified 184→185.
 const EXPECTED_TOOL_NAMES = [
@@ -241,6 +244,7 @@ const EXPECTED_TOOL_NAMES = [
   "record_brand_context_finding",
   "refund_order",
   "refund_rsvp_contribution",
+  "remember_note",
   "request_account_deletion",
   "request_tools",
   "resume_discount",
@@ -251,7 +255,6 @@ const EXPECTED_TOOL_NAMES = [
   "rollback_site",
   "run_growth_tool",
   "run_site_design_checks",
-  "save_memory_note",
   "save_site_plan_answers",
   "save_site_plan_design",
   "schedule_campaign",
@@ -304,8 +307,8 @@ const EXPECTED = Object.freeze({
   }),
   idDigest: "472fe88f449a62a250b2b36f11209e041fb0e7a414e1d11ef7bacf0f5e4b1cd5",
   statusDigest: "6078408d8a2c4044e640c784e6b8dddd30e1d42b4c4a2107c0b3a0dc76d64388",
-  mappingDigest: "00d52037081e9b6f013a1879a8fa332a75f4a69cb453ddc9c100038fb2f00021",
-  sourceRefDigest: "1d345c849d0852e26328ffb5f335299d98fa19419a95c0620247bc4991ee7e26",
+  mappingDigest: "c7798203c86babeac0ba15b554ebfe0835667a503cb44e9116024ed123c348a6",
+  sourceRefDigest: "03b8b58e944ed4ad01c5e246bae7ec762c85b7ee5a889eeb14323a1cd2e79eba",
 });
 
 function readLedger() {

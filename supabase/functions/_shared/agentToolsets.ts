@@ -68,7 +68,7 @@ const TOOLSET_PATTERNS: Readonly<Record<AriToolsetKey, readonly RegExp[]>> =
       /social_profile/,
       /listing_page/,
     ],
-    memory: [/memory/, /ari_history/, /ari_prefs/, /agent_job/],
+    memory: [/memory/, /remember/, /ari_history/, /ari_prefs/, /agent_job/],
     onboarding: [
       /onboarding/,
       /handoff/,
@@ -98,7 +98,11 @@ const INTENT_PATTERNS: ReadonlyArray<[AriToolsetKey, RegExp]> = [
     "research",
     /\b(search|research|online|website|social|instagram|tiktok|youtube|public page|compare sources)\b/i,
   ],
-  ["memory", /\b(remember|preference|correction|forget|last time)\b/i],
+  // #3355 Wave D (D1): corrections and lasting preferences bring remember_note.
+  [
+    "memory",
+    /\b(remember|preference|correction|forget|last time|actually|that'?s (?:wrong|not right)|i (?:said|meant)|from now on|going forward|in future|always|never)\b/i,
+  ],
   [
     "onboarding",
     /\b(set up|onboard|launch my|flyer|voice note|document|materials)\b/i,

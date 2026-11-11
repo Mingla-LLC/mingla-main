@@ -29,7 +29,7 @@ const TOOL_LABELS: Readonly<Record<string, string>> = Object.freeze({
   get_onboarding_plan: "Read the saved onboarding plan",
   update_onboarding_plan: "Save onboarding progress",
   list_memory_notes: "Read approved business memory",
-  save_memory_note: "Save the approved preference",
+  remember_note: "Save a note for later",
   forget_memory_note: "Remove the saved preference",
   manage_agent_job: "Save task progress",
 });

@@ -3,6 +3,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { corsHeaders } from "../_shared/cors.ts";
 import { sanitizeAriText } from "../_shared/agentSanitization.ts";
+import { recordAriTurnGaps } from "../_shared/ariGaps.ts";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -169,6 +170,20 @@ Deno.serve(async (request) => {
         });
       }
     }
+    // #3355 Wave D (D2): a thumbs down is an Ari gap (once per reply,
+    // PII-minimised, fail-soft: never changes the feedback answer).
+    await recordAriTurnGaps({
+      service: admin,
+      userId: auth.user.id,
+      conversationId: String(assistant.conversation_id),
+      messageId: assistant.id,
+      turnKey: `feedback:${assistant.id}`,
+      signals: [{
+        type: "negative_feedback",
+        excerpt: String(previousUser?.content?.text ?? ""),
+        detail: { reason_code: reasonCode ?? "other" },
+      }],
+    });
   }
   return response(200, { accepted: true, sentiment, message_id: messageId });
 });

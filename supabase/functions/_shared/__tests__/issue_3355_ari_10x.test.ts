@@ -1778,7 +1778,7 @@ Deno.test("#3355 terse continuation requests read the durable onboarding plan", 
 });
 
 Deno.test("#3355 onboarding stays on the selected brand and treats future materials as absent", () => {
-  assertEquals(PROMPT_VERSION, "v30"); // #3355 Wave B: the prompt is principles; tool rules ride on tool descriptions
+  assertEquals(PROMPT_VERSION, "v31"); // #3355 Wave D: memory principle + escalation guidance
   const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false });
   for (
     const phrase of [

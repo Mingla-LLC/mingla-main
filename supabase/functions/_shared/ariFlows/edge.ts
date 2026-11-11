@@ -1081,6 +1081,11 @@ export interface FlowTurnArgs {
   /** An event plan or Website setup already owns this chat. */
   otherLaneActive: boolean;
   /**
+   * #3355 Wave D (D4): the host is stuck. An open setup is set aside, and no
+   * setup or deterministic readiness answer starts this turn.
+   */
+  escalate?: boolean;
+  /**
    * #2830 P4: this turn is Website setup (the Website setup screen, or a
    * "start / continue Website setup" request).
    */
@@ -1215,7 +1220,7 @@ export async function decideFlowTurn(
   const websiteMode = args.websiteSetup === true;
 
   // Deterministic readiness answers: the canonical checklist, no model.
-  if (!args.flowAnswer && !websiteMode) {
+  if (!args.flowAnswer && !websiteMode && !args.escalate) {
     const action = classifyReadinessQuestion(args.message);
     if (action) {
       try {
@@ -1295,6 +1300,7 @@ export async function decideFlowTurn(
         trigger: "turn",
         ownerText: args.message,
         brandName: args.brand.name,
+        ...(args.escalate ? { escalate: true } : {}),
       });
       const website = live.flow_key === WEBSITE_SETUP_FLOW_KEY;
       // #2830 P4: "Start / continue Website setup" points at the open card.
@@ -1332,6 +1338,8 @@ export async function decideFlowTurn(
       return await startWebsiteSetup(args, store, deps);
     }
     if (args.otherLaneActive) return { kind: "none" };
+    // #3355 Wave D (D4): a stuck host is answered by the agent, not a setup.
+    if (args.escalate) return { kind: "none" };
     // #3355: "Import my contacts" / "Upload a contact list".
     if (isContactImportIntent(args.message)) {
       const def = IMPORT_CONTACTS_FLOW;
