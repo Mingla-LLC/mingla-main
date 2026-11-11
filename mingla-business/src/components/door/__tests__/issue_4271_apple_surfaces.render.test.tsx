@@ -116,6 +116,7 @@ jest.mock("expo-router", () => ({
   useRouter: () => ({ replace: mockReplace, push: jest.fn(), back: jest.fn(), canGoBack: () => true }),
   useLocalSearchParams: () => ({}),
   Stack: () => null,
+  useFocusEffect: () => undefined,
 }));
 jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),

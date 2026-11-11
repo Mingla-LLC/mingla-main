@@ -73,11 +73,22 @@ jest.mock("../../ui/Button", () => {
 
 let mockLive = false;
 let mockBrandId: string | null = "brand-1";
-const mockInitialize = jest.fn(async () => ({}));
+const mockTokenProvider: { current: (() => Promise<string>) | null } = { current: null };
+// Like the SDK: initialize asks the token provider, and a refused token comes
+// back only as a generic `error`.
+const mockInitialize = jest.fn(async (): Promise<{ error?: { code: string } }> => {
+  try {
+    await mockTokenProvider.current?.();
+    return {};
+  } catch {
+    return { error: { code: "STRIPE_API_ERROR" } };
+  }
+});
 const mockEasyConnect = jest.fn(async (_params: Record<string, unknown>) => ({}));
 const mockProviderMounts = jest.fn();
 const mockSdk = {
-  StripeTerminalProvider: ({ children }: { children: React.ReactNode }) => {
+  StripeTerminalProvider: ({ children, tokenProvider }: { children: React.ReactNode; tokenProvider: () => Promise<string> }) => {
+    mockTokenProvider.current = tokenProvider;
     mockProviderMounts();
     return children;
   },
@@ -129,7 +140,12 @@ jest.mock("expo-router", () => ({
   useRouter: () => ({ replace: mockReplace, push: mockPush, back: jest.fn(), canGoBack: () => true }),
   useLocalSearchParams: () => ({}),
   Stack: () => null,
+  // The latest focus callback; a test calls it to stand for coming back to the screen.
+  useFocusEffect: (callback: () => void) => {
+    mockFocus.current = callback;
+  },
 }));
+const mockFocus: { current: (() => void) | null } = { current: null };
 jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
@@ -217,6 +233,12 @@ import { encodeTapToPayDraft } from "../../../services/terminal/tapToPayDraft";
 import { resetTapToPaySessionForTests, updateTapToPaySession } from "../../../services/terminal/tapToPaySession";
 // eslint-disable-next-line import/first
 import { tapToPayMayAcceptTerms, BRAND_ROLE_RANK } from "../../../utils/brandRole";
+// eslint-disable-next-line import/first
+import { TapToPayTerminalHost } from "../tap/TapToPayTerminalHost";
+// eslint-disable-next-line import/first
+import { getTapToPaySession } from "../../../services/terminal/tapToPaySession";
+// eslint-disable-next-line import/first
+import { TAP_ADDRESS_MISSING_COPY } from "../../../services/terminal/tapToPaySetup";
 // eslint-disable-next-line import/first
 import { HELP_AND_SUPPORT_ROUTE } from "../../../constants/supportHostFacing";
 // eslint-disable-next-line import/first
@@ -706,5 +728,111 @@ describe("G5 Settings shows Apple's Tap to Pay symbol on iPhone", () => {
       const { root } = mount(<TapToPayIcon size={18} />);
       expect(textOf(root)).toContain("wave.3.right.circle.fill");
     });
+  });
+});
+
+describe("G6 a brand with no address is told so, with a way to add it", () => {
+  const edge = (): {
+    fetchTerminalConnectionToken: jest.Mock;
+    fetchDoorTapLocation: jest.Mock;
+    DoorTapError: new (code: string, detail?: string | null) => Error;
+  } => jest.requireMock("../../../services/terminal/doorTapEdge");
+
+  beforeEach(() => {
+    resetTapToPaySessionForTests();
+    mockInitialize.mockClear();
+    mockFocus.current = null;
+    mockAvailability = { available: true, needsSetup: true, reason: "ok" };
+  });
+  afterEach(() => {
+    edge().fetchTerminalConnectionToken.mockReset();
+    edge().fetchTerminalConnectionToken.mockResolvedValue("pst");
+    edge().fetchDoorTapLocation.mockReset();
+    edge().fetchDoorTapLocation.mockResolvedValue("tml_1");
+  });
+
+  // The real root host and the Settings setup screen, as on the phone.
+  const settingsSetup = async (): Promise<ReactTestRenderer> => {
+    mount(<TapToPayTerminalHost />);
+    await settle();
+    const tree = mount(<TapToPaySetupScreen brandId="brand-1" eventId={null} rawDraft={null} />);
+    await settle();
+    return tree;
+  };
+
+  test("a token refused for a missing address names the address, not the connection", async () => {
+    edge().fetchTerminalConnectionToken.mockRejectedValue(new (edge().DoorTapError)("tap_not_available", "address_missing"));
+    const { root } = await settingsSetup();
+    expect(getTapToPaySession().status).toBe("error");
+    expect(getTapToPaySession().tokenProblem?.reason).toBe("address_missing");
+    expect(getTapToPaySession().errorMessage).toBe(TAP_ADDRESS_MISSING_COPY);
+    const text = textOf(root);
+    expect(text).toContain("Add your brand's address");
+    expect(text).toContain(TAP_ADDRESS_MISSING_COPY);
+    expect(text).not.toContain("Check your connection");
+    expectHelpOpensSupport(root);
+  });
+
+  test("Add brand address opens the brand's address section, and coming back starts Terminal again", async () => {
+    edge().fetchTerminalConnectionToken.mockRejectedValue(new (edge().DoorTapError)("tap_not_available", "address_missing"));
+    const { root } = await settingsSetup();
+    // The Button and the Pressable inside it both carry the testID.
+    const add = pressables(root, "tap-add-brand-address");
+    expect(add.length).toBeGreaterThan(0);
+    expect(textOf(add[0] as ReactTestInstance)).toContain("Add brand address");
+    mockPush.mockClear();
+    act(() => {
+      (add[0] as ReactTestInstance).props.onPress();
+    });
+    expect(mockPush).toHaveBeenCalledWith("/brand/brand-1/edit?section=address");
+    expect(mockInitialize).toHaveBeenCalledTimes(1);
+    // The host adds the address and comes back.
+    edge().fetchTerminalConnectionToken.mockReset();
+    edge().fetchTerminalConnectionToken.mockResolvedValue("pst");
+    await act(async () => {
+      mockFocus.current?.();
+      await Promise.resolve();
+    });
+    await settle();
+    expect(mockInitialize).toHaveBeenCalledTimes(2);
+    expect(getTapToPaySession().status).toBe("ready");
+    expect(getTapToPaySession().tokenProblem).toBeNull();
+    expect(textOf(root)).not.toContain("Add your brand's address");
+    expect(pressables(root, "tap-setup-start").length).toBeGreaterThan(0);
+  });
+
+  test("a plain network failure still says check your connection", async () => {
+    edge().fetchTerminalConnectionToken.mockRejectedValue(new (edge().DoorTapError)("network_error", "offline"));
+    const { root } = await settingsSetup();
+    expect(getTapToPaySession().tokenProblem).toBeNull();
+    const text = textOf(root);
+    expect(text).toContain("Couldn't start Tap to Pay on iPhone. Check your connection and try again.");
+    expect(text).not.toContain("Add your brand's address");
+    expect(pressables(root, "tap-add-brand-address")).toHaveLength(0);
+  });
+
+  test("a Location refused for a missing address (Terminal already up) gets the same screen", async () => {
+    edge().fetchDoorTapLocation.mockRejectedValue(new (edge().DoorTapError)("tap_not_available", "address_missing"));
+    const { root } = await settingsSetup();
+    await act(async () => {
+      pressables(root, "tap-setup-start")[0]?.props.onPress();
+      await Promise.resolve();
+    });
+    await settle();
+    expect(textOf(root)).toContain(TAP_ADDRESS_MISSING_COPY);
+    mockPush.mockClear();
+    act(() => {
+      pressables(root, "tap-add-brand-address")[0]?.props.onPress();
+    });
+    expect(mockPush).toHaveBeenCalledWith("/brand/brand-1/edit?section=address");
+  });
+
+  test("someone who can't edit the brand is told, with no button to a screen they can't use", async () => {
+    mockRole = { rank: BRAND_ROLE_RANK.event_manager, isLoading: false };
+    edge().fetchTerminalConnectionToken.mockRejectedValue(new (edge().DoorTapError)("tap_not_available", "address_missing"));
+    const { root } = await settingsSetup();
+    expect(textOf(root)).toContain(TAP_ADDRESS_MISSING_COPY);
+    expect(pressables(root, "tap-add-brand-address")).toHaveLength(0);
+    expectHelpOpensSupport(root);
   });
 });

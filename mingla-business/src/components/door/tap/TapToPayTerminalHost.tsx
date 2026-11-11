@@ -29,6 +29,7 @@ import { useTapToPayRelease } from "../../../hooks/useTapToPayRelease";
 import { fetchDoorTapLocation, fetchTerminalConnectionToken } from "../../../services/terminal/doorTapEdge";
 import { hasTapToPayLocation, requestTapToPayLocation } from "../../../services/terminal/tapToPayAndroidLocation";
 import { readTapToPayWarmHint } from "../../../services/terminal/tapToPaySetupStore";
+import { tapToPayStartProblemFor } from "../../../services/terminal/tapToPaySetup";
 import { TapToPayWarmUp } from "../../../services/terminal/tapToPayWarmUp";
 import type {
   TerminalErrorLike,
@@ -91,7 +92,12 @@ const TerminalBridge = ({ sdk, brandId, merchantDisplayName }: BridgeProps): nul
       if (!alive) return;
       if (init.error) {
         setStatus("error");
-        setErrorMessage(`Couldn't start ${tapToPayName(Platform.OS)}. Check your connection and try again.`);
+        // The SDK reports a refused token as a generic error: say the server's
+        // reason (a missing brand address, say) when the token request gave one.
+        setErrorMessage(
+          getTapToPaySession().tokenProblem?.message ??
+            `Couldn't start ${tapToPayName(Platform.OS)}. Check your connection and try again.`,
+        );
         return;
       }
       if (lastInitializedBrandId !== null && lastInitializedBrandId !== brandId) {
@@ -112,7 +118,7 @@ const TerminalBridge = ({ sdk, brandId, merchantDisplayName }: BridgeProps): nul
       if (__DEV__) console.warn("[#4271] Terminal initialize failed", error);
       if (alive) {
         setStatus("error");
-        setErrorMessage(`Couldn't start ${tapToPayName(Platform.OS)}. Try again.`);
+        setErrorMessage(getTapToPaySession().tokenProblem?.message ?? `Couldn't start ${tapToPayName(Platform.OS)}. Try again.`);
       }
     });
     return () => {
@@ -241,7 +247,13 @@ const TerminalBridge = ({ sdk, brandId, merchantDisplayName }: BridgeProps): nul
 
   useEffect(
     () => () => {
-      updateTapToPaySession({ status: "unavailable", client: null, errorMessage: null, readerReady: false });
+      updateTapToPaySession({
+        status: "unavailable",
+        client: null,
+        errorMessage: null,
+        tokenProblem: null,
+        readerReady: false,
+      });
     },
     [],
   );
@@ -296,12 +308,22 @@ const LiveTerminal = ({ sdk, brandId }: { sdk: TerminalSdk; brandId: string }): 
     session.scope?.merchantDisplayName ?? brandQuery.data?.displayName ?? "Mingla Host";
   const brandIdRef = useRef(brandId);
   brandIdRef.current = brandId;
+  // The SDK keeps only "the token failed": the server's reason is kept here, in
+  // the session, for the screens; a token issued clears it.
   const tokenProvider = useCallback(async (): Promise<string> => {
     const currentScope = getTapToPaySession().scope;
-    return fetchTerminalConnectionToken({
-      brandId: currentScope?.brandId ?? brandIdRef.current,
-      eventId: currentScope?.eventId ?? null,
-    });
+    try {
+      const secret = await fetchTerminalConnectionToken({
+        brandId: currentScope?.brandId ?? brandIdRef.current,
+        eventId: currentScope?.eventId ?? null,
+      });
+      if (getTapToPaySession().tokenProblem !== null) updateTapToPaySession({ tokenProblem: null });
+      return secret;
+    } catch (error) {
+      reportNonFatal("door-tap.token", error);
+      updateTapToPaySession({ tokenProblem: tapToPayStartProblemFor(error) });
+      throw error;
+    }
   }, []);
   const { StripeTerminalProvider } = sdk;
   return (

@@ -35,11 +35,23 @@ export interface TapToPayScope {
   merchantDisplayName: string | null;
 }
 
+/**
+ * Why the server refused a Terminal connection token or Location for this brand,
+ * in words the host can act on (tapToPayStartProblemFor). Kept so a failed SDK
+ * initialize or connect, which only reports a generic error, says the real reason.
+ */
+export interface TapToPayStartProblem {
+  reason: "address_missing" | "not_available" | "account_not_ready" | "no_access";
+  message: string;
+}
+
 export interface TapToPaySessionState {
   status: TapToPayTerminalStatus;
   client: TapToPaySessionClient | null;
   /** Plain-English reason when status is "error". */
   errorMessage: string | null;
+  /** The last token request's refusal; null after a token is issued. */
+  tokenProblem: TapToPayStartProblem | null;
   retryInitialize: () => void;
   /** Set by a route while it is open; null means "the current brand". */
   scope: TapToPayScope | null;
@@ -58,6 +70,7 @@ const INITIAL: TapToPaySessionState = {
   status: "unavailable",
   client: null,
   errorMessage: null,
+  tokenProblem: null,
   retryInitialize: noop,
   scope: null,
   acceptance: "unknown",

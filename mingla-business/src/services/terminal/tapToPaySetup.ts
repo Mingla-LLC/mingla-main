@@ -15,6 +15,7 @@
 import { DoorTapError } from "./doorTapEdge";
 import { tapReaderProblemCopy, tapToPayName } from "../../constants/tapToPayCopy";
 import { classifyTerminalError, isTapReaderProblem, type TerminalErrorLike } from "./tapToPayFlow";
+import type { TapToPayStartProblem } from "./tapToPaySession";
 
 export interface TapToPaySetupDeps {
   os: string;
@@ -38,28 +39,39 @@ export type TapToPaySetupResult =
 export const TAP_ADDRESS_MISSING_COPY =
   "Add your brand's full address (street, city, state and ZIP) in brand settings, then run setup again.";
 
+/**
+ * The one reading of a server refusal of Tap to Pay for a brand, from either the
+ * Location (door-tap-intent) or the connection token (terminal-connection-token).
+ * Null when the error says nothing about the brand (network, unknown).
+ */
+export const tapToPayStartProblemFor = (error: unknown): TapToPayStartProblem | null => {
+  if (!(error instanceof DoorTapError)) return null;
+  if (error.code === "tap_not_available") {
+    return error.detail === "address_missing"
+      ? { reason: "address_missing", message: TAP_ADDRESS_MISSING_COPY }
+      : { reason: "not_available", message: "Card taps aren't available for this brand. Use a pay code instead." };
+  }
+  if (error.code === "stripe_account_not_ready") {
+    return {
+      reason: "account_not_ready",
+      message: "Card payments aren't set up for this brand yet. Finish payouts setup first.",
+    };
+  }
+  if (error.code === "door_access_denied") {
+    return {
+      reason: "no_access",
+      message: "You don't have permission to take payments at this door. Ask the brand owner.",
+    };
+  }
+  return null;
+};
+
 const locationFailure = (error: unknown): TapToPaySetupResult => {
+  const problem = tapToPayStartProblemFor(error);
+  if (problem !== null) {
+    return problem.reason === "not_available" ? { kind: "not_available" } : { kind: "failed", message: problem.message };
+  }
   if (error instanceof DoorTapError) {
-    if (error.code === "tap_not_available") {
-      return error.detail === "address_missing"
-        ? {
-            kind: "failed",
-            message: TAP_ADDRESS_MISSING_COPY,
-          }
-        : { kind: "not_available" };
-    }
-    if (error.code === "stripe_account_not_ready") {
-      return {
-        kind: "failed",
-        message: "Card payments aren't set up for this brand yet. Finish payouts setup first.",
-      };
-    }
-    if (error.code === "door_access_denied") {
-      return {
-        kind: "failed",
-        message: "You don't have permission to take payments at this door. Ask the brand owner.",
-      };
-    }
     if (error.code === "network_error") {
       return { kind: "failed", message: "Couldn't reach Mingla. Check your connection and try again." };
     }

@@ -20,7 +20,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -55,7 +55,7 @@ import { createDoorPayCodeForLines, DoorTapError, fetchDoorTapLocation } from ".
 import { showHowToTapEducation } from "../../../services/terminal/howToTap";
 import { markTapToPayWarmHint } from "../../../services/terminal/tapToPaySetupStore";
 import { encodeTapToPayDraft, parseTapToPayDraft } from "../../../services/terminal/tapToPayDraft";
-import { runTapToPaySetup } from "../../../services/terminal/tapToPaySetup";
+import { runTapToPaySetup, TAP_ADDRESS_MISSING_COPY } from "../../../services/terminal/tapToPaySetup";
 import { Button } from "../../ui/Button";
 import { Icon } from "../../ui/Icon";
 import { IconChrome } from "../../ui/IconChrome";
@@ -66,7 +66,11 @@ import { TapNotOnThisPhone } from "./TapNotOnThisPhone";
 import { TapStatusView } from "./TapStatusView";
 import { TapToPayEducation } from "./TapToPayEducation";
 import { TapUpdateIos } from "./TapUpdateIos";
-import { tapToPayAcceptanceFor, useTapToPayTerminal } from "../../../services/terminal/tapToPaySession";
+import {
+  getTapToPaySession,
+  tapToPayAcceptanceFor,
+  useTapToPayTerminal,
+} from "../../../services/terminal/tapToPaySession";
 // Only an admin may accept the terms. A client check, because the terms sheet is
 // native; the server still gates the money.
 import { tapToPayMayAcceptTerms } from "../../../utils/brandRole";
@@ -144,6 +148,26 @@ export const TapToPaySetupScreen = ({
     else goToDoor();
   }, [router, goToDoor]);
 
+  // A missing brand address is fixed on the brand's edit screen, at its address
+  // section. Coming back runs setup's start again: Terminal re-initializes (a new
+  // token) when that was what failed, otherwise the setup button is offered again.
+  const addressPendingRef = useRef<boolean>(false);
+  const terminalRef = useRef(terminal);
+  terminalRef.current = terminal;
+  const openBrandAddress = useCallback((): void => {
+    if (brandId === null) return;
+    addressPendingRef.current = true;
+    router.push(`/brand/${encodeURIComponent(brandId)}/edit?section=address` as never);
+  }, [router, brandId]);
+  useFocusEffect(
+    useCallback(() => {
+      if (!addressPendingRef.current) return;
+      addressPendingRef.current = false;
+      setError(null);
+      if (terminalRef.current.status === "error") terminalRef.current.retryInitialize();
+    }, []),
+  );
+
   // "Get help" on every state that isn't a success: the same Help & Support
   // screen as Account → Settings → Help & Support.
   const openHelp = useCallback((): void => {
@@ -214,7 +238,14 @@ export const TapToPaySetupScreen = ({
           return;
         }
         if (result.kind === "failed") {
-          if (!probe) setError(result.message);
+          // A connect whose token the server refused only reports a generic
+          // failure: the token's own reason (a missing address, say) wins.
+          const tokenProblem = getTapToPaySession().tokenProblem;
+          if (tokenProblem?.reason === "not_available") {
+            setBrandNotAvailable(true);
+            return;
+          }
+          if (!probe) setError(tokenProblem?.message ?? result.message);
           return;
         }
         // From Settings the screen stays and now reads "On for this brand".
@@ -270,6 +301,8 @@ export const TapToPaySetupScreen = ({
     (deviceRejected && isIosBelowTapFloor(device.os, device.version));
 
   const pinRow = (currency ?? "").trim().toUpperCase() === "GBP";
+  const tokenProblem = terminal.status === "error" ? terminal.tokenProblem : null;
+  const addressMissing = error === TAP_ADDRESS_MISSING_COPY || tokenProblem?.reason === "address_missing";
   // Settings: nothing to set up (or no brand to set up): say so and keep the guide.
   const settingsGuideOnly = eventId === null && (brandId === null || (availability.available && !availability.needsSetup));
 
@@ -289,7 +322,7 @@ export const TapToPaySetupScreen = ({
     body = <TapUpdateIos onUsePayCode={() => void startPayCode()} loading={payCodeBusy} onHelp={openHelp} />;
   } else if (deviceBlocked) {
     body = <TapNotOnThisPhone onUsePayCode={() => void startPayCode()} loading={payCodeBusy} onHelp={openHelp} />;
-  } else if (!availability.available || brandNotAvailable) {
+  } else if (!availability.available || brandNotAvailable || tokenProblem?.reason === "not_available") {
     body = (
       <TapStatusView
         tone="neutral"
@@ -299,6 +332,24 @@ export const TapToPaySetupScreen = ({
         primary={{ label: "Use a pay code", onPress: () => void startPayCode(), loading: payCodeBusy }}
         onHelp={openHelp}
         testID="tap-setup-not-available"
+      />
+    );
+  } else if (addressMissing) {
+    body = (
+      <TapStatusView
+        tone="neutral"
+        icon="location"
+        title="Add your brand's address"
+        body={TAP_ADDRESS_MISSING_COPY}
+        primary={
+          // Only a brand owner or admin edits the brand (the same rank that accepts Apple's terms).
+          mayAcceptTerms && brandId !== null
+            ? { label: "Add brand address", onPress: openBrandAddress, testID: "tap-add-brand-address" }
+            : null
+        }
+        secondary={{ label: "Try again", onPress: () => void runSetup(mayAcceptTerms), testID: "tap-address-try-again" }}
+        onHelp={openHelp}
+        testID="tap-setup-address-missing"
       />
     );
   } else if (adminRequired) {
