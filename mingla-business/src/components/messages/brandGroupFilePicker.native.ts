@@ -8,6 +8,7 @@ import {
 import {
   BrandGroupFilePermissionError,
   type BrandGroupFileSource,
+  type BrandGroupPickOptions,
   type BrandGroupPickedFile,
 } from "./brandGroupFilePickerShared";
 import { shrinkBrandGroupPickedFile, type BrandGroupShrinkCandidate } from "./brandGroupImageShrink";
@@ -41,23 +42,24 @@ async function fromMediaShrunk(assets: PlatformImagePickerAsset[]): Promise<Bran
   return files;
 }
 
-export async function pickBrandGroupFiles(source: BrandGroupFileSource, remaining: number): Promise<BrandGroupPickedFile[]> {
+export async function pickBrandGroupFiles(source: BrandGroupFileSource, remaining: number, options: BrandGroupPickOptions = {}): Promise<BrandGroupPickedFile[]> {
+  const mediaTypes: ("images" | "videos")[] = options.imagesOnly ? ["images"] : ["images", "videos"];
   if (source === "camera") {
     const permission = await requestCameraPermissionsAsync();
     if (!permission.granted) throw new BrandGroupFilePermissionError("camera");
-    const result = await launchCameraAsync({ mediaTypes: ["images", "videos"], quality: 1 });
+    const result = await launchCameraAsync({ mediaTypes, quality: 1 });
     return result.canceled ? [] : fromMediaShrunk(result.assets.slice(0, 1));
   }
   if (source === "photos") {
     const permission = await requestMediaLibraryPermissionsAsync();
     if (!permission.granted) throw new BrandGroupFilePermissionError("photos");
     const result = await launchImageLibraryAsync({
-      mediaTypes: ["images", "videos"], allowsMultipleSelection: true, selectionLimit: remaining, quality: 1,
+      mediaTypes, allowsMultipleSelection: true, selectionLimit: remaining, quality: 1,
     });
     return result.canceled ? [] : fromMediaShrunk(result.assets.slice(0, remaining));
   }
   const DocumentPicker = await import("expo-document-picker");
-  const result = await DocumentPicker.getDocumentAsync({ type: DOCUMENT_MIMES, multiple: true, copyToCacheDirectory: true });
+  const result = await DocumentPicker.getDocumentAsync({ type: options.documentMimes ? [...options.documentMimes] : DOCUMENT_MIMES, multiple: true, copyToCacheDirectory: true });
   if (result.canceled) return [];
   return result.assets.slice(0, remaining).map((asset) => ({
     uri: asset.uri,

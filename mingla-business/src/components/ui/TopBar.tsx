@@ -14,7 +14,8 @@
  *   - `none`  — no left content (renders empty View for layout balance).
  *
  * Right slot is configurable; defaults to a Messages IconChrome + bell
- * IconChrome with badge. Caller passes any `React.ReactNode`.
+ * IconChrome with badge. Caller passes any `React.ReactNode`. #4255 W5: for
+ * active Admin staff only, a Mingla team "M" sits between the two.
  *
  * Wrapper uses `GlassChrome` with `intensity="cardElevated"` (premium
  * frost), tinted floor `rgba(12,14,18,0.55)`, and `shadows.glassCard-
@@ -26,11 +27,13 @@ import React, { useContext, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 import { useRouter } from "expo-router";
-import { QueryClientContext } from "@tanstack/react-query";
+import { QueryClientContext, useQuery } from "@tanstack/react-query";
 
 import {
+  canvas,
   glass,
   radius as radiusTokens,
+  semantic,
   shadows,
   spacing,
   text as textTokens,
@@ -46,6 +49,8 @@ import { useBusinessNotificationsInbox } from "../../hooks/useBusinessNotificati
 import { useBrandGroups } from "../../hooks/useBrandGroups";
 import { useBrandEnquiries } from "../../hooks/useBrandEnquiries";
 import { messagesBadgeCount } from "../../utils/brandEnquiryWaiting";
+import { fetchTeamBadge, teamBadgeCount, teamChatKeys } from "../../hooks/teamChatKeys";
+import { useBusinessMediaTranslation } from "../../i18n";
 
 import { BrandMark, brandMarkPhotoUrl } from "../brand/BrandMark";
 import { GlassChrome } from "./GlassChrome";
@@ -167,6 +172,44 @@ const EnquiryAwareMessagesButton: React.FC<{ groupUnread: number }> = ({
   );
 };
 
+/**
+ * #4255 W5 — the Mingla team "M", shown only when team_badge says the
+ * signed-in person is confirmed, active Admin staff. Loading, an error, a
+ * host who is not staff, or no signed-in user: nothing renders (no gap, no
+ * crash). Badge: unread team chats plus unread mentions.
+ */
+const MinglaTeamButton: React.FC<{ userId: string }> = ({ userId }) => {
+  const router = useRouter();
+  const { t } = useBusinessMediaTranslation();
+  const badge = useQuery({
+    queryKey: teamChatKeys.badge(userId),
+    queryFn: fetchTeamBadge,
+    staleTime: 30 * 1000,
+    refetchInterval: 60 * 1000,
+  });
+  if (badge.data?.staff !== true) return null;
+  const unread = teamBadgeCount(badge.data);
+  return (
+    <Pressable
+      onPress={() => router.push("/team" as never)}
+      accessibilityRole="button"
+      accessibilityLabel={unread > 0 ? t("team_icon.label_unread", { n: unread }) : t("team_icon.label")}
+      hitSlop={4}
+      style={styles.teamButton}
+      testID="topbar-mingla-team"
+    >
+      <Text style={styles.teamMark}>M</Text>
+      {unread > 0 ? (
+        <View style={styles.teamBadge}>
+          <Text style={styles.teamBadgeLabel} numberOfLines={1}>
+            {unread > 9 ? "9+" : String(unread)}
+          </Text>
+        </View>
+      ) : null}
+    </Pressable>
+  );
+};
+
 const DefaultRightSlotInner: React.FC<{ unreadCount: number | undefined }> = ({
   unreadCount,
 }) => {
@@ -193,6 +236,9 @@ const DefaultRightSlotInner: React.FC<{ unreadCount: number | undefined }> = ({
       ) : (
         <MessagesButton unread={groupUnread} />
       )}
+      {/* #4255 W5 — between the chat bubble and the bell; needs the query
+          client, so an isolated render without one shows no M. */}
+      {hasQueryClient && user?.id ? <MinglaTeamButton userId={user.id} /> : null}
       {/* META-ORCH-1074 Sub-C: the bell opens the notifications inbox route.
           Badge caps at 9+ (operator noise reduction; other call-sites keep 99). */}
       <IconChrome
@@ -437,8 +483,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
+    minWidth: 0,
   },
+  // #4255 W5 — four icons on a 320pt phone: the brand name truncates.
   brandLabel: {
+    flexShrink: 1,
     color: textTokens.primary,
     fontSize: typography.bodyLg.fontSize,
     lineHeight: typography.bodyLg.lineHeight,
@@ -469,6 +518,40 @@ const styles = StyleSheet.create({
   none: {
     width: 36,
     height: 36,
+  },
+  // #4255 W5 — a solid "M" chip: the one filled icon in the cluster, so staff
+  // can tell the team space from the brand's own Messages at a glance.
+  teamButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: textTokens.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  teamMark: {
+    color: canvas.discover,
+    fontSize: 16,
+    lineHeight: 20,
+    fontWeight: "800",
+  },
+  teamBadge: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: semantic.error,
+    paddingHorizontal: 4,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  teamBadgeLabel: {
+    color: textTokens.inverse,
+    fontSize: typography.micro.fontSize,
+    lineHeight: typography.micro.lineHeight,
+    fontWeight: typography.micro.fontWeight,
   },
   toastWrap: {
     position: "absolute",

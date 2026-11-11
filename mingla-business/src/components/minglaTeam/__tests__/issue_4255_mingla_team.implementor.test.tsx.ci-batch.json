@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-suite",
+  "ownerIssue": "#4255",
+  "suite": {
+    "id": "issue-4255-host-mingla-team",
+    "class": "business-node22-ignore-scripts",
+    "originPaths": [
+      "mingla-business/src/**",
+      "mingla-business/app/**",
+      "mingla-business/jest.config.cjs",
+      "packages/offering-rendering/**",
+      "supabase/migrations/20280611004255_issue_4255_team_chat_schema.sql",
+      "supabase/migrations/20280611014255_issue_4255_team_chat_functions.sql"
+    ],
+    "steps": [
+      {
+        "name": "Host app Mingla team (staff chat, mentions, routing, settings, files)",
+        "cwd": "mingla-business",
+        "run": "npx jest --config src/components/minglaTeam/__tests__/jest.issue4255.cjs --runInBand",
+        "commandId": "assert:issue-4255-host-mingla-team:01",
+        "invocation": {
+          "kind": "raw-shell",
+          "command": "bash",
+          "argv": [
+            "-c",
+            "npx jest --config src/components/minglaTeam/__tests__/jest.issue4255.cjs --runInBand"
+          ]
+        },
+        "exceptionRationale": "New self-registering execution replaces a legacy workflow registry edit."
+      }
+    ],
+    "lifecycle": "batched-active",
+    "ownerIssue": "#4255",
+    "runtime": {
+      "name": "node",
+      "version": "22"
+    },
+    "setupProfile": "business-node22-ignore-scripts",
+    "cwd": "mingla-business",
+    "envNames": [],
+    "isolation": "clean-worktree",
+    "expectedFiles": [
+      "mingla-business/src/components/minglaTeam/__tests__/issue_4255_mingla_team.implementor.test.tsx",
+      "mingla-business/src/components/minglaTeam/__tests__/jest.issue4255.cjs",
+      "mingla-business/src/i18n/__tests__/issue_3988_locale_parity.test.ts"
+    ],
+    "externalReferenceFiles": [
+      "mingla-business/jest.config.cjs"
+    ],
+    "requiredContext": "CI batch: business-node22-ignore-scripts",
+    "timingSeconds": {
+      "p50": 20,
+      "p95": 90,
+      "evidence": "Local targeted run 2026-11-10 (--maxWorkers=2)"
+    },
+    "generatedPaths": [
+      "suite-results.json"
+    ],
+    "exceptionRationale": "Raw shell preserves the reviewed assertion while this self-registering suite replaces a legacy workflow registry edit.",
+    "timeoutSeconds": 300
+  }
+}
