@@ -64,10 +64,9 @@ Deno.test("#4381 the expanded card steps aside while the review prompt is open o
     /const placeReviewOpen = usePlaceReviewSuspendsHost\(\);/.test(sheet),
     "the sheet is suspended by the store's request-open-or-prompt-on-screen selector",
   );
-  const child = statement(sheet, /const childSurfaceOpen =/);
-  assert(/\bplaceReviewOpen\b/.test(child), "placeReviewOpen is a child surface");
   const any = statement(sheet, /const anyChildModalOpen =/);
-  assert(/\bchildSurfaceOpen\b/.test(any) && /\brootSuspendedForShare\b/.test(any), "anyChildModalOpen keeps both halves");
+  assert(/\bplaceReviewOpen\b/.test(any), "placeReviewOpen suspends the sheet like any other child surface");
+  assert(/\bisReserveSheetOpen\b/.test(any) && /\brootSuspendedForShare\b/.test(any), "anyChildModalOpen keeps the existing surfaces and the share handoff");
   assert(
     /visible=\{visible && !anyChildModalOpen\}\s*onClose=\{handleRootSheetClose\}\s*onNativeShow=\{handleRootNativeShow\}\s*onNativeDismiss=\{handleRootNativeDismiss\}/.test(sheet),
     "the root sheet is gated on anyChildModalOpen and reports its native show/dismiss",
@@ -94,10 +93,11 @@ Deno.test("#4381 lowering the sheet for the review prompt is not a close", async
   const { body, deps } = callbackBody(sheet, "handleRootSheetClose");
   const guard = /if \(([^)]*(?:\([^)]*\)[^)]*)*)\)\s*\{\s*return;\s*\}/.exec(body);
   assert(guard, "handleRootSheetClose has an early-return guard");
-  assert(/\bchildSurfaceOpen\b/.test(guard[1]), "the guard swallows close while any child surface, including the review prompt, is open");
+  assert(/\bplaceReviewOpen\b/.test(guard[1]), "the guard swallows close while the review prompt holds the sheet down");
+  assert(/\bisReserveSheetOpen\b/.test(guard[1]), "the guard still swallows close for the existing child surfaces");
   assert(/shareHandoffPhaseRef\.current !== 'idle'/.test(guard[1]), "the guard still covers the share handoff");
   assert(body.indexOf("return;") < body.indexOf("onClose()"), "onClose runs only after the guard");
-  assert(/\bchildSurfaceOpen\b/.test(deps), "the callback re-binds when the review request opens or closes");
+  assert(/\bplaceReviewOpen\b/.test(deps), "the callback re-binds when the review request opens or closes");
 });
 
 Deno.test("#4381 the single prompt presents only when no host holds the slot, and reports its native show/dismiss", async () => {

@@ -733,28 +733,28 @@ export default function ExpandedCardModal({
   const placeReviewOpen = usePlaceReviewSuspendsHost();
   const holdsPresentationSlot = useRef(false);
 
-  // Every child surface that takes the native presentation slot. The share
-  // handoff is added separately below because the close guard reads its ref.
-  const childSurfaceOpen =
+  // Every child surface that takes the native presentation slot. The list is
+  // spelled out in BOTH places on purpose: the ORCH-1148 gates check that each
+  // flag suppressing the sheet is also swallowed by the close guard.
+  const anyChildModalOpen =
     browserUrl !== null ||
     ticketBrowserUrl !== null ||
     isSchedulePickerOpen ||
     curatedLightbox.visible ||
     selectedVenueExperience !== null ||
     isReserveSheetOpen ||
-    placeReviewOpen;
-
-  const anyChildModalOpen = childSurfaceOpen || rootSuspendedForShare;
+    placeReviewOpen ||
+    rootSuspendedForShare;
 
   const handleRootSheetClose = useCallback(() => {
     // ORCH-1022: while a child RN Modal/WebView is open, the root sheet is
     // intentionally suppressed to free the native presentation slot. Swallow
     // BaseBottomSheet's synthetic close so the card state is not torn down.
-    if (childSurfaceOpen || shareHandoffPhaseRef.current !== 'idle') {
+    if (browserUrl !== null || ticketBrowserUrl !== null || isSchedulePickerOpen || curatedLightbox.visible || selectedVenueExperience !== null || isReserveSheetOpen || placeReviewOpen || shareHandoffPhaseRef.current !== 'idle') {
       return;
     }
     onClose();
-  }, [childSurfaceOpen, onClose]);
+  }, [browserUrl, curatedLightbox.visible, isSchedulePickerOpen, onClose, ticketBrowserUrl, selectedVenueExperience, isReserveSheetOpen, placeReviewOpen]);
 
   const focusShareControl = useCallback((): void => {
     const nativeNode = findNodeHandle(shareControlRef.current);

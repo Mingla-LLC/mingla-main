@@ -441,7 +441,9 @@ Deno.test("#871 root arbitration and offering actions cannot leave dead or stack
   assertStringIncludes(shell, "reviewModalPolicy.render && activeReviewTarget");
   assertStringIncludes(
     shell,
-    "visible={voluntaryPlaceReview ? true : showReviewModal}",
+    // #4381 — a voluntary review presents only once no RN-Modal host (the
+    // expanded card) still holds the iOS presentation slot.
+    "visible={voluntaryPlaceReview ? voluntaryPromptPresentable : showReviewModal}",
   );
   const suppressionClose = shell.match(
     /const closeAttendanceClaimPresentation = useCallback\(\(\): void => \{([\s\S]*?)\n  \}, \[\]\);/,
