@@ -298,6 +298,23 @@ Deno.test("R4-1 (live run 7): 'Did it go through?' read as a write turn still fo
     claims,
   });
   assertEquals(out.text, reply);
+  // This turn's support-inbox read cannot back "sent"; it never hides the
+  // confirmed ticket (live runs 11 and 12).
+  const afterRead = await check({
+    host: "Did my support request go through?",
+    reply,
+    intent: "tool",
+    asked: true,
+    askedKinds: ["support"],
+    states: [ticket],
+    observations: [{
+      tool: "list_support_tickets",
+      args: {},
+      result: [{ subject: "Payout missing", status: "open" }],
+    }],
+    claims,
+  });
+  assertEquals(afterRead.text, reply);
   // A new request this turn still needs this turn's record.
   const fresh = await check({
     host: "Open another ticket: my event page won't load",

@@ -747,7 +747,13 @@ function decide(
     item.status !== "read"
   );
   if (contradiction) return { backed: false, found: contradiction, object };
-  const shown = [...fit].reverse().find((item) => item.readState);
+  // A read row contradicts only a claim a read can speak to (live, created,
+  // deleted …); it says nothing about "sent".
+  const readable = READ_BACKS.has(claim.action) ||
+    claim.action === "deleted" || claim.action === "cancelled";
+  const shown = readable
+    ? [...fit].reverse().find((item) => item.readState)
+    : undefined;
   return { backed: false, found: shown ?? null, object };
 }
 
@@ -817,7 +823,13 @@ export function judgeClaim(
   const thisTurn = evidence.filter((item) =>
     item.thisTurn && kinds.has(item.kind)
   );
-  if (thisTurn.length > 0) return decide(claim, thisTurn, null);
+  if (thisTurn.length > 0) {
+    // This turn's record decides when it speaks to the claim; a read that
+    // cannot back it ("sent" after a support-inbox read) leaves the
+    // decision to the card the reply follows (live answer eval).
+    const judged = decide(claim, thisTurn, null);
+    if (judged.backed || judged.found) return judged;
+  }
   if (
     context.askedWriteThisTurn &&
     !isStatusQuestion(context.hostMessage ?? "")
