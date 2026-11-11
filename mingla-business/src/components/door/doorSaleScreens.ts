@@ -1,6 +1,6 @@
 /**
- * #4271 — the door card-sale screens, loaded as ONE on-intent chunk: the new door
- * sale sheet (opened from "Sell at door"), Tap to Pay setup, the Tap to Pay
+ * #4271 — the door card-sale screens, loaded as ONE on-intent chunk: Door mode
+ * (#4389, the full-screen door sale opened from "Sell at door"), Tap to Pay setup, the Tap to Pay
  * sale and the "Scan to pay" pay code screen (which shares the status pill, door
  * tones and sale draft with the Tap to Pay sale). They share the Terminal flow,
  * the door tap edge client, the tap availability hook and the pay-code sale hooks, so loading them through a single
@@ -9,6 +9,6 @@
  * route.
  */
 export { DoorPayCodeScreen } from "./DoorPayCodeScreen";
-export { DoorSaleNewSheet } from "./DoorSaleNewSheet";
+export { DoorModeScreen } from "./DoorModeScreen";
 export { TapToPaySaleScreen } from "./tap/TapToPaySaleScreen";
 export { TapToPaySetupScreen } from "./tap/TapToPaySetupScreen";

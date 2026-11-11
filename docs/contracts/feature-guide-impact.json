@@ -1948,7 +1948,16 @@
         "supabase/migrations/20280429004271_issue_4271_tap_buyer_name.sql",
         "mingla-business/assets/tap-to-pay/awareness-hero.jpg",
         "mingla-business/assets/tap-to-pay/awareness-hero@2x.jpg",
-        "mingla-business/assets/tap-to-pay/awareness-hero@3x.jpg"
+        "mingla-business/assets/tap-to-pay/awareness-hero@3x.jpg",
+        "mingla-business/app/event/[id]/door/sell.tsx",
+        "mingla-business/src/components/door/DoorModeScreen.tsx",
+        "mingla-business/src/components/door/DoorModePayCodeSheet.tsx",
+        "mingla-business/src/components/door/DoorModeBuyerSheet.tsx",
+        "mingla-business/src/components/door/doorModeCopy.ts",
+        "mingla-business/src/components/door/doorModeState.ts",
+        "mingla-business/src/components/door/doorModeMethodMemory.ts",
+        "mingla-business/src/components/door/useDoorModeTapSale.ts",
+        "mingla-business/src/utils/openDoorSale.ts"
       ]
     },
     {

@@ -375,7 +375,8 @@ describe("ORCH-0892-B v2 sheet-consumer migrations — SmartScrollView contract"
     "src/components/brand/BrandDeleteSheet.tsx",
     "src/components/brand/BrandStripeDetachConfirmSheet.tsx",
     "src/components/door/DoorRefundSheet.tsx",
-    "src/components/door/DoorSaleNewSheet.tsx",
+    // #4389: Door mode replaced the door sale sheet; its buyer fields live in this sheet.
+    "src/components/door/DoorModeBuyerSheet.tsx",
     "src/components/event/ChangeSummaryModal.tsx",
     "src/components/event/MultiDateOverrideSheet.tsx",
     "src/components/event/TicketTierEditSheet.tsx",

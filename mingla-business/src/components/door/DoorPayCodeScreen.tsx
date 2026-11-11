@@ -230,7 +230,7 @@ export const DoorPayCodeScreen = (): React.ReactElement => {
   );
 
   // "Sell another" / "Take cash instead": same contract as the Tap to Pay
-  // route — `/door?sellAnother=1&draft=<base64 json>` reopens the sheet.
+  // route — `/door/sell?draft=<base64 json>` reopens Door mode (#4389).
   const openSheet = useCallback(
     (method: "pay_code" | "cash"): void => {
       if (eventId === null) return;

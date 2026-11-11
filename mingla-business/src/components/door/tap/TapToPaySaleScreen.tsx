@@ -277,7 +277,7 @@ export const TapToPaySaleScreen = ({
     // The next guest is someone else: keep the tickets and date, never this
     // guest's name or phone.
     router.replace(
-      `/event/${eventId}/door?sellAnother=1&draft=${encodeURIComponent(encodeTapToPayDraft(sellAnotherDraft(draft)))}` as never,
+      `/event/${eventId}/door/sell?source=sell_another&draft=${encodeURIComponent(encodeTapToPayDraft(sellAnotherDraft(draft)))}` as never,
     );
   }, [draft, eventId, router, goToDoor]);
 

@@ -111,7 +111,8 @@ Deno.test("#4389 4 — start_door_sale hands off to the door sale with tickets p
   const r = await startDoorSale.executor({ event_id: EVENT, ticket_type_id: TIER, quantity: 2 }, f.client as never, "u", {} as never) as Record<string, unknown>;
   assertEquals(r.takes_payment, false);
   const route = String(r.route);
-  assert(route.startsWith(`/event/${EVENT}/door?sellAnother=1&draft=`), route);
+  // Door mode (#4389): the full-screen door sale, tickets prefilled.
+  assert(route.startsWith(`/event/${EVENT}/door/sell?draft=`), route);
   const draft = JSON.parse(atob(decodeURIComponent(route.split("draft=")[1])));
   assertEquals(draft.lines, [{ ticketTypeId: TIER, quantity: 2 }]);
   const soon = new Date(Date.now() + 3600_000).toISOString();

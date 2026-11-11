@@ -9,7 +9,7 @@
  * contentContainerStyle) inside the fixed-height, overflow:hidden SheetMobile
  * panel — so the box grew past the panel bottom and the CTA was clipped and
  * unscrollable. The canonical fix (matching the known-good RefundSheet /
- * DoorSaleNewSheet / AddCompGuestSheet) is:
+ * AddCompGuestSheet; the door sale sheet became Door mode in #4389) is:
  *
  *   (a) bound the body scroll viewport to the panel with `flex:1` on the
  *       ScrollView's `style`  (this gate asserts a `scrollFlex: { flex: 1 }`

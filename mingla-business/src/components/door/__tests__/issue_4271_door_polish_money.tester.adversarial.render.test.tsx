@@ -217,8 +217,6 @@ import { encodeTapToPayDraft } from "../../../services/terminal/tapToPayDraft";
 // eslint-disable-next-line import/first
 import { resetTapToPaySessionForTests, updateTapToPaySession } from "../../../services/terminal/tapToPaySession";
 // eslint-disable-next-line import/first
-import { DoorSaleNewSheet } from "../DoorSaleNewSheet";
-// eslint-disable-next-line import/first
 import { DoorRefundSheet } from "../DoorRefundSheet";
 
 Object.defineProperty(Platform, "Version", { value: "18.1", configurable: true });
@@ -394,132 +392,9 @@ describe("Tap to Pay money controls", () => {
 // The sale sheet
 // ---------------------------------------------------------------------------
 
-const tier = {
-  id: "tier-1",
-  name: "General",
-  isFree: false,
-  priceGbp: 15,
-  currency: "GBP",
-  visibility: "public",
-  availableAt: "both",
-  displayOrder: 0,
-  validDayIds: null,
-};
+// #4389: the door sale sheet these cases covered is replaced by Door mode
+// (issue_4389_door_mode.implementor.test.ts).
 
-const sheet = (props: Record<string, unknown> = {}, event: Record<string, unknown> = {}): React.ReactElement => (
-  <DoorSaleNewSheet
-    visible
-    event={{ id: "event-1", currency: "GBP", tickets: [tier], ...event } as never}
-    onClose={(props.onClose as () => void) ?? jest.fn()}
-    onSuccess={jest.fn()}
-    initialLines={[{ ticketTypeId: "tier-1", quantity: 2 }]}
-    brand={null}
-    {...props}
-  />
-);
-const submit = (root: ReactTestInstance): ReactTestInstance => pressables(root, "door-sale-submit")[0];
-const dockLine = (root: ReactTestInstance): string[] =>
-  root
-    .findAll(
-      (n) =>
-        typeof n.type === "string" &&
-        ["door-sale-dock-message", "door-sale-tap-blocked", "door-sale-tax-refusal"].includes(n.props.testID),
-    )
-    .map((n) => textOf(n));
-
-describe("Sale sheet", () => {
-  beforeEach(() => {
-    mockPermission = { data: true, isError: false };
-    mockQuote = { data: { totalCents: 3135, subtotalCents: 3000, feeCents: 135, currency: "GBP" }, isLoading: false };
-    mockCreatePayCode.mockReset();
-    mockPush.mockClear();
-  });
-
-  test("S1 no Tap to Pay here: pay code is the pick, no Tap to Pay row, the button follows the pick", () => {
-    mockAvailability = { available: false, needsSetup: false, reason: "unsupported" };
-    const { root } = mount(sheet());
-    expect(root.findAll((n) => n.props.testID === "door-sale-method-tap_to_pay")).toHaveLength(0);
-    expect(textOf(root)).not.toContain("Tap to Pay");
-    const payRow = root.findAll((n) => n.props.testID === "door-sale-method-pay_code" && typeof n.props.onPress === "function")[0];
-    expect(payRow.props.accessibilityState).toEqual({ selected: true });
-    expect(textOf(submit(root)).trim()).toBe("Show pay code");
-    // Move to cash, then back: the one button follows every pick.
-    act(() => {
-      root.findAll((n) => n.props.testID === "door-sale-method-cash" && typeof n.props.onPress === "function")[0].props.onPress();
-    });
-    expect(textOf(submit(root)).trim()).toBe("Complete sale");
-    expect(root.findAll((n) => n.props.testID === "door-sale-submit" && "label" in n.props)).toHaveLength(1);
-  });
-
-  test("S1 Paystack: the pay code row speaks Nigerian rails", () => {
-    mockAvailability = { available: false, needsSetup: false, reason: "paystack" };
-    const { root } = mount(sheet({}, { currency: "NGN", tickets: [{ ...tier, currency: "NGN" }] }));
-    expect(textOf(root)).toContain("They scan a code and pay by card, bank transfer or USSD.");
-    expect(textOf(root)).not.toContain("Tap to Pay");
-  });
-
-  test("S2 access check failed outranks no bank, and the cash button stays off", () => {
-    mockAvailability = { available: false, needsSetup: false, reason: "unsupported" };
-    mockPermission = { data: undefined, isError: true };
-    const { root } = mount(sheet({ initialMethod: "cash" }, { currency: null }));
-    expect(dockLine(root)).toEqual(["Couldn't check your door access. Check your connection and try again."]);
-    expect(submit(root).props.disabled).toBe(true);
-  });
-
-  test("S2 a refused pay code replaces the quote hint, and picking another row clears it", async () => {
-    mockAvailability = { available: false, needsSetup: false, reason: "unsupported" };
-    mockQuote = { data: undefined, isLoading: true };
-    const { DoorPayCodeError } = jest.requireActual("../../../services/doorPayCodeService") as {
-      DoorPayCodeError: new (code: string, message?: string) => Error;
-    };
-    mockCreatePayCode.mockRejectedValueOnce(new DoorPayCodeError("door_ticket_capacity_exceeded", "x"));
-    const { root } = mount(sheet());
-    expect(dockLine(root)).toEqual(["The pay code shows the final total, with any fees."]);
-    await act(async () => {
-      await submit(root).props.onPress();
-    });
-    expect(dockLine(root)).toEqual(["Not enough tickets left for this sale."]);
-    act(() => {
-      root.findAll((n) => n.props.testID === "door-sale-method-cash" && typeof n.props.onPress === "function")[0].props.onPress();
-    });
-    expect(dockLine(root)).toEqual([]);
-  });
-
-  test("S2 no door tiers: no button at all, so nothing dead to press", () => {
-    mockAvailability = { available: true, needsSetup: false, reason: "ok" };
-    const { root } = mount(sheet({ initialLines: [] }, { tickets: [] }));
-    expect(textOf(root)).toContain("No tiers available for door sales");
-    expect(pressables(root, "door-sale-submit")).toHaveLength(0);
-  });
-
-  test("S3 while a pay code is being made the header close is off and does nothing", async () => {
-    mockAvailability = { available: false, needsSetup: false, reason: "unsupported" };
-    let release: (value: unknown) => void = () => undefined;
-    mockCreatePayCode.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          release = resolve;
-        }),
-    );
-    const onClose = jest.fn();
-    const { root } = mount(sheet({ onClose }));
-    act(() => {
-      void submit(root).props.onPress();
-    });
-    const close = pressables(root, "door-sale-close")[0];
-    expect(close.props.disabled).toBe(true);
-    act(() => {
-      close.props.onPress();
-    });
-    expect(onClose).not.toHaveBeenCalled();
-    await act(async () => {
-      release({ codeId: "code-1" });
-    });
-    // The code was made: the sheet closes itself and opens it, exactly once.
-    expect(onClose).toHaveBeenCalledTimes(1);
-    expect(mockPush).toHaveBeenCalledWith("/event/event-1/door/pay/code-1");
-  });
-});
 
 // ---------------------------------------------------------------------------
 // Door refund: fully refunded
@@ -562,91 +437,6 @@ describe("Door refund sheet", () => {
 // Retest of 6981d7956e: the slim Tap to Pay button, blocked reasons, announces
 // ---------------------------------------------------------------------------
 
-describe("Retest: the slim Tap to Pay button under the dock", () => {
-  const slim = (root: ReactTestInstance): ReactTestInstance[] =>
-    root.findAll((n) => n.props.testID === "door-sale-tap-dock" && typeof n.props.onPress === "function");
-  beforeEach(() => {
-    mockAvailability = { available: true, needsSetup: false, reason: "ok" };
-    mockPermission = { data: true, isError: false };
-    mockQuote = { data: { totalCents: 3135, subtotalCents: 3000, feeCents: 135, currency: "GBP" }, isLoading: false };
-    mockCreatePayCode.mockReset();
-    mockRecordSale.mockReset();
-    mockPush.mockClear();
-  });
-
-  test("T1 from the pay code pick: one press closes the sheet once and opens Tap to Pay with this basket", () => {
-    const onClose = jest.fn();
-    const { root } = mount(sheet({ initialMethod: "pay_code", onClose }));
-    expect(slim(root)).toHaveLength(1);
-    expect(slim(root)[0].props.disabled).toBe(false);
-    act(() => {
-      slim(root)[0].props.onPress();
-    });
-    expect(onClose).toHaveBeenCalledTimes(1);
-    expect(mockPush).toHaveBeenCalledTimes(1);
-    const href = String(mockPush.mock.calls[0]?.[0]);
-    expect(href).toContain("/event/event-1/door/tap/new");
-    expect(mockCreatePayCode).not.toHaveBeenCalled();
-    expect(mockRecordSale).not.toHaveBeenCalled();
-  });
-
-  test("T2 the pay code pick on a tax-at-checkout event: the slim button is off and opens nothing", () => {
-    mockQuote = { data: undefined, isLoading: false, isError: true, error: { code: "door_tax_added_at_checkout" } };
-    const { root } = mount(sheet({ initialMethod: "pay_code" }));
-    const button = slim(root)[0];
-    expect(button.props.disabled).toBe(true);
-    expect(button.props.accessibilityState).toEqual({ disabled: true });
-    expect(mockPush).not.toHaveBeenCalled();
-  });
-
-  test("T3 while a cash sale is saving the slim button is off; it never takes over a sale in flight", async () => {
-    let release: (value: unknown) => void = () => undefined;
-    mockRecordSale.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          release = resolve;
-        }),
-    );
-    const { root } = mount(sheet({ initialMethod: "cash" }));
-    expect(slim(root)[0].props.disabled).toBe(false);
-    act(() => {
-      void submit(root).props.onPress();
-    });
-    expect(slim(root)[0].props.disabled).toBe(true);
-    expect(mockPush).not.toHaveBeenCalled();
-    await act(async () => {
-      release({ id: "sale-1" });
-    });
-  });
-
-  test("T4 a blocked reason survives a re-render that changes nothing the host typed", () => {
-    const tree = mount(sheet({ initialMethod: "cash", initialLines: [] }));
-    act(() => {
-      slim(tree.root)[0].props.onPress();
-    });
-    expect(dockLine(tree.root)).toEqual(["Pick at least one ticket first."]);
-    // A fresh quote object and a permission refetch are not edits.
-    mockQuote = { data: { totalCents: 3135, subtotalCents: 3000, feeCents: 135, currency: "GBP" }, isLoading: false };
-    mockPermission = { data: true, isError: false };
-    act(() => {
-      (tree as unknown as { update: (e: React.ReactElement) => void }).update(sheet({ initialMethod: "cash", initialLines: [] }));
-    });
-    expect(dockLine(tree.root)).toEqual(["Pick at least one ticket first."]);
-    expect(mockPush).not.toHaveBeenCalled();
-  });
-
-  test("T5 a cash pick on a tax-at-checkout event cannot know the refusal: the press opens Tap to Pay, the server refuses", () => {
-    // The quote does not run for cash, so the sheet cannot pre-know. Pinned so a
-    // change here is deliberate; the tap screen must explain it (T6).
-    mockQuote = { data: undefined, isLoading: false, isError: true, error: { code: "door_tax_added_at_checkout" } };
-    const { root } = mount(sheet({ initialMethod: "cash" }));
-    expect(slim(root)[0].props.disabled).toBe(false);
-    act(() => {
-      slim(root)[0].props.onPress();
-    });
-    expect(mockPush).toHaveBeenCalledTimes(1);
-  });
-});
 
 describe("Retest: Tap to Pay screen refusals and VoiceOver", () => {
   const draftRaw = encodeTapToPayDraft({
