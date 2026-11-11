@@ -13,6 +13,7 @@ import {
   createClient,
   SupabaseClient,
 } from "https://esm.sh/@supabase/supabase-js@2.45.4";
+import { pendingActionBrandMismatch } from "../_shared/agentBrandSetupTools.ts";
 import { corsHeaders } from "../_shared/cors.ts";
 import { TENANT_CONTEXT_VERSION } from "../_shared/agentSystemPrompt.ts";
 import { ARI_MODEL_VERSION } from "../_shared/agentGemini.ts";
@@ -98,6 +99,8 @@ interface RequestBody {
   continuation?: "server";
   /** #3355 P3: confirmed from Website setup — return the next gap. */
   workflow_context?: "website_setup";
+  /** #4389 AR-13: the brand the Host has selected when it confirms. */
+  brand_id?: string;
 }
 
 type Response_ =
@@ -642,6 +645,19 @@ async function handleConfirmAction(args: {
       403,
       "BRAND_ACCESS_DENIED",
       "You no longer have access to this conversation's brand.",
+    );
+  }
+
+  // #4389 AR-13 — a confirmation card is bound to the brand it was proposed
+  // for; confirming it while another brand is selected is refused.
+  if (
+    body.action === "confirm" &&
+    pendingActionBrandMismatch(pending.related_brand_id, body.brand_id)
+  ) {
+    return errorResponse(
+      409,
+      "BRAND_MISMATCH",
+      "This card belongs to another brand. Switch back to it to confirm.",
     );
   }
 

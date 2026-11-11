@@ -607,9 +607,16 @@ Deno.test("#3355 P2: the not-now confirmation card names the item in owner words
 });
 
 Deno.test("#3355 P2: edge item labels equal the migration catalogue (one home)", async () => {
+  // #4389 adds the brand_setup action and its two action-scoped rows in its
+  // own migration; the catalogue's home is the union of both files.
   const sql = await Deno.readTextFile(
     new URL(
       "supabase/migrations/20280307003355_issue_3355_brand_readiness.sql",
+      ROOT,
+    ),
+  ) + await Deno.readTextFile(
+    new URL(
+      "supabase/migrations/20280621004389_issue_4389_brand_setup.sql",
       ROOT,
     ),
   );

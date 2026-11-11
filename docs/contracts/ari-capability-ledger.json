@@ -10,11 +10,11 @@
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
     "verified_at": "2026-10-31T03:20:00Z",
-    "registered_tool_count": 185,
-    "capability_count": 197,
+    "registered_tool_count": 187,
+    "capability_count": 199,
     "status_breakdown": {
       "verified": 0,
-      "registered_unverified": 184,
+      "registered_unverified": 186,
       "broken": 0,
       "guided_handoff": 8,
       "unsupported": 0,
@@ -9301,6 +9301,76 @@
       ],
       "confidence": "high",
       "verified_at": "2026-11-01"
+    },
+    {
+      "id": "ari.handoffs.payments_onboarding",
+      "domain": "handoffs",
+      "outcome": "Hand the owner to the secure screen for ID and bank details once the bank country and Organiser Terms are done; never collects them in chat",
+      "safety": "read",
+      "required_role": "brand_member",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "issue_4389" },
+      "owners": {
+        "ui": ["mingla-business/src/screens/ari/AriChatScreen.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentBrandSetupTools.ts",
+            "symbol": "const startPaymentsOnboarding"
+          }
+        ]
+      },
+      "ari_tool": "start_payments_onboarding",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "50ad8e6d21afcdc7070fb40733b91d31ad9f9fae",
+          "reference": "issue_4389_brand_setup_tools.implementor.test.ts: gates and requires_owner",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [4389],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-11-11"
+    },
+    {
+      "id": "ari.handoffs.door_sale",
+      "domain": "handoffs",
+      "outcome": "Open the door sale for an event with tickets prefilled; never takes a payment",
+      "safety": "read",
+      "required_role": "brand_member",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "issue_4389" },
+      "owners": {
+        "ui": ["mingla-business/src/screens/ari/AriChatScreen.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentBrandSetupTools.ts",
+            "symbol": "const startDoorSale"
+          }
+        ]
+      },
+      "ari_tool": "start_door_sale",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "50ad8e6d21afcdc7070fb40733b91d31ad9f9fae",
+          "reference": "issue_4389_brand_setup_tools.implementor.test.ts: door sale handoff",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [4389],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-11-11"
     }
   ]
 }

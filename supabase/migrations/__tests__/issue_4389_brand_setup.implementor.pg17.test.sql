@@ -14,7 +14,8 @@
 --       payments setup stamped < 15 min ago -> PT409; > 15 min ago -> allowed (R-3)
 --   T4  biz_begin_payments_setup: country required, terms required, owner only,
 --       stamps payments_setup_started_at
---   T5  biz_create_setup_brand: same id twice = one brand (R-1); a second brand
+--   T5  biz_create_setup_brand: same id twice = one brand (R-1); an old-build
+--       INSERT with no bank country still works; a second brand
 --       while a draft exists -> draft_exists; free-only lifts the draft; slug taken
 --   T6  readiness brand_setup: exactly 4 items in order, routes, states through
 --       country -> terms -> Stripe submitted; currently_due flips it back (S-h)
@@ -201,6 +202,15 @@ begin
   v := public.biz_create_setup_brand('43890000-0000-4000-b000-000000000011', 'Second', 'second-4389');
   perform pg_temp.expect('T5 draft_exists', v->>'error' = 'draft_exists'
     and v->>'brand_id' = '43890000-0000-4000-b000-000000000010', v::text);
+  -- Old app builds: a plain INSERT with no payout_country still works while a
+  -- draft exists (the one-draft rule is not a DB constraint).
+  set local role authenticated;
+  insert into public.brands (account_id, name, slug)
+  values ('43890000-0000-4000-a000-000000000005', 'Old build brand', 'old-build-4389');
+  reset role;
+  perform pg_temp.expect('T5 old-shape INSERT allowed', exists (
+    select 1 from public.brands where slug = 'old-build-4389' and payout_country is null));
+  update public.brands set setup_free_only_at = now() where slug = 'old-build-4389';
   perform public.biz_mark_brand_setup_free_only('43890000-0000-4000-b000-000000000010');
   v := public.biz_create_setup_brand('43890000-0000-4000-b000-000000000011', 'Second', 'issue4389a');
   perform pg_temp.expect('T5 slug taken', v->>'error' = 'slug_taken', v::text);

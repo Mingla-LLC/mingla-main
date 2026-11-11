@@ -47,6 +47,9 @@ export const ACTION_READINESS_ITEM_LABELS: Readonly<Record<string, string>> =
     "team.role": "Your role on this brand",
     "venue.approved_exists": "An approved venue",
     "stay.settings_complete": "Stay settings",
+    // #4389 — brand_setup checklist (migration 20280621004389).
+    "brand.name": "Brand name",
+    "money.details_submitted": "Payment details",
   });
 
 /** The closed action vocabulary `brand_readiness(p_brand_id, p_action)` accepts. */
@@ -62,6 +65,9 @@ export const READINESS_ACTIONS = Object.freeze(
     "website_publish",
     "refund",
     "bank_setup",
+    // #4389 — the 4-item setup checklist (brand.name, money.market,
+    // money.terms_member, money.details_submitted).
+    "brand_setup",
   ] as const,
 );
 
@@ -74,4 +80,19 @@ export function readinessItemLabel(key: unknown): string | null {
     : Object.prototype.hasOwnProperty.call(ACTION_READINESS_ITEM_LABELS, key)
     ? ACTION_READINESS_ITEM_LABELS[key]
     : null;
+}
+
+/**
+ * #4389 — the brand_setup checklist, in order, and the setup step each item
+ * opens. Every route is a real app route: `app/brand/[id]/setup.tsx` reads
+ * `step` (name | country | pay | done).
+ */
+export const BRAND_SETUP_ITEM_KEYS = Object.freeze(
+  ["brand.name", "money.market", "money.terms_member", "money.details_submitted"] as const,
+);
+
+export type BrandSetupStep = "name" | "country" | "pay" | "done";
+
+export function brandSetupRoute(brandId: string, step: BrandSetupStep): string {
+  return `/brand/${brandId}/setup?step=${step}`;
 }
