@@ -161,6 +161,12 @@ const useMembershipForCreation: typeof useCurrentBrandRole = hasBrandQueryHook
 export interface BrandCreationFlowProps {
   onComplete: (newBrandId: string) => void;
   onCancel?: () => void;
+  /**
+   * #4389 — Step 0 "Myself" hands over to the 4-step setup on /brand/new
+   * (self brands no longer use this flow). Without it, "Myself" continues
+   * here as before.
+   */
+  onSelfChosen?: () => void;
 }
 
 // ORCH-1081 — step 0 = partner-mode picker (only visible to flagged partners),
@@ -360,6 +366,7 @@ const slugify = (value: string): string =>
 export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
   onComplete,
   onCancel,
+  onSelfChosen,
 }) => {
   const router = useRouter();
   // META-ORCH-1232 (C2) — gate the create/address CTAs on auth readiness so the
@@ -761,9 +768,13 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
   const handleModeContinue = useCallback((): void => {
     if (stepZeroCommittedRef.current) return;
     stepZeroCommittedRef.current = true;
+    if (state.mode === "self" && onSelfChosen !== undefined) {
+      onSelfChosen();
+      return;
+    }
     pendingHeadingFocusRef.current = 1;
     updateState({ type: "next" });
-  }, [updateState]);
+  }, [updateState, state.mode, onSelfChosen]);
 
   const commitDefaultBrand = useCallback(
     (newBrand: Brand): void => {

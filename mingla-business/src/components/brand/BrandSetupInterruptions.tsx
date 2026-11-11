@@ -7,7 +7,8 @@
 import React from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 
-import { accent, radius, spacing, text as textTokens, typography } from "../../constants/designSystem";
+import { accent, radius, semantic, spacing, text as textTokens, typography } from "../../constants/designSystem";
+import { isAuthNotReadyError } from "../../utils/authReadyGate";
 import { Button } from "../ui/Button";
 import { Sheet } from "../ui/Sheet";
 import { BRAND_SETUP_COPY as C } from "./brandSetupCopy";
@@ -170,7 +171,35 @@ export const OtherDeviceBanner: React.FC<{ refreshing: boolean; onRefresh: () =>
   </View>
 );
 
+// ── F1 / F2 write errors ─────────────────────────────────────────────────
+
+/**
+ * META-ORCH-1232 H1 (kept by #4389) — a failed brand write is a PERSISTENT
+ * inline error under the CTA with "Try again" that re-runs the same write
+ * (design S-b: "inline under the CTA, value kept, Try again"). Never a lone
+ * toast. AuthNotReadyError (C2) gets its own words, the design's auth-warming
+ * line "Getting things ready…".
+ */
+export interface WriteError {
+  message: string;
+  retry: () => void;
+}
+
+export function writeErrorMessage(error: unknown, fallback: string): string {
+  return isAuthNotReadyError(error) ? C.f1.authWarming : fallback;
+}
+
+export const InlineWriteError: React.FC<{ writeError: WriteError | null; testID: string }> = ({ writeError, testID }) =>
+  writeError === null ? null : (
+    <View style={styles.inlineError} testID={testID} accessibilityRole="alert" accessibilityLabel={writeError.message}>
+      <Text style={[styles.errorText, styles.flex]}>{writeError.message}</Text>
+      <Button testID={`${testID}-retry`} label={C.common.tryAgain} onPress={writeError.retry} variant="ghost" size="sm" />
+    </View>
+  );
+
 const styles = StyleSheet.create({
+  inlineError: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  errorText: { ...typography.bodySm, color: semantic.errorText },
   sheetBody: { padding: spacing.lg, gap: spacing.sm },
   h3: { ...typography.h3, color: textTokens.primary },
   sub: { ...typography.body, color: textTokens.secondary },

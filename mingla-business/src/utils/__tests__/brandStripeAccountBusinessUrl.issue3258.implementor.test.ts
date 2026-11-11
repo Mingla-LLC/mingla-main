@@ -245,8 +245,22 @@ describe("#3258 — the edge-side prefill, guarded by the one gate that runs on 
     const brandOnboard = readRepoFile(
       "supabase/functions/brand-stripe-onboard/index.ts",
     );
-    expect(brandOnboard).toContain(
-      'select("name, contact_email, default_currency, slug")',
+    // #4389 widened the brand read with `payout_country` (the bank country
+    // picked in the new setup flow). The #3258 guarantee is unchanged: the
+    // brand row read must still select `slug`, the brand page must still be
+    // built from that slug, and it must still be sent as `businessUrl`.
+    const brandSelect = brandOnboard.match(
+      /\.from\("brands"\)\s*\.select\("([^"]+)"\)/,
+    );
+    expect(brandSelect).not.toBeNull();
+    const brandColumns = (brandSelect?.[1] ?? "").split(",").map((c) =>
+      c.trim()
+    );
+    for (const column of ["name", "contact_email", "default_currency", "slug"]) {
+      expect(brandColumns).toContain(column);
+    }
+    expect(brandOnboard).toMatch(
+      /const brandPublicPageUrl = resolveBrandPublicUrl\(\{[^}]*slug: brandRow\.slug,/,
     );
     expect(brandOnboard).toContain("businessUrl: brandPublicPageUrl");
 

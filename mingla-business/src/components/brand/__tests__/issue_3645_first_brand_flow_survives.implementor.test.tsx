@@ -1,19 +1,25 @@
 /**
  * #3645 — a first-time organiser's brand setup must not stop after step 1.
  *
- * BrandSwitcherSheet used to re-derive its mode from the brand list on every
- * change. Creating the first brand makes the list non-empty optimistically,
- * which flipped the sheet to "Switch brand" and UNMOUNTED BrandCreationFlow
- * after step 1 — Place, Look, Payouts and the first-offering tiles never
- * showed. The mode is now decided when the sheet opens.
+ * Originally: BrandSwitcherSheet re-derived its mode from the brand list on
+ * every change. Creating the first brand made the list non-empty
+ * optimistically, flipped the sheet to "Switch brand" and UNMOUNTED the
+ * creation flow after step 1.
  *
- * Mounts the PRODUCTION BrandSwitcherSheet. BrandCreationFlow is a stub that
- * counts its mounts/unmounts, so "the same flow instance is still on screen"
- * is asserted directly. Stock node/ts-jest Business gate.
+ * #4389 (design v11, I-4389-NO-MODAL-ON-OVERLAY) took brand creation out of
+ * the sheet: "Create a new brand" closes the sheet and opens the full-screen
+ * /brand/new route. The #3645 invariant now lives on that route, which reads
+ * the brand list too (N1 "You have a brand in progress" up front): the brand
+ * F1 just created is a draft in that list, so without a latch the route would
+ * swap the in-progress flow for N1 (or for the loading gap on a refetch). The
+ * route decides N1 at open only; once a flow is on screen it stays mounted.
  *
- * FAILS ON REVERT: restore
- *   useEffect(() => { if (visible) setMode(isTrueEmpty ? "create" : "switch"); }, …)
- * → T1 sees the flow unmounted and "Switch brand" rendered.
+ * Mounts the PRODUCTION /brand/new route and BrandSwitcherSheet. The flows
+ * are stubs that count mounts/unmounts, so "the same flow instance is still
+ * on screen" is asserted directly. Stock node/ts-jest Business gate.
+ *
+ * FAILS ON REVERT: drop `flowOpened` from app/brand/new.tsx (knownDraftId /
+ * waitingForDrafts) → T1 and T2 see the flow unmounted and N1 / nothing.
  *
  *   cd mingla-business && npx jest \
  *     src/components/brand/__tests__/issue_3645_first_brand_flow_survives.implementor.test.tsx --runInBand
@@ -41,18 +47,8 @@ interface BrandListSeed {
   status: "loading" | "ready" | "error";
 }
 
-const EMPTY: BrandListSeed = {
-  brands: [],
-  isTrueEmpty: true,
-  isLoading: false,
-  status: "ready",
-};
-const LOADING: BrandListSeed = {
-  brands: [],
-  isTrueEmpty: false,
-  isLoading: true,
-  status: "loading",
-};
+const EMPTY: BrandListSeed = { brands: [], isTrueEmpty: true, isLoading: false, status: "ready" };
+const LOADING: BrandListSeed = { brands: [], isTrueEmpty: false, isLoading: true, status: "loading" };
 const FIRST_BRAND: BrandRow = {
   id: "36450000-0000-4000-8000-000000000001",
   displayName: "First Brand",
@@ -67,38 +63,50 @@ const withBrands = (...brands: BrandRow[]): BrandListSeed => ({
 });
 
 let mockBrandList: BrandListSeed = EMPTY;
+let mockSetup: { draftId: string | null; isLoading: boolean } = { draftId: null, isLoading: false };
 const mockFlowLifecycle = { mounts: 0, unmounts: 0 };
+const mockPush = jest.fn();
+const mockClose = jest.fn();
+
+jest.mock("expo-router", () => ({
+  Redirect: () => null,
+  useLocalSearchParams: () => ({}),
+  useRouter: () => ({ push: mockPush, replace: jest.fn(), back: jest.fn(), canGoBack: () => true }),
+}));
+
+jest.mock("react-native-safe-area-context", () => ({
+  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+}));
 
 jest.mock("../../../hooks/useBrandListShim", () => ({
   useBrandListState: () => mockBrandList,
 }));
 
-jest.mock("../../../context/AuthContext", () => ({
-  useAuth: () => ({ user: { id: "account-3645" } }),
+jest.mock("../../../hooks/useBrandSetupStates", () => ({
+  useBrandSetupStates: () => ({ byId: {}, ...mockSetup }),
 }));
 
-jest.mock("../../../hooks/useCreatorAccount", () => ({
-  useUpdateCreatorAccount: () => ({
-    mutateAsync: jest.fn(() => Promise.resolve(undefined)),
-  }),
+jest.mock("../../../hooks/usePartnerStripe", () => ({
+  usePartnerStripeStatus: () => ({ data: { partner_enabled: false }, isError: false }),
+}));
+
+jest.mock("../../../hooks/usePickBrand", () => ({
+  usePickBrand: () => jest.fn(),
+}));
+
+jest.mock("../../../context/AuthContext", () => ({
+  useAuth: () => ({ user: { id: "account-3645" }, isAuthReady: true }),
 }));
 
 // [TEST-MOD-APPROVED #3682] Harness registration only — follower totals are
 // outside this suite's creation-flow lifecycle contract; every assertion stays.
 jest.mock("../../../hooks/useBrandFollowerCount", () => ({
-  useBrandFollowerCounts: () => ({
-    data: undefined,
-    isPending: false,
-    isError: false,
-  }),
+  useBrandFollowerCounts: () => ({ data: undefined, isPending: false, isError: false }),
 }));
 
 jest.mock("../../../store/currentBrandStore", () => ({
   useCurrentBrandStore: (
-    selector: (state: {
-      setCurrentBrand: () => void;
-      currentBrandId: string | null;
-    }) => unknown,
+    selector: (state: { setCurrentBrand: () => void; currentBrandId: string | null }) => unknown,
   ) => selector({ setCurrentBrand: jest.fn(), currentBrandId: null }),
 }));
 
@@ -106,21 +114,26 @@ jest.mock("../../../utils/brandDeletePermission", () => ({
   canDeleteBrand: () => false,
 }));
 
-jest.mock("../PartnerClientBrandCreationFlow", () => {
+jest.mock("../LazyBrandCreationFlow", () => {
   const ReactLocal = require("react") as typeof import("react");
   const { View } = require("react-native");
+  const Flow = (): React.ReactElement => {
+    ReactLocal.useEffect(() => {
+      mockFlowLifecycle.mounts += 1;
+      return () => {
+        mockFlowLifecycle.unmounts += 1;
+      };
+    }, []);
+    return <View testID="creation-flow" />;
+  };
   return {
-    BrandCreationFlow: (props: { onCancel?: () => void }) => {
-      ReactLocal.useEffect(() => {
-        mockFlowLifecycle.mounts += 1;
-        return () => {
-          mockFlowLifecycle.unmounts += 1;
-        };
-      }, []);
-      return <View testID="creation-flow" onCancel={props.onCancel} />;
-    },
+    LazyBrandCreationFlow: Flow,
+    LazyPartnerClientBrandCreationFlow: () => <View testID="partner-flow" />,
+    LazyDraftInProgress: () => <View testID="draft-in-progress" />,
   };
 });
+
+jest.mock("../../ui/Toast", () => ({ Toast: () => null }));
 
 jest.mock("../../ui/Button", () => {
   const { Pressable, Text } = require("react-native");
@@ -141,16 +154,12 @@ jest.mock("../../ui/Icon", () => {
 jest.mock("../../ui/TopSheet", () => {
   const { View } = require("react-native");
   return {
-    TopSheet: ({
-      visible,
-      children,
-    }: {
-      visible: boolean;
-      children?: React.ReactNode;
-    }) => (visible ? <View testID="top-sheet">{children}</View> : null),
+    TopSheet: ({ visible, children }: { visible: boolean; children?: React.ReactNode }) =>
+      (visible ? <View testID="top-sheet">{children}</View> : null),
   };
 });
 
+import BrandNewRoute from "../../../../app/brand/new";
 import { BrandSwitcherSheet } from "../BrandSwitcherSheet";
 
 interface TestInstance {
@@ -171,42 +180,32 @@ const TestRenderer = require("react-test-renderer") as {
   create: (element: React.ReactElement) => TestTree;
 };
 
-const hosts = (
-  tree: TestTree,
-  predicate: (node: TestInstance) => boolean,
-): TestInstance[] =>
+const hosts = (tree: TestTree, predicate: (node: TestInstance) => boolean): TestInstance[] =>
   tree.root.findAll((node) => typeof node.type === "string" && predicate(node));
 
-const flowCount = (tree: TestTree): number =>
-  hosts(tree, (node) => node.props.testID === "creation-flow").length;
+const count = (tree: TestTree, testID: string): number =>
+  hosts(tree, (node) => node.props.testID === testID).length;
 
-const textOf = (node: TestInstance | string): string =>
-  typeof node === "string" ? node : node.children.map(textOf).join("");
-
-const showsSwitchList = (tree: TestTree): boolean =>
-  textOf(tree.root).includes("Switch brand");
-
-async function render(
-  tree: TestTree | null,
-  visible: boolean,
-): Promise<TestTree> {
-  const element = <BrandSwitcherSheet visible={visible} onClose={jest.fn()} />;
+async function renderRoute(tree: TestTree | null): Promise<TestTree> {
   let next = tree;
   await TestRenderer.act(async () => {
-    if (next === null) next = TestRenderer.create(element);
-    else next.update(element);
+    if (next === null) next = TestRenderer.create(<BrandNewRoute />);
+    else next.update(<BrandNewRoute />);
   });
-  if (next === null) throw new Error("sheet did not mount");
+  if (next === null) throw new Error("route did not mount");
   return next;
 }
 
-describe("#3645 — the brand sheet keeps an in-progress creation flow mounted", () => {
+describe("#3645 — the first brand's setup stays mounted (/brand/new since #4389)", () => {
   let tree: TestTree | null = null;
 
   beforeEach(() => {
     mockBrandList = EMPTY;
+    mockSetup = { draftId: null, isLoading: false };
     mockFlowLifecycle.mounts = 0;
     mockFlowLifecycle.unmounts = 0;
+    mockPush.mockReset();
+    mockClose.mockReset();
   });
 
   afterEach(() => {
@@ -217,74 +216,72 @@ describe("#3645 — the brand sheet keeps an in-progress creation flow mounted",
   });
 
   test("T1: creating the first brand does not unmount the creation flow", async () => {
-    tree = await render(null, true);
-    expect(flowCount(tree)).toBe(1);
+    tree = await renderRoute(null);
+    expect(count(tree, "creation-flow")).toBe(1);
     expect(mockFlowLifecycle).toEqual({ mounts: 1, unmounts: 0 });
 
-    // Step 1's own success: the optimistic insert makes the list non-empty.
+    // F1's own success: the list now holds the new brand, and it is a draft.
     mockBrandList = withBrands(FIRST_BRAND);
-    tree = await render(tree, true);
+    mockSetup = { draftId: FIRST_BRAND.id, isLoading: false };
+    tree = await renderRoute(tree);
 
-    expect(flowCount(tree)).toBe(1);
-    expect(showsSwitchList(tree)).toBe(false);
-    // The SAME instance — a remount would restart the flow at step 1.
+    expect(count(tree, "creation-flow")).toBe(1);
+    expect(count(tree, "draft-in-progress")).toBe(0);
+    // The SAME instance — a remount would restart the flow at F1.
     expect(mockFlowLifecycle).toEqual({ mounts: 1, unmounts: 0 });
   });
 
-  test("T2: an optimistic rollback (create failed) keeps the flow mounted too", async () => {
-    tree = await render(null, true);
+  test("T2: a refetch (loading) or a rollback keeps the flow mounted too", async () => {
+    tree = await renderRoute(null);
     mockBrandList = withBrands(FIRST_BRAND);
-    tree = await render(tree, true);
+    mockSetup = { draftId: null, isLoading: true };
+    tree = await renderRoute(tree);
+    mockBrandList = { ...withBrands(FIRST_BRAND), isLoading: true };
+    tree = await renderRoute(tree);
     mockBrandList = EMPTY;
-    tree = await render(tree, true);
+    mockSetup = { draftId: null, isLoading: false };
+    tree = await renderRoute(tree);
 
-    expect(flowCount(tree)).toBe(1);
+    expect(count(tree, "creation-flow")).toBe(1);
     expect(mockFlowLifecycle).toEqual({ mounts: 1, unmounts: 0 });
   });
 
-  test("T3: the mode is re-decided each time the sheet opens", async () => {
-    tree = await render(null, true);
+  test("T3: N1 is decided each time the route opens", async () => {
     mockBrandList = withBrands(FIRST_BRAND);
-    tree = await render(tree, true);
-    expect(flowCount(tree)).toBe(1);
+    mockSetup = { draftId: FIRST_BRAND.id, isLoading: false };
+    tree = await renderRoute(null);
 
-    tree = await render(tree, false);
-    tree = await render(tree, true);
-
-    expect(flowCount(tree)).toBe(0);
-    expect(showsSwitchList(tree)).toBe(true);
+    expect(count(tree, "draft-in-progress")).toBe(1);
+    expect(count(tree, "creation-flow")).toBe(0);
   });
 
   test("T4: a list that was still loading at open and resolves empty moves to create", async () => {
     mockBrandList = LOADING;
-    tree = await render(null, true);
-    expect(flowCount(tree)).toBe(0);
+    tree = await renderRoute(null);
+    expect(count(tree, "creation-flow")).toBe(0);
 
     mockBrandList = EMPTY;
-    tree = await render(tree, true);
+    tree = await renderRoute(tree);
 
-    expect(flowCount(tree)).toBe(1);
+    expect(count(tree, "creation-flow")).toBe(1);
   });
 
-  test("T5: the explicit controls still switch mode", async () => {
+  test("T5: the sheet's Create opens the full-screen route and never embeds the flow", async () => {
     mockBrandList = withBrands(FIRST_BRAND);
-    tree = await render(null, true);
-    expect(showsSwitchList(tree)).toBe(true);
-
-    const create = hosts(
-      tree,
-      (node) => node.props.accessibilityLabel === "Create a new brand",
-    )[0];
+    let sheet!: TestTree;
     await TestRenderer.act(async () => {
-      (create.props.onPress as () => void)();
+      sheet = TestRenderer.create(<BrandSwitcherSheet visible onClose={mockClose} />);
     });
-    expect(flowCount(tree)).toBe(1);
+    expect(count(sheet, "creation-flow")).toBe(0);
 
-    const flow = hosts(tree, (node) => node.props.testID === "creation-flow")[0];
+    const create = hosts(sheet, (node) => node.props.accessibilityLabel === "Create a new brand")[0];
     await TestRenderer.act(async () => {
-      (flow.props.onCancel as () => void)();
+      (create?.props.onPress as () => void)();
     });
-    expect(flowCount(tree)).toBe(0);
-    expect(showsSwitchList(tree)).toBe(true);
+
+    expect(mockClose).toHaveBeenCalledTimes(1);
+    expect(mockPush).toHaveBeenCalledWith("/brand/new");
+    expect(count(sheet, "creation-flow")).toBe(0);
+    TestRenderer.act(() => sheet.unmount());
   });
 });

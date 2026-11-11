@@ -3148,6 +3148,7 @@
         "mingla-business/assets/offerings/offer-venue.mp4",
         "mingla-business/assets/tap-to-pay/ttp-visual.png",
         "mingla-business/src/components/brand/BrandSetupInterruptions.tsx",
+        "mingla-business/src/components/brand/brandNewEntry.ts",
         "mingla-business/src/components/brand/LazyBrandCreationFlow.tsx",
         "mingla-business/src/components/brand/offeringRowVisibility.tsx",
         "mingla-business/src/constants/stripeSupportedCountries.ts",

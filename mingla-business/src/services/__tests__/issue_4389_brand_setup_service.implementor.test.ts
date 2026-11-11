@@ -5,15 +5,17 @@
  * unconditionally fails "SC-2"; dropping the draft_exists branch in
  * createSetupBrand fails "N1".
  */
-import { beforeEach, describe, expect, jest, test } from "@jest/globals";
+import { afterEach, beforeEach, describe, expect, jest, test } from "@jest/globals";
 
 const mockRpc = jest.fn<(name: string, params: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>>();
 const mockInvoke = jest.fn<(name: string, opts: unknown) => Promise<{ data: unknown; error: unknown }>>();
+const mockGetSession = jest.fn<() => Promise<{ data: { session: { access_token?: string | null } | null } }>>();
 
 jest.mock("../supabase", () => ({
   supabase: {
     rpc: (name: string, params: Record<string, unknown>) => mockRpc(name, params),
     functions: { invoke: (name: string, opts: unknown) => mockInvoke(name, opts) },
+    auth: { getSession: () => mockGetSession() },
   },
 }));
 
@@ -25,6 +27,7 @@ import {
   slugForBrandName,
 } from "../brandSetupService";
 import { tapToPayBrandEligible } from "../../utils/tapToPayBrandEligible";
+import { isAuthNotReadyError } from "../../utils/authReadyGate";
 
 const BRAND = "43890000-0000-4000-b000-000000000001";
 
@@ -48,6 +51,8 @@ function checklist(states: [string, string][], setup: Record<string, unknown> = 
 beforeEach(() => {
   mockRpc.mockReset();
   mockInvoke.mockReset();
+  mockGetSession.mockReset();
+  mockGetSession.mockResolvedValue({ data: { session: { access_token: "jwt" } } });
 });
 
 describe("#4389 deriveSetupStep", () => {
@@ -118,6 +123,49 @@ describe("#4389 setBrandPayoutCountry (F2)", () => {
     mockRpc.mockResolvedValue({ data: null, error: { message: "payout_country_locked" } });
     await expect(setBrandPayoutCountry(BRAND, "GB")).rejects.toMatchObject({ code: "payout_country_locked" });
     expect(mockInvoke).not.toHaveBeenCalled();
+  });
+});
+
+// META-ORCH-1232 C2 kept by #4389: the new setup writes (F1 create, F2 bank
+// country) never go out before a real access token is attached; the cap
+// elapsing throws AuthNotReadyError, which F1/F2 show as their own retryable
+// message. FAILS-ON-REVERT: removing either awaitSessionAttached call in
+// brandSetupService fails these.
+describe("META-ORCH-1232 C2 — #4389 setup writes wait for an attached session", () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  test("F1 create without a token never calls the RPC and throws AuthNotReadyError", async () => {
+    jest.useFakeTimers();
+    mockGetSession.mockResolvedValue({ data: { session: null } });
+    const pending = createSetupBrand({ brandId: BRAND, name: "Lantern Room" });
+    const settled = pending.then(() => null, (e: unknown) => e);
+    await jest.advanceTimersByTimeAsync(6000);
+    expect(isAuthNotReadyError(await settled)).toBe(true);
+    expect(mockRpc).not.toHaveBeenCalled();
+  });
+
+  test("F2 bank country without a token never calls the RPC and throws AuthNotReadyError", async () => {
+    jest.useFakeTimers();
+    mockGetSession.mockResolvedValue({ data: { session: { access_token: "" } } });
+    const pending = setBrandPayoutCountry(BRAND, "GB");
+    const settled = pending.then(() => null, (e: unknown) => e);
+    await jest.advanceTimersByTimeAsync(6000);
+    expect(isAuthNotReadyError(await settled)).toBe(true);
+    expect(mockRpc).not.toHaveBeenCalled();
+  });
+
+  test("a token attaching mid-wait lets the create go out once", async () => {
+    jest.useFakeTimers();
+    mockGetSession
+      .mockResolvedValueOnce({ data: { session: null } })
+      .mockResolvedValue({ data: { session: { access_token: "jwt" } } });
+    mockRpc.mockResolvedValue({ data: { ok: true, brand_id: BRAND, created: true }, error: null });
+    const pending = createSetupBrand({ brandId: BRAND, name: "Lantern Room" });
+    await jest.advanceTimersByTimeAsync(200);
+    await expect(pending).resolves.toEqual({ brandId: BRAND, created: true });
+    expect(mockRpc).toHaveBeenCalledTimes(1);
   });
 });
 

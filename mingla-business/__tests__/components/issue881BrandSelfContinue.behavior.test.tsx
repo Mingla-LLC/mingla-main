@@ -1,9 +1,16 @@
+// #881 partner Step 0. #4389 moved the old wizard (with its Step 0) to
+// PartnerClientBrandCreationFlow; /brand/new mounts it for partner hosts and
+// self brands continue in the new 4-step setup. The Step 0 behaviour below
+// is unchanged and now runs against that component; the last block pins the
+// #4389 hand-over ("Myself" → the setup) that /brand/new wires in.
 import React from "react";
+import fs from "node:fs";
+import path from "node:path";
 import { describe, expect, jest, test } from "@jest/globals";
 import {
   BRAND_CREATION_COPY,
   BrandCreationFlow,
-} from "../../src/components/brand/BrandCreationFlow";
+} from "../../src/components/brand/PartnerClientBrandCreationFlow";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
   true;
@@ -268,5 +275,72 @@ describe("issue #881 partner Step 0 commitment", () => {
     expect(byLabel(tree.root, BRAND_CREATION_COPY.step1.bioLabel)[0]?.props.value)
       .toBe("Late-night listening bar");
     await TestRenderer.act(async () => tree.unmount());
+  });
+});
+
+describe("issue #881 Step 0 hand-over to the #4389 setup", () => {
+  const renderWithHandOver = async (onSelfChosen: () => void): Promise<TestRendererInstance> => {
+    let tree!: TestRendererInstance;
+    await TestRenderer.act(async () => {
+      tree = TestRenderer.create(
+        <BrandCreationFlow onComplete={jest.fn()} onCancel={jest.fn()} onSelfChosen={onSelfChosen} />,
+      );
+    });
+    return tree;
+  };
+
+  test("self Continue is authoritative and single-shot: it hands over exactly once", async () => {
+    partnerModeParam = undefined;
+    const onSelfChosen = jest.fn();
+    const tree = await renderWithHandOver(onSelfChosen);
+    const continueButton = byLabel(tree.root, BRAND_CREATION_COPY.step0.cta)[0];
+    expect(continueButton).toBeDefined();
+
+    await TestRenderer.act(async () => {
+      press(continueButton!);
+      press(continueButton!);
+    });
+
+    expect(onSelfChosen).toHaveBeenCalledTimes(1);
+    // The legacy self Step 1 never opens; /brand/new swaps in the setup.
+    expect(byLabel(tree.root, BRAND_CREATION_COPY.step1.title)).toHaveLength(0);
+    await TestRenderer.act(async () => tree.unmount());
+  });
+
+  test("client Continue stays in the partner flow and reaches client Step 1", async () => {
+    partnerModeParam = undefined;
+    const onSelfChosen = jest.fn();
+    const tree = await renderWithHandOver(onSelfChosen);
+
+    await TestRenderer.act(async () => {
+      press(byLabel(tree.root, BRAND_CREATION_COPY.step0.clientTitle)[0]!);
+    });
+    await TestRenderer.act(async () => {
+      press(byLabel(tree.root, BRAND_CREATION_COPY.step0.cta)[0]!);
+    });
+
+    expect(onSelfChosen).not.toHaveBeenCalled();
+    expect(byLabel(tree.root, BRAND_CREATION_COPY.step1.titleClient)).toHaveLength(1);
+    await TestRenderer.act(async () => tree.unmount());
+  });
+
+  test("/brand/new mounts Step 0 for partner intent and the setup after Myself", () => {
+    const route = fs.readFileSync(
+      path.join(__dirname, "../../app/brand/new.tsx"),
+      "utf8",
+    );
+    expect(route).toContain(
+      '<LazyPartnerClientBrandCreationFlow onComplete={leave} onCancel={leave} onSelfChosen={chooseSelf} />',
+    );
+    expect(route).toContain(
+      '<LazyBrandCreationFlow brandId={null} onExit={leave} onTypedNameChange={onTypedNameChange} />',
+    );
+    expect(route).toMatch(/entry === "partner-intent" \? \(\s*<LazyPartnerClientBrandCreationFlow/);
+    // The setup's name field takes focus on arrival (the old Step 1 heading focus).
+    const setup = fs.readFileSync(
+      path.join(__dirname, "../../src/components/brand/BrandCreationFlow.tsx"),
+      "utf8",
+    );
+    expect(setup).toMatch(/testID="brand-setup-name"[\s\S]*?autoFocus/);
   });
 });

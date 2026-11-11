@@ -73,6 +73,7 @@ import { BRAND_ROLE_RANK } from "../../utils/brandRole";
 import {
   CountryConflictBanner,
   ForbiddenBanner,
+  InlineWriteError,
   NameDiscardSheet,
   OtherDeviceBanner,
   SessionExpiredSheet,
@@ -85,6 +86,8 @@ import {
   paymentsStartedHere,
   shouldConfirmNameDiscard,
   takeKeptBrandName,
+  writeErrorMessage,
+  type WriteError,
 } from "./BrandSetupInterruptions";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -106,6 +109,8 @@ export interface BrandCreationFlowProps {
   resumed?: boolean;
   /** #4389 S-11 — open K1 at once (the native secure setup was closed early). */
   openK1?: boolean;
+  /** #881 — /brand/new hides partner Step 0 once a name is typed. */
+  onTypedNameChange?: (typed: string) => void;
   onExit: () => void;
 }
 
@@ -118,6 +123,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
   requestedStep = null,
   resumed = false,
   openK1 = false,
+  onTypedNameChange,
   onExit,
 }) => {
   const router = useRouter();
@@ -311,6 +317,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
           onNameChange={(typed, saving) => {
             typedNameRef.current = typed;
             nameSavingRef.current = saving;
+            onTypedNameChange?.(typed);
           }}
           onCreated={(id) => {
             typedNameRef.current = "";
@@ -326,6 +333,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
       ) : step === "country" && brandId !== null ? (
         <CountryStep
           brandId={brandId}
+          authReady={isAuthReady && user !== null}
           current={facts?.payoutCountry ?? null}
           locked={facts !== null && (facts.stripeState !== "none" || (facts.provider === "paystack" && facts.details))}
           offline={offline}
@@ -396,7 +404,7 @@ const NameStep: React.FC<{
   const idRef = useRef<string>(newBrandId());
   // R-12 — a name kept across "Sign in again" comes back here.
   const [name, setName] = useState<string>(() => takeKeptBrandName());
-  const [error, setError] = useState<string | null>(null);
+  const [writeError, setWriteError] = useState<WriteError | null>(null);
   const [sessionExpired, setSessionExpired] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const { signOut } = useAuth();
@@ -412,7 +420,8 @@ const NameStep: React.FC<{
 
   const submit = (): void => {
     if (disabled) return;
-    setError(null);
+    // A fresh attempt clears the last error; the typed name is never touched.
+    setWriteError(null);
     create.mutate(
       { brandId: idRef.current, name: trimmed },
       {
@@ -426,11 +435,14 @@ const NameStep: React.FC<{
             setSessionExpired(true);
             return;
           }
-          setError(C.common.serverError);
+          setWriteError({ message: writeErrorMessage(e, C.common.serverError), retry: () => submitRef.current() });
         },
       },
     );
   };
+  // "Try again" re-runs the LATEST submit (the name as it is now).
+  const submitRef = useRef(submit);
+  submitRef.current = submit;
 
   return (
     <>
@@ -459,7 +471,7 @@ const NameStep: React.FC<{
       </ScrollView>
       <View style={styles.footer}>
         <Button testID="brand-setup-name-continue" label={C.f1.cta} onPress={submit} variant="primary" size="lg" fullWidth disabled={disabled} loading={create.isPending} />
-        {error !== null ? <Text style={[styles.helper, styles.errorText]} accessibilityRole="alert">{error}</Text> : null}
+        <InlineWriteError writeError={writeError} testID="brand-setup-name-error" />
       </View>
       <SessionExpiredSheet
         visible={sessionExpired}
@@ -474,7 +486,7 @@ const NameStep: React.FC<{
           void signOut({ scope: "local" })
             .catch((e: unknown) => {
               console.warn("[brand-setup] sign out for sign-in again failed", e);
-              setError(C.common.serverError);
+              setWriteError({ message: C.common.serverError, retry: () => submitRef.current() });
             })
             .finally(() => setSigningOut(false));
         }}
@@ -486,14 +498,16 @@ const NameStep: React.FC<{
 // ── F2 ───────────────────────────────────────────────────────────────────
 const CountryStep: React.FC<{
   brandId: string;
+  authReady: boolean;
   current: string | null;
   locked: boolean;
   offline: boolean;
   onSaved: () => void;
   onLater: () => void;
-}> = ({ brandId, current, locked, offline, onSaved, onLater }) => {
+}> = ({ brandId, authReady, current, locked, offline, onSaved, onLater }) => {
   const [selected, setSelected] = useState<string | null>(current);
   const [error, setError] = useState<string | null>(null);
+  const [writeError, setWriteError] = useState<WriteError | null>(null);
   const save = useSetBrandPayoutCountry(brandId);
   useEffect(() => {
     if (selected === null && current !== null) setSelected(current);
@@ -518,26 +532,26 @@ const CountryStep: React.FC<{
   const locale = useMemo(() => Intl.DateTimeFormat().resolvedOptions().locale, []);
 
   const submit = (): void => {
-    if (selected === null || save.isPending || offline || forbidden) return;
+    if (selected === null || save.isPending || offline || forbidden || !authReady) return;
     if (selected === current) {
       onSaved();
       return;
     }
     setError(null);
+    setWriteError(null);
     save.mutate(selected, {
       onSuccess: () => onSaved(),
       onError: (e) => {
         const code = e instanceof BrandSetupError ? e.code : "unknown";
-        setError(
-          code === "payout_country_locked"
-            ? C.f2.locked(payoutCountryOption(current)?.name ?? "")
-            : code === "forbidden"
-            ? C.f2.forbidden
-            : C.common.serverError,
-        );
+        // Locked and forbidden are answers, not failures: no Try again.
+        if (code === "payout_country_locked") setError(C.f2.locked(payoutCountryOption(current)?.name ?? ""));
+        else if (code === "forbidden") setError(C.f2.forbidden);
+        else setWriteError({ message: writeErrorMessage(e, C.common.serverError), retry: () => submitRef.current() });
       },
     });
   };
+  const submitRef = useRef(submit);
+  submitRef.current = submit;
 
   return (
     <>
@@ -564,8 +578,9 @@ const CountryStep: React.FC<{
         {option !== null ? (
           <Text style={styles.footnote}>{C.f2.footnote(option.name, option.currency)}</Text>
         ) : null}
-        <Button testID="brand-setup-country-continue" label={C.f2.cta} onPress={submit} variant="primary" size="lg" fullWidth disabled={selected === null || offline || forbidden || (locked && selected !== current)} loading={save.isPending} />
+        <Button testID="brand-setup-country-continue" label={C.f2.cta} onPress={submit} variant="primary" size="lg" fullWidth disabled={selected === null || offline || forbidden || !authReady || save.isPending || (locked && selected !== current)} loading={save.isPending} />
         {error !== null ? <Text style={[styles.helper, styles.errorText]} accessibilityRole="alert">{error}</Text> : null}
+        <InlineWriteError writeError={writeError} testID="brand-setup-country-error" />
         <View style={styles.gap8} />
         <Button label={C.common.later} onPress={onLater} variant="secondary" size="md" fullWidth />
       </View>

@@ -15,6 +15,7 @@ import {
   parseBrandReadiness,
   type BrandReadiness,
 } from "./brandReadinessService";
+import { awaitSessionAttached } from "../utils/authReadyGate";
 
 export type BrandSetupStep = "name" | "country" | "pay" | "done";
 export const BRAND_SETUP_STEPS: readonly BrandSetupStep[] = ["name", "country", "pay", "done"];
@@ -223,6 +224,11 @@ export async function createSetupBrand(input: {
   partnerSetup?: boolean;
 }): Promise<CreateSetupBrandResult> {
   const { supabase } = await import("./supabase");
+  // META-ORCH-1232 (C2) — the brand write never goes out before a real access
+  // token is attached (a fresh signup flips isAuthReady a beat early, and an
+  // anon insert is refused by RLS). Cap elapsed → AuthNotReadyError, which F1
+  // shows as its own retryable message.
+  await awaitSessionAttached(() => supabase.auth.getSession());
   const base = slugForBrandName(input.name) || "brand";
   // A taken slug retries with a short suffix; the id keeps it one brand.
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -261,6 +267,8 @@ export async function setBrandPayoutCountry(
   country: string,
 ): Promise<PayoutCountrySaved> {
   const { supabase } = await import("./supabase");
+  // META-ORCH-1232 (C2) — same write gate as F1 create.
+  await awaitSessionAttached(() => supabase.auth.getSession());
   const { data, error } = await supabase.rpc("biz_set_brand_payout_country", {
     p_brand_id: brandId,
     p_country: country,
