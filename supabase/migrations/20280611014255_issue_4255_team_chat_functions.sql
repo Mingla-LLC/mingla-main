@@ -39,19 +39,28 @@
 -- ---------------------------------------------------------------------------
 
 -- The caller, if they may use team chat. p_write: refuse a connected agent
--- (agents never post in team chats; the gateway writes a team_agent_calls
--- row in the transaction it acts in).
+-- (agents never post in team chats). crm_ctx() is the one reader of the
+-- gateway's request ledger (#3802 pins who reads it): its via is the agent
+-- acting in this transaction, or NULL for a person. A teammate without the
+-- crm area cannot have an agent acting through Hosts and Creators either,
+-- so its refusal reads as a person.
 CREATE FUNCTION public.team_chat_ctx(p_write boolean DEFAULT false) RETURNS uuid
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
-DECLARE v_me uuid := auth.uid();
+DECLARE v_me uuid := auth.uid(); v_via text;
 BEGIN
   IF v_me IS NULL OR NOT public.team_chat_staff(v_me) THEN
     RAISE EXCEPTION 'team_access_required: This space is for the Mingla team.' USING ERRCODE = '42501';
   END IF;
-  IF p_write AND EXISTS (SELECT 1 FROM public.team_agent_calls c
-                          WHERE c.xact_id = pg_current_xact_id_if_assigned() AND c.actor_uid = v_me) THEN
-    RAISE EXCEPTION 'agents_cannot_post: Agents do not post in team chats.' USING ERRCODE = '42501';
+  IF p_write THEN
+    BEGIN
+      SELECT x.via INTO v_via FROM public.crm_ctx() x;
+    EXCEPTION WHEN insufficient_privilege THEN
+      v_via := NULL;
+    END;
+    IF v_via IS NOT NULL THEN
+      RAISE EXCEPTION 'agents_cannot_post: Agents do not post in team chats.' USING ERRCODE = '42501';
+    END IF;
   END IF;
   RETURN v_me;
 END;
