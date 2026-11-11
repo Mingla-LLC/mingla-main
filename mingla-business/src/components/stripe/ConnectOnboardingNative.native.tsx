@@ -17,7 +17,7 @@
  *
  * Copy here never names the payment partner and never says "business".
  */
-import React, { useMemo, useRef } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import Constants from "expo-constants";
 import { TurboModuleRegistry } from "react-native";
 
@@ -28,6 +28,21 @@ import {
   CONNECT_ONBOARDING_PRIVACY_URL,
   CONNECT_ONBOARDING_TERMS_URL,
 } from "./nativeConnectOnboarding";
+
+/**
+ * The iOS native modal dismisses only on a visible true -> false change, never
+ * on unmount (an unmounted-while-presented modal stays on screen: seen on the
+ * iOS 26.5 simulator, #4389). On a load error the modal is hidden first through
+ * the `dismissed` prop (patches/@stripe+stripe-react-native+0.65.1.patch), and
+ * the browser-sheet fallback runs after the dismiss animation.
+ */
+export const NATIVE_CONNECT_DISMISS_SETTLE_MS = 700;
+/**
+ * A screen that neither starts its loader nor reports an error within this
+ * time is treated as a load error (falls back to the browser sheet), so a hung
+ * native screen can never strand the host on a spinner.
+ */
+export const NATIVE_CONNECT_LOAD_TIMEOUT_MS = 25000;
 
 export interface ConnectOnboardingNativeProps {
   brandId: string;
@@ -95,6 +110,23 @@ export const ConnectOnboardingNative: React.FC<ConnectOnboardingNativeProps> = (
   const firstSecretUsedRef = useRef(false);
   const onLoadErrorRef = useRef(onLoadError);
   onLoadErrorRef.current = onLoadError;
+  const [dismissed, setDismissed] = useState(false);
+  const pendingErrorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => (): void => {
+      if (pendingErrorTimer.current !== null) clearTimeout(pendingErrorTimer.current);
+    },
+    [],
+  );
+  const loadedRef = useRef(false);
+  const handleLoadError = (event: unknown): void => {
+    if (pendingErrorTimer.current !== null) return;
+    setDismissed(true);
+    pendingErrorTimer.current = setTimeout(() => {
+      pendingErrorTimer.current = null;
+      onLoadErrorRef.current(event);
+    }, NATIVE_CONNECT_DISMISS_SETTLE_MS);
+  };
 
   const connectInstance = useMemo(() => {
     if (sdk === null || publishableKey === null) return null;
@@ -113,7 +145,7 @@ export const ConnectOnboardingNative: React.FC<ConnectOnboardingNativeProps> = (
   }, [sdk, publishableKey, brandId, clientSecret]);
 
   const unavailable = sdk === null || connectInstance === null;
-  React.useEffect(() => {
+  useEffect(() => {
     if (!unavailable) return;
     // Not silent: the caller falls back to the browser sheet.
     onLoadErrorRef.current({
@@ -124,6 +156,19 @@ export const ConnectOnboardingNative: React.FC<ConnectOnboardingNativeProps> = (
     });
   }, [unavailable, publishableKey]);
 
+  const handleLoadErrorRef = useRef(handleLoadError);
+  handleLoadErrorRef.current = handleLoadError;
+  useEffect(() => {
+    if (unavailable) return;
+    const timer = setTimeout(() => {
+      if (loadedRef.current) return;
+      handleLoadErrorRef.current({
+        error: { type: "load_timeout", message: "native_load_timeout" },
+      });
+    }, NATIVE_CONNECT_LOAD_TIMEOUT_MS);
+    return (): void => clearTimeout(timer);
+  }, [unavailable]);
+
   if (sdk === null || connectInstance === null) return null;
   const { ConnectComponentsProvider, ConnectAccountOnboarding } = sdk;
 
@@ -133,7 +178,11 @@ export const ConnectOnboardingNative: React.FC<ConnectOnboardingNativeProps> = (
         title="Secure setup"
         onExit={onExit}
         onStepChange={(change): void => onStepChange?.(change.step)}
-        onLoadError={(event): void => onLoadErrorRef.current(event)}
+        onLoadError={handleLoadError}
+        onLoaderStart={(): void => {
+          loadedRef.current = true;
+        }}
+        dismissed={dismissed}
         fullTermsOfServiceUrl={CONNECT_ONBOARDING_TERMS_URL}
         recipientTermsOfServiceUrl={CONNECT_ONBOARDING_TERMS_URL}
         privacyPolicyUrl={CONNECT_ONBOARDING_PRIVACY_URL}

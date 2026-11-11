@@ -166,6 +166,22 @@ describe("#4389 S-11 — 5. Host web keeps the web component; native mirrors its
     // Host copy never names the partner or says "business".
     expect(native).toMatch(/title="Secure setup"/);
   });
+  test("a load error hides the iOS modal BEFORE the browser-sheet fallback; a silent hang times out", () => {
+    const native = stripComments(read("src/components/stripe/ConnectOnboardingNative.native.tsx"));
+    // The modal only dismisses on visible true -> false (never on unmount).
+    expect(native).toMatch(/dismissed=\{dismissed\}/);
+    const handler = native.slice(native.indexOf("const handleLoadError"));
+    expect(handler.indexOf("setDismissed(true)")).toBeGreaterThan(-1);
+    expect(handler.indexOf("setDismissed(true)")).toBeLessThan(handler.indexOf("onLoadErrorRef.current(event)"));
+    expect(native).toMatch(/NATIVE_CONNECT_LOAD_TIMEOUT_MS = 25000/);
+    expect(native).toMatch(/type: "load_timeout"/);
+    const patch = read("patches/@stripe+stripe-react-native+0.65.1.patch");
+    expect(patch).toMatch(/\+\s*dismissed\?: boolean;/);
+    expect(patch).toMatch(/\+\s*const visible = visibleState && dismissed !== true;/);
+    // patch-package only applies to the exact installed version.
+    const lock = JSON.parse(read("package-lock.json")) as { packages: Record<string, { version?: string }> };
+    expect(lock.packages["node_modules/@stripe/stripe-react-native"]?.version).toBe("0.65.1");
+  });
 });
 
 describe("#4389 S-11 — 6. the native module probe", () => {
