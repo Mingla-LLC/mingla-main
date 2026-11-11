@@ -230,7 +230,10 @@
     "notFound": "Nie znaleziono wydarzenia",
     "notFoundBody": "Mogło zostać usunięte.",
     "addressMissing": "Dodaj adres, pod którym przyjmujesz płatności kartą",
-    "addAddress": "Dodaj adres"
+    "addAddress": "Dodaj adres",
+    "ticketCount_few": "{{count}} bilety",
+    "paidLine_few": "{{count}} bilety odprawione · {{how}}",
+    "cashReceiptLine_few": "Zapłacono {{total}} gotówką za {{count}} bilety."
   },
   "ariSetup": {
     "items": {
@@ -341,7 +344,8 @@
       "atDoorToday_one": "Dziś przy wejściu · {{count}} sprzedaż · {{amount}}",
       "atDoorToday_other": "Dziś przy wejściu · {{count}} sprzedaży · {{amount}}",
       "noEventToday": "Dziś nie ma nic do sprzedaży. Przyjmuj płatności w dniu wydarzenia.",
-      "openFailed": "Nie udało się otworzyć sprzedaży przy wejściu. Spróbuj ponownie."
+      "openFailed": "Nie udało się otworzyć sprzedaży przy wejściu. Spróbuj ponownie.",
+      "atDoorToday_few": "Dziś przy wejściu · {{count}} sprzedaże · {{amount}}"
     }
   }
 }

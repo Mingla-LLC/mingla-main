@@ -230,7 +230,10 @@
     "notFound": "Мероприятие не найдено",
     "notFoundBody": "Возможно, оно удалено.",
     "addressMissing": "Добавьте адрес, где вы будете принимать оплату картой",
-    "addAddress": "Добавить адрес"
+    "addAddress": "Добавить адрес",
+    "ticketCount_few": "{{count}} билета",
+    "paidLine_few": "{{count}} билета отмечено · {{how}}",
+    "cashReceiptLine_few": "Оплачено {{total}} наличными за {{count}} билета."
   },
   "ariSetup": {
     "items": {
@@ -341,7 +344,8 @@
       "atDoorToday_one": "Сегодня на входе · {{count}} продажа · {{amount}}",
       "atDoorToday_other": "Сегодня на входе · {{count}} продаж · {{amount}}",
       "noEventToday": "Сегодня нечего продавать. Принимайте оплату в день мероприятия.",
-      "openFailed": "Не удалось открыть продажу на входе. Попробуйте снова."
+      "openFailed": "Не удалось открыть продажу на входе. Попробуйте снова.",
+      "atDoorToday_few": "Сегодня на входе · {{count}} продажи · {{amount}}"
     }
   }
 }

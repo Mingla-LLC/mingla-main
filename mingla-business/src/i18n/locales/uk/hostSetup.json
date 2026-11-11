@@ -230,7 +230,10 @@
     "notFound": "Подію не знайдено",
     "notFoundBody": "Можливо, її видалено.",
     "addressMissing": "Додайте адресу, де ви прийматимете оплату карткою",
-    "addAddress": "Додати адресу"
+    "addAddress": "Додати адресу",
+    "ticketCount_few": "{{count}} квитки",
+    "paidLine_few": "{{count}} квитки позначено · {{how}}",
+    "cashReceiptLine_few": "Оплачено {{total}} готівкою за {{count}} квитки."
   },
   "ariSetup": {
     "items": {
@@ -341,7 +344,8 @@
       "atDoorToday_one": "Сьогодні на вході · {{count}} продаж · {{amount}}",
       "atDoorToday_other": "Сьогодні на вході · {{count}} продажів · {{amount}}",
       "noEventToday": "Сьогодні нічого продавати. Приймайте оплату в день події.",
-      "openFailed": "Не вдалося відкрити продаж на вході. Спробуйте знову."
+      "openFailed": "Не вдалося відкрити продаж на вході. Спробуйте знову.",
+      "atDoorToday_few": "Сьогодні на вході · {{count}} продажі · {{amount}}"
     }
   }
 }
