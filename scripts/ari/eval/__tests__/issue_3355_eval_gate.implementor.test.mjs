@@ -53,6 +53,15 @@ describe("#3355 Wave F — Ari eval gate", () => {
     for (const suite of ["replay", "flows", "route_table", "overall"]) {
       assert.equal(typeof stored.scores[suite], "number", suite);
     }
+    // #3355 rework 3b: answers and claim_check are documented baseline
+    // sections, gated like the core suites.
+    for (const suite of ["answers", "claim_check"]) {
+      assert.equal(typeof stored.scores[suite], "number", suite);
+    }
+    assert.ok(stored.answers.some((item) => item.id === "answer_read_code_end_local_time"));
+    assert.ok(stored.answers.every((item) => item.facts_total > 0));
+    assert.ok(stored.claim_check.total > 0);
+    assert.match(stored.description, /answers .*claim_check/s);
     const self = gate(stored, { run_id: "self", scores: stored.scores });
     assert.equal(self.status, 0, self.stdout);
   });

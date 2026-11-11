@@ -297,7 +297,7 @@ export function baselineFromRun(run) {
     schemaVersion: 1,
     ownerIssue: "#3355",
     description:
-      "Ari live-eval baseline (local stack, Gemini Flash). scripts/ari/eval/gate.mjs fails a run that drops 2+ points on any suite or overall. Refresh with run-live.mjs --write-baseline, or gate.mjs --promote --run=<run.json>, after a reviewed improvement.",
+      "Ari live-eval baseline (local stack, Gemini Flash). scripts/ari/eval/gate.mjs fails a run that drops 2+ points on any suite or overall. overall is the mean of replay, flows and route_table; answers (read, how-to, remember and support answers, graded on the host-visible words; per-eval facts in the answers section) and claim_check (the reply claim check on the real model; totals and latency in the claim_check section) are scored and gated on their own. Refresh with run-live.mjs --write-baseline, or gate.mjs --promote --run=<run.json>, after a reviewed improvement.",
     run_id: run.run_id,
     ran_at: run.ran_at,
     revision: run.revision,
