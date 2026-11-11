@@ -1167,6 +1167,7 @@
         "supabase/functions/_shared/vatCountryGuard.ts",
         "supabase/migrations/20280625004389_issue_4389_brand_setup.sql",
         "supabase/migrations/20280625104389_issue_4389_ari_brand_operation.sql",
+        "supabase/migrations/20280625304389_issue_4389_retire_bgn.sql",
         "mingla-business/src/components/stripe/ConnectOnboardingNative.native.tsx",
         "mingla-business/src/components/stripe/ConnectOnboardingNative.tsx",
         "mingla-business/src/components/stripe/nativeConnectOnboarding.ts",

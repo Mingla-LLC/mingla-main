@@ -434,8 +434,8 @@ export function phase3dContractDigest(manifest) {
 // #4334: re-sealed after merging origin/main b9d9ba3bab (#3645 payout ledger rows kept beside the #4334 follow-up rows).
 // #4383: register the Communications scheduling migration (20280608004383) and its implementor PostgreSQL proof in the #1857, #1931 and #2117 replay lanes.
 // #4383: and the tester adversarial PostgreSQL proof.
-// #4389: register the brand setup, Ari brand operation and native connect flag migrations (20280625004389, 20280625104389, 20280625204389) in the #1857, #1931 and #2117 replay lanes, their implementor PostgreSQL proofs in the #1931 and #2117 lanes, and skip 20280625004389 in the #1931 template replay (it needs the skipped #3355 brand_readiness_catalog).
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "db85a1e9ecdd1201288e42480e1e3e48b917e59a5ac9b58861fc0c7cbc8ed1b5";
+// #4389: register the brand setup, Ari brand operation, native connect flag and BGN retirement migrations (20280625004389, 20280625104389, 20280625204389, 20280625304389) in the #1857, #1931 and #2117 replay lanes, their implementor PostgreSQL proofs in the #1931 and #2117 lanes, and skip 20280625004389 in the #1931 template replay (it needs the skipped #3355 brand_readiness_catalog).
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "745d85d88e2179c295fd0425a97ed121118de1ade35aa160788247aa90605a11";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
