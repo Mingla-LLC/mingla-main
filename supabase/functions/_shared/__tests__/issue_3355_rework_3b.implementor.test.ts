@@ -236,6 +236,31 @@ Deno.test("3b-1: Flash's synonyms normalise to the canonical kind without a bind
   assertEquals(readListingKindWord("all"), "unspecified");
 });
 
+Deno.test("3b-1: a venue listing alone never makes venue orders the default (live eval)", async () => {
+  // The live favy10 run: the ng seed brand has one venue and no events; the
+  // host is mid event setup. The code must cover events, not venue orders.
+  const client = fakeClient({
+    events: [],
+    venue_listings: [{ brand_id: BRAND, id: "v1" }],
+  });
+  const bound = await bindDiscountTargetDefault(
+    "create_discount",
+    favyArgs([{ target_kind: "listing_kind", listing_kind: "all" }]),
+    client as AnyClient,
+    FAVY10_SENTENCE,
+  );
+  assertEquals(bound.targets, [{
+    target_kind: "listing_kind",
+    listing_kind: "event",
+  }]);
+  // Named by the host, venue orders are honoured.
+  assertEquals(
+    resolveDiscountTargetDefault([], "10% off food orders at the venue")
+      .listingKinds,
+    ["venue_order"],
+  );
+});
+
 Deno.test("3b-1: a brand with several kinds and none named gets ONE question listing them", async () => {
   const client = fakeClient({
     events: [

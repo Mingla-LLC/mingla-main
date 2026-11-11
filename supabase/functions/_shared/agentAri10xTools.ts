@@ -1702,29 +1702,24 @@ export async function bindProposalTimezone(
 }
 
 /**
- * #3355 rework 3b: the listing kinds a brand sells, read as the caller (RLS).
- * events.event_type (event / experience / trip; RSVPs take no discount) and
- * venue listings (venue orders). A failed read is treated as no listings.
+ * #3355 rework 3b: the listing kinds a brand sells, read as the caller (RLS):
+ * events.event_type (event / experience / trip; RSVPs take no discount). A
+ * venue listing alone is not counted (live eval: the seed venue made "venue
+ * orders" the only kind for a host mid event setup); venue orders and table
+ * deposits are used only when the host names them. A failed read is treated
+ * as no listings.
  */
 export async function readBrandListingKinds(
   client: SupabaseClient,
   brandId: string,
 ): Promise<string[]> {
-  const [events, venues] = await Promise.all([
-    client.from("events").select("event_type")
-      .eq("brand_id", brandId).is("deleted_at", null)
-      .neq("event_type", "rsvp").limit(200),
-    client.from("venue_listings").select("id")
-      .eq("brand_id", brandId).limit(1),
-  ]);
+  const { data, error } = await client.from("events").select("event_type")
+    .eq("brand_id", brandId).is("deleted_at", null)
+    .neq("event_type", "rsvp").limit(200);
+  if (error) return [];
   const kinds = new Set<string>();
-  if (!events.error) {
-    for (const row of (events.data ?? []) as Array<Record<string, unknown>>) {
-      if (typeof row.event_type === "string") kinds.add(row.event_type);
-    }
-  }
-  if (!venues.error && (venues.data ?? []).length > 0) {
-    kinds.add("venue_order");
+  for (const row of (data ?? []) as Array<Record<string, unknown>>) {
+    if (typeof row.event_type === "string") kinds.add(row.event_type);
   }
   return [...kinds];
 }
