@@ -41,6 +41,7 @@ import {
   KeyRound,
   // #4383: the Communications group.
   RadioTower,
+  Send,
   BellRing,
   Milestone,
   Mail,
@@ -110,6 +111,7 @@ const ICON_MAP = {
   KeyRound,
   // #4383: the Communications group.
   RadioTower,
+  Send,
   BellRing,
   Milestone,
   Mail,

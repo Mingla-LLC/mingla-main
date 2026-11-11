@@ -6,7 +6,8 @@
     "id": "issue-4383-admin-communications",
     "class": "admin-node20-install",
     "originPaths": [
-      "mingla-admin/src/**"
+      "mingla-admin/src/**",
+      "supabase/migrations/20280608004383_issue_4383_communications_scheduling.sql"
     ],
     "steps": [
       {
@@ -38,7 +39,9 @@
     "expectedFiles": [
       "mingla-admin/src/__tests__/issue_4383_communications.implementor.test.js"
     ],
-    "externalReferenceFiles": [],
+    "externalReferenceFiles": [
+      "supabase/migrations/20280608004383_issue_4383_communications_scheduling.sql"
+    ],
     "requiredContext": "CI batch: admin-node20-install",
     "timingSeconds": {
       "p50": 1,

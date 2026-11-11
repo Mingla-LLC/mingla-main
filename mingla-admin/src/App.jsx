@@ -36,6 +36,7 @@ import { PricingPage } from "./pages/PricingPage";
 import { CommunityPage, SupportPage } from "./pages/CommunitySupportPage";
 // #4383 — Communications: what we tell hosts and explorers, each its own screen.
 import { CommunicationsOverviewPage } from "./pages/communications/CommunicationsOverviewPage";
+import { PushPage } from "./pages/communications/PushPage";
 import { AnnouncementsPage } from "./pages/communications/AnnouncementsPage";
 import { RoadmapPage } from "./pages/communications/RoadmapPage";
 import { EmailPage } from "./pages/EmailPage";
@@ -122,6 +123,7 @@ const PAGES = {
   // Support, Announcements and Roadmap out of Community; their old tab
   // addresses redirect here (lib/adminRoutes.js TAB_PAGE_REDIRECTS).
   communications: CommunicationsOverviewPage,
+  push: PushPage,
   announcements: AnnouncementsPage,
   roadmap: RoadmapPage,
   email: EmailPage,

@@ -41,6 +41,9 @@ export const COMMUNITY_SUPPORT_TAB_CONTRACT = Object.freeze({
       "issue_3720_admin_list_roadmap_cards",
       "issue_3720_admin_retry_announcement",
       "issue_3720_admin_upsert_announcement",
+      // #4383: Publish now or Schedule, and Unschedule.
+      "issue_4383_announcement_schedule",
+      "issue_4383_announcement_unschedule",
     ]),
     functions: Object.freeze([]),
   }),
@@ -55,6 +58,12 @@ export const COMMUNITY_SUPPORT_TAB_CONTRACT = Object.freeze({
       "community_roadmap_notification_preview",
       "community_upsert_roadmap_card",
       "issue_3720_admin_list_roadmap_cards",
+      // #4383: card go-live and scheduled notices.
+      "issue_4383_roadmap_cancel_notice",
+      "issue_4383_roadmap_schedule_card",
+      "issue_4383_roadmap_schedule_notice",
+      "issue_4383_roadmap_scheduled_list",
+      "issue_4383_roadmap_unschedule_card",
     ]),
     functions: Object.freeze([]),
   }),
@@ -212,7 +221,34 @@ export const COMMUNITY_SUPPORT_TAB_CONTRACT = Object.freeze({
     page: "communications",
     area: ADMIN,
     panel: "pages/communications/CommunicationsOverviewPage.jsx",
-    rpcs: Object.freeze([]),
+    // The list and its cancels. Each RPC checks the caller first and only
+    // returns or changes the kinds that person may open; email cancel goes
+    // through admin-send-email (any active teammate, its own fetch helper).
+    rpcs: Object.freeze([
+      "issue_3720_admin_retry_announcement",
+      "issue_4383_announcement_unschedule",
+      "issue_4383_communications_failures",
+      "issue_4383_push_cancel",
+      "issue_4383_roadmap_cancel_notice",
+      "issue_4383_roadmap_unschedule_card",
+      "issue_4383_scheduled_communications",
+    ]),
+    functions: Object.freeze([]),
+  }),
+  // #4383 — Communications › Push (full admins, the default area).
+  push: Object.freeze({
+    page: "push",
+    area: ADMIN,
+    panel: "pages/communications/PushPage.jsx",
+    rpcs: Object.freeze([
+      "issue_3720_admin_retry_announcement",
+      "issue_4383_push_cancel",
+      "issue_4383_push_list",
+      "issue_4383_push_preview",
+      "issue_4383_push_save",
+      "issue_4383_push_send_now",
+      "issue_4383_push_test_to_me",
+    ]),
     functions: Object.freeze([]),
   }),
   team: Object.freeze({

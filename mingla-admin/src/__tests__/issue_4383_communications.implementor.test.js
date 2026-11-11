@@ -11,6 +11,12 @@
 //        Support menu entry (T4, I-4383-COMMS-ACCESS-UNCHANGED)
 //   C-5  unknown and hostile addresses never crash (T5)
 //   C-6  the Email screen's sections live in the address (view=)
+//   C-7  Later pickers: a wall time in the chosen zone becomes one UTC
+//        instant; past and impossible times are refused (T24)
+//   C-8  the Push composer's choices, reach and review wording; the server's
+//        refusal codes become plain words with the code kept
+//   C-9  the screens call their RPCs through the one service and check the
+//        time in its zone at submit
 //
 // MINGLA-INVARIANT: I-4383-COMMS-ACCESS-UNCHANGED | issue #4383 | Moving a panel to its own Communications screen never changes who can open it (C-4 persona table below).
 //
@@ -43,15 +49,20 @@ import { communitySupportTabsForAccess } from "../lib/communitySupportAccess.js"
 import { COMMUNITY_SUPPORT_TAB_CONTRACT } from "../lib/communitySupportCapabilityContract.js";
 import { isRoadmapHash, roadmapCardFromHash, roadmapDraftHref } from "../lib/opsModel.js";
 import { emailViewFromHash, emailViewHash, emailViewsFor } from "../lib/emailViews.js";
+import { checkLaterTime, formatInZone, scheduleLabel, utcToZonedInputs, zonedLocalToUtc } from "../lib/scheduleTime.js";
+import { EXPLORER_DESTINATIONS, HOST_DESTINATIONS, opensLabel, pushReach } from "../lib/pushDestinations.js";
+import { COMMUNICATIONS_ERROR_COPY, communicationsErrorCode, communicationsErrorMessage } from "../lib/communicationsErrors.js";
+import { attentionWords, cancelKindLabel } from "../lib/communications.js";
 
 const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (rel) => fs.readFileSync(path.join(SRC, rel), "utf8");
 const APP = read("App.jsx");
 const SIDEBAR = read("components/layout/Sidebar.jsx");
 
-// The approved menu (spec §4.1). Push joins in Wave 2.
+// The approved menu (spec §4.1).
 const COMMUNICATIONS = [
   ["communications", "Overview", "RadioTower"],
+  ["push", "Push", "Send"],
   ["announcements", "Announcements", "BellRing"],
   ["roadmap", "Roadmap", "Milestone"],
   ["email", "Email", "Mail"],
@@ -65,7 +76,7 @@ describe("C-1 the Communications menu group", () => {
     assert.equal(labels.indexOf("Communications"), labels.indexOf("Support") + 1);
     const group = NAV_GROUPS.find((g) => g.label === "Communications");
     assert.deepEqual(group.items.map((item) => [item.id, item.label, item.icon]), COMMUNICATIONS);
-    assert.equal(NAV_ITEMS.length, 40, "34 entries + the Communications group");
+    assert.equal(NAV_ITEMS.length, 41, "34 entries + the seven Communications screens");
   });
 
   it("each screen is a page App draws, and its icon is registered", () => {
@@ -269,5 +280,89 @@ describe("C-6 the Email screen's sections", () => {
     assert.equal(emailViewHash("write"), "#/email");
     assert.equal(emailViewHash("templates"), "#/email?view=templates");
     assert.equal(emailViewHash("nope"), "#/email");
+  });
+});
+
+describe("C-7 Later pickers (T24)", () => {
+  it("09:00 in Africa/Lagos is stored as 08:00Z and listed as 09:00 Africa/Lagos", () => {
+    const at = zonedLocalToUtc("2026-11-14", "09:00", "Africa/Lagos");
+    assert.equal(at.toISOString(), "2026-11-14T08:00:00.000Z");
+    assert.equal(formatInZone(at.toISOString(), "Africa/Lagos"), "Sat 14 Nov · 09:00");
+    const label = scheduleLabel(at.toISOString(), "Africa/Lagos", "America/New_York");
+    assert.deepEqual(label, { primary: "Sat 14 Nov · 09:00", zone: "Africa/Lagos", viewer: "Sat 14 Nov · 03:00 your time" });
+    assert.equal(scheduleLabel(at.toISOString(), "Africa/Lagos", "Africa/Lagos").viewer, "");
+    assert.deepEqual(utcToZonedInputs(at.toISOString(), "Africa/Lagos"), { date: "2026-11-14", time: "09:00" });
+  });
+  it("the same wall time in another zone is a different instant", () => {
+    assert.equal(zonedLocalToUtc("2026-11-14", "09:00", "America/New_York").toISOString(), "2026-11-14T14:00:00.000Z");
+    assert.equal(zonedLocalToUtc("2026-07-14", "09:00", "Europe/London").toISOString(), "2026-07-14T08:00:00.000Z");
+  });
+  it("past, too-soon, impossible and unknown-zone times are refused at submit", () => {
+    const now = Date.parse("2026-11-10T12:00:00Z");
+    assert.equal(checkLaterTime({ date: "2026-11-10", time: "12:30", zone: "Africa/Lagos" }, now).ok, false, "12:30 Lagos is 11:30Z: past");
+    assert.equal(checkLaterTime({ date: "2026-11-10", time: "13:00", zone: "Africa/Lagos" }, now).message, "Pick a time at least a minute from now.");
+    assert.equal(checkLaterTime({ date: "2026-11-10", time: "13:02", zone: "Africa/Lagos" }, now).ok, true);
+    assert.match(checkLaterTime({ date: "2026-03-08", time: "02:30", zone: "America/New_York" }, now).message, /doesn't exist/);
+    assert.equal(checkLaterTime({ date: "2026-11-11", time: "09:00", zone: "Mars/Olympus" }, now).ok, false);
+    assert.equal(checkLaterTime({ date: "", time: "09:00", zone: "UTC" }, now).ok, false);
+    assert.equal(zonedLocalToUtc("2026-02-30", "09:00", "UTC"), null);
+  });
+});
+
+describe("C-8 the Push composer's wording", () => {
+  it("offers exactly the five approved screens, by their on-screen names", () => {
+    assert.deepEqual(EXPLORER_DESTINATIONS.map((d) => d.label), ["Explore", "Discover", "Likes"]);
+    assert.deepEqual(HOST_DESTINATIONS.map((d) => d.value), ["community", "home"]);
+    assert.equal(opensLabel({ audience: "both", explorer_target: "discover", host_target: "home" }), "Explorer app: Discover · Host app: Home");
+    assert.equal(opensLabel({ audience: "hosts", explorer_target: "discover", host_target: "community" }), "Host app: Community (Account, Support)");
+  });
+  it("reach: people for the review, rows paced 12 a minute", () => {
+    const counts = { hosts: 49, explorers: 243, both: 243 };
+    assert.deepEqual(pushReach("hosts", counts), { people: 49, rows: 49, minutes: 5 });
+    assert.deepEqual(pushReach("explorers", counts), { people: 243, rows: 243, minutes: 21 });
+    assert.deepEqual(pushReach("both", counts), { people: 243, rows: 292, minutes: 25 });
+    assert.deepEqual(pushReach("hosts", null), { people: 0, rows: 0, minutes: 1 });
+  });
+  it("server refusals become plain words with the code kept", () => {
+    const err = { code: "PT409", message: "already_sending" };
+    assert.equal(communicationsErrorCode(err), "already_sending");
+    assert.equal(communicationsErrorMessage(err), "This push already started sending, so it can't be changed. (already_sending)");
+    assert.equal(communicationsErrorMessage({ code: "22023", message: "scheduled_time_past" }), `${COMMUNICATIONS_ERROR_COPY.scheduled_time_past} (scheduled_time_past)`);
+    assert.equal(communicationsErrorMessage({ code: "XX000", message: "boom" }), "The server didn't accept that. boom (XX000)");
+    assert.equal(communicationsErrorMessage(null), "The server didn't accept that.");
+  });
+  it("Needs attention says what went wrong", () => {
+    assert.match(attentionWords({ problem: "late" }), /five minutes ago/);
+    assert.equal(attentionWords({ problem: "push_failed", detail: { push_failed: 2, inapp_delivered: 49 } }), "2 phones did not accept the push. 49 bell items landed.");
+    assert.equal(attentionWords({ problem: "failed", detail: "forced" }), "It did not go out: forced.");
+    assert.equal(cancelKindLabel("roadmap_notice"), "notice");
+  });
+});
+
+describe("C-9 the screens and the server", () => {
+  const SERVICE = read("services/communicationsService.js");
+  it("every issue_4383 RPC the migration grants to authenticated has one service call", () => {
+    const sql = fs.readFileSync(path.join(SRC, "../../supabase/migrations/20280608004383_issue_4383_communications_scheduling.sql"), "utf8");
+    const granted = [...sql.matchAll(/GRANT EXECUTE ON FUNCTION public\.(issue_4383_[a-z_]+)\([^)]*\) TO authenticated;/g)].map((m) => m[1])
+      .filter((name) => !["issue_4383_push_deep_link", "issue_4383_check_schedule"].includes(name));
+    for (const name of granted) assert.match(SERVICE, new RegExp(`supabase\\.rpc\\("${name}"`), name);
+  });
+  it("Push, Announcements and Roadmap check a Later time in its zone at submit", () => {
+    const push = read("pages/communications/PushPage.jsx");
+    assert.ok((push.match(/checkLaterTime\(form\.later\)/g) || []).length >= 2, "checked at review and again at confirm");
+    assert.match(read("components/community/AnnouncementsPanel.jsx"), /checkLaterTime\(editor\.later\)/);
+    assert.match(read("components/community/RoadmapPanel.jsx"), /checkLaterTime\(goLive\.later\)/);
+    assert.match(read("components/community/RoadmapPanel.jsx"), /checkLaterTime\(notifyLater\)/);
+  });
+  it("every load has an error state with Retry, and no load error is swallowed", () => {
+    for (const file of ["pages/communications/PushPage.jsx", "pages/communications/CommunicationsOverviewPage.jsx", "components/community/AnnouncementsPanel.jsx", "components/community/RoadmapPanel.jsx"]) {
+      const src = read(file);
+      assert.match(src, /<LoadError/, file);
+      assert.equal(/catch\s*\(\)\s*\{\s*\}/.test(src), false, `${file}: empty catch`);
+    }
+  });
+  it("Review shows To, Apps, Opens and When before anything sends", () => {
+    const push = read("pages/communications/PushPage.jsx");
+    for (const term of [">To<", ">Apps<", ">Opens<", ">When<", "Send test to me", "Review and send", "Review and schedule"]) assert.ok(push.includes(term), term);
   });
 });

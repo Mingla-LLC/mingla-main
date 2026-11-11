@@ -25,19 +25,10 @@ import { PageHeader } from "../components/ui/PageHeader";
 import { EmailComposer } from "../components/email/EmailComposer";
 import { audienceFilterWords } from "../lib/emailAudience";
 import { emailViewFromHash, emailViewHash, emailViewsFor } from "../lib/emailViews";
-
-class SessionExpiredError extends Error {
-  constructor(message = SESSION_EXPIRED_MESSAGE) {
-    super(message);
-    this.name = "SessionExpiredError";
-    this.status = 401;
-  }
-}
+// #4383: the admin-send-email client lives in one place (the Overview uses it too).
+import { callEdgeFunction } from "../services/adminSendEmailService";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
-
-const SUPABASE_BASE = import.meta.env.VITE_SUPABASE_URL || "";
-const EDGE_FUNCTION_URL = SUPABASE_BASE ? `${SUPABASE_BASE}/functions/v1/admin-send-email` : "";
 
 // #4383: the screen's sections (Write, Sent, Templates, Unsubscribes) and
 // who sees each live in lib/emailViews.js; the open one is `view=` in the
@@ -86,62 +77,6 @@ function campaignStatusLabel(status) {
   if (status === "cancelled") return "Cancelled";
   if (status === "failed") return "Failed";
   return String(status || "Unknown");
-}
-
-async function getAuthHeaders() {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.access_token) throw new SessionExpiredError();
-  // #3720 / #3512 — pre-refresh near expiry (same buffer as invokeWithRefresh).
-  if (session.expires_at) {
-    const timeLeft = session.expires_at * 1000 - Date.now();
-    if (timeLeft < 60_000) {
-      try {
-        await supabase.auth.refreshSession();
-      } catch {
-        // Fall through; the request may still succeed with the current token.
-      }
-      const { data: { session: refreshed } } = await supabase.auth.getSession();
-      if (!refreshed?.access_token) throw new SessionExpiredError();
-      return {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${refreshed.access_token}`,
-      };
-    }
-  }
-  return {
-    "Content-Type": "application/json",
-    "Authorization": `Bearer ${session.access_token}`,
-  };
-}
-
-async function callEdgeFunction(payload, { retried = false } = {}) {
-  const headers = await getAuthHeaders();
-  const response = await fetch(EDGE_FUNCTION_URL, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(payload),
-  });
-  let result;
-  try {
-    result = await response.json();
-  } catch {
-    throw new Error(`Server error (HTTP ${response.status})`);
-  }
-  if (!response.ok) {
-    if (result.code === "NO_PROVIDER") return { _noProvider: true };
-    // #3720 bug 10 — one refresh + retry on 401, then force re-sign-in.
-    if (response.status === 401 && !retried) {
-      try {
-        await supabase.auth.refreshSession();
-      } catch {
-        throw new SessionExpiredError();
-      }
-      return callEdgeFunction(payload, { retried: true });
-    }
-    if (response.status === 401) throw new SessionExpiredError();
-    throw new Error(result.error || `HTTP ${response.status}`);
-  }
-  return result;
 }
 
 // ─── Main Page ──────────────────────────────────────────────────────────────

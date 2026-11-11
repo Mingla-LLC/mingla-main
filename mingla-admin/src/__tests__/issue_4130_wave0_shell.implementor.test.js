@@ -56,7 +56,7 @@ const MENU = [
   ["Outreach", ["outreach:Hosts and creators", "program-creators:Creators", "program-gigs:Gigs", "program-locals:Mingla Locals", "program-disputes:Disputes", "inbound:Inbound leads", "content-calendar:Calendar", "team-dashboard:Team dashboard"]],
   ["Support", ["support:Support", "community:Community"]],
   // #4383: what we tell hosts and explorers, each its own screen.
-  ["Communications", ["communications:Overview", "announcements:Announcements", "roadmap:Roadmap", "email:Email", "blog:Blog", "links:Links page"]],
+  ["Communications", ["communications:Overview", "push:Push", "announcements:Announcements", "roadmap:Roadmap", "email:Email", "blog:Blog", "links:Links page"]],
   ["Business", ["people:People", "brands:Brands", "business-offerings:Offerings"]],
   ["Money", ["mingla-money:Mingla money", "business-payments:Payments", "business-orders:Orders", "business-money-ledger:Money ledger", "refund-operations:Refund operations", "subscriptions:Subscriptions", "pricing:Pricing and limits"]],
   ["Explorer app", ["placepool:Place pool"]],
@@ -112,9 +112,9 @@ describe("#4130 W0-1: the menu is the approved sidebar", () => {
     }
     // #4130: Careers is back as its own page (27). #4130 + #3872: + the four
     // Creator Program pages. #3355: + the guarded Ari Improvement Lab.
-    // #4383: + the Communications group (Overview, Announcements, Roadmap,
-    // Email, Blog, Links page).
-    assert.equal(NAV_ITEMS.length, 40); // #4294: + Company tools; #4273: + SMS countries
+    // #4383: + the Communications group (Overview, Push, Announcements,
+    // Roadmap, Email, Blog, Links page).
+    assert.equal(NAV_ITEMS.length, 41); // #4294: + Company tools; #4273: + SMS countries
   });
   it("Needs you, My agent and Guide are not menu entries; My agent and Guide keep their pages in the header", () => {
     const ids = NAV_ITEMS.map((i) => i.id);

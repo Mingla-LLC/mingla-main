@@ -43,7 +43,9 @@ describe("#3720 support grant + session (happy)", () => {
 
   it("EmailPage callEdgeFunction retries once on 401 then SessionExpiredError", () => {
     const page = read("src/pages/EmailPage.jsx");
-    const call = page.match(/async function callEdgeFunction[\s\S]*?\n\}/);
+    // #4383: the client moved to services/adminSendEmailService.js (one owner).
+    assert.match(page, /import \{ callEdgeFunction \} from "\.\.\/services\/adminSendEmailService";/);
+    const call = read("src/services/adminSendEmailService.js").match(/async function callEdgeFunction[\s\S]*?\n\}/);
     assert.ok(call, "callEdgeFunction must exist");
     assert.match(call[0], /response\.status === 401/);
     assert.match(call[0], /refreshSession/);

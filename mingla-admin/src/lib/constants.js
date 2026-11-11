@@ -167,6 +167,7 @@ export const NAV_GROUPS = [
     label: "Communications",
     items: [
       { id: "communications",            label: "Overview",           icon: "RadioTower" },
+      { id: "push",                      label: "Push",               icon: "Send" },
       { id: "announcements",             label: "Announcements",      icon: "BellRing" },
       { id: "roadmap",                   label: "Roadmap",            icon: "Milestone" },
       { id: "email",                     label: "Email",              icon: "Mail" },
