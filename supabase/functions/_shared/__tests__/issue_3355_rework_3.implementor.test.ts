@@ -59,6 +59,7 @@ import {
 import { routeAriTurn } from "../ariIntentRead.ts";
 import { isReadOnlyAgentToolCall } from "../agentTools.ts";
 import { ariDeterministicReadPlan } from "../agentToolsets.ts";
+import { announcesWriteWithoutCall } from "../ariTruthGuards.ts";
 import { decideFlowTurn } from "../ariFlows/edge.ts";
 import { findFlowDefinition } from "../ariFlows/index.ts";
 import {
@@ -967,5 +968,23 @@ Deno.test("R3-1: a note claim worded as an update is backed by this turn's remem
   assertEquals(
     out.text,
     "I've updated your notes: doors open at 8pm for every event.",
+  );
+});
+
+Deno.test("live replay: 'I will create the first discount code …' with no call is sent back to make the card", () => {
+  assert(
+    announcesWriteWithoutCall(
+      "I will create the first discount code, **GIRLSTRIPLAGOS**, for 10% off through December 19, 2026.",
+    ),
+  );
+  assert(announcesWriteWithoutCall("I'll set up FAVY10 for 10% off now."));
+  // An offer or a question is not an announcement.
+  assert(
+    !announcesWriteWithoutCall(
+      "Would you like me to set up FFBTSCOM10? I'll create it once you say yes?",
+    ),
+  );
+  assert(
+    !announcesWriteWithoutCall("I can create FAVY10 for 10% off. Want me to?"),
   );
 });
